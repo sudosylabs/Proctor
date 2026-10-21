@@ -48,12 +48,12 @@ func (id OnboardingImportID) String() string    { return string(id) }
 func (id OnboardingImportID) IsValid() bool     { return IsValidOpaqueID(string(id)) }
 func (id OnboardingImportID) IsZero() bool      { return id == "" }
 
-func (mode OnboardingImportMode) IsValid() bool {
-	return mode == OnboardingImportStudentClass || mode == OnboardingImportTeacherAcademicUnit || mode == OnboardingImportInstitution || mode == OnboardingImportAcademicAdministration || mode == OnboardingImportStudentProgression
+func (m OnboardingImportMode) IsValid() bool {
+	return m == OnboardingImportStudentClass || m == OnboardingImportTeacherAcademicUnit || m == OnboardingImportInstitution || m == OnboardingImportAcademicAdministration || m == OnboardingImportStudentProgression
 }
 
-func (state OnboardingImportState) IsValid() bool {
-	switch state {
+func (s OnboardingImportState) IsValid() bool {
+	switch s {
 	case OnboardingImportUploading, OnboardingImportParsing, OnboardingImportPreviewReady, OnboardingImportExecuting,
 		OnboardingImportCompleted, OnboardingImportCompletedWithErrors, OnboardingImportCanceled, OnboardingImportFailed:
 		return true
@@ -62,12 +62,12 @@ func (state OnboardingImportState) IsValid() bool {
 	}
 }
 
-func (policy OnboardingImportCommitPolicy) IsValid() bool {
-	return policy == OnboardingImportRequireAllValid || policy == OnboardingImportValidRowsOnly
+func (p OnboardingImportCommitPolicy) IsValid() bool {
+	return p == OnboardingImportRequireAllValid || p == OnboardingImportValidRowsOnly
 }
 
-func (status OnboardingImportRowStatus) IsValid() bool {
-	switch status {
+func (s OnboardingImportRowStatus) IsValid() bool {
+	switch s {
 	case OnboardingImportRowValid, OnboardingImportRowInvalid, OnboardingImportRowDuplicate, OnboardingImportRowPending,
 		OnboardingImportRowSucceeded, OnboardingImportRowNoOp, OnboardingImportRowFailed, OnboardingImportRowSkipped,
 		OnboardingImportRowCanceled:

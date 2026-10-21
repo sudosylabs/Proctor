@@ -21,12 +21,12 @@ type testHTTPApplication struct {
 	principal *model.Principal
 }
 
-func (application *testHTTPApplication) AuthenticateAccess(context.Context, string) (*model.Principal, error) {
-	return application.principal, nil
+func (a *testHTTPApplication) AuthenticateAccess(context.Context, string) (*model.Principal, error) {
+	return a.principal, nil
 }
 
-func (application *testHTTPApplication) AuthenticateBearer(context.Context, string) (*model.Principal, error) {
-	return application.principal, nil
+func (a *testHTTPApplication) AuthenticateBearer(context.Context, string) (*model.Principal, error) {
+	return a.principal, nil
 }
 
 type testHTTPHealth struct{}

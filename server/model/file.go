@@ -43,11 +43,11 @@ func ParseWorkspaceContentVersion(value string) (WorkspaceContentVersion, error)
 	return WorkspaceContentVersion(value), nil
 }
 
-func (version WorkspaceContentVersion) IsValid() bool {
-	return workspaceContentVersionPattern.MatchString(string(version))
+func (v WorkspaceContentVersion) IsValid() bool {
+	return workspaceContentVersionPattern.MatchString(string(v))
 }
 
-func (version WorkspaceContentVersion) String() string { return string(version) }
+func (v WorkspaceContentVersion) String() string { return string(v) }
 
 // FileIndexingPolicy controls which server-maintained search material may be derived.
 type FileIndexingPolicy string

@@ -360,19 +360,19 @@ var desktopCompatibilityPolicyStoreErrors = apperror.StoreTable{
 	Unavailable: "desktop_compatibility_policy.unavailable",
 }
 
-func (catalog *desktopBuildCatalog) evaluate(
+func (c *desktopBuildCatalog) evaluate(
 	policy *model.DesktopCompatibilityPolicy,
 	query DesktopCompatibilityQuery,
 ) (DesktopCompatibilityResult, error) {
 	if err := validateDesktopCompatibilityQuery(query); err != nil {
 		return DesktopCompatibilityResult{}, err
 	}
-	if catalog == nil || policy == nil || policy.Validate() != nil {
+	if c == nil || policy == nil || policy.Validate() != nil {
 		return DesktopCompatibilityResult{}, apperror.New("desktop_compatibility_policy.unavailable")
 	}
 
-	matchingTarget := make([]model.DesktopBuildTuple, 0, len(catalog.entries))
-	for _, entry := range catalog.entries {
+	matchingTarget := make([]model.DesktopBuildTuple, 0, len(c.entries))
+	for _, entry := range c.entries {
 		if string(entry.Platform) == query.Platform && string(entry.Architecture) == query.Architecture {
 			matchingTarget = append(matchingTarget, entry)
 		}

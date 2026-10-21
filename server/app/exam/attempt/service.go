@@ -160,9 +160,9 @@ type Service struct {
 	deliveryControls controlAdmission
 }
 
-func (service *Service) recordOperational(event string, err error) {
-	if service.deps.Operational != nil {
-		service.deps.Operational.RecordOperational("exam_attempt", event, err)
+func (s *Service) recordOperational(event string, err error) {
+	if s.deps.Operational != nil {
+		s.deps.Operational.RecordOperational("exam_attempt", event, err)
 	}
 }
 
@@ -182,7 +182,7 @@ type GetManagedAttemptQuery struct {
 	AttemptID model.ExamAttemptID
 }
 
-func (service *Service) GetExamAttempt(ctx context.Context, invocation invocation.Invocation, query GetManagedAttemptQuery) (_ store.ExamAttemptManagerSnapshot, resultErr error) {
+func (s *Service) GetExamAttempt(ctx context.Context, invocation invocation.Invocation, query GetManagedAttemptQuery) (_ store.ExamAttemptManagerSnapshot, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.ExamID.IsValid() || !query.SittingID.IsValid() || !query.AttemptID.IsValid() {
 		return store.ExamAttemptManagerSnapshot{}, apperror.Invalid("exam.attempt.invalid", "attempt")
@@ -190,10 +190,10 @@ func (service *Service) GetExamAttempt(ctx context.Context, invocation invocatio
 	// Authorization precedes every Attempt read so a caller without Sitting
 	// view authority cannot distinguish existing, mismatched, or missing
 	// Attempts; the authorizer records that decision.
-	if err := service.deps.Managers.AuthorizeSittingView(ctx, invocation, query.SittingID); err != nil {
+	if err := s.deps.Managers.AuthorizeSittingView(ctx, invocation, query.SittingID); err != nil {
 		return store.ExamAttemptManagerSnapshot{}, err
 	}
-	sitting, err := service.deps.Sittings.Resolve(ctx, query.SittingID)
+	sitting, err := s.deps.Sittings.Resolve(ctx, query.SittingID)
 	if err != nil {
 		return store.ExamAttemptManagerSnapshot{}, storeError(storeErrors, err)
 	}
@@ -203,7 +203,7 @@ func (service *Service) GetExamAttempt(ctx context.Context, invocation invocatio
 	if sitting.Sitting.ExamID != query.ExamID {
 		return store.ExamAttemptManagerSnapshot{}, apperror.New("exam.attempt.not_found")
 	}
-	snapshot, err := service.deps.Persistence.Get(ctx, query.ExamID, query.AttemptID)
+	snapshot, err := s.deps.Persistence.Get(ctx, query.ExamID, query.AttemptID)
 	if err != nil {
 		return store.ExamAttemptManagerSnapshot{}, storeError(storeErrors, err)
 	}
@@ -216,7 +216,7 @@ func (service *Service) GetExamAttempt(ctx context.Context, invocation invocatio
 	}
 	if snapshot.Attempt.CandidateUserID == invocation.Principal().UserID {
 		resource := model.Resource{Type: model.ResourceExamSitting, ID: snapshot.Attempt.SittingID.String()}
-		auditID, auditErr := service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingView, resource,
+		auditID, auditErr := s.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingView, resource,
 			model.RoleScopeAcademicUnit, sitting.AcademicUnitID.String(), "view_managed_attempt", map[string]any{
 				"exam_id": snapshot.Attempt.ExamID.String(), "exam_sitting_id": snapshot.Attempt.SittingID.String(),
 				"exam_attempt_id": snapshot.Attempt.ID.String(),
@@ -224,7 +224,7 @@ func (service *Service) GetExamAttempt(ctx context.Context, invocation invocatio
 		if auditErr != nil {
 			return store.ExamAttemptManagerSnapshot{}, auditErr
 		}
-		if auditErr = service.deps.Auditor.Fail(ctx, auditID, "exam.attempt.not_found"); auditErr != nil {
+		if auditErr = s.deps.Auditor.Fail(ctx, auditID, "exam.attempt.not_found"); auditErr != nil {
 			return store.ExamAttemptManagerSnapshot{}, auditErr
 		}
 		return store.ExamAttemptManagerSnapshot{}, apperror.New("exam.attempt.not_found")
@@ -262,7 +262,7 @@ type CandidateActivityPage struct {
 	HasMore    bool
 }
 
-func (service *Service) ListCandidateExamActivity(ctx context.Context, invocation invocation.Invocation, query CandidateActivityQuery) (_ CandidateActivityPage, resultErr error) {
+func (s *Service) ListCandidateExamActivity(ctx context.Context, invocation invocation.Invocation, query CandidateActivityQuery) (_ CandidateActivityPage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	principal := invocation.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess || query.Limit < 1 || query.Limit > 200 ||
@@ -276,7 +276,7 @@ func (service *Service) ListCandidateExamActivity(ctx context.Context, invocatio
 		options.DesktopRegistrationID = principal.DesktopRegistrationID
 		options.DPoPKeyThumbprint = principal.DPoPKeyThumbprint
 	}
-	stored, err := service.deps.Persistence.ListCandidateActivity(ctx, options)
+	stored, err := s.deps.Persistence.ListCandidateActivity(ctx, options)
 	if err != nil {
 		return CandidateActivityPage{}, storeError(storeErrors, err)
 	}
@@ -307,7 +307,7 @@ type SittingCandidateStatusesPage struct {
 	HasMore bool
 }
 
-func (service *Service) ListSittingCandidateStatuses(ctx context.Context, invocation invocation.Invocation,
+func (s *Service) ListSittingCandidateStatuses(ctx context.Context, invocation invocation.Invocation,
 	query SittingCandidateStatusesQuery,
 ) (_ SittingCandidateStatusesPage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
@@ -316,11 +316,11 @@ func (service *Service) ListSittingCandidateStatuses(ctx context.Context, invoca
 		!query.AfterCandidateUserID.IsZero() && !query.AfterCandidateUserID.IsValid() {
 		return SittingCandidateStatusesPage{}, apperror.Invalid("exam.attempt.invalid", "candidate_statuses")
 	}
-	if err := service.deps.Managers.AuthorizeSittingView(ctx, invocation, query.SittingID); err != nil {
+	if err := s.deps.Managers.AuthorizeSittingView(ctx, invocation, query.SittingID); err != nil {
 		return SittingCandidateStatusesPage{}, err
 	}
 	reallowAuthorized := false
-	if _, err := service.deps.Managers.AuthorizeSittingManage(ctx, invocation, query.SittingID); err == nil {
+	if _, err := s.deps.Managers.AuthorizeSittingManage(ctx, invocation, query.SittingID); err == nil {
 		reallowAuthorized = true
 	} else {
 		var fault *apperror.Error
@@ -328,7 +328,7 @@ func (service *Service) ListSittingCandidateStatuses(ctx context.Context, invoca
 			return SittingCandidateStatusesPage{}, err
 		}
 	}
-	stored, err := service.deps.Persistence.ListSittingCandidateStatuses(ctx, store.SittingCandidateStatusListOptions{
+	stored, err := s.deps.Persistence.ListSittingCandidateStatuses(ctx, store.SittingCandidateStatusListOptions{
 		ExamID: query.ExamID, SittingID: query.SittingID, ExcludeCandidateUserID: principal.UserID,
 		AfterCandidateUserID: query.AfterCandidateUserID, ReallowAuthorized: reallowAuthorized, Limit: query.Limit + 1,
 	})
@@ -354,16 +354,16 @@ func (service *Service) ListSittingCandidateStatuses(ctx context.Context, invoca
 	return page, nil
 }
 
-func (service *Service) ListExamAttempts(ctx context.Context, invocation invocation.Invocation, query ListManagedAttemptsQuery) (_ ManagedAttemptPage, resultErr error) {
+func (s *Service) ListExamAttempts(ctx context.Context, invocation invocation.Invocation, query ListManagedAttemptsQuery) (_ ManagedAttemptPage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.ExamID.IsValid() || !query.SittingID.IsValid() || query.Limit < 1 || query.Limit > 200 ||
 		(query.BeforeCreatedAt.IsZero() != query.BeforeAttemptID.IsZero()) {
 		return ManagedAttemptPage{}, apperror.Invalid("exam.attempt.invalid", "attempt_list")
 	}
-	if err := service.deps.Managers.AuthorizeSittingView(ctx, invocation, query.SittingID); err != nil {
+	if err := s.deps.Managers.AuthorizeSittingView(ctx, invocation, query.SittingID); err != nil {
 		return ManagedAttemptPage{}, err
 	}
-	rows, err := service.deps.Persistence.List(ctx, store.ExamAttemptManagerListOptions{
+	rows, err := s.deps.Persistence.List(ctx, store.ExamAttemptManagerListOptions{
 		ExamID: query.ExamID, SittingID: query.SittingID, ExcludeCandidateUserID: invocation.Principal().UserID,
 		States:          append([]model.ExamAttemptState(nil), query.States...),
 		BeforeCreatedAt: model.TimeUTC(query.BeforeCreatedAt), BeforeAttemptID: query.BeforeAttemptID, Limit: query.Limit + 1,
@@ -518,7 +518,7 @@ type ReallowResult struct {
 	Replayed        bool
 }
 
-func (service *Service) ReallowExamAttempt(ctx context.Context, invocation invocation.Invocation, command ReallowCommand) (_ ReallowResult, resultErr error) {
+func (s *Service) ReallowExamAttempt(ctx context.Context, invocation invocation.Invocation, command ReallowCommand) (_ ReallowResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	principal := invocation.Principal()
 	if principal.Validate() != nil {
@@ -534,11 +534,11 @@ func (service *Service) ReallowExamAttempt(ctx context.Context, invocation invoc
 	}
 	// Authorize the exact Sitting before reading the Attempt so existence is
 	// not probeable; later exits complete the audit attempt as failed.
-	override, err := service.deps.Managers.AuthorizeSittingManage(ctx, invocation, command.SittingID)
+	override, err := s.deps.Managers.AuthorizeSittingManage(ctx, invocation, command.SittingID)
 	if err != nil {
 		return ReallowResult{}, err
 	}
-	snapshot, err := service.deps.Sittings.Resolve(ctx, command.SittingID)
+	snapshot, err := s.deps.Sittings.Resolve(ctx, command.SittingID)
 	if err != nil {
 		return ReallowResult{}, storeError(storeErrors, err)
 	}
@@ -549,7 +549,7 @@ func (service *Service) ReallowExamAttempt(ctx context.Context, invocation invoc
 	if override {
 		action = model.ActionExamSittingManageOverride
 	}
-	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, action,
+	auditID, err := s.deps.Auditor.BeginAtScope(ctx, invocation, action,
 		model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}, model.RoleScopeClass, snapshot.Sitting.ClassID.String(),
 		store.ExamAttemptReallowOperation, map[string]any{"exam_id": command.ExamID.String(), "exam_sitting_id": command.SittingID.String(),
 			"exam_attempt_id": command.AttemptID.String(), "suspension_id": command.SuspensionID.String(),
@@ -558,28 +558,28 @@ func (service *Service) ReallowExamAttempt(ctx context.Context, invocation invoc
 		return ReallowResult{}, err
 	}
 	if snapshot.Sitting.ExamID != command.ExamID {
-		return ReallowResult{}, service.failAudit(ctx, auditID, apperror.New("exam.attempt.not_found"))
+		return ReallowResult{}, s.failAudit(ctx, auditID, apperror.New("exam.attempt.not_found"))
 	}
-	managerSnapshot, err := service.deps.Persistence.Get(ctx, command.ExamID, command.AttemptID)
+	managerSnapshot, err := s.deps.Persistence.Get(ctx, command.ExamID, command.AttemptID)
 	if err != nil {
-		return ReallowResult{}, service.failAudit(ctx, auditID, err)
+		return ReallowResult{}, s.failAudit(ctx, auditID, err)
 	}
 	if managerSnapshot == nil || managerSnapshot.Attempt == nil || managerSnapshot.Attempt.Validate() != nil ||
 		managerSnapshot.Attempt.ExamID != command.ExamID ||
 		!validActiveSuspension(managerSnapshot.ActiveSuspension, managerSnapshot.Attempt.ID) {
-		return ReallowResult{}, service.failAudit(ctx, auditID, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent re-allow Attempt projection")))
+		return ReallowResult{}, s.failAudit(ctx, auditID, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent re-allow Attempt projection")))
 	}
 	if managerSnapshot.Attempt.SittingID != command.SittingID || managerSnapshot.Attempt.CandidateUserID == principal.UserID {
-		return ReallowResult{}, service.failAudit(ctx, auditID, apperror.New("exam.attempt.not_found"))
+		return ReallowResult{}, s.failAudit(ctx, auditID, apperror.New("exam.attempt.not_found"))
 	}
-	at := model.TimeUTC(service.deps.Now())
-	stored, err := service.deps.Persistence.ReallowAttempt(ctx, &store.ExamAttemptReallow{
+	at := model.TimeUTC(s.deps.Now())
+	stored, err := s.deps.Persistence.ReallowAttempt(ctx, &store.ExamAttemptReallow{
 		ExamID: command.ExamID, SittingID: command.SittingID, AttemptID: command.AttemptID, SuspensionID: command.SuspensionID,
 		ActorUserID: principal.UserID, ManagerOverride: override, ExpectedAttemptRevision: command.ExpectedAttemptRevision,
 		PrivateReason: command.PrivateReason, AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
 	}, idempotency)
 	if err != nil {
-		return ReallowResult{}, service.failAudit(ctx, auditID, err)
+		return ReallowResult{}, s.failAudit(ctx, auditID, err)
 	}
 	if stored == nil || stored.Attempt == nil || stored.Suspension == nil || stored.ExamID != command.ExamID ||
 		stored.SittingID != command.SittingID || stored.ClassID != snapshot.Sitting.ClassID || !stored.CandidateUserID.IsValid() ||
@@ -592,8 +592,8 @@ func (service *Service) ReallowExamAttempt(ctx context.Context, invocation invoc
 	result := ReallowResult{ExamID: stored.ExamID, SittingID: stored.SittingID, ClassID: stored.ClassID,
 		CandidateUserID: stored.CandidateUserID, Attempt: *stored.Attempt, Suspension: *stored.Suspension, Replayed: stored.Replayed}
 	if !result.Replayed {
-		if effectErr := service.deps.Effects.AttemptReallowed(ctx, result); effectErr != nil {
-			service.deps.EffectFailures.Report(ctx, "exam_attempt_reallowed", effectErr)
+		if effectErr := s.deps.Effects.AttemptReallowed(ctx, result); effectErr != nil {
+			s.deps.EffectFailures.Report(ctx, "exam_attempt_reallowed", effectErr)
 		}
 	}
 	return result, nil
@@ -636,17 +636,17 @@ func validClosedSuspension(view *store.ExamAttemptSuspensionView, attemptID mode
 // ScanExpiredParticipations performs one bounded runtime maintenance pass.
 // Every listed candidate is rechecked by the named conditional Store
 // operation; PostgreSQL, never this loop or its clock, decides expiry.
-func (service *Service) ScanExpiredParticipations(ctx context.Context, limit int) (ExpiryScanResult, error) {
+func (s *Service) ScanExpiredParticipations(ctx context.Context, limit int) (ExpiryScanResult, error) {
 	if limit < 1 || limit > 200 {
 		return ExpiryScanResult{}, apperror.Invalid("exam.attempt.invalid", "expiry_limit")
 	}
-	due, err := service.deps.Persistence.ListExpiredParticipations(ctx, limit)
+	due, err := s.deps.Persistence.ListExpiredParticipations(ctx, limit)
 	if err != nil {
 		return ExpiryScanResult{}, storeError(storeErrors, err)
 	}
 	result := ExpiryScanResult{Due: len(due)}
 	for _, item := range due {
-		expired, expireErr := service.expireParticipation(ctx, item)
+		expired, expireErr := s.expireParticipation(ctx, item)
 		if expireErr != nil {
 			return result, expireErr
 		}
@@ -658,11 +658,11 @@ func (service *Service) ScanExpiredParticipations(ctx context.Context, limit int
 	return result, nil
 }
 
-func (service *Service) expireParticipation(ctx context.Context, due store.ExamAttemptParticipationExpiryDue) (ParticipationExpiry, error) {
+func (s *Service) expireParticipation(ctx context.Context, due store.ExamAttemptParticipationExpiryDue) (ParticipationExpiry, error) {
 	if !validExpiryDue(due) {
 		return ParticipationExpiry{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("invalid Participation expiry target"))
 	}
-	auditID, err := service.deps.SystemAuditor.Begin(ctx, model.ActionExamSittingManage,
+	auditID, err := s.deps.SystemAuditor.Begin(ctx, model.ActionExamSittingManage,
 		model.Resource{Type: model.ResourceExamSitting, ID: due.SittingID.String()}, model.RoleScopeClass, due.ClassID.String(),
 		store.ExamAttemptExpireParticipationOperation, map[string]any{
 			"exam_id": due.ExamID.String(), "exam_sitting_id": due.SittingID.String(), "exam_attempt_id": due.AttemptID.String(),
@@ -671,16 +671,16 @@ func (service *Service) expireParticipation(ctx context.Context, due store.ExamA
 	if err != nil {
 		return ParticipationExpiry{}, err
 	}
-	at := model.TimeUTC(service.deps.Now())
-	stored, err := service.deps.Persistence.ExpireParticipation(ctx, &store.ExamAttemptParticipationExpiry{
+	at := model.TimeUTC(s.deps.Now())
+	stored, err := s.deps.Persistence.ExpireParticipation(ctx, &store.ExamAttemptParticipationExpiry{
 		AttemptID: due.AttemptID, ParticipationID: due.ParticipationID, Generation: due.Generation,
-		EvidenceID: service.deps.NewEvidence(), FlagID: service.deps.NewFlag(), SuspensionID: service.deps.NewSuspension(),
+		EvidenceID: s.deps.NewEvidence(), FlagID: s.deps.NewFlag(), SuspensionID: s.deps.NewSuspension(),
 		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
 	})
 	if err != nil {
 		mapped := storeError(storeErrors, err)
 		code := apperror.CodeOf(mapped, "exam.attempt.unavailable")
-		if auditErr := service.deps.SystemAuditor.Fail(ctx, auditID, code); auditErr != nil {
+		if auditErr := s.deps.SystemAuditor.Fail(ctx, auditID, code); auditErr != nil {
 			return ParticipationExpiry{}, errors.Join(mapped, auditErr)
 		}
 		return ParticipationExpiry{}, mapped
@@ -690,8 +690,8 @@ func (service *Service) expireParticipation(ctx context.Context, due store.ExamA
 		return ParticipationExpiry{}, err
 	}
 	if !result.Replayed {
-		if effectErr := service.deps.Effects.ParticipationExpired(ctx, result); effectErr != nil {
-			service.deps.EffectFailures.Report(ctx, "exam_attempt_participation_expired", effectErr)
+		if effectErr := s.deps.Effects.ParticipationExpired(ctx, result); effectErr != nil {
+			s.deps.EffectFailures.Report(ctx, "exam_attempt_participation_expired", effectErr)
 		}
 	}
 	return result, nil
@@ -735,10 +735,10 @@ func projectExpiry(stored *store.ExamAttemptParticipationExpiryResult, due store
 // RenewParticipation authenticates a continuity renewal independently of the
 // WebSocket transport ping. Store owns the database clock, exclusive expiry
 // boundary, duplicate outcome, and permanent generation fence.
-func (service *Service) RenewExamAttemptParticipation(ctx context.Context, invocation invocation.Invocation, command RenewParticipationCommand) (_ ParticipationRenewal, resultErr error) {
-	defer func() { service.recordOperational("renew", resultErr) }()
+func (s *Service) RenewExamAttemptParticipation(ctx context.Context, invocation invocation.Invocation, command RenewParticipationCommand) (_ ParticipationRenewal, resultErr error) {
+	defer func() { s.recordOperational("renew", resultErr) }()
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
-	release, admissionErr := service.enterControl(ctx, invocation, true)
+	release, admissionErr := s.enterControl(ctx, invocation, true)
 	if admissionErr != nil {
 		return ParticipationRenewal{}, admissionErr
 	}
@@ -754,11 +754,11 @@ func (service *Service) RenewExamAttemptParticipation(ctx context.Context, invoc
 		command.Generation < 1 || command.Sequence < 1 || command.SecurityCoverage.Validate() != nil || !model.IsValidCredentialToken(command.ContinuityCredential) {
 		return ParticipationRenewal{}, apperror.Invalid("exam.attempt.invalid", "renewal")
 	}
-	build, err := service.deps.DesktopBuilds.ResolveAttemptDesktopBuild(ctx, principal)
+	build, err := s.deps.DesktopBuilds.ResolveAttemptDesktopBuild(ctx, principal)
 	if err != nil || build.Build.Validate() != nil || build.CompatibilityPolicyRevision < 1 {
 		return ParticipationRenewal{}, apperror.New("exam.attempt.desktop_incompatible").Wrap(err)
 	}
-	stored, err := service.deps.Persistence.RenewParticipation(ctx, &store.ExamAttemptParticipationRenewal{
+	stored, err := s.deps.Persistence.RenewParticipation(ctx, &store.ExamAttemptParticipationRenewal{
 		SecurityCoverage: command.SecurityCoverage, DesktopBuild: build.Build,
 		AttemptID: command.AttemptID, ParticipationID: command.ParticipationID, ConnectionID: command.ConnectionID,
 		CandidateUserID: principal.UserID, SessionID: principal.SessionID, Generation: command.Generation,
@@ -769,7 +769,7 @@ func (service *Service) RenewExamAttemptParticipation(ctx context.Context, invoc
 	if err != nil {
 		var conflict *store.ErrConflict
 		if errors.As(err, &conflict) && conflict.Constraint == "attempt_participation_expired" {
-			due, resolveErr := service.deps.Persistence.ResolveParticipationExpiry(ctx, command.AttemptID, command.ParticipationID, command.Generation)
+			due, resolveErr := s.deps.Persistence.ResolveParticipationExpiry(ctx, command.AttemptID, command.ParticipationID, command.Generation)
 			if resolveErr != nil {
 				if store.IsNotFound(resolveErr) {
 					return ParticipationRenewal{}, apperror.New("exam.attempt.connection_lost").Wrap(err)
@@ -779,7 +779,7 @@ func (service *Service) RenewExamAttemptParticipation(ctx context.Context, invoc
 			if due == nil || due.AttemptID != command.AttemptID || due.ParticipationID != command.ParticipationID || due.Generation != command.Generation {
 				return ParticipationRenewal{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent late-renewal expiry target"))
 			}
-			if _, expireErr := service.expireParticipation(ctx, *due); expireErr != nil {
+			if _, expireErr := s.expireParticipation(ctx, *due); expireErr != nil {
 				return ParticipationRenewal{}, expireErr
 			}
 			return ParticipationRenewal{}, apperror.New("exam.attempt.connection_lost").Wrap(err)
@@ -799,15 +799,15 @@ func (service *Service) RenewExamAttemptParticipation(ctx context.Context, invoc
 		LeaseExpiresAt: model.TimeUTC(stored.LeaseExpiresAt), Duplicate: stored.Duplicate,
 	}
 	if !result.Duplicate {
-		if effectErr := service.deps.Effects.ParticipationRenewed(ctx, result); effectErr != nil {
-			service.deps.EffectFailures.Report(ctx, "exam_attempt_participation_renewed", effectErr)
+		if effectErr := s.deps.Effects.ParticipationRenewed(ctx, result); effectErr != nil {
+			s.deps.EffectFailures.Report(ctx, "exam_attempt_participation_renewed", effectErr)
 		}
 	}
 	return result, nil
 }
 
-func (service *Service) ConnectExamAttempt(ctx context.Context, invocation invocation.Invocation, command ConnectCommand) (_ ConnectionResult, resultErr error) {
-	defer func() { service.recordOperational("connect", resultErr) }()
+func (s *Service) ConnectExamAttempt(ctx context.Context, invocation invocation.Invocation, command ConnectCommand) (_ ConnectionResult, resultErr error) {
+	defer func() { s.recordOperational("connect", resultErr) }()
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if command.Security.Validate() != nil {
 		return ConnectionResult{}, apperror.Invalid("exam.attempt.invalid", "security")
@@ -825,7 +825,7 @@ func (service *Service) ConnectExamAttempt(ctx context.Context, invocation invoc
 	if !model.IsValidCredentialToken(command.ContinuityCredential) {
 		return ConnectionResult{}, apperror.Invalid("exam.attempt.invalid", "continuity_credential")
 	}
-	build, err := service.deps.DesktopBuilds.ResolveAttemptDesktopBuild(ctx, principal)
+	build, err := s.deps.DesktopBuilds.ResolveAttemptDesktopBuild(ctx, principal)
 	if err != nil || build.Build.Validate() != nil || build.CompatibilityPolicyRevision < 1 {
 		return ConnectionResult{}, apperror.New("exam.attempt.desktop_incompatible").Wrap(err)
 	}
@@ -836,7 +836,7 @@ func (service *Service) ConnectExamAttempt(ctx context.Context, invocation invoc
 	if err != nil {
 		return ConnectionResult{}, err
 	}
-	snapshot, err := service.deps.Sittings.Resolve(ctx, command.SittingID)
+	snapshot, err := s.deps.Sittings.Resolve(ctx, command.SittingID)
 	if err != nil {
 		return ConnectionResult{}, storeError(storeErrors, err)
 	}
@@ -846,19 +846,19 @@ func (service *Service) ConnectExamAttempt(ctx context.Context, invocation invoc
 	}
 	sitting := snapshot.Sitting
 
-	attemptID := service.deps.NewAttemptID()
-	at := model.TimeUTC(service.deps.Now())
-	workspaceID := service.deps.NewWorkspaceID()
+	attemptID := s.deps.NewAttemptID()
+	at := model.TimeUTC(s.deps.Now())
+	workspaceID := s.deps.NewWorkspaceID()
 	credentialHash := model.HashToken(command.ContinuityCredential)
-	participationID, connectionID := service.deps.NewParticipation(), service.deps.NewConnection()
+	participationID, connectionID := s.deps.NewParticipation(), s.deps.NewConnection()
 
-	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate,
+	auditID, err := s.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate,
 		model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}, model.RoleScopeClass, sitting.ClassID.String(),
 		"exam_attempt_connect", map[string]any{"exam_sitting_id": command.SittingID.String()}, nil)
 	if err != nil {
 		return ConnectionResult{}, err
 	}
-	stored, err := service.deps.Persistence.Connect(ctx, &store.ExamAttemptConnect{
+	stored, err := s.deps.Persistence.Connect(ctx, &store.ExamAttemptConnect{
 		Security:  command.Security,
 		SittingID: command.SittingID, CandidateUserID: principal.UserID, SessionID: principal.SessionID,
 		DesktopRegistrationID: principal.DesktopRegistrationID, DPoPKeyThumbprint: principal.DPoPKeyThumbprint,
@@ -871,15 +871,15 @@ func (service *Service) ConnectExamAttempt(ctx context.Context, invocation invoc
 		AuditEventID:                       auditID, AuditAt: model.MillisFromTime(at),
 	}, idempotency)
 	if err != nil {
-		return ConnectionResult{}, service.failAudit(ctx, auditID, err)
+		return ConnectionResult{}, s.failAudit(ctx, auditID, err)
 	}
 	result, err := projectConnection(stored, sitting.ClassID, principal.UserID, principal.SessionID, command.SittingID)
 	if err != nil {
 		return ConnectionResult{}, err
 	}
 	if result.ConnectionOpened && !result.Replayed {
-		if effectErr := service.deps.Effects.ConnectionOpened(ctx, result); effectErr != nil {
-			service.deps.EffectFailures.Report(ctx, "exam_attempt_connection_opened", effectErr)
+		if effectErr := s.deps.Effects.ConnectionOpened(ctx, result); effectErr != nil {
+			s.deps.EffectFailures.Report(ctx, "exam_attempt_connection_opened", effectErr)
 		}
 	}
 	return result, nil
@@ -923,26 +923,26 @@ type ConnectionClosedResult struct {
 	Changed         bool
 }
 
-func (service *Service) CloseExamAttemptConnection(ctx context.Context, invocation invocation.Invocation, command CloseConnectionCommand) (_ ConnectionClosedResult, resultErr error) {
-	defer func() { service.recordOperational("close", resultErr) }()
+func (s *Service) CloseExamAttemptConnection(ctx context.Context, invocation invocation.Invocation, command CloseConnectionCommand) (_ ConnectionClosedResult, resultErr error) {
+	defer func() { s.recordOperational("close", resultErr) }()
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if invocation.Principal().Validate() != nil || !command.AttemptID.IsValid() || !command.SittingID.IsValid() ||
 		!command.ClassID.IsValid() || !command.ConnectionID.IsValid() || !command.Reason.IsValid() {
 		return ConnectionClosedResult{}, apperror.Invalid("exam.attempt.invalid", "connection")
 	}
-	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate,
+	auditID, err := s.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate,
 		model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}, model.RoleScopeClass, command.ClassID.String(),
 		"exam_attempt_connection_close", map[string]any{"exam_attempt_id": command.AttemptID.String(), "attempt_connection_id": command.ConnectionID.String()}, nil)
 	if err != nil {
 		return ConnectionClosedResult{}, err
 	}
-	stored, err := service.deps.Persistence.CloseConnection(ctx, &store.ExamAttemptConnectionClose{
+	stored, err := s.deps.Persistence.CloseConnection(ctx, &store.ExamAttemptConnectionClose{
 		ConnectionID: command.ConnectionID, CandidateUserID: invocation.Principal().UserID, SessionID: invocation.Principal().SessionID,
 		Reason: command.Reason, AuditEventID: auditID,
-		AuditAt: model.MillisFromTime(model.TimeUTC(service.deps.Now())),
+		AuditAt: model.MillisFromTime(model.TimeUTC(s.deps.Now())),
 	})
 	if err != nil {
-		return ConnectionClosedResult{}, service.failAudit(ctx, auditID, err)
+		return ConnectionClosedResult{}, s.failAudit(ctx, auditID, err)
 	}
 	if stored == nil || stored.Connection == nil || !stored.ExamID.IsValid() || stored.AttemptID != command.AttemptID || stored.SittingID != command.SittingID ||
 		stored.Connection.ID != command.ConnectionID || stored.Connection.AttemptID != command.AttemptID || stored.Connection.Validate() != nil {
@@ -951,8 +951,8 @@ func (service *Service) CloseExamAttemptConnection(ctx context.Context, invocati
 	result := ConnectionClosedResult{AttemptID: stored.AttemptID, ExamID: stored.ExamID, SittingID: stored.SittingID,
 		CandidateUserID: stored.CandidateUserID, Connection: *stored.Connection, Changed: stored.Changed}
 	if result.Changed {
-		if effectErr := service.deps.Effects.ConnectionClosed(ctx, result); effectErr != nil {
-			service.deps.EffectFailures.Report(ctx, "exam_attempt_connection_closed", effectErr)
+		if effectErr := s.deps.Effects.ConnectionClosed(ctx, result); effectErr != nil {
+			s.deps.EffectFailures.Report(ctx, "exam_attempt_connection_closed", effectErr)
 		}
 	}
 	return result, nil
@@ -987,13 +987,13 @@ type Resource struct {
 	SHA256              string
 }
 
-func (service *Service) GetCandidateExamPresentation(ctx context.Context, invocation invocation.Invocation, access CandidateAccess) (_ Presentation, resultErr error) {
+func (s *Service) GetCandidateExamPresentation(ctx context.Context, invocation invocation.Invocation, access CandidateAccess) (_ Presentation, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	selector, err := candidateSelector(invocation, access)
 	if err != nil {
 		return Presentation{}, err
 	}
-	stored, err := service.deps.Persistence.GetCandidatePresentation(ctx, selector)
+	stored, err := s.deps.Persistence.GetCandidatePresentation(ctx, selector)
 	if err != nil {
 		return Presentation{}, storeError(storeErrors, err)
 	}
@@ -1031,7 +1031,7 @@ type WorkspacePage struct {
 	RefreshRequired bool
 }
 
-func (service *Service) ListCandidateExamWorkspace(ctx context.Context, invocation invocation.Invocation, query WorkspaceQuery) (_ WorkspacePage, resultErr error) {
+func (s *Service) ListCandidateExamWorkspace(ctx context.Context, invocation invocation.Invocation, query WorkspaceQuery) (_ WorkspacePage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	selector, err := candidateSelector(invocation, query.Access)
 	if err != nil {
@@ -1041,7 +1041,7 @@ func (service *Service) ListCandidateExamWorkspace(ctx context.Context, invocati
 		(query.ExpectedCursor == -1 && !query.AfterEntryID.IsZero()) {
 		return WorkspacePage{}, apperror.Invalid("exam.attempt.invalid", "workspace_list")
 	}
-	page, err := service.deps.Workspace.List(ctx, store.CandidateWorkspaceListOptions{
+	page, err := s.deps.Workspace.List(ctx, store.CandidateWorkspaceListOptions{
 		Access: selector, ExpectedCursor: query.ExpectedCursor, AfterEntryID: query.AfterEntryID, Limit: query.Limit,
 	})
 	if err != nil {
@@ -1071,7 +1071,7 @@ type OpenResourceQuery struct {
 	ResourceID model.ExamResourceID
 }
 
-func (service *Service) OpenCandidateExamResource(ctx context.Context, invocation invocation.Invocation, query OpenResourceQuery) (_ OpenedContent, resultErr error) {
+func (s *Service) OpenCandidateExamResource(ctx context.Context, invocation invocation.Invocation, query OpenResourceQuery) (_ OpenedContent, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	selector, err := candidateSelector(invocation, query.Access)
 	if err != nil {
@@ -1080,14 +1080,14 @@ func (service *Service) OpenCandidateExamResource(ctx context.Context, invocatio
 	if !query.ResourceID.IsValid() {
 		return OpenedContent{}, apperror.Invalid("exam.attempt.invalid", "exam_resource_id")
 	}
-	resolved, err := service.deps.Persistence.ResolveCandidateResource(ctx, selector, query.ResourceID)
+	resolved, err := s.deps.Persistence.ResolveCandidateResource(ctx, selector, query.ResourceID)
 	if err != nil {
 		return OpenedContent{}, storeError(storeErrors, err)
 	}
 	if resolved == nil || resolved.Resource.ResourceID != query.ResourceID || !resolved.FileRevisionID.IsValid() || !resolved.RenditionID.IsValid() {
 		return OpenedContent{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("incomplete candidate Resource selector"))
 	}
-	body, err := service.deps.Content.OpenExamResource(ctx, resolved.FileRevisionID, resolved.RenditionID)
+	body, err := s.deps.Content.OpenExamResource(ctx, resolved.FileRevisionID, resolved.RenditionID)
 	if err != nil {
 		return OpenedContent{}, apperror.New("exam.attempt.unavailable").Wrap(err)
 	}
@@ -1101,7 +1101,7 @@ type OpenWorkspaceFileQuery struct {
 	EntryID model.AttemptWorkspaceEntryID
 }
 
-func (service *Service) OpenCandidateExamWorkspaceFile(ctx context.Context, invocation invocation.Invocation, query OpenWorkspaceFileQuery) (_ OpenedContent, resultErr error) {
+func (s *Service) OpenCandidateExamWorkspaceFile(ctx context.Context, invocation invocation.Invocation, query OpenWorkspaceFileQuery) (_ OpenedContent, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	selector, err := candidateSelector(invocation, query.Access)
 	if err != nil {
@@ -1110,7 +1110,7 @@ func (service *Service) OpenCandidateExamWorkspaceFile(ctx context.Context, invo
 	if !query.EntryID.IsValid() {
 		return OpenedContent{}, apperror.Invalid("exam.attempt.invalid", "attempt_workspace_entry_id")
 	}
-	resolved, err := service.deps.Workspace.ResolveFile(ctx, selector, query.EntryID)
+	resolved, err := s.deps.Workspace.ResolveFile(ctx, selector, query.EntryID)
 	if err != nil {
 		return OpenedContent{}, storeError(storeErrors, err)
 	}
@@ -1123,12 +1123,12 @@ func (service *Service) OpenCandidateExamWorkspaceFile(ctx context.Context, invo
 		if !resolved.StarterObjectID.IsValid() || !resolved.AttemptObjectID.IsValid() {
 			return OpenedContent{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent starter Workspace selector"))
 		}
-		body, err = service.deps.Content.OpenStarterWorkspaceObject(ctx, resolved.StarterObjectID)
+		body, err = s.deps.Content.OpenStarterWorkspaceObject(ctx, resolved.StarterObjectID)
 	case model.AttemptWorkspaceStorageAttempt:
 		if !resolved.AttemptObjectID.IsValid() || resolved.StarterObjectID.IsValid() {
 			return OpenedContent{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent attempt-origin Workspace selector"))
 		}
-		body, err = service.deps.Content.OpenAttemptWorkspaceObject(ctx, resolved.AttemptObjectID)
+		body, err = s.deps.Content.OpenAttemptWorkspaceObject(ctx, resolved.AttemptObjectID)
 	default:
 		return OpenedContent{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("invalid candidate Workspace storage origin"))
 	}
@@ -1243,7 +1243,7 @@ func validParticipationView(view *store.ExamAttemptParticipationView) bool {
 	}
 }
 
-func (service *Service) failAudit(ctx context.Context, auditID model.AuditEventID, err error) error {
+func (s *Service) failAudit(ctx context.Context, auditID model.AuditEventID, err error) error {
 	mapped := err
 	code := "exam.attempt.unavailable"
 	var fault *apperror.Error
@@ -1253,7 +1253,7 @@ func (service *Service) failAudit(ctx context.Context, auditID model.AuditEventI
 	if errors.As(mapped, &fault) {
 		code = fault.Code()
 	}
-	if auditErr := service.deps.Auditor.Fail(ctx, auditID, code); auditErr != nil {
+	if auditErr := s.deps.Auditor.Fail(ctx, auditID, code); auditErr != nil {
 		return errors.Join(mapped, auditErr)
 	}
 	return mapped

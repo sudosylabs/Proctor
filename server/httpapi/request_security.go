@@ -31,7 +31,7 @@ func newBrowserRequestPolicy(publicURL string) (browserRequestPolicy, error) {
 	return browserRequestPolicy{origin: origin}, nil
 }
 
-func (policy browserRequestPolicy) allows(request *http.Request) bool {
+func (p browserRequestPolicy) allows(request *http.Request) bool {
 	// Existing provider callbacks use GET and retain their own one-use state and
 	// browser binding. A future cross-site POST protocol needs an explicit design.
 	if !requiresCSRF(request.Method) {
@@ -42,7 +42,7 @@ func (policy browserRequestPolicy) allows(request *http.Request) bool {
 			return false
 		}
 		origin, ok := weborigin.FromHeader(origins[0])
-		if !ok || policy.origin == "" || origin != policy.origin {
+		if !ok || p.origin == "" || origin != p.origin {
 			return false
 		}
 	}

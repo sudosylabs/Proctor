@@ -27,7 +27,7 @@ type focusedWebSocketTransport struct {
 	acceptErr          error
 }
 
-func (transport *focusedWebSocketTransport) Accept(
+func (t *focusedWebSocketTransport) Accept(
 	writer http.ResponseWriter,
 	_ *http.Request,
 	principal model.Principal,
@@ -36,14 +36,14 @@ func (transport *focusedWebSocketTransport) Accept(
 	sequence int64,
 	allowMissingOrigin bool,
 ) error {
-	transport.principal = principal
-	transport.metadata = metadata
-	transport.connectionID = connectionID
-	transport.sequence = sequence
-	transport.allowMissingOrigin = allowMissingOrigin
-	transport.acceptCalls++
-	if transport.acceptErr != nil {
-		return transport.acceptErr
+	t.principal = principal
+	t.metadata = metadata
+	t.connectionID = connectionID
+	t.sequence = sequence
+	t.allowMissingOrigin = allowMissingOrigin
+	t.acceptCalls++
+	if t.acceptErr != nil {
+		return t.acceptErr
 	}
 	writer.WriteHeader(http.StatusSwitchingProtocols)
 	return nil

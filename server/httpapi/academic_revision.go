@@ -19,8 +19,8 @@ func validateAcademicRevision(value Optional[int64]) error {
 	return nil
 }
 
-func (request operationRequest) academicRevision() (*int64, error) {
-	values, present := request.request.URL.Query()["expected_revision"]
+func (r operationRequest) academicRevision() (*int64, error) {
+	values, present := r.request.URL.Query()["expected_revision"]
 	if !present {
 		return nil, nil
 	}

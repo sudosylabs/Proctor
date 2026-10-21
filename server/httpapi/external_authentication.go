@@ -114,7 +114,7 @@ func externalAuthenticationResource(
 	)
 }
 
-func (module externalAuthenticationResourceModule) beginFromBody(request operationRequest) (protocolResult, error) {
+func (m externalAuthenticationResourceModule) beginFromBody(request operationRequest) (protocolResult, error) {
 	providerID, appErr := request.params.RequireProviderId()
 	if appErr != nil {
 		return protocolResult{}, appErr
@@ -126,7 +126,7 @@ func (module externalAuthenticationResourceModule) beginFromBody(request operati
 	if !model.IsValidCredentialToken(body.InvitationClaim) {
 		return protocolResult{}, invalidRequestError(errors.New("must be a valid Invitation claim"))
 	}
-	start, err := module.authentication.BeginExternalAuthentication(request.context,
+	start, err := m.authentication.BeginExternalAuthentication(request.context,
 		application.NewInvocation(model.Principal{}, request.metadata), application.BeginExternalAuthenticationCommand{
 			ProviderID: providerID, InvitationClaim: body.InvitationClaim, ReturnTo: body.ReturnTo,
 			ClientType: model.SessionClientWeb, DeviceID: body.DeviceID, DeviceName: body.DeviceName,
@@ -136,14 +136,14 @@ func (module externalAuthenticationResourceModule) beginFromBody(request operati
 		return protocolResult{}, err
 	}
 	headers := captureResponseHeaders(func(writer http.ResponseWriter) {
-		module.cookies.attachExternalLoginBinding(writer, start.Binding, start.ExpiresAt)
+		m.cookies.attachExternalLoginBinding(writer, start.Binding, start.ExpiresAt)
 	})
 	headers.Set("Cache-Control", "no-store")
 	return redirectProtocolResult(start.RedirectURL).withHeaders(headers), nil
 }
 
-func (module externalAuthenticationResourceModule) listProviders(request operationRequest) (operationResult, error) {
-	providers, err := module.authentication.ExternalAuthenticationProviders(request.context)
+func (m externalAuthenticationResourceModule) listProviders(request operationRequest) (operationResult, error) {
+	providers, err := m.authentication.ExternalAuthenticationProviders(request.context)
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -153,7 +153,7 @@ func (module externalAuthenticationResourceModule) listProviders(request operati
 	), nil
 }
 
-func (module externalAuthenticationResourceModule) begin(
+func (m externalAuthenticationResourceModule) begin(
 	request operationRequest,
 ) (protocolResult, error) {
 	providerID, appErr := request.params.RequireProviderId()
@@ -164,7 +164,7 @@ func (module externalAuthenticationResourceModule) begin(
 	if request.params.ClientType != "" {
 		clientType = model.SessionClientType(request.params.ClientType)
 	}
-	start, err := module.authentication.BeginExternalAuthentication(
+	start, err := m.authentication.BeginExternalAuthentication(
 		request.context,
 		application.NewInvocation(model.Principal{}, request.metadata),
 		application.BeginExternalAuthenticationCommand{
@@ -176,16 +176,16 @@ func (module externalAuthenticationResourceModule) begin(
 		return protocolResult{}, err
 	}
 	headers := captureResponseHeaders(func(writer http.ResponseWriter) {
-		module.cookies.attachExternalLoginBinding(writer, start.Binding, start.ExpiresAt)
+		m.cookies.attachExternalLoginBinding(writer, start.Binding, start.ExpiresAt)
 	})
 	headers.Set("Cache-Control", "no-store")
 	return redirectProtocolResult(start.RedirectURL).withHeaders(headers), nil
 }
 
-func (module externalAuthenticationResourceModule) complete(
+func (m externalAuthenticationResourceModule) complete(
 	request operationRequest,
 ) (protocolResult, error) {
-	clearBinding := captureResponseHeaders(module.cookies.clearExternalLoginBinding)
+	clearBinding := captureResponseHeaders(m.cookies.clearExternalLoginBinding)
 	providerID, appErr := request.params.RequireProviderId()
 	if appErr != nil {
 		return protocolResult{}, errorWithHeaders(appErr, clearBinding)
@@ -201,7 +201,7 @@ func (module externalAuthenticationResourceModule) complete(
 	if appErr != nil {
 		return protocolResult{}, errorWithHeaders(appErr, clearBinding)
 	}
-	completion, err := module.authentication.CompleteExternalAuthentication(
+	completion, err := m.authentication.CompleteExternalAuthentication(
 		request.context,
 		application.NewInvocation(model.Principal{}, request.metadata),
 		application.CompleteExternalAuthenticationCommand{
@@ -214,13 +214,13 @@ func (module externalAuthenticationResourceModule) complete(
 	}
 	if completion.Restart != nil {
 		headers := captureResponseHeaders(func(writer http.ResponseWriter) {
-			module.cookies.attachExternalLoginBinding(writer, completion.Restart.Binding, completion.Restart.ExpiresAt)
+			m.cookies.attachExternalLoginBinding(writer, completion.Restart.Binding, completion.Restart.ExpiresAt)
 		})
 		headers.Set("Cache-Control", "no-store")
 		return redirectProtocolResult(completion.Restart.RedirectURL).withHeaders(headers), nil
 	}
 	headers := combineResponseHeaders(clearBinding, captureResponseHeaders(func(writer http.ResponseWriter) {
-		module.cookies.attach(writer, completion.Tokens)
+		m.cookies.attach(writer, completion.Tokens)
 	}))
 	headers.Set("Cache-Control", "no-store")
 	return redirectProtocolResult(completion.ReturnTo).withHeaders(headers), nil

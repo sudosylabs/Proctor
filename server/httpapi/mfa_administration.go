@@ -30,7 +30,7 @@ func mfaAdministrationResource(application MFAAdministration) resource {
 	module := mfaAdministrationResourceModule{application: application}
 	return newResource("mfa-administration", strongRecentSessionRoute(http.MethodPost, apiPath(literal("users"), canonicalID("user_id"), literal("mfa"), literal("reset")), operatorMutationErrorCodes("request.invalid", "resource.not_found", "authentication.mfa.reset_invalid", "authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal"), module.reset))
 }
-func (module mfaAdministrationResourceModule) reset(request operationRequest) (operationResult, error) {
+func (m mfaAdministrationResourceModule) reset(request operationRequest) (operationResult, error) {
 	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
@@ -39,7 +39,7 @@ func (module mfaAdministrationResourceModule) reset(request operationRequest) (o
 	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	if err := module.application.ResetUserMFA(request.context, request.invocation(), application.ResetUserMFACommand{UserID: userID, IdentityVerified: body.IdentityVerified, Reason: body.Reason, VerificationReference: body.VerificationReference}); err != nil {
+	if err := m.application.ResetUserMFA(request.context, request.invocation(), application.ResetUserMFACommand{UserID: userID, IdentityVerified: body.IdentityVerified, Reason: body.Reason, VerificationReference: body.VerificationReference}); err != nil {
 		return operationResult{}, err
 	}
 	return noContentResult().withHeaders(noStoreHeaders()), nil

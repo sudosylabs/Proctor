@@ -28,7 +28,7 @@ type accountSecurityHTTPApplication struct {
 	createToken application.CreatePersonalAccessTokenCommand
 }
 
-func (applicationStub *accountSecurityHTTPApplication) ListSessions(
+func (as *accountSecurityHTTPApplication) ListSessions(
 	context.Context,
 	application.Invocation,
 	application.ListSessionsQuery,
@@ -36,7 +36,7 @@ func (applicationStub *accountSecurityHTTPApplication) ListSessions(
 	return []*model.Session{}, nil
 }
 
-func (applicationStub *accountSecurityHTTPApplication) GetMFAStatus(
+func (as *accountSecurityHTTPApplication) GetMFAStatus(
 	context.Context,
 	application.Invocation,
 	application.GetMFAStatusQuery,
@@ -44,12 +44,12 @@ func (applicationStub *accountSecurityHTTPApplication) GetMFAStatus(
 	return &application.MFAStatus{Enabled: true, RecoveryCodesRemaining: 7}, nil
 }
 
-func (applicationStub *accountSecurityHTTPApplication) CreatePersonalAccessToken(
+func (as *accountSecurityHTTPApplication) CreatePersonalAccessToken(
 	_ context.Context,
 	_ application.Invocation,
 	command application.CreatePersonalAccessTokenCommand,
 ) (*model.PersonalAccessTokenCreation, error) {
-	applicationStub.createToken = command
+	as.createToken = command
 	return &model.PersonalAccessTokenCreation{
 		Token: &model.PersonalAccessToken{
 			ID: model.NewPersonalAccessTokenID(), UserID: model.NewUserID(),

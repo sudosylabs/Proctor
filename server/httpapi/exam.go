@@ -66,7 +66,7 @@ type browserPolicyRuleDocument struct {
 	InstitutionHTTPException bool   `json:"institution_http_exception"`
 }
 
-func (document *browserPolicyDocument) UnmarshalJSON(encoded []byte) error {
+func (d *browserPolicyDocument) UnmarshalJSON(encoded []byte) error {
 	if len(encoded) > model.BrowserPolicyMaximumBytes {
 		return errors.New("browser policy exceeds its encoded limit")
 	}
@@ -95,11 +95,11 @@ func (document *browserPolicyDocument) UnmarshalJSON(encoded []byte) error {
 	} else if len(members) != 1 {
 		return errors.New("disabled browser policy contains enabled fields")
 	}
-	*document = browserPolicyDocument(decoded)
+	*d = browserPolicyDocument(decoded)
 	return nil
 }
 
-func (document *browserPolicyRuleDocument) UnmarshalJSON(encoded []byte) error {
+func (d *browserPolicyRuleDocument) UnmarshalJSON(encoded []byte) error {
 	if err := rejectDuplicateJSONObjectMembers(encoded, "browser policy rule"); err != nil {
 		return err
 	}
@@ -122,22 +122,22 @@ func (document *browserPolicyRuleDocument) UnmarshalJSON(encoded []byte) error {
 	if len(members) != 7 {
 		return errors.New("browser policy rule contains an unknown field")
 	}
-	*document = browserPolicyRuleDocument(decoded)
+	*d = browserPolicyRuleDocument(decoded)
 	return nil
 }
 
-func (document browserPolicyDocument) model() (model.BrowserPolicy, error) {
-	rules := make([]model.BrowserPolicyRule, len(document.Rules))
-	for index, rule := range document.Rules {
+func (d browserPolicyDocument) model() (model.BrowserPolicy, error) {
+	rules := make([]model.BrowserPolicyRule, len(d.Rules))
+	for index, rule := range d.Rules {
 		rules[index] = model.BrowserPolicyRule{RuleID: rule.RuleID, Origin: rule.Origin, PathPrefix: rule.PathPrefix,
 			HostMatch: model.BrowserPolicyHostMatch(rule.HostMatch), AllowRedirects: rule.AllowRedirects,
 			BlockedNavigationOutcome: model.BrowserPolicyBlockedNavigationOutcome(rule.BlockedNavigationOutcome), InstitutionHTTPException: rule.InstitutionHTTPException}
 	}
-	if !document.Enabled {
+	if !d.Enabled {
 		return model.DisabledBrowserPolicy(), nil
 	}
 
-	return model.NewBrowserPolicy(true, document.StartRuleID, rules)
+	return model.NewBrowserPolicy(true, d.StartRuleID, rules)
 }
 
 func browserPolicyDocumentFromModel(policy model.BrowserPolicy) browserPolicyDocument {

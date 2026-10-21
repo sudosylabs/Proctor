@@ -23,25 +23,25 @@ type appliedEnvironment struct {
 	definitions []environmentOverride
 }
 
-func (overlay appliedEnvironment) clone() appliedEnvironment {
+func (o appliedEnvironment) clone() appliedEnvironment {
 	return appliedEnvironment{
-		definitions: append([]environmentOverride(nil), overlay.definitions...),
+		definitions: append([]environmentOverride(nil), o.definitions...),
 	}
 }
 
-func (overlay appliedEnvironment) keys() []string {
-	if len(overlay.definitions) == 0 {
+func (o appliedEnvironment) keys() []string {
+	if len(o.definitions) == 0 {
 		return nil
 	}
-	keys := make([]string, 0, len(overlay.definitions))
-	for _, definition := range overlay.definitions {
+	keys := make([]string, 0, len(o.definitions))
+	for _, definition := range o.definitions {
 		keys = append(keys, definition.key)
 	}
 	return keys
 }
 
-func (overlay appliedEnvironment) restore(candidate *Config, persisted Config) {
-	for _, definition := range overlay.definitions {
+func (o appliedEnvironment) restore(candidate *Config, persisted Config) {
+	for _, definition := range o.definitions {
 		definition.restore(candidate, persisted)
 	}
 }

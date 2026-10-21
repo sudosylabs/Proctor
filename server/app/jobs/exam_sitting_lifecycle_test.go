@@ -124,9 +124,9 @@ type examSittingLifecycleReconcilerFake struct {
 	attemptID model.JobAttemptID
 }
 
-func (fake *examSittingLifecycleReconcilerFake) ReconcileExamSittingLifecycleFromJob(_ context.Context, sittingID model.ExamSittingID, jobID model.JobID, attemptID model.JobAttemptID) (*store.ExamSittingLifecycleResult, error) {
-	fake.sittingID, fake.jobID, fake.attemptID = sittingID, jobID, attemptID
-	return fake.result, fake.err
+func (f *examSittingLifecycleReconcilerFake) ReconcileExamSittingLifecycleFromJob(_ context.Context, sittingID model.ExamSittingID, jobID model.JobID, attemptID model.JobAttemptID) (*store.ExamSittingLifecycleResult, error) {
+	f.sittingID, f.jobID, f.attemptID = sittingID, jobID, attemptID
+	return f.result, f.err
 }
 
 func mustExamSittingLifecycleJob(t *testing.T, sittingID model.ExamSittingID, at time.Time) *model.Job {

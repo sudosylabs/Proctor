@@ -54,13 +54,13 @@ type examCapacityPolicyRequest struct {
 	WorkspaceMaximumTotalBytes int64 `json:"workspace_maximum_total_bytes"`
 }
 
-func (request examCapacityPolicyRequest) model() model.ExamCapacityPolicy {
+func (r examCapacityPolicyRequest) model() model.ExamCapacityPolicy {
 	return model.ExamCapacityPolicy{
-		ResourceMaximumCount:       request.ResourceMaximumCount,
-		ResourceMaximumBytes:       request.ResourceMaximumBytes,
-		WorkspaceMaximumEntries:    request.WorkspaceMaximumEntries,
-		WorkspaceMaximumFileBytes:  request.WorkspaceMaximumFileBytes,
-		WorkspaceMaximumTotalBytes: request.WorkspaceMaximumTotalBytes,
+		ResourceMaximumCount:       r.ResourceMaximumCount,
+		ResourceMaximumBytes:       r.ResourceMaximumBytes,
+		WorkspaceMaximumEntries:    r.WorkspaceMaximumEntries,
+		WorkspaceMaximumFileBytes:  r.WorkspaceMaximumFileBytes,
+		WorkspaceMaximumTotalBytes: r.WorkspaceMaximumTotalBytes,
 	}
 }
 
@@ -118,8 +118,8 @@ func academicMutationErrorCodes(specific ...string) []string {
 	return append(codes, "administration.unavailable")
 }
 
-func (module institutionResourceModule) get(request operationRequest) (operationResult, error) {
-	institution, err := module.institutions.GetInstitution(
+func (m institutionResourceModule) get(request operationRequest) (operationResult, error) {
+	institution, err := m.institutions.GetInstitution(
 		request.context,
 		request.invocation(),
 		application.GetInstitutionQuery{},
@@ -130,7 +130,7 @@ func (module institutionResourceModule) get(request operationRequest) (operation
 	return jsonResult(http.StatusOK, institutionResponseFromModel(institution)), nil
 }
 
-func (module institutionResourceModule) patch(request operationRequest) (operationResult, error) {
+func (m institutionResourceModule) patch(request operationRequest) (operationResult, error) {
 	var body updateInstitutionRequest
 	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
@@ -140,7 +140,7 @@ func (module institutionResourceModule) patch(request operationRequest) (operati
 		value := requested.model()
 		capacity = &value
 	}
-	institution, err := module.institutions.UpdateInstitution(
+	institution, err := m.institutions.UpdateInstitution(
 		request.context,
 		request.invocation(),
 		application.UpdateInstitutionCommand{

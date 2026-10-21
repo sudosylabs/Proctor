@@ -73,11 +73,11 @@ type resultReleaseRendererFake struct {
 	details ResultReleaseMailDetails
 }
 
-func (renderer *resultReleaseRendererFake) Render(request MailRenderRequest) (FrozenMailContent, error) {
+func (r *resultReleaseRendererFake) Render(request MailRenderRequest) (FrozenMailContent, error) {
 	details, ok := request.Presentation.(ResultReleaseMailDetails)
 	if !ok {
-		return renderer.mailRendererFake.Render(request)
+		return r.mailRendererFake.Render(request)
 	}
-	renderer.details = details
+	r.details = details
 	return FrozenMailContent{Subject: "Result available", Text: details.ExamTitle, HTML: "<p>Result available</p>"}, nil
 }

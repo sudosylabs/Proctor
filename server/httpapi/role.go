@@ -106,8 +106,8 @@ func operatorMutationErrorCodes(specific ...string) []string {
 	return append(codes, specific...)
 }
 
-func (module roleResourceModule) list(request operationRequest) (operationResult, error) {
-	roles, err := module.roles.ListRoles(
+func (m roleResourceModule) list(request operationRequest) (operationResult, error) {
+	roles, err := m.roles.ListRoles(
 		request.context,
 		request.invocation(),
 		application.ListRolesQuery{},
@@ -118,12 +118,12 @@ func (module roleResourceModule) list(request operationRequest) (operationResult
 	return jsonResult(http.StatusOK, roleResponsesFromModels(request.request, roles)), nil
 }
 
-func (module roleResourceModule) get(request operationRequest) (operationResult, error) {
+func (m roleResourceModule) get(request operationRequest) (operationResult, error) {
 	roleID, err := request.params.RequireRoleID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	role, err := module.roles.GetRole(
+	role, err := m.roles.GetRole(
 		request.context,
 		request.invocation(),
 		application.GetRoleQuery{ID: roleID},
@@ -134,12 +134,12 @@ func (module roleResourceModule) get(request operationRequest) (operationResult,
 	return jsonResult(http.StatusOK, roleResponseFromModel(request.request, role)), nil
 }
 
-func (module roleResourceModule) create(request operationRequest) (operationResult, error) {
+func (m roleResourceModule) create(request operationRequest) (operationResult, error) {
 	var input createRoleRequest
 	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
-	saved, err := module.roles.CreateRole(
+	saved, err := m.roles.CreateRole(
 		request.context,
 		request.invocation(),
 		application.CreateRoleCommand{
@@ -153,7 +153,7 @@ func (module roleResourceModule) create(request operationRequest) (operationResu
 	return jsonResult(http.StatusCreated, roleResponseFromModel(request.request, saved)), nil
 }
 
-func (module roleResourceModule) patch(request operationRequest) (operationResult, error) {
+func (m roleResourceModule) patch(request operationRequest) (operationResult, error) {
 	roleID, err := request.params.RequireRoleID()
 	if err != nil {
 		return operationResult{}, err
@@ -162,7 +162,7 @@ func (module roleResourceModule) patch(request operationRequest) (operationResul
 	if err = request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
-	updated, err := module.roles.UpdateRole(
+	updated, err := m.roles.UpdateRole(
 		request.context,
 		request.invocation(),
 		application.UpdateRoleCommand{
@@ -176,12 +176,12 @@ func (module roleResourceModule) patch(request operationRequest) (operationResul
 	return jsonResult(http.StatusOK, roleResponseFromModel(request.request, updated)), nil
 }
 
-func (module roleResourceModule) archive(request operationRequest) (operationResult, error) {
+func (m roleResourceModule) archive(request operationRequest) (operationResult, error) {
 	roleID, err := request.params.RequireRoleID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	if err := module.roles.ArchiveRole(
+	if err := m.roles.ArchiveRole(
 		request.context,
 		request.invocation(),
 		application.ArchiveRoleCommand{ID: roleID},

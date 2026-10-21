@@ -172,7 +172,7 @@ func userProfileResource(profiles UserProfileApplication) resource {
 	)
 }
 
-func (module userProfileResourceModule) examActivity(request operationRequest) (operationResult, error) {
+func (m userProfileResourceModule) examActivity(request operationRequest) (operationResult, error) {
 	query := application.ListCandidateExamActivityQuery{Limit: 50}
 	values := request.request.URL.Query()
 	if raw := values.Get("limit"); raw != "" {
@@ -190,7 +190,7 @@ func (module userProfileResourceModule) examActivity(request operationRequest) (
 		query.BeforeScheduledStart, _ = model.ParseRFC3339(cursor.ScheduledStartAt)
 		query.BeforeSittingID = model.ExamSittingID(cursor.ExamSittingID)
 	}
-	page, err := module.profiles.ListCandidateExamActivity(request.context, request.invocation(), query)
+	page, err := m.profiles.ListCandidateExamActivity(request.context, request.invocation(), query)
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -261,8 +261,8 @@ func currentUserContextSessionCodes(extra ...string) []string {
 	return append([]string(nil), extra...)
 }
 
-func (module userProfileResourceModule) context(request operationRequest) (operationResult, error) {
-	view, err := module.profiles.GetCurrentUserContext(request.context, request.invocation())
+func (m userProfileResourceModule) context(request operationRequest) (operationResult, error) {
+	view, err := m.profiles.GetCurrentUserContext(request.context, request.invocation())
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -288,7 +288,7 @@ func (module userProfileResourceModule) context(request operationRequest) (opera
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
-func (module userProfileResourceModule) changeEmail(request operationRequest) (operationResult, error) {
+func (m userProfileResourceModule) changeEmail(request operationRequest) (operationResult, error) {
 	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
@@ -297,19 +297,19 @@ func (module userProfileResourceModule) changeEmail(request operationRequest) (o
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	state, appErr := module.profiles.ChangeUserEmail(request.context, request.invocation(), application.ChangeUserEmailCommand{UserID: userID, Email: body.Email})
+	state, appErr := m.profiles.ChangeUserEmail(request.context, request.invocation(), application.ChangeUserEmailCommand{UserID: userID, Email: body.Email})
 	if appErr != nil {
 		return operationResult{}, appErr
 	}
 	return jsonResult(http.StatusOK, userEmailStateResponseFromApplication(state)), nil
 }
 
-func (module userProfileResourceModule) verifyEmail(request operationRequest) (operationResult, error) {
+func (m userProfileResourceModule) verifyEmail(request operationRequest) (operationResult, error) {
 	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	state, appErr := module.profiles.VerifyUserEmailPrivileged(request.context, request.invocation(), application.VerifyUserEmailPrivilegedCommand{UserID: userID})
+	state, appErr := m.profiles.VerifyUserEmailPrivileged(request.context, request.invocation(), application.VerifyUserEmailPrivilegedCommand{UserID: userID})
 	if appErr != nil {
 		return operationResult{}, appErr
 	}
@@ -346,7 +346,7 @@ func userProfilePrincipalMutationCodes(extra ...string) []string {
 	return append(codes, extra...)
 }
 
-func (module userProfileResourceModule) uploadPicture(request operationRequest) (protocolResult, error) {
+func (m userProfileResourceModule) uploadPicture(request operationRequest) (protocolResult, error) {
 	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return protocolResult{}, err
@@ -355,14 +355,14 @@ func (module userProfileResourceModule) uploadPicture(request operationRequest) 
 	if err != nil {
 		return protocolResult{}, invalidRequestError(err)
 	}
-	user, err := module.profiles.UploadProfilePicture(request.context, request.invocation(), application.UploadProfilePictureCommand{UserID: userID, ExpectedSHA256: expectedSHA256, Body: request.request.Body, Size: request.request.ContentLength})
+	user, err := m.profiles.UploadProfilePicture(request.context, request.invocation(), application.UploadProfilePictureCommand{UserID: userID, ExpectedSHA256: expectedSHA256, Body: request.request.Body, Size: request.request.ContentLength})
 	if err != nil {
 		return protocolResult{}, err
 	}
 	return streamingUploadProtocolResult(http.StatusOK, userProfileResponseFromModel(user)), nil
 }
 
-func (module userProfileResourceModule) removePicture(request operationRequest) (operationResult, error) {
+func (m userProfileResourceModule) removePicture(request operationRequest) (operationResult, error) {
 	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
@@ -371,7 +371,7 @@ func (module userProfileResourceModule) removePicture(request operationRequest) 
 	if err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	user, appErr := module.profiles.RemoveProfilePicture(request.context, request.invocation(), application.RemoveProfilePictureCommand{UserID: userID, ExpectedSHA256: expectedSHA256})
+	user, appErr := m.profiles.RemoveProfilePicture(request.context, request.invocation(), application.RemoveProfilePictureCommand{UserID: userID, ExpectedSHA256: expectedSHA256})
 	if appErr != nil {
 		return operationResult{}, appErr
 	}
@@ -396,7 +396,7 @@ func profilePictureIfMatch(header string, required bool) (string, error) {
 	return checksum, nil
 }
 
-func (module userProfileResourceModule) downloadPicture(request operationRequest) (protocolResult, error) {
+func (m userProfileResourceModule) downloadPicture(request operationRequest) (protocolResult, error) {
 	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return protocolResult{}, err
@@ -405,7 +405,7 @@ func (module userProfileResourceModule) downloadPicture(request operationRequest
 	if err != nil {
 		return protocolResult{}, invalidRequestError(err)
 	}
-	content, appErr := module.profiles.GetProfilePicture(request.context, request.invocation(), application.GetProfilePictureQuery{UserID: userID, Size: size})
+	content, appErr := m.profiles.GetProfilePicture(request.context, request.invocation(), application.GetProfilePictureQuery{UserID: userID, Size: size})
 	if appErr != nil {
 		return protocolResult{}, appErr
 	}
@@ -432,7 +432,7 @@ func etagMatches(header, current string) bool {
 	return false
 }
 
-func (module userProfileResourceModule) search(request operationRequest) (operationResult, error) {
+func (m userProfileResourceModule) search(request operationRequest) (operationResult, error) {
 	limit, err := request.queryLimit()
 	if err != nil {
 		return operationResult{}, err
@@ -441,34 +441,34 @@ func (module userProfileResourceModule) search(request operationRequest) (operat
 	if err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	users, err := module.profiles.SearchUsers(request.context, request.invocation(), application.SearchUsersQuery{Query: request.request.URL.Query().Get("q"), AfterUsername: request.request.URL.Query().Get("after_username"), AfterID: request.request.URL.Query().Get("after_id"), Limit: limit, IncludeDisabled: includeDisabled})
+	users, err := m.profiles.SearchUsers(request.context, request.invocation(), application.SearchUsersQuery{Query: request.request.URL.Query().Get("q"), AfterUsername: request.request.URL.Query().Get("after_username"), AfterID: request.request.URL.Query().Get("after_id"), Limit: limit, IncludeDisabled: includeDisabled})
 	if err != nil {
 		return operationResult{}, err
 	}
 	return jsonResult(http.StatusOK, userProfileResponses(users)), nil
 }
 
-func (module userProfileResourceModule) current(request operationRequest) (operationResult, error) {
-	user, err := module.profiles.GetUserProfile(request.context, request.invocation(), application.GetUserProfileQuery{ID: request.principal.UserID})
+func (m userProfileResourceModule) current(request operationRequest) (operationResult, error) {
+	user, err := m.profiles.GetUserProfile(request.context, request.invocation(), application.GetUserProfileQuery{ID: request.principal.UserID})
 	if err != nil {
 		return operationResult{}, err
 	}
 	return jsonResult(http.StatusOK, userProfileResponseFromModel(user)), nil
 }
 
-func (module userProfileResourceModule) get(request operationRequest) (operationResult, error) {
+func (m userProfileResourceModule) get(request operationRequest) (operationResult, error) {
 	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	user, err := module.profiles.GetUserProfile(request.context, request.invocation(), application.GetUserProfileQuery{ID: userID})
+	user, err := m.profiles.GetUserProfile(request.context, request.invocation(), application.GetUserProfileQuery{ID: userID})
 	if err != nil {
 		return operationResult{}, err
 	}
 	return jsonResult(http.StatusOK, userProfileResponseFromModel(user)), nil
 }
 
-func (module userProfileResourceModule) update(request operationRequest) (operationResult, error) {
+func (m userProfileResourceModule) update(request operationRequest) (operationResult, error) {
 	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
@@ -477,7 +477,7 @@ func (module userProfileResourceModule) update(request operationRequest) (operat
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	user, err := module.profiles.UpdateUserProfile(request.context, request.invocation(), application.UpdateUserProfileCommand{ID: userID, Username: body.Username, DisplayName: body.DisplayName, FirstName: body.FirstName, LastName: body.LastName, Locale: body.Locale, Timezone: body.Timezone})
+	user, err := m.profiles.UpdateUserProfile(request.context, request.invocation(), application.UpdateUserProfileCommand{ID: userID, Username: body.Username, DisplayName: body.DisplayName, FirstName: body.FirstName, LastName: body.LastName, Locale: body.Locale, Timezone: body.Timezone})
 	if err != nil {
 		return operationResult{}, err
 	}

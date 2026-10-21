@@ -192,84 +192,84 @@ type examAttemptWorkspaceRetryStub struct {
 	err              error
 }
 
-func (stub *examAttemptWorkspaceRetryStub) ApplyMutation(context.Context, *store.ExamAttemptWorkspaceMutation, *store.CommandIdempotency) (*store.ExamAttemptWorkspaceMutationResult, error) {
-	stub.applyAttempts++
-	return nil, stub.err
+func (s *examAttemptWorkspaceRetryStub) ApplyMutation(context.Context, *store.ExamAttemptWorkspaceMutation, *store.CommandIdempotency) (*store.ExamAttemptWorkspaceMutationResult, error) {
+	s.applyAttempts++
+	return nil, s.err
 }
 
-func (stub *examAttemptWorkspaceRetryStub) MarkObjectReclaimable(context.Context, model.AttemptWorkspaceObjectID) error {
-	stub.markAttempts++
-	return stub.err
+func (s *examAttemptWorkspaceRetryStub) MarkObjectReclaimable(context.Context, model.AttemptWorkspaceObjectID) error {
+	s.markAttempts++
+	return s.err
 }
 
-func (stub *examAttemptWorkspaceRetryStub) ClaimObjectsForCleanup(context.Context, int, string) ([]model.AttemptWorkspaceObject, error) {
-	stub.claimAttempts++
-	return nil, stub.err
+func (s *examAttemptWorkspaceRetryStub) ClaimObjectsForCleanup(context.Context, int, string) ([]model.AttemptWorkspaceObject, error) {
+	s.claimAttempts++
+	return nil, s.err
 }
 
-func (stub *examAttemptWorkspaceRetryStub) CompleteObjectCleanup(context.Context, model.AttemptWorkspaceObjectID, string) error {
-	stub.completeAttempts++
-	return stub.err
+func (s *examAttemptWorkspaceRetryStub) CompleteObjectCleanup(context.Context, model.AttemptWorkspaceObjectID, string) error {
+	s.completeAttempts++
+	return s.err
 }
 
-func (stub *examAttemptWorkspaceRetryStub) ReleaseObjectCleanup(context.Context, model.AttemptWorkspaceObjectID, string) error {
-	stub.releaseAttempts++
-	return stub.err
+func (s *examAttemptWorkspaceRetryStub) ReleaseObjectCleanup(context.Context, model.AttemptWorkspaceObjectID, string) error {
+	s.releaseAttempts++
+	return s.err
 }
 
-func (stub *examAttemptRetryStub) Connect(context.Context, *store.ExamAttemptConnect, *store.CommandIdempotency) (*store.ExamAttemptConnectResult, error) {
-	stub.connectAttempts++
-	return nil, stub.err
+func (s *examAttemptRetryStub) Connect(context.Context, *store.ExamAttemptConnect, *store.CommandIdempotency) (*store.ExamAttemptConnectResult, error) {
+	s.connectAttempts++
+	return nil, s.err
 }
 
-func (stub *examAttemptRetryStub) CloseConnection(context.Context, *store.ExamAttemptConnectionClose) (*store.ExamAttemptConnectionCloseResult, error) {
-	stub.closeAttempts++
-	return nil, stub.err
+func (s *examAttemptRetryStub) CloseConnection(context.Context, *store.ExamAttemptConnectionClose) (*store.ExamAttemptConnectionCloseResult, error) {
+	s.closeAttempts++
+	return nil, s.err
 }
 
-func (stub *examAttemptRetryStub) RenewParticipation(context.Context, *store.ExamAttemptParticipationRenewal) (*store.ExamAttemptParticipationRenewalResult, error) {
-	stub.renewAttempts++
-	return nil, stub.err
+func (s *examAttemptRetryStub) RenewParticipation(context.Context, *store.ExamAttemptParticipationRenewal) (*store.ExamAttemptParticipationRenewalResult, error) {
+	s.renewAttempts++
+	return nil, s.err
 }
 
-func (stub *examAttemptRetryStub) ResolveFocusLossTarget(context.Context, store.ExamAttemptFocusLossAccess) (*store.ExamAttemptFocusLossTarget, error) {
-	stub.resolveFocusAttempts++
-	return nil, stub.err
+func (s *examAttemptRetryStub) ResolveFocusLossTarget(context.Context, store.ExamAttemptFocusLossAccess) (*store.ExamAttemptFocusLossTarget, error) {
+	s.resolveFocusAttempts++
+	return nil, s.err
 }
 
-func (stub *examAttemptRetryStub) RecordFocusLoss(context.Context, *store.ExamAttemptFocusLossSignal) (*store.ExamAttemptFocusLossResult, error) {
-	stub.recordFocusAttempts++
-	return nil, stub.err
+func (s *examAttemptRetryStub) RecordFocusLoss(context.Context, *store.ExamAttemptFocusLossSignal) (*store.ExamAttemptFocusLossResult, error) {
+	s.recordFocusAttempts++
+	return nil, s.err
 }
 
-func (stub *examAttemptRetryStub) ResolveParticipationExpiry(context.Context, model.ExamAttemptID, model.AttemptParticipationID, int64) (*store.ExamAttemptParticipationExpiryDue, error) {
-	stub.resolveExpiryAttempts++
-	return nil, stub.err
+func (s *examAttemptRetryStub) ResolveParticipationExpiry(context.Context, model.ExamAttemptID, model.AttemptParticipationID, int64) (*store.ExamAttemptParticipationExpiryDue, error) {
+	s.resolveExpiryAttempts++
+	return nil, s.err
 }
 
-func (stub *examAttemptRetryStub) ListExpiredParticipations(context.Context, int) ([]store.ExamAttemptParticipationExpiryDue, error) {
-	stub.listExpiryAttempts++
-	return nil, stub.err
+func (s *examAttemptRetryStub) ListExpiredParticipations(context.Context, int) ([]store.ExamAttemptParticipationExpiryDue, error) {
+	s.listExpiryAttempts++
+	return nil, s.err
 }
 
-func (stub *examAttemptRetryStub) ExpireParticipation(context.Context, *store.ExamAttemptParticipationExpiry) (*store.ExamAttemptParticipationExpiryResult, error) {
-	stub.expireAttempts++
-	return nil, stub.err
+func (s *examAttemptRetryStub) ExpireParticipation(context.Context, *store.ExamAttemptParticipationExpiry) (*store.ExamAttemptParticipationExpiryResult, error) {
+	s.expireAttempts++
+	return nil, s.err
 }
 
-func (stub *examAttemptRetryStub) ReallowAttempt(context.Context, *store.ExamAttemptReallow, *store.CommandIdempotency) (*store.ExamAttemptReallowResult, error) {
-	stub.reallowAttempts++
-	return nil, stub.err
+func (s *examAttemptRetryStub) ReallowAttempt(context.Context, *store.ExamAttemptReallow, *store.CommandIdempotency) (*store.ExamAttemptReallowResult, error) {
+	s.reallowAttempts++
+	return nil, s.err
 }
 
-func (stub *examSittingUnsafeMutationStub) AdvanceDue(context.Context, *store.ExamSittingDueAdvance) (*store.ExamSittingLifecycleResult, error) {
-	stub.advanceAttempts++
-	return nil, stub.err
+func (s *examSittingUnsafeMutationStub) AdvanceDue(context.Context, *store.ExamSittingDueAdvance) (*store.ExamSittingLifecycleResult, error) {
+	s.advanceAttempts++
+	return nil, s.err
 }
 
-func (stub *examSittingUnsafeMutationStub) FinishSealing(context.Context, *store.ExamSittingFinishSealing) (*store.ExamSittingLifecycleResult, error) {
-	stub.finishAttempts++
-	return nil, stub.err
+func (s *examSittingUnsafeMutationStub) FinishSealing(context.Context, *store.ExamSittingFinishSealing) (*store.ExamSittingLifecycleResult, error) {
+	s.finishAttempts++
+	return nil, s.err
 }
 
 func (s *personalAccessTokenStub) Resolve(context.Context, string, time.Time, time.Duration) (*store.PersonalAccessTokenResolution, error) {

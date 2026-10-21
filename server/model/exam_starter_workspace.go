@@ -52,7 +52,7 @@ func NormalizeStarterWorkspacePath(value string) (string, error) {
 	return value, nil
 }
 
-func (version WorkspaceContentVersion) IsZero() bool { return version == "" }
+func (v WorkspaceContentVersion) IsZero() bool { return v == "" }
 
 type StarterWorkspaceEntryKind string
 
@@ -95,27 +95,27 @@ func newStarterWorkspaceEntry(id StarterWorkspaceEntryID, examID ExamID, kind St
 	return entry, nil
 }
 
-func (entry *StarterWorkspaceEntry) Validate() error {
-	if entry == nil || !entry.ID.IsValid() || !entry.ExamID.IsValid() || entry.CreatedAt.IsZero() ||
-		entry.UpdatedAt.IsZero() || entry.UpdatedAt.Before(entry.CreatedAt) {
+func (e *StarterWorkspaceEntry) Validate() error {
+	if e == nil || !e.ID.IsValid() || !e.ExamID.IsValid() || e.CreatedAt.IsZero() ||
+		e.UpdatedAt.IsZero() || e.UpdatedAt.Before(e.CreatedAt) {
 		return invalidModelError("StarterWorkspaceEntry.Validate", "starter_workspace_entry", "", "invalid Starter Workspace entry", "")
 	}
-	if normalized, err := NormalizeStarterWorkspacePath(entry.Path); err != nil || normalized != entry.Path {
+	if normalized, err := NormalizeStarterWorkspacePath(e.Path); err != nil || normalized != e.Path {
 		return invalidModelError("StarterWorkspaceEntry.Validate", "starter_workspace_entry", "", "invalid Starter Workspace entry path", "")
 	}
-	if entry.ArchivedAt.Valid && entry.ArchivedAt.Time.Before(entry.CreatedAt) {
+	if e.ArchivedAt.Valid && e.ArchivedAt.Time.Before(e.CreatedAt) {
 		return invalidModelError("StarterWorkspaceEntry.Validate", "starter_workspace_entry", "", "invalid Starter Workspace entry lifecycle", "")
 	}
-	switch entry.Kind {
+	switch e.Kind {
 	case StarterWorkspaceEntryFile:
-		if !entry.ArchivedAt.Valid && !entry.CurrentObjectID.IsValid() {
+		if !e.ArchivedAt.Valid && !e.CurrentObjectID.IsValid() {
 			return invalidModelError("StarterWorkspaceEntry.Validate", "starter_workspace_entry", "", "Starter Workspace file requires a current object", "")
 		}
-		if entry.ArchivedAt.Valid && !entry.CurrentObjectID.IsZero() && !entry.CurrentObjectID.IsValid() {
+		if e.ArchivedAt.Valid && !e.CurrentObjectID.IsZero() && !e.CurrentObjectID.IsValid() {
 			return invalidModelError("StarterWorkspaceEntry.Validate", "starter_workspace_entry", "", "Starter Workspace archived file has an invalid object", "")
 		}
 	case StarterWorkspaceEntryDirectory:
-		if !entry.CurrentObjectID.IsZero() {
+		if !e.CurrentObjectID.IsZero() {
 			return invalidModelError("StarterWorkspaceEntry.Validate", "starter_workspace_entry", "", "Starter Workspace directory cannot have content", "")
 		}
 	default:
@@ -170,11 +170,11 @@ func NewStagedStarterWorkspaceObject(id StarterWorkspaceObjectID, examID ExamID,
 	return object, nil
 }
 
-func (object *StarterWorkspaceObject) MarkCurrent(version WorkspaceContentVersion, mediaType string, size int64, checksum string, at time.Time) error {
-	if object == nil || object.State != StarterWorkspaceObjectStaged {
+func (o *StarterWorkspaceObject) MarkCurrent(version WorkspaceContentVersion, mediaType string, size int64, checksum string, at time.Time) error {
+	if o == nil || o.State != StarterWorkspaceObjectStaged {
 		return invalidModelError("StarterWorkspaceObject.MarkCurrent", "starter_workspace_object", "", "only a staged Starter Workspace object can become current", "")
 	}
-	candidate := *object
+	candidate := *o
 	candidate.State = StarterWorkspaceObjectCurrent
 	candidate.ContentVersion = version
 	candidate.MediaType = strings.TrimSpace(mediaType)
@@ -184,51 +184,51 @@ func (object *StarterWorkspaceObject) MarkCurrent(version WorkspaceContentVersio
 	if err := candidate.Validate(); err != nil {
 		return err
 	}
-	*object = candidate
+	*o = candidate
 	return nil
 }
 
-func (object *StarterWorkspaceObject) Validate() error {
-	if object == nil || !object.ID.IsValid() || !object.ExamID.IsValid() || !object.CreatedByUserID.IsValid() ||
-		object.CreatedAt.IsZero() || object.UpdatedAt.IsZero() || object.ExpiresAt.IsZero() ||
-		object.UpdatedAt.Before(object.CreatedAt) || !object.ExpiresAt.After(object.CreatedAt) {
+func (o *StarterWorkspaceObject) Validate() error {
+	if o == nil || !o.ID.IsValid() || !o.ExamID.IsValid() || !o.CreatedByUserID.IsValid() ||
+		o.CreatedAt.IsZero() || o.UpdatedAt.IsZero() || o.ExpiresAt.IsZero() ||
+		o.UpdatedAt.Before(o.CreatedAt) || !o.ExpiresAt.After(o.CreatedAt) {
 		return invalidModelError("StarterWorkspaceObject.Validate", "starter_workspace_object", "", "invalid Starter Workspace object", "")
 	}
-	if object.State == StarterWorkspaceObjectStaged {
-		if !object.ContentVersion.IsZero() || object.MediaType != "" || object.SizeBytes != 0 || object.SHA256 != "" || object.ReclaimAfter.Valid || object.ClaimedAt.Valid || object.ClaimToken != "" {
+	if o.State == StarterWorkspaceObjectStaged {
+		if !o.ContentVersion.IsZero() || o.MediaType != "" || o.SizeBytes != 0 || o.SHA256 != "" || o.ReclaimAfter.Valid || o.ClaimedAt.Valid || o.ClaimToken != "" {
 			return invalidModelError("StarterWorkspaceObject.Validate", "starter_workspace_object", "", "invalid staged Starter Workspace object", "")
 		}
 		return nil
 	}
-	if object.State != StarterWorkspaceObjectCurrent && object.State != StarterWorkspaceObjectReclaimable && object.State != StarterWorkspaceObjectClaimed {
+	if o.State != StarterWorkspaceObjectCurrent && o.State != StarterWorkspaceObjectReclaimable && o.State != StarterWorkspaceObjectClaimed {
 		return invalidModelError("StarterWorkspaceObject.Validate", "starter_workspace_object", "", "invalid Starter Workspace object state", "")
 	}
-	hasContent := !object.ContentVersion.IsZero() || object.MediaType != "" || object.SizeBytes != 0 || object.SHA256 != ""
+	hasContent := !o.ContentVersion.IsZero() || o.MediaType != "" || o.SizeBytes != 0 || o.SHA256 != ""
 	if hasContent {
-		if !object.ContentVersion.IsValid() || object.MediaType == "" || strings.TrimSpace(object.MediaType) != object.MediaType ||
-			len(object.MediaType) > 255 || object.SizeBytes < 0 || object.SizeBytes > StarterWorkspaceMaximumFileBytes || len(object.SHA256) != 64 {
+		if !o.ContentVersion.IsValid() || o.MediaType == "" || strings.TrimSpace(o.MediaType) != o.MediaType ||
+			len(o.MediaType) > 255 || o.SizeBytes < 0 || o.SizeBytes > StarterWorkspaceMaximumFileBytes || len(o.SHA256) != 64 {
 			return invalidModelError("StarterWorkspaceObject.Validate", "starter_workspace_object", "", "invalid Starter Workspace object content", "")
 		}
-		if _, err := hex.DecodeString(object.SHA256); err != nil {
+		if _, err := hex.DecodeString(o.SHA256); err != nil {
 			return invalidModelError("StarterWorkspaceObject.Validate", "starter_workspace_object", "", "invalid Starter Workspace checksum", "")
 		}
 	}
-	if object.State == StarterWorkspaceObjectCurrent {
+	if o.State == StarterWorkspaceObjectCurrent {
 		if !hasContent {
 			return invalidModelError("StarterWorkspaceObject.Validate", "starter_workspace_object", "", "current Starter Workspace object requires content", "")
 		}
-		if object.ReclaimAfter.Valid || object.ClaimedAt.Valid || object.ClaimToken != "" {
+		if o.ReclaimAfter.Valid || o.ClaimedAt.Valid || o.ClaimToken != "" {
 			return invalidModelError("StarterWorkspaceObject.Validate", "starter_workspace_object", "", "current Starter Workspace object cannot be claimed", "")
 		}
 		return nil
 	}
-	if !object.ReclaimAfter.Valid {
+	if !o.ReclaimAfter.Valid {
 		return invalidModelError("StarterWorkspaceObject.Validate", "starter_workspace_object", "", "reclaimable Starter Workspace object requires a deadline", "")
 	}
-	if object.State == StarterWorkspaceObjectReclaimable && (object.ClaimedAt.Valid || object.ClaimToken != "") {
+	if o.State == StarterWorkspaceObjectReclaimable && (o.ClaimedAt.Valid || o.ClaimToken != "") {
 		return invalidModelError("StarterWorkspaceObject.Validate", "starter_workspace_object", "", "unclaimed Starter Workspace object has claim metadata", "")
 	}
-	if object.State == StarterWorkspaceObjectClaimed && (!object.ClaimedAt.Valid || strings.TrimSpace(object.ClaimToken) == "") {
+	if o.State == StarterWorkspaceObjectClaimed && (!o.ClaimedAt.Valid || strings.TrimSpace(o.ClaimToken) == "") {
 		return invalidModelError("StarterWorkspaceObject.Validate", "starter_workspace_object", "", "claimed Starter Workspace object requires claim metadata", "")
 	}
 	return nil

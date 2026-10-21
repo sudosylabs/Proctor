@@ -54,20 +54,20 @@ func userAdministrationMutationCodes(extra ...string) []string {
 	return append(codes, "administration.unavailable")
 }
 
-func (module userAdministrationResourceModule) disable(request operationRequest) (operationResult, error) {
-	return module.setEnabled(request, false)
+func (m userAdministrationResourceModule) disable(request operationRequest) (operationResult, error) {
+	return m.setEnabled(request, false)
 }
 
-func (module userAdministrationResourceModule) enable(request operationRequest) (operationResult, error) {
-	return module.setEnabled(request, true)
+func (m userAdministrationResourceModule) enable(request operationRequest) (operationResult, error) {
+	return m.setEnabled(request, true)
 }
 
-func (module userAdministrationResourceModule) setEnabled(request operationRequest, enabled bool) (operationResult, error) {
+func (m userAdministrationResourceModule) setEnabled(request operationRequest, enabled bool) (operationResult, error) {
 	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	user, err := module.accounts.SetUserEnabled(
+	user, err := m.accounts.SetUserEnabled(
 		request.context,
 		request.invocation(),
 		application.SetUserEnabledCommand{ID: userID, Enabled: enabled},
@@ -78,12 +78,12 @@ func (module userAdministrationResourceModule) setEnabled(request operationReque
 	return jsonResult(http.StatusOK, userProfileResponseFromModel(user)), nil
 }
 
-func (module userAdministrationResourceModule) revokeAllSessions(request operationRequest) (operationResult, error) {
+func (m userAdministrationResourceModule) revokeAllSessions(request operationRequest) (operationResult, error) {
 	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	err = module.sessions.RevokeUserSessions(
+	err = m.sessions.RevokeUserSessions(
 		request.context,
 		request.invocation(),
 		application.RevokeUserSessionsCommand{UserID: userID},
@@ -94,7 +94,7 @@ func (module userAdministrationResourceModule) revokeAllSessions(request operati
 	return noContentResult(), nil
 }
 
-func (module userAdministrationResourceModule) listSessions(request operationRequest) (operationResult, error) {
+func (m userAdministrationResourceModule) listSessions(request operationRequest) (operationResult, error) {
 	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
@@ -105,7 +105,7 @@ func (module userAdministrationResourceModule) listSessions(request operationReq
 	if err != nil {
 		return operationResult{}, apperror.New("request.invalid").WithField("field", "include_revoked")
 	}
-	sessions, listErr := module.sessions.ListUserSessions(
+	sessions, listErr := m.sessions.ListUserSessions(
 		request.context,
 		request.invocation(),
 		application.ListUserSessionsQuery{UserID: userID, IncludeRevoked: includeRevoked},
@@ -121,7 +121,7 @@ func (module userAdministrationResourceModule) listSessions(request operationReq
 	return jsonResult(http.StatusOK, sessionResponsesFromModels(request.request, sessions)), nil
 }
 
-func (module userAdministrationResourceModule) revokeSession(request operationRequest) (operationResult, error) {
+func (m userAdministrationResourceModule) revokeSession(request operationRequest) (operationResult, error) {
 	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
@@ -130,7 +130,7 @@ func (module userAdministrationResourceModule) revokeSession(request operationRe
 	if err != nil {
 		return operationResult{}, err
 	}
-	err = module.sessions.RevokeUserSession(
+	err = m.sessions.RevokeUserSession(
 		request.context,
 		request.invocation(),
 		application.RevokeUserSessionCommand{UserID: userID, SessionID: sessionID},

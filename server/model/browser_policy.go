@@ -35,8 +35,8 @@ const (
 	BrowserPolicyHostExactAndSubdomains BrowserPolicyHostMatch = "exact_and_subdomains"
 )
 
-func (value BrowserPolicyHostMatch) IsValid() bool {
-	return value == BrowserPolicyHostExact || value == BrowserPolicyHostExactAndSubdomains
+func (v BrowserPolicyHostMatch) IsValid() bool {
+	return v == BrowserPolicyHostExact || v == BrowserPolicyHostExactAndSubdomains
 }
 
 type BrowserPolicyBlockedNavigationOutcome string
@@ -103,23 +103,23 @@ func NewBrowserPolicy(enabled bool, startRuleID string, rules []BrowserPolicyRul
 	return policy, nil
 }
 
-func (policy BrowserPolicy) Validate() error {
-	if policy.SchemaVersion != BrowserPolicySchemaVersion {
+func (p BrowserPolicy) Validate() error {
+	if p.SchemaVersion != BrowserPolicySchemaVersion {
 		return invalidModelError("BrowserPolicy.Validate", "browser_policy", "", "unsupported Browser Policy schema version", "")
 	}
-	if !policy.Enabled {
-		if policy.StartRuleID != "" || len(policy.Rules) != 0 {
+	if !p.Enabled {
+		if p.StartRuleID != "" || len(p.Rules) != 0 {
 			return invalidModelError("BrowserPolicy.Validate", "browser_policy", "", "disabled Browser Policy contains enabled fields", "")
 		}
 		return nil
 	}
-	if !validBrowserPolicyRuleID(policy.StartRuleID) || len(policy.Rules) < 1 || len(policy.Rules) > BrowserPolicyMaximumRules {
+	if !validBrowserPolicyRuleID(p.StartRuleID) || len(p.Rules) < 1 || len(p.Rules) > BrowserPolicyMaximumRules {
 		return invalidModelError("BrowserPolicy.Validate", "browser_policy", "", "invalid enabled Browser Policy", "")
 	}
-	ids := make(map[string]struct{}, len(policy.Rules))
-	matchKeys := make(map[string]struct{}, len(policy.Rules))
+	ids := make(map[string]struct{}, len(p.Rules))
+	matchKeys := make(map[string]struct{}, len(p.Rules))
 	previous := ""
-	for _, rule := range policy.Rules {
+	for _, rule := range p.Rules {
 		if !validBrowserPolicyRuleID(rule.RuleID) || rule.RuleID <= previous || !rule.HostMatch.IsValid() ||
 			!slices.Contains([]BrowserPolicyBlockedNavigationOutcome{BrowserPolicyBlockedNavigationRecord, BrowserPolicyBlockedNavigationIntegrityEvidence}, rule.BlockedNavigationOutcome) {
 			return invalidModelError("BrowserPolicy.Validate", "browser_policy", "", "invalid canonical Browser Policy rule", "")
@@ -145,19 +145,19 @@ func (policy BrowserPolicy) Validate() error {
 		}
 		ids[rule.RuleID], matchKeys[key], previous = struct{}{}, struct{}{}, rule.RuleID
 	}
-	if _, exists := ids[policy.StartRuleID]; !exists {
+	if _, exists := ids[p.StartRuleID]; !exists {
 		return invalidModelError("BrowserPolicy.Validate", "browser_policy", "", "Browser Policy start rule does not exist", "")
 	}
-	encoded, err := EncodeBrowserPolicy(policy)
+	encoded, err := EncodeBrowserPolicy(p)
 	if err != nil || len(encoded) > BrowserPolicyMaximumBytes {
 		return invalidModelError("BrowserPolicy.Validate", "browser_policy", "", "Browser Policy exceeds its canonical size limit", "")
 	}
 	return nil
 }
 
-func (policy BrowserPolicy) Clone() BrowserPolicy {
-	policy.Rules = append([]BrowserPolicyRule(nil), policy.Rules...)
-	return policy
+func (p BrowserPolicy) Clone() BrowserPolicy {
+	p.Rules = append([]BrowserPolicyRule(nil), p.Rules...)
+	return p
 }
 
 func validBrowserPolicyRuleID(value string) bool {
@@ -173,38 +173,38 @@ func validBrowserPolicyRuleID(value string) bool {
 	return true
 }
 
-func (policy BrowserPolicy) Match(rawURL string) (*BrowserPolicyRule, BrowserLocation, error) {
-	if err := policy.Validate(); err != nil {
+func (p BrowserPolicy) Match(rawURL string) (*BrowserPolicyRule, BrowserLocation, error) {
+	if err := p.Validate(); err != nil {
 		return nil, BrowserLocation{}, err
 	}
 	location, err := CanonicalizeBrowserLocation(rawURL)
 	if err != nil {
 		return nil, BrowserLocation{}, err
 	}
-	return policy.matchLocation(location), location, nil
+	return p.matchLocation(location), location, nil
 }
 
 // MatchLocation validates and selects a rule for already-minimized activity.
 // Its serialized path can be longer than the original navigation's UTF-16
 // input after browser escaping. Reconstructing a URL would apply the wrong
 // bound and could reinterpret bytes that the browser already serialized.
-func (policy BrowserPolicy) MatchLocation(location BrowserLocation) (*BrowserPolicyRule, error) {
-	if err := policy.Validate(); err != nil {
+func (p BrowserPolicy) MatchLocation(location BrowserLocation) (*BrowserPolicyRule, error) {
+	if err := p.Validate(); err != nil {
 		return nil, err
 	}
 	if err := location.Validate(); err != nil {
 		return nil, err
 	}
-	return policy.matchLocation(location), nil
+	return p.matchLocation(location), nil
 }
 
-func (policy BrowserPolicy) matchLocation(location BrowserLocation) *BrowserPolicyRule {
-	if !policy.Enabled {
+func (p BrowserPolicy) matchLocation(location BrowserLocation) *BrowserPolicyRule {
+	if !p.Enabled {
 		return nil
 	}
 	var selected *BrowserPolicyRule
-	for index := range policy.Rules {
-		rule := &policy.Rules[index]
+	for index := range p.Rules {
+		rule := &p.Rules[index]
 		parsed, _ := url.Parse(rule.Origin)
 		defaultPort := "443"
 		if parsed.Scheme == "http" {
@@ -350,8 +350,8 @@ func decodeBrowserPolicy(data []byte, requireCanonical bool) (BrowserPolicy, err
 	return policy, nil
 }
 
-func (rule *browserPolicyRuleWire) UnmarshalJSON(raw []byte) error {
-	if rule == nil {
+func (r *browserPolicyRuleWire) UnmarshalJSON(raw []byte) error {
+	if r == nil {
 		return invalidModelError("browserPolicyRuleWire.UnmarshalJSON", "browser_policy_rule_wire", "", "nil browser rule", "")
 	}
 	type wire browserPolicyRuleWire
@@ -359,18 +359,18 @@ func (rule *browserPolicyRuleWire) UnmarshalJSON(raw []byte) error {
 	if err := decodeClosedDeliveryDeclaration(raw, &decoded, BrowserPolicyMaximumBytes); err != nil {
 		return err
 	}
-	*rule = browserPolicyRuleWire(decoded)
+	*r = browserPolicyRuleWire(decoded)
 	return nil
 }
 
 // ValidateInstitutionOrigin checks the installation-owned HTTPS pin separately
 // from the portable policy shape. HTTP navigation never authorizes credential
 // transport and cannot be enabled by a caller-supplied institution identity.
-func (policy BrowserPolicy) ValidateInstitutionOrigin(institutionOrigin string) error {
-	if err := policy.Validate(); err != nil {
+func (p BrowserPolicy) ValidateInstitutionOrigin(institutionOrigin string) error {
+	if err := p.Validate(); err != nil {
 		return err
 	}
-	for _, rule := range policy.Rules {
+	for _, rule := range p.Rules {
 		if !rule.InstitutionHTTPException {
 			continue
 		}
@@ -405,11 +405,11 @@ func BrowserPolicyDigest(policy BrowserPolicy) (string, error) {
 
 // MayCreateIntegrityEvidence is derived from the delivered rules, never a
 // candidate assertion. Disabled collection cannot produce browser evidence.
-func (policy BrowserPolicy) MayCreateIntegrityEvidence() bool {
-	if !policy.Enabled {
+func (p BrowserPolicy) MayCreateIntegrityEvidence() bool {
+	if !p.Enabled {
 		return false
 	}
-	for _, rule := range policy.Rules {
+	for _, rule := range p.Rules {
 		if rule.BlockedNavigationOutcome == BrowserPolicyBlockedNavigationIntegrityEvidence {
 			return true
 		}

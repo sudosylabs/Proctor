@@ -703,9 +703,9 @@ type fixture struct {
 	mail        *scheduleMailPreparerFake
 }
 
-func (fixture fixture) sitting(t *testing.T) *model.ExamSitting {
+func (f fixture) sitting(t *testing.T) *model.ExamSitting {
 	t.Helper()
-	sitting, err := model.NewExamSitting(fixture.sittingID, fixture.examID, fixture.revisionID, fixture.classID,
+	sitting, err := model.NewExamSitting(f.sittingID, f.examID, f.revisionID, f.classID,
 		testNow.Add(time.Hour), testNow.Add(3*time.Hour), testNow)
 	if err != nil {
 		t.Fatal(err)
@@ -824,88 +824,88 @@ type scheduleMailPreparerFake struct {
 	err     error
 }
 
-func (fake *scheduleMailPreparerFake) Prepare(_ context.Context, request ScheduleMailRequest) (*store.ExamSittingMailFanout, error) {
-	fake.request = request
-	return fake.result, fake.err
+func (f *scheduleMailPreparerFake) Prepare(_ context.Context, request ScheduleMailRequest) (*store.ExamSittingMailFanout, error) {
+	f.request = request
+	return f.result, f.err
 }
 
-func (fake *sittingStoreFake) Resolve(_ context.Context, sittingID model.ExamSittingID) (*store.ExamSittingSnapshot, error) {
-	fake.resolveID = sittingID
-	if fake.getErr != nil {
-		return nil, fake.getErr
+func (f *sittingStoreFake) Resolve(_ context.Context, sittingID model.ExamSittingID) (*store.ExamSittingSnapshot, error) {
+	f.resolveID = sittingID
+	if f.getErr != nil {
+		return nil, f.getErr
 	}
-	return fake.snapshot, nil
+	return f.snapshot, nil
 }
 
-func (fake *sittingStoreFake) Schedule(_ context.Context, input *store.ExamSittingSchedule, command *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
-	fake.schedule, fake.command = input, command
-	if fake.err != nil {
-		return nil, fake.err
+func (f *sittingStoreFake) Schedule(_ context.Context, input *store.ExamSittingSchedule, command *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
+	f.schedule, f.command = input, command
+	if f.err != nil {
+		return nil, f.err
 	}
-	if fake.result != nil {
-		return fake.result, nil
+	if f.result != nil {
+		return f.result, nil
 	}
 	return &store.ExamSittingCommandResult{Value: &store.ExamSittingSnapshot{Sitting: input.Sitting}}, nil
 }
 
-func (fake *sittingStoreFake) Get(_ context.Context, examID model.ExamID, sittingID model.ExamSittingID) (*store.ExamSittingSnapshot, error) {
-	fake.getExamID, fake.getSittingID = examID, sittingID
-	return fake.snapshot, fake.getErr
+func (f *sittingStoreFake) Get(_ context.Context, examID model.ExamID, sittingID model.ExamSittingID) (*store.ExamSittingSnapshot, error) {
+	f.getExamID, f.getSittingID = examID, sittingID
+	return f.snapshot, f.getErr
 }
 
-func (fake *sittingStoreFake) List(_ context.Context, options store.ExamSittingListOptions) ([]store.ExamSittingSnapshot, error) {
-	fake.listOptions = options
-	return fake.items, fake.err
+func (f *sittingStoreFake) List(_ context.Context, options store.ExamSittingListOptions) ([]store.ExamSittingSnapshot, error) {
+	f.listOptions = options
+	return f.items, f.err
 }
 
-func (fake *sittingStoreFake) UpdateSchedule(_ context.Context, input *store.ExamSittingScheduleUpdate, command *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
-	fake.update, fake.command = input, command
-	return fake.result, fake.err
+func (f *sittingStoreFake) UpdateSchedule(_ context.Context, input *store.ExamSittingScheduleUpdate, command *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
+	f.update, f.command = input, command
+	return f.result, f.err
 }
 
-func (fake *sittingStoreFake) Cancel(_ context.Context, input *store.ExamSittingCancellation, command *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
-	fake.cancel, fake.command = input, command
-	return fake.result, fake.err
+func (f *sittingStoreFake) Cancel(_ context.Context, input *store.ExamSittingCancellation, command *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
+	f.cancel, f.command = input, command
+	return f.result, f.err
 }
 
-func (fake *sittingStoreFake) Pause(_ context.Context, input *store.ExamSittingManagerTransition, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
-	fake.pause, fake.command = input, command
-	return fake.lifecycle, fake.err
+func (f *sittingStoreFake) Pause(_ context.Context, input *store.ExamSittingManagerTransition, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+	f.pause, f.command = input, command
+	return f.lifecycle, f.err
 }
 
-func (fake *sittingStoreFake) Resume(_ context.Context, input *store.ExamSittingManagerTransition, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
-	fake.resume, fake.command = input, command
-	return fake.lifecycle, fake.err
+func (f *sittingStoreFake) Resume(_ context.Context, input *store.ExamSittingManagerTransition, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+	f.resume, f.command = input, command
+	return f.lifecycle, f.err
 }
 
-func (fake *sittingStoreFake) Extend(_ context.Context, input *store.ExamSittingExtension, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
-	fake.extend, fake.command = input, command
-	return fake.lifecycle, fake.err
+func (f *sittingStoreFake) Extend(_ context.Context, input *store.ExamSittingExtension, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+	f.extend, f.command = input, command
+	return f.lifecycle, f.err
 }
 
-func (fake *sittingStoreFake) EarlyClose(_ context.Context, input *store.ExamSittingManagerTransition, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
-	fake.earlyClose, fake.command = input, command
-	return fake.lifecycle, fake.err
+func (f *sittingStoreFake) EarlyClose(_ context.Context, input *store.ExamSittingManagerTransition, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+	f.earlyClose, f.command = input, command
+	return f.lifecycle, f.err
 }
 
-func (fake *sittingStoreFake) AdvanceDue(_ context.Context, input *store.ExamSittingDueAdvance) (*store.ExamSittingLifecycleResult, error) {
-	fake.advance = input
-	return fake.lifecycle, fake.err
+func (f *sittingStoreFake) AdvanceDue(_ context.Context, input *store.ExamSittingDueAdvance) (*store.ExamSittingLifecycleResult, error) {
+	f.advance = input
+	return f.lifecycle, f.err
 }
 
-func (fake *sittingStoreFake) FinishSealing(_ context.Context, input *store.ExamSittingFinishSealing) (*store.ExamSittingLifecycleResult, error) {
-	fake.finish = input
-	return fake.lifecycle, fake.err
+func (f *sittingStoreFake) FinishSealing(_ context.Context, input *store.ExamSittingFinishSealing) (*store.ExamSittingLifecycleResult, error) {
+	f.finish = input
+	return f.lifecycle, f.err
 }
 
-func (fake *sittingStoreFake) ListLifecycleDue(_ context.Context, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
-	fake.dueOptions = options
-	return fake.due, fake.err
+func (f *sittingStoreFake) ListLifecycleDue(_ context.Context, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
+	f.dueOptions = options
+	return f.due, f.err
 }
 
-func (fake *sittingStoreFake) ListNoShows(_ context.Context, options store.ExamSittingNoShowListOptions) ([]store.ExamSittingNoShow, error) {
-	fake.noShowOptions = options
-	return fake.noShows, fake.err
+func (f *sittingStoreFake) ListNoShows(_ context.Context, options store.ExamSittingNoShowListOptions) ([]store.ExamSittingNoShow, error) {
+	f.noShowOptions = options
+	return f.noShows, f.err
 }
 
 type accessFake struct {
@@ -913,8 +913,8 @@ type accessFake struct {
 	err      error
 }
 
-func (fake *accessFake) Access(context.Context, model.ExamID, model.UserID) (*store.ExamAccessSnapshot, error) {
-	return fake.snapshot, fake.err
+func (f *accessFake) Access(context.Context, model.ExamID, model.UserID) (*store.ExamAccessSnapshot, error) {
+	return f.snapshot, f.err
 }
 
 type membershipsFake struct {
@@ -923,9 +923,9 @@ type membershipsFake struct {
 	at    time.Time
 }
 
-func (fake *membershipsFake) ListActiveByUser(_ context.Context, _ model.UserID, at time.Time) ([]*model.AcademicUnitMember, error) {
-	fake.at = at
-	return fake.items, fake.err
+func (f *membershipsFake) ListActiveByUser(_ context.Context, _ model.UserID, at time.Time) ([]*model.AcademicUnitMember, error) {
+	f.at = at
+	return f.items, f.err
 }
 
 type authorizerFake struct {
@@ -936,14 +936,14 @@ type authorizerFake struct {
 	denyErr  error
 }
 
-func (fake *authorizerFake) Authorize(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource) error {
-	fake.action, fake.resource = action, resource
-	return fake.err
+func (f *authorizerFake) Authorize(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource) error {
+	f.action, f.resource = action, resource
+	return f.err
 }
 
-func (fake *authorizerFake) RecordDenial(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource, _ model.AcademicUnitID) error {
-	fake.action, fake.resource, fake.denied = action, resource, true
-	return fake.denyErr
+func (f *authorizerFake) RecordDenial(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource, _ model.AcademicUnitID) error {
+	f.action, f.resource, f.denied = action, resource, true
+	return f.denyErr
 }
 
 type auditorFake struct {
@@ -957,14 +957,14 @@ type auditorFake struct {
 	failErr   error
 }
 
-func (fake *auditorFake) BeginAtScope(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource, _ model.RoleScopeType, _, operation string, value, _ map[string]any) (model.AuditEventID, error) {
-	fake.action, fake.resource, fake.operation, fake.value = action, resource, operation, value
-	return model.AuditEventID(fake.id), fake.err
+func (f *auditorFake) BeginAtScope(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource, _ model.RoleScopeType, _, operation string, value, _ map[string]any) (model.AuditEventID, error) {
+	f.action, f.resource, f.operation, f.value = action, resource, operation, value
+	return model.AuditEventID(f.id), f.err
 }
 
-func (fake *auditorFake) Fail(_ context.Context, _ model.AuditEventID, code string) error {
-	fake.failCode = code
-	return fake.failErr
+func (f *auditorFake) Fail(_ context.Context, _ model.AuditEventID, code string) error {
+	f.failCode = code
+	return f.failErr
 }
 
 type effectEvent struct {
@@ -981,30 +981,30 @@ type effectsFake struct {
 	reported []error
 }
 
-func (fake *effectsFake) LifecycleChanged(_ context.Context, examID model.ExamID, sittingID model.ExamSittingID,
+func (f *effectsFake) LifecycleChanged(_ context.Context, examID model.ExamID, sittingID model.ExamSittingID,
 	state model.ExamSittingState, revision int64, transition store.ExamSittingLifecycleTransitionCode, scheduledEndAt, at time.Time,
 ) error {
-	fake.events = append(fake.events, effectEvent{kind: string(transition), examID: examID, sittingID: sittingID, state: state, revision: revision, at: at})
+	f.events = append(f.events, effectEvent{kind: string(transition), examID: examID, sittingID: sittingID, state: state, revision: revision, at: at})
 	return nil
 }
 
-func (fake *effectsFake) Scheduled(_ context.Context, examID model.ExamID, sittingID model.ExamSittingID, state model.ExamSittingState, revision int64, at time.Time) error {
-	fake.events = append(fake.events, effectEvent{kind: "scheduled", examID: examID, sittingID: sittingID, state: state, revision: revision, at: at})
+func (f *effectsFake) Scheduled(_ context.Context, examID model.ExamID, sittingID model.ExamSittingID, state model.ExamSittingState, revision int64, at time.Time) error {
+	f.events = append(f.events, effectEvent{kind: "scheduled", examID: examID, sittingID: sittingID, state: state, revision: revision, at: at})
 	return nil
 }
 
-func (fake *effectsFake) ScheduleUpdated(_ context.Context, examID model.ExamID, sittingID model.ExamSittingID, state model.ExamSittingState, revision int64, at time.Time) error {
-	fake.events = append(fake.events, effectEvent{kind: "schedule_updated", examID: examID, sittingID: sittingID, state: state, revision: revision, at: at})
+func (f *effectsFake) ScheduleUpdated(_ context.Context, examID model.ExamID, sittingID model.ExamSittingID, state model.ExamSittingState, revision int64, at time.Time) error {
+	f.events = append(f.events, effectEvent{kind: "schedule_updated", examID: examID, sittingID: sittingID, state: state, revision: revision, at: at})
 	return nil
 }
 
-func (fake *effectsFake) Canceled(_ context.Context, examID model.ExamID, sittingID model.ExamSittingID, state model.ExamSittingState, revision int64, at time.Time) error {
-	fake.events = append(fake.events, effectEvent{kind: "canceled", examID: examID, sittingID: sittingID, state: state, revision: revision, at: at})
+func (f *effectsFake) Canceled(_ context.Context, examID model.ExamID, sittingID model.ExamSittingID, state model.ExamSittingState, revision int64, at time.Time) error {
+	f.events = append(f.events, effectEvent{kind: "canceled", examID: examID, sittingID: sittingID, state: state, revision: revision, at: at})
 	return nil
 }
 
-func (fake *effectsFake) Report(_ context.Context, _ string, err error) {
-	fake.reported = append(fake.reported, err)
+func (f *effectsFake) Report(_ context.Context, _ string, err error) {
+	f.reported = append(f.reported, err)
 }
 
 type systemAuditorFake struct {
@@ -1018,15 +1018,15 @@ type systemAuditorFake struct {
 	err, failErr            error
 }
 
-func (fake *systemAuditorFake) Begin(_ context.Context, system invocation.System, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
-	fake.system, fake.action, fake.resource, fake.operation, fake.value = system, action, resource, operation, value
-	fake.scopeType, fake.scopeID = scopeType, scopeID
-	return model.AuditEventID(fake.id), fake.err
+func (f *systemAuditorFake) Begin(_ context.Context, system invocation.System, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
+	f.system, f.action, f.resource, f.operation, f.value = system, action, resource, operation, value
+	f.scopeType, f.scopeID = scopeType, scopeID
+	return model.AuditEventID(f.id), f.err
 }
 
-func (fake *systemAuditorFake) Fail(_ context.Context, _ model.AuditEventID, code string) error {
-	fake.failCode = code
-	return fake.failErr
+func (f *systemAuditorFake) Fail(_ context.Context, _ model.AuditEventID, code string) error {
+	f.failCode = code
+	return f.failErr
 }
 
 type lifecycleJobFactoryFake struct {
@@ -1036,18 +1036,18 @@ type lifecycleJobFactoryFake struct {
 	err                                                         error
 }
 
-func (fake *lifecycleJobFactoryFake) BoundaryJobs(_ model.ExamSittingID, revision int64, startAt, endAt time.Time) (*model.Job, *model.Job, error) {
-	fake.boundaryRevision, fake.boundaryStart, fake.boundaryEnd = revision, startAt, endAt
-	return fake.open, fake.deadline, fake.err
+func (f *lifecycleJobFactoryFake) BoundaryJobs(_ model.ExamSittingID, revision int64, startAt, endAt time.Time) (*model.Job, *model.Job, error) {
+	f.boundaryRevision, f.boundaryStart, f.boundaryEnd = revision, startAt, endAt
+	return f.open, f.deadline, f.err
 }
 
-func (fake *lifecycleJobFactoryFake) DeadlineJob(_ model.ExamSittingID, revision int64, deadline time.Time) (*model.Job, error) {
-	fake.deadlineRevision, fake.deadlineAt = revision, deadline
-	return fake.deadline, fake.err
+func (f *lifecycleJobFactoryFake) DeadlineJob(_ model.ExamSittingID, revision int64, deadline time.Time) (*model.Job, error) {
+	f.deadlineRevision, f.deadlineAt = revision, deadline
+	return f.deadline, f.err
 }
 
-func (fake *lifecycleJobFactoryFake) FinalizeJob(_ model.ExamSittingID, revision int64, availableAt time.Time) (*model.Job, error) {
-	fake.finalizeRevision = revision
-	fake.finalizeAvailableAt = availableAt
-	return fake.finalize, fake.err
+func (f *lifecycleJobFactoryFake) FinalizeJob(_ model.ExamSittingID, revision int64, availableAt time.Time) (*model.Job, error) {
+	f.finalizeRevision = revision
+	f.finalizeAvailableAt = availableAt
+	return f.finalize, f.err
 }

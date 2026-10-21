@@ -66,8 +66,8 @@ func executeForTest(ctx context.Context, args []string, stdin io.Reader, execute
 
 type commandTestLocalizer map[string]string
 
-func (localizer commandTestLocalizer) Translate(_ string, id string, _ any) (string, error) {
-	translated, ok := localizer[id]
+func (l commandTestLocalizer) Translate(_ string, id string, _ any) (string, error) {
+	translated, ok := l[id]
 	if !ok {
 		return "", errors.New("translation unavailable")
 	}

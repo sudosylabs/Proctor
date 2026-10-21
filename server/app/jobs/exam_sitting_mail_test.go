@@ -155,53 +155,53 @@ type sittingMailExpansionStoreFake struct {
 	completed  model.MailOccurrenceID
 }
 
-func (fake *sittingMailExpansionStoreFake) GetMailFanout(context.Context, model.MailOccurrenceID) (*store.ExamSittingMailFanoutSnapshot, error) {
-	return fake.fanout, nil
+func (f *sittingMailExpansionStoreFake) GetMailFanout(context.Context, model.MailOccurrenceID) (*store.ExamSittingMailFanoutSnapshot, error) {
+	return f.fanout, nil
 }
 
-func (fake *sittingMailExpansionStoreFake) ListMailRecipients(_ context.Context,
+func (f *sittingMailExpansionStoreFake) ListMailRecipients(_ context.Context,
 	request store.ExamSittingMailRecipientPageRequest,
 ) (*store.ExamSittingMailRecipientPage, error) {
 	start := 0
 	if request.AfterUserID.IsValid() {
-		for index := range fake.users {
-			if fake.users[index].ID == request.AfterUserID {
+		for index := range f.users {
+			if f.users[index].ID == request.AfterUserID {
 				start = index + 1
 				break
 			}
 		}
 	}
 	end := start + request.Limit
-	if end > len(fake.users) {
-		end = len(fake.users)
+	if end > len(f.users) {
+		end = len(f.users)
 	}
-	page := &store.ExamSittingMailRecipientPage{Fanout: fake.fanout, More: end < len(fake.users)}
-	for _, user := range fake.users[start:end] {
+	page := &store.ExamSittingMailRecipientPage{Fanout: f.fanout, More: end < len(f.users)}
+	for _, user := range f.users[start:end] {
 		page.Recipients = append(page.Recipients, store.ExamSittingMailRecipient{User: user, TemplateKey: model.MailTemplateExamSittingScheduled})
 	}
 	return page, nil
 }
 
-func (fake *sittingMailExpansionStoreFake) CommitMailRecipient(_ context.Context,
+func (f *sittingMailExpansionStoreFake) CommitMailRecipient(_ context.Context,
 	input *store.ExamSittingMailRecipientCommit,
 ) (*store.ExamSittingMailRecipientResult, error) {
-	fake.commits = append(fake.commits, input)
-	if input.Recipient.ID == fake.conflictID {
+	f.commits = append(f.commits, input)
+	if input.Recipient.ID == f.conflictID {
 		return nil, store.NewErrConflict("exam_sitting_mail_recipient", "changed", errors.New("changed"))
 	}
-	if fake.inserted == nil {
-		fake.inserted = make(map[model.UserID]bool)
+	if f.inserted == nil {
+		f.inserted = make(map[model.UserID]bool)
 	}
-	if fake.inserted[input.Recipient.ID] {
+	if f.inserted[input.Recipient.ID] {
 		return &store.ExamSittingMailRecipientResult{Delivery: input.Delivery, Inserted: false}, nil
 	}
-	fake.inserted[input.Recipient.ID] = true
+	f.inserted[input.Recipient.ID] = true
 	return &store.ExamSittingMailRecipientResult{Delivery: input.Delivery, Inserted: true}, nil
 }
 
-func (fake *sittingMailExpansionStoreFake) CompleteMailExpansion(_ context.Context,
+func (f *sittingMailExpansionStoreFake) CompleteMailExpansion(_ context.Context,
 	input *store.ExamSittingMailExpansionCompletion,
 ) (*store.ExamSittingMailFanoutSnapshot, error) {
-	fake.completed = input.OccurrenceID
-	return fake.fanout, nil
+	f.completed = input.OccurrenceID
+	return f.fanout, nil
 }

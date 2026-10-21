@@ -25,12 +25,12 @@ type builtInRoleReconciliationStoreFake struct {
 	err    error
 }
 
-func (fake *builtInRoleReconciliationStoreFake) ReconcileSystemAdministratorRole(
+func (f *builtInRoleReconciliationStoreFake) ReconcileSystemAdministratorRole(
 	_ context.Context,
 	input *store.SystemAdministratorRoleReconciliation,
 ) (*store.SystemAdministratorRoleReconciliationResult, error) {
-	fake.input = input
-	return fake.result, fake.err
+	f.input = input
+	return f.result, f.err
 }
 
 func TestBootstrapServiceReconcilesSystemAdministratorRoleFromRegistry(t *testing.T) {

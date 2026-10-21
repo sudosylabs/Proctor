@@ -34,33 +34,33 @@ type authenticationEntryHTTPApplication struct {
 	registrationError   error
 }
 
-func (applicationFake *authenticationEntryHTTPApplication) RegisterLocalUser(
+func (af *authenticationEntryHTTPApplication) RegisterLocalUser(
 	_ context.Context,
 	_ application.Invocation,
 	command application.RegisterLocalUserCommand,
 ) error {
-	applicationFake.registrationCommand = command
-	applicationFake.registrationCalls++
-	return applicationFake.registrationError
+	af.registrationCommand = command
+	af.registrationCalls++
+	return af.registrationError
 }
 
-func (applicationFake *authenticationEntryHTTPApplication) Login(
+func (af *authenticationEntryHTTPApplication) Login(
 	_ context.Context,
 	_ application.Invocation,
 	command application.LoginCommand,
 ) (*application.LoginResult, error) {
-	applicationFake.loginCommand = command
-	applicationFake.loginCalls++
-	return applicationFake.loginResult, applicationFake.loginError
+	af.loginCommand = command
+	af.loginCalls++
+	return af.loginResult, af.loginError
 }
 
-func (applicationFake *authenticationEntryHTTPApplication) Logout(
+func (af *authenticationEntryHTTPApplication) Logout(
 	_ context.Context,
 	_ application.Invocation,
 	command application.LogoutCommand,
 ) error {
-	applicationFake.logoutCommand = command
-	applicationFake.logoutCalls++
+	af.logoutCommand = command
+	af.logoutCalls++
 	return nil
 }
 
@@ -74,17 +74,17 @@ type externalAuthenticationEntryHTTPApplication struct {
 	completion      *model.ExternalAuthenticationCompletion
 }
 
-func (applicationFake *externalAuthenticationEntryHTTPApplication) CompleteExternalAuthentication(
+func (af *externalAuthenticationEntryHTTPApplication) CompleteExternalAuthentication(
 	_ context.Context,
 	_ application.Invocation,
 	command application.CompleteExternalAuthenticationCommand,
 ) (*model.ExternalAuthenticationCompletion, error) {
-	applicationFake.completeCommand = command
-	return applicationFake.completion, nil
+	af.completeCommand = command
+	return af.completion, nil
 }
 
-func (applicationFake *externalAuthenticationEntryHTTPApplication) ExternalAuthenticationProviders(context.Context) ([]model.ExternalAuthenticationProvider, error) {
-	return applicationFake.providers, applicationFake.providersError
+func (af *externalAuthenticationEntryHTTPApplication) ExternalAuthenticationProviders(context.Context) ([]model.ExternalAuthenticationProvider, error) {
+	return af.providers, af.providersError
 }
 
 func TestExternalAuthenticationCallbackReturnsValidatedRedirectAndCookies(t *testing.T) {
@@ -121,13 +121,13 @@ func TestExternalAuthenticationCallbackReturnsValidatedRedirectAndCookies(t *tes
 	}
 }
 
-func (applicationFake *externalAuthenticationEntryHTTPApplication) BeginExternalAuthentication(
+func (af *externalAuthenticationEntryHTTPApplication) BeginExternalAuthentication(
 	_ context.Context,
 	_ application.Invocation,
 	command application.BeginExternalAuthenticationCommand,
 ) (*model.ExternalAuthenticationStart, error) {
-	applicationFake.beginCommand = command
-	return applicationFake.start, nil
+	af.beginCommand = command
+	return af.start, nil
 }
 
 func TestExternalAuthenticationLoginDefaultsToWebAndNeverCreatesDesktopSessionsDirectly(t *testing.T) {

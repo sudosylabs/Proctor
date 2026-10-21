@@ -375,21 +375,21 @@ func nullableJSON(value []byte) any {
 
 type jsonValue []byte
 
-func (value jsonValue) Value() (driver.Value, error) {
-	if len(value) == 0 {
+func (v jsonValue) Value() (driver.Value, error) {
+	if len(v) == 0 {
 		return nil, nil
 	}
-	return string(value), nil
+	return string(v), nil
 }
 
-func (value *jsonValue) Scan(source any) error {
+func (v *jsonValue) Scan(source any) error {
 	switch typed := source.(type) {
 	case nil:
-		*value = nil
+		*v = nil
 	case []byte:
-		*value = append((*value)[:0], typed...)
+		*v = append((*v)[:0], typed...)
 	case string:
-		*value = append((*value)[:0], typed...)
+		*v = append((*v)[:0], typed...)
 	default:
 		return fmt.Errorf("scan JSON value from %T", source)
 	}

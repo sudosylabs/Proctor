@@ -42,6 +42,6 @@ func parseServiceEnvironment(value string) (ServiceEnvironment, error) {
 	return environment, nil
 }
 
-func (environment ServiceEnvironment) valid() bool {
-	return environment == ServiceEnvironmentProduction || environment == ServiceEnvironmentTest || environment == ServiceEnvironmentDev
+func (e ServiceEnvironment) valid() bool {
+	return e == ServiceEnvironmentProduction || e == ServiceEnvironmentTest || e == ServiceEnvironmentDev
 }

@@ -19,15 +19,15 @@ import (
 
 type NativeConditionListQuery = store.NativeConditionListOptions
 
-func (service *Service) ListNativeConditions(ctx context.Context, invocation invocation.Invocation, query NativeConditionListQuery) (_ *store.NativeConditionPage, resultErr error) {
+func (s *Service) ListNativeConditions(ctx context.Context, invocation invocation.Invocation, query NativeConditionListQuery) (_ *store.NativeConditionPage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.SubmissionID.IsValid() || query.Limit < 1 || query.Limit > 100 || query.AfterID != "" && !query.AfterID.IsValid() {
 		return nil, apperror.Invalid("exam.integrity_review.invalid", "native_condition_list")
 	}
-	if err := service.deps.Authorizer.AuthorizeView(ctx, invocation, query.SubmissionID); err != nil {
+	if err := s.deps.Authorizer.AuthorizeView(ctx, invocation, query.SubmissionID); err != nil {
 		return nil, err
 	}
-	page, err := service.deps.Persistence.ListNativeConditions(ctx, query)
+	page, err := s.deps.Persistence.ListNativeConditions(ctx, query)
 	if err != nil {
 		return nil, storeErrors.Translate(err)
 	}

@@ -29,8 +29,8 @@ func (*recordingOnboardingImportApplication) UploadOnboardingImport(context.Cont
 	return application.OnboardingImportView{}, nil
 }
 
-func (candidate *recordingOnboardingImportApplication) GetOnboardingImport(_ context.Context, _ application.Invocation, id model.OnboardingImportID) (application.OnboardingImportView, []application.OnboardingImportRowView, error) {
-	candidate.getID = id.String()
+func (c *recordingOnboardingImportApplication) GetOnboardingImport(_ context.Context, _ application.Invocation, id model.OnboardingImportID) (application.OnboardingImportView, []application.OnboardingImportRowView, error) {
+	c.getID = id.String()
 	return application.OnboardingImportView{}, nil, nil
 }
 

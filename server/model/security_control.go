@@ -273,15 +273,15 @@ func (r SecurityCoverageResult) Validate() error {
 	return nil
 }
 
-func (v NativeSourceReset) MarshalJSON() ([]byte, error) {
+func (r NativeSourceReset) MarshalJSON() ([]byte, error) {
 	type wire NativeSourceReset
 	return json.Marshal(struct {
 		*wire
 		OccurredAt securityJSONInstant `json:"occurred_at"`
-	}{wire: (*wire)(&v), OccurredAt: securityJSONInstant{Time: v.OccurredAt, spelling: v.occurredAtSpelling}})
+	}{wire: (*wire)(&r), OccurredAt: securityJSONInstant{Time: r.OccurredAt, spelling: r.occurredAtSpelling}})
 }
-func (v *NativeSourceReset) UnmarshalJSON(raw []byte) error {
-	if v == nil {
+func (r *NativeSourceReset) UnmarshalJSON(raw []byte) error {
+	if r == nil {
 		return ErrSecurityControlInvalid
 	}
 	type wire NativeSourceReset
@@ -299,6 +299,6 @@ func (v *NativeSourceReset) UnmarshalJSON(raw []byte) error {
 	if candidate.Validate() != nil {
 		return ErrSecurityControlInvalid
 	}
-	*v = candidate
+	*r = candidate
 	return nil
 }

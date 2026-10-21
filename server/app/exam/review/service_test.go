@@ -224,64 +224,64 @@ type reviewStoreFake struct {
 	prepareErr  error
 }
 
-func (fake *reviewStoreFake) PrepareRelease(context.Context, model.SubmissionID, model.SubmissionReviewID,
+func (f *reviewStoreFake) PrepareRelease(context.Context, model.SubmissionID, model.SubmissionReviewID,
 	int64,
 ) (*store.ExamIntegrityReviewReleasePreparation, error) {
-	if fake.prepareErr != nil {
-		return nil, fake.prepareErr
+	if f.prepareErr != nil {
+		return nil, f.prepareErr
 	}
-	return &store.ExamIntegrityReviewReleasePreparation{Replayed: fake.replayed, ReleaseAt: fake.f.at.Add(time.Minute)}, nil
+	return &store.ExamIntegrityReviewReleasePreparation{Replayed: f.replayed, ReleaseAt: f.f.at.Add(time.Minute)}, nil
 }
 
-func (fake *reviewStoreFake) Resolve(context.Context, model.SubmissionID) (*store.ExamIntegrityReviewAuthorization, error) {
-	return &store.ExamIntegrityReviewAuthorization{SubmissionID: fake.f.submissionID, ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), AttemptID: fake.f.attemptID, CandidateUserID: fake.f.userID, AcademicUnitID: model.NewAcademicUnitID()}, nil
+func (f *reviewStoreFake) Resolve(context.Context, model.SubmissionID) (*store.ExamIntegrityReviewAuthorization, error) {
+	return &store.ExamIntegrityReviewAuthorization{SubmissionID: f.f.submissionID, ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), AttemptID: f.f.attemptID, CandidateUserID: f.f.userID, AcademicUnitID: model.NewAcademicUnitID()}, nil
 }
-func (fake *reviewStoreFake) Get(context.Context, model.SubmissionID) (*store.ExamSubmissionReviewSnapshot, error) {
+func (f *reviewStoreFake) Get(context.Context, model.SubmissionID) (*store.ExamSubmissionReviewSnapshot, error) {
 	return nil, errors.New("unused")
 }
-func (fake *reviewStoreFake) ListFlags(context.Context, store.ExamIntegrityFlagListOptions) (*store.ExamIntegrityFlagPage, error) {
+func (f *reviewStoreFake) ListFlags(context.Context, store.ExamIntegrityFlagListOptions) (*store.ExamIntegrityFlagPage, error) {
 	return nil, errors.New("unused")
 }
-func (fake *reviewStoreFake) ListEvidence(context.Context, store.ExamIntegrityEvidenceListOptions) (*store.ExamIntegrityEvidencePage, error) {
+func (f *reviewStoreFake) ListEvidence(context.Context, store.ExamIntegrityEvidenceListOptions) (*store.ExamIntegrityEvidencePage, error) {
 	return nil, errors.New("unused")
 }
-func (fake *reviewStoreFake) ListDiscrepancies(context.Context, store.ExamIntegrityDiscrepancyListOptions) (*store.ExamIntegrityDiscrepancyPage, error) {
+func (f *reviewStoreFake) ListDiscrepancies(context.Context, store.ExamIntegrityDiscrepancyListOptions) (*store.ExamIntegrityDiscrepancyPage, error) {
 	return nil, errors.New("unused")
 }
-func (fake *reviewStoreFake) SaveDecision(_ context.Context, input *store.ExamIntegrityReviewDecisionMutation, command *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
-	fake.decision, fake.idempotency = input, command
-	review, _ := model.NewSubmissionReview(input.ReviewID, fake.f.submissionID, fake.f.userID, fake.f.at)
-	decision, _ := model.NewIntegrityReviewDecision(input.DecisionID, review.ID, fake.f.flagID,
-		model.IntegrityReviewConfirmed, fake.f.userID, "The retained continuity evidence was verified.", fake.f.at)
-	return &store.ExamIntegrityReviewMutationResult{Authorization: *mustReviewAuthorization(fake), Review: review, Decision: decision, Replayed: fake.replayed}, nil
+func (f *reviewStoreFake) SaveDecision(_ context.Context, input *store.ExamIntegrityReviewDecisionMutation, command *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
+	f.decision, f.idempotency = input, command
+	review, _ := model.NewSubmissionReview(input.ReviewID, f.f.submissionID, f.f.userID, f.f.at)
+	decision, _ := model.NewIntegrityReviewDecision(input.DecisionID, review.ID, f.f.flagID,
+		model.IntegrityReviewConfirmed, f.f.userID, "The retained continuity evidence was verified.", f.f.at)
+	return &store.ExamIntegrityReviewMutationResult{Authorization: *mustReviewAuthorization(f), Review: review, Decision: decision, Replayed: f.replayed}, nil
 }
-func (fake *reviewStoreFake) UpdateDraft(_ context.Context, input *store.ExamIntegrityReviewDraftMutation, command *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
-	fake.draft, fake.idempotency = input, command
-	review, _ := model.NewSubmissionReview(fake.f.reviewID, fake.f.submissionID, fake.f.userID, fake.f.at.Add(-time.Minute))
-	_ = review.UpdateDraft(input.ExpectedReviewRevision, input.ManagerNotes, input.StudentRemarksMarkdown, fake.f.at)
-	return &store.ExamIntegrityReviewMutationResult{Authorization: *mustReviewAuthorization(fake), Review: review}, nil
+func (f *reviewStoreFake) UpdateDraft(_ context.Context, input *store.ExamIntegrityReviewDraftMutation, command *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
+	f.draft, f.idempotency = input, command
+	review, _ := model.NewSubmissionReview(f.f.reviewID, f.f.submissionID, f.f.userID, f.f.at.Add(-time.Minute))
+	_ = review.UpdateDraft(input.ExpectedReviewRevision, input.ManagerNotes, input.StudentRemarksMarkdown, f.f.at)
+	return &store.ExamIntegrityReviewMutationResult{Authorization: *mustReviewAuthorization(f), Review: review}, nil
 }
-func (fake *reviewStoreFake) Finalize(_ context.Context, _ *store.ExamIntegrityReviewFinalize, command *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
+func (f *reviewStoreFake) Finalize(_ context.Context, _ *store.ExamIntegrityReviewFinalize, command *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
 	if command != nil {
-		fake.idempotency = command
+		f.idempotency = command
 	}
-	review, _ := model.NewSubmissionReview(fake.f.reviewID, fake.f.submissionID, fake.f.userID, fake.f.at.Add(-time.Minute))
-	_ = review.UpdateDraft(1, "", "", fake.f.at.Add(-30*time.Second))
-	_ = review.Finalize(2, fake.f.userID, 0, 0, 0, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", fake.f.at)
-	return &store.ExamIntegrityReviewMutationResult{Authorization: *mustReviewAuthorization(fake), Review: review}, nil
+	review, _ := model.NewSubmissionReview(f.f.reviewID, f.f.submissionID, f.f.userID, f.f.at.Add(-time.Minute))
+	_ = review.UpdateDraft(1, "", "", f.f.at.Add(-30*time.Second))
+	_ = review.Finalize(2, f.f.userID, 0, 0, 0, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", f.f.at)
+	return &store.ExamIntegrityReviewMutationResult{Authorization: *mustReviewAuthorization(f), Review: review}, nil
 }
-func (fake *reviewStoreFake) Release(_ context.Context, input *store.ExamIntegrityReviewRelease, command *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
-	fake.release, fake.idempotency = input, command
-	result, _ := fake.Finalize(context.Background(), nil, nil)
-	_ = result.Review.Release(3, fake.f.userID, fake.f.at.Add(time.Minute))
-	result.Replayed = fake.replayed
+func (f *reviewStoreFake) Release(_ context.Context, input *store.ExamIntegrityReviewRelease, command *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
+	f.release, f.idempotency = input, command
+	result, _ := f.Finalize(context.Background(), nil, nil)
+	_ = result.Review.Release(3, f.f.userID, f.f.at.Add(time.Minute))
+	result.Replayed = f.replayed
 	return result, nil
 }
-func (fake *reviewStoreFake) GetReleasedStudentResult(_ context.Context, attemptID model.ExamAttemptID, candidateID model.UserID) (*model.StudentResult, error) {
-	if fake.student == nil || fake.student.AttemptID != attemptID || fake.student.CandidateUserID != candidateID {
+func (f *reviewStoreFake) GetReleasedStudentResult(_ context.Context, attemptID model.ExamAttemptID, candidateID model.UserID) (*model.StudentResult, error) {
+	if f.student == nil || f.student.AttemptID != attemptID || f.student.CandidateUserID != candidateID {
 		return nil, store.NewErrNotFound("student_result", attemptID.String())
 	}
-	clone := *fake.student
+	clone := *f.student
 	return &clone, nil
 }
 
@@ -299,12 +299,12 @@ type reviewAuthorizerFake struct {
 func (*reviewAuthorizerFake) AuthorizeView(context.Context, invocation.Invocation, model.SubmissionID) error {
 	return nil
 }
-func (fake *reviewAuthorizerFake) AuthorizeReview(_ context.Context, _ invocation.Invocation, id model.SubmissionID) (bool, error) {
-	fake.reviewSubmission, fake.reviewCalls = id, fake.reviewCalls+1
+func (f *reviewAuthorizerFake) AuthorizeReview(_ context.Context, _ invocation.Invocation, id model.SubmissionID) (bool, error) {
+	f.reviewSubmission, f.reviewCalls = id, f.reviewCalls+1
 	return false, nil
 }
-func (fake *reviewAuthorizerFake) AuthorizeRelease(_ context.Context, _ invocation.Invocation, _ model.SubmissionID) (bool, error) {
-	fake.releaseCalls++
+func (f *reviewAuthorizerFake) AuthorizeRelease(_ context.Context, _ invocation.Invocation, _ model.SubmissionID) (bool, error) {
+	f.releaseCalls++
 	return false, nil
 }
 
@@ -314,13 +314,13 @@ type reviewAuditorFake struct {
 	failedCode string
 }
 
-func (fake *reviewAuditorFake) BeginAtScope(_ context.Context, _ invocation.Invocation, _ model.Action, _ model.Resource, _ model.RoleScopeType, _, _ string, value, _ map[string]any) (model.AuditEventID, error) {
-	fake.value = value
-	fake.begun++
+func (f *reviewAuditorFake) BeginAtScope(_ context.Context, _ invocation.Invocation, _ model.Action, _ model.Resource, _ model.RoleScopeType, _, _ string, value, _ map[string]any) (model.AuditEventID, error) {
+	f.value = value
+	f.begun++
 	return model.NewAuditEventID(), nil
 }
-func (fake *reviewAuditorFake) Fail(_ context.Context, _ model.AuditEventID, code string) error {
-	fake.failedCode = code
+func (f *reviewAuditorFake) Fail(_ context.Context, _ model.AuditEventID, code string) error {
+	f.failedCode = code
 	return nil
 }
 
@@ -332,29 +332,29 @@ type reviewMailFake struct {
 	calls   int
 }
 
-func (fake *reviewMailFake) PrepareResultRelease(_ context.Context,
+func (f *reviewMailFake) PrepareResultRelease(_ context.Context,
 	request ResultReleaseMailPreparation,
 ) (*PreparedResultReleaseMail, error) {
-	fake.calls++
-	fake.request = request
+	f.calls++
+	f.request = request
 	return &PreparedResultReleaseMail{Notice: &store.PreparedMail{Occurrence: &model.MailOccurrence{},
 		Delivery: &model.MailDelivery{}, Job: &model.Job{}}, ExpectedRecipientRevision: 2}, nil
 }
 
-func (fake *reviewEffectsFake) ReviewChanged(context.Context, Result) error {
-	fake.changed++
+func (f *reviewEffectsFake) ReviewChanged(context.Context, Result) error {
+	f.changed++
 	return nil
 }
-func (fake *reviewEffectsFake) ReviewFinalized(context.Context, Result) error {
-	fake.finalized++
+func (f *reviewEffectsFake) ReviewFinalized(context.Context, Result) error {
+	f.finalized++
 	return nil
 }
-func (fake *reviewEffectsFake) ResultReleased(context.Context, Result) error {
-	fake.released++
+func (f *reviewEffectsFake) ResultReleased(context.Context, Result) error {
+	f.released++
 	return nil
 }
 func (*reviewEffectsFake) Report(context.Context, string, error) {}
 
-func (fake *reviewStoreFake) ListNativeConditions(context.Context, store.NativeConditionListOptions) (*store.NativeConditionPage, error) {
+func (f *reviewStoreFake) ListNativeConditions(context.Context, store.NativeConditionListOptions) (*store.NativeConditionPage, error) {
 	return &store.NativeConditionPage{Items: []model.NativeConditionEvidence{}}, nil
 }

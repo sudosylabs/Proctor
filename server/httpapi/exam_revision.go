@@ -83,7 +83,7 @@ func examRevisionMutationErrorCodes() []string {
 	)
 }
 
-func (module examRevisionHTTPModule) publish(request operationRequest) (operationResult, error) {
+func (m examRevisionHTTPModule) publish(request operationRequest) (operationResult, error) {
 	examID, err := examRevisionExamID(request)
 	if err != nil {
 		return operationResult{}, err
@@ -95,7 +95,7 @@ func (module examRevisionHTTPModule) publish(request operationRequest) (operatio
 	if body.ExpectedDraftRevision < 1 {
 		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
-	summary, err := module.application.PublishExamRevision(request.context, request.invocation(), application.PublishExamRevisionCommand{
+	summary, err := m.application.PublishExamRevision(request.context, request.invocation(), application.PublishExamRevisionCommand{
 		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision, IdempotencyKey: request.idempotencyKey,
 	})
 	if err != nil {
@@ -104,19 +104,19 @@ func (module examRevisionHTTPModule) publish(request operationRequest) (operatio
 	return jsonResult(http.StatusCreated, examRevisionResponseFromSummary(summary)), nil
 }
 
-func (module examRevisionHTTPModule) get(request operationRequest) (operationResult, error) {
+func (m examRevisionHTTPModule) get(request operationRequest) (operationResult, error) {
 	examID, revisionID, err := examRevisionIDs(request)
 	if err != nil {
 		return operationResult{}, err
 	}
-	summary, err := module.application.GetExamRevision(request.context, request.invocation(), application.GetExamRevisionQuery{ExamID: examID, RevisionID: revisionID})
+	summary, err := m.application.GetExamRevision(request.context, request.invocation(), application.GetExamRevisionQuery{ExamID: examID, RevisionID: revisionID})
 	if err != nil {
 		return operationResult{}, err
 	}
 	return jsonResult(http.StatusOK, examRevisionResponseFromSummary(summary)), nil
 }
 
-func (module examRevisionHTTPModule) list(request operationRequest) (operationResult, error) {
+func (m examRevisionHTTPModule) list(request operationRequest) (operationResult, error) {
 	examID, err := examRevisionExamID(request)
 	if err != nil {
 		return operationResult{}, err
@@ -137,7 +137,7 @@ func (module examRevisionHTTPModule) list(request operationRequest) (operationRe
 		query.BeforeNumber = cursor.Number
 		query.BeforeRevisionID = model.ExamRevisionID(cursor.RevisionID)
 	}
-	page, err := module.application.ListExamRevisions(request.context, request.invocation(), query)
+	page, err := m.application.ListExamRevisions(request.context, request.invocation(), query)
 	if err != nil {
 		return operationResult{}, err
 	}

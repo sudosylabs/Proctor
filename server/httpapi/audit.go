@@ -87,12 +87,12 @@ func auditResource(audits AuditListingApplication) resource {
 	)
 }
 
-func (module auditResourceModule) list(request operationRequest) (operationResult, error) {
+func (m auditResourceModule) list(request operationRequest) (operationResult, error) {
 	query, err := auditQueryFromRequest(request.request)
 	if err != nil {
 		return operationResult{}, apperror.Invalid("request.invalid", "query")
 	}
-	events, listErr := module.audits.ListAuditEvents(
+	events, listErr := m.audits.ListAuditEvents(
 		request.context,
 		request.invocation(),
 		query,

@@ -35,8 +35,8 @@ func prepareUserDefaultProfilePictureJob(user *model.User, at time.Time) (*model
 
 type jobDefaultProfilePictureGenerator struct{ service *profilePictureService }
 
-func (adapter jobDefaultProfilePictureGenerator) EnsureDefaultProfilePicture(ctx context.Context, id model.UserID) (model.FileEntryID, error) {
-	return adapter.service.EnsureDefaultProfilePicture(ctx, id)
+func (a jobDefaultProfilePictureGenerator) EnsureDefaultProfilePicture(ctx context.Context, id model.UserID) (model.FileEntryID, error) {
+	return a.service.EnsureDefaultProfilePicture(ctx, id)
 }
 
 func (jobDefaultProfilePictureGenerator) ClassifyDefaultProfilePictureError(err error) string {
@@ -52,28 +52,28 @@ func (jobDefaultProfilePictureGenerator) ClassifyDefaultProfilePictureError(err 
 
 type jobMailDeliveryRecorder struct{ recorder MailDeliveryRecorder }
 
-func (adapter jobMailDeliveryRecorder) RecordJobMailDelivery(ctx context.Context, metric appjobs.MailDeliveryMetric) {
-	if adapter.recorder == nil {
+func (a jobMailDeliveryRecorder) RecordJobMailDelivery(ctx context.Context, metric appjobs.MailDeliveryMetric) {
+	if a.recorder == nil {
 		return
 	}
-	adapter.recorder.RecordMailDelivery(ctx, MailDeliveryMetric{
+	a.recorder.RecordMailDelivery(ctx, MailDeliveryMetric{
 		TemplateKey: metric.TemplateKey, State: metric.State, OutcomeCode: metric.OutcomeCode,
 		ProcessingLatency: metric.ProcessingLatency,
 	})
 }
 
-func (adapter jobMailDeliveryRecorder) RecordJobMailAttempt(ctx context.Context, metric appjobs.MailAttemptMetric) {
-	if adapter.recorder == nil {
+func (a jobMailDeliveryRecorder) RecordJobMailAttempt(ctx context.Context, metric appjobs.MailAttemptMetric) {
+	if a.recorder == nil {
 		return
 	}
-	adapter.recorder.RecordMailAttempt(ctx, MailAttemptMetric{TemplateKey: metric.TemplateKey, State: metric.State})
+	a.recorder.RecordMailAttempt(ctx, MailAttemptMetric{TemplateKey: metric.TemplateKey, State: metric.State})
 }
 
 type jobMailHealth struct{ health *MailHealth }
 
-func (adapter jobMailHealth) SetJobMailHealth(code string) {
-	if adapter.health != nil {
-		adapter.health.set(code)
+func (a jobMailHealth) SetJobMailHealth(code string) {
+	if a.health != nil {
+		a.health.set(code)
 	}
 }
 
@@ -84,8 +84,8 @@ func jobMailDeliveryIsRelevant(ctx context.Context, delivery *model.MailDelivery
 
 type onboardingImportJobs struct{ service *onboardingImportService }
 
-func (adapter onboardingImportJobs) PreviewProgression(ctx context.Context, id model.OnboardingImportID) (string, error) {
-	err := adapter.service.previewProgression(ctx, id)
+func (a onboardingImportJobs) PreviewProgression(ctx context.Context, id model.OnboardingImportID) (string, error) {
+	err := a.service.previewProgression(ctx, id)
 	if err == nil {
 		return "", nil
 	}
@@ -102,8 +102,8 @@ func (adapter onboardingImportJobs) PreviewProgression(ctx context.Context, id m
 	return "", err
 }
 
-func (adapter onboardingImportJobs) Parse(ctx context.Context, id model.OnboardingImportID) (string, error) {
-	err := adapter.service.parse(ctx, id)
+func (a onboardingImportJobs) Parse(ctx context.Context, id model.OnboardingImportID) (string, error) {
+	err := a.service.parse(ctx, id)
 	if err == nil {
 		return "", nil
 	}
@@ -116,18 +116,18 @@ func (adapter onboardingImportJobs) Parse(ctx context.Context, id model.Onboardi
 	return "", err
 }
 
-func (adapter onboardingImportJobs) Get(ctx context.Context, id model.OnboardingImportID) (*store.OnboardingImport, error) {
-	return adapter.service.imports.GetOnboardingImport(ctx, id)
+func (a onboardingImportJobs) Get(ctx context.Context, id model.OnboardingImportID) (*store.OnboardingImport, error) {
+	return a.service.imports.GetOnboardingImport(ctx, id)
 }
 
-func (adapter onboardingImportJobs) Execute(ctx context.Context, id model.OnboardingImportID, after int,
+func (a onboardingImportJobs) Execute(ctx context.Context, id model.OnboardingImportID, after int,
 	checkpoint func(int, int) error,
 ) error {
-	return adapter.service.execute(ctx, id, after, checkpoint)
+	return a.service.execute(ctx, id, after, checkpoint)
 }
 
-func (adapter onboardingImportJobs) Fail(ctx context.Context, id model.OnboardingImportID, code string) error {
-	_, err := adapter.service.imports.FailOnboardingImport(ctx, id, code, model.TimeUTC(adapter.service.now()))
+func (a onboardingImportJobs) Fail(ctx context.Context, id model.OnboardingImportID, code string) error {
+	_, err := a.service.imports.FailOnboardingImport(ctx, id, code, model.TimeUTC(a.service.now()))
 	return err
 }
 
@@ -139,41 +139,41 @@ type examSittingSealingJobUseCases struct {
 	newID    func() model.JobID
 }
 
-func (useCases examSittingSealingJobUseCases) ListExamSittingSealTargetsFromJob(ctx context.Context,
+func (uc examSittingSealingJobUseCases) ListExamSittingSealTargetsFromJob(ctx context.Context,
 	sittingID model.ExamSittingID, after model.ExamAttemptID, limit int,
 ) ([]store.ExamSubmissionAutomaticSealTarget, error) {
-	return useCases.attempts.ListAutomaticSealTargets(ctx, sittingID, after, limit)
+	return uc.attempts.ListAutomaticSealTargets(ctx, sittingID, after, limit)
 }
 
-func (useCases examSittingSealingJobUseCases) SealExamAttemptForSittingCloseFromJob(ctx context.Context,
+func (uc examSittingSealingJobUseCases) SealExamAttemptForSittingCloseFromJob(ctx context.Context,
 	target store.ExamSubmissionAutomaticSealTarget, jobID model.JobID, attemptID model.JobAttemptID,
 ) (examattempt.AutomaticSubmissionResult, error) {
-	return useCases.attempts.SealForSittingClose(ctx, appinvocation.System{JobID: jobID, AttemptID: attemptID}, target)
+	return uc.attempts.SealForSittingClose(ctx, appinvocation.System{JobID: jobID, AttemptID: attemptID}, target)
 }
 
-func (useCases examSittingSealingJobUseCases) FinishExamSittingSealingFromJob(ctx context.Context,
+func (uc examSittingSealingJobUseCases) FinishExamSittingSealingFromJob(ctx context.Context,
 	sittingID model.ExamSittingID, jobID model.JobID, attemptID model.JobAttemptID,
 ) (*store.ExamSittingLifecycleResult, error) {
-	result, err := useCases.sittings.FinishSealing(ctx, appinvocation.System{JobID: jobID, AttemptID: attemptID}, sittingID)
+	result, err := uc.sittings.FinishSealing(ctx, appinvocation.System{JobID: jobID, AttemptID: attemptID}, sittingID)
 	return &result, err
 }
 
-func (useCases examSittingSealingJobUseCases) EnqueueExamSittingSealingContinuationFromJob(ctx context.Context,
+func (uc examSittingSealingJobUseCases) EnqueueExamSittingSealingContinuationFromJob(ctx context.Context,
 	sittingID model.ExamSittingID, parentJobID model.JobID,
 ) error {
-	if useCases.jobs == nil || useCases.now == nil || useCases.newID == nil || !sittingID.IsValid() || !parentJobID.IsValid() {
+	if uc.jobs == nil || uc.now == nil || uc.newID == nil || !sittingID.IsValid() || !parentJobID.IsValid() {
 		return store.NewErrInvalidInput("exam_sitting_sealing", "continuation", nil)
 	}
 	document, err := model.EncodeExamSittingLifecycleCommand(model.ExamSittingLifecycleCommandV1{ExamSittingID: sittingID})
 	if err != nil {
 		return store.NewErrInvalidInput("exam_sitting_sealing", "continuation", err)
 	}
-	at := model.TimeUTC(useCases.now())
-	job, err := model.NewJobWithDedupePolicy(useCases.newID(), model.JobTypeExamSittingSealing, 1, document,
+	at := model.TimeUTC(uc.now())
+	job, err := model.NewJobWithDedupePolicy(uc.newID(), model.JobTypeExamSittingSealing, 1, document,
 		"exam-sitting-sealing-continuation:"+parentJobID.String(), model.JobDedupePermanent, at, at, 8)
 	if err != nil {
 		return store.NewErrInvalidInput("exam_sitting_sealing", "continuation", err)
 	}
-	_, _, err = useCases.jobs.Enqueue(ctx, &store.JobEnqueue{Job: job})
+	_, _, err = uc.jobs.Enqueue(ctx, &store.JobEnqueue{Job: job})
 	return err
 }

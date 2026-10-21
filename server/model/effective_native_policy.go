@@ -413,16 +413,16 @@ func encodeCanonicalExamRaw(data []byte) ([]byte, error) {
 	return encodeCanonicalExamDocument(value)
 }
 
-func (v EffectiveExamSecurityPolicy) MarshalJSON() ([]byte, error) {
+func (p EffectiveExamSecurityPolicy) MarshalJSON() ([]byte, error) {
 	type wire EffectiveExamSecurityPolicy
 	return json.Marshal(struct {
 		*wire
 		IssuedAt   securityJSONInstant `json:"issued_at"`
 		ActiveFrom securityJSONInstant `json:"active_from"`
-	}{wire: (*wire)(&v), IssuedAt: securityJSONInstant{Time: v.IssuedAt, spelling: v.issuedAtSpelling}, ActiveFrom: securityJSONInstant{Time: v.ActiveFrom, spelling: v.activeFromSpelling}})
+	}{wire: (*wire)(&p), IssuedAt: securityJSONInstant{Time: p.IssuedAt, spelling: p.issuedAtSpelling}, ActiveFrom: securityJSONInstant{Time: p.ActiveFrom, spelling: p.activeFromSpelling}})
 }
-func (v *EffectiveExamSecurityPolicy) UnmarshalJSON(raw []byte) error {
-	if v == nil {
+func (p *EffectiveExamSecurityPolicy) UnmarshalJSON(raw []byte) error {
+	if p == nil {
 		return ErrSecurityPolicyInvalid
 	}
 	type wire EffectiveExamSecurityPolicy
@@ -443,6 +443,6 @@ func (v *EffectiveExamSecurityPolicy) UnmarshalJSON(raw []byte) error {
 	if candidate.Validate(candidate.ActiveFrom) != nil {
 		return ErrSecurityPolicyInvalid
 	}
-	*v = candidate
+	*p = candidate
 	return nil
 }

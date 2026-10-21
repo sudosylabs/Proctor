@@ -310,14 +310,14 @@ func realtimeEventMessageFromModel(event RealtimeEvent) realtimeEventMessage {
 	}
 }
 
-func (message realtimeEventMessage) toModel() RealtimeEvent {
+func (m realtimeEventMessage) toModel() RealtimeEvent {
 	return RealtimeEvent{
-		ID:       message.ID,
-		Name:     message.Name,
-		UserID:   message.UserID,
-		Action:   message.Action,
-		Resource: model.Resource{Type: message.Resource.Type, ID: message.Resource.ID},
-		Data:     append(json.RawMessage(nil), message.Data...),
+		ID:       m.ID,
+		Name:     m.Name,
+		UserID:   m.UserID,
+		Action:   m.Action,
+		Resource: model.Resource{Type: m.Resource.Type, ID: m.Resource.ID},
+		Data:     append(json.RawMessage(nil), m.Data...),
 	}
 }
 

@@ -66,7 +66,7 @@ func classMemberResource(members ClassMemberApplication) resource {
 	)
 }
 
-func (module classMemberResourceModule) list(request operationRequest) (operationResult, error) {
+func (m classMemberResourceModule) list(request operationRequest) (operationResult, error) {
 	classID, err := request.params.RequireClassID()
 	if err != nil {
 		return operationResult{}, err
@@ -77,7 +77,7 @@ func (module classMemberResourceModule) list(request operationRequest) (operatio
 		if err != nil {
 			return operationResult{}, err
 		}
-		page, err := module.members.ListClassMembersPage(request.context, request.invocation(), application.ListClassMembersPageQuery{ClassID: classID, MembershipPageQuery: query, AfterUserID: model.UserID(after.AfterUserID), AfterID: model.ClassMemberID(after.AfterID)})
+		page, err := m.members.ListClassMembersPage(request.context, request.invocation(), application.ListClassMembersPageQuery{ClassID: classID, MembershipPageQuery: query, AfterUserID: model.UserID(after.AfterUserID), AfterID: model.ClassMemberID(after.AfterID)})
 		if err != nil {
 			return operationResult{}, err
 		}
@@ -96,14 +96,14 @@ func (module classMemberResourceModule) list(request operationRequest) (operatio
 	if err != nil {
 		return operationResult{}, err
 	}
-	members, err := module.members.ListClassMembers(request.context, request.invocation(), application.ListClassMembersQuery{ClassID: classID, ActiveAt: activeAt})
+	members, err := m.members.ListClassMembers(request.context, request.invocation(), application.ListClassMembersQuery{ClassID: classID, ActiveAt: activeAt})
 	if err != nil {
 		return operationResult{}, err
 	}
 	return jsonResult(http.StatusOK, classMemberResponses(members)), nil
 }
 
-func (module classMemberResourceModule) enroll(request operationRequest) (operationResult, error) {
+func (m classMemberResourceModule) enroll(request operationRequest) (operationResult, error) {
 	classID, err := request.params.RequireClassID()
 	if err != nil {
 		return operationResult{}, err
@@ -120,19 +120,19 @@ func (module classMemberResourceModule) enroll(request operationRequest) (operat
 	if err != nil {
 		return operationResult{}, err
 	}
-	enrollment, err := module.members.EnrollClassMember(request.context, request.invocation(), application.EnrollClassMemberCommand{ClassID: classID, UserID: body.UserID, StartAt: startAt, EndAt: endAt})
+	enrollment, err := m.members.EnrollClassMember(request.context, request.invocation(), application.EnrollClassMemberCommand{ClassID: classID, UserID: body.UserID, StartAt: startAt, EndAt: endAt})
 	if err != nil {
 		return operationResult{}, err
 	}
 	return jsonResult(http.StatusCreated, classEnrollmentResponseFromModel(enrollment)), nil
 }
 
-func (module classMemberResourceModule) end(request operationRequest) (operationResult, error) {
+func (m classMemberResourceModule) end(request operationRequest) (operationResult, error) {
 	id, err := request.params.RequireClassMemberID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	ended, err := module.members.EndClassMember(request.context, request.invocation(), application.EndClassMemberCommand{ID: id})
+	ended, err := m.members.EndClassMember(request.context, request.invocation(), application.EndClassMemberCommand{ID: id})
 	if err != nil {
 		return operationResult{}, err
 	}

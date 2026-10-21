@@ -32,12 +32,12 @@ type personalAccessTokenMaintenancePeriodicRunner struct {
 	tokens personalAccessTokenPreparationMaintainer
 }
 
-func (runner personalAccessTokenMaintenancePeriodicRunner) Run(ctx context.Context) error {
-	if runner.tokens == nil {
+func (r personalAccessTokenMaintenancePeriodicRunner) Run(ctx context.Context) error {
+	if r.tokens == nil {
 		return errors.New("personal access token preparation maintenance persistence is unavailable")
 	}
 	for page := 0; page < personalAccessTokenMaintenanceMaximumPages; page++ {
-		maintained, err := runner.tokens.MaintainMutationPreparations(ctx, personalAccessTokenMaintenancePageSize)
+		maintained, err := r.tokens.MaintainMutationPreparations(ctx, personalAccessTokenMaintenancePageSize)
 		if err != nil {
 			return err
 		}

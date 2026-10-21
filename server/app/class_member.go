@@ -108,20 +108,20 @@ type classMemberRealtimeEffects struct {
 	realtime *realtimeService
 }
 
-func (effects classMemberRealtimeEffects) MembershipChanged(
+func (e classMemberRealtimeEffects) MembershipChanged(
 	ctx context.Context,
 	candidateID model.UserID,
 	classIDs []model.ClassID,
 ) error {
-	if effects.sittings == nil || effects.realtime == nil {
+	if e.sittings == nil || e.realtime == nil {
 		return errors.New("Class Membership realtime dependencies are invalid")
 	}
 	candidateEvent, err := apprealtime.NewCandidateExamActivityChangedEvent(candidateID)
 	if err != nil {
 		return err
 	}
-	errs := []error{effects.realtime.PublishRealtimeEvent(ctx, candidateEvent),
-		effects.realtime.InvalidateCurrentUserContext(ctx, candidateID)}
+	errs := []error{e.realtime.PublishRealtimeEvent(ctx, candidateEvent),
+		e.realtime.InvalidateCurrentUserContext(ctx, candidateID)}
 	seen := make(map[model.ClassID]struct{}, len(classIDs))
 	for _, classID := range classIDs {
 		if !classID.IsValid() {
@@ -134,7 +134,7 @@ func (effects classMemberRealtimeEffects) MembershipChanged(
 		seen[classID] = struct{}{}
 		var after model.ExamSittingID
 		for {
-			targets, listErr := effects.sittings.ListInvalidationTargetsByClass(ctx, classID, after, 200)
+			targets, listErr := e.sittings.ListInvalidationTargetsByClass(ctx, classID, after, 200)
 			if listErr != nil {
 				errs = append(errs, listErr)
 				break
@@ -145,7 +145,7 @@ func (effects classMemberRealtimeEffects) MembershipChanged(
 					errs = append(errs, eventErr)
 					continue
 				}
-				errs = append(errs, effects.realtime.PublishRealtimeEvent(ctx, event))
+				errs = append(errs, e.realtime.PublishRealtimeEvent(ctx, event))
 			}
 			if len(targets) < 200 {
 				break
@@ -156,12 +156,12 @@ func (effects classMemberRealtimeEffects) MembershipChanged(
 	return errors.Join(errs...)
 }
 
-func (effects classMemberRealtimeEffects) Report(ctx context.Context, operation string, err error) {
-	effects.realtime.reportTransientFailure(ctx, operation, err)
+func (e classMemberRealtimeEffects) Report(ctx context.Context, operation string, err error) {
+	e.realtime.reportTransientFailure(ctx, operation, err)
 }
 
-func (effects classMemberRealtimeEffects) InvalidateAuthorization(ctx context.Context, userID string) {
-	effects.realtime.InvalidateAuthorization(ctx, userID)
+func (e classMemberRealtimeEffects) InvalidateAuthorization(ctx context.Context, userID string) {
+	e.realtime.InvalidateAuthorization(ctx, userID)
 }
 
 func (s *classMemberService) publishMembershipChanged(

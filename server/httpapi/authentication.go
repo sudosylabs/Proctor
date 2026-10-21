@@ -310,12 +310,12 @@ func authenticationResource(authentication authenticationEntryApplication, cooki
 	)
 }
 
-func (module authenticationResourceModule) register(request operationRequest) (operationResult, error) {
+func (m authenticationResourceModule) register(request operationRequest) (operationResult, error) {
 	var input publicRegistrationRequest
 	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
-	if err := module.authentication.RegisterLocalUser(
+	if err := m.authentication.RegisterLocalUser(
 		request.context,
 		application.NewInvocation(model.Principal{}, request.metadata),
 		application.RegisterLocalUserCommand{
@@ -351,12 +351,12 @@ func sessionAuthenticationMutationErrorCodes(extra ...string) []string {
 	return append([]string(nil), extra...)
 }
 
-func (module authenticationResourceModule) login(request operationRequest) (operationResult, error) {
+func (m authenticationResourceModule) login(request operationRequest) (operationResult, error) {
 	var input loginRequest
 	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
-	result, err := module.authentication.Login(
+	result, err := m.authentication.Login(
 		request.context,
 		application.NewInvocation(model.Principal{}, request.metadata),
 		application.LoginCommand{
@@ -373,7 +373,7 @@ func (module authenticationResourceModule) login(request operationRequest) (oper
 	if usesBrowserCookieTransport(input.ClientType) {
 		headers = combineResponseHeaders(headers, captureResponseHeaders(func(writer http.ResponseWriter) {
 			if result != nil {
-				module.cookies.attach(writer, result.Tokens)
+				m.cookies.attach(writer, result.Tokens)
 			}
 		}))
 		response.Tokens = nil
@@ -381,7 +381,7 @@ func (module authenticationResourceModule) login(request operationRequest) (oper
 	return jsonResult(http.StatusOK, response).withHeaders(headers), nil
 }
 
-func (module authenticationResourceModule) refresh(request operationRequest) (operationResult, error) {
+func (m authenticationResourceModule) refresh(request operationRequest) (operationResult, error) {
 	credential, ok := credentialFromContext(request.context)
 	if !ok {
 		return operationResult{}, authenticationRequiredError()
@@ -396,7 +396,7 @@ func (module authenticationResourceModule) refresh(request operationRequest) (op
 			Proof: proof, Method: request.request.Method, Path: request.request.URL.EscapedPath(),
 		}
 	}
-	session, tokens, err := module.authentication.RefreshSession(
+	session, tokens, err := m.authentication.RefreshSession(
 		request.context,
 		application.NewInvocation(model.Principal{}, request.metadata),
 		command,
@@ -407,7 +407,7 @@ func (module authenticationResourceModule) refresh(request operationRequest) (op
 			headers = dpopErrorHeaders(err)
 		}
 		if credential.source == credentialSourceCookie {
-			headers = combineResponseHeaders(headers, captureResponseHeaders(module.cookies.clear))
+			headers = combineResponseHeaders(headers, captureResponseHeaders(m.cookies.clear))
 		}
 		return operationResult{}, errorWithHeaders(err, headers)
 	}
@@ -416,7 +416,7 @@ func (module authenticationResourceModule) refresh(request operationRequest) (op
 	if credential.source == credentialSourceCookie {
 		response.Tokens = nil
 		headers = combineResponseHeaders(headers, captureResponseHeaders(func(writer http.ResponseWriter) {
-			module.cookies.attach(writer, tokens)
+			m.cookies.attach(writer, tokens)
 		}))
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(headers), nil
@@ -431,19 +431,19 @@ func dpopErrorHeaders(err error) http.Header {
 	return headers
 }
 
-func (module authenticationResourceModule) logout(request operationRequest) (operationResult, error) {
-	if err := module.authentication.Logout(request.context, request.invocation(), application.LogoutCommand{}); err != nil {
+func (m authenticationResourceModule) logout(request operationRequest) (operationResult, error) {
+	if err := m.authentication.Logout(request.context, request.invocation(), application.LogoutCommand{}); err != nil {
 		return operationResult{}, err
 	}
 	result := noContentResult().withHeaders(http.Header{"Cache-Control": {"no-store"}})
 	if credentialSourceFromContext(request.context) == credentialSourceCookie {
-		result = result.withHeaders(combineResponseHeaders(result.headers, captureResponseHeaders(module.cookies.clear)))
+		result = result.withHeaders(combineResponseHeaders(result.headers, captureResponseHeaders(m.cookies.clear)))
 	}
 	return result, nil
 }
 
-func (module authenticationResourceModule) requestEmailVerification(request operationRequest) (operationResult, error) {
-	err := module.authentication.RequestEmailVerification(
+func (m authenticationResourceModule) requestEmailVerification(request operationRequest) (operationResult, error) {
+	err := m.authentication.RequestEmailVerification(
 		request.context, request.invocation(),
 		application.RequestEmailVerificationCommand{Source: request.metadata.IPAddress},
 	)
@@ -453,12 +453,12 @@ func (module authenticationResourceModule) requestEmailVerification(request oper
 	return statusResult(http.StatusAccepted), nil
 }
 
-func (module authenticationResourceModule) completeEmailVerification(request operationRequest) (operationResult, error) {
+func (m authenticationResourceModule) completeEmailVerification(request operationRequest) (operationResult, error) {
 	var input emailVerificationCompletion
 	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
-	_, err := module.authentication.CompleteEmailVerification(
+	_, err := m.authentication.CompleteEmailVerification(
 		request.context,
 		application.NewInvocation(model.Principal{}, request.metadata),
 		application.CompleteEmailVerificationCommand{Token: input.Token, Source: request.metadata.IPAddress},
@@ -469,12 +469,12 @@ func (module authenticationResourceModule) completeEmailVerification(request ope
 	return noContentResult(), nil
 }
 
-func (module authenticationResourceModule) requestPasswordReset(request operationRequest) (operationResult, error) {
+func (m authenticationResourceModule) requestPasswordReset(request operationRequest) (operationResult, error) {
 	var input passwordResetRequest
 	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
-	if err := module.authentication.RequestPasswordReset(
+	if err := m.authentication.RequestPasswordReset(
 		request.context,
 		application.NewInvocation(model.Principal{}, request.metadata),
 		application.RequestPasswordResetCommand{Email: input.Email, Source: request.metadata.IPAddress},
@@ -484,12 +484,12 @@ func (module authenticationResourceModule) requestPasswordReset(request operatio
 	return statusResult(http.StatusAccepted), nil
 }
 
-func (module authenticationResourceModule) completePasswordReset(request operationRequest) (operationResult, error) {
+func (m authenticationResourceModule) completePasswordReset(request operationRequest) (operationResult, error) {
 	var input passwordResetCompletion
 	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
-	_, err := module.authentication.CompletePasswordReset(
+	_, err := m.authentication.CompletePasswordReset(
 		request.context,
 		application.NewInvocation(model.Principal{}, request.metadata),
 		application.CompletePasswordResetCommand{
@@ -499,7 +499,7 @@ func (module authenticationResourceModule) completePasswordReset(request operati
 	if err != nil {
 		return operationResult{}, err
 	}
-	return noContentResult().withHeaders(captureResponseHeaders(module.cookies.clear)), nil
+	return noContentResult().withHeaders(captureResponseHeaders(m.cookies.clear)), nil
 }
 
 func usesBrowserCookieTransport(clientType model.SessionClientType) bool {

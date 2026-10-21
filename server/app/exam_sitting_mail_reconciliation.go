@@ -32,13 +32,13 @@ type sittingMailReconciliationPeriodicRunner struct {
 	mail     examsitting.ScheduleMailPreparer
 }
 
-func (runner sittingMailReconciliationPeriodicRunner) Run(ctx context.Context) error {
-	if runner.sittings == nil || runner.mail == nil {
+func (r sittingMailReconciliationPeriodicRunner) Run(ctx context.Context) error {
+	if r.sittings == nil || r.mail == nil {
 		return errors.New("Sitting mail reconciliation dependencies are unavailable")
 	}
 	options := store.ExamSittingMailReconciliationOptions{Limit: sittingMailReconciliationPageSize}
 	for page := 0; page < sittingMailReconciliationMaximumPages; page++ {
-		candidates, err := runner.sittings.ListMailReconciliationDue(ctx, options)
+		candidates, err := r.sittings.ListMailReconciliationDue(ctx, options)
 		if err != nil {
 			return err
 		}
@@ -47,7 +47,7 @@ func (runner sittingMailReconciliationPeriodicRunner) Run(ctx context.Context) e
 			if candidate.Sitting == nil {
 				return errors.New("Sitting mail reconciliation returned an invalid candidate")
 			}
-			prepared, prepareErr := runner.mail.Prepare(ctx, examsitting.ScheduleMailRequest{
+			prepared, prepareErr := r.mail.Prepare(ctx, examsitting.ScheduleMailRequest{
 				ActorUserID: candidate.ActorUserID, ExamID: candidate.Sitting.ExamID,
 				ExamRevisionID: candidate.Sitting.ExamRevisionID, SittingID: candidate.Sitting.ID,
 				SittingRevision: candidate.Sitting.Revision, ClassID: candidate.Sitting.ClassID,
@@ -57,7 +57,7 @@ func (runner sittingMailReconciliationPeriodicRunner) Run(ctx context.Context) e
 			if prepareErr != nil || prepared == nil {
 				return errors.Join(errors.New("prepare Sitting mail reconciliation"), prepareErr)
 			}
-			if _, reconcileErr := runner.sittings.ReconcileMail(ctx, &store.ExamSittingMailReconciliation{
+			if _, reconcileErr := r.sittings.ReconcileMail(ctx, &store.ExamSittingMailReconciliation{
 				SittingID: candidate.Sitting.ID, ExpectedRevision: candidate.Sitting.Revision,
 				ActorUserID: candidate.ActorUserID, Mail: prepared,
 			}); reconcileErr != nil && !store.IsConflict(reconcileErr) && !store.IsNotFound(reconcileErr) {

@@ -42,13 +42,13 @@ func webSocketResource(transport WebSocketTransport) resource {
 	)
 }
 
-func (module webSocketModule) connect(writer http.ResponseWriter, request operationRequest) error {
+func (m webSocketModule) connect(writer http.ResponseWriter, request operationRequest) error {
 	connectionID, sequence, err := parseWebSocketResume(request.params)
 	if err != nil {
 		return err
 	}
 	allowMissingOrigin := credentialSourceFromContext(request.context) == credentialSourceBearer
-	return module.transport.Accept(
+	return m.transport.Accept(
 		writer,
 		request.request,
 		request.principal,

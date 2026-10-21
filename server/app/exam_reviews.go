@@ -46,55 +46,55 @@ type examIntegrityReviewAuthorizationAdapter struct {
 	audit    authorizationDecisionAudit
 }
 
-func (adapter examIntegrityReviewAuthorizationAdapter) AuthorizeView(ctx context.Context, invocation Invocation,
+func (a examIntegrityReviewAuthorizationAdapter) AuthorizeView(ctx context.Context, invocation Invocation,
 	submissionID model.SubmissionID,
 ) error {
-	authorization, err := adapter.resolve(ctx, submissionID)
+	authorization, err := a.resolve(ctx, submissionID)
 	if err != nil {
 		return err
 	}
 	if authorization.CandidateUserID == invocation.Principal().UserID {
-		return adapter.denySelf(ctx, invocation, authorization, model.ActionSubmissionView)
+		return a.denySelf(ctx, invocation, authorization, model.ActionSubmissionView)
 	}
-	return adapter.sittings.AuthorizeSubmissionView(ctx,
+	return a.sittings.AuthorizeSubmissionView(ctx,
 		invocation, authorization.ExamID, submissionID)
 }
 
-func (adapter examIntegrityReviewAuthorizationAdapter) AuthorizeReview(ctx context.Context, invocation Invocation,
+func (a examIntegrityReviewAuthorizationAdapter) AuthorizeReview(ctx context.Context, invocation Invocation,
 	submissionID model.SubmissionID,
 ) (bool, error) {
-	authorization, err := adapter.resolve(ctx, submissionID)
+	authorization, err := a.resolve(ctx, submissionID)
 	if err != nil {
 		return false, err
 	}
 	if authorization.CandidateUserID == invocation.Principal().UserID {
-		return false, adapter.denySelf(ctx, invocation, authorization, model.ActionSubmissionReview)
+		return false, a.denySelf(ctx, invocation, authorization, model.ActionSubmissionReview)
 	}
-	return adapter.sittings.AuthorizeSubmissionReview(ctx,
+	return a.sittings.AuthorizeSubmissionReview(ctx,
 		invocation, authorization.ExamID, submissionID)
 }
 
-func (adapter examIntegrityReviewAuthorizationAdapter) AuthorizeRelease(ctx context.Context, invocation Invocation,
+func (a examIntegrityReviewAuthorizationAdapter) AuthorizeRelease(ctx context.Context, invocation Invocation,
 	submissionID model.SubmissionID,
 ) (bool, error) {
-	authorization, err := adapter.resolve(ctx, submissionID)
+	authorization, err := a.resolve(ctx, submissionID)
 	if err != nil {
 		return false, err
 	}
 	if authorization.CandidateUserID == invocation.Principal().UserID {
-		return false, adapter.denySelf(ctx, invocation, authorization, model.ActionSubmissionRelease)
+		return false, a.denySelf(ctx, invocation, authorization, model.ActionSubmissionRelease)
 	}
-	return adapter.sittings.AuthorizeSubmissionRelease(ctx,
+	return a.sittings.AuthorizeSubmissionRelease(ctx,
 		invocation, authorization.ExamID, submissionID)
 }
 
-func (adapter examIntegrityReviewAuthorizationAdapter) resolve(ctx context.Context,
+func (a examIntegrityReviewAuthorizationAdapter) resolve(ctx context.Context,
 	submissionID model.SubmissionID,
 ) (*store.ExamIntegrityReviewAuthorization, error) {
-	if adapter.reviews == nil || adapter.sittings == nil || adapter.audit == nil || !submissionID.IsValid() {
+	if a.reviews == nil || a.sittings == nil || a.audit == nil || !submissionID.IsValid() {
 		return nil, apperror.New("exam.integrity_review.unavailable").Wrap(errors.New("Review authorization dependencies are invalid"))
 	}
-	authorization, err := adapter.reviews.Resolve(ctx, submissionID)
+	authorization, err := a.reviews.Resolve(ctx, submissionID)
 	if err != nil {
 		if store.IsNotFound(err) {
 			return nil, apperror.New("exam.integrity_review.not_found").Wrap(err)
@@ -109,10 +109,10 @@ func (adapter examIntegrityReviewAuthorizationAdapter) resolve(ctx context.Conte
 	return authorization, nil
 }
 
-func (adapter examIntegrityReviewAuthorizationAdapter) denySelf(ctx context.Context, invocation Invocation,
+func (a examIntegrityReviewAuthorizationAdapter) denySelf(ctx context.Context, invocation Invocation,
 	authorization *store.ExamIntegrityReviewAuthorization, action model.Action,
 ) error {
-	err := adapter.audit.RecordAuthorizationDecision(ctx, invocation.Principal(), action,
+	err := a.audit.RecordAuthorizationDecision(ctx, invocation.Principal(), action,
 		model.Resource{Type: model.ResourceSubmission, ID: authorization.SubmissionID.String()},
 		model.RoleScopeAcademicUnit, authorization.AcademicUnitID.String(), invocation.RequestMetadata(), false)
 	if err != nil {
@@ -123,7 +123,7 @@ func (adapter examIntegrityReviewAuthorizationAdapter) denySelf(ctx context.Cont
 
 type examIntegrityReviewRealtimeEffects struct{ realtime *realtimeService }
 
-func (effects examIntegrityReviewRealtimeEffects) publishManagerBoardInvalidation(ctx context.Context,
+func (e examIntegrityReviewRealtimeEffects) publishManagerBoardInvalidation(ctx context.Context,
 	result examreview.Result,
 ) error {
 	event, err := apprealtime.NewManagerSittingBoardChangedEvent(result.Authorization.ExamID,
@@ -131,7 +131,7 @@ func (effects examIntegrityReviewRealtimeEffects) publishManagerBoardInvalidatio
 	if err != nil {
 		return err
 	}
-	return effects.realtime.PublishRealtimeEvent(ctx, event)
+	return e.realtime.PublishRealtimeEvent(ctx, event)
 }
 
 func examIntegrityReviewEventFact(result examreview.Result) apprealtime.ExamIntegrityReviewEventFact {
@@ -141,23 +141,23 @@ func examIntegrityReviewEventFact(result examreview.Result) apprealtime.ExamInte
 		ReleaseState: result.Review.ReleaseState, ChangedAt: result.Review.UpdatedAt}
 }
 
-func (effects examIntegrityReviewRealtimeEffects) ReviewChanged(ctx context.Context, result examreview.Result) error {
+func (e examIntegrityReviewRealtimeEffects) ReviewChanged(ctx context.Context, result examreview.Result) error {
 	event, err := apprealtime.NewExamIntegrityReviewChangedEvent(examIntegrityReviewEventFact(result))
 	if err != nil {
 		return err
 	}
-	return errors.Join(effects.realtime.PublishRealtimeEvent(ctx, event), effects.publishManagerBoardInvalidation(ctx, result))
+	return errors.Join(e.realtime.PublishRealtimeEvent(ctx, event), e.publishManagerBoardInvalidation(ctx, result))
 }
 
-func (effects examIntegrityReviewRealtimeEffects) ReviewFinalized(ctx context.Context, result examreview.Result) error {
+func (e examIntegrityReviewRealtimeEffects) ReviewFinalized(ctx context.Context, result examreview.Result) error {
 	event, err := apprealtime.NewExamIntegrityReviewFinalizedEvent(examIntegrityReviewEventFact(result))
 	if err != nil {
 		return err
 	}
-	return errors.Join(effects.realtime.PublishRealtimeEvent(ctx, event), effects.publishManagerBoardInvalidation(ctx, result))
+	return errors.Join(e.realtime.PublishRealtimeEvent(ctx, event), e.publishManagerBoardInvalidation(ctx, result))
 }
 
-func (effects examIntegrityReviewRealtimeEffects) ResultReleased(ctx context.Context, result examreview.Result) error {
+func (e examIntegrityReviewRealtimeEffects) ResultReleased(ctx context.Context, result examreview.Result) error {
 	fact := examIntegrityReviewEventFact(result)
 	manager, err := apprealtime.NewExamStudentResultReleasedEvent(fact)
 	if err != nil {
@@ -171,12 +171,12 @@ func (effects examIntegrityReviewRealtimeEffects) ResultReleased(ctx context.Con
 	if err != nil {
 		return err
 	}
-	return errors.Join(effects.realtime.PublishRealtimeEvent(ctx, manager), effects.realtime.PublishRealtimeEvent(ctx, candidate),
-		effects.realtime.PublishRealtimeEvent(ctx, activity), effects.publishManagerBoardInvalidation(ctx, result))
+	return errors.Join(e.realtime.PublishRealtimeEvent(ctx, manager), e.realtime.PublishRealtimeEvent(ctx, candidate),
+		e.realtime.PublishRealtimeEvent(ctx, activity), e.publishManagerBoardInvalidation(ctx, result))
 }
 
-func (effects examIntegrityReviewRealtimeEffects) Report(ctx context.Context, operation string, err error) {
-	effects.realtime.reportTransientFailure(ctx, operation, err)
+func (e examIntegrityReviewRealtimeEffects) Report(ctx context.Context, operation string, err error) {
+	e.realtime.reportTransientFailure(ctx, operation, err)
 }
 
 type NativeConditionListQuery = examreview.NativeConditionListQuery

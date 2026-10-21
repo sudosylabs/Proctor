@@ -57,7 +57,7 @@ func programmeResource(programmes ProgrammeApplication) resource {
 	)
 }
 
-func (module programmeResourceModule) list(request operationRequest) (operationResult, error) {
+func (m programmeResourceModule) list(request operationRequest) (operationResult, error) {
 	unitID, err := request.params.RequireAcademicUnitID()
 	if err != nil {
 		return operationResult{}, err
@@ -66,7 +66,7 @@ func (module programmeResourceModule) list(request operationRequest) (operationR
 	if err != nil {
 		return operationResult{}, err
 	}
-	programmes, err := module.programmes.ListProgrammes(
+	programmes, err := m.programmes.ListProgrammes(
 		request.context, request.invocation(),
 		application.ListProgrammesQuery{AcademicUnitID: unitID, Query: request.request.URL.Query().Get("q"), Limit: limit},
 	)
@@ -80,7 +80,7 @@ func (module programmeResourceModule) list(request operationRequest) (operationR
 	return jsonResult(http.StatusOK, responses), nil
 }
 
-func (module programmeResourceModule) create(request operationRequest) (operationResult, error) {
+func (m programmeResourceModule) create(request operationRequest) (operationResult, error) {
 	unitID, err := request.params.RequireAcademicUnitID()
 	if err != nil {
 		return operationResult{}, err
@@ -89,7 +89,7 @@ func (module programmeResourceModule) create(request operationRequest) (operatio
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	saved, err := module.programmes.CreateProgramme(
+	saved, err := m.programmes.CreateProgramme(
 		request.context, request.invocation(),
 		application.CreateProgrammeCommand{AcademicUnitID: unitID, Name: body.Name, DisplayName: body.DisplayName, Description: body.Description},
 	)
@@ -99,12 +99,12 @@ func (module programmeResourceModule) create(request operationRequest) (operatio
 	return jsonResult(http.StatusCreated, programmeResponseFromModel(saved)), nil
 }
 
-func (module programmeResourceModule) get(request operationRequest) (operationResult, error) {
+func (m programmeResourceModule) get(request operationRequest) (operationResult, error) {
 	id, err := request.params.RequireProgrammeID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	programme, err := module.programmes.GetProgramme(
+	programme, err := m.programmes.GetProgramme(
 		request.context, request.invocation(),
 		application.GetProgrammeQuery{ID: id},
 	)
@@ -114,7 +114,7 @@ func (module programmeResourceModule) get(request operationRequest) (operationRe
 	return jsonResult(http.StatusOK, programmeResponseFromModel(programme)), nil
 }
 
-func (module programmeResourceModule) patch(request operationRequest) (operationResult, error) {
+func (m programmeResourceModule) patch(request operationRequest) (operationResult, error) {
 	id, err := request.params.RequireProgrammeID()
 	if err != nil {
 		return operationResult{}, err
@@ -126,7 +126,7 @@ func (module programmeResourceModule) patch(request operationRequest) (operation
 	if err := validateAcademicRevision(body.ExpectedRevision); err != nil {
 		return operationResult{}, err
 	}
-	programme, err := module.programmes.UpdateProgramme(
+	programme, err := m.programmes.UpdateProgramme(
 		request.context, request.invocation(),
 		application.UpdateProgrammeCommand{ExpectedRevision: body.ExpectedRevision.ValuePointer(), ID: id, Name: body.Name.ValuePointer(), DisplayName: body.DisplayName.ValuePointer(), Description: body.Description.ValuePointer()},
 	)
@@ -136,7 +136,7 @@ func (module programmeResourceModule) patch(request operationRequest) (operation
 	return jsonResult(http.StatusOK, programmeResponseFromModel(programme)), nil
 }
 
-func (module programmeResourceModule) archive(request operationRequest) (operationResult, error) {
+func (m programmeResourceModule) archive(request operationRequest) (operationResult, error) {
 	id, err := request.params.RequireProgrammeID()
 	if err != nil {
 		return operationResult{}, err
@@ -145,7 +145,7 @@ func (module programmeResourceModule) archive(request operationRequest) (operati
 	if err != nil {
 		return operationResult{}, err
 	}
-	err = module.programmes.ArchiveProgramme(
+	err = m.programmes.ArchiveProgramme(
 		request.context, request.invocation(),
 		application.ArchiveProgrammeCommand{ExpectedRevision: expectedRevision, ID: id},
 	)

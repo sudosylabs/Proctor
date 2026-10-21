@@ -89,12 +89,12 @@ func newAffiliationService(persistence affiliationStore, enrollments affiliation
 
 type affiliationRealtimeEffects struct{ realtime *realtimeService }
 
-func (effects affiliationRealtimeEffects) Changed(ctx context.Context, userID model.UserID) error {
-	return effects.realtime.InvalidateCurrentUserContext(ctx, userID)
+func (e affiliationRealtimeEffects) Changed(ctx context.Context, userID model.UserID) error {
+	return e.realtime.InvalidateCurrentUserContext(ctx, userID)
 }
 
-func (effects affiliationRealtimeEffects) Report(ctx context.Context, operation string, err error) {
-	effects.realtime.reportTransientFailure(ctx, operation, err)
+func (e affiliationRealtimeEffects) Report(ctx context.Context, operation string, err error) {
+	e.realtime.reportTransientFailure(ctx, operation, err)
 }
 
 func (s *affiliationService) ListAffiliations(ctx context.Context, invocation Invocation, query ListAffiliationsQuery) ([]*model.Affiliation, error) {

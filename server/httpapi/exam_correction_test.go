@@ -267,30 +267,30 @@ func newExamSittingCorrectionHTTPFake() *examSittingCorrectionHTTPFake {
 	}
 }
 
-func (fake *examSittingCorrectionHTTPFake) AuthenticateAccess(context.Context, string) (*model.Principal, error) {
+func (f *examSittingCorrectionHTTPFake) AuthenticateAccess(context.Context, string) (*model.Principal, error) {
 	principal := testExamHTTPPrincipal()
 	return &principal, nil
 }
 
-func (fake *examSittingCorrectionHTTPFake) AuthenticateBearer(context.Context, string) (*model.Principal, error) {
+func (f *examSittingCorrectionHTTPFake) AuthenticateBearer(context.Context, string) (*model.Principal, error) {
 	principal := testExamHTTPPrincipal()
 	return &principal, nil
 }
 
-func (fake *examSittingCorrectionHTTPFake) StageExamSittingCorrectionResourceContent(_ context.Context, _ application.Invocation, command application.StageExamSittingCorrectionResourceContentCommand) (application.ExamSittingCorrectionResourceStage, error) {
+func (f *examSittingCorrectionHTTPFake) StageExamSittingCorrectionResourceContent(_ context.Context, _ application.Invocation, command application.StageExamSittingCorrectionResourceContentCommand) (application.ExamSittingCorrectionResourceStage, error) {
 	raw, err := io.ReadAll(command.Body)
 	if err != nil {
 		return application.ExamSittingCorrectionResourceStage{}, apperror.New("exam.sitting.correction.content_invalid")
 	}
-	fake.stage, fake.uploaded = command, raw
-	fake.stageCalls++
-	return fake.stageResult, nil
+	f.stage, f.uploaded = command, raw
+	f.stageCalls++
+	return f.stageResult, nil
 }
 
-func (fake *examSittingCorrectionHTTPFake) ApplyExamSittingCorrection(_ context.Context, _ application.Invocation, command application.ApplyExamSittingCorrectionCommand) (application.ExamSittingCorrectionResult, error) {
-	fake.apply = command
-	fake.applyCalls++
-	result := fake.applyResult
+func (f *examSittingCorrectionHTTPFake) ApplyExamSittingCorrection(_ context.Context, _ application.Invocation, command application.ApplyExamSittingCorrectionCommand) (application.ExamSittingCorrectionResult, error) {
+	f.apply = command
+	f.applyCalls++
+	result := f.applyResult
 	result.AffectedCapabilities = append([]model.CandidateCapability{}, command.AffectedCapabilities...)
 	return result, nil
 }

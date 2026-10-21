@@ -38,9 +38,9 @@ type externalAuthenticationMaintainerFake struct {
 	limits  []int
 }
 
-func (fake *externalAuthenticationMaintainerFake) Maintain(_ context.Context, limit int) (*store.ExternalLoginStateMaintenanceResult, error) {
-	fake.limits = append(fake.limits, limit)
-	result := fake.results[0]
-	fake.results = fake.results[1:]
+func (f *externalAuthenticationMaintainerFake) Maintain(_ context.Context, limit int) (*store.ExternalLoginStateMaintenanceResult, error) {
+	f.limits = append(f.limits, limit)
+	result := f.results[0]
+	f.results = f.results[1:]
 	return result, nil
 }

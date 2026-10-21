@@ -121,12 +121,12 @@ func examStarterWorkspaceMutationErrors(specific ...string) []string {
 	return academicMutationErrorCodes(append(common, specific...)...)
 }
 
-func (module examStarterWorkspaceHTTPModule) list(request operationRequest) (operationResult, error) {
+func (m examStarterWorkspaceHTTPModule) list(request operationRequest) (operationResult, error) {
 	examID, err := examStarterWorkspaceExamID(request)
 	if err != nil {
 		return operationResult{}, err
 	}
-	items, err := module.application.ListExamStarterWorkspace(request.context, request.invocation(), application.ListExamStarterWorkspaceQuery{ExamID: examID})
+	items, err := m.application.ListExamStarterWorkspace(request.context, request.invocation(), application.ListExamStarterWorkspaceQuery{ExamID: examID})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -137,7 +137,7 @@ func (module examStarterWorkspaceHTTPModule) list(request operationRequest) (ope
 	return jsonResult(http.StatusOK, response), nil
 }
 
-func (module examStarterWorkspaceHTTPModule) createDirectory(request operationRequest) (operationResult, error) {
+func (m examStarterWorkspaceHTTPModule) createDirectory(request operationRequest) (operationResult, error) {
 	examID, err := examStarterWorkspaceExamID(request)
 	if err != nil {
 		return operationResult{}, err
@@ -146,7 +146,7 @@ func (module examStarterWorkspaceHTTPModule) createDirectory(request operationRe
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	result, err := module.application.CreateExamStarterWorkspaceDirectory(request.context, request.invocation(), application.CreateExamStarterWorkspaceDirectoryCommand{
+	result, err := m.application.CreateExamStarterWorkspaceDirectory(request.context, request.invocation(), application.CreateExamStarterWorkspaceDirectoryCommand{
 		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision, Path: body.Path, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
@@ -154,7 +154,7 @@ func (module examStarterWorkspaceHTTPModule) createDirectory(request operationRe
 	return jsonResult(http.StatusCreated, examStarterWorkspaceResultResponse(result)), nil
 }
 
-func (module examStarterWorkspaceHTTPModule) createFile(request operationRequest) (protocolResult, error) {
+func (m examStarterWorkspaceHTTPModule) createFile(request operationRequest) (protocolResult, error) {
 	examID, err := examStarterWorkspaceExamID(request)
 	if err != nil {
 		return protocolResult{}, err
@@ -167,7 +167,7 @@ func (module examStarterWorkspaceHTTPModule) createFile(request operationRequest
 	if metadata.Size == nil {
 		return protocolResult{}, invalidRequestError(errors.New("metadata size is required"))
 	}
-	result, err := module.application.CreateExamStarterWorkspaceFile(request.context, request.invocation(), application.CreateExamStarterWorkspaceFileCommand{
+	result, err := m.application.CreateExamStarterWorkspaceFile(request.context, request.invocation(), application.CreateExamStarterWorkspaceFileCommand{
 		ExamID: examID, ExpectedDraftRevision: metadata.ExpectedDraftRevision, Path: metadata.Path, MediaType: metadata.MediaType,
 		ExpectedSHA256: metadata.SHA256, Body: content, Size: *metadata.Size, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
@@ -176,7 +176,7 @@ func (module examStarterWorkspaceHTTPModule) createFile(request operationRequest
 	return streamingUploadProtocolResult(http.StatusCreated, examStarterWorkspaceResultResponse(result)), nil
 }
 
-func (module examStarterWorkspaceHTTPModule) moveEntry(request operationRequest) (operationResult, error) {
+func (m examStarterWorkspaceHTTPModule) moveEntry(request operationRequest) (operationResult, error) {
 	examID, entryID, err := examStarterWorkspaceIDs(request)
 	if err != nil {
 		return operationResult{}, err
@@ -185,7 +185,7 @@ func (module examStarterWorkspaceHTTPModule) moveEntry(request operationRequest)
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	result, err := module.application.MoveExamStarterWorkspaceEntry(request.context, request.invocation(), application.MoveExamStarterWorkspaceEntryCommand{
+	result, err := m.application.MoveExamStarterWorkspaceEntry(request.context, request.invocation(), application.MoveExamStarterWorkspaceEntryCommand{
 		ExamID: examID, EntryID: entryID, ExpectedDraftRevision: body.ExpectedDraftRevision, Path: body.Path, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
@@ -193,7 +193,7 @@ func (module examStarterWorkspaceHTTPModule) moveEntry(request operationRequest)
 	return jsonResult(http.StatusOK, examStarterWorkspaceResultResponse(result)), nil
 }
 
-func (module examStarterWorkspaceHTTPModule) replaceFile(request operationRequest) (protocolResult, error) {
+func (m examStarterWorkspaceHTTPModule) replaceFile(request operationRequest) (protocolResult, error) {
 	examID, entryID, err := examStarterWorkspaceIDs(request)
 	if err != nil {
 		return protocolResult{}, err
@@ -210,7 +210,7 @@ func (module examStarterWorkspaceHTTPModule) replaceFile(request operationReques
 	if err != nil {
 		return protocolResult{}, invalidRequestError(err)
 	}
-	result, err := module.application.ReplaceExamStarterWorkspaceFile(request.context, request.invocation(), application.ReplaceExamStarterWorkspaceFileCommand{
+	result, err := m.application.ReplaceExamStarterWorkspaceFile(request.context, request.invocation(), application.ReplaceExamStarterWorkspaceFileCommand{
 		ExamID: examID, EntryID: entryID, ExpectedDraftRevision: metadata.ExpectedDraftRevision, ExpectedContentVersion: expectedContentVersion, MediaType: metadata.MediaType,
 		ExpectedSHA256: metadata.SHA256, Body: content, Size: *metadata.Size, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
@@ -219,7 +219,7 @@ func (module examStarterWorkspaceHTTPModule) replaceFile(request operationReques
 	return streamingUploadProtocolResult(http.StatusOK, examStarterWorkspaceResultResponse(result)), nil
 }
 
-func (module examStarterWorkspaceHTTPModule) removeEntry(request operationRequest) (operationResult, error) {
+func (m examStarterWorkspaceHTTPModule) removeEntry(request operationRequest) (operationResult, error) {
 	examID, entryID, err := examStarterWorkspaceIDs(request)
 	if err != nil {
 		return operationResult{}, err
@@ -228,7 +228,7 @@ func (module examStarterWorkspaceHTTPModule) removeEntry(request operationReques
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	_, err = module.application.RemoveExamStarterWorkspaceEntry(request.context, request.invocation(), application.RemoveExamStarterWorkspaceEntryCommand{
+	_, err = m.application.RemoveExamStarterWorkspaceEntry(request.context, request.invocation(), application.RemoveExamStarterWorkspaceEntryCommand{
 		ExamID: examID, EntryID: entryID, ExpectedDraftRevision: body.ExpectedDraftRevision, Recursive: body.Recursive, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
@@ -236,12 +236,12 @@ func (module examStarterWorkspaceHTTPModule) removeEntry(request operationReques
 	return noContentResult(), nil
 }
 
-func (module examStarterWorkspaceHTTPModule) openFile(request operationRequest) (protocolResult, error) {
+func (m examStarterWorkspaceHTTPModule) openFile(request operationRequest) (protocolResult, error) {
 	examID, entryID, err := examStarterWorkspaceIDs(request)
 	if err != nil {
 		return protocolResult{}, err
 	}
-	opened, err := module.application.OpenExamStarterWorkspaceFile(request.context, request.invocation(), application.OpenExamStarterWorkspaceFileQuery{ExamID: examID, EntryID: entryID})
+	opened, err := m.application.OpenExamStarterWorkspaceFile(request.context, request.invocation(), application.OpenExamStarterWorkspaceFileQuery{ExamID: examID, EntryID: entryID})
 	if err != nil {
 		return protocolResult{}, err
 	}

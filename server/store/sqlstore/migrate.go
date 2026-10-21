@@ -62,11 +62,11 @@ type MigrationResult struct {
 // embedded schema under Morph's named PostgreSQL migration lock. Closing the
 // engine releases only its dedicated connection; the supplied store remains
 // open for normal application use.
-func (s *SQLStore) ApplyPendingMigrations(ctx context.Context) (result MigrationResult, resultErr error) {
-	if s == nil {
+func (ss *SQLStore) ApplyPendingMigrations(ctx context.Context) (result MigrationResult, resultErr error) {
+	if ss == nil {
 		return result, errors.New("apply database migrations: SQL store is nil")
 	}
-	engine, err := newMigrationEngine(ctx, s, s.settings, io.Discard)
+	engine, err := newMigrationEngine(ctx, ss, ss.settings, io.Discard)
 	if err != nil {
 		return result, err
 	}
@@ -82,7 +82,7 @@ func (s *SQLStore) ApplyPendingMigrations(ctx context.Context) (result Migration
 		return result, fmt.Errorf("apply database migrations: %w", err)
 	}
 	result.Applied = len(pending)
-	result.SchemaVersion, err = s.GetDBSchemaVersion(ctx)
+	result.SchemaVersion, err = ss.GetDBSchemaVersion(ctx)
 	if err != nil {
 		return MigrationResult{}, fmt.Errorf("read database schema version after migration: %w", err)
 	}

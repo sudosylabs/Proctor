@@ -545,9 +545,9 @@ type commandOutcomesFake struct {
 	calls int
 }
 
-func (fake *commandOutcomesFake) Has(context.Context, *store.CommandIdempotency) (bool, error) {
-	fake.calls++
-	return fake.found, fake.err
+func (f *commandOutcomesFake) Has(context.Context, *store.CommandIdempotency) (bool, error) {
+	f.calls++
+	return f.found, f.err
 }
 
 func testPrincipal(userID model.UserID) model.Principal {

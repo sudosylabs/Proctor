@@ -22,13 +22,13 @@ type AutomaticSubmissionResult struct {
 	ConnectionClosed bool
 }
 
-func (service *Service) ListAutomaticSealTargets(ctx context.Context, sittingID model.ExamSittingID,
+func (s *Service) ListAutomaticSealTargets(ctx context.Context, sittingID model.ExamSittingID,
 	after model.ExamAttemptID, limit int,
 ) ([]store.ExamSubmissionAutomaticSealTarget, error) {
 	if !sittingID.IsValid() || (!after.IsZero() && !after.IsValid()) || limit < 1 || limit > 200 {
 		return nil, apperror.Invalid("exam.attempt.invalid", "automatic_seal_list")
 	}
-	items, err := service.deps.Submissions.ListAutomaticSealTargets(ctx, store.ExamSubmissionAutomaticSealListOptions{
+	items, err := s.deps.Submissions.ListAutomaticSealTargets(ctx, store.ExamSubmissionAutomaticSealListOptions{
 		SittingID: sittingID, AfterAttemptID: after, Limit: limit,
 	})
 	if err != nil {
@@ -54,20 +54,20 @@ func validAutomaticSealTarget(target store.ExamSubmissionAutomaticSealTarget, si
 		target.Generation > 0 && target.ConnectionID.IsValid()
 }
 
-func (service *Service) SealForSittingClose(ctx context.Context, system invocation.System,
+func (s *Service) SealForSittingClose(ctx context.Context, system invocation.System,
 	target store.ExamSubmissionAutomaticSealTarget,
 ) (AutomaticSubmissionResult, error) {
 	if !system.Valid() || !validAutomaticSealTarget(target, target.SittingID) {
 		return AutomaticSubmissionResult{}, apperror.Invalid("exam.attempt.invalid", "automatic_seal")
 	}
-	preparation, err := service.deps.Submissions.PrepareAutomaticSeal(ctx, target)
+	preparation, err := s.deps.Submissions.PrepareAutomaticSeal(ctx, target)
 	if err != nil {
 		return AutomaticSubmissionResult{}, storeError(storeErrors, err)
 	}
 	if preparation == nil || preparation.SealAt.IsZero() {
 		return AutomaticSubmissionResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("invalid automatic Submission preparation"))
 	}
-	auditID, err := service.deps.SystemAuditor.Begin(ctx, model.ActionExamSittingManage,
+	auditID, err := s.deps.SystemAuditor.Begin(ctx, model.ActionExamSittingManage,
 		model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass,
 		target.ClassID.String(), store.ExamSubmissionAutomaticSealOperation, map[string]any{
 			"exam_id": target.ExamID.String(), "exam_sitting_id": target.SittingID.String(),
@@ -78,14 +78,14 @@ func (service *Service) SealForSittingClose(ctx context.Context, system invocati
 		return AutomaticSubmissionResult{}, err
 	}
 	at := preparation.SealAt
-	proposed := service.deps.NewSubmission()
+	proposed := s.deps.NewSubmission()
 	if !proposed.IsValid() {
-		return AutomaticSubmissionResult{}, service.failSystemAudit(ctx, auditID, apperror.Invalid("exam.attempt.invalid", "submission_id"))
+		return AutomaticSubmissionResult{}, s.failSystemAudit(ctx, auditID, apperror.Invalid("exam.attempt.invalid", "submission_id"))
 	}
 	var notice *store.PreparedMail
 	var expectedRecipientRevision int64
 	if !preparation.Replayed {
-		preparedMail, prepareErr := service.deps.Mail.PrepareSubmissionReceipt(ctx, SubmissionMailPreparation{
+		preparedMail, prepareErr := s.deps.Mail.PrepareSubmissionReceipt(ctx, SubmissionMailPreparation{
 			CandidateUserID: target.CandidateUserID, ExamID: target.ExamID, SittingID: target.SittingID,
 			SubmissionID: proposed, SealedAt: at, Provenance: model.ExamSubmissionSittingClosed,
 		})
@@ -93,24 +93,24 @@ func (service *Service) SealForSittingClose(ctx context.Context, system invocati
 			if prepareErr == nil {
 				prepareErr = errors.New("invalid automatic Submission receipt mail preparation")
 			}
-			return AutomaticSubmissionResult{}, service.failSystemAudit(ctx, auditID, apperror.New("exam.attempt.unavailable").Wrap(prepareErr))
+			return AutomaticSubmissionResult{}, s.failSystemAudit(ctx, auditID, apperror.New("exam.attempt.unavailable").Wrap(prepareErr))
 		}
 		notice, expectedRecipientRevision = preparedMail.Notice, preparedMail.ExpectedRecipientRevision
 	}
-	stored, err := service.deps.Submissions.SealForSittingClose(ctx, &store.ExamSubmissionAutomaticSeal{
+	stored, err := s.deps.Submissions.SealForSittingClose(ctx, &store.ExamSubmissionAutomaticSeal{
 		Target: target, SubmissionID: proposed, AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Notice: notice,
 		ExpectedRecipientRevision: expectedRecipientRevision,
 	})
 	if err != nil {
-		return AutomaticSubmissionResult{}, service.failSystemAudit(ctx, auditID, storeError(storeErrors, err))
+		return AutomaticSubmissionResult{}, s.failSystemAudit(ctx, auditID, storeError(storeErrors, err))
 	}
 	result, err := projectAutomaticSubmissionResult(stored, target, proposed)
 	if err != nil {
 		return AutomaticSubmissionResult{}, err
 	}
 	if !result.Replayed {
-		if effectErr := service.deps.Effects.AttemptSealedForSittingClose(ctx, result); effectErr != nil {
-			service.deps.EffectFailures.Report(ctx, "exam_attempt_sealed_for_sitting_close", effectErr)
+		if effectErr := s.deps.Effects.AttemptSealedForSittingClose(ctx, result); effectErr != nil {
+			s.deps.EffectFailures.Report(ctx, "exam_attempt_sealed_for_sitting_close", effectErr)
 		}
 	}
 	return result, nil
@@ -136,9 +136,9 @@ func projectAutomaticSubmissionResult(stored *store.ExamSubmissionAutomaticSealR
 		Replayed: stored.Replayed}, ConnectionClosed: stored.ConnectionClosed}, nil
 }
 
-func (service *Service) failSystemAudit(ctx context.Context, auditID model.AuditEventID, err error) error {
+func (s *Service) failSystemAudit(ctx context.Context, auditID model.AuditEventID, err error) error {
 	code := apperror.CodeOf(err, "exam.attempt.unavailable")
-	if auditErr := service.deps.SystemAuditor.Fail(ctx, auditID, code); auditErr != nil {
+	if auditErr := s.deps.SystemAuditor.Fail(ctx, auditID, code); auditErr != nil {
 		return errors.Join(err, auditErr)
 	}
 	return err

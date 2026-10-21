@@ -39,19 +39,19 @@ type BrowserDeliveryAppendCommand struct {
 	IdempotencyKey string
 }
 
-func (service *Service) beginBrowserDeliveryAudit(ctx context.Context, invocation invocation.Invocation, access store.BrowserDeliveryAccess, operation string) (model.AuditEventID, error) {
-	target, err := service.deps.Persistence.ResolveBrowserDeliveryTarget(ctx, access)
+func (s *Service) beginBrowserDeliveryAudit(ctx context.Context, invocation invocation.Invocation, access store.BrowserDeliveryAccess, operation string) (model.AuditEventID, error) {
+	target, err := s.deps.Persistence.ResolveBrowserDeliveryTarget(ctx, access)
 	if err != nil {
 		return "", deliveryStoreError(err)
 	}
 	if target == nil || !target.SittingID.IsValid() || !target.ClassID.IsValid() {
 		return "", apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 	}
-	return service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), operation, map[string]any{"source_session_id": string(access.SourceSessionID)}, nil)
+	return s.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), operation, map[string]any{"source_session_id": string(access.SourceSessionID)}, nil)
 }
-func (service *Service) DeclareBrowserDeliveryGaps(ctx context.Context, invocation invocation.Invocation, command BrowserDeliveryGapsCommand) (_ *model.BrowserDeliveryGapResult, resultErr error) {
+func (s *Service) DeclareBrowserDeliveryGaps(ctx context.Context, invocation invocation.Invocation, command BrowserDeliveryGapsCommand) (_ *model.BrowserDeliveryGapResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
-	release, admissionErr := service.enterControl(ctx, invocation, false)
+	release, admissionErr := s.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
@@ -71,30 +71,30 @@ func (service *Service) DeclareBrowserDeliveryGaps(ctx context.Context, invocati
 	if err != nil {
 		return nil, err
 	}
-	audit, err := service.beginBrowserDeliveryAudit(ctx, invocation, access, store.BrowserDeliveryGapsOperation)
+	audit, err := s.beginBrowserDeliveryAudit(ctx, invocation, access, store.BrowserDeliveryGapsOperation)
 	if err != nil {
 		return nil, err
 	}
-	value, err := service.deps.Persistence.DeclareBrowserDeliveryGaps(ctx, &store.BrowserDeliveryGapDeclaration{Access: access, Declaration: command.Declaration, AuditEventID: audit, AuditAt: model.MillisFromTime(service.deps.Now())}, idempotency)
+	value, err := s.deps.Persistence.DeclareBrowserDeliveryGaps(ctx, &store.BrowserDeliveryGapDeclaration{Access: access, Declaration: command.Declaration, AuditEventID: audit, AuditAt: model.MillisFromTime(s.deps.Now())}, idempotency)
 	if err != nil {
 		var capacity *model.DeliveryMetadataCapacity
 		if errors.As(err, &capacity) {
-			return nil, service.browserDeliveryFailure(ctx, access, err)
+			return nil, s.browserDeliveryFailure(ctx, access, err)
 		}
 		var refusal *store.BrowserDeliveryRefusal
 		if errors.As(err, &refusal) {
-			return nil, service.browserDeliveryFailure(ctx, access, err)
+			return nil, s.browserDeliveryFailure(ctx, access, err)
 		}
-		return nil, service.failAudit(ctx, audit, service.browserDeliveryFailure(ctx, access, err))
+		return nil, s.failAudit(ctx, audit, s.browserDeliveryFailure(ctx, access, err))
 	}
 	if value == nil || value.Receipt.DeclarationID != command.Declaration.DeclarationID || value.Receipt.DeclarationRevision < 1 || !model.IsValidSHA256Fingerprint(value.Receipt.RequestDigest) || value.Status.Validate() != nil || value.Status.SourceSessionID != access.SourceSessionID {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 	}
 	return value, nil
 }
-func (service *Service) SealBrowserDelivery(ctx context.Context, invocation invocation.Invocation, command BrowserDeliveryFinalCommand) (_ *model.BrowserSourceStatus, resultErr error) {
+func (s *Service) SealBrowserDelivery(ctx context.Context, invocation invocation.Invocation, command BrowserDeliveryFinalCommand) (_ *model.BrowserSourceStatus, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
-	release, admissionErr := service.enterControl(ctx, invocation, false)
+	release, admissionErr := s.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
@@ -114,21 +114,21 @@ func (service *Service) SealBrowserDelivery(ctx context.Context, invocation invo
 	if err != nil {
 		return nil, err
 	}
-	audit, err := service.beginBrowserDeliveryAudit(ctx, invocation, access, store.BrowserDeliveryFinalOperation)
+	audit, err := s.beginBrowserDeliveryAudit(ctx, invocation, access, store.BrowserDeliveryFinalOperation)
 	if err != nil {
 		return nil, err
 	}
-	value, err := service.deps.Persistence.SealBrowserDelivery(ctx, &store.BrowserDeliveryFinalDeclaration{Access: access, Declaration: command.Declaration, AuditEventID: audit, AuditAt: model.MillisFromTime(service.deps.Now())}, idempotency)
+	value, err := s.deps.Persistence.SealBrowserDelivery(ctx, &store.BrowserDeliveryFinalDeclaration{Access: access, Declaration: command.Declaration, AuditEventID: audit, AuditAt: model.MillisFromTime(s.deps.Now())}, idempotency)
 	if err != nil {
 		var capacity *model.DeliveryMetadataCapacity
 		if errors.As(err, &capacity) {
-			return nil, service.browserDeliveryFailure(ctx, access, err)
+			return nil, s.browserDeliveryFailure(ctx, access, err)
 		}
 		var refusal *store.BrowserDeliveryRefusal
 		if errors.As(err, &refusal) {
-			return nil, service.browserDeliveryFailure(ctx, access, err)
+			return nil, s.browserDeliveryFailure(ctx, access, err)
 		}
-		return nil, service.failAudit(ctx, audit, service.browserDeliveryFailure(ctx, access, err))
+		return nil, s.failAudit(ctx, audit, s.browserDeliveryFailure(ctx, access, err))
 	}
 	if value == nil || value.Validate() != nil || value.SourceSessionID != access.SourceSessionID {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
@@ -136,9 +136,9 @@ func (service *Service) SealBrowserDelivery(ctx context.Context, invocation invo
 	return value, nil
 }
 
-func (service *Service) UpdateBrowserDeliverySummary(ctx context.Context, invocation invocation.Invocation, command BrowserDeliverySummaryCommand) (_ *model.BrowserDeliverySummaryResult, resultErr error) {
+func (s *Service) UpdateBrowserDeliverySummary(ctx context.Context, invocation invocation.Invocation, command BrowserDeliverySummaryCommand) (_ *model.BrowserDeliverySummaryResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
-	release, admissionErr := service.enterControl(ctx, invocation, false)
+	release, admissionErr := s.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
@@ -158,22 +158,22 @@ func (service *Service) UpdateBrowserDeliverySummary(ctx context.Context, invoca
 	if err != nil {
 		return nil, err
 	}
-	audit, err := service.beginBrowserDeliveryAudit(ctx, invocation, access, store.BrowserDeliverySummaryOperation)
+	audit, err := s.beginBrowserDeliveryAudit(ctx, invocation, access, store.BrowserDeliverySummaryOperation)
 	if err != nil {
 		return nil, err
 	}
-	value, err := service.deps.Persistence.UpdateBrowserDeliverySummary(ctx, &store.BrowserDeliverySummaryUpdate{Access: access, Summary: command.Summary, AuditEventID: audit, AuditAt: model.MillisFromTime(service.deps.Now())}, idem)
+	value, err := s.deps.Persistence.UpdateBrowserDeliverySummary(ctx, &store.BrowserDeliverySummaryUpdate{Access: access, Summary: command.Summary, AuditEventID: audit, AuditAt: model.MillisFromTime(s.deps.Now())}, idem)
 	if err != nil {
-		return nil, service.failAudit(ctx, audit, service.browserDeliveryFailure(ctx, access, err))
+		return nil, s.failAudit(ctx, audit, s.browserDeliveryFailure(ctx, access, err))
 	}
 	if value == nil || value.Summary.Validate() != nil || value.Status.Validate() != nil || value.Status.SourceSessionID != access.SourceSessionID {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 	}
 	return value, nil
 }
-func (service *Service) BrowserDeliveryReceipts(ctx context.Context, invocation invocation.Invocation, query BrowserSourceQuery, first int64, limit int) (_ *model.BrowserReceiptPage, resultErr error) {
+func (s *Service) BrowserDeliveryReceipts(ctx context.Context, invocation invocation.Invocation, query BrowserSourceQuery, first int64, limit int) (_ *model.BrowserReceiptPage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
-	release, admissionErr := service.enterControl(ctx, invocation, false)
+	release, admissionErr := s.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
@@ -185,9 +185,9 @@ func (service *Service) BrowserDeliveryReceipts(ctx context.Context, invocation 
 	if first < 1 || first > model.BrowserParticipationPositionLimit || limit < 1 || limit > 64 {
 		return nil, apperror.Invalid("exam.attempt.invalid", "receipt_page")
 	}
-	value, err := service.deps.Persistence.BrowserDeliveryReceipts(ctx, access, first, limit)
+	value, err := s.deps.Persistence.BrowserDeliveryReceipts(ctx, access, first, limit)
 	if err != nil {
-		return nil, service.browserDeliveryFailure(ctx, access, err)
+		return nil, s.browserDeliveryFailure(ctx, access, err)
 	}
 	if value == nil || value.Receipts == nil || len(value.Receipts) > limit {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
@@ -204,7 +204,7 @@ func (service *Service) BrowserDeliveryReceipts(ctx context.Context, invocation 
 	}
 	return value, nil
 }
-func (service *Service) AppendHistoricalBrowserDelivery(ctx context.Context, invocation invocation.Invocation, command BrowserDeliveryAppendCommand) (_ *model.BrowserActivityAcknowledgement, resultErr error) {
+func (s *Service) AppendHistoricalBrowserDelivery(ctx context.Context, invocation invocation.Invocation, command BrowserDeliveryAppendCommand) (_ *model.BrowserActivityAcknowledgement, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	access, err := browserSourceSelector(invocation, command.Query)
 	if err != nil {
@@ -221,18 +221,18 @@ func (service *Service) AppendHistoricalBrowserDelivery(ctx context.Context, inv
 	if err != nil {
 		return nil, err
 	}
-	audit, err := service.beginBrowserDeliveryAudit(ctx, invocation, access, store.BrowserDeliveryAppendOperation)
+	audit, err := s.beginBrowserDeliveryAudit(ctx, invocation, access, store.BrowserDeliveryAppendOperation)
 	if err != nil {
 		return nil, err
 	}
 	b := command.Batch
-	value, err := service.deps.Persistence.AppendHistoricalBrowserDelivery(ctx, &store.BrowserActivityAppend{Access: access.Access, SourceSessionID: b.SourceSessionID, ParticipationID: b.ParticipationID, Generation: b.Generation, PolicyRevisionID: b.PolicyRevisionID, PolicyDigest: b.PolicyDigest, Events: b.Events, AuditEventID: audit, AuditAt: model.MillisFromTime(service.deps.Now())}, idem)
+	value, err := s.deps.Persistence.AppendHistoricalBrowserDelivery(ctx, &store.BrowserActivityAppend{Access: access.Access, SourceSessionID: b.SourceSessionID, ParticipationID: b.ParticipationID, Generation: b.Generation, PolicyRevisionID: b.PolicyRevisionID, PolicyDigest: b.PolicyDigest, Events: b.Events, AuditEventID: audit, AuditAt: model.MillisFromTime(s.deps.Now())}, idem)
 	if err != nil {
 		var refusal *store.BrowserDeliveryRefusal
 		if errors.As(err, &refusal) {
-			return nil, service.browserDeliveryFailure(ctx, access, err)
+			return nil, s.browserDeliveryFailure(ctx, access, err)
 		}
-		return nil, service.failAudit(ctx, audit, service.browserDeliveryFailure(ctx, access, err))
+		return nil, s.failAudit(ctx, audit, s.browserDeliveryFailure(ctx, access, err))
 	}
 	if !validBrowserActivityAcknowledgement(value, b.SourceSessionID, b.Events) {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)

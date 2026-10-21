@@ -228,46 +228,46 @@ func newExamStarterWorkspaceHTTPFake(principal model.Principal) *examStarterWork
 	entry, _ := model.NewStarterWorkspaceFile(model.NewStarterWorkspaceEntryID(), examID, "cmd/main.go", object.ID, at)
 	return &examStarterWorkspaceHTTPFake{principal: principal, examID: examID, entry: *entry, object: object}
 }
-func (fake *examStarterWorkspaceHTTPFake) AuthenticateAccess(context.Context, string) (*model.Principal, error) {
-	principal := fake.principal
+func (f *examStarterWorkspaceHTTPFake) AuthenticateAccess(context.Context, string) (*model.Principal, error) {
+	principal := f.principal
 	return &principal, nil
 }
-func (fake *examStarterWorkspaceHTTPFake) AuthenticateBearer(context.Context, string) (*model.Principal, error) {
-	principal := fake.principal
+func (f *examStarterWorkspaceHTTPFake) AuthenticateBearer(context.Context, string) (*model.Principal, error) {
+	principal := f.principal
 	return &principal, nil
 }
-func (fake *examStarterWorkspaceHTTPFake) result() application.ExamStarterWorkspaceResult {
-	return application.ExamStarterWorkspaceResult{Entry: fake.entry, Object: &fake.object, DraftRevision: 2}
+func (f *examStarterWorkspaceHTTPFake) result() application.ExamStarterWorkspaceResult {
+	return application.ExamStarterWorkspaceResult{Entry: f.entry, Object: &f.object, DraftRevision: 2}
 }
-func (fake *examStarterWorkspaceHTTPFake) ListExamStarterWorkspace(context.Context, application.Invocation, application.ListExamStarterWorkspaceQuery) ([]application.ExamStarterWorkspaceItem, error) {
-	return []application.ExamStarterWorkspaceItem{{Entry: fake.entry, Object: &fake.object}}, nil
+func (f *examStarterWorkspaceHTTPFake) ListExamStarterWorkspace(context.Context, application.Invocation, application.ListExamStarterWorkspaceQuery) ([]application.ExamStarterWorkspaceItem, error) {
+	return []application.ExamStarterWorkspaceItem{{Entry: f.entry, Object: &f.object}}, nil
 }
-func (fake *examStarterWorkspaceHTTPFake) OpenExamStarterWorkspaceFile(context.Context, application.Invocation, application.OpenExamStarterWorkspaceFileQuery) (application.OpenedExamStarterWorkspaceFile, error) {
-	return application.OpenedExamStarterWorkspaceFile{Body: io.NopCloser(strings.NewReader("protected code")), MediaType: fake.object.MediaType,
-		SizeBytes: 14, SHA256: fake.object.SHA256, ContentVersion: fake.object.ContentVersion}, nil
+func (f *examStarterWorkspaceHTTPFake) OpenExamStarterWorkspaceFile(context.Context, application.Invocation, application.OpenExamStarterWorkspaceFileQuery) (application.OpenedExamStarterWorkspaceFile, error) {
+	return application.OpenedExamStarterWorkspaceFile{Body: io.NopCloser(strings.NewReader("protected code")), MediaType: f.object.MediaType,
+		SizeBytes: 14, SHA256: f.object.SHA256, ContentVersion: f.object.ContentVersion}, nil
 }
-func (fake *examStarterWorkspaceHTTPFake) CreateExamStarterWorkspaceDirectory(_ context.Context, _ application.Invocation, command application.CreateExamStarterWorkspaceDirectoryCommand) (application.ExamStarterWorkspaceResult, error) {
-	fake.createDirectory = command
-	directory, _ := model.NewStarterWorkspaceDirectory(fake.entry.ID, fake.examID, command.Path, fake.entry.CreatedAt)
+func (f *examStarterWorkspaceHTTPFake) CreateExamStarterWorkspaceDirectory(_ context.Context, _ application.Invocation, command application.CreateExamStarterWorkspaceDirectoryCommand) (application.ExamStarterWorkspaceResult, error) {
+	f.createDirectory = command
+	directory, _ := model.NewStarterWorkspaceDirectory(f.entry.ID, f.examID, command.Path, f.entry.CreatedAt)
 	return application.ExamStarterWorkspaceResult{Entry: *directory, DraftRevision: 2}, nil
 }
-func (fake *examStarterWorkspaceHTTPFake) CreateExamStarterWorkspaceFile(_ context.Context, _ application.Invocation, command application.CreateExamStarterWorkspaceFileCommand) (application.ExamStarterWorkspaceResult, error) {
+func (f *examStarterWorkspaceHTTPFake) CreateExamStarterWorkspaceFile(_ context.Context, _ application.Invocation, command application.CreateExamStarterWorkspaceFileCommand) (application.ExamStarterWorkspaceResult, error) {
 	raw, err := io.ReadAll(command.Body)
 	if err != nil {
 		return application.ExamStarterWorkspaceResult{}, apperror.New("exam.starter_workspace.invalid")
 	}
-	fake.createFile, fake.uploaded = command, raw
-	return fake.result(), nil
+	f.createFile, f.uploaded = command, raw
+	return f.result(), nil
 }
-func (fake *examStarterWorkspaceHTTPFake) MoveExamStarterWorkspaceEntry(_ context.Context, _ application.Invocation, command application.MoveExamStarterWorkspaceEntryCommand) (application.ExamStarterWorkspaceResult, error) {
-	fake.move = command
-	return fake.result(), nil
+func (f *examStarterWorkspaceHTTPFake) MoveExamStarterWorkspaceEntry(_ context.Context, _ application.Invocation, command application.MoveExamStarterWorkspaceEntryCommand) (application.ExamStarterWorkspaceResult, error) {
+	f.move = command
+	return f.result(), nil
 }
-func (fake *examStarterWorkspaceHTTPFake) ReplaceExamStarterWorkspaceFile(_ context.Context, _ application.Invocation, command application.ReplaceExamStarterWorkspaceFileCommand) (application.ExamStarterWorkspaceResult, error) {
-	fake.replaceFile = command
-	return fake.result(), nil
+func (f *examStarterWorkspaceHTTPFake) ReplaceExamStarterWorkspaceFile(_ context.Context, _ application.Invocation, command application.ReplaceExamStarterWorkspaceFileCommand) (application.ExamStarterWorkspaceResult, error) {
+	f.replaceFile = command
+	return f.result(), nil
 }
-func (fake *examStarterWorkspaceHTTPFake) RemoveExamStarterWorkspaceEntry(_ context.Context, _ application.Invocation, command application.RemoveExamStarterWorkspaceEntryCommand) (application.ExamStarterWorkspaceResult, error) {
-	fake.removeEntry = command
-	return fake.result(), nil
+func (f *examStarterWorkspaceHTTPFake) RemoveExamStarterWorkspaceEntry(_ context.Context, _ application.Invocation, command application.RemoveExamStarterWorkspaceEntryCommand) (application.ExamStarterWorkspaceResult, error) {
+	f.removeEntry = command
+	return f.result(), nil
 }

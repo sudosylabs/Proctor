@@ -26,8 +26,8 @@ const (
 	CandidateCapabilityWorkspace  CandidateCapability = "workspace"
 )
 
-func (capability CandidateCapability) IsValid() bool {
-	switch capability {
+func (c CandidateCapability) IsValid() bool {
+	switch c {
 	case CandidateCapabilityBrowser, CandidateCapabilitySubmission, CandidateCapabilityWorkspace:
 		return true
 	default:
@@ -94,8 +94,8 @@ const (
 	ExamCorrectionChangedBrowserPolicy ExamCorrectionChangedArea = "browser_policy"
 )
 
-func (area ExamCorrectionChangedArea) IsValid() bool {
-	return area == ExamCorrectionChangedInstructions || area == ExamCorrectionChangedResources || area == ExamCorrectionChangedBrowserPolicy
+func (a ExamCorrectionChangedArea) IsValid() bool {
+	return a == ExamCorrectionChangedInstructions || a == ExamCorrectionChangedResources || a == ExamCorrectionChangedBrowserPolicy
 }
 
 // CandidateCorrectionNotice is immutable candidate-visible metadata owned by
@@ -116,30 +116,30 @@ func NewCandidateCorrectionNotice(summary string, changedAreas []ExamCorrectionC
 	return notice, nil
 }
 
-func (notice *CandidateCorrectionNotice) Validate() error {
-	if notice == nil || ValidateCandidateCorrectionSelection(notice.Summary, notice.AffectedCapabilities) != nil || len(notice.ChangedAreas) < 1 || len(notice.ChangedAreas) > 3 {
+func (n *CandidateCorrectionNotice) Validate() error {
+	if n == nil || ValidateCandidateCorrectionSelection(n.Summary, n.AffectedCapabilities) != nil || len(n.ChangedAreas) < 1 || len(n.ChangedAreas) > 3 {
 		return invalidModelError("CandidateCorrectionNotice.Validate", "candidate_correction_notice", "", "invalid Candidate Correction Notice", "")
 	}
-	for index, area := range notice.ChangedAreas {
-		if !area.IsValid() || index > 0 && strings.Compare(string(notice.ChangedAreas[index-1]), string(area)) >= 0 {
+	for index, area := range n.ChangedAreas {
+		if !area.IsValid() || index > 0 && strings.Compare(string(n.ChangedAreas[index-1]), string(area)) >= 0 {
 			return invalidModelError("CandidateCorrectionNotice.Validate", "candidate_correction_notice", "", "invalid Candidate Correction Notice changed areas", "")
 		}
 	}
-	for _, required := range MinimumCorrectionCapabilities(notice.ChangedAreas) {
-		if !slices.Contains(notice.AffectedCapabilities, required) {
+	for _, required := range MinimumCorrectionCapabilities(n.ChangedAreas) {
+		if !slices.Contains(n.AffectedCapabilities, required) {
 			return invalidModelError("CandidateCorrectionNotice.Validate", "candidate_correction_notice", "", "Candidate Correction selection omits an affected capability", "")
 		}
 	}
 	return nil
 }
 
-func (notice *CandidateCorrectionNotice) Clone() *CandidateCorrectionNotice {
-	if notice == nil {
+func (n *CandidateCorrectionNotice) Clone() *CandidateCorrectionNotice {
+	if n == nil {
 		return nil
 	}
-	clone := *notice
-	clone.ChangedAreas = slices.Clone(notice.ChangedAreas)
-	clone.AffectedCapabilities = slices.Clone(notice.AffectedCapabilities)
+	clone := *n
+	clone.ChangedAreas = slices.Clone(n.ChangedAreas)
+	clone.AffectedCapabilities = slices.Clone(n.AffectedCapabilities)
 	return &clone
 }
 
@@ -175,23 +175,23 @@ type CandidateLiveCorrection struct {
 	AcknowledgedAt          OptionalTime
 }
 
-func (correction CandidateLiveCorrection) Validate() error {
-	notice, err := NewCandidateCorrectionNotice(correction.Summary, correction.ChangedAreas, correction.AffectedCapabilities, correction.AcknowledgementRequired)
-	if err != nil || !correction.RevisionID.IsValid() || correction.RevisionNumber < 1 || correction.EffectiveAt.IsZero() {
+func (c CandidateLiveCorrection) Validate() error {
+	notice, err := NewCandidateCorrectionNotice(c.Summary, c.ChangedAreas, c.AffectedCapabilities, c.AcknowledgementRequired)
+	if err != nil || !c.RevisionID.IsValid() || c.RevisionNumber < 1 || c.EffectiveAt.IsZero() {
 		return invalidModelError("CandidateLiveCorrection.Validate", "candidate_live_correction", "", "invalid Candidate Live Correction", "")
 	}
 	_ = notice
-	switch correction.AcknowledgementState {
+	switch c.AcknowledgementState {
 	case CorrectionAcknowledgementNotRequired:
-		if correction.AcknowledgementRequired || correction.AcknowledgedAt.Valid {
+		if c.AcknowledgementRequired || c.AcknowledgedAt.Valid {
 			return invalidModelError("CandidateLiveCorrection.Validate", "candidate_live_correction", "", "inconsistent notice-only Candidate Live Correction", "")
 		}
 	case CorrectionAcknowledgementPending:
-		if !correction.AcknowledgementRequired || correction.AcknowledgedAt.Valid {
+		if !c.AcknowledgementRequired || c.AcknowledgedAt.Valid {
 			return invalidModelError("CandidateLiveCorrection.Validate", "candidate_live_correction", "", "inconsistent pending Candidate Live Correction", "")
 		}
 	case CorrectionAcknowledgementAcknowledged:
-		if !correction.AcknowledgementRequired || !correction.AcknowledgedAt.Valid || correction.AcknowledgedAt.Time.Before(correction.EffectiveAt) {
+		if !c.AcknowledgementRequired || !c.AcknowledgedAt.Valid || c.AcknowledgedAt.Time.Before(c.EffectiveAt) {
 			return invalidModelError("CandidateLiveCorrection.Validate", "candidate_live_correction", "", "inconsistent acknowledged Candidate Live Correction", "")
 		}
 	default:

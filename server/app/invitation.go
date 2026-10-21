@@ -221,8 +221,8 @@ const (
 	InvitationBatchRevoke                    InvitationBatchOperation = "revoke"
 )
 
-func (operation InvitationBatchOperation) IsValid() bool {
-	switch operation {
+func (o InvitationBatchOperation) IsValid() bool {
+	switch o {
 	case InvitationBatchStudentClassCreate, InvitationBatchTeacherAcademicUnitCreate,
 		InvitationBatchAcademicUnitRoleCreate, InvitationBatchInstitutionRoleCreate,
 		InvitationBatchResend, InvitationBatchRevoke:
@@ -486,15 +486,15 @@ func invitationBatchDuplicateWinners(operation InvitationBatchOperation, items [
 	return winners
 }
 
-func (result *InvitationBatchResult) append(item InvitationBatchItemResult) {
-	result.Items = append(result.Items, item)
+func (r *InvitationBatchResult) append(item InvitationBatchItemResult) {
+	r.Items = append(r.Items, item)
 	switch item.Status {
 	case InvitationBatchItemSucceeded:
-		result.Succeeded++
+		r.Succeeded++
 	case InvitationBatchItemNoOp:
-		result.NoOp++
+		r.NoOp++
 	case InvitationBatchItemFailed:
-		result.Failed++
+		r.Failed++
 	}
 }
 

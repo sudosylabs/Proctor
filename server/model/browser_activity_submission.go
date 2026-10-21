@@ -17,11 +17,11 @@ const (
 	BrowserActivityGapSourceNotFinalized  BrowserActivitySubmissionGapReason = "source_not_finalized"
 )
 
-func (reason BrowserActivitySubmissionGapReason) IsClientReason() bool {
-	return reason == BrowserActivityGapSpoolOverflow || reason == BrowserActivityGapSpoolCorrupt ||
-		reason == BrowserActivityGapSpoolKeyUnavailable || reason == BrowserActivityGapDeliveryIncomplete
+func (r BrowserActivitySubmissionGapReason) IsClientReason() bool {
+	return r == BrowserActivityGapSpoolOverflow || r == BrowserActivityGapSpoolCorrupt ||
+		r == BrowserActivityGapSpoolKeyUnavailable || r == BrowserActivityGapDeliveryIncomplete
 }
 
-func (reason BrowserActivitySubmissionGapReason) IsValid() bool {
-	return reason.IsClientReason() || reason == BrowserActivityGapSourceNotFinalized
+func (r BrowserActivitySubmissionGapReason) IsValid() bool {
+	return r.IsClientReason() || r == BrowserActivityGapSourceNotFinalized
 }

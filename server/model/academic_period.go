@@ -27,27 +27,27 @@ func NewAcademicUnitAcademicPeriodOwner(id AcademicUnitID) AcademicPeriodOwner {
 	return AcademicPeriodOwner{AcademicUnitID: id}
 }
 
-func (owner AcademicPeriodOwner) Validate() error {
-	institution := owner.InstitutionID.IsValid()
-	unit := owner.AcademicUnitID.IsValid()
+func (o AcademicPeriodOwner) Validate() error {
+	institution := o.InstitutionID.IsValid()
+	unit := o.AcademicUnitID.IsValid()
 	if institution == unit {
 		return invalidModelError("AcademicPeriodOwner.Validate", "academic_period_owner", "", "academic period owner must contain exactly one institution or academic unit", "")
 	}
 	return nil
 }
 
-func (owner AcademicPeriodOwner) Resource() Resource {
-	if owner.InstitutionID.IsValid() {
-		return Resource{Type: ResourceInstitution, ID: owner.InstitutionID.String()}
+func (o AcademicPeriodOwner) Resource() Resource {
+	if o.InstitutionID.IsValid() {
+		return Resource{Type: ResourceInstitution, ID: o.InstitutionID.String()}
 	}
-	if owner.AcademicUnitID.IsValid() {
-		return Resource{Type: ResourceAcademicUnit, ID: owner.AcademicUnitID.String()}
+	if o.AcademicUnitID.IsValid() {
+		return Resource{Type: ResourceAcademicUnit, ID: o.AcademicUnitID.String()}
 	}
 	return Resource{}
 }
 
-func (owner AcademicPeriodOwner) Type() ResourceType { return owner.Resource().Type }
-func (owner AcademicPeriodOwner) ID() string         { return owner.Resource().ID }
+func (o AcademicPeriodOwner) Type() ResourceType { return o.Resource().Type }
+func (o AcademicPeriodOwner) ID() string         { return o.Resource().ID }
 
 // AcademicPeriod is the time window in which classes and enrollments apply,
 // such as an academic year or semester. StartsAt is inclusive and EndsAt is

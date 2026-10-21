@@ -97,12 +97,12 @@ func jobResource(jobs JobOperationsApplication) resource {
 	)
 }
 
-func (module jobResourceModule) list(request operationRequest) (operationResult, error) {
+func (m jobResourceModule) list(request operationRequest) (operationResult, error) {
 	query, err := listJobsQuery(request.request)
 	if err != nil {
 		return operationResult{}, apperror.Invalid("request.invalid", "query")
 	}
-	page, appErr := module.jobs.ListJobs(request.context, request.invocation(), query)
+	page, appErr := m.jobs.ListJobs(request.context, request.invocation(), query)
 	if appErr != nil {
 		return operationResult{}, appErr
 	}
@@ -119,18 +119,18 @@ func (module jobResourceModule) list(request operationRequest) (operationResult,
 	}
 	return jsonResult(http.StatusOK, response), nil
 }
-func (module jobResourceModule) get(request operationRequest) (operationResult, error) {
+func (m jobResourceModule) get(request operationRequest) (operationResult, error) {
 	jobID, err := request.params.RequireJobID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	view, err := module.jobs.GetJob(request.context, request.invocation(), application.GetJobQuery{ID: model.JobID(jobID)})
+	view, err := m.jobs.GetJob(request.context, request.invocation(), application.GetJobQuery{ID: jobID})
 	if err != nil {
 		return operationResult{}, err
 	}
 	return jsonResult(http.StatusOK, jobResponseFromApplication(view)), nil
 }
-func (module jobResourceModule) listAttempts(request operationRequest) (operationResult, error) {
+func (m jobResourceModule) listAttempts(request operationRequest) (operationResult, error) {
 	jobID, err := request.params.RequireJobID()
 	if err != nil {
 		return operationResult{}, err
@@ -139,7 +139,7 @@ func (module jobResourceModule) listAttempts(request operationRequest) (operatio
 	if err != nil {
 		return operationResult{}, apperror.Invalid("request.invalid", "query")
 	}
-	page, appErr := module.jobs.ListJobAttempts(request.context, request.invocation(), application.ListJobAttemptsQuery{JobID: model.JobID(jobID), BeforeNumber: before, Limit: limit})
+	page, appErr := m.jobs.ListJobAttempts(request.context, request.invocation(), application.ListJobAttemptsQuery{JobID: jobID, BeforeNumber: before, Limit: limit})
 	if appErr != nil {
 		return operationResult{}, appErr
 	}
@@ -155,23 +155,23 @@ func (module jobResourceModule) listAttempts(request operationRequest) (operatio
 	}
 	return jsonResult(http.StatusOK, response), nil
 }
-func (module jobResourceModule) cancel(request operationRequest) (operationResult, error) {
+func (m jobResourceModule) cancel(request operationRequest) (operationResult, error) {
 	jobID, err := request.params.RequireJobID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	view, err := module.jobs.CancelJob(request.context, request.invocation(), application.CancelJobCommand{ID: model.JobID(jobID)})
+	view, err := m.jobs.CancelJob(request.context, request.invocation(), application.CancelJobCommand{ID: jobID})
 	if err != nil {
 		return operationResult{}, err
 	}
 	return jsonResult(http.StatusOK, jobResponseFromApplication(view)), nil
 }
-func (module jobResourceModule) retry(request operationRequest) (operationResult, error) {
+func (m jobResourceModule) retry(request operationRequest) (operationResult, error) {
 	jobID, err := request.params.RequireJobID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	view, err := module.jobs.RetryJob(request.context, request.invocation(), application.RetryJobCommand{ID: model.JobID(jobID)})
+	view, err := m.jobs.RetryJob(request.context, request.invocation(), application.RetryJobCommand{ID: jobID})
 	if err != nil {
 		return operationResult{}, err
 	}

@@ -54,9 +54,9 @@ func problemResult(problem Problem) operationResult {
 	return operationResult{status: problem.Status, problem: &problem}
 }
 
-func (result operationResult) withHeaders(headers http.Header) operationResult {
-	result.headers = headers.Clone()
-	return result
+func (r operationResult) withHeaders(headers http.Header) operationResult {
+	r.headers = headers.Clone()
+	return r
 }
 
 type operation func(operationRequest) (operationResult, error)
@@ -87,9 +87,9 @@ func streamingUploadProtocolResult(status int, body any) protocolResult {
 	return protocolResult{kind: RouteProtocolStreamingUpload, status: status, jsonBody: body}
 }
 
-func (result protocolResult) withHeaders(headers http.Header) protocolResult {
-	result.headers = headers.Clone()
-	return result
+func (r protocolResult) withHeaders(headers http.Header) protocolResult {
+	r.headers = headers.Clone()
+	return r
 }
 
 func (a *API) upgradeOperationHandler(
@@ -130,7 +130,7 @@ type headerOnlyResponseWriter struct {
 	header http.Header
 }
 
-func (writer headerOnlyResponseWriter) Header() http.Header { return writer.header }
+func (w headerOnlyResponseWriter) Header() http.Header { return w.header }
 
 func (headerOnlyResponseWriter) Write([]byte) (int, error) {
 	return 0, errors.New("response header operation cannot write a body")
@@ -165,8 +165,8 @@ type operationResponseError struct {
 	headers http.Header
 }
 
-func (failure *operationResponseError) Error() string { return failure.err.Error() }
-func (failure *operationResponseError) Unwrap() error { return failure.err }
+func (f *operationResponseError) Error() string { return f.err.Error() }
+func (f *operationResponseError) Unwrap() error { return f.err }
 
 func errorWithHeaders(err error, headers http.Header) error {
 	if err == nil {
@@ -467,19 +467,19 @@ func authRequiresPrincipal(requirement AuthRequirement) bool {
 	}
 }
 
-func (request operationRequest) invocation() application.Invocation {
-	return application.NewInvocation(request.principal, request.metadata)
+func (r operationRequest) invocation() application.Invocation {
+	return application.NewInvocation(r.principal, r.metadata)
 }
 
-func (request operationRequest) decodeJSON(target any) error {
-	if err := decodeRequestJSON(request.request, target); err != nil {
+func (r operationRequest) decodeJSON(target any) error {
+	if err := decodeRequestJSON(r.request, target); err != nil {
 		return invalidRequestError(err)
 	}
 	return nil
 }
 
-func (request operationRequest) queryLimit() (int, error) {
-	value := request.request.URL.Query().Get("limit")
+func (r operationRequest) queryLimit() (int, error) {
+	value := r.request.URL.Query().Get("limit")
 	if value == "" {
 		return 100, nil
 	}

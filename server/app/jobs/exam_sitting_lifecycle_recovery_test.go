@@ -166,25 +166,25 @@ type examSittingLifecycleRecoveryFake struct {
 	err         error
 }
 
-func (fake *examSittingLifecycleRecoveryFake) ListExamSittingLifecycleDueFromJob(_ context.Context, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
-	fake.listOptions = append(fake.listOptions, options)
-	if fake.err != nil {
-		return nil, fake.err
+func (f *examSittingLifecycleRecoveryFake) ListExamSittingLifecycleDueFromJob(_ context.Context, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
+	f.listOptions = append(f.listOptions, options)
+	if f.err != nil {
+		return nil, f.err
 	}
-	if len(fake.pages) == 0 {
+	if len(f.pages) == 0 {
 		return nil, nil
 	}
-	page := fake.pages[0]
-	fake.pages = fake.pages[1:]
+	page := f.pages[0]
+	f.pages = f.pages[1:]
 	return page, nil
 }
 
-func (fake *examSittingLifecycleRecoveryFake) ReconcileExamSittingLifecycleFromJob(_ context.Context, sittingID model.ExamSittingID, _ model.JobID, _ model.JobAttemptID) (*store.ExamSittingLifecycleResult, error) {
-	fake.reconciled = append(fake.reconciled, sittingID)
-	if fake.err != nil {
-		return nil, fake.err
+func (f *examSittingLifecycleRecoveryFake) ReconcileExamSittingLifecycleFromJob(_ context.Context, sittingID model.ExamSittingID, _ model.JobID, _ model.JobAttemptID) (*store.ExamSittingLifecycleResult, error) {
+	f.reconciled = append(f.reconciled, sittingID)
+	if f.err != nil {
+		return nil, f.err
 	}
-	return fake.results[sittingID], nil
+	return f.results[sittingID], nil
 }
 
 func mustRecoveryJob(t *testing.T, at time.Time, limit int) *model.Job {

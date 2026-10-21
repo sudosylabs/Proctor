@@ -28,7 +28,7 @@ type ManagerEndCommand struct {
 	IdempotencyKey          string
 }
 
-func (service *Service) EndExamAttemptByManager(ctx context.Context, invocation invocation.Invocation, command ManagerEndCommand) (_ store.ExamSubmissionReceipt, resultErr error) {
+func (s *Service) EndExamAttemptByManager(ctx context.Context, invocation invocation.Invocation, command ManagerEndCommand) (_ store.ExamSubmissionReceipt, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	principal := invocation.Principal()
 	if principal.Validate() != nil {
@@ -44,11 +44,11 @@ func (service *Service) EndExamAttemptByManager(ctx context.Context, invocation 
 	}
 	// Authorize the exact Sitting before reading the Attempt so existence is
 	// not probeable; later exits complete the audit attempt as failed.
-	override, err := service.deps.Managers.AuthorizeSittingManage(ctx, invocation, command.SittingID)
+	override, err := s.deps.Managers.AuthorizeSittingManage(ctx, invocation, command.SittingID)
 	if err != nil {
 		return store.ExamSubmissionReceipt{}, err
 	}
-	sitting, err := service.deps.Sittings.Resolve(ctx, command.SittingID)
+	sitting, err := s.deps.Sittings.Resolve(ctx, command.SittingID)
 	if err != nil {
 		return store.ExamSubmissionReceipt{}, storeError(storeErrors, err)
 	}
@@ -59,7 +59,7 @@ func (service *Service) EndExamAttemptByManager(ctx context.Context, invocation 
 	if override {
 		action = model.ActionExamSittingManageOverride
 	}
-	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, action,
+	auditID, err := s.deps.Auditor.BeginAtScope(ctx, invocation, action,
 		model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}, model.RoleScopeClass,
 		sitting.Sitting.ClassID.String(), store.ExamSubmissionManagerEndOperation,
 		map[string]any{"exam_id": command.ExamID.String(),
@@ -69,47 +69,47 @@ func (service *Service) EndExamAttemptByManager(ctx context.Context, invocation 
 		return store.ExamSubmissionReceipt{}, err
 	}
 	if sitting.Sitting.ExamID != command.ExamID {
-		return store.ExamSubmissionReceipt{}, service.failAudit(ctx, auditID, apperror.New("exam.attempt.not_found"))
+		return store.ExamSubmissionReceipt{}, s.failAudit(ctx, auditID, apperror.New("exam.attempt.not_found"))
 	}
-	managerSnapshot, err := service.deps.Persistence.Get(ctx, command.ExamID, command.AttemptID)
+	managerSnapshot, err := s.deps.Persistence.Get(ctx, command.ExamID, command.AttemptID)
 	if err != nil {
-		return store.ExamSubmissionReceipt{}, service.failAudit(ctx, auditID, err)
+		return store.ExamSubmissionReceipt{}, s.failAudit(ctx, auditID, err)
 	}
 	if managerSnapshot == nil || managerSnapshot.Attempt == nil || managerSnapshot.Attempt.Validate() != nil ||
 		managerSnapshot.Attempt.ExamID != command.ExamID ||
 		!validActiveSuspension(managerSnapshot.ActiveSuspension, managerSnapshot.Attempt.ID) {
-		return store.ExamSubmissionReceipt{}, service.failAudit(ctx, auditID,
+		return store.ExamSubmissionReceipt{}, s.failAudit(ctx, auditID,
 			apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent manager-ended Attempt projection")))
 	}
 	if managerSnapshot.Attempt.SittingID != command.SittingID || managerSnapshot.Attempt.CandidateUserID == principal.UserID {
-		return store.ExamSubmissionReceipt{}, service.failAudit(ctx, auditID, apperror.New("exam.attempt.not_found"))
+		return store.ExamSubmissionReceipt{}, s.failAudit(ctx, auditID, apperror.New("exam.attempt.not_found"))
 	}
 	request := store.ExamSubmissionManagerEndRequest{ExamID: command.ExamID, SittingID: command.SittingID,
 		AttemptID: command.AttemptID, ActorUserID: principal.UserID, ManagerOverride: override,
 		ExpectedAttemptRevision: command.ExpectedAttemptRevision, PrivateReason: command.PrivateReason}
-	preparation, err := service.deps.Submissions.PrepareManagerEnd(ctx, request)
+	preparation, err := s.deps.Submissions.PrepareManagerEnd(ctx, request)
 	if err != nil {
-		return store.ExamSubmissionReceipt{}, service.failAudit(ctx, auditID, storeError(storeErrors, err))
+		return store.ExamSubmissionReceipt{}, s.failAudit(ctx, auditID, storeError(storeErrors, err))
 	}
 	if preparation == nil || !validAutomaticSealTarget(preparation.Target, command.SittingID) ||
 		preparation.Target.ExamID != command.ExamID || preparation.Target.AttemptID != command.AttemptID ||
 		preparation.ExpectedAttemptRevision != command.ExpectedAttemptRevision || preparation.SealAt.IsZero() {
-		return store.ExamSubmissionReceipt{}, service.failAudit(ctx, auditID,
+		return store.ExamSubmissionReceipt{}, s.failAudit(ctx, auditID,
 			apperror.New("exam.attempt.unavailable").Wrap(errors.New("invalid manager-ended Submission preparation")))
 	}
 	if preparation.Target.CandidateUserID != managerSnapshot.Attempt.CandidateUserID ||
 		preparation.Target.ClassID != sitting.Sitting.ClassID {
-		return store.ExamSubmissionReceipt{}, service.failAudit(ctx, auditID,
+		return store.ExamSubmissionReceipt{}, s.failAudit(ctx, auditID,
 			apperror.New("exam.attempt.unavailable").Wrap(errors.New("mismatched manager-ended Submission preparation")))
 	}
-	proposed := service.deps.NewSubmission()
+	proposed := s.deps.NewSubmission()
 	if !proposed.IsValid() {
-		return store.ExamSubmissionReceipt{}, service.failAudit(ctx, auditID, apperror.Invalid("exam.attempt.invalid", "submission_id"))
+		return store.ExamSubmissionReceipt{}, s.failAudit(ctx, auditID, apperror.Invalid("exam.attempt.invalid", "submission_id"))
 	}
 	var notice *store.PreparedMail
 	var expectedRecipientRevision int64
 	if !preparation.Replayed {
-		preparedMail, prepareErr := service.deps.Mail.PrepareSubmissionReceipt(ctx, SubmissionMailPreparation{
+		preparedMail, prepareErr := s.deps.Mail.PrepareSubmissionReceipt(ctx, SubmissionMailPreparation{
 			CandidateUserID: preparation.Target.CandidateUserID, ExamID: preparation.Target.ExamID,
 			SittingID: preparation.Target.SittingID, SubmissionID: proposed, SealedAt: preparation.SealAt,
 			Provenance: model.ExamSubmissionManagerEndedAttempt,
@@ -118,24 +118,24 @@ func (service *Service) EndExamAttemptByManager(ctx context.Context, invocation 
 			if prepareErr == nil {
 				prepareErr = errors.New("invalid manager-ended Submission receipt mail preparation")
 			}
-			return store.ExamSubmissionReceipt{}, service.failAudit(ctx, auditID, apperror.New("exam.attempt.unavailable").Wrap(prepareErr))
+			return store.ExamSubmissionReceipt{}, s.failAudit(ctx, auditID, apperror.New("exam.attempt.unavailable").Wrap(prepareErr))
 		}
 		notice, expectedRecipientRevision = preparedMail.Notice, preparedMail.ExpectedRecipientRevision
 	}
-	stored, err := service.deps.Submissions.EndByManager(ctx, &store.ExamSubmissionManagerEnd{Request: request,
+	stored, err := s.deps.Submissions.EndByManager(ctx, &store.ExamSubmissionManagerEnd{Request: request,
 		Target: preparation.Target, SubmissionID: proposed, AuditEventID: auditID,
 		AuditAt: model.MillisFromTime(preparation.SealAt), Notice: notice,
 		ExpectedRecipientRevision: expectedRecipientRevision}, idempotency)
 	if err != nil {
-		return store.ExamSubmissionReceipt{}, service.failAudit(ctx, auditID, storeError(storeErrors, err))
+		return store.ExamSubmissionReceipt{}, s.failAudit(ctx, auditID, storeError(storeErrors, err))
 	}
 	result, err := projectManagerEndResult(stored, preparation.Target, command, proposed)
 	if err != nil {
 		return store.ExamSubmissionReceipt{}, err
 	}
 	if !result.Replayed {
-		if effectErr := service.deps.Effects.AttemptSubmitted(ctx, result); effectErr != nil {
-			service.deps.EffectFailures.Report(ctx, "exam_attempt_manager_ended", effectErr)
+		if effectErr := s.deps.Effects.AttemptSubmitted(ctx, result); effectErr != nil {
+			s.deps.EffectFailures.Report(ctx, "exam_attempt_manager_ended", effectErr)
 		}
 	}
 	return result.Receipt, nil

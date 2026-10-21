@@ -28,9 +28,9 @@ type commandText struct {
 	locale    string
 }
 
-func (text commandText) value(id, fallback string, args any) string {
-	if text.localizer != nil {
-		if translated, err := text.localizer.Translate(text.locale, id, args); err == nil {
+func (t commandText) value(id, fallback string, args any) string {
+	if t.localizer != nil {
+		if translated, err := t.localizer.Translate(t.locale, id, args); err == nil {
 			return translated
 		}
 	}

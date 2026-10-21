@@ -155,15 +155,15 @@ func bootstrapResource(bootstrap BootstrapApplication) resource {
 	)
 }
 
-func (module bootstrapResourceModule) status(request operationRequest) (operationResult, error) {
-	status, err := module.bootstrap.GetInstallationStatus(request.context, application.GetInstallationStatusQuery{})
+func (m bootstrapResourceModule) status(request operationRequest) (operationResult, error) {
+	status, err := m.bootstrap.GetInstallationStatus(request.context, application.GetInstallationStatusQuery{})
 	if err != nil {
 		return operationResult{}, err
 	}
 	return jsonResult(http.StatusOK, installationStatusResponse{Initialized: status.Initialized}), nil
 }
 
-func (module bootstrapResourceModule) install(request operationRequest) (operationResult, error) {
+func (m bootstrapResourceModule) install(request operationRequest) (operationResult, error) {
 	var input bootstrapRequest
 	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, apperror.New("request.invalid").WithField("field", "body").Wrap(err)
@@ -171,7 +171,7 @@ func (module bootstrapResourceModule) install(request operationRequest) (operati
 	if input.Institution == nil || input.Administrator == nil {
 		return operationResult{}, apperror.New("request.invalid").WithField("field", "bootstrap")
 	}
-	result, err := module.bootstrap.BootstrapInstallation(
+	result, err := m.bootstrap.BootstrapInstallation(
 		request.context,
 		application.NewInvocation(model.Principal{}, request.metadata),
 		application.BootstrapInstallationCommand{

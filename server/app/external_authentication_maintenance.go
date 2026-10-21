@@ -33,12 +33,12 @@ type externalAuthenticationMaintenancePeriodicRunner struct {
 	states externalAuthenticationMaintainer
 }
 
-func (runner externalAuthenticationMaintenancePeriodicRunner) Run(ctx context.Context) error {
-	if runner.states == nil {
+func (r externalAuthenticationMaintenancePeriodicRunner) Run(ctx context.Context) error {
+	if r.states == nil {
 		return errors.New("external authentication maintenance persistence is unavailable")
 	}
 	for page := 0; page < externalAuthenticationMaintenanceMaximumPages; page++ {
-		maintained, err := runner.states.Maintain(ctx, externalAuthenticationMaintenancePageSize)
+		maintained, err := r.states.Maintain(ctx, externalAuthenticationMaintenancePageSize)
 		if err != nil {
 			return err
 		}

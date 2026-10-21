@@ -52,8 +52,8 @@ func sessionResource(sessions Sessions, cookies browserCookies) resource {
 	)
 }
 
-func (module sessionResourceModule) list(request operationRequest) (operationResult, error) {
-	sessions, err := module.sessions.ListSessions(
+func (m sessionResourceModule) list(request operationRequest) (operationResult, error) {
+	sessions, err := m.sessions.ListSessions(
 		request.context,
 		request.invocation(),
 		application.ListSessionsQuery{},
@@ -64,12 +64,12 @@ func (module sessionResourceModule) list(request operationRequest) (operationRes
 	return jsonResult(http.StatusOK, sessionResponsesFromModels(request.request, sessions)), nil
 }
 
-func (module sessionResourceModule) revoke(request operationRequest) (operationResult, error) {
+func (m sessionResourceModule) revoke(request operationRequest) (operationResult, error) {
 	var input revokeSessionRequest
 	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
-	if err := module.sessions.RevokeSession(
+	if err := m.sessions.RevokeSession(
 		request.context,
 		request.invocation(),
 		application.RevokeSessionCommand{SessionID: input.SessionID},
@@ -79,13 +79,13 @@ func (module sessionResourceModule) revoke(request operationRequest) (operationR
 	result := noContentResult()
 	if input.SessionID == request.principal.SessionID.String() &&
 		credentialSourceFromContext(request.context) == credentialSourceCookie {
-		result = result.withHeaders(captureResponseHeaders(module.cookies.clear))
+		result = result.withHeaders(captureResponseHeaders(m.cookies.clear))
 	}
 	return result, nil
 }
 
-func (module sessionResourceModule) revokeAll(request operationRequest) (operationResult, error) {
-	if err := module.sessions.RevokeAllSessions(
+func (m sessionResourceModule) revokeAll(request operationRequest) (operationResult, error) {
+	if err := m.sessions.RevokeAllSessions(
 		request.context,
 		request.invocation(),
 		application.RevokeAllSessionsCommand{},
@@ -94,7 +94,7 @@ func (module sessionResourceModule) revokeAll(request operationRequest) (operati
 	}
 	result := noContentResult()
 	if credentialSourceFromContext(request.context) == credentialSourceCookie {
-		result = result.withHeaders(captureResponseHeaders(module.cookies.clear))
+		result = result.withHeaders(captureResponseHeaders(m.cookies.clear))
 	}
 	return result, nil
 }

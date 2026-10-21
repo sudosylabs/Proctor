@@ -65,13 +65,13 @@ func protectMarkdownCode(value string) (string, protectedMarkdownCode) {
 	return output.String(), protected
 }
 
-func (protected protectedMarkdownCode) placeholder(index int) string {
-	return fmt.Sprintf("%s%d\x00", protected.prefix, index)
+func (p protectedMarkdownCode) placeholder(index int) string {
+	return fmt.Sprintf("%s%d\x00", p.prefix, index)
 }
 
-func (protected protectedMarkdownCode) restore(value string) string {
-	for index, snippet := range protected.snippets {
-		value = strings.ReplaceAll(value, protected.placeholder(index), snippet)
+func (p protectedMarkdownCode) restore(value string) string {
+	for index, snippet := range p.snippets {
+		value = strings.ReplaceAll(value, p.placeholder(index), snippet)
 	}
 	return value
 }

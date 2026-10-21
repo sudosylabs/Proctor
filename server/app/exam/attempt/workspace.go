@@ -96,7 +96,7 @@ type WorkspaceJournalPage struct {
 	RefreshRequired bool
 }
 
-func (service *Service) ListCandidateExamWorkspaceJournal(ctx context.Context, invocation invocation.Invocation, query WorkspaceJournalQuery) (_ WorkspaceJournalPage, resultErr error) {
+func (s *Service) ListCandidateExamWorkspaceJournal(ctx context.Context, invocation invocation.Invocation, query WorkspaceJournalQuery) (_ WorkspaceJournalPage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	access, err := candidateSelector(invocation, query.Access)
 	if err != nil {
@@ -105,7 +105,7 @@ func (service *Service) ListCandidateExamWorkspaceJournal(ctx context.Context, i
 	if query.AfterCursor < 0 || query.Limit < 1 || query.Limit > model.AttemptWorkspaceJournalReadMaximum {
 		return WorkspaceJournalPage{}, apperror.Invalid("exam.attempt.invalid", "workspace_journal")
 	}
-	stored, err := service.deps.Workspace.ListJournal(ctx, store.CandidateWorkspaceJournalOptions{
+	stored, err := s.deps.Workspace.ListJournal(ctx, store.CandidateWorkspaceJournalOptions{
 		Access: access, AfterCursor: query.AfterCursor, Limit: query.Limit,
 	})
 	if err != nil {
@@ -127,7 +127,7 @@ func (service *Service) ListCandidateExamWorkspaceJournal(ctx context.Context, i
 		Entries: entries, HasMore: stored.HasMore, RefreshRequired: stored.RefreshRequired}, nil
 }
 
-func (service *Service) CreateCandidateExamWorkspaceDirectory(ctx context.Context, invocation invocation.Invocation, command CreateWorkspaceDirectoryCommand) (_ WorkspaceMutationResult, resultErr error) {
+func (s *Service) CreateCandidateExamWorkspaceDirectory(ctx context.Context, invocation invocation.Invocation, command CreateWorkspaceDirectoryCommand) (_ WorkspaceMutationResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	access, err := workspaceMutationSelector(invocation, command.Access)
 	if err != nil {
@@ -144,36 +144,36 @@ func (service *Service) CreateCandidateExamWorkspaceDirectory(ctx context.Contex
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
-	entryID := service.deps.NewWorkspaceEntry()
+	entryID := s.deps.NewWorkspaceEntry()
 	if !entryID.IsValid() {
 		return WorkspaceMutationResult{}, apperror.Invalid("exam.attempt.invalid", "workspace_entry_id")
 	}
-	target, err := service.resolveWorkspaceMutationTarget(ctx, access)
+	target, err := s.resolveWorkspaceMutationTarget(ctx, access)
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
-	return service.applyWorkspaceMutation(ctx, invocation, target, &store.ExamAttemptWorkspaceMutation{
+	return s.applyWorkspaceMutation(ctx, invocation, target, &store.ExamAttemptWorkspaceMutation{
 		Access: access, Operation: model.AttemptWorkspaceMutationCreateDirectory, EntryID: entryID,
 		DestinationPath: path,
 	}, idempotency, model.StarterWorkspaceEntryDirectory, "")
 }
 
-func (service *Service) CreateCandidateExamWorkspaceFile(ctx context.Context, invocation invocation.Invocation, command CreateWorkspaceFileCommand) (_ WorkspaceMutationResult, resultErr error) {
+func (s *Service) CreateCandidateExamWorkspaceFile(ctx context.Context, invocation invocation.Invocation, command CreateWorkspaceFileCommand) (_ WorkspaceMutationResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
-	entryID := service.deps.NewWorkspaceEntry()
-	return service.stageWorkspaceFile(ctx, invocation, command.Access, entryID, "", command.Path, "",
+	entryID := s.deps.NewWorkspaceEntry()
+	return s.stageWorkspaceFile(ctx, invocation, command.Access, entryID, "", command.Path, "",
 		command.MediaType, command.ExpectedSHA256, command.Body, command.Size, command.IdempotencyKey,
 		model.AttemptWorkspaceMutationCreateFile)
 }
 
-func (service *Service) ReplaceCandidateExamWorkspaceFile(ctx context.Context, invocation invocation.Invocation, command ReplaceWorkspaceFileCommand) (_ WorkspaceMutationResult, resultErr error) {
+func (s *Service) ReplaceCandidateExamWorkspaceFile(ctx context.Context, invocation invocation.Invocation, command ReplaceWorkspaceFileCommand) (_ WorkspaceMutationResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
-	return service.stageWorkspaceFile(ctx, invocation, command.Access, command.EntryID, command.ExpectedPath, "",
+	return s.stageWorkspaceFile(ctx, invocation, command.Access, command.EntryID, command.ExpectedPath, "",
 		command.ExpectedContentVersion, command.MediaType, command.ExpectedSHA256, command.Body, command.Size, command.IdempotencyKey,
 		model.AttemptWorkspaceMutationReplaceFile)
 }
 
-func (service *Service) MoveCandidateExamWorkspaceEntry(ctx context.Context, invocation invocation.Invocation, command MoveWorkspaceEntryCommand) (_ WorkspaceMutationResult, resultErr error) {
+func (s *Service) MoveCandidateExamWorkspaceEntry(ctx context.Context, invocation invocation.Invocation, command MoveWorkspaceEntryCommand) (_ WorkspaceMutationResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	access, err := workspaceMutationSelector(invocation, command.Access)
 	if err != nil {
@@ -189,16 +189,16 @@ func (service *Service) MoveCandidateExamWorkspaceEntry(ctx context.Context, inv
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
-	target, err := service.resolveWorkspaceMutationTarget(ctx, access)
+	target, err := s.resolveWorkspaceMutationTarget(ctx, access)
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
-	return service.applyWorkspaceMutation(ctx, invocation, target, &store.ExamAttemptWorkspaceMutation{Access: access,
+	return s.applyWorkspaceMutation(ctx, invocation, target, &store.ExamAttemptWorkspaceMutation{Access: access,
 		Operation: model.AttemptWorkspaceMutationMoveEntry, EntryID: command.EntryID, ExpectedPath: expected,
 		DestinationPath: destination}, idempotency, "", "")
 }
 
-func (service *Service) DeleteCandidateExamWorkspaceEntry(ctx context.Context, invocation invocation.Invocation, command DeleteWorkspaceEntryCommand) (_ WorkspaceMutationResult, resultErr error) {
+func (s *Service) DeleteCandidateExamWorkspaceEntry(ctx context.Context, invocation invocation.Invocation, command DeleteWorkspaceEntryCommand) (_ WorkspaceMutationResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	access, err := workspaceMutationSelector(invocation, command.Access)
 	if err != nil {
@@ -222,17 +222,17 @@ func (service *Service) DeleteCandidateExamWorkspaceEntry(ctx context.Context, i
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
-	target, err := service.resolveWorkspaceMutationTarget(ctx, access)
+	target, err := s.resolveWorkspaceMutationTarget(ctx, access)
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
-	return service.applyWorkspaceMutation(ctx, invocation, target, &store.ExamAttemptWorkspaceMutation{Access: access,
+	return s.applyWorkspaceMutation(ctx, invocation, target, &store.ExamAttemptWorkspaceMutation{Access: access,
 		Operation: model.AttemptWorkspaceMutationDeleteEntry, EntryID: command.EntryID, ExpectedPath: expected,
 		ExpectedContentVersion: command.ExpectedContentVersion, Recursive: command.Recursive,
 		ExpectedWorkspaceCursor: command.ExpectedWorkspaceCursor}, idempotency, "", "")
 }
 
-func (service *Service) stageWorkspaceFile(ctx context.Context, invocation invocation.Invocation, mutationAccess WorkspaceMutationAccess,
+func (s *Service) stageWorkspaceFile(ctx context.Context, invocation invocation.Invocation, mutationAccess WorkspaceMutationAccess,
 	entryID model.AttemptWorkspaceEntryID, expectedPath, destinationPath string, expectedVersion model.WorkspaceContentVersion,
 	mediaType, expectedSHA string, body io.Reader, size int64, idempotencyKey string,
 	operation model.AttemptWorkspaceMutationKind,
@@ -273,48 +273,48 @@ func (service *Service) stageWorkspaceFile(ctx context.Context, invocation invoc
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
-	target, err := service.resolveWorkspaceMutationTarget(ctx, access)
+	target, err := s.resolveWorkspaceMutationTarget(ctx, access)
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
-	objectID, version := service.deps.NewWorkspaceObject(), service.deps.NewWorkspaceVersion()
+	objectID, version := s.deps.NewWorkspaceObject(), s.deps.NewWorkspaceVersion()
 	if !objectID.IsValid() || !version.IsValid() {
 		return WorkspaceMutationResult{}, apperror.Invalid("exam.attempt.invalid", "workspace_identity")
 	}
-	if _, err = service.deps.Workspace.ReserveObject(ctx, &store.ExamAttemptWorkspaceObjectReservation{Access: access, ObjectID: objectID}); err != nil {
+	if _, err = s.deps.Workspace.ReserveObject(ctx, &store.ExamAttemptWorkspaceObjectReservation{Access: access, ObjectID: objectID}); err != nil {
 		return WorkspaceMutationResult{}, storeError(storeErrors, err)
 	}
-	staged, err := service.deps.Content.StageAttemptWorkspaceObject(ctx, objectID, body, size, mediaType)
+	staged, err := s.deps.Content.StageAttemptWorkspaceObject(ctx, objectID, body, size, mediaType)
 	if err != nil {
-		_ = service.deps.Workspace.MarkObjectReclaimable(ctx, objectID)
+		_ = s.deps.Workspace.MarkObjectReclaimable(ctx, objectID)
 		if isInvalidAttemptWorkspaceContent(err) {
 			return WorkspaceMutationResult{}, apperror.Invalid("exam.attempt.invalid", "workspace_content").Wrap(err)
 		}
 		return WorkspaceMutationResult{}, apperror.New("exam.attempt.unavailable").Wrap(err)
 	}
 	if staged == nil || staged.Validate() != nil || staged.SHA256 != expectedSHA {
-		_ = service.deps.Workspace.MarkObjectReclaimable(ctx, objectID)
+		_ = s.deps.Workspace.MarkObjectReclaimable(ctx, objectID)
 		return WorkspaceMutationResult{}, apperror.Invalid("exam.attempt.invalid", "workspace_sha256")
 	}
-	if _, err = service.deps.Workspace.MarkObjectReady(ctx, &store.ExamAttemptWorkspaceObjectReady{Access: access,
+	if _, err = s.deps.Workspace.MarkObjectReady(ctx, &store.ExamAttemptWorkspaceObjectReady{Access: access,
 		ObjectID: objectID, ContentVersion: version, Content: *staged}); err != nil {
 		mapped := storeError(storeErrors, err)
 		if !isAttemptUnavailable(mapped) {
-			_ = service.deps.Workspace.MarkObjectReclaimable(ctx, objectID)
+			_ = s.deps.Workspace.MarkObjectReclaimable(ctx, objectID)
 		}
 		return WorkspaceMutationResult{}, mapped
 	}
-	result, err := service.applyWorkspaceMutation(ctx, invocation, target, &store.ExamAttemptWorkspaceMutation{Access: access,
+	result, err := s.applyWorkspaceMutation(ctx, invocation, target, &store.ExamAttemptWorkspaceMutation{Access: access,
 		Operation: operation, EntryID: entryID, ExpectedPath: expectedPath, DestinationPath: destinationPath,
 		ExpectedContentVersion: expectedVersion, ObjectID: objectID}, idempotency, model.StarterWorkspaceEntryFile, version)
 	if err != nil {
 		if !isAttemptUnavailable(err) {
-			_ = service.deps.Workspace.MarkObjectReclaimable(ctx, objectID)
+			_ = s.deps.Workspace.MarkObjectReclaimable(ctx, objectID)
 		}
 		return WorkspaceMutationResult{}, err
 	}
 	if result.Replayed {
-		_ = service.deps.Workspace.MarkObjectReclaimable(ctx, objectID)
+		_ = s.deps.Workspace.MarkObjectReclaimable(ctx, objectID)
 	}
 	return result, nil
 }
@@ -365,8 +365,8 @@ func projectWorkspaceMutation(stored *store.ExamAttemptWorkspaceMutationResult, 
 		WorkspaceID: stored.WorkspaceID, Entry: &entry, Change: stored.Change, Replayed: stored.Replayed}, nil
 }
 
-func (service *Service) resolveWorkspaceMutationTarget(ctx context.Context, access store.ExamAttemptWorkspaceMutationAccess) (*store.ExamAttemptWorkspaceMutationTarget, error) {
-	target, err := service.deps.Workspace.ResolveMutationTarget(ctx, access)
+func (s *Service) resolveWorkspaceMutationTarget(ctx context.Context, access store.ExamAttemptWorkspaceMutationAccess) (*store.ExamAttemptWorkspaceMutationTarget, error) {
+	target, err := s.deps.Workspace.ResolveMutationTarget(ctx, access)
 	if err != nil {
 		return nil, storeError(storeErrors, err)
 	}
@@ -376,11 +376,11 @@ func (service *Service) resolveWorkspaceMutationTarget(ctx context.Context, acce
 	return target, nil
 }
 
-func (service *Service) applyWorkspaceMutation(ctx context.Context, invocation invocation.Invocation, target *store.ExamAttemptWorkspaceMutationTarget,
+func (s *Service) applyWorkspaceMutation(ctx context.Context, invocation invocation.Invocation, target *store.ExamAttemptWorkspaceMutationTarget,
 	mutation *store.ExamAttemptWorkspaceMutation, idempotency *store.CommandIdempotency,
 	expectedKind model.StarterWorkspaceEntryKind, expectedVersion model.WorkspaceContentVersion,
 ) (WorkspaceMutationResult, error) {
-	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate,
+	auditID, err := s.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate,
 		model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass,
 		target.ClassID.String(), store.ExamAttemptWorkspaceMutationOperation,
 		map[string]any{"exam_attempt_id": mutation.Access.AttemptID.String(),
@@ -388,10 +388,10 @@ func (service *Service) applyWorkspaceMutation(ctx context.Context, invocation i
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
-	mutation.AuditEventID, mutation.AuditAt = auditID, model.MillisFromTime(model.TimeUTC(service.deps.Now()))
-	stored, err := service.deps.Workspace.ApplyMutation(ctx, mutation, idempotency)
+	mutation.AuditEventID, mutation.AuditAt = auditID, model.MillisFromTime(model.TimeUTC(s.deps.Now()))
+	stored, err := s.deps.Workspace.ApplyMutation(ctx, mutation, idempotency)
 	if err != nil {
-		return WorkspaceMutationResult{}, service.failAudit(ctx, auditID, err)
+		return WorkspaceMutationResult{}, s.failAudit(ctx, auditID, err)
 	}
 	result, err := projectWorkspaceMutation(stored, target, mutation.Access.AttemptID, mutation.EntryID, mutation.Operation, expectedKind, expectedVersion)
 	if err != nil {
@@ -401,8 +401,8 @@ func (service *Service) applyWorkspaceMutation(ctx context.Context, invocation i
 		return WorkspaceMutationResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent recursive Workspace mutation result"))
 	}
 	if !result.Replayed {
-		if effectErr := service.deps.Effects.WorkspaceChanged(ctx, result); effectErr != nil {
-			service.deps.EffectFailures.Report(ctx, "exam_attempt_workspace_changed", effectErr)
+		if effectErr := s.deps.Effects.WorkspaceChanged(ctx, result); effectErr != nil {
+			s.deps.EffectFailures.Report(ctx, "exam_attempt_workspace_changed", effectErr)
 		}
 	}
 	return result, nil

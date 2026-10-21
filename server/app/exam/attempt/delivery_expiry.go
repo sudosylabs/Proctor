@@ -15,11 +15,11 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-func (service *Service) ScanExpiredDeliveries(ctx context.Context, limit int) (ExpiryScanResult, error) {
+func (s *Service) ScanExpiredDeliveries(ctx context.Context, limit int) (ExpiryScanResult, error) {
 	if limit < 1 || limit > 200 {
 		return ExpiryScanResult{}, apperror.Invalid("exam.attempt.invalid", "delivery_expiry_limit")
 	}
-	due, err := service.deps.Persistence.ListExpiredDeliveries(ctx, limit)
+	due, err := s.deps.Persistence.ListExpiredDeliveries(ctx, limit)
 	if err != nil {
 		return ExpiryScanResult{}, storeError(storeErrors, err)
 	}
@@ -31,13 +31,13 @@ func (service *Service) ScanExpiredDeliveries(ctx context.Context, limit int) (E
 		if !d.Valid() {
 			return result, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 		}
-		audit, err := service.deps.SystemAuditor.Begin(ctx, model.ActionExamSittingManage, model.Resource{Type: model.ResourceExamSitting, ID: d.SittingID.String()}, model.RoleScopeClass, d.ClassID.String(), store.DeliveryExpireOperation, map[string]any{"family": d.Family, "source_id": d.SourceID})
+		audit, err := s.deps.SystemAuditor.Begin(ctx, model.ActionExamSittingManage, model.Resource{Type: model.ResourceExamSitting, ID: d.SittingID.String()}, model.RoleScopeClass, d.ClassID.String(), store.DeliveryExpireOperation, map[string]any{"family": d.Family, "source_id": d.SourceID})
 		if err != nil {
 			return result, err
 		}
-		changed, err := service.deps.Persistence.ExpireDelivery(ctx, &store.DeliveryExpiry{Due: d, AuditEventID: audit, AuditAt: model.MillisFromTime(service.deps.Now())})
+		changed, err := s.deps.Persistence.ExpireDelivery(ctx, &store.DeliveryExpiry{Due: d, AuditEventID: audit, AuditAt: model.MillisFromTime(s.deps.Now())})
 		if err != nil {
-			if auditErr := service.deps.SystemAuditor.Fail(ctx, audit, "exam.attempt.unavailable"); auditErr != nil {
+			if auditErr := s.deps.SystemAuditor.Fail(ctx, audit, "exam.attempt.unavailable"); auditErr != nil {
 				return result, errors.Join(storeError(storeErrors, err), auditErr)
 			}
 			return result, storeError(storeErrors, err)

@@ -105,6 +105,6 @@ func TestHasCurrentMembershipForwardsUserTimeAndContext(t *testing.T) {
 
 type membershipLookup func(context.Context, string, time.Time) ([]*model.AcademicUnitMember, error)
 
-func (lookup membershipLookup) ListActiveByUser(ctx context.Context, userID model.UserID, at time.Time) ([]*model.AcademicUnitMember, error) {
-	return lookup(ctx, userID.String(), at)
+func (l membershipLookup) ListActiveByUser(ctx context.Context, userID model.UserID, at time.Time) ([]*model.AcademicUnitMember, error) {
+	return l(ctx, userID.String(), at)
 }

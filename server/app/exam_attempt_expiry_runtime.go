@@ -30,11 +30,11 @@ type examAttemptExpiryUseCases interface {
 // the named Store operation; this adapter creates no durable Job occurrence.
 type examAttemptExpiryPeriodicRunner struct{ attempts examAttemptExpiryUseCases }
 
-func (runner examAttemptExpiryPeriodicRunner) Run(ctx context.Context) error {
-	_, err := runner.attempts.ScanExpiredParticipations(ctx, examAttemptExpiryBatchLimit)
+func (r examAttemptExpiryPeriodicRunner) Run(ctx context.Context) error {
+	_, err := r.attempts.ScanExpiredParticipations(ctx, examAttemptExpiryBatchLimit)
 	if err != nil {
 		return err
 	}
-	_, err = runner.attempts.ScanExpiredDeliveries(ctx, examAttemptExpiryBatchLimit)
+	_, err = r.attempts.ScanExpiredDeliveries(ctx, examAttemptExpiryBatchLimit)
 	return err
 }

@@ -827,7 +827,7 @@ func examAttemptResource(application ExamAttemptApplication) resource {
 	)
 }
 
-func (module examAttemptHTTPModule) endByManager(request operationRequest) (operationResult, error) {
+func (m examAttemptHTTPModule) endByManager(request operationRequest) (operationResult, error) {
 	examID, sittingID, attemptID, err := managedExamAttemptIDs(request)
 	if err != nil {
 		return operationResult{}, err
@@ -839,7 +839,7 @@ func (module examAttemptHTTPModule) endByManager(request operationRequest) (oper
 	if body.ExpectedAttemptRevision < 1 {
 		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
-	receipt, err := module.application.EndExamAttemptByManager(request.context, request.invocation(),
+	receipt, err := m.application.EndExamAttemptByManager(request.context, request.invocation(),
 		application.EndExamAttemptByManagerCommand{ExamID: examID, SittingID: sittingID, AttemptID: attemptID,
 			ExpectedAttemptRevision: body.ExpectedAttemptRevision, PrivateReason: body.Reason,
 			IdempotencyKey: request.idempotencyKey})
@@ -853,7 +853,7 @@ func (module examAttemptHTTPModule) endByManager(request operationRequest) (oper
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
-func (module examAttemptHTTPModule) acknowledgeCorrection(request operationRequest) (operationResult, error) {
+func (m examAttemptHTTPModule) acknowledgeCorrection(request operationRequest) (operationResult, error) {
 	access, err := candidateAccess(request)
 	if err != nil {
 		return operationResult{}, err
@@ -875,7 +875,7 @@ func (module examAttemptHTTPModule) acknowledgeCorrection(request operationReque
 	if err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	result, err := module.application.AcknowledgeExamAttemptCorrection(request.context, request.invocation(), application.AcknowledgeExamCorrectionCommand{
+	result, err := m.application.AcknowledgeExamAttemptCorrection(request.context, request.invocation(), application.AcknowledgeExamCorrectionCommand{
 		Access: mutationAccess, CorrectionRevisionID: correctionRevisionID, ExpectedCurrentRevisionID: currentRevisionID,
 		IdempotencyKey: request.idempotencyKey})
 	if err != nil {
@@ -890,7 +890,7 @@ func (module examAttemptHTTPModule) acknowledgeCorrection(request operationReque
 		AcknowledgedAt:       model.FormatRFC3339(result.AcknowledgedAt.Time)}).withHeaders(noStoreHeaders()), nil
 }
 
-func (module examAttemptHTTPModule) listCandidateStatuses(request operationRequest) (operationResult, error) {
+func (m examAttemptHTTPModule) listCandidateStatuses(request operationRequest) (operationResult, error) {
 	examID, sittingID, err := managedExamAttemptScope(request)
 	if err != nil {
 		return operationResult{}, err
@@ -910,7 +910,7 @@ func (module examAttemptHTTPModule) listCandidateStatuses(request operationReque
 		}
 		query.AfterCandidateUserID = model.UserID(cursor.CandidateUserID)
 	}
-	page, err := module.application.ListSittingCandidateStatuses(request.context, request.invocation(), query)
+	page, err := m.application.ListSittingCandidateStatuses(request.context, request.invocation(), query)
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -990,7 +990,7 @@ func idempotentSessionRoute(requirement IdempotencyRequirement, method string, p
 	return definition
 }
 
-func (module examAttemptHTTPModule) reallow(request operationRequest) (operationResult, error) {
+func (m examAttemptHTTPModule) reallow(request operationRequest) (operationResult, error) {
 	examID, sittingID, attemptID, err := managedExamAttemptIDs(request)
 	if err != nil {
 		return operationResult{}, err
@@ -1003,7 +1003,7 @@ func (module examAttemptHTTPModule) reallow(request operationRequest) (operation
 	if err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	result, err := module.application.ReallowExamAttempt(request.context, request.invocation(), application.ReallowExamAttemptCommand{
+	result, err := m.application.ReallowExamAttempt(request.context, request.invocation(), application.ReallowExamAttemptCommand{
 		ExamID: examID, SittingID: sittingID, AttemptID: attemptID, SuspensionID: suspensionID,
 		ExpectedAttemptRevision: body.ExpectedAttemptRevision, PrivateReason: body.Reason, IdempotencyKey: request.idempotencyKey,
 	})
@@ -1017,7 +1017,7 @@ func (module examAttemptHTTPModule) reallow(request operationRequest) (operation
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
-func (module examAttemptHTTPModule) suspend(request operationRequest) (operationResult, error) {
+func (m examAttemptHTTPModule) suspend(request operationRequest) (operationResult, error) {
 	examID, sittingID, attemptID, err := managedExamAttemptIDs(request)
 	if err != nil {
 		return operationResult{}, err
@@ -1029,7 +1029,7 @@ func (module examAttemptHTTPModule) suspend(request operationRequest) (operation
 	if body.ExpectedAttemptRevision < 1 {
 		return operationResult{}, invalidRequestError(errors.New("expected_attempt_revision must be positive"))
 	}
-	result, err := module.application.SuspendExamAttempt(request.context, request.invocation(), application.SuspendExamAttemptCommand{
+	result, err := m.application.SuspendExamAttempt(request.context, request.invocation(), application.SuspendExamAttemptCommand{
 		ExamID: examID, SittingID: sittingID, AttemptID: attemptID,
 		ExpectedAttemptRevision: body.ExpectedAttemptRevision, PrivateReason: body.Reason, IdempotencyKey: request.idempotencyKey,
 	})
@@ -1044,12 +1044,12 @@ func (module examAttemptHTTPModule) suspend(request operationRequest) (operation
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
-func (module examAttemptHTTPModule) getManaged(request operationRequest) (operationResult, error) {
+func (m examAttemptHTTPModule) getManaged(request operationRequest) (operationResult, error) {
 	examID, sittingID, attemptID, err := managedExamAttemptIDs(request)
 	if err != nil {
 		return operationResult{}, err
 	}
-	view, err := module.application.GetExamAttempt(request.context, request.invocation(), application.GetExamAttemptQuery{
+	view, err := m.application.GetExamAttempt(request.context, request.invocation(), application.GetExamAttemptQuery{
 		ExamID: examID, SittingID: sittingID, AttemptID: attemptID,
 	})
 	if err != nil {
@@ -1062,7 +1062,7 @@ func (module examAttemptHTTPModule) getManaged(request operationRequest) (operat
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
-func (module examAttemptHTTPModule) listManaged(request operationRequest) (operationResult, error) {
+func (m examAttemptHTTPModule) listManaged(request operationRequest) (operationResult, error) {
 	examID, sittingID, err := managedExamAttemptScope(request)
 	if err != nil {
 		return operationResult{}, err
@@ -1096,7 +1096,7 @@ func (module examAttemptHTTPModule) listManaged(request operationRequest) (opera
 		}
 		query.BeforeCreatedAt, query.BeforeAttemptID = cursor.CreatedAt, cursor.ID
 	}
-	page, err := module.application.ListExamAttempts(request.context, request.invocation(), query)
+	page, err := m.application.ListExamAttempts(request.context, request.invocation(), query)
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -1121,7 +1121,7 @@ func (module examAttemptHTTPModule) listManaged(request operationRequest) (opera
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
-func (module examAttemptHTTPModule) listBrowserActivity(request operationRequest) (operationResult, error) {
+func (m examAttemptHTTPModule) listBrowserActivity(request operationRequest) (operationResult, error) {
 	examID, sittingID, attemptID, err := managedExamAttemptIDs(request)
 	if err != nil {
 		return operationResult{}, err
@@ -1141,7 +1141,7 @@ func (module examAttemptHTTPModule) listBrowserActivity(request operationRequest
 		}
 		query.AfterReceivedAt, query.AfterSourceID, query.AfterSequence = cursor.ReceivedAt, cursor.SourceSessionID, cursor.Sequence
 	}
-	page, err := module.application.ListExamAttemptBrowserActivity(request.context, request.invocation(), query)
+	page, err := m.application.ListExamAttemptBrowserActivity(request.context, request.invocation(), query)
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -1171,12 +1171,12 @@ func (module examAttemptHTTPModule) listBrowserActivity(request operationRequest
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
-func (module examAttemptHTTPModule) presentation(request operationRequest) (operationResult, error) {
+func (m examAttemptHTTPModule) presentation(request operationRequest) (operationResult, error) {
 	access, err := candidateAccess(request)
 	if err != nil {
 		return operationResult{}, err
 	}
-	view, err := module.application.GetCandidateExamPresentation(request.context, request.invocation(), access)
+	view, err := m.application.GetCandidateExamPresentation(request.context, request.invocation(), access)
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -1245,7 +1245,7 @@ func candidateRuntimeCapabilitiesFromStore(value application.CandidateRuntimeCap
 		Departure: candidateDepartureResponse{Allowed: value.Departure.Allowed, Reason: value.Departure.Reason}}
 }
 
-func (module examAttemptHTTPModule) workspace(request operationRequest) (operationResult, error) {
+func (m examAttemptHTTPModule) workspace(request operationRequest) (operationResult, error) {
 	access, err := candidateAccess(request)
 	if err != nil {
 		return operationResult{}, err
@@ -1265,7 +1265,7 @@ func (module examAttemptHTTPModule) workspace(request operationRequest) (operati
 		}
 		query.ExpectedCursor, query.AfterEntryID = cursor.ExpectedCursor, cursor.ID
 	}
-	page, err := module.application.ListCandidateExamWorkspace(request.context, request.invocation(), query)
+	page, err := m.application.ListCandidateExamWorkspace(request.context, request.invocation(), query)
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -1293,7 +1293,7 @@ func (module examAttemptHTTPModule) workspace(request operationRequest) (operati
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
-func (module examAttemptHTTPModule) workspaceChanges(request operationRequest) (operationResult, error) {
+func (m examAttemptHTTPModule) workspaceChanges(request operationRequest) (operationResult, error) {
 	access, err := candidateAccess(request)
 	if err != nil {
 		return operationResult{}, err
@@ -1312,7 +1312,7 @@ func (module examAttemptHTTPModule) workspaceChanges(request operationRequest) (
 			return operationResult{}, invalidRequestError(errors.New("must be between 1 and 200"))
 		}
 	}
-	page, err := module.application.ListCandidateExamWorkspaceJournal(request.context, request.invocation(), query)
+	page, err := m.application.ListCandidateExamWorkspaceJournal(request.context, request.invocation(), query)
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -1328,7 +1328,7 @@ func (module examAttemptHTTPModule) workspaceChanges(request operationRequest) (
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
-func (module examAttemptHTTPModule) createWorkspaceDirectory(request operationRequest) (operationResult, error) {
+func (m examAttemptHTTPModule) createWorkspaceDirectory(request operationRequest) (operationResult, error) {
 	access, err := candidateAccess(request)
 	if err != nil {
 		return operationResult{}, err
@@ -1341,7 +1341,7 @@ func (module examAttemptHTTPModule) createWorkspaceDirectory(request operationRe
 	if err != nil {
 		return operationResult{}, err
 	}
-	result, err := module.application.CreateCandidateExamWorkspaceDirectory(request.context, request.invocation(),
+	result, err := m.application.CreateCandidateExamWorkspaceDirectory(request.context, request.invocation(),
 		application.CreateCandidateExamWorkspaceDirectoryCommand{Access: mutationAccess, Path: body.Path,
 			IdempotencyKey: request.idempotencyKey})
 	if err != nil {
@@ -1350,7 +1350,7 @@ func (module examAttemptHTTPModule) createWorkspaceDirectory(request operationRe
 	return jsonResult(http.StatusCreated, candidateWorkspaceMutationResult(result)).withHeaders(noStoreHeaders()), nil
 }
 
-func (module examAttemptHTTPModule) submit(request operationRequest) (operationResult, error) {
+func (m examAttemptHTTPModule) submit(request operationRequest) (operationResult, error) {
 	access, err := candidateAccess(request)
 	if err != nil {
 		return operationResult{}, err
@@ -1372,7 +1372,7 @@ func (module examAttemptHTTPModule) submit(request operationRequest) (operationR
 	if err != nil {
 		return operationResult{}, err
 	}
-	receipt, err := module.application.SubmitExamAttempt(request.context, request.invocation(),
+	receipt, err := m.application.SubmitExamAttempt(request.context, request.invocation(),
 		application.SubmitExamAttemptCommand{Access: mutationAccess, ExpectedCurrentRevisionID: revisionID,
 			ExpectedWorkspaceCursor: body.ExpectedWorkspaceCursor, FinalFocusLossSequence: body.FinalFocusLossSequence,
 			IdempotencyKey: request.idempotencyKey})
@@ -1386,12 +1386,12 @@ func (module examAttemptHTTPModule) submit(request operationRequest) (operationR
 	return jsonResult(http.StatusCreated, response).withHeaders(noStoreHeaders()), nil
 }
 
-func (module examAttemptHTTPModule) getSubmission(request operationRequest) (operationResult, error) {
+func (m examAttemptHTTPModule) getSubmission(request operationRequest) (operationResult, error) {
 	query, err := managedSubmissionQuery(request)
 	if err != nil {
 		return operationResult{}, err
 	}
-	view, err := module.application.GetExamSubmission(request.context, request.invocation(), query)
+	view, err := m.application.GetExamSubmission(request.context, request.invocation(), query)
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -1413,7 +1413,7 @@ func (module examAttemptHTTPModule) getSubmission(request operationRequest) (ope
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
-func (module examAttemptHTTPModule) listSubmissionManifest(request operationRequest) (operationResult, error) {
+func (m examAttemptHTTPModule) listSubmissionManifest(request operationRequest) (operationResult, error) {
 	ownership, err := managedSubmissionQuery(request)
 	if err != nil {
 		return operationResult{}, err
@@ -1433,7 +1433,7 @@ func (module examAttemptHTTPModule) listSubmissionManifest(request operationRequ
 		}
 		query.AfterEntryID = cursor.EntryID
 	}
-	page, err := module.application.ListExamSubmissionManifest(request.context, request.invocation(), query)
+	page, err := m.application.ListExamSubmissionManifest(request.context, request.invocation(), query)
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -1460,7 +1460,7 @@ func (module examAttemptHTTPModule) listSubmissionManifest(request operationRequ
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
-func (module examAttemptHTTPModule) openSubmissionFile(request operationRequest) (protocolResult, error) {
+func (m examAttemptHTTPModule) openSubmissionFile(request operationRequest) (protocolResult, error) {
 	ownership, err := managedSubmissionQuery(request)
 	if err != nil {
 		return protocolResult{}, err
@@ -1469,7 +1469,7 @@ func (module examAttemptHTTPModule) openSubmissionFile(request operationRequest)
 	if err != nil {
 		return protocolResult{}, err
 	}
-	opened, err := module.application.OpenExamSubmissionFile(request.context, request.invocation(),
+	opened, err := m.application.OpenExamSubmissionFile(request.context, request.invocation(),
 		application.OpenExamSubmissionFileQuery{GetSubmissionQuery: ownership, EntryID: entryID})
 	if err != nil {
 		return protocolResult{}, err
@@ -1490,7 +1490,7 @@ func managedSubmissionQuery(request operationRequest) (application.GetExamSubmis
 		AttemptID: attemptID, SubmissionID: submissionID}, nil
 }
 
-func (module examAttemptHTTPModule) createWorkspaceFile(request operationRequest) (protocolResult, error) {
+func (m examAttemptHTTPModule) createWorkspaceFile(request operationRequest) (protocolResult, error) {
 	access, err := candidateAccess(request)
 	if err != nil {
 		return protocolResult{}, err
@@ -1504,7 +1504,7 @@ func (module examAttemptHTTPModule) createWorkspaceFile(request operationRequest
 	if err != nil {
 		return protocolResult{}, err
 	}
-	result, err := module.application.CreateCandidateExamWorkspaceFile(request.context, request.invocation(),
+	result, err := m.application.CreateCandidateExamWorkspaceFile(request.context, request.invocation(),
 		application.CreateCandidateExamWorkspaceFileCommand{Access: mutationAccess, Path: metadata.Path, MediaType: metadata.MediaType,
 			ExpectedSHA256: metadata.SHA256, Body: content, Size: *metadata.Size, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
@@ -1513,7 +1513,7 @@ func (module examAttemptHTTPModule) createWorkspaceFile(request operationRequest
 	return streamingUploadProtocolResult(http.StatusCreated, candidateWorkspaceMutationResult(result)).withHeaders(noStoreHeaders()), nil
 }
 
-func (module examAttemptHTTPModule) moveWorkspaceEntry(request operationRequest) (operationResult, error) {
+func (m examAttemptHTTPModule) moveWorkspaceEntry(request operationRequest) (operationResult, error) {
 	access, entryID, err := candidateWorkspaceEntryAccess(request)
 	if err != nil {
 		return operationResult{}, err
@@ -1526,7 +1526,7 @@ func (module examAttemptHTTPModule) moveWorkspaceEntry(request operationRequest)
 	if err != nil {
 		return operationResult{}, err
 	}
-	result, err := module.application.MoveCandidateExamWorkspaceEntry(request.context, request.invocation(),
+	result, err := m.application.MoveCandidateExamWorkspaceEntry(request.context, request.invocation(),
 		application.MoveCandidateExamWorkspaceEntryCommand{Access: mutationAccess, EntryID: entryID,
 			ExpectedPath: body.ExpectedPath, DestinationPath: body.DestinationPath, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
@@ -1535,7 +1535,7 @@ func (module examAttemptHTTPModule) moveWorkspaceEntry(request operationRequest)
 	return jsonResult(http.StatusOK, candidateWorkspaceMutationResult(result)).withHeaders(noStoreHeaders()), nil
 }
 
-func (module examAttemptHTTPModule) replaceWorkspaceFile(request operationRequest) (protocolResult, error) {
+func (m examAttemptHTTPModule) replaceWorkspaceFile(request operationRequest) (protocolResult, error) {
 	access, entryID, err := candidateWorkspaceEntryAccess(request)
 	if err != nil {
 		return protocolResult{}, err
@@ -1553,7 +1553,7 @@ func (module examAttemptHTTPModule) replaceWorkspaceFile(request operationReques
 	if err != nil {
 		return protocolResult{}, invalidRequestError(err)
 	}
-	result, err := module.application.ReplaceCandidateExamWorkspaceFile(request.context, request.invocation(),
+	result, err := m.application.ReplaceCandidateExamWorkspaceFile(request.context, request.invocation(),
 		application.ReplaceCandidateExamWorkspaceFileCommand{Access: mutationAccess, EntryID: entryID,
 			ExpectedPath: metadata.ExpectedPath, ExpectedContentVersion: version, MediaType: metadata.MediaType,
 			ExpectedSHA256: metadata.SHA256, Body: content, Size: *metadata.Size, IdempotencyKey: request.idempotencyKey})
@@ -1563,7 +1563,7 @@ func (module examAttemptHTTPModule) replaceWorkspaceFile(request operationReques
 	return streamingUploadProtocolResult(http.StatusOK, candidateWorkspaceMutationResult(result)).withHeaders(noStoreHeaders()), nil
 }
 
-func (module examAttemptHTTPModule) deleteWorkspaceEntry(request operationRequest) (operationResult, error) {
+func (m examAttemptHTTPModule) deleteWorkspaceEntry(request operationRequest) (operationResult, error) {
 	access, entryID, err := candidateWorkspaceEntryAccess(request)
 	if err != nil {
 		return operationResult{}, err
@@ -1588,7 +1588,7 @@ func (module examAttemptHTTPModule) deleteWorkspaceEntry(request operationReques
 			return operationResult{}, invalidRequestError(err)
 		}
 	}
-	result, err := module.application.DeleteCandidateExamWorkspaceEntry(request.context, request.invocation(),
+	result, err := m.application.DeleteCandidateExamWorkspaceEntry(request.context, request.invocation(),
 		application.DeleteCandidateExamWorkspaceEntryCommand{Access: mutationAccess, EntryID: entryID,
 			ExpectedPath: body.ExpectedPath, ExpectedContentVersion: version, Recursive: body.Recursive,
 			ExpectedWorkspaceCursor: cursor, IdempotencyKey: request.idempotencyKey})
@@ -1660,7 +1660,7 @@ func candidateWorkspaceMutationResult(result application.ExamAttemptWorkspaceMut
 	return response
 }
 
-func (module examAttemptHTTPModule) openResource(request operationRequest) (protocolResult, error) {
+func (m examAttemptHTTPModule) openResource(request operationRequest) (protocolResult, error) {
 	access, err := candidateAccess(request)
 	if err != nil {
 		return protocolResult{}, err
@@ -1669,14 +1669,14 @@ func (module examAttemptHTTPModule) openResource(request operationRequest) (prot
 	if err != nil {
 		return protocolResult{}, err
 	}
-	opened, err := module.application.OpenCandidateExamResource(request.context, request.invocation(), application.OpenCandidateExamResourceQuery{Access: access, ResourceID: resourceID})
+	opened, err := m.application.OpenCandidateExamResource(request.context, request.invocation(), application.OpenCandidateExamResourceQuery{Access: access, ResourceID: resourceID})
 	if err != nil {
 		return protocolResult{}, err
 	}
 	return candidateAttemptContentResult(request, opened, `"`+opened.SHA256+`"`)
 }
 
-func (module examAttemptHTTPModule) openWorkspaceFile(request operationRequest) (protocolResult, error) {
+func (m examAttemptHTTPModule) openWorkspaceFile(request operationRequest) (protocolResult, error) {
 	access, err := candidateAccess(request)
 	if err != nil {
 		return protocolResult{}, err
@@ -1685,7 +1685,7 @@ func (module examAttemptHTTPModule) openWorkspaceFile(request operationRequest) 
 	if err != nil {
 		return protocolResult{}, err
 	}
-	opened, err := module.application.OpenCandidateExamWorkspaceFile(request.context, request.invocation(), application.OpenCandidateExamWorkspaceFileQuery{Access: access, EntryID: entryID})
+	opened, err := m.application.OpenCandidateExamWorkspaceFile(request.context, request.invocation(), application.OpenCandidateExamWorkspaceFileQuery{Access: access, EntryID: entryID})
 	if err != nil {
 		return protocolResult{}, err
 	}

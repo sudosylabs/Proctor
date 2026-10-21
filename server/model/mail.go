@@ -71,7 +71,7 @@ func (key MailTemplateKey) OccurrenceKind() (MailOccurrenceKind, bool) {
 		return "", false
 	}
 }
-func (state MailDeliveryState) IsValid() bool { return validMailDeliveryState(state) }
+func (s MailDeliveryState) IsValid() bool { return validMailDeliveryState(s) }
 
 const (
 	MailTemplateSystemTest                           MailTemplateKey = "system.mail_test"
@@ -274,10 +274,10 @@ type MailFanoutBundle struct {
 	Revision         int64
 }
 
-func (bundle *MailFanoutBundle) Validate() error {
-	if bundle == nil || !bundle.ID.IsValid() || bundle.CreatedAt.IsZero() || bundle.Revision != 1 ||
-		len(bundle.EncryptedPayload) == 0 || len(bundle.EncryptedPayload) > MailEncryptedFanoutBundleMaximumBytes ||
-		!json.Valid(bundle.EncryptedPayload) {
+func (b *MailFanoutBundle) Validate() error {
+	if b == nil || !b.ID.IsValid() || b.CreatedAt.IsZero() || b.Revision != 1 ||
+		len(b.EncryptedPayload) == 0 || len(b.EncryptedPayload) > MailEncryptedFanoutBundleMaximumBytes ||
+		!json.Valid(b.EncryptedPayload) {
 		return invalidModelError("MailFanoutBundle.Validate", "mail_fanout_bundle", "", "invalid mail fan-out bundle", "")
 	}
 	return nil

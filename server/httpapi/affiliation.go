@@ -84,19 +84,19 @@ func academicRelationshipMutationErrorCodes(specific ...string) []string {
 	return append(codes, "administration.unavailable")
 }
 
-func (module affiliationResourceModule) list(request operationRequest) (operationResult, error) {
+func (m affiliationResourceModule) list(request operationRequest) (operationResult, error) {
 	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	values, err := module.affiliations.ListAffiliations(request.context, request.invocation(), application.ListAffiliationsQuery{UserID: userID})
+	values, err := m.affiliations.ListAffiliations(request.context, request.invocation(), application.ListAffiliationsQuery{UserID: userID})
 	if err != nil {
 		return operationResult{}, err
 	}
 	return jsonResult(http.StatusOK, affiliationResponses(values)), nil
 }
 
-func (module affiliationResourceModule) create(request operationRequest) (operationResult, error) {
+func (m affiliationResourceModule) create(request operationRequest) (operationResult, error) {
 	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
@@ -113,19 +113,19 @@ func (module affiliationResourceModule) create(request operationRequest) (operat
 	if err != nil {
 		return operationResult{}, err
 	}
-	saved, err := module.affiliations.CreateAffiliation(request.context, request.invocation(), application.CreateAffiliationCommand{UserID: userID, Kind: body.Kind, StartAt: startAt, EndAt: endAt})
+	saved, err := m.affiliations.CreateAffiliation(request.context, request.invocation(), application.CreateAffiliationCommand{UserID: userID, Kind: body.Kind, StartAt: startAt, EndAt: endAt})
 	if err != nil {
 		return operationResult{}, err
 	}
 	return jsonResult(http.StatusCreated, affiliationResponseFromModel(saved)), nil
 }
 
-func (module affiliationResourceModule) end(request operationRequest) (operationResult, error) {
+func (m affiliationResourceModule) end(request operationRequest) (operationResult, error) {
 	id, err := request.params.RequireAffiliationID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	ended, err := module.affiliations.EndAffiliation(request.context, request.invocation(), application.EndAffiliationCommand{ID: id})
+	ended, err := m.affiliations.EndAffiliation(request.context, request.invocation(), application.EndAffiliationCommand{ID: id})
 	if err != nil {
 		return operationResult{}, err
 	}

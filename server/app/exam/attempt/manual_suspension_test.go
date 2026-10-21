@@ -20,9 +20,9 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-func (fake *effectsFake) AttemptSuspendedByManager(context.Context, ManualSuspensionResult) error {
-	fake.f.order = append(fake.f.order, "effect.kick")
-	fake.kicked++
+func (f *effectsFake) AttemptSuspendedByManager(context.Context, ManualSuspensionResult) error {
+	f.f.order = append(f.f.order, "effect.kick")
+	f.kicked++
 	return nil
 }
 

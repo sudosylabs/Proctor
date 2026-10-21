@@ -220,12 +220,12 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 
 type examAttemptSystemAuditAdapter struct{ audit *auditService }
 
-func (adapter examAttemptSystemAuditAdapter) Begin(ctx context.Context, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
+func (a examAttemptSystemAuditAdapter) Begin(ctx context.Context, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
 	auditValue := make(map[string]any, len(value))
 	for key, item := range value {
 		auditValue[key] = item
 	}
-	event, err := adapter.audit.BeginSystemCriticalActionAtScope(ctx, action, resource, scopeType, scopeID,
+	event, err := a.audit.BeginSystemCriticalActionAtScope(ctx, action, resource, scopeType, scopeID,
 		map[string]any{"operation": operation, "value": auditValue})
 	if err != nil {
 		return "", err
@@ -233,7 +233,7 @@ func (adapter examAttemptSystemAuditAdapter) Begin(ctx context.Context, action m
 	return event.ID, nil
 }
 
-func (adapter examAttemptSystemAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
-	_, err := adapter.audit.CompleteCriticalAction(ctx, id, model.AuditStatusFail, code, nil)
+func (a examAttemptSystemAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
+	_, err := a.audit.CompleteCriticalAction(ctx, id, model.AuditStatusFail, code, nil)
 	return err
 }

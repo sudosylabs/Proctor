@@ -1498,35 +1498,35 @@ func runtimeCapabilitiesFixture(f *fixture, currentRevisionID model.ExamRevision
 
 type desktopBuildResolverFake struct{ f *fixture }
 
-func (fake *desktopBuildResolverFake) ResolveAttemptDesktopBuild(context.Context, model.Principal) (DesktopBuildResolution, error) {
-	return DesktopBuildResolution{Build: fake.f.desktopBuild, CompatibilityPolicyRevision: 1}, nil
+func (f *desktopBuildResolverFake) ResolveAttemptDesktopBuild(context.Context, model.Principal) (DesktopBuildResolution, error) {
+	return DesktopBuildResolution{Build: f.f.desktopBuild, CompatibilityPolicyRevision: 1}, nil
 }
 
 type sittingFake struct{ f *fixture }
 
-func (fake *sittingFake) Resolve(context.Context, model.ExamSittingID) (*store.ExamSittingSnapshot, error) {
-	fake.f.order = append(fake.f.order, "sitting")
-	return &store.ExamSittingSnapshot{Sitting: fake.f.sitting}, nil
+func (f *sittingFake) Resolve(context.Context, model.ExamSittingID) (*store.ExamSittingSnapshot, error) {
+	f.f.order = append(f.f.order, "sitting")
+	return &store.ExamSittingSnapshot{Sitting: f.f.sitting}, nil
 }
 
 type managerFake struct{ f *fixture }
 
-func (fake *managerFake) AuthorizeSittingView(context.Context, invocation.Invocation, model.ExamSittingID) error {
-	fake.f.order = append(fake.f.order, "manager.authorize")
-	return fake.f.managerErr
+func (f *managerFake) AuthorizeSittingView(context.Context, invocation.Invocation, model.ExamSittingID) error {
+	f.f.order = append(f.f.order, "manager.authorize")
+	return f.f.managerErr
 }
-func (fake *managerFake) AuthorizeSittingManage(context.Context, invocation.Invocation, model.ExamSittingID) (bool, error) {
-	fake.f.order = append(fake.f.order, "manager.manage")
-	return fake.f.managerOverride, fake.f.managerErr
+func (f *managerFake) AuthorizeSittingManage(context.Context, invocation.Invocation, model.ExamSittingID) (bool, error) {
+	f.f.order = append(f.f.order, "manager.manage")
+	return f.f.managerOverride, f.f.managerErr
 }
-func (fake *managerFake) AuthorizeSubmissionView(_ context.Context, _ invocation.Invocation, submissionID model.SubmissionID) error {
-	fake.f.order = append(fake.f.order, "submission.authorize")
-	fake.f.submissionAuthorizationID = submissionID
+func (f *managerFake) AuthorizeSubmissionView(_ context.Context, _ invocation.Invocation, submissionID model.SubmissionID) error {
+	f.f.order = append(f.f.order, "submission.authorize")
+	f.f.submissionAuthorizationID = submissionID
 	return nil
 }
-func (fake *managerFake) AuthorizeBrowserActivityView(context.Context, invocation.Invocation, model.ExamSittingID) (model.AcademicUnitID, error) {
-	fake.f.order = append(fake.f.order, "browser.authorize")
-	return model.NewAcademicUnitID(), fake.f.managerErr
+func (f *managerFake) AuthorizeBrowserActivityView(context.Context, invocation.Invocation, model.ExamSittingID) (model.AcademicUnitID, error) {
+	f.f.order = append(f.f.order, "browser.authorize")
+	return model.NewAcademicUnitID(), f.f.managerErr
 }
 
 type auditFake struct {
@@ -1547,45 +1547,45 @@ type systemAuditFake struct {
 	failedCode string
 }
 
-func (fake *systemAuditFake) Begin(_ context.Context, _ model.Action, _ model.Resource, _ model.RoleScopeType, _, _ string, values map[string]any) (model.AuditEventID, error) {
-	fake.f.order = append(fake.f.order, "system.audit")
-	fake.values = values
+func (f *systemAuditFake) Begin(_ context.Context, _ model.Action, _ model.Resource, _ model.RoleScopeType, _, _ string, values map[string]any) (model.AuditEventID, error) {
+	f.f.order = append(f.f.order, "system.audit")
+	f.values = values
 	return model.NewAuditEventID(), nil
 }
-func (fake *systemAuditFake) Fail(_ context.Context, _ model.AuditEventID, code string) error {
-	fake.f.order = append(fake.f.order, "system.audit.fail")
-	fake.failedCode = code
+func (f *systemAuditFake) Fail(_ context.Context, _ model.AuditEventID, code string) error {
+	f.f.order = append(f.f.order, "system.audit.fail")
+	f.failedCode = code
 	return nil
 }
 
-func (fake *auditFake) BeginAtScope(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, values, _ map[string]any) (model.AuditEventID, error) {
-	fake.f.order = append(fake.f.order, "audit")
-	fake.values = values
-	fake.action, fake.resource, fake.scopeType, fake.scopeID, fake.operation = action, resource, scopeType, scopeID, operation
+func (f *auditFake) BeginAtScope(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, values, _ map[string]any) (model.AuditEventID, error) {
+	f.f.order = append(f.f.order, "audit")
+	f.values = values
+	f.action, f.resource, f.scopeType, f.scopeID, f.operation = action, resource, scopeType, scopeID, operation
 	return model.NewAuditEventID(), nil
 }
-func (fake *auditFake) PrepareAtScope(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource,
+func (f *auditFake) PrepareAtScope(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource,
 	scopeType model.RoleScopeType, scopeID, operation string, values map[string]any,
 ) (*model.AuditEvent, error) {
-	fake.f.order = append(fake.f.order, "audit.prepare")
-	fake.values = values
-	fake.action, fake.resource, fake.scopeType, fake.scopeID, fake.operation = action, resource, scopeType, scopeID, operation
+	f.f.order = append(f.f.order, "audit.prepare")
+	f.values = values
+	f.action, f.resource, f.scopeType, f.scopeID, f.operation = action, resource, scopeType, scopeID, operation
 	return &model.AuditEvent{Action: string(action), Resource: resource, ScopeType: scopeType, ScopeID: scopeID,
 		Status: model.AuditStatusAttempt, NodeID: "test", Parameters: []byte(`{"operation":"` + operation + `"}`)}, nil
 }
-func (fake *auditFake) RecordAuthorizationDecision(_ context.Context, _ invocation.Invocation, _ model.Action, _ model.Resource,
+func (f *auditFake) RecordAuthorizationDecision(_ context.Context, _ invocation.Invocation, _ model.Action, _ model.Resource,
 	_ model.RoleScopeType, _ string, _ bool,
 ) error {
-	fake.f.order = append(fake.f.order, "audit.authorization")
+	f.f.order = append(f.f.order, "audit.authorization")
 	return nil
 }
-func (fake *auditFake) Fail(_ context.Context, _ model.AuditEventID, code string) error {
-	fake.f.order = append(fake.f.order, "audit.fail")
-	fake.failedCode = code
-	return fake.failErr
+func (f *auditFake) Fail(_ context.Context, _ model.AuditEventID, code string) error {
+	f.f.order = append(f.f.order, "audit.fail")
+	f.failedCode = code
+	return f.failErr
 }
-func (fake *auditFake) Complete(_ context.Context, _ model.AuditEventID, _ map[string]any) error {
-	fake.f.order = append(fake.f.order, "audit.complete")
+func (f *auditFake) Complete(_ context.Context, _ model.AuditEventID, _ map[string]any) error {
+	f.f.order = append(f.f.order, "audit.complete")
 	return nil
 }
 
@@ -1601,57 +1601,57 @@ type effectsFake struct {
 	kicked           int
 }
 
-func (fake *effectsFake) BrowserActivityGapChanged(context.Context, model.ExamID, model.ExamSittingID) error {
-	fake.f.order = append(fake.f.order, "effect.browser_gap")
+func (f *effectsFake) BrowserActivityGapChanged(context.Context, model.ExamID, model.ExamSittingID) error {
+	f.f.order = append(f.f.order, "effect.browser_gap")
 	return nil
 }
 
-func (fake *effectsFake) ConnectionOpened(context.Context, ConnectionResult) error {
-	fake.f.order = append(fake.f.order, "effect.open")
-	fake.opened++
+func (f *effectsFake) ConnectionOpened(context.Context, ConnectionResult) error {
+	f.f.order = append(f.f.order, "effect.open")
+	f.opened++
 	return nil
 }
-func (fake *effectsFake) ConnectionClosed(context.Context, ConnectionClosedResult) error {
-	fake.f.order = append(fake.f.order, "effect.close")
-	fake.closed++
+func (f *effectsFake) ConnectionClosed(context.Context, ConnectionClosedResult) error {
+	f.f.order = append(f.f.order, "effect.close")
+	f.closed++
 	return nil
 }
-func (fake *effectsFake) ParticipationRenewed(context.Context, ParticipationRenewal) error {
-	fake.f.order = append(fake.f.order, "effect.renew")
-	fake.renewed++
+func (f *effectsFake) ParticipationRenewed(context.Context, ParticipationRenewal) error {
+	f.f.order = append(f.f.order, "effect.renew")
+	f.renewed++
 	return nil
 }
-func (fake *effectsFake) ParticipationExpired(context.Context, ParticipationExpiry) error {
-	fake.f.order = append(fake.f.order, "effect.expire")
-	fake.expired++
+func (f *effectsFake) ParticipationExpired(context.Context, ParticipationExpiry) error {
+	f.f.order = append(f.f.order, "effect.expire")
+	f.expired++
 	return nil
 }
-func (fake *effectsFake) AttemptReallowed(context.Context, ReallowResult) error {
-	fake.f.order = append(fake.f.order, "effect.reallow")
-	fake.reallowed++
+func (f *effectsFake) AttemptReallowed(context.Context, ReallowResult) error {
+	f.f.order = append(f.f.order, "effect.reallow")
+	f.reallowed++
 	return nil
 }
-func (fake *effectsFake) WorkspaceChanged(context.Context, WorkspaceMutationResult) error {
-	fake.f.order = append(fake.f.order, "effect.workspace")
-	fake.workspaceChanged++
+func (f *effectsFake) WorkspaceChanged(context.Context, WorkspaceMutationResult) error {
+	f.f.order = append(f.f.order, "effect.workspace")
+	f.workspaceChanged++
 	return nil
 }
-func (fake *effectsFake) FocusLossEvaluated(context.Context, FocusLossEvaluation) error {
-	fake.f.order = append(fake.f.order, "effect.focus_loss")
-	fake.focusLoss++
+func (f *effectsFake) FocusLossEvaluated(context.Context, FocusLossEvaluation) error {
+	f.f.order = append(f.f.order, "effect.focus_loss")
+	f.focusLoss++
 	return nil
 }
-func (fake *effectsFake) AttemptSubmitted(context.Context, SubmissionResult) error {
-	fake.f.order = append(fake.f.order, "effect.submit")
-	fake.submitted++
+func (f *effectsFake) AttemptSubmitted(context.Context, SubmissionResult) error {
+	f.f.order = append(f.f.order, "effect.submit")
+	f.submitted++
 	return nil
 }
-func (fake *effectsFake) AttemptSealedForSittingClose(context.Context, AutomaticSubmissionResult) error {
-	fake.f.order = append(fake.f.order, "effect.automatic_submit")
-	fake.submitted++
+func (f *effectsFake) AttemptSealedForSittingClose(context.Context, AutomaticSubmissionResult) error {
+	f.f.order = append(f.f.order, "effect.automatic_submit")
+	f.submitted++
 	return nil
 }
-func (fake *effectsFake) Report(_ context.Context, kind string, _ error) {
+func (f *effectsFake) Report(_ context.Context, kind string, _ error) {
 }
 
 type contentFake struct {
@@ -1663,21 +1663,21 @@ type contentFake struct {
 	openAttemptBody string
 }
 
-func (fake *contentFake) StageAttemptWorkspaceObject(_ context.Context, id model.AttemptWorkspaceObjectID, _ io.Reader, _ int64, _ string) (*model.AttemptWorkspaceContent, error) {
-	fake.f.order = append(fake.f.order, "content.stage")
-	fake.attemptObjectID = id
-	return fake.attemptContent, nil
+func (f *contentFake) StageAttemptWorkspaceObject(_ context.Context, id model.AttemptWorkspaceObjectID, _ io.Reader, _ int64, _ string) (*model.AttemptWorkspaceContent, error) {
+	f.f.order = append(f.f.order, "content.stage")
+	f.attemptObjectID = id
+	return f.attemptContent, nil
 }
-func (fake *contentFake) OpenAttemptWorkspaceObject(_ context.Context, id model.AttemptWorkspaceObjectID) (io.ReadCloser, error) {
-	fake.openAttemptID = id
-	return io.NopCloser(strings.NewReader(fake.openAttemptBody)), nil
+func (f *contentFake) OpenAttemptWorkspaceObject(_ context.Context, id model.AttemptWorkspaceObjectID) (io.ReadCloser, error) {
+	f.openAttemptID = id
+	return io.NopCloser(strings.NewReader(f.openAttemptBody)), nil
 }
 
 func (*contentFake) OpenExamResource(context.Context, model.FileRevisionID, model.FileRenditionID) (io.ReadCloser, error) {
 	return io.NopCloser(strings.NewReader("resource")), nil
 }
-func (fake *contentFake) OpenStarterWorkspaceObject(_ context.Context, id model.StarterWorkspaceObjectID) (io.ReadCloser, error) {
-	fake.starterID = id
+func (f *contentFake) OpenStarterWorkspaceObject(_ context.Context, id model.StarterWorkspaceObjectID) (io.ReadCloser, error) {
+	f.starterID = id
 	return io.NopCloser(strings.NewReader("workspace")), nil
 }
 
@@ -1811,48 +1811,48 @@ func workspaceMutationResultFixture(f *fixture, workspaceID model.ExamAttemptWor
 		CandidateUserID: f.userID, WorkspaceID: workspaceID, Entry: entry, Change: change, Replayed: replayed}
 }
 
-func (fake *attemptWorkspaceStoreFake) List(_ context.Context, options store.CandidateWorkspaceListOptions) (*store.CandidateAttemptWorkspacePage, error) {
-	fake.lists++
-	fake.options = options
-	return fake.page, nil
+func (f *attemptWorkspaceStoreFake) List(_ context.Context, options store.CandidateWorkspaceListOptions) (*store.CandidateAttemptWorkspacePage, error) {
+	f.lists++
+	f.options = options
+	return f.page, nil
 }
-func (fake *attemptWorkspaceStoreFake) ResolveFile(context.Context, store.CandidateAttemptAccess, model.AttemptWorkspaceEntryID) (*store.CandidateWorkspaceContent, error) {
-	return fake.file, nil
+func (f *attemptWorkspaceStoreFake) ResolveFile(context.Context, store.CandidateAttemptAccess, model.AttemptWorkspaceEntryID) (*store.CandidateWorkspaceContent, error) {
+	return f.file, nil
 }
-func (fake *attemptWorkspaceStoreFake) ListJournal(_ context.Context, options store.CandidateWorkspaceJournalOptions) (*store.CandidateWorkspaceJournalPage, error) {
-	fake.journalOptions = options
-	return fake.journalPage, nil
+func (f *attemptWorkspaceStoreFake) ListJournal(_ context.Context, options store.CandidateWorkspaceJournalOptions) (*store.CandidateWorkspaceJournalPage, error) {
+	f.journalOptions = options
+	return f.journalPage, nil
 }
-func (fake *attemptWorkspaceStoreFake) ResolveMutationTarget(_ context.Context, access store.ExamAttemptWorkspaceMutationAccess) (*store.ExamAttemptWorkspaceMutationTarget, error) {
-	fake.f.order = append(fake.f.order, "workspace.resolve")
-	fake.resolvedAccess = access
-	return fake.target, nil
+func (f *attemptWorkspaceStoreFake) ResolveMutationTarget(_ context.Context, access store.ExamAttemptWorkspaceMutationAccess) (*store.ExamAttemptWorkspaceMutationTarget, error) {
+	f.f.order = append(f.f.order, "workspace.resolve")
+	f.resolvedAccess = access
+	return f.target, nil
 }
-func (fake *attemptWorkspaceStoreFake) ReserveObject(_ context.Context, input *store.ExamAttemptWorkspaceObjectReservation) (*model.AttemptWorkspaceObject, error) {
-	fake.f.order = append(fake.f.order, "workspace.reserve")
-	fake.reservation = input
-	return model.NewStagedAttemptWorkspaceObject(input.ObjectID, fake.target.WorkspaceID, fake.f.at, fake.f.at.Add(time.Hour))
+func (f *attemptWorkspaceStoreFake) ReserveObject(_ context.Context, input *store.ExamAttemptWorkspaceObjectReservation) (*model.AttemptWorkspaceObject, error) {
+	f.f.order = append(f.f.order, "workspace.reserve")
+	f.reservation = input
+	return model.NewStagedAttemptWorkspaceObject(input.ObjectID, f.target.WorkspaceID, f.f.at, f.f.at.Add(time.Hour))
 }
-func (fake *attemptWorkspaceStoreFake) MarkObjectReady(_ context.Context, input *store.ExamAttemptWorkspaceObjectReady) (*model.AttemptWorkspaceObject, error) {
-	fake.f.order = append(fake.f.order, "workspace.ready")
-	fake.ready = input
-	object, err := model.NewStagedAttemptWorkspaceObject(input.ObjectID, fake.target.WorkspaceID, fake.f.at, fake.f.at.Add(time.Hour))
+func (f *attemptWorkspaceStoreFake) MarkObjectReady(_ context.Context, input *store.ExamAttemptWorkspaceObjectReady) (*model.AttemptWorkspaceObject, error) {
+	f.f.order = append(f.f.order, "workspace.ready")
+	f.ready = input
+	object, err := model.NewStagedAttemptWorkspaceObject(input.ObjectID, f.target.WorkspaceID, f.f.at, f.f.at.Add(time.Hour))
 	if err != nil {
 		return nil, err
 	}
-	if err = object.MarkContentReady(input.ContentVersion, input.Content.MediaType, input.Content.SizeBytes, input.Content.SHA256, fake.f.at.Add(time.Second)); err != nil {
+	if err = object.MarkContentReady(input.ContentVersion, input.Content.MediaType, input.Content.SizeBytes, input.Content.SHA256, f.f.at.Add(time.Second)); err != nil {
 		return nil, err
 	}
 	return object, nil
 }
-func (fake *attemptWorkspaceStoreFake) ApplyMutation(_ context.Context, mutation *store.ExamAttemptWorkspaceMutation, command *store.CommandIdempotency) (*store.ExamAttemptWorkspaceMutationResult, error) {
-	fake.f.order = append(fake.f.order, "workspace.apply")
-	fake.mutation, fake.idempotency = mutation, command
-	return fake.mutationResult, fake.mutationErr
+func (f *attemptWorkspaceStoreFake) ApplyMutation(_ context.Context, mutation *store.ExamAttemptWorkspaceMutation, command *store.CommandIdempotency) (*store.ExamAttemptWorkspaceMutationResult, error) {
+	f.f.order = append(f.f.order, "workspace.apply")
+	f.mutation, f.idempotency = mutation, command
+	return f.mutationResult, f.mutationErr
 }
 
-func (fake *attemptWorkspaceStoreFake) MarkObjectReclaimable(_ context.Context, id model.AttemptWorkspaceObjectID) error {
-	fake.reclaimable = append(fake.reclaimable, id)
+func (f *attemptWorkspaceStoreFake) MarkObjectReclaimable(_ context.Context, id model.AttemptWorkspaceObjectID) error {
+	f.reclaimable = append(f.reclaimable, id)
 	return nil
 }
 func (*attemptWorkspaceStoreFake) ClaimObjectsForCleanup(context.Context, int, string) ([]model.AttemptWorkspaceObject, error) {
@@ -1865,139 +1865,139 @@ func (*attemptWorkspaceStoreFake) ReleaseObjectCleanup(context.Context, model.At
 	return nil
 }
 
-func (fake *attemptStoreFake) Connect(_ context.Context, input *store.ExamAttemptConnect, command *store.CommandIdempotency) (*store.ExamAttemptConnectResult, error) {
-	fake.f.order = append(fake.f.order, "connect")
-	fake.connect, fake.idempotency = input, command
-	if fake.connectErr != nil {
-		return nil, fake.connectErr
+func (f *attemptStoreFake) Connect(_ context.Context, input *store.ExamAttemptConnect, command *store.CommandIdempotency) (*store.ExamAttemptConnectResult, error) {
+	f.f.order = append(f.f.order, "connect")
+	f.connect, f.idempotency = input, command
+	if f.connectErr != nil {
+		return nil, f.connectErr
 	}
 	var err error
-	fake.attempt, err = model.NewExamAttempt(input.AttemptID, fake.f.sitting.ExamID, input.SittingID, input.CandidateUserID, fake.f.revision.ID, fake.f.at)
+	f.attempt, err = model.NewExamAttempt(input.AttemptID, f.f.sitting.ExamID, input.SittingID, input.CandidateUserID, f.f.revision.ID, f.f.at)
 	if err != nil {
 		return nil, err
 	}
-	fake.workspace, err = model.NewExamAttemptWorkspace(input.WorkspaceID, input.AttemptID, fake.f.at)
+	f.workspace, err = model.NewExamAttemptWorkspace(input.WorkspaceID, input.AttemptID, f.f.at)
 	if err != nil {
 		return nil, err
 	}
-	fake.participation = &store.ExamAttemptParticipationView{ID: input.ParticipationID, AttemptID: input.AttemptID,
-		State: model.AttemptParticipationActive, Generation: 1, StartedAt: fake.f.at, UpdatedAt: fake.f.at,
-		LeaseExpiresAt: fake.f.at.Add(model.AttemptParticipationInitialLease)}
-	if fake.participationEnded {
-		fake.participation.State = model.AttemptParticipationEnded
-		fake.participation.UpdatedAt = fake.f.at.Add(time.Second)
-		fake.participation.EndedAt = model.OptionalTimeFrom(fake.f.at.Add(time.Second))
-		fake.participation.EndReason = model.AttemptParticipationEndInterrupted
+	f.participation = &store.ExamAttemptParticipationView{ID: input.ParticipationID, AttemptID: input.AttemptID,
+		State: model.AttemptParticipationActive, Generation: 1, StartedAt: f.f.at, UpdatedAt: f.f.at,
+		LeaseExpiresAt: f.f.at.Add(model.AttemptParticipationInitialLease)}
+	if f.participationEnded {
+		f.participation.State = model.AttemptParticipationEnded
+		f.participation.UpdatedAt = f.f.at.Add(time.Second)
+		f.participation.EndedAt = model.OptionalTimeFrom(f.f.at.Add(time.Second))
+		f.participation.EndReason = model.AttemptParticipationEndInterrupted
 	}
 	connectionSession := input.SessionID
-	if fake.connectionSession.IsValid() {
-		connectionSession = fake.connectionSession
+	if f.connectionSession.IsValid() {
+		connectionSession = f.connectionSession
 	}
-	fake.connection, err = model.NewAttemptConnection(input.ConnectionID, input.AttemptID, input.ParticipationID, connectionSession, fake.f.at)
+	f.connection, err = model.NewAttemptConnection(input.ConnectionID, input.AttemptID, input.ParticipationID, connectionSession, f.f.at)
 	if err != nil {
 		return nil, err
 	}
-	if fake.connectClosed {
-		if err := fake.connection.Close(model.AttemptConnectionCloseTransport, fake.f.at.Add(time.Second)); err != nil {
+	if f.connectClosed {
+		if err = f.connection.Close(model.AttemptConnectionCloseTransport, f.f.at.Add(time.Second)); err != nil {
 			return nil, err
 		}
 	}
-	resolved, err := model.ResolveNativePolicy(model.NativePolicyResolution{PolicyID: "fixture-policy", Revision: fake.f.revision.ID.String(), Ordinal: 1, InstitutionID: model.NewInstitutionID(), ExamRevisionID: fake.f.revision.ID, SittingID: fake.f.sitting.ID, Scope: model.SecurityPolicyScope{Kind: "admission", AdmissionScopeID: input.Security.PreflightID}, IssuedAt: fake.f.at, ActiveFrom: fake.f.at, ActivationTime: fake.f.at, Selections: model.DefaultExamPolicySet(), Build: fake.f.desktopBuild})
+	resolved, err := model.ResolveNativePolicy(model.NativePolicyResolution{PolicyID: "fixture-policy", Revision: f.f.revision.ID.String(), Ordinal: 1, InstitutionID: model.NewInstitutionID(), ExamRevisionID: f.f.revision.ID, SittingID: f.f.sitting.ID, Scope: model.SecurityPolicyScope{Kind: "admission", AdmissionScopeID: input.Security.PreflightID}, IssuedAt: f.f.at, ActiveFrom: f.f.at, ActivationTime: f.f.at, Selections: model.DefaultExamPolicySet(), Build: f.f.desktopBuild})
 	if err != nil {
 		return nil, err
 	}
-	policy, err := resolved.Policy.RebindAttempt(input.AttemptID, fake.f.at)
+	policy, err := resolved.Policy.RebindAttempt(input.AttemptID, f.f.at)
 	if err != nil {
 		return nil, err
 	}
 	security := model.AdmittedSecurity{Policy: policy, PolicyContentDigest: resolved.PolicyContentDigest, PreflightID: input.Security.PreflightID, PreflightReportDigest: input.Security.ReportDigest, PreflightPolicyDigest: resolved.Policy.Digest, ParticipationID: input.ParticipationID, Generation: 1, SecuritySessionID: "fixture-security-session", DeliveryStreamID: "fixture-delivery", RenewalIntervalSeconds: 5}
-	configuration := fake.f.configuration.Clone()
-	return &store.ExamAttemptConnectResult{Security: security, Attempt: fake.attempt, Workspace: fake.workspace, Participation: fake.participation,
-		Connection: fake.connection, ClassID: fake.f.sitting.ClassID, FirstAdmission: fake.firstAdmission,
-		Configuration: configuration, RuntimeCapabilities: runtimeCapabilitiesFixture(fake.f, fake.f.sitting.ExamRevisionID), BrowserPolicy: disabledCandidateBrowserPolicyFixture(fake.f.sitting.ExamRevisionID),
-		ConnectionOpened: fake.connectionOpened, Replayed: fake.replayed}, nil
+	configuration := f.f.configuration.Clone()
+	return &store.ExamAttemptConnectResult{Security: security, Attempt: f.attempt, Workspace: f.workspace, Participation: f.participation,
+		Connection: f.connection, ClassID: f.f.sitting.ClassID, FirstAdmission: f.firstAdmission,
+		Configuration: configuration, RuntimeCapabilities: runtimeCapabilitiesFixture(f.f, f.f.sitting.ExamRevisionID), BrowserPolicy: disabledCandidateBrowserPolicyFixture(f.f.sitting.ExamRevisionID),
+		ConnectionOpened: f.connectionOpened, Replayed: f.replayed}, nil
 }
-func (fake *attemptStoreFake) RenewParticipation(_ context.Context, input *store.ExamAttemptParticipationRenewal) (*store.ExamAttemptParticipationRenewalResult, error) {
-	fake.f.order = append(fake.f.order, "renew")
-	fake.renew = input
-	return fake.renewResult, fake.renewErr
+func (f *attemptStoreFake) RenewParticipation(_ context.Context, input *store.ExamAttemptParticipationRenewal) (*store.ExamAttemptParticipationRenewalResult, error) {
+	f.f.order = append(f.f.order, "renew")
+	f.renew = input
+	return f.renewResult, f.renewErr
 }
-func (fake *attemptStoreFake) ResolveFocusLossTarget(_ context.Context, access store.ExamAttemptFocusLossAccess) (*store.ExamAttemptFocusLossTarget, error) {
-	fake.f.order = append(fake.f.order, "focus.resolve")
-	fake.focusAccess = access
-	return fake.focusTarget, fake.focusErr
+func (f *attemptStoreFake) ResolveFocusLossTarget(_ context.Context, access store.ExamAttemptFocusLossAccess) (*store.ExamAttemptFocusLossTarget, error) {
+	f.f.order = append(f.f.order, "focus.resolve")
+	f.focusAccess = access
+	return f.focusTarget, f.focusErr
 }
-func (fake *attemptStoreFake) RecordFocusLoss(_ context.Context, input *store.ExamAttemptFocusLossSignal) (*store.ExamAttemptFocusLossResult, error) {
-	fake.f.order = append(fake.f.order, "focus.record")
-	fake.focusSignal = input
-	return fake.focusResult, fake.focusErr
+func (f *attemptStoreFake) RecordFocusLoss(_ context.Context, input *store.ExamAttemptFocusLossSignal) (*store.ExamAttemptFocusLossResult, error) {
+	f.f.order = append(f.f.order, "focus.record")
+	f.focusSignal = input
+	return f.focusResult, f.focusErr
 }
-func (fake *attemptStoreFake) ResolveEndedFocusLossTarget(_ context.Context, access store.ExamAttemptFocusLossAccess) (*store.ExamAttemptFocusLossDiscrepancyTarget, error) {
-	fake.f.order = append(fake.f.order, "focus.late.resolve")
-	fake.focusAccess = access
-	return fake.lateFocusTarget, fake.lateFocusErr
+func (f *attemptStoreFake) ResolveEndedFocusLossTarget(_ context.Context, access store.ExamAttemptFocusLossAccess) (*store.ExamAttemptFocusLossDiscrepancyTarget, error) {
+	f.f.order = append(f.f.order, "focus.late.resolve")
+	f.focusAccess = access
+	return f.lateFocusTarget, f.lateFocusErr
 }
-func (fake *attemptStoreFake) RecordEndedFocusLoss(_ context.Context, input *store.ExamAttemptFocusLossDiscrepancy) (*store.ExamAttemptFocusLossDiscrepancyResult, error) {
-	fake.f.order = append(fake.f.order, "focus.late.record")
-	fake.lateFocusInput = input
-	return fake.lateFocusResult, fake.lateFocusErr
+func (f *attemptStoreFake) RecordEndedFocusLoss(_ context.Context, input *store.ExamAttemptFocusLossDiscrepancy) (*store.ExamAttemptFocusLossDiscrepancyResult, error) {
+	f.f.order = append(f.f.order, "focus.late.record")
+	f.lateFocusInput = input
+	return f.lateFocusResult, f.lateFocusErr
 }
-func (fake *attemptStoreFake) ResolveParticipationExpiry(context.Context, model.ExamAttemptID, model.AttemptParticipationID, int64) (*store.ExamAttemptParticipationExpiryDue, error) {
-	fake.f.order = append(fake.f.order, "expiry.resolve")
-	return fake.resolvedExpiry, fake.resolveExpiryErr
+func (f *attemptStoreFake) ResolveParticipationExpiry(context.Context, model.ExamAttemptID, model.AttemptParticipationID, int64) (*store.ExamAttemptParticipationExpiryDue, error) {
+	f.f.order = append(f.f.order, "expiry.resolve")
+	return f.resolvedExpiry, f.resolveExpiryErr
 }
-func (fake *attemptStoreFake) ListExpiredParticipations(_ context.Context, _ int) ([]store.ExamAttemptParticipationExpiryDue, error) {
-	fake.f.order = append(fake.f.order, "expiry.list")
-	return fake.expiryDue, nil
+func (f *attemptStoreFake) ListExpiredParticipations(_ context.Context, _ int) ([]store.ExamAttemptParticipationExpiryDue, error) {
+	f.f.order = append(f.f.order, "expiry.list")
+	return f.expiryDue, nil
 }
-func (fake *attemptStoreFake) ExpireParticipation(_ context.Context, input *store.ExamAttemptParticipationExpiry) (*store.ExamAttemptParticipationExpiryResult, error) {
-	fake.f.order = append(fake.f.order, "expiry.commit")
-	fake.expireInput = input
-	return fake.expireResult, fake.expireErr
+func (f *attemptStoreFake) ExpireParticipation(_ context.Context, input *store.ExamAttemptParticipationExpiry) (*store.ExamAttemptParticipationExpiryResult, error) {
+	f.f.order = append(f.f.order, "expiry.commit")
+	f.expireInput = input
+	return f.expireResult, f.expireErr
 }
-func (fake *attemptStoreFake) ReallowAttempt(_ context.Context, input *store.ExamAttemptReallow, command *store.CommandIdempotency) (*store.ExamAttemptReallowResult, error) {
-	fake.f.order = append(fake.f.order, "reallow")
-	fake.reallow, fake.idempotency = input, command
-	return fake.reallowResult, fake.reallowErr
+func (f *attemptStoreFake) ReallowAttempt(_ context.Context, input *store.ExamAttemptReallow, command *store.CommandIdempotency) (*store.ExamAttemptReallowResult, error) {
+	f.f.order = append(f.f.order, "reallow")
+	f.reallow, f.idempotency = input, command
+	return f.reallowResult, f.reallowErr
 }
-func (fake *attemptStoreFake) SuspendAttempt(_ context.Context, input *store.ExamAttemptManualSuspension, command *store.CommandIdempotency) (*store.ExamAttemptManualSuspensionResult, error) {
-	fake.f.order = append(fake.f.order, "suspend")
-	fake.manualSuspension, fake.idempotency = input, command
-	return fake.manualSuspensionResult, fake.manualSuspensionErr
+func (f *attemptStoreFake) SuspendAttempt(_ context.Context, input *store.ExamAttemptManualSuspension, command *store.CommandIdempotency) (*store.ExamAttemptManualSuspensionResult, error) {
+	f.f.order = append(f.f.order, "suspend")
+	f.manualSuspension, f.idempotency = input, command
+	return f.manualSuspensionResult, f.manualSuspensionErr
 }
-func (fake *attemptStoreFake) CloseConnection(_ context.Context, input *store.ExamAttemptConnectionClose) (*store.ExamAttemptConnectionCloseResult, error) {
-	fake.f.order = append(fake.f.order, "close")
-	if input.CandidateUserID != fake.connect.CandidateUserID || input.SessionID != fake.connect.SessionID {
+func (f *attemptStoreFake) CloseConnection(_ context.Context, input *store.ExamAttemptConnectionClose) (*store.ExamAttemptConnectionCloseResult, error) {
+	f.f.order = append(f.f.order, "close")
+	if input.CandidateUserID != f.connect.CandidateUserID || input.SessionID != f.connect.SessionID {
 		return nil, store.NewErrNotFound("attempt_connection", input.ConnectionID.String())
 	}
-	connection := *fake.connection
-	if err := connection.Close(input.Reason, fake.f.at.Add(time.Second)); err != nil {
+	connection := *f.connection
+	if err := connection.Close(input.Reason, f.f.at.Add(time.Second)); err != nil {
 		return nil, err
 	}
-	return &store.ExamAttemptConnectionCloseResult{AttemptID: fake.attempt.ID, ExamID: fake.attempt.ExamID, SittingID: fake.connect.SittingID,
-		CandidateUserID: fake.connect.CandidateUserID, Connection: &connection, Changed: fake.closeChanged}, nil
+	return &store.ExamAttemptConnectionCloseResult{AttemptID: f.attempt.ID, ExamID: f.attempt.ExamID, SittingID: f.connect.SittingID,
+		CandidateUserID: f.connect.CandidateUserID, Connection: &connection, Changed: f.closeChanged}, nil
 }
-func (fake *attemptStoreFake) Get(_ context.Context, examID model.ExamID, attemptID model.ExamAttemptID) (*store.ExamAttemptManagerSnapshot, error) {
-	fake.f.order = append(fake.f.order, "manager.get")
-	if fake.getErr != nil {
-		return nil, fake.getErr
+func (f *attemptStoreFake) Get(_ context.Context, examID model.ExamID, attemptID model.ExamAttemptID) (*store.ExamAttemptManagerSnapshot, error) {
+	f.f.order = append(f.f.order, "manager.get")
+	if f.getErr != nil {
+		return nil, f.getErr
 	}
-	if fake.attempt == nil || fake.attempt.ExamID != examID || fake.attempt.ID != attemptID {
+	if f.attempt == nil || f.attempt.ExamID != examID || f.attempt.ID != attemptID {
 		return nil, errors.New("not configured")
 	}
-	return &store.ExamAttemptManagerSnapshot{Attempt: fake.attempt, ActiveSuspension: fake.managerSuspension}, nil
+	return &store.ExamAttemptManagerSnapshot{Attempt: f.attempt, ActiveSuspension: f.managerSuspension}, nil
 }
-func (fake *attemptStoreFake) List(_ context.Context, options store.ExamAttemptManagerListOptions) ([]store.ExamAttemptManagerSnapshot, error) {
-	fake.f.order = append(fake.f.order, "manager.list")
-	fake.managerOptions = options
-	return fake.managerRows, nil
+func (f *attemptStoreFake) List(_ context.Context, options store.ExamAttemptManagerListOptions) ([]store.ExamAttemptManagerSnapshot, error) {
+	f.f.order = append(f.f.order, "manager.list")
+	f.managerOptions = options
+	return f.managerRows, nil
 }
 
-func (fake *attemptStoreFake) ListCandidateActivity(context.Context, store.CandidateExamActivityListOptions) (*store.CandidateExamActivityPage, error) {
+func (f *attemptStoreFake) ListCandidateActivity(context.Context, store.CandidateExamActivityListOptions) (*store.CandidateExamActivityPage, error) {
 	return &store.CandidateExamActivityPage{ServerTime: model.NowUTC(), Items: []store.CandidateExamActivityItem{}}, nil
 }
 
-func (fake *attemptStoreFake) ListSittingCandidateStatuses(context.Context, store.SittingCandidateStatusListOptions) (*store.SittingCandidateStatusPage, error) {
+func (f *attemptStoreFake) ListSittingCandidateStatuses(context.Context, store.SittingCandidateStatusListOptions) (*store.SittingCandidateStatusPage, error) {
 	return &store.SittingCandidateStatusPage{Items: []store.SittingCandidateStatusItem{}}, nil
 }
 func (*attemptStoreFake) ListSessionRevocationInvalidationTargets(
@@ -2007,50 +2007,50 @@ func (*attemptStoreFake) ListSessionRevocationInvalidationTargets(
 ) ([]store.ExamAttemptInvalidationTarget, error) {
 	return nil, nil
 }
-func (fake *attemptStoreFake) GetCandidatePresentation(_ context.Context, access store.CandidateAttemptAccess) (*store.CandidateExamPresentation, error) {
-	fake.candidateAccess = access
-	if fake.authorizedSession.IsValid() && access.SessionID != fake.authorizedSession {
+func (f *attemptStoreFake) GetCandidatePresentation(_ context.Context, access store.CandidateAttemptAccess) (*store.CandidateExamPresentation, error) {
+	f.candidateAccess = access
+	if f.authorizedSession.IsValid() && access.SessionID != f.authorizedSession {
 		return nil, store.NewErrNotFound("exam_attempt_access", access.AttemptID.String())
 	}
-	return fake.presentation, nil
+	return f.presentation, nil
 }
 
-func (fake *attemptStoreFake) StartBrowserActivity(context.Context, *store.BrowserActivitySourceStart) (*model.BrowserSourceStatus, error) {
+func (f *attemptStoreFake) StartBrowserActivity(context.Context, *store.BrowserActivitySourceStart) (*model.BrowserSourceStatus, error) {
 	return nil, nil
 }
-func (fake *attemptStoreFake) AppendBrowserActivity(context.Context, *store.BrowserActivityAppend) (*model.BrowserActivityAcknowledgement, error) {
+func (f *attemptStoreFake) AppendBrowserActivity(context.Context, *store.BrowserActivityAppend) (*model.BrowserActivityAcknowledgement, error) {
 	return nil, nil
 }
-func (fake *attemptStoreFake) ListBrowserActivity(context.Context, store.BrowserActivityListOptions) ([]store.BrowserActivityRecord, error) {
+func (f *attemptStoreFake) ListBrowserActivity(context.Context, store.BrowserActivityListOptions) ([]store.BrowserActivityRecord, error) {
 	return nil, nil
 }
-func (fake *attemptStoreFake) ResolveCorrectionAcknowledgementTarget(_ context.Context, input store.ExamAttemptCorrectionAcknowledgement) (*store.ExamAttemptCorrectionAcknowledgementTarget, error) {
-	fake.f.order = append(fake.f.order, "correction.acknowledgement.resolve")
-	fake.correctionAcknowledgement = &input
-	return fake.correctionAcknowledgementTarget, fake.correctionAcknowledgementErr
+func (f *attemptStoreFake) ResolveCorrectionAcknowledgementTarget(_ context.Context, input store.ExamAttemptCorrectionAcknowledgement) (*store.ExamAttemptCorrectionAcknowledgementTarget, error) {
+	f.f.order = append(f.f.order, "correction.acknowledgement.resolve")
+	f.correctionAcknowledgement = &input
+	return f.correctionAcknowledgementTarget, f.correctionAcknowledgementErr
 }
-func (fake *attemptStoreFake) AcknowledgeCorrection(_ context.Context, input *store.ExamAttemptCorrectionAcknowledgement, command *store.CommandIdempotency) (*store.ExamAttemptCorrectionAcknowledgementResult, error) {
-	fake.f.order = append(fake.f.order, "correction.acknowledgement.commit")
-	fake.correctionAcknowledgementCalls++
-	fake.correctionAcknowledgement, fake.idempotency = input, command
-	return fake.correctionAcknowledgementResult, fake.correctionAcknowledgementErr
+func (f *attemptStoreFake) AcknowledgeCorrection(_ context.Context, input *store.ExamAttemptCorrectionAcknowledgement, command *store.CommandIdempotency) (*store.ExamAttemptCorrectionAcknowledgementResult, error) {
+	f.f.order = append(f.f.order, "correction.acknowledgement.commit")
+	f.correctionAcknowledgementCalls++
+	f.correctionAcknowledgement, f.idempotency = input, command
+	return f.correctionAcknowledgementResult, f.correctionAcknowledgementErr
 }
 func (*attemptStoreFake) ResolveCandidateResource(context.Context, store.CandidateAttemptAccess, model.ExamResourceID) (*store.CandidateResourceContent, error) {
 	return nil, errors.New("not configured")
 }
 
-func (fake *attemptStoreFake) PrepareSecurityPreflight(context.Context, *store.SecurityPreflightPrepare, *store.CommandIdempotency) (*store.SecurityPreflightPrepared, error) {
+func (f *attemptStoreFake) PrepareSecurityPreflight(context.Context, *store.SecurityPreflightPrepare, *store.CommandIdempotency) (*store.SecurityPreflightPrepared, error) {
 	return nil, errors.New("unexpected preflight preparation")
 }
-func (fake *attemptStoreFake) ReportSecurityPreflight(context.Context, *store.SecurityPreflightReport, *store.CommandIdempotency) (*model.SecurityPreflightResult, error) {
+func (f *attemptStoreFake) ReportSecurityPreflight(context.Context, *store.SecurityPreflightReport, *store.CommandIdempotency) (*model.SecurityPreflightResult, error) {
 	return nil, errors.New("unexpected preflight report")
 }
 
-func (fake *attemptStoreFake) ResolveSecurityPreflightSitting(context.Context, string, model.UserID, model.SessionID) (model.ExamSittingID, error) {
+func (f *attemptStoreFake) ResolveSecurityPreflightSitting(context.Context, string, model.UserID, model.SessionID) (model.ExamSittingID, error) {
 	return "", errors.New("unexpected preflight lookup")
 }
 
-func (fake *attemptStoreFake) RecoverSecurityPolicy(context.Context, store.SecurityPreflightAccess, model.ExamAttemptID) (*store.SecurityPolicyRecovery, error) {
+func (f *attemptStoreFake) RecoverSecurityPolicy(context.Context, store.SecurityPreflightAccess, model.ExamAttemptID) (*store.SecurityPolicyRecovery, error) {
 	return nil, errors.New("unexpected security recovery")
 }
 
@@ -2073,7 +2073,7 @@ func syntheticNativeAgreement(t *testing.T, build model.DesktopBuildTuple) *mode
 	return agreement
 }
 
-func (fake *attemptStoreFake) UpdateSecurityCoverage(context.Context, *store.ExamAttemptSecurityCoverageUpdate) (model.SecurityCoverageResult, error) {
+func (f *attemptStoreFake) UpdateSecurityCoverage(context.Context, *store.ExamAttemptSecurityCoverageUpdate) (model.SecurityCoverageResult, error) {
 	return model.SecurityCoverageResult{}, errors.New("unexpected security update")
 }
 
@@ -2085,35 +2085,35 @@ func renewalCoverageResultFixture() model.SecurityCoverageResult {
 	return model.SecurityCoverageResult{ProcessedControlSequence: 1, ProcessedControlDigest: &digest, CoverageResult: "accepted", SourceResetReceipts: []model.SourceResetReceipt{}, SecurityInteractionAllowed: true, DeliveryWatermarkRejections: []model.DeliveryWatermarkRejection{}}
 }
 
-func (fake *attemptStoreFake) NativeDeliveryStatus(context.Context, store.NativeDeliveryAccess) (*model.NativeSecurityStreamStatus, error) {
+func (f *attemptStoreFake) NativeDeliveryStatus(context.Context, store.NativeDeliveryAccess) (*model.NativeSecurityStreamStatus, error) {
 	return nil, errors.New("unexpected NativeDeliveryStatus")
 }
 
-func (fake *attemptStoreFake) NativeDeliveryReceipt(context.Context, store.NativeDeliveryAccess, int64) (*model.NativeBatchReceipt, error) {
+func (f *attemptStoreFake) NativeDeliveryReceipt(context.Context, store.NativeDeliveryAccess, int64) (*model.NativeBatchReceipt, error) {
 	return nil, errors.New("unexpected NativeDeliveryReceipt")
 }
 
-func (fake *attemptStoreFake) DeclareNativeDeliveryGaps(context.Context, *store.NativeDeliveryGapDeclaration, *store.CommandIdempotency) (*model.DeliveryGapReceipt, error) {
+func (f *attemptStoreFake) DeclareNativeDeliveryGaps(context.Context, *store.NativeDeliveryGapDeclaration, *store.CommandIdempotency) (*model.DeliveryGapReceipt, error) {
 	return nil, errors.New("unexpected DeclareNativeDeliveryGaps")
 }
 
-func (fake *attemptStoreFake) SealNativeDelivery(context.Context, *store.NativeDeliveryFinalDeclaration, *store.CommandIdempotency) (*model.NativeSecurityStreamStatus, error) {
+func (f *attemptStoreFake) SealNativeDelivery(context.Context, *store.NativeDeliveryFinalDeclaration, *store.CommandIdempotency) (*model.NativeSecurityStreamStatus, error) {
 	return nil, errors.New("unexpected SealNativeDelivery")
 }
 
-func (fake *attemptStoreFake) UpdateNativeDeliverySummary(context.Context, *store.NativeDeliverySummaryUpdate, *store.CommandIdempotency) (*model.NativeSecurityStreamStatus, error) {
+func (f *attemptStoreFake) UpdateNativeDeliverySummary(context.Context, *store.NativeDeliverySummaryUpdate, *store.CommandIdempotency) (*model.NativeSecurityStreamStatus, error) {
 	return nil, errors.New("unexpected UpdateNativeDeliverySummary")
 }
 
-func (fake *attemptStoreFake) ResolveNativeDeliveryTarget(context.Context, store.NativeDeliveryAccess) (*store.NativeDeliveryTarget, error) {
+func (f *attemptStoreFake) ResolveNativeDeliveryTarget(context.Context, store.NativeDeliveryAccess) (*store.NativeDeliveryTarget, error) {
 	return nil, errors.New("unexpected native delivery target")
 }
 
-func (fake *desktopBuildResolverFake) ResolveNativeDeliveryBuild(context.Context, NativeDeliveryBuildIdentity) (model.DesktopBuildTuple, error) {
-	return fake.f.desktopBuild, nil
+func (f *desktopBuildResolverFake) ResolveNativeDeliveryBuild(context.Context, NativeDeliveryBuildIdentity) (model.DesktopBuildTuple, error) {
+	return f.f.desktopBuild, nil
 }
 
-func (fake *attemptStoreFake) AppendNativeDelivery(context.Context, *store.NativeDeliveryAppend, *store.CommandIdempotency) (*model.NativeSecurityAcknowledgement, error) {
+func (f *attemptStoreFake) AppendNativeDelivery(context.Context, *store.NativeDeliveryAppend, *store.CommandIdempotency) (*model.NativeSecurityAcknowledgement, error) {
 	return nil, errors.New("unexpected AppendNativeDelivery")
 }
 
@@ -2124,47 +2124,47 @@ func disabledCandidateBrowserPolicyFixture(revisionID model.ExamRevisionID) *sto
 		BrowserActivityDisclosure: model.BrowserActivityDisclosure{NoticeID: "integrated_browser_activity", Audience: "exam_managers_with_browser_activity_permission", RetentionPolicyRevision: 1, RetentionAnchor: "eligible_closed_sitting_records_completion"}}
 }
 
-func (fake *attemptStoreFake) BrowserSourceStatus(context.Context, store.BrowserDeliveryAccess) (*model.BrowserSourceStatus, error) {
+func (f *attemptStoreFake) BrowserSourceStatus(context.Context, store.BrowserDeliveryAccess) (*model.BrowserSourceStatus, error) {
 	return nil, errors.New("unexpected browser source query")
 }
-func (fake *attemptStoreFake) BrowserSourceList(context.Context, store.BrowserDeliveryAccess) ([]model.BrowserSourceStatus, error) {
+func (f *attemptStoreFake) BrowserSourceList(context.Context, store.BrowserDeliveryAccess) ([]model.BrowserSourceStatus, error) {
 	return nil, errors.New("unexpected browser source query")
 }
 
-func (fake *attemptStoreFake) ResolveLiveDeliveryTarget(context.Context, store.CandidateAttemptAccess) (*store.DeliveryOwnerTarget, error) {
+func (f *attemptStoreFake) ResolveLiveDeliveryTarget(context.Context, store.CandidateAttemptAccess) (*store.DeliveryOwnerTarget, error) {
 	return nil, errors.New("unexpected browser source target")
 }
 
-func (fake *attemptStoreFake) AppendHistoricalBrowserDelivery(context.Context, *store.BrowserActivityAppend, *store.CommandIdempotency) (*model.BrowserActivityAcknowledgement, error) {
+func (f *attemptStoreFake) AppendHistoricalBrowserDelivery(context.Context, *store.BrowserActivityAppend, *store.CommandIdempotency) (*model.BrowserActivityAcknowledgement, error) {
 	return nil, errors.New("unexpected AppendHistoricalBrowserDelivery")
 }
-func (fake *attemptStoreFake) ResolveBrowserDeliveryTarget(context.Context, store.BrowserDeliveryAccess) (*store.DeliveryOwnerTarget, error) {
+func (f *attemptStoreFake) ResolveBrowserDeliveryTarget(context.Context, store.BrowserDeliveryAccess) (*store.DeliveryOwnerTarget, error) {
 	return nil, errors.New("unexpected ResolveBrowserDeliveryTarget")
 }
-func (fake *attemptStoreFake) BrowserDeliveryReceipts(context.Context, store.BrowserDeliveryAccess, int64, int) (*model.BrowserReceiptPage, error) {
+func (f *attemptStoreFake) BrowserDeliveryReceipts(context.Context, store.BrowserDeliveryAccess, int64, int) (*model.BrowserReceiptPage, error) {
 	return nil, errors.New("unexpected BrowserDeliveryReceipts")
 }
-func (fake *attemptStoreFake) DeclareBrowserDeliveryGaps(context.Context, *store.BrowserDeliveryGapDeclaration, *store.CommandIdempotency) (*model.BrowserDeliveryGapResult, error) {
+func (f *attemptStoreFake) DeclareBrowserDeliveryGaps(context.Context, *store.BrowserDeliveryGapDeclaration, *store.CommandIdempotency) (*model.BrowserDeliveryGapResult, error) {
 	return nil, errors.New("unexpected DeclareBrowserDeliveryGaps")
 }
-func (fake *attemptStoreFake) SealBrowserDelivery(context.Context, *store.BrowserDeliveryFinalDeclaration, *store.CommandIdempotency) (*model.BrowserSourceStatus, error) {
+func (f *attemptStoreFake) SealBrowserDelivery(context.Context, *store.BrowserDeliveryFinalDeclaration, *store.CommandIdempotency) (*model.BrowserSourceStatus, error) {
 	return nil, errors.New("unexpected SealBrowserDelivery")
 }
-func (fake *attemptStoreFake) UpdateBrowserDeliverySummary(context.Context, *store.BrowserDeliverySummaryUpdate, *store.CommandIdempotency) (*model.BrowserDeliverySummaryResult, error) {
+func (f *attemptStoreFake) UpdateBrowserDeliverySummary(context.Context, *store.BrowserDeliverySummaryUpdate, *store.CommandIdempotency) (*model.BrowserDeliverySummaryResult, error) {
 	return nil, errors.New("unexpected UpdateBrowserDeliverySummary")
 }
 
-func (fake *attemptStoreFake) ListExpiredDeliveries(context.Context, int) ([]store.DeliveryExpiryDue, error) {
+func (f *attemptStoreFake) ListExpiredDeliveries(context.Context, int) ([]store.DeliveryExpiryDue, error) {
 	return nil, nil
 }
-func (fake *attemptStoreFake) ExpireDelivery(context.Context, *store.DeliveryExpiry) (bool, error) {
+func (f *attemptStoreFake) ExpireDelivery(context.Context, *store.DeliveryExpiry) (bool, error) {
 	return false, errors.New("unexpected ExpireDelivery")
 }
 
-func (fake *attemptStoreFake) DeliveryBudget(context.Context, store.DeliveryBudgetAccess) (*model.DeliveryBudgetSnapshot, error) {
+func (f *attemptStoreFake) DeliveryBudget(context.Context, store.DeliveryBudgetAccess) (*model.DeliveryBudgetSnapshot, error) {
 	return nil, errors.New("unexpected DeliveryBudget")
 }
-func (fake *attemptStoreFake) StopDeliveryDetails(context.Context, *store.DeliveryDetailsStop, *store.CommandIdempotency) (*model.StopDeliveryDetailsResult, error) {
+func (f *attemptStoreFake) StopDeliveryDetails(context.Context, *store.DeliveryDetailsStop, *store.CommandIdempotency) (*model.StopDeliveryDetailsResult, error) {
 	return nil, errors.New("unexpected StopDeliveryDetails")
 }
 

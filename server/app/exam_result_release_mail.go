@@ -24,19 +24,19 @@ type examResultReleaseMailPreparationAdapter struct {
 	revisions store.ExamRevisionStore
 }
 
-func (adapter examResultReleaseMailPreparationAdapter) PrepareResultRelease(ctx context.Context,
+func (a examResultReleaseMailPreparationAdapter) PrepareResultRelease(ctx context.Context,
 	request examreview.ResultReleaseMailPreparation,
 ) (*examreview.PreparedResultReleaseMail, error) {
-	if adapter.preparer == nil || adapter.users == nil || adapter.sittings == nil || adapter.revisions == nil ||
+	if a.preparer == nil || a.users == nil || a.sittings == nil || a.revisions == nil ||
 		!request.CandidateUserID.IsValid() || !request.ExamID.IsValid() || !request.SittingID.IsValid() ||
 		!request.ReviewID.IsValid() || request.ReleasedAt.IsZero() {
 		return nil, errors.New("result release mail dependencies or request are invalid")
 	}
-	recipient, err := adapter.users.Get(ctx, request.CandidateUserID)
+	recipient, err := a.users.Get(ctx, request.CandidateUserID)
 	if err != nil {
 		return nil, err
 	}
-	snapshot, err := adapter.sittings.Get(ctx, request.ExamID, request.SittingID)
+	snapshot, err := a.sittings.Get(ctx, request.ExamID, request.SittingID)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +44,7 @@ func (adapter examResultReleaseMailPreparationAdapter) PrepareResultRelease(ctx 
 		snapshot.Sitting.ID != request.SittingID || snapshot.Sitting.ExamID != request.ExamID {
 		return nil, errors.New("result release Sitting projection is inconsistent")
 	}
-	revision, err := adapter.revisions.GetSummary(ctx, request.ExamID, snapshot.Sitting.ExamRevisionID)
+	revision, err := a.revisions.GetSummary(ctx, request.ExamID, snapshot.Sitting.ExamRevisionID)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +56,7 @@ func (adapter examResultReleaseMailPreparationAdapter) PrepareResultRelease(ctx 
 	if err != nil {
 		return nil, err
 	}
-	prepared, err := adapter.preparer.PrepareResultReleaseMail(appmail.ResultReleasePreparation{
+	prepared, err := a.preparer.PrepareResultReleaseMail(appmail.ResultReleasePreparation{
 		Recipient: recipient, OccurrenceID: occurrence,
 		Details:    appmail.ResultReleaseDetails{ExamTitle: revision.Title, ReleasedAt: request.ReleasedAt},
 		ReleasedAt: request.ReleasedAt,

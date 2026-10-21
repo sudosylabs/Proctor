@@ -50,18 +50,18 @@ type focusedRoleApplication struct {
 	create application.CreateRoleCommand
 }
 
-func (fake *focusedRoleApplication) ListRoles(context.Context, application.Invocation, application.ListRolesQuery) ([]*model.Role, error) {
-	return fake.roles, nil
+func (f *focusedRoleApplication) ListRoles(context.Context, application.Invocation, application.ListRolesQuery) ([]*model.Role, error) {
+	return f.roles, nil
 }
-func (fake *focusedRoleApplication) GetRole(context.Context, application.Invocation, application.GetRoleQuery) (*model.Role, error) {
-	return fake.roles[0], nil
+func (f *focusedRoleApplication) GetRole(context.Context, application.Invocation, application.GetRoleQuery) (*model.Role, error) {
+	return f.roles[0], nil
 }
-func (fake *focusedRoleApplication) CreateRole(_ context.Context, _ application.Invocation, command application.CreateRoleCommand) (*model.Role, error) {
-	fake.create = command
-	return fake.roles[0], nil
+func (f *focusedRoleApplication) CreateRole(_ context.Context, _ application.Invocation, command application.CreateRoleCommand) (*model.Role, error) {
+	f.create = command
+	return f.roles[0], nil
 }
-func (fake *focusedRoleApplication) UpdateRole(context.Context, application.Invocation, application.UpdateRoleCommand) (*model.Role, error) {
-	return fake.roles[0], nil
+func (f *focusedRoleApplication) UpdateRole(context.Context, application.Invocation, application.UpdateRoleCommand) (*model.Role, error) {
+	return f.roles[0], nil
 }
 func (*focusedRoleApplication) ArchiveRole(context.Context, application.Invocation, application.ArchiveRoleCommand) error {
 	return nil
@@ -93,12 +93,12 @@ type focusedRoleBindingApplication struct {
 func (*focusedRoleBindingApplication) ListRoleBindings(context.Context, application.Invocation, application.ListRoleBindingsQuery) ([]*model.RoleBinding, error) {
 	return []*model.RoleBinding{}, nil
 }
-func (fake *focusedRoleBindingApplication) CreateRoleBinding(context.Context, application.Invocation, application.CreateRoleBindingCommand) (*model.RoleBinding, error) {
-	return fake.binding, nil
+func (f *focusedRoleBindingApplication) CreateRoleBinding(context.Context, application.Invocation, application.CreateRoleBindingCommand) (*model.RoleBinding, error) {
+	return f.binding, nil
 }
-func (fake *focusedRoleBindingApplication) EndRoleBinding(_ context.Context, _ application.Invocation, command application.EndRoleBindingCommand) (*model.RoleBinding, error) {
-	fake.end = command
-	return fake.binding, nil
+func (f *focusedRoleBindingApplication) EndRoleBinding(_ context.Context, _ application.Invocation, command application.EndRoleBindingCommand) (*model.RoleBinding, error) {
+	f.end = command
+	return f.binding, nil
 }
 
 func TestRoleBindingResourceOwnsPathCommandAndAuthentication(t *testing.T) {
@@ -132,9 +132,9 @@ type focusedAuditApplication struct {
 	err    error
 }
 
-func (fake *focusedAuditApplication) ListAuditEvents(_ context.Context, _ application.Invocation, query application.ListAuditEventsQuery) ([]*model.AuditEvent, error) {
-	fake.query = query
-	return fake.events, fake.err
+func (f *focusedAuditApplication) ListAuditEvents(_ context.Context, _ application.Invocation, query application.ListAuditEventsQuery) ([]*model.AuditEvent, error) {
+	f.query = query
+	return f.events, f.err
 }
 
 func TestAuditResourcePreservesOpaqueCursorAndSafeErrors(t *testing.T) {
@@ -184,24 +184,24 @@ type focusedJobApplication struct {
 	view         application.JobView
 }
 
-func (fake *focusedJobApplication) ListJobs(_ context.Context, _ application.Invocation, query application.ListJobsQuery) (application.JobPage, error) {
-	fake.listQuery = query
-	return application.JobPage{Items: []application.JobView{fake.view}}, nil
+func (f *focusedJobApplication) ListJobs(_ context.Context, _ application.Invocation, query application.ListJobsQuery) (application.JobPage, error) {
+	f.listQuery = query
+	return application.JobPage{Items: []application.JobView{f.view}}, nil
 }
-func (fake *focusedJobApplication) GetJob(context.Context, application.Invocation, application.GetJobQuery) (application.JobView, error) {
-	return fake.view, nil
+func (f *focusedJobApplication) GetJob(context.Context, application.Invocation, application.GetJobQuery) (application.JobView, error) {
+	return f.view, nil
 }
-func (fake *focusedJobApplication) ListJobAttempts(_ context.Context, _ application.Invocation, query application.ListJobAttemptsQuery) (application.JobAttemptPage, error) {
-	fake.attemptQuery = query
+func (f *focusedJobApplication) ListJobAttempts(_ context.Context, _ application.Invocation, query application.ListJobAttemptsQuery) (application.JobAttemptPage, error) {
+	f.attemptQuery = query
 	return application.JobAttemptPage{}, nil
 }
-func (fake *focusedJobApplication) CancelJob(_ context.Context, _ application.Invocation, command application.CancelJobCommand) (application.JobView, error) {
-	fake.cancel = command
-	return fake.view, nil
+func (f *focusedJobApplication) CancelJob(_ context.Context, _ application.Invocation, command application.CancelJobCommand) (application.JobView, error) {
+	f.cancel = command
+	return f.view, nil
 }
-func (fake *focusedJobApplication) RetryJob(_ context.Context, _ application.Invocation, command application.RetryJobCommand) (application.JobView, error) {
-	fake.retry = command
-	return fake.view, nil
+func (f *focusedJobApplication) RetryJob(_ context.Context, _ application.Invocation, command application.RetryJobCommand) (application.JobView, error) {
+	f.retry = command
+	return f.view, nil
 }
 
 func TestJobResourcePreservesPrivateProjectionAndBoundedControls(t *testing.T) {

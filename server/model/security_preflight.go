@@ -270,15 +270,15 @@ func EvaluateNativeCoverage(resolved ResolvedNativePolicy, sources []NativeSourc
 	return reasons, nil
 }
 
-func (v SecurityPreflightReport) MarshalJSON() ([]byte, error) {
+func (r SecurityPreflightReport) MarshalJSON() ([]byte, error) {
 	type wire SecurityPreflightReport
 	return json.Marshal(struct {
 		*wire
 		ReportedAt securityJSONInstant `json:"reported_at"`
-	}{wire: (*wire)(&v), ReportedAt: securityJSONInstant{Time: v.ReportedAt, spelling: v.reportedAtSpelling}})
+	}{wire: (*wire)(&r), ReportedAt: securityJSONInstant{Time: r.ReportedAt, spelling: r.reportedAtSpelling}})
 }
-func (v *SecurityPreflightReport) UnmarshalJSON(raw []byte) error {
-	if v == nil {
+func (r *SecurityPreflightReport) UnmarshalJSON(raw []byte) error {
+	if r == nil {
 		return ErrSecurityPreflightInvalid
 	}
 	type wire SecurityPreflightReport
@@ -296,6 +296,6 @@ func (v *SecurityPreflightReport) UnmarshalJSON(raw []byte) error {
 	if candidate.Validate() != nil {
 		return ErrSecurityPreflightInvalid
 	}
-	*v = candidate
+	*r = candidate
 	return nil
 }

@@ -175,10 +175,10 @@ func (a *controlAdmission) refund(user model.UserID) {
 	}
 }
 
-func (service *Service) enterControl(ctx context.Context, invocation invocation.Invocation, live bool) (func(), error) {
-	budget := &service.deliveryControls
+func (s *Service) enterControl(ctx context.Context, invocation invocation.Invocation, live bool) (func(), error) {
+	budget := &s.deliveryControls
 	if live {
-		budget = &service.liveControls
+		budget = &s.liveControls
 	}
-	return budget.enter(ctx, invocation.Principal().UserID, service.deps.Now())
+	return budget.enter(ctx, invocation.Principal().UserID, s.deps.Now())
 }

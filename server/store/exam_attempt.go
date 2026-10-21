@@ -454,8 +454,8 @@ type BrowserActivitySourceStart struct {
 	Transition       model.BrowserStartTransition
 }
 
-func (value BrowserActivitySourceStart) Declaration() model.BrowserSourceStart {
-	return model.BrowserSourceStart{ParticipationID: value.ParticipationID, Generation: value.Generation, SourceSessionID: value.SourceSessionID, PolicyRevisionID: value.PolicyRevisionID, PolicyDigest: value.PolicyDigest, Transition: value.Transition}
+func (v BrowserActivitySourceStart) Declaration() model.BrowserSourceStart {
+	return model.BrowserSourceStart{ParticipationID: v.ParticipationID, Generation: v.Generation, SourceSessionID: v.SourceSessionID, PolicyRevisionID: v.PolicyRevisionID, PolicyDigest: v.PolicyDigest, Transition: v.Transition}
 }
 
 // BrowserSourceRefusal represents an already committed predecessor closure.
@@ -467,10 +467,10 @@ type BrowserSourceRefusal struct {
 	Capacity     *model.DeliveryMetadataCapacity
 }
 
-func (value *BrowserSourceRefusal) Error() string { return "browser source replacement refused" }
-func (value *BrowserSourceRefusal) Unwrap() error {
-	if value.Capacity != nil {
-		return value.Capacity
+func (v *BrowserSourceRefusal) Error() string { return "browser source replacement refused" }
+func (v *BrowserSourceRefusal) Unwrap() error {
+	if v.Capacity != nil {
+		return v.Capacity
 	}
 	return nil
 }
@@ -495,7 +495,7 @@ type BrowserActivityAppend struct {
 
 type BrowserDeliveryRefusal struct{ Reason string }
 
-func (value *BrowserDeliveryRefusal) Error() string { return "browser detail delivery refused" }
+func (v *BrowserDeliveryRefusal) Error() string { return "browser detail delivery refused" }
 
 type BrowserActivityListOptions struct {
 	ExamID          model.ExamID
@@ -641,46 +641,46 @@ type CandidateRuntimeCapabilities struct {
 	Departure                     CandidateDepartureCapability
 }
 
-func (capabilities CandidateRuntimeCapabilities) Validate() error {
-	if capabilities.SchemaVersion != 1 || capabilities.ServerTime.IsZero() ||
-		(capabilities.InteractionState != CandidateInteractionInteractive && capabilities.InteractionState != CandidateInteractionSittingPaused) ||
-		!model.IsValidAgreementID(capabilities.AttemptConfiguration.Revision) ||
-		capabilities.AttemptConfiguration.Presentation.Validate() != nil ||
-		model.ValidateAttemptApprovedIDs(capabilities.AttemptConfiguration.ApprovedCommands) != nil ||
-		model.ValidateAttemptApprovedIDs(capabilities.AttemptConfiguration.ApprovedKeybindings) != nil ||
-		!model.IsValidSHA256Fingerprint(capabilities.AttemptConfiguration.Digest) ||
-		!capabilities.ExamRevision.AdmissionRevisionID.IsValid() || !capabilities.ExamRevision.CurrentRevisionID.IsValid() ||
-		model.ValidateCandidateCapabilities(capabilities.PendingCorrectionCapabilities) != nil ||
-		capabilities.ExamRevision.AcknowledgementRequired != (len(capabilities.PendingCorrectionCapabilities) != 0) ||
-		capabilities.Departure.Allowed || capabilities.Departure.Reason != "attempt_in_progress" {
+func (c CandidateRuntimeCapabilities) Validate() error {
+	if c.SchemaVersion != 1 || c.ServerTime.IsZero() ||
+		(c.InteractionState != CandidateInteractionInteractive && c.InteractionState != CandidateInteractionSittingPaused) ||
+		!model.IsValidAgreementID(c.AttemptConfiguration.Revision) ||
+		c.AttemptConfiguration.Presentation.Validate() != nil ||
+		model.ValidateAttemptApprovedIDs(c.AttemptConfiguration.ApprovedCommands) != nil ||
+		model.ValidateAttemptApprovedIDs(c.AttemptConfiguration.ApprovedKeybindings) != nil ||
+		!model.IsValidSHA256Fingerprint(c.AttemptConfiguration.Digest) ||
+		!c.ExamRevision.AdmissionRevisionID.IsValid() || !c.ExamRevision.CurrentRevisionID.IsValid() ||
+		model.ValidateCandidateCapabilities(c.PendingCorrectionCapabilities) != nil ||
+		c.ExamRevision.AcknowledgementRequired != (len(c.PendingCorrectionCapabilities) != 0) ||
+		c.Departure.Allowed || c.Departure.Reason != "attempt_in_progress" {
 		return errors.New("candidate runtime capabilities are invalid")
 	}
 	// This minimized projection omits hash provenance. The full frozen document
 	// is validated before deriving it; its digest cannot be recomputed here.
 
-	paused := capabilities.InteractionState == CandidateInteractionSittingPaused
-	workspaceFenced := paused || slices.Contains(capabilities.PendingCorrectionCapabilities, model.CandidateCapabilityWorkspace)
-	submissionFenced := paused || slices.Contains(capabilities.PendingCorrectionCapabilities, model.CandidateCapabilitySubmission)
-	if capabilities.WorkspaceMutationAllowed == workspaceFenced || capabilities.SubmissionAllowed == submissionFenced {
+	paused := c.InteractionState == CandidateInteractionSittingPaused
+	workspaceFenced := paused || slices.Contains(c.PendingCorrectionCapabilities, model.CandidateCapabilityWorkspace)
+	submissionFenced := paused || slices.Contains(c.PendingCorrectionCapabilities, model.CandidateCapabilitySubmission)
+	if c.WorkspaceMutationAllowed == workspaceFenced || c.SubmissionAllowed == submissionFenced {
 		return errors.New("candidate mutation capabilities are inconsistent")
 	}
-	switch capabilities.Browser.State {
+	switch c.Browser.State {
 	case CandidateBrowserDisabled:
-		if !capabilities.Browser.PolicyRevisionID.IsZero() || capabilities.Browser.PolicyDigest != "" {
+		if !c.Browser.PolicyRevisionID.IsZero() || c.Browser.PolicyDigest != "" {
 			return errors.New("disabled candidate browser capability has policy metadata")
 		}
 	case CandidateBrowserAvailable, CandidateBrowserSittingPaused, CandidateBrowserAcknowledgementRequired, CandidateBrowserTemporarilyUnavailable:
-		if !capabilities.Browser.PolicyRevisionID.IsValid() || !model.IsValidSHA256Fingerprint(capabilities.Browser.PolicyDigest) {
+		if !c.Browser.PolicyRevisionID.IsValid() || !model.IsValidSHA256Fingerprint(c.Browser.PolicyDigest) {
 			return errors.New("enabled candidate browser capability lacks policy metadata")
 		}
 	default:
 		return errors.New("candidate browser capability is invalid")
 	}
-	if capabilities.Browser.State != CandidateBrowserDisabled {
-		browserPending := slices.Contains(capabilities.PendingCorrectionCapabilities, model.CandidateCapabilityBrowser)
-		if paused && capabilities.Browser.State != CandidateBrowserSittingPaused ||
-			!paused && browserPending && capabilities.Browser.State != CandidateBrowserAcknowledgementRequired ||
-			!paused && !browserPending && capabilities.Browser.State != CandidateBrowserAvailable && capabilities.Browser.State != CandidateBrowserTemporarilyUnavailable {
+	if c.Browser.State != CandidateBrowserDisabled {
+		browserPending := slices.Contains(c.PendingCorrectionCapabilities, model.CandidateCapabilityBrowser)
+		if paused && c.Browser.State != CandidateBrowserSittingPaused ||
+			!paused && browserPending && c.Browser.State != CandidateBrowserAcknowledgementRequired ||
+			!paused && !browserPending && c.Browser.State != CandidateBrowserAvailable && c.Browser.State != CandidateBrowserTemporarilyUnavailable {
 			return errors.New("candidate browser capability disagrees with current gates")
 		}
 	}

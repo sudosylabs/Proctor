@@ -25,23 +25,23 @@ type sittingScheduleMailPreparationAdapter struct {
 	classes   store.ClassStore
 }
 
-func (adapter sittingScheduleMailPreparationAdapter) Prepare(ctx context.Context,
+func (a sittingScheduleMailPreparationAdapter) Prepare(ctx context.Context,
 	request examsitting.ScheduleMailRequest,
 ) (*store.ExamSittingMailFanout, error) {
-	if adapter.preparer == nil || adapter.revisions == nil || adapter.classes == nil {
+	if a.preparer == nil || a.revisions == nil || a.classes == nil {
 		return nil, errors.New("sitting schedule mail preparation is unavailable")
 	}
-	revision, err := adapter.revisions.GetSummary(ctx, request.ExamID, request.ExamRevisionID)
+	revision, err := a.revisions.GetSummary(ctx, request.ExamID, request.ExamRevisionID)
 	if err != nil {
 		return nil, err
 	}
-	class, err := adapter.classes.Get(ctx, request.ClassID)
+	class, err := a.classes.Get(ctx, request.ClassID)
 	if err != nil {
 		return nil, err
 	}
 	priorClassName := class.DisplayName
 	if request.PriorClassID.IsValid() && request.PriorClassID != request.ClassID {
-		priorClass, priorErr := adapter.classes.Get(ctx, request.PriorClassID)
+		priorClass, priorErr := a.classes.Get(ctx, request.PriorClassID)
 		if priorErr != nil {
 			return nil, priorErr
 		}
@@ -54,7 +54,7 @@ func (adapter sittingScheduleMailPreparationAdapter) Prepare(ctx context.Context
 		sitting.State = model.ExamSittingCanceled
 		sitting.ReasonCode = model.ExamSittingReasonManagerCanceled
 	}
-	return adapter.preparer.Prepare(request.ActorUserID, sitting, request.ChangeKind, appmail.SittingScheduleDetails{
+	return a.preparer.Prepare(request.ActorUserID, sitting, request.ChangeKind, appmail.SittingScheduleDetails{
 		ExamTitle: revision.Title, ClassDisplayName: class.DisplayName, PriorClassDisplayName: priorClassName,
 		StartsAt: request.StartsAt, EndsAt: request.EndsAt,
 	})

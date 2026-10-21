@@ -76,9 +76,9 @@ func roleBindingMutationErrorCodes(specific ...string) []string {
 	return append(codes, specific...)
 }
 
-func (module roleBindingResourceModule) list(request operationRequest) (operationResult, error) {
+func (m roleBindingResourceModule) list(request operationRequest) (operationResult, error) {
 	values := request.request.URL.Query()
-	bindings, err := module.bindings.ListRoleBindings(
+	bindings, err := m.bindings.ListRoleBindings(
 		request.context,
 		request.invocation(),
 		application.ListRoleBindingsQuery{
@@ -92,7 +92,7 @@ func (module roleBindingResourceModule) list(request operationRequest) (operatio
 	return jsonResult(http.StatusOK, roleBindingResponsesFromModels(bindings)), nil
 }
 
-func (module roleBindingResourceModule) create(request operationRequest) (operationResult, error) {
+func (m roleBindingResourceModule) create(request operationRequest) (operationResult, error) {
 	var input createRoleBindingRequest
 	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
@@ -101,7 +101,7 @@ func (module roleBindingResourceModule) create(request operationRequest) (operat
 	if err != nil {
 		return operationResult{}, err
 	}
-	saved, err := module.bindings.CreateRoleBinding(
+	saved, err := m.bindings.CreateRoleBinding(
 		request.context,
 		request.invocation(),
 		application.CreateRoleBindingCommand{
@@ -115,12 +115,12 @@ func (module roleBindingResourceModule) create(request operationRequest) (operat
 	return jsonResult(http.StatusCreated, roleBindingResponseFromModel(saved)), nil
 }
 
-func (module roleBindingResourceModule) end(request operationRequest) (operationResult, error) {
+func (m roleBindingResourceModule) end(request operationRequest) (operationResult, error) {
 	bindingID, err := request.params.RequireRoleBindingID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	ended, err := module.bindings.EndRoleBinding(
+	ended, err := m.bindings.EndRoleBinding(
 		request.context,
 		request.invocation(),
 		application.EndRoleBindingCommand{ID: bindingID},

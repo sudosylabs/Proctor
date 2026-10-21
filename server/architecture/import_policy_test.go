@@ -38,14 +38,14 @@ func descendants(path string) pathPattern {
 	return pathPattern{path: path, match: matchDescendants}
 }
 
-func (pattern pathPattern) matches(path string) bool {
-	switch pattern.match {
+func (p pathPattern) matches(path string) bool {
+	switch p.match {
 	case matchExact:
-		return path == pattern.path
+		return path == p.path
 	case matchSubtree:
-		return path == pattern.path || strings.HasPrefix(path, pattern.path+"/")
+		return path == p.path || strings.HasPrefix(path, p.path+"/")
 	case matchDescendants:
-		return strings.HasPrefix(path, pattern.path+"/")
+		return strings.HasPrefix(path, p.path+"/")
 	default:
 		return false
 	}
@@ -73,14 +73,14 @@ func allowWithin(denied []pathPattern, allowed ...pathPattern) importAccess {
 	return importAccess{allowUnlisted: true, allowed: allowed, denied: denied}
 }
 
-func (access importAccess) forbids(path string) bool {
-	if matchesAny(access.allowed, path) {
+func (a importAccess) forbids(path string) bool {
+	if matchesAny(a.allowed, path) {
 		return false
 	}
-	if matchesAny(access.denied, path) {
+	if matchesAny(a.denied, path) {
 		return true
 	}
-	return !access.allowUnlisted
+	return !a.allowUnlisted
 }
 
 type dependencyRule struct {
@@ -92,17 +92,17 @@ type dependencyRule struct {
 	denyEveryImport bool
 }
 
-func (rule dependencyRule) forbids(importPath string) bool {
-	if rule.denyEveryImport {
+func (r dependencyRule) forbids(importPath string) bool {
+	if r.denyEveryImport {
 		return true
 	}
 	if projectImport(importPath) {
-		return rule.project.forbids(importPath)
+		return r.project.forbids(importPath)
 	}
 	if thirdPartyImport(importPath) {
-		return rule.thirdParty.forbids(importPath)
+		return r.thirdParty.forbids(importPath)
 	}
-	return matchesAny(rule.deniedStandard, importPath)
+	return matchesAny(r.deniedStandard, importPath)
 }
 
 var (

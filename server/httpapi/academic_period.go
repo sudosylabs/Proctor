@@ -93,12 +93,12 @@ func academicPeriodResource(academicPeriods AcademicPeriodApplication) resource 
 	)
 }
 
-func (module academicPeriodResourceModule) list(request operationRequest) (operationResult, error) {
+func (m academicPeriodResourceModule) list(request operationRequest) (operationResult, error) {
 	limit, err := request.queryLimit()
 	if err != nil {
 		return operationResult{}, err
 	}
-	periods, err := module.academicPeriods.ListAcademicPeriods(
+	periods, err := m.academicPeriods.ListAcademicPeriods(
 		request.context,
 		request.invocation(),
 		application.ListAcademicPeriodsQuery{
@@ -115,7 +115,7 @@ func (module academicPeriodResourceModule) list(request operationRequest) (opera
 	return jsonResult(http.StatusOK, responses), nil
 }
 
-func (module academicPeriodResourceModule) create(request operationRequest) (operationResult, error) {
+func (m academicPeriodResourceModule) create(request operationRequest) (operationResult, error) {
 	var body createAcademicPeriodRequest
 	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
@@ -128,7 +128,7 @@ func (module academicPeriodResourceModule) create(request operationRequest) (ope
 	if err != nil {
 		return operationResult{}, err
 	}
-	period, err := module.academicPeriods.CreateAcademicPeriod(
+	period, err := m.academicPeriods.CreateAcademicPeriod(
 		request.context,
 		request.invocation(),
 		application.CreateAcademicPeriodCommand{
@@ -144,12 +144,12 @@ func (module academicPeriodResourceModule) create(request operationRequest) (ope
 	return jsonResult(http.StatusCreated, academicPeriodResponseFromModel(period)), nil
 }
 
-func (module academicPeriodResourceModule) get(request operationRequest) (operationResult, error) {
+func (m academicPeriodResourceModule) get(request operationRequest) (operationResult, error) {
 	id, err := request.params.RequireAcademicPeriodID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	period, err := module.academicPeriods.GetAcademicPeriod(
+	period, err := m.academicPeriods.GetAcademicPeriod(
 		request.context, request.invocation(), application.GetAcademicPeriodQuery{ID: id},
 	)
 	if err != nil {
@@ -158,7 +158,7 @@ func (module academicPeriodResourceModule) get(request operationRequest) (operat
 	return jsonResult(http.StatusOK, academicPeriodResponseFromModel(period)), nil
 }
 
-func (module academicPeriodResourceModule) patch(request operationRequest) (operationResult, error) {
+func (m academicPeriodResourceModule) patch(request operationRequest) (operationResult, error) {
 	id, err := request.params.RequireAcademicPeriodID()
 	if err != nil {
 		return operationResult{}, err
@@ -178,7 +178,7 @@ func (module academicPeriodResourceModule) patch(request operationRequest) (oper
 	if err != nil {
 		return operationResult{}, err
 	}
-	period, err := module.academicPeriods.UpdateAcademicPeriod(
+	period, err := m.academicPeriods.UpdateAcademicPeriod(
 		request.context,
 		request.invocation(),
 		application.UpdateAcademicPeriodCommand{ExpectedRevision: body.ExpectedRevision.ValuePointer(),
@@ -194,7 +194,7 @@ func (module academicPeriodResourceModule) patch(request operationRequest) (oper
 	return jsonResult(http.StatusOK, academicPeriodResponseFromModel(period)), nil
 }
 
-func (module academicPeriodResourceModule) archive(request operationRequest) (operationResult, error) {
+func (m academicPeriodResourceModule) archive(request operationRequest) (operationResult, error) {
 	id, err := request.params.RequireAcademicPeriodID()
 	if err != nil {
 		return operationResult{}, err
@@ -203,7 +203,7 @@ func (module academicPeriodResourceModule) archive(request operationRequest) (op
 	if err != nil {
 		return operationResult{}, err
 	}
-	if err := module.academicPeriods.ArchiveAcademicPeriod(
+	if err := m.academicPeriods.ArchiveAcademicPeriod(
 		request.context, request.invocation(), application.ArchiveAcademicPeriodCommand{ExpectedRevision: expectedRevision, ID: id},
 	); err != nil {
 		return operationResult{}, err

@@ -26,8 +26,8 @@ const (
 	ExamCorrectionResourceReplacement ExamCorrectionResourceStageTarget = "replacement"
 )
 
-func (target ExamCorrectionResourceStageTarget) IsValid() bool {
-	return target == ExamCorrectionResourceAddition || target == ExamCorrectionResourceReplacement
+func (t ExamCorrectionResourceStageTarget) IsValid() bool {
+	return t == ExamCorrectionResourceAddition || t == ExamCorrectionResourceReplacement
 }
 
 type ExamCorrectionResourceStageState string

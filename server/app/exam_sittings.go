@@ -49,31 +49,31 @@ type examSittingLifecycle interface {
 
 type examSittingLifecycleJobUseCases struct{ sittings examSittingLifecycle }
 
-func (useCases examSittingLifecycleJobUseCases) ReconcileExamSittingLifecycleFromJob(ctx context.Context, sittingID model.ExamSittingID, jobID model.JobID,
+func (uc examSittingLifecycleJobUseCases) ReconcileExamSittingLifecycleFromJob(ctx context.Context, sittingID model.ExamSittingID, jobID model.JobID,
 	attemptID model.JobAttemptID,
 ) (*store.ExamSittingLifecycleResult, error) {
 	call := appinvocation.System{JobID: jobID, AttemptID: attemptID}
-	result, err := useCases.sittings.AdvanceDue(ctx, call, sittingID)
+	result, err := uc.sittings.AdvanceDue(ctx, call, sittingID)
 	if err != nil {
 		return nil, err
 	}
 	return &result, nil
 }
 
-func (useCases examSittingLifecycleJobUseCases) ListExamSittingLifecycleDueFromJob(ctx context.Context, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
-	return useCases.sittings.ListLifecycleDue(ctx, options)
+func (uc examSittingLifecycleJobUseCases) ListExamSittingLifecycleDueFromJob(ctx context.Context, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
+	return uc.sittings.ListLifecycleDue(ctx, options)
 }
 
 type examSittingSystemAuditAdapter struct{ audit *auditService }
 
-func (adapter examSittingSystemAuditAdapter) Begin(ctx context.Context, call appinvocation.System, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
+func (a examSittingSystemAuditAdapter) Begin(ctx context.Context, call appinvocation.System, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
 	auditValue := make(map[string]any, len(value)+2)
 	for key, item := range value {
 		auditValue[key] = item
 	}
 	auditValue["job_id"] = call.JobID.String()
 	auditValue["job_attempt_id"] = call.AttemptID.String()
-	event, err := adapter.audit.BeginSystemCriticalActionAtScope(ctx, action, resource, scopeType, scopeID,
+	event, err := a.audit.BeginSystemCriticalActionAtScope(ctx, action, resource, scopeType, scopeID,
 		map[string]any{"operation": operation, "value": auditValue})
 	if err != nil {
 		return "", err
@@ -81,8 +81,8 @@ func (adapter examSittingSystemAuditAdapter) Begin(ctx context.Context, call app
 	return event.ID, nil
 }
 
-func (adapter examSittingSystemAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
-	_, err := adapter.audit.CompleteCriticalAction(ctx, id, model.AuditStatusFail, code, nil)
+func (a examSittingSystemAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
+	_, err := a.audit.CompleteCriticalAction(ctx, id, model.AuditStatusFail, code, nil)
 	return err
 }
 
@@ -91,13 +91,13 @@ type examSittingRealtimeEffects struct {
 	collections examCollectionInvalidationEffects
 }
 
-func (effects examSittingRealtimeEffects) publishBoardInvalidation(ctx context.Context, examID model.ExamID,
+func (e examSittingRealtimeEffects) publishBoardInvalidation(ctx context.Context, examID model.ExamID,
 	sittingID model.ExamSittingID,
 ) error {
-	return effects.collections.SittingBoardChanged(ctx, examID, sittingID)
+	return e.collections.SittingBoardChanged(ctx, examID, sittingID)
 }
 
-func (effects examSittingRealtimeEffects) Scheduled(ctx context.Context, examID model.ExamID, sittingID model.ExamSittingID,
+func (e examSittingRealtimeEffects) Scheduled(ctx context.Context, examID model.ExamID, sittingID model.ExamSittingID,
 	state model.ExamSittingState, revision int64, at time.Time,
 ) error {
 	event, err := apprealtime.NewExamSittingScheduledEvent(examID, sittingID, state, revision, at)
@@ -105,13 +105,13 @@ func (effects examSittingRealtimeEffects) Scheduled(ctx context.Context, examID 
 		return err
 	}
 	return errors.Join(
-		effects.realtime.PublishRealtimeEvent(ctx, event),
-		effects.publishBoardInvalidation(ctx, examID, sittingID),
-		effects.collections.CandidateActivityChangedForSitting(ctx, sittingID),
+		e.realtime.PublishRealtimeEvent(ctx, event),
+		e.publishBoardInvalidation(ctx, examID, sittingID),
+		e.collections.CandidateActivityChangedForSitting(ctx, sittingID),
 	)
 }
 
-func (effects examSittingRealtimeEffects) ScheduleUpdated(ctx context.Context, examID model.ExamID, sittingID model.ExamSittingID,
+func (e examSittingRealtimeEffects) ScheduleUpdated(ctx context.Context, examID model.ExamID, sittingID model.ExamSittingID,
 	state model.ExamSittingState, revision int64, at time.Time,
 ) error {
 	event, err := apprealtime.NewExamSittingScheduleUpdatedEvent(examID, sittingID, state, revision, at)
@@ -119,13 +119,13 @@ func (effects examSittingRealtimeEffects) ScheduleUpdated(ctx context.Context, e
 		return err
 	}
 	return errors.Join(
-		effects.realtime.PublishRealtimeEvent(ctx, event),
-		effects.publishBoardInvalidation(ctx, examID, sittingID),
-		effects.collections.CandidateActivityChangedForSitting(ctx, sittingID),
+		e.realtime.PublishRealtimeEvent(ctx, event),
+		e.publishBoardInvalidation(ctx, examID, sittingID),
+		e.collections.CandidateActivityChangedForSitting(ctx, sittingID),
 	)
 }
 
-func (effects examSittingRealtimeEffects) Canceled(ctx context.Context, examID model.ExamID, sittingID model.ExamSittingID,
+func (e examSittingRealtimeEffects) Canceled(ctx context.Context, examID model.ExamID, sittingID model.ExamSittingID,
 	state model.ExamSittingState, revision int64, at time.Time,
 ) error {
 	event, err := apprealtime.NewExamSittingCanceledEvent(examID, sittingID, state, revision, at)
@@ -133,13 +133,13 @@ func (effects examSittingRealtimeEffects) Canceled(ctx context.Context, examID m
 		return err
 	}
 	return errors.Join(
-		effects.realtime.PublishRealtimeEvent(ctx, event),
-		effects.publishBoardInvalidation(ctx, examID, sittingID),
-		effects.collections.CandidateActivityChangedForSitting(ctx, sittingID),
+		e.realtime.PublishRealtimeEvent(ctx, event),
+		e.publishBoardInvalidation(ctx, examID, sittingID),
+		e.collections.CandidateActivityChangedForSitting(ctx, sittingID),
 	)
 }
 
-func (effects examSittingRealtimeEffects) LifecycleChanged(ctx context.Context, examID model.ExamID, sittingID model.ExamSittingID,
+func (e examSittingRealtimeEffects) LifecycleChanged(ctx context.Context, examID model.ExamID, sittingID model.ExamSittingID,
 	state model.ExamSittingState, revision int64, transition store.ExamSittingLifecycleTransitionCode,
 	scheduledEndAt, changedAt time.Time,
 ) error {
@@ -152,15 +152,15 @@ func (effects examSittingRealtimeEffects) LifecycleChanged(ctx context.Context, 
 		return err
 	}
 	return errors.Join(
-		effects.realtime.PublishRealtimeEvent(ctx, managerEvent),
-		effects.realtime.PublishRealtimeEvent(ctx, candidateEvent),
-		effects.publishBoardInvalidation(ctx, examID, sittingID),
-		effects.collections.CandidateActivityChangedForSitting(ctx, sittingID),
+		e.realtime.PublishRealtimeEvent(ctx, managerEvent),
+		e.realtime.PublishRealtimeEvent(ctx, candidateEvent),
+		e.publishBoardInvalidation(ctx, examID, sittingID),
+		e.collections.CandidateActivityChangedForSitting(ctx, sittingID),
 	)
 }
 
-func (effects examSittingRealtimeEffects) Report(ctx context.Context, operation string, err error) {
-	effects.realtime.reportTransientFailure(ctx, operation, err)
+func (e examSittingRealtimeEffects) Report(ctx context.Context, operation string, err error) {
+	e.realtime.reportTransientFailure(ctx, operation, err)
 }
 
 var _ examsitting.Authorizer = (*accessControlService)(nil)

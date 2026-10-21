@@ -38,9 +38,9 @@ type AppendBrowserActivityCommand struct {
 	Events          []model.BrowserActivityEvent
 }
 
-func (service *Service) StartExamAttemptBrowserActivity(ctx context.Context, invocation invocation.Invocation, command StartBrowserActivityCommand) (_ model.BrowserSourceStatus, resultErr error) {
+func (s *Service) StartExamAttemptBrowserActivity(ctx context.Context, invocation invocation.Invocation, command StartBrowserActivityCommand) (_ model.BrowserSourceStatus, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
-	release, admissionErr := service.enterControl(ctx, invocation, false)
+	release, admissionErr := s.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return model.BrowserSourceStatus{}, admissionErr
 	}
@@ -53,31 +53,31 @@ func (service *Service) StartExamAttemptBrowserActivity(ctx context.Context, inv
 	if input.Declaration().Validate() != nil {
 		return model.BrowserSourceStatus{}, apperror.Invalid("exam.attempt.invalid", "browser_activity_source")
 	}
-	target, err := service.deps.Persistence.ResolveLiveDeliveryTarget(ctx, access)
+	target, err := s.deps.Persistence.ResolveLiveDeliveryTarget(ctx, access)
 	if err != nil {
 		return model.BrowserSourceStatus{}, storeError(storeErrors, err)
 	}
 	if target == nil || !target.SittingID.IsValid() || !target.ClassID.IsValid() {
 		return model.BrowserSourceStatus{}, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 	}
-	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), "start_browser_source", map[string]any{"source_session_id": string(command.SourceSessionID)}, nil)
+	auditID, err := s.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), "start_browser_source", map[string]any{"source_session_id": string(command.SourceSessionID)}, nil)
 	if err != nil {
 		return model.BrowserSourceStatus{}, err
 	}
 	input.AuditEventID = auditID
-	input.AuditAt = model.MillisFromTime(service.deps.Now())
-	status, err := service.deps.Persistence.StartBrowserActivity(ctx, input)
+	input.AuditAt = model.MillisFromTime(s.deps.Now())
+	status, err := s.deps.Persistence.StartBrowserActivity(ctx, input)
 	if err != nil {
 		var refusal *store.BrowserSourceRefusal
 		if errors.As(err, &refusal) {
-			presentation, projectionErr := service.GetCandidateExamPresentation(ctx, invocation, command.CandidateAccess)
+			presentation, projectionErr := s.GetCandidateExamPresentation(ctx, invocation, command.CandidateAccess)
 			if projectionErr != nil {
 				return model.BrowserSourceStatus{}, projectionErr
 			}
 			refusal.Capabilities = &presentation.RuntimeCapabilities
 			return model.BrowserSourceStatus{}, apperror.New(browserSourceRefusalCode(refusal.Code)).Wrap(err)
 		}
-		return model.BrowserSourceStatus{}, service.failAudit(ctx, auditID, storeError(storeErrors, err))
+		return model.BrowserSourceStatus{}, s.failAudit(ctx, auditID, storeError(storeErrors, err))
 	}
 	if status == nil || status.Validate() != nil || status.SourceSessionID != command.SourceSessionID {
 		return model.BrowserSourceStatus{}, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
@@ -85,7 +85,7 @@ func (service *Service) StartExamAttemptBrowserActivity(ctx context.Context, inv
 	return *status, nil
 }
 
-func (service *Service) AppendExamAttemptBrowserActivity(ctx context.Context, invocation invocation.Invocation, command AppendBrowserActivityCommand) (_ model.BrowserActivityAcknowledgement, resultErr error) {
+func (s *Service) AppendExamAttemptBrowserActivity(ctx context.Context, invocation invocation.Invocation, command AppendBrowserActivityCommand) (_ model.BrowserActivityAcknowledgement, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	access, err := candidateSelector(invocation, command.CandidateAccess)
 	if err != nil || !command.ParticipationID.IsValid() || command.Generation < 1 || !command.SourceSessionID.IsValid() ||
@@ -93,34 +93,34 @@ func (service *Service) AppendExamAttemptBrowserActivity(ctx context.Context, in
 		return model.BrowserActivityAcknowledgement{}, apperror.Invalid("exam.attempt.invalid", "browser_activity_append")
 	}
 	events := append([]model.BrowserActivityEvent(nil), command.Events...)
-	target, err := service.deps.Persistence.ResolveLiveDeliveryTarget(ctx, access)
+	target, err := s.deps.Persistence.ResolveLiveDeliveryTarget(ctx, access)
 	if err != nil {
 		return model.BrowserActivityAcknowledgement{}, storeError(storeErrors, err)
 	}
 	if target == nil || !target.SittingID.IsValid() || !target.ClassID.IsValid() {
 		return model.BrowserActivityAcknowledgement{}, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 	}
-	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), "append_browser_activity", map[string]any{"source_session_id": string(command.SourceSessionID), "event_count": len(events)}, nil)
+	auditID, err := s.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), "append_browser_activity", map[string]any{"source_session_id": string(command.SourceSessionID), "event_count": len(events)}, nil)
 	if err != nil {
 		return model.BrowserActivityAcknowledgement{}, err
 	}
-	acknowledgement, err := service.deps.Persistence.AppendBrowserActivity(ctx, &store.BrowserActivityAppend{Access: access, AuditEventID: auditID, AuditAt: model.MillisFromTime(service.deps.Now()),
+	acknowledgement, err := s.deps.Persistence.AppendBrowserActivity(ctx, &store.BrowserActivityAppend{Access: access, AuditEventID: auditID, AuditAt: model.MillisFromTime(s.deps.Now()),
 		ParticipationID: command.ParticipationID, Generation: command.Generation, SourceSessionID: command.SourceSessionID, PolicyRevisionID: command.PolicyRevisionID, PolicyDigest: command.PolicyDigest, Events: events})
 	deliveryAccess := store.BrowserDeliveryAccess{Access: access, ParticipationID: command.ParticipationID, SourceSessionID: command.SourceSessionID}
 	if err != nil {
 		var refusal *store.BrowserDeliveryRefusal
 		if errors.As(err, &refusal) {
-			return model.BrowserActivityAcknowledgement{}, service.browserDeliveryFailure(ctx, deliveryAccess, err)
+			return model.BrowserActivityAcknowledgement{}, s.browserDeliveryFailure(ctx, deliveryAccess, err)
 		}
-		return model.BrowserActivityAcknowledgement{}, service.failAudit(ctx, auditID, service.browserDeliveryFailure(ctx, deliveryAccess, err))
+		return model.BrowserActivityAcknowledgement{}, s.failAudit(ctx, auditID, s.browserDeliveryFailure(ctx, deliveryAccess, err))
 	}
 	if !validBrowserActivityAcknowledgement(acknowledgement, command.SourceSessionID, events) {
 		return model.BrowserActivityAcknowledgement{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("invalid Browser Activity acknowledgement"))
 	}
 	if acknowledgement.GapAttentionChanged {
-		if effectErr := service.deps.Effects.BrowserActivityGapChanged(ctx, acknowledgement.ExamID,
+		if effectErr := s.deps.Effects.BrowserActivityGapChanged(ctx, acknowledgement.ExamID,
 			acknowledgement.SittingID); effectErr != nil {
-			service.deps.EffectFailures.Report(ctx, "browser_activity_gap_changed", effectErr)
+			s.deps.EffectFailures.Report(ctx, "browser_activity_gap_changed", effectErr)
 		}
 	}
 	return *acknowledgement, nil
@@ -163,7 +163,7 @@ type BrowserActivityPage struct {
 	HasMore bool
 }
 
-func (service *Service) ListExamAttemptBrowserActivity(ctx context.Context, invocation invocation.Invocation, query BrowserActivityPageQuery) (_ BrowserActivityPage, resultErr error) {
+func (s *Service) ListExamAttemptBrowserActivity(ctx context.Context, invocation invocation.Invocation, query BrowserActivityPageQuery) (_ BrowserActivityPage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.ExamID.IsValid() || !query.SittingID.IsValid() || !query.AttemptID.IsValid() || query.Limit < 1 || query.Limit > 200 ||
 		(query.AfterReceivedAt.IsZero() != !query.AfterSourceID.IsValid()) || !query.AfterReceivedAt.IsZero() && query.AfterSequence < 1 {
@@ -171,35 +171,35 @@ func (service *Service) ListExamAttemptBrowserActivity(ctx context.Context, invo
 	}
 	// Authorize the exact Sitting before reading the Attempt so existence is
 	// not probeable; later exits complete the audit attempt as failed.
-	unitID, err := service.deps.Managers.AuthorizeBrowserActivityView(ctx, invocation, query.SittingID)
+	unitID, err := s.deps.Managers.AuthorizeBrowserActivityView(ctx, invocation, query.SittingID)
 	if err != nil {
 		return BrowserActivityPage{}, err
 	}
 	resource := model.Resource{Type: model.ResourceExamSitting, ID: query.SittingID.String()}
-	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamAttemptBrowserActivityView, resource,
+	auditID, err := s.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamAttemptBrowserActivityView, resource,
 		model.RoleScopeAcademicUnit, unitID.String(), "view_browser_activity", map[string]any{"exam_id": query.ExamID.String(),
 			"exam_sitting_id": query.SittingID.String(), "exam_attempt_id": query.AttemptID.String(), "limit": query.Limit}, nil)
 	if err != nil {
 		return BrowserActivityPage{}, err
 	}
-	snapshot, err := service.deps.Persistence.Get(ctx, query.ExamID, query.AttemptID)
+	snapshot, err := s.deps.Persistence.Get(ctx, query.ExamID, query.AttemptID)
 	if err != nil {
-		return BrowserActivityPage{}, service.failAudit(ctx, auditID, err)
+		return BrowserActivityPage{}, s.failAudit(ctx, auditID, err)
 	}
 	if snapshot == nil || snapshot.Attempt == nil || snapshot.Attempt.Validate() != nil || snapshot.Attempt.ExamID != query.ExamID {
-		return BrowserActivityPage{}, service.failAudit(ctx, auditID, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Browser Activity Attempt projection")))
+		return BrowserActivityPage{}, s.failAudit(ctx, auditID, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Browser Activity Attempt projection")))
 	}
 	if snapshot.Attempt.SittingID != query.SittingID || snapshot.Attempt.CandidateUserID == invocation.Principal().UserID {
-		return BrowserActivityPage{}, service.failAudit(ctx, auditID, apperror.New("exam.attempt.not_found"))
+		return BrowserActivityPage{}, s.failAudit(ctx, auditID, apperror.New("exam.attempt.not_found"))
 	}
-	items, err := service.deps.Persistence.ListBrowserActivity(ctx, store.BrowserActivityListOptions{ExamID: query.ExamID,
+	items, err := s.deps.Persistence.ListBrowserActivity(ctx, store.BrowserActivityListOptions{ExamID: query.ExamID,
 		SittingID: query.SittingID, AttemptID: query.AttemptID, AfterReceivedAt: model.TimeUTC(query.AfterReceivedAt),
 		AfterSourceID: query.AfterSourceID, AfterSequence: query.AfterSequence, Limit: query.Limit + 1})
 	if err != nil {
-		return BrowserActivityPage{}, service.failAudit(ctx, auditID, err)
+		return BrowserActivityPage{}, s.failAudit(ctx, auditID, err)
 	}
 	page := BrowserActivityPage{Items: append([]store.BrowserActivityRecord(nil), items[:min(len(items), query.Limit)]...), HasMore: len(items) > query.Limit}
-	if err = service.deps.Auditor.Complete(ctx, auditID, map[string]any{"returned_count": len(page.Items), "has_more": page.HasMore}); err != nil {
+	if err = s.deps.Auditor.Complete(ctx, auditID, map[string]any{"returned_count": len(page.Items), "has_more": page.HasMore}); err != nil {
 		return BrowserActivityPage{}, err
 	}
 	return page, nil
@@ -227,9 +227,9 @@ func browserSourceSelector(invocation invocation.Invocation, query BrowserSource
 	}
 	return store.BrowserDeliveryAccess{Access: access.Access, SourceSessionID: query.SourceSessionID, ParticipationID: query.ParticipationID}, nil
 }
-func (service *Service) BrowserSourceStatus(ctx context.Context, invocation invocation.Invocation, query BrowserSourceQuery) (_ *model.BrowserSourceStatus, resultErr error) {
+func (s *Service) BrowserSourceStatus(ctx context.Context, invocation invocation.Invocation, query BrowserSourceQuery) (_ *model.BrowserSourceStatus, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
-	release, admissionErr := service.enterControl(ctx, invocation, false)
+	release, admissionErr := s.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
@@ -238,7 +238,7 @@ func (service *Service) BrowserSourceStatus(ctx context.Context, invocation invo
 	if err != nil {
 		return nil, err
 	}
-	value, err := service.deps.Persistence.BrowserSourceStatus(ctx, access)
+	value, err := s.deps.Persistence.BrowserSourceStatus(ctx, access)
 	if err != nil {
 		return nil, storeError(storeErrors, err)
 	}
@@ -247,9 +247,9 @@ func (service *Service) BrowserSourceStatus(ctx context.Context, invocation invo
 	}
 	return value, nil
 }
-func (service *Service) BrowserSourceList(ctx context.Context, invocation invocation.Invocation, query BrowserSourceQuery) (_ []model.BrowserSourceStatus, resultErr error) {
+func (s *Service) BrowserSourceList(ctx context.Context, invocation invocation.Invocation, query BrowserSourceQuery) (_ []model.BrowserSourceStatus, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
-	release, admissionErr := service.enterControl(ctx, invocation, false)
+	release, admissionErr := s.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
@@ -261,7 +261,7 @@ func (service *Service) BrowserSourceList(ctx context.Context, invocation invoca
 	if err != nil {
 		return nil, err
 	}
-	values, err := service.deps.Persistence.BrowserSourceList(ctx, access)
+	values, err := s.deps.Persistence.BrowserSourceList(ctx, access)
 	if err != nil {
 		return nil, storeError(storeErrors, err)
 	}

@@ -59,7 +59,7 @@ func academicUnitMemberResource(members AcademicUnitMemberApplication) resource 
 	)
 }
 
-func (module academicUnitMemberResourceModule) list(request operationRequest) (operationResult, error) {
+func (m academicUnitMemberResourceModule) list(request operationRequest) (operationResult, error) {
 	unitID, err := request.params.RequireAcademicUnitID()
 	if err != nil {
 		return operationResult{}, err
@@ -70,7 +70,7 @@ func (module academicUnitMemberResourceModule) list(request operationRequest) (o
 		if err != nil {
 			return operationResult{}, err
 		}
-		page, err := module.members.ListAcademicUnitMembersPage(request.context, request.invocation(), application.ListAcademicUnitMembersPageQuery{AcademicUnitID: unitID, MembershipPageQuery: query, AfterUserID: model.UserID(after.AfterUserID), AfterID: model.AcademicUnitMemberID(after.AfterID)})
+		page, err := m.members.ListAcademicUnitMembersPage(request.context, request.invocation(), application.ListAcademicUnitMembersPageQuery{AcademicUnitID: unitID, MembershipPageQuery: query, AfterUserID: model.UserID(after.AfterUserID), AfterID: model.AcademicUnitMemberID(after.AfterID)})
 		if err != nil {
 			return operationResult{}, err
 		}
@@ -89,14 +89,14 @@ func (module academicUnitMemberResourceModule) list(request operationRequest) (o
 	if err != nil {
 		return operationResult{}, err
 	}
-	members, err := module.members.ListAcademicUnitMembers(request.context, request.invocation(), application.ListAcademicUnitMembersQuery{AcademicUnitID: unitID, ActiveAt: activeAt})
+	members, err := m.members.ListAcademicUnitMembers(request.context, request.invocation(), application.ListAcademicUnitMembersQuery{AcademicUnitID: unitID, ActiveAt: activeAt})
 	if err != nil {
 		return operationResult{}, err
 	}
 	return jsonResult(http.StatusOK, academicUnitMemberResponses(members)), nil
 }
 
-func (module academicUnitMemberResourceModule) create(request operationRequest) (operationResult, error) {
+func (m academicUnitMemberResourceModule) create(request operationRequest) (operationResult, error) {
 	unitID, err := request.params.RequireAcademicUnitID()
 	if err != nil {
 		return operationResult{}, err
@@ -109,19 +109,19 @@ func (module academicUnitMemberResourceModule) create(request operationRequest) 
 	if err != nil {
 		return operationResult{}, err
 	}
-	saved, err := module.members.CreateAcademicUnitMember(request.context, request.invocation(), application.CreateAcademicUnitMemberCommand{AcademicUnitID: unitID, UserID: body.UserID, StartAt: startAt})
+	saved, err := m.members.CreateAcademicUnitMember(request.context, request.invocation(), application.CreateAcademicUnitMemberCommand{AcademicUnitID: unitID, UserID: body.UserID, StartAt: startAt})
 	if err != nil {
 		return operationResult{}, err
 	}
 	return jsonResult(http.StatusCreated, academicUnitMemberResponseFromModel(saved)), nil
 }
 
-func (module academicUnitMemberResourceModule) end(request operationRequest) (operationResult, error) {
+func (m academicUnitMemberResourceModule) end(request operationRequest) (operationResult, error) {
 	id, err := request.params.RequireAcademicUnitMemberID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	ended, err := module.members.EndAcademicUnitMember(request.context, request.invocation(), application.EndAcademicUnitMemberCommand{ID: id})
+	ended, err := m.members.EndAcademicUnitMember(request.context, request.invocation(), application.EndAcademicUnitMemberCommand{ID: id})
 	if err != nil {
 		return operationResult{}, err
 	}

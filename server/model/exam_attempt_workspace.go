@@ -84,14 +84,14 @@ func NewStagedAttemptWorkspaceObject(id AttemptWorkspaceObjectID, workspaceID Ex
 	return object, nil
 }
 
-func (object *AttemptWorkspaceObject) HasContent() bool {
-	return object != nil && object.ContentVersion.IsValid() && object.MediaType != "" &&
-		object.SizeBytes >= 0 && validLowerSHA256(object.SHA256)
+func (o *AttemptWorkspaceObject) HasContent() bool {
+	return o != nil && o.ContentVersion.IsValid() && o.MediaType != "" &&
+		o.SizeBytes >= 0 && validLowerSHA256(o.SHA256)
 }
 
-func (content AttemptWorkspaceContent) Validate() error {
-	if content.MediaType == "" || strings.TrimSpace(content.MediaType) != content.MediaType || len(content.MediaType) > 255 ||
-		content.SizeBytes < 0 || content.SizeBytes > AttemptWorkspaceMaximumFileBytes || !validLowerSHA256(content.SHA256) {
+func (c AttemptWorkspaceContent) Validate() error {
+	if c.MediaType == "" || strings.TrimSpace(c.MediaType) != c.MediaType || len(c.MediaType) > 255 ||
+		c.SizeBytes < 0 || c.SizeBytes > AttemptWorkspaceMaximumFileBytes || !validLowerSHA256(c.SHA256) {
 		return invalidModelError("AttemptWorkspaceContent.Validate", "attempt_workspace_content", "", "invalid Attempt Workspace content", "")
 	}
 	return nil
@@ -141,86 +141,86 @@ func validateAttemptWorkspaceObject(object *AttemptWorkspaceObject) error {
 	return nil
 }
 
-func (object *AttemptWorkspaceObject) MarkContentReady(version WorkspaceContentVersion, mediaType string, size int64,
+func (o *AttemptWorkspaceObject) MarkContentReady(version WorkspaceContentVersion, mediaType string, size int64,
 	checksum string, at time.Time,
 ) error {
-	if object == nil || object.State != AttemptWorkspaceObjectStaged || object.HasContent() {
+	if o == nil || o.State != AttemptWorkspaceObjectStaged || o.HasContent() {
 		return invalidModelError("AttemptWorkspaceObject.MarkContentReady", "attempt_workspace_object", "", "Attempt Workspace object cannot accept content", "")
 	}
-	candidate := *object
+	candidate := *o
 	candidate.ContentVersion, candidate.MediaType, candidate.SizeBytes, candidate.SHA256 = version,
 		strings.TrimSpace(mediaType), size, strings.ToLower(checksum)
 	candidate.UpdatedAt = TimeUTC(at)
-	if candidate.UpdatedAt.Before(object.UpdatedAt) || !candidate.UpdatedAt.Before(candidate.ExpiresAt) {
+	if candidate.UpdatedAt.Before(o.UpdatedAt) || !candidate.UpdatedAt.Before(candidate.ExpiresAt) {
 		return invalidModelError("AttemptWorkspaceObject.MarkContentReady", "attempt_workspace_object", "", "Attempt Workspace staged content time is invalid", "")
 	}
 	if err := candidate.Validate(); err != nil {
 		return err
 	}
-	*object = candidate
+	*o = candidate
 	return nil
 }
 
-func (object *AttemptWorkspaceObject) MarkCurrent(at time.Time) error {
-	if object == nil || object.State != AttemptWorkspaceObjectStaged || !object.HasContent() {
+func (o *AttemptWorkspaceObject) MarkCurrent(at time.Time) error {
+	if o == nil || o.State != AttemptWorkspaceObjectStaged || !o.HasContent() {
 		return invalidModelError("AttemptWorkspaceObject.MarkCurrent", "attempt_workspace_object", "", "Attempt Workspace object cannot become current", "")
 	}
-	candidate := *object
+	candidate := *o
 	candidate.State, candidate.UpdatedAt, candidate.ExpiresAt = AttemptWorkspaceObjectCurrent, TimeUTC(at), time.Time{}
-	if candidate.UpdatedAt.Before(object.UpdatedAt) {
+	if candidate.UpdatedAt.Before(o.UpdatedAt) {
 		return invalidModelError("AttemptWorkspaceObject.MarkCurrent", "attempt_workspace_object", "", "Attempt Workspace object time regressed", "")
 	}
 	if err := candidate.Validate(); err != nil {
 		return err
 	}
-	*object = candidate
+	*o = candidate
 	return nil
 }
 
-func (object *AttemptWorkspaceObject) MarkReclaimable(reclaimAfter, at time.Time) error {
-	if object == nil || (object.State != AttemptWorkspaceObjectStaged && object.State != AttemptWorkspaceObjectCurrent) {
+func (o *AttemptWorkspaceObject) MarkReclaimable(reclaimAfter, at time.Time) error {
+	if o == nil || (o.State != AttemptWorkspaceObjectStaged && o.State != AttemptWorkspaceObjectCurrent) {
 		return invalidModelError("AttemptWorkspaceObject.MarkReclaimable", "attempt_workspace_object", "", "Attempt Workspace object cannot become reclaimable", "")
 	}
-	candidate := *object
+	candidate := *o
 	candidate.State, candidate.UpdatedAt = AttemptWorkspaceObjectReclaimable, TimeUTC(at)
 	candidate.ReclaimAfter = OptionalTimeFrom(reclaimAfter)
-	if candidate.UpdatedAt.Before(object.UpdatedAt) || !candidate.ReclaimAfter.Time.After(candidate.UpdatedAt) {
+	if candidate.UpdatedAt.Before(o.UpdatedAt) || !candidate.ReclaimAfter.Time.After(candidate.UpdatedAt) {
 		return invalidModelError("AttemptWorkspaceObject.MarkReclaimable", "attempt_workspace_object", "", "Attempt Workspace reclaim time is invalid", "")
 	}
 	if err := candidate.Validate(); err != nil {
 		return err
 	}
-	*object = candidate
+	*o = candidate
 	return nil
 }
 
-func (object *AttemptWorkspaceObject) ClaimForCleanup(token string, at time.Time) error {
+func (o *AttemptWorkspaceObject) ClaimForCleanup(token string, at time.Time) error {
 	at = TimeUTC(at)
-	if object == nil || object.State != AttemptWorkspaceObjectReclaimable || at.Before(object.ReclaimAfter.Time) || at.Before(object.UpdatedAt) {
+	if o == nil || o.State != AttemptWorkspaceObjectReclaimable || at.Before(o.ReclaimAfter.Time) || at.Before(o.UpdatedAt) {
 		return invalidModelError("AttemptWorkspaceObject.ClaimForCleanup", "attempt_workspace_object", "", "Attempt Workspace object cannot be claimed", "")
 	}
-	candidate := *object
+	candidate := *o
 	candidate.State, candidate.UpdatedAt, candidate.ClaimedAt, candidate.ClaimToken = AttemptWorkspaceObjectClaimed,
 		at, OptionalTimeFrom(at), token
 	if err := candidate.Validate(); err != nil {
 		return err
 	}
-	*object = candidate
+	*o = candidate
 	return nil
 }
 
-func (object *AttemptWorkspaceObject) ReleaseCleanup(token string, at time.Time) error {
+func (o *AttemptWorkspaceObject) ReleaseCleanup(token string, at time.Time) error {
 	at = TimeUTC(at)
-	if object == nil || object.State != AttemptWorkspaceObjectClaimed || token != object.ClaimToken || at.Before(object.UpdatedAt) {
+	if o == nil || o.State != AttemptWorkspaceObjectClaimed || token != o.ClaimToken || at.Before(o.UpdatedAt) {
 		return invalidModelError("AttemptWorkspaceObject.ReleaseCleanup", "attempt_workspace_object", "", "Attempt Workspace cleanup claim does not match", "")
 	}
-	candidate := *object
+	candidate := *o
 	candidate.State, candidate.UpdatedAt, candidate.ClaimedAt, candidate.ClaimToken = AttemptWorkspaceObjectReclaimable,
 		at, OptionalTime{}, ""
 	if err := candidate.Validate(); err != nil {
 		return err
 	}
-	*object = candidate
+	*o = candidate
 	return nil
 }
 
@@ -261,60 +261,60 @@ func NewCandidateAttemptWorkspaceDirectory(id AttemptWorkspaceEntryID, workspace
 
 // Move changes only logical metadata; stable Entry and content-object
 // identities deliberately survive a rename or subtree move.
-func (entry *AttemptWorkspaceEntry) Move(path string, at time.Time) error {
-	if entry == nil {
+func (e *AttemptWorkspaceEntry) Move(path string, at time.Time) error {
+	if e == nil {
 		return invalidModelError("AttemptWorkspaceEntry.Move", "attempt_workspace_entry", "", "nil Attempt Workspace entry", "")
 	}
 	normalized, err := NormalizeAttemptWorkspacePath(path)
-	if err != nil || normalized == entry.Path {
+	if err != nil || normalized == e.Path {
 		return invalidModelError("AttemptWorkspaceEntry.Move", "attempt_workspace_entry", "", "invalid Attempt Workspace move", "")
 	}
-	candidate := *entry
+	candidate := *e
 	candidate.Path, candidate.UpdatedAt = normalized, TimeUTC(at)
-	if candidate.UpdatedAt.Before(entry.UpdatedAt) {
+	if candidate.UpdatedAt.Before(e.UpdatedAt) {
 		return invalidModelError("AttemptWorkspaceEntry.Move", "attempt_workspace_entry", "", "Attempt Workspace entry time regressed", "")
 	}
 	if err = candidate.Validate(); err != nil {
 		return err
 	}
-	*entry = candidate
+	*e = candidate
 	return nil
 }
 
 // ReplaceCurrentObject selects one newly acknowledged immutable object while
 // preserving the stable file Entry identity.
-func (entry *AttemptWorkspaceEntry) ReplaceCurrentObject(objectID AttemptWorkspaceObjectID, at time.Time) error {
-	if entry == nil || entry.Kind != StarterWorkspaceEntryFile || !objectID.IsValid() || objectID == entry.CurrentObjectID {
+func (e *AttemptWorkspaceEntry) ReplaceCurrentObject(objectID AttemptWorkspaceObjectID, at time.Time) error {
+	if e == nil || e.Kind != StarterWorkspaceEntryFile || !objectID.IsValid() || objectID == e.CurrentObjectID {
 		return invalidModelError("AttemptWorkspaceEntry.ReplaceCurrentObject", "attempt_workspace_entry", "", "invalid Attempt Workspace file replacement", "")
 	}
-	candidate := *entry
+	candidate := *e
 	candidate.CurrentObjectID, candidate.UpdatedAt = objectID, TimeUTC(at)
-	if candidate.UpdatedAt.Before(entry.UpdatedAt) {
+	if candidate.UpdatedAt.Before(e.UpdatedAt) {
 		return invalidModelError("AttemptWorkspaceEntry.ReplaceCurrentObject", "attempt_workspace_entry", "", "Attempt Workspace entry time regressed", "")
 	}
 	if err := candidate.Validate(); err != nil {
 		return err
 	}
-	*entry = candidate
+	*e = candidate
 	return nil
 }
 
 // AdvanceCursor appends exactly one acknowledged mutation to the ordered
 // Workspace stream. Persistence supplies the expected cursor while holding
 // the aggregate lock; callers do not use it to serialize unrelated entries.
-func (workspace *ExamAttemptWorkspace) AdvanceCursor(expected int64, at time.Time) error {
-	if workspace == nil || expected != workspace.Cursor || expected == math.MaxInt64 {
+func (w *ExamAttemptWorkspace) AdvanceCursor(expected int64, at time.Time) error {
+	if w == nil || expected != w.Cursor || expected == math.MaxInt64 {
 		return invalidModelError("ExamAttemptWorkspace.AdvanceCursor", "exam_attempt_workspace", "", "stale Attempt Workspace cursor", "")
 	}
-	candidate := *workspace
+	candidate := *w
 	candidate.Cursor, candidate.UpdatedAt = expected+1, TimeUTC(at)
-	if candidate.UpdatedAt.Before(workspace.UpdatedAt) {
+	if candidate.UpdatedAt.Before(w.UpdatedAt) {
 		return invalidModelError("ExamAttemptWorkspace.AdvanceCursor", "exam_attempt_workspace", "", "Attempt Workspace time regressed", "")
 	}
 	if err := candidate.Validate(); err != nil {
 		return err
 	}
-	*workspace = candidate
+	*w = candidate
 	return nil
 }
 
@@ -328,8 +328,8 @@ const (
 	AttemptWorkspaceMutationDeleteEntry     AttemptWorkspaceMutationKind = "delete_entry"
 )
 
-func (kind AttemptWorkspaceMutationKind) IsValid() bool {
-	switch kind {
+func (k AttemptWorkspaceMutationKind) IsValid() bool {
+	switch k {
 	case AttemptWorkspaceMutationCreateFile, AttemptWorkspaceMutationCreateDirectory,
 		AttemptWorkspaceMutationReplaceFile, AttemptWorkspaceMutationMoveEntry, AttemptWorkspaceMutationDeleteEntry:
 		return true
@@ -355,45 +355,45 @@ type AttemptWorkspaceJournalEntry struct {
 	Recursive bool
 }
 
-func (entry AttemptWorkspaceJournalEntry) Validate() error {
-	if !entry.WorkspaceID.IsValid() || entry.Cursor < 1 || !entry.EntryID.IsValid() ||
-		!entry.Operation.IsValid() || entry.ChangedAt.IsZero() {
+func (e AttemptWorkspaceJournalEntry) Validate() error {
+	if !e.WorkspaceID.IsValid() || e.Cursor < 1 || !e.EntryID.IsValid() ||
+		!e.Operation.IsValid() || e.ChangedAt.IsZero() {
 		return invalidModelError("AttemptWorkspaceJournalEntry.Validate", "attempt_workspace_journal_entry", "", "invalid Attempt Workspace journal entry", "")
 	}
-	if entry.Recursive && (entry.Operation != AttemptWorkspaceMutationDeleteEntry || entry.EntryKind != StarterWorkspaceEntryDirectory) {
+	if e.Recursive && (e.Operation != AttemptWorkspaceMutationDeleteEntry || e.EntryKind != StarterWorkspaceEntryDirectory) {
 		return invalidModelError("AttemptWorkspaceJournalEntry.Validate", "attempt_workspace_journal_entry", "", "recursive Workspace journal entry must delete a directory", "")
 	}
 	validOld := func() bool {
-		normalized, err := NormalizeAttemptWorkspacePath(entry.OldPath)
-		return err == nil && normalized == entry.OldPath
+		normalized, err := NormalizeAttemptWorkspacePath(e.OldPath)
+		return err == nil && normalized == e.OldPath
 	}
 	validNew := func() bool {
-		normalized, err := NormalizeAttemptWorkspacePath(entry.NewPath)
-		return err == nil && normalized == entry.NewPath
+		normalized, err := NormalizeAttemptWorkspacePath(e.NewPath)
+		return err == nil && normalized == e.NewPath
 	}
-	switch entry.Operation {
+	switch e.Operation {
 	case AttemptWorkspaceMutationCreateFile:
-		if entry.EntryKind != StarterWorkspaceEntryFile || entry.OldPath != "" || !validNew() || !entry.ContentVersion.IsValid() {
+		if e.EntryKind != StarterWorkspaceEntryFile || e.OldPath != "" || !validNew() || !e.ContentVersion.IsValid() {
 			return invalidModelError("AttemptWorkspaceJournalEntry.Validate", "attempt_workspace_journal_entry", "", "invalid Attempt Workspace file creation journal", "")
 		}
 	case AttemptWorkspaceMutationCreateDirectory:
-		if entry.EntryKind != StarterWorkspaceEntryDirectory || entry.OldPath != "" || !validNew() || !entry.ContentVersion.IsZero() {
+		if e.EntryKind != StarterWorkspaceEntryDirectory || e.OldPath != "" || !validNew() || !e.ContentVersion.IsZero() {
 			return invalidModelError("AttemptWorkspaceJournalEntry.Validate", "attempt_workspace_journal_entry", "", "invalid Attempt Workspace directory creation journal", "")
 		}
 	case AttemptWorkspaceMutationReplaceFile:
-		if entry.EntryKind != StarterWorkspaceEntryFile || !validOld() || entry.NewPath != entry.OldPath || !entry.ContentVersion.IsValid() {
+		if e.EntryKind != StarterWorkspaceEntryFile || !validOld() || e.NewPath != e.OldPath || !e.ContentVersion.IsValid() {
 			return invalidModelError("AttemptWorkspaceJournalEntry.Validate", "attempt_workspace_journal_entry", "", "invalid Attempt Workspace file replacement journal", "")
 		}
 	case AttemptWorkspaceMutationMoveEntry:
-		if (entry.EntryKind != StarterWorkspaceEntryFile && entry.EntryKind != StarterWorkspaceEntryDirectory) ||
-			!validOld() || !validNew() || entry.OldPath == entry.NewPath ||
-			(entry.EntryKind == StarterWorkspaceEntryFile && !entry.ContentVersion.IsValid()) ||
-			(entry.EntryKind == StarterWorkspaceEntryDirectory && !entry.ContentVersion.IsZero()) {
+		if (e.EntryKind != StarterWorkspaceEntryFile && e.EntryKind != StarterWorkspaceEntryDirectory) ||
+			!validOld() || !validNew() || e.OldPath == e.NewPath ||
+			(e.EntryKind == StarterWorkspaceEntryFile && !e.ContentVersion.IsValid()) ||
+			(e.EntryKind == StarterWorkspaceEntryDirectory && !e.ContentVersion.IsZero()) {
 			return invalidModelError("AttemptWorkspaceJournalEntry.Validate", "attempt_workspace_journal_entry", "", "invalid Attempt Workspace move journal", "")
 		}
 	case AttemptWorkspaceMutationDeleteEntry:
-		if (entry.EntryKind != StarterWorkspaceEntryFile && entry.EntryKind != StarterWorkspaceEntryDirectory) ||
-			!validOld() || entry.NewPath != "" || !entry.ContentVersion.IsZero() {
+		if (e.EntryKind != StarterWorkspaceEntryFile && e.EntryKind != StarterWorkspaceEntryDirectory) ||
+			!validOld() || e.NewPath != "" || !e.ContentVersion.IsZero() {
 			return invalidModelError("AttemptWorkspaceJournalEntry.Validate", "attempt_workspace_journal_entry", "", "invalid Attempt Workspace deletion journal", "")
 		}
 	}

@@ -62,7 +62,7 @@ func academicUnitResource(academicUnits AcademicUnitApplication) resource {
 	)
 }
 
-func (module academicUnitResourceModule) listRoot(request operationRequest) (operationResult, error) {
+func (m academicUnitResourceModule) listRoot(request operationRequest) (operationResult, error) {
 	var units []*model.AcademicUnit
 	var err error
 	if query := request.request.URL.Query().Get("q"); query != "" {
@@ -70,13 +70,13 @@ func (module academicUnitResourceModule) listRoot(request operationRequest) (ope
 		if limitErr != nil {
 			return operationResult{}, limitErr
 		}
-		units, err = module.academicUnits.SearchAcademicUnits(
+		units, err = m.academicUnits.SearchAcademicUnits(
 			request.context,
 			request.invocation(),
 			application.SearchAcademicUnitsQuery{Query: query, Limit: limit},
 		)
 	} else {
-		units, err = module.academicUnits.ListAcademicUnits(
+		units, err = m.academicUnits.ListAcademicUnits(
 			request.context, request.invocation(), application.ListAcademicUnitsQuery{},
 		)
 	}
@@ -86,12 +86,12 @@ func (module academicUnitResourceModule) listRoot(request operationRequest) (ope
 	return jsonResult(http.StatusOK, academicUnitResponsesFromModels(units)), nil
 }
 
-func (module academicUnitResourceModule) createRoot(request operationRequest) (operationResult, error) {
+func (m academicUnitResourceModule) createRoot(request operationRequest) (operationResult, error) {
 	var body createAcademicUnitRequest
 	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	saved, err := module.academicUnits.CreateAcademicUnit(
+	saved, err := m.academicUnits.CreateAcademicUnit(
 		request.context,
 		request.invocation(),
 		application.CreateAcademicUnitCommand{
@@ -105,12 +105,12 @@ func (module academicUnitResourceModule) createRoot(request operationRequest) (o
 	return jsonResult(http.StatusCreated, academicUnitResponseFromModel(saved)), nil
 }
 
-func (module academicUnitResourceModule) get(request operationRequest) (operationResult, error) {
+func (m academicUnitResourceModule) get(request operationRequest) (operationResult, error) {
 	id, err := request.params.RequireAcademicUnitID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	unit, err := module.academicUnits.GetAcademicUnit(
+	unit, err := m.academicUnits.GetAcademicUnit(
 		request.context,
 		request.invocation(),
 		application.GetAcademicUnitQuery{ID: id},
@@ -121,7 +121,7 @@ func (module academicUnitResourceModule) get(request operationRequest) (operatio
 	return jsonResult(http.StatusOK, academicUnitResponseFromModel(unit)), nil
 }
 
-func (module academicUnitResourceModule) patch(request operationRequest) (operationResult, error) {
+func (m academicUnitResourceModule) patch(request operationRequest) (operationResult, error) {
 	id, err := request.params.RequireAcademicUnitID()
 	if err != nil {
 		return operationResult{}, err
@@ -133,7 +133,7 @@ func (module academicUnitResourceModule) patch(request operationRequest) (operat
 	if err := validateAcademicRevision(body.ExpectedRevision); err != nil {
 		return operationResult{}, err
 	}
-	unit, err := module.academicUnits.UpdateAcademicUnit(
+	unit, err := m.academicUnits.UpdateAcademicUnit(
 		request.context,
 		request.invocation(),
 		application.UpdateAcademicUnitCommand{ExpectedRevision: body.ExpectedRevision.ValuePointer(),
@@ -147,7 +147,7 @@ func (module academicUnitResourceModule) patch(request operationRequest) (operat
 	return jsonResult(http.StatusOK, academicUnitResponseFromModel(unit)), nil
 }
 
-func (module academicUnitResourceModule) archive(request operationRequest) (operationResult, error) {
+func (m academicUnitResourceModule) archive(request operationRequest) (operationResult, error) {
 	id, err := request.params.RequireAcademicUnitID()
 	if err != nil {
 		return operationResult{}, err
@@ -156,7 +156,7 @@ func (module academicUnitResourceModule) archive(request operationRequest) (oper
 	if err != nil {
 		return operationResult{}, err
 	}
-	err = module.academicUnits.ArchiveAcademicUnit(
+	err = m.academicUnits.ArchiveAcademicUnit(
 		request.context,
 		request.invocation(),
 		application.ArchiveAcademicUnitCommand{ExpectedRevision: expectedRevision, ID: id},
@@ -167,12 +167,12 @@ func (module academicUnitResourceModule) archive(request operationRequest) (oper
 	return noContentResult(), nil
 }
 
-func (module academicUnitResourceModule) listChildren(request operationRequest) (operationResult, error) {
+func (m academicUnitResourceModule) listChildren(request operationRequest) (operationResult, error) {
 	id, err := request.params.RequireAcademicUnitID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	units, err := module.academicUnits.ListAcademicUnits(
+	units, err := m.academicUnits.ListAcademicUnits(
 		request.context,
 		request.invocation(),
 		application.ListAcademicUnitsQuery{ParentID: id},
@@ -183,7 +183,7 @@ func (module academicUnitResourceModule) listChildren(request operationRequest) 
 	return jsonResult(http.StatusOK, academicUnitResponsesFromModels(units)), nil
 }
 
-func (module academicUnitResourceModule) createChild(request operationRequest) (operationResult, error) {
+func (m academicUnitResourceModule) createChild(request operationRequest) (operationResult, error) {
 	id, err := request.params.RequireAcademicUnitID()
 	if err != nil {
 		return operationResult{}, err
@@ -192,7 +192,7 @@ func (module academicUnitResourceModule) createChild(request operationRequest) (
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	saved, err := module.academicUnits.CreateAcademicUnit(
+	saved, err := m.academicUnits.CreateAcademicUnit(
 		request.context,
 		request.invocation(),
 		application.CreateAcademicUnitCommand{

@@ -181,38 +181,38 @@ type constructionCatalogWithJobs struct {
 	examSittings         store.ExamSittingStore
 }
 
-func (catalog constructionCatalogWithJobs) Job() store.JobStore       { return catalog.jobs }
+func (c constructionCatalogWithJobs) Job() store.JobStore             { return c.jobs }
 func (constructionCatalogWithJobs) Mail() store.MailStore             { return nil }
 func (constructionCatalogWithJobs) Retention() store.RetentionStore   { return nil }
 func (constructionCatalogWithJobs) ExamExport() store.ExamExportStore { return nil }
-func (catalog constructionCatalogWithJobs) User() store.UserStore     { return catalog.users }
-func (catalog constructionCatalogWithJobs) File() store.FileStore     { return catalog.files }
+func (c constructionCatalogWithJobs) User() store.UserStore           { return c.users }
+func (c constructionCatalogWithJobs) File() store.FileStore           { return c.files }
 func (constructionCatalogWithJobs) ExamStarterWorkspace() store.ExamStarterWorkspaceStore {
 	return nil
 }
 func (constructionCatalogWithJobs) ExamAttemptWorkspace() store.ExamAttemptWorkspaceStore { return nil }
-func (catalog constructionCatalogWithJobs) Institution() store.InstitutionStore {
-	return catalog.institutions
+func (c constructionCatalogWithJobs) Institution() store.InstitutionStore {
+	return c.institutions
 }
-func (catalog constructionCatalogWithJobs) BrowserAuthentication() store.BrowserAuthenticationStore {
-	return catalog.desktop
+func (c constructionCatalogWithJobs) BrowserAuthentication() store.BrowserAuthenticationStore {
+	return c.desktop
 }
-func (catalog constructionCatalogWithJobs) ExternalLoginState() store.ExternalLoginStateStore {
-	return catalog.externalLoginStates
+func (c constructionCatalogWithJobs) ExternalLoginState() store.ExternalLoginStateStore {
+	return c.externalLoginStates
 }
-func (catalog constructionCatalogWithJobs) Invitation() store.InvitationStore {
-	return catalog.invitations
+func (c constructionCatalogWithJobs) Invitation() store.InvitationStore {
+	return c.invitations
 }
-func (catalog constructionCatalogWithJobs) OnboardingImport() store.OnboardingImportStore {
-	return catalog.onboardingImports
+func (c constructionCatalogWithJobs) OnboardingImport() store.OnboardingImportStore {
+	return c.onboardingImports
 }
-func (catalog constructionCatalogWithJobs) PersonalAccessToken() store.PersonalAccessTokenStore {
-	return catalog.personalAccessTokens
+func (c constructionCatalogWithJobs) PersonalAccessToken() store.PersonalAccessTokenStore {
+	return c.personalAccessTokens
 }
-func (catalog constructionCatalogWithJobs) ExamSitting() store.ExamSittingStore {
-	return catalog.examSittings
+func (c constructionCatalogWithJobs) ExamSitting() store.ExamSittingStore {
+	return c.examSittings
 }
-func (catalog constructionCatalogWithJobs) CommandOutcome() store.CommandOutcomeStore {
+func (c constructionCatalogWithJobs) CommandOutcome() store.CommandOutcomeStore {
 	return constructionCommandOutcomeStoreStub{}
 }
 

@@ -70,7 +70,7 @@ func academicAdministrationBatchResource(batches AcademicAdministrationBatchAppl
 	)
 }
 
-func (module academicAdministrationBatchResourceModule) run(request operationRequest) (operationResult, error) {
+func (m academicAdministrationBatchResourceModule) run(request operationRequest) (operationResult, error) {
 	var body academicAdministrationBatchRequest
 	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, invalidRequestError(err)
@@ -89,7 +89,7 @@ func (module academicAdministrationBatchResourceModule) run(request operationReq
 			RelationshipID: item.RelationshipID, RoleID: item.RoleID, AffiliationKind: model.AffiliationKind(item.AffiliationKind),
 			StartAt: startAt, EndAt: endAt})
 	}
-	result, err := module.batches.RunAcademicAdministrationBatch(request.context, request.invocation(), application.RunAcademicAdministrationBatchCommand{
+	result, err := m.batches.RunAcademicAdministrationBatch(request.context, request.invocation(), application.RunAcademicAdministrationBatchCommand{
 		Operation: application.AcademicAdministrationBatchOperation(body.Operation), ScopeType: model.RoleScopeType(body.ScopeType),
 		ScopeID: body.ScopeID, IdempotencyKey: request.idempotencyKey, Items: items,
 	})

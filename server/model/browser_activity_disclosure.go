@@ -26,8 +26,8 @@ func NewBrowserActivityDisclosure(policy *RetentionPolicy, mayCreateEvidence boo
 	return BrowserActivityDisclosure{NoticeID: "integrated_browser_activity", Audience: "exam_managers_with_browser_activity_permission", RetentionPolicyRevision: policy.Revision, BrowserActivityRetentionDays: policy.BrowserActivityRetentionDays, RetentionAnchor: "eligible_closed_sitting_records_completion", MayCreateIntegrityEvidence: mayCreateEvidence}, nil
 }
 
-func (value BrowserActivityDisclosure) Validate() error {
-	if value.NoticeID != "integrated_browser_activity" || value.Audience != "exam_managers_with_browser_activity_permission" || value.RetentionPolicyRevision < 1 || !securitySafeInt(value.RetentionPolicyRevision) || value.BrowserActivityRetentionDays < 0 || value.BrowserActivityRetentionDays > 36500 || value.RetentionAnchor != "eligible_closed_sitting_records_completion" {
+func (v BrowserActivityDisclosure) Validate() error {
+	if v.NoticeID != "integrated_browser_activity" || v.Audience != "exam_managers_with_browser_activity_permission" || v.RetentionPolicyRevision < 1 || !securitySafeInt(v.RetentionPolicyRevision) || v.BrowserActivityRetentionDays < 0 || v.BrowserActivityRetentionDays > 36500 || v.RetentionAnchor != "eligible_closed_sitting_records_completion" {
 		return errRetentionPolicyInvalid
 	}
 	return nil

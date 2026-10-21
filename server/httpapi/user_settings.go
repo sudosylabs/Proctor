@@ -71,8 +71,8 @@ func userSettingsSessionMutationCodes(extra ...string) []string {
 	return userSettingsSessionCodes(extra...)
 }
 
-func (module userSettingsResourceModule) read(request operationRequest) (operationResult, error) {
-	view, err := module.settings.ReadOwnUserSettings(request.context, request.invocation())
+func (m userSettingsResourceModule) read(request operationRequest) (operationResult, error) {
+	view, err := m.settings.ReadOwnUserSettings(request.context, request.invocation())
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -85,7 +85,7 @@ func (module userSettingsResourceModule) read(request operationRequest) (operati
 	}).withHeaders(http.Header{"Cache-Control": []string{"private, no-store"}}), nil
 }
 
-func (module userSettingsResourceModule) replace(request operationRequest) (operationResult, error) {
+func (m userSettingsResourceModule) replace(request operationRequest) (operationResult, error) {
 	var input userSettingsReplaceRequest
 	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
@@ -94,7 +94,7 @@ func (module userSettingsResourceModule) replace(request operationRequest) (oper
 	if err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	result, err := module.settings.ReplaceOwnUserSettings(
+	result, err := m.settings.ReplaceOwnUserSettings(
 		request.context,
 		request.invocation(),
 		application.ReplaceOwnUserSettingsCommand{

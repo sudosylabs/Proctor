@@ -57,13 +57,13 @@ type submissionAuthorizationAuditFake struct {
 	err       error
 }
 
-func (fake *submissionAuthorizationAuditFake) RecordAuthorizationDecision(_ context.Context, principal model.Principal,
+func (f *submissionAuthorizationAuditFake) RecordAuthorizationDecision(_ context.Context, principal model.Principal,
 	action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID string,
 	metadata model.RequestMetadata, allowed bool,
 ) error {
-	fake.principal, fake.action, fake.resource = principal, action, resource
-	fake.scopeType, fake.scopeID, fake.metadata, fake.allowed = scopeType, scopeID, metadata, allowed
-	return fake.err
+	f.principal, f.action, f.resource = principal, action, resource
+	f.scopeType, f.scopeID, f.metadata, f.allowed = scopeType, scopeID, metadata, allowed
+	return f.err
 }
 
 func TestExamAttemptSubmissionAuthorizationAuditsSelfDenialFailClosed(t *testing.T) {
@@ -109,8 +109,8 @@ type submissionAuthorizationStoreFake struct {
 	authorization *store.ExamSubmissionAuthorization
 }
 
-func (fake *submissionAuthorizationStoreFake) Resolve(context.Context, model.SubmissionID) (*store.ExamSubmissionAuthorization, error) {
-	return fake.authorization, nil
+func (f *submissionAuthorizationStoreFake) Resolve(context.Context, model.SubmissionID) (*store.ExamSubmissionAuthorization, error) {
+	return f.authorization, nil
 }
 
 type submissionAuthorizationSittingFake struct {
@@ -120,10 +120,10 @@ type submissionAuthorizationSittingFake struct {
 	submissionID model.SubmissionID
 }
 
-func (fake *submissionAuthorizationSittingFake) AuthorizeSubmissionView(_ context.Context, invocation Invocation,
+func (f *submissionAuthorizationSittingFake) AuthorizeSubmissionView(_ context.Context, invocation Invocation,
 	examID model.ExamID, submissionID model.SubmissionID,
 ) error {
-	fake.invocation, fake.examID, fake.submissionID = invocation, examID, submissionID
+	f.invocation, f.examID, f.submissionID = invocation, examID, submissionID
 	return nil
 }
 

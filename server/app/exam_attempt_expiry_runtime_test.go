@@ -33,13 +33,13 @@ type recordingExamAttemptExpiryUseCases struct {
 	err           error
 }
 
-func (fake *recordingExamAttemptExpiryUseCases) ScanExpiredParticipations(_ context.Context, limit int) (examattempt.ExpiryScanResult, error) {
-	fake.limit = limit
-	return examattempt.ExpiryScanResult{}, fake.err
+func (f *recordingExamAttemptExpiryUseCases) ScanExpiredParticipations(_ context.Context, limit int) (examattempt.ExpiryScanResult, error) {
+	f.limit = limit
+	return examattempt.ExpiryScanResult{}, f.err
 }
 
-func (fake *recordingExamAttemptExpiryUseCases) ScanExpiredDeliveries(_ context.Context, limit int) (examattempt.ExpiryScanResult, error) {
-	fake.deliveryLimit = limit
+func (f *recordingExamAttemptExpiryUseCases) ScanExpiredDeliveries(_ context.Context, limit int) (examattempt.ExpiryScanResult, error) {
+	f.deliveryLimit = limit
 	return examattempt.ExpiryScanResult{}, nil
 }
 

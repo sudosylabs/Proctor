@@ -73,8 +73,8 @@ type systemPingResponse struct {
 	MaximumRealtimeProtocol int    `json:"maximum_realtime_protocol,omitempty"`
 }
 
-func (module systemResourceModule) liveness(request operationRequest) (operationResult, error) {
-	if !module.health.Live() {
+func (m systemResourceModule) liveness(request operationRequest) (operationResult, error) {
+	if !m.health.Live() {
 		title, detail := localizedNamedProblemPresentation(request.request, "not_live")
 		return problemResult(Problem{
 			Type:      problemType(healthNotLiveCode),
@@ -89,8 +89,8 @@ func (module systemResourceModule) liveness(request operationRequest) (operation
 	return jsonResult(http.StatusOK, healthResponse{Status: "ok"}), nil
 }
 
-func (module systemResourceModule) readiness(request operationRequest) (operationResult, error) {
-	if !module.health.Ready() {
+func (m systemResourceModule) readiness(request operationRequest) (operationResult, error) {
+	if !m.health.Ready() {
 		title, detail := localizedNamedProblemPresentation(request.request, "not_ready")
 		return problemResult(Problem{
 			Type:      problemType(healthNotReadyCode),
@@ -105,24 +105,24 @@ func (module systemResourceModule) readiness(request operationRequest) (operatio
 	return jsonResult(http.StatusOK, healthResponse{Status: "ok"}), nil
 }
 
-func (module systemResourceModule) version(operationRequest) (operationResult, error) {
-	return jsonResult(http.StatusOK, module.buildInfo), nil
+func (m systemResourceModule) version(operationRequest) (operationResult, error) {
+	return jsonResult(http.StatusOK, m.buildInfo), nil
 }
 
-func (module systemResourceModule) ping(request operationRequest) (operationResult, error) {
+func (m systemResourceModule) ping(request operationRequest) (operationResult, error) {
 	query, err := desktopCompatibilityQuery(request.request)
 	if err != nil {
 		return operationResult{}, err
 	}
-	result, evaluationErr := module.desktopCompatibility.EvaluateDesktopCompatibility(
+	result, evaluationErr := m.desktopCompatibility.EvaluateDesktopCompatibility(
 		request.context,
 		query,
 	)
 	if apperror.Is(evaluationErr, "request.invalid") {
 		return operationResult{}, evaluationErr
 	}
-	responseTime := model.TimeUTC(module.now())
-	ready := module.health.Ready() && evaluationErr == nil
+	responseTime := model.TimeUTC(m.now())
+	ready := m.health.Ready() && evaluationErr == nil
 	response := systemPingResponse{
 		SchemaVersion:       1,
 		ServerTime:          model.FormatRFC3339(responseTime),

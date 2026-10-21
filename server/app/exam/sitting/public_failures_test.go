@@ -42,8 +42,8 @@ type operationalRecorderFake struct {
 	err              error
 }
 
-func (fake *operationalRecorderFake) RecordOperational(subsystem, event string, err error) {
-	fake.subsystem, fake.event, fake.err = subsystem, event, err
+func (f *operationalRecorderFake) RecordOperational(subsystem, event string, err error) {
+	f.subsystem, f.event, f.err = subsystem, event, err
 }
 
 func TestObservedUseCaseRecordsItsConcealedOutcome(t *testing.T) {

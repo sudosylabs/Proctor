@@ -35,8 +35,8 @@ const (
 	accountRecoveryAttemptPasswordResetComplete
 )
 
-func (operation accountRecoveryAttemptOperation) qualifier() (string, bool) {
-	switch operation {
+func (o accountRecoveryAttemptOperation) qualifier() (string, bool) {
+	switch o {
 	case accountRecoveryAttemptEmailVerificationRequest:
 		return "email-verification-request", true
 	case accountRecoveryAttemptPasswordResetRequest:

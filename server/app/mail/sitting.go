@@ -283,7 +283,7 @@ func validFrozenSittingBundle(bundle FrozenSittingBundleV2) bool {
 	return true
 }
 
-func (bundle FrozenSittingBundleV2) contentFor(requestedLocale string, key model.MailTemplateKey) (FrozenContent, bool) {
+func (b FrozenSittingBundleV2) contentFor(requestedLocale string, key model.MailTemplateKey) (FrozenContent, bool) {
 	requested := normalizeSittingLocale(requestedLocale)
 	locales := make([]string, 0, 4)
 	if requested != "" {
@@ -292,7 +292,7 @@ func (bundle FrozenSittingBundleV2) contentFor(requestedLocale string, key model
 			locales = append(locales, base)
 		}
 	}
-	for _, fallback := range []string{bundle.DefaultLocale, model.DefaultLocale} {
+	for _, fallback := range []string{b.DefaultLocale, model.DefaultLocale} {
 		fallback = normalizeSittingLocale(fallback)
 		if fallback != "" {
 			locales = append(locales, fallback)
@@ -304,7 +304,7 @@ func (bundle FrozenSittingBundleV2) contentFor(requestedLocale string, key model
 			continue
 		}
 		seen[locale] = struct{}{}
-		if messages, ok := bundle.Messages[locale]; ok {
+		if messages, ok := b.Messages[locale]; ok {
 			content, exists := messages[key]
 			return content, exists
 		}

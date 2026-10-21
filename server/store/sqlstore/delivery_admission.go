@@ -14,13 +14,13 @@ import (
 
 // No waiting goroutine or database connection is allocated when detail capacity
 // is full. Both families and transports share this node's pool reservation.
-func (s *SQLStore) enterDeliveryAppend(ctx context.Context, family string) (func(), error) {
+func (ss *SQLStore) enterDeliveryAppend(ctx context.Context, family string) (func(), error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	select {
-	case s.deliveryAppendSlots <- struct{}{}:
-		return func() { <-s.deliveryAppendSlots }, nil
+	case ss.deliveryAppendSlots <- struct{}{}:
+		return func() { <-ss.deliveryAppendSlots }, nil
 	default:
 		return nil, store.NewErrConflict(family+"_delivery", "append_rate_limited", store.ErrDeliveryAdmissionFull)
 	}

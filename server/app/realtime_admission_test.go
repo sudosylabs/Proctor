@@ -82,9 +82,9 @@ type realtimeExamViewFake struct {
 	err        error
 }
 
-func (fake *realtimeExamViewFake) AuthorizeView(_ context.Context, invocation Invocation, examID model.ExamID) error {
-	fake.invocation, fake.examID = invocation, examID
-	return fake.err
+func (f *realtimeExamViewFake) AuthorizeView(_ context.Context, invocation Invocation, examID model.ExamID) error {
+	f.invocation, f.examID = invocation, examID
+	return f.err
 }
 
 type realtimeSittingViewFake struct {
@@ -93,9 +93,9 @@ type realtimeSittingViewFake struct {
 	err        error
 }
 
-func (fake *realtimeSittingViewFake) AuthorizeView(_ context.Context, invocation Invocation, sittingID model.ExamSittingID) error {
-	fake.invocation, fake.sittingID = invocation, sittingID
-	return fake.err
+func (f *realtimeSittingViewFake) AuthorizeView(_ context.Context, invocation Invocation, sittingID model.ExamSittingID) error {
+	f.invocation, f.sittingID = invocation, sittingID
+	return f.err
 }
 
 func testExamPrincipal(userID model.UserID) model.Principal {

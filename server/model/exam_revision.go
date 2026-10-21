@@ -25,8 +25,8 @@ const (
 	ExamRevisionPublicationLiveCorrection ExamRevisionPublicationKind = "live_correction"
 )
 
-func (kind ExamRevisionPublicationKind) IsValid() bool {
-	return kind == ExamRevisionPublicationStandard || kind == ExamRevisionPublicationLiveCorrection
+func (k ExamRevisionPublicationKind) IsValid() bool {
+	return k == ExamRevisionPublicationStandard || k == ExamRevisionPublicationLiveCorrection
 }
 
 // ExamRevisionPolicy is the exact canonical policy document frozen into one
@@ -62,9 +62,9 @@ func newExamRevisionPolicy(schemaVersion int, encoded []byte) ExamRevisionPolicy
 	return ExamRevisionPolicy{SchemaVersion: schemaVersion, Bytes: bytesClone(encoded), SHA256: hex.EncodeToString(digest[:])}
 }
 
-func (policy ExamRevisionPolicy) Validate() error {
-	canonical, err := CanonicalizeExamRevisionPolicy(policy.Bytes)
-	if err != nil || policy.SchemaVersion != canonical.SchemaVersion || policy.SHA256 != canonical.SHA256 || !slices.Equal(policy.Bytes, canonical.Bytes) {
+func (p ExamRevisionPolicy) Validate() error {
+	canonical, err := CanonicalizeExamRevisionPolicy(p.Bytes)
+	if err != nil || p.SchemaVersion != canonical.SchemaVersion || p.SHA256 != canonical.SHA256 || !slices.Equal(p.Bytes, canonical.Bytes) {
 		return invalidModelError("ExamRevisionPolicy.Validate", "exam_revision_policy", "", "invalid canonical Exam Revision policy", "")
 	}
 	return nil
@@ -83,12 +83,12 @@ type ExamRevisionResource struct {
 	SHA256              string
 }
 
-func (resource ExamRevisionResource) Validate() error {
-	if !resource.ResourceID.IsValid() || !resource.FileEntryID.IsValid() || !resource.FileRevisionID.IsValid() || !resource.RenditionID.IsValid() {
+func (r ExamRevisionResource) Validate() error {
+	if !r.ResourceID.IsValid() || !r.FileEntryID.IsValid() || !r.FileRevisionID.IsValid() || !r.RenditionID.IsValid() {
 		return invalidModelError("ExamRevisionResource.Validate", "exam_revision_resource", "", "invalid Exam Revision resource identity", "")
 	}
-	probe, err := NewExamResource(resource.ResourceID, NewExamID(), resource.FileEntryID, resource.FileRevisionID, resource.DisplayName, resource.DescriptionMarkdown, resource.Position, time.Unix(1, 0).UTC())
-	if err != nil || probe.DisplayName != resource.DisplayName || !resource.MediaType.IsValid() || resource.SizeBytes < 0 || resource.SizeBytes > ExamResourceMaximumBytes || !validLowerSHA256(resource.SHA256) {
+	probe, err := NewExamResource(r.ResourceID, NewExamID(), r.FileEntryID, r.FileRevisionID, r.DisplayName, r.DescriptionMarkdown, r.Position, time.Unix(1, 0).UTC())
+	if err != nil || probe.DisplayName != r.DisplayName || !r.MediaType.IsValid() || r.SizeBytes < 0 || r.SizeBytes > ExamResourceMaximumBytes || !validLowerSHA256(r.SHA256) {
 		return invalidModelError("ExamRevisionResource.Validate", "exam_revision_resource", "", "invalid Exam Revision resource snapshot", "")
 	}
 	return nil
@@ -105,21 +105,21 @@ type ExamRevisionStarterWorkspaceEntry struct {
 	SHA256         string
 }
 
-func (entry ExamRevisionStarterWorkspaceEntry) Validate() error {
-	if !entry.EntryID.IsValid() {
+func (e ExamRevisionStarterWorkspaceEntry) Validate() error {
+	if !e.EntryID.IsValid() {
 		return invalidModelError("ExamRevisionStarterWorkspaceEntry.Validate", "exam_revision_starter_workspace_entry", "", "invalid Exam Revision Starter Workspace identity", "")
 	}
-	path, err := NormalizeStarterWorkspacePath(entry.Path)
-	if err != nil || path != entry.Path {
+	path, err := NormalizeStarterWorkspacePath(e.Path)
+	if err != nil || path != e.Path {
 		return invalidModelError("ExamRevisionStarterWorkspaceEntry.Validate", "exam_revision_starter_workspace_entry", "", "invalid Exam Revision Starter Workspace path", "")
 	}
-	switch entry.Kind {
+	switch e.Kind {
 	case StarterWorkspaceEntryDirectory:
-		if !entry.ObjectID.IsZero() || !entry.ContentVersion.IsZero() || entry.MediaType != "" || entry.SizeBytes != 0 || entry.SHA256 != "" {
+		if !e.ObjectID.IsZero() || !e.ContentVersion.IsZero() || e.MediaType != "" || e.SizeBytes != 0 || e.SHA256 != "" {
 			return invalidModelError("ExamRevisionStarterWorkspaceEntry.Validate", "exam_revision_starter_workspace_entry", "", "Exam Revision directory cannot carry content", "")
 		}
 	case StarterWorkspaceEntryFile:
-		if !entry.ObjectID.IsValid() || !entry.ContentVersion.IsValid() || entry.MediaType == "" || strings.TrimSpace(entry.MediaType) != entry.MediaType || len(entry.MediaType) > 255 || entry.SizeBytes < 0 || entry.SizeBytes > StarterWorkspaceMaximumFileBytes || !validLowerSHA256(entry.SHA256) {
+		if !e.ObjectID.IsValid() || !e.ContentVersion.IsValid() || e.MediaType == "" || strings.TrimSpace(e.MediaType) != e.MediaType || len(e.MediaType) > 255 || e.SizeBytes < 0 || e.SizeBytes > StarterWorkspaceMaximumFileBytes || !validLowerSHA256(e.SHA256) {
 			return invalidModelError("ExamRevisionStarterWorkspaceEntry.Validate", "exam_revision_starter_workspace_entry", "", "invalid Exam Revision Starter Workspace file", "")
 		}
 	default:
@@ -290,58 +290,58 @@ func CandidateCorrectionChangedAreas(base *ExamRevision, instructionsMarkdown st
 	return changedAreas, nil
 }
 
-func (revision *ExamRevision) Validate() error {
-	if revision == nil || !revision.ID.IsValid() || !revision.ExamID.IsValid() || revision.Number < 1 || revision.SourceDraftRevision < 1 ||
-		revision.Title == "" || strings.TrimSpace(revision.Title) != revision.Title || !revision.PublishedByUserID.IsValid() || revision.PublishedAt.IsZero() ||
-		!revision.Kind.IsValid() || !revision.BaseRevisionID.IsZero() && (!revision.BaseRevisionID.IsValid() || revision.BaseRevisionID == revision.ID) {
+func (r *ExamRevision) Validate() error {
+	if r == nil || !r.ID.IsValid() || !r.ExamID.IsValid() || r.Number < 1 || r.SourceDraftRevision < 1 ||
+		r.Title == "" || strings.TrimSpace(r.Title) != r.Title || !r.PublishedByUserID.IsValid() || r.PublishedAt.IsZero() ||
+		!r.Kind.IsValid() || !r.BaseRevisionID.IsZero() && (!r.BaseRevisionID.IsValid() || r.BaseRevisionID == r.ID) {
 		return invalidModelError("ExamRevision.Validate", "exam_revision", "", "invalid Exam Revision metadata", "")
 	}
-	if revision.Kind == ExamRevisionPublicationLiveCorrection {
-		if !revision.BaseRevisionID.IsValid() || revision.CandidateCorrection.Validate() != nil {
+	if r.Kind == ExamRevisionPublicationLiveCorrection {
+		if !r.BaseRevisionID.IsValid() || r.CandidateCorrection.Validate() != nil {
 			return invalidModelError("ExamRevision.Validate", "exam_revision", "", "live correction Revision requires Candidate Correction Notice", "")
 		}
-	} else if revision.CandidateCorrection != nil {
+	} else if r.CandidateCorrection != nil {
 		return invalidModelError("ExamRevision.Validate", "exam_revision", "", "standard Revision cannot contain Candidate Correction Notice", "")
 	}
-	draft := &ExamDraft{ExamID: revision.ExamID, Title: revision.Title, InstructionsMarkdown: revision.InstructionsMarkdown,
-		Policy: DefaultExamPolicySet(), BrowserPolicy: revision.BrowserPolicy.Clone(),
-		UpdatedAt: revision.PublishedAt, Revision: revision.SourceDraftRevision}
+	draft := &ExamDraft{ExamID: r.ExamID, Title: r.Title, InstructionsMarkdown: r.InstructionsMarkdown,
+		Policy: DefaultExamPolicySet(), BrowserPolicy: r.BrowserPolicy.Clone(),
+		UpdatedAt: r.PublishedAt, Revision: r.SourceDraftRevision}
 	if err := draft.Validate(); err != nil {
 		return invalidModelError("ExamRevision.Validate", "exam_revision", "", "invalid Exam Revision authored text", "").wrap(err)
 	}
-	if err := revision.Policy.Validate(); err != nil || revision.PolicyDigest != revision.Policy.SHA256 {
+	if err := r.Policy.Validate(); err != nil || r.PolicyDigest != r.Policy.SHA256 {
 		return invalidModelError("ExamRevision.Validate", "exam_revision", "", "invalid Exam Revision policy", "")
 	}
-	if err := revision.Capacity.Validate(); err != nil {
+	if err := r.Capacity.Validate(); err != nil {
 		return invalidModelError("ExamRevision.Validate", "exam_revision", "", "invalid Exam Revision capacity policy", "")
 	}
-	browserDigest, err := BrowserPolicyDigest(revision.BrowserPolicy)
-	if err != nil || revision.BrowserPolicyDigest != browserDigest {
+	browserDigest, err := BrowserPolicyDigest(r.BrowserPolicy)
+	if err != nil || r.BrowserPolicyDigest != browserDigest {
 		return invalidModelError("ExamRevision.Validate", "exam_revision", "", "invalid Exam Revision Browser Policy", "")
 	}
-	if err := validateExamRevisionResources(revision.Resources, revision.Capacity); err != nil {
+	if err = validateExamRevisionResources(r.Resources, r.Capacity); err != nil {
 		return err
 	}
-	if err := validateExamRevisionStarterWorkspace(revision.StarterWorkspace, revision.Capacity); err != nil {
+	if err = validateExamRevisionStarterWorkspace(r.StarterWorkspace, r.Capacity); err != nil {
 		return err
 	}
-	workspaceDigest, contentDigest, err := revision.computeDigests()
-	if err != nil || revision.StarterWorkspaceDigest != workspaceDigest || revision.ContentDigest != contentDigest {
+	workspaceDigest, contentDigest, err := r.computeDigests()
+	if err != nil || r.StarterWorkspaceDigest != workspaceDigest || r.ContentDigest != contentDigest {
 		return invalidModelError("ExamRevision.Validate", "exam_revision", "", "invalid Exam Revision digest", "")
 	}
 	return nil
 }
 
-func (revision *ExamRevision) Clone() *ExamRevision {
-	if revision == nil {
+func (r *ExamRevision) Clone() *ExamRevision {
+	if r == nil {
 		return nil
 	}
-	clone := *revision
-	clone.Policy = cloneExamRevisionPolicy(revision.Policy)
-	clone.BrowserPolicy = revision.BrowserPolicy.Clone()
-	clone.CandidateCorrection = revision.CandidateCorrection.Clone()
-	clone.Resources = append([]ExamRevisionResource(nil), revision.Resources...)
-	clone.StarterWorkspace = append([]ExamRevisionStarterWorkspaceEntry(nil), revision.StarterWorkspace...)
+	clone := *r
+	clone.Policy = cloneExamRevisionPolicy(r.Policy)
+	clone.BrowserPolicy = r.BrowserPolicy.Clone()
+	clone.CandidateCorrection = r.CandidateCorrection.Clone()
+	clone.Resources = append([]ExamRevisionResource(nil), r.Resources...)
+	clone.StarterWorkspace = append([]ExamRevisionStarterWorkspaceEntry(nil), r.StarterWorkspace...)
 	return &clone
 }
 
@@ -479,17 +479,17 @@ type candidateCorrectionNoticeWire struct {
 	AcknowledgementRequired bool                        `json:"acknowledgement_required"`
 }
 
-func (revision *ExamRevision) computeDigests() (string, string, error) {
-	browserPolicy, err := EncodeBrowserPolicy(revision.BrowserPolicy)
+func (r *ExamRevision) computeDigests() (string, string, error) {
+	browserPolicy, err := EncodeBrowserPolicy(r.BrowserPolicy)
 	if err != nil {
 		return "", "", err
 	}
-	resources := make([]examRevisionResourceWire, len(revision.Resources))
-	for index, resource := range revision.Resources {
+	resources := make([]examRevisionResourceWire, len(r.Resources))
+	for index, resource := range r.Resources {
 		resources[index] = examRevisionResourceWire{resource.ResourceID.String(), resource.FileEntryID.String(), resource.FileRevisionID.String(), resource.RenditionID.String(), resource.DisplayName, resource.DescriptionMarkdown, resource.Position, resource.MediaType, resource.SizeBytes, resource.SHA256}
 	}
-	workspace := make([]examRevisionWorkspaceWire, len(revision.StarterWorkspace))
-	for index, entry := range revision.StarterWorkspace {
+	workspace := make([]examRevisionWorkspaceWire, len(r.StarterWorkspace))
+	for index, entry := range r.StarterWorkspace {
 		workspace[index] = examRevisionWorkspaceWire{entry.EntryID.String(), entry.Kind, entry.Path, entry.ObjectID.String(), entry.ContentVersion, entry.MediaType, entry.SizeBytes, entry.SHA256}
 	}
 	workspaceBytes, err := json.Marshal(struct {
@@ -514,10 +514,10 @@ func (revision *ExamRevision) computeDigests() (string, string, error) {
 		StarterWorkspaceDigest string                         `json:"starter_workspace_digest"`
 		StarterWorkspace       []examRevisionWorkspaceWire    `json:"starter_workspace"`
 		CandidateCorrection    *candidateCorrectionNoticeWire `json:"candidate_correction"`
-	}{ExamRevisionSnapshotSchemaVersion, revision.Title, revision.InstructionsMarkdown, revision.Policy.SchemaVersion,
-		json.RawMessage(revision.Policy.Bytes),
-		json.RawMessage(browserPolicy), revision.BrowserPolicyDigest, revision.Capacity,
-		resources, workspaceDigest, workspace, candidateCorrectionNoticeWireFromModel(revision.CandidateCorrection)})
+	}{ExamRevisionSnapshotSchemaVersion, r.Title, r.InstructionsMarkdown, r.Policy.SchemaVersion,
+		json.RawMessage(r.Policy.Bytes),
+		json.RawMessage(browserPolicy), r.BrowserPolicyDigest, r.Capacity,
+		resources, workspaceDigest, workspace, candidateCorrectionNoticeWireFromModel(r.CandidateCorrection)})
 	if err != nil {
 		return "", "", err
 	}

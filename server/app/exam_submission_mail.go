@@ -24,19 +24,19 @@ type examSubmissionMailPreparationAdapter struct {
 	revisions store.ExamRevisionStore
 }
 
-func (adapter examSubmissionMailPreparationAdapter) PrepareSubmissionReceipt(ctx context.Context,
+func (a examSubmissionMailPreparationAdapter) PrepareSubmissionReceipt(ctx context.Context,
 	request examattempt.SubmissionMailPreparation,
 ) (*examattempt.PreparedSubmissionMail, error) {
-	if adapter.preparer == nil || adapter.users == nil || adapter.sittings == nil || adapter.revisions == nil ||
+	if a.preparer == nil || a.users == nil || a.sittings == nil || a.revisions == nil ||
 		!request.CandidateUserID.IsValid() || !request.ExamID.IsValid() || !request.SittingID.IsValid() ||
 		!request.SubmissionID.IsValid() || request.SealedAt.IsZero() {
 		return nil, errors.New("Submission receipt dependencies or request are invalid")
 	}
-	recipient, err := adapter.users.Get(ctx, request.CandidateUserID)
+	recipient, err := a.users.Get(ctx, request.CandidateUserID)
 	if err != nil {
 		return nil, err
 	}
-	snapshot, err := adapter.sittings.Get(ctx, request.ExamID, request.SittingID)
+	snapshot, err := a.sittings.Get(ctx, request.ExamID, request.SittingID)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +44,7 @@ func (adapter examSubmissionMailPreparationAdapter) PrepareSubmissionReceipt(ctx
 		snapshot.Sitting.ID != request.SittingID || snapshot.Sitting.ExamID != request.ExamID {
 		return nil, errors.New("Submission receipt Sitting projection is inconsistent")
 	}
-	revision, err := adapter.revisions.GetSummary(ctx, request.ExamID, snapshot.Sitting.ExamRevisionID)
+	revision, err := a.revisions.GetSummary(ctx, request.ExamID, snapshot.Sitting.ExamRevisionID)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func (adapter examSubmissionMailPreparationAdapter) PrepareSubmissionReceipt(ctx
 	default:
 		return nil, errors.New("Submission receipt provenance is invalid")
 	}
-	prepared, err := adapter.preparer.PrepareSubmissionReceiptMail(appmail.SubmissionReceiptPreparation{
+	prepared, err := a.preparer.PrepareSubmissionReceiptMail(appmail.SubmissionReceiptPreparation{
 		Recipient: recipient, OccurrenceID: model.MailOccurrenceID(request.SubmissionID.String()), TemplateKey: key,
 		Details: appmail.SubmissionReceiptDetails{ExamTitle: revision.Title, SittingID: request.SittingID,
 			SubmissionID: request.SubmissionID, SealedAt: request.SealedAt}, ActionAt: request.SealedAt,

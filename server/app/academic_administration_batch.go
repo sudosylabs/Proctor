@@ -41,8 +41,8 @@ const (
 	AcademicAdministrationUserSessionsRevoke    AcademicAdministrationBatchOperation = "user_sessions.revoke"
 )
 
-func (operation AcademicAdministrationBatchOperation) IsValid() bool {
-	switch operation {
+func (o AcademicAdministrationBatchOperation) IsValid() bool {
+	switch o {
 	case AcademicAdministrationAffiliationAdd, AcademicAdministrationAffiliationEnd,
 		AcademicAdministrationAcademicUnitMemberAdd, AcademicAdministrationAcademicUnitMemberEnd,
 		AcademicAdministrationClassEnroll, AcademicAdministrationClassEnd, AcademicAdministrationClassTransfer,
@@ -55,8 +55,8 @@ func (operation AcademicAdministrationBatchOperation) IsValid() bool {
 	}
 }
 
-func (operation AcademicAdministrationBatchOperation) requiresStrongRecentSession() bool {
-	switch operation {
+func (o AcademicAdministrationBatchOperation) requiresStrongRecentSession() bool {
+	switch o {
 	case AcademicAdministrationRoleBindingCreate, AcademicAdministrationRoleBindingEnd,
 		AcademicAdministrationUserEnable, AcademicAdministrationUserDisable,
 		AcademicAdministrationUserSessionsRevoke:
@@ -327,18 +327,6 @@ func academicAdministrationBatchDuplicateKey(batch RunAcademicAdministrationBatc
 			strconv.FormatInt(item.StartAt, 10) + "\x00" + strconv.FormatInt(item.EndAt, 10)
 	default:
 		return base + strings.TrimSpace(item.RelationshipID)
-	}
-}
-
-func (result *AcademicAdministrationBatchResult) append(item AcademicAdministrationBatchItemResult) {
-	result.Items = append(result.Items, item)
-	switch item.Status {
-	case InvitationBatchItemSucceeded:
-		result.Succeeded++
-	case InvitationBatchItemNoOp:
-		result.NoOp++
-	case InvitationBatchItemFailed:
-		result.Failed++
 	}
 }
 

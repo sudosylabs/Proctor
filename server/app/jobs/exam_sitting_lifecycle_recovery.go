@@ -142,8 +142,8 @@ type examSittingLifecycleRecoveryHandler struct {
 	service ExamSittingLifecycleRecoveryUseCases
 }
 
-func (handler examSittingLifecycleRecoveryHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
-	if handler.service == nil || execution.Job == nil || execution.Attempt == nil ||
+func (h examSittingLifecycleRecoveryHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
+	if h.service == nil || execution.Job == nil || execution.Attempt == nil ||
 		!execution.Job.ID.IsValid() || !execution.Attempt.ID.IsValid() {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("Exam Sitting lifecycle recovery execution is incomplete"))
 	}
@@ -165,7 +165,7 @@ func (handler examSittingLifecycleRecoveryHandler) Run(ctx context.Context, exec
 	remaining := command.WorkLimit - execution.Job.WorkReserved
 	for remaining > 0 {
 		limit := min(remaining, examSittingLifecycleRecoveryPageSize)
-		page, listErr := handler.service.ListExamSittingLifecycleDueFromJob(ctx, store.ExamSittingLifecycleDueOptions{
+		page, listErr := h.service.ListExamSittingLifecycleDueFromJob(ctx, store.ExamSittingLifecycleDueOptions{
 			AfterDueAt: checkpoint.AfterDueAt, AfterSittingID: checkpoint.AfterSittingID, Limit: limit,
 		})
 		if listErr != nil {
@@ -188,7 +188,7 @@ func (handler examSittingLifecycleRecoveryHandler) Run(ctx context.Context, exec
 			if !reserved {
 				return examSittingLifecycleRecoverySucceeded(checkpoint)
 			}
-			result, reconcileErr := handler.service.ReconcileExamSittingLifecycleFromJob(
+			result, reconcileErr := h.service.ReconcileExamSittingLifecycleFromJob(
 				ctx, due.Value.Sitting.ID, execution.Job.ID, execution.Attempt.ID,
 			)
 			if reconcileErr != nil {
@@ -247,15 +247,15 @@ type examSittingLifecycleRecoveryProposer struct {
 	now  func() time.Time
 }
 
-func (proposer examSittingLifecycleRecoveryProposer) Propose(ctx context.Context, occurrence time.Time) error {
-	if proposer.jobs == nil || proposer.now == nil {
+func (p examSittingLifecycleRecoveryProposer) Propose(ctx context.Context, occurrence time.Time) error {
+	if p.jobs == nil || p.now == nil {
 		return errors.New("Exam Sitting lifecycle recovery proposer dependencies are required")
 	}
 	command, err := EncodeExamSittingLifecycleRecoveryCommand(ExamSittingLifecycleRecoveryCommandV1{WorkLimit: maximumExamSittingLifecycleRecoveryWork})
 	if err != nil {
 		return err
 	}
-	at := model.TimeUTC(proposer.now())
+	at := model.TimeUTC(p.now())
 	key := "exam-sitting-lifecycle-recovery:" + model.TimeUTC(occurrence).Format("2006-01-02")
 	record, err := model.NewJobWithDedupePolicy(
 		model.NewJobID(), model.JobTypeExamSittingLifecycleRecovery, 1, command, key,
@@ -264,7 +264,7 @@ func (proposer examSittingLifecycleRecoveryProposer) Propose(ctx context.Context
 	if err != nil {
 		return err
 	}
-	_, _, err = proposer.jobs.Enqueue(ctx, &store.JobEnqueue{Job: record})
+	_, _, err = p.jobs.Enqueue(ctx, &store.JobEnqueue{Job: record})
 	return err
 }
 

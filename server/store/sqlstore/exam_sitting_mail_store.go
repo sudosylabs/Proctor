@@ -499,29 +499,29 @@ func lockSittingMailDeliveryFence(ctx context.Context, tx *sqlxTxWrapper, delive
 		FanoutTerminalReason: fanoutTerminalReason, Now: now}, nil
 }
 
-func (fence *sittingMailDeliveryFence) relevant(ctx context.Context, tx *sqlxTxWrapper, deliveryID model.MailDeliveryID) (bool, error) {
-	if fence == nil || fence.Sitting == nil || fence.User == nil || !fence.Now.Before(fence.Sitting.ScheduledStartAt) ||
-		(fence.FanoutTerminalReason != "" && fence.FanoutTerminalReason != "completed") ||
-		!fence.Projection.DesiredDeliveryID.Valid || fence.Projection.DesiredDeliveryID.String != deliveryID.String() ||
-		!fence.Projection.DesiredOccurrenceID.Valid || fence.Projection.DesiredOccurrenceID.String != fence.OccurrenceID.String() ||
-		!fence.Projection.DesiredRevision.Valid || fence.Projection.DesiredRevision.Int64 != fence.OccurrenceRevision ||
-		!fence.Projection.DesiredTemplateKey.Valid || model.MailTemplateKey(fence.Projection.DesiredTemplateKey.String) != fence.TemplateKey ||
-		fence.Sitting.Revision != fence.OccurrenceRevision {
+func (f *sittingMailDeliveryFence) relevant(ctx context.Context, tx *sqlxTxWrapper, deliveryID model.MailDeliveryID) (bool, error) {
+	if f == nil || f.Sitting == nil || f.User == nil || !f.Now.Before(f.Sitting.ScheduledStartAt) ||
+		(f.FanoutTerminalReason != "" && f.FanoutTerminalReason != "completed") ||
+		!f.Projection.DesiredDeliveryID.Valid || f.Projection.DesiredDeliveryID.String != deliveryID.String() ||
+		!f.Projection.DesiredOccurrenceID.Valid || f.Projection.DesiredOccurrenceID.String != f.OccurrenceID.String() ||
+		!f.Projection.DesiredRevision.Valid || f.Projection.DesiredRevision.Int64 != f.OccurrenceRevision ||
+		!f.Projection.DesiredTemplateKey.Valid || model.MailTemplateKey(f.Projection.DesiredTemplateKey.String) != f.TemplateKey ||
+		f.Sitting.Revision != f.OccurrenceRevision {
 		return false, nil
 	}
-	audience, err := loadSittingMailAudienceState(ctx, tx, fence.Sitting, fence.User)
+	audience, err := loadSittingMailAudienceState(ctx, tx, f.Sitting, f.User)
 	if err != nil {
 		return false, err
 	}
-	switch fence.TemplateKey {
+	switch f.TemplateKey {
 	case model.MailTemplateExamSittingScheduled, model.MailTemplateExamSittingRescheduled:
-		return fence.Sitting.State == model.ExamSittingScheduled && audience.Eligible, nil
+		return f.Sitting.State == model.ExamSittingScheduled && audience.Eligible, nil
 	case model.MailTemplateExamSittingAssignmentRemoved:
-		return fence.Sitting.State == model.ExamSittingScheduled && fence.User.IsActive() && fence.User.EmailVerified && !audience.Eligible, nil
+		return f.Sitting.State == model.ExamSittingScheduled && f.User.IsActive() && f.User.EmailVerified && !audience.Eligible, nil
 	case model.MailTemplateExamSittingCancelled:
-		communicated := model.MailTemplateKey(fence.Projection.CommunicatedTemplateKey.String)
-		return fence.Sitting.State == model.ExamSittingCanceled && fence.User.IsActive() && fence.User.EmailVerified &&
-			fence.Projection.CommunicatedTemplateKey.Valid &&
+		communicated := model.MailTemplateKey(f.Projection.CommunicatedTemplateKey.String)
+		return f.Sitting.State == model.ExamSittingCanceled && f.User.IsActive() && f.User.EmailVerified &&
+			f.Projection.CommunicatedTemplateKey.Valid &&
 			(communicated == model.MailTemplateExamSittingScheduled || communicated == model.MailTemplateExamSittingRescheduled), nil
 	default:
 		return false, invalidPersistedState("mail_delivery", "sitting_template", errors.New("unsupported Sitting mail template"))

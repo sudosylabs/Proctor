@@ -83,7 +83,7 @@ func programmeLevelResource(programmeLevels ProgrammeLevelApplication) resource 
 	)
 }
 
-func (module programmeLevelResourceModule) list(request operationRequest) (operationResult, error) {
+func (m programmeLevelResourceModule) list(request operationRequest) (operationResult, error) {
 	programmeID, err := request.params.RequireProgrammeID()
 	if err != nil {
 		return operationResult{}, err
@@ -92,7 +92,7 @@ func (module programmeLevelResourceModule) list(request operationRequest) (opera
 	if err != nil {
 		return operationResult{}, err
 	}
-	levels, err := module.programmeLevels.ListProgrammeLevels(
+	levels, err := m.programmeLevels.ListProgrammeLevels(
 		request.context,
 		request.invocation(),
 		application.ListProgrammeLevelsQuery{
@@ -111,7 +111,7 @@ func (module programmeLevelResourceModule) list(request operationRequest) (opera
 	return jsonResult(http.StatusOK, responses), nil
 }
 
-func (module programmeLevelResourceModule) create(request operationRequest) (operationResult, error) {
+func (m programmeLevelResourceModule) create(request operationRequest) (operationResult, error) {
 	programmeID, err := request.params.RequireProgrammeID()
 	if err != nil {
 		return operationResult{}, err
@@ -120,7 +120,7 @@ func (module programmeLevelResourceModule) create(request operationRequest) (ope
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	saved, err := module.programmeLevels.CreateProgrammeLevel(
+	saved, err := m.programmeLevels.CreateProgrammeLevel(
 		request.context,
 		request.invocation(),
 		application.CreateProgrammeLevelCommand{
@@ -136,12 +136,12 @@ func (module programmeLevelResourceModule) create(request operationRequest) (ope
 	return jsonResult(http.StatusCreated, programmeLevelResponseFromModel(saved)), nil
 }
 
-func (module programmeLevelResourceModule) get(request operationRequest) (operationResult, error) {
+func (m programmeLevelResourceModule) get(request operationRequest) (operationResult, error) {
 	id, err := request.params.RequireProgrammeLevelID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	level, err := module.programmeLevels.GetProgrammeLevel(
+	level, err := m.programmeLevels.GetProgrammeLevel(
 		request.context, request.invocation(), application.GetProgrammeLevelQuery{ID: id},
 	)
 	if err != nil {
@@ -150,7 +150,7 @@ func (module programmeLevelResourceModule) get(request operationRequest) (operat
 	return jsonResult(http.StatusOK, programmeLevelResponseFromModel(level)), nil
 }
 
-func (module programmeLevelResourceModule) patch(request operationRequest) (operationResult, error) {
+func (m programmeLevelResourceModule) patch(request operationRequest) (operationResult, error) {
 	id, err := request.params.RequireProgrammeLevelID()
 	if err != nil {
 		return operationResult{}, err
@@ -162,7 +162,7 @@ func (module programmeLevelResourceModule) patch(request operationRequest) (oper
 	if err := validateAcademicRevision(body.ExpectedRevision); err != nil {
 		return operationResult{}, err
 	}
-	level, err := module.programmeLevels.UpdateProgrammeLevel(
+	level, err := m.programmeLevels.UpdateProgrammeLevel(
 		request.context,
 		request.invocation(),
 		application.UpdateProgrammeLevelCommand{ExpectedRevision: body.ExpectedRevision.ValuePointer(),
@@ -178,7 +178,7 @@ func (module programmeLevelResourceModule) patch(request operationRequest) (oper
 	return jsonResult(http.StatusOK, programmeLevelResponseFromModel(level)), nil
 }
 
-func (module programmeLevelResourceModule) archive(request operationRequest) (operationResult, error) {
+func (m programmeLevelResourceModule) archive(request operationRequest) (operationResult, error) {
 	id, err := request.params.RequireProgrammeLevelID()
 	if err != nil {
 		return operationResult{}, err
@@ -187,7 +187,7 @@ func (module programmeLevelResourceModule) archive(request operationRequest) (op
 	if err != nil {
 		return operationResult{}, err
 	}
-	err = module.programmeLevels.ArchiveProgrammeLevel(
+	err = m.programmeLevels.ArchiveProgrammeLevel(
 		request.context, request.invocation(), application.ArchiveProgrammeLevelCommand{ExpectedRevision: expectedRevision, ID: id},
 	)
 	if err != nil {

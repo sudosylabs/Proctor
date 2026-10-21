@@ -36,16 +36,16 @@ type terminalIntegrityDiscrepancies struct {
 	MissingCorrections []model.ExamRevisionID
 }
 
-func (value terminalIntegrityDiscrepancies) totalUnresolved() (int64, error) {
-	total := value.FocusUnresolved
-	if total < 0 || value.BrowserUnresolved < 0 || value.BrowserUnresolved > math.MaxInt64-total {
+func (v terminalIntegrityDiscrepancies) totalUnresolved() (int64, error) {
+	total := v.FocusUnresolved
+	if total < 0 || v.BrowserUnresolved < 0 || v.BrowserUnresolved > math.MaxInt64-total {
 		return 0, errors.New("terminal integrity discrepancy count overflows")
 	}
-	total += value.BrowserUnresolved
-	if int64(len(value.MissingCorrections)) > math.MaxInt64-total {
+	total += v.BrowserUnresolved
+	if int64(len(v.MissingCorrections)) > math.MaxInt64-total {
 		return 0, errors.New("terminal integrity discrepancy count overflows")
 	}
-	return total + int64(len(value.MissingCorrections)), nil
+	return total + int64(len(v.MissingCorrections)), nil
 }
 
 func insertTerminalIntegrityDiscrepancies(ctx context.Context, tx *sqlxTxWrapper, submission *model.ExamSubmission,

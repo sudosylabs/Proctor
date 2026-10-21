@@ -80,7 +80,7 @@ type examSittingCorrectionResponse struct {
 	EffectiveAt          string                      `json:"effective_at"`
 }
 
-func (body *applyExamSittingCorrectionRequest) UnmarshalJSON(encoded []byte) error {
+func (b *applyExamSittingCorrectionRequest) UnmarshalJSON(encoded []byte) error {
 	type wire applyExamSittingCorrectionRequest
 	var decoded wire
 	if err := decodeDuplicateFreeExamCorrectionObject(encoded, &decoded); err != nil {
@@ -112,17 +112,17 @@ func (body *applyExamSittingCorrectionRequest) UnmarshalJSON(encoded []byte) err
 	if len(decoded.Resources) > 10 {
 		return errors.New("resources exceeds the maximum of 10")
 	}
-	*body = applyExamSittingCorrectionRequest(decoded)
+	*b = applyExamSittingCorrectionRequest(decoded)
 	return nil
 }
 
-func (item *examSittingCorrectionResourceRequest) UnmarshalJSON(encoded []byte) error {
+func (i *examSittingCorrectionResourceRequest) UnmarshalJSON(encoded []byte) error {
 	type wire examSittingCorrectionResourceRequest
 	var decoded wire
 	if err := decodeDuplicateFreeExamCorrectionObject(encoded, &decoded); err != nil {
 		return err
 	}
-	*item = examSittingCorrectionResourceRequest(decoded)
+	*i = examSittingCorrectionResourceRequest(decoded)
 	return nil
 }
 
@@ -184,7 +184,7 @@ func examSittingCorrectionApplyErrorCodes() []string {
 	)
 }
 
-func (module examSittingCorrectionHTTPModule) stage(request operationRequest) (protocolResult, error) {
+func (m examSittingCorrectionHTTPModule) stage(request operationRequest) (protocolResult, error) {
 	examID, sittingID, err := examSittingCorrectionIDs(request)
 	if err != nil {
 		return protocolResult{}, err
@@ -219,7 +219,7 @@ func (module examSittingCorrectionHTTPModule) stage(request operationRequest) (p
 	default:
 		return protocolResult{}, invalidRequestError(errors.New("must be addition or replacement"))
 	}
-	result, err := module.application.StageExamSittingCorrectionResourceContent(request.context, request.invocation(), application.StageExamSittingCorrectionResourceContentCommand{
+	result, err := m.application.StageExamSittingCorrectionResourceContent(request.context, request.invocation(), application.StageExamSittingCorrectionResourceContentCommand{
 		ExamID: examID, SittingID: sittingID, BaseRevisionID: baseRevisionID, Target: target, ResourceID: resourceID,
 		MediaType: model.ExamResourceMediaType(metadata.MediaType), Body: content, Size: *metadata.Size,
 		ExpectedSHA256: metadata.SHA256, IdempotencyKey: request.idempotencyKey,
@@ -234,7 +234,7 @@ func (module examSittingCorrectionHTTPModule) stage(request operationRequest) (p
 	return streamingUploadProtocolResult(http.StatusCreated, response), nil
 }
 
-func (module examSittingCorrectionHTTPModule) apply(request operationRequest) (operationResult, error) {
+func (m examSittingCorrectionHTTPModule) apply(request operationRequest) (operationResult, error) {
 	examID, sittingID, err := examSittingCorrectionIDs(request)
 	if err != nil {
 		return operationResult{}, err
@@ -289,7 +289,7 @@ func (module examSittingCorrectionHTTPModule) apply(request operationRequest) (o
 			return operationResult{}, invalidRequestError(err)
 		}
 	}
-	result, err := module.application.ApplyExamSittingCorrection(request.context, request.invocation(), application.ApplyExamSittingCorrectionCommand{
+	result, err := m.application.ApplyExamSittingCorrection(request.context, request.invocation(), application.ApplyExamSittingCorrectionCommand{
 		ExamID: examID, SittingID: sittingID, ExpectedSittingRevision: body.ExpectedSittingRevision,
 		ExpectedCurrentRevisionID: currentRevisionID, Instructions: instructions, BrowserPolicy: browserPolicy, Resources: manifest,
 		CandidateSummary: body.CandidateSummary, AcknowledgementRequired: body.AcknowledgementRequired, AffectedCapabilities: body.AffectedCapabilities,

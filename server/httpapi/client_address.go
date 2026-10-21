@@ -22,12 +22,12 @@ const maximumForwardedHops = 32
 // client. The zero value trusts no peer.
 type trustedProxies []netip.Prefix
 
-func (proxies trustedProxies) contains(address netip.Addr) bool {
+func (p trustedProxies) contains(address netip.Addr) bool {
 	if !address.IsValid() {
 		return false
 	}
 	address = address.Unmap()
-	for _, prefix := range proxies {
+	for _, prefix := range p {
 		if prefix.Contains(address) {
 			return true
 		}
@@ -42,7 +42,7 @@ type requestPeer struct {
 	trusted bool
 }
 
-func (proxies trustedProxies) peer(request *http.Request) requestPeer {
+func (p trustedProxies) peer(request *http.Request) requestPeer {
 	raw := request.RemoteAddr
 	if host, _, err := net.SplitHostPort(request.RemoteAddr); err == nil {
 		raw = host
@@ -52,7 +52,7 @@ func (proxies trustedProxies) peer(request *http.Request) requestPeer {
 		return requestPeer{raw: raw}
 	}
 	address = address.Unmap()
-	return requestPeer{address: address, raw: address.String(), trusted: proxies.contains(address)}
+	return requestPeer{address: address, raw: address.String(), trusted: p.contains(address)}
 }
 
 // clientAddress returns the address recorded as the request's client. A
@@ -67,7 +67,7 @@ func (proxies trustedProxies) peer(request *http.Request) requestPeer {
 // The standardized Forwarded header is deliberately not consulted: a proxy
 // that maintains only X-Forwarded-For would pass a client-forged Forwarded
 // header through unchanged.
-func (proxies trustedProxies) clientAddress(request *http.Request, peer requestPeer) string {
+func (p trustedProxies) clientAddress(request *http.Request, peer requestPeer) string {
 	if !peer.trusted {
 		return peer.raw
 	}
@@ -79,7 +79,7 @@ func (proxies trustedProxies) clientAddress(request *http.Request, peer requestP
 			break
 		}
 		client = hop
-		if !proxies.contains(hop) {
+		if !p.contains(hop) {
 			break
 		}
 	}

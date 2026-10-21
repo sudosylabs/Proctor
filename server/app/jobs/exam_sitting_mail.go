@@ -30,7 +30,7 @@ type sittingMailExpansionHandler struct {
 	mail     *appmail.SittingComposer
 }
 
-func (handler sittingMailExpansionHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
+func (h sittingMailExpansionHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
 	if execution.Job == nil {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("Sitting mail expansion Job is missing"))
 	}
@@ -38,7 +38,7 @@ func (handler sittingMailExpansionHandler) Run(ctx context.Context, execution jo
 	if err != nil {
 		return jobengine.PermanentFailure("job.command.invalid", err)
 	}
-	if handler.sittings == nil || handler.mail == nil {
+	if h.sittings == nil || h.mail == nil {
 		return jobengine.RetryableFailure("mail.sitting.unavailable", errors.New("Sitting mail expansion dependencies are unavailable"))
 	}
 	checkpoint := model.SittingMailExpansionCheckpointV1{}
@@ -48,19 +48,19 @@ func (handler sittingMailExpansionHandler) Run(ctx context.Context, execution jo
 			return jobengine.PermanentFailure("job.checkpoint.invalid", err)
 		}
 	}
-	fanout, err := handler.sittings.GetMailFanout(ctx, command.OccurrenceID)
+	fanout, err := h.sittings.GetMailFanout(ctx, command.OccurrenceID)
 	if err != nil {
 		return sittingMailExpansionDependencyOutcome(err)
 	}
 	if fanout.CompletedAt.Valid {
 		return sittingMailExpansionSucceeded(checkpoint)
 	}
-	bundle, err := handler.mail.OpenBundle(fanout.Bundle)
+	bundle, err := h.mail.OpenBundle(fanout.Bundle)
 	if err != nil {
 		return jobengine.RetryableFailure("mail.sitting.bundle_unavailable", err)
 	}
 	for {
-		page, pageErr := handler.sittings.ListMailRecipients(ctx, store.ExamSittingMailRecipientPageRequest{
+		page, pageErr := h.sittings.ListMailRecipients(ctx, store.ExamSittingMailRecipientPageRequest{
 			OccurrenceID: command.OccurrenceID, AfterUserID: checkpoint.AfterUserID, Limit: model.SittingMailExpansionPageSize,
 		})
 		if pageErr != nil {
@@ -71,12 +71,12 @@ func (handler sittingMailExpansionHandler) Run(ctx context.Context, execution jo
 			commit := &store.ExamSittingMailRecipientCommit{OccurrenceID: command.OccurrenceID,
 				SittingRevision: fanout.SittingRevision, Recipient: recipient.User}
 			if recipient.TemplateKey.IsValid() {
-				commit.Delivery, commit.DeliveryJob, err = handler.mail.PrepareRecipient(fanout, recipient.User, recipient.TemplateKey, bundle)
+				commit.Delivery, commit.DeliveryJob, err = h.mail.PrepareRecipient(fanout, recipient.User, recipient.TemplateKey, bundle)
 				if err != nil {
 					return jobengine.RetryableFailure("mail.sitting.recipient_unavailable", err)
 				}
 			}
-			result, commitErr := handler.sittings.CommitMailRecipient(ctx, commit)
+			result, commitErr := h.sittings.CommitMailRecipient(ctx, commit)
 			if commitErr != nil {
 				if store.IsConflict(commitErr) || store.IsNotFound(commitErr) {
 					checkpoint.Suppressed++
@@ -106,7 +106,7 @@ func (handler sittingMailExpansionHandler) Run(ctx context.Context, execution jo
 			break
 		}
 	}
-	if _, err = handler.sittings.CompleteMailExpansion(ctx, &store.ExamSittingMailExpansionCompletion{OccurrenceID: command.OccurrenceID}); err != nil {
+	if _, err = h.sittings.CompleteMailExpansion(ctx, &store.ExamSittingMailExpansionCompletion{OccurrenceID: command.OccurrenceID}); err != nil {
 		return sittingMailExpansionDependencyOutcome(err)
 	}
 	return sittingMailExpansionSucceeded(checkpoint)

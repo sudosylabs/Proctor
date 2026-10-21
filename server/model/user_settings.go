@@ -38,8 +38,8 @@ func ParseUserSettingsRevision(value string) (UserSettingsRevision, error) {
 	return UserSettingsRevision(value), nil
 }
 
-func (revision UserSettingsRevision) IsValid() bool  { return IsValidOpaqueID(string(revision)) }
-func (revision UserSettingsRevision) String() string { return string(revision) }
+func (r UserSettingsRevision) IsValid() bool  { return IsValidOpaqueID(string(r)) }
+func (r UserSettingsRevision) String() string { return string(r) }
 
 // UserSettingsDocument is the server-authoritative exact portable
 // presentation-preference source for one User. Source is deliberately omitted
@@ -69,40 +69,40 @@ func NewUserSettingsDocument(userID UserID, revision UserSettingsRevision, at ti
 	return document, nil
 }
 
-func (document *UserSettingsDocument) Validate() error {
+func (d *UserSettingsDocument) Validate() error {
 	const where = "UserSettingsDocument.Validate"
-	if document == nil {
+	if d == nil {
 		return invalidModelError(where, "user_settings_document", "value", "is required", "")
 	}
-	if !document.UserID.IsValid() {
+	if !d.UserID.IsValid() {
 		return invalidModelError(where, "user_settings_document", "user_id", "must be a valid identifier", "")
 	}
-	details := "user_id=" + document.UserID.String()
-	if document.FormatVersion <= 0 {
+	details := "user_id=" + d.UserID.String()
+	if d.FormatVersion <= 0 {
 		return invalidModelError(where, "user_settings_document", "format_version", "must be positive", details)
 	}
-	if !document.Revision.IsValid() {
+	if !d.Revision.IsValid() {
 		return invalidModelError(where, "user_settings_document", "revision", "must be a valid opaque token", details)
 	}
-	if document.CreatedAt.IsZero() || document.UpdatedAt.IsZero() {
+	if d.CreatedAt.IsZero() || d.UpdatedAt.IsZero() {
 		return invalidModelError(where, "user_settings_document", "created_at", "must be set", details)
 	}
-	if document.UpdatedAt.Before(document.CreatedAt) {
+	if d.UpdatedAt.Before(d.CreatedAt) {
 		return invalidModelError(where, "user_settings_document", "updated_at", "must not precede created_at", details)
 	}
-	if !utf8.ValidString(document.Source) {
+	if !utf8.ValidString(d.Source) {
 		return invalidModelError(where, "user_settings_document", "source", "must be valid UTF-8", details)
 	}
-	if len(document.Source) > UserSettingsSourceMaxBytes {
+	if len(d.Source) > UserSettingsSourceMaxBytes {
 		return invalidModelError(where, "user_settings_document", "source", "is too large", details)
 	}
 	return nil
 }
 
-func (document *UserSettingsDocument) Clone() *UserSettingsDocument {
-	if document == nil {
+func (d *UserSettingsDocument) Clone() *UserSettingsDocument {
+	if d == nil {
 		return nil
 	}
-	clone := *document
+	clone := *d
 	return &clone
 }

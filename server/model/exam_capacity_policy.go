@@ -46,22 +46,22 @@ func DefaultExamCapacityPolicy() ExamCapacityPolicy {
 	}
 }
 
-func (policy ExamCapacityPolicy) IsZero() bool { return policy == (ExamCapacityPolicy{}) }
+func (p ExamCapacityPolicy) IsZero() bool { return p == (ExamCapacityPolicy{}) }
 
-func (policy ExamCapacityPolicy) Validate() error {
-	if policy.ResourceMaximumCount < 1 || policy.ResourceMaximumCount > ExamResourceMaximumCount {
+func (p ExamCapacityPolicy) Validate() error {
+	if p.ResourceMaximumCount < 1 || p.ResourceMaximumCount > ExamResourceMaximumCount {
 		return invalidModelError("ExamCapacityPolicy.Validate", "exam_capacity_policy", "", fmt.Sprintf("Exam resource maximum count must be between 1 and %d", ExamResourceMaximumCount), "")
 	}
-	if policy.ResourceMaximumBytes < 1 || policy.ResourceMaximumBytes > ExamResourceMaximumBytes {
+	if p.ResourceMaximumBytes < 1 || p.ResourceMaximumBytes > ExamResourceMaximumBytes {
 		return invalidModelError("ExamCapacityPolicy.Validate", "exam_capacity_policy", "", fmt.Sprintf("Exam resource maximum bytes must be between 1 and %d", ExamResourceMaximumBytes), "")
 	}
-	if policy.WorkspaceMaximumEntries < 1 || policy.WorkspaceMaximumEntries > ExamWorkspaceMaximumEntries {
+	if p.WorkspaceMaximumEntries < 1 || p.WorkspaceMaximumEntries > ExamWorkspaceMaximumEntries {
 		return invalidModelError("ExamCapacityPolicy.Validate", "exam_capacity_policy", "", fmt.Sprintf("Exam Workspace maximum entries must be between 1 and %d", ExamWorkspaceMaximumEntries), "")
 	}
-	if policy.WorkspaceMaximumFileBytes < 1 || policy.WorkspaceMaximumFileBytes > ExamWorkspaceMaximumFileBytes {
+	if p.WorkspaceMaximumFileBytes < 1 || p.WorkspaceMaximumFileBytes > ExamWorkspaceMaximumFileBytes {
 		return invalidModelError("ExamCapacityPolicy.Validate", "exam_capacity_policy", "", fmt.Sprintf("Exam Workspace file maximum bytes must be between 1 and %d", ExamWorkspaceMaximumFileBytes), "")
 	}
-	if policy.WorkspaceMaximumTotalBytes < policy.WorkspaceMaximumFileBytes || policy.WorkspaceMaximumTotalBytes > ExamWorkspaceMaximumTotalBytes {
+	if p.WorkspaceMaximumTotalBytes < p.WorkspaceMaximumFileBytes || p.WorkspaceMaximumTotalBytes > ExamWorkspaceMaximumTotalBytes {
 		return invalidModelError("ExamCapacityPolicy.Validate", "exam_capacity_policy", "", fmt.Sprintf("Exam Workspace total maximum bytes must be between the file limit and %d", ExamWorkspaceMaximumTotalBytes), "")
 	}
 	return nil

@@ -35,8 +35,8 @@ type pathLiteral string
 
 func literal(value string) pathPart { return pathLiteral(value) }
 
-func (part pathLiteral) compile() (string, string, error) {
-	value := string(part)
+func (p pathLiteral) compile() (string, string, error) {
+	value := string(p)
 	if !regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`).MatchString(value) {
 		return "", "", fmt.Errorf("path literal %q is not canonical", value)
 	}
@@ -64,12 +64,12 @@ func providerID(name string) pathPart {
 	return pathParameter{name: name, kind: parameterProviderID}
 }
 
-func (part pathParameter) compile() (string, string, error) {
-	if !regexp.MustCompile(`^[a-z][a-z0-9_]*$`).MatchString(part.name) {
-		return "", "", fmt.Errorf("path parameter name %q is not canonical", part.name)
+func (p pathParameter) compile() (string, string, error) {
+	if !regexp.MustCompile(`^[a-z][a-z0-9_]*$`).MatchString(p.name) {
+		return "", "", fmt.Errorf("path parameter name %q is not canonical", p.name)
 	}
 	var pattern, normalized string
-	switch part.kind {
+	switch p.kind {
 	case parameterCanonicalID:
 		pattern = canonicalIDRoutePattern()
 		normalized = "canonical_id"
@@ -83,9 +83,9 @@ func (part pathParameter) compile() (string, string, error) {
 		pattern = providerIDRoutePattern()
 		normalized = "provider_id"
 	default:
-		return "", "", fmt.Errorf("path parameter %q has unsupported parameter kind %d", part.name, part.kind)
+		return "", "", fmt.Errorf("path parameter %q has unsupported parameter kind %d", p.name, p.kind)
 	}
-	return "{" + part.name + ":" + pattern + "}", "{" + normalized + "}", nil
+	return "{" + p.name + ":" + pattern + "}", "{" + normalized + "}", nil
 }
 
 type routePath struct {
@@ -101,16 +101,16 @@ func rootPath(parts ...pathPart) routePath {
 	return routePath{parts: append([]pathPart(nil), parts...), rootMounted: true}
 }
 
-func (path routePath) compile(apiPrefix string) (string, string, error) {
+func (p routePath) compile(apiPrefix string) (string, string, error) {
 	if apiPrefix == "" || !strings.HasPrefix(apiPrefix, "/") || strings.HasSuffix(apiPrefix, "/") {
 		return "", "", fmt.Errorf("API prefix %q is not canonical", apiPrefix)
 	}
-	if len(path.parts) == 0 {
+	if len(p.parts) == 0 {
 		return "", "", errors.New("route path is empty")
 	}
-	template := make([]string, 0, len(path.parts))
-	normalized := make([]string, 0, len(path.parts))
-	for _, part := range path.parts {
+	template := make([]string, 0, len(p.parts))
+	normalized := make([]string, 0, len(p.parts))
+	for _, part := range p.parts {
 		if part == nil {
 			return "", "", errors.New("route path contains a nil part")
 		}
@@ -122,7 +122,7 @@ func (path routePath) compile(apiPrefix string) (string, string, error) {
 		normalized = append(normalized, shape)
 	}
 	prefix := apiPrefix
-	if path.rootMounted {
+	if p.rootMounted {
 		prefix = ""
 	}
 	return prefix + "/" + strings.Join(template, "/"),

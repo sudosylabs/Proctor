@@ -22,8 +22,8 @@ const (
 	ExamSittingCanceled  ExamSittingState = "canceled"
 )
 
-func (state ExamSittingState) IsValid() bool {
-	switch state {
+func (s ExamSittingState) IsValid() bool {
+	switch s {
 	case ExamSittingScheduled, ExamSittingOpen, ExamSittingPaused, ExamSittingClosing, ExamSittingClosed, ExamSittingCanceled:
 		return true
 	default:
@@ -33,26 +33,26 @@ func (state ExamSittingState) IsValid() bool {
 
 // AllowsCandidateAdmission is the lifecycle-only half of admission. Current
 // Class membership and Attempt/Participation policy remain separate checks.
-func (state ExamSittingState) AllowsCandidateAdmission() bool {
-	return state == ExamSittingOpen
+func (s ExamSittingState) AllowsCandidateAdmission() bool {
+	return s == ExamSittingOpen
 }
 
 // AllowsCandidateMutation gates workspace writes and submission
 // before the later Attempt- and Participation-specific checks are applied.
-func (state ExamSittingState) AllowsCandidateMutation() bool {
-	return state == ExamSittingOpen
+func (s ExamSittingState) AllowsCandidateMutation() bool {
+	return s == ExamSittingOpen
 }
 
 // AllowsProtectedPresentation retains read-only authored material while a live
 // Sitting is paused; terminal and closing states expose no live candidate view.
-func (state ExamSittingState) AllowsProtectedPresentation() bool {
-	return state == ExamSittingOpen || state == ExamSittingPaused
+func (s ExamSittingState) AllowsProtectedPresentation() bool {
+	return s == ExamSittingOpen || s == ExamSittingPaused
 }
 
 // RequiresIntegrityMonitoring remains true through Pause even though mutable
 // candidate capabilities are blocked.
-func (state ExamSittingState) RequiresIntegrityMonitoring() bool {
-	return state == ExamSittingOpen || state == ExamSittingPaused
+func (s ExamSittingState) RequiresIntegrityMonitoring() bool {
+	return s == ExamSittingOpen || s == ExamSittingPaused
 }
 
 // ExamSitting is one scheduled delivery of an immutable Exam Revision to one
@@ -90,8 +90,8 @@ const (
 	ExamSittingReasonScheduledEndReached      ExamSittingReasonCode = "scheduled_end_reached"
 )
 
-func (reason ExamSittingReasonCode) IsValid() bool {
-	switch reason {
+func (r ExamSittingReasonCode) IsValid() bool {
+	switch r {
 	case ExamSittingReasonManagerCanceled, ExamSittingReasonScheduleElapsed,
 		ExamSittingReasonAcademicStructureInvalid, ExamSittingReasonManagerClosed,
 		ExamSittingReasonScheduledEndReached:
@@ -101,13 +101,13 @@ func (reason ExamSittingReasonCode) IsValid() bool {
 	}
 }
 
-func (reason ExamSittingReasonCode) isCancellation() bool {
-	return reason == ExamSittingReasonManagerCanceled || reason == ExamSittingReasonScheduleElapsed ||
-		reason == ExamSittingReasonAcademicStructureInvalid
+func (r ExamSittingReasonCode) isCancellation() bool {
+	return r == ExamSittingReasonManagerCanceled || r == ExamSittingReasonScheduleElapsed ||
+		r == ExamSittingReasonAcademicStructureInvalid
 }
 
-func (reason ExamSittingReasonCode) isClosing() bool {
-	return reason == ExamSittingReasonManagerClosed || reason == ExamSittingReasonScheduledEndReached
+func (r ExamSittingReasonCode) isClosing() bool {
+	return r == ExamSittingReasonManagerClosed || r == ExamSittingReasonScheduledEndReached
 }
 
 // NewExamSitting constructs a Scheduled Sitting. The application supplies

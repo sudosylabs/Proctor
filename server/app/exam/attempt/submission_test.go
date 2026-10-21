@@ -451,71 +451,71 @@ type submissionMailFake struct {
 	err     error
 }
 
-func (fake *submissionMailFake) PrepareSubmissionReceipt(_ context.Context, request SubmissionMailPreparation) (*PreparedSubmissionMail, error) {
-	fake.f.order = append(fake.f.order, "submission.mail")
-	fake.request = request
-	if fake.err != nil {
-		return nil, fake.err
+func (f *submissionMailFake) PrepareSubmissionReceipt(_ context.Context, request SubmissionMailPreparation) (*PreparedSubmissionMail, error) {
+	f.f.order = append(f.f.order, "submission.mail")
+	f.request = request
+	if f.err != nil {
+		return nil, f.err
 	}
 	return &PreparedSubmissionMail{Notice: &store.PreparedMail{Occurrence: &model.MailOccurrence{},
 		Delivery: &model.MailDelivery{}, Job: &model.Job{}}, ExpectedRecipientRevision: 2}, nil
 }
 
-func (fake *submissionStoreFake) ListAutomaticSealTargets(_ context.Context, options store.ExamSubmissionAutomaticSealListOptions) ([]store.ExamSubmissionAutomaticSealTarget, error) {
-	fake.automaticOptions = options
-	return fake.automaticTargets, fake.err
+func (f *submissionStoreFake) ListAutomaticSealTargets(_ context.Context, options store.ExamSubmissionAutomaticSealListOptions) ([]store.ExamSubmissionAutomaticSealTarget, error) {
+	f.automaticOptions = options
+	return f.automaticTargets, f.err
 }
 
-func (fake *submissionStoreFake) PrepareAutomaticSeal(context.Context, store.ExamSubmissionAutomaticSealTarget) (*store.ExamSubmissionAutomaticSealPreparation, error) {
-	return &store.ExamSubmissionAutomaticSealPreparation{Replayed: fake.automaticResult != nil && fake.automaticResult.Replayed,
-		SealAt: fake.f.at}, fake.err
+func (f *submissionStoreFake) PrepareAutomaticSeal(context.Context, store.ExamSubmissionAutomaticSealTarget) (*store.ExamSubmissionAutomaticSealPreparation, error) {
+	return &store.ExamSubmissionAutomaticSealPreparation{Replayed: f.automaticResult != nil && f.automaticResult.Replayed,
+		SealAt: f.f.at}, f.err
 }
 
-func (fake *submissionStoreFake) PrepareManagerEnd(_ context.Context, request store.ExamSubmissionManagerEndRequest) (*store.ExamSubmissionManagerEndPreparation, error) {
-	fake.managerRequest = request
-	return fake.managerPreparation, fake.err
+func (f *submissionStoreFake) PrepareManagerEnd(_ context.Context, request store.ExamSubmissionManagerEndRequest) (*store.ExamSubmissionManagerEndPreparation, error) {
+	f.managerRequest = request
+	return f.managerPreparation, f.err
 }
 
-func (fake *submissionStoreFake) EndByManager(_ context.Context, input *store.ExamSubmissionManagerEnd,
+func (f *submissionStoreFake) EndByManager(_ context.Context, input *store.ExamSubmissionManagerEnd,
 	idempotency *store.CommandIdempotency,
 ) (*store.ExamSubmissionManagerEndResult, error) {
-	fake.managerInput, fake.idempotency = input, idempotency
-	return fake.managerResult, fake.err
+	f.managerInput, f.idempotency = input, idempotency
+	return f.managerResult, f.err
 }
 
-func (fake *submissionStoreFake) SealForSittingClose(_ context.Context, input *store.ExamSubmissionAutomaticSeal) (*store.ExamSubmissionAutomaticSealResult, error) {
-	fake.automaticInput = input
-	return fake.automaticResult, fake.err
+func (f *submissionStoreFake) SealForSittingClose(_ context.Context, input *store.ExamSubmissionAutomaticSeal) (*store.ExamSubmissionAutomaticSealResult, error) {
+	f.automaticInput = input
+	return f.automaticResult, f.err
 }
 
-func (fake *submissionStoreFake) ResolveSealTarget(_ context.Context, access store.ExamSubmissionSealAccess) (*store.ExamSubmissionSealTarget, error) {
-	fake.f.order = append(fake.f.order, "submission.resolve")
-	fake.resolvedAccess = access
-	return fake.target, fake.err
+func (f *submissionStoreFake) ResolveSealTarget(_ context.Context, access store.ExamSubmissionSealAccess) (*store.ExamSubmissionSealTarget, error) {
+	f.f.order = append(f.f.order, "submission.resolve")
+	f.resolvedAccess = access
+	return f.target, f.err
 }
 
-func (fake *submissionStoreFake) Seal(_ context.Context, input *store.ExamSubmissionSeal, command *store.CommandIdempotency) (*store.ExamSubmissionSealResult, error) {
-	fake.f.order = append(fake.f.order, "submission.seal")
-	fake.seal, fake.idempotency = input, command
-	return fake.sealResult, fake.err
+func (f *submissionStoreFake) Seal(_ context.Context, input *store.ExamSubmissionSeal, command *store.CommandIdempotency) (*store.ExamSubmissionSealResult, error) {
+	f.f.order = append(f.f.order, "submission.seal")
+	f.seal, f.idempotency = input, command
+	return f.sealResult, f.err
 }
 
-func (fake *submissionStoreFake) Resolve(context.Context, model.SubmissionID) (*store.ExamSubmissionAuthorization, error) {
-	fake.f.order = append(fake.f.order, "submission.resolve_owner")
-	return fake.authorization, fake.err
+func (f *submissionStoreFake) Resolve(context.Context, model.SubmissionID) (*store.ExamSubmissionAuthorization, error) {
+	f.f.order = append(f.f.order, "submission.resolve_owner")
+	return f.authorization, f.err
 }
 
-func (fake *submissionStoreFake) Get(context.Context, model.SubmissionID) (*model.ExamSubmission, error) {
-	fake.f.order = append(fake.f.order, "submission.get")
-	return fake.submission, fake.err
+func (f *submissionStoreFake) Get(context.Context, model.SubmissionID) (*model.ExamSubmission, error) {
+	f.f.order = append(f.f.order, "submission.get")
+	return f.submission, f.err
 }
 
-func (fake *submissionStoreFake) ListManifest(_ context.Context, options store.ExamSubmissionManifestListOptions) (*store.ExamSubmissionManifestPage, error) {
-	fake.manifestOptions = options
-	return fake.manifest, fake.err
+func (f *submissionStoreFake) ListManifest(_ context.Context, options store.ExamSubmissionManifestListOptions) (*store.ExamSubmissionManifestPage, error) {
+	f.manifestOptions = options
+	return f.manifest, f.err
 }
 
-func (fake *submissionStoreFake) ResolveFile(context.Context, model.SubmissionID, model.AttemptWorkspaceEntryID) (*store.ExamSubmissionFileSelector, error) {
-	fake.f.order = append(fake.f.order, "submission.resolve_file")
-	return fake.file, fake.err
+func (f *submissionStoreFake) ResolveFile(context.Context, model.SubmissionID, model.AttemptWorkspaceEntryID) (*store.ExamSubmissionFileSelector, error) {
+	f.f.order = append(f.f.order, "submission.resolve_file")
+	return f.file, f.err
 }

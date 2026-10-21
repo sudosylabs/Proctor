@@ -46,12 +46,12 @@ func sessionReauthenticationResource(authentication SessionReauthentication, coo
 	)
 }
 
-func (module sessionReauthenticationResourceModule) password(request operationRequest) (operationResult, error) {
+func (m sessionReauthenticationResourceModule) password(request operationRequest) (operationResult, error) {
 	var input passwordReauthenticationRequest
 	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
-	session, err := module.authentication.ReauthenticatePassword(request.context, request.invocation(), application.ReauthenticatePasswordCommand{
+	session, err := m.authentication.ReauthenticatePassword(request.context, request.invocation(), application.ReauthenticatePasswordCommand{
 		Password: input.Password, Source: request.metadata.IPAddress,
 	})
 	if err != nil {
@@ -60,17 +60,17 @@ func (module sessionReauthenticationResourceModule) password(request operationRe
 	return jsonResult(http.StatusOK, sessionResponseFromModel(request.request, session)).withHeaders(noStoreHeaders()), nil
 }
 
-func (module sessionReauthenticationResourceModule) external(request operationRequest) (operationResult, error) {
+func (m sessionReauthenticationResourceModule) external(request operationRequest) (operationResult, error) {
 	var input externalReauthenticationRequest
 	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
-	start, err := module.authentication.BeginExternalReauthentication(request.context, request.invocation(), application.BeginExternalReauthenticationCommand{Task: input.Task, Source: request.metadata.IPAddress})
+	start, err := m.authentication.BeginExternalReauthentication(request.context, request.invocation(), application.BeginExternalReauthenticationCommand{Task: input.Task, Source: request.metadata.IPAddress})
 	if err != nil {
 		return operationResult{}, err
 	}
 	headers := captureResponseHeaders(func(writer http.ResponseWriter) {
-		module.cookies.attachExternalLoginBinding(writer, start.Binding, start.ExpiresAt)
+		m.cookies.attachExternalLoginBinding(writer, start.Binding, start.ExpiresAt)
 	})
 	return jsonResult(http.StatusOK, externalReauthenticationResponse{RedirectURL: start.RedirectURL}).withHeaders(combineResponseHeaders(headers, noStoreHeaders())), nil
 }

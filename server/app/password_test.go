@@ -245,8 +245,8 @@ func saturatePasswordWork(t *testing.T, hasher *passwordHasher) func() {
 
 type passwordHashFunc func(context.Context, string) (string, error)
 
-func (hash passwordHashFunc) Hash(ctx context.Context, password string) (string, error) {
-	return hash(ctx, password)
+func (h passwordHashFunc) Hash(ctx context.Context, password string) (string, error) {
+	return h(ctx, password)
 }
 
 func testPasswordHashFailures(t *testing.T, unavailableCode string, invoke func(*testing.T, context.Context, passwordHash) error) {

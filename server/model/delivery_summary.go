@@ -72,16 +72,16 @@ func SaturatingDeliveryCount(count, additional int64, complete bool) (int64, boo
 	return count + additional, complete, nil
 }
 
-func (v UnretainedDeliverySummary) MarshalJSON() ([]byte, error) {
+func (s UnretainedDeliverySummary) MarshalJSON() ([]byte, error) {
 	type wire UnretainedDeliverySummary
 	return json.Marshal(struct {
 		*wire
 		FirstUnretainedAt *securityJSONInstant `json:"first_unretained_at"`
 		LastUnretainedAt  *securityJSONInstant `json:"last_unretained_at"`
-	}{wire: (*wire)(&v), FirstUnretainedAt: optionalSecurityJSONInstant(v.FirstUnretainedAt, v.firstUnretainedAtSpelling), LastUnretainedAt: optionalSecurityJSONInstant(v.LastUnretainedAt, v.lastUnretainedAtSpelling)})
+	}{wire: (*wire)(&s), FirstUnretainedAt: optionalSecurityJSONInstant(s.FirstUnretainedAt, s.firstUnretainedAtSpelling), LastUnretainedAt: optionalSecurityJSONInstant(s.LastUnretainedAt, s.lastUnretainedAtSpelling)})
 }
-func (v *UnretainedDeliverySummary) UnmarshalJSON(raw []byte) error {
-	if v == nil {
+func (s *UnretainedDeliverySummary) UnmarshalJSON(raw []byte) error {
+	if s == nil {
 		return ErrDeliveryInvalid
 	}
 	type wire UnretainedDeliverySummary
@@ -106,6 +106,6 @@ func (v *UnretainedDeliverySummary) UnmarshalJSON(raw []byte) error {
 	if candidate.Validate() != nil {
 		return ErrDeliveryInvalid
 	}
-	*v = candidate
+	*s = candidate
 	return nil
 }

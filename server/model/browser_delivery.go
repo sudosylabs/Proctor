@@ -28,18 +28,18 @@ type BrowserStartTransition struct {
 	Reason                     BrowserSourceResetReason `json:"reason,omitempty"`
 }
 
-func (value BrowserStartTransition) Validate() error {
-	switch value.Kind {
+func (v BrowserStartTransition) Validate() error {
+	switch v.Kind {
 	case "initial":
-		if value.PredecessorSourceSessionID != "" || value.Reason != "" {
+		if v.PredecessorSourceSessionID != "" || v.Reason != "" {
 			return ErrDeliveryInvalid
 		}
 	case "policy_correction":
-		if !value.PredecessorSourceSessionID.IsValid() || value.Reason != "" {
+		if !v.PredecessorSourceSessionID.IsValid() || v.Reason != "" {
 			return ErrDeliveryInvalid
 		}
 	case "runtime_reset":
-		if !value.PredecessorSourceSessionID.IsValid() || !value.Reason.IsValid() {
+		if !v.PredecessorSourceSessionID.IsValid() || !v.Reason.IsValid() {
 			return ErrDeliveryInvalid
 		}
 	default:
@@ -47,17 +47,17 @@ func (value BrowserStartTransition) Validate() error {
 	}
 	return nil
 }
-func (value *BrowserStartTransition) UnmarshalJSON(raw []byte) error {
+func (v *BrowserStartTransition) UnmarshalJSON(raw []byte) error {
 	type wire BrowserStartTransition
 	var decoded wire
-	if value == nil || decodeClosedDeliveryDeclaration(raw, &decoded, 2048) != nil {
+	if v == nil || decodeClosedDeliveryDeclaration(raw, &decoded, 2048) != nil {
 		return ErrDeliveryInvalid
 	}
 	candidate := BrowserStartTransition(decoded)
 	if candidate.Validate() != nil {
 		return ErrDeliveryInvalid
 	}
-	*value = candidate
+	*v = candidate
 	return nil
 }
 
@@ -70,29 +70,29 @@ type BrowserSourceStart struct {
 	Transition       BrowserStartTransition `json:"transition"`
 }
 
-func (value BrowserSourceStart) Validate() error {
-	if !value.ParticipationID.IsValid() || value.Generation < 1 || !securitySafeInt(value.Generation) || !value.SourceSessionID.IsValid() || !value.PolicyRevisionID.IsValid() || !IsValidSHA256Fingerprint(value.PolicyDigest) || value.Transition.Validate() != nil || value.Transition.PredecessorSourceSessionID == value.SourceSessionID {
+func (v BrowserSourceStart) Validate() error {
+	if !v.ParticipationID.IsValid() || v.Generation < 1 || !securitySafeInt(v.Generation) || !v.SourceSessionID.IsValid() || !v.PolicyRevisionID.IsValid() || !IsValidSHA256Fingerprint(v.PolicyDigest) || v.Transition.Validate() != nil || v.Transition.PredecessorSourceSessionID == v.SourceSessionID {
 		return ErrDeliveryInvalid
 	}
 	return nil
 }
-func (value BrowserSourceStart) Canonical() ([]byte, error) {
-	if value.Validate() != nil {
+func (v BrowserSourceStart) Canonical() ([]byte, error) {
+	if v.Validate() != nil {
 		return nil, ErrDeliveryInvalid
 	}
-	return encodeCanonicalExamDocument(value)
+	return encodeCanonicalExamDocument(v)
 }
-func (value *BrowserSourceStart) UnmarshalJSON(raw []byte) error {
+func (v *BrowserSourceStart) UnmarshalJSON(raw []byte) error {
 	type wire BrowserSourceStart
 	var decoded wire
-	if value == nil || decodeClosedDeliveryDeclaration(raw, &decoded, 8192) != nil {
+	if v == nil || decodeClosedDeliveryDeclaration(raw, &decoded, 8192) != nil {
 		return ErrDeliveryInvalid
 	}
 	candidate := BrowserSourceStart(decoded)
 	if candidate.Validate() != nil {
 		return ErrDeliveryInvalid
 	}
-	*value = candidate
+	*v = candidate
 	return nil
 }
 
@@ -102,8 +102,8 @@ type BrowserEventReceipt struct {
 	ReceivedAt  time.Time `json:"received_at"`
 }
 
-func (value BrowserEventReceipt) Validate() error {
-	if value.Sequence < 1 || value.Sequence > BrowserParticipationPositionLimit || !IsValidSHA256Fingerprint(value.EventDigest) || !securityInstant(value.ReceivedAt) {
+func (v BrowserEventReceipt) Validate() error {
+	if v.Sequence < 1 || v.Sequence > BrowserParticipationPositionLimit || !IsValidSHA256Fingerprint(v.EventDigest) || !securityInstant(v.ReceivedAt) {
 		return ErrDeliveryInvalid
 	}
 	return nil
@@ -119,12 +119,12 @@ type BrowserDeliveryProgress struct {
 	MissingRangesTruncated bool            `json:"missing_ranges_truncated"`
 }
 
-func (value BrowserDeliveryProgress) Validate() error {
-	if value.HighestContiguous < 0 || value.SettledThrough < value.HighestContiguous || value.HighestSeen < value.HighestContiguous || value.AllocatedThrough < value.HighestSeen || value.AllocatedThrough < value.SettledThrough || value.AllocatedThrough > BrowserParticipationPositionLimit || value.TerminalMissingThrough < 0 || value.TerminalMissingThrough > value.AllocatedThrough || ValidateSequenceRanges(value.MissingRanges, 32) != nil {
+func (v BrowserDeliveryProgress) Validate() error {
+	if v.HighestContiguous < 0 || v.SettledThrough < v.HighestContiguous || v.HighestSeen < v.HighestContiguous || v.AllocatedThrough < v.HighestSeen || v.AllocatedThrough < v.SettledThrough || v.AllocatedThrough > BrowserParticipationPositionLimit || v.TerminalMissingThrough < 0 || v.TerminalMissingThrough > v.AllocatedThrough || ValidateSequenceRanges(v.MissingRanges, 32) != nil {
 		return ErrDeliveryInvalid
 	}
-	for _, r := range value.MissingRanges {
-		if r.First <= value.SettledThrough || r.Last > value.AllocatedThrough {
+	for _, r := range v.MissingRanges {
+		if r.First <= v.SettledThrough || r.Last > v.AllocatedThrough {
 			return ErrDeliveryInvalid
 		}
 	}
@@ -154,42 +154,42 @@ type BrowserSourceStatus struct {
 	ServerTime                  time.Time                  `json:"server_time"`
 }
 
-func (value BrowserSourceStatus) Validate() error {
-	if value.BrowserDeliveryProgress.Validate() != nil || !value.SourceSessionID.IsValid() || !value.AttemptID.IsValid() || !value.ParticipationID.IsValid() || value.Generation < 1 || !securitySafeInt(value.Generation) || !value.PolicyRevisionID.IsValid() || !IsValidSHA256Fingerprint(value.PolicyDigest) || !securityInstant(value.StartedAt) || !securityInstant(value.ServerTime) || value.Closure.Validate(false) != nil || !securitySafeInt(value.DeclarationRevision) || value.RemainingCorrectionStarts < 0 || value.RemainingCorrectionStarts > BrowserCorrectionStartLimit || value.RemainingRuntimeResetStarts < 0 || value.RemainingRuntimeResetStarts > BrowserRuntimeResetStartLimit {
+func (v BrowserSourceStatus) Validate() error {
+	if v.BrowserDeliveryProgress.Validate() != nil || !v.SourceSessionID.IsValid() || !v.AttemptID.IsValid() || !v.ParticipationID.IsValid() || v.Generation < 1 || !securitySafeInt(v.Generation) || !v.PolicyRevisionID.IsValid() || !IsValidSHA256Fingerprint(v.PolicyDigest) || !securityInstant(v.StartedAt) || !securityInstant(v.ServerTime) || v.Closure.Validate(false) != nil || !securitySafeInt(v.DeclarationRevision) || v.RemainingCorrectionStarts < 0 || v.RemainingCorrectionStarts > BrowserCorrectionStartLimit || v.RemainingRuntimeResetStarts < 0 || v.RemainingRuntimeResetStarts > BrowserRuntimeResetStartLimit {
 		return ErrDeliveryInvalid
 	}
-	transition := BrowserStartTransition{Kind: value.StartTransition}
-	if value.PredecessorSourceSessionID != nil {
-		transition.PredecessorSourceSessionID = *value.PredecessorSourceSessionID
+	transition := BrowserStartTransition{Kind: v.StartTransition}
+	if v.PredecessorSourceSessionID != nil {
+		transition.PredecessorSourceSessionID = *v.PredecessorSourceSessionID
 	}
-	if value.RuntimeResetReason != nil {
-		transition.Reason = *value.RuntimeResetReason
+	if v.RuntimeResetReason != nil {
+		transition.Reason = *v.RuntimeResetReason
 	}
 	if transition.Validate() != nil {
 		return ErrDeliveryInvalid
 	}
-	switch value.DetailMode {
+	switch v.DetailMode {
 	case "collecting":
-		if value.BudgetScope != nil || value.SummaryOnlyReason != nil {
+		if v.BudgetScope != nil || v.SummaryOnlyReason != nil {
 			return ErrDeliveryInvalid
 		}
 	case "summary_only":
-		if value.BudgetScope == nil || (*value.BudgetScope != "attempt" && *value.BudgetScope != "participation") || value.SummaryOnlyReason == nil {
+		if v.BudgetScope == nil || (*v.BudgetScope != "attempt" && *v.BudgetScope != "participation") || v.SummaryOnlyReason == nil {
 			return ErrDeliveryInvalid
 		}
 		quota := NewDeliveryQuotaUsage(false, false)
 		quota.SummaryOnly = true
-		quota.StopReason = value.SummaryOnlyReason
+		quota.StopReason = v.SummaryOnlyReason
 		if quota.Validate() != nil {
 			return ErrDeliveryInvalid
 		}
 	default:
 		return ErrDeliveryInvalid
 	}
-	if value.Summary != nil && value.Summary.Validate() != nil {
+	if v.Summary != nil && v.Summary.Validate() != nil {
 		return ErrDeliveryInvalid
 	}
-	raw, err := json.Marshal(value)
+	raw, err := json.Marshal(v)
 	if err != nil || len(raw) > 16*1024 {
 		return ErrDeliveryInvalid
 	}
@@ -294,32 +294,32 @@ type BrowserActivityBatch struct {
 	Events           []BrowserActivityEvent `json:"events"`
 }
 
-func (value BrowserActivityBatch) Validate() error {
-	if !value.SourceSessionID.IsValid() || !value.ParticipationID.IsValid() || value.Generation < 1 || !securitySafeInt(value.Generation) || !value.PolicyRevisionID.IsValid() || !IsValidSHA256Fingerprint(value.PolicyDigest) || len(value.Events) < 1 || len(value.Events) > 64 {
+func (v BrowserActivityBatch) Validate() error {
+	if !v.SourceSessionID.IsValid() || !v.ParticipationID.IsValid() || v.Generation < 1 || !securitySafeInt(v.Generation) || !v.PolicyRevisionID.IsValid() || !IsValidSHA256Fingerprint(v.PolicyDigest) || len(v.Events) < 1 || len(v.Events) > 64 {
 		return ErrDeliveryInvalid
 	}
-	for i, event := range value.Events {
-		if event.ValidateClientRecord() != nil || event.PolicyRevisionID != value.PolicyRevisionID || i > 0 && event.Sequence <= value.Events[i-1].Sequence {
+	for i, event := range v.Events {
+		if event.ValidateClientRecord() != nil || event.PolicyRevisionID != v.PolicyRevisionID || i > 0 && event.Sequence <= v.Events[i-1].Sequence {
 			return ErrDeliveryInvalid
 		}
 	}
-	raw, err := encodeCanonicalExamDocument(value)
+	raw, err := encodeCanonicalExamDocument(v)
 	if err != nil || len(raw) > BrowserActivityAppendMaximumBytes {
 		return ErrDeliveryInvalid
 	}
 	return nil
 }
-func (value *BrowserActivityBatch) UnmarshalJSON(raw []byte) error {
+func (v *BrowserActivityBatch) UnmarshalJSON(raw []byte) error {
 	type wire BrowserActivityBatch
 	var decoded wire
-	if value == nil || decodeClosedDeliveryDeclaration(raw, &decoded, BrowserActivityAppendMaximumBytes) != nil {
+	if v == nil || decodeClosedDeliveryDeclaration(raw, &decoded, BrowserActivityAppendMaximumBytes) != nil {
 		return ErrDeliveryInvalid
 	}
 	candidate := BrowserActivityBatch(decoded)
 	if candidate.Validate() != nil {
 		return ErrDeliveryInvalid
 	}
-	*value = candidate
+	*v = candidate
 	return nil
 }
 

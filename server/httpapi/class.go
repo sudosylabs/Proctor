@@ -112,7 +112,7 @@ func classMutationErrorCodes(specific ...string) []string {
 	return append(codes, "administration.unavailable")
 }
 
-func (module classResourceModule) search(request operationRequest) (operationResult, error) {
+func (m classResourceModule) search(request operationRequest) (operationResult, error) {
 	academicUnitID, err := request.params.RequireAcademicUnitID()
 	if err != nil {
 		return operationResult{}, err
@@ -121,7 +121,7 @@ func (module classResourceModule) search(request operationRequest) (operationRes
 	if err != nil {
 		return operationResult{}, err
 	}
-	classes, err := module.classes.SearchClasses(
+	classes, err := m.classes.SearchClasses(
 		request.context,
 		request.invocation(),
 		application.SearchClassesQuery{
@@ -136,12 +136,12 @@ func (module classResourceModule) search(request operationRequest) (operationRes
 	return jsonResult(http.StatusOK, classResponses(classes)), nil
 }
 
-func (module classResourceModule) list(request operationRequest) (operationResult, error) {
+func (m classResourceModule) list(request operationRequest) (operationResult, error) {
 	programmeLevelID, err := request.params.RequireProgrammeLevelID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	classes, err := module.classes.ListClasses(
+	classes, err := m.classes.ListClasses(
 		request.context,
 		request.invocation(),
 		application.ListClassesQuery{ProgrammeLevelID: programmeLevelID},
@@ -152,7 +152,7 @@ func (module classResourceModule) list(request operationRequest) (operationResul
 	return jsonResult(http.StatusOK, classResponses(classes)), nil
 }
 
-func (module classResourceModule) create(request operationRequest) (operationResult, error) {
+func (m classResourceModule) create(request operationRequest) (operationResult, error) {
 	programmeLevelID, err := request.params.RequireProgrammeLevelID()
 	if err != nil {
 		return operationResult{}, err
@@ -161,7 +161,7 @@ func (module classResourceModule) create(request operationRequest) (operationRes
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	class, err := module.classes.CreateClass(
+	class, err := m.classes.CreateClass(
 		request.context,
 		request.invocation(),
 		application.CreateClassCommand{
@@ -178,12 +178,12 @@ func (module classResourceModule) create(request operationRequest) (operationRes
 	return jsonResult(http.StatusCreated, classResponseFromModel(class)), nil
 }
 
-func (module classResourceModule) get(request operationRequest) (operationResult, error) {
+func (m classResourceModule) get(request operationRequest) (operationResult, error) {
 	id, err := request.params.RequireClassID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	class, err := module.classes.GetClass(
+	class, err := m.classes.GetClass(
 		request.context,
 		request.invocation(),
 		application.GetClassQuery{ID: id},
@@ -194,7 +194,7 @@ func (module classResourceModule) get(request operationRequest) (operationResult
 	return jsonResult(http.StatusOK, classResponseFromModel(class)), nil
 }
 
-func (module classResourceModule) patch(request operationRequest) (operationResult, error) {
+func (m classResourceModule) patch(request operationRequest) (operationResult, error) {
 	id, err := request.params.RequireClassID()
 	if err != nil {
 		return operationResult{}, err
@@ -206,7 +206,7 @@ func (module classResourceModule) patch(request operationRequest) (operationResu
 	if err := validateAcademicRevision(body.ExpectedRevision); err != nil {
 		return operationResult{}, err
 	}
-	class, err := module.classes.UpdateClass(
+	class, err := m.classes.UpdateClass(
 		request.context,
 		request.invocation(),
 		application.UpdateClassCommand{ExpectedRevision: body.ExpectedRevision.ValuePointer(),
@@ -224,7 +224,7 @@ func (module classResourceModule) patch(request operationRequest) (operationResu
 	return jsonResult(http.StatusOK, classResponseFromModel(class)), nil
 }
 
-func (module classResourceModule) archive(request operationRequest) (operationResult, error) {
+func (m classResourceModule) archive(request operationRequest) (operationResult, error) {
 	id, err := request.params.RequireClassID()
 	if err != nil {
 		return operationResult{}, err
@@ -233,7 +233,7 @@ func (module classResourceModule) archive(request operationRequest) (operationRe
 	if err != nil {
 		return operationResult{}, err
 	}
-	if err := module.classes.ArchiveClass(
+	if err := m.classes.ArchiveClass(
 		request.context,
 		request.invocation(),
 		application.ArchiveClassCommand{ExpectedRevision: expectedRevision, ID: id},

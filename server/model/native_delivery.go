@@ -49,12 +49,12 @@ type NativeOccurrence struct {
 	SourceRanges    []NativeSourceRange   `json:"source_ranges"`
 }
 
-func (o NativeOccurrence) Validate() error {
-	if o.Kind != "occurrence" || !IsValidAgreementID(o.OccurrenceID) || !IsValidAgreementID(o.ConditionID) || !IsValidAgreementID(o.DetectorID) || o.DetectorVersion <= 0 || !securitySafeInt(o.DetectorVersion) || !IsValidAgreementID(o.CapabilityID) || !slices.Contains([]NativeCapabilityClaim{NativeClaimObserve, NativeClaimEnforce}, o.Mode) || !slices.Contains([]string{"opened", "repeated", "recovered"}, o.Status) || !securityInstant(o.FirstObservedAt) || !securityInstant(o.LastConfirmedAt) || o.RepeatCount <= 0 || !securitySafeInt(o.RepeatCount) || !slices.Contains([]string{"complete", "partial", "unknown"}, o.Certainty) || !securitySafeInt(o.GapCount) || len(o.SourceRanges) == 0 || len(o.SourceRanges) > 11 {
+func (v NativeOccurrence) Validate() error {
+	if v.Kind != "occurrence" || !IsValidAgreementID(v.OccurrenceID) || !IsValidAgreementID(v.ConditionID) || !IsValidAgreementID(v.DetectorID) || v.DetectorVersion <= 0 || !securitySafeInt(v.DetectorVersion) || !IsValidAgreementID(v.CapabilityID) || !slices.Contains([]NativeCapabilityClaim{NativeClaimObserve, NativeClaimEnforce}, v.Mode) || !slices.Contains([]string{"opened", "repeated", "recovered"}, v.Status) || !securityInstant(v.FirstObservedAt) || !securityInstant(v.LastConfirmedAt) || v.RepeatCount <= 0 || !securitySafeInt(v.RepeatCount) || !slices.Contains([]string{"complete", "partial", "unknown"}, v.Certainty) || !securitySafeInt(v.GapCount) || len(v.SourceRanges) == 0 || len(v.SourceRanges) > 11 {
 		return ErrNativeDeliveryInvalid
 	}
 	previous := -1
-	for _, r := range o.SourceRanges {
+	for _, r := range v.SourceRanges {
 		order := slices.Index(NativeSources(), r.SourceID)
 		if order <= previous || !IsValidAgreementID(r.SourceInstanceID) || !securitySafeInt(r.FirstSequence) || !securitySafeInt(r.LastSequence) || r.LastSequence < r.FirstSequence {
 			return ErrNativeDeliveryInvalid
@@ -94,8 +94,8 @@ type NativeSourceGap struct {
 	OccurredAt           time.Time      `json:"occurred_at"`
 }
 
-func (g NativeSourceGap) Validate() error {
-	if g.Kind != "source_gap" || !slices.Contains(NativeSources(), g.SourceID) || !IsValidAgreementID(g.SourceInstanceID) || !securitySafeInt(g.FirstMissingSequence) || !securitySafeInt(g.LastMissingSequence) || g.LastMissingSequence < g.FirstMissingSequence || !slices.Contains([]string{"overflow", "source_loss", "corruption"}, g.Reason) || !securityInstant(g.OccurredAt) {
+func (v NativeSourceGap) Validate() error {
+	if v.Kind != "source_gap" || !slices.Contains(NativeSources(), v.SourceID) || !IsValidAgreementID(v.SourceInstanceID) || !securitySafeInt(v.FirstMissingSequence) || !securitySafeInt(v.LastMissingSequence) || v.LastMissingSequence < v.FirstMissingSequence || !slices.Contains([]string{"overflow", "source_loss", "corruption"}, v.Reason) || !securityInstant(v.OccurredAt) {
 		return ErrNativeDeliveryInvalid
 	}
 	return nil

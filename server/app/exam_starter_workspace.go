@@ -31,15 +31,15 @@ type RemoveExamStarterWorkspaceEntryCommand = examworkspace.RemoveEntryCommand
 
 type examStarterWorkspaceRealtimeEffects struct{ realtime *realtimeService }
 
-func (effects examStarterWorkspaceRealtimeEffects) Changed(ctx context.Context, examID model.ExamID, entryID model.StarterWorkspaceEntryID, draftRevision int64, operation examworkspace.ChangeOperation, changedAt time.Time) error {
+func (e examStarterWorkspaceRealtimeEffects) Changed(ctx context.Context, examID model.ExamID, entryID model.StarterWorkspaceEntryID, draftRevision int64, operation examworkspace.ChangeOperation, changedAt time.Time) error {
 	event, err := apprealtime.NewExamStarterWorkspaceChangedEvent(examID, entryID, draftRevision, string(operation), changedAt)
 	if err != nil {
 		return err
 	}
-	return effects.realtime.PublishRealtimeEvent(ctx, event)
+	return e.realtime.PublishRealtimeEvent(ctx, event)
 }
-func (effects examStarterWorkspaceRealtimeEffects) Report(ctx context.Context, operation string, err error) {
-	effects.realtime.reportTransientFailure(ctx, operation, err)
+func (e examStarterWorkspaceRealtimeEffects) Report(ctx context.Context, operation string, err error) {
+	e.realtime.reportTransientFailure(ctx, operation, err)
 }
 
 var _ examworkspace.Authorizer = (*accessControlService)(nil)

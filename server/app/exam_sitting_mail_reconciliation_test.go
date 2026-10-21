@@ -42,18 +42,18 @@ type sittingMailReconciliationStoreFake struct {
 	reconciled *store.ExamSittingMailReconciliation
 }
 
-func (fake *sittingMailReconciliationStoreFake) ListMailReconciliationDue(context.Context,
+func (f *sittingMailReconciliationStoreFake) ListMailReconciliationDue(context.Context,
 	store.ExamSittingMailReconciliationOptions,
 ) ([]store.ExamSittingMailReconciliationCandidate, error) {
-	result := fake.candidates
-	fake.candidates = nil
+	result := f.candidates
+	f.candidates = nil
 	return result, nil
 }
 
-func (fake *sittingMailReconciliationStoreFake) ReconcileMail(_ context.Context,
+func (f *sittingMailReconciliationStoreFake) ReconcileMail(_ context.Context,
 	input *store.ExamSittingMailReconciliation,
 ) (*store.ExamSittingMailFanoutSnapshot, error) {
-	fake.reconciled = input
+	f.reconciled = input
 	return &store.ExamSittingMailFanoutSnapshot{}, nil
 }
 
@@ -62,9 +62,9 @@ type sittingMailReconciliationPreparerFake struct {
 	prepared *store.ExamSittingMailFanout
 }
 
-func (fake *sittingMailReconciliationPreparerFake) Prepare(_ context.Context,
+func (f *sittingMailReconciliationPreparerFake) Prepare(_ context.Context,
 	request examsitting.ScheduleMailRequest,
 ) (*store.ExamSittingMailFanout, error) {
-	fake.request = request
-	return fake.prepared, nil
+	f.request = request
+	return f.prepared, nil
 }

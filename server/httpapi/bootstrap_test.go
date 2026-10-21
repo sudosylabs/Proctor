@@ -25,8 +25,8 @@ type systemHTTPHealth struct {
 	ready bool
 }
 
-func (health systemHTTPHealth) Live() bool  { return health.live }
-func (health systemHTTPHealth) Ready() bool { return health.ready }
+func (h systemHTTPHealth) Live() bool  { return h.live }
+func (h systemHTTPHealth) Ready() bool { return h.ready }
 
 func TestSystemResourceReturnsTypedUnhealthyProblemThroughKernel(t *testing.T) {
 	t.Parallel()

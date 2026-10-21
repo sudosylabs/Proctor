@@ -50,8 +50,8 @@ type examSittingSealingHandler struct {
 	service ExamSittingSealingService
 }
 
-func (handler examSittingSealingHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
-	if handler.service == nil || execution.Job == nil || execution.Attempt == nil || !execution.Job.ID.IsValid() ||
+func (h examSittingSealingHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
+	if h.service == nil || execution.Job == nil || execution.Attempt == nil || !execution.Job.ID.IsValid() ||
 		!execution.Attempt.ID.IsValid() {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("Exam Sitting sealing execution is incomplete"))
 	}
@@ -82,7 +82,7 @@ func (handler examSittingSealingHandler) Run(ctx context.Context, execution jobe
 	remaining := examSittingSealingMaximumWork - execution.Job.WorkReserved
 	for remaining > 0 {
 		limit := min(remaining, examSittingSealingPageSize)
-		page, listErr := handler.service.ListExamSittingSealTargetsFromJob(ctx, command.ExamSittingID,
+		page, listErr := h.service.ListExamSittingSealTargetsFromJob(ctx, command.ExamSittingID,
 			checkpoint.AfterAttemptID, limit)
 		if listErr != nil {
 			return examSittingSealingFailure(listErr)
@@ -91,7 +91,7 @@ func (handler examSittingSealingHandler) Run(ctx context.Context, execution jobe
 			return jobengine.PermanentFailure("job.invariant_failed", errors.New("Exam Sitting sealing returned an oversized page"))
 		}
 		if len(page) == 0 {
-			return handler.finishPass(ctx, execution, command, checkpoint, false)
+			return h.finishPass(ctx, execution, command, checkpoint, false)
 		}
 		for _, target := range page {
 			if target.SittingID != command.ExamSittingID || (!checkpoint.AfterAttemptID.IsZero() &&
@@ -103,9 +103,9 @@ func (handler examSittingSealingHandler) Run(ctx context.Context, execution jobe
 				return jobengine.RetryableFailure("dependency.unavailable", reserveErr)
 			}
 			if !reserved {
-				return handler.finishPass(ctx, execution, command, checkpoint, true)
+				return h.finishPass(ctx, execution, command, checkpoint, true)
 			}
-			sealed, sealErr := handler.service.SealExamAttemptForSittingCloseFromJob(ctx, target,
+			sealed, sealErr := h.service.SealExamAttemptForSittingCloseFromJob(ctx, target,
 				execution.Job.ID, execution.Attempt.ID)
 			if sealErr != nil {
 				return examSittingSealingFailure(sealErr)
@@ -124,16 +124,16 @@ func (handler examSittingSealingHandler) Run(ctx context.Context, execution jobe
 			}
 		}
 		if len(page) < limit {
-			return handler.finishPass(ctx, execution, command, checkpoint, false)
+			return h.finishPass(ctx, execution, command, checkpoint, false)
 		}
 	}
-	return handler.finishPass(ctx, execution, command, checkpoint, true)
+	return h.finishPass(ctx, execution, command, checkpoint, true)
 }
 
-func (handler examSittingSealingHandler) finishPass(ctx context.Context, execution jobengine.Execution,
+func (h examSittingSealingHandler) finishPass(ctx context.Context, execution jobengine.Execution,
 	command model.ExamSittingLifecycleCommandV1, checkpoint ExamSittingSealingCheckpointV1, continueIfClosing bool,
 ) jobengine.Outcome {
-	finished := handler.finish(ctx, execution, command.ExamSittingID, checkpoint)
+	finished := h.finish(ctx, execution, command.ExamSittingID, checkpoint)
 	if finished.Kind != jobengine.OutcomeSucceeded || len(finished.Result) == 0 {
 		return finished
 	}
@@ -151,7 +151,7 @@ func (handler examSittingSealingHandler) finishPass(ctx context.Context, executi
 		return jobengine.RetryableFailure("dependency.unavailable",
 			errors.New("Exam Sitting sealing has unfinished state without a sealable Attempt"))
 	}
-	return handler.continuePass(ctx, execution, command, result)
+	return h.continuePass(ctx, execution, command, result)
 }
 
 func decodeExamSittingSealingCheckpoint(version int, document json.RawMessage) (ExamSittingSealingCheckpointV1, error) {
@@ -188,10 +188,10 @@ func checkpointExamSittingSealing(ctx context.Context, execution jobengine.Execu
 		Document: document})
 }
 
-func (handler examSittingSealingHandler) finish(ctx context.Context, execution jobengine.Execution,
+func (h examSittingSealingHandler) finish(ctx context.Context, execution jobengine.Execution,
 	sittingID model.ExamSittingID, checkpoint ExamSittingSealingCheckpointV1,
 ) jobengine.Outcome {
-	result, err := handler.service.FinishExamSittingSealingFromJob(ctx, sittingID, execution.Job.ID, execution.Attempt.ID)
+	result, err := h.service.FinishExamSittingSealingFromJob(ctx, sittingID, execution.Job.ID, execution.Attempt.ID)
 	if err != nil {
 		return examSittingSealingFailure(err)
 	}
@@ -206,10 +206,10 @@ func (handler examSittingSealingHandler) finish(ctx context.Context, execution j
 	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: document}
 }
 
-func (handler examSittingSealingHandler) continuePass(ctx context.Context, execution jobengine.Execution,
+func (h examSittingSealingHandler) continuePass(ctx context.Context, execution jobengine.Execution,
 	command model.ExamSittingLifecycleCommandV1, result ExamSittingSealingResultV1,
 ) jobengine.Outcome {
-	if err := handler.service.EnqueueExamSittingSealingContinuationFromJob(ctx, command.ExamSittingID,
+	if err := h.service.EnqueueExamSittingSealingContinuationFromJob(ctx, command.ExamSittingID,
 		execution.Job.ID); err != nil {
 		return examSittingSealingFailure(err)
 	}

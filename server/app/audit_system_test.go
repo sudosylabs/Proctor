@@ -72,12 +72,12 @@ type systemAuditStoreFake struct {
 	saved *model.AuditEvent
 }
 
-func (fake *systemAuditStoreFake) Save(_ context.Context, event *model.AuditEvent) (*model.AuditEvent, error) {
+func (f *systemAuditStoreFake) Save(_ context.Context, event *model.AuditEvent) (*model.AuditEvent, error) {
 	copy := event.Clone()
 	copy.PrepareCreate(model.NewAuditEventID(), time.Date(2026, time.August, 16, 9, 0, 0, 0, time.UTC))
 	if err := copy.Validate(); err != nil {
 		return nil, err
 	}
-	fake.saved = copy.Clone()
+	f.saved = copy.Clone()
 	return copy, nil
 }

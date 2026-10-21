@@ -152,41 +152,41 @@ type examSittingSealingFake struct {
 	continuationParentID  model.JobID
 }
 
-func (fake *examSittingSealingFake) ListExamSittingSealTargetsFromJob(_ context.Context, _ model.ExamSittingID,
+func (f *examSittingSealingFake) ListExamSittingSealTargetsFromJob(_ context.Context, _ model.ExamSittingID,
 	after model.ExamAttemptID, limit int,
 ) ([]store.ExamSubmissionAutomaticSealTarget, error) {
 	start := 0
 	if !after.IsZero() {
-		for index := range fake.targets {
-			if fake.targets[index].AttemptID == after {
+		for index := range f.targets {
+			if f.targets[index].AttemptID == after {
 				start = index + 1
 				break
 			}
 		}
 	}
-	end := min(start+limit, len(fake.targets))
-	return append([]store.ExamSubmissionAutomaticSealTarget(nil), fake.targets[start:end]...), nil
+	end := min(start+limit, len(f.targets))
+	return append([]store.ExamSubmissionAutomaticSealTarget(nil), f.targets[start:end]...), nil
 }
 
-func (fake *examSittingSealingFake) SealExamAttemptForSittingCloseFromJob(_ context.Context,
+func (f *examSittingSealingFake) SealExamAttemptForSittingCloseFromJob(_ context.Context,
 	target store.ExamSubmissionAutomaticSealTarget, _ model.JobID, _ model.JobAttemptID,
 ) (examattempt.AutomaticSubmissionResult, error) {
-	fake.sealed = append(fake.sealed, target.AttemptID)
+	f.sealed = append(f.sealed, target.AttemptID)
 	return examattempt.AutomaticSubmissionResult{}, nil
 }
 
-func (fake *examSittingSealingFake) FinishExamSittingSealingFromJob(context.Context, model.ExamSittingID,
+func (f *examSittingSealingFake) FinishExamSittingSealingFromJob(context.Context, model.ExamSittingID,
 	model.JobID, model.JobAttemptID,
 ) (*store.ExamSittingLifecycleResult, error) {
-	fake.finishCalls++
-	return fake.finish, nil
+	f.finishCalls++
+	return f.finish, nil
 }
 
-func (fake *examSittingSealingFake) EnqueueExamSittingSealingContinuationFromJob(_ context.Context,
+func (f *examSittingSealingFake) EnqueueExamSittingSealingContinuationFromJob(_ context.Context,
 	sittingID model.ExamSittingID, parentID model.JobID,
 ) error {
-	fake.continuationCalls++
-	fake.continuationSittingID, fake.continuationParentID = sittingID, parentID
+	f.continuationCalls++
+	f.continuationSittingID, f.continuationParentID = sittingID, parentID
 	return nil
 }
 

@@ -31,8 +31,8 @@ type academicUnitMemberEffectsFake struct {
 	users []string
 }
 
-func (fake *academicUnitMemberEffectsFake) InvalidateAuthorization(_ context.Context, userID string) {
-	fake.users = append(fake.users, userID)
+func (f *academicUnitMemberEffectsFake) InvalidateAuthorization(_ context.Context, userID string) {
+	f.users = append(f.users, userID)
 }
 
 func (s *academicUnitMemberStoreFake) Get(context.Context, model.AcademicUnitMemberID) (*model.AcademicUnitMember, error) {

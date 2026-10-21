@@ -22,21 +22,21 @@ type periodicTestRunner struct {
 	seen  chan struct{}
 }
 
-func (runner *periodicTestRunner) Run(context.Context) error {
-	runner.mu.Lock()
-	runner.calls++
-	runner.mu.Unlock()
+func (r *periodicTestRunner) Run(context.Context) error {
+	r.mu.Lock()
+	r.calls++
+	r.mu.Unlock()
 	select {
-	case runner.seen <- struct{}{}:
+	case r.seen <- struct{}{}:
 	default:
 	}
-	return runner.err
+	return r.err
 }
 
-func (runner *periodicTestRunner) count() int {
-	runner.mu.Lock()
-	defer runner.mu.Unlock()
-	return runner.calls
+func (r *periodicTestRunner) count() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.calls
 }
 
 func TestClonePeriodicTasksValidatesAndClones(t *testing.T) {
@@ -187,9 +187,9 @@ func waitPeriodicTimer(t *testing.T, timers <-chan *manualTimer) *manualTimer {
 
 type recordingPeriodicDiagnostics struct{ seen chan struct{} }
 
-func (diagnostics *recordingPeriodicDiagnostics) ErrorContext(context.Context, string, error) {
+func (d *recordingPeriodicDiagnostics) ErrorContext(context.Context, string, error) {
 	select {
-	case diagnostics.seen <- struct{}{}:
+	case d.seen <- struct{}{}:
 	default:
 	}
 }

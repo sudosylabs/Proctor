@@ -100,12 +100,12 @@ func browserInvitationResource(application BrowserInvitationApplication, cookies
 	)
 }
 
-func (module browserInvitationResourceModule) start(request operationRequest) (operationResult, error) {
+func (m browserInvitationResourceModule) start(request operationRequest) (operationResult, error) {
 	var body browserInvitationStartRequest
 	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	started, err := module.application.StartBrowserInvitation(
+	started, err := m.application.StartBrowserInvitation(
 		request.context,
 		request.invocation(),
 		application.StartBrowserInvitationCommand{Claim: body.Claim, Source: request.metadata.IPAddress},
@@ -114,7 +114,7 @@ func (module browserInvitationResourceModule) start(request operationRequest) (o
 		return operationResult{}, err
 	}
 	headers := captureResponseHeaders(func(writer http.ResponseWriter) {
-		module.cookies.attachInvitationProof(writer, started.BrowserProof, started.ExpiresAt)
+		m.cookies.attachInvitationProof(writer, started.BrowserProof, started.ExpiresAt)
 	})
 	headers.Set("Cache-Control", "no-store")
 	return jsonResult(http.StatusCreated, browserInvitationStartResponse{
@@ -123,13 +123,13 @@ func (module browserInvitationResourceModule) start(request operationRequest) (o
 	}).withHeaders(headers), nil
 }
 
-func (module browserInvitationResourceModule) accept(request operationRequest) (operationResult, error) {
+func (m browserInvitationResourceModule) accept(request operationRequest) (operationResult, error) {
 	var body browserInvitationAcceptanceRequest
 	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	proof := module.proof(request.request)
-	accepted, err := module.application.AcceptBrowserInvitation(
+	proof := m.proof(request.request)
+	accepted, err := m.application.AcceptBrowserInvitation(
 		request.context,
 		request.invocation(),
 		application.BrowserInvitationAcceptanceCommand{
@@ -141,16 +141,16 @@ func (module browserInvitationResourceModule) accept(request operationRequest) (
 	if err != nil {
 		return operationResult{}, err
 	}
-	return jsonResult(http.StatusOK, invitationAcceptanceResponseFromView(accepted)).withHeaders(module.successHeaders()), nil
+	return jsonResult(http.StatusOK, invitationAcceptanceResponseFromView(accepted)).withHeaders(m.successHeaders()), nil
 }
 
-func (module browserInvitationResourceModule) acceptWithSession(request operationRequest) (operationResult, error) {
+func (m browserInvitationResourceModule) acceptWithSession(request operationRequest) (operationResult, error) {
 	var body browserInvitationSessionAcceptanceRequest
 	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	proof := module.proof(request.request)
-	accepted, err := module.application.AcceptBrowserInvitationWithSession(
+	proof := m.proof(request.request)
+	accepted, err := m.application.AcceptBrowserInvitationWithSession(
 		request.context,
 		request.invocation(),
 		application.BrowserInvitationSessionAcceptanceCommand{
@@ -160,13 +160,13 @@ func (module browserInvitationResourceModule) acceptWithSession(request operatio
 	if err != nil {
 		return operationResult{}, err
 	}
-	return jsonResult(http.StatusOK, invitationAcceptanceResponseFromView(accepted)).withHeaders(module.successHeaders()), nil
+	return jsonResult(http.StatusOK, invitationAcceptanceResponseFromView(accepted)).withHeaders(m.successHeaders()), nil
 }
 
 // proof returns the browser proof cookie, or "" when it is absent or
 // ambiguous. The application owns the decision and rejects a missing proof as
 // invitation.invalid.
-func (module browserInvitationResourceModule) proof(request *http.Request) string {
+func (m browserInvitationResourceModule) proof(request *http.Request) string {
 	proof, err := singleCookieValue(request, BrowserInvitationProofCookieName)
 	if err != nil {
 		return ""
@@ -174,8 +174,8 @@ func (module browserInvitationResourceModule) proof(request *http.Request) strin
 	return proof
 }
 
-func (module browserInvitationResourceModule) successHeaders() http.Header {
-	headers := captureResponseHeaders(module.cookies.clearInvitationProof)
+func (m browserInvitationResourceModule) successHeaders() http.Header {
+	headers := captureResponseHeaders(m.cookies.clearInvitationProof)
 	headers.Set("Cache-Control", "no-store")
 	return headers
 }

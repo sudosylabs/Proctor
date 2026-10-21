@@ -95,33 +95,33 @@ type terminalExamIntegrityReviewRequest struct {
 	ExpectedReviewRevision int64  `json:"expected_review_revision"`
 }
 
-func (body *saveExamIntegrityDecisionRequest) UnmarshalJSON(encoded []byte) error {
+func (b *saveExamIntegrityDecisionRequest) UnmarshalJSON(encoded []byte) error {
 	type wire saveExamIntegrityDecisionRequest
 	var decoded wire
 	if err := decodeDuplicateFreeExamIntegrityReviewObject(encoded, &decoded); err != nil {
 		return err
 	}
-	*body = saveExamIntegrityDecisionRequest(decoded)
+	*b = saveExamIntegrityDecisionRequest(decoded)
 	return nil
 }
 
-func (body *updateExamIntegrityReviewRequest) UnmarshalJSON(encoded []byte) error {
+func (b *updateExamIntegrityReviewRequest) UnmarshalJSON(encoded []byte) error {
 	type wire updateExamIntegrityReviewRequest
 	var decoded wire
 	if err := decodeDuplicateFreeExamIntegrityReviewObject(encoded, &decoded); err != nil {
 		return err
 	}
-	*body = updateExamIntegrityReviewRequest(decoded)
+	*b = updateExamIntegrityReviewRequest(decoded)
 	return nil
 }
 
-func (body *terminalExamIntegrityReviewRequest) UnmarshalJSON(encoded []byte) error {
+func (b *terminalExamIntegrityReviewRequest) UnmarshalJSON(encoded []byte) error {
 	type wire terminalExamIntegrityReviewRequest
 	var decoded wire
 	if err := decodeDuplicateFreeExamIntegrityReviewObject(encoded, &decoded); err != nil {
 		return err
 	}
-	*body = terminalExamIntegrityReviewRequest(decoded)
+	*b = terminalExamIntegrityReviewRequest(decoded)
 	return nil
 }
 
@@ -361,12 +361,12 @@ func examIntegrityReviewResource(application ExamIntegrityReviewApplication) res
 	)
 }
 
-func (module examIntegrityReviewHTTPModule) get(request operationRequest) (operationResult, error) {
+func (m examIntegrityReviewHTTPModule) get(request operationRequest) (operationResult, error) {
 	submissionID, err := reviewSubmissionID(request)
 	if err != nil {
 		return operationResult{}, err
 	}
-	snapshot, err := module.application.GetExamIntegrityReview(request.context, request.invocation(), submissionID)
+	snapshot, err := m.application.GetExamIntegrityReview(request.context, request.invocation(), submissionID)
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -377,7 +377,7 @@ func (module examIntegrityReviewHTTPModule) get(request operationRequest) (opera
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
-func (module examIntegrityReviewHTTPModule) listFlags(request operationRequest) (operationResult, error) {
+func (m examIntegrityReviewHTTPModule) listFlags(request operationRequest) (operationResult, error) {
 	submissionID, err := reviewSubmissionID(request)
 	if err != nil {
 		return operationResult{}, err
@@ -389,7 +389,7 @@ func (module examIntegrityReviewHTTPModule) listFlags(request operationRequest) 
 	}); err != nil {
 		return operationResult{}, err
 	}
-	page, err := module.application.ListExamIntegrityFlags(request.context, request.invocation(), query)
+	page, err := m.application.ListExamIntegrityFlags(request.context, request.invocation(), query)
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -413,7 +413,7 @@ func (module examIntegrityReviewHTTPModule) listFlags(request operationRequest) 
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
-func (module examIntegrityReviewHTTPModule) listEvidence(request operationRequest) (operationResult, error) {
+func (m examIntegrityReviewHTTPModule) listEvidence(request operationRequest) (operationResult, error) {
 	submissionID, err := reviewSubmissionID(request)
 	if err != nil {
 		return operationResult{}, err
@@ -429,7 +429,7 @@ func (module examIntegrityReviewHTTPModule) listEvidence(request operationReques
 	}); err != nil {
 		return operationResult{}, err
 	}
-	page, err := module.application.ListExamIntegrityEvidence(request.context, request.invocation(), query)
+	page, err := m.application.ListExamIntegrityEvidence(request.context, request.invocation(), query)
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -455,7 +455,7 @@ func (module examIntegrityReviewHTTPModule) listEvidence(request operationReques
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
-func (module examIntegrityReviewHTTPModule) listDiscrepancies(request operationRequest) (operationResult, error) {
+func (m examIntegrityReviewHTTPModule) listDiscrepancies(request operationRequest) (operationResult, error) {
 	submissionID, err := reviewSubmissionID(request)
 	if err != nil {
 		return operationResult{}, err
@@ -467,7 +467,7 @@ func (module examIntegrityReviewHTTPModule) listDiscrepancies(request operationR
 	}); err != nil {
 		return operationResult{}, err
 	}
-	page, err := module.application.ListExamIntegrityDiscrepancies(request.context, request.invocation(), query)
+	page, err := m.application.ListExamIntegrityDiscrepancies(request.context, request.invocation(), query)
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -501,7 +501,7 @@ func (module examIntegrityReviewHTTPModule) listDiscrepancies(request operationR
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
-func (module examIntegrityReviewHTTPModule) saveDecision(request operationRequest) (operationResult, error) {
+func (m examIntegrityReviewHTTPModule) saveDecision(request operationRequest) (operationResult, error) {
 	submissionID, err := reviewSubmissionID(request)
 	if err != nil {
 		return operationResult{}, err
@@ -518,7 +518,7 @@ func (module examIntegrityReviewHTTPModule) saveDecision(request operationReques
 	if err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	result, err := module.application.SaveExamIntegrityDecision(request.context, request.invocation(),
+	result, err := m.application.SaveExamIntegrityDecision(request.context, request.invocation(),
 		application.SaveExamIntegrityDecisionCommand{SubmissionID: submissionID, ReviewID: reviewID, FlagID: flagID,
 			ExpectedReviewRevision: body.ExpectedReviewRevision, ExpectedDecisionRevision: body.ExpectedDecisionRevision,
 			Outcome: model.IntegrityReviewOutcome(body.Outcome), PrivateRationale: body.PrivateRationale,
@@ -529,7 +529,7 @@ func (module examIntegrityReviewHTTPModule) saveDecision(request operationReques
 	return reviewMutationResult(result)
 }
 
-func (module examIntegrityReviewHTTPModule) update(request operationRequest) (operationResult, error) {
+func (m examIntegrityReviewHTTPModule) update(request operationRequest) (operationResult, error) {
 	submissionID, err := reviewSubmissionID(request)
 	if err != nil {
 		return operationResult{}, err
@@ -542,7 +542,7 @@ func (module examIntegrityReviewHTTPModule) update(request operationRequest) (op
 	if err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	result, err := module.application.UpdateExamIntegrityReview(request.context, request.invocation(),
+	result, err := m.application.UpdateExamIntegrityReview(request.context, request.invocation(),
 		application.UpdateExamIntegrityReviewCommand{SubmissionID: submissionID, ReviewID: reviewID,
 			ExpectedReviewRevision: body.ExpectedReviewRevision, ManagerNotes: body.ManagerNotes,
 			StudentRemarksMarkdown: body.StudentRemarksMarkdown, IdempotencyKey: request.idempotencyKey})
@@ -559,15 +559,15 @@ const (
 	integrityReviewRelease
 )
 
-func (module examIntegrityReviewHTTPModule) finalize(request operationRequest) (operationResult, error) {
-	return module.terminal(request, integrityReviewFinalize)
+func (m examIntegrityReviewHTTPModule) finalize(request operationRequest) (operationResult, error) {
+	return m.terminal(request, integrityReviewFinalize)
 }
 
-func (module examIntegrityReviewHTTPModule) release(request operationRequest) (operationResult, error) {
-	return module.terminal(request, integrityReviewRelease)
+func (m examIntegrityReviewHTTPModule) release(request operationRequest) (operationResult, error) {
+	return m.terminal(request, integrityReviewRelease)
 }
 
-func (module examIntegrityReviewHTTPModule) terminal(request operationRequest,
+func (m examIntegrityReviewHTTPModule) terminal(request operationRequest,
 	operation integrityReviewTerminalOperation,
 ) (operationResult, error) {
 	if operation != integrityReviewFinalize && operation != integrityReviewRelease {
@@ -589,9 +589,9 @@ func (module examIntegrityReviewHTTPModule) terminal(request operationRequest,
 		ExpectedReviewRevision: body.ExpectedReviewRevision, IdempotencyKey: request.idempotencyKey}
 	var result application.ExamIntegrityReviewResult
 	if operation == integrityReviewRelease {
-		result, err = module.application.ReleaseStudentExamResult(request.context, request.invocation(), command)
+		result, err = m.application.ReleaseStudentExamResult(request.context, request.invocation(), command)
 	} else {
-		result, err = module.application.FinalizeExamIntegrityReview(request.context, request.invocation(), command)
+		result, err = m.application.FinalizeExamIntegrityReview(request.context, request.invocation(), command)
 	}
 	if err != nil {
 		return operationResult{}, err
@@ -599,12 +599,12 @@ func (module examIntegrityReviewHTTPModule) terminal(request operationRequest,
 	return reviewMutationResult(result)
 }
 
-func (module examIntegrityReviewHTTPModule) studentResult(request operationRequest) (operationResult, error) {
+func (m examIntegrityReviewHTTPModule) studentResult(request operationRequest) (operationResult, error) {
 	attemptID, err := request.params.RequireExamAttemptID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	result, err := module.application.GetStudentExamResult(request.context, request.invocation(), attemptID)
+	result, err := m.application.GetStudentExamResult(request.context, request.invocation(), attemptID)
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -725,7 +725,7 @@ type nativeConditionListResponse struct {
 	NextCursor string                          `json:"next_cursor,omitempty"`
 }
 
-func (module examIntegrityReviewHTTPModule) listNativeConditions(request operationRequest) (operationResult, error) {
+func (m examIntegrityReviewHTTPModule) listNativeConditions(request operationRequest) (operationResult, error) {
 	submissionID, err := reviewSubmissionID(request)
 	if err != nil {
 		return operationResult{}, err
@@ -734,7 +734,7 @@ func (module examIntegrityReviewHTTPModule) listNativeConditions(request operati
 	if err = applyReviewPageQuery(request, "native_condition", &query.Limit, func(id string) error { query.AfterID, err = model.ParseIntegrityEvidenceID(id); return err }); err != nil {
 		return operationResult{}, err
 	}
-	page, err := module.application.ListNativeConditions(request.context, request.invocation(), query)
+	page, err := m.application.ListNativeConditions(request.context, request.invocation(), query)
 	if err != nil {
 		return operationResult{}, err
 	}

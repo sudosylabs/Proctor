@@ -44,8 +44,8 @@ const (
 	BrowserSourceResetSourceCorrupt        BrowserSourceResetReason = "source_corrupt"
 )
 
-func (reason BrowserSourceResetReason) IsValid() bool {
-	return reason == BrowserSourceResetCoordinatorRestarted || reason == BrowserSourceResetSpoolUnavailable || reason == BrowserSourceResetSourceCorrupt
+func (r BrowserSourceResetReason) IsValid() bool {
+	return r == BrowserSourceResetCoordinatorRestarted || r == BrowserSourceResetSpoolUnavailable || r == BrowserSourceResetSourceCorrupt
 }
 
 type BrowserActivityKind string
@@ -68,8 +68,8 @@ const (
 	BrowserBlockInvalidURL         BrowserActivityBlockReason = "invalid_url"
 )
 
-func (reason BrowserActivityBlockReason) IsValid() bool {
-	switch reason {
+func (r BrowserActivityBlockReason) IsValid() bool {
+	switch r {
 	case BrowserBlockSchemeNotAllowed, BrowserBlockOriginNotAllowed, BrowserBlockPathNotAllowed, BrowserBlockRedirectNotAllowed, BrowserBlockInvalidURL:
 		return true
 	default:
@@ -90,40 +90,40 @@ type BrowserActivityEvent struct {
 	ReceivedAt               time.Time
 }
 
-func (event BrowserActivityEvent) ValidateClientRecord() error {
-	if event.Sequence < 1 || !securitySafeInt(event.Sequence) || !event.PolicyRevisionID.IsValid() || !securityInstant(event.ClientOccurredAt) || !event.ReceivedAt.IsZero() {
+func (e BrowserActivityEvent) ValidateClientRecord() error {
+	if e.Sequence < 1 || !securitySafeInt(e.Sequence) || !e.PolicyRevisionID.IsValid() || !securityInstant(e.ClientOccurredAt) || !e.ReceivedAt.IsZero() {
 		return invalidModelError("BrowserActivityEvent.ValidateClientRecord", "browser_activity_event", "", "invalid Browser Activity event metadata", "")
 	}
-	if event.RedirectFromSequence != nil && (*event.RedirectFromSequence < 1 || *event.RedirectFromSequence >= event.Sequence) {
+	if e.RedirectFromSequence != nil && (*e.RedirectFromSequence < 1 || *e.RedirectFromSequence >= e.Sequence) {
 		return ErrDeliveryInvalid
 	}
-	if (event.Kind == BrowserActivityTopRedirect || event.BlockReason != nil && *event.BlockReason == BrowserBlockRedirectNotAllowed) && event.RedirectFromSequence == nil {
+	if (e.Kind == BrowserActivityTopRedirect || e.BlockReason != nil && *e.BlockReason == BrowserBlockRedirectNotAllowed) && e.RedirectFromSequence == nil {
 		return ErrDeliveryInvalid
 	}
-	if event.RedirectFromSequence != nil && event.Kind != BrowserActivityTopRedirect && event.Kind != BrowserActivityBlockedNavigation {
+	if e.RedirectFromSequence != nil && e.Kind != BrowserActivityTopRedirect && e.Kind != BrowserActivityBlockedNavigation {
 		return ErrDeliveryInvalid
 	}
-	switch event.Kind {
+	switch e.Kind {
 	case BrowserActivityOpened, BrowserActivityClosed:
-		if event.Location != nil || event.MatchedRuleID != nil || event.BlockReason != nil {
+		if e.Location != nil || e.MatchedRuleID != nil || e.BlockReason != nil {
 			return invalidModelError("BrowserActivityEvent.ValidateClientRecord", "browser_activity_event", "", "browser open/close event contains navigation fields", "")
 		}
 	case BrowserActivityTopNavigation, BrowserActivityTopRedirect:
-		if event.Location == nil || event.MatchedRuleID == nil || !validBrowserPolicyRuleID(*event.MatchedRuleID) || event.BlockReason != nil {
+		if e.Location == nil || e.MatchedRuleID == nil || !validBrowserPolicyRuleID(*e.MatchedRuleID) || e.BlockReason != nil {
 			return invalidModelError("BrowserActivityEvent.ValidateClientRecord", "browser_activity_event", "", "successful Browser Activity navigation is incomplete", "")
 		}
-		if err := event.Location.Validate(); err != nil {
+		if err := e.Location.Validate(); err != nil {
 			return err
 		}
 	case BrowserActivityBlockedNavigation:
-		if event.Location == nil || event.BlockReason == nil || !event.BlockReason.IsValid() ||
-			event.MatchedRuleID != nil && !validBrowserPolicyRuleID(*event.MatchedRuleID) {
+		if e.Location == nil || e.BlockReason == nil || !e.BlockReason.IsValid() ||
+			e.MatchedRuleID != nil && !validBrowserPolicyRuleID(*e.MatchedRuleID) {
 			return invalidModelError("BrowserActivityEvent.ValidateClientRecord", "browser_activity_event", "", "blocked Browser Activity navigation is incomplete", "")
 		}
-		if (*event.BlockReason == BrowserBlockSchemeNotAllowed || *event.BlockReason == BrowserBlockInvalidURL) && event.MatchedRuleID != nil {
+		if (*e.BlockReason == BrowserBlockSchemeNotAllowed || *e.BlockReason == BrowserBlockInvalidURL) && e.MatchedRuleID != nil {
 			return invalidModelError("BrowserActivityEvent.ValidateClientRecord", "browser_activity_event", "", "blocked Browser Activity location cannot claim a matched rule", "")
 		}
-		if err := event.Location.ValidateBlocked(*event.BlockReason); err != nil {
+		if err := e.Location.ValidateBlocked(*e.BlockReason); err != nil {
 			return err
 		}
 	default:
@@ -132,11 +132,11 @@ func (event BrowserActivityEvent) ValidateClientRecord() error {
 	return nil
 }
 
-func (location BrowserLocation) Validate() error {
-	if location.Scheme == "http" {
-		return location.validateNetwork("http", "80")
+func (l BrowserLocation) Validate() error {
+	if l.Scheme == "http" {
+		return l.validateNetwork("http", "80")
 	}
-	return location.validateNetwork("https", "443")
+	return l.validateNetwork("https", "443")
 }
 
 // ValidateBlocked accepts only the reason-specific minimized location shapes.
@@ -145,47 +145,47 @@ func (location BrowserLocation) Validate() error {
 // denied schemes retain the scheme only so file paths, script/data payloads,
 // and custom-protocol data never cross the wire. An invalid URL has no safely
 // parsed components and is represented by the all-empty location value.
-func (location BrowserLocation) ValidateBlocked(reason BrowserActivityBlockReason) error {
+func (l BrowserLocation) ValidateBlocked(reason BrowserActivityBlockReason) error {
 	switch reason {
 	case BrowserBlockInvalidURL:
-		if location != (BrowserLocation{}) {
+		if l != (BrowserLocation{}) {
 			return invalidModelError("BrowserLocation.ValidateBlocked", "browser_location", "", "invalid URL Browser Activity location retained components", "")
 		}
 		return nil
 	case BrowserBlockSchemeNotAllowed:
-		if len(location.Scheme) < 1 || len(location.Scheme) > BrowserActivityLocationSchemeMaximumBytes ||
-			!browserActivitySchemePattern.MatchString(location.Scheme) || location.Scheme == "https" {
+		if len(l.Scheme) < 1 || len(l.Scheme) > BrowserActivityLocationSchemeMaximumBytes ||
+			!browserActivitySchemePattern.MatchString(l.Scheme) || l.Scheme == "https" {
 			return invalidModelError("BrowserLocation.ValidateBlocked", "browser_location", "", "invalid blocked Browser Activity scheme", "")
 		}
-		if location.Scheme == "http" {
-			return location.validateNetwork("http", "80")
+		if l.Scheme == "http" {
+			return l.validateNetwork("http", "80")
 		}
-		if location.Host != "" || location.Port != "" || location.Path != "" {
+		if l.Host != "" || l.Port != "" || l.Path != "" {
 			return invalidModelError("BrowserLocation.ValidateBlocked", "browser_location", "", "blocked non-HTTP scheme retained unsafe location components", "")
 		}
 		return nil
 	case BrowserBlockOriginNotAllowed, BrowserBlockPathNotAllowed, BrowserBlockRedirectNotAllowed:
-		return location.Validate()
+		return l.Validate()
 	default:
 		return invalidModelError("BrowserLocation.ValidateBlocked", "browser_location", "", "invalid Browser Activity block reason", "")
 	}
 }
 
-func (location BrowserLocation) validateNetwork(scheme, defaultPort string) error {
-	if location.Scheme != scheme || location.Host == "" || strings.ToLower(location.Host) != location.Host ||
-		strings.ContainsAny(location.Host, "\\/?#@") || len(location.Path) > browserLocationMaximumPathBytes {
+func (l BrowserLocation) validateNetwork(scheme, defaultPort string) error {
+	if l.Scheme != scheme || l.Host == "" || strings.ToLower(l.Host) != l.Host ||
+		strings.ContainsAny(l.Host, "\\/?#@") || len(l.Path) > browserLocationMaximumPathBytes {
 		return invalidModelError("BrowserLocation.validateNetwork", "browser_location", "", "invalid minimized Browser Activity location", "")
 	}
-	parsed, err := url.Parse(scheme + "://" + browserHostPort(location.Host, location.Port))
+	parsed, err := url.Parse(scheme + "://" + browserHostPort(l.Host, l.Port))
 	if err != nil {
 		return invalidModelError("BrowserLocation.validateNetwork", "browser_location", "", "invalid minimized Browser Activity authority", "")
 	}
 	host, port, err := canonicalBrowserHostPortWithDefault(parsed, defaultPort)
-	if err != nil || host != location.Host || port != location.Port {
+	if err != nil || host != l.Host || port != l.Port {
 		return invalidModelError("BrowserLocation.validateNetwork", "browser_location", "", "non-canonical Browser Activity authority", "")
 	}
-	canonicalPath, err := canonicalBrowserPath(location.Path)
-	if err != nil || canonicalPath != location.Path {
+	canonicalPath, err := canonicalBrowserPath(l.Path)
+	if err != nil || canonicalPath != l.Path {
 		return invalidModelError("BrowserLocation.validateNetwork", "browser_location", "", "non-canonical Browser Activity path", "")
 	}
 	return nil
@@ -202,32 +202,32 @@ type browserActivityEventWire struct {
 	RedirectFromSequence *int64                      `json:"redirect_from_sequence,omitempty"`
 }
 
-func (event BrowserActivityEvent) MarshalJSON() ([]byte, error) {
-	if event.ValidateClientRecord() != nil {
+func (e BrowserActivityEvent) MarshalJSON() ([]byte, error) {
+	if e.ValidateClientRecord() != nil {
 		return nil, ErrDeliveryInvalid
 	}
-	return json.Marshal(browserActivityEventWire{Sequence: event.Sequence, Kind: event.Kind, PolicyRevisionID: event.PolicyRevisionID, ClientOccurredAt: securityJSONInstant{Time: event.ClientOccurredAt, spelling: event.clientOccurredAtSpelling}, Location: event.Location, MatchedRuleID: event.MatchedRuleID, BlockReason: event.BlockReason, RedirectFromSequence: event.RedirectFromSequence})
+	return json.Marshal(browserActivityEventWire{Sequence: e.Sequence, Kind: e.Kind, PolicyRevisionID: e.PolicyRevisionID, ClientOccurredAt: securityJSONInstant{Time: e.ClientOccurredAt, spelling: e.clientOccurredAtSpelling}, Location: e.Location, MatchedRuleID: e.MatchedRuleID, BlockReason: e.BlockReason, RedirectFromSequence: e.RedirectFromSequence})
 }
-func (event *BrowserActivityEvent) UnmarshalJSON(raw []byte) error {
+func (e *BrowserActivityEvent) UnmarshalJSON(raw []byte) error {
 	var value browserActivityEventWire
-	if event == nil || decodeClosedDeliveryDeclaration(raw, &value, BrowserActivityAppendMaximumBytes) != nil {
+	if e == nil || decodeClosedDeliveryDeclaration(raw, &value, BrowserActivityAppendMaximumBytes) != nil {
 		return ErrDeliveryInvalid
 	}
 	candidate := BrowserActivityEvent{Sequence: value.Sequence, Kind: value.Kind, PolicyRevisionID: value.PolicyRevisionID, ClientOccurredAt: value.ClientOccurredAt.Time, clientOccurredAtSpelling: value.ClientOccurredAt.spelling, Location: value.Location, MatchedRuleID: value.MatchedRuleID, BlockReason: value.BlockReason, RedirectFromSequence: value.RedirectFromSequence}
 	if candidate.ValidateClientRecord() != nil {
 		return ErrDeliveryInvalid
 	}
-	*event = candidate
+	*e = candidate
 	return nil
 }
-func (event BrowserActivityEvent) Canonical() ([]byte, error) {
-	if event.ValidateClientRecord() != nil {
+func (e BrowserActivityEvent) Canonical() ([]byte, error) {
+	if e.ValidateClientRecord() != nil {
 		return nil, ErrDeliveryInvalid
 	}
-	return encodeCanonicalExamDocument(event)
+	return encodeCanonicalExamDocument(e)
 }
-func (event BrowserActivityEvent) Fingerprint() (string, error) {
-	encoded, err := event.Canonical()
+func (e BrowserActivityEvent) Fingerprint() (string, error) {
+	encoded, err := e.Canonical()
 	if err != nil {
 		return "", err
 	}

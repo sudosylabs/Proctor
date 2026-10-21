@@ -491,8 +491,8 @@ func attemptWorkspaceJournalOutcomeFrom(entry model.AttemptWorkspaceJournalEntry
 	return attemptWorkspaceJournalOutcomeV1(entry)
 }
 
-func (outcome attemptWorkspaceJournalOutcomeV1) entry() model.AttemptWorkspaceJournalEntry {
-	return model.AttemptWorkspaceJournalEntry(outcome)
+func (o attemptWorkspaceJournalOutcomeV1) entry() model.AttemptWorkspaceJournalEntry {
+	return model.AttemptWorkspaceJournalEntry(o)
 }
 
 type attemptWorkspaceMutationOutcomeV1 struct {

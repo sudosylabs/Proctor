@@ -50,8 +50,8 @@ func recordOperational(recorder OperationalRecorder, subsystem, event string, er
 // through the observability seam without naming its event type.
 type operationalRecorderAdapter struct{ recorder OperationalRecorder }
 
-func (adapter operationalRecorderAdapter) RecordOperational(subsystem, event string, err error) {
-	recordOperational(adapter.recorder, subsystem, event, err)
+func (a operationalRecorderAdapter) RecordOperational(subsystem, event string, err error) {
+	recordOperational(a.recorder, subsystem, event, err)
 }
 
 func operationalEvent(subsystem, event string, err error) OperationalEvent {

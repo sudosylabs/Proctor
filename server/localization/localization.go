@@ -55,10 +55,10 @@ type catalogTranslation struct {
 	forms map[string]string
 }
 
-func (translation *catalogTranslation) UnmarshalJSON(data []byte) error {
+func (t *catalogTranslation) UnmarshalJSON(data []byte) error {
 	var singular string
 	if err := json.Unmarshal(data, &singular); err == nil {
-		translation.forms = map[string]string{"other": singular}
+		t.forms = map[string]string{"other": singular}
 		return nil
 	}
 	var forms map[string]string
@@ -75,7 +75,7 @@ func (translation *catalogTranslation) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("unknown plural form %q", form)
 		}
 	}
-	translation.forms = forms
+	t.forms = forms
 	return nil
 }
 

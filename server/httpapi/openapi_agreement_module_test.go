@@ -132,8 +132,8 @@ type openAPIAgreementViolation struct {
 	Detail string
 }
 
-func (violation openAPIAgreementViolation) String() string {
-	return violation.Target + " " + violation.Check + ": " + violation.Detail
+func (v openAPIAgreementViolation) String() string {
+	return v.Target + " " + v.Check + ": " + v.Detail
 }
 
 // assertOpenAPIAgreement is the only testing-aware part of the shared module.
@@ -409,8 +409,8 @@ func validateOpenAPIAgreementSuite(
 	return expected, targetPaths, nil
 }
 
-func (contract openAPIAgreementOperation) method() string {
-	method, _, _ := strings.Cut(contract.Key, " ")
+func (c openAPIAgreementOperation) method() string {
+	method, _, _ := strings.Cut(c.Key, " ")
 	return method
 }
 

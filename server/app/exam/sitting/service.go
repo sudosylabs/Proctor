@@ -181,14 +181,14 @@ func New(deps Dependencies) (*Service, error) {
 	return &Service{deps: deps}, nil
 }
 
-func (service *Service) recordOperational(event string, err error) {
-	if service.deps.Operational != nil {
-		service.deps.Operational.RecordOperational("exam_sitting", event, err)
+func (s *Service) recordOperational(event string, err error) {
+	if s.deps.Operational != nil {
+		s.deps.Operational.RecordOperational("exam_sitting", event, err)
 	}
 }
 
-func (service *Service) ScheduleExamSitting(ctx context.Context, invocation invocation.Invocation, command ScheduleCommand) (_ store.ExamSittingSnapshot, resultErr error) {
-	defer func() { service.recordOperational("schedule", resultErr) }()
+func (s *Service) ScheduleExamSitting(ctx context.Context, invocation invocation.Invocation, command ScheduleCommand) (_ store.ExamSittingSnapshot, resultErr error) {
+	defer func() { s.recordOperational("schedule", resultErr) }()
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	command.ScheduledStartAt = model.TimeUTC(command.ScheduledStartAt)
 	command.ScheduledEndAt = model.TimeUTC(command.ScheduledEndAt)
@@ -204,22 +204,22 @@ func (service *Service) ScheduleExamSitting(ctx context.Context, invocation invo
 	if principal.Validate() != nil {
 		return store.ExamSittingSnapshot{}, apperror.Invalid("exam.sitting.invalid", "principal")
 	}
-	at := model.TimeUTC(service.deps.Now())
-	authorization, err := service.authorizeExam(ctx, invocation, command.ExamID, at, model.ActionExamSittingCreate, model.ActionExamSittingCreateOverride)
+	at := model.TimeUTC(s.deps.Now())
+	authorization, err := s.authorizeExam(ctx, invocation, command.ExamID, at, model.ActionExamSittingCreate, model.ActionExamSittingCreateOverride)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
 	}
-	sittingID := service.deps.NewID()
+	sittingID := s.deps.NewID()
 	sitting, err := model.NewExamSitting(sittingID, command.ExamID, command.ExamRevisionID, command.ClassID,
 		command.ScheduledStartAt, command.ScheduledEndAt, at)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, apperror.Invalid("exam.sitting.invalid", "schedule").Wrap(err)
 	}
-	openJob, deadlineJob, err := service.deps.Jobs.BoundaryJobs(sittingID, sitting.Revision, sitting.ScheduledStartAt, sitting.ScheduledEndAt)
+	openJob, deadlineJob, err := s.deps.Jobs.BoundaryJobs(sittingID, sitting.Revision, sitting.ScheduledStartAt, sitting.ScheduledEndAt)
 	if err != nil || openJob == nil || deadlineJob == nil {
 		return store.ExamSittingSnapshot{}, jobFactoryUnavailable("construct Exam Sitting boundary Jobs", err)
 	}
-	mail, err := service.deps.Mail.Prepare(ctx, ScheduleMailRequest{ActorUserID: principal.UserID, ExamID: command.ExamID,
+	mail, err := s.deps.Mail.Prepare(ctx, ScheduleMailRequest{ActorUserID: principal.UserID, ExamID: command.ExamID,
 		ExamRevisionID: command.ExamRevisionID, SittingID: sittingID, SittingRevision: sitting.Revision, ClassID: command.ClassID,
 		StartsAt: sitting.ScheduledStartAt, EndsAt: sitting.ScheduledEndAt, ChangeKind: store.ExamSittingMailScheduled})
 	if err != nil || mail == nil {
@@ -227,23 +227,23 @@ func (service *Service) ScheduleExamSitting(ctx context.Context, invocation invo
 	}
 	auditValue := map[string]any{"exam_id": command.ExamID.String(), "exam_sitting_id": sittingID.String(),
 		"exam_revision_id": command.ExamRevisionID.String(), "class_id": command.ClassID.String()}
-	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, authorization.action, model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()},
+	auditID, err := s.deps.Auditor.BeginAtScope(ctx, invocation, authorization.action, model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()},
 		model.RoleScopeAcademicUnit, authorization.unitID.String(), "schedule", auditValue, nil)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
 	}
-	result, err := service.deps.Persistence.Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting, OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: principal.UserID,
+	result, err := s.deps.Persistence.Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting, OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: principal.UserID,
 		ManagerOverride: authorization.override, AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Mail: mail}, idempotency)
 	if err != nil {
-		return store.ExamSittingSnapshot{}, service.failAudit(ctx, auditID, err)
+		return store.ExamSittingSnapshot{}, s.failAudit(ctx, auditID, err)
 	}
 	value, err := requireScheduledCommandResult(result, command.ExamID, sittingID)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
 	}
 	if !result.Replayed {
-		if effectErr := service.deps.Effects.Scheduled(ctx, value.Sitting.ExamID, value.Sitting.ID, value.Sitting.State, value.Sitting.Revision, at); effectErr != nil {
-			service.deps.EffectFailures.Report(ctx, "exam_sitting_scheduled", effectErr)
+		if effectErr := s.deps.Effects.Scheduled(ctx, value.Sitting.ExamID, value.Sitting.ID, value.Sitting.State, value.Sitting.Revision, at); effectErr != nil {
+			s.deps.EffectFailures.Report(ctx, "exam_sitting_scheduled", effectErr)
 		}
 	}
 	return value, nil
@@ -255,17 +255,17 @@ type GetQuery struct {
 	SittingID model.ExamSittingID
 }
 
-func (service *Service) GetExamSitting(ctx context.Context, invocation invocation.Invocation, query GetQuery) (_ store.ExamSittingSnapshot, resultErr error) {
+func (s *Service) GetExamSitting(ctx context.Context, invocation invocation.Invocation, query GetQuery) (_ store.ExamSittingSnapshot, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.ExamID.IsValid() || !query.SittingID.IsValid() {
 		return store.ExamSittingSnapshot{}, apperror.Invalid("exam.sitting.invalid", "identity")
 	}
-	at := model.TimeUTC(service.deps.Now())
-	if _, err := service.authorize(ctx, invocation, query.ExamID, model.Resource{Type: model.ResourceExamSitting, ID: query.SittingID.String()}, at,
+	at := model.TimeUTC(s.deps.Now())
+	if _, err := s.authorize(ctx, invocation, query.ExamID, model.Resource{Type: model.ResourceExamSitting, ID: query.SittingID.String()}, at,
 		model.ActionExamSittingView, model.ActionExamSittingViewOverride); err != nil {
 		return store.ExamSittingSnapshot{}, err
 	}
-	snapshot, err := service.deps.Persistence.Get(ctx, query.ExamID, query.SittingID)
+	snapshot, err := s.deps.Persistence.Get(ctx, query.ExamID, query.SittingID)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, storeErrors.Translate(err)
 	}
@@ -282,14 +282,14 @@ func (service *Service) GetExamSitting(ctx context.Context, invocation invocatio
 // AuthorizeView rechecks the current relationship and permission used by an
 // exact read without returning Sitting state. Realtime subscriptions use this
 // gate before accepting or retaining a resource-scoped subscription.
-func (service *Service) AuthorizeView(ctx context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) error {
+func (s *Service) AuthorizeView(ctx context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) error {
 	if !sittingID.IsValid() {
 		return apperror.Invalid("exam.sitting.invalid", "exam_sitting_id")
 	}
 	if invocation.Principal().Validate() != nil {
 		return apperror.Invalid("exam.sitting.invalid", "principal")
 	}
-	snapshot, err := service.deps.Persistence.Resolve(ctx, sittingID)
+	snapshot, err := s.deps.Persistence.Resolve(ctx, sittingID)
 	if err != nil {
 		return storeErrors.Translate(err)
 	}
@@ -300,8 +300,8 @@ func (service *Service) AuthorizeView(ctx context.Context, invocation invocation
 	if value.Sitting.ID != sittingID {
 		return apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned a mismatched snapshot"))
 	}
-	_, err = service.authorize(ctx, invocation, value.Sitting.ExamID,
-		model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, model.TimeUTC(service.deps.Now()),
+	_, err = s.authorize(ctx, invocation, value.Sitting.ExamID,
+		model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, model.TimeUTC(s.deps.Now()),
 		model.ActionExamSittingView, model.ActionExamSittingViewOverride)
 	return err
 }
@@ -309,11 +309,11 @@ func (service *Service) AuthorizeView(ctx context.Context, invocation invocation
 // AuthorizeBrowserActivityView requires exact current Exam Manager membership
 // plus the dedicated permission on every read, including later pages.
 // Browser history has no administrator or general examination override.
-func (service *Service) AuthorizeBrowserActivityView(ctx context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) (model.AcademicUnitID, error) {
+func (s *Service) AuthorizeBrowserActivityView(ctx context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) (model.AcademicUnitID, error) {
 	if !sittingID.IsValid() || invocation.Principal().Validate() != nil {
 		return "", apperror.Invalid("exam.sitting.invalid", "exam_sitting_id")
 	}
-	snapshot, err := service.deps.Persistence.Resolve(ctx, sittingID)
+	snapshot, err := s.deps.Persistence.Resolve(ctx, sittingID)
 	if err != nil {
 		return "", storeErrors.Translate(err)
 	}
@@ -324,7 +324,7 @@ func (service *Service) AuthorizeBrowserActivityView(ctx context.Context, invoca
 	if value.Sitting.ID != sittingID {
 		return "", apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned a mismatched snapshot"))
 	}
-	access, err := service.deps.Access.Access(ctx, value.Sitting.ExamID, invocation.Principal().UserID)
+	access, err := s.deps.Access.Access(ctx, value.Sitting.ExamID, invocation.Principal().UserID)
 	if err != nil {
 		return "", storeErrors.Translate(err)
 	}
@@ -333,12 +333,12 @@ func (service *Service) AuthorizeBrowserActivityView(ctx context.Context, invoca
 	}
 	resource := model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}
 	if !access.ActorIsManager {
-		if err := service.deps.Authorizer.RecordDenial(ctx, invocation, model.ActionExamAttemptBrowserActivityView, resource, access.Exam.AcademicUnitID); err != nil {
+		if err := s.deps.Authorizer.RecordDenial(ctx, invocation, model.ActionExamAttemptBrowserActivityView, resource, access.Exam.AcademicUnitID); err != nil {
 			return "", err
 		}
 		return "", apperror.New("exam.sitting.not_found")
 	}
-	if err := service.deps.Authorizer.Authorize(ctx, invocation, model.ActionExamAttemptBrowserActivityView, resource); err != nil {
+	if err := s.deps.Authorizer.Authorize(ctx, invocation, model.ActionExamAttemptBrowserActivityView, resource); err != nil {
 		return "", err
 	}
 	return access.Exam.AcademicUnitID, nil
@@ -349,33 +349,33 @@ func (service *Service) AuthorizeBrowserActivityView(ctx context.Context, invoca
 // caller resolves the Submission's owning Exam through the bounded ownership
 // projection before invoking this gate; authorization independently resolves
 // the canonical Submission resource for its scoped, durable decision audit.
-func (service *Service) AuthorizeSubmissionView(ctx context.Context, invocation invocation.Invocation, examID model.ExamID,
+func (s *Service) AuthorizeSubmissionView(ctx context.Context, invocation invocation.Invocation, examID model.ExamID,
 	submissionID model.SubmissionID,
 ) error {
-	_, err := service.authorizeSubmission(ctx, invocation, examID, submissionID,
+	_, err := s.authorizeSubmission(ctx, invocation, examID, submissionID,
 		model.ActionSubmissionView, model.ActionSubmissionViewOverride)
 	return err
 }
 
 // AuthorizeSubmissionReview applies the current Exam Manager relationship and
 // exact-unit membership decision for draft decisions and finalization.
-func (service *Service) AuthorizeSubmissionReview(ctx context.Context, invocation invocation.Invocation, examID model.ExamID,
+func (s *Service) AuthorizeSubmissionReview(ctx context.Context, invocation invocation.Invocation, examID model.ExamID,
 	submissionID model.SubmissionID,
 ) (bool, error) {
-	return service.authorizeSubmission(ctx, invocation, examID, submissionID,
+	return s.authorizeSubmission(ctx, invocation, examID, submissionID,
 		model.ActionSubmissionReview, model.ActionSubmissionReviewOverride)
 }
 
 // AuthorizeSubmissionRelease keeps result release as a distinct, explicit
 // permission from evidence review and finalization.
-func (service *Service) AuthorizeSubmissionRelease(ctx context.Context, invocation invocation.Invocation, examID model.ExamID,
+func (s *Service) AuthorizeSubmissionRelease(ctx context.Context, invocation invocation.Invocation, examID model.ExamID,
 	submissionID model.SubmissionID,
 ) (bool, error) {
-	return service.authorizeSubmission(ctx, invocation, examID, submissionID,
+	return s.authorizeSubmission(ctx, invocation, examID, submissionID,
 		model.ActionSubmissionRelease, model.ActionSubmissionReleaseOverride)
 }
 
-func (service *Service) authorizeSubmission(ctx context.Context, invocation invocation.Invocation, examID model.ExamID,
+func (s *Service) authorizeSubmission(ctx context.Context, invocation invocation.Invocation, examID model.ExamID,
 	submissionID model.SubmissionID, action, overrideAction model.Action,
 ) (bool, error) {
 	if !examID.IsValid() || !submissionID.IsValid() {
@@ -384,8 +384,8 @@ func (service *Service) authorizeSubmission(ctx context.Context, invocation invo
 	if invocation.Principal().Validate() != nil {
 		return false, apperror.Invalid("exam.sitting.invalid", "principal")
 	}
-	decision, err := service.authorize(ctx, invocation, examID,
-		model.Resource{Type: model.ResourceSubmission, ID: submissionID.String()}, model.TimeUTC(service.deps.Now()),
+	decision, err := s.authorize(ctx, invocation, examID,
+		model.Resource{Type: model.ResourceSubmission, ID: submissionID.String()}, model.TimeUTC(s.deps.Now()),
 		action, overrideAction)
 	if err != nil {
 		return false, err
@@ -396,14 +396,14 @@ func (service *Service) authorizeSubmission(ctx context.Context, invocation invo
 // AuthorizeManage rechecks the current manager relationship for a Sitting and
 // reports whether the caller used the explicit management override action.
 // It returns no mutable Sitting state and performs no mutation.
-func (service *Service) AuthorizeManage(ctx context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) (bool, error) {
+func (s *Service) AuthorizeManage(ctx context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) (bool, error) {
 	if !sittingID.IsValid() {
 		return false, apperror.Invalid("exam.sitting.invalid", "exam_sitting_id")
 	}
 	if invocation.Principal().Validate() != nil {
 		return false, apperror.Invalid("exam.sitting.invalid", "principal")
 	}
-	snapshot, err := service.deps.Persistence.Resolve(ctx, sittingID)
+	snapshot, err := s.deps.Persistence.Resolve(ctx, sittingID)
 	if err != nil {
 		return false, storeErrors.Translate(err)
 	}
@@ -414,8 +414,8 @@ func (service *Service) AuthorizeManage(ctx context.Context, invocation invocati
 	if value.Sitting.ID != sittingID {
 		return false, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned a mismatched snapshot"))
 	}
-	decision, err := service.authorize(ctx, invocation, value.Sitting.ExamID,
-		model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, model.TimeUTC(service.deps.Now()),
+	decision, err := s.authorize(ctx, invocation, value.Sitting.ExamID,
+		model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, model.TimeUTC(s.deps.Now()),
 		model.ActionExamSittingManage, model.ActionExamSittingManageOverride)
 	if err != nil {
 		return false, err
@@ -423,19 +423,19 @@ func (service *Service) AuthorizeManage(ctx context.Context, invocation invocati
 	return decision.override, nil
 }
 
-func (service *Service) ListExamSittings(ctx context.Context, invocation invocation.Invocation, query ListQuery) (_ Page, resultErr error) {
+func (s *Service) ListExamSittings(ctx context.Context, invocation invocation.Invocation, query ListQuery) (_ Page, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	query.States = append([]model.ExamSittingState(nil), query.States...)
 	options, err := listOptions(query)
 	if err != nil {
 		return Page{}, err
 	}
-	at := model.TimeUTC(service.deps.Now())
-	if _, err = service.authorizeExam(ctx, invocation, query.ExamID, at, model.ActionExamView, model.ActionExamViewOverride); err != nil {
+	at := model.TimeUTC(s.deps.Now())
+	if _, err = s.authorizeExam(ctx, invocation, query.ExamID, at, model.ActionExamView, model.ActionExamViewOverride); err != nil {
 		return Page{}, err
 	}
 	options.Limit++
-	items, err := service.deps.Persistence.List(ctx, options)
+	items, err := s.deps.Persistence.List(ctx, options)
 	if err != nil {
 		return Page{}, storeErrors.Translate(err)
 	}
@@ -454,7 +454,7 @@ func (service *Service) ListExamSittings(ctx context.Context, invocation invocat
 	return page, nil
 }
 
-func (service *Service) UpdateExamSittingSchedule(ctx context.Context, invocation invocation.Invocation, command UpdateScheduleCommand) (_ store.ExamSittingSnapshot, resultErr error) {
+func (s *Service) UpdateExamSittingSchedule(ctx context.Context, invocation invocation.Invocation, command UpdateScheduleCommand) (_ store.ExamSittingSnapshot, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	command.ScheduledStartAt = canonicalTimePointer(command.ScheduledStartAt)
 	command.ScheduledEndAt = canonicalTimePointer(command.ScheduledEndAt)
@@ -469,13 +469,13 @@ func (service *Service) UpdateExamSittingSchedule(ctx context.Context, invocatio
 		return store.ExamSittingSnapshot{}, err
 	}
 	resource := model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}
-	at := model.TimeUTC(service.deps.Now())
-	authorization, err := service.authorize(ctx, invocation, command.ExamID, resource, at,
+	at := model.TimeUTC(s.deps.Now())
+	authorization, err := s.authorize(ctx, invocation, command.ExamID, resource, at,
 		model.ActionExamSittingManage, model.ActionExamSittingManageOverride)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
 	}
-	current, err := service.deps.Persistence.Get(ctx, command.ExamID, command.SittingID)
+	current, err := s.deps.Persistence.Get(ctx, command.ExamID, command.SittingID)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, storeErrors.Translate(err)
 	}
@@ -508,11 +508,11 @@ func (service *Service) UpdateExamSittingSchedule(ctx context.Context, invocatio
 	if noChanges && snapshot.Sitting.Revision == command.ExpectedRevision && snapshot.Sitting.State == model.ExamSittingScheduled && !authorization.examArchived {
 		return store.ExamSittingSnapshot{}, apperror.New("exam.sitting.no_changes")
 	}
-	openJob, deadlineJob, err := service.deps.Jobs.BoundaryJobs(command.SittingID, command.ExpectedRevision+1, startAt, endAt)
+	openJob, deadlineJob, err := s.deps.Jobs.BoundaryJobs(command.SittingID, command.ExpectedRevision+1, startAt, endAt)
 	if err != nil || openJob == nil || deadlineJob == nil {
 		return store.ExamSittingSnapshot{}, jobFactoryUnavailable("construct Exam Sitting boundary Jobs", err)
 	}
-	mail, err := service.deps.Mail.Prepare(ctx, ScheduleMailRequest{ActorUserID: invocation.Principal().UserID, ExamID: command.ExamID,
+	mail, err := s.deps.Mail.Prepare(ctx, ScheduleMailRequest{ActorUserID: invocation.Principal().UserID, ExamID: command.ExamID,
 		ExamRevisionID: revisionID, SittingID: command.SittingID, SittingRevision: command.ExpectedRevision + 1,
 		ClassID: classID, PriorClassID: snapshot.Sitting.ClassID, StartsAt: startAt, EndsAt: endAt,
 		ChangeKind: store.ExamSittingMailRescheduled})
@@ -522,12 +522,12 @@ func (service *Service) UpdateExamSittingSchedule(ctx context.Context, invocatio
 	auditValue := map[string]any{"exam_id": command.ExamID.String(), "exam_sitting_id": command.SittingID.String(),
 		"exam_revision_id": revisionID.String(), "class_id": classID.String(),
 		"expected_sitting_revision": command.ExpectedRevision}
-	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, authorization.action, resource, model.RoleScopeAcademicUnit,
+	auditID, err := s.deps.Auditor.BeginAtScope(ctx, invocation, authorization.action, resource, model.RoleScopeAcademicUnit,
 		authorization.unitID.String(), "update_schedule", auditValue, nil)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
 	}
-	result, err := service.deps.Persistence.UpdateSchedule(ctx, &store.ExamSittingScheduleUpdate{
+	result, err := s.deps.Persistence.UpdateSchedule(ctx, &store.ExamSittingScheduleUpdate{
 		ExamID: command.ExamID, SittingID: command.SittingID, ActorUserID: invocation.Principal().UserID,
 		ManagerOverride: authorization.override, ExpectedRevision: command.ExpectedRevision,
 		ExamRevisionID: revisionID, ClassID: classID, ScheduledStartAt: startAt, ScheduledEndAt: endAt,
@@ -535,21 +535,21 @@ func (service *Service) UpdateExamSittingSchedule(ctx context.Context, invocatio
 		AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Mail: mail,
 	}, idempotency)
 	if err != nil {
-		return store.ExamSittingSnapshot{}, service.failAudit(ctx, auditID, err)
+		return store.ExamSittingSnapshot{}, s.failAudit(ctx, auditID, err)
 	}
 	value, err := requireOwnedCommandResult(result, command.ExamID, command.SittingID)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
 	}
 	if !result.Replayed {
-		if effectErr := service.deps.Effects.ScheduleUpdated(ctx, value.Sitting.ExamID, value.Sitting.ID, value.Sitting.State, value.Sitting.Revision, at); effectErr != nil {
-			service.deps.EffectFailures.Report(ctx, "exam_sitting_schedule_updated", effectErr)
+		if effectErr := s.deps.Effects.ScheduleUpdated(ctx, value.Sitting.ExamID, value.Sitting.ID, value.Sitting.State, value.Sitting.Revision, at); effectErr != nil {
+			s.deps.EffectFailures.Report(ctx, "exam_sitting_schedule_updated", effectErr)
 		}
 	}
 	return value, nil
 }
 
-func (service *Service) CancelExamSitting(ctx context.Context, invocation invocation.Invocation, command CancelCommand) (_ store.ExamSittingSnapshot, resultErr error) {
+func (s *Service) CancelExamSitting(ctx context.Context, invocation invocation.Invocation, command CancelCommand) (_ store.ExamSittingSnapshot, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || command.ExpectedRevision < 1 || !validPrivateReason(command.PrivateReason) {
 		return store.ExamSittingSnapshot{}, apperror.Invalid("exam.sitting.invalid", "cancellation")
@@ -559,13 +559,13 @@ func (service *Service) CancelExamSitting(ctx context.Context, invocation invoca
 		return store.ExamSittingSnapshot{}, err
 	}
 	resource := model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}
-	at := model.TimeUTC(service.deps.Now())
-	authorization, err := service.authorize(ctx, invocation, command.ExamID, resource, at,
+	at := model.TimeUTC(s.deps.Now())
+	authorization, err := s.authorize(ctx, invocation, command.ExamID, resource, at,
 		model.ActionExamSittingManage, model.ActionExamSittingManageOverride)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
 	}
-	current, err := service.deps.Persistence.Get(ctx, command.ExamID, command.SittingID)
+	current, err := s.deps.Persistence.Get(ctx, command.ExamID, command.SittingID)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, storeErrors.Translate(err)
 	}
@@ -573,7 +573,7 @@ func (service *Service) CancelExamSitting(ctx context.Context, invocation invoca
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
 	}
-	mail, err := service.deps.Mail.Prepare(ctx, ScheduleMailRequest{ActorUserID: invocation.Principal().UserID, ExamID: command.ExamID,
+	mail, err := s.deps.Mail.Prepare(ctx, ScheduleMailRequest{ActorUserID: invocation.Principal().UserID, ExamID: command.ExamID,
 		ExamRevisionID: snapshot.Sitting.ExamRevisionID, SittingID: command.SittingID, SittingRevision: command.ExpectedRevision + 1,
 		ClassID: snapshot.Sitting.ClassID, PriorClassID: snapshot.Sitting.ClassID, StartsAt: snapshot.Sitting.ScheduledStartAt,
 		EndsAt: snapshot.Sitting.ScheduledEndAt, ChangeKind: store.ExamSittingMailCancelled})
@@ -582,61 +582,61 @@ func (service *Service) CancelExamSitting(ctx context.Context, invocation invoca
 	}
 	auditValue := map[string]any{"exam_id": command.ExamID.String(), "exam_sitting_id": command.SittingID.String(),
 		"expected_sitting_revision": command.ExpectedRevision, "reason_code": string(model.ExamSittingReasonManagerCanceled)}
-	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, authorization.action, resource, model.RoleScopeAcademicUnit,
+	auditID, err := s.deps.Auditor.BeginAtScope(ctx, invocation, authorization.action, resource, model.RoleScopeAcademicUnit,
 		authorization.unitID.String(), "cancel", auditValue, nil)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
 	}
-	result, err := service.deps.Persistence.Cancel(ctx, &store.ExamSittingCancellation{
+	result, err := s.deps.Persistence.Cancel(ctx, &store.ExamSittingCancellation{
 		ExamID: command.ExamID, SittingID: command.SittingID, ActorUserID: invocation.Principal().UserID,
 		ManagerOverride: authorization.override, ExpectedRevision: command.ExpectedRevision,
 		PrivateReason: command.PrivateReason, AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Mail: mail,
 	}, idempotency)
 	if err != nil {
-		return store.ExamSittingSnapshot{}, service.failAudit(ctx, auditID, err)
+		return store.ExamSittingSnapshot{}, s.failAudit(ctx, auditID, err)
 	}
 	value, err := requireOwnedCommandResult(result, command.ExamID, command.SittingID)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
 	}
 	if !result.Replayed {
-		if effectErr := service.deps.Effects.Canceled(ctx, value.Sitting.ExamID, value.Sitting.ID, value.Sitting.State, value.Sitting.Revision, at); effectErr != nil {
-			service.deps.EffectFailures.Report(ctx, "exam_sitting_canceled", effectErr)
+		if effectErr := s.deps.Effects.Canceled(ctx, value.Sitting.ExamID, value.Sitting.ID, value.Sitting.State, value.Sitting.Revision, at); effectErr != nil {
+			s.deps.EffectFailures.Report(ctx, "exam_sitting_canceled", effectErr)
 		}
 	}
 	return value, nil
 }
 
-func (service *Service) PauseExamSitting(ctx context.Context, invocation invocation.Invocation, command PauseCommand) (_ store.ExamSittingSnapshot, resultErr error) {
-	defer func() { service.recordOperational("pause", resultErr) }()
+func (s *Service) PauseExamSitting(ctx context.Context, invocation invocation.Invocation, command PauseCommand) (_ store.ExamSittingSnapshot, resultErr error) {
+	defer func() { s.recordOperational("pause", resultErr) }()
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
-	return service.runManagerTransition(ctx, invocation, command, "pause", idempotencyOperationPause, store.ExamSittingTransitionManagerPaused, true, false,
+	return s.runManagerTransition(ctx, invocation, command, "pause", idempotencyOperationPause, store.ExamSittingTransitionManagerPaused, true, false,
 		func(ctx context.Context, input *store.ExamSittingManagerTransition, idempotency *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
-			return service.deps.Persistence.Pause(ctx, input, idempotency)
+			return s.deps.Persistence.Pause(ctx, input, idempotency)
 		})
 }
 
-func (service *Service) ResumeExamSitting(ctx context.Context, invocation invocation.Invocation, command ResumeCommand) (_ store.ExamSittingSnapshot, resultErr error) {
-	defer func() { service.recordOperational("resume", resultErr) }()
+func (s *Service) ResumeExamSitting(ctx context.Context, invocation invocation.Invocation, command ResumeCommand) (_ store.ExamSittingSnapshot, resultErr error) {
+	defer func() { s.recordOperational("resume", resultErr) }()
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
-	return service.runManagerTransition(ctx, invocation, command, "resume", idempotencyOperationResume, store.ExamSittingTransitionManagerResumed, false, false,
+	return s.runManagerTransition(ctx, invocation, command, "resume", idempotencyOperationResume, store.ExamSittingTransitionManagerResumed, false, false,
 		func(ctx context.Context, input *store.ExamSittingManagerTransition, idempotency *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
-			return service.deps.Persistence.Resume(ctx, input, idempotency)
+			return s.deps.Persistence.Resume(ctx, input, idempotency)
 		})
 }
 
-func (service *Service) CloseExamSitting(ctx context.Context, invocation invocation.Invocation, command EarlyCloseCommand) (_ store.ExamSittingSnapshot, resultErr error) {
-	defer func() { service.recordOperational("close", resultErr) }()
+func (s *Service) CloseExamSitting(ctx context.Context, invocation invocation.Invocation, command EarlyCloseCommand) (_ store.ExamSittingSnapshot, resultErr error) {
+	defer func() { s.recordOperational("close", resultErr) }()
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
-	return service.runManagerTransition(ctx, invocation, command, "early_close", idempotencyOperationClose, store.ExamSittingTransitionManagerClosed, true, true,
+	return s.runManagerTransition(ctx, invocation, command, "early_close", idempotencyOperationClose, store.ExamSittingTransitionManagerClosed, true, true,
 		func(ctx context.Context, input *store.ExamSittingManagerTransition, idempotency *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
-			return service.deps.Persistence.EarlyClose(ctx, input, idempotency)
+			return s.deps.Persistence.EarlyClose(ctx, input, idempotency)
 		})
 }
 
 type managerTransitionStoreCall func(context.Context, *store.ExamSittingManagerTransition, *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error)
 
-func (service *Service) runManagerTransition(ctx context.Context, invocation invocation.Invocation, command PauseCommand, operation, idempotencyOperation string,
+func (s *Service) runManagerTransition(ctx context.Context, invocation invocation.Invocation, command PauseCommand, operation, idempotencyOperation string,
 	transition store.ExamSittingLifecycleTransitionCode, allowArchived, finalize bool, run managerTransitionStoreCall,
 ) (store.ExamSittingSnapshot, error) {
 	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || command.ExpectedRevision < 1 || !validPrivateReason(command.PrivateReason) {
@@ -647,8 +647,8 @@ func (service *Service) runManagerTransition(ctx context.Context, invocation inv
 		return store.ExamSittingSnapshot{}, err
 	}
 	resource := model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}
-	at := model.TimeUTC(service.deps.Now())
-	authorization, err := service.authorize(ctx, invocation, command.ExamID, resource, at,
+	at := model.TimeUTC(s.deps.Now())
+	authorization, err := s.authorize(ctx, invocation, command.ExamID, resource, at,
 		model.ActionExamSittingManage, model.ActionExamSittingManageOverride)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
@@ -658,13 +658,13 @@ func (service *Service) runManagerTransition(ctx context.Context, invocation inv
 	}
 	var finalizeJob *model.Job
 	if finalize {
-		finalizeJob, err = service.deps.Jobs.FinalizeJob(command.SittingID, command.ExpectedRevision+1, at)
+		finalizeJob, err = s.deps.Jobs.FinalizeJob(command.SittingID, command.ExpectedRevision+1, at)
 		if err != nil || finalizeJob == nil {
 			return store.ExamSittingSnapshot{}, jobFactoryUnavailable("construct Exam Sitting finalize Job", err)
 		}
 	}
 	auditValue := managerLifecycleAuditValue(command.ExamID, command.SittingID, command.ExpectedRevision, transition)
-	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, authorization.action, resource, model.RoleScopeAcademicUnit,
+	auditID, err := s.deps.Auditor.BeginAtScope(ctx, invocation, authorization.action, resource, model.RoleScopeAcademicUnit,
 		authorization.unitID.String(), operation, auditValue, nil)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
@@ -675,17 +675,17 @@ func (service *Service) runManagerTransition(ctx context.Context, invocation inv
 		FinalizeJob: finalizeJob}
 	result, err := run(ctx, input, idempotency)
 	if err != nil {
-		return store.ExamSittingSnapshot{}, service.failAudit(ctx, auditID, err)
+		return store.ExamSittingSnapshot{}, s.failAudit(ctx, auditID, err)
 	}
 	value, err := requireManagerLifecycleResult(result, command.ExamID, command.SittingID, transition)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
 	}
-	service.publishLifecycle(ctx, result, operation)
+	s.publishLifecycle(ctx, result, operation)
 	return value, nil
 }
 
-func (service *Service) ExtendExamSitting(ctx context.Context, invocation invocation.Invocation, command ExtendCommand) (_ store.ExamSittingSnapshot, resultErr error) {
+func (s *Service) ExtendExamSitting(ctx context.Context, invocation invocation.Invocation, command ExtendCommand) (_ store.ExamSittingSnapshot, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	command.ScheduledEndAt = model.TimeUTC(command.ScheduledEndAt)
 	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || command.ExpectedRevision < 1 || command.ScheduledEndAt.IsZero() ||
@@ -697,8 +697,8 @@ func (service *Service) ExtendExamSitting(ctx context.Context, invocation invoca
 		return store.ExamSittingSnapshot{}, err
 	}
 	resource := model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}
-	at := model.TimeUTC(service.deps.Now())
-	authorization, err := service.authorize(ctx, invocation, command.ExamID, resource, at,
+	at := model.TimeUTC(s.deps.Now())
+	authorization, err := s.authorize(ctx, invocation, command.ExamID, resource, at,
 		model.ActionExamSittingManage, model.ActionExamSittingManageOverride)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
@@ -707,28 +707,28 @@ func (service *Service) ExtendExamSitting(ctx context.Context, invocation invoca
 		return store.ExamSittingSnapshot{}, apperror.New("exam.archived")
 	}
 	deadline := model.TimeUTC(command.ScheduledEndAt)
-	deadlineJob, err := service.deps.Jobs.DeadlineJob(command.SittingID, command.ExpectedRevision+1, deadline)
+	deadlineJob, err := s.deps.Jobs.DeadlineJob(command.SittingID, command.ExpectedRevision+1, deadline)
 	if err != nil || deadlineJob == nil {
 		return store.ExamSittingSnapshot{}, jobFactoryUnavailable("construct Exam Sitting deadline Job", err)
 	}
 	auditValue := managerLifecycleAuditValue(command.ExamID, command.SittingID, command.ExpectedRevision, store.ExamSittingTransitionManagerExtended)
-	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, authorization.action, resource, model.RoleScopeAcademicUnit,
+	auditID, err := s.deps.Auditor.BeginAtScope(ctx, invocation, authorization.action, resource, model.RoleScopeAcademicUnit,
 		authorization.unitID.String(), "extend", auditValue, nil)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
 	}
-	result, err := service.deps.Persistence.Extend(ctx, &store.ExamSittingExtension{ExamID: command.ExamID, SittingID: command.SittingID,
+	result, err := s.deps.Persistence.Extend(ctx, &store.ExamSittingExtension{ExamID: command.ExamID, SittingID: command.SittingID,
 		ActorUserID: invocation.Principal().UserID, ManagerOverride: authorization.override, ExpectedRevision: command.ExpectedRevision,
 		ScheduledEndAt: deadline, DeadlineJob: deadlineJob, PrivateReason: command.PrivateReason, ChangedAt: at,
 		AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
-		return store.ExamSittingSnapshot{}, service.failAudit(ctx, auditID, err)
+		return store.ExamSittingSnapshot{}, s.failAudit(ctx, auditID, err)
 	}
 	value, err := requireManagerLifecycleResult(result, command.ExamID, command.SittingID, store.ExamSittingTransitionManagerExtended)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
 	}
-	service.publishLifecycle(ctx, result, "extend")
+	s.publishLifecycle(ctx, result, "extend")
 	return value, nil
 }
 
@@ -739,18 +739,18 @@ func managerLifecycleAuditValue(examID model.ExamID, sittingID model.ExamSitting
 		"expected_sitting_revision": expectedRevision, "transition": string(transition)}
 }
 
-func (service *Service) AdvanceDue(ctx context.Context, system invocation.System, sittingID model.ExamSittingID) (store.ExamSittingLifecycleResult, error) {
-	return service.runSystemLifecycle(ctx, system, sittingID, "advance_due", true,
+func (s *Service) AdvanceDue(ctx context.Context, system invocation.System, sittingID model.ExamSittingID) (store.ExamSittingLifecycleResult, error) {
+	return s.runSystemLifecycle(ctx, system, sittingID, "advance_due", true,
 		func(ctx context.Context, input systemLifecycleInput) (*store.ExamSittingLifecycleResult, error) {
-			return service.deps.Persistence.AdvanceDue(ctx, &store.ExamSittingDueAdvance{SittingID: input.sittingID,
+			return s.deps.Persistence.AdvanceDue(ctx, &store.ExamSittingDueAdvance{SittingID: input.sittingID,
 				AuditEventID: input.auditID, AuditAt: input.auditAt, FinalizeJob: input.finalizeJob})
 		})
 }
 
-func (service *Service) FinishSealing(ctx context.Context, system invocation.System, sittingID model.ExamSittingID) (store.ExamSittingLifecycleResult, error) {
-	return service.runSystemLifecycle(ctx, system, sittingID, "finish_sealing", false,
+func (s *Service) FinishSealing(ctx context.Context, system invocation.System, sittingID model.ExamSittingID) (store.ExamSittingLifecycleResult, error) {
+	return s.runSystemLifecycle(ctx, system, sittingID, "finish_sealing", false,
 		func(ctx context.Context, input systemLifecycleInput) (*store.ExamSittingLifecycleResult, error) {
-			return service.deps.Persistence.FinishSealing(ctx, &store.ExamSittingFinishSealing{SittingID: input.sittingID,
+			return s.deps.Persistence.FinishSealing(ctx, &store.ExamSittingFinishSealing{SittingID: input.sittingID,
 				AuditEventID: input.auditID, AuditAt: input.auditAt})
 		})
 }
@@ -769,19 +769,19 @@ type ListNoShowsQuery struct {
 	Limit                int
 }
 
-func (service *Service) ListExamSittingNoShows(ctx context.Context, invocation invocation.Invocation, query ListNoShowsQuery) (_ NoShowPage, resultErr error) {
+func (s *Service) ListExamSittingNoShows(ctx context.Context, invocation invocation.Invocation, query ListNoShowsQuery) (_ NoShowPage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.ExamID.IsValid() || !query.SittingID.IsValid() || (!query.AfterCandidateUserID.IsZero() && !query.AfterCandidateUserID.IsValid()) || query.Limit < 1 || query.Limit > 200 {
 		return NoShowPage{}, apperror.Invalid("exam.sitting.invalid", "no_show_list")
 	}
-	snapshot, err := service.GetExamSitting(ctx, invocation, GetQuery{ExamID: query.ExamID, SittingID: query.SittingID})
+	snapshot, err := s.GetExamSitting(ctx, invocation, GetQuery{ExamID: query.ExamID, SittingID: query.SittingID})
 	if err != nil {
 		return NoShowPage{}, err
 	}
 	if snapshot.Sitting == nil || (snapshot.Sitting.State != model.ExamSittingClosing && snapshot.Sitting.State != model.ExamSittingClosed) {
 		return NoShowPage{}, apperror.New("exam.sitting.state_conflict")
 	}
-	items, err := service.deps.Persistence.ListNoShows(ctx, store.ExamSittingNoShowListOptions{
+	items, err := s.deps.Persistence.ListNoShows(ctx, store.ExamSittingNoShowListOptions{
 		SittingID: query.SittingID, AfterCandidateUserID: query.AfterCandidateUserID, Limit: query.Limit + 1,
 	})
 	if err != nil {
@@ -816,13 +816,13 @@ type systemLifecycleInput struct {
 
 type systemLifecycleStoreCall func(context.Context, systemLifecycleInput) (*store.ExamSittingLifecycleResult, error)
 
-func (service *Service) runSystemLifecycle(ctx context.Context, system invocation.System, sittingID model.ExamSittingID, operation string,
+func (s *Service) runSystemLifecycle(ctx context.Context, system invocation.System, sittingID model.ExamSittingID, operation string,
 	prepareFinalize bool, run systemLifecycleStoreCall,
 ) (store.ExamSittingLifecycleResult, error) {
 	if !system.Valid() || !sittingID.IsValid() {
 		return store.ExamSittingLifecycleResult{}, apperror.Invalid("exam.sitting.invalid", "system_call")
 	}
-	current, err := service.deps.Persistence.Resolve(ctx, sittingID)
+	current, err := s.deps.Persistence.Resolve(ctx, sittingID)
 	if err != nil {
 		return store.ExamSittingLifecycleResult{}, storeErrors.Translate(err)
 	}
@@ -836,7 +836,7 @@ func (service *Service) runSystemLifecycle(ctx context.Context, system invocatio
 		if snapshot.Sitting.State == model.ExamSittingClosing && snapshot.Sitting.ClosingAt.Valid {
 			resultingRevision, availableAt = snapshot.Sitting.Revision, snapshot.Sitting.ClosingAt.Time
 		}
-		finalizeJob, err = service.deps.Jobs.FinalizeJob(sittingID, resultingRevision, availableAt)
+		finalizeJob, err = s.deps.Jobs.FinalizeJob(sittingID, resultingRevision, availableAt)
 		if err != nil || finalizeJob == nil {
 			return store.ExamSittingLifecycleResult{}, jobFactoryUnavailable("construct Exam Sitting finalize Job", err)
 		}
@@ -844,32 +844,32 @@ func (service *Service) runSystemLifecycle(ctx context.Context, system invocatio
 	resource := model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}
 	auditValue := map[string]any{"exam_id": snapshot.Sitting.ExamID.String(), "exam_sitting_id": sittingID.String(),
 		"expected_sitting_revision": snapshot.Sitting.Revision, "job_id": system.JobID.String(), "job_attempt_id": system.AttemptID.String()}
-	auditID, err := service.deps.SystemAuditor.Begin(ctx, system, model.ActionExamSittingManage, resource,
+	auditID, err := s.deps.SystemAuditor.Begin(ctx, system, model.ActionExamSittingManage, resource,
 		model.RoleScopeAcademicUnit, snapshot.AcademicUnitID.String(), operation, auditValue)
 	if err != nil {
 		return store.ExamSittingLifecycleResult{}, err
 	}
-	at := model.TimeUTC(service.deps.Now())
+	at := model.TimeUTC(s.deps.Now())
 	result, err := run(ctx, systemLifecycleInput{sittingID: sittingID, auditID: auditID, auditAt: model.MillisFromTime(at), finalizeJob: finalizeJob})
 	if err != nil {
-		return store.ExamSittingLifecycleResult{}, service.failSystemAudit(ctx, auditID, err)
+		return store.ExamSittingLifecycleResult{}, s.failSystemAudit(ctx, auditID, err)
 	}
 	value, err := requireSystemLifecycleResult(result, snapshot.Sitting.ExamID, sittingID)
 	if err != nil {
 		return store.ExamSittingLifecycleResult{}, err
 	}
-	service.publishLifecycle(ctx, result, operation)
+	s.publishLifecycle(ctx, result, operation)
 	return value, nil
 }
 
-func (service *Service) ListLifecycleDue(ctx context.Context, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
+func (s *Service) ListLifecycleDue(ctx context.Context, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
 	invalidCursor := options.AfterDueAt.IsZero() != options.AfterSittingID.IsZero() ||
 		!options.AfterSittingID.IsZero() && !options.AfterSittingID.IsValid()
 	if invalidCursor || options.Limit < 1 || options.Limit > 200 {
 		return nil, apperror.Invalid("exam.sitting.invalid", "lifecycle_due")
 	}
 	options.AfterDueAt = model.TimeUTC(options.AfterDueAt)
-	items, err := service.deps.Persistence.ListLifecycleDue(ctx, options)
+	items, err := s.deps.Persistence.ListLifecycleDue(ctx, options)
 	if err != nil {
 		return nil, storeErrors.Translate(err)
 	}
@@ -922,21 +922,21 @@ func validLifecycleTransition(value store.ExamSittingLifecycleTransitionCode) bo
 	}
 }
 
-func (service *Service) publishLifecycle(ctx context.Context, result *store.ExamSittingLifecycleResult, operation string) {
+func (s *Service) publishLifecycle(ctx context.Context, result *store.ExamSittingLifecycleResult, operation string) {
 	if result == nil || !result.Changed || result.Replayed || result.Value == nil || result.Value.Sitting == nil {
 		return
 	}
 	sitting := result.Value.Sitting
-	if err := service.deps.Effects.LifecycleChanged(ctx, sitting.ExamID, sitting.ID, sitting.State, sitting.Revision,
+	if err := s.deps.Effects.LifecycleChanged(ctx, sitting.ExamID, sitting.ID, sitting.State, sitting.Revision,
 		result.Transition, sitting.ScheduledEndAt, sitting.UpdatedAt); err != nil {
-		service.deps.EffectFailures.Report(ctx, "exam_sitting_"+operation, err)
+		s.deps.EffectFailures.Report(ctx, "exam_sitting_"+operation, err)
 	}
 }
 
-func (service *Service) failSystemAudit(ctx context.Context, auditID model.AuditEventID, err error) error {
+func (s *Service) failSystemAudit(ctx context.Context, auditID model.AuditEventID, err error) error {
 	mapped := storeErrors.Translate(err)
 	code := apperror.CodeOf(mapped, "exam.sitting.unavailable")
-	if auditErr := service.deps.SystemAuditor.Fail(ctx, auditID, code); auditErr != nil {
+	if auditErr := s.deps.SystemAuditor.Fail(ctx, auditID, code); auditErr != nil {
 		return errors.Join(mapped, auditErr)
 	}
 	return mapped
@@ -989,27 +989,27 @@ type authorizationDecision struct {
 	examArchived bool
 }
 
-func (service *Service) authorizeExam(ctx context.Context, invocation invocation.Invocation, examID model.ExamID, at time.Time, ordinaryAction, overrideAction model.Action) (authorizationDecision, error) {
-	return service.authorize(ctx, invocation, examID, model.Resource{Type: model.ResourceExam, ID: examID.String()}, at, ordinaryAction, overrideAction)
+func (s *Service) authorizeExam(ctx context.Context, invocation invocation.Invocation, examID model.ExamID, at time.Time, ordinaryAction, overrideAction model.Action) (authorizationDecision, error) {
+	return s.authorize(ctx, invocation, examID, model.Resource{Type: model.ResourceExam, ID: examID.String()}, at, ordinaryAction, overrideAction)
 }
 
-func (service *Service) authorize(ctx context.Context, invocation invocation.Invocation, examID model.ExamID, resource model.Resource, at time.Time, ordinaryAction, overrideAction model.Action) (authorizationDecision, error) {
+func (s *Service) authorize(ctx context.Context, invocation invocation.Invocation, examID model.ExamID, resource model.Resource, at time.Time, ordinaryAction, overrideAction model.Action) (authorizationDecision, error) {
 	principal := invocation.Principal()
 	if principal.Validate() != nil || !examID.IsValid() {
 		return authorizationDecision{}, apperror.Invalid("exam.sitting.invalid", "exam_id")
 	}
-	access, err := service.deps.Access.Access(ctx, examID, principal.UserID)
+	access, err := s.deps.Access.Access(ctx, examID, principal.UserID)
 	if err != nil {
 		return authorizationDecision{}, storeErrors.Translate(err)
 	}
 	if access == nil || access.Exam == nil || access.Exam.Validate() != nil || access.Exam.ID != examID {
 		return authorizationDecision{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam access projection is incomplete"))
 	}
-	action, err := manageraccess.SelectAction(ctx, service.deps.Memberships, principal.UserID, access, at, ordinaryAction, overrideAction)
+	action, err := manageraccess.SelectAction(ctx, s.deps.Memberships, principal.UserID, access, at, ordinaryAction, overrideAction)
 	if err != nil {
 		return authorizationDecision{}, apperror.New("exam.sitting.unavailable").Wrap(err)
 	}
-	if err = service.deps.Authorizer.Authorize(ctx, invocation, action, resource); err != nil {
+	if err = s.deps.Authorizer.Authorize(ctx, invocation, action, resource); err != nil {
 		return authorizationDecision{}, err
 	}
 	return authorizationDecision{action: action, unitID: access.Exam.AcademicUnitID, override: action == overrideAction, examArchived: access.Exam.IsArchived()}, nil
@@ -1051,10 +1051,10 @@ func requireScheduledCommandResult(result *store.ExamSittingCommandResult, examI
 	return value, nil
 }
 
-func (service *Service) failAudit(ctx context.Context, auditID model.AuditEventID, err error) error {
+func (s *Service) failAudit(ctx context.Context, auditID model.AuditEventID, err error) error {
 	mapped := storeErrors.Translate(err)
 	code := apperror.CodeOf(mapped, "exam.sitting.unavailable")
-	if auditErr := service.deps.Auditor.Fail(ctx, auditID, code); auditErr != nil {
+	if auditErr := s.deps.Auditor.Fail(ctx, auditID, code); auditErr != nil {
 		return errors.Join(mapped, auditErr)
 	}
 	return mapped

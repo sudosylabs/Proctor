@@ -48,7 +48,7 @@ type ManualSuspensionResult struct {
 // audits the attempt, and lets the named Store operation end the live
 // generation and open one manual Suspension episode atomically. Effects are
 // published only for a fresh commit.
-func (service *Service) SuspendExamAttempt(ctx context.Context, invocation invocation.Invocation, command ManualSuspensionCommand) (_ ManualSuspensionResult, resultErr error) {
+func (s *Service) SuspendExamAttempt(ctx context.Context, invocation invocation.Invocation, command ManualSuspensionCommand) (_ ManualSuspensionResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	principal := invocation.Principal()
 	if principal.Validate() != nil {
@@ -62,11 +62,11 @@ func (service *Service) SuspendExamAttempt(ctx context.Context, invocation invoc
 	if err != nil {
 		return ManualSuspensionResult{}, err
 	}
-	override, err := service.deps.Managers.AuthorizeSittingManage(ctx, invocation, command.SittingID)
+	override, err := s.deps.Managers.AuthorizeSittingManage(ctx, invocation, command.SittingID)
 	if err != nil {
 		return ManualSuspensionResult{}, err
 	}
-	sitting, err := service.deps.Sittings.Resolve(ctx, command.SittingID)
+	sitting, err := s.deps.Sittings.Resolve(ctx, command.SittingID)
 	if err != nil {
 		return ManualSuspensionResult{}, storeError(storeErrors, err)
 	}
@@ -77,7 +77,7 @@ func (service *Service) SuspendExamAttempt(ctx context.Context, invocation invoc
 	if override {
 		action = model.ActionExamSittingManageOverride
 	}
-	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, action,
+	auditID, err := s.deps.Auditor.BeginAtScope(ctx, invocation, action,
 		model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}, model.RoleScopeClass, sitting.Sitting.ClassID.String(),
 		store.ExamAttemptSuspendOperation, map[string]any{"exam_id": command.ExamID.String(), "exam_sitting_id": command.SittingID.String(),
 			"exam_attempt_id": command.AttemptID.String(), "expected_attempt_revision": command.ExpectedAttemptRevision}, nil)
@@ -85,39 +85,39 @@ func (service *Service) SuspendExamAttempt(ctx context.Context, invocation invoc
 		return ManualSuspensionResult{}, err
 	}
 	if sitting.Sitting.ExamID != command.ExamID {
-		return ManualSuspensionResult{}, service.failAudit(ctx, auditID, apperror.New("exam.attempt.not_found"))
+		return ManualSuspensionResult{}, s.failAudit(ctx, auditID, apperror.New("exam.attempt.not_found"))
 	}
-	managerSnapshot, err := service.deps.Persistence.Get(ctx, command.ExamID, command.AttemptID)
+	managerSnapshot, err := s.deps.Persistence.Get(ctx, command.ExamID, command.AttemptID)
 	if err != nil {
-		return ManualSuspensionResult{}, service.failAudit(ctx, auditID, err)
+		return ManualSuspensionResult{}, s.failAudit(ctx, auditID, err)
 	}
 	if managerSnapshot == nil || managerSnapshot.Attempt == nil || managerSnapshot.Attempt.Validate() != nil ||
 		managerSnapshot.Attempt.ExamID != command.ExamID ||
 		!validActiveSuspension(managerSnapshot.ActiveSuspension, managerSnapshot.Attempt.ID) {
-		return ManualSuspensionResult{}, service.failAudit(ctx, auditID, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent manual suspension Attempt projection")))
+		return ManualSuspensionResult{}, s.failAudit(ctx, auditID, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent manual suspension Attempt projection")))
 	}
 	if managerSnapshot.Attempt.SittingID != command.SittingID || managerSnapshot.Attempt.CandidateUserID == principal.UserID {
-		return ManualSuspensionResult{}, service.failAudit(ctx, auditID, apperror.New("exam.attempt.not_found"))
+		return ManualSuspensionResult{}, s.failAudit(ctx, auditID, apperror.New("exam.attempt.not_found"))
 	}
-	suspensionID := service.deps.NewSuspension()
+	suspensionID := s.deps.NewSuspension()
 	if !suspensionID.IsValid() {
-		return ManualSuspensionResult{}, service.failAudit(ctx, auditID, apperror.Invalid("exam.attempt.invalid", "suspension_id"))
+		return ManualSuspensionResult{}, s.failAudit(ctx, auditID, apperror.Invalid("exam.attempt.invalid", "suspension_id"))
 	}
-	stored, err := service.deps.Persistence.SuspendAttempt(ctx, &store.ExamAttemptManualSuspension{
+	stored, err := s.deps.Persistence.SuspendAttempt(ctx, &store.ExamAttemptManualSuspension{
 		ExamID: command.ExamID, SittingID: command.SittingID, AttemptID: command.AttemptID, SuspensionID: suspensionID,
 		ActorUserID: principal.UserID, ManagerOverride: override, ExpectedAttemptRevision: command.ExpectedAttemptRevision,
-		PrivateReason: command.PrivateReason, AuditEventID: auditID, AuditAt: model.MillisFromTime(service.deps.Now()),
+		PrivateReason: command.PrivateReason, AuditEventID: auditID, AuditAt: model.MillisFromTime(s.deps.Now()),
 	}, idempotency)
 	if err != nil {
-		return ManualSuspensionResult{}, service.failAudit(ctx, auditID, err)
+		return ManualSuspensionResult{}, s.failAudit(ctx, auditID, err)
 	}
 	result, err := projectManualSuspension(stored, command, sitting.Sitting.ClassID, principal.UserID)
 	if err != nil {
 		return ManualSuspensionResult{}, err
 	}
 	if !result.Replayed {
-		if effectErr := service.deps.Effects.AttemptSuspendedByManager(ctx, result); effectErr != nil {
-			service.deps.EffectFailures.Report(ctx, "exam_attempt_suspended_by_manager", effectErr)
+		if effectErr := s.deps.Effects.AttemptSuspendedByManager(ctx, result); effectErr != nil {
+			s.deps.EffectFailures.Report(ctx, "exam_attempt_suspended_by_manager", effectErr)
 		}
 	}
 	return result, nil

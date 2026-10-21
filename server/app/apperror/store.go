@@ -134,30 +134,30 @@ func (t StoreTable) With(rules ...StoreRule) StoreTable {
 	return t
 }
 
-func (rule StoreRule) matches(err error) bool {
-	switch rule.Kind {
+func (r StoreRule) matches(err error) bool {
+	switch r.Kind {
 	case StoreNotFound:
 		var target *store.ErrNotFound
-		return errors.As(err, &target) && rule.selects(target.Resource, "")
+		return errors.As(err, &target) && r.selects(target.Resource, "")
 	case StoreConflict:
 		var target *store.ErrConflict
-		return errors.As(err, &target) && rule.selects(target.Resource, target.Constraint)
+		return errors.As(err, &target) && r.selects(target.Resource, target.Constraint)
 	case StoreReference:
 		var target *store.ErrReference
-		return errors.As(err, &target) && rule.selects(target.Resource, target.Constraint)
+		return errors.As(err, &target) && r.selects(target.Resource, target.Constraint)
 	case StoreInvalidInput:
 		var target *store.ErrInvalidInput
-		return errors.As(err, &target) && rule.selects(target.Entity, target.Field)
+		return errors.As(err, &target) && r.selects(target.Entity, target.Field)
 	case StoreSentinel:
-		return rule.Sentinel != nil && errors.Is(err, rule.Sentinel)
+		return r.Sentinel != nil && errors.Is(err, r.Sentinel)
 	default:
 		return false
 	}
 }
 
-func (rule StoreRule) selects(entity, constraint string) bool {
-	return (rule.Entity == "" || rule.Entity == entity) &&
-		(rule.Constraint == "" || rule.Constraint == constraint)
+func (r StoreRule) selects(entity, constraint string) bool {
+	return (r.Entity == "" || r.Entity == entity) &&
+		(r.Constraint == "" || r.Constraint == constraint)
 }
 
 // Conflicts declares one StoreConflict rule per constraint name of one Store

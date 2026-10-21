@@ -85,10 +85,10 @@ func retentionPolicyResource(application RetentionPolicyApplication) resource {
 	)
 }
 
-func (module retentionPolicyResourceModule) get(
+func (m retentionPolicyResourceModule) get(
 	request operationRequest,
 ) (operationResult, error) {
-	policy, err := module.application.GetRetentionPolicy(
+	policy, err := m.application.GetRetentionPolicy(
 		request.context,
 		request.invocation(),
 	)
@@ -101,7 +101,7 @@ func (module retentionPolicyResourceModule) get(
 	).withHeaders(privateNoStoreHeaders()), nil
 }
 
-func (module retentionPolicyResourceModule) replace(
+func (m retentionPolicyResourceModule) replace(
 	request operationRequest,
 ) (operationResult, error) {
 	var body retentionPolicyRequest
@@ -112,7 +112,7 @@ func (module retentionPolicyResourceModule) replace(
 	if err != nil {
 		return operationResult{}, err
 	}
-	policy, err := module.application.ReplaceRetentionPolicy(
+	policy, err := m.application.ReplaceRetentionPolicy(
 		request.context,
 		request.invocation(),
 		application.ReplaceRetentionPolicyCommand{

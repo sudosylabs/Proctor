@@ -98,10 +98,10 @@ func desktopCompatibilityPolicyResource(application DesktopCompatibilityApplicat
 	)
 }
 
-func (module desktopCompatibilityPolicyResourceModule) get(
+func (m desktopCompatibilityPolicyResourceModule) get(
 	request operationRequest,
 ) (operationResult, error) {
-	policy, err := module.application.GetDesktopCompatibilityPolicy(
+	policy, err := m.application.GetDesktopCompatibilityPolicy(
 		request.context,
 		request.invocation(),
 	)
@@ -114,7 +114,7 @@ func (module desktopCompatibilityPolicyResourceModule) get(
 	).withHeaders(privateNoStoreHeaders()), nil
 }
 
-func (module desktopCompatibilityPolicyResourceModule) replace(
+func (m desktopCompatibilityPolicyResourceModule) replace(
 	request operationRequest,
 ) (operationResult, error) {
 	var body desktopCompatibilityPolicyRequest
@@ -125,7 +125,7 @@ func (module desktopCompatibilityPolicyResourceModule) replace(
 	if err != nil {
 		return operationResult{}, err
 	}
-	policy, err := module.application.ReplaceDesktopCompatibilityPolicy(
+	policy, err := m.application.ReplaceDesktopCompatibilityPolicy(
 		request.context,
 		request.invocation(),
 		application.ReplaceDesktopCompatibilityPolicyCommand{

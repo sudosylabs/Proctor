@@ -52,19 +52,19 @@ const (
 	IntegrityDiscrepancyFocusLossSequenceGapAndSourceNotFinalized IntegrityDiscrepancyFocusLossGapReason = "sequence_gap_and_source_not_finalized"
 )
 
-func (reason IntegrityDiscrepancyFocusLossGapReason) IsValid() bool {
-	return reason == IntegrityDiscrepancyFocusLossSequenceGap ||
-		reason == IntegrityDiscrepancyFocusLossSourceNotFinalized ||
-		reason == IntegrityDiscrepancyFocusLossSequenceGapAndSourceNotFinalized
+func (r IntegrityDiscrepancyFocusLossGapReason) IsValid() bool {
+	return r == IntegrityDiscrepancyFocusLossSequenceGap ||
+		r == IntegrityDiscrepancyFocusLossSourceNotFinalized ||
+		r == IntegrityDiscrepancyFocusLossSequenceGapAndSourceNotFinalized
 }
 
 type IntegrityDiscrepancyBrowserActivityGapReason string
 
 const IntegrityDiscrepancyBrowserActivityPriorSourceGap IntegrityDiscrepancyBrowserActivityGapReason = "prior_source_gap"
 
-func (reason IntegrityDiscrepancyBrowserActivityGapReason) IsValid() bool {
-	return reason == IntegrityDiscrepancyBrowserActivityPriorSourceGap ||
-		BrowserActivitySubmissionGapReason(reason).IsValid()
+func (r IntegrityDiscrepancyBrowserActivityGapReason) IsValid() bool {
+	return r == IntegrityDiscrepancyBrowserActivityPriorSourceGap ||
+		BrowserActivitySubmissionGapReason(r).IsValid()
 }
 
 // IntegrityDiscrepancySpecification contains the complete immutable value for
@@ -109,37 +109,37 @@ func NewIntegrityDiscrepancy(specification IntegrityDiscrepancySpecification) (*
 	return value, nil
 }
 
-func (value *IntegrityDiscrepancy) Validate() error {
-	if value == nil || !value.ID.IsValid() || !value.SubmissionID.IsValid() || !value.AttemptID.IsValid() ||
-		!value.ParticipationID.IsValid() || value.Generation < 1 || value.SchemaVersion != 1 || value.ReceivedAt.IsZero() {
+func (v *IntegrityDiscrepancy) Validate() error {
+	if v == nil || !v.ID.IsValid() || !v.SubmissionID.IsValid() || !v.AttemptID.IsValid() ||
+		!v.ParticipationID.IsValid() || v.Generation < 1 || v.SchemaVersion != 1 || v.ReceivedAt.IsZero() {
 		return invalidModelError("IntegrityDiscrepancy.Validate", "integrity_discrepancy", "", "invalid Integrity Discrepancy", "")
 	}
-	switch value.Kind {
+	switch v.Kind {
 	case IntegrityDiscrepancyLateFocusLoss:
-		if !value.SignalID.IsValid() || value.Sequence < 1 || value.DurationMilliseconds < 1 ||
-			value.DurationMilliseconds > FocusLossMaximumDurationMilliseconds || !value.Source.IsValid() ||
-			value.MissingBefore < 0 || value.CorrectionRevisionID != "" || value.BrowserSourceSessionID != "" ||
-			value.FinalSequence != nil || value.GapReason != "" || value.UnresolvedCount != 0 {
+		if !v.SignalID.IsValid() || v.Sequence < 1 || v.DurationMilliseconds < 1 ||
+			v.DurationMilliseconds > FocusLossMaximumDurationMilliseconds || !v.Source.IsValid() ||
+			v.MissingBefore < 0 || v.CorrectionRevisionID != "" || v.BrowserSourceSessionID != "" ||
+			v.FinalSequence != nil || v.GapReason != "" || v.UnresolvedCount != 0 {
 			return invalidModelError("IntegrityDiscrepancy.Validate", "integrity_discrepancy", "", "invalid late Focus Loss Integrity Discrepancy", "")
 		}
 	case IntegrityDiscrepancyFocusLossGap:
-		if value.SignalID != "" || value.Sequence != 0 || value.DurationMilliseconds != 0 || value.Source != "" ||
-			value.MissingBefore != 0 || value.CorrectionRevisionID != "" || value.BrowserSourceSessionID != "" ||
-			value.FinalSequence != nil || !IntegrityDiscrepancyFocusLossGapReason(value.GapReason).IsValid() ||
-			value.UnresolvedCount < 1 {
+		if v.SignalID != "" || v.Sequence != 0 || v.DurationMilliseconds != 0 || v.Source != "" ||
+			v.MissingBefore != 0 || v.CorrectionRevisionID != "" || v.BrowserSourceSessionID != "" ||
+			v.FinalSequence != nil || !IntegrityDiscrepancyFocusLossGapReason(v.GapReason).IsValid() ||
+			v.UnresolvedCount < 1 {
 			return invalidModelError("IntegrityDiscrepancy.Validate", "integrity_discrepancy", "", "invalid Focus Loss gap Integrity Discrepancy", "")
 		}
 	case IntegrityDiscrepancyBrowserActivityGap:
-		if value.SignalID != "" || value.Sequence != 0 || value.DurationMilliseconds != 0 || value.Source != "" ||
-			value.MissingBefore != 0 || value.CorrectionRevisionID != "" || !value.BrowserSourceSessionID.IsValid() ||
-			value.FinalSequence != nil && *value.FinalSequence < 1 ||
-			!IntegrityDiscrepancyBrowserActivityGapReason(value.GapReason).IsValid() || value.UnresolvedCount < 1 {
+		if v.SignalID != "" || v.Sequence != 0 || v.DurationMilliseconds != 0 || v.Source != "" ||
+			v.MissingBefore != 0 || v.CorrectionRevisionID != "" || !v.BrowserSourceSessionID.IsValid() ||
+			v.FinalSequence != nil && *v.FinalSequence < 1 ||
+			!IntegrityDiscrepancyBrowserActivityGapReason(v.GapReason).IsValid() || v.UnresolvedCount < 1 {
 			return invalidModelError("IntegrityDiscrepancy.Validate", "integrity_discrepancy", "", "invalid Browser Activity gap Integrity Discrepancy", "")
 		}
 	case IntegrityDiscrepancyCorrectionAcknowledgementMissing:
-		if value.SignalID != "" || value.Sequence != 0 || value.DurationMilliseconds != 0 || value.Source != "" ||
-			value.MissingBefore != 0 || !value.CorrectionRevisionID.IsValid() || value.BrowserSourceSessionID != "" ||
-			value.FinalSequence != nil || value.GapReason != "" || value.UnresolvedCount != 1 {
+		if v.SignalID != "" || v.Sequence != 0 || v.DurationMilliseconds != 0 || v.Source != "" ||
+			v.MissingBefore != 0 || !v.CorrectionRevisionID.IsValid() || v.BrowserSourceSessionID != "" ||
+			v.FinalSequence != nil || v.GapReason != "" || v.UnresolvedCount != 1 {
 			return invalidModelError("IntegrityDiscrepancy.Validate", "integrity_discrepancy", "", "invalid correction acknowledgement Integrity Discrepancy", "")
 		}
 	default:
@@ -158,8 +158,8 @@ const (
 	IntegrityReviewInconclusive IntegrityReviewOutcome = "inconclusive"
 )
 
-func (outcome IntegrityReviewOutcome) IsValid() bool {
-	return outcome == IntegrityReviewConfirmed || outcome == IntegrityReviewDismissed || outcome == IntegrityReviewInconclusive
+func (o IntegrityReviewOutcome) IsValid() bool {
+	return o == IntegrityReviewConfirmed || o == IntegrityReviewDismissed || o == IntegrityReviewInconclusive
 }
 
 // IntegrityReviewDecision is the sole current revision-fenced disposition of
@@ -187,23 +187,23 @@ func NewIntegrityReviewDecision(id IntegrityReviewDecisionID, reviewID Submissio
 	return decision, nil
 }
 
-func (decision *IntegrityReviewDecision) Validate() error {
-	if decision == nil || !decision.ID.IsValid() || !decision.ReviewID.IsValid() || !decision.FlagID.IsValid() ||
-		!decision.Outcome.IsValid() || decision.Revision < 1 || !decision.ActorUserID.IsValid() || decision.DecidedAt.IsZero() ||
-		!validBoundedReviewText(decision.PrivateRationale, 1, IntegrityReviewPrivateRationaleMaximumRunes,
+func (d *IntegrityReviewDecision) Validate() error {
+	if d == nil || !d.ID.IsValid() || !d.ReviewID.IsValid() || !d.FlagID.IsValid() ||
+		!d.Outcome.IsValid() || d.Revision < 1 || !d.ActorUserID.IsValid() || d.DecidedAt.IsZero() ||
+		!validBoundedReviewText(d.PrivateRationale, 1, IntegrityReviewPrivateRationaleMaximumRunes,
 			IntegrityReviewPrivateRationaleMaximumBytes) {
 		return invalidModelError("IntegrityReviewDecision.Validate", "integrity_review_decision", "", "invalid Integrity Review decision", "")
 	}
 	return nil
 }
 
-func (decision *IntegrityReviewDecision) Revise(expectedRevision int64, outcome IntegrityReviewOutcome,
+func (d *IntegrityReviewDecision) Revise(expectedRevision int64, outcome IntegrityReviewOutcome,
 	actorID UserID, rationale string, at time.Time,
 ) error {
-	if decision == nil || decision.Validate() != nil || decision.Revision != expectedRevision {
+	if d == nil || d.Validate() != nil || d.Revision != expectedRevision {
 		return invalidModelError("IntegrityReviewDecision.Revise", "integrity_review_decision", "", "Integrity Review decision revision conflict", "")
 	}
-	candidate := *decision
+	candidate := *d
 	candidate.InventoryStale = false
 	candidate.Outcome = outcome
 	candidate.Revision++
@@ -213,7 +213,7 @@ func (decision *IntegrityReviewDecision) Revise(expectedRevision int64, outcome 
 	if err := candidate.Validate(); err != nil {
 		return err
 	}
-	*decision = candidate
+	*d = candidate
 	return nil
 }
 
@@ -265,34 +265,34 @@ func NewSubmissionReview(id SubmissionReviewID, submissionID SubmissionID, actor
 	return review, nil
 }
 
-func (review *SubmissionReview) Validate() error {
-	if review == nil || !review.ID.IsValid() || !review.SubmissionID.IsValid() || review.Revision < 1 ||
-		!review.CreatedByUserID.IsValid() || review.CreatedAt.IsZero() || review.UpdatedAt.IsZero() || review.UpdatedAt.Before(review.CreatedAt) ||
-		!validBoundedReviewText(review.ManagerNotes, 0, SubmissionReviewPrivateNotesMaximumRunes, SubmissionReviewPrivateNotesMaximumBytes) ||
-		!validBoundedReviewText(review.StudentRemarksMarkdown, 0, SubmissionReviewStudentRemarksMaximumRunes, SubmissionReviewStudentRemarksMaximumBytes) {
+func (r *SubmissionReview) Validate() error {
+	if r == nil || !r.ID.IsValid() || !r.SubmissionID.IsValid() || r.Revision < 1 ||
+		!r.CreatedByUserID.IsValid() || r.CreatedAt.IsZero() || r.UpdatedAt.IsZero() || r.UpdatedAt.Before(r.CreatedAt) ||
+		!validBoundedReviewText(r.ManagerNotes, 0, SubmissionReviewPrivateNotesMaximumRunes, SubmissionReviewPrivateNotesMaximumBytes) ||
+		!validBoundedReviewText(r.StudentRemarksMarkdown, 0, SubmissionReviewStudentRemarksMaximumRunes, SubmissionReviewStudentRemarksMaximumBytes) {
 		return invalidModelError("SubmissionReview.Validate", "submission_review", "", "invalid Submission Review", "")
 	}
-	switch review.State {
+	switch r.State {
 	case SubmissionReviewDraft:
-		if review.ReleaseState != SubmissionReviewWithheld || review.FlagCount != 0 || review.EvidenceCount != 0 ||
-			review.DiscrepancyCount != 0 || review.EvidenceInventoryDigest != "" || review.FinalizedAt.Valid ||
-			!review.FinalizedByUserID.IsZero() || review.ReleasedAt.Valid || !review.ReleasedByUserID.IsZero() {
+		if r.ReleaseState != SubmissionReviewWithheld || r.FlagCount != 0 || r.EvidenceCount != 0 ||
+			r.DiscrepancyCount != 0 || r.EvidenceInventoryDigest != "" || r.FinalizedAt.Valid ||
+			!r.FinalizedByUserID.IsZero() || r.ReleasedAt.Valid || !r.ReleasedByUserID.IsZero() {
 			return invalidModelError("SubmissionReview.Validate", "submission_review", "", "invalid draft Submission Review", "")
 		}
 	case SubmissionReviewFinalized:
-		if review.FlagCount < 0 || review.FlagCount > SubmissionReviewMaximumFlags || review.EvidenceCount < 0 ||
-			review.EvidenceCount > SubmissionReviewMaximumEvidence || review.DiscrepancyCount < 0 ||
-			review.DiscrepancyCount > SubmissionReviewMaximumDiscrepancies || !validLowerSHA256(review.EvidenceInventoryDigest) ||
-			!review.FinalizedAt.Valid || review.FinalizedAt.Time.Before(review.CreatedAt) || !review.FinalizedByUserID.IsValid() {
+		if r.FlagCount < 0 || r.FlagCount > SubmissionReviewMaximumFlags || r.EvidenceCount < 0 ||
+			r.EvidenceCount > SubmissionReviewMaximumEvidence || r.DiscrepancyCount < 0 ||
+			r.DiscrepancyCount > SubmissionReviewMaximumDiscrepancies || !validLowerSHA256(r.EvidenceInventoryDigest) ||
+			!r.FinalizedAt.Valid || r.FinalizedAt.Time.Before(r.CreatedAt) || !r.FinalizedByUserID.IsValid() {
 			return invalidModelError("SubmissionReview.Validate", "submission_review", "", "invalid finalized Submission Review", "")
 		}
-		switch review.ReleaseState {
+		switch r.ReleaseState {
 		case SubmissionReviewWithheld:
-			if review.ReleasedAt.Valid || !review.ReleasedByUserID.IsZero() {
+			if r.ReleasedAt.Valid || !r.ReleasedByUserID.IsZero() {
 				return invalidModelError("SubmissionReview.Validate", "submission_review", "", "withheld Submission Review has release metadata", "")
 			}
 		case SubmissionReviewReleased:
-			if !review.ReleasedAt.Valid || review.ReleasedAt.Time.Before(review.FinalizedAt.Time) || !review.ReleasedByUserID.IsValid() {
+			if !r.ReleasedAt.Valid || r.ReleasedAt.Time.Before(r.FinalizedAt.Time) || !r.ReleasedByUserID.IsValid() {
 				return invalidModelError("SubmissionReview.Validate", "submission_review", "", "invalid released Submission Review", "")
 			}
 		default:
@@ -304,11 +304,11 @@ func (review *SubmissionReview) Validate() error {
 	return nil
 }
 
-func (review *SubmissionReview) UpdateDraft(expectedRevision int64, managerNotes, studentRemarks string, at time.Time) error {
-	if review == nil || review.Validate() != nil || review.State != SubmissionReviewDraft || review.Revision != expectedRevision {
+func (r *SubmissionReview) UpdateDraft(expectedRevision int64, managerNotes, studentRemarks string, at time.Time) error {
+	if r == nil || r.Validate() != nil || r.State != SubmissionReviewDraft || r.Revision != expectedRevision {
 		return invalidModelError("SubmissionReview.UpdateDraft", "submission_review", "", "Submission Review cannot be edited", "")
 	}
-	candidate := *review
+	candidate := *r
 	candidate.ManagerNotes = managerNotes
 	candidate.StudentRemarksMarkdown = studentRemarks
 	candidate.Revision++
@@ -316,33 +316,33 @@ func (review *SubmissionReview) UpdateDraft(expectedRevision int64, managerNotes
 	if err := candidate.Validate(); err != nil {
 		return err
 	}
-	*review = candidate
+	*r = candidate
 	return nil
 }
 
 // TouchDraft advances the aggregate revision when a child Flag decision is
 // created or revised without changing Review text.
-func (review *SubmissionReview) TouchDraft(expectedRevision int64, at time.Time) error {
-	if review == nil || review.Validate() != nil || review.State != SubmissionReviewDraft || review.Revision != expectedRevision {
+func (r *SubmissionReview) TouchDraft(expectedRevision int64, at time.Time) error {
+	if r == nil || r.Validate() != nil || r.State != SubmissionReviewDraft || r.Revision != expectedRevision {
 		return invalidModelError("SubmissionReview.TouchDraft", "submission_review", "", "Submission Review cannot advance", "")
 	}
-	candidate := *review
+	candidate := *r
 	candidate.Revision++
 	candidate.UpdatedAt = TimeUTC(at)
 	if err := candidate.Validate(); err != nil {
 		return err
 	}
-	*review = candidate
+	*r = candidate
 	return nil
 }
 
-func (review *SubmissionReview) Finalize(expectedRevision int64, actorID UserID, flagCount, evidenceCount,
+func (r *SubmissionReview) Finalize(expectedRevision int64, actorID UserID, flagCount, evidenceCount,
 	discrepancyCount int, inventoryDigest string, at time.Time,
 ) error {
-	if review == nil || review.Validate() != nil || review.State != SubmissionReviewDraft || review.Revision != expectedRevision {
+	if r == nil || r.Validate() != nil || r.State != SubmissionReviewDraft || r.Revision != expectedRevision {
 		return invalidModelError("SubmissionReview.Finalize", "submission_review", "", "Submission Review cannot be finalized", "")
 	}
-	candidate := *review
+	candidate := *r
 	candidate.State = SubmissionReviewFinalized
 	candidate.Revision++
 	candidate.FlagCount = flagCount
@@ -355,16 +355,16 @@ func (review *SubmissionReview) Finalize(expectedRevision int64, actorID UserID,
 	if err := candidate.Validate(); err != nil {
 		return err
 	}
-	*review = candidate
+	*r = candidate
 	return nil
 }
 
-func (review *SubmissionReview) Release(expectedRevision int64, actorID UserID, at time.Time) error {
-	if review == nil || review.Validate() != nil || review.State != SubmissionReviewFinalized ||
-		review.ReleaseState != SubmissionReviewWithheld || review.Revision != expectedRevision {
+func (r *SubmissionReview) Release(expectedRevision int64, actorID UserID, at time.Time) error {
+	if r == nil || r.Validate() != nil || r.State != SubmissionReviewFinalized ||
+		r.ReleaseState != SubmissionReviewWithheld || r.Revision != expectedRevision {
 		return invalidModelError("SubmissionReview.Release", "submission_review", "", "Submission Review cannot be released", "")
 	}
-	candidate := *review
+	candidate := *r
 	candidate.ReleaseState = SubmissionReviewReleased
 	candidate.Revision++
 	candidate.ReleasedAt = OptionalTimeFrom(at)
@@ -373,7 +373,7 @@ func (review *SubmissionReview) Release(expectedRevision int64, actorID UserID, 
 	if err := candidate.Validate(); err != nil {
 		return err
 	}
-	*review = candidate
+	*r = candidate
 	return nil
 }
 
@@ -388,13 +388,13 @@ type StudentResult struct {
 	ReleasedAt             time.Time
 }
 
-func (review *SubmissionReview) StudentResult(attemptID ExamAttemptID, candidateID UserID) (*StudentResult, error) {
-	if review == nil || review.Validate() != nil || review.State != SubmissionReviewFinalized ||
-		review.ReleaseState != SubmissionReviewReleased || !attemptID.IsValid() || !candidateID.IsValid() {
+func (r *SubmissionReview) StudentResult(attemptID ExamAttemptID, candidateID UserID) (*StudentResult, error) {
+	if r == nil || r.Validate() != nil || r.State != SubmissionReviewFinalized ||
+		r.ReleaseState != SubmissionReviewReleased || !attemptID.IsValid() || !candidateID.IsValid() {
 		return nil, invalidModelError("SubmissionReview.StudentResult", "submission_review", "", "Student Result is unavailable", "")
 	}
-	return &StudentResult{ReviewID: review.ID, SubmissionID: review.SubmissionID, AttemptID: attemptID,
-		CandidateUserID: candidateID, StudentRemarksMarkdown: review.StudentRemarksMarkdown, ReleasedAt: review.ReleasedAt.Time}, nil
+	return &StudentResult{ReviewID: r.ID, SubmissionID: r.SubmissionID, AttemptID: attemptID,
+		CandidateUserID: candidateID, StudentRemarksMarkdown: r.StudentRemarksMarkdown, ReleasedAt: r.ReleasedAt.Time}, nil
 }
 
 func validBoundedReviewText(value string, minimumRunes, maximumRunes, maximumBytes int) bool {

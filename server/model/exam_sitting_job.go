@@ -24,8 +24,8 @@ const (
 	ExamSittingLifecycleJobFinalize ExamSittingLifecycleJobPhase = "finalize"
 )
 
-func (phase ExamSittingLifecycleJobPhase) IsValid() bool {
-	return phase == ExamSittingLifecycleJobOpen || phase == ExamSittingLifecycleJobDeadline || phase == ExamSittingLifecycleJobFinalize
+func (p ExamSittingLifecycleJobPhase) IsValid() bool {
+	return p == ExamSittingLifecycleJobOpen || p == ExamSittingLifecycleJobDeadline || p == ExamSittingLifecycleJobFinalize
 }
 
 // ExamSittingLifecycleDedupeKey identifies one revision-fenced lifecycle

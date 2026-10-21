@@ -32,12 +32,12 @@ type browserAuthenticationMaintenancePeriodicRunner struct {
 	transactions browserAuthenticationMaintainer
 }
 
-func (runner browserAuthenticationMaintenancePeriodicRunner) Run(ctx context.Context) error {
-	if runner.transactions == nil {
+func (r browserAuthenticationMaintenancePeriodicRunner) Run(ctx context.Context) error {
+	if r.transactions == nil {
 		return errors.New("browser authentication maintenance persistence is unavailable")
 	}
 	for page := 0; page < browserAuthenticationMaintenanceMaximumPages; page++ {
-		maintained, err := runner.transactions.Maintain(ctx, browserAuthenticationMaintenancePageSize)
+		maintained, err := r.transactions.Maintain(ctx, browserAuthenticationMaintenancePageSize)
 		if err != nil {
 			return err
 		}

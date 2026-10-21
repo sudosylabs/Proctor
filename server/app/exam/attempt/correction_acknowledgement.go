@@ -32,7 +32,7 @@ type CorrectionAcknowledgementResult struct {
 	RuntimeCapabilities  store.CandidateRuntimeCapabilities
 }
 
-func (service *Service) AcknowledgeExamAttemptCorrection(ctx context.Context, invocation invocation.Invocation, command AcknowledgeCorrectionCommand) (_ CorrectionAcknowledgementResult, resultErr error) {
+func (s *Service) AcknowledgeExamAttemptCorrection(ctx context.Context, invocation invocation.Invocation, command AcknowledgeCorrectionCommand) (_ CorrectionAcknowledgementResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	selector, err := candidateSelector(invocation, command.Access.CandidateAccess)
 	if err != nil || !command.Access.ParticipationID.IsValid() || command.Access.Generation < 1 ||
@@ -53,7 +53,7 @@ func (service *Service) AcknowledgeExamAttemptCorrection(ctx context.Context, in
 	input := store.ExamAttemptCorrectionAcknowledgement{Access: selector, ParticipationID: command.Access.ParticipationID,
 		Generation: command.Access.Generation, CorrectionRevisionID: command.CorrectionRevisionID,
 		ExpectedCurrentRevisionID: command.ExpectedCurrentRevisionID}
-	target, err := service.deps.Persistence.ResolveCorrectionAcknowledgementTarget(ctx, input)
+	target, err := s.deps.Persistence.ResolveCorrectionAcknowledgementTarget(ctx, input)
 	if err != nil {
 		return CorrectionAcknowledgementResult{}, storeError(storeErrors, err)
 	}
@@ -63,11 +63,11 @@ func (service *Service) AcknowledgeExamAttemptCorrection(ctx context.Context, in
 		return CorrectionAcknowledgementResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent correction acknowledgement target"))
 	}
 	resource := model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}
-	if err = service.deps.Auditor.RecordAuthorizationDecision(ctx, invocation, model.ActionExamSittingParticipate,
+	if err = s.deps.Auditor.RecordAuthorizationDecision(ctx, invocation, model.ActionExamSittingParticipate,
 		resource, model.RoleScopeClass, target.ClassID.String(), true); err != nil {
 		return CorrectionAcknowledgementResult{}, err
 	}
-	auditEvent, err := service.deps.Auditor.PrepareAtScope(ctx, invocation, model.ActionExamSittingParticipate,
+	auditEvent, err := s.deps.Auditor.PrepareAtScope(ctx, invocation, model.ActionExamSittingParticipate,
 		resource, model.RoleScopeClass,
 		target.ClassID.String(), store.ExamAttemptCorrectionAcknowledgementOperation,
 		map[string]any{"exam_attempt_id": target.AttemptID.String(), "correction_revision_id": target.CorrectionRevisionID.String(),
@@ -76,7 +76,7 @@ func (service *Service) AcknowledgeExamAttemptCorrection(ctx context.Context, in
 		return CorrectionAcknowledgementResult{}, err
 	}
 	input.AuditEvent = auditEvent
-	stored, err := service.deps.Persistence.AcknowledgeCorrection(ctx, &input, idempotency)
+	stored, err := s.deps.Persistence.AcknowledgeCorrection(ctx, &input, idempotency)
 	if err != nil {
 		return CorrectionAcknowledgementResult{}, storeError(storeErrors, err)
 	}
@@ -86,7 +86,7 @@ func (service *Service) AcknowledgeExamAttemptCorrection(ctx context.Context, in
 	}
 	// The receipt is immutable; the gates are freshly resolved after commit,
 	// including an exact replay or another correction published in the meantime.
-	presentation, err := service.GetCandidateExamPresentation(ctx, invocation, command.Access.CandidateAccess)
+	presentation, err := s.GetCandidateExamPresentation(ctx, invocation, command.Access.CandidateAccess)
 	if err != nil {
 		return CorrectionAcknowledgementResult{}, err
 	}

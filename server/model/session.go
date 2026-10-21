@@ -51,8 +51,8 @@ const (
 	SessionRevocationExpired                    SessionRevocationReason = "expired"
 )
 
-func (reason SessionRevocationReason) IsValid() bool {
-	switch reason {
+func (r SessionRevocationReason) IsValid() bool {
+	switch r {
 	case SessionRevocationUserLogout,
 		SessionRevocationUserSession,
 		SessionRevocationUserAllSessions,
@@ -80,8 +80,8 @@ func (reason SessionRevocationReason) IsValid() bool {
 // withdrawal of a Session the system itself just issued or refreshed: Desktop
 // authorization could not finish, or the User became inactive. Every other
 // revocation is an audited mutation.
-func (reason SessionRevocationReason) IsSystemWithdrawal() bool {
-	switch reason {
+func (r SessionRevocationReason) IsSystemWithdrawal() bool {
+	switch r {
 	case SessionRevocationDesktopAuthorizationFailed,
 		SessionRevocationInactiveUser:
 		return true

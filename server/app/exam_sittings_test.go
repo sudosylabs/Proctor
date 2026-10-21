@@ -130,11 +130,11 @@ type examSittingLifecycleFake struct {
 	err         error
 }
 
-func (fake *examSittingLifecycleFake) AdvanceDue(_ context.Context, call appinvocation.System, _ model.ExamSittingID) (store.ExamSittingLifecycleResult, error) {
-	fake.advanceCall = call
-	return fake.advance, fake.err
+func (f *examSittingLifecycleFake) AdvanceDue(_ context.Context, call appinvocation.System, _ model.ExamSittingID) (store.ExamSittingLifecycleResult, error) {
+	f.advanceCall = call
+	return f.advance, f.err
 }
 
-func (fake *examSittingLifecycleFake) ListLifecycleDue(context.Context, store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
-	return nil, fake.err
+func (f *examSittingLifecycleFake) ListLifecycleDue(context.Context, store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
+	return nil, f.err
 }

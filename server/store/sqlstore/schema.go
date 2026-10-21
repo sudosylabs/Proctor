@@ -61,9 +61,9 @@ func LocalSchemaVersion() (int, error) {
 	return latest, nil
 }
 
-func (s *SQLStore) GetDBSchemaVersion(ctx context.Context) (int, error) {
+func (ss *SQLStore) GetDBSchemaVersion(ctx context.Context) (int, error) {
 	var version int
-	err := s.GetMaster().Get(ctx, &version, "SELECT version FROM db_migrations ORDER BY version DESC LIMIT 1")
+	err := ss.GetMaster().Get(ctx, &version, "SELECT version FROM db_migrations ORDER BY version DESC LIMIT 1")
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
@@ -77,16 +77,16 @@ func (s *SQLStore) GetDBSchemaVersion(ctx context.Context) (int, error) {
 	return version, nil
 }
 
-func (s *SQLStore) GetLocalSchemaVersion() (int, error) {
+func (ss *SQLStore) GetLocalSchemaVersion() (int, error) {
 	return LocalSchemaVersion()
 }
 
-func (s *SQLStore) ValidateSchema(ctx context.Context) error {
-	databaseVersion, err := s.GetDBSchemaVersion(ctx)
+func (ss *SQLStore) ValidateSchema(ctx context.Context) error {
+	databaseVersion, err := ss.GetDBSchemaVersion(ctx)
 	if err != nil {
 		return err
 	}
-	localVersion, err := s.GetLocalSchemaVersion()
+	localVersion, err := ss.GetLocalSchemaVersion()
 	if err != nil {
 		return err
 	}

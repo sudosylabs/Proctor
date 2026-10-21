@@ -18,25 +18,25 @@ type BrowserSubmissionSettlement struct {
 	IncompleteSourceCount int64  `json:"incomplete_source_count"`
 }
 
-func (value BrowserSubmissionSettlement) Validate() error {
-	if value.InventoryRevision < 1 || !securitySafeInt(value.InventoryRevision) || !securitySafeInt(value.SourceCount) || value.PendingSourceCount < 0 || value.PendingSourceCount > value.SourceCount || value.IncompleteSourceCount < 0 || value.IncompleteSourceCount > value.SourceCount {
+func (v BrowserSubmissionSettlement) Validate() error {
+	if v.InventoryRevision < 1 || !securitySafeInt(v.InventoryRevision) || !securitySafeInt(v.SourceCount) || v.PendingSourceCount < 0 || v.PendingSourceCount > v.SourceCount || v.IncompleteSourceCount < 0 || v.IncompleteSourceCount > v.SourceCount {
 		return ErrDeliveryInvalid
 	}
 	expected := "settled"
 	switch {
-	case value.SourceCount == 0:
+	case v.SourceCount == 0:
 		expected = "not_applicable"
-	case value.PendingSourceCount > 0:
+	case v.PendingSourceCount > 0:
 		expected = "pending"
-	case value.IncompleteSourceCount > 0:
+	case v.IncompleteSourceCount > 0:
 		expected = "incomplete"
 	}
-	if value.State != expected {
+	if v.State != expected {
 		return ErrDeliveryInvalid
 	}
 	return nil
 }
-func (value BrowserSubmissionSettlement) Clone() BrowserSubmissionSettlement { return value }
+func (v BrowserSubmissionSettlement) Clone() BrowserSubmissionSettlement { return v }
 
 // BrowserSourceSettlementFacts excludes live interaction authority. Completion
 // requires a declared final boundary and actual receipts, not merely settlement

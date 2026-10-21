@@ -28,17 +28,17 @@ type examCollectionInvalidationEffects struct {
 	realtime *realtimeService
 }
 
-func (effects examCollectionInvalidationEffects) CandidateActivityChangedForSitting(
+func (e examCollectionInvalidationEffects) CandidateActivityChangedForSitting(
 	ctx context.Context,
 	sittingID model.ExamSittingID,
 ) error {
-	if effects.sittings == nil || effects.realtime == nil {
+	if e.sittings == nil || e.realtime == nil {
 		return errors.New("Exam collection invalidation dependencies are invalid")
 	}
 	var after model.UserID
 	var errs []error
 	for {
-		candidateIDs, err := effects.sittings.ListCandidateInvalidationTargetsBySitting(
+		candidateIDs, err := e.sittings.ListCandidateInvalidationTargetsBySitting(
 			ctx, sittingID, after, examCollectionInvalidationPageSize,
 		)
 		if err != nil {
@@ -50,7 +50,7 @@ func (effects examCollectionInvalidationEffects) CandidateActivityChangedForSitt
 				errs = append(errs, eventErr)
 				continue
 			}
-			errs = append(errs, effects.realtime.PublishRealtimeEvent(ctx, event))
+			errs = append(errs, e.realtime.PublishRealtimeEvent(ctx, event))
 		}
 		if len(candidateIDs) < examCollectionInvalidationPageSize {
 			return errors.Join(errs...)
@@ -59,32 +59,32 @@ func (effects examCollectionInvalidationEffects) CandidateActivityChangedForSitt
 	}
 }
 
-func (effects examCollectionInvalidationEffects) SittingBoardChanged(
+func (e examCollectionInvalidationEffects) SittingBoardChanged(
 	ctx context.Context,
 	examID model.ExamID,
 	sittingID model.ExamSittingID,
 ) error {
-	if effects.realtime == nil {
+	if e.realtime == nil {
 		return errors.New("Exam collection invalidation dependencies are invalid")
 	}
 	event, err := apprealtime.NewManagerSittingBoardChangedEvent(examID, sittingID)
 	if err != nil {
 		return err
 	}
-	return effects.realtime.PublishRealtimeEvent(ctx, event)
+	return e.realtime.PublishRealtimeEvent(ctx, event)
 }
 
-func (effects examCollectionInvalidationEffects) ExamArchived(
+func (e examCollectionInvalidationEffects) ExamArchived(
 	ctx context.Context,
 	examID model.ExamID,
 ) error {
-	if effects.sittings == nil || effects.realtime == nil {
+	if e.sittings == nil || e.realtime == nil {
 		return errors.New("Exam collection invalidation dependencies are invalid")
 	}
 	var after model.ExamSittingID
 	var errs []error
 	for {
-		targets, err := effects.sittings.ListInvalidationTargetsByExam(
+		targets, err := e.sittings.ListInvalidationTargetsByExam(
 			ctx, examID, after, examCollectionInvalidationPageSize,
 		)
 		if err != nil {
@@ -93,8 +93,8 @@ func (effects examCollectionInvalidationEffects) ExamArchived(
 		for _, target := range targets {
 			errs = append(
 				errs,
-				effects.SittingBoardChanged(ctx, target.ExamID, target.SittingID),
-				effects.CandidateActivityChangedForSitting(ctx, target.SittingID),
+				e.SittingBoardChanged(ctx, target.ExamID, target.SittingID),
+				e.CandidateActivityChangedForSitting(ctx, target.SittingID),
 			)
 		}
 		if len(targets) < examCollectionInvalidationPageSize {

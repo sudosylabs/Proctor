@@ -275,79 +275,79 @@ func newExamIntegrityReviewFocusedAPI(t *testing.T, fake *examIntegrityReviewHTT
 	return newFocusedResourceAPI(t, logger, fake, examIntegrityReviewResource(fake))
 }
 
-func (fake *examIntegrityReviewHTTPFake) AuthenticateAccess(context.Context, string) (*model.Principal, error) {
-	principal := fake.principal
+func (f *examIntegrityReviewHTTPFake) AuthenticateAccess(context.Context, string) (*model.Principal, error) {
+	principal := f.principal
 	return &principal, nil
 }
 
-func (fake *examIntegrityReviewHTTPFake) AuthenticateBearer(context.Context, string) (*model.Principal, error) {
-	principal := fake.principal
+func (f *examIntegrityReviewHTTPFake) AuthenticateBearer(context.Context, string) (*model.Principal, error) {
+	principal := f.principal
 	return &principal, nil
 }
 
-func (fake *examIntegrityReviewHTTPFake) GetExamIntegrityReview(context.Context, application.Invocation,
+func (f *examIntegrityReviewHTTPFake) GetExamIntegrityReview(context.Context, application.Invocation,
 	model.SubmissionID,
 ) (*application.ExamSubmissionReviewSnapshot, error) {
-	return &store.ExamSubmissionReviewSnapshot{NativeConditions: model.NewNativeConditionInventory(), Authorization: fake.authorization, Submission: fake.submission,
-		Review: fake.review, Decisions: []model.IntegrityReviewDecision{*fake.decisionValue}}, nil
+	return &store.ExamSubmissionReviewSnapshot{NativeConditions: model.NewNativeConditionInventory(), Authorization: f.authorization, Submission: f.submission,
+		Review: f.review, Decisions: []model.IntegrityReviewDecision{*f.decisionValue}}, nil
 }
 
-func (fake *examIntegrityReviewHTTPFake) ListExamIntegrityFlags(_ context.Context, _ application.Invocation,
+func (f *examIntegrityReviewHTTPFake) ListExamIntegrityFlags(_ context.Context, _ application.Invocation,
 	query application.ListExamIntegrityFlagsQuery,
 ) (*application.ExamIntegrityFlagPage, error) {
-	fake.flagQuery = query
-	return &store.ExamIntegrityFlagPage{Items: []store.ExamIntegrityFlagSummary{{Flag: *fake.flag, EvidenceCount: 1}}}, nil
+	f.flagQuery = query
+	return &store.ExamIntegrityFlagPage{Items: []store.ExamIntegrityFlagSummary{{Flag: *f.flag, EvidenceCount: 1}}}, nil
 }
 
-func (fake *examIntegrityReviewHTTPFake) ListExamIntegrityEvidence(_ context.Context, _ application.Invocation,
+func (f *examIntegrityReviewHTTPFake) ListExamIntegrityEvidence(_ context.Context, _ application.Invocation,
 	query application.ListExamIntegrityEvidenceQuery,
 ) (*application.ExamIntegrityEvidencePage, error) {
-	fake.evidenceQuery = query
-	page := fake.evidencePage
+	f.evidenceQuery = query
+	page := f.evidencePage
 	return &page, nil
 }
 
-func (fake *examIntegrityReviewHTTPFake) ListExamIntegrityDiscrepancies(_ context.Context, _ application.Invocation,
+func (f *examIntegrityReviewHTTPFake) ListExamIntegrityDiscrepancies(_ context.Context, _ application.Invocation,
 	query application.ListExamIntegrityDiscrepanciesQuery,
 ) (*application.ExamIntegrityDiscrepancyPage, error) {
-	fake.discrepancyQuery = query
-	return &store.ExamIntegrityDiscrepancyPage{Items: []model.IntegrityDiscrepancy{*fake.discrepancy}}, nil
+	f.discrepancyQuery = query
+	return &store.ExamIntegrityDiscrepancyPage{Items: []model.IntegrityDiscrepancy{*f.discrepancy}}, nil
 }
 
-func (fake *examIntegrityReviewHTTPFake) SaveExamIntegrityDecision(_ context.Context, _ application.Invocation,
+func (f *examIntegrityReviewHTTPFake) SaveExamIntegrityDecision(_ context.Context, _ application.Invocation,
 	command application.SaveExamIntegrityDecisionCommand,
 ) (application.ExamIntegrityReviewResult, error) {
-	fake.decision = command
-	decision := *fake.decisionValue
+	f.decision = command
+	decision := *f.decisionValue
 	decision.Outcome, decision.PrivateRationale = command.Outcome, command.PrivateRationale
-	return application.ExamIntegrityReviewResult{Authorization: fake.authorization, Review: fake.review, Decision: &decision}, nil
+	return application.ExamIntegrityReviewResult{Authorization: f.authorization, Review: f.review, Decision: &decision}, nil
 }
 
-func (fake *examIntegrityReviewHTTPFake) UpdateExamIntegrityReview(context.Context, application.Invocation,
+func (f *examIntegrityReviewHTTPFake) UpdateExamIntegrityReview(context.Context, application.Invocation,
 	application.UpdateExamIntegrityReviewCommand,
 ) (application.ExamIntegrityReviewResult, error) {
-	return application.ExamIntegrityReviewResult{Authorization: fake.authorization, Review: fake.review}, nil
+	return application.ExamIntegrityReviewResult{Authorization: f.authorization, Review: f.review}, nil
 }
 
-func (fake *examIntegrityReviewHTTPFake) FinalizeExamIntegrityReview(context.Context, application.Invocation,
+func (f *examIntegrityReviewHTTPFake) FinalizeExamIntegrityReview(context.Context, application.Invocation,
 	application.FinalizeExamIntegrityReviewCommand,
 ) (application.ExamIntegrityReviewResult, error) {
-	return application.ExamIntegrityReviewResult{Authorization: fake.authorization, Review: fake.review}, nil
+	return application.ExamIntegrityReviewResult{Authorization: f.authorization, Review: f.review}, nil
 }
 
-func (fake *examIntegrityReviewHTTPFake) ReleaseStudentExamResult(context.Context, application.Invocation,
+func (f *examIntegrityReviewHTTPFake) ReleaseStudentExamResult(context.Context, application.Invocation,
 	application.ReleaseStudentExamResultCommand,
 ) (application.ExamIntegrityReviewResult, error) {
-	return application.ExamIntegrityReviewResult{Authorization: fake.authorization, Review: fake.review}, nil
+	return application.ExamIntegrityReviewResult{Authorization: f.authorization, Review: f.review}, nil
 }
 
-func (fake *examIntegrityReviewHTTPFake) GetStudentExamResult(context.Context, application.Invocation,
+func (f *examIntegrityReviewHTTPFake) GetStudentExamResult(context.Context, application.Invocation,
 	model.ExamAttemptID,
 ) (*application.StudentExamResult, error) {
-	return &model.StudentResult{ReviewID: fake.review.ID, SubmissionID: fake.submission.ID, AttemptID: fake.attemptID,
-		CandidateUserID: fake.principal.UserID, StudentRemarksMarkdown: "Approved **remarks**", ReleasedAt: fake.review.UpdatedAt}, nil
+	return &model.StudentResult{ReviewID: f.review.ID, SubmissionID: f.submission.ID, AttemptID: f.attemptID,
+		CandidateUserID: f.principal.UserID, StudentRemarksMarkdown: "Approved **remarks**", ReleasedAt: f.review.UpdatedAt}, nil
 }
 
-func (fake *examIntegrityReviewHTTPFake) ListNativeConditions(context.Context, application.Invocation, application.NativeConditionListQuery) (*application.NativeConditionPage, error) {
+func (f *examIntegrityReviewHTTPFake) ListNativeConditions(context.Context, application.Invocation, application.NativeConditionListQuery) (*application.NativeConditionPage, error) {
 	return &application.NativeConditionPage{Items: []model.NativeConditionEvidence{}}, nil
 }
