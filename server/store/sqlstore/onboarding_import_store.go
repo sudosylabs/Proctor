@@ -524,7 +524,8 @@ func refreshOnboardingImportCounts(ctx context.Context, tx *sqlxTxWrapper, id mo
 		stateSQL = `CASE WHEN ` + fmt.Sprint(counts.Failed) + `>0 THEN 'completed_with_errors' ELSE 'completed' END`
 	}
 	var updated onboardingImportRow
-	query := `UPDATE onboarding_imports SET succeeded_rows=?,no_op_rows=?,failed_rows=?,skipped_rows=?,state=` + stateSQL + `,updated_at=?,revision=revision+1 WHERE id=? RETURNING ` + onboardingImportColumns
+	// Row outcomes record PostgreSQL time while the import carries node clocks.
+	query := `UPDATE onboarding_imports SET succeeded_rows=?,no_op_rows=?,failed_rows=?,skipped_rows=?,state=` + stateSQL + `,updated_at=GREATEST(updated_at,?),revision=revision+1 WHERE id=? RETURNING ` + onboardingImportColumns
 	if err := tx.Get(ctx, &updated, query, counts.Succeeded, counts.NoOp, counts.Failed, counts.Skipped, at, id.String()); err != nil {
 		return nil, translateError("onboarding_import", id.String(), err)
 	}
@@ -959,7 +960,9 @@ func completeOnboardingImportCommand[T any](ctx context.Context, tx *sqlxTxWrapp
 	if err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `UPDATE onboarding_import_rows SET status=?,public_code='',invitation_id=?,result_ref=?,updated_at=? WHERE import_id=? AND row_number=?`,
+	// at is PostgreSQL time while the import and its rows carry node clocks;
+	// the recorded modification never moves before them.
+	if _, err = tx.Exec(ctx, `UPDATE onboarding_import_rows SET status=?,public_code='',invitation_id=?,result_ref=?,updated_at=GREATEST(updated_at,?) WHERE import_id=? AND row_number=?`,
 		string(outcome.Status), nullableID(outcome.InvitationID.String()), nullableID(outcome.ResourceID), at, command.OnboardingImportID.String(), command.OnboardingImportRowNumber); err != nil {
 		return err
 	}

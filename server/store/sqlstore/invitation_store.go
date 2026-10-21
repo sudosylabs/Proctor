@@ -849,7 +849,7 @@ func terminalizeElapsedScopedRoleInvitationConflict(ctx context.Context, tx *sql
 	if model.TimeUTC(at).Before(invitation.ExpiresAt) && (!invitation.IntendedEndsAt.Valid || model.TimeUTC(at).Before(invitation.IntendedEndsAt.Time)) {
 		return nil
 	}
-	if err = invitation.Expire(at); err != nil {
+	if err = invitation.Expire(invitationTransitionAt(at, invitation)); err != nil {
 		return invalidPersistedState("invitation", "expiry", err)
 	}
 	if err = updateExpiredInvitation(ctx, tx, invitation); err != nil {
@@ -876,7 +876,7 @@ func terminalizeElapsedTeacherAcademicUnitInvitationConflict(ctx context.Context
 	if model.TimeUTC(at).Before(invitation.ExpiresAt) && (!invitation.IntendedEndsAt.Valid || model.TimeUTC(at).Before(invitation.IntendedEndsAt.Time)) {
 		return nil
 	}
-	if err = invitation.Expire(at); err != nil {
+	if err = invitation.Expire(invitationTransitionAt(at, invitation)); err != nil {
 		return invalidPersistedState("invitation", "expiry", err)
 	}
 	if err = updateExpiredInvitation(ctx, tx, invitation); err != nil {
@@ -910,13 +910,21 @@ func terminalizeElapsedStudentClassInvitationConflict(
 		(!invitation.IntendedEndsAt.Valid || model.TimeUTC(at).Before(invitation.IntendedEndsAt.Time)) {
 		return nil
 	}
-	if err = invitation.Expire(at); err != nil {
+	if err = invitation.Expire(invitationTransitionAt(at, invitation)); err != nil {
 		return invalidPersistedState("invitation", "expiry", err)
 	}
 	if err = updateExpiredInvitation(ctx, tx, invitation); err != nil {
 		return err
 	}
 	return suppressInvitationCredentialMail(ctx, tx, invitation.ID, model.MailDeliveryObsoleteCode, at)
+}
+
+// invitationTransitionAt returns the instant one PostgreSQL-timed Invitation
+// transition records. Callers decide validity at databaseNow first; Invitations
+// carry the issuing node's clock, and a transition never records an instant
+// before the creation or last modification it supersedes.
+func invitationTransitionAt(databaseNow time.Time, invitation *model.Invitation) time.Time {
+	return latestTime(latestTime(databaseNow, invitation.CreatedAt), invitation.UpdatedAt)
 }
 
 func updateExpiredInvitation(ctx context.Context, tx *sqlxTxWrapper, invitation *model.Invitation) error {
@@ -1176,7 +1184,7 @@ func resendInvitation(ctx context.Context, tx *sqlxTxWrapper, input *store.Invit
 	if err = requireInvitationManagementAuthority(ctx, tx, input.ActorUserID, current, at); err != nil {
 		return nil, err
 	}
-	if err = current.Resend(input.ClaimHash, at); err != nil {
+	if err = current.Resend(input.ClaimHash, invitationTransitionAt(at, current)); err != nil {
 		return nil, store.NewErrConflict("invitation", "invitation_lifecycle", err)
 	}
 	occurrence, delivery, job, err := invitationMailAt(input.Occurrence, input.Delivery, input.DeliveryJob, at, current.ExpiresAt)
@@ -1257,7 +1265,7 @@ func revokeInvitation(ctx context.Context, tx *sqlxTxWrapper, input *store.Invit
 		string(model.MailTemplateAccessAcademicUnitRoleInvitation), string(model.MailTemplateAccessInstitutionRoleInvitation)); err != nil {
 		return nil, fmt.Errorf("inspect accepted Invitation delivery: %w", err)
 	}
-	if err = current.Revoke(at); err != nil {
+	if err = current.Revoke(invitationTransitionAt(at, current)); err != nil {
 		return nil, store.NewErrConflict("invitation", "invitation_lifecycle", err)
 	}
 	if err = updateInvitationLifecycle(ctx, tx, current, false); err != nil {
@@ -1375,7 +1383,7 @@ func (s SQLInvitationStore) Replace(ctx context.Context, input *store.Invitation
 		if err = requireReplacementAuthority(ctx, tx, &candidate, at); err != nil {
 			return nil, err
 		}
-		if err = current.Supersede(at); err != nil {
+		if err = current.Supersede(invitationTransitionAt(at, current)); err != nil {
 			return nil, store.NewErrConflict("invitation", "invitation_lifecycle", err)
 		}
 		if err = updateInvitationLifecycle(ctx, tx, current, false); err != nil {
@@ -1623,7 +1631,7 @@ func (s SQLInvitationStore) Maintain(ctx context.Context, limit int) (*store.Inv
 			if modelErr != nil {
 				return nil, modelErr
 			}
-			if modelErr = invitation.Expire(now); modelErr != nil {
+			if modelErr = invitation.Expire(invitationTransitionAt(now, invitation)); modelErr != nil {
 				return nil, invalidPersistedState("invitation", "expiry", modelErr)
 			}
 			if err = updateExpiredInvitation(ctx, tx, invitation); err != nil {
@@ -1730,7 +1738,7 @@ func (s SQLInvitationStore) AcceptStudentClass(ctx context.Context, input *store
 		if err != nil {
 			return nil, err
 		}
-		if err := invitation.Accept(user.ID, affiliation.ID, member.ID, databaseNow); err != nil {
+		if err = invitation.Accept(user.ID, affiliation.ID, member.ID, invitationTransitionAt(databaseNow, invitation)); err != nil {
 			return nil, store.NewErrConflict("invitation", "invitation_not_pending", err)
 		}
 		if result, err := tx.Exec(ctx, `UPDATE invitations SET state=?,accepted_at=?,accepted_user_id=?,accepted_affiliation_id=?,accepted_class_member_id=?,updated_at=?,revision=? WHERE id=? AND state='pending' AND revision=?`,
@@ -1848,7 +1856,7 @@ func (s SQLInvitationStore) AcceptTeacherAcademicUnit(ctx context.Context, input
 		if err != nil {
 			return nil, err
 		}
-		if err = invitation.AcceptTeacherAcademicUnit(user.ID, affiliation.ID, member.ID, binding.ID, databaseNow); err != nil {
+		if err = invitation.AcceptTeacherAcademicUnit(user.ID, affiliation.ID, member.ID, binding.ID, invitationTransitionAt(databaseNow, invitation)); err != nil {
 			return nil, store.NewErrConflict("invitation", "invitation_not_pending", err)
 		}
 		result, err := tx.Exec(ctx, `UPDATE invitations SET state=?,accepted_at=?,accepted_user_id=?,accepted_affiliation_id=?,accepted_academic_unit_member_id=?,accepted_role_binding_id=?,updated_at=?,revision=? WHERE id=? AND state='pending' AND revision=?`,
@@ -2002,7 +2010,7 @@ func (s SQLInvitationStore) AcceptExternalIdentity(ctx context.Context, input *s
 				result.ClassMember, err = ensureInvitationClassMember(ctx, tx, invitation, input.ClassMember, user.ID, effectiveStart)
 			}
 			if err == nil {
-				err = invitation.Accept(user.ID, result.Affiliation.ID, result.ClassMember.ID, databaseNow)
+				err = invitation.Accept(user.ID, result.Affiliation.ID, result.ClassMember.ID, invitationTransitionAt(databaseNow, invitation))
 			}
 		case model.InvitationPurposeTeacherAcademicUnit:
 			if !slices.Equal(input.RequiredActions, []model.Action{model.ActionInvitationCreate, model.ActionAcademicUnitMembersManage}) ||
@@ -2022,7 +2030,7 @@ func (s SQLInvitationStore) AcceptExternalIdentity(ctx context.Context, input *s
 				result.RoleBinding, err = ensureInvitationRoleBinding(ctx, tx, invitation, input.RoleBinding, user.ID, result.AcademicUnitMember.ID, effectiveStart)
 			}
 			if err == nil {
-				err = invitation.AcceptTeacherAcademicUnit(user.ID, result.Affiliation.ID, result.AcademicUnitMember.ID, result.RoleBinding.ID, databaseNow)
+				err = invitation.AcceptTeacherAcademicUnit(user.ID, result.Affiliation.ID, result.AcademicUnitMember.ID, result.RoleBinding.ID, invitationTransitionAt(databaseNow, invitation))
 			}
 		case model.InvitationPurposeAcademicUnitRole, model.InvitationPurposeInstitutionRole:
 			if created || !slices.Equal(input.RequiredActions, []model.Action{model.ActionInvitationCreate, model.ActionRoleBindingManage}) ||
@@ -2036,7 +2044,7 @@ func (s SQLInvitationStore) AcceptExternalIdentity(ctx context.Context, input *s
 				result.RoleBinding, err = ensureScopedRoleInvitationBinding(ctx, tx, invitation, input.RoleBinding, user.ID, effectiveStart, databaseNow)
 			}
 			if err == nil {
-				err = invitation.AcceptScopedRole(user.ID, result.RoleBinding.ID, databaseNow)
+				err = invitation.AcceptScopedRole(user.ID, result.RoleBinding.ID, invitationTransitionAt(databaseNow, invitation))
 			}
 		default:
 			err = store.NewErrConflict("invitation", "invitation_purpose", nil)
@@ -2117,10 +2125,11 @@ func resolveExternalInvitationUser(ctx context.Context, tx *sqlxTxWrapper, invit
 			if revisionErr != nil {
 				return nil, false, revisionErr
 			}
-			if _, updateErr := tx.Exec(ctx, `UPDATE users SET email_verified=TRUE,mail_eligibility_revision=?,updated_at=?,revision=revision+1 WHERE id=?`, revision, at, target.ID.String()); updateErr != nil {
+			// at is PostgreSQL time while the User may carry a leading node clock.
+			if _, updateErr := tx.Exec(ctx, `UPDATE users SET email_verified=TRUE,mail_eligibility_revision=?,updated_at=GREATEST(updated_at,?),revision=revision+1 WHERE id=?`, revision, at, target.ID.String()); updateErr != nil {
 				return nil, false, updateErr
 			}
-			target.EmailVerified, target.UpdatedAt, target.Revision = true, at, target.Revision+1
+			target.EmailVerified, target.UpdatedAt, target.Revision = true, latestTime(target.UpdatedAt, at), target.Revision+1
 		}
 		return target, false, nil
 	}
@@ -2295,7 +2304,7 @@ func (s SQLInvitationStore) AcceptScopedRole(ctx context.Context, input *store.S
 		if err != nil {
 			return nil, err
 		}
-		if err = invitation.AcceptScopedRole(user.ID, binding.ID, databaseNow); err != nil {
+		if err = invitation.AcceptScopedRole(user.ID, binding.ID, invitationTransitionAt(databaseNow, invitation)); err != nil {
 			return nil, store.NewErrConflict("invitation", "invitation_not_pending", err)
 		}
 		result, err := tx.Exec(ctx, `UPDATE invitations SET state=?,accepted_at=?,accepted_user_id=?,accepted_role_binding_id=?,updated_at=?,revision=?
@@ -2505,11 +2514,12 @@ func resolveInvitationUser(ctx context.Context, tx *sqlxTxWrapper, invitation *m
 			if revisionErr != nil {
 				return nil, revisionErr
 			}
-			if _, updateErr := tx.Exec(ctx, `UPDATE users SET email_verified=TRUE,mail_eligibility_revision=?,updated_at=?,revision=revision+1 WHERE id=?`, mailEligibilityRevision, at, user.ID.String()); updateErr != nil {
+			// at is PostgreSQL time while the User may carry a leading node clock.
+			if _, updateErr := tx.Exec(ctx, `UPDATE users SET email_verified=TRUE,mail_eligibility_revision=?,updated_at=GREATEST(updated_at,?),revision=revision+1 WHERE id=?`, mailEligibilityRevision, at, user.ID.String()); updateErr != nil {
 				return nil, fmt.Errorf("verify invited user email: %w", updateErr)
 			}
 			user.EmailVerified = true
-			user.UpdatedAt = at
+			user.UpdatedAt = latestTime(user.UpdatedAt, at)
 			user.Revision++
 		}
 		var hasPassword bool

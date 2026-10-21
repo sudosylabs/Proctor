@@ -1091,16 +1091,16 @@ func setUserDisabled(
 		return nil, store.NewErrInvalidInput("user", "disabled_at", disabledAt)
 	}
 	updateTime := model.TimeFromMillis(updateAt)
-	disabledTime := sql.NullTime{}
-	if disabledAt != 0 {
-		disabledTime = sql.NullTime{Time: updateTime, Valid: true}
-	}
+	// Users can carry PostgreSQL-timed or another node's lifecycle instants;
+	// the change never records a modification or disable before them.
 	result, err := tx.Exec(ctx, `
 		UPDATE users
-		   SET updated_at = ?, disabled_at = ?, mail_eligibility_revision = ?, revision = revision + 1
+		   SET updated_at = GREATEST(updated_at, ?),
+		       disabled_at = CASE WHEN ? THEN GREATEST(created_at, ?) END,
+		       mail_eligibility_revision = ?, revision = revision + 1
 		 WHERE id = ? AND archived_at IS NULL AND revision = ?
 		   AND ((? AND disabled_at IS NULL) OR (NOT ? AND disabled_at IS NOT NULL))`,
-		updateTime, disabledTime, mailEligibilityRevision, id, expectedRevision, disabledAt != 0, disabledAt != 0,
+		updateTime, disabledAt != 0, updateTime, mailEligibilityRevision, id, expectedRevision, disabledAt != 0, disabledAt != 0,
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
