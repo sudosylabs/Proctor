@@ -177,7 +177,9 @@ func TestExamRecordsStore(t *testing.T, ss store.Store, probes ...ExamRecordsSQL
 	_, err = records.CompleteRecords(ctx, complete, examCommand(f.manager.ID, store.ExamRecordsCompleteOperation, "records-late-complete", "records-late-complete"))
 	requireNoError(t, err)
 	testRecordsHolds(t, ctx, ss, f, principal, scope, submissionScope, probes)
-	_, err = EndAcademicUnitMember(ctx, ss, membership.ID, membership.Revision, model.GetMillis())
+	// PostgreSQL time can trail the host clock, and authority is judged at
+	// PostgreSQL time, so end authority safely in the past.
+	_, err = EndAcademicUnitMember(ctx, ss, membership.ID, membership.Revision, model.GetMillis()-1000)
 	requireNoError(t, err)
 	hold := &store.ExamRecordsHoldCreation{ExamRecordsMutation: mutation(scope, principal, model.ActionExamRecordsHold), HoldID: model.NewRetentionHoldID(), ReasonCode: "other", PrivateReason: "Preserve."}
 	if _, err = records.CreateHold(ctx, hold, examCommand(f.manager.ID, store.ExamRecordsCreateHoldOperation, "records-member-ended", "records-member-ended")); !store.IsConflict(err) {
@@ -188,7 +190,7 @@ func TestExamRecordsStore(t *testing.T, ss store.Store, probes ...ExamRecordsSQL
 	if _, err = records.CreateHold(ctx, hold, overrideKey); err != nil {
 		t.Fatalf("nonadministrator scoped override denied: %v", err)
 	}
-	_, err = EndRoleBinding(ctx, ss, binding.ID, model.GetMillis())
+	_, err = EndRoleBinding(ctx, ss, binding.ID, model.GetMillis()-1000)
 	requireNoError(t, err)
 	if _, err = records.CreateHold(ctx, hold, overrideKey); !store.IsConflict(err) {
 		t.Fatalf("same-audit replay ignored revoked role: %v", err)
