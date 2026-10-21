@@ -121,6 +121,9 @@ type shard struct {
 	mu     sync.RWMutex
 	conns  map[string]*connectionRuntime
 	replay map[string]*replayState
+	// budgets holds the inbound frame budget of each Session or User with a
+	// connection on this node, kept briefly after its last connection closes.
+	budgets map[string]*sharedFrameBudget
 }
 
 // Logger reports operational transport failures without depending on logging.
@@ -178,8 +181,9 @@ func NewHub(
 	}
 	for index := range hub.shards {
 		hub.shards[index] = &shard{
-			conns:  make(map[string]*connectionRuntime),
-			replay: make(map[string]*replayState),
+			conns:   make(map[string]*connectionRuntime),
+			replay:  make(map[string]*replayState),
+			budgets: make(map[string]*sharedFrameBudget),
 		}
 	}
 	return hub, nil
@@ -396,6 +400,14 @@ func (h *Hub) register(
 		replayEvents,
 	)
 	connection.recorder = h.recorder
+	budgetKey := frameBudgetKey(principal)
+	budget := shard.budgets[budgetKey]
+	if budget == nil {
+		budget = &sharedFrameBudget{}
+		shard.budgets[budgetKey] = budget
+	}
+	budget.holders++
+	connection.inbound.shared = budget
 	shard.conns[connectionID] = connection
 	if h.recorder != nil {
 		if requestedID != "" {
@@ -420,6 +432,12 @@ func (h *Hub) unregister(connection *connectionRuntime) {
 		return
 	}
 	delete(shard.conns, connectionID)
+	if budget := connection.inbound.shared; budget != nil {
+		budget.holders--
+		if budget.holders == 0 {
+			budget.releasedAt = time.Now()
+		}
+	}
 	snapshot := connection.finalSnapshot()
 	if h.recorder != nil {
 		h.recorder.AddWebSocketSubscriptions(-len(snapshot.subscriptions))
@@ -704,6 +722,11 @@ func (h *Hub) pruneReplayLocked(
 	for id, state := range shard.replay {
 		if !state.expiresAt.After(now) {
 			delete(shard.replay, id)
+		}
+	}
+	for key, budget := range shard.budgets {
+		if budget.holders == 0 && now.Sub(budget.releasedAt) >= frameBudgetIdleRetention {
+			delete(shard.budgets, key)
 		}
 	}
 }

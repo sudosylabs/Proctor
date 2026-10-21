@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/model"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,7 +21,7 @@ func TestFrameBudgetAdmitsBurstThenRefillsAtSustainedRate(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, time.October, 19, 9, 0, 0, 0, time.UTC)
-	var budget frameBudget
+	var budget inboundFrameGate
 	for index := range inboundFrameBurst {
 		require.True(t, budget.allow(now), "frame %d of the burst refused", index)
 	}
@@ -92,4 +94,39 @@ func TestConnectionRuntimeRateLimitsEveryInboundFrame(t *testing.T) {
 	socket.mu.Unlock()
 	require.Equal(t, CloseRateLimited, closeCode, "close")
 	require.Equal(t, "too many requests", closeReason, "close")
+}
+
+// TestFrameBudgetIsSharedBySessionAcrossConnectionsAndReconnects spends the
+// burst on one connection, then checks that a second concurrent connection
+// and a reconnect of the same Session draw on the same budget, while another
+// Session keeps its own.
+func TestFrameBudgetIsSharedBySessionAcrossConnectionsAndReconnects(t *testing.T) {
+	t.Parallel()
+
+	hub := newInternalTestHub(t)
+	require.NoError(t, hub.Start(context.Background()))
+	defer func() { _ = hub.Close() }()
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID()}
+	first, _ := hub.register(newRuntimeTestSocket(), principal, model.RequestMetadata{}, "", 0, "")
+	second, _ := hub.register(newRuntimeTestSocket(), principal, model.RequestMetadata{}, "", 0, "")
+	now := time.Now()
+	for range inboundFrameBurst {
+		require.True(t, first.inbound.allow(now))
+	}
+	require.False(t, second.inbound.allow(now), "a second connection of the Session gets no fresh burst")
+
+	hub.unregister(first)
+	hub.unregister(second)
+	// Maintenance inside the retention keeps the released budget.
+	for _, shard := range hub.shards {
+		shard.mu.Lock()
+		hub.pruneReplayLocked(shard, time.Now())
+		shard.mu.Unlock()
+	}
+	reconnected, _ := hub.register(newRuntimeTestSocket(), principal, model.RequestMetadata{}, "", 0, "")
+	require.False(t, reconnected.inbound.allow(now), "reconnecting does not reset a spent budget")
+
+	other, _ := hub.register(newRuntimeTestSocket(), model.Principal{UserID: principal.UserID, SessionID: model.NewSessionID()},
+		model.RequestMetadata{}, "", 0, "")
+	require.True(t, other.inbound.allow(now), "another Session has its own budget")
 }

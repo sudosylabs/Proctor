@@ -95,8 +95,10 @@ retained by the current node; otherwise the server creates a fresh connection
 and instructs the client to resynchronize authoritative state over HTTP.
 
 Every inbound request frame, whatever its action and before validation,
-spends from a per-connection token bucket (burst 64, sustained 16 frames per
-second). A refused frame performs no application work and receives a
+spends from a token bucket (burst 64, sustained 16 frames per second) shared
+by every connection of one Session (or, without a Session, one User) on the
+node; a released bucket is kept until it would have refilled, so reconnecting
+does not reset it. A refused frame performs no application work and receives a
 `websocket.rate_limited` error with `retry_after_seconds: 1`; 64 consecutive
 refusals close the connection with code 4005. Browser activity appends keep
 their own narrower intake bound.
