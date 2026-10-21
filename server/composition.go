@@ -211,7 +211,7 @@ func composeNode(ctx context.Context, input compositionInput) (*compositionResul
 		input.serviceEnvironment,
 	)
 	if constructorsErr != nil {
-		return nil, errors.Join(constructorsErr, closeAcceptedRuntime(applicationPlatform, capabilities.metrics))
+		return nil, compositionRelease{platform: applicationPlatform, metrics: capabilities.metrics}.fail(constructorsErr)
 	}
 	if input.constructors != nil {
 		constructors = *input.constructors
@@ -227,15 +227,16 @@ func composeConsumers(
 	input compositionInput,
 	constructors consumerConstructors,
 ) (*compositionResult, error) {
-	// 3. Construct consumers in dependency order. Every failure explicitly
-	// releases only the consumers already built, followed by Platform.
+	// 3. Construct consumers in dependency order. Every failure releases only
+	// the consumers already built, followed by Platform.
+	release := compositionRelease{platform: applicationPlatform, metrics: capabilities.metrics}
 	content, err := constructors.fileContent(capabilities)
 	if err != nil {
-		return nil, errors.Join(fmt.Errorf("construct file content: %w", err), closeAcceptedRuntime(applicationPlatform, capabilities.metrics))
+		return nil, release.fail(fmt.Errorf("construct file content: %w", err))
 	}
 	applicationDeps, err := constructors.dependencies(capabilities, content)
 	if err != nil {
-		return nil, errors.Join(fmt.Errorf("project application dependencies: %w", err), closeAcceptedRuntime(applicationPlatform, capabilities.metrics))
+		return nil, release.fail(fmt.Errorf("project application dependencies: %w", err))
 	}
 	if capabilities.metrics != nil && capabilities.metrics.Enabled() {
 		applicationDeps.JobRecorder = jobMetricsRecorder{metrics: capabilities.metrics}
@@ -256,28 +257,30 @@ func composeConsumers(
 		applicationDeps.MailDeliveryRecorder = mailDeliveryRecorder
 		applicationDeps.MailMetricsReader = mailMetricsReader
 	}
-	if capabilities.persistence != nil && capabilities.persistence.Installation() != nil {
-		bootstrapOutput := input.overrides.BootstrapSecretWriter
-		if bootstrapOutput == nil {
-			bootstrapOutput = os.Stderr
+	var installations bootstrapStatusStore
+	if capabilities.persistence != nil {
+		if current := capabilities.persistence.Installation(); current != nil {
+			installations = current
 		}
-		applicationDeps.BootstrapProtection, err = resolveBootstrapProtection(
-			ctx, snapshot, capabilities.persistence.Installation(), bootstrapOutput,
-		)
-		if err != nil {
-			return nil, errors.Join(fmt.Errorf("protect installation bootstrap: %w", err), closeAcceptedRuntime(applicationPlatform, capabilities.metrics))
-		}
+	}
+	bootstrapOutput := input.overrides.BootstrapSecretWriter
+	if bootstrapOutput == nil {
+		bootstrapOutput = os.Stderr
+	}
+	applicationDeps.BootstrapProtection, err = resolveBootstrapProtection(ctx, snapshot, installations, bootstrapOutput)
+	if err != nil {
+		return nil, release.fail(fmt.Errorf("protect installation bootstrap: %w", err))
 	}
 	application, err := constructors.application(applicationDeps)
 	if err != nil {
-		return nil, errors.Join(fmt.Errorf("construct application: %w", err), closeAcceptedRuntime(applicationPlatform, capabilities.metrics))
+		return nil, release.fail(fmt.Errorf("construct application: %w", err))
 	}
 	clusterFanout, err := constructors.realtime(capabilities.cluster)
 	if err != nil {
-		return nil, errors.Join(fmt.Errorf("construct realtime cluster adapter: %w", err), closeAcceptedRuntime(applicationPlatform, capabilities.metrics))
+		return nil, release.fail(fmt.Errorf("construct realtime cluster adapter: %w", err))
 	}
 	if err := constructors.attachRealtime(application, clusterFanout); err != nil {
-		return nil, errors.Join(fmt.Errorf("attach realtime cluster fan-out: %w", err), closeAcceptedRuntime(applicationPlatform, capabilities.metrics))
+		return nil, release.fail(fmt.Errorf("attach realtime cluster fan-out: %w", err))
 	}
 
 	// Readiness requires both the lifecycle flag and a live, bounded probe of
@@ -288,7 +291,7 @@ func composeConsumers(
 	}
 	readiness, err := app.NewHealth(dependencyProbe, app.DefaultReadinessProbeTimeout, app.DefaultReadinessProbeInterval)
 	if err != nil {
-		return nil, errors.Join(fmt.Errorf("construct readiness: %w", err), closeAcceptedRuntime(applicationPlatform, capabilities.metrics))
+		return nil, release.fail(fmt.Errorf("construct readiness: %w", err))
 	}
 	buildInfo := input.overrides.BuildInfo
 	if buildInfo == (httpapi.BuildInfo{}) {
@@ -303,20 +306,18 @@ func composeConsumers(
 		snapshot.Server.PublicURL, capabilities.nodeID,
 	)
 	if err != nil {
-		return nil, errors.Join(fmt.Errorf("construct WebSocket hub: %w", err), closeAcceptedRuntime(applicationPlatform, capabilities.metrics))
+		return nil, release.fail(fmt.Errorf("construct WebSocket hub: %w", err))
 	}
+	release.websocket = webSocketHub.Close
 	if attachable, ok := webSocketHub.(interface {
 		AttachRecorder(websocket.Recorder) error
 	}); ok && capabilities.metrics != nil && capabilities.metrics.Enabled() {
 		if err := attachable.AttachRecorder(capabilities.metrics); err != nil {
-			return nil, errors.Join(fmt.Errorf("attach WebSocket metrics: %w", err), webSocketHub.Close(), closeAcceptedRuntime(applicationPlatform, capabilities.metrics))
+			return nil, release.fail(fmt.Errorf("attach WebSocket metrics: %w", err))
 		}
 	}
 	if err := constructors.attachSink(application, webSocketHub); err != nil {
-		return nil, errors.Join(
-			fmt.Errorf("attach realtime sink: %w", err),
-			webSocketHub.Close(), closeAcceptedRuntime(applicationPlatform, capabilities.metrics),
-		)
+		return nil, release.fail(fmt.Errorf("attach realtime sink: %w", err))
 	}
 	var httpMetrics httpapi.Metrics
 	if capabilities.metrics != nil && capabilities.metrics.Enabled() {
@@ -324,10 +325,7 @@ func composeConsumers(
 	}
 	trustedProxies, err := config.ParseTrustedProxies(snapshot.Server.TrustedProxies)
 	if err != nil {
-		return nil, errors.Join(
-			fmt.Errorf("parse trusted proxies: %w", err),
-			webSocketHub.Close(), closeAcceptedRuntime(applicationPlatform, capabilities.metrics),
-		)
+		return nil, release.fail(fmt.Errorf("parse trusted proxies: %w", err))
 	}
 	httpTransport, httpAPI, err := constructors.http(httpapi.Options{
 		Logger: apiLogger{log: capabilities.logger}, Health: readiness,
@@ -351,11 +349,9 @@ func composeConsumers(
 		NodeID:                  capabilities.nodeID, WebSocket: webSocketHub,
 	})
 	if err != nil {
-		return nil, errors.Join(
-			fmt.Errorf("construct HTTP API: %w", err),
-			webSocketHub.Close(), closeAcceptedRuntime(applicationPlatform, capabilities.metrics),
-		)
+		return nil, release.fail(fmt.Errorf("construct HTTP API: %w", err))
 	}
+	release.transport = httpTransport.Close
 	webappOptions := webui.Options{
 		BuildVersion: buildInfo.Version,
 		BuildCommit:  buildInfo.Commit,
@@ -366,31 +362,20 @@ func composeConsumers(
 	}
 	webappHandler, err := constructors.webapp(webappOptions)
 	if err != nil {
-		return nil, errors.Join(
-			fmt.Errorf("construct hosted webapp: %w", err),
-			httpTransport.Close(), webSocketHub.Close(), closeAcceptedRuntime(applicationPlatform, capabilities.metrics),
-		)
+		return nil, release.fail(fmt.Errorf("construct hosted webapp: %w", err))
 	}
 	rootTransport, err := newRootHTTPTransport(httpTransport, httpAPI, webappHandler, snapshot.Server.StrictTransportSecurity())
 	if err != nil {
-		return nil, errors.Join(
-			fmt.Errorf("compose HTTP transports: %w", err),
-			httpTransport.Close(), webSocketHub.Close(), closeAcceptedRuntime(applicationPlatform, capabilities.metrics),
-		)
+		return nil, release.fail(fmt.Errorf("compose HTTP transports: %w", err))
 	}
+	release.transport = rootTransport.Close
 	jobRuntime := constructors.jobs(application)
 	if jobRuntime == nil && !input.allowMissingJobs {
-		return nil, errors.Join(
-			fmt.Errorf("require durable Job runtime: %w", errDurableJobRuntimeUnavailable),
-			rootTransport.Close(), webSocketHub.Close(), closeAcceptedRuntime(applicationPlatform, capabilities.metrics),
-		)
+		return nil, release.fail(fmt.Errorf("require durable Job runtime: %w", errDurableJobRuntimeUnavailable))
 	}
 	servingLease, err := newServingNodeLeaseRuntime(capabilities.persistence.ServingNodeLease(), capabilities.nodeID)
 	if err != nil {
-		return nil, errors.Join(
-			fmt.Errorf("construct serving node lease: %w", err),
-			rootTransport.Close(), webSocketHub.Close(), closeAcceptedRuntime(applicationPlatform, capabilities.metrics),
-		)
+		return nil, release.fail(fmt.Errorf("construct serving node lease: %w", err))
 	}
 
 	// 4. Assemble one inert lifecycle owner. No listener, goroutine, readiness,
@@ -409,10 +394,29 @@ func composeConsumers(
 	}, nil
 }
 
-func closeAcceptedRuntime(applicationPlatform runtimeComponent, metrics runtimeMetrics) error {
-	var metricsErr error
-	if metrics != nil {
-		metricsErr = metrics.Close()
+// compositionRelease records the owners a failed composition must release:
+// the HTTP transport and WebSocket hub once built, then metrics and Platform.
+// A later transport, such as the root HTTP transport that owns the API
+// transport, replaces the one it wraps.
+type compositionRelease struct {
+	platform  runtimeComponent
+	metrics   runtimeMetrics
+	transport func() error
+	websocket func() error
+}
+
+// fail joins cause with the release of every owner built so far, closing the
+// transport, the WebSocket hub, metrics, and Platform in that order.
+func (r compositionRelease) fail(cause error) error {
+	var transportErr, websocketErr, metricsErr error
+	if r.transport != nil {
+		transportErr = r.transport()
 	}
-	return errors.Join(metricsErr, applicationPlatform.Close())
+	if r.websocket != nil {
+		websocketErr = r.websocket()
+	}
+	if r.metrics != nil {
+		metricsErr = r.metrics.Close()
+	}
+	return errors.Join(cause, transportErr, websocketErr, errors.Join(metricsErr, r.platform.Close()))
 }

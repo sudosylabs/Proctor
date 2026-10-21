@@ -106,7 +106,6 @@ func applicationDependencies(
 			MaximumIdentityAttempts: auth.LoginRateLimit.MaximumIdentityAttempts,
 			MaximumSourceAttempts:   auth.LoginRateLimit.MaximumSourceAttempts,
 		},
-		BootstrapProtection: app.BootstrapProtectionPolicy{Secret: cfg.Authentication.Bootstrap.Secret},
 		PersonalAccessToken: app.PersonalAccessTokenPolicy{
 			MinimumLifetime:        auth.PersonalAccessTokens.MinimumLifetime.Duration,
 			MaximumLifetime:        auth.PersonalAccessTokens.MaximumLifetime.Duration,

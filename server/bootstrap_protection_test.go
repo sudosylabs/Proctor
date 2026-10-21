@@ -82,3 +82,20 @@ func TestResolveBootstrapProtectionDoesNotGenerateDevelopmentSecretAfterInitiali
 		t.Fatalf("policy=%#v output=%q error=%v", policy, output.String(), err)
 	}
 }
+
+func TestResolveBootstrapProtectionWithoutInstallationStateUsesConfiguredSecret(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	cfg.Authentication.Bootstrap.Secret = "operator-provided-bootstrap-secret-32-bytes"
+	var output bytes.Buffer
+	policy, err := resolveBootstrapProtection(context.Background(), cfg, nil, &output)
+	if err != nil || policy.Secret != cfg.Authentication.Bootstrap.Secret || output.Len() != 0 {
+		t.Fatalf("resolveBootstrapProtection(nil) = %#v, %v, output %q", policy, err, output.String())
+	}
+	cfg.Authentication.Bootstrap.Secret = ""
+	policy, err = resolveBootstrapProtection(context.Background(), cfg, nil, &output)
+	if err != nil || policy.Secret != "" || output.Len() != 0 {
+		t.Fatalf("resolveBootstrapProtection(nil, no secret) = %#v, %v, output %q", policy, err, output.String())
+	}
+}

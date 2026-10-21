@@ -31,7 +31,9 @@ func resolveBootstrapProtection(
 	installations bootstrapStatusStore,
 	output io.Writer,
 ) (app.BootstrapProtectionPolicy, error) {
-	if cfg.Authentication.Bootstrap.Secret != "" {
+	if cfg.Authentication.Bootstrap.Secret != "" || installations == nil {
+		// Without installation state there is nothing to protect beyond the
+		// operator's configured secret.
 		return app.BootstrapProtectionPolicy{Secret: cfg.Authentication.Bootstrap.Secret}, nil
 	}
 
