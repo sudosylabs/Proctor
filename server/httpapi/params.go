@@ -123,22 +123,37 @@ func ParamsFromRequest(request *http.Request) Params {
 	}
 }
 
+// RequireExternalIdentityID returns the external_identity_id path variable as a
+// model.ExternalIdentityID, or a request.invalid error when it is missing or
+// not a valid identifier.
 func (p Params) RequireExternalIdentityID() (model.ExternalIdentityID, error) {
 	return pathID[model.ExternalIdentityID](p.ExternalIdentityID)
 }
 
+// RequireInvitationID returns the invitation_id path variable as a
+// model.InvitationID, or a request.invalid error when it is missing or not a
+// valid identifier.
 func (p Params) RequireInvitationID() (model.InvitationID, error) {
 	return pathID[model.InvitationID](p.InvitationID)
 }
 
+// RequireOnboardingImportID returns the onboarding_import_id path variable as a
+// model.OnboardingImportID, or a request.invalid error when it is missing or
+// not a valid identifier.
 func (p Params) RequireOnboardingImportID() (model.OnboardingImportID, error) {
 	return pathID[model.OnboardingImportID](p.OnboardingImportID)
 }
 
+// RequireStudentProgressionID returns the student_progression_id path variable,
+// validated and typed as a model.OnboardingImportID, or a request.invalid
+// error when it is missing or malformed.
 func (p Params) RequireStudentProgressionID() (model.OnboardingImportID, error) {
 	return pathID[model.OnboardingImportID](p.StudentProgressionID)
 }
 
+// RequireProviderID returns the lowercased provider_id path variable, or a
+// request.invalid error when it is empty or longer than
+// model.IdentityProviderMaxLength. Its character set is not checked here.
 func (p Params) RequireProviderID() (string, error) {
 	if len(p.ProviderID) == 0 || len(p.ProviderID) > model.IdentityProviderMaxLength {
 		return "", invalidRequestError(nil)
@@ -146,54 +161,91 @@ func (p Params) RequireProviderID() (string, error) {
 	return p.ProviderID, nil
 }
 
+// RequireUserID returns the user_id path variable as a model.UserID, or a
+// request.invalid error when it is missing or not a valid identifier.
 func (p Params) RequireUserID() (model.UserID, error) {
 	return pathID[model.UserID](p.UserID)
 }
 
+// RequireInstitutionID returns the institution_id path variable as a
+// model.InstitutionID, or a request.invalid error when it is missing or not a
+// valid identifier.
 func (p Params) RequireInstitutionID() (model.InstitutionID, error) {
 	return pathID[model.InstitutionID](p.InstitutionID)
 }
 
+// RequireAcademicUnitID returns the academic_unit_id path variable as a
+// model.AcademicUnitID, or a request.invalid error when it is missing or not a
+// valid identifier.
 func (p Params) RequireAcademicUnitID() (model.AcademicUnitID, error) {
 	return pathID[model.AcademicUnitID](p.AcademicUnitID)
 }
 
+// RequireProgrammeID returns the programme_id path variable as a
+// model.ProgrammeID, or a request.invalid error when it is missing or not a
+// valid identifier.
 func (p Params) RequireProgrammeID() (model.ProgrammeID, error) {
 	return pathID[model.ProgrammeID](p.ProgrammeID)
 }
 
+// RequireProgrammeLevelID returns the programme_level_id path variable as a
+// model.ProgrammeLevelID, or a request.invalid error when it is missing or not
+// a valid identifier.
 func (p Params) RequireProgrammeLevelID() (model.ProgrammeLevelID, error) {
 	return pathID[model.ProgrammeLevelID](p.ProgrammeLevelID)
 }
 
+// RequireAcademicPeriodID returns the academic_period_id path variable as a
+// model.AcademicPeriodID, or a request.invalid error when it is missing or not
+// a valid identifier.
 func (p Params) RequireAcademicPeriodID() (model.AcademicPeriodID, error) {
 	return pathID[model.AcademicPeriodID](p.AcademicPeriodID)
 }
 
+// RequireClassID returns the class_id path variable as a model.ClassID, or a
+// request.invalid error when it is missing or not a valid identifier.
 func (p Params) RequireClassID() (model.ClassID, error) {
 	return pathID[model.ClassID](p.ClassID)
 }
 
+// RequireAffiliationID returns the affiliation_id path variable as a
+// model.AffiliationID, or a request.invalid error when it is missing or not a
+// valid identifier.
 func (p Params) RequireAffiliationID() (model.AffiliationID, error) {
 	return pathID[model.AffiliationID](p.AffiliationID)
 }
 
+// RequireAcademicUnitMemberID returns the academic_unit_member_id path variable
+// as a model.AcademicUnitMemberID, or a request.invalid error when it is
+// missing or not a valid identifier.
 func (p Params) RequireAcademicUnitMemberID() (model.AcademicUnitMemberID, error) {
 	return pathID[model.AcademicUnitMemberID](p.AcademicUnitMemberID)
 }
 
+// RequireClassMemberID returns the class_member_id path variable as a
+// model.ClassMemberID, or a request.invalid error when it is missing or not a
+// valid identifier.
 func (p Params) RequireClassMemberID() (model.ClassMemberID, error) {
 	return pathID[model.ClassMemberID](p.ClassMemberID)
 }
 
+// RequirePersonalAccessTokenID returns the personal_access_token_id path
+// variable as a model.PersonalAccessTokenID, or a request.invalid error when it
+// is missing or not a valid identifier.
 func (p Params) RequirePersonalAccessTokenID() (model.PersonalAccessTokenID, error) {
 	return pathID[model.PersonalAccessTokenID](p.PersonalAccessTokenID)
 }
 
+// RequireSessionID returns the source_session_id path variable as a
+// model.SessionID, or a request.invalid error when it is missing or not a valid
+// identifier.
 func (p Params) RequireSessionID() (model.SessionID, error) {
 	return pathID[model.SessionID](p.SessionID)
 }
 
+// RequireDesktopRegistrationID returns the desktop_registration_id path
+// variable as a model.DesktopRegistrationID, or a request.invalid error when it
+// is missing or not a valid identifier.
 func (p Params) RequireDesktopRegistrationID() (model.DesktopRegistrationID, error) {
 	return pathID[model.DesktopRegistrationID](p.DesktopRegistrationID)
 }
@@ -211,58 +263,97 @@ func withRequestParams(next http.Handler) http.Handler {
 	})
 }
 
+// RequireRoleID returns the role_id path variable as a model.RoleID, or a
+// request.invalid error when it is missing or not a valid identifier.
 func (p Params) RequireRoleID() (model.RoleID, error) {
 	return pathID[model.RoleID](p.RoleID)
 }
 
+// RequireRoleBindingID returns the role_binding_id path variable as a
+// model.RoleBindingID, or a request.invalid error when it is missing or not a
+// valid identifier.
 func (p Params) RequireRoleBindingID() (model.RoleBindingID, error) {
 	return pathID[model.RoleBindingID](p.RoleBindingID)
 }
 
+// RequireJobID returns the job_id path variable as a model.JobID, or a
+// request.invalid error when it is missing or not a valid identifier.
 func (p Params) RequireJobID() (model.JobID, error) {
 	return pathID[model.JobID](p.JobID)
 }
 
+// RequireMailDeliveryID returns the mail_delivery_id path variable as a
+// model.MailDeliveryID, or a request.invalid error when it is missing or not a
+// valid identifier.
 func (p Params) RequireMailDeliveryID() (model.MailDeliveryID, error) {
 	return pathID[model.MailDeliveryID](p.MailDeliveryID)
 }
 
+// RequireExamID returns the exam_id path variable as a model.ExamID, or a
+// request.invalid error when it is missing or not a valid identifier.
 func (p Params) RequireExamID() (model.ExamID, error) {
 	return pathID[model.ExamID](p.ExamID)
 }
 
+// RequireExamRevisionID returns the exam_revision_id path variable as a
+// model.ExamRevisionID, or a request.invalid error when it is missing or not a
+// valid identifier.
 func (p Params) RequireExamRevisionID() (model.ExamRevisionID, error) {
 	return pathID[model.ExamRevisionID](p.ExamRevisionID)
 }
 
+// RequireExamSittingID returns the exam_sitting_id path variable as a
+// model.ExamSittingID, or a request.invalid error when it is missing or not a
+// valid identifier.
 func (p Params) RequireExamSittingID() (model.ExamSittingID, error) {
 	return pathID[model.ExamSittingID](p.ExamSittingID)
 }
 
+// RequireExamAttemptID returns the exam_attempt_id path variable as a
+// model.ExamAttemptID, or a request.invalid error when it is missing or not a
+// valid identifier.
 func (p Params) RequireExamAttemptID() (model.ExamAttemptID, error) {
 	return pathID[model.ExamAttemptID](p.ExamAttemptID)
 }
 
+// RequireSubmissionID returns the submission_id path variable as a
+// model.SubmissionID, or a request.invalid error when it is missing or not a
+// valid identifier.
 func (p Params) RequireSubmissionID() (model.SubmissionID, error) {
 	return pathID[model.SubmissionID](p.SubmissionID)
 }
 
+// RequireRetentionHoldID returns the retention_hold_id path variable as a
+// model.RetentionHoldID, or a request.invalid error when it is missing or not a
+// valid identifier.
 func (p Params) RequireRetentionHoldID() (model.RetentionHoldID, error) {
 	return pathID[model.RetentionHoldID](p.RetentionHoldID)
 }
 
+// RequireIntegrityFlagID returns the integrity_flag_id path variable as a
+// model.IntegrityFlagID, or a request.invalid error when it is missing or not a
+// valid identifier.
 func (p Params) RequireIntegrityFlagID() (model.IntegrityFlagID, error) {
 	return pathID[model.IntegrityFlagID](p.IntegrityFlagID)
 }
 
+// RequireExamResourceID returns the exam_resource_id path variable as a
+// model.ExamResourceID, or a request.invalid error when it is missing or not a
+// valid identifier.
 func (p Params) RequireExamResourceID() (model.ExamResourceID, error) {
 	return pathID[model.ExamResourceID](p.ExamResourceID)
 }
 
+// RequireStarterWorkspaceEntryID returns the starter_workspace_entry_id path
+// variable as a model.StarterWorkspaceEntryID, or a request.invalid error when
+// it is missing or not a valid identifier.
 func (p Params) RequireStarterWorkspaceEntryID() (model.StarterWorkspaceEntryID, error) {
 	return pathID[model.StarterWorkspaceEntryID](p.StarterWorkspaceEntryID)
 }
 
+// RequireAttemptWorkspaceEntryID returns the attempt_workspace_entry_id path
+// variable as a model.AttemptWorkspaceEntryID, or a request.invalid error when
+// it is missing or not a valid identifier.
 func (p Params) RequireAttemptWorkspaceEntryID() (model.AttemptWorkspaceEntryID, error) {
 	return pathID[model.AttemptWorkspaceEntryID](p.AttemptWorkspaceEntryID)
 }
@@ -297,6 +388,9 @@ func (p Params) RequireNativeStreamID() (string, error) {
 	return opaquePathID(p.NativeStreamID)
 }
 
+// RequireExamExportID returns the exam_export_id path variable as a
+// model.ExamExportID, or a request.invalid error when it is missing or not a
+// valid identifier.
 func (p Params) RequireExamExportID() (model.ExamExportID, error) {
 	return pathID[model.ExamExportID](p.ExamExportID)
 }
