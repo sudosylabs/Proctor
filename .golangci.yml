@@ -19,6 +19,7 @@ linters:
     - misspell
     - noctx
     - nolintlint
+    - revive
     - rowserrcheck
     - staticcheck
     - testifylint
@@ -32,6 +33,14 @@ linters:
     nolintlint:
       require-explanation: true
       require-specific: true
+    revive:
+      rules:
+        # Exported application, HTTP, and SQL Store declarations carry a doc
+        # comment that starts with their name. The exclusion rules below scope
+        # this rule to those packages.
+        - name: exported
+          arguments:
+            - disableStutteringCheck
     staticcheck:
       checks:
         - all
@@ -49,10 +58,19 @@ linters:
   exclusions:
     generated: lax
     presets:
-      - comments
       - common-false-positives
       - legacy
       - std-error-handling
+    rules:
+      # The staticcheck half of the comments preset: documentation style is
+      # enforced by revive's exported rule where it applies.
+      - linters:
+          - staticcheck
+        text: "(ST1000|ST1020|ST1021|ST1022)"
+      # Paths are relative to each module's go.mod.
+      - linters:
+          - revive
+        path-except: "^(app|httpapi|store/sqlstore)/"
 
 formatters:
   enable:
