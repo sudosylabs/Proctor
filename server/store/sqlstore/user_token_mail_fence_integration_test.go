@@ -520,7 +520,7 @@ func TestUserTokenConsumptionPreservesLifecycleWhenNodeClockLeads(t *testing.T) 
 		resetTestStore(t, persistence)
 		institution, user, token := setup(t, ctx, persistence, model.UserTokenPasswordReset, "reset-node-leads")
 		session, sessionCredentials := authenticationPolicyTestSession(user.ID, "password", "", "")
-		session, _, err := persistence.Session().Save(ctx, sessionCreationForSQLTest(t, ctx, persistence, session, sessionCredentials, 10))
+		session, _, err := storetest.SaveSession(ctx, persistence, sessionCreationForSQLTest(t, ctx, persistence, session, sessionCredentials, 10))
 		if err != nil {
 			t.Fatal(err)
 		}
