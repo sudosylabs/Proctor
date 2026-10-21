@@ -96,6 +96,10 @@ type WorkspaceJournalPage struct {
 	RefreshRequired bool
 }
 
+// ListCandidateExamWorkspaceJournal returns the Attempt Workspace journal
+// entries strictly after AfterCursor, in contiguous cursor order. When
+// RefreshRequired is set the page carries no entries and the client must
+// reload the manifest.
 func (s *Service) ListCandidateExamWorkspaceJournal(ctx context.Context, invocation invocation.Invocation, query WorkspaceJournalQuery) (_ WorkspaceJournalPage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	access, err := candidateSelector(invocation, query.Access)
@@ -127,6 +131,9 @@ func (s *Service) ListCandidateExamWorkspaceJournal(ctx context.Context, invocat
 		Entries: entries, HasMore: stored.HasMore, RefreshRequired: stored.RefreshRequired}, nil
 }
 
+// CreateCandidateExamWorkspaceDirectory idempotently creates a directory at a
+// normalized path in the candidate's Attempt Workspace, fenced by
+// participation generation.
 func (s *Service) CreateCandidateExamWorkspaceDirectory(ctx context.Context, invocation invocation.Invocation, command CreateWorkspaceDirectoryCommand) (_ WorkspaceMutationResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	access, err := workspaceMutationSelector(invocation, command.Access)
@@ -158,6 +165,9 @@ func (s *Service) CreateCandidateExamWorkspaceDirectory(ctx context.Context, inv
 	}, idempotency, model.StarterWorkspaceEntryDirectory, "")
 }
 
+// CreateCandidateExamWorkspaceFile idempotently stages and creates a new file
+// in the candidate's Attempt Workspace, verifying the uploaded body against
+// its expected SHA-256.
 func (s *Service) CreateCandidateExamWorkspaceFile(ctx context.Context, invocation invocation.Invocation, command CreateWorkspaceFileCommand) (_ WorkspaceMutationResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	entryID := s.deps.NewWorkspaceEntry()
@@ -166,6 +176,9 @@ func (s *Service) CreateCandidateExamWorkspaceFile(ctx context.Context, invocati
 		model.AttemptWorkspaceMutationCreateFile)
 }
 
+// ReplaceCandidateExamWorkspaceFile idempotently replaces a file's content in
+// the candidate's Attempt Workspace, fenced by its expected path and
+// Workspace Content Version.
 func (s *Service) ReplaceCandidateExamWorkspaceFile(ctx context.Context, invocation invocation.Invocation, command ReplaceWorkspaceFileCommand) (_ WorkspaceMutationResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	return s.stageWorkspaceFile(ctx, invocation, command.Access, command.EntryID, command.ExpectedPath, "",
@@ -173,6 +186,8 @@ func (s *Service) ReplaceCandidateExamWorkspaceFile(ctx context.Context, invocat
 		model.AttemptWorkspaceMutationReplaceFile)
 }
 
+// MoveCandidateExamWorkspaceEntry idempotently moves a Workspace Entry from
+// its expected path to a destination path, preserving its identity.
 func (s *Service) MoveCandidateExamWorkspaceEntry(ctx context.Context, invocation invocation.Invocation, command MoveWorkspaceEntryCommand) (_ WorkspaceMutationResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	access, err := workspaceMutationSelector(invocation, command.Access)
@@ -198,6 +213,9 @@ func (s *Service) MoveCandidateExamWorkspaceEntry(ctx context.Context, invocatio
 		DestinationPath: destination}, idempotency, "", "")
 }
 
+// DeleteCandidateExamWorkspaceEntry idempotently deletes a Workspace Entry at
+// its expected path. A recursive directory delete requires
+// ExpectedWorkspaceCursor; a non-recursive delete must not set it.
 func (s *Service) DeleteCandidateExamWorkspaceEntry(ctx context.Context, invocation invocation.Invocation, command DeleteWorkspaceEntryCommand) (_ WorkspaceMutationResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	access, err := workspaceMutationSelector(invocation, command.Access)

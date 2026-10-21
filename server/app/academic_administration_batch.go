@@ -41,6 +41,8 @@ const (
 	AcademicAdministrationUserSessionsRevoke    AcademicAdministrationBatchOperation = "user_sessions.revoke"
 )
 
+// IsValid reports whether o is a supported academic administration batch
+// operation.
 func (o AcademicAdministrationBatchOperation) IsValid() bool {
 	switch o {
 	case AcademicAdministrationAffiliationAdd, AcademicAdministrationAffiliationEnd,

@@ -221,6 +221,7 @@ const (
 	InvitationBatchRevoke                    InvitationBatchOperation = "revoke"
 )
 
+// IsValid reports whether o is a supported Invitation batch operation.
 func (o InvitationBatchOperation) IsValid() bool {
 	switch o {
 	case InvitationBatchStudentClassCreate, InvitationBatchTeacherAcademicUnitCreate,

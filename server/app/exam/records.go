@@ -77,6 +77,8 @@ type RecordsDependencies struct {
 	NewHoldID   func() model.RetentionHoldID
 }
 
+// NewRecords returns a Records service, or an error when a required
+// dependency is missing.
 func NewRecords(deps RecordsDependencies) (*Records, error) {
 	if deps.Persistence == nil || deps.Access == nil || deps.Memberships == nil || deps.Authorizer == nil || deps.Auditor == nil ||
 		deps.RecentTTL <= 0 || deps.Now == nil || deps.NewHoldID == nil {
@@ -126,6 +128,9 @@ func (r *Records) authorize(ctx context.Context, invocation invocation.Invocatio
 	return resolved, action, nil
 }
 
+// GetExamSittingRecords returns a Sitting's Sitting Records Completion state
+// and pending Submission Review counts to a caller authorized to complete
+// records.
 func (r *Records) GetExamSittingRecords(ctx context.Context, invocation invocation.Invocation, examID model.ExamID, sittingID model.ExamSittingID) (_ *store.ExamRecordsCompletionSnapshot, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	scope := model.RetentionHoldScope{ExamID: examID, SittingID: sittingID}
@@ -146,6 +151,9 @@ func (r *Records) GetExamSittingRecords(ctx context.Context, invocation invocati
 	return value, nil
 }
 
+// GetSubmissionReviewWaiver returns the Submission Review Waiver for one
+// Submission, or nil when none exists. The Submission's own candidate is
+// denied.
 func (r *Records) GetSubmissionReviewWaiver(ctx context.Context, invocation invocation.Invocation, scope model.RetentionHoldScope) (_ *model.SubmissionReviewWaiver, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !scope.SubmissionID.IsValid() {
@@ -194,6 +202,9 @@ func (r *Records) fail(ctx context.Context, mutation store.ExamRecordsMutation, 
 	return mapped
 }
 
+// CompleteExamSittingRecords idempotently records Sitting Records Completion
+// for a Sitting, fenced by ExpectedRevision and the acknowledged evidence
+// revision.
 func (r *Records) CompleteExamSittingRecords(ctx context.Context, invocation invocation.Invocation, command CompleteRecordsCommand) (_ *model.ExamSittingRecordsCompletion, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !command.Scope.SittingID.IsValid() || !command.Scope.SubmissionID.IsZero() || command.ExpectedRevision < 1 || command.AcknowledgedEvidenceRevision < 0 {
@@ -225,6 +236,9 @@ func (r *Records) CompleteExamSittingRecords(ctx context.Context, invocation inv
 	return result.Completion, nil
 }
 
+// WaiveSubmissionReview idempotently records a Submission Review Waiver,
+// fenced by the expected waiver, Review, and delivery inventory revisions and
+// the expected discrepancy count. The Submission's own candidate is denied.
 func (r *Records) WaiveSubmissionReview(ctx context.Context, invocation invocation.Invocation, command WaiveReviewCommand) (_ *model.SubmissionReviewWaiver, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !command.Scope.SubmissionID.IsValid() || command.ExpectedRevision < 0 || command.ExpectedReviewRevision < 0 ||
@@ -257,6 +271,8 @@ func (r *Records) WaiveSubmissionReview(ctx context.Context, invocation invocati
 	return result.Waiver, nil
 }
 
+// ListRetentionHolds returns one page of Retention Holds within an Exam
+// records scope to a caller authorized to manage holds.
 func (r *Records) ListRetentionHolds(ctx context.Context, invocation invocation.Invocation, query store.ExamRecordsHoldListOptions) (_ *store.ExamRecordsHoldPage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if query.Limit < 1 || query.Limit > 200 || !query.After.IsZero() && !query.After.IsValid() {
@@ -280,6 +296,8 @@ func (r *Records) ListRetentionHolds(ctx context.Context, invocation invocation.
 	return page, nil
 }
 
+// CreateRetentionHold idempotently places a Retention Hold on an Exam records
+// scope with a recorded reason.
 func (r *Records) CreateRetentionHold(ctx context.Context, invocation invocation.Invocation, command CreateRetentionHoldCommand) (_ *model.RetentionHold, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if model.ValidateRecordsReason(command.ReasonCode, command.PrivateReason) != nil {
@@ -314,6 +332,9 @@ func (r *Records) CreateRetentionHold(ctx context.Context, invocation invocation
 	return result.Hold, nil
 }
 
+// ReleaseRetentionHold idempotently releases a Retention Hold, fenced by
+// ExpectedRevision. It requires strong and recent authentication and allows
+// no override.
 func (r *Records) ReleaseRetentionHold(ctx context.Context, invocation invocation.Invocation, command ReleaseRetentionHoldCommand) (_ *model.RetentionHold, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !command.HoldID.IsValid() || command.ExpectedRevision < 1 || model.ValidateRecordsReason(command.ReasonCode, command.PrivateReason) != nil {

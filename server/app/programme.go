@@ -17,6 +17,7 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// GetProgrammeQuery names one Programme.
 type GetProgrammeQuery struct{ ID model.ProgrammeID }
 type ListProgrammesQuery struct {
 	AcademicUnitID model.AcademicUnitID

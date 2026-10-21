@@ -44,7 +44,7 @@ type ManualSuspensionResult struct {
 	Replayed         bool
 }
 
-// SuspendByManager authorizes the exact Sitting before reading the Attempt,
+// SuspendExamAttempt authorizes the exact Sitting before reading the Attempt,
 // audits the attempt, and lets the named Store operation end the live
 // generation and open one manual Suspension episode atomically. Effects are
 // published only for a fresh commit.

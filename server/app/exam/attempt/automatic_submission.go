@@ -22,6 +22,10 @@ type AutomaticSubmissionResult struct {
 	ConnectionClosed bool
 }
 
+// ListAutomaticSealTargets returns up to limit Attempts in the Sitting that
+// still need an automatic Submission at Sitting close, ordered by Attempt ID
+// strictly after the after cursor (zero starts from the beginning). It
+// returns an empty, non-nil slice when nothing remains.
 func (s *Service) ListAutomaticSealTargets(ctx context.Context, sittingID model.ExamSittingID,
 	after model.ExamAttemptID, limit int,
 ) ([]store.ExamSubmissionAutomaticSealTarget, error) {
@@ -54,6 +58,10 @@ func validAutomaticSealTarget(target store.ExamSubmissionAutomaticSealTarget, si
 		target.Generation > 0 && target.ConnectionID.IsValid()
 }
 
+// SealForSittingClose seals one target Attempt's Submission because its
+// Sitting closed, under a system audit tied to the invoking Job. Replays of
+// an already sealed Attempt return the stored receipt and skip the receipt
+// mail and post-commit effects.
 func (s *Service) SealForSittingClose(ctx context.Context, system invocation.System,
 	target store.ExamSubmissionAutomaticSealTarget,
 ) (AutomaticSubmissionResult, error) {

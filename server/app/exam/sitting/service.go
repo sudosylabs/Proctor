@@ -147,6 +147,8 @@ type EffectFailures interface {
 	Report(context.Context, string, error)
 }
 
+// Service schedules Exam Sittings and drives their lifecycle, both on manager
+// commands and on lifecycle Jobs.
 type Service struct{ deps Dependencies }
 
 // OperationalRecorder receives the outcome of each use case the module
@@ -173,6 +175,8 @@ type Dependencies struct {
 	Operational    OperationalRecorder
 }
 
+// New returns an Exam Sitting Service, or an error when a required dependency
+// is missing.
 func New(deps Dependencies) (*Service, error) {
 	if deps.Persistence == nil || deps.Access == nil || deps.Memberships == nil || deps.Authorizer == nil || deps.Auditor == nil || deps.SystemAuditor == nil || deps.Effects == nil ||
 		deps.EffectFailures == nil || deps.Jobs == nil || deps.Mail == nil || deps.Now == nil || deps.NewID == nil {
@@ -187,6 +191,9 @@ func (s *Service) recordOperational(event string, err error) {
 	}
 }
 
+// ScheduleExamSitting idempotently schedules a Sitting delivering one Exam
+// Revision to one Class between ScheduledStartAt and ScheduledEndAt, together
+// with its lifecycle Jobs.
 func (s *Service) ScheduleExamSitting(ctx context.Context, invocation invocation.Invocation, command ScheduleCommand) (_ store.ExamSittingSnapshot, resultErr error) {
 	defer func() { s.recordOperational("schedule", resultErr) }()
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
@@ -255,6 +262,8 @@ type GetQuery struct {
 	SittingID model.ExamSittingID
 }
 
+// GetExamSitting returns one Sitting to a caller authorized to view it,
+// directly or through an override.
 func (s *Service) GetExamSitting(ctx context.Context, invocation invocation.Invocation, query GetQuery) (_ store.ExamSittingSnapshot, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.ExamID.IsValid() || !query.SittingID.IsValid() {
@@ -423,6 +432,8 @@ func (s *Service) AuthorizeManage(ctx context.Context, invocation invocation.Inv
 	return decision.override, nil
 }
 
+// ListExamSittings returns one page of an Exam's Sittings, optionally
+// filtered by state, to a caller authorized to view the Exam.
 func (s *Service) ListExamSittings(ctx context.Context, invocation invocation.Invocation, query ListQuery) (_ Page, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	query.States = append([]model.ExamSittingState(nil), query.States...)
@@ -454,6 +465,9 @@ func (s *Service) ListExamSittings(ctx context.Context, invocation invocation.In
 	return page, nil
 }
 
+// UpdateExamSittingSchedule idempotently changes a Sitting's Exam Revision,
+// Class, start, or end, fenced by ExpectedRevision. A nil field is left
+// unchanged, but at least one must be set.
 func (s *Service) UpdateExamSittingSchedule(ctx context.Context, invocation invocation.Invocation, command UpdateScheduleCommand) (_ store.ExamSittingSnapshot, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	command.ScheduledStartAt = canonicalTimePointer(command.ScheduledStartAt)
@@ -549,6 +563,8 @@ func (s *Service) UpdateExamSittingSchedule(ctx context.Context, invocation invo
 	return value, nil
 }
 
+// CancelExamSitting idempotently cancels a Scheduled Sitting, fenced by
+// ExpectedRevision, with a private reason kept out of ordinary audit fields.
 func (s *Service) CancelExamSitting(ctx context.Context, invocation invocation.Invocation, command CancelCommand) (_ store.ExamSittingSnapshot, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || command.ExpectedRevision < 1 || !validPrivateReason(command.PrivateReason) {
@@ -607,6 +623,8 @@ func (s *Service) CancelExamSitting(ctx context.Context, invocation invocation.I
 	return value, nil
 }
 
+// PauseExamSitting idempotently pauses an Open Sitting on a manager's
+// decision, fenced by ExpectedRevision.
 func (s *Service) PauseExamSitting(ctx context.Context, invocation invocation.Invocation, command PauseCommand) (_ store.ExamSittingSnapshot, resultErr error) {
 	defer func() { s.recordOperational("pause", resultErr) }()
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
@@ -616,6 +634,8 @@ func (s *Service) PauseExamSitting(ctx context.Context, invocation invocation.In
 		})
 }
 
+// ResumeExamSitting idempotently resumes a Paused Sitting on a manager's
+// decision, fenced by ExpectedRevision.
 func (s *Service) ResumeExamSitting(ctx context.Context, invocation invocation.Invocation, command ResumeCommand) (_ store.ExamSittingSnapshot, resultErr error) {
 	defer func() { s.recordOperational("resume", resultErr) }()
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
@@ -625,6 +645,8 @@ func (s *Service) ResumeExamSitting(ctx context.Context, invocation invocation.I
 		})
 }
 
+// CloseExamSitting idempotently closes a Sitting early on a manager's
+// decision, fenced by ExpectedRevision, and schedules its sealing Job.
 func (s *Service) CloseExamSitting(ctx context.Context, invocation invocation.Invocation, command EarlyCloseCommand) (_ store.ExamSittingSnapshot, resultErr error) {
 	defer func() { s.recordOperational("close", resultErr) }()
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
@@ -685,6 +707,8 @@ func (s *Service) runManagerTransition(ctx context.Context, invocation invocatio
 	return value, nil
 }
 
+// ExtendExamSitting idempotently moves a Sitting's scheduled end to
+// ScheduledEndAt, fenced by ExpectedRevision.
 func (s *Service) ExtendExamSitting(ctx context.Context, invocation invocation.Invocation, command ExtendCommand) (_ store.ExamSittingSnapshot, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	command.ScheduledEndAt = model.TimeUTC(command.ScheduledEndAt)
@@ -739,6 +763,10 @@ func managerLifecycleAuditValue(examID model.ExamID, sittingID model.ExamSitting
 		"expected_sitting_revision": expectedRevision, "transition": string(transition)}
 }
 
+// AdvanceDue applies the Sitting's due lifecycle transition, such as opening
+// at the scheduled start or closing at the scheduled end, under a system
+// audit for the invoking Job. It supplies the sealing Job for a transition
+// into Closing.
 func (s *Service) AdvanceDue(ctx context.Context, system invocation.System, sittingID model.ExamSittingID) (store.ExamSittingLifecycleResult, error) {
 	return s.runSystemLifecycle(ctx, system, sittingID, "advance_due", true,
 		func(ctx context.Context, input systemLifecycleInput) (*store.ExamSittingLifecycleResult, error) {
@@ -747,6 +775,9 @@ func (s *Service) AdvanceDue(ctx context.Context, system invocation.System, sitt
 		})
 }
 
+// FinishSealing closes a Closing Sitting once every created Attempt is
+// terminal with a sealed Submission; otherwise the Sitting stays Closing. It
+// is safe to call after every bounded sealing pass.
 func (s *Service) FinishSealing(ctx context.Context, system invocation.System, sittingID model.ExamSittingID) (store.ExamSittingLifecycleResult, error) {
 	return s.runSystemLifecycle(ctx, system, sittingID, "finish_sealing", false,
 		func(ctx context.Context, input systemLifecycleInput) (*store.ExamSittingLifecycleResult, error) {
@@ -769,6 +800,9 @@ type ListNoShowsQuery struct {
 	Limit                int
 }
 
+// ListExamSittingNoShows returns one page of a Closing or Closed Sitting's
+// enrolled candidates who never started an Attempt, to a caller authorized to
+// view the Sitting.
 func (s *Service) ListExamSittingNoShows(ctx context.Context, invocation invocation.Invocation, query ListNoShowsQuery) (_ NoShowPage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.ExamID.IsValid() || !query.SittingID.IsValid() || (!query.AfterCandidateUserID.IsZero() && !query.AfterCandidateUserID.IsValid()) || query.Limit < 1 || query.Limit > 200 {
@@ -862,6 +896,9 @@ func (s *Service) runSystemLifecycle(ctx context.Context, system invocation.Syst
 	return value, nil
 }
 
+// ListLifecycleDue returns up to Limit Sittings whose next lifecycle
+// transition is due, ordered by due time and Sitting ID after the optional
+// cursor.
 func (s *Service) ListLifecycleDue(ctx context.Context, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
 	invalidCursor := options.AfterDueAt.IsZero() != options.AfterSittingID.IsZero() ||
 		!options.AfterSittingID.IsZero() && !options.AfterSittingID.IsValid()

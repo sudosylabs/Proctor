@@ -42,6 +42,9 @@ type ArchiveCommand struct {
 	IdempotencyKey       string
 }
 
+// ListExams returns one page of the Exams the caller may see, filtered by
+// Academic Unit, text, archive state, and Sitting state or window. Limit
+// defaults to 50 and the archive filter to active Exams.
 func (a *Authoring) ListExams(ctx context.Context, invocation invocation.Invocation, query ListQuery) (_ CatalogPage, resultErr error) {
 	defer func() { resultErr = publicFailures.Present(resultErr) }()
 	if query.Limit == 0 {
@@ -93,6 +96,7 @@ func (a *Authoring) ListExams(ctx context.Context, invocation invocation.Invocat
 	return CatalogPage{Items: items}, nil
 }
 
+// ArchiveExam idempotently archives an Exam, fenced by ExpectedExamRevision.
 func (a *Authoring) ArchiveExam(ctx context.Context, invocation invocation.Invocation, command ArchiveCommand) (_ model.Exam, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	principal := invocation.Principal()

@@ -68,6 +68,11 @@ type FocusLossEvaluation struct {
 	DiscrepancyRecorded         bool
 }
 
+// EvaluateExamAttemptFocusLoss records one Focus Loss claim from the
+// candidate's live Attempt Participation and applies the frozen policy, which
+// may raise an Integrity Flag and open an Attempt Suspension. A claim that
+// arrives after the Attempt or Sitting ended is evaluated without changing
+// the Attempt.
 func (s *Service) EvaluateExamAttemptFocusLoss(ctx context.Context, invocation invocation.Invocation, command FocusLossCommand) (_ FocusLossEvaluation, resultErr error) {
 	defer func() { s.recordOperational("focus_loss", resultErr) }()
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()

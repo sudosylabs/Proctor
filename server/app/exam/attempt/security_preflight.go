@@ -56,6 +56,11 @@ func (s *Service) beginPreflightAudit(ctx context.Context, invocation invocation
 	}
 	return s.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, model.RoleScopeClass, snapshot.Sitting.ClassID.String(), operation, map[string]any{"exam_sitting_id": sittingID.String()}, nil)
 }
+
+// PrepareExamSecurityPreflight idempotently starts a security preflight for
+// the caller's desktop against a Sitting, optionally for an existing Attempt,
+// and returns a fresh challenge bound to the reported registry, source
+// manifest, and configuration digests.
 func (s *Service) PrepareExamSecurityPreflight(ctx context.Context, invocation invocation.Invocation, command PrepareSecurityPreflightCommand) (_ *store.SecurityPreflightPrepared, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := s.enterControl(ctx, invocation, false)
@@ -93,6 +98,10 @@ func (s *Service) PrepareExamSecurityPreflight(ctx context.Context, invocation i
 	}
 	return result, nil
 }
+
+// ReportExamSecurityPreflight idempotently records the desktop's report for a
+// prepared preflight and returns the server's evaluation. The preflight is
+// resolved only for the caller's own user and Session.
 func (s *Service) ReportExamSecurityPreflight(ctx context.Context, invocation invocation.Invocation, command ReportSecurityPreflightCommand) (_ *model.SecurityPreflightResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := s.enterControl(ctx, invocation, false)
@@ -142,6 +151,9 @@ var securityPreflightStoreErrors = storeErrors.With(
 	apperror.StoreRule{Kind: apperror.StoreSentinel, Sentinel: model.ErrNativeCoverageUnsupported, Code: "exam.security.unsupported_capability"},
 )
 
+// RecoverExamSecurityPolicy returns the frozen security policy, current
+// coverage, and source state of the caller's active Attempt to its registered
+// Session. It does not grant or renew a Participation Lease.
 func (s *Service) RecoverExamSecurityPolicy(ctx context.Context, invocation invocation.Invocation, attemptID model.ExamAttemptID) (_ *store.SecurityPolicyRecovery, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := s.enterControl(ctx, invocation, false)
@@ -173,6 +185,9 @@ type UpdateSecurityCoverageCommand struct {
 	Coverage        model.SecurityCoverageRenewal
 }
 
+// UpdateExamSecurityCoverage renews the security coverage reported by the
+// candidate's live Attempt Participation, fenced by participation generation
+// and checked against the caller's desktop build.
 func (s *Service) UpdateExamSecurityCoverage(ctx context.Context, invocation invocation.Invocation, command UpdateSecurityCoverageCommand) (_ model.SecurityCoverageResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := s.enterControl(ctx, invocation, true)

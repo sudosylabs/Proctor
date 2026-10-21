@@ -20,16 +20,31 @@ import (
 
 type ExamView = examengine.View
 
+// CreateExamCommand creates an Exam with its initial Exam Draft in an Academic
+// Unit; IdempotencyKey makes it replayable.
 type CreateExamCommand = examengine.CreateCommand
 
+// GetExamQuery names one Exam.
 type GetExamQuery = examengine.GetQuery
 
+// EditExamDraftTextCommand edits the title and/or Exam Instructions of an Exam
+// Draft; nil fields are left unchanged. It is fenced by ExpectedDraftRevision
+// and replayed by IdempotencyKey.
 type EditExamDraftTextCommand = examengine.EditDraftTextCommand
 
+// ConfigureExamDraftNativePolicyCommand replaces the native security policy of
+// an Exam Draft, fenced by ExpectedDraftRevision and replayed by
+// IdempotencyKey.
 type ConfigureExamDraftNativePolicyCommand = examengine.ConfigureDraftNativePolicyCommand
 
+// ConfigureExamDraftFocusLossCommand replaces the Focus Loss policy of an Exam
+// Draft: the minimum qualifying duration, incident count and window, and the
+// outcome when crossed. It is fenced by ExpectedDraftRevision and replayed by
+// IdempotencyKey.
 type ConfigureExamDraftFocusLossCommand = examengine.ConfigureDraftFocusLossCommand
 
+// ConfigureExamDraftBrowserPolicyCommand replaces the Browser Policy of an
+// Exam Draft, fenced by ExpectedDraftRevision and replayed by IdempotencyKey.
 type ConfigureExamDraftBrowserPolicyCommand = examengine.ConfigureDraftBrowserPolicyCommand
 
 type examAuthorizationAdapter struct{ authorization *accessControlService }

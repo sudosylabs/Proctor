@@ -32,6 +32,10 @@ type CorrectionAcknowledgementResult struct {
 	RuntimeCapabilities  store.CandidateRuntimeCapabilities
 }
 
+// AcknowledgeExamAttemptCorrection idempotently records that the candidate's
+// live Attempt Participation has received a Sitting correction. It is fenced
+// by the participation generation and by ExpectedCurrentRevisionID matching
+// the Attempt's current Exam Revision.
 func (s *Service) AcknowledgeExamAttemptCorrection(ctx context.Context, invocation invocation.Invocation, command AcknowledgeCorrectionCommand) (_ CorrectionAcknowledgementResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	selector, err := candidateSelector(invocation, command.Access.CandidateAccess)

@@ -70,6 +70,8 @@ type OpenSubmissionFileQuery struct {
 	EntryID model.AttemptWorkspaceEntryID
 }
 
+// OpenExamSubmissionFile opens one file sealed in a Submission for a caller
+// with Submission view.
 func (s *Service) OpenExamSubmissionFile(ctx context.Context, invocation invocation.Invocation, query OpenSubmissionFileQuery) (_ OpenedContent, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.EntryID.IsValid() {
@@ -118,6 +120,8 @@ func validSubmissionFileSelector(selector *store.ExamSubmissionFileSelector,
 	}
 }
 
+// ListExamSubmissionManifest returns one page of a Submission's sealed
+// manifest for a caller with Submission view.
 func (s *Service) ListExamSubmissionManifest(ctx context.Context, invocation invocation.Invocation,
 	query ListSubmissionManifestQuery,
 ) (_ SubmissionManifestPage, resultErr error) {
@@ -177,6 +181,9 @@ func validSubmissionManifestItem(item store.ExamSubmissionManifestItem) bool {
 	}
 }
 
+// GetExamSubmission returns a Submission and its authorization projection for
+// a caller with Submission view. A Submission that does not belong to the
+// named Exam, Sitting, and Attempt is reported as not found.
 func (s *Service) GetExamSubmission(ctx context.Context, invocation invocation.Invocation, query GetSubmissionQuery) (_ ManagedSubmission, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	authorization, err := s.resolveManagedSubmission(ctx, invocation, query)
@@ -222,6 +229,10 @@ func validSubmissionAuthorization(value *store.ExamSubmissionAuthorization, subm
 		value.AttemptID.IsValid() && value.CandidateUserID.IsValid() && value.AcademicUnitID.IsValid()
 }
 
+// SubmitExamAttempt idempotently seals the candidate's Submission from the
+// acknowledged Attempt Workspace state, fenced by participation generation,
+// the expected current Exam Revision, the expected workspace cursor, and the
+// final Focus Loss sequence.
 func (s *Service) SubmitExamAttempt(ctx context.Context, invocation invocation.Invocation, command SubmitCommand) (_ store.ExamSubmissionReceipt, resultErr error) {
 	defer func() { s.recordOperational("submit", resultErr) }()
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()

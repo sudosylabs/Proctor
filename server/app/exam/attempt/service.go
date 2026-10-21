@@ -182,6 +182,9 @@ type GetManagedAttemptQuery struct {
 	AttemptID model.ExamAttemptID
 }
 
+// GetExamAttempt returns a managed view of one Attempt. It authorizes Sitting
+// view on the exact Sitting before reading the Attempt so a caller cannot
+// distinguish existing, mismatched, or missing Attempts.
 func (s *Service) GetExamAttempt(ctx context.Context, invocation invocation.Invocation, query GetManagedAttemptQuery) (_ store.ExamAttemptManagerSnapshot, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.ExamID.IsValid() || !query.SittingID.IsValid() || !query.AttemptID.IsValid() {
@@ -262,6 +265,9 @@ type CandidateActivityPage struct {
 	HasMore    bool
 }
 
+// ListCandidateExamActivity returns one page of the caller's own Sittings and
+// Attempts, newest scheduled start first. On a registered desktop the page
+// also reflects that desktop's Session and registration.
 func (s *Service) ListCandidateExamActivity(ctx context.Context, invocation invocation.Invocation, query CandidateActivityQuery) (_ CandidateActivityPage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	principal := invocation.Principal()
@@ -307,6 +313,10 @@ type SittingCandidateStatusesPage struct {
 	HasMore bool
 }
 
+// ListSittingCandidateStatuses returns one page of per-candidate Attempt
+// statuses for a Sitting, excluding the caller. It requires Sitting view;
+// whether the caller also holds Sitting management decides if re-allow is
+// offered.
 func (s *Service) ListSittingCandidateStatuses(ctx context.Context, invocation invocation.Invocation,
 	query SittingCandidateStatusesQuery,
 ) (_ SittingCandidateStatusesPage, resultErr error) {
@@ -354,6 +364,9 @@ func (s *Service) ListSittingCandidateStatuses(ctx context.Context, invocation i
 	return page, nil
 }
 
+// ListExamAttempts returns one page of Attempts in a Sitting for a caller
+// with Sitting view, optionally filtered by state and excluding the caller's
+// own Attempt.
 func (s *Service) ListExamAttempts(ctx context.Context, invocation invocation.Invocation, query ListManagedAttemptsQuery) (_ ManagedAttemptPage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.ExamID.IsValid() || !query.SittingID.IsValid() || query.Limit < 1 || query.Limit > 200 ||
@@ -518,6 +531,10 @@ type ReallowResult struct {
 	Replayed        bool
 }
 
+// ReallowExamAttempt idempotently closes the active Attempt Suspension and
+// returns the Attempt to active, fenced by ExpectedAttemptRevision. It
+// authorizes Sitting management on the exact Sitting before reading the
+// Attempt and preserves all evidence.
 func (s *Service) ReallowExamAttempt(ctx context.Context, invocation invocation.Invocation, command ReallowCommand) (_ ReallowResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	principal := invocation.Principal()
@@ -806,6 +823,10 @@ func (s *Service) RenewExamAttemptParticipation(ctx context.Context, invocation 
 	return result, nil
 }
 
+// ConnectExamAttempt idempotently admits the caller's registered, compatible
+// desktop to a Sitting: it creates the Attempt and its Attempt Workspace on
+// first admission, or resumes the existing Attempt, and opens a new Attempt
+// Participation and Attempt Connection.
 func (s *Service) ConnectExamAttempt(ctx context.Context, invocation invocation.Invocation, command ConnectCommand) (_ ConnectionResult, resultErr error) {
 	defer func() { s.recordOperational("connect", resultErr) }()
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
@@ -923,6 +944,9 @@ type ConnectionClosedResult struct {
 	Changed         bool
 }
 
+// CloseExamAttemptConnection closes the caller's Attempt Connection with the
+// given reason; post-commit effects are published only when the close changed
+// state.
 func (s *Service) CloseExamAttemptConnection(ctx context.Context, invocation invocation.Invocation, command CloseConnectionCommand) (_ ConnectionClosedResult, resultErr error) {
 	defer func() { s.recordOperational("close", resultErr) }()
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
@@ -987,6 +1011,9 @@ type Resource struct {
 	SHA256              string
 }
 
+// GetCandidateExamPresentation returns what the candidate's live Attempt
+// displays: title, sanitized Exam Instructions, Exam Resources, runtime
+// capabilities, browser policy, and live corrections.
 func (s *Service) GetCandidateExamPresentation(ctx context.Context, invocation invocation.Invocation, access CandidateAccess) (_ Presentation, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	selector, err := candidateSelector(invocation, access)
@@ -1031,6 +1058,10 @@ type WorkspacePage struct {
 	RefreshRequired bool
 }
 
+// ListCandidateExamWorkspace returns one page of the candidate's Attempt
+// Workspace manifest. ExpectedCursor -1 starts a first page at the current
+// cursor; RefreshRequired reports that the workspace changed since that
+// cursor.
 func (s *Service) ListCandidateExamWorkspace(ctx context.Context, invocation invocation.Invocation, query WorkspaceQuery) (_ WorkspacePage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	selector, err := candidateSelector(invocation, query.Access)
@@ -1071,6 +1102,8 @@ type OpenResourceQuery struct {
 	ResourceID model.ExamResourceID
 }
 
+// OpenCandidateExamResource opens the content of one Exam Resource presented
+// to the candidate's live Attempt.
 func (s *Service) OpenCandidateExamResource(ctx context.Context, invocation invocation.Invocation, query OpenResourceQuery) (_ OpenedContent, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	selector, err := candidateSelector(invocation, query.Access)
@@ -1101,6 +1134,9 @@ type OpenWorkspaceFileQuery struct {
 	EntryID model.AttemptWorkspaceEntryID
 }
 
+// OpenCandidateExamWorkspaceFile opens the current content of one file in the
+// candidate's Attempt Workspace, whether it is still the Starter Workspace
+// copy or Attempt-written content.
 func (s *Service) OpenCandidateExamWorkspaceFile(ctx context.Context, invocation invocation.Invocation, query OpenWorkspaceFileQuery) (_ OpenedContent, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	selector, err := candidateSelector(invocation, query.Access)

@@ -49,6 +49,10 @@ func (s *Service) beginBrowserDeliveryAudit(ctx context.Context, invocation invo
 	}
 	return s.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), operation, map[string]any{"source_session_id": string(access.SourceSessionID)}, nil)
 }
+
+// DeclareBrowserDeliveryGaps idempotently records Browser Activity the client
+// declares it can no longer deliver for one source session, so the gaps are
+// known rather than silently missing.
 func (s *Service) DeclareBrowserDeliveryGaps(ctx context.Context, invocation invocation.Invocation, command BrowserDeliveryGapsCommand) (_ *model.BrowserDeliveryGapResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := s.enterControl(ctx, invocation, false)
@@ -92,6 +96,10 @@ func (s *Service) DeclareBrowserDeliveryGaps(ctx context.Context, invocation inv
 	}
 	return value, nil
 }
+
+// SealBrowserDelivery idempotently records the final delivered sequence for
+// one Browser Activity source session, fenced by the declaration's expected
+// revision.
 func (s *Service) SealBrowserDelivery(ctx context.Context, invocation invocation.Invocation, command BrowserDeliveryFinalCommand) (_ *model.BrowserSourceStatus, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := s.enterControl(ctx, invocation, false)
@@ -136,6 +144,8 @@ func (s *Service) SealBrowserDelivery(ctx context.Context, invocation invocation
 	return value, nil
 }
 
+// UpdateBrowserDeliverySummary idempotently records the client's summary of
+// Browser Activity it did not retain for one source session.
 func (s *Service) UpdateBrowserDeliverySummary(ctx context.Context, invocation invocation.Invocation, command BrowserDeliverySummaryCommand) (_ *model.BrowserDeliverySummaryResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := s.enterControl(ctx, invocation, false)
@@ -171,6 +181,10 @@ func (s *Service) UpdateBrowserDeliverySummary(ctx context.Context, invocation i
 	}
 	return value, nil
 }
+
+// BrowserDeliveryReceipts returns up to limit (at most 64) acknowledged
+// receipts for one Browser Activity source session, starting at sequence
+// first, with NextSequence set when another page follows.
 func (s *Service) BrowserDeliveryReceipts(ctx context.Context, invocation invocation.Invocation, query BrowserSourceQuery, first int64, limit int) (_ *model.BrowserReceiptPage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := s.enterControl(ctx, invocation, false)
@@ -204,6 +218,11 @@ func (s *Service) BrowserDeliveryReceipts(ctx context.Context, invocation invoca
 	}
 	return value, nil
 }
+
+// AppendHistoricalBrowserDelivery idempotently delivers a Browser Activity
+// batch outside a live Attempt Connection, so the access must carry no
+// connection or continuity credential. Delivery refusals are reported without
+// marking the audit failed.
 func (s *Service) AppendHistoricalBrowserDelivery(ctx context.Context, invocation invocation.Invocation, command BrowserDeliveryAppendCommand) (_ *model.BrowserActivityAcknowledgement, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	access, err := browserSourceSelector(invocation, command.Query)

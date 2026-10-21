@@ -25,8 +25,16 @@ import (
 // narrow capabilities consumed by concrete Jobs. They intentionally do not
 // expose App, Dependencies, store.Catalog, or platform.Service.
 
+// MailRekeyCommandV1 is version 1 of the mail rekey Job payload: re-encrypt
+// stored mail from the retiring key to the primary key.
 type MailRekeyCommandV1 = jobhandler.MailRekeyCommandV1
+
+// MailRekeyCheckpointV1 is version 1 of the mail rekey Job checkpoint: the
+// resume cursor and running counts.
 type MailRekeyCheckpointV1 = jobhandler.MailRekeyCheckpointV1
+
+// MailRekeyResultV1 is version 1 of the mail rekey Job result, reporting the
+// remaining references and whether retiring the key is now safe.
 type MailRekeyResultV1 = jobhandler.MailRekeyResultV1
 
 func prepareUserDefaultProfilePictureJob(user *model.User, at time.Time) (*model.User, *model.Job, error) {

@@ -21,7 +21,12 @@ type ExamStarterWorkspaceItem = store.ExamStarterWorkspaceItem
 type ExamStarterWorkspaceResult = examworkspace.Result
 type OpenedExamStarterWorkspaceFile = examworkspace.OpenedFile
 
+// ListExamStarterWorkspaceQuery names the Exam whose Exam Draft Starter
+// Workspace is listed.
 type ListExamStarterWorkspaceQuery = examworkspace.ListQuery
+
+// OpenExamStarterWorkspaceFileQuery names one Exam Draft Starter Workspace
+// file of an Exam.
 type OpenExamStarterWorkspaceFileQuery = examworkspace.OpenFileQuery
 type CreateExamStarterWorkspaceDirectoryCommand = examworkspace.CreateDirectoryCommand
 type CreateExamStarterWorkspaceFileCommand = examworkspace.CreateFileCommand

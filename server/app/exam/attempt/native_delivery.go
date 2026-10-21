@@ -58,6 +58,8 @@ func nativeDeliverySelector(invocation invocation.Invocation, query NativeDelive
 	return store.NativeDeliveryAccess{Access: store.CandidateAttemptAccess{AttemptID: a.AttemptID, ConnectionID: a.ConnectionID, ContinuityCredentialHash: credentialHash, CandidateUserID: p.UserID, SessionID: p.SessionID, DesktopRegistrationID: p.DesktopRegistrationID, DPoPKeyThumbprint: p.DPoPKeyThumbprint}, StreamID: query.StreamID}, nil
 }
 
+// NativeDeliveryStatus returns the delivery status of one native security
+// stream of the candidate's Attempt, as seen from a registered desktop.
 func (s *Service) NativeDeliveryStatus(ctx context.Context, invocation invocation.Invocation, query NativeDeliveryQuery) (_ *model.NativeSecurityStreamStatus, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := s.enterControl(ctx, invocation, false)
@@ -78,6 +80,9 @@ func (s *Service) NativeDeliveryStatus(ctx context.Context, invocation invocatio
 	}
 	return value, nil
 }
+
+// NativeDeliveryReceipt returns the receipt for the native security batch
+// with the given sequence in one stream of the candidate's Attempt.
 func (s *Service) NativeDeliveryReceipt(ctx context.Context, invocation invocation.Invocation, query NativeDeliveryQuery, sequence int64) (_ *model.NativeBatchReceipt, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := s.enterControl(ctx, invocation, false)
@@ -111,6 +116,9 @@ func (s *Service) beginNativeDeliveryAudit(ctx context.Context, invocation invoc
 	}
 	return s.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), operation, map[string]any{"stream_id": access.StreamID}, nil)
 }
+
+// DeclareNativeDeliveryGaps idempotently records native security batches the
+// client declares it can no longer deliver for one stream.
 func (s *Service) DeclareNativeDeliveryGaps(ctx context.Context, invocation invocation.Invocation, command NativeDeliveryGapsCommand) (_ *model.DeliveryGapReceipt, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := s.enterControl(ctx, invocation, false)
@@ -154,6 +162,10 @@ func (s *Service) DeclareNativeDeliveryGaps(ctx context.Context, invocation invo
 	}
 	return value, nil
 }
+
+// SealNativeDelivery idempotently records the final delivered batch sequence
+// for one native security stream, fenced by the declaration's expected
+// revision.
 func (s *Service) SealNativeDelivery(ctx context.Context, invocation invocation.Invocation, command NativeDeliveryFinalCommand) (_ *model.NativeSecurityStreamStatus, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := s.enterControl(ctx, invocation, false)
@@ -197,6 +209,9 @@ func (s *Service) SealNativeDelivery(ctx context.Context, invocation invocation.
 	}
 	return value, nil
 }
+
+// UpdateNativeDeliverySummary idempotently records the client's summary of
+// native security records it did not retain for one stream.
 func (s *Service) UpdateNativeDeliverySummary(ctx context.Context, invocation invocation.Invocation, command NativeDeliverySummaryCommand) (_ *model.NativeSecurityStreamStatus, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := s.enterControl(ctx, invocation, false)
@@ -257,6 +272,9 @@ type NativeDeliveryAppendCommand struct {
 	IdempotencyKey string
 }
 
+// AppendNativeDelivery idempotently appends one native security batch to a
+// stream of the candidate's Attempt after checking it against the frozen
+// policy's desktop build. The batch carries its own participation generation.
 func (s *Service) AppendNativeDelivery(ctx context.Context, invocation invocation.Invocation, command NativeDeliveryAppendCommand) (_ *model.NativeSecurityAcknowledgement, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	access, err := nativeDeliverySelector(invocation, command.Query)

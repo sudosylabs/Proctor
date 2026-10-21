@@ -26,6 +26,8 @@ type StopDeliveryDetailsCommand struct {
 	IdempotencyKey string
 }
 
+// DeliveryBudget returns the native and Browser Activity delivery quota usage
+// for one Attempt Participation of the candidate's Attempt.
 func (s *Service) DeliveryBudget(ctx context.Context, invocation invocation.Invocation, query DeliveryBudgetQuery) (_ *model.DeliveryBudgetSnapshot, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := s.enterControl(ctx, invocation, false)
@@ -49,6 +51,11 @@ func (s *Service) DeliveryBudget(ctx context.Context, invocation invocation.Invo
 	}
 	return value, nil
 }
+
+// StopDeliveryDetails idempotently stops detailed delivery for one delivery
+// family (native or browser) of the candidate's live Attempt after a local
+// loss inventory, returning the updated budget and the affected source
+// statuses.
 func (s *Service) StopDeliveryDetails(ctx context.Context, invocation invocation.Invocation, command StopDeliveryDetailsCommand) (_ *model.StopDeliveryDetailsResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := s.enterControl(ctx, invocation, false)

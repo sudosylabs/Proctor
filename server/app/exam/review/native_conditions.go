@@ -19,6 +19,8 @@ import (
 
 type NativeConditionListQuery = store.NativeConditionListOptions
 
+// ListNativeConditions returns one page of native condition evidence for a
+// Submission to a caller authorized to view its Submission Review.
 func (s *Service) ListNativeConditions(ctx context.Context, invocation invocation.Invocation, query NativeConditionListQuery) (_ *store.NativeConditionPage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.SubmissionID.IsValid() || query.Limit < 1 || query.Limit > 100 || query.AfterID != "" && !query.AfterID.IsValid() {

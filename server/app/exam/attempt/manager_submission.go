@@ -28,6 +28,10 @@ type ManagerEndCommand struct {
 	IdempotencyKey          string
 }
 
+// EndExamAttemptByManager idempotently ends a suspended Attempt on a
+// manager's decision and seals its Submission, fenced by
+// ExpectedAttemptRevision. It authorizes Sitting management on the exact
+// Sitting before reading the Attempt so existence is not probeable.
 func (s *Service) EndExamAttemptByManager(ctx context.Context, invocation invocation.Invocation, command ManagerEndCommand) (_ store.ExamSubmissionReceipt, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	principal := invocation.Principal()

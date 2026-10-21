@@ -105,6 +105,7 @@ func cloneStringPointer(value *string) *string {
 	return &cloned
 }
 
+// Service manages the Exam Resources of an Exam Draft.
 type Service struct{ deps Dependencies }
 
 // Dependencies are the collaborators of Service; New validates them once and the
@@ -125,6 +126,8 @@ type Dependencies struct {
 	NewLeaseID     func() model.UploadLeaseID
 }
 
+// New returns an Exam Resource Service, or an error when a required
+// dependency is missing.
 func New(deps Dependencies) (*Service, error) {
 	if deps.Persistence == nil || deps.Access == nil || deps.Memberships == nil || deps.Authorizer == nil || deps.Auditor == nil || deps.Effects == nil || deps.EffectFailures == nil || deps.Content == nil || deps.Now == nil || deps.NewResourceID == nil || deps.NewEntryID == nil || deps.NewRevisionID == nil || deps.NewLeaseID == nil {
 		return nil, errors.New("exam resource dependencies are required")
@@ -135,6 +138,8 @@ func New(deps Dependencies) (*Service, error) {
 // ListQuery names the Exam whose Draft Resources are listed.
 type ListQuery struct{ ExamID model.ExamID }
 
+// ListExamResources returns the Exam Draft's Exam Resources to a caller
+// authorized to view the Exam.
 func (s *Service) ListExamResources(ctx context.Context, invocation invocation.Invocation, query ListQuery) (_ []store.ExamResourceRecord, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.ExamID.IsValid() {
@@ -156,6 +161,8 @@ type OpenQuery struct {
 	ResourceID model.ExamResourceID
 }
 
+// OpenExamResource opens the selected content of one Exam Draft Exam Resource
+// for a caller authorized to view the Exam. The caller must close the body.
 func (s *Service) OpenExamResource(ctx context.Context, invocation invocation.Invocation, query OpenQuery) (_ Opened, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.ExamID.IsValid() || !query.ResourceID.IsValid() {
@@ -178,6 +185,8 @@ func (s *Service) OpenExamResource(ctx context.Context, invocation invocation.In
 	return Opened{Record: *record, Body: body}, nil
 }
 
+// CreateExamResource idempotently uploads, verifies, and adds an Exam
+// Resource to the Exam Draft, fenced by ExpectedDraftRevision.
 func (s *Service) CreateExamResource(ctx context.Context, invocation invocation.Invocation, command CreateCommand) (_ store.ExamResourceRecord, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 || command.Body == nil || command.Size < 0 || command.Size > model.ExamResourceMaximumBytes || !command.MediaType.IsValid() || !validSHA256(command.ExpectedSHA256) {
@@ -230,6 +239,8 @@ func (s *Service) CreateExamResource(ctx context.Context, invocation invocation.
 	return s.finalize(ctx, invocation, authorization, resource, leaseID, &rendition, command.ExpectedDraftRevision, idempotency, "add")
 }
 
+// ReplaceExamResourceContent idempotently uploads and selects new content for
+// an existing Exam Resource, fenced by ExpectedDraftRevision.
 func (s *Service) ReplaceExamResourceContent(ctx context.Context, invocation invocation.Invocation, command ReplaceContentCommand) (_ store.ExamResourceRecord, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !command.ExamID.IsValid() || !command.ResourceID.IsValid() || command.ExpectedDraftRevision < 1 || command.Body == nil || command.Size < 0 || command.Size > model.ExamResourceMaximumBytes || !command.MediaType.IsValid() || !validSHA256(command.ExpectedSHA256) {
@@ -306,6 +317,9 @@ func (s *Service) finalize(ctx context.Context, invocation invocation.Invocation
 	return *result.Value, nil
 }
 
+// EditExamResourceMetadata idempotently changes an Exam Resource's display
+// name, description, or both, fenced by ExpectedDraftRevision. A nil field is
+// left unchanged, but at least one must be set.
 func (s *Service) EditExamResourceMetadata(ctx context.Context, invocation invocation.Invocation, command EditMetadataCommand) (_ store.ExamResourceRecord, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !command.ExamID.IsValid() || !command.ResourceID.IsValid() || command.ExpectedDraftRevision < 1 || command.DisplayName == nil && command.DescriptionMarkdown == nil {
@@ -384,6 +398,8 @@ func (s *Service) metadataMutation(ctx context.Context, invocation invocation.In
 	return *result.Value, nil
 }
 
+// ReorderExamResources idempotently sets the order of the Exam Draft's Exam
+// Resources, fenced by ExpectedDraftRevision. ResourceIDs must not repeat.
 func (s *Service) ReorderExamResources(ctx context.Context, invocation invocation.Invocation, c ReorderCommand) (_ []store.ExamResourceRecord, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	c.ResourceIDs = append([]model.ExamResourceID(nil), c.ResourceIDs...)
@@ -458,6 +474,8 @@ func (s *Service) ReorderExamResources(ctx context.Context, invocation invocatio
 	return result.Items, nil
 }
 
+// RemoveExamResource idempotently removes an Exam Resource from the Exam
+// Draft, fenced by ExpectedDraftRevision.
 func (s *Service) RemoveExamResource(ctx context.Context, invocation invocation.Invocation, c RemoveCommand) (_ store.ExamResourceRecord, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !c.ExamID.IsValid() || !c.ResourceID.IsValid() || c.ExpectedDraftRevision < 1 {

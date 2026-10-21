@@ -23,6 +23,9 @@ type ChangeUserEmailCommand struct {
 	Email  string
 }
 
+// VerifyUserEmailPrivilegedCommand asks an administrator to mark a User's
+// email verified without a verification token. It requires a strong recent
+// Session and is a no-op when the email is already verified.
 type VerifyUserEmailPrivilegedCommand struct{ UserID model.UserID }
 
 // UserEmailState is the narrow result of an explicit email-security mutation.

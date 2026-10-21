@@ -19,6 +19,7 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// GetAcademicPeriodQuery names one Academic Period.
 type GetAcademicPeriodQuery struct{ ID model.AcademicPeriodID }
 type ListAcademicPeriodsQuery struct {
 	Query string

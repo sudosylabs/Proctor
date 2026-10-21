@@ -119,6 +119,7 @@ type EffectFailures interface {
 	Report(context.Context, string, error)
 }
 
+// Service manages the Starter Workspace of an Exam Draft.
 type Service struct{ deps Dependencies }
 
 // Dependencies are the collaborators of Service; New validates them once and the
@@ -138,6 +139,8 @@ type Dependencies struct {
 	NewVersion     func() model.WorkspaceContentVersion
 }
 
+// New returns a Starter Workspace Service, or an error when a required
+// dependency is missing.
 func New(deps Dependencies) (*Service, error) {
 	if deps.Persistence == nil || deps.Access == nil || deps.Memberships == nil || deps.Authorizer == nil || deps.Auditor == nil || deps.Content == nil || deps.Effects == nil ||
 		deps.EffectFailures == nil || deps.Now == nil || deps.NewEntryID == nil || deps.NewObjectID == nil || deps.NewVersion == nil {
@@ -149,6 +152,8 @@ func New(deps Dependencies) (*Service, error) {
 // ListQuery names the Exam whose Draft Starter Workspace is listed.
 type ListQuery struct{ ExamID model.ExamID }
 
+// ListExamStarterWorkspace returns the entries of the Exam Draft's Starter
+// Workspace to a caller authorized to view the Exam.
 func (s *Service) ListExamStarterWorkspace(ctx context.Context, invocation invocation.Invocation, query ListQuery) (_ []store.ExamStarterWorkspaceItem, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if _, err := s.authorize(ctx, invocation, query.ExamID, false); err != nil {
@@ -167,6 +172,9 @@ type OpenFileQuery struct {
 	EntryID model.StarterWorkspaceEntryID
 }
 
+// OpenExamStarterWorkspaceFile opens one file of the Exam Draft's Starter
+// Workspace for a caller authorized to view the Exam. The caller must close
+// the body.
 func (s *Service) OpenExamStarterWorkspaceFile(ctx context.Context, invocation invocation.Invocation, query OpenFileQuery) (_ OpenedFile, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.EntryID.IsValid() {
@@ -190,6 +198,8 @@ func (s *Service) OpenExamStarterWorkspaceFile(ctx context.Context, invocation i
 		SHA256: item.Object.SHA256, ContentVersion: item.Object.ContentVersion}, nil
 }
 
+// CreateExamStarterWorkspaceDirectory idempotently creates a directory in the
+// Exam Draft's Starter Workspace, fenced by ExpectedDraftRevision.
 func (s *Service) CreateExamStarterWorkspaceDirectory(ctx context.Context, invocation invocation.Invocation, command CreateDirectoryCommand) (_ Result, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	path, err := validateMutation(command.ExamID, "", command.ExpectedDraftRevision, command.Path)
@@ -216,6 +226,9 @@ func (s *Service) CreateExamStarterWorkspaceDirectory(ctx context.Context, invoc
 	return s.runMutation(ctx, invocation, authorization, "directory_create", ChangeDirectoryCreated, mutation, idempotency, s.deps.Persistence.CreateDirectory)
 }
 
+// CreateExamStarterWorkspaceFile idempotently uploads and creates a file in
+// the Exam Draft's Starter Workspace, fenced by ExpectedDraftRevision. Size
+// -1 means the length is not known in advance.
 func (s *Service) CreateExamStarterWorkspaceFile(ctx context.Context, invocation invocation.Invocation, command CreateFileCommand) (_ Result, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	path, err := validateMutation(command.ExamID, "", command.ExpectedDraftRevision, command.Path)
@@ -238,6 +251,8 @@ func (s *Service) CreateExamStarterWorkspaceFile(ctx context.Context, invocation
 		"", command.MediaType, command.ExpectedSHA256, command.Body, command.Size, idempotency, "file_create", ChangeFileCreated, s.deps.Persistence.CreateFile)
 }
 
+// MoveExamStarterWorkspaceEntry idempotently moves an entry of the Exam
+// Draft's Starter Workspace to a new path, fenced by ExpectedDraftRevision.
 func (s *Service) MoveExamStarterWorkspaceEntry(ctx context.Context, invocation invocation.Invocation, command MoveEntryCommand) (_ Result, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	path, err := validateMutation(command.ExamID, command.EntryID, command.ExpectedDraftRevision, command.Path)
@@ -260,6 +275,9 @@ func (s *Service) MoveExamStarterWorkspaceEntry(ctx context.Context, invocation 
 	return s.runMutation(ctx, invocation, authorization, "entry_move", ChangeEntryMoved, mutation, idempotency, s.deps.Persistence.MoveEntry)
 }
 
+// ReplaceExamStarterWorkspaceFile idempotently replaces a Starter Workspace
+// file's content, fenced by ExpectedDraftRevision and its expected Workspace
+// Content Version.
 func (s *Service) ReplaceExamStarterWorkspaceFile(ctx context.Context, invocation invocation.Invocation, command ReplaceFileCommand) (_ Result, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if err := validateMutationBase(command.ExamID, command.EntryID, command.ExpectedDraftRevision); err != nil {
@@ -281,6 +299,9 @@ func (s *Service) ReplaceExamStarterWorkspaceFile(ctx context.Context, invocatio
 		command.ExpectedContentVersion, command.MediaType, command.ExpectedSHA256, command.Body, command.Size, idempotency, "file_replace", ChangeFileReplaced, s.deps.Persistence.ReplaceFile)
 }
 
+// RemoveExamStarterWorkspaceEntry idempotently removes an entry, recursively
+// when requested, from the Exam Draft's Starter Workspace, fenced by
+// ExpectedDraftRevision.
 func (s *Service) RemoveExamStarterWorkspaceEntry(ctx context.Context, invocation invocation.Invocation, command RemoveEntryCommand) (_ Result, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if err := validateMutationBase(command.ExamID, command.EntryID, command.ExpectedDraftRevision); err != nil {

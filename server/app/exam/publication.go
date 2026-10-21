@@ -62,6 +62,8 @@ type PublicationDependencies struct {
 	Operational       OperationalRecorder
 }
 
+// NewPublication returns a Publication service, or an error when a required
+// dependency is missing.
 func NewPublication(deps PublicationDependencies) (*Publication, error) {
 	if deps.Persistence == nil || deps.Access == nil || deps.Memberships == nil || deps.Authorizer == nil || deps.Auditor == nil || deps.Effects == nil || deps.EffectFailures == nil || deps.Now == nil || deps.NewID == nil {
 		return nil, errors.New("Exam Revision publication dependencies are required")
@@ -75,6 +77,8 @@ func (p *Publication) recordOperational(event string, err error) {
 	}
 }
 
+// PublishExamRevision idempotently publishes the current Exam Draft as a new
+// immutable Exam Revision, fenced by ExpectedDraftRevision.
 func (p *Publication) PublishExamRevision(ctx context.Context, invocation invocation.Invocation, command PublishRevisionCommand) (_ store.ExamRevisionSummary, resultErr error) {
 	defer func() { p.recordOperational("publish_revision", resultErr) }()
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
@@ -143,6 +147,8 @@ type GetRevisionQuery struct {
 	RevisionID model.ExamRevisionID
 }
 
+// GetExamRevision returns the summary of one Exam Revision to a caller
+// authorized to view the Exam.
 func (p *Publication) GetExamRevision(ctx context.Context, invocation invocation.Invocation, query GetRevisionQuery) (_ store.ExamRevisionSummary, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if err := p.authorizeView(ctx, invocation, query.ExamID); err != nil {
@@ -158,6 +164,8 @@ func (p *Publication) GetExamRevision(ctx context.Context, invocation invocation
 	return *revision, nil
 }
 
+// ListExamRevisions returns one page of an Exam's Exam Revisions, newest
+// first, to a caller authorized to view the Exam.
 func (p *Publication) ListExamRevisions(ctx context.Context, invocation invocation.Invocation, query ListRevisionsQuery) (_ RevisionPage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if err := p.authorizeView(ctx, invocation, query.ExamID); err != nil {

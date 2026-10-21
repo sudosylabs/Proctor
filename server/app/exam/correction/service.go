@@ -133,6 +133,8 @@ func (r Result) applied() AppliedCorrection {
 		SittingRevision: r.SittingRevision, EffectiveAt: r.EffectiveAt, AffectedCapabilities: slices.Clone(r.AffectedCapabilities)}
 }
 
+// Service stages Exam Resource content for, and applies, live corrections to
+// an Exam Sitting.
 type Service struct{ deps Dependencies }
 
 // Dependencies are the collaborators of Service; New validates them once and the
@@ -158,6 +160,8 @@ type Dependencies struct {
 	InstitutionOrigin string
 }
 
+// New returns a correction Service, or an error when a required dependency is
+// missing.
 func New(deps Dependencies) (*Service, error) {
 	if deps.Persistence == nil || deps.Revisions == nil || deps.Access == nil || deps.Memberships == nil || deps.Authorizer == nil || deps.Auditor == nil || deps.Effects == nil || deps.EffectFailures == nil || deps.Content == nil || deps.Now == nil || deps.NewStageID == nil || deps.NewResourceID == nil || deps.NewEntryID == nil || deps.NewFileRevisionID == nil || deps.NewLeaseID == nil || deps.NewRenditionID == nil || deps.NewExamRevisionID == nil {
 		return nil, errors.New("exam correction dependencies are required")
@@ -165,6 +169,10 @@ func New(deps Dependencies) (*Service, error) {
 	return &Service{deps: deps}, nil
 }
 
+// StageExamSittingCorrectionResourceContent idempotently uploads and verifies
+// Exam Resource content against its expected SHA-256 for a later correction
+// of the Sitting based on BaseRevisionID. The returned stage expires at
+// ExpiresAt.
 func (s *Service) StageExamSittingCorrectionResourceContent(ctx context.Context, invocation invocation.Invocation, c StageResourceContentCommand) (_ ResourceStage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !c.ExamID.IsValid() || !c.SittingID.IsValid() || !c.BaseRevisionID.IsValid() || !c.Target.IsValid() || !c.MediaType.IsValid() || c.Body == nil || c.Size < 0 || c.Size > model.ExamResourceMaximumBytes || !validSHA256(c.ExpectedSHA256) || (c.Target == store.ExamCorrectionResourceAddition && !c.ResourceID.IsZero()) || (c.Target == store.ExamCorrectionResourceReplacement && !c.ResourceID.IsValid()) {
@@ -278,6 +286,10 @@ func projectStage(stage *store.ExamCorrectionResourceStage) ResourceStage {
 	return ResourceStage{StageID: stage.ID, ResourceID: stage.ResourceID, MediaType: model.ExamResourceMediaType(stage.Rendition.MediaType), Size: stage.Rendition.Size, SHA256: stage.Rendition.SHA256, ExpiresAt: stage.ExpiresAt}
 }
 
+// ApplyExamSittingCorrection idempotently applies a live correction to a
+// Sitting, publishing a new Exam Revision from changed Exam Instructions,
+// browser policy, or staged Exam Resources. It is fenced by
+// ExpectedSittingRevision and ExpectedCurrentRevisionID.
 func (s *Service) ApplyExamSittingCorrection(ctx context.Context, invocation invocation.Invocation, c ApplyCommand) (_ AppliedCorrection, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	manifest := make([]ResourceManifestItem, len(c.Resources))

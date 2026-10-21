@@ -15,6 +15,9 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// ScanExpiredDeliveries expires up to limit (1 to 200) overdue delivery
+// sources under system audit. The result counts sources found, completed, and
+// already expired (Replayed); it may be partial when an error is returned.
 func (s *Service) ScanExpiredDeliveries(ctx context.Context, limit int) (ExpiryScanResult, error) {
 	if limit < 1 || limit > 200 {
 		return ExpiryScanResult{}, apperror.Invalid("exam.attempt.invalid", "delivery_expiry_limit")

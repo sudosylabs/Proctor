@@ -100,6 +100,10 @@ type SaveDecisionCommand struct {
 	IdempotencyKey           string
 }
 
+// SaveExamIntegrityDecision idempotently records the reviewer's decision on
+// one Integrity Flag, creating the Submission Review when
+// ExpectedReviewRevision is zero. It is fenced by the expected Review and
+// decision revisions.
 func (s *Service) SaveExamIntegrityDecision(ctx context.Context, invocation invocation.Invocation, command SaveDecisionCommand) (_ Result, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !command.SubmissionID.IsValid() || !command.FlagID.IsValid() ||
@@ -169,6 +173,8 @@ type UpdateDraftCommand struct {
 	IdempotencyKey         string
 }
 
+// UpdateExamIntegrityReview idempotently saves the draft remarks of a
+// Submission Review, creating the Review when ExpectedReviewRevision is zero.
 func (s *Service) UpdateExamIntegrityReview(ctx context.Context, invocation invocation.Invocation, command UpdateDraftCommand) (_ Result, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !command.SubmissionID.IsValid() || command.ExpectedReviewRevision < 0 ||
@@ -241,6 +247,9 @@ const (
 	terminalRelease
 )
 
+// FinalizeExamIntegrityReview idempotently finalizes a Submission Review,
+// fenced by ExpectedReviewRevision, for a caller authorized to review the
+// Submission.
 func (s *Service) FinalizeExamIntegrityReview(ctx context.Context, invocation invocation.Invocation, command FinalizeCommand) (_ Result, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	return s.terminalMutation(ctx, invocation, command.SubmissionID, command.ReviewID,
@@ -250,6 +259,9 @@ func (s *Service) FinalizeExamIntegrityReview(ctx context.Context, invocation in
 // ReleaseCommand names the same target and expected revision as finalization.
 type ReleaseCommand = FinalizeCommand
 
+// ReleaseStudentExamResult idempotently and irreversibly releases a finalized
+// Submission Review's student result to the candidate, fenced by
+// ExpectedReviewRevision, for a caller authorized to release results.
 func (s *Service) ReleaseStudentExamResult(ctx context.Context, invocation invocation.Invocation, command ReleaseCommand) (_ Result, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	return s.terminalMutation(ctx, invocation, command.SubmissionID, command.ReviewID,
@@ -357,6 +369,8 @@ func (s *Service) terminalMutation(ctx context.Context, invocation invocation.In
 	return result, nil
 }
 
+// GetExamIntegrityReview returns the Submission Review snapshot of a
+// Submission to a caller authorized to view it.
 func (s *Service) GetExamIntegrityReview(ctx context.Context, invocation invocation.Invocation, submissionID model.SubmissionID) (_ *store.ExamSubmissionReviewSnapshot, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !submissionID.IsValid() {
@@ -381,6 +395,8 @@ type ListFlagsQuery struct {
 	Limit        int
 }
 
+// ListExamIntegrityFlags returns one page of a Submission's Integrity Flags
+// to a caller authorized to view its Submission Review.
 func (s *Service) ListExamIntegrityFlags(ctx context.Context, invocation invocation.Invocation, query ListFlagsQuery) (_ *store.ExamIntegrityFlagPage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.SubmissionID.IsValid() || query.Limit < 1 || query.Limit > store.ExamIntegrityReviewFlagReadMaximum {
@@ -416,6 +432,9 @@ type ListEvidenceQuery struct {
 	Limit           int
 }
 
+// ListExamIntegrityEvidence returns one page of Integrity Evidence for one
+// Integrity Flag of a Submission to a caller authorized to view its
+// Submission Review.
 func (s *Service) ListExamIntegrityEvidence(ctx context.Context, invocation invocation.Invocation, query ListEvidenceQuery) (_ *store.ExamIntegrityEvidencePage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.SubmissionID.IsValid() || !query.FlagID.IsValid() || query.Limit < 1 || query.Limit > store.ExamIntegrityReviewEvidenceReadMaximum {
@@ -450,6 +469,8 @@ type ListDiscrepanciesQuery struct {
 	Limit              int
 }
 
+// ListExamIntegrityDiscrepancies returns one page of a Submission's integrity
+// discrepancies to a caller authorized to view its Submission Review.
 func (s *Service) ListExamIntegrityDiscrepancies(ctx context.Context, invocation invocation.Invocation,
 	query ListDiscrepanciesQuery,
 ) (_ *store.ExamIntegrityDiscrepancyPage, resultErr error) {
@@ -472,6 +493,8 @@ func (s *Service) ListExamIntegrityDiscrepancies(ctx context.Context, invocation
 	return clone, nil
 }
 
+// GetStudentExamResult returns the caller's own released result for an
+// Attempt, with sanitized student remarks.
 func (s *Service) GetStudentExamResult(ctx context.Context, invocation invocation.Invocation, attemptID model.ExamAttemptID) (_ *model.StudentResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	principal := invocation.Principal()

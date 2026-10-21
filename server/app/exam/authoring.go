@@ -114,6 +114,8 @@ type ManagerMailPreparer interface {
 	PrepareManagerMail(ManagerMailPreparation) (*store.ExamManagerMail, error)
 }
 
+// Authoring owns Exam creation, Exam Draft editing, the Exam catalog,
+// archival, and Exam Manager membership.
 type Authoring struct{ deps AuthoringDependencies }
 
 // OperationalRecorder receives the outcome of each use case the module
@@ -140,6 +142,8 @@ type AuthoringDependencies struct {
 	Operational       OperationalRecorder
 }
 
+// NewAuthoring returns an Authoring service, or an error when a required
+// dependency is missing.
 func NewAuthoring(deps AuthoringDependencies) (*Authoring, error) {
 	if deps.Persistence == nil || deps.Memberships == nil || deps.Users == nil || deps.Mail == nil || deps.Authorizer == nil || deps.Auditor == nil || deps.Outcomes == nil || deps.Effects == nil || deps.EffectFailures == nil || deps.Now == nil || deps.NewID == nil {
 		return nil, errors.New("exam authoring dependencies are required")
@@ -153,6 +157,8 @@ func (a *Authoring) recordOperational(event string, err error) {
 	}
 }
 
+// CreateExam idempotently creates an Exam with its initial Exam Draft in the
+// given Academic Unit.
 func (a *Authoring) CreateExam(ctx context.Context, invocation invocation.Invocation, command CreateCommand) (_ View, resultErr error) {
 	defer func() { a.recordOperational("create", resultErr) }()
 	defer func() { resultErr = publicFailures.Present(resultErr) }()
@@ -230,6 +236,8 @@ func (a *Authoring) CreateExam(ctx context.Context, invocation invocation.Invoca
 // GetQuery names one Exam.
 type GetQuery struct{ ExamID model.ExamID }
 
+// GetExam returns an Exam and its Exam Draft to a caller authorized to view
+// it, directly or through an override.
 func (a *Authoring) GetExam(ctx context.Context, invocation invocation.Invocation, query GetQuery) (_ View, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	principal := invocation.Principal()
@@ -282,6 +290,9 @@ func (a *Authoring) AuthorizeView(ctx context.Context, invocation invocation.Inv
 	return a.deps.Authorizer.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: examID.String()})
 }
 
+// EditExamDraftText idempotently changes the Exam Draft's title, Exam
+// Instructions, or both, fenced by ExpectedDraftRevision. A nil field is left
+// unchanged, but at least one must be set.
 func (a *Authoring) EditExamDraftText(ctx context.Context, invocation invocation.Invocation, command EditDraftTextCommand) (_ View, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	principal := invocation.Principal()
@@ -615,6 +626,9 @@ type ConfigureDraftNativePolicyCommand struct {
 	IdempotencyKey        string
 }
 
+// ConfigureExamDraftNativePolicy idempotently replaces the native security
+// policy of the Exam Draft, fenced by ExpectedDraftRevision. The policy must
+// validate as part of an otherwise default Exam Policy Set.
 func (a *Authoring) ConfigureExamDraftNativePolicy(ctx context.Context, invocation invocation.Invocation, command ConfigureDraftNativePolicyCommand) (_ View, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	command.NativePolicy = command.NativePolicy.Clone()

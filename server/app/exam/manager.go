@@ -48,6 +48,8 @@ type RemoveManagerCommand = AddManagerCommand
 type TransferOwnerCommand = AddManagerCommand
 type ManagerChange = store.ExamManagerCommandResult
 
+// ListExamManagers returns one page of an Exam's Exam Managers to a caller
+// authorized to manage the Exam.
 func (a *Authoring) ListExamManagers(ctx context.Context, invocation invocation.Invocation, query ListManagersQuery) (_ ManagerPage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.ExamID.IsValid() || query.Limit < 1 || query.Limit > 200 ||
@@ -72,16 +74,22 @@ func (a *Authoring) ListExamManagers(ctx context.Context, invocation invocation.
 	return page, nil
 }
 
+// AddExamManager idempotently grants Exam Manager membership to an eligible
+// user, fenced by ExpectedExamRevision, and notifies that user by mail.
 func (a *Authoring) AddExamManager(ctx context.Context, invocation invocation.Invocation, command AddManagerCommand) (_ ManagerChange, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	return a.changeManager(ctx, invocation, command, managerAddition, a.deps.Persistence.AddManager)
 }
 
+// RemoveExamManager idempotently revokes a user's Exam Manager membership,
+// fenced by ExpectedExamRevision, and notifies that user by mail.
 func (a *Authoring) RemoveExamManager(ctx context.Context, invocation invocation.Invocation, command RemoveManagerCommand) (_ ManagerChange, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	return a.changeManager(ctx, invocation, command, managerRemoval, a.deps.Persistence.RemoveManager)
 }
 
+// TransferExamOwnership idempotently makes an eligible user the Exam's owner,
+// fenced by ExpectedExamRevision.
 func (a *Authoring) TransferExamOwnership(ctx context.Context, invocation invocation.Invocation, command TransferOwnerCommand) (_ ManagerChange, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	return a.changeManager(ctx, invocation, command, ownershipTransfer, a.deps.Persistence.TransferOwner)

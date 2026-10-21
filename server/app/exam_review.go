@@ -19,25 +19,62 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// ExamIntegrityReviewResult is the outcome of a Submission Review mutation:
+// the review, any affected integrity decision, and the authorization it was
+// checked against. Replayed reports an idempotent replay.
 type ExamIntegrityReviewResult = examreview.Result
+
+// ExamSubmissionReviewSnapshot is the bounded manager-visible Submission
+// Review state, including private decision rationale and manager notes;
+// candidate result reads use StudentExamResult instead.
 type ExamSubmissionReviewSnapshot = store.ExamSubmissionReviewSnapshot
+
+// ExamIntegrityFlagPage is one page of a Submission's Integrity Flag
+// summaries.
 type ExamIntegrityFlagPage = store.ExamIntegrityFlagPage
+
+// ExamIntegrityEvidencePage is one page of Integrity Evidence for a
+// Submission.
 type ExamIntegrityEvidencePage = store.ExamIntegrityEvidencePage
+
+// ExamIntegrityDiscrepancyPage is one page of integrity discrepancies recorded
+// for a Submission.
 type ExamIntegrityDiscrepancyPage = store.ExamIntegrityDiscrepancyPage
+
+// StudentExamResult is the entire candidate-visible released result of a
+// Submission Review. It omits evidence, decisions, private rationale, manager
+// notes and sealed content.
 type StudentExamResult = model.StudentResult
 
+// SaveExamIntegrityDecisionCommand records a reviewer's decision on one
+// Integrity Flag in a Submission Review, fenced by the expected review and
+// decision revisions and replayed by IdempotencyKey.
 type SaveExamIntegrityDecisionCommand = examreview.SaveDecisionCommand
 
+// UpdateExamIntegrityReviewCommand updates the draft manager notes and student
+// remarks of a Submission Review, fenced by ExpectedReviewRevision and
+// replayed by IdempotencyKey.
 type UpdateExamIntegrityReviewCommand = examreview.UpdateDraftCommand
 
+// FinalizeExamIntegrityReviewCommand finalizes a Submission Review, fenced by
+// ExpectedReviewRevision and replayed by IdempotencyKey.
 type FinalizeExamIntegrityReviewCommand = examreview.FinalizeCommand
 
+// ReleaseStudentExamResultCommand releases a finalized Submission Review to
+// its candidate. It names the same target and expected revision as
+// finalization and is a separately authorized action.
 type ReleaseStudentExamResultCommand = examreview.ReleaseCommand
 
+// ListExamIntegrityFlagsQuery pages a Submission's Integrity Flags after a
+// Flag cursor.
 type ListExamIntegrityFlagsQuery = examreview.ListFlagsQuery
 
+// ListExamIntegrityEvidenceQuery pages the Integrity Evidence supporting one
+// Integrity Flag of a Submission.
 type ListExamIntegrityEvidenceQuery = examreview.ListEvidenceQuery
 
+// ListExamIntegrityDiscrepanciesQuery pages a Submission's integrity
+// discrepancies after a discrepancy cursor.
 type ListExamIntegrityDiscrepanciesQuery = examreview.ListDiscrepanciesQuery
 
 type examIntegrityReviewAuthorizationAdapter struct {
@@ -179,5 +216,10 @@ func (e examIntegrityReviewRealtimeEffects) Report(ctx context.Context, operatio
 	e.realtime.reportTransientFailure(ctx, operation, err)
 }
 
+// NativeConditionListQuery pages the native condition records of a Submission;
+// they are reviewable without an Integrity Flag or a guilt decision.
 type NativeConditionListQuery = examreview.NativeConditionListQuery
+
+// NativeConditionPage is one page of native condition evidence for a
+// Submission.
 type NativeConditionPage = store.NativeConditionPage

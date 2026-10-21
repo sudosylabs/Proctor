@@ -124,6 +124,9 @@ func NewExamSittingLifecycleJobFactory(now func() time.Time, newID func() model.
 	return ExamSittingLifecycleJobFactory{now: now, newID: newID}
 }
 
+// BoundaryJobs returns the Sitting's open Job, available at startAt, and its
+// deadline Job, available at endAt, deduplicated by Sitting, phase, and
+// resultingRevision.
 func (f ExamSittingLifecycleJobFactory) BoundaryJobs(sittingID model.ExamSittingID, resultingRevision int64, startAt, endAt time.Time) (*model.Job, *model.Job, error) {
 	openJob, err := f.job(sittingID, model.ExamSittingLifecycleJobOpen, resultingRevision, startAt)
 	if err != nil {
@@ -136,10 +139,15 @@ func (f ExamSittingLifecycleJobFactory) BoundaryJobs(sittingID model.ExamSitting
 	return openJob, deadlineJob, nil
 }
 
+// DeadlineJob returns a Sitting deadline Job available at deadline,
+// deduplicated by Sitting and resultingRevision.
 func (f ExamSittingLifecycleJobFactory) DeadlineJob(sittingID model.ExamSittingID, resultingRevision int64, deadline time.Time) (*model.Job, error) {
 	return f.job(sittingID, model.ExamSittingLifecycleJobDeadline, resultingRevision, deadline)
 }
 
+// FinalizeJob returns the Sitting sealing Job that finalizes a closing
+// Sitting, available at availableAt and deduplicated by Sitting and
+// resultingRevision.
 func (f ExamSittingLifecycleJobFactory) FinalizeJob(sittingID model.ExamSittingID, resultingRevision int64, availableAt time.Time) (*model.Job, error) {
 	return f.jobOfType(sittingID, model.ExamSittingLifecycleJobFinalize, resultingRevision, availableAt, model.JobTypeExamSittingSealing)
 }

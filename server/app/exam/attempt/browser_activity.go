@@ -38,6 +38,11 @@ type AppendBrowserActivityCommand struct {
 	Events          []model.BrowserActivityEvent
 }
 
+// StartExamAttemptBrowserActivity registers or transitions a Browser Activity
+// source session for the candidate's live Attempt Participation, fenced by
+// participation generation and the frozen policy revision and digest. The
+// candidate's Attempt Connection credentials are required, and the call is
+// audited against the Sitting's Class.
 func (s *Service) StartExamAttemptBrowserActivity(ctx context.Context, invocation invocation.Invocation, command StartBrowserActivityCommand) (_ model.BrowserSourceStatus, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := s.enterControl(ctx, invocation, false)
@@ -85,6 +90,10 @@ func (s *Service) StartExamAttemptBrowserActivity(ctx context.Context, invocatio
 	return *status, nil
 }
 
+// AppendExamAttemptBrowserActivity appends a bounded batch of Browser
+// Activity events from a started source session of the candidate's live
+// Attempt Participation and returns the acknowledgement. Delivery refusals
+// are reported without marking the audit failed.
 func (s *Service) AppendExamAttemptBrowserActivity(ctx context.Context, invocation invocation.Invocation, command AppendBrowserActivityCommand) (_ model.BrowserActivityAcknowledgement, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	access, err := candidateSelector(invocation, command.CandidateAccess)
@@ -163,6 +172,10 @@ type BrowserActivityPage struct {
 	HasMore bool
 }
 
+// ListExamAttemptBrowserActivity returns one page of an Attempt's Browser
+// Activity for a reviewer. It authorizes Browser Activity view on the exact
+// Sitting before reading the Attempt so existence is not probeable, and
+// reports the candidate's own Attempt as not found.
 func (s *Service) ListExamAttemptBrowserActivity(ctx context.Context, invocation invocation.Invocation, query BrowserActivityPageQuery) (_ BrowserActivityPage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.ExamID.IsValid() || !query.SittingID.IsValid() || !query.AttemptID.IsValid() || query.Limit < 1 || query.Limit > 200 ||
@@ -227,6 +240,10 @@ func browserSourceSelector(invocation invocation.Invocation, query BrowserSource
 	}
 	return store.BrowserDeliveryAccess{Access: access.Access, SourceSessionID: query.SourceSessionID, ParticipationID: query.ParticipationID}, nil
 }
+
+// BrowserSourceStatus returns the delivery status of one Browser Activity
+// source session of the candidate's Attempt, as seen from a registered
+// desktop.
 func (s *Service) BrowserSourceStatus(ctx context.Context, invocation invocation.Invocation, query BrowserSourceQuery) (_ *model.BrowserSourceStatus, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := s.enterControl(ctx, invocation, false)
@@ -247,6 +264,10 @@ func (s *Service) BrowserSourceStatus(ctx context.Context, invocation invocation
 	}
 	return value, nil
 }
+
+// BrowserSourceList returns the delivery status of every Browser Activity
+// source session within one Attempt Participation. The query must name the
+// participation and must not name a source session.
 func (s *Service) BrowserSourceList(ctx context.Context, invocation invocation.Invocation, query BrowserSourceQuery) (_ []model.BrowserSourceStatus, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := s.enterControl(ctx, invocation, false)

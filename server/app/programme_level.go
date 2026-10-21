@@ -17,6 +17,7 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// GetProgrammeLevelQuery names one Programme Level.
 type GetProgrammeLevelQuery struct{ ID model.ProgrammeLevelID }
 type ListProgrammeLevelsQuery struct {
 	ProgrammeID model.ProgrammeID

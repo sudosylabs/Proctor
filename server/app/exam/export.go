@@ -32,16 +32,22 @@ type ExportArchiveInput struct {
 	Files     []ExportArchiveFile
 }
 
+// ExportArchiveFile names one sealed Submission file to include in an
+// Examination Export archive.
 type ExportArchiveFile struct {
 	SubmissionID model.SubmissionID
 	Entry        model.ExamSubmissionManifestEntry
 }
 
+// ExportArchiveContent describes the verified archive bytes written by
+// ExportContent.
 type ExportArchiveContent struct {
 	SizeBytes int64
 	SHA256    string
 }
 
+// ExportContent writes, opens, and purges the stored archive bytes of an
+// Examination Export, keyed by export and Job attempt.
 type ExportContent interface {
 	// An unsuccessful write whose backend outcome is still uncertain must
 	// return an error implementing ExamExportWriteUncertain(). Its durable
@@ -51,22 +57,28 @@ type ExportContent interface {
 	PurgeExamExport(context.Context, model.ExamExportID, model.JobAttemptID) error
 }
 
+// CreateExportCommand requests an Examination Export of the given retention
+// categories for a Sitting or one of its Submissions.
 type CreateExportCommand struct {
 	Scope          model.RetentionHoldScope
 	Categories     []model.RetentionCategory
 	IdempotencyKey string
 }
 
+// ExportQuery names one Examination Export within its scope.
 type ExportQuery struct {
 	Scope    model.RetentionHoldScope
 	ExportID model.ExamExportID
 }
 
+// ExportDownload pairs a ready Examination Export with its archive body,
+// which the caller must close.
 type ExportDownload struct {
 	Export *model.ExamExport
 	Body   io.ReadCloser
 }
 
+// Exports requests, reads, and builds Examination Exports.
 type Exports struct{ deps ExportsDependencies }
 
 // ExportsDependencies are the collaborators of Exports; NewExports validates them once and the
@@ -83,6 +95,8 @@ type ExportsDependencies struct {
 	NewJobID    func() model.JobID
 }
 
+// NewExports returns an Exports service, or an error when a required
+// dependency is missing.
 func NewExports(deps ExportsDependencies) (*Exports, error) {
 	if deps.Persistence == nil || deps.Access == nil || deps.Memberships == nil || deps.Authorizer == nil || deps.Auditor == nil || deps.Content == nil || deps.Now == nil || deps.NewID == nil || deps.NewJobID == nil {
 		return nil, errors.New("Exam export dependencies are required")
@@ -162,6 +176,9 @@ func (s *Exports) authorizeSources(ctx context.Context, invocation invocation.In
 	return nil
 }
 
+// CreateExamExport idempotently queues an Examination Export for the caller
+// and its build Job, after authorizing records export for the scope and
+// access to every selected source category.
 func (s *Exports) CreateExamExport(ctx context.Context, invocation invocation.Invocation, command CreateExportCommand) (_ *model.ExamExport, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	command.Categories = slices.Clone(command.Categories)
@@ -236,6 +253,8 @@ func (s *Exports) get(ctx context.Context, invocation invocation.Invocation, q E
 	return result, nil
 }
 
+// GetExamExport returns the caller's own Examination Export after re-checking
+// authority over its scope and sources.
 func (s *Exports) GetExamExport(ctx context.Context, invocation invocation.Invocation, q ExportQuery) (_ *model.ExamExport, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	result, err := s.get(ctx, invocation, q)
@@ -245,6 +264,9 @@ func (s *Exports) GetExamExport(ctx context.Context, invocation invocation.Invoc
 	return result.Export, nil
 }
 
+// OpenExamExport opens the archive of the caller's own ready Examination
+// Export, re-reading the export after opening so expiry or a change in
+// authority is not bypassed.
 func (s *Exports) OpenExamExport(ctx context.Context, invocation invocation.Invocation, q ExportQuery) (_ *ExportDownload, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	result, err := s.get(ctx, invocation, q)
@@ -291,6 +313,9 @@ func requireReadyExport(result *store.ExamExportDownload) error {
 	return nil
 }
 
+// BuildFromJob builds and publishes the archive for one queued Examination
+// Export on behalf of its build Job. An export that is already ready is a
+// no-op, and the build is bounded by the source expiry.
 func (s *Exports) BuildFromJob(ctx context.Context, input store.ExamExportBuild) (err error) {
 	snapshot, err := s.deps.Persistence.BeginBuild(ctx, &input)
 	if err != nil {
