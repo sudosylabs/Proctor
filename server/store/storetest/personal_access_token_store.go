@@ -327,7 +327,7 @@ func preparePersonalAccessTokenMutation(t *testing.T, ctx context.Context, ss st
 	session, _, _ := saveSession(t, ctx, ss, userID.String(), 100)
 	prepared, err := ss.PersonalAccessToken().PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{
 		UserID: userID, TokenID: model.PersonalAccessTokenID(tokenID), Kind: kind, Lifetime: 5 * time.Minute,
-		Audit: personalAccessTokenAuditDraft(userID, session.ID, institution.ID, kind, prior),
+		AuditEvent: personalAccessTokenAuditDraft(userID, session.ID, institution.ID, kind, prior),
 	})
 	requireNoError(t, err)
 	return prepared
@@ -462,7 +462,7 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	otherSession, _, _ := saveSession(t, ctx, ss, other.ID.String(), 10)
 	if _, err := ss.PersonalAccessToken().PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{
 		UserID: other.ID, TokenID: token.ID, Kind: store.PersonalAccessTokenMutationRevoke, Lifetime: 5 * time.Minute,
-		Audit: personalAccessTokenAuditDraft(other.ID, otherSession.ID, institution.ID, store.PersonalAccessTokenMutationRevoke, token.Auditable()),
+		AuditEvent: personalAccessTokenAuditDraft(other.ID, otherSession.ID, institution.ID, store.PersonalAccessTokenMutationRevoke, token.Auditable()),
 	}); !store.IsNotFound(err) {
 		t.Fatalf("cross-user revoke error = %v, want not found", err)
 	}

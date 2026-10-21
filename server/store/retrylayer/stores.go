@@ -169,15 +169,15 @@ func (s *invitationStore) FindCommandOutcome(ctx context.Context, command *store
 	})
 }
 
-func (s *invitationStore) ReplayIssue(ctx context.Context, command *store.CommandIdempotency, auditID model.AuditEventID, auditAt int64) (*store.InvitationCommandResult, error) {
+func (s *invitationStore) ReplayIssue(ctx context.Context, input *store.InvitationReplay, command *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
 	return retryCall1(ctx, s.layer, func() (*store.InvitationCommandResult, error) {
-		return s.InvitationStore.ReplayIssue(ctx, command, auditID, auditAt)
+		return s.InvitationStore.ReplayIssue(ctx, input, command)
 	})
 }
 
-func (s *invitationStore) ReplayAdministration(ctx context.Context, command *store.CommandIdempotency, auditID model.AuditEventID, auditAt int64) (*store.InvitationAdministrationCommandResult, error) {
+func (s *invitationStore) ReplayAdministration(ctx context.Context, input *store.InvitationReplay, command *store.CommandIdempotency) (*store.InvitationAdministrationCommandResult, error) {
 	return retryCall1(ctx, s.layer, func() (*store.InvitationAdministrationCommandResult, error) {
-		return s.InvitationStore.ReplayAdministration(ctx, command, auditID, auditAt)
+		return s.InvitationStore.ReplayAdministration(ctx, input, command)
 	})
 }
 

@@ -46,6 +46,9 @@ type sessionIssuance struct {
 	AuthenticationStrength   model.AuthenticationStrength
 	AuthenticatedAt          int64
 	MFACompletedAt           int64
+	// AuditEventID is the login attempt that Session creation completes
+	// atomically with the Session.
+	AuditEventID model.AuditEventID
 }
 
 type authenticationSessionIssuer interface {

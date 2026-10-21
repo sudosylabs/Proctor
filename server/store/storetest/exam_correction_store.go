@@ -111,7 +111,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 	rendition, err := model.NewFileRendition(reservation.RenditionID, revision.ID, "original", string(model.ExamResourceMediaText),
 		5, 0, 0, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824", at.Add(time.Second))
 	requireNoError(t, err)
-	ready, err := ss.ExamCorrection().MarkResourceStageReady(ctx, &store.ExamCorrectionResourceStageReadyInput{StageID: stage.ID,
+	ready, err := ss.ExamCorrection().MarkResourceStageReady(ctx, &store.ExamCorrectionResourceStageReadiness{StageID: stage.ID,
 		ActorUserID: fixture.actor.ID, Rendition: rendition, ReadyAt: at.Add(time.Second)})
 	requireNoError(t, err)
 	if ready.State != store.ExamCorrectionResourceStageReady || ready.Rendition == nil || ready.Rendition.ID != rendition.ID {
@@ -120,7 +120,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 	if availability := probe.FileAvailability(t, ctx, revision.ID); availability != model.FileAvailabilityPending {
 		t.Fatalf("Ready stage availability=%q, want pending/invisible", availability)
 	}
-	readyReplay, err := ss.ExamCorrection().MarkResourceStageReady(ctx, &store.ExamCorrectionResourceStageReadyInput{StageID: stage.ID,
+	readyReplay, err := ss.ExamCorrection().MarkResourceStageReady(ctx, &store.ExamCorrectionResourceStageReadiness{StageID: stage.ID,
 		ActorUserID: fixture.actor.ID, Rendition: rendition, ReadyAt: at.Add(2 * time.Second)})
 	requireNoError(t, err)
 	if readyReplay.State != store.ExamCorrectionResourceStageReady || readyReplay.Rendition == nil || *readyReplay.Rendition != *rendition {
@@ -502,7 +502,7 @@ func reserveReadyCorrectionStage(t *testing.T, ctx context.Context, ss store.Sto
 	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(body)))
 	rendition, err := model.NewFileRendition(reservation.RenditionID, revision.ID, "original", string(model.ExamResourceMediaText), int64(len(body)), 0, 0, digest, at)
 	requireNoError(t, err)
-	stage, err = ss.ExamCorrection().MarkResourceStageReady(ctx, &store.ExamCorrectionResourceStageReadyInput{StageID: stage.ID,
+	stage, err = ss.ExamCorrection().MarkResourceStageReady(ctx, &store.ExamCorrectionResourceStageReadiness{StageID: stage.ID,
 		ActorUserID: fixture.actor.ID, Rendition: rendition, ReadyAt: at})
 	requireNoError(t, err)
 	return stage, command

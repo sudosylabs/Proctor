@@ -125,6 +125,7 @@ func TestSessionCreationKeepsMicrosecondDeadlinesAndAbsoluteCap(t *testing.T) {
 				User: user, ClientType: model.SessionClientCLI, AuthenticationMethod: "password",
 				AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: now.UnixMilli(),
 				PasswordProof: store.PasswordCredentialProof{ID: password.ID, Revision: password.Revision},
+				AuditEventID:  model.NewAuditEventID(),
 			})
 			if err != nil {
 				t.Fatal(err)

@@ -17,6 +17,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 )
 
 func TestPasswordProofResetPreservesNewPasswordAgainstStaleRehash(t *testing.T) {
@@ -43,7 +44,7 @@ func TestPasswordProofResetPreservesNewPasswordAgainstStaleRehash(t *testing.T) 
 		!current.PasswordChangedAt.Equal(reset.PasswordCredential.PasswordChangedAt) {
 		t.Fatal("stale rehash changed the reset credential or its lifecycle metadata")
 	}
-	if _, _, err = persistence.Session().Save(ctx, creation); !errors.Is(err, store.ErrPasswordCredentialChanged) {
+	if _, _, err = storetest.SaveSession(ctx, persistence, creation); !errors.Is(err, store.ErrPasswordCredentialChanged) {
 		t.Fatalf("old proof after reset error = %v", err)
 	}
 }
@@ -59,7 +60,7 @@ func TestPasswordProofRehashPreservesOutstandingProof(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := persistence.Session().Save(ctx, creation); err != nil {
+	if _, _, err := storetest.SaveSession(ctx, persistence, creation); err != nil {
 		t.Fatalf("rehash invalidated outstanding proof: %v", err)
 	}
 }
@@ -129,7 +130,7 @@ func TestPasswordProofResetSerializesWithSessionCreation(t *testing.T) {
 					session, credentials := authenticationPolicyTestSession(user.ID, "password", "", "")
 					creation := sessionCreationForSQLTest(t, ctx, persistence, session, credentials, 10)
 					create = func() (*model.Session, error) {
-						result, _, err := persistence.Session().Save(ctx, creation)
+						result, _, err := storetest.SaveSession(ctx, persistence, creation)
 						return result, err
 					}
 				}
@@ -241,7 +242,7 @@ func TestPasswordProofDesktopRejectsRevokedSourceSession(t *testing.T) {
 	ctx := context.Background()
 	persistence, institution, user, _ := passwordProofFixture(t, ctx)
 	session, credentials := authenticationPolicyTestSession(user.ID, "password", "", "")
-	session, credentials, err := persistence.Session().Save(ctx, sessionCreationForSQLTest(t, ctx, persistence, session, credentials, 10))
+	session, credentials, err := storetest.SaveSession(ctx, persistence, sessionCreationForSQLTest(t, ctx, persistence, session, credentials, 10))
 	if err != nil {
 		t.Fatal(err)
 	}

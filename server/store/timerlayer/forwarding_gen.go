@@ -1376,7 +1376,7 @@ func (s *timedExamCorrectionStore) ReserveResourceStage(arg0 context.Context, ar
 	})
 }
 
-func (s *timedExamCorrectionStore) MarkResourceStageReady(arg0 context.Context, arg1 *store.ExamCorrectionResourceStageReadyInput) (*store.ExamCorrectionResourceStage, error) {
+func (s *timedExamCorrectionStore) MarkResourceStageReady(arg0 context.Context, arg1 *store.ExamCorrectionResourceStageReadiness) (*store.ExamCorrectionResourceStage, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamCorrection, methodMarkResourceStageReady), func() (*store.ExamCorrectionResourceStage, error) {
 		return s.next.MarkResourceStageReady(arg0, arg1)
 	})
@@ -2900,15 +2900,15 @@ func (s *timedInvitationStore) FindCommandOutcome(arg0 context.Context, arg1 *st
 	})
 }
 
-func (s *timedInvitationStore) ReplayIssue(arg0 context.Context, arg1 *store.CommandIdempotency, arg2 model.AuditEventID, arg3 int64) (*store.InvitationCommandResult, error) {
+func (s *timedInvitationStore) ReplayIssue(arg0 context.Context, arg1 *store.InvitationReplay, arg2 *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodReplayIssue), func() (*store.InvitationCommandResult, error) {
-		return s.next.ReplayIssue(arg0, arg1, arg2, arg3)
+		return s.next.ReplayIssue(arg0, arg1, arg2)
 	})
 }
 
-func (s *timedInvitationStore) ReplayAdministration(arg0 context.Context, arg1 *store.CommandIdempotency, arg2 model.AuditEventID, arg3 int64) (*store.InvitationAdministrationCommandResult, error) {
+func (s *timedInvitationStore) ReplayAdministration(arg0 context.Context, arg1 *store.InvitationReplay, arg2 *store.CommandIdempotency) (*store.InvitationAdministrationCommandResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodReplayAdministration), func() (*store.InvitationAdministrationCommandResult, error) {
-		return s.next.ReplayAdministration(arg0, arg1, arg2, arg3)
+		return s.next.ReplayAdministration(arg0, arg1, arg2)
 	})
 }
 

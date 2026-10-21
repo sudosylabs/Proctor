@@ -282,7 +282,7 @@ func TestOrdinaryExternalAuthenticationDoesNotPrepareProvisioningOutsideAutoProv
 				t.Fatalf("completion error = %v", err)
 			}
 			if identities.resolution == nil || identities.resolution.User != nil || identities.resolution.Settings != nil ||
-				identities.resolution.ProvisionAudit != nil || identities.resolution.DefaultProfilePictureJob != nil {
+				identities.resolution.AuditEvent != nil || identities.resolution.DefaultProfilePictureJob != nil {
 				t.Fatalf("%s prepared a provisioning package: %#v", mode, identities.resolution)
 			}
 			capability, configured := identities.resolution.Capabilities.Providers["campus"]

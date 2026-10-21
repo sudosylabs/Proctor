@@ -16,6 +16,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 )
 
 func TestDesktopAuthorizationRejectsSourceCredentialExpiringDuringUserLockWait(t *testing.T) {
@@ -34,8 +35,7 @@ func TestDesktopAuthorizationRejectsSourceCredentialExpiringDuringUserLockWait(t
 	})
 	session, credentials := authenticationPolicyTestSession(user.ID, "password", "", "")
 	session.AuthenticatedAt = model.NowUTC().Add(-time.Minute)
-	source, savedCredentials, err := persistence.Session().Save(ctx,
-		sessionCreationForSQLTest(t, ctx, persistence, session, credentials, 10))
+	source, savedCredentials, err := storetest.SaveSession(ctx, persistence, sessionCreationForSQLTest(t, ctx, persistence, session, credentials, 10))
 	if err != nil {
 		t.Fatal(err)
 	}

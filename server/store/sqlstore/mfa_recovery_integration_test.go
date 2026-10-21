@@ -63,7 +63,7 @@ func saveMFARecoverySQLSession(t *testing.T, ctx context.Context, s *SQLStore, u
 		candidate.MFACompletedAt = model.OptionalTimeFrom(at)
 	}
 	input := sessionCreationForSQLTest(t, ctx, s, candidate, []*model.SessionCredential{{Kind: model.SessionCredentialAccess, TokenHash: model.HashToken(access), ExpiresAt: at.Add(time.Hour)}, {Kind: model.SessionCredentialRefresh, TokenHash: model.HashToken(refresh), ExpiresAt: at.Add(2 * time.Hour)}}, 10)
-	session, credentials, err := s.Session().Save(ctx, input)
+	session, credentials, err := storetest.SaveSession(ctx, s, input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestMFAAssistedResetAtomicRetirementAndRestrictedReenrollment(t *testing.T)
 		t.Fatal(err)
 	}
 	desktop, _, _, _ := issueDesktopAuthorizationForSQLTest(t, ctx, s, institution.ID, f.target.ID)
-	patPreparation, err := s.PersonalAccessToken().PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{UserID: f.target.ID, Kind: store.PersonalAccessTokenMutationCreate, Lifetime: time.Minute, Audit: personalAccessTokenPreparationAudit(f.target.ID, f.targetSession.ID, institution.ID)})
+	patPreparation, err := s.PersonalAccessToken().PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{UserID: f.target.ID, Kind: store.PersonalAccessTokenMutationCreate, Lifetime: time.Minute, AuditEvent: personalAccessTokenPreparationAudit(f.target.ID, f.targetSession.ID, institution.ID)})
 	if err != nil {
 		t.Fatal(err)
 	}

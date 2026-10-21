@@ -274,6 +274,36 @@ attempt transitions once to `success` or `fail`. If terminal completion fails
 after commit, return an internal failure and retain the attempt for operator
 reconciliation.
 
+Security-sensitive work uses one of two audit protocols, chosen by who owns
+the pending state:
+
+- **Attempt.** The application begins a persisted `attempt` through the audit
+  service, then calls the named Store operation with the attempt's
+  `AuditEventID` and `AuditAt`. The operation completes the attempt as
+  `success` in the transaction that commits the state, Session issuance
+  included; on any failure the application completes it as `fail` with the
+  public error code (`runAuditedMutation` owns this for ordinary mutations).
+  Actor work begins from the Principal (or, for a handoff with no Principal
+  yet, the proved account); trusted durable work begins an actorless system
+  attempt and never fabricates a User. This is the protocol for every
+  actor or system mutation unless the next rule applies.
+- **Draft.** When a named aggregate is itself the pending record (a Personal
+  Access Token preparation, a Desktop authorization, a live-correction
+  acknowledgement, a retention cleanup batch), or the request has no
+  durable attempt to complete (public registration, account recovery,
+  Invitation acceptance, installation bootstrap and Role reconciliation,
+  User Settings replacement, external provisioning, a test mail), the
+  application builds the safe event and the Store operation inserts it once
+  as its terminal record, or not at all for an authoritative idempotent
+  replay. A draft carries `attempt` when the Store decides the outcome and
+  `success` when the operation records only success. Draft inputs name the
+  field `AuditEvent`.
+
+Audited reads that change no state, such as a Browser Activity page, begin an
+attempt and complete it in the application with the bounded result. The only
+unaudited Store writes are the system compensation `SessionStore.Withdraw`
+and fixture-only `Seed*` operations, defined in the persistence skill.
+
 Self-service Session revocation and logout follow the same critical attempt
 and atomic-success rule as administrative revocation. Their ownership-based
 authority, separate audit operations, no-op outcomes, and notice exclusion are

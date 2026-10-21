@@ -299,7 +299,7 @@ func (s *correctionStoreFake) ReserveResourceStage(_ context.Context, in *store.
 	}
 	return stage, nil
 }
-func (s *correctionStoreFake) MarkResourceStageReady(_ context.Context, in *store.ExamCorrectionResourceStageReadyInput) (*store.ExamCorrectionResourceStage, error) {
+func (s *correctionStoreFake) MarkResourceStageReady(_ context.Context, in *store.ExamCorrectionResourceStageReadiness) (*store.ExamCorrectionResourceStage, error) {
 	s.f.order = append(s.f.order, "ready")
 	s.readyCalls++
 	r := in.Rendition

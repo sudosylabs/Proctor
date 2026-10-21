@@ -41,7 +41,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		go func() {
 			defer wait.Done()
 			<-start
-			saved, _, saveErr = ss.Session().Save(ctx, testSessionCreation(t, ctx, ss, candidate, credentials, 10))
+			saved, _, saveErr = SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, candidate, credentials, 10))
 		}()
 		go func() {
 			defer wait.Done()
@@ -134,19 +134,19 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		requireNoError(t, err)
 
 		passwordSession, passwordCredentials, _ := newSession(user.ID.String())
-		passwordSession, _, err = ss.Session().Save(ctx, testSessionCreation(t, ctx, ss, passwordSession, passwordCredentials, 10))
+		passwordSession, _, err = SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, passwordSession, passwordCredentials, 10))
 		requireNoError(t, err)
 		providerSession, providerCredentials, _ := newSession(user.ID.String())
 		providerSession.AuthenticationMethod = "oidc"
 		providerSession.AuthenticationProviderID = "campus-cas"
 		providerSession.ExternalIdentityID = linked.Identity.ID
-		providerSession, _, err = ss.Session().Save(ctx, testSessionCreation(t, ctx, ss, providerSession, providerCredentials, 10))
+		providerSession, _, err = SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, providerSession, providerCredentials, 10))
 		requireNoError(t, err)
 		otherProviderSession, otherProviderCredentials, _ := newSession(user.ID.String())
 		otherProviderSession.AuthenticationMethod = "oidc"
 		otherProviderSession.AuthenticationProviderID = "campus-cas"
 		otherProviderSession.ExternalIdentityID = otherIdentity.ID
-		otherProviderSession, _, err = ss.Session().Save(ctx, testSessionCreation(t, ctx, ss, otherProviderSession, otherProviderCredentials, 10))
+		otherProviderSession, _, err = SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, otherProviderSession, otherProviderCredentials, 10))
 		requireNoError(t, err)
 
 		unlinkAttempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "unlink_provider")
@@ -224,7 +224,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 				Provider: "campus-cas", Subject: "new-subject",
 				LastSeenAt: model.OptionalTimeFromMillis(now),
 			},
-				User: creation.User, Settings: creation.Settings, Capabilities: externalIdentityCapabilities(true), ProvisionAudit: &model.AuditEvent{
+				User: creation.User, Settings: creation.Settings, Capabilities: externalIdentityCapabilities(true), AuditEvent: &model.AuditEvent{
 					Action:    "authentication.external_provision",
 					ScopeType: model.RoleScopeInstitution,
 					ScopeID:   institution.ID.String(), Status: model.AuditStatusSuccess,
@@ -292,7 +292,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			ctx, &store.ExternalIdentityResolutionRequest{Identity: &model.ExternalIdentity{
 				Provider: "campus-cas", Subject: "different-subject",
 				LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
-			}, User: creation.User, Settings: creation.Settings, Capabilities: externalIdentityCapabilities(true), ProvisionAudit: &model.AuditEvent{
+			}, User: creation.User, Settings: creation.Settings, Capabilities: externalIdentityCapabilities(true), AuditEvent: &model.AuditEvent{
 				Action:    "authentication.external_provision",
 				ScopeType: model.RoleScopeInstitution,
 				ScopeID:   institution.ID.String(), Status: model.AuditStatusSuccess,
@@ -339,7 +339,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			ctx, &store.ExternalIdentityResolutionRequest{Identity: &model.ExternalIdentity{
 				Provider: "campus-cas", Subject: subject,
 				LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
-			}, User: creation.User, Settings: creation.Settings, Capabilities: externalIdentityCapabilities(true), ProvisionAudit: &model.AuditEvent{
+			}, User: creation.User, Settings: creation.Settings, Capabilities: externalIdentityCapabilities(true), AuditEvent: &model.AuditEvent{
 				Action: "authentication.external_provision", ScopeType: model.RoleScopeInstitution,
 				ScopeID: institution.ID.String(), Status: model.AuditStatusSuccess,
 				NodeID: "test-node", AuthMethod: "cas",
@@ -372,7 +372,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		permanent.DefaultProfilePictureJob.DedupePolicy = model.JobDedupePermanent
 		_, err = ss.ExternalIdentity().ResolveOrProvision(ctx, &store.ExternalIdentityResolutionRequest{
 			Identity: &model.ExternalIdentity{Provider: "campus-cas", Subject: "permanent-job-" + model.NewId(), LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())},
-			User:     permanent.User, Settings: permanent.Settings, Capabilities: externalIdentityCapabilities(true), ProvisionAudit: &model.AuditEvent{
+			User:     permanent.User, Settings: permanent.Settings, Capabilities: externalIdentityCapabilities(true), AuditEvent: &model.AuditEvent{
 				Action: "authentication.external_provision", ScopeType: model.RoleScopeInstitution,
 				ScopeID: institution.ID.String(), Status: model.AuditStatusSuccess, NodeID: "test-node", AuthMethod: "cas",
 			}, DefaultProfilePictureJob: permanent.DefaultProfilePictureJob,
@@ -469,7 +469,7 @@ func TestExternalIdentityAdmissionMode(t *testing.T, ss store.Store, mode model.
 	creation := testUserCreation(candidate, nil)
 	request := &store.ExternalIdentityResolutionRequest{Identity: &model.ExternalIdentity{
 		Provider: "campus-cas", Subject: "unlinked-" + model.NewId(), LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
-	}, User: creation.User, Settings: creation.Settings, Capabilities: externalIdentityCapabilities(true), ProvisionAudit: &model.AuditEvent{
+	}, User: creation.User, Settings: creation.Settings, Capabilities: externalIdentityCapabilities(true), AuditEvent: &model.AuditEvent{
 		Action: "authentication.external_provision", ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), Status: model.AuditStatusSuccess, NodeID: "admission-mode-test", AuthMethod: "cas",
 	}, DefaultProfilePictureJob: creation.DefaultProfilePictureJob}
@@ -727,7 +727,7 @@ func assertConcurrentExternalAutoProvision(t *testing.T, ctx context.Context, ss
 			Identity: &model.ExternalIdentity{Provider: "campus-cas", Subject: subject,
 				LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())},
 			User: creation.User, Settings: creation.Settings, Capabilities: externalIdentityCapabilities(true),
-			ProvisionAudit: &model.AuditEvent{Action: "authentication.external_provision",
+			AuditEvent: &model.AuditEvent{Action: "authentication.external_provision",
 				ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusSuccess,
 				NodeID: "concurrent-admission-mode-test", AuthMethod: "cas"},
 			DefaultProfilePictureJob: creation.DefaultProfilePictureJob,

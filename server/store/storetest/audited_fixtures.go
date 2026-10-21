@@ -360,3 +360,16 @@ func RevokeAllUserSessions(ctx context.Context, ss store.Store, userID model.Use
 		AuditEventID: auditID, AuditAt: at,
 	})
 }
+
+// SaveSession creates a fixture Session through the audited creation
+// operation, beginning a fixture login attempt when the input names none.
+func SaveSession(ctx context.Context, ss store.Store, input *store.SessionCreation) (*model.Session, []*model.SessionCredential, error) {
+	if input != nil && input.AuditEventID == "" {
+		auditID, at, err := beginFixtureAudit(ctx, ss)
+		if err != nil {
+			return nil, nil, err
+		}
+		input.AuditEventID, input.AuditAt = auditID, at
+	}
+	return ss.Session().Save(ctx, input)
+}

@@ -203,7 +203,7 @@ func (s *personalAccessTokenAdministrationService) CreatePersonalAccessToken(
 	}
 	prepared, err := s.tokens.PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{
 		UserID: principal.UserID, Kind: store.PersonalAccessTokenMutationCreate,
-		Audit: auditDraft, Lifetime: personalAccessTokenMutationPreparationLifetime,
+		AuditEvent: auditDraft, Lifetime: personalAccessTokenMutationPreparationLifetime,
 	})
 	if err != nil {
 		return nil, personalAccessTokenFailure("personal_access_token", err)
@@ -277,7 +277,7 @@ func (s *personalAccessTokenAdministrationService) RevokePersonalAccessToken(
 	}
 	prepared, err := s.tokens.PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{
 		UserID: principal.UserID, TokenID: command.TokenID, Kind: store.PersonalAccessTokenMutationRevoke,
-		Audit: auditDraft, Lifetime: personalAccessTokenMutationPreparationLifetime,
+		AuditEvent: auditDraft, Lifetime: personalAccessTokenMutationPreparationLifetime,
 	})
 	if err != nil {
 		return nil, personalAccessTokenFailure("personal_access_token", err)
@@ -349,7 +349,7 @@ func (s *personalAccessTokenAdministrationService) SetPersonalAccessTokenDisable
 	}
 	prepared, err := s.tokens.PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{
 		UserID: principal.UserID, TokenID: command.TokenID, Kind: kind,
-		Audit: auditDraft, Lifetime: personalAccessTokenMutationPreparationLifetime,
+		AuditEvent: auditDraft, Lifetime: personalAccessTokenMutationPreparationLifetime,
 	})
 	if err != nil {
 		return nil, personalAccessTokenFailure("personal_access_token", err)

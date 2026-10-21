@@ -85,15 +85,19 @@ type authenticationStoreFake struct {
 	accessByHash        map[string]*model.SessionCredential
 	sessionByCredential map[string]*model.Session
 	saveErr             error
-	maximumPerUser      int
-	createdJob          *model.Job
-	createdSettings     *model.UserSettingsDocument
-	rotation            *store.SessionRotation
-	userGetErr          error
-	rotatedAccess       *model.SessionCredential
-	rotatedRefresh      *model.SessionCredential
-	rotatedAt           time.Time
-	rotatedIdleExpiry   time.Time
+	// completedAudits records the login attempts Session creation completed
+	// atomically; auditCompleteErr makes that completion, and so creation, fail.
+	completedAudits   map[string]map[string]any
+	auditCompleteErr  error
+	maximumPerUser    int
+	createdJob        *model.Job
+	createdSettings   *model.UserSettingsDocument
+	rotation          *store.SessionRotation
+	userGetErr        error
+	rotatedAccess     *model.SessionCredential
+	rotatedRefresh    *model.SessionCredential
+	rotatedAt         time.Time
+	rotatedIdleExpiry time.Time
 }
 
 type authenticationDesktopRegistrationLookupFake struct{}
@@ -124,6 +128,7 @@ func newAuthenticationStoreFake() *authenticationStoreFake {
 		sessions:            make(map[string]*model.Session),
 		accessByHash:        make(map[string]*model.SessionCredential),
 		sessionByCredential: make(map[string]*model.Session),
+		completedAudits:     make(map[string]map[string]any),
 		maximumPerUser:      10,
 	}
 }
@@ -285,6 +290,12 @@ func (s authenticationSessionStore) Save(
 	if s.root.saveErr != nil {
 		return nil, nil, s.root.saveErr
 	}
+	if !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		return nil, nil, store.NewErrInvalidInput("session", "audit", nil)
+	}
+	if s.root.auditCompleteErr != nil {
+		return nil, nil, s.root.auditCompleteErr
+	}
 	session, credentials, maximumPerUser := input.Session, input.Credentials, input.MaximumActive
 	if session.AuthenticationMethod == "password" {
 		credential := s.root.passwords[session.UserID.String()]
@@ -328,6 +339,7 @@ func (s authenticationSessionStore) Save(
 			s.root.sessionByCredential[item.TokenHash] = &cloned
 		}
 	}
+	s.root.completedAudits[input.AuditEventID.String()] = cloned.Auditable()
 	return &cloned, savedCredentials, nil
 }
 
@@ -852,6 +864,7 @@ func TestAuthenticationUsesControlledClockAndCredentialGenerator(t *testing.T) {
 			PasswordProof:          store.PasswordCredentialProof{ID: passwordCredential.ID, Revision: passwordCredential.Revision},
 			AuthenticationStrength: model.AuthenticationSingleFactor,
 			AuthenticatedAt:        at.UnixMilli(),
+			AuditEventID:           model.NewAuditEventID(),
 		},
 	)
 	if err != nil {

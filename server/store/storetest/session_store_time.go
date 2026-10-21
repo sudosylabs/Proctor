@@ -165,7 +165,7 @@ func saveSessionTimeFixture(t *testing.T, ss store.Store, expiry string, deadlin
 		session.IdleExpiresAt, session.ExpiresAt = deadline, deadline
 		credentials[1].ExpiresAt = deadline
 	}
-	saved, _, err := ss.Session().Save(ctx, testSessionCreation(t, ctx, ss, session, credentials, 10))
+	saved, _, err := SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, session, credentials, 10))
 	requireNoError(t, err)
 	return user, saved, raw
 }

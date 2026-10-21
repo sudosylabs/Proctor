@@ -184,8 +184,8 @@ func (s SQLExternalIdentityStore) ResolveOrProvision(
 		default:
 			return nil, store.ErrAuthenticationMethodDisabled
 		}
-		if request.User == nil || request.Settings == nil || request.ProvisionAudit == nil ||
-			!request.ProvisionAudit.ID.IsZero() || request.DefaultProfilePictureJob == nil {
+		if request.User == nil || request.Settings == nil || request.AuditEvent == nil ||
+			!request.AuditEvent.ID.IsZero() || request.DefaultProfilePictureJob == nil {
 			return nil, store.NewErrInvalidInput("external_identity", "provisioning", nil)
 		}
 		at := model.TimeFromMillis(lastSeenAt)
@@ -222,7 +222,7 @@ func (s SQLExternalIdentityStore) ResolveOrProvision(
 		if _, err := insertQueuedJob(ctx, tx, request.DefaultProfilePictureJob, false); err != nil {
 			return nil, fmt.Errorf("enqueue external user default profile picture generation: %w", translateError("job", request.DefaultProfilePictureJob.ID.String(), err))
 		}
-		auditCandidate := request.ProvisionAudit.Clone()
+		auditCandidate := request.AuditEvent.Clone()
 		auditCandidate.ActorID = userCandidate.ID
 		auditCandidate.Resource = model.Resource{
 			Type: model.ResourceUser,

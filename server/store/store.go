@@ -1294,7 +1294,7 @@ type ExternalIdentityResolutionRequest struct {
 	User                     *model.User
 	Settings                 *model.UserSettingsDocument
 	Capabilities             AccessDeploymentCapabilities
-	ProvisionAudit           *model.AuditEvent
+	AuditEvent               *model.AuditEvent
 	DefaultProfilePictureJob *model.Job
 }
 
@@ -1912,6 +1912,13 @@ type OnboardingImportPage struct {
 // InvitationStore owns durable Invitation issuance, acceptance,
 // administration, and their retained idempotent outcomes. Raw claims never
 // cross this boundary.
+// InvitationReplay is the audit attempt a retained Invitation outcome replay
+// completes after fresh authorization.
+type InvitationReplay struct {
+	AuditEventID model.AuditEventID
+	AuditAt      int64
+}
+
 type InvitationStore interface {
 	IssueStudentClass(context.Context, *StudentClassInvitationIssue) (*model.Invitation, error)
 	IssueStudentClassIdempotently(context.Context, *StudentClassInvitationIssue, *CommandIdempotency) (*InvitationCommandResult, error)
@@ -1921,8 +1928,8 @@ type InvitationStore interface {
 	IssueScopedRoleIdempotently(context.Context, *ScopedRoleInvitationIssue, *CommandIdempotency) (*InvitationCommandResult, error)
 	ResolveOnboardingInvitationNoOp(context.Context, *model.Invitation) (*model.Invitation, bool, error)
 	FindCommandOutcome(context.Context, *CommandIdempotency) (*InvitationCommandResult, error)
-	ReplayIssue(context.Context, *CommandIdempotency, model.AuditEventID, int64) (*InvitationCommandResult, error)
-	ReplayAdministration(context.Context, *CommandIdempotency, model.AuditEventID, int64) (*InvitationAdministrationCommandResult, error)
+	ReplayIssue(context.Context, *InvitationReplay, *CommandIdempotency) (*InvitationCommandResult, error)
+	ReplayAdministration(context.Context, *InvitationReplay, *CommandIdempotency) (*InvitationAdministrationCommandResult, error)
 	RecordBatchDuplicate(context.Context, *InvitationBatchDuplicate, *CommandIdempotency) (*InvitationBatchCommandResult, error)
 	Get(context.Context, model.InvitationID) (*model.Invitation, error)
 	GetByClaimHash(context.Context, string) (*model.Invitation, error)
@@ -1988,11 +1995,11 @@ const (
 // only safe bounded metadata and is inserted as one terminal event only when
 // the preparation succeeds, explicitly fails, or is reconciled after expiry.
 type PersonalAccessTokenMutationPreparation struct {
-	UserID   model.UserID
-	TokenID  model.PersonalAccessTokenID
-	Kind     PersonalAccessTokenMutationKind
-	Audit    *model.AuditEvent
-	Lifetime time.Duration
+	UserID     model.UserID
+	TokenID    model.PersonalAccessTokenID
+	Kind       PersonalAccessTokenMutationKind
+	AuditEvent *model.AuditEvent
+	Lifetime   time.Duration
 }
 
 type PreparedPersonalAccessTokenMutation struct {
@@ -2379,11 +2386,11 @@ type SessionStore interface {
 	UpdateActivity(context.Context, model.SessionID, time.Time, time.Time) error
 	EnforceExpiry(context.Context, model.SessionID, model.UserID, time.Time) (*SessionExpiryEnforcementResult, error)
 	// Withdraw revokes one Session the system itself just issued or refreshed
-	// and must take back: the issuing login audit could not be completed, the
-	// Desktop nonce could not be stored, or the User became inactive. It has no
-	// actor and is deliberately unaudited, because it must still succeed when
-	// the audit path is what failed; the Session's revocation reason is its
-	// durable record. Any other reason is rejected.
+	// and must take back: the Desktop nonce could not be stored after the
+	// audited exchange committed, or the User became inactive at refresh. It
+	// has no actor and is a compensation rather than a decision, so the
+	// Session's closed revocation reason is its durable record. Any other
+	// reason is rejected.
 	Withdraw(context.Context, model.SessionID, model.UserID, int64, model.SessionRevocationReason) ([]string, error)
 	Revoke(context.Context, *SessionRevocation) (*SessionRevocationResult, error)
 	RevokeAllForUser(context.Context, *UserSessionsRevocation) (*UserSessionsRevocationResult, error)
@@ -2394,13 +2401,18 @@ type SessionStore interface {
 // it. Creation and password reset/removal serialize on the same per-User lock:
 // either creation commits first and reset revokes it, or stale proof is rejected
 // with ErrPasswordCredentialChanged. Credential generation and password hashing
-// occur before this operation.
+// occur before this operation. The login audit attempt completes atomically
+// with the Session, so no issued Session exists without its success record.
 type SessionCreation struct {
 	ExternalLoginStateID model.ExternalLoginStateID
 	Session              *model.Session
 	Credentials          []*model.SessionCredential
 	MaximumActive        int
 	PasswordProof        PasswordCredentialProof
+	// AuditEventID is the issuing login's persisted attempt. Creation completes
+	// it with the Session projection in the same transaction.
+	AuditEventID model.AuditEventID
+	AuditAt      int64
 }
 
 type SessionRotation struct {

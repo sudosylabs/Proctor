@@ -76,9 +76,10 @@ open an actor-bearing attempt that completes with the issued Session projection
 or the issuance failure; a credential, account, or MFA failure records one
 actor-less terminal failure that names a resolved account only as its resource,
 never the raw login identifier. Requests refused by rate limiting write no
-audit, so unauthenticated floods cannot grow the audit table. If the success
-audit cannot complete, the new Session is revoked before the audit failure is
-returned.
+audit, so unauthenticated floods cannot grow the audit table. Session creation
+completes the attempt with the Session projection in the same transaction, for
+local and external login alike, so no Session exists without its success
+record; if completion fails, no Session is issued and the attempt is failed.
 
 Durable audit remains a cross-cutting application capability exposed through
 narrow consumer-owned ports. Critical success audit stays inside the named

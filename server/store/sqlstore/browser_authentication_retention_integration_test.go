@@ -411,7 +411,7 @@ func TestDesktopAuthorizationMaximumActiveSessionConflictDoesNotConsumeCode(t *t
 	user := saveIntegrationUser(t, ctx, persistence, &model.User{Username: "desktop-session-limit", Email: "desktop-session-limit@example.edu"})
 	created, code, state, verifier := issueDesktopAuthorizationForSQLTest(t, ctx, persistence, institution.ID, user.ID)
 	now := model.NowUTC()
-	existing, _, err := persistence.Session().Save(ctx, sessionCreationForSQLTest(t, ctx, persistence, &model.Session{UserID: user.ID, ClientType: model.SessionClientWeb,
+	existing, _, err := storetest.SaveSession(ctx, persistence, sessionCreationForSQLTest(t, ctx, persistence, &model.Session{UserID: user.ID, ClientType: model.SessionClientWeb,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		IdleExpiresAt: now.Add(time.Hour), ExpiresAt: now.Add(2 * time.Hour)}, []*model.SessionCredential{
 		{Kind: model.SessionCredentialAccess, TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: now.Add(30 * time.Minute)},
@@ -462,7 +462,7 @@ func TestDesktopAuthorizationRevalidatesSourceWebSessionProof(t *testing.T) {
 				session.AuthenticationStrength, session.MFACompletedAt = model.AuthenticationSingleFactor, model.OptionalTime{}
 			}
 			creation := sessionCreationForSQLTest(t, ctx, persistence, session, credentials, 10)
-			source, savedCredentials, err := persistence.Session().Save(ctx, creation)
+			source, savedCredentials, err := storetest.SaveSession(ctx, persistence, creation)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -516,8 +516,7 @@ func TestDesktopAuthorizationRevalidatesSourceWebSessionProof(t *testing.T) {
 					now, now.Add(time.Hour))
 			case "other Session credential":
 				otherSession, otherCredentials := authenticationPolicyTestSession(user.ID, "password", "", "")
-				_, otherSavedCredentials, saveErr := persistence.Session().Save(ctx,
-					sessionCreationForSQLTest(t, ctx, persistence, otherSession, otherCredentials, 10))
+				_, otherSavedCredentials, saveErr := storetest.SaveSession(ctx, persistence, sessionCreationForSQLTest(t, ctx, persistence, otherSession, otherCredentials, 10))
 				err = saveErr
 				for _, credential := range otherSavedCredentials {
 					if credential.Kind == model.SessionCredentialAccess {

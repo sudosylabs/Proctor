@@ -48,10 +48,10 @@ type RetentionExpiryResult struct {
 // a bounded batch changes state, then completed with scalar counts atomically.
 // A no-change scan persists neither an audit nor another work item.
 type RetentionCleanupAuditReconciliation struct {
-	AfterID model.AuditEventID
-	Before  time.Time
-	Limit   int
-	Audit   *model.AuditEvent
+	AfterID    model.AuditEventID
+	Before     time.Time
+	Limit      int
+	AuditEvent *model.AuditEvent
 }
 type RetentionCleanupAuditResult struct {
 	Before    time.Time

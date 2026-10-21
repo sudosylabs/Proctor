@@ -21,6 +21,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 )
 
 func TestMFAPersonalAccessTokenCanonicalIDConstraints(t *testing.T) {
@@ -59,7 +60,7 @@ func TestMFAPersonalAccessTokenCanonicalIDConstraints(t *testing.T) {
 	patSession := savePersonalAccessTokenMutationSession(t, ctx, persistence, user.ID)
 	preparation, err := persistence.PersonalAccessToken().PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{
 		UserID: user.ID, TokenID: token.ID, Kind: store.PersonalAccessTokenMutationRevoke, Lifetime: time.Minute,
-		Audit: &model.AuditEvent{ActorID: user.ID, SessionID: patSession.ID, Action: "personal_access_token.revoke",
+		AuditEvent: &model.AuditEvent{ActorID: user.ID, SessionID: patSession.ID, Action: "personal_access_token.revoke",
 			Resource: model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, ScopeType: model.RoleScopeInstitution,
 			ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "constraint-test"},
 	})
@@ -102,7 +103,7 @@ func TestMFAActivationRejectsCorruptionBeforeCommit(t *testing.T) {
 		Username: "mfa-corruption", Email: "mfa-corruption@example.edu", DisplayName: "MFA Corruption",
 	})
 	now := model.NowUTC()
-	session, sessionCredentials, err := persistence.Session().Save(ctx, sessionCreationForSQLTest(t, ctx, persistence, &model.Session{
+	session, sessionCredentials, err := storetest.SaveSession(ctx, persistence, sessionCreationForSQLTest(t, ctx, persistence, &model.Session{
 		UserID: user.ID, ClientType: model.SessionClientWeb,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		IdleExpiresAt: now.Add(time.Hour), ExpiresAt: now.Add(2 * time.Hour),

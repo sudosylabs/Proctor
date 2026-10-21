@@ -84,7 +84,7 @@ type ExamCorrectionResourceStageReservation struct {
 	AuditAt         int64
 }
 
-type ExamCorrectionResourceStageReadyInput struct {
+type ExamCorrectionResourceStageReadiness struct {
 	StageID     model.ExamCorrectionResourceStageID
 	ActorUserID model.UserID
 	Rendition   *model.FileRendition
@@ -144,6 +144,6 @@ type ExamCorrectionResult struct {
 // gates only selected capabilities; no-op content cannot allocate a notice.
 type ExamCorrectionStore interface {
 	ReserveResourceStage(context.Context, *ExamCorrectionResourceStageReservation, *CommandIdempotency) (*ExamCorrectionResourceStage, error)
-	MarkResourceStageReady(context.Context, *ExamCorrectionResourceStageReadyInput) (*ExamCorrectionResourceStage, error)
+	MarkResourceStageReady(context.Context, *ExamCorrectionResourceStageReadiness) (*ExamCorrectionResourceStage, error)
 	Apply(context.Context, *ExamCorrectionApplication, *CommandIdempotency) (*ExamCorrectionResult, error)
 }

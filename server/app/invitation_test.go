@@ -60,7 +60,7 @@ func (f *invitationStoreFake) RecordBatchDuplicate(_ context.Context, _ *store.I
 	f.batchDuplicates[command.KeyDigest] = true
 	return &store.InvitationBatchCommandResult{Duplicate: true, Replayed: replayed}, nil
 }
-func (f *invitationStoreFake) ReplayIssue(_ context.Context, command *store.CommandIdempotency, _ model.AuditEventID, _ int64) (*store.InvitationCommandResult, error) {
+func (f *invitationStoreFake) ReplayIssue(_ context.Context, _ *store.InvitationReplay, command *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
 	if f.batchDuplicates[command.KeyDigest] {
 		return &store.InvitationCommandResult{Duplicate: true, Replayed: true}, nil
 	}
@@ -70,7 +70,7 @@ func (f *invitationStoreFake) ReplayIssue(_ context.Context, command *store.Comm
 	return nil, store.NewErrNotFound("command_outcome", "idempotency_key")
 }
 func (f *invitationStoreFake) FindCommandOutcome(ctx context.Context, command *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
-	return f.ReplayIssue(ctx, command, "", 0)
+	return f.ReplayIssue(ctx, &store.InvitationReplay{}, command)
 }
 
 func (f *invitationStoreFake) IssueStudentClass(_ context.Context, input *store.StudentClassInvitationIssue) (*model.Invitation, error) {

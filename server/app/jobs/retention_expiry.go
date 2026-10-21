@@ -217,7 +217,7 @@ func (h retentionExpiryHandler) cleanupAuditBatch(ctx context.Context, e jobengi
 	if err != nil {
 		return jobengine.RetryableFailure("retention.unavailable", err)
 	}
-	result, err := h.records.ReconcileCleanupAuditExpiry(ctx, &store.RetentionCleanupAuditReconciliation{AfterID: model.AuditEventID(cp.AfterID), Before: cp.Before, Limit: limit, Audit: prepared})
+	result, err := h.records.ReconcileCleanupAuditExpiry(ctx, &store.RetentionCleanupAuditReconciliation{AfterID: model.AuditEventID(cp.AfterID), Before: cp.Before, Limit: limit, AuditEvent: prepared})
 	if err != nil {
 		return jobengine.RetryableFailure("retention.unavailable", err)
 	}

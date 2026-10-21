@@ -16,9 +16,9 @@ import (
 )
 
 func (s *SQLRetentionStore) ReconcileCleanupAuditExpiry(ctx context.Context, input *store.RetentionCleanupAuditReconciliation) (*store.RetentionCleanupAuditResult, error) {
-	if input == nil || input.Limit < 1 || input.Limit > 100 || input.Before.IsZero() || (input.AfterID != "" && !input.AfterID.IsValid()) || input.Audit == nil || !input.Audit.ID.IsZero() ||
-		!input.Audit.ActorID.IsZero() || !input.Audit.SessionID.IsZero() || input.Audit.Action != string(model.ActionRetentionCleanupManage) || input.Audit.Status != model.AuditStatusAttempt ||
-		input.Audit.Resource.Type != model.ResourceInstitution || input.Audit.ScopeType != model.RoleScopeInstitution || input.Audit.ScopeID != input.Audit.Resource.ID || len(input.Audit.Result) > 0 || len(input.Audit.PriorState) > 0 {
+	if input == nil || input.Limit < 1 || input.Limit > 100 || input.Before.IsZero() || (input.AfterID != "" && !input.AfterID.IsValid()) || input.AuditEvent == nil || !input.AuditEvent.ID.IsZero() ||
+		!input.AuditEvent.ActorID.IsZero() || !input.AuditEvent.SessionID.IsZero() || input.AuditEvent.Action != string(model.ActionRetentionCleanupManage) || input.AuditEvent.Status != model.AuditStatusAttempt ||
+		input.AuditEvent.Resource.Type != model.ResourceInstitution || input.AuditEvent.ScopeType != model.RoleScopeInstitution || input.AuditEvent.ScopeID != input.AuditEvent.Resource.ID || len(input.AuditEvent.Result) > 0 || len(input.AuditEvent.PriorState) > 0 {
 		return nil, store.NewErrInvalidInput("retention_expiry", "cleanup_batch", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "cleanup audit retention", func(ctx context.Context, tx *sqlxTxWrapper) (*store.RetentionCleanupAuditResult, error) {
@@ -30,7 +30,7 @@ func (s *SQLRetentionStore) ReconcileCleanupAuditExpiry(ctx context.Context, inp
 		if err != nil {
 			return nil, err
 		}
-		if input.Audit.Resource.ID != policy.InstitutionID.String() {
+		if input.AuditEvent.Resource.ID != policy.InstitutionID.String() {
 			return nil, store.NewErrInvalidInput("retention_expiry", "institution", nil)
 		}
 		var at time.Time
@@ -108,7 +108,7 @@ func (s *SQLRetentionStore) ReconcileCleanupAuditExpiry(ctx context.Context, inp
 		if len(changes) == 0 {
 			return result, nil
 		}
-		audit, err := insertAuditEventAt(ctx, tx, input.Audit, at)
+		audit, err := insertAuditEventAt(ctx, tx, input.AuditEvent, at)
 		if err != nil {
 			return nil, err
 		}

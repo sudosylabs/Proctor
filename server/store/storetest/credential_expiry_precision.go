@@ -100,7 +100,7 @@ func testMFANativeExpiry(t *testing.T, ss store.Store) {
 				if operation == "Session upgrade" {
 					candidate.IdleExpiresAt = deadline
 				}
-				session, savedCredentials, err := ss.Session().Save(ctx, testSessionCreation(t, ctx, ss, candidate, credentials, 10))
+				session, savedCredentials, err := SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, candidate, credentials, 10))
 				requireNoError(t, err)
 				at := deadline.Add(point.offset).In(time.FixedZone("test", 2*60*60))
 				if operation == "Session upgrade" {

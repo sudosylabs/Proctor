@@ -7,6 +7,11 @@ CreateAcademicUnit(ctx, invocation, command) (*model.AcademicUnit, error)
 GetAcademicUnit(ctx, invocation, query) (*model.AcademicUnit, error)
 ~~~
 
+A use case takes `(ctx, invocation, command)` with an `XCommand` for a
+mutation or an `XQuery` for a read, passed by value, and returns a domain model
+or an `XResult`. Ports to infrastructure or another module that are not use
+cases name their argument for that port, such as a renderer `RenderRequest`.
+
 `app.Invocation` is immutable and explicitly contains the principal and safe call metadata needed for authorization and audit. `context.Context` remains for cancellation, deadlines, and propagation, not hidden security dependencies.
 
 The `app/invocation` leaf owns that one call type so the parent and every Exam

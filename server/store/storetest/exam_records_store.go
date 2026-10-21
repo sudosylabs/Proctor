@@ -208,7 +208,7 @@ func saveRecordsPrincipal(t *testing.T, ctx context.Context, ss store.Store, use
 		session.AuthenticationStrength = model.AuthenticationMultiFactor
 		session.MFACompletedAt = model.OptionalTimeFrom(session.AuthenticatedAt)
 	}
-	saved, credentials, err := ss.Session().Save(ctx, testSessionCreation(t, ctx, ss, session, credentials, 10))
+	saved, credentials, err := SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, session, credentials, 10))
 	requireNoError(t, err)
 	return model.Principal{UserID: userID, SessionID: saved.ID, CredentialID: model.PrincipalCredentialID(credentials[0].ID), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: saved.AuthenticationStrength, AuthenticatedAt: saved.AuthenticatedAt, MFACompletedAt: saved.MFACompletedAt, ClientType: saved.ClientType}
 }

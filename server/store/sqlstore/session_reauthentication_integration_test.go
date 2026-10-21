@@ -16,6 +16,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 )
 
 func TestPasswordReauthenticationCommitsOnlyCurrentProofAndAudit(t *testing.T) {
@@ -84,7 +85,7 @@ func TestExternalReauthenticationRechecksExactIdentityAndLiveBoundSession(t *tes
 				t.Fatal(err)
 			}
 			candidate, credentials := authenticationPolicyTestSession(user.ID, "oidc", "campus", identity.ID)
-			session, savedCredentials, err := s.Session().Save(ctx, sessionCreationForSQLTest(t, ctx, s, candidate, credentials, 10))
+			session, savedCredentials, err := storetest.SaveSession(ctx, s, sessionCreationForSQLTest(t, ctx, s, candidate, credentials, 10))
 			if err != nil {
 				t.Fatal(err)
 			}

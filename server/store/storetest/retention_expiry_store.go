@@ -330,7 +330,7 @@ func TestRetentionCleanupAuditExpiryStore(t *testing.T, ss store.Store, probe Re
 	}
 	bad := prepared()
 	bad.NodeID = ""
-	if _, err = ss.Retention().ReconcileCleanupAuditExpiry(ctx, &store.RetentionCleanupAuditReconciliation{Before: before, Limit: 100, Audit: bad}); err == nil {
+	if _, err = ss.Retention().ReconcileCleanupAuditExpiry(ctx, &store.RetentionCleanupAuditReconciliation{Before: before, Limit: 100, AuditEvent: bad}); err == nil {
 		t.Fatal("changing batch accepted invalid critical audit")
 	}
 	if after := probe.CleanupAuditCount(t, ctx); after != count {
@@ -342,7 +342,7 @@ func TestRetentionCleanupAuditExpiryStore(t *testing.T, ss store.Store, probe Re
 		changed := 0
 		passes := 0
 		for {
-			result, err := ss.Retention().ReconcileCleanupAuditExpiry(ctx, &store.RetentionCleanupAuditReconciliation{AfterID: after, Before: before, Limit: 100, Audit: prepared()})
+			result, err := ss.Retention().ReconcileCleanupAuditExpiry(ctx, &store.RetentionCleanupAuditReconciliation{AfterID: after, Before: before, Limit: 100, AuditEvent: prepared()})
 			requireNoError(t, err)
 			if result == nil || result.Examined > 100 || result.Changed > result.Examined || result.AfterID < after || !result.Before.Equal(before) {
 				t.Fatalf("invalid bounded cleanup result=%#v", result)

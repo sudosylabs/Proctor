@@ -18,6 +18,7 @@ import (
 	"github.com/lib/pq"
 
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 )
 
 func TestSessionCanonicalIDConstraintsRejectNoncanonicalValues(t *testing.T) {
@@ -29,7 +30,7 @@ func TestSessionCanonicalIDConstraintsRejectNoncanonicalValues(t *testing.T) {
 		Username: "session-constraint", Email: "session-constraint@example.edu", DisplayName: "Session Constraint",
 	})
 	now := model.NowUTC()
-	session, credentials, err := persistence.Session().Save(ctx, sessionCreationForSQLTest(t, ctx, persistence, &model.Session{
+	session, credentials, err := storetest.SaveSession(ctx, persistence, sessionCreationForSQLTest(t, ctx, persistence, &model.Session{
 		UserID: user.ID, ClientType: model.SessionClientWeb,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		IdleExpiresAt: now.Add(time.Hour), ExpiresAt: now.Add(2 * time.Hour),

@@ -244,7 +244,7 @@ func (s *Service) StageExamSittingCorrectionResourceContent(ctx context.Context,
 		if subtle.ConstantTimeCompare([]byte(rendition.SHA256), []byte(c.ExpectedSHA256)) != 1 {
 			return ResourceStage{}, apperror.New("exam.sitting.correction.content_invalid").Wrap(errors.New("content checksum mismatch"))
 		}
-		stage, err = s.deps.Persistence.MarkResourceStageReady(ctx, &store.ExamCorrectionResourceStageReadyInput{StageID: stage.ID, ActorUserID: principal.UserID, Rendition: &rendition, ReadyAt: model.TimeUTC(s.deps.Now())})
+		stage, err = s.deps.Persistence.MarkResourceStageReady(ctx, &store.ExamCorrectionResourceStageReadiness{StageID: stage.ID, ActorUserID: principal.UserID, Rendition: &rendition, ReadyAt: model.TimeUTC(s.deps.Now())})
 		if err != nil {
 			return ResourceStage{}, storeErrors.Translate(err)
 		}

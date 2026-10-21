@@ -159,7 +159,7 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 	campusCandidate.AuthenticationMethod = "oidc"
 	campusCandidate.AuthenticationProviderID = "campus"
 	campusCandidate.ExternalIdentityID = campusIdentity.ID
-	campusSession, _, err := ss.Session().Save(ctx, testSessionCreation(t, ctx, ss, campusCandidate, campusCredentials, 10))
+	campusSession, _, err := SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, campusCandidate, campusCredentials, 10))
 	requireNoError(t, err)
 	if len(probes) > 0 && probes[0].LeadDatabaseClock != nil {
 		probes[0].LeadDatabaseClock(t, ctx, campusSession.ID)

@@ -64,7 +64,7 @@ func (s SQLPersonalAccessTokenStore) PrepareMutation(ctx context.Context, input 
 		if err != nil {
 			return nil, err
 		}
-		candidate := input.Audit.Clone()
+		candidate := input.AuditEvent.Clone()
 		candidate.PrepareCreate(model.NewAuditEventID(), at)
 		if err := candidate.Validate(); err != nil {
 			return nil, store.NewErrInvalidInput("personal_access_token", "audit", nil)
@@ -231,7 +231,7 @@ func (row personalAccessTokenPreparationRow) auditEvent(status model.AuditStatus
 }
 
 func validatePersonalAccessTokenPreparationInput(input *store.PersonalAccessTokenMutationPreparation) error {
-	if input == nil || !input.UserID.IsValid() || input.Audit == nil || input.Lifetime < personalAccessTokenPreparationMinimumLifetime ||
+	if input == nil || !input.UserID.IsValid() || input.AuditEvent == nil || input.Lifetime < personalAccessTokenPreparationMinimumLifetime ||
 		input.Lifetime > personalAccessTokenPreparationMaximumLifetime || input.Lifetime%time.Millisecond != 0 {
 		return store.NewErrInvalidInput("personal_access_token", "mutation_preparation", nil)
 	}

@@ -505,7 +505,11 @@ func invitationOnboardingOutcome(result *store.InvitationCommandResult) (onboard
 	return onboardingImportCommandResult{Status: model.OnboardingImportRowSucceeded, InvitationID: result.Invitation.ID}, nil
 }
 
-func (s SQLInvitationStore) ReplayIssue(ctx context.Context, command *store.CommandIdempotency, auditID model.AuditEventID, auditAt int64) (*store.InvitationCommandResult, error) {
+func (s SQLInvitationStore) ReplayIssue(ctx context.Context, input *store.InvitationReplay, command *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
+	if input == nil {
+		return nil, store.NewErrInvalidInput("invitation", "replay", nil)
+	}
+	auditID, auditAt := input.AuditEventID, input.AuditAt
 	result, err := replayIdempotentMutation(ctx, s.SQLStore, "replay Invitation issue", idempotentMutation[*store.InvitationCommandResult]{
 		command: command, auditEventID: auditID, decode: decodeInvitationCommandOutcome,
 		hydrateReplay:     hydrateInvitationCommandOutcome,
@@ -540,7 +544,11 @@ func (s SQLInvitationStore) FindCommandOutcome(ctx context.Context, command *sto
 	return result.Value, nil
 }
 
-func (s SQLInvitationStore) ReplayAdministration(ctx context.Context, command *store.CommandIdempotency, auditID model.AuditEventID, auditAt int64) (*store.InvitationAdministrationCommandResult, error) {
+func (s SQLInvitationStore) ReplayAdministration(ctx context.Context, input *store.InvitationReplay, command *store.CommandIdempotency) (*store.InvitationAdministrationCommandResult, error) {
+	if input == nil {
+		return nil, store.NewErrInvalidInput("invitation", "replay", nil)
+	}
+	auditID, auditAt := input.AuditEventID, input.AuditAt
 	result, err := replayIdempotentMutation(ctx, s.SQLStore, "replay Invitation administration", idempotentMutation[*store.InvitationAdministrationCommandResult]{
 		command: command, auditEventID: auditID, decode: decodeInvitationAdministrationOutcome,
 		hydrateReplay: hydrateInvitationAdministrationOutcome,

@@ -77,13 +77,12 @@ func (reason SessionRevocationReason) IsValid() bool {
 }
 
 // IsSystemWithdrawal reports whether reason names an unaudited system
-// withdrawal of a Session the system itself just issued or refreshed: the
-// issuing audit failed, Desktop authorization could not finish, or the User
-// became inactive. Every other revocation is an audited mutation.
+// withdrawal of a Session the system itself just issued or refreshed: Desktop
+// authorization could not finish, or the User became inactive. Every other
+// revocation is an audited mutation.
 func (reason SessionRevocationReason) IsSystemWithdrawal() bool {
 	switch reason {
-	case SessionRevocationAuthenticationAuditFailed,
-		SessionRevocationDesktopAuthorizationFailed,
+	case SessionRevocationDesktopAuthorizationFailed,
 		SessionRevocationInactiveUser:
 		return true
 	default:

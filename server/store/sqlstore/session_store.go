@@ -120,6 +120,9 @@ func (s SQLSessionStore) Save(
 	if input == nil || input.Session == nil {
 		return nil, nil, store.NewErrInvalidInput("session", "value", nil)
 	}
+	if !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
+		return nil, nil, store.NewErrInvalidInput("session", "audit", nil)
+	}
 	session, credentials, maximumActive := input.Session, input.Credentials, input.MaximumActive
 	if session.AuthenticationMethod == "password" {
 		if !input.PasswordProof.IsValid() {
@@ -216,6 +219,13 @@ func (s SQLSessionStore) Save(
 		}
 		if err := requireAffected(userResult, "user", candidate.UserID.String()); err != nil {
 			return nil, err
+		}
+		encoded, err := model.EncodeAuditData(candidate.Auditable())
+		if err != nil {
+			return nil, err
+		}
+		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
+			return nil, fmt.Errorf("complete session issuance audit: %w", err)
 		}
 		return &sessionSaveTransactionResult{session: &candidate, credentials: prepared}, nil
 	})

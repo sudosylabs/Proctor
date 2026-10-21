@@ -31,6 +31,17 @@ Contracts return domain types or explicit store projection/aggregate results. SQ
 
 Contracts name every entity by its typed model ID (`model.UserID`, `model.AuditEventID`, and so on) in method parameters, results, and command, cursor, and visibility fields. A plain `string` identifier is reserved for a reference whose entity type is chosen at runtime (a Role scope, a Resource, an onboarding row target, a retention record, a mail rekey target) and for runtime tokens such as node and lease IDs; those are checked with `model.IsValidOpaqueID`. Every entity ID is validated through its typed ID's `IsValid` or `Parse`. Persisted text, such as an idempotent outcome or checkpoint, converts back to the typed ID at the adapter boundary.
 
+A named mutation takes one pointer input struct named for the entity and the
+operation as a noun (`ClassUpdate`, `RoleBindingEnd`, `SessionRevocation`) and
+returns a domain model or a `*XResult`; list, search, and visibility reads take
+a value `XListOptions` or scope struct. Inside inputs, audit is the field pair
+`AuditEventID` and `AuditAt` for an attempt, or the field `AuditEvent` for a
+draft; optimistic concurrency is `ExpectedRevision`, qualified as
+`Expected<Entity>Revision` only when the operation fences more than one; and a
+retryable operation takes a trailing `*CommandIdempotency` parameter. The older
+identity and membership operations that still carry `Command` and replay flags
+inside their input follow the same rule when next changed.
+
 Lookup semantics:
 
 - `Get`: missing data is `store.ErrNotFound`;
@@ -48,8 +59,9 @@ operation requires its audit input; there is no unaudited twin and no
 `WithAudit` suffix. Fixtures that need state create it through the same
 audited operation (the `storetest` fixture helpers begin a generic attempt for
 them). The only unaudited writes are explicit exceptions: `SessionStore.Withdraw`
-takes back a Session the system itself just issued when its audit, Desktop
-handoff, or User state fails, and it accepts only those closed reasons; and
+takes back a Session the system itself just issued or refreshed when the
+Desktop handoff cannot finish or the User became inactive, and it accepts only
+those closed reasons; and
 `Seed*` operations insert fixture state that has no audited creation outside a
 named aggregate (the built-in Role, Class enrollment without its notice, a
 pending MFA credential without a Session). An architecture test forbids

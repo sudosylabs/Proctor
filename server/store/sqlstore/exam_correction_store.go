@@ -230,7 +230,7 @@ func reserveExamCorrectionResourceStage(ctx context.Context, tx *sqlxTxWrapper, 
 	return err
 }
 
-func (s SQLExamCorrectionStore) MarkResourceStageReady(ctx context.Context, input *store.ExamCorrectionResourceStageReadyInput) (*store.ExamCorrectionResourceStage, error) {
+func (s SQLExamCorrectionStore) MarkResourceStageReady(ctx context.Context, input *store.ExamCorrectionResourceStageReadiness) (*store.ExamCorrectionResourceStage, error) {
 	if input == nil || !input.StageID.IsValid() || !input.ActorUserID.IsValid() || input.Rendition == nil || input.ReadyAt.IsZero() {
 		return nil, store.NewErrInvalidInput("exam_correction", "resource_stage_ready", nil)
 	}

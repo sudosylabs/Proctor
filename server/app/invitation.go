@@ -589,7 +589,7 @@ func (s *invitationService) recoverInvitationIssueOutcome(ctx context.Context, i
 	}
 	replayed, err := runAuditedMutation(ctx, s.audit, attempt, s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationCommandResult, error) {
-			value, replayErr := s.store.ReplayIssue(ctx, idempotency, reference.ID, reference.MutationAtMillis)
+			value, replayErr := s.store.ReplayIssue(ctx, &store.InvitationReplay{AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}, idempotency)
 			if replayErr == nil && value.Duplicate {
 				return nil, apperror.New("onboarding_batch.duplicate")
 			}
@@ -616,7 +616,7 @@ func (s *invitationService) recoverInvitationAdministrationOutcome(ctx context.C
 	}
 	replayed, err := runAuditedMutation(ctx, s.audit, attempt, s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationAdministrationCommandResult, error) {
-			value, replayErr := s.store.ReplayAdministration(ctx, idempotency, reference.ID, reference.MutationAtMillis)
+			value, replayErr := s.store.ReplayAdministration(ctx, &store.InvitationReplay{AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}, idempotency)
 			if replayErr == nil && value.Duplicate {
 				return nil, apperror.New("onboarding_batch.duplicate")
 			}
@@ -855,7 +855,7 @@ func (s *invitationService) ResendInvitation(ctx context.Context, invocation Inv
 	result, err := runAuditedMutation(ctx, s.audit, attempt, s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationAdministrationCommandResult, error) {
 			if idempotency != nil {
-				replayed, replayErr := s.store.ReplayAdministration(ctx, idempotency, reference.ID, reference.MutationAtMillis)
+				replayed, replayErr := s.store.ReplayAdministration(ctx, &store.InvitationReplay{AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}, idempotency)
 				if replayErr == nil {
 					if replayed.Duplicate {
 						return nil, apperror.New("onboarding_batch.duplicate")
@@ -947,7 +947,7 @@ func (s *invitationService) RevokeInvitation(ctx context.Context, invocation Inv
 	result, err := runAuditedMutation(ctx, s.audit, attempt, s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationAdministrationCommandResult, error) {
 			if idempotency != nil {
-				replayed, replayErr := s.store.ReplayAdministration(ctx, idempotency, reference.ID, reference.MutationAtMillis)
+				replayed, replayErr := s.store.ReplayAdministration(ctx, &store.InvitationReplay{AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}, idempotency)
 				if replayErr == nil {
 					if replayed.Duplicate {
 						return nil, apperror.New("onboarding_batch.duplicate")

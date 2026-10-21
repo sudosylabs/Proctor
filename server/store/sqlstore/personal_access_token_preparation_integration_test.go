@@ -16,6 +16,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 )
 
 func TestPersonalAccessTokenPreparationMaintenanceIsBoundedAndAppendOnly(t *testing.T) {
@@ -32,7 +33,7 @@ func TestPersonalAccessTokenPreparationMaintenanceIsBoundedAndAppendOnly(t *test
 	for range 2 {
 		prepared, prepareErr := persistence.PersonalAccessToken().PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{
 			UserID: user.ID, Kind: store.PersonalAccessTokenMutationCreate, Lifetime: 30 * time.Second,
-			Audit: personalAccessTokenPreparationAudit(user.ID, session.ID, institution.ID),
+			AuditEvent: personalAccessTokenPreparationAudit(user.ID, session.ID, institution.ID),
 		})
 		if prepareErr != nil {
 			t.Fatal(prepareErr)
@@ -92,7 +93,7 @@ func TestPersonalAccessTokenPreparationExpiryIsCheckedAfterUserFence(t *testing.
 	}
 	preparation, err := persistence.PersonalAccessToken().PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{
 		UserID: user.ID, TokenID: token.ID, Kind: store.PersonalAccessTokenMutationDisable, Lifetime: 30 * time.Second,
-		Audit: &model.AuditEvent{ActorID: user.ID, SessionID: session.ID, Action: "personal_access_token.disable",
+		AuditEvent: &model.AuditEvent{ActorID: user.ID, SessionID: session.ID, Action: "personal_access_token.disable",
 			Resource: model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, ScopeType: model.RoleScopeInstitution,
 			ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "pat-preparation-fence"},
 	})
@@ -154,7 +155,7 @@ func personalAccessTokenPreparationAudit(userID model.UserID, sessionID model.Se
 func savePersonalAccessTokenMutationSession(t *testing.T, ctx context.Context, persistence *SQLStore, userID model.UserID) *model.Session {
 	t.Helper()
 	now := model.NowUTC()
-	session, _, err := persistence.Session().Save(ctx, sessionCreationForSQLTest(t, ctx, persistence, &model.Session{
+	session, _, err := storetest.SaveSession(ctx, persistence, sessionCreationForSQLTest(t, ctx, persistence, &model.Session{
 		UserID: userID, ClientType: model.SessionClientWeb,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		IdleExpiresAt: now.Add(time.Hour), ExpiresAt: now.Add(2 * time.Hour),

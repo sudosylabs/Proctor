@@ -656,8 +656,8 @@ func (s *externalAuthenticationService) complete(
 				LastSeenAt: model.OptionalTimeFromMillis(now),
 			},
 			User: userCandidate, Settings: userSettings,
-			Capabilities:   accessDeploymentCapabilities(s.capabilities.Snapshot()),
-			ProvisionAudit: provisionAudit, DefaultProfilePictureJob: defaultPictureJob,
+			Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()),
+			AuditEvent:   provisionAudit, DefaultProfilePictureJob: defaultPictureJob,
 		},
 	)
 	if err != nil {
@@ -768,6 +768,7 @@ func (s *externalAuthenticationService) complete(
 			ExternalIdentityID:     resolution.Identity.ID,
 			AuthenticationStrength: assertion.AuthenticationStrength,
 			AuthenticatedAt:        assertion.AuthenticatedAt, MFACompletedAt: mfaCompletedAt,
+			AuditEventID: auditEvent.ID,
 		},
 	)
 	if sessionErr != nil {
@@ -787,16 +788,6 @@ func (s *externalAuthenticationService) complete(
 			return nil, completionErr
 		}
 		return nil, legacy
-	}
-	if _, appErr := s.audit.CompleteCriticalAction(
-		ctx,
-		auditEvent.ID,
-		model.AuditStatusSuccess,
-		"",
-		session.Auditable(),
-	); appErr != nil {
-		s.revokeUnreportedSession(ctx, session)
-		return nil, appErr
 	}
 	return &model.ExternalAuthenticationCompletion{
 		User: resolution.User, Session: session, Tokens: tokens,
@@ -866,26 +857,6 @@ func (s *externalAuthenticationService) checkInitiationRateLimit(
 		return apperror.New("authentication.rate_limited")
 	}
 	return nil
-}
-
-func (s *externalAuthenticationService) revokeUnreportedSession(
-	ctx context.Context,
-	session *model.Session,
-) {
-	hashes, err := s.sessions.Withdraw(
-		ctx,
-		session.ID,
-		session.UserID,
-		s.now().UnixMilli(),
-		model.SessionRevocationAuthenticationAuditFailed,
-	)
-	if err != nil {
-		if s.diagnostics != nil {
-			s.diagnostics.WarnContext(ctx, "failed to revoke unaudited external session", err)
-		}
-		return
-	}
-	s.invalidator.InvalidateAccessCredentials(ctx, hashes)
 }
 
 func externalUserCandidate(

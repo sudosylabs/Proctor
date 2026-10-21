@@ -165,7 +165,7 @@ func testRetentionPolicyCurrentCredentialAndAssurance(t *testing.T, ctx context.
 				}
 				session.MFACompletedAt = model.OptionalTimeFrom(session.AuthenticatedAt)
 			}
-			saved, credentials, saveErr := stores.Session().Save(ctx, testSessionCreation(t, ctx, stores, session, credentials, 10))
+			saved, credentials, saveErr := SaveSession(ctx, stores, testSessionCreation(t, ctx, stores, session, credentials, 10))
 			requireNoError(t, saveErr)
 			// Keep the request snapshot strong and fresh. The stored Session and
 			// exact credential must decide even when a caller has stale facts.

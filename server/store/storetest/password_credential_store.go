@@ -34,13 +34,13 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		requireNoError(t, err)
 
 		passwordSession, passwordCredentials, _ := newSession(user.ID.String())
-		passwordSession, _, err = ss.Session().Save(ctx, testSessionCreation(t, ctx, ss, passwordSession, passwordCredentials, 10))
+		passwordSession, _, err = SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, passwordSession, passwordCredentials, 10))
 		requireNoError(t, err)
 		providerSession, providerCredentials, _ := newSession(user.ID.String())
 		providerSession.AuthenticationMethod = "oidc"
 		providerSession.AuthenticationProviderID = "campus-cas"
 		providerSession.ExternalIdentityID = identity.ID
-		providerSession, _, err = ss.Session().Save(ctx, testSessionCreation(t, ctx, ss, providerSession, providerCredentials, 10))
+		providerSession, _, err = SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, providerSession, providerCredentials, 10))
 		requireNoError(t, err)
 
 		attempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "remove_password")
@@ -79,7 +79,7 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 			t.Fatalf("Rehash(replaced credential) = %v", err)
 		}
 		staleSession, staleCredentials, _ := newSession(user.ID.String())
-		_, _, err = ss.Session().Save(ctx, &store.SessionCreation{
+		_, _, err = SaveSession(ctx, ss, &store.SessionCreation{
 			Session: staleSession, Credentials: staleCredentials, MaximumActive: 10,
 			PasswordProof: store.PasswordCredentialProof{ID: credential.ID, Revision: credential.Revision},
 		})

@@ -387,6 +387,7 @@ func (s *authenticationService) Login(
 			DeviceID: command.DeviceID, DeviceName: command.DeviceName,
 			AuthenticationMethod: "password", AuthenticationStrength: proof.AuthenticationStrength,
 			AuthenticatedAt: proof.AuthenticatedAt, MFACompletedAt: proof.MFACompletedAt,
+			AuditEventID: auditID,
 		},
 	)
 	if sessionErr != nil {
@@ -396,26 +397,8 @@ func (s *authenticationService) Login(
 		}
 		return nil, sessionErr
 	}
-	if auditErr := s.loginAudit.CompleteLocalLogin(ctx, auditID, model.AuditStatusSuccess, "",
-		savedSession.Auditable()); auditErr != nil {
-		s.revokeUnauditedSession(ctx, savedSession)
-		return nil, auditErr
-	}
 	s.resetLocalAuthenticationAttempts(ctx, proof.receipt)
 	return &LoginResult{User: proof.User, Session: savedSession, Tokens: tokens}, nil
-}
-
-// revokeUnauditedSession withdraws a Session whose successful login audit could
-// not be made durable, so no credential outlives a missing security record.
-func (s *authenticationService) revokeUnauditedSession(ctx context.Context, session *model.Session) {
-	revokeCtx := context.WithoutCancel(ctx)
-	hashes, err := s.sessions.Withdraw(revokeCtx, session.ID, session.UserID,
-		model.MillisFromTime(s.now()), model.SessionRevocationAuthenticationAuditFailed)
-	if err != nil {
-		s.warn(ctx, "failed to revoke unaudited local session", err)
-		return
-	}
-	s.securityEffects.SessionsRevoked(revokeCtx, session.UserID.String(), []string{session.ID.String()}, hashes)
 }
 
 // localAuthenticationSubject reports how far a failed local authentication
@@ -621,7 +604,7 @@ func (s *authenticationService) createSession(
 					ExpiresAt: refreshExpiresAt,
 				},
 			},
-			MaximumActive: settings.MaximumPerUser},
+			MaximumActive: settings.MaximumPerUser, AuditEventID: command.AuditEventID, AuditAt: nowMillis},
 	)
 	if saveErr != nil {
 		if errors.Is(saveErr, store.ErrAuthenticationMethodDisabled) || errors.Is(saveErr, store.ErrPasswordCredentialChanged) || errors.Is(saveErr, store.ErrAuthenticationGenerationChanged) || errors.Is(saveErr, store.ErrMFAReenrollmentRequired) {

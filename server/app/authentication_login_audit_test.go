@@ -98,7 +98,7 @@ func localLoginInvocation() Invocation {
 
 func TestLocalLoginSuccessIsDurablyAuditedWithActorAndSession(t *testing.T) {
 	t.Parallel()
-	service, _, audit, user := newLocalLoginAuditFixture(t, discardAuthenticationMFAVerifier{})
+	service, persistence, audit, user := newLocalLoginAuditFixture(t, discardAuthenticationMFAVerifier{})
 
 	result, err := service.Login(context.Background(), localLoginInvocation(), LoginCommand{
 		LoginID: user.Email, Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientWeb, Source: "192.0.2.10:1",
@@ -106,17 +106,20 @@ func TestLocalLoginSuccessIsDurablyAuditedWithActorAndSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(audit.pending) != 0 || len(audit.terminal) != 1 {
+	// The application begins the attempt; Session creation completes it in
+	// the same transaction, so the application records no terminal outcome.
+	if len(audit.pending) != 1 || len(audit.terminal) != 0 {
 		t.Fatalf("pending=%#v terminal=%#v", audit.pending, audit.terminal)
 	}
-	record := audit.terminal[0]
-	if record.status != model.AuditStatusSuccess || record.actor != user.ID || record.clientType != model.SessionClientWeb ||
-		record.metadata.IPAddress != "192.0.2.10" || record.metadata.UserAgent != "login-test" || record.metadata.RequestID != "request-login" {
-		t.Fatalf("success audit = %#v", record)
-	}
-	projection, ok := record.result.(map[string]any)
-	if !ok || projection["id"] != result.Session.ID.String() {
-		t.Fatalf("success audit result = %#v, session %s", record.result, result.Session.ID)
+	for id, record := range audit.pending {
+		if record.actor != user.ID || record.clientType != model.SessionClientWeb ||
+			record.metadata.IPAddress != "192.0.2.10" || record.metadata.UserAgent != "login-test" || record.metadata.RequestID != "request-login" {
+			t.Fatalf("login attempt = %#v", record)
+		}
+		projection, ok := persistence.completedAudits[id]
+		if !ok || projection["id"] != result.Session.ID.String() {
+			t.Fatalf("Session creation completion = %#v, session %s", persistence.completedAudits, result.Session.ID)
+		}
 	}
 }
 
@@ -179,24 +182,22 @@ func TestLocalLoginRejectedBeforeAdmissionWritesNoAudit(t *testing.T) {
 	}
 }
 
-func TestLocalLoginRevokesSessionWhenSuccessAuditCannotComplete(t *testing.T) {
+func TestLocalLoginIssuesNoSessionWhenSuccessAuditCannotComplete(t *testing.T) {
 	t.Parallel()
 	service, persistence, audit, user := newLocalLoginAuditFixture(t, discardAuthenticationMFAVerifier{})
-	audit.completeErr = apperror.New("audit.unavailable")
+	persistence.auditCompleteErr = errors.New("audit completion unavailable")
 
 	result, err := service.Login(context.Background(), localLoginInvocation(), LoginCommand{
 		LoginID: user.Email, Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientCLI, Source: "192.0.2.10:4",
 	})
-	if result != nil || !apperror.Is(err, "audit.unavailable") {
+	if result != nil || err == nil {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
-	if len(persistence.sessions) != 1 {
+	if len(persistence.sessions) != 0 {
 		t.Fatalf("sessions = %d", len(persistence.sessions))
 	}
-	for _, session := range persistence.sessions {
-		if !session.RevokedAt.Valid || session.RevocationReason != model.SessionRevocationAuthenticationAuditFailed {
-			t.Fatalf("unaudited session remains live: %#v", session)
-		}
+	if len(audit.pending) != 0 || len(audit.terminal) != 1 || audit.terminal[0].status != model.AuditStatusFail {
+		t.Fatalf("pending=%#v terminal=%#v", audit.pending, audit.terminal)
 	}
 }
 

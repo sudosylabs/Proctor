@@ -143,7 +143,7 @@ func testSessionPasswordProof(t *testing.T, ss store.Store) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			session, credentials, _ := newSession(user.ID.String())
-			_, _, err := ss.Session().Save(ctx, &store.SessionCreation{
+			_, _, err := SaveSession(ctx, ss, &store.SessionCreation{
 				Session: session, Credentials: credentials, MaximumActive: 10, PasswordProof: test.proof,
 			})
 			if !errors.Is(err, store.ErrPasswordCredentialChanged) {
@@ -163,7 +163,7 @@ func testSessionPasswordProof(t *testing.T, ss store.Store) {
 		ExpectedHash: credential.PasswordHash, PasswordHash: "encoded-rehashed-session-password",
 	}))
 	session, credentials, _ := newSession(user.ID.String())
-	_, _, err = ss.Session().Save(ctx, &store.SessionCreation{
+	_, _, err = SaveSession(ctx, ss, &store.SessionCreation{
 		Session: session, Credentials: credentials, MaximumActive: 10, PasswordProof: proof,
 	})
 	requireNoError(t, err)
@@ -260,7 +260,7 @@ func testSessionMaximumActive(t *testing.T, ss store.Store) {
 	user := saveUser(t, ctx, ss)
 	saveSession(t, ctx, ss, user.ID.String(), 1)
 	session, credentials, _ := newSession(user.ID.String())
-	_, _, err := ss.Session().Save(ctx, testSessionCreation(t, ctx, ss, session, credentials, 1))
+	_, _, err := SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, session, credentials, 1))
 	var conflict *store.ErrConflict
 	if !errors.As(err, &conflict) || conflict.Constraint != "sessions_maximum_per_user" {
 		t.Fatalf("second active session error = %v", err)
@@ -775,7 +775,7 @@ func saveSession(
 ) (*model.Session, []*model.SessionCredential, rawSessionCredentials) {
 	t.Helper()
 	session, credentials, raw := newSession(userID)
-	savedSession, savedCredentials, err := ss.Session().Save(ctx, testSessionCreation(t, ctx, ss, session, credentials, maximum))
+	savedSession, savedCredentials, err := SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, session, credentials, maximum))
 	requireNoError(t, err)
 	return savedSession, savedCredentials, raw
 }
