@@ -187,6 +187,8 @@ module when a change is not server-only. No module has been released yet.
   primary-key fence, so a rolling key rotation cannot strand an old-key payload.
 - Server: disabled-mail and expiry suppression update a Retention Notice's
   delivery state instead of leaving it queued.
+- Server: transactional mail keeps its Outlook conditional comments, so the
+  layout renders in desktop Outlook.
 - Cache: counter expirations are fixed windows.
 - Server: `server/go.mod` pins the current cache, mail, and VFS modules, so
   `GOWORK=off` builds include the fixed-window counters and the other module

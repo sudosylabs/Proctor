@@ -278,6 +278,11 @@ func TestRendererParsesAndRendersEveryProductionTemplate(t *testing.T) {
 		assert.NotEmpty(t, message.Subject, "Render(%q) subject", key)
 		assert.NotEmpty(t, message.Text, "Render(%q) text", key)
 		assert.NotEmpty(t, message.HTML, "Render(%q) HTML", key)
+		source, readErr := os.ReadFile("../../templates/" + string(key) + ".html")
+		require.NoError(t, readErr)
+		assert.Equal(t, strings.Count(string(source), "<!--[if"), strings.Count(message.HTML, "<!--[if"), "Render(%q) dropped Outlook conditional comments", key)
+		assert.Equal(t, strings.Count(string(source), "<![endif]-->"), strings.Count(message.HTML, "<![endif]-->"), "Render(%q) dropped Outlook conditional comments", key)
+		assert.Contains(t, message.HTML, "<o:OfficeDocumentSettings>", "Render(%q) dropped the Outlook settings block", key)
 		for _, expected := range []string{`src="cid:` + testLockupCID + `"`, `alt="Proctor"`, `width="200" height="39"`} {
 			assert.Contains(t, message.HTML, expected, "Render(%q) is missing its accessible inline logo", key)
 		}

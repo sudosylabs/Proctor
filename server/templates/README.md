@@ -39,6 +39,14 @@ changing the shared header or adding an image version, regenerate the HTML.
 The preview command copies referenced PNGs alongside its output and resolves
 Content-IDs to those local copies for browser viewing.
 
+## Outlook conditional comments
+
+The generated HTML keeps MJML's Outlook conditional comments
+(`<!--[if mso]>…<![endif]-->` and the revealed `<!--[if !mso]><!-->` markers).
+`html/template` strips ordinary comments, so the renderer lifts each complete
+conditional comment out as trusted static markup before parsing. A template
+action inside a conditional comment is rejected at startup.
+
 ## Typed properties
 
 Every MJML and text source starts with a non-rendering license header followed

@@ -15,6 +15,7 @@ import (
 	"io/fs"
 	"net"
 	"net/url"
+	"regexp"
 	"strings"
 	texttemplate "text/template"
 	"time"
@@ -162,7 +163,7 @@ func newRenderer(files fs.FS, localizer *localization.Localizer, validateComplet
 		if err != nil || len(images) != 1 {
 			return nil, fmt.Errorf("mail template %q must reference one released inline logo", key)
 		}
-		htmlValue, err := htmltemplate.New(name).Option("missingkey=error").Parse(string(htmlSource))
+		htmlValue, err := parseMailHTMLTemplate(name, string(htmlSource))
 		if err != nil {
 			return nil, fmt.Errorf("parse HTML mail template %q: %w", key, err)
 		}
@@ -506,4 +507,31 @@ func validateActionURL(raw string, allowLoopbackHTTPDevelopment bool) error {
 		return errors.New("mail action URL HTTP development origin must be loopback")
 	}
 	return nil
+}
+
+// outlookConditionalComment matches a complete Outlook conditional comment:
+// a hidden block (<!--[if mso]>...<![endif]-->) or one marker of a revealed
+// block (<!--[if !mso]><!--> and <!--<![endif]-->).
+var outlookConditionalComment = regexp.MustCompile(`(?s)<!--(?:\[if [^\]]+\]|<!\[endif\]).*?-->`)
+
+// parseMailHTMLTemplate keeps the generated Outlook conditional comments that
+// html/template would otherwise strip as ordinary comments. Each comment is
+// static generated markup; it is replaced by a template call returning the
+// exact trusted text, so the escaper still owns every dynamic value.
+func parseMailHTMLTemplate(name, source string) (*htmltemplate.Template, error) {
+	var conditionals []htmltemplate.HTML
+	var invalid error
+	rewritten := outlookConditionalComment.ReplaceAllStringFunc(source, func(comment string) string {
+		if strings.Contains(comment, "{{") || strings.Contains(comment, "}}") {
+			invalid = fmt.Errorf("mail template %q has a template action inside an Outlook conditional comment", name)
+		}
+		conditionals = append(conditionals, htmltemplate.HTML(comment)) // #nosec G203 -- static generated template markup.
+		return fmt.Sprintf("{{outlookConditional %d}}", len(conditionals)-1)
+	})
+	if invalid != nil {
+		return nil, invalid
+	}
+	return htmltemplate.New(name).Option("missingkey=error").Funcs(htmltemplate.FuncMap{
+		"outlookConditional": func(index int) htmltemplate.HTML { return conditionals[index] },
+	}).Parse(rewritten)
 }
