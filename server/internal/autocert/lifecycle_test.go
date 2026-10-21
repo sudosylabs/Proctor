@@ -332,3 +332,53 @@ func (r *cancellationBlockingRoundTripper) RoundTrip(request *http.Request) (*ht
 var _ Cache = (*cancellationBlockingCache)(nil)
 var _ Cache = failingDeleteCache{}
 var _ http.RoundTripper = (*cancellationBlockingRoundTripper)(nil)
+
+func TestRenewalReschedulesAfterTimedOutAttempt(t *testing.T) {
+	t.Parallel()
+
+	type renewalLoop struct {
+		next time.Duration
+		err  error
+	}
+	loops := make(chan renewalLoop, 1)
+	failures := make(chan error, 1)
+	manager := &Manager{
+		Cache: deadlineBlockingCache{},
+		Client: &acme.Client{
+			DirectoryURL: "https://acme.invalid/directory",
+			HTTPClient:   &http.Client{Transport: failingRoundTripper{}},
+		},
+		renewalTimeout: 10 * time.Millisecond,
+		didRenewLoop:   func(next time.Duration, err error) { loops <- renewalLoop{next: next, err: err} },
+		RenewalFailed: func(domain string, retryIn time.Duration, err error) {
+			if domain == "proctor.example.edu" && retryIn >= 30*time.Minute {
+				failures <- err
+			}
+		},
+	}
+	t.Cleanup(func() { require.NoError(t, manager.Close()) })
+	now := time.Now()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	manager.startRenew(certKey{domain: "proctor.example.edu"}, key, now.Add(-90*24*time.Hour), now)
+
+	select {
+	case loop := <-loops:
+		require.ErrorIs(t, loop.err, context.DeadlineExceeded)
+		require.GreaterOrEqual(t, loop.next, 30*time.Minute)
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "a timed-out renewal attempt was not rescheduled")
+	}
+	require.ErrorIs(t, <-failures, context.DeadlineExceeded)
+}
+
+// deadlineBlockingCache holds every read until the caller's context ends, so a
+// renewal attempt exhausts its own deadline.
+type deadlineBlockingCache struct{}
+
+func (deadlineBlockingCache) Get(ctx context.Context, _ string) ([]byte, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+func (deadlineBlockingCache) Put(context.Context, string, []byte) error { return nil }
+func (deadlineBlockingCache) Delete(context.Context, string) error      { return nil }

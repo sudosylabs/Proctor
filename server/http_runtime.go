@@ -12,6 +12,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -19,6 +20,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/internal/autocert"
@@ -85,7 +87,7 @@ func newHTTPServer(settings httpServerSettings) httpRuntime {
 		}
 	case config.ServerTLSModeLetsEncrypt:
 		runtime.newAutomaticCertificateManager = func() automaticCertificateManager {
-			return newAutomaticCertificateManager(settings.tls)
+			return newAutomaticCertificateManager(settings.tls, settings.errorLog)
 		}
 		runtime.serve = func(listener net.Listener) error {
 			return runtime.primary.ServeTLS(listener, "", "")
@@ -212,7 +214,7 @@ type ownedAutomaticCertificateManager struct {
 	hostname string
 }
 
-func newAutomaticCertificateManager(settings httpTLSSettings) *ownedAutomaticCertificateManager {
+func newAutomaticCertificateManager(settings httpTLSSettings, errorLog *log.Logger) *ownedAutomaticCertificateManager {
 	return &ownedAutomaticCertificateManager{
 		hostname: settings.letsEncryptHostname,
 		manager: &autocert.Manager{
@@ -220,6 +222,11 @@ func newAutomaticCertificateManager(settings httpTLSSettings) *ownedAutomaticCer
 			Prompt:     letsEncryptTermsPrompt(settings.letsEncryptAcceptTOS),
 			Email:      settings.letsEncryptEmail,
 			HostPolicy: autocert.HostWhitelist(settings.letsEncryptHostname),
+			RenewalFailed: func(domain string, retryIn time.Duration, err error) {
+				if errorLog != nil {
+					errorLog.Printf("Let's Encrypt certificate renewal for %s failed; keeping the current certificate and retrying in %s: %v", domain, retryIn.Round(time.Second), err)
+				}
+			},
 		},
 	}
 }

@@ -19,12 +19,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -474,4 +476,16 @@ func writeTestCertificate(t *testing.T) (string, string) {
 	require.NoError(t, os.WriteFile(certificateFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificateDER}), 0o600))
 	require.NoError(t, os.WriteFile(privateKeyFile, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateKeyDER}), 0o600))
 	return certificateFile, privateKeyFile
+}
+
+func TestAutomaticCertificateRenewalFailureIsLogged(t *testing.T) {
+	t.Parallel()
+
+	var output strings.Builder
+	manager := newAutomaticCertificateManager(httpTLSSettings{letsEncryptHostname: "proctor.example.edu"}, log.New(&output, "", 0))
+	t.Cleanup(func() { require.NoError(t, manager.Close()) })
+	manager.manager.RenewalFailed("proctor.example.edu", 45*time.Minute, errors.New("ACME order rejected"))
+	require.Equal(t,
+		"Let's Encrypt certificate renewal for proctor.example.edu failed; keeping the current certificate and retrying in 45m0s: ACME order rejected\n",
+		output.String())
 }

@@ -43,7 +43,10 @@ import (
 // DefaultACMEDirectory is the default ACME Directory URL used when the Manager's Client is nil.
 const DefaultACMEDirectory = "https://acme-v02.api.letsencrypt.org/directory"
 
-const defaultCreateCertRetryAfter = time.Minute
+const (
+	defaultCreateCertRetryAfter  = time.Minute
+	defaultRenewalAttemptTimeout = 10 * time.Minute
+)
 
 // AcceptTOS is a Manager.Prompt function that always returns true to
 // indicate acceptance of the CA's Terms of Service during account
@@ -167,6 +170,11 @@ type Manager struct {
 	// See RFC 8555, Section 7.3.4 for more details.
 	ExternalAccountBinding *acme.ExternalAccountBinding
 
+	// RenewalFailed, if not nil, is called after a renewal attempt for domain
+	// fails, with the delay before the next attempt. It runs on the renewal
+	// goroutine and must return promptly.
+	RenewalFailed func(domain string, retryIn time.Duration, err error)
+
 	clientMu sync.Mutex
 	client   *acme.Client // initialized by acmeClient method
 
@@ -210,6 +218,7 @@ type Manager struct {
 	randMu             sync.Mutex
 	rand               *mathrand.Rand
 	retryAfter         time.Duration
+	renewalTimeout     time.Duration
 	didStartBackground func()
 	didRemoveState     func(certKey)
 	didRenewLoop       func(time.Duration, error)
@@ -1068,6 +1077,13 @@ func (m *Manager) retainedCleanupError() error {
 	m.errorMu.Lock()
 	defer m.errorMu.Unlock()
 	return m.retainedError
+}
+
+func (m *Manager) renewalAttemptTimeout() time.Duration {
+	if m.renewalTimeout > 0 {
+		return m.renewalTimeout
+	}
+	return defaultRenewalAttemptTimeout
 }
 
 func (m *Manager) failedIssuanceRetryAfter() time.Duration {

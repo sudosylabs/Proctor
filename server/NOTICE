@@ -140,7 +140,9 @@ The upstream copyright and license notice are preserved in those files, in
 `server/LICENSES/BSD-3-Clause.txt`. Proctor adds an explicitly closable manager:
 certificate issuance, deferred authorization cleanup, failed-issuance retry,
 and renewal work share a cancellable lifecycle, and Close waits for owned
-background work. The Proctor HTTP runtime additionally enforces its one exact
+background work. Only that lifecycle ends renewal: an attempt that exhausts its
+own deadline is retried like any other failure and reported to an optional
+RenewalFailed callback. The Proctor HTTP runtime additionally enforces its one exact
 canonical hostname before either cached-certificate selection or HTTP-01
 challenge handling.
 

@@ -80,17 +80,22 @@ func (dr *domainRenewal) renew() {
 		dr.timer = nil
 		return
 	}
-	ctx, cancel := context.WithTimeout(lifecycleCtx, 10*time.Minute)
+	ctx, cancel := context.WithTimeout(lifecycleCtx, dr.m.renewalAttemptTimeout())
 	defer cancel()
 	// TODO: rotate dr.key at some point?
 	next, err := dr.do(ctx)
-	if ctx.Err() != nil || dr.m.closed.Load() {
+	// Only the manager lifecycle ends renewal. An attempt that exhausted its
+	// own deadline is an ordinary failure and is retried like any other.
+	if lifecycleCtx.Err() != nil || dr.m.closed.Load() {
 		dr.timer = nil
 		return
 	}
 	if err != nil {
 		next = time.Hour / 2
 		next += time.Duration(dr.m.randomInt63n(int64(next)))
+		if dr.m.RenewalFailed != nil {
+			dr.m.RenewalFailed(dr.ck.domain, next, err)
+		}
 	}
 	if dr.m.didRenewLoop != nil {
 		dr.m.didRenewLoop(next, err)
