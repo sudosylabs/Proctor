@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 func TestPublicFailuresConcealDenialAndAbsence(t *testing.T) {
@@ -34,4 +35,27 @@ func TestPublicFailuresConcealDenialAndAbsence(t *testing.T) {
 	err = publicFailures.Conceal(dependency)
 	require.True(t, apperror.Is(err, want.Unavailable), "Conceal(dependency) = %v, want wrapped %s", err, want.Unavailable)
 	require.ErrorIs(t, err, dependency, "Conceal(dependency) = %v, want wrapped %s", err, want.Unavailable)
+}
+
+// TestBrowserSourceConflictsKeepTheirMeaning covers every conflict the Browser
+// source Store mints, so the desktop can tell a spent source budget from other
+// Browser conflicts instead of receiving the generic Attempt conflict.
+func TestBrowserSourceConflictsKeepTheirMeaning(t *testing.T) {
+	t.Parallel()
+	for constraint, want := range map[string]string{
+		"browser_source_limit":       "exam.browser.source_budget_exhausted",
+		"browser_source_conflict":    "exam.attempt.browser_activity_conflict",
+		"browser_source_current":     "exam.attempt.browser_activity_conflict",
+		"browser_source_predecessor": "exam.attempt.browser_activity_conflict",
+		"browser_source_policy":      "exam.attempt.browser_activity_conflict",
+		"browser_source_fence":       "exam.attempt.browser_activity_conflict",
+		"browser_policy_disabled":    "exam.attempt.browser_activity_conflict",
+		"browser_policy_revision":    "exam.attempt.browser_activity_conflict",
+	} {
+		t.Run(constraint, func(t *testing.T) {
+			t.Parallel()
+			err := storeError(storeErrors, store.NewErrConflict("browser_activity", constraint, nil))
+			require.Equal(t, want, apperror.CodeOf(err, ""))
+		})
+	}
 }

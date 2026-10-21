@@ -211,6 +211,10 @@ module when a change is not server-only. No module has been released yet.
   delivery state instead of leaving it queued.
 - Server: transactional mail keeps its Outlook conditional comments, so the
   layout renders in desktop Outlook.
+- Server: Browser source refusals keep their meaning, so a spent source budget
+  reports `exam.browser.source_budget_exhausted` instead of the generic Attempt
+  conflict; `errors-check` rejects Store tables that map constraints the Store
+  never produces.
 - Cache: counter expirations are fixed windows.
 - Server: `server/go.mod` pins the current cache, mail, and VFS modules, so
   `GOWORK=off` builds include the fixed-window counters and the other module

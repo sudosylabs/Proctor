@@ -503,7 +503,6 @@ func TestStoreConflictsHaveStableFaults(t *testing.T) {
 		"exam_sitting_revision":                "exam.sitting.revision_conflict",
 		"exam_sitting_no_changes":              "exam.sitting.no_changes",
 		"exam_sitting_state":                   "exam.sitting.state_conflict",
-		"exam_sitting_extension":               "exam.sitting.extension_not_later",
 		"exam_sitting_extension_not_later":     "exam.sitting.extension_not_later",
 		"exam_sitting_deadline_reached":        "exam.sitting.deadline_reached",
 		"exam_sitting_class_lineage":           "exam.sitting.class_ineligible",

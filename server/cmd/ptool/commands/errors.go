@@ -59,7 +59,7 @@ func newErrorsGenerateCommand(options *errorCatalogOptions) *cobra.Command {
 func newErrorsCheckCommand(options *errorCatalogOptions) *cobra.Command {
 	return &cobra.Command{
 		Use:   "check",
-		Short: "Fail when the mapping is stale or source mints codes the catalog does not list",
+		Short: "Fail when the mapping is stale, source mints codes the catalog does not list, or a Store table maps an unproduced constraint",
 		Args:  cobra.NoArgs,
 		RunE: func(command *cobra.Command, _ []string) error {
 			catalog, err := readErrorCatalog(options.catalog)
@@ -78,6 +78,9 @@ func newErrorsCheckCommand(options *errorCatalogOptions) *cobra.Command {
 				return err
 			}
 			if err = catalog.Verify(mints); err != nil {
+				return err
+			}
+			if err = verifyStoreTableConstraints(options.module); err != nil {
 				return err
 			}
 			_, err = fmt.Fprintf(command.OutOrStdout(), "verified %d catalog codes against %d minted constants\n", len(catalog.Entries), len(mints))

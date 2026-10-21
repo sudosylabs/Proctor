@@ -634,11 +634,10 @@ var publicFailures = apperror.Concealment{
 
 var storeErrors = apperror.StoreTable{
 	Constraints: map[string]apperror.Code{
-		"integrity_review_revision":          "exam.integrity_review.revision_conflict",
-		"integrity_decision_revision":        "exam.integrity_review.revision_conflict",
-		"integrity_review_incomplete":        "exam.integrity_review.incomplete",
-		"integrity_review_inventory_changed": "exam.integrity_review.incomplete",
-		"integrity_review_too_large":         "exam.integrity_review.too_large",
+		"integrity_review_revision":   "exam.integrity_review.revision_conflict",
+		"integrity_decision_revision": "exam.integrity_review.revision_conflict",
+		"integrity_review_incomplete": "exam.integrity_review.incomplete",
+		"integrity_review_too_large":  "exam.integrity_review.too_large",
 	},
 	NotFound:     "exam.integrity_review.not_found",
 	Conflict:     "exam.integrity_review.state_conflict",
