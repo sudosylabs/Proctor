@@ -170,7 +170,8 @@ module when a change is not server-only. No module has been released yet.
 - Server: every inbound WebSocket frame is rate-limited, and HTTP and WebSocket
   share origin normalization.
 - Server: candidate answers are no longer spooled to the temporary directory,
-  and transfer deadlines are sized from route declarations.
+  and transfer deadlines are sized from route declarations and, for uploads,
+  from the declared request length.
 - Server: manager re-allow, reschedule, and cancel use database time; voluntary
   seal lifecycle times stay monotonic; and late focus-loss discrepancies
   invalidate review waivers.

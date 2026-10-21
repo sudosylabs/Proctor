@@ -42,6 +42,27 @@ func TestTransferAllowanceUsesMinimumThroughput(t *testing.T) {
 	}
 }
 
+func TestUploadDeadlineFollowsTheDeclaredLength(t *testing.T) {
+	t.Parallel()
+
+	const maximum = 32 << 20
+	for _, test := range []struct {
+		name          string
+		contentLength int64
+		want          int64
+	}{
+		{name: "unknown length", contentLength: -1, want: maximum},
+		{name: "empty body", contentLength: 0, want: 0},
+		{name: "small declared body", contentLength: 1024, want: 1024},
+		{name: "declared above the route maximum", contentLength: maximum + 1, want: maximum},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, test.want, uploadTransferBytes(test.contentLength, maximum))
+		})
+	}
+}
+
 // TestTransferRoutesOutliveServerTimeouts runs a real HTTP server whose
 // connection timeouts are shorter than a declared transfer. Ordinary routes
 // keep those timeouts; upload and download routes must finish.

@@ -47,10 +47,22 @@ func transferAllowance(size int64) time.Duration {
 	return time.Duration(seconds) * time.Second
 }
 
-// extendForUpload extends the read deadline for a request body of at most
-// maxBodyBytes and the write deadline for the response that follows it.
-func (d transferDeadlines) extendForUpload(writer http.ResponseWriter, maxBodyBytes int64) error {
-	allowance := transferAllowance(maxBodyBytes)
+// uploadTransferBytes is the body size an upload's deadline is sized for: the
+// declared Content-Length when the client sent one within the route maximum,
+// otherwise the route maximum. A client cannot earn the time of a maximal
+// upload by declaring a small one, because the server reads no more than the
+// declared length.
+func uploadTransferBytes(contentLength, maxBodyBytes int64) int64 {
+	if contentLength >= 0 && contentLength < maxBodyBytes {
+		return contentLength
+	}
+	return maxBodyBytes
+}
+
+// extendForUpload extends the read deadline for the request body, sized by
+// uploadTransferBytes, and the write deadline for the response that follows.
+func (d transferDeadlines) extendForUpload(writer http.ResponseWriter, contentLength, maxBodyBytes int64) error {
+	allowance := transferAllowance(uploadTransferBytes(contentLength, maxBodyBytes))
 	controller := http.NewResponseController(writer)
 	var result error
 	if d.readTimeout > 0 {

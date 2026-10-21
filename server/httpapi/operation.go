@@ -308,7 +308,7 @@ func (a *API) protocolOperationHandler(
 			return
 		}
 		if definition.protocolKind == RouteProtocolStreamingUpload {
-			if err := a.transferDeadlines.extendForUpload(writer, definition.maxBodyBytes); err != nil {
+			if err := a.transferDeadlines.extendForUpload(writer, request.ContentLength, definition.maxBodyBytes); err != nil {
 				a.logger.ErrorContext(request.Context(), "extend upload transfer deadline", logErr(err))
 			}
 		}
