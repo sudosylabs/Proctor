@@ -43,6 +43,10 @@ func TestAccountMailerAdapterClassifiesPortableAndLegacyFailures(t *testing.T) {
 		{name: "legacy temporary", err: mailpkg.ErrConnection, want: appmail.TransportTemporary},
 		{name: "legacy permanent", err: mailpkg.ErrRejected, want: appmail.TransportPermanent},
 		{name: "unknown", err: errors.New("unknown"), want: appmail.TransportUnknown},
+		{name: "relay TLS", err: mailpkg.ErrTLS, want: appmail.TransportTemporary},
+		{name: "relay authentication", err: mailpkg.ErrAuthentication, want: appmail.TransportTemporary},
+		{name: "relay TLS annotated permanent", err: mailpkg.WithOutcome(mailpkg.OutcomePermanent, mailpkg.ErrTLS), want: appmail.TransportTemporary},
+		{name: "relay authentication annotated permanent", err: mailpkg.WithOutcome(mailpkg.OutcomePermanent, mailpkg.ErrAuthentication), want: appmail.TransportTemporary},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

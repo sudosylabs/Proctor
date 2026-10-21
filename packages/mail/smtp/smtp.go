@@ -242,7 +242,7 @@ func (s *Sender) connect(ctx context.Context) (*smtp.Client, func(), error) {
 		tlsDialer := tls.Dialer{NetDialer: dialer, Config: s.tlsConfig.Clone()}
 		connection, err = tlsDialer.DialContext(ctx, "tcp", s.address)
 		if err != nil {
-			return nil, nil, mail.Error("connect", classify(ctx, mail.ErrTLS, err, false))
+			return nil, nil, mail.Error("connect", sessionError(ctx, mail.ErrTLS, err))
 		}
 	} else {
 		connection, err = dialer.DialContext(ctx, "tcp", s.address)
@@ -295,22 +295,23 @@ func (s *Sender) connect(ctx context.Context) (*smtp.Client, func(), error) {
 	if s.security == SecuritySTARTTLS {
 		if supported, _ := client.Extension("STARTTLS"); !supported {
 			cleanup()
-			return nil, nil, mail.Error("starttls", mail.ErrTLS)
+			return nil, nil, mail.Error("starttls", mail.WithOutcome(mail.OutcomeTemporary,
+				fmt.Errorf("%w: server does not advertise STARTTLS", mail.ErrTLS)))
 		}
 		if err := client.StartTLS(s.tlsConfig.Clone()); err != nil {
 			cleanup()
-			return nil, nil, mail.Error("starttls", classify(ctx, mail.ErrTLS, err, false))
+			return nil, nil, mail.Error("starttls", sessionError(ctx, mail.ErrTLS, err))
 		}
 	}
 	if s.authentication != AuthenticationNone {
 		auth, err := s.auth(client)
 		if err != nil {
 			cleanup()
-			return nil, nil, mail.Error("authenticate", err)
+			return nil, nil, mail.Error("authenticate", mail.WithOutcome(mail.OutcomeTemporary, err))
 		}
 		if err := client.Auth(auth); err != nil {
 			cleanup()
-			return nil, nil, mail.Error("authenticate", classify(ctx, mail.ErrAuthentication, err, false))
+			return nil, nil, mail.Error("authenticate", sessionError(ctx, mail.ErrAuthentication, err))
 		}
 	}
 	return client, cleanup, nil
@@ -364,6 +365,18 @@ func (s *Sender) smtpError(
 		sentinel = mail.ErrRejected
 	}
 	return mail.Error(operation, classify(ctx, sentinel, err, acceptancePossible))
+}
+
+// sessionError classifies a failure to secure or authenticate the relay
+// session. A rejected certificate, a missing STARTTLS offer, or a 5xx
+// authentication reply says nothing about the message: the relay is
+// unusable until an operator repairs it, so the outcome is temporary.
+func sessionError(ctx context.Context, sentinel, err error) error {
+	classified := classify(ctx, sentinel, err, false)
+	if mail.Classify(classified) == mail.OutcomePermanent {
+		return mail.WithOutcome(mail.OutcomeTemporary, fmt.Errorf("%w: %w", sentinel, err))
+	}
+	return classified
 }
 
 func classify(ctx context.Context, sentinel, err error, acceptancePossible bool) error {

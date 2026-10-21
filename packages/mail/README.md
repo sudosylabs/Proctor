@@ -135,8 +135,12 @@ case mail.OutcomeUnknown:
 }
 ```
 
-SMTP 4xx replies and failures before transmission are temporary. SMTP 5xx
-replies and local message validation failures are permanent. A connection loss
+SMTP 4xx replies and failures before transmission are temporary. Failures to
+secure or authenticate the relay session, such as a rejected certificate, a
+missing STARTTLS offer, or a 5xx authentication reply, are temporary too:
+they are relay outages an operator repairs, not properties of the message.
+SMTP 5xx replies to the envelope or data and local message validation failures
+are permanent. A connection loss
 while writing or committing `DATA` is acceptance-uncertain; a retry can produce
 a duplicate and should reuse the original Message-ID. Successful `DATA`
 completion remains the acceptance boundary, so a later `QUIT` failure does not

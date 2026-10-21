@@ -419,7 +419,9 @@ navigation design.
 Transport classification belongs to `packages/mail`: temporary, permanent,
 or acceptance-uncertain while preserving portable error matching. SMTP 4xx
 and transient network failures retry; 5xx and invalid messages fail
-permanently. Failure after possible remote acceptance is uncertain and may
+permanently. Failures to secure or authenticate the relay session (certificate,
+STARTTLS, or authentication) are relay outages, not message faults: they retry
+and set the `mail.smtp_outage` health code. Failure after possible remote acceptance is uncertain and may
 retry with the stable Message-ID. Exactly-once SMTP is not promised.
 
 Before every attempt, a typed relevance check runs. Recovery mail requires an

@@ -245,6 +245,12 @@ type portableMailOutcome interface {
 }
 
 func classifyMailTransportError(err error) appmail.TransportOutcome {
+	// A relay that cannot be secured or authenticated is an outage, not a
+	// property of the message: retry, and let mail health report it. This
+	// holds even when an older pinned mail module annotates it permanent.
+	if errors.Is(err, mailpkg.ErrTLS) || errors.Is(err, mailpkg.ErrAuthentication) {
+		return appmail.TransportTemporary
+	}
 	var portable portableMailOutcome
 	if errors.As(err, &portable) {
 		switch portable.MailOutcome() {
@@ -261,7 +267,6 @@ func classifyMailTransportError(err error) appmail.TransportOutcome {
 		return appmail.TransportTemporary
 	case errors.Is(err, mailpkg.ErrInvalidMessage), errors.Is(err, mailpkg.ErrInvalidAddress),
 		errors.Is(err, mailpkg.ErrInvalidHeader), errors.Is(err, mailpkg.ErrMessageTooLarge),
-		errors.Is(err, mailpkg.ErrTLS), errors.Is(err, mailpkg.ErrAuthentication),
 		errors.Is(err, mailpkg.ErrRejected), errors.Is(err, mailpkg.ErrUnsupported):
 		return appmail.TransportPermanent
 	default:

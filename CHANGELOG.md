@@ -180,6 +180,9 @@ module when a change is not server-only. No module has been released yet.
   blocking every mail-preparing mutation for that User; the pre-release SQL
   baseline enforces the same rule (**breaking** for development databases). A
   Sitting mail fan-out skips an unaddressable recipient instead of stopping.
+- Server: an SMTP relay certificate, STARTTLS, or authentication failure
+  retries and reports `mail.smtp_outage` instead of permanently failing every
+  in-flight message.
 - Cache: counter expirations are fixed windows.
 - Server: `server/go.mod` pins the current cache, mail, and VFS modules, so
   `GOWORK=off` builds include the fixed-window counters and the other module
@@ -192,5 +195,7 @@ module when a change is not server-only. No module has been released yet.
 - VFS: delimited S3 listings return common prefixes in key order among
   objects, so a page and its cursor no longer skip prefixes that sort before
   the page's last object.
+- Mail: relay TLS, STARTTLS, and authentication failures classify as
+  temporary rather than permanent.
 
 [Unreleased]: https://github.com/sudosylabs/proctor/commits/main

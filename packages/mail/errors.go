@@ -98,14 +98,18 @@ func Classify(err error) Outcome {
 	switch {
 	case errors.Is(err, context.Canceled),
 		errors.Is(err, context.DeadlineExceeded),
-		errors.Is(err, ErrConnection):
+		errors.Is(err, ErrConnection),
+		errors.Is(err, ErrTLS),
+		errors.Is(err, ErrAuthentication):
+		// TLS and authentication failures describe the relay session, not
+		// the message: an expired relay certificate or rotated credential is
+		// an outage that an operator fixes, after which the same message can
+		// be delivered.
 		return OutcomeTemporary
 	case errors.Is(err, ErrInvalidMessage),
 		errors.Is(err, ErrInvalidAddress),
 		errors.Is(err, ErrInvalidHeader),
 		errors.Is(err, ErrMessageTooLarge),
-		errors.Is(err, ErrTLS),
-		errors.Is(err, ErrAuthentication),
 		errors.Is(err, ErrRejected),
 		errors.Is(err, ErrUnsupported):
 		return OutcomePermanent

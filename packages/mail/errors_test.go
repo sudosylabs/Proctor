@@ -26,8 +26,8 @@ func TestClassifyReturnsPortableOutcome(t *testing.T) {
 		{name: "invalid address", err: mail.ErrInvalidAddress, want: mail.OutcomePermanent},
 		{name: "invalid header", err: mail.ErrInvalidHeader, want: mail.OutcomePermanent},
 		{name: "message too large", err: mail.ErrMessageTooLarge, want: mail.OutcomePermanent},
-		{name: "tls", err: mail.ErrTLS, want: mail.OutcomePermanent},
-		{name: "authentication", err: mail.ErrAuthentication, want: mail.OutcomePermanent},
+		{name: "tls", err: mail.ErrTLS, want: mail.OutcomeTemporary},
+		{name: "authentication", err: mail.ErrAuthentication, want: mail.OutcomeTemporary},
 		{name: "rejected without transport detail", err: mail.ErrRejected, want: mail.OutcomePermanent},
 		{name: "unsupported", err: mail.ErrUnsupported, want: mail.OutcomePermanent},
 	}
