@@ -120,13 +120,20 @@ Unlike Mattermost, Proctor exposes no pprof routes, defaults to loopback, and
 requires TLS plus bearer authentication for non-loopback exposure.
 
 The automatic-certificate implementation in `server/internal/autocert` adapts
-the following files from `golang.org/x/crypto/acme/autocert` v0.52.0, revision
-a1c0d9929856c8aba2b31f079340f00578eda803, under the BSD 3-Clause License:
+the following files from `golang.org/x/crypto` v0.55.0, revision
+f44d03d253a1503e51b059ca880867c51d878242, under the BSD 3-Clause License:
 
 - acme/autocert/autocert.go;
 - acme/autocert/cache.go;
 - acme/autocert/renewal.go;
+- acme/autocert/autocert_test.go (`TestGetCertificate_concurrent` only, in
+  `server/internal/autocert/autocert_test.go`);
 - LICENSE.
+
+That revision includes the upstream fix for golang/go#80119 (certificate state
+ownership decided under the state lock). Later upstream revisions change only
+`authorizedCert` to call `acme.Client.CreateCertFromOrder`, which first ships in
+`golang.org/x/crypto` v0.58.0; that release requires Go 1.26, above the server's Go 1.25.
 
 The upstream copyright and license notice are preserved in those files, in
 `server/internal/autocert/LICENSE`, and in the distributed

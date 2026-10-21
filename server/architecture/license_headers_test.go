@@ -50,9 +50,10 @@ var (
 		"service_environment_production_default.go": {},
 	}
 	bsdGoFiles = map[string]struct{}{
-		"internal/autocert/autocert.go": {},
-		"internal/autocert/cache.go":    {},
-		"internal/autocert/renewal.go":  {},
+		"internal/autocert/autocert.go":      {},
+		"internal/autocert/autocert_test.go": {},
+		"internal/autocert/cache.go":         {},
+		"internal/autocert/renewal.go":       {},
 	}
 )
 

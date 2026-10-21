@@ -71,6 +71,9 @@ module when a change is not server-only. No module has been released yet.
 
 ### Fixed
 
+- Server: concurrent first TLS handshakes for the automatic-certificate
+  hostname no longer crash the process (golang/go#80119); the embedded ACME
+  client is rebased on `golang.org/x/crypto` v0.55.0.
 - Server: re-allowing a focus-loss suspension no longer reports a committed
   re-allow as unavailable.
 - Server: a failed audit completion is joined with, not substituted for, the
