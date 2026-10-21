@@ -215,6 +215,7 @@ type lifecycleHTTP struct {
 	beforeAccept     <-chan struct{}
 	afterShutdown    func()
 	keepServing      bool
+	drainUntilDone   bool
 	stoppedErr       error
 	once             sync.Once
 }
@@ -242,10 +243,14 @@ func (s *lifecycleHTTP) Serve(_ net.Listener, accept func() bool) error {
 	return http.ErrServerClosed
 }
 
-func (s *lifecycleHTTP) Shutdown(context.Context) error {
+func (s *lifecycleHTTP) Shutdown(ctx context.Context) error {
 	s.events.record("http-shutdown")
 	if s.afterShutdown != nil {
 		s.afterShutdown()
+	}
+	if s.drainUntilDone {
+		<-ctx.Done()
+		return ctx.Err()
 	}
 	if !s.keepServing {
 		s.once.Do(func() { close(s.stopped) })
@@ -500,6 +505,39 @@ func TestServerServingLeaseRenewalFailureDrainsBeforeLeaseWithdrawal(t *testing.
 	assertLifecycleEvents(t, events,
 		"platform-start", "serving-lease-start", "jobs-start", "websocket-start",
 		"http-serve", "ready", "unready", "http-force-close", "jobs-close",
+		"websocket-close", "transport-close", "serving-lease-close", "platform-close",
+	)
+}
+
+func TestServerServingLeaseFailureDuringGracefulDrainForceClosesHTTP(t *testing.T) {
+	t.Parallel()
+
+	renewalErr := errors.New("serving lease renewal failed")
+	events := &lifecycleEvents{}
+	lease := &lifecycleServingNodeLease{events: events, failures: make(chan error, 1)}
+	// Connections never drain on their own; the lease fails mid-drain.
+	httpService := &lifecycleHTTP{
+		events: events, started: make(chan struct{}), stopped: make(chan struct{}), drainUntilDone: true,
+		afterShutdown: func() { lease.failures <- renewalErr },
+	}
+	node := newLifecycleTestServer(t, runtimeComponents{
+		platform: &lifecyclePlatform{events: events}, servingLease: lease,
+		jobs: &lifecycleJobs{events: events}, websocket: &lifecycleWebSocket{events: events},
+		transport: &lifecycleTransport{events: events}, readiness: &lifecycleReadiness{events: events},
+		listen:  func(string, string) (net.Listener, error) { return &lifecycleListener{}, nil },
+		newHTTP: func(httpServerSettings) httpRuntime { return httpService },
+	})
+	node.components.settings.shutdownTimeout = time.Minute
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- node.Run(ctx) }()
+	waitForLifecycleReady(t, node)
+	cancel()
+	err := receiveLifecycleResult(t, done, "Run after serving lease failure during drain")
+	require.ErrorIs(t, err, renewalErr, "Run() error")
+	assertLifecycleEvents(t, events,
+		"platform-start", "serving-lease-start", "jobs-start", "websocket-start",
+		"http-serve", "ready", "unready", "http-shutdown", "http-force-close", "jobs-close",
 		"websocket-close", "transport-close", "serving-lease-close", "platform-close",
 	)
 }

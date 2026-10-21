@@ -144,6 +144,9 @@ module when a change is not server-only. No module has been released yet.
 - Release image: packaged binaries and webapp are owned by root and read-only
   to the runtime user, and the image declares a `HEALTHCHECK` that runs
   `proctor-healthcheck` against readiness.
+- Server: the serving lease keeps renewing during graceful shutdown until HTTP
+  has stopped, and a lease failure during the drain force-stops HTTP, so a node
+  can no longer keep serving after its fence may have expired.
 - Server: re-allowing a focus-loss suspension no longer reports a committed
   re-allow as unavailable.
 - Server: a client that disconnects mid-mutation no longer leaves its audit

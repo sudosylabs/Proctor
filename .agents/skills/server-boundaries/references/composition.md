@@ -32,7 +32,10 @@ the exact serving lease, and Platform are disposed. The 30-second lease renews
 every 5 seconds; a transient renewal failure is retried each second while one
 bounded attempt still fits at least 5 seconds before the last proven lease
 expires. A rejected incarnation or exhausted slack instead makes the node
-unready and force-stops HTTP before its last lease can expire. Lease writes
+unready and force-stops HTTP before its last lease can expire. Renewal is
+independent of the run context: it continues through the graceful HTTP drain
+until the lease is closed after serving stops, and a lease failure during the
+drain force-stops HTTP the same way. Lease writes
 share the recovery fence and serialize only per node ID, so nodes never queue
 behind one another's renewals. That failed lease remains until PostgreSQL expiry so offline
 recovery cannot begin early; exact-incarnation withdrawal applies only to

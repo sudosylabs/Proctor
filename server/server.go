@@ -768,7 +768,31 @@ func (s *Server) shutdownHTTP(timeout time.Duration) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	if err := httpServer.Shutdown(ctx); err != nil {
+	// The serving lease keeps renewing while HTTP drains. If it fails, serving
+	// must stop before the lease can expire, so the drain becomes a close.
+	leaseLost := make(chan error, 1)
+	stopWatching := make(chan struct{})
+	watching := make(chan struct{})
+	go func() {
+		defer close(watching)
+		select {
+		case err := <-s.servingNodeLeaseFailures():
+			leaseLost <- err
+			cancel()
+		case <-stopWatching:
+		}
+	}()
+	err := httpServer.Shutdown(ctx)
+	close(stopWatching)
+	<-watching
+	select {
+	case leaseErr := <-leaseLost:
+		result := errors.Join(fmt.Errorf("maintain serving node lease during HTTP shutdown: %w", leaseErr), httpServer.Close())
+		s.retainHTTPShutdownError(result)
+		return result
+	default:
+	}
+	if err != nil {
 		result := errors.Join(fmt.Errorf("graceful HTTP shutdown: %w", err), httpServer.Close())
 		s.retainHTTPShutdownError(result)
 		return result

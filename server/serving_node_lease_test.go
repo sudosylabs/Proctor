@@ -170,3 +170,25 @@ func TestServingNodeLeaseProductionTimingHasBoundedExpiryMargin(t *testing.T) {
 	require.True(t, validServingNodeLeaseTiming(servingNodeLeaseLifetime, servingNodeLeaseRenewalInterval, servingNodeLeaseOperationLimit, servingNodeLeaseStopMargin), "serving lease timing = renewal %s + operation %s + stop margin %s, lifetime %s", servingNodeLeaseRenewalInterval, servingNodeLeaseOperationLimit, servingNodeLeaseStopMargin, servingNodeLeaseLifetime)
 	require.False(t, validServingNodeLeaseTiming(10*time.Second, 5*time.Second, 5*time.Second, time.Second), "timing without a fail-closed expiry margin was accepted")
 }
+
+func TestServingNodeLeaseKeepsRenewingAfterStartContextEndsUntilClose(t *testing.T) {
+	t.Parallel()
+
+	persistence := &servingNodeLeasePersistenceFake{}
+	runtime, err := newServingNodeLeaseRuntime(persistence, "node-a")
+	require.NoError(t, err)
+	useFastServingNodeLeaseTiming(t, runtime)
+	// The server cancels its run context when graceful shutdown begins, while
+	// HTTP may still serve for the whole shutdown timeout.
+	startCtx, cancelStart := context.WithCancel(context.Background())
+	require.NoError(t, runtime.Start(startCtx))
+	cancelStart()
+	upsertsAtShutdown, _ := persistence.calls()
+	require.Eventually(t, func() bool {
+		upserts, _ := persistence.calls()
+		return upserts >= upsertsAtShutdown+3
+	}, 5*time.Second, 5*time.Millisecond, "serving lease stopped renewing when shutdown began")
+	require.NoError(t, runtime.Close())
+	_, deletes := persistence.calls()
+	require.Equal(t, 1, deletes, "lease withdrawals")
+}

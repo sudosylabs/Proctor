@@ -86,7 +86,10 @@ func (r *servingNodeLeaseRuntime) Start(ctx context.Context) error {
 	if err := r.renew(ctx); err != nil {
 		return err
 	}
-	runCtx, cancel := context.WithCancel(ctx)
+	// Renewal outlives ctx: the server cancels its run context when graceful
+	// shutdown begins, but HTTP keeps serving until it drains, so the lease
+	// must keep proving this node until Close after serving has stopped.
+	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	r.mu.Lock()
 	if r.closed || r.started {
 		r.mu.Unlock()
