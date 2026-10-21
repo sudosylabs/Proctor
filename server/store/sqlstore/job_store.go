@@ -594,6 +594,11 @@ func (s SQLJobStore) mutateOperatorJob(ctx context.Context, input *store.JobMuta
 	})
 }
 
+const unreferencedJob = `
+			AND NOT EXISTS (SELECT 1 FROM onboarding_imports WHERE parse_job_id = jobs.id)
+			AND NOT EXISTS (SELECT 1 FROM onboarding_imports WHERE execution_job_id = jobs.id)
+			AND NOT EXISTS (SELECT 1 FROM mail_deliveries WHERE job_id = jobs.id)`
+
 func (s SQLJobStore) DeleteTerminalHistory(ctx context.Context, input *store.JobHistoryCleanup) (*store.JobHistoryCleanupResult, error) {
 	if input == nil || !input.ExcludeJobID.IsValid() || input.Limit < 1 || input.Limit > 200 || len(input.Policies) == 0 || (input.AfterCompletedAt.IsZero() != input.AfterJobID.IsZero()) || (!input.AfterJobID.IsZero() && !input.AfterJobID.IsValid()) {
 		return nil, store.NewErrInvalidInput("job", "history_cleanup", nil)
@@ -617,8 +622,11 @@ func (s SQLJobStore) DeleteTerminalHistory(ctx context.Context, input *store.Job
 			conditions = append(conditions, `(type = ? AND ((status IN ('succeeded', 'canceled') AND completed_at <= ?) OR (status = 'failed' AND completed_at <= ?)))`)
 			arguments = append(arguments, string(policy.Type), databaseNow.Add(-policy.SucceededCanceledAge), databaseNow.Add(-policy.FailedAge))
 		}
+		// A Job that an onboarding import or a mail delivery still references
+		// stays until that row is removed; its NO ACTION foreign key would
+		// otherwise fail every page that reaches it.
 		query := `SELECT id, completed_at FROM jobs WHERE id <> ? AND status IN ('succeeded', 'failed', 'canceled') AND completed_at IS NOT NULL
-			AND id <> COALESCE((SELECT active_rekey_job_id FROM mail_key_state WHERE singleton = TRUE), '')`
+			AND id <> COALESCE((SELECT active_rekey_job_id FROM mail_key_state WHERE singleton = TRUE), '')` + unreferencedJob
 		if !input.AfterCompletedAt.IsZero() {
 			query += ` AND (completed_at > ? OR (completed_at = ? AND id > ?))`
 		}
@@ -643,7 +651,7 @@ func (s SQLJobStore) DeleteTerminalHistory(ctx context.Context, input *store.Job
 			return nil, fmt.Errorf("delete retained job attempts: %w", err)
 		}
 		deleted, err := tx.Exec(ctx, `DELETE FROM jobs WHERE id = ANY(?) AND id <> ? AND status IN ('succeeded', 'failed', 'canceled')
-			AND id <> COALESCE((SELECT active_rekey_job_id FROM mail_key_state WHERE singleton = TRUE), '')`, pq.Array(ids), input.ExcludeJobID.String())
+			AND id <> COALESCE((SELECT active_rekey_job_id FROM mail_key_state WHERE singleton = TRUE), '')`+unreferencedJob, pq.Array(ids), input.ExcludeJobID.String())
 		if err != nil {
 			return nil, fmt.Errorf("delete retained jobs: %w", err)
 		}

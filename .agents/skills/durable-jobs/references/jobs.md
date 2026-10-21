@@ -217,9 +217,13 @@ through permanently deduplicated successors while eligible history remains.
 The successor identity belongs to the preceding Job, so retry or an unknown
 enqueue outcome cannot fork the chain. The worker records whether its page was
 exhausted before enqueueing the successor, and commits that enqueue before
-completing the current Job. A reservation ahead of its checkpoint remains
-consumed; a successor resumes from the oldest remaining history instead of
-repeating the uncertain deletion. Version-1 checkpoints remain readable and
+completing the current Job. Only a checkpointed, nonempty, unexhausted page
+creates an immediate successor. A reservation ahead of its checkpoint remains
+consumed and fails that Job visibly; the next daily occurrence resumes from the
+oldest remaining history instead of repeating the uncertain deletion, so a
+deletion that keeps failing cannot spawn an unbounded chain. Terminal Jobs that
+an onboarding import or a mail delivery still references are skipped until
+that row is removed. Version-1 checkpoints remain readable and
 receive one conservative continuation; version 2 records the exhausted-page
 fact. Every pass rechecks retention eligibility against PostgreSQL time.
 

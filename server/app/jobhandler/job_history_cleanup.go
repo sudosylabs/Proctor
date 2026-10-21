@@ -120,16 +120,19 @@ func (h jobHistoryCleanupHandler) Run(ctx context.Context, execution jobengine.E
 	}
 	remaining := command.BatchSize - execution.Job.WorkReserved
 	if remaining <= 0 {
-		// A reservation survives a crash before deletion or checkpoint. Never
-		// reuse it; the successor starts from the oldest remaining history.
-		return h.finish(ctx, execution.Job, command, checkpoint)
+		// A reservation survives a crash or failure before deletion or
+		// checkpoint. Never reuse it, and never answer it with an immediate
+		// successor: a deletion that keeps failing would otherwise spawn an
+		// unbounded chain of Jobs with fresh budgets. The next daily
+		// occurrence starts from the oldest remaining history.
+		return jobengine.PermanentFailure("dependency.unavailable", errors.New("job history cleanup batch did not complete"))
 	}
 	reserved, reserveErr := execution.ReserveWork(ctx, remaining, command.BatchSize)
 	if reserveErr != nil {
 		return jobengine.RetryableFailure("dependency.unavailable", reserveErr)
 	}
 	if !reserved {
-		return h.finish(ctx, execution.Job, command, checkpoint)
+		return jobengine.PermanentFailure("dependency.unavailable", errors.New("job history cleanup batch did not complete"))
 	}
 	page, deleteErr := h.jobs.DeleteTerminalHistory(ctx, &store.JobHistoryCleanup{ExcludeJobID: execution.Job.ID, Policies: h.policies, Limit: remaining})
 	if deleteErr != nil {
@@ -175,7 +178,8 @@ func decodeHistoryCleanupCheckpoint(version int, document json.RawMessage) (JobH
 }
 
 func (h jobHistoryCleanupHandler) finish(ctx context.Context, parent *model.Job, command JobHistoryCleanupCommandV1, checkpoint JobHistoryCleanupCheckpointV2) jobengine.Outcome {
-	if !checkpoint.Done {
+	// Only a completed, nonempty batch creates an immediate successor.
+	if !checkpoint.Done && checkpoint.Deleted > 0 {
 		document, err := EncodeJobHistoryCleanupCommand(command)
 		if err != nil {
 			return jobengine.PermanentFailure("job.invariant_failed", err)

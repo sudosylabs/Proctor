@@ -120,9 +120,22 @@ func TestJobHistoryCleanupDoesNotRepeatReservedDeletionAfterCrash(t *testing.T) 
 	job.WorkReserved = 2
 	cleaner := &jobHistoryCleanerFake{}
 	outcome := historyCleanupHandlerForTest(cleaner, nil, at).Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), nil))
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v requests", outcome)
+	require.Equal(t, jobengine.OutcomePermanentFailure, outcome.Kind, "outcome=%#v requests", outcome)
 	require.Empty(t, cleaner.requests, "outcome=%#v requests", outcome)
-	require.Len(t, cleaner.enqueued, 1, "uncertain reserved work did not leave a continuation")
+	// An immediate successor would let a deletion that keeps failing spawn an
+	// unbounded chain of fresh Jobs; the next daily occurrence resumes.
+	require.Empty(t, cleaner.enqueued, "uncertain reserved work created an immediate successor")
+}
+
+func TestJobHistoryCleanupEmptyIncompleteBatchDoesNotEnqueueContinuation(t *testing.T) {
+	t.Parallel()
+	at := model.NowUTC()
+	current, err := model.NewJob(model.NewJobID(), model.JobTypeCleanup, 1, json.RawMessage(`{"batch_size":2}`), "daily", at, at, 5)
+	require.NoError(t, err)
+	cleaner := &jobHistoryCleanerFake{results: []*store.JobHistoryCleanupResult{{Deleted: 0, LastCompletedAt: at.Add(-100 * 24 * time.Hour), LastJobID: model.NewJobID()}}}
+	outcome := historyCleanupHandlerForTest(cleaner, nil, at).Run(context.Background(), testJobExecution(current, allowJobWorkReservation(), func(context.Context, jobengine.CheckpointValue) error { return nil }))
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v", outcome)
+	require.Empty(t, cleaner.enqueued, "empty batch created an immediate successor")
 }
 
 func TestJobHistoryCleanupContinuesBeyondDailyBatchUntilExhausted(t *testing.T) {

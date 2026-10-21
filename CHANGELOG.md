@@ -103,6 +103,9 @@ module when a change is not server-only. No module has been released yet.
 - Server: profile-picture and Exam Resource JPEGs with more than 32 scans are
   rejected before decoding, so a small progressive file can no longer hold a
   content permit for minutes.
+- Server: Job history cleanup no longer creates a successor every few seconds
+  after an incomplete batch, and skips Jobs that onboarding imports or mail
+  deliveries still reference instead of failing on them.
 - Server: a mail delivery left Queued or Sending after its Job failed can be
   retried by an operator, and the last Job attempt fails its delivery instead
   of requeuing it with no Job left.

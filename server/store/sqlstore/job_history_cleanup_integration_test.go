@@ -22,6 +22,7 @@ import (
 	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 )
 
 func TestJobHistoryCleanupContinuesAcrossNodesPastOneDailyBatch(t *testing.T) {
@@ -124,6 +125,35 @@ func TestJobHistoryCleanupHonorsStateRetentionAndSelfPreservation(t *testing.T) 
 		_, err = ss.Job().Get(ctx, id)
 		require.NoError(t, err, "protected job %s was removed", id)
 	}
+}
+
+// A terminal Job that a mail delivery still references must survive cleanup:
+// its NO ACTION foreign key would fail every page that reached it, and the
+// cleanup chain would retry forever without deleting any history.
+func TestJobHistoryCleanupSkipsReferencedJobs(t *testing.T) {
+	ss := openTestStore(t)
+	resetTestStore(t, ss)
+	ctx := context.Background()
+	institution, err := ss.Institution().Save(ctx, &model.Institution{Name: "history-reference", DisplayName: "History Reference"})
+	require.NoError(t, err)
+	user := saveIntegrationUser(t, ctx, ss, &model.User{Username: "history-reference", Email: "history-reference@example.edu", DisplayName: "History Reference"})
+	enqueue := storetest.MailTestEnqueueFixtureForSQLTest(t, user, institution, model.NowUTC())
+	delivery, err := ss.Mail().EnqueueTest(ctx, enqueue)
+	require.NoError(t, err)
+	_, err = ss.GetMaster().Exec(ctx, `UPDATE jobs SET status='canceled', public_error_code='job.canceled', created_at=clock_timestamp()-interval '32 days',
+		updated_at=clock_timestamp()-interval '31 days', available_at=clock_timestamp()-interval '32 days', completed_at=clock_timestamp()-interval '31 days' WHERE id=?`, delivery.JobID.String())
+	require.NoError(t, err)
+	expired := insertTerminalJobHistoryFixture(t, ss, model.JobTypeMailDeliver, model.JobStatusSucceeded, 40*24*time.Hour, true)
+	self := insertTerminalJobHistoryFixture(t, ss, model.JobTypeCleanup, model.JobStatusSucceeded, time.Hour, false)
+	result, err := ss.Job().DeleteTerminalHistory(ctx, &store.JobHistoryCleanup{ExcludeJobID: self, Limit: 10,
+		Policies: []store.JobRetentionPolicy{{Type: model.JobTypeMailDeliver, SucceededCanceledAge: 30 * 24 * time.Hour, FailedAge: 90 * 24 * time.Hour}}})
+	require.NoError(t, err, "cleanup reached a referenced Job")
+	require.Equal(t, int64(1), result.Deleted)
+	require.True(t, result.Done)
+	_, err = ss.Job().Get(ctx, expired)
+	require.True(t, store.IsNotFound(err), "unreferenced expired Job remains")
+	_, err = ss.Job().Get(ctx, delivery.JobID)
+	require.NoError(t, err, "referenced Job was removed")
 }
 
 func insertTerminalJobHistoryFixture(t *testing.T, ss *SQLStore, jobType model.JobType, status model.JobStatus, age time.Duration, withAttempt bool) model.JobID {
