@@ -11,9 +11,11 @@ package sqlstore
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"testing"
 
+	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -47,4 +49,37 @@ func TestTranslateErrorClassifiesPostgreSQLRejectedValues(t *testing.T) {
 			require.Equal(t, test.field, invalid.Field, "translateError(%v) = %#v; want invalid input on", err, got)
 		})
 	}
+}
+
+// TestExecutorsTranslateIntegrityViolations covers writes that never call
+// translateError themselves: the executors still report a Store error naming
+// the violated table and constraint, and keep the driver error wrapped.
+func TestExecutorsTranslateIntegrityViolations(t *testing.T) {
+	persistence := openTestStore(t)
+	resetTestStore(t, persistence)
+	ctx := context.Background()
+
+	first := saveIntegrationUser(t, ctx, persistence, &model.User{
+		Username: "executor-first", Email: "executor-first@example.edu", DisplayName: "Executor First",
+	})
+	second := saveIntegrationUser(t, ctx, persistence, &model.User{
+		Username: "executor-second", Email: "executor-second@example.edu", DisplayName: "Executor Second",
+	})
+	_, err := persistence.GetMaster().Exec(ctx, `UPDATE users SET username = ? WHERE id = ?`, first.Username, second.ID.String())
+	var conflict *store.ErrConflict
+	require.ErrorAs(t, err, &conflict, "unique violation through Exec")
+	require.Equal(t, "users", conflict.Resource)
+	require.Equal(t, "users_username_key", conflict.Constraint)
+
+	tx, err := persistence.GetMaster().Begin(ctx)
+	require.NoError(t, err)
+	defer func() { _ = tx.Rollback() }()
+	var revision int64
+	err = tx.Get(ctx, &revision, `UPDATE users SET revision = 0 WHERE id = ? RETURNING revision`, first.ID.String())
+	require.True(t, store.IsConstraintViolation(err), "check violation through Get = %v", err)
+	var driver *pq.Error
+	require.ErrorAs(t, err, &driver, "driver error is wrapped")
+
+	err = persistence.GetMaster().Get(ctx, &revision, `SELECT revision FROM users WHERE id = ?`, model.NewUserID().String())
+	require.ErrorIs(t, err, sql.ErrNoRows, "absence passes through untranslated")
 }

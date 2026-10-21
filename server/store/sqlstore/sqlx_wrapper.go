@@ -65,7 +65,7 @@ func (w *sqlxDBWrapper) Stats() sql.DBStats {
 func (w *sqlxDBWrapper) Get(ctx context.Context, dest any, query string, args ...any) error {
 	queryCtx, cancel := w.queryContext(ctx)
 	defer cancel()
-	return w.db.GetContext(queryCtx, dest, w.db.Rebind(query), args...)
+	return translateIntegrityError(w.db.GetContext(queryCtx, dest, w.db.Rebind(query), args...))
 }
 
 func (w *sqlxDBWrapper) GetBuilder(ctx context.Context, dest any, query builder) error {
@@ -79,7 +79,7 @@ func (w *sqlxDBWrapper) GetBuilder(ctx context.Context, dest any, query builder)
 func (w *sqlxDBWrapper) Select(ctx context.Context, dest any, query string, args ...any) error {
 	queryCtx, cancel := w.queryContext(ctx)
 	defer cancel()
-	return w.db.SelectContext(queryCtx, dest, w.db.Rebind(query), args...)
+	return translateIntegrityError(w.db.SelectContext(queryCtx, dest, w.db.Rebind(query), args...))
 }
 
 func (w *sqlxDBWrapper) SelectBuilder(ctx context.Context, dest any, query builder) error {
@@ -93,13 +93,15 @@ func (w *sqlxDBWrapper) SelectBuilder(ctx context.Context, dest any, query build
 func (w *sqlxDBWrapper) NamedExec(ctx context.Context, query string, arg any) (sql.Result, error) {
 	queryCtx, cancel := w.queryContext(ctx)
 	defer cancel()
-	return w.db.NamedExecContext(queryCtx, query, arg)
+	result, err := w.db.NamedExecContext(queryCtx, query, arg)
+	return result, translateIntegrityError(err)
 }
 
 func (w *sqlxDBWrapper) Exec(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	queryCtx, cancel := w.queryContext(ctx)
 	defer cancel()
-	return w.db.ExecContext(queryCtx, w.db.Rebind(query), args...)
+	result, err := w.db.ExecContext(queryCtx, w.db.Rebind(query), args...)
+	return result, translateIntegrityError(err)
 }
 
 func (w *sqlxDBWrapper) ExecBuilder(ctx context.Context, query builder) (sql.Result, error) {
@@ -148,7 +150,7 @@ type sqlxTxWrapper struct {
 func (w *sqlxTxWrapper) Get(ctx context.Context, dest any, query string, args ...any) error {
 	queryCtx, cancel := w.queryContext(ctx)
 	defer cancel()
-	return w.tx.GetContext(queryCtx, dest, w.rebind(query), args...)
+	return translateIntegrityError(w.tx.GetContext(queryCtx, dest, w.rebind(query), args...))
 }
 
 func (w *sqlxTxWrapper) GetBuilder(ctx context.Context, dest any, query builder) error {
@@ -162,7 +164,7 @@ func (w *sqlxTxWrapper) GetBuilder(ctx context.Context, dest any, query builder)
 func (w *sqlxTxWrapper) Select(ctx context.Context, dest any, query string, args ...any) error {
 	queryCtx, cancel := w.queryContext(ctx)
 	defer cancel()
-	return w.tx.SelectContext(queryCtx, dest, w.rebind(query), args...)
+	return translateIntegrityError(w.tx.SelectContext(queryCtx, dest, w.rebind(query), args...))
 }
 
 func (w *sqlxTxWrapper) SelectBuilder(ctx context.Context, dest any, query builder) error {
@@ -176,13 +178,15 @@ func (w *sqlxTxWrapper) SelectBuilder(ctx context.Context, dest any, query build
 func (w *sqlxTxWrapper) NamedExec(ctx context.Context, query string, arg any) (sql.Result, error) {
 	queryCtx, cancel := w.queryContext(ctx)
 	defer cancel()
-	return w.tx.NamedExecContext(queryCtx, query, arg)
+	result, err := w.tx.NamedExecContext(queryCtx, query, arg)
+	return result, translateIntegrityError(err)
 }
 
 func (w *sqlxTxWrapper) Exec(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	queryCtx, cancel := w.queryContext(ctx)
 	defer cancel()
-	return w.tx.ExecContext(queryCtx, w.rebind(query), args...)
+	result, err := w.tx.ExecContext(queryCtx, w.rebind(query), args...)
+	return result, translateIntegrityError(err)
 }
 
 func (w *sqlxTxWrapper) ExecBuilder(ctx context.Context, query builder) (sql.Result, error) {

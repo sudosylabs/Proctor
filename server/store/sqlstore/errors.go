@@ -55,6 +55,25 @@ func isDomainError(err error) bool {
 		errors.As(err, &conflict) || errors.As(err, &reference)
 }
 
+// translateIntegrityError translates the integrity violations of every
+// statement the executors run, so a write that never calls translateError
+// still reports a Store error. The violated table names the resource; an
+// operation that calls translateError with its own resource re-translates the
+// wrapped driver error. Absence and other failures pass through unchanged.
+func translateIntegrityError(err error) error {
+	var pqErr *pq.Error
+	if err == nil || !errors.As(err, &pqErr) || isDomainError(err) {
+		return err
+	}
+	switch string(pqErr.Code) {
+	case postgresUniqueViolation, postgresForeignKeyViolation, postgresCheckViolation,
+		postgresNotNullViolation, postgresStringDataTruncation:
+		return translateError(pqErr.Table, "", err)
+	default:
+		return err
+	}
+}
+
 // translateError maps driver failures to store errors. Integrity violations
 // that reject the written values (CHECK, NOT NULL, and over-length strings)
 // become constraint-violation ErrInvalidInput naming the constraint or column,
