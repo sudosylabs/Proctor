@@ -1473,7 +1473,9 @@ func (s *sqlExamAttemptStore) reconnect(ctx context.Context, tx *sqlxTxWrapper, 
 	}
 	var revokedSessionIDs, revokedTokenHashes []string
 	if reactivating {
-		result, updateErr := tx.Exec(ctx, `UPDATE exam_attempts SET state='active',updated_at=?,revision=revision+1
+		// guard.DatabaseNow is read before this Attempt is locked, so a re-allow
+		// committed while Connect waited may already carry a later instant.
+		result, updateErr := tx.Exec(ctx, `UPDATE exam_attempts SET state='active',updated_at=GREATEST(updated_at,?),revision=revision+1
 			WHERE id=? AND state='ready'`, guard.DatabaseNow, attemptID)
 		if updateErr != nil {
 			return zero, fmt.Errorf("activate ready Exam Attempt: %w", updateErr)

@@ -1120,6 +1120,9 @@ func (s *SQLExamAttemptWorkspaceStore) ClaimObjectsForCleanup(ctx context.Contex
 		return nil, store.NewErrInvalidInput("attempt_workspace_object", "cleanup_claim", nil)
 	}
 	var rows []attemptWorkspaceObjectRow
+	// The lifecycle CHECK requires claimed_at = updated_at. A release committed
+	// after this statement began can already carry a later updated_at, so the
+	// claim instant follows the same GREATEST as the modification time.
 	err := s.GetMaster().Select(ctx, &rows, `WITH candidates AS (
 		SELECT objects.id FROM exam_attempt_workspace_objects objects
 		WHERE objects.storage_origin='attempt'
@@ -1136,7 +1139,8 @@ func (s *SQLExamAttemptWorkspaceStore) ClaimObjectsForCleanup(ctx context.Contex
 		FOR UPDATE SKIP LOCKED LIMIT ?
 	) UPDATE exam_attempt_workspace_objects objects
 		SET state='claimed',updated_at=GREATEST(objects.updated_at,statement_timestamp()),
-			reclaim_after=COALESCE(objects.reclaim_after,statement_timestamp()),claim_token=?,claimed_at=statement_timestamp()
+			reclaim_after=COALESCE(objects.reclaim_after,statement_timestamp()),claim_token=?,
+			claimed_at=GREATEST(objects.updated_at,statement_timestamp())
 		FROM candidates WHERE objects.id=candidates.id
 		RETURNING objects.id,objects.workspace_id,objects.storage_origin,objects.starter_object_id,objects.state,
 			objects.content_version,objects.media_type,objects.size_bytes,objects.sha256,objects.created_at,objects.updated_at,
