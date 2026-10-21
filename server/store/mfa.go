@@ -68,6 +68,13 @@ type MFADisablement struct {
 	Notice                  MFASecurityNotice
 }
 
+// MFASecretKeyUsage counts the live TOTP credentials whose secret is sealed
+// with one key of the MFA key ring.
+type MFASecretKeyUsage struct {
+	KeyID       string
+	Credentials int64
+}
+
 // MFAStore owns the encrypted TOTP credential, hashed recovery codes, replay
 // prevention, and the session-strength changes coupled to MFA lifecycle.
 // Activation and Session upgrade use UTC microsecond decision instants and
@@ -83,6 +90,10 @@ type MFAStore interface {
 	UpgradeSession(context.Context, model.SessionID, model.UserID, time.Time) ([]string, error)
 	ReplaceRecoveryCodes(context.Context, *MFARecoveryCodesRegeneration) error
 	CountRecoveryCodes(context.Context, model.UserID) (int, error)
+	// ListSecretKeyUsage reports, per sealing key, how many unarchived
+	// credentials hold a secret sealed with it, ordered by key ID. Startup
+	// uses it to prove the configured key ring can open every secret.
+	ListSecretKeyUsage(context.Context) ([]MFASecretKeyUsage, error)
 	Disable(context.Context, *MFADisablement) (*MFADisableResult, error)
 	// SeedPending is an unaudited fixture write; production code never calls it.
 	SeedPending(context.Context, *model.MFACredential) (*model.MFACredential, error)

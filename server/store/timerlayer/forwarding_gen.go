@@ -3032,6 +3032,12 @@ func (s *timedMFAStore) CountRecoveryCodes(arg0 context.Context, arg1 model.User
 	})
 }
 
+func (s *timedMFAStore) ListSecretKeyUsage(arg0 context.Context) ([]store.MFASecretKeyUsage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodListSecretKeyUsage), func() ([]store.MFASecretKeyUsage, error) {
+		return s.next.ListSecretKeyUsage(arg0)
+	})
+}
+
 func (s *timedMFAStore) Disable(arg0 context.Context, arg1 *store.MFADisablement) (*store.MFADisableResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodDisable), func() (*store.MFADisableResult, error) {
 		return s.next.Disable(arg0, arg1)

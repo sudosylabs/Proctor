@@ -17,6 +17,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -690,4 +691,22 @@ func (s SQLMFAStore) SeedPending(
 		}
 		return &candidate, nil
 	})
+}
+
+// ListSecretKeyUsage groups unarchived TOTP credentials by sealing key.
+func (s SQLMFAStore) ListSecretKeyUsage(ctx context.Context) ([]store.MFASecretKeyUsage, error) {
+	var rows []struct {
+		KeyID       string `db:"key_id"`
+		Credentials int64  `db:"credentials"`
+	}
+	if err := s.GetMaster().Select(ctx, &rows, `
+		SELECT encryption_key_id AS key_id, COUNT(*) AS credentials FROM mfa_credentials
+		 WHERE archived_at IS NULL GROUP BY encryption_key_id ORDER BY encryption_key_id`); err != nil {
+		return nil, fmt.Errorf("list MFA secret key usage: %w", err)
+	}
+	usage := make([]store.MFASecretKeyUsage, 0, len(rows))
+	for _, row := range rows {
+		usage = append(usage, store.MFASecretKeyUsage{KeyID: strings.TrimSpace(row.KeyID), Credentials: row.Credentials})
+	}
+	return usage, nil
 }

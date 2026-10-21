@@ -365,3 +365,27 @@ var mfaStoreErrors = apperror.StoreTable{
 	Conflict:    "authentication.mfa.conflict",
 	Unavailable: "authentication.mfa.unavailable",
 }
+
+type mfaSecretKeyStore interface {
+	ListSecretKeyUsage(context.Context) ([]store.MFASecretKeyUsage, error)
+}
+
+// validateMFASecretKeys fails startup when a stored TOTP secret is sealed with
+// a key the configured ring no longer holds. Without it, dropping an old key
+// from Authentication.MFA.DecryptionKeys silently strands every secret sealed
+// with that key until each affected User fails to sign in.
+func validateMFASecretKeys(ctx context.Context, persistence mfaSecretKeyStore, sealer interface{ HasKey(string) bool }) error {
+	if persistence == nil {
+		return errors.New("MFA secret-key persistence is unavailable")
+	}
+	usage, err := persistence.ListSecretKeyUsage(ctx)
+	if err != nil {
+		return fmt.Errorf("inspect MFA secret keys: %w", err)
+	}
+	for _, item := range usage {
+		if sealer == nil || !sealer.HasKey(item.KeyID) {
+			return fmt.Errorf("MFA secret key %s is not configured but seals %d stored credentials; restore it to Authentication.MFA.DecryptionKeys", item.KeyID, item.Credentials)
+		}
+	}
+	return nil
+}

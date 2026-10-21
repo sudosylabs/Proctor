@@ -8,6 +8,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
@@ -147,6 +148,11 @@ func constructApplicationFoundation(deps Dependencies) (applicationFoundation, e
 	mfa, err := newMFAMechanics(deps.MFA, deps.MFASecretSealer)
 	if err != nil {
 		return applicationFoundation{}, err
+	}
+	if deps.MFASecretSealer != nil {
+		if err = validateMFASecretKeys(context.Background(), deps.Store.MFA(), deps.MFASecretSealer); err != nil {
+			return applicationFoundation{}, err
+		}
 	}
 	hasher, err := newPasswordHasher(deps.Password, deps.PasswordWorkRecorder)
 	if err != nil {

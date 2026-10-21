@@ -124,7 +124,10 @@ while MFA is disabled, and every application node must receive the same values.
 
 Add the previous primary to `DecryptionKeys` before changing the primary, then
 converge every node before retiring it. Never reuse MFA keys for mail or
-Memberlist.
+Memberlist. Proctor has no MFA rekey operation yet: a stored TOTP secret stays
+sealed with the key that sealed it until its User re-enrolls. When the
+configured ring is set, startup refuses to serve if any stored secret's key is
+missing from it, and names the key and the number of credentials it seals.
 
 ## External authentication registry
 

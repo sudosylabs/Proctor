@@ -86,6 +86,9 @@ module when a change is not server-only. No module has been released yet.
 - Server: revoked and expired Sessions and superseded Session credentials are
   deleted after `Authentication.Sessions.RetiredRetention` (default 30 days)
   by an hourly Job.
+- Server: startup refuses to serve when a stored MFA secret is sealed with a
+  key missing from `Authentication.MFA`, instead of stranding those
+  credentials.
 - Server: `Server.TrustedProxies` names the reverse proxies whose forwarded
   client address and request ID are accepted.
 - VFS: `FileSystem.CheckRoot` checks that the backend root (the local root

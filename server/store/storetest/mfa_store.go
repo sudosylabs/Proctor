@@ -42,6 +42,30 @@ func TestMFAStore(t *testing.T, ss store.Store) {
 	t.Run("TransitionMailAndAuditRollbackTogether", func(t *testing.T) {
 		testMFATransitionMailAndAuditRollbackTogether(t, ss)
 	})
+	t.Run("SecretKeyUsageCountsLiveCredentials", func(t *testing.T) {
+		testMFASecretKeyUsage(t, ss)
+	})
+}
+
+func testMFASecretKeyUsage(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	countFor := func(keyID string) int64 {
+		usage, err := ss.MFA().ListSecretKeyUsage(ctx)
+		require.NoError(t, err)
+		for index, item := range usage {
+			if index > 0 {
+				require.Less(t, usage[index-1].KeyID, item.KeyID, "ListSecretKeyUsage() is not ordered by key")
+			}
+			if item.KeyID == keyID {
+				return item.Credentials
+			}
+		}
+		return 0
+	}
+	const keyID = "0123456789abcdef0123456789abcdef"
+	before := countFor(keyID)
+	savePendingMFA(t, ctx, ss, saveUser(t, ctx, ss).ID)
+	require.Equal(t, before+1, countFor(keyID))
 }
 
 func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
