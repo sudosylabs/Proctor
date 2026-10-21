@@ -3416,6 +3416,12 @@ func (s *timedAuditStore) List(arg0 context.Context, arg1 store.AuditListOptions
 	})
 }
 
+func (s *timedAuditStore) FailAbandonedAttempts(arg0 context.Context, arg1 *store.AuditAttemptAbandonment) (int64, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAudit, methodFailAbandonedAttempts), func() (int64, error) {
+		return s.next.FailAbandonedAttempts(arg0, arg1)
+	})
+}
+
 func (s *timedInstallationStore) Get(arg0 context.Context) (*model.InstallationState, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateInstallation, methodGet), func() (*model.InstallationState, error) {
 		return s.next.Get(arg0)

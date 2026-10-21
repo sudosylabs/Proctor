@@ -194,6 +194,31 @@ func completeAuditEvent(
 	return row.model()
 }
 
+// FailAbandonedAttempts terminalizes the oldest attempts older than Age.
+func (s SQLAuditStore) FailAbandonedAttempts(ctx context.Context, input *store.AuditAttemptAbandonment) (int64, error) {
+	if input == nil || input.Age <= 0 || input.Limit < 1 || input.Limit > store.MaximumAuditAttemptAbandonmentBatch {
+		return 0, store.NewErrInvalidInput("audit_event", "abandonment", nil)
+	}
+	result, err := s.GetMaster().Exec(ctx, `WITH abandoned AS (
+		SELECT id FROM audit_events
+		 WHERE status = 'attempt' AND created_at < CURRENT_TIMESTAMP - (? * interval '1 millisecond')
+		 ORDER BY created_at, id
+		 LIMIT ? FOR UPDATE SKIP LOCKED
+	) UPDATE audit_events AS events
+	     SET status = 'fail', error_code = ?, updated_at = GREATEST(events.updated_at, CURRENT_TIMESTAMP)
+	    FROM abandoned
+	   WHERE events.id = abandoned.id`,
+		input.Age.Milliseconds(), input.Limit, model.AuditErrorAttemptAbandoned)
+	if err != nil {
+		return 0, fmt.Errorf("fail abandoned audit attempts: %w", translateError("audit_event", "", err))
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("count abandoned audit attempts: %w", err)
+	}
+	return changed, nil
+}
+
 func (s SQLAuditStore) List(
 	ctx context.Context,
 	options store.AuditListOptions,

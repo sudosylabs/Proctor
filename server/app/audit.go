@@ -504,6 +504,8 @@ func (s *auditService) prepareCriticalActionAtScope(
 // CompleteCriticalAction records the terminal outcome. If this fails after the
 // mutation committed, the durable attempt remains for operator reconciliation
 // and the use case must return the audit failure instead of reporting success.
+// The write ignores cancellation of ctx: a client that disconnects must not
+// leave the attempt unresolved, and the Store's query timeout still bounds it.
 func (s *auditService) CompleteCriticalAction(
 	ctx context.Context,
 	eventID model.AuditEventID,
@@ -511,6 +513,7 @@ func (s *auditService) CompleteCriticalAction(
 	errorCode string,
 	result any,
 ) (*model.AuditEvent, error) {
+	ctx = context.WithoutCancel(ctx)
 	if s.audits == nil {
 		return nil, auditUnavailable(store.NewErrNotFound("audit_store", ""))
 	}

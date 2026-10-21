@@ -37,6 +37,7 @@ const (
 	JobTypeRetentionNotices              JobType = "retention.notices"
 	JobTypeRetentionExpire               JobType = "retention.expire"
 	JobTypeCommandOutcomeCleanup         JobType = "command_outcome.cleanup"
+	JobTypeAuditAttemptSweep             JobType = "audit.attempt_sweep"
 	JobTypeExamSittingLifecycle          JobType = "exam_sitting.lifecycle"
 	JobTypeExamSittingLifecycleRecovery  JobType = "exam_sitting.lifecycle_recovery"
 	JobTypeExamSittingSealing            JobType = "exam_sitting.sealing"
@@ -353,7 +354,7 @@ func validJobType(value JobType) bool {
 	if value == JobTypeRetentionExpire || value == JobTypeRetentionReconcile || value == JobTypeRetentionPurge || value == JobTypeRetentionNotices || value == JobTypeExamExportBuild || value == JobTypeExamExportCleanup {
 		return true
 	}
-	return value == JobTypeProfilePictureGenerateDefault || value == JobTypeProfilePictureReconcile || value == JobTypeFilePurgeExpiredContent || value == JobTypeCleanup || value == JobTypeCommandOutcomeCleanup || value == JobTypeExamSittingLifecycle || value == JobTypeExamSittingLifecycleRecovery || value == JobTypeExamSittingSealing || value == JobTypeMailDeliver || value == JobTypeMailDeliverCredential || value == JobTypeMailCleanup || value == JobTypeMailRekey || value == JobTypeMailExpandSitting || value == JobTypeInvitationMaintenance || value == JobTypeOnboardingImportParse || value == JobTypeOnboardingImportExecute || value == JobTypeStudentProgressionPreview
+	return value == JobTypeProfilePictureGenerateDefault || value == JobTypeProfilePictureReconcile || value == JobTypeFilePurgeExpiredContent || value == JobTypeCleanup || value == JobTypeCommandOutcomeCleanup || value == JobTypeAuditAttemptSweep || value == JobTypeExamSittingLifecycle || value == JobTypeExamSittingLifecycleRecovery || value == JobTypeExamSittingSealing || value == JobTypeMailDeliver || value == JobTypeMailDeliverCredential || value == JobTypeMailCleanup || value == JobTypeMailRekey || value == JobTypeMailExpandSitting || value == JobTypeInvitationMaintenance || value == JobTypeOnboardingImportParse || value == JobTypeOnboardingImportExecute || value == JobTypeStudentProgressionPreview
 }
 func validJobStatus(value JobStatus) bool {
 	return value == JobStatusQueued || value == JobStatusRunning || value == JobStatusCancelRequested || value == JobStatusSucceeded || value == JobStatusFailed || value == JobStatusCanceled

@@ -171,6 +171,7 @@ type constructionCatalogWithJobs struct {
 
 func (c constructionCatalogWithJobs) Job() store.JobStore             { return c.jobs }
 func (constructionCatalogWithJobs) Mail() store.MailStore             { return nil }
+func (constructionCatalogWithJobs) Audit() store.AuditStore           { return nil }
 func (constructionCatalogWithJobs) Retention() store.RetentionStore   { return nil }
 func (constructionCatalogWithJobs) ExamExport() store.ExamExportStore { return nil }
 func (c constructionCatalogWithJobs) User() store.UserStore           { return c.users }

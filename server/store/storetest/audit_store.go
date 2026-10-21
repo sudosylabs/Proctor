@@ -165,4 +165,41 @@ func TestAuditStore(t *testing.T, ss store.Store) {
 		},
 	})
 	require.ErrorAs(t, err, &invalid, "mixed academic audit visibility error")
+
+	testAuditAbandonedAttempts(t, ctx, ss, institution.ID.String(), user.ID)
+}
+
+func testAuditAbandonedAttempts(t *testing.T, ctx context.Context, ss store.Store, institutionID string, userID model.UserID) {
+	t.Helper()
+	_, err := ss.Audit().FailAbandonedAttempts(ctx, &store.AuditAttemptAbandonment{Age: time.Hour})
+	var invalid *store.ErrInvalidInput
+	require.ErrorAs(t, err, &invalid, "abandonment without a limit")
+	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
+		ActorID: userID, Action: string(model.ActionRoleManage),
+		Resource:  model.Resource{Type: model.ResourceInstitution, ID: institutionID},
+		ScopeType: model.RoleScopeInstitution, ScopeID: institutionID,
+		Status: model.AuditStatusAttempt, NodeID: "test-node",
+	})
+	require.NoError(t, err)
+	_, err = ss.Audit().FailAbandonedAttempts(ctx, &store.AuditAttemptAbandonment{Age: time.Hour, Limit: 1000})
+	require.NoError(t, err)
+	fresh, err := ss.Audit().Get(ctx, attempt.ID)
+	require.NoError(t, err)
+	require.Equal(t, model.AuditStatusAttempt, fresh.Status, "an attempt younger than the bound stays open")
+
+	time.Sleep(5 * time.Millisecond)
+	for {
+		changed, sweepErr := ss.Audit().FailAbandonedAttempts(ctx, &store.AuditAttemptAbandonment{Age: time.Millisecond, Limit: 1000})
+		require.NoError(t, sweepErr)
+		if changed < 1000 {
+			break
+		}
+	}
+	abandoned, err := ss.Audit().Get(ctx, attempt.ID)
+	require.NoError(t, err)
+	require.Equal(t, model.AuditStatusFail, abandoned.Status)
+	require.Equal(t, model.AuditErrorAttemptAbandoned, abandoned.ErrorCode)
+	require.False(t, abandoned.UpdatedAt.Before(attempt.UpdatedAt), "abandonment never moves updated_at backwards")
+	_, err = ss.Audit().Complete(ctx, attempt.ID, model.AuditStatusSuccess, "", nil, model.MillisFromTime(abandoned.UpdatedAt)+1)
+	require.True(t, store.IsNotFound(err), "an abandoned attempt is terminal")
 }

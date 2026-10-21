@@ -270,9 +270,14 @@ enforce both halves.
 
 Authorization decisions fail closed when their durable record cannot be
 written. A critical mutation writes an `attempt` before state changes and that
-attempt transitions once to `success` or `fail`. If terminal completion fails
-after commit, return an internal failure and retain the attempt for operator
-reconciliation.
+attempt transitions once to `success` or `fail`. Completion ignores the
+request's cancellation (the Store query timeout still bounds it), so a client
+that disconnects cannot strand its attempt. If terminal completion fails after
+commit, return an internal failure and retain the attempt for operator
+reconciliation. The hourly `audit.attempt_sweep` Job terminalizes attempts
+still open 24 hours after creation as `fail` with
+`audit.attempt_abandoned`, which means the outcome is unknown, so retention
+can age them like any other terminal event.
 
 Security-sensitive work uses one of two audit protocols, chosen by who owns
 the pending state:

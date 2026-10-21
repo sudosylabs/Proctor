@@ -30,6 +30,11 @@ const (
 	AuditStatusFail    AuditStatus = "fail"
 )
 
+// AuditErrorAttemptAbandoned marks an attempt whose outcome was never
+// recorded and that maintenance terminalized after its bound. It means the
+// outcome is unknown, not that the operation was refused.
+const AuditErrorAttemptAbandoned = "audit.attempt_abandoned"
+
 // AuditEvent is an append-oriented security record. Critical mutations are
 // inserted as attempts and may transition exactly once; point-in-time
 // authorization decisions are inserted directly with their terminal result.

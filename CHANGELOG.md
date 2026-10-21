@@ -118,6 +118,9 @@ module when a change is not server-only. No module has been released yet.
   running values and are named in a warning instead of changing silently.
 - Server: re-allowing a focus-loss suspension no longer reports a committed
   re-allow as unavailable.
+- Server: a client that disconnects mid-mutation no longer leaves its audit
+  attempt open, and an hourly Job fails attempts still open after 24 hours
+  with `audit.attempt_abandoned` so retention can expire them.
 - Server: a failed audit completion is joined with, not substituted for, the
   original failure.
 - Server: rows written with a node's clock are never later stamped earlier by

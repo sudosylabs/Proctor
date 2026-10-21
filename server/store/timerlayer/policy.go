@@ -152,6 +152,7 @@ const (
 	methodDeleteExpired                             methodName = "delete_expired"
 	methodDisable                                   methodName = "disable"
 	methodEnd                                       methodName = "end"
+	methodFailAbandonedAttempts                     methodName = "fail_abandoned_attempts"
 	methodEnroll                                    methodName = "enroll"
 	methodEnqueue                                   methodName = "enqueue"
 	methodEnqueueTest                               methodName = "enqueue_test"

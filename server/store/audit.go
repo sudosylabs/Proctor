@@ -9,6 +9,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -43,4 +44,19 @@ type AuditStore interface {
 	Get(context.Context, model.AuditEventID) (*model.AuditEvent, error)
 	Complete(context.Context, model.AuditEventID, model.AuditStatus, string, []byte, int64) (*model.AuditEvent, error)
 	List(context.Context, AuditListOptions) ([]*model.AuditEvent, error)
+	// FailAbandonedAttempts terminalizes up to Limit attempts created longer
+	// than Age ago by PostgreSQL time, oldest first, as failures with
+	// model.AuditErrorAttemptAbandoned, and returns how many it changed.
+	FailAbandonedAttempts(context.Context, *AuditAttemptAbandonment) (int64, error)
 }
+
+// AuditAttemptAbandonment bounds one pass over attempts whose requester never
+// recorded their outcome, such as a node lost between the attempt and its
+// completion. A terminal row lets retention reason about it again.
+type AuditAttemptAbandonment struct {
+	Age   time.Duration
+	Limit int
+}
+
+// MaximumAuditAttemptAbandonmentBatch bounds one abandonment pass.
+const MaximumAuditAttemptAbandonmentBatch = 1000

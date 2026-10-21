@@ -196,9 +196,11 @@ The initial registered work covers:
   bounded PostgreSQL-clock mail maintenance so it cannot retain a bundle or
   block later reconciliation; and
 - ordinary transactional-mail delivery plus permanently deduplicated daily
-  expiry and 90/180-day metadata cleanup; and
+  expiry and 90/180-day metadata cleanup;
 - `job.cleanup`, a daily bounded retention pass that cannot delete queued,
-  running, or its own active work.
+  running, or its own active work; and
+- `audit.attempt_sweep`, an hourly bounded pass that terminalizes audit
+  attempts left open for 24 hours.
 
 History cleanup retains a bounded deletion budget per occurrence and continues
 through permanently deduplicated successors while eligible history remains.

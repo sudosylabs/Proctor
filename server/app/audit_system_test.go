@@ -75,3 +75,30 @@ func (f *systemAuditStoreFake) Save(_ context.Context, event *model.AuditEvent) 
 	f.saved = copy.Clone()
 	return copy, nil
 }
+
+type completionContextAuditStore struct {
+	store.AuditStore
+	completionErr error
+}
+
+func (f *completionContextAuditStore) Complete(ctx context.Context, id model.AuditEventID, status model.AuditStatus,
+	errorCode string, _ []byte, _ int64,
+) (*model.AuditEvent, error) {
+	f.completionErr = ctx.Err()
+	return &model.AuditEvent{ID: id, Status: status, ErrorCode: errorCode}, nil
+}
+
+func TestCompleteCriticalActionSurvivesACanceledRequest(t *testing.T) {
+	t.Parallel()
+
+	audits := &completionContextAuditStore{}
+	service := &auditService{audits: audits, now: time.Now}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	auditID := model.NewAuditEventID()
+	for _, status := range []model.AuditStatus{model.AuditStatusFail, model.AuditStatusSuccess} {
+		_, err := service.CompleteCriticalAction(ctx, auditID, status, "", nil)
+		require.NoError(t, err, "status %s", status)
+		require.NoError(t, audits.completionErr, "status %s: the completion write saw the request's cancellation", status)
+	}
+}
