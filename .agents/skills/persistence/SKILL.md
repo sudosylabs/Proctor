@@ -154,6 +154,31 @@ until the daily permanently deduplicated cleanup Job removes bounded pages;
 only physical removal permits key reuse. Outcome cleanup is safe under
 multiple nodes and uses the PostgreSQL clock.
 
+## Time authority
+
+Rows carry instants from several clocks: application nodes, PostgreSQL
+`statement_timestamp()`/`clock_timestamp()`, and the transaction start
+(`CURRENT_TIMESTAMP`, `jobDatabaseNow`), which can precede a row a concurrent
+transaction stamped and committed later. They drift by milliseconds, so a
+Store mutation follows one rule:
+
+1. PostgreSQL time decides validity, expiry, deadlines, and leases wherever
+   the Store consults a clock.
+2. The instant a mutation records on a row never precedes the lifecycle
+   instants it supersedes or is ordered after on that row (`created_at`,
+   `updated_at`, `authenticated_at`, `ready_at`, and so on). SQL writes
+   `updated_at = GREATEST(updated_at, ?)` or `x_at = GREATEST(created_at, ?)`;
+   when a model transition method or several rows, audit, and mail share the
+   instant, decide validity at the raw database time first, then raise it with
+   `latestTime` or `transitionInstant` (millisecond-exact). The returned model
+   always equals the stored row.
+3. Caller-requested effective instants (`start_at`, `end_at`, schedules,
+   policy expiry) are stored as requested; only modification and transition
+   stamps are raised.
+
+Regression tests inject skew by moving a row's instants ahead of the database
+clock (`TestTimeAuthority*` in `sqlstore`).
+
 ## Examination persistence
 
 The examination boundary is divided into cohesive Store contracts for Exam
