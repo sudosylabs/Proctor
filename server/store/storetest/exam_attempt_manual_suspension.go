@@ -97,6 +97,13 @@ func TestExamAttemptManualSuspensionStore(t *testing.T, ss store.Store) {
 	require.Equal(t, model.AttemptSuspensionCandidateReasonManagerSuspended, statuses.Items[0].Suspension.CandidateReason)
 	require.True(t, statuses.Items[0].Suspension.ReallowAvailable)
 	require.Equal(t, store.SittingCandidateSuspended, statuses.Items[0].Presence.State)
+	// Revoking the kicked generation's Session refreshes the same projections
+	// as revoking a policy-suspended one.
+	targets, err := ss.ExamAttempt().ListSessionRevocationInvalidationTargets(ctx, fixture.candidate.ID,
+		[]model.SessionID{fixture.session.ID})
+	require.NoError(t, err)
+	require.Equal(t, []store.ExamAttemptInvalidationTarget{{ExamID: fixture.examID, SittingID: fixture.sitting.ID,
+		CandidateUserID: fixture.candidate.ID}}, targets)
 
 	again := kick(fixture.manager.ID, false, kicked.Attempt.Revision)
 	_, err = ss.ExamAttempt().SuspendAttempt(ctx, again,

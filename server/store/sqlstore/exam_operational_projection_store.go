@@ -20,8 +20,9 @@ import (
 )
 
 // ListSessionRevocationInvalidationTargets returns the distinct Exams and
-// Sittings of the Candidate's Attempts suspended by a policy-suspended
-// Participation bound to one of sessionIDs (1..1000).
+// Sittings of the Candidate's Attempts suspended in place, by policy or by an
+// Exam Manager's kick, through a Participation bound to one of sessionIDs
+// (1..1000).
 func (s *SQLExamAttemptStore) ListSessionRevocationInvalidationTargets(
 	ctx context.Context,
 	candidateID model.UserID,
@@ -49,7 +50,7 @@ func (s *SQLExamAttemptStore) ListSessionRevocationInvalidationTargets(
 		  JOIN exam_attempt_suspensions sus
 		    ON sus.exam_attempt_id=a.id AND sus.participation_id=p.id AND sus.state='active'
 		 WHERE a.candidate_user_id=? AND a.state='suspended'
-		   AND p.session_id=ANY(?) AND p.end_reason='policy_suspended'
+		   AND p.session_id=ANY(?) AND p.end_reason IN ('policy_suspended','kicked')
 		 ORDER BY a.exam_id,a.exam_sitting_id`, candidateID.String(), pq.Array(encoded)); err != nil {
 		return nil, fmt.Errorf("list Session revocation Attempt invalidation targets: %w", err)
 	}
