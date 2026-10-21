@@ -139,6 +139,8 @@ module when a change is not server-only. No module has been released yet.
   running configuration stays in force, and the reload reports failure instead
   of "configuration reloaded". Changed settings that need a restart keep their
   running values and are named in a warning instead of changing silently.
+- Server: `proctor migrate status` only reads; it no longer creates the
+  migration tables or takes the exclusive migration lock.
 - Server: re-allowing a focus-loss suspension no longer reports a committed
   re-allow as unavailable.
 - Server: a client that disconnects mid-mutation no longer leaves its audit

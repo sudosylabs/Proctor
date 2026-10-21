@@ -96,15 +96,21 @@ type MigrationStatus struct {
 	PendingMigrations int
 }
 
-// MigrateStatus reports the migration state of the configured database.
+// MigrateStatus reports the migration state of the configured database. It
+// only reads: it neither takes the migration lock nor creates tables.
 func MigrateStatus(ctx context.Context, configPath string) (MigrationStatus, error) {
-	migrator, closeMigrator, err := openMigrator(ctx, configPath)
+	configuration, err := openConfiguration(ctx, configPath)
 	if err != nil {
 		return MigrationStatus{}, err
 	}
-	defer closeMigrator()
+	defer func() { _ = configuration.Close() }()
+	database, err := sqlstore.New(ctx, sqlstore.SettingsFromConfig(configuration.Get().Database))
+	if err != nil {
+		return MigrationStatus{}, err
+	}
+	defer func() { _ = database.Close() }()
 
-	current, err := migrator.SchemaVersion(ctx)
+	current, err := database.GetDBSchemaVersion(ctx)
 	if err != nil {
 		return MigrationStatus{}, err
 	}
@@ -112,14 +118,14 @@ func MigrateStatus(ctx context.Context, configPath string) (MigrationStatus, err
 	if err != nil {
 		return MigrationStatus{}, err
 	}
-	pending, err := migrator.Pending()
+	pending, err := database.PendingMigrationCount(ctx)
 	if err != nil {
 		return MigrationStatus{}, err
 	}
 	return MigrationStatus{
 		DatabaseVersion:   current,
 		ServerVersion:     local,
-		PendingMigrations: len(pending),
+		PendingMigrations: pending,
 	}, nil
 }
 

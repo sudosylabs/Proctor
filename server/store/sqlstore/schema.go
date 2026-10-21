@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"slices"
 	"strconv"
 
 	"github.com/lib/pq"
@@ -77,6 +78,37 @@ func (ss *SQLStore) GetDBSchemaVersion(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("read database schema version: %w", err)
 	}
 	return version, nil
+}
+
+// PendingMigrationCount returns how many embedded forward migrations the
+// database has not applied. It only reads: it neither takes the migration lock
+// nor creates the migration bookkeeping table, so a database without that
+// table has every embedded migration pending.
+func (ss *SQLStore) PendingMigrationCount(ctx context.Context) (int, error) {
+	var applied []string
+	err := ss.GetMaster().Select(ctx, &applied, "SELECT name FROM db_migrations")
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) && string(pqErr.Code) == postgresUndefinedTable {
+		applied, err = nil, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("read applied migrations: %w", err)
+	}
+	names, err := migrationNames()
+	if err != nil {
+		return 0, fmt.Errorf("list embedded migrations: %w", err)
+	}
+	pending := 0
+	for _, name := range names {
+		match := models.Regex.FindStringSubmatch(name)
+		if len(match) < 4 {
+			return 0, fmt.Errorf("migration filename is invalid: %s", name)
+		}
+		if match[3] == string(models.Up) && !slices.Contains(applied, match[2]) {
+			pending++
+		}
+	}
+	return pending, nil
 }
 
 // GetLocalSchemaVersion returns the newest migration version embedded in this
