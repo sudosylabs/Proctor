@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/packages/vfs/local"
 )
@@ -19,9 +21,8 @@ func BenchmarkReadDuringPausedWrite(b *testing.B) {
 	for _, operation := range []string{"open", "list"} {
 		b.Run(operation, func(b *testing.B) {
 			filesystem := newFilesystem(b)
-			if _, err := filesystem.Write(b.Context(), "existing.txt", strings.NewReader("existing"), vfs.WriteOptions{}); err != nil {
-				b.Fatal(err)
-			}
+			_, err := filesystem.Write(b.Context(), "existing.txt", strings.NewReader("existing"), vfs.WriteOptions{})
+			require.NoError(b, err)
 			b.ReportAllocs()
 			for b.Loop() {
 				b.StopTimer()
@@ -44,9 +45,8 @@ func BenchmarkReadDuringPausedWrite(b *testing.B) {
 				timer.Stop()
 				reader.resume()
 				writeErr := <-written
-				if err != nil || writeErr != nil {
-					b.Fatalf("operation %v, upload %v", err, writeErr)
-				}
+				require.NoError(b, err, "operation")
+				require.NoError(b, writeErr, "operation")
 				b.StartTimer()
 			}
 		})
@@ -63,23 +63,17 @@ func BenchmarkListPrefix(b *testing.B) {
 					name = fmt.Sprintf("other/%03d/%04d.txt", i/20, i)
 				}
 				full := filepath.Join(root, filepath.FromSlash(name))
-				if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
-					b.Fatal(err)
-				}
-				if err := os.WriteFile(full, []byte("content"), 0o640); err != nil {
-					b.Fatal(err)
-				}
+				require.NoError(b, os.MkdirAll(filepath.Dir(full), 0o750))
+				require.NoError(b, os.WriteFile(full, []byte("content"), 0o600))
 			}
 			filesystem, err := local.New(root)
-			if err != nil {
-				b.Fatal(err)
-			}
+			require.NoError(b, err)
 			b.ReportAllocs()
 			for b.Loop() {
 				page, err := filesystem.List(b.Context(), vfs.ListOptions{Prefix: "target/", Limit: 10})
-				if err != nil || len(page.Entries) != 10 || page.NextCursor == "" {
-					b.Fatalf("page = %#v, error = %v", page, err)
-				}
+				require.NoError(b, err, "page = %#v, error", page)
+				require.Len(b, page.Entries, 10, "page = %#v, error", page)
+				require.NotEmpty(b, page.NextCursor, "page = %#v, error", page)
 			}
 		})
 	}

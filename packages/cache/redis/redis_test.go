@@ -1,8 +1,9 @@
 package redis_test
 
 import (
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/packages/cache"
 	rediscache "github.com/sudosylabs/proctor/packages/cache/redis"
@@ -11,10 +12,8 @@ import (
 func TestNewRejectsInvalidArguments(t *testing.T) {
 	t.Parallel()
 
-	if _, err := rediscache.New[string](nil, cache.StringCodec(), rediscache.Config{Namespace: "test"}); err == nil {
-		t.Fatal("New() accepted a nil client")
-	}
-	if _, err := rediscache.New[string](nil, cache.StringCodec(), rediscache.Config{}); !errors.Is(err, cache.ErrInvalidNamespace) {
-		t.Fatalf("New() namespace error = %v, want ErrInvalidNamespace", err)
-	}
+	_, err := rediscache.New[string](nil, cache.StringCodec(), rediscache.Config{Namespace: "test"})
+	require.Error(t, err, "New() accepted a nil client")
+	_, err = rediscache.New[string](nil, cache.StringCodec(), rediscache.Config{})
+	require.ErrorIs(t, err, cache.ErrInvalidNamespace, "New() namespace error")
 }

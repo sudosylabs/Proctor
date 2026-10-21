@@ -11,6 +11,8 @@ import (
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/packages/vfs/s3"
@@ -26,9 +28,7 @@ func TestIntegrationConformance(t *testing.T) {
 		t.Skip("set VFS_S3_ENDPOINT and VFS_S3_BUCKET to run S3 conformance tests")
 	}
 	secure, err := strconv.ParseBool(defaultValue(os.Getenv("VFS_S3_SECURE"), "true"))
-	if err != nil {
-		t.Fatalf("parse VFS_S3_SECURE: %v", err)
-	}
+	require.NoError(t, err)
 	ensureIntegrationBucket(t, endpoint, bucket, secure)
 
 	vfstest.Run(t, func(t *testing.T) vfs.FileSystem {
@@ -48,9 +48,7 @@ func TestIntegrationConformance(t *testing.T) {
 			Region:       os.Getenv("VFS_S3_REGION"),
 			Secure:       secure,
 		})
-		if err != nil {
-			t.Fatalf("new S3 filesystem: %v", err)
-		}
+		require.NoError(t, err)
 		t.Cleanup(func() {
 			cleanup(t, filesystem)
 		})
@@ -70,19 +68,13 @@ func ensureIntegrationBucket(t *testing.T, endpoint, bucket string, secure bool)
 		Secure: secure,
 		Region: os.Getenv("VFS_S3_REGION"),
 	})
-	if err != nil {
-		t.Fatalf("new S3 bucket client: %v", err)
-	}
+	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	exists, err := client.BucketExists(ctx, bucket)
-	if err != nil {
-		t.Fatalf("check S3 integration bucket: %v", err)
-	}
+	require.NoError(t, err)
 	if !exists {
-		if err := client.MakeBucket(ctx, bucket, minio.MakeBucketOptions{Region: os.Getenv("VFS_S3_REGION")}); err != nil {
-			t.Fatalf("create S3 integration bucket: %v", err)
-		}
+		require.NoError(t, client.MakeBucket(ctx, bucket, minio.MakeBucketOptions{Region: os.Getenv("VFS_S3_REGION")}))
 	}
 }
 
@@ -93,17 +85,14 @@ func cleanup(t *testing.T, filesystem vfs.FileSystem) {
 	cursor := ""
 	for {
 		page, err := filesystem.List(ctx, vfs.ListOptions{Cursor: cursor})
-		if err != nil {
-			t.Errorf("list S3 test cleanup: %v", err)
+		if !assert.NoError(t, err) {
 			return
 		}
 		for _, entry := range page.Entries {
 			if entry.IsDir {
 				continue
 			}
-			if err := filesystem.Remove(ctx, entry.Path, vfs.RemoveOptions{}); err != nil {
-				t.Errorf("remove S3 test object %q: %v", entry.Path, err)
-			}
+			assert.NoError(t, filesystem.Remove(ctx, entry.Path, vfs.RemoveOptions{}), "remove S3 test object %q", entry.Path)
 		}
 		if page.NextCursor == "" {
 			return

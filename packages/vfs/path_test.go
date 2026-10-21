@@ -1,8 +1,9 @@
 package vfs_test
 
 import (
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/packages/vfs"
 )
@@ -27,17 +28,11 @@ func TestNormalizePath(t *testing.T) {
 		t.Run(test.input, func(t *testing.T) {
 			got, err := vfs.NormalizePath(test.input)
 			if test.err != nil {
-				if !errors.Is(err, test.err) {
-					t.Fatalf("expected %v, got %v", test.err, err)
-				}
+				require.ErrorIs(t, err, test.err)
 				return
 			}
-			if err != nil {
-				t.Fatalf("normalize: %v", err)
-			}
-			if got != test.want {
-				t.Fatalf("got %q, want %q", got, test.want)
-			}
+			require.NoError(t, err)
+			require.Equal(t, test.want, got)
 		})
 	}
 }
@@ -50,11 +45,7 @@ func TestNormalizePrefix(t *testing.T) {
 	}
 	for input, expected := range tests {
 		got, err := vfs.NormalizePrefix(input)
-		if err != nil {
-			t.Fatalf("normalize %q: %v", input, err)
-		}
-		if got != expected {
-			t.Fatalf("normalize %q: got %q, expected %q", input, got, expected)
-		}
+		require.NoError(t, err, "normalize %q", input)
+		require.Equal(t, expected, got, "normalize %q", input)
 	}
 }

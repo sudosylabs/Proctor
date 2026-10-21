@@ -1,9 +1,10 @@
 package cache_test
 
 import (
-	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/packages/cache"
 )
@@ -29,12 +30,8 @@ func TestNormalizedTTL(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := cache.NormalizedTTL(test.in)
-			if !errors.Is(err, test.err) {
-				t.Fatalf("NormalizedTTL() error = %v, want %v", err, test.err)
-			}
-			if got != test.want {
-				t.Fatalf("NormalizedTTL() = %v, want %v", got, test.want)
-			}
+			require.ErrorIs(t, err, test.err, "NormalizedTTL() error")
+			require.Equal(t, test.want, got, "NormalizedTTL()")
 		})
 	}
 }
@@ -42,25 +39,17 @@ func TestNormalizedTTL(t *testing.T) {
 func TestValidateKey(t *testing.T) {
 	t.Parallel()
 
-	if err := cache.ValidateKey("school/42:session"); err != nil {
-		t.Fatalf("valid key rejected: %v", err)
-	}
+	require.NoError(t, cache.ValidateKey("school/42:session"))
 	for _, key := range []string{"", "line\nbreak", string([]byte{0xff})} {
-		if !errors.Is(cache.ValidateKey(key), cache.ErrInvalidKey) {
-			t.Fatalf("key %q should be invalid", key)
-		}
+		require.ErrorIs(t, cache.ValidateKey(key), cache.ErrInvalidKey, "key")
 	}
 }
 
 func TestValidateNamespace(t *testing.T) {
 	t.Parallel()
 
-	if err := cache.ValidateNamespace("school-api"); err != nil {
-		t.Fatalf("valid namespace rejected: %v", err)
-	}
-	if err := cache.ValidateNamespace(""); !errors.Is(err, cache.ErrInvalidNamespace) {
-		t.Fatalf("empty namespace error = %v, want ErrInvalidNamespace", err)
-	}
+	require.NoError(t, cache.ValidateNamespace("school-api"))
+	require.ErrorIs(t, cache.ValidateNamespace(""), cache.ErrInvalidNamespace, "empty namespace error")
 }
 
 func TestBytesCodecCopies(t *testing.T) {
@@ -69,20 +58,12 @@ func TestBytesCodecCopies(t *testing.T) {
 	codec := cache.BytesCodec()
 	source := []byte("value")
 	encoded, err := codec.Encode(source)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	source[0] = 'X'
-	if string(encoded) != "value" {
-		t.Fatal("encoded data aliases source")
-	}
+	require.Equal(t, "value", string(encoded), "encoded data aliases source")
 
 	decoded, err := codec.Decode(encoded)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	encoded[0] = 'Y'
-	if string(decoded) != "value" {
-		t.Fatal("decoded data aliases encoded input")
-	}
+	require.Equal(t, "value", string(decoded), "decoded data aliases encoded input")
 }

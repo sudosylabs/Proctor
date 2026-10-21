@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/packages/cache"
 )
 
@@ -24,9 +26,7 @@ func Run(t *testing.T, factory Factory) {
 	t.Run("missing", func(t *testing.T) {
 		store := factory(t)
 		_, err := store.Get(context.Background(), "missing")
-		if !errors.Is(err, cache.ErrNotFound) {
-			t.Fatalf("Get() error = %v, want ErrNotFound", err)
-		}
+		require.ErrorIs(t, err, cache.ErrNotFound, "Get() error")
 	})
 
 	t.Run("set get overwrite delete", func(t *testing.T) {
@@ -36,36 +36,24 @@ func Run(t *testing.T, factory Factory) {
 		assertGet(t, store, "key", "one")
 		mustSet(t, store, "key", "two", cache.SetOptions{})
 		assertGet(t, store, "key", "two")
-		if err := store.Delete(ctx, "key"); err != nil {
-			t.Fatalf("Delete() error = %v", err)
-		}
-		if err := store.Delete(ctx, "key"); err != nil {
-			t.Fatalf("second Delete() error = %v", err)
-		}
+		require.NoError(t, store.Delete(ctx, "key"))
+		require.NoError(t, store.Delete(ctx, "key"))
 		_, err := store.Get(ctx, "key")
-		if !errors.Is(err, cache.ErrNotFound) {
-			t.Fatalf("Get() after delete error = %v, want ErrNotFound", err)
-		}
+		require.ErrorIs(t, err, cache.ErrNotFound, "Get() after delete error")
 	})
 
 	t.Run("invalid input", func(t *testing.T) {
 		store := factory(t)
 		ctx := context.Background()
-		if err := store.Set(ctx, "", "value", cache.SetOptions{}); !errors.Is(err, cache.ErrInvalidKey) {
-			t.Fatalf("Set() invalid key error = %v", err)
-		}
-		if err := store.Set(ctx, "key", "value", cache.SetOptions{TTL: -1}); !errors.Is(err, cache.ErrInvalidTTL) {
-			t.Fatalf("Set() negative TTL error = %v", err)
-		}
+		require.ErrorIs(t, store.Set(ctx, "", "value", cache.SetOptions{}), cache.ErrInvalidKey)
+		require.ErrorIs(t, store.Set(ctx, "key", "value", cache.SetOptions{TTL: -1}), cache.ErrInvalidTTL)
 	})
 
 	t.Run("cancelled context", func(t *testing.T) {
 		store := factory(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		if err := store.Set(ctx, "key", "value", cache.SetOptions{}); !errors.Is(err, context.Canceled) {
-			t.Fatalf("Set() error = %v, want context.Canceled", err)
-		}
+		require.ErrorIs(t, store.Set(ctx, "key", "value", cache.SetOptions{}), context.Canceled, "Set() error")
 	})
 
 	t.Run("ttl", func(t *testing.T) {
@@ -88,16 +76,12 @@ func Run(t *testing.T, factory Factory) {
 		}
 		mustSet(t, store, "key", "one", cache.SetOptions{Condition: cache.SetIfAbsent})
 		err := store.Set(context.Background(), "key", "two", cache.SetOptions{Condition: cache.SetIfAbsent})
-		if !errors.Is(err, cache.ErrNotStored) {
-			t.Fatalf("SetIfAbsent error = %v, want ErrNotStored", err)
-		}
+		require.ErrorIs(t, err, cache.ErrNotStored, "SetIfAbsent error")
 		assertGet(t, store, "key", "one")
 		mustSet(t, store, "key", "two", cache.SetOptions{Condition: cache.SetIfPresent})
 		assertGet(t, store, "key", "two")
 		err = store.Set(context.Background(), "missing", "value", cache.SetOptions{Condition: cache.SetIfPresent})
-		if !errors.Is(err, cache.ErrNotStored) {
-			t.Fatalf("SetIfPresent error = %v, want ErrNotStored", err)
-		}
+		require.ErrorIs(t, err, cache.ErrNotStored, "SetIfPresent error")
 	})
 
 	t.Run("conditional set after expiry", func(t *testing.T) {
@@ -120,17 +104,13 @@ func Run(t *testing.T, factory Factory) {
 			t.Skip("backend does not advertise atomic counters")
 		}
 		counter, ok := store.(cache.Counter)
-		if !ok {
-			t.Fatal("AtomicCounter advertised but Store does not implement cache.Counter")
-		}
+		require.True(t, ok, "AtomicCounter advertised but Store does not implement cache.Counter")
 		value, err := counter.Add(context.Background(), "counter", 3, cache.CounterOptions{})
-		if err != nil || value != 3 {
-			t.Fatalf("first Add() = %d, %v; want 3, nil", value, err)
-		}
+		require.NoError(t, err, "first Add()")
+		require.Equal(t, int64(3), value, "first Add()")
 		value, err = counter.Add(context.Background(), "counter", -1, cache.CounterOptions{})
-		if err != nil || value != 2 {
-			t.Fatalf("second Add() = %d, %v; want 2, nil", value, err)
-		}
+		require.NoError(t, err, "second Add()")
+		require.Equal(t, int64(2), value, "second Add()")
 
 		const workers = 16
 		var wg sync.WaitGroup
@@ -146,14 +126,11 @@ func Run(t *testing.T, factory Factory) {
 		wg.Wait()
 		close(errs)
 		for addErr := range errs {
-			if addErr != nil {
-				t.Fatalf("parallel Add() error = %v", addErr)
-			}
+			require.NoError(t, addErr)
 		}
 		value, err = counter.Add(context.Background(), "parallel", 0, cache.CounterOptions{})
-		if err != nil || value != workers {
-			t.Fatalf("parallel counter = %d, %v; want %d, nil", value, err, workers)
-		}
+		require.NoError(t, err, "parallel counter")
+		require.Equal(t, int64(workers), value, "parallel counter")
 	})
 
 	t.Run("counter fixed window", func(t *testing.T) {
@@ -165,34 +142,28 @@ func Run(t *testing.T, factory Factory) {
 		counter := store.(cache.Counter)
 		window := cache.CounterOptions{TTL: 100 * time.Millisecond}
 		value, err := counter.Add(context.Background(), "counter", 1, window)
-		if err != nil || value != 1 {
-			t.Fatalf("Add() = %d, %v; want 1, nil", value, err)
-		}
+		require.NoError(t, err, "Add()")
+		require.Equal(t, int64(1), value, "Add()")
 		time.Sleep(50 * time.Millisecond)
 		value, err = counter.Add(context.Background(), "counter", 1, cache.CounterOptions{TTL: time.Minute})
-		if err != nil || value != 2 {
-			t.Fatalf("second Add() = %d, %v; want 2, nil", value, err)
-		}
+		require.NoError(t, err, "second Add()")
+		require.Equal(t, int64(2), value, "second Add()")
 		value, err = counter.Add(context.Background(), "counter", 0, cache.CounterOptions{})
-		if err != nil || value != 2 {
-			t.Fatalf("zero-TTL Add() = %d, %v; want 2, nil", value, err)
-		}
+		require.NoError(t, err, "zero-TTL Add()")
+		require.Equal(t, int64(2), value, "zero-TTL Add()")
 		// 120ms after creation: past the original deadline, which neither a
 		// longer TTL nor a zero TTL on later increments may extend or remove.
 		time.Sleep(70 * time.Millisecond)
 		value, err = counter.Add(context.Background(), "counter", 1, window)
-		if err != nil || value != 1 {
-			t.Fatalf("Add() after the window = %d, %v; want a new window starting at 1", value, err)
-		}
+		require.NoError(t, err, "Add() after the window")
+		require.Equal(t, int64(1), value, "Add() after the window")
 
 		// A persistent counter gains the first positive TTL applied to it.
-		if _, err = counter.Add(context.Background(), "persistent", 5, cache.CounterOptions{}); err != nil {
-			t.Fatal(err)
-		}
+		_, err = counter.Add(context.Background(), "persistent", 5, cache.CounterOptions{})
+		require.NoError(t, err)
 		value, err = counter.Add(context.Background(), "persistent", 1, cache.CounterOptions{TTL: 40 * time.Millisecond})
-		if err != nil || value != 6 {
-			t.Fatalf("Add() on persistent counter = %d, %v; want 6, nil", value, err)
-		}
+		require.NoError(t, err, "Add() on persistent counter")
+		require.Equal(t, int64(6), value, "Add() on persistent counter")
 		eventually(t, time.Second, func() bool {
 			value, addErr := counter.Add(context.Background(), "persistent", 0, cache.CounterOptions{TTL: time.Second})
 			return addErr == nil && value == 0
@@ -217,14 +188,12 @@ func Run(t *testing.T, factory Factory) {
 				}
 				counter := store.(cache.Counter)
 				value, err := counter.Add(context.Background(), "counter", test.value, cache.CounterOptions{})
-				if err != nil || value != test.value {
-					t.Fatalf("Add() = %d, %v; want %d, nil", value, err, test.value)
-				}
+				require.NoError(t, err, "Add()")
+				require.Equal(t, test.value, value, "Add()")
 				assertGet(t, store, "counter", strconv.FormatInt(test.value, 10))
 				value, err = counter.Add(context.Background(), "counter", 0, cache.CounterOptions{})
-				if err != nil || value != test.value {
-					t.Fatalf("Add(0) = %d, %v; want %d, nil", value, err, test.value)
-				}
+				require.NoError(t, err, "Add(0)")
+				require.Equal(t, test.value, value, "Add(0)")
 			})
 		}
 	})
@@ -248,15 +217,12 @@ func Run(t *testing.T, factory Factory) {
 				mustSet(t, store, "counter", test.initial, cache.SetOptions{})
 				counter := store.(cache.Counter)
 				_, err := counter.Add(context.Background(), "counter", test.delta, cache.CounterOptions{})
-				if !errors.Is(err, cache.ErrInvalidValue) {
-					t.Fatalf("Add() error = %v, want ErrInvalidValue", err)
-				}
+				require.ErrorIs(t, err, cache.ErrInvalidValue, "Add() error")
 				assertGet(t, store, "counter", test.initial)
 				if test.initial == "-9223372036854775808" {
 					value, err := counter.Add(context.Background(), "counter", math.MaxInt64, cache.CounterOptions{})
-					if err != nil || value != -1 {
-						t.Fatalf("Add() after rejected overflow = %d, %v; want -1, nil", value, err)
-					}
+					require.NoError(t, err, "Add() after rejected overflow")
+					require.Equal(t, int64(-1), value, "Add() after rejected overflow")
 					assertGet(t, store, "counter", "-1")
 				}
 			})
@@ -273,9 +239,7 @@ func Run(t *testing.T, factory Factory) {
 		mustSet(t, store, "counter", initial, cache.SetOptions{TTL: 250 * time.Millisecond})
 		counter := store.(cache.Counter)
 		_, err := counter.Add(context.Background(), "counter", 1, cache.CounterOptions{})
-		if !errors.Is(err, cache.ErrInvalidValue) {
-			t.Fatalf("Add() error = %v, want ErrInvalidValue", err)
-		}
+		require.ErrorIs(t, err, cache.ErrInvalidValue, "Add() error")
 		assertGet(t, store, "counter", initial)
 		eventually(t, 2*time.Second, func() bool {
 			_, err := store.Get(context.Background(), "counter")
@@ -289,40 +253,28 @@ func Run(t *testing.T, factory Factory) {
 			t.Skip("backend does not advertise purge")
 		}
 		purger, ok := store.(cache.Purger)
-		if !ok {
-			t.Fatal("Purge advertised but Store does not implement cache.Purger")
-		}
+		require.True(t, ok, "Purge advertised but Store does not implement cache.Purger")
 		for i := range 3 {
 			mustSet(t, store, "key-"+strconv.Itoa(i), fmt.Sprint(i), cache.SetOptions{})
 		}
-		if err := purger.Purge(context.Background()); err != nil {
-			t.Fatalf("Purge() error = %v", err)
-		}
+		require.NoError(t, purger.Purge(context.Background()))
 		for i := range 3 {
 			_, err := store.Get(context.Background(), "key-"+strconv.Itoa(i))
-			if !errors.Is(err, cache.ErrNotFound) {
-				t.Fatalf("Get() after purge error = %v", err)
-			}
+			require.ErrorIs(t, err, cache.ErrNotFound)
 		}
 	})
 }
 
 func mustSet(t *testing.T, store cache.Store[string], key, value string, options cache.SetOptions) {
 	t.Helper()
-	if err := store.Set(context.Background(), key, value, options); err != nil {
-		t.Fatalf("Set(%q) error = %v", key, err)
-	}
+	require.NoError(t, store.Set(context.Background(), key, value, options), "Set(%q) error", key)
 }
 
 func assertGet(t *testing.T, store cache.Store[string], key, want string) {
 	t.Helper()
 	got, err := store.Get(context.Background(), key)
-	if err != nil {
-		t.Fatalf("Get(%q) error = %v", key, err)
-	}
-	if got != want {
-		t.Fatalf("Get(%q) = %q, want %q", key, got, want)
-	}
+	require.NoError(t, err, "Get(%q) error", key)
+	require.Equal(t, want, got, "Get(%q)", key)
 }
 
 func eventually(t *testing.T, timeout time.Duration, condition func() bool) {
@@ -334,5 +286,5 @@ func eventually(t *testing.T, timeout time.Duration, condition func() bool) {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	t.Fatal("condition was not satisfied before timeout")
+	require.FailNow(t, "condition was not satisfied before timeout")
 }

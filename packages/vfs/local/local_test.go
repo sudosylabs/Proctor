@@ -13,6 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/packages/vfs/local"
 	"github.com/sudosylabs/proctor/packages/vfs/vfstest"
@@ -22,9 +25,7 @@ func TestConformance(t *testing.T) {
 	vfstest.Run(t, func(t *testing.T) vfs.FileSystem {
 		t.Helper()
 		filesystem, err := local.New(t.TempDir())
-		if err != nil {
-			t.Fatalf("new local filesystem: %v", err)
-		}
+		require.NoError(t, err)
 		return filesystem
 	})
 }
@@ -36,39 +37,30 @@ func TestRejectsSymlinksBelowRoot(t *testing.T) {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 	filesystem, err := local.New(root)
-	if err != nil {
-		t.Fatalf("new local filesystem: %v", err)
-	}
+	require.NoError(t, err)
 	_, err = filesystem.Stat(t.Context(), "escape/file.txt")
-	if err == nil {
-		t.Fatal("expected symlink path to be rejected")
-	}
+	require.Error(t, err, "expected symlink path to be rejected")
 }
 
 func TestPausedWriteAllowsUnrelatedOperations(t *testing.T) {
 	for _, operation := range []string{"open", "stat", "list", "write"} {
 		t.Run(operation, func(t *testing.T) {
 			filesystem := newFilesystem(t)
-			if _, err := filesystem.Write(t.Context(), "existing.txt", strings.NewReader("existing"), vfs.WriteOptions{}); err != nil {
-				t.Fatal(err)
-			}
+			_, err := filesystem.Write(t.Context(), "existing.txt", strings.NewReader("existing"), vfs.WriteOptions{})
+			require.NoError(t, err)
 			write := startPausedWrite(t, filesystem, t.Context(), "upload.txt", vfs.WriteOptions{})
 			completed := make(chan error, 1)
 			go func() { completed <- independentOperation(t.Context(), filesystem, operation) }()
 			select {
 			case err := <-completed:
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 			case <-time.After(2 * time.Second):
 				write.reader.resume()
 				<-completed
-				t.Fatal("unrelated operation waited for the paused upload")
+				require.FailNow(t, "unrelated operation waited for the paused upload")
 			}
 			write.reader.resume()
-			if err := write.wait(); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, write.wait())
 		})
 	}
 }
@@ -76,31 +68,22 @@ func TestPausedWriteAllowsUnrelatedOperations(t *testing.T) {
 func TestStagingIsInvisibleThroughFilesystem(t *testing.T) {
 	root := t.TempDir()
 	filesystem, err := local.New(root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, name := range []string{"existing.txt", "upload/.vfs-visible"} {
-		if _, err := filesystem.Write(t.Context(), name, strings.NewReader("existing"), vfs.WriteOptions{}); err != nil {
-			t.Fatal(err)
-		}
+		_, err = filesystem.Write(t.Context(), name, strings.NewReader("existing"), vfs.WriteOptions{})
+		require.NoError(t, err)
 	}
 	write := startPausedWrite(t, filesystem, t.Context(), "upload/final.txt", vfs.WriteOptions{})
 	entries, err := os.ReadDir(filepath.Join(root, "upload"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var staged string
 	for _, entry := range entries {
 		if entry.Name() != ".vfs-visible" {
-			if staged != "" {
-				t.Fatal("expected one temporary object")
-			}
+			require.Empty(t, staged, "expected one temporary object")
 			staged = "upload/" + entry.Name()
 		}
 	}
-	if staged == "" {
-		t.Fatal("paused write did not stage bytes")
-	}
+	require.NotEmpty(t, staged, "paused write did not stage bytes")
 	operations := []struct {
 		name string
 		run  func(string) error
@@ -137,9 +120,7 @@ func TestStagingIsInvisibleThroughFilesystem(t *testing.T) {
 	}
 	for _, operation := range operations {
 		t.Run(operation.name, func(t *testing.T) {
-			if err := operation.run(staged); !errors.Is(err, vfs.ErrNotFound) {
-				t.Fatalf("staging access error = %v, want ErrNotFound", err)
-			}
+			require.ErrorIs(t, operation.run(staged), vfs.ErrNotFound, "staging access error")
 		})
 	}
 	t.Run("filesystem case alias", func(t *testing.T) {
@@ -147,12 +128,10 @@ func TestStagingIsInvisibleThroughFilesystem(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(alias))); errors.Is(err, os.ErrNotExist) {
 			t.Skip("filesystem does not provide case aliases")
 		} else if err != nil {
-			t.Fatal(err)
+			require.NoError(t, err)
 		}
 		for _, operation := range operations {
-			if err := operation.run(alias); !errors.Is(err, vfs.ErrNotFound) {
-				t.Errorf("staging %s through case alias: %v", operation.name, err)
-			}
+			assert.ErrorIs(t, operation.run(alias), vfs.ErrNotFound, "staging %s through case alias", operation.name)
 		}
 	})
 	for _, list := range []struct {
@@ -166,38 +145,29 @@ func TestStagingIsInvisibleThroughFilesystem(t *testing.T) {
 		assertListing(t, filesystem, list.options, list.want)
 	}
 	write.reader.resume()
-	if err := write.wait(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, write.wait())
 	assertContent(t, filesystem, "upload/final.txt", "partial complete")
 	assertContent(t, filesystem, "existing.txt", "existing")
 	assertListing(t, filesystem, vfs.ListOptions{}, []string{"existing.txt", "upload/.vfs-visible", "upload/final.txt"})
-	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(staged))); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("temporary file remains after publication: %v", err)
-	}
+	_, err = os.Stat(filepath.Join(root, filepath.FromSlash(staged)))
+	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func TestStagingFromAliasedDirectoryIsInvisible(t *testing.T) {
 	root := t.TempDir()
-	if err := os.Mkdir(filepath.Join(root, "directory"), 0o750); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Mkdir(filepath.Join(root, "directory"), 0o750))
 	if _, err := os.Stat(filepath.Join(root, "DIRECTORY")); errors.Is(err, os.ErrNotExist) {
 		t.Skip("filesystem does not provide case aliases")
 	} else if err != nil {
-		t.Fatal(err)
+		require.NoError(t, err)
 	}
 	filesystem, err := local.New(root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	write := startPausedWrite(t, filesystem, t.Context(), "DIRECTORY/new.txt", vfs.WriteOptions{})
 	assertListing(t, filesystem, vfs.ListOptions{}, []string{})
 	assertListing(t, filesystem, vfs.ListOptions{Prefix: "directory/"}, []string{})
 	write.reader.resume()
-	if err := write.wait(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, write.wait())
 	assertListing(t, filesystem, vfs.ListOptions{Prefix: "directory/"}, []string{"directory/new.txt"})
 	assertListing(t, filesystem, vfs.ListOptions{Prefix: "DIRECTORY/"}, []string{})
 }
@@ -209,29 +179,22 @@ func TestWriteRechecksPublicationConditions(t *testing.T) {
 			options := vfs.WriteOptions{NoOverwrite: true}
 			if condition != "no overwrite" {
 				first, err := filesystem.Write(t.Context(), "target.txt", strings.NewReader("first"), vfs.WriteOptions{})
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				options = vfs.WriteOptions{ExpectedRevision: first.Revision}
 			}
 			write := startPausedWrite(t, filesystem, t.Context(), "target.txt", options)
 			if condition == "revision removed" {
-				if err := filesystem.Remove(t.Context(), "target.txt", vfs.RemoveOptions{}); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, filesystem.Remove(t.Context(), "target.txt", vfs.RemoveOptions{}))
 			} else {
-				if _, err := filesystem.Write(t.Context(), "target.txt", strings.NewReader("concurrent winner"), vfs.WriteOptions{}); err != nil {
-					t.Fatal(err)
-				}
+				_, err := filesystem.Write(t.Context(), "target.txt", strings.NewReader("concurrent winner"), vfs.WriteOptions{})
+				require.NoError(t, err)
 			}
 			write.reader.resume()
 			wantErr := vfs.ErrConflict
 			if condition == "no overwrite" {
 				wantErr = vfs.ErrAlreadyExists
 			}
-			if err := write.wait(); !errors.Is(err, wantErr) {
-				t.Fatalf("write error = %v, want %v", err, wantErr)
-			}
+			require.ErrorIs(t, write.wait(), wantErr, "write error")
 			if condition == "revision removed" {
 				assertListing(t, filesystem, vfs.ListOptions{}, []string{})
 			} else {
@@ -247,20 +210,14 @@ func TestInterruptedWriteCleansStaging(t *testing.T) {
 		t.Run(failure, func(t *testing.T) {
 			root := t.TempDir()
 			filesystem, err := local.New(root)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			first, err := filesystem.Write(t.Context(), "target.txt", strings.NewReader("original"), vfs.WriteOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			options := vfs.WriteOptions{ExpectedRevision: first.Revision}
 			if failure == "reader failure" {
 				failureErr := errors.New("reader stopped")
 				_, err = filesystem.Write(t.Context(), "target.txt", io.MultiReader(strings.NewReader("partial"), failingReader{failureErr}), options)
-				if !errors.Is(err, failureErr) {
-					t.Fatalf("write error = %v, want reader failure", err)
-				}
+				require.ErrorIs(t, err, failureErr, "write error")
 			} else {
 				ctx, cancel := context.WithCancel(t.Context())
 				defer cancel()
@@ -275,15 +232,14 @@ func TestInterruptedWriteCleansStaging(t *testing.T) {
 				}
 				write.reader.resume()
 				err = write.wait()
-				if err == nil || failure == "canceled at EOF" && !errors.Is(err, context.Canceled) {
-					t.Fatalf("write error = %v, want %s", err, failure)
-				}
+				require.Error(t, err, "write error = %v, want %s", err, failure)
+				require.False(t, failure == "canceled at EOF" && !errors.Is(err, context.Canceled), "write error = %v, want %s", err, failure)
 			}
 			assertContent(t, filesystem, "target.txt", "original")
 			entries, err := os.ReadDir(root)
-			if err != nil || len(entries) != 1 || entries[0].Name() != "target.txt" {
-				t.Fatalf("unfinished file remained on disk: %v, %v", entries, err)
-			}
+			require.NoError(t, err, "unfinished file remained on disk")
+			require.Len(t, entries, 1, "unfinished file remained on disk")
+			require.Equal(t, "target.txt", entries[0].Name(), "unfinished file remained on disk")
 		})
 	}
 }
@@ -291,29 +247,22 @@ func TestInterruptedWriteCleansStaging(t *testing.T) {
 func TestWriteRejectsSymlinkIntroducedBeforePublication(t *testing.T) {
 	root := t.TempDir()
 	outside := filepath.Join(t.TempDir(), "outside.txt")
-	if err := os.WriteFile(outside, []byte("outside"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(outside, []byte("outside"), 0o600))
 	filesystem, err := local.New(root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	write := startPausedWrite(t, filesystem, t.Context(), "target.txt", vfs.WriteOptions{})
 	if err := os.Symlink(outside, filepath.Join(root, "target.txt")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 	write.reader.resume()
-	if err := write.wait(); !errors.Is(err, vfs.ErrInvalidPath) {
-		t.Fatalf("publication error = %v, want ErrInvalidPath", err)
-	}
+	require.ErrorIs(t, write.wait(), vfs.ErrInvalidPath, "publication error")
 	content, err := os.ReadFile(outside)
-	if err != nil || string(content) != "outside" {
-		t.Fatalf("outside file changed: %q, %v", content, err)
-	}
+	require.NoError(t, err, "outside file changed")
+	require.Equal(t, "outside", string(content), "outside file changed")
 	entries, err := os.ReadDir(root)
-	if err != nil || len(entries) != 1 || entries[0].Name() != "target.txt" {
-		t.Fatalf("temporary file remained: %v, %v", entries, err)
-	}
+	require.NoError(t, err, "temporary file remained")
+	require.Len(t, entries, 1, "temporary file remained")
+	require.Equal(t, "target.txt", entries[0].Name(), "temporary file remained")
 }
 
 func TestListLexicalPrefixesAndPagination(t *testing.T) {
@@ -322,9 +271,8 @@ func TestListLexicalPrefixesAndPagination(t *testing.T) {
 		"alpha.txt", "alpha/one.txt", "alphabet/two.txt", "alpine/three.txt",
 		"a/b/c.txt", "a/bb.txt", "a/bc/file.txt", "a/bc/deeper/z.txt", "other/hidden.txt",
 	} {
-		if _, err := filesystem.Write(t.Context(), name, strings.NewReader(name), vfs.WriteOptions{}); err != nil {
-			t.Fatal(err)
-		}
+		_, err := filesystem.Write(t.Context(), name, strings.NewReader(name), vfs.WriteOptions{})
+		require.NoError(t, err)
 	}
 	for _, test := range []struct {
 		name    string
@@ -346,23 +294,18 @@ func TestListLexicalPrefixesAndPagination(t *testing.T) {
 			var got []string
 			for {
 				page, err := filesystem.List(t.Context(), test.options)
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				for _, entry := range page.Entries {
 					got = append(got, entry.Path)
 				}
 				if page.NextCursor == "" {
 					break
 				}
-				if page.NextCursor <= test.options.Cursor || len(got) > len(test.want) {
-					t.Fatalf("listing did not advance: %#v", page)
-				}
+				require.Greater(t, page.NextCursor, test.options.Cursor)
+				require.LessOrEqual(t, len(got), len(test.want))
 				test.options.Cursor = page.NextCursor
 			}
-			if !slices.Equal(got, test.want) {
-				t.Fatalf("paginated paths = %v, want %v", got, test.want)
-			}
+			require.True(t, slices.Equal(got, test.want), "paginated paths = %v, want %v", got, test.want)
 		})
 	}
 }
@@ -370,19 +313,13 @@ func TestListLexicalPrefixesAndPagination(t *testing.T) {
 func TestListExcludesSymlinksAndEmptyDirectories(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()
-	if err := os.WriteFile(filepath.Join(outside, "private.txt"), []byte("outside"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(outside, "private.txt"), []byte("outside"), 0o600))
 	if err := os.Symlink(outside, filepath.Join(root, "escape")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
-	if err := os.Mkdir(filepath.Join(root, "empty"), 0o750); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Mkdir(filepath.Join(root, "empty"), 0o750))
 	filesystem, err := local.New(root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, prefix := range []string{"", "esc", "escape/", "escape/private", "empty/"} {
 		assertListing(t, filesystem, vfs.ListOptions{Prefix: prefix}, []string{})
 		assertListing(t, filesystem, vfs.ListOptions{Prefix: prefix, Delimiter: "/"}, []string{})
@@ -392,15 +329,12 @@ func TestListExcludesSymlinksAndEmptyDirectories(t *testing.T) {
 func TestConcurrentConditionalCopiesPreserveOneWinner(t *testing.T) {
 	filesystem := newFilesystem(t)
 	destination, err := filesystem.Write(t.Context(), "destination.txt", strings.NewReader("initial"), vfs.WriteOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	const copies = 12
 	for i := range copies {
 		content := strings.Repeat(fmt.Sprintf("source %d\n", i), 1024)
-		if _, err := filesystem.Write(t.Context(), fmt.Sprintf("source-%d.txt", i), strings.NewReader(content), vfs.WriteOptions{}); err != nil {
-			t.Fatal(err)
-		}
+		_, err = filesystem.Write(t.Context(), fmt.Sprintf("source-%d.txt", i), strings.NewReader(content), vfs.WriteOptions{})
+		require.NoError(t, err)
 	}
 	type result struct {
 		index int
@@ -422,22 +356,17 @@ func TestConcurrentConditionalCopiesPreserveOneWinner(t *testing.T) {
 	for range copies {
 		result := <-results
 		if result.err == nil {
-			if winner != -1 {
-				t.Errorf("multiple copies replaced the same revision: %d, %d", winner, result.index)
-			}
+			assert.Equal(t, -1, winner, "multiple copies replaced the same revision: %d, %d", winner, result.index)
 			winner = result.index
-		} else if !errors.Is(result.err, vfs.ErrConflict) {
-			t.Errorf("copy failed unexpectedly: %v", result.err)
+			continue
 		}
+		assert.ErrorIs(t, result.err, vfs.ErrConflict, "copy failed unexpectedly")
 	}
-	if winner == -1 {
-		t.Fatal("no copy succeeded")
-	}
+	require.NotEqual(t, -1, winner, "no copy succeeded")
 	assertContent(t, filesystem, "destination.txt", strings.Repeat(fmt.Sprintf("source %d\n", winner), 1024))
 	page, err := filesystem.List(t.Context(), vfs.ListOptions{})
-	if err != nil || len(page.Entries) != copies+1 {
-		t.Fatalf("listing after conditional copies = %#v, error = %v", page, err)
-	}
+	require.NoError(t, err, "listing after conditional copies = %#v, error", page)
+	require.Len(t, page.Entries, copies+1, "listing after conditional copies = %#v, error", page)
 }
 
 type pendingWrite struct {
@@ -460,9 +389,9 @@ func startPausedWrite(t *testing.T, filesystem vfs.FileSystem, ctx context.Conte
 	select {
 	case <-write.reader.paused:
 	case <-write.done:
-		t.Fatalf("write did not reach paused reader: %v", write.err)
+		require.FailNow(t, fmt.Sprintf("write did not reach paused reader: %v", write.err))
 	case <-time.After(2 * time.Second):
-		t.Fatal("write did not reach paused reader")
+		require.FailNow(t, "write did not reach paused reader")
 	}
 	return write
 }
@@ -476,40 +405,30 @@ func (r failingReader) Read([]byte) (int, error) { return 0, r.err }
 func assertListing(t *testing.T, filesystem vfs.FileSystem, options vfs.ListOptions, want []string) {
 	t.Helper()
 	page, err := filesystem.List(t.Context(), options)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var got []string
 	for _, entry := range page.Entries {
 		got = append(got, entry.Path)
-		if entry.IsDir != strings.HasSuffix(entry.Path, "/") {
-			t.Fatalf("wrong directory projection: %#v", entry)
-		}
+		require.Equal(t, strings.HasSuffix(entry.Path, "/"), entry.IsDir)
 	}
-	if !slices.Equal(got, want) {
-		t.Fatalf("list %#v = %v, want %v", options, got, want)
-	}
+	require.True(t, slices.Equal(got, want), "list %#v = %v, want %v", options, got, want)
 }
 
 func assertContent(t *testing.T, filesystem vfs.FileSystem, name, want string) {
 	t.Helper()
 	file, err := filesystem.Open(t.Context(), name, vfs.OpenOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	content, readErr := io.ReadAll(file.Body)
 	closeErr := file.Body.Close()
-	if readErr != nil || closeErr != nil || string(content) != want {
-		t.Fatalf("read %q: content = %q, errors = %v / %v", name, content, readErr, closeErr)
-	}
+	require.NoError(t, readErr, "read %q: content = %q, errors = %v", name, content, readErr)
+	require.NoError(t, closeErr, "read %q: content = %q, errors = %v", name, content, readErr)
+	require.Equal(t, want, string(content), "read %q: content = %q, errors = %v", name, content, readErr)
 }
 
 func newFilesystem(t testing.TB) *local.FS {
 	t.Helper()
 	filesystem, err := local.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return filesystem
 }
 

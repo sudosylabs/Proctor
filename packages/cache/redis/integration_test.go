@@ -9,6 +9,9 @@ import (
 	"time"
 
 	"github.com/redis/rueidis"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/packages/cache"
 	"github.com/sudosylabs/proctor/packages/cache/cachetest"
 	rediscache "github.com/sudosylabs/proctor/packages/cache/redis"
@@ -23,9 +26,7 @@ func TestIntegrationConformance(t *testing.T) {
 	database := 0
 	if raw := os.Getenv("CACHE_REDIS_DATABASE"); raw != "" {
 		parsed, err := strconv.Atoi(raw)
-		if err != nil {
-			t.Fatalf("invalid CACHE_REDIS_DATABASE: %v", err)
-		}
+		require.NoError(t, err)
 		database = parsed
 	}
 	client, err := rueidis.NewClient(rueidis.ClientOption{
@@ -33,13 +34,9 @@ func TestIntegrationConformance(t *testing.T) {
 		Password:    os.Getenv("CACHE_REDIS_PASSWORD"),
 		SelectDB:    database,
 	})
-	if err != nil {
-		t.Fatalf("create Redis client: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(client.Close)
-	if err := client.Do(t.Context(), client.B().Ping().Build()).Error(); err != nil {
-		t.Fatalf("ping Redis: %v", err)
-	}
+	require.NoError(t, client.Do(t.Context(), client.B().Ping().Build()).Error())
 
 	base := "proctor-cache-integration-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	var sequence atomic.Uint64
@@ -47,9 +44,7 @@ func TestIntegrationConformance(t *testing.T) {
 		t.Helper()
 		namespace := base + "-" + strconv.FormatUint(sequence.Add(1), 10)
 		store, newErr := rediscache.New(client, cache.StringCodec(), rediscache.Config{Namespace: namespace})
-		if newErr != nil {
-			t.Fatalf("New() error = %v", newErr)
-		}
+		require.NoError(t, newErr)
 		t.Cleanup(func() {
 			deleteNamespace(t, client, namespace+":*")
 		})
@@ -66,13 +61,11 @@ func deleteNamespace(t *testing.T, client rueidis.Client, pattern string) {
 			Match(pattern).
 			Count(100).
 			Build()).AsScanEntry()
-		if err != nil {
-			t.Errorf("cleanup scan: %v", err)
+		if !assert.NoError(t, err) {
 			return
 		}
 		if len(entry.Elements) > 0 {
-			if err := client.Do(context.Background(), client.B().Del().Key(entry.Elements...).Build()).Error(); err != nil {
-				t.Errorf("cleanup delete: %v", err)
+			if !assert.NoError(t, client.Do(context.Background(), client.B().Del().Key(entry.Elements...).Build()).Error()) {
 				return
 			}
 		}
