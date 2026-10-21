@@ -122,3 +122,31 @@ func isAuditEventType(expression ast.Expr, modelName string) bool {
 	qualifier, ok := selector.X.(*ast.Ident)
 	return ok && qualifier.Name == modelName
 }
+
+// TestProductionNeverCallsStoreSeedOperations keeps the unaudited Store seed
+// writes, which exist only for conformance and integration fixtures, out of
+// every production package: production state changes go through the audited
+// named operation.
+func TestProductionNeverCallsStoreSeedOperations(t *testing.T) {
+	t.Parallel()
+
+	inspectProductionGoFiles(t, []string{"."}, func(path string, file *ast.File) {
+		if strings.HasPrefix(filepath.ToSlash(path), "../store/") {
+			return
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			selector, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || !strings.HasPrefix(selector.Sel.Name, "Seed") {
+				return true
+			}
+			if _, accessor := selector.X.(*ast.CallExpr); accessor {
+				t.Errorf("%s calls fixture-only Store operation %s", path, selector.Sel.Name)
+			}
+			return true
+		})
+	})
+}

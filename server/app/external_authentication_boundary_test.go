@@ -844,7 +844,7 @@ func (s *externalIdentityResolutionStoreFake) ResolveOrProvision(_ context.Conte
 	return nil, store.NewErrNotFound("external_identity", input.Identity.Provider)
 }
 
-func (s *providerConnectionIdentityStoreFake) LinkWithAudit(_ context.Context, input *store.ExternalIdentityLink) (*store.AuthenticationMethodMutationResult, error) {
+func (s *providerConnectionIdentityStoreFake) Link(_ context.Context, input *store.ExternalIdentityLink) (*store.AuthenticationMethodMutationResult, error) {
 	s.linked = input
 	return &store.AuthenticationMethodMutationResult{Identity: input.Identity}, nil
 }

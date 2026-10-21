@@ -26,6 +26,7 @@ import (
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 	"github.com/sudosylabs/proctor/server/testlib"
 )
 
@@ -239,7 +240,7 @@ func TestAccessPolicyTwoNodePostgreSQLFenceAndSafeRevisionFanout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	externalBinding, err := primaryStore.RoleBinding().Save(context.Background(), &model.RoleBinding{
+	externalBinding, err := storetest.SaveRoleBinding(context.Background(), primaryStore, &model.RoleBinding{
 		UserID: externalAdmin.ID, RoleID: administratorRole.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 		StartsAt: model.TimeFromMillis(model.GetMillis() - 100),
@@ -254,7 +255,7 @@ func TestAccessPolicyTwoNodePostgreSQLFenceAndSafeRevisionFanout(t *testing.T) {
 		t.Fatal(err)
 	}
 	removedProviderAdmin := createIntegrationUser(t, primary, "policy-removed-provider-admin", "yet another correct horse battery staple")
-	removedProviderBinding, err := primaryStore.RoleBinding().Save(context.Background(), &model.RoleBinding{
+	removedProviderBinding, err := storetest.SaveRoleBinding(context.Background(), primaryStore, &model.RoleBinding{
 		UserID: removedProviderAdmin.ID, RoleID: administratorRole.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 		StartsAt: model.TimeFromMillis(model.GetMillis() - 100),

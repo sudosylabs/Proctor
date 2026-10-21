@@ -24,7 +24,7 @@ type assistedResetStoreFake struct {
 	err   error
 }
 
-func (s *assistedResetStoreFake) ResetWithAudit(_ context.Context, input *store.MFAAssistedReset) (*store.MFAResetResult, error) {
+func (s *assistedResetStoreFake) Reset(_ context.Context, input *store.MFAAssistedReset) (*store.MFAResetResult, error) {
 	s.input = input
 	if s.err != nil {
 		return nil, s.err

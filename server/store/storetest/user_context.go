@@ -35,12 +35,12 @@ func testUserStoreCurrentContext(t *testing.T, ss store.Store) {
 		t.Run(test.name, func(t *testing.T) {
 			user := saveUser(t, ctx, ss)
 			if test.action != "" {
-				role, err := ss.Role().Save(ctx, &model.Role{
+				role, err := SaveRole(ctx, ss, &model.Role{
 					Name: "context-" + model.NewId(), DisplayName: "Context role",
 					Permissions: []string{string(test.action)},
 				})
 				requireNoError(t, err)
-				_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{
+				_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{
 					UserID: user.ID, RoleID: role.ID, ScopeType: test.scopeType, ScopeID: test.scopeID,
 					StartsAt: model.TimeUTC(time.Now().Add(-time.Minute)),
 				})

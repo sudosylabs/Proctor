@@ -55,7 +55,7 @@ func (s *mfaApplicationService) ResetUserMFA(ctx context.Context, invocation Inv
 	if err != nil {
 		return err
 	}
-	result, err := s.credentials.ResetWithAudit(ctx, &store.MFAAssistedReset{Principal: principal, UserID: userID, IdentityVerified: true, Reason: reason, VerificationReference: reference, RecentAuthenticationTTL: s.recentAuthenticationTTL, AuditEventID: model.AuditEventID(auditID), Capabilities: accessDeploymentCapabilities(s.security.capabilities.Snapshot()), Notice: mfaSecurityNotice(prepared), NoticeAt: at})
+	result, err := s.credentials.Reset(ctx, &store.MFAAssistedReset{Principal: principal, UserID: userID, IdentityVerified: true, Reason: reason, VerificationReference: reference, RecentAuthenticationTTL: s.recentAuthenticationTTL, AuditEventID: auditID, Capabilities: accessDeploymentCapabilities(s.security.capabilities.Snapshot()), Notice: mfaSecurityNotice(prepared), NoticeAt: at})
 	if err != nil {
 		return s.failMutation(ctx, auditID, err)
 	}

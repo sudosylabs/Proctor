@@ -77,29 +77,6 @@ func newSQLRoleBindingStore(sqlStore *SQLStore) store.RoleBindingStore {
 
 func (s SQLRoleBindingStore) Save(
 	ctx context.Context,
-	binding *model.RoleBinding,
-) (*model.RoleBinding, error) {
-	if binding == nil {
-		return nil, store.NewErrInvalidInput("role_binding", "value", nil)
-	}
-	if !binding.ID.IsZero() {
-		return nil, store.NewErrInvalidInput("role_binding", "id", binding.ID.String())
-	}
-	candidate := *binding
-	candidate.PrepareCreate(model.NewRoleBindingID(), model.NowUTC())
-	if err := candidate.Validate(); err != nil {
-		return nil, err
-	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "role binding save", func(ctx context.Context, tx *sqlxTxWrapper) (*model.RoleBinding, error) {
-		if err := insertRoleBinding(ctx, tx, &candidate); err != nil {
-			return nil, err
-		}
-		return &candidate, nil
-	})
-}
-
-func (s SQLRoleBindingStore) SaveWithAudit(
-	ctx context.Context,
 	input *store.RoleBindingCreation,
 ) (*model.RoleBinding, error) {
 	if input == nil || input.Binding == nil || !input.Binding.ID.IsZero() ||
@@ -479,16 +456,7 @@ func (s SQLRoleBindingStore) selectBindings(
 	return bindings, nil
 }
 
-func (s SQLRoleBindingStore) End(ctx context.Context, id model.RoleBindingID, endAt int64) (*model.RoleBinding, error) {
-	if endAt <= 0 {
-		return nil, store.NewErrInvalidInput("role_binding", "end_at", endAt)
-	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "role binding end", func(ctx context.Context, tx *sqlxTxWrapper) (*model.RoleBinding, error) {
-		return endRoleBinding(ctx, tx, id.String(), endAt, store.AccessDeploymentCapabilities{})
-	})
-}
-
-func (s SQLRoleBindingStore) EndWithAudit(
+func (s SQLRoleBindingStore) End(
 	ctx context.Context,
 	input *store.RoleBindingEnd,
 ) (*model.RoleBinding, error) {

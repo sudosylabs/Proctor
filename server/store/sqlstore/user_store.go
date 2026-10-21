@@ -735,7 +735,7 @@ func (s SQLUserStore) get(
 	return row.model()
 }
 
-func (s SQLUserStore) UpdateProfileWithAudit(ctx context.Context, input *store.UserProfileUpdate) (*model.User, error) {
+func (s SQLUserStore) UpdateProfile(ctx context.Context, input *store.UserProfileUpdate) (*model.User, error) {
 	if input == nil || !input.UserID.IsValid() || input.ExpectedRevision <= 0 ||
 		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("user", "profile_update", nil)
@@ -845,7 +845,7 @@ func requireUserRevisionAffected(ctx context.Context, executor sqlxExecutor, res
 	return store.NewErrNotFound("user", id).Wrap(sql.ErrNoRows)
 }
 
-func (s SQLUserStore) SetDisabledWithAudit(
+func (s SQLUserStore) SetDisabled(
 	ctx context.Context,
 	input *store.UserDisabledStateChange,
 ) (*store.UserDisabledStateResult, error) {

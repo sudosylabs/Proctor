@@ -18,6 +18,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 )
 
 func TestAcademicPeriodArchiveSerializesWithClassCreation(t *testing.T) {
@@ -28,21 +29,21 @@ func TestAcademicPeriodArchiveSerializesWithClassCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID, Name: "computing", DisplayName: "Computing"})
+	unit, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{InstitutionID: institution.ID, Name: "computing", DisplayName: "Computing"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	programme, err := persistence.Programme().Save(ctx, &model.Programme{AcademicUnitID: unit.ID, Name: "computer-science", DisplayName: "Computer Science"})
+	programme, err := storetest.SaveProgramme(ctx, persistence, &model.Programme{AcademicUnitID: unit.ID, Name: "computer-science", DisplayName: "Computer Science"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	level, err := persistence.ProgrammeLevel().Save(ctx, &model.ProgrammeLevel{ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1"})
+	level, err := storetest.SaveProgrammeLevel(ctx, persistence, &model.ProgrammeLevel{ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	for iteration := 0; iteration < 20; iteration++ {
-		period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{Owner: model.NewInstitutionAcademicPeriodOwner(institution.ID), Name: fmt.Sprintf("period-%d", iteration), DisplayName: "Period", StartsAt: model.TimeFromMillis(int64(1_800_000_000_000 + iteration*1_000_000)), EndsAt: model.TimeFromMillis(int64(1_800_000_500_000 + iteration*1_000_000))})
+		period, err := storetest.SaveAcademicPeriod(ctx, persistence, &model.AcademicPeriod{Owner: model.NewInstitutionAcademicPeriodOwner(institution.ID), Name: fmt.Sprintf("period-%d", iteration), DisplayName: "Period", StartsAt: model.TimeFromMillis(int64(1_800_000_000_000 + iteration*1_000_000)), EndsAt: model.TimeFromMillis(int64(1_800_000_500_000 + iteration*1_000_000))})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -57,12 +58,12 @@ func TestAcademicPeriodArchiveSerializesWithClassCreation(t *testing.T) {
 		go func() {
 			defer wait.Done()
 			<-start
-			_, archiveErr = persistence.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: period.ID, ArchiveAt: model.GetMillis(), AuditEventID: attempt.ID, AuditAt: model.GetMillis()})
+			_, archiveErr = persistence.AcademicPeriod().Archive(ctx, &store.AcademicPeriodArchive{ID: period.ID, ArchiveAt: model.GetMillis(), AuditEventID: attempt.ID, AuditAt: model.GetMillis()})
 		}()
 		go func() {
 			defer wait.Done()
 			<-start
-			_, classErr = persistence.Class().Save(ctx, &model.Class{ProgrammeLevelID: level.ID, AcademicPeriodID: period.ID, Name: "class-a", DisplayName: "Class A"})
+			_, classErr = storetest.SaveClass(ctx, persistence, &model.Class{ProgrammeLevelID: level.ID, AcademicPeriodID: period.ID, Name: "class-a", DisplayName: "Class A"})
 		}()
 		close(start)
 		wait.Wait()

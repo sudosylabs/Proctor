@@ -604,7 +604,7 @@ func (s *desktopAuthorizationService) ExchangeDesktopAuthorization(ctx context.C
 		// Sessions. The active Desktop Registration remains reusable by a fresh
 		// authorization after nonce storage recovers.
 		revokeCtx := context.WithoutCancel(ctx)
-		hashes, revokeErr := s.authentication.sessions.Revoke(revokeCtx, result.Session.ID,
+		hashes, revokeErr := s.authentication.sessions.Withdraw(revokeCtx, result.Session.ID,
 			result.Session.UserID, model.MillisFromTime(s.now()), model.SessionRevocationDesktopAuthorizationFailed)
 		if revokeErr != nil {
 			return nil, apperror.New("authentication.desktop_authorization.unavailable").Wrap(errors.Join(nonceErr, revokeErr))

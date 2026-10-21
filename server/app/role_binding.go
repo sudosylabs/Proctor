@@ -58,8 +58,8 @@ type roleBindingStore interface {
 	Get(context.Context, model.RoleBindingID) (*model.RoleBinding, error)
 	ListVisibleByUser(context.Context, model.UserID, store.UserVisibilityScope) ([]*model.RoleBinding, error)
 	ListByScope(context.Context, model.RoleScopeType, string) ([]*model.RoleBinding, error)
-	SaveWithAudit(context.Context, *store.RoleBindingCreation) (*model.RoleBinding, error)
-	EndWithAudit(context.Context, *store.RoleBindingEnd) (*model.RoleBinding, error)
+	Save(context.Context, *store.RoleBindingCreation) (*model.RoleBinding, error)
+	End(context.Context, *store.RoleBindingEnd) (*model.RoleBinding, error)
 }
 
 type roleBindingRoleStore interface {
@@ -262,7 +262,7 @@ func (s *roleBindingService) CreateRoleBinding(ctx context.Context, invocation I
 				ExpectedRecipientRevision: recipient.Revision, Notice: notice,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
 			}
-			value, storeErr := s.bindings.SaveWithAudit(ctx, input)
+			value, storeErr := s.bindings.Save(ctx, input)
 			if command.batchReplayed != nil {
 				*command.batchReplayed = input.Replayed || input.NoOp
 			}
@@ -347,7 +347,7 @@ func (s *roleBindingService) EndRoleBinding(ctx context.Context, invocation Invo
 				Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()),
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
 			}
-			value, storeErr := s.bindings.EndWithAudit(ctx, input)
+			value, storeErr := s.bindings.End(ctx, input)
 			if command.batchReplayed != nil {
 				*command.batchReplayed = input.Replayed || input.NoOp
 			}

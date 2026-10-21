@@ -51,57 +51,6 @@ func newSQLMFAStore(sqlStore *SQLStore) store.MFAStore {
 	return &SQLMFAStore{SQLStore: sqlStore}
 }
 
-func (s SQLMFAStore) SavePending(
-	ctx context.Context,
-	credential *model.MFACredential,
-) (*model.MFACredential, error) {
-	if credential == nil {
-		return nil, store.NewErrInvalidInput("mfa_credential", "value", nil)
-	}
-	if !credential.ID.IsZero() {
-		return nil, store.NewErrInvalidInput("mfa_credential", "id", credential.ID.String())
-	}
-	candidate := *credential
-	at := model.NowUTC()
-	if !candidate.CreatedAt.IsZero() {
-		at = model.TimeUTC(candidate.CreatedAt)
-	}
-	candidate.PrepareCreate(model.NewMFACredentialID(), at)
-	if err := candidate.Validate(); err != nil {
-		return nil, err
-	}
-	userID := candidate.UserID.String()
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "MFA setup", func(ctx context.Context, tx *sqlxTxWrapper) (*model.MFACredential, error) {
-		if err := lockMFAUser(ctx, tx, userID); err != nil {
-			return nil, err
-		}
-		var active int
-		if err := tx.Get(ctx, &active, `
-		SELECT COUNT(*)
-		  FROM mfa_credentials
-		 WHERE user_id = ? AND archived_at IS NULL AND state = 'active'`,
-			userID,
-		); err != nil {
-			return nil, fmt.Errorf("count active MFA credentials: %w", err)
-		}
-		if active != 0 {
-			return nil, store.NewErrConflict("mfa_credential", "mfa_already_enabled", nil)
-		}
-		if _, err := tx.Exec(ctx, `
-		UPDATE mfa_credentials
-		   SET updated_at = GREATEST(updated_at, ?), archived_at = ?
-		 WHERE user_id = ? AND archived_at IS NULL`,
-			candidate.CreatedAt, candidate.CreatedAt, userID,
-		); err != nil {
-			return nil, fmt.Errorf("replace pending MFA credential: %w", err)
-		}
-		if err := insertMFACredential(ctx, tx, &candidate); err != nil {
-			return nil, err
-		}
-		return &candidate, nil
-	})
-}
-
 func (s SQLMFAStore) GetByUser(ctx context.Context, userID model.UserID) (*model.MFACredential, error) {
 	if !userID.IsValid() {
 		return nil, store.NewErrInvalidInput("mfa_credential", "user_id", userID)
@@ -684,3 +633,56 @@ func (row mfaCredentialRow) model() (*model.MFACredential, error) {
 }
 
 var _ store.MFAStore = (*SQLMFAStore)(nil)
+
+// SeedPending is an unaudited fixture write for conformance and integration tests.
+// Production code never calls it; an architecture test enforces that.
+func (s SQLMFAStore) SeedPending(
+	ctx context.Context,
+	credential *model.MFACredential,
+) (*model.MFACredential, error) {
+	if credential == nil {
+		return nil, store.NewErrInvalidInput("mfa_credential", "value", nil)
+	}
+	if !credential.ID.IsZero() {
+		return nil, store.NewErrInvalidInput("mfa_credential", "id", credential.ID.String())
+	}
+	candidate := *credential
+	at := model.NowUTC()
+	if !candidate.CreatedAt.IsZero() {
+		at = model.TimeUTC(candidate.CreatedAt)
+	}
+	candidate.PrepareCreate(model.NewMFACredentialID(), at)
+	if err := candidate.Validate(); err != nil {
+		return nil, err
+	}
+	userID := candidate.UserID.String()
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "MFA setup", func(ctx context.Context, tx *sqlxTxWrapper) (*model.MFACredential, error) {
+		if err := lockMFAUser(ctx, tx, userID); err != nil {
+			return nil, err
+		}
+		var active int
+		if err := tx.Get(ctx, &active, `
+		SELECT COUNT(*)
+		  FROM mfa_credentials
+		 WHERE user_id = ? AND archived_at IS NULL AND state = 'active'`,
+			userID,
+		); err != nil {
+			return nil, fmt.Errorf("count active MFA credentials: %w", err)
+		}
+		if active != 0 {
+			return nil, store.NewErrConflict("mfa_credential", "mfa_already_enabled", nil)
+		}
+		if _, err := tx.Exec(ctx, `
+		UPDATE mfa_credentials
+		   SET updated_at = GREATEST(updated_at, ?), archived_at = ?
+		 WHERE user_id = ? AND archived_at IS NULL`,
+			candidate.CreatedAt, candidate.CreatedAt, userID,
+		); err != nil {
+			return nil, fmt.Errorf("replace pending MFA credential: %w", err)
+		}
+		if err := insertMFACredential(ctx, tx, &candidate); err != nil {
+			return nil, err
+		}
+		return &candidate, nil
+	})
+}

@@ -48,7 +48,7 @@ func TestExamAttemptWorkspaceStore(t *testing.T, ss store.Store, workspace store
 	lowered.WorkspaceMaximumFileBytes = 1
 	lowered.WorkspaceMaximumTotalBytes = 1
 	institution.ExamCapacity = lowered
-	_, err = ss.Institution().Update(ctx, institution)
+	_, err = UpdateInstitution(ctx, ss, institution)
 	requireNoError(t, err)
 	credentialHash := model.HashToken(model.NewCredentialToken())
 	connect := &store.ExamAttemptConnect{SittingID: fixture.sitting.ID, CandidateUserID: fixture.candidate.ID,
@@ -507,7 +507,7 @@ writesComplete:
 	}
 
 	endedAt := model.GetMillis()
-	ended, err := ss.ClassMember().End(ctx, fixture.membership.ID, fixture.membership.Revision, endedAt)
+	ended, err := ss.ClassMember().SeedEnd(ctx, fixture.membership.ID, fixture.membership.Revision, endedAt)
 	requireNoError(t, err)
 	// Membership timestamps have millisecond precision while PostgreSQL decides
 	// current eligibility with a higher-precision clock. Cross the millisecond
@@ -516,7 +516,7 @@ writesComplete:
 	if _, err = workspace.ResolveMutationTarget(ctx, access); !store.IsNotFound(err) {
 		t.Fatalf("ResolveMutationTarget(after membership revoke) error = %v", err)
 	}
-	restored, err := ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassID: fixture.class.ID,
+	restored, err := ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{ClassID: fixture.class.ID,
 		UserID: fixture.candidate.ID, StartsAt: model.TimeFromMillis(endedAt)})
 	requireNoError(t, err)
 	target, err = workspace.ResolveMutationTarget(ctx, access)

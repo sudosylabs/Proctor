@@ -32,6 +32,7 @@ import (
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 	"github.com/sudosylabs/proctor/server/testlib"
 )
 
@@ -130,26 +131,26 @@ func TestTransactionalMailPhaseCertification(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{
+	unit, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{
 		InstitutionID: bootstrap.Institution.ID, Name: "mail-cert-unit", DisplayName: "Mail Certification Unit",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	programme, err := persistence.Programme().Save(ctx, &model.Programme{
+	programme, err := storetest.SaveProgramme(ctx, persistence, &model.Programme{
 		AcademicUnitID: unit.ID, Name: "mail-cert-programme", DisplayName: "Mail Certification Programme",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	level, err := persistence.ProgrammeLevel().Save(ctx, &model.ProgrammeLevel{
+	level, err := storetest.SaveProgrammeLevel(ctx, persistence, &model.ProgrammeLevel{
 		ProgrammeID: programme.ID, Name: "mail-cert-level", DisplayName: "Mail Certification Level",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	now := model.NowUTC()
-	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{
+	period, err := storetest.SaveAcademicPeriod(ctx, persistence, &model.AcademicPeriod{
 		Owner: model.NewInstitutionAcademicPeriodOwner(bootstrap.Institution.ID),
 		Name:  "mail-cert-period", DisplayName: "Mail Certification Period",
 		StartsAt: now.Add(-time.Hour), EndsAt: now.Add(24 * time.Hour),
@@ -157,7 +158,7 @@ func TestTransactionalMailPhaseCertification(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	class, err := persistence.Class().Save(ctx, &model.Class{
+	class, err := storetest.SaveClass(ctx, persistence, &model.Class{
 		ProgrammeLevelID: level.ID, AcademicPeriodID: period.ID,
 		Name: "mail-cert-class", DisplayName: "Mail Certification Class",
 	})
@@ -169,7 +170,7 @@ func TestTransactionalMailPhaseCertification(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = persistence.ClassMember().Enroll(ctx, &model.ClassMember{
+	if _, err = persistence.ClassMember().SeedEnroll(ctx, &model.ClassMember{
 		ClassID: class.ID, UserID: candidate.ID, StartsAt: now.Add(-time.Hour),
 	}); err != nil {
 		t.Fatal(err)

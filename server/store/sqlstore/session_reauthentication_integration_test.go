@@ -45,7 +45,7 @@ func TestPasswordReauthenticationCommitsOnlyCurrentProofAndAudit(t *testing.T) {
 				t.Fatal(err)
 			}
 			before := model.NowUTC()
-			result, err := s.Session().ReauthenticatePasswordWithAudit(ctx, input)
+			result, err := s.Session().ReauthenticatePassword(ctx, input)
 			current, getErr := s.Session().Get(ctx, session.ID)
 			if getErr != nil {
 				t.Fatal(getErr)
@@ -117,7 +117,7 @@ func TestExternalReauthenticationRechecksExactIdentityAndLiveBoundSession(t *tes
 			if err != nil {
 				t.Fatal(err)
 			}
-			result, err := s.Session().ReauthenticateExternalWithAudit(ctx, input)
+			result, err := s.Session().ReauthenticateExternal(ctx, input)
 			current, getErr := s.Session().Get(ctx, session.ID)
 			if getErr != nil {
 				t.Fatal(getErr)
@@ -134,7 +134,7 @@ func TestExternalReauthenticationRechecksExactIdentityAndLiveBoundSession(t *tes
 			if !current.ReauthenticatedAt.Time.Equal(input.AuthenticatedAt) || !current.AuthenticatedAt.Equal(session.AuthenticatedAt) || current.MFACompletedAt != session.MFACompletedAt || current.AuthenticationMethod != session.AuthenticationMethod || current.ExternalIdentityID != identity.ID {
 				t.Fatalf("fresh provider proof rewrote original provenance: %#v", current)
 			}
-			if _, err = s.Session().ReauthenticateExternalWithAudit(ctx, input); err == nil {
+			if _, err = s.Session().ReauthenticateExternal(ctx, input); err == nil {
 				t.Fatal("completed one-use proof committed a second audit transition")
 			}
 		})
@@ -151,7 +151,7 @@ func TestPasswordReauthenticationRechecksCredentialAfterWaitingForFence(t *testi
 	pid, release := holdSQLAdvisoryFence(t, ctx, s, "proctor:session-user:"+f.target.ID.String())
 	defer release()
 	done := make(chan error, 1)
-	go func() { _, err := s.Session().ReauthenticatePasswordWithAudit(ctx, input); done <- err }()
+	go func() { _, err := s.Session().ReauthenticatePassword(ctx, input); done <- err }()
 	waitForBlockedSystemAdministratorAuthenticationPathTransactions(t, ctx, s, pid, 1)
 	if _, err := s.GetMaster().Exec(ctx, `UPDATE session_credentials SET revoked_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id=?`, f.targetCredential.ID.String()); err != nil {
 		t.Fatal(err)

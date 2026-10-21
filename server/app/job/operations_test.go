@@ -38,11 +38,11 @@ func (f *operatorStoreFake) ListAttemptsPage(_ context.Context, options store.Jo
 	f.attemptOptions = options
 	return f.attempts, nil
 }
-func (f *operatorStoreFake) CancelWithAudit(_ context.Context, mutation *store.JobMutation) (*model.Job, error) {
+func (f *operatorStoreFake) Cancel(_ context.Context, mutation *store.JobMutation) (*model.Job, error) {
 	f.mutation = mutation
 	return f.job.RequestCancellation(f.job.UpdatedAt.Add(time.Second))
 }
-func (f *operatorStoreFake) RetryWithAudit(_ context.Context, mutation *store.JobMutation) (*model.Job, error) {
+func (f *operatorStoreFake) Retry(_ context.Context, mutation *store.JobMutation) (*model.Job, error) {
 	f.mutation = mutation
 	return f.job.ExplicitRetry(f.job.UpdatedAt.Add(time.Second))
 }

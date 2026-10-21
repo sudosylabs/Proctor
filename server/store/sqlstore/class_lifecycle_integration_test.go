@@ -18,6 +18,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 )
 
 func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
@@ -28,19 +29,19 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID, Name: "computing", DisplayName: "Computing"})
+	unit, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{InstitutionID: institution.ID, Name: "computing", DisplayName: "Computing"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	programme, err := persistence.Programme().Save(ctx, &model.Programme{AcademicUnitID: unit.ID, Name: "computer-science", DisplayName: "Computer Science"})
+	programme, err := storetest.SaveProgramme(ctx, persistence, &model.Programme{AcademicUnitID: unit.ID, Name: "computer-science", DisplayName: "Computer Science"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	level, err := persistence.ProgrammeLevel().Save(ctx, &model.ProgrammeLevel{ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1"})
+	level, err := storetest.SaveProgrammeLevel(ctx, persistence, &model.ProgrammeLevel{ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{Owner: model.NewInstitutionAcademicPeriodOwner(institution.ID), Name: "2026", DisplayName: "2026", StartsAt: model.TimeFromMillis(100), EndsAt: model.TimeFromMillis(10_000_000)})
+	period, err := storetest.SaveAcademicPeriod(ctx, persistence, &model.AcademicPeriod{Owner: model.NewInstitutionAcademicPeriodOwner(institution.ID), Name: "2026", DisplayName: "2026", StartsAt: model.TimeFromMillis(100), EndsAt: model.TimeFromMillis(10_000_000)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +50,7 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 	if _, err := persistence.Affiliation().Save(ctx, &model.Affiliation{UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(1)}); err != nil {
 		t.Fatal(err)
 	}
-	role, err := persistence.Role().Save(ctx, &model.Role{Name: "class-reader", DisplayName: "Class Reader", Permissions: []string{string(model.ActionClassView)}})
+	role, err := storetest.SaveRole(ctx, persistence, &model.Role{Name: "class-reader", DisplayName: "Class Reader", Permissions: []string{string(model.ActionClassView)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,12 +67,12 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 			go func() {
 				defer wait.Done()
 				<-start
-				_, archiveErr = persistence.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: class.ID, ExpectedAcademicUnitID: unit.ID, ExpectedRevision: class.Revision, ArchiveAt: model.GetMillis(), AuditEventID: attempt.ID, AuditAt: model.GetMillis()})
+				_, archiveErr = persistence.Class().Archive(ctx, &store.ClassArchive{ID: class.ID, ExpectedAcademicUnitID: unit.ID, ExpectedRevision: class.Revision, ArchiveAt: model.GetMillis(), AuditEventID: attempt.ID, AuditAt: model.GetMillis()})
 			}()
 			go func() {
 				defer wait.Done()
 				<-start
-				_, dependentErr = persistence.ClassMember().Enroll(ctx, &model.ClassMember{ClassID: class.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(baseStart + int64(iteration*10))})
+				_, dependentErr = persistence.ClassMember().SeedEnroll(ctx, &model.ClassMember{ClassID: class.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(baseStart + int64(iteration*10))})
 			}()
 			close(start)
 			wait.Wait()
@@ -89,12 +90,12 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 			go func() {
 				defer wait.Done()
 				<-start
-				_, archiveErr = persistence.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: class.ID, ExpectedAcademicUnitID: unit.ID, ExpectedRevision: class.Revision, ArchiveAt: model.GetMillis(), AuditEventID: attempt.ID, AuditAt: model.GetMillis()})
+				_, archiveErr = persistence.Class().Archive(ctx, &store.ClassArchive{ID: class.ID, ExpectedAcademicUnitID: unit.ID, ExpectedRevision: class.Revision, ArchiveAt: model.GetMillis(), AuditEventID: attempt.ID, AuditAt: model.GetMillis()})
 			}()
 			go func() {
 				defer wait.Done()
 				<-start
-				_, dependentErr = persistence.RoleBinding().Save(ctx, &model.RoleBinding{UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis())})
+				_, dependentErr = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis())})
 			}()
 			close(start)
 			wait.Wait()
@@ -121,7 +122,7 @@ func assertClassLifecycleWinner(t *testing.T, iteration int, archiveErr, depende
 
 func saveLifecycleClass(t *testing.T, ctx context.Context, persistence store.Store, levelID, periodID, name string) *model.Class {
 	t.Helper()
-	class, err := persistence.Class().Save(ctx, &model.Class{ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: model.AcademicPeriodID(periodID), Name: name, DisplayName: name})
+	class, err := storetest.SaveClass(ctx, persistence, &model.Class{ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: model.AcademicPeriodID(periodID), Name: name, DisplayName: name})
 	if err != nil {
 		t.Fatal(err)
 	}

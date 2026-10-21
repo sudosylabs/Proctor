@@ -45,8 +45,8 @@ type programmeLevelStore interface {
 	Get(context.Context, model.ProgrammeLevelID) (*model.ProgrammeLevel, error)
 	SearchByProgramme(context.Context, model.ProgrammeID, string, int) ([]*model.ProgrammeLevel, error)
 	Create(context.Context, *store.ProgrammeLevelCreation) (*model.ProgrammeLevel, error)
-	UpdateWithAudit(context.Context, *store.ProgrammeLevelUpdate) (*model.ProgrammeLevel, error)
-	ArchiveWithAudit(context.Context, *store.ProgrammeLevelArchive) (*model.ProgrammeLevel, error)
+	Update(context.Context, *store.ProgrammeLevelUpdate) (*model.ProgrammeLevel, error)
+	Archive(context.Context, *store.ProgrammeLevelArchive) (*model.ProgrammeLevel, error)
 }
 
 type programmeLevelService struct {
@@ -187,7 +187,7 @@ func (s *programmeLevelService) UpdateProgrammeLevel(ctx context.Context, invoca
 		},
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.ProgrammeLevel, error) {
-			return s.store.UpdateWithAudit(ctx, &store.ProgrammeLevelUpdate{
+			return s.store.Update(ctx, &store.ProgrammeLevelUpdate{
 				Level: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
@@ -218,7 +218,7 @@ func (s *programmeLevelService) ArchiveProgrammeLevel(ctx context.Context, invoc
 		},
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.ProgrammeLevel, error) {
-			return s.store.ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{
+			return s.store.Archive(ctx, &store.ProgrammeLevelArchive{
 				ExpectedRevision: current.Revision,
 				ID:               current.ID, ArchiveAt: reference.MutationAtMillis,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,

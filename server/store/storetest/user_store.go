@@ -257,7 +257,7 @@ func testUserStoreDisabledMailRecordsTerminalAccountNotice(t *testing.T, ss stor
 		AuditEventID: attempt.ID, AuditAt: at,
 	})
 	command.Delivery, command.DeliveryJob = suppressSecurityNoticeForDisabledMail(t, command.Delivery, command.DeliveryJob)
-	if _, err := ss.User().SetDisabledWithAudit(ctx, command); err != nil {
+	if _, err := ss.User().SetDisabled(ctx, command); err != nil {
 		t.Fatal(err)
 	}
 	delivery, err := ss.Mail().GetDelivery(ctx, command.Delivery.ID)
@@ -337,7 +337,7 @@ func testUserCreationAndDefaultJobAreAtomic(t *testing.T, ss store.Store) {
 func testUserStoreProtectLastAdministrator(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
-	role, err := ss.Role().Save(ctx, &model.Role{
+	role, err := SaveRole(ctx, ss, &model.Role{
 		Name:        model.SystemAdministratorRoleName,
 		DisplayName: "System Administrator",
 		BuiltIn:     true,
@@ -345,7 +345,7 @@ func testUserStoreProtectLastAdministrator(t *testing.T, ss store.Store) {
 	})
 	requireNoError(t, err)
 	first := saveUserWithPassword(t, ctx, ss)
-	firstBinding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{
+	firstBinding, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: first.ID, RoleID: role.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 		StartsAt: model.TimeFromMillis(model.GetMillis() - 100),
@@ -353,7 +353,7 @@ func testUserStoreProtectLastAdministrator(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	at := model.GetMillis()
 	attempt := saveUserProfileAuditAttempt(t, ctx, ss, first.ID.String())
-	_, err = ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+	_, err = ss.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: first.ID, ExpectedRevision: first.Revision, Disabled: true,
 		ChangedAt: at, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: attempt.ID, AuditAt: at,
@@ -364,22 +364,22 @@ func testUserStoreProtectLastAdministrator(t *testing.T, ss store.Store) {
 		t.Fatalf("disable last administrator error = %v", err)
 	}
 	second := saveUserWithPassword(t, ctx, ss)
-	secondBinding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{
+	secondBinding, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: second.ID, RoleID: role.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 		StartsAt: model.TimeFromMillis(at - 100),
 	})
 	requireNoError(t, err)
-	_, err = ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+	_, err = ss.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: first.ID, ExpectedRevision: first.Revision, Disabled: true,
 		ChangedAt: at, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: attempt.ID, AuditAt: at,
 	}))
 	requireNoError(t, err)
-	if _, err = ss.RoleBinding().End(ctx, secondBinding.ID, at+1); !errors.As(err, &conflict) {
+	if _, err = EndRoleBinding(ctx, ss, secondBinding.ID, at+1); !errors.As(err, &conflict) {
 		t.Fatalf("end only enabled administrator binding error = %v", err)
 	}
-	if _, err = ss.RoleBinding().End(ctx, firstBinding.ID, at+1); err != nil {
+	if _, err = EndRoleBinding(ctx, ss, firstBinding.ID, at+1); err != nil {
 		t.Fatalf("ending disabled administrator binding should be allowed: %v", err)
 	}
 }
@@ -425,18 +425,18 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		StartsAt: model.TimeFromMillis(activeAt - 10),
 	})
 	requireNoError(t, err)
-	firstMembership, err := ss.ClassMember().Enroll(ctx, &model.ClassMember{
+	firstMembership, err := ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{
 		ClassID: visibleClass.ID, UserID: first.ID, StartsAt: model.TimeFromMillis(activeAt - 10),
 	})
 	requireNoError(t, err)
-	_, err = ss.ClassMember().End(ctx, firstMembership.Membership.ID, firstMembership.Membership.Revision, activeAt+100)
+	_, err = ss.ClassMember().SeedEnd(ctx, firstMembership.Membership.ID, firstMembership.Membership.Revision, activeAt+100)
 	requireNoError(t, err)
 	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{
 		UserID: second.ID, Kind: model.AffiliationStudent,
 		StartsAt: model.TimeFromMillis(activeAt - 10),
 	})
 	requireNoError(t, err)
-	_, err = ss.ClassMember().Enroll(ctx, &model.ClassMember{
+	_, err = ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{
 		ClassID: visibleClass.ID, UserID: second.ID, StartsAt: model.TimeFromMillis(activeAt + 10),
 	})
 	requireNoError(t, err)
@@ -445,7 +445,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		StartsAt: model.TimeFromMillis(activeAt - 10),
 	})
 	requireNoError(t, err)
-	_, err = ss.ClassMember().Enroll(ctx, &model.ClassMember{
+	_, err = ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{
 		ClassID: siblingClass.ID, UserID: otherClassMember.ID, StartsAt: model.TimeFromMillis(activeAt - 10),
 	})
 	requireNoError(t, err)
@@ -454,29 +454,29 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		StartsAt: model.TimeFromMillis(activeAt - 10),
 	})
 	requireNoError(t, err)
-	unitRole, err := ss.Role().Save(ctx, &model.Role{
+	unitRole, err := SaveRole(ctx, ss, &model.Role{
 		Name: "unit-directory-" + model.NewId(), DisplayName: "Unit Directory",
 		Permissions: []string{string(model.ActionUserView)},
 	})
 	requireNoError(t, err)
-	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{
+	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: unitRoleHolder.ID, RoleID: unitRole.ID,
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: fixture.programme.AcademicUnitID.String(),
 		StartsAt: model.TimeFromMillis(activeAt - 10),
 	})
 	requireNoError(t, err)
-	archivedRole, err := ss.Role().Save(ctx, &model.Role{
+	archivedRole, err := SaveRole(ctx, ss, &model.Role{
 		Name: "archived-directory-" + model.NewId(), DisplayName: "Archived Directory",
 		Permissions: []string{string(model.ActionUserView)},
 	})
 	requireNoError(t, err)
-	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{
+	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: archivedRoleHolder.ID, RoleID: archivedRole.ID,
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: fixture.programme.AcademicUnitID.String(),
 		StartsAt: model.TimeFromMillis(activeAt - 10),
 	})
 	requireNoError(t, err)
-	_, err = ss.Role().Archive(ctx, archivedRole.ID, model.GetMillis())
+	_, err = ArchiveRole(ctx, ss, archivedRole.ID, model.GetMillis())
 	requireNoError(t, err)
 	denied, err := ss.User().List(ctx, store.UserListOptions{Limit: 10})
 	requireNoError(t, err)
@@ -647,7 +647,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	}
 	at := model.GetMillis() + 100
 	attempt := saveUserProfileAuditAttempt(t, ctx, ss, first.ID.String())
-	result, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+	result, err := ss.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: first.ID, ExpectedRevision: first.Revision, Disabled: true,
 		ChangedAt: at, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: attempt.ID, AuditAt: at,
@@ -655,7 +655,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	disabled := result.User
 	if disabled.DisabledAt.Millis() != at || disabled.Revision != first.Revision+1 {
-		t.Fatalf("SetDisabledWithAudit() = %#v", result)
+		t.Fatalf("SetDisabled() = %#v", result)
 	}
 	scopedDefault, err := ss.User().List(ctx, store.UserListOptions{
 		Visibility: store.UserVisibilityScope{ClassIDs: []model.ClassID{visibleClass.ID}, ActiveAt: model.TimeFromMillis(activeAt)},
@@ -737,19 +737,19 @@ func testUserVisibilityIntervalPrecision(t *testing.T, ss store.Store) {
 					UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: start.Add(-time.Hour),
 				})
 				requireNoError(t, err)
-				_, err = ss.ClassMember().Enroll(ctx, &model.ClassMember{
+				_, err = ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{
 					ClassID: class.ID, UserID: user.ID, StartsAt: start, EndsAt: model.OptionalTimeFrom(end),
 				})
 				requireNoError(t, err)
 				visibility = store.UserVisibilityScope{ClassIDs: []model.ClassID{class.ID}}
 				wantMatch = store.UserVisibilityMatch{ScopeType: model.RoleScopeClass, ScopeID: class.ID.String()}
 			case "role binding":
-				role, err := ss.Role().Save(ctx, &model.Role{
+				role, err := SaveRole(ctx, ss, &model.Role{
 					Name: "precise-visibility-reader", DisplayName: "Precise Visibility Reader",
 					Permissions: []string{string(model.ActionClassView)},
 				})
 				requireNoError(t, err)
-				_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{
+				_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{
 					UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit,
 					ScopeID: fixture.programme.AcademicUnitID.String(), StartsAt: start, EndsAt: model.OptionalTimeFrom(end),
 				})
@@ -802,14 +802,14 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 	at := model.GetMillis() + 100
 
 	oversizedAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
-	if _, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+	if _, err := ss.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID, ExpectedRevision: user.Revision, Disabled: true,
 		ChangedAt:        at,
 		RevocationReason: model.SessionRevocationReason(strings.Repeat("x", model.SessionRevocationMaxRunes+1)),
 		AuditEventID:     oversizedAttempt.ID,
 		AuditAt:          at,
 	})); err == nil {
-		t.Fatal("SetDisabledWithAudit() accepted an oversized revocation reason")
+		t.Fatal("SetDisabled() accepted an oversized revocation reason")
 	} else {
 		var invalid *store.ErrInvalidInput
 		if !errors.As(err, &invalid) {
@@ -829,8 +829,8 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 		ChangedAt: at, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: model.NewAuditEventID(), AuditAt: at,
 	})
-	if _, err := ss.User().SetDisabledWithAudit(ctx, missingAuditCommand); err == nil {
-		t.Fatal("SetDisabledWithAudit() succeeded without its audit attempt")
+	if _, err = ss.User().SetDisabled(ctx, missingAuditCommand); err == nil {
+		t.Fatal("SetDisabled() succeeded without its audit attempt")
 	}
 	if _, getErr := ss.Mail().GetDelivery(ctx, missingAuditCommand.Delivery.ID); !store.IsNotFound(getErr) {
 		t.Fatalf("account notice survived audit rollback: %v", getErr)
@@ -861,11 +861,11 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 		ChangedAt: at, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: disableAttempt.ID, AuditAt: at,
 	})
-	disabled, err := ss.User().SetDisabledWithAudit(ctx, disableCommand)
+	disabled, err := ss.User().SetDisabled(ctx, disableCommand)
 	requireNoError(t, err)
 	if disabled.User.DisabledAt.Millis() != at || disabled.User.Revision != user.Revision+1 ||
 		len(disabled.RevokedSessions) != 2 || len(disabled.RevokedTokenHashes) != 4 {
-		t.Fatalf("SetDisabledWithAudit() = %#v", disabled)
+		t.Fatalf("SetDisabled() = %#v", disabled)
 	}
 	for _, sessionID := range []string{first.ID.String(), second.ID.String()} {
 		revoked, getErr := ss.Session().Get(ctx, model.SessionID(sessionID))
@@ -897,7 +897,7 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 		ChangedAt: at + 1, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: replayAttempt.ID, AuditAt: at + 1,
 	})
-	if _, replayErr := ss.User().SetDisabledWithAudit(ctx, replayCommand); !store.IsConflict(replayErr) {
+	if _, replayErr := ss.User().SetDisabled(ctx, replayCommand); !store.IsConflict(replayErr) {
 		t.Fatalf("same-state account replay error = %v", replayErr)
 	}
 	if _, getErr := ss.Mail().GetDelivery(ctx, replayCommand.Delivery.ID); !store.IsNotFound(getErr) {
@@ -905,11 +905,11 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 	}
 
 	staleAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
-	if _, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+	if _, err = ss.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID, ExpectedRevision: user.Revision, Disabled: false,
 		ChangedAt: at + 1, AuditEventID: staleAttempt.ID, AuditAt: at + 1,
 	})); !store.IsConflict(err) {
-		t.Fatalf("stale SetDisabledWithAudit() error = %v", err)
+		t.Fatalf("stale SetDisabled() error = %v", err)
 	}
 	staleAudit, err := ss.Audit().Get(ctx, staleAttempt.ID)
 	requireNoError(t, err)
@@ -922,7 +922,7 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 		ID: user.ID, ExpectedRevision: disabled.User.Revision, Disabled: false,
 		ChangedAt: at + 2, AuditEventID: enableAttempt.ID, AuditAt: at + 2,
 	})
-	enabled, err := ss.User().SetDisabledWithAudit(ctx, enableCommand)
+	enabled, err := ss.User().SetDisabled(ctx, enableCommand)
 	requireNoError(t, err)
 	if enabled.User.DisabledAt.Valid || enabled.User.Revision != disabled.User.Revision+1 ||
 		enabled.RevokedSessions == nil || len(enabled.RevokedSessions) != 0 ||
@@ -989,14 +989,14 @@ func testUserStoreUpdate(t *testing.T, ss store.Store) {
 	requireNoError(t, ss.User().UpdateLastLogin(ctx, updated.ID, activityAt))
 	displayName := "Audited User"
 	auditAttempt := saveUserProfileAuditAttempt(t, ctx, ss, updated.ID.String())
-	audited, err := ss.User().UpdateProfileWithAudit(ctx, &store.UserProfileUpdate{
+	audited, err := ss.User().UpdateProfile(ctx, &store.UserProfileUpdate{
 		UserID: updated.ID, Changes: model.UserProfileChanges{DisplayName: &displayName}, ExpectedRevision: updated.Revision,
 		AuditEventID: auditAttempt.ID, AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
 	if audited.DisplayName != "Audited User" || audited.Revision != updated.Revision+1 ||
 		audited.Email != updated.Email || audited.EmailVerified != updated.EmailVerified {
-		t.Fatalf("UpdateProfileWithAudit() = %#v", audited)
+		t.Fatalf("UpdateProfile() = %#v", audited)
 	}
 	completed, err := ss.Audit().Get(ctx, auditAttempt.ID)
 	requireNoError(t, err)
@@ -1005,11 +1005,11 @@ func testUserStoreUpdate(t *testing.T, ss store.Store) {
 	}
 
 	rolledBackName := "Must Roll Back"
-	if _, err := ss.User().UpdateProfileWithAudit(ctx, &store.UserProfileUpdate{
+	if _, err = ss.User().UpdateProfile(ctx, &store.UserProfileUpdate{
 		UserID: audited.ID, Changes: model.UserProfileChanges{DisplayName: &rolledBackName}, ExpectedRevision: audited.Revision,
 		AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
 	}); err == nil {
-		t.Fatal("UpdateProfileWithAudit() succeeded without its audit attempt")
+		t.Fatal("UpdateProfile() succeeded without its audit attempt")
 	}
 	persisted, err := ss.User().Get(ctx, audited.ID)
 	requireNoError(t, err)
@@ -1019,19 +1019,19 @@ func testUserStoreUpdate(t *testing.T, ss store.Store) {
 	}
 
 	staleAttempt := saveUserProfileAuditAttempt(t, ctx, ss, updated.ID.String())
-	if _, err := ss.User().UpdateProfileWithAudit(ctx, &store.UserProfileUpdate{
+	if _, err := ss.User().UpdateProfile(ctx, &store.UserProfileUpdate{
 		UserID: updated.ID, Changes: model.UserProfileChanges{DisplayName: &displayName}, ExpectedRevision: updated.Revision,
 		AuditEventID: staleAttempt.ID, AuditAt: model.GetMillis(),
 	}); !store.IsConflict(err) {
-		t.Fatalf("stale UpdateProfileWithAudit() error = %v", err)
+		t.Fatalf("stale UpdateProfile() error = %v", err)
 	}
 	missingID := model.UserID(model.NewId())
 	missingAttempt := saveUserProfileAuditAttempt(t, ctx, ss, missingID.String())
-	if _, err := ss.User().UpdateProfileWithAudit(ctx, &store.UserProfileUpdate{
+	if _, err := ss.User().UpdateProfile(ctx, &store.UserProfileUpdate{
 		UserID: missingID, Changes: model.UserProfileChanges{DisplayName: &displayName}, ExpectedRevision: updated.Revision,
 		AuditEventID: missingAttempt.ID, AuditAt: model.GetMillis(),
 	}); !store.IsNotFound(err) {
-		t.Fatalf("UpdateProfileWithAudit(missing) error = %v", err)
+		t.Fatalf("UpdateProfile(missing) error = %v", err)
 	}
 }
 

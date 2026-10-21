@@ -43,9 +43,9 @@ type ArchiveRoleCommand struct {
 type roleStore interface {
 	Get(context.Context, model.RoleID) (*model.Role, error)
 	List(context.Context) ([]*model.Role, error)
-	SaveWithAudit(context.Context, *store.RoleCreation) (*model.Role, error)
-	UpdateWithAudit(context.Context, *store.RoleUpdate) (*model.Role, error)
-	ArchiveWithAudit(context.Context, *store.RoleArchive) (*model.Role, error)
+	Save(context.Context, *store.RoleCreation) (*model.Role, error)
+	Update(context.Context, *store.RoleUpdate) (*model.Role, error)
+	Archive(context.Context, *store.RoleArchive) (*model.Role, error)
 }
 
 type roleAuthorizer interface {
@@ -134,7 +134,7 @@ func (s *roleService) CreateRole(ctx context.Context, invocation Invocation, com
 		},
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Role, error) {
-			return s.roles.SaveWithAudit(ctx, &store.RoleCreation{
+			return s.roles.Save(ctx, &store.RoleCreation{
 				Role: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
@@ -191,7 +191,7 @@ func (s *roleService) UpdateRole(ctx context.Context, invocation Invocation, com
 		},
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Role, error) {
-			return s.roles.UpdateWithAudit(ctx, &store.RoleUpdate{
+			return s.roles.Update(ctx, &store.RoleUpdate{
 				Role: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
@@ -247,7 +247,7 @@ func (s *roleService) ArchiveRole(ctx context.Context, invocation Invocation, co
 		},
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Role, error) {
-			return s.roles.ArchiveWithAudit(ctx, &store.RoleArchive{
+			return s.roles.Archive(ctx, &store.RoleArchive{
 				ID: id, ArchiveAt: reference.MutationAtMillis,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})

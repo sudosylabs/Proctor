@@ -723,10 +723,10 @@ type JobStore interface {
 	// CancellationRequested observes the durable cancellation bit only while the
 	// supplied Attempt still owns the live fence.
 	CancellationRequested(context.Context, model.JobAttemptID, model.JobClaimToken) (bool, error)
-	// CancelWithAudit and RetryWithAudit atomically mutate the Job and complete
+	// Cancel and Retry atomically mutate the Job and complete
 	// an already-durable operator audit attempt.
-	CancelWithAudit(context.Context, *JobMutation) (*model.Job, error)
-	RetryWithAudit(context.Context, *JobMutation) (*model.Job, error)
+	Cancel(context.Context, *JobMutation) (*model.Job, error)
+	Retry(context.Context, *JobMutation) (*model.Job, error)
 	// DeleteTerminalHistory atomically selects and removes one bounded,
 	// oldest-first page of retention-eligible terminal Jobs and their Attempts.
 	// It revalidates per-type ages against the primary database clock, never
@@ -870,11 +870,11 @@ type FileStore interface {
 	PublishDefaultProfilePicture(context.Context, *DefaultProfilePicturePublication) (*ProfilePicturePublicationResult, error)
 	GetProfilePictureState(context.Context, model.UserID) (*ProfilePictureState, error)
 	GetProfilePictureRendition(context.Context, model.UserID, string) (*model.FileRendition, error)
-	// RemoveProfilePictureWithAudit atomically verifies the user's revision, active
+	// RemoveProfilePicture atomically verifies the user's revision, active
 	// custom entry, current file revision, and expected normalized checksum; it then
 	// archives that entry, clears the custom relationship, advances the user, and
 	// completes the pre-existing audit attempt. Races fail with no partial change.
-	RemoveProfilePictureWithAudit(context.Context, *ProfilePictureRemoval) (*model.User, error)
+	RemoveProfilePicture(context.Context, *ProfilePictureRemoval) (*model.User, error)
 	// ListPurgeCandidates returns a stable bounded page derived from leases and
 	// semantic metadata using the database clock. It never discovers ownership
 	// by listing VFS objects.
@@ -892,8 +892,7 @@ type InstitutionStore interface {
 	Save(context.Context, *model.Institution) (*model.Institution, error)
 	Get(context.Context, model.InstitutionID) (*model.Institution, error)
 	GetSingleton(context.Context) (*model.Institution, error)
-	Update(context.Context, *model.Institution) (*model.Institution, error)
-	UpdateWithAudit(context.Context, *InstitutionUpdate) (*model.Institution, error)
+	Update(context.Context, *InstitutionUpdate) (*model.Institution, error)
 	Archive(context.Context, model.InstitutionID, int64) error
 }
 
@@ -930,16 +929,13 @@ type AcademicUnitArchive struct {
 type AcademicUnitStore interface {
 	Create(context.Context, *AcademicUnitCreation) (*model.AcademicUnit, error)
 	CreateIdempotently(context.Context, *AcademicUnitCreation, *CommandIdempotency) (*AcademicUnitCommandResult, error)
-	UpdateWithAudit(context.Context, *AcademicUnitUpdate) (*model.AcademicUnit, error)
-	ArchiveWithAudit(context.Context, *AcademicUnitArchive) (*model.AcademicUnit, error)
-	Save(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error)
+	Update(context.Context, *AcademicUnitUpdate) (*model.AcademicUnit, error)
+	Archive(context.Context, *AcademicUnitArchive) (*model.AcademicUnit, error)
 	Get(context.Context, model.AcademicUnitID) (*model.AcademicUnit, error)
 	GetByName(context.Context, model.InstitutionID, string) (*model.AcademicUnit, error)
 	ListChildren(context.Context, model.InstitutionID, model.AcademicUnitID) ([]*model.AcademicUnit, error)
 	ListAncestors(context.Context, model.AcademicUnitID) ([]*model.AcademicUnit, error)
 	Search(context.Context, model.InstitutionID, string, int) ([]*model.AcademicUnit, error)
-	Update(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error)
-	Archive(context.Context, model.AcademicUnitID, int64) (*model.AcademicUnit, error)
 }
 
 // ProgrammeStore persists courses of study owned by academic units.
@@ -966,15 +962,14 @@ type ProgrammeArchive struct {
 
 type ProgrammeStore interface {
 	Create(context.Context, *ProgrammeCreation) (*model.Programme, error)
-	UpdateWithAudit(context.Context, *ProgrammeUpdate) (*model.Programme, error)
-	ArchiveWithAudit(context.Context, *ProgrammeArchive) (*model.Programme, error)
-	Save(context.Context, *model.Programme) (*model.Programme, error)
+	Update(context.Context, *ProgrammeUpdate) (*model.Programme, error)
+	Archive(context.Context, *ProgrammeArchive) (*model.Programme, error)
 	Get(context.Context, model.ProgrammeID) (*model.Programme, error)
 	GetByName(context.Context, model.AcademicUnitID, string) (*model.Programme, error)
 	ListByAcademicUnit(context.Context, model.AcademicUnitID) ([]*model.Programme, error)
 	SearchByAcademicUnit(context.Context, model.AcademicUnitID, string, int) ([]*model.Programme, error)
-	Update(context.Context, *model.Programme) (*model.Programme, error)
-	Archive(context.Context, model.ProgrammeID, int64) (*model.Programme, error)
+	// SeedUpdate is an unaudited fixture write; production code never calls it.
+	SeedUpdate(context.Context, *model.Programme) (*model.Programme, error)
 }
 
 // ProgrammeLevelStore persists reusable curriculum stages owned by programmes.
@@ -1001,15 +996,14 @@ type ProgrammeLevelArchive struct {
 
 type ProgrammeLevelStore interface {
 	Create(context.Context, *ProgrammeLevelCreation) (*model.ProgrammeLevel, error)
-	UpdateWithAudit(context.Context, *ProgrammeLevelUpdate) (*model.ProgrammeLevel, error)
-	ArchiveWithAudit(context.Context, *ProgrammeLevelArchive) (*model.ProgrammeLevel, error)
-	Save(context.Context, *model.ProgrammeLevel) (*model.ProgrammeLevel, error)
+	Update(context.Context, *ProgrammeLevelUpdate) (*model.ProgrammeLevel, error)
+	Archive(context.Context, *ProgrammeLevelArchive) (*model.ProgrammeLevel, error)
 	Get(context.Context, model.ProgrammeLevelID) (*model.ProgrammeLevel, error)
 	GetByName(context.Context, model.ProgrammeID, string) (*model.ProgrammeLevel, error)
 	ListByProgramme(context.Context, model.ProgrammeID) ([]*model.ProgrammeLevel, error)
 	SearchByProgramme(context.Context, model.ProgrammeID, string, int) ([]*model.ProgrammeLevel, error)
-	Update(context.Context, *model.ProgrammeLevel) (*model.ProgrammeLevel, error)
-	Archive(context.Context, model.ProgrammeLevelID, int64) (*model.ProgrammeLevel, error)
+	// SeedUpdate is an unaudited fixture write; production code never calls it.
+	SeedUpdate(context.Context, *model.ProgrammeLevel) (*model.ProgrammeLevel, error)
 }
 
 // AcademicPeriodVisibilityScope constrains list/search to institution-owned
@@ -1046,14 +1040,11 @@ type AcademicPeriodArchive struct {
 type AcademicPeriodStore interface {
 	Create(context.Context, *AcademicPeriodCreation) (*model.AcademicPeriod, error)
 	CreateIdempotently(context.Context, *AcademicPeriodCreation, *CommandIdempotency) (*AcademicPeriodCommandResult, error)
-	UpdateWithAudit(context.Context, *AcademicPeriodUpdate) (*model.AcademicPeriod, error)
-	ArchiveWithAudit(context.Context, *AcademicPeriodArchive) (*model.AcademicPeriod, error)
-	Save(context.Context, *model.AcademicPeriod) (*model.AcademicPeriod, error)
+	Update(context.Context, *AcademicPeriodUpdate) (*model.AcademicPeriod, error)
+	Archive(context.Context, *AcademicPeriodArchive) (*model.AcademicPeriod, error)
 	Get(context.Context, model.AcademicPeriodID) (*model.AcademicPeriod, error)
 	GetByOwnerName(context.Context, model.Resource, string) (*model.AcademicPeriod, error)
 	ListVisible(context.Context, AcademicPeriodVisibilityScope, string, int) ([]*model.AcademicPeriod, error)
-	Update(context.Context, *model.AcademicPeriod) (*model.AcademicPeriod, error)
-	Archive(context.Context, model.AcademicPeriodID, int64) (*model.AcademicPeriod, error)
 }
 
 // ClassStore persists concrete programme-level rosters for academic periods.
@@ -1082,17 +1073,14 @@ type ClassArchive struct {
 
 type ClassStore interface {
 	Create(context.Context, *ClassCreation) (*model.Class, error)
-	UpdateWithAudit(context.Context, *ClassUpdate) (*model.Class, error)
-	ArchiveWithAudit(context.Context, *ClassArchive) (*model.Class, error)
-	Save(context.Context, *model.Class) (*model.Class, error)
+	Update(context.Context, *ClassUpdate) (*model.Class, error)
+	Archive(context.Context, *ClassArchive) (*model.Class, error)
 	Get(context.Context, model.ClassID) (*model.Class, error)
 	GetByName(context.Context, model.ProgrammeLevelID, model.AcademicPeriodID, string) (*model.Class, error)
 	ListByProgrammeLevel(context.Context, model.ProgrammeLevelID) ([]*model.Class, error)
 	ListByAcademicPeriod(context.Context, model.AcademicPeriodID) ([]*model.Class, error)
 	SearchByAcademicUnit(context.Context, model.AcademicUnitID, string, int) ([]*model.Class, error)
 	GetAcademicUnitID(context.Context, model.ClassID) (model.AcademicUnitID, error)
-	Update(context.Context, *model.Class) (*model.Class, error)
-	Archive(context.Context, model.ClassID, int64) (*model.Class, error)
 }
 
 // UserListOptions is a bounded persistence query. IncludeDisabled is effective
@@ -1227,8 +1215,8 @@ type UserStore interface {
 	List(context.Context, UserListOptions) ([]*model.User, error)
 	GetCurrentContext(context.Context, model.UserID, int) (*CurrentUserContext, error)
 	MatchVisibility(context.Context, model.UserID, UserVisibilityScope) (UserVisibilityMatch, error)
-	UpdateProfileWithAudit(context.Context, *UserProfileUpdate) (*model.User, error)
-	SetDisabledWithAudit(context.Context, *UserDisabledStateChange) (*UserDisabledStateResult, error)
+	UpdateProfile(context.Context, *UserProfileUpdate) (*model.User, error)
+	SetDisabled(context.Context, *UserDisabledStateChange) (*UserDisabledStateResult, error)
 	UpdateLastLogin(context.Context, model.UserID, int64) error
 }
 
@@ -1348,8 +1336,8 @@ type ExternalIdentityStore interface {
 	GetByProviderSubject(context.Context, string, string) (*model.ExternalIdentity, error)
 	ListByUser(context.Context, model.UserID) ([]*model.ExternalIdentity, error)
 	ResolveOrProvision(context.Context, *ExternalIdentityResolutionRequest) (*ExternalIdentityResolution, error)
-	LinkWithAudit(context.Context, *ExternalIdentityLink) (*AuthenticationMethodMutationResult, error)
-	UnlinkWithAudit(context.Context, *ExternalIdentityUnlink) (*AuthenticationMethodMutationResult, error)
+	Link(context.Context, *ExternalIdentityLink) (*AuthenticationMethodMutationResult, error)
+	Unlink(context.Context, *ExternalIdentityUnlink) (*AuthenticationMethodMutationResult, error)
 }
 
 // ExternalLoginStateStore persists hashed, browser-bound, one-use login
@@ -2071,7 +2059,7 @@ type PersonalAccessTokenStore interface {
 	ListByUser(context.Context, model.UserID) ([]*model.PersonalAccessToken, error)
 	Resolve(context.Context, string, time.Time, time.Duration) (*PersonalAccessTokenResolution, error)
 	ChangeState(context.Context, *PersonalAccessTokenStateMutation) (*PersonalAccessTokenMutationResult, error)
-	RevokeWithAudit(context.Context, *PersonalAccessTokenRevocation) (*PersonalAccessTokenMutationResult, error)
+	Revoke(context.Context, *PersonalAccessTokenRevocation) (*PersonalAccessTokenMutationResult, error)
 }
 
 type MFAActivationResult struct {
@@ -2134,10 +2122,9 @@ type MFADisablement struct {
 // reject a pending credential or Session exactly at its expiry.
 type MFAStore interface {
 	GetRecoveryState(context.Context, model.UserID) (*model.UserMFARecovery, error)
-	SavePendingWithAudit(context.Context, *MFAPendingEnrollment) (*model.MFACredential, error)
-	ChallengeWithAudit(context.Context, *MFAChallenge) (*SessionReauthenticationResult, error)
-	ResetWithAudit(context.Context, *MFAAssistedReset) (*MFAResetResult, error)
-	SavePending(context.Context, *model.MFACredential) (*model.MFACredential, error)
+	SavePending(context.Context, *MFAPendingEnrollment) (*model.MFACredential, error)
+	Challenge(context.Context, *MFAChallenge) (*SessionReauthenticationResult, error)
+	Reset(context.Context, *MFAAssistedReset) (*MFAResetResult, error)
 	GetByUser(context.Context, model.UserID) (*model.MFACredential, error)
 	Activate(context.Context, *MFAActivationMutation) (*MFAActivationResult, error)
 	ConsumeSecondFactor(context.Context, model.UserID, int64, string, int64) error
@@ -2145,6 +2132,8 @@ type MFAStore interface {
 	ReplaceRecoveryCodes(context.Context, *MFARecoveryCodesRegeneration) error
 	CountRecoveryCodes(context.Context, model.UserID) (int, error)
 	Disable(context.Context, *MFADisablement) (*MFADisableResult, error)
+	// SeedPending is an unaudited fixture write; production code never calls it.
+	SeedPending(context.Context, *model.MFACredential) (*model.MFACredential, error)
 }
 
 // AffiliationStore persists non-exclusive institution relationships.
@@ -2170,12 +2159,11 @@ type AffiliationEnd struct {
 
 type AffiliationStore interface {
 	Create(context.Context, *AffiliationCreation) (*model.Affiliation, error)
-	EndWithAudit(context.Context, *AffiliationEnd) (*model.Affiliation, error)
+	End(context.Context, *AffiliationEnd) (*model.Affiliation, error)
 	Save(context.Context, *model.Affiliation) (*model.Affiliation, error)
 	Get(context.Context, model.AffiliationID) (*model.Affiliation, error)
 	ListByUser(context.Context, model.UserID) ([]*model.Affiliation, error)
 	ListActiveByUser(context.Context, model.UserID, int64) ([]*model.Affiliation, error)
-	End(context.Context, model.AffiliationID, int64, int64) (*model.Affiliation, error)
 }
 
 // AcademicUnitMemberStore persists organizational membership without roles.
@@ -2205,7 +2193,7 @@ type AcademicUnitMemberEnd struct {
 
 type AcademicUnitMemberStore interface {
 	Create(context.Context, *AcademicUnitMemberCreation) (*model.AcademicUnitMember, error)
-	EndWithAudit(context.Context, *AcademicUnitMemberEnd) (*model.AcademicUnitMember, error)
+	End(context.Context, *AcademicUnitMemberEnd) (*model.AcademicUnitMember, error)
 	Save(context.Context, *model.AcademicUnitMember) (*model.AcademicUnitMember, error)
 	Get(context.Context, model.AcademicUnitMemberID) (*model.AcademicUnitMember, error)
 	ListByUser(context.Context, model.UserID) ([]*model.AcademicUnitMember, error)
@@ -2214,7 +2202,6 @@ type AcademicUnitMemberStore interface {
 	// ListActiveByUser uses UTC microsecond precision and the interval [start, end).
 	// Archived memberships are excluded; no active memberships is an empty list.
 	ListActiveByUser(context.Context, model.UserID, time.Time) ([]*model.AcademicUnitMember, error)
-	End(context.Context, model.AcademicUnitMemberID, int64, int64) (*model.AcademicUnitMember, error)
 }
 
 type ClassEnrollmentResult struct {
@@ -2256,15 +2243,17 @@ type ClassMemberEnd struct {
 
 // ClassMemberStore owns transactional student enrollment and history.
 type ClassMemberStore interface {
-	EnrollWithAudit(context.Context, *ClassMemberEnrollment) (*ClassEnrollmentResult, error)
-	EndWithAudit(context.Context, *ClassMemberEnd) (*model.ClassMember, error)
-	Enroll(context.Context, *model.ClassMember) (*ClassEnrollmentResult, error)
+	Enroll(context.Context, *ClassMemberEnrollment) (*ClassEnrollmentResult, error)
+	End(context.Context, *ClassMemberEnd) (*model.ClassMember, error)
 	Get(context.Context, model.ClassMemberID) (*model.ClassMember, error)
 	ListByUser(context.Context, model.UserID) ([]*model.ClassMember, error)
 	ListByClass(context.Context, model.ClassID, int64) ([]*model.ClassMember, error)
 	ListPageByClass(context.Context, ClassMemberPageOptions) (*ClassMemberPage, error)
 	ListActiveByUser(context.Context, model.UserID, int64) ([]*model.ClassMember, error)
-	End(context.Context, model.ClassMemberID, int64, int64) (*model.ClassMember, error)
+	// SeedEnroll and SeedEnd are unaudited fixture writes for conformance and
+	// integration tests; production code never calls a Seed operation.
+	SeedEnroll(context.Context, *model.ClassMember) (*ClassEnrollmentResult, error)
+	SeedEnd(context.Context, model.ClassMemberID, int64, int64) (*model.ClassMember, error)
 }
 
 // PasswordCredentialStore persists one encoded password hash per local user.
@@ -2272,8 +2261,8 @@ type PasswordCredentialStore interface {
 	Save(context.Context, *model.PasswordCredential) (*model.PasswordCredential, error)
 	GetByUser(context.Context, model.UserID) (*model.PasswordCredential, error)
 	Rehash(context.Context, *PasswordCredentialRehash) error
-	EnrollWithAudit(context.Context, *PasswordCredentialEnrollment) (*AuthenticationMethodMutationResult, error)
-	RemoveWithAudit(context.Context, *PasswordCredentialRemoval) (*AuthenticationMethodMutationResult, error)
+	Enroll(context.Context, *PasswordCredentialEnrollment) (*AuthenticationMethodMutationResult, error)
+	Remove(context.Context, *PasswordCredentialRemoval) (*AuthenticationMethodMutationResult, error)
 }
 
 // PasswordCredentialRehash upgrades only the active credential whose encoded
@@ -2381,23 +2370,23 @@ type UserSessionsRevocationResult struct {
 // Active reads, activity updates, and expiry enforcement share UTC microsecond
 // decision instants. A Session is inactive at either expiry deadline.
 type SessionStore interface {
-	ReauthenticateExternalWithAudit(context.Context, *SessionExternalReauthentication) (*SessionReauthenticationResult, error)
-	ReauthenticatePasswordWithAudit(context.Context, *SessionPasswordReauthentication) (*SessionReauthenticationResult, error)
+	ReauthenticateExternal(context.Context, *SessionExternalReauthentication) (*SessionReauthenticationResult, error)
+	ReauthenticatePassword(context.Context, *SessionPasswordReauthentication) (*SessionReauthenticationResult, error)
 	Save(context.Context, *SessionCreation) (*model.Session, []*model.SessionCredential, error)
 	Get(context.Context, model.SessionID) (*model.Session, error)
 	ListByUser(context.Context, model.UserID) ([]*model.Session, error)
 	ListActiveByUser(context.Context, model.UserID, time.Time) ([]*model.Session, error)
 	UpdateActivity(context.Context, model.SessionID, time.Time, time.Time) error
 	EnforceExpiry(context.Context, model.SessionID, model.UserID, time.Time) (*SessionExpiryEnforcementResult, error)
-	Revoke(context.Context, model.SessionID, model.UserID, int64, model.SessionRevocationReason) ([]string, error)
-	RevokeWithAudit(context.Context, *SessionRevocation) (*SessionRevocationResult, error)
-	RevokeAllForUser(
-		context.Context,
-		model.UserID,
-		int64,
-		model.SessionRevocationReason,
-	) ([]*model.Session, []string, error)
-	RevokeAllForUserWithAudit(context.Context, *UserSessionsRevocation) (*UserSessionsRevocationResult, error)
+	// Withdraw revokes one Session the system itself just issued or refreshed
+	// and must take back: the issuing login audit could not be completed, the
+	// Desktop nonce could not be stored, or the User became inactive. It has no
+	// actor and is deliberately unaudited, because it must still succeed when
+	// the audit path is what failed; the Session's revocation reason is its
+	// durable record. Any other reason is rejected.
+	Withdraw(context.Context, model.SessionID, model.UserID, int64, model.SessionRevocationReason) ([]string, error)
+	Revoke(context.Context, *SessionRevocation) (*SessionRevocationResult, error)
+	RevokeAllForUser(context.Context, *UserSessionsRevocation) (*UserSessionsRevocationResult, error)
 }
 
 // SessionCreation creates one Session and its credentials atomically. Password
@@ -2443,7 +2432,7 @@ type DesktopRegistrationRevocationResult struct {
 type DesktopRegistrationStore interface {
 	Get(context.Context, model.DesktopRegistrationID) (*model.DesktopRegistration, error)
 	ListByUser(context.Context, model.UserID) ([]*model.DesktopRegistration, error)
-	RevokeWithAudit(context.Context, *DesktopRegistrationRevocation) (*DesktopRegistrationRevocationResult, error)
+	Revoke(context.Context, *DesktopRegistrationRevocation) (*DesktopRegistrationRevocationResult, error)
 }
 
 // SessionCredentialStore resolves bearer credentials and atomically rotates
@@ -2492,17 +2481,19 @@ type RoleArchive struct {
 
 // RoleStore persists reusable permission sets independently of their scopes.
 type RoleStore interface {
-	Save(context.Context, *model.Role) (*model.Role, error)
-	SaveWithAudit(context.Context, *RoleCreation) (*model.Role, error)
+	Save(context.Context, *RoleCreation) (*model.Role, error)
 	Get(context.Context, model.RoleID) (*model.Role, error)
 	GetIncludingArchived(context.Context, model.RoleID) (*model.Role, error)
 	GetByName(context.Context, string) (*model.Role, error)
 	GetByIDs(context.Context, []model.RoleID) ([]*model.Role, error)
 	List(context.Context) ([]*model.Role, error)
-	Update(context.Context, *model.Role) (*model.Role, error)
-	UpdateWithAudit(context.Context, *RoleUpdate) (*model.Role, error)
-	Archive(context.Context, model.RoleID, int64) (*model.Role, error)
-	ArchiveWithAudit(context.Context, *RoleArchive) (*model.Role, error)
+	Update(context.Context, *RoleUpdate) (*model.Role, error)
+	Archive(context.Context, *RoleArchive) (*model.Role, error)
+	// SeedBuiltIn inserts the protected built-in Role for fixtures only;
+	// production creates it through InstallationStore.Bootstrap.
+	SeedBuiltIn(context.Context, *model.Role) (*model.Role, error)
+	// SeedUpdate is an unaudited fixture write; production code never calls it.
+	SeedUpdate(context.Context, *model.Role) (*model.Role, error)
 }
 
 // RoleBindingCreation is the durable input for creating a binding under an
@@ -2539,8 +2530,7 @@ type RoleBindingEnd struct {
 // are validated transactionally because PostgreSQL cannot express a foreign
 // key whose target table depends on scope_type.
 type RoleBindingStore interface {
-	Save(context.Context, *model.RoleBinding) (*model.RoleBinding, error)
-	SaveWithAudit(context.Context, *RoleBindingCreation) (*model.RoleBinding, error)
+	Save(context.Context, *RoleBindingCreation) (*model.RoleBinding, error)
 	Get(context.Context, model.RoleBindingID) (*model.RoleBinding, error)
 	ListByUser(context.Context, model.UserID) ([]*model.RoleBinding, error)
 	ListVisibleByUser(context.Context, model.UserID, UserVisibilityScope) ([]*model.RoleBinding, error)
@@ -2548,8 +2538,7 @@ type RoleBindingStore interface {
 	// ListActiveByUser uses UTC microsecond precision and the interval [start, end).
 	// Archived bindings are excluded; no active bindings is an empty list.
 	ListActiveByUser(context.Context, model.UserID, time.Time) ([]*model.RoleBinding, error)
-	End(context.Context, model.RoleBindingID, int64) (*model.RoleBinding, error)
-	EndWithAudit(context.Context, *RoleBindingEnd) (*model.RoleBinding, error)
+	End(context.Context, *RoleBindingEnd) (*model.RoleBinding, error)
 }
 
 type AuditListOptions struct {

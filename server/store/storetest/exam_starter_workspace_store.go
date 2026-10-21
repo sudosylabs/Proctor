@@ -177,7 +177,7 @@ func TestExamStarterWorkspaceStore(t *testing.T, ss store.Store, probes ...Start
 	policy.WorkspaceMaximumFileBytes = 8
 	policy.WorkspaceMaximumTotalBytes = 8
 	institution.ExamCapacity = policy
-	institution, err = ss.Institution().Update(ctx, institution)
+	institution, err = UpdateInstitution(ctx, ss, institution)
 	requireNoError(t, err)
 	oversized := reserveStarterWorkspaceObject(t, ctx, ss, examID, creator.ID, unit.ID, 10,
 		model.NewStarterWorkspaceEntryID(), "oversized.txt", at.Add(11*time.Second), 9)
@@ -199,7 +199,7 @@ func TestExamStarterWorkspaceStore(t *testing.T, ss store.Store, probes ...Start
 		t.Fatalf("Starter Workspace entry policy error = %v", err)
 	}
 	institution.ExamCapacity = model.DefaultExamCapacityPolicy()
-	_, err = ss.Institution().Update(ctx, institution)
+	_, err = UpdateInstitution(ctx, ss, institution)
 	requireNoError(t, err)
 
 	// An upload that never finalized remains invisible, becomes cleanup-eligible

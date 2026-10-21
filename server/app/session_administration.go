@@ -43,8 +43,8 @@ type sessionAdministrationStore interface {
 	Get(context.Context, model.SessionID) (*model.Session, error)
 	ListByUser(context.Context, model.UserID) ([]*model.Session, error)
 	ListActiveByUser(context.Context, model.UserID, time.Time) ([]*model.Session, error)
-	RevokeWithAudit(context.Context, *store.SessionRevocation) (*store.SessionRevocationResult, error)
-	RevokeAllForUserWithAudit(context.Context, *store.UserSessionsRevocation) (*store.UserSessionsRevocationResult, error)
+	Revoke(context.Context, *store.SessionRevocation) (*store.SessionRevocationResult, error)
+	RevokeAllForUser(context.Context, *store.UserSessionsRevocation) (*store.UserSessionsRevocationResult, error)
 }
 
 type sessionAdministrationUserStore interface {

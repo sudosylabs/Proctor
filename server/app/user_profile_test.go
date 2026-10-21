@@ -49,7 +49,7 @@ func (s *userProfileStoreFake) GetCurrentContext(_ context.Context, _ model.User
 	}
 	return s.currentContext, nil
 }
-func (s *userProfileStoreFake) UpdateProfileWithAudit(_ context.Context, input *store.UserProfileUpdate) (*model.User, error) {
+func (s *userProfileStoreFake) UpdateProfile(_ context.Context, input *store.UserProfileUpdate) (*model.User, error) {
 	*s.events = append(*s.events, "store-update")
 	s.updateInput = input
 	updated := *s.current

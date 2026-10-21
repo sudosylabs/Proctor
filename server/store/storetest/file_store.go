@@ -156,7 +156,7 @@ func TestFileStore(t *testing.T, ss store.Store) {
 
 	removalAt := model.NowUTC()
 	removalAudit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
-	removed, err := ss.File().RemoveProfilePictureWithAudit(ctx, &store.ProfilePictureRemoval{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: replaced.User.Revision, EntryID: entry.ID, ExpectedCurrentRevisionID: replacementRevision.ID, ExpectedSHA256: replacementRenditions[0].SHA256, ChangedAt: removalAt, AuditEventID: removalAudit.ID, AuditAt: removalAt.UnixMilli()})
+	removed, err := ss.File().RemoveProfilePicture(ctx, &store.ProfilePictureRemoval{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: replaced.User.Revision, EntryID: entry.ID, ExpectedCurrentRevisionID: replacementRevision.ID, ExpectedSHA256: replacementRenditions[0].SHA256, ChangedAt: removalAt, AuditEventID: removalAudit.ID, AuditAt: removalAt.UnixMilli()})
 	requireNoError(t, err)
 	if !removed.CustomProfilePictureFileID.IsZero() || removed.Revision != replaced.User.Revision+1 {
 		t.Fatalf("removal = %#v", removed)

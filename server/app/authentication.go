@@ -409,7 +409,7 @@ func (s *authenticationService) Login(
 // not be made durable, so no credential outlives a missing security record.
 func (s *authenticationService) revokeUnauditedSession(ctx context.Context, session *model.Session) {
 	revokeCtx := context.WithoutCancel(ctx)
-	hashes, err := s.sessions.Revoke(revokeCtx, session.ID, session.UserID,
+	hashes, err := s.sessions.Withdraw(revokeCtx, session.ID, session.UserID,
 		model.MillisFromTime(s.now()), model.SessionRevocationAuthenticationAuditFailed)
 	if err != nil {
 		s.warn(ctx, "failed to revoke unaudited local session", err)
@@ -934,7 +934,7 @@ func (s *authenticationService) RefreshSession(
 	if err != nil || !user.IsActive() {
 		if err == nil {
 			var revokedAccessHashes []string
-			revokedAccessHashes, err = s.sessions.Revoke(
+			revokedAccessHashes, err = s.sessions.Withdraw(
 				ctx,
 				rotation.Session.ID,
 				rotation.Session.UserID,

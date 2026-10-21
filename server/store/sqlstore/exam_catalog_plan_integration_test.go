@@ -19,6 +19,7 @@ import (
 	"github.com/lib/pq"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 )
 
 type examCatalogPlanDocument struct {
@@ -42,11 +43,11 @@ func testExamCatalogBoundedPlan(t *testing.T, persistence *SQLStore) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID, Name: "catalog-plan-unit", DisplayName: "Catalog Plan Unit"})
+	unit, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{InstitutionID: institution.ID, Name: "catalog-plan-unit", DisplayName: "Catalog Plan Unit"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	otherUnit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID, Name: "catalog-plan-other-unit", DisplayName: "Catalog Plan Other Unit"})
+	otherUnit, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{InstitutionID: institution.ID, Name: "catalog-plan-other-unit", DisplayName: "Catalog Plan Other Unit"})
 	if err != nil {
 		t.Fatal(err)
 	}

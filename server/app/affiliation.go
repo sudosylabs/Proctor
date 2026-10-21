@@ -53,7 +53,7 @@ type affiliationStore interface {
 	Get(context.Context, model.AffiliationID) (*model.Affiliation, error)
 	ListByUser(context.Context, model.UserID) ([]*model.Affiliation, error)
 	Create(context.Context, *store.AffiliationCreation) (*model.Affiliation, error)
-	EndWithAudit(context.Context, *store.AffiliationEnd) (*model.Affiliation, error)
+	End(context.Context, *store.AffiliationEnd) (*model.Affiliation, error)
 }
 
 type affiliationEnrollmentReader interface {
@@ -239,7 +239,7 @@ func (s *affiliationService) EndAffiliation(ctx context.Context, invocation Invo
 				ID: id, ExpectedRevision: current.Revision, EndAt: reference.MutationAtMillis,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
 			}
-			value, storeErr := s.store.EndWithAudit(ctx, input)
+			value, storeErr := s.store.End(ctx, input)
 			if command.batchReplayed != nil {
 				*command.batchReplayed = input.Replayed || input.NoOp
 			}

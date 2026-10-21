@@ -64,14 +64,14 @@ func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 		t.Fatalf("unbound audit listing status = %d: %s", denied.Code, denied.Body.String())
 	}
 
-	role, err := persistence.Role().Save(ctx, &model.Role{
+	role, err := storetest.SaveRole(ctx, persistence, &model.Role{
 		Name: "security-auditor", DisplayName: "Security Auditor",
 		Permissions: []string{string(model.ActionAuditView)},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis()),
 	}); err != nil {
@@ -107,6 +107,9 @@ func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 	}
 	decisions := map[string]bool{}
 	for _, event := range response.Events {
+		if event.Action == storetest.FixtureAuditAction {
+			continue
+		}
 		if (event.Action == string(model.ActionAuditView) || event.Action == string(model.ActionAcademicAuditView)) &&
 			event.ActorID == user.ID.String() &&
 			event.Resource.ID == institution.ID.String() {
@@ -143,52 +146,52 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	root, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{
+	root, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{
 		InstitutionID: institution.ID, Name: "engineering", DisplayName: "Engineering",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	child, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{
+	child, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{
 		InstitutionID: institution.ID, ParentID: root.ID,
 		Name: "computing", DisplayName: "Computing",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	sibling, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{
+	sibling, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{
 		InstitutionID: institution.ID, Name: "humanities", DisplayName: "Humanities",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	programme, err := persistence.Programme().Save(ctx, &model.Programme{
+	programme, err := storetest.SaveProgramme(ctx, persistence, &model.Programme{
 		AcademicUnitID: child.ID, Name: "computer-science",
 		DisplayName: "Computer Science",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	siblingProgramme, err := persistence.Programme().Save(ctx, &model.Programme{
+	siblingProgramme, err := storetest.SaveProgramme(ctx, persistence, &model.Programme{
 		AcademicUnitID: sibling.ID, Name: "history", DisplayName: "History",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	level, err := persistence.ProgrammeLevel().Save(ctx, &model.ProgrammeLevel{
+	level, err := storetest.SaveProgrammeLevel(ctx, persistence, &model.ProgrammeLevel{
 		ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{
+	period, err := storetest.SaveAcademicPeriod(ctx, persistence, &model.AcademicPeriod{
 		Owner: model.NewInstitutionAcademicPeriodOwner(institution.ID), Name: "2026-2027", DisplayName: "2026-2027",
 		StartsAt: model.TimeFromMillis(1_800_000_000_000), EndsAt: model.TimeFromMillis(1_830_000_000_000),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	class, err := persistence.Class().Save(ctx, &model.Class{
+	class, err := storetest.SaveClass(ctx, persistence, &model.Class{
 		ProgrammeLevelID: level.ID, AcademicPeriodID: period.ID,
 		Name: "class-a", DisplayName: "Class A",
 	})
@@ -228,7 +231,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	if permErr != nil || allowed {
 		t.Fatalf("academic-unit membership unexpectedly granted class permission = %v, %v", allowed, permErr)
 	}
-	role, err := persistence.Role().Save(ctx, &model.Role{
+	role, err := storetest.SaveRole(ctx, persistence, &model.Role{
 		Name: "academic-unit-teacher", DisplayName: "Academic Unit Teacher",
 		Permissions: []string{
 			string(model.ActionProgrammeView), string(model.ActionProgrammeLevelView),
@@ -238,7 +241,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+	binding, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: root.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000),
 	})
@@ -278,7 +281,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	if permErr != nil || allowed {
 		t.Fatalf("lower-scope institution permission = %v, %v", allowed, permErr)
 	}
-	if _, err := persistence.RoleBinding().End(ctx, binding.ID, model.GetMillis()); err != nil {
+	if _, err := storetest.EndRoleBinding(ctx, persistence, binding.ID, model.GetMillis()); err != nil {
 		t.Fatal(err)
 	}
 	allowed, permErr = helper.App.Can(
@@ -371,14 +374,14 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		t.Fatalf("unbound cross-user read error = %v", err)
 	}
 
-	role, err := persistence.Role().Save(ctx, &model.Role{
+	role, err := storetest.SaveRole(ctx, persistence, &model.Role{
 		Name: "institution-directory-viewer", DisplayName: "Institution Directory Viewer",
 		Permissions: []string{string(model.ActionUserView)},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+	binding, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: viewer.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000),
 	})
@@ -400,7 +403,7 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		t.Fatalf("view role unexpectedly granted management = %v, %v", allowed, permErr)
 	}
 
-	if _, err = persistence.RoleBinding().End(ctx, binding.ID, model.GetMillis()); err != nil {
+	if _, err = storetest.EndRoleBinding(ctx, persistence, binding.ID, model.GetMillis()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := helper.App.GetUserProfile(
@@ -455,44 +458,44 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	root, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{
+	root, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{
 		InstitutionID: institution.ID, Name: "engineering", DisplayName: "Engineering",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	child, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{
+	child, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{
 		InstitutionID: institution.ID, ParentID: root.ID,
 		Name: "computing", DisplayName: "Computing",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	sibling, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{
+	sibling, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{
 		InstitutionID: institution.ID, Name: "humanities", DisplayName: "Humanities",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	otherRoot, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{
+	otherRoot, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{
 		InstitutionID: institution.ID, Name: "medicine", DisplayName: "Medicine",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	programme, err := persistence.Programme().Save(ctx, &model.Programme{
+	programme, err := storetest.SaveProgramme(ctx, persistence, &model.Programme{
 		AcademicUnitID: child.ID, Name: "computer-science", DisplayName: "Computer Science",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	level, err := persistence.ProgrammeLevel().Save(ctx, &model.ProgrammeLevel{
+	level, err := storetest.SaveProgrammeLevel(ctx, persistence, &model.ProgrammeLevel{
 		ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{
+	period, err := storetest.SaveAcademicPeriod(ctx, persistence, &model.AcademicPeriod{
 		Owner: model.NewInstitutionAcademicPeriodOwner(institution.ID),
 		Name:  "2026-2027", DisplayName: "2026-2027",
 		StartsAt: model.TimeFromMillis(now - 86_400_000),
@@ -501,7 +504,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	class, err := persistence.Class().Save(ctx, &model.Class{
+	class, err := storetest.SaveClass(ctx, persistence, &model.Class{
 		ProgrammeLevelID: level.ID, AcademicPeriodID: period.ID,
 		Name: "class-a", DisplayName: "Class A",
 	})
@@ -544,13 +547,13 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.ClassMember().Enroll(ctx, &model.ClassMember{
+	if _, err := persistence.ClassMember().SeedEnroll(ctx, &model.ClassMember{
 		ClassID: class.ID, UserID: classUser.ID, StartsAt: model.TimeFromMillis(now - 10_000),
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	visibilityRole, err := persistence.Role().Save(ctx, &model.Role{
+	visibilityRole, err := storetest.SaveRole(ctx, persistence, &model.Role{
 		Name: "academic-directory-auditor", DisplayName: "Academic Directory Auditor",
 		Permissions: []string{
 			string(model.ActionUserView), string(model.ActionRoleBindingView),
@@ -560,62 +563,62 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	targetRole, err := persistence.Role().Save(ctx, &model.Role{
+	targetRole, err := storetest.SaveRole(ctx, persistence, &model.Role{
 		Name: "visibility-fixture-role", DisplayName: "Visibility Fixture Role",
 		Permissions: []string{string(model.ActionClassView)},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	archivedTargetRole, err := persistence.Role().Save(ctx, &model.Role{
+	archivedTargetRole, err := storetest.SaveRole(ctx, persistence, &model.Role{
 		Name: "archived-visibility-fixture-role", DisplayName: "Archived Visibility Fixture Role",
 		Permissions: []string{string(model.ActionClassView)},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: archivedRoleUser.ID, RoleID: archivedTargetRole.ID, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: child.ID.String(), StartsAt: model.TimeFromMillis(now - 20_000),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = persistence.Role().Archive(ctx, archivedTargetRole.ID, model.GetMillis()); err != nil {
+	if _, err = storetest.ArchiveRole(ctx, persistence, archivedTargetRole.ID, model.GetMillis()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: viewer.ID, RoleID: visibilityRole.ID, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: root.ID.String(), StartsAt: model.TimeFromMillis(now - 10_000),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: viewer.ID, RoleID: visibilityRole.ID, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: otherRoot.ID.String(), StartsAt: model.TimeFromMillis(now - 10_000),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	visibleBinding, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+	visibleBinding, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: bindingUser.ID, RoleID: targetRole.ID, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: child.ID.String(), StartsAt: model.TimeFromMillis(now - 20_000),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	historicalBinding, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+	historicalBinding, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: bindingUser.ID, RoleID: targetRole.ID, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: child.ID.String(), StartsAt: model.TimeFromMillis(now - 40_000), EndsAt: model.OptionalTimeFromMillis(now - 30_000),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: bindingUser.ID, RoleID: targetRole.ID, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: sibling.ID.String(), StartsAt: model.TimeFromMillis(now - 10_000),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: bindingUser.ID, RoleID: targetRole.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(now - 10_000),
 	}); err != nil {
@@ -662,7 +665,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 		}
 	}
 
-	classMembersRole, err := persistence.Role().Save(ctx, &model.Role{
+	classMembersRole, err := storetest.SaveRole(ctx, persistence, &model.Role{
 		Name: "scoped-class-roster-viewer", DisplayName: "Scoped Class Roster Viewer",
 		Permissions: []string{string(model.ActionClassMembersView)},
 	})
@@ -670,7 +673,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 		t.Fatal(err)
 	}
 	classMembersViewer := createUser("scoped-class-roster-viewer")
-	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: classMembersViewer.ID, RoleID: classMembersRole.ID, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: root.ID.String(), StartsAt: model.TimeFromMillis(now - 10_000),
 	}); err != nil {
@@ -735,7 +738,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	}
 
 	institutionClassMembersViewer := createUser("institution-class-roster-viewer")
-	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: institutionClassMembersViewer.ID, RoleID: classMembersRole.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(now - 10_000),
 	}); err != nil {
@@ -773,7 +776,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = persistence.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+	if _, err = persistence.User().SetDisabled(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: unitUser.ID, ExpectedRevision: unitUser.Revision, Disabled: true,
 		ChangedAt: disableAt, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: disableAudit.ID, AuditAt: disableAt,
@@ -806,14 +809,14 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 		t.Fatalf("disabled profile-picture status = %d: %s", disabledPicture.Code, disabledPicture.Body.String())
 	}
 	globalViewer := createUser("institution-directory-viewer")
-	globalRole, err := persistence.Role().Save(ctx, &model.Role{
+	globalRole, err := storetest.SaveRole(ctx, persistence, &model.Role{
 		Name: "institution-directory-viewer", DisplayName: "Institution Directory Viewer",
 		Permissions: []string{string(model.ActionUserView)},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: globalViewer.ID, RoleID: globalRole.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis()),
 	}); err != nil {
@@ -921,14 +924,14 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 		t.Fatalf("scoped audit list leaked sibling/security history: %#v", seenAudits)
 	}
 	institutionAcademicViewer := createUser("institution-academic-auditor")
-	institutionAcademicRole, err := persistence.Role().Save(ctx, &model.Role{
+	institutionAcademicRole, err := storetest.SaveRole(ctx, persistence, &model.Role{
 		Name: "institution-academic-auditor", DisplayName: "Institution Academic Auditor",
 		Permissions: []string{string(model.ActionAcademicAuditView)},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: institutionAcademicViewer.ID, RoleID: institutionAcademicRole.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 		StartsAt: model.TimeFromMillis(model.GetMillis()),

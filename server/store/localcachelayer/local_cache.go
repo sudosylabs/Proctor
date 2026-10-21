@@ -171,42 +171,18 @@ func (s *academicPeriodStore) Create(ctx context.Context, command *store.Academi
 	return period, err
 }
 
-func (s *academicPeriodStore) UpdateWithAudit(ctx context.Context, command *store.AcademicPeriodUpdate) (*model.AcademicPeriod, error) {
-	period, err := s.AcademicPeriodStore.UpdateWithAudit(ctx, command)
+func (s *academicPeriodStore) Update(ctx context.Context, command *store.AcademicPeriodUpdate) (*model.AcademicPeriod, error) {
+	period, err := s.AcademicPeriodStore.Update(ctx, command)
 	if err == nil && period != nil {
 		s.invalidateAfterMutation(ctx, period.ID.String())
 	}
 	return period, err
 }
 
-func (s *academicPeriodStore) ArchiveWithAudit(ctx context.Context, command *store.AcademicPeriodArchive) (*model.AcademicPeriod, error) {
-	period, err := s.AcademicPeriodStore.ArchiveWithAudit(ctx, command)
+func (s *academicPeriodStore) Archive(ctx context.Context, command *store.AcademicPeriodArchive) (*model.AcademicPeriod, error) {
+	period, err := s.AcademicPeriodStore.Archive(ctx, command)
 	if err == nil && period != nil {
 		s.invalidateAfterMutation(ctx, period.ID.String())
-	}
-	return period, err
-}
-
-func (s *academicPeriodStore) Save(ctx context.Context, candidate *model.AcademicPeriod) (*model.AcademicPeriod, error) {
-	period, err := s.AcademicPeriodStore.Save(ctx, candidate)
-	if err == nil && period != nil {
-		s.invalidateAfterMutation(ctx, period.ID.String())
-	}
-	return period, err
-}
-
-func (s *academicPeriodStore) Update(ctx context.Context, candidate *model.AcademicPeriod) (*model.AcademicPeriod, error) {
-	period, err := s.AcademicPeriodStore.Update(ctx, candidate)
-	if err == nil && period != nil {
-		s.invalidateAfterMutation(ctx, period.ID.String())
-	}
-	return period, err
-}
-
-func (s *academicPeriodStore) Archive(ctx context.Context, id model.AcademicPeriodID, at int64) (*model.AcademicPeriod, error) {
-	period, err := s.AcademicPeriodStore.Archive(ctx, id, at)
-	if err == nil {
-		s.invalidateAfterMutation(ctx, id.String())
 	}
 	return period, err
 }

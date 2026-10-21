@@ -160,7 +160,7 @@ func getOrCreateDesktopRegistration(
 	return candidate, nil
 }
 
-func (s SQLDesktopRegistrationStore) RevokeWithAudit(
+func (s SQLDesktopRegistrationStore) Revoke(
 	ctx context.Context,
 	input *store.DesktopRegistrationRevocation,
 ) (*store.DesktopRegistrationRevocationResult, error) {

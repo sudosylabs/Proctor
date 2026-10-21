@@ -58,13 +58,13 @@ func testClassStoreEnforceAcademicPeriodApplicability(t *testing.T, ss store.Sto
 	applicable := saveAcademicUnitPeriod(t, ctx, ss, root.ID, "root-period", 1_800_000_000_000)
 	inapplicable := saveAcademicUnitPeriod(t, ctx, ss, sibling.ID, "sibling-period", 1_800_000_000_000)
 
-	if _, err := ss.Class().Save(ctx, &model.Class{
+	if _, err := SaveClass(ctx, ss, &model.Class{
 		ProgrammeLevelID: level.ID, AcademicPeriodID: applicable.ID,
 		Name: "applicable", DisplayName: "Applicable",
 	}); err != nil {
 		t.Fatalf("descendant Class rejected owner-ancestor period: %v", err)
 	}
-	_, err := ss.Class().Save(ctx, &model.Class{
+	_, err := SaveClass(ctx, ss, &model.Class{
 		ProgrammeLevelID: level.ID, AcademicPeriodID: inapplicable.ID,
 		Name: "cross-subtree", DisplayName: "Cross Subtree",
 	})
@@ -111,32 +111,32 @@ func testClassStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	updatedCandidate := *created
 	updatedCandidate.DisplayName = "Updated Class"
 	updatedCandidate.PrepareUpdate(created.UpdatedAt.Add(1_000_000)) // 1ms
-	updated, err := ss.Class().UpdateWithAudit(ctx, &store.ClassUpdate{Class: &updatedCandidate, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: created.Revision, AuditEventID: updateAttempt.ID, AuditAt: model.GetMillis()})
+	updated, err := ss.Class().Update(ctx, &store.ClassUpdate{Class: &updatedCandidate, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: created.Revision, AuditEventID: updateAttempt.ID, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	if updated.Revision != created.Revision+1 {
 		t.Fatalf("update revision = %d, want %d", updated.Revision, created.Revision+1)
 	}
 	staleLegacy := *created
 	staleLegacy.DisplayName = "Stale Legacy Update"
-	if _, err := ss.Class().Update(ctx, &staleLegacy); !store.IsConflict(err) {
+	if _, err = UpdateClass(ctx, ss, &staleLegacy); !store.IsConflict(err) {
 		t.Fatalf("stale Update() error = %v", err)
 	}
 	staleAttempt := saveClassAuditAttempt(t, ctx, ss, fixture.programme.AcademicUnitID.String())
 	staleCandidate := *updated
 	staleCandidate.DisplayName = "Stale Update"
 	staleCandidate.PrepareUpdate(updated.UpdatedAt.Add(1_000_000))
-	if _, err = ss.Class().UpdateWithAudit(ctx, &store.ClassUpdate{Class: &staleCandidate, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: created.Revision, AuditEventID: staleAttempt.ID, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
-		t.Fatalf("stale UpdateWithAudit() error = %v", err)
+	if _, err = ss.Class().Update(ctx, &store.ClassUpdate{Class: &staleCandidate, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: created.Revision, AuditEventID: staleAttempt.ID, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
+		t.Fatalf("stale Update() error = %v", err)
 	}
 	wrongOwnerAttempt := saveClassAuditAttempt(t, ctx, ss, fixture.programme.AcademicUnitID.String())
-	if _, err = ss.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: updated.ID, ExpectedAcademicUnitID: model.NewAcademicUnitID(), ExpectedRevision: updated.Revision, ArchiveAt: model.MillisFromTime(updated.UpdatedAt) + 1, AuditEventID: wrongOwnerAttempt.ID, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
-		t.Fatalf("wrong-owner ArchiveWithAudit() error = %v", err)
+	if _, err = ss.Class().Archive(ctx, &store.ClassArchive{ID: updated.ID, ExpectedAcademicUnitID: model.NewAcademicUnitID(), ExpectedRevision: updated.Revision, ArchiveAt: model.MillisFromTime(updated.UpdatedAt) + 1, AuditEventID: wrongOwnerAttempt.ID, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
+		t.Fatalf("wrong-owner Archive() error = %v", err)
 	}
 	rolledBack := *updated
 	rolledBack.DisplayName = "Must Roll Back"
 	rolledBack.PrepareUpdate(updated.UpdatedAt.Add(1_000_000))
-	if _, err = ss.Class().UpdateWithAudit(ctx, &store.ClassUpdate{Class: &rolledBack, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: updated.Revision, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}); err == nil {
-		t.Fatal("UpdateWithAudit() succeeded without audit attempt")
+	if _, err = ss.Class().Update(ctx, &store.ClassUpdate{Class: &rolledBack, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: updated.Revision, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}); err == nil {
+		t.Fatal("Update() succeeded without audit attempt")
 	}
 	persisted, err := ss.Class().Get(ctx, updated.ID)
 	requireNoError(t, err)
@@ -145,17 +145,17 @@ func testClassStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	}
 
 	archiveAttempt := saveClassAuditAttempt(t, ctx, ss, fixture.programme.AcademicUnitID.String())
-	archived, err := ss.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: updated.ID, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: updated.Revision, ArchiveAt: model.MillisFromTime(updated.UpdatedAt) + 1, AuditEventID: archiveAttempt.ID, AuditAt: model.GetMillis()})
+	archived, err := ss.Class().Archive(ctx, &store.ClassArchive{ID: updated.ID, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: updated.Revision, ArchiveAt: model.MillisFromTime(updated.UpdatedAt) + 1, AuditEventID: archiveAttempt.ID, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	if archived.Revision != updated.Revision+1 {
 		t.Fatalf("archive revision = %d, want %d", archived.Revision, updated.Revision+1)
 	}
 	if !archived.IsArchived() {
-		t.Fatalf("ArchiveWithAudit() = %#v", archived)
+		t.Fatalf("Archive() = %#v", archived)
 	}
 	archiveRollback := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "rolled-back-archive")
-	if _, err := ss.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: archiveRollback.ID, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: archiveRollback.Revision, ArchiveAt: model.GetMillis(), AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}); err == nil {
-		t.Fatal("ArchiveWithAudit() succeeded without audit attempt")
+	if _, err := ss.Class().Archive(ctx, &store.ClassArchive{ID: archiveRollback.ID, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: archiveRollback.Revision, ArchiveAt: model.GetMillis(), AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}); err == nil {
+		t.Fatal("Archive() succeeded without audit attempt")
 	}
 	if _, err := ss.Class().Get(ctx, archiveRollback.ID); err != nil {
 		t.Fatalf("archive survived rollback: %v", err)
@@ -176,7 +176,7 @@ func testClassStoreSearchAndArchive(t *testing.T, ss store.Store) {
 		t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "distinct-class-zeta",
 	)
 	class.DisplayName = "Literal 50%_! Zeta"
-	class, err := ss.Class().Update(ctx, class)
+	class, err := UpdateClass(ctx, ss, class)
 	requireNoError(t, err)
 	unitID, err := ss.Class().GetAcademicUnitID(ctx, class.ID)
 	requireNoError(t, err)
@@ -192,7 +192,7 @@ func testClassStoreSearchAndArchive(t *testing.T, ss store.Store) {
 			t.Fatalf("SearchByAcademicUnit(%q) = %#v, want only %s", query, found, class.ID)
 		}
 	}
-	archived, err := ss.Class().Archive(ctx, class.ID, model.GetMillis())
+	archived, err := ArchiveClass(ctx, ss, class.ID, model.GetMillis())
 	requireNoError(t, err)
 	if !archived.IsArchived() {
 		t.Fatalf("Archive() = %#v", archived)
@@ -226,7 +226,7 @@ func testClassStoreSave(t *testing.T, ss store.Store) {
 		Description:      "Primary student roster",
 	}
 
-	saved, err := ss.Class().Save(ctx, class)
+	saved, err := SaveClass(ctx, ss, class)
 	requireNoError(t, err)
 	if !saved.ID.IsValid() {
 		t.Fatalf("Save() id = %q", saved.ID)
@@ -235,7 +235,7 @@ func testClassStoreSave(t *testing.T, ss store.Store) {
 		t.Fatalf("Save() mutated input id to %q", class.ID)
 	}
 
-	_, err = ss.Class().Save(ctx, saved)
+	_, err = SaveClass(ctx, ss, saved)
 	var invalid *store.ErrInvalidInput
 	if !errors.As(err, &invalid) {
 		t.Fatalf("second Save(saved) error = %v, want invalid input", err)
@@ -357,7 +357,7 @@ func testClassStoreUpdate(t *testing.T, ss store.Store) {
 	class.AcademicPeriodID = nextPeriod.ID
 	class.Name = "class-b"
 	class.DisplayName = "Class B"
-	updated, err := ss.Class().Update(ctx, class)
+	updated, err := UpdateClass(ctx, ss, class)
 	requireNoError(t, err)
 	if updated.ProgrammeLevelID != otherLevel.ID ||
 		updated.AcademicPeriodID != nextPeriod.ID ||
@@ -370,7 +370,7 @@ func testClassStoreUpdate(t *testing.T, ss store.Store) {
 
 	missing := *updated
 	missing.ID = model.ClassID(model.NewId())
-	_, err = ss.Class().Update(ctx, &missing)
+	_, err = UpdateClass(ctx, ss, &missing)
 	if !store.IsNotFound(err) {
 		t.Fatalf("Update(missing) error = %v, want not found", err)
 	}
@@ -381,7 +381,7 @@ func testClassStoreRejectUnknownProgrammeLevel(t *testing.T, ss store.Store) {
 	institution := saveInstitution(t, ctx, ss)
 	period := saveAcademicPeriod(t, ctx, ss, institution.ID.String(), "2026-2027", 1_800_000_000_000)
 
-	_, err := ss.Class().Save(ctx, &model.Class{
+	_, err := SaveClass(ctx, ss, &model.Class{
 		ProgrammeLevelID: model.ProgrammeLevelID(model.NewId()),
 		AcademicPeriodID: period.ID,
 		Name:             "class-a",
@@ -399,7 +399,7 @@ func testClassStoreRejectUnknownAcademicPeriod(t *testing.T, ss store.Store) {
 	_, programme := saveProgrammeParents(t, ctx, ss, "computer-science")
 	level := saveProgrammeLevel(t, ctx, ss, programme.ID.String(), "year-1")
 
-	_, err := ss.Class().Save(ctx, &model.Class{
+	_, err := SaveClass(ctx, ss, &model.Class{
 		ProgrammeLevelID: level.ID,
 		AcademicPeriodID: model.AcademicPeriodID(model.NewId()),
 		Name:             "class-a",
@@ -426,7 +426,7 @@ func testClassStoreEnforceScopedNameUniqueness(t *testing.T, ss store.Store) {
 	)
 	saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "class-a")
 
-	_, err := ss.Class().Save(ctx, &model.Class{
+	_, err := SaveClass(ctx, ss, &model.Class{
 		ProgrammeLevelID: fixture.level.ID,
 		AcademicPeriodID: fixture.period.ID,
 		Name:             "class-a",
@@ -437,7 +437,7 @@ func testClassStoreEnforceScopedNameUniqueness(t *testing.T, ss store.Store) {
 		t.Fatalf("duplicate class error = %v, want scoped-name conflict", err)
 	}
 
-	if _, err := ss.Class().Save(ctx, &model.Class{
+	if _, err := SaveClass(ctx, ss, &model.Class{
 		ProgrammeLevelID: otherLevel.ID,
 		AcademicPeriodID: fixture.period.ID,
 		Name:             "class-a",
@@ -445,7 +445,7 @@ func testClassStoreEnforceScopedNameUniqueness(t *testing.T, ss store.Store) {
 	}); err != nil {
 		t.Fatalf("same name for another programme level error = %v", err)
 	}
-	if _, err := ss.Class().Save(ctx, &model.Class{
+	if _, err := SaveClass(ctx, ss, &model.Class{
 		ProgrammeLevelID: fixture.level.ID,
 		AcademicPeriodID: nextPeriod.ID,
 		Name:             "class-a",
@@ -484,7 +484,7 @@ func saveClass(
 	name string,
 ) *model.Class {
 	t.Helper()
-	class, err := ss.Class().Save(ctx, &model.Class{
+	class, err := SaveClass(ctx, ss, &model.Class{
 		ProgrammeLevelID: model.ProgrammeLevelID(programmeLevelID),
 		AcademicPeriodID: model.AcademicPeriodID(academicPeriodID),
 		Name:             name,

@@ -49,12 +49,12 @@ func (s *classStoreFake) Create(_ context.Context, input *store.ClassCreation) (
 	s.createInput = input
 	return s.created, s.createErr
 }
-func (s *classStoreFake) UpdateWithAudit(_ context.Context, input *store.ClassUpdate) (*model.Class, error) {
+func (s *classStoreFake) Update(_ context.Context, input *store.ClassUpdate) (*model.Class, error) {
 	*s.events = append(*s.events, "store-update")
 	s.updateInput = input
 	return input.Class, nil
 }
-func (s *classStoreFake) ArchiveWithAudit(_ context.Context, input *store.ClassArchive) (*model.Class, error) {
+func (s *classStoreFake) Archive(_ context.Context, input *store.ClassArchive) (*model.Class, error) {
 	*s.events = append(*s.events, "store-archive")
 	s.archiveInput = input
 	return s.current, nil

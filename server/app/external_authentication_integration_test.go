@@ -616,7 +616,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = persistence.User().SetDisabledWithAudit(
+	if _, err = persistence.User().SetDisabled(
 		context.Background(),
 		storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 			ID:               user.ID,
@@ -662,39 +662,39 @@ func seedExternalAdmissionInvitation(
 	at := model.NowUTC()
 	unit := &model.AcademicUnit{InstitutionID: institution.ID, Name: "external-admission", DisplayName: "External Admission"}
 	var err error
-	unit, err = persistence.AcademicUnit().Save(ctx, unit)
+	unit, err = storetest.SaveAcademicUnit(ctx, persistence, unit)
 	if err != nil {
 		t.Fatal(err)
 	}
 	programme := &model.Programme{AcademicUnitID: unit.ID, Name: "external-admission", DisplayName: "External Admission"}
-	programme, err = persistence.Programme().Save(ctx, programme)
+	programme, err = storetest.SaveProgramme(ctx, persistence, programme)
 	if err != nil {
 		t.Fatal(err)
 	}
 	level := &model.ProgrammeLevel{ProgrammeID: programme.ID, Name: "external-admission", DisplayName: "External Admission"}
-	level, err = persistence.ProgrammeLevel().Save(ctx, level)
+	level, err = storetest.SaveProgrammeLevel(ctx, persistence, level)
 	if err != nil {
 		t.Fatal(err)
 	}
 	period := &model.AcademicPeriod{Owner: model.NewAcademicUnitAcademicPeriodOwner(unit.ID),
 		Name: "external-admission", DisplayName: "External Admission", StartsAt: at.Add(-time.Hour), EndsAt: at.Add(24 * time.Hour)}
-	period, err = persistence.AcademicPeriod().Save(ctx, period)
+	period, err = storetest.SaveAcademicPeriod(ctx, persistence, period)
 	if err != nil {
 		t.Fatal(err)
 	}
 	class := &model.Class{ProgrammeLevelID: level.ID, AcademicPeriodID: period.ID,
 		Name: "external-admission", DisplayName: "External Admission"}
-	class, err = persistence.Class().Save(ctx, class)
+	class, err = storetest.SaveClass(ctx, persistence, class)
 	if err != nil {
 		t.Fatal(err)
 	}
-	role, err := persistence.Role().Save(ctx, &model.Role{Name: "external-inviter-" + model.NewId(),
+	role, err := storetest.SaveRole(ctx, persistence, &model.Role{Name: "external-inviter-" + model.NewId(),
 		DisplayName: "External Invitation Manager",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionClassMembersManage)}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = persistence.RoleBinding().Save(ctx, &model.RoleBinding{UserID: inviter.ID, RoleID: role.ID,
+	if _, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: inviter.ID, RoleID: role.ID,
 		ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(), StartsAt: at.Add(-time.Minute)}); err != nil {
 		t.Fatal(err)
 	}

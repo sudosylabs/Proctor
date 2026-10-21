@@ -106,30 +106,6 @@ func (s SQLProgrammeLevelStore) createProgrammeLevel(ctx context.Context, candid
 	})
 }
 
-func (s SQLProgrammeLevelStore) Save(
-	ctx context.Context,
-	level *model.ProgrammeLevel,
-) (*model.ProgrammeLevel, error) {
-	if level == nil {
-		return nil, store.NewErrInvalidInput("programme_level", "value", nil)
-	}
-	if !level.ID.IsZero() {
-		return nil, store.NewErrInvalidInput("programme_level", "id", level.ID.String())
-	}
-
-	id, err := model.ParseProgrammeLevelID(model.NewId())
-	if err != nil {
-		return nil, err
-	}
-	candidate := *level
-	candidate.PrepareCreate(id, model.NowUTC())
-	if err := candidate.Validate(); err != nil {
-		return nil, store.NewErrInvalidInput("programme_level", "value", nil).Wrap(err)
-	}
-
-	return s.createProgrammeLevel(ctx, &candidate, nil)
-}
-
 func (s SQLProgrammeLevelStore) Get(ctx context.Context, id model.ProgrammeLevelID) (*model.ProgrammeLevel, error) {
 	var row programmeLevelRow
 	query := s.programmeLevelsQuery.Where(sq.Eq{
@@ -203,23 +179,6 @@ func (s SQLProgrammeLevelStore) SearchByProgramme(ctx context.Context, programme
 	return result, nil
 }
 
-func (s SQLProgrammeLevelStore) Update(
-	ctx context.Context,
-	level *model.ProgrammeLevel,
-) (*model.ProgrammeLevel, error) {
-	if level == nil {
-		return nil, store.NewErrInvalidInput("programme_level", "value", nil)
-	}
-
-	candidate := *level
-	candidate.PrepareUpdate(model.NowUTC())
-	if err := candidate.Validate(); err != nil {
-		return nil, store.NewErrInvalidInput("programme_level", "value", nil).Wrap(err)
-	}
-
-	return s.updateProgrammeLevel(ctx, &candidate, "", nil)
-}
-
 func (s SQLProgrammeLevelStore) updateProgrammeLevel(ctx context.Context, candidate *model.ProgrammeLevel, expectedOwner string, audit *academicMutationAudit) (*model.ProgrammeLevel, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "programme level update", func(ctx context.Context, tx *sqlxTxWrapper) (*model.ProgrammeLevel, error) {
 		if err := lockProgrammeLifecycle(ctx, tx); err != nil {
@@ -265,7 +224,7 @@ func (s SQLProgrammeLevelStore) updateProgrammeLevel(ctx context.Context, candid
 	})
 }
 
-func (s SQLProgrammeLevelStore) UpdateWithAudit(ctx context.Context, input *store.ProgrammeLevelUpdate) (*model.ProgrammeLevel, error) {
+func (s SQLProgrammeLevelStore) Update(ctx context.Context, input *store.ProgrammeLevelUpdate) (*model.ProgrammeLevel, error) {
 	if input == nil || input.Level == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("programme_level", "update", nil)
 	}
@@ -276,14 +235,7 @@ func (s SQLProgrammeLevelStore) UpdateWithAudit(ctx context.Context, input *stor
 	return s.updateProgrammeLevel(ctx, &candidate, candidate.ProgrammeID.String(), &academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt})
 }
 
-func (s SQLProgrammeLevelStore) Archive(ctx context.Context, id model.ProgrammeLevelID, archiveAt int64) (*model.ProgrammeLevel, error) {
-	if archiveAt <= 0 {
-		return nil, store.NewErrInvalidInput("programme_level", "archived_at", archiveAt)
-	}
-	return s.archiveProgrammeLevel(ctx, id, archiveAt, 0, nil)
-}
-
-func (s SQLProgrammeLevelStore) ArchiveWithAudit(ctx context.Context, input *store.ProgrammeLevelArchive) (*model.ProgrammeLevel, error) {
+func (s SQLProgrammeLevelStore) Archive(ctx context.Context, input *store.ProgrammeLevelArchive) (*model.ProgrammeLevel, error) {
 	if input == nil || !input.ID.IsValid() || input.ArchiveAt <= 0 || input.ExpectedRevision < 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("programme_level", "archive", nil)
 	}
@@ -394,3 +346,23 @@ func (row programmeLevelRow) model() (*model.ProgrammeLevel, error) {
 }
 
 var _ store.ProgrammeLevelStore = (*SQLProgrammeLevelStore)(nil)
+
+// SeedUpdate is an unaudited fixture write that may also change what the
+// audited Update forbids (moving the owner, or editing a bound Role); production
+// code never calls it, which an architecture test enforces.
+func (s SQLProgrammeLevelStore) SeedUpdate(
+	ctx context.Context,
+	level *model.ProgrammeLevel,
+) (*model.ProgrammeLevel, error) {
+	if level == nil {
+		return nil, store.NewErrInvalidInput("programme_level", "value", nil)
+	}
+
+	candidate := *level
+	candidate.PrepareUpdate(model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("programme_level", "value", nil).Wrap(err)
+	}
+
+	return s.updateProgrammeLevel(ctx, &candidate, "", nil)
+}

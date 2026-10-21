@@ -18,6 +18,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 )
 
 type mfaRecoverySQLFixture struct {
@@ -39,11 +40,11 @@ func mfaRecoveryFixture(t *testing.T, ctx context.Context) mfaRecoverySQLFixture
 	}
 	actor := saveIntegrationUser(t, ctx, s, &model.User{Username: "mfa-operator", Email: "operator@example.edu", DisplayName: "Operator"})
 	target := saveIntegrationUser(t, ctx, s, &model.User{Username: "mfa-target", Email: "target@example.edu", DisplayName: "Target"})
-	role, err := s.Role().Save(ctx, &model.Role{Name: model.SystemAdministratorRoleName, DisplayName: "System Administrator", Permissions: model.AllActions(), BuiltIn: true})
+	role, err := storetest.SaveRole(ctx, s, &model.Role{Name: model.SystemAdministratorRoleName, DisplayName: "System Administrator", Permissions: model.AllActions(), BuiltIn: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.RoleBinding().Save(ctx, &model.RoleBinding{UserID: actor.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), StartsAt: model.NowUTC().Add(-time.Hour)})
+	_, err = storetest.SaveRoleBinding(ctx, s, &model.RoleBinding{UserID: actor.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), StartsAt: model.NowUTC().Add(-time.Hour)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +88,7 @@ func TestMFAAssistedResetAtomicRetirementAndRestrictedReenrollment(t *testing.T)
 	defer cancel()
 	f := mfaRecoveryFixture(t, ctx)
 	s := f.persistence
-	pending, err := s.MFA().SavePending(ctx, &model.MFACredential{UserID: f.target.ID, State: model.MFAStatePending, EncryptedSecret: "encrypted-secret", EncryptionKeyID: "0123456789abcdef0123456789abcdef", PendingExpiresAt: model.OptionalTimeFrom(model.NowUTC().Add(time.Minute))})
+	pending, err := s.MFA().SeedPending(ctx, &model.MFACredential{UserID: f.target.ID, State: model.MFAStatePending, EncryptedSecret: "encrypted-secret", EncryptionKeyID: "0123456789abcdef0123456789abcdef", PendingExpiresAt: model.OptionalTimeFrom(model.NowUTC().Add(time.Minute))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +127,7 @@ func TestMFAAssistedResetAtomicRetirementAndRestrictedReenrollment(t *testing.T)
 	}
 	input := f.resetInput(t, ctx)
 	input.AuditEventID = model.NewAuditEventID()
-	if _, err = s.MFA().ResetWithAudit(ctx, input); err == nil {
+	if _, err = s.MFA().Reset(ctx, input); err == nil {
 		t.Fatal("reset without durable audit committed")
 	}
 	state, err := s.MFA().GetRecoveryState(ctx, f.target.ID)
@@ -137,7 +138,7 @@ func TestMFAAssistedResetAtomicRetirementAndRestrictedReenrollment(t *testing.T)
 		t.Fatal("failed reset revoked the Session")
 	}
 	input = f.resetInput(t, ctx)
-	result, err := s.MFA().ResetWithAudit(ctx, input)
+	result, err := s.MFA().Reset(ctx, input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,13 +189,13 @@ func TestMFAAssistedResetAtomicRetirementAndRestrictedReenrollment(t *testing.T)
 		t.Fatal("restricted Session has ordinary authority")
 	}
 	audit, _ = mfaSQLSecurityNoticeFixture(t, ctx, s, f.target, model.MailTemplateIdentityMFAEnabled, model.GetMillis())
-	newPending, err := s.MFA().SavePendingWithAudit(ctx, &store.MFAPendingEnrollment{Principal: principal, Credential: &model.MFACredential{UserID: f.target.ID, State: model.MFAStatePending, EncryptedSecret: "new-secret", EncryptionKeyID: "0123456789abcdef0123456789abcdef"}, Lifetime: time.Minute, RecentAuthenticationTTL: time.Hour, AuditEventID: audit.ID})
+	newPending, err := s.MFA().SavePending(ctx, &store.MFAPendingEnrollment{Principal: principal, Credential: &model.MFACredential{UserID: f.target.ID, State: model.MFAStatePending, EncryptedSecret: "new-secret", EncryptionKeyID: "0123456789abcdef0123456789abcdef"}, Lifetime: time.Minute, RecentAuthenticationTTL: time.Hour, AuditEventID: audit.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Challenge never lifts the restriction, even with a former code and a valid Session.
 	challengeAudit, _ := mfaSQLSecurityNoticeFixture(t, ctx, s, f.target, model.MailTemplateIdentityMFAEnabled, model.GetMillis())
-	if _, err = s.MFA().ChallengeWithAudit(ctx, &store.MFAChallenge{Principal: principal, CredentialID: newPending.ID, RecoveryCodeHash: oldCode, VerifiedAt: model.NowUTC(), AuditEventID: challengeAudit.ID}); err == nil {
+	if _, err = s.MFA().Challenge(ctx, &store.MFAChallenge{Principal: principal, CredentialID: newPending.ID, RecoveryCodeHash: oldCode, VerifiedAt: model.NowUTC(), AuditEventID: challengeAudit.ID}); err == nil {
 		t.Fatal("challenge bypassed required reenrollment")
 	}
 	activationAt = model.NowUTC().Truncate(time.Millisecond)
@@ -238,7 +239,7 @@ func TestMFAAssistedResetAtomicRetirementAndRestrictedReenrollment(t *testing.T)
 			t.Fatalf("%s credential change authority: %v", source.name, err)
 		}
 		if !source.permitted {
-			_, err = s.PasswordCredential().EnrollWithAudit(ctx, &store.PasswordCredentialEnrollment{Credential: &model.PasswordCredential{UserID: f.target.ID, PasswordHash: "new-primary"}, AuditEventID: audit.ID, AuditAt: model.GetMillis()})
+			_, err = s.PasswordCredential().Enroll(ctx, &store.PasswordCredentialEnrollment{Credential: &model.PasswordCredential{UserID: f.target.ID, PasswordHash: "new-primary"}, AuditEventID: audit.ID, AuditAt: model.GetMillis()})
 			if !store.IsNotFound(err) {
 				t.Fatalf("old request reached password enrollment: %v", err)
 			}
@@ -293,7 +294,7 @@ func TestMFAAssistedResetRechecksLiveAuthority(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err = f.persistence.MFA().ResetWithAudit(ctx, input); err == nil {
+			if _, err = f.persistence.MFA().Reset(ctx, input); err == nil {
 				t.Fatal("reset used stale or insufficient authority")
 			}
 			state, err := f.persistence.MFA().GetRecoveryState(ctx, f.target.ID)

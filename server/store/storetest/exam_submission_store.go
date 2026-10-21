@@ -857,7 +857,7 @@ func addExamAttemptCandidate(t *testing.T, ctx context.Context, ss store.Store, 
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserID: candidate.ID, Kind: model.AffiliationStudent,
 		StartsAt: startsAt.Add(-time.Hour)})
 	requireNoError(t, err)
-	enrollment, err := ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassID: fixture.class.ID,
+	enrollment, err := ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{ClassID: fixture.class.ID,
 		UserID: candidate.ID, StartsAt: startsAt})
 	requireNoError(t, err)
 	session := saveRegisteredDesktopSession(t, ctx, ss, candidate.ID, fixture.institutionID)
@@ -1203,7 +1203,7 @@ func testExamSubmissionAccessFences(t *testing.T, ctx context.Context, ss store.
 	t.Run("lost exact Class membership", func(t *testing.T) {
 		fixture := newExamAttemptFixture(t, ctx, ss)
 		connected, focusAccess := connectFocusLossFixture(t, ctx, ss, fixture, "submission-membership-connect")
-		_, err := ss.ClassMember().End(ctx, fixture.membership.ID, fixture.membership.Revision, model.GetMillis())
+		_, err := ss.ClassMember().SeedEnd(ctx, fixture.membership.ID, fixture.membership.Revision, model.GetMillis())
 		requireNoError(t, err)
 		time.Sleep(100 * time.Millisecond)
 		access := submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 0)

@@ -2294,15 +2294,15 @@ func (s *timedJobStore) CancellationRequested(arg0 context.Context, arg1 model.J
 	})
 }
 
-func (s *timedJobStore) CancelWithAudit(arg0 context.Context, arg1 *store.JobMutation) (*model.Job, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodCancelWithAudit), func() (*model.Job, error) {
-		return s.next.CancelWithAudit(arg0, arg1)
+func (s *timedJobStore) Cancel(arg0 context.Context, arg1 *store.JobMutation) (*model.Job, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodCancel), func() (*model.Job, error) {
+		return s.next.Cancel(arg0, arg1)
 	})
 }
 
-func (s *timedJobStore) RetryWithAudit(arg0 context.Context, arg1 *store.JobMutation) (*model.Job, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodRetryWithAudit), func() (*model.Job, error) {
-		return s.next.RetryWithAudit(arg0, arg1)
+func (s *timedJobStore) Retry(arg0 context.Context, arg1 *store.JobMutation) (*model.Job, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodRetry), func() (*model.Job, error) {
+		return s.next.Retry(arg0, arg1)
 	})
 }
 
@@ -2360,9 +2360,9 @@ func (s *timedFileStore) GetProfilePictureRendition(arg0 context.Context, arg1 m
 	})
 }
 
-func (s *timedFileStore) RemoveProfilePictureWithAudit(arg0 context.Context, arg1 *store.ProfilePictureRemoval) (*model.User, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodRemoveProfilePictureWithAudit), func() (*model.User, error) {
-		return s.next.RemoveProfilePictureWithAudit(arg0, arg1)
+func (s *timedFileStore) RemoveProfilePicture(arg0 context.Context, arg1 *store.ProfilePictureRemoval) (*model.User, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodRemoveProfilePicture), func() (*model.User, error) {
+		return s.next.RemoveProfilePicture(arg0, arg1)
 	})
 }
 
@@ -2402,15 +2402,9 @@ func (s *timedInstitutionStore) GetSingleton(arg0 context.Context) (*model.Insti
 	})
 }
 
-func (s *timedInstitutionStore) Update(arg0 context.Context, arg1 *model.Institution) (*model.Institution, error) {
+func (s *timedInstitutionStore) Update(arg0 context.Context, arg1 *store.InstitutionUpdate) (*model.Institution, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateInstitution, methodUpdate), func() (*model.Institution, error) {
 		return s.next.Update(arg0, arg1)
-	})
-}
-
-func (s *timedInstitutionStore) UpdateWithAudit(arg0 context.Context, arg1 *store.InstitutionUpdate) (*model.Institution, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInstitution, methodUpdateWithAudit), func() (*model.Institution, error) {
-		return s.next.UpdateWithAudit(arg0, arg1)
 	})
 }
 
@@ -2432,21 +2426,15 @@ func (s *timedAcademicUnitStore) CreateIdempotently(arg0 context.Context, arg1 *
 	})
 }
 
-func (s *timedAcademicUnitStore) UpdateWithAudit(arg0 context.Context, arg1 *store.AcademicUnitUpdate) (*model.AcademicUnit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodUpdateWithAudit), func() (*model.AcademicUnit, error) {
-		return s.next.UpdateWithAudit(arg0, arg1)
+func (s *timedAcademicUnitStore) Update(arg0 context.Context, arg1 *store.AcademicUnitUpdate) (*model.AcademicUnit, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodUpdate), func() (*model.AcademicUnit, error) {
+		return s.next.Update(arg0, arg1)
 	})
 }
 
-func (s *timedAcademicUnitStore) ArchiveWithAudit(arg0 context.Context, arg1 *store.AcademicUnitArchive) (*model.AcademicUnit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodArchiveWithAudit), func() (*model.AcademicUnit, error) {
-		return s.next.ArchiveWithAudit(arg0, arg1)
-	})
-}
-
-func (s *timedAcademicUnitStore) Save(arg0 context.Context, arg1 *model.AcademicUnit) (*model.AcademicUnit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodSave), func() (*model.AcademicUnit, error) {
-		return s.next.Save(arg0, arg1)
+func (s *timedAcademicUnitStore) Archive(arg0 context.Context, arg1 *store.AcademicUnitArchive) (*model.AcademicUnit, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodArchive), func() (*model.AcademicUnit, error) {
+		return s.next.Archive(arg0, arg1)
 	})
 }
 
@@ -2480,39 +2468,21 @@ func (s *timedAcademicUnitStore) Search(arg0 context.Context, arg1 model.Institu
 	})
 }
 
-func (s *timedAcademicUnitStore) Update(arg0 context.Context, arg1 *model.AcademicUnit) (*model.AcademicUnit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodUpdate), func() (*model.AcademicUnit, error) {
-		return s.next.Update(arg0, arg1)
-	})
-}
-
-func (s *timedAcademicUnitStore) Archive(arg0 context.Context, arg1 model.AcademicUnitID, arg2 int64) (*model.AcademicUnit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodArchive), func() (*model.AcademicUnit, error) {
-		return s.next.Archive(arg0, arg1, arg2)
-	})
-}
-
 func (s *timedProgrammeStore) Create(arg0 context.Context, arg1 *store.ProgrammeCreation) (*model.Programme, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodCreate), func() (*model.Programme, error) {
 		return s.next.Create(arg0, arg1)
 	})
 }
 
-func (s *timedProgrammeStore) UpdateWithAudit(arg0 context.Context, arg1 *store.ProgrammeUpdate) (*model.Programme, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodUpdateWithAudit), func() (*model.Programme, error) {
-		return s.next.UpdateWithAudit(arg0, arg1)
+func (s *timedProgrammeStore) Update(arg0 context.Context, arg1 *store.ProgrammeUpdate) (*model.Programme, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodUpdate), func() (*model.Programme, error) {
+		return s.next.Update(arg0, arg1)
 	})
 }
 
-func (s *timedProgrammeStore) ArchiveWithAudit(arg0 context.Context, arg1 *store.ProgrammeArchive) (*model.Programme, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodArchiveWithAudit), func() (*model.Programme, error) {
-		return s.next.ArchiveWithAudit(arg0, arg1)
-	})
-}
-
-func (s *timedProgrammeStore) Save(arg0 context.Context, arg1 *model.Programme) (*model.Programme, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodSave), func() (*model.Programme, error) {
-		return s.next.Save(arg0, arg1)
+func (s *timedProgrammeStore) Archive(arg0 context.Context, arg1 *store.ProgrammeArchive) (*model.Programme, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodArchive), func() (*model.Programme, error) {
+		return s.next.Archive(arg0, arg1)
 	})
 }
 
@@ -2540,15 +2510,9 @@ func (s *timedProgrammeStore) SearchByAcademicUnit(arg0 context.Context, arg1 mo
 	})
 }
 
-func (s *timedProgrammeStore) Update(arg0 context.Context, arg1 *model.Programme) (*model.Programme, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodUpdate), func() (*model.Programme, error) {
-		return s.next.Update(arg0, arg1)
-	})
-}
-
-func (s *timedProgrammeStore) Archive(arg0 context.Context, arg1 model.ProgrammeID, arg2 int64) (*model.Programme, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodArchive), func() (*model.Programme, error) {
-		return s.next.Archive(arg0, arg1, arg2)
+func (s *timedProgrammeStore) SeedUpdate(arg0 context.Context, arg1 *model.Programme) (*model.Programme, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodSeedUpdate), func() (*model.Programme, error) {
+		return s.next.SeedUpdate(arg0, arg1)
 	})
 }
 
@@ -2558,21 +2522,15 @@ func (s *timedProgrammeLevelStore) Create(arg0 context.Context, arg1 *store.Prog
 	})
 }
 
-func (s *timedProgrammeLevelStore) UpdateWithAudit(arg0 context.Context, arg1 *store.ProgrammeLevelUpdate) (*model.ProgrammeLevel, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodUpdateWithAudit), func() (*model.ProgrammeLevel, error) {
-		return s.next.UpdateWithAudit(arg0, arg1)
+func (s *timedProgrammeLevelStore) Update(arg0 context.Context, arg1 *store.ProgrammeLevelUpdate) (*model.ProgrammeLevel, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodUpdate), func() (*model.ProgrammeLevel, error) {
+		return s.next.Update(arg0, arg1)
 	})
 }
 
-func (s *timedProgrammeLevelStore) ArchiveWithAudit(arg0 context.Context, arg1 *store.ProgrammeLevelArchive) (*model.ProgrammeLevel, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodArchiveWithAudit), func() (*model.ProgrammeLevel, error) {
-		return s.next.ArchiveWithAudit(arg0, arg1)
-	})
-}
-
-func (s *timedProgrammeLevelStore) Save(arg0 context.Context, arg1 *model.ProgrammeLevel) (*model.ProgrammeLevel, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodSave), func() (*model.ProgrammeLevel, error) {
-		return s.next.Save(arg0, arg1)
+func (s *timedProgrammeLevelStore) Archive(arg0 context.Context, arg1 *store.ProgrammeLevelArchive) (*model.ProgrammeLevel, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodArchive), func() (*model.ProgrammeLevel, error) {
+		return s.next.Archive(arg0, arg1)
 	})
 }
 
@@ -2600,15 +2558,9 @@ func (s *timedProgrammeLevelStore) SearchByProgramme(arg0 context.Context, arg1 
 	})
 }
 
-func (s *timedProgrammeLevelStore) Update(arg0 context.Context, arg1 *model.ProgrammeLevel) (*model.ProgrammeLevel, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodUpdate), func() (*model.ProgrammeLevel, error) {
-		return s.next.Update(arg0, arg1)
-	})
-}
-
-func (s *timedProgrammeLevelStore) Archive(arg0 context.Context, arg1 model.ProgrammeLevelID, arg2 int64) (*model.ProgrammeLevel, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodArchive), func() (*model.ProgrammeLevel, error) {
-		return s.next.Archive(arg0, arg1, arg2)
+func (s *timedProgrammeLevelStore) SeedUpdate(arg0 context.Context, arg1 *model.ProgrammeLevel) (*model.ProgrammeLevel, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodSeedUpdate), func() (*model.ProgrammeLevel, error) {
+		return s.next.SeedUpdate(arg0, arg1)
 	})
 }
 
@@ -2624,21 +2576,15 @@ func (s *timedAcademicPeriodStore) CreateIdempotently(arg0 context.Context, arg1
 	})
 }
 
-func (s *timedAcademicPeriodStore) UpdateWithAudit(arg0 context.Context, arg1 *store.AcademicPeriodUpdate) (*model.AcademicPeriod, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodUpdateWithAudit), func() (*model.AcademicPeriod, error) {
-		return s.next.UpdateWithAudit(arg0, arg1)
+func (s *timedAcademicPeriodStore) Update(arg0 context.Context, arg1 *store.AcademicPeriodUpdate) (*model.AcademicPeriod, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodUpdate), func() (*model.AcademicPeriod, error) {
+		return s.next.Update(arg0, arg1)
 	})
 }
 
-func (s *timedAcademicPeriodStore) ArchiveWithAudit(arg0 context.Context, arg1 *store.AcademicPeriodArchive) (*model.AcademicPeriod, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodArchiveWithAudit), func() (*model.AcademicPeriod, error) {
-		return s.next.ArchiveWithAudit(arg0, arg1)
-	})
-}
-
-func (s *timedAcademicPeriodStore) Save(arg0 context.Context, arg1 *model.AcademicPeriod) (*model.AcademicPeriod, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodSave), func() (*model.AcademicPeriod, error) {
-		return s.next.Save(arg0, arg1)
+func (s *timedAcademicPeriodStore) Archive(arg0 context.Context, arg1 *store.AcademicPeriodArchive) (*model.AcademicPeriod, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodArchive), func() (*model.AcademicPeriod, error) {
+		return s.next.Archive(arg0, arg1)
 	})
 }
 
@@ -2660,39 +2606,21 @@ func (s *timedAcademicPeriodStore) ListVisible(arg0 context.Context, arg1 store.
 	})
 }
 
-func (s *timedAcademicPeriodStore) Update(arg0 context.Context, arg1 *model.AcademicPeriod) (*model.AcademicPeriod, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodUpdate), func() (*model.AcademicPeriod, error) {
-		return s.next.Update(arg0, arg1)
-	})
-}
-
-func (s *timedAcademicPeriodStore) Archive(arg0 context.Context, arg1 model.AcademicPeriodID, arg2 int64) (*model.AcademicPeriod, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodArchive), func() (*model.AcademicPeriod, error) {
-		return s.next.Archive(arg0, arg1, arg2)
-	})
-}
-
 func (s *timedClassStore) Create(arg0 context.Context, arg1 *store.ClassCreation) (*model.Class, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodCreate), func() (*model.Class, error) {
 		return s.next.Create(arg0, arg1)
 	})
 }
 
-func (s *timedClassStore) UpdateWithAudit(arg0 context.Context, arg1 *store.ClassUpdate) (*model.Class, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodUpdateWithAudit), func() (*model.Class, error) {
-		return s.next.UpdateWithAudit(arg0, arg1)
+func (s *timedClassStore) Update(arg0 context.Context, arg1 *store.ClassUpdate) (*model.Class, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodUpdate), func() (*model.Class, error) {
+		return s.next.Update(arg0, arg1)
 	})
 }
 
-func (s *timedClassStore) ArchiveWithAudit(arg0 context.Context, arg1 *store.ClassArchive) (*model.Class, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodArchiveWithAudit), func() (*model.Class, error) {
-		return s.next.ArchiveWithAudit(arg0, arg1)
-	})
-}
-
-func (s *timedClassStore) Save(arg0 context.Context, arg1 *model.Class) (*model.Class, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodSave), func() (*model.Class, error) {
-		return s.next.Save(arg0, arg1)
+func (s *timedClassStore) Archive(arg0 context.Context, arg1 *store.ClassArchive) (*model.Class, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodArchive), func() (*model.Class, error) {
+		return s.next.Archive(arg0, arg1)
 	})
 }
 
@@ -2729,18 +2657,6 @@ func (s *timedClassStore) SearchByAcademicUnit(arg0 context.Context, arg1 model.
 func (s *timedClassStore) GetAcademicUnitID(arg0 context.Context, arg1 model.ClassID) (model.AcademicUnitID, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodGetAcademicUnitID), func() (model.AcademicUnitID, error) {
 		return s.next.GetAcademicUnitID(arg0, arg1)
-	})
-}
-
-func (s *timedClassStore) Update(arg0 context.Context, arg1 *model.Class) (*model.Class, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodUpdate), func() (*model.Class, error) {
-		return s.next.Update(arg0, arg1)
-	})
-}
-
-func (s *timedClassStore) Archive(arg0 context.Context, arg1 model.ClassID, arg2 int64) (*model.Class, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodArchive), func() (*model.Class, error) {
-		return s.next.Archive(arg0, arg1, arg2)
 	})
 }
 
@@ -2792,15 +2708,15 @@ func (s *timedUserStore) MatchVisibility(arg0 context.Context, arg1 model.UserID
 	})
 }
 
-func (s *timedUserStore) UpdateProfileWithAudit(arg0 context.Context, arg1 *store.UserProfileUpdate) (*model.User, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodUpdateProfileWithAudit), func() (*model.User, error) {
-		return s.next.UpdateProfileWithAudit(arg0, arg1)
+func (s *timedUserStore) UpdateProfile(arg0 context.Context, arg1 *store.UserProfileUpdate) (*model.User, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodUpdateProfile), func() (*model.User, error) {
+		return s.next.UpdateProfile(arg0, arg1)
 	})
 }
 
-func (s *timedUserStore) SetDisabledWithAudit(arg0 context.Context, arg1 *store.UserDisabledStateChange) (*store.UserDisabledStateResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodSetDisabledWithAudit), func() (*store.UserDisabledStateResult, error) {
-		return s.next.SetDisabledWithAudit(arg0, arg1)
+func (s *timedUserStore) SetDisabled(arg0 context.Context, arg1 *store.UserDisabledStateChange) (*store.UserDisabledStateResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodSetDisabled), func() (*store.UserDisabledStateResult, error) {
+		return s.next.SetDisabled(arg0, arg1)
 	})
 }
 
@@ -2852,15 +2768,15 @@ func (s *timedExternalIdentityStore) ResolveOrProvision(arg0 context.Context, ar
 	})
 }
 
-func (s *timedExternalIdentityStore) LinkWithAudit(arg0 context.Context, arg1 *store.ExternalIdentityLink) (*store.AuthenticationMethodMutationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExternalIdentity, methodLinkWithAudit), func() (*store.AuthenticationMethodMutationResult, error) {
-		return s.next.LinkWithAudit(arg0, arg1)
+func (s *timedExternalIdentityStore) Link(arg0 context.Context, arg1 *store.ExternalIdentityLink) (*store.AuthenticationMethodMutationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExternalIdentity, methodLink), func() (*store.AuthenticationMethodMutationResult, error) {
+		return s.next.Link(arg0, arg1)
 	})
 }
 
-func (s *timedExternalIdentityStore) UnlinkWithAudit(arg0 context.Context, arg1 *store.ExternalIdentityUnlink) (*store.AuthenticationMethodMutationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExternalIdentity, methodUnlinkWithAudit), func() (*store.AuthenticationMethodMutationResult, error) {
-		return s.next.UnlinkWithAudit(arg0, arg1)
+func (s *timedExternalIdentityStore) Unlink(arg0 context.Context, arg1 *store.ExternalIdentityUnlink) (*store.AuthenticationMethodMutationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExternalIdentity, methodUnlink), func() (*store.AuthenticationMethodMutationResult, error) {
+		return s.next.Unlink(arg0, arg1)
 	})
 }
 
@@ -3206,9 +3122,9 @@ func (s *timedPersonalAccessTokenStore) ChangeState(arg0 context.Context, arg1 *
 	})
 }
 
-func (s *timedPersonalAccessTokenStore) RevokeWithAudit(arg0 context.Context, arg1 *store.PersonalAccessTokenRevocation) (*store.PersonalAccessTokenMutationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregatePersonalAccessToken, methodRevokeWithAudit), func() (*store.PersonalAccessTokenMutationResult, error) {
-		return s.next.RevokeWithAudit(arg0, arg1)
+func (s *timedPersonalAccessTokenStore) Revoke(arg0 context.Context, arg1 *store.PersonalAccessTokenRevocation) (*store.PersonalAccessTokenMutationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregatePersonalAccessToken, methodRevoke), func() (*store.PersonalAccessTokenMutationResult, error) {
+		return s.next.Revoke(arg0, arg1)
 	})
 }
 
@@ -3218,27 +3134,21 @@ func (s *timedMFAStore) GetRecoveryState(arg0 context.Context, arg1 model.UserID
 	})
 }
 
-func (s *timedMFAStore) SavePendingWithAudit(arg0 context.Context, arg1 *store.MFAPendingEnrollment) (*model.MFACredential, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodSavePendingWithAudit), func() (*model.MFACredential, error) {
-		return s.next.SavePendingWithAudit(arg0, arg1)
-	})
-}
-
-func (s *timedMFAStore) ChallengeWithAudit(arg0 context.Context, arg1 *store.MFAChallenge) (*store.SessionReauthenticationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodChallengeWithAudit), func() (*store.SessionReauthenticationResult, error) {
-		return s.next.ChallengeWithAudit(arg0, arg1)
-	})
-}
-
-func (s *timedMFAStore) ResetWithAudit(arg0 context.Context, arg1 *store.MFAAssistedReset) (*store.MFAResetResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodResetWithAudit), func() (*store.MFAResetResult, error) {
-		return s.next.ResetWithAudit(arg0, arg1)
-	})
-}
-
-func (s *timedMFAStore) SavePending(arg0 context.Context, arg1 *model.MFACredential) (*model.MFACredential, error) {
+func (s *timedMFAStore) SavePending(arg0 context.Context, arg1 *store.MFAPendingEnrollment) (*model.MFACredential, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodSavePending), func() (*model.MFACredential, error) {
 		return s.next.SavePending(arg0, arg1)
+	})
+}
+
+func (s *timedMFAStore) Challenge(arg0 context.Context, arg1 *store.MFAChallenge) (*store.SessionReauthenticationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodChallenge), func() (*store.SessionReauthenticationResult, error) {
+		return s.next.Challenge(arg0, arg1)
+	})
+}
+
+func (s *timedMFAStore) Reset(arg0 context.Context, arg1 *store.MFAAssistedReset) (*store.MFAResetResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodReset), func() (*store.MFAResetResult, error) {
+		return s.next.Reset(arg0, arg1)
 	})
 }
 
@@ -3284,15 +3194,21 @@ func (s *timedMFAStore) Disable(arg0 context.Context, arg1 *store.MFADisablement
 	})
 }
 
+func (s *timedMFAStore) SeedPending(arg0 context.Context, arg1 *model.MFACredential) (*model.MFACredential, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodSeedPending), func() (*model.MFACredential, error) {
+		return s.next.SeedPending(arg0, arg1)
+	})
+}
+
 func (s *timedAffiliationStore) Create(arg0 context.Context, arg1 *store.AffiliationCreation) (*model.Affiliation, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAffiliation, methodCreate), func() (*model.Affiliation, error) {
 		return s.next.Create(arg0, arg1)
 	})
 }
 
-func (s *timedAffiliationStore) EndWithAudit(arg0 context.Context, arg1 *store.AffiliationEnd) (*model.Affiliation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAffiliation, methodEndWithAudit), func() (*model.Affiliation, error) {
-		return s.next.EndWithAudit(arg0, arg1)
+func (s *timedAffiliationStore) End(arg0 context.Context, arg1 *store.AffiliationEnd) (*model.Affiliation, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAffiliation, methodEnd), func() (*model.Affiliation, error) {
+		return s.next.End(arg0, arg1)
 	})
 }
 
@@ -3320,21 +3236,15 @@ func (s *timedAffiliationStore) ListActiveByUser(arg0 context.Context, arg1 mode
 	})
 }
 
-func (s *timedAffiliationStore) End(arg0 context.Context, arg1 model.AffiliationID, arg2 int64, arg3 int64) (*model.Affiliation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAffiliation, methodEnd), func() (*model.Affiliation, error) {
-		return s.next.End(arg0, arg1, arg2, arg3)
-	})
-}
-
 func (s *timedAcademicUnitMemberStore) Create(arg0 context.Context, arg1 *store.AcademicUnitMemberCreation) (*model.AcademicUnitMember, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnitMember, methodCreate), func() (*model.AcademicUnitMember, error) {
 		return s.next.Create(arg0, arg1)
 	})
 }
 
-func (s *timedAcademicUnitMemberStore) EndWithAudit(arg0 context.Context, arg1 *store.AcademicUnitMemberEnd) (*model.AcademicUnitMember, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnitMember, methodEndWithAudit), func() (*model.AcademicUnitMember, error) {
-		return s.next.EndWithAudit(arg0, arg1)
+func (s *timedAcademicUnitMemberStore) End(arg0 context.Context, arg1 *store.AcademicUnitMemberEnd) (*model.AcademicUnitMember, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnitMember, methodEnd), func() (*model.AcademicUnitMember, error) {
+		return s.next.End(arg0, arg1)
 	})
 }
 
@@ -3374,27 +3284,15 @@ func (s *timedAcademicUnitMemberStore) ListActiveByUser(arg0 context.Context, ar
 	})
 }
 
-func (s *timedAcademicUnitMemberStore) End(arg0 context.Context, arg1 model.AcademicUnitMemberID, arg2 int64, arg3 int64) (*model.AcademicUnitMember, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnitMember, methodEnd), func() (*model.AcademicUnitMember, error) {
-		return s.next.End(arg0, arg1, arg2, arg3)
-	})
-}
-
-func (s *timedClassMemberStore) EnrollWithAudit(arg0 context.Context, arg1 *store.ClassMemberEnrollment) (*store.ClassEnrollmentResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodEnrollWithAudit), func() (*store.ClassEnrollmentResult, error) {
-		return s.next.EnrollWithAudit(arg0, arg1)
-	})
-}
-
-func (s *timedClassMemberStore) EndWithAudit(arg0 context.Context, arg1 *store.ClassMemberEnd) (*model.ClassMember, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodEndWithAudit), func() (*model.ClassMember, error) {
-		return s.next.EndWithAudit(arg0, arg1)
-	})
-}
-
-func (s *timedClassMemberStore) Enroll(arg0 context.Context, arg1 *model.ClassMember) (*store.ClassEnrollmentResult, error) {
+func (s *timedClassMemberStore) Enroll(arg0 context.Context, arg1 *store.ClassMemberEnrollment) (*store.ClassEnrollmentResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodEnroll), func() (*store.ClassEnrollmentResult, error) {
 		return s.next.Enroll(arg0, arg1)
+	})
+}
+
+func (s *timedClassMemberStore) End(arg0 context.Context, arg1 *store.ClassMemberEnd) (*model.ClassMember, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodEnd), func() (*model.ClassMember, error) {
+		return s.next.End(arg0, arg1)
 	})
 }
 
@@ -3428,9 +3326,15 @@ func (s *timedClassMemberStore) ListActiveByUser(arg0 context.Context, arg1 mode
 	})
 }
 
-func (s *timedClassMemberStore) End(arg0 context.Context, arg1 model.ClassMemberID, arg2 int64, arg3 int64) (*model.ClassMember, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodEnd), func() (*model.ClassMember, error) {
-		return s.next.End(arg0, arg1, arg2, arg3)
+func (s *timedClassMemberStore) SeedEnroll(arg0 context.Context, arg1 *model.ClassMember) (*store.ClassEnrollmentResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodSeedEnroll), func() (*store.ClassEnrollmentResult, error) {
+		return s.next.SeedEnroll(arg0, arg1)
+	})
+}
+
+func (s *timedClassMemberStore) SeedEnd(arg0 context.Context, arg1 model.ClassMemberID, arg2 int64, arg3 int64) (*model.ClassMember, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodSeedEnd), func() (*model.ClassMember, error) {
+		return s.next.SeedEnd(arg0, arg1, arg2, arg3)
 	})
 }
 
@@ -3452,27 +3356,27 @@ func (s *timedPasswordCredentialStore) Rehash(arg0 context.Context, arg1 *store.
 	})
 }
 
-func (s *timedPasswordCredentialStore) EnrollWithAudit(arg0 context.Context, arg1 *store.PasswordCredentialEnrollment) (*store.AuthenticationMethodMutationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregatePasswordCredential, methodEnrollWithAudit), func() (*store.AuthenticationMethodMutationResult, error) {
-		return s.next.EnrollWithAudit(arg0, arg1)
+func (s *timedPasswordCredentialStore) Enroll(arg0 context.Context, arg1 *store.PasswordCredentialEnrollment) (*store.AuthenticationMethodMutationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregatePasswordCredential, methodEnroll), func() (*store.AuthenticationMethodMutationResult, error) {
+		return s.next.Enroll(arg0, arg1)
 	})
 }
 
-func (s *timedPasswordCredentialStore) RemoveWithAudit(arg0 context.Context, arg1 *store.PasswordCredentialRemoval) (*store.AuthenticationMethodMutationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregatePasswordCredential, methodRemoveWithAudit), func() (*store.AuthenticationMethodMutationResult, error) {
-		return s.next.RemoveWithAudit(arg0, arg1)
+func (s *timedPasswordCredentialStore) Remove(arg0 context.Context, arg1 *store.PasswordCredentialRemoval) (*store.AuthenticationMethodMutationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregatePasswordCredential, methodRemove), func() (*store.AuthenticationMethodMutationResult, error) {
+		return s.next.Remove(arg0, arg1)
 	})
 }
 
-func (s *timedSessionStore) ReauthenticateExternalWithAudit(arg0 context.Context, arg1 *store.SessionExternalReauthentication) (*store.SessionReauthenticationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodReauthenticateExternalWithAudit), func() (*store.SessionReauthenticationResult, error) {
-		return s.next.ReauthenticateExternalWithAudit(arg0, arg1)
+func (s *timedSessionStore) ReauthenticateExternal(arg0 context.Context, arg1 *store.SessionExternalReauthentication) (*store.SessionReauthenticationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodReauthenticateExternal), func() (*store.SessionReauthenticationResult, error) {
+		return s.next.ReauthenticateExternal(arg0, arg1)
 	})
 }
 
-func (s *timedSessionStore) ReauthenticatePasswordWithAudit(arg0 context.Context, arg1 *store.SessionPasswordReauthentication) (*store.SessionReauthenticationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodReauthenticatePasswordWithAudit), func() (*store.SessionReauthenticationResult, error) {
-		return s.next.ReauthenticatePasswordWithAudit(arg0, arg1)
+func (s *timedSessionStore) ReauthenticatePassword(arg0 context.Context, arg1 *store.SessionPasswordReauthentication) (*store.SessionReauthenticationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodReauthenticatePassword), func() (*store.SessionReauthenticationResult, error) {
+		return s.next.ReauthenticatePassword(arg0, arg1)
 	})
 }
 
@@ -3512,27 +3416,21 @@ func (s *timedSessionStore) EnforceExpiry(arg0 context.Context, arg1 model.Sessi
 	})
 }
 
-func (s *timedSessionStore) Revoke(arg0 context.Context, arg1 model.SessionID, arg2 model.UserID, arg3 int64, arg4 model.SessionRevocationReason) ([]string, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodRevoke), func() ([]string, error) {
-		return s.next.Revoke(arg0, arg1, arg2, arg3, arg4)
+func (s *timedSessionStore) Withdraw(arg0 context.Context, arg1 model.SessionID, arg2 model.UserID, arg3 int64, arg4 model.SessionRevocationReason) ([]string, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodWithdraw), func() ([]string, error) {
+		return s.next.Withdraw(arg0, arg1, arg2, arg3, arg4)
 	})
 }
 
-func (s *timedSessionStore) RevokeWithAudit(arg0 context.Context, arg1 *store.SessionRevocation) (*store.SessionRevocationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodRevokeWithAudit), func() (*store.SessionRevocationResult, error) {
-		return s.next.RevokeWithAudit(arg0, arg1)
+func (s *timedSessionStore) Revoke(arg0 context.Context, arg1 *store.SessionRevocation) (*store.SessionRevocationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodRevoke), func() (*store.SessionRevocationResult, error) {
+		return s.next.Revoke(arg0, arg1)
 	})
 }
 
-func (s *timedSessionStore) RevokeAllForUser(arg0 context.Context, arg1 model.UserID, arg2 int64, arg3 model.SessionRevocationReason) ([]*model.Session, []string, error) {
-	return timeStoreCall2(s.layer, storeOperation(aggregateSession, methodRevokeAllForUser), func() ([]*model.Session, []string, error) {
-		return s.next.RevokeAllForUser(arg0, arg1, arg2, arg3)
-	})
-}
-
-func (s *timedSessionStore) RevokeAllForUserWithAudit(arg0 context.Context, arg1 *store.UserSessionsRevocation) (*store.UserSessionsRevocationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodRevokeAllForUserWithAudit), func() (*store.UserSessionsRevocationResult, error) {
-		return s.next.RevokeAllForUserWithAudit(arg0, arg1)
+func (s *timedSessionStore) RevokeAllForUser(arg0 context.Context, arg1 *store.UserSessionsRevocation) (*store.UserSessionsRevocationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodRevokeAllForUser), func() (*store.UserSessionsRevocationResult, error) {
+		return s.next.RevokeAllForUser(arg0, arg1)
 	})
 }
 
@@ -3548,9 +3446,9 @@ func (s *timedDesktopRegistrationStore) ListByUser(arg0 context.Context, arg1 mo
 	})
 }
 
-func (s *timedDesktopRegistrationStore) RevokeWithAudit(arg0 context.Context, arg1 *store.DesktopRegistrationRevocation) (*store.DesktopRegistrationRevocationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopRegistration, methodRevokeWithAudit), func() (*store.DesktopRegistrationRevocationResult, error) {
-		return s.next.RevokeWithAudit(arg0, arg1)
+func (s *timedDesktopRegistrationStore) Revoke(arg0 context.Context, arg1 *store.DesktopRegistrationRevocation) (*store.DesktopRegistrationRevocationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopRegistration, methodRevoke), func() (*store.DesktopRegistrationRevocationResult, error) {
+		return s.next.Revoke(arg0, arg1)
 	})
 }
 
@@ -3566,15 +3464,9 @@ func (s *timedSessionCredentialStore) RotateRefresh(arg0 context.Context, arg1 s
 	})
 }
 
-func (s *timedRoleStore) Save(arg0 context.Context, arg1 *model.Role) (*model.Role, error) {
+func (s *timedRoleStore) Save(arg0 context.Context, arg1 *store.RoleCreation) (*model.Role, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateRole, methodSave), func() (*model.Role, error) {
 		return s.next.Save(arg0, arg1)
-	})
-}
-
-func (s *timedRoleStore) SaveWithAudit(arg0 context.Context, arg1 *store.RoleCreation) (*model.Role, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRole, methodSaveWithAudit), func() (*model.Role, error) {
-		return s.next.SaveWithAudit(arg0, arg1)
 	})
 }
 
@@ -3608,39 +3500,33 @@ func (s *timedRoleStore) List(arg0 context.Context) ([]*model.Role, error) {
 	})
 }
 
-func (s *timedRoleStore) Update(arg0 context.Context, arg1 *model.Role) (*model.Role, error) {
+func (s *timedRoleStore) Update(arg0 context.Context, arg1 *store.RoleUpdate) (*model.Role, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateRole, methodUpdate), func() (*model.Role, error) {
 		return s.next.Update(arg0, arg1)
 	})
 }
 
-func (s *timedRoleStore) UpdateWithAudit(arg0 context.Context, arg1 *store.RoleUpdate) (*model.Role, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRole, methodUpdateWithAudit), func() (*model.Role, error) {
-		return s.next.UpdateWithAudit(arg0, arg1)
-	})
-}
-
-func (s *timedRoleStore) Archive(arg0 context.Context, arg1 model.RoleID, arg2 int64) (*model.Role, error) {
+func (s *timedRoleStore) Archive(arg0 context.Context, arg1 *store.RoleArchive) (*model.Role, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateRole, methodArchive), func() (*model.Role, error) {
-		return s.next.Archive(arg0, arg1, arg2)
+		return s.next.Archive(arg0, arg1)
 	})
 }
 
-func (s *timedRoleStore) ArchiveWithAudit(arg0 context.Context, arg1 *store.RoleArchive) (*model.Role, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRole, methodArchiveWithAudit), func() (*model.Role, error) {
-		return s.next.ArchiveWithAudit(arg0, arg1)
+func (s *timedRoleStore) SeedBuiltIn(arg0 context.Context, arg1 *model.Role) (*model.Role, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRole, methodSeedBuiltIn), func() (*model.Role, error) {
+		return s.next.SeedBuiltIn(arg0, arg1)
 	})
 }
 
-func (s *timedRoleBindingStore) Save(arg0 context.Context, arg1 *model.RoleBinding) (*model.RoleBinding, error) {
+func (s *timedRoleStore) SeedUpdate(arg0 context.Context, arg1 *model.Role) (*model.Role, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRole, methodSeedUpdate), func() (*model.Role, error) {
+		return s.next.SeedUpdate(arg0, arg1)
+	})
+}
+
+func (s *timedRoleBindingStore) Save(arg0 context.Context, arg1 *store.RoleBindingCreation) (*model.RoleBinding, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateRoleBinding, methodSave), func() (*model.RoleBinding, error) {
 		return s.next.Save(arg0, arg1)
-	})
-}
-
-func (s *timedRoleBindingStore) SaveWithAudit(arg0 context.Context, arg1 *store.RoleBindingCreation) (*model.RoleBinding, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRoleBinding, methodSaveWithAudit), func() (*model.RoleBinding, error) {
-		return s.next.SaveWithAudit(arg0, arg1)
 	})
 }
 
@@ -3674,15 +3560,9 @@ func (s *timedRoleBindingStore) ListActiveByUser(arg0 context.Context, arg1 mode
 	})
 }
 
-func (s *timedRoleBindingStore) End(arg0 context.Context, arg1 model.RoleBindingID, arg2 int64) (*model.RoleBinding, error) {
+func (s *timedRoleBindingStore) End(arg0 context.Context, arg1 *store.RoleBindingEnd) (*model.RoleBinding, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateRoleBinding, methodEnd), func() (*model.RoleBinding, error) {
-		return s.next.End(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedRoleBindingStore) EndWithAudit(arg0 context.Context, arg1 *store.RoleBindingEnd) (*model.RoleBinding, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRoleBinding, methodEndWithAudit), func() (*model.RoleBinding, error) {
-		return s.next.EndWithAudit(arg0, arg1)
+		return s.next.End(arg0, arg1)
 	})
 }
 

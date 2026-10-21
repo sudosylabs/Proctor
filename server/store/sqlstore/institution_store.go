@@ -147,19 +147,7 @@ func (s SQLInstitutionStore) GetSingleton(ctx context.Context) (*model.Instituti
 	return row.model()
 }
 
-func (s SQLInstitutionStore) Update(ctx context.Context, institution *model.Institution) (*model.Institution, error) {
-	if institution == nil {
-		return nil, store.NewErrInvalidInput("institution", "value", nil)
-	}
-	candidate := *institution
-	candidate.PrepareUpdate(model.NowUTC())
-	if err := candidate.Validate(); err != nil {
-		return nil, store.NewErrInvalidInput("institution", "value", nil).Wrap(err)
-	}
-	return s.updateInstitution(ctx, &candidate, "", 0)
-}
-
-func (s SQLInstitutionStore) UpdateWithAudit(
+func (s SQLInstitutionStore) Update(
 	ctx context.Context,
 	input *store.InstitutionUpdate,
 ) (*model.Institution, error) {

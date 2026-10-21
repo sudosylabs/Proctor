@@ -48,12 +48,12 @@ func (s *programmeLevelStoreFake) Create(_ context.Context, input *store.Program
 	s.createInput = input
 	return s.created, s.createErr
 }
-func (s *programmeLevelStoreFake) UpdateWithAudit(_ context.Context, input *store.ProgrammeLevelUpdate) (*model.ProgrammeLevel, error) {
+func (s *programmeLevelStoreFake) Update(_ context.Context, input *store.ProgrammeLevelUpdate) (*model.ProgrammeLevel, error) {
 	*s.events = append(*s.events, "store-update")
 	s.updateInput = input
 	return input.Level, nil
 }
-func (s *programmeLevelStoreFake) ArchiveWithAudit(_ context.Context, input *store.ProgrammeLevelArchive) (*model.ProgrammeLevel, error) {
+func (s *programmeLevelStoreFake) Archive(_ context.Context, input *store.ProgrammeLevelArchive) (*model.ProgrammeLevel, error) {
 	*s.events = append(*s.events, "store-archive")
 	s.archiveInput = input
 	return s.current, nil

@@ -46,7 +46,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		go func() {
 			defer wait.Done()
 			<-start
-			_, unlinkErr = ss.ExternalIdentity().UnlinkWithAudit(ctx, &store.ExternalIdentityUnlink{ID: identity.ID,
+			_, unlinkErr = ss.ExternalIdentity().Unlink(ctx, &store.ExternalIdentityUnlink{ID: identity.ID,
 				UserID: user.ID, Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"campus-cas": {}}},
 				ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationExternalIdentityUnlinked, AuditEventID: audit.ID, AuditAt: model.GetMillis()})
 		}()
@@ -86,7 +86,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			go func(index int) {
 				defer wg.Done()
 				<-start
-				_, errs[index] = ss.ExternalIdentity().LinkWithAudit(ctx, &store.ExternalIdentityLink{
+				_, errs[index] = ss.ExternalIdentity().Link(ctx, &store.ExternalIdentityLink{
 					Identity: &model.ExternalIdentity{UserID: users[index], Provider: "campus-cas", Subject: subject,
 						LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())},
 					Capabilities: capabilities, AuditEventID: attempts[index].ID, AuditAt: model.GetMillis(),
@@ -106,10 +106,10 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 				conflicted++
 				continue
 			}
-			t.Fatalf("LinkWithAudit() concurrent error = %v", err)
+			t.Fatalf("Link() concurrent error = %v", err)
 		}
 		if succeeded != 1 || conflicted != 1 {
-			t.Fatalf("LinkWithAudit() outcomes success=%d conflict=%d errors=%v", succeeded, conflicted, errs)
+			t.Fatalf("Link() outcomes success=%d conflict=%d errors=%v", succeeded, conflicted, errs)
 		}
 	})
 
@@ -126,7 +126,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			"campus-cas": {},
 		}}
 		linkAttempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "connect_provider")
-		linked, err := ss.ExternalIdentity().LinkWithAudit(ctx, &store.ExternalIdentityLink{
+		linked, err := ss.ExternalIdentity().Link(ctx, &store.ExternalIdentityLink{
 			Identity: &model.ExternalIdentity{UserID: user.ID, Provider: "campus-cas",
 				Subject: "revocation-subject-" + model.NewId(), LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())},
 			Capabilities: capabilities, AuditEventID: linkAttempt.ID, AuditAt: model.GetMillis(),
@@ -150,13 +150,13 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		requireNoError(t, err)
 
 		unlinkAttempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "unlink_provider")
-		result, err := ss.ExternalIdentity().UnlinkWithAudit(ctx, &store.ExternalIdentityUnlink{
+		result, err := ss.ExternalIdentity().Unlink(ctx, &store.ExternalIdentityUnlink{
 			ID: linked.Identity.ID, UserID: user.ID, Capabilities: capabilities, ChangedAt: model.GetMillis(),
 			RevocationReason: model.SessionRevocationExternalIdentityUnlinked, AuditEventID: unlinkAttempt.ID, AuditAt: model.GetMillis(),
 		})
 		requireNoError(t, err)
 		if len(result.RevokedSessions) != 1 || result.RevokedSessions[0].ID != providerSession.ID || len(result.RevokedTokenHashes) != 2 {
-			t.Fatalf("UnlinkWithAudit() revocations = %#v", result)
+			t.Fatalf("Unlink() revocations = %#v", result)
 		}
 		retained, err := ss.Session().Get(ctx, passwordSession.ID)
 		requireNoError(t, err)
@@ -662,12 +662,12 @@ func establishExternalAdmissionPolicyAdministrator(
 		UserID: userID, PasswordHash: "$argon2id$external-admission-policy-test",
 	})
 	requireNoError(t, err)
-	role, err := ss.Role().Save(ctx, &model.Role{
+	role, err := SaveRole(ctx, ss, &model.Role{
 		Name: model.SystemAdministratorRoleName, DisplayName: "System Administrator",
 		Permissions: model.AllActions(), BuiltIn: true,
 	})
 	requireNoError(t, err)
-	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{
+	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: userID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institutionID.String(), StartsAt: model.NowUTC().Add(-time.Second),
 	})

@@ -823,7 +823,7 @@ func (s *externalAuthenticationService) completeProviderConnection(
 		return nil, invalidExternalAuthenticationError()
 	}
 	connectedAt := state.ConsumedAt.Time.Truncate(time.Millisecond)
-	result, err := s.identities.LinkWithAudit(ctx, &store.ExternalIdentityLink{
+	result, err := s.identities.Link(ctx, &store.ExternalIdentityLink{
 		ExternalLoginStateID: state.ID,
 		Identity: &model.ExternalIdentity{UserID: state.TargetUserID, Provider: state.Provider,
 			Subject: assertion.Subject, LastSeenAt: model.OptionalTimeFrom(connectedAt)},
@@ -872,7 +872,7 @@ func (s *externalAuthenticationService) revokeUnreportedSession(
 	ctx context.Context,
 	session *model.Session,
 ) {
-	hashes, err := s.sessions.Revoke(
+	hashes, err := s.sessions.Withdraw(
 		ctx,
 		session.ID,
 		session.UserID,

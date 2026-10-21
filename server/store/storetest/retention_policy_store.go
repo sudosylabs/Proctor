@@ -172,7 +172,7 @@ func testRetentionPolicyCurrentCredentialAndAssurance(t *testing.T, ctx context.
 			stale := principal
 			stale.SessionID, stale.CredentialID = saved.ID, model.PrincipalCredentialID(credentials[0].ID)
 			if state == "revoked Session" {
-				_, revokeErr := stores.Session().Revoke(ctx, saved.ID, principal.UserID, model.GetMillis(), model.SessionRevocationUserLogout)
+				_, revokeErr := stores.Session().Withdraw(ctx, saved.ID, principal.UserID, model.GetMillis(), model.SessionRevocationInactiveUser)
 				requireNoError(t, revokeErr)
 			}
 			for _, operation := range []string{"change", "no-op", "replay"} {
@@ -229,7 +229,7 @@ func testRetentionPolicyConcurrentEditors(t *testing.T, ctx context.Context, sto
 ) {
 	t.Helper()
 	other := saveUserWithPassword(t, ctx, stores)
-	_, err := stores.RoleBinding().Save(ctx, &model.RoleBinding{UserID: other.ID, RoleID: bootstrap.Role.ID,
+	_, err := SaveRoleBinding(ctx, stores, &model.RoleBinding{UserID: other.ID, RoleID: bootstrap.Role.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: bootstrap.Institution.ID.String(), StartsAt: model.NowUTC().Add(-time.Hour)})
 	requireNoError(t, err)
 	inputs := make([]*store.RetentionPolicyReplacement, 2)
@@ -314,18 +314,18 @@ func testRetentionPolicyActiveAdministratorGuard(t *testing.T, ctx context.Conte
 		t.Run(test.name, func(t *testing.T) {
 			actor := saveUserWithPassword(t, ctx, stores)
 			if test.binding {
-				binding, saveErr := stores.RoleBinding().Save(ctx, &model.RoleBinding{UserID: actor.ID, RoleID: bootstrap.Role.ID,
+				binding, saveErr := SaveRoleBinding(ctx, stores, &model.RoleBinding{UserID: actor.ID, RoleID: bootstrap.Role.ID,
 					ScopeType: model.RoleScopeInstitution, ScopeID: bootstrap.Institution.ID.String(), StartsAt: model.NowUTC().Add(-time.Hour)})
 				requireNoError(t, saveErr)
 				if test.ended {
-					_, endErr := stores.RoleBinding().End(ctx, binding.ID, model.GetMillis())
+					_, endErr := EndRoleBinding(ctx, stores, binding.ID, model.GetMillis())
 					requireNoError(t, endErr)
 				}
 			}
 			principal := saveRecordsPrincipal(t, ctx, stores, actor.ID, true)
 			if test.disabled {
 				audit := saveUserProfileAuditAttempt(t, ctx, stores, actor.ID.String())
-				_, disableErr := stores.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+				_, disableErr := stores.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 					ID: actor.ID, ExpectedRevision: actor.Revision, Disabled: true, ChangedAt: model.GetMillis(),
 					RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt),
 				}))

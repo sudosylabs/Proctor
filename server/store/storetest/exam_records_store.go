@@ -30,10 +30,10 @@ func TestExamRecordsStore(t *testing.T, ss store.Store, probes ...ExamRecordsSQL
 	scope := model.RetentionHoldScope{ExamID: f.examID, SittingID: f.sitting.ID}
 	submissionScope := scope
 	submissionScope.SubmissionID = sealed.Receipt.SubmissionID
-	role, err := ss.Role().Save(ctx, &model.Role{Name: "records-manager-" + model.NewId(), DisplayName: "Records manager", Permissions: []string{
+	role, err := SaveRole(ctx, ss, &model.Role{Name: "records-manager-" + model.NewId(), DisplayName: "Records manager", Permissions: []string{
 		string(model.ActionExamRecordsComplete), string(model.ActionExamRecordsCompleteOverride), string(model.ActionExamRecordsHold), string(model.ActionExamRecordsHoldOverride), string(model.ActionRetentionHoldRelease)}})
 	requireNoError(t, err)
-	binding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: f.manager.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: f.unitID.String(), StartsAt: model.NowUTC().Add(-time.Minute)})
+	binding, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: f.manager.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: f.unitID.String(), StartsAt: model.NowUTC().Add(-time.Minute)})
 	requireNoError(t, err)
 	membership, err := ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{UserID: f.manager.ID, AcademicUnitID: f.unitID, StartsAt: model.NowUTC().Add(-time.Minute)})
 	requireNoError(t, err)
@@ -54,7 +54,7 @@ func TestExamRecordsStore(t *testing.T, ss store.Store, probes ...ExamRecordsSQL
 	if _, err = records.WaiveReview(ctx, waiver, examCommand(f.manager.ID, store.ExamRecordsWaiveReviewOperation, "records-undecided", "records-undecided")); !store.IsConflict(err) {
 		t.Fatalf("undecided Flag waived: %v", err)
 	}
-	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: f.candidate.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: f.unitID.String(), StartsAt: model.NowUTC().Add(-time.Minute)})
+	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: f.candidate.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: f.unitID.String(), StartsAt: model.NowUTC().Add(-time.Minute)})
 	requireNoError(t, err)
 	self := *waiver
 	self.ExamRecordsMutation = mutation(submissionScope, saveRecordsPrincipal(t, ctx, ss, f.candidate.ID, false), model.ActionExamRecordsCompleteOverride)
@@ -177,7 +177,7 @@ func TestExamRecordsStore(t *testing.T, ss store.Store, probes ...ExamRecordsSQL
 	_, err = records.CompleteRecords(ctx, complete, examCommand(f.manager.ID, store.ExamRecordsCompleteOperation, "records-late-complete", "records-late-complete"))
 	requireNoError(t, err)
 	testRecordsHolds(t, ctx, ss, f, principal, scope, submissionScope, probes)
-	_, err = ss.AcademicUnitMember().End(ctx, membership.ID, membership.Revision, model.GetMillis())
+	_, err = EndAcademicUnitMember(ctx, ss, membership.ID, membership.Revision, model.GetMillis())
 	requireNoError(t, err)
 	hold := &store.ExamRecordsHoldCreation{ExamRecordsMutation: mutation(scope, principal, model.ActionExamRecordsHold), HoldID: model.NewRetentionHoldID(), ReasonCode: "other", PrivateReason: "Preserve."}
 	if _, err = records.CreateHold(ctx, hold, examCommand(f.manager.ID, store.ExamRecordsCreateHoldOperation, "records-member-ended", "records-member-ended")); !store.IsConflict(err) {
@@ -188,7 +188,7 @@ func TestExamRecordsStore(t *testing.T, ss store.Store, probes ...ExamRecordsSQL
 	if _, err = records.CreateHold(ctx, hold, overrideKey); err != nil {
 		t.Fatalf("nonadministrator scoped override denied: %v", err)
 	}
-	_, err = ss.RoleBinding().End(ctx, binding.ID, model.GetMillis())
+	_, err = EndRoleBinding(ctx, ss, binding.ID, model.GetMillis())
 	requireNoError(t, err)
 	if _, err = records.CreateHold(ctx, hold, overrideKey); !store.IsConflict(err) {
 		t.Fatalf("same-audit replay ignored revoked role: %v", err)
@@ -269,9 +269,9 @@ func testRecordsHolds(t *testing.T, ctx context.Context, ss store.Store, f examA
 		t.Fatalf("failed hold persisted: %#v", all)
 	}
 	admin := saveUser(t, ctx, ss)
-	adminRole, err := ss.Role().Save(ctx, &model.Role{Name: model.SystemAdministratorRoleName, DisplayName: "System administrator", BuiltIn: true, Permissions: []string{string(model.ActionRetentionHoldRelease)}})
+	adminRole, err := SaveRole(ctx, ss, &model.Role{Name: model.SystemAdministratorRoleName, DisplayName: "System administrator", BuiltIn: true, Permissions: []string{string(model.ActionRetentionHoldRelease)}})
 	requireNoError(t, err)
-	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: admin.ID, RoleID: adminRole.ID, ScopeType: model.RoleScopeInstitution, ScopeID: f.institutionID.String(), StartsAt: model.NowUTC().Add(-time.Minute)})
+	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: admin.ID, RoleID: adminRole.ID, ScopeType: model.RoleScopeInstitution, ScopeID: f.institutionID.String(), StartsAt: model.NowUTC().Add(-time.Minute)})
 	requireNoError(t, err)
 	weakAdmin := saveRecordsPrincipal(t, ctx, ss, admin.ID, false)
 	strongAdmin := saveRecordsPrincipal(t, ctx, ss, admin.ID, true)

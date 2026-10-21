@@ -32,10 +32,10 @@ func TestSessionStores(t *testing.T, ss store.Store) {
 	t.Run("EnforceExpiry", func(t *testing.T) { testSessionEnforceExpiry(t, ss) })
 	t.Run("NativeTimeBoundaries", func(t *testing.T) { testSessionNativeTimeBoundaries(t, ss) })
 	t.Run("Revoke", func(t *testing.T) { testSessionRevoke(t, ss) })
-	t.Run("RevokeWithAudit", func(t *testing.T) { testSessionRevokeWithAudit(t, ss) })
+	t.Run("Revoke", func(t *testing.T) { testSessionRevokeWithAudit(t, ss) })
 	t.Run("SelfRevocationWithAudit", func(t *testing.T) { testSelfSessionRevocationsWithAudit(t, ss) })
 	t.Run("RevokeAllForUser", func(t *testing.T) { testSessionRevokeAllForUser(t, ss) })
-	t.Run("RevokeAllForUserWithAudit", func(t *testing.T) { testSessionRevokeAllForUserWithAudit(t, ss) })
+	t.Run("RevokeAllForUser", func(t *testing.T) { testSessionRevokeAllForUserWithAudit(t, ss) })
 	t.Run("DisabledMailRecordsTerminalAdministrativeNotice", func(t *testing.T) {
 		testSessionDisabledMailRecordsTerminalAdministrativeNotice(t, ss)
 	})
@@ -59,7 +59,7 @@ func testSelfSessionRevocationsWithAudit(t *testing.T, ss store.Store) {
 			revoke := func(auditID model.AuditEventID) (*store.SessionRevocationResult, bool, error) {
 				if reason == model.SessionRevocationUserAllSessions {
 					input := &store.UserSessionsRevocation{UserID: user.ID, RevokedAt: at, Reason: reason, AuditEventID: auditID, AuditAt: at}
-					result, revokeErr := ss.Session().RevokeAllForUserWithAudit(ctx, input)
+					result, revokeErr := ss.Session().RevokeAllForUser(ctx, input)
 					if revokeErr != nil {
 						return nil, false, revokeErr
 					}
@@ -69,7 +69,7 @@ func testSelfSessionRevocationsWithAudit(t *testing.T, ss store.Store) {
 					}
 					return value, input.NoOp, nil
 				}
-				result, revokeErr := ss.Session().RevokeWithAudit(ctx, &store.SessionRevocation{
+				result, revokeErr := ss.Session().Revoke(ctx, &store.SessionRevocation{
 					SessionID: session.ID, UserID: user.ID, RevokedAt: at,
 					Reason: reason, AuditEventID: auditID, AuditAt: at,
 				})
@@ -289,7 +289,10 @@ func testSessionRevoke(t *testing.T, ss store.Store) {
 	session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
 	at := model.GetMillis() + 100
 	other := saveUser(t, ctx, ss)
-	_, err = ss.Session().Revoke(ctx, session.ID, other.ID, at, model.SessionRevocationUserLogout)
+	if _, err = ss.Session().Withdraw(ctx, session.ID, user.ID, at, model.SessionRevocationUserLogout); !errors.As(err, new(*store.ErrInvalidInput)) {
+		t.Fatalf("Withdraw() accepted an audited revocation reason: %v", err)
+	}
+	_, err = ss.Session().Withdraw(ctx, session.ID, other.ID, at, model.SessionRevocationInactiveUser)
 	if !store.IsNotFound(err) {
 		t.Fatalf("cross-user Revoke() error = %v", err)
 	}
@@ -298,7 +301,7 @@ func testSessionRevoke(t *testing.T, ss store.Store) {
 	if unrevoked.RevokedAt.Valid {
 		t.Fatalf("cross-user Revoke() changed session = %#v", unrevoked)
 	}
-	hashes, err := ss.Session().Revoke(ctx, session.ID, user.ID, at, model.SessionRevocationUserLogout)
+	hashes, err := ss.Session().Withdraw(ctx, session.ID, user.ID, at, model.SessionRevocationInactiveUser)
 	requireNoError(t, err)
 	if len(hashes) != 2 {
 		t.Fatalf("Revoke() hashes = %#v", hashes)
@@ -309,7 +312,7 @@ func testSessionRevoke(t *testing.T, ss store.Store) {
 		model.SessionCredentialAccess,
 	)
 	requireNoError(t, err)
-	if credential.RevokedAt.Millis() != at || got.RevokedAt.Millis() != at || got.RevocationReason != model.SessionRevocationUserLogout {
+	if credential.RevokedAt.Millis() != at || got.RevokedAt.Millis() != at || got.RevocationReason != model.SessionRevocationInactiveUser {
 		t.Fatalf("revoked credential=%#v session=%#v", credential, got)
 	}
 	active, err := ss.Session().ListActiveByUser(ctx, user.ID, model.TimeFromMillis(at))
@@ -334,8 +337,8 @@ func testSessionRevokeWithAudit(t *testing.T, ss store.Store) {
 		SessionID: session.ID, UserID: user.ID, RevokedAt: at,
 		Reason: model.SessionRevocationAdministratorSession, AuditEventID: model.NewAuditEventID(), AuditAt: at,
 	})
-	if _, err := ss.Session().RevokeWithAudit(ctx, missingAuditCommand); err == nil {
-		t.Fatal("RevokeWithAudit() succeeded without its audit attempt")
+	if _, err := ss.Session().Revoke(ctx, missingAuditCommand); err == nil {
+		t.Fatal("Revoke() succeeded without its audit attempt")
 	}
 	if _, getErr := ss.Mail().GetDelivery(ctx, missingAuditCommand.Delivery.ID); !store.IsNotFound(getErr) {
 		t.Fatalf("administrative Session notice survived audit rollback: %v", getErr)
@@ -358,10 +361,10 @@ func testSessionRevokeWithAudit(t *testing.T, ss store.Store) {
 		SessionID: session.ID, UserID: user.ID, RevokedAt: at,
 		Reason: model.SessionRevocationAdministratorSession, AuditEventID: attempt.ID, AuditAt: at,
 	})
-	result, err := ss.Session().RevokeWithAudit(ctx, command)
+	result, err := ss.Session().Revoke(ctx, command)
 	requireNoError(t, err)
 	if result.Session.RevokedAt.Millis() != at || len(result.TokenHashes) != 2 {
-		t.Fatalf("RevokeWithAudit() = %#v", result)
+		t.Fatalf("Revoke() = %#v", result)
 	}
 	if delivery, getErr := ss.Mail().GetDelivery(ctx, command.Delivery.ID); getErr != nil || delivery.TemplateKey != model.MailTemplateIdentitySessionsRevokedByAdmin {
 		t.Fatalf("administrative revoke notice = %#v, %v", delivery, getErr)
@@ -388,13 +391,13 @@ func testSessionRevokeAllForUser(t *testing.T, ss store.Store) {
 	other := saveUser(t, ctx, ss)
 	otherSession, _, _ := saveSession(t, ctx, ss, other.ID.String(), 10)
 	at := model.GetMillis() + 100
-	revoked, hashes, err := ss.Session().RevokeAllForUser(ctx, user.ID, at, model.SessionRevocationUserAllSessions)
+	revocation, err := RevokeAllUserSessions(ctx, ss, user.ID, at)
 	requireNoError(t, err)
-	if len(hashes) != 4 {
-		t.Fatalf("RevokeAllForUser() hashes = %#v", hashes)
+	if len(revocation.TokenHashes) != 4 {
+		t.Fatalf("RevokeAllForUser() hashes = %#v", revocation.TokenHashes)
 	}
-	if len(revoked) != 2 {
-		t.Fatalf("RevokeAllForUser() sessions = %#v", revoked)
+	if len(revocation.Sessions) != 2 {
+		t.Fatalf("RevokeAllForUser() sessions = %#v", revocation.Sessions)
 	}
 	for _, id := range []string{first.ID.String(), second.ID.String()} {
 		got, getErr := ss.Session().Get(ctx, model.SessionID(id))
@@ -417,11 +420,11 @@ func testSessionRevokeAllForUserWithAudit(t *testing.T, ss store.Store) {
 	second, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
 	at := model.GetMillis() + 100
 
-	if _, err := ss.Session().RevokeAllForUserWithAudit(ctx, userSessionsRevocationWithNotice(t, &store.UserSessionsRevocation{
+	if _, err := ss.Session().RevokeAllForUser(ctx, userSessionsRevocationWithNotice(t, &store.UserSessionsRevocation{
 		UserID: user.ID, RevokedAt: at, Reason: model.SessionRevocationAdministratorAllSessions,
 		AuditEventID: model.NewAuditEventID(), AuditAt: at,
 	})); err == nil {
-		t.Fatal("RevokeAllForUserWithAudit() succeeded without its audit attempt")
+		t.Fatal("RevokeAllForUser() succeeded without its audit attempt")
 	}
 	for _, id := range []string{first.ID.String(), second.ID.String()} {
 		got, getErr := ss.Session().Get(ctx, model.SessionID(id))
@@ -443,10 +446,10 @@ func testSessionRevokeAllForUserWithAudit(t *testing.T, ss store.Store) {
 		UserID: user.ID, RevokedAt: at, Reason: model.SessionRevocationAdministratorAllSessions,
 		AuditEventID: attempt.ID, AuditAt: at,
 	})
-	result, err := ss.Session().RevokeAllForUserWithAudit(ctx, command)
+	result, err := ss.Session().RevokeAllForUser(ctx, command)
 	requireNoError(t, err)
 	if len(result.Sessions) != 2 || len(result.TokenHashes) != 4 {
-		t.Fatalf("RevokeAllForUserWithAudit() = %#v", result)
+		t.Fatalf("RevokeAllForUser() = %#v", result)
 	}
 	if delivery, getErr := ss.Mail().GetDelivery(ctx, command.Delivery.ID); getErr != nil || delivery.TemplateKey != model.MailTemplateIdentitySessionsRevokedByAdmin {
 		t.Fatalf("administrative revoke-all notice = %#v, %v", delivery, getErr)
@@ -461,7 +464,7 @@ func testSessionRevokeAllForUserWithAudit(t *testing.T, ss store.Store) {
 		UserID: user.ID, RevokedAt: at + 1, Reason: model.SessionRevocationAdministratorAllSessions,
 		AuditEventID: replayAttempt.ID, AuditAt: at + 1,
 	})
-	replayed, replayErr := ss.Session().RevokeAllForUserWithAudit(ctx, replay)
+	replayed, replayErr := ss.Session().RevokeAllForUser(ctx, replay)
 	requireNoError(t, replayErr)
 	if len(replayed.Sessions) != 0 {
 		t.Fatalf("replayed revoke-all result = %#v", replayed)
@@ -482,7 +485,7 @@ func testSessionDisabledMailRecordsTerminalAdministrativeNotice(t *testing.T, ss
 		Reason: model.SessionRevocationAdministratorSession, AuditEventID: attempt.ID, AuditAt: at,
 	})
 	command.Delivery, command.DeliveryJob = suppressSecurityNoticeForDisabledMail(t, command.Delivery, command.DeliveryJob)
-	if _, err := ss.Session().RevokeWithAudit(ctx, command); err != nil {
+	if _, err := ss.Session().Revoke(ctx, command); err != nil {
 		t.Fatal(err)
 	}
 	delivery, err := ss.Mail().GetDelivery(ctx, command.Delivery.ID)
@@ -687,12 +690,7 @@ func testSessionConcurrentRefreshAndRevokeAll(t *testing.T, ss store.Store) {
 	}()
 	go func() {
 		<-start
-		_, _, err := ss.Session().RevokeAllForUser(
-			ctx,
-			user.ID,
-			revokeAt,
-			model.SessionRevocationUserAllSessions,
-		)
+		_, err := RevokeAllUserSessions(ctx, ss, user.ID, revokeAt)
 		revocationResult <- err
 	}()
 	close(start)

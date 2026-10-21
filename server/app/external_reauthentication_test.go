@@ -40,7 +40,7 @@ type freshExternalSessionStoreFake struct {
 	err    error
 }
 
-func (s *freshExternalSessionStoreFake) ReauthenticateExternalWithAudit(_ context.Context, input *store.SessionExternalReauthentication) (*store.SessionReauthenticationResult, error) {
+func (s *freshExternalSessionStoreFake) ReauthenticateExternal(_ context.Context, input *store.SessionExternalReauthentication) (*store.SessionReauthenticationResult, error) {
 	s.input = input
 	return s.result, s.err
 }

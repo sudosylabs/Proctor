@@ -54,7 +54,7 @@ type academicUnitMemberStore interface {
 	ListByAcademicUnit(context.Context, model.AcademicUnitID, int64) ([]*model.AcademicUnitMember, error)
 	ListPageByAcademicUnit(context.Context, store.AcademicUnitMemberPageOptions) (*store.AcademicUnitMemberPage, error)
 	Create(context.Context, *store.AcademicUnitMemberCreation) (*model.AcademicUnitMember, error)
-	EndWithAudit(context.Context, *store.AcademicUnitMemberEnd) (*model.AcademicUnitMember, error)
+	End(context.Context, *store.AcademicUnitMemberEnd) (*model.AcademicUnitMember, error)
 }
 
 // membershipAuthorizer authorizes a membership mutation on its scope Resource
@@ -251,7 +251,7 @@ func (s *academicUnitMemberService) EndAcademicUnitMember(ctx context.Context, i
 				ExpectedRecipientRevision: recipient.Revision, Notice: notice,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
 			}
-			value, storeErr := s.store.EndWithAudit(ctx, input)
+			value, storeErr := s.store.End(ctx, input)
 			changed = storeErr == nil && !input.Replayed && !input.NoOp
 			if command.batchReplayed != nil {
 				*command.batchReplayed = input.Replayed || input.NoOp

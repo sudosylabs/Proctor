@@ -48,7 +48,7 @@ type userProfileStore interface {
 	Get(context.Context, model.UserID) (*model.User, error)
 	List(context.Context, store.UserListOptions) ([]*model.User, error)
 	GetCurrentContext(context.Context, model.UserID, int) (*store.CurrentUserContext, error)
-	UpdateProfileWithAudit(context.Context, *store.UserProfileUpdate) (*model.User, error)
+	UpdateProfile(context.Context, *store.UserProfileUpdate) (*model.User, error)
 }
 
 type CurrentUserContextView struct {
@@ -220,7 +220,7 @@ func (s *userProfileService) UpdateUserProfile(ctx context.Context, invocation I
 		},
 		func() time.Time { return at },
 		func(ctx context.Context, reference mutationAttemptReference) (*model.User, error) {
-			return s.users.UpdateProfileWithAudit(ctx, &store.UserProfileUpdate{
+			return s.users.UpdateProfile(ctx, &store.UserProfileUpdate{
 				UserID: current.ID, Changes: changes, ExpectedRevision: expectedRevision,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})

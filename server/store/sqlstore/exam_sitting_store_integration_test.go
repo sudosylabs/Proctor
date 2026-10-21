@@ -334,7 +334,7 @@ func TestInvitationAcceptanceAndAuthenticationMethodMutationUseGlobalUserOrder(t
 	}
 	enrollResult := make(chan enrollmentOutcome, 1)
 	go func() {
-		result, enrollErr := secondary.PasswordCredential().EnrollWithAudit(ctx, &store.PasswordCredentialEnrollment{
+		result, enrollErr := secondary.PasswordCredential().Enroll(ctx, &store.PasswordCredentialEnrollment{
 			Credential: &model.PasswordCredential{UserID: userID, PasswordHash: "$argon2id$concurrent-enrollment"},
 			Capabilities: store.AccessDeploymentCapabilities{
 				Providers: map[string]store.AccessProviderCapability{},
@@ -356,7 +356,7 @@ func TestInvitationAcceptanceAndAuthenticationMethodMutationUseGlobalUserOrder(t
 	}
 	enrolled := <-enrollResult
 	if enrolled.result != nil || !store.IsConflict(enrolled.err) {
-		t.Fatalf("EnrollWithAudit() after Invitation acceptance = %#v, %v; want conflict", enrolled.result, enrolled.err)
+		t.Fatalf("Enroll() after Invitation acceptance = %#v, %v; want conflict", enrolled.result, enrolled.err)
 	}
 	terminal, err := primary.Audit().Get(ctx, audit.ID)
 	if err != nil || terminal.Status != model.AuditStatusAttempt {

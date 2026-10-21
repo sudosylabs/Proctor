@@ -45,8 +45,8 @@ type programmeStore interface {
 	Get(context.Context, model.ProgrammeID) (*model.Programme, error)
 	SearchByAcademicUnit(context.Context, model.AcademicUnitID, string, int) ([]*model.Programme, error)
 	Create(context.Context, *store.ProgrammeCreation) (*model.Programme, error)
-	UpdateWithAudit(context.Context, *store.ProgrammeUpdate) (*model.Programme, error)
-	ArchiveWithAudit(context.Context, *store.ProgrammeArchive) (*model.Programme, error)
+	Update(context.Context, *store.ProgrammeUpdate) (*model.Programme, error)
+	Archive(context.Context, *store.ProgrammeArchive) (*model.Programme, error)
 }
 
 type programmeService struct {
@@ -191,7 +191,7 @@ func (s *programmeService) UpdateProgramme(ctx context.Context, invocation Invoc
 		},
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Programme, error) {
-			return s.store.UpdateWithAudit(ctx, &store.ProgrammeUpdate{
+			return s.store.Update(ctx, &store.ProgrammeUpdate{
 				Programme: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
@@ -222,7 +222,7 @@ func (s *programmeService) ArchiveProgramme(ctx context.Context, invocation Invo
 		},
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Programme, error) {
-			return s.store.ArchiveWithAudit(ctx, &store.ProgrammeArchive{
+			return s.store.Archive(ctx, &store.ProgrammeArchive{
 				ExpectedRevision: current.Revision,
 				ID:               current.ID, ArchiveAt: reference.MutationAtMillis,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,

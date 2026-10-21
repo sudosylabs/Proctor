@@ -251,7 +251,7 @@ func TestAdministratorMFAResetExternalStore(t *testing.T, ss store.Store) {
 		KeyDigest: sha256.Sum256([]byte("offline-mfa-external")), FingerprintVersion: 1, Fingerprint: sha256.Sum256([]byte("offline-mfa-external-command")), OutcomeVersion: 1, Retention: time.Hour, Wait: time.Second})
 	requireNoError(t, err)
 	removeAudit := saveAuthenticationMethodAuditAttempt(t, ctx, ss, installed.Administrator.ID.String(), "remove_password")
-	_, err = ss.PasswordCredential().RemoveWithAudit(ctx, &store.PasswordCredentialRemoval{UserID: installed.Administrator.ID,
+	_, err = ss.PasswordCredential().Remove(ctx, &store.PasswordCredentialRemoval{UserID: installed.Administrator.ID,
 		Capabilities: capabilities, ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationPasswordRemoved,
 		AuditEventID: removeAudit.ID, AuditAt: model.GetMillis()})
 	requireNoError(t, err)

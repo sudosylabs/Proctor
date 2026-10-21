@@ -291,7 +291,7 @@ func testUserTokenIssueRechecksCurrentEligibleAccount(t *testing.T, ss store.Sto
 		user, _ := saveLocalUser(t, ctx, ss)
 		audit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 		at := model.GetMillis() + 1
-		_, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+		_, err := ss.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 			ID: user.ID, ExpectedRevision: user.Revision, Disabled: true,
 			ChangedAt: at, RevocationReason: model.SessionRevocationAccountDisabled,
 			AuditEventID: audit.ID, AuditAt: at,

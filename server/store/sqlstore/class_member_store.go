@@ -75,23 +75,6 @@ func newSQLClassMemberStore(ss *SQLStore) store.ClassMemberStore {
 
 func (s SQLClassMemberStore) Enroll(
 	ctx context.Context,
-	member *model.ClassMember,
-) (*store.ClassEnrollmentResult, error) {
-	if member == nil || !member.ID.IsZero() || !member.ClassID.IsValid() || !member.UserID.IsValid() {
-		return nil, store.NewErrInvalidInput("class_member", "value", nil)
-	}
-	id, err := model.ParseClassMemberID(model.NewId())
-	if err != nil {
-		return nil, err
-	}
-	candidate := *member
-	// AcademicPeriodID is filled from the class inside enroll before Validate.
-	candidate.PrepareCreate(id, model.NowUTC())
-	return s.enroll(ctx, &candidate, "", 0)
-}
-
-func (s SQLClassMemberStore) EnrollWithAudit(
-	ctx context.Context,
 	input *store.ClassMemberEnrollment,
 ) (*store.ClassEnrollmentResult, error) {
 	if input == nil || input.Member == nil || (input.Notice == nil && input.Command == nil) || input.ExpectedRecipientRevision < 1 ||
@@ -566,25 +549,7 @@ func (s SQLClassMemberStore) ListActiveByUser(ctx context.Context, userID model.
 		OrderBy("class_members.academic_period_id", "class_members.id"))
 }
 
-func (s SQLClassMemberStore) End(ctx context.Context, id model.ClassMemberID, expectedRevision, endAt int64) (*model.ClassMember, error) {
-	if !id.IsValid() || expectedRevision <= 0 || endAt <= 0 {
-		return nil, store.NewErrInvalidInput("class_member", "end", nil)
-	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "class member end", func(ctx context.Context, tx *sqlxTxWrapper) (*model.ClassMember, error) {
-		var row classMemberRow
-		if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{
-			"class_members.id": id, "class_members.archived_at": nil,
-		})); err != nil {
-			return nil, translateError("class_member", id.String(), err)
-		}
-		if err := lockClassEnrollment(ctx, tx, row.UserID, row.AcademicPeriodID); err != nil {
-			return nil, err
-		}
-		return s.endClassMember(ctx, tx, id, expectedRevision, endAt)
-	})
-}
-
-func (s SQLClassMemberStore) EndWithAudit(
+func (s SQLClassMemberStore) End(
 	ctx context.Context,
 	input *store.ClassMemberEnd,
 ) (*model.ClassMember, error) {
@@ -936,4 +901,43 @@ func (s SQLClassMemberStore) ListPageByClass(ctx context.Context, options store.
 		members = members[:options.Limit]
 	}
 	return &store.ClassMemberPage{Members: members, HasMore: more}, nil
+}
+
+// SeedEnroll is an unaudited fixture write for conformance and integration tests.
+// Production code never calls it; an architecture test enforces that.
+func (s SQLClassMemberStore) SeedEnroll(
+	ctx context.Context,
+	member *model.ClassMember,
+) (*store.ClassEnrollmentResult, error) {
+	if member == nil || !member.ID.IsZero() || !member.ClassID.IsValid() || !member.UserID.IsValid() {
+		return nil, store.NewErrInvalidInput("class_member", "value", nil)
+	}
+	id, err := model.ParseClassMemberID(model.NewId())
+	if err != nil {
+		return nil, err
+	}
+	candidate := *member
+	// AcademicPeriodID is filled from the class inside enroll before Validate.
+	candidate.PrepareCreate(id, model.NowUTC())
+	return s.enroll(ctx, &candidate, "", 0)
+}
+
+// SeedEnd is an unaudited fixture write for conformance and integration tests.
+// Production code never calls it; an architecture test enforces that.
+func (s SQLClassMemberStore) SeedEnd(ctx context.Context, id model.ClassMemberID, expectedRevision, endAt int64) (*model.ClassMember, error) {
+	if !id.IsValid() || expectedRevision <= 0 || endAt <= 0 {
+		return nil, store.NewErrInvalidInput("class_member", "end", nil)
+	}
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "class member end", func(ctx context.Context, tx *sqlxTxWrapper) (*model.ClassMember, error) {
+		var row classMemberRow
+		if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{
+			"class_members.id": id, "class_members.archived_at": nil,
+		})); err != nil {
+			return nil, translateError("class_member", id.String(), err)
+		}
+		if err := lockClassEnrollment(ctx, tx, row.UserID, row.AcademicPeriodID); err != nil {
+			return nil, err
+		}
+		return s.endClassMember(ctx, tx, id, expectedRevision, endAt)
+	})
 }

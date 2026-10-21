@@ -129,10 +129,10 @@ func (s *jobRunnerStoreFake) CancellationRequested(context.Context, model.JobAtt
 	defer s.mu.Unlock()
 	return s.cancelRequested, nil
 }
-func (*jobRunnerStoreFake) CancelWithAudit(context.Context, *store.JobMutation) (*model.Job, error) {
+func (*jobRunnerStoreFake) Cancel(context.Context, *store.JobMutation) (*model.Job, error) {
 	return nil, nil
 }
-func (*jobRunnerStoreFake) RetryWithAudit(context.Context, *store.JobMutation) (*model.Job, error) {
+func (*jobRunnerStoreFake) Retry(context.Context, *store.JobMutation) (*model.Job, error) {
 	return nil, nil
 }
 func (*jobRunnerStoreFake) DeleteTerminalHistory(context.Context, *store.JobHistoryCleanup) (*store.JobHistoryCleanupResult, error) {

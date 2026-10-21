@@ -46,19 +46,19 @@ func (s *roleStoreFake) List(context.Context) ([]*model.Role, error) {
 	return s.list, s.listErr
 }
 
-func (s *roleStoreFake) SaveWithAudit(_ context.Context, input *store.RoleCreation) (*model.Role, error) {
+func (s *roleStoreFake) Save(_ context.Context, input *store.RoleCreation) (*model.Role, error) {
 	*s.events = append(*s.events, "store-create")
 	s.createInput = input
 	return s.createResult, s.createErr
 }
 
-func (s *roleStoreFake) UpdateWithAudit(_ context.Context, input *store.RoleUpdate) (*model.Role, error) {
+func (s *roleStoreFake) Update(_ context.Context, input *store.RoleUpdate) (*model.Role, error) {
 	*s.events = append(*s.events, "store-update")
 	s.updateInput = input
 	return s.updateResult, s.updateErr
 }
 
-func (s *roleStoreFake) ArchiveWithAudit(_ context.Context, input *store.RoleArchive) (*model.Role, error) {
+func (s *roleStoreFake) Archive(_ context.Context, input *store.RoleArchive) (*model.Role, error) {
 	*s.events = append(*s.events, "store-archive")
 	s.archiveInput = input
 	return s.archiveResult, s.archiveErr

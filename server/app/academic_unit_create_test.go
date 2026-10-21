@@ -45,21 +45,18 @@ func (s *academicUnitCreateStore) Create(
 	return s.result, s.err
 }
 
-func (s *academicUnitCreateStore) UpdateWithAudit(
+func (s *academicUnitCreateStore) Update(
 	context.Context, *store.AcademicUnitUpdate,
 ) (*model.AcademicUnit, error) {
-	panic("unexpected UpdateWithAudit")
+	panic("unexpected Update")
 }
 
-func (s *academicUnitCreateStore) ArchiveWithAudit(
+func (s *academicUnitCreateStore) Archive(
 	context.Context, *store.AcademicUnitArchive,
 ) (*model.AcademicUnit, error) {
-	panic("unexpected ArchiveWithAudit")
+	panic("unexpected Archive")
 }
 
-func (*academicUnitCreateStore) Save(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error) {
-	panic("unexpected Save")
-}
 func (*academicUnitCreateStore) Get(context.Context, model.AcademicUnitID) (*model.AcademicUnit, error) {
 	panic("unexpected Get")
 }
@@ -71,12 +68,6 @@ func (*academicUnitCreateStore) ListAncestors(context.Context, string) ([]*model
 }
 func (*academicUnitCreateStore) Search(context.Context, model.InstitutionID, string, int) ([]*model.AcademicUnit, error) {
 	panic("unexpected Search")
-}
-func (*academicUnitCreateStore) Update(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error) {
-	panic("unexpected Update")
-}
-func (*academicUnitCreateStore) Archive(context.Context, string, int64) (*model.AcademicUnit, error) {
-	panic("unexpected Archive")
 }
 
 type academicUnitCommandAuditor struct {

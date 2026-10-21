@@ -24,11 +24,11 @@ type authenticationMethodPasswordStoreFake struct {
 	remove *store.PasswordCredentialRemoval
 }
 
-func (s *authenticationMethodPasswordStoreFake) EnrollWithAudit(_ context.Context, input *store.PasswordCredentialEnrollment) (*store.AuthenticationMethodMutationResult, error) {
+func (s *authenticationMethodPasswordStoreFake) Enroll(_ context.Context, input *store.PasswordCredentialEnrollment) (*store.AuthenticationMethodMutationResult, error) {
 	s.enroll = input
 	return &store.AuthenticationMethodMutationResult{}, nil
 }
-func (s *authenticationMethodPasswordStoreFake) RemoveWithAudit(_ context.Context, input *store.PasswordCredentialRemoval) (*store.AuthenticationMethodMutationResult, error) {
+func (s *authenticationMethodPasswordStoreFake) Remove(_ context.Context, input *store.PasswordCredentialRemoval) (*store.AuthenticationMethodMutationResult, error) {
 	s.remove = input
 	return &store.AuthenticationMethodMutationResult{}, nil
 }
@@ -38,7 +38,7 @@ type authenticationMethodIdentityStoreFake struct {
 	unlink *store.ExternalIdentityUnlink
 }
 
-func (s *authenticationMethodIdentityStoreFake) UnlinkWithAudit(_ context.Context, input *store.ExternalIdentityUnlink) (*store.AuthenticationMethodMutationResult, error) {
+func (s *authenticationMethodIdentityStoreFake) Unlink(_ context.Context, input *store.ExternalIdentityUnlink) (*store.AuthenticationMethodMutationResult, error) {
 	s.unlink = input
 	return &store.AuthenticationMethodMutationResult{}, nil
 }

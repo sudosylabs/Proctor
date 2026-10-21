@@ -95,7 +95,7 @@ type profilePictureFileStore interface {
 	PublishDefaultProfilePicture(context.Context, *store.DefaultProfilePicturePublication) (*store.ProfilePicturePublicationResult, error)
 	GetProfilePictureState(context.Context, model.UserID) (*store.ProfilePictureState, error)
 	GetProfilePictureRendition(context.Context, model.UserID, string) (*model.FileRendition, error)
-	RemoveProfilePictureWithAudit(context.Context, *store.ProfilePictureRemoval) (*model.User, error)
+	RemoveProfilePicture(context.Context, *store.ProfilePictureRemoval) (*model.User, error)
 }
 
 type profilePictureAuthorizer interface {
@@ -408,7 +408,7 @@ func (s *profilePictureRemovalService) Remove(ctx context.Context, invocation In
 			return changedAt
 		},
 		func(ctx context.Context, reference mutationAttemptReference) (*model.User, error) {
-			return s.files.RemoveProfilePictureWithAudit(ctx, &store.ProfilePictureRemoval{
+			return s.files.RemoveProfilePicture(ctx, &store.ProfilePictureRemoval{
 				ActorID: invocation.Principal().UserID, UserID: current.ID,
 				ExpectedUserRevision: current.Revision, EntryID: state.EntryID,
 				ExpectedCurrentRevisionID: state.RevisionID, ExpectedSHA256: expectedSHA256,

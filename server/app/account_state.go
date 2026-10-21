@@ -32,7 +32,7 @@ type SetUserEnabledCommand struct {
 
 type accountStateStore interface {
 	Get(context.Context, model.UserID) (*model.User, error)
-	SetDisabledWithAudit(context.Context, *store.UserDisabledStateChange) (*store.UserDisabledStateResult, error)
+	SetDisabled(context.Context, *store.UserDisabledStateChange) (*store.UserDisabledStateResult, error)
 }
 
 type accountStateAuthorizer interface {
@@ -122,7 +122,7 @@ func (s *accountStateService) SetUserEnabled(ctx context.Context, invocation Inv
 				ChangedAt: reference.MutationAtMillis, RevocationReason: model.SessionRevocationAccountDisabled,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
 			}
-			value, storeErr := s.users.SetDisabledWithAudit(ctx, input)
+			value, storeErr := s.users.SetDisabled(ctx, input)
 			if command.batchReplayed != nil {
 				*command.batchReplayed = input.Replayed || input.NoOp
 			}

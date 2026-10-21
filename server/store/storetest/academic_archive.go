@@ -50,7 +50,7 @@ func TestAcademicArchiveTimestamps(t *testing.T, ss store.Store, readArchived Ac
 			for _, audited := range []bool{false, true} {
 				operation := "Archive"
 				if audited {
-					operation = "ArchiveWithAudit"
+					operation = "Archive"
 				}
 				t.Run(operation, func(t *testing.T) {
 					for _, tc := range cases {
@@ -148,9 +148,9 @@ func academicArchiveFixture(
 		resource.ID = created.ID.String()
 		return resource, func(at int64, auditID model.AuditEventID) (academicArchivedModel, error) {
 			if auditID == "" {
-				return ss.AcademicUnit().Archive(ctx, model.AcademicUnitID(resource.ID), at)
+				return ArchiveAcademicUnit(ctx, ss, model.AcademicUnitID(resource.ID), at)
 			}
-			return ss.AcademicUnit().ArchiveWithAudit(ctx, &store.AcademicUnitArchive{
+			return ss.AcademicUnit().Archive(ctx, &store.AcademicUnitArchive{
 				ID: model.AcademicUnitID(resource.ID), ArchiveAt: at, AuditEventID: auditID, AuditAt: model.GetMillis(),
 			})
 		}
@@ -168,9 +168,9 @@ func academicArchiveFixture(
 		resource.ID = created.ID.String()
 		return resource, func(at int64, auditID model.AuditEventID) (academicArchivedModel, error) {
 			if auditID == "" {
-				return ss.AcademicPeriod().Archive(ctx, model.AcademicPeriodID(resource.ID), at)
+				return ArchiveAcademicPeriod(ctx, ss, model.AcademicPeriodID(resource.ID), at)
 			}
-			return ss.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{
+			return ss.AcademicPeriod().Archive(ctx, &store.AcademicPeriodArchive{
 				ID: model.AcademicPeriodID(resource.ID), ArchiveAt: at, AuditEventID: auditID, AuditAt: model.GetMillis(),
 			})
 		}
@@ -187,9 +187,9 @@ func academicArchiveFixture(
 		resource.ID = created.ID.String()
 		return resource, func(at int64, auditID model.AuditEventID) (academicArchivedModel, error) {
 			if auditID == "" {
-				return ss.Class().Archive(ctx, model.ClassID(resource.ID), at)
+				return ArchiveClass(ctx, ss, model.ClassID(resource.ID), at)
 			}
-			return ss.Class().ArchiveWithAudit(ctx, &store.ClassArchive{
+			return ss.Class().Archive(ctx, &store.ClassArchive{
 				ID: model.ClassID(resource.ID), ExpectedRevision: created.Revision,
 				ExpectedAcademicUnitID: parents.programme.AcademicUnitID,
 				ArchiveAt:              at, AuditEventID: auditID, AuditAt: model.GetMillis(),
@@ -207,9 +207,9 @@ func academicArchiveFixture(
 		resource.ID = created.ID.String()
 		return resource, func(at int64, auditID model.AuditEventID) (academicArchivedModel, error) {
 			if auditID == "" {
-				return ss.Programme().Archive(ctx, model.ProgrammeID(resource.ID), at)
+				return ArchiveProgramme(ctx, ss, model.ProgrammeID(resource.ID), at)
 			}
-			return ss.Programme().ArchiveWithAudit(ctx, &store.ProgrammeArchive{
+			return ss.Programme().Archive(ctx, &store.ProgrammeArchive{
 				ID: model.ProgrammeID(resource.ID), ArchiveAt: at, AuditEventID: auditID, AuditAt: model.GetMillis(),
 			})
 		}
@@ -225,9 +225,9 @@ func academicArchiveFixture(
 		resource.ID = created.ID.String()
 		return resource, func(at int64, auditID model.AuditEventID) (academicArchivedModel, error) {
 			if auditID == "" {
-				return ss.ProgrammeLevel().Archive(ctx, model.ProgrammeLevelID(resource.ID), at)
+				return ArchiveProgrammeLevel(ctx, ss, model.ProgrammeLevelID(resource.ID), at)
 			}
-			return ss.ProgrammeLevel().ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{
+			return ss.ProgrammeLevel().Archive(ctx, &store.ProgrammeLevelArchive{
 				ID: model.ProgrammeLevelID(resource.ID), ArchiveAt: at, AuditEventID: auditID, AuditAt: model.GetMillis(),
 			})
 		}

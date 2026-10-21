@@ -46,12 +46,12 @@ func (s *academicPeriodStoreFake) Create(_ context.Context, input *store.Academi
 	s.createInput = input
 	return s.created, s.createErr
 }
-func (s *academicPeriodStoreFake) UpdateWithAudit(_ context.Context, input *store.AcademicPeriodUpdate) (*model.AcademicPeriod, error) {
+func (s *academicPeriodStoreFake) Update(_ context.Context, input *store.AcademicPeriodUpdate) (*model.AcademicPeriod, error) {
 	*s.events = append(*s.events, "store-update")
 	s.updateInput = input
 	return input.Period, nil
 }
-func (s *academicPeriodStoreFake) ArchiveWithAudit(_ context.Context, input *store.AcademicPeriodArchive) (*model.AcademicPeriod, error) {
+func (s *academicPeriodStoreFake) Archive(_ context.Context, input *store.AcademicPeriodArchive) (*model.AcademicPeriod, error) {
 	*s.events = append(*s.events, "store-archive")
 	s.archiveInput = input
 	return s.current, nil

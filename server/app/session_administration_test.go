@@ -53,13 +53,13 @@ func (s *sessionAdministrationStoreFake) ListActiveByUser(_ context.Context, _ m
 	return s.list, s.listErr
 }
 
-func (s *sessionAdministrationStoreFake) RevokeWithAudit(_ context.Context, input *store.SessionRevocation) (*store.SessionRevocationResult, error) {
+func (s *sessionAdministrationStoreFake) Revoke(_ context.Context, input *store.SessionRevocation) (*store.SessionRevocationResult, error) {
 	*s.events = append(*s.events, "store-revoke")
 	s.revokeInput = input
 	return s.revokeResult, s.revokeErr
 }
 
-func (s *sessionAdministrationStoreFake) RevokeAllForUserWithAudit(_ context.Context, input *store.UserSessionsRevocation) (*store.UserSessionsRevocationResult, error) {
+func (s *sessionAdministrationStoreFake) RevokeAllForUser(_ context.Context, input *store.UserSessionsRevocation) (*store.UserSessionsRevocationResult, error) {
 	*s.events = append(*s.events, "store-revoke-all")
 	s.revokeAllInput = input
 	input.Replayed, input.NoOp = s.replayed, s.noOp

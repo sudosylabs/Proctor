@@ -134,12 +134,12 @@ func testStudentProgressionCrossPeriod(t *testing.T, ss store.Store) {
 	effectiveAt := destinationPeriod.StartsAt.Add(time.Second)
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserID: student.ID, Kind: model.AffiliationStudent, StartsAt: fixture.period.StartsAt.Add(-time.Second)})
 	requireNoError(t, err)
-	source, err := ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassID: sourceClass.ID, UserID: student.ID, StartsAt: fixture.period.StartsAt})
+	source, err := ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{ClassID: sourceClass.ID, UserID: student.ID, StartsAt: fixture.period.StartsAt})
 	requireNoError(t, err)
-	authorityRole, err := ss.Role().Save(ctx, &model.Role{Name: "progression-authority-" + model.NewId(), DisplayName: "Progression Authority",
+	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "progression-authority-" + model.NewId(), DisplayName: "Progression Authority",
 		Permissions: []string{string(model.ActionAcademicProgressionManage), string(model.ActionClassMembersManage)}})
 	requireNoError(t, err)
-	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: actor.ID, RoleID: authorityRole.ID, ScopeType: model.RoleScopeInstitution,
+	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: actor.ID, RoleID: authorityRole.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: fixture.institution.ID.String(), StartsAt: model.NowUTC().Add(-time.Minute)})
 	requireNoError(t, err)
 	session, credentials, _ := saveSession(t, ctx, ss, actor.ID.String(), 10)
@@ -190,7 +190,7 @@ func testStudentProgressionCrossPeriod(t *testing.T, ss store.Store) {
 	audit := saveClassMemberAuditAttempt(t, ctx, ss, destinationClass.ID.String())
 	progressionDestinationAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, destinationClass.ID.String(), "student_progression.execute_row")
 	progressionSourceAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, sourceClass.ID.String(), "student_progression.execute_row")
-	progressed, err := ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: candidate, ExpectedRecipientRevision: student.Revision, Notice: notice,
+	progressed, err := ss.ClassMember().Enroll(ctx, &store.ClassMemberEnrollment{Member: candidate, ExpectedRecipientRevision: student.Revision, Notice: notice,
 		StudentProgression: true, ProgressionSourceAuditEventID: progressionSourceAudit.ID, ProgressionDestinationAuditEventID: progressionDestinationAudit.ID,
 		AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at.Add(3 * time.Second)), Command: command})
 	requireNoError(t, err)
@@ -214,7 +214,7 @@ func testStudentProgressionCrossPeriod(t *testing.T, ss store.Store) {
 	replay := &store.ClassMemberEnrollment{Member: candidate, ExpectedRecipientRevision: student.Revision, StudentProgression: true,
 		ProgressionSourceAuditEventID: replayProgressionSourceAudit.ID, ProgressionDestinationAuditEventID: replayProgressionDestinationAudit.ID,
 		AuditEventID: replayAudit.ID, AuditAt: model.MillisFromTime(at.Add(4 * time.Second)), Command: command}
-	if _, err = ss.ClassMember().EnrollWithAudit(ctx, replay); err != nil || !replay.Replayed {
+	if _, err = ss.ClassMember().Enroll(ctx, replay); err != nil || !replay.Replayed {
 		t.Fatalf("progression replay = %v replayed=%v", err, replay.Replayed)
 	}
 	afterReplay, err := ss.ClassMember().ListByUser(ctx, student.ID)
@@ -232,7 +232,7 @@ func testStudentProgressionCrossPeriod(t *testing.T, ss store.Store) {
 	noOpInput := &store.ClassMemberEnrollment{Member: noOpCandidate, ExpectedRecipientRevision: student.Revision, StudentProgression: true,
 		ProgressionSourceAuditEventID: noOpSourceAudit.ID, ProgressionDestinationAuditEventID: noOpDestinationAudit.ID,
 		AuditEventID: noOpAudit.ID, AuditAt: model.MillisFromTime(at.Add(5 * time.Second)), Command: noOpCommand}
-	noOpEnrollment, err := ss.ClassMember().EnrollWithAudit(ctx, noOpInput)
+	noOpEnrollment, err := ss.ClassMember().Enroll(ctx, noOpInput)
 	requireNoError(t, err)
 	if !noOpInput.NoOp || noOpEnrollment.Membership.ID != progressed.Membership.ID {
 		t.Fatalf("existing progression destination = %#v no_op=%v", noOpEnrollment, noOpInput.NoOp)
@@ -245,10 +245,10 @@ func testOnboardingImportAcademicAdministration(t *testing.T, ss store.Store) {
 	institution := saveInstitution(t, ctx, ss)
 	actor, target := saveUser(t, ctx, ss), saveUser(t, ctx, ss)
 	at := model.NowUTC().Add(-time.Minute)
-	authorityRole, err := ss.Role().Save(ctx, &model.Role{Name: "administration-import-authority-" + model.NewId(), DisplayName: "Administration Import Authority",
+	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "administration-import-authority-" + model.NewId(), DisplayName: "Administration Import Authority",
 		Permissions: []string{string(model.ActionOnboardingBatchManage), string(model.ActionUserManage)}})
 	requireNoError(t, err)
-	authorityBinding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: actor.ID, RoleID: authorityRole.ID,
+	authorityBinding, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: actor.ID, RoleID: authorityRole.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), StartsAt: at.Add(-time.Second)})
 	requireNoError(t, err)
 	session, credentials, _ := saveSession(t, ctx, ss, actor.ID.String(), 10)
@@ -317,7 +317,7 @@ func testOnboardingImportAcademicAdministration(t *testing.T, ss store.Store) {
 	secondRow.UserID = secondTarget.ID
 	secondImportID := createExecutingOnboardingImport(t, ctx, ss, actor, principal, model.OnboardingImportAcademicAdministration,
 		model.RoleScopeInstitution, institution.ID.String(), "", at.Add(time.Second), secondRow)
-	_, err = ss.RoleBinding().End(ctx, authorityBinding.ID, model.MillisFromTime(at.Add(2*time.Second)))
+	_, err = EndRoleBinding(ctx, ss, authorityBinding.ID, model.MillisFromTime(at.Add(2*time.Second)))
 	requireNoError(t, err)
 	secondCandidate := &model.Affiliation{UserID: secondTarget.ID, Kind: model.AffiliationStaff, StartsAt: at}
 	secondCandidate.PrepareCreate(model.NewAffiliationID(), at)
@@ -354,14 +354,14 @@ func testOnboardingImportTeacherAndRoleNoOps(t *testing.T, ss store.Store) {
 	unit, _ := saveProgrammeParents(t, ctx, ss, "onboarding-cross-kind-"+model.NewId())
 	actor := saveUser(t, ctx, ss)
 	at := model.NowUTC().Add(-time.Minute)
-	targetRole, err := ss.Role().Save(ctx, &model.Role{Name: "onboarding-target-" + model.NewId(), DisplayName: "Onboarding Target",
+	targetRole, err := SaveRole(ctx, ss, &model.Role{Name: "onboarding-target-" + model.NewId(), DisplayName: "Onboarding Target",
 		Permissions: []string{string(model.ActionAcademicUnitView)}})
 	requireNoError(t, err)
-	authorityRole, err := ss.Role().Save(ctx, &model.Role{Name: "onboarding-authority-" + model.NewId(), DisplayName: "Onboarding Authority",
+	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "onboarding-authority-" + model.NewId(), DisplayName: "Onboarding Authority",
 		Permissions: []string{string(model.ActionOnboardingBatchManage), string(model.ActionInvitationCreate), string(model.ActionAcademicUnitMembersManage),
 			string(model.ActionRoleBindingManage), string(model.ActionAcademicUnitView)}})
 	requireNoError(t, err)
-	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: actor.ID, RoleID: authorityRole.ID, ScopeType: model.RoleScopeInstitution,
+	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: actor.ID, RoleID: authorityRole.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: unit.InstitutionID.String(), StartsAt: at.Add(-time.Second)})
 	requireNoError(t, err)
 	session, credentials, _ := saveSession(t, ctx, ss, actor.ID.String(), 10)
@@ -791,7 +791,7 @@ func testInvitationBatchDuplicateRechecksCurrentInviterAuthority(t *testing.T, s
 	candidate.TargetEmail = "duplicate-authority-" + model.NewId() + "@example.edu"
 	requireNoError(t, candidate.Validate())
 	endedAt := model.GetMillis() - 1_000
-	if _, err := ss.RoleBinding().End(ctx, binding.ID, endedAt); err != nil {
+	if _, err := EndRoleBinding(ctx, ss, binding.ID, endedAt); err != nil {
 		t.Fatalf("end inviter authority: %v", err)
 	}
 	attempt := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "onboarding_batch.duplicate")
@@ -1129,10 +1129,10 @@ func testInvitationAdministrationLifecycle(t *testing.T, ss store.Store) {
 		t.Fatalf("unchanged replacement delivery = %v", err)
 	}
 	replacementTargetClass := saveClass(t, ctx, ss, replacementFixture.level.ID.String(), replacementFixture.period.ID.String(), "invitation-admin-replacement-target")
-	targetRole, err := ss.Role().Save(ctx, &model.Role{Name: "invitation-replacement-target-" + model.NewId(), DisplayName: "Invitation replacement target",
+	targetRole, err := SaveRole(ctx, ss, &model.Role{Name: "invitation-replacement-target-" + model.NewId(), DisplayName: "Invitation replacement target",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionClassMembersManage)}})
 	requireNoError(t, err)
-	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: replacementInviter.ID, RoleID: targetRole.ID,
+	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: replacementInviter.ID, RoleID: targetRole.ID,
 		ScopeType: model.RoleScopeClass, ScopeID: replacementTargetClass.ID.String(), StartsAt: replacementAt.Add(-time.Second)})
 	requireNoError(t, err)
 	candidate, err := model.NewStudentClassInvitation(model.StudentClassInvitationInput{ID: model.NewInvitationID(),
@@ -1180,11 +1180,11 @@ func invitationAdministrationFixture(t *testing.T, ctx context.Context, ss store
 	fixture := saveClassFixture(t, ctx, ss)
 	class := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "invitation-admin-"+suffix)
 	inviter := saveUser(t, ctx, ss)
-	role, err := ss.Role().Save(ctx, &model.Role{Name: "invitation-admin-" + suffix + "-" + model.NewId(), DisplayName: "Invitation administrator",
+	role, err := SaveRole(ctx, ss, &model.Role{Name: "invitation-admin-" + suffix + "-" + model.NewId(), DisplayName: "Invitation administrator",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionInvitationManage), string(model.ActionClassMembersManage), string(model.ActionOnboardingBatchManage)}})
 	requireNoError(t, err)
 	at := model.NowUTC().Add(-time.Minute)
-	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: inviter.ID, RoleID: role.ID,
+	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: inviter.ID, RoleID: role.ID,
 		ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(), StartsAt: at.Add(-time.Second)})
 	requireNoError(t, err)
 	return fixture, class, inviter, at
@@ -1262,16 +1262,16 @@ func scopedRoleInvitationRaceFixture(t *testing.T, ctx context.Context, ss store
 	unit, _ := saveProgrammeParents(t, ctx, ss, "scoped-role-race-"+suffix+model.NewId())
 	inviter, existing := saveUser(t, ctx, ss), saveUser(t, ctx, ss)
 	at := model.NowUTC().Add(-time.Minute)
-	issuerRole, err := ss.Role().Save(ctx, &model.Role{Name: "scoped-role-race-issuer-" + model.NewId(), DisplayName: "Scoped Role Race Issuer",
+	issuerRole, err := SaveRole(ctx, ss, &model.Role{Name: "scoped-role-race-issuer-" + model.NewId(), DisplayName: "Scoped Role Race Issuer",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionRoleBindingManage), string(model.ActionAcademicAuditView)}})
 	requireNoError(t, err)
-	issuerBinding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: inviter.ID, RoleID: issuerRole.ID,
+	issuerBinding, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: inviter.ID, RoleID: issuerRole.ID,
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: at.Add(-time.Second)})
 	requireNoError(t, err)
-	targetRole, err := ss.Role().Save(ctx, &model.Role{Name: "scoped-role-race-target-" + model.NewId(), DisplayName: "Scoped Role Race Target",
+	targetRole, err := SaveRole(ctx, ss, &model.Role{Name: "scoped-role-race-target-" + model.NewId(), DisplayName: "Scoped Role Race Target",
 		Permissions: []string{string(model.ActionAcademicAuditView)}})
 	requireNoError(t, err)
-	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: inviter.ID, RoleID: targetRole.ID,
+	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: inviter.ID, RoleID: targetRole.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: unit.InstitutionID.String(), StartsAt: at.Add(-time.Second)})
 	requireNoError(t, err)
 	candidate, err := model.NewScopedRoleInvitation(model.ScopedRoleInvitationInput{ID: model.NewInvitationID(),
@@ -1292,13 +1292,13 @@ func testInstitutionRoleInvitationExistingUserAtomicAndReplaySafe(t *testing.T, 
 	unit, _ := saveProgrammeParents(t, ctx, ss, "institution-role-"+model.NewId())
 	inviter, existing := saveUser(t, ctx, ss), saveUser(t, ctx, ss)
 	issuedAt := model.NowUTC().Add(-time.Minute)
-	issuerRole, err := ss.Role().Save(ctx, &model.Role{Name: "institution-role-issuer-" + model.NewId(), DisplayName: "Institution Role Issuer",
+	issuerRole, err := SaveRole(ctx, ss, &model.Role{Name: "institution-role-issuer-" + model.NewId(), DisplayName: "Institution Role Issuer",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionRoleBindingManage), string(model.ActionAuditView)}})
 	requireNoError(t, err)
-	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: inviter.ID, RoleID: issuerRole.ID,
+	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: inviter.ID, RoleID: issuerRole.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: unit.InstitutionID.String(), StartsAt: issuedAt.Add(-time.Second)})
 	requireNoError(t, err)
-	targetRole, err := ss.Role().Save(ctx, &model.Role{Name: "institution-role-target-" + model.NewId(), DisplayName: "Institution Role Target",
+	targetRole, err := SaveRole(ctx, ss, &model.Role{Name: "institution-role-target-" + model.NewId(), DisplayName: "Institution Role Target",
 		Permissions: []string{string(model.ActionAuditView)}})
 	requireNoError(t, err)
 	invitation, err := model.NewScopedRoleInvitation(model.ScopedRoleInvitationInput{ID: model.NewInvitationID(),
@@ -1360,13 +1360,13 @@ func testScopedRoleInvitationExistingUserAtomicAndReplaySafe(t *testing.T, ss st
 	unit, _ := saveProgrammeParents(t, ctx, ss, "scoped-role-"+model.NewId())
 	inviter, existing, other := saveUser(t, ctx, ss), saveUser(t, ctx, ss), saveUser(t, ctx, ss)
 	issuedAt := model.NowUTC().Add(-time.Minute)
-	issuerRole, err := ss.Role().Save(ctx, &model.Role{Name: "scoped-role-issuer-" + model.NewId(), DisplayName: "Scoped Role Issuer",
+	issuerRole, err := SaveRole(ctx, ss, &model.Role{Name: "scoped-role-issuer-" + model.NewId(), DisplayName: "Scoped Role Issuer",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionRoleBindingManage), string(model.ActionAcademicAuditView)}})
 	requireNoError(t, err)
-	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: inviter.ID, RoleID: issuerRole.ID,
+	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: inviter.ID, RoleID: issuerRole.ID,
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: issuedAt.Add(-time.Second)})
 	requireNoError(t, err)
-	targetRole, err := ss.Role().Save(ctx, &model.Role{Name: "scoped-role-target-" + model.NewId(), DisplayName: "Scoped Role Target",
+	targetRole, err := SaveRole(ctx, ss, &model.Role{Name: "scoped-role-target-" + model.NewId(), DisplayName: "Scoped Role Target",
 		Permissions: []string{string(model.ActionAcademicAuditView)}})
 	requireNoError(t, err)
 	invitation, err := model.NewScopedRoleInvitation(model.ScopedRoleInvitationInput{ID: model.NewInvitationID(),
@@ -1381,7 +1381,7 @@ func testScopedRoleInvitationExistingUserAtomicAndReplaySafe(t *testing.T, ss st
 	if created.Purpose != model.InvitationPurposeAcademicUnitRole || created.RoleID != targetRole.ID {
 		t.Fatalf("IssueScopedRole() = %#v", created)
 	}
-	existingBinding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: existing.ID, RoleID: targetRole.ID,
+	existingBinding, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: existing.ID, RoleID: targetRole.ID,
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: issuedAt.Add(-time.Second)})
 	requireNoError(t, err)
 	session, _, _ := saveSession(t, ctx, ss, existing.ID.String(), 10)
@@ -1598,11 +1598,11 @@ func testInvitationIssueStudentClassTerminalizesElapsedPendingInvitation(
 	period := saveAcademicPeriod(t, ctx, ss, unit.InstitutionID.String(), "elapsed-period", model.GetMillis()-86_400_000)
 	class := saveClass(t, ctx, ss, level.ID.String(), period.ID.String(), "elapsed-class")
 	inviter := saveUser(t, ctx, ss)
-	role, err := ss.Role().Save(ctx, &model.Role{Name: "elapsed-inviter-" + model.NewId(), DisplayName: "Elapsed Inviter",
+	role, err := SaveRole(ctx, ss, &model.Role{Name: "elapsed-inviter-" + model.NewId(), DisplayName: "Elapsed Inviter",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionClassMembersManage)}})
 	requireNoError(t, err)
 	issuedAt := model.NowUTC()
-	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: inviter.ID, RoleID: role.ID,
+	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: inviter.ID, RoleID: role.ID,
 		ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(), StartsAt: issuedAt.Add(-time.Second)})
 	requireNoError(t, err)
 	first := studentClassInvitationIssueFixture(t, ss, inviter, class, period, issuedAt)
@@ -1867,7 +1867,7 @@ func testBrowserInvitationTransactionCreation(t *testing.T, ss store.Store, prob
 
 	activePeriod := saveAcademicPeriod(t, ctx, ss, fixture.institution.ID.String(), "browser-handoff-"+model.NewId(), model.MillisFromTime(model.NowUTC().Add(-time.Hour)))
 	activeClass := saveClass(t, ctx, ss, fixture.level.ID.String(), activePeriod.ID.String(), "browser-handoff-"+model.NewId())
-	_, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{
+	_, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: inviter.ID, RoleID: role.ID, ScopeType: model.RoleScopeClass, ScopeID: activeClass.ID.String(),
 		StartsAt: activePeriod.StartsAt,
 	})
@@ -1941,7 +1941,7 @@ func testInvitationAcceptStudentClassRejectsConflictingMembershipAtomically(t *t
 	existing := saveUser(t, ctx, ss)
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserID: existing.ID, Kind: model.AffiliationStudent, StartsAt: issuedAt})
 	requireNoError(t, err)
-	_, err = ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassID: otherClass.ID, UserID: existing.ID, StartsAt: fixture.period.StartsAt})
+	_, err = ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{ClassID: otherClass.ID, UserID: existing.ID, StartsAt: fixture.period.StartsAt})
 	requireNoError(t, err)
 	issue := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt)
 	issue.Invitation.TargetEmail = existing.Email
@@ -1969,11 +1969,11 @@ func invitationAcceptanceStoreFixture(t *testing.T, ctx context.Context, ss stor
 	fixture := saveClassFixture(t, ctx, ss)
 	class := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "invitation-"+suffix)
 	inviter := saveUser(t, ctx, ss)
-	role, err := ss.Role().Save(ctx, &model.Role{Name: "invite-" + suffix + "-" + model.NewId(), DisplayName: "Student Inviter",
+	role, err := SaveRole(ctx, ss, &model.Role{Name: "invite-" + suffix + "-" + model.NewId(), DisplayName: "Student Inviter",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionClassMembersManage)}})
 	requireNoError(t, err)
 	issuedAt := model.NowUTC().Add(-time.Minute)
-	binding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: inviter.ID, RoleID: role.ID,
+	binding, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: inviter.ID, RoleID: role.ID,
 		ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(), StartsAt: issuedAt.Add(-time.Second)})
 	requireNoError(t, err)
 	return fixture, class, inviter, role, binding, issuedAt
@@ -1984,13 +1984,13 @@ func testInvitationIssueStudentClassAtomic(t *testing.T, ss store.Store) {
 	fixture := saveClassFixture(t, ctx, ss)
 	class := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "invitation-class")
 	inviter := saveUser(t, ctx, ss)
-	role, err := ss.Role().Save(ctx, &model.Role{
+	role, err := SaveRole(ctx, ss, &model.Role{
 		Name: "student-inviter-" + model.NewId(), DisplayName: "Student Inviter",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionClassMembersManage)},
 	})
 	requireNoError(t, err)
 	issuedAt := model.NowUTC().Add(-time.Minute)
-	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{
+	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: inviter.ID, RoleID: role.ID, ScopeType: model.RoleScopeClass,
 		ScopeID: class.ID.String(), StartsAt: issuedAt.Add(-time.Second),
 	})
@@ -2085,13 +2085,13 @@ func testInvitationAcceptStudentClassAtomicAndReplaySafe(t *testing.T, ss store.
 	fixture := saveClassFixture(t, ctx, ss)
 	class := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "invitation-accept-class")
 	inviter := saveUser(t, ctx, ss)
-	role, err := ss.Role().Save(ctx, &model.Role{
+	role, err := SaveRole(ctx, ss, &model.Role{
 		Name: "accept-inviter-" + model.NewId(), DisplayName: "Accept Inviter",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionClassMembersManage)},
 	})
 	requireNoError(t, err)
 	issuedAt := model.NowUTC().Add(-time.Minute)
-	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{
+	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: inviter.ID, RoleID: role.ID, ScopeType: model.RoleScopeClass,
 		ScopeID: class.ID.String(), StartsAt: issuedAt.Add(-time.Second),
 	})
@@ -2128,11 +2128,11 @@ func testInvitationAcceptStudentClassAtomicAndReplaySafe(t *testing.T, ss store.
 		t.Fatalf("accepted Invitation credential delivery = %#v", obsolete)
 	}
 	progressedAt := accepted.ClassMember.StartsAt.Add(24 * time.Hour)
-	ended, err := ss.ClassMember().End(ctx, accepted.ClassMember.ID, accepted.ClassMember.Revision, model.MillisFromTime(progressedAt))
+	ended, err := ss.ClassMember().SeedEnd(ctx, accepted.ClassMember.ID, accepted.ClassMember.Revision, model.MillisFromTime(progressedAt))
 	requireNoError(t, err)
 	newMembership := &model.ClassMember{ClassID: class.ID, AcademicPeriodID: fixture.period.ID, UserID: accepted.User.ID,
 		StartsAt: progressedAt, EndsAt: accepted.ClassMember.EndsAt}
-	enrollment, err := ss.ClassMember().Enroll(ctx, newMembership)
+	enrollment, err := ss.ClassMember().SeedEnroll(ctx, newMembership)
 	requireNoError(t, err)
 	newMembership = enrollment.Membership
 

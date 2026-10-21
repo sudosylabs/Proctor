@@ -117,10 +117,11 @@ func (s *academicPeriodStub) Get(context.Context, model.AcademicPeriodID) (*mode
 	return s.period, nil
 }
 
-func (s *academicPeriodStub) Save(_ context.Context, period *model.AcademicPeriod) (*model.AcademicPeriod, error) {
+func (s *academicPeriodStub) Update(_ context.Context, input *store.AcademicPeriodUpdate) (*model.AcademicPeriod, error) {
 	if s.saveErr != nil {
 		return nil, s.saveErr
 	}
+	period := input.Period
 	s.period = period
 	return period, nil
 }
@@ -207,7 +208,7 @@ func TestLocalCacheInvalidatesAfterSuccessfulAcademicPeriodMutation(t *testing.T
 	}
 	updated := *period
 	updated.DisplayName = "Updated period"
-	if _, err := layer.AcademicPeriod().Save(ctx, &updated); err != nil {
+	if _, err := layer.AcademicPeriod().Update(ctx, academicPeriodUpdate(&updated)); err != nil {
 		t.Fatal(err)
 	}
 	got, err := layer.AcademicPeriod().Get(ctx, period.ID)
@@ -264,7 +265,7 @@ func TestLocalCacheRecoversAfterMissedPeerInvalidationAtTTL(t *testing.T) {
 	}
 	delivered := *period
 	delivered.DisplayName = "Delivered from node A"
-	if _, err := layerA.AcademicPeriod().Save(ctx, &delivered); err != nil {
+	if _, err := layerA.AcademicPeriod().Update(ctx, academicPeriodUpdate(&delivered)); err != nil {
 		t.Fatal(err)
 	}
 	peerFresh, err := layerB.AcademicPeriod().Get(ctx, period.ID)
@@ -282,7 +283,7 @@ func TestLocalCacheRecoversAfterMissedPeerInvalidationAtTTL(t *testing.T) {
 	}
 	updated := *period
 	updated.DisplayName = "Missed on node B"
-	if _, err := layerA.AcademicPeriod().Save(ctx, &updated); err != nil {
+	if _, err = layerA.AcademicPeriod().Update(ctx, academicPeriodUpdate(&updated)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -328,7 +329,8 @@ func (s *coordinatedAcademicPeriodStore) Get(context.Context, model.AcademicPeri
 	return &period, nil
 }
 
-func (s *coordinatedAcademicPeriodStore) Save(_ context.Context, period *model.AcademicPeriod) (*model.AcademicPeriod, error) {
+func (s *coordinatedAcademicPeriodStore) Update(_ context.Context, input *store.AcademicPeriodUpdate) (*model.AcademicPeriod, error) {
+	period := input.Period
 	s.mu.Lock()
 	s.period = period
 	s.mu.Unlock()
@@ -351,7 +353,7 @@ func TestLocalCacheConcurrentFillCannotUndoMutationInvalidation(t *testing.T) {
 	<-underlying.readStarted
 	updated := *period
 	updated.DisplayName = "Committed while cache fill was in flight"
-	if _, err := layer.AcademicPeriod().Save(context.Background(), &updated); err != nil {
+	if _, err := layer.AcademicPeriod().Update(context.Background(), academicPeriodUpdate(&updated)); err != nil {
 		t.Fatal(err)
 	}
 	close(underlying.allowRead)
@@ -683,4 +685,8 @@ func newLayerWithCacheAndFanout(
 		t.Fatal(err)
 	}
 	return layer
+}
+
+func academicPeriodUpdate(period *model.AcademicPeriod) *store.AcademicPeriodUpdate {
+	return &store.AcademicPeriodUpdate{Period: period, AuditEventID: model.NewAuditEventID(), AuditAt: 1}
 }

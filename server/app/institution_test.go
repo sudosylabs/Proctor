@@ -32,7 +32,7 @@ func (s *institutionStoreFake) GetSingleton(context.Context) (*model.Institution
 	return s.current, nil
 }
 
-func (s *institutionStoreFake) UpdateWithAudit(
+func (s *institutionStoreFake) Update(
 	_ context.Context,
 	input *store.InstitutionUpdate,
 ) (*model.Institution, error) {

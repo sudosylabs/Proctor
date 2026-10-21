@@ -238,19 +238,7 @@ func (s SQLAcademicUnitMemberStore) ListActiveByUser(ctx context.Context, userID
 		OrderBy("academic_unit_members.academic_unit_id", "academic_unit_members.id"))
 }
 
-func (s SQLAcademicUnitMemberStore) End(ctx context.Context, id model.AcademicUnitMemberID, expectedRevision, endAt int64) (*model.AcademicUnitMember, error) {
-	if !id.IsValid() || expectedRevision <= 0 || endAt <= 0 {
-		return nil, store.NewErrInvalidInput("academic_unit_member", "end", nil)
-	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "academic unit member end", func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicUnitMember, error) {
-		if err := lockAcademicUnitMemberLifecycle(ctx, tx); err != nil {
-			return nil, err
-		}
-		return s.endAcademicUnitMember(ctx, tx, id, expectedRevision, endAt)
-	})
-}
-
-func (s SQLAcademicUnitMemberStore) EndWithAudit(ctx context.Context, input *store.AcademicUnitMemberEnd) (*model.AcademicUnitMember, error) {
+func (s SQLAcademicUnitMemberStore) End(ctx context.Context, input *store.AcademicUnitMemberEnd) (*model.AcademicUnitMember, error) {
 	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || input.EndAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_unit_member", "end", nil)
 	}

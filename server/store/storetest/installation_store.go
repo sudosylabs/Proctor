@@ -218,7 +218,7 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 		events[0].ActorID != winner.Administrator.ID {
 		t.Fatalf("bootstrap audit events = %#v", events)
 	}
-	customRole, err := ss.Role().Save(ctx, &model.Role{
+	customRole, err := SaveRole(ctx, ss, &model.Role{
 		Name: "reconciliation-control", DisplayName: "Reconciliation Control",
 		Permissions: []string{string(model.ActionClassView)},
 	})

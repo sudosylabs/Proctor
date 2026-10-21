@@ -44,13 +44,13 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		requireNoError(t, err)
 
 		attempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "remove_password")
-		result, err := ss.PasswordCredential().RemoveWithAudit(ctx, &store.PasswordCredentialRemoval{
+		result, err := ss.PasswordCredential().Remove(ctx, &store.PasswordCredentialRemoval{
 			UserID: user.ID, Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"campus-cas": {}}},
 			ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationPasswordRemoved, AuditEventID: attempt.ID, AuditAt: model.GetMillis(),
 		})
 		requireNoError(t, err)
 		if len(result.RevokedSessions) != 1 || result.RevokedSessions[0].ID != passwordSession.ID || len(result.RevokedTokenHashes) != 2 {
-			t.Fatalf("RemoveWithAudit() revocations = %#v", result)
+			t.Fatalf("Remove() revocations = %#v", result)
 		}
 		revoked, err := ss.Session().Get(ctx, passwordSession.ID)
 		requireNoError(t, err)
@@ -95,14 +95,14 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		user, err := createUser(t, ctx, ss, candidate)
 		requireNoError(t, err)
 		attempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "enroll_password")
-		result, err := ss.PasswordCredential().EnrollWithAudit(ctx, &store.PasswordCredentialEnrollment{
+		result, err := ss.PasswordCredential().Enroll(ctx, &store.PasswordCredentialEnrollment{
 			Credential:   &model.PasswordCredential{UserID: user.ID, PasswordHash: "$argon2id$enrolled"},
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 			AuditEventID: attempt.ID, AuditAt: model.GetMillis(),
 		})
 		requireNoError(t, err)
 		if result.PasswordCredential == nil || result.PasswordCredential.UserID != user.ID {
-			t.Fatalf("EnrollWithAudit() = %#v", result)
+			t.Fatalf("Enroll() = %#v", result)
 		}
 		terminal, err := ss.Audit().Get(ctx, attempt.ID)
 		requireNoError(t, err)
@@ -110,11 +110,11 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 			t.Fatalf("audit status = %s", terminal.Status)
 		}
 		removeAttempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "remove_password")
-		_, err = ss.PasswordCredential().RemoveWithAudit(ctx, &store.PasswordCredentialRemoval{UserID: user.ID,
+		_, err = ss.PasswordCredential().Remove(ctx, &store.PasswordCredentialRemoval{UserID: user.ID,
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 			ChangedAt:    model.GetMillis(), RevocationReason: model.SessionRevocationPasswordRemoved, AuditEventID: removeAttempt.ID, AuditAt: model.GetMillis()})
 		if !errors.Is(err, store.ErrLastUsableAuthenticationMethod) {
-			t.Fatalf("RemoveWithAudit(last) error = %v", err)
+			t.Fatalf("Remove(last) error = %v", err)
 		}
 		unchanged, err := ss.PasswordCredential().GetByUser(ctx, user.ID)
 		requireNoError(t, err)

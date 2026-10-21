@@ -152,7 +152,7 @@ func TestDesktopAuthorizationExchangeSerializesWithConcurrentUserDisable(t *test
 	}
 	disableResult := make(chan disableOutcome, 1)
 	go func() {
-		result, disableErr := persistence.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+		result, disableErr := persistence.User().SetDisabled(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 			ID: user.ID, ExpectedRevision: user.Revision, Disabled: true, ChangedAt: model.GetMillis(),
 			RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID, AuditAt: model.GetMillis(),
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
@@ -170,7 +170,7 @@ func TestDesktopAuthorizationExchangeSerializesWithConcurrentUserDisable(t *test
 	}
 	disabled := <-disableResult
 	if disabled.err != nil || disabled.result == nil || disabled.result.User == nil || !disabled.result.User.DisabledAt.Valid {
-		t.Fatalf("SetDisabledWithAudit() = %#v, %v", disabled.result, disabled.err)
+		t.Fatalf("SetDisabled() = %#v, %v", disabled.result, disabled.err)
 	}
 	storedSession, err := persistence.Session().Get(ctx, exchanged.result.Session.ID)
 	if err != nil {
@@ -229,7 +229,7 @@ func TestDesktopAuthorizationIssueCodeSerializesWithConcurrentUserDisableAcrossN
 	}
 	disableResult := make(chan disableOutcome, 1)
 	go func() {
-		result, disableErr := secondary.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+		result, disableErr := secondary.User().SetDisabled(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 			ID: user.ID, ExpectedRevision: user.Revision, Disabled: true, ChangedAt: model.GetMillis(),
 			RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID, AuditAt: model.GetMillis(),
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
@@ -259,7 +259,7 @@ func TestDesktopAuthorizationIssueCodeSerializesWithConcurrentUserDisableAcrossN
 	locked = false
 	disabled := <-disableResult
 	if disabled.err != nil || disabled.result == nil || disabled.result.User == nil || !disabled.result.User.DisabledAt.Valid {
-		t.Fatalf("SetDisabledWithAudit() = %#v, %v", disabled.result, disabled.err)
+		t.Fatalf("SetDisabled() = %#v, %v", disabled.result, disabled.err)
 	}
 	issued := <-issueResult
 	if !store.IsNotFound(issued.err) || issued.result != nil {
@@ -499,7 +499,7 @@ func TestDesktopAuthorizationRevalidatesSourceWebSessionProof(t *testing.T) {
 					    idle_expires_at=idle_expires_at+interval '1 hour',expires_at=expires_at+interval '1 hour'
 					WHERE id=?`, source.ID.String())
 			case "revoked session":
-				_, err = persistence.Session().Revoke(ctx, source.ID, user.ID, model.GetMillis(), model.SessionRevocationUserSession)
+				_, err = persistence.Session().Withdraw(ctx, source.ID, user.ID, model.GetMillis(), model.SessionRevocationInactiveUser)
 			case "expired session":
 				_, err = persistence.GetMaster().Exec(ctx, `UPDATE sessions SET expires_at=statement_timestamp(),idle_expires_at=statement_timestamp() WHERE id=?`, source.ID.String())
 			case "idle expired session":
@@ -733,7 +733,7 @@ func TestDesktopAuthorizationCreatesAndRevokesBoundDesktopRegistration(t *testin
 	}
 
 	revokeAudit := saveDesktopAuthorizationAuditForSQLTest(t, ctx, persistence, institution.ID, user.ID, "registration-revoke")
-	revoked, err := persistence.DesktopRegistration().RevokeWithAudit(ctx, &store.DesktopRegistrationRevocation{
+	revoked, err := persistence.DesktopRegistration().Revoke(ctx, &store.DesktopRegistrationRevocation{
 		RegistrationID: exchanged.Registration.ID, UserID: user.ID, RevokedAt: model.GetMillis(),
 		AuditEventID: revokeAudit.ID, AuditAt: model.GetMillis(),
 	})
@@ -743,7 +743,7 @@ func TestDesktopAuthorizationCreatesAndRevokesBoundDesktopRegistration(t *testin
 	if revoked.AlreadyRevoked || revoked.Registration == nil || !revoked.Registration.RevokedAt.Valid ||
 		len(revoked.Sessions) != 1 || revoked.Sessions[0].RevocationReason != model.SessionRevocationDesktopRegistration ||
 		len(revoked.TokenHashes) != 2 {
-		t.Fatalf("RevokeWithAudit() = %#v", revoked)
+		t.Fatalf("Revoke() = %#v", revoked)
 	}
 	for _, credential := range []struct {
 		token string

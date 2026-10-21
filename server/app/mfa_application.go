@@ -176,7 +176,7 @@ func (s *mfaApplicationService) SetupMFA(
 	if appErr != nil {
 		return nil, appErr
 	}
-	saved, err := s.credentials.SavePendingWithAudit(ctx, &store.MFAPendingEnrollment{Principal: principal, Credential: candidate, Lifetime: s.mechanics.settings.SetupTTL, RecentAuthenticationTTL: s.recentAuthenticationTTL, AuditEventID: model.AuditEventID(auditID)})
+	saved, err := s.credentials.SavePending(ctx, &store.MFAPendingEnrollment{Principal: principal, Credential: candidate, Lifetime: s.mechanics.settings.SetupTTL, RecentAuthenticationTTL: s.recentAuthenticationTTL, AuditEventID: auditID})
 	if err != nil {
 		return nil, s.failMutation(ctx, auditID, err)
 	}
@@ -295,7 +295,7 @@ func (s *mfaApplicationService) ChallengeMFA(
 		}
 		return nil, err
 	}
-	result, err := s.credentials.ChallengeWithAudit(ctx, &store.MFAChallenge{Principal: principal, CredentialID: proof.credentialID, TimeStep: proof.step, RecoveryCodeHash: proof.recoveryHash, VerifiedAt: now, AuditEventID: model.AuditEventID(auditID)})
+	result, err := s.credentials.Challenge(ctx, &store.MFAChallenge{Principal: principal, CredentialID: proof.credentialID, TimeStep: proof.step, RecoveryCodeHash: proof.recoveryHash, VerifiedAt: now, AuditEventID: auditID})
 	if err != nil {
 		if store.IsNotFound(err) {
 			if auditErr := s.audit.Complete(ctx, auditID, model.AuditStatusFail, "authentication.mfa.code_invalid", nil); auditErr != nil {

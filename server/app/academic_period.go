@@ -46,8 +46,8 @@ type academicPeriodStore interface {
 	Get(context.Context, model.AcademicPeriodID) (*model.AcademicPeriod, error)
 	ListVisible(context.Context, store.AcademicPeriodVisibilityScope, string, int) ([]*model.AcademicPeriod, error)
 	Create(context.Context, *store.AcademicPeriodCreation) (*model.AcademicPeriod, error)
-	UpdateWithAudit(context.Context, *store.AcademicPeriodUpdate) (*model.AcademicPeriod, error)
-	ArchiveWithAudit(context.Context, *store.AcademicPeriodArchive) (*model.AcademicPeriod, error)
+	Update(context.Context, *store.AcademicPeriodUpdate) (*model.AcademicPeriod, error)
+	Archive(context.Context, *store.AcademicPeriodArchive) (*model.AcademicPeriod, error)
 }
 
 type academicPeriodAuthorizer interface {
@@ -224,7 +224,7 @@ func (s *academicPeriodService) UpdateAcademicPeriod(ctx context.Context, invoca
 		},
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicPeriod, error) {
-			return s.store.UpdateWithAudit(ctx, &store.AcademicPeriodUpdate{
+			return s.store.Update(ctx, &store.AcademicPeriodUpdate{
 				Period: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
@@ -262,7 +262,7 @@ func (s *academicPeriodService) ArchiveAcademicPeriod(ctx context.Context, invoc
 		},
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicPeriod, error) {
-			return s.store.ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{
+			return s.store.Archive(ctx, &store.AcademicPeriodArchive{
 				ExpectedRevision: current.Revision,
 				ID:               current.ID, ArchiveAt: reference.MutationAtMillis,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,

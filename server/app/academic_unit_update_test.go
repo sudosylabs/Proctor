@@ -48,13 +48,7 @@ func (*academicUnitMutationStore) ListAncestors(context.Context, string) ([]*mod
 func (*academicUnitMutationStore) Search(context.Context, model.InstitutionID, string, int) ([]*model.AcademicUnit, error) {
 	panic("unexpected Search")
 }
-func (*academicUnitMutationStore) Update(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error) {
-	panic("unexpected Update")
-}
-func (*academicUnitMutationStore) Archive(context.Context, string, int64) (*model.AcademicUnit, error) {
-	panic("unexpected Archive")
-}
-func (s *academicUnitMutationStore) UpdateWithAudit(
+func (s *academicUnitMutationStore) Update(
 	_ context.Context,
 	input *store.AcademicUnitUpdate,
 ) (*model.AcademicUnit, error) {
@@ -62,7 +56,7 @@ func (s *academicUnitMutationStore) UpdateWithAudit(
 	s.updateInput = input
 	return s.updated, s.updateErr
 }
-func (s *academicUnitMutationStore) ArchiveWithAudit(
+func (s *academicUnitMutationStore) Archive(
 	_ context.Context,
 	input *store.AcademicUnitArchive,
 ) (*model.AcademicUnit, error) {

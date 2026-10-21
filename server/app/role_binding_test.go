@@ -55,13 +55,13 @@ func (s *roleBindingStoreFake) ListByScope(context.Context, model.RoleScopeType,
 	return s.list, s.listErr
 }
 
-func (s *roleBindingStoreFake) SaveWithAudit(_ context.Context, input *store.RoleBindingCreation) (*model.RoleBinding, error) {
+func (s *roleBindingStoreFake) Save(_ context.Context, input *store.RoleBindingCreation) (*model.RoleBinding, error) {
 	*s.events = append(*s.events, "store-create")
 	s.createInput = input
 	return s.createResult, s.createErr
 }
 
-func (s *roleBindingStoreFake) EndWithAudit(_ context.Context, input *store.RoleBindingEnd) (*model.RoleBinding, error) {
+func (s *roleBindingStoreFake) End(_ context.Context, input *store.RoleBindingEnd) (*model.RoleBinding, error) {
 	*s.events = append(*s.events, "store-end")
 	s.endInput = input
 	return s.endResult, s.endErr

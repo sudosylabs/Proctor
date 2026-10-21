@@ -21,7 +21,7 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-func (s SQLExternalIdentityStore) LinkWithAudit(ctx context.Context, input *store.ExternalIdentityLink) (*store.AuthenticationMethodMutationResult, error) {
+func (s SQLExternalIdentityStore) Link(ctx context.Context, input *store.ExternalIdentityLink) (*store.AuthenticationMethodMutationResult, error) {
 	if input == nil || input.Identity == nil || !input.Identity.ID.IsZero() ||
 		!input.Identity.UserID.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
 		!validAccessDeploymentCapabilities(input.Capabilities) {
@@ -78,7 +78,7 @@ func (s SQLExternalIdentityStore) LinkWithAudit(ctx context.Context, input *stor
 	})
 }
 
-func (s SQLExternalIdentityStore) UnlinkWithAudit(ctx context.Context, input *store.ExternalIdentityUnlink) (*store.AuthenticationMethodMutationResult, error) {
+func (s SQLExternalIdentityStore) Unlink(ctx context.Context, input *store.ExternalIdentityUnlink) (*store.AuthenticationMethodMutationResult, error) {
 	if input == nil || !input.ID.IsValid() || !input.UserID.IsValid() || input.ChangedAt <= 0 ||
 		!input.RevocationReason.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
 		!validAccessDeploymentCapabilities(input.Capabilities) {
@@ -136,7 +136,7 @@ func (s SQLExternalIdentityStore) UnlinkWithAudit(ctx context.Context, input *st
 	})
 }
 
-func (s SQLPasswordCredentialStore) EnrollWithAudit(ctx context.Context, input *store.PasswordCredentialEnrollment) (*store.AuthenticationMethodMutationResult, error) {
+func (s SQLPasswordCredentialStore) Enroll(ctx context.Context, input *store.PasswordCredentialEnrollment) (*store.AuthenticationMethodMutationResult, error) {
 	if input == nil || input.Credential == nil || !input.Credential.ID.IsZero() || !input.Credential.UserID.IsValid() ||
 		!input.AuditEventID.IsValid() || input.AuditAt <= 0 || !validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("password_credential", "enroll", nil)
@@ -172,7 +172,7 @@ func (s SQLPasswordCredentialStore) EnrollWithAudit(ctx context.Context, input *
 	})
 }
 
-func (s SQLPasswordCredentialStore) RemoveWithAudit(ctx context.Context, input *store.PasswordCredentialRemoval) (*store.AuthenticationMethodMutationResult, error) {
+func (s SQLPasswordCredentialStore) Remove(ctx context.Context, input *store.PasswordCredentialRemoval) (*store.AuthenticationMethodMutationResult, error) {
 	if input == nil || !input.UserID.IsValid() || input.ChangedAt <= 0 || !input.RevocationReason.IsValid() ||
 		!input.AuditEventID.IsValid() || input.AuditAt <= 0 || !validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("password_credential", "remove", nil)

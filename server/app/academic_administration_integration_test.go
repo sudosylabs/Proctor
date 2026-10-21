@@ -25,6 +25,7 @@ import (
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 	"github.com/sudosylabs/proctor/server/testlib"
 )
 
@@ -311,7 +312,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		t.Fatalf("progression history = %#v", progressionHistory)
 	}
 
-	teacherRole, err := persistence.Role().Save(context.Background(), &model.Role{
+	teacherRole, err := storetest.SaveRole(context.Background(), persistence, &model.Role{
 		Name: "class-teacher", DisplayName: "Class Teacher",
 		Permissions: []string{
 			string(model.ActionClassView),
@@ -321,7 +322,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.RoleBinding().Save(context.Background(), &model.RoleBinding{
+	if _, err := storetest.SaveRoleBinding(context.Background(), persistence, &model.RoleBinding{
 		UserID: teacher.ID, RoleID: teacherRole.ID,
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: root.ID.String(),
 		StartsAt: model.TimeFromMillis(now - 10_000),

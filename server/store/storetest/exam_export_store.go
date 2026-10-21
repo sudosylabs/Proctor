@@ -35,9 +35,9 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	scope := model.RetentionHoldScope{ExamID: f.examID, SittingID: f.sitting.ID, SubmissionID: sealed.Receipt.SubmissionID}
 	principal := saveRecordsPrincipal(t, ctx, ss, f.manager.ID, false)
 	permissions := []string{string(model.ActionExamRecordsExport), string(model.ActionExamRecordsExportOverride), string(model.ActionSubmissionView), string(model.ActionSubmissionViewOverride), string(model.ActionExamSittingView), string(model.ActionExamSittingViewOverride), string(model.ActionExamAttemptBrowserActivityView)}
-	role, err := ss.Role().Save(ctx, &model.Role{Name: "export-manager-" + model.NewId(), DisplayName: "Export manager", Permissions: permissions})
+	role, err := SaveRole(ctx, ss, &model.Role{Name: "export-manager-" + model.NewId(), DisplayName: "Export manager", Permissions: permissions})
 	requireNoError(t, err)
-	binding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: f.manager.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: f.unitID.String(), StartsAt: model.NowUTC().Add(-time.Minute)})
+	binding, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: f.manager.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: f.unitID.String(), StartsAt: model.NowUTC().Add(-time.Minute)})
 	requireNoError(t, err)
 	_, err = ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{UserID: f.manager.ID, AcademicUnitID: f.unitID, StartsAt: model.NowUTC().Add(-time.Minute)})
 	requireNoError(t, err)
@@ -103,11 +103,11 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	withoutPermission := func(action model.Action, check func()) {
 		changed := *role
 		changed.Permissions = slices.DeleteFunc(slices.Clone(permissions), func(p string) bool { return p == string(action) })
-		_, err := ss.Role().Update(ctx, &changed)
+		_, err = ss.Role().SeedUpdate(ctx, &changed)
 		requireNoError(t, err)
 		check()
 		changed.Permissions = slices.Clone(permissions)
-		role, err = ss.Role().Update(ctx, &changed)
+		role, err = ss.Role().SeedUpdate(ctx, &changed)
 		requireNoError(t, err)
 	}
 	for _, action := range []model.Action{model.ActionExamRecordsExport, model.ActionSubmissionView} {
@@ -136,7 +136,7 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	second.Principal = saveRecordsPrincipal(t, ctx, ss, f.manager.ID, false)
 	_, err = peer.Get(ctx, &second)
 	requireNoError(t, err)
-	_, err = ss.Session().Revoke(ctx, second.Principal.SessionID, f.manager.ID, model.GetMillis(), model.SessionRevocationUserSession)
+	_, err = ss.Session().Withdraw(ctx, second.Principal.SessionID, f.manager.ID, model.GetMillis(), model.SessionRevocationInactiveUser)
 	requireNoError(t, err)
 	if _, err := peer.Get(ctx, &second); !store.IsConflict(err) {
 		t.Fatalf("revoked Session retained export access: %v", err)
@@ -146,7 +146,7 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	if _, err = peer.Get(ctx, &foreign); !store.IsNotFound(err) {
 		t.Fatalf("nonrequester got export: %v", err)
 	}
-	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: f.candidate.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: f.unitID.String(), StartsAt: model.NowUTC().Add(-time.Minute)})
+	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: f.candidate.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: f.unitID.String(), StartsAt: model.NowUTC().Add(-time.Minute)})
 	requireNoError(t, err)
 	self := makeInput(model.RetentionCategoryWork)
 	self.ExamRecordsMutation = recordsMutation(t, ctx, ss, f.unitID, scope, foreign.Principal, model.ActionExamRecordsExportOverride)
@@ -267,7 +267,7 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	// exact Exam Manager, including through the explicit general export override.
 	nonmanager := saveUser(t, ctx, ss)
 	nonmanagerPrincipal := saveRecordsPrincipal(t, ctx, ss, nonmanager.ID, false)
-	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: nonmanager.ID, RoleID: role.ID,
+	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: nonmanager.ID, RoleID: role.ID,
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: f.unitID.String(), StartsAt: model.NowUTC().Add(-time.Minute)})
 	requireNoError(t, err)
 	_, err = ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{UserID: nonmanager.ID, AcademicUnitID: f.unitID, StartsAt: model.NowUTC().Add(-time.Minute)})
@@ -295,7 +295,7 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	requireNoError(t, err)
 	for _, membership := range memberships {
 		if membership.AcademicUnitID == f.unitID {
-			_, err = ss.AcademicUnitMember().End(ctx, membership.ID, membership.Revision, model.GetMillis())
+			_, err = EndAcademicUnitMember(ctx, ss, membership.ID, membership.Revision, model.GetMillis())
 			requireNoError(t, err)
 		}
 	}
@@ -362,7 +362,7 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	// End the already-active fixture binding in its past interval. A host clock
 	// slightly ahead of PostgreSQL must not schedule this revocation in the
 	// database future and make the immediate peer authorization check race it.
-	_, err = ss.RoleBinding().End(ctx, binding.ID, model.MillisFromTime(binding.StartsAt.Add(time.Second)))
+	_, err = EndRoleBinding(ctx, ss, binding.ID, model.MillisFromTime(binding.StartsAt.Add(time.Second)))
 	requireNoError(t, err)
 	if _, err = peer.Get(ctx, &access); !store.IsConflict(err) {
 		t.Fatalf("revoked role read retained archive: %v", err)

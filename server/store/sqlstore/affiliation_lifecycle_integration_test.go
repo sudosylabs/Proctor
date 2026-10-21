@@ -16,6 +16,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 )
 
 func TestStudentAffiliationEndSerializesWithEnrollment(t *testing.T) {
@@ -26,19 +27,19 @@ func TestStudentAffiliationEndSerializesWithEnrollment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID, Name: "unit", DisplayName: "Unit"})
+	unit, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{InstitutionID: institution.ID, Name: "unit", DisplayName: "Unit"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	programme, err := persistence.Programme().Save(ctx, &model.Programme{AcademicUnitID: unit.ID, Name: "programme", DisplayName: "Programme"})
+	programme, err := storetest.SaveProgramme(ctx, persistence, &model.Programme{AcademicUnitID: unit.ID, Name: "programme", DisplayName: "Programme"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	level, err := persistence.ProgrammeLevel().Save(ctx, &model.ProgrammeLevel{ProgrammeID: programme.ID, Name: "level", DisplayName: "Level"})
+	level, err := storetest.SaveProgrammeLevel(ctx, persistence, &model.ProgrammeLevel{ProgrammeID: programme.ID, Name: "level", DisplayName: "Level"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{Owner: model.NewInstitutionAcademicPeriodOwner(institution.ID), Name: "period", DisplayName: "Period", StartsAt: model.TimeFromMillis(1), EndsAt: model.TimeFromMillis(model.GetMillis() + 1_000_000)})
+	period, err := storetest.SaveAcademicPeriod(ctx, persistence, &model.AcademicPeriod{Owner: model.NewInstitutionAcademicPeriodOwner(institution.ID), Name: "period", DisplayName: "Period", StartsAt: model.TimeFromMillis(1), EndsAt: model.TimeFromMillis(model.GetMillis() + 1_000_000)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,12 +62,12 @@ func TestStudentAffiliationEndSerializesWithEnrollment(t *testing.T) {
 		go func() {
 			defer wait.Done()
 			<-start
-			_, endErr = persistence.Affiliation().EndWithAudit(ctx, &store.AffiliationEnd{ID: affiliation.ID, ExpectedRevision: affiliation.Revision, EndAt: model.GetMillis() + 100, AuditEventID: attempt.ID, AuditAt: model.GetMillis()})
+			_, endErr = persistence.Affiliation().End(ctx, &store.AffiliationEnd{ID: affiliation.ID, ExpectedRevision: affiliation.Revision, EndAt: model.GetMillis() + 100, AuditEventID: attempt.ID, AuditAt: model.GetMillis()})
 		}()
 		go func() {
 			defer wait.Done()
 			<-start
-			_, enrollErr = persistence.ClassMember().Enroll(ctx, &model.ClassMember{ClassID: class.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(model.GetMillis())})
+			_, enrollErr = persistence.ClassMember().SeedEnroll(ctx, &model.ClassMember{ClassID: class.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(model.GetMillis())})
 		}()
 		close(start)
 		wait.Wait()

@@ -17,6 +17,7 @@ import (
 	"github.com/lib/pq"
 
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 )
 
 func TestMembershipCanonicalIDConstraintsRejectNoncanonicalValues(t *testing.T) {
@@ -30,25 +31,25 @@ func TestMembershipCanonicalIDConstraintsRejectNoncanonicalValues(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{
+	unit, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{
 		InstitutionID: institution.ID, Name: "unit", DisplayName: "Unit",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	programme, err := persistence.Programme().Save(ctx, &model.Programme{
+	programme, err := storetest.SaveProgramme(ctx, persistence, &model.Programme{
 		AcademicUnitID: unit.ID, Name: "programme", DisplayName: "Programme",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	level, err := persistence.ProgrammeLevel().Save(ctx, &model.ProgrammeLevel{
+	level, err := storetest.SaveProgrammeLevel(ctx, persistence, &model.ProgrammeLevel{
 		ProgrammeID: programme.ID, Name: "level", DisplayName: "Level",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{
+	period, err := storetest.SaveAcademicPeriod(ctx, persistence, &model.AcademicPeriod{
 		Owner:       model.NewInstitutionAcademicPeriodOwner(institution.ID),
 		Name:        "period",
 		DisplayName: "Period",
@@ -73,7 +74,7 @@ func TestMembershipCanonicalIDConstraintsRejectNoncanonicalValues(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	enrollment, err := persistence.ClassMember().Enroll(ctx, &model.ClassMember{
+	enrollment, err := persistence.ClassMember().SeedEnroll(ctx, &model.ClassMember{
 		ClassID: class.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(model.GetMillis()),
 	})
 	if err != nil {

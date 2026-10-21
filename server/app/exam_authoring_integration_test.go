@@ -44,7 +44,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 		t.Fatal(appErr)
 	}
 	institution := bootstrap.Institution
-	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: bootstrap.Institution.ID, Name: "computing", DisplayName: "Computing"})
+	unit, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{InstitutionID: bootstrap.Institution.ID, Name: "computing", DisplayName: "Computing"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,11 +61,11 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	role, err := persistence.Role().Save(ctx, &model.Role{Name: "exam-author", DisplayName: "Exam Author", Permissions: []string{string(model.ActionExamCreate), string(model.ActionExamView), string(model.ActionExamManage)}})
+	role, err := storetest.SaveRole(ctx, persistence, &model.Role{Name: "exam-author", DisplayName: "Exam Author", Permissions: []string{string(model.ActionExamCreate), string(model.ActionExamView), string(model.ActionExamManage)}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{UserID: teacher.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000)})
+	binding, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: teacher.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if _, appErr := helper.App.ListExamManagers(ctx, managerInvocation, application.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50}); !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("Manager without role error = %v", appErr)
 	}
-	managerBinding, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{UserID: managerUser.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000)})
+	managerBinding, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: managerUser.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,16 +176,16 @@ func TestExamAuthoringIntegration(t *testing.T) {
 		t.Fatalf("Manager list = %#v, %v", managers, appErr)
 	}
 	managerBindingEndedAt := model.GetMillis() - 500
-	if _, err = persistence.RoleBinding().End(ctx, managerBinding.ID, managerBindingEndedAt); err != nil {
+	if _, err = storetest.EndRoleBinding(ctx, persistence, managerBinding.ID, managerBindingEndedAt); err != nil {
 		t.Fatal(err)
 	}
 	if _, appErr := helper.App.ListExamManagers(ctx, managerInvocation, application.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50}); !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("Manager after role revocation error = %v", appErr)
 	}
-	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{UserID: managerUser.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(managerBindingEndedAt)}); err != nil {
+	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: managerUser.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(managerBindingEndedAt)}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = persistence.AcademicUnitMember().End(ctx, managerMembership.ID, managerMembership.Revision, model.GetMillis()-100); err != nil {
+	if _, err = storetest.EndAcademicUnitMember(ctx, persistence, managerMembership.ID, managerMembership.Revision, model.GetMillis()-100); err != nil {
 		t.Fatal(err)
 	}
 	if _, appErr := helper.App.ListExamManagers(ctx, managerInvocation, application.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50}); !apperror.Is(appErr, "resource.not_found") {
@@ -194,11 +194,11 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if _, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{AcademicUnitID: unit.ID, UserID: managerUser.ID, StartsAt: model.TimeFromMillis(model.GetMillis() - 50)}); err != nil {
 		t.Fatal(err)
 	}
-	accountManagerRole, err := persistence.Role().Save(ctx, &model.Role{Name: "exam-account-manager", DisplayName: "Exam Account Manager", Permissions: []string{string(model.ActionUserManage)}})
+	accountManagerRole, err := storetest.SaveRole(ctx, persistence, &model.Role{Name: "exam-account-manager", DisplayName: "Exam Account Manager", Permissions: []string{string(model.ActionUserManage)}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{UserID: teacher.ID, RoleID: accountManagerRole.ID, ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000)}); err != nil {
+	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: teacher.ID, RoleID: accountManagerRole.ID, ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000)}); err != nil {
 		t.Fatal(err)
 	}
 	disabledManager, appErr := helper.App.SetUserEnabled(ctx, invocation, application.SetUserEnabledCommand{ID: managerUser.ID, Enabled: false})
@@ -216,7 +216,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+	if _, err := persistence.User().SetDisabled(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: disabledManager.ID, ExpectedRevision: disabledManager.Revision, Disabled: false,
 		ChangedAt: reenabledAt, AuditEventID: reenableAudit.ID, AuditAt: reenabledAt,
 	})); err != nil {
@@ -247,7 +247,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	}
 	currentExamRevision := int64(4)
 	membershipEndedAt := model.GetMillis() - 100
-	if _, err = persistence.AcademicUnitMember().End(ctx, membership.ID, membership.Revision, membershipEndedAt); err != nil {
+	if _, err = storetest.EndAcademicUnitMember(ctx, persistence, membership.ID, membership.Revision, membershipEndedAt); err != nil {
 		t.Fatal(err)
 	}
 	withoutMembership, appErr := helper.App.ListExams(ctx, invocation, application.ListExamsQuery{AcademicUnitID: unit.ID})
@@ -260,13 +260,13 @@ func TestExamAuthoringIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	bindingEndedAt := model.GetMillis() - 50
-	if _, err = persistence.RoleBinding().End(ctx, binding.ID, bindingEndedAt); err != nil {
+	if _, err = storetest.EndRoleBinding(ctx, persistence, binding.ID, bindingEndedAt); err != nil {
 		t.Fatal(err)
 	}
 	if _, appErr := helper.App.ListExams(ctx, invocation, application.ListExamsQuery{AcademicUnitID: unit.ID}); !apperror.Is(appErr, "authorization.denied") {
 		t.Fatalf("catalog after role ended error = %v", appErr)
 	}
-	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: teacher.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(bindingEndedAt),
 	}); err != nil {
@@ -292,13 +292,13 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("outsider archive error = %v, want concealed resource.not_found", appErr)
 	}
-	overrideRole, err := persistence.Role().Save(ctx, &model.Role{Name: "exam-system-override", DisplayName: "Exam System Override", Permissions: []string{
+	overrideRole, err := storetest.SaveRole(ctx, persistence, &model.Role{Name: "exam-system-override", DisplayName: "Exam System Override", Permissions: []string{
 		string(model.ActionExamViewOverride), string(model.ActionExamManageOverride),
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: outsider.ID, RoleID: overrideRole.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000),
 	}); err != nil {

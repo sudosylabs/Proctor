@@ -20,6 +20,7 @@ import (
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 	"github.com/sudosylabs/proctor/server/testlib"
 )
 
@@ -51,33 +52,33 @@ func TestExamSittingIntegration(t *testing.T) {
 		t.Fatal(appErr)
 	}
 	institution := bootstrap.Institution
-	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{
+	unit, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{
 		InstitutionID: institution.ID, Name: "sitting-computing", DisplayName: "Sitting Computing",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	programme, err := persistence.Programme().Save(ctx, &model.Programme{
+	programme, err := storetest.SaveProgramme(ctx, persistence, &model.Programme{
 		AcademicUnitID: unit.ID, Name: "sitting-computer-science", DisplayName: "Sitting Computer Science",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	level, err := persistence.ProgrammeLevel().Save(ctx, &model.ProgrammeLevel{
+	level, err := storetest.SaveProgrammeLevel(ctx, persistence, &model.ProgrammeLevel{
 		ProgrammeID: programme.ID, Name: "sitting-year-one", DisplayName: "Sitting Year One",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{
+	period, err := storetest.SaveAcademicPeriod(ctx, persistence, &model.AcademicPeriod{
 		Owner: model.NewInstitutionAcademicPeriodOwner(institution.ID), Name: "sitting-period", DisplayName: "Sitting Period",
 		StartsAt: now.Add(time.Hour), EndsAt: now.Add(24 * time.Hour),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	class, err := persistence.Class().Save(ctx, &model.Class{
+	class, err := storetest.SaveClass(ctx, persistence, &model.Class{
 		ProgrammeLevelID: level.ID, AcademicPeriodID: period.ID,
 		Name: "sitting-class-a", DisplayName: "Sitting Class A",
 	})
@@ -97,7 +98,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = persistence.ClassMember().Enroll(ctx, &model.ClassMember{
+	if _, err = persistence.ClassMember().SeedEnroll(ctx, &model.ClassMember{
 		ClassID: class.ID, UserID: candidate.ID, StartsAt: period.StartsAt,
 	}); err != nil {
 		t.Fatal(err)
@@ -126,7 +127,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	managerRole, err := persistence.Role().Save(ctx, &model.Role{
+	managerRole, err := storetest.SaveRole(ctx, persistence, &model.Role{
 		Name: "exam-sitting-manager", DisplayName: "Exam Sitting Manager",
 		Permissions: []string{
 			string(model.ActionExamCreate), string(model.ActionExamView), string(model.ActionExamManage),
@@ -137,7 +138,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	managerBinding, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+	managerBinding, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: manager.ID, RoleID: managerRole.ID, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000),
 	})
@@ -291,7 +292,7 @@ func TestExamSittingIntegration(t *testing.T) {
 		t.Fatalf("close live replay = %#v, %v", closedReplay, appErr)
 	}
 
-	if _, err = persistence.AcademicUnitMember().End(ctx, managerMembership.ID, managerMembership.Revision, model.GetMillis()-100); err != nil {
+	if _, err = storetest.EndAcademicUnitMember(ctx, persistence, managerMembership.ID, managerMembership.Revision, model.GetMillis()-100); err != nil {
 		t.Fatal(err)
 	}
 	if _, appErr := helper.App.GetExamSitting(ctx, managerInvocation, application.GetExamSittingQuery{
@@ -308,7 +309,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = persistence.RoleBinding().End(ctx, managerBinding.ID, model.GetMillis()-25); err != nil {
+	if _, err = storetest.EndRoleBinding(ctx, persistence, managerBinding.ID, model.GetMillis()-25); err != nil {
 		t.Fatal(err)
 	}
 	if _, appErr := helper.App.GetExamSitting(ctx, managerInvocation, application.GetExamSittingQuery{
@@ -333,7 +334,7 @@ func TestExamSittingIntegration(t *testing.T) {
 		t.Fatal(appErr)
 	}
 	overrideInvocation := application.NewInvocation(*overridePrincipal, model.RequestMetadata{RequestID: "exam-sitting-override-integration"})
-	overrideRole, err := persistence.Role().Save(ctx, &model.Role{
+	overrideRole, err := storetest.SaveRole(ctx, persistence, &model.Role{
 		Name: "exam-sitting-override", DisplayName: "Exam Sitting Override",
 		Permissions: []string{
 			string(model.ActionExamViewOverride), string(model.ActionExamSittingCreateOverride),
@@ -343,7 +344,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: overrideUser.ID, RoleID: overrideRole.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000),
 	}); err != nil {

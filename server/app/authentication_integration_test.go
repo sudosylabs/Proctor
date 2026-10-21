@@ -206,33 +206,24 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	parentUnit, err := persistence.AcademicUnit().Save(
-		context.Background(),
-		&model.AcademicUnit{
-			InstitutionID: institution.ID, Name: "engineering",
-			DisplayName: "Engineering",
-		},
-	)
+	parentUnit, err := storetest.SaveAcademicUnit(context.Background(), persistence, &model.AcademicUnit{
+		InstitutionID: institution.ID, Name: "engineering",
+		DisplayName: "Engineering",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	childUnit, err := persistence.AcademicUnit().Save(
-		context.Background(),
-		&model.AcademicUnit{
-			InstitutionID: institution.ID, ParentID: parentUnit.ID,
-			Name: "computing", DisplayName: "Computing",
-		},
-	)
+	childUnit, err := storetest.SaveAcademicUnit(context.Background(), persistence, &model.AcademicUnit{
+		InstitutionID: institution.ID, ParentID: parentUnit.ID,
+		Name: "computing", DisplayName: "Computing",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	siblingUnit, err := persistence.AcademicUnit().Save(
-		context.Background(),
-		&model.AcademicUnit{
-			InstitutionID: institution.ID, Name: "health",
-			DisplayName: "Health",
-		},
-	)
+	siblingUnit, err := storetest.SaveAcademicUnit(context.Background(), persistence, &model.AcademicUnit{
+		InstitutionID: institution.ID, Name: "health",
+		DisplayName: "Health",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,23 +238,17 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	role, err := persistence.Role().Save(
-		context.Background(),
-		&model.Role{
-			Name: "academic_reader", DisplayName: "Academic reader",
-			Permissions: []string{string(model.ActionAcademicUnitView)},
-		},
-	)
+	role, err := storetest.SaveRole(context.Background(), persistence, &model.Role{
+		Name: "academic_reader", DisplayName: "Academic reader",
+		Permissions: []string{string(model.ActionAcademicUnitView)},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.RoleBinding().Save(
-		context.Background(),
-		&model.RoleBinding{
-			UserID: user.ID, RoleID: role.ID,
-			ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
-		},
-	); err != nil {
+	if _, err := storetest.SaveRoleBinding(context.Background(), persistence, &model.RoleBinding{
+		UserID: user.ID, RoleID: role.ID,
+		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
+	}); err != nil {
 		t.Fatal(err)
 	}
 	login := performJSONRequest(
@@ -678,7 +663,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.User().SetDisabledWithAudit(context.Background(), storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+	if _, err := persistence.User().SetDisabled(context.Background(), storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID, ExpectedRevision: currentUser.Revision, Disabled: true,
 		ChangedAt: disabledAt, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: auditAttempt.ID, AuditAt: disabledAt,

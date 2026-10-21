@@ -47,8 +47,8 @@ type ArchiveAcademicUnitCommand struct {
 type academicUnitCommandStore interface {
 	Create(context.Context, *store.AcademicUnitCreation) (*model.AcademicUnit, error)
 	Get(context.Context, model.AcademicUnitID) (*model.AcademicUnit, error)
-	UpdateWithAudit(context.Context, *store.AcademicUnitUpdate) (*model.AcademicUnit, error)
-	ArchiveWithAudit(context.Context, *store.AcademicUnitArchive) (*model.AcademicUnit, error)
+	Update(context.Context, *store.AcademicUnitUpdate) (*model.AcademicUnit, error)
+	Archive(context.Context, *store.AcademicUnitArchive) (*model.AcademicUnit, error)
 }
 
 type academicUnitCommandEffects interface {
@@ -308,7 +308,7 @@ func (s *academicUnitCommandService) UpdateAcademicUnit(
 		},
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnit, error) {
-			return s.store.UpdateWithAudit(ctx, &store.AcademicUnitUpdate{
+			return s.store.Update(ctx, &store.AcademicUnitUpdate{
 				Unit: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
@@ -357,7 +357,7 @@ func (s *academicUnitCommandService) ArchiveAcademicUnit(
 		},
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnit, error) {
-			return s.store.ArchiveWithAudit(ctx, &store.AcademicUnitArchive{
+			return s.store.Archive(ctx, &store.AcademicUnitArchive{
 				ExpectedRevision: current.Revision,
 				ID:               command.ID, ArchiveAt: reference.MutationAtMillis,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,

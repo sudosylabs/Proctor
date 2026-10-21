@@ -47,7 +47,7 @@ func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 	if !errors.As(err, &conflict) {
 		t.Fatalf("duplicate active membership error = %v", err)
 	}
-	ended, err := ss.AcademicUnitMember().End(ctx, saved.ID, saved.Revision, start+10)
+	ended, err := EndAcademicUnitMember(ctx, ss, saved.ID, saved.Revision, start+10)
 	requireNoError(t, err)
 	if ended.EndsAt.Millis() != start+10 {
 		t.Fatalf("End() = %#v", ended)
@@ -76,15 +76,15 @@ func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 	endAt := model.TimeFromMillis(start + 20)
 	endNotice := classMemberPreparedMail(t, &model.ClassMember{UserID: auditedUser.ID},
 		model.MailTemplateAcademicUnitAssignmentEnded, endAt)
-	endedAudited, err := ss.AcademicUnitMember().EndWithAudit(ctx, &store.AcademicUnitMemberEnd{ID: created.ID,
+	endedAudited, err := ss.AcademicUnitMember().End(ctx, &store.AcademicUnitMemberEnd{ID: created.ID,
 		ExpectedRevision: created.Revision, ExpectedRecipientRevision: auditedUser.Revision, Notice: endNotice,
 		EndAt: start + 20, AuditEventID: endAttempt.ID, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	requireNoError(t, requireClassMemberMail(t, ctx, ss, endNotice, model.MailTemplateAcademicUnitAssignmentEnded))
 	if endedAudited.Revision != created.Revision+1 {
-		t.Fatalf("EndWithAudit() = %#v", endedAudited)
+		t.Fatalf("End() = %#v", endedAudited)
 	}
-	if _, err := ss.AcademicUnitMember().End(ctx, created.ID, created.Revision, start+21); !store.IsConflict(err) {
+	if _, err := EndAcademicUnitMember(ctx, ss, created.ID, created.Revision, start+21); !store.IsConflict(err) {
 		t.Fatalf("stale End() error = %v", err)
 	}
 }
@@ -140,7 +140,7 @@ func testAcademicUnitMemberEndBeforeModification(t *testing.T, ss store.Store) {
 	})
 	requireNoError(t, err)
 	endAt := now - 1_000_000
-	ended, err := ss.AcademicUnitMember().End(ctx, saved.ID, saved.Revision, endAt)
+	ended, err := EndAcademicUnitMember(ctx, ss, saved.ID, saved.Revision, endAt)
 	requireNoError(t, err)
 	if ended.EndsAt.Millis() != endAt || !ended.UpdatedAt.Equal(saved.UpdatedAt) {
 		t.Fatalf("End(before creation) = %#v, created %#v", ended, saved)

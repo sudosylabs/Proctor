@@ -100,7 +100,7 @@ func testPersonalAccessTokenConcurrentReplay(t *testing.T, ss store.Store) {
 		preparation := preparePersonalAccessTokenMutation(t, ctx, ss, user.ID, token.ID.String(), store.PersonalAccessTokenMutationRevoke, token.Auditable())
 		notice := personalAccessTokenNoticeFixture(t, user.ID, model.MailTemplateIdentityPersonalAccessTokenRevoked, preparation.ActionAt, token.ExpiresAt)
 		go func() {
-			result, transitionErr := ss.PersonalAccessToken().RevokeWithAudit(ctx, &store.PersonalAccessTokenRevocation{
+			result, transitionErr := ss.PersonalAccessToken().Revoke(ctx, &store.PersonalAccessTokenRevocation{
 				ID: token.ID, UserID: user.ID, PreparationID: preparation.ID, Notice: notice,
 			})
 			revokeResults <- transitionResult{result: result, err: transitionErr}
@@ -235,14 +235,14 @@ func testPersonalAccessTokenAtomicSecurityNotices(t *testing.T, ss store.Store) 
 	}
 
 	revokePreparation := preparePersonalAccessTokenMutation(t, ctx, ss, user.ID, created.ID.String(), store.PersonalAccessTokenMutationRevoke, enabled.Auditable())
-	revokedResult, err := ss.PersonalAccessToken().RevokeWithAudit(ctx, &store.PersonalAccessTokenRevocation{
+	revokedResult, err := ss.PersonalAccessToken().Revoke(ctx, &store.PersonalAccessTokenRevocation{
 		ID: created.ID, UserID: user.ID, PreparationID: revokePreparation.ID,
 		Notice: personalAccessTokenNoticeFixture(t, user.ID, model.MailTemplateIdentityPersonalAccessTokenRevoked, revokePreparation.ActionAt, created.ExpiresAt),
 	})
 	requireNoError(t, err)
 	revoked := revokedResult.Token
 	if !revoked.RevokedAt.Valid {
-		t.Fatalf("RevokeWithAudit() = %#v", revoked)
+		t.Fatalf("Revoke() = %#v", revoked)
 	}
 }
 
@@ -310,7 +310,7 @@ func changePersonalAccessTokenStateWithNotice(t *testing.T, ctx context.Context,
 func revokePersonalAccessTokenWithNotice(t *testing.T, ctx context.Context, ss store.Store, token *model.PersonalAccessToken, userID model.UserID) (*model.PersonalAccessToken, error) {
 	t.Helper()
 	preparation := preparePersonalAccessTokenMutation(t, ctx, ss, userID, token.ID.String(), store.PersonalAccessTokenMutationRevoke, token.Auditable())
-	result, err := ss.PersonalAccessToken().RevokeWithAudit(ctx, &store.PersonalAccessTokenRevocation{
+	result, err := ss.PersonalAccessToken().Revoke(ctx, &store.PersonalAccessTokenRevocation{
 		ID: token.ID, UserID: userID, PreparationID: preparation.ID,
 		Notice: personalAccessTokenNoticeFixture(t, userID, model.MailTemplateIdentityPersonalAccessTokenRevoked, preparation.ActionAt, token.ExpiresAt),
 	})
@@ -382,7 +382,7 @@ func testPersonalAccessTokenRejectsDisabledAccount(t *testing.T, ss store.Store)
 	requireNoError(t, err)
 	at := model.MillisFromTime(token.CreatedAt) + 10
 	audit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
-	_, err = ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+	_, err = ss.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID, ExpectedRevision: user.Revision, Disabled: true,
 		ChangedAt: at, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: audit.ID, AuditAt: at,

@@ -110,27 +110,6 @@ func (s SQLProgrammeStore) createProgramme(ctx context.Context, candidate *model
 	})
 }
 
-func (s SQLProgrammeStore) Save(ctx context.Context, programme *model.Programme) (*model.Programme, error) {
-	if programme == nil {
-		return nil, store.NewErrInvalidInput("programme", "value", nil)
-	}
-	if !programme.ID.IsZero() {
-		return nil, store.NewErrInvalidInput("programme", "id", programme.ID.String())
-	}
-
-	id, err := model.ParseProgrammeID(model.NewId())
-	if err != nil {
-		return nil, err
-	}
-	candidate := *programme
-	candidate.PrepareCreate(id, model.NowUTC())
-	if err := candidate.Validate(); err != nil {
-		return nil, store.NewErrInvalidInput("programme", "value", nil).Wrap(err)
-	}
-
-	return s.createProgramme(ctx, &candidate, nil)
-}
-
 func (s SQLProgrammeStore) Get(ctx context.Context, id model.ProgrammeID) (*model.Programme, error) {
 	var row programmeRow
 	query := s.programmesQuery.Where(sq.Eq{
@@ -204,19 +183,6 @@ func (s SQLProgrammeStore) SearchByAcademicUnit(ctx context.Context, academicUni
 	return result, nil
 }
 
-func (s SQLProgrammeStore) Update(ctx context.Context, programme *model.Programme) (*model.Programme, error) {
-	if programme == nil {
-		return nil, store.NewErrInvalidInput("programme", "value", nil)
-	}
-	candidate := *programme
-	candidate.PrepareUpdate(model.NowUTC())
-	if err := candidate.Validate(); err != nil {
-		return nil, store.NewErrInvalidInput("programme", "value", nil).Wrap(err)
-	}
-
-	return s.updateProgramme(ctx, &candidate, "", nil)
-}
-
 func (s SQLProgrammeStore) updateProgramme(ctx context.Context, candidate *model.Programme, expectedOwner string, audit *academicMutationAudit) (*model.Programme, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "programme update", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Programme, error) {
 		if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
@@ -259,7 +225,7 @@ func (s SQLProgrammeStore) updateProgramme(ctx context.Context, candidate *model
 	})
 }
 
-func (s SQLProgrammeStore) UpdateWithAudit(
+func (s SQLProgrammeStore) Update(
 	ctx context.Context,
 	input *store.ProgrammeUpdate,
 ) (*model.Programme, error) {
@@ -274,14 +240,7 @@ func (s SQLProgrammeStore) UpdateWithAudit(
 	return s.updateProgramme(ctx, &candidate, candidate.AcademicUnitID.String(), &academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt})
 }
 
-func (s SQLProgrammeStore) Archive(ctx context.Context, id model.ProgrammeID, archiveAt int64) (*model.Programme, error) {
-	if archiveAt <= 0 {
-		return nil, store.NewErrInvalidInput("programme", "archived_at", archiveAt)
-	}
-	return s.archiveProgramme(ctx, id, archiveAt, 0, nil)
-}
-
-func (s SQLProgrammeStore) ArchiveWithAudit(
+func (s SQLProgrammeStore) Archive(
 	ctx context.Context,
 	input *store.ProgrammeArchive,
 ) (*model.Programme, error) {
@@ -413,3 +372,19 @@ func (row programmeRow) model() (*model.Programme, error) {
 }
 
 var _ store.ProgrammeStore = (*SQLProgrammeStore)(nil)
+
+// SeedUpdate is an unaudited fixture write that may also change what the
+// audited Update forbids (moving the owner, or editing a bound Role); production
+// code never calls it, which an architecture test enforces.
+func (s SQLProgrammeStore) SeedUpdate(ctx context.Context, programme *model.Programme) (*model.Programme, error) {
+	if programme == nil {
+		return nil, store.NewErrInvalidInput("programme", "value", nil)
+	}
+	candidate := *programme
+	candidate.PrepareUpdate(model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("programme", "value", nil).Wrap(err)
+	}
+
+	return s.updateProgramme(ctx, &candidate, "", nil)
+}

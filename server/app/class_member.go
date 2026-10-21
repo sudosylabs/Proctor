@@ -61,8 +61,8 @@ type classMemberStore interface {
 	Get(context.Context, model.ClassMemberID) (*model.ClassMember, error)
 	ListByClass(context.Context, model.ClassID, int64) ([]*model.ClassMember, error)
 	ListPageByClass(context.Context, store.ClassMemberPageOptions) (*store.ClassMemberPage, error)
-	EnrollWithAudit(context.Context, *store.ClassMemberEnrollment) (*store.ClassEnrollmentResult, error)
-	EndWithAudit(context.Context, *store.ClassMemberEnd) (*model.ClassMember, error)
+	Enroll(context.Context, *store.ClassMemberEnrollment) (*store.ClassEnrollmentResult, error)
+	End(context.Context, *store.ClassMemberEnd) (*model.ClassMember, error)
 	ListActiveByUser(context.Context, model.UserID, int64) ([]*model.ClassMember, error)
 }
 
@@ -257,7 +257,7 @@ func (s *classMemberService) EnrollClassMember(ctx context.Context, invocation I
 					if retainedPrevious != nil {
 						input.ExpectedPreviousID = retainedPrevious.ID
 					}
-					value, storeErr := s.store.EnrollWithAudit(ctx, input)
+					value, storeErr := s.store.Enroll(ctx, input)
 					freshMutation = storeErr == nil && !input.Replayed && !input.NoOp
 					if command.batchReplayed != nil {
 						*command.batchReplayed = input.Replayed || input.NoOp
@@ -403,7 +403,7 @@ func (s *classMemberService) EnrollClassMember(ctx context.Context, invocation I
 					Notice:       notice,
 					AuditEventID: destinationReference.ID, AuditAt: destinationReference.MutationAtMillis, Command: idempotency,
 				}
-				value, storeErr := s.store.EnrollWithAudit(ctx, input)
+				value, storeErr := s.store.Enroll(ctx, input)
 				freshMutation = storeErr == nil && !input.Replayed && !input.NoOp
 				if command.batchReplayed != nil {
 					*command.batchReplayed = input.Replayed || input.NoOp
@@ -428,7 +428,7 @@ func (s *classMemberService) EnrollClassMember(ctx context.Context, invocation I
 						AuditEventID: destinationReference.ID, PreviousAuditEventID: sourceReference.ID,
 						AuditAt: destinationReference.MutationAtMillis, Command: idempotency,
 					}
-					value, storeErr := s.store.EnrollWithAudit(ctx, input)
+					value, storeErr := s.store.Enroll(ctx, input)
 					freshMutation = storeErr == nil && !input.Replayed && !input.NoOp
 					if command.batchReplayed != nil {
 						*command.batchReplayed = input.Replayed || input.NoOp
@@ -475,7 +475,7 @@ func (s *classMemberService) EndClassMember(ctx context.Context, invocation Invo
 			func() time.Time { return at }, func(ctx context.Context, reference mutationAttemptReference) (*model.ClassMember, error) {
 				input := &store.ClassMemberEnd{ID: id, ExpectedRevision: 1, ExpectedRecipientRevision: 1,
 					EndAt: reference.MutationAtMillis, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency}
-				value, storeErr := s.store.EndWithAudit(ctx, input)
+				value, storeErr := s.store.End(ctx, input)
 				freshMutation = storeErr == nil && !input.Replayed && !input.NoOp
 				if command.batchReplayed != nil {
 					*command.batchReplayed = input.Replayed || input.NoOp
@@ -549,7 +549,7 @@ func (s *classMemberService) EndClassMember(ctx context.Context, invocation Invo
 				Notice:       &store.PreparedMail{Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job},
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
 			}
-			value, storeErr := s.store.EndWithAudit(ctx, input)
+			value, storeErr := s.store.End(ctx, input)
 			freshMutation = storeErr == nil && !input.Replayed && !input.NoOp
 			if command.batchReplayed != nil {
 				*command.batchReplayed = input.Replayed || input.NoOp

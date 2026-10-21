@@ -231,10 +231,10 @@ func (authenticationUserStore) List(context.Context, store.UserListOptions) ([]*
 func (authenticationUserStore) MatchVisibility(context.Context, model.UserID, store.UserVisibilityScope) (store.UserVisibilityMatch, error) {
 	return store.UserVisibilityMatch{}, errors.New("unused")
 }
-func (authenticationUserStore) SetDisabledWithAudit(context.Context, *store.UserDisabledStateChange) (*store.UserDisabledStateResult, error) {
+func (authenticationUserStore) SetDisabled(context.Context, *store.UserDisabledStateChange) (*store.UserDisabledStateResult, error) {
 	return nil, errors.New("unused")
 }
-func (authenticationUserStore) UpdateProfileWithAudit(context.Context, *store.UserProfileUpdate) (*model.User, error) {
+func (authenticationUserStore) UpdateProfile(context.Context, *store.UserProfileUpdate) (*model.User, error) {
 	return nil, errors.New("unused")
 }
 func (authenticationUserStore) UpdateLastLogin(context.Context, model.UserID, int64) error {
@@ -268,11 +268,11 @@ func (authenticationPasswordStore) Save(context.Context, *model.PasswordCredenti
 	return nil, errors.New("unused")
 }
 
-func (authenticationPasswordStore) EnrollWithAudit(context.Context, *store.PasswordCredentialEnrollment) (*store.AuthenticationMethodMutationResult, error) {
+func (authenticationPasswordStore) Enroll(context.Context, *store.PasswordCredentialEnrollment) (*store.AuthenticationMethodMutationResult, error) {
 	return nil, errors.New("unused")
 }
 
-func (authenticationPasswordStore) RemoveWithAudit(context.Context, *store.PasswordCredentialRemoval) (*store.AuthenticationMethodMutationResult, error) {
+func (authenticationPasswordStore) Remove(context.Context, *store.PasswordCredentialRemoval) (*store.AuthenticationMethodMutationResult, error) {
 	return nil, errors.New("unused")
 }
 
@@ -343,7 +343,7 @@ func (s authenticationSessionStore) UpdateActivity(_ context.Context, sessionID 
 	return nil
 }
 
-func (s authenticationSessionStore) Revoke(_ context.Context, sessionID model.SessionID, _ model.UserID, revokedAt int64, reason model.SessionRevocationReason) ([]string, error) {
+func (s authenticationSessionStore) Withdraw(_ context.Context, sessionID model.SessionID, _ model.UserID, revokedAt int64, reason model.SessionRevocationReason) ([]string, error) {
 	return s.revoke(sessionID.String(), model.TimeFromMillis(revokedAt), reason)
 }
 
@@ -402,7 +402,7 @@ func (authenticationSessionStore) ListByUser(context.Context, model.UserID) ([]*
 func (authenticationSessionStore) ListActiveByUser(context.Context, model.UserID, time.Time) ([]*model.Session, error) {
 	return nil, errors.New("unused")
 }
-func (s authenticationSessionStore) RevokeWithAudit(_ context.Context, input *store.SessionRevocation) (*store.SessionRevocationResult, error) {
+func (s authenticationSessionStore) Revoke(_ context.Context, input *store.SessionRevocation) (*store.SessionRevocationResult, error) {
 	session := s.root.sessions[input.SessionID.String()]
 	if session == nil || session.UserID != input.UserID || session.RevokedAt.Valid {
 		if input.Reason == model.SessionRevocationUserLogout {
@@ -417,10 +417,7 @@ func (s authenticationSessionStore) RevokeWithAudit(_ context.Context, input *st
 	cloned := *session
 	return &store.SessionRevocationResult{Session: &cloned, TokenHashes: hashes}, nil
 }
-func (authenticationSessionStore) RevokeAllForUser(context.Context, model.UserID, int64, model.SessionRevocationReason) ([]*model.Session, []string, error) {
-	return nil, nil, errors.New("unused")
-}
-func (authenticationSessionStore) RevokeAllForUserWithAudit(context.Context, *store.UserSessionsRevocation) (*store.UserSessionsRevocationResult, error) {
+func (authenticationSessionStore) RevokeAllForUser(context.Context, *store.UserSessionsRevocation) (*store.UserSessionsRevocationResult, error) {
 	return nil, errors.New("unused")
 }
 

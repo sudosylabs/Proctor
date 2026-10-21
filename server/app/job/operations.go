@@ -178,7 +178,7 @@ func (r *Engine) Cancel(ctx context.Context, target ControlTarget, audit AuditRe
 	if target.kind != controlCancel || !validAuditReference(audit) {
 		return View{}, ErrCancelUnsupported
 	}
-	record, err := r.jobs.CancelWithAudit(ctx, &store.JobMutation{ID: target.id, ExpectedRevision: target.revision, AuditEventID: audit.EventID, AuditAt: audit.At})
+	record, err := r.jobs.Cancel(ctx, &store.JobMutation{ID: target.id, ExpectedRevision: target.revision, AuditEventID: audit.EventID, AuditAt: audit.At})
 	if err != nil {
 		return View{}, err
 	}
@@ -189,7 +189,7 @@ func (r *Engine) Retry(ctx context.Context, target ControlTarget, audit AuditRef
 	if target.kind != controlRetry || !validAuditReference(audit) {
 		return View{}, ErrRetryUnsupported
 	}
-	record, err := r.jobs.RetryWithAudit(ctx, &store.JobMutation{ID: target.id, ExpectedRevision: target.revision, AuditEventID: audit.EventID, AuditAt: audit.At})
+	record, err := r.jobs.Retry(ctx, &store.JobMutation{ID: target.id, ExpectedRevision: target.revision, AuditEventID: audit.EventID, AuditAt: audit.At})
 	if err != nil {
 		return View{}, err
 	}

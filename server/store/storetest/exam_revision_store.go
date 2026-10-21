@@ -92,7 +92,7 @@ func testExamRevisionStore(t *testing.T, ss store.Store, probe *ExamRevisionRete
 	capacity := model.DefaultExamCapacityPolicy()
 	capacity.WorkspaceMaximumEntries = 1
 	institution.ExamCapacity = capacity
-	institution, err = ss.Institution().Update(ctx, institution)
+	institution, err = UpdateInstitution(ctx, ss, institution)
 	requireNoError(t, err)
 	capacityInput := examRevisionPublication(t, ctx, ss, examID, creator.ID, unit.ID, 4, at.Add(3750*time.Millisecond))
 	_, err = ss.ExamRevision().Publish(ctx, capacityInput,
@@ -102,7 +102,7 @@ func testExamRevisionStore(t *testing.T, ss store.Store, probe *ExamRevisionRete
 		t.Fatalf("publication capacity error=%v", err)
 	}
 	institution.ExamCapacity = model.DefaultExamCapacityPolicy()
-	institution, err = ss.Institution().Update(ctx, institution)
+	institution, err = UpdateInstitution(ctx, ss, institution)
 	requireNoError(t, err)
 
 	firstInput := examRevisionPublication(t, ctx, ss, examID, creator.ID, unit.ID, 4, at.Add(4*time.Second))
@@ -145,7 +145,7 @@ func testExamRevisionStore(t *testing.T, ss store.Store, probe *ExamRevisionRete
 	alteredCapacity.ResourceMaximumCount = 20
 	alteredCapacity.WorkspaceMaximumEntries = 750
 	institution.ExamCapacity = alteredCapacity
-	institution, err = ss.Institution().Update(ctx, institution)
+	_, err = UpdateInstitution(ctx, ss, institution)
 	requireNoError(t, err)
 	replacement := reserveExamResource(t, ctx, ss, examID, creator.ID, resourceResult.Value.Resource.ID, "Reference", 0, 5, at.Add(7*time.Second), model.ExamResourceMediaText, resourceResult.Value)
 	replacedResource, err := ss.ExamResource().FinalizeUpload(ctx, replacement.finalization, examCommand(creator.ID, "exam.resource.replace.v1", "revision-resource-replace", "revision-resource-replace-command"))

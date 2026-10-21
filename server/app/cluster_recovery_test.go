@@ -60,7 +60,7 @@ func TestSessionRevocationWithoutClusterFanoutRejectsWithWarmPeerCache(t *testin
 	if sessionID == "" {
 		t.Fatal("session not found")
 	}
-	hashes, err := storeFake.Session().Revoke(ctx, model.SessionID(sessionID), user.ID, time.Now().UnixMilli(), model.SessionRevocationUserSession)
+	hashes, err := storeFake.Session().Withdraw(ctx, model.SessionID(sessionID), user.ID, time.Now().UnixMilli(), model.SessionRevocationInactiveUser)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -395,10 +395,7 @@ func (recoveryInstitutionStore) Save(context.Context, *model.Institution) (*mode
 func (recoveryInstitutionStore) GetSingleton(context.Context) (*model.Institution, error) {
 	return nil, errors.New("unused")
 }
-func (recoveryInstitutionStore) Update(context.Context, *model.Institution) (*model.Institution, error) {
-	return nil, errors.New("unused")
-}
-func (recoveryInstitutionStore) UpdateWithAudit(context.Context, *store.InstitutionUpdate) (*model.Institution, error) {
+func (recoveryInstitutionStore) Update(context.Context, *store.InstitutionUpdate) (*model.Institution, error) {
 	return nil, errors.New("unused")
 }
 func (recoveryInstitutionStore) Archive(context.Context, model.InstitutionID, int64) error {
@@ -423,10 +420,13 @@ func (s recoveryRoleStore) GetByIDs(_ context.Context, ids []model.RoleID) ([]*m
 	}
 	return out, nil
 }
-func (recoveryRoleStore) Save(context.Context, *model.Role) (*model.Role, error) {
+func (recoveryRoleStore) Save(context.Context, *store.RoleCreation) (*model.Role, error) {
 	return nil, errors.New("unused")
 }
-func (recoveryRoleStore) SaveWithAudit(context.Context, *store.RoleCreation) (*model.Role, error) {
+func (recoveryRoleStore) SeedUpdate(context.Context, *model.Role) (*model.Role, error) {
+	return nil, errors.New("unused")
+}
+func (recoveryRoleStore) SeedBuiltIn(context.Context, *model.Role) (*model.Role, error) {
 	return nil, errors.New("unused")
 }
 func (recoveryRoleStore) Get(context.Context, model.RoleID) (*model.Role, error) {
@@ -438,16 +438,10 @@ func (recoveryRoleStore) GetByName(context.Context, string) (*model.Role, error)
 func (recoveryRoleStore) List(context.Context) ([]*model.Role, error) {
 	return nil, errors.New("unused")
 }
-func (recoveryRoleStore) Update(context.Context, *model.Role) (*model.Role, error) {
+func (recoveryRoleStore) Update(context.Context, *store.RoleUpdate) (*model.Role, error) {
 	return nil, errors.New("unused")
 }
-func (recoveryRoleStore) UpdateWithAudit(context.Context, *store.RoleUpdate) (*model.Role, error) {
-	return nil, errors.New("unused")
-}
-func (recoveryRoleStore) Archive(context.Context, model.RoleID, int64) (*model.Role, error) {
-	return nil, errors.New("unused")
-}
-func (recoveryRoleStore) ArchiveWithAudit(context.Context, *store.RoleArchive) (*model.Role, error) {
+func (recoveryRoleStore) Archive(context.Context, *store.RoleArchive) (*model.Role, error) {
 	return nil, errors.New("unused")
 }
 
@@ -467,10 +461,7 @@ func (s recoveryRoleBindingStore) ListActiveByUser(_ context.Context, userID mod
 	}
 	return out, nil
 }
-func (recoveryRoleBindingStore) Save(context.Context, *model.RoleBinding) (*model.RoleBinding, error) {
-	return nil, errors.New("unused")
-}
-func (recoveryRoleBindingStore) SaveWithAudit(context.Context, *store.RoleBindingCreation) (*model.RoleBinding, error) {
+func (recoveryRoleBindingStore) Save(context.Context, *store.RoleBindingCreation) (*model.RoleBinding, error) {
 	return nil, errors.New("unused")
 }
 func (recoveryRoleBindingStore) Get(context.Context, model.RoleBindingID) (*model.RoleBinding, error) {
@@ -485,9 +476,6 @@ func (recoveryRoleBindingStore) ListVisibleByUser(context.Context, model.UserID,
 func (recoveryRoleBindingStore) ListByScope(context.Context, model.RoleScopeType, string) ([]*model.RoleBinding, error) {
 	return nil, errors.New("unused")
 }
-func (recoveryRoleBindingStore) End(context.Context, model.RoleBindingID, int64) (*model.RoleBinding, error) {
-	return nil, errors.New("unused")
-}
-func (recoveryRoleBindingStore) EndWithAudit(context.Context, *store.RoleBindingEnd) (*model.RoleBinding, error) {
+func (recoveryRoleBindingStore) End(context.Context, *store.RoleBindingEnd) (*model.RoleBinding, error) {
 	return nil, errors.New("unused")
 }

@@ -31,7 +31,7 @@ func testAcademicUnitMemberPaging(t *testing.T, ss store.Store) {
 		member, err := ss.AcademicUnitMember().Save(ctx, candidate)
 		requireNoError(t, err)
 		if i == 0 {
-			_, err := ss.AcademicUnitMember().End(ctx, member.ID, member.Revision, at+10)
+			_, err := EndAcademicUnitMember(ctx, ss, member.ID, member.Revision, at+10)
 			requireNoError(t, err)
 			next := &model.AcademicUnitMember{AcademicUnitID: scope.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(at + 10)}
 			_, err = ss.AcademicUnitMember().Save(ctx, next)
@@ -115,14 +115,14 @@ func testClassMemberPaging(t *testing.T, ss store.Store) {
 			startsAt = at + 100
 		}
 		candidate := &model.ClassMember{ClassID: scope.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(startsAt)}
-		enrolled, err := ss.ClassMember().Enroll(ctx, candidate)
+		enrolled, err := ss.ClassMember().SeedEnroll(ctx, candidate)
 		requireNoError(t, err)
 		member := enrolled.Membership
 		if i == 0 {
-			_, err := ss.ClassMember().End(ctx, member.ID, member.Revision, at+10)
+			_, err := ss.ClassMember().SeedEnd(ctx, member.ID, member.Revision, at+10)
 			requireNoError(t, err)
 			next := &model.ClassMember{ClassID: scope.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(at + 10)}
-			_, err = ss.ClassMember().Enroll(ctx, next)
+			_, err = ss.ClassMember().SeedEnroll(ctx, next)
 			requireNoError(t, err)
 		}
 	}
@@ -130,7 +130,7 @@ func testClassMemberPaging(t *testing.T, ss store.Store) {
 	outsideUser := saveUser(t, ctx, ss)
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserID: outsideUser.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(at - 1)})
 	requireNoError(t, err)
-	_, err = ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassID: outsideClass.ID, UserID: outsideUser.ID, StartsAt: model.TimeFromMillis(at)})
+	_, err = ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{ClassID: outsideClass.ID, UserID: outsideUser.ID, StartsAt: model.TimeFromMillis(at)})
 	requireNoError(t, err)
 
 	for _, activeAt := range []int64{0, at, at + 10, at + 200} {

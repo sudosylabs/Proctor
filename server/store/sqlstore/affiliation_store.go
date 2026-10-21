@@ -214,19 +214,7 @@ func (s SQLAffiliationStore) ListActiveByUser(ctx context.Context, userID model.
 		OrderBy("affiliations.kind", "affiliations.id"))
 }
 
-func (s SQLAffiliationStore) End(ctx context.Context, id model.AffiliationID, expectedRevision, endAt int64) (*model.Affiliation, error) {
-	if !id.IsValid() || expectedRevision <= 0 || endAt <= 0 {
-		return nil, store.NewErrInvalidInput("affiliation", "end", nil)
-	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "affiliation end", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Affiliation, error) {
-		if err := lockAffiliationLifecycle(ctx, tx); err != nil {
-			return nil, err
-		}
-		return s.endAffiliation(ctx, tx, id, expectedRevision, endAt)
-	})
-}
-
-func (s SQLAffiliationStore) EndWithAudit(ctx context.Context, input *store.AffiliationEnd) (*model.Affiliation, error) {
+func (s SQLAffiliationStore) End(ctx context.Context, input *store.AffiliationEnd) (*model.Affiliation, error) {
 	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || input.EndAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("affiliation", "end", nil)
 	}

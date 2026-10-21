@@ -164,28 +164,6 @@ func createAcademicUnit(ctx context.Context, tx *sqlxTxWrapper, candidate *model
 	return candidate, nil
 }
 
-func (s SQLAcademicUnitStore) Save(ctx context.Context, unit *model.AcademicUnit) (*model.AcademicUnit, error) {
-	if unit == nil {
-		return nil, store.NewErrInvalidInput("academic_unit", "value", nil)
-	}
-	if !unit.ID.IsZero() {
-		return nil, store.NewErrInvalidInput("academic_unit", "id", unit.ID.String())
-	}
-	id, err := model.ParseAcademicUnitID(model.NewId())
-	if err != nil {
-		return nil, err
-	}
-	candidate := *unit
-	candidate.PrepareCreate(id, model.NowUTC())
-	if err := candidate.Validate(); err != nil {
-		return nil, store.NewErrInvalidInput("academic_unit", "value", nil).Wrap(err)
-	}
-
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "academic unit creation", func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicUnit, error) {
-		return createAcademicUnit(ctx, tx, &candidate, nil)
-	})
-}
-
 func (s SQLAcademicUnitStore) Get(ctx context.Context, id model.AcademicUnitID) (*model.AcademicUnit, error) {
 	var row academicUnitRow
 	query := s.academicUnitsQuery.Where(sq.Eq{
@@ -301,7 +279,7 @@ func (s SQLAcademicUnitStore) GetByName(ctx context.Context, institutionID model
 	return row.model()
 }
 
-func (s SQLAcademicUnitStore) UpdateWithAudit(
+func (s SQLAcademicUnitStore) Update(
 	ctx context.Context,
 	input *store.AcademicUnitUpdate,
 ) (*model.AcademicUnit, error) {
@@ -316,18 +294,6 @@ func (s SQLAcademicUnitStore) UpdateWithAudit(
 	return s.updateAcademicUnit(ctx, &candidate, &academicMutationAudit{
 		eventID: input.AuditEventID, at: input.AuditAt,
 	})
-}
-
-func (s SQLAcademicUnitStore) Update(ctx context.Context, unit *model.AcademicUnit) (*model.AcademicUnit, error) {
-	if unit == nil {
-		return nil, store.NewErrInvalidInput("academic_unit", "value", nil)
-	}
-	candidate := *unit
-	candidate.PrepareUpdate(model.NowUTC())
-	if err := candidate.Validate(); err != nil {
-		return nil, store.NewErrInvalidInput("academic_unit", "value", nil).Wrap(err)
-	}
-	return s.updateAcademicUnit(ctx, &candidate, nil)
 }
 
 func (s SQLAcademicUnitStore) updateAcademicUnit(
@@ -383,7 +349,7 @@ func (s SQLAcademicUnitStore) updateAcademicUnit(
 	})
 }
 
-func (s SQLAcademicUnitStore) ArchiveWithAudit(
+func (s SQLAcademicUnitStore) Archive(
 	ctx context.Context,
 	input *store.AcademicUnitArchive,
 ) (*model.AcademicUnit, error) {
@@ -395,13 +361,6 @@ func (s SQLAcademicUnitStore) ArchiveWithAudit(
 		ctx, input.ID, input.ArchiveAt, input.ExpectedRevision,
 		&academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt},
 	)
-}
-
-func (s SQLAcademicUnitStore) Archive(ctx context.Context, id model.AcademicUnitID, archiveAt int64) (*model.AcademicUnit, error) {
-	if archiveAt <= 0 {
-		return nil, store.NewErrInvalidInput("academic_unit", "archived_at", archiveAt)
-	}
-	return s.archiveAcademicUnit(ctx, id, archiveAt, 0, nil)
 }
 
 func (s SQLAcademicUnitStore) archiveAcademicUnit(

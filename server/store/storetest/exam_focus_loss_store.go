@@ -281,7 +281,7 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 		}
 
 		endedAt := model.GetMillis()
-		_, err = ss.ClassMember().End(ctx, fixture.membership.ID, fixture.membership.Revision, endedAt)
+		_, err = ss.ClassMember().SeedEnd(ctx, fixture.membership.ID, fixture.membership.Revision, endedAt)
 		requireNoError(t, err)
 		time.Sleep(100 * time.Millisecond)
 		accepted := recordFocusLoss(t, ctx, ss, fixture, access, 1, 500, "")

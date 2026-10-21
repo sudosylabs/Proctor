@@ -131,7 +131,7 @@ func (s *pictureStoreFake) DiscardProfilePictureUpload(context.Context, *store.P
 	}
 	return nil
 }
-func (s *pictureStoreFake) RemoveProfilePictureWithAudit(_ context.Context, input *store.ProfilePictureRemoval) (*model.User, error) {
+func (s *pictureStoreFake) RemoveProfilePicture(_ context.Context, input *store.ProfilePictureRemoval) (*model.User, error) {
 	s.removal = input
 	if s.events != nil {
 		*s.events = append(*s.events, "remove-with-audit")

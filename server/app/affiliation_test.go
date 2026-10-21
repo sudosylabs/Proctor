@@ -45,7 +45,7 @@ func (s *affiliationStoreFake) Create(_ context.Context, input *store.Affiliatio
 	s.createInput = input
 	return input.Affiliation, nil
 }
-func (s *affiliationStoreFake) EndWithAudit(_ context.Context, input *store.AffiliationEnd) (*model.Affiliation, error) {
+func (s *affiliationStoreFake) End(_ context.Context, input *store.AffiliationEnd) (*model.Affiliation, error) {
 	*s.events = append(*s.events, "store-end")
 	s.endInput = input
 	if s.endErr != nil {

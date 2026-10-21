@@ -44,14 +44,14 @@ func (s *classMemberStoreFake) ListByClass(context.Context, model.ClassID, int64
 	*s.events = append(*s.events, "list-members")
 	return nil, nil
 }
-func (s *classMemberStoreFake) EnrollWithAudit(_ context.Context, input *store.ClassMemberEnrollment) (*store.ClassEnrollmentResult, error) {
+func (s *classMemberStoreFake) Enroll(_ context.Context, input *store.ClassMemberEnrollment) (*store.ClassEnrollmentResult, error) {
 	*s.events = append(*s.events, "store-enroll")
 	s.enrollInput = input
 	input.Replayed = s.replayed
 	input.NoOp = s.noOp
 	return &store.ClassEnrollmentResult{Membership: input.Member}, nil
 }
-func (s *classMemberStoreFake) EndWithAudit(_ context.Context, input *store.ClassMemberEnd) (*model.ClassMember, error) {
+func (s *classMemberStoreFake) End(_ context.Context, input *store.ClassMemberEnd) (*model.ClassMember, error) {
 	*s.events = append(*s.events, "store-end")
 	s.endInput = input
 	ended := *s.current

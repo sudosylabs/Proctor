@@ -84,7 +84,7 @@ func testExamCatalogListAndArchive(t *testing.T, ss store.Store) {
 	if len(exact) != 2 || exact[0].AcademicUnitID != unit.ID || exact[1].AcademicUnitID != unit.ID {
 		t.Fatalf("exact-unit list = %#v", exact)
 	}
-	_, err = ss.AcademicUnitMember().End(ctx, membership.ID, membership.Revision, model.MillisFromTime(membershipBase.Add(5*time.Minute)))
+	_, err = EndAcademicUnitMember(ctx, ss, membership.ID, membership.Revision, model.MillisFromTime(membershipBase.Add(5*time.Minute)))
 	requireNoError(t, err)
 	revokedMembership, err := ss.ExamAuthoring().List(ctx, store.ExamListOptions{AcademicUnitID: unit.ID, ArchiveFilter: store.ExamArchiveAll, Limit: 50, Visibility: visibility})
 	requireNoError(t, err)

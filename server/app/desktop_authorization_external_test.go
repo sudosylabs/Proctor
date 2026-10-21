@@ -206,7 +206,7 @@ func (s *externalHandoffIdentityStore) ResolveOrProvision(context.Context, *stor
 	return &store.ExternalIdentityResolution{User: s.user, Identity: s.identity}, nil
 }
 
-func (s *externalHandoffIdentityStore) LinkWithAudit(context.Context, *store.ExternalIdentityLink) (*store.AuthenticationMethodMutationResult, error) {
+func (s *externalHandoffIdentityStore) Link(context.Context, *store.ExternalIdentityLink) (*store.AuthenticationMethodMutationResult, error) {
 	s.linkCalls++
 	return &store.AuthenticationMethodMutationResult{Identity: s.identity}, nil
 }

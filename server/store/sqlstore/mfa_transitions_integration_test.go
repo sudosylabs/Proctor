@@ -46,7 +46,7 @@ func TestMFAEnrollmentRechecksDeadlinesAfterSessionRowLock(t *testing.T) {
 			}
 			finished := make(chan error, 1)
 			go func() {
-				_, callErr := s.MFA().SavePendingWithAudit(ctx, input)
+				_, callErr := s.MFA().SavePending(ctx, input)
 				finished <- callErr
 			}()
 			pid := waitForBlockedMailQuery(t, ctx, s, blockerPID, "FROM sessions")

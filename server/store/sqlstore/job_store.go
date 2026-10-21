@@ -524,11 +524,11 @@ func (s SQLJobStore) CancellationRequested(ctx context.Context, attemptID model.
 	})
 }
 
-func (s SQLJobStore) CancelWithAudit(ctx context.Context, input *store.JobMutation) (*model.Job, error) {
+func (s SQLJobStore) Cancel(ctx context.Context, input *store.JobMutation) (*model.Job, error) {
 	return s.mutateOperatorJob(ctx, input, "cancel", func(job *model.Job, at time.Time) (*model.Job, error) { return job.RequestCancellation(at) })
 }
 
-func (s SQLJobStore) RetryWithAudit(ctx context.Context, input *store.JobMutation) (*model.Job, error) {
+func (s SQLJobStore) Retry(ctx context.Context, input *store.JobMutation) (*model.Job, error) {
 	return s.mutateOperatorJob(ctx, input, "retry", func(job *model.Job, at time.Time) (*model.Job, error) { return job.ExplicitRetry(at) })
 }
 

@@ -27,7 +27,7 @@ type UpdateInstitutionCommand struct {
 
 type institutionStore interface {
 	GetSingleton(context.Context) (*model.Institution, error)
-	UpdateWithAudit(context.Context, *store.InstitutionUpdate) (*model.Institution, error)
+	Update(context.Context, *store.InstitutionUpdate) (*model.Institution, error)
 }
 
 type institutionService struct {
@@ -111,7 +111,7 @@ func (s *institutionService) UpdateInstitution(
 		},
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Institution, error) {
-			return s.store.UpdateWithAudit(ctx, &store.InstitutionUpdate{
+			return s.store.Update(ctx, &store.InstitutionUpdate{
 				Institution: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},

@@ -326,7 +326,7 @@ func (s SQLPersonalAccessTokenStore) ChangeState(
 	})
 }
 
-func (s SQLPersonalAccessTokenStore) RevokeWithAudit(
+func (s SQLPersonalAccessTokenStore) Revoke(
 	ctx context.Context,
 	input *store.PersonalAccessTokenRevocation,
 ) (*store.PersonalAccessTokenMutationResult, error) {

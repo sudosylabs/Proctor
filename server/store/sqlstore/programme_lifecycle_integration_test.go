@@ -18,6 +18,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 )
 
 func TestProgrammeArchiveSerializesWithLevelCreation(t *testing.T) {
@@ -28,13 +29,13 @@ func TestProgrammeArchiveSerializesWithLevelCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID, Name: "computing", DisplayName: "Computing"})
+	unit, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{InstitutionID: institution.ID, Name: "computing", DisplayName: "Computing"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	for iteration := 0; iteration < 20; iteration++ {
-		programme, err := persistence.Programme().Save(ctx, &model.Programme{AcademicUnitID: unit.ID, Name: fmt.Sprintf("programme-%d", iteration), DisplayName: "Programme"})
+		programme, err := storetest.SaveProgramme(ctx, persistence, &model.Programme{AcademicUnitID: unit.ID, Name: fmt.Sprintf("programme-%d", iteration), DisplayName: "Programme"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -54,12 +55,12 @@ func TestProgrammeArchiveSerializesWithLevelCreation(t *testing.T) {
 		go func() {
 			defer wait.Done()
 			<-start
-			_, archiveErr = persistence.Programme().ArchiveWithAudit(ctx, &store.ProgrammeArchive{ID: programme.ID, ArchiveAt: model.GetMillis(), AuditEventID: attempt.ID, AuditAt: model.GetMillis()})
+			_, archiveErr = persistence.Programme().Archive(ctx, &store.ProgrammeArchive{ID: programme.ID, ArchiveAt: model.GetMillis(), AuditEventID: attempt.ID, AuditAt: model.GetMillis()})
 		}()
 		go func() {
 			defer wait.Done()
 			<-start
-			_, levelErr = persistence.ProgrammeLevel().Save(ctx, &model.ProgrammeLevel{ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1"})
+			_, levelErr = storetest.SaveProgrammeLevel(ctx, persistence, &model.ProgrammeLevel{ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1"})
 		}()
 		close(start)
 		wait.Wait()

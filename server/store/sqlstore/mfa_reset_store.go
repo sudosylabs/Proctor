@@ -19,7 +19,7 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-func (s SQLMFAStore) ResetWithAudit(ctx context.Context, input *store.MFAAssistedReset) (*store.MFAResetResult, error) {
+func (s SQLMFAStore) Reset(ctx context.Context, input *store.MFAAssistedReset) (*store.MFAResetResult, error) {
 	if input == nil || input.Principal.Validate() != nil || input.Principal.CredentialType != model.CredentialSessionAccess || input.UserID == input.Principal.UserID || !input.UserID.IsValid() || !input.IdentityVerified || strings.TrimSpace(input.Reason) == "" || utf8.RuneCountInString(input.Reason) > 512 || strings.TrimSpace(input.VerificationReference) == "" || utf8.RuneCountInString(input.VerificationReference) > 128 || input.RecentAuthenticationTTL <= 0 || !input.AuditEventID.IsValid() {
 		return nil, store.NewErrInvalidInput("user_mfa_recovery", "reset", nil)
 	}

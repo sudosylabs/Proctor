@@ -18,7 +18,7 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-func (authenticationSessionStore) ReauthenticatePasswordWithAudit(context.Context, *store.SessionPasswordReauthentication) (*store.SessionReauthenticationResult, error) {
+func (authenticationSessionStore) ReauthenticatePassword(context.Context, *store.SessionPasswordReauthentication) (*store.SessionReauthenticationResult, error) {
 	return nil, errors.New("reauthentication is not configured by this test")
 }
 
@@ -30,7 +30,7 @@ type reauthenticationSessionStoreFake struct {
 	events *[]string
 }
 
-func (s *reauthenticationSessionStoreFake) ReauthenticatePasswordWithAudit(_ context.Context, input *store.SessionPasswordReauthentication) (*store.SessionReauthenticationResult, error) {
+func (s *reauthenticationSessionStoreFake) ReauthenticatePassword(_ context.Context, input *store.SessionPasswordReauthentication) (*store.SessionReauthenticationResult, error) {
 	s.input = input
 	*s.events = append(*s.events, "commit")
 	return s.result, s.err
@@ -99,6 +99,6 @@ func TestPasswordReauthenticationBindsCurrentIdentityAndRequiresCommit(t *testin
 	}
 }
 
-func (authenticationSessionStore) ReauthenticateExternalWithAudit(context.Context, *store.SessionExternalReauthentication) (*store.SessionReauthenticationResult, error) {
+func (authenticationSessionStore) ReauthenticateExternal(context.Context, *store.SessionExternalReauthentication) (*store.SessionReauthenticationResult, error) {
 	return nil, errors.New("external reauthentication is not configured by this test")
 }

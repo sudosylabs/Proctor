@@ -19,7 +19,7 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-func (s SQLSessionStore) ReauthenticatePasswordWithAudit(
+func (s SQLSessionStore) ReauthenticatePassword(
 	ctx context.Context,
 	input *store.SessionPasswordReauthentication,
 ) (*store.SessionReauthenticationResult, error) {
@@ -92,7 +92,7 @@ func commitSessionReauthentication(ctx context.Context, tx *sqlxTxWrapper, sessi
 	return &store.SessionReauthenticationResult{Session: session, AccessTokenHashes: hashes}, nil
 }
 
-func (s SQLSessionStore) ReauthenticateExternalWithAudit(ctx context.Context, input *store.SessionExternalReauthentication) (*store.SessionReauthenticationResult, error) {
+func (s SQLSessionStore) ReauthenticateExternal(ctx context.Context, input *store.SessionExternalReauthentication) (*store.SessionReauthenticationResult, error) {
 	if input == nil || !input.StateID.IsValid() || !model.IsValidIdentityProviderID(input.ProviderID) || input.Subject == "" || utf8.RuneCountInString(input.Subject) > model.IdentitySubjectMaxRunes || input.AuthenticatedAt.IsZero() {
 		return nil, store.NewErrInvalidInput("session", "reauthentication", nil)
 	}

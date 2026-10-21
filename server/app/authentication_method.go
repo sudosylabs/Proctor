@@ -105,7 +105,7 @@ func (s *authenticationMethodService) EnrollPassword(ctx context.Context, invoca
 		Action: model.ActionExternalIdentityManage, Resource: model.Resource{Type: model.ResourceUser, ID: userID.String()},
 		Operation: "enroll_password", Value: map[string]any{"method": "password"}}, s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.AuthenticationMethodMutationResult, error) {
-			return s.passwords.EnrollWithAudit(ctx, &store.PasswordCredentialEnrollment{
+			return s.passwords.Enroll(ctx, &store.PasswordCredentialEnrollment{
 				Credential:   &model.PasswordCredential{UserID: userID, PasswordHash: hash},
 				Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()), AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
 		}, authenticationMethodStoreErrors.Translate)
@@ -121,7 +121,7 @@ func (s *authenticationMethodService) RemovePassword(ctx context.Context, invoca
 		Action: model.ActionExternalIdentityManage, Resource: model.Resource{Type: model.ResourceUser, ID: userID.String()},
 		Operation: "remove_password", Value: map[string]any{"method": "password"}}, s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.AuthenticationMethodMutationResult, error) {
-			return s.passwords.RemoveWithAudit(ctx, &store.PasswordCredentialRemoval{UserID: userID,
+			return s.passwords.Remove(ctx, &store.PasswordCredentialRemoval{UserID: userID,
 				Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()), ChangedAt: reference.MutationAtMillis,
 				RevocationReason: model.SessionRevocationPasswordRemoved, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
 		}, authenticationMethodStoreErrors.Translate)
@@ -143,7 +143,7 @@ func (s *authenticationMethodService) UnlinkExternalIdentity(ctx context.Context
 		Action: model.ActionExternalIdentityManage, Resource: model.Resource{Type: model.ResourceUser, ID: userID.String()},
 		Operation: "unlink_provider", Value: map[string]any{"identity_id": id.String()}}, s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.AuthenticationMethodMutationResult, error) {
-			return s.identities.UnlinkWithAudit(ctx, &store.ExternalIdentityUnlink{ID: id, UserID: userID,
+			return s.identities.Unlink(ctx, &store.ExternalIdentityUnlink{ID: id, UserID: userID,
 				Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()), ChangedAt: reference.MutationAtMillis,
 				RevocationReason: model.SessionRevocationExternalIdentityUnlinked, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
 		}, authenticationMethodStoreErrors.Translate)

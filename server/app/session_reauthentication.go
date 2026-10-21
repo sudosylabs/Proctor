@@ -80,7 +80,7 @@ func (s *authenticationService) ReauthenticatePassword(ctx context.Context, invo
 		if err != nil {
 			return nil, err
 		}
-		return s.sessions.ReauthenticatePasswordWithAudit(ctx, &store.SessionPasswordReauthentication{
+		return s.sessions.ReauthenticatePassword(ctx, &store.SessionPasswordReauthentication{
 			SessionID: principal.SessionID, UserID: principal.UserID, CredentialID: credentialID,
 			PasswordProof: store.PasswordCredentialProof{ID: credential.ID, Revision: credential.Revision},
 			AuditEventID:  auditID,

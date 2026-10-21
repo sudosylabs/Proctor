@@ -275,7 +275,7 @@ func (s *selfSessionStoreFake) ListActiveByUser(_ context.Context, _ model.UserI
 	return []*model.Session{s.session}, nil
 }
 
-func (s *selfSessionStoreFake) RevokeWithAudit(_ context.Context, input *store.SessionRevocation) (*store.SessionRevocationResult, error) {
+func (s *selfSessionStoreFake) Revoke(_ context.Context, input *store.SessionRevocation) (*store.SessionRevocationResult, error) {
 	*s.events = append(*s.events, "revoke")
 	s.revokeCalls++
 	s.revocation = input
@@ -293,7 +293,7 @@ func (s *selfSessionStoreFake) RevokeWithAudit(_ context.Context, input *store.S
 	return &store.SessionRevocationResult{Session: s.session, TokenHashes: append([]string(nil), s.hashes...)}, nil
 }
 
-func (s *selfSessionStoreFake) RevokeAllForUserWithAudit(_ context.Context, input *store.UserSessionsRevocation) (*store.UserSessionsRevocationResult, error) {
+func (s *selfSessionStoreFake) RevokeAllForUser(_ context.Context, input *store.UserSessionsRevocation) (*store.UserSessionsRevocationResult, error) {
 	*s.events = append(*s.events, "revoke")
 	s.revokeCalls++
 	s.allRevocation = input

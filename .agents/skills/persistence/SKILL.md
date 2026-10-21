@@ -43,6 +43,18 @@ Cross-model transactions are named aggregate operations, such as bootstrap, enro
 Each named contract states its complete atomic and race guarantees so callers
 and reusable conformance suites can verify the same behavior across adapters.
 
+A security-sensitive mutation has exactly one Store operation, and that
+operation requires its audit input; there is no unaudited twin and no
+`WithAudit` suffix. Fixtures that need state create it through the same
+audited operation (the `storetest` fixture helpers begin a generic attempt for
+them). The only unaudited writes are explicit exceptions: `SessionStore.Withdraw`
+takes back a Session the system itself just issued when its audit, Desktop
+handoff, or User state fails, and it accepts only those closed reasons; and
+`Seed*` operations insert fixture state that has no audited creation outside a
+named aggregate (the built-in Role, Class enrollment without its notice, a
+pending MFA credential without a Session). An architecture test forbids
+production code from calling a `Seed*` operation.
+
 ## Store layers
 
 ~~~text

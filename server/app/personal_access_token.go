@@ -286,7 +286,7 @@ func (s *personalAccessTokenAdministrationService) RevokePersonalAccessToken(
 	if err != nil {
 		return nil, s.failPreparedMutation(ctx, prepared.ID.String(), err)
 	}
-	result, err := s.tokens.RevokeWithAudit(ctx, &store.PersonalAccessTokenRevocation{
+	result, err := s.tokens.Revoke(ctx, &store.PersonalAccessTokenRevocation{
 		ID: command.TokenID, UserID: principal.UserID, PreparationID: prepared.ID, Notice: notice,
 	})
 	if err != nil {

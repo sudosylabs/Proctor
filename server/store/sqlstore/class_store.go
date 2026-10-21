@@ -116,29 +116,6 @@ func (s SQLClassStore) createClass(ctx context.Context, candidate *model.Class, 
 	})
 }
 
-func (s SQLClassStore) Save(ctx context.Context, class *model.Class) (*model.Class, error) {
-	if class == nil {
-		return nil, store.NewErrInvalidInput("class", "value", nil)
-	}
-	if !class.ID.IsZero() {
-		return nil, store.NewErrInvalidInput("class", "id", class.ID.String())
-	}
-
-	id, err := model.ParseClassID(model.NewId())
-	if err != nil {
-		return nil, err
-	}
-	candidate := *class
-	candidate.PrepareCreate(id, model.NowUTC())
-	if err := candidate.Validate(); err != nil {
-		return nil, store.NewErrInvalidInput("class", "value", nil).Wrap(err)
-	}
-	if err := s.validateInstitution(ctx, &candidate); err != nil {
-		return nil, err
-	}
-	return s.createClass(ctx, &candidate, nil)
-}
-
 func (s SQLClassStore) Get(ctx context.Context, id model.ClassID) (*model.Class, error) {
 	var row classRow
 	query := s.classesQuery.Where(sq.Eq{
@@ -247,23 +224,7 @@ func (s SQLClassStore) selectClasses(
 	return classes, nil
 }
 
-func (s SQLClassStore) Update(ctx context.Context, class *model.Class) (*model.Class, error) {
-	if class == nil {
-		return nil, store.NewErrInvalidInput("class", "value", nil)
-	}
-
-	candidate := *class
-	candidate.PrepareUpdate(model.NowUTC())
-	if err := candidate.Validate(); err != nil {
-		return nil, store.NewErrInvalidInput("class", "value", nil).Wrap(err)
-	}
-	if err := s.validateInstitution(ctx, &candidate); err != nil {
-		return nil, err
-	}
-	return s.updateClass(ctx, &candidate, "", nil)
-}
-
-func (s SQLClassStore) UpdateWithAudit(ctx context.Context, input *store.ClassUpdate) (*model.Class, error) {
+func (s SQLClassStore) Update(ctx context.Context, input *store.ClassUpdate) (*model.Class, error) {
 	if input == nil || input.Class == nil || !input.ExpectedAcademicUnitID.IsValid() ||
 		input.ExpectedRevision <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("class", "update", nil)
@@ -327,14 +288,7 @@ func (s SQLClassStore) updateClass(ctx context.Context, candidate *model.Class, 
 	})
 }
 
-func (s SQLClassStore) Archive(ctx context.Context, id model.ClassID, archiveAt int64) (*model.Class, error) {
-	if archiveAt <= 0 {
-		return nil, store.NewErrInvalidInput("class", "archived_at", archiveAt)
-	}
-	return s.archiveClass(ctx, id, archiveAt, 0, "", nil)
-}
-
-func (s SQLClassStore) ArchiveWithAudit(ctx context.Context, input *store.ClassArchive) (*model.Class, error) {
+func (s SQLClassStore) Archive(ctx context.Context, input *store.ClassArchive) (*model.Class, error) {
 	if input == nil || !input.ID.IsValid() || !input.ExpectedAcademicUnitID.IsValid() ||
 		input.ExpectedRevision <= 0 || input.ArchiveAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("class", "archive", nil)

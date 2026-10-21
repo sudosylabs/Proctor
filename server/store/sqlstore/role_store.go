@@ -59,25 +59,7 @@ func newSQLRoleStore(sqlStore *SQLStore) store.RoleStore {
 	return s
 }
 
-func (s SQLRoleStore) Save(ctx context.Context, role *model.Role) (*model.Role, error) {
-	if role == nil {
-		return nil, store.NewErrInvalidInput("role", "value", nil)
-	}
-	if !role.ID.IsZero() {
-		return nil, store.NewErrInvalidInput("role", "id", role.ID.String())
-	}
-	candidate := role.Clone()
-	candidate.PrepareCreate(model.NewRoleID(), model.NowUTC())
-	if err := candidate.Validate(); err != nil {
-		return nil, err
-	}
-	if _, err := insertRole(ctx, s.GetMaster(), candidate); err != nil {
-		return nil, err
-	}
-	return candidate, nil
-}
-
-func (s SQLRoleStore) SaveWithAudit(ctx context.Context, input *store.RoleCreation) (*model.Role, error) {
+func (s SQLRoleStore) Save(ctx context.Context, input *store.RoleCreation) (*model.Role, error) {
 	if input == nil || input.Role == nil || !input.Role.ID.IsZero() ||
 		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("role", "creation", nil)
@@ -189,30 +171,7 @@ func (s SQLRoleStore) selectRoles(
 	return roles, nil
 }
 
-func (s SQLRoleStore) Update(ctx context.Context, role *model.Role) (*model.Role, error) {
-	if role == nil {
-		return nil, store.NewErrInvalidInput("role", "value", nil)
-	}
-	if role.BuiltIn {
-		return nil, store.NewErrConflict("role", "roles_built_in_protected", nil)
-	}
-	expectedUpdatedAt := role.UpdatedAt
-	candidate := role.Clone()
-	candidate.PrepareUpdate(model.NowUTC())
-	if err := candidate.Validate(); err != nil {
-		return nil, err
-	}
-	if err := updateRole(ctx, s.GetMaster(), candidate, expectedUpdatedAt); err != nil {
-		return nil, err
-	}
-	// Update is a legacy model-oriented Store operation. Advancing the caller's
-	// snapshot lets a subsequent update carry the new optimistic concurrency
-	// token while concurrent clones still compete on the same prior instant.
-	*role = *candidate.Clone()
-	return candidate, nil
-}
-
-func (s SQLRoleStore) UpdateWithAudit(ctx context.Context, input *store.RoleUpdate) (*model.Role, error) {
+func (s SQLRoleStore) Update(ctx context.Context, input *store.RoleUpdate) (*model.Role, error) {
 	if input == nil || input.Role == nil || !input.Role.ID.IsValid() ||
 		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("role", "update", nil)
@@ -285,27 +244,7 @@ func updateRole(ctx context.Context, executor sqlxExecutor, role *model.Role, ex
 	return requireRevisionAffected(ctx, executor, result, "role", "roles", role.ID.String())
 }
 
-func (s SQLRoleStore) Archive(ctx context.Context, id model.RoleID, archiveAt int64) (*model.Role, error) {
-	if archiveAt <= 0 {
-		return nil, store.NewErrInvalidInput("role", "archived_at", archiveAt)
-	}
-	role, err := s.Get(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	if role.BuiltIn {
-		return nil, store.NewErrConflict("role", "roles_built_in_protected", nil)
-	}
-	if err := archiveRole(ctx, s.GetMaster(), id.String(), archiveAt); err != nil {
-		return nil, err
-	}
-	at := model.TimeFromMillis(archiveAt)
-	role.UpdatedAt = at
-	role.ArchivedAt = model.OptionalTimeFrom(at)
-	return role, nil
-}
-
-func (s SQLRoleStore) ArchiveWithAudit(ctx context.Context, input *store.RoleArchive) (*model.Role, error) {
+func (s SQLRoleStore) Archive(ctx context.Context, input *store.RoleArchive) (*model.Role, error) {
 	if input == nil || !input.ID.IsValid() || input.ArchiveAt <= 0 ||
 		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("role", "archive", nil)
@@ -389,3 +328,53 @@ func (row roleRow) model() (*model.Role, error) {
 }
 
 var _ store.RoleStore = (*SQLRoleStore)(nil)
+
+// SeedBuiltIn inserts the protected built-in Role without audit for conformance
+// and integration fixtures. Production creates that Role only through
+// InstallationStore.Bootstrap; an architecture test forbids production callers.
+func (s SQLRoleStore) SeedBuiltIn(ctx context.Context, role *model.Role) (*model.Role, error) {
+	if role == nil {
+		return nil, store.NewErrInvalidInput("role", "value", nil)
+	}
+	if !role.BuiltIn {
+		return nil, store.NewErrInvalidInput("role", "built_in", nil)
+	}
+	if !role.ID.IsZero() {
+		return nil, store.NewErrInvalidInput("role", "id", role.ID.String())
+	}
+	candidate := role.Clone()
+	candidate.PrepareCreate(model.NewRoleID(), model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, err
+	}
+	if _, err := insertRole(ctx, s.GetMaster(), candidate); err != nil {
+		return nil, err
+	}
+	return candidate, nil
+}
+
+// SeedUpdate is an unaudited fixture write that may also change what the
+// audited Update forbids (moving the owner, or editing a bound Role); production
+// code never calls it, which an architecture test enforces.
+func (s SQLRoleStore) SeedUpdate(ctx context.Context, role *model.Role) (*model.Role, error) {
+	if role == nil {
+		return nil, store.NewErrInvalidInput("role", "value", nil)
+	}
+	if role.BuiltIn {
+		return nil, store.NewErrConflict("role", "roles_built_in_protected", nil)
+	}
+	expectedUpdatedAt := role.UpdatedAt
+	candidate := role.Clone()
+	candidate.PrepareUpdate(model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, err
+	}
+	if err := updateRole(ctx, s.GetMaster(), candidate, expectedUpdatedAt); err != nil {
+		return nil, err
+	}
+	// Update is a legacy model-oriented Store operation. Advancing the caller's
+	// snapshot lets a subsequent update carry the new optimistic concurrency
+	// token while concurrent clones still compete on the same prior instant.
+	*role = *candidate.Clone()
+	return candidate, nil
+}

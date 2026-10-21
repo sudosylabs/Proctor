@@ -260,7 +260,7 @@ func TestPasswordResetSerializesWithPasswordRemoval(t *testing.T) {
 	}
 	removed := make(chan removalOutcome, 1)
 	go func() {
-		result, err := persistence.PasswordCredential().RemoveWithAudit(ctx, removal)
+		result, err := persistence.PasswordCredential().Remove(ctx, removal)
 		removed <- removalOutcome{result: result, err: err}
 	}()
 	// The old reset order held the User row before acquiring this Session
@@ -1001,7 +1001,7 @@ func TestUserDisableAndEmailChangeShareUserEligibilityLockOrder(t *testing.T) {
 	changePID := waitForBlockedMailQuery(t, ctx, persistence, controllerBackendPID, "FROM users WHERE id")
 	disableResult := make(chan error, 1)
 	go func() {
-		_, disableErr := persistence.User().SetDisabledWithAudit(ctx, disable)
+		_, disableErr := persistence.User().SetDisabled(ctx, disable)
 		disableResult <- disableErr
 	}()
 	_ = waitForBlockedMailQuery(t, ctx, persistence, changePID, "SELECT id FROM users")
@@ -1015,6 +1015,6 @@ func TestUserDisableAndEmailChangeShareUserEligibilityLockOrder(t *testing.T) {
 		t.Fatalf("ChangeEmail: %v", changeErr)
 	}
 	if !store.IsConflict(disableErr) {
-		t.Fatalf("SetDisabledWithAudit after email change = %v, want conflict", disableErr)
+		t.Fatalf("SetDisabled after email change = %v, want conflict", disableErr)
 	}
 }

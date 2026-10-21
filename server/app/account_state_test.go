@@ -32,7 +32,7 @@ func (s *accountStateStoreFake) Get(context.Context, model.UserID) (*model.User,
 	return s.user, nil
 }
 
-func (s *accountStateStoreFake) SetDisabledWithAudit(_ context.Context, input *store.UserDisabledStateChange) (*store.UserDisabledStateResult, error) {
+func (s *accountStateStoreFake) SetDisabled(_ context.Context, input *store.UserDisabledStateChange) (*store.UserDisabledStateResult, error) {
 	*s.events = append(*s.events, "store-set-disabled")
 	s.input = input
 	return s.result, s.err

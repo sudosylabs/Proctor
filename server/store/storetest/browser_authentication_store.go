@@ -369,7 +369,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 	})
 	requireNoError(t, err)
 	disableAudit := saveUserProfileAuditAttempt(t, ctx, ss, disabledUser.ID.String())
-	disabled, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+	disabled, err := ss.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: disabledUser.ID, ExpectedRevision: disabledUser.Revision, Disabled: true,
 		ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID,
 		AuditAt: model.GetMillis(), Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},

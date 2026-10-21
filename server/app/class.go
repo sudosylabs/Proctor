@@ -60,8 +60,8 @@ type classStore interface {
 	SearchByAcademicUnit(context.Context, model.AcademicUnitID, string, int) ([]*model.Class, error)
 	GetAcademicUnitID(context.Context, model.ClassID) (model.AcademicUnitID, error)
 	Create(context.Context, *store.ClassCreation) (*model.Class, error)
-	UpdateWithAudit(context.Context, *store.ClassUpdate) (*model.Class, error)
-	ArchiveWithAudit(context.Context, *store.ClassArchive) (*model.Class, error)
+	Update(context.Context, *store.ClassUpdate) (*model.Class, error)
+	Archive(context.Context, *store.ClassArchive) (*model.Class, error)
 }
 
 type classService struct {
@@ -252,7 +252,7 @@ func (s *classService) UpdateClass(ctx context.Context, invocation Invocation, c
 		},
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Class, error) {
-			return s.store.UpdateWithAudit(ctx, &store.ClassUpdate{
+			return s.store.Update(ctx, &store.ClassUpdate{
 				Class:                  &candidate,
 				ExpectedAcademicUnitID: unitID,
 				ExpectedRevision:       current.Revision,
@@ -302,7 +302,7 @@ func (s *classService) ArchiveClass(ctx context.Context, invocation Invocation, 
 			return at
 		},
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Class, error) {
-			return s.store.ArchiveWithAudit(ctx, &store.ClassArchive{
+			return s.store.Archive(ctx, &store.ClassArchive{
 				ID:                     id,
 				ExpectedAcademicUnitID: unitID,
 				ExpectedRevision:       current.Revision,

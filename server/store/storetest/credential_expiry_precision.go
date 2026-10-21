@@ -106,7 +106,7 @@ func testMFANativeExpiry(t *testing.T, ss store.Store) {
 				if operation == "Session upgrade" {
 					_, err = ss.MFA().UpgradeSession(ctx, session.ID, user.ID, at)
 				} else {
-					pending, saveErr := ss.MFA().SavePending(ctx, &model.MFACredential{
+					pending, saveErr := ss.MFA().SeedPending(ctx, &model.MFACredential{
 						UserID: user.ID, State: model.MFAStatePending,
 						EncryptedSecret: "encrypted-secret", EncryptionKeyID: "0123456789abcdef0123456789abcdef",
 						CreatedAt: model.NowUTC(), PendingExpiresAt: model.OptionalTimeFrom(deadline),

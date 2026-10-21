@@ -68,12 +68,12 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	candidate := *unit
 	candidate.DisplayName = "Audited Update"
 	candidate.PrepareUpdate(model.NowUTC())
-	updated, err := ss.AcademicUnit().UpdateWithAudit(ctx, &store.AcademicUnitUpdate{
+	updated, err := ss.AcademicUnit().Update(ctx, &store.AcademicUnitUpdate{
 		Unit: &candidate, AuditEventID: attempt.ID, AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
 	if updated.DisplayName != "Audited Update" {
-		t.Fatalf("UpdateWithAudit() = %#v", updated)
+		t.Fatalf("Update() = %#v", updated)
 	}
 	completed, err := ss.Audit().Get(ctx, attempt.ID)
 	requireNoError(t, err)
@@ -84,20 +84,20 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	stale := *unit
 	stale.DisplayName = "Stale Update"
 	stale.PrepareUpdate(model.NowUTC())
-	if _, err := ss.AcademicUnit().UpdateWithAudit(ctx, &store.AcademicUnitUpdate{
+	if _, err = ss.AcademicUnit().Update(ctx, &store.AcademicUnitUpdate{
 		Unit: &stale, AuditEventID: staleAttempt.ID, AuditAt: model.GetMillis(),
 	}); !store.IsConflict(err) {
-		t.Fatalf("stale UpdateWithAudit() error = %v, want conflict", err)
+		t.Fatalf("stale Update() error = %v, want conflict", err)
 	}
 
 	rolledBack := *updated
 	rolledBack.DisplayName = "Must Roll Back"
 	rolledBack.PrepareUpdate(model.NowUTC())
-	_, err = ss.AcademicUnit().UpdateWithAudit(ctx, &store.AcademicUnitUpdate{
+	_, err = ss.AcademicUnit().Update(ctx, &store.AcademicUnitUpdate{
 		Unit: &rolledBack, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
 	})
 	if err == nil {
-		t.Fatal("UpdateWithAudit() succeeded without its audit attempt")
+		t.Fatal("Update() succeeded without its audit attempt")
 	}
 	persisted, getErr := ss.AcademicUnit().Get(ctx, unit.ID)
 	requireNoError(t, getErr)
@@ -107,13 +107,13 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 
 	archiveUnit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "audited-archive")
 	archiveAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, archiveUnit.ID.String())
-	archived, err := ss.AcademicUnit().ArchiveWithAudit(ctx, &store.AcademicUnitArchive{
+	archived, err := ss.AcademicUnit().Archive(ctx, &store.AcademicUnitArchive{
 		ID: archiveUnit.ID, ArchiveAt: model.GetMillis(),
 		AuditEventID: archiveAttempt.ID, AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
 	if archived.ArchivedAt.Millis() == 0 {
-		t.Fatalf("ArchiveWithAudit() = %#v", archived)
+		t.Fatalf("Archive() = %#v", archived)
 	}
 	completed, err = ss.Audit().Get(ctx, archiveAttempt.ID)
 	requireNoError(t, err)
@@ -122,12 +122,12 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	}
 
 	rollbackArchive := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "rollback-archive")
-	_, err = ss.AcademicUnit().ArchiveWithAudit(ctx, &store.AcademicUnitArchive{
+	_, err = ss.AcademicUnit().Archive(ctx, &store.AcademicUnitArchive{
 		ID: rollbackArchive.ID, ArchiveAt: model.GetMillis(),
 		AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
 	})
 	if err == nil {
-		t.Fatal("ArchiveWithAudit() succeeded without its audit attempt")
+		t.Fatal("Archive() succeeded without its audit attempt")
 	}
 	if _, getErr = ss.AcademicUnit().Get(ctx, rollbackArchive.ID); getErr != nil {
 		t.Fatalf("archive survived audit rollback: %v", getErr)
@@ -194,7 +194,7 @@ func testAcademicUnitStoreSearchAndArchive(t *testing.T, ss store.Store) {
 	parent := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "archive-parent")
 	child := saveAcademicUnit(t, ctx, ss, institution.ID.String(), parent.ID.String(), "distinct-computing")
 	child.DisplayName = "Literal 50%_! Computing"
-	child, err := ss.AcademicUnit().Update(ctx, child)
+	child, err := UpdateAcademicUnit(ctx, ss, child)
 	requireNoError(t, err)
 	found, err := ss.AcademicUnit().Search(ctx, institution.ID, "distinct-comput", 10)
 	requireNoError(t, err)
@@ -217,10 +217,10 @@ func testAcademicUnitStoreSearchAndArchive(t *testing.T, ss store.Store) {
 	if _, err = ss.AcademicUnit().GetByName(ctx, otherInstitution.ID, child.Name); !store.IsNotFound(err) {
 		t.Fatalf("cross-Institution GetByName() error = %v", err)
 	}
-	if _, err = ss.AcademicUnit().Archive(ctx, parent.ID, model.GetMillis()); !store.IsConflict(err) {
+	if _, err = ArchiveAcademicUnit(ctx, ss, parent.ID, model.GetMillis()); !store.IsConflict(err) {
 		t.Fatalf("Archive(parent with child) error = %v", err)
 	}
-	archived, err := ss.AcademicUnit().Archive(ctx, child.ID, model.GetMillis())
+	archived, err := ArchiveAcademicUnit(ctx, ss, child.ID, model.GetMillis())
 	requireNoError(t, err)
 	if archived.ArchivedAt.Millis() == 0 {
 		t.Fatalf("Archive(child) = %#v", archived)
@@ -260,7 +260,7 @@ func testAcademicUnitStoreSave(t *testing.T, ss store.Store) {
 		t.Fatalf("saved units = root %#v, child %#v", root, child)
 	}
 
-	_, err := ss.AcademicUnit().Save(ctx, child)
+	_, err := SaveAcademicUnit(ctx, ss, child)
 	var invalid *store.ErrInvalidInput
 	if !errors.As(err, &invalid) {
 		t.Fatalf("second Save(child) error = %v, want invalid input", err)
@@ -311,7 +311,7 @@ func testAcademicUnitStoreUpdate(t *testing.T, ss store.Store) {
 
 	child.ParentID = secondRoot.ID
 	child.DisplayName = "Applied Computing"
-	updated, err := ss.AcademicUnit().Update(ctx, child)
+	updated, err := UpdateAcademicUnit(ctx, ss, child)
 	requireNoError(t, err)
 	if updated.ParentID != secondRoot.ID || updated.DisplayName != "Applied Computing" {
 		t.Fatalf("Update() = %#v", updated)
@@ -330,7 +330,7 @@ func testAcademicUnitStoreUpdate(t *testing.T, ss store.Store) {
 
 	missing := *updated
 	missing.ID = model.AcademicUnitID(model.NewId())
-	_, err = ss.AcademicUnit().Update(ctx, &missing)
+	_, err = UpdateAcademicUnit(ctx, ss, &missing)
 	if !store.IsNotFound(err) {
 		t.Fatalf("Update(missing) error = %v, want not found", err)
 	}
@@ -344,7 +344,7 @@ func testAcademicUnitStoreRejectCycle(t *testing.T, ss store.Store) {
 	grandchild := saveAcademicUnit(t, ctx, ss, institution.ID.String(), child.ID.String(), "software")
 
 	root.ParentID = grandchild.ID
-	_, err := ss.AcademicUnit().Update(ctx, root)
+	_, err := UpdateAcademicUnit(ctx, ss, root)
 	var conflict *store.ErrConflict
 	if !errors.As(err, &conflict) || conflict.Constraint != "academic_units_acyclic" {
 		t.Fatalf("cycle Update() error = %v, want hierarchy conflict", err)
@@ -366,7 +366,7 @@ func testAcademicUnitStoreRejectConcurrentCycle(t *testing.T, ss store.Store) {
 	update := func(unit *model.AcademicUnit) {
 		defer ready.Done()
 		<-start
-		_, err := ss.AcademicUnit().Update(ctx, unit)
+		_, err := UpdateAcademicUnit(ctx, ss, unit)
 		errorsByUpdate <- err
 	}
 	go update(first)
@@ -409,7 +409,7 @@ func testAcademicUnitStoreRejectCrossInstitutionParent(t *testing.T, ss store.St
 	})
 	requireNoError(t, err)
 
-	_, err = ss.AcademicUnit().Save(ctx, &model.AcademicUnit{
+	_, err = SaveAcademicUnit(ctx, ss, &model.AcademicUnit{
 		InstitutionID: second.ID,
 		ParentID:      parent.ID,
 		Name:          "computing",
@@ -428,7 +428,7 @@ func testAcademicUnitStoreEnforceInstitutionNameUniqueness(t *testing.T, ss stor
 	root := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "engineering")
 	saveAcademicUnit(t, ctx, ss, institution.ID.String(), root.ID.String(), "computing")
 
-	_, err := ss.AcademicUnit().Save(ctx, &model.AcademicUnit{
+	_, err := SaveAcademicUnit(ctx, ss, &model.AcademicUnit{
 		InstitutionID: institution.ID,
 		ParentID:      root.ID,
 		Name:          "computing",
@@ -439,7 +439,7 @@ func testAcademicUnitStoreEnforceInstitutionNameUniqueness(t *testing.T, ss stor
 		t.Fatalf("duplicate sibling name error = %v, want conflict", err)
 	}
 
-	_, err = ss.AcademicUnit().Save(ctx, &model.AcademicUnit{
+	_, err = SaveAcademicUnit(ctx, ss, &model.AcademicUnit{
 		InstitutionID: institution.ID,
 		Name:          "computing",
 		DisplayName:   "Root Computing",
@@ -458,7 +458,7 @@ func saveAcademicUnit(
 	name string,
 ) *model.AcademicUnit {
 	t.Helper()
-	unit, err := ss.AcademicUnit().Save(ctx, &model.AcademicUnit{
+	unit, err := SaveAcademicUnit(ctx, ss, &model.AcademicUnit{
 		InstitutionID: model.InstitutionID(institutionID),
 		ParentID:      model.AcademicUnitID(parentID),
 		Name:          name,

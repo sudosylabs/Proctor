@@ -16,8 +16,8 @@ import (
 )
 
 type sessionRevocationStore interface {
-	RevokeWithAudit(context.Context, *store.SessionRevocation) (*store.SessionRevocationResult, error)
-	RevokeAllForUserWithAudit(context.Context, *store.UserSessionsRevocation) (*store.UserSessionsRevocationResult, error)
+	Revoke(context.Context, *store.SessionRevocation) (*store.SessionRevocationResult, error)
+	RevokeAllForUser(context.Context, *store.UserSessionsRevocation) (*store.UserSessionsRevocationResult, error)
 }
 
 type sessionRevocationEffects interface {
@@ -45,7 +45,7 @@ func (c sessionRevocationCoordinator) revokeOne(
 		func(ctx context.Context, reference mutationAttemptReference) (*store.SessionRevocationResult, error) {
 			input.RevokedAt = reference.MutationAtMillis
 			input.AuditEventID, input.AuditAt = reference.ID, reference.MutationAtMillis
-			return c.sessions.RevokeWithAudit(ctx, input)
+			return c.sessions.Revoke(ctx, input)
 		}, mapError)
 	if err != nil {
 		return err
@@ -69,7 +69,7 @@ func (c sessionRevocationCoordinator) revokeAll(
 		func(ctx context.Context, reference mutationAttemptReference) (*store.UserSessionsRevocationResult, error) {
 			input.RevokedAt = reference.MutationAtMillis
 			input.AuditEventID, input.AuditAt = reference.ID, reference.MutationAtMillis
-			value, err := c.sessions.RevokeAllForUserWithAudit(ctx, input)
+			value, err := c.sessions.RevokeAllForUser(ctx, input)
 			// Batch callers retain the Store's replay/no-op observation even when
 			// the mutation fails; an unavailable audit attempt leaves it untouched.
 			if unchanged != nil {

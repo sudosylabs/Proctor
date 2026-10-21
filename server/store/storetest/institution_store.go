@@ -26,7 +26,7 @@ func TestInstitutionStore(t *testing.T, ss store.Store) {
 	t.Run("Get", func(t *testing.T) { testInstitutionStoreGet(t, ss) })
 	t.Run("GetSingleton", func(t *testing.T) { testInstitutionStoreGetSingleton(t, ss) })
 	t.Run("Update", func(t *testing.T) { testInstitutionStoreUpdate(t, ss) })
-	t.Run("UpdateWithAudit", func(t *testing.T) { testInstitutionStoreUpdateWithAudit(t, ss) })
+	t.Run("Update", func(t *testing.T) { testInstitutionStoreUpdateWithAudit(t, ss) })
 	t.Run("Archive", func(t *testing.T) { testInstitutionStoreArchive(t, ss) })
 }
 
@@ -43,12 +43,12 @@ func testInstitutionStoreUpdateWithAudit(t *testing.T, ss store.Store) {
 	candidate := *institution
 	candidate.DisplayName = "Audited Northbridge"
 	candidate.PrepareUpdate(model.NowUTC())
-	updated, err := ss.Institution().UpdateWithAudit(ctx, &store.InstitutionUpdate{
+	updated, err := ss.Institution().Update(ctx, &store.InstitutionUpdate{
 		Institution: &candidate, AuditEventID: attempt.ID, AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
 	if updated.DisplayName != "Audited Northbridge" {
-		t.Fatalf("UpdateWithAudit() = %#v", updated)
+		t.Fatalf("Update() = %#v", updated)
 	}
 	completed, err := ss.Audit().Get(ctx, attempt.ID)
 	requireNoError(t, err)
@@ -63,20 +63,20 @@ func testInstitutionStoreUpdateWithAudit(t *testing.T, ss store.Store) {
 	stale := *institution
 	stale.DisplayName = "Stale Northbridge"
 	stale.PrepareUpdate(model.NowUTC())
-	if _, err := ss.Institution().UpdateWithAudit(ctx, &store.InstitutionUpdate{
+	if _, err = ss.Institution().Update(ctx, &store.InstitutionUpdate{
 		Institution: &stale, AuditEventID: staleAttempt.ID, AuditAt: model.GetMillis(),
 	}); !store.IsConflict(err) {
-		t.Fatalf("stale UpdateWithAudit() error = %v, want conflict", err)
+		t.Fatalf("stale Update() error = %v, want conflict", err)
 	}
 
 	rolledBack := *updated
 	rolledBack.DisplayName = "Must Roll Back"
 	rolledBack.PrepareUpdate(model.NowUTC())
-	_, err = ss.Institution().UpdateWithAudit(ctx, &store.InstitutionUpdate{
+	_, err = ss.Institution().Update(ctx, &store.InstitutionUpdate{
 		Institution: &rolledBack, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
 	})
 	if err == nil {
-		t.Fatal("UpdateWithAudit() succeeded without its audit attempt")
+		t.Fatal("Update() succeeded without its audit attempt")
 	}
 	persisted, getErr := ss.Institution().GetSingleton(ctx)
 	requireNoError(t, getErr)
@@ -156,7 +156,7 @@ func testInstitutionStoreUpdate(t *testing.T, ss store.Store) {
 	capacity.ResourceMaximumCount = 25
 	capacity.WorkspaceMaximumEntries = 750
 	institution.ExamCapacity = capacity
-	updated, err := ss.Institution().Update(ctx, institution)
+	updated, err := UpdateInstitution(ctx, ss, institution)
 	requireNoError(t, err)
 	if updated.DisplayName != "Northbridge" {
 		t.Fatalf("Update() display name = %q", updated.DisplayName)
@@ -172,7 +172,7 @@ func testInstitutionStoreUpdate(t *testing.T, ss store.Store) {
 	missingID, parseErr := model.ParseInstitutionID(model.NewId())
 	requireNoError(t, parseErr)
 	missing.ID = missingID
-	_, err = ss.Institution().Update(ctx, &missing)
+	_, err = UpdateInstitution(ctx, ss, &missing)
 	if !store.IsNotFound(err) {
 		t.Fatalf("Update(missing) error = %v, want not found", err)
 	}

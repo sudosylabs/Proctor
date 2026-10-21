@@ -21,6 +21,7 @@ import (
 	"github.com/lib/pq"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 )
 
 func TestRetentionPolicyCurrentCredentialAndAssurancePreserveGrace(t *testing.T) {
@@ -208,12 +209,12 @@ func TestRetentionPolicyReplacementKeepsMonotonicMetadata(t *testing.T) {
 	}
 	actor := saveIntegrationUser(t, ctx, persistence, &model.User{Username: "retention-administrator",
 		Email: "retention-administrator@example.test", DisplayName: "Administrator"})
-	role, err := persistence.Role().Save(ctx, &model.Role{Name: model.SystemAdministratorRoleName,
+	role, err := storetest.SaveRole(ctx, persistence, &model.Role{Name: model.SystemAdministratorRoleName,
 		DisplayName: "System Administrator", Permissions: model.AllActions(), BuiltIn: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = persistence.RoleBinding().Save(ctx, &model.RoleBinding{UserID: actor.ID, RoleID: role.ID,
+	if _, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: actor.ID, RoleID: role.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), StartsAt: model.NowUTC().Add(-time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +314,7 @@ func TestPolicyReplacementRechecksAdministratorAfterBindingEnd(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			role, err := persistence.Role().Save(ctx, &model.Role{Name: model.SystemAdministratorRoleName,
+			role, err := storetest.SaveRole(ctx, persistence, &model.Role{Name: model.SystemAdministratorRoleName,
 				DisplayName: "System Administrator", Permissions: model.AllActions(), BuiltIn: true})
 			if err != nil {
 				t.Fatal(err)
@@ -323,7 +324,7 @@ func TestPolicyReplacementRechecksAdministratorAfterBindingEnd(t *testing.T) {
 			for _, username := range []string{"remaining-administrator", "revoked-administrator"} {
 				user := saveIntegrationUser(t, ctx, persistence, &model.User{Username: username, Email: username + "@example.test", DisplayName: username})
 				passwordProofForSQLTest(t, ctx, persistence, user.ID)
-				binding, err = persistence.RoleBinding().Save(ctx, &model.RoleBinding{UserID: user.ID, RoleID: role.ID,
+				binding, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: user.ID, RoleID: role.ID,
 					ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), StartsAt: model.NowUTC().Add(-time.Hour)})
 				if err != nil {
 					t.Fatal(err)

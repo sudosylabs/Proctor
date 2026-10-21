@@ -402,7 +402,7 @@ func (s *mfaApplicationStoreFake) GetByUser(context.Context, model.UserID) (*mod
 	return s.credential, nil
 }
 
-func (s *mfaApplicationStoreFake) SavePending(_ context.Context, candidate *model.MFACredential) (*model.MFACredential, error) {
+func (s *mfaApplicationStoreFake) savePendingCredential(candidate *model.MFACredential) (*model.MFACredential, error) {
 	s.appendEvent("save_pending")
 	saved := *candidate
 	saved.PrepareCreate(model.NewMFACredentialID(), candidate.CreatedAt)
@@ -546,14 +546,14 @@ func testMFASecurity() mfaSecurityDependencies {
 func (s *mfaApplicationStoreFake) GetRecoveryState(_ context.Context, userID model.UserID) (*model.UserMFARecovery, error) {
 	return &model.UserMFARecovery{UserID: userID}, nil
 }
-func (s *mfaApplicationStoreFake) SavePendingWithAudit(ctx context.Context, input *store.MFAPendingEnrollment) (*model.MFACredential, error) {
-	saved, err := s.SavePending(ctx, input.Credential)
+func (s *mfaApplicationStoreFake) SavePending(ctx context.Context, input *store.MFAPendingEnrollment) (*model.MFACredential, error) {
+	saved, err := s.savePendingCredential(input.Credential)
 	if err == nil {
 		s.appendEvent("audit_success")
 	}
 	return saved, err
 }
-func (s *mfaApplicationStoreFake) ChallengeWithAudit(ctx context.Context, input *store.MFAChallenge) (*store.SessionReauthenticationResult, error) {
+func (s *mfaApplicationStoreFake) Challenge(ctx context.Context, input *store.MFAChallenge) (*store.SessionReauthenticationResult, error) {
 	if err := s.ConsumeSecondFactor(ctx, input.Principal.UserID, input.TimeStep, input.RecoveryCodeHash, input.VerifiedAt.UnixMilli()); err != nil {
 		return nil, err
 	}

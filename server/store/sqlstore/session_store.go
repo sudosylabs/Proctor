@@ -382,8 +382,8 @@ func (s SQLSessionStore) UpdateActivity(ctx context.Context, id model.SessionID,
 	return requireAffected(result, "session", id.String())
 }
 
-func (s SQLSessionStore) Revoke(ctx context.Context, id model.SessionID, userID model.UserID, revokedAt int64, reason model.SessionRevocationReason) ([]string, error) {
-	if !reason.IsValid() {
+func (s SQLSessionStore) Withdraw(ctx context.Context, id model.SessionID, userID model.UserID, revokedAt int64, reason model.SessionRevocationReason) ([]string, error) {
+	if !reason.IsSystemWithdrawal() {
 		return nil, store.NewErrInvalidInput("session", "revocation_reason", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "session revocation", func(ctx context.Context, tx *sqlxTxWrapper) ([]string, error) {
@@ -442,7 +442,7 @@ func (s SQLSessionStore) EnforceExpiry(ctx context.Context, id model.SessionID, 
 	})
 }
 
-func (s SQLSessionStore) RevokeWithAudit(
+func (s SQLSessionStore) Revoke(
 	ctx context.Context,
 	input *store.SessionRevocation,
 ) (*store.SessionRevocationResult, error) {
@@ -539,33 +539,7 @@ func (s SQLSessionStore) RevokeWithAudit(
 	})
 }
 
-func (s SQLSessionStore) RevokeAllForUser(ctx context.Context, userID model.UserID, revokedAt int64, reason model.SessionRevocationReason) ([]*model.Session, []string, error) {
-	if !reason.IsValid() {
-		return nil, nil, store.NewErrInvalidInput("session", "revocation_reason", nil)
-	}
-	result, err := runSQLTransaction(ctx, s.GetMaster().Begin, "user session revocation", func(ctx context.Context, tx *sqlxTxWrapper) (*userSessionRevocationTransactionResult, error) {
-		if err := lockUserSessions(ctx, tx, userID.String()); err != nil {
-			return nil, err
-		}
-		rows, hashes, err := revokeAllUserSessions(
-			ctx, tx, userID.String(), revokedAt, reason,
-		)
-		if err != nil {
-			return nil, err
-		}
-		sessions, err := revokedSessionModels(rows, revokedAt, reason)
-		if err != nil {
-			return nil, err
-		}
-		return &userSessionRevocationTransactionResult{sessions: sessions, hashes: hashes}, nil
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	return result.sessions, result.hashes, nil
-}
-
-func (s SQLSessionStore) RevokeAllForUserWithAudit(
+func (s SQLSessionStore) RevokeAllForUser(
 	ctx context.Context,
 	input *store.UserSessionsRevocation,
 ) (*store.UserSessionsRevocationResult, error) {

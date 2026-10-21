@@ -632,7 +632,7 @@ func (s SQLFileStore) GetProfilePictureState(ctx context.Context, userID model.U
 	return state, nil
 }
 
-func (s SQLFileStore) RemoveProfilePictureWithAudit(ctx context.Context, input *store.ProfilePictureRemoval) (*model.User, error) {
+func (s SQLFileStore) RemoveProfilePicture(ctx context.Context, input *store.ProfilePictureRemoval) (*model.User, error) {
 	if input == nil || !input.ActorID.IsValid() || !input.UserID.IsValid() || input.ExpectedUserRevision <= 0 || !input.EntryID.IsValid() || !input.ExpectedCurrentRevisionID.IsValid() || len(input.ExpectedSHA256) != 64 || input.ChangedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("file", "profile_picture_removal", nil)
 	}

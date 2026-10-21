@@ -81,7 +81,7 @@ func currentMFASession(ctx context.Context, tx *sqlxTxWrapper, principal model.P
 	return session, at, nil
 }
 
-func (s SQLMFAStore) SavePendingWithAudit(ctx context.Context, input *store.MFAPendingEnrollment) (*model.MFACredential, error) {
+func (s SQLMFAStore) SavePending(ctx context.Context, input *store.MFAPendingEnrollment) (*model.MFACredential, error) {
 	if input == nil || input.Credential == nil || !input.Credential.ID.IsZero() || input.Credential.UserID != input.Principal.UserID || input.Lifetime <= 0 || input.Lifetime > time.Hour || input.RecentAuthenticationTTL <= 0 || !input.AuditEventID.IsValid() {
 		return nil, store.NewErrInvalidInput("mfa_credential", "enrollment", nil)
 	}
@@ -123,7 +123,7 @@ func (s SQLMFAStore) SavePendingWithAudit(ctx context.Context, input *store.MFAP
 	})
 }
 
-func (s SQLMFAStore) ChallengeWithAudit(ctx context.Context, input *store.MFAChallenge) (*store.SessionReauthenticationResult, error) {
+func (s SQLMFAStore) Challenge(ctx context.Context, input *store.MFAChallenge) (*store.SessionReauthenticationResult, error) {
 	if input == nil || !input.CredentialID.IsValid() || !input.AuditEventID.IsValid() || input.VerifiedAt.IsZero() || ((input.TimeStep <= 0) == (input.RecoveryCodeHash == "")) || (input.RecoveryCodeHash != "" && !model.IsValidTokenHash(input.RecoveryCodeHash)) {
 		return nil, store.NewErrInvalidInput("mfa_credential", "challenge", nil)
 	}

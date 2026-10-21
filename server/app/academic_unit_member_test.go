@@ -48,7 +48,7 @@ func (s *academicUnitMemberStoreFake) Create(_ context.Context, input *store.Aca
 	s.createInput = input
 	return input.Member, nil
 }
-func (s *academicUnitMemberStoreFake) EndWithAudit(_ context.Context, input *store.AcademicUnitMemberEnd) (*model.AcademicUnitMember, error) {
+func (s *academicUnitMemberStoreFake) End(_ context.Context, input *store.AcademicUnitMemberEnd) (*model.AcademicUnitMember, error) {
 	*s.events = append(*s.events, "store-end")
 	s.endInput = input
 	ended := *s.current

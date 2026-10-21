@@ -642,7 +642,7 @@ func (s *personalAccessTokenStoreFake) ChangeState(_ context.Context, input *sto
 	return &store.PersonalAccessTokenMutationResult{Token: s.current, Fresh: s.resultFresh()}, nil
 }
 
-func (s *personalAccessTokenStoreFake) RevokeWithAudit(_ context.Context, input *store.PersonalAccessTokenRevocation) (*store.PersonalAccessTokenMutationResult, error) {
+func (s *personalAccessTokenStoreFake) Revoke(_ context.Context, input *store.PersonalAccessTokenRevocation) (*store.PersonalAccessTokenMutationResult, error) {
 	s.revokeCalls++
 	s.notice = input.Notice
 	s.revokedAt = s.current.CreatedAt.UnixMilli()
