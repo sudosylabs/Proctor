@@ -20,6 +20,9 @@
 #
 # transport: the HTTP or WebSocket transport may mint the code; every other
 #            code is minted only by the application.
+# websocket_fallback: the WebSocket transport also presents this application
+#            code itself, as the fallback for a failure that carries no
+#            application error or as a concealing re-mapping.
 # problem:   the HTTP kernel writes the code directly as Problem Details.
 conditions:
   invalid: 400
@@ -232,6 +235,7 @@ codes:
     description: "The local account to create is invalid."
   - code: authorization.denied
     description: "The caller is not permitted to perform the action on the resource."
+    websocket_fallback: true
   - code: authorization.request.invalid
     description: "The authorization request names an unknown action or resource."
   - code: authorization.unavailable
@@ -258,6 +262,7 @@ codes:
     description: "The Exam is archived and cannot change."
   - code: exam.attempt.already_connected
     description: "The Attempt already has an open connection."
+    websocket_fallback: true
   - code: exam.attempt.browser_activity_conflict
     description: "The Browser Activity report conflicts with the recorded sequence or source."
   - code: exam.attempt.configuration_frozen
@@ -272,8 +277,10 @@ codes:
     description: "The Attempt change conflicts with current state."
   - code: exam.attempt.connection_closed
     description: "The Attempt connection was closed by a newer connection or by the server."
+    websocket_fallback: true
   - code: exam.attempt.connection_lost
     description: "The Attempt participation lease expired."
+    websocket_fallback: true
   - code: exam.attempt.continuity_invalid
     status: 404
     reason: "Presented as absence so an invalid continuity credential reveals nothing about the Attempt."
@@ -284,6 +291,7 @@ codes:
     description: "The Desktop build is not compatible with the current Desktop Compatibility Policy."
   - code: exam.attempt.focus_loss_conflict
     description: "The focus-loss report is out of sequence."
+    websocket_fallback: true
   - code: exam.attempt.invalid
     description: "An Attempt field is invalid; `fields` names the rejected input when known."
   - code: exam.attempt.management_authority_conflict
@@ -300,12 +308,15 @@ codes:
     description: "The Attempt changed since it was read."
   - code: exam.attempt.sitting_not_open
     description: "The Exam Sitting is not open for this Attempt."
+    websocket_fallback: true
   - code: exam.attempt.state_conflict
     description: "The Attempt state does not permit the operation."
+    websocket_fallback: true
   - code: exam.attempt.suspension_conflict
     description: "The Attempt is suspended or the suspension changed."
   - code: exam.attempt.unavailable
     description: "The Attempt operation failed; retry later."
+    websocket_fallback: true
   - code: exam.attempt.workspace.content_conflict
     description: "The Attempt Workspace file content changed since it was read."
   - code: exam.attempt.workspace.cursor_conflict
@@ -328,6 +339,7 @@ codes:
     description: "The Exam change conflicts with current state."
   - code: exam.delivery.append_rate_limited
     description: "Too many delivery appends; retry after the `Retry-After` interval."
+    websocket_fallback: true
   - code: exam.delivery.batch_conflict
     description: "The delivery batch conflicts with an accepted batch at the same position."
   - code: exam.delivery.control_rate_limited
@@ -649,6 +661,7 @@ codes:
     problem: true
   - code: resource.not_found
     description: "The resource does not exist or is not visible to the caller; `fields.resource` names its kind when known."
+    websocket_fallback: true
   - code: retention.conflict
     description: "The retention control or preview conflicts with current state."
   - code: retention.invalid
@@ -721,6 +734,11 @@ codes:
     description: "The supplied User Settings revision is stale; `fields.current_revision` carries the current revision."
   - code: user_settings.unavailable
     description: "User Settings could not be read or saved; retry later."
+  - code: websocket.action.unknown
+    status: 400
+    reason: "A WebSocket protocol code: a request naming an unknown action is malformed."
+    description: "The WebSocket request names an action the server does not recognize."
+    transport: true
   - code: websocket.internal
     description: "The WebSocket upgrade failed because of a server fault."
     transport: true
@@ -729,8 +747,17 @@ codes:
     reason: "A cross-origin WebSocket upgrade is forbidden rather than malformed."
     description: "The WebSocket upgrade origin is not the configured public origin."
     transport: true
+  - code: websocket.rate_limited
+    description: "Too many WebSocket requests; retry after `retry_after_seconds`."
+    transport: true
   - code: websocket.request.invalid
     description: "The WebSocket upgrade or protocol request is malformed."
+    transport: true
+  - code: websocket.subscription.invalid
+    description: "The WebSocket subscription names an unsupported action or resource."
+    transport: true
+  - code: websocket.subscription.limit
+    description: "The connection already holds the maximum number of subscriptions."
     transport: true
   - code: websocket.unavailable
     description: "The WebSocket service is unavailable; retry later."

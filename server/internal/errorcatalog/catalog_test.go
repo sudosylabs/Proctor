@@ -37,6 +37,9 @@ const validCatalog = vocabulary + `codes:
     problem: true
   - code: widget.archived
     description: "Archived widget."
+  - code: widget.lease_expired
+    description: "Expired widget lease."
+    websocket_fallback: true
   - code: widget.not_found
     description: "Missing widget."
   - code: widget.revision_conflict
@@ -84,6 +87,7 @@ func TestParseRejectsInvalidCatalogs(t *testing.T) {
 		"missing description":      "codes:\n  - {code: widget.invalid}\n",
 		"unknown field":            "codes:\n  - {code: widget.invalid, description: x, owner: app}\n",
 		"problem transport":        "codes:\n  - {code: server.internal, description: x, problem: true, transport: true}\n",
+		"transport fallback":       "codes:\n  - {code: request.invalid, description: x, transport: true, websocket_fallback: true}\n",
 		"empty":                    "codes: []\n",
 	}
 	for name, source := range tests {
@@ -107,6 +111,8 @@ func TestVerifyReportsUnmappedTransportAndDeadCodes(t *testing.T) {
 	complete := []errorcatalog.Mint{
 		{Code: "request.invalid", Position: "httpapi/a.go:1", Transport: true},
 		{Code: "widget.archived", Position: "app/a.go:1"},
+		{Code: "widget.lease_expired", Position: "app/a.go:5"},
+		{Code: "widget.lease_expired", Position: "websocket/a.go:1", Transport: true, WebSocket: true},
 		{Code: "widget.not_found", Position: "app/a.go:2"},
 		{Code: "widget.revision_conflict", Position: "app/a.go:3"},
 		{Code: "widget.token_invalid", Position: "app/a.go:4"},
@@ -117,16 +123,20 @@ func TestVerifyReportsUnmappedTransportAndDeadCodes(t *testing.T) {
 		errorcatalog.Mint{Code: "widget.not_found", Position: "httpapi/b.go:2", Transport: true},
 		errorcatalog.Mint{Code: "widget.unlisted", Position: "app/c.go:3"},
 		errorcatalog.Mint{Code: "server.internal", Position: "app/d.go:4"},
+		errorcatalog.Mint{Code: "widget.lease_expired", Position: "httpapi/e.go:5", Transport: true},
+		errorcatalog.Mint{Code: "widget.archived", Position: "websocket/f.go:6", Transport: true, WebSocket: true},
 	))
 	require.Error(t, err, "Verify accepted disagreeing source")
 	for _, want := range []string{
 		"httpapi/b.go:2: transport mints application code widget.not_found",
 		"app/c.go:3: widget.unlisted mints a code missing from the catalog",
 		"app/d.go:4: server.internal is a kernel problem code",
+		"httpapi/e.go:5: transport mints application code widget.lease_expired",
+		"websocket/f.go:6: transport mints application code widget.archived",
 	} {
 		assert.Contains(t, err.Error(), want, "Verify error lacks %q:\n%v", want, err)
 	}
-	err = catalog.Verify(complete[:4])
+	err = catalog.Verify(complete[:6])
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "widget.token_invalid: catalog code is never minted")
 }

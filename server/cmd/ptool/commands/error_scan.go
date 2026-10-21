@@ -127,8 +127,8 @@ func scanPackage(fset *token.FileSet, imports types.Importer, target listedPacka
 	if _, err := config.Check(target.ImportPath, fset, files, info); err != nil {
 		return nil, nil, fmt.Errorf("type-check %s: %w", target.ImportPath, err)
 	}
-	transport := target.ImportPath == httpTransportPath || strings.HasPrefix(target.ImportPath, httpTransportPath+"/") ||
-		target.ImportPath == webSocketPath || strings.HasPrefix(target.ImportPath, webSocketPath+"/")
+	webSocket := target.ImportPath == webSocketPath || strings.HasPrefix(target.ImportPath, webSocketPath+"/")
+	transport := webSocket || target.ImportPath == httpTransportPath || strings.HasPrefix(target.ImportPath, httpTransportPath+"/")
 	compared := comparedExpressions(files)
 	var mints []errorcatalog.Mint
 	var problems []string
@@ -140,7 +140,7 @@ func scanPackage(fset *token.FileSet, imports types.Importer, target listedPacka
 		location := fmt.Sprintf("%s:%d", relativeSourcePath(position.Filename), position.Line)
 		if value.Value != nil && value.Value.Kind() == constant.String {
 			mints = append(mints, errorcatalog.Mint{Code: constant.StringVal(value.Value), Package: target.ImportPath,
-				Position: location, Transport: transport})
+				Position: location, Transport: transport, WebSocket: webSocket})
 			continue
 		}
 		if call, ok := expression.(*ast.CallExpr); ok && len(call.Args) == 1 && info.Types[call.Fun].IsType() {

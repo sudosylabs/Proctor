@@ -1170,14 +1170,14 @@ func TestDeliveryErrorHasBoundedPrivateRecoveryAndRetryDelay(t *testing.T) {
 			at := time.Date(2026, 9, 8, 0, 0, 0, 0, time.UTC)
 			runtime := newInboundRuntime(&inboundTestApplication{}, newInboundTestSocket(), newRuntimeTestClock(at))
 			state := &model.DeliveryRecovery{Family: "browser", Budget: model.DeliveryBudgetSnapshot{ParticipationID: model.NewAttemptParticipationID(), Generation: 1, ServerTime: at, Native: model.DeliveryFamilyBudget{Participation: model.NewDeliveryQuotaUsage(true, false), Attempt: model.NewDeliveryQuotaUsage(true, true), PendingByteLimit: model.DeliveryPendingByteLimit}, Browser: model.DeliveryFamilyBudget{Participation: model.NewDeliveryQuotaUsage(false, false), Attempt: model.NewDeliveryQuotaUsage(false, true), PendingByteLimit: model.DeliveryPendingByteLimit}}}
-			code := "exam.delivery.pending_capacity"
+			code := apperror.Code("exam.delivery.pending_capacity")
 			if name == "invalid" {
 				state.Budget.Native.PendingBytes = -1
 			}
 			if name == "unrelated" {
 				code = "exam.attempt.not_found"
 			}
-			runtime.enqueueDeliveryError(3, code, apperror.New(apperror.Code(code)).Wrap(&deliveryRecoveryTestError{error: errors.New("private-native-payload"), value: state}))
+			runtime.enqueueDeliveryError(3, code, apperror.New(code).Wrap(&deliveryRecoveryTestError{error: errors.New("private-native-payload"), value: state}))
 			response := nextInboundResponse(t, runtime)
 			require.NotNil(t, response.Error, "invalid delivery error extension")
 			require.Equal(t, int64(3), response.Sequence, "invalid delivery error extension")

@@ -42,7 +42,9 @@ Use the Academic Unit slice as the conceptual pattern for later capabilities:
   check in `make -C server check` fails when the mapping is stale, when source
   mints a code the catalog lacks or converts a non-constant string to
   `apperror.Code`, when the transport mints an application-only code, or when
-  a listed code is never minted. Route error lists may name only catalog
+  a listed code is never minted. The WebSocket transport passes every code it
+  presents as an `apperror.Code`, so the same check covers its protocol codes
+  and the application codes marked `websocket_fallback`. Route error lists may name only catalog
   codes;
 - declare in a route's error list only the codes its operation can return.
   The kernel adds the codes its own checks produce for the route's

@@ -154,6 +154,17 @@ func CodeOf(err error, fallback Code) string {
 	return string(fallback)
 }
 
+// Classify returns the Code of the first *Error in err's chain, or fallback
+// when err carries no application error. A presenter that keeps the code
+// typed passes its fallback as a constant, so the error catalog check sees
+// every code it can present.
+func Classify(err error, fallback Code) Code {
+	if got, ok := As(err); ok {
+		return got.code
+	}
+	return fallback
+}
+
 func cloneFields(input map[string]string) map[string]string {
 	if len(input) == 0 {
 		return nil

@@ -44,6 +44,10 @@ type Entry struct {
 	// Transport marks a kernel code the HTTP or WebSocket transport may mint.
 	// Every other code is minted only by the application.
 	Transport bool `yaml:"transport,omitempty"`
+	// WebSocketFallback marks an application code the WebSocket transport
+	// presents itself: the fallback for a failure that carries no application
+	// error, or a concealing re-mapping. The HTTP transport never mints it.
+	WebSocketFallback bool `yaml:"websocket_fallback,omitempty"`
 	// Problem marks a routing or health code the HTTP kernel writes directly
 	// as Problem Details rather than through an application error.
 	Problem bool `yaml:"problem,omitempty"`
@@ -155,6 +159,9 @@ func validateEntry(entry *Entry, derived int) []string {
 	if entry.Problem && entry.Transport {
 		problems = append(problems, fmt.Sprintf("%s: a kernel problem code is not also an application error", entry.Code))
 	}
+	if entry.WebSocketFallback && (entry.Transport || entry.Problem) {
+		problems = append(problems, fmt.Sprintf("%s: a WebSocket fallback is an application code, not a kernel code", entry.Code))
+	}
 	return problems
 }
 
@@ -177,12 +184,15 @@ type Mint struct {
 	// Transport reports whether the minting package is an HTTP or WebSocket
 	// transport.
 	Transport bool
+	// WebSocket reports whether the minting package is the WebSocket
+	// transport.
+	WebSocket bool
 }
 
 // Verify compares the catalog with the codes minted by production source. It
 // reports every minted code missing from the catalog, every transport mint of
-// an application-only code, and every application error code no source
-// mints.
+// an application-only code (the WebSocket transport may mint the codes marked
+// as its fallbacks), and every application error code no source mints.
 func (c *Catalog) Verify(mints []Mint) error {
 	var problems []string
 	minted := make(map[string]struct{}, len(mints))
@@ -194,7 +204,7 @@ func (c *Catalog) Verify(mints []Mint) error {
 			problems = append(problems, fmt.Sprintf("%s: %s mints a code missing from the catalog", mint.Position, mint.Code))
 		case entry.Problem:
 			problems = append(problems, fmt.Sprintf("%s: %s is a kernel problem code, not an application error", mint.Position, mint.Code))
-		case mint.Transport && !entry.Transport:
+		case mint.Transport && !entry.Transport && !(mint.WebSocket && entry.WebSocketFallback):
 			problems = append(problems, fmt.Sprintf("%s: transport mints application code %s", mint.Position, mint.Code))
 		}
 	}

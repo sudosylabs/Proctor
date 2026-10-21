@@ -152,7 +152,10 @@ HTTP Problem Details or WebSocket protocol error
 Transports never mint domain codes: `httpapi` mints only `request.*`, the
 authentication, CSRF, DPoP, and idempotency kernel codes, `service.busy`, and
 routing codes, and presents an application result it cannot serialize as the
-generic internal problem. HTTP and WebSocket each maintain exhaustive mappings. Unknown failures become generic correlated internal errors. Unexpected failures preserve their cause and are logged once at the outer operational boundary.
+generic internal problem. The WebSocket transport mints its `websocket.*`
+protocol codes and, as typed `apperror.Code` constants, the application codes
+the catalog marks `websocket_fallback`: the fallback for a failure without an
+application error and its concealing re-mappings. HTTP and WebSocket each maintain exhaustive mappings. Unknown failures become generic correlated internal errors. Unexpected failures preserve their cause and are logged once at the outer operational boundary.
 
 HTTP negotiates presentation language from `Accept-Language` against the
 embedded server catalogs. Problem `type`, `code`, `status`, fields, and request

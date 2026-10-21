@@ -19,6 +19,7 @@ import (
 
 	gorilla "github.com/gorilla/websocket"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -117,10 +118,10 @@ func (c *connectionRuntime) enqueueResponse(sequence int64, data json.RawMessage
 	c.enqueueOutbound(outboundMessage{response: response})
 }
 
-func (c *connectionRuntime) enqueueError(sequence int64, code string, presentation websocketErrorPresentation) {
+func (c *connectionRuntime) enqueueError(sequence int64, code apperror.Code, presentation websocketErrorPresentation) {
 	response := &Response{
 		Status: "error", Sequence: sequence,
-		Error: &Error{Code: code, Message: localizedText(c.localizer, c.locale, websocketErrorMessage(presentation))},
+		Error: &Error{Code: string(code), Message: localizedText(c.localizer, c.locale, websocketErrorMessage(presentation))},
 	}
 	if code == "exam.delivery.control_rate_limited" || code == "websocket.rate_limited" {
 		response.Error.RetryAfterSeconds = 1

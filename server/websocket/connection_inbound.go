@@ -148,13 +148,10 @@ func (c *connectionRuntime) handleRequest(
 			subscription.Action,
 			subscription.Resource.model(),
 		); err != nil {
-			code := "authorization.denied"
+			code := apperror.Classify(err, "authorization.denied")
 			presentation := websocketErrorSubscriptionDenied
-			if failure, ok := apperror.As(err); ok {
-				code = failure.Code()
-				if code != "authorization.denied" {
-					presentation = websocketErrorSubscriptionFailed
-				}
+			if code != "authorization.denied" {
+				presentation = websocketErrorSubscriptionFailed
 			}
 			c.enqueueError(request.Sequence, code, presentation)
 			return
@@ -250,7 +247,7 @@ func (c *connectionRuntime) handleExamAttemptConnect(ctx context.Context, reques
 		var capacity *model.DeliveryMetadataCapacity
 		if code == "exam.delivery.metadata_capacity" && errors.As(err, &capacity) && capacity.Validate() == nil {
 			value := *capacity
-			c.enqueueOutbound(outboundMessage{response: &Response{Status: "error", Sequence: request.Sequence, Error: &Error{DeliveryMetadataCapacity: &value, Code: code, Message: localizedText(c.localizer, c.locale, websocketErrorMessage(presentation))}}})
+			c.enqueueOutbound(outboundMessage{response: &Response{Status: "error", Sequence: request.Sequence, Error: &Error{DeliveryMetadataCapacity: &value, Code: string(code), Message: localizedText(c.localizer, c.locale, websocketErrorMessage(presentation))}}})
 		} else {
 			c.enqueueError(request.Sequence, code, presentation)
 		}
@@ -336,14 +333,11 @@ func (c *connectionRuntime) handleExamAttemptBrowserStart(ctx context.Context, r
 		SourceSessionID: model.BrowserSourceSessionID(decoded.SourceSessionID), PolicyRevisionID: model.ExamRevisionID(decoded.PolicyRevisionID), PolicyDigest: decoded.PolicyDigest, Transition: decoded.Transition,
 	})
 	if err != nil {
-		code := "exam.attempt.unavailable"
-		if failure, ok := apperror.As(err); ok {
-			code = failure.Code()
-		}
+		code := apperror.Classify(err, "exam.attempt.unavailable")
 		var refusal *app.BrowserSourceRefusal
 		if errors.As(err, &refusal) && refusal.Status.Validate() == nil && refusal.Capabilities != nil && refusal.Capabilities.Validate() == nil {
 			caps := candidateRuntimeCapabilitiesWire(*refusal.Capabilities)
-			c.enqueueOutbound(outboundMessage{response: &Response{Status: "error", Sequence: request.Sequence, Error: &Error{Code: code, Message: localizedText(c.localizer, c.locale, websocketErrorMessage(websocketErrorBrowserActivityFailed)), BrowserSourceStatus: &refusal.Status, CandidateRuntimeCapabilities: &caps, DeliveryMetadataCapacity: refusal.Capacity}}})
+			c.enqueueOutbound(outboundMessage{response: &Response{Status: "error", Sequence: request.Sequence, Error: &Error{Code: string(code), Message: localizedText(c.localizer, c.locale, websocketErrorMessage(websocketErrorBrowserActivityFailed)), BrowserSourceStatus: &refusal.Status, CandidateRuntimeCapabilities: &caps, DeliveryMetadataCapacity: refusal.Capacity}}})
 			return
 		}
 		c.enqueueError(request.Sequence, code, websocketErrorBrowserActivityFailed)
@@ -384,10 +378,7 @@ func (c *connectionRuntime) handleExamAttemptBrowserAppend(ctx context.Context, 
 		SourceSessionID: model.BrowserSourceSessionID(decoded.SourceSessionID), PolicyRevisionID: model.ExamRevisionID(decoded.PolicyRevisionID), PolicyDigest: decoded.PolicyDigest, Events: events,
 	})
 	if err != nil {
-		code := "exam.attempt.unavailable"
-		if failure, ok := apperror.As(err); ok {
-			code = failure.Code()
-		}
+		code := apperror.Classify(err, "exam.attempt.unavailable")
 		c.enqueueDeliveryError(request.Sequence, code, err)
 		return
 	}
@@ -631,12 +622,12 @@ func (c *connectionRuntime) handleExamAttemptSecurityUpdate(ctx context.Context,
 }
 
 // Live and historical delivery share the same bounded recovery projection.
-func (c *connectionRuntime) enqueueDeliveryError(sequence int64, code string, err error) {
-	value := &Error{Code: code, Message: localizedText(c.localizer, c.locale, websocketErrorMessage(websocketErrorBrowserActivityFailed))}
+func (c *connectionRuntime) enqueueDeliveryError(sequence int64, code apperror.Code, err error) {
+	value := &Error{Code: string(code), Message: localizedText(c.localizer, c.locale, websocketErrorMessage(websocketErrorBrowserActivityFailed))}
 	var recovery interface {
 		DeliveryRecovery() *model.DeliveryRecovery
 	}
-	if app.SupportsDeliveryRecovery(code) && errors.As(err, &recovery) {
+	if app.SupportsDeliveryRecovery(string(code)) && errors.As(err, &recovery) {
 		if state := recovery.DeliveryRecovery(); state != nil && state.Validate() == nil {
 			value.Delivery = state
 		}

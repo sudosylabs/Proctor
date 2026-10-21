@@ -117,7 +117,7 @@ func TestExamAttemptFocusLossErrorPreservesOnlyStableCandidateSafeOutcomes(t *te
 			t.Parallel()
 			code, presentation := examAttemptFocusLossError(apperror.New(apperror.Code(test.code)))
 			message := websocketErrorMessage(presentation).fallback
-			require.Equal(t, test.wantCode, code)
+			require.Equal(t, test.wantCode, string(code))
 			require.Equal(t, test.wantMessage, message)
 		})
 	}

@@ -311,9 +311,13 @@ var applicationErrorMappings = map[string]applicationErrorMapping{
 	"user_settings.invalid":                                       {status: http.StatusBadRequest},
 	"user_settings.revision_conflict":                             {status: http.StatusConflict},
 	"user_settings.unavailable":                                   {status: http.StatusServiceUnavailable},
+	"websocket.action.unknown":                                    {status: http.StatusBadRequest},
 	"websocket.internal":                                          {status: http.StatusInternalServerError},
 	"websocket.origin.invalid":                                    {status: http.StatusForbidden},
+	"websocket.rate_limited":                                      {status: http.StatusTooManyRequests},
 	"websocket.request.invalid":                                   {status: http.StatusBadRequest},
+	"websocket.subscription.invalid":                              {status: http.StatusBadRequest},
+	"websocket.subscription.limit":                                {status: http.StatusConflict},
 	"websocket.unavailable":                                       {status: http.StatusServiceUnavailable},
 }
 

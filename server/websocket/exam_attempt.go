@@ -446,34 +446,28 @@ func decodeStrictExamAttemptObject[T any](document json.RawMessage, label string
 	return value, nil
 }
 
-func examAttemptConnectError(err error) (string, websocketErrorPresentation) {
-	code := "exam.attempt.unavailable"
+func examAttemptConnectError(err error) (apperror.Code, websocketErrorPresentation) {
+	code := apperror.Classify(err, "exam.attempt.unavailable")
 	presentation := websocketErrorAttemptConnectionFailed
-	if failure, ok := apperror.As(err); ok {
-		code = failure.Code()
-		if code == "resource.not_found" || code == "authorization.denied" {
-			presentation = websocketErrorAttemptConnectionDenied
-		}
+	if code == "resource.not_found" || code == "authorization.denied" {
+		presentation = websocketErrorAttemptConnectionDenied
 	}
 	return code, presentation
 }
 
-func examAttemptRenewError(err error) (string, websocketErrorPresentation) {
-	code := "exam.attempt.unavailable"
+func examAttemptRenewError(err error) (apperror.Code, websocketErrorPresentation) {
+	code := apperror.Classify(err, "exam.attempt.unavailable")
 	presentation := websocketErrorAttemptRenewalFailed
-	if failure, ok := apperror.As(err); ok {
-		code = failure.Code()
-		switch code {
-		case "resource.not_found", "authorization.denied":
-			presentation = websocketErrorAttemptRenewalDenied
-		case "exam.attempt.connection_lost":
-			presentation = websocketErrorAttemptConnectionLost
-		}
+	switch code {
+	case "resource.not_found", "authorization.denied":
+		presentation = websocketErrorAttemptRenewalDenied
+	case "exam.attempt.connection_lost":
+		presentation = websocketErrorAttemptConnectionLost
 	}
 	return code, presentation
 }
 
-func examAttemptFocusLossError(err error) (string, websocketErrorPresentation) {
+func examAttemptFocusLossError(err error) (apperror.Code, websocketErrorPresentation) {
 	failure, ok := apperror.As(err)
 	if !ok {
 		return "exam.attempt.unavailable", websocketErrorFocusLossFailed
@@ -489,8 +483,10 @@ func examAttemptFocusLossError(err error) (string, websocketErrorPresentation) {
 		return "exam.attempt.connection_lost", websocketErrorAttemptConnectionLost
 	case "exam.attempt.focus_loss_conflict":
 		return "exam.attempt.focus_loss_conflict", websocketErrorFocusLossConflict
-	case "exam.attempt.sitting_not_open", "exam.attempt.state_conflict":
-		return failure.Code(), websocketErrorFocusLossFailed
+	case "exam.attempt.sitting_not_open":
+		return "exam.attempt.sitting_not_open", websocketErrorFocusLossFailed
+	case "exam.attempt.state_conflict":
+		return "exam.attempt.state_conflict", websocketErrorFocusLossFailed
 	default:
 		return "exam.attempt.unavailable", websocketErrorFocusLossFailed
 	}
