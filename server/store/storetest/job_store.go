@@ -123,9 +123,18 @@ func TestJobStore(t *testing.T, ss store.Store) {
 	_, _, err = ss.Job().Enqueue(ctx, &store.JobEnqueue{Job: crashed})
 	require.NoError(t, err)
 	deadToken := mustClaimToken(t)
-	dead, err := ss.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{crashed.Type}, NodeID: "dead-node", ClaimToken: deadToken, LeaseDuration: 10 * time.Millisecond})
+	dead, err := ss.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{crashed.Type}, NodeID: "dead-node", ClaimToken: deadToken, LeaseDuration: 200 * time.Millisecond})
 	require.NoError(t, err)
-	time.Sleep(20 * time.Millisecond)
+	time.Sleep(250 * time.Millisecond)
+	// Lease expiry requeues behind a backoff of at least the expired lease, so
+	// work that crashed its worker is not handed straight to the next node.
+	_, err = ss.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{crashed.Type}, NodeID: "live-node", ClaimToken: mustClaimToken(t), LeaseDuration: time.Minute})
+	require.True(t, store.IsNotFound(err), "lease-expired Job was reclaimed without backoff")
+	backedOff, err := ss.Job().Get(ctx, crashed.ID)
+	require.NoError(t, err)
+	require.Equal(t, model.JobStatusQueued, backedOff.Status)
+	require.False(t, backedOff.AvailableAt.Before(backedOff.UpdatedAt.Add(200*time.Millisecond)), "lease-expiry backoff = %s", backedOff.AvailableAt.Sub(backedOff.UpdatedAt))
+	time.Sleep(time.Until(backedOff.AvailableAt) + 50*time.Millisecond)
 	recoveredToken := mustClaimToken(t)
 	recovered, err := ss.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{crashed.Type}, NodeID: "live-node", ClaimToken: recoveredToken, LeaseDuration: time.Minute})
 	require.NoError(t, err)
@@ -212,6 +221,22 @@ func TestJobStore(t *testing.T, ss store.Store) {
 	require.True(t, observed, "fenced worker did not observe cancellation")
 	_, err = ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: controlClaim.Attempt.ID, ClaimToken: controlToken, Kind: store.JobCompletionCanceled, PublicErrorCode: "job.canceled"})
 	require.NoError(t, err)
+
+	// A handler that fails retryably after cancellation was requested cannot
+	// requeue; its completion honors the cancellation instead of being refused.
+	retryCanceled := mustJob(t, "user:retry-canceled", model.NowUTC().Add(-time.Second))
+	_, _, err = ss.Job().Enqueue(ctx, &store.JobEnqueue{Job: retryCanceled})
+	require.NoError(t, err)
+	retryCanceledToken := mustClaimToken(t)
+	retryCanceledClaim, err := ss.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{retryCanceled.Type}, NodeID: "control-node", ClaimToken: retryCanceledToken, LeaseDuration: time.Minute})
+	require.NoError(t, err)
+	audit = saveJobMutationAudit(t, ctx, ss, retryCanceled.ID, "cancel")
+	_, err = ss.Job().Cancel(ctx, &store.JobMutation{ID: retryCanceled.ID, ExpectedRevision: retryCanceledClaim.Job.Revision, AuditEventID: audit.ID, AuditAt: model.GetMillis()})
+	require.NoError(t, err)
+	canceledByRetry, err := ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: retryCanceledClaim.Attempt.ID, ClaimToken: retryCanceledToken, Kind: store.JobCompletionRetryableFailure, RetryDelay: time.Second, PublicErrorCode: "dependency.unavailable"})
+	require.NoError(t, err, "retryable completion after cancellation request")
+	require.Equal(t, model.JobStatusCanceled, canceledByRetry.Status)
+	require.Equal(t, "job.canceled", canceledByRetry.PublicErrorCode)
 
 	failedJob := mustJob(t, "user:explicit-retry", model.NowUTC().Add(-time.Second))
 	_, _, err = ss.Job().Enqueue(ctx, &store.JobEnqueue{Job: failedJob})

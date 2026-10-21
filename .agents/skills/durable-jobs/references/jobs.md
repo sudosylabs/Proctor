@@ -93,8 +93,12 @@ cursor and counts so a retry can resume safely.
 
 Job Attempts use `Running`, `Succeeded`, `Failed`, `Canceled`, `LeaseExpired`,
 and `Incompatible`. Lease expiry records lost ownership rather than inventing
-a handler error, while Incompatible records a safe capability mismatch that
-does not consume the failure-attempt budget. A handler returns one of
+a handler error and requeues behind a backoff that starts at the expired lease
+and doubles per attempt up to an hour, so work that crashes its worker does not
+reach the next node at once. A retryable or relinquished completion of a Job
+whose cancellation was requested completes it as canceled. Incompatible
+records a safe capability mismatch that does not consume the failure-attempt
+budget. A handler returns one of
 `Succeeded`, `RetryableFailure`, `Relinquished`, `PermanentFailure`, or
 `Canceled`. Transient dependency failures retry;
 invalid payload versions, rejected content, invariant failures, and unsupported

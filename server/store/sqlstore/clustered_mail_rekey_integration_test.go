@@ -72,6 +72,7 @@ func TestClusteredMailRekeyRecoversCheckpointAndRotatesFanoutBundle(t *testing.T
 	_, err = nodeA.GetMaster().Exec(ctx, `UPDATE job_attempts SET lease_expires_at=heartbeat_at+INTERVAL '1 microsecond' WHERE id=?`,
 		first.Attempt.ID.String())
 	require.NoError(t, err)
+	skipLeaseExpiryBackoff(t, ctx, nodeB, first.Job.ID)
 	secondToken := clusteredMailRekeyClaimToken(t)
 	second, err := nodeB.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{model.JobTypeMailRekey},
 		NodeID: "mail-rekey-node-b", ClaimToken: secondToken, LeaseDuration: time.Minute})

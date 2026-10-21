@@ -204,6 +204,7 @@ func TestClusteredJobLeaseRecoveryFencesTheDeadNodeAndPreservesAttempts(t *testi
 	dead, err := nodeA.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{job.Type}, NodeID: "dead-node", ClaimToken: deadToken, LeaseDuration: 20 * time.Millisecond})
 	require.NoError(t, err)
 	time.Sleep(40 * time.Millisecond)
+	skipLeaseExpiryBackoff(t, ctx, nodeB, job.ID)
 	liveToken, err := model.NewJobClaimToken()
 	require.NoError(t, err)
 	live, err := nodeB.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{job.Type}, NodeID: "live-node", ClaimToken: liveToken, LeaseDuration: time.Minute})
@@ -263,4 +264,17 @@ func prepareConcurrentProfilePicturePublication(t *testing.T, ctx context.Contex
 		EntryID: entry.ID, RevisionID: revision.ID, LeaseID: lease.ID, Renditions: renditions,
 		ChangedAt: at, AuditEventID: audit.ID, AuditAt: at.UnixMilli(),
 	}
+}
+
+// skipLeaseExpiryBackoff recovers an expired lease, which requeues the Job
+// behind its crash backoff, and then makes the Job available at once so a test
+// can take over from the dead node without waiting out the backoff.
+func skipLeaseExpiryBackoff(t *testing.T, ctx context.Context, persistence *SQLStore, jobID model.JobID) {
+	t.Helper()
+	token, err := model.NewJobClaimToken()
+	require.NoError(t, err)
+	_, err = persistence.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{model.JobTypeCleanup}, NodeID: "lease-recovery", ClaimToken: token, LeaseDuration: time.Minute})
+	require.True(t, err == nil || store.IsNotFound(err), "recover expired leases: %v", err)
+	_, err = persistence.GetMaster().Exec(ctx, `UPDATE jobs SET available_at=CURRENT_TIMESTAMP WHERE id=? AND status='queued'`, jobID.String())
+	require.NoError(t, err)
 }

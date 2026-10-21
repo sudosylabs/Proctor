@@ -212,6 +212,14 @@ func insertQueuedJob(ctx context.Context, executor sqlxExecutor, job *model.Job,
 	return executor.Exec(ctx, `INSERT INTO jobs (`+jobColumns+`) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, NULL, NULL, NULL, NULL, '', ?, ?, 0, ?, 0, NULL, NULL, NULL, ?)`+conflict, job.ID.String(), string(job.Type), string(job.Status), job.CreatedAt, job.UpdatedAt, job.AvailableAt, job.CommandVersion, job.Command, job.DedupeKey, string(job.DedupePolicy), job.MaximumAttempts, job.Revision)
 }
 
+// leaseExpiryBackoff delays a Job whose attempt lost its lease, which usually
+// means its worker died. The delay starts at the expired lease's duration and
+// doubles with each attempt up to an hour, so work that crashes its worker
+// does not take down the next node at once.
+const leaseExpiryBackoff = `LEAST(COALESCE((SELECT a.lease_expires_at - a.heartbeat_at FROM job_attempts a
+	WHERE a.job_id = jobs.id AND a.status = 'lease_expired' ORDER BY a.number DESC LIMIT 1), interval '0') * power(2, LEAST(GREATEST(attempt_count - 1, 0), 10)),
+	interval '1 hour')`
+
 func (s SQLJobStore) ClaimNext(ctx context.Context, request *store.JobClaimRequest) (*store.JobClaim, error) {
 	if request == nil || len(request.Types) == 0 || strings.TrimSpace(request.NodeID) == "" || !request.ClaimToken.IsValid() || request.LeaseDuration <= 0 || request.LeaseDuration > time.Hour {
 		return nil, store.NewErrInvalidInput("job", "claim", nil)
@@ -231,7 +239,7 @@ func (s SQLJobStore) ClaimNext(ctx context.Context, request *store.JobClaimReque
 			return nil, fmt.Errorf("expire lost job attempts: %w", err)
 		}
 		for _, jobID := range expiredJobIDs {
-			if _, err = tx.Exec(ctx, `UPDATE jobs SET status = CASE WHEN status = 'cancel_requested' THEN 'canceled' WHEN attempt_count >= maximum_attempts THEN 'failed' ELSE 'queued' END, completed_at = CASE WHEN status = 'cancel_requested' OR attempt_count >= maximum_attempts THEN CAST(? AS timestamptz) ELSE NULL END, public_error_code = CASE WHEN status = 'cancel_requested' THEN 'job.canceled' WHEN attempt_count >= maximum_attempts THEN 'job.lease_expired' ELSE public_error_code END, available_at = ?, updated_at = GREATEST(updated_at, ?), revision = revision + 1 WHERE id = ? AND status IN ('running', 'cancel_requested')`, databaseNow, databaseNow, databaseNow, jobID); err != nil {
+			if _, err = tx.Exec(ctx, `UPDATE jobs SET status = CASE WHEN status = 'cancel_requested' THEN 'canceled' WHEN attempt_count >= maximum_attempts THEN 'failed' ELSE 'queued' END, completed_at = CASE WHEN status = 'cancel_requested' OR attempt_count >= maximum_attempts THEN CAST(? AS timestamptz) ELSE NULL END, public_error_code = CASE WHEN status = 'cancel_requested' THEN 'job.canceled' WHEN attempt_count >= maximum_attempts THEN 'job.lease_expired' ELSE public_error_code END, available_at = CAST(? AS timestamptz) + `+leaseExpiryBackoff+`, updated_at = GREATEST(updated_at, ?), revision = revision + 1 WHERE id = ? AND status IN ('running', 'cancel_requested')`, databaseNow, databaseNow, databaseNow, jobID); err != nil {
 				return nil, fmt.Errorf("recover expired job %s: %w", jobID, err)
 			}
 		}
@@ -381,33 +389,40 @@ func (s SQLJobStore) Complete(ctx context.Context, input *store.JobCompletion) (
 		jobAt := latestTime(job.UpdatedAt, databaseNow)
 		var attemptStatus model.JobAttemptStatus
 		var updated *model.Job
-		switch input.Kind {
+		kind, code := input.Kind, input.PublicErrorCode
+		if job.Status == model.JobStatusCancelRequested && (kind == store.JobCompletionRetryableFailure || kind == store.JobCompletionRelinquished) {
+			// Cancellation was requested while the handler ran. A requeue cannot
+			// leave cancel_requested, so the attempt honors the cancellation as
+			// lease expiry does instead of failing to complete.
+			kind, code = store.JobCompletionCanceled, "job.canceled"
+		}
+		switch kind {
 		case store.JobCompletionSucceeded:
 			attemptStatus = model.JobAttemptStatusSucceeded
 			updated, err = job.Succeed(input.ResultVersion, input.Result, jobAt)
 		case store.JobCompletionRetryableFailure:
 			attemptStatus = model.JobAttemptStatusFailed
 			if job.AttemptCount < job.MaximumAttempts {
-				updated, err = job.Retry(input.PublicErrorCode, jobAt.Add(input.RetryDelay), jobAt)
+				updated, err = job.Retry(code, jobAt.Add(input.RetryDelay), jobAt)
 			} else {
-				updated, err = job.Fail(input.PublicErrorCode, jobAt)
+				updated, err = job.Fail(code, jobAt)
 			}
 		case store.JobCompletionRelinquished:
 			attemptStatus = model.JobAttemptStatusIncompatible
-			updated, err = job.Relinquish(input.PublicErrorCode, jobAt.Add(input.RetryDelay), jobAt)
+			updated, err = job.Relinquish(code, jobAt.Add(input.RetryDelay), jobAt)
 		case store.JobCompletionPermanentFailure:
 			attemptStatus = model.JobAttemptStatusFailed
-			updated, err = job.Fail(input.PublicErrorCode, jobAt)
+			updated, err = job.Fail(code, jobAt)
 		case store.JobCompletionCanceled:
 			attemptStatus = model.JobAttemptStatusCanceled
-			updated, err = job.Cancel(input.PublicErrorCode, jobAt)
+			updated, err = job.Cancel(code, jobAt)
 		default:
-			err = fmt.Errorf("unknown completion kind %q", input.Kind)
+			err = fmt.Errorf("unknown completion kind %q", kind)
 		}
 		if err != nil {
 			return nil, store.NewErrInvalidInput("job", "completion", err)
 		}
-		completedAttempt, err := attempt.Complete(attemptStatus, input.PublicErrorCode, latestTime(attempt.HeartbeatAt, databaseNow))
+		completedAttempt, err := attempt.Complete(attemptStatus, code, latestTime(attempt.HeartbeatAt, databaseNow))
 		if err != nil {
 			return nil, store.NewErrInvalidInput("job_attempt", "completion", err)
 		}
