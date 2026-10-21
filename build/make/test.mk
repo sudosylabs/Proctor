@@ -1,4 +1,4 @@
-.PHONY: check brand-check brand-copy build-scripts-check webapp-install webapp-check docs-install docs-start docs-check mail-templates-install mail-templates-check server-check integration independent-modules ci
+.PHONY: check brand-check brand-copy build-scripts-check webapp-install webapp-check docs-install docs-start docs-check mail-templates-install mail-templates-check server-check integration independent-modules module-pins-check ci
 
 check: brand-check build-scripts-check webapp-check docs-check mail-templates-check server-check ## Run the hermetic product gate.
 
@@ -14,6 +14,7 @@ build-scripts-check:
 	@for script in "$(ROOT_DIR)"/build/scripts/*; do sh -n "$$script"; done
 	@"$(ROOT_DIR)/build/scripts/test-check-tools" "$(ROOT_DIR)/build/scripts/check-tools"
 	@"$(ROOT_DIR)/build/scripts/test-check-go-tools" "$(ROOT_DIR)/build/scripts/check-go-tools"
+	@"$(ROOT_DIR)/build/scripts/test-check-module-pins" "$(ROOT_DIR)/build/scripts/check-module-pins"
 	@"$(ROOT_DIR)/build/scripts/test-go-quality" "$(ROOT_DIR)/build/scripts/go-quality"
 	@"$(ROOT_DIR)/build/scripts/test-repository-toolchain" "$(ROOT_DIR)"
 	@"$(ROOT_DIR)/build/scripts/test-dev-doctor" "$(ROOT_DIR)/build/scripts/dev-doctor"
@@ -55,4 +56,7 @@ integration: ## Run dependency-backed server and reusable-module conformance sui
 independent-modules: ## Verify every Go module outside workspace assistance.
 	$(MAKE) -C "$(SERVER_DIR)" independent-modules
 
-ci: check integration independent-modules package-verify ## Run the complete CI-facing product gate.
+module-pins-check: ## Verify the server pins each packages/* module at its current content.
+	@"$(ROOT_DIR)/build/scripts/check-module-pins" "$(ROOT_DIR)"
+
+ci: check integration independent-modules module-pins-check package-verify ## Run the complete CI-facing product gate.

@@ -375,7 +375,18 @@ public Go proxy. A pushed Git tag is fetchable before its workflow completes;
 consumers must check the completed, signed release rather than treating tag
 existence as evidence that the gates passed. When changing a server dependency
 to a new reusable-module version, release that module first, then review the server's `go.mod`/`go.sum`
-update before tagging the server. Tags currently accept major 0 or 1 because
+update before tagging the server.
+
+Until a module is released, `server/go.mod` pins it at a pseudo-version of a
+commit on `main`, and `go.work` replaces exactly that version with the local
+directory. Workspace builds therefore hide a stale pin while `GOWORK=off`
+builds and consumers still get the old code. A change under `packages/<module>`
+is followed by a commit that moves the pin, and the matching `go.work`
+replacement, to the newest commit touching that module; a commit cannot pin
+itself. `make module-pins-check` fails when a pinned commit's module tree
+differs from the working tree and names the pin to use; CI runs it on the
+branch tip with full history. Pinned commits must be pushed for `GOWORK=off`
+builds to resolve them. Tags currently accept major 0 or 1 because
 none of these module paths has a `/v2` suffix. SemVer prereleases such as
 `server/v0.1.0-rc.1` are supported; moving aliases and build-metadata tags are
 not. The workflow never creates a Git tag or updates `latest`.

@@ -140,7 +140,8 @@ checkout does not.
 | `make docs-check` | Validates OpenAPI agreement, docs metadata and generators, TypeScript, and the production documentation build. **Effect:** generated output. |
 | `make integration` | Runs the server's dependency-backed suites plus reusable Redis-cache and SMTP-mail conformance. **Effect:** temporary runtime state. |
 | `make independent-modules` | Tests, race-tests, vets, and builds all four Go modules with workspace assistance disabled. **Effect:** read-only. |
-| `make ci` | Runs `check`, dependency-backed integration, independent-module verification, and release-package verification. **Effect:** generated output and temporary runtime state. |
+| `make module-pins-check` | Fails when the server's `go.mod` pins a `packages/*` module at content that differs from the working tree, and prints the pin to use. **Effect:** read-only. |
+| `make ci` | Runs `check`, dependency-backed integration, independent-module verification, module-pin verification, and release-package verification. **Effect:** generated output and temporary runtime state. |
 
 `make check` is the normal product-wide handoff gate. `make ci` is materially
 slower, starts dependency containers, and requires a fresh package output path.

@@ -57,6 +57,9 @@ module when a change is not server-only. No module has been released yet.
 - Build: `make container` packages Linux binaries with the same recipe as
   `make dist` and builds them with the release Dockerfile, so a local image
   matches a published one; `Dockerfile.runtime` is removed.
+- Build: `make module-pins-check`, run in CI, fails when `server/go.mod` pins a
+  `packages/*` module at a commit whose content differs from the workspace
+  module.
 - Build: the root `make check` verifies transactional-mail template freshness,
   and `make -C server integration-postgres` runs every PostgreSQL integration
   test in its packages instead of a fixed list.
@@ -139,6 +142,9 @@ module when a change is not server-only. No module has been released yet.
   baseline enforces the same rule (**breaking** for development databases). A
   Sitting mail fan-out skips an unaddressable recipient instead of stopping.
 - Cache: counter expirations are fixed windows.
+- Server: `server/go.mod` pins the current cache, mail, and VFS modules, so
+  `GOWORK=off` builds include the fixed-window counters and the other module
+  fixes instead of August snapshots.
 - VFS: a local listing stops once its page is full instead of walking and
   sorting the whole tree under the lock, and the server readiness probe checks
   the VFS root instead of listing, so a large local tree no longer times out

@@ -1,0 +1,83 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -eu
+
+if [ "$#" -ne 1 ]; then
+	printf 'usage: %s CHECK_MODULE_PINS\n' "$0" >&2
+	exit 2
+fi
+
+check=$1
+fixture=$(mktemp -d "${TMPDIR:-/tmp}/proctor-module-pins.XXXXXX")
+trap 'rm -rf "$fixture"' EXIT HUP INT TERM
+repo=$fixture/repo
+module=github.com/sudosylabs/proctor/packages/cache
+
+git init --quiet "$repo"
+git -C "$repo" config user.email test@example.invalid
+git -C "$repo" config user.name test
+git -C "$repo" config commit.gpgsign false
+mkdir -p "$repo/packages/cache" "$repo/server"
+printf 'module %s\n' "$module" >"$repo/packages/cache/go.mod"
+printf 'package cache\n' >"$repo/packages/cache/cache.go"
+git -C "$repo" add packages
+GIT_COMMITTER_DATE='2026-01-02T03:04:05Z' git -C "$repo" commit --quiet -m cache
+
+pin() {
+	commit=$(git -C "$repo" rev-parse HEAD)
+	stamp=$(TZ=UTC git -C "$repo" show -s --date=format-local:%Y%m%d%H%M%S --format=%cd "$commit")
+	printf 'v0.0.0-%s-%s' "$stamp" "$(printf '%s' "$commit" | cut -c1-12)"
+}
+
+write_pins() {
+	printf 'module github.com/sudosylabs/proctor/server\n\nrequire (\n\t%s %s\n)\n' "$module" "$1" >"$repo/server/go.mod"
+	printf 'go 1.25\n\nreplace (\n\t%s %s => ./packages/cache\n)\n' "$module" "$2" >"$repo/go.work"
+}
+
+expect() {
+	outcome=$1
+	description=$2
+	if "$check" "$repo" >"$fixture/output" 2>&1; then
+		result=pass
+	else
+		result=fail
+	fi
+	if [ "$result" != "$outcome" ]; then
+		printf 'check-module-pins: expected %s when %s, got:\n' "$outcome" "$description" >&2
+		cat "$fixture/output" >&2
+		exit 1
+	fi
+}
+
+current=$(pin)
+write_pins "$current" "$current"
+expect pass 'the pin matches the module'
+
+printf 'package cache // changed\n' >"$repo/packages/cache/cache.go"
+expect fail 'the module has uncommitted changes'
+git -C "$repo" add packages
+GIT_COMMITTER_DATE='2026-01-03T03:04:05Z' git -C "$repo" commit --quiet -m change
+expect fail 'the module changed after the pinned commit'
+if ! grep -Fq "$(pin)" "$fixture/output"; then
+	printf 'check-module-pins: drift did not suggest the newest module commit\n' >&2
+	exit 1
+fi
+
+write_pins "$(pin)" "$(pin)"
+expect pass 'the pin moves to the newest module commit'
+
+printf 'package cache\n' >"$repo/packages/cache/extra.go"
+expect fail 'the module has an untracked file'
+rm "$repo/packages/cache/extra.go"
+
+write_pins "$(pin)" "$current"
+expect fail 'go.work replaces a different version'
+
+wrong_stamp=$(pin | sed 's/-2026[0-9]*-/-20250101000000-/')
+write_pins "$wrong_stamp" "$wrong_stamp"
+expect fail 'the pseudo-version timestamp does not match the commit'
+
+write_pins v0.0.0-20260101000000-000000000000 v0.0.0-20260101000000-000000000000
+expect fail 'the pinned commit is missing'
