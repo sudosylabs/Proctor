@@ -206,5 +206,8 @@ module when a change is not server-only. No module has been released yet.
   the page's last object.
 - Mail: relay TLS, STARTTLS, and authentication failures classify as
   temporary rather than permanent.
+- VFS: the local backend fsyncs parent directories after publishing, moving,
+  or removing a file and after creating directories, so a completed operation
+  survives a crash.
 
 [Unreleased]: https://github.com/sudosylabs/proctor/commits/main

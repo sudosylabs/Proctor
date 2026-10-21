@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,6 +34,8 @@ type FS struct {
 	root    string
 	mu      sync.RWMutex
 	staging map[string]fs.FileInfo
+	// syncDirectory makes a directory's entries durable; tests observe it.
+	syncDirectory func(string) error
 }
 
 // New creates or opens a local filesystem rooted at root.
@@ -58,7 +61,7 @@ func New(root string) (*FS, error) {
 	if !info.IsDir() {
 		return nil, vfs.Error("new", root, fmt.Errorf("%w: root is not a directory", vfs.ErrInvalidPath))
 	}
-	return &FS{root: canonical}, nil
+	return &FS{root: canonical, syncDirectory: syncDirectory}, nil
 }
 
 func (f *FS) Capabilities() vfs.Capabilities {
@@ -242,7 +245,7 @@ func (f *FS) Remove(ctx context.Context, name string, options vfs.RemoveOptions)
 	if err := os.Remove(fullPath); err != nil {
 		return vfs.Error(op, name, err)
 	}
-	return nil
+	return vfs.Error(op, name, f.syncDirectory(filepath.Dir(fullPath)))
 }
 
 func (f *FS) List(ctx context.Context, options vfs.ListOptions) (vfs.Page, error) {
@@ -466,7 +469,7 @@ func (f *FS) Move(ctx context.Context, source, destination string, options vfs.T
 	if err != nil {
 		return vfs.Info{}, vfs.Error(op, source+" -> "+destination, err)
 	}
-	if err := os.MkdirAll(filepath.Dir(destinationPath), directoryMode); err != nil {
+	if err = f.makeDirectories(filepath.Dir(destinationPath)); err != nil {
 		return vfs.Info{}, vfs.Error(op, destination, err)
 	}
 
@@ -483,6 +486,14 @@ func (f *FS) Move(ctx context.Context, source, destination string, options vfs.T
 		}
 	} else if err := os.Rename(sourcePath, destinationPath); err != nil {
 		return vfs.Info{}, vfs.Error(op, source+" -> "+destination, err)
+	}
+	if err = f.syncDirectory(filepath.Dir(destinationPath)); err != nil {
+		return vfs.Info{}, vfs.Error(op, destination, err)
+	}
+	if filepath.Dir(sourcePath) != filepath.Dir(destinationPath) {
+		if err = f.syncDirectory(filepath.Dir(sourcePath)); err != nil {
+			return vfs.Info{}, vfs.Error(op, source, err)
+		}
 	}
 
 	sourceInfo.Path = destination
@@ -588,7 +599,7 @@ func (f *FS) prepareCopy(ctx context.Context, source, destination string, option
 // newTemporary and publishTemporary run with the publication lock held. Exact
 // temporary paths are hidden, without reserving any otherwise valid VFS name.
 func (f *FS) newTemporary(destination string) (*os.File, error) {
-	if err := os.MkdirAll(filepath.Dir(destination), directoryMode); err != nil {
+	if err := f.makeDirectories(filepath.Dir(destination)); err != nil {
 		return nil, err
 	}
 	temporary, err := os.CreateTemp(filepath.Dir(destination), ".vfs-*")
@@ -632,8 +643,56 @@ func (f *FS) publishTemporary(name, destination, temporary string, noOverwrite b
 		return vfs.Info{}, err
 	}
 	delete(f.staging, temporary)
+	// The temporary file is synced before publication; syncing the directory
+	// makes the new name, and the removal of the temporary one, survive a
+	// crash.
+	if err := f.syncDirectory(filepath.Dir(destination)); err != nil {
+		return vfs.Info{}, err
+	}
 	info, _, err := localInfo(name, destination)
 	return info, err
+}
+
+// makeDirectories creates the missing directories of path below the root and
+// syncs each parent that gains an entry, so a published file's directory
+// chain is as durable as the file itself.
+func (f *FS) makeDirectories(path string) error {
+	relative, err := filepath.Rel(f.root, path)
+	if err != nil {
+		return err
+	}
+	if relative == "." {
+		return nil
+	}
+	current := f.root
+	for _, part := range strings.Split(relative, string(filepath.Separator)) {
+		parent := current
+		current = filepath.Join(current, part)
+		err := os.Mkdir(current, directoryMode)
+		if errors.Is(err, fs.ErrExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if err := f.syncDirectory(parent); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// syncDirectory fsyncs a directory so renames, links, and removals in it are
+// durable. Windows cannot sync a directory handle; NTFS journals metadata.
+func syncDirectory(path string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	directory, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	return errors.Join(directory.Sync(), directory.Close())
 }
 
 // Cleanup does not inherit cancellation from the interrupted write. If removal

@@ -102,7 +102,11 @@ must still be writable only by the application. Portable Go filesystem APIs
 cannot eliminate every time-of-check to time-of-use race caused by another
 hostile local process.
 
-Writes and copies stage their bytes before taking the short publication lock.
+Writes and copies stage and fsync their bytes before taking the short
+publication lock. After every rename, link, or removal, and after creating a
+directory, the backend fsyncs the affected parent directories, so a completed
+operation survives a crash (Windows, which cannot sync directory handles,
+relies on its filesystem's metadata journal).
 Unrelated operations can proceed while an upload is stalled, and the existing
 destination remains readable until publication. Revision and overwrite
 conditions are checked again before the complete file becomes visible. Listing
