@@ -164,7 +164,8 @@ Memberlist mode:
   adjacent compatible versions for rolling upgrades; and
 - provides best-effort, non-durable delivery: packet-sized envelopes use one
   UDP datagram and larger envelopes use the reliable per-peer TCP stream so
-  size alone never causes systematic loss.
+  size alone never causes systematic loss. Reliable sends run on one bounded,
+  drop-oldest queue per peer, so publishers never wait on a slow peer.
 
 The configured advertise address may use a stable private DNS name. At startup
 the adapter resolves that name to the concrete IP required by Memberlist while

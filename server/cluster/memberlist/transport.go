@@ -94,8 +94,10 @@ type Transport struct {
 	// packetLimit is the largest wire envelope sent as one best-effort UDP
 	// packet; larger envelopes use Memberlist's reliable TCP stream.
 	packetLimit int
-	cancel      context.CancelFunc
-	done        chan struct{}
+	// reliable owns per-peer delivery of envelopes above packetLimit.
+	reliable *reliableDelivery
+	cancel   context.CancelFunc
+	done     chan struct{}
 }
 
 // New constructs an inert Memberlist transport. Start creates the gossip
@@ -369,6 +371,7 @@ func (t *Transport) Start(ctx context.Context) error {
 	runCtx, cancel := context.WithCancel(context.Background())
 	t.list = list
 	t.packetLimit = config.UDPBufferSize - packetOverheadBytes
+	t.reliable = newReliableDelivery(list.SendReliable)
 	t.cancel = cancel
 	t.done = make(chan struct{})
 	t.state = stateStarted
@@ -448,8 +451,11 @@ func (t *Transport) Stop(ctx context.Context) error {
 	}
 
 	t.mu.Lock()
-	list := t.list
+	list, reliable := t.list, t.reliable
 	t.mu.Unlock()
+	if reliable != nil {
+		reliable.close()
+	}
 	if list != nil {
 		if timeout, ok := memberlistLeaveTimeout(ctx); ok {
 			_ = list.Leave(timeout)
@@ -460,6 +466,11 @@ func (t *Transport) Stop(ctx context.Context) error {
 			t.list = nil
 		}
 		t.mu.Unlock()
+	}
+	if reliable != nil {
+		// Shutdown makes a reliable send still inside Memberlist fail; the
+		// stop context bounds waiting for its goroutine.
+		_ = reliable.wait(ctx)
 	}
 	if ctx.Err() == nil {
 		t.discovery.withdraw(ctx)
@@ -551,31 +562,39 @@ func (t *Transport) Broadcast(ctx context.Context, message *cluster.Message) err
 	if t.cfg.Metrics != nil {
 		t.cfg.Metrics.ObserveClusterFanout(recipients)
 	}
+	return t.fanOut(ctx, list, members, payload, packetLimit, message.Event)
+}
+
+// fanOut sends one encoded envelope to every peer in members. A packet-sized
+// envelope is sent synchronously as one UDP datagram; a larger one is queued
+// for each peer's reliable stream and its outcome is observed later.
+func (t *Transport) fanOut(ctx context.Context, sender memberSender, members []*hashimemberlist.Node, payload []byte, packetLimit int, event cluster.Event) error {
+	if len(payload) > packetLimit {
+		return broadcastMembers(ctx, t.cfg.NodeID, members, payload, t.queueReliable(event))
+	}
 	return broadcastMembers(
 		ctx,
 		t.cfg.NodeID,
 		members,
 		payload,
-		memberSendFunc(list, len(payload), packetLimit),
-		func(err error) { t.observeSentMessage(message.Event, payload, err) },
+		sender.SendBestEffort,
+		func(err error) { t.observeSentMessage(event, payload, err) },
 	)
+}
+
+// queueReliable returns a send function that hands an envelope to the peer's
+// reliable queue and observes its eventual outcome.
+func (t *Transport) queueReliable(event cluster.Event) func(*hashimemberlist.Node, []byte) error {
+	return func(member *hashimemberlist.Node, payload []byte) error {
+		t.reliable.enqueue(member, payload, func(err error) { t.observeSentMessage(event, payload, err) })
+		return nil
+	}
 }
 
 // memberSender is the Memberlist send surface used for peer delivery.
 type memberSender interface {
 	SendBestEffort(*hashimemberlist.Node, []byte) error
 	SendReliable(*hashimemberlist.Node, []byte) error
-}
-
-// memberSendFunc keeps small envelopes on best-effort UDP and routes any
-// envelope that cannot fit one Memberlist UDP packet to the reliable TCP
-// stream. A UDP datagram larger than the buffer would be fragmented or
-// refused and therefore systematically lost, not merely best-effort.
-func memberSendFunc(sender memberSender, payloadBytes, packetLimit int) func(*hashimemberlist.Node, []byte) error {
-	if payloadBytes > packetLimit {
-		return sender.SendReliable
-	}
-	return sender.SendBestEffort
 }
 
 func broadcastMembers(
@@ -634,24 +653,23 @@ func (t *Transport) SendToNode(ctx context.Context, nodeID string, message *clus
 	if list == nil {
 		return cluster.ErrNotStarted
 	}
-	send := memberSendFunc(list, len(payload), packetLimit)
 	for _, member := range list.Members() {
 		meta, metaErr := decodeNodeMeta(member.Meta)
-		if metaErr != nil {
-			if member.Name == nodeID {
-				err = send(member, payload)
-				t.observeSentMessage(message.Event, payload, err)
-				return err
-			}
-			continue
-		}
-		if meta.NodeID == nodeID || member.Name == nodeID {
-			err = send(member, payload)
-			t.observeSentMessage(message.Event, payload, err)
-			return err
+		if (metaErr != nil && member.Name == nodeID) || (metaErr == nil && (meta.NodeID == nodeID || member.Name == nodeID)) {
+			return t.sendToMember(list, member, payload, packetLimit, message.Event)
 		}
 	}
 	return fmt.Errorf("%w: %s", cluster.ErrNodeUnavailable, nodeID)
+}
+
+// sendToMember sends one envelope to one peer with the same routing as fanOut.
+func (t *Transport) sendToMember(sender memberSender, member *hashimemberlist.Node, payload []byte, packetLimit int, event cluster.Event) error {
+	if len(payload) > packetLimit {
+		return t.queueReliable(event)(member, payload)
+	}
+	err := sender.SendBestEffort(member, payload)
+	t.observeSentMessage(event, payload, err)
+	return err
 }
 
 func (t *Transport) observeSentMessage(event cluster.Event, payload []byte, err error) {
@@ -659,7 +677,10 @@ func (t *Transport) observeSentMessage(event cluster.Event, payload []byte, err 
 		return
 	}
 	result := "success"
-	if err != nil {
+	switch {
+	case errors.Is(err, errReliableQueueFull):
+		result = "dropped"
+	case err != nil:
 		result = "error"
 	}
 	t.cfg.Metrics.ObserveClusterMessage("send", t.metricEvent(event), result, len(payload))

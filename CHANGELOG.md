@@ -100,6 +100,10 @@ module when a change is not server-only. No module has been released yet.
 - Server: a retention policy preview counts audit expiry in one set-based pass
   instead of probing every side table per audit event, so previews finish
   within the query timeout at any audit volume.
+- Server: cluster messages too large for one UDP packet are queued per peer
+  instead of sent inline, so a slow or partitioned peer no longer blocks the
+  publishing request for up to 10 seconds per peer. A full peer queue drops
+  its oldest message and counts it as `dropped`.
 - Server: re-allowing a focus-loss suspension no longer reports a committed
   re-allow as unavailable.
 - Server: a failed audit completion is joined with, not substituted for, the

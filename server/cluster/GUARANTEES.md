@@ -16,10 +16,15 @@ used by recovery tests.
    defaults) as a single unacknowledged datagram, so loss is random rather
    than size-dependent. A larger envelope, up to the wire-envelope bound (1 MiB
    plus 4 KiB, which covers every realtime event up to its 256 KiB limit), uses Memberlist's
-   reliable TCP stream to that peer: a returned nil error means the peer
-   accepted the bytes, not that its handler ran, and a peer that is down or
-   unreachable makes that send fail or block for up to Memberlist's TCP
-   timeout before the loop continues to the next peer.
+   reliable TCP stream to that peer. The caller only enqueues it: each peer has
+   one delivery goroutine and a bounded queue (64 envelopes and 8 wire-envelope
+   bounds), so a slow, down, or partitioned peer delays its own queue, never
+   the publishing request or another peer. A nil error from `Broadcast` or
+   `SendToNode` for a large envelope means it was queued, not that the peer
+   accepted it or its handler ran. When a peer's queue is full the oldest
+   waiting envelope is dropped; drops, send failures, and envelopes abandoned
+   at Stop are counted by the `proctor_cluster_messages_total` outcome label
+   (`dropped` or `error`).
 2. **Peer-only broadcast.** `Broadcast` must not invoke the sender’s local
    handlers, preventing rebroadcast loops.
 3. **Self-targeted delivery.** `SendToNode` to the current node may invoke local
@@ -74,9 +79,10 @@ used by recovery tests.
    at most eight distinct fallback keys decrypt traffic during staged rolling
    rotation. All key material is copied at construction and never logged.
 12. **Shutdown preserves ownership.** Stop first makes operations observe
-    terminal state, cancels and waits for maintenance, leaves and synchronously
-    shuts down Memberlist, then withdraws its lease while the stop context is
-    usable. The context bounds graceful leave and withdrawal; exhaustion is
+    terminal state, cancels and waits for maintenance, abandons queued reliable
+    envelopes, leaves and synchronously shuts down Memberlist, waits for the
+    per-peer delivery goroutines, then withdraws its lease while the stop
+    context is usable. The context bounds graceful leave and withdrawal; exhaustion is
     observable after owned work is safe. Withdrawal failure is diagnostic-only.
 
 ## Authoritative Session authentication

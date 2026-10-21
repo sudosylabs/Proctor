@@ -11,25 +11,29 @@ import (
 	"context"
 	"errors"
 	"net"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	hashimemberlist "github.com/hashicorp/memberlist"
 	"github.com/stretchr/testify/require"
+
+	"github.com/sudosylabs/proctor/server/cluster"
 )
 
-type routingSender struct{ bestEffort, reliable int }
+type routingSender struct{ bestEffort, reliable atomic.Int32 }
 
 func (s *routingSender) SendBestEffort(*hashimemberlist.Node, []byte) error {
-	s.bestEffort++
+	s.bestEffort.Add(1)
 	return nil
 }
 
 func (s *routingSender) SendReliable(*hashimemberlist.Node, []byte) error {
-	s.reliable++
+	s.reliable.Add(1)
 	return nil
 }
 
-func TestMemberSendFuncRoutesOnlyPacketSafeEnvelopesOverUDP(t *testing.T) {
+func TestSendToMemberRoutesOnlyPacketSafeEnvelopesOverUDP(t *testing.T) {
 	t.Parallel()
 
 	const limit = 1272
@@ -46,8 +50,18 @@ func TestMemberSendFuncRoutesOnlyPacketSafeEnvelopesOverUDP(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			sender := &routingSender{}
-			require.NoError(t, memberSendFunc(sender, test.payloadBytes, limit)(&hashimemberlist.Node{}, nil))
-			require.Equal(t, test.wantReliable, (sender.reliable == 1 && sender.bestEffort == 0), "routing for %d bytes = best-effort:%d reliable:%d", test.payloadBytes, sender.bestEffort, sender.reliable)
+			transport := &Transport{handlers: map[cluster.Event]cluster.Handler{}, reliable: newReliableDelivery(sender.SendReliable)}
+			payload := make([]byte, test.payloadBytes)
+			require.NoError(t, transport.sendToMember(sender, &hashimemberlist.Node{Name: "node-b"}, payload, limit, "realtime.event"))
+			want := [2]int32{1, 0}
+			if test.wantReliable {
+				want = [2]int32{0, 1}
+			}
+			require.Eventually(t, func() bool {
+				return [2]int32{sender.bestEffort.Load(), sender.reliable.Load()} == want
+			}, 5*time.Second, time.Millisecond, "routing for %d bytes", test.payloadBytes)
+			transport.reliable.close()
+			require.NoError(t, transport.reliable.wait(context.Background()))
 		})
 	}
 }
