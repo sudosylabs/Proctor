@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 type routingHandler struct {
@@ -41,9 +43,7 @@ func TestRootHTTPTransportDispatchesWithoutCrossFallback(t *testing.T) {
 	api := &routingHandler{name: "api"}
 	webapp := &routingHandler{name: "webapp"}
 	transport, err := newRootHTTPTransport(owned, api, webapp, "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	for _, tt := range []struct {
 		path string
@@ -58,15 +58,15 @@ func TestRootHTTPTransportDispatchesWithoutCrossFallback(t *testing.T) {
 		{path: "/assets/index-AbCdEf12.js", want: "webapp"},
 		{path: "/assets/index.js", want: "api"},
 	} {
-		response := httptest.NewRecorder()
-		transport.ServeHTTP(response, httptest.NewRequest(http.MethodGet, tt.path, nil))
-		if response.Body.String() != tt.want {
-			t.Fatalf("GET %s reached %q, want %q", tt.path, response.Body.String(), tt.want)
-		}
+		t.Run(tt.path, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			transport.ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, tt.path, nil))
+			require.Equal(t, tt.want, response.Body.String(), "GET %s reached", tt.path)
+		})
 	}
-	if api.seen != 5 || webapp.seen != 3 || owned.seen != 0 {
-		t.Fatalf("dispatch counts api=%d webapp=%d owned=%d", api.seen, webapp.seen, owned.seen)
-	}
+	require.Equal(t, 5, api.seen, "dispatch counts api")
+	require.Equal(t, 3, webapp.seen, "dispatch counts api")
+	require.Equal(t, 0, owned.seen, "dispatch counts api")
 }
 
 func TestRootHTTPTransportRetainsOnlyOwnedLifecycle(t *testing.T) {
@@ -74,36 +74,25 @@ func TestRootHTTPTransportRetainsOnlyOwnedLifecycle(t *testing.T) {
 	closeErr := errors.New("close failed")
 	owned := &routingTransport{closeErr: closeErr}
 	transport, err := newRootHTTPTransport(owned, http.NotFoundHandler(), http.NotFoundHandler(), "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := transport.Close(); !errors.Is(err, closeErr) || owned.closed != 1 {
-		t.Fatalf("Close() = %v, closes=%d", err, owned.closed)
-	}
+	require.NoError(t, err)
+	require.ErrorIs(t, transport.Close(), closeErr, "Close()")
+	require.Equal(t, 1, owned.closed, "Close()")
 }
 
 func TestRootHTTPTransportAppliesStrictTransportSecurityToEveryResponse(t *testing.T) {
 	t.Parallel()
 	owned := &routingTransport{}
 	transport, err := newRootHTTPTransport(owned, &routingHandler{name: "api"}, &routingHandler{name: "webapp"}, "max-age=31536000")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, path := range []string{"/api/v1/discovery", "/login", "/missing"} {
 		response := httptest.NewRecorder()
 		transport.ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil))
-		if got := response.Header().Get("Strict-Transport-Security"); got != "max-age=31536000" {
-			t.Fatalf("GET %s Strict-Transport-Security = %q", path, got)
-		}
+		require.Equal(t, "max-age=31536000", response.Header().Get("Strict-Transport-Security"), "GET %s Strict-Transport-Security", path)
 	}
 
 	plain, err := newRootHTTPTransport(owned, &routingHandler{name: "api"}, &routingHandler{name: "webapp"}, "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	response := httptest.NewRecorder()
 	plain.ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/login", nil))
-	if got := response.Header().Values("Strict-Transport-Security"); len(got) != 0 {
-		t.Fatalf("plain HTTP Strict-Transport-Security = %q", got)
-	}
+	require.Empty(t, response.Header().Values("Strict-Transport-Security"))
 }

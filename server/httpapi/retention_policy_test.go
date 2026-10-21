@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -63,40 +65,31 @@ func TestRetentionPolicyHTTPRequiresCompleteSettingsAndNeverEnablesDeletion(t *t
 	}
 	const valid = `{"expected_revision":1,"submission_retention_days":730,"integrity_retention_days":365,"browser_activity_retention_days":0,"security_operational_retention_days":0,"audit_retention_days":0,"export_retention_days":7,"deletion_grace_days":30}`
 	response := serve(http.MethodPut, valid)
-	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "private, no-store" {
-		t.Fatalf("replace: %d %s", response.Code, response.Body.String())
-	}
-	if application.command.ExpectedRevision != 1 || application.command.IdempotencyKey != "retention-policy-1" ||
-		application.command.Settings != (model.RetentionPolicySettings{SubmissionRetentionDays: 730, IntegrityRetentionDays: 365,
-			ExportRetentionDays: 7, DeletionGraceDays: 30}) {
-		t.Fatalf("command = %#v", application.command)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "replace: %d %s", response.Code, response.Body.String())
+	require.Equal(t, "private, no-store", response.Header().Get("Cache-Control"), "replace: %d %s", response.Code, response.Body.String())
+	require.Equal(t, int64(1), application.command.ExpectedRevision)
+	require.Equal(t, "retention-policy-1", application.command.IdempotencyKey)
+	require.Equal(t, model.RetentionPolicySettings{SubmissionRetentionDays: 730, IntegrityRetentionDays: 365,
+		ExportRetentionDays: 7, DeletionGraceDays: 30}, application.command.Settings)
 	response = serve(http.MethodGet, "")
 	var output map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &output); err != nil {
-		t.Fatal(err)
-	}
-	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "private, no-store" ||
-		output["automatic_deletion_enabled"] != false || output["revision"] != float64(1) {
-		t.Fatalf("get: %d %s", response.Code, response.Body.String())
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &output))
+	require.Equal(t, http.StatusOK, response.Code, "get: %d %s", response.Code, response.Body.String())
+	require.Equal(t, "private, no-store", response.Header().Get("Cache-Control"), "get: %d %s", response.Code, response.Body.String())
+	require.Equal(t, false, output["automatic_deletion_enabled"], "get: %d %s", response.Code, response.Body.String())
+	require.Equal(t, float64(1), output["revision"], "get: %d %s", response.Code, response.Body.String())
 	for _, field := range []string{"created_at", "updated_at"} {
 		value, ok := output[field].(string)
-		if !ok {
-			t.Fatalf("missing time %s", field)
-		}
-		if _, err := time.Parse(time.RFC3339Nano, value); err != nil {
-			t.Fatal(err)
-		}
+		require.True(t, ok, "missing time %s", field)
+		_, err := time.Parse(time.RFC3339Nano, value)
+		require.NoError(t, err)
 	}
 	for _, field := range []string{"submission_retention_days", "integrity_retention_days", "browser_activity_retention_days", "security_operational_retention_days", "audit_retention_days",
 		"export_retention_days", "deletion_grace_days"} {
 		for _, invalid := range []string{"missing", "null", "fraction", "string"} {
 			t.Run(field+"/"+invalid, func(t *testing.T) {
 				var body map[string]any
-				if err := json.Unmarshal([]byte(valid), &body); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, json.Unmarshal([]byte(valid), &body))
 				switch invalid {
 				case "missing":
 					delete(body, field)
@@ -108,20 +101,16 @@ func TestRetentionPolicyHTTPRequiresCompleteSettingsAndNeverEnablesDeletion(t *t
 					body[field] = "30"
 				}
 				encoded, err := json.Marshal(body)
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				before := application.calls
 				response := serve(http.MethodPut, string(encoded))
-				if response.Code != http.StatusBadRequest || application.calls != before {
-					t.Fatalf("invalid settings reached application: %d %s", response.Code, response.Body.String())
-				}
+				require.Equal(t, http.StatusBadRequest, response.Code, "invalid settings reached application: %d %s", response.Code, response.Body.String())
+				require.Equal(t, before, application.calls, "invalid settings reached application: %d %s", response.Code, response.Body.String())
 			})
 		}
 	}
 	before := application.calls
 	response = serve(http.MethodPut, strings.TrimSuffix(valid, "}")+`,"automatic_deletion_enabled":true}`)
-	if response.Code != http.StatusBadRequest || application.calls != before {
-		t.Fatalf("deletion enable attempt reached application: %d %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, response.Code, "deletion enable attempt reached application: %d %s", response.Code, response.Body.String())
+	require.Equal(t, before, application.calls, "deletion enable attempt reached application: %d %s", response.Code, response.Body.String())
 }

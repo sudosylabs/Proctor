@@ -11,6 +11,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -40,8 +42,6 @@ func TestNativeDeliveryOpenAPIAgreesWithRuntime(t *testing.T) {
 		{Name: "NativeSecurityStreamStatus", DTO: reflect.TypeOf(model.NativeSecurityStreamStatus{}), Required: []string{"highest_contiguous_batch_sequence", "settled_through_batch_sequence", "highest_seen_batch_sequence", "missing_batch_ranges", "missing_ranges_truncated", "server_time", "stream_id", "allocated_through_sequence", "terminal_missing_through_sequence", "closure", "declaration_revision", "detail_mode", "budget_scope", "summary_only_reason", "summary"}, Nullable: []string{"budget_scope", "summary_only_reason", "summary", "summary.first_unretained_at", "summary.last_unretained_at", "closure.closed_at", "closure.close_reason", "closure.known_at_close", "closure.final_sequence", "closure.final_declaration_id", "closure.final_boundary_origin", "closure.upload_expires_at"}},
 	}}
 	runtime := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtime.collectResources(model.APIURLSuffix, nativeDeliveryResource(nil)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtime.collectResources(model.APIURLSuffix, nativeDeliveryResource(nil)))
 	assertOpenAPIAgreement(t, suite, runtime.Routes())
 }

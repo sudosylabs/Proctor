@@ -11,6 +11,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -39,9 +41,7 @@ func TestBrowserDeliveryOpenAPIAgreesWithRuntime(t *testing.T) {
 		{Name: "UnretainedDeliverySummary", DTO: reflect.TypeOf(model.UnretainedDeliverySummary{}), Required: []string{"summary_sequence", "unretained_record_count", "count_complete", "first_unretained_at", "last_unretained_at"}, Nullable: []string{"first_unretained_at", "last_unretained_at"}},
 	}}
 	runtime := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtime.collectResources(model.APIURLSuffix, browserDeliveryResource(nil)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtime.collectResources(model.APIURLSuffix, browserDeliveryResource(nil)))
 	assertOpenAPIAgreement(t, suite, runtime.Routes())
 }
 

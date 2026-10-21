@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -63,20 +65,14 @@ func TestClassMemberHTTPUsesDTOAndRouteOwnedClass(t *testing.T) {
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusCreated {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
-	if classMembers.enrollCommand.ClassID != model.ClassID(classID) || classMembers.enrollCommand.UserID != userID {
-		t.Fatalf("command = %#v", classMembers.enrollCommand)
-	}
+	require.Equal(t, http.StatusCreated, response.Code, "status = %d: %s", response.Code, response.Body.String())
+	require.Equal(t, model.ClassID(classID), classMembers.enrollCommand.ClassID)
+	require.Equal(t, userID, classMembers.enrollCommand.UserID)
 	var body map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 	membership := body["membership"].(map[string]any)
-	if _, exposed := membership["revision"]; exposed {
-		t.Fatalf("persistence revision leaked into DTO: %#v", membership)
-	}
+	_, exposed := membership["revision"]
+	require.False(t, exposed, "persistence revision leaked into DTO: %#v", membership)
 }
 
 func TestClassMemberResourceForwardsHistoryAndEndsMembership(t *testing.T) {
@@ -92,17 +88,17 @@ func TestClassMemberResourceForwardsHistoryAndEndsMembership(t *testing.T) {
 	list.Header.Set("Authorization", "Bearer credential")
 	listed := httptest.NewRecorder()
 	httpAPI.ServeHTTP(listed, list)
-	if listed.Code != http.StatusOK || members.listQuery.ClassID != model.ClassID(classID) || members.listQuery.ActiveAt != 0 {
-		t.Fatalf("list status/query = %d/%#v: %s", listed.Code, members.listQuery, listed.Body.String())
-	}
+	require.Equal(t, http.StatusOK, listed.Code, "list status/query = %d/%#v: %s", listed.Code, members.listQuery, listed.Body.String())
+	require.Equal(t, model.ClassID(classID), members.listQuery.ClassID, "list status/query = %d/%#v: %s", listed.Code, members.listQuery, listed.Body.String())
+	require.Equal(t, int64(0), members.listQuery.ActiveAt, "list status/query = %d/%#v: %s", listed.Code, members.listQuery, listed.Body.String())
 
 	end := httptest.NewRequest(http.MethodDelete, "/api/v1/class-members/"+member.ID.String(), nil)
 	end.Header.Set("Authorization", "Bearer credential")
 	ended := httptest.NewRecorder()
 	httpAPI.ServeHTTP(ended, end)
-	if ended.Code != http.StatusOK || members.endCommand.ID != member.ID || ended.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("end status/command/cache = %d/%#v/%q: %s", ended.Code, members.endCommand, ended.Header().Get("Cache-Control"), ended.Body.String())
-	}
+	require.Equal(t, http.StatusOK, ended.Code, "end status/command/cache = %d/%#v/%q: %s", ended.Code, members.endCommand, ended.Header().Get("Cache-Control"), ended.Body.String())
+	require.Equal(t, member.ID, members.endCommand.ID, "end status/command/cache = %d/%#v/%q: %s", ended.Code, members.endCommand, ended.Header().Get("Cache-Control"), ended.Body.String())
+	require.Equal(t, "no-store", ended.Header().Get("Cache-Control"), "end status/command/cache = %d/%#v/%q: %s", ended.Code, members.endCommand, ended.Header().Get("Cache-Control"), ended.Body.String())
 }
 
 func TestClassMemberHistoryQueryIsForwarded(t *testing.T) {
@@ -110,9 +106,8 @@ func TestClassMemberHistoryQueryIsForwarded(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/classes/class/members?history=true", nil)
 	recorder := httptest.NewRecorder()
 	activeAt, ok := queryActiveAt(recorder, request)
-	if !ok || activeAt != 0 {
-		t.Fatalf("active at = %d, ok = %v; want 0, true", activeAt, ok)
-	}
+	require.True(t, ok, "active at")
+	require.Equal(t, int64(0), activeAt, "active at")
 }
 
 func (a *classMemberHTTPApplication) ListClassMembersPage(_ context.Context, _ app.Invocation, query app.ListClassMembersPageQuery) (*app.ClassMemberPage, error) {

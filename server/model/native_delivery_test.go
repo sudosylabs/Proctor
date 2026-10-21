@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestNativeDeliveryClosedRecords(t *testing.T) {
@@ -20,17 +22,12 @@ func TestNativeDeliveryClosedRecords(t *testing.T) {
 	occurrence := NativeOccurrence{Kind: "occurrence", OccurrenceID: NewID(), ConditionID: "capture.active", DetectorID: "capture", DetectorVersion: 1, CapabilityID: "capture", Mode: NativeClaimObserve, Status: "opened", FirstObservedAt: at, LastConfirmedAt: at, RepeatCount: 1, Certainty: "complete", SourceRanges: []NativeSourceRange{{SourceID: NativeSourceCapture, SourceInstanceID: NewID(), FirstSequence: 0, LastSequence: 1}}}
 	batch := NativeSecurityBatch{StreamID: NewID(), BatchSequence: 1, ParticipationID: NewAttemptParticipationID(), Generation: 1, SecuritySessionID: NewID(), PolicyDigest: SHA256Fingerprint([]byte("policy")), ApplicationReleaseID: "release", MatrixID: "matrix", Records: []NativeRecord{{Occurrence: &occurrence}}}
 	raw, err := batch.Canonical()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var roundtrip NativeSecurityBatch
-	if err := json.Unmarshal(raw, &roundtrip); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(raw, &roundtrip))
 	encoded, err := roundtrip.Canonical()
-	if err != nil || !bytes.Equal(raw, encoded) {
-		t.Fatalf("roundtrip mismatch: %v", err)
-	}
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(raw, encoded))
 	for _, mutation := range []func(string) string{
 		func(s string) string {
 			return strings.Replace(s, `"occurrence_id":`, `"raw_inventory":"secret","occurrence_id":`, 1)
@@ -45,51 +42,40 @@ func TestNativeDeliveryClosedRecords(t *testing.T) {
 		func(s string) string { return strings.Replace(s, `"gap_count":0`, `"Gap_count":0`, 1) },
 	} {
 		var invalid NativeSecurityBatch
-		if json.Unmarshal([]byte(mutation(string(raw))), &invalid) == nil {
-			t.Fatal("accepted non-contract batch")
-		}
+		require.Error(t, json.Unmarshal([]byte(mutation(string(raw))), &invalid), "accepted non-contract batch")
 	}
 	gap := NativeSourceGap{Kind: "source_gap", SourceID: NativeSourceCapture, SourceInstanceID: NewID(), Reason: "overflow", OccurredAt: at}
-	if (NativeRecord{Occurrence: &occurrence, Gap: &gap}).Validate() == nil {
-		t.Fatal("accepted ambiguous union")
-	}
+	require.Error(t, (NativeRecord{Occurrence: &occurrence, Gap: &gap}).Validate(), "accepted ambiguous union")
 	batch.Records = nil
-	if batch.Validate() == nil {
-		t.Fatal("accepted empty batch")
-	}
+	require.Error(t, batch.Validate(), "accepted empty batch")
 }
 
 func TestUnretainedDeliverySummaryPreservesUncertainty(t *testing.T) {
 	prior := UnretainedDeliverySummary{SummarySequence: 1, UnretainedRecordCount: 7, CountComplete: false}
-	if replay, err := prior.Compare(prior); !replay || err != nil {
-		t.Fatalf("replay: %v %v", replay, err)
-	}
+	replay, err := prior.Compare(prior)
+	require.True(t, replay, "replay")
+	require.NoError(t, err, "replay")
 	for _, next := range []UnretainedDeliverySummary{
 		{SummarySequence: 2, UnretainedRecordCount: 6, CountComplete: false},
 		{SummarySequence: 2, UnretainedRecordCount: 8, CountComplete: true},
 		{SummarySequence: 1, UnretainedRecordCount: 8, CountComplete: false},
 	} {
-		if _, err := prior.Compare(next); err == nil {
-			t.Fatal("lost uncertainty or accepted conflicting summary")
-		}
+		_, err = prior.Compare(next)
+		require.Error(t, err, "lost uncertainty or accepted conflicting summary")
 	}
 	count, complete, err := SaturatingDeliveryCount(9007199254740990, 2, true)
-	if err != nil || count != 9007199254740991 || complete {
-		t.Fatalf("overflow: %d %v %v", count, complete, err)
-	}
+	require.NoError(t, err, "overflow")
+	require.Equal(t, int64(9007199254740991), count, "overflow")
+	require.False(t, complete, "overflow")
 	var decoded UnretainedDeliverySummary
-	if json.Unmarshal([]byte(`{"summary_sequence":1,"unretained_record_count":0,"count_complete":false}`), &decoded) == nil {
-		t.Fatal("accepted missing explicit nullable members")
-	}
+	require.Error(t, json.Unmarshal([]byte(`{"summary_sequence":1,"unretained_record_count":0,"count_complete":false}`), &decoded), "accepted missing explicit nullable members")
 }
 
 func TestNativeOccurrenceContinuity(t *testing.T) {
 	at := time.Date(2026, 9, 8, 0, 0, 0, 0, time.UTC)
 	opened := NativeOccurrence{Kind: "occurrence", OccurrenceID: NewID(), ConditionID: "capture.active", DetectorID: "capture", DetectorVersion: 1, CapabilityID: "capture", Mode: NativeClaimObserve, Status: "opened", FirstObservedAt: at, LastConfirmedAt: at, RepeatCount: 1, Certainty: "complete", SourceRanges: []NativeSourceRange{{SourceID: NativeSourceCapture, SourceInstanceID: NewID(), FirstSequence: 1, LastSequence: 2}}}
 	prior, err := AdvanceNativeOccurrence(nil, opened, false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	repeat := cloneNativeOccurrence(opened)
 	repeat.Status = "repeated"
 	repeat.RepeatCount = 2
@@ -97,9 +83,7 @@ func TestNativeOccurrenceContinuity(t *testing.T) {
 	// Local clock rollback is provenance, not a source-lifetime ordering.
 	repeat.LastConfirmedAt = at.Add(-time.Second)
 	next, err := AdvanceNativeOccurrence(&prior, repeat, false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, mutate := range []func(*NativeOccurrence){
 		func(o *NativeOccurrence) { o.SourceRanges[0].SourceInstanceID = NewID() },
 		func(o *NativeOccurrence) { o.SourceRanges[0].FirstSequence++ },
@@ -110,32 +94,23 @@ func TestNativeOccurrenceContinuity(t *testing.T) {
 	} {
 		invalid := cloneNativeOccurrence(repeat)
 		mutate(&invalid)
-		if _, err := AdvanceNativeOccurrence(&next, invalid, false); err == nil {
-			t.Fatal("accepted incompatible occurrence transition")
-		}
+		_, err = AdvanceNativeOccurrence(&next, invalid, false)
+		require.Error(t, err, "accepted incompatible occurrence transition")
 	}
 	recovered := cloneNativeOccurrence(repeat)
 	recovered.Status = "recovered"
 	closed, err := AdvanceNativeOccurrence(&next, recovered, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := AdvanceNativeOccurrence(&closed, recovered, true); err == nil {
-		t.Fatal("recovered twice")
-	}
-	if _, err := AdvanceNativeOccurrence(nil, recovered, false); err == nil {
-		t.Fatal("invented opener without a preceding hole")
-	}
+	require.NoError(t, err)
+	_, err = AdvanceNativeOccurrence(&closed, recovered, true)
+	require.Error(t, err, "recovered twice")
+	_, err = AdvanceNativeOccurrence(nil, recovered, false)
+	require.Error(t, err, "invented opener without a preceding hole")
 	unresolved, err := AdvanceNativeOccurrence(nil, repeat, true)
-	if err != nil || !unresolved.UnresolvedOpener {
-		t.Fatal("lost missing opener provenance", err)
-	}
+	require.NoError(t, err, "lost missing opener provenance")
+	require.True(t, unresolved.UnresolvedOpener, "lost missing opener provenance")
 	unresolved, err = AdvanceNativeOccurrence(&unresolved, recovered, false)
-	if err != nil || !unresolved.UnresolvedOpener {
-		t.Fatal("recovery promoted missing opener to proven condition", err)
-	}
+	require.NoError(t, err, "recovery promoted missing opener to proven condition")
+	require.True(t, unresolved.UnresolvedOpener, "recovery promoted missing opener to proven condition")
 	recovered.SourceRanges[0].LastSequence = 99
-	if unresolved.Latest.SourceRanges[0].LastSequence == 99 {
-		t.Fatal("caller mutated retained range")
-	}
+	require.NotEqual(t, int64(99), unresolved.Latest.SourceRanges[0].LastSequence, "caller mutated retained range")
 }

@@ -17,6 +17,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -32,17 +34,11 @@ func TestV1HTTPContractCharacterization(t *testing.T) {
 
 	documentBytes := readOpenAPIDocumentBytes(t)
 	var document map[string]json.RawMessage
-	if err := json.Unmarshal(documentBytes, &document); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(documentBytes, &document))
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, productionResources(agreementResourceApplications(), nil, BuildInfo{}, browserCookies{}, nil)...); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtimeAPI.collectResources(model.APIURLSuffix, productionResources(agreementResourceApplications(), nil, BuildInfo{}, browserCookies{}, nil)...))
 	runtimeRoutes, err := json.Marshal(runtimeAPI.Routes())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	projection := map[string]json.RawMessage{
 		"openapi":        document["openapi"],
 		"paths":          document["paths"],
@@ -50,22 +46,16 @@ func TestV1HTTPContractCharacterization(t *testing.T) {
 		"runtime_routes": runtimeRoutes,
 	}
 	canonical, err := json.Marshal(projection)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	digest := sha256.Sum256(canonical)
 	gotDigest := hex.EncodeToString(digest[:])
 	const wantDigest = "2fd19d6c21bbbf2ceb81ab1908264bd8e7ab2d7af03d5dbf153d02f55ac5491b"
-	if gotDigest != wantDigest {
-		t.Fatalf("v1 HTTP contract digest = %s, want %s", gotDigest, wantDigest)
-	}
+	require.Equal(t, wantDigest, gotDigest, "v1 HTTP contract digest")
 
 	var parsed struct {
 		Paths map[string]map[string]json.RawMessage `json:"paths"`
 	}
-	if err := json.Unmarshal(documentBytes, &parsed); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(documentBytes, &parsed))
 	operationCount := 0
 	for _, item := range parsed.Paths {
 		for method := range item {
@@ -74,24 +64,16 @@ func TestV1HTTPContractCharacterization(t *testing.T) {
 			}
 		}
 	}
-	if operationCount != 279 {
-		t.Fatalf("v1 operation count = %d, want 279", operationCount)
-	}
-	if len(runtimeAPI.Routes()) != operationCount {
-		t.Fatalf("runtime route count = %d, want %d", len(runtimeAPI.Routes()), operationCount)
-	}
+	require.Equal(t, 279, operationCount, "v1 operation count")
+	require.Len(t, runtimeAPI.Routes(), operationCount, "runtime route count")
 }
 
 func readOpenAPIDocumentBytes(t *testing.T) []byte {
 	t.Helper()
 	_, currentFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("locate contract characterization test")
-	}
+	require.True(t, ok, "locate contract characterization test")
 	path := filepath.Join(filepath.Dir(currentFile), "..", "openapi.json")
 	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return data
 }

@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -93,14 +95,15 @@ func TestRetentionHTTPControlRequiresInteractiveRecentProofAndIdempotency(t *tes
 			application := &retentionHTTPFake{}
 			api := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: p}, retentionResource(application))
 			r := serveRetentionHTTP(api, "PUT", "/api/v1/retention/control", body, test.key)
-			if r.Code != test.want {
-				t.Fatalf("status=%d body=%s", r.Code, r.Body.String())
+			require.Equal(t, test.want, r.Code, "status=%d body=%s", r.Code, r.Body.String())
+			if test.want != 200 {
+				require.Equal(t, 0, application.calls, "blocked control reached application")
 			}
-			if test.want != 200 && application.calls != 0 {
-				t.Fatal("blocked control reached application")
-			}
-			if test.want == 200 && (application.control.PreviewID != previewID || application.control.ExpectedPolicyRevision != 3 || application.control.IdempotencyKey != test.key || r.Header().Get("Cache-Control") != "private, no-store") {
-				t.Fatal("approval contract lost")
+			if test.want == 200 {
+				require.Equal(t, previewID, application.control.PreviewID, "approval contract lost")
+				require.Equal(t, int64(3), application.control.ExpectedPolicyRevision, "approval contract lost")
+				require.Equal(t, test.key, application.control.IdempotencyKey, "approval contract lost")
+				require.Equal(t, "private, no-store", r.Header().Get("Cache-Control"), "approval contract lost")
 			}
 		})
 	}
@@ -111,18 +114,14 @@ func TestRetentionHTTPRejectsUnknownFieldsAndCrossPurposeCursors(t *testing.T) {
 	application := &retentionHTTPFake{}
 	api := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: retentionHTTPPrincipal()}, retentionResource(application))
 	r := serveRetentionHTTP(api, "POST", "/api/v1/retention/previews", `{"expected_policy_revision":1,"delete_now":true}`, "preview")
-	if r.Code != 400 || application.calls != 0 {
-		t.Fatal("unknown destructive parameter reached application")
-	}
+	require.Equal(t, 400, r.Code, "unknown destructive parameter reached application")
+	require.Equal(t, 0, application.calls, "unknown destructive parameter reached application")
 	cursor, err := encodeOpaqueCursor(retentionCursor{After: model.NewSubmissionID().String()}, retentionCursorSpec())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, query := range []string{"?cursor=" + cursor, "?limit=1&limit=2", "?user_id=" + model.NewUserID().String(), "?limit=201"} {
 		r = serveRetentionHTTP(api, "GET", "/api/v1/users/me/retention-notices"+query, "", "")
-		if r.Code != 400 || application.calls != 0 {
-			t.Fatalf("bad query admitted: %s %d", query, r.Code)
-		}
+		require.Equal(t, 400, r.Code, "bad query admitted: %s", query)
+		require.Equal(t, 0, application.calls, "bad query admitted: %s", query)
 	}
 }
 func TestRetentionHTTPNoticeProjectionIsRecipientOnlyAndBounded(t *testing.T) {
@@ -134,21 +133,18 @@ func TestRetentionHTTPNoticeProjectionIsRecipientOnlyAndBounded(t *testing.T) {
 	api := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: p}, retentionResource(application))
 	r := serveRetentionHTTP(api, "GET", "/api/v1/users/me/retention-notices?limit=1", "", "")
 	var page retentionNoticesResponse
-	if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &page) != nil || len(page.Items) != 1 || page.NextCursor == "" || r.Header().Get("Cache-Control") != "private, no-store" {
-		t.Fatalf("notice=%d %s", r.Code, r.Body.String())
-	}
-	if strings.Contains(r.Body.String(), "recipient_user_id") {
-		t.Fatal("notice leaked recipient selection")
-	}
+	require.Equal(t, 200, r.Code, "notice=%d %s", r.Code, r.Body.String())
+	require.NoError(t, json.Unmarshal(r.Body.Bytes(), &page), "notice=%d %s", r.Code, r.Body.String())
+	require.Len(t, page.Items, 1, "notice=%d %s", r.Code, r.Body.String())
+	require.NotEmpty(t, page.NextCursor, "notice=%d %s", r.Code, r.Body.String())
+	require.Equal(t, "private, no-store", r.Header().Get("Cache-Control"), "notice=%d %s", r.Code, r.Body.String())
+	require.NotContains(t, r.Body.String(), "recipient_user_id", "notice leaked recipient selection")
 	application.noticePage = &app.RetentionNoticePage{Items: []model.RetentionNotice{}}
 	r = serveRetentionHTTP(api, "GET", "/api/v1/users/me/retention-notices?limit=1&cursor="+page.NextCursor, "", "")
-	if r.Code != 200 || application.after != notice.RetirementID {
-		t.Fatal("cursor did not roundtrip")
-	}
+	require.Equal(t, 200, r.Code, "cursor did not roundtrip")
+	require.Equal(t, notice.RetirementID, application.after, "cursor did not roundtrip")
 	notice.RecipientUserID = model.NewUserID()
 	application.noticePage = &app.RetentionNoticePage{Items: []model.RetentionNotice{notice}}
 	r = serveRetentionHTTP(api, "GET", "/api/v1/users/me/retention-notices", "", "")
-	if r.Code != 500 {
-		t.Fatal("wrong recipient response exposed")
-	}
+	require.Equal(t, 500, r.Code, "wrong recipient response exposed")
 }

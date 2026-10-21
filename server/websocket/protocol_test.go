@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -26,26 +28,18 @@ func TestEventValidateForPublish(t *testing.T) {
 			ID:   unitID,
 		},
 	}
-	if err := valid.ValidateForPublish(); err != nil {
-		t.Fatalf("valid event: %v", err)
-	}
+	require.NoError(t, valid.ValidateForPublish())
 
 	userTargeted := &Event{
 		Event:  "user.notification",
 		UserID: model.NewID(),
 	}
-	if err := userTargeted.ValidateForPublish(); err != nil {
-		t.Fatalf("user-targeted event: %v", err)
-	}
+	require.NoError(t, userTargeted.ValidateForPublish())
 
-	if err := (&Event{Event: "x"}).ValidateForPublish(); err == nil {
-		t.Fatal("expected missing target error")
-	}
-	if err := (&Event{
+	require.Error(t, (&Event{Event: "x"}).ValidateForPublish(), "expected missing target error")
+	require.Error(t, (&Event{
 		Event: "x", UserID: model.NewID(), Data: json.RawMessage(`{`),
-	}).ValidateForPublish(); err == nil {
-		t.Fatal("expected invalid data error")
-	}
+	}).ValidateForPublish(), "expected invalid data error")
 }
 
 func TestSubscriptionIsValid(t *testing.T) {
@@ -58,15 +52,9 @@ func TestSubscriptionIsValid(t *testing.T) {
 			ID:   model.NewID(),
 		},
 	}
-	if !subscription.IsValid() {
-		t.Fatal("expected valid subscription")
-	}
-	if subscription.Key() == "" {
-		t.Fatal("expected subscription key")
-	}
-	if (Subscription{}).IsValid() {
-		t.Fatal("empty subscription should be invalid")
-	}
+	require.True(t, subscription.IsValid(), "expected valid subscription")
+	require.NotEmpty(t, subscription.Key(), "expected subscription key")
+	require.False(t, (Subscription{}).IsValid(), "empty subscription should be invalid")
 }
 
 func TestEventResourceWireShapeRemainsSnakeCase(t *testing.T) {
@@ -81,16 +69,12 @@ func TestEventResourceWireShapeRemainsSnakeCase(t *testing.T) {
 		},
 	}
 	encoded, err := json.Marshal(event)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var wire struct {
 		Resource map[string]json.RawMessage `json:"resource"`
 	}
-	if err := json.Unmarshal(encoded, &wire); err != nil {
-		t.Fatal(err)
-	}
-	if len(wire.Resource) != 2 || wire.Resource["type"] == nil || wire.Resource["id"] == nil {
-		t.Fatalf("resource wire shape = %s", encoded)
-	}
+	require.NoError(t, json.Unmarshal(encoded, &wire))
+	require.Len(t, wire.Resource, 2)
+	require.NotNil(t, wire.Resource["type"])
+	require.NotNil(t, wire.Resource["id"])
 }

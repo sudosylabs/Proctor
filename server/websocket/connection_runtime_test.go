@@ -10,10 +10,13 @@ package websocket
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
@@ -81,7 +84,7 @@ func (c *runtimeTestClock) waitTicker(t *testing.T, interval time.Duration) *run
 	case ticker := <-c.tickers[interval]:
 		return ticker
 	case <-time.After(time.Second):
-		t.Fatalf("runtime did not create %s ticker", interval)
+		require.FailNow(t, fmt.Sprintf("runtime did not create %s ticker", interval))
 		return nil
 	}
 }
@@ -187,11 +190,9 @@ func TestConnectionRuntimeUsesDeterministicLivenessAndValidation(t *testing.T) {
 
 	select {
 	case deadline := <-socket.readDeadline:
-		if want := now.Add(pongWait); !deadline.Equal(want) {
-			t.Fatalf("initial read deadline = %s, want %s", deadline, want)
-		}
+		require.True(t, deadline.Equal(now.Add(pongWait)), "initial read deadline = %s", deadline)
 	case <-time.After(time.Second):
-		t.Fatal("runtime did not establish initial read deadline")
+		require.FailNow(t, "runtime did not establish initial read deadline")
 	}
 
 	pingTicker := clock.waitTicker(t, pingInterval)
@@ -200,31 +201,27 @@ func TestConnectionRuntimeUsesDeterministicLivenessAndValidation(t *testing.T) {
 	select {
 	case <-socket.pingWrites:
 	case <-time.After(time.Second):
-		t.Fatal("ping tick did not write a ping control message")
+		require.FailNow(t, "ping tick did not write a ping control message")
 	}
 	select {
 	case deadline := <-socket.writeDeadline:
-		if want := now.Add(writeWait); !deadline.Equal(want) {
-			t.Fatalf("ping write deadline = %s, want %s", deadline, want)
-		}
+		require.True(t, deadline.Equal(now.Add(writeWait)), "ping write deadline = %s", deadline)
 	case <-time.After(time.Second):
-		t.Fatal("ping tick did not establish a write deadline")
+		require.FailNow(t, "ping tick did not establish a write deadline")
 	}
 
 	validationTicker.ticks <- now.Add(sessionCheck)
 	select {
 	case got := <-application.validated:
-		if got.SessionID != principal.SessionID {
-			t.Fatalf("validated session = %s, want %s", got.SessionID, principal.SessionID)
-		}
+		require.Equal(t, principal.SessionID, got.SessionID, "validated session")
 	case <-time.After(time.Second):
-		t.Fatal("validation tick did not validate the principal")
+		require.FailNow(t, "validation tick did not validate the principal")
 	}
 
 	socket.readResults <- io.EOF
 	select {
 	case <-done:
 	case <-time.After(time.Second):
-		t.Fatal("runtime did not stop after the read pump ended")
+		require.FailNow(t, "runtime did not stop after the read pump ended")
 	}
 }

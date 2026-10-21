@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -61,19 +63,17 @@ func TestAcademicPeriodHTTPMapsDTOAndNormalizesRFC3339Bounds(t *testing.T) {
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusCreated {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
-	if periods.createCommand.OwnerType != string(model.ResourceAcademicUnit) || periods.createCommand.OwnerID != period.Owner.ID() || periods.createCommand.Name != period.Name || periods.createCommand.StartAt != model.MillisFromTime(period.StartsAt) || periods.createCommand.EndAt != model.MillisFromTime(period.EndsAt) {
-		t.Fatalf("create command = %#v", periods.createCommand)
-	}
+	require.Equal(t, http.StatusCreated, response.Code, "status = %d: %s", response.Code, response.Body.String())
+	require.Equal(t, string(model.ResourceAcademicUnit), periods.createCommand.OwnerType)
+	require.Equal(t, period.Owner.ID(), periods.createCommand.OwnerID)
+	require.Equal(t, period.Name, periods.createCommand.Name)
+	require.Equal(t, model.MillisFromTime(period.StartsAt), periods.createCommand.StartAt)
+	require.Equal(t, model.MillisFromTime(period.EndsAt), periods.createCommand.EndAt)
 	var body academicPeriodResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body.ID != period.ID.String() || body.OwnerType != string(model.ResourceAcademicUnit) || body.OwnerID != period.Owner.ID() {
-		t.Fatalf("response = %#v", body)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	require.Equal(t, period.ID.String(), body.ID)
+	require.Equal(t, string(model.ResourceAcademicUnit), body.OwnerType)
+	require.Equal(t, period.Owner.ID(), body.OwnerID)
 }
 
 func TestAcademicPeriodResourceRejectsInvalidQueryLimit(t *testing.T) {
@@ -99,29 +99,18 @@ func TestAcademicPeriodResourceRejectsInvalidQueryLimit(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, response.Code, "status = %d: %s", response.Code, response.Body.String())
 	var problem Problem
-	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-		t.Fatal(err)
-	}
-	if problem.Code != "request.invalid" {
-		t.Fatalf("problem code = %q, want request.invalid", problem.Code)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &problem))
+	require.Equal(t, "request.invalid", problem.Code, "problem code")
 }
 
 func TestAcademicPeriodPatchOptionalWireStates(t *testing.T) {
 	t.Parallel()
 	var body updateAcademicPeriodRequest
-	if err := json.Unmarshal([]byte(`{"start_at":null,"end_at":"2026-01-02T03:04:05Z"}`), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body.StartAt.ValuePointer() != nil {
-		t.Fatal("explicit null must preserve v1 no-op semantics")
-	}
+	require.NoError(t, json.Unmarshal([]byte(`{"start_at":null,"end_at":"2026-01-02T03:04:05Z"}`), &body))
+	require.Nil(t, body.StartAt.ValuePointer(), "explicit null must preserve v1 no-op semantics")
 	end := body.EndAt.ValuePointer()
-	if end == nil || *end != "2026-01-02T03:04:05Z" {
-		t.Fatalf("end_at = %#v", end)
-	}
+	require.NotNil(t, end)
+	require.Equal(t, "2026-01-02T03:04:05Z", *end)
 }

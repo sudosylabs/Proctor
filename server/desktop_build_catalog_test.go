@@ -7,11 +7,14 @@
 
 package server
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func TestProductionDesktopCatalogDoesNotInventCertification(t *testing.T) {
 	builds, err := verifiedDesktopBuildCatalog()
-	if err != nil || len(builds) != 0 {
-		t.Fatal("production native certification requires real admitted artifacts", err)
-	}
+	require.NoError(t, err, "production native certification requires real admitted artifacts")
+	require.Empty(t, builds, "production native certification requires real admitted artifacts")
 }

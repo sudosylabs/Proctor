@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewStudentClassInvitationFreezesSafePackage(t *testing.T) {
@@ -39,40 +41,25 @@ func TestNewStudentClassInvitationFreezesSafePackage(t *testing.T) {
 		ClaimHash:     HashInvitationClaim(rawClaim),
 		IssuedAt:      issuedAt,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if invitation.TargetEmail != "student@example.edu" {
-		t.Fatalf("normalized target email = %q", invitation.TargetEmail)
-	}
-	if invitation.Purpose != InvitationPurposeStudentClass || invitation.State != InvitationPending {
-		t.Fatalf("purpose/state = %q/%q", invitation.Purpose, invitation.State)
-	}
-	if invitation.ClassID != classID || invitation.AcademicPeriodID != periodID ||
-		invitation.ScopeType != RoleScopeClass || invitation.ScopeID != classID.String() {
-		t.Fatalf("frozen target/scope = %#v", invitation)
-	}
-	if invitation.ExpiresAt != issuedAt.Add(InvitationLifetime) {
-		t.Fatalf("expires_at = %v", invitation.ExpiresAt)
-	}
-	if invitation.ClaimHash == rawClaim || invitation.ClaimHash == HashToken(rawClaim) ||
-		!IsValidTokenHash(invitation.ClaimHash) {
-		t.Fatalf("claim hash is not a domain-separated persistent digest")
-	}
-	if invitation.Suggestions.Username != "student.one" ||
-		invitation.Suggestions.DisplayName != " Student One " {
-		t.Fatalf("normalized suggestions = %#v", invitation.Suggestions)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "student@example.edu", invitation.TargetEmail)
+	require.Equal(t, InvitationPurposeStudentClass, invitation.Purpose, "purpose/state")
+	require.Equal(t, InvitationPending, invitation.State, "purpose/state")
+	require.Equal(t, classID, invitation.ClassID)
+	require.Equal(t, periodID, invitation.AcademicPeriodID)
+	require.Equal(t, RoleScopeClass, invitation.ScopeType)
+	require.Equal(t, classID.String(), invitation.ScopeID)
+	require.Equal(t, issuedAt.Add(InvitationLifetime), invitation.ExpiresAt)
+	require.NotEqual(t, rawClaim, invitation.ClaimHash, "claim hash is not a domain-separated persistent digest")
+	require.NotEqual(t, HashToken(rawClaim), invitation.ClaimHash, "claim hash is not a domain-separated persistent digest")
+	require.True(t, IsValidTokenHash(invitation.ClaimHash), "claim hash is not a domain-separated persistent digest")
+	require.Equal(t, "student.one", invitation.Suggestions.Username)
+	require.Equal(t, " Student One ", invitation.Suggestions.DisplayName)
 	encoded, err := json.Marshal(invitation)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(encoded), rawClaim) || strings.Contains(string(encoded), invitation.ClaimHash) {
-		t.Fatalf("Invitation JSON exposed claim material: %s", encoded)
-	}
-	if err := invitation.Validate(); err != nil {
-		t.Fatalf("Validate() rejected constructed invitation: %v", err)
-	}
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), rawClaim)
+	require.NotContains(t, string(encoded), invitation.ClaimHash)
+	require.NoError(t, invitation.Validate())
 }
 
 func TestNewTeacherAcademicUnitInvitationFreezesDelegablePackage(t *testing.T) {
@@ -89,18 +76,16 @@ func TestNewTeacherAcademicUnitInvitationFreezesDelegablePackage(t *testing.T) {
 		InviterUserID: NewUserID(), ScopeType: RoleScopeAcademicUnit, ScopeID: unitID.String(),
 		ClaimHash: HashInvitationClaim(NewCredentialToken()), IssuedAt: issuedAt,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if invitation.Purpose != InvitationPurposeTeacherAcademicUnit || invitation.TargetEmail != "teacher@example.edu" ||
-		invitation.AcademicUnitID != unitID || invitation.RoleID != roleID || invitation.ScopeType != RoleScopeAcademicUnit ||
-		invitation.ScopeID != unitID.String() || !slices.Equal(invitation.RoleActions, []string{string(ActionAcademicUnitView), string(ActionProgrammeManage)}) {
-		t.Fatalf("teacher Invitation package = %#v", invitation)
-	}
+	require.NoError(t, err)
+	require.Equal(t, InvitationPurposeTeacherAcademicUnit, invitation.Purpose)
+	require.Equal(t, "teacher@example.edu", invitation.TargetEmail)
+	require.Equal(t, unitID, invitation.AcademicUnitID)
+	require.Equal(t, roleID, invitation.RoleID)
+	require.Equal(t, RoleScopeAcademicUnit, invitation.ScopeType)
+	require.Equal(t, unitID.String(), invitation.ScopeID)
+	require.True(t, slices.Equal(invitation.RoleActions, []string{string(ActionAcademicUnitView), string(ActionProgrammeManage)}))
 	actions[0] = string(ActionJobManage)
-	if !slices.Equal(invitation.RoleActions, []string{string(ActionAcademicUnitView), string(ActionProgrammeManage)}) {
-		t.Fatal("teacher Invitation did not own its action snapshot")
-	}
+	require.True(t, slices.Equal(invitation.RoleActions, []string{string(ActionAcademicUnitView), string(ActionProgrammeManage)}), "teacher Invitation did not own its action snapshot")
 }
 
 func TestTeacherAcademicUnitInvitationRejectsIncompletePackage(t *testing.T) {
@@ -134,9 +119,8 @@ func TestTeacherAcademicUnitInvitationRejectsIncompletePackage(t *testing.T) {
 			input := base
 			input.RoleActions = append([]string(nil), base.RoleActions...)
 			test.mutate(&input)
-			if _, err := NewTeacherAcademicUnitInvitation(input); err == nil {
-				t.Fatal("NewTeacherAcademicUnitInvitation() accepted invalid package")
-			}
+			_, err := NewTeacherAcademicUnitInvitation(input)
+			require.Error(t, err, "NewTeacherAcademicUnitInvitation() accepted invalid package")
 		})
 	}
 }
@@ -152,23 +136,20 @@ func TestTeacherAcademicUnitInvitationAcceptFreezesCompleteOutcome(t *testing.T)
 		InviterUserID: NewUserID(), ScopeType: RoleScopeAcademicUnit, ScopeID: unitID.String(),
 		ClaimHash: HashInvitationClaim(NewCredentialToken()), IssuedAt: issuedAt,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	userID, affiliationID := NewUserID(), NewAffiliationID()
 	memberID, bindingID := NewAcademicUnitMemberID(), NewRoleBindingID()
 	acceptedAt := issuedAt.Add(time.Minute)
-	if err = invitation.AcceptTeacherAcademicUnit(userID, affiliationID, memberID, bindingID, acceptedAt); err != nil {
-		t.Fatal(err)
-	}
-	if invitation.State != InvitationAccepted || invitation.AcceptedUserID != userID ||
-		invitation.AcceptedAffiliationID != affiliationID || invitation.AcceptedAcademicUnitMemberID != memberID ||
-		invitation.AcceptedRoleBindingID != bindingID || invitation.AcceptedClassMemberID.IsValid() {
-		t.Fatalf("accepted teacher Invitation = %#v", invitation)
-	}
-	if err = invitation.Validate(); err != nil {
-		t.Fatalf("Validate() rejected accepted teacher Invitation: %v", err)
-	}
+	err = invitation.AcceptTeacherAcademicUnit(userID, affiliationID, memberID, bindingID, acceptedAt)
+	require.NoError(t, err)
+	require.Equal(t, InvitationAccepted, invitation.State)
+	require.Equal(t, userID, invitation.AcceptedUserID)
+	require.Equal(t, affiliationID, invitation.AcceptedAffiliationID)
+	require.Equal(t, memberID, invitation.AcceptedAcademicUnitMemberID)
+	require.Equal(t, bindingID, invitation.AcceptedRoleBindingID)
+	require.False(t, invitation.AcceptedClassMemberID.IsValid())
+	err = invitation.Validate()
+	require.NoError(t, err)
 }
 
 func TestNewScopedRoleInvitationFreezesExactPurposeAndScope(t *testing.T) {
@@ -201,15 +182,14 @@ func TestNewScopedRoleInvitationFreezesExactPurposeAndScope(t *testing.T) {
 				InviterUserID: NewUserID(), ScopeType: test.scopeType, ScopeID: test.scopeID,
 				ClaimHash: HashInvitationClaim(NewCredentialToken()), IssuedAt: issuedAt,
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if invitation.Purpose != test.purpose || invitation.TargetEmail != "existing@example.edu" ||
-				invitation.AcademicUnitID != test.wantAcademicUnitID || invitation.RoleID != roleID ||
-				invitation.ScopeType != test.scopeType || invitation.ScopeID != test.scopeID ||
-				!slices.Equal(invitation.RoleActions, []string{string(ActionAcademicUnitView), string(ActionProgrammeManage)}) {
-				t.Fatalf("scoped Role Invitation = %#v", invitation)
-			}
+			require.NoError(t, err)
+			require.Equal(t, test.purpose, invitation.Purpose)
+			require.Equal(t, "existing@example.edu", invitation.TargetEmail)
+			require.Equal(t, test.wantAcademicUnitID, invitation.AcademicUnitID)
+			require.Equal(t, roleID, invitation.RoleID)
+			require.Equal(t, test.scopeType, invitation.ScopeType)
+			require.Equal(t, test.scopeID, invitation.ScopeID)
+			require.True(t, slices.Equal(invitation.RoleActions, []string{string(ActionAcademicUnitView), string(ActionProgrammeManage)}))
 		})
 	}
 }
@@ -225,21 +205,18 @@ func TestScopedRoleInvitationAcceptRecordsOnlyExistingUserAndBinding(t *testing.
 		IntendedStartsAt: issuedAt, InviterUserID: NewUserID(), ScopeType: RoleScopeAcademicUnit, ScopeID: unitID.String(),
 		ClaimHash: HashInvitationClaim(NewCredentialToken()), IssuedAt: issuedAt,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	userID, bindingID := NewUserID(), NewRoleBindingID()
-	if err = invitation.AcceptScopedRole(userID, bindingID, issuedAt.Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	if invitation.State != InvitationAccepted || invitation.AcceptedUserID != userID ||
-		invitation.AcceptedRoleBindingID != bindingID || invitation.AcceptedAffiliationID.IsValid() ||
-		invitation.AcceptedAcademicUnitMemberID.IsValid() || invitation.AcceptedClassMemberID.IsValid() {
-		t.Fatalf("accepted scoped Role Invitation = %#v", invitation)
-	}
-	if err = invitation.Validate(); err != nil {
-		t.Fatalf("Validate() rejected accepted scoped Role Invitation: %v", err)
-	}
+	err = invitation.AcceptScopedRole(userID, bindingID, issuedAt.Add(time.Minute))
+	require.NoError(t, err)
+	require.Equal(t, InvitationAccepted, invitation.State)
+	require.Equal(t, userID, invitation.AcceptedUserID)
+	require.Equal(t, bindingID, invitation.AcceptedRoleBindingID)
+	require.False(t, invitation.AcceptedAffiliationID.IsValid())
+	require.False(t, invitation.AcceptedAcademicUnitMemberID.IsValid())
+	require.False(t, invitation.AcceptedClassMemberID.IsValid())
+	err = invitation.Validate()
+	require.NoError(t, err)
 }
 
 func TestStudentClassInvitationRejectsInvalidFrozenPackage(t *testing.T) {
@@ -272,9 +249,8 @@ func TestStudentClassInvitationRejectsInvalidFrozenPackage(t *testing.T) {
 			t.Parallel()
 			input := base
 			test.mutate(&input)
-			if _, err := NewStudentClassInvitation(input); err == nil {
-				t.Fatal("NewStudentClassInvitation() accepted invalid package")
-			}
+			_, err := NewStudentClassInvitation(input)
+			require.Error(t, err, "NewStudentClassInvitation() accepted invalid package")
 		})
 	}
 }
@@ -291,26 +267,20 @@ func TestInvitationAcceptIsSingleTerminalTransition(t *testing.T) {
 		ScopeType: RoleScopeClass, ScopeID: classID.String(),
 		ClaimHash: HashInvitationClaim(NewCredentialToken()), IssuedAt: issuedAt,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	acceptedAt := issuedAt.Add(time.Hour)
 	userID := NewUserID()
 	affiliationID, classMemberID := NewAffiliationID(), NewClassMemberID()
-	if err := invitation.Accept(userID, affiliationID, classMemberID, acceptedAt); err != nil {
-		t.Fatal(err)
-	}
-	if invitation.State != InvitationAccepted || !invitation.AcceptedAt.Valid ||
-		invitation.AcceptedAt.Time != acceptedAt || invitation.AcceptedUserID != userID || invitation.AcceptedAffiliationID != affiliationID || invitation.AcceptedClassMemberID != classMemberID ||
-		invitation.Revision != 2 {
-		t.Fatalf("accepted invitation = %#v", invitation)
-	}
-	if err := invitation.Accept(userID, NewAffiliationID(), NewClassMemberID(), acceptedAt); err == nil {
-		t.Fatal("Accept() accepted a replay as a second transition")
-	}
-	if err := invitation.Validate(); err != nil {
-		t.Fatalf("Validate() rejected accepted invitation: %v", err)
-	}
+	require.NoError(t, invitation.Accept(userID, affiliationID, classMemberID, acceptedAt))
+	require.Equal(t, InvitationAccepted, invitation.State)
+	require.True(t, invitation.AcceptedAt.Valid)
+	require.Equal(t, acceptedAt, invitation.AcceptedAt.Time)
+	require.Equal(t, userID, invitation.AcceptedUserID)
+	require.Equal(t, affiliationID, invitation.AcceptedAffiliationID)
+	require.Equal(t, classMemberID, invitation.AcceptedClassMemberID)
+	require.Equal(t, int64(2), invitation.Revision)
+	require.Error(t, invitation.Accept(userID, NewAffiliationID(), NewClassMemberID(), acceptedAt), "Accept() accepted a replay as a second transition")
+	require.NoError(t, invitation.Validate())
 }
 
 func TestInvitationExpireTerminalizesOnlyAnElapsedPendingInvitation(t *testing.T) {
@@ -320,21 +290,16 @@ func TestInvitationExpireTerminalizesOnlyAnElapsedPendingInvitation(t *testing.T
 		ClassID: classID, AcademicPeriodID: NewAcademicPeriodID(), IntendedStartsAt: issuedAt,
 		InviterUserID: NewUserID(), ScopeType: RoleScopeClass, ScopeID: classID.String(),
 		ClaimHash: HashInvitationClaim(NewCredentialToken()), IssuedAt: issuedAt})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = invitation.Expire(invitation.ExpiresAt.Add(-time.Nanosecond)); err == nil {
-		t.Fatal("Expire() accepted a live Invitation")
-	}
-	if err = invitation.Expire(invitation.ExpiresAt); err != nil {
-		t.Fatal(err)
-	}
-	if invitation.State != InvitationExpired || invitation.Revision != 2 || !invitation.UpdatedAt.Equal(invitation.ExpiresAt) {
-		t.Fatalf("expired Invitation = %#v", invitation)
-	}
-	if err = invitation.Expire(invitation.ExpiresAt.Add(time.Second)); err == nil {
-		t.Fatal("Expire() accepted a terminal Invitation")
-	}
+	require.NoError(t, err)
+	err = invitation.Expire(invitation.ExpiresAt.Add(-time.Nanosecond))
+	require.Error(t, err, "Expire() accepted a live Invitation")
+	err = invitation.Expire(invitation.ExpiresAt)
+	require.NoError(t, err)
+	require.Equal(t, InvitationExpired, invitation.State)
+	require.Equal(t, int64(2), invitation.Revision)
+	require.True(t, invitation.UpdatedAt.Equal(invitation.ExpiresAt))
+	err = invitation.Expire(invitation.ExpiresAt.Add(time.Second))
+	require.Error(t, err, "Expire() accepted a terminal Invitation")
 }
 
 func TestInvitationAdministrativeLifecycleTransitions(t *testing.T) {
@@ -348,9 +313,7 @@ func TestInvitationAdministrativeLifecycleTransitions(t *testing.T) {
 			InviterUserID: NewUserID(), ScopeType: RoleScopeClass, ScopeID: classID.String(),
 			ClaimHash: HashInvitationClaim(NewCredentialToken()), IssuedAt: issuedAt,
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		return invitation
 	}
 
@@ -358,17 +321,13 @@ func TestInvitationAdministrativeLifecycleTransitions(t *testing.T) {
 		invitation := newInvitation(t)
 		previousHash := invitation.ClaimHash
 		at := issuedAt.Add(time.Hour)
-		if err := invitation.Resend(HashInvitationClaim(NewCredentialToken()), at); err != nil {
-			t.Fatal(err)
-		}
-		if invitation.State != InvitationPending || invitation.ClaimHash == previousHash ||
-			!invitation.UpdatedAt.Equal(at) || invitation.Revision != 2 ||
-			!invitation.ExpiresAt.Equal(issuedAt.Add(InvitationLifetime)) {
-			t.Fatalf("resent Invitation = %#v", invitation)
-		}
-		if err := invitation.Resend(invitation.ClaimHash, at.Add(time.Minute)); err == nil {
-			t.Fatal("Resend() accepted the current claim hash")
-		}
+		require.NoError(t, invitation.Resend(HashInvitationClaim(NewCredentialToken()), at))
+		require.Equal(t, InvitationPending, invitation.State)
+		require.NotEqual(t, previousHash, invitation.ClaimHash)
+		require.True(t, invitation.UpdatedAt.Equal(at))
+		require.Equal(t, int64(2), invitation.Revision)
+		require.True(t, invitation.ExpiresAt.Equal(issuedAt.Add(InvitationLifetime)))
+		require.Error(t, invitation.Resend(invitation.ClaimHash, at.Add(time.Minute)), "Resend() accepted the current claim hash")
 	})
 
 	for _, transition := range []struct {
@@ -382,21 +341,16 @@ func TestInvitationAdministrativeLifecycleTransitions(t *testing.T) {
 		t.Run(transition.name+" terminalizes pending", func(t *testing.T) {
 			invitation := newInvitation(t)
 			at := issuedAt.Add(time.Hour)
-			if err := transition.apply(invitation, at); err != nil {
-				t.Fatal(err)
-			}
-			if invitation.State != transition.state || !invitation.UpdatedAt.Equal(at) || invitation.Revision != 2 {
-				t.Fatalf("terminal Invitation = %#v", invitation)
-			}
-			if err := transition.apply(invitation, at.Add(time.Minute)); err == nil {
-				t.Fatal("terminal transition replay succeeded")
-			}
+			require.NoError(t, transition.apply(invitation, at))
+			require.Equal(t, transition.state, invitation.State)
+			require.True(t, invitation.UpdatedAt.Equal(at))
+			require.Equal(t, int64(2), invitation.Revision)
+			require.Error(t, transition.apply(invitation, at.Add(time.Minute)), "terminal transition replay succeeded")
 		})
 		t.Run(transition.name+" rejects elapsed pending", func(t *testing.T) {
 			invitation := newInvitation(t)
-			if err := transition.apply(invitation, invitation.ExpiresAt); err == nil || invitation.State != InvitationPending {
-				t.Fatalf("elapsed terminal transition = %#v, %v", invitation, err)
-			}
+			require.Error(t, transition.apply(invitation, invitation.ExpiresAt), "elapsed terminal transition = %#v", invitation)
+			require.Equal(t, InvitationPending, invitation.State, "elapsed terminal transition = %#v", invitation)
 		})
 	}
 
@@ -406,13 +360,9 @@ func TestInvitationAdministrativeLifecycleTransitions(t *testing.T) {
 		second.ID, second.InviterUserID = NewInvitationID(), NewUserID()
 		second.ClaimHash = HashInvitationClaim(NewCredentialToken())
 		second.CreatedAt, second.UpdatedAt, second.ExpiresAt = issuedAt.Add(time.Minute), issuedAt.Add(time.Minute), issuedAt.Add(time.Minute).Add(InvitationLifetime)
-		if !first.HasSamePackage(&second) {
-			t.Fatal("HasSamePackage() treated identity or provenance as package data")
-		}
+		require.True(t, first.HasSamePackage(&second), "HasSamePackage() treated identity or provenance as package data")
 		second.TargetEmail = "other@example.edu"
-		if first.HasSamePackage(&second) {
-			t.Fatal("HasSamePackage() ignored recipient change")
-		}
+		require.False(t, first.HasSamePackage(&second), "HasSamePackage() ignored recipient change")
 	})
 }
 
@@ -430,21 +380,13 @@ func TestMailDeliveryTargetsExactlyOneUserOrInvitation(t *testing.T) {
 		EncryptedPayload: json.RawMessage(`{"key_id":"0123456789abcdef0123456789abcdef"}`),
 		Revision:         1,
 	}
-	if err := delivery.Validate(); err != nil {
-		t.Fatalf("Validate() rejected Invitation-targeted delivery: %v", err)
-	}
+	require.NoError(t, delivery.Validate())
 	delivery.TargetUserID = NewUserID()
-	if err := delivery.Validate(); err == nil {
-		t.Fatal("Validate() accepted both User and Invitation targets")
-	}
+	require.Error(t, delivery.Validate(), "Validate() accepted both User and Invitation targets")
 	delivery.TargetInvitationID = ""
-	if err := delivery.Validate(); err != nil {
-		t.Fatalf("Validate() rejected User-targeted delivery: %v", err)
-	}
+	require.NoError(t, delivery.Validate())
 	delivery.TargetUserID = ""
-	if err := delivery.Validate(); err == nil {
-		t.Fatal("Validate() accepted a delivery without a recipient target")
-	}
+	require.Error(t, delivery.Validate(), "Validate() accepted a delivery without a recipient target")
 }
 
 func TestTeacherInvitationMailIsCredentialOccurrence(t *testing.T) {
@@ -452,7 +394,6 @@ func TestTeacherInvitationMailIsCredentialOccurrence(t *testing.T) {
 	at := time.UnixMilli(1_800_000_000_000).UTC()
 	occurrence := &MailOccurrence{ID: NewMailOccurrenceID(), Kind: MailOccurrenceInvitation,
 		TemplateKey: MailTemplateAccessTeacherAcademicUnitInvitation, ActorUserID: NewUserID(), CreatedAt: at}
-	if !MailTemplateAccessTeacherAcademicUnitInvitation.IsValid() || occurrence.Validate() != nil {
-		t.Fatalf("teacher Invitation mail meaning is not registered: %#v", occurrence)
-	}
+	require.True(t, MailTemplateAccessTeacherAcademicUnitInvitation.IsValid())
+	require.NoError(t, occurrence.Validate())
 }

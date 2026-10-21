@@ -10,14 +10,14 @@ package model
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestSecurityPreflightResultValidation(t *testing.T) {
 	now := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 	valid := SecurityPreflightResult{PreflightID: NewID(), ReportDigest: SHA256Fingerprint([]byte("report")), Admission: "eligible", ReasonCodes: []SecurityReasonCode{}, ServerTime: now, ExpiresAt: now.Add(time.Minute)}
-	if err := valid.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, valid.Validate())
 	for _, tc := range []struct {
 		name   string
 		change func(*SecurityPreflightResult)
@@ -38,16 +38,12 @@ func TestSecurityPreflightResultValidation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			value := valid
 			tc.change(&value)
-			if value.Validate() == nil {
-				t.Fatal("invalid result accepted")
-			}
+			require.Error(t, value.Validate(), "invalid result accepted")
 		})
 	}
 	expired := valid
 	expired.Admission = "blocked"
 	expired.ReasonCodes = []SecurityReasonCode{SecurityReasonPreflightExpired}
 	expired.ServerTime = expired.ExpiresAt.Add(time.Minute)
-	if err := expired.Validate(); err != nil {
-		t.Fatalf("legitimate expired refusal rejected: %v", err)
-	}
+	require.NoError(t, expired.Validate())
 }

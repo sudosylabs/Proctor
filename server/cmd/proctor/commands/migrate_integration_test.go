@@ -15,8 +15,9 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
@@ -24,36 +25,21 @@ import (
 
 func TestMigrateIntegration(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is required for integration tests")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is required for integration tests")
 	t.Setenv("PROCTOR_DATABASE_DATA_SOURCE", dataSource)
 	cfg, err := json.Marshal(config.Default())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	configPath := filepath.Join(t.TempDir(), "config.json")
-	if err = os.WriteFile(configPath, cfg, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	err = os.WriteFile(configPath, cfg, 0o600)
+	require.NoError(t, err)
 
 	code, stdout, stderr := executeForTest(context.Background(), []string{"--config", configPath, "migrate", "up"}, nil, productionExecutors())
-	if code != 0 {
-		t.Fatalf("migrate up code=%d stderr=%q", code, stderr)
-	}
+	require.Equal(t, 0, code, "migrate up code=%d stderr=%q", code, stderr)
 	version, err := sqlstore.LocalSchemaVersion()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(stdout, "version "+strconv.Itoa(version)) {
-		t.Fatalf("migrate up output = %q", stdout)
-	}
+	require.NoError(t, err)
+	require.Contains(t, stdout, "version "+strconv.Itoa(version))
 
 	code, stdout, stderr = executeForTest(context.Background(), []string{"--config", configPath, "migrate", "status"}, nil, productionExecutors())
-	if code != 0 {
-		t.Fatalf("migrate status code=%d stderr=%q", code, stderr)
-	}
-	if !strings.Contains(stdout, "pending migrations 0") {
-		t.Fatalf("migrate status output = %q", stdout)
-	}
+	require.Equal(t, 0, code, "migrate status code=%d stderr=%q", code, stderr)
+	require.Contains(t, stdout, "pending migrations 0")
 }

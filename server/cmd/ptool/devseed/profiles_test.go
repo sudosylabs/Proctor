@@ -19,29 +19,24 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestPicturePNG(t *testing.T) {
 	t.Parallel()
 	first, err := picturePNG(42, "candidate-001")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	again, err := picturePNG(42, "candidate-001")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	other, err := picturePNG(42, "candidate-003")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(first, again) || bytes.Equal(first, other) {
-		t.Fatal("picture identity is not deterministic and varied")
-	}
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(first, again), "picture identity is not deterministic and varied")
+	require.False(t, bytes.Equal(first, other), "picture identity is not deterministic and varied")
 	decoded, err := png.Decode(bytes.NewReader(first))
-	if err != nil || decoded.Bounds().Dx() != 256 || decoded.Bounds().Dy() != 256 {
-		t.Fatalf("invalid upload image: %v", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 256, decoded.Bounds().Dx())
+	require.Equal(t, 256, decoded.Bounds().Dy())
 }
 
 func TestProfilePictureRetryPreservesBytesAndETag(t *testing.T) {
@@ -63,54 +58,44 @@ func TestProfilePictureRetryPreservesBytesAndETag(t *testing.T) {
 				}
 				puts++
 				raw, err := io.ReadAll(req.Body)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if req.Header.Get("Content-Type") != "image/png" || req.Header.Get("If-Match") != `"`+strings.Repeat("a", 64)+`"` || req.Header.Get("Idempotency-Key") != "" {
-					t.Fatal("upload lost its raw protocol or original precondition")
-				}
-				if _, err := png.Decode(bytes.NewReader(raw)); err != nil {
-					t.Fatal("upload is not raw PNG")
-				}
+				require.NoError(t, err)
+				require.Equal(t, "image/png", req.Header.Get("Content-Type"), "upload lost its raw protocol or original precondition")
+				require.Equal(t, `"`+strings.Repeat("a", 64)+`"`, req.Header.Get("If-Match"), "upload lost its raw protocol or original precondition")
+				require.Empty(t, req.Header.Get("Idempotency-Key"), "upload lost its raw protocol or original precondition")
+				_, err = png.Decode(bytes.NewReader(raw))
+				require.NoError(t, err, "upload is not raw PNG")
 				if puts == 1 {
 					original = raw
 					return nil, errors.New("lost response")
 				}
-				if !bytes.Equal(raw, original) {
-					t.Fatal("retry regenerated the saved picture")
-				}
+				require.True(t, bytes.Equal(raw, original), "retry regenerated the saved picture")
 				return response(200, `{"id":"user"}`), nil
 			})
 			r.state.Records = map[string]record{}
 			r.state.Accounts["administrator"] = &account{Token: "token"}
 			r.state.Accounts["candidate-001"] = &account{UserID: "user"}
-			if err := r.profilePicture("candidate-001"); err == nil {
-				t.Fatal("expected response loss")
-			}
+			require.Error(t, r.profilePicture("candidate-001"), "expected response loss")
 			raw, err := os.ReadFile(filepath.Join(r.options.StateDir, "journal.json"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err = json.Unmarshal(raw, &r.state); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+			err = json.Unmarshal(raw, &r.state)
+			require.NoError(t, err)
 			r.state.Seed = 999 // A retry must use the persisted bytes.
 			if changed {
 				tag = `"` + strings.Repeat("b", 64) + `"`
 			}
 			err = r.profilePicture("candidate-001")
 			if changed {
-				if err == nil || !strings.Contains(err.Error(), "changed after upload preparation") || puts != 1 {
-					t.Fatalf("ambiguous picture was overwritten: %v, writes=%d", err, puts)
-				}
+				require.Error(t, err, "ambiguous picture was overwritten")
+				require.Contains(t, err.Error(), "changed after upload preparation", "ambiguous picture was overwritten")
+				require.Equal(t, 1, puts, "ambiguous picture was overwritten")
 				return
 			}
-			if err != nil || puts != 2 || !r.state.Accounts["candidate-001"].SeededCustomPicture {
-				t.Fatalf("upload recovery failed: %v", err)
-			}
-			if err = r.profilePicture("candidate-001"); err != nil || puts != 2 {
-				t.Fatalf("completed upload repeated: %v", err)
-			}
+			require.NoError(t, err)
+			require.Equal(t, 2, puts)
+			require.True(t, r.state.Accounts["candidate-001"].SeededCustomPicture)
+			err = r.profilePicture("candidate-001")
+			require.NoError(t, err)
+			require.Equal(t, 2, puts)
 		})
 	}
 }
@@ -132,22 +117,16 @@ func TestDisableAccountReconcilesLostResponseAndPreservesLaterEnablement(t *test
 	r.state.Accounts["administrator"] = &account{Token: "token"}
 	a := &account{UserID: "user", Token: "old-access", RefreshToken: "old-refresh"}
 	r.state.Records = map[string]record{"user/disabled-student": {ID: "user", URL: "/api/v1/users/user"}}
-	if err := r.disableAccount("disabled-student", a); err == nil {
-		t.Fatal("expected response loss")
-	}
-	if err := r.disableAccount("disabled-student", a); err != nil {
-		t.Fatal(err)
-	}
-	if writes != 1 || !a.SeededDisabled || a.Token != "" || a.RefreshToken != "" {
-		t.Fatal("disablement failed to reconcile and discard revoked credentials")
-	}
-	if !strings.Contains(r.state.Records["user/disabled-student"].URL, "include_disabled=true") {
-		t.Fatal("disabled manifest record does not point to the administrative directory")
-	}
+	require.Error(t, r.disableAccount("disabled-student", a), "expected response loss")
+	require.NoError(t, r.disableAccount("disabled-student", a))
+	require.Equal(t, 1, writes, "disablement failed to reconcile and discard revoked credentials")
+	require.True(t, a.SeededDisabled, "disablement failed to reconcile and discard revoked credentials")
+	require.Empty(t, a.Token, "disablement failed to reconcile and discard revoked credentials")
+	require.Empty(t, a.RefreshToken, "disablement failed to reconcile and discard revoked credentials")
+	require.Contains(t, r.state.Records["user/disabled-student"].URL, "include_disabled=true", "disabled manifest record does not point to the administrative directory")
 	disabled = false
-	if err := r.disableAccount("disabled-student", a); err != nil || writes != 1 {
-		t.Fatalf("replay disabled a developer-enabled account: %v", err)
-	}
+	require.NoError(t, r.disableAccount("disabled-student", a))
+	require.Equal(t, 1, writes)
 }
 
 func TestAdministrativeUserFindsDisabledAccountBeyondFirstPage(t *testing.T) {
@@ -155,9 +134,8 @@ func TestAdministrativeUserFindsDisabledAccountBeyondFirstPage(t *testing.T) {
 	calls := 0
 	r := unitRunner(t, func(req *http.Request) (*http.Response, error) {
 		calls++
-		if req.URL.Query().Get("include_disabled") != "true" || req.URL.Query().Get("limit") != "200" {
-			t.Fatal("administrative scope was lost")
-		}
+		require.Equal(t, "true", req.URL.Query().Get("include_disabled"), "administrative scope was lost")
+		require.Equal(t, "200", req.URL.Query().Get("limit"), "administrative scope was lost")
 		if calls == 1 {
 			items := make([]object, 200)
 			for i := range items {
@@ -165,19 +143,16 @@ func TestAdministrativeUserFindsDisabledAccountBeyondFirstPage(t *testing.T) {
 			}
 			items[199]["username"] = "candidate-é+199"
 			raw, err := json.Marshal(items)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			return response(200, string(raw)), nil
 		}
-		if req.URL.Query().Get("after_id") != "user-199" || req.URL.Query().Get("after_username") != "candidate-é+199" {
-			t.Fatal("directory cursor was not preserved")
-		}
+		require.Equal(t, "user-199", req.URL.Query().Get("after_id"), "directory cursor was not preserved")
+		require.Equal(t, "candidate-é+199", req.URL.Query().Get("after_username"), "directory cursor was not preserved")
 		return response(200, `[{"id":"target","username":"renamed-user","disabled_at":"2026-01-02T03:04:05.123Z"}]`), nil
 	})
 	r.state.Accounts["administrator"] = &account{Token: "token"}
 	raw, err := r.administrativeUser("target")
-	if err != nil || calls != 2 || str(decode(raw), "disabled_at") != "2026-01-02T03:04:05.123Z" {
-		t.Fatalf("paged lookup failed: %v", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 2, calls)
+	require.Equal(t, "2026-01-02T03:04:05.123Z", str(decode(raw), "disabled_at"))
 }

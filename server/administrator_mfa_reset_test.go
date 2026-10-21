@@ -11,6 +11,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 )
 
@@ -22,12 +24,16 @@ func TestAdministratorMFAResetOnlyAvailableOnInertServer(t *testing.T) {
 		node := &Server{state: state, components: runtimeComponents{administratorRecovery: fake}}
 		result, err := node.ResetAdministratorMFA(context.Background(), command)
 		if state == nodeInert {
-			if err != nil || result == nil || !result.ReenrollmentRequired || result.RecoveryGeneration != 3 ||
-				fake.mfaCommand.InstitutionID != command.InstitutionID || fake.mfaCommand.UserID != command.UserID {
-				t.Fatalf("inert result=%#v error=%v command=%#v", result, err, fake.mfaCommand)
-			}
-		} else if err == nil || result != nil || fake.mfaCommand.UserID != "" {
-			t.Fatalf("state=%v accepted offline reset result=%#v error=%v", state, result, err)
+			require.NoError(t, err, "inert result=%#v error=%v command=%#v", result, err, fake.mfaCommand)
+			require.NotNil(t, result, "inert result=%#v error=%v command=%#v", result, err, fake.mfaCommand)
+			require.True(t, result.ReenrollmentRequired, "inert result=%#v error=%v command=%#v", result, err, fake.mfaCommand)
+			require.Equal(t, int64(3), result.RecoveryGeneration, "inert result=%#v error=%v command=%#v", result, err, fake.mfaCommand)
+			require.Equal(t, command.InstitutionID, fake.mfaCommand.InstitutionID, "inert result=%#v error=%v command=%#v", result, err, fake.mfaCommand)
+			require.Equal(t, command.UserID, fake.mfaCommand.UserID, "inert result=%#v error=%v command=%#v", result, err, fake.mfaCommand)
+		} else {
+			require.Error(t, err, "state=%v accepted offline reset", state)
+			require.Nil(t, result, "state=%v accepted offline reset", state)
+			require.Empty(t, fake.mfaCommand.UserID, "state=%v accepted offline reset", state)
 		}
 	}
 }

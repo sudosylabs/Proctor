@@ -11,32 +11,25 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestDefaultNativeSecurityPolicy(t *testing.T) {
 	t.Parallel()
 	policy := DefaultNativeSecurityPolicy()
-	if policy.Validate() != nil {
-		t.Fatal("invalid default")
-	}
+	require.NoError(t, policy.Validate(), "invalid default")
 	document, err := encodeCanonicalExamDocument(policy)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var decoded NativeSecurityPolicy
-	if json.Unmarshal(document, &decoded) != nil {
-		t.Fatal("default policy failed strict round trip")
-	}
+	require.NoError(t, json.Unmarshal(document, &decoded), "default policy failed strict round trip")
 	for i, id := range NativeFamilies() {
-		if decoded.Families[i].ID() != id || decoded.Families[i].Mode() != NativeModeDisabled {
-			t.Fatal("optional family enabled by default")
-		}
+		require.Equal(t, id, decoded.Families[i].ID(), "optional family enabled by default")
+		require.Equal(t, NativeModeDisabled, decoded.Families[i].Mode(), "optional family enabled by default")
 	}
 	cloned := policy.Clone()
 	cloned.Families[0] = NativeFamilyPolicy{}
-	if policy.Validate() != nil {
-		t.Fatal("clone aliases family collection")
-	}
+	require.NoError(t, policy.Validate(), "clone aliases family collection")
 	for name, raw := range map[string]string{
 		"wrong baseline": strings.Replace(string(document), `"desktop_candidate"`, `"optional"`, 1),
 		"wrong registry": strings.Replace(string(document), NativeRegistryDigest, SHA256Fingerprint([]byte("unknown")), 1),
@@ -45,9 +38,7 @@ func TestDefaultNativeSecurityPolicy(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			var value NativeSecurityPolicy
-			if json.Unmarshal([]byte(raw), &value) == nil {
-				t.Fatal("accepted invalid native policy")
-			}
+			require.Error(t, json.Unmarshal([]byte(raw), &value), "accepted invalid native policy")
 		})
 	}
 }
@@ -71,17 +62,11 @@ func TestNativeFamilyPolicyExactUnions(t *testing.T) {
 	for _, document := range valid {
 		t.Run(document, func(t *testing.T) {
 			var value NativeFamilyPolicy
-			if err := json.Unmarshal([]byte(document), &value); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, json.Unmarshal([]byte(document), &value))
 			encoded, err := json.Marshal(value)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			var decoded NativeFamilyPolicy
-			if json.Unmarshal(encoded, &decoded) != nil {
-				t.Fatal("family round trip failed")
-			}
+			require.NoError(t, json.Unmarshal(encoded, &decoded), "family round trip failed")
 		})
 	}
 }
@@ -116,9 +101,7 @@ func TestNativeFamilyPolicyRejectsUnsafeOrMeaninglessSelections(t *testing.T) {
 	for name, document := range tests {
 		t.Run(name, func(t *testing.T) {
 			var value NativeFamilyPolicy
-			if json.Unmarshal([]byte(document), &value) == nil {
-				t.Fatal("accepted invalid family")
-			}
+			require.Error(t, json.Unmarshal([]byte(document), &value), "accepted invalid family")
 		})
 	}
 }

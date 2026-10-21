@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/cluster/local"
 	"github.com/sudosylabs/proctor/server/model"
@@ -25,47 +27,27 @@ func TestLocalCacheClusterAdapterRegistersValidatedLoopSafeInvalidation(t *testi
 	t.Parallel()
 
 	transport, err := local.New("node-a", cacheClusterTestLogger{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	adapter, err := newLocalCacheClusterAdapter(transport)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	id := model.NewAcademicPeriodID().String()
 	var handled atomic.Int64
-	if err := adapter.RegisterAcademicPeriod(func(_ context.Context, got string) error {
-		if got != id {
-			t.Fatalf("invalidation ID = %q, want %q", got, id)
-		}
+	require.NoError(t, adapter.RegisterAcademicPeriod(func(_ context.Context, got string) error {
+		require.Equal(t, id, got, "invalidation ID")
 		handled.Add(1)
 		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := transport.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	}))
+	require.NoError(t, transport.Start(context.Background()))
 
-	if err := adapter.BroadcastAcademicPeriod(context.Background(), id); err != nil {
-		t.Fatal(err)
-	}
-	if handled.Load() != 0 {
-		t.Fatal("peer-only broadcast re-entered the local invalidation handler")
-	}
-	if err := transport.SendToNode(context.Background(), transport.NodeID(), &cluster.Message{
+	require.NoError(t, adapter.BroadcastAcademicPeriod(context.Background(), id))
+	require.Equal(t, int64(0), handled.Load(), "peer-only broadcast re-entered the local invalidation handler")
+	require.NoError(t, transport.SendToNode(context.Background(), transport.NodeID(), &cluster.Message{
 		Event: academicPeriodInvalidatedEvent,
 		Data:  []byte(`{"id":"` + id + `"}`),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if handled.Load() != 1 {
-		t.Fatalf("handled invalidations = %d, want 1", handled.Load())
-	}
-	if err := transport.SendToNode(context.Background(), transport.NodeID(), &cluster.Message{
+	}))
+	require.Equal(t, int64(1), handled.Load(), "handled invalidations")
+	require.Error(t, transport.SendToNode(context.Background(), transport.NodeID(), &cluster.Message{
 		Event: academicPeriodInvalidatedEvent,
 		Data:  []byte(`{"id":"invalid"}`),
-	}); err == nil {
-		t.Fatal("invalid peer invalidation was accepted")
-	}
+	}), "invalid peer invalidation was accepted")
 }

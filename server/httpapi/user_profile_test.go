@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -233,21 +235,17 @@ func TestCurrentUserContextHTTPReturnsClosedNoStoreDTO(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" || profiles.contextCalls != 1 {
-		t.Fatalf("context response = %d cache=%q calls=%d: %s", response.Code, response.Header().Get("Cache-Control"), profiles.contextCalls, response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "context response = %d cache=%q calls=%d: %s", response.Code, response.Header().Get("Cache-Control"), profiles.contextCalls, response.Body.String())
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "context response = %d cache=%q calls=%d: %s", response.Code, response.Header().Get("Cache-Control"), profiles.contextCalls, response.Body.String())
+	require.Equal(t, 1, profiles.contextCalls, "context response = %d cache=%q calls=%d: %s", response.Code, response.Header().Get("Cache-Control"), profiles.contextCalls, response.Body.String())
 	var body map[string]json.RawMessage
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 	for _, required := range []string{"user", "no_current_affiliation", "no_assigned_access", "available_product_areas", "management_scopes", "management_scopes_has_more", "unresolved_attempt", "session_management_available", "current_desktop_registration_id"} {
-		if _, exists := body[required]; !exists {
-			t.Fatalf("context response omitted %q: %s", required, response.Body.String())
-		}
+		_, exists := body[required]
+		require.True(t, exists, "context response omitted %q: %s", required, response.Body.String())
 	}
-	if string(body["unresolved_attempt"]) != "null" || string(body["current_desktop_registration_id"]) != "null" {
-		t.Fatalf("absent selectors must be explicit null: %s", response.Body.String())
-	}
+	require.Equal(t, "null", string(body["unresolved_attempt"]))
+	require.Equal(t, "null", string(body["current_desktop_registration_id"]))
 }
 
 func TestUserProfileHTTPUsesAllowlistedDTOAndRouteID(t *testing.T) {
@@ -263,62 +261,52 @@ func TestUserProfileHTTPUsesAllowlistedDTOAndRouteID(t *testing.T) {
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
-	if profiles.updateCommand.ID != model.UserID(userID) || profiles.updateCommand.DisplayName == nil || *profiles.updateCommand.DisplayName != "Updated" {
-		t.Fatalf("command = %#v", profiles.updateCommand)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "status = %d: %s", response.Code, response.Body.String())
+	require.Equal(t, model.UserID(userID), profiles.updateCommand.ID)
+	require.NotNil(t, profiles.updateCommand.DisplayName)
+	require.Equal(t, "Updated", *profiles.updateCommand.DisplayName)
 	var body map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 	for _, forbidden := range []string{"revision", "password", "password_hash", "external_subject", "mfa_secret", "access_token", "refresh_token"} {
-		if _, exposed := body[forbidden]; exposed {
-			t.Fatalf("sensitive field %q exposed: %#v", forbidden, body)
-		}
+		_, exposed := body[forbidden]
+		require.False(t, exposed, "sensitive field %q exposed: %#v", forbidden, body)
 	}
-	if body["profile_picture_url"] != "/api/v1/users/"+userID+"/profile-picture?v=7" {
-		t.Fatalf("profile picture URL = %#v", body["profile_picture_url"])
-	}
+	require.Equal(t, "/api/v1/users/"+userID+"/profile-picture?v=7", body["profile_picture_url"])
 	newer := *user
 	newer.Revision++
-	if first, second := userProfileResponseFromModel(user).ProfilePictureURL, userProfileResponseFromModel(&newer).ProfilePictureURL; first == second {
-		t.Fatalf("successive visible revisions reused cache URL %q", first)
-	}
+	require.NotEqual(t, userProfileResponseFromModel(&newer).ProfilePictureURL, userProfileResponseFromModel(user).ProfilePictureURL)
 	uploadRequest := httptest.NewRequest(http.MethodPut, "/api/v1/users/"+userID+"/profile-picture", strings.NewReader("image"))
 	uploadRequest.Header.Set("Authorization", "Bearer credential")
 	uploadRequest.Header.Set("Content-Type", "image/png")
 	uploadRequest.Header.Set("If-Match", `"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"`)
 	uploadResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(uploadResponse, uploadRequest)
-	if uploadResponse.Code != http.StatusOK {
-		t.Fatalf("upload status = %d: %s", uploadResponse.Code, uploadResponse.Body.String())
-	}
+	require.Equal(t, http.StatusOK, uploadResponse.Code, "upload status = %d: %s", uploadResponse.Code, uploadResponse.Body.String())
 	uploaded, err := io.ReadAll(profiles.uploadCommand.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if profiles.uploadCommand.UserID != model.UserID(userID) || profiles.uploadCommand.Size != 5 || profiles.uploadCommand.ExpectedSHA256 != strings.Repeat("a", 64) || string(uploaded) != "image" {
-		t.Fatalf("upload command = %#v body = %q", profiles.uploadCommand, uploaded)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.UserID(userID), profiles.uploadCommand.UserID, "upload command = %#v body", profiles.uploadCommand)
+	require.Equal(t, int64(5), profiles.uploadCommand.Size, "upload command = %#v body", profiles.uploadCommand)
+	require.Equal(t, strings.Repeat("a", 64), profiles.uploadCommand.ExpectedSHA256, "upload command = %#v body", profiles.uploadCommand)
+	require.Equal(t, "image", string(uploaded), "upload command = %#v body", profiles.uploadCommand)
 	deleteRequest := httptest.NewRequest(http.MethodDelete, "/api/v1/users/"+userID+"/profile-picture", nil)
 	deleteRequest.Header.Set("Authorization", "Bearer credential")
 	deleteRequest.Header.Set("If-Match", `"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"`)
 	deleteResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(deleteResponse, deleteRequest)
-	if deleteResponse.Code != http.StatusOK || profiles.removeCommand.UserID != model.UserID(userID) || profiles.removeCommand.ExpectedSHA256 != strings.Repeat("b", 64) {
-		t.Fatalf("delete response/command = %d / %#v", deleteResponse.Code, profiles.removeCommand)
-	}
+	require.Equal(t, http.StatusOK, deleteResponse.Code, "delete response/command = %d / %#v", deleteResponse.Code, profiles.removeCommand)
+	require.Equal(t, model.UserID(userID), profiles.removeCommand.UserID, "delete response/command = %d / %#v", deleteResponse.Code, profiles.removeCommand)
+	require.Equal(t, strings.Repeat("b", 64), profiles.removeCommand.ExpectedSHA256, "delete response/command = %d / %#v", deleteResponse.Code, profiles.removeCommand)
 	profiles.pictureContent = &app.ProfilePictureContent{Body: io.NopCloser(strings.NewReader("webp")), MediaType: "image/webp", Size: 4, ETag: `"checksum"`}
 	pictureRequest := httptest.NewRequest(http.MethodGet, "/api/v1/users/"+userID+"/profile-picture?size=128", nil)
 	pictureRequest.Header.Set("Authorization", "Bearer credential")
 	pictureRequest.Header.Set("If-None-Match", `"different", W/"checksum"`)
 	pictureResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(pictureResponse, pictureRequest)
-	if pictureResponse.Code != http.StatusNotModified || profiles.pictureQuery.UserID != model.UserID(userID) || profiles.pictureQuery.Size != 128 || pictureResponse.Header().Get("Cache-Control") != "private, max-age=86400" || pictureResponse.Header().Get("Content-Length") != "4" {
-		t.Fatalf("profile picture response = status %d headers %#v query %#v", pictureResponse.Code, pictureResponse.Header(), profiles.pictureQuery)
-	}
+	require.Equal(t, http.StatusNotModified, pictureResponse.Code, "profile picture response = status %d headers %#v query %#v", pictureResponse.Code, pictureResponse.Header(), profiles.pictureQuery)
+	require.Equal(t, model.UserID(userID), profiles.pictureQuery.UserID, "profile picture response = status %d headers %#v query %#v", pictureResponse.Code, pictureResponse.Header(), profiles.pictureQuery)
+	require.Equal(t, 128, profiles.pictureQuery.Size, "profile picture response = status %d headers %#v query %#v", pictureResponse.Code, pictureResponse.Header(), profiles.pictureQuery)
+	require.Equal(t, "private, max-age=86400", pictureResponse.Header().Get("Cache-Control"), "profile picture response = status %d headers %#v query %#v", pictureResponse.Code, pictureResponse.Header(), profiles.pictureQuery)
+	require.Equal(t, "4", pictureResponse.Header().Get("Content-Length"), "profile picture response = status %d headers %#v query %#v", pictureResponse.Code, pictureResponse.Header(), profiles.pictureQuery)
 }
 
 func TestGenericUserProfilePatchRejectsEmailSecurityFields(t *testing.T) {
@@ -332,9 +320,8 @@ func TestGenericUserProfilePatchRejectsEmailSecurityFields(t *testing.T) {
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusBadRequest || profiles.updateCommand.ID != "" {
-		t.Fatalf("security-field PATCH status=%d command=%#v body=%s", response.Code, profiles.updateCommand, response.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, response.Code, "security-field PATCH status=%d command=%#v body=%s", response.Code, profiles.updateCommand, response.Body.String())
+	require.Empty(t, profiles.updateCommand.ID, "security-field PATCH status=%d command=%#v body=%s", response.Code, profiles.updateCommand, response.Body.String())
 }
 
 func TestEmailMutationResponsesUseNarrowAccountStateProjection(t *testing.T) {
@@ -368,20 +355,14 @@ func TestEmailMutationResponsesUseNarrowAccountStateProjection(t *testing.T) {
 			}
 			response := httptest.NewRecorder()
 			httpAPI.ServeHTTP(response, request)
-			if response.Code != http.StatusOK {
-				t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-			}
+			require.Equal(t, http.StatusOK, response.Code, "status = %d: %s", response.Code, response.Body.String())
 			var fields map[string]json.RawMessage
-			if err := json.Unmarshal(response.Body.Bytes(), &fields); err != nil {
-				t.Fatal(err)
-			}
-			if string(fields["id"]) != `"`+userID.String()+`"` || string(fields["email_verified"]) != fmt.Sprintf("%t", test.verified) {
-				t.Fatalf("narrow state response = %s", response.Body.Bytes())
-			}
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &fields))
+			require.Equal(t, `"`+userID.String()+`"`, string(fields["id"]))
+			require.Equal(t, fmt.Sprintf("%t", test.verified), string(fields["email_verified"]))
 			for _, forbidden := range []string{"email", "username", "display_name", "locale", "timezone", "last_login_at", "last_activity_at", "disabled_at", "created_at", "updated_at", "archived_at"} {
-				if _, exposed := fields[forbidden]; exposed {
-					t.Fatalf("email mutation exposed %q: %s", forbidden, response.Body.Bytes())
-				}
+				_, exposed := fields[forbidden]
+				require.False(t, exposed, "email mutation exposed %q: %s", forbidden, response.Body.Bytes())
 			}
 		})
 	}
@@ -411,12 +392,8 @@ func TestUserSearchTransportPreservesIncludeDisabledRequestForApplicationAuthori
 			request.Header.Set("Authorization", "Bearer credential")
 			response := httptest.NewRecorder()
 			httpAPI.ServeHTTP(response, request)
-			if response.Code != http.StatusOK {
-				t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-			}
-			if profiles.searchQuery.IncludeDisabled != test.includeDisabled {
-				t.Fatalf("IncludeDisabled = %t, want %t", profiles.searchQuery.IncludeDisabled, test.includeDisabled)
-			}
+			require.Equal(t, http.StatusOK, response.Code, "status = %d: %s", response.Code, response.Body.String())
+			require.Equal(t, test.includeDisabled, profiles.searchQuery.IncludeDisabled, "IncludeDisabled")
 		})
 	}
 }
@@ -426,17 +403,12 @@ func TestScopedUserProfileOmitsAccountAndSecurityFields(t *testing.T) {
 	encoded, err := json.Marshal(userProfileResponseFromModel(&model.User{
 		ID: model.NewUserID(), Username: "student", DisplayName: "Student",
 	}))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(encoded, &fields); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(encoded, &fields))
 	for _, forbidden := range []string{"email", "email_verified", "locale", "timezone", "last_login_at", "last_activity_at", "disabled_at"} {
-		if _, exposed := fields[forbidden]; exposed {
-			t.Fatalf("scoped field %q exposed: %s", forbidden, encoded)
-		}
+		_, exposed := fields[forbidden]
+		require.False(t, exposed, "scoped field %q exposed: %s", forbidden, encoded)
 	}
 }
 
@@ -446,16 +418,10 @@ func TestFullUserProfileRetainsFalseEmailVerification(t *testing.T) {
 		ID: model.NewUserID(), Username: "student", Email: "student@example.edu",
 		DisplayName: "Student", EmailVerified: false, Locale: "fr", Timezone: "Europe/Paris",
 	}))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(encoded, &fields); err != nil {
-		t.Fatal(err)
-	}
-	if string(fields["email_verified"]) != "false" {
-		t.Fatalf("full unverified profile = %s, want explicit email_verified=false", encoded)
-	}
+	require.NoError(t, json.Unmarshal(encoded, &fields))
+	require.Equal(t, "false", string(fields["email_verified"]), "full unverified profile = %s, want explicit email_verified=false", encoded)
 }
 
 func TestProfilePictureIfMatchRequiresOneCanonicalStrongETag(t *testing.T) {
@@ -478,9 +444,8 @@ func TestProfilePictureIfMatchRequiresOneCanonicalStrongETag(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			got, err := profilePictureIfMatch(test.header, test.required)
-			if (err != nil) != test.wantErr || got != test.want {
-				t.Fatalf("profilePictureIfMatch() = %q, %v", got, err)
-			}
+			require.Equal(t, test.wantErr, err != nil, "profilePictureIfMatch() = %q, %v", got, err)
+			require.Equal(t, test.want, got, "profilePictureIfMatch() = %q, %v", got, err)
 		})
 	}
 }
@@ -505,20 +470,13 @@ func TestLoginResponseDoesNotExposeUserRevision(t *testing.T) {
 		authenticationResource(application, browserCookies{}),
 	)
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "status = %d: %s", response.Code, response.Body.String())
 	var body map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 	user, ok := body["user"].(map[string]any)
-	if !ok {
-		t.Fatalf("user response = %#v", body["user"])
-	}
-	if _, exposed := user["revision"]; exposed {
-		t.Fatalf("revision exposed by login: %#v", user)
-	}
+	require.True(t, ok, "user response = %#v", body["user"])
+	_, exposed := user["revision"]
+	require.False(t, exposed, "revision exposed by login: %#v", user)
 }
 
 func TestAccountDisableUsesApplicationCommandAndAllowlistedResponse(t *testing.T) {
@@ -532,17 +490,11 @@ func TestAccountDisableUsesApplicationCommandAndAllowlistedResponse(t *testing.T
 	request.Header.Set("Authorization", "Bearer credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
-	if accounts.command.ID != model.UserID(userID) || accounts.command.Enabled {
-		t.Fatalf("command = %#v", accounts.command)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "status = %d: %s", response.Code, response.Body.String())
+	require.Equal(t, model.UserID(userID), accounts.command.ID)
+	require.False(t, accounts.command.Enabled)
 	var body map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if _, exposed := body["revision"]; exposed {
-		t.Fatalf("revision exposed: %#v", body)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	_, exposed := body["revision"]
+	require.False(t, exposed, "revision exposed: %#v", body)
 }

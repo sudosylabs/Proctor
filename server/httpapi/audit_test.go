@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -21,16 +23,12 @@ func TestAuditResourceResponseWireShapeRemainsSnakeCase(t *testing.T) {
 		Resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()},
 	})
 	encoded, err := json.Marshal(response)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var wire struct {
 		Resource map[string]json.RawMessage `json:"resource"`
 	}
-	if err := json.Unmarshal(encoded, &wire); err != nil {
-		t.Fatal(err)
-	}
-	if len(wire.Resource) != 2 || wire.Resource["type"] == nil || wire.Resource["id"] == nil {
-		t.Fatalf("resource wire shape = %s", encoded)
-	}
+	require.NoError(t, json.Unmarshal(encoded, &wire))
+	require.Len(t, wire.Resource, 2)
+	require.NotNil(t, wire.Resource["type"])
+	require.NotNil(t, wire.Resource["id"])
 }

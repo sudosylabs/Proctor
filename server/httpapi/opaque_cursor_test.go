@@ -13,6 +13,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 type opaqueCursorFixture struct {
@@ -41,24 +43,17 @@ func TestOpaqueCursorCanonicalRoundTrip(t *testing.T) {
 	spec := opaqueCursorFixtureSpec()
 	want := opaqueCursorFixture{Key: "keyset"}
 	first, err := encodeOpaqueCursor(want, spec)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	second, err := encodeOpaqueCursor(want, spec)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first != second || strings.ContainsAny(first, "+/=") {
-		t.Fatalf("non-deterministic or non-raw-URL encoding: %q / %q", first, second)
-	}
+	require.NoError(t, err)
+	require.Equal(t, second, first, "non-deterministic or non-raw-URL encoding")
+	require.False(t, strings.ContainsAny(first, "+/="), "non-deterministic or non-raw-URL encoding")
 	decoded, err := decodeOpaqueCursor(first, spec)
-	if err != nil || decoded != (opaqueCursorFixture{Version: 1, Key: want.Key}) {
-		t.Fatalf("round trip = %#v, %v", decoded, err)
-	}
+	require.NoError(t, err, "round trip")
+	require.Equal(t, opaqueCursorFixture{Version: 1, Key: want.Key}, decoded, "round trip")
 	document, err := base64.RawURLEncoding.Strict().DecodeString(first)
-	if err != nil || !strings.Contains(string(document), `"version":1`) {
-		t.Fatalf("encoded document = %q, %v", document, err)
-	}
+	require.NoError(t, err, "encoded document")
+	require.Contains(t, string(document), `"version":1`, "encoded document")
 }
 
 func TestOpaqueCursorRejectsMalformedDocuments(t *testing.T) {
@@ -94,9 +89,9 @@ func TestOpaqueCursorRejectsMalformedDocuments(t *testing.T) {
 		name, raw := name, raw
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := decodeOpaqueCursor(raw, spec); err == nil || !strings.HasPrefix(err.Error(), "invalid fixture cursor") {
-				t.Fatalf("decode(%q) error = %v", raw, err)
-			}
+			_, err := decodeOpaqueCursor(raw, spec)
+			require.Error(t, err, "decode(%q) error", raw)
+			require.True(t, strings.HasPrefix(err.Error(), "invalid fixture cursor"), "decode(%q) error", raw)
 		})
 	}
 }
@@ -104,9 +99,8 @@ func TestOpaqueCursorRejectsMalformedDocuments(t *testing.T) {
 func TestOpaqueCursorRejectsEncoderAndSpecFailures(t *testing.T) {
 	t.Parallel()
 	spec := opaqueCursorFixtureSpec()
-	if _, err := encodeOpaqueCursor(opaqueCursorFixture{}, spec); err == nil {
-		t.Fatal("resource-invalid cursor encoded")
-	}
+	_, err := encodeOpaqueCursor(opaqueCursorFixture{}, spec)
+	require.Error(t, err, "resource-invalid cursor encoded")
 
 	type marshalFailureCursor struct {
 		Version int `json:"version"`
@@ -120,31 +114,25 @@ func TestOpaqueCursorRejectsEncoderAndSpecFailures(t *testing.T) {
 		acceptsVersion: func(version int) bool { return version == 1 },
 		validate:       func(marshalFailureCursor) error { return nil },
 	}
-	if _, err := encodeOpaqueCursor(marshalFailureCursor{Value: make(chan struct{})}, marshalSpec); err == nil {
-		t.Fatal("JSON marshal failure was ignored")
-	}
+	_, err = encodeOpaqueCursor(marshalFailureCursor{Value: make(chan struct{})}, marshalSpec)
+	require.Error(t, err, "JSON marshal failure was ignored")
 
 	invalidSpec := spec
 	invalidSpec.validate = nil
-	if _, err := encodeOpaqueCursor(opaqueCursorFixture{Key: "keyset"}, invalidSpec); err == nil {
-		t.Fatal("invalid encoder specification accepted")
-	}
-	if _, err := decodeOpaqueCursor("anything", invalidSpec); err == nil {
-		t.Fatal("invalid decoder specification accepted")
-	}
+	_, err = encodeOpaqueCursor(opaqueCursorFixture{Key: "keyset"}, invalidSpec)
+	require.Error(t, err, "invalid encoder specification accepted")
+	_, err = decodeOpaqueCursor("anything", invalidSpec)
+	require.Error(t, err, "invalid decoder specification accepted")
 	duplicateMembers := spec
 	duplicateMembers.members = []string{"version", "version"}
-	if _, err := encodeOpaqueCursor(opaqueCursorFixture{Key: "keyset"}, duplicateMembers); err == nil {
-		t.Fatal("duplicate specification members accepted")
-	}
+	_, err = encodeOpaqueCursor(opaqueCursorFixture{Key: "keyset"}, duplicateMembers)
+	require.Error(t, err, "duplicate specification members accepted")
 }
 
 func FuzzOpaqueCursorDecode(f *testing.F) {
 	spec := opaqueCursorFixtureSpec()
 	valid, err := encodeOpaqueCursor(opaqueCursorFixture{Key: "seed"}, spec)
-	if err != nil {
-		f.Fatal(err)
-	}
+	require.NoError(f, err)
 	for _, seed := range []string{"", valid, "%%%", "Zh", base64.RawURLEncoding.EncodeToString([]byte(`null`))} {
 		f.Add(seed)
 	}
@@ -157,11 +145,8 @@ func TestOpaqueCursorDocumentIsJSON(t *testing.T) {
 	// Keep json imported in this focused test so the fixture also proves the
 	// emitted document is a normal object consumable by standard decoders.
 	raw, err := encodeOpaqueCursor(opaqueCursorFixture{Key: "keyset"}, opaqueCursorFixtureSpec())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	document, err := base64.RawURLEncoding.DecodeString(raw)
-	if err != nil || !json.Valid(document) {
-		t.Fatalf("document = %q, %v", document, err)
-	}
+	require.NoError(t, err, "document")
+	require.True(t, json.Valid(document), "document")
 }

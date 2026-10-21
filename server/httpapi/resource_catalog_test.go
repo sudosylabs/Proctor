@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -86,9 +88,8 @@ func TestResolveResourceApplicationsRequiresCompleteGraph(t *testing.T) {
 			options := validHTTPOptions(t)
 			test.remove(&options)
 			_, err := resolveResourceApplications(options)
-			if err == nil || err.Error() != test.message {
-				t.Fatalf("resolve error = %v, want %q", err, test.message)
-			}
+			require.Error(t, err, "resolve error")
+			require.Equal(t, test.message, err.Error(), "resolve error")
 		})
 	}
 }
@@ -97,9 +98,9 @@ func TestNewRequiresExplicitWebSocketTransport(t *testing.T) {
 	t.Parallel()
 	options := validHTTPOptions(t)
 	options.WebSocket = nil
-	if _, err := New(options); err == nil || err.Error() != "websocket transport is required" {
-		t.Fatalf("New error = %v", err)
-	}
+	_, err := New(options)
+	require.Error(t, err)
+	require.Equal(t, "websocket transport is required", err.Error())
 }
 
 func TestResolveResourceApplicationsUsesExplicitCapabilities(t *testing.T) {
@@ -117,17 +118,13 @@ func TestResolveResourceApplicationsUsesExplicitCapabilities(t *testing.T) {
 	options.AcademicAdministrationBatches = batches
 
 	resolved, err := resolveResourceApplications(options)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved.invitations != invitations || resolved.browserInvitations != browserInvitations ||
-		resolved.onboardingImports != onboardingImports || resolved.studentProgressions != studentProgressions ||
-		resolved.academicAdministrationBatches != batches {
-		t.Fatal("resolver did not preserve explicit resource capabilities")
-	}
-	if resolved.authenticator != options.Application {
-		t.Fatal("resolver did not project the configured Application authenticator")
-	}
+	require.NoError(t, err)
+	require.Equal(t, resolved.invitations, invitations, "resolver did not preserve explicit resource capabilities")
+	require.Equal(t, resolved.browserInvitations, browserInvitations, "resolver did not preserve explicit resource capabilities")
+	require.Equal(t, resolved.onboardingImports, onboardingImports, "resolver did not preserve explicit resource capabilities")
+	require.Equal(t, resolved.studentProgressions, studentProgressions, "resolver did not preserve explicit resource capabilities")
+	require.Equal(t, resolved.academicAdministrationBatches, batches, "resolver did not preserve explicit resource capabilities")
+	require.Equal(t, resolved.authenticator, options.Application, "resolver did not project the configured Application authenticator")
 }
 
 func TestNewInvokesEveryExplicitFormerFallbackCapability(t *testing.T) {
@@ -149,9 +146,7 @@ func TestNewInvokesEveryExplicitFormerFallbackCapability(t *testing.T) {
 				options.AccessPolicy = fake
 				options.Application.(*testHTTPApplication).principal = &principal
 				return func(t *testing.T) {
-					if fake.discoveries != 1 {
-						t.Fatalf("DiscoverAccess calls = %d; want 1", fake.discoveries)
-					}
+					require.Equal(t, 1, fake.discoveries, "DiscoverAccess calls")
 				}
 			},
 			request: func() *http.Request { return httptest.NewRequest(http.MethodGet, "/api/v1/discovery", nil) },
@@ -163,9 +158,7 @@ func TestNewInvokesEveryExplicitFormerFallbackCapability(t *testing.T) {
 				options.Invitations = fake
 				options.Application.(*testHTTPApplication).principal = &principal
 				return func(t *testing.T) {
-					if fake.list.Limit == 0 {
-						t.Fatal("ListInvitations was not invoked")
-					}
+					require.NotEqual(t, 0, fake.list.Limit, "ListInvitations was not invoked")
 				}
 			},
 			request: func() *http.Request { return authenticatedCatalogRequest(http.MethodGet, "/api/v1/invitations") },
@@ -177,9 +170,7 @@ func TestNewInvokesEveryExplicitFormerFallbackCapability(t *testing.T) {
 				options.BrowserInvitations = fake
 				options.Application.(*testHTTPApplication).principal = &principal
 				return func(t *testing.T) {
-					if fake.start.Claim == "" {
-						t.Fatal("StartBrowserInvitation was not invoked")
-					}
+					require.NotEmpty(t, fake.start.Claim, "StartBrowserInvitation was not invoked")
 				}
 			},
 			request: func() *http.Request {
@@ -195,9 +186,7 @@ func TestNewInvokesEveryExplicitFormerFallbackCapability(t *testing.T) {
 				options.OnboardingImports = fake
 				options.Application.(*testHTTPApplication).principal = &principal
 				return func(t *testing.T) {
-					if fake.getID == "" {
-						t.Fatal("GetOnboardingImport was not invoked")
-					}
+					require.NotEmpty(t, fake.getID, "GetOnboardingImport was not invoked")
 				}
 			},
 			request: func() *http.Request {
@@ -211,9 +200,7 @@ func TestNewInvokesEveryExplicitFormerFallbackCapability(t *testing.T) {
 				options.StudentProgressions = fake
 				options.Application.(*testHTTPApplication).principal = &principal
 				return func(t *testing.T) {
-					if fake.getID == "" {
-						t.Fatal("GetStudentProgression was not invoked")
-					}
+					require.NotEmpty(t, fake.getID, "GetStudentProgression was not invoked")
 				}
 			},
 			request: func() *http.Request {
@@ -227,9 +214,7 @@ func TestNewInvokesEveryExplicitFormerFallbackCapability(t *testing.T) {
 				options.AcademicAdministrationBatches = fake
 				options.Application.(*testHTTPApplication).principal = &principal
 				return func(t *testing.T) {
-					if fake.command.IdempotencyKey != "catalog-explicit-batch" {
-						t.Fatalf("RunAcademicAdministrationBatch command = %#v", fake.command)
-					}
+					require.Equal(t, "catalog-explicit-batch", fake.command.IdempotencyKey)
 				}
 			},
 			request: func() *http.Request {
@@ -247,14 +232,11 @@ func TestNewInvokesEveryExplicitFormerFallbackCapability(t *testing.T) {
 			options := validHTTPOptions(t)
 			assertCall := test.configure(&options)
 			httpAPI, err := New(options)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			response := httptest.NewRecorder()
 			httpAPI.ServeHTTP(response, test.request())
-			if response.Code < http.StatusOK || response.Code >= http.StatusMultipleChoices {
-				t.Fatalf("route response = %d: %s", response.Code, response.Body.String())
-			}
+			require.GreaterOrEqual(t, response.Code, http.StatusOK, "route response = %d: %s", response.Code, response.Body.String())
+			require.Less(t, response.Code, http.StatusMultipleChoices, "route response = %d: %s", response.Code, response.Body.String())
 			assertCall(t)
 		})
 	}
@@ -269,10 +251,6 @@ func authenticatedCatalogRequest(method string, path string) *http.Request {
 func TestResourceCatalogContainsNoRuntimeApplicationAssertions(t *testing.T) {
 	t.Parallel()
 	source, err := os.ReadFile("resource_catalog.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(source), "options.Application.(") {
-		t.Fatal("resource catalog performs runtime capability discovery")
-	}
+	require.NoError(t, err)
+	require.NotContains(t, string(source), "options.Application.(", "resource catalog performs runtime capability discovery")
 }

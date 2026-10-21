@@ -13,6 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -39,9 +42,8 @@ func TestRoutingKernelCentralizesAPIVersionRegexAndParams(t *testing.T) {
 	valid := httptest.NewRequest(http.MethodGet, "/api/testing/roles/"+modelIDForRouteTest, nil)
 	validResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(validResponse, valid)
-	if validResponse.Code != http.StatusNoContent || gotRoleID != modelIDForRouteTest {
-		t.Fatalf("valid route status/id = %d/%q", validResponse.Code, gotRoleID)
-	}
+	require.Equal(t, http.StatusNoContent, validResponse.Code, "valid route status/id")
+	require.Equal(t, modelIDForRouteTest, gotRoleID, "valid route status/id")
 
 	for _, path := range []string{
 		"/api/v1/roles/" + modelIDForRouteTest,
@@ -50,9 +52,7 @@ func TestRoutingKernelCentralizesAPIVersionRegexAndParams(t *testing.T) {
 	} {
 		response := httptest.NewRecorder()
 		httpAPI.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
-		if response.Code != http.StatusNotFound {
-			t.Errorf("%s status = %d, want 404", path, response.Code)
-		}
+		assert.Equal(t, http.StatusNotFound, response.Code, "%s status", path)
 	}
 }
 
@@ -69,14 +69,13 @@ func TestRouteMetadataRetainsVersionRegexAndPolicyContract(t *testing.T) {
 	))
 	routes := httpAPI.Routes()
 	want := "/api/testing/roles/{role_id:" + canonicalIDRoutePattern() + "}"
-	if len(routes) != 1 || routes[0].Path != want || routes[0].Auth != AuthSessionRequired {
-		t.Fatalf("routes = %#v, want path %q with session policy", routes, want)
-	}
+	require.Len(t, routes, 1, "routes")
+	require.Equal(t, want, routes[0].Path, "routes")
+	require.Equal(t, AuthSessionRequired, routes[0].Auth, "routes")
 	policy := newRouteErrorPolicy(routes[0].ErrorCodes)
 	for _, code := range routeErrorCodes(AuthSessionRequired, http.MethodDelete, []string{"resource.not_found"}) {
-		if _, exists := policy[code]; !exists {
-			t.Fatalf("routes = %#v, missing protected-route error %q", routes, code)
-		}
+		_, exists := policy[code]
+		require.True(t, exists, "routes = %#v, missing protected-route error %q", routes, code)
 	}
 }
 
@@ -100,29 +99,21 @@ func TestPrincipalAssuranceRequirements(t *testing.T) {
 	strongOld.MFACompletedAt = model.OptionalTimeFrom(now.Add(-time.Hour))
 	strongRecent := strongOld
 	strongRecent.MFACompletedAt = model.OptionalTimeFrom(now.Add(-time.Minute))
-	if appErr := requirePrincipalAssurance(
+	require.NoError(t, requirePrincipalAssurance(
 		recent, AuthRecentSessionRequired, now, 15*time.Minute,
-	); appErr != nil {
-		t.Fatalf("recent session rejected: %v", appErr)
-	}
-	if appErr := requirePrincipalAssurance(
+	))
+	require.Equal(t, "authentication.strong_required", applicationErrorCode(requirePrincipalAssurance(
 		recent, AuthStrongSessionRequired, now, 15*time.Minute,
-	); applicationErrorCode(appErr) != "authentication.strong_required" {
-		t.Fatalf("single-factor strong requirement error = %v", appErr)
-	}
-	if appErr := requirePrincipalAssurance(
+	)), "single-factor strong requirement error")
+	require.Equal(t, "authentication.reauthentication_required", applicationErrorCode(requirePrincipalAssurance(
 		strongOld, AuthRecentSessionRequired, now, 15*time.Minute,
-	); applicationErrorCode(appErr) != "authentication.reauthentication_required" {
-		t.Fatalf("old recent requirement error = %v", appErr)
-	}
-	if appErr := requirePrincipalAssurance(
+	)), "old recent requirement error")
+	require.NoError(t, requirePrincipalAssurance(
 		strongRecent,
 		AuthStrongRecentSessionRequired,
 		now,
 		15*time.Minute,
-	); appErr != nil {
-		t.Fatalf("strong recent session rejected: %v", appErr)
-	}
+	))
 }
 
 func newRoutingTestAPI(_ string) *API {
@@ -141,11 +132,9 @@ func newCompiledRoutingTestAPI(t *testing.T, apiURLSuffix string, resources ...r
 		localizer:               newTestLocalizer(t),
 		recentAuthenticationTTL: 15 * time.Minute,
 	}
-	if err := httpAPI.buildRoutingKernel(apiURLSuffix, 1<<20, func() error {
+	require.NoError(t, httpAPI.buildRoutingKernel(apiURLSuffix, 1<<20, func() error {
 		return httpAPI.collectResources(apiURLSuffix, resources...)
-	}); err != nil {
-		t.Fatal(err)
-	}
+	}))
 	return httpAPI
 }
 

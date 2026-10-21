@@ -10,6 +10,8 @@ package cluster
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestDiscoveryNodeValidateAndLiveness(t *testing.T) {
@@ -26,15 +28,9 @@ func TestDiscoveryNodeValidateAndLiveness(t *testing.T) {
 		UpdatedAt:        now,
 		ExpiresAt:        now.Add(ttl),
 	}
-	if err := node.Validate(); err != nil {
-		t.Fatalf("Validate() error = %v", err)
-	}
-	if !node.IsLive(now) {
-		t.Fatal("live node reported expired at lease start")
-	}
-	if node.IsLive(node.ExpiresAt) {
-		t.Fatal("exclusive expiry treated as still live")
-	}
+	require.NoError(t, node.Validate())
+	require.True(t, node.IsLive(now), "live node reported expired at lease start")
+	require.False(t, node.IsLive(node.ExpiresAt), "exclusive expiry treated as still live")
 
 	invalid := []DiscoveryNode{
 		{},
@@ -56,8 +52,6 @@ func TestDiscoveryNodeValidateAndLiveness(t *testing.T) {
 		},
 	}
 	for index, candidate := range invalid {
-		if err := candidate.Validate(); err == nil {
-			t.Fatalf("case %d: expected validation error", index)
-		}
+		require.Error(t, candidate.Validate(), "case %d: expected validation error", index)
 	}
 }

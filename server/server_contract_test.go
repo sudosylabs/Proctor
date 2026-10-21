@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	server "github.com/sudosylabs/proctor/server"
 )
 
@@ -43,8 +45,7 @@ func assertNotLegacyType(t *testing.T, method string, valueType reflect.Type) {
 		"github.com/sudosylabs/proctor/server/app",
 		"github.com/sudosylabs/proctor/server/platform",
 	} {
-		if packagePath == forbiddenPackage || strings.HasPrefix(packagePath, forbiddenPackage+"/") {
-			t.Errorf("Server.%s exposes legacy implementation type %s", method, valueType)
-		}
+		assert.NotEqual(t, forbiddenPackage, packagePath, "Server.%s exposes legacy implementation type %s", method, valueType)
+		assert.False(t, strings.HasPrefix(packagePath, forbiddenPackage+"/"), "Server.%s exposes legacy implementation type %s", method, valueType)
 	}
 }

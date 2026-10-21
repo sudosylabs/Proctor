@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -34,23 +36,19 @@ func TestExamRevisionHTTPPublishUsesStrictIdempotentCommandAndSafeSummary(t *tes
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
 
-	if response.Code != http.StatusCreated {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-	if fake.publish.ExamID != fake.summary.ExamID || fake.publish.ExpectedDraftRevision != 4 || fake.publish.IdempotencyKey != "publish-once" {
-		t.Fatalf("command = %#v", fake.publish)
-	}
+	require.Equal(t, http.StatusCreated, response.Code, "status = %d, body = %s", response.Code, response.Body.String())
+	require.Equal(t, fake.summary.ExamID, fake.publish.ExamID)
+	require.Equal(t, int64(4), fake.publish.ExpectedDraftRevision)
+	require.Equal(t, "publish-once", fake.publish.IdempotencyKey)
 	var got examRevisionResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.ID != fake.summary.ID.String() || got.Number != 3 || got.PolicyDigest != fake.summary.PolicyDigest || got.StarterWorkspaceEntryCount != 2 || got.StarterWorkspaceTotalBytes != 37 {
-		t.Fatalf("response = %#v", got)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &got))
+	require.Equal(t, fake.summary.ID.String(), got.ID)
+	require.Equal(t, int64(3), got.Number)
+	require.Equal(t, fake.summary.PolicyDigest, got.PolicyDigest)
+	require.Equal(t, 2, got.StarterWorkspaceEntryCount)
+	require.Equal(t, int64(37), got.StarterWorkspaceTotalBytes)
 	for _, forbidden := range [][]byte{[]byte(`"instructions_markdown"`), []byte(`"policy"`), []byte(`"resources"`), []byte(`"path"`), []byte(`"object_id"`), []byte(`"file_revision_id"`)} {
-		if bytes.Contains(response.Body.Bytes(), forbidden) {
-			t.Fatalf("response exposed frozen authored or storage data %q: %s", forbidden, response.Body.String())
-		}
+		require.False(t, bytes.Contains(response.Body.Bytes(), forbidden), "response exposed frozen authored or storage data %q: %s", forbidden, response.Body.String())
 	}
 }
 
@@ -68,58 +66,48 @@ func TestExamRevisionHTTPGetAndListUseExactIdentityAndVersionedTupleCursor(t *te
 	getRequest.Header.Set("Authorization", "Bearer credential")
 	getResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(getResponse, getRequest)
-	if getResponse.Code != http.StatusOK || fake.get.ExamID != fake.summary.ExamID || fake.get.RevisionID != fake.summary.ID {
-		t.Fatalf("status = %d query = %#v body = %s", getResponse.Code, fake.get, getResponse.Body.String())
-	}
+	require.Equal(t, http.StatusOK, getResponse.Code, "status = %d query = %#v body = %s", getResponse.Code, fake.get, getResponse.Body.String())
+	require.Equal(t, fake.summary.ExamID, fake.get.ExamID, "status = %d query = %#v body = %s", getResponse.Code, fake.get, getResponse.Body.String())
+	require.Equal(t, fake.summary.ID, fake.get.RevisionID, "status = %d query = %#v body = %s", getResponse.Code, fake.get, getResponse.Body.String())
 
 	beforeRevisionID := model.NewExamRevisionID()
 	cursor, err := encodeExamRevisionCursor(examRevisionCursor{Number: 5, RevisionID: beforeRevisionID.String()})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	listRequest := httptest.NewRequest(http.MethodGet, "/api/v1/exams/"+fake.summary.ExamID.String()+"/revisions?limit=2&cursor="+cursor, nil)
 	listRequest.Header.Set("Authorization", "Bearer credential")
 	listResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(listResponse, listRequest)
-	if listResponse.Code != http.StatusOK || fake.list.ExamID != fake.summary.ExamID || fake.list.Limit != 2 || fake.list.BeforeNumber != 5 || fake.list.BeforeRevisionID != beforeRevisionID {
-		t.Fatalf("status = %d query = %#v body = %s", listResponse.Code, fake.list, listResponse.Body.String())
-	}
+	require.Equal(t, http.StatusOK, listResponse.Code, "status = %d query = %#v body = %s", listResponse.Code, fake.list, listResponse.Body.String())
+	require.Equal(t, fake.summary.ExamID, fake.list.ExamID, "status = %d query = %#v body = %s", listResponse.Code, fake.list, listResponse.Body.String())
+	require.Equal(t, 2, fake.list.Limit, "status = %d query = %#v body = %s", listResponse.Code, fake.list, listResponse.Body.String())
+	require.Equal(t, int64(5), fake.list.BeforeNumber, "status = %d query = %#v body = %s", listResponse.Code, fake.list, listResponse.Body.String())
+	require.Equal(t, beforeRevisionID, fake.list.BeforeRevisionID, "status = %d query = %#v body = %s", listResponse.Code, fake.list, listResponse.Body.String())
 	malformedRequest := httptest.NewRequest(http.MethodGet, "/api/v1/exams/"+fake.summary.ExamID.String()+"/revisions?cursor=not-a-cursor", nil)
 	malformedRequest.Header.Set("Authorization", "Bearer credential")
 	malformedResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(malformedResponse, malformedRequest)
 	assertHTTPProblem(t, malformedResponse, http.StatusBadRequest, "request.invalid")
 	var page examRevisionListResponse
-	if err := json.Unmarshal(listResponse.Body.Bytes(), &page); err != nil {
-		t.Fatal(err)
-	}
-	if len(page.Items) != 2 || page.NextCursor == "" {
-		t.Fatalf("page = %#v", page)
-	}
+	require.NoError(t, json.Unmarshal(listResponse.Body.Bytes(), &page))
+	require.Len(t, page.Items, 2)
+	require.NotEmpty(t, page.NextCursor)
 	next, err := decodeExamRevisionCursor(page.NextCursor)
-	if err != nil || next.Version != examRevisionCursorVersion || next.Number != older.Number || next.RevisionID != older.ID.String() {
-		t.Fatalf("next cursor = %#v, err = %v", next, err)
-	}
+	require.NoError(t, err, "next cursor = %#v, err", next)
+	require.Equal(t, examRevisionCursorVersion, next.Version, "next cursor = %#v, err", next)
+	require.Equal(t, older.Number, next.Number, "next cursor = %#v, err", next)
+	require.Equal(t, older.ID.String(), next.RevisionID, "next cursor = %#v, err", next)
 
 	fake.page.HasMore = false
 	terminalResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(terminalResponse, listRequest.Clone(listRequest.Context()))
-	if terminalResponse.Code != http.StatusOK {
-		t.Fatalf("terminal status = %d, body = %s", terminalResponse.Code, terminalResponse.Body.String())
-	}
+	require.Equal(t, http.StatusOK, terminalResponse.Code, "terminal status = %d, body = %s", terminalResponse.Code, terminalResponse.Body.String())
 	var terminal examRevisionListResponse
-	if err := json.Unmarshal(terminalResponse.Body.Bytes(), &terminal); err != nil {
-		t.Fatal(err)
-	}
-	if terminal.NextCursor != "" {
-		t.Fatalf("terminal page exposed cursor %q", terminal.NextCursor)
-	}
+	require.NoError(t, json.Unmarshal(terminalResponse.Body.Bytes(), &terminal))
+	require.Empty(t, terminal.NextCursor)
 	fake.page = app.ExamRevisionPage{HasMore: true}
 	noProgress := httptest.NewRecorder()
 	httpAPI.ServeHTTP(noProgress, listRequest.Clone(listRequest.Context()))
-	if noProgress.Code != http.StatusInternalServerError {
-		t.Fatalf("no-progress status = %d, body = %s", noProgress.Code, noProgress.Body.String())
-	}
+	require.Equal(t, http.StatusInternalServerError, noProgress.Code, "no-progress status = %d, body = %s", noProgress.Code, noProgress.Body.String())
 }
 
 func TestExamRevisionHTTPCursorAndPublishBodyAreStrict(t *testing.T) {
@@ -132,9 +120,8 @@ func TestExamRevisionHTTPCursorAndPublishBodyAreStrict(t *testing.T) {
 		"trailing payload":    base64.RawURLEncoding.EncodeToString(append(valid, []byte(`{}`)...)),
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := decodeExamRevisionCursor(raw); err == nil {
-				t.Fatal("cursor was accepted")
-			}
+			_, err := decodeExamRevisionCursor(raw)
+			require.Error(t, err, "cursor was accepted")
 		})
 	}
 
@@ -152,9 +139,8 @@ func TestExamRevisionHTTPCursorAndPublishBodyAreStrict(t *testing.T) {
 			request.Header.Set("Idempotency-Key", "publish-once")
 			response := httptest.NewRecorder()
 			httpAPI.ServeHTTP(response, request)
-			if response.Code != http.StatusBadRequest || fake.publish.ExamID.IsValid() {
-				t.Fatalf("status = %d command = %#v body = %s", response.Code, fake.publish, response.Body.String())
-			}
+			require.Equal(t, http.StatusBadRequest, response.Code, "status = %d command = %#v body = %s", response.Code, fake.publish, response.Body.String())
+			require.False(t, fake.publish.ExamID.IsValid(), "status = %d command = %#v body = %s", response.Code, fake.publish, response.Body.String())
 		})
 	}
 }

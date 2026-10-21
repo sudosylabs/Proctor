@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -37,14 +39,12 @@ func TestConnectionRuntimeRejectsMissingOrUnknownFocusLossSchemaBeforeApplicatio
 			runtime.handleRequest(context.Background(), &Request{Sequence: 1, Action: examAttemptFocusLossAction, Data: test.body})
 
 			response := nextInboundResponse(t, runtime)
-			if response.Status != "error" || response.Error == nil || response.Error.Code != "websocket.request.invalid" {
-				t.Fatalf("response=%#v", response)
-			}
+			require.Equal(t, "error", response.Status)
+			require.NotNil(t, response.Error)
+			require.Equal(t, "websocket.request.invalid", response.Error.Code)
 			application.mu.Lock()
 			defer application.mu.Unlock()
-			if len(application.focusLossCalls) != 0 {
-				t.Fatalf("application calls=%#v", application.focusLossCalls)
-			}
+			require.Empty(t, application.focusLossCalls)
 		})
 	}
 }
@@ -54,11 +54,13 @@ func TestDecodeExamAttemptFocusLossRequestAcceptsOnlyBoundedTrustedClaim(t *test
 	credential := model.NewCredentialToken()
 	valid := `{"schema_version":1,"generation":2,"sequence":7,"duration_milliseconds":86400000,"source":"document_hidden","continuity_credential":"` + credential + `"}`
 	claim, err := decodeExamAttemptFocusLossRequest(json.RawMessage(valid))
-	if err != nil || claim.SchemaVersion != model.FocusLossSignalSchemaVersion || claim.Generation != 2 ||
-		claim.Sequence != 7 || claim.DurationMilliseconds != 86_400_000 ||
-		claim.Source != "document_hidden" || claim.ContinuityCredential != credential {
-		t.Fatalf("valid claim = %#v, %v", claim, err)
-	}
+	require.NoError(t, err, "valid claim = %#v", claim)
+	require.Equal(t, model.FocusLossSignalSchemaVersion, claim.SchemaVersion, "valid claim = %#v", claim)
+	require.Equal(t, int64(2), claim.Generation, "valid claim = %#v", claim)
+	require.Equal(t, int64(7), claim.Sequence, "valid claim = %#v", claim)
+	require.Equal(t, int64(86_400_000), claim.DurationMilliseconds, "valid claim = %#v", claim)
+	require.Equal(t, "document_hidden", claim.Source, "valid claim = %#v", claim)
+	require.Equal(t, credential, claim.ContinuityCredential, "valid claim = %#v", claim)
 
 	for _, test := range []struct {
 		name string
@@ -79,9 +81,8 @@ func TestDecodeExamAttemptFocusLossRequestAcceptsOnlyBoundedTrustedClaim(t *test
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if _, decodeErr := decodeExamAttemptFocusLossRequest(json.RawMessage(test.body)); decodeErr == nil {
-				t.Fatal("invalid Focus Loss claim was accepted")
-			}
+			_, decodeErr := decodeExamAttemptFocusLossRequest(json.RawMessage(test.body))
+			require.Error(t, decodeErr, "invalid Focus Loss claim was accepted")
 		})
 	}
 }
@@ -94,9 +95,8 @@ func TestDecodeExamAttemptFocusLossRequestAcceptsEveryClosedSource(t *testing.T)
 		t.Run(source, func(t *testing.T) {
 			t.Parallel()
 			body := json.RawMessage(`{"schema_version":1,"generation":1,"sequence":1,"duration_milliseconds":1,"source":"` + source + `","continuity_credential":"` + credential + `"}`)
-			if _, err := decodeExamAttemptFocusLossRequest(body); err != nil {
-				t.Fatalf("source %q rejected: %v", source, err)
-			}
+			_, err := decodeExamAttemptFocusLossRequest(body)
+			require.NoError(t, err, "source %q rejected", source)
 		})
 	}
 }
@@ -117,9 +117,8 @@ func TestExamAttemptFocusLossErrorPreservesOnlyStableCandidateSafeOutcomes(t *te
 			t.Parallel()
 			code, presentation := examAttemptFocusLossError(apperror.New(apperror.Code(test.code)))
 			message := websocketErrorMessage(presentation).fallback
-			if code != test.wantCode || message != test.wantMessage {
-				t.Fatalf("got (%q, %q), want (%q, %q)", code, message, test.wantCode, test.wantMessage)
-			}
+			require.Equal(t, test.wantCode, code)
+			require.Equal(t, test.wantMessage, message)
 		})
 	}
 }

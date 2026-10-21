@@ -13,6 +13,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestGeneratedEntityIDsAreFresh(t *testing.T) {
@@ -21,18 +23,10 @@ func TestGeneratedEntityIDsAreFresh(t *testing.T) {
 	generatedPath := filepath.Join(t.TempDir(), "id_gen.go")
 	command := exec.Command("go", "run", "./internal/idgen", "-source", "id.go", "-output", generatedPath)
 	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("regenerate typed IDs: %v\n%s", err, output)
-	}
+	require.NoError(t, err, "regenerate typed IDs: %v\n%s", err, output)
 	want, err := os.ReadFile("id_gen.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	got, err := os.ReadFile(generatedPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(got, want) {
-		t.Fatal("id_gen.go is stale; run go generate ./model")
-	}
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(got, want), "id_gen.go is stale; run go generate ./model")
 }

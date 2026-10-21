@@ -12,42 +12,34 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestRegistryIsInstanceScopedAndRejectsInvalidFactories(t *testing.T) {
 	first, err := NewRegistry(fakeFactory{providerType: "first"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := first.Configure(config.ExternalAuthentication{
+	require.NoError(t, err)
+	require.NoError(t, first.Configure(config.ExternalAuthentication{
 		Providers: []config.ExternalAuthenticationProvider{{
 			ID: "z-provider", Type: "first", Enabled: true,
 		}},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	}))
 	second, err := NewRegistry(fakeFactory{providerType: "second"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, exists := second.Provider("z-provider"); exists {
-		t.Fatal("provider leaked between registry instances")
-	}
-	if _, err := NewRegistry(
+	require.NoError(t, err)
+	_, exists := second.Provider("z-provider")
+	require.False(t, exists, "provider leaked between registry instances")
+	_, err = NewRegistry(
 		fakeFactory{providerType: "duplicate"},
 		fakeFactory{providerType: "duplicate"},
-	); err == nil {
-		t.Fatal("duplicate factory was accepted")
-	}
-	if err := first.Configure(config.ExternalAuthentication{
+	)
+	require.Error(t, err, "duplicate factory was accepted")
+	require.Error(t, first.Configure(config.ExternalAuthentication{
 		Providers: []config.ExternalAuthenticationProvider{{
 			ID: "unknown", Type: "missing", Enabled: true,
 		}},
-	}); err == nil {
-		t.Fatal("unregistered provider type was accepted")
-	}
+	}), "unregistered provider type was accepted")
 }
 
 type fakeFactory struct {

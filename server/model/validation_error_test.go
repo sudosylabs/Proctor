@@ -10,18 +10,17 @@ package model
 import (
 	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestWholeValueValidationErrorHasNoSafeField(t *testing.T) {
 	t.Parallel()
 
 	err := invalidModelError("Class.Archive", "class", "", "class is already archived", "")
-	if err.Code != "model.class.is_valid.app_error" || err.SafeFields() != nil {
-		t.Fatalf("whole-value failure = %q %v", err.Code, err.SafeFields())
-	}
-	if got := err.Error(); got != "model.class.is_valid.app_error: class is already archived" {
-		t.Fatalf("Error() = %q", got)
-	}
+	require.Equal(t, "model.class.is_valid.app_error", err.Code, "whole-value failure")
+	require.Nil(t, err.SafeFields(), "whole-value failure")
+	require.Equal(t, "model.class.is_valid.app_error: class is already archived", err.Error())
 }
 
 func TestWrappingValidationErrorKeepsCauseAndInnerField(t *testing.T) {
@@ -29,16 +28,13 @@ func TestWrappingValidationErrorKeepsCauseAndInnerField(t *testing.T) {
 
 	sentinel := errors.New("origin is invalid")
 	outer := invalidModelError("NewBrowserPolicy", "browser_policy", "", "browser policy rule 0 origin", "").wrap(sentinel)
-	if !errors.Is(outer, sentinel) || outer.SafeFields() != nil {
-		t.Fatalf("wrapped sentinel = %v %v", outer, outer.SafeFields())
-	}
+	require.ErrorIs(t, outer, sentinel, "wrapped sentinel")
+	require.Nil(t, outer.SafeFields(), "wrapped sentinel")
 	inner := invalidModelError("ExamPolicySet.Validate", "exam_policy", "schema_version", "is unsupported", "")
 	wrapped := invalidModelError("Exam.Validate", "exam", "", "policy", "").wrap(inner)
-	if fields := wrapped.SafeFields(); fields["field"] != "schema_version" {
-		t.Fatalf("wrapping hid the inner field: %v", fields)
-	}
+	require.Equal(t, "schema_version", wrapped.SafeFields()["field"])
 	var found *ValidationError
-	if !errors.As(error(wrapped), &found) || found != wrapped || !errors.Is(wrapped, inner) {
-		t.Fatal("wrapping did not expose the outer failure with its cause")
-	}
+	require.ErrorAs(t, error(wrapped), &found, "wrapping did not expose the outer failure with its cause")
+	require.Same(t, wrapped, found, "wrapping did not expose the outer failure with its cause")
+	require.ErrorIs(t, wrapped, inner, "wrapping did not expose the outer failure with its cause")
 }

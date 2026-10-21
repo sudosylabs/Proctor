@@ -10,6 +10,7 @@ package architecture_test
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"net/url"
 	"os"
 	"os/exec"
@@ -20,6 +21,9 @@ import (
 	"strings"
 	"testing"
 	"unicode"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -73,9 +77,7 @@ func documentationCandidates(t *testing.T, root string) map[string]struct{} {
 		"--exclude-standard", "-z",
 	)
 	output, err := command.Output()
-	if err != nil {
-		t.Fatalf("list repository documentation candidates: %v", err)
-	}
+	require.NoError(t, err)
 
 	candidates := make(map[string]struct{})
 	for _, raw := range bytes.Split(output, []byte{0}) {
@@ -94,13 +96,12 @@ func validateMarkdownFile(t *testing.T, root, name string, candidates map[string
 	t.Helper()
 
 	contents, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(name)))
-	if err != nil {
-		t.Errorf("%s: read documentation: %v", name, err)
+	if !assert.NoError(t, err, "%s: read documentation", name) {
 		return
 	}
 
 	for _, match := range machinePath.FindAllString(string(contents), -1) {
-		t.Errorf("%s: machine-specific path %q is not portable", name, match)
+		assert.Fail(t, fmt.Sprintf("%s: machine-specific path %q is not portable", name, match))
 	}
 
 	var targets []string
@@ -125,8 +126,7 @@ func validateMarkdownTarget(t *testing.T, root, source, rawTarget string, candid
 	}
 
 	parsed, err := url.Parse(target)
-	if err != nil {
-		t.Errorf("%s: invalid Markdown link %q: %v", source, target, err)
+	if !assert.NoError(t, err, "%s: invalid Markdown link %q", source, target) {
 		return
 	}
 
@@ -134,14 +134,14 @@ func validateMarkdownTarget(t *testing.T, root, source, rawTarget string, candid
 	case "https", "mailto":
 		return
 	case "http":
-		t.Errorf("%s: external Markdown link %q must use HTTPS", source, target)
+		assert.Fail(t, fmt.Sprintf("%s: external Markdown link %q must use HTTPS", source, target))
 		return
 	case "file":
-		t.Errorf("%s: file URL %q is a machine-local dependency", source, target)
+		assert.Fail(t, fmt.Sprintf("%s: file URL %q is a machine-local dependency", source, target))
 		return
 	case "":
 	default:
-		t.Errorf("%s: unsupported Markdown link scheme in %q", source, target)
+		assert.Fail(t, fmt.Sprintf("%s: unsupported Markdown link scheme in %q", source, target))
 		return
 	}
 
@@ -151,21 +151,20 @@ func validateMarkdownTarget(t *testing.T, root, source, rawTarget string, candid
 		}
 		return
 	}
-	if filepath.IsAbs(filepath.FromSlash(parsed.Path)) || filepath.VolumeName(parsed.Path) != "" {
-		t.Errorf("%s: absolute Markdown link %q is not portable", source, target)
+	portable := !filepath.IsAbs(filepath.FromSlash(parsed.Path)) && filepath.VolumeName(parsed.Path) == ""
+	if !assert.True(t, portable, "%s: absolute Markdown link %q is not portable", source, target) {
 		return
 	}
 
 	decodedPath, err := url.PathUnescape(parsed.Path)
-	if err != nil {
-		t.Errorf("%s: invalid escaped Markdown path %q: %v", source, target, err)
+	if !assert.NoError(t, err, "%s: invalid escaped Markdown path %q", source, target) {
 		return
 	}
 
 	resolved := filepath.Clean(filepath.Join(filepath.Dir(source), filepath.FromSlash(decodedPath)))
 	relative, err := filepath.Rel(root, filepath.Join(root, resolved))
-	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		t.Errorf("%s: Markdown link %q escapes the repository", source, target)
+	escapes := err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator))
+	if !assert.False(t, escapes, "%s: Markdown link %q escapes the repository", source, target) {
 		return
 	}
 	resolved = filepath.ToSlash(relative)
@@ -175,8 +174,7 @@ func validateMarkdownTarget(t *testing.T, root, source, rawTarget string, candid
 		readme := strings.TrimSuffix(resolved, "/") + "/README.md"
 		if _, ok := candidates[readme]; ok {
 			linkedFile = readme
-		} else if !candidateDirectory(resolved, candidates) {
-			t.Errorf("%s: Markdown link %q targets missing, ignored, or untracked content", source, target)
+		} else if !assert.True(t, candidateDirectory(resolved, candidates), "%s: Markdown link %q targets missing, ignored, or untracked content", source, target) {
 			return
 		}
 	}
@@ -214,15 +212,13 @@ func validateHeadingFragment(t *testing.T, root, source, target, fragment string
 	t.Helper()
 
 	decoded, err := url.PathUnescape(fragment)
-	if err != nil {
-		t.Errorf("%s: invalid heading fragment %q: %v", source, fragment, err)
+	if !assert.NoError(t, err, "%s: invalid heading fragment %q", source, fragment) {
 		return
 	}
 	wanted := strings.ToLower(decoded)
 
 	file, err := os.Open(filepath.Join(root, filepath.FromSlash(target)))
-	if err != nil {
-		t.Errorf("%s: open heading target %s: %v", source, target, err)
+	if !assert.NoError(t, err, "%s: open heading target %s", source, target) {
 		return
 	}
 	defer file.Close()
@@ -255,11 +251,10 @@ func validateHeadingFragment(t *testing.T, root, source, target, fragment string
 			return
 		}
 	}
-	if err := scanner.Err(); err != nil {
-		t.Errorf("%s: scan heading target %s: %v", source, target, err)
+	if !assert.NoError(t, scanner.Err(), "%s: scan heading target %s", source, target) {
 		return
 	}
-	t.Errorf("%s: Markdown fragment #%s does not match a heading in %s", source, fragment, target)
+	assert.Fail(t, fmt.Sprintf("%s: Markdown fragment #%s does not match a heading in %s", source, fragment, target))
 }
 
 func githubHeadingSlug(heading string) string {

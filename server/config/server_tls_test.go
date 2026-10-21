@@ -11,6 +11,8 @@ import (
 	"encoding/base64"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestServerTLSModesValidateCoherentDeploymentShapes(t *testing.T) {
@@ -24,9 +26,7 @@ func TestServerTLSModesValidateCoherentDeploymentShapes(t *testing.T) {
 	static.Server.TLS.PrivateKeyFile = "/etc/proctor/tls/private-key.pem"
 	static.Server.TLS.ForwardHTTPToHTTPS = true
 	static.Server.TLS.HTTPListenAddress = ":80"
-	if err := static.Validate(); err != nil {
-		t.Fatalf("static TLS configuration: %v", err)
-	}
+	require.NoError(t, static.Validate())
 
 	letsEncrypt := Default()
 	letsEncrypt.Authentication.Bootstrap.DevelopmentMode = false
@@ -37,9 +37,7 @@ func TestServerTLSModesValidateCoherentDeploymentShapes(t *testing.T) {
 	letsEncrypt.Server.TLS.LetsEncrypt.AcceptTermsOfService = true
 	letsEncrypt.Server.TLS.ForwardHTTPToHTTPS = true
 	letsEncrypt.Server.TLS.HTTPListenAddress = ":80"
-	if err := letsEncrypt.Validate(); err != nil {
-		t.Fatalf("Let's Encrypt configuration: %v", err)
-	}
+	require.NoError(t, letsEncrypt.Validate())
 }
 
 func TestServerTLSValidationFailsClosed(t *testing.T) {
@@ -147,13 +145,9 @@ func TestServerTLSValidationFailsClosed(t *testing.T) {
 			cfg := Default()
 			test.configure(&cfg)
 			err := cfg.Validate()
-			if err == nil {
-				t.Fatal("Validate() succeeded")
-			}
+			require.Error(t, err, "Validate() succeeded")
 			for _, field := range test.fields {
-				if !strings.Contains(err.Error(), field+":") {
-					t.Fatalf("Validate() error = %v, want field %s", err, field)
-				}
+				require.Contains(t, err.Error(), field+":", "Validate() error = %v, want field %s", err, field)
 			}
 		})
 	}
@@ -164,13 +158,9 @@ func TestLetsEncryptHostnameValidationAndCanonicalization(t *testing.T) {
 
 	valid := Default().Server
 	valid.PublicURL = "https://PROCTOR.Example.EDU.:443"
-	if hostname := valid.LetsEncryptHostname(); hostname != "proctor.example.edu" {
-		t.Fatalf("LetsEncryptHostname() = %q", hostname)
-	}
+	require.Equal(t, "proctor.example.edu", valid.LetsEncryptHostname())
 	valid.PublicURL = "https://xn--bcher-kva.example"
-	if hostname := valid.LetsEncryptHostname(); hostname != "xn--bcher-kva.example" {
-		t.Fatalf("LetsEncryptHostname() for valid A-label = %q", hostname)
-	}
+	require.Equal(t, "xn--bcher-kva.example", valid.LetsEncryptHostname())
 
 	invalidHostnames := []string{
 		"localhost",
@@ -194,9 +184,9 @@ func TestLetsEncryptHostnameValidationAndCanonicalization(t *testing.T) {
 			cfg.Server.PublicURL = "https://" + hostname
 			cfg.Server.TLS.Mode = ServerTLSModeLetsEncrypt
 			cfg.Server.TLS.ForwardHTTPToHTTPS = true
-			if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "server.public_url:") {
-				t.Fatalf("Validate() error = %v", err)
-			}
+			err := cfg.Validate()
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "server.public_url:")
 		})
 	}
 }

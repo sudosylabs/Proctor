@@ -15,6 +15,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -34,16 +36,11 @@ func TestSystemResourceReturnsTypedUnhealthyProblemThroughKernel(t *testing.T) {
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, systemResource(systemHTTPHealth{}, BuildInfo{Version: "test"}))
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/health/live", nil))
-	if response.Code != http.StatusServiceUnavailable {
-		t.Fatalf("liveness status = %d: %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusServiceUnavailable, response.Code, "liveness status = %d: %s", response.Code, response.Body.String())
 	var problem Problem
-	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-		t.Fatal(err)
-	}
-	if problem.Code != "health.not_live" || problem.Detail != "The process is not healthy." {
-		t.Fatalf("liveness problem = %#v", problem)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &problem))
+	require.Equal(t, "health.not_live", problem.Code)
+	require.Equal(t, "The process is not healthy.", problem.Detail)
 }
 
 func TestSystemResourceReturnsHealthyStatusAndVersionThroughKernel(t *testing.T) {
@@ -62,9 +59,8 @@ func TestSystemResourceReturnsHealthyStatusAndVersionThroughKernel(t *testing.T)
 	} {
 		response := httptest.NewRecorder()
 		httpAPI.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
-		if response.Code != http.StatusOK || !bytes.Contains(response.Body.Bytes(), []byte(body)) {
-			t.Fatalf("%s response = %d %s", path, response.Code, response.Body.String())
-		}
+		require.Equal(t, http.StatusOK, response.Code, "%s response = %d %s", path, response.Code, response.Body.String())
+		require.True(t, bytes.Contains(response.Body.Bytes(), []byte(body)), "%s response = %d %s", path, response.Code, response.Body.String())
 	}
 }
 
@@ -76,15 +72,13 @@ func TestBootstrapResourceStrictDecodeAndDeclaredFailureThroughKernel(t *testing
 
 	invalid := httptest.NewRecorder()
 	httpAPI.ServeHTTP(invalid, newJSONRequest(http.MethodPost, "/api/v1/bootstrap", bytes.NewBufferString(`{"unknown":true}`)))
-	if invalid.Code != http.StatusBadRequest || !bytes.Contains(invalid.Body.Bytes(), []byte(`"code":"request.invalid"`)) {
-		t.Fatalf("strict bootstrap decode = %d %s", invalid.Code, invalid.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, invalid.Code, "strict bootstrap decode = %d %s", invalid.Code, invalid.Body.String())
+	require.True(t, bytes.Contains(invalid.Body.Bytes(), []byte(`"code":"request.invalid"`)), "strict bootstrap decode = %d %s", invalid.Code, invalid.Body.String())
 
 	failure := httptest.NewRecorder()
 	httpAPI.ServeHTTP(failure, newJSONRequest(http.MethodPost, "/api/v1/bootstrap", bytes.NewBufferString(`{"institution":{"name":"northbridge","display_name":"Northbridge"},"administrator":{"username":"admin","email":"admin@example.edu"},"password":"secret","bootstrap_secret":"deployment-secret"}`)))
-	if failure.Code != http.StatusServiceUnavailable || !bytes.Contains(failure.Body.Bytes(), []byte(`"code":"installation.unavailable"`)) {
-		t.Fatalf("bootstrap failure = %d %s", failure.Code, failure.Body.String())
-	}
+	require.Equal(t, http.StatusServiceUnavailable, failure.Code, "bootstrap failure = %d %s", failure.Code, failure.Body.String())
+	require.True(t, bytes.Contains(failure.Body.Bytes(), []byte(`"code":"installation.unavailable"`)), "bootstrap failure = %d %s", failure.Code, failure.Body.String())
 }
 
 func TestBootstrapStatusExposesOnlyInitializedFlag(t *testing.T) {
@@ -98,20 +92,13 @@ func TestBootstrapStatusExposesOnlyInitializedFlag(t *testing.T) {
 	)
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/bootstrap", nil))
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "status = %d: %s", response.Code, response.Body.String())
 	var body map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body["initialized"] != true {
-		t.Fatalf("body = %#v", body)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	require.Equal(t, true, body["initialized"])
 	for _, key := range []string{"institution_id", "administrator_user_id", "state", "role", "password"} {
-		if _, exists := body[key]; exists {
-			t.Fatalf("status leaked %q: %#v", key, body)
-		}
+		_, exists := body[key]
+		require.False(t, exists, "status leaked %q: %#v", key, body)
 	}
 }
 
@@ -127,12 +114,10 @@ func TestBootstrapDeniedDoesNotEchoSecretOrAccountDetail(t *testing.T) {
 			`"administrator":{"username":"admin","email":"admin@example.edu"},`+
 			`"password":"password","bootstrap_secret":"`+secret+`"}`,
 	)))
-	if response.Code != http.StatusForbidden ||
-		!bytes.Contains(response.Body.Bytes(), []byte(`"code":"installation.bootstrap_denied"`)) ||
-		bytes.Contains(response.Body.Bytes(), []byte(secret)) ||
-		bytes.Contains(response.Body.Bytes(), []byte("admin@example.edu")) {
-		t.Fatalf("response = %d %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusForbidden, response.Code, "response = %d %s", response.Code, response.Body.String())
+	require.True(t, bytes.Contains(response.Body.Bytes(), []byte(`"code":"installation.bootstrap_denied"`)), "response = %d %s", response.Code, response.Body.String())
+	require.False(t, bytes.Contains(response.Body.Bytes(), []byte(secret)), "response = %d %s", response.Code, response.Body.String())
+	require.False(t, bytes.Contains(response.Body.Bytes(), []byte("admin@example.edu")), "response = %d %s", response.Code, response.Body.String())
 }
 
 func TestBootstrapResponseDTOPreservesHistoricalEnvelope(t *testing.T) {
@@ -166,19 +151,18 @@ func TestBootstrapResponseDTOPreservesHistoricalEnvelope(t *testing.T) {
 		AccessPolicy: model.NewInitialAccessPolicy(model.NewAccessPolicyID(), model.TimeFromMillis(100)),
 	}
 	encoded, err := json.Marshal(installationBootstrapResponseFromModel(nil, result))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var decoded installationBootstrapResponse
-	if err := json.Unmarshal(encoded, &decoded); err != nil {
-		t.Fatal(err)
-	}
-	if decoded.State == nil || decoded.State.InstitutionID != institutionID ||
-		decoded.Administrator == nil || decoded.Administrator.ID != adminID ||
-		decoded.Role == nil || decoded.Role.Name != model.SystemAdministratorRoleName || !decoded.Role.BuiltIn ||
-		decoded.RoleBinding == nil || decoded.RoleBinding.ScopeType != model.RoleScopeInstitution {
-		t.Fatalf("decoded historical envelope = %#v from %s", decoded, encoded)
-	}
+	require.NoError(t, json.Unmarshal(encoded, &decoded))
+	require.NotNil(t, decoded.State, "decoded historical envelope = %#v from %s", decoded, encoded)
+	require.Equal(t, institutionID, decoded.State.InstitutionID, "decoded historical envelope = %#v from %s", decoded, encoded)
+	require.NotNil(t, decoded.Administrator, "decoded historical envelope = %#v from %s", decoded, encoded)
+	require.Equal(t, adminID, decoded.Administrator.ID, "decoded historical envelope = %#v from %s", decoded, encoded)
+	require.NotNil(t, decoded.Role, "decoded historical envelope = %#v from %s", decoded, encoded)
+	require.Equal(t, model.SystemAdministratorRoleName, decoded.Role.Name, "decoded historical envelope = %#v from %s", decoded, encoded)
+	require.True(t, decoded.Role.BuiltIn, "decoded historical envelope = %#v from %s", decoded, encoded)
+	require.NotNil(t, decoded.RoleBinding, "decoded historical envelope = %#v from %s", decoded, encoded)
+	require.Equal(t, model.RoleScopeInstitution, decoded.RoleBinding.ScopeType, "decoded historical envelope = %#v from %s", decoded, encoded)
 }
 
 func TestBootstrapUsesApplicationCommand(t *testing.T) {
@@ -203,14 +187,12 @@ func TestBootstrapUsesApplicationCommand(t *testing.T) {
 	request.RemoteAddr = "127.0.0.1:1234"
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusCreated {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
-	if rec.command.InstitutionName != "northbridge" || rec.command.AdministratorUsername != "admin" ||
-		rec.command.Password != "correct-horse-battery" ||
-		rec.command.BootstrapSecret != "deployment-bootstrap-secret" || rec.command.Source == "" {
-		t.Fatalf("command = %#v", rec.command)
-	}
+	require.Equal(t, http.StatusCreated, response.Code, "status = %d: %s", response.Code, response.Body.String())
+	require.Equal(t, "northbridge", rec.command.InstitutionName)
+	require.Equal(t, "admin", rec.command.AdministratorUsername)
+	require.Equal(t, "correct-horse-battery", rec.command.Password)
+	require.Equal(t, "deployment-bootstrap-secret", rec.command.BootstrapSecret)
+	require.NotEmpty(t, rec.command.Source)
 }
 
 type recordingBootstrap struct {

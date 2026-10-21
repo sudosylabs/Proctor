@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -39,9 +41,7 @@ func TestRoleHTTPCreateUsesApplicationCommandWithoutPreflight(t *testing.T) {
 	options.Institutions = transport
 	options.Roles = roles
 	httpAPI, err := New(options)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = httpAPI.Close() })
 	body, _ := json.Marshal(map[string]any{
 		"name": "teacher", "display_name": "Teacher",
@@ -52,19 +52,12 @@ func TestRoleHTTPCreateUsesApplicationCommandWithoutPreflight(t *testing.T) {
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusCreated {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
-	if roles.createCommand.Name != "teacher" {
-		t.Fatalf("command = %#v", roles.createCommand)
-	}
+	require.Equal(t, http.StatusCreated, response.Code, "status = %d: %s", response.Code, response.Body.String())
+	require.Equal(t, "teacher", roles.createCommand.Name)
 	var payload map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
-		t.Fatal(err)
-	}
-	if payload["id"] != roleID || payload["name"] != "teacher" {
-		t.Fatalf("body = %#v", payload)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &payload))
+	require.Equal(t, roleID, payload["id"])
+	require.Equal(t, "teacher", payload["name"])
 }
 
 func TestRoleResponsePreservesExistingWireShape(t *testing.T) {
@@ -79,14 +72,8 @@ func TestRoleResponsePreservesExistingWireShape(t *testing.T) {
 		Name: "teacher", DisplayName: "Teacher", Description: "desc",
 		Permissions: []string{string(model.ActionClassView)}, BuiltIn: false,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	got, err := json.Marshal(roleResponseFromModel(nil, role))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != string(want) {
-		t.Fatalf("response = %s, want %s", got, want)
-	}
+	require.NoError(t, err)
+	require.Equal(t, string(want), string(got), "response")
 }

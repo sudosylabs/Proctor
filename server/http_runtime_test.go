@@ -25,11 +25,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"slices"
-	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/config"
 )
@@ -43,12 +43,8 @@ func TestHTTPSRedirectUsesCanonicalPublicAuthority(t *testing.T) {
 	response := httptest.NewRecorder()
 
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusPermanentRedirect {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusPermanentRedirect)
-	}
-	if location := response.Header().Get("Location"); location != "https://proctor.example.edu/exams/a%2Fb?attempt=1" {
-		t.Fatalf("Location = %q", location)
-	}
+	require.Equal(t, http.StatusPermanentRedirect, response.Code, "status")
+	require.Equal(t, "https://proctor.example.edu/exams/a%2Fb?attempt=1", response.Header().Get("Location"))
 }
 
 func TestHTTPRuntimeConfiguresStaticTLS(t *testing.T) {
@@ -61,12 +57,10 @@ func TestHTTPRuntimeConfiguresStaticTLS(t *testing.T) {
 	settings.TLS.PrivateKeyFile = "private-key.pem"
 	runtime := newStandardHTTPRuntimeForTest(t, settings)
 
-	if runtime.primary.TLSConfig == nil || runtime.primary.TLSConfig.MinVersion != tls.VersionTLS12 {
-		t.Fatalf("TLS config = %#v", runtime.primary.TLSConfig)
-	}
-	if runtime.newAutomaticCertificateManager != nil || runtime.forwarding != nil {
-		t.Fatal("static TLS unexpectedly configured ACME or HTTP forwarding")
-	}
+	require.NotNil(t, runtime.primary.TLSConfig)
+	require.Equal(t, uint16(tls.VersionTLS12), runtime.primary.TLSConfig.MinVersion)
+	require.Nil(t, runtime.newAutomaticCertificateManager, "static TLS unexpectedly configured ACME or HTTP forwarding")
+	require.Nil(t, runtime.forwarding, "static TLS unexpectedly configured ACME or HTTP forwarding")
 }
 
 func TestHTTPRuntimeServesStaticTLSWithoutNetwork(t *testing.T) {
@@ -109,31 +103,19 @@ func TestHTTPRuntimeServesStaticTLSWithoutNetwork(t *testing.T) {
 		ServerName:         "proctor.example.edu",
 		InsecureSkipVerify: true, // The generated certificate is trusted only by this test.
 	})
-	if err := client.Handshake(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, client.HandshakeContext(t.Context()))
 	request, err := http.NewRequest(http.MethodGet, "https://proctor.example.edu/health/ready", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := request.Write(client); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, request.Write(client))
 	response, err := http.ReadResponse(bufio.NewReader(client), request)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	_ = response.Body.Close()
 	_ = client.Close()
 
 	shutdownContext, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	if err := runtime.Shutdown(shutdownContext); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-serveResult; !errors.Is(err, http.ErrServerClosed) {
-		t.Fatalf("Serve() error = %v", err)
-	}
+	require.NoError(t, runtime.Shutdown(shutdownContext))
+	require.ErrorIs(t, (<-serveResult), http.ErrServerClosed)
 }
 
 func TestHTTPRuntimeRestrictsACMEAndWrapsForwarding(t *testing.T) {
@@ -148,41 +130,32 @@ func TestHTTPRuntimeRestrictsACMEAndWrapsForwarding(t *testing.T) {
 	settings.TLS.HTTPListenAddress = ":80"
 	runtime := newStandardHTTPRuntimeForTest(t, settings)
 
-	if runtime.newAutomaticCertificateManager == nil || runtime.forwarding == nil {
-		t.Fatal("Let's Encrypt runtime is missing ACME or forwarding server")
-	}
+	require.NotNil(t, runtime.newAutomaticCertificateManager, "Let's Encrypt runtime is missing ACME or forwarding server")
+	require.NotNil(t, runtime.forwarding, "Let's Encrypt runtime is missing ACME or forwarding server")
 	manager := runtime.newAutomaticCertificateManager()
 	defer func() { _ = manager.Close() }()
-	if tlsConfig := manager.TLSConfig(); tlsConfig.MinVersion != tls.VersionTLS12 ||
-		!slices.Contains(tlsConfig.NextProtos, "h2") ||
-		!slices.Contains(tlsConfig.NextProtos, "http/1.1") {
-		t.Fatalf("TLS config = %#v", tlsConfig)
-	}
-	if _, err := manager.TLSConfig().GetCertificate(&tls.ClientHelloInfo{ServerName: "other.example.edu"}); err == nil {
-		t.Fatal("unconfigured cached certificate hostname accepted")
-	}
+	tlsConfig := manager.TLSConfig()
+	require.Equal(t, uint16(tls.VersionTLS12), tlsConfig.MinVersion)
+	require.Contains(t, tlsConfig.NextProtos, "h2")
+	require.Contains(t, tlsConfig.NextProtos, "http/1.1")
+	_, err := manager.TLSConfig().GetCertificate(&tls.ClientHelloInfo{ServerName: "other.example.edu"})
+	require.Error(t, err, "unconfigured cached certificate hostname accepted")
 
 	request := httptest.NewRequest(http.MethodGet, "http://untrusted.example/health/ready", nil)
 	response := httptest.NewRecorder()
 	manager.HTTPHandler(runtime.forwarding.Handler).ServeHTTP(response, request)
-	if response.Code != http.StatusPermanentRedirect ||
-		response.Header().Get("Location") != "https://proctor.example.edu/health/ready" {
-		t.Fatalf("forwarding response = %d %q", response.Code, response.Header().Get("Location"))
-	}
+	require.Equal(t, http.StatusPermanentRedirect, response.Code, "forwarding response")
+	require.Equal(t, "https://proctor.example.edu/health/ready", response.Header().Get("Location"), "forwarding response")
 
 	challengeHandler := manager.HTTPHandler(runtime.forwarding.Handler)
 	untrustedChallenge := httptest.NewRequest(http.MethodGet, "http://other.example.edu/.well-known/acme-challenge/token", nil)
 	untrustedResponse := httptest.NewRecorder()
 	challengeHandler.ServeHTTP(untrustedResponse, untrustedChallenge)
-	if untrustedResponse.Code != http.StatusForbidden {
-		t.Fatalf("untrusted challenge status = %d, want %d", untrustedResponse.Code, http.StatusForbidden)
-	}
+	require.Equal(t, http.StatusForbidden, untrustedResponse.Code, "untrusted challenge status")
 	configuredChallenge := httptest.NewRequest(http.MethodGet, "http://proctor.example.edu:80/.well-known/acme-challenge/missing", nil)
 	configuredResponse := httptest.NewRecorder()
 	challengeHandler.ServeHTTP(configuredResponse, configuredChallenge)
-	if configuredResponse.Code != http.StatusNotFound {
-		t.Fatalf("configured challenge status = %d, want %d", configuredResponse.Code, http.StatusNotFound)
-	}
+	require.Equal(t, http.StatusNotFound, configuredResponse.Code, "configured challenge status")
 }
 
 func TestHTTPRuntimeUsesCanonicalACMEHostname(t *testing.T) {
@@ -195,15 +168,9 @@ func TestHTTPRuntimeUsesCanonicalACMEHostname(t *testing.T) {
 	settings.TLS.ForwardHTTPToHTTPS = true
 	runtime := newStandardHTTPRuntimeForTest(t, settings)
 
-	if runtime.tls.letsEncryptHostname != "proctor.example.edu" {
-		t.Fatalf("runtime ACME hostname = %q", runtime.tls.letsEncryptHostname)
-	}
-	if runtime.tls.redirectAuthority != "proctor.example.edu" {
-		t.Fatalf("runtime redirect authority = %q", runtime.tls.redirectAuthority)
-	}
-	if hostname := canonicalCertificateHostname("PROCTOR.Example.EDU.:443"); hostname != "proctor.example.edu" {
-		t.Fatalf("canonical certificate hostname = %q", hostname)
-	}
+	require.Equal(t, "proctor.example.edu", runtime.tls.letsEncryptHostname)
+	require.Equal(t, "proctor.example.edu", runtime.tls.redirectAuthority)
+	require.Equal(t, "proctor.example.edu", canonicalCertificateHostname("PROCTOR.Example.EDU.:443"))
 }
 
 func TestHTTPRuntimeStopsAutomaticCertificateManagerAfterStartupFailure(t *testing.T) {
@@ -234,13 +201,12 @@ func TestHTTPRuntimeStopsAutomaticCertificateManagerAfterStartupFailure(t *testi
 	runtime.newAutomaticCertificateManager = func() automaticCertificateManager { return manager }
 
 	err := runtime.Serve(unusedListener{}, func() bool { return true })
-	if !errors.Is(err, bindErr) || !errors.Is(err, cleanupErr) {
-		t.Fatalf("Serve() error = %v", err)
-	}
+	require.ErrorIs(t, err, bindErr)
+	require.ErrorIs(t, err, cleanupErr)
 	select {
 	case <-manager.stopped:
 	default:
-		t.Fatal("automatic certificate manager was not stopped")
+		require.FailNow(t, "automatic certificate manager was not stopped")
 	}
 }
 
@@ -272,9 +238,8 @@ func TestHTTPRuntimeGracefulShutdownDrainsForwardingRequests(t *testing.T) {
 	serverConnection, clientConnection := net.Pipe()
 	go func() { forwardingListener.connections <- serverConnection }()
 	go func() { _, _ = io.Copy(io.Discard, clientConnection) }()
-	if _, err := fmt.Fprint(clientConnection, "GET / HTTP/1.1\r\nHost: proctor.example.edu\r\nConnection: close\r\n\r\n"); err != nil {
-		t.Fatal(err)
-	}
+	_, err := fmt.Fprint(clientConnection, "GET / HTTP/1.1\r\nHost: proctor.example.edu\r\nConnection: close\r\n\r\n")
+	require.NoError(t, err)
 	<-requestStarted
 
 	shutdownResult := make(chan error, 1)
@@ -283,16 +248,12 @@ func TestHTTPRuntimeGracefulShutdownDrainsForwardingRequests(t *testing.T) {
 	go func() { shutdownResult <- runtime.Shutdown(shutdownContext) }()
 	select {
 	case err := <-shutdownResult:
-		t.Fatalf("Shutdown returned before forwarding request drained: %v", err)
+		require.FailNow(t, fmt.Sprintf("Shutdown returned before forwarding request drained: %v", err))
 	case <-time.After(50 * time.Millisecond):
 	}
 	close(releaseRequest)
-	if err := <-shutdownResult; err != nil {
-		t.Fatal(err)
-	}
-	if err := <-serveResult; err != nil {
-		t.Fatalf("Serve() error = %v", err)
-	}
+	require.NoError(t, (<-shutdownResult))
+	require.NoError(t, (<-serveResult))
 	_ = clientConnection.Close()
 }
 
@@ -300,23 +261,13 @@ func TestPrepareACMECacheDirectoryCreatesPrivateEmptyDirectory(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "nested", "acme")
-	if err := prepareACMECacheDirectory(path); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, prepareACMECacheDirectory(path))
 	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if permission := info.Mode().Perm(); permission != 0o700 {
-		t.Fatalf("cache permissions = %04o, want 0700", permission)
-	}
+	require.NoError(t, err)
+	require.Equal(t, uint32(0o700), uint32(info.Mode().Perm()), "cache permissions")
 	entries, err := os.ReadDir(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 0 {
-		t.Fatalf("cache write probe was not removed: %v", entries)
-	}
+	require.NoError(t, err)
+	require.Empty(t, entries)
 }
 
 func TestPrepareACMECacheDirectoryRejectsUnsafePaths(t *testing.T) {
@@ -324,23 +275,17 @@ func TestPrepareACMECacheDirectoryRejectsUnsafePaths(t *testing.T) {
 
 	t.Run("permissive directory", func(t *testing.T) {
 		path := t.TempDir()
-		if err := os.Chmod(path, 0o750); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.Chmod(path, 0o750))
 		t.Cleanup(func() { _ = os.Chmod(path, 0o700) })
-		if err := prepareACMECacheDirectory(path); err == nil || !strings.Contains(err.Error(), "require 0700") {
-			t.Fatalf("prepareACMECacheDirectory() error = %v", err)
-		}
+		err := prepareACMECacheDirectory(path)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "require 0700")
 	})
 
 	t.Run("non-directory", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "acme-cache")
-		if err := os.WriteFile(path, []byte("not a directory"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if err := prepareACMECacheDirectory(path); err == nil {
-			t.Fatal("prepareACMECacheDirectory() succeeded")
-		}
+		require.NoError(t, os.WriteFile(path, []byte("not a directory"), 0o600))
+		require.Error(t, prepareACMECacheDirectory(path), "prepareACMECacheDirectory() succeeded")
 	})
 }
 
@@ -374,12 +319,9 @@ func TestHTTPRuntimeReportsForwardingBindFailureBeforePrimaryHandoff(t *testing.
 		accepted = true
 		return true
 	})
-	if !errors.Is(err, bindErr) || !strings.Contains(err.Error(), "HTTP-to-HTTPS forwarding") {
-		t.Fatalf("Serve() error = %v", err)
-	}
-	if accepted {
-		t.Fatal("primary listener ownership transferred after forwarding bind failure")
-	}
+	require.ErrorIs(t, err, bindErr)
+	require.Contains(t, err.Error(), "HTTP-to-HTTPS forwarding")
+	require.False(t, accepted, "primary listener ownership transferred after forwarding bind failure")
 }
 
 func TestHTTPRuntimeClosesForwardingListenerWhenTLSStartupFails(t *testing.T) {
@@ -414,16 +356,14 @@ func TestHTTPRuntimeClosesForwardingListenerWhenTLSStartupFails(t *testing.T) {
 		accepted = true
 		return true
 	})
-	if err == nil || !strings.Contains(err.Error(), "missing-certificate.pem") || !errors.Is(err, closeErr) {
-		t.Fatalf("Serve() error = %v", err)
-	}
-	if accepted {
-		t.Fatal("primary listener ownership transferred after certificate load failure")
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "missing-certificate.pem")
+	require.ErrorIs(t, err, closeErr)
+	require.False(t, accepted, "primary listener ownership transferred after certificate load failure")
 	select {
 	case <-forwardingListener.closed:
 	default:
-		t.Fatal("forwarding listener remained open after TLS startup failure")
+		require.FailNow(t, "forwarding listener remained open after TLS startup failure")
 	}
 }
 
@@ -440,9 +380,7 @@ func newStandardHTTPRuntimeForTest(t *testing.T, settings config.Server) *standa
 		idleTimeout:       time.Second,
 		maxHeaderBytes:    1024,
 	}).(*standardHTTPRuntime)
-	if !ok {
-		t.Fatal("newHTTPServer returned an unexpected implementation")
-	}
+	require.True(t, ok, "newHTTPServer returned an unexpected implementation")
 	return runtime
 }
 
@@ -515,9 +453,7 @@ func (m *fakeAutomaticCertificateManager) Close() error {
 func writeTestCertificate(t *testing.T) (string, string) {
 	t.Helper()
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	now := time.Now()
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(1),
@@ -529,21 +465,13 @@ func writeTestCertificate(t *testing.T) (string, string) {
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}
 	certificateDER, err := x509.CreateCertificate(rand.Reader, template, template, publicKey, privateKey)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	privateKeyDER, err := x509.MarshalPKCS8PrivateKey(privateKey)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	directory := t.TempDir()
 	certificateFile := filepath.Join(directory, "certificate.pem")
 	privateKeyFile := filepath.Join(directory, "private-key.pem")
-	if err := os.WriteFile(certificateFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificateDER}), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(privateKeyFile, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateKeyDER}), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(certificateFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificateDER}), 0o600))
+	require.NoError(t, os.WriteFile(privateKeyFile, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateKeyDER}), 0o600))
 	return certificateFile, privateKeyFile
 }

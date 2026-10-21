@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -51,10 +53,12 @@ func TestConnectionRuntimeLocalizesErrorWithoutChangingCode(t *testing.T) {
 		{sequence: 8, message: "Requête WebSocket invalide."},
 		{sequence: 9, message: "Signal de perte de focus invalide."},
 	} {
-		response := (<-runtime.send).response
-		if response.Sequence != want.sequence || response.Error.Code != "websocket.request.invalid" || response.Error.Message != want.message {
-			t.Fatalf("localized response = %#v, want sequence %d and message %q", response, want.sequence, want.message)
-		}
+		t.Run(want.message, func(t *testing.T) {
+			response := (<-runtime.send).response
+			require.Equal(t, want.sequence, response.Sequence, "localized response = %#v, want sequence %d and message", response, want.sequence)
+			require.Equal(t, "websocket.request.invalid", response.Error.Code, "localized response = %#v, want sequence %d and message", response, want.sequence)
+			require.Equal(t, want.message, response.Error.Message, "localized response = %#v, want sequence %d and message", response, want.sequence)
+		})
 	}
 }
 
@@ -90,12 +94,8 @@ func TestConnectionRuntimePreservesConcurrentEventSequenceOrder(t *testing.T) {
 
 	for want := int64(1); want <= eventCount; want++ {
 		message := <-runtime.send
-		if message.event == nil {
-			t.Fatalf("outbound message %d is not an event", want)
-		}
-		if got := message.event.Sequence; got != want {
-			t.Fatalf("outbound sequence = %d, want %d", got, want)
-		}
+		require.NotNil(t, message.event, "outbound message %d is not an event", want)
+		require.Equal(t, want, message.event.Sequence, "outbound sequence")
 	}
 }
 
@@ -142,24 +142,12 @@ func TestConnectionRuntimeClosesOnOutboundQueueSaturation(t *testing.T) {
 			test.enqueue(runtime)
 
 			control := socket.singleControl(t)
-			if control.messageType != websocketCloseMessage {
-				t.Fatalf("control message type = %d, want %d", control.messageType, websocketCloseMessage)
-			}
-			if got := int(binary.BigEndian.Uint16(control.data[:2])); got != CloseBackpressure {
-				t.Fatalf("close code = %d, want %d", got, CloseBackpressure)
-			}
-			if got := string(control.data[2:]); got != "client is too slow" {
-				t.Fatalf("close reason = %q, want %q", got, "client is too slow")
-			}
-			if got := socket.closeCount(); got != 1 {
-				t.Fatalf("socket close calls = %d, want 1", got)
-			}
-			if runtime.replayable {
-				t.Fatal("backpressure closure must not be replayable")
-			}
-			if got := len(runtime.send); got != 1 {
-				t.Fatalf("queue length = %d, want the existing message retained", got)
-			}
+			require.Equal(t, websocketCloseMessage, control.messageType, "control message type")
+			require.Equal(t, CloseBackpressure, int(binary.BigEndian.Uint16(control.data[:2])), "close code")
+			require.Equal(t, "client is too slow", string(control.data[2:]), "close reason")
+			require.Equal(t, 1, socket.closeCount(), "socket close calls")
+			require.False(t, runtime.replayable, "backpressure closure must not be replayable")
+			require.Len(t, runtime.send, 1, "queue length")
 		})
 	}
 }
@@ -192,26 +180,25 @@ func TestConnectionRuntimeWritesOutboundMessagesInQueueOrder(t *testing.T) {
 	waitDone(t, done, "write pump did not stop after cancellation")
 
 	writes := socket.jsonWrites()
-	if len(writes) != 3 {
-		t.Fatalf("JSON writes = %d, want 3", len(writes))
-	}
+	require.Len(t, writes, 3, "JSON writes")
 	event, ok := writes[0].(*Event)
-	if !ok || event.Sequence != 1 || event.Event != "exam.updated" {
-		t.Fatalf("first write = %#v, want sequenced exam event", writes[0])
-	}
+	require.True(t, ok, "first write")
+	require.Equal(t, int64(1), event.Sequence, "first write")
+	require.Equal(t, "exam.updated", event.Event, "first write")
 	response, ok := writes[1].(*Response)
-	if !ok || response.Status != "ok" || response.Sequence != 7 || string(response.Data) != `{"accepted":true}` {
-		t.Fatalf("second write = %#v, want successful response", writes[1])
-	}
+	require.True(t, ok, "second write")
+	require.Equal(t, "ok", response.Status, "second write")
+	require.Equal(t, int64(7), response.Sequence, "second write")
+	require.Equal(t, `{"accepted":true}`, string(response.Data), "second write")
 	failure, ok := writes[2].(*Response)
-	if !ok || failure.Status != "error" || failure.Sequence != 8 || failure.Error == nil ||
-		failure.Error.Code != "websocket.request.invalid" || failure.Error.Message != "Invalid WebSocket request." {
-		t.Fatalf("third write = %#v, want protocol error", writes[2])
-	}
+	require.True(t, ok, "third write")
+	require.Equal(t, "error", failure.Status, "third write")
+	require.Equal(t, int64(8), failure.Sequence, "third write")
+	require.NotNil(t, failure.Error, "third write")
+	require.Equal(t, "websocket.request.invalid", failure.Error.Code, "third write")
+	require.Equal(t, "Invalid WebSocket request.", failure.Error.Message, "third write")
 	for index, deadline := range socket.deadlines() {
-		if want := runtime.clock.Now().Add(writeWait); !deadline.Equal(want) {
-			t.Fatalf("write deadline %d = %s, want %s", index, deadline, want)
-		}
+		require.True(t, deadline.Equal(runtime.clock.Now().Add(writeWait)), "write deadline %d = %s", index, deadline)
 	}
 }
 
@@ -227,19 +214,17 @@ func TestConnectionRuntimeEnqueuesHelloAndResyncInSequence(t *testing.T) {
 
 	helloEvent := (<-runtime.send).event
 	resyncEvent := (<-runtime.send).event
-	if helloEvent == nil || helloEvent.Event != string(EventHello) || helloEvent.Sequence != 1 {
-		t.Fatalf("hello event = %#v", helloEvent)
-	}
+	require.NotNil(t, helloEvent)
+	require.Equal(t, string(EventHello), helloEvent.Event)
+	require.Equal(t, int64(1), helloEvent.Sequence)
 	var hello Hello
-	if err := json.Unmarshal(helloEvent.Data, &hello); err != nil {
-		t.Fatalf("decode hello: %v", err)
-	}
-	if hello.ConnectionID != runtime.id || hello.NodeID != "node-a" || hello.Resumed {
-		t.Fatalf("hello = %#v", hello)
-	}
-	if resyncEvent == nil || resyncEvent.Event != string(EventResync) || resyncEvent.Sequence != 2 {
-		t.Fatalf("resync event = %#v", resyncEvent)
-	}
+	require.NoError(t, json.Unmarshal(helloEvent.Data, &hello))
+	require.Equal(t, runtime.id, hello.ConnectionID)
+	require.Equal(t, "node-a", hello.NodeID)
+	require.False(t, hello.Resumed)
+	require.NotNil(t, resyncEvent)
+	require.Equal(t, string(EventResync), resyncEvent.Event)
+	require.Equal(t, int64(2), resyncEvent.Sequence)
 }
 
 func TestConnectionRuntimeSchedulesPingWithWriteDeadline(t *testing.T) {
@@ -264,13 +249,10 @@ func TestConnectionRuntimeSchedulesPingWithWriteDeadline(t *testing.T) {
 	cancel()
 	waitDone(t, done, "write pump did not stop after ping")
 
-	if got := socket.pingCount(); got != 1 {
-		t.Fatalf("ping writes = %d, want 1", got)
-	}
+	require.Equal(t, 1, socket.pingCount(), "ping writes")
 	deadlines := socket.deadlines()
-	if len(deadlines) != 1 || !deadlines[0].Equal(now.Add(writeWait)) {
-		t.Fatalf("ping deadlines = %v, want [%s]", deadlines, now.Add(writeWait))
-	}
+	require.Len(t, deadlines, 1, "ping deadlines")
+	require.True(t, deadlines[0].Equal(now.Add(writeWait)), "ping deadlines")
 }
 
 func TestConnectionRuntimeStopsAfterWriteFailure(t *testing.T) {
@@ -312,9 +294,7 @@ func TestConnectionRuntimeStopsAfterWriteFailure(t *testing.T) {
 
 			test.prepare(runtime, clock, socket, t)
 			waitDone(t, done, "write pump did not stop after write failure")
-			if got := socket.closeCount(); got != 1 {
-				t.Fatalf("socket close calls = %d, want 1", got)
-			}
+			require.Equal(t, 1, socket.closeCount(), "socket close calls")
 		})
 	}
 }
@@ -335,18 +315,12 @@ func TestConnectionRuntimeWriteFailureAndExplicitCloseShareOneTerminalPath(t *te
 
 	runtime.close(CloseServer, "connection closed", false)
 
-	if got := socket.closeCount(); got != 1 {
-		t.Fatalf("socket close calls = %d, want 1", got)
-	}
-	if got := len(socket.controls()); got != 0 {
-		t.Fatalf("terminal close controls after transport failure = %d, want 0", got)
-	}
+	require.Equal(t, 1, socket.closeCount(), "socket close calls")
+	require.Empty(t, socket.controls(), "terminal close controls after transport failure")
 	runtime.mu.Lock()
 	replayable := runtime.replayable
 	runtime.mu.Unlock()
-	if replayable {
-		t.Fatal("explicit close did not revoke replay after transport failure")
-	}
+	require.False(t, replayable, "explicit close did not revoke replay after transport failure")
 }
 
 func TestConnectionRuntimeCloseIsConcurrentAndIdempotent(t *testing.T) {
@@ -367,12 +341,8 @@ func TestConnectionRuntimeCloseIsConcurrentAndIdempotent(t *testing.T) {
 	close(start)
 	closers.Wait()
 
-	if got := len(socket.controls()); got != 1 {
-		t.Fatalf("terminal close controls = %d, want 1", got)
-	}
-	if got := socket.closeCount(); got != 1 {
-		t.Fatalf("socket close calls = %d, want 1", got)
-	}
+	require.Len(t, socket.controls(), 1, "terminal close controls")
+	require.Equal(t, 1, socket.closeCount(), "socket close calls")
 }
 
 func TestConnectionRuntimeBackpressureDoesNotAffectHealthyConnection(t *testing.T) {
@@ -388,20 +358,16 @@ func TestConnectionRuntimeBackpressureDoesNotAffectHealthyConnection(t *testing.
 	slow.enqueueEvent(event)
 	healthy.enqueueEvent(event)
 
-	if got := slowSocket.closeCount(); got != 1 {
-		t.Fatalf("slow socket close calls = %d, want 1", got)
-	}
+	require.Equal(t, 1, slowSocket.closeCount(), "slow socket close calls")
 	select {
 	case message := <-healthy.send:
-		if message.event == nil || message.event.ID != event.ID || message.event.Sequence != 1 {
-			t.Fatalf("healthy delivery = %#v", message.event)
-		}
+		require.NotNil(t, message.event)
+		require.Equal(t, event.ID, message.event.ID)
+		require.Equal(t, int64(1), message.event.Sequence)
 	default:
-		t.Fatal("healthy connection did not receive the event")
+		require.FailNow(t, "healthy connection did not receive the event")
 	}
-	if got := healthySocket.closeCount(); got != 0 {
-		t.Fatalf("healthy socket close calls = %d, want 0", got)
-	}
+	require.Equal(t, 0, healthySocket.closeCount(), "healthy socket close calls")
 }
 
 func newOutboundTestRuntime(socket *outboundTestSocket, queueSize int) *connectionRuntime {
@@ -419,7 +385,7 @@ func waitDone(t *testing.T, done <-chan struct{}, failure string) {
 	select {
 	case <-done:
 	case <-time.After(time.Second):
-		t.Fatal(failure)
+		require.FailNow(t, failure)
 	}
 }
 
@@ -446,7 +412,7 @@ func (c *outboundTestClock) waitTicker(t *testing.T) *outboundTestTicker {
 	case ticker := <-c.created:
 		return ticker
 	case <-time.After(time.Second):
-		t.Fatal("write pump did not create its ticker")
+		require.FailNow(t, "write pump did not create its ticker")
 		return nil
 	}
 }
@@ -545,7 +511,7 @@ func (s *outboundTestSocket) waitWrite(t *testing.T) {
 	select {
 	case <-s.writeSignal:
 	case <-time.After(time.Second):
-		t.Fatal("runtime did not write queued JSON")
+		require.FailNow(t, "runtime did not write queued JSON")
 	}
 }
 
@@ -554,19 +520,15 @@ func (s *outboundTestSocket) waitPing(t *testing.T) {
 	select {
 	case <-s.pingSignal:
 	case <-time.After(time.Second):
-		t.Fatal("runtime did not write scheduled ping")
+		require.FailNow(t, "runtime did not write scheduled ping")
 	}
 }
 
 func (s *outboundTestSocket) singleControl(t *testing.T) outboundTestControl {
 	t.Helper()
 	controls := s.controls()
-	if len(controls) != 1 {
-		t.Fatalf("control writes = %d, want 1", len(controls))
-	}
-	if len(controls[0].data) < 2 {
-		t.Fatalf("close control payload = %v, want code and reason", controls[0].data)
-	}
+	require.Len(t, controls, 1, "control writes")
+	require.GreaterOrEqual(t, len(controls[0].data), 2, "close control payload")
 	return controls[0]
 }
 

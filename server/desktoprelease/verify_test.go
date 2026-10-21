@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/internal/canonicaljson"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -29,9 +31,7 @@ type releaseFixture struct {
 func fixture(t *testing.T) releaseFixture {
 	t.Helper()
 	public, private, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	manifest := model.EmptyAttemptConfigurationManifest()
 	f := releaseFixture{private: private, keys: map[string]ed25519.PublicKey{"synthetic-test-only": public}}
 	f.expected = Expectation{Build: model.DesktopBuildTuple{DesktopRelease: "1.0.0", DesktopBuildID: "synthetic-test-build",
@@ -87,13 +87,9 @@ func fixture(t *testing.T) releaseFixture {
 func canonical(t *testing.T, value any) []byte {
 	t.Helper()
 	raw, err := json.Marshal(value)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	result, err := canonicaljson.Canonicalize(raw, ArtifactMaxBytes)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return result
 }
 func (f *releaseFixture) sign(t *testing.T) {
@@ -110,38 +106,25 @@ func TestVerifyExactReleaseAndTruthfulCoverage(t *testing.T) {
 	t.Parallel()
 	f := fixture(t)
 	build, err := Verify(f.expected, f.artifacts, f.keys)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	agreement := build.NativeAgreement
 	observed, err := agreement.Coverage("native.observe", model.NativeClaimObserve)
-	if err != nil || observed.Claim != model.NativeClaimUnavailable {
-		t.Fatal("observe unavailability was hidden", err)
-	}
-	if _, err := agreement.Coverage("native.observe", model.NativeClaimEnforce); err == nil {
-		t.Fatal("unavailable observe source granted enforce")
-	}
-	if _, err := agreement.Coverage("native.effect", model.NativeClaimEnforce); err != nil {
-		t.Fatal("certified effect-only claim rejected", err)
-	}
-	if _, err := agreement.Coverage("unknown", model.NativeClaimObserve); err == nil {
-		t.Fatal("unknown claim admitted")
-	}
-	if agreement.ValidateDetector("synthetic-detector", 1, "clipboard", "clipboard-changed", model.NativeClaimObserve, []model.NativeSourceID{model.NativeSourceClipboard}) != nil {
-		t.Fatal("registered detector rejected")
-	}
-	if agreement.ValidateDetector("synthetic-detector", 1, "clipboard", "arbitrary-prose", model.NativeClaimObserve, []model.NativeSourceID{model.NativeSourceClipboard}) == nil {
-		t.Fatal("unknown condition admitted")
-	}
-	if agreement.ValidateDetector("synthetic-detector", 2, "clipboard", "clipboard-changed", model.NativeClaimObserve, []model.NativeSourceID{model.NativeSourceClipboard}) == nil {
-		t.Fatal("unknown detector version admitted")
-	}
+	require.NoError(t, err, "observe unavailability was hidden")
+	require.Equal(t, model.NativeClaimUnavailable, observed.Claim, "observe unavailability was hidden")
+	_, err = agreement.Coverage("native.observe", model.NativeClaimEnforce)
+	require.Error(t, err, "unavailable observe source granted enforce")
+	_, err = agreement.Coverage("native.effect", model.NativeClaimEnforce)
+	require.NoError(t, err, "certified effect-only claim rejected")
+	_, err = agreement.Coverage("unknown", model.NativeClaimObserve)
+	require.Error(t, err, "unknown claim admitted")
+	require.NoError(t, agreement.ValidateDetector("synthetic-detector", 1, "clipboard", "clipboard-changed", model.NativeClaimObserve, []model.NativeSourceID{model.NativeSourceClipboard}), "registered detector rejected")
+	require.Error(t, agreement.ValidateDetector("synthetic-detector", 1, "clipboard", "arbitrary-prose", model.NativeClaimObserve, []model.NativeSourceID{model.NativeSourceClipboard}), "unknown condition admitted")
+	require.Error(t, agreement.ValidateDetector("synthetic-detector", 2, "clipboard", "clipboard-changed", model.NativeClaimObserve, []model.NativeSourceID{model.NativeSourceClipboard}), "unknown detector version admitted")
 	f.expected.Coverage[0].PermittedClaims[0] = model.NativeClaimUnavailable
 	copy := agreement.Matrix()
 	copy.Entries[0].Claim = model.NativeClaimUnavailable
-	if _, err := agreement.Coverage("baseline.capture", model.NativeClaimEnforce); err != nil {
-		t.Fatal("verified agreement mutated through caller", err)
-	}
+	_, err = agreement.Coverage("baseline.capture", model.NativeClaimEnforce)
+	require.NoError(t, err, "verified agreement mutated through caller")
 }
 
 func TestVerifyRejectsUntrustedOrInconsistentArtifacts(t *testing.T) {
@@ -215,9 +198,8 @@ func TestVerifyRejectsUntrustedOrInconsistentArtifacts(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			f := fixture(t)
 			mutate(&f, t)
-			if _, err := Verify(f.expected, f.artifacts, f.keys); err != ErrInvalidArtifact {
-				t.Fatalf("invalid artifact result: %v", err)
-			}
+			_, err := Verify(f.expected, f.artifacts, f.keys)
+			require.Equal(t, ErrInvalidArtifact, err)
 		})
 	}
 }

@@ -10,12 +10,14 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -34,9 +36,9 @@ func TestTransferAllowanceUsesMinimumThroughput(t *testing.T) {
 		{100 << 20, 1600 * time.Second},
 	}
 	for _, test := range tests {
-		if got := transferAllowance(test.size); got != test.want {
-			t.Fatalf("transferAllowance(%d) = %s, want %s", test.size, got, test.want)
-		}
+		t.Run(fmt.Sprintf("size=%v", test.size), func(t *testing.T) {
+			require.Equal(t, test.want, transferAllowance(test.size), "transferAllowance(%d)", test.size)
+		})
 	}
 }
 
@@ -82,19 +84,15 @@ func TestTransferRoutesOutliveServerTimeouts(t *testing.T) {
 		),
 	)}
 	cookies, err := newBrowserCookies("http://localhost:8065")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	httpAPI := &API{
 		authenticator: authenticator, logger: discardLogger{}, localizer: newTestLocalizer(t), cookies: cookies,
 		recentAuthenticationTTL: time.Minute,
 		transferDeadlines:       newTransferDeadlines(serverTimeout, serverTimeout),
 	}
-	if err := httpAPI.buildRoutingKernel(model.APIURLSuffix, 1024, func() error {
+	require.NoError(t, httpAPI.buildRoutingKernel(model.APIURLSuffix, 1024, func() error {
 		return httpAPI.collectResources(model.APIURLSuffix, resources...)
-	}); err != nil {
-		t.Fatal(err)
-	}
+	}))
 	server := httptest.NewUnstartedServer(httpAPI)
 	server.Config.ReadTimeout = serverTimeout
 	server.Config.WriteTimeout = serverTimeout
@@ -113,36 +111,28 @@ func TestTransferRoutesOutliveServerTimeouts(t *testing.T) {
 			_ = writer.Close()
 		}()
 		request, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/v1/upload", reader)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		request.Header.Set("Authorization", "Bearer test")
 		response, err := client.Do(request)
-		if err != nil {
-			t.Fatalf("slow upload failed: %v", err)
-		}
+		require.NoError(t, err)
 		defer response.Body.Close()
 		body, _ := io.ReadAll(response.Body)
-		if response.StatusCode != http.StatusCreated || !strings.Contains(string(body), `"read":true`) || !strings.Contains(string(body), `"bytes":12`) {
-			t.Fatalf("slow upload = %d %s", response.StatusCode, body)
-		}
+		require.Equal(t, http.StatusCreated, response.StatusCode, "slow upload")
+		require.Contains(t, string(body), `"read":true`, "slow upload")
+		require.Contains(t, string(body), `"bytes":12`, "slow upload")
 	})
 
 	t.Run("download", func(t *testing.T) {
 		request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/api/v1/download", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		request.Header.Set("Authorization", "Bearer test")
 		response, err := client.Do(request)
-		if err != nil {
-			t.Fatalf("slow download failed: %v", err)
-		}
+		require.NoError(t, err)
 		defer response.Body.Close()
 		body, err := io.ReadAll(response.Body)
-		if err != nil || response.StatusCode != http.StatusOK || !bytes.Equal(body, downloadBody) {
-			t.Fatalf("slow download = %d, %d bytes, %v", response.StatusCode, len(body), err)
-		}
+		require.NoError(t, err, "slow download = %d, %d bytes", response.StatusCode, len(body))
+		require.Equal(t, http.StatusOK, response.StatusCode, "slow download = %d, %d bytes", response.StatusCode, len(body))
+		require.True(t, bytes.Equal(body, downloadBody), "slow download = %d, %d bytes", response.StatusCode, len(body))
 	})
 }
 

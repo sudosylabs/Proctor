@@ -12,38 +12,31 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestStoreLoadsDefaultsAndReturnsClones(t *testing.T) {
 	t.Parallel()
 
 	store, err := NewStore(context.Background(), NewMemoryStore(nil), StoreOptions{LookupEnv: noEnvironment})
-	if err != nil {
-		t.Fatalf("NewStore() error = %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 
 	got := store.Get()
-	if !reflect.DeepEqual(got, Default()) {
-		t.Fatalf("Get() = %#v, want defaults %#v", got, Default())
-	}
+	require.Equal(t, Default(), got, "Get()")
 	got.Log.Targets[0].Level = "error"
 	got.Cache.Redis.Addresses[0] = "mutated:6379"
 	got.Authentication.MFA.DecryptionKeys = []string{"mutated"}
-	if store.Get().Log.Targets[0].Level != "info" {
-		t.Fatal("Get exposed mutable store state")
-	}
-	if store.Get().Cache.Redis.Addresses[0] == "mutated:6379" {
-		t.Fatal("Get exposed mutable cache address state")
-	}
-	if len(store.Get().Authentication.MFA.DecryptionKeys) != 0 {
-		t.Fatal("Get exposed mutable MFA decryption keys")
-	}
+	require.Equal(t, "info", store.Get().Log.Targets[0].Level, "Get exposed mutable store state")
+	require.NotEqual(t, "mutated:6379", store.Get().Cache.Redis.Addresses[0], "Get exposed mutable cache address state")
+	require.Empty(t, store.Get().Authentication.MFA.DecryptionKeys, "Get exposed mutable MFA decryption keys")
 }
 
 func TestStoreSetPersistsAndNotifies(t *testing.T) {
@@ -51,9 +44,7 @@ func TestStoreSetPersistsAndNotifies(t *testing.T) {
 
 	backing := NewMemoryStore(nil)
 	store, err := NewStore(context.Background(), backing, StoreOptions{LookupEnv: noEnvironment})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 
 	var notifiedOld Config
@@ -66,26 +57,16 @@ func TestStoreSetPersistsAndNotifies(t *testing.T) {
 	candidate.Authentication.Bootstrap.DevelopmentMode = false
 	candidate.Server.PublicURL = "https://proctor.example.edu"
 	old, current, err := store.Set(context.Background(), candidate)
-	if err != nil {
-		t.Fatalf("Set() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	if old.Server.PublicURL == current.Server.PublicURL {
-		t.Fatal("Set did not return distinct old and current values")
-	}
-	if notifiedOld.Server.PublicURL != old.Server.PublicURL ||
-		notifiedCurrent.Server.PublicURL != current.Server.PublicURL {
-		t.Fatalf("listener received old=%q current=%q", notifiedOld.Server.PublicURL, notifiedCurrent.Server.PublicURL)
-	}
+	require.NotEqual(t, current.Server.PublicURL, old.Server.PublicURL, "Set did not return distinct old and current values")
+	require.Equal(t, old.Server.PublicURL, notifiedOld.Server.PublicURL, "listener received old")
+	require.Equal(t, current.Server.PublicURL, notifiedCurrent.Server.PublicURL, "listener received old")
 	store.RemoveListener(listenerID)
 
 	data, err := backing.Load(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(data), "https://proctor.example.edu") {
-		t.Fatalf("persisted configuration = %s", data)
-	}
+	require.NoError(t, err)
+	require.Contains(t, string(data), "https://proctor.example.edu", "persisted configuration")
 }
 
 func TestEnvironmentOverridesAreEffectiveButNeverPersisted(t *testing.T) {
@@ -95,9 +76,7 @@ func TestEnvironmentOverridesAreEffectiveButNeverPersisted(t *testing.T) {
 	initial.Authentication.Bootstrap.DevelopmentMode = false
 	initial.Server.ListenAddress = "127.0.0.1:8000"
 	data, err := json.Marshal(initial)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	backing := NewMemoryStore(data)
 	environment := map[string]string{
 		"PROCTOR_SERVER_LISTEN_ADDRESS":                              "127.0.0.1:9000",
@@ -123,80 +102,43 @@ func TestEnvironmentOverridesAreEffectiveButNeverPersisted(t *testing.T) {
 			return value, ok
 		},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 
 	effective := store.Get()
-	if effective.Server.ListenAddress != "127.0.0.1:9000" {
-		t.Fatalf("effective listen address = %q", effective.Server.ListenAddress)
-	}
-	if effective.Log.Targets[0].Level != "debug" {
-		t.Fatalf("effective log level = %q", effective.Log.Targets[0].Level)
-	}
-	if effective.Database.DataSource != environment["PROCTOR_DATABASE_DATA_SOURCE"] {
-		t.Fatalf("effective database data source = %q", effective.Database.DataSource)
-	}
-	if effective.Cluster.NodeID != environment["PROCTOR_CLUSTER_NODE_ID"] {
-		t.Fatalf("effective cluster node ID = %q", effective.Cluster.NodeID)
-	}
-	if effective.Cache.Redis.Password != environment["PROCTOR_CACHE_REDIS_PASSWORD"] ||
-		effective.Mail.SMTP.Password != environment["PROCTOR_MAIL_SMTP_PASSWORD"] ||
-		effective.VFS.S3.SecretKey != environment["PROCTOR_VFS_S3_SECRET_KEY"] {
-		t.Fatal("effective configuration did not apply infrastructure secrets")
-	}
-	if effective.Authentication.RecentAuthenticationTTL.Duration != 10*time.Minute ||
-		effective.Authentication.AccountRecovery.PasswordResetTTL.Duration !=
-			30*time.Minute {
-		t.Fatal("effective configuration did not apply authentication durations")
-	}
-	if !effective.Authentication.MFA.Enabled ||
-		effective.Authentication.MFA.EncryptionKey !=
-			environment["PROCTOR_AUTHENTICATION_MFA_ENCRYPTION_KEY"] ||
-		len(effective.Authentication.MFA.DecryptionKeys) != 1 ||
-		effective.Authentication.MFA.SetupTTL.Duration != 15*time.Minute ||
-		effective.Authentication.MFA.RecoveryCodeCount != 12 {
-		t.Fatal("effective configuration did not apply MFA settings")
-	}
+	require.Equal(t, "127.0.0.1:9000", effective.Server.ListenAddress)
+	require.Equal(t, "debug", effective.Log.Targets[0].Level)
+	require.Equal(t, environment["PROCTOR_DATABASE_DATA_SOURCE"], effective.Database.DataSource)
+	require.Equal(t, environment["PROCTOR_CLUSTER_NODE_ID"], effective.Cluster.NodeID)
+	require.Equal(t, environment["PROCTOR_CACHE_REDIS_PASSWORD"], effective.Cache.Redis.Password, "effective configuration did not apply infrastructure secrets")
+	require.Equal(t, environment["PROCTOR_MAIL_SMTP_PASSWORD"], effective.Mail.SMTP.Password, "effective configuration did not apply infrastructure secrets")
+	require.Equal(t, environment["PROCTOR_VFS_S3_SECRET_KEY"], effective.VFS.S3.SecretKey, "effective configuration did not apply infrastructure secrets")
+	require.Equal(t, 10*time.Minute, effective.Authentication.RecentAuthenticationTTL.Duration, "effective configuration did not apply authentication durations")
+	require.Equal(t, 30*time.Minute, effective.Authentication.AccountRecovery.PasswordResetTTL.Duration, "effective configuration did not apply authentication durations")
+	require.True(t, effective.Authentication.MFA.Enabled, "effective configuration did not apply MFA settings")
+	require.Equal(t, environment["PROCTOR_AUTHENTICATION_MFA_ENCRYPTION_KEY"], effective.Authentication.MFA.EncryptionKey, "effective configuration did not apply MFA settings")
+	require.Len(t, effective.Authentication.MFA.DecryptionKeys, 1, "effective configuration did not apply MFA settings")
+	require.Equal(t, 15*time.Minute, effective.Authentication.MFA.SetupTTL.Duration, "effective configuration did not apply MFA settings")
+	require.Equal(t, 12, effective.Authentication.MFA.RecoveryCodeCount, "effective configuration did not apply MFA settings")
 	effective.Authentication.Bootstrap.DevelopmentMode = false
 	effective.Server.PublicURL = "https://proctor.example.edu"
-	if _, _, err := store.Set(context.Background(), effective); err != nil {
-		t.Fatal(err)
-	}
+	_, _, err = store.Set(context.Background(), effective)
+	require.NoError(t, err)
 
 	persisted := store.GetPersisted()
-	if persisted.Server.ListenAddress != "127.0.0.1:8000" {
-		t.Fatalf("environment value was persisted: %q", persisted.Server.ListenAddress)
-	}
-	if persisted.Log.Targets[0].Level != "info" {
-		t.Fatalf("environment log level was persisted: %q", persisted.Log.Targets[0].Level)
-	}
-	if persisted.Database.DataSource != initial.Database.DataSource {
-		t.Fatalf("environment database data source was persisted: %q", persisted.Database.DataSource)
-	}
-	if persisted.Cluster.NodeID != initial.Cluster.NodeID {
-		t.Fatalf("environment cluster node ID was persisted: %q", persisted.Cluster.NodeID)
-	}
-	if persisted.Cache.Redis.Password != "" ||
-		persisted.Mail.SMTP.Password != "" ||
-		persisted.VFS.S3.SecretKey != "" {
-		t.Fatal("environment infrastructure secrets were persisted")
-	}
-	if persisted.Authentication.RecentAuthenticationTTL !=
-		initial.Authentication.RecentAuthenticationTTL ||
-		persisted.Authentication.AccountRecovery.PasswordResetTTL !=
-			initial.Authentication.AccountRecovery.PasswordResetTTL {
-		t.Fatal("environment authentication durations were persisted")
-	}
-	if persisted.Authentication.MFA.Enabled ||
-		persisted.Authentication.MFA.EncryptionKey != "" ||
-		len(persisted.Authentication.MFA.DecryptionKeys) != 0 {
-		t.Fatal("environment MFA settings were persisted")
-	}
-	if persisted.Server.PublicURL != "https://proctor.example.edu" {
-		t.Fatalf("non-overridden change was lost: %q", persisted.Server.PublicURL)
-	}
+	require.Equal(t, "127.0.0.1:8000", persisted.Server.ListenAddress)
+	require.Equal(t, "info", persisted.Log.Targets[0].Level)
+	require.Equal(t, initial.Database.DataSource, persisted.Database.DataSource)
+	require.Equal(t, initial.Cluster.NodeID, persisted.Cluster.NodeID)
+	require.Empty(t, persisted.Cache.Redis.Password, "environment infrastructure secrets were persisted")
+	require.Empty(t, persisted.Mail.SMTP.Password, "environment infrastructure secrets were persisted")
+	require.Empty(t, persisted.VFS.S3.SecretKey, "environment infrastructure secrets were persisted")
+	require.Equal(t, initial.Authentication.RecentAuthenticationTTL, persisted.Authentication.RecentAuthenticationTTL, "environment authentication durations were persisted")
+	require.Equal(t, initial.Authentication.AccountRecovery.PasswordResetTTL, persisted.Authentication.AccountRecovery.PasswordResetTTL, "environment authentication durations were persisted")
+	require.False(t, persisted.Authentication.MFA.Enabled, "environment MFA settings were persisted")
+	require.Empty(t, persisted.Authentication.MFA.EncryptionKey, "environment MFA settings were persisted")
+	require.Empty(t, persisted.Authentication.MFA.DecryptionKeys, "environment MFA settings were persisted")
+	require.Equal(t, "https://proctor.example.edu", persisted.Server.PublicURL)
 }
 
 func TestPersonalAccessTokenEnvironmentOverridesAreNeverPersisted(t *testing.T) {
@@ -204,9 +146,7 @@ func TestPersonalAccessTokenEnvironmentOverridesAreNeverPersisted(t *testing.T) 
 
 	initial := Default()
 	data, err := json.Marshal(initial)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	environment := map[string]string{
 		"PROCTOR_AUTHENTICATION_PERSONAL_ACCESS_TOKENS_MINIMUM_LIFETIME":          "2h",
 		"PROCTOR_AUTHENTICATION_PERSONAL_ACCESS_TOKENS_MAXIMUM_LIFETIME":          "4320h",
@@ -221,41 +161,22 @@ func TestPersonalAccessTokenEnvironmentOverridesAreNeverPersisted(t *testing.T) 
 			return value, ok
 		}},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 
 	effective := store.Get()
-	if effective.Authentication.PersonalAccessTokens.MinimumLifetime.Duration != 2*time.Hour ||
-		effective.Authentication.PersonalAccessTokens.MaximumLifetime.Duration != 180*24*time.Hour ||
-		effective.Authentication.PersonalAccessTokens.LastUsedUpdateInterval.Duration != 10*time.Minute ||
-		effective.Authentication.PersonalAccessTokens.MaximumPerUser != 75 {
-		t.Fatalf(
-			"effective personal access token settings = %#v",
-			effective.Authentication.PersonalAccessTokens,
-		)
-	}
+	require.Equal(t, 2*time.Hour, effective.Authentication.PersonalAccessTokens.MinimumLifetime.Duration)
+	require.Equal(t, 180*24*time.Hour, effective.Authentication.PersonalAccessTokens.MaximumLifetime.Duration)
+	require.Equal(t, 10*time.Minute, effective.Authentication.PersonalAccessTokens.LastUsedUpdateInterval.Duration)
+	require.Equal(t, 75, effective.Authentication.PersonalAccessTokens.MaximumPerUser)
 	effective.Authentication.Bootstrap.DevelopmentMode = false
 	effective.Server.PublicURL = "https://proctor.example.edu"
-	if _, _, err := store.Set(context.Background(), effective); err != nil {
-		t.Fatal(err)
-	}
+	_, _, err = store.Set(context.Background(), effective)
+	require.NoError(t, err)
 
 	persisted := store.GetPersisted()
-	if !reflect.DeepEqual(
-		persisted.Authentication.PersonalAccessTokens,
-		initial.Authentication.PersonalAccessTokens,
-	) {
-		t.Fatalf(
-			"persisted personal access token settings = %#v, want %#v",
-			persisted.Authentication.PersonalAccessTokens,
-			initial.Authentication.PersonalAccessTokens,
-		)
-	}
-	if persisted.Server.PublicURL != "https://proctor.example.edu" {
-		t.Fatalf("non-overridden public URL = %q", persisted.Server.PublicURL)
-	}
+	require.Equal(t, initial.Authentication.PersonalAccessTokens, persisted.Authentication.PersonalAccessTokens, "persisted personal access token settings")
+	require.Equal(t, "https://proctor.example.edu", persisted.Server.PublicURL)
 }
 
 func TestStoreReevaluatesEnvironmentAfterProtectingPriorOverrides(t *testing.T) {
@@ -265,9 +186,7 @@ func TestStoreReevaluatesEnvironmentAfterProtectingPriorOverrides(t *testing.T) 
 	initial.Authentication.Bootstrap.DevelopmentMode = false
 	initial.Server.ListenAddress = "127.0.0.1:8000"
 	data, err := json.Marshal(initial)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	environment := map[string]string{
 		"PROCTOR_SERVER_LISTEN_ADDRESS": "127.0.0.1:9000",
 		"PROCTOR_SERVER_READ_TIMEOUT":   "40s",
@@ -280,9 +199,7 @@ func TestStoreReevaluatesEnvironmentAfterProtectingPriorOverrides(t *testing.T) 
 			return value, ok
 		}},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 
 	candidate := store.Get()
@@ -290,44 +207,26 @@ func TestStoreReevaluatesEnvironmentAfterProtectingPriorOverrides(t *testing.T) 
 	delete(environment, "PROCTOR_SERVER_LISTEN_ADDRESS")
 	environment["PROCTOR_SERVER_READ_TIMEOUT"] = "50s"
 	environment["PROCTOR_SERVER_PUBLIC_URL"] = "https://environment.example.edu"
-	if _, _, err := store.Set(context.Background(), candidate); err != nil {
-		t.Fatal(err)
-	}
+	_, _, err = store.Set(context.Background(), candidate)
+	require.NoError(t, err)
 
 	persisted := store.GetPersisted()
-	if persisted.Server.ListenAddress != initial.Server.ListenAddress {
-		t.Fatalf("persisted listen address = %q", persisted.Server.ListenAddress)
-	}
-	if persisted.Server.PublicURL != initial.Server.PublicURL {
-		t.Fatalf("persisted public URL = %q", persisted.Server.PublicURL)
-	}
-	if persisted.Server.ReadTimeout != initial.Server.ReadTimeout {
-		t.Fatalf("persisted read timeout = %s", persisted.Server.ReadTimeout.Duration)
-	}
-	if persisted.Server.WriteTimeout.Duration != 45*time.Second {
-		t.Fatalf("persisted write timeout = %s", persisted.Server.WriteTimeout.Duration)
-	}
+	require.Equal(t, initial.Server.ListenAddress, persisted.Server.ListenAddress)
+	require.Equal(t, initial.Server.PublicURL, persisted.Server.PublicURL)
+	require.Equal(t, initial.Server.ReadTimeout, persisted.Server.ReadTimeout, "persisted read timeout = %s", persisted.Server.ReadTimeout.Duration)
+	require.Equal(t, 45*time.Second, persisted.Server.WriteTimeout.Duration)
 	effective := store.Get()
-	if effective.Server.ListenAddress != initial.Server.ListenAddress ||
-		effective.Server.PublicURL != environment["PROCTOR_SERVER_PUBLIC_URL"] ||
-		effective.Server.ReadTimeout.Duration != 50*time.Second {
-		t.Fatalf("effective server configuration = %#v", effective.Server)
-	}
+	require.Equal(t, initial.Server.ListenAddress, effective.Server.ListenAddress)
+	require.Equal(t, environment["PROCTOR_SERVER_PUBLIC_URL"], effective.Server.PublicURL)
+	require.Equal(t, 50*time.Second, effective.Server.ReadTimeout.Duration)
 	overrides := store.EnvironmentOverrides()
 	wantOverrides := []string{
 		"PROCTOR_SERVER_PUBLIC_URL",
 		"PROCTOR_SERVER_READ_TIMEOUT",
 	}
-	if !reflect.DeepEqual(overrides, wantOverrides) {
-		t.Fatalf("environment overrides = %v", overrides)
-	}
+	require.Equal(t, wantOverrides, overrides)
 	overrides[0] = "mutated"
-	if !reflect.DeepEqual(
-		store.EnvironmentOverrides(),
-		wantOverrides,
-	) {
-		t.Fatal("EnvironmentOverrides exposed mutable store state")
-	}
+	require.Equal(t, wantOverrides, store.EnvironmentOverrides(), "EnvironmentOverrides exposed mutable store state")
 }
 
 func TestSetFailuresDoNotPublishPartialState(t *testing.T) {
@@ -361,9 +260,7 @@ func TestSetFailuresDoNotPublishPartialState(t *testing.T) {
 
 			environment := map[string]string{}
 			initialData, err := json.Marshal(Default())
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			memory := NewMemoryStore(initialData)
 			var backing BackingStore = memory
 			if test.failSave {
@@ -377,9 +274,7 @@ func TestSetFailuresDoNotPublishPartialState(t *testing.T) {
 					return value, ok
 				}},
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			t.Cleanup(func() { _ = store.Close() })
 			for key, value := range test.environment {
 				environment[key] = value
@@ -394,26 +289,15 @@ func TestSetFailuresDoNotPublishPartialState(t *testing.T) {
 			if test.candidate != nil {
 				test.candidate(&candidate)
 			}
-			if _, _, err := store.Set(context.Background(), candidate); err == nil {
-				t.Fatal("Set succeeded")
-			}
+			_, _, err = store.Set(context.Background(), candidate)
+			require.Error(t, err, "Set succeeded")
 
-			if !reflect.DeepEqual(store.GetPersisted(), beforePersisted) {
-				t.Fatal("failed Set changed persisted configuration")
-			}
-			if !reflect.DeepEqual(store.Get(), beforeEffective) {
-				t.Fatal("failed Set changed effective configuration")
-			}
-			if notifications.Load() != 0 {
-				t.Fatalf("failed Set sent %d listener notifications", notifications.Load())
-			}
+			require.Equal(t, beforePersisted, store.GetPersisted(), "failed Set changed persisted configuration")
+			require.Equal(t, beforeEffective, store.Get(), "failed Set changed effective configuration")
+			require.Equal(t, int32(0), notifications.Load(), "failed Set sent")
 			data, err := memory.Load(context.Background())
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(data, initialData) {
-				t.Fatal("failed Set changed backing configuration")
-			}
+			require.NoError(t, err)
+			require.True(t, reflect.DeepEqual(data, initialData), "failed Set changed backing configuration")
 		})
 	}
 	// Config is a closed concrete JSON shape whose marshalers have no
@@ -425,9 +309,7 @@ func TestInvalidEnvironmentDuringSetDoesNotPublishPartialState(t *testing.T) {
 
 	environment := map[string]string{}
 	initialData, err := json.Marshal(Default())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	backing := NewMemoryStore(initialData)
 	store, err := NewStore(
 		context.Background(),
@@ -437,9 +319,7 @@ func TestInvalidEnvironmentDuringSetDoesNotPublishPartialState(t *testing.T) {
 			return value, ok
 		}},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 
 	beforePersisted := store.GetPersisted()
@@ -451,30 +331,17 @@ func TestInvalidEnvironmentDuringSetDoesNotPublishPartialState(t *testing.T) {
 	environment["PROCTOR_SERVER_MAX_HEADER_BYTES"] = "invalid"
 	candidate := store.Get()
 	candidate.Server.PublicURL = "https://should-not-persist.example.edu"
-	if _, _, err := store.Set(context.Background(), candidate); err == nil {
-		t.Fatal("Set accepted an invalid environment value")
-	}
+	_, _, err = store.Set(context.Background(), candidate)
+	require.Error(t, err, "Set accepted an invalid environment value")
 
-	if !reflect.DeepEqual(store.GetPersisted(), beforePersisted) {
-		t.Fatal("failed Set changed persisted configuration")
-	}
-	if !reflect.DeepEqual(store.Get(), beforeEffective) {
-		t.Fatal("failed Set changed effective configuration")
-	}
-	if notifications.Load() != 0 {
-		t.Fatalf("failed Set sent %d listener notifications", notifications.Load())
-	}
+	require.Equal(t, beforePersisted, store.GetPersisted(), "failed Set changed persisted configuration")
+	require.Equal(t, beforeEffective, store.Get(), "failed Set changed effective configuration")
+	require.Equal(t, int32(0), notifications.Load(), "failed Set sent")
 	data, err := backing.Load(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var saved Config
-	if err := json.Unmarshal(data, &saved); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(saved, beforePersisted) {
-		t.Fatal("failed Set changed backing configuration")
-	}
+	require.NoError(t, json.Unmarshal(data, &saved))
+	require.Equal(t, beforePersisted, saved, "failed Set changed backing configuration")
 }
 
 func TestRedactedConfigurationHidesInfrastructureCredentials(t *testing.T) {
@@ -496,9 +363,7 @@ func TestRedactedConfigurationHidesInfrastructureCredentials(t *testing.T) {
 	cfg.Authentication.MFA.DecryptionKeys = []string{base64.StdEncoding.
 		EncodeToString([]byte("abcdefghijklmnopqrstuvwxyzABCDEF"))}
 	data, err := cfg.RedactedJSON()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, forbidden := range []string{
 		"cache-secret",
 		"metrics-secret-must-be-at-least-32-bytes",
@@ -512,13 +377,9 @@ func TestRedactedConfigurationHidesInfrastructureCredentials(t *testing.T) {
 		cfg.Authentication.MFA.EncryptionKey,
 		cfg.Authentication.MFA.DecryptionKeys[0],
 	} {
-		if strings.Contains(string(data), forbidden) {
-			t.Fatalf("redacted configuration exposed %q: %s", forbidden, data)
-		}
+		require.NotContains(t, string(data), forbidden, "redacted configuration exposed")
 	}
-	if cfg.Database.DataSource == "[redacted]" {
-		t.Fatal("Redacted mutated the original configuration")
-	}
+	require.NotEqual(t, "[redacted]", cfg.Database.DataSource, "Redacted mutated the original configuration")
 }
 
 func TestInfrastructureAndAuthenticationValidationIsAggregated(t *testing.T) {
@@ -546,12 +407,8 @@ func TestInfrastructureAndAuthenticationValidationIsAggregated(t *testing.T) {
 
 	err := cfg.Validate()
 	var validationError *ValidationError
-	if !errors.As(err, &validationError) {
-		t.Fatalf("Validate() error = %v, want ValidationError", err)
-	}
-	if len(validationError.Fields) < 10 {
-		t.Fatalf("Validate() fields = %#v, want aggregate infrastructure failures", validationError.Fields)
-	}
+	require.ErrorAs(t, err, &validationError, "Validate() error")
+	require.GreaterOrEqual(t, len(validationError.Fields), 10, "Validate() fields")
 }
 
 func TestDatabaseRequiresTwoConnectionsForLockedMigrations(t *testing.T) {
@@ -562,15 +419,13 @@ func TestDatabaseRequiresTwoConnectionsForLockedMigrations(t *testing.T) {
 	cfg.Database.MaxIdleConnections = 1
 	err := cfg.Validate()
 	var validationError *ValidationError
-	if !errors.As(err, &validationError) {
-		t.Fatalf("Validate() error = %v, want ValidationError", err)
-	}
+	require.ErrorAs(t, err, &validationError, "Validate() error")
 	for _, field := range validationError.Fields {
 		if field.Field == "database.max_open_connections" {
 			return
 		}
 	}
-	t.Fatalf("Validate() fields = %#v, want database connection minimum", validationError.Fields)
+	require.FailNow(t, fmt.Sprintf("Validate() fields = %#v, want database connection minimum", validationError.Fields))
 }
 
 func TestMemberlistClusterRequiresRedisAndSharedVFS(t *testing.T) {
@@ -581,19 +436,13 @@ func TestMemberlistClusterRequiresRedisAndSharedVFS(t *testing.T) {
 	cfg.Cluster.Memberlist.EncryptionKey = base64.StdEncoding.EncodeToString(make([]byte, 32))
 	err := cfg.Validate()
 	var validationError *ValidationError
-	if !errors.As(err, &validationError) {
-		t.Fatalf("Validate() error = %v, want ValidationError", err)
-	}
+	require.ErrorAs(t, err, &validationError, "Validate() error")
 	fields := make(map[string]string, len(validationError.Fields))
 	for _, field := range validationError.Fields {
 		fields[field.Field] = field.Message
 	}
-	if fields["cache.backend"] == "" {
-		t.Fatalf("cluster cache field = %#v, want Redis requirement", validationError.Fields)
-	}
-	if fields["vfs.backend"] == "" {
-		t.Fatalf("cluster shared-infrastructure fields = %#v", validationError.Fields)
-	}
+	require.NotEmpty(t, fields["cache.backend"], "cluster cache field = %#v, want Redis requirement", validationError.Fields)
+	require.NotEmpty(t, fields["vfs.backend"], "cluster shared-infrastructure fields = %#v", validationError.Fields)
 }
 
 func TestRedisClusterBackendIsRejected(t *testing.T) {
@@ -603,9 +452,7 @@ func TestRedisClusterBackendIsRejected(t *testing.T) {
 	cfg.Cluster.Backend = "redis"
 	err := cfg.Validate()
 	var validationError *ValidationError
-	if !errors.As(err, &validationError) {
-		t.Fatalf("Validate() error = %v, want ValidationError", err)
-	}
+	require.ErrorAs(t, err, &validationError, "Validate() error")
 	found := false
 	for _, field := range validationError.Fields {
 		if field.Field == "cluster.backend" {
@@ -613,9 +460,7 @@ func TestRedisClusterBackendIsRejected(t *testing.T) {
 			break
 		}
 	}
-	if !found {
-		t.Fatalf("Validate() fields = %#v, want cluster.backend rejection", validationError.Fields)
-	}
+	require.True(t, found, "Validate() fields = %#v, want cluster.backend rejection", validationError.Fields)
 }
 
 func TestReloadPublishesExternalBackingChanges(t *testing.T) {
@@ -623,9 +468,7 @@ func TestReloadPublishesExternalBackingChanges(t *testing.T) {
 
 	backing := NewMemoryStore(nil)
 	store, err := NewStore(context.Background(), backing, StoreOptions{LookupEnv: noEnvironment})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 
 	changed := make(chan Config, 1)
@@ -635,23 +478,15 @@ func TestReloadPublishesExternalBackingChanges(t *testing.T) {
 	external := Default()
 	external.Server.ReadTimeout.Duration = 45 * time.Second
 	data, err := json.Marshal(external)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := backing.Save(context.Background(), data); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Reload(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, backing.Save(context.Background(), data))
+	require.NoError(t, store.Reload(context.Background()))
 
 	select {
 	case current := <-changed:
-		if current.Server.ReadTimeout.Duration != 45*time.Second {
-			t.Fatalf("listener timeout = %s", current.Server.ReadTimeout.Duration)
-		}
+		require.Equal(t, 45*time.Second, current.Server.ReadTimeout.Duration)
 	case <-time.After(time.Second):
-		t.Fatal("reload listener was not called")
+		require.FailNow(t, "reload listener was not called")
 	}
 }
 
@@ -659,9 +494,7 @@ func TestListenerCanSafelyPerformAnotherConfigurationChange(t *testing.T) {
 	t.Parallel()
 
 	store, err := NewStore(context.Background(), NewMemoryStore(nil), StoreOptions{LookupEnv: noEnvironment})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 
 	var nested atomic.Bool
@@ -671,9 +504,8 @@ func TestListenerCanSafelyPerformAnotherConfigurationChange(t *testing.T) {
 		}
 		current.Authentication.Bootstrap.DevelopmentMode = false
 		current.Server.PublicURL = "https://nested.example.edu"
-		if _, _, err := store.Set(context.Background(), current); err != nil {
-			t.Errorf("nested Set() error = %v", err)
-		}
+		_, _, err := store.Set(context.Background(), current)
+		assert.NoError(t, err)
 	})
 
 	done := make(chan error, 1)
@@ -685,15 +517,11 @@ func TestListenerCanSafelyPerformAnotherConfigurationChange(t *testing.T) {
 	}()
 	select {
 	case err := <-done:
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 	case <-time.After(time.Second):
-		t.Fatal("listener-triggered Set deadlocked")
+		require.FailNow(t, "listener-triggered Set deadlocked")
 	}
-	if store.Get().Server.PublicURL != "https://nested.example.edu" {
-		t.Fatal("nested configuration change was not applied")
-	}
+	require.Equal(t, "https://nested.example.edu", store.Get().Server.PublicURL, "nested configuration change was not applied")
 }
 
 func TestStoreRejectsUnknownAndInvalidConfiguration(t *testing.T) {
@@ -704,23 +532,19 @@ func TestStoreRejectsUnknownAndInvalidConfiguration(t *testing.T) {
 		NewMemoryStore([]byte(`{"Version":1,"mystery":true}`)),
 		StoreOptions{LookupEnv: noEnvironment},
 	)
-	if err == nil || !strings.Contains(err.Error(), `unknown field "mystery"`) {
-		t.Fatalf("NewStore() error = %v", err)
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `unknown field "mystery"`)
 
 	store, err := NewStore(context.Background(), NewMemoryStore(nil), StoreOptions{LookupEnv: noEnvironment})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 	invalid := store.Get()
 	invalid.Server.ReadTimeout.Duration = 0
 	invalid.Log.Targets[0].Format = "xml"
 	_, _, err = store.Set(context.Background(), invalid)
 	var validationError *ValidationError
-	if !errors.As(err, &validationError) || len(validationError.Fields) != 2 {
-		t.Fatalf("Set() error = %v, want two validation fields", err)
-	}
+	require.ErrorAs(t, err, &validationError, "Set() error")
+	require.Len(t, validationError.Fields, 2, "Set() error")
 }
 
 func TestDiffReportsStableConfigurationPaths(t *testing.T) {
@@ -733,9 +557,7 @@ func TestDiffReportsStableConfigurationPaths(t *testing.T) {
 
 	changes := Diff(old, current)
 	want := []Change{{Path: "Log.Targets"}, {Path: "Server.PublicURL"}}
-	if !reflect.DeepEqual(changes, want) {
-		t.Fatalf("Diff() = %#v, want %#v", changes, want)
-	}
+	require.Equal(t, want, changes, "Diff()")
 }
 
 func noEnvironment(string) (string, bool) {

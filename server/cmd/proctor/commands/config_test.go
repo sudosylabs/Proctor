@@ -11,8 +11,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestConfigValidateUsesTheServerFacade(t *testing.T) {
@@ -32,17 +33,14 @@ func TestConfigValidateUsesTheServerFacade(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			path := filepath.Join(t.TempDir(), "config.json")
-			if err := os.WriteFile(path, []byte(tt.contents), 0o600); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, os.WriteFile(path, []byte(tt.contents), 0o600))
 			code, stdout, stderr := executeForTest(
 				context.Background(), []string{"config", "validate", "--config", path}, nil, productionExecutors(),
 			)
-			if code != tt.wantCode || stdout != tt.wantOutput {
-				t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
-			}
-			if tt.wantFailure != "" && !strings.Contains(stderr, tt.wantFailure) {
-				t.Fatalf("stderr = %q, want %q", stderr, tt.wantFailure)
+			require.Equal(t, tt.wantCode, code, "code=%d stdout=%q stderr=%q", code, stdout, stderr)
+			require.Equal(t, tt.wantOutput, stdout, "code=%d stdout=%q stderr=%q", code, stdout, stderr)
+			if tt.wantFailure != "" {
+				require.Contains(t, stderr, tt.wantFailure, "stderr")
 			}
 		})
 	}
@@ -55,7 +53,7 @@ func TestConfigValidateRejectsMissingFileAsOperationalFailure(t *testing.T) {
 	code, stdout, stderr := executeForTest(
 		context.Background(), []string{"config", "validate", "--config", missing}, nil, productionExecutors(),
 	)
-	if code != 1 || stdout != "" || !strings.Contains(stderr, "read configuration") {
-		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
-	}
+	require.Equal(t, 1, code, "code")
+	require.Empty(t, stdout, "code")
+	require.Contains(t, stderr, "read configuration", "code")
 }

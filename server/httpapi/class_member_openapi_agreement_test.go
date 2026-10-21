@@ -12,6 +12,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -52,9 +54,7 @@ func TestClassMemberOpenAPIAgreesWithRuntime(t *testing.T) {
 		},
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, classMemberResource(&classMemberHTTPApplication{})); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtimeAPI.collectResources(model.APIURLSuffix, classMemberResource(&classMemberHTTPApplication{})))
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 
 	// Enrollment responses retain both the new membership and an optional
@@ -67,22 +67,18 @@ func TestClassMemberOpenAPIAgreesWithRuntime(t *testing.T) {
 			In   string `json:"in"`
 		} `json:"parameters"`
 	}
-	if err := json.Unmarshal(document.Paths["/api/v1/classes/{class_id}/members"]["get"], &listOperation); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(document.Paths["/api/v1/classes/{class_id}/members"]["get"], &listOperation))
 	queryParameters := map[string]bool{}
 	for _, parameter := range listOperation.Parameters {
 		if parameter.In == "query" {
 			queryParameters[parameter.Name] = true
 		}
 	}
-	if !queryParameters["active_at"] || !queryParameters["history"] {
-		t.Fatalf("list query parameters = %#v, want active_at and history", queryParameters)
-	}
+	require.True(t, queryParameters["active_at"], "list query parameters = %#v, want active_at and history", queryParameters)
+	require.True(t, queryParameters["history"], "list query parameters = %#v, want active_at and history", queryParameters)
 
 	// This v1 relationship collection remains a legacy bare array.
 	list := document.Components.Schemas["ClassMemberListResponse"]
-	if list.Type != "array" || list.Items.Ref != "#/components/schemas/ClassMemberResponse" {
-		t.Fatalf("ClassMemberListResponse = %#v", list)
-	}
+	require.Equal(t, "array", list.Type)
+	require.Equal(t, "#/components/schemas/ClassMemberResponse", list.Items.Ref)
 }

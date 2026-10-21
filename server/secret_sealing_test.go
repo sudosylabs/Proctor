@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/secretseal"
 )
@@ -20,14 +22,13 @@ func TestMailSecretSealingProjectionIsOptionalAndCopiesTheKeyRing(t *testing.T) 
 	t.Parallel()
 
 	settings, configured := mailSecretSealingSettings(config.Default().Mail)
-	if configured || settings.EncryptionKey != "" || len(settings.DecryptionKeys) != 0 ||
-		settings.MaximumPlaintext != 0 {
-		t.Fatalf("disabled default projection = %#v, %t", settings, configured)
-	}
+	require.False(t, configured, "disabled default projection = %#v", settings)
+	require.Empty(t, settings.EncryptionKey, "disabled default projection = %#v", settings)
+	require.Empty(t, settings.DecryptionKeys, "disabled default projection = %#v", settings)
+	require.Equal(t, 0, settings.MaximumPlaintext, "disabled default projection = %#v", settings)
 	sealer, err := newMailSecretSealer(config.Default().Mail)
-	if err != nil || sealer != nil {
-		t.Fatalf("newMailSecretSealer(disabled default) = %v, %v", sealer, err)
-	}
+	require.NoError(t, err, "newMailSecretSealer(disabled default)")
+	require.Nil(t, sealer, "newMailSecretSealer(disabled default)")
 
 	mailConfig := config.Default().Mail
 	mailConfig.SecretSealing.EncryptionKey = base64.StdEncoding.EncodeToString(
@@ -37,70 +38,52 @@ func TestMailSecretSealingProjectionIsOptionalAndCopiesTheKeyRing(t *testing.T) 
 		[]byte(strings.Repeat("f", 32)),
 	)}
 	settings, configured = mailSecretSealingSettings(mailConfig)
-	if !configured || settings.MaximumPlaintext != secretseal.MaximumPlaintextBytes {
-		t.Fatalf("configured projection = %#v, %t", settings, configured)
-	}
+	require.True(t, configured, "configured projection = %#v", settings)
+	require.Equal(t, secretseal.MaximumPlaintextBytes, settings.MaximumPlaintext, "configured projection = %#v", settings)
 	mailConfig.SecretSealing.DecryptionKeys[0] = "mutated"
-	if settings.DecryptionKeys[0] == "mutated" {
-		t.Fatal("mail key-ring projection retained the configuration slice")
-	}
+	require.NotEqual(t, "mutated", settings.DecryptionKeys[0], "mail key-ring projection retained the configuration slice")
 	mailConfig.SecretSealing.DecryptionKeys[0] = settings.DecryptionKeys[0]
 	sealer, err = newMailSecretSealer(mailConfig)
-	if err != nil {
-		t.Fatalf("newMailSecretSealer(configured) = %v", err)
-	}
+	require.NoError(t, err)
 	binding := secretseal.Binding{Purpose: "mail.delivery", Owner: "delivery-projection"}
 	envelope, err := sealer.Seal(binding, []byte("projected secret"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	opened, err := sealer.Open(binding, envelope)
-	if err != nil || string(opened) != "projected secret" {
-		t.Fatalf("Open(projected envelope) = %q, %v", opened, err)
-	}
+	require.NoError(t, err, "Open(projected envelope)")
+	require.Equal(t, "projected secret", string(opened), "Open(projected envelope)")
 	mailConfig.SecretSealing.EncryptionKey = "credential-that-must-not-leak"
-	if _, err := newMailSecretSealer(mailConfig); err == nil ||
-		strings.Contains(err.Error(), mailConfig.SecretSealing.EncryptionKey) {
-		t.Fatalf("newMailSecretSealer(invalid) error = %v", err)
-	}
+	_, err = newMailSecretSealer(mailConfig)
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), mailConfig.SecretSealing.EncryptionKey)
 }
 
 func TestMFASecretSealingProjectionIsIndependentAndBounded(t *testing.T) {
 	t.Parallel()
 
 	settings, configured := mfaSecretSealingSettings(config.Default().Authentication.MFA)
-	if configured || settings.EncryptionKey != "" || len(settings.DecryptionKeys) != 0 ||
-		settings.MaximumPlaintext != 0 {
-		t.Fatalf("disabled default projection = %#v, %t", settings, configured)
-	}
+	require.False(t, configured, "disabled default projection = %#v", settings)
+	require.Empty(t, settings.EncryptionKey, "disabled default projection = %#v", settings)
+	require.Empty(t, settings.DecryptionKeys, "disabled default projection = %#v", settings)
+	require.Equal(t, 0, settings.MaximumPlaintext, "disabled default projection = %#v", settings)
 	sealer, err := newMFASecretSealer(config.Default().Authentication.MFA)
-	if err != nil || sealer != nil {
-		t.Fatalf("newMFASecretSealer(disabled default) = %v, %v", sealer, err)
-	}
+	require.NoError(t, err, "newMFASecretSealer(disabled default)")
+	require.Nil(t, sealer, "newMFASecretSealer(disabled default)")
 
 	mfaConfig := config.Default().Authentication.MFA
 	mfaConfig.EncryptionKey = base64.StdEncoding.EncodeToString([]byte(strings.Repeat("m", 32)))
 	mfaConfig.DecryptionKeys = []string{base64.StdEncoding.EncodeToString([]byte(strings.Repeat("f", 32)))}
 	settings, configured = mfaSecretSealingSettings(mfaConfig)
-	if !configured || settings.MaximumPlaintext != mfaSecretMaximumPlaintextBytes {
-		t.Fatalf("configured projection = %#v, %t", settings, configured)
-	}
+	require.True(t, configured, "configured projection = %#v", settings)
+	require.Equal(t, mfaSecretMaximumPlaintextBytes, settings.MaximumPlaintext, "configured projection = %#v", settings)
 	mfaConfig.DecryptionKeys[0] = "mutated"
-	if settings.DecryptionKeys[0] == "mutated" {
-		t.Fatal("MFA key-ring projection retained the configuration slice")
-	}
+	require.NotEqual(t, "mutated", settings.DecryptionKeys[0], "MFA key-ring projection retained the configuration slice")
 	mfaConfig.DecryptionKeys[0] = settings.DecryptionKeys[0]
 	sealer, err = newMFASecretSealer(mfaConfig)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	binding := secretseal.Binding{Purpose: "mfa.totp", Owner: "user-projection"}
 	envelope, err := sealer.Seal(binding, []byte("TOTPSECRET"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	opened, err := sealer.Open(binding, envelope)
-	if err != nil || string(opened) != "TOTPSECRET" {
-		t.Fatalf("Open(projected MFA envelope) = %q, %v", opened, err)
-	}
+	require.NoError(t, err, "Open(projected MFA envelope)")
+	require.Equal(t, "TOTPSECRET", string(opened), "Open(projected MFA envelope)")
 }

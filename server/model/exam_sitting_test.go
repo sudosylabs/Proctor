@@ -10,6 +10,8 @@ package model
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewExamSittingCreatesScheduledHalfOpenDelivery(t *testing.T) {
@@ -19,91 +21,82 @@ func TestNewExamSittingCreatesScheduledHalfOpenDelivery(t *testing.T) {
 	endAt := startAt.Add(2 * time.Hour)
 
 	sitting, err := NewExamSitting(NewExamSittingID(), NewExamID(), NewExamRevisionID(), NewClassID(), startAt, endAt, createdAt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sitting.State != ExamSittingScheduled || sitting.Revision != 1 {
-		t.Fatalf("new Sitting state/revision = %q/%d", sitting.State, sitting.Revision)
-	}
-	if sitting.ScheduledStartAt.Location() != time.UTC || sitting.ScheduledEndAt.Location() != time.UTC || sitting.CreatedAt.Location() != time.UTC {
-		t.Fatalf("new Sitting times = %#v", sitting)
-	}
-	if sitting.CreatedAt != sitting.UpdatedAt || sitting.CanceledAt.Valid || sitting.ReasonCode != "" {
-		t.Fatalf("new Sitting lifecycle = %#v", sitting)
-	}
-	if err = sitting.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, ExamSittingScheduled, sitting.State, "new Sitting state/revision")
+	require.Equal(t, int64(1), sitting.Revision, "new Sitting state/revision")
+	require.Same(t, time.UTC, sitting.ScheduledStartAt.Location())
+	require.Same(t, time.UTC, sitting.ScheduledEndAt.Location())
+	require.Same(t, time.UTC, sitting.CreatedAt.Location())
+	require.Equal(t, sitting.UpdatedAt, sitting.CreatedAt)
+	require.False(t, sitting.CanceledAt.Valid)
+	require.Empty(t, sitting.ReasonCode)
+	err = sitting.Validate()
+	require.NoError(t, err)
 }
 
 func TestExamSittingApplyScheduleIsScheduledOnlyAndAtomic(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, time.August, 16, 9, 0, 0, 0, time.UTC)
 	sitting, err := NewExamSitting(NewExamSittingID(), NewExamID(), NewExamRevisionID(), NewClassID(), at.Add(time.Hour), at.Add(2*time.Hour), at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	revisionID, classID := NewExamRevisionID(), NewClassID()
 	startAt, endAt := at.Add(48*time.Hour), at.Add(51*time.Hour)
 	changed, err := sitting.ApplySchedule(revisionID, classID, startAt, endAt, at.Add(time.Minute))
-	if err != nil || !changed {
-		t.Fatalf("ApplySchedule() = %v, %v", changed, err)
-	}
-	if sitting.ExamRevisionID != revisionID || sitting.ClassID != classID || sitting.ScheduledStartAt != startAt ||
-		sitting.ScheduledEndAt != endAt || sitting.Revision != 2 || sitting.UpdatedAt != at.Add(time.Minute) {
-		t.Fatalf("updated Sitting = %#v", sitting)
-	}
+	require.NoError(t, err, "ApplySchedule()")
+	require.True(t, changed, "ApplySchedule()")
+	require.Equal(t, revisionID, sitting.ExamRevisionID)
+	require.Equal(t, classID, sitting.ClassID)
+	require.Equal(t, startAt, sitting.ScheduledStartAt)
+	require.Equal(t, endAt, sitting.ScheduledEndAt)
+	require.Equal(t, int64(2), sitting.Revision)
+	require.Equal(t, at.Add(time.Minute), sitting.UpdatedAt)
 	unchanged := *sitting
 	changed, err = sitting.ApplySchedule(revisionID, classID, startAt, endAt, at.Add(2*time.Minute))
-	if err != nil || changed || *sitting != unchanged {
-		t.Fatalf("no-op ApplySchedule() = %v, %v, Sitting=%#v", changed, err, sitting)
-	}
+	require.NoError(t, err, "no-op ApplySchedule() = %v, %v, Sitting=%#v", changed, err, sitting)
+	require.False(t, changed, "no-op ApplySchedule() = %v, %v, Sitting=%#v", changed, err, sitting)
+	require.Equal(t, unchanged, *sitting, "no-op ApplySchedule() = %v, %v, Sitting=%#v", changed, err, sitting)
 
 	sitting.State = ExamSittingOpen
 	before := *sitting
-	if changed, err = sitting.ApplySchedule(NewExamRevisionID(), NewClassID(), startAt.Add(time.Hour), endAt.Add(time.Hour), at.Add(3*time.Minute)); err == nil || changed || *sitting != before {
-		t.Fatalf("open ApplySchedule() = %v, %v, Sitting=%#v", changed, err, sitting)
-	}
+	changed, err = sitting.ApplySchedule(NewExamRevisionID(), NewClassID(), startAt.Add(time.Hour), endAt.Add(time.Hour), at.Add(3*time.Minute))
+	require.Error(t, err, "open ApplySchedule() = %v, %v, Sitting=%#v", changed, err, sitting)
+	require.False(t, changed, "open ApplySchedule() = %v, %v, Sitting=%#v", changed, err, sitting)
+	require.Equal(t, before, *sitting, "open ApplySchedule() = %v, %v, Sitting=%#v", changed, err, sitting)
 }
 
 func TestExamSittingCancelRetainsOnlySafeReasonAndIsTerminal(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, time.August, 16, 9, 0, 0, 0, time.UTC)
 	sitting, err := NewExamSitting(NewExamSittingID(), NewExamID(), NewExamRevisionID(), NewClassID(), at.Add(time.Hour), at.Add(2*time.Hour), at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if err = sitting.Cancel(ExamSittingReasonManagerCanceled, at.Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	if sitting.State != ExamSittingCanceled || sitting.ReasonCode != ExamSittingReasonManagerCanceled ||
-		!sitting.CanceledAt.Valid || sitting.CanceledAt.Time != at.Add(time.Minute) || sitting.UpdatedAt != at.Add(time.Minute) || sitting.Revision != 2 {
-		t.Fatalf("canceled Sitting = %#v", sitting)
-	}
+	err = sitting.Cancel(ExamSittingReasonManagerCanceled, at.Add(time.Minute))
+	require.NoError(t, err)
+	require.Equal(t, ExamSittingCanceled, sitting.State)
+	require.Equal(t, ExamSittingReasonManagerCanceled, sitting.ReasonCode)
+	require.True(t, sitting.CanceledAt.Valid)
+	require.Equal(t, at.Add(time.Minute), sitting.CanceledAt.Time)
+	require.Equal(t, at.Add(time.Minute), sitting.UpdatedAt)
+	require.Equal(t, int64(2), sitting.Revision)
 	before := *sitting
-	if err = sitting.Cancel(ExamSittingReasonManagerCanceled, at.Add(2*time.Minute)); err == nil || *sitting != before {
-		t.Fatalf("repeated Cancel() error=%v Sitting=%#v", err, sitting)
-	}
+	err = sitting.Cancel(ExamSittingReasonManagerCanceled, at.Add(2*time.Minute))
+	require.Error(t, err, "repeated Cancel() error=%v Sitting=%#v", err, sitting)
+	require.Equal(t, before, *sitting, "repeated Cancel() error=%v Sitting=%#v", err, sitting)
 
 	invalid, err := NewExamSitting(NewExamSittingID(), NewExamID(), NewExamRevisionID(), NewClassID(), at.Add(time.Hour), at.Add(2*time.Hour), at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	invalidBefore := *invalid
-	if err = invalid.Cancel(ExamSittingReasonCode("private teacher explanation"), at.Add(time.Minute)); err == nil || *invalid != invalidBefore {
-		t.Fatalf("invalid Cancel() error=%v Sitting=%#v", err, invalid)
-	}
+	err = invalid.Cancel(ExamSittingReasonCode("private teacher explanation"), at.Add(time.Minute))
+	require.Error(t, err, "invalid Cancel() error=%v Sitting=%#v", err, invalid)
+	require.Equal(t, invalidBefore, *invalid, "invalid Cancel() error=%v Sitting=%#v", err, invalid)
 }
 
 func TestExamSittingValidateAcceptsOnlyCoherentLifecycleTimestamps(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, time.August, 16, 9, 0, 0, 0, time.UTC)
 	base, err := NewExamSitting(NewExamSittingID(), NewExamID(), NewExamRevisionID(), NewClassID(), at.Add(time.Hour), at.Add(2*time.Hour), at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	openedAt, pausedAt := at.Add(time.Hour), at.Add(70*time.Minute)
 	closingAt, closedAt := at.Add(2*time.Hour), at.Add(121*time.Minute)
 
@@ -133,86 +126,86 @@ func TestExamSittingValidateAcceptsOnlyCoherentLifecycleTimestamps(t *testing.T)
 		}(),
 	}
 	for index := range valid {
-		if err = valid[index].Validate(); err != nil {
-			t.Fatalf("valid lifecycle %d: %v", index, err)
-		}
+		err = valid[index].Validate()
+		require.NoError(t, err, "valid lifecycle %d", index)
 	}
 
 	bad := valid[2]
 	bad.OpenedAt = OptionalTime{}
-	if err = bad.Validate(); err == nil {
-		t.Fatal("Paused Sitting without opened_at was accepted")
-	}
+	err = bad.Validate()
+	require.Error(t, err, "Paused Sitting without opened_at was accepted")
 	bad = valid[4]
 	bad.ClosedAt = OptionalTimeFrom(closingAt.Add(-time.Second))
-	if err = bad.Validate(); err == nil {
-		t.Fatal("Closed Sitting with reversed lifecycle times was accepted")
-	}
+	err = bad.Validate()
+	require.Error(t, err, "Closed Sitting with reversed lifecycle times was accepted")
 }
 
 func TestExamSittingLifecycleTransitionsAreClosedAndAtomic(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, time.August, 16, 9, 0, 0, 0, time.UTC)
 	sitting, err := NewExamSitting(NewExamSittingID(), NewExamID(), NewExamRevisionID(), NewClassID(), at.Add(time.Hour), at.Add(2*time.Hour), at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	openedAt := at.Add(time.Hour)
-	if err = sitting.Open(openedAt); err != nil {
-		t.Fatal(err)
-	}
-	if sitting.State != ExamSittingOpen || !sitting.OpenedAt.Valid || sitting.OpenedAt.Time != openedAt || sitting.Revision != 2 || sitting.ReasonCode != "" {
-		t.Fatalf("opened Sitting = %#v", sitting)
-	}
+	err = sitting.Open(openedAt)
+	require.NoError(t, err)
+	require.Equal(t, ExamSittingOpen, sitting.State)
+	require.True(t, sitting.OpenedAt.Valid)
+	require.Equal(t, openedAt, sitting.OpenedAt.Time)
+	require.Equal(t, int64(2), sitting.Revision)
+	require.Empty(t, sitting.ReasonCode)
 
 	pausedAt := openedAt.Add(10 * time.Minute)
-	if err = sitting.Pause(pausedAt); err != nil {
-		t.Fatal(err)
-	}
-	if sitting.State != ExamSittingPaused || !sitting.PausedAt.Valid || sitting.PausedAt.Time != pausedAt || sitting.Revision != 3 || sitting.ReasonCode != "" {
-		t.Fatalf("paused Sitting = %#v", sitting)
-	}
+	err = sitting.Pause(pausedAt)
+	require.NoError(t, err)
+	require.Equal(t, ExamSittingPaused, sitting.State)
+	require.True(t, sitting.PausedAt.Valid)
+	require.Equal(t, pausedAt, sitting.PausedAt.Time)
+	require.Equal(t, int64(3), sitting.Revision)
+	require.Empty(t, sitting.ReasonCode)
 
 	extendedEnd := sitting.ScheduledEndAt.Add(30 * time.Minute)
-	if err = sitting.ExtendEnd(extendedEnd, pausedAt.Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	if sitting.State != ExamSittingPaused || sitting.ScheduledEndAt != extendedEnd || sitting.Revision != 4 || sitting.ReasonCode != "" {
-		t.Fatalf("extended Sitting = %#v", sitting)
-	}
+	err = sitting.ExtendEnd(extendedEnd, pausedAt.Add(time.Minute))
+	require.NoError(t, err)
+	require.Equal(t, ExamSittingPaused, sitting.State)
+	require.Equal(t, extendedEnd, sitting.ScheduledEndAt)
+	require.Equal(t, int64(4), sitting.Revision)
+	require.Empty(t, sitting.ReasonCode)
 	beforeInvalidExtension := *sitting
-	if err = sitting.ExtendEnd(extendedEnd, pausedAt.Add(2*time.Minute)); err == nil || *sitting != beforeInvalidExtension {
-		t.Fatalf("non-extension error=%v Sitting=%#v", err, sitting)
-	}
+	err = sitting.ExtendEnd(extendedEnd, pausedAt.Add(2*time.Minute))
+	require.Error(t, err, "non-extension error=%v Sitting=%#v", err, sitting)
+	require.Equal(t, beforeInvalidExtension, *sitting, "non-extension error=%v Sitting=%#v", err, sitting)
 
 	resumedAt := pausedAt.Add(3 * time.Minute)
-	if err = sitting.Resume(resumedAt); err != nil {
-		t.Fatal(err)
-	}
-	if sitting.State != ExamSittingOpen || sitting.PausedAt.Valid || sitting.OpenedAt.Time != openedAt || sitting.Revision != 5 || sitting.ReasonCode != "" {
-		t.Fatalf("resumed Sitting = %#v", sitting)
-	}
+	err = sitting.Resume(resumedAt)
+	require.NoError(t, err)
+	require.Equal(t, ExamSittingOpen, sitting.State)
+	require.False(t, sitting.PausedAt.Valid)
+	require.Equal(t, openedAt, sitting.OpenedAt.Time)
+	require.Equal(t, int64(5), sitting.Revision)
+	require.Empty(t, sitting.ReasonCode)
 
 	closingAt := resumedAt.Add(time.Minute)
-	if err = sitting.EnterClosing(ExamSittingReasonManagerClosed, closingAt); err != nil {
-		t.Fatal(err)
-	}
-	if sitting.State != ExamSittingClosing || !sitting.ClosingAt.Valid || sitting.ClosingAt.Time != closingAt || sitting.Revision != 6 || sitting.ReasonCode != ExamSittingReasonManagerClosed {
-		t.Fatalf("closing Sitting = %#v", sitting)
-	}
+	err = sitting.EnterClosing(ExamSittingReasonManagerClosed, closingAt)
+	require.NoError(t, err)
+	require.Equal(t, ExamSittingClosing, sitting.State)
+	require.True(t, sitting.ClosingAt.Valid)
+	require.Equal(t, closingAt, sitting.ClosingAt.Time)
+	require.Equal(t, int64(6), sitting.Revision)
+	require.Equal(t, ExamSittingReasonManagerClosed, sitting.ReasonCode)
 
 	closedAt := closingAt.Add(time.Second)
-	if err = sitting.Close(closedAt); err != nil {
-		t.Fatal(err)
-	}
-	if sitting.State != ExamSittingClosed || !sitting.ClosedAt.Valid || sitting.ClosedAt.Time != closedAt || sitting.Revision != 7 || sitting.ReasonCode != ExamSittingReasonManagerClosed {
-		t.Fatalf("closed Sitting = %#v", sitting)
-	}
+	err = sitting.Close(closedAt)
+	require.NoError(t, err)
+	require.Equal(t, ExamSittingClosed, sitting.State)
+	require.True(t, sitting.ClosedAt.Valid)
+	require.Equal(t, closedAt, sitting.ClosedAt.Time)
+	require.Equal(t, int64(7), sitting.Revision)
+	require.Equal(t, ExamSittingReasonManagerClosed, sitting.ReasonCode)
 	beforeTerminalMutation := *sitting
-	if err = sitting.Pause(closedAt.Add(time.Second)); err == nil || *sitting != beforeTerminalMutation {
-		t.Fatalf("terminal Pause() error=%v Sitting=%#v", err, sitting)
-	}
+	err = sitting.Pause(closedAt.Add(time.Second))
+	require.Error(t, err, "terminal Pause() error=%v Sitting=%#v", err, sitting)
+	require.Equal(t, beforeTerminalMutation, *sitting, "terminal Pause() error=%v Sitting=%#v", err, sitting)
 }
 
 func TestExamSittingAutomaticCancellationReasonsAreBounded(t *testing.T) {
@@ -220,15 +213,11 @@ func TestExamSittingAutomaticCancellationReasonsAreBounded(t *testing.T) {
 	at := time.Date(2026, time.August, 16, 9, 0, 0, 0, time.UTC)
 	for _, reason := range []ExamSittingReasonCode{ExamSittingReasonScheduleElapsed, ExamSittingReasonAcademicStructureInvalid} {
 		sitting, err := NewExamSitting(NewExamSittingID(), NewExamID(), NewExamRevisionID(), NewClassID(), at.Add(time.Hour), at.Add(2*time.Hour), at)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err = sitting.Cancel(reason, at.Add(time.Minute)); err != nil {
-			t.Fatalf("Cancel(%q): %v", reason, err)
-		}
-		if sitting.ReasonCode != reason || sitting.State != ExamSittingCanceled {
-			t.Fatalf("Cancel(%q) = %#v", reason, sitting)
-		}
+		require.NoError(t, err)
+		err = sitting.Cancel(reason, at.Add(time.Minute))
+		require.NoError(t, err, "Cancel(%q)", reason)
+		require.Equal(t, reason, sitting.ReasonCode, "Cancel(%q) = %#v", reason, sitting)
+		require.Equal(t, ExamSittingCanceled, sitting.State, "Cancel(%q) = %#v", reason, sitting)
 	}
 }
 
@@ -247,10 +236,12 @@ func TestExamSittingStateCapabilityPredicatesFailClosed(t *testing.T) {
 		{state: ExamSittingCanceled},
 		{state: ExamSittingState("future")},
 	} {
-		if test.state.AllowsCandidateAdmission() != test.admit || test.state.AllowsCandidateMutation() != test.mutate ||
-			test.state.AllowsProtectedPresentation() != test.present || test.state.RequiresIntegrityMonitoring() != test.monitor {
-			t.Fatalf("capabilities for %q did not fail closed", test.state)
-		}
+		t.Run(string(test.state), func(t *testing.T) {
+			require.Equal(t, test.admit, test.state.AllowsCandidateAdmission(), "capabilities for %q did not fail closed", test.state)
+			require.Equal(t, test.mutate, test.state.AllowsCandidateMutation(), "capabilities for %q did not fail closed", test.state)
+			require.Equal(t, test.present, test.state.AllowsProtectedPresentation(), "capabilities for %q did not fail closed", test.state)
+			require.Equal(t, test.monitor, test.state.RequiresIntegrityMonitoring(), "capabilities for %q did not fail closed", test.state)
+		})
 	}
 }
 
@@ -260,38 +251,31 @@ func TestExamSittingRetargetRevisionIsLiveOnlyAndAtomic(t *testing.T) {
 	for _, state := range []ExamSittingState{ExamSittingOpen, ExamSittingPaused} {
 		t.Run(string(state), func(t *testing.T) {
 			sitting, err := NewExamSitting(NewExamSittingID(), NewExamID(), NewExamRevisionID(), NewClassID(), at.Add(time.Hour), at.Add(3*time.Hour), at)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err = sitting.Open(at.Add(time.Hour)); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+			err = sitting.Open(at.Add(time.Hour))
+			require.NoError(t, err)
 			if state == ExamSittingPaused {
-				if err = sitting.Pause(at.Add(70 * time.Minute)); err != nil {
-					t.Fatal(err)
-				}
+				err = sitting.Pause(at.Add(70 * time.Minute))
+				require.NoError(t, err)
 			}
 			previousState, previousRevision := sitting.State, sitting.Revision
 			newRevisionID := NewExamRevisionID()
-			if err = sitting.RetargetRevision(newRevisionID, at.Add(80*time.Minute)); err != nil {
-				t.Fatal(err)
-			}
-			if sitting.ExamRevisionID != newRevisionID || sitting.State != previousState || sitting.Revision != previousRevision+1 ||
-				sitting.UpdatedAt != at.Add(80*time.Minute) {
-				t.Fatalf("retargeted Sitting=%#v", sitting)
-			}
+			err = sitting.RetargetRevision(newRevisionID, at.Add(80*time.Minute))
+			require.NoError(t, err)
+			require.Equal(t, newRevisionID, sitting.ExamRevisionID)
+			require.Equal(t, previousState, sitting.State)
+			require.Equal(t, previousRevision+1, sitting.Revision)
+			require.Equal(t, at.Add(80*time.Minute), sitting.UpdatedAt)
 			before := *sitting
-			if err = sitting.RetargetRevision(newRevisionID, at.Add(90*time.Minute)); err == nil || *sitting != before {
-				t.Fatalf("same-Revision retarget error=%v Sitting=%#v", err, sitting)
-			}
+			err = sitting.RetargetRevision(newRevisionID, at.Add(90*time.Minute))
+			require.Error(t, err, "same-Revision retarget error=%v Sitting=%#v", err, sitting)
+			require.Equal(t, before, *sitting, "same-Revision retarget error=%v Sitting=%#v", err, sitting)
 		})
 	}
 	scheduled, err := NewExamSitting(NewExamSittingID(), NewExamID(), NewExamRevisionID(), NewClassID(), at.Add(time.Hour), at.Add(3*time.Hour), at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	before := *scheduled
-	if err = scheduled.RetargetRevision(NewExamRevisionID(), at.Add(time.Minute)); err == nil || *scheduled != before {
-		t.Fatalf("Scheduled retarget error=%v Sitting=%#v", err, scheduled)
-	}
+	err = scheduled.RetargetRevision(NewExamRevisionID(), at.Add(time.Minute))
+	require.Error(t, err, "Scheduled retarget error=%v Sitting=%#v", err, scheduled)
+	require.Equal(t, before, *scheduled, "Scheduled retarget error=%v Sitting=%#v", err, scheduled)
 }

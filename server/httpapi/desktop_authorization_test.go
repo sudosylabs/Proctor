@@ -9,11 +9,14 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
@@ -70,9 +73,7 @@ func TestDesktopAuthorizationHTTPExposesBoundedAttemptFailures(t *testing.T) {
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusTooManyRequests {
-		t.Fatalf("rate-limited start = %d: %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusTooManyRequests, response.Code, "rate-limited start = %d: %s", response.Code, response.Body.String())
 }
 
 func (a *desktopAuthorizationHTTPApplication) ApproveDesktopAuthorization(_ context.Context, _ app.Invocation, command app.ApproveDesktopAuthorizationCommand) (*app.DesktopAuthorizationApproval, error) {
@@ -113,25 +114,26 @@ func TestDesktopAuthorizationHTTPMapsPublicClientProtocolAndDisablesCaching(t *t
 		{"/api/v1/auth/desktop/token", `{"code":"code","state":"state","code_verifier":"verifier"}`, "", http.StatusOK},
 	}
 	for _, test := range tests {
-		request := httptest.NewRequest(http.MethodPost, test.path, strings.NewReader(test.body))
-		request.Header.Set("Content-Type", "application/json")
-		if strings.Contains(test.path, "/authorizations/") {
-			request.AddCookie(&http.Cookie{Name: BrowserDesktopAuthorizationCookieName, Value: "binding"})
-		}
-		if test.authorization != "" {
-			request.Header.Set("Authorization", test.authorization)
-		}
-		response := httptest.NewRecorder()
-		httpAPI.ServeHTTP(response, request)
-		if response.Code != test.wantStatus || response.Header().Get("Cache-Control") != "no-store" {
-			t.Fatalf("%s = %d cache=%q body=%s", test.path, response.Code, response.Header().Get("Cache-Control"), response.Body.String())
-		}
+		t.Run(test.path, func(t *testing.T) {
+			request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, test.path, strings.NewReader(test.body))
+			request.Header.Set("Content-Type", "application/json")
+			if strings.Contains(test.path, "/authorizations/") {
+				request.AddCookie(&http.Cookie{Name: BrowserDesktopAuthorizationCookieName, Value: "binding", Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode})
+			}
+			if test.authorization != "" {
+				request.Header.Set("Authorization", test.authorization)
+			}
+			response := httptest.NewRecorder()
+			httpAPI.ServeHTTP(response, request)
+			require.Equal(t, test.wantStatus, response.Code, "%s = %d cache=%q body=%s", test.path, response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+			require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "%s = %d cache=%q body=%s", test.path, response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+		})
 	}
-	if applicationFake.start.Source != "192.0.2.1" || applicationFake.exchange.Source != "192.0.2.1" ||
-		applicationFake.approve.Binding != "binding" || applicationFake.cancel.Binding != "binding" ||
-		applicationFake.exchange.CodeVerifier != "verifier" {
-		t.Fatalf("mapped commands = %#v %#v %#v %#v", applicationFake.start, applicationFake.approve, applicationFake.cancel, applicationFake.exchange)
-	}
+	require.Equal(t, "192.0.2.1", applicationFake.start.Source, "mapped commands = %#v %#v %#v %#v", applicationFake.start, applicationFake.approve, applicationFake.cancel, applicationFake.exchange)
+	require.Equal(t, "192.0.2.1", applicationFake.exchange.Source, "mapped commands = %#v %#v %#v %#v", applicationFake.start, applicationFake.approve, applicationFake.cancel, applicationFake.exchange)
+	require.Equal(t, "binding", applicationFake.approve.Binding, "mapped commands = %#v %#v %#v %#v", applicationFake.start, applicationFake.approve, applicationFake.cancel, applicationFake.exchange)
+	require.Equal(t, "binding", applicationFake.cancel.Binding, "mapped commands = %#v %#v %#v %#v", applicationFake.start, applicationFake.approve, applicationFake.cancel, applicationFake.exchange)
+	require.Equal(t, "verifier", applicationFake.exchange.CodeVerifier, "mapped commands = %#v %#v %#v %#v", applicationFake.start, applicationFake.approve, applicationFake.cancel, applicationFake.exchange)
 }
 
 func TestDesktopAuthorizationHTTPExchangesFragmentProofForScopedCookies(t *testing.T) {
@@ -145,30 +147,29 @@ func TestDesktopAuthorizationHTTPExchangesFragmentProofForScopedCookies(t *testi
 	bindRequest.Header.Set("Content-Type", "application/json")
 	bindResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(bindResponse, bindRequest)
-	if bindResponse.Code != http.StatusNoContent || bindResponse.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("bind = %d cache=%q body=%s", bindResponse.Code, bindResponse.Header().Get("Cache-Control"), bindResponse.Body.String())
-	}
+	require.Equal(t, http.StatusNoContent, bindResponse.Code, "bind = %d cache=%q body=%s", bindResponse.Code, bindResponse.Header().Get("Cache-Control"), bindResponse.Body.String())
+	require.Equal(t, "no-store", bindResponse.Header().Get("Cache-Control"), "bind = %d cache=%q body=%s", bindResponse.Code, bindResponse.Header().Get("Cache-Control"), bindResponse.Body.String())
 	bindingCookie := responseCookie(t, bindResponse.Result().Cookies(), BrowserDesktopAuthorizationCookieName)
-	if bindingCookie.Value != "binding" || bindingCookie.Path != "/api/v1/auth/desktop/authorizations" ||
-		!bindingCookie.HttpOnly || !bindingCookie.Secure || bindingCookie.SameSite != http.SameSiteLaxMode {
-		t.Fatalf("binding cookie = %#v", bindingCookie)
-	}
+	require.Equal(t, "binding", bindingCookie.Value)
+	require.Equal(t, "/api/v1/auth/desktop/authorizations", bindingCookie.Path)
+	require.True(t, bindingCookie.HttpOnly)
+	require.True(t, bindingCookie.Secure)
+	require.Equal(t, http.SameSiteLaxMode, bindingCookie.SameSite)
 
 	providerRequest := httptest.NewRequest(http.MethodGet,
 		"/api/v1/auth/desktop/authorizations/authenticate/providers/provider/login?state=state", nil)
 	providerRequest.AddCookie(bindingCookie)
 	providerResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(providerResponse, providerRequest)
-	if providerResponse.Code != http.StatusSeeOther || providerResponse.Header().Get("Location") != "https://identity.example/login" ||
-		providerResponse.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("provider start = %d location=%q cache=%q body=%s", providerResponse.Code,
-			providerResponse.Header().Get("Location"), providerResponse.Header().Get("Cache-Control"), providerResponse.Body.String())
-	}
+	require.Equal(t, http.StatusSeeOther, providerResponse.Code, "provider start = %d location=%q cache=%q body=%s", providerResponse.Code, providerResponse.Header().Get("Location"), providerResponse.Header().Get("Cache-Control"), providerResponse.Body.String())
+	require.Equal(t, "https://identity.example/login", providerResponse.Header().Get("Location"), "provider start = %d location=%q cache=%q body=%s", providerResponse.Code, providerResponse.Header().Get("Location"), providerResponse.Header().Get("Cache-Control"), providerResponse.Body.String())
+	require.Equal(t, "no-store", providerResponse.Header().Get("Cache-Control"), "provider start = %d location=%q cache=%q body=%s", providerResponse.Code, providerResponse.Header().Get("Location"), providerResponse.Header().Get("Cache-Control"), providerResponse.Body.String())
 	externalCookie := responseCookie(t, providerResponse.Result().Cookies(), BrowserExternalLoginCookieName)
-	if externalCookie.Value != "external-binding" || externalCookie.Path != "/api/v1/auth/providers/" ||
-		!externalCookie.HttpOnly || !externalCookie.Secure || externalCookie.SameSite != http.SameSiteLaxMode {
-		t.Fatalf("external binding cookie = %#v", externalCookie)
-	}
+	require.Equal(t, "external-binding", externalCookie.Value)
+	require.Equal(t, "/api/v1/auth/providers/", externalCookie.Path)
+	require.True(t, externalCookie.HttpOnly)
+	require.True(t, externalCookie.Secure)
+	require.Equal(t, http.SameSiteLaxMode, externalCookie.SameSite)
 }
 
 func responseCookie(t *testing.T, cookies []*http.Cookie, name string) *http.Cookie {
@@ -178,15 +179,13 @@ func responseCookie(t *testing.T, cookies []*http.Cookie, name string) *http.Coo
 			return cookie
 		}
 	}
-	t.Fatalf("response cookie %q was not set", name)
+	require.FailNow(t, fmt.Sprintf("response cookie %q was not set", name))
 	return nil
 }
 
 func testDesktopAuthorizationCookies(t *testing.T) browserCookies {
 	t.Helper()
 	cookies, err := newBrowserCookies("https://proctor.example.edu")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return cookies
 }

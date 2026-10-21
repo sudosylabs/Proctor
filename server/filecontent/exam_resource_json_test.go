@@ -10,9 +10,12 @@ package filecontent
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestExamResourceJSONGrammar(t *testing.T) {
@@ -92,11 +95,9 @@ func TestExamResourceJSONGrammar(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			err := validateExamResourceJSON(strings.NewReader(test.body))
-			if (err == nil) != test.valid {
-				t.Fatalf("validation error=%v, want valid=%v", err, test.valid)
-			}
-			if !test.valid && !errors.Is(err, ErrInvalidExamResourceContent) {
-				t.Fatalf("unsafe validation error: %v", err)
+			require.Equal(t, test.valid, err == nil, "validation error=%v, want valid", err)
+			if !test.valid {
+				require.ErrorIs(t, err, ErrInvalidExamResourceContent)
 			}
 		})
 	}
@@ -106,11 +107,12 @@ func TestExamResourceJSONPreservesDecoderNestingLimit(t *testing.T) {
 	t.Parallel()
 	for _, depth := range []int{9999, 10000, 10001} {
 		for _, container := range []struct{ open, close string }{{"[", "]"}, {`{"a":`, "}"}} {
-			body := strings.Repeat(container.open, depth) + "0" + strings.Repeat(container.close, depth)
-			got := validateExamResourceJSON(strings.NewReader(body)) == nil
-			if want := referenceExamResourceJSON(body); got != want || got != (depth <= 10000) {
-				t.Fatalf("depth=%d open=%q: accepted=%v, decoder=%v", depth, container.open, got, want)
-			}
+			t.Run(fmt.Sprintf("open=%v", container.open), func(t *testing.T) {
+				body := strings.Repeat(container.open, depth) + "0" + strings.Repeat(container.close, depth)
+				got := validateExamResourceJSON(strings.NewReader(body)) == nil
+				require.Equal(t, referenceExamResourceJSON(body), got, "depth=%d open=%q: accepted", depth, container.open)
+				require.Equal(t, depth <= 10000, got, "depth=%d open=%q: accepted", depth, container.open)
+			})
 		}
 	}
 }
@@ -128,9 +130,7 @@ func TestExamResourceJSONAcrossReadBoundaries(t *testing.T) {
 	} {
 		for _, chunkSize := range []int{1, 2, 3, 7, examResourceCopyBuffer - 1, examResourceCopyBuffer} {
 			reader := &chunkedJSONReader{ReadSeeker: strings.NewReader(body), chunkSize: chunkSize}
-			if got, want := validateExamResourceJSON(reader) == nil, referenceExamResourceJSON(body); got != want {
-				t.Fatalf("chunk=%d: accepted=%v, decoder=%v", chunkSize, got, want)
-			}
+			require.Equal(t, referenceExamResourceJSON(body), (validateExamResourceJSON(reader) == nil), "chunk=%d: accepted", chunkSize)
 		}
 	}
 }
@@ -140,9 +140,7 @@ func TestExamResourceJSONRejectsTransientNumberReadErrors(t *testing.T) {
 	for _, body := range []string{"0", "1", "12", "1.25", "1e2", "1e+2", "1e-2", "-1.25e+2"} {
 		for _, withFinalBytes := range []bool{false, true} {
 			reader := &failedJSONReader{Reader: strings.NewReader(body), withFinalBytes: withFinalBytes}
-			if err := validateExamResourceJSONSyntax(reader); !errors.Is(err, ErrInvalidExamResourceContent) {
-				t.Fatalf("number=%q with final bytes=%v: error=%v, want safe content failure", body, withFinalBytes, err)
-			}
+			require.ErrorIs(t, validateExamResourceJSONSyntax(reader), ErrInvalidExamResourceContent, "number=%q with final bytes=%v: error", body, withFinalBytes)
 		}
 	}
 }
@@ -151,15 +149,11 @@ func TestExamResourceJSONKeepsConstantAllocations(t *testing.T) {
 	allocations := func(members int) float64 {
 		body := "[" + strings.Repeat(`{"a":1},`, members) + "null]"
 		return testing.AllocsPerRun(3, func() {
-			if err := validateExamResourceJSON(strings.NewReader(body)); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, validateExamResourceJSON(strings.NewReader(body)))
 		})
 	}
 	small, large := allocations(8), allocations(4096)
-	if large > small+1 {
-		t.Fatalf("JSON allocations grew with member count: small=%g large=%g", small, large)
-	}
+	require.LessOrEqual(t, large, small+1, "JSON allocations grew with member count: small=%g large", small)
 }
 
 func FuzzExamResourceJSONGrammar(f *testing.F) {
@@ -175,9 +169,8 @@ func FuzzExamResourceJSONGrammar(f *testing.F) {
 		if len(body) > 64<<10 {
 			t.Skip()
 		}
-		if got, want := validateExamResourceJSON(strings.NewReader(body)) == nil, referenceExamResourceJSON(body); got != want {
-			t.Fatalf("accepted=%v, decoder=%v for %q", got, want, body)
-		}
+		got, want := validateExamResourceJSON(strings.NewReader(body)) == nil, referenceExamResourceJSON(body)
+		require.Equal(t, want, got, "accepted=%v, decoder=%v for %q", got, want, body)
 	})
 }
 

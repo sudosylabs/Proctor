@@ -16,35 +16,28 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestCanonicalExamRevisionPolicyIgnoresAuthoredJSONFieldOrder(t *testing.T) {
 	t.Parallel()
 	ordered, err := os.ReadFile("testdata/default_exam_policy.json")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(ordered, &fields); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(ordered, &fields))
 	reordered := []byte(fmt.Sprintf(` { "native": %s, "focus_loss": {"outcome":"flag_and_warn","window_milliseconds":300000,"incident_count":3,"minimum_duration_milliseconds":2000,"enabled":true}, "connection_loss":{"outcome":"flag_and_suspend"} } `, fields["native"]))
 
 	first, err := CanonicalizeExamRevisionPolicy(ordered)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	second, err := CanonicalizeExamRevisionPolicy(reordered)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(first.Bytes, ordered) || !bytes.Equal(first.Bytes, second.Bytes) || first.SHA256 != second.SHA256 {
-		t.Fatalf("first=%#v second=%#v", first, second)
-	}
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(first.Bytes, ordered), "first=%#v second=%#v", first, second)
+	require.True(t, bytes.Equal(first.Bytes, second.Bytes), "first=%#v second=%#v", first, second)
+	require.Equal(t, second.SHA256, first.SHA256, "first=%#v second=%#v", first, second)
 	want := fmt.Sprintf("%x", sha256.Sum256(ordered))
-	if first.SchemaVersion != 1 || first.SHA256 != want {
-		t.Fatalf("canonical policy=%#v want digest=%s", first, want)
-	}
+	require.Equal(t, 1, first.SchemaVersion, "canonical policy=%#v want digest", first)
+	require.Equal(t, want, first.SHA256, "canonical policy=%#v want digest", first)
 }
 
 func TestNewExamRevisionFreezesExactBoundedSnapshot(t *testing.T) {
@@ -52,9 +45,7 @@ func TestNewExamRevisionFreezesExactBoundedSnapshot(t *testing.T) {
 	at := time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
 	examID, revisionID := NewExamID(), NewExamRevisionID()
 	policy, err := NewExamRevisionPolicy(DefaultExamPolicySet())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	resource := ExamRevisionResource{
 		ResourceID: NewExamResourceID(), FileEntryID: NewFileEntryID(), FileRevisionID: NewFileRevisionID(),
 		RenditionID: NewFileRenditionID(), DisplayName: "Reference", DescriptionMarkdown: "Read **this**.",
@@ -72,27 +63,23 @@ func TestNewExamRevisionFreezesExactBoundedSnapshot(t *testing.T) {
 		Resources: []ExamRevisionResource{resource}, StarterWorkspace: []ExamRevisionStarterWorkspaceEntry{file, directory},
 		PublishedByUserID: NewUserID(), PublishedAt: at, Kind: ExamRevisionPublicationStandard,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if revision.StarterWorkspace[0].Path != "cmd" || revision.StarterWorkspace[1].Path != "cmd/main.go" {
-		t.Fatalf("workspace was not canonicalized: %#v", revision.StarterWorkspace)
-	}
-	if len(revision.Policy.Bytes) == 0 || len(revision.PolicyDigest) != 64 || len(revision.StarterWorkspaceDigest) != 64 || len(revision.ContentDigest) != 64 {
-		t.Fatalf("revision digests=%#v", revision)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "cmd", revision.StarterWorkspace[0].Path)
+	require.Equal(t, "cmd/main.go", revision.StarterWorkspace[1].Path)
+	require.NotEmpty(t, revision.Policy.Bytes)
+	require.Len(t, revision.PolicyDigest, 64)
+	require.Len(t, revision.StarterWorkspaceDigest, 64)
+	require.Len(t, revision.ContentDigest, 64)
 
 	// Construction clones caller-owned slices and policy bytes. A published
 	// value cannot be changed by retaining mutable input storage.
 	resource.DisplayName = "changed"
 	file.Path = "changed.go"
 	policy.Bytes[0] = '!'
-	if revision.Resources[0].DisplayName != "Reference" || revision.StarterWorkspace[1].Path != "cmd/main.go" || revision.Policy.Bytes[0] != '{' {
-		t.Fatalf("revision retained mutable input: %#v", revision)
-	}
-	if err := revision.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.Equal(t, "Reference", revision.Resources[0].DisplayName)
+	require.Equal(t, "cmd/main.go", revision.StarterWorkspace[1].Path)
+	require.Equal(t, byte('{'), revision.Policy.Bytes[0])
+	require.NoError(t, revision.Validate())
 }
 
 func TestExamRevisionRejectsIncompleteOrUnboundedSnapshots(t *testing.T) {
@@ -121,9 +108,8 @@ func TestExamRevisionRejectsIncompleteOrUnboundedSnapshots(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			spec := base
 			test.mutate(&spec)
-			if _, err := NewExamRevision(spec); err == nil {
-				t.Fatal("invalid revision snapshot was accepted")
-			}
+			_, err := NewExamRevision(spec)
+			require.Error(t, err, "invalid revision snapshot was accepted")
 		})
 	}
 }
@@ -132,9 +118,7 @@ func TestNewLiveCorrectionExamRevisionChangesOnlyCorrectableMaterial(t *testing.
 	t.Parallel()
 	at := time.Date(2026, 8, 15, 14, 0, 0, 0, time.UTC)
 	policy, err := NewExamRevisionPolicy(DefaultExamPolicySet())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	resource := ExamRevisionResource{ResourceID: NewExamResourceID(), FileEntryID: NewFileEntryID(),
 		FileRevisionID: NewFileRevisionID(), RenditionID: NewFileRenditionID(), DisplayName: "Reference", Position: 0,
 		MediaType: ExamResourceMediaText, SizeBytes: 4, SHA256: fmt.Sprintf("%x", sha256.Sum256([]byte("base")))}
@@ -147,80 +131,64 @@ func TestNewLiveCorrectionExamRevisionChangesOnlyCorrectableMaterial(t *testing.
 		SourceDraftRevision: 9, Title: "Algorithms", InstructionsMarkdown: "Old", Policy: policy, Capacity: capacity,
 		Resources: []ExamRevisionResource{resource}, StarterWorkspace: []ExamRevisionStarterWorkspaceEntry{workspace},
 		PublishedByUserID: NewUserID(), PublishedAt: at.Add(-time.Hour), Kind: ExamRevisionPublicationStandard})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	replacement := resource
 	replacement.FileRevisionID, replacement.RenditionID = NewFileRevisionID(), NewFileRenditionID()
 	replacement.SHA256 = fmt.Sprintf("%x", sha256.Sum256([]byte("fixed")))
 	corrected, err := NewLiveCorrectionExamRevision(base, LiveCorrectionExamRevisionSpecification{ID: NewExamRevisionID(), Number: 4,
 		InstructionsMarkdown: "Fixed **instructions**", Resources: []ExamRevisionResource{replacement},
 		AffectedCapabilities: []CandidateCapability{CandidateCapabilityBrowser, CandidateCapabilitySubmission, CandidateCapabilityWorkspace}, CandidateSummary: "The instructions and reference were corrected.", PublishedByUserID: NewUserID(), PublishedAt: at})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if corrected.Kind != ExamRevisionPublicationLiveCorrection || corrected.BaseRevisionID != base.ID ||
-		corrected.ExamID != base.ExamID || corrected.Title != base.Title || corrected.SourceDraftRevision != base.SourceDraftRevision ||
-		corrected.Capacity != capacity ||
-		corrected.PolicyDigest != base.PolicyDigest || !bytes.Equal(corrected.Policy.Bytes, base.Policy.Bytes) ||
-		corrected.StarterWorkspaceDigest != base.StarterWorkspaceDigest || corrected.InstructionsMarkdown != "Fixed **instructions**" ||
-		corrected.ContentDigest == base.ContentDigest {
-		t.Fatalf("live correction=%#v base=%#v", corrected, base)
-	}
+	require.NoError(t, err)
+	require.Equal(t, ExamRevisionPublicationLiveCorrection, corrected.Kind, "live correction=%#v base=%#v", corrected, base)
+	require.Equal(t, base.ID, corrected.BaseRevisionID, "live correction=%#v base=%#v", corrected, base)
+	require.Equal(t, base.ExamID, corrected.ExamID, "live correction=%#v base=%#v", corrected, base)
+	require.Equal(t, base.Title, corrected.Title, "live correction=%#v base=%#v", corrected, base)
+	require.Equal(t, base.SourceDraftRevision, corrected.SourceDraftRevision, "live correction=%#v base=%#v", corrected, base)
+	require.Equal(t, capacity, corrected.Capacity, "live correction=%#v base=%#v", corrected, base)
+	require.Equal(t, base.PolicyDigest, corrected.PolicyDigest, "live correction=%#v base=%#v", corrected, base)
+	require.True(t, bytes.Equal(corrected.Policy.Bytes, base.Policy.Bytes), "live correction=%#v base=%#v", corrected, base)
+	require.Equal(t, base.StarterWorkspaceDigest, corrected.StarterWorkspaceDigest, "live correction=%#v base=%#v", corrected, base)
+	require.Equal(t, "Fixed **instructions**", corrected.InstructionsMarkdown, "live correction=%#v base=%#v", corrected, base)
+	require.NotEqual(t, base.ContentDigest, corrected.ContentDigest, "live correction=%#v base=%#v", corrected, base)
 	workspace.Path = "changed.go"
 	policy.Bytes[0] = '!'
-	if corrected.StarterWorkspace[0].Path != "main.go" || corrected.Policy.Bytes[0] != '{' {
-		t.Fatalf("live correction retained mutable base input: %#v", corrected)
-	}
+	require.Equal(t, "main.go", corrected.StarterWorkspace[0].Path)
+	require.Equal(t, byte('{'), corrected.Policy.Bytes[0])
 }
 
 func TestNewLiveCorrectionExamRevisionRejectsInvalidBaseOrOrdering(t *testing.T) {
 	t.Parallel()
-	if _, err := NewLiveCorrectionExamRevision(nil, LiveCorrectionExamRevisionSpecification{ID: NewExamRevisionID(), Number: 2}); err == nil {
-		t.Fatal("nil base was accepted")
-	}
+	_, err := NewLiveCorrectionExamRevision(nil, LiveCorrectionExamRevisionSpecification{ID: NewExamRevisionID(), Number: 2})
+	require.Error(t, err, "nil base was accepted")
 	policy, _ := NewExamRevisionPolicy(DefaultExamPolicySet())
 	base, err := NewExamRevision(ExamRevisionSpecification{ID: NewExamRevisionID(), ExamID: NewExamID(), Number: 2,
 		SourceDraftRevision: 1, Title: "Exam", Policy: policy, Capacity: DefaultExamCapacityPolicy(), PublishedByUserID: NewUserID(), PublishedAt: time.Now().UTC(),
 		Kind: ExamRevisionPublicationStandard})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = NewLiveCorrectionExamRevision(base, LiveCorrectionExamRevisionSpecification{ID: NewExamRevisionID(), Number: base.Number,
-		AffectedCapabilities: []CandidateCapability{CandidateCapabilityBrowser, CandidateCapabilitySubmission, CandidateCapabilityWorkspace}, CandidateSummary: "Correction.", PublishedByUserID: NewUserID(), PublishedAt: time.Now().UTC()}); err == nil {
-		t.Fatal("non-increasing Revision number was accepted")
-	}
+	require.NoError(t, err)
+	_, err = NewLiveCorrectionExamRevision(base, LiveCorrectionExamRevisionSpecification{ID: NewExamRevisionID(), Number: base.Number,
+		AffectedCapabilities: []CandidateCapability{CandidateCapabilityBrowser, CandidateCapabilitySubmission, CandidateCapabilityWorkspace}, CandidateSummary: "Correction.", PublishedByUserID: NewUserID(), PublishedAt: time.Now().UTC()})
+	require.Error(t, err, "non-increasing Revision number was accepted")
 }
 
 func TestSameExamRevisionCandidatePresentationIgnoresStorageGenerations(t *testing.T) {
 	t.Parallel()
 
 	policy, err := NewExamRevisionPolicy(DefaultExamPolicySet())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	resource := ExamRevisionResource{ResourceID: NewExamResourceID(), FileEntryID: NewFileEntryID(), FileRevisionID: NewFileRevisionID(),
 		RenditionID: NewFileRenditionID(), DisplayName: "Reference", Position: 0, MediaType: ExamResourceMediaText,
 		SizeBytes: 4, SHA256: fmt.Sprintf("%x", sha256.Sum256([]byte("base")))}
 	base, err := NewExamRevision(ExamRevisionSpecification{ID: NewExamRevisionID(), ExamID: NewExamID(), Number: 1,
 		SourceDraftRevision: 1, Title: "Exam", Policy: policy, Capacity: DefaultExamCapacityPolicy(), Resources: []ExamRevisionResource{resource},
 		PublishedByUserID: NewUserID(), PublishedAt: time.Now().UTC(), Kind: ExamRevisionPublicationStandard})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	candidate := base.Clone()
 	candidate.Resources[0].FileRevisionID = NewFileRevisionID()
 	candidate.Resources[0].RenditionID = NewFileRenditionID()
-	if !SameExamRevisionCandidatePresentation(base, candidate) {
-		t.Fatal("same verified candidate presentation was treated as changed")
-	}
+	require.True(t, SameExamRevisionCandidatePresentation(base, candidate), "same verified candidate presentation was treated as changed")
 	candidate.Capacity.ResourceMaximumCount--
-	if SameExamRevisionCandidatePresentation(base, candidate) {
-		t.Fatal("changed frozen capacity was treated as the same candidate presentation")
-	}
+	require.False(t, SameExamRevisionCandidatePresentation(base, candidate), "changed frozen capacity was treated as the same candidate presentation")
 	candidate.Capacity = base.Capacity
 	candidate.Resources[0].SHA256 = strings.Repeat("b", 64)
-	if SameExamRevisionCandidatePresentation(base, candidate) {
-		t.Fatal("changed verified content was treated as the same presentation")
-	}
+	require.False(t, SameExamRevisionCandidatePresentation(base, candidate), "changed verified content was treated as the same presentation")
 }

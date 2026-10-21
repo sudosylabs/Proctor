@@ -15,32 +15,26 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestBrowserDeliveryHTTPDecodesExpandedUnicodeNavigation(t *testing.T) {
 	prefix := "https://example.edu/"
 	location, err := model.CanonicalizeBrowserLocation(prefix + strings.Repeat("漢", model.BrowserNavigationMaximumCharacters-len(prefix)))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	rule := "start"
 	batch := model.BrowserActivityBatch{SourceSessionID: model.BrowserSourceSessionID("00000000-0000-4000-8000-000000019903"), ParticipationID: model.NewAttemptParticipationID(), Generation: 1, PolicyRevisionID: model.NewExamRevisionID(), PolicyDigest: model.SHA256Fingerprint([]byte("policy"))}
 	batch.Events = []model.BrowserActivityEvent{{Sequence: 1, Kind: model.BrowserActivityTopNavigation, PolicyRevisionID: batch.PolicyRevisionID, ClientOccurredAt: time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC), Location: &location, MatchedRuleID: &rule}}
 	raw, err := json.Marshal(batch)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(raw) <= 32*1024 || len(raw) >= model.BrowserActivityAppendMaximumBytes {
-		t.Fatalf("invalid expanded fixture size %d", len(raw))
-	}
+	require.NoError(t, err)
+	require.Greater(t, len(raw), 32*1024, "invalid expanded fixture size")
+	require.Less(t, len(raw), model.BrowserActivityAppendMaximumBytes, "invalid expanded fixture size")
 	request := httptest.NewRequest("POST", "/", bytes.NewReader(raw))
 	request.Header.Set("Content-Type", "application/json")
 	var decoded model.BrowserActivityBatch
-	if err := (operationRequest{request: request}).decodeJSON(&decoded); err != nil {
-		t.Fatal(err)
-	}
-	if len(decoded.Events) != 1 || decoded.Events[0].Location.Path != location.Path {
-		t.Fatal("HTTP decoding changed serialized navigation")
-	}
+	require.NoError(t, (operationRequest{request: request}).decodeJSON(&decoded))
+	require.Len(t, decoded.Events, 1, "HTTP decoding changed serialized navigation")
+	require.Equal(t, location.Path, decoded.Events[0].Location.Path, "HTTP decoding changed serialized navigation")
 }

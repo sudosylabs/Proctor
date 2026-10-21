@@ -10,6 +10,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -26,9 +28,7 @@ func TestDeliveryBudgetOpenAPIAgreesWithRuntime(t *testing.T) {
 		{Name: "StopDeliveryDetails", DTO: reflect.TypeOf(model.StopDeliveryDetails{}), Required: []string{"family", "reason"}},
 	}}
 	runtime := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtime.collectResources(model.APIURLSuffix, deliveryBudgetResource(nil)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtime.collectResources(model.APIURLSuffix, deliveryBudgetResource(nil)))
 	assertOpenAPIAgreement(t, suite, runtime.Routes())
 }
 

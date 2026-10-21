@@ -14,6 +14,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestOpenAPIAgreementEvaluatorAcceptsNormalizedRouteWithoutMutatingInputs(t *testing.T) {
@@ -24,18 +26,11 @@ func TestOpenAPIAgreementEvaluatorAcceptsNormalizedRouteWithoutMutatingInputs(t 
 	wantSuite := cloneAgreementSuite(suite)
 
 	violations, err := evaluateOpenAPIAgreement(syntheticOpenAPIDocument(t), routes, suite)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(violations) != 0 {
-		t.Fatalf("violations = %v", violations)
-	}
-	if !reflect.DeepEqual(routes, wantRoutes) {
-		t.Fatalf("runtime routes were mutated: got %#v, want %#v", routes, wantRoutes)
-	}
-	if !reflect.DeepEqual(suite.Operations, wantSuite.Operations) || !reflect.DeepEqual(suite.Schemas, wantSuite.Schemas) {
-		t.Fatalf("suite was mutated: got %#v, want %#v", suite, wantSuite)
-	}
+	require.NoError(t, err)
+	require.Empty(t, violations)
+	require.Equal(t, wantRoutes, routes, "runtime routes were mutated")
+	require.Equal(t, wantSuite.Operations, suite.Operations, "suite was mutated: got %#v, want %#v", suite, wantSuite)
+	require.Equal(t, wantSuite.Schemas, suite.Schemas, "suite was mutated: got %#v, want %#v", suite, wantSuite)
 }
 
 func TestOpenAPISchemaAgreementAllowsNullForRequiredResponsePointer(t *testing.T) {
@@ -53,9 +48,7 @@ func TestOpenAPISchemaAgreementAllowsNullForRequiredResponsePointer(t *testing.T
 		nil,
 		nil,
 	)
-	if len(violations) != 0 {
-		t.Fatalf("violations = %v", violations)
-	}
+	require.Empty(t, violations)
 }
 
 func TestOpenAPISchemaAgreementAllowsPresenceAwareNonNullRequestField(t *testing.T) {
@@ -73,21 +66,19 @@ func TestOpenAPISchemaAgreementAllowsPresenceAwareNonNullRequestField(t *testing
 		nil,
 		nil,
 	)
-	if len(violations) != 0 {
-		t.Fatalf("violations = %v", violations)
-	}
+	require.Empty(t, violations)
 }
 
 func TestOpenAPIAgreementEvaluatorRejectsMalformedDocument(t *testing.T) {
 	t.Parallel()
 
 	routes, suite := syntheticOpenAPIAgreementInputs()
-	if _, err := evaluateOpenAPIAgreement([]byte(`{"paths":`), routes, suite); err == nil || !strings.Contains(err.Error(), "decode document") {
-		t.Fatalf("error = %v, want malformed-document error", err)
-	}
-	if _, err := evaluateOpenAPIAgreement([]byte(`{}`), routes, suite); err == nil || !strings.Contains(err.Error(), "paths are missing") {
-		t.Fatalf("error = %v, want missing-paths error", err)
-	}
+	_, err := evaluateOpenAPIAgreement([]byte(`{"paths":`), routes, suite)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "decode document")
+	_, err = evaluateOpenAPIAgreement([]byte(`{}`), routes, suite)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "paths are missing")
 }
 
 func TestOpenAPIAgreementEvaluatorRejectsAmbiguousSelection(t *testing.T) {
@@ -95,24 +86,20 @@ func TestOpenAPIAgreementEvaluatorRejectsAmbiguousSelection(t *testing.T) {
 
 	routes, suite := syntheticOpenAPIAgreementInputs()
 	routes = append(routes, cloneAgreementRoutes(routes)...)
-	if _, err := evaluateOpenAPIAgreement(syntheticOpenAPIDocument(t), routes, suite); err == nil || !strings.Contains(err.Error(), "runtime selection is ambiguous") {
-		t.Fatalf("error = %v, want ambiguous runtime-selection error", err)
-	}
+	_, err := evaluateOpenAPIAgreement(syntheticOpenAPIDocument(t), routes, suite)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "runtime selection is ambiguous")
 
 	var document map[string]any
-	if err := json.Unmarshal(syntheticOpenAPIDocument(t), &document); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(syntheticOpenAPIDocument(t), &document))
 	pathItem := document["paths"].(map[string]any)["/things/{thing_id}"].(map[string]any)
 	pathItem["GET"] = pathItem["get"]
 	encoded, err := json.Marshal(document)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	routes, suite = syntheticOpenAPIAgreementInputs()
-	if _, err := evaluateOpenAPIAgreement(encoded, routes, suite); err == nil || !strings.Contains(err.Error(), "document selection is ambiguous") {
-		t.Fatalf("error = %v, want ambiguous document-selection error", err)
-	}
+	_, err = evaluateOpenAPIAgreement(encoded, routes, suite)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "document selection is ambiguous")
 }
 
 func TestOpenAPIAgreementEvaluatorRejectsMalformedConfiguration(t *testing.T) {
@@ -157,9 +144,9 @@ func TestOpenAPIAgreementEvaluatorRejectsMalformedConfiguration(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := evaluateOpenAPIAgreement([]byte(`{}`), nil, test.suite); err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("error = %v, want substring %q", err, test.want)
-			}
+			_, err := evaluateOpenAPIAgreement([]byte(`{}`), nil, test.suite)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), test.want)
 		})
 	}
 }
@@ -172,39 +159,27 @@ func TestOpenAPIAgreementEvaluatorOrdersMultipleDisagreements(t *testing.T) {
 	routes[0].ErrorCodes = []string{"request.invalid"}
 
 	var document map[string]any
-	if err := json.Unmarshal(syntheticOpenAPIDocument(t), &document); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(syntheticOpenAPIDocument(t), &document))
 	operation := document["paths"].(map[string]any)["/things/{thing_id}"].(map[string]any)["get"].(map[string]any)
 	operation["x-proctor-auth"] = string(AuthPublic)
 	operation["x-proctor-error-codes"] = []any{"request.invalid"}
 	operation["security"] = []any{}
 	operation["responses"].(map[string]any)["200"] = map[string]any{"$ref": "#/components/responses/Wrong"}
 	encoded, err := json.Marshal(document)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	violations, err := evaluateOpenAPIAgreement(encoded, routes, suite)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(violations) < 5 {
-		t.Fatalf("violations = %v, want multiple independent disagreements", violations)
-	}
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(violations), 5, "violations")
 	got := make([]string, len(violations))
 	for index, violation := range violations {
 		got[index] = violation.String()
 	}
 	want := append([]string(nil), got...)
 	sort.Strings(want)
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("violations are not deterministic:\n got %v\nwant %v", got, want)
-	}
-	if !strings.Contains(strings.Join(got, "\n"), "runtime error codes") ||
-		!strings.Contains(strings.Join(got, "\n"), "document error codes") {
-		t.Fatalf("violations do not cover both runtime and document error parity: %v", got)
-	}
+	require.Equal(t, want, got, "violations are not deterministic:\n got")
+	require.Contains(t, strings.Join(got, "\n"), "runtime error codes")
+	require.Contains(t, strings.Join(got, "\n"), "document error codes")
 }
 
 func TestOpenAPIAgreementEvaluatorSelectorNarrowsCombinedResource(t *testing.T) {
@@ -217,24 +192,16 @@ func TestOpenAPIAgreementEvaluatorSelectorNarrowsCombinedResource(t *testing.T) 
 	}
 
 	var document map[string]any
-	if err := json.Unmarshal(syntheticOpenAPIDocument(t), &document); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(syntheticOpenAPIDocument(t), &document))
 	document["paths"].(map[string]any)["/unrelated"] = map[string]any{
 		"get": map[string]any{"x-proctor-auth": "public", "security": []any{}, "responses": map[string]any{}},
 	}
 	encoded, err := json.Marshal(document)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	violations, err := evaluateOpenAPIAgreement(encoded, routes, suite)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(violations) != 0 {
-		t.Fatalf("violations = %v", violations)
-	}
+	require.NoError(t, err)
+	require.Empty(t, violations)
 }
 
 func TestOpenAPIAgreementEvaluatorLeavesExceptionalSuccessContentLocal(t *testing.T) {
@@ -245,32 +212,21 @@ func TestOpenAPIAgreementEvaluatorLeavesExceptionalSuccessContentLocal(t *testin
 	suite.Operations[0].SuccessSchema = ""
 
 	var document map[string]any
-	if err := json.Unmarshal(syntheticOpenAPIDocument(t), &document); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(syntheticOpenAPIDocument(t), &document))
 	response := document["components"].(map[string]any)["responses"].(map[string]any)["ThingOK"].(map[string]any)
 	response["content"] = map[string]any{"image/webp": map[string]any{"schema": map[string]any{"type": "string", "format": "binary"}}}
 	encoded, err := json.Marshal(document)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	violations, err := evaluateOpenAPIAgreement(encoded, routes, suite)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(violations) != 0 {
-		t.Fatalf("violations = %v", violations)
-	}
+	require.NoError(t, err)
+	require.Empty(t, violations)
 
 	suite.Operations[0].ExceptionalSuccess = false
 	violations, err = evaluateOpenAPIAgreement(encoded, routes, suite)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(violations) != 1 || violations[0].Check != "success schema" {
-		t.Fatalf("default ordinary-success violations = %v", violations)
-	}
+	require.NoError(t, err)
+	require.Len(t, violations, 1)
+	require.Equal(t, "success schema", violations[0].Check)
 }
 
 func TestOpenAPIAgreementEvaluatorAllowsInlineExceptionalSuccess(t *testing.T) {
@@ -282,38 +238,25 @@ func TestOpenAPIAgreementEvaluatorAllowsInlineExceptionalSuccess(t *testing.T) {
 	suite.Operations[0].SuccessSchema = ""
 
 	var document map[string]any
-	if err := json.Unmarshal(syntheticOpenAPIDocument(t), &document); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(syntheticOpenAPIDocument(t), &document))
 	operation := document["paths"].(map[string]any)["/things/{thing_id}"].(map[string]any)["get"].(map[string]any)
 	responses := operation["responses"].(map[string]any)
 	delete(responses, "200")
 	responses["101"] = map[string]any{"description": "Switching Protocols"}
 	suite.Operations[0].SuccessStatus = "101"
 	encoded, err := json.Marshal(document)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	violations, err := evaluateOpenAPIAgreement(encoded, routes, suite)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(violations) != 0 {
-		t.Fatalf("violations = %v", violations)
-	}
+	require.NoError(t, err)
+	require.Empty(t, violations)
 
 	delete(operation["responses"].(map[string]any), "101")
 	encoded, err = json.Marshal(document)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	violations, err = evaluateOpenAPIAgreement(encoded, routes, suite)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(violations) != 1 || violations[0].Check != "success status" {
-		t.Fatalf("missing inline status violations = %v", violations)
-	}
+	require.NoError(t, err)
+	require.Len(t, violations, 1)
+	require.Equal(t, "success status", violations[0].Check)
 }
 
 func syntheticOpenAPIAgreementInputs() ([]Route, openAPIAgreementSuite) {

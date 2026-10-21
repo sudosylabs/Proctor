@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 type systemdNotificationConnectionFake struct {
@@ -49,32 +51,22 @@ func TestSystemdReadyNotifierSendsReadyDatagram(t *testing.T) {
 	t.Parallel()
 
 	temporaryDirectory, err := os.MkdirTemp("/tmp", "proctor-systemd-")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(temporaryDirectory) })
 	socketPath := filepath.Join(temporaryDirectory, "notify.sock")
 	address := &net.UnixAddr{Name: socketPath, Net: "unixgram"}
 	listener, err := net.ListenUnixgram("unixgram", address)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = listener.Close() })
 
-	if err = systemdReadyNotifier(socketPath)(context.Background()); err != nil {
-		t.Fatalf("notify readiness: %v", err)
-	}
-	if err = listener.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
-		t.Fatal(err)
-	}
+	err = systemdReadyNotifier(socketPath)(context.Background())
+	require.NoError(t, err)
+	err = listener.SetReadDeadline(time.Now().Add(time.Second))
+	require.NoError(t, err)
 	payload := make([]byte, 32)
 	count, _, err := listener.ReadFromUnix(payload)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := string(payload[:count]); got != systemdReadyMessage {
-		t.Fatalf("notification = %q, want %q", got, systemdReadyMessage)
-	}
+	require.NoError(t, err)
+	require.Equal(t, systemdReadyMessage, string(payload[:count]), "notification")
 }
 
 func TestSystemdReadyNotifierHonorsCanceledContext(t *testing.T) {
@@ -82,9 +74,7 @@ func TestSystemdReadyNotifierHonorsCanceledContext(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := systemdReadyNotifier(filepath.Join(t.TempDir(), "missing.sock"))(ctx); err == nil {
-		t.Fatal("notification with canceled context succeeded")
-	}
+	require.Error(t, systemdReadyNotifier(filepath.Join(t.TempDir(), "missing.sock"))(ctx), "notification with canceled context succeeded")
 }
 
 func TestSendSystemdReadyNotificationUsesContextDeadlineAndPreservesCloseFailure(t *testing.T) {
@@ -97,18 +87,10 @@ func TestSendSystemdReadyNotificationUsesContextDeadlineAndPreservesCloseFailure
 	defer cancel()
 
 	err := sendSystemdReadyNotification(ctx, connection, time.Minute)
-	if !errors.Is(err, closeErr) {
-		t.Fatalf("notification error = %v, want close failure", err)
-	}
-	if !connection.deadline.Equal(contextDeadline) {
-		t.Fatalf("write deadline = %v, want context deadline %v", connection.deadline, contextDeadline)
-	}
-	if got := string(connection.payload); got != systemdReadyMessage {
-		t.Fatalf("notification = %q, want %q", got, systemdReadyMessage)
-	}
-	if connection.closeCallCount != 1 {
-		t.Fatalf("Close calls = %d, want 1", connection.closeCallCount)
-	}
+	require.ErrorIs(t, err, closeErr, "notification error")
+	require.True(t, connection.deadline.Equal(contextDeadline), "write deadline = %v, want context deadline", connection.deadline)
+	require.Equal(t, systemdReadyMessage, string(connection.payload), "notification")
+	require.Equal(t, 1, connection.closeCallCount, "Close calls")
 }
 
 func TestSendSystemdReadyNotificationJoinsDeadlineAndCloseFailures(t *testing.T) {
@@ -123,23 +105,16 @@ func TestSendSystemdReadyNotificationJoinsDeadlineAndCloseFailures(t *testing.T)
 	err := sendSystemdReadyNotification(context.Background(), connection, timeout)
 	latestDeadline := time.Now().Add(timeout)
 	for _, expected := range []error{deadlineErr, closeErr} {
-		if !errors.Is(err, expected) {
-			t.Fatalf("notification error = %v, want %v", err, expected)
-		}
+		require.ErrorIs(t, err, expected, "notification error")
 	}
-	if len(connection.payload) != 0 {
-		t.Fatalf("notification payload = %q after deadline failure, want empty", connection.payload)
-	}
-	if connection.deadline.Before(earliestDeadline) || connection.deadline.After(latestDeadline) {
-		t.Fatalf("write deadline = %v, want between %v and %v", connection.deadline, earliestDeadline, latestDeadline)
-	}
+	require.Empty(t, connection.payload, "notification payload")
+	require.False(t, connection.deadline.Before(earliestDeadline), "write deadline = %v, want between %v and", connection.deadline, earliestDeadline)
+	require.False(t, connection.deadline.After(latestDeadline), "write deadline = %v, want between %v and", connection.deadline, earliestDeadline)
 }
 
 func TestSendSystemdReadyNotificationRejectsShortWrite(t *testing.T) {
 	t.Parallel()
 
 	connection := &systemdNotificationConnectionFake{shortWrite: true}
-	if err := sendSystemdReadyNotification(context.Background(), connection, time.Second); err == nil {
-		t.Fatal("short notification write succeeded")
-	}
+	require.Error(t, sendSystemdReadyNotification(context.Background(), connection, time.Second), "short notification write succeeded")
 }

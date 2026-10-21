@@ -11,6 +11,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -42,9 +44,7 @@ func TestExamSittingCorrectionOpenAPIAgreesWithRuntime(t *testing.T) {
 		},
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, examSittingCorrectionResource(nil)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtimeAPI.collectResources(model.APIURLSuffix, examSittingCorrectionResource(nil)))
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 	document := readOpenAPIDocument(t)
 	assertExamMultipartOperation(t, document, stages, "post", "#/components/schemas/ExamSittingCorrectionResourceStageMultipart")

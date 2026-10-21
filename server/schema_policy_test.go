@@ -9,9 +9,9 @@ package server
 
 import (
 	"context"
-	"errors"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
 )
@@ -38,17 +38,15 @@ func TestRequiredCurrentSchemaRefusesWithoutMigrating(t *testing.T) {
 	behind := &sqlstore.ErrSchemaBehind{Database: 0, Local: 1}
 	persistence := &schemaPersistenceFake{validateErr: behind}
 	_, err := prepareSchema(context.Background(), persistence, schemaRequireCurrent)
-	if !errors.As(err, new(*sqlstore.ErrSchemaBehind)) || !strings.Contains(err.Error(), "proctor migrate up") {
-		t.Fatalf("prepareSchema() = %v, want a behind-schema refusal naming the migrate command", err)
-	}
-	if persistence.migrations != 0 {
-		t.Fatalf("required-current schema applied %d migrations", persistence.migrations)
-	}
+	require.ErrorAs(t, err, new(*sqlstore.ErrSchemaBehind), "prepareSchema()")
+	require.Contains(t, err.Error(), "proctor migrate up", "prepareSchema()")
+	require.Equal(t, 0, persistence.migrations, "required-current schema applied")
 
 	persistence.validateErr = nil
-	if migration, err := prepareSchema(context.Background(), persistence, schemaRequireCurrent); err != nil || migration != nil || persistence.migrations != 0 {
-		t.Fatalf("current schema = %#v, %v after %d migrations", migration, err, persistence.migrations)
-	}
+	migration, err := prepareSchema(context.Background(), persistence, schemaRequireCurrent)
+	require.NoError(t, err, "current schema")
+	require.Nil(t, migration, "current schema")
+	require.Equal(t, 0, persistence.migrations, "current schema")
 }
 
 func TestServingSchemaPolicyAppliesPendingMigrations(t *testing.T) {
@@ -56,7 +54,9 @@ func TestServingSchemaPolicyAppliesPendingMigrations(t *testing.T) {
 
 	persistence := &schemaPersistenceFake{}
 	migration, err := prepareSchema(context.Background(), persistence, schemaMigrate)
-	if err != nil || migration == nil || migration.Applied != 1 || persistence.migrations != 1 || persistence.validations != 0 {
-		t.Fatalf("serving schema = %#v, %v after migrations=%d validations=%d", migration, err, persistence.migrations, persistence.validations)
-	}
+	require.NoError(t, err, "serving schema")
+	require.NotNil(t, migration, "serving schema")
+	require.Equal(t, 1, migration.Applied, "serving schema")
+	require.Equal(t, 1, persistence.migrations, "serving schema")
+	require.Equal(t, 0, persistence.validations, "serving schema")
 }

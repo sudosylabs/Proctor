@@ -8,6 +8,7 @@
 package architecture_test
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -17,6 +18,9 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestReceiverNamesAreShortAndConsistent keeps one receiver name per type, a
@@ -40,9 +44,9 @@ func TestReceiverNamesAreShortAndConsistent(t *testing.T) {
 			}
 			name := field.Names[0].Name
 			location := path + ":" + function.Name.Name
-			if len(name) > 3 || name == "self" || name == "this" {
-				t.Errorf("%s uses receiver %q; use a one-to-three letter abbreviation of the type", location, name)
-			}
+			assert.LessOrEqual(t, len(name), 3, "%s uses receiver %q; use a one-to-three letter abbreviation of the type", location, name)
+			assert.NotEqual(t, "self", name, "%s uses receiver %q; use a one-to-three letter abbreviation of the type", location, name)
+			assert.NotEqual(t, "this", name, "%s uses receiver %q; use a one-to-three letter abbreviation of the type", location, name)
 			key := filepath.Dir(path) + "/" + file.Name.Name + "." + receiverTypeName(field.Type)
 			use := byType[key]
 			if use == nil {
@@ -61,7 +65,7 @@ func TestReceiverNamesAreShortAndConsistent(t *testing.T) {
 			names = append(names, name)
 		}
 		sort.Strings(names)
-		t.Errorf("%s mixes receiver names %v; use one name for every method", key, names)
+		assert.Fail(t, fmt.Sprintf("%s mixes receiver names %v; use one name for every method", key, names))
 	}
 }
 
@@ -77,8 +81,8 @@ func TestDeclaredIdentifiersSpellIDAsAnInitialism(t *testing.T) {
 
 	inspectServerGoFiles(t, func(path string, file *ast.File) {
 		check := func(identifier *ast.Ident) {
-			if identifier != nil && idWord.MatchString(identifier.Name) {
-				t.Errorf("%s declares %q; spell the initialism ID", path, identifier.Name)
+			if identifier != nil {
+				assert.False(t, idWord.MatchString(identifier.Name), "%s declares %q; spell the initialism ID", path, identifier.Name)
 			}
 		}
 		ast.Inspect(file, func(node ast.Node) bool {
@@ -131,8 +135,9 @@ func TestSQLStoreAdvisoryLocksUseOneHelper(t *testing.T) {
 			if !ok {
 				return true
 			}
-			if value, isString := stringLiteral(literal); isString && strings.Contains(value, "pg_advisory") {
-				t.Errorf("%s spells an advisory lock query; use lockAdvisory, lockAdvisoryShared, or lockCommandIdempotency", path)
+			value, isString := stringLiteral(literal)
+			if isString {
+				assert.NotContains(t, value, "pg_advisory", "%s spells an advisory lock query; use lockAdvisory, lockAdvisoryShared, or lockCommandIdempotency", path)
 			}
 			return true
 		})
@@ -151,9 +156,7 @@ func TestFilesAreNamedForTheSingularConcept(t *testing.T) {
 
 	inspectServerGoFiles(t, func(path string, _ *ast.File) {
 		stem := strings.TrimSuffix(filepath.Base(path), ".go")
-		if pluralEntityFile.MatchString(stem) {
-			t.Errorf("%s pluralizes a domain entity; name the file for the singular concept", path)
-		}
+		assert.False(t, pluralEntityFile.MatchString(stem), "%s pluralizes a domain entity; name the file for the singular concept", path)
 	})
 }
 
@@ -164,8 +167,8 @@ func TestApplicationPackageIsImportedUnderItsName(t *testing.T) {
 
 	inspectServerGoFiles(t, func(path string, file *ast.File) {
 		for _, spec := range file.Imports {
-			if spec.Path.Value == `"github.com/sudosylabs/proctor/server/app"` && spec.Name != nil && spec.Name.Name != "app" {
-				t.Errorf("%s imports the application package as %s; import it as app", path, spec.Name.Name)
+			if spec.Path.Value == `"github.com/sudosylabs/proctor/server/app"` && spec.Name != nil {
+				assert.Equal(t, "app", spec.Name.Name, "%s imports the application package as %s; import it as app", path, spec.Name.Name)
 			}
 		}
 	})
@@ -211,7 +214,5 @@ func inspectServerGoFiles(t *testing.T, inspect func(path string, file *ast.File
 		inspect(path, file)
 		return nil
 	})
-	if err != nil {
-		t.Fatalf("inspect server Go files: %v", err)
-	}
+	require.NoError(t, err)
 }

@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -30,14 +32,10 @@ func TestExamExportsOpenAPIAgreesWithRuntime(t *testing.T) {
 			openAPIAgreementOperation{Key: "GET " + base + "/{exam_export_id}/content", Auth: AuthSessionRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/ExamExportArchive", ExceptionalSuccess: true, PublicErrorCodes: append(append([]string(nil), read...), "exam.export.expired", "exam.export.not_ready")})
 	}
 	api := newRoutingTestAPI(model.APIURLSuffix)
-	if err := api.collectResources(model.APIURLSuffix, examExportsResource(nil)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, api.collectResources(model.APIURLSuffix, examExportsResource(nil)))
 	assertOpenAPIAgreement(t, suite, api.Routes())
 	doc := readOpenAPIDocument(t)
 	for _, name := range []string{"ExamExportAccepted", "ExamExportOK", "ExamExportArchive"} {
-		if doc.Components.Responses[name].Headers["Cache-Control"].Ref != "#/components/headers/PrivateNoStore" {
-			t.Fatalf("%s misses private no-store", name)
-		}
+		require.Equal(t, "#/components/headers/PrivateNoStore", doc.Components.Responses[name].Headers["Cache-Control"].Ref, "%s misses private no-store", name)
 	}
 }

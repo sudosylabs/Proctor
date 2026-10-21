@@ -9,47 +9,34 @@ package model
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestNativeConditionInventoryBindsOrderAndReview(t *testing.T) {
 	empty := NewNativeConditionInventory()
-	if empty.Validate() != nil {
-		t.Fatal("invalid empty inventory")
-	}
+	require.NoError(t, empty.Validate(), "invalid empty inventory")
 	corruptEmpty := empty
 	corruptEmpty.Digest = SHA256Fingerprint([]byte("wrong"))
-	if corruptEmpty.Validate() == nil {
-		t.Fatal("accepted noncanonical empty inventory")
-	}
+	require.Error(t, corruptEmpty.Validate(), "accepted noncanonical empty inventory")
 	one, err := empty.Append([]byte("first"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	two, err := one.Append([]byte("second"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	reversed, err := empty.Append([]byte("second"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	reversed, err = reversed.Append([]byte("first"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if two.Records != 2 || two.Digest == reversed.Digest {
-		t.Fatal("inventory does not bind transition order")
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(2), two.Records, "inventory does not bind transition order")
+	require.NotEqual(t, reversed.Digest, two.Digest, "inventory does not bind transition order")
 	base := strings.Repeat("a", 64)
 	legacy, err := IntegrityReviewNativeDigest(base, empty)
-	if err != nil || legacy != base {
-		t.Fatal("empty native inventory changed legacy digest")
-	}
+	require.NoError(t, err, "empty native inventory changed legacy digest")
+	require.Equal(t, base, legacy, "empty native inventory changed legacy digest")
 	revised, err := IntegrityReviewNativeDigest(base, two)
-	if err != nil || !validLowerSHA256(revised) || revised == base {
-		t.Fatal("native inventory absent from finalization digest")
-	}
-	if _, err := IntegrityReviewNativeDigest("sha256:"+base, two); err == nil {
-		t.Fatal("accepted incompatible review digest codec")
-	}
+	require.NoError(t, err, "native inventory absent from finalization digest")
+	require.True(t, validLowerSHA256(revised), "native inventory absent from finalization digest")
+	require.NotEqual(t, base, revised, "native inventory absent from finalization digest")
+	_, err = IntegrityReviewNativeDigest("sha256:"+base, two)
+	require.Error(t, err, "accepted incompatible review digest codec")
 }

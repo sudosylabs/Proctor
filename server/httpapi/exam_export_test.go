@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -53,9 +55,7 @@ func newHTTPExport(t *testing.T, p model.Principal, scope model.RetentionHoldSco
 	t.Helper()
 	at := model.TimeUTC(time.Now())
 	e := &model.ExamExport{ID: model.NewExamExportID(), Scope: scope, RequesterUserID: p.UserID, Categories: []model.RetentionCategory{model.RetentionCategoryWork}, State: model.ExamExportQueued, PolicyRevision: 1, CreatedAt: at, ExpiresAt: at.Add(24 * time.Hour), SourceExpiresAt: at.Add(24 * time.Hour), SubmissionCount: 1}
-	if err := e.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, e.Validate())
 	return e
 }
 
@@ -86,25 +86,23 @@ func TestExamExportsHTTPExplicitCategoriesAndExactScope(t *testing.T) {
 			}
 			for _, body := range []string{`{}`, `{"categories":null}`, `{"categories":[]}`, `{"categories":["work","work"]}`, `{"categories":["all"]}`, `{"categories":["work"],"categories":["integrity"]}`, `{"categories":["work"],"expires_at":"never"}`} {
 				w := send(body, "export-key")
-				if w.Code != http.StatusBadRequest || fake.calls != 0 {
-					t.Fatalf("invalid %s: %d %s", body, w.Code, w.Body.String())
-				}
+				require.Equal(t, http.StatusBadRequest, w.Code, "invalid %s: %d %s", body, w.Code, w.Body.String())
+				require.Equal(t, 0, fake.calls, "invalid %s: %d %s", body, w.Code, w.Body.String())
 			}
 			w := send(`{"categories":["work"]}`, "")
-			if w.Code != http.StatusBadRequest || fake.calls != 0 {
-				t.Fatalf("missing key: %d %s", w.Code, w.Body.String())
-			}
+			require.Equal(t, http.StatusBadRequest, w.Code, "missing key: %d %s", w.Code, w.Body.String())
+			require.Equal(t, 0, fake.calls, "missing key: %d %s", w.Code, w.Body.String())
 			w = send(`{"categories":["work"]}`, "export-key")
-			if w.Code != http.StatusAccepted || w.Header().Get("Cache-Control") != "private, no-store" || fake.create.Scope != scope || fake.create.IdempotencyKey != "export-key" {
-				t.Fatalf("create: %d %s command=%#v", w.Code, w.Body.String(), fake.create)
-			}
+			require.Equal(t, http.StatusAccepted, w.Code, "create: %d %s command=%#v", w.Code, w.Body.String(), fake.create)
+			require.Equal(t, "private, no-store", w.Header().Get("Cache-Control"), "create: %d %s command=%#v", w.Code, w.Body.String(), fake.create)
+			require.Equal(t, scope, fake.create.Scope, "create: %d %s command=%#v", w.Code, w.Body.String(), fake.create)
+			require.Equal(t, "export-key", fake.create.IdempotencyKey, "create: %d %s command=%#v", w.Code, w.Body.String(), fake.create)
 			var result map[string]any
-			if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
-				t.Fatal(err)
-			}
-			if result["expires_at"] == nil || result["construction_deadline"] == nil || result["download_url"] != nil || result["artifact"] != nil {
-				t.Fatalf("unsafe metadata=%#v", result)
-			}
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+			require.NotNil(t, result["expires_at"])
+			require.NotNil(t, result["construction_deadline"])
+			require.Nil(t, result["download_url"])
+			require.Nil(t, result["artifact"])
 		})
 	}
 }
@@ -129,17 +127,19 @@ func TestExamExportHTTPDownloadHasFixedPrivateAttachment(t *testing.T) {
 		return w
 	}
 	w := send()
-	if w.Code != 200 || w.Body.String() != "archive" || w.Header().Get("Content-Type") != "application/zip" || w.Header().Get("Cache-Control") != "private, no-store" || w.Header().Get("Content-Disposition") != `attachment; filename="exam-export-`+e.ID.String()+`.zip"` || w.Header().Get("ETag") != `"`+e.ArchiveSHA256+`"` || w.Header().Get("X-Content-Type-Options") != "nosniff" {
-		t.Fatalf("download=%d %s headers=%#v", w.Code, w.Body.String(), w.Header())
-	}
-	if fake.query.Scope != scope || fake.query.ExportID != e.ID {
-		t.Fatalf("download scope=%#v", fake.query)
-	}
+	require.Equal(t, 200, w.Code, "download=%d %s headers=%#v", w.Code, w.Body.String(), w.Header())
+	require.Equal(t, "archive", w.Body.String(), "download=%d %s headers=%#v", w.Code, w.Body.String(), w.Header())
+	require.Equal(t, "application/zip", w.Header().Get("Content-Type"), "download=%d %s headers=%#v", w.Code, w.Body.String(), w.Header())
+	require.Equal(t, "private, no-store", w.Header().Get("Cache-Control"), "download=%d %s headers=%#v", w.Code, w.Body.String(), w.Header())
+	require.Equal(t, `attachment; filename="exam-export-`+e.ID.String()+`.zip"`, w.Header().Get("Content-Disposition"), "download=%d %s headers=%#v", w.Code, w.Body.String(), w.Header())
+	require.Equal(t, `"`+e.ArchiveSHA256+`"`, w.Header().Get("ETag"), "download=%d %s headers=%#v", w.Code, w.Body.String(), w.Header())
+	require.Equal(t, "nosniff", w.Header().Get("X-Content-Type-Options"), "download=%d %s headers=%#v", w.Code, w.Body.String(), w.Header())
+	require.Equal(t, scope, fake.query.Scope)
+	require.Equal(t, e.ID, fake.query.ExportID)
 	fake.failure = apperror.New("exam.export.expired")
 	w = send()
-	if w.Code != http.StatusGone || strings.Contains(w.Body.String(), "archive") {
-		t.Fatalf("expired=%d %s", w.Code, w.Body.String())
-	}
+	require.Equal(t, http.StatusGone, w.Code, "expired")
+	require.NotContains(t, w.Body.String(), "archive", "expired")
 }
 
 func TestExamExportsHTTPForbidsPATBeforeUseCase(t *testing.T) {
@@ -154,7 +154,6 @@ func TestExamExportsHTTPForbidsPATBeforeUseCase(t *testing.T) {
 	r.Header.Set("Authorization", "Bearer pat")
 	w := httptest.NewRecorder()
 	api.ServeHTTP(w, r)
-	if w.Code == http.StatusOK || fake.calls != 0 {
-		t.Fatalf("PAT reached export: %d %s", w.Code, w.Body.String())
-	}
+	require.NotEqual(t, http.StatusOK, w.Code, "PAT reached export: %d %s", w.Code, w.Body.String())
+	require.Equal(t, 0, fake.calls, "PAT reached export: %d %s", w.Code, w.Body.String())
 }

@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestMFACredentialValidationAndRedaction(t *testing.T) {
@@ -24,48 +26,31 @@ func TestMFACredentialValidationAndRedaction(t *testing.T) {
 		PendingExpiresAt: OptionalTimeFrom(now.Add(time.Minute)),
 	}
 	pending.PrepareCreate(NewMFACredentialID(), now)
-	if err := pending.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, pending.Validate())
 	encoded, err := json.Marshal(pending)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(encoded), pending.EncryptedSecret) ||
-		strings.Contains(string(encoded), pending.EncryptionKeyID) {
-		t.Fatalf("MFA credential exposed encryption material: %s", encoded)
-	}
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), pending.EncryptedSecret)
+	require.NotContains(t, string(encoded), pending.EncryptionKeyID)
 	auditable := pending.Auditable()
-	if _, exists := auditable["encrypted_secret"]; exists {
-		t.Fatal("MFA auditable projection exposed encrypted secret")
-	}
-	if _, exists := auditable["encryption_key_id"]; exists {
-		t.Fatal("MFA auditable projection exposed encryption key id")
-	}
-	if !pending.IsPendingAt(now) || pending.IsPendingAt(pending.PendingExpiresAt.Time) {
-		t.Fatalf("IsPendingAt() inconsistent for %#v", pending)
-	}
+	_, exists := auditable["encrypted_secret"]
+	require.False(t, exists, "MFA auditable projection exposed encrypted secret")
+	_, exists = auditable["encryption_key_id"]
+	require.False(t, exists, "MFA auditable projection exposed encryption key id")
+	require.True(t, pending.IsPendingAt(now))
+	require.False(t, pending.IsPendingAt(pending.PendingExpiresAt.Time))
 	invalidKeyID := *pending
 	invalidKeyID.EncryptionKeyID = strings.ToUpper(invalidKeyID.EncryptionKeyID)
-	if err := invalidKeyID.Validate(); err == nil {
-		t.Fatal("MFA credential accepted a non-canonical key ID")
-	}
+	require.Error(t, invalidKeyID.Validate(), "MFA credential accepted a non-canonical key ID")
 
 	active := *pending
 	active.State = MFAStateActive
 	active.PendingExpiresAt = OptionalTime{}
 	active.ActivatedAt = OptionalTimeFrom(active.CreatedAt)
 	active.LastUsedTimeStep = 1
-	if err := active.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	if !active.IsActive() {
-		t.Fatal("IsActive() = false for valid active credential")
-	}
+	require.NoError(t, active.Validate())
+	require.True(t, active.IsActive(), "IsActive() = false for valid active credential")
 	active.LastUsedTimeStep = 0
-	if err := active.Validate(); err == nil {
-		t.Fatal("active MFA credential accepted missing replay state")
-	}
+	require.Error(t, active.Validate(), "active MFA credential accepted missing replay state")
 }
 
 func TestMFARecoveryCodeValidationAndRedaction(t *testing.T) {
@@ -76,21 +61,12 @@ func TestMFARecoveryCodeValidationAndRedaction(t *testing.T) {
 		CodeHash: HashToken(raw),
 	}
 	code.PrepareCreate(NewMFARecoveryCodeID(), now)
-	if err := code.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, code.Validate())
 	encoded, err := json.Marshal(code)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(encoded), code.CodeHash) {
-		t.Fatalf("MFA recovery code exposed hash: %s", encoded)
-	}
-	if _, exists := code.Auditable()["code_hash"]; exists {
-		t.Fatal("MFA recovery-code audit exposed hash")
-	}
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), code.CodeHash, "MFA recovery code exposed hash")
+	_, exists := code.Auditable()["code_hash"]
+	require.False(t, exists, "MFA recovery-code audit exposed hash")
 	code.ConsumedAt = OptionalTimeFrom(now.Add(-time.Second))
-	if err := code.Validate(); err == nil {
-		t.Fatal("recovery code accepted consumed_at before created_at")
-	}
+	require.Error(t, code.Validate(), "recovery code accepted consumed_at before created_at")
 }

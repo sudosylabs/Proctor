@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -92,9 +94,7 @@ func TestExternalAuthenticationCallbackReturnsValidatedRedirectAndCookies(t *tes
 
 	logger, _ := newTestLogger(t)
 	cookies, err := newBrowserCookies("http://localhost:8065")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	now := time.Now()
 	externalAuthentication := &externalAuthenticationEntryHTTPApplication{
 		completion: &model.ExternalAuthenticationCompletion{
@@ -110,15 +110,13 @@ func TestExternalAuthenticationCallbackReturnsValidatedRedirectAndCookies(t *tes
 	request.AddCookie(&http.Cookie{Name: BrowserExternalLoginCookieName, Value: "binding"})
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/exams" {
-		t.Fatalf("callback redirect = %d %#v %s", response.Code, response.Header(), response.Body.String())
-	}
-	if externalAuthentication.completeCommand.ProviderID != "oidc" || externalAuthentication.completeCommand.Binding != "binding" || externalAuthentication.completeCommand.Callback.Values["code"][0] != "accepted" {
-		t.Fatalf("callback command = %#v", externalAuthentication.completeCommand)
-	}
-	if len(response.Header().Values("Set-Cookie")) != 5 || response.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("callback effects = %#v", response.Header())
-	}
+	require.Equal(t, http.StatusSeeOther, response.Code, "callback redirect = %d %#v %s", response.Code, response.Header(), response.Body.String())
+	require.Equal(t, "/exams", response.Header().Get("Location"), "callback redirect = %d %#v %s", response.Code, response.Header(), response.Body.String())
+	require.Equal(t, "oidc", externalAuthentication.completeCommand.ProviderID)
+	require.Equal(t, "binding", externalAuthentication.completeCommand.Binding)
+	require.Equal(t, "accepted", externalAuthentication.completeCommand.Callback.Values["code"][0])
+	require.Len(t, response.Header().Values("Set-Cookie"), 5)
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"))
 }
 
 func (af *externalAuthenticationEntryHTTPApplication) BeginExternalAuthentication(
@@ -135,9 +133,7 @@ func TestExternalAuthenticationLoginDefaultsToWebAndNeverCreatesDesktopSessionsD
 
 	logger, _ := newTestLogger(t)
 	cookies, err := newBrowserCookies("http://localhost:8065")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	applicationFake := &externalAuthenticationEntryHTTPApplication{start: &model.ExternalAuthenticationStart{
 		RedirectURL: "https://identity.example.test/login", Binding: model.NewCredentialToken(),
 		ExpiresAt: time.Now().Add(time.Minute).UnixMilli(),
@@ -146,21 +142,15 @@ func TestExternalAuthenticationLoginDefaultsToWebAndNeverCreatesDesktopSessionsD
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/providers/campus/login", nil)
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusSeeOther {
-		t.Fatalf("login redirect = %d %s", response.Code, response.Body.String())
-	}
-	if applicationFake.beginCommand.ClientType != model.SessionClientWeb {
-		t.Fatalf("default external login client type = %q, want web", applicationFake.beginCommand.ClientType)
-	}
+	require.Equal(t, http.StatusSeeOther, response.Code, "login redirect = %d %s", response.Code, response.Body.String())
+	require.Equal(t, model.SessionClientWeb, applicationFake.beginCommand.ClientType, "default external login client type")
 }
 
 func TestExternalAuthenticationInvitationClaimUsesStrictPOSTBody(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
 	cookies, err := newBrowserCookies("http://localhost:8065")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	claim := model.NewCredentialToken()
 	applicationFake := &externalAuthenticationEntryHTTPApplication{start: &model.ExternalAuthenticationStart{
 		RedirectURL: "https://identity.example.test/login", Binding: model.NewCredentialToken(), ExpiresAt: time.Now().Add(time.Minute).UnixMilli(),
@@ -171,24 +161,20 @@ func TestExternalAuthenticationInvitationClaimUsesStrictPOSTBody(t *testing.T) {
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusSeeOther || applicationFake.beginCommand.InvitationClaim != claim ||
-		applicationFake.beginCommand.ReturnTo != "/join" || strings.Contains(response.Body.String(), claim) ||
-		strings.Contains(response.Header().Get("Location"), claim) {
-		t.Fatalf("invitation start = %d command=%#v headers=%#v body=%s", response.Code, applicationFake.beginCommand, response.Header(), response.Body.String())
-	}
+	require.Equal(t, http.StatusSeeOther, response.Code, "invitation start = %d command=%#v headers=%#v body", response.Code, applicationFake.beginCommand, response.Header())
+	require.Equal(t, claim, applicationFake.beginCommand.InvitationClaim, "invitation start = %d command=%#v headers=%#v body", response.Code, applicationFake.beginCommand, response.Header())
+	require.Equal(t, "/join", applicationFake.beginCommand.ReturnTo, "invitation start = %d command=%#v headers=%#v body", response.Code, applicationFake.beginCommand, response.Header())
+	require.NotContains(t, response.Body.String(), claim, "invitation start = %d command=%#v headers=%#v body", response.Code, applicationFake.beginCommand, response.Header())
+	require.NotContains(t, response.Header().Get("Location"), claim, "invitation start = %d command=%#v headers=%#v body", response.Code, applicationFake.beginCommand, response.Header())
 
 	invalid := httptest.NewRecorder()
 	httpAPI.ServeHTTP(invalid, newJSONRequest(http.MethodPost, "/api/v1/auth/providers/campus/login",
 		strings.NewReader(`{"invitation_claim":"`+claim+`","unknown":true}`)))
-	if invalid.Code != http.StatusBadRequest {
-		t.Fatalf("unknown invitation start field = %d %s", invalid.Code, invalid.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, invalid.Code, "unknown invitation start field = %d %s", invalid.Code, invalid.Body.String())
 	missing := httptest.NewRecorder()
 	httpAPI.ServeHTTP(missing, newJSONRequest(http.MethodPost, "/api/v1/auth/providers/campus/login",
 		strings.NewReader(`{"return_to":"/join"}`)))
-	if missing.Code != http.StatusBadRequest {
-		t.Fatalf("missing invitation claim = %d %s", missing.Code, missing.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, missing.Code, "missing invitation claim = %d %s", missing.Code, missing.Body.String())
 }
 
 func TestAuthenticationResourceRunsPublicAndSessionEntriesThroughKernel(t *testing.T) {
@@ -217,9 +203,7 @@ func TestAuthenticationResourceRunsPublicAndSessionEntriesThroughKernel(t *testi
 		},
 	}
 	cookies, err := newBrowserCookies("http://localhost:8065")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	httpAPI := newFocusedResourceAPI(
 		t, logger, classRouteAuthenticator{principal: principal},
 		authenticationResource(authentication, cookies),
@@ -233,30 +217,22 @@ func TestAuthenticationResourceRunsPublicAndSessionEntriesThroughKernel(t *testi
 	loginRequest.Header.Set("Content-Type", "application/json")
 	loginResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(loginResponse, loginRequest)
-	if loginResponse.Code != http.StatusOK {
-		t.Fatalf("login status = %d: %s", loginResponse.Code, loginResponse.Body.String())
-	}
-	if authentication.loginCommand.LoginID != "student@example.edu" || authentication.loginCommand.ClientType != model.SessionClientWeb {
-		t.Fatalf("login command = %#v", authentication.loginCommand)
-	}
-	if loginResponse.Header().Get("Cache-Control") != "no-store" || len(loginResponse.Header().Values("Set-Cookie")) != 4 {
-		t.Fatalf("login security headers = %#v", loginResponse.Header())
-	}
+	require.Equal(t, http.StatusOK, loginResponse.Code, "login status = %d: %s", loginResponse.Code, loginResponse.Body.String())
+	require.Equal(t, "student@example.edu", authentication.loginCommand.LoginID)
+	require.Equal(t, model.SessionClientWeb, authentication.loginCommand.ClientType)
+	require.Equal(t, "no-store", loginResponse.Header().Get("Cache-Control"))
+	require.Len(t, loginResponse.Header().Values("Set-Cookie"), 4)
 	var loginBody authenticationResponse
-	if err := json.Unmarshal(loginResponse.Body.Bytes(), &loginBody); err != nil {
-		t.Fatal(err)
-	}
-	if loginBody.Tokens != nil || loginBody.Session == nil {
-		t.Fatalf("browser login response = %#v", loginBody)
-	}
+	require.NoError(t, json.Unmarshal(loginResponse.Body.Bytes(), &loginBody))
+	require.Nil(t, loginBody.Tokens)
+	require.NotNil(t, loginBody.Session)
 
 	logoutRequest := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
 	logoutRequest.Header.Set("Authorization", "Bearer access")
 	logoutResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(logoutResponse, logoutRequest)
-	if logoutResponse.Code != http.StatusNoContent || authentication.logoutCalls != 1 {
-		t.Fatalf("logout status/calls = %d/%d: %s", logoutResponse.Code, authentication.logoutCalls, logoutResponse.Body.String())
-	}
+	require.Equal(t, http.StatusNoContent, logoutResponse.Code, "logout status/calls = %d/%d: %s", logoutResponse.Code, authentication.logoutCalls, logoutResponse.Body.String())
+	require.Equal(t, 1, authentication.logoutCalls, "logout status/calls = %d/%d: %s", logoutResponse.Code, authentication.logoutCalls, logoutResponse.Body.String())
 }
 
 func TestExternalAuthenticationProviderListFailsClosedWhenPolicyIsUnavailable(t *testing.T) {
@@ -264,9 +240,7 @@ func TestExternalAuthenticationProviderListFailsClosedWhenPolicyIsUnavailable(t 
 
 	logger, _ := newTestLogger(t)
 	cookies, err := newBrowserCookies("http://localhost:8065")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	applicationFake := &externalAuthenticationEntryHTTPApplication{
 		providers:      []model.ExternalAuthenticationProvider{{ID: "configured-but-unknown", Type: "oidc"}},
 		providersError: apperror.New("authentication.internal"),
@@ -274,9 +248,8 @@ func TestExternalAuthenticationProviderListFailsClosedWhenPolicyIsUnavailable(t 
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, externalAuthenticationResource(applicationFake, cookies))
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/auth/providers", nil))
-	if response.Code != http.StatusInternalServerError || strings.Contains(response.Body.String(), "configured-but-unknown") {
-		t.Fatalf("provider-list failure = %d %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusInternalServerError, response.Code, "provider-list failure")
+	require.NotContains(t, response.Body.String(), "configured-but-unknown", "provider-list failure")
 }
 
 func TestAuthenticationResourceKernelRejectsMissingCredentialAndInvalidJSON(t *testing.T) {
@@ -284,9 +257,7 @@ func TestAuthenticationResourceKernelRejectsMissingCredentialAndInvalidJSON(t *t
 
 	logger, _ := newTestLogger(t)
 	cookies, err := newBrowserCookies("http://localhost:8065")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	authentication := &authenticationEntryHTTPApplication{}
 	httpAPI := newFocusedResourceAPI(
 		t, logger, classRouteAuthenticator{},
@@ -295,18 +266,16 @@ func TestAuthenticationResourceKernelRejectsMissingCredentialAndInvalidJSON(t *t
 
 	refresh := httptest.NewRecorder()
 	httpAPI.ServeHTTP(refresh, httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", nil))
-	if refresh.Code != http.StatusUnauthorized || !strings.Contains(refresh.Body.String(), `"code":"authentication.required"`) {
-		t.Fatalf("missing refresh credential = %d %s", refresh.Code, refresh.Body.String())
-	}
+	require.Equal(t, http.StatusUnauthorized, refresh.Code, "missing refresh credential")
+	require.Contains(t, refresh.Body.String(), `"code":"authentication.required"`, "missing refresh credential")
 
 	invalid := httptest.NewRecorder()
 	httpAPI.ServeHTTP(
 		invalid,
 		newJSONRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"login_id":"student","unknown":true}`)),
 	)
-	if invalid.Code != http.StatusBadRequest || !strings.Contains(invalid.Body.String(), `"code":"request.invalid"`) {
-		t.Fatalf("invalid login body = %d %s", invalid.Code, invalid.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, invalid.Code, "invalid login body")
+	require.Contains(t, invalid.Body.String(), `"code":"request.invalid"`, "invalid login body")
 
 	authentication.loginError = apperror.New("resource.not_found")
 	undeclared := httptest.NewRecorder()
@@ -318,9 +287,9 @@ func TestAuthenticationResourceKernelRejectsMissingCredentialAndInvalidJSON(t *t
 			strings.NewReader(`{"login_id":"student","password":"secret","client_type":"desktop"}`),
 		),
 	)
-	if undeclared.Code != http.StatusInternalServerError || !strings.Contains(undeclared.Body.String(), `"code":"server.internal"`) || strings.Contains(undeclared.Body.String(), "resource.not_found") {
-		t.Fatalf("undeclared login error = %d %s", undeclared.Code, undeclared.Body.String())
-	}
+	require.Equal(t, http.StatusInternalServerError, undeclared.Code, "undeclared login error")
+	require.Contains(t, undeclared.Body.String(), `"code":"server.internal"`, "undeclared login error")
+	require.NotContains(t, undeclared.Body.String(), "resource.not_found", "undeclared login error")
 
 	authentication.loginError = apperror.New("authentication.mfa.code_invalid")
 	invalidSecondFactor := httptest.NewRecorder()
@@ -332,10 +301,8 @@ func TestAuthenticationResourceKernelRejectsMissingCredentialAndInvalidJSON(t *t
 			strings.NewReader(`{"login_id":"student","password":"secret","client_type":"desktop","mfa_code":"used-recovery-code"}`),
 		),
 	)
-	if invalidSecondFactor.Code != http.StatusUnauthorized ||
-		!strings.Contains(invalidSecondFactor.Body.String(), `"code":"authentication.mfa.code_invalid"`) {
-		t.Fatalf("invalid login second factor = %d %s", invalidSecondFactor.Code, invalidSecondFactor.Body.String())
-	}
+	require.Equal(t, http.StatusUnauthorized, invalidSecondFactor.Code, "invalid login second factor")
+	require.Contains(t, invalidSecondFactor.Body.String(), `"code":"authentication.mfa.code_invalid"`, "invalid login second factor")
 }
 
 func TestPublicRegistrationUsesStrictBodyAndReturnsNoAccountProjection(t *testing.T) {
@@ -350,31 +317,30 @@ func TestPublicRegistrationUsesStrictBodyAndReturnsNoAccountProjection(t *testin
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusAccepted || response.Body.Len() != 0 || response.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("registration response = %d headers=%#v body=%s", response.Code, response.Header(), response.Body.String())
-	}
-	if applicationFake.registrationCalls != 1 || applicationFake.registrationCommand.Username != "student" ||
-		applicationFake.registrationCommand.Email != "student@example.edu" ||
-		applicationFake.registrationCommand.FirstName != "New" || applicationFake.registrationCommand.LastName != "Student" ||
-		applicationFake.registrationCommand.Password != "long-private-password" || applicationFake.registrationCommand.Source == "" {
-		t.Fatalf("registration command = %#v", applicationFake.registrationCommand)
-	}
+	require.Equal(t, http.StatusAccepted, response.Code, "registration response = %d headers=%#v body=%s", response.Code, response.Header(), response.Body.String())
+	require.Equal(t, 0, response.Body.Len(), "registration response = %d headers=%#v body=%s", response.Code, response.Header(), response.Body.String())
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "registration response = %d headers=%#v body=%s", response.Code, response.Header(), response.Body.String())
+	require.Equal(t, 1, applicationFake.registrationCalls)
+	require.Equal(t, "student", applicationFake.registrationCommand.Username)
+	require.Equal(t, "student@example.edu", applicationFake.registrationCommand.Email)
+	require.Equal(t, "New", applicationFake.registrationCommand.FirstName)
+	require.Equal(t, "Student", applicationFake.registrationCommand.LastName)
+	require.Equal(t, "long-private-password", applicationFake.registrationCommand.Password)
+	require.NotEmpty(t, applicationFake.registrationCommand.Source)
 
 	invalid := httptest.NewRecorder()
 	httpAPI.ServeHTTP(invalid, newJSONRequest(http.MethodPost, "/api/v1/auth/register",
 		strings.NewReader(`{"username":"student","email":"student@example.edu","first_name":"New","last_name":"Student","password":"private","display_name":"New Student"}`)))
-	if invalid.Code != http.StatusBadRequest || applicationFake.registrationCalls != 1 {
-		t.Fatalf("display-name registration = %d calls=%d body=%s", invalid.Code, applicationFake.registrationCalls, invalid.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, invalid.Code, "display-name registration = %d calls=%d body=%s", invalid.Code, applicationFake.registrationCalls, invalid.Body.String())
+	require.Equal(t, 1, applicationFake.registrationCalls, "display-name registration = %d calls=%d body=%s", invalid.Code, applicationFake.registrationCalls, invalid.Body.String())
 
 	applicationFake.registrationError = apperror.New("authentication.registration.invitation_required")
 	disabled := httptest.NewRecorder()
 	httpAPI.ServeHTTP(disabled, newJSONRequest(http.MethodPost, "/api/v1/auth/register",
 		strings.NewReader(`{"username":"student","email":"student@example.edu","first_name":"New","last_name":"Student","password":"private"}`)))
-	if disabled.Code != http.StatusForbidden || !strings.Contains(disabled.Body.String(), `"code":"authentication.registration.invitation_required"`) ||
-		strings.Contains(disabled.Body.String(), "student@example.edu") {
-		t.Fatalf("disabled registration = %d %s", disabled.Code, disabled.Body.String())
-	}
+	require.Equal(t, http.StatusForbidden, disabled.Code, "disabled registration")
+	require.Contains(t, disabled.Body.String(), `"code":"authentication.registration.invitation_required"`, "disabled registration")
+	require.NotContains(t, disabled.Body.String(), "student@example.edu", "disabled registration")
 }
 
 func TestExternalAuthenticationRedirectIsNamedKernelProtocolOperation(t *testing.T) {
@@ -382,9 +348,7 @@ func TestExternalAuthenticationRedirectIsNamedKernelProtocolOperation(t *testing
 
 	logger, _ := newTestLogger(t)
 	cookies, err := newBrowserCookies("http://localhost:8065")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	externalAuthentication := &externalAuthenticationEntryHTTPApplication{
 		providers: []model.ExternalAuthenticationProvider{{ID: "oidc", DisplayName: "Institution Login", Type: "oidc"}},
 		start: &model.ExternalAuthenticationStart{
@@ -399,9 +363,8 @@ func TestExternalAuthenticationRedirectIsNamedKernelProtocolOperation(t *testing
 
 	providers := httptest.NewRecorder()
 	httpAPI.ServeHTTP(providers, httptest.NewRequest(http.MethodGet, "/api/v1/auth/providers", nil))
-	if providers.Code != http.StatusOK || !strings.Contains(providers.Body.String(), `"id":"oidc"`) {
-		t.Fatalf("providers response = %d %s", providers.Code, providers.Body.String())
-	}
+	require.Equal(t, http.StatusOK, providers.Code, "providers response")
+	require.Contains(t, providers.Body.String(), `"id":"oidc"`, "providers response")
 
 	begin := httptest.NewRecorder()
 	httpAPI.ServeHTTP(
@@ -412,13 +375,11 @@ func TestExternalAuthenticationRedirectIsNamedKernelProtocolOperation(t *testing
 			nil,
 		),
 	)
-	if begin.Code != http.StatusSeeOther || begin.Header().Get("Location") != externalAuthentication.start.RedirectURL {
-		t.Fatalf("external login redirect = %d %#v", begin.Code, begin.Header())
-	}
-	if externalAuthentication.beginCommand.ProviderID != "oidc" || externalAuthentication.beginCommand.ReturnTo != "/exams" || externalAuthentication.beginCommand.DeviceID != "device-a" {
-		t.Fatalf("external login command = %#v", externalAuthentication.beginCommand)
-	}
-	if len(begin.Header().Values("Set-Cookie")) != 1 || begin.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("external login headers = %#v", begin.Header())
-	}
+	require.Equal(t, http.StatusSeeOther, begin.Code, "external login redirect = %d %#v", begin.Code, begin.Header())
+	require.Equal(t, externalAuthentication.start.RedirectURL, begin.Header().Get("Location"), "external login redirect = %d %#v", begin.Code, begin.Header())
+	require.Equal(t, "oidc", externalAuthentication.beginCommand.ProviderID)
+	require.Equal(t, "/exams", externalAuthentication.beginCommand.ReturnTo)
+	require.Equal(t, "device-a", externalAuthentication.beginCommand.DeviceID)
+	require.Len(t, begin.Header().Values("Set-Cookie"), 1)
+	require.Equal(t, "no-store", begin.Header().Get("Cache-Control"))
 }

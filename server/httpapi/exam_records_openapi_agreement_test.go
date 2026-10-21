@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -44,14 +46,10 @@ func TestExamRecordsOpenAPIAgreesWithRuntime(t *testing.T) {
 		return strings.Contains(path, "/records-completion") || strings.Contains(path, "/review-waiver") || strings.Contains(path, "/retention-holds")
 	}}
 	api := newRoutingTestAPI(model.APIURLSuffix)
-	if err := api.collectResources(model.APIURLSuffix, examRecordsResource(nil)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, api.collectResources(model.APIURLSuffix, examRecordsResource(nil)))
 	assertOpenAPIAgreement(t, suite, api.Routes())
 	doc := readOpenAPIDocument(t)
 	for _, name := range []string{"ExamRecordsSnapshotOK", "ExamRecordsCompletionOK", "SubmissionReviewWaiverOK", "RetentionHoldPageOK", "RetentionHoldOK", "RetentionHoldCreated"} {
-		if doc.Components.Responses[name].Headers["Cache-Control"].Ref != "#/components/headers/PrivateNoStore" {
-			t.Fatalf("%s lacks private no-store", name)
-		}
+		require.Equal(t, "#/components/headers/PrivateNoStore", doc.Components.Responses[name].Headers["Cache-Control"].Ref, "%s lacks private no-store", name)
 	}
 }

@@ -14,11 +14,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
@@ -373,13 +374,9 @@ func newHookOverrides(t *testing.T) (server.TestingOverrides, *hookStore, *hookC
 		config.NewMemoryStore(nil),
 		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	logger, err := logging.New()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	persistence := &hookStore{}
 	cache := &hookCache{}
 	mailer := &hookMailer{}
@@ -403,9 +400,7 @@ func newHookConfiguration(t *testing.T, events *hookCloseEvents) (*config.Store,
 		backing,
 		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return configuration, backing
 }
 
@@ -425,35 +420,25 @@ func TestNewForTestingAssemblesTheProductionGraphWithOverrides(t *testing.T) {
 	})
 	configuration := overrides.Configuration
 	logs := &logging.Buffer{}
-	if err := overrides.Logger.Configure(logging.Config{
+	require.NoError(t, overrides.Logger.Configure(logging.Config{
 		MaxFieldBytes: configuration.Get().Log.MaxFieldBytes,
 		Targets:       []logging.Target{{Name: "test", Type: "console", Level: "trace", Format: "json", Writer: logs}},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	}))
 
 	runtime, err := server.NewForTesting(context.Background(), overrides)
-	if err != nil {
-		t.Fatalf("NewForTesting() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	if runtime.Server == nil || runtime.Application == nil || runtime.Handler == nil {
-		t.Fatalf("NewForTesting() runtime = %#v, want every handle populated", runtime)
-	}
-	if runtime.Server.Ready() {
-		t.Fatal("server is ready before Run")
-	}
+	require.NotNil(t, runtime.Server, "NewForTesting() runtime = %#v, want every handle populated", runtime)
+	require.NotNil(t, runtime.Application, "NewForTesting() runtime = %#v, want every handle populated", runtime)
+	require.NotNil(t, runtime.Handler, "NewForTesting() runtime = %#v, want every handle populated", runtime)
+	require.False(t, runtime.Server.Ready(), "server is ready before Run")
 	observationsBeforePing := timedOperations.Load()
-	if observationsBeforePing == 0 {
-		t.Fatal("root store timing layer did not observe construction dependency checks")
-	}
+	require.NotEqual(t, int64(0), observationsBeforePing, "root store timing layer did not observe construction dependency checks")
 
-	if err := runtime.Server.Close(); err != nil {
-		t.Fatalf("Close() error = %v", err)
-	}
-	if !persistence.closed.Load() || !cache.closed.Load() || !mailer.closed.Load() {
-		t.Fatal("Close() did not close the overridden capabilities")
-	}
+	require.NoError(t, runtime.Server.Close())
+	require.True(t, persistence.closed.Load(), "Close() did not close the overridden capabilities")
+	require.True(t, cache.closed.Load(), "Close() did not close the overridden capabilities")
+	require.True(t, mailer.closed.Load(), "Close() did not close the overridden capabilities")
 }
 
 func TestCompositionIsInertUntilServerRun(t *testing.T) {
@@ -463,18 +448,10 @@ func TestCompositionIsInertUntilServerRun(t *testing.T) {
 	clusterTransport := &hookCluster{}
 	overrides.Cluster = clusterTransport
 	runtime, err := server.NewForTesting(context.Background(), overrides)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if runtime.Server.Ready() {
-		t.Fatal("composed node is ready before Run")
-	}
-	if got := clusterTransport.startedCount.Load(); got != 0 {
-		t.Fatalf("cluster Start calls during composition = %d, want 0", got)
-	}
-	if err := runtime.Server.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.False(t, runtime.Server.Ready(), "composed node is ready before Run")
+	require.Equal(t, int64(0), clusterTransport.startedCount.Load(), "cluster Start calls during composition")
+	require.NoError(t, runtime.Server.Close())
 }
 
 func TestCompositionRequiresDurableJobsUnlessExplicitlyDisabled(t *testing.T) {
@@ -483,15 +460,12 @@ func TestCompositionRequiresDurableJobsUnlessExplicitlyDisabled(t *testing.T) {
 	overrides, persistence, cache, mailer := newHookOverrides(t)
 	overrides.AllowMissingJobs = false
 	runtime, err := server.NewForTesting(context.Background(), overrides)
-	if runtime != nil {
-		t.Fatalf("NewForTesting(missing Jobs) runtime = %#v, want nil", runtime)
-	}
-	if err == nil || !strings.Contains(err.Error(), "require durable Job runtime") {
-		t.Fatalf("NewForTesting(missing Jobs) error = %v", err)
-	}
-	if !persistence.closed.Load() || !cache.closed.Load() || !mailer.closed.Load() {
-		t.Fatal("missing Job runtime did not release composed infrastructure")
-	}
+	require.Nil(t, runtime, "NewForTesting(missing Jobs) runtime")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "require durable Job runtime")
+	require.True(t, persistence.closed.Load(), "missing Job runtime did not release composed infrastructure")
+	require.True(t, cache.closed.Load(), "missing Job runtime did not release composed infrastructure")
+	require.True(t, mailer.closed.Load(), "missing Job runtime did not release composed infrastructure")
 }
 
 func TestNewForTestingCanceledConstructionClosesOwnedOverrides(t *testing.T) {
@@ -502,15 +476,11 @@ func TestNewForTestingCanceledConstructionClosesOwnedOverrides(t *testing.T) {
 	cancel()
 
 	runtime, err := server.NewForTesting(ctx, overrides)
-	if runtime != nil {
-		t.Fatalf("NewForTesting(canceled) runtime = %#v, want nil", runtime)
-	}
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("NewForTesting(canceled) error = %v, want context.Canceled", err)
-	}
-	if !persistence.closed.Load() || !cache.closed.Load() || !mailer.closed.Load() {
-		t.Fatal("canceled construction did not close every owned override")
-	}
+	require.Nil(t, runtime, "NewForTesting(canceled) runtime")
+	require.ErrorIs(t, err, context.Canceled, "NewForTesting(canceled) error")
+	require.True(t, persistence.closed.Load(), "canceled construction did not close every owned override")
+	require.True(t, cache.closed.Load(), "canceled construction did not close every owned override")
+	require.True(t, mailer.closed.Load(), "canceled construction did not close every owned override")
 }
 
 func TestFailedStoreDecoratorLeavesInputOwnedByAcquisition(t *testing.T) {
@@ -520,15 +490,12 @@ func TestFailedStoreDecoratorLeavesInputOwnedByAcquisition(t *testing.T) {
 	overrides.StoreRetry = &retrylayer.Policy{}
 
 	runtime, err := server.NewForTesting(context.Background(), overrides)
-	if runtime != nil {
-		t.Fatalf("NewForTesting(invalid retry) runtime = %#v, want nil", runtime)
-	}
-	if err == nil || !strings.Contains(err.Error(), "construct store retry layer") {
-		t.Fatalf("NewForTesting(invalid retry) error = %v, want retry-layer construction failure", err)
-	}
-	if !persistence.closed.Load() || !cache.closed.Load() || !mailer.closed.Load() {
-		t.Fatal("failed Store decorator did not release every owned override")
-	}
+	require.Nil(t, runtime, "NewForTesting(invalid retry) runtime")
+	require.Error(t, err, "NewForTesting(invalid retry) error")
+	require.Contains(t, err.Error(), "construct store retry layer", "NewForTesting(invalid retry) error")
+	require.True(t, persistence.closed.Load(), "failed Store decorator did not release every owned override")
+	require.True(t, cache.closed.Load(), "failed Store decorator did not release every owned override")
+	require.True(t, mailer.closed.Load(), "failed Store decorator did not release every owned override")
 }
 
 func TestCanceledAcquisitionReleasesOverridesOnceInReverseOrder(t *testing.T) {
@@ -552,16 +519,11 @@ func TestCanceledAcquisitionReleasesOverridesOnceInReverseOrder(t *testing.T) {
 	cancel()
 
 	runtime, err := server.NewForTesting(ctx, overrides)
-	if runtime != nil {
-		t.Fatalf("NewForTesting(canceled) runtime = %#v, want nil", runtime)
-	}
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("NewForTesting(canceled) error = %v, want context.Canceled", err)
-	}
+	require.Nil(t, runtime, "NewForTesting(canceled) runtime")
+	require.ErrorIs(t, err, context.Canceled, "NewForTesting(canceled) error")
 	wantOrder := []string{"cluster", "vfs", "mailer", "cache", "store", "configuration"}
-	if got := events.snapshot(); !slices.Equal(got, wantOrder) {
-		t.Fatalf("release order = %v, want %v", got, wantOrder)
-	}
+	got := events.snapshot()
+	require.True(t, slices.Equal(got, wantOrder), "release order = %v, want %v", got, wantOrder)
 	for name, count := range map[string]int64{
 		"cluster":       clusterTransport.closedCount.Load(),
 		"vfs":           filesystem.closedCount.Load(),
@@ -570,13 +532,11 @@ func TestCanceledAcquisitionReleasesOverridesOnceInReverseOrder(t *testing.T) {
 		"store":         persistence.closedCount.Load(),
 		"configuration": configurationBacking.closedCount.Load(),
 	} {
-		if count != 1 {
-			t.Fatalf("%s close count = %d, want 1", name, count)
-		}
+		require.Equal(t, int64(1), count, "%s close count", name)
 	}
-	if err := overrides.Logger.Configure(logging.Config{}); err == nil || !strings.Contains(err.Error(), "closed") {
-		t.Fatalf("logger Configure() after release error = %v, want closed", err)
-	}
+	err = overrides.Logger.Configure(logging.Config{})
+	require.Error(t, err, "logger Configure() after release error")
+	require.Contains(t, err.Error(), "closed", "logger Configure() after release error")
 }
 
 func TestCancellationBetweenAcquisitionPhasesUnwindsCurrentOwner(t *testing.T) {
@@ -599,20 +559,13 @@ func TestCancellationBetweenAcquisitionPhasesUnwindsCurrentOwner(t *testing.T) {
 	overrides.Filesystem = filesystem
 
 	runtime, err := server.NewForTesting(ctx, overrides)
-	if runtime != nil {
-		t.Fatalf("NewForTesting(mid-acquisition cancellation) runtime = %#v, want nil", runtime)
-	}
-	if !errors.Is(err, context.Canceled) ||
-		!strings.Contains(err.Error(), "decorate persistence with local cache") {
-		t.Fatalf("NewForTesting(mid-acquisition cancellation) error = %v", err)
-	}
+	require.Nil(t, runtime, "NewForTesting(mid-acquisition cancellation) runtime")
+	require.ErrorIs(t, err, context.Canceled)
+	require.Contains(t, err.Error(), "decorate persistence with local cache")
 	wantOrder := []string{"cluster", "vfs", "mailer", "cache", "store", "configuration"}
-	if got := events.snapshot(); !slices.Equal(got, wantOrder) {
-		t.Fatalf("release order = %v, want %v", got, wantOrder)
-	}
-	if configurationBacking.closedCount.Load() != 1 {
-		t.Fatalf("configuration close count = %d, want 1", configurationBacking.closedCount.Load())
-	}
+	got := events.snapshot()
+	require.True(t, slices.Equal(got, wantOrder), "release order = %v, want %v", got, wantOrder)
+	require.Equal(t, int64(1), configurationBacking.closedCount.Load(), "configuration close count")
 }
 
 func TestPlatformAcceptanceFailureReleasesTransferredResourcesOnce(t *testing.T) {
@@ -621,9 +574,7 @@ func TestPlatformAcceptanceFailureReleasesTransferredResourcesOnce(t *testing.T)
 	events := &hookCloseEvents{}
 	configuration, configurationBacking := newHookConfiguration(t, events)
 	logger, err := logging.New()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	schemaErr := errors.New("schema validation failed")
 	persistence := &hookStore{validateErr: schemaErr, closeEvents: events}
 	cache := &hookCache{closeEvents: events}
@@ -643,17 +594,12 @@ func TestPlatformAcceptanceFailureReleasesTransferredResourcesOnce(t *testing.T)
 		Filesystem:    filesystem,
 		Cluster:       clusterTransport,
 	})
-	if runtime != nil {
-		t.Fatalf("NewForTesting(schema failure) runtime = %#v, want nil", runtime)
-	}
-	if !errors.Is(err, schemaErr) {
-		t.Fatalf("NewForTesting(schema failure) error = %v, want %v", err, schemaErr)
-	}
+	require.Nil(t, runtime, "NewForTesting(schema failure) runtime")
+	require.ErrorIs(t, err, schemaErr, "NewForTesting(schema failure) error")
 
 	wantOrder := []string{"cluster", "vfs", "mailer", "cache", "store", "configuration"}
-	if got := events.snapshot(); !slices.Equal(got, wantOrder) {
-		t.Fatalf("acceptance cleanup order = %v, want %v", got, wantOrder)
-	}
+	got := events.snapshot()
+	require.True(t, slices.Equal(got, wantOrder), "acceptance cleanup order = %v, want %v", got, wantOrder)
 	for name, count := range map[string]int64{
 		"cluster":       clusterTransport.closedCount.Load(),
 		"vfs":           filesystem.closedCount.Load(),
@@ -662,13 +608,11 @@ func TestPlatformAcceptanceFailureReleasesTransferredResourcesOnce(t *testing.T)
 		"store":         persistence.closedCount.Load(),
 		"configuration": configurationBacking.closedCount.Load(),
 	} {
-		if count != 1 {
-			t.Fatalf("%s close count = %d, want 1", name, count)
-		}
+		require.Equal(t, int64(1), count, "%s close count", name)
 	}
-	if err := logger.Configure(logging.Config{}); err == nil || !strings.Contains(err.Error(), "closed") {
-		t.Fatalf("logger Configure() after acceptance failure error = %v, want closed", err)
-	}
+	err = logger.Configure(logging.Config{})
+	require.Error(t, err, "logger Configure() after acceptance failure error")
+	require.Contains(t, err.Error(), "closed", "logger Configure() after acceptance failure error")
 }
 
 func TestAcquisitionPreservesPrimaryAndCleanupFailures(t *testing.T) {
@@ -687,20 +631,13 @@ func TestAcquisitionPreservesPrimaryAndCleanupFailures(t *testing.T) {
 	}
 
 	runtime, err := server.NewForTesting(context.Background(), overrides)
-	if runtime != nil {
-		t.Fatalf("NewForTesting(invalid retry) runtime = %#v, want nil", runtime)
-	}
-	if err == nil || !strings.Contains(err.Error(), "construct store retry layer") {
-		t.Fatalf("NewForTesting(invalid retry) error = %v, want primary retry failure", err)
-	}
+	require.Nil(t, runtime, "NewForTesting(invalid retry) runtime")
+	require.Error(t, err, "NewForTesting(invalid retry) error")
+	require.Contains(t, err.Error(), "construct store retry layer", "NewForTesting(invalid retry) error")
 	for _, expected := range []error{storeCleanupErr, cacheCleanupErr} {
-		if !errors.Is(err, expected) {
-			t.Fatalf("NewForTesting(invalid retry) error = %v, want joined %v", err, expected)
-		}
+		require.ErrorIs(t, err, expected, "NewForTesting(invalid retry) error")
 	}
-	if !mailer.closed.Load() {
-		t.Fatal("cleanup stopped before closing remaining owned resources")
-	}
+	require.True(t, mailer.closed.Load(), "cleanup stopped before closing remaining owned resources")
 }
 
 func TestRootComposesTimerOutsideRetry(t *testing.T) {
@@ -733,18 +670,12 @@ func TestRootComposesTimerOutsideRetry(t *testing.T) {
 	})
 
 	runtime, err := server.NewForTesting(context.Background(), overrides)
-	if err != nil {
-		t.Fatalf("NewForTesting() error = %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = runtime.Server.Close() })
 
 	attempts := persistence.pingAttempts.Load()
-	if attempts < 3 {
-		t.Fatalf("underlying Ping() attempts = %d, want at least 3", attempts)
-	}
-	if got, want := observations.Load(), attempts-transientFailuresBeforeSuccess; got != want {
-		t.Fatalf("timer observations = %d, want %d logical calls outside retries", got, want)
-	}
+	require.GreaterOrEqual(t, attempts, int64(3), "underlying Ping() attempts")
+	require.Equal(t, (attempts - transientFailuresBeforeSuccess), observations.Load(), "timer observations")
 }
 
 func TestNewForTestingServesTheProvidedBuildInfo(t *testing.T) {
@@ -760,22 +691,14 @@ func TestNewForTestingServesTheProvidedBuildInfo(t *testing.T) {
 	overrides.BuildInfo = buildInfo
 
 	runtime, err := server.NewForTesting(context.Background(), overrides)
-	if err != nil {
-		t.Fatalf("NewForTesting() error = %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = runtime.Server.Close() })
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/system/version", nil)
 	response := httptest.NewRecorder()
 	runtime.Handler.ServeHTTP(response, request)
-	if response.Code != http.StatusOK {
-		t.Fatalf("version status = %d, want 200", response.Code)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "version status")
 	var served httpapi.BuildInfo
-	if err := json.Unmarshal(response.Body.Bytes(), &served); err != nil {
-		t.Fatal(err)
-	}
-	if served != buildInfo {
-		t.Fatalf("served build info = %#v, want %#v", served, buildInfo)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &served))
+	require.Equal(t, buildInfo, served, "served build info")
 }

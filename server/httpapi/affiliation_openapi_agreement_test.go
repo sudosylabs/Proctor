@@ -11,6 +11,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -44,16 +46,13 @@ func TestAffiliationOpenAPIAgreesWithRuntime(t *testing.T) {
 		},
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, affiliationResource(&affiliationHTTPApplication{})); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtimeAPI.collectResources(model.APIURLSuffix, affiliationResource(&affiliationHTTPApplication{})))
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 
 	// AffiliationListResponse is a frozen legacy bare-array compatibility shape,
 	// not an ordinary DTO contract and not a pattern for new collection routes.
 	document := readOpenAPIDocument(t)
 	list := document.Components.Schemas["AffiliationListResponse"]
-	if list.Type != "array" || list.Items.Ref != "#/components/schemas/AffiliationResponse" {
-		t.Fatalf("AffiliationListResponse = %#v", list)
-	}
+	require.Equal(t, "array", list.Type)
+	require.Equal(t, "#/components/schemas/AffiliationResponse", list.Items.Ref)
 }

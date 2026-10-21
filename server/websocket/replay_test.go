@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -46,29 +48,21 @@ func TestConnectionRuntimeFinalSnapshotIsDeeplyImmutable(t *testing.T) {
 	runtime.history[0].Data[0] = '['
 	delete(runtime.subscriptions, subscription.Key())
 
-	if snapshot.id != runtime.id ||
-		snapshot.principal.UserID != runtime.principal.UserID ||
-		snapshot.principal.SessionID != runtime.principal.SessionID ||
-		snapshot.nextSequence != 12 || !snapshot.replayable {
-		t.Fatalf("final snapshot identity/state = %#v", snapshot)
-	}
-	if got := snapshot.principal.CredentialScopes[0]; got != "class.view" {
-		t.Fatalf("snapshot credential scope = %q, want %q", got, "class.view")
-	}
-	if got := string(snapshot.history[0].Data); got != `{"revision":2}` {
-		t.Fatalf("snapshot event data = %q, want immutable JSON", got)
-	}
-	if _, exists := snapshot.subscriptions[subscription.Key()]; !exists {
-		t.Fatal("runtime mutation removed the final snapshot subscription")
-	}
+	require.Equal(t, runtime.id, snapshot.id)
+	require.Equal(t, runtime.principal.UserID, snapshot.principal.UserID)
+	require.Equal(t, runtime.principal.SessionID, snapshot.principal.SessionID)
+	require.Equal(t, int64(12), snapshot.nextSequence)
+	require.True(t, snapshot.replayable)
+	require.Equal(t, "class.view", snapshot.principal.CredentialScopes[0], "snapshot credential scope")
+	require.Equal(t, `{"revision":2}`, string(snapshot.history[0].Data), "snapshot event data")
+	_, exists := snapshot.subscriptions[subscription.Key()]
+	require.True(t, exists, "runtime mutation removed the final snapshot subscription")
 
 	snapshot.principal.CredentialScopes[0] = "snapshot-change"
 	snapshot.history[0].Data[0] = '{'
 	delete(snapshot.subscriptions, subscription.Key())
-	if runtime.principal.CredentialScopes[0] != "changed" ||
-		runtime.history[0].Data[0] != '[' {
-		t.Fatal("snapshot mutation changed stopped runtime state")
-	}
+	require.Equal(t, "changed", runtime.principal.CredentialScopes[0], "snapshot mutation changed stopped runtime state")
+	require.Equal(t, byte('['), runtime.history[0].Data[0], "snapshot mutation changed stopped runtime state")
 }
 
 func TestConnectionRuntimeClonesTheAcceptedPrincipal(t *testing.T) {
@@ -96,18 +90,14 @@ func TestConnectionRuntimeClonesTheAcceptedPrincipal(t *testing.T) {
 	)
 
 	principal.CredentialScopes[0] = "changed-by-caller"
-	if got := runtime.principal.CredentialScopes[0]; got != "class.view" {
-		t.Fatalf("connection principal scope = %q, want immutable %q", got, "class.view")
-	}
+	require.Equal(t, "class.view", runtime.principal.CredentialScopes[0], "connection principal scope")
 }
 
 func TestConnectionRuntimeFinalSnapshotWaitsForSelectedPublication(t *testing.T) {
 	t.Parallel()
 
 	runtime := newOutboundTestRuntime(newOutboundTestSocket(), 1)
-	if !runtime.acquire() {
-		t.Fatal("active runtime rejected Hub publication")
-	}
+	require.True(t, runtime.acquire(), "active runtime rejected Hub publication")
 	snapshotReady := make(chan connectionSnapshot, 1)
 	go func() {
 		snapshotReady <- runtime.finalSnapshot()
@@ -122,7 +112,7 @@ func TestConnectionRuntimeFinalSnapshotWaitsForSelectedPublication(t *testing.T)
 		}
 		select {
 		case <-finalizationDeadline:
-			t.Fatal("final snapshot did not begin finalization")
+			require.FailNow(t, "final snapshot did not begin finalization")
 		default:
 			goruntime.Gosched()
 		}
@@ -132,7 +122,7 @@ func TestConnectionRuntimeFinalSnapshotWaitsForSelectedPublication(t *testing.T)
 	runtime.enqueueEvent(event)
 	select {
 	case <-snapshotReady:
-		t.Fatal("final snapshot completed before selected publication")
+		require.FailNow(t, "final snapshot completed before selected publication")
 	default:
 	}
 	runtime.release()
@@ -141,15 +131,14 @@ func TestConnectionRuntimeFinalSnapshotWaitsForSelectedPublication(t *testing.T)
 	select {
 	case snapshot = <-snapshotReady:
 	case <-time.After(time.Second):
-		t.Fatal("final snapshot did not complete after selected publication")
+		require.FailNow(t, "final snapshot did not complete after selected publication")
 	}
-	if len(snapshot.history) != 1 || snapshot.history[0].ID != event.ID ||
-		snapshot.history[0].Sequence != 1 {
-		t.Fatalf("final snapshot history = %#v, want selected publication", snapshot.history)
-	}
+	require.Len(t, snapshot.history, 1, "final snapshot history")
+	require.Equal(t, event.ID, snapshot.history[0].ID, "final snapshot history")
+	require.Equal(t, int64(1), snapshot.history[0].Sequence, "final snapshot history")
 	if runtime.acquire() {
 		runtime.release()
-		t.Fatal("finalized runtime accepted a later Hub publication")
+		require.FailNow(t, "finalized runtime accepted a later Hub publication")
 	}
 }
 
@@ -157,9 +146,7 @@ func TestHubRetainsOnlyTheRuntimeFinalSnapshot(t *testing.T) {
 	t.Parallel()
 
 	hub := newInternalTestHub(t)
-	if err := hub.Start(t.Context()); err != nil {
-		t.Fatalf("Start() error = %v", err)
-	}
+	require.NoError(t, hub.Start(t.Context()))
 	t.Cleanup(func() { _ = hub.Close() })
 	principal := model.Principal{
 		UserID:    model.NewUserID(),
@@ -189,18 +176,12 @@ func TestHubRetainsOnlyTheRuntimeFinalSnapshot(t *testing.T) {
 	shard.mu.RLock()
 	retained := shard.replay[connectionID]
 	shard.mu.RUnlock()
-	if retained == nil {
-		t.Fatal("Hub did not retain the stopped runtime snapshot")
-	}
-	if retained.nextSequence != 7 || string(retained.history[0].Data) != `{"ok":true}` {
-		t.Fatalf("retained replay = %#v", retained)
-	}
-	if _, exists := retained.subscriptions[subscription.Key()]; !exists {
-		t.Fatal("snapshot mutation changed retained subscriptions")
-	}
-	if retained.expiresAt.Before(time.Now()) {
-		t.Fatalf("retained replay already expired at %s", retained.expiresAt)
-	}
+	require.NotNil(t, retained, "Hub did not retain the stopped runtime snapshot")
+	require.Equal(t, int64(7), retained.nextSequence)
+	require.Equal(t, `{"ok":true}`, string(retained.history[0].Data))
+	_, exists := retained.subscriptions[subscription.Key()]
+	require.True(t, exists, "snapshot mutation changed retained subscriptions")
+	require.False(t, retained.expiresAt.Before(time.Now()))
 }
 
 func newInternalTestHub(t *testing.T) *Hub {
@@ -213,9 +194,7 @@ func newInternalTestHub(t *testing.T) *Hub {
 		nil,
 		15*time.Second,
 	)
-	if err != nil {
-		t.Fatalf("NewHub() error = %v", err)
-	}
+	require.NoError(t, err)
 	return hub
 }
 

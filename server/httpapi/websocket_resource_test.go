@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -79,9 +81,8 @@ func TestWebSocketResourceMapsDeclaredAndRejectsUndeclaredTransportFailures(t *t
 			request.Header.Set("Authorization", "Bearer credential")
 			response := httptest.NewRecorder()
 			httpAPI.ServeHTTP(response, request)
-			if response.Code != test.want || transport.acceptCalls != 1 {
-				t.Fatalf("upgrade failure = %d/%d: %s", response.Code, transport.acceptCalls, response.Body.String())
-			}
+			require.Equal(t, test.want, response.Code, "upgrade failure = %d/%d: %s", response.Code, transport.acceptCalls, response.Body.String())
+			require.Equal(t, 1, transport.acceptCalls, "upgrade failure = %d/%d: %s", response.Code, transport.acceptCalls, response.Body.String())
 		})
 	}
 }
@@ -108,12 +109,11 @@ func TestWebSocketResourceRunsNamedUpgradeThroughRoutingKernel(t *testing.T) {
 	)
 
 	routes := httpAPI.Routes()
-	if len(routes) != 1 || routes[0].Path != "/api/v1/websocket" ||
-		routes[0].Auth != AuthSessionRequired ||
-		routes[0].ProtocolName != "websocket-upgrade" ||
-		routes[0].ProtocolKind != RouteProtocolUpgrade {
-		t.Fatalf("WebSocket manifest = %#v", routes)
-	}
+	require.Len(t, routes, 1)
+	require.Equal(t, "/api/v1/websocket", routes[0].Path)
+	require.Equal(t, AuthSessionRequired, routes[0].Auth)
+	require.Equal(t, "websocket-upgrade", routes[0].ProtocolName)
+	require.Equal(t, RouteProtocolUpgrade, routes[0].ProtocolKind)
 
 	connectionID := model.NewID()
 	request := httptest.NewRequest(
@@ -125,16 +125,14 @@ func TestWebSocketResourceRunsNamedUpgradeThroughRoutingKernel(t *testing.T) {
 	request.Header.Set(RequestIDHeader, "websocket-request")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusSwitchingProtocols {
-		t.Fatalf("upgrade status = %d: %s", response.Code, response.Body.String())
-	}
-	if transport.acceptCalls != 1 || transport.principal.UserID != principal.UserID ||
-		transport.metadata.RequestID == "websocket-request" ||
-		transport.metadata.RequestID != response.Header().Get(RequestIDHeader) ||
-		transport.connectionID != connectionID || transport.sequence != 7 ||
-		!transport.allowMissingOrigin {
-		t.Fatalf("upgrade invocation = %#v", transport)
-	}
+	require.Equal(t, http.StatusSwitchingProtocols, response.Code, "upgrade status = %d: %s", response.Code, response.Body.String())
+	require.Equal(t, 1, transport.acceptCalls)
+	require.Equal(t, principal.UserID, transport.principal.UserID)
+	require.NotEqual(t, "websocket-request", transport.metadata.RequestID)
+	require.Equal(t, response.Header().Get(RequestIDHeader), transport.metadata.RequestID)
+	require.Equal(t, connectionID, transport.connectionID)
+	require.Equal(t, int64(7), transport.sequence)
+	require.True(t, transport.allowMissingOrigin)
 }
 
 func TestWebSocketResourceRejectsMissingCredentialAndInvalidResume(t *testing.T) {
@@ -153,15 +151,13 @@ func TestWebSocketResourceRejectsMissingCredentialAndInvalidResume(t *testing.T)
 
 	missing := httptest.NewRecorder()
 	httpAPI.ServeHTTP(missing, httptest.NewRequest(http.MethodGet, "/api/v1/websocket", nil))
-	if missing.Code != http.StatusUnauthorized || transport.acceptCalls != 0 {
-		t.Fatalf("missing credential = %d/%d: %s", missing.Code, transport.acceptCalls, missing.Body.String())
-	}
+	require.Equal(t, http.StatusUnauthorized, missing.Code, "missing credential = %d/%d: %s", missing.Code, transport.acceptCalls, missing.Body.String())
+	require.Equal(t, 0, transport.acceptCalls, "missing credential = %d/%d: %s", missing.Code, transport.acceptCalls, missing.Body.String())
 
 	invalidRequest := httptest.NewRequest(http.MethodGet, "/api/v1/websocket?connection_id=invalid&sequence_number=7", nil)
 	invalidRequest.Header.Set("Authorization", "Bearer credential")
 	invalid := httptest.NewRecorder()
 	httpAPI.ServeHTTP(invalid, invalidRequest)
-	if invalid.Code != http.StatusBadRequest || transport.acceptCalls != 0 {
-		t.Fatalf("invalid resume = %d/%d: %s", invalid.Code, transport.acceptCalls, invalid.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, invalid.Code, "invalid resume = %d/%d: %s", invalid.Code, transport.acceptCalls, invalid.Body.String())
+	require.Equal(t, 0, transport.acceptCalls, "invalid resume = %d/%d: %s", invalid.Code, transport.acceptCalls, invalid.Body.String())
 }

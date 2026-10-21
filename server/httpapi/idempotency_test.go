@@ -11,6 +11,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIdempotencyHeaderPolicy(t *testing.T) {
@@ -38,34 +41,24 @@ func TestIdempotencyHeaderPolicy(t *testing.T) {
 			}
 			response := httptest.NewRecorder()
 			api.withIdempotency(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-				if got := idempotencyKeyFromContext(request.Context()); got != test.wantKey {
-					t.Fatalf("key = %q, want %q", got, test.wantKey)
-				}
+				assert.Equal(t, test.wantKey, idempotencyKeyFromContext(request.Context()), "key")
 				writer.WriteHeader(http.StatusNoContent)
 			}), test.mode).ServeHTTP(response, request)
-			if response.Code != test.wantStatus {
-				t.Fatalf("status = %d, want %d: %s", response.Code, test.wantStatus, response.Body.String())
-			}
+			require.Equal(t, test.wantStatus, response.Code, "status = %d, want %d: %s", response.Code, test.wantStatus, response.Body.String())
 		})
 	}
 }
 
 func TestRetryableRoutesDeclareIdempotency(t *testing.T) {
 	api := newRoutingTestAPI("/api/v1")
-	if err := api.collectResources("/api/v1", academicPeriodResource(nil), academicUnitResource(nil)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, api.collectResources("/api/v1", academicPeriodResource(nil), academicUnitResource(nil)))
 	want := map[string]bool{"POST /api/v1/academic-periods": true, "POST /api/v1/academic-units": true}
 	for _, route := range api.Routes() {
 		key := route.Method + " " + route.Path
 		if want[key] {
-			if route.Idempotency != IdempotencyOptional {
-				t.Fatalf("%s idempotency = %q", key, route.Idempotency)
-			}
+			require.Equal(t, IdempotencyOptional, route.Idempotency, "%s idempotency", key)
 			delete(want, key)
 		}
 	}
-	if len(want) != 0 {
-		t.Fatalf("missing retryable routes: %v", want)
-	}
+	require.Empty(t, want)
 }

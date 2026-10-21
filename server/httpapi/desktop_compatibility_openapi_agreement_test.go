@@ -13,6 +13,8 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -88,43 +90,30 @@ func TestDesktopCompatibilityOpenAPIAgreesWithRuntime(t *testing.T) {
 		},
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(
+	require.NoError(t, runtimeAPI.collectResources(
 		model.APIURLSuffix,
 		systemResource(nil, BuildInfo{}),
 		desktopCompatibilityPolicyResource(nil),
-	); err != nil {
-		t.Fatal(err)
-	}
+	))
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 
 	document := readOpenAPIDocument(t)
 	var operation openAPIOperation
-	if err := json.Unmarshal(document.Paths["/api/v1/system/ping"]["get"], &operation); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(document.Paths["/api/v1/system/ping"]["get"], &operation))
 	parameters := make([]string, 0, len(operation.Parameters))
 	for _, parameter := range operation.Parameters {
-		if parameter.In != "query" || !parameter.Required {
-			t.Fatalf("ping parameter = %#v", parameter)
-		}
+		require.Equal(t, "query", parameter.In)
+		require.True(t, parameter.Required)
 		parameters = append(parameters, parameter.Name)
 	}
 	slices.Sort(parameters)
-	if !slices.Equal(parameters, []string{
+	require.True(t, slices.Equal(parameters, []string{
 		"architecture",
 		"desktop_build_id",
 		"desktop_release",
 		"platform",
 		"realtime_protocol",
-	}) {
-		t.Fatalf("ping parameters = %#v", parameters)
-	}
-	if document.Components.Responses["SystemPingOK"].Headers["Cache-Control"].Ref !=
-		"#/components/headers/NoStore" {
-		t.Fatal("SystemPingOK does not require no-store")
-	}
-	if document.Components.Responses["DesktopCompatibilityPolicyOK"].Headers["Cache-Control"].Ref !=
-		"#/components/headers/PrivateNoStore" {
-		t.Fatal("DesktopCompatibilityPolicyOK does not require private no-store")
-	}
+	}), "ping parameters = %#v", parameters)
+	require.Equal(t, "#/components/headers/NoStore", document.Components.Responses["SystemPingOK"].Headers["Cache-Control"].Ref, "SystemPingOK does not require no-store")
+	require.Equal(t, "#/components/headers/PrivateNoStore", document.Components.Responses["DesktopCompatibilityPolicyOK"].Headers["Cache-Control"].Ref, "DesktopCompatibilityPolicyOK does not require private no-store")
 }

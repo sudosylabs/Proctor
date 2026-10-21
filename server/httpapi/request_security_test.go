@@ -12,9 +12,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"slices"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 )
@@ -80,12 +82,11 @@ func TestPublicLoginRejectsUnsafeBrowserRequestsBeforeAuthentication(t *testing.
 			if test.accepted {
 				wantStatus, wantCalls = http.StatusUnauthorized, 1
 			}
-			if response.Code != wantStatus || fake.loginCalls != wantCalls || len(response.Header().Values("Set-Cookie")) != 0 {
-				t.Fatalf("status/calls/cookies = %d/%d/%d, want %d/%d/0", response.Code, fake.loginCalls,
-					len(response.Header().Values("Set-Cookie")), wantStatus, wantCalls)
-			}
-			if !test.accepted && !strings.Contains(response.Body.String(), `"code":"request.invalid"`) {
-				t.Fatalf("request rejection = %s", response.Body.String())
+			require.Equal(t, wantStatus, response.Code, "status/calls/cookies")
+			require.Equal(t, wantCalls, fake.loginCalls, "status/calls/cookies")
+			require.Empty(t, response.Header().Values("Set-Cookie"), "status/calls/cookies")
+			if !test.accepted {
+				require.Contains(t, response.Body.String(), `"code":"request.invalid"`)
 			}
 		})
 	}
@@ -94,30 +95,22 @@ func TestPublicLoginRejectsUnsafeBrowserRequestsBeforeAuthentication(t *testing.
 func TestBrowserRequestPolicyPreservesProviderGETAndConfiguredOrigin(t *testing.T) {
 	t.Parallel()
 	policy, err := newBrowserRequestPolicy("https://Proctor.example:443/")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "http://internal-node/api/v1/auth/login", nil)
 	request.Header.Set("Origin", "https://proctor.example")
-	if !policy.allows(request) {
-		t.Fatal("canonical configured public origin rejected behind an internal proxy address")
-	}
+	require.True(t, policy.allows(request), "canonical configured public origin rejected behind an internal proxy address")
 	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodOptions} {
 		request := httptest.NewRequestWithContext(t.Context(), method, "/api/v1/auth/providers/campus/callback?code=example", nil)
 		request.Header.Set("Origin", "https://identity.example")
 		request.Header.Set("Sec-Fetch-Site", "cross-site")
-		if !policy.allows(request) {
-			t.Fatalf("safe provider/navigation method %s rejected", method)
-		}
+		require.True(t, policy.allows(request), "safe provider/navigation method %s rejected", method)
 	}
 }
 
 func TestProductionRoutesDeclareBrowserRequestRejection(t *testing.T) {
 	t.Parallel()
 	api, err := New(validHTTPOptions(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, route := range api.Routes() {
 		if !requiresCSRF(route.Method) {
 			continue
@@ -126,8 +119,6 @@ func TestProductionRoutesDeclareBrowserRequestRejection(t *testing.T) {
 		if route.Auth == AuthPublic {
 			code = "request.invalid"
 		}
-		if !slices.Contains(route.ErrorCodes, code) {
-			t.Errorf("%s %s omits %s", route.Method, route.Path, code)
-		}
+		assert.Contains(t, route.ErrorCodes, code, "%s %s omits", route.Method, route.Path)
 	}
 }

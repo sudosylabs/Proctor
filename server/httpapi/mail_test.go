@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -90,20 +92,18 @@ func TestMailResourceRejectsCallerSuppliedContentAndProjectsNoSecrets(t *testing
 	fake := &recordingMailAPI{view: app.MailDeliveryView{ID: id, OccurrenceID: model.NewMailOccurrenceID(), TargetUserID: model.NewUserID(), TemplateKey: model.MailTemplateSystemTest, TemplateDigest: strings.Repeat("a", 64), MaskedRecipient: "o***@example.test", State: model.MailDeliveryQueued, CreatedAt: at, UpdatedAt: at, MessageDate: at, Deadline: at.Add(time.Hour), MessageID: "<mail." + id.String() + "@example.test>"}}
 	module := mailResourceModule{mail: fake}
 	request, _ := http.NewRequest(http.MethodPost, "/api/v1/mail/test", bytes.NewBufferString(`{"recipient":"attacker@example.test","body":"chosen"}`))
-	if _, err := module.sendTest(operationRequest{request: request}); !apperror.Is(err, "request.invalid") || fake.sends != 0 {
-		t.Fatalf("caller content accepted: %v sends=%d", err, fake.sends)
-	}
+	_, err := module.sendTest(operationRequest{request: request})
+	require.True(t, apperror.Is(err, "request.invalid"), "caller content accepted: %v sends", err)
+	require.Equal(t, 0, fake.sends, "caller content accepted: %v sends", err)
 	request, _ = http.NewRequest(http.MethodPost, "/api/v1/mail/test", nil)
 	result, err := module.sendTest(operationRequest{request: request})
-	if err != nil || result.status != http.StatusAccepted || fake.sends != 1 {
-		t.Fatalf("empty test = %#v, %v", result, err)
-	}
+	require.NoError(t, err, "empty test = %#v", result)
+	require.Equal(t, http.StatusAccepted, result.status, "empty test = %#v", result)
+	require.Equal(t, 1, fake.sends, "empty test = %#v", result)
 	response := mailResponse(fake.view)
 	encoded := response.ID + response.MaskedRecipient + response.MessageID
 	for _, forbidden := range []string{"operator@example.test", "ciphertext", "subject", "html", "body"} {
-		if strings.Contains(encoded, forbidden) {
-			t.Fatalf("response leaked %q", forbidden)
-		}
+		require.NotContains(t, encoded, forbidden)
 	}
 }
 
@@ -114,25 +114,23 @@ func TestMailDeliveryListCursorFiltersAndMutationBodiesAreBounded(t *testing.T) 
 	module := mailResourceModule{mail: fake}
 	request, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/mail/deliveries?state=failed&template_key=system.mail_test&created_after=1970-01-01T00:00:00.001Z&created_before=2286-11-20T17:46:39.999Z&limit=1", nil)
 	result, err := module.listDeliveries(operationRequest{request: request})
-	if err != nil || result.status != http.StatusOK || fake.lists != 1 {
-		t.Fatalf("list result=%#v err=%v lists=%d", result, err, fake.lists)
-	}
+	require.NoError(t, err, "list result=%#v err=%v lists", result, err)
+	require.Equal(t, http.StatusOK, result.status, "list result=%#v err=%v lists", result, err)
+	require.Equal(t, 1, fake.lists, "list result=%#v err=%v lists", result, err)
 	cursor, err := encodeMailDeliveryCursor(mailDeliveryCursor{CreatedAt: at.Format(time.RFC3339Nano), ID: id.String()})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	decoded, err := decodeMailDeliveryCursor(cursor)
-	if err != nil || decoded.ID != id.String() || decoded.CreatedAt != at.Format(time.RFC3339Nano) {
-		t.Fatalf("cursor=%#v err=%v", decoded, err)
-	}
+	require.NoError(t, err, "cursor=%#v err", decoded)
+	require.Equal(t, id.String(), decoded.ID, "cursor=%#v err", decoded)
+	require.Equal(t, at.Format(time.RFC3339Nano), decoded.CreatedAt, "cursor=%#v err", decoded)
 	request, _ = http.NewRequest(http.MethodGet, "/api/v1/mail/deliveries?state=not-a-state", nil)
-	if _, err = module.listDeliveries(operationRequest{request: request}); !apperror.Is(err, "request.invalid") || fake.lists != 1 {
-		t.Fatalf("invalid filter err=%v lists=%d", err, fake.lists)
-	}
+	_, err = module.listDeliveries(operationRequest{request: request})
+	require.True(t, apperror.Is(err, "request.invalid"), "invalid filter err=%v lists", err)
+	require.Equal(t, 1, fake.lists, "invalid filter err=%v lists", err)
 	request, _ = http.NewRequest(http.MethodPost, "/api/v1/mail/deliveries/"+id.String()+"/retry", bytes.NewBufferString(`{"body":"forbidden"}`))
-	if _, err = module.retryDelivery(operationRequest{request: request, params: Params{MailDeliveryID: id.String()}}); !apperror.Is(err, "request.invalid") || len(fake.ids) != 0 {
-		t.Fatalf("retry body err=%v ids=%v", err, fake.ids)
-	}
+	_, err = module.retryDelivery(operationRequest{request: request, params: Params{MailDeliveryID: id.String()}})
+	require.True(t, apperror.Is(err, "request.invalid"), "retry body err=%v ids", err)
+	require.Empty(t, fake.ids, "retry body err=%v ids", err)
 }
 
 func TestMailDeliveryEndpointForwardsExactCursorAndMapsMalformedCursor(t *testing.T) {
@@ -143,16 +141,14 @@ func TestMailDeliveryEndpointForwardsExactCursorAndMapsMalformedCursor(t *testin
 	logger, _ := newTestLogger(t)
 	httpAPI := newFocusedResourceAPI(t, logger, &academicUnitHTTPApplication{principal: operatorTestPrincipal()}, mailResource(fake))
 	cursor, err := encodeMailDeliveryCursor(mailDeliveryCursor{CreatedAt: at.Format(time.RFC3339Nano), ID: id.String()})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/mail/deliveries?cursor="+url.QueryEscape(cursor), nil)
 	request.Header.Set("Authorization", "Bearer credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || !fake.listQuery.BeforeCreatedAt.Equal(at) || fake.listQuery.BeforeID != id {
-		t.Fatalf("cursor forwarding = %d query=%#v body=%s", response.Code, fake.listQuery, response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "cursor forwarding = %d query=%#v body=%s", response.Code, fake.listQuery, response.Body.String())
+	require.True(t, fake.listQuery.BeforeCreatedAt.Equal(at), "cursor forwarding = %d query=%#v body=%s", response.Code, fake.listQuery, response.Body.String())
+	require.Equal(t, id, fake.listQuery.BeforeID, "cursor forwarding = %d query=%#v body=%s", response.Code, fake.listQuery, response.Body.String())
 
 	malformed := httptest.NewRequest(http.MethodGet, "/api/v1/mail/deliveries?cursor=not-a-cursor", nil)
 	malformed.Header.Set("Authorization", "Bearer credential")
@@ -165,9 +161,9 @@ func TestMailMetricsProjectsOnlyBoundedOperationalDimensions(t *testing.T) {
 	t.Parallel()
 	fake := &recordingMailAPI{}
 	result, err := (mailResourceModule{mail: fake}).getMetrics(operationRequest{request: &http.Request{}})
-	if err != nil || result.status != http.StatusOK || fake.metrics != 1 {
-		t.Fatalf("getMetrics() = %#v, %v calls=%d", result, err, fake.metrics)
-	}
+	require.NoError(t, err, "getMetrics() = %#v, %v calls", result, err)
+	require.Equal(t, http.StatusOK, result.status, "getMetrics() = %#v, %v calls", result, err)
+	require.Equal(t, 1, fake.metrics, "getMetrics() = %#v, %v calls", result, err)
 }
 
 func TestMailRekeyAcceptsOnlyAKeyIdentityAndProjectsSafeOperation(t *testing.T) {
@@ -178,28 +174,31 @@ func TestMailRekeyAcceptsOnlyAKeyIdentityAndProjectsSafeOperation(t *testing.T) 
 		bytes.NewBufferString(`{"retiring_key_id":"11111111111111111111111111111111"}`))
 	request.Header.Set("Content-Type", "application/json")
 	result, err := module.startRekey(operationRequest{request: request})
-	if err != nil || result.status != http.StatusAccepted || len(fake.rekeys) != 1 ||
-		fake.rekeys[0] != "11111111111111111111111111111111" {
-		t.Fatalf("startRekey() = %#v, %v calls=%#v", result, err, fake.rekeys)
-	}
+	require.NoError(t, err, "startRekey() = %#v, %v calls", result, err)
+	require.Equal(t, http.StatusAccepted, result.status, "startRekey() = %#v, %v calls", result, err)
+	require.Len(t, fake.rekeys, 1, "startRekey() = %#v, %v calls", result, err)
+	require.Equal(t, "11111111111111111111111111111111", fake.rekeys[0], "startRekey() = %#v, %v calls", result, err)
 	response, ok := result.body.(mailRekeyResponse)
-	if !ok || response.JobID == "" || response.PrimaryKeyID != "22222222222222222222222222222222" ||
-		response.RetiringKeyID != fake.rekeys[0] || response.CreatedAt != "1970-01-01T00:01:40Z" {
-		t.Fatalf("safe rekey response = %#v", result.body)
-	}
+	require.True(t, ok)
+	require.NotEmpty(t, response.JobID)
+	require.Equal(t, "22222222222222222222222222222222", response.PrimaryKeyID)
+	require.Equal(t, fake.rekeys[0], response.RetiringKeyID)
+	require.Equal(t, "1970-01-01T00:01:40Z", response.CreatedAt)
 	invalid, _ := http.NewRequest(http.MethodPost, "/api/v1/mail/rekey",
 		bytes.NewBufferString(`{"retiring_key_id":"11111111111111111111111111111111","encryption_key":"secret"}`))
 	invalid.Header.Set("Content-Type", "application/json")
-	if _, err = module.startRekey(operationRequest{request: invalid}); !apperror.Is(err, "request.invalid") || len(fake.rekeys) != 1 {
-		t.Fatalf("secret-bearing rekey body error = %v calls=%#v", err, fake.rekeys)
-	}
+	_, err = module.startRekey(operationRequest{request: invalid})
+	require.True(t, apperror.Is(err, "request.invalid"), "secret-bearing rekey body error = %v calls", err)
+	require.Len(t, fake.rekeys, 1, "secret-bearing rekey body error = %v calls", err)
 	stateResult, err := module.getKeyState(operationRequest{request: &http.Request{}})
 	state, ok := stateResult.body.(mailKeyStateResponse)
-	if err != nil || !ok || state.PrimaryKeyID != "22222222222222222222222222222222" ||
-		state.RequiredPrimaryKeyID != state.PrimaryKeyID || len(state.Active) != 1 ||
-		state.Active[0].KeyID != "11111111111111111111111111111111" || state.Active[0].ActiveReferences != 7 {
-		t.Fatalf("key state response = %#v, %v", stateResult.body, err)
-	}
+	require.NoError(t, err, "key state response = %#v", stateResult.body)
+	require.True(t, ok, "key state response = %#v", stateResult.body)
+	require.Equal(t, "22222222222222222222222222222222", state.PrimaryKeyID, "key state response = %#v", stateResult.body)
+	require.Equal(t, state.PrimaryKeyID, state.RequiredPrimaryKeyID, "key state response = %#v", stateResult.body)
+	require.Len(t, state.Active, 1, "key state response = %#v", stateResult.body)
+	require.Equal(t, "11111111111111111111111111111111", state.Active[0].KeyID, "key state response = %#v", stateResult.body)
+	require.Equal(t, int64(7), state.Active[0].ActiveReferences, "key state response = %#v", stateResult.body)
 }
 
 func TestMailRekeyStatusProjectsSafeProgressAndFinalProof(t *testing.T) {
@@ -209,20 +208,25 @@ func TestMailRekeyStatusProjectsSafeProgressAndFinalProof(t *testing.T) {
 	result, err := (mailResourceModule{mail: fake}).getRekeyStatus(operationRequest{
 		request: &http.Request{}, params: Params{JobID: jobID.String()},
 	})
-	if err != nil || result.status != http.StatusOK || len(fake.rekeyIDs) != 1 || fake.rekeyIDs[0] != jobID {
-		t.Fatalf("getRekeyStatus() = %#v, %v ids=%#v", result, err, fake.rekeyIDs)
-	}
+	require.NoError(t, err, "getRekeyStatus() = %#v, %v ids", result, err)
+	require.Equal(t, http.StatusOK, result.status, "getRekeyStatus() = %#v, %v ids", result, err)
+	require.Len(t, fake.rekeyIDs, 1, "getRekeyStatus() = %#v, %v ids", result, err)
+	require.Equal(t, jobID, fake.rekeyIDs[0], "getRekeyStatus() = %#v, %v ids", result, err)
 	response, ok := result.body.(mailRekeyStatusResponse)
-	if !ok || response.JobID != jobID.String() || response.Status != model.JobStatusSucceeded ||
-		response.Progress == nil || response.Progress.Current != 4 || response.Progress.Total != 9 ||
-		response.Processed != 9 || response.Reencrypted != 8 || response.Proof == nil || !response.Proof.RetirementSafe ||
-		response.Proof.NonPrimaryReferences != 0 || response.Proof.RetiringReferences != 0 {
-		t.Fatalf("safe rekey status response = %#v", result.body)
-	}
+	require.True(t, ok)
+	require.Equal(t, jobID.String(), response.JobID)
+	require.Equal(t, model.JobStatusSucceeded, response.Status)
+	require.NotNil(t, response.Progress)
+	require.Equal(t, int64(4), response.Progress.Current)
+	require.Equal(t, int64(9), response.Progress.Total)
+	require.Equal(t, int64(9), response.Processed)
+	require.Equal(t, int64(8), response.Reencrypted)
+	require.NotNil(t, response.Proof)
+	require.True(t, response.Proof.RetirementSafe)
+	require.Equal(t, int64(0), response.Proof.NonPrimaryReferences)
+	require.Equal(t, int64(0), response.Proof.RetiringReferences)
 	encoded, _ := json.Marshal(response)
 	for _, forbidden := range []string{"ciphertext", "recipient", "encryption_key", "command", "checkpoint", "result"} {
-		if bytes.Contains(encoded, []byte(forbidden)) {
-			t.Fatalf("rekey status leaked %q: %s", forbidden, encoded)
-		}
+		require.False(t, bytes.Contains(encoded, []byte(forbidden)), "rekey status leaked %q: %s", forbidden, encoded)
 	}
 }

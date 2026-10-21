@@ -10,9 +10,12 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -55,9 +58,7 @@ func useFastServingNodeLeaseTiming(t *testing.T, runtime *servingNodeLeaseRuntim
 	runtime.operationLimit = 20 * time.Millisecond
 	runtime.retryInterval = 10 * time.Millisecond
 	runtime.stopMargin = 250 * time.Millisecond
-	if runtime.renewalInterval+runtime.operationLimit+runtime.stopMargin > runtime.claim.Lifetime {
-		t.Fatal("test lease has no fail-closed expiry margin")
-	}
+	require.LessOrEqual(t, runtime.renewalInterval+runtime.operationLimit+runtime.stopMargin, runtime.claim.Lifetime, "test lease has no fail-closed expiry margin")
 }
 
 func (f *servingNodeLeasePersistenceFake) Delete(_ context.Context, nodeID, leaseID string) error {
@@ -73,18 +74,10 @@ func TestServingNodeLeaseConstructionIsInert(t *testing.T) {
 
 	persistence := &servingNodeLeasePersistenceFake{}
 	runtime, err := newServingNodeLeaseRuntime(persistence, "node-a")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if persistence.upserts != 0 {
-		t.Fatalf("construction upserts = %d, want 0", persistence.upserts)
-	}
-	if err := runtime.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if persistence.deletes != 0 {
-		t.Fatalf("inert Close deletes = %d, want 0", persistence.deletes)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 0, persistence.upserts, "construction upserts")
+	require.NoError(t, runtime.Close())
+	require.Equal(t, 0, persistence.deletes, "inert Close deletes")
 }
 
 func TestServingNodeLeaseRenewalSurvivesTransientFailureShorterThanSlack(t *testing.T) {
@@ -92,34 +85,25 @@ func TestServingNodeLeaseRenewalSurvivesTransientFailureShorterThanSlack(t *test
 
 	persistence := &servingNodeLeasePersistenceFake{failOnCall: 2, recoverOnCall: 6, renewalErr: errors.New("database failover")}
 	runtime, err := newServingNodeLeaseRuntime(persistence, "node-a")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	useFastServingNodeLeaseTiming(t, runtime)
-	if err := runtime.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtime.Start(context.Background()))
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		select {
 		case err := <-runtime.Failures():
-			t.Fatalf("transient renewal failure was terminal: %v", err)
+			require.FailNow(t, fmt.Sprintf("transient renewal failure was terminal: %v", err))
 		default:
 		}
 		if upserts, _ := persistence.calls(); upserts >= 10 {
 			break
 		}
-		if time.Now().After(deadline) {
-			t.Fatal("renewal did not resume after the transient failure")
-		}
+		require.False(t, time.Now().After(deadline), "renewal did not resume after the transient failure")
 		time.Sleep(5 * time.Millisecond)
 	}
-	if err := runtime.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, deletes := persistence.calls(); deletes != 1 {
-		t.Fatalf("recovered lease withdrawals = %d, want 1", deletes)
-	}
+	require.NoError(t, runtime.Close())
+	_, deletes := persistence.calls()
+	require.Equal(t, 1, deletes, "recovered lease withdrawals")
 }
 
 func TestServingNodeLeaseRenewalFailsBeforeLastProvenLeaseExpires(t *testing.T) {
@@ -128,36 +112,23 @@ func TestServingNodeLeaseRenewalFailsBeforeLastProvenLeaseExpires(t *testing.T) 
 	renewalErr := errors.New("database renewal failed")
 	persistence := &servingNodeLeasePersistenceFake{failOnCall: 2, renewalErr: renewalErr}
 	runtime, err := newServingNodeLeaseRuntime(persistence, "node-a")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	useFastServingNodeLeaseTiming(t, runtime)
 	startedAt := time.Now()
-	if err := runtime.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtime.Start(context.Background()))
 	select {
 	case err := <-runtime.Failures():
-		if !errors.Is(err, renewalErr) {
-			t.Fatalf("Failures() = %v, want %v", err, renewalErr)
-		}
+		require.ErrorIs(t, err, renewalErr, "Failures()")
 	case <-time.After(5 * time.Second):
-		t.Fatal("renewal failure was not surfaced")
+		require.FailNow(t, "renewal failure was not surfaced")
 	}
 	elapsed := time.Since(startedAt)
-	if elapsed >= runtime.claim.Lifetime {
-		t.Fatalf("failure surfaced after %s, at or after the %s lease lifetime", elapsed, runtime.claim.Lifetime)
-	}
-	if elapsed < runtime.renewalInterval+runtime.retryInterval {
-		t.Fatalf("failure surfaced after %s without retrying within the slack", elapsed)
-	}
-	if err := runtime.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.Less(t, elapsed, runtime.claim.Lifetime, "failure surfaced after")
+	require.GreaterOrEqual(t, elapsed, runtime.renewalInterval+runtime.retryInterval, "failure surfaced after")
+	require.NoError(t, runtime.Close())
 	upserts, deletes := persistence.calls()
-	if upserts < 3 || deletes != 0 {
-		t.Fatalf("lease persistence calls = upserts:%d deletes:%d, want retries and no withdrawal", upserts, deletes)
-	}
+	require.GreaterOrEqual(t, upserts, 3, "lease persistence calls = upserts")
+	require.Equal(t, 0, deletes, "lease persistence calls = upserts")
 }
 
 func TestServingNodeLeaseNormalCloseWithdrawsExactIncarnation(t *testing.T) {
@@ -165,19 +136,13 @@ func TestServingNodeLeaseNormalCloseWithdrawsExactIncarnation(t *testing.T) {
 
 	persistence := &servingNodeLeasePersistenceFake{}
 	runtime, err := newServingNodeLeaseRuntime(persistence, "node-a")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := runtime.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if err := runtime.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if persistence.upserts != 1 || persistence.deletes != 1 ||
-		persistence.deletedNode != runtime.claim.NodeID || persistence.deletedID != runtime.claim.LeaseID {
-		t.Fatalf("lease persistence calls = upserts:%d deletes:%d deleted:%s/%s", persistence.upserts, persistence.deletes, persistence.deletedNode, persistence.deletedID)
-	}
+	require.NoError(t, err)
+	require.NoError(t, runtime.Start(context.Background()))
+	require.NoError(t, runtime.Close())
+	require.Equal(t, 1, persistence.upserts, "lease persistence calls = upserts")
+	require.Equal(t, 1, persistence.deletes, "lease persistence calls = upserts")
+	require.Equal(t, runtime.claim.NodeID, persistence.deletedNode, "lease persistence calls = upserts")
+	require.Equal(t, runtime.claim.LeaseID, persistence.deletedID, "lease persistence calls = upserts")
 }
 
 func TestServingNodeLeaseExpiredIncarnationRejectionIsTerminal(t *testing.T) {
@@ -186,35 +151,22 @@ func TestServingNodeLeaseExpiredIncarnationRejectionIsTerminal(t *testing.T) {
 	expiredErr := store.NewErrConflict("serving_node_lease", "lease_expired", nil)
 	persistence := &servingNodeLeasePersistenceFake{failOnCall: 2, renewalErr: expiredErr}
 	runtime, err := newServingNodeLeaseRuntime(persistence, "paused-node")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	useFastServingNodeLeaseTiming(t, runtime)
-	if err := runtime.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtime.Start(context.Background()))
 	select {
 	case err := <-runtime.Failures():
-		if upserts, _ := persistence.calls(); upserts != 2 {
-			t.Fatalf("expired incarnation was retried: upserts = %d, want 2", upserts)
-		}
-		if !errors.Is(err, expiredErr) {
-			t.Fatalf("Failures() = %v, want expired incarnation conflict", err)
-		}
+		upserts, _ := persistence.calls()
+		require.Equal(t, 2, upserts, "expired incarnation was retried: upserts")
+		require.ErrorIs(t, err, expiredErr, "Failures()")
 	case <-time.After(time.Second):
-		t.Fatal("expired incarnation rejection was not terminal")
+		require.FailNow(t, "expired incarnation rejection was not terminal")
 	}
-	if err := runtime.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtime.Close())
 }
 
 func TestServingNodeLeaseProductionTimingHasBoundedExpiryMargin(t *testing.T) {
 	t.Parallel()
-	if !validServingNodeLeaseTiming(servingNodeLeaseLifetime, servingNodeLeaseRenewalInterval, servingNodeLeaseOperationLimit, servingNodeLeaseStopMargin) {
-		t.Fatalf("serving lease timing = renewal %s + operation %s + stop margin %s, lifetime %s", servingNodeLeaseRenewalInterval, servingNodeLeaseOperationLimit, servingNodeLeaseStopMargin, servingNodeLeaseLifetime)
-	}
-	if validServingNodeLeaseTiming(10*time.Second, 5*time.Second, 5*time.Second, time.Second) {
-		t.Fatal("timing without a fail-closed expiry margin was accepted")
-	}
+	require.True(t, validServingNodeLeaseTiming(servingNodeLeaseLifetime, servingNodeLeaseRenewalInterval, servingNodeLeaseOperationLimit, servingNodeLeaseStopMargin), "serving lease timing = renewal %s + operation %s + stop margin %s, lifetime %s", servingNodeLeaseRenewalInterval, servingNodeLeaseOperationLimit, servingNodeLeaseStopMargin, servingNodeLeaseLifetime)
+	require.False(t, validServingNodeLeaseTiming(10*time.Second, 5*time.Second, 5*time.Second, time.Second), "timing without a fail-closed expiry margin was accepted")
 }

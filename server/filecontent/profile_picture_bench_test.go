@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -23,38 +25,28 @@ import (
 func BenchmarkNormalizeAndStoreProfilePicture512(b *testing.B) {
 	input := benchmarkContentPNG512(b)
 	content, err := New(memoryvfs.New(), Policy{MaximumConcurrentOperations: 2}, nil)
-	if err != nil {
-		b.Fatal(err)
-	}
+	require.NoError(b, err)
 	ctx := context.Background()
 	b.ReportAllocs()
 	b.SetBytes(int64(len(input)))
 	for b.Loop() {
 		revisionID := model.NewFileRevisionID()
 		renditions, err := content.NormalizeAndStoreProfilePicture(ctx, revisionID, bytes.NewReader(input), int64(len(input)), time.Unix(1, 0))
-		if err != nil {
-			b.Fatal(err)
-		}
+		require.NoError(b, err)
 		b.StopTimer()
-		if err := content.RemoveProfilePictureRenditions(ctx, revisionID, renditions); err != nil {
-			b.Fatal(err)
-		}
+		require.NoError(b, content.RemoveProfilePictureRenditions(ctx, revisionID, renditions))
 		b.StartTimer()
 	}
 }
 
 func BenchmarkRenderDefaultProfilePicture512(b *testing.B) {
 	content, err := New(memoryvfs.New(), Policy{MaximumConcurrentOperations: 2}, nil)
-	if err != nil {
-		b.Fatal(err)
-	}
+	require.NoError(b, err)
 	ctx := context.Background()
 	b.ReportAllocs()
 	for b.Loop() {
 		picture, err := content.RenderDefaultProfilePicture(ctx, workTestSeed, 512)
-		if err != nil {
-			b.Fatal(err)
-		}
+		require.NoError(b, err)
 		_ = picture.Body.Close()
 	}
 }
@@ -68,8 +60,6 @@ func benchmarkContentPNG512(b *testing.B) []byte {
 		}
 	}
 	var encoded bytes.Buffer
-	if err := png.Encode(&encoded, source); err != nil {
-		b.Fatal(err)
-	}
+	require.NoError(b, png.Encode(&encoded, source))
 	return encoded.Bytes()
 }

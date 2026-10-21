@@ -10,6 +10,8 @@ package config
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestMetricsExposureRequiresTLSAndAuthenticationBeyondLoopback(t *testing.T) {
@@ -18,15 +20,13 @@ func TestMetricsExposureRequiresTLSAndAuthenticationBeyondLoopback(t *testing.T)
 	cfg := Default()
 	cfg.Metrics.Enabled = true
 	cfg.Metrics.ListenAddress = "0.0.0.0:8067"
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "non-loopback metrics require TLS") {
-		t.Fatalf("validation error = %v", err)
-	}
+	err := cfg.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "non-loopback metrics require TLS")
 	cfg.Metrics.TLS.CertificateFile = "metrics.crt"
 	cfg.Metrics.TLS.PrivateKeyFile = "metrics.key"
 	cfg.Metrics.BearerToken = strings.Repeat("s", 32)
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("validate protected non-loopback metrics: %v", err)
-	}
+	require.NoError(t, cfg.Validate())
 }
 
 func TestMetricsBearerTokenIsRedacted(t *testing.T) {
@@ -35,12 +35,8 @@ func TestMetricsBearerTokenIsRedacted(t *testing.T) {
 	cfg := Default()
 	cfg.Metrics.BearerToken = strings.Repeat("s", 32)
 	redacted := cfg.Redacted()
-	if redacted.Metrics.BearerToken != "[redacted]" {
-		t.Fatalf("redacted token = %q", redacted.Metrics.BearerToken)
-	}
-	if cfg.Metrics.BearerToken == "[redacted]" {
-		t.Fatal("redaction mutated the original configuration")
-	}
+	require.Equal(t, "[redacted]", redacted.Metrics.BearerToken)
+	require.NotEqual(t, "[redacted]", cfg.Metrics.BearerToken, "redaction mutated the original configuration")
 }
 
 func TestMetricsListenerCannotCollideWithHTTPForwarding(t *testing.T) {
@@ -55,7 +51,7 @@ func TestMetricsListenerCannotCollideWithHTTPForwarding(t *testing.T) {
 	cfg.Server.TLS.ForwardHTTPToHTTPS = true
 	cfg.Metrics.Enabled = true
 	cfg.Metrics.ListenAddress = cfg.Server.TLS.HTTPListenAddress
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "server.tls.http_listen_address") {
-		t.Fatalf("validation error = %v", err)
-	}
+	err := cfg.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "server.tls.http_listen_address")
 }

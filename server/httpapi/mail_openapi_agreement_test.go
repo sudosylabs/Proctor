@@ -12,6 +12,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -78,8 +80,6 @@ func TestMailOpenAPIAgreesWithRuntime(t *testing.T) {
 		},
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, mailResource(mailAPIFake{})); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtimeAPI.collectResources(model.APIURLSuffix, mailResource(mailAPIFake{})))
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 }

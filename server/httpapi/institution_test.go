@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -88,19 +90,12 @@ func TestInstitutionHTTPMapsDTOsWithoutPermissionPreflight(t *testing.T) {
 	getRequest.Header.Set("Authorization", "Bearer test-credential")
 	getResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(getResponse, getRequest)
-	if getResponse.Code != http.StatusOK {
-		t.Fatalf("get status = %d: %s", getResponse.Code, getResponse.Body.String())
-	}
+	require.Equal(t, http.StatusOK, getResponse.Code, "get status = %d: %s", getResponse.Code, getResponse.Body.String())
 	var got institutionResponse
-	if err := json.Unmarshal(getResponse.Body.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.ID != institution.ID.String() || got.Name != institution.Name {
-		t.Fatalf("get response = %#v", got)
-	}
-	if got.ExamCapacity != (examCapacityPolicyResponseFromModel(model.DefaultExamCapacityPolicy())) {
-		t.Fatalf("get Exam capacity = %#v", got.ExamCapacity)
-	}
+	require.NoError(t, json.Unmarshal(getResponse.Body.Bytes(), &got))
+	require.Equal(t, institution.ID.String(), got.ID)
+	require.Equal(t, institution.Name, got.Name)
+	require.Equal(t, examCapacityPolicyResponseFromModel(model.DefaultExamCapacityPolicy()), got.ExamCapacity)
 
 	patchRequest := httptest.NewRequest(
 		http.MethodPatch, "/api/v1/institution",
@@ -110,18 +105,13 @@ func TestInstitutionHTTPMapsDTOsWithoutPermissionPreflight(t *testing.T) {
 	patchRequest.Header.Set("Content-Type", "application/json")
 	patchResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(patchResponse, patchRequest)
-	if patchResponse.Code != http.StatusOK {
-		t.Fatalf("patch status = %d: %s", patchResponse.Code, patchResponse.Body.String())
-	}
-	if fakeApplication.command.DisplayName == nil ||
-		*fakeApplication.command.DisplayName != "Northbridge" {
-		t.Fatalf("update command = %#v", fakeApplication.command)
-	}
+	require.Equal(t, http.StatusOK, patchResponse.Code, "patch status = %d: %s", patchResponse.Code, patchResponse.Body.String())
+	require.NotNil(t, fakeApplication.command.DisplayName)
+	require.Equal(t, "Northbridge", *fakeApplication.command.DisplayName)
 	wantCapacity := model.ExamCapacityPolicy{ResourceMaximumCount: 25, ResourceMaximumBytes: 20 << 20,
 		WorkspaceMaximumEntries: 750, WorkspaceMaximumFileBytes: 20 << 20, WorkspaceMaximumTotalBytes: 100 << 20}
-	if fakeApplication.command.ExamCapacity == nil || *fakeApplication.command.ExamCapacity != wantCapacity {
-		t.Fatalf("update Exam capacity = %#v", fakeApplication.command.ExamCapacity)
-	}
+	require.NotNil(t, fakeApplication.command.ExamCapacity)
+	require.Equal(t, wantCapacity, *fakeApplication.command.ExamCapacity)
 }
 
 func TestInstitutionResourceRejectsUnknownPatchFields(t *testing.T) {
@@ -150,52 +140,38 @@ func TestInstitutionResourceRejectsUnknownPatchFields(t *testing.T) {
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, response.Code, "status = %d: %s", response.Code, response.Body.String())
 	var problem Problem
-	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-		t.Fatal(err)
-	}
-	if problem.Code != "request.invalid" {
-		t.Fatalf("problem code = %q, want request.invalid", problem.Code)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &problem))
+	require.Equal(t, "request.invalid", problem.Code, "problem code")
 }
 
 func TestOptionalDistinguishesInstitutionPatchWireStates(t *testing.T) {
 	t.Parallel()
 
 	var omitted updateInstitutionRequest
-	if err := json.Unmarshal([]byte(`{}`), &omitted); err != nil {
-		t.Fatal(err)
-	}
-	if omitted.Name.IsSet() || omitted.Name.IsNull() || omitted.Name.ValuePointer() != nil {
-		t.Fatalf("omitted name = %#v", omitted.Name)
-	}
+	require.NoError(t, json.Unmarshal([]byte(`{}`), &omitted))
+	require.False(t, omitted.Name.IsSet())
+	require.False(t, omitted.Name.IsNull())
+	require.Nil(t, omitted.Name.ValuePointer())
 
 	var explicitNull updateInstitutionRequest
-	if err := json.Unmarshal([]byte(`{"name":null}`), &explicitNull); err != nil {
-		t.Fatal(err)
-	}
-	if !explicitNull.Name.IsSet() || !explicitNull.Name.IsNull() ||
-		explicitNull.Name.ValuePointer() != nil {
-		t.Fatalf("null name = %#v", explicitNull.Name)
-	}
+	require.NoError(t, json.Unmarshal([]byte(`{"name":null}`), &explicitNull))
+	require.True(t, explicitNull.Name.IsSet())
+	require.True(t, explicitNull.Name.IsNull())
+	require.Nil(t, explicitNull.Name.ValuePointer())
 
 	var zeroValue updateInstitutionRequest
-	if err := json.Unmarshal([]byte(`{"name":""}`), &zeroValue); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal([]byte(`{"name":""}`), &zeroValue))
 	value := zeroValue.Name.ValuePointer()
-	if !zeroValue.Name.IsSet() || zeroValue.Name.IsNull() || value == nil || *value != "" {
-		t.Fatalf("zero name = %#v, value = %#v", zeroValue.Name, value)
-	}
+	require.True(t, zeroValue.Name.IsSet(), "zero name = %#v, value", zeroValue.Name)
+	require.False(t, zeroValue.Name.IsNull(), "zero name = %#v, value", zeroValue.Name)
+	require.NotNil(t, value, "zero name = %#v, value", zeroValue.Name)
+	require.Empty(t, *value, "zero name = %#v, value", zeroValue.Name)
 
 	var nullCapacity updateInstitutionRequest
-	if err := json.Unmarshal([]byte(`{"exam_capacity":null}`), &nullCapacity); err != nil {
-		t.Fatal(err)
-	}
-	if !nullCapacity.ExamCapacity.IsSet() || !nullCapacity.ExamCapacity.IsNull() || nullCapacity.ExamCapacity.ValuePointer() != nil {
-		t.Fatalf("null Exam capacity = %#v", nullCapacity.ExamCapacity)
-	}
+	require.NoError(t, json.Unmarshal([]byte(`{"exam_capacity":null}`), &nullCapacity))
+	require.True(t, nullCapacity.ExamCapacity.IsSet())
+	require.True(t, nullCapacity.ExamCapacity.IsNull())
+	require.Nil(t, nullCapacity.ExamCapacity.ValuePointer())
 }

@@ -17,6 +17,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestEveryDeclaredActionIsCatalogued pairs with the architecture test that
@@ -25,22 +28,16 @@ import (
 // action an audit event can carry is declared in the catalog.
 func TestEveryDeclaredActionIsCatalogued(t *testing.T) {
 	files, err := filepath.Glob("*.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	declared := 0
 	for _, name := range files {
 		if strings.HasSuffix(name, "_test.go") {
 			continue
 		}
 		source, err := os.ReadFile(name)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		file, err := parser.ParseFile(token.NewFileSet(), name, source, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		for _, declaration := range file.Decls {
 			general, ok := declaration.(*ast.GenDecl)
 			if !ok || general.Tok != token.CONST {
@@ -54,31 +51,22 @@ func TestEveryDeclaredActionIsCatalogued(t *testing.T) {
 				}
 				for index, constant := range value.Names {
 					literal, ok := value.Values[index].(*ast.BasicLit)
-					if !ok {
-						t.Fatalf("%s: Action constant %s is not a string literal", name, constant.Name)
-					}
+					require.True(t, ok, "%s: Action constant %s is not a string literal", name, constant.Name)
 					action, err := strconv.Unquote(literal.Value)
-					if err != nil {
-						t.Fatal(err)
-					}
+					require.NoError(t, err)
 					declared++
-					if !IsAuditAction(action) {
-						t.Errorf("%s: Action constant %s = %q is not in the audit action catalog", name, constant.Name, action)
-					}
+					assert.True(t, IsAuditAction(action), "%s: Action constant %s = %q is not in the audit action catalog", name, constant.Name, action)
 				}
 			}
 		}
 	}
-	if catalogued := len(AuditActions()); declared != catalogued {
-		t.Fatalf("declared %d Action constants, catalogued %d audit actions", declared, catalogued)
-	}
+	require.Equal(t, len(AuditActions()), declared, "declared")
 }
 
 func TestEventOnlyAuditActionsAreNeverPermissions(t *testing.T) {
 	for action := range eventAuditActions {
-		if IsKnownAction(string(action)) || IsGrantableAction(string(action)) {
-			t.Errorf("event-only audit action %q is also a permission", action)
-		}
+		assert.False(t, IsKnownAction(string(action)), "event-only audit action %q is also a known action", action)
+		assert.False(t, IsGrantableAction(string(action)), "event-only audit action %q is also grantable", action)
 	}
 }
 
@@ -89,19 +77,14 @@ func TestAcademicAuditActionsAreTheDeclaredAcademicCatalog(t *testing.T) {
 		ActionInvitationCreate, ActionOnboardingBatchManage, ActionRoleBindingManage,
 		ActionUserView, ActionUserSearch,
 	} {
-		if !slices.Contains(academic, string(action)) {
-			t.Errorf("academic audit catalog omits %q", action)
-		}
+		assert.Contains(t, academic, string(action), "academic audit catalog omits")
 	}
 	for _, action := range []Action{
 		ActionAuditView, ActionUserManage, ActionRoleManage, ActionExamManage,
 		ActionAuthenticationLogin, ActionInvitationAccept,
 	} {
-		if slices.Contains(academic, string(action)) {
-			t.Errorf("academic audit catalog admits %q", action)
-		}
+		assert.NotContains(t, academic, string(action), "academic audit catalog admits")
 	}
-	if len(academic) != 25 || !slices.IsSorted(academic) {
-		t.Fatalf("academic audit catalog = %v", academic)
-	}
+	require.Len(t, academic, 25)
+	require.True(t, slices.IsSorted(academic))
 }

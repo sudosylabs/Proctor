@@ -14,9 +14,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestCheckReadiness(t *testing.T) {
@@ -26,9 +27,7 @@ func TestCheckReadiness(t *testing.T) {
 		writer.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
-	if err := checkReadiness(server.URL, time.Second, "", ""); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, checkReadiness(server.URL, time.Second, "", ""))
 }
 
 func TestCheckReadinessRejectsRedirects(t *testing.T) {
@@ -40,9 +39,9 @@ func TestCheckReadinessRejectsRedirects(t *testing.T) {
 	defer destination.Close()
 	server := httptest.NewServer(http.RedirectHandler(destination.URL, http.StatusPermanentRedirect))
 	defer server.Close()
-	if err := checkReadiness(server.URL, time.Second, "", ""); err == nil || !strings.Contains(err.Error(), "308") {
-		t.Fatalf("redirect error = %v", err)
-	}
+	err := checkReadiness(server.URL, time.Second, "", "")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "308")
 }
 
 func TestCheckReadinessSupportsPrivateTLSIdentity(t *testing.T) {
@@ -53,27 +52,18 @@ func TestCheckReadinessSupportsPrivateTLSIdentity(t *testing.T) {
 	}))
 	defer server.Close()
 	certificate, err := x509.ParseCertificate(server.Certificate().Raw)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	certificatePEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificate.Raw})
 	caFile := filepath.Join(t.TempDir(), "issuer.pem")
-	if err := os.WriteFile(caFile, certificatePEM, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := checkReadiness(server.URL, time.Second, "example.com", caFile); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(caFile, certificatePEM, 0o600))
+	require.NoError(t, checkReadiness(server.URL, time.Second, "example.com", caFile))
 }
 
 func TestCertificatePoolRejectsInvalidPEM(t *testing.T) {
 	t.Parallel()
 
 	caFile := filepath.Join(t.TempDir(), "issuer.pem")
-	if err := os.WriteFile(caFile, []byte("not a certificate"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := certificatePool(caFile); err == nil {
-		t.Fatal("expected invalid certificate authority to fail")
-	}
+	require.NoError(t, os.WriteFile(caFile, []byte("not a certificate"), 0o600))
+	_, err := certificatePool(caFile)
+	require.Error(t, err, "expected invalid certificate authority to fail")
 }

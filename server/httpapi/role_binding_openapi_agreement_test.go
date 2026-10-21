@@ -11,6 +11,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -55,9 +57,7 @@ func TestRoleBindingOpenAPIAgreesWithRuntime(t *testing.T) {
 		},
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, roleBindingResource(nil)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtimeAPI.collectResources(model.APIURLSuffix, roleBindingResource(nil)))
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 
 	// The ordinary DTO agreements keep scope_type and scope_id visible as the
@@ -65,7 +65,6 @@ func TestRoleBindingOpenAPIAgreesWithRuntime(t *testing.T) {
 	// legacy bare array rather than a new collection-envelope precedent.
 	document := readOpenAPIDocument(t)
 	list := document.Components.Schemas["RoleBindingListResponse"]
-	if list.Type != "array" || list.Items.Ref != "#/components/schemas/RoleBindingResponse" {
-		t.Fatalf("RoleBindingListResponse = %#v", list)
-	}
+	require.Equal(t, "array", list.Type)
+	require.Equal(t, "#/components/schemas/RoleBindingResponse", list.Items.Ref)
 }

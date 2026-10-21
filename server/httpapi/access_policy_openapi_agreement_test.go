@@ -12,6 +12,9 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -46,9 +49,7 @@ func TestAccessPolicyOpenAPIAgreesWithRuntime(t *testing.T) {
 		},
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, accessPolicyResource(nil)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtimeAPI.collectResources(model.APIURLSuffix, accessPolicyResource(nil)))
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 
 	document := readOpenAPIDocument(t)
@@ -59,11 +60,9 @@ func TestAccessPolicyOpenAPIAgreesWithRuntime(t *testing.T) {
 			Pattern string `json:"pattern"`
 		} `json:"propertyNames"`
 	}
-	if json.Unmarshal(providerAdmissions, &providerGrammar) != nil ||
-		providerGrammar.MaxProperties != model.AccessPolicyProviderMaxCount ||
-		providerGrammar.PropertyNames.Pattern != `^[a-z0-9][a-z0-9._-]{0,63}$` {
-		t.Fatalf("AccessPolicy provider ID grammar = %s", providerAdmissions)
-	}
+	require.NoError(t, json.Unmarshal(providerAdmissions, &providerGrammar))
+	require.Equal(t, model.AccessPolicyProviderMaxCount, providerGrammar.MaxProperties)
+	require.Equal(t, `^[a-z0-9][a-z0-9._-]{0,63}$`, providerGrammar.PropertyNames.Pattern)
 	providerAdmissionsResponse := document.Components.Schemas["AccessPolicyResponse"].Properties["provider_admissions"]
 	providerGrammar = struct {
 		MaxProperties int `json:"maxProperties"`
@@ -71,26 +70,19 @@ func TestAccessPolicyOpenAPIAgreesWithRuntime(t *testing.T) {
 			Pattern string `json:"pattern"`
 		} `json:"propertyNames"`
 	}{}
-	if json.Unmarshal(providerAdmissionsResponse, &providerGrammar) != nil ||
-		providerGrammar.MaxProperties != model.AccessPolicyProviderMaxCount {
-		t.Fatalf("AccessPolicy response provider bound = %s", providerAdmissionsResponse)
-	}
+	require.NoError(t, json.Unmarshal(providerAdmissionsResponse, &providerGrammar))
+	require.Equal(t, model.AccessPolicyProviderMaxCount, providerGrammar.MaxProperties)
 	var providerProjection struct {
 		MaxItems int `json:"maxItems"`
 	}
 	availableProviders := document.Components.Schemas["AccessPolicyResponse"].Properties["available_providers"]
-	if json.Unmarshal(availableProviders, &providerProjection) != nil ||
-		providerProjection.MaxItems != model.AccessPolicyProviderMaxCount {
-		t.Fatalf("AccessPolicy provider projection bound = %s", availableProviders)
-	}
+	require.NoError(t, json.Unmarshal(availableProviders, &providerProjection))
+	require.Equal(t, model.AccessPolicyProviderMaxCount, providerProjection.MaxItems)
 	for _, responseName := range []string{"AccessPolicyOK", "AccessPolicyPreflightOK", "PublicAccessDiscoveryOK"} {
-		if document.Components.Responses[responseName].Headers["Cache-Control"].Ref != "#/components/headers/NoStore" {
-			t.Errorf("%s does not require no-store", responseName)
-		}
+		assert.Equal(t, "#/components/headers/NoStore", document.Components.Responses[responseName].Headers["Cache-Control"].Ref, "%s does not require no-store", responseName)
 	}
 	for _, forbidden := range []string{"provider_admissions", "durable_mail", "invitation_local_credential_enabled", "client_secret", "redirect_uri", "claims", "recipient"} {
-		if _, exists := document.Components.Schemas["PublicAccessDiscoveryResponse"].Properties[forbidden]; exists {
-			t.Errorf("PublicAccessDiscoveryResponse exposes forbidden field %q", forbidden)
-		}
+		_, exists := document.Components.Schemas["PublicAccessDiscoveryResponse"].Properties[forbidden]
+		assert.False(t, exists, "PublicAccessDiscoveryResponse exposes forbidden field %q", forbidden)
 	}
 }

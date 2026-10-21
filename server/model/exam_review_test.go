@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestSubmissionReviewLifecycleSeparatesDecisionFinalizationAndRelease(t *testing.T) {
@@ -18,65 +20,48 @@ func TestSubmissionReviewLifecycleSeparatesDecisionFinalizationAndRelease(t *tes
 
 	at := time.Date(2026, 8, 15, 10, 0, 0, 0, time.UTC)
 	review, err := NewSubmissionReview(NewSubmissionReviewID(), NewSubmissionID(), NewUserID(), at)
-	if err != nil {
-		t.Fatalf("NewSubmissionReview() error = %v", err)
-	}
+	require.NoError(t, err)
 	decision, err := NewIntegrityReviewDecision(NewIntegrityReviewDecisionID(), review.ID, NewIntegrityFlagID(),
 		IntegrityReviewConfirmed, NewUserID(), "Observed continuity break was verified.", at)
-	if err != nil {
-		t.Fatalf("NewIntegrityReviewDecision() error = %v", err)
-	}
-	if err = decision.Revise(1, IntegrityReviewInconclusive, NewUserID(), "Evidence remains incomplete.", at.Add(time.Minute)); err != nil {
-		t.Fatalf("decision.Revise() error = %v", err)
-	}
-	if decision.Revision != 2 || decision.Outcome != IntegrityReviewInconclusive {
-		t.Fatalf("decision = %#v", decision)
-	}
-	if err = decision.Revise(1, IntegrityReviewDismissed, NewUserID(), "stale", at.Add(2*time.Minute)); err == nil {
-		t.Fatal("decision.Revise() accepted stale revision")
-	}
+	require.NoError(t, err)
+	err = decision.Revise(1, IntegrityReviewInconclusive, NewUserID(), "Evidence remains incomplete.", at.Add(time.Minute))
+	require.NoError(t, err)
+	require.Equal(t, int64(2), decision.Revision)
+	require.Equal(t, IntegrityReviewInconclusive, decision.Outcome)
+	err = decision.Revise(1, IntegrityReviewDismissed, NewUserID(), "stale", at.Add(2*time.Minute))
+	require.Error(t, err, "decision.Revise() accepted stale revision")
 
-	if err = review.UpdateDraft(1, "Private manager notes", "Please discuss the connectivity interruption.", at.Add(2*time.Minute)); err != nil {
-		t.Fatalf("review.UpdateDraft() error = %v", err)
-	}
-	if err = review.Finalize(2, NewUserID(), 1, 3, 0, strings.Repeat("a", 64), at.Add(3*time.Minute)); err != nil {
-		t.Fatalf("review.Finalize() error = %v", err)
-	}
-	if review.State != SubmissionReviewFinalized || review.ReleaseState != SubmissionReviewWithheld || review.Revision != 3 {
-		t.Fatalf("finalized review = %#v", review)
-	}
-	if err = review.UpdateDraft(3, "changed", "changed", at.Add(4*time.Minute)); err == nil {
-		t.Fatal("finalized Review accepted draft edit")
-	}
-	if err = review.Release(3, NewUserID(), at.Add(5*time.Minute)); err != nil {
-		t.Fatalf("review.Release() error = %v", err)
-	}
-	if review.ReleaseState != SubmissionReviewReleased || review.Revision != 4 || !review.ReleasedAt.Valid {
-		t.Fatalf("released review = %#v", review)
-	}
-	if err = review.Release(4, NewUserID(), at.Add(6*time.Minute)); err == nil {
-		t.Fatal("released Review accepted a second release")
-	}
+	err = review.UpdateDraft(1, "Private manager notes", "Please discuss the connectivity interruption.", at.Add(2*time.Minute))
+	require.NoError(t, err)
+	err = review.Finalize(2, NewUserID(), 1, 3, 0, strings.Repeat("a", 64), at.Add(3*time.Minute))
+	require.NoError(t, err)
+	require.Equal(t, SubmissionReviewFinalized, review.State)
+	require.Equal(t, SubmissionReviewWithheld, review.ReleaseState)
+	require.Equal(t, int64(3), review.Revision)
+	err = review.UpdateDraft(3, "changed", "changed", at.Add(4*time.Minute))
+	require.Error(t, err, "finalized Review accepted draft edit")
+	err = review.Release(3, NewUserID(), at.Add(5*time.Minute))
+	require.NoError(t, err)
+	require.Equal(t, SubmissionReviewReleased, review.ReleaseState)
+	require.Equal(t, int64(4), review.Revision)
+	require.True(t, review.ReleasedAt.Valid)
+	err = review.Release(4, NewUserID(), at.Add(6*time.Minute))
+	require.Error(t, err, "released Review accepted a second release")
 }
 
 func TestSubmissionReviewRejectsUnboundedOrUntrimmedPrivateText(t *testing.T) {
 	t.Parallel()
 
 	at := time.Date(2026, 8, 15, 10, 0, 0, 0, time.UTC)
-	if _, err := NewIntegrityReviewDecision(NewIntegrityReviewDecisionID(), NewSubmissionReviewID(), NewIntegrityFlagID(),
-		IntegrityReviewConfirmed, NewUserID(), " rationale ", at); err == nil {
-		t.Fatal("NewIntegrityReviewDecision() accepted untrimmed rationale")
-	}
+	_, err := NewIntegrityReviewDecision(NewIntegrityReviewDecisionID(), NewSubmissionReviewID(), NewIntegrityFlagID(),
+		IntegrityReviewConfirmed, NewUserID(), " rationale ", at)
+	require.Error(t, err, "NewIntegrityReviewDecision() accepted untrimmed rationale")
 	review, err := NewSubmissionReview(NewSubmissionReviewID(), NewSubmissionID(), NewUserID(), at)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = review.UpdateDraft(1, strings.Repeat("x", SubmissionReviewPrivateNotesMaximumRunes+1), "", at); err == nil {
-		t.Fatal("UpdateDraft() accepted oversized private notes")
-	}
-	if err = review.UpdateDraft(1, "", " remarks ", at); err == nil {
-		t.Fatal("UpdateDraft() accepted untrimmed student remarks")
-	}
+	require.NoError(t, err)
+	err = review.UpdateDraft(1, strings.Repeat("x", SubmissionReviewPrivateNotesMaximumRunes+1), "", at)
+	require.Error(t, err, "UpdateDraft() accepted oversized private notes")
+	err = review.UpdateDraft(1, "", " remarks ", at)
+	require.Error(t, err, "UpdateDraft() accepted untrimmed student remarks")
 }
 
 func TestReleasedStudentResultContainsOnlyApprovedProjection(t *testing.T) {
@@ -84,28 +69,21 @@ func TestReleasedStudentResultContainsOnlyApprovedProjection(t *testing.T) {
 
 	at := time.Date(2026, 8, 15, 10, 0, 0, 0, time.UTC)
 	review, err := NewSubmissionReview(NewSubmissionReviewID(), NewSubmissionID(), NewUserID(), at)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = review.UpdateDraft(1, "private", "Candidate-facing remarks", at.Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	if err = review.Finalize(2, NewUserID(), 0, 0, 0, strings.Repeat("b", 64), at.Add(2*time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = review.StudentResult(NewExamAttemptID(), NewUserID()); err == nil {
-		t.Fatal("StudentResult() exposed an unreleased Review")
-	}
-	if err = review.Release(3, NewUserID(), at.Add(3*time.Minute)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	err = review.UpdateDraft(1, "private", "Candidate-facing remarks", at.Add(time.Minute))
+	require.NoError(t, err)
+	err = review.Finalize(2, NewUserID(), 0, 0, 0, strings.Repeat("b", 64), at.Add(2*time.Minute))
+	require.NoError(t, err)
+	_, err = review.StudentResult(NewExamAttemptID(), NewUserID())
+	require.Error(t, err, "StudentResult() exposed an unreleased Review")
+	err = review.Release(3, NewUserID(), at.Add(3*time.Minute))
+	require.NoError(t, err)
 	result, err := review.StudentResult(NewExamAttemptID(), NewUserID())
-	if err != nil {
-		t.Fatalf("StudentResult() error = %v", err)
-	}
-	if result.ReviewID != review.ID || result.SubmissionID != review.SubmissionID || result.StudentRemarksMarkdown != "Candidate-facing remarks" || result.ReleasedAt != review.ReleasedAt.Time {
-		t.Fatalf("StudentResult() = %#v", result)
-	}
+	require.NoError(t, err)
+	require.Equal(t, review.ID, result.ReviewID)
+	require.Equal(t, review.SubmissionID, result.SubmissionID)
+	require.Equal(t, "Candidate-facing remarks", result.StudentRemarksMarkdown)
+	require.Equal(t, review.ReleasedAt.Time, result.ReleasedAt)
 }
 
 func TestIntegrityReviewInventoryDigestIsOrderIndependentAndPinned(t *testing.T) {
@@ -120,19 +98,14 @@ func TestIntegrityReviewInventoryDigestIsOrderIndependentAndPinned(t *testing.T)
 	discrepancyA, discrepancyB := IntegrityDiscrepancyID("yyyyyyyyyyyyyyyyyyyyyyyyyc"), IntegrityDiscrepancyID("yyyyyyyyyyyyyyyyyyyyyyyyyp")
 	discrepancies := []IntegrityReviewInventoryDiscrepancy{{DiscrepancyID: discrepancyB}, {DiscrepancyID: discrepancyA}}
 	digest, err := IntegrityReviewInventoryDigest(flags, evidence, discrepancies)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	reversed, err := IntegrityReviewInventoryDigest([]IntegrityReviewInventoryFlag{flags[1], flags[0]},
 		[]IntegrityReviewInventoryEvidence{evidence[1], evidence[0]},
 		[]IntegrityReviewInventoryDiscrepancy{discrepancies[1], discrepancies[0]})
-	if err != nil || reversed != digest {
-		t.Fatalf("reversed digest = %q, %v; want %q", reversed, err, digest)
-	}
+	require.NoError(t, err, "reversed digest")
+	require.Equal(t, digest, reversed, "reversed digest")
 	const want = "49c4e99013eaf6ba074a8fa307e3f310d58c1ecad274a9ed3fc76718d1e111c5"
-	if digest != want {
-		t.Fatalf("digest = %q, want %q", digest, want)
-	}
+	require.Equal(t, want, digest, "digest")
 }
 
 func TestIntegrityDiscrepancyValidatesBoundedLateFocusLossRecord(t *testing.T) {
@@ -145,19 +118,15 @@ func TestIntegrityDiscrepancyValidatesBoundedLateFocusLossRecord(t *testing.T) {
 		SchemaVersion: FocusLossSignalSchemaVersion, SignalID: NewFocusLossSignalID(), Sequence: 14,
 		DurationMilliseconds: 2300, Source: FocusLossSourceFullscreenExited, MissingBefore: 2, ReceivedAt: at,
 	})
-	if err != nil || discrepancy.Validate() != nil || discrepancy.ReceivedAt != at {
-		t.Fatalf("NewIntegrityDiscrepancy() = %#v, %v", discrepancy, err)
-	}
+	require.NoError(t, err, "NewIntegrityDiscrepancy() = %#v", discrepancy)
+	require.NoError(t, discrepancy.Validate(), "NewIntegrityDiscrepancy() = %#v", discrepancy)
+	require.Equal(t, at, discrepancy.ReceivedAt, "NewIntegrityDiscrepancy() = %#v", discrepancy)
 	invalid := *discrepancy
 	invalid.Kind = "future_kind"
-	if invalid.Validate() == nil {
-		t.Fatal("IntegrityDiscrepancy accepted an unknown kind")
-	}
+	require.Error(t, invalid.Validate(), "IntegrityDiscrepancy accepted an unknown kind")
 	invalid = *discrepancy
 	invalid.DurationMilliseconds = FocusLossMaximumDurationMilliseconds + 1
-	if invalid.Validate() == nil {
-		t.Fatal("IntegrityDiscrepancy accepted an oversized claim")
-	}
+	require.Error(t, invalid.Validate(), "IntegrityDiscrepancy accepted an oversized claim")
 }
 
 func TestIntegrityDiscrepancyValidatesTerminalUncertaintyKinds(t *testing.T) {
@@ -191,14 +160,12 @@ func TestIntegrityDiscrepancyValidatesTerminalUncertaintyKinds(t *testing.T) {
 	}
 	for _, specification := range tests {
 		discrepancy, err := NewIntegrityDiscrepancy(specification)
-		if err != nil || discrepancy.Validate() != nil {
-			t.Fatalf("NewIntegrityDiscrepancy(%q) = %#v, %v", specification.Kind, discrepancy, err)
-		}
+		require.NoError(t, err, "NewIntegrityDiscrepancy(%q) = %#v", specification.Kind, discrepancy)
+		require.NoError(t, discrepancy.Validate(), "NewIntegrityDiscrepancy(%q) = %#v", specification.Kind, discrepancy)
 	}
 
 	invalid := tests[2]
 	invalid.UnresolvedCount = 2
-	if _, err := NewIntegrityDiscrepancy(invalid); err == nil {
-		t.Fatal("missing correction acknowledgement accepted an aggregate count")
-	}
+	_, err := NewIntegrityDiscrepancy(invalid)
+	require.Error(t, err, "missing correction acknowledgement accepted an aggregate count")
 }

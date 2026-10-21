@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/config"
 )
 
@@ -27,9 +29,7 @@ func TestModuleServesAuthenticatedNodeMetricsWithoutDebugEndpoints(t *testing.T)
 	settings.ListenAddress = "127.0.0.1:0"
 	settings.BearerToken = strings.Repeat("a", 32)
 	module, err := New(settings, BuildInfo{Version: "test", Commit: "abc", GoVersion: "go-test"}, Sources{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	module.ObserveCache("redis", "get", nil, time.Millisecond)
 	module.ObserveVFS("s3", "open", context.DeadlineExceeded, time.Millisecond)
 	module.ObserveSMTP("send", nil, time.Millisecond)
@@ -68,21 +68,15 @@ func TestModuleServesAuthenticatedNodeMetricsWithoutDebugEndpoints(t *testing.T)
 	request := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 	response := httptest.NewRecorder()
 	module.handler.ServeHTTP(response, request)
-	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("unauthenticated status = %d", response.Code)
-	}
+	require.Equal(t, http.StatusUnauthorized, response.Code, "unauthenticated status")
 
 	request = httptest.NewRequest(http.MethodGet, "/metrics", nil)
 	request.Header.Set("Authorization", "Bearer "+settings.BearerToken)
 	response = httptest.NewRecorder()
 	module.handler.ServeHTTP(response, request)
 	body, err := io.ReadAll(response.Result().Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if response.Code != http.StatusOK {
-		t.Fatalf("authenticated status = %d: %s", response.Code, body)
-	}
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, response.Code, "authenticated status = %d: %s", response.Code, body)
 	for _, name := range []string{
 		"proctor_build_info", "proctor_ready", "proctor_cache_operations_total",
 		"proctor_redis_operations_total",
@@ -99,18 +93,14 @@ func TestModuleServesAuthenticatedNodeMetricsWithoutDebugEndpoints(t *testing.T)
 		"proctor_cache_bytes_total", "proctor_smtp_messages_total", "proctor_mail_deliveries_total",
 		"proctor_mail_queue", "proctor_mail_queue_snapshot_truncated", "proctor_mail_health", "proctor_application_events_total", "proctor_store_retries_total",
 	} {
-		if !strings.Contains(string(body), name) {
-			t.Fatalf("scrape is missing %q", name)
-		}
+		require.Contains(t, string(body), name)
 	}
 
 	debugRequest := httptest.NewRequest(http.MethodGet, "/debug/pprof/", nil)
 	debugRequest.Header.Set("Authorization", "Bearer "+settings.BearerToken)
 	debugResponse := httptest.NewRecorder()
 	module.handler.ServeHTTP(debugResponse, debugRequest)
-	if debugResponse.Code != http.StatusNotFound {
-		t.Fatalf("debug endpoint status = %d", debugResponse.Code)
-	}
+	require.Equal(t, http.StatusNotFound, debugResponse.Code, "debug endpoint status")
 }
 
 func TestDisabledModuleOwnsNoListener(t *testing.T) {
@@ -118,19 +108,9 @@ func TestDisabledModuleOwnsNoListener(t *testing.T) {
 
 	settings := config.Default().Metrics
 	module, err := New(settings, BuildInfo{}, Sources{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := module.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if module.listener != nil {
-		t.Fatal("disabled metrics module opened a listener")
-	}
-	if err := module.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := module.Close(); err != nil {
-		t.Fatalf("repeated Close: %v", err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, module.Start(context.Background()))
+	require.Nil(t, module.listener, "disabled metrics module opened a listener")
+	require.NoError(t, module.Close())
+	require.NoError(t, module.Close())
 }

@@ -10,11 +10,10 @@ package memberlist
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"strings"
 	"testing"
 
 	hashimemberlist "github.com/hashicorp/memberlist"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/cluster"
 )
@@ -22,9 +21,7 @@ import (
 func encodedAdmissionMeta(t *testing.T, meta nodeMeta) []byte {
 	t.Helper()
 	payload, err := json.Marshal(meta)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return payload
 }
 
@@ -55,9 +52,7 @@ func TestJoinedPeerAdmissionAcceptsCompiledProtocolAndUnknownMetadataFields(t *t
 		},
 	}
 
-	if err := transport.admitJoinedPeers(local, members); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, transport.admitJoinedPeers(local, members))
 }
 
 func TestJoinedPeerAdmissionRejectsInvalidPeerSetByCategory(t *testing.T) {
@@ -162,15 +157,11 @@ func TestJoinedPeerAdmissionRejectsInvalidPeerSetByCategory(t *testing.T) {
 			transport := &Transport{cfg: Config{NodeID: "node-local"}}
 			local := &hashimemberlist.Node{Name: "node-local"}
 			err := transport.admitJoinedPeers(local, test.members(t, local))
-			if !errors.Is(err, test.want) {
-				t.Fatalf("admission error = %v, want category %v", err, test.want)
+			require.ErrorIs(t, err, test.want, "admission error")
+			if test.wantDetail != "" {
+				require.Contains(t, err.Error(), test.wantDetail, "admission error = %q, want detail", err)
 			}
-			if test.wantDetail != "" && !strings.Contains(err.Error(), test.wantDetail) {
-				t.Fatalf("admission error = %q, want detail %q", err, test.wantDetail)
-			}
-			if strings.Contains(err.Error(), malformedSecret) {
-				t.Fatalf("admission error exposed unbounded metadata: %q", err)
-			}
+			require.NotContains(t, err.Error(), malformedSecret)
 		})
 	}
 }
@@ -180,9 +171,8 @@ func TestJoinedPeerAdmissionRequiresLocalMember(t *testing.T) {
 
 	transport := &Transport{cfg: Config{NodeID: "node-local"}}
 	err := transport.admitJoinedPeers(nil, nil)
-	if !errors.Is(err, errAdmissionMetadataInvalid) || !strings.Contains(err.Error(), "local member is missing") {
-		t.Fatalf("admission error = %v", err)
-	}
+	require.ErrorIs(t, err, errAdmissionMetadataInvalid)
+	require.Contains(t, err.Error(), "local member is missing")
 }
 
 func TestContinuousAdmissionRejectsLateAndMergedIncompatiblePeers(t *testing.T) {
@@ -190,21 +180,13 @@ func TestContinuousAdmissionRejectsLateAndMergedIncompatiblePeers(t *testing.T) 
 
 	transport := &Transport{cfg: Config{NodeID: "node-local", Logger: recordingAdmissionLogger{}}}
 	admission := newAdmissionDelegate(transport)
-	if err := admission.NotifyAlive(admissionPeer(t, "node-ok", "v1", 1, 1)); err != nil {
-		t.Fatalf("compatible late peer: %v", err)
-	}
-	if err := admission.NotifyAlive(admissionPeer(t, "node-new", "v2", 2, 2)); !errors.Is(err, errAdmissionProtocolIncompatible) {
-		t.Fatalf("late peer error = %v", err)
-	}
-	if err := admission.NotifyMerge([]*hashimemberlist.Node{
+	require.NoError(t, admission.NotifyAlive(admissionPeer(t, "node-ok", "v1", 1, 1)))
+	require.ErrorIs(t, admission.NotifyAlive(admissionPeer(t, "node-new", "v2", 2, 2)), errAdmissionProtocolIncompatible)
+	require.ErrorIs(t, admission.NotifyMerge([]*hashimemberlist.Node{
 		admissionPeer(t, "node-a", "v1", 1, 1),
 		admissionPeer(t, "node-a", "v1", 1, 1),
-	}); !errors.Is(err, cluster.ErrNodeIDInUse) {
-		t.Fatalf("merge error = %v", err)
-	}
-	if err := admission.finishStartup(); !errors.Is(err, errAdmissionProtocolIncompatible) {
-		t.Fatalf("startup admission error = %v", err)
-	}
+	}), cluster.ErrNodeIDInUse)
+	require.ErrorIs(t, admission.finishStartup(), errAdmissionProtocolIncompatible)
 }
 
 func TestContinuousAdmissionValidatesSameNameAliveMetadata(t *testing.T) {
@@ -216,9 +198,7 @@ func TestContinuousAdmissionValidatesSameNameAliveMetadata(t *testing.T) {
 		Name: "node-local",
 		Meta: []byte("{malformed"),
 	})
-	if !errors.Is(err, errAdmissionMetadataInvalid) {
-		t.Fatalf("same-name Alive error = %v, want invalid metadata", err)
-	}
+	require.ErrorIs(t, err, errAdmissionMetadataInvalid, "same-name Alive error")
 }
 
 type recordingAdmissionLogger struct{}

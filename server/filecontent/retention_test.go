@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	vfs "github.com/sudosylabs/proctor/packages/vfs"
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/model"
@@ -59,34 +61,30 @@ func TestRetentionPurgeRequiresIndependentExactKeyAbsence(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			fs := &retentionObservationVFS{FileSystem: memoryvfs.New()}
 			content, err := New(fs, Policy{MaximumConcurrentOperations: 2}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			id, other := model.NewAttemptWorkspaceObjectID(), model.NewAttemptWorkspaceObjectID()
 			for _, target := range []model.AttemptWorkspaceObjectID{id, other} {
-				if _, err = content.StageAttemptWorkspaceObject(context.Background(), target, strings.NewReader("answer"), 6, "text/plain"); err != nil {
-					t.Fatal(err)
-				}
+				_, err = content.StageAttemptWorkspaceObject(context.Background(), target, strings.NewReader("answer"), 6, "text/plain")
+				require.NoError(t, err)
 			}
 			fs.retain, fs.statErr = test.retain, test.statErr
 			fs.stats = 0
 			err = content.PurgeRetiredAttemptWorkspaceObject(context.Background(), id)
-			if (err != nil) != test.wantError || fs.removes != 1 || fs.stats != 1 || fs.removedKey != attemptWorkspaceObjectKey(id) || fs.observedKey != fs.removedKey {
-				t.Fatalf("purge err=%v removes=%d stats=%d", err, fs.removes, fs.stats)
+			require.Equal(t, test.wantError, err != nil, "purge err=%v removes=%d stats", err, fs.removes)
+			require.Equal(t, 1, fs.removes, "purge err=%v removes=%d stats", err, fs.removes)
+			require.Equal(t, 1, fs.stats, "purge err=%v removes=%d stats", err, fs.removes)
+			require.Equal(t, attemptWorkspaceObjectKey(id), fs.removedKey, "purge err=%v removes=%d stats", err, fs.removes)
+			require.Equal(t, fs.removedKey, fs.observedKey, "purge err=%v removes=%d stats", err, fs.removes)
+			if err != nil {
+				require.NotContains(t, err.Error(), "provider secret detail", "unsafe provider error exposed")
 			}
-			if err != nil && strings.Contains(err.Error(), "provider secret detail") {
-				t.Fatal("unsafe provider error exposed")
-			}
-			if _, err = fs.FileSystem.Stat(context.Background(), attemptWorkspaceObjectKey(other)); err != nil {
-				t.Fatal("purge touched another object")
-			}
+			_, err = fs.FileSystem.Stat(context.Background(), attemptWorkspaceObjectKey(other))
+			require.NoError(t, err, "purge touched another object")
 			fs.retain, fs.statErr = false, nil
-			if err = content.PurgeRetiredAttemptWorkspaceObject(context.Background(), id); err != nil {
-				t.Fatal("retry did not reconcile absence", err)
-			}
-			if err = content.PurgeRetiredAttemptWorkspaceObject(context.Background(), id); err != nil {
-				t.Fatal("verified absence was not idempotent", err)
-			}
+			err = content.PurgeRetiredAttemptWorkspaceObject(context.Background(), id)
+			require.NoError(t, err, "retry did not reconcile absence")
+			err = content.PurgeRetiredAttemptWorkspaceObject(context.Background(), id)
+			require.NoError(t, err, "verified absence was not idempotent")
 		})
 	}
 }

@@ -14,6 +14,8 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/cluster"
@@ -140,12 +142,8 @@ func TestConsumerConstructionFailuresUnwindExactlyOnce(t *testing.T) {
 				context.Background(), compositionPlatform{closer: platformCloser}, config.Default(),
 				constructionCapabilities{}, compositionInput{}, constructors,
 			)
-			if result != nil {
-				t.Fatalf("composeConsumers() result = %#v, want nil", result)
-			}
-			if !errors.Is(err, primaryErr) {
-				t.Fatalf("composeConsumers() error = %v, want primary %v", err, primaryErr)
-			}
+			require.Nil(t, result, "composeConsumers() result")
+			require.ErrorIs(t, err, primaryErr, "composeConsumers() error")
 			wantEvents := []string{"platform"}
 			if phase == "attach-sink" || phase == "http" || phase == "jobs" {
 				wantEvents = []string{"websocket", "platform"}
@@ -153,9 +151,7 @@ func TestConsumerConstructionFailuresUnwindExactlyOnce(t *testing.T) {
 			if phase == "webapp" || phase == "jobs" {
 				wantEvents = []string{"transport", "websocket", "platform"}
 			}
-			if !slices.Equal(events, wantEvents) {
-				t.Fatalf("cleanup order = %v, want %v", events, wantEvents)
-			}
+			require.True(t, slices.Equal(events, wantEvents), "cleanup order = %v, want %v", events, wantEvents)
 			for name, closer := range map[string]*compositionCloser{
 				"platform": platformCloser, "websocket": websocketCloser, "transport": transportCloser,
 			} {
@@ -163,11 +159,9 @@ func TestConsumerConstructionFailuresUnwindExactlyOnce(t *testing.T) {
 				if slices.Contains(wantEvents, name) {
 					want = 1
 				}
-				if closer.count != want {
-					t.Fatalf("%s close count = %d, want %d", name, closer.count, want)
-				}
-				if want == 1 && !errors.Is(err, closer.err) {
-					t.Fatalf("error %v does not preserve %s cleanup error", err, name)
+				require.Equal(t, want, closer.count, "%s close count", name)
+				if want == 1 {
+					require.ErrorIs(t, err, closer.err, "error %v does not preserve %s cleanup error", err, name)
 				}
 			}
 		})
@@ -208,21 +202,14 @@ func TestRealtimeHandlerRegistrationFailureUnwindsComposition(t *testing.T) {
 		compositionInput{},
 		constructors,
 	)
-	if result != nil {
-		t.Fatalf("composeConsumers() result = %#v, want nil", result)
-	}
-	if !errors.Is(err, registrationErr) {
-		t.Fatalf("composeConsumers() error = %v, want %v", err, registrationErr)
-	}
-	if !slices.Equal(events, []string{"platform"}) || platformCloser.count != 1 {
-		t.Fatalf("cleanup events = %v, platform closes = %d", events, platformCloser.count)
-	}
+	require.Nil(t, result, "composeConsumers() result")
+	require.ErrorIs(t, err, registrationErr, "composeConsumers() error")
+	require.True(t, slices.Equal(events, []string{"platform"}), "cleanup events = %v, platform closes", events)
+	require.Equal(t, 1, platformCloser.count, "cleanup events = %v, platform closes", events)
 	wantRegistrations := []cluster.Event{
 		cluster.Event("websocket.publish"),
 		cluster.Event("exam_attempt.connection_unbound"),
 		cluster.Event("authentication.session_revoked"),
 	}
-	if !slices.Equal(transport.registrations, wantRegistrations) {
-		t.Fatalf("registrations = %v, want %v", transport.registrations, wantRegistrations)
-	}
+	require.True(t, slices.Equal(transport.registrations, wantRegistrations), "registrations = %v, want %v", transport.registrations, wantRegistrations)
 }

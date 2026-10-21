@@ -11,8 +11,9 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -24,53 +25,34 @@ func TestRunWritesDeterministicRepresentativePreview(t *testing.T) {
 	second := filepath.Join(t.TempDir(), "second")
 	for _, output := range []string{first, second} {
 		var stderr bytes.Buffer
-		if err := run([]string{"-output", output, "-catalogs", "../../i18n", "-templates", "../../templates"}, &stderr); err != nil {
-			t.Fatalf("run(%q): %v (%s)", output, err, stderr.String())
-		}
+		err := run([]string{"-output", output, "-catalogs", "../../i18n", "-templates", "../../templates"}, &stderr)
+		require.NoError(t, err, "run(%q): %v (%s)", output, err, stderr.String())
 	}
 
 	firstIndex, err := os.ReadFile(filepath.Join(first, "index.html"))
-	if err != nil {
-		t.Fatalf("read first index: %v", err)
-	}
+	require.NoError(t, err)
 	secondIndex, err := os.ReadFile(filepath.Join(second, "index.html"))
-	if err != nil {
-		t.Fatalf("read second index: %v", err)
-	}
-	if !bytes.Equal(firstIndex, secondIndex) {
-		t.Fatal("preview index is not deterministic")
-	}
-	if bytes.Contains(firstIndex, []byte("@")) {
-		t.Fatal("preview index appears to contain a production-like email address")
-	}
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(firstIndex, secondIndex), "preview index is not deterministic")
+	require.False(t, bytes.Contains(firstIndex, []byte("@")), "preview index appears to contain a production-like email address")
 	wantImage, err := os.ReadFile("../../templates/proctor-lockup-25d-v1.png")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, output := range []string{first, second} {
 		image, err := os.ReadFile(filepath.Join(output, "proctor-lockup-25d-v1.png"))
-		if err != nil || !bytes.Equal(image, wantImage) {
-			t.Fatalf("preview image differs from released mail asset: %v", err)
-		}
+		require.NoError(t, err)
+		require.True(t, bytes.Equal(image, wantImage))
 	}
 	keys := model.AllMailTemplateKeys()
-	if len(keys) != 46 {
-		t.Fatalf("preview catalog keys = %d, want 46", len(keys))
-	}
+	require.Len(t, keys, 46, "preview catalog keys")
 	for _, catalogKey := range keys {
 		key := string(catalogKey)
 		body, err := os.ReadFile(filepath.Join(first, key+".html"))
-		if err != nil {
-			t.Fatalf("%s HTML preview: %v", key, err)
-		}
-		if !strings.Contains(string(body), `src="proctor-lockup-25d-v1.png"`) || strings.Contains(string(body), `src="cid:`) {
-			t.Fatalf("%s preview image does not resolve locally", key)
-		}
-		if _, err := os.Stat(filepath.Join(first, key+".txt")); err != nil {
-			t.Fatalf("%s text preview: %v", key, err)
-		}
-		if bytes.Count(firstIndex, []byte(key+".html")) != 1 || bytes.Count(firstIndex, []byte(key+".txt")) != 1 {
-			t.Fatalf("%s preview links are incomplete or duplicated", key)
-		}
+		require.NoError(t, err, "%s HTML preview", key)
+		require.Contains(t, string(body), `src="proctor-lockup-25d-v1.png"`, "%s preview image does not resolve locally", key)
+		require.NotContains(t, string(body), `src="cid:`, "%s preview image does not resolve locally", key)
+		_, err = os.Stat(filepath.Join(first, key+".txt"))
+		require.NoError(t, err, "%s text preview", key)
+		require.Equal(t, 1, bytes.Count(firstIndex, []byte(key+".html")), "%s preview links are incomplete or duplicated", key)
+		require.Equal(t, 1, bytes.Count(firstIndex, []byte(key+".txt")), "%s preview links are incomplete or duplicated", key)
 	}
 }

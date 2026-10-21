@@ -15,6 +15,9 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/webui"
 )
 
@@ -24,31 +27,21 @@ func TestHandlerServesOnlyDeclaredPagesAndAssets(t *testing.T) {
 
 	for _, page := range []string{"/login", "/account/reset-password"} {
 		response := perform(t, handler, http.MethodGet, page)
-		if response.Code != http.StatusOK || response.Body.String() != "<!doctype html><title>Proctor</title>" {
-			t.Fatalf("GET %s = %d %q", page, response.Code, response.Body.String())
-		}
+		require.Equal(t, http.StatusOK, response.Code, "GET %s", page)
+		require.Equal(t, "<!doctype html><title>Proctor</title>", response.Body.String(), "GET %s", page)
 		assertSecurityHeaders(t, response)
-		if got := response.Header().Get("Cache-Control"); got != "no-store" {
-			t.Fatalf("GET %s Cache-Control = %q", page, got)
-		}
+		require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "GET %s Cache-Control", page)
 	}
 
 	asset := perform(t, handler, http.MethodGet, "/assets/index-AbCdEf12.js")
-	if asset.Code != http.StatusOK || asset.Body.String() != "export {};" {
-		t.Fatalf("asset = %d %q", asset.Code, asset.Body.String())
-	}
-	if got := asset.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
-		t.Fatalf("asset Cache-Control = %q", got)
-	}
+	require.Equal(t, http.StatusOK, asset.Code, "asset")
+	require.Equal(t, "export {};", asset.Body.String(), "asset")
+	require.Equal(t, "public, max-age=31536000, immutable", asset.Header().Get("Cache-Control"))
 
 	for _, missing := range []string{"/api/v1/discovery", "/unknown", "/assets/missing.js", "/assets/unversioned-logo.svg", "/assets/"} {
 		response := perform(t, handler, http.MethodGet, missing)
-		if response.Code != http.StatusNotFound {
-			t.Fatalf("GET %s = %d, want 404", missing, response.Code)
-		}
-		if got := response.Header().Get("Cache-Control"); got != "no-store" {
-			t.Fatalf("GET %s Cache-Control = %q", missing, got)
-		}
+		require.Equal(t, http.StatusNotFound, response.Code, "GET %s", missing)
+		require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "GET %s Cache-Control", missing)
 	}
 }
 
@@ -57,26 +50,23 @@ func TestHandlerImplementsHEADAndRejectsMutations(t *testing.T) {
 	handler := newHandler(t)
 
 	head := perform(t, handler, http.MethodHead, "/login")
-	if head.Code != http.StatusOK || head.Body.Len() != 0 || head.Header().Get("Content-Length") == "" {
-		t.Fatalf("HEAD /login = %d body=%q length=%q", head.Code, head.Body.String(), head.Header().Get("Content-Length"))
-	}
+	require.Equal(t, http.StatusOK, head.Code, "HEAD /login = %d body=%q length", head.Code, head.Body.String())
+	require.Equal(t, 0, head.Body.Len(), "HEAD /login = %d body=%q length", head.Code, head.Body.String())
+	require.NotEmpty(t, head.Header().Get("Content-Length"), "HEAD /login = %d body=%q length", head.Code, head.Body.String())
 	mutation := perform(t, handler, http.MethodPost, "/login")
-	if mutation.Code != http.StatusMethodNotAllowed || mutation.Header().Get("Allow") != "GET, HEAD" {
-		t.Fatalf("POST /login = %d Allow=%q", mutation.Code, mutation.Header().Get("Allow"))
-	}
+	require.Equal(t, http.StatusMethodNotAllowed, mutation.Code, "POST /login")
+	require.Equal(t, "GET, HEAD", mutation.Header().Get("Allow"), "POST /login")
 }
 
 func TestHandlerRedirectsRootToHostedLogin(t *testing.T) {
 	t.Parallel()
-	if !webui.HandlesPath(webui.LoginPath) || !webui.HandlesPath("/") {
-		t.Fatal("browser module does not own the root and login paths")
-	}
+	require.True(t, webui.HandlesPath(webui.LoginPath), "browser module does not own the root and login paths")
+	require.True(t, webui.HandlesPath("/"), "browser module does not own the root and login paths")
 	handler := newHandler(t)
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
 		response := perform(t, handler, method, "/")
-		if response.Code != http.StatusFound || response.Header().Get("Location") != webui.LoginPath {
-			t.Fatalf("%s / = %d Location=%q", method, response.Code, response.Header().Get("Location"))
-		}
+		require.Equal(t, http.StatusFound, response.Code, "%s / = %d Location", method, response.Code)
+		require.Equal(t, webui.LoginPath, response.Header().Get("Location"), "%s / = %d Location", method, response.Code)
 	}
 }
 
@@ -93,9 +83,7 @@ func TestHandlerDelegatesRefusalsToConfiguredProblemHandlers(t *testing.T) {
 		BuildVersion: "1.2.3", BuildCommit: "abc",
 		NotFound: record("not-found"), MethodNotAllowed: record("method-not-allowed"),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	perform(t, handler, http.MethodPost, "/login")
 	perform(t, handler, http.MethodPost, "/")
 	perform(t, handler, http.MethodGet, "/assets/missing-AbCdEf12.js")
@@ -106,9 +94,7 @@ func TestHandlerDelegatesRefusalsToConfiguredProblemHandlers(t *testing.T) {
 		"not-found GET /assets/missing-AbCdEf12.js allow=",
 		"not-found GET /assets/unversioned-logo.svg allow=",
 	}
-	if strings.Join(refusals, "|") != strings.Join(want, "|") {
-		t.Fatalf("refusals = %q, want %q", refusals, want)
-	}
+	require.Equal(t, strings.Join(want, "|"), strings.Join(refusals, "|"), "refusals = %q, want %q", refusals, want)
 }
 
 func TestNewRejectsIncompleteAndMismatchedDistributions(t *testing.T) {
@@ -127,9 +113,8 @@ func TestNewRejectsIncompleteAndMismatchedDistributions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := webui.New(tt.files, webui.Options{BuildVersion: "1.2.3", BuildCommit: "abc"})
-			if err == nil || !strings.Contains(err.Error(), tt.want) {
-				t.Fatalf("New() error = %v, want %q", err, tt.want)
-			}
+			require.Error(t, err, "New() error")
+			require.Contains(t, err.Error(), tt.want, "New() error")
 		})
 	}
 }
@@ -137,9 +122,7 @@ func TestNewRejectsIncompleteAndMismatchedDistributions(t *testing.T) {
 func newHandler(t *testing.T) http.Handler {
 	t.Helper()
 	handler, err := webui.New(testFiles("1.2.3", "abc"), webui.Options{BuildVersion: "1.2.3", BuildCommit: "abc"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return handler
 }
 
@@ -170,8 +153,6 @@ func assertSecurityHeaders(t *testing.T, response *httptest.ResponseRecorder) {
 		"Content-Security-Policy", "Cross-Origin-Opener-Policy", "Cross-Origin-Resource-Policy",
 		"Permissions-Policy", "Referrer-Policy", "X-Content-Type-Options", "X-Frame-Options",
 	} {
-		if response.Header().Get(name) == "" {
-			t.Errorf("%s is missing", name)
-		}
+		assert.NotEmpty(t, response.Header().Get(name), "%s is missing", name)
 	}
 }

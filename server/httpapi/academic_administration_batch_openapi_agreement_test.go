@@ -10,6 +10,8 @@ package httpapi
 import (
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestAcademicAdministrationBatchOpenAPIAgreesWithRuntime(t *testing.T) {
@@ -32,8 +34,6 @@ func TestAcademicAdministrationBatchOpenAPIAgreesWithRuntime(t *testing.T) {
 		OperationSelector: func(_ string, path string) bool { return path == "/api/v1/academic-administration-batches" },
 	}
 	runtimeAPI := newRoutingTestAPI("/api/v1")
-	if err := runtimeAPI.collectResources("/api/v1", academicAdministrationBatchResource(unavailableAcademicAdministrationBatchApplication{})); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtimeAPI.collectResources("/api/v1", academicAdministrationBatchResource(unavailableAcademicAdministrationBatchApplication{})))
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 }

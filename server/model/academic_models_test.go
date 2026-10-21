@@ -10,6 +10,8 @@ package model
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestAcademicPeriodAndClassTypedLifecycle(t *testing.T) {
@@ -17,69 +19,43 @@ func TestAcademicPeriodAndClassTypedLifecycle(t *testing.T) {
 
 	at := time.UnixMilli(1_700_000_000_000).UTC()
 	institutionID, err := ParseInstitutionID(NewID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	periodID, err := ParseAcademicPeriodID(NewID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	period, err := NewAcademicPeriod(
 		periodID, NewInstitutionAcademicPeriodOwner(institutionID), "2026-2027", "2026–2027", "",
 		time.UnixMilli(1788213600000).UTC(), time.UnixMilli(1819749600000).UTC(), at,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := period.Validate(); err != nil {
-		t.Fatalf("AcademicPeriod.Validate() = %v", err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, period.Validate())
 	audit := period.Auditable()
-	if audit["id"] != period.ID.String() ||
-		audit["owner_type"] != string(ResourceInstitution) ||
-		audit["owner_id"] != institutionID.String() ||
-		audit["created_at"] != MillisFromTime(at) ||
-		audit["start_at"] != MillisFromTime(period.StartsAt) ||
-		audit["end_at"] != MillisFromTime(period.EndsAt) {
-		t.Fatalf("academic period audit = %#v", audit)
-	}
-	if _, exposed := audit["description"]; exposed {
-		t.Fatalf("academic period audit exposes description: %#v", audit)
-	}
+	require.Equal(t, period.ID.String(), audit["id"])
+	require.Equal(t, string(ResourceInstitution), audit["owner_type"])
+	require.Equal(t, institutionID.String(), audit["owner_id"])
+	require.Equal(t, MillisFromTime(at), audit["created_at"])
+	require.Equal(t, MillisFromTime(period.StartsAt), audit["start_at"])
+	require.Equal(t, MillisFromTime(period.EndsAt), audit["end_at"])
+	_, exposed := audit["description"]
+	require.False(t, exposed, "academic period audit exposes description: %#v", audit)
 	period.PrepareUpdate(at.Add(time.Second))
-	if err := period.Validate(); err != nil {
-		t.Fatalf("AcademicPeriod after PrepareUpdate: %v", err)
-	}
+	require.NoError(t, period.Validate())
 
 	levelID, err := ParseProgrammeLevelID(NewID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	classID, err := ParseClassID(NewID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	class, err := NewClass(classID, levelID, periodID, "year-1-a", "Year 1 - Class A", "", at)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := class.Validate(); err != nil {
-		t.Fatalf("Class.Validate() = %v", err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, class.Validate())
 	classAudit := class.Auditable()
-	if classAudit["id"] != class.ID.String() ||
-		classAudit["programme_level_id"] != levelID.String() ||
-		classAudit["academic_period_id"] != periodID.String() ||
-		classAudit["created_at"] != MillisFromTime(at) {
-		t.Fatalf("class audit = %#v", classAudit)
-	}
-	if _, exposed := classAudit["description"]; exposed {
-		t.Fatalf("class audit exposes description: %#v", classAudit)
-	}
+	require.Equal(t, class.ID.String(), classAudit["id"])
+	require.Equal(t, levelID.String(), classAudit["programme_level_id"])
+	require.Equal(t, periodID.String(), classAudit["academic_period_id"])
+	require.Equal(t, MillisFromTime(at), classAudit["created_at"])
+	_, exposed = classAudit["description"]
+	require.False(t, exposed, "class audit exposes description: %#v", classAudit)
 	class.PrepareUpdate(at.Add(time.Second))
-	if err := class.Validate(); err != nil {
-		t.Fatalf("Class after PrepareUpdate: %v", err)
-	}
+	require.NoError(t, class.Validate())
 }
 
 func TestAcademicPeriodRequiresExactlyOneOwner(t *testing.T) {
@@ -98,9 +74,7 @@ func TestAcademicPeriodRequiresExactlyOneOwner(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			candidate := base
 			candidate.Owner = owner
-			if err := candidate.Validate(); err == nil {
-				t.Fatal("Validate() accepted an ambiguous owner")
-			}
+			require.Error(t, candidate.Validate(), "Validate() accepted an ambiguous owner")
 		})
 	}
 	for name, owner := range map[string]AcademicPeriodOwner{
@@ -110,9 +84,7 @@ func TestAcademicPeriodRequiresExactlyOneOwner(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			candidate := base
 			candidate.Owner = owner
-			if err := candidate.Validate(); err != nil {
-				t.Fatalf("Validate() = %v", err)
-			}
+			require.NoError(t, candidate.Validate())
 		})
 	}
 }
@@ -122,59 +94,36 @@ func TestProgrammeAndProgrammeLevelTypedLifecycle(t *testing.T) {
 
 	at := time.UnixMilli(1_700_000_000_000).UTC()
 	unitID, err := ParseAcademicUnitID(NewID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	programmeID, err := ParseProgrammeID(NewID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	programme, err := NewProgramme(
 		programmeID, unitID, "computer-science", "Bachelor of Computer Science", "", at,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := programme.Validate(); err != nil {
-		t.Fatalf("Programme.Validate() = %v", err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, programme.Validate())
 	audit := programme.Auditable()
-	if audit["id"] != programme.ID.String() ||
-		audit["academic_unit_id"] != unitID.String() ||
-		audit["created_at"] != MillisFromTime(at) {
-		t.Fatalf("programme audit = %#v", audit)
-	}
-	if _, exposed := audit["description"]; exposed {
-		t.Fatalf("programme audit exposes description: %#v", audit)
-	}
+	require.Equal(t, programme.ID.String(), audit["id"])
+	require.Equal(t, unitID.String(), audit["academic_unit_id"])
+	require.Equal(t, MillisFromTime(at), audit["created_at"])
+	_, exposed := audit["description"]
+	require.False(t, exposed, "programme audit exposes description: %#v", audit)
 	programme.PrepareUpdate(at.Add(time.Second))
-	if err := programme.Validate(); err != nil {
-		t.Fatalf("Programme after PrepareUpdate: %v", err)
-	}
+	require.NoError(t, programme.Validate())
 
 	levelID, err := ParseProgrammeLevelID(NewID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	level, err := NewProgrammeLevel(
 		levelID, programmeID, "year-1", "Year 1", "", at,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := level.Validate(); err != nil {
-		t.Fatalf("ProgrammeLevel.Validate() = %v", err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, level.Validate())
 	levelAudit := level.Auditable()
-	if levelAudit["id"] != level.ID.String() ||
-		levelAudit["programme_id"] != programmeID.String() ||
-		levelAudit["created_at"] != MillisFromTime(at) {
-		t.Fatalf("programme level audit = %#v", levelAudit)
-	}
+	require.Equal(t, level.ID.String(), levelAudit["id"])
+	require.Equal(t, programmeID.String(), levelAudit["programme_id"])
+	require.Equal(t, MillisFromTime(at), levelAudit["created_at"])
 	level.PrepareUpdate(at.Add(time.Second))
-	if err := level.Validate(); err != nil {
-		t.Fatalf("ProgrammeLevel after PrepareUpdate: %v", err)
-	}
+	require.NoError(t, level.Validate())
 }
 
 func TestInstitutionAndAcademicUnitTypedLifecycle(t *testing.T) {
@@ -182,68 +131,43 @@ func TestInstitutionAndAcademicUnitTypedLifecycle(t *testing.T) {
 
 	at := time.UnixMilli(1_700_000_000_000).UTC()
 	institutionID, err := ParseInstitutionID(NewID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	institution, err := NewInstitution(
 		institutionID, "northbridge", "Northbridge University", "Institution", at,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := institution.Validate(); err != nil {
-		t.Fatalf("Institution.Validate() = %v", err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, institution.Validate())
 	audit := institution.Auditable()
-	if audit["id"] != institution.ID.String() ||
-		audit["created_at"] != MillisFromTime(at) ||
-		audit["updated_at"] != MillisFromTime(at) {
-		t.Fatalf("institution audit = %#v", audit)
-	}
-	if _, exposed := audit["description"]; exposed {
-		t.Fatalf("institution audit exposes description: %#v", audit)
-	}
+	require.Equal(t, institution.ID.String(), audit["id"])
+	require.Equal(t, MillisFromTime(at), audit["created_at"])
+	require.Equal(t, MillisFromTime(at), audit["updated_at"])
+	_, exposed := audit["description"]
+	require.False(t, exposed, "institution audit exposes description: %#v", audit)
 	institution.PrepareUpdate(at.Add(time.Second))
-	if err := institution.Validate(); err != nil {
-		t.Fatalf("Institution after PrepareUpdate: %v", err)
-	}
+	require.NoError(t, institution.Validate())
 
 	unitID, err := ParseAcademicUnitID(NewID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	unit, err := NewAcademicUnit(
 		unitID, institutionID, "", "engineering", "College of Engineering", "", at,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := unit.Validate(); err != nil {
-		t.Fatalf("AcademicUnit.Validate() = %v", err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, unit.Validate())
 	unitAudit := unit.Auditable()
-	if unitAudit["id"] != unit.ID.String() ||
-		unitAudit["institution_id"] != institutionID.String() ||
-		unitAudit["created_at"] != MillisFromTime(at) {
-		t.Fatalf("academic unit audit = %#v", unitAudit)
-	}
+	require.Equal(t, unit.ID.String(), unitAudit["id"])
+	require.Equal(t, institutionID.String(), unitAudit["institution_id"])
+	require.Equal(t, MillisFromTime(at), unitAudit["created_at"])
 	unit.PrepareUpdate(at.Add(time.Second))
-	if err := unit.Validate(); err != nil {
-		t.Fatalf("AcademicUnit after PrepareUpdate: %v", err)
-	}
+	require.NoError(t, unit.Validate())
 }
 
 func TestAcademicModelValidationReturnsPreciseTranslationIDs(t *testing.T) {
 	t.Parallel()
 
 	selfParentID, err := ParseAcademicUnitID(NewID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	institutionID, err := ParseInstitutionID(NewID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	at := time.UnixMilli(1).UTC()
 
 	tests := []struct {
@@ -309,19 +233,11 @@ func TestAcademicModelValidationReturnsPreciseTranslationIDs(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if test.err == nil {
-				t.Fatal("validation returned nil")
-			}
+			require.Error(t, test.err, "validation returned nil")
 			validation, ok := test.err.(*ValidationError)
-			if !ok {
-				t.Fatalf("error type = %T", test.err)
-			}
-			if validation.Code != test.code {
-				t.Fatalf("error code = %q, want %q", validation.Code, test.code)
-			}
-			if validation.SafeFields()["field"] == "" {
-				t.Fatalf("safe fields = %#v", validation.SafeFields())
-			}
+			require.True(t, ok, "error type = %T", test.err)
+			require.Equal(t, test.code, validation.Code, "error code")
+			require.NotEmpty(t, validation.SafeFields()["field"])
 		})
 	}
 }
@@ -330,9 +246,7 @@ func TestInstitutionSanitizesUnsafeUnicode(t *testing.T) {
 	t.Parallel()
 
 	id, err := ParseInstitutionID(NewID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	institution, err := NewInstitution(
 		id,
 		"northbridge",
@@ -340,10 +254,7 @@ func TestInstitutionSanitizesUnsafeUnicode(t *testing.T) {
 		"safe\u2066text",
 		time.UnixMilli(1_700_000_000_000).UTC(),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if institution.DisplayName != "Northbridge" || institution.Description != "safetext" {
-		t.Fatalf("institution = %#v", institution)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "Northbridge", institution.DisplayName)
+	require.Equal(t, "safetext", institution.Description)
 }

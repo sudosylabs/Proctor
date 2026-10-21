@@ -11,21 +11,17 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRenderIsDeterministicAndComplete(t *testing.T) {
 	t.Parallel()
 	first, err := render(entityIDs)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	second, err := render(entityIDs)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(first, second) {
-		t.Fatal("render produced different output for the same catalog")
-	}
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(first, second), "render produced different output for the same catalog")
 	for _, spec := range entityIDs {
 		for _, declaration := range []string{
 			"func New" + spec.typeName + "()",
@@ -38,9 +34,7 @@ func TestRenderIsDeterministicAndComplete(t *testing.T) {
 			"func (id " + spec.typeName + ") MarshalJSON()",
 			"func (id *" + spec.typeName + ") UnmarshalJSON(",
 		} {
-			if strings.Count(string(first), declaration) != 1 {
-				t.Fatalf("generated declaration %q count = %d, want 1", declaration, strings.Count(string(first), declaration))
-			}
+			require.Equal(t, 1, strings.Count(string(first), declaration), "generated declaration %q count", declaration)
 		}
 	}
 }
@@ -63,9 +57,7 @@ func TestValidateCatalogRejectsAmbiguity(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if err := validateCatalog(test.specs); err == nil {
-				t.Fatal("validateCatalog() accepted an ambiguous catalog")
-			}
+			require.Error(t, validateCatalog(test.specs), "validateCatalog() accepted an ambiguous catalog")
 		})
 	}
 }
@@ -77,16 +69,12 @@ func TestValidateDeclarationsRequiresExactCatalogContraction(t *testing.T) {
 		{typeName: "UserID", fieldName: "user_id", constructorSubject: "user"},
 		{typeName: "ClassID", fieldName: "class_id", constructorSubject: "class"},
 	}
-	if err := validateDeclarations([]string{"UserID", "ClassID"}, specs); err != nil {
-		t.Fatalf("validateDeclarations() = %v", err)
-	}
+	require.NoError(t, validateDeclarations([]string{"UserID", "ClassID"}, specs))
 	for _, declared := range [][]string{
 		{"UserID"},
 		{"ClassID", "UserID"},
 		{"UserID", "SessionID"},
 	} {
-		if err := validateDeclarations(declared, specs); err == nil {
-			t.Fatalf("validateDeclarations(%v) accepted declaration drift", declared)
-		}
+		require.Error(t, validateDeclarations(declared, specs), "validateDeclarations(%v) accepted declaration drift", declared)
 	}
 }

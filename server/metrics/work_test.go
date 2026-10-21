@@ -10,9 +10,11 @@ package metrics
 import (
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/config"
 )
@@ -21,9 +23,7 @@ func TestWorkMetricsKeepPoolsIndependentAndLabelsClosed(t *testing.T) {
 	settings := config.Default().Metrics
 	settings.Enabled = true
 	module, err := New(settings, BuildInfo{}, Sources{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	module.SetReady(true)
 	module.WorkStarted("password")
 	module.WorkStarted("password")
@@ -37,9 +37,7 @@ func TestWorkMetricsKeepPoolsIndependentAndLabelsClosed(t *testing.T) {
 
 	response := httptest.NewRecorder()
 	module.handler.ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil))
-	if response.Code != http.StatusOK {
-		t.Fatalf("metrics status = %d", response.Code)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "metrics status")
 	body := response.Body.String()
 	for _, expected := range []string{
 		`proctor_work_active{pool="password"} 1`,
@@ -50,14 +48,8 @@ func TestWorkMetricsKeepPoolsIndependentAndLabelsClosed(t *testing.T) {
 		`proctor_work_duration_seconds_sum{pool="password"} 1`,
 		`proctor_work_duration_seconds_sum{pool="file_content"} 2`,
 	} {
-		if !strings.Contains(body, expected) {
-			t.Errorf("metrics missing %s", expected)
-		}
+		assert.Contains(t, body, expected)
 	}
-	if strings.Contains(body, "untrusted-value") {
-		t.Fatal("unbounded work label was exposed")
-	}
-	if !module.ready.Load() {
-		t.Fatal("capacity refusal changed readiness")
-	}
+	require.NotContains(t, body, "untrusted-value", "unbounded work label was exposed")
+	require.True(t, module.ready.Load(), "capacity refusal changed readiness")
 }

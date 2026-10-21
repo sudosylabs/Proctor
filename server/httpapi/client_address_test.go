@@ -13,6 +13,8 @@ import (
 	"net/netip"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -62,9 +64,7 @@ func TestRequestIdentityResolvesClientAddressThroughTrustedProxies(t *testing.T)
 				}
 				request.Header.Set("Forwarded", "for=192.0.2.200")
 			})
-			if metadata.IPAddress != test.want {
-				t.Fatalf("client address = %q, want %q", metadata.IPAddress, test.want)
-			}
+			require.Equal(t, test.want, metadata.IPAddress, "client address")
 		})
 	}
 }
@@ -90,12 +90,9 @@ func TestRequestIdentityAcceptsRequestIDOnlyFromTrustedProxy(t *testing.T) {
 				request.RemoteAddr = test.remoteAddress
 				request.Header.Set(RequestIDHeader, test.requestID)
 			})
-			if (metadata.RequestID == test.requestID) != test.keep || metadata.RequestID == "" {
-				t.Fatalf("request ID = %q, client supplied %q, keep %t", metadata.RequestID, test.requestID, test.keep)
-			}
-			if response.Header().Get(RequestIDHeader) != metadata.RequestID {
-				t.Fatalf("response request ID = %q, metadata %q", response.Header().Get(RequestIDHeader), metadata.RequestID)
-			}
+			require.Equal(t, test.keep, metadata.RequestID == test.requestID, "request ID = %q, client supplied %q, keep", metadata.RequestID, test.requestID)
+			require.NotEmpty(t, metadata.RequestID, "request ID = %q, client supplied %q, keep", metadata.RequestID, test.requestID)
+			require.Equal(t, metadata.RequestID, response.Header().Get(RequestIDHeader), "response request ID")
 		})
 	}
 }

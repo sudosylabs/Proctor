@@ -10,8 +10,9 @@ package httpapi
 import (
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestPanicRecoveryReturnsSafeProblemAndRetainsDiagnostic(t *testing.T) {
@@ -25,13 +26,7 @@ func TestPanicRecoveryReturnsSafeProblemAndRetainsDiagnostic(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/panic", nil)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d", response.Code)
-	}
-	if strings.Contains(response.Body.String(), "secret panic detail") {
-		t.Fatal("panic detail leaked to client")
-	}
-	if !strings.Contains(logs.String(), "secret panic detail") {
-		t.Fatal("panic detail was not retained in operational logs")
-	}
+	require.Equal(t, http.StatusInternalServerError, response.Code, "status")
+	require.NotContains(t, response.Body.String(), "secret panic detail", "panic detail leaked to client")
+	require.Contains(t, logs.String(), "secret panic detail", "panic detail was not retained in operational logs")
 }

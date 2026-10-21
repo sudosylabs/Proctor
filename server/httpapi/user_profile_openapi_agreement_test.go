@@ -9,8 +9,12 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -135,13 +139,11 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 		OperationSelector: func(_ string, path string) bool { return selectedPath(path) },
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(
+	require.NoError(t, runtimeAPI.collectResources(
 		model.APIURLSuffix,
 		userProfileResource(nil),
 		userAdministrationResource(nil, nil),
-	); err != nil {
-		t.Fatal(err)
-	}
+	))
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 
 	// Binary download/upload and conditional request behavior are reviewed
@@ -153,19 +155,17 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 	shape := response.Content["image/webp"].Schema
 	_, hasETag := response.Headers["ETag"]
 	_, hasCacheControl := response.Headers["Cache-Control"]
-	if shape.Type != "string" || shape.Format != "binary" || !hasETag || !hasCacheControl {
-		t.Errorf("GET %s binary response = %#v", picturePath, response)
-	}
-	if !hasOpenAPIHeaderParameter(download, "If-None-Match") {
-		t.Errorf("GET %s does not document If-None-Match", picturePath)
-	}
+	assert.Equal(t, "string", shape.Type, "GET %s binary response", picturePath)
+	assert.Equal(t, "binary", shape.Format, "GET %s binary response", picturePath)
+	assert.True(t, hasETag, "GET %s binary response has no ETag", picturePath)
+	assert.True(t, hasCacheControl, "GET %s binary response has no Cache-Control", picturePath)
+	assert.True(t, hasOpenAPIHeaderParameter(download, "If-None-Match"), "GET %s does not document If-None-Match", picturePath)
 
 	upload := decodeOpenAPIOperationForProfile(t, document, picturePath, "put")
 	for _, mediaType := range []string{"image/png", "image/jpeg", "image/webp"} {
 		shape := upload.RequestBody.Content[mediaType].Schema
-		if shape.Type != "string" || shape.Format != "binary" {
-			t.Errorf("PUT %s request %s = %#v", picturePath, mediaType, shape)
-		}
+		assert.Equal(t, "string", shape.Type, "PUT %s request %s = %#v", picturePath, mediaType, shape)
+		assert.Equal(t, "binary", shape.Format, "PUT %s request %s = %#v", picturePath, mediaType, shape)
 	}
 	assertOpenAPIIfMatchForProfile(t, "PUT "+picturePath, upload, false)
 
@@ -173,9 +173,8 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 	assertOpenAPIIfMatchForProfile(t, "DELETE "+picturePath, remove, true)
 
 	list := document.Components.Schemas["UserProfileListResponse"]
-	if list.Type != "array" || list.Items.Ref != "#/components/schemas/UserProfileResponse" {
-		t.Fatalf("UserProfileListResponse = %#v", list)
-	}
+	require.Equal(t, "array", list.Type)
+	require.Equal(t, "#/components/schemas/UserProfileResponse", list.Items.Ref)
 }
 
 func decodeOpenAPIOperationForProfile(
@@ -186,9 +185,7 @@ func decodeOpenAPIOperationForProfile(
 ) openAPIOperation {
 	t.Helper()
 	var operation openAPIOperation
-	if err := json.Unmarshal(document.Paths[path][method], &operation); err != nil {
-		t.Fatalf("decode %s %s: %v", method, path, err)
-	}
+	require.NoError(t, json.Unmarshal(document.Paths[path][method], &operation), "decode %s %s", method, path)
 	return operation
 }
 
@@ -210,11 +207,9 @@ func assertOpenAPIIfMatchForProfile(
 	t.Helper()
 	for _, parameter := range operation.Parameters {
 		if parameter.Name == "If-Match" && parameter.In == "header" {
-			if parameter.Required != wantRequired {
-				t.Errorf("%s If-Match required = %v, want %v", key, parameter.Required, wantRequired)
-			}
+			assert.Equal(t, wantRequired, parameter.Required, "%s If-Match required", key)
 			return
 		}
 	}
-	t.Errorf("%s does not document If-Match", key)
+	assert.Fail(t, fmt.Sprintf("%s does not document If-Match", key))
 }

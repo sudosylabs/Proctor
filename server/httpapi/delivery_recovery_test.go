@@ -11,8 +11,9 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http/httptest"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -44,15 +45,14 @@ func TestDeliveryRecoveryProblemConcealsInvalidAndUnrelatedState(t *testing.T) {
 			response := httptest.NewRecorder()
 			WriteError(response, httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/example", nil), apperror.New(apperror.Code(code)).Wrap(fault))
 			var result map[string]json.RawMessage
-			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result))
 			_, present := result["delivery"]
-			if present != (name == "current") || strings.Contains(response.Body.String(), "private-secret") || response.Header().Get("Cache-Control") != "no-store" {
-				t.Fatalf("unsafe problem: %s", response.Body.String())
-			}
-			if code == "exam.delivery.pending_capacity" && (response.Code != 429 || response.Header().Get("Retry-After") != "1") {
-				t.Fatal("retry contract missing")
+			require.Equal(t, name == "current", present)
+			require.NotContains(t, response.Body.String(), "private-secret")
+			require.Equal(t, "no-store", response.Header().Get("Cache-Control"))
+			if code == "exam.delivery.pending_capacity" {
+				require.Equal(t, 429, response.Code, "retry contract missing")
+				require.Equal(t, "1", response.Header().Get("Retry-After"), "retry contract missing")
 			}
 		})
 	}
@@ -61,7 +61,7 @@ func TestDeliveryRecoveryProblemConcealsInvalidAndUnrelatedState(t *testing.T) {
 func TestControlRateLimitProblemHasRetryAdviceAndNoPrivateSnapshot(t *testing.T) {
 	response := httptest.NewRecorder()
 	WriteError(response, httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/example", nil), apperror.New("exam.delivery.control_rate_limited"))
-	if response.Code != 429 || response.Header().Get("Retry-After") != "1" || strings.Contains(response.Body.String(), `"delivery":`) {
-		t.Fatalf("control retry response=%d %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, 429, response.Code, "control retry response")
+	require.Equal(t, "1", response.Header().Get("Retry-After"), "control retry response")
+	require.NotContains(t, response.Body.String(), `"delivery":`, "control retry response")
 }

@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/cluster/memberlist"
 )
@@ -32,50 +34,36 @@ func TestMemberlistRejoinAfterChurn(t *testing.T) {
 	nodeB := mustTransport(t, "node-b", portB, discovery, key)
 
 	var received atomic.Int32
-	if err := nodeB.RegisterHandler("test.rejoin", func(context.Context, *cluster.Message) error {
+	require.NoError(t, nodeB.RegisterHandler("test.rejoin", func(context.Context, *cluster.Message) error {
 		received.Add(1)
 		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
+	}))
 
 	ctx := context.Background()
-	if err := nodeA.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, nodeA.Start(ctx))
 	t.Cleanup(func() { _ = nodeA.Stop(context.Background()) })
-	if err := nodeB.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, nodeB.Start(ctx))
 
 	waitForDelivery(t, func() error {
 		return nodeA.Broadcast(ctx, &cluster.Message{Event: "test.rejoin", Data: []byte("1")})
 	}, &received)
 
-	if err := nodeB.Stop(ctx); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, nodeB.Stop(ctx))
 	// Restart B on a new port with the same identity and shared discovery.
 	portB2 := freePort(t)
 	nodeB = mustTransport(t, "node-b", portB2, discovery, key)
-	if err := nodeB.RegisterHandler("test.rejoin", func(context.Context, *cluster.Message) error {
+	require.NoError(t, nodeB.RegisterHandler("test.rejoin", func(context.Context, *cluster.Message) error {
 		received.Add(1)
 		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := nodeB.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
+	}))
+	require.NoError(t, nodeB.Start(ctx))
 	t.Cleanup(func() { _ = nodeB.Stop(context.Background()) })
 
 	before := received.Load()
 	waitForDelivery(t, func() error {
 		return nodeA.Broadcast(ctx, &cluster.Message{Event: "test.rejoin", Data: []byte("2")})
 	}, &received)
-	if received.Load() <= before {
-		t.Fatal("no deliveries observed after rejoin")
-	}
+	require.Greater(t, received.Load(), before, "no deliveries observed after rejoin")
 }
 
 // TestMemberlistDuplicateSendToNodeInvokesHandlerTwice proves the transport
@@ -93,7 +81,7 @@ func TestMemberlistDuplicateSendToNodeInvokesHandlerTwice(t *testing.T) {
 	applied := make(map[string]struct{})
 	var mu sync.Mutex
 	var hits atomic.Int32
-	if err := node.RegisterHandler("test.duplicate", func(_ context.Context, message *cluster.Message) error {
+	require.NoError(t, node.RegisterHandler("test.duplicate", func(_ context.Context, message *cluster.Message) error {
 		hits.Add(1)
 		if len(message.Data) == 0 {
 			return errors.New("empty payload")
@@ -103,30 +91,18 @@ func TestMemberlistDuplicateSendToNodeInvokesHandlerTwice(t *testing.T) {
 		applied[key] = struct{}{}
 		mu.Unlock()
 		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
+	}))
 	ctx := context.Background()
-	if err := node.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, node.Start(ctx))
 	t.Cleanup(func() { _ = node.Stop(context.Background()) })
 
 	payload := &cluster.Message{Event: "test.duplicate", Data: []byte("session-1")}
-	if err := node.SendToNode(ctx, "node-dup", payload); err != nil {
-		t.Fatal(err)
-	}
-	if err := node.SendToNode(ctx, "node-dup", payload); err != nil {
-		t.Fatal(err)
-	}
-	if hits.Load() != 2 {
-		t.Fatalf("duplicate deliveries = %d, want 2 handler invocations", hits.Load())
-	}
+	require.NoError(t, node.SendToNode(ctx, "node-dup", payload))
+	require.NoError(t, node.SendToNode(ctx, "node-dup", payload))
+	require.Equal(t, int32(2), hits.Load(), "duplicate deliveries")
 	mu.Lock()
 	defer mu.Unlock()
-	if len(applied) != 1 {
-		t.Fatalf("idempotent apply set = %#v, want single key", applied)
-	}
+	require.Len(t, applied, 1, "idempotent apply set")
 }
 
 // TestMemberlistLostBroadcastDoesNotBreakLaterDelivery stops a peer during a
@@ -143,7 +119,7 @@ func TestMemberlistLostBroadcastDoesNotBreakLaterDelivery(t *testing.T) {
 	var anyDelivery atomic.Int32
 	var afterDelivery atomic.Int32
 	var lostSeen atomic.Int32
-	if err := nodeB.RegisterHandler("test.loss", func(_ context.Context, message *cluster.Message) error {
+	require.NoError(t, nodeB.RegisterHandler("test.loss", func(_ context.Context, message *cluster.Message) error {
 		anyDelivery.Add(1)
 		switch string(message.Data) {
 		case "after":
@@ -152,18 +128,12 @@ func TestMemberlistLostBroadcastDoesNotBreakLaterDelivery(t *testing.T) {
 			lostSeen.Add(1)
 		}
 		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
+	}))
 
 	ctx := context.Background()
-	if err := nodeA.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, nodeA.Start(ctx))
 	t.Cleanup(func() { _ = nodeA.Stop(context.Background()) })
-	if err := nodeB.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, nodeB.Start(ctx))
 
 	// Establish mesh with a warmup payload, then stop B so broadcasts during
 	// the outage are lost.
@@ -177,7 +147,7 @@ func TestMemberlistLostBroadcastDoesNotBreakLaterDelivery(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	nodeB = mustTransport(t, "node-b", freePort(t), discovery, key)
-	if err := nodeB.RegisterHandler("test.loss", func(_ context.Context, message *cluster.Message) error {
+	require.NoError(t, nodeB.RegisterHandler("test.loss", func(_ context.Context, message *cluster.Message) error {
 		if string(message.Data) == "after" {
 			afterDelivery.Add(1)
 		}
@@ -185,18 +155,12 @@ func TestMemberlistLostBroadcastDoesNotBreakLaterDelivery(t *testing.T) {
 			lostSeen.Add(1)
 		}
 		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := nodeB.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
+	}))
+	require.NoError(t, nodeB.Start(ctx))
 	t.Cleanup(func() { _ = nodeB.Stop(context.Background()) })
 
 	// The mid-outage "lost" payload is not recovered by the transport.
-	if lostSeen.Load() != 0 {
-		t.Fatalf("lost payload was delivered after rejoin (%d); transport must not replay", lostSeen.Load())
-	}
+	require.Equal(t, int32(0), lostSeen.Load(), "lost payload was delivered after rejoin")
 
 	// Later messages after rejoin must still work.
 	waitForDelivery(t, func() error {
@@ -209,15 +173,11 @@ func waitForDelivery(t *testing.T, send func() error, counter *atomic.Int32) {
 	before := counter.Load()
 	deadline := time.Now().Add(8 * time.Second)
 	for {
-		if err := send(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, send())
 		if counter.Load() > before {
 			return
 		}
-		if time.Now().After(deadline) {
-			t.Fatal("timed out waiting for cluster delivery")
-		}
+		require.False(t, time.Now().After(deadline), "timed out waiting for cluster delivery")
 		time.Sleep(50 * time.Millisecond)
 	}
 }

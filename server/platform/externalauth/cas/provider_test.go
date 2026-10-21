@@ -13,9 +13,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
@@ -28,18 +30,14 @@ func TestProviderLoginAndAuthentication(t *testing.T) {
 	state := model.NewCredentialToken()
 	proof := model.NewCredentialToken()
 	serviceURL, err := casServiceURL(callbackURL, state)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	server := httptest.NewServer(http.HandlerFunc(func(
 		writer http.ResponseWriter,
 		request *http.Request,
 	) {
-		if request.URL.Path != "/cas/p3/serviceValidate" ||
-			request.URL.Query().Get("service") != serviceURL ||
-			request.URL.Query().Get("ticket") != ticket {
-			t.Errorf("validation request = %s", request.URL.String())
-		}
+		assert.Equal(t, "/cas/p3/serviceValidate", request.URL.Path)
+		assert.Equal(t, serviceURL, request.URL.Query().Get("service"))
+		assert.Equal(t, ticket, request.URL.Query().Get("ticket"))
 		writer.Header().Set("Content-Type", "application/xml")
 		_, _ = writer.Write([]byte(`<?xml version="1.0"?>
 <cas:serviceResponse xmlns:cas="http://www.yale.edu/tp/cas">
@@ -61,9 +59,7 @@ func TestProviderLoginAndAuthentication(t *testing.T) {
 	defer server.Close()
 
 	created, err := NewFactory().New(testSettings(server.URL + "/cas"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	provider := created.(*Provider)
 	challenge, err := provider.Begin(
 		context.Background(),
@@ -71,17 +67,11 @@ func TestProviderLoginAndAuthentication(t *testing.T) {
 			CallbackURL: callbackURL, State: state, Proof: proof,
 		},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	parsed, err := url.Parse(challenge.RedirectURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if parsed.Path != "/cas/login" ||
-		parsed.Query().Get("service") != serviceURL {
-		t.Fatalf("Begin() = %q", challenge.RedirectURL)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "/cas/login", parsed.Path)
+	require.Equal(t, serviceURL, parsed.Query().Get("service"))
 	assertion, err := provider.Complete(
 		context.Background(),
 		externalauth.CompleteRequest{
@@ -94,18 +84,14 @@ func TestProviderLoginAndAuthentication(t *testing.T) {
 			},
 		},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if assertion.ProviderID != "campus-cas" ||
-		assertion.Subject != "opaque-subject" ||
-		assertion.Username != "student.name" ||
-		assertion.Email != "student.name@example.edu" ||
-		!assertion.EmailVerified ||
-		assertion.AuthenticationStrength != model.AuthenticationMultiFactor ||
-		len(assertion.Affiliations) != 2 {
-		t.Fatalf("Complete() = %#v", assertion)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "campus-cas", assertion.ProviderID)
+	require.Equal(t, "opaque-subject", assertion.Subject)
+	require.Equal(t, "student.name", assertion.Username)
+	require.Equal(t, "student.name@example.edu", assertion.Email)
+	require.True(t, assertion.EmailVerified)
+	require.Equal(t, model.AuthenticationMultiFactor, assertion.AuthenticationStrength)
+	require.Len(t, assertion.Affiliations, 2)
 }
 
 func TestProviderRejectsFailureAndUnsafeXML(t *testing.T) {
@@ -142,17 +128,14 @@ func TestProviderRejectsFailureAndUnsafeXML(t *testing.T) {
 			}))
 			defer server.Close()
 			created, err := NewFactory().New(testSettings(server.URL))
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			provider := created.(*Provider)
 			state := model.NewCredentialToken()
-			if _, err := provider.Complete(
+			_, err = provider.Complete(
 				context.Background(),
 				completeRequest(state, "ST-ticket"),
-			); !errors.Is(err, test.wantError) {
-				t.Fatalf("Complete() error = %v", err)
-			}
+			)
+			require.ErrorIs(t, err, test.wantError)
 		})
 	}
 }
@@ -160,9 +143,7 @@ func TestProviderRejectsFailureAndUnsafeXML(t *testing.T) {
 func TestProviderRedactsTicketFromTransportErrors(t *testing.T) {
 	const ticket = "ST-must-not-appear"
 	created, err := NewFactory().New(testSettings("http://127.0.0.1:1"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	provider := created.(*Provider)
 	cause := errors.New("transport included " + ticket)
 	provider.client.Transport = roundTripperFunc(func(
@@ -175,9 +156,8 @@ func TestProviderRedactsTicketFromTransportErrors(t *testing.T) {
 		context.Background(),
 		completeRequest(state, ticket),
 	)
-	if err == nil || strings.Contains(err.Error(), ticket) {
-		t.Fatalf("Complete() error leaked ticket: %v", err)
-	}
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), ticket)
 }
 
 func completeRequest(
@@ -235,9 +215,7 @@ func TestProviderFreshProofRenewsAtLoginAndValidation(t *testing.T) {
 			validated := false
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				validated = true
-				if r.URL.Query().Get("renew") != "true" {
-					t.Error("ticket validation did not require primary credentials")
-				}
+				assert.Equal(t, "true", r.URL.Query().Get("renew"), "ticket validation did not require primary credentials")
 				w.Header().Set("Content-Type", "application/xml")
 				body := `<cas:serviceResponse xmlns:cas="urn:cas"><cas:authenticationSuccess><cas:user>same-user</cas:user></cas:authenticationSuccess></cas:serviceResponse>`
 				if reject {
@@ -250,9 +228,7 @@ func TestProviderFreshProofRenewsAtLoginAndValidation(t *testing.T) {
 			settings.AutoProvision = false
 			settings.Claims.AllowedHomeOrganizations = nil
 			created, err := NewFactory().New(settings)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			provider := created.(*Provider)
 			now := time.Now()
 			provider.now = func() time.Time { return now }
@@ -260,23 +236,17 @@ func TestProviderFreshProofRenewsAtLoginAndValidation(t *testing.T) {
 			request := completeRequest(state, "ST-fresh")
 			request.AuthenticationStartedAt = now.Add(-time.Second)
 			start, err := provider.Begin(context.Background(), externalauth.BeginRequest{CallbackURL: request.CallbackURL, State: state, Proof: request.Proof, FreshAuthentication: true})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			u, _ := url.Parse(start.RedirectURL)
-			if u.Query().Get("renew") != "true" {
-				t.Fatal("CAS login did not request new primary proof")
-			}
+			require.Equal(t, "true", u.Query().Get("renew"), "CAS login did not request new primary proof")
 			assertion, err := provider.Complete(context.Background(), request)
-			if !validated {
-				t.Fatal("ticket was not validated")
-			}
+			require.True(t, validated, "ticket was not validated")
 			if reject {
-				if !errors.Is(err, externalauth.ErrAuthenticationRejected) || assertion != nil {
-					t.Fatalf("SSO failure = %v", err)
-				}
-			} else if err != nil || assertion.AuthenticatedAt != request.AuthenticationStartedAt.UnixMilli() {
-				t.Fatalf("fresh CAS proof = %v", err)
+				require.ErrorIs(t, err, externalauth.ErrAuthenticationRejected)
+				require.Nil(t, assertion)
+			} else {
+				require.NoError(t, err, "fresh CAS proof")
+				require.Equal(t, request.AuthenticationStartedAt.UnixMilli(), assertion.AuthenticatedAt, "fresh CAS proof")
 			}
 		})
 	}

@@ -12,6 +12,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -44,17 +46,10 @@ func TestClassOpenAPIAgreesWithRuntime(t *testing.T) {
 	document := readOpenAPIDocument(t)
 	var searchOperation openAPIOperation
 	path := model.APIURLSuffix + "/academic-units/{academic_unit_id}/classes"
-	if err := json.Unmarshal(document.Paths[path]["get"], &searchOperation); err != nil {
-		t.Fatal(err)
-	}
-	if got := academicStructureQueryParameterNames(searchOperation.Parameters); !reflect.DeepEqual(got, []string{"limit", "q"}) {
-		t.Fatalf("Class search query parameters = %v, want [limit q]", got)
-	}
+	require.NoError(t, json.Unmarshal(document.Paths[path]["get"], &searchOperation))
+	require.Equal(t, []string{"limit", "q"}, academicStructureQueryParameterNames(searchOperation.Parameters), "Class search query parameters")
 	list := document.Components.Schemas["ClassListResponse"]
-	if list.Type != "array" || list.Items.Ref != "#/components/schemas/ClassResponse" {
-		t.Fatalf("ClassListResponse = %#v", list)
-	}
-	if archived := document.Components.Responses["ClassArchived"]; archived.Headers["Cache-Control"].Ref != "#/components/headers/NoStore" {
-		t.Fatalf("ClassArchived does not require no-store: %#v", archived)
-	}
+	require.Equal(t, "array", list.Type)
+	require.Equal(t, "#/components/schemas/ClassResponse", list.Items.Ref)
+	require.Equal(t, "#/components/headers/NoStore", document.Components.Responses["ClassArchived"].Headers["Cache-Control"].Ref)
 }

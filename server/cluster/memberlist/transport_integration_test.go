@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/cluster/memberlist"
 )
@@ -59,44 +61,27 @@ func TestMemberlistKeyringSupportsRollingPrimaryRotation(t *testing.T) {
 
 	var receivedByA atomic.Int32
 	var receivedByB atomic.Int32
-	if err := nodeA.RegisterHandler("test.rotation", func(context.Context, *cluster.Message) error {
+	require.NoError(t, nodeA.RegisterHandler("test.rotation", func(context.Context, *cluster.Message) error {
 		receivedByA.Add(1)
 		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := nodeB.RegisterHandler("test.rotation", func(context.Context, *cluster.Message) error {
+	}))
+	require.NoError(t, nodeB.RegisterHandler("test.rotation", func(context.Context, *cluster.Message) error {
 		receivedByB.Add(1)
 		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := nodeA.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	}))
+	require.NoError(t, nodeA.Start(context.Background()))
 	t.Cleanup(func() { _ = nodeA.Stop(context.Background()) })
-	if err := nodeB.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, nodeB.Start(context.Background()))
 	t.Cleanup(func() { _ = nodeB.Stop(context.Background()) })
 
 	deadline := time.Now().Add(8 * time.Second)
 	for (receivedByA.Load() == 0 || receivedByB.Load() == 0) && time.Now().Before(deadline) {
-		if err := nodeB.Broadcast(context.Background(), &cluster.Message{Event: "test.rotation"}); err != nil {
-			t.Fatal(err)
-		}
-		if err := nodeA.Broadcast(context.Background(), &cluster.Message{Event: "test.rotation"}); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, nodeB.Broadcast(context.Background(), &cluster.Message{Event: "test.rotation"}))
+		require.NoError(t, nodeA.Broadcast(context.Background(), &cluster.Message{Event: "test.rotation"}))
 		time.Sleep(50 * time.Millisecond)
 	}
-	if receivedByA.Load() == 0 || receivedByB.Load() == 0 {
-		t.Fatalf(
-			"rotated keyring deliveries old->new=%d new->old=%d",
-			receivedByB.Load(),
-			receivedByA.Load(),
-		)
-	}
+	require.NotEqual(t, int32(0), receivedByA.Load(), "rotated keyring deliveries old->new")
+	require.NotEqual(t, int32(0), receivedByB.Load(), "rotated keyring deliveries old->new")
 }
 
 func TestMemberlistPeriodicallyDiscoversAndJoinsPeersAfterStartup(t *testing.T) {
@@ -108,19 +93,13 @@ func TestMemberlistPeriodicallyDiscoversAndJoinsPeersAfterStartup(t *testing.T) 
 	nodeB := mustTransport(t, "node-late-b", freePort(t), discovery, key)
 
 	var received atomic.Int32
-	if err := nodeB.RegisterHandler("test.rediscovery", func(context.Context, *cluster.Message) error {
+	require.NoError(t, nodeB.RegisterHandler("test.rediscovery", func(context.Context, *cluster.Message) error {
 		received.Add(1)
 		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := nodeA.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	}))
+	require.NoError(t, nodeA.Start(context.Background()))
 	t.Cleanup(func() { _ = nodeA.Stop(context.Background()) })
-	if err := nodeB.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, nodeB.Start(context.Background()))
 	t.Cleanup(func() { _ = nodeB.Stop(context.Background()) })
 
 	// Neither startup could see a peer. Exposing the already-written leases
@@ -128,12 +107,8 @@ func TestMemberlistPeriodicallyDiscoversAndJoinsPeersAfterStartup(t *testing.T) 
 	discovery.expose.Store(true)
 	deadline := time.Now().Add(8 * time.Second)
 	for received.Load() == 0 && time.Now().Before(deadline) {
-		if err := nodeA.Broadcast(context.Background(), &cluster.Message{Event: "test.rediscovery"}); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, nodeA.Broadcast(context.Background(), &cluster.Message{Event: "test.rediscovery"}))
 		time.Sleep(100 * time.Millisecond)
 	}
-	if received.Load() == 0 {
-		t.Fatal("isolated startup nodes did not converge through periodic discovery")
-	}
+	require.NotEqual(t, int32(0), received.Load(), "isolated startup nodes did not converge through periodic discovery")
 }

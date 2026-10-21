@@ -9,8 +9,9 @@ package server
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
 )
@@ -41,17 +42,15 @@ func TestInertServerExposesOnlyExplicitAdministratorRecoveryCapability(t *testin
 		InstitutionID: "institution", UserID: "user", EnableLocalLogin: true, Password: "private",
 	}
 	result, err := node.RecoverAdministratorAccess(context.Background(), command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result == nil || !result.PasswordRotated || fake.command.Password != "private" ||
-		fake.command.InstitutionID != command.InstitutionID || fake.command.UserID != command.UserID {
-		t.Fatalf("result/forwarded = %#v / %#v", result, fake.command)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, result, "result/forwarded = %#v / %#v", result, fake.command)
+	require.True(t, result.PasswordRotated, "result/forwarded = %#v / %#v", result, fake.command)
+	require.Equal(t, "private", fake.command.Password, "result/forwarded = %#v / %#v", result, fake.command)
+	require.Equal(t, command.InstitutionID, fake.command.InstitutionID, "result/forwarded = %#v / %#v", result, fake.command)
+	require.Equal(t, command.UserID, fake.command.UserID, "result/forwarded = %#v / %#v", result, fake.command)
 	node.state = nodeRunning
-	if _, err := node.RecoverAdministratorAccess(context.Background(), command); err == nil {
-		t.Fatal("RecoverAdministratorAccess() succeeded on a running server")
-	}
+	_, err = node.RecoverAdministratorAccess(context.Background(), command)
+	require.Error(t, err, "RecoverAdministratorAccess() succeeded on a running server")
 }
 
 func TestInertServerFacadeOwnsConstructedRuntime(t *testing.T) {
@@ -65,12 +64,8 @@ func TestInertServerFacadeOwnsConstructedRuntime(t *testing.T) {
 		readiness: readiness,
 	}
 	facade := &Server{components: components}
-	if facade.Ready() {
-		t.Fatal("New().Ready() = true before Run()")
-	}
-	if err := facade.Close(); err != nil {
-		t.Fatalf("New().Close() error = %v", err)
-	}
+	require.False(t, facade.Ready(), "New().Ready() = true before Run()")
+	require.NoError(t, facade.Close())
 	assertLifecycleEvents(t, events, "transport-close", "platform-close")
 }
 
@@ -78,16 +73,15 @@ func TestNewRejectsEmptyConfigurationPath(t *testing.T) {
 	t.Parallel()
 
 	_, err := New(context.Background(), WithConfigPath(""))
-	if err == nil || !strings.Contains(err.Error(), "configuration path is empty") {
-		t.Fatalf("New() error = %v, want empty configuration path", err)
-	}
+	require.Error(t, err, "New() error")
+	require.Contains(t, err.Error(), "configuration path is empty", "New() error")
 }
 
 func TestWithReadyNotifierRejectsNil(t *testing.T) {
 	t.Parallel()
 
 	settings := options{}
-	if err := WithReadyNotifier(nil)(&settings); err == nil || !strings.Contains(err.Error(), "ready notifier is nil") {
-		t.Fatalf("WithReadyNotifier(nil) error = %v", err)
-	}
+	err := WithReadyNotifier(nil)(&settings)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "ready notifier is nil")
 }

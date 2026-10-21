@@ -14,11 +14,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"reflect"
 	"sort"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
@@ -125,9 +125,7 @@ func TestInvitationAdministrationRejectsNoProgressPage(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer session")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusInternalServerError {
-		t.Fatalf("no-progress status=%d body=%s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusInternalServerError, response.Code, "no-progress status=%d body=%s", response.Code, response.Body.String())
 }
 
 func TestInvitationAdministrationHTTPIsBoundedSafeAndRevisionFenced(t *testing.T) {
@@ -143,50 +141,41 @@ func TestInvitationAdministrationHTTPIsBoundedSafeAndRevisionFenced(t *testing.T
 	list.Header.Set("Authorization", "Bearer session")
 	listResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(listResponse, list)
-	if listResponse.Code != http.StatusOK || listResponse.Header().Get("Cache-Control") != "no-store" ||
-		applicationFake.list.Purpose != model.InvitationPurposeStudentClass ||
-		applicationFake.list.State != model.InvitationPending || applicationFake.list.TargetEmail != "student@example.edu" ||
-		applicationFake.list.Limit != 25 || applicationFake.list.CreatedAfter.IsZero() || applicationFake.list.CreatedBefore.IsZero() {
-		t.Fatalf("list Invitations = %d %s query=%#v", listResponse.Code, listResponse.Body.String(), applicationFake.list)
-	}
+	require.Equal(t, http.StatusOK, listResponse.Code, "list Invitations = %d %s query=%#v", listResponse.Code, listResponse.Body.String(), applicationFake.list)
+	require.Equal(t, "no-store", listResponse.Header().Get("Cache-Control"), "list Invitations = %d %s query=%#v", listResponse.Code, listResponse.Body.String(), applicationFake.list)
+	require.Equal(t, model.InvitationPurposeStudentClass, applicationFake.list.Purpose, "list Invitations = %d %s query=%#v", listResponse.Code, listResponse.Body.String(), applicationFake.list)
+	require.Equal(t, model.InvitationPending, applicationFake.list.State, "list Invitations = %d %s query=%#v", listResponse.Code, listResponse.Body.String(), applicationFake.list)
+	require.Equal(t, "student@example.edu", applicationFake.list.TargetEmail, "list Invitations = %d %s query=%#v", listResponse.Code, listResponse.Body.String(), applicationFake.list)
+	require.Equal(t, 25, applicationFake.list.Limit, "list Invitations = %d %s query=%#v", listResponse.Code, listResponse.Body.String(), applicationFake.list)
+	require.False(t, applicationFake.list.CreatedAfter.IsZero(), "list Invitations = %d %s query=%#v", listResponse.Code, listResponse.Body.String(), applicationFake.list)
+	require.False(t, applicationFake.list.CreatedBefore.IsZero(), "list Invitations = %d %s query=%#v", listResponse.Code, listResponse.Body.String(), applicationFake.list)
 	var listed map[string]any
-	if err := json.Unmarshal(listResponse.Body.Bytes(), &listed); err != nil {
-		t.Fatalf("decode Invitation list: %v", err)
-	}
-	if listed["next_cursor"] == "" {
-		t.Fatalf("Invitation list cursor missing: %#v", listed)
-	}
+	require.NoError(t, json.Unmarshal(listResponse.Body.Bytes(), &listed))
+	require.NotEmpty(t, listed["next_cursor"])
 	for _, forbidden := range []string{"claim", "claim_hash", "encrypted_payload", "rendered", "provider", "message_id", "job_id", "failure_detail"} {
-		if strings.Contains(listResponse.Body.String(), forbidden) {
-			t.Fatalf("Invitation list leaked %q: %s", forbidden, listResponse.Body.String())
-		}
+		require.NotContains(t, listResponse.Body.String(), forbidden, "Invitation list leaked")
 	}
 	cursor, ok := listed["next_cursor"].(string)
-	if !ok || cursor == "" {
-		t.Fatalf("Invitation list cursor = %#v", listed["next_cursor"])
-	}
+	require.True(t, ok)
+	require.NotEmpty(t, cursor)
 	decodedCursor, err := decodeInvitationCursor(cursor)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	secondPage := httptest.NewRequest(http.MethodGet, "/api/v1/invitations?limit=25&cursor="+url.QueryEscape(cursor), nil)
 	secondPage.Header.Set("Authorization", "Bearer session")
 	secondPageResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(secondPageResponse, secondPage)
-	if secondPageResponse.Code != http.StatusOK ||
-		applicationFake.list.BeforeCreatedAt.Format(time.RFC3339Nano) != decodedCursor.CreatedAt ||
-		applicationFake.list.BeforeID.String() != decodedCursor.ID {
-		t.Fatalf("second Invitation page = %d %s query=%#v", secondPageResponse.Code, secondPageResponse.Body.String(), applicationFake.list)
-	}
+	require.Equal(t, http.StatusOK, secondPageResponse.Code, "second Invitation page = %d %s query=%#v", secondPageResponse.Code, secondPageResponse.Body.String(), applicationFake.list)
+	require.Equal(t, decodedCursor.CreatedAt, applicationFake.list.BeforeCreatedAt.Format(time.RFC3339Nano), "second Invitation page = %d %s query=%#v", secondPageResponse.Code, secondPageResponse.Body.String(), applicationFake.list)
+	require.Equal(t, decodedCursor.ID, applicationFake.list.BeforeID.String(), "second Invitation page = %d %s query=%#v", secondPageResponse.Code, secondPageResponse.Body.String(), applicationFake.list)
 
 	id := model.NewInvitationID().String()
 	detail := httptest.NewRequest(http.MethodGet, "/api/v1/invitations/"+id, nil)
 	detail.Header.Set("Authorization", "Bearer session")
 	detailResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(detailResponse, detail)
-	if detailResponse.Code != http.StatusOK || detailResponse.Header().Get("Cache-Control") != "no-store" || applicationFake.getID != id {
-		t.Fatalf("Invitation detail = %d %s id=%q", detailResponse.Code, detailResponse.Body.String(), applicationFake.getID)
-	}
+	require.Equal(t, http.StatusOK, detailResponse.Code, "Invitation detail = %d %s id", detailResponse.Code, detailResponse.Body.String())
+	require.Equal(t, "no-store", detailResponse.Header().Get("Cache-Control"), "Invitation detail = %d %s id", detailResponse.Code, detailResponse.Body.String())
+	require.Equal(t, id, applicationFake.getID, "Invitation detail = %d %s id", detailResponse.Code, detailResponse.Body.String())
 	for _, mutation := range []struct {
 		path string
 		body map[string]any
@@ -196,21 +185,23 @@ func TestInvitationAdministrationHTTPIsBoundedSafeAndRevisionFenced(t *testing.T
 		{path: "/api/v1/invitations/" + id + "/revoke", body: map[string]any{"expected_revision": 8}, code: http.StatusOK},
 		{path: "/api/v1/invitations/" + id + "/replacement", body: map[string]any{"expected_revision": 9, "purpose": "student_class", "email": "replacement@example.edu", "class_id": model.NewClassID().String()}, code: http.StatusCreated},
 	} {
-		body, _ := json.Marshal(mutation.body)
-		request := newJSONRequest(http.MethodPost, mutation.path, bytes.NewReader(body))
-		request.Header.Set("Authorization", "Bearer session")
-		response := httptest.NewRecorder()
-		httpAPI.ServeHTTP(response, request)
-		if response.Code != mutation.code || response.Header().Get("Cache-Control") != "no-store" {
-			t.Fatalf("%s = %d %s", mutation.path, response.Code, response.Body.String())
-		}
+		t.Run(mutation.path, func(t *testing.T) {
+			body, _ := json.Marshal(mutation.body)
+			request := newJSONRequest(http.MethodPost, mutation.path, bytes.NewReader(body))
+			request.Header.Set("Authorization", "Bearer session")
+			response := httptest.NewRecorder()
+			httpAPI.ServeHTTP(response, request)
+			require.Equal(t, mutation.code, response.Code, "%s = %d %s", mutation.path, response.Code, response.Body.String())
+			require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "%s = %d %s", mutation.path, response.Code, response.Body.String())
+		})
 	}
-	if applicationFake.resend.ID != model.InvitationID(id) || applicationFake.resend.ExpectedRevision != 7 ||
-		applicationFake.revoke.ID != model.InvitationID(id) || applicationFake.revoke.ExpectedRevision != 8 ||
-		applicationFake.replace.ID != model.InvitationID(id) || applicationFake.replace.ExpectedRevision != 9 ||
-		applicationFake.replace.TargetEmail != "replacement@example.edu" {
-		t.Fatalf("Invitation mutation commands = resend %#v revoke %#v replacement %#v", applicationFake.resend, applicationFake.revoke, applicationFake.replace)
-	}
+	require.Equal(t, model.InvitationID(id), applicationFake.resend.ID, "Invitation mutation commands = resend %#v revoke %#v replacement %#v", applicationFake.resend, applicationFake.revoke, applicationFake.replace)
+	require.Equal(t, int64(7), applicationFake.resend.ExpectedRevision, "Invitation mutation commands = resend %#v revoke %#v replacement %#v", applicationFake.resend, applicationFake.revoke, applicationFake.replace)
+	require.Equal(t, model.InvitationID(id), applicationFake.revoke.ID, "Invitation mutation commands = resend %#v revoke %#v replacement %#v", applicationFake.resend, applicationFake.revoke, applicationFake.replace)
+	require.Equal(t, int64(8), applicationFake.revoke.ExpectedRevision, "Invitation mutation commands = resend %#v revoke %#v replacement %#v", applicationFake.resend, applicationFake.revoke, applicationFake.replace)
+	require.Equal(t, model.InvitationID(id), applicationFake.replace.ID, "Invitation mutation commands = resend %#v revoke %#v replacement %#v", applicationFake.resend, applicationFake.revoke, applicationFake.replace)
+	require.Equal(t, int64(9), applicationFake.replace.ExpectedRevision, "Invitation mutation commands = resend %#v revoke %#v replacement %#v", applicationFake.resend, applicationFake.revoke, applicationFake.replace)
+	require.Equal(t, "replacement@example.edu", applicationFake.replace.TargetEmail, "Invitation mutation commands = resend %#v revoke %#v replacement %#v", applicationFake.resend, applicationFake.revoke, applicationFake.replace)
 }
 
 func TestInvitationBatchHTTPIsStrictBoundedAndIdempotent(t *testing.T) {
@@ -229,21 +220,23 @@ func TestInvitationBatchHTTPIsStrictBoundedAndIdempotent(t *testing.T) {
 	request.Header.Set("Idempotency-Key", "batch-once")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" ||
-		applicationFake.batch.IdempotencyKey != "batch-once" || applicationFake.batch.ScopeID != classID ||
-		applicationFake.batch.Operation != app.InvitationBatchStudentClassCreate || len(applicationFake.batch.Items) != 3 ||
-		!strings.Contains(response.Body.String(), `"succeeded":1`) || !strings.Contains(response.Body.String(), `"no_op":1`) ||
-		!strings.Contains(response.Body.String(), `"error_code":"invitation.conflict"`) || strings.Contains(response.Body.String(), "@example.edu") {
-		t.Fatalf("Invitation batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.batch)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "Invitation batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.batch)
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "Invitation batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.batch)
+	require.Equal(t, "batch-once", applicationFake.batch.IdempotencyKey, "Invitation batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.batch)
+	require.Equal(t, classID, applicationFake.batch.ScopeID, "Invitation batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.batch)
+	require.Equal(t, app.InvitationBatchStudentClassCreate, applicationFake.batch.Operation, "Invitation batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.batch)
+	require.Len(t, applicationFake.batch.Items, 3, "Invitation batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.batch)
+	require.Contains(t, response.Body.String(), `"succeeded":1`, "Invitation batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.batch)
+	require.Contains(t, response.Body.String(), `"no_op":1`, "Invitation batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.batch)
+	require.Contains(t, response.Body.String(), `"error_code":"invitation.conflict"`, "Invitation batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.batch)
+	require.NotContains(t, response.Body.String(), "@example.edu", "Invitation batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.batch)
 
 	missingKey := newJSONRequest(http.MethodPost, "/api/v1/invitation-batches", bytes.NewReader(body))
 	missingKey.Header.Set("Authorization", "Bearer session")
 	missingResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(missingResponse, missingKey)
-	if missingResponse.Code != http.StatusBadRequest || !strings.Contains(missingResponse.Body.String(), "idempotency.key_required") {
-		t.Fatalf("Invitation batch missing key = %d %s", missingResponse.Code, missingResponse.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, missingResponse.Code, "Invitation batch missing key")
+	require.Contains(t, missingResponse.Body.String(), "idempotency.key_required", "Invitation batch missing key")
 
 	unknownBody := []byte(`{"operation":"revoke","scope_type":"class","scope_id":"` + classID + `","items":[],"command":"arbitrary"}`)
 	unknown := newJSONRequest(http.MethodPost, "/api/v1/invitation-batches", bytes.NewReader(unknownBody))
@@ -251,9 +244,7 @@ func TestInvitationBatchHTTPIsStrictBoundedAndIdempotent(t *testing.T) {
 	unknown.Header.Set("Idempotency-Key", "unknown-field")
 	unknownResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(unknownResponse, unknown)
-	if unknownResponse.Code != http.StatusBadRequest {
-		t.Fatalf("Invitation batch unknown JSON = %d %s", unknownResponse.Code, unknownResponse.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, unknownResponse.Code, "Invitation batch unknown JSON = %d %s", unknownResponse.Code, unknownResponse.Body.String())
 }
 
 func TestInvitationAdministrationHTTPRejectsMalformedCursor(t *testing.T) {
@@ -266,9 +257,8 @@ func TestInvitationAdministrationHTTPRejectsMalformedCursor(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer pat")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "request.invalid") {
-		t.Fatalf("malformed Invitation cursor = %d %s logs=%s", response.Code, response.Body.String(), logs.String())
-	}
+	require.Equal(t, http.StatusBadRequest, response.Code, "malformed Invitation cursor = %d %s logs=%s", response.Code, response.Body.String(), logs.String())
+	require.Contains(t, response.Body.String(), "request.invalid", "malformed Invitation cursor = %d %s logs=%s", response.Code, response.Body.String(), logs.String())
 }
 func (a *invitationHTTPApplication) GetInvitation(_ context.Context, _ app.Invocation, id model.InvitationID) (app.InvitationAdministrationView, error) {
 	a.getID = id.String()
@@ -320,13 +310,9 @@ func TestInvitationAcceptanceHTTPReturnsOnlyRecordIDsForFreshAndReplay(t *testin
 
 			httpAPI.ServeHTTP(response, request)
 
-			if response.Code != http.StatusOK {
-				t.Fatalf("accept invitation = %d: %s", response.Code, response.Body.String())
-			}
+			require.Equal(t, http.StatusOK, response.Code, "accept invitation = %d: %s", response.Code, response.Body.String())
 			var projection map[string]any
-			if err := json.Unmarshal(response.Body.Bytes(), &projection); err != nil {
-				t.Fatalf("decode acceptance response: %v", err)
-			}
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &projection))
 			expected := map[string]any{
 				"user_id":         userID.String(),
 				"invitation_id":   invitationID.String(),
@@ -334,9 +320,7 @@ func TestInvitationAcceptanceHTTPReturnsOnlyRecordIDsForFreshAndReplay(t *testin
 				"class_member_id": classMemberID.String(),
 				"replayed":        replayed,
 			}
-			if !reflect.DeepEqual(projection, expected) {
-				t.Fatalf("acceptance projection = %#v, want %#v", projection, expected)
-			}
+			require.Equal(t, expected, projection, "acceptance projection")
 		})
 	}
 }
@@ -352,9 +336,8 @@ func TestInvitationAcceptanceOpenAPIExposesOnlyRecordIDs(t *testing.T) {
 	}
 	sort.Strings(gotFields)
 	sort.Strings(schema.Required)
-	if !reflect.DeepEqual(gotFields, wantFields) || !reflect.DeepEqual(schema.Required, wantRequired) {
-		t.Fatalf("InvitationAcceptanceResponse fields=%v required=%v, want fields %v required %v", gotFields, schema.Required, wantFields, wantRequired)
-	}
+	require.Equal(t, wantFields, gotFields, "InvitationAcceptanceResponse fields")
+	require.Equal(t, wantRequired, schema.Required, "InvitationAcceptanceResponse fields")
 }
 
 func TestInvitationHTTPKeepsClaimOutOfIssueResponseAndAcceptsPublicly(t *testing.T) {
@@ -372,19 +355,20 @@ func TestInvitationHTTPKeepsClaimOutOfIssueResponseAndAcceptsPublicly(t *testing
 	issue.Header.Set("Authorization", "Bearer access")
 	issueResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(issueResponse, issue)
-	if issueResponse.Code != http.StatusCreated || strings.Contains(issueResponse.Body.String(), "student@example.edu") ||
-		strings.Contains(issueResponse.Body.String(), "claim") || applicationFake.issue.ClassID != classID ||
-		applicationFake.issue.IntendedStartsAt != 1_800_000_000_000 || applicationFake.issue.IntendedEndsAt != 1_810_000_000_500 {
-		t.Fatalf("issue response=%d %s command=%#v", issueResponse.Code, issueResponse.Body.String(), applicationFake.issue)
-	}
+	require.Equal(t, http.StatusCreated, issueResponse.Code, "issue response=%d %s command=%#v", issueResponse.Code, issueResponse.Body.String(), applicationFake.issue)
+	require.NotContains(t, issueResponse.Body.String(), "student@example.edu", "issue response=%d %s command=%#v", issueResponse.Code, issueResponse.Body.String(), applicationFake.issue)
+	require.NotContains(t, issueResponse.Body.String(), "claim", "issue response=%d %s command=%#v", issueResponse.Code, issueResponse.Body.String(), applicationFake.issue)
+	require.Equal(t, classID, applicationFake.issue.ClassID, "issue response=%d %s command=%#v", issueResponse.Code, issueResponse.Body.String(), applicationFake.issue)
+	require.Equal(t, int64(1_800_000_000_000), applicationFake.issue.IntendedStartsAt, "issue response=%d %s command=%#v", issueResponse.Code, issueResponse.Body.String(), applicationFake.issue)
+	require.Equal(t, int64(1_810_000_000_500), applicationFake.issue.IntendedEndsAt, "issue response=%d %s command=%#v", issueResponse.Code, issueResponse.Body.String(), applicationFake.issue)
 	raw := model.NewCredentialToken()
 	acceptBody, _ := json.Marshal(map[string]string{"claim": raw, "password": "correct horse battery staple", "username": "student-one"})
 	accept := newJSONRequest(http.MethodPost, "/api/v1/invitations/student-class/accept", bytes.NewReader(acceptBody))
 	acceptResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(acceptResponse, accept)
-	if acceptResponse.Code != http.StatusOK || applicationFake.accept.Claim != raw || strings.Contains(acceptResponse.Body.String(), raw) {
-		t.Fatalf("accept response=%d %s command=%#v", acceptResponse.Code, acceptResponse.Body.String(), applicationFake.accept)
-	}
+	require.Equal(t, http.StatusOK, acceptResponse.Code, "accept response=%d %s command=%#v", acceptResponse.Code, acceptResponse.Body.String(), applicationFake.accept)
+	require.Equal(t, raw, applicationFake.accept.Claim, "accept response=%d %s command=%#v", acceptResponse.Code, acceptResponse.Body.String(), applicationFake.accept)
+	require.NotContains(t, acceptResponse.Body.String(), raw, "accept response=%d %s command=%#v", acceptResponse.Code, acceptResponse.Body.String(), applicationFake.accept)
 }
 
 func TestTeacherInvitationHTTPFreezesRoleAndReturnsRelationshipIDs(t *testing.T) {
@@ -400,18 +384,19 @@ func TestTeacherInvitationHTTPFreezesRoleAndReturnsRelationshipIDs(t *testing.T)
 	request.Header.Set("Authorization", "Bearer access")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusCreated || applicationFake.teacherIssue.AcademicUnitID != unitID || applicationFake.teacherIssue.RoleID != roleID ||
-		strings.Contains(response.Body.String(), "teacher@example.edu") || strings.Contains(response.Body.String(), "claim") {
-		t.Fatalf("teacher issue response=%d %s command=%#v", response.Code, response.Body.String(), applicationFake.teacherIssue)
-	}
+	require.Equal(t, http.StatusCreated, response.Code, "teacher issue response=%d %s command=%#v", response.Code, response.Body.String(), applicationFake.teacherIssue)
+	require.Equal(t, unitID, applicationFake.teacherIssue.AcademicUnitID, "teacher issue response=%d %s command=%#v", response.Code, response.Body.String(), applicationFake.teacherIssue)
+	require.Equal(t, roleID, applicationFake.teacherIssue.RoleID, "teacher issue response=%d %s command=%#v", response.Code, response.Body.String(), applicationFake.teacherIssue)
+	require.NotContains(t, response.Body.String(), "teacher@example.edu", "teacher issue response=%d %s command=%#v", response.Code, response.Body.String(), applicationFake.teacherIssue)
+	require.NotContains(t, response.Body.String(), "claim", "teacher issue response=%d %s command=%#v", response.Code, response.Body.String(), applicationFake.teacherIssue)
 	raw := model.NewCredentialToken()
 	acceptBody, _ := json.Marshal(map[string]string{"claim": raw, "password": "correct horse battery staple", "username": "teacher-one"})
 	accept := newJSONRequest(http.MethodPost, "/api/v1/invitations/teacher-academic-unit/accept", bytes.NewReader(acceptBody))
 	acceptResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(acceptResponse, accept)
-	if acceptResponse.Code != http.StatusOK || applicationFake.teacherAccept.Claim != raw || strings.Contains(acceptResponse.Body.String(), raw) {
-		t.Fatalf("teacher accept response=%d %s command=%#v", acceptResponse.Code, acceptResponse.Body.String(), applicationFake.teacherAccept)
-	}
+	require.Equal(t, http.StatusOK, acceptResponse.Code, "teacher accept response=%d %s command=%#v", acceptResponse.Code, acceptResponse.Body.String(), applicationFake.teacherAccept)
+	require.Equal(t, raw, applicationFake.teacherAccept.Claim, "teacher accept response=%d %s command=%#v", acceptResponse.Code, acceptResponse.Body.String(), applicationFake.teacherAccept)
+	require.NotContains(t, acceptResponse.Body.String(), raw, "teacher accept response=%d %s command=%#v", acceptResponse.Code, acceptResponse.Body.String(), applicationFake.teacherAccept)
 }
 
 func TestScopedRoleInvitationHTTPRequiresAuthenticatedExistingUserAndInstitutionAssurance(t *testing.T) {
@@ -435,13 +420,17 @@ func TestScopedRoleInvitationHTTPRequiresAuthenticatedExistingUserAndInstitution
 			return applicationFake.institutionRoleIssue.InstitutionID, applicationFake.institutionRoleIssue.RoleID
 		}},
 	} {
-		request := newJSONRequest(http.MethodPost, target.path, bytes.NewReader(body))
-		request.Header.Set("Authorization", "Bearer session")
-		response := httptest.NewRecorder()
-		httpAPI.ServeHTTP(response, request)
-		if first, second := target.command(); response.Code != http.StatusCreated || first == "" || second != roleID || strings.Contains(response.Body.String(), "existing@example.edu") {
-			t.Fatalf("scoped Role issue %s = %d %s command=%q/%q", target.path, response.Code, response.Body.String(), first, second)
-		}
+		t.Run(target.path, func(t *testing.T) {
+			request := newJSONRequest(http.MethodPost, target.path, bytes.NewReader(body))
+			request.Header.Set("Authorization", "Bearer session")
+			response := httptest.NewRecorder()
+			httpAPI.ServeHTTP(response, request)
+			first, second := target.command()
+			require.Equal(t, http.StatusCreated, response.Code, "scoped Role issue %s = %d %s command=%q", target.path, response.Code, response.Body.String(), first)
+			require.NotEmpty(t, first, "scoped Role issue %s = %d %s command=%q", target.path, response.Code, response.Body.String(), first)
+			require.Equal(t, roleID, second, "scoped Role issue %s = %d %s command=%q", target.path, response.Code, response.Body.String(), first)
+			require.NotContains(t, response.Body.String(), "existing@example.edu", "scoped Role issue %s = %d %s command=%q", target.path, response.Code, response.Body.String(), first)
+		})
 	}
 	claim := model.NewCredentialToken()
 	for _, target := range []struct {
@@ -451,13 +440,16 @@ func TestScopedRoleInvitationHTTPRequiresAuthenticatedExistingUserAndInstitution
 		{path: "/api/v1/invitations/academic-unit-role/accept", command: func() string { return applicationFake.unitRoleAccept.Claim }},
 		{path: "/api/v1/invitations/institution-role/accept", command: func() string { return applicationFake.institutionRoleAccept.Claim }},
 	} {
-		request := newJSONRequest(http.MethodPost, target.path, bytes.NewReader([]byte(`{"claim":"`+claim+`"}`)))
-		request.Header.Set("Authorization", "Bearer session")
-		response := httptest.NewRecorder()
-		httpAPI.ServeHTTP(response, request)
-		if response.Code != http.StatusOK || target.command() != claim || strings.Contains(response.Body.String(), claim) || strings.Contains(response.Body.String(), "email") {
-			t.Fatalf("scoped Role accept %s = %d %s", target.path, response.Code, response.Body.String())
-		}
+		t.Run(target.path, func(t *testing.T) {
+			request := newJSONRequest(http.MethodPost, target.path, bytes.NewReader([]byte(`{"claim":"`+claim+`"}`)))
+			request.Header.Set("Authorization", "Bearer session")
+			response := httptest.NewRecorder()
+			httpAPI.ServeHTTP(response, request)
+			require.Equal(t, http.StatusOK, response.Code, "scoped Role accept %s", target.path)
+			require.Equal(t, claim, target.command(), "scoped Role accept %s", target.path)
+			require.NotContains(t, response.Body.String(), claim, "scoped Role accept %s", target.path)
+			require.NotContains(t, response.Body.String(), "email", "scoped Role accept %s", target.path)
+		})
 	}
 	pat := principal
 	pat.CredentialType, pat.SessionID = model.CredentialPersonalAccessToken, ""
@@ -467,7 +459,5 @@ func TestScopedRoleInvitationHTTPRequiresAuthenticatedExistingUserAndInstitution
 	request.Header.Set("Authorization", "Bearer pat")
 	response := httptest.NewRecorder()
 	patAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("institution Role PAT issue = %d %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusUnauthorized, response.Code, "institution Role PAT issue = %d %s", response.Code, response.Body.String())
 }

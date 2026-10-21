@@ -8,8 +8,9 @@
 package server
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseServiceEnvironment(t *testing.T) {
@@ -23,21 +24,21 @@ func TestParseServiceEnvironment(t *testing.T) {
 		{"test", ServiceEnvironmentTest}, {"  PrOdUcTiOn ", ServiceEnvironmentProduction},
 		{" DEV ", ServiceEnvironmentDev},
 	} {
-		got, err := parseServiceEnvironment(test.value)
-		if err != nil || got != test.want {
-			t.Fatalf("parse %q = %q, %v", test.value, got, err)
-		}
+		t.Run(test.value, func(t *testing.T) {
+			got, err := parseServiceEnvironment(test.value)
+			require.NoError(t, err, "parse %q", test.value)
+			require.Equal(t, test.want, got, "parse %q", test.value)
+		})
 	}
 	for _, value := range []string{"development", "prod", "staging", "produciton", "dev/production"} {
-		if _, err := parseServiceEnvironment(value); err == nil {
-			t.Fatalf("accepted unknown environment %q", value)
-		}
+		_, err := parseServiceEnvironment(value)
+		require.Error(t, err, "accepted unknown environment %q", value)
 	}
 }
 
 func TestNewRejectsInvalidEnvironmentBeforeOpeningConfiguration(t *testing.T) {
 	t.Setenv("PROCTOR_SERVICE_ENVIRONMENT", "misspelled-production")
-	if _, err := New(t.Context(), WithConfigPath("nonexistent.json")); err == nil || !strings.Contains(err.Error(), "PROCTOR_SERVICE_ENVIRONMENT") {
-		t.Fatalf("invalid environment did not stop construction first: %v", err)
-	}
+	_, err := New(t.Context(), WithConfigPath("nonexistent.json"))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "PROCTOR_SERVICE_ENVIRONMENT")
 }

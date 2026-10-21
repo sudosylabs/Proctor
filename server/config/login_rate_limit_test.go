@@ -8,27 +8,23 @@
 package config
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoginIdentityAttemptLimitIsBoundedByTheOtherLoginLimits(t *testing.T) {
 	t.Parallel()
 
-	if err := Default().Validate(); err != nil {
-		t.Fatalf("default configuration: %v", err)
-	}
+	require.NoError(t, Default().Validate())
 	for _, maximum := range []int{0, 9, 1_000_001} {
 		cfg := Default()
 		cfg.Authentication.LoginRateLimit.MaximumIdentityAttempts = maximum
 		err := cfg.Validate()
-		if err == nil || !strings.Contains(err.Error(), "authentication.login_rate_limit.maximum_identity_attempts:") {
-			t.Fatalf("MaximumIdentityAttempts=%d: Validate() = %v", maximum, err)
-		}
+		require.Error(t, err, "MaximumIdentityAttempts=%d: Validate()", maximum)
+		require.Contains(t, err.Error(), "authentication.login_rate_limit.maximum_identity_attempts:", "MaximumIdentityAttempts=%d: Validate()", maximum)
 	}
 	cfg := Default()
 	cfg.Authentication.LoginRateLimit.MaximumIdentityAttempts = cfg.Authentication.LoginRateLimit.MaximumAttempts
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("identity limit equal to the account-and-source limit: %v", err)
-	}
+	require.NoError(t, cfg.Validate())
 }

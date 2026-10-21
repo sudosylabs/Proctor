@@ -10,21 +10,20 @@ package commands
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestReadPrivatePasswordBoundsAndNormalizesInput(t *testing.T) {
 	t.Parallel()
 
 	value, err := readPrivatePassword(strings.NewReader("private-value\r\n"), englishCommandText())
-	if err != nil || value != "private-value" {
-		t.Fatalf("value=%q err=%v", value, err)
-	}
+	require.NoError(t, err, "value")
+	require.Equal(t, "private-value", value, "value")
 	for _, input := range []string{"", strings.Repeat("x", 4097)} {
-		if _, err := readPrivatePassword(strings.NewReader(input), englishCommandText()); err == nil {
-			t.Fatalf("readPrivatePassword(%d bytes) error = nil", len(input))
-		}
+		_, err = readPrivatePassword(strings.NewReader(input), englishCommandText())
+		require.Error(t, err, "readPrivatePassword(%d bytes) error = nil", len(input))
 	}
-	if _, err := readPrivatePassword(nil, englishCommandText()); err == nil {
-		t.Fatal("readPrivatePassword(nil) error = nil")
-	}
+	_, err = readPrivatePassword(nil, englishCommandText())
+	require.Error(t, err, "readPrivatePassword(nil) error = nil")
 }

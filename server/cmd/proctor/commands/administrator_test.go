@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	server "github.com/sudosylabs/proctor/server"
 )
 
@@ -22,9 +24,7 @@ func TestAdministratorRecoveryReadsPasswordOnlyFromPrivateInput(t *testing.T) {
 	var received server.AdministratorRecoveryCommand
 	execute := testExecutors()
 	execute.recoverAdministrator = func(_ context.Context, path string, command server.AdministratorRecoveryCommand) (*server.AdministratorRecoveryResult, error) {
-		if path != "/etc/proctor.json" {
-			t.Fatalf("config path = %q", path)
-		}
+		require.Equal(t, "/etc/proctor.json", path)
 		received = command
 		return &server.AdministratorRecoveryResult{LocalLoginEnabled: true, PasswordRotated: true}, nil
 	}
@@ -35,19 +35,14 @@ func TestAdministratorRecoveryReadsPasswordOnlyFromPrivateInput(t *testing.T) {
 		"--user-id", " ybndrfg8ejkmcpqxot1uwisza4 ",
 		"--enable-local-login", "--rotate-password",
 	}, strings.NewReader(secret+"\n"), execute)
-	if code != 0 {
-		t.Fatalf("code=%d stderr=%q", code, stderr)
-	}
-	if received.InstitutionID != "ybndrfg8ejkmcpqxot1uwisza3" || received.UserID != "ybndrfg8ejkmcpqxot1uwisza4" ||
-		received.Password != secret || !received.EnableLocalLogin {
-		t.Fatalf("command = %#v", received)
-	}
-	if strings.Contains(stdout, secret) || strings.Contains(stderr, secret) {
-		t.Fatalf("secret leaked: stdout=%q stderr=%q", stdout, stderr)
-	}
-	if stdout != "administrator recovery recorded; restart Proctor normally to reconcile its audit record\n" {
-		t.Fatalf("stdout = %q", stdout)
-	}
+	require.Equal(t, 0, code, "code=%d stderr=%q", code, stderr)
+	require.Equal(t, "ybndrfg8ejkmcpqxot1uwisza3", received.InstitutionID)
+	require.Equal(t, "ybndrfg8ejkmcpqxot1uwisza4", received.UserID)
+	require.Equal(t, secret, received.Password)
+	require.True(t, received.EnableLocalLogin)
+	require.NotContains(t, stdout, secret, "secret leaked: stdout")
+	require.NotContains(t, stderr, secret, "secret leaked: stdout")
+	require.Equal(t, "administrator recovery recorded; restart Proctor normally to reconcile its audit record\n", stdout)
 }
 
 func TestAdministratorRecoveryRejectsPasswordArgumentsAndMissingActions(t *testing.T) {
@@ -94,16 +89,14 @@ func TestAdministratorRecoveryRejectsPasswordArgumentsAndMissingActions(t *testi
 	} {
 		execute := testExecutors()
 		execute.recoverAdministrator = func(context.Context, string, server.AdministratorRecoveryCommand) (*server.AdministratorRecoveryResult, error) {
-			t.Fatal("recovery executor was called")
+			require.FailNow(t, "recovery executor was called")
 			return nil, nil
 		}
 		code, stdout, stderr := executeForTest(context.Background(), args, strings.NewReader(""), execute)
-		if code != 2 || stdout != "" {
-			t.Fatalf("run(%q): code=%d stdout=%q stderr=%q", args, code, stdout, stderr)
-		}
-		if strings.Contains(stdout, "leaked-password") || strings.Contains(stderr, "leaked-password") {
-			t.Fatalf("argument secret leaked: stdout=%q stderr=%q", stdout, stderr)
-		}
+		require.Equal(t, 2, code, "run(%q): code=%d stdout=%q stderr=%q", args, code, stdout, stderr)
+		require.Empty(t, stdout, "run(%q): code=%d stdout=%q stderr=%q", args, code, stdout, stderr)
+		require.NotContains(t, stdout, "leaked-password", "argument secret leaked: stdout")
+		require.NotContains(t, stderr, "leaked-password", "argument secret leaked: stdout")
 	}
 }
 
@@ -120,7 +113,7 @@ func TestAdministratorRecoveryRejectsNilResult(t *testing.T) {
 		"--user-id", "ybndrfg8ejkmcpqxot1uwisza4",
 		"--enable-local-login",
 	}, nil, execute)
-	if code != 1 || stdout != "" || !strings.Contains(stderr, "administrator recovery returned no result") {
-		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
-	}
+	require.Equal(t, 1, code, "code")
+	require.Empty(t, stdout, "code")
+	require.Contains(t, stderr, "administrator recovery returned no result", "code")
 }

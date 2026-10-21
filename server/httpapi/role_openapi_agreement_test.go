@@ -11,6 +11,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -59,9 +61,7 @@ func TestRoleOpenAPIAgreesWithRuntime(t *testing.T) {
 		},
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, roleResource(nil)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtimeAPI.collectResources(model.APIURLSuffix, roleResource(nil)))
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 
 	// Permissions are the scoped-authorization vocabulary carried by Role DTOs;
@@ -69,7 +69,6 @@ func TestRoleOpenAPIAgreesWithRuntime(t *testing.T) {
 	// list contract remains a legacy bare array.
 	document := readOpenAPIDocument(t)
 	list := document.Components.Schemas["RoleListResponse"]
-	if list.Type != "array" || list.Items.Ref != "#/components/schemas/RoleResponse" {
-		t.Fatalf("RoleListResponse = %#v", list)
-	}
+	require.Equal(t, "array", list.Type)
+	require.Equal(t, "#/components/schemas/RoleResponse", list.Items.Ref)
 }

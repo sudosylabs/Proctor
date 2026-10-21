@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -73,34 +75,26 @@ func TestUserSettingsHTTPReplacesWithoutEchoingSource(t *testing.T) {
 	body, err := json.Marshal(map[string]any{
 		"source": source, "format_version": 1, "expected_revision": revision.String(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	request := httptest.NewRequest(http.MethodPut, "/api/v1/users/me/settings", bytes.NewReader(body))
 	request.Header.Set("Authorization", "Bearer session-credential")
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Idempotency-Key", "settings-save-1")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
-	if response.Header().Get("Cache-Control") != "private, no-store" {
-		t.Fatalf("Cache-Control = %q", response.Header().Get("Cache-Control"))
-	}
-	if applicationFake.replaceCalls != 1 || applicationFake.replaceCommand.Source != source ||
-		applicationFake.replaceCommand.FormatVersion != 1 ||
-		applicationFake.replaceCommand.ExpectedRevision != revision ||
-		applicationFake.replaceCommand.IdempotencyKey != "settings-save-1" {
-		t.Fatalf("replacement command = %#v", applicationFake.replaceCommand)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "status = %d: %s", response.Code, response.Body.String())
+	require.Equal(t, "private, no-store", response.Header().Get("Cache-Control"))
+	require.Equal(t, 1, applicationFake.replaceCalls)
+	require.Equal(t, source, applicationFake.replaceCommand.Source)
+	require.Equal(t, 1, applicationFake.replaceCommand.FormatVersion)
+	require.Equal(t, revision, applicationFake.replaceCommand.ExpectedRevision)
+	require.Equal(t, "settings-save-1", applicationFake.replaceCommand.IdempotencyKey)
 	var result map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
-		t.Fatal(err)
-	}
-	if _, exposed := result["source"]; exposed || result["revision"] != next.String() || result["changed"] != true {
-		t.Fatalf("response = %#v", result)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result))
+	_, exposed := result["source"]
+	require.False(t, exposed)
+	require.Equal(t, next.String(), result["revision"])
+	require.Equal(t, true, result["changed"])
 }
 
 func TestUserSettingsHTTPReplacementIsStrictBoundedAndIdempotent(t *testing.T) {
@@ -142,31 +136,24 @@ func TestUserSettingsHTTPReplacementIsStrictBoundedAndIdempotent(t *testing.T) {
 			configure(request)
 			response := httptest.NewRecorder()
 			newAPI().ServeHTTP(response, request)
-			if response.Code != http.StatusBadRequest {
-				t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-			}
+			require.Equal(t, http.StatusBadRequest, response.Code, "status = %d: %s", response.Code, response.Body.String())
 		})
 	}
-	if applicationFake.replaceCalls != 0 {
-		t.Fatalf("invalid requests reached application %d times", applicationFake.replaceCalls)
-	}
+	require.Equal(t, 0, applicationFake.replaceCalls, "invalid requests reached application")
 
 	maxSource := strings.Repeat(" ", model.UserSettingsSourceMaxBytes-3) + "{}\n"
 	body, err := json.Marshal(userSettingsReplaceRequest{
 		Source: maxSource, FormatVersion: 1, ExpectedRevision: revision.String(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	request := httptest.NewRequest(http.MethodPut, "/api/v1/users/me/settings", bytes.NewReader(body))
 	request.Header.Set("Authorization", "Bearer session-credential")
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Idempotency-Key", "maximum-save")
 	response := httptest.NewRecorder()
 	newAPI().ServeHTTP(response, request)
-	if response.Code != http.StatusOK || applicationFake.replaceCommand.Source != maxSource {
-		t.Fatalf("maximum source status/size = %d/%d: %s", response.Code, len(applicationFake.replaceCommand.Source), response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "maximum source status/size = %d/%d: %s", response.Code, len(applicationFake.replaceCommand.Source), response.Body.String())
+	require.Equal(t, maxSource, applicationFake.replaceCommand.Source, "maximum source status/size = %d/%d: %s", response.Code, len(applicationFake.replaceCommand.Source), response.Body.String())
 }
 
 func TestUserSettingsHTTPReadsExactSelfDocumentWithoutCaching(t *testing.T) {
@@ -195,24 +182,17 @@ func TestUserSettingsHTTPReadsExactSelfDocumentWithoutCaching(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer session-credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
-	if response.Header().Get("Cache-Control") != "private, no-store" {
-		t.Fatalf("Cache-Control = %q", response.Header().Get("Cache-Control"))
-	}
-	if applicationFake.calls != 1 || applicationFake.invocation.Principal().UserID != principal.UserID {
-		t.Fatalf("calls/invocation = %d/%#v", applicationFake.calls, applicationFake.invocation)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "status = %d: %s", response.Code, response.Body.String())
+	require.Equal(t, "private, no-store", response.Header().Get("Cache-Control"))
+	require.Equal(t, 1, applicationFake.calls, "calls/invocation = %d/%#v", applicationFake.calls, applicationFake.invocation)
+	require.Equal(t, principal.UserID, applicationFake.invocation.Principal().UserID, "calls/invocation = %d/%#v", applicationFake.calls, applicationFake.invocation)
 	var body userSettingsResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body.Source != source || body.FormatVersion != 1 ||
-		body.Revision != applicationFake.result.Revision.String() || !body.Writable ||
-		body.UpdatedAt != model.FormatRFC3339(at) {
-		t.Fatalf("body = %#v", body)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	require.Equal(t, source, body.Source)
+	require.Equal(t, 1, body.FormatVersion)
+	require.Equal(t, applicationFake.result.Revision.String(), body.Revision)
+	require.True(t, body.Writable)
+	require.Equal(t, model.FormatRFC3339(at), body.UpdatedAt)
 }
 
 func TestUserSettingsHTTPReadsUnsupportedFormatAsExactReadOnlySource(t *testing.T) {
@@ -241,17 +221,14 @@ func TestUserSettingsHTTPReadsUnsupportedFormatAsExactReadOnlySource(t *testing.
 	request.Header.Set("Authorization", "Bearer session-credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "status = %d: %s", response.Code, response.Body.String())
 	var body userSettingsResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body.Source != source || body.FormatVersion != 2 || body.Writable ||
-		body.Revision != applicationFake.result.Revision.String() || body.UpdatedAt != model.FormatRFC3339(at) {
-		t.Fatalf("body = %#v", body)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	require.Equal(t, source, body.Source)
+	require.Equal(t, 2, body.FormatVersion)
+	require.False(t, body.Writable)
+	require.Equal(t, applicationFake.result.Revision.String(), body.Revision)
+	require.Equal(t, model.FormatRFC3339(at), body.UpdatedAt)
 }
 
 func TestUserSettingsHTTPRejectsNonSessionAndArbitraryUserPaths(t *testing.T) {
@@ -268,9 +245,7 @@ func TestUserSettingsHTTPRejectsNonSessionAndArbitraryUserPaths(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer personal-access-token")
 	response := httptest.NewRecorder()
 	patAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("PAT status = %d: %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusUnauthorized, response.Code, "PAT status = %d: %s", response.Code, response.Body.String())
 
 	principal := model.Principal{
 		UserID: model.NewUserID(), SessionID: model.NewSessionID(),
@@ -288,9 +263,7 @@ func TestUserSettingsHTTPRejectsNonSessionAndArbitraryUserPaths(t *testing.T) {
 			request.Header.Set("Authorization", "Bearer credential")
 			response := httptest.NewRecorder()
 			httpAPI.ServeHTTP(response, request)
-			if response.Code != http.StatusNotFound {
-				t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-			}
+			require.Equal(t, http.StatusNotFound, response.Code, "status = %d: %s", response.Code, response.Body.String())
 		})
 	}
 	for _, method := range []string{http.MethodPatch, http.MethodDelete} {
@@ -298,11 +271,7 @@ func TestUserSettingsHTTPRejectsNonSessionAndArbitraryUserPaths(t *testing.T) {
 		request.Header.Set("Authorization", "Bearer session-credential")
 		response := httptest.NewRecorder()
 		httpAPI.ServeHTTP(response, request)
-		if response.Code != http.StatusMethodNotAllowed {
-			t.Fatalf("%s status = %d: %s", method, response.Code, response.Body.String())
-		}
+		require.Equal(t, http.StatusMethodNotAllowed, response.Code, "%s status = %d: %s", method, response.Code, response.Body.String())
 	}
-	if applicationFake.calls != 0 {
-		t.Fatalf("rejected requests reached application %d times", applicationFake.calls)
-	}
+	require.Equal(t, 0, applicationFake.calls, "rejected requests reached application")
 }

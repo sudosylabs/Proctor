@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/stretchr/testify/require"
 )
 
 const validBase = `openapi: 3.1.0
@@ -59,25 +61,17 @@ func TestCompileDiscoversMergesAndValidatesFragments(t *testing.T) {
 		"fragments/system/health.yaml":      {Data: []byte(validFragment)},
 		"fragments/system/ignored.markdown": {Data: []byte("not OpenAPI")},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	text := string(compiled)
 	for _, expected := range []string{`"/health/live"`, `"HealthResponse"`, `"getHealthLive"`} {
-		if !strings.Contains(text, expected) {
-			t.Fatalf("compiled document does not contain %s", expected)
-		}
+		require.Contains(t, text, expected)
 	}
 	compiledAgain, err := Compile(fstest.MapFS{
 		"base.yaml":                    {Data: []byte(validBase)},
 		"fragments/system/health.yaml": {Data: []byte(validFragment)},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(compiled) != string(compiledAgain) {
-		t.Fatal("compilation is not deterministic")
-	}
+	require.NoError(t, err)
+	require.Equal(t, string(compiledAgain), string(compiled), "compilation is not deterministic")
 }
 
 func TestCompileRejectsInvalidSources(t *testing.T) {
@@ -235,9 +229,8 @@ func TestCompileRejectsInvalidSources(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := Compile(test.files)
-			if err == nil || !strings.Contains(err.Error(), test.wantError) {
-				t.Fatalf("Compile() error = %v, want error containing %q", err, test.wantError)
-			}
+			require.Error(t, err, "Compile() error")
+			require.Contains(t, err.Error(), test.wantError, "Compile() error")
 		})
 	}
 }

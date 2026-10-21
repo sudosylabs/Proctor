@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -52,21 +54,23 @@ func TestAcademicAdministrationBatchHTTPIsStrictBoundedAndSafe(t *testing.T) {
 	request.Header.Set("Idempotency-Key", "batch-key")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" ||
-		applicationFake.command.Operation != app.AcademicAdministrationClassTransfer || applicationFake.command.ScopeID != classID ||
-		applicationFake.command.IdempotencyKey != "batch-key" || len(applicationFake.command.Items) != 1 ||
-		applicationFake.command.Items[0].UserID != userID || applicationFake.command.Items[0].RelationshipID != previousID ||
-		!strings.Contains(response.Body.String(), `"succeeded":1`) || !strings.Contains(response.Body.String(), `"no_op":1`) ||
-		!strings.Contains(response.Body.String(), `"class.enrollment_conflict"`) || strings.Contains(response.Body.String(), userID) {
-		t.Fatalf("academic administration batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.command)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "academic administration batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.command)
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "academic administration batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.command)
+	require.Equal(t, app.AcademicAdministrationClassTransfer, applicationFake.command.Operation, "academic administration batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.command)
+	require.Equal(t, classID, applicationFake.command.ScopeID, "academic administration batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.command)
+	require.Equal(t, "batch-key", applicationFake.command.IdempotencyKey, "academic administration batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.command)
+	require.Len(t, applicationFake.command.Items, 1, "academic administration batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.command)
+	require.Equal(t, userID, applicationFake.command.Items[0].UserID, "academic administration batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.command)
+	require.Equal(t, previousID, applicationFake.command.Items[0].RelationshipID, "academic administration batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.command)
+	require.Contains(t, response.Body.String(), `"succeeded":1`, "academic administration batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.command)
+	require.Contains(t, response.Body.String(), `"no_op":1`, "academic administration batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.command)
+	require.Contains(t, response.Body.String(), `"class.enrollment_conflict"`, "academic administration batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.command)
+	require.NotContains(t, response.Body.String(), userID, "academic administration batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.command)
 
 	unknown := newJSONRequest(http.MethodPost, "/api/v1/academic-administration-batches", strings.NewReader(`{"operation":"class.end","scope_type":"class","scope_id":"`+classID+`","items":[],"command":"forbidden"}`))
 	unknown.Header.Set("Authorization", "Bearer session")
 	unknown.Header.Set("Idempotency-Key", "unknown")
 	unknownResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(unknownResponse, unknown)
-	if unknownResponse.Code != http.StatusBadRequest {
-		t.Fatalf("unknown command envelope = %d %s", unknownResponse.Code, unknownResponse.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, unknownResponse.Code, "unknown command envelope = %d %s", unknownResponse.Code, unknownResponse.Body.String())
 }

@@ -16,6 +16,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPlatformDoesNotExposeInfrastructureLookup(t *testing.T) {
@@ -46,15 +49,13 @@ func TestPlatformDoesNotExposeInfrastructureLookup(t *testing.T) {
 				receiver = pointer.X
 			}
 			identifier, ok := receiver.(*ast.Ident)
-			if ok && identifier.Name == "Service" && !allowed[function.Name.Name] {
-				t.Errorf("platform Service exposes non-lifecycle method %q in %s", function.Name.Name, path)
+			if ok && identifier.Name == "Service" {
+				assert.True(t, allowed[function.Name.Name], "platform Service exposes non-lifecycle method %q in %s", function.Name.Name, path)
 			}
 		}
 		return nil
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 }
 
 func TestConstructionProjectionRemainsRootPrivate(t *testing.T) {
@@ -102,17 +103,15 @@ func TestConstructionProjectionRemainsRootPrivate(t *testing.T) {
 			}
 			ast.Inspect(declaration, func(node ast.Node) bool {
 				identifier, ok := node.(*ast.Ident)
-				if ok && identifier.Name == "constructionCapabilities" {
-					t.Errorf("construction projection escaped into %s outside its reviewed construction seams", path)
+				if ok {
+					assert.NotEqual(t, "constructionCapabilities", identifier.Name, "construction projection escaped into %s outside its reviewed construction seams", path)
 				}
 				return true
 			})
 		}
 		return nil
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 }
 
 func TestConstructionProjectionOmitsLifecycleAuthority(t *testing.T) {
@@ -120,9 +119,7 @@ func TestConstructionProjectionOmitsLifecycleAuthority(t *testing.T) {
 
 	path := filepath.Join("..", "infrastructure.go")
 	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	forbidden := map[string]bool{"Close": true, "Shutdown": true, "Start": true, "Stop": true, "Ping": true}
 	checked := map[string]bool{}
 	for _, declaration := range file.Decls {
@@ -142,24 +139,18 @@ func TestConstructionProjectionOmitsLifecycleAuthority(t *testing.T) {
 			}
 			for _, method := range contract.Methods.List {
 				for _, name := range method.Names {
-					if forbidden[name.Name] {
-						t.Errorf("borrowed capability %s exposes lifecycle method %s", typeSpec.Name.Name, name.Name)
-					}
+					assert.False(t, forbidden[name.Name], "borrowed capability %s exposes lifecycle method %s", typeSpec.Name.Name, name.Name)
 				}
 			}
 		}
 	}
 	for _, name := range []string{"borrowedCache", "borrowedMailer", "borrowedCluster"} {
-		if !checked[name] {
-			t.Errorf("borrowed capability contract %s was removed or made uninspectable", name)
-		}
+		assert.True(t, checked[name], "borrowed capability contract %s was removed or made uninspectable", name)
 	}
 
 	serverPath := filepath.Join("..", "server.go")
 	serverFile, err := parser.ParseFile(token.NewFileSet(), serverPath, nil, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, declaration := range serverFile.Decls {
 		generic, ok := declaration.(*ast.GenDecl)
 		if !ok {
@@ -174,16 +165,12 @@ func TestConstructionProjectionOmitsLifecycleAuthority(t *testing.T) {
 			contract := typeSpec.Type.(*ast.InterfaceType)
 			for _, method := range contract.Methods.List {
 				for _, name := range method.Names {
-					if forbidden[name.Name] {
-						t.Errorf("runtimeLogger exposes lifecycle method %s", name.Name)
-					}
+					assert.False(t, forbidden[name.Name], "runtimeLogger exposes lifecycle method %s", name.Name)
 				}
 			}
 		}
 	}
-	if !checked["runtimeLogger"] {
-		t.Error("runtimeLogger borrowed contract was removed or made uninspectable")
-	}
+	assert.True(t, checked["runtimeLogger"], "runtimeLogger borrowed contract was removed or made uninspectable")
 }
 
 func TestTestingRuntimeIsBehavioralProjection(t *testing.T) {
@@ -202,27 +189,20 @@ func TestTestingRuntimeIsBehavioralProjection(t *testing.T) {
 				continue
 			}
 			structure := typeSpec.Type.(*ast.StructType)
-			if len(structure.Fields.List) != len(want) {
-				t.Fatalf("TestingRuntime fields = %d, want exactly Server, Application, Handler", len(structure.Fields.List))
-			}
+			require.Len(t, structure.Fields.List, len(want), "TestingRuntime fields")
 			for _, field := range structure.Fields.List {
-				if len(field.Names) != 1 {
-					t.Fatal("TestingRuntime contains an embedded or grouped field")
-				}
+				require.Len(t, field.Names, 1, "TestingRuntime contains an embedded or grouped field")
 				name := field.Names[0].Name
 				wantType, ok := want[name]
-				if !ok {
-					t.Errorf("TestingRuntime exposes %s outside the behavioral projection", name)
+				if !assert.True(t, ok, "TestingRuntime exposes %s outside the behavioral projection", name) {
 					continue
 				}
-				if !expressionNamesType(field.Type, wantType) {
-					t.Errorf("TestingRuntime.%s has unexpected type", name)
-				}
+				assert.True(t, expressionNamesType(field.Type, wantType), "TestingRuntime.%s has unexpected type", name)
 			}
 			return
 		}
 	}
-	t.Fatal("TestingRuntime declaration not found")
+	require.FailNow(t, "TestingRuntime declaration not found")
 }
 
 func TestTestingOverridesCannotReplaceCompositionPhases(t *testing.T) {
@@ -241,14 +221,12 @@ func TestTestingOverridesCannotReplaceCompositionPhases(t *testing.T) {
 			}
 			structure := typeSpec.Type.(*ast.StructType)
 			for _, field := range structure.Fields.List {
-				if containsFunctionType(field.Type) {
-					t.Errorf("TestingOverrides exposes function-valued phase override %s", field.Names[0].Name)
-				}
+				assert.False(t, containsFunctionType(field.Type), "TestingOverrides exposes function-valued phase override")
 			}
 			return
 		}
 	}
-	t.Fatal("TestingOverrides declaration not found")
+	require.FailNow(t, "TestingOverrides declaration not found")
 }
 
 func TestNewForTestingDoesNotStartRuntime(t *testing.T) {
@@ -262,22 +240,20 @@ func TestNewForTestingDoesNotStartRuntime(t *testing.T) {
 		}
 		ast.Inspect(function.Body, func(node ast.Node) bool {
 			selector, ok := node.(*ast.SelectorExpr)
-			if ok && selector.Sel.Name == "Start" {
-				t.Error("NewForTesting performs hidden runtime startup")
+			if ok {
+				assert.NotEqual(t, "Start", selector.Sel.Name, "NewForTesting performs hidden runtime startup")
 			}
 			return true
 		})
 		return
 	}
-	t.Fatal("NewForTesting declaration not found")
+	require.FailNow(t, "NewForTesting declaration not found")
 }
 
 func parseRuntimeOwnershipFile(t *testing.T, path string) *ast.File {
 	t.Helper()
 	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return file
 }
 

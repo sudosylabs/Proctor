@@ -10,6 +10,8 @@ package localization
 import (
 	"testing"
 	"testing/fstest"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestLocalizerFallsBackPerMessageAndInterpolates(t *testing.T) {
@@ -24,34 +26,24 @@ func TestLocalizerFallsBackPerMessageAndInterpolates(t *testing.T) {
 ]`)},
 	}
 	localizer, err := New(files, "en")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	locales := localizer.SupportedLocales()
-	if localizer.DefaultLocale() != "en" || len(locales) != 2 || locales[0] != "en" || locales[1] != "fr" {
-		t.Fatalf("locale metadata = default %q supported %#v", localizer.DefaultLocale(), locales)
-	}
+	require.Equal(t, "en", localizer.DefaultLocale(), "locale metadata = default")
+	require.Len(t, locales, 2, "locale metadata = default")
+	require.Equal(t, "en", locales[0], "locale metadata = default")
+	require.Equal(t, "fr", locales[1], "locale metadata = default")
 	locales[0] = "changed"
-	if localizer.SupportedLocales()[0] != "en" {
-		t.Fatal("supported locales exposed mutable localizer state")
-	}
+	require.Equal(t, "en", localizer.SupportedLocales()[0], "supported locales exposed mutable localizer state")
 	translated, err := localizer.Resolve("fr-CA", "greeting", struct{ Name string }{"Ada"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if translated.Locale != "fr" || translated.Text != "Bonjour Ada" {
-		t.Fatalf("translation = %#v", translated)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "fr", translated.Locale)
+	require.Equal(t, "Bonjour Ada", translated.Text)
 	fallback, err := localizer.Resolve("fr", "only.english", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fallback.Locale != "en" || fallback.Text != "English only" {
-		t.Fatalf("fallback = %#v", fallback)
-	}
-	if _, err := localizer.Resolve("en", "greeting", struct{}{}); err == nil {
-		t.Fatal("missing interpolation data was accepted")
-	}
+	require.NoError(t, err)
+	require.Equal(t, "en", fallback.Locale)
+	require.Equal(t, "English only", fallback.Text)
+	_, err = localizer.Resolve("en", "greeting", struct{}{})
+	require.Error(t, err, "missing interpolation data was accepted")
 }
 
 func TestLocalizerRejectsInvalidCatalogContracts(t *testing.T) {
@@ -75,9 +67,8 @@ func TestLocalizerRejectsInvalidCatalogContracts(t *testing.T) {
 		name, files := name, files
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := New(files, "en"); err == nil {
-				t.Fatal("invalid catalog was accepted")
-			}
+			_, err := New(files, "en")
+			require.Error(t, err, "invalid catalog was accepted")
 		})
 	}
 }
@@ -91,23 +82,16 @@ func TestLocalizerValidatesConsumerDefinitions(t *testing.T) {
 ]`)},
 		"fr.json": {Data: []byte(`[{"id":"plain","translation":"Simple"}]`)},
 	}, "en")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	definitions := []Definition{
 		{ID: "plain", Origin: "test"},
 		{ID: "greeting", Origin: "test", Variables: []string{"Name"}},
 	}
-	if err := localizer.ValidateDefinitions(definitions); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, localizer.ValidateDefinitions(definitions))
 	missing, err := localizer.MissingDefinitions("fr", definitions)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(missing) != 1 || missing[0].ID != "greeting" {
-		t.Fatalf("missing definitions = %#v", missing)
-	}
+	require.NoError(t, err)
+	require.Len(t, missing, 1)
+	require.Equal(t, "greeting", missing[0].ID)
 }
 
 func TestLocalizerRejectsDefinitionDrift(t *testing.T) {
@@ -116,9 +100,7 @@ func TestLocalizerRejectsDefinitionDrift(t *testing.T) {
   {"id":"greeting","translation":"Hello {{.Name}}"},
   {"id":"orphan","translation":"Orphan"}
 ]`)}}, "en")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	tests := map[string][]Definition{
 		"orphan": {{ID: "greeting", Origin: "test", Variables: []string{"Name"}}},
 		"variable mismatch": {
@@ -134,9 +116,7 @@ func TestLocalizerRejectsDefinitionDrift(t *testing.T) {
 		name, definitions := name, definitions
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if err := localizer.ValidateDefinitions(definitions); err == nil {
-				t.Fatal("definition drift was accepted")
-			}
+			require.Error(t, localizer.ValidateDefinitions(definitions), "definition drift was accepted")
 		})
 	}
 }
@@ -147,13 +127,9 @@ func TestLocalizerDelegatesOneExplicitCatalogNamespace(t *testing.T) {
   {"id":"server.message","translation":"Server"},
   {"id":"webapp.message","translation":"Browser"}
 ]`)}}, "en")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	definitions := []Definition{{ID: "server.message", Origin: "server"}}
-	if err := localizer.ValidateDefinitionsWithDelegatedPrefixes(definitions, "webapp."); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, localizer.ValidateDefinitionsWithDelegatedPrefixes(definitions, "webapp."))
 
 	tests := map[string]struct {
 		definitions []Definition
@@ -179,9 +155,7 @@ func TestLocalizerDelegatesOneExplicitCatalogNamespace(t *testing.T) {
 		name, test := name, test
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if err := localizer.ValidateDefinitionsWithDelegatedPrefixes(test.definitions, test.prefixes...); err == nil {
-				t.Fatal("invalid localization ownership was accepted")
-			}
+			require.Error(t, localizer.ValidateDefinitionsWithDelegatedPrefixes(test.definitions, test.prefixes...), "invalid localization ownership was accepted")
 		})
 	}
 }
@@ -193,27 +167,18 @@ func TestLocalizerUsesCLDRPluralForms(t *testing.T) {
   {"id":"items","translation":{"one":"{{.PluralCount}} item","other":"{{.PluralCount}} items"}}
 ]`)},
 	}, "en")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	definitions := []Definition{{
 		ID: "items", Origin: "test", Variables: []string{"PluralCount"}, PluralVariable: "PluralCount",
 	}}
-	if err := localizer.ValidateDefinitions(definitions); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, localizer.ValidateDefinitions(definitions))
 	for count, want := range map[int]string{1: "1 item", 2: "2 items"} {
 		got, err := localizer.TranslateRequest("en", Request{ID: "items", PluralCount: count})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got != want {
-			t.Fatalf("count %d = %q, want %q", count, got, want)
-		}
+		require.NoError(t, err)
+		require.Equal(t, want, got, "count %d", count)
 	}
-	if _, err := localizer.Resolve("en", "items", nil); err == nil {
-		t.Fatal("plural message resolved without a count")
-	}
+	_, err = localizer.Resolve("en", "items", nil)
+	require.Error(t, err, "plural message resolved without a count")
 }
 
 func TestPreferredLocaleHonorsSpecificQualityAndExclusions(t *testing.T) {
@@ -253,9 +218,7 @@ func TestPreferredLocaleHonorsSpecificQualityAndExclusions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := PreferredLocale(tt.requested, tt.supported); got != tt.want {
-				t.Fatalf("PreferredLocale(%q, %#v) = %q, want %q", tt.requested, tt.supported, got, tt.want)
-			}
+			require.Equal(t, tt.want, PreferredLocale(tt.requested, tt.supported), "PreferredLocale(%q, %#v)", tt.requested, tt.supported)
 		})
 	}
 }

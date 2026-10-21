@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -22,9 +24,7 @@ func TestExamNativePolicyHTTPStrictBoundary(t *testing.T) {
 	principal := testExamHTTPPrincipal()
 	view := testExamHTTPView(t, principal.UserID)
 	valid, err := json.Marshal(configureExamDraftNativePolicyRequest{ExpectedDraftRevision: 1, Native: model.DefaultNativeSecurityPolicy()})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for name, body := range map[string]string{"valid": string(valid), "missing native": `{"expected_draft_revision":1}`, "null native": `{"expected_draft_revision":1,"native":null}`, "case alias": strings.Replace(string(valid), `"native":`, `"NATIVE":`, 1), "extra": strings.Replace(string(valid), `"native":`, `"extra":1,"native":`, 1), "missing boolean": strings.Replace(string(valid), `"observe_os_clipboard_changes":false,`, "", 1), "external capture enabled": strings.Replace(string(valid), `"id":"external_capture","mode":"disabled"`, `"id":"external_capture","mode":"enforce"`, 1)} {
 		t.Run(name, func(t *testing.T) {
 			logger, _ := newTestLogger(t)
@@ -40,12 +40,8 @@ func TestExamNativePolicyHTTPStrictBoundary(t *testing.T) {
 			if name == "valid" {
 				want = http.StatusOK
 			}
-			if response.Code != want {
-				t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-			}
-			if fake.configureNativePolicy.ExamID.IsValid() != (name == "valid") {
-				t.Fatal("invalid command crossed boundary")
-			}
+			require.Equal(t, want, response.Code, "status = %d: %s", response.Code, response.Body.String())
+			require.Equal(t, name == "valid", fake.configureNativePolicy.ExamID.IsValid(), "invalid command crossed boundary")
 		})
 	}
 }

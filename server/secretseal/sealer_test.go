@@ -11,11 +11,12 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
@@ -29,76 +30,49 @@ func TestSealerRoundTripUsesVersionedNondeterministicEnvelope(t *testing.T) {
 		MaximumPlaintext: 1024,
 	}
 	sealer, err := secretseal.New(settings)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	binding := secretseal.Binding{Purpose: "mail.delivery", Owner: "delivery-01"}
 	plaintext := []byte("recoverable application secret")
 
 	first, err := sealer.Seal(binding, plaintext)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	second, err := sealer.Seal(binding, plaintext)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first.Version != secretseal.EnvelopeVersion1 ||
-		first.Algorithm != secretseal.AlgorithmAES256GCM ||
-		first.KeyID == "" || first.Nonce == "" || first.Ciphertext == "" {
-		t.Fatalf("Seal() envelope = %#v", first)
-	}
-	if first.Nonce == second.Nonce || first.Ciphertext == second.Ciphertext {
-		t.Fatal("Seal() reused nonce or produced deterministic ciphertext")
-	}
+	require.NoError(t, err)
+	require.Equal(t, secretseal.EnvelopeVersion1, first.Version)
+	require.Equal(t, secretseal.AlgorithmAES256GCM, first.Algorithm)
+	require.NotEmpty(t, first.KeyID)
+	require.NotEmpty(t, first.Nonce)
+	require.NotEmpty(t, first.Ciphertext)
+	require.NotEqual(t, second.Nonce, first.Nonce, "Seal() reused nonce or produced deterministic ciphertext")
+	require.NotEqual(t, second.Ciphertext, first.Ciphertext, "Seal() reused nonce or produced deterministic ciphertext")
 	opened, err := sealer.Open(binding, first)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(opened, plaintext) {
-		t.Fatalf("Open() = %q, want %q", opened, plaintext)
-	}
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(opened, plaintext), "Open() = %q, want %q", opened, plaintext)
 
 	encoded, err := json.Marshal(first)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, field := range []string{"version", "algorithm", "key_id", "nonce", "ciphertext"} {
-		if !bytes.Contains(encoded, []byte(`"`+field+`"`)) {
-			t.Fatalf("envelope JSON lacks %q: %s", field, encoded)
-		}
+		require.True(t, bytes.Contains(encoded, []byte(`"`+field+`"`)), "envelope JSON lacks %q: %s", field, encoded)
 	}
-	if bytes.Contains(encoded, plaintext) {
-		t.Fatalf("envelope JSON exposed plaintext: %s", encoded)
-	}
-	if bytes.Contains(encoded, []byte(binding.Purpose)) || bytes.Contains(encoded, []byte(binding.Owner)) {
-		t.Fatalf("envelope JSON exposed its authenticated binding: %s", encoded)
-	}
+	require.False(t, bytes.Contains(encoded, plaintext), "envelope JSON exposed plaintext: %s", encoded)
+	require.False(t, bytes.Contains(encoded, []byte(binding.Purpose)))
+	require.False(t, bytes.Contains(encoded, []byte(binding.Owner)))
 	var logOutput bytes.Buffer
 	slog.New(slog.NewJSONHandler(&logOutput, nil)).Info("sealed", "envelope", first)
 	diagnostics := fmt.Sprintf("%v\n%+v\n%#v\n%s", first, first, first, logOutput.String())
 	for _, forbidden := range [][]byte{plaintext, []byte(first.Nonce), []byte(first.Ciphertext)} {
-		if bytes.Contains([]byte(diagnostics), forbidden) {
-			t.Fatalf("envelope diagnostics exposed sealed material: %s", diagnostics)
-		}
+		require.False(t, bytes.Contains([]byte(diagnostics), forbidden), "envelope diagnostics exposed sealed material: %s", diagnostics)
 	}
 }
 
 func TestSealerProjectsOnlyPrimaryKeyIdentity(t *testing.T) {
 	sealer, err := secretseal.New(secretseal.Settings{EncryptionKey: encodedKey(9), MaximumPlaintext: 1024})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	envelope, err := sealer.Seal(secretseal.Binding{Purpose: "mail.delivery", Owner: "delivery_01"}, []byte("payload"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sealer.PrimaryKeyID() != envelope.KeyID || sealer.PrimaryKeyID() == "" {
-		t.Fatalf("PrimaryKeyID() = %q, envelope key = %q", sealer.PrimaryKeyID(), envelope.KeyID)
-	}
-	if (*secretseal.Sealer)(nil).PrimaryKeyID() != "" {
-		t.Fatal("nil sealer exposed a primary key identity")
-	}
+	require.NoError(t, err)
+	require.Equal(t, envelope.KeyID, sealer.PrimaryKeyID(), "PrimaryKeyID()")
+	require.NotEmpty(t, sealer.PrimaryKeyID(), "PrimaryKeyID()")
+	require.Empty(t, (*secretseal.Sealer)(nil).PrimaryKeyID(), "nil sealer exposed a primary key identity")
 }
 
 func TestOpenRejectsWrongBindingAndInvalidEnvelopeWithSafeErrors(t *testing.T) {
@@ -109,14 +83,10 @@ func TestOpenRejectsWrongBindingAndInvalidEnvelopeWithSafeErrors(t *testing.T) {
 		EncryptionKey:    encodedKey(2),
 		MaximumPlaintext: 1024,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	binding := secretseal.Binding{Purpose: "mail.delivery", Owner: "delivery-02"}
 	envelope, err := sealer.Seal(binding, []byte(plaintext))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	tests := []struct {
 		name    string
@@ -156,30 +126,22 @@ func TestOpenRejectsWrongBindingAndInvalidEnvelopeWithSafeErrors(t *testing.T) {
 				candidate = test.mutate(candidate)
 			}
 			_, openErr := sealer.Open(test.binding, candidate)
-			if !errors.Is(openErr, secretseal.ErrInvalidEnvelope) {
-				t.Fatalf("Open() error = %v, want ErrInvalidEnvelope", openErr)
-			}
-			if strings.Contains(openErr.Error(), plaintext) ||
-				strings.Contains(openErr.Error(), settingsKeyMaterial(2)) ||
-				strings.Contains(openErr.Error(), binding.Owner) {
-				t.Fatalf("Open() exposed secret or binding data: %v", openErr)
-			}
+			require.ErrorIs(t, openErr, secretseal.ErrInvalidEnvelope, "Open() error")
+			require.NotContains(t, openErr.Error(), plaintext)
+			require.NotContains(t, openErr.Error(), settingsKeyMaterial(2))
+			require.NotContains(t, openErr.Error(), binding.Owner)
 		})
 	}
 }
 
 func TestHasKeyExposesOnlyRingMembership(t *testing.T) {
 	sealer, err := secretseal.New(secretseal.Settings{EncryptionKey: encodedKey(1), MaximumPlaintext: 1024})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	envelope, err := sealer.Seal(secretseal.Binding{Purpose: "mail.payload", Owner: "owner"}, []byte("secret"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !sealer.HasKey(envelope.KeyID) || sealer.HasKey(strings.Repeat("0", 32)) || (*secretseal.Sealer)(nil).HasKey(envelope.KeyID) {
-		t.Fatal("HasKey did not report exact configured-key membership")
-	}
+	require.NoError(t, err)
+	require.True(t, sealer.HasKey(envelope.KeyID), "HasKey did not report exact configured-key membership")
+	require.False(t, sealer.HasKey(strings.Repeat("0", 32)), "HasKey did not report exact configured-key membership")
+	require.False(t, (*secretseal.Sealer)(nil).HasKey(envelope.KeyID), "HasKey did not report exact configured-key membership")
 }
 
 func TestFallbackKeyReadsSupportPrimaryRotation(t *testing.T) {
@@ -190,34 +152,22 @@ func TestFallbackKeyReadsSupportPrimaryRotation(t *testing.T) {
 	oldSealer, err := secretseal.New(secretseal.Settings{
 		EncryptionKey: oldKey, MaximumPlaintext: 1024,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	rotated, err := secretseal.New(secretseal.Settings{
 		EncryptionKey: newKey, DecryptionKeys: []string{oldKey}, MaximumPlaintext: 1024,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	binding := secretseal.Binding{Purpose: "mail.bundle", Owner: "occurrence-01"}
 	oldEnvelope, err := oldSealer.Seal(binding, []byte("before rotation"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	opened, err := rotated.Open(binding, oldEnvelope)
-	if err != nil || string(opened) != "before rotation" {
-		t.Fatalf("Open(old envelope) = %q, %v", opened, err)
-	}
+	require.NoError(t, err, "Open(old envelope)")
+	require.Equal(t, "before rotation", string(opened), "Open(old envelope)")
 	newEnvelope, err := rotated.Seal(binding, []byte("after rotation"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if newEnvelope.KeyID == oldEnvelope.KeyID {
-		t.Fatal("rotated primary did not change the envelope key identity")
-	}
-	if _, err := oldSealer.Open(binding, newEnvelope); !errors.Is(err, secretseal.ErrInvalidEnvelope) {
-		t.Fatalf("old key ring Open(new envelope) error = %v, want ErrInvalidEnvelope", err)
-	}
+	require.NoError(t, err)
+	require.NotEqual(t, oldEnvelope.KeyID, newEnvelope.KeyID, "rotated primary did not change the envelope key identity")
+	_, err = oldSealer.Open(binding, newEnvelope)
+	require.ErrorIs(t, err, secretseal.ErrInvalidEnvelope, "old key ring Open(new envelope) error")
 }
 
 func TestSettingsRejectInvalidKeysBindingsAndBounds(t *testing.T) {
@@ -241,35 +191,30 @@ func TestSettingsRejectInvalidKeysBindingsAndBounds(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := secretseal.New(test.settings); !errors.Is(err, secretseal.ErrInvalidSettings) {
-				t.Fatalf("New() error = %v, want ErrInvalidSettings", err)
-			}
+			_, err := secretseal.New(test.settings)
+			require.ErrorIs(t, err, secretseal.ErrInvalidSettings, "New() error")
 		})
 	}
 	invalidKey := settingsKeyMaterial(9)
-	if _, err := secretseal.New(secretseal.Settings{
+	_, err := secretseal.New(secretseal.Settings{
 		EncryptionKey: invalidKey, MaximumPlaintext: 32,
-	}); !errors.Is(err, secretseal.ErrInvalidSettings) || strings.Contains(err.Error(), invalidKey) {
-		t.Fatalf("New(invalid key) error = %v", err)
-	}
+	})
+	require.ErrorIs(t, err, secretseal.ErrInvalidSettings)
+	require.NotContains(t, err.Error(), invalidKey)
 
 	sealer, err := secretseal.New(valid)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	validBinding := secretseal.Binding{Purpose: "mail.delivery", Owner: "delivery-04"}
-	if _, err := sealer.Seal(validBinding, make([]byte, 33)); !errors.Is(err, secretseal.ErrPlaintextTooLarge) {
-		t.Fatalf("Seal(oversize) error = %v, want ErrPlaintextTooLarge", err)
-	}
+	_, err = sealer.Seal(validBinding, make([]byte, 33))
+	require.ErrorIs(t, err, secretseal.ErrPlaintextTooLarge, "Seal(oversize) error")
 	for _, binding := range []secretseal.Binding{
 		{},
 		{Purpose: "Mail Delivery", Owner: "delivery-04"},
 		{Purpose: "mail.delivery", Owner: ""},
 		{Purpose: "mail.delivery", Owner: "unsafe\nowner"},
 	} {
-		if _, err := sealer.Seal(binding, []byte("secret")); !errors.Is(err, secretseal.ErrInvalidBinding) {
-			t.Fatalf("Seal(%#v) error = %v, want ErrInvalidBinding", binding, err)
-		}
+		_, err := sealer.Seal(binding, []byte("secret"))
+		require.ErrorIs(t, err, secretseal.ErrInvalidBinding, "Seal(%#v) error", binding)
 	}
 }
 
@@ -280,17 +225,11 @@ func TestSettingsAndSealerExcludeKeysFromDiagnosticRepresentations(t *testing.T)
 		EncryptionKey: encodedKey(7), DecryptionKeys: []string{encodedKey(8)}, MaximumPlaintext: 64,
 	}
 	sealer, err := secretseal.New(settings)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	jsonSettings, err := json.Marshal(settings)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	jsonSealer, err := json.Marshal(sealer)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var logOutput bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logOutput, nil))
 	logger.Info("configuration", "settings", settings, "sealer", sealer)
@@ -299,9 +238,7 @@ func TestSettingsAndSealerExcludeKeysFromDiagnosticRepresentations(t *testing.T)
 		fmt.Sprintf("%+v", settings), fmt.Sprintf("%#v", settings), logOutput.String(),
 	}, "\n")
 	for _, forbidden := range []string{settings.EncryptionKey, settings.DecryptionKeys[0]} {
-		if strings.Contains(diagnostics, forbidden) {
-			t.Fatalf("diagnostics exposed key material %q: %s", forbidden, diagnostics)
-		}
+		require.NotContains(t, diagnostics, forbidden, "diagnostics exposed key material")
 	}
 }
 
@@ -312,37 +249,27 @@ func TestSettingsAndEnvelopeExposeOnlySafeAuditFields(t *testing.T) {
 		EncryptionKey: encodedKey(10), DecryptionKeys: []string{encodedKey(11)}, MaximumPlaintext: 128,
 	}
 	sealer, err := secretseal.New(settings)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	binding := secretseal.Binding{Purpose: "mail.delivery", Owner: "delivery-audit"}
 	plaintext := []byte("audit-secret-must-not-leak")
 	envelope, err := sealer.Seal(binding, plaintext)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var _ model.Auditable = settings
 	var _ model.Auditable = envelope
 	encoded, err := json.Marshal(map[string]any{
 		"settings": settings.Auditable(),
 		"envelope": envelope.Auditable(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, forbidden := range [][]byte{
 		[]byte(settings.EncryptionKey), []byte(settings.DecryptionKeys[0]),
 		plaintext, []byte(envelope.Nonce), []byte(envelope.Ciphertext),
 		[]byte(binding.Purpose), []byte(binding.Owner),
 	} {
-		if bytes.Contains(encoded, forbidden) {
-			t.Fatalf("audit fields exposed secret material: %s", encoded)
-		}
+		require.False(t, bytes.Contains(encoded, forbidden), "audit fields exposed secret material: %s", encoded)
 	}
 	for _, safe := range []string{"version", "algorithm", "key_id", "maximum_plaintext"} {
-		if !bytes.Contains(encoded, []byte(`"`+safe+`"`)) {
-			t.Fatalf("audit fields lack safe metadata %q: %s", safe, encoded)
-		}
+		require.True(t, bytes.Contains(encoded, []byte(`"`+safe+`"`)), "audit fields lack safe metadata %q: %s", safe, encoded)
 	}
 }
 

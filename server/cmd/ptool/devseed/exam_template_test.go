@@ -12,6 +12,8 @@ import (
 	"path"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestExamProfilesContainCoherentWorkspaceTrees(t *testing.T) {
@@ -24,29 +26,25 @@ func TestExamProfilesContainCoherentWorkspaceTrees(t *testing.T) {
 				titles[template.Title] = true
 				entries := map[string]bool{".": true}
 				for _, dir := range template.Directories {
-					if path.Clean(dir) != dir || !entries[path.Dir(dir)] || entries[dir] {
-						t.Fatalf("invalid directory order or path: %s", dir)
-					}
+					require.Equal(t, dir, path.Clean(dir))
+					require.True(t, entries[path.Dir(dir)])
+					require.False(t, entries[dir])
 					entries[dir] = true
 				}
 				for _, file := range template.Files {
-					if path.Clean(file.Name) != file.Name || !entries[path.Dir(file.Name)] || entries[file.Name] {
-						t.Fatalf("file has no parent or collides: %s", file.Name)
-					}
+					require.Equal(t, file.Name, path.Clean(file.Name))
+					require.True(t, entries[path.Dir(file.Name)])
+					require.False(t, entries[file.Name])
 					entries[file.Name] = true
 				}
 				for _, resource := range template.Resources {
-					if resource.Media == "application/json" && !json.Valid([]byte(resource.Content)) {
-						t.Fatalf("invalid JSON resource: %s", resource.Name)
+					if resource.Media == "application/json" {
+						require.True(t, json.Valid([]byte(resource.Content)), "invalid JSON resource: %s", resource.Name)
 					}
 				}
-				if strings.TrimSpace(template.Instructions) == "" {
-					t.Fatal("missing exercise instructions")
-				}
+				require.NotEmpty(t, strings.TrimSpace(template.Instructions), "missing exercise instructions")
 			}
-			if len(titles) != 4 {
-				t.Fatalf("profile is missing a populated or empty-draft scenario: %d", len(titles))
-			}
+			require.Len(t, titles, 4, "profile is missing a populated or empty-draft scenario")
 		})
 	}
 }

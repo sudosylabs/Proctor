@@ -12,49 +12,36 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewUserSettingsDocumentCreatesCanonicalExactSource(t *testing.T) {
 	at := time.Date(2026, time.August, 15, 12, 0, 0, 123456789, time.FixedZone("test", 3600))
 	document, err := NewUserSettingsDocument(NewUserID(), NewUserSettingsRevision(), at)
-	if err != nil {
-		t.Fatalf("NewUserSettingsDocument() error = %v", err)
-	}
-	if document.Source != UserSettingsInitialSource || document.FormatVersion != UserSettingsFormatVersion1 {
-		t.Fatalf("document source/version = %q/%d", document.Source, document.FormatVersion)
-	}
+	require.NoError(t, err)
+	require.Equal(t, UserSettingsInitialSource, document.Source, "document source/version")
+	require.Equal(t, UserSettingsFormatVersion1, document.FormatVersion, "document source/version")
 	want := time.Date(2026, time.August, 15, 11, 0, 0, 123456000, time.UTC)
-	if document.CreatedAt != want || document.UpdatedAt != want {
-		t.Fatalf("document times = %v/%v, want UTC microseconds %v", document.CreatedAt, document.UpdatedAt, want)
-	}
-	if !document.Revision.IsValid() {
-		t.Fatalf("document revision = %q, want valid opaque revision", document.Revision)
-	}
+	require.Equal(t, want, document.CreatedAt, "document times")
+	require.Equal(t, want, document.UpdatedAt, "document times")
+	require.True(t, document.Revision.IsValid(), "document revision = %q, want valid opaque revision", document.Revision)
 }
 
 func TestUserSettingsDocumentValidationIsSourceSafe(t *testing.T) {
 	document, err := NewUserSettingsDocument(NewUserID(), NewUserSettingsRevision(), time.Now())
-	if err != nil {
-		t.Fatalf("NewUserSettingsDocument() error = %v", err)
-	}
+	require.NoError(t, err)
 	document.Source = `{"private.future":"do not expose"}`
 
 	encoded, err := json.Marshal(document)
-	if err != nil {
-		t.Fatalf("json.Marshal() error = %v", err)
-	}
-	if strings.Contains(string(encoded), "private") || strings.Contains(string(encoded), "do not expose") {
-		t.Fatalf("JSON exposed source: %s", encoded)
-	}
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), "private")
+	require.NotContains(t, string(encoded), "do not expose")
 
 	document.Source = strings.Repeat("x", UserSettingsSourceMaxBytes+1)
 	err = document.Validate()
-	if err == nil {
-		t.Fatal("Validate() accepted oversized source")
-	}
-	if strings.Contains(err.Error(), "xxxxx") {
-		t.Fatalf("validation error exposed source: %v", err)
-	}
+	require.Error(t, err, "Validate() accepted oversized source")
+	require.NotContains(t, err.Error(), "xxxxx")
 }
 
 func TestUserSettingsDocumentAcceptsBoundedOpaqueFutureFormat(t *testing.T) {
@@ -64,12 +51,10 @@ func TestUserSettingsDocumentAcceptsBoundedOpaqueFutureFormat(t *testing.T) {
 		UserID: NewUserID(), Source: source, FormatVersion: 2,
 		Revision: NewUserSettingsRevision(), CreatedAt: at, UpdatedAt: at,
 	}
-	if err := document.Validate(); err != nil {
-		t.Fatalf("Validate() rejected bounded opaque future format: %v", err)
-	}
-	if clone := document.Clone(); clone.Source != source || clone.FormatVersion != 2 {
-		t.Fatalf("Clone() = %#v", clone)
-	}
+	require.NoError(t, document.Validate())
+	clone := document.Clone()
+	require.Equal(t, source, clone.Source)
+	require.Equal(t, 2, clone.FormatVersion)
 }
 
 func TestUserSettingsDocumentRejectsInvalidDurableState(t *testing.T) {
@@ -99,9 +84,7 @@ func TestUserSettingsDocumentRejectsInvalidDurableState(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			candidate := valid
 			test.mutate(&candidate)
-			if err := candidate.Validate(); err == nil {
-				t.Fatal("Validate() accepted invalid durable state")
-			}
+			require.Error(t, candidate.Validate(), "Validate() accepted invalid durable state")
 		})
 	}
 }

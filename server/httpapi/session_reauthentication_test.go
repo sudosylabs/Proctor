@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -42,21 +44,22 @@ func TestPasswordReauthenticationHTTPRejectsIdentitySelectionAndProtectsResponse
 		body   string
 		status int
 	}{{`{"password":"secret","user_id":"other"}`, 400}, {`{"password":"secret","login_id":"other@example.edu"}`, 400}, {`{"password":"secret"}`, 200}} {
-		request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/reauthenticate/password", strings.NewReader(test.body))
-		request.Header.Set("Authorization", "Bearer session")
-		request.Header.Set("Content-Type", "application/json")
-		response := httptest.NewRecorder()
-		api.ServeHTTP(response, request)
-		if response.Code != test.status {
-			t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
-		}
-		if response.Code == 200 && (response.Header().Get("Cache-Control") != "no-store" || !strings.Contains(response.Body.String(), `"reauthenticated_at"`)) {
-			t.Fatal("fresh-proof response not protected/projected")
-		}
+		t.Run(test.body, func(t *testing.T) {
+			request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/auth/reauthenticate/password", strings.NewReader(test.body))
+			request.Header.Set("Authorization", "Bearer session")
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			api.ServeHTTP(response, request)
+			require.Equal(t, test.status, response.Code, "status=%d body=%s", response.Code, response.Body.String())
+			if response.Code == 200 {
+				require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "fresh-proof response not protected/projected")
+				require.Contains(t, response.Body.String(), `"reauthenticated_at"`, "fresh-proof response not protected/projected")
+			}
+		})
 	}
-	if fake.calls != 1 || fake.invocation.Principal().UserID != principal.UserID || fake.command.Password != "secret" {
-		t.Fatal("transport did not bind the immutable current identity")
-	}
+	require.Equal(t, 1, fake.calls, "transport did not bind the immutable current identity")
+	require.Equal(t, principal.UserID, fake.invocation.Principal().UserID, "transport did not bind the immutable current identity")
+	require.Equal(t, "secret", fake.command.Password, "transport did not bind the immutable current identity")
 }
 
 func (*sessionReauthenticationHTTPFake) BeginExternalReauthentication(context.Context, app.Invocation, app.BeginExternalReauthenticationCommand) (*model.ExternalAuthenticationStart, error) {

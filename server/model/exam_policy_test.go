@@ -10,54 +10,42 @@ package model
 import (
 	"bytes"
 	"os"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestDefaultExamPolicySet(t *testing.T) {
 	t.Parallel()
 	policy := DefaultExamPolicySet()
-	if err := policy.Validate(); err != nil {
-		t.Fatalf("default policy: %v", err)
-	}
-	if policy.SchemaVersion != ExamPolicySchemaVersion || policy.ConnectionLoss.Outcome != IntegrityOutcomeFlagAndSuspend {
-		t.Fatalf("unexpected connection policy: %#v", policy)
-	}
-	if !policy.FocusLoss.Enabled || policy.FocusLoss.MinimumDuration != 2*time.Second || policy.FocusLoss.IncidentCount != 3 || policy.FocusLoss.Window != 5*time.Minute || policy.FocusLoss.Outcome != IntegrityOutcomeFlagAndWarn {
-		t.Fatalf("unexpected focus policy: %#v", policy.FocusLoss)
-	}
+	require.NoError(t, policy.Validate())
+	require.Equal(t, ExamPolicySchemaVersion, policy.SchemaVersion)
+	require.Equal(t, IntegrityOutcomeFlagAndSuspend, policy.ConnectionLoss.Outcome)
+	require.True(t, policy.FocusLoss.Enabled)
+	require.Equal(t, 2*time.Second, policy.FocusLoss.MinimumDuration)
+	require.Equal(t, 3, policy.FocusLoss.IncidentCount)
+	require.Equal(t, 5*time.Minute, policy.FocusLoss.Window)
+	require.Equal(t, IntegrityOutcomeFlagAndWarn, policy.FocusLoss.Outcome)
 }
 
 func TestExamPolicySetCanonicalRoundTrip(t *testing.T) {
 	t.Parallel()
 	want, err := os.ReadFile("testdata/default_exam_policy.json")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	encoded, err := EncodeExamPolicySet(DefaultExamPolicySet())
-	if err != nil {
-		t.Fatalf("encode: %v", err)
-	}
-	if !bytes.Equal(encoded, want) {
-		t.Fatalf("encoded = %s", encoded)
-	}
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(encoded, want), "encoded = %s", encoded)
 	decoded, err := DecodeExamPolicySet(encoded)
-	if err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if !decoded.Equal(DefaultExamPolicySet()) {
-		t.Fatalf("round trip = %#v", decoded)
-	}
+	require.NoError(t, err)
+	require.True(t, decoded.Equal(DefaultExamPolicySet()))
 }
 
 func TestExamPolicySetRejectsUnsafeDocuments(t *testing.T) {
 	t.Parallel()
 	validBytes, err := os.ReadFile("testdata/default_exam_policy.json")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	valid := string(validBytes)
 	tests := map[string]string{
 		"unknown version":      strings.Replace(valid, `"native":`, `"schema_version":2,"native":`, 1),
@@ -72,24 +60,20 @@ func TestExamPolicySetRejectsUnsafeDocuments(t *testing.T) {
 		name, document := name, document
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := DecodeExamPolicySet([]byte(document)); err == nil {
-				t.Fatal("expected strict decode failure")
-			}
+			_, decodeErr := DecodeExamPolicySet([]byte(document))
+			require.Error(t, decodeErr, "expected strict decode failure")
 		})
 	}
 	oversized := append([]byte(valid), bytes.Repeat([]byte(" "), ExamPolicySetMaxBytes-len(valid)+1)...)
-	if _, err := DecodeExamPolicySet(oversized); err == nil {
-		t.Fatal("expected oversized document to fail")
-	}
+	_, err = DecodeExamPolicySet(oversized)
+	require.Error(t, err, "expected oversized document to fail")
 }
 
 func TestExamDraftApplyFocusLossPolicyHonorsExactBoundsAndPreservesConnectionLoss(t *testing.T) {
 	t.Parallel()
 	at := time.Now().UTC()
 	draft, err := NewExamDraft(NewExamID(), "Systems", "", DefaultExamPolicySet(), at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	tests := []struct {
 		name   string
@@ -102,15 +86,11 @@ func TestExamDraftApplyFocusLossPolicyHonorsExactBoundsAndPreservesConnectionLos
 		t.Run(test.name, func(t *testing.T) {
 			candidate := *draft
 			changed, applyErr := candidate.ApplyFocusLossPolicy(test.policy, at.Add(time.Minute))
-			if applyErr != nil || !changed {
-				t.Fatalf("ApplyFocusLossPolicy() = %v, %v", changed, applyErr)
-			}
-			if candidate.Policy.FocusLoss != test.policy || candidate.Policy.ConnectionLoss != draft.Policy.ConnectionLoss {
-				t.Fatalf("policy = %#v, original connection loss = %#v", candidate.Policy, draft.Policy.ConnectionLoss)
-			}
-			if candidate.Revision != draft.Revision+1 {
-				t.Fatalf("revision = %d, want %d", candidate.Revision, draft.Revision+1)
-			}
+			require.NoError(t, applyErr, "ApplyFocusLossPolicy()")
+			require.True(t, changed, "ApplyFocusLossPolicy()")
+			require.Equal(t, test.policy, candidate.Policy.FocusLoss, "policy = %#v, original connection loss", candidate.Policy)
+			require.Equal(t, draft.Policy.ConnectionLoss, candidate.Policy.ConnectionLoss, "policy = %#v, original connection loss", candidate.Policy)
+			require.Equal(t, draft.Revision+1, candidate.Revision, "revision")
 		})
 	}
 }
@@ -120,9 +100,7 @@ func TestExamDraftApplyFocusLossPolicyRejectsInvalidAndSkipsNoOp(t *testing.T) {
 	at := time.Date(2026, 9, 4, 12, 0, 0, 123456789, time.UTC)
 	wantUpdatedAt := time.Date(2026, 9, 4, 12, 0, 0, 123456000, time.UTC)
 	draft, err := NewExamDraft(NewExamID(), "Systems", "", DefaultExamPolicySet(), at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	invalid := []FocusLossPolicy{
 		{Enabled: true, MinimumDuration: 499 * time.Millisecond, IncidentCount: 1, Window: 10 * time.Second, Outcome: IntegrityOutcomeFlag},
 		{Enabled: true, MinimumDuration: 5*time.Minute + time.Millisecond, IncidentCount: 1, Window: 10 * time.Minute, Outcome: IntegrityOutcomeFlag},
@@ -135,15 +113,14 @@ func TestExamDraftApplyFocusLossPolicyRejectsInvalidAndSkipsNoOp(t *testing.T) {
 	}
 	for _, policy := range invalid {
 		candidate := *draft
-		if changed, applyErr := candidate.ApplyFocusLossPolicy(policy, at.Add(time.Minute)); applyErr == nil || changed {
-			t.Fatalf("invalid policy accepted: %#v", policy)
-		}
-		if !reflect.DeepEqual(candidate, *draft) {
-			t.Fatal("invalid policy mutated Draft")
-		}
+		changed, applyErr := candidate.ApplyFocusLossPolicy(policy, at.Add(time.Minute))
+		require.Error(t, applyErr)
+		require.False(t, changed)
+		require.Equal(t, *draft, candidate, "invalid policy mutated Draft")
 	}
 	changed, err := draft.ApplyFocusLossPolicy(draft.Policy.FocusLoss, at.Add(time.Minute))
-	if err != nil || changed || draft.Revision != 1 || !draft.UpdatedAt.Equal(wantUpdatedAt) {
-		t.Fatalf("no-op = %v, %v, draft=%#v", changed, err, draft)
-	}
+	require.NoError(t, err, "no-op = %v, %v, draft=%#v", changed, err, draft)
+	require.False(t, changed, "no-op = %v, %v, draft=%#v", changed, err, draft)
+	require.Equal(t, int64(1), draft.Revision, "no-op = %v, %v, draft=%#v", changed, err, draft)
+	require.True(t, draft.UpdatedAt.Equal(wantUpdatedAt), "no-op = %v, %v, draft=%#v", changed, err, draft)
 }

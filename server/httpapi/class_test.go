@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -89,20 +91,12 @@ func TestClassResourceRunsThroughRoutingKernelWithNarrowDependencies(t *testing.
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusCreated {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
-	if classes.createCommand.ProgrammeLevelID != class.ProgrammeLevelID ||
-		classes.createCommand.AcademicPeriodID != class.AcademicPeriodID.String() {
-		t.Fatalf("command = %#v", classes.createCommand)
-	}
+	require.Equal(t, http.StatusCreated, response.Code, "status = %d: %s", response.Code, response.Body.String())
+	require.Equal(t, class.ProgrammeLevelID, classes.createCommand.ProgrammeLevelID)
+	require.Equal(t, class.AcademicPeriodID.String(), classes.createCommand.AcademicPeriodID)
 	var body classResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body.ID != class.ID.String() {
-		t.Fatalf("response = %#v", body)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	require.Equal(t, class.ID.String(), body.ID)
 
 	invalid := httptest.NewRequest(
 		http.MethodPost,
@@ -113,9 +107,7 @@ func TestClassResourceRunsThroughRoutingKernelWithNarrowDependencies(t *testing.
 	invalid.Header.Set("Content-Type", "application/json")
 	invalidResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(invalidResponse, invalid)
-	if invalidResponse.Code != http.StatusBadRequest {
-		t.Fatalf("invalid status = %d: %s", invalidResponse.Code, invalidResponse.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, invalidResponse.Code, "invalid status = %d: %s", invalidResponse.Code, invalidResponse.Body.String())
 
 	archive := httptest.NewRequest(
 		http.MethodDelete,
@@ -125,16 +117,9 @@ func TestClassResourceRunsThroughRoutingKernelWithNarrowDependencies(t *testing.
 	archive.Header.Set("Authorization", "Bearer credential")
 	archiveResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(archiveResponse, archive)
-	if archiveResponse.Code != http.StatusNoContent ||
-		archiveResponse.Header().Get("Cache-Control") != "no-store" ||
-		archiveResponse.Body.Len() != 0 {
-		t.Fatalf(
-			"archive status/cache/body = %d/%q/%q",
-			archiveResponse.Code,
-			archiveResponse.Header().Get("Cache-Control"),
-			archiveResponse.Body.String(),
-		)
-	}
+	require.Equal(t, http.StatusNoContent, archiveResponse.Code, "archive status/cache/body = %d/%q/%q", archiveResponse.Code, archiveResponse.Header().Get("Cache-Control"), archiveResponse.Body.String())
+	require.Equal(t, "no-store", archiveResponse.Header().Get("Cache-Control"), "archive status/cache/body = %d/%q/%q", archiveResponse.Code, archiveResponse.Header().Get("Cache-Control"), archiveResponse.Body.String())
+	require.Equal(t, 0, archiveResponse.Body.Len(), "archive status/cache/body = %d/%q/%q", archiveResponse.Code, archiveResponse.Header().Get("Cache-Control"), archiveResponse.Body.String())
 }
 
 func TestClassResourceFailsClosedForUndeclaredApplicationError(t *testing.T) {
@@ -166,16 +151,10 @@ func TestClassResourceFailsClosedForUndeclaredApplicationError(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusInternalServerError, response.Code, "status = %d: %s", response.Code, response.Body.String())
 	var problem Problem
-	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-		t.Fatal(err)
-	}
-	if problem.Code != "server.internal" {
-		t.Fatalf("problem code = %q, want internal", problem.Code)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &problem))
+	require.Equal(t, "server.internal", problem.Code, "problem code")
 }
 
 func TestClassResourceFailsClosedForUndeclaredAuthenticationError(t *testing.T) {
@@ -196,16 +175,10 @@ func TestClassResourceFailsClosedForUndeclaredAuthenticationError(t *testing.T) 
 	request.Header.Set("Authorization", "Bearer credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusInternalServerError, response.Code, "status = %d: %s", response.Code, response.Body.String())
 	var problem Problem
-	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-		t.Fatal(err)
-	}
-	if problem.Code != "server.internal" {
-		t.Fatalf("problem code = %q, want internal", problem.Code)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &problem))
+	require.Equal(t, "server.internal", problem.Code, "problem code")
 }
 
 func newFocusedResourceAPI(
@@ -216,9 +189,7 @@ func newFocusedResourceAPI(
 ) *API {
 	t.Helper()
 	cookies, err := newBrowserCookies("http://localhost:8065")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	httpAPI := &API{
 		authenticator:           authenticator,
 		logger:                  logger,
@@ -227,15 +198,13 @@ func newFocusedResourceAPI(
 		browserRequests:         browserRequestPolicy{origin: "http://localhost:8065"},
 		recentAuthenticationTTL: time.Minute,
 	}
-	if err := httpAPI.buildRoutingKernel(
+	require.NoError(t, httpAPI.buildRoutingKernel(
 		model.APIURLSuffix,
 		1<<20,
 		func() error {
 			return httpAPI.collectResources(model.APIURLSuffix, resources...)
 		},
-	); err != nil {
-		t.Fatal(err)
-	}
+	))
 	return httpAPI
 }
 
@@ -262,17 +231,13 @@ func TestClassSearchMapsMissingAcademicUnit(t *testing.T) {
 	options.Institutions = transport
 	options.Classes = classes
 	httpAPI, err := New(options)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = httpAPI.Close() })
 	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/academic-units/"+model.NewID()+"/classes", nil)
 	request.Header.Set("Authorization", "Bearer credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusNotFound {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusNotFound, response.Code, "status = %d: %s", response.Code, response.Body.String())
 }
 func (a *classHTTPApplication) CreateClass(_ context.Context, _ app.Invocation, command app.CreateClassCommand) (*model.Class, error) {
 	a.createCommand = command
@@ -301,9 +266,7 @@ func TestClassHTTPMapsBothParentsFromRouteAndBody(t *testing.T) {
 	options.Institutions = transport
 	options.Classes = classes
 	httpAPI, err := New(options)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = httpAPI.Close() })
 	classCreatePath := "/api/v1/programme-levels/{programme_level_id:" + canonicalIDRoutePattern() + "}/classes"
 	var classCreate Route
@@ -313,40 +276,27 @@ func TestClassHTTPMapsBothParentsFromRouteAndBody(t *testing.T) {
 			break
 		}
 	}
-	if len(classCreate.ErrorCodes) == 0 {
-		t.Fatal("production Class route has no kernel-owned public error contract")
-	}
+	require.NotEmpty(t, classCreate.ErrorCodes, "production Class route has no kernel-owned public error contract")
 	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/programme-levels/"+class.ProgrammeLevelID.String()+"/classes", strings.NewReader(`{"academic_period_id":"`+class.AcademicPeriodID.String()+`","name":"class-a","display_name":"Class A"}`))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusCreated {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
-	if classes.createCommand.ProgrammeLevelID != class.ProgrammeLevelID || classes.createCommand.AcademicPeriodID != class.AcademicPeriodID.String() {
-		t.Fatalf("command = %#v", classes.createCommand)
-	}
+	require.Equal(t, http.StatusCreated, response.Code, "status = %d: %s", response.Code, response.Body.String())
+	require.Equal(t, class.ProgrammeLevelID, classes.createCommand.ProgrammeLevelID)
+	require.Equal(t, class.AcademicPeriodID.String(), classes.createCommand.AcademicPeriodID)
 	var body classResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body.ID != class.ID.String() || body.AcademicPeriodID != class.AcademicPeriodID.String() {
-		t.Fatalf("response = %#v", body)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	require.Equal(t, class.ID.String(), body.ID)
+	require.Equal(t, class.AcademicPeriodID.String(), body.AcademicPeriodID)
 }
 
 func TestClassPatchOptionalWireStates(t *testing.T) {
 	t.Parallel()
 	var body updateClassRequest
-	if err := json.Unmarshal([]byte(`{"academic_period_id":null,"programme_level_id":""}`), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body.AcademicPeriodID.ValuePointer() != nil {
-		t.Fatal("null must remain a no-op")
-	}
+	require.NoError(t, json.Unmarshal([]byte(`{"academic_period_id":null,"programme_level_id":""}`), &body))
+	require.Nil(t, body.AcademicPeriodID.ValuePointer(), "null must remain a no-op")
 	value := body.ProgrammeLevelID.ValuePointer()
-	if value == nil || *value != "" {
-		t.Fatalf("programme level = %#v", value)
-	}
+	require.NotNil(t, value)
+	require.Empty(t, *value)
 }

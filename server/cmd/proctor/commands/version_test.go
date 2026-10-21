@@ -12,6 +12,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	server "github.com/sudosylabs/proctor/server"
 )
 
@@ -24,19 +26,17 @@ func TestVersionSupportsStableTextAndJSONOutput(t *testing.T) {
 	}
 
 	code, stdout, stderr := executeForTest(context.Background(), []string{"version"}, nil, execute)
-	if code != 0 || stdout != "proctor 1.2.3 (commit abc123, built 2026-07-26T00:00:00Z, go1.25.4)\n" || stderr != "" {
-		t.Fatalf("text: code=%d stdout=%q stderr=%q", code, stdout, stderr)
-	}
+	require.Equal(t, 0, code, "text: code")
+	require.Equal(t, "proctor 1.2.3 (commit abc123, built 2026-07-26T00:00:00Z, go1.25.4)\n", stdout, "text: code")
+	require.Empty(t, stderr, "text: code")
 
 	code, stdout, stderr = executeForTest(context.Background(), []string{"version", "--json"}, nil, execute)
-	if code != 0 || stderr != "" {
-		t.Fatalf("json: code=%d stdout=%q stderr=%q", code, stdout, stderr)
-	}
+	require.Equal(t, 0, code, "json: code=%d stdout=%q stderr", code, stdout)
+	require.Empty(t, stderr, "json: code=%d stdout=%q stderr", code, stdout)
 	var info server.BuildInfo
-	if err := json.Unmarshal([]byte(stdout), &info); err != nil {
-		t.Fatal(err)
-	}
-	if info.Version != "1.2.3" || info.Commit != "abc123" || info.BuildTime != "2026-07-26T00:00:00Z" || info.GoVersion != "go1.25.4" {
-		t.Fatalf("info = %#v", info)
-	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &info))
+	require.Equal(t, "1.2.3", info.Version)
+	require.Equal(t, "abc123", info.Commit)
+	require.Equal(t, "2026-07-26T00:00:00Z", info.BuildTime)
+	require.Equal(t, "go1.25.4", info.GoVersion)
 }

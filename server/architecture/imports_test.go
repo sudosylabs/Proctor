@@ -18,6 +18,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -109,9 +112,7 @@ func TestDependencyPolicyRejectsForbiddenImports(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if !forbiddenImport(tt.from, tt.imported) {
-				t.Fatalf("forbiddenImport(%q, %q) = false, want true", tt.from, tt.imported)
-			}
+			require.True(t, forbiddenImport(tt.from, tt.imported), "forbiddenImport(%q, %q) = false, want true", tt.from, tt.imported)
 		})
 	}
 }
@@ -186,9 +187,7 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if forbiddenImport(tt.from, tt.imported) {
-				t.Fatalf("forbiddenImport(%q, %q) = true, want false", tt.from, tt.imported)
-			}
+			require.False(t, forbiddenImport(tt.from, tt.imported), "forbiddenImport(%q, %q) = true, want false", tt.from, tt.imported)
 		})
 	}
 }
@@ -202,7 +201,7 @@ func TestProductionImportsMatchDependencyPolicy(t *testing.T) {
 	sort.Strings(keys)
 	for _, key := range keys {
 		violation := violations[key]
-		t.Errorf("forbidden production import: %s imports %s", violation.file, violation.importPath)
+		assert.Fail(t, fmt.Sprintf("forbidden production import: %s imports %s", violation.file, violation.importPath))
 	}
 }
 
@@ -222,15 +221,15 @@ func productionImportViolations(t *testing.T) map[string]importViolation {
 		{root: filepath.Join(repositoryRoot, "packages", "vfs"), modulePath: repositoryModule + "/packages/vfs", filePrefix: "packages/vfs"},
 	}
 	for _, module := range modules {
-		if _, err := os.Stat(module.root); err != nil {
-			if os.IsNotExist(err) {
-				continue
+		t.Run(fmt.Sprintf("root=%v", module.root), func(t *testing.T) {
+			if _, err := os.Stat(module.root); err != nil {
+				if os.IsNotExist(err) {
+					return
+				}
+				require.NoError(t, err, "inspect module root %q", module.root)
 			}
-			t.Fatalf("inspect module root %q: %v", module.root, err)
-		}
-		if err := scanProductionImports(module.root, module.modulePath, module.filePrefix, violations); err != nil {
-			t.Fatalf("scan production imports: %v", err)
-		}
+			require.NoError(t, scanProductionImports(module.root, module.modulePath, module.filePrefix, violations))
+		})
 	}
 	return violations
 }

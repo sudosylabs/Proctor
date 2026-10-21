@@ -14,6 +14,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -35,9 +38,7 @@ func TestProtectedRouteManifestDeclaresDPoPAuthenticationErrors(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
 	cookies, err := newBrowserCookies("http://localhost:8065")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	api := &API{
 		authenticator: dpopMiddlewareAuthenticator{}, logger: logger, cookies: cookies,
 		recentAuthenticationTTL: time.Minute,
@@ -48,7 +49,7 @@ func TestProtectedRouteManifestDeclaresDPoPAuthenticationErrors(t *testing.T) {
 			declared := routeErrorCodes(requirement, http.MethodPost, []string{"authentication.credentials.invalid"})
 			operationPolicy := newRouteErrorPolicy(declared)
 			handler := api.newHandlerWithErrorPolicy(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-				t.Fatal("protected handler ran after invalid DPoP proof")
+				assert.Fail(t, "protected handler ran after invalid DPoP proof")
 			}), requirement, operationPolicy)
 			request := httptest.NewRequest(http.MethodPost, "/api/v1/protected", nil)
 			request.Header.Set("Authorization", "DPoP "+model.NewCredentialToken())
@@ -57,15 +58,9 @@ func TestProtectedRouteManifestDeclaresDPoPAuthenticationErrors(t *testing.T) {
 
 			handler.ServeHTTP(response, request)
 
-			if response.Code != http.StatusUnauthorized {
-				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-			}
-			if got := response.Header().Get("WWW-Authenticate"); got != `DPoP error="invalid_dpop_proof"` {
-				t.Fatalf("WWW-Authenticate = %q", got)
-			}
-			if _, declared := operationPolicy["authentication.dpop.invalid"]; !declared {
-				t.Fatal("protected route manifest omitted DPoP authentication error")
-			}
+			require.Equal(t, http.StatusUnauthorized, response.Code, "status = %d, body = %s", response.Code, response.Body.String())
+			require.Equal(t, `DPoP error="invalid_dpop_proof"`, response.Header().Get("WWW-Authenticate"))
+			require.Contains(t, operationPolicy, "authentication.dpop.invalid", "protected route manifest omitted DPoP authentication error")
 		})
 	}
 }

@@ -21,6 +21,7 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
@@ -28,37 +29,27 @@ import (
 
 func TestRecoveryCommandsRefuseUnmigratedSchemaIntegration(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is required for integration tests")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is required for integration tests")
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	admin, err := sql.Open("postgres", dataSource)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer admin.Close()
 	name := "proctor_recovery_" + strings.ToLower(model.NewID()[:12])
-	if _, err := admin.ExecContext(ctx, "CREATE DATABASE "+name); err != nil {
-		t.Fatal(err)
-	}
+	_, err = admin.ExecContext(ctx, "CREATE DATABASE "+name)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = admin.ExecContext(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)")
 	})
 	fresh, err := url.Parse(dataSource)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	fresh.Path = "/" + name
 	t.Setenv("PROCTOR_DATABASE_DATA_SOURCE", fresh.String())
 	cfg, err := json.Marshal(config.Default())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	configPath := filepath.Join(t.TempDir(), "config.json")
-	if err = os.WriteFile(configPath, cfg, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	err = os.WriteFile(configPath, cfg, 0o600)
+	require.NoError(t, err)
 
 	institutionID, userID := model.NewID(), model.NewID()
 	for _, args := range [][]string{
@@ -66,21 +57,14 @@ func TestRecoveryCommandsRefuseUnmigratedSchemaIntegration(t *testing.T) {
 		{"--config", configPath, "administrator", "reset-mfa", "--institution-id", institutionID, "--user-id", userID},
 	} {
 		code, _, stderr := executeForTest(ctx, args, nil, productionExecutors())
-		if code == 0 || !strings.Contains(stderr, "proctor migrate up") {
-			t.Fatalf("%s code=%d stderr=%q, want refusal pointing at migrate up", args[3], code, stderr)
-		}
+		require.NotEqual(t, 0, code)
+		require.Contains(t, stderr, "proctor migrate up")
 	}
 
 	freshDB, err := sql.Open("postgres", fresh.String())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer freshDB.Close()
 	var tables int
-	if err := freshDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public'`).Scan(&tables); err != nil {
-		t.Fatal(err)
-	}
-	if tables != 0 {
-		t.Fatalf("recovery commands created %d tables; they must never migrate", tables)
-	}
+	require.NoError(t, freshDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public'`).Scan(&tables))
+	require.Equal(t, 0, tables, "recovery commands created")
 }

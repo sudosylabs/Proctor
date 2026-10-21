@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -23,27 +25,20 @@ func TestMembershipCursorStrictEnvelope(t *testing.T) {
 	at := int64(0) // history requires an explicit zero; missing and null are invalid
 	cursor := membershipPageCursor{ScopeType: model.ResourceClass, ScopeID: model.NewID(), ActiveAt: &at, AfterUserID: model.NewID(), AfterID: model.NewID()}
 	encoded, err := encodeOpaqueCursor(cursor, membershipPageCursorSpec())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	decoded, err := decodeOpaqueCursor(encoded, membershipPageCursorSpec())
-	if err != nil || decoded.ActiveAt == nil || *decoded.ActiveAt != 0 {
-		t.Fatalf("history cursor = %#v, %v", decoded, err)
-	}
+	require.NoError(t, err, "history cursor = %#v", decoded)
+	require.NotNil(t, decoded.ActiveAt, "history cursor = %#v", decoded)
+	require.Equal(t, int64(0), *decoded.ActiveAt, "history cursor = %#v", decoded)
 	body, err := base64.RawURLEncoding.DecodeString(encoded)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(body, &fields); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(body, &fields))
 	reject := func(name string, body []byte) {
 		t.Helper()
 		t.Run(name, func(t *testing.T) {
-			if _, err := decodeOpaqueCursor(base64.RawURLEncoding.EncodeToString(body), membershipPageCursorSpec()); err == nil {
-				t.Fatalf("invalid cursor accepted: %q", body)
-			}
+			_, decodeErr := decodeOpaqueCursor(base64.RawURLEncoding.EncodeToString(body), membershipPageCursorSpec())
+			require.Error(t, decodeErr, "invalid cursor accepted: %q", body)
 		})
 	}
 	for key := range fields {
@@ -68,9 +63,8 @@ func TestMembershipCursorStrictEnvelope(t *testing.T) {
 	reject("trailing", append(append([]byte(nil), body...), []byte(" {}")...))
 	reject("invalid-utf8", []byte(strings.Replace(string(body), string(model.ResourceClass), "cl"+string([]byte{0xff})+"ss", 1)))
 	for _, token := range []string{encoded + "=", encoded[:4] + "\n" + encoded[4:], encoded[:4] + "\r\n" + encoded[4:], strings.Repeat("a", 1025)} {
-		if _, err := decodeOpaqueCursor(token, membershipPageCursorSpec()); err == nil {
-			t.Fatalf("noncanonical encoding accepted: %q", token)
-		}
+		_, err = decodeOpaqueCursor(token, membershipPageCursorSpec())
+		require.Error(t, err, "noncanonical encoding accepted: %q", token)
 	}
 	// A nonzero unused Base64 bit is another representation of identical bytes.
 	paddedBody := append([]byte(nil), body...)
@@ -81,9 +75,8 @@ func TestMembershipCursorStrictEnvelope(t *testing.T) {
 	alphabet := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 	last := strings.IndexByte(alphabet, canonical[len(canonical)-1])
 	alias := canonical[:len(canonical)-1] + string(alphabet[last+1])
-	if _, err := decodeOpaqueCursor(alias, membershipPageCursorSpec()); err == nil {
-		t.Fatal("nonzero Base64 pad bits accepted")
-	}
+	_, err = decodeOpaqueCursor(alias, membershipPageCursorSpec())
+	require.Error(t, err, "nonzero Base64 pad bits accepted")
 }
 
 func TestMembershipCursorScopeAndFilterBinding(t *testing.T) {
@@ -92,31 +85,27 @@ func TestMembershipCursorScopeAndFilterBinding(t *testing.T) {
 	instant := int64(1000)
 	cursor := membershipPageCursor{ScopeType: scope.Type, ScopeID: scope.ID, ActiveAt: &instant, AfterUserID: model.NewID(), AfterID: model.NewID()}
 	encoded, err := encodeOpaqueCursor(cursor, membershipPageCursorSpec())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	request := func(suffix string) string { return "/members?cursor=" + url.QueryEscape(encoded) + suffix }
 	query, after, err := membershipPageQuery(httptest.NewRequest("GET", request(""), nil), scope)
-	if err != nil || query.ActiveAt == nil || *query.ActiveAt != instant || after.AfterID != cursor.AfterID {
-		t.Fatalf("continuation = %#v %#v %v", query, after, err)
-	}
+	require.NoError(t, err, "continuation = %#v %#v", query, after)
+	require.NotNil(t, query.ActiveAt, "continuation = %#v %#v", query, after)
+	require.Equal(t, instant, *query.ActiveAt, "continuation = %#v %#v", query, after)
+	require.Equal(t, cursor.AfterID, after.AfterID, "continuation = %#v %#v", query, after)
 	for _, suffix := range []string{"&active_at=1970-01-01T00:00:02Z", "&history=true"} {
-		if _, _, err := membershipPageQuery(httptest.NewRequest("GET", request(suffix), nil), scope); err == nil {
-			t.Fatalf("conflicting filter accepted: %s", suffix)
-		}
+		_, _, err = membershipPageQuery(httptest.NewRequestWithContext(t.Context(), "GET", request(suffix), nil), scope)
+		require.Error(t, err, "conflicting filter accepted: %s", suffix)
 	}
 	for _, other := range []model.Resource{{Type: scope.Type, ID: model.NewID()}, {Type: model.ResourceAcademicUnit, ID: scope.ID}} {
-		if _, _, err := membershipPageQuery(httptest.NewRequest("GET", request(""), nil), other); err == nil {
-			t.Fatalf("cross-scope continuation accepted: %#v", other)
-		}
+		_, _, err = membershipPageQuery(httptest.NewRequestWithContext(t.Context(), "GET", request(""), nil), other)
+		require.Error(t, err, "cross-scope continuation accepted: %#v", other)
 	}
 	instant = 0
 	encoded, err = encodeOpaqueCursor(cursor, membershipPageCursorSpec())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	query, _, err = membershipPageQuery(httptest.NewRequest("GET", request(""), nil), scope)
-	if err != nil || query.History == nil || !*query.History || query.ActiveAt != nil {
-		t.Fatalf("history continuation = %#v, %v", query, err)
-	}
+	require.NoError(t, err, "history continuation = %#v", query)
+	require.NotNil(t, query.History, "history continuation = %#v", query)
+	require.True(t, *query.History, "history continuation = %#v", query)
+	require.Nil(t, query.ActiveAt, "history continuation = %#v", query)
 }

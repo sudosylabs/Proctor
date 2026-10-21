@@ -13,11 +13,13 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/logging"
@@ -298,26 +300,18 @@ func TestOwnershipListenerTransfersAtFirstAccept(t *testing.T) {
 			for range 2 {
 				_, _ = listener.Accept()
 			}
-			if handoffs.Load() != 1 {
-				t.Fatalf("handoff count = %d, want 1", handoffs.Load())
-			}
+			require.Equal(t, int64(1), handoffs.Load(), "handoff count")
 			wantAccepts := int64(0)
 			if accepted {
 				wantAccepts = 2
 			}
-			if underlying.accepted.Load() != wantAccepts {
-				t.Fatalf("underlying Accept count = %d, want %d", underlying.accepted.Load(), wantAccepts)
-			}
-			if err := listener.Close(); err != nil {
-				t.Fatalf("Close() error = %v", err)
-			}
+			require.Equal(t, wantAccepts, underlying.accepted.Load(), "underlying Accept count")
+			require.NoError(t, listener.Close())
 			wantCloses := int64(0)
 			if accepted {
 				wantCloses = 1
 			}
-			if underlying.closed.Load() != wantCloses {
-				t.Fatalf("underlying Close count = %d, want %d", underlying.closed.Load(), wantCloses)
-			}
+			require.Equal(t, wantCloses, underlying.closed.Load(), "underlying Close count")
 		})
 	}
 }
@@ -341,27 +335,23 @@ func TestOwnershipListenerCloseWaitsForAtomicHandoff(t *testing.T) {
 	select {
 	case <-callbackEntered:
 	case <-time.After(time.Second):
-		t.Fatal("handoff callback was not entered")
+		require.FailNow(t, "handoff callback was not entered")
 	}
 	closeDone := make(chan error, 1)
 	go func() { closeDone <- listener.Close() }()
 	select {
 	case err := <-closeDone:
-		t.Fatalf("Close() returned before ownership committed: %v", err)
+		require.FailNow(t, fmt.Sprintf("Close() returned before ownership committed: %v", err))
 	case <-time.After(10 * time.Millisecond):
 	}
 	close(releaseCallback)
-	if err := receiveLifecycleResult(t, closeDone, "listener Close"); err != nil {
-		t.Fatalf("Close() error = %v", err)
-	}
+	require.NoError(t, receiveLifecycleResult(t, closeDone, "listener Close"))
 	select {
 	case <-acceptDone:
 	case <-time.After(time.Second):
-		t.Fatal("Accept() did not return")
+		require.FailNow(t, "Accept() did not return")
 	}
-	if underlying.closed.Load() != 1 {
-		t.Fatalf("underlying Close count = %d, want 1", underlying.closed.Load())
-	}
+	require.Equal(t, int64(1), underlying.closed.Load(), "underlying Close count")
 }
 
 func TestServerStartupFailureCleansUpConstructedRuntime(t *testing.T) {
@@ -384,20 +374,12 @@ func TestServerStartupFailureCleansUpConstructedRuntime(t *testing.T) {
 	}
 
 	err := node.Run(context.Background())
-	if !errors.Is(err, startErr) {
-		t.Fatalf("Run() error = %v, want wrapped %v", err, startErr)
-	}
-	if readiness.Ready() {
-		t.Fatal("Ready() = true after startup failure")
-	}
-	if got := notifications.Load(); got != 0 {
-		t.Fatalf("notifications = %d after startup failure, want 0", got)
-	}
+	require.ErrorIs(t, err, startErr, "Run() error")
+	require.False(t, readiness.Ready(), "Ready() = true after startup failure")
+	require.Equal(t, int64(0), notifications.Load(), "notifications")
 	assertLifecycleEvents(t, events, "platform-start", "jobs-close", "websocket-close", "transport-close", "platform-close")
 
-	if err := node.Close(); err != nil {
-		t.Fatalf("repeated Close() error = %v", err)
-	}
+	require.NoError(t, node.Close())
 	assertLifecycleEvents(t, events, "platform-start", "jobs-close", "websocket-close", "transport-close", "platform-close")
 }
 
@@ -415,9 +397,7 @@ func TestServerJobStartupFailureClosesWorkersBeforeInfrastructure(t *testing.T) 
 	})
 
 	err := node.Run(context.Background())
-	if !errors.Is(err, startErr) {
-		t.Fatalf("Run() error = %v, want wrapped %v", err, startErr)
-	}
+	require.ErrorIs(t, err, startErr, "Run() error")
 	assertLifecycleEvents(t, events, "platform-start", "jobs-start", "jobs-close", "websocket-close", "transport-close", "platform-close")
 }
 
@@ -436,9 +416,7 @@ func TestServerMetricsStartupFailureIsFatalAndClosesBeforeInfrastructure(t *test
 	})
 
 	err := node.Run(context.Background())
-	if !errors.Is(err, startErr) {
-		t.Fatalf("Run() error = %v, want wrapped %v", err, startErr)
-	}
+	require.ErrorIs(t, err, startErr, "Run() error")
 	assertLifecycleEvents(t, events,
 		"platform-start", "metrics-start", "jobs-close", "websocket-close",
 		"transport-close", "metrics-close", "platform-close",
@@ -470,12 +448,9 @@ func TestServerRechecksQueuedMetricsFailureBeforePublishingReady(t *testing.T) {
 	})
 
 	err := node.Run(context.Background())
-	if !errors.Is(err, metricsErr) {
-		t.Fatalf("Run() error = %v, want wrapped %v", err, metricsErr)
-	}
-	if readiness.Ready() || metrics.ready.Load() {
-		t.Fatal("node published readiness after a queued metrics failure")
-	}
+	require.ErrorIs(t, err, metricsErr, "Run() error")
+	require.False(t, readiness.Ready(), "node published readiness after a queued metrics failure")
+	require.False(t, metrics.ready.Load(), "node published readiness after a queued metrics failure")
 }
 
 func TestServerServingLeaseMustCommitBeforeWorkersOrListener(t *testing.T) {
@@ -493,9 +468,7 @@ func TestServerServingLeaseMustCommitBeforeWorkersOrListener(t *testing.T) {
 	})
 
 	err := node.Run(context.Background())
-	if !errors.Is(err, startErr) {
-		t.Fatalf("Run() error = %v, want wrapped %v", err, startErr)
-	}
+	require.ErrorIs(t, err, startErr, "Run() error")
 	assertLifecycleEvents(t, events,
 		"platform-start", "serving-lease-start", "jobs-close", "websocket-close",
 		"transport-close", "serving-lease-close", "platform-close",
@@ -522,12 +495,8 @@ func TestServerServingLeaseRenewalFailureDrainsBeforeLeaseWithdrawal(t *testing.
 	waitForLifecycleReady(t, node)
 	lease.failures <- renewalErr
 	err := receiveLifecycleResult(t, done, "Run after serving lease failure")
-	if !errors.Is(err, renewalErr) {
-		t.Fatalf("Run() error = %v, want wrapped %v", err, renewalErr)
-	}
-	if node.Ready() {
-		t.Fatal("server remained ready after serving lease failure")
-	}
+	require.ErrorIs(t, err, renewalErr, "Run() error")
+	require.False(t, node.Ready(), "server remained ready after serving lease failure")
 	assertLifecycleEvents(t, events,
 		"platform-start", "serving-lease-start", "jobs-start", "websocket-start",
 		"http-serve", "ready", "unready", "http-force-close", "jobs-close",
@@ -550,9 +519,7 @@ func TestServerReconcilesProtectedRoleBeforeStartingWorkers(t *testing.T) {
 	})
 
 	err := node.Run(context.Background())
-	if !errors.Is(err, startErr) {
-		t.Fatalf("Run() error = %v, want wrapped %v", err, startErr)
-	}
+	require.ErrorIs(t, err, startErr, "Run() error")
 	assertLifecycleEvents(t, events,
 		"platform-start", "role-reconcile", "jobs-close", "websocket-close",
 		"transport-close", "platform-close",
@@ -572,9 +539,7 @@ func TestServerReconcilesOfflineAdministratorRecoveryBeforeStartingWorkers(t *te
 	})
 
 	err := node.Run(context.Background())
-	if !errors.Is(err, startErr) {
-		t.Fatalf("Run() error = %v, want wrapped %v", err, startErr)
-	}
+	require.ErrorIs(t, err, startErr, "Run() error")
 	assertLifecycleEvents(t, events,
 		"platform-start", "role-reconcile", "administrator-recovery-reconcile",
 		"jobs-close", "websocket-close", "transport-close", "platform-close",
@@ -599,12 +564,8 @@ func TestServerListenerFailureUnwindsStartedRuntime(t *testing.T) {
 	})
 
 	err := node.Run(context.Background())
-	if !errors.Is(err, listenErr) {
-		t.Fatalf("Run() error = %v, want wrapped %v", err, listenErr)
-	}
-	if node.Ready() {
-		t.Fatal("Ready() = true after listener failure")
-	}
+	require.ErrorIs(t, err, listenErr, "Run() error")
+	require.False(t, node.Ready(), "Ready() = true after listener failure")
 	assertLifecycleEvents(
 		t,
 		events,
@@ -646,24 +607,18 @@ func TestServerCloseDrainsHTTPBeforeClosingRuntime(t *testing.T) {
 	select {
 	case <-httpService.started:
 	case <-time.After(time.Second):
-		t.Fatal("HTTP serving did not start")
+		require.FailNow(t, "HTTP serving did not start")
 	}
 	waitForLifecycleReady(t, node)
 
-	if err := node.Close(); err != nil {
-		t.Fatalf("Close() error = %v", err)
-	}
+	require.NoError(t, node.Close())
 	select {
 	case err := <-done:
-		if err != nil {
-			t.Fatalf("Run() error = %v", err)
-		}
+		require.NoError(t, err)
 	case <-time.After(time.Second):
-		t.Fatal("Close() returned without stopping Run()")
+		require.FailNow(t, "Close() returned without stopping Run()")
 	}
-	if node.Ready() {
-		t.Fatal("Ready() = true after shutdown")
-	}
+	require.False(t, node.Ready(), "Ready() = true after shutdown")
 	assertLifecycleEvents(
 		t,
 		events,
@@ -680,9 +635,7 @@ func TestServerCloseDrainsHTTPBeforeClosingRuntime(t *testing.T) {
 		"transport-close",
 		"platform-close",
 	)
-	if err := node.Close(); err != nil {
-		t.Fatalf("repeated Close() error = %v", err)
-	}
+	require.NoError(t, node.Close())
 	assertLifecycleEvents(
 		t,
 		events,
@@ -731,19 +684,15 @@ func TestServerServeFailureDrainsHTTPBeforeClosingRuntime(t *testing.T) {
 	select {
 	case <-httpService.started:
 	case <-time.After(time.Second):
-		t.Fatal("HTTP serving did not start")
+		require.FailNow(t, "HTTP serving did not start")
 	}
 	select {
 	case err := <-done:
-		if !errors.Is(err, serveErr) {
-			t.Fatalf("Run() error = %v, want wrapped %v", err, serveErr)
-		}
+		require.ErrorIs(t, err, serveErr, "Run() error")
 	case <-time.After(time.Second):
-		t.Fatal("server did not stop after HTTP serving failure")
+		require.FailNow(t, "server did not stop after HTTP serving failure")
 	}
-	if node.Ready() {
-		t.Fatal("Ready() = true after HTTP serving failure")
-	}
+	require.False(t, node.Ready(), "Ready() = true after HTTP serving failure")
 	assertLifecycleEvents(
 		t,
 		events,
@@ -771,15 +720,11 @@ func TestServerCloseBeforeRunDisposesInertRuntimeExactlyOnce(t *testing.T) {
 		readiness: &lifecycleReadiness{},
 	})
 
-	if err := node.Close(); err != nil {
-		t.Fatalf("Close() error = %v", err)
-	}
-	if err := node.Close(); err != nil {
-		t.Fatalf("repeated Close() error = %v", err)
-	}
-	if err := node.Run(context.Background()); err == nil || err.Error() != "server is closed" {
-		t.Fatalf("Run() after Close() error = %v, want server is closed", err)
-	}
+	require.NoError(t, node.Close())
+	require.NoError(t, node.Close())
+	err := node.Run(context.Background())
+	require.Error(t, err, "Run() after Close() error")
+	require.Equal(t, "server is closed", err.Error(), "Run() after Close() error")
 	assertLifecycleEvents(t, events, "jobs-close", "websocket-close", "transport-close", "platform-close")
 }
 
@@ -809,17 +754,13 @@ func TestServerRejectsASecondRunWhileRunning(t *testing.T) {
 	select {
 	case <-httpService.started:
 	case <-time.After(time.Second):
-		t.Fatal("HTTP serving did not start")
+		require.FailNow(t, "HTTP serving did not start")
 	}
-	if err := node.Run(context.Background()); err == nil || err.Error() != "server has already been run" {
-		t.Fatalf("second Run() error = %v, want already run", err)
-	}
-	if err := node.Close(); err != nil {
-		t.Fatalf("Close() error = %v", err)
-	}
-	if err := <-first; err != nil {
-		t.Fatalf("first Run() error = %v", err)
-	}
+	err := node.Run(context.Background())
+	require.Error(t, err, "second Run() error")
+	require.Equal(t, "server has already been run", err.Error(), "second Run() error")
+	require.NoError(t, node.Close())
+	require.NoError(t, (<-first))
 }
 
 func TestServerCanceledStartupIsGracefulAndClosesRuntime(t *testing.T) {
@@ -837,12 +778,8 @@ func TestServerCanceledStartupIsGracefulAndClosesRuntime(t *testing.T) {
 		readiness: &lifecycleReadiness{},
 	})
 
-	if err := node.Run(ctx); err != nil {
-		t.Fatalf("Run(canceled) error = %v, want nil", err)
-	}
-	if node.Ready() {
-		t.Fatal("Ready() = true after canceled startup")
-	}
+	require.NoError(t, node.Run(ctx), "Run(canceled) error")
+	require.False(t, node.Ready(), "Ready() = true after canceled startup")
 	assertLifecycleEvents(t, events, "platform-start", "transport-close", "platform-close")
 }
 
@@ -874,17 +811,15 @@ func TestServerRunningContextCancellationIsGraceful(t *testing.T) {
 	select {
 	case <-httpService.started:
 	case <-time.After(time.Second):
-		t.Fatal("HTTP serving did not start")
+		require.FailNow(t, "HTTP serving did not start")
 	}
 	waitForLifecycleReady(t, node)
 	cancel()
 	select {
 	case err := <-done:
-		if err != nil {
-			t.Fatalf("Run() after running cancellation error = %v", err)
-		}
+		require.NoError(t, err)
 	case <-time.After(time.Second):
-		t.Fatal("running cancellation did not stop Server.Run")
+		require.FailNow(t, "running cancellation did not stop Server.Run")
 	}
 	assertLifecycleEvents(
 		t,
@@ -920,9 +855,7 @@ func TestServerNotifiesHostExactlyOnceAfterPublishingReadiness(t *testing.T) {
 	var notifications atomic.Int64
 	notificationErr := errors.New("notification socket unavailable")
 	node.readyNotifier = func(context.Context) error {
-		if !node.Ready() {
-			t.Error("host was notified before the node became ready")
-		}
+		assert.True(t, node.Ready(), "host was notified before the node became ready")
 		notifications.Add(1)
 		events.record("host-ready-notify")
 		return notificationErr
@@ -933,12 +866,8 @@ func TestServerNotifiesHostExactlyOnceAfterPublishingReadiness(t *testing.T) {
 	go func() { done <- node.Run(ctx) }()
 	waitForLifecycleReady(t, node)
 	cancel()
-	if err := receiveLifecycleResult(t, done, "server readiness notification"); err != nil {
-		t.Fatal(err)
-	}
-	if got := notifications.Load(); got != 1 {
-		t.Fatalf("notifications = %d, want 1", got)
-	}
+	require.NoError(t, receiveLifecycleResult(t, done, "server readiness notification"))
+	require.Equal(t, int64(1), notifications.Load(), "notifications")
 	assertLifecycleEvents(t, events,
 		"platform-start", "jobs-start", "websocket-start", "http-serve", "ready", "host-ready-notify",
 		"unready", "http-shutdown", "jobs-close", "websocket-close", "transport-close", "platform-close",
@@ -949,19 +878,15 @@ func TestServerLogsSuccessfulStartupMilestones(t *testing.T) {
 	t.Parallel()
 
 	logger, err := logging.New()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Shutdown() })
 	var output logging.Buffer
-	if err := logger.Configure(logging.Config{
+	require.NoError(t, logger.Configure(logging.Config{
 		MaxFieldBytes: 1024,
 		Targets: []logging.Target{{
 			Name: "test", Type: "console", Level: "info", Format: "json", Writer: &output,
 		}},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	}))
 
 	events := &lifecycleEvents{}
 	readiness := &lifecycleReadiness{events: events}
@@ -990,9 +915,7 @@ func TestServerLogsSuccessfulStartupMilestones(t *testing.T) {
 	go func() { done <- node.Run(ctx) }()
 	waitForLifecycleReady(t, node)
 	cancel()
-	if err := receiveLifecycleResult(t, done, "logged server startup"); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, receiveLifecycleResult(t, done, "logged server startup"))
 	for _, message := range []string{
 		"serving node lease started",
 		"startup reconciliation complete",
@@ -1000,9 +923,7 @@ func TestServerLogsSuccessfulStartupMilestones(t *testing.T) {
 		"WebSocket service started",
 		"server started",
 	} {
-		if !strings.Contains(output.String(), message) {
-			t.Fatalf("runtime startup log is missing %q: %s", message, output.String())
-		}
+		require.Contains(t, output.String(), message, "runtime startup log is missing")
 	}
 }
 
@@ -1038,17 +959,15 @@ func TestServerRunningContextCancellationReturnsCleanupFailure(t *testing.T) {
 	select {
 	case <-httpService.started:
 	case <-time.After(time.Second):
-		t.Fatal("HTTP serving did not start")
+		require.FailNow(t, "HTTP serving did not start")
 	}
 	waitForLifecycleReady(t, node)
 	cancel()
 	select {
 	case err := <-done:
-		if !errors.Is(err, cleanupErr) {
-			t.Fatalf("Run() after running cancellation error = %v, want cleanup failure", err)
-		}
+		require.ErrorIs(t, err, cleanupErr, "Run() after running cancellation error")
 	case <-time.After(time.Second):
-		t.Fatal("running cancellation did not stop Server.Run")
+		require.FailNow(t, "running cancellation did not stop Server.Run")
 	}
 }
 
@@ -1078,24 +997,18 @@ func TestServerCancellationBeforeHTTPHandoffClosesOwnedListener(t *testing.T) {
 	select {
 	case <-httpService.started:
 	case <-time.After(time.Second):
-		t.Fatal("HTTP runtime did not reach handoff")
+		require.FailNow(t, "HTTP runtime did not reach handoff")
 	}
 	cancel()
 	close(accept)
 	select {
 	case err := <-done:
-		if err != nil {
-			t.Fatalf("Run() error = %v", err)
-		}
+		require.NoError(t, err)
 	case <-time.After(time.Second):
-		t.Fatal("cancellation before HTTP handoff blocked")
+		require.FailNow(t, "cancellation before HTTP handoff blocked")
 	}
-	if listener.closed.Load() != 1 {
-		t.Fatalf("listener close count = %d, want 1", listener.closed.Load())
-	}
-	if node.Ready() {
-		t.Fatal("node became ready before HTTP handoff")
-	}
+	require.Equal(t, int64(1), listener.closed.Load(), "listener close count")
+	require.False(t, node.Ready(), "node became ready before HTTP handoff")
 	assertLifecycleEvents(t, events,
 		"platform-start", "jobs-start", "websocket-start", "listener-bind", "http-serve",
 		"listener-close", "jobs-close", "websocket-close", "transport-close", "platform-close",
@@ -1127,15 +1040,11 @@ func TestServerCancellationPreservesHTTPDrainAndForcedCloseFailures(t *testing.T
 	cancel()
 	err := <-done
 	for _, expected := range []error{shutdownErr, forceErr} {
-		if !errors.Is(err, expected) {
-			t.Fatalf("Run() error = %v, want %v", err, expected)
-		}
+		require.ErrorIs(t, err, expected, "Run() error")
 	}
 	closeErr := node.Close()
 	for _, expected := range []error{shutdownErr, forceErr} {
-		if !errors.Is(closeErr, expected) {
-			t.Fatalf("Close() error = %v, want retained %v", closeErr, expected)
-		}
+		require.ErrorIs(t, closeErr, expected, "Close() error")
 	}
 	assertLifecycleEvents(t, events,
 		"platform-start", "jobs-start", "websocket-start", "http-serve", "ready", "unready",
@@ -1193,9 +1102,7 @@ func assertRetainedDrainFailure(t *testing.T, node *Server, want error) {
 	startErr := receiveLifecycleResult(t, startDone, "Run")
 	closeErr := receiveLifecycleResult(t, closeDone, "Close")
 	for name, err := range map[string]error{"Run": startErr, "Close": closeErr, "repeated Close": node.Close()} {
-		if !errors.Is(err, want) {
-			t.Fatalf("%s() error = %v, want retained %v", name, err, want)
-		}
+		require.ErrorIs(t, err, want, "%s() error", name)
 	}
 }
 
@@ -1221,24 +1128,20 @@ func TestServerRetainsPreHandoffListenerCloseFailureForCloseCallers(t *testing.T
 	select {
 	case <-httpService.started:
 	case <-time.After(time.Second):
-		t.Fatal("HTTP runtime did not reach handoff")
+		require.FailNow(t, "HTTP runtime did not reach handoff")
 	}
 	closeDone := make(chan error, 1)
 	go func() { closeDone <- node.Close() }()
 	deadline := time.Now().Add(time.Second)
 	for listener.closed.Load() == 0 {
-		if time.Now().After(deadline) {
-			t.Fatal("Close did not release the Server-owned listener")
-		}
+		require.False(t, time.Now().After(deadline), "Close did not release the Server-owned listener")
 		time.Sleep(time.Millisecond)
 	}
 	close(accept)
 	startErr := receiveLifecycleResult(t, startDone, "Run")
 	closeErr := receiveLifecycleResult(t, closeDone, "Close")
 	for name, err := range map[string]error{"Run": startErr, "Close": closeErr, "repeated Close": node.Close()} {
-		if !errors.Is(err, listenerErr) {
-			t.Fatalf("%s() error = %v, want retained %v", name, err, listenerErr)
-		}
+		require.ErrorIs(t, err, listenerErr, "%s() error", name)
 	}
 }
 
@@ -1248,7 +1151,7 @@ func receiveLifecycleResult(t *testing.T, results <-chan error, operation string
 	case err := <-results:
 		return err
 	case <-time.After(time.Second):
-		t.Fatalf("%s did not return", operation)
+		require.FailNow(t, fmt.Sprintf("%s did not return", operation))
 		return nil
 	}
 }
@@ -1264,9 +1167,7 @@ func TestServerDependencyFailureWinsCancellationRace(t *testing.T) {
 		platform:  &lifecyclePlatform{startErr: errors.Join(context.Canceled, dependencyErr), events: events},
 		transport: &lifecycleTransport{events: events}, readiness: &lifecycleReadiness{},
 	})
-	if err := node.Run(ctx); !errors.Is(err, dependencyErr) {
-		t.Fatalf("Run() error = %v, want dependency failure", err)
-	}
+	require.ErrorIs(t, node.Run(ctx), dependencyErr, "Run() error")
 }
 
 func TestServerCancellationBetweenStartupPhasesPreventsLaterWork(t *testing.T) {
@@ -1301,9 +1202,7 @@ func TestServerCancellationBetweenStartupPhasesPreventsLaterWork(t *testing.T) {
 					return &lifecycleListener{events: events}, nil
 				},
 			})
-			if err := node.Run(ctx); err != nil {
-				t.Fatalf("Run() error = %v", err)
-			}
+			require.NoError(t, node.Run(ctx))
 			want := []string{"platform-start"}
 			if phase != "platform" {
 				want = append(want, "jobs-start")
@@ -1358,9 +1257,7 @@ func TestServerPreservesPrimaryAndCleanupFailures(t *testing.T) {
 		transportCloseErr,
 		platformCloseErr,
 	} {
-		if !errors.Is(err, expected) {
-			t.Fatalf("Run() error = %v, want joined %v", err, expected)
-		}
+		require.ErrorIs(t, err, expected, "Run() error")
 	}
 	assertLifecycleEvents(
 		t,
@@ -1400,9 +1297,7 @@ func TestServerConcurrentCloseBeforeRunIsIdempotent(t *testing.T) {
 	callersDone.Wait()
 	close(errorsByCaller)
 	for err := range errorsByCaller {
-		if err != nil {
-			t.Fatalf("concurrent Close() error = %v", err)
-		}
+		require.NoError(t, err)
 	}
 	assertLifecycleEvents(t, events, "jobs-close", "websocket-close", "transport-close", "platform-close")
 }
@@ -1412,15 +1307,12 @@ func newLifecycleTestServer(t *testing.T, components runtimeComponents) *Server 
 
 	if components.logger == nil {
 		logger, err := logging.New()
-		if err != nil {
-			t.Fatalf("create test logger: %v", err)
-		}
+		require.NoError(t, err)
 		t.Cleanup(func() { _ = logger.Shutdown() })
 		components.logger = logger
 	}
-	if _, ok := components.platform.(*lifecyclePlatform); !ok {
-		t.Fatal("lifecycle test platform has unexpected type")
-	}
+	_, ok := components.platform.(*lifecyclePlatform)
+	require.True(t, ok, "lifecycle test platform has unexpected type")
 	settings := config.Default().Server
 	settings.ListenAddress = "127.0.0.1:0"
 	settings.ShutdownTimeout.Duration = time.Second
@@ -1432,7 +1324,7 @@ func newLifecycleTestServer(t *testing.T, components runtimeComponents) *Server 
 	}
 	if components.newHTTP == nil {
 		components.newHTTP = func(httpServerSettings) httpRuntime {
-			t.Fatal("HTTP server should not be created")
+			require.FailNow(t, "HTTP server should not be created")
 			return nil
 		}
 	}
@@ -1443,13 +1335,9 @@ func assertLifecycleEvents(t *testing.T, events *lifecycleEvents, expected ...st
 	t.Helper()
 	actual := events.snapshot()
 
-	if len(actual) != len(expected) {
-		t.Fatalf("lifecycle events = %v, want %v", actual, expected)
-	}
+	require.Len(t, actual, len(expected), "lifecycle events")
 	for index := range expected {
-		if actual[index] != expected[index] {
-			t.Fatalf("lifecycle events = %v, want %v", actual, expected)
-		}
+		require.Equal(t, expected[index], actual[index], "lifecycle events = %v, want %v", actual, expected)
 	}
 }
 
@@ -1458,9 +1346,7 @@ func waitForLifecycleReady(t *testing.T, node *Server) {
 
 	deadline := time.Now().Add(time.Second)
 	for !node.Ready() {
-		if time.Now().After(deadline) {
-			t.Fatal("Ready() did not become true after HTTP serving started")
-		}
+		require.False(t, time.Now().After(deadline), "Ready() did not become true after HTTP serving started")
 		time.Sleep(time.Millisecond)
 	}
 }

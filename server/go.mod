@@ -27,6 +27,7 @@ require (
 	github.com/prometheus/client_golang v1.24.1
 	github.com/redis/rueidis v1.0.77
 	github.com/spf13/cobra v1.10.2
+	github.com/stretchr/testify v1.11.1
 	github.com/sudosylabs/proctor/packages/cache v0.0.0-20260822110732-6d79c696cde0
 	github.com/sudosylabs/proctor/packages/mail v0.0.0-20260818045022-b7abab1f5132
 	github.com/sudosylabs/proctor/packages/vfs v0.0.0-20260811012629-fe3dc2e7fe5b
@@ -91,7 +92,6 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/wiggin77/merror v1.0.2 // indirect
 	github.com/wiggin77/srslog v1.0.1 // indirect

@@ -9,10 +9,11 @@ package server
 
 import (
 	"context"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/cluster"
@@ -34,19 +35,15 @@ func TestStartupInfrastructureLogsMigrationAndStoreCache(t *testing.T) {
 	t.Parallel()
 
 	logger, err := logging.New()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Shutdown() })
 	var output logging.Buffer
-	if err := logger.Configure(logging.Config{
+	require.NoError(t, logger.Configure(logging.Config{
 		MaxFieldBytes: 1024,
 		Targets: []logging.Target{{
 			Name: "test", Type: "console", Level: "info", Format: "json", Writer: &output,
 		}},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	}))
 	logStartupInfrastructure(config.Default(), logger, &sqlstore.MigrationResult{
 		Applied:       2,
 		SchemaVersion: 7,
@@ -58,9 +55,7 @@ func TestStartupInfrastructureLogsMigrationAndStoreCache(t *testing.T) {
 		"store cache ready",
 		`"backend":"memory_lru"`,
 	} {
-		if !strings.Contains(output.String(), value) {
-			t.Fatalf("startup infrastructure log is missing %q: %s", value, output.String())
-		}
+		require.Contains(t, output.String(), value, "startup infrastructure log is missing")
 	}
 }
 
@@ -134,17 +129,11 @@ func TestOwnedInfrastructureReleasesInReverseDependencyOrder(t *testing.T) {
 		filesystem:  releaseVFS{events: &events},
 		cluster:     releaseCluster{events: &events},
 	}
-	if err := owned.release(); err != nil {
-		t.Fatalf("release() error = %v", err)
-	}
+	require.NoError(t, owned.release())
 	want := []string{"cluster", "vfs", "mailer", "cache", "store"}
-	if len(events) != len(want) {
-		t.Fatalf("release order = %v, want %v", events, want)
-	}
+	require.Len(t, events, len(want), "release order")
 	for index := range want {
-		if events[index] != want[index] {
-			t.Fatalf("release order = %v, want %v", events, want)
-		}
+		require.Equal(t, want[index], events[index], "release order = %v, want %v", events, want)
 	}
 }
 
@@ -175,13 +164,9 @@ func TestRootComposesLocalCacheOutsideTiming(t *testing.T) {
 	configuration, err := config.NewStore(context.Background(), config.NewMemoryStore(nil), config.StoreOptions{
 		LookupEnv: func(string) (string, bool) { return "", false },
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	logger, err := logging.New()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	period := &model.AcademicPeriod{
 		ID: model.NewAcademicPeriodID(), Owner: model.NewInstitutionAcademicPeriodOwner(model.NewInstitutionID()),
 		Name: "2026", DisplayName: "2026", StartsAt: time.Now().UTC(),
@@ -190,9 +175,7 @@ func TestRootComposesLocalCacheOutsideTiming(t *testing.T) {
 	}
 	periods := &layerOrderPeriods{period: period}
 	cache, err := newStoreLocalMemoryCache(8)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var timedReads atomic.Int64
 	owner, err := openRuntimeInfrastructure(context.Background(), "", TestingOverrides{
 		Configuration: configuration,
@@ -206,21 +189,14 @@ func TestRootComposesLocalCacheOutsideTiming(t *testing.T) {
 			}
 		}),
 	}, schemaMigrate)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = owner.release() })
 	for range 2 {
-		if _, err := owner.persistence.AcademicPeriod().Get(context.Background(), period.ID); err != nil {
-			t.Fatal(err)
-		}
+		_, err := owner.persistence.AcademicPeriod().Get(context.Background(), period.ID)
+		require.NoError(t, err)
 	}
-	if got := periods.reads.Load(); got != 1 {
-		t.Fatalf("authoritative reads = %d, want 1", got)
-	}
-	if got := timedReads.Load(); got != 1 {
-		t.Fatalf("timed reads = %d, want 1 because local cache is outermost", got)
-	}
+	require.Equal(t, int64(1), periods.reads.Load(), "authoritative reads")
+	require.Equal(t, int64(1), timedReads.Load(), "timed reads")
 }
 
 func TestRootSelectsLocalDevelopmentInfrastructure(t *testing.T) {
@@ -229,53 +205,32 @@ func TestRootSelectsLocalDevelopmentInfrastructure(t *testing.T) {
 	settings := config.Default()
 	settings.VFS.Local.Root = t.TempDir()
 	logger, err := logging.New()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Shutdown() })
 
 	cache, err := newCache(settings.Cache)
-	if err != nil {
-		t.Fatalf("construct memory cache: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
-	if err := cache.Ping(context.Background()); err != nil {
-		t.Fatalf("memory cache health: %v", err)
-	}
+	require.NoError(t, cache.Ping(context.Background()))
 
 	mailer, err := newMailer(settings.Mail)
-	if err != nil {
-		t.Fatalf("construct disabled mailer: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = mailer.Close() })
-	if mailer.Enabled() {
-		t.Fatal("disabled mail configuration selected an enabled mailer")
-	}
+	require.False(t, mailer.Enabled(), "disabled mail configuration selected an enabled mailer")
 
 	filesystem, err := newVFS(settings.VFS)
-	if err != nil {
-		t.Fatalf("construct local VFS: %v", err)
-	}
-	if _, err := filesystem.List(context.Background(), vfspkg.ListOptions{Limit: 1}); err != nil {
-		t.Fatalf("local VFS health: %v", err)
-	}
+	require.NoError(t, err)
+	_, err = filesystem.List(context.Background(), vfspkg.ListOptions{Limit: 1})
+	require.NoError(t, err)
 
 	cluster, err := newCluster(settings.Cluster, logger, nil, "test", nil)
-	if err != nil {
-		t.Fatalf("construct local cluster: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = cluster.Stop(context.Background()) })
-	if cluster.NodeID() != settings.Cluster.NodeID {
-		t.Fatalf("cluster node ID = %q, want %q", cluster.NodeID(), settings.Cluster.NodeID)
-	}
+	require.Equal(t, settings.Cluster.NodeID, cluster.NodeID(), "cluster node ID")
 
 	providers, err := newExternalAuthenticationRegistry()
-	if err != nil {
-		t.Fatalf("construct external authentication registry: %v", err)
-	}
-	if err := providers.Configure(settings.Authentication.External); err != nil {
-		t.Fatalf("configure external authentication registry: %v", err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, providers.Configure(settings.Authentication.External))
 }
 
 func TestRootSelectsConfiguredSMTPVFSAndIdentityAdapters(t *testing.T) {
@@ -286,24 +241,17 @@ func TestRootSelectsConfiguredSMTPVFSAndIdentityAdapters(t *testing.T) {
 	settings.Mail.Enabled = true
 	settings.Mail.Backend = "smtp"
 	mailer, err := newMailer(settings.Mail)
-	if err != nil {
-		t.Fatalf("construct SMTP mailer: %v", err)
-	}
-	if !mailer.Enabled() {
-		t.Fatal("enabled SMTP configuration selected a disabled mailer")
-	}
+	require.NoError(t, err)
+	require.True(t, mailer.Enabled(), "enabled SMTP configuration selected a disabled mailer")
 
 	settings.VFS.Backend = "s3"
 	settings.VFS.S3.Endpoint = "s3.example.test"
 	settings.VFS.S3.Bucket = "proctor"
-	if _, err := newVFS(settings.VFS); err != nil {
-		t.Fatalf("construct S3 VFS: %v", err)
-	}
+	_, err = newVFS(settings.VFS)
+	require.NoError(t, err)
 
 	providers, err := newExternalAuthenticationRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	external := settings.Authentication.External
 	external.Providers = []config.ExternalAuthenticationProvider{
 		{
@@ -326,10 +274,6 @@ func TestRootSelectsConfiguredSMTPVFSAndIdentityAdapters(t *testing.T) {
 			Claims: config.ExternalClaimMapping{Subject: "sub"},
 		},
 	}
-	if err := providers.Configure(external); err != nil {
-		t.Fatalf("configure CAS and OIDC adapters: %v", err)
-	}
-	if descriptors := providers.Descriptors(); len(descriptors) != 2 {
-		t.Fatalf("external authentication descriptors = %#v", descriptors)
-	}
+	require.NoError(t, providers.Configure(external))
+	require.Len(t, providers.Descriptors(), 2)
 }

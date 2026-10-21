@@ -13,6 +13,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -54,21 +56,15 @@ func TestEventFromRealtimePreservesWireFieldsAndClonesData(t *testing.T) {
 	}
 
 	event := eventFromRealtime(source)
-	if event.ID != source.ID || event.Event != source.Name ||
-		event.UserID != source.UserID || event.Action != source.Action {
-		t.Fatalf("wire event fields = %#v, source = %#v", event, source)
-	}
-	if event.Resource != resourceFromModel(source.Resource) {
-		t.Fatalf("wire resource = %#v, want %#v", event.Resource, source.Resource)
-	}
-	if !bytes.Equal(event.Data, source.Data) {
-		t.Fatalf("wire data = %s, want %s", event.Data, source.Data)
-	}
+	require.Equal(t, source.ID, event.ID, "wire event fields = %#v, source = %#v", event, source)
+	require.Equal(t, source.Name, event.Event, "wire event fields = %#v, source = %#v", event, source)
+	require.Equal(t, source.UserID, event.UserID, "wire event fields = %#v, source = %#v", event, source)
+	require.Equal(t, source.Action, event.Action, "wire event fields = %#v, source = %#v", event, source)
+	require.Equal(t, resourceFromModel(source.Resource), event.Resource, "wire resource")
+	require.True(t, bytes.Equal(event.Data, source.Data), "wire data = %s, want %s", event.Data, source.Data)
 
 	event.Data[0] = '['
-	if bytes.Equal(event.Data, source.Data) {
-		t.Fatal("wire event data aliases the realtime event data")
-	}
+	require.False(t, bytes.Equal(event.Data, source.Data), "wire event data aliases the realtime event data")
 }
 
 func TestHubMetricsObserveBroadcastFanoutAndResumeOutcome(t *testing.T) {
@@ -76,42 +72,33 @@ func TestHubMetricsObserveBroadcastFanoutAndResumeOutcome(t *testing.T) {
 
 	hub := newInternalTestHub(t)
 	recorder := &websocketMetricsFake{}
-	if err := hub.AttachRecorder(recorder); err != nil {
-		t.Fatal(err)
-	}
-	if err := hub.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, hub.AttachRecorder(recorder))
+	require.NoError(t, hub.Start(context.Background()))
 	defer func() { _ = hub.Close() }()
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID()}
-	if connection, _ := hub.register(newRuntimeTestSocket(), principal, model.RequestMetadata{}, "missing-resume", 0, ""); connection == nil {
-		t.Fatal("register returned nil")
-	}
+	connection, _ := hub.register(newRuntimeTestSocket(), principal, model.RequestMetadata{}, "missing-resume", 0, "")
+	require.NotNil(t, connection, "register returned nil")
 	event := realtime.RealtimeEvent{ID: model.NewID(), Name: "academic_unit.updated", UserID: principal.UserID.String(), Data: json.RawMessage(`{"updated":true}`)}
 	hub.PublishLocal(context.Background(), event)
-	if recorder.broadcastEvent != "event" || recorder.broadcastOutcome != "published" || recorder.broadcastRecipients != 1 {
-		t.Fatalf("broadcast metrics = (%q, %q, %d)", recorder.broadcastEvent, recorder.broadcastOutcome, recorder.broadcastRecipients)
-	}
-	if len(recorder.replays) != 1 || recorder.replays[0] != "resync_required" {
-		t.Fatalf("replay metrics = %#v", recorder.replays)
-	}
+	require.Equal(t, "event", recorder.broadcastEvent, "broadcast metrics")
+	require.Equal(t, "published", recorder.broadcastOutcome, "broadcast metrics")
+	require.Equal(t, 1, recorder.broadcastRecipients, "broadcast metrics")
+	require.Len(t, recorder.replays, 1)
+	require.Equal(t, "resync_required", recorder.replays[0])
 }
 
 func TestHubUnbindExamAttemptConnectionClearsOnlyExactBindingAndKeepsSocketOpen(t *testing.T) {
 	t.Parallel()
 
 	hub := newInternalTestHub(t)
-	if err := hub.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, hub.Start(context.Background()))
 	defer func() { _ = hub.Close() }()
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID()}
 	exactSocket, otherSocket := newRuntimeTestSocket(), newRuntimeTestSocket()
 	exact, _ := hub.register(exactSocket, principal, model.RequestMetadata{}, "", 0, "")
 	other, _ := hub.register(otherSocket, principal, model.RequestMetadata{}, "", 0, "")
-	if exact == nil || other == nil {
-		t.Fatal("Hub did not register test connections")
-	}
+	require.NotNil(t, exact, "Hub did not register test connections")
+	require.NotNil(t, other, "Hub did not register test connections")
 	exactID, otherID := model.NewAttemptConnectionID(), model.NewAttemptConnectionID()
 	exactSubscription := bindRuntimeForUnbindTest(exact, exactID)
 	bindRuntimeForUnbindTest(other, otherID)
@@ -126,17 +113,19 @@ func TestHubUnbindExamAttemptConnectionClearsOnlyExactBindingAndKeepsSocketOpen(
 	otherBinding := other.attempt
 	otherSubscribed := len(other.subscriptions) == 1
 	other.mu.Unlock()
-	if exactBinding != nil || exactSubscribed || otherBinding == nil || otherBinding.connectionID != otherID || !otherSubscribed {
-		t.Fatalf("exact binding=%#v subscribed=%v other=%#v subscribed=%v", exactBinding, exactSubscribed, otherBinding, otherSubscribed)
-	}
+	require.Nil(t, exactBinding, "exact binding")
+	require.False(t, exactSubscribed, "exact binding")
+	require.NotNil(t, otherBinding, "exact binding")
+	require.Equal(t, otherID, otherBinding.connectionID, "exact binding")
+	require.True(t, otherSubscribed, "exact binding")
 	select {
 	case <-exactSocket.closed:
-		t.Fatal("exact generic WebSocket was closed")
+		require.FailNow(t, "exact generic WebSocket was closed")
 	default:
 	}
 	select {
 	case <-otherSocket.closed:
-		t.Fatal("unrelated generic WebSocket was closed")
+		require.FailNow(t, "unrelated generic WebSocket was closed")
 	default:
 	}
 }
@@ -184,9 +173,8 @@ func TestCloseCodeForRealtimeReason(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			code, reason := closeCodeForReason(test.reason)
-			if code != test.wantCode || reason.fallback != test.wantReason {
-				t.Fatalf("close = (%d, %q), want (%d, %q)", code, reason, test.wantCode, test.wantReason)
-			}
+			require.Equal(t, test.wantCode, code, "close = (%d, %q), want (%d, %q)", code, reason, test.wantCode, test.wantReason)
+			require.Equal(t, test.wantReason, reason.fallback, "close = (%d, %q), want (%d, %q)", code, reason, test.wantCode, test.wantReason)
 		})
 	}
 }

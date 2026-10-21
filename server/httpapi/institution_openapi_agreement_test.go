@@ -10,8 +10,10 @@ package httpapi
 import (
 	"encoding/json"
 	"reflect"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -21,9 +23,7 @@ func TestInstitutionOpenAPIAgreesWithRuntime(t *testing.T) {
 
 	document := readOpenAPIDocument(t)
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, institutionResource(nil)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtimeAPI.collectResources(model.APIURLSuffix, institutionResource(nil)))
 	suite := openAPIAgreementSuite{
 		Operations: []openAPIAgreementOperation{
 			{Key: "GET /api/v1/institution", Auth: AuthPrincipalRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/InstitutionOK", SuccessSchema: "InstitutionResponse", PublicErrorCodes: principalContractCodes("resource.not_found", "administration.unavailable")},
@@ -42,12 +42,8 @@ func TestInstitutionOpenAPIAgreesWithRuntime(t *testing.T) {
 		var property struct {
 			Description string `json:"description"`
 		}
-		if err := json.Unmarshal(patchSchema.Properties[propertyName], &property); err != nil {
-			t.Fatal(err)
-		}
-		if !strings.Contains(property.Description, "Omitted or null leaves the value unchanged") ||
-			!strings.Contains(property.Description, "empty string is present") {
-			t.Errorf("%s semantics = %q", propertyName, property.Description)
-		}
+		require.NoError(t, json.Unmarshal(patchSchema.Properties[propertyName], &property))
+		assert.Contains(t, property.Description, "Omitted or null leaves the value unchanged", "%s semantics", propertyName)
+		assert.Contains(t, property.Description, "empty string is present", "%s semantics", propertyName)
 	}
 }

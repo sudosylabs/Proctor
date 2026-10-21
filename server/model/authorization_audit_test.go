@@ -8,89 +8,67 @@
 package model
 
 import (
-	"slices"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestAuthorizationRegistryIsClosedAndResourceTyped(t *testing.T) {
 	definition, ok := DefinitionForAction(ActionClassMembersView)
-	if !ok || definition.ResourceType != ResourceClass ||
-		!definition.InheritInstitutionScope ||
-		!definition.InheritAcademicUnitScopes {
-		t.Fatalf("class-members definition = %#v, %v", definition, ok)
-	}
-	if _, ok := DefinitionForAction(Action("future.permission")); ok {
-		t.Fatal("unknown action was registered")
-	}
-	if err := (Resource{Type: ResourceClass, ID: NewID()}).Validate(); err != nil {
-		t.Fatal("valid class resource was rejected")
-	}
+	require.True(t, ok, "class-members definition = %#v", definition)
+	require.Equal(t, ResourceClass, definition.ResourceType, "class-members definition = %#v", definition)
+	require.True(t, definition.InheritInstitutionScope, "class-members definition = %#v", definition)
+	require.True(t, definition.InheritAcademicUnitScopes, "class-members definition = %#v", definition)
+	_, ok = DefinitionForAction(Action("future.permission"))
+	require.False(t, ok, "unknown action was registered")
+	require.NoError(t, (Resource{Type: ResourceClass, ID: NewID()}).Validate(), "valid class resource was rejected")
 	userDefinition, ok := DefinitionForAction(ActionUserView)
-	if !ok || userDefinition.ResourceType != ResourceUser ||
-		!userDefinition.InheritInstitutionScope ||
-		!userDefinition.InheritAcademicUnitScopes {
-		t.Fatalf("user-view definition = %#v, %v", userDefinition, ok)
-	}
-	if err := (Resource{Type: ResourceUser, ID: NewID()}).Validate(); err != nil {
-		t.Fatal("valid user resource was rejected")
-	}
+	require.True(t, ok, "user-view definition = %#v", userDefinition)
+	require.Equal(t, ResourceUser, userDefinition.ResourceType, "user-view definition = %#v", userDefinition)
+	require.True(t, userDefinition.InheritInstitutionScope, "user-view definition = %#v", userDefinition)
+	require.True(t, userDefinition.InheritAcademicUnitScopes, "user-view definition = %#v", userDefinition)
+	require.NoError(t, (Resource{Type: ResourceUser, ID: NewID()}).Validate(), "valid user resource was rejected")
 	examDefinition, ok := DefinitionForAction(ActionExamView)
-	if !ok || examDefinition.ResourceType != ResourceExam || !examDefinition.InheritInstitutionScope || !examDefinition.InheritAcademicUnitScopes {
-		t.Fatalf("exam-view definition = %#v, %v", examDefinition, ok)
-	}
-	if err := (Resource{Type: ResourceExam, ID: NewID()}).Validate(); err != nil {
-		t.Fatalf("valid exam resource was rejected: %v", err)
-	}
+	require.True(t, ok, "exam-view definition = %#v", examDefinition)
+	require.Equal(t, ResourceExam, examDefinition.ResourceType, "exam-view definition = %#v", examDefinition)
+	require.True(t, examDefinition.InheritInstitutionScope, "exam-view definition = %#v", examDefinition)
+	require.True(t, examDefinition.InheritAcademicUnitScopes, "exam-view definition = %#v", examDefinition)
+	require.NoError(t, (Resource{Type: ResourceExam, ID: NewID()}).Validate())
 	sittingView, ok := DefinitionForAction(ActionExamSittingView)
-	if !ok || sittingView.ResourceType != ResourceExamSitting || !sittingView.InheritInstitutionScope || !sittingView.InheritAcademicUnitScopes {
-		t.Fatalf("exam-sitting view definition = %#v, %v", sittingView, ok)
-	}
+	require.True(t, ok, "exam-sitting view definition = %#v", sittingView)
+	require.Equal(t, ResourceExamSitting, sittingView.ResourceType, "exam-sitting view definition = %#v", sittingView)
+	require.True(t, sittingView.InheritInstitutionScope, "exam-sitting view definition = %#v", sittingView)
+	require.True(t, sittingView.InheritAcademicUnitScopes, "exam-sitting view definition = %#v", sittingView)
 	sittingCreate, ok := DefinitionForAction(ActionExamSittingCreate)
-	if !ok || sittingCreate.ResourceType != ResourceExam || !sittingCreate.InheritInstitutionScope || !sittingCreate.InheritAcademicUnitScopes {
-		t.Fatalf("exam-sitting create definition = %#v, %v", sittingCreate, ok)
-	}
-	if err := (Resource{Type: ResourceExamSitting, ID: NewID()}).Validate(); err != nil {
-		t.Fatalf("valid Exam Sitting resource was rejected: %v", err)
-	}
-	if err := (Resource{Type: ResourceType("future"), ID: NewID()}).Validate(); err == nil {
-		t.Fatal("unimplemented resource type was accepted")
-	}
+	require.True(t, ok, "exam-sitting create definition = %#v", sittingCreate)
+	require.Equal(t, ResourceExam, sittingCreate.ResourceType, "exam-sitting create definition = %#v", sittingCreate)
+	require.True(t, sittingCreate.InheritInstitutionScope, "exam-sitting create definition = %#v", sittingCreate)
+	require.True(t, sittingCreate.InheritAcademicUnitScopes, "exam-sitting create definition = %#v", sittingCreate)
+	require.NoError(t, (Resource{Type: ResourceExamSitting, ID: NewID()}).Validate())
+	require.Error(t, (Resource{Type: ResourceType("future"), ID: NewID()}).Validate(), "unimplemented resource type was accepted")
 }
 
 func TestActionDefinitionDistinguishesConcreteResourcesFromRoleScopes(t *testing.T) {
 	t.Parallel()
 
 	examManage, ok := DefinitionForAction(ActionExamManage)
-	if !ok {
-		t.Fatal("exam.manage is not registered")
-	}
-	if examManage.AcceptsResource(ResourceAcademicUnit) {
-		t.Fatal("exam.manage accepted an Academic Unit as its concrete resource")
-	}
-	if !examManage.SupportsRoleScope(RoleScopeInstitution) ||
-		!examManage.SupportsRoleScope(RoleScopeAcademicUnit) ||
-		examManage.SupportsRoleScope(RoleScopeClass) {
-		t.Fatalf("exam.manage Role scopes = institution:%v academic_unit:%v class:%v",
-			examManage.SupportsRoleScope(RoleScopeInstitution),
-			examManage.SupportsRoleScope(RoleScopeAcademicUnit),
-			examManage.SupportsRoleScope(RoleScopeClass))
-	}
-	if examManage.SupportsRoleScope(RoleScopeType("future")) {
-		t.Fatal("exam.manage accepted an unknown Role scope")
-	}
+	require.True(t, ok, "exam.manage is not registered")
+	require.False(t, examManage.AcceptsResource(ResourceAcademicUnit), "exam.manage accepted an Academic Unit as its concrete resource")
+	require.True(t, examManage.SupportsRoleScope(RoleScopeInstitution), "exam.manage Role scopes = institution")
+	require.True(t, examManage.SupportsRoleScope(RoleScopeAcademicUnit), "exam.manage Role scopes = institution")
+	require.False(t, examManage.SupportsRoleScope(RoleScopeClass), "exam.manage Role scopes = institution")
+	require.False(t, examManage.SupportsRoleScope(RoleScopeType("future")), "exam.manage accepted an unknown Role scope")
 }
 
 func TestJobActionsAreInstitutionScopedAndKnown(t *testing.T) {
 	for _, action := range []Action{ActionJobView, ActionJobManage} {
 		definition, ok := DefinitionForAction(action)
-		if !ok || definition.ResourceType != ResourceInstitution ||
-			!definition.InheritInstitutionScope || definition.InheritAcademicUnitScopes {
-			t.Fatalf("job action %q definition = %#v, %v", action, definition, ok)
-		}
-		if !IsKnownAction(string(action)) {
-			t.Fatalf("job action %q is not known", action)
-		}
+		require.True(t, ok, "job action %q definition = %#v", action, definition)
+		require.Equal(t, ResourceInstitution, definition.ResourceType, "job action %q definition = %#v", action, definition)
+		require.True(t, definition.InheritInstitutionScope, "job action %q definition = %#v", action, definition)
+		require.False(t, definition.InheritAcademicUnitScopes, "job action %q definition = %#v", action, definition)
+		require.True(t, IsKnownAction(string(action)), "job action %q is not known", action)
 	}
 }
 
@@ -134,28 +112,18 @@ func TestGranularAcademicAndOnboardingActionsAreClosedAndResourceTyped(t *testin
 
 	all := AllActions()
 	for _, test := range tests {
-		definition, ok := DefinitionForAction(test.action)
-		if !ok {
-			t.Fatalf("action %q is not registered", test.action)
-		}
-		if definition.ResourceType != test.resourceType {
-			t.Fatalf("action %q resource type = %q, want %q", test.action, definition.ResourceType, test.resourceType)
-		}
-		if !IsGrantableAction(string(test.action)) {
-			t.Fatalf("action %q is not role grantable", test.action)
-		}
-		if got := IsPersonalAccessTokenAction(string(test.action)); got != test.patAllowed {
-			t.Fatalf("action %q PAT eligibility = %v, want %v", test.action, got, test.patAllowed)
-		}
-		if !slices.Contains(all, string(test.action)) {
-			t.Fatalf("action %q missing from AllActions", test.action)
-		}
+		t.Run(string(test.action), func(t *testing.T) {
+			definition, ok := DefinitionForAction(test.action)
+			require.True(t, ok, "action %q is not registered", test.action)
+			require.Equal(t, test.resourceType, definition.ResourceType, "action %q resource type", test.action)
+			require.True(t, IsGrantableAction(string(test.action)), "action %q is not role grantable", test.action)
+			require.Equal(t, test.patAllowed, IsPersonalAccessTokenAction(string(test.action)), "action %q PAT eligibility", test.action)
+			require.Contains(t, all, string(test.action), "action")
+		})
 	}
 	for _, action := range []Action{ActionOnboardingBatchView, ActionOnboardingBatchManage} {
 		definition, _ := DefinitionForAction(action)
-		if !definition.AcceptsResource(ResourceClass) {
-			t.Fatalf("action %q does not accept exact Class scope", action)
-		}
+		require.True(t, definition.AcceptsResource(ResourceClass), "action %q does not accept exact Class scope", action)
 	}
 }
 
@@ -163,47 +131,37 @@ func TestExamSittingParticipationActionIsRecognizedButNotRoleGrantable(t *testin
 	t.Parallel()
 
 	definition, ok := DefinitionForAction(ActionExamSittingParticipate)
-	if !ok || definition.ResourceType != ResourceExamSitting || !definition.RelationshipOnly {
-		t.Fatalf("participation definition = %#v, %v", definition, ok)
-	}
-	if IsGrantableAction(string(ActionExamSittingParticipate)) {
-		t.Fatal("relationship-only participation action became role grantable")
-	}
+	require.True(t, ok, "participation definition = %#v", definition)
+	require.Equal(t, ResourceExamSitting, definition.ResourceType, "participation definition = %#v", definition)
+	require.True(t, definition.RelationshipOnly, "participation definition = %#v", definition)
+	require.False(t, IsGrantableAction(string(ActionExamSittingParticipate)), "relationship-only participation action became role grantable")
 	for _, action := range AllActions() {
-		if action == string(ActionExamSittingParticipate) {
-			t.Fatal("relationship-only participation action entered the system administrator role")
-		}
+		require.NotEqual(t, string(ActionExamSittingParticipate), action, "relationship-only participation action entered the system administrator role")
 	}
 }
 
 func TestBrowserActivityHasNoGrantableOverride(t *testing.T) {
 	obsolete := Action("exam.attempt.browser_activity.view.override")
-	if _, known := DefinitionForAction(obsolete); known || slices.Contains(AllActions(), string(obsolete)) {
-		t.Fatal("obsolete Browser Activity override remained live")
-	}
+	_, known := DefinitionForAction(obsolete)
+	require.False(t, known, "obsolete Browser Activity override remained live")
+	require.NotContains(t, AllActions(), string(obsolete), "obsolete Browser Activity override remained live")
 	definition, known := DefinitionForAction(ActionExamAttemptBrowserActivityView)
-	if !known || definition.ResourceType != ResourceExamSitting || !slices.Contains(AllActions(), string(ActionExamAttemptBrowserActivityView)) {
-		t.Fatal("dedicated Browser Activity permission is missing")
-	}
+	require.True(t, known, "dedicated Browser Activity permission is missing")
+	require.Equal(t, ResourceExamSitting, definition.ResourceType, "dedicated Browser Activity permission is missing")
+	require.Contains(t, AllActions(), string(ActionExamAttemptBrowserActivityView), "dedicated Browser Activity permission is missing")
 }
 
 func TestDesktopCompatibilityPolicyManagementIsSystemAdministratorOnly(t *testing.T) {
 	t.Parallel()
 
 	definition, ok := DefinitionForAction(ActionDesktopCompatibilityPolicyManage)
-	if !ok || definition.ResourceType != ResourceInstitution ||
-		!definition.InheritInstitutionScope || !definition.SystemAdministratorOnly {
-		t.Fatalf("desktop compatibility policy definition = %#v, %v", definition, ok)
-	}
-	if IsGrantableAction(string(ActionDesktopCompatibilityPolicyManage)) {
-		t.Fatal("system-administrator-only action became grantable to reusable Roles")
-	}
-	if IsPersonalAccessTokenAction(string(ActionDesktopCompatibilityPolicyManage)) {
-		t.Fatal("system-administrator-only action became available to Personal Access Tokens")
-	}
-	if !slices.Contains(AllActions(), string(ActionDesktopCompatibilityPolicyManage)) {
-		t.Fatal("system-administrator-only action is missing from the protected Role")
-	}
+	require.True(t, ok, "desktop compatibility policy definition = %#v", definition)
+	require.Equal(t, ResourceInstitution, definition.ResourceType, "desktop compatibility policy definition = %#v", definition)
+	require.True(t, definition.InheritInstitutionScope, "desktop compatibility policy definition = %#v", definition)
+	require.True(t, definition.SystemAdministratorOnly, "desktop compatibility policy definition = %#v", definition)
+	require.False(t, IsGrantableAction(string(ActionDesktopCompatibilityPolicyManage)), "system-administrator-only action became grantable to reusable Roles")
+	require.False(t, IsPersonalAccessTokenAction(string(ActionDesktopCompatibilityPolicyManage)), "system-administrator-only action became available to Personal Access Tokens")
+	require.Contains(t, AllActions(), string(ActionDesktopCompatibilityPolicyManage), "system-administrator-only action is missing from the protected Role")
 }
 
 func TestSubmissionActionsAreResourceTypedAndGrantable(t *testing.T) {
@@ -213,17 +171,14 @@ func TestSubmissionActionsAreResourceTypedAndGrantable(t *testing.T) {
 		ActionSubmissionReview, ActionSubmissionReviewOverride,
 		ActionSubmissionRelease, ActionSubmissionReleaseOverride} {
 		definition, ok := DefinitionForAction(action)
-		if !ok || definition.ResourceType != ResourceSubmission || !definition.InheritInstitutionScope ||
-			!definition.InheritAcademicUnitScopes || definition.RelationshipOnly {
-			t.Fatalf("Submission action %q definition = %#v, %v", action, definition, ok)
-		}
-		if !IsGrantableAction(string(action)) {
-			t.Fatalf("Submission action %q is not role grantable", action)
-		}
+		require.True(t, ok, "Submission action %q definition = %#v", action, definition)
+		require.Equal(t, ResourceSubmission, definition.ResourceType, "Submission action %q definition = %#v", action, definition)
+		require.True(t, definition.InheritInstitutionScope, "Submission action %q definition = %#v", action, definition)
+		require.True(t, definition.InheritAcademicUnitScopes, "Submission action %q definition = %#v", action, definition)
+		require.False(t, definition.RelationshipOnly, "Submission action %q definition = %#v", action, definition)
+		require.True(t, IsGrantableAction(string(action)), "Submission action %q is not role grantable", action)
 	}
-	if err := (Resource{Type: ResourceSubmission, ID: NewID()}).Validate(); err != nil {
-		t.Fatalf("valid Submission resource was rejected: %v", err)
-	}
+	require.NoError(t, (Resource{Type: ResourceSubmission, ID: NewID()}).Validate())
 }
 
 func TestUserAuditResourceKeepsItsAcademicScopeSeparate(t *testing.T) {
@@ -234,9 +189,7 @@ func TestUserAuditResourceKeepsItsAcademicScopeSeparate(t *testing.T) {
 		Status: AuditStatusSuccess, NodeID: "node-1",
 	}
 	event.PrepareCreate(NewAuditEventID(), NowUTC())
-	if err := event.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, event.Validate())
 }
 
 func TestAuditEventValidationCloningAndBounds(t *testing.T) {
@@ -249,25 +202,17 @@ func TestAuditEventValidationCloningAndBounds(t *testing.T) {
 		Parameters: []byte(`{"safe":true}`),
 	}
 	event.PrepareCreate(NewAuditEventID(), NowUTC())
-	if err := event.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	if len(event.UserAgent) != 512 {
-		t.Fatalf("bounded user agent length = %d", len(event.UserAgent))
-	}
+	require.NoError(t, event.Validate())
+	require.Len(t, event.UserAgent, 512, "bounded user agent length")
 	cloned := event.Clone()
 	cloned.Parameters[2] = 'X'
-	if string(event.Parameters) != `{"safe":true}` {
-		t.Fatal("Clone exposed audit JSON storage")
-	}
+	require.Equal(t, `{"safe":true}`, string(event.Parameters), "Clone exposed audit JSON storage")
 
 	invalid := event.Clone()
 	invalid.IPAddress = "not-an-address"
-	if err := invalid.Validate(); err == nil ||
-		err.(*ValidationError).Code != "model.audit_event.is_valid.ip_address.app_error" {
-		t.Fatalf("invalid IP error = %v", err)
-	}
-	if _, err := EncodeAuditData(strings.Repeat("x", AuditJSONMaxBytes)); err == nil {
-		t.Fatal("oversized encoded audit data was accepted")
-	}
+	var validation *ValidationError
+	require.ErrorAs(t, invalid.Validate(), &validation)
+	require.Equal(t, "model.audit_event.is_valid.ip_address.app_error", validation.Code)
+	_, err := EncodeAuditData(strings.Repeat("x", AuditJSONMaxBytes))
+	require.Error(t, err, "oversized encoded audit data was accepted")
 }

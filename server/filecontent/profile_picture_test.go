@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/HugoSmits86/nativewebp"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/image/webp"
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
@@ -50,39 +51,26 @@ func TestContentStoresCanonicalProfilePictureRenditionsWithoutUpscaling(t *testi
 		}
 	}
 	var input bytes.Buffer
-	if err := png.Encode(&input, source); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, png.Encode(&input, source))
 	for _, backend := range profileContentBackends() {
 		t.Run(backend.name, func(t *testing.T) {
 			content, err := filecontent.New(backend.open(t), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			revisionID := model.NewFileRevisionID()
 			renditions, err := content.NormalizeAndStoreProfilePicture(context.Background(), revisionID, bytes.NewReader(input.Bytes()), int64(input.Len()), time.Unix(1, 0))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(renditions) != 3 {
-				t.Fatalf("renditions = %d, want 3", len(renditions))
-			}
+			require.NoError(t, err)
+			require.Len(t, renditions, 3, "renditions")
 			for _, rendition := range renditions {
-				if rendition.Width != 20 || rendition.Height != 20 || rendition.MediaType != "image/webp" {
-					t.Fatalf("noncanonical rendition: %#v", rendition)
-				}
+				require.Equal(t, 20, rendition.Width)
+				require.Equal(t, 20, rendition.Height)
+				require.Equal(t, "image/webp", rendition.MediaType)
 				body, openErr := content.OpenProfilePictureRendition(context.Background(), revisionID, rendition.ID)
-				if openErr != nil {
-					t.Fatal(openErr)
-				}
+				require.NoError(t, openErr)
 				decoded, decodeErr := webp.Decode(body)
 				_ = body.Close()
-				if decodeErr != nil {
-					t.Fatal(decodeErr)
-				}
-				if decoded.Bounds().Dx() != 20 || decoded.Bounds().Dy() != 20 {
-					t.Fatalf("decoded %s dimensions = %v", rendition.Name, decoded.Bounds())
-				}
+				require.NoError(t, decodeErr)
+				require.Equal(t, 20, decoded.Bounds().Dx(), "decoded")
+				require.Equal(t, 20, decoded.Bounds().Dy(), "decoded")
 			}
 		})
 	}
@@ -99,9 +87,7 @@ func profileContentBackends() []struct {
 		{name: "memory", open: func(*testing.T) vfspkg.FileSystem { return memoryvfs.New() }},
 		{name: "local", open: func(t *testing.T) vfspkg.FileSystem {
 			filesystem, err := localvfs.New(filepath.Join(t.TempDir(), "vfs"))
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			return filesystem
 		}},
 	}
@@ -112,35 +98,22 @@ func TestContentLeavesAnUncertainProfilePictureWriteForBoundedRecovery(t *testin
 
 	backend := &uncertainWriteVFS{FileSystem: memoryvfs.New(), failOnCall: 2}
 	content, err := filecontent.New(backend, filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	source := image.NewNRGBA(image.Rect(0, 0, 20, 20))
 	var input bytes.Buffer
-	if err = png.Encode(&input, source); err != nil {
-		t.Fatal(err)
-	}
+	err = png.Encode(&input, source)
+	require.NoError(t, err)
 	revisionID := model.NewFileRevisionID()
-	if _, err = content.NormalizeAndStoreProfilePicture(context.Background(), revisionID, bytes.NewReader(input.Bytes()), int64(input.Len()), time.Unix(1, 0)); !filecontent.IsUnavailable(err) {
-		t.Fatalf("uncertain write error = %v, want unavailable", err)
-	}
+	_, err = content.NormalizeAndStoreProfilePicture(context.Background(), revisionID, bytes.NewReader(input.Bytes()), int64(input.Len()), time.Unix(1, 0))
+	require.True(t, filecontent.IsUnavailable(err), "uncertain write error")
 	page, err := backend.FileSystem.List(context.Background(), vfspkg.ListOptions{Prefix: "files/", Limit: 10})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(page.Entries) != 1 {
-		t.Fatalf("uncertain invisible objects = %d, want 1", len(page.Entries))
-	}
-	if err = content.PurgeAbandonedFileRevision(context.Background(), revisionID); err != nil {
-		t.Fatalf("purge uncertain revision: %v", err)
-	}
+	require.NoError(t, err)
+	require.Len(t, page.Entries, 1, "uncertain invisible objects")
+	err = content.PurgeAbandonedFileRevision(context.Background(), revisionID)
+	require.NoError(t, err)
 	page, err = backend.FileSystem.List(context.Background(), vfspkg.ListOptions{Prefix: "files/", Limit: 10})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(page.Entries) != 0 {
-		t.Fatalf("uncertain objects after purge = %d", len(page.Entries))
-	}
+	require.NoError(t, err)
+	require.Empty(t, page.Entries, "uncertain objects after purge")
 }
 
 type uncertainWriteVFS struct {
@@ -172,38 +145,26 @@ func TestContentAcceptsSupportedProfilePictureFormatsAndRejectsOversizedDimensio
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var input bytes.Buffer
-			if err := test.encode(&input); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, test.encode(&input))
 			content, err := filecontent.New(memoryvfs.New(), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err = content.NormalizeAndStoreProfilePicture(context.Background(), model.NewFileRevisionID(), bytes.NewReader(input.Bytes()), int64(input.Len()), time.Unix(1, 0)); err != nil {
-				t.Fatalf("normalize: %v", err)
-			}
+			require.NoError(t, err)
+			_, err = content.NormalizeAndStoreProfilePicture(context.Background(), model.NewFileRevisionID(), bytes.NewReader(input.Bytes()), int64(input.Len()), time.Unix(1, 0))
+			require.NoError(t, err)
 		})
 	}
 
 	oversized := image.NewNRGBA(image.Rect(0, 0, 4097, 1))
 	var input bytes.Buffer
-	if err := png.Encode(&input, oversized); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, png.Encode(&input, oversized))
 	content, err := filecontent.New(memoryvfs.New(), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = content.NormalizeAndStoreProfilePicture(context.Background(), model.NewFileRevisionID(), bytes.NewReader(input.Bytes()), int64(input.Len()), time.Unix(1, 0)); !errors.Is(err, app.ErrInvalidProfilePicture) {
-		t.Fatalf("oversized dimensions error = %v", err)
-	}
+	require.NoError(t, err)
+	_, err = content.NormalizeAndStoreProfilePicture(context.Background(), model.NewFileRevisionID(), bytes.NewReader(input.Bytes()), int64(input.Len()), time.Unix(1, 0))
+	require.ErrorIs(t, err, app.ErrInvalidProfilePicture)
 	tooLarge := bytes.Repeat([]byte{'x'}, (5<<20)+1)
-	if _, err = content.NormalizeAndStoreProfilePicture(context.Background(), model.NewFileRevisionID(), bytes.NewReader(tooLarge), int64(len(tooLarge)), time.Unix(1, 0)); !errors.Is(err, app.ErrInvalidProfilePicture) {
-		t.Fatalf("oversized bytes error = %v", err)
-	}
-	if _, err = content.NormalizeAndStoreProfilePicture(context.Background(), model.NewFileRevisionID(), nil, -1, time.Unix(1, 0)); !errors.Is(err, app.ErrInvalidProfilePicture) {
-		t.Fatalf("nil body error = %v", err)
-	}
+	_, err = content.NormalizeAndStoreProfilePicture(context.Background(), model.NewFileRevisionID(), bytes.NewReader(tooLarge), int64(len(tooLarge)), time.Unix(1, 0))
+	require.ErrorIs(t, err, app.ErrInvalidProfilePicture)
+	_, err = content.NormalizeAndStoreProfilePicture(context.Background(), model.NewFileRevisionID(), nil, -1, time.Unix(1, 0))
+	require.ErrorIs(t, err, app.ErrInvalidProfilePicture)
 }
 
 func TestContentAppliesEXIFOrientationBeforeProfilePictureCropping(t *testing.T) {
@@ -220,40 +181,31 @@ func TestContentAppliesEXIFOrientationBeforeProfilePictureCropping(t *testing.T)
 		}
 	}
 	var encoded bytes.Buffer
-	if err := jpeg.Encode(&encoded, source, &jpeg.Options{Quality: 100}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, jpeg.Encode(&encoded, source, &jpeg.Options{Quality: 100}))
 	oriented := jpegWithEXIFOrientation(t, encoded.Bytes(), 6)
 	content, err := filecontent.New(memoryvfs.New(), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	revisionID := model.NewFileRevisionID()
 	renditions, err := content.NormalizeAndStoreProfilePicture(context.Background(), revisionID, bytes.NewReader(oriented), int64(len(oriented)), time.Unix(1, 0))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	body, err := content.OpenProfilePictureRendition(context.Background(), revisionID, renditions[0].ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	decoded, err := webp.Decode(body)
 	_ = body.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	topLeft := color.NRGBAModel.Convert(decoded.At(2, 2)).(color.NRGBA)
 	bottomLeft := color.NRGBAModel.Convert(decoded.At(2, 17)).(color.NRGBA)
-	if topLeft.B < 180 || bottomLeft.B < 180 || topLeft.R > 80 || bottomLeft.R > 80 {
-		t.Fatalf("orientation was not applied before crop: top-left=%#v bottom-left=%#v", topLeft, bottomLeft)
-	}
+	require.GreaterOrEqual(t, topLeft.B, uint8(180), "orientation was not applied before crop: top-left=%#v bottom-left=%#v", topLeft, bottomLeft)
+	require.GreaterOrEqual(t, bottomLeft.B, uint8(180), "orientation was not applied before crop: top-left=%#v bottom-left=%#v", topLeft, bottomLeft)
+	require.LessOrEqual(t, topLeft.R, uint8(80), "orientation was not applied before crop: top-left=%#v bottom-left=%#v", topLeft, bottomLeft)
+	require.LessOrEqual(t, bottomLeft.R, uint8(80), "orientation was not applied before crop: top-left=%#v bottom-left=%#v", topLeft, bottomLeft)
 }
 
 func jpegWithEXIFOrientation(t *testing.T, jpegBytes []byte, orientation uint16) []byte {
 	t.Helper()
-	if len(jpegBytes) < 2 || jpegBytes[0] != 0xff || jpegBytes[1] != 0xd8 {
-		t.Fatal("invalid JPEG fixture")
-	}
+	require.GreaterOrEqual(t, len(jpegBytes), 2, "invalid JPEG fixture")
+	require.Equal(t, byte(0xff), jpegBytes[0], "invalid JPEG fixture")
+	require.Equal(t, byte(0xd8), jpegBytes[1], "invalid JPEG fixture")
 	payload := make([]byte, 32)
 	copy(payload, []byte{'E', 'x', 'i', 'f', 0, 0, 'I', 'I', 0x2a, 0, 8, 0, 0, 0})
 	binary.LittleEndian.PutUint16(payload[14:16], 1)
@@ -272,14 +224,10 @@ func TestDefaultProfilePictureMatchesGoldenAndStoredBytes(t *testing.T) {
 	t.Parallel()
 
 	content, err := filecontent.New(memoryvfs.New(), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	revisionID := model.NewFileRevisionID()
 	renditions, err := content.GenerateAndStoreDefaultProfilePicture(context.Background(), revisionID, defaultProfilePictureSeed, time.Unix(1, 0))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	storedByName := make(map[string]model.FileRendition, len(renditions))
 	for _, rendition := range renditions {
 		storedByName[rendition.Name] = rendition
@@ -293,38 +241,26 @@ func TestDefaultProfilePictureMatchesGoldenAndStoredBytes(t *testing.T) {
 		{size: 256, checksum: defaultProfilePictureChecksum256, encoded: defaultProfilePictureGolden256},
 		{size: 512, checksum: defaultProfilePictureChecksum512, encoded: defaultProfilePictureGolden512},
 	} {
-		want, decodeErr := base64.StdEncoding.DecodeString(golden.encoded)
-		if decodeErr != nil {
-			t.Fatal(decodeErr)
-		}
-		rendered, renderErr := content.RenderDefaultProfilePicture(context.Background(), defaultProfilePictureSeed, golden.size)
-		if renderErr != nil {
-			t.Fatal(renderErr)
-		}
-		actual, readErr := io.ReadAll(rendered.Body)
-		_ = rendered.Body.Close()
-		if readErr != nil {
-			t.Fatal(readErr)
-		}
-		if !bytes.Equal(actual, want) || rendered.SHA256 != golden.checksum {
-			t.Fatalf("%d px default changed: bytes_equal=%t checksum=%s", golden.size, bytes.Equal(actual, want), rendered.SHA256)
-		}
+		t.Run(fmt.Sprintf("size=%v", golden.size), func(t *testing.T) {
+			want, decodeErr := base64.StdEncoding.DecodeString(golden.encoded)
+			require.NoError(t, decodeErr)
+			rendered, renderErr := content.RenderDefaultProfilePicture(context.Background(), defaultProfilePictureSeed, golden.size)
+			require.NoError(t, renderErr)
+			actual, readErr := io.ReadAll(rendered.Body)
+			_ = rendered.Body.Close()
+			require.NoError(t, readErr)
+			require.True(t, bytes.Equal(actual, want))
+			require.Equal(t, golden.checksum, rendered.SHA256)
 
-		rendition, found := storedByName[fmt.Sprintf("profile_%d", golden.size)]
-		if !found {
-			t.Fatalf("profile_%d rendition missing", golden.size)
-		}
-		stored, openErr := content.OpenProfilePictureRendition(context.Background(), revisionID, rendition.ID)
-		if openErr != nil {
-			t.Fatal(openErr)
-		}
-		storedBytes, readErr := io.ReadAll(stored)
-		_ = stored.Close()
-		if readErr != nil {
-			t.Fatal(readErr)
-		}
-		if !bytes.Equal(storedBytes, want) || rendition.SHA256 != golden.checksum {
-			t.Fatalf("persisted %d px default differs from transient rendering", golden.size)
-		}
+			rendition, found := storedByName[fmt.Sprintf("profile_%d", golden.size)]
+			require.True(t, found, "profile_%d rendition missing", golden.size)
+			stored, openErr := content.OpenProfilePictureRendition(context.Background(), revisionID, rendition.ID)
+			require.NoError(t, openErr)
+			storedBytes, readErr := io.ReadAll(stored)
+			_ = stored.Close()
+			require.NoError(t, readErr)
+			require.True(t, bytes.Equal(storedBytes, want), "persisted %d px default differs from transient rendering", golden.size)
+			require.Equal(t, golden.checksum, rendition.SHA256, "persisted %d px default differs from transient rendering", golden.size)
+		})
 	}
 }

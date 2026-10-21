@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -135,28 +137,18 @@ func TestAcademicUnitResponsePreservesExistingWireShape(t *testing.T) {
 		InstitutionID: institutionID, ParentID: parentID,
 		Name: "computing", DisplayName: "Computing", Description: "School",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	got, err := json.Marshal(academicUnitResponseFromModel(unit))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != string(want) {
-		t.Fatalf("response = %s, want existing wire shape %s", got, want)
-	}
+	require.NoError(t, err)
+	require.Equal(t, string(want), string(got), "response")
 }
 
 func TestAcademicUnitCollectionMappingReturnsJSONArrayForNoResults(t *testing.T) {
 	t.Parallel()
 
 	encoded, err := json.Marshal(academicUnitResponsesFromModels(nil))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(encoded) != "[]" {
-		t.Fatalf("empty collection = %s, want []", encoded)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "[]", string(encoded), "empty collection")
 }
 
 func TestAcademicUnitHTTPReadMapsDTOWithoutPermissionPreflight(t *testing.T) {
@@ -185,24 +177,14 @@ func TestAcademicUnitHTTPReadMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer test-credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "status = %d: %s", response.Code, response.Body.String())
 	want, err := json.Marshal(academicUnitResponseFromModel(unit))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var got academicUnitResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &got))
 	encoded, err := json.Marshal(got)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(encoded) != string(want) {
-		t.Fatalf("response = %s, want %s", encoded, want)
-	}
+	require.NoError(t, err)
+	require.Equal(t, string(want), string(encoded), "response")
 }
 
 func TestAcademicUnitHTTPErrorUsesProblemDetailsContract(t *testing.T) {
@@ -229,22 +211,15 @@ func TestAcademicUnitHTTPErrorUsesProblemDetailsContract(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer test-credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusNotFound {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
-	if response.Header().Get("Content-Type") != "application/problem+json" ||
-		response.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("problem headers = %#v", response.Header())
-	}
+	require.Equal(t, http.StatusNotFound, response.Code, "status = %d: %s", response.Code, response.Body.String())
+	require.Equal(t, "application/problem+json", response.Header().Get("Content-Type"))
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"))
 	var problem Problem
-	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-		t.Fatal(err)
-	}
-	if problem.Code != "resource.not_found" || problem.Status != http.StatusNotFound ||
-		problem.Type != "https://proctor.sudosylabs.com/problems/resource.not_found" ||
-		problem.Fields["resource"] != "academic_unit" {
-		t.Fatalf("problem = %#v", problem)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &problem))
+	require.Equal(t, "resource.not_found", problem.Code)
+	require.Equal(t, http.StatusNotFound, problem.Status)
+	require.Equal(t, "https://proctor.sudosylabs.com/problems/resource.not_found", problem.Type)
+	require.Equal(t, "academic_unit", problem.Fields["resource"])
 }
 
 func TestAcademicUnitHTTPCreateMapsCommandWithoutPermissionPreflight(t *testing.T) {
@@ -287,9 +262,7 @@ func TestAcademicUnitHTTPCreateMapsCommandWithoutPermissionPreflight(t *testing.
 			options.AcademicUnits = fakeApplication
 			options.Institutions = fakeApplication
 			httpAPI, err := New(options)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			t.Cleanup(func() { _ = httpAPI.Close() })
 
 			request := httptest.NewRequest(
@@ -304,23 +277,16 @@ func TestAcademicUnitHTTPCreateMapsCommandWithoutPermissionPreflight(t *testing.
 			request.Header.Set("Content-Type", "application/json")
 			response := httptest.NewRecorder()
 			httpAPI.ServeHTTP(response, request)
-			if response.Code != http.StatusCreated {
-				t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-			}
+			require.Equal(t, http.StatusCreated, response.Code, "status = %d: %s", response.Code, response.Body.String())
 			wantCommand := app.CreateAcademicUnitCommand{
 				ParentID: model.AcademicUnitID(tt.wantParentID), Name: "computing",
 				DisplayName: "Computing", Description: "School",
 			}
-			if fakeApplication.createCommand != wantCommand {
-				t.Fatalf("command = %#v, want %#v", fakeApplication.createCommand, wantCommand)
-			}
+			require.Equal(t, wantCommand, fakeApplication.createCommand, "command")
 			var got academicUnitResponse
-			if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
-				t.Fatal(err)
-			}
-			if got.ID != created.ID.String() || got.ParentID != tt.wantParentID {
-				t.Fatalf("response = %#v", got)
-			}
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &got))
+			require.Equal(t, created.ID.String(), got.ID)
+			require.Equal(t, tt.wantParentID, got.ParentID)
 		})
 	}
 }
@@ -350,9 +316,7 @@ func TestAcademicUnitHTTPMutationsMapCommandsWithoutPermissionPreflight(t *testi
 	options.AcademicUnits = fakeApplication
 	options.Institutions = fakeApplication
 	httpAPI, err := New(options)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = httpAPI.Close() })
 
 	parentID := model.NewID()
@@ -365,16 +329,12 @@ func TestAcademicUnitHTTPMutationsMapCommandsWithoutPermissionPreflight(t *testi
 	patchRequest.Header.Set("Content-Type", "application/json")
 	patchResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(patchResponse, patchRequest)
-	if patchResponse.Code != http.StatusOK {
-		t.Fatalf("patch status = %d: %s", patchResponse.Code, patchResponse.Body.String())
-	}
-	if fakeApplication.updateCommand.ID != unit.ID ||
-		fakeApplication.updateCommand.ParentID == nil ||
-		*fakeApplication.updateCommand.ParentID != parentID ||
-		fakeApplication.updateCommand.Name == nil ||
-		*fakeApplication.updateCommand.Name != name {
-		t.Fatalf("update command = %#v", fakeApplication.updateCommand)
-	}
+	require.Equal(t, http.StatusOK, patchResponse.Code, "patch status = %d: %s", patchResponse.Code, patchResponse.Body.String())
+	require.Equal(t, unit.ID, fakeApplication.updateCommand.ID)
+	require.NotNil(t, fakeApplication.updateCommand.ParentID)
+	require.Equal(t, parentID, *fakeApplication.updateCommand.ParentID)
+	require.NotNil(t, fakeApplication.updateCommand.Name)
+	require.Equal(t, name, *fakeApplication.updateCommand.Name)
 
 	archiveRequest := httptest.NewRequest(
 		http.MethodDelete, "/api/v1/academic-units/"+unit.ID.String(), nil,
@@ -382,13 +342,7 @@ func TestAcademicUnitHTTPMutationsMapCommandsWithoutPermissionPreflight(t *testi
 	archiveRequest.Header.Set("Authorization", "Bearer test-credential")
 	archiveResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(archiveResponse, archiveRequest)
-	if archiveResponse.Code != http.StatusNoContent {
-		t.Fatalf("archive status = %d: %s", archiveResponse.Code, archiveResponse.Body.String())
-	}
-	if archiveResponse.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("archive cache control = %q", archiveResponse.Header().Get("Cache-Control"))
-	}
-	if fakeApplication.archiveCommand.ID != unit.ID {
-		t.Fatalf("archive command = %#v", fakeApplication.archiveCommand)
-	}
+	require.Equal(t, http.StatusNoContent, archiveResponse.Code, "archive status = %d: %s", archiveResponse.Code, archiveResponse.Body.String())
+	require.Equal(t, "no-store", archiveResponse.Header().Get("Cache-Control"))
+	require.Equal(t, unit.ID, fakeApplication.archiveCommand.ID)
 }

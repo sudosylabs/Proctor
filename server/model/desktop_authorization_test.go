@@ -13,6 +13,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDesktopAuthorizationLoopbackCallbackValidation(t *testing.T) {
@@ -32,9 +35,7 @@ func TestDesktopAuthorizationLoopbackCallbackValidation(t *testing.T) {
 		"http://[::1]:055000/" + randomPath,
 		maximumCallback,
 	} {
-		if err := ValidateDesktopAuthorizationCallback(callback); err != nil {
-			t.Errorf("valid callback %q: %v", callback, err)
-		}
+		assert.NoError(t, ValidateDesktopAuthorizationCallback(callback), "valid callback %q", callback)
 	}
 
 	invalid := []string{
@@ -56,9 +57,7 @@ func TestDesktopAuthorizationLoopbackCallbackValidation(t *testing.T) {
 		"http://127.0.0.1:49152/%41" + strings.TrimPrefix(randomPath, "A"),
 	}
 	for _, callback := range invalid {
-		if err := ValidateDesktopAuthorizationCallback(callback); err == nil {
-			t.Errorf("invalid callback %q was accepted", callback)
-		}
+		assert.Error(t, ValidateDesktopAuthorizationCallback(callback), "invalid callback %q was accepted", callback)
 	}
 }
 
@@ -88,21 +87,17 @@ func TestBrowserAuthenticationTransactionPinsDesktopAuthorizationRequest(t *test
 		ExpiresAt:               at.Add(5 * time.Minute),
 	}
 	transaction.PrepareCreate(NewBrowserAuthenticationTransactionID(), at)
-	if err := transaction.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	if transaction.State != BrowserAuthenticationStatePending ||
-		transaction.CreatedAt != at || transaction.UpdatedAt != at {
-		t.Fatalf("prepared transaction = %#v", transaction)
-	}
+	require.NoError(t, transaction.Validate())
+	require.Equal(t, BrowserAuthenticationStatePending, transaction.State)
+	require.Equal(t, at, transaction.CreatedAt)
+	require.Equal(t, at, transaction.UpdatedAt)
 	audit := transaction.Auditable()
 	for _, secret := range []string{
 		"handle_hash", "browser_proof_hash", "state_hash", "code_hash",
 		"callback_url", "code_challenge", "device_name",
 	} {
-		if _, exists := audit[secret]; exists {
-			t.Errorf("audit exposes %q", secret)
-		}
+		_, exists := audit[secret]
+		assert.False(t, exists, "audit exposes %q", secret)
 	}
 }
 
@@ -110,9 +105,7 @@ func TestBrowserAuthenticationTransactionRehydratesExplicitLoopbackDevelopmentIs
 	t.Parallel()
 	transaction := pendingDesktopAuthorizationTransaction(time.Now().UTC())
 	transaction.Issuer = "http://localhost:8065"
-	if err := transaction.Validate(); err != nil {
-		t.Fatalf("loopback development transaction: %v", err)
-	}
+	require.NoError(t, transaction.Validate())
 }
 
 func TestDesktopAuthorizationPKCES256(t *testing.T) {
@@ -121,18 +114,12 @@ func TestDesktopAuthorizationPKCES256(t *testing.T) {
 	// RFC 7636, Appendix B.
 	verifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
 	const challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
-	if !IsValidPKCEVerifier(verifier) {
-		t.Fatal("RFC verifier was rejected")
-	}
-	if got := PKCES256Challenge(verifier); got != challenge {
-		t.Fatalf("challenge = %q", got)
-	}
+	require.True(t, IsValidPKCEVerifier(verifier), "RFC verifier was rejected")
+	require.Equal(t, challenge, PKCES256Challenge(verifier))
 	for _, invalid := range []string{
 		"short", strings.Repeat("a", 129), strings.Repeat("a", 42) + "+",
 	} {
-		if IsValidPKCEVerifier(invalid) {
-			t.Errorf("invalid verifier %q was accepted", invalid)
-		}
+		assert.False(t, IsValidPKCEVerifier(invalid), "invalid verifier")
 	}
 }
 
@@ -142,48 +129,35 @@ func TestBrowserAuthenticationTransactionTerminalStates(t *testing.T) {
 	at := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
 	transaction := pendingDesktopAuthorizationTransaction(at)
 	prepareBoundTransactionFixture(transaction, at)
-	if err := transaction.Validate(); err != nil {
-		t.Fatalf("bound transaction: %v", err)
-	}
+	require.NoError(t, transaction.Validate())
 	prepareAuthenticatedTransactionFixture(transaction, at, AuthenticationMultiFactor)
-	if err := transaction.Validate(); err != nil {
-		t.Fatalf("authenticated transaction: %v", err)
-	}
+	require.NoError(t, transaction.Validate())
 	prepareCodeIssuedTransactionFixture(transaction, at, at.Add(30*time.Second), AuthenticationMultiFactor)
-	if err := transaction.Validate(); err != nil {
-		t.Fatalf("issued transaction: %v", err)
-	}
-	if transaction.HandleHash != "" || transaction.BrowserProofHash != "" ||
-		transaction.State != BrowserAuthenticationStateCodeIssued {
-		t.Fatalf("issued transaction retained browser secrets: %#v", transaction)
-	}
+	require.NoError(t, transaction.Validate())
+	require.Empty(t, transaction.HandleHash)
+	require.Empty(t, transaction.BrowserProofHash)
+	require.Equal(t, BrowserAuthenticationStateCodeIssued, transaction.State)
 	prepareExchangedTransactionFixture(transaction, at.Add(time.Second))
-	if err := transaction.Validate(); err != nil {
-		t.Fatalf("exchanged transaction: %v", err)
-	}
-	if transaction.CodeHash != "" || !transaction.ExchangedAt.Valid {
-		t.Fatalf("exchanged transaction retained code: %#v", transaction)
-	}
+	require.NoError(t, transaction.Validate())
+	require.Empty(t, transaction.CodeHash)
+	require.True(t, transaction.ExchangedAt.Valid)
 
 	cancelled := pendingDesktopAuthorizationTransaction(at)
 	prepareCancelledTransactionFixture(cancelled, at)
-	if err := cancelled.Validate(); err != nil {
-		t.Fatalf("cancelled transaction: %v", err)
-	}
-	if cancelled.HandleHash != "" || cancelled.BrowserProofHash != "" ||
-		cancelled.StateHash != "" || !cancelled.CancelledAt.Valid {
-		t.Fatalf("cancelled transaction retained secrets: %#v", cancelled)
-	}
+	require.NoError(t, cancelled.Validate())
+	require.Empty(t, cancelled.HandleHash)
+	require.Empty(t, cancelled.BrowserProofHash)
+	require.Empty(t, cancelled.StateHash)
+	require.True(t, cancelled.CancelledAt.Valid)
 
 	denied := pendingDesktopAuthorizationTransaction(at)
 	prepareDeniedTransactionFixture(denied, at)
-	if err := denied.Validate(); err != nil {
-		t.Fatalf("denied transaction: %v", err)
-	}
-	if denied.HandleHash != "" || denied.BrowserProofHash != "" || denied.StateHash != "" ||
-		!denied.DeniedAt.Valid || denied.DenialReason != DesktopAuthorizationDenialActiveAttempt {
-		t.Fatalf("denied transaction retained secrets or lost reason: %#v", denied)
-	}
+	require.NoError(t, denied.Validate())
+	require.Empty(t, denied.HandleHash)
+	require.Empty(t, denied.BrowserProofHash)
+	require.Empty(t, denied.StateHash)
+	require.True(t, denied.DeniedAt.Valid)
+	require.Equal(t, DesktopAuthorizationDenialActiveAttempt, denied.DenialReason)
 }
 
 func TestBrowserAuthenticationTransactionExpiryDestroysProofsAtAuthoritativeDeadline(t *testing.T) {
@@ -192,27 +166,28 @@ func TestBrowserAuthenticationTransactionExpiryDestroysProofsAtAuthoritativeDead
 	at := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
 	pending := pendingDesktopAuthorizationTransaction(at)
 	prepareExpiredTransactionFixture(pending)
-	if err := pending.Validate(); err != nil {
-		t.Fatalf("expired pending transaction: %v", err)
-	}
-	if pending.State != BrowserAuthenticationStateExpired || !pending.ExpiredAt.Valid ||
-		!pending.ExpiredAt.Time.Equal(pending.ExpiresAt) || !pending.UpdatedAt.Equal(pending.ExpiresAt) ||
-		pending.HandleHash != "" || pending.BrowserProofHash != "" || pending.StateHash != "" ||
-		pending.CallbackURL != "" || pending.CodeChallenge != "" {
-		t.Fatalf("expired pending transaction retained proofs or wrong deadline: %#v", pending)
-	}
+	require.NoError(t, pending.Validate())
+	require.Equal(t, BrowserAuthenticationStateExpired, pending.State)
+	require.True(t, pending.ExpiredAt.Valid)
+	require.True(t, pending.ExpiredAt.Time.Equal(pending.ExpiresAt))
+	require.True(t, pending.UpdatedAt.Equal(pending.ExpiresAt))
+	require.Empty(t, pending.HandleHash)
+	require.Empty(t, pending.BrowserProofHash)
+	require.Empty(t, pending.StateHash)
+	require.Empty(t, pending.CallbackURL)
+	require.Empty(t, pending.CodeChallenge)
 
 	issued := pendingDesktopAuthorizationTransaction(at)
 	prepareCodeIssuedTransactionFixture(issued, at, at.Add(time.Minute), AuthenticationSingleFactor)
 	prepareExpiredTransactionFixture(issued)
-	if err := issued.Validate(); err != nil {
-		t.Fatalf("expired issued-code transaction: %v", err)
-	}
-	if issued.CodeHash != "" || issued.CodeExpiresAt.Valid || issued.StateHash != "" ||
-		issued.CallbackURL != "" || issued.CodeChallenge != "" || !issued.UserID.IsValid() ||
-		!issued.ExpiredAt.Time.Equal(at.Add(time.Minute)) {
-		t.Fatalf("expired issued-code transaction retained proofs or lost safe metadata: %#v", issued)
-	}
+	require.NoError(t, issued.Validate())
+	require.Empty(t, issued.CodeHash)
+	require.False(t, issued.CodeExpiresAt.Valid)
+	require.Empty(t, issued.StateHash)
+	require.Empty(t, issued.CallbackURL)
+	require.Empty(t, issued.CodeChallenge)
+	require.True(t, issued.UserID.IsValid())
+	require.True(t, issued.ExpiredAt.Time.Equal(at.Add(time.Minute)))
 }
 
 func TestDesktopAuthorizationPasswordProofMatchesAuthenticationState(t *testing.T) {
@@ -223,9 +198,7 @@ func TestDesktopAuthorizationPasswordProofMatchesAuthenticationState(t *testing.
 	password.AuthenticationMethod = "password"
 	password.AuthenticationProviderID, password.ExternalIdentityID = "", ""
 	password.PasswordCredentialID, password.PasswordCredentialRevision = NewPasswordCredentialID(), 1
-	if err := password.Validate(); err != nil {
-		t.Fatalf("valid password proof: %v", err)
-	}
+	require.NoError(t, password.Validate())
 	for _, state := range []BrowserAuthenticationState{BrowserAuthenticationStateAuthenticated, BrowserAuthenticationStateExpired} {
 		t.Run(string(state), func(t *testing.T) {
 			for _, test := range []struct {
@@ -242,9 +215,7 @@ func TestDesktopAuthorizationPasswordProofMatchesAuthenticationState(t *testing.
 						prepareExpiredTransactionFixture(&candidate)
 					}
 					test.mutate(&candidate)
-					if err := candidate.Validate(); err == nil {
-						t.Fatal("password authentication without complete proof was accepted")
-					}
+					require.Error(t, candidate.Validate(), "password authentication without complete proof was accepted")
 				})
 			}
 		})
@@ -255,16 +226,12 @@ func TestDesktopAuthorizationPasswordProofMatchesAuthenticationState(t *testing.
 			prepareExpiredTransactionFixture(candidate)
 		}
 		candidate.PasswordCredentialID, candidate.PasswordCredentialRevision = NewPasswordCredentialID(), 1
-		if err := candidate.Validate(); err == nil {
-			t.Errorf("%s transaction retained password proof without an authenticated User", state)
-		}
+		assert.Error(t, candidate.Validate(), "%s transaction retained password proof without an authenticated User", state)
 	}
 	external := pendingDesktopAuthorizationTransaction(at)
 	prepareAuthenticatedTransactionFixture(external, at, AuthenticationSingleFactor)
 	external.PasswordCredentialID, external.PasswordCredentialRevision = NewPasswordCredentialID(), 1
-	if err := external.Validate(); err == nil {
-		t.Fatal("external authentication accepted password proof")
-	}
+	require.Error(t, external.Validate(), "external authentication accepted password proof")
 }
 
 func TestBrowserAuthenticationTransactionSupportsInvitationAcceptance(t *testing.T) {
@@ -278,9 +245,7 @@ func TestBrowserAuthenticationTransactionSupportsInvitationAcceptance(t *testing
 		ClientType: SessionClientWeb, ExpiresAt: at.Add(BrowserAuthenticationTransactionLifetime),
 	}
 	transaction.PrepareCreate(NewBrowserAuthenticationTransactionID(), at)
-	if err := transaction.Validate(); err != nil {
-		t.Fatalf("pending invitation transaction: %v", err)
-	}
+	require.NoError(t, transaction.Validate())
 
 	completedAt := at.Add(time.Minute)
 	transaction.UpdatedAt = completedAt
@@ -288,12 +253,10 @@ func TestBrowserAuthenticationTransactionSupportsInvitationAcceptance(t *testing
 	transaction.HandleHash, transaction.BrowserProofHash, transaction.InvitationClaimHash = "", "", ""
 	transaction.UserID = NewUserID()
 	transaction.CompletedAt = OptionalTimeFrom(completedAt)
-	if err := transaction.Validate(); err != nil {
-		t.Fatalf("completed invitation transaction: %v", err)
-	}
-	if transaction.InvitationClaimHash != "" || transaction.HandleHash != "" || transaction.BrowserProofHash != "" {
-		t.Fatal("completed invitation transaction retained credential hashes")
-	}
+	require.NoError(t, transaction.Validate())
+	require.Empty(t, transaction.InvitationClaimHash, "completed invitation transaction retained credential hashes")
+	require.Empty(t, transaction.HandleHash, "completed invitation transaction retained credential hashes")
+	require.Empty(t, transaction.BrowserProofHash, "completed invitation transaction retained credential hashes")
 }
 
 func pendingDesktopAuthorizationTransaction(at time.Time) *BrowserAuthenticationTransaction {

@@ -12,8 +12,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestOpenAPICommandBuildsAndChecksArtifact(t *testing.T) {
@@ -21,9 +22,7 @@ func TestOpenAPICommandBuildsAndChecksArtifact(t *testing.T) {
 
 	directory := t.TempDir()
 	source := filepath.Join(directory, "openapi")
-	if err := os.MkdirAll(filepath.Join(source, "fragments", "system"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Join(source, "fragments", "system"), 0o755))
 	writeOpenAPITestFile(t, filepath.Join(source, "base.yaml"), `openapi: 3.1.0
 info:
   title: Proctor API
@@ -52,33 +51,20 @@ tags:
 	commandArguments := func(action string) []string {
 		return append(append([]string(nil), arguments...), action)
 	}
-	if err := Execute(context.Background(), commandArguments("build"), &commandOutput, &commandOutput); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(commandOutput.String(), "wrote") {
-		t.Fatalf("build output = %q", commandOutput.String())
-	}
+	require.NoError(t, Execute(context.Background(), commandArguments("build"), &commandOutput, &commandOutput))
+	require.Contains(t, commandOutput.String(), "wrote")
 	commandOutput.Reset()
-	if err := Execute(context.Background(), commandArguments("check"), &commandOutput, &commandOutput); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(commandOutput.String(), "validated") {
-		t.Fatalf("check output = %q", commandOutput.String())
-	}
+	require.NoError(t, Execute(context.Background(), commandArguments("check"), &commandOutput, &commandOutput))
+	require.Contains(t, commandOutput.String(), "validated")
 
-	if err := os.WriteFile(output, []byte("{}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(output, []byte("{}\n"), 0o600))
 	commandOutput.Reset()
 	err := Execute(context.Background(), commandArguments("check"), &commandOutput, &commandOutput)
-	if err == nil || !strings.Contains(err.Error(), "is stale") {
-		t.Fatalf("check error = %v", err)
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "is stale")
 }
 
 func writeOpenAPITestFile(t *testing.T, name, contents string) {
 	t.Helper()
-	if err := os.WriteFile(name, []byte(contents), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(name, []byte(contents), 0o600))
 }

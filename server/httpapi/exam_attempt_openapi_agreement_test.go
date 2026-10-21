@@ -9,9 +9,12 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
-	"slices"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -162,9 +165,7 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 		},
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, examAttemptResource(nil)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtimeAPI.collectResources(model.APIURLSuffix, examAttemptResource(nil)))
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 
 	document := readOpenAPIDocument(t)
@@ -187,31 +188,27 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 			{name: candidateAttemptCredentialHeader, ref: "#/components/parameters/CandidateAttemptCredential"},
 			{name: candidateAttemptConnectionHeader, ref: "#/components/parameters/CandidateAttemptConnectionID"},
 		} {
-			if !hasOpenAPIHeaderParameter(operation, expected.name) && !hasOpenAPIParameterRef(operation, expected.ref) {
-				t.Errorf("GET %s does not document %s", path, expected.name)
-			}
+			t.Run(expected.name, func(t *testing.T) {
+				if !hasOpenAPIHeaderParameter(operation, expected.name) {
+					assert.True(t, hasOpenAPIParameterRef(operation, expected.ref), "GET %s does not document %s", path, expected.name)
+				}
+			})
 		}
 	}
 	for _, path := range []string{resourceContent, workspaceContent} {
 		assertProtectedExamContentResponse(t, document, path, "CandidateExamProtectedContent")
 		operation := decodeExamContentOpenAPIOperation(t, document, path, "get")
-		if operation.Responses["304"].Ref != "#/components/responses/CandidateExamContentNotModified" {
-			t.Errorf("GET %s 304 response = %#v", path, operation.Responses["304"])
-		}
+		assert.Equal(t, "#/components/responses/CandidateExamContentNotModified", operation.Responses["304"].Ref, "GET %s 304 response = %#v", path, operation.Responses["304"])
 	}
 	assertProtectedExamContentResponse(t, document, managerSubmissionContent, "ExamSubmissionFileContent")
 	managerContentOperation := decodeExamContentOpenAPIOperation(t, document, managerSubmissionContent, "get")
-	if managerContentOperation.Responses["304"].Ref != "#/components/responses/ExamSubmissionFileNotModified" {
-		t.Errorf("GET %s 304 response = %#v", managerSubmissionContent, managerContentOperation.Responses["304"])
-	}
+	assert.Equal(t, "#/components/responses/ExamSubmissionFileNotModified", managerContentOperation.Responses["304"].Ref, "GET %s 304 response = %#v", managerSubmissionContent, managerContentOperation.Responses["304"])
 	assertProtectedExamCacheControl(t, "ExamSubmissionFileContent", "private, no-store")
-	if _, ok := document.Components.Responses["ExamSubmissionFileContent"].Headers["Content-Disposition"]; ok {
-		t.Error("Submission protected response documents forbidden Content-Disposition")
-	}
+	_, ok := document.Components.Responses["ExamSubmissionFileContent"].Headers["Content-Disposition"]
+	assert.False(t, ok, "Submission protected response documents forbidden Content-Disposition")
 	assertProtectedExamCacheControl(t, "CandidateExamProtectedContent", "private, no-store")
-	if _, ok := document.Components.Responses["CandidateExamProtectedContent"].Headers["Content-Disposition"]; ok {
-		t.Error("candidate protected response documents forbidden Content-Disposition")
-	}
+	_, ok = document.Components.Responses["CandidateExamProtectedContent"].Headers["Content-Disposition"]
+	assert.False(t, ok, "candidate protected response documents forbidden Content-Disposition")
 	assertExamAttemptQueryParameters(t, document, managerBase, []string{"state", "limit", "cursor"})
 	assertExamAttemptQueryParameters(t, document, managerBrowserActivity, []string{"limit", "cursor"})
 	assertExamAttemptQueryParameters(t, document, workspace, []string{"limit", "cursor"})
@@ -238,12 +235,10 @@ func assertExamAttemptQueryParameters(t *testing.T, document openAPIDocument, pa
 		}
 	}
 	for _, name := range want {
-		if !slices.Contains(got, name) {
-			t.Errorf("GET %s omits query parameter %q: %v", path, name, got)
-		}
+		assert.Contains(t, got, name, "GET %s omits query parameter", path)
 	}
 	if len(got) != len(want) {
 		encoded, _ := json.Marshal(got)
-		t.Errorf("GET %s query parameters = %s, want exactly %v", path, encoded, want)
+		assert.Fail(t, fmt.Sprintf("GET %s query parameters = %s, want exactly %v", path, encoded, want))
 	}
 }

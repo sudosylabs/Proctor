@@ -10,6 +10,8 @@ package model
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRetentionEligibility(t *testing.T) {
@@ -73,15 +75,13 @@ func TestRetentionEligibility(t *testing.T) {
 				tt.edit(&record, current)
 			}
 			got, err := record.Eligibility(current, completed.Add(time.Duration(tt.days)*24*time.Hour))
-			if err != nil || got.Blocker != tt.want {
-				t.Fatalf("Eligibility = %+v, %v; want blocker %q", got, err, tt.want)
-			}
+			require.NoError(t, err, "Eligibility = %+v, %v; want blocker", got, err)
+			require.Equal(t, tt.want, got.Blocker, "Eligibility = %+v, %v; want blocker", got, err)
 			if tt.deadline == 0 {
-				if got.EligibleAt.Valid {
-					t.Fatalf("unexpected deadline: %v", got.EligibleAt)
-				}
-			} else if !got.EligibleAt.Valid || !got.EligibleAt.Time.Equal(completed.Add(time.Duration(tt.deadline)*24*time.Hour)) {
-				t.Fatalf("deadline = %v; want +%d days", got.EligibleAt, tt.deadline)
+				require.False(t, got.EligibleAt.Valid)
+			} else {
+				require.True(t, got.EligibleAt.Valid, "deadline; want +%d days", tt.deadline)
+				require.True(t, got.EligibleAt.Time.Equal(completed.Add(time.Duration(tt.deadline)*24*time.Hour)), "deadline = %v; want +%d days", got.EligibleAt, tt.deadline)
 			}
 		})
 	}
@@ -94,21 +94,13 @@ func TestRetentionControlCannotAuthorizeAnotherRevision(t *testing.T) {
 	control := &RetentionControl{InstitutionID: policy.InstitutionID, Revision: 1,
 		State: RetentionControlEnabled, ApprovedPolicyRevision: 1, ApprovedPreviewID: NewRetentionPreviewID(),
 		ChangedByUserID: NewUserID(), UpdatedAt: at}
-	if !control.Permits(policy) {
-		t.Fatal("reviewed policy should be permitted")
-	}
+	require.True(t, control.Permits(policy), "reviewed policy should be permitted")
 	policy.Revision++
-	if control.Permits(policy) {
-		t.Fatal("configuration change silently retained approval")
-	}
+	require.False(t, control.Permits(policy), "configuration change silently retained approval")
 	policy.Revision--
 	control.State = RetentionControlPaused
-	if control.Permits(policy) {
-		t.Fatal("pause permitted retirement")
-	}
+	require.False(t, control.Permits(policy), "pause permitted retirement")
 	control.State = RetentionControlEnabled
 	policy.DeletionGraceDays = 0
-	if control.Permits(policy) {
-		t.Fatal("unconfigured grace permitted retirement")
-	}
+	require.False(t, control.Permits(policy), "unconfigured grace permitted retirement")
 }

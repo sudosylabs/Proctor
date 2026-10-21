@@ -15,6 +15,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTransportCannotOwnApplicationAuthorizationCompatibility(t *testing.T) {
@@ -53,23 +56,16 @@ func TestTransportCannotOwnApplicationAuthorizationCompatibility(t *testing.T) {
 		ast.Inspect(file, func(node ast.Node) bool {
 			switch candidate := node.(type) {
 			case *ast.Ident:
-				if _, forbidden := forbiddenTransportIdentifiers[candidate.Name]; forbidden {
-					t.Errorf("transport authorization compatibility identifier %q remains in %s", candidate.Name, path)
-				}
+				_, forbidden := forbiddenTransportIdentifiers[candidate.Name]
+				assert.False(t, forbidden, "transport authorization compatibility identifier %q remains in %s", candidate.Name, path)
 			case *ast.FuncDecl:
-				if transportAuthorizationName(candidate.Name.Name) {
-					t.Errorf("transport-owned authorization function %q remains in %s", candidate.Name.Name, path)
-				}
+				assert.False(t, transportAuthorizationName(candidate.Name.Name), "transport-owned authorization function %q remains in %s", candidate.Name.Name, path)
 			case *ast.Field:
 				for _, name := range candidate.Names {
-					if transportAuthorizationName(name.Name) {
-						t.Errorf("transport-owned authorization contract %q remains in %s", name.Name, path)
-					}
+					assert.False(t, transportAuthorizationName(name.Name), "transport-owned authorization contract %q remains in %s", name.Name, path)
 				}
 			case *ast.SelectorExpr:
-				if transportAuthorizationName(candidate.Sel.Name) {
-					t.Errorf("transport-owned authorization call %q remains in %s", candidate.Sel.Name, path)
-				}
+				assert.False(t, transportAuthorizationName(candidate.Sel.Name), "transport-owned authorization call %q remains in %s", candidate.Sel.Name, path)
 			}
 			return true
 		})
@@ -81,9 +77,8 @@ func TestTransportCannotOwnApplicationAuthorizationCompatibility(t *testing.T) {
 			if !ok {
 				continue
 			}
-			if _, forbidden := forbiddenApplicationFunctions[function.Name.Name]; forbidden {
-				t.Errorf("request-shaped application permission compatibility %q remains in %s", function.Name.Name, path)
-			}
+			_, forbidden := forbiddenApplicationFunctions[function.Name.Name]
+			assert.False(t, forbidden, "request-shaped application permission compatibility %q remains in %s", function.Name.Name, path)
 		}
 	})
 }
@@ -104,8 +99,8 @@ func TestApplicationFacadeDoesNotRetainPersistenceLocator(t *testing.T) {
 				}
 				for _, field := range structure.Fields.List {
 					selector, ok := field.Type.(*ast.SelectorExpr)
-					if ok && selector.Sel.Name == "Store" {
-						t.Errorf("application retains root Store field in %s", path)
+					if ok {
+						assert.NotEqual(t, "Store", selector.Sel.Name, "application retains root Store field in %s", path)
 					}
 				}
 			case *ast.FuncDecl:
@@ -113,9 +108,7 @@ func TestApplicationFacadeDoesNotRetainPersistenceLocator(t *testing.T) {
 				if !appReceiver {
 					break
 				}
-				if candidate.Name.Name == "Store" {
-					t.Errorf("application Store accessor remains in %s", path)
-				}
+				assert.NotEqual(t, "Store", candidate.Name.Name, "application Store accessor remains in %s", path)
 				ast.Inspect(candidate.Body, func(bodyNode ast.Node) bool {
 					call, ok := bodyNode.(*ast.CallExpr)
 					if !ok {
@@ -123,8 +116,8 @@ func TestApplicationFacadeDoesNotRetainPersistenceLocator(t *testing.T) {
 					}
 					selector, ok := call.Fun.(*ast.SelectorExpr)
 					receiver, receiverOK := selectorReceiver(selector)
-					if ok && receiverOK && selector.Sel.Name == "Store" && receiverNames[receiver] {
-						t.Errorf("production application Store traversal remains in %s", path)
+					if ok && receiverOK && selector.Sel.Name == "Store" {
+						assert.False(t, receiverNames[receiver], "production application Store traversal remains in %s", path)
 					}
 					return true
 				})
@@ -149,9 +142,8 @@ func TestApplicationSurfaceIsTheEmbeddedServices(t *testing.T) {
 				if _, appReceiver := appReceiverNames(candidate); !appReceiver {
 					continue
 				}
-				if _, allowed := allowedMethods[candidate.Name.Name]; !allowed {
-					t.Errorf("App declares method %s in %s; declare the use case on its owning service", candidate.Name.Name, path)
-				}
+				_, allowed := allowedMethods[candidate.Name.Name]
+				assert.True(t, allowed, "App declares method %s in %s; declare the use case on its owning service", candidate.Name.Name, path)
 			case *ast.GenDecl:
 				for _, specification := range candidate.Specs {
 					typeSpec, ok := specification.(*ast.TypeSpec)
@@ -164,9 +156,8 @@ func TestApplicationSurfaceIsTheEmbeddedServices(t *testing.T) {
 					}
 					for _, field := range structure.Fields.List {
 						for _, name := range field.Names {
-							if _, allowed := allowedFields[name.Name]; !allowed {
-								t.Errorf("App holds named field %s in %s; embed the service that owns its use cases", name.Name, path)
-							}
+							_, allowed := allowedFields[name.Name]
+							assert.True(t, allowed, "App holds named field %s in %s; embed the service that owns its use cases", name.Name, path)
 						}
 					}
 				}
@@ -193,9 +184,8 @@ func TestApplicationDoesNotExportFocusedServiceImplementations(t *testing.T) {
 				if !ok {
 					continue
 				}
-				if _, retired := retiredImplementationTypes[typeSpec.Name.Name]; retired {
-					t.Errorf("retired exported application implementation %q remains in %s", typeSpec.Name.Name, path)
-				}
+				_, retired := retiredImplementationTypes[typeSpec.Name.Name]
+				assert.False(t, retired, "retired exported application implementation %q remains in %s", typeSpec.Name.Name, path)
 			}
 		}
 	})
@@ -264,8 +254,6 @@ func inspectProductionGoFiles(
 			inspect(path, file)
 			return nil
 		})
-		if err != nil {
-			t.Fatalf("inspect production Go files under %s: %v", directory, err)
-		}
+		require.NoError(t, err, "inspect production Go files under %s", directory)
 	}
 }

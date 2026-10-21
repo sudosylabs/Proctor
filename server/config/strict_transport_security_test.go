@@ -10,28 +10,22 @@ package config
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestStrictTransportSecurityRequiresLocalTLS(t *testing.T) {
 	t.Parallel()
 
 	server := Default().Server
-	if got := server.StrictTransportSecurity(); got != "" {
-		t.Fatalf("disabled TLS Strict-Transport-Security = %q, want none", got)
-	}
+	require.Empty(t, server.StrictTransportSecurity(), "disabled TLS Strict-Transport-Security")
 	server.TLS.Mode = ServerTLSModeStatic
-	if got := server.StrictTransportSecurity(); got != "max-age=31536000" {
-		t.Fatalf("default Strict-Transport-Security = %q", got)
-	}
+	require.Equal(t, "max-age=31536000", server.StrictTransportSecurity())
 	server.TLS.Mode = ServerTLSModeLetsEncrypt
 	server.TLS.StrictTransportSecurityMaxAge = Duration{Duration: time.Hour}
-	if got := server.StrictTransportSecurity(); got != "max-age=3600" {
-		t.Fatalf("configured Strict-Transport-Security = %q", got)
-	}
+	require.Equal(t, "max-age=3600", server.StrictTransportSecurity())
 	server.TLS.StrictTransportSecurityMaxAge = Duration{}
-	if got := server.StrictTransportSecurity(); got != "" {
-		t.Fatalf("zero max-age Strict-Transport-Security = %q, want none", got)
-	}
+	require.Empty(t, server.StrictTransportSecurity(), "zero max-age Strict-Transport-Security")
 }
 
 func TestValidateBoundsStrictTransportSecurityMaxAge(t *testing.T) {
@@ -40,13 +34,9 @@ func TestValidateBoundsStrictTransportSecurityMaxAge(t *testing.T) {
 	for _, maxAge := range []time.Duration{-time.Second, 2*365*24*time.Hour + time.Second, 1500 * time.Millisecond} {
 		cfg := Default()
 		cfg.Server.TLS.StrictTransportSecurityMaxAge = Duration{Duration: maxAge}
-		if err := cfg.Validate(); err == nil {
-			t.Fatalf("Validate() accepted max-age %s", maxAge)
-		}
+		require.Error(t, cfg.Validate(), "Validate() accepted max-age %s", maxAge)
 	}
 	cfg := Default()
 	cfg.Server.TLS.StrictTransportSecurityMaxAge = Duration{}
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("Validate() rejected disabled HSTS: %v", err)
-	}
+	require.NoError(t, cfg.Validate())
 }

@@ -9,10 +9,14 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -25,16 +29,13 @@ func TestOpenAPIAgreesWithRuntime(t *testing.T) {
 
 	document := readOpenAPIDocument(t)
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, productionResources(agreementResourceApplications(), nil, BuildInfo{}, browserCookies{}, nil)...); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtimeAPI.collectResources(model.APIURLSuffix, productionResources(agreementResourceApplications(), nil, BuildInfo{}, browserCookies{}, nil)...))
 
 	runtimeOperations := make(map[string]AuthRequirement)
 	for _, route := range runtimeAPI.Routes() {
 		key := route.Method + " " + normalizeRuntimeRoutePath(route.Path)
-		if _, exists := runtimeOperations[key]; exists {
-			t.Errorf("runtime catalog repeats %s", key)
-		}
+		_, exists := runtimeOperations[key]
+		assert.False(t, exists, "runtime catalog repeats %s", key)
 		runtimeOperations[key] = route.Auth
 	}
 	documentedOperations := make(map[string]AuthRequirement)
@@ -48,51 +49,39 @@ func TestOpenAPIAgreesWithRuntime(t *testing.T) {
 			}
 			key := upperMethod + " " + path
 			var operation openAPIOperation
-			if err := json.Unmarshal(raw, &operation); err != nil {
-				t.Fatalf("decode %s: %v", key, err)
-			}
+			require.NoError(t, json.Unmarshal(raw, &operation), "decode %s", key)
 			documentedOperations[key] = operation.Auth
 			if operation.OperationID == "" {
-				t.Errorf("%s has no operationId", key)
+				assert.Fail(t, fmt.Sprintf("%s has no operationId", key))
 			} else if prior, exists := operationIDs[operation.OperationID]; exists {
-				t.Errorf("operationId %q is shared by %s and %s", operation.OperationID, prior, key)
+				assert.Fail(t, fmt.Sprintf("operationId %q is shared by %s and %s", operation.OperationID, prior, key))
 			} else {
 				operationIDs[operation.OperationID] = key
 			}
-			if operation.Security == nil {
-				t.Errorf("%s has no explicit security requirement", key)
-			} else if want, err := securityForAuth(operation.Auth, upperMethod); err != nil {
-				t.Errorf("%s: %v", key, err)
-			} else if !reflect.DeepEqual(operation.Security, want) {
-				t.Errorf("%s security = %#v, want %#v", key, operation.Security, want)
+			if assert.NotNil(t, operation.Security, "%s has no explicit security requirement", key) {
+				want, err := securityForAuth(operation.Auth, upperMethod)
+				if assert.NoError(t, err, "%s", key) {
+					assert.Equal(t, want, operation.Security, "%s security", key)
+				}
 			}
-			if len(operation.Responses) == 0 {
-				t.Errorf("%s has no responses", key)
-			}
+			assert.NotEmpty(t, operation.Responses, "%s has no responses", key)
 			for _, code := range operation.ErrorCodes {
 				status, exists := statuses[code]
-				if !exists {
-					t.Errorf("%s documents unmapped error code %q", key, code)
+				if !assert.True(t, exists, "%s documents unmapped error code %q", key, code) {
 					continue
 				}
-				if operation.Responses[statusCode(status)].Ref == "" {
-					t.Errorf("%s code %q has no %d response", key, code, status)
-				}
+				assert.NotEmpty(t, operation.Responses[statusCode(status)].Ref, "%s code %q has no %d response", key, code, status)
 			}
 		}
 	}
-	if !reflect.DeepEqual(documentedOperations, runtimeOperations) {
-		t.Fatalf("OpenAPI operations = %#v, runtime operations = %#v", documentedOperations, runtimeOperations)
-	}
+	require.Equal(t, runtimeOperations, documentedOperations, "OpenAPI operations")
 }
 
 func TestIdentityAndSystemOpenAPISchemasAgreeWithDTOs(t *testing.T) {
 	t.Parallel()
 
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, productionResources(agreementResourceApplications(), nil, BuildInfo{}, browserCookies{}, nil)...); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtimeAPI.collectResources(model.APIURLSuffix, productionResources(agreementResourceApplications(), nil, BuildInfo{}, browserCookies{}, nil)...))
 	suite := identityAndSystemOpenAPIAgreementSuite()
 	suite.OperationSelector = identityAndSystemOperation
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
@@ -103,21 +92,17 @@ func TestIdentityAndSystemOpenAPIOperationDTOsAgreeWithRuntime(t *testing.T) {
 
 	document := readOpenAPIDocument(t)
 	var websocket openAPIOperation
-	if err := json.Unmarshal(document.Paths["/api/v1/websocket"]["get"], &websocket); err != nil {
-		t.Fatal(err)
-	}
-	if _, exists := websocket.Responses["101"]; !exists {
-		t.Error("GET /api/v1/websocket has no 101 response")
-	}
+	require.NoError(t, json.Unmarshal(document.Paths["/api/v1/websocket"]["get"], &websocket))
+	_, exists := websocket.Responses["101"]
+	assert.True(t, exists, "GET /api/v1/websocket has no 101 response")
 	for name, item := range map[string]string{
 		"SessionListResponse":                        "#/components/schemas/SessionResponse",
 		"PersonalAccessTokenListResponse":            "#/components/schemas/PersonalAccessTokenResponse",
 		"ExternalAuthenticationProviderListResponse": "#/components/schemas/ExternalAuthenticationProviderResponse",
 	} {
 		schema := document.Components.Schemas[name]
-		if schema.Type != "array" || schema.Items.Ref != item {
-			t.Errorf("%s = %#v, want array of %s", name, schema, item)
-		}
+		assert.Equal(t, "array", schema.Type, "%s = %#v, want array of", name, schema)
+		assert.Equal(t, item, schema.Items.Ref, "%s = %#v, want array of", name, schema)
 	}
 }
 
@@ -296,13 +281,9 @@ func TestAcademicUnitOpenAPIAgreesWithRuntime(t *testing.T) {
 	t.Parallel()
 
 	document := readOpenAPIDocument(t)
-	if document.OpenAPI != "3.1.0" {
-		t.Fatalf("OpenAPI version = %q, want 3.1.0", document.OpenAPI)
-	}
+	require.Equal(t, "3.1.0", document.OpenAPI, "OpenAPI version")
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, academicUnitResource(nil)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtimeAPI.collectResources(model.APIURLSuffix, academicUnitResource(nil)))
 	suite := openAPIAgreementSuite{
 		Operations: []openAPIAgreementOperation{
 			{Key: "GET /api/v1/academic-units", Auth: AuthPrincipalRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/AcademicUnitListOK", SuccessSchema: "AcademicUnitListResponse", PublicErrorCodes: principalContractCodes("request.invalid", "administration.unavailable")},
@@ -324,13 +305,10 @@ func TestAcademicUnitOpenAPIAgreesWithRuntime(t *testing.T) {
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 
 	listSchema := document.Components.Schemas["AcademicUnitListResponse"]
-	if listSchema.Type != "array" || listSchema.Items.Ref != "#/components/schemas/AcademicUnitResponse" {
-		t.Fatalf("AcademicUnitListResponse = %#v", listSchema)
-	}
+	require.Equal(t, "array", listSchema.Type)
+	require.Equal(t, "#/components/schemas/AcademicUnitResponse", listSchema.Items.Ref)
 	archivedResponse := document.Components.Responses["AcademicUnitArchived"]
-	if archivedResponse.Headers["Cache-Control"].Ref != "#/components/headers/NoStore" {
-		t.Fatalf("AcademicUnitArchived does not require no-store: %#v", archivedResponse)
-	}
+	require.Equal(t, "#/components/headers/NoStore", archivedResponse.Headers["Cache-Control"].Ref)
 }
 
 func academicUnitOperation(_ string, path string) bool {

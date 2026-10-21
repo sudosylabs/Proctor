@@ -9,9 +9,10 @@ package httpapi
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
@@ -25,16 +26,11 @@ func TestOnboardingImportResponseExcludesPrivateRowAndCredentialMaterial(t *test
 		ParseJobID: model.NewJobID(), CreatedAt: at, UpdatedAt: at, ExpiresAt: at.Add(7 * 24 * time.Hour), Revision: 2, TotalRows: 1, ValidRows: 1}
 	rows := []app.OnboardingImportRowView{{RowNumber: 1, Reference: "safe-row", Operation: "institution_role.create", Status: model.OnboardingImportRowValid}}
 	encoded, err := json.Marshal(onboardingImportResponseFromView(view, rows))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	body := string(encoded)
 	for _, forbidden := range []string{"target_email", "email", "claim", "hash", "recipient", "secret"} {
-		if strings.Contains(body, forbidden) {
-			t.Fatalf("response contains private field %q: %s", forbidden, body)
-		}
+		require.NotContains(t, body, forbidden, "response contains private field")
 	}
-	if !strings.Contains(body, `"reference":"safe-row"`) || !strings.Contains(body, `"status":"valid"`) {
-		t.Fatalf("response omits safe row projection: %s", body)
-	}
+	require.Contains(t, body, `"reference":"safe-row"`)
+	require.Contains(t, body, `"status":"valid"`)
 }

@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -38,16 +40,16 @@ func TestMFARestrictedSessionOnlyReachesExplicitRecoveryRoutes(t *testing.T) {
 		{"/api/v1/users/me/mfa", http.MethodGet, 200}, {"/api/v1/users/me/mfa/setup", http.MethodPost, 201},
 		{"/api/v1/users/me/mfa/challenge", http.MethodPost, 401}, {"/api/v1/users/me/mfa/recovery-codes/regenerate", http.MethodPost, 401}, {"/api/v1/users/me/mfa/disable", http.MethodPost, 401},
 	} {
-		request := httptest.NewRequest(test.method, test.path, strings.NewReader(`{"code":"123456"}`))
-		request.Header.Set("Authorization", "Bearer recovery")
-		request.Header.Set("Content-Type", "application/json")
-		response := httptest.NewRecorder()
-		api.ServeHTTP(response, request)
-		if response.Code != test.status {
-			t.Fatalf("%s = %d: %s", test.path, response.Code, response.Body.String())
-		}
-		if response.Code < 300 && response.Header().Get("Cache-Control") != "no-store" {
-			t.Fatal("recovery response is cacheable")
-		}
+		t.Run(test.path, func(t *testing.T) {
+			request := httptest.NewRequestWithContext(t.Context(), test.method, test.path, strings.NewReader(`{"code":"123456"}`))
+			request.Header.Set("Authorization", "Bearer recovery")
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			api.ServeHTTP(response, request)
+			require.Equal(t, test.status, response.Code, "%s = %d: %s", test.path, response.Code, response.Body.String())
+			if response.Code < 300 {
+				require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "recovery response is cacheable")
+			}
+		})
 	}
 }

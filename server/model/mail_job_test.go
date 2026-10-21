@@ -7,21 +7,21 @@
 
 package model
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func TestMailDeliveryCommandIsStrictAndBounded(t *testing.T) {
 	id := NewMailDeliveryID()
 	raw, err := EncodeMailDeliveryCommand(MailDeliveryCommandV1{DeliveryID: id})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	decoded, err := DecodeMailDeliveryCommand(1, raw)
-	if err != nil || decoded.DeliveryID != id {
-		t.Fatalf("Decode() = %#v, %v", decoded, err)
-	}
+	require.NoError(t, err, "Decode() = %#v", decoded)
+	require.Equal(t, id, decoded.DeliveryID, "Decode() = %#v", decoded)
 	for _, invalid := range [][]byte{[]byte(`{"delivery_id":"bad"}`), []byte(`{"delivery_id":"` + id.String() + `","extra":true}`), []byte(`{}`), append(append([]byte(nil), raw...), []byte(` {}`)...)} {
-		if _, err = DecodeMailDeliveryCommand(1, invalid); err == nil {
-			t.Fatalf("accepted %s", invalid)
-		}
+		_, err = DecodeMailDeliveryCommand(1, invalid)
+		require.Error(t, err, "accepted %s", invalid)
 	}
 }

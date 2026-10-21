@@ -10,6 +10,8 @@ package filecontent
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // These bounded fixtures measure the complete JSON validation path, including
@@ -30,9 +32,7 @@ func BenchmarkValidateExamResourceJSON(b *testing.B) {
 			b.ReportAllocs()
 			b.SetBytes(int64(len(fixture.body)))
 			for b.Loop() {
-				if err := validateExamResourceJSON(strings.NewReader(fixture.body)); err != nil {
-					b.Fatal(err)
-				}
+				require.NoError(b, validateExamResourceJSON(strings.NewReader(fixture.body)))
 			}
 		})
 	}

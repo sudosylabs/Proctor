@@ -10,6 +10,8 @@ package websocket_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/websocket"
 )
 
@@ -47,8 +49,6 @@ func TestConformanceCloseCodesRemainStable(t *testing.T) {
 		"connection_limit":      4004,
 	}
 	for name, code := range codes {
-		if code != want[name] {
-			t.Fatalf("%s close code = %d, want %d", name, code, want[name])
-		}
+		require.Equal(t, want[name], code, "%s close code", name)
 	}
 }

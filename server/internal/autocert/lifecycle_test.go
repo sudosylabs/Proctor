@@ -14,6 +14,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -21,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/acme"
 )
 
@@ -29,23 +31,16 @@ func TestManagerCloseCancelsLifecycleAndIsIdempotent(t *testing.T) {
 
 	manager := &Manager{}
 	lifecycle, err := manager.lifecycleContext()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := manager.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, manager.Close())
 	select {
 	case <-lifecycle.Done():
 	default:
-		t.Fatal("manager lifecycle remains active after Close")
+		require.FailNow(t, "manager lifecycle remains active after Close")
 	}
-	if err := manager.Close(); err != nil {
-		t.Fatalf("second Close() error = %v", err)
-	}
-	if _, err := manager.lifecycleContext(); err == nil {
-		t.Fatal("closed manager returned an active lifecycle context")
-	}
+	require.NoError(t, manager.Close())
+	_, err = manager.lifecycleContext()
+	require.Error(t, err, "closed manager returned an active lifecycle context")
 }
 
 func TestManagerCloseStopsScheduledRenewal(t *testing.T) {
@@ -59,24 +54,16 @@ func TestManagerCloseStopsScheduledRenewal(t *testing.T) {
 	manager.renewalMu.Lock()
 	renewal := manager.renewal[key]
 	manager.renewalMu.Unlock()
-	if renewal == nil {
-		t.Fatal("renewal was not scheduled")
-	}
-	if err := manager.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NotNil(t, renewal, "renewal was not scheduled")
+	require.NoError(t, manager.Close())
 	manager.renewalMu.Lock()
 	remaining := len(manager.renewal)
 	manager.renewalMu.Unlock()
-	if remaining != 0 {
-		t.Fatalf("renewal entries after Close = %d", remaining)
-	}
+	require.Equal(t, 0, remaining, "renewal entries after Close")
 	renewal.timerMu.Lock()
 	timer := renewal.timer
 	renewal.timerMu.Unlock()
-	if timer != nil {
-		t.Fatal("renewal timer remains active after Close")
-	}
+	require.Nil(t, timer, "renewal timer remains active after Close")
 }
 
 func TestManagerCloseDoesNotHoldRenewalMapWhileWaitingForTimer(t *testing.T) {
@@ -104,19 +91,17 @@ func TestManagerCloseDoesNotHoldRenewalMapWhileWaitingForTimer(t *testing.T) {
 		}
 		if time.Now().After(deadline) {
 			renewal.timerMu.Unlock()
-			t.Fatal("Close held renewalMu while waiting for a renewal timer")
+			require.FailNow(t, "Close held renewalMu while waiting for a renewal timer")
 		}
 	}
 	select {
 	case err := <-closed:
 		renewal.timerMu.Unlock()
-		t.Fatalf("Close returned while renewal timer was locked: %v", err)
+		require.FailNow(t, fmt.Sprintf("Close returned while renewal timer was locked: %v", err))
 	default:
 	}
 	renewal.timerMu.Unlock()
-	if err := <-closed; err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, (<-closed))
 }
 
 func TestManagerCloseCancelsAndWaitsForInFlightCertificateIssuance(t *testing.T) {
@@ -150,15 +135,9 @@ func TestManagerCloseCancelsAndWaitsForInFlightCertificateIssuance(t *testing.T)
 	<-cache.canceled
 	assertCloseWaits(t, closed)
 	close(cache.release)
-	if err := <-closed; err != nil {
-		t.Fatal(err)
-	}
-	if err := <-serverHandshake; err == nil {
-		t.Fatal("server TLS handshake succeeded after issuance cancellation")
-	}
-	if err := <-clientHandshake; err == nil {
-		t.Fatal("client TLS handshake succeeded after issuance cancellation")
-	}
+	require.NoError(t, (<-closed))
+	require.Error(t, (<-serverHandshake), "server TLS handshake succeeded after issuance cancellation")
+	require.Error(t, (<-clientHandshake), "client TLS handshake succeeded after issuance cancellation")
 }
 
 func TestManagerCloseCancelsAndWaitsForInFlightRenewal(t *testing.T) {
@@ -175,9 +154,7 @@ func TestManagerCloseCancelsAndWaitsForInFlightRenewal(t *testing.T) {
 	<-cache.canceled
 	assertCloseWaits(t, closed)
 	close(cache.release)
-	if err := <-closed; err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, (<-closed))
 }
 
 func TestManagerCloseCancelsFailedIssuanceRetry(t *testing.T) {
@@ -191,16 +168,13 @@ func TestManagerCloseCancelsFailedIssuanceRetry(t *testing.T) {
 		didStartBackground: func() { close(backgroundStarted) },
 		didRemoveState:     func(certKey) { stateRemoved <- struct{}{} },
 	}
-	if _, err := manager.createCert(context.Background(), certKey{domain: "proctor.example.edu"}); err == nil {
-		t.Fatal("certificate creation unexpectedly succeeded")
-	}
+	_, err := manager.createCert(context.Background(), certKey{domain: "proctor.example.edu"})
+	require.Error(t, err, "certificate creation unexpectedly succeeded")
 	<-backgroundStarted
-	if err := manager.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, manager.Close())
 	select {
 	case <-stateRemoved:
-		t.Fatal("failed-issuance retry ran after manager shutdown")
+		require.FailNow(t, "failed-issuance retry ran after manager shutdown")
 	default:
 	}
 }
@@ -223,21 +197,15 @@ func TestManagerCloseCancelsAndWaitsForAuthorizationCleanup(t *testing.T) {
 	<-roundTripper.canceled
 	assertCloseWaits(t, closed)
 	close(roundTripper.release)
-	if err := <-closed; !errors.Is(err, context.Canceled) {
-		t.Fatalf("first Close() error = %v", err)
-	}
-	if err := manager.Close(); !errors.Is(err, context.Canceled) {
-		t.Fatalf("second Close() error = %v", err)
-	}
+	require.ErrorIs(t, (<-closed), context.Canceled)
+	require.ErrorIs(t, manager.Close(), context.Canceled)
 }
 
 func TestChallengeCleanupSurvivesIssuanceCancellation(t *testing.T) {
 	t.Parallel()
 
 	accountKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	client := &acme.Client{Key: accountKey}
 	for _, challengeType := range []string{"http-01", "tls-alpn-01"} {
 		t.Run(challengeType, func(t *testing.T) {
@@ -250,34 +218,21 @@ func TestChallengeCleanupSurvivesIssuanceCancellation(t *testing.T) {
 				Type:  challengeType,
 				Token: "test-token",
 			}, "proctor.example.edu")
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			entries, err := os.ReadDir(cacheDirectory)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(entries) != 1 {
-				t.Fatalf("challenge cache entries before cleanup = %d, want 1", len(entries))
-			}
+			require.NoError(t, err)
+			require.Len(t, entries, 1, "challenge cache entries before cleanup")
 			cancel()
-			if err := cleanup(); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, cleanup())
 			entries, err = os.ReadDir(cacheDirectory)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(entries) != 0 {
-				t.Fatalf("challenge cache entries after canceled cleanup = %d, want 0", len(entries))
-			}
+			require.NoError(t, err)
+			require.Empty(t, entries, "challenge cache entries after canceled cleanup")
 			manager.challengeMu.RLock()
 			remainingCertificates := len(manager.certTokens)
 			remainingHTTP := len(manager.httpTokens)
 			manager.challengeMu.RUnlock()
-			if remainingCertificates != 0 || remainingHTTP != 0 {
-				t.Fatalf("in-memory challenge state remains: certs=%d HTTP=%d", remainingCertificates, remainingHTTP)
-			}
+			require.Equal(t, 0, remainingCertificates, "in-memory challenge state remains: certs")
+			require.Equal(t, 0, remainingHTTP, "in-memory challenge state remains: certs")
 		})
 	}
 }
@@ -286,9 +241,7 @@ func TestChallengeCleanupRetainsPersistentDeletionFailures(t *testing.T) {
 	t.Parallel()
 
 	accountKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	client := &acme.Client{Key: accountKey}
 	deleteErr := errors.New("cache deletion failed")
 	for _, challengeType := range []string{"http-01", "tls-alpn-01"} {
@@ -300,18 +253,10 @@ func TestChallengeCleanupRetainsPersistentDeletionFailures(t *testing.T) {
 				Type:  challengeType,
 				Token: "test-token",
 			}, "proctor.example.edu")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := cleanup(); !errors.Is(err, deleteErr) {
-				t.Fatalf("cleanup error = %v", err)
-			}
-			if err := manager.Close(); !errors.Is(err, deleteErr) {
-				t.Fatalf("first Close() error = %v", err)
-			}
-			if err := manager.Close(); !errors.Is(err, deleteErr) {
-				t.Fatalf("second Close() error = %v", err)
-			}
+			require.NoError(t, err)
+			require.ErrorIs(t, cleanup(), deleteErr)
+			require.ErrorIs(t, manager.Close(), deleteErr)
+			require.ErrorIs(t, manager.Close(), deleteErr)
 		})
 	}
 }
@@ -320,7 +265,7 @@ func assertCloseWaits(t *testing.T, closed <-chan error) {
 	t.Helper()
 	select {
 	case err := <-closed:
-		t.Fatalf("Close returned before owned work stopped: %v", err)
+		require.FailNow(t, fmt.Sprintf("Close returned before owned work stopped: %v", err))
 	case <-time.After(50 * time.Millisecond):
 	}
 }

@@ -12,14 +12,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestBrowserRouteProblemHandlersWriteProblemDetails(t *testing.T) {
 	t.Parallel()
 	api, err := New(validHTTPOptions(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	tests := []struct {
 		name    string
 		handler http.Handler
@@ -38,16 +38,16 @@ func TestBrowserRouteProblemHandlersWriteProblemDetails(t *testing.T) {
 			response := httptest.NewRecorder()
 			test.handler.ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), test.method, test.path, nil))
 			var problem Problem
-			if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-				t.Fatalf("decode %q: %v", response.Body.String(), err)
-			}
-			if response.Code != test.status || problem.Status != test.status || problem.Code != test.code ||
-				problem.Title == "" || problem.Instance != test.path || problem.RequestID == "" ||
-				problem.RequestID != response.Header().Get(RequestIDHeader) ||
-				response.Header().Get("Content-Type") != "application/problem+json" ||
-				response.Header().Get("Allow") != test.allow {
-				t.Fatalf("response = %d %#v headers=%v", response.Code, problem, response.Header())
-			}
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &problem), "decode %q", response.Body.String())
+			require.Equal(t, test.status, response.Code, "response = %d %#v headers=%v", response.Code, problem, response.Header())
+			require.Equal(t, test.status, problem.Status, "response = %d %#v headers=%v", response.Code, problem, response.Header())
+			require.Equal(t, test.code, problem.Code, "response = %d %#v headers=%v", response.Code, problem, response.Header())
+			require.NotEmpty(t, problem.Title, "response = %d %#v headers=%v", response.Code, problem, response.Header())
+			require.Equal(t, test.path, problem.Instance, "response = %d %#v headers=%v", response.Code, problem, response.Header())
+			require.NotEmpty(t, problem.RequestID, "response = %d %#v headers=%v", response.Code, problem, response.Header())
+			require.Equal(t, response.Header().Get(RequestIDHeader), problem.RequestID, "response = %d %#v headers=%v", response.Code, problem, response.Header())
+			require.Equal(t, "application/problem+json", response.Header().Get("Content-Type"), "response = %d %#v headers=%v", response.Code, problem, response.Header())
+			require.Equal(t, test.allow, response.Header().Get("Allow"), "response = %d %#v headers=%v", response.Code, problem, response.Header())
 		})
 	}
 }

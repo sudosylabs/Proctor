@@ -11,6 +11,9 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type pathMatch uint8
@@ -581,28 +584,19 @@ func TestDependencyRulesAreWellFormed(t *testing.T) {
 	names := make(map[string]struct{}, len(dependencyRules))
 	sources := make(map[string]string)
 	for _, rule := range dependencyRules {
-		if rule.name == "" {
-			t.Error("dependency rule has an empty name")
-		}
-		if _, exists := names[rule.name]; exists {
-			t.Errorf("duplicate dependency rule name %q", rule.name)
-		}
+		assert.NotEmpty(t, rule.name, "dependency rule has an empty name")
+		_, exists := names[rule.name]
+		assert.False(t, exists, "duplicate dependency rule name %q", rule.name)
 		names[rule.name] = struct{}{}
-		if len(rule.sources) == 0 {
-			t.Errorf("dependency rule %q has no source packages", rule.name)
-		}
+		assert.NotEmpty(t, rule.sources, "dependency rule %q has no source packages", rule.name)
 		for _, source := range rule.sources {
-			if source.path == "" {
-				t.Errorf("dependency rule %q has an empty source pattern", rule.name)
+			if !assert.NotEmpty(t, source.path, "dependency rule %q has an empty source pattern", rule.name) {
 				continue
 			}
-			if source.match > matchDescendants {
-				t.Errorf("dependency rule %q has an invalid source match for %q", rule.name, source.path)
-			}
+			assert.LessOrEqual(t, source.match, matchDescendants, "dependency rule %q has an invalid source match for %q", rule.name, source.path)
 			key := fmt.Sprintf("%d:%s", source.match, source.path)
-			if owner, exists := sources[key]; exists {
-				t.Errorf("dependency rules %q and %q declare the same source pattern %q", owner, rule.name, source.path)
-			}
+			owner, exists := sources[key]
+			assert.False(t, exists, "dependency rules %q and %q declare the same source pattern %q", owner, rule.name, source.path)
 			sources[key] = rule.name
 		}
 	}
@@ -635,12 +629,8 @@ func TestDependencyRulePrecedence(t *testing.T) {
 		t.Run(tt.packagePath, func(t *testing.T) {
 			t.Parallel()
 			rule, ok := dependencyRuleFor(tt.packagePath)
-			if !ok {
-				t.Fatalf("dependencyRuleFor(%q) found no rule", tt.packagePath)
-			}
-			if rule.name != tt.wantRule {
-				t.Fatalf("dependencyRuleFor(%q) = %q, want %q", tt.packagePath, rule.name, tt.wantRule)
-			}
+			require.True(t, ok, "dependencyRuleFor(%q) found no rule", tt.packagePath)
+			require.Equal(t, tt.wantRule, rule.name, "dependencyRuleFor(%q)", tt.packagePath)
 		})
 	}
 }
@@ -657,16 +647,10 @@ func TestExamIdempotencyConsumerAllowlist(t *testing.T) {
 		serverModule + "/app/exam/sitting",
 		serverModule + "/app/exam/workspace",
 	} {
-		if forbiddenImport(packagePath, serverModule+"/app/idempotency") {
-			t.Errorf("%s cannot import the shared idempotency leaf", packagePath)
-		}
+		assert.False(t, forbiddenImport(packagePath, serverModule+"/app/idempotency"), "%s cannot import the shared idempotency leaf", packagePath)
 	}
-	if !forbiddenImport(serverModule+"/app/exam/safemarkdown", serverModule+"/app/idempotency") {
-		t.Error("unlisted Exam child can import the shared idempotency leaf")
-	}
-	if !forbiddenImport(serverModule+"/app/exam/attempt/internal", serverModule+"/app/idempotency") {
-		t.Error("descendant of a listed Exam command owner can import the shared idempotency leaf")
-	}
+	assert.True(t, forbiddenImport(serverModule+"/app/exam/safemarkdown", serverModule+"/app/idempotency"), "unlisted Exam child can import the shared idempotency leaf")
+	assert.True(t, forbiddenImport(serverModule+"/app/exam/attempt/internal", serverModule+"/app/idempotency"), "descendant of a listed Exam command owner can import the shared idempotency leaf")
 }
 
 func TestInvocationLeafBoundary(t *testing.T) {
@@ -674,17 +658,11 @@ func TestInvocationLeafBoundary(t *testing.T) {
 	leaf := serverModule + "/app/invocation"
 	for _, consumer := range []string{"/app", "/app/idempotency", "/app/exam", "/app/exam/attempt", "/app/exam/correction",
 		"/app/exam/resource", "/app/exam/review", "/app/exam/sitting", "/app/exam/workspace"} {
-		if forbiddenImport(serverModule+consumer, leaf) {
-			t.Errorf("%s cannot import the shared invocation leaf", consumer)
-		}
+		assert.False(t, forbiddenImport(serverModule+consumer, leaf), "%s cannot import the shared invocation leaf", consumer)
 	}
-	if forbiddenImport(leaf, serverModule+"/model") {
-		t.Error("invocation leaf cannot import model")
-	}
+	assert.False(t, forbiddenImport(leaf, serverModule+"/model"), "invocation leaf cannot import model")
 	for _, dependency := range []string{"/app", "/app/apperror", "/app/idempotency", "/app/exam", "/store"} {
-		if !forbiddenImport(leaf, serverModule+dependency) {
-			t.Errorf("invocation leaf can import forbidden dependency %s", dependency)
-		}
+		assert.True(t, forbiddenImport(leaf, serverModule+dependency), "invocation leaf can import forbidden dependency %s", dependency)
 	}
 }
 
@@ -692,24 +670,16 @@ func TestExamManagerAccessBoundary(t *testing.T) {
 	t.Parallel()
 	leaf := serverModule + "/app/exam/manageraccess"
 	for _, consumer := range []string{"/app/exam", "/app/exam/correction", "/app/exam/resource", "/app/exam/sitting", "/app/exam/workspace"} {
-		if forbiddenImport(serverModule+consumer, leaf) {
-			t.Errorf("%s cannot import the shared Manager eligibility policy", consumer)
-		}
+		assert.False(t, forbiddenImport(serverModule+consumer, leaf), "%s cannot import the shared Manager eligibility policy", consumer)
 	}
 	for _, consumer := range []string{"/app/exam/attempt", "/app/exam/review", "/app/exam/resource/internal"} {
-		if !forbiddenImport(serverModule+consumer, leaf) {
-			t.Errorf("unlisted consumer %s can import the shared Manager eligibility policy", consumer)
-		}
+		assert.True(t, forbiddenImport(serverModule+consumer, leaf), "unlisted consumer %s can import the shared Manager eligibility policy", consumer)
 	}
 	for _, dependency := range []string{"/model", "/store"} {
-		if forbiddenImport(leaf, serverModule+dependency) {
-			t.Errorf("Manager eligibility policy cannot import %s", dependency)
-		}
+		assert.False(t, forbiddenImport(leaf, serverModule+dependency), "Manager eligibility policy cannot import %s", dependency)
 	}
 	for _, dependency := range []string{"/app", "/app/exam", "/app/exam/resource", "/app/idempotency", "/store/sqlstore"} {
-		if !forbiddenImport(leaf, serverModule+dependency) {
-			t.Errorf("Manager eligibility policy can import forbidden dependency %s", dependency)
-		}
+		assert.True(t, forbiddenImport(leaf, serverModule+dependency), "Manager eligibility policy can import forbidden dependency %s", dependency)
 	}
 }
 
@@ -717,12 +687,8 @@ func TestUnclassifiedProductionPackageFailsClosed(t *testing.T) {
 	t.Parallel()
 
 	packagePath := serverModule + "/services"
-	if knownProductionPackage(packagePath) {
-		t.Fatalf("knownProductionPackage(%q) = true, want false", packagePath)
-	}
-	if !forbiddenImport(packagePath, "context") {
-		t.Fatalf("forbiddenImport(%q, %q) = false, want true", packagePath, "context")
-	}
+	require.False(t, knownProductionPackage(packagePath), "knownProductionPackage")
+	require.True(t, forbiddenImport(packagePath, "context"), "forbiddenImport(%q, %q) = false, want true", packagePath, "context")
 }
 
 func forbiddenImport(from, imported string) bool {

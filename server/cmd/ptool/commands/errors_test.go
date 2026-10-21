@@ -10,8 +10,9 @@ package commands
 import (
 	"bytes"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // TestErrorCatalogAgreesWithServerSource fails when production source mints
@@ -30,10 +31,7 @@ func TestErrorCatalogAgreesWithServerSource(t *testing.T) {
 		"--catalog", filepath.Join(module, "httpapi", "error_catalog.yaml"),
 		"--mapping", filepath.Join(module, "httpapi", "error_mapping.go"),
 	})
-	if err := command.Execute(); err != nil {
-		t.Fatalf("errors check: %v\n%s", err, output.String())
-	}
-	if !strings.Contains(output.String(), "verified") {
-		t.Fatalf("errors check output = %q", output.String())
-	}
+	err := command.Execute()
+	require.NoError(t, err, "errors check: %v\n%s", err, output.String())
+	require.Contains(t, output.String(), "verified")
 }

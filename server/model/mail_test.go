@@ -12,6 +12,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func queuedMailDeliveryFixture(at time.Time) *MailDelivery {
@@ -30,20 +33,14 @@ func TestExamManagerMailMeaningsAreClosed(t *testing.T) {
 		MailTemplateExamOwnershipTransferredToYou,
 		MailTemplateExamOwnershipTransferredFromYou,
 	} {
-		if !key.IsValid() {
-			t.Errorf("MailTemplateKey(%q) is invalid", key)
-		}
+		assert.True(t, key.IsValid(), "MailTemplateKey(%q) is invalid", key)
 		occurrence := &MailOccurrence{ID: NewMailOccurrenceID(), Kind: MailOccurrenceExamManagement,
 			TemplateKey: key, ActorUserID: NewUserID(), CreatedAt: at}
-		if err := occurrence.Validate(); err != nil {
-			t.Errorf("MailOccurrence(%q): %v", key, err)
-		}
+		assert.NoError(t, occurrence.Validate(), "MailOccurrence(%q)", key)
 	}
 	invalid := &MailOccurrence{ID: NewMailOccurrenceID(), Kind: MailOccurrenceExamManagement,
 		TemplateKey: MailTemplateIdentityPasswordChanged, ActorUserID: NewUserID(), CreatedAt: at}
-	if err := invalid.Validate(); err == nil {
-		t.Fatal("Exam management occurrence accepted an identity-security template")
-	}
+	require.Error(t, invalid.Validate(), "Exam management occurrence accepted an identity-security template")
 }
 
 func TestAcademicAdministrationMailMeaningsAreClosed(t *testing.T) {
@@ -60,20 +57,14 @@ func TestAcademicAdministrationMailMeaningsAreClosed(t *testing.T) {
 		MailTemplateAuthorizationInstitutionRoleAssigned,
 		MailTemplateAuthorizationInstitutionRoleEnded,
 	} {
-		if !key.IsValid() {
-			t.Errorf("MailTemplateKey(%q) is invalid", key)
-		}
+		assert.True(t, key.IsValid(), "MailTemplateKey(%q) is invalid", key)
 		occurrence := &MailOccurrence{ID: NewMailOccurrenceID(), Kind: MailOccurrenceAcademicAdministration,
 			TemplateKey: key, ActorUserID: NewUserID(), CreatedAt: at}
-		if err := occurrence.Validate(); err != nil {
-			t.Errorf("MailOccurrence(%q): %v", key, err)
-		}
+		assert.NoError(t, occurrence.Validate(), "MailOccurrence(%q)", key)
 	}
 	invalid := &MailOccurrence{ID: NewMailOccurrenceID(), Kind: MailOccurrenceAcademicAdministration,
 		TemplateKey: MailTemplateIdentityPasswordChanged, ActorUserID: NewUserID(), CreatedAt: at}
-	if err := invalid.Validate(); err == nil {
-		t.Fatal("academic administration occurrence accepted an identity-security template")
-	}
+	require.Error(t, invalid.Validate(), "academic administration occurrence accepted an identity-security template")
 }
 
 func TestExamSubmissionReceiptMailMeaningsAreClosed(t *testing.T) {
@@ -83,37 +74,25 @@ func TestExamSubmissionReceiptMailMeaningsAreClosed(t *testing.T) {
 		MailTemplateExamSubmissionReceived,
 		MailTemplateExamSubmissionAutomaticallySealed,
 	} {
-		if !key.IsValid() {
-			t.Errorf("MailTemplateKey(%q) is invalid", key)
-		}
+		assert.True(t, key.IsValid(), "MailTemplateKey(%q) is invalid", key)
 		occurrence := &MailOccurrence{ID: NewMailOccurrenceID(), Kind: MailOccurrenceSubmissionReceipt,
 			TemplateKey: key, ActorUserID: NewUserID(), CreatedAt: at}
-		if err := occurrence.Validate(); err != nil {
-			t.Errorf("MailOccurrence(%q): %v", key, err)
-		}
+		assert.NoError(t, occurrence.Validate(), "MailOccurrence(%q)", key)
 	}
 	invalid := &MailOccurrence{ID: NewMailOccurrenceID(), Kind: MailOccurrenceSubmissionReceipt,
 		TemplateKey: MailTemplateExamSittingScheduled, ActorUserID: NewUserID(), CreatedAt: at}
-	if err := invalid.Validate(); err == nil {
-		t.Fatal("Submission receipt occurrence accepted a Sitting schedule template")
-	}
+	require.Error(t, invalid.Validate(), "Submission receipt occurrence accepted a Sitting schedule template")
 }
 
 func TestExamResultReleaseMailMeaningIsClosed(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, 8, 21, 13, 0, 0, 0, time.UTC)
-	if !MailTemplateExamResultReleased.IsValid() {
-		t.Fatal("result-release mail template is invalid")
-	}
+	require.True(t, MailTemplateExamResultReleased.IsValid(), "result-release mail template is invalid")
 	occurrence := &MailOccurrence{ID: NewMailOccurrenceID(), Kind: MailOccurrenceResultRelease,
 		TemplateKey: MailTemplateExamResultReleased, ActorUserID: NewUserID(), CreatedAt: at}
-	if err := occurrence.Validate(); err != nil {
-		t.Fatalf("result-release occurrence: %v", err)
-	}
+	require.NoError(t, occurrence.Validate())
 	occurrence.TemplateKey = MailTemplateExamSubmissionReceived
-	if err := occurrence.Validate(); err == nil {
-		t.Fatal("result-release occurrence accepted a Submission receipt template")
-	}
+	require.Error(t, occurrence.Validate(), "result-release occurrence accepted a Submission receipt template")
 }
 
 func TestScopedRoleInvitationMailMeaningsAreClosed(t *testing.T) {
@@ -123,45 +102,33 @@ func TestScopedRoleInvitationMailMeaningsAreClosed(t *testing.T) {
 		MailTemplateAccessAcademicUnitRoleInvitation,
 		MailTemplateAccessInstitutionRoleInvitation,
 	} {
-		if !key.IsValid() {
-			t.Errorf("MailTemplateKey(%q) is invalid", key)
-		}
+		assert.True(t, key.IsValid(), "MailTemplateKey(%q) is invalid", key)
 		occurrence := &MailOccurrence{ID: NewMailOccurrenceID(), Kind: MailOccurrenceInvitation,
 			TemplateKey: key, ActorUserID: NewUserID(), CreatedAt: at}
-		if err := occurrence.Validate(); err != nil {
-			t.Errorf("MailOccurrence(%q): %v", key, err)
-		}
+		assert.NoError(t, occurrence.Validate(), "MailOccurrence(%q)", key)
 	}
 }
 
 func TestMailDeliveryLifecyclePreservesStableRoutingAndDestroysAcceptedPayload(t *testing.T) {
 	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
 	queued := queuedMailDeliveryFixture(at)
-	if err := queued.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, queued.Validate())
 	sending, err := queued.Start(at.Add(time.Second))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sending.MessageID != queued.MessageID || sending.AttemptCount != 1 || sending.State != MailDeliverySending {
-		t.Fatalf("Start() = %#v", sending)
-	}
+	require.NoError(t, err)
+	require.Equal(t, queued.MessageID, sending.MessageID)
+	require.Equal(t, 1, sending.AttemptCount)
+	require.Equal(t, MailDeliverySending, sending.State)
 	retrying, err := sending.Retry("mail.transport.temporary", at.Add(2*time.Second))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	second, err := retrying.Start(at.Add(3 * time.Second))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	accepted, err := second.Accept(at.Add(4 * time.Second))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if accepted.State != MailDeliveryAccepted || !accepted.AcceptedAt.Valid || len(accepted.EncryptedPayload) != 0 || accepted.MessageID != queued.MessageID || accepted.AttemptCount != 2 {
-		t.Fatalf("Accept() = %#v", accepted)
-	}
+	require.NoError(t, err)
+	require.Equal(t, MailDeliveryAccepted, accepted.State)
+	require.True(t, accepted.AcceptedAt.Valid)
+	require.Empty(t, accepted.EncryptedPayload)
+	require.Equal(t, queued.MessageID, accepted.MessageID)
+	require.Equal(t, 2, accepted.AttemptCount)
 }
 
 func TestMailDeliveryExpiryTerminatesQueuedOrSendingAndDestroysPayload(t *testing.T) {
@@ -173,57 +140,46 @@ func TestMailDeliveryExpiryTerminatesQueuedOrSendingAndDestroysPayload(t *testin
 	} {
 		t.Run(name, func(t *testing.T) {
 			expired, err := delivery.Expire(delivery.Deadline)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if expired.State != MailDeliverySuppressed || expired.PublicFailureCode != "mail.delivery.expired" ||
-				len(expired.EncryptedPayload) != 0 || expired.Revision != delivery.Revision+1 || !expired.UpdatedAt.Equal(delivery.Deadline) {
-				t.Fatalf("Expire() = %#v", expired)
-			}
+			require.NoError(t, err)
+			require.Equal(t, MailDeliverySuppressed, expired.State)
+			require.Equal(t, "mail.delivery.expired", expired.PublicFailureCode)
+			require.Empty(t, expired.EncryptedPayload)
+			require.Equal(t, delivery.Revision+1, expired.Revision)
+			require.True(t, expired.UpdatedAt.Equal(delivery.Deadline))
 		})
 	}
-	if _, err := queued.Expire(queued.Deadline.Add(-time.Nanosecond)); err == nil {
-		t.Fatal("Expire() accepted a pre-deadline transition")
-	}
+	_, err := queued.Expire(queued.Deadline.Add(-time.Nanosecond))
+	require.Error(t, err, "Expire() accepted a pre-deadline transition")
 }
 
 func TestMailDeliveryOperatorControlCancelsQueuedAndRetriesFailedInPlace(t *testing.T) {
 	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
 	queued := queuedMailDeliveryFixture(at)
 	canceled, err := queued.Cancel(at.Add(time.Second))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if canceled.ID != queued.ID || canceled.MessageID != queued.MessageID ||
-		canceled.State != MailDeliveryCanceled || len(canceled.EncryptedPayload) != 0 ||
-		canceled.Revision != queued.Revision+1 {
-		t.Fatalf("Cancel() = %#v", canceled)
-	}
-	if _, err = canceled.Cancel(at.Add(2 * time.Second)); err == nil {
-		t.Fatal("Cancel() accepted a terminal delivery")
-	}
+	require.NoError(t, err)
+	require.Equal(t, queued.ID, canceled.ID)
+	require.Equal(t, queued.MessageID, canceled.MessageID)
+	require.Equal(t, MailDeliveryCanceled, canceled.State)
+	require.Empty(t, canceled.EncryptedPayload)
+	require.Equal(t, queued.Revision+1, canceled.Revision)
+	_, err = canceled.Cancel(at.Add(2 * time.Second))
+	require.Error(t, err, "Cancel() accepted a terminal delivery")
 
 	failed, err := queued.Start(at.Add(time.Second))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	failed, err = failed.Fail("mail.transport.permanent", at.Add(2*time.Second))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	retried, err := failed.OperatorRetry(at.Add(3 * time.Second))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if retried.ID != failed.ID || retried.MessageID != failed.MessageID ||
-		retried.State != MailDeliveryQueued || !retried.FailedAt.IsZero() ||
-		retried.PublicFailureCode != MailDeliveryOperatorRetryCode ||
-		len(retried.EncryptedPayload) == 0 || retried.Revision != failed.Revision+1 {
-		t.Fatalf("OperatorRetry() = %#v", retried)
-	}
-	if _, err = failed.OperatorRetry(failed.Deadline); err == nil {
-		t.Fatal("OperatorRetry() accepted an expired delivery")
-	}
+	require.NoError(t, err)
+	require.Equal(t, failed.ID, retried.ID)
+	require.Equal(t, failed.MessageID, retried.MessageID)
+	require.Equal(t, MailDeliveryQueued, retried.State)
+	require.True(t, retried.FailedAt.IsZero())
+	require.Equal(t, MailDeliveryOperatorRetryCode, retried.PublicFailureCode)
+	require.NotEmpty(t, retried.EncryptedPayload)
+	require.Equal(t, failed.Revision+1, retried.Revision)
+	_, err = failed.OperatorRetry(failed.Deadline)
+	require.Error(t, err, "OperatorRetry() accepted an expired delivery")
 }
 
 func TestMailDeliverySuppressionDestroysRecoverablePayload(t *testing.T) {
@@ -237,22 +193,18 @@ func TestMailDeliverySuppressionDestroysRecoverablePayload(t *testing.T) {
 			if state == MailDeliveryFailed {
 				var err error
 				delivery, err = delivery.Fail("mail.transport.permanent", at.Add(2*time.Second))
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 			}
 			suppressed, err := delivery.Suppress(MailDeliveryDisabledCode, at.Add(3*time.Second))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if suppressed.State != MailDeliverySuppressed || suppressed.PublicFailureCode != MailDeliveryDisabledCode ||
-				len(suppressed.EncryptedPayload) != 0 || suppressed.AcceptedAt.Valid || suppressed.FailedAt.Valid ||
-				suppressed.Revision != delivery.Revision+1 {
-				t.Fatalf("Suppress() = %#v", suppressed)
-			}
-			if _, err = suppressed.Suppress(MailDeliveryDisabledCode, at.Add(4*time.Second)); err == nil {
-				t.Fatal("Suppress() accepted terminal delivery")
-			}
+			require.NoError(t, err)
+			require.Equal(t, MailDeliverySuppressed, suppressed.State)
+			require.Equal(t, MailDeliveryDisabledCode, suppressed.PublicFailureCode)
+			require.Empty(t, suppressed.EncryptedPayload)
+			require.False(t, suppressed.AcceptedAt.Valid)
+			require.False(t, suppressed.FailedAt.Valid)
+			require.Equal(t, delivery.Revision+1, suppressed.Revision)
+			_, err = suppressed.Suppress(MailDeliveryDisabledCode, at.Add(4*time.Second))
+			require.Error(t, err, "Suppress() accepted terminal delivery")
 		})
 	}
 }
@@ -260,9 +212,7 @@ func TestMailDeliverySuppressionDestroysRecoverablePayload(t *testing.T) {
 func mustStartMailDelivery(t *testing.T, delivery *MailDelivery, at time.Time) *MailDelivery {
 	t.Helper()
 	started, err := delivery.Start(at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return started
 }
 
@@ -299,9 +249,7 @@ func TestMailDeliveryValidationRejectsUnboundedOrLeakyLifecycle(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			candidate := queuedMailDeliveryFixture(at)
 			mutate(candidate)
-			if candidate.Validate() == nil {
-				t.Fatal("invalid delivery accepted")
-			}
+			require.Error(t, candidate.Validate(), "invalid delivery accepted")
 		})
 	}
 }
@@ -309,13 +257,9 @@ func TestMailDeliveryValidationRejectsUnboundedOrLeakyLifecycle(t *testing.T) {
 func TestMailDeliveryAuditableOmitsRecipientAndCiphertext(t *testing.T) {
 	delivery := queuedMailDeliveryFixture(time.Now().UTC())
 	encoded, err := json.Marshal(delivery.Auditable())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, secret := range []string{"example.test", "ciphertext", "secret", "message_id"} {
-		if strings.Contains(string(encoded), secret) {
-			t.Fatalf("audit leaked %q: %s", secret, encoded)
-		}
+		require.NotContains(t, string(encoded), secret, "audit leaked")
 	}
 }
 
@@ -343,20 +287,18 @@ func TestIdentityMailCatalogAcceptsCredentialAndSecurityOccurrences(t *testing.T
 		{MailTemplateIdentityPersonalAccessTokenDisabled, MailOccurrenceSecurityNotice},
 		{MailTemplateIdentityPersonalAccessTokenRevoked, MailOccurrenceSecurityNotice},
 	} {
-		occurrence := &MailOccurrence{
-			ID: NewMailOccurrenceID(), Kind: test.kind, TemplateKey: test.key,
-			ActorUserID: userID, CreatedAt: at,
-		}
-		if err := occurrence.Validate(); err != nil {
-			t.Fatalf("%s occurrence: %v", test.key, err)
-		}
-		delivery := queuedMailDeliveryFixture(at)
-		delivery.OccurrenceID = occurrence.ID
-		delivery.TargetUserID = userID
-		delivery.TemplateKey = test.key
-		if err := delivery.Validate(); err != nil {
-			t.Fatalf("%s delivery: %v", test.key, err)
-		}
+		t.Run(string(test.key), func(t *testing.T) {
+			occurrence := &MailOccurrence{
+				ID: NewMailOccurrenceID(), Kind: test.kind, TemplateKey: test.key,
+				ActorUserID: userID, CreatedAt: at,
+			}
+			require.NoError(t, occurrence.Validate(), "%s occurrence", test.key)
+			delivery := queuedMailDeliveryFixture(at)
+			delivery.OccurrenceID = occurrence.ID
+			delivery.TargetUserID = userID
+			delivery.TemplateKey = test.key
+			require.NoError(t, delivery.Validate(), "%s delivery", test.key)
+		})
 	}
 }
 
@@ -368,18 +310,12 @@ func TestSittingScheduleMailMeaningsAreClosed(t *testing.T) {
 		MailTemplateExamSittingCancelled,
 		MailTemplateExamSittingAssignmentRemoved,
 	} {
-		if !key.IsValid() {
-			t.Fatalf("Sitting template %q is not in the closed catalog", key)
-		}
+		require.True(t, key.IsValid(), "Sitting template %q is not in the closed catalog", key)
 		occurrence := &MailOccurrence{ID: NewMailOccurrenceID(), Kind: MailOccurrenceSittingSchedule,
 			TemplateKey: key, ActorUserID: actorID, CreatedAt: NowUTC()}
-		if err := occurrence.Validate(); err != nil {
-			t.Fatalf("Sitting occurrence %q: %v", key, err)
-		}
+		require.NoError(t, occurrence.Validate(), "Sitting occurrence %q", key)
 	}
 	invalid := &MailOccurrence{ID: NewMailOccurrenceID(), Kind: MailOccurrenceSittingSchedule,
 		TemplateKey: MailTemplateIdentityVerifyEmail, ActorUserID: actorID, CreatedAt: NowUTC()}
-	if err := invalid.Validate(); err == nil {
-		t.Fatal("Sitting occurrence accepted an account-token template")
-	}
+	require.Error(t, invalid.Validate(), "Sitting occurrence accepted an account-token template")
 }

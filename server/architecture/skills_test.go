@@ -18,6 +18,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
 
@@ -45,7 +47,7 @@ func TestRepositorySkillsAreValid(t *testing.T) {
 		retiredSkillAuthorityPaths,
 	)
 	for _, issue := range issues {
-		t.Error(issue)
+		assert.Fail(t, issue)
 	}
 }
 
@@ -58,17 +60,11 @@ func TestRetiredDocumentationAuthoritiesAreAbsent(t *testing.T) {
 	retired := retiredRepositoryAuthorityPaths()
 	for _, name := range retired {
 		path := filepath.Join(repositoryRoot, filepath.FromSlash(strings.TrimSuffix(name, "/")))
-		if _, err := os.Lstat(path); err == nil {
-			t.Errorf("retired documentation authority still exists: %s", name)
-		} else if !os.IsNotExist(err) {
-			t.Errorf("inspect retired documentation authority %s: %v", name, err)
-		}
+		_, err := os.Lstat(path)
+		assert.True(t, os.IsNotExist(err), "retired documentation authority still exists or cannot be inspected: %s (%v)", name, err)
 	}
-	if _, err := os.Lstat(filepath.Join(repositoryRoot, ".github", "skills")); err == nil {
-		t.Error("repository skills must not be mirrored under .github/skills")
-	} else if !os.IsNotExist(err) {
-		t.Errorf("inspect .github/skills: %v", err)
-	}
+	_, err := os.Lstat(filepath.Join(repositoryRoot, ".github", "skills"))
+	assert.True(t, os.IsNotExist(err), "repository skills must not be mirrored under .github/skills (%v)", err)
 
 	candidates := documentationCandidates(t, repositoryRoot)
 	for name := range candidates {
@@ -76,14 +72,11 @@ func TestRetiredDocumentationAuthoritiesAreAbsent(t *testing.T) {
 			continue
 		}
 		contents, err := os.ReadFile(filepath.Join(repositoryRoot, filepath.FromSlash(name)))
-		if err != nil {
-			t.Errorf("%s: read for retired-authority references: %v", name, err)
+		if !assert.NoError(t, err, "%s: read for retired-authority references", name) {
 			continue
 		}
 		for _, retiredName := range retired {
-			if bytes.Contains(contents, []byte(retiredName)) {
-				t.Errorf("%s: references retired documentation authority %s", name, retiredName)
-			}
+			assert.False(t, bytes.Contains(contents, []byte(retiredName)), "%s: references retired documentation authority %s", name, retiredName)
 		}
 	}
 }
@@ -182,9 +175,7 @@ func TestSkillValidationRejectsMalformedFixtures(t *testing.T) {
 			root := t.TempDir()
 			writeSkillFixture(t, root, test.files)
 			issues := validateSkillTree(root, fixtureCandidates(test.files), test.retired)
-			if !containsIssue(issues, test.wantIssue) {
-				t.Fatalf("issues %q do not contain %q", issues, test.wantIssue)
-			}
+			require.True(t, containsIssue(issues, test.wantIssue), "issues %q do not contain %q", issues, test.wantIssue)
 		})
 	}
 }
@@ -196,9 +187,7 @@ func TestSkillValidationAcceptsPortableSkill(t *testing.T) {
 	})
 	root := t.TempDir()
 	writeSkillFixture(t, root, files)
-	if issues := validateSkillTree(root, fixtureCandidates(files), nil); len(issues) != 0 {
-		t.Fatalf("valid skill produced issues: %q", issues)
-	}
+	require.Empty(t, validateSkillTree(root, fixtureCandidates(files), nil))
 }
 
 func TestClaudeSkillAdaptersAreSymlinksToCanonicalSkills(t *testing.T) {
@@ -209,9 +198,7 @@ func TestClaudeSkillAdaptersAreSymlinksToCanonicalSkills(t *testing.T) {
 		}
 		writeSkillFixture(t, root, files)
 		writeClaudeAdapter(t, root, "example", "../../.agents/skills/example")
-		if issues := validateSkillTree(root, fixtureCandidates(files), nil); len(issues) != 0 {
-			t.Fatalf("valid adapter produced issues: %q", issues)
-		}
+		require.Empty(t, validateSkillTree(root, fixtureCandidates(files), nil))
 	})
 
 	tests := []struct {
@@ -224,12 +211,8 @@ func TestClaudeSkillAdaptersAreSymlinksToCanonicalSkills(t *testing.T) {
 			configure: func(t *testing.T, root string) {
 				t.Helper()
 				path := filepath.Join(root, ".claude", "skills", "example", "SKILL.md")
-				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(path, []byte(validSkill("example", "Copied.")), 0o644); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+				require.NoError(t, os.WriteFile(path, []byte(validSkill("example", "Copied.")), 0o600))
 			},
 			wantIssue: "must be a symlink",
 		},
@@ -267,14 +250,10 @@ func TestClaudeSkillAdaptersAreSymlinksToCanonicalSkills(t *testing.T) {
 				".agents/skills/example/SKILL.md": validSkill("example", "Example work."),
 			}
 			writeSkillFixture(t, root, files)
-			if err := os.MkdirAll(filepath.Join(root, ".claude", "skills"), 0o755); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, os.MkdirAll(filepath.Join(root, ".claude", "skills"), 0o755))
 			test.configure(t, root)
 			issues := validateSkillTree(root, fixtureCandidates(files), nil)
-			if !containsIssue(issues, test.wantIssue) {
-				t.Fatalf("issues %q do not contain %q", issues, test.wantIssue)
-			}
+			require.True(t, containsIssue(issues, test.wantIssue), "issues %q do not contain %q", issues, test.wantIssue)
 		})
 	}
 }
@@ -524,12 +503,8 @@ func writeSkillFixture(t *testing.T, root string, files map[string]string) {
 	t.Helper()
 	for name, contents := range files {
 		path := filepath.Join(root, filepath.FromSlash(name))
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatalf("create fixture directory: %v", err)
-		}
-		if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
-			t.Fatalf("write fixture: %v", err)
-		}
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte(contents), 0o600))
 	}
 }
 
@@ -544,12 +519,8 @@ func fixtureCandidates(files map[string]string) map[string]struct{} {
 func writeClaudeAdapter(t *testing.T, root, name, target string) {
 	t.Helper()
 	path := filepath.Join(root, ".claude", "skills", name)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("create Claude adapter directory: %v", err)
-	}
-	if err := os.Symlink(target, path); err != nil {
-		t.Fatalf("create Claude adapter: %v", err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.Symlink(target, path))
 }
 
 func containsIssue(issues []string, wanted string) bool {

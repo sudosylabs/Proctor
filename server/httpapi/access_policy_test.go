@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -54,27 +56,18 @@ func (a *replayingAccessPolicyHTTPApplication) ReplaceAccessPolicy(_ context.Con
 func TestAccessPolicyRoutesDeclarePublicDiscoveryAndStrongRecentMutation(t *testing.T) {
 	t.Parallel()
 	resource := accessPolicyResource(nil)
-	if len(resource.routes) != 4 {
-		t.Fatalf("routes = %d", len(resource.routes))
-	}
+	require.Len(t, resource.routes, 4, "routes")
 	byMethodPath := map[string]routeDefinition{}
 	for _, route := range resource.routes {
 		path, _, err := route.path.compile(model.APIURLSuffix)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		byMethodPath[route.method+" "+path] = route
 	}
-	if got := byMethodPath["GET /api/v1/discovery"].auth; got != AuthPublic {
-		t.Fatalf("discovery auth = %s", got)
-	}
-	if got := byMethodPath["POST /api/v1/access-policy/preflight"].auth; got != AuthStrongRecentSessionRequired {
-		t.Fatalf("preflight auth = %s", got)
-	}
+	require.Equal(t, AuthPublic, byMethodPath["GET /api/v1/discovery"].auth)
+	require.Equal(t, AuthStrongRecentSessionRequired, byMethodPath["POST /api/v1/access-policy/preflight"].auth)
 	replace := byMethodPath["PUT /api/v1/access-policy"]
-	if replace.auth != AuthStrongRecentSessionRequired || replace.idempotency != IdempotencyRequired {
-		t.Fatalf("replace route = %#v", replace)
-	}
+	require.Equal(t, AuthStrongRecentSessionRequired, replace.auth)
+	require.Equal(t, IdempotencyRequired, replace.idempotency)
 }
 
 func TestPublicAccessDiscoveryDTOContainsNoPrivatePolicyOrDestinations(t *testing.T) {
@@ -88,18 +81,13 @@ func TestPublicAccessDiscoveryDTOContainsNoPrivatePolicyOrDestinations(t *testin
 		DesktopAuthorization: app.DesktopAuthorizationCompatibility{Protocol: "proctor-desktop-authorization", MinimumVersion: 1, MaximumVersion: 1},
 	})
 	encoded, err := json.Marshal(response)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	text := string(encoded)
 	for _, forbidden := range []string{"provider_admissions", "invitation_local_credential", "client_secret", "redirect", "claims", "recipient"} {
-		if strings.Contains(text, forbidden) {
-			t.Fatalf("discovery exposed %q: %s", forbidden, text)
-		}
+		require.NotContains(t, text, forbidden, "discovery exposed")
 	}
-	if !strings.Contains(text, `"canonical_origin":"https://proctor.example.edu"`) || !strings.Contains(text, `"id":"campus"`) {
-		t.Fatalf("discovery = %s", text)
-	}
+	require.Contains(t, text, `"canonical_origin":"https://proctor.example.edu"`)
+	require.Contains(t, text, `"id":"campus"`)
 }
 
 func TestAccessPolicyHTTPRetriesLostResponseAndRejectsConflictingKeyReuse(t *testing.T) {
@@ -122,13 +110,14 @@ func TestAccessPolicyHTTPRetriesLostResponseAndRejectsConflictingKeyReuse(t *tes
 		httpAPI.ServeHTTP(response, request)
 		return response
 	}
-	if first, replay := do(body), do(body); first.Code != http.StatusOK || replay.Code != http.StatusOK || first.Body.String() != replay.Body.String() {
-		t.Fatalf("first=%d %s replay=%d %s", first.Code, first.Body.String(), replay.Code, replay.Body.String())
-	}
+	first, replay := do(body), do(body)
+	require.Equal(t, http.StatusOK, first.Code, "first")
+	require.Equal(t, http.StatusOK, replay.Code, "first")
+	require.Equal(t, replay.Body.String(), first.Body.String(), "first")
 	conflicting := strings.Replace(body, `"revoke_existing_sessions":true`, `"revoke_existing_sessions":false`, 1)
-	if response := do(conflicting); response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), `"code":"idempotency.conflict"`) {
-		t.Fatalf("conflict=%d %s", response.Code, response.Body.String())
-	}
+	response := do(conflicting)
+	require.Equal(t, http.StatusConflict, response.Code, "conflict")
+	require.Contains(t, response.Body.String(), `"code":"idempotency.conflict"`, "conflict")
 }
 
 func TestAccessPolicyHTTPRequiresExplicitSessionRevocationChoice(t *testing.T) {
@@ -149,9 +138,8 @@ func TestAccessPolicyHTTPRequiresExplicitSessionRevocationChoice(t *testing.T) {
 		request.Header.Set("Idempotency-Key", "explicit-choice")
 		response := httptest.NewRecorder()
 		httpAPI.ServeHTTP(response, request)
-		if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), `"code":"request.invalid"`) {
-			t.Fatalf("response=%d %s", response.Code, response.Body.String())
-		}
+		require.Equal(t, http.StatusBadRequest, response.Code, "response")
+		require.Contains(t, response.Body.String(), `"code":"request.invalid"`, "response")
 	}
 }
 
@@ -190,19 +178,16 @@ func TestAccessPolicyHTTPRequiresEveryCompleteReplacementSetting(t *testing.T) {
 				}
 				mutation.apply(body)
 				encoded, err := json.Marshal(body)
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				request := httptest.NewRequest(http.MethodPut, "/api/v1/access-policy", strings.NewReader(string(encoded)))
 				request.Header.Set("Authorization", "Bearer session")
 				request.Header.Set("Content-Type", "application/json")
 				request.Header.Set("Idempotency-Key", "complete-replacement-"+field+"-"+mutation.name)
 				response := httptest.NewRecorder()
 				httpAPI.ServeHTTP(response, request)
-				if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), `"code":"request.invalid"`) ||
-					!strings.Contains(response.Body.String(), `"field":"`+field+`"`) {
-					t.Fatalf("response=%d %s", response.Code, response.Body.String())
-				}
+				require.Equal(t, http.StatusBadRequest, response.Code, "response")
+				require.Contains(t, response.Body.String(), `"code":"request.invalid"`, "response")
+				require.Contains(t, response.Body.String(), `"field":"`+field+`"`, "response")
 			})
 		}
 	}

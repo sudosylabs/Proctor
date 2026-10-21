@@ -11,6 +11,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestFrameBudgetAdmitsBurstThenRefillsAtSustainedRate(t *testing.T) {
@@ -19,32 +21,20 @@ func TestFrameBudgetAdmitsBurstThenRefillsAtSustainedRate(t *testing.T) {
 	now := time.Date(2026, time.October, 19, 9, 0, 0, 0, time.UTC)
 	var budget frameBudget
 	for index := range inboundFrameBurst {
-		if !budget.allow(now) {
-			t.Fatalf("frame %d of the burst refused", index)
-		}
+		require.True(t, budget.allow(now), "frame %d of the burst refused", index)
 	}
-	if budget.allow(now) {
-		t.Fatal("frame beyond the burst admitted")
-	}
+	require.False(t, budget.allow(now), "frame beyond the burst admitted")
 	now = now.Add(time.Second)
 	for index := range inboundFramesPerSecond {
-		if !budget.allow(now) {
-			t.Fatalf("refilled frame %d refused", index)
-		}
+		require.True(t, budget.allow(now), "refilled frame %d refused", index)
 	}
-	if budget.allow(now) {
-		t.Fatal("frame beyond one second of refill admitted")
-	}
-	if budget.exhausted() {
-		t.Fatal("budget closed after a single refusal streak frame")
-	}
+	require.False(t, budget.allow(now), "frame beyond one second of refill admitted")
+	require.False(t, budget.exhausted(), "budget closed after a single refusal streak frame")
 	now = now.Add(time.Hour)
 	for range inboundFrameBurst {
 		budget.allow(now)
 	}
-	if budget.allow(now) {
-		t.Fatal("refill exceeded the burst ceiling")
-	}
+	require.False(t, budget.allow(now), "refill exceeded the burst ceiling")
 }
 
 // TestConnectionRuntimeRateLimitsEveryInboundFrame floods subscribe frames,
@@ -81,32 +71,25 @@ func TestConnectionRuntimeRateLimitsEveryInboundFrame(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("read pump did not stop after a sustained flood")
+		require.FailNow(t, "read pump did not stop after a sustained flood")
 	}
 
 	application.mu.Lock()
 	authorized := len(application.authorizations)
 	application.mu.Unlock()
-	if authorized != inboundFrameBurst {
-		t.Fatalf("authorized subscriptions = %d, want only the %d-frame burst", authorized, inboundFrameBurst)
-	}
+	require.Equal(t, inboundFrameBurst, authorized, "authorized subscriptions")
 	limited := 0
 	for len(runtime.send) > 0 {
 		message := <-runtime.send
 		if response := message.response; response != nil && response.Error != nil && response.Error.Code == "websocket.rate_limited" {
-			if response.Error.RetryAfterSeconds != 1 {
-				t.Fatalf("rate-limited response = %#v", response.Error)
-			}
+			require.Equal(t, 1, response.Error.RetryAfterSeconds)
 			limited++
 		}
 	}
-	if limited != inboundRefusalsBeforeClose-1 {
-		t.Fatalf("rate-limited responses = %d, want %d", limited, inboundRefusalsBeforeClose-1)
-	}
+	require.Equal(t, inboundRefusalsBeforeClose-1, limited, "rate-limited responses")
 	socket.mu.Lock()
 	closeCode, closeReason := socket.closeCode, socket.closeReason
 	socket.mu.Unlock()
-	if closeCode != CloseRateLimited || closeReason != "too many requests" {
-		t.Fatalf("close = %d %q, want %d", closeCode, closeReason, CloseRateLimited)
-	}
+	require.Equal(t, CloseRateLimited, closeCode, "close")
+	require.Equal(t, "too many requests", closeReason, "close")
 }

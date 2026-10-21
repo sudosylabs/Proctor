@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -40,15 +42,15 @@ func TestExamResourceHTTPUploadUsesStrictMetadataFirstStreamingContract(t *testi
 	request.Header.Set("Idempotency-Key", "resource-once")
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)
-	if response.Code != http.StatusCreated {
-		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
-	}
-	if string(fake.uploaded) != "# Notes" || fake.create.ExpectedSHA256 != checksum || fake.create.IdempotencyKey != "resource-once" || fake.create.MediaType != model.ExamResourceMediaMarkdown {
-		t.Fatalf("command=%#v uploaded=%q", fake.create, fake.uploaded)
-	}
-	if bytes.Contains(response.Body.Bytes(), []byte(`"file_entry"`)) || bytes.Contains(response.Body.Bytes(), []byte(`"path"`)) || bytes.Contains(response.Body.Bytes(), []byte(`"key"`)) || bytes.Contains(response.Body.Bytes(), []byte(`"url"`)) {
-		t.Fatalf("response exposed storage details: %s", response.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, response.Code, "status=%d body=%s", response.Code, response.Body.String())
+	require.Equal(t, "# Notes", string(fake.uploaded), "command=%#v uploaded", fake.create)
+	require.Equal(t, checksum, fake.create.ExpectedSHA256, "command=%#v uploaded", fake.create)
+	require.Equal(t, "resource-once", fake.create.IdempotencyKey, "command=%#v uploaded", fake.create)
+	require.Equal(t, model.ExamResourceMediaMarkdown, fake.create.MediaType, "command=%#v uploaded", fake.create)
+	require.False(t, bytes.Contains(response.Body.Bytes(), []byte(`"file_entry"`)))
+	require.False(t, bytes.Contains(response.Body.Bytes(), []byte(`"path"`)))
+	require.False(t, bytes.Contains(response.Body.Bytes(), []byte(`"key"`)))
+	require.False(t, bytes.Contains(response.Body.Bytes(), []byte(`"url"`)))
 }
 
 func TestExamResourceHTTPRejectsTrailingMultipartPartBeforeApplicationCommit(t *testing.T) {
@@ -66,9 +68,8 @@ func TestExamResourceHTTPRejectsTrailingMultipartPartBeforeApplicationCommit(t *
 	request.Header.Set("Idempotency-Key", "resource-once")
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)
-	if response.Code != http.StatusBadRequest || fake.created {
-		t.Fatalf("status=%d created=%v body=%s", response.Code, fake.created, response.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, response.Code, "status=%d created=%v body=%s", response.Code, fake.created, response.Body.String())
+	require.False(t, fake.created, "status=%d created=%v body=%s", response.Code, fake.created, response.Body.String())
 }
 
 func TestExamResourceHTTPRejectsDuplicateOrMissingMultipartMetadata(t *testing.T) {
@@ -94,9 +95,8 @@ func TestExamResourceHTTPRejectsDuplicateOrMissingMultipartMetadata(t *testing.T
 			request.Header.Set("Idempotency-Key", "resource-once")
 			response := httptest.NewRecorder()
 			api.ServeHTTP(response, request)
-			if response.Code != http.StatusBadRequest || fake.created {
-				t.Fatalf("status=%d created=%v body=%s", response.Code, fake.created, response.Body.String())
-			}
+			require.Equal(t, http.StatusBadRequest, response.Code, "status=%d created=%v body=%s", response.Code, fake.created, response.Body.String())
+			require.False(t, fake.created, "status=%d created=%v body=%s", response.Code, fake.created, response.Body.String())
 		})
 	}
 }
@@ -115,9 +115,10 @@ func TestExamResourceHTTPAcceptsExplicitZeroSizeText(t *testing.T) {
 	request.Header.Set("Idempotency-Key", "resource-empty")
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)
-	if response.Code != http.StatusCreated || !fake.created || fake.create.Size != 0 || len(fake.uploaded) != 0 {
-		t.Fatalf("status=%d created=%v command=%#v uploaded=%q", response.Code, fake.created, fake.create, fake.uploaded)
-	}
+	require.Equal(t, http.StatusCreated, response.Code, "status=%d created=%v command=%#v uploaded", response.Code, fake.created, fake.create)
+	require.True(t, fake.created, "status=%d created=%v command=%#v uploaded", response.Code, fake.created, fake.create)
+	require.Equal(t, int64(0), fake.create.Size, "status=%d created=%v command=%#v uploaded", response.Code, fake.created, fake.create)
+	require.Empty(t, fake.uploaded, "status=%d created=%v command=%#v uploaded", response.Code, fake.created, fake.create)
 }
 
 func TestExamResourceHTTPMetadataPatchIsPresenceAware(t *testing.T) {
@@ -133,17 +134,17 @@ func TestExamResourceHTTPMetadataPatchIsPresenceAware(t *testing.T) {
 	request.Header.Set("Idempotency-Key", "resource-metadata")
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || fake.edit.DisplayName != nil || fake.edit.DescriptionMarkdown == nil || *fake.edit.DescriptionMarkdown != "" {
-		t.Fatalf("status=%d edit=%#v body=%s", response.Code, fake.edit, response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "status=%d edit=%#v body=%s", response.Code, fake.edit, response.Body.String())
+	require.Nil(t, fake.edit.DisplayName, "status=%d edit=%#v body=%s", response.Code, fake.edit, response.Body.String())
+	require.NotNil(t, fake.edit.DescriptionMarkdown, "status=%d edit=%#v body=%s", response.Code, fake.edit, response.Body.String())
+	require.Empty(t, *fake.edit.DescriptionMarkdown, "status=%d edit=%#v body=%s", response.Code, fake.edit, response.Body.String())
 
 	omitted := httptest.NewRequest(http.MethodPatch, path, strings.NewReader(`{"expected_draft_revision":1}`))
 	omitted.Header = request.Header.Clone()
 	omittedResponse := httptest.NewRecorder()
 	api.ServeHTTP(omittedResponse, omitted)
-	if omittedResponse.Code != http.StatusBadRequest || fake.editCalls != 1 {
-		t.Fatalf("omitted status=%d edit calls=%d body=%s", omittedResponse.Code, fake.editCalls, omittedResponse.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, omittedResponse.Code, "omitted status=%d edit calls=%d body=%s", omittedResponse.Code, fake.editCalls, omittedResponse.Body.String())
+	require.Equal(t, 1, fake.editCalls, "omitted status=%d edit calls=%d body=%s", omittedResponse.Code, fake.editCalls, omittedResponse.Body.String())
 }
 
 func TestExamResourceHTTPRemoveReturnsNoContent(t *testing.T) {
@@ -159,9 +160,9 @@ func TestExamResourceHTTPRemoveReturnsNoContent(t *testing.T) {
 	request.Header.Set("Idempotency-Key", "resource-remove")
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)
-	if response.Code != http.StatusNoContent || response.Body.Len() != 0 || !fake.removed {
-		t.Fatalf("status=%d removed=%v body=%q", response.Code, fake.removed, response.Body.String())
-	}
+	require.Equal(t, http.StatusNoContent, response.Code, "status=%d removed=%v body=%q", response.Code, fake.removed, response.Body.String())
+	require.Equal(t, 0, response.Body.Len(), "status=%d removed=%v body=%q", response.Code, fake.removed, response.Body.String())
+	require.True(t, fake.removed, "status=%d removed=%v body=%q", response.Code, fake.removed, response.Body.String())
 }
 
 func TestExamResourceHTTPProtectedContentIsInlinePrivateAndConditional(t *testing.T) {
@@ -176,17 +177,21 @@ func TestExamResourceHTTPProtectedContentIsInlinePrivateAndConditional(t *testin
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)
 	etag := `"` + fake.record.Rendition.SHA256 + `"`
-	if response.Code != http.StatusOK || response.Body.String() != "protected" || response.Header().Get("Content-Disposition") != "" || response.Header().Get("Cache-Control") != "private, max-age=300" || response.Header().Get("ETag") != etag || response.Header().Get("Content-Security-Policy") == "" || len(response.Header().Values("X-Content-Type-Options")) != 1 || response.Header().Get("X-Content-Type-Options") != "nosniff" {
-		t.Fatalf("response=%d headers=%v body=%q", response.Code, response.Header(), response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "response=%d headers=%v body", response.Code, response.Header())
+	require.Equal(t, "protected", response.Body.String(), "response=%d headers=%v body", response.Code, response.Header())
+	require.Empty(t, response.Header().Get("Content-Disposition"), "response=%d headers=%v body", response.Code, response.Header())
+	require.Equal(t, "private, max-age=300", response.Header().Get("Cache-Control"), "response=%d headers=%v body", response.Code, response.Header())
+	require.Equal(t, etag, response.Header().Get("ETag"), "response=%d headers=%v body", response.Code, response.Header())
+	require.NotEmpty(t, response.Header().Get("Content-Security-Policy"), "response=%d headers=%v body", response.Code, response.Header())
+	require.Len(t, response.Header().Values("X-Content-Type-Options"), 1, "response=%d headers=%v body", response.Code, response.Header())
+	require.Equal(t, "nosniff", response.Header().Get("X-Content-Type-Options"), "response=%d headers=%v body", response.Code, response.Header())
 	conditional := httptest.NewRequest(http.MethodGet, path, nil)
 	conditional.Header.Set("Authorization", "Bearer credential")
 	conditional.Header.Set("If-None-Match", etag)
 	notModified := httptest.NewRecorder()
 	api.ServeHTTP(notModified, conditional)
-	if notModified.Code != http.StatusNotModified || notModified.Body.Len() != 0 {
-		t.Fatalf("conditional=%d body=%q", notModified.Code, notModified.Body.String())
-	}
+	require.Equal(t, http.StatusNotModified, notModified.Code, "conditional=%d body=%q", notModified.Code, notModified.Body.String())
+	require.Equal(t, 0, notModified.Body.Len(), "conditional=%d body=%q", notModified.Code, notModified.Body.String())
 }
 
 type examResourceHTTPFake struct {
@@ -252,21 +257,16 @@ func examResourceMultipart(t *testing.T, metadata string, content []byte, traili
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	part, err := writer.CreateFormField("metadata")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	_, _ = part.Write([]byte(metadata))
 	contentPart, err := writer.CreateFormFile("content", "ignored.txt")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	_, _ = contentPart.Write(content)
 	if trailing {
 		extra, _ := writer.CreateFormField("unexpected")
 		_, _ = extra.Write([]byte("value"))
 	}
-	if err = writer.Close(); err != nil {
-		t.Fatal(err)
-	}
+	err = writer.Close()
+	require.NoError(t, err)
 	return &body, writer.FormDataContentType()
 }

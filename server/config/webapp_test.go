@@ -8,8 +8,9 @@
 package config
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestWebappConfigurationRequiresAPathAndRootPublicURL(t *testing.T) {
@@ -21,14 +22,14 @@ func TestWebappConfigurationRequiresAPathAndRootPublicURL(t *testing.T) {
 	} {
 		cfg := Default()
 		mutate(&cfg)
-		if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "server.webapp_directory") {
-			t.Fatalf("Validate() error = %v, want webapp directory error", err)
-		}
+		err := cfg.Validate()
+		require.Error(t, err, "Validate() error")
+		require.Contains(t, err.Error(), "server.webapp_directory", "Validate() error")
 	}
 
 	cfg := Default()
 	cfg.Server.PublicURL = "https://proctor.example.edu/subpath"
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "server.public_url") {
-		t.Fatalf("Validate() error = %v, want root PublicURL error", err)
-	}
+	err := cfg.Validate()
+	require.Error(t, err, "Validate() error")
+	require.Contains(t, err.Error(), "server.public_url", "Validate() error")
 }

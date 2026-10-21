@@ -12,7 +12,6 @@ package server
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -23,6 +22,9 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	localvfs "github.com/sudosylabs/proctor/packages/vfs/local"
@@ -37,9 +39,7 @@ import (
 
 func TestFilePurgeStorageIntegrationOnLocalVFS(t *testing.T) {
 	filesystem, err := localvfs.New(filepath.Join(t.TempDir(), "vfs"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	provePostgreSQLReferencedRenditionsSurvivePurge(t, filesystem)
 }
 
@@ -49,17 +49,13 @@ func TestFilePurgeStorageIntegrationOnS3(t *testing.T) {
 		t.Skip("set VFS_S3_ENDPOINT and VFS_S3_BUCKET to run S3 purge integration")
 	}
 	secure, err := strconv.ParseBool(environmentDefault(os.Getenv("VFS_S3_SECURE"), "true"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	filesystem, err := s3vfs.New(s3vfs.Config{
 		Endpoint: endpoint, AccessKey: os.Getenv("VFS_S3_ACCESS_KEY"), SecretKey: os.Getenv("VFS_S3_SECRET_KEY"),
 		SessionToken: os.Getenv("VFS_S3_SESSION_TOKEN"), Bucket: bucket, Region: os.Getenv("VFS_S3_REGION"),
 		Secure: secure, Prefix: fmt.Sprintf("proctor-file-purge/%d", time.Now().UnixNano()),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	provePostgreSQLReferencedRenditionsSurvivePurge(t, filesystem)
 }
 
@@ -68,9 +64,7 @@ func provePostgreSQLReferencedRenditionsSurvivePurge(t *testing.T, filesystem vf
 	ctx := context.Background()
 	persistence := openFilePurgeStorageIntegrationStore(t)
 	content, err := filecontent.New(filesystem, filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	proveCustomProfilePicturePipelineMatchesMemory(t, content)
 	now := model.NowUTC()
 	user := &model.User{
@@ -79,130 +73,80 @@ func provePostgreSQLReferencedRenditionsSurvivePurge(t *testing.T, filesystem vf
 	}
 	user.PrepareCreate(model.NewUserID(), now)
 	command, err := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommandV1{UserID: user.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, command, user.ID.String(), now, now, 8)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	settings, err := model.NewUserSettingsDocument(user.ID, model.NewUserSettingsRevision(), now)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	created, err := persistence.User().Create(ctx, &store.UserCreation{User: user, Settings: settings, DefaultProfilePictureJob: job})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	referencedEntry, err := model.NewFileEntryForPurpose(model.NewFileEntryID(), model.FilePurposeProfilePictureDefault, model.FileIndexingNone, now)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	referencedRevision, err := model.NewFileRevision(model.NewFileRevisionID(), referencedEntry.ID, model.FileAvailabilityPending, model.FileIndexingNotRequired, now)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	referencedLease, err := model.NewUploadLease(model.NewUploadLeaseID(), referencedRevision.ID, user.ID, now, now.Add(time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = persistence.File().CreateUpload(ctx, &store.FileUploadCreation{Entry: referencedEntry, Revision: referencedRevision, Lease: referencedLease}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	_, err = persistence.File().CreateUpload(ctx, &store.FileUploadCreation{Entry: referencedEntry, Revision: referencedRevision, Lease: referencedLease})
+	require.NoError(t, err)
 	referencedRenditions, err := content.GenerateAndStoreDefaultProfilePicture(ctx, referencedRevision.ID, user.DefaultProfilePictureSeed, now)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	published, err := persistence.File().PublishDefaultProfilePicture(ctx, &store.DefaultProfilePicturePublication{
 		UserID: user.ID, ExpectedUserRevision: created.User.Revision, EntryID: referencedEntry.ID,
 		RevisionID: referencedRevision.ID, LeaseID: referencedLease.ID, Renditions: referencedRenditions, AttachedAt: now,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	staleAt := now.Add(-25 * time.Hour)
 	purgeEntry, err := model.NewFileEntryForPurpose(model.NewFileEntryID(), model.FilePurposeProfilePictureCustom, model.FileIndexingNone, staleAt)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	purgeRevision, err := model.NewFileRevision(model.NewFileRevisionID(), purgeEntry.ID, model.FileAvailabilityPending, model.FileIndexingNotRequired, staleAt)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	purgeLease, err := model.NewUploadLease(model.NewUploadLeaseID(), purgeRevision.ID, user.ID, staleAt, staleAt.Add(time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = persistence.File().CreateUpload(ctx, &store.FileUploadCreation{Entry: purgeEntry, Revision: purgeRevision, Lease: purgeLease}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	_, err = persistence.File().CreateUpload(ctx, &store.FileUploadCreation{Entry: purgeEntry, Revision: purgeRevision, Lease: purgeLease})
+	require.NoError(t, err)
 	purgeRenditions, err := content.GenerateAndStoreDefaultProfilePicture(ctx, purgeRevision.ID, user.DefaultProfilePictureSeed, staleAt)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	state, err := persistence.File().GetProfilePictureState(ctx, user.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if state.EntryID != referencedEntry.ID || state.RevisionID != referencedRevision.ID {
-		t.Fatalf("pending content became visible through metadata: %#v", state)
-	}
+	require.NoError(t, err)
+	require.Equal(t, referencedEntry.ID, state.EntryID)
+	require.Equal(t, referencedRevision.ID, state.RevisionID)
 	page, err := persistence.File().ListPurgeCandidates(ctx, &store.FilePurgeCandidateRequest{Limit: 100})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var candidate *store.FilePurgeCandidate
 	for index := range page.Candidates {
 		value := &page.Candidates[index]
-		if value.RevisionID == referencedRevision.ID {
-			t.Fatalf("referenced revision was selected for purge: %#v", value)
-		}
+		require.NotEqual(t, referencedRevision.ID, value.RevisionID)
 		if value.RevisionID == purgeRevision.ID {
 			candidate = value
 		}
 	}
-	if candidate == nil {
-		t.Fatalf("expired pending revision was not selected: %#v", page.Candidates)
-	}
+	require.NotNil(t, candidate, "expired pending revision was not selected: %#v", page.Candidates)
 	claim, err := persistence.File().ClaimPurgeCandidate(ctx, candidate)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = content.PurgeAbandonedFileRevision(ctx, claim.Candidate.RevisionID); err != nil {
-		t.Fatal(err)
-	}
-	if err = persistence.File().CompletePurge(ctx, claim); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	err = content.PurgeAbandonedFileRevision(ctx, claim.Candidate.RevisionID)
+	require.NoError(t, err)
+	err = persistence.File().CompletePurge(ctx, claim)
+	require.NoError(t, err)
 
 	visible, err := persistence.File().GetProfilePictureRendition(ctx, published.User.ID, "profile_128")
-	if err != nil {
-		t.Fatalf("referenced metadata disappeared: %v", err)
-	}
+	require.NoError(t, err)
 	body, err := content.OpenProfilePictureRendition(ctx, visible.RevisionID, visible.ID)
-	if err != nil {
-		t.Fatalf("referenced VFS rendition was deleted: %v", err)
-	}
+	require.NoError(t, err)
 	_ = body.Close()
 	for _, rendition := range purgeRenditions {
 		body, openErr := content.OpenProfilePictureRendition(ctx, purgeRevision.ID, rendition.ID)
 		if body != nil {
 			_ = body.Close()
 		}
-		if !errors.Is(openErr, vfspkg.ErrNotFound) {
-			t.Fatalf("purged rendition %s still exists: %v", rendition.ID, openErr)
-		}
+		require.ErrorIs(t, openErr, vfspkg.ErrNotFound, "purged rendition %s still exists", rendition.ID)
 	}
 	var remainingMetadata int
-	if err = persistence.GetMaster().Get(ctx, &remainingMetadata, `SELECT count(*) FROM file_revisions WHERE id = $1`, purgeRevision.ID.String()); err != nil {
-		t.Fatal(err)
-	}
-	if remainingMetadata != 0 {
-		t.Fatalf("purged revision metadata count = %d, want 0", remainingMetadata)
-	}
+	err = persistence.GetMaster().Get(ctx, &remainingMetadata, `SELECT count(*) FROM file_revisions WHERE id = $1`, purgeRevision.ID.String())
+	require.NoError(t, err)
+	require.Equal(t, 0, remainingMetadata, "purged revision metadata count")
 }
 
 func proveCustomProfilePicturePipelineMatchesMemory(t *testing.T, actual *filecontent.Content) {
@@ -214,98 +158,70 @@ func proveCustomProfilePicturePipelineMatchesMemory(t *testing.T, actual *fileco
 		}
 	}
 	var input bytes.Buffer
-	if err := png.Encode(&input, source); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, png.Encode(&input, source))
 	reference, err := filecontent.New(memoryvfs.New(), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	createdAt := time.Date(2026, time.August, 11, 0, 0, 0, 0, time.UTC)
 	referenceRevisionID, actualRevisionID := model.NewFileRevisionID(), model.NewFileRevisionID()
 	want, err := reference.NormalizeAndStoreProfilePicture(context.Background(), referenceRevisionID, bytes.NewReader(input.Bytes()), int64(input.Len()), createdAt)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	got, err := actual.NormalizeAndStoreProfilePicture(context.Background(), actualRevisionID, bytes.NewReader(input.Bytes()), int64(input.Len()), createdAt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != len(want) {
-		t.Fatalf("custom rendition count = %d, want %d", len(got), len(want))
-	}
+	require.NoError(t, err)
+	require.Len(t, got, len(want), "custom rendition count")
 	wantByName := make(map[string]model.FileRendition, len(want))
 	for _, rendition := range want {
 		wantByName[rendition.Name] = rendition
 	}
 	for _, rendition := range got {
 		expected, found := wantByName[rendition.Name]
-		if !found || rendition.MediaType != expected.MediaType || rendition.Size != expected.Size || rendition.Width != expected.Width || rendition.Height != expected.Height || rendition.SHA256 != expected.SHA256 {
-			t.Fatalf("backend rendition differs from memory: got=%#v want=%#v", rendition, expected)
-		}
+		require.True(t, found, "backend rendition differs from memory: got=%#v want=%#v", rendition, expected)
+		require.Equal(t, expected.MediaType, rendition.MediaType, "backend rendition differs from memory: got=%#v want=%#v", rendition, expected)
+		require.Equal(t, expected.Size, rendition.Size, "backend rendition differs from memory: got=%#v want=%#v", rendition, expected)
+		require.Equal(t, expected.Width, rendition.Width, "backend rendition differs from memory: got=%#v want=%#v", rendition, expected)
+		require.Equal(t, expected.Height, rendition.Height, "backend rendition differs from memory: got=%#v want=%#v", rendition, expected)
+		require.Equal(t, expected.SHA256, rendition.SHA256, "backend rendition differs from memory: got=%#v want=%#v", rendition, expected)
 		actualBody, openErr := actual.OpenProfilePictureRendition(context.Background(), actualRevisionID, rendition.ID)
-		if openErr != nil {
-			t.Fatal(openErr)
-		}
+		require.NoError(t, openErr)
 		actualBytes, readErr := io.ReadAll(actualBody)
 		_ = actualBody.Close()
-		if readErr != nil {
-			t.Fatal(readErr)
-		}
+		require.NoError(t, readErr)
 		referenceBody, openErr := reference.OpenProfilePictureRendition(context.Background(), referenceRevisionID, expected.ID)
-		if openErr != nil {
-			t.Fatal(openErr)
-		}
+		require.NoError(t, openErr)
 		referenceBytes, readErr := io.ReadAll(referenceBody)
 		_ = referenceBody.Close()
-		if readErr != nil {
-			t.Fatal(readErr)
-		}
-		if !bytes.Equal(actualBytes, referenceBytes) {
-			t.Fatalf("backend bytes differ for %s", rendition.Name)
-		}
+		require.NoError(t, readErr)
+		require.True(t, bytes.Equal(actualBytes, referenceBytes), "backend bytes differ for %s", rendition.Name)
 	}
 	ids := make([]model.FileRenditionID, 0, len(got))
 	for _, rendition := range got {
 		ids = append(ids, rendition.ID)
 	}
-	if err = actual.RemoveFileRevisionRenditions(context.Background(), actualRevisionID, ids); err != nil {
-		t.Fatalf("remove custom integration content: %v", err)
-	}
+	err = actual.RemoveFileRevisionRenditions(context.Background(), actualRevisionID, ids)
+	require.NoError(t, err)
 }
 
 func openFilePurgeStorageIntegrationStore(t *testing.T) *sqlstore.SQLStore {
 	t.Helper()
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	database := config.Default().Database
 	database.DataSource = dataSource
 	settings := sqlstore.SettingsFromConfig(database)
 	migrator, err := sqlstore.NewMigrator(context.Background(), settings)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if err = migrator.Up(); err != nil {
 		_ = migrator.Close()
-		t.Fatal(err)
+		require.NoError(t, err)
 	}
-	if err = migrator.Close(); err != nil {
-		t.Fatal(err)
-	}
+	err = migrator.Close()
+	require.NoError(t, err)
 	persistence, err := sqlstore.New(context.Background(), settings)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() {
-		if err := persistence.Close(); err != nil {
-			t.Errorf("close file purge storage integration store: %v", err)
-		}
+		assert.NoError(t, persistence.Close())
 	})
-	if _, err = persistence.GetMaster().Exec(context.Background(), `TRUNCATE TABLE users, file_entries, job_permanent_occurrences, jobs CASCADE`); err != nil {
-		t.Fatal(err)
-	}
+	_, err = persistence.GetMaster().Exec(context.Background(), `TRUNCATE TABLE users, file_entries, job_permanent_occurrences, jobs CASCADE`)
+	require.NoError(t, err)
 	return persistence
 }
 

@@ -25,6 +25,8 @@ import (
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
 	pdfmodel "github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
+	"github.com/stretchr/testify/require"
+
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/model"
@@ -36,9 +38,7 @@ func TestExamResourceContentStoresAndOpensExactVerifiedBytes(t *testing.T) {
 		backend := backend
 		t.Run(backend.name, func(t *testing.T) {
 			content, err := New(backend.open(t), Policy{MaximumConcurrentOperations: 2}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			for _, test := range []struct {
 				name  string
 				media model.ExamResourceMediaType
@@ -55,21 +55,17 @@ func TestExamResourceContentStoresAndOpensExactVerifiedBytes(t *testing.T) {
 				t.Run(test.name, func(t *testing.T) {
 					revisionID := model.NewFileRevisionID()
 					rendition, err := content.StoreExamResource(context.Background(), revisionID, test.media, strings.NewReader(test.body), int64(len(test.body)), time.Now().UTC())
-					if err != nil {
-						t.Fatalf("StoreExamResource() error = %v", err)
-					}
-					if rendition.Name != "original" || rendition.MediaType != string(test.media) || rendition.Size != int64(len(test.body)) || len(rendition.SHA256) != 64 {
-						t.Fatalf("rendition = %#v", rendition)
-					}
+					require.NoError(t, err)
+					require.Equal(t, "original", rendition.Name)
+					require.Equal(t, string(test.media), rendition.MediaType)
+					require.Equal(t, int64(len(test.body)), rendition.Size)
+					require.Len(t, rendition.SHA256, 64)
 					opened, err := content.OpenExamResource(context.Background(), revisionID, rendition.ID)
-					if err != nil {
-						t.Fatalf("OpenExamResource() error = %v", err)
-					}
+					require.NoError(t, err)
 					got, readErr := io.ReadAll(opened)
 					_ = opened.Close()
-					if readErr != nil || !bytes.Equal(got, []byte(test.body)) {
-						t.Fatalf("opened = %q error=%v", got, readErr)
-					}
+					require.NoError(t, readErr, "opened = %q error", got)
+					require.True(t, bytes.Equal(got, []byte(test.body)), "opened = %q error", got)
 				})
 			}
 		})
@@ -81,37 +77,27 @@ func TestExamResourceContentStoresAtPreallocatedRenditionIdentity(t *testing.T) 
 
 	for _, filesystem := range []vfspkg.FileSystem{memoryvfs.New(), &examResourceNonConditionalVFS{FileSystem: memoryvfs.New()}} {
 		content, err := New(filesystem, Policy{MaximumConcurrentOperations: 2}, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		revisionID, renditionID := model.NewFileRevisionID(), model.NewFileRenditionID()
 		body := "corrected reference"
 		rendition, err := content.StoreExamResourceRendition(context.Background(), revisionID, renditionID,
 			model.ExamResourceMediaText, strings.NewReader(body), int64(len(body)), time.Now().UTC())
-		if err != nil {
-			t.Fatal(err)
-		}
-		if rendition.ID != renditionID || rendition.RevisionID != revisionID {
-			t.Fatalf("rendition=%#v", rendition)
-		}
+		require.NoError(t, err)
+		require.Equal(t, renditionID, rendition.ID)
+		require.Equal(t, revisionID, rendition.RevisionID)
 		replayed, err := content.StoreExamResourceRendition(context.Background(), revisionID, renditionID,
 			model.ExamResourceMediaText, strings.NewReader(body), int64(len(body)), rendition.CreatedAt)
-		if err != nil || replayed != rendition {
-			t.Fatalf("exact replay rendition=%#v error=%v", replayed, err)
-		}
-		if _, err = content.StoreExamResourceRendition(context.Background(), revisionID, renditionID,
-			model.ExamResourceMediaText, strings.NewReader("different"), int64(len("different")), rendition.CreatedAt); err == nil {
-			t.Fatal("mismatched bytes at preallocated identity unexpectedly succeeded")
-		}
+		require.NoError(t, err, "exact replay rendition")
+		require.Equal(t, rendition, replayed, "exact replay rendition")
+		_, err = content.StoreExamResourceRendition(context.Background(), revisionID, renditionID,
+			model.ExamResourceMediaText, strings.NewReader("different"), int64(len("different")), rendition.CreatedAt)
+		require.Error(t, err, "mismatched bytes at preallocated identity unexpectedly succeeded")
 		opened, err := content.OpenExamResource(context.Background(), revisionID, renditionID)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		got, readErr := io.ReadAll(opened)
 		_ = opened.Close()
-		if readErr != nil || string(got) != body {
-			t.Fatalf("opened=%q error=%v", got, readErr)
-		}
+		require.NoError(t, readErr, "opened")
+		require.Equal(t, body, string(got), "opened")
 	}
 }
 
@@ -122,26 +108,17 @@ func TestExamResourceContentRejectsUnverifiedOrUnboundedInputBeforeStorage(t *te
 	pseudoPDF := []byte("%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF\n")
 	compressedActivePDF := testExamResourcePDF(t, func(xRefTable *pdfmodel.XRefTable, root types.Dict) {
 		script, err := xRefTable.NewStreamDictForBuf([]byte("app.alert('unsafe')"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err = script.Encode(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
+		err = script.Encode()
+		require.NoError(t, err)
 		scriptRef, err := xRefTable.IndRefForNewObject(*script)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		action := types.Dict{"Type": types.Name("Action"), "S": types.Name("JavaScript"), "JS": *scriptRef}
 		ref, err := xRefTable.IndRefForNewObject(action)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		root.Insert("OpenAction", *ref)
 	})
-	if bytes.Contains(compressedActivePDF, []byte("app.alert('unsafe')")) {
-		t.Fatal("active-content fixture did not compress its script stream")
-	}
+	require.False(t, bytes.Contains(compressedActivePDF, []byte("app.alert('unsafe')")), "active-content fixture did not compress its script stream")
 	attachmentPDF := testExamResourceAttachmentPDF(t)
 	tests := []struct {
 		name     string
@@ -164,39 +141,27 @@ func TestExamResourceContentRejectsUnverifiedOrUnboundedInputBeforeStorage(t *te
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := content.StoreExamResource(context.Background(), model.NewFileRevisionID(), test.media, bytes.NewReader(test.body), test.declared, time.Now().UTC())
-			if !errors.Is(err, ErrInvalidExamResourceContent) {
-				t.Fatalf("error = %v", err)
-			}
+			require.ErrorIs(t, err, ErrInvalidExamResourceContent)
 		})
 	}
 	page, err := filesystem.List(context.Background(), vfspkg.ListOptions{Prefix: "files/", Limit: 10})
-	if err != nil || len(page.Entries) != 0 {
-		t.Fatalf("rejected content was stored: page=%#v error=%v", page, err)
-	}
+	require.NoError(t, err, "rejected content was stored: page=%#v error", page)
+	require.Empty(t, page.Entries, "rejected content was stored: page=%#v error", page)
 }
 
 func TestExamResourceContentReadsAndWritesThroughBoundedBuffers(t *testing.T) {
 	privateTemp := t.TempDir()
 	t.Setenv("TMPDIR", privateTemp)
 	content, err := New(memoryvfs.New(), Policy{MaximumConcurrentOperations: 2}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	const size = int64(2 << 20)
 	reader := &boundedExamResourceReader{remaining: size, maximumRequest: 64 << 10}
-	if _, err = content.StoreExamResource(context.Background(), model.NewFileRevisionID(), model.ExamResourceMediaText, reader, size, time.Now().UTC()); err != nil {
-		t.Fatalf("StoreExamResource() error = %v", err)
-	}
-	if reader.maximumObserved > reader.maximumRequest {
-		t.Fatalf("upload read buffer=%d, want <=%d", reader.maximumObserved, reader.maximumRequest)
-	}
+	_, err = content.StoreExamResource(context.Background(), model.NewFileRevisionID(), model.ExamResourceMediaText, reader, size, time.Now().UTC())
+	require.NoError(t, err)
+	require.LessOrEqual(t, reader.maximumObserved, reader.maximumRequest, "upload read buffer")
 	entries, err := os.ReadDir(privateTemp)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 0 {
-		t.Fatalf("private spool files remain after upload: %#v", entries)
-	}
+	require.NoError(t, err)
+	require.Empty(t, entries)
 }
 
 func TestExamResourceContentRemovesPrivateSpoolAfterEveryOutcome(t *testing.T) {
@@ -214,20 +179,12 @@ func TestExamResourceContentRemovesPrivateSpoolAfterEveryOutcome(t *testing.T) {
 			privateTemp := t.TempDir()
 			t.Setenv("TMPDIR", privateTemp)
 			content, err := New(test.filesystem, Policy{MaximumConcurrentOperations: 2}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			_, err = content.StoreExamResource(context.Background(), model.NewFileRevisionID(), model.ExamResourceMediaText, strings.NewReader(test.body), int64(len(test.body)), time.Now().UTC())
-			if !test.want(err) {
-				t.Fatalf("StoreExamResource() error = %v", err)
-			}
+			require.True(t, test.want(err), "StoreExamResource() error")
 			entries, err := os.ReadDir(privateTemp)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(entries) != 0 {
-				t.Fatalf("private spool files remain after outcome: %#v", entries)
-			}
+			require.NoError(t, err)
+			require.Empty(t, entries)
 		})
 	}
 }
@@ -237,9 +194,7 @@ func TestExamResourceContentRejectsDeclaredOversizeWithoutReading(t *testing.T) 
 	content, _ := New(memoryvfs.New(), Policy{MaximumConcurrentOperations: 2}, nil)
 	reader := &panicReader{}
 	_, err := content.StoreExamResource(context.Background(), model.NewFileRevisionID(), model.ExamResourceMediaText, reader, model.ExamResourceMaximumBytes+1, time.Now().UTC())
-	if !errors.Is(err, ErrInvalidExamResourceContent) {
-		t.Fatalf("error = %v", err)
-	}
+	require.ErrorIs(t, err, ErrInvalidExamResourceContent)
 }
 
 func TestExamResourceContentStopsAtFirstByteBeyondDeclaredSize(t *testing.T) {
@@ -247,34 +202,25 @@ func TestExamResourceContentStopsAtFirstByteBeyondDeclaredSize(t *testing.T) {
 	t.Setenv("TMPDIR", privateTemp)
 	filesystem := &contentWorkVFS{FileSystem: memoryvfs.New()}
 	content, err := New(filesystem, Policy{MaximumConcurrentOperations: 1}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	const inputSize = 64 << 10
 	for _, declared := range []int64{0, 5, examResourceCopyBuffer} {
 		body := &boundedExamResourceReader{remaining: inputSize, maximumRequest: examResourceCopyBuffer}
 		rendition, err := content.StoreExamResource(context.Background(), model.NewFileRevisionID(), model.ExamResourceMediaText, body, declared, time.Unix(1, 0))
-		if !errors.Is(err, ErrInvalidExamResourceContent) || rendition != (model.FileRendition{}) {
-			t.Fatalf("declared=%d: rendition=%#v error=%v", declared, rendition, err)
-		}
-		if consumed := inputSize - body.remaining; consumed != declared+1 {
-			t.Fatalf("declared=%d: consumed=%d, want first excess byte only", declared, consumed)
-		}
+		require.ErrorIs(t, err, ErrInvalidExamResourceContent, "declared=%d: rendition=%#v error", declared, rendition)
+		require.Equal(t, model.FileRendition{}, rendition, "declared=%d: rendition=%#v error", declared, rendition)
+		consumed := inputSize - body.remaining
+		require.Equal(t, declared+1, consumed, "declared=%d: consumed", declared)
 	}
-	if filesystem.writes.Load() != 0 {
-		t.Fatal("mismatched bodies reached storage")
-	}
+	require.Equal(t, int64(0), filesystem.writes.Load(), "mismatched bodies reached storage")
 	assertExamResourceSpoolRemoved(t, privateTemp)
-	if _, err := content.StoreExamResource(context.Background(), model.NewFileRevisionID(), model.ExamResourceMediaText, strings.NewReader("notes"), 5, time.Unix(1, 0)); err != nil {
-		t.Fatalf("capacity was not released after size rejection: %v", err)
-	}
+	_, err = content.StoreExamResource(context.Background(), model.NewFileRevisionID(), model.ExamResourceMediaText, strings.NewReader("notes"), 5, time.Unix(1, 0))
+	require.NoError(t, err)
 }
 
 func TestExamResourceValidationObservesCancellationBetweenBoundedReads(t *testing.T) {
 	var imageBody bytes.Buffer
-	if err := png.Encode(&imageBody, image.NewNRGBA(image.Rect(0, 0, 16, 16))); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, png.Encode(&imageBody, image.NewNRGBA(image.Rect(0, 0, 16, 16))))
 	for _, test := range []struct {
 		name       string
 		media      model.ExamResourceMediaType
@@ -299,12 +245,11 @@ func TestExamResourceValidationObservesCancellationBetweenBoundedReads(t *testin
 			defer cancel()
 			body := &cancelledValidationReader{ReadSeeker: strings.NewReader(test.body), cancel: cancel, cancelPass: test.cancelPass, pass: 1}
 			err := validateExamResource(ctx, body, test.media, int64(len(test.body)))
-			if !errors.Is(err, context.Canceled) {
-				t.Fatalf("error=%v, want cancellation", err)
-			}
-			if body.cancelledReads != 1 || body.cancelledBytes > examResourceCopyBuffer || body.afterCancelReads != 0 || body.afterCancelSeeks != 0 {
-				t.Fatalf("cancellation boundary: reads=%d bytes=%d later reads=%d later seeks=%d", body.cancelledReads, body.cancelledBytes, body.afterCancelReads, body.afterCancelSeeks)
-			}
+			require.ErrorIs(t, err, context.Canceled)
+			require.Equal(t, 1, body.cancelledReads, "cancellation boundary: reads")
+			require.LessOrEqual(t, body.cancelledBytes, examResourceCopyBuffer, "cancellation boundary: reads")
+			require.Equal(t, 0, body.afterCancelReads, "cancellation boundary: reads")
+			require.Equal(t, 0, body.afterCancelSeeks, "cancellation boundary: reads")
 		})
 	}
 }
@@ -313,15 +258,11 @@ func TestExamResourceUTF8SignaturePrefixKeepsConstantAllocations(t *testing.T) {
 	allocations := func(runes int) float64 {
 		body := `"` + strings.Repeat("😀", runes) + `"`
 		return testing.AllocsPerRun(3, func() {
-			if err := validateExamResourceUTF8(strings.NewReader(body)); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, validateExamResourceUTF8(strings.NewReader(body)))
 		})
 	}
 	small, large := allocations(8), allocations(16<<10)
-	if large > small+1 {
-		t.Fatalf("UTF-8 prefix allocations grew with content: small=%g large=%g", small, large)
-	}
+	require.LessOrEqual(t, large, small+1, "UTF-8 prefix allocations grew with content: small=%g large", small)
 }
 
 func TestExamResourceUTF8PreservesSignatureRejection(t *testing.T) {
@@ -329,15 +270,11 @@ func TestExamResourceUTF8PreservesSignatureRejection(t *testing.T) {
 	for _, signature := range []string{"MZ", "PK\x03\x04", "\x7fELF", "#!"} {
 		for _, leading := range []string{"", " \n\t", "\u2003"} {
 			body := leading + signature + strings.Repeat("😀", 8)
-			if err := validateExamResourceUTF8(strings.NewReader(body)); !errors.Is(err, ErrInvalidExamResourceContent) {
-				t.Fatalf("signature=%q: error=%v", signature, err)
-			}
+			require.ErrorIs(t, validateExamResourceUTF8(strings.NewReader(body)), ErrInvalidExamResourceContent, "signature=%q: error", signature)
 		}
 	}
 	for _, body := range []string{"", " \u2003", "😀MZ", "😀PK\x03\x04", "😀\x7fELF", "😀#!"} {
-		if err := validateExamResourceUTF8(strings.NewReader(body)); err != nil {
-			t.Fatalf("ordinary UTF-8 content was rejected: %v", err)
-		}
+		require.NoError(t, validateExamResourceUTF8(strings.NewReader(body)))
 	}
 }
 
@@ -351,26 +288,21 @@ func TestExamResourceContentCancellationReturnsNoRenditionAndReleasesResources(t
 			filesystem := &cancelledExamResourceVFS{FileSystem: memoryvfs.New(), cancel: cancel, outcome: outcome}
 			recorder := &contentWorkRecorder{}
 			content, err := New(filesystem, Policy{MaximumConcurrentOperations: 1}, recorder)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			var body io.Reader = strings.NewReader("[0]")
 			if outcome == "upload completed" {
 				body = &cancelledExamResourceBody{ReadCloser: io.NopCloser(body), cancel: cancel}
 			}
 			rendition, err := content.StoreExamResource(ctx, model.NewFileRevisionID(), model.ExamResourceMediaJSON, body, 3, time.Unix(1, 0))
-			if !errors.Is(err, context.Canceled) || rendition != (model.FileRendition{}) {
-				t.Fatalf("cancelled rendition=%#v error=%v", rendition, err)
-			}
-			if recorder.active.Load() != 0 || recorder.finished.Load() != 1 {
-				t.Fatal("cancelled operation retained its processing permit")
-			}
+			require.ErrorIs(t, err, context.Canceled, "cancelled rendition")
+			require.Equal(t, model.FileRendition{}, rendition, "cancelled rendition")
+			require.Equal(t, int64(0), recorder.active.Load(), "cancelled operation retained its processing permit")
+			require.Equal(t, int64(1), recorder.finished.Load(), "cancelled operation retained its processing permit")
 			assertExamResourceSpoolRemoved(t, privateTemp)
 			filesystem.cancel = nil
 			filesystem.outcome = "write succeeded"
-			if _, err := content.StoreExamResource(context.Background(), model.NewFileRevisionID(), model.ExamResourceMediaJSON, strings.NewReader("[0]"), 3, time.Unix(1, 0)); err != nil {
-				t.Fatalf("capacity was not released after cancellation: %v", err)
-			}
+			_, err = content.StoreExamResource(context.Background(), model.NewFileRevisionID(), model.ExamResourceMediaJSON, strings.NewReader("[0]"), 3, time.Unix(1, 0))
+			require.NoError(t, err)
 		})
 	}
 }
@@ -378,9 +310,8 @@ func TestExamResourceContentCancellationReturnsNoRenditionAndReleasesResources(t
 func assertExamResourceSpoolRemoved(t *testing.T, directory string) {
 	t.Helper()
 	entries, err := os.ReadDir(directory)
-	if err != nil || len(entries) != 0 {
-		t.Fatalf("private spool remains: entries=%v error=%v", entries, err)
-	}
+	require.NoError(t, err, "private spool remains: entries")
+	require.Empty(t, entries, "private spool remains: entries")
 }
 
 type cancelledValidationReader struct {
@@ -525,18 +456,13 @@ func (r *boundedExamResourceReader) Read(buffer []byte) (int, error) {
 func testExamResourcePDF(t *testing.T, mutate func(*pdfmodel.XRefTable, types.Dict)) []byte {
 	t.Helper()
 	xRefTable, err := pdfcpu.CreateDemoXRef()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	root, err := xRefTable.Catalog()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	page := pdfmodel.Page{MediaBox: types.RectForFormat("A4"), Fm: pdfmodel.FontMap{}, Buf: new(bytes.Buffer)}
 	pdfcpu.CreateTestPageContent(page)
-	if err = pdfcpu.AddPageTreeWithSamplePage(xRefTable, root, page); err != nil {
-		t.Fatal(err)
-	}
+	err = pdfcpu.AddPageTreeWithSamplePage(xRefTable, root, page)
+	require.NoError(t, err)
 	if mutate != nil {
 		mutate(xRefTable, root)
 	}
@@ -544,13 +470,10 @@ func testExamResourcePDF(t *testing.T, mutate func(*pdfmodel.XRefTable, types.Di
 	conf.WriteObjectStream = true
 	conf.WriteXRefStream = true
 	path := filepath.Join(t.TempDir(), "resource.pdf")
-	if err = pdfapi.CreatePDFFile(xRefTable, path, conf); err != nil {
-		t.Fatal(err)
-	}
+	err = pdfapi.CreatePDFFile(xRefTable, path, conf)
+	require.NoError(t, err)
 	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return raw
 }
 
@@ -560,19 +483,11 @@ func testExamResourceAttachmentPDF(t *testing.T) []byte {
 	input := filepath.Join(directory, "input.pdf")
 	output := filepath.Join(directory, "output.pdf")
 	attachment := filepath.Join(directory, "answers.txt")
-	if err := os.WriteFile(input, testExamResourcePDF(t, nil), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(attachment, []byte("hidden"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := pdfapi.AddAttachmentsFile(input, output, []string{attachment}, false, nil); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(input, testExamResourcePDF(t, nil), 0o600))
+	require.NoError(t, os.WriteFile(attachment, []byte("hidden"), 0o600))
+	require.NoError(t, pdfapi.AddAttachmentsFile(input, output, []string{attachment}, false, nil))
 	raw, err := os.ReadFile(output)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return raw
 }
 
@@ -581,14 +496,11 @@ func TestExamResourceContentSpoolHasNoNameDuringProcessing(t *testing.T) {
 	t.Setenv("TMPDIR", privateTemp)
 	observer := &tempDirectoryObserverVFS{FileSystem: memoryvfs.New(), directory: privateTemp}
 	content, err := New(observer, Policy{MaximumConcurrentOperations: 2}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = content.StoreExamResource(context.Background(), model.NewFileRevisionID(), model.ExamResourceMediaText,
-		strings.NewReader("notes"), 5, time.Now().UTC()); err != nil {
-		t.Fatalf("StoreExamResource() error = %v", err)
-	}
-	if runtime.GOOS != "windows" && len(observer.observed) != 0 {
-		t.Fatalf("spool was reachable by name while open: %v", observer.observed)
+	require.NoError(t, err)
+	_, err = content.StoreExamResource(context.Background(), model.NewFileRevisionID(), model.ExamResourceMediaText,
+		strings.NewReader("notes"), 5, time.Now().UTC())
+	require.NoError(t, err)
+	if runtime.GOOS != "windows" {
+		require.Empty(t, observer.observed)
 	}
 }

@@ -14,6 +14,9 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBrowserPolicyCanonicalizationAndMatching(t *testing.T) {
@@ -21,23 +24,22 @@ func TestBrowserPolicyCanonicalizationAndMatching(t *testing.T) {
 		{RuleID: "sub", Origin: "https://EXAMPLE.com:443/", PathPrefix: "/exam/", HostMatch: BrowserPolicyHostExactAndSubdomains, AllowRedirects: true, BlockedNavigationOutcome: BrowserPolicyBlockedNavigationRecord},
 		{RuleID: "start", Origin: "https://library.example", PathPrefix: "/start/%7euser", HostMatch: BrowserPolicyHostExact, BlockedNavigationOutcome: BrowserPolicyBlockedNavigationRecord},
 	})
-	if err != nil {
-		t.Fatalf("NewBrowserPolicy() error = %v", err)
-	}
-	if policy.Rules[0].RuleID != "start" || policy.Rules[0].Origin != "https://library.example" || policy.Rules[0].PathPrefix != "/start/%7euser" ||
-		policy.Rules[1].Origin != "https://example.com" || policy.Rules[1].PathPrefix != "/exam" {
-		t.Fatalf("canonical policy = %#v", policy)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "start", policy.Rules[0].RuleID)
+	require.Equal(t, "https://library.example", policy.Rules[0].Origin)
+	require.Equal(t, "/start/%7euser", policy.Rules[0].PathPrefix)
+	require.Equal(t, "https://example.com", policy.Rules[1].Origin)
+	require.Equal(t, "/exam", policy.Rules[1].PathPrefix)
 	rule, location, err := policy.Match("https://child.example.com/exam/part?q=secret#fragment")
-	if err != nil || rule == nil || rule.RuleID != "sub" {
-		t.Fatalf("Match() = %#v, %#v, %v", rule, location, err)
-	}
-	if location.Path != "/exam/part" || location.Host != "child.example.com" || location.Port != "" {
-		t.Fatalf("minimized location = %#v", location)
-	}
-	if rule, _, err = policy.Match("https://child.example.com/examination"); err != nil || rule != nil {
-		t.Fatalf("path boundary Match() = %#v, %v", rule, err)
-	}
+	require.NoError(t, err, "Match() = %#v, %#v", rule, location)
+	require.NotNil(t, rule, "Match() = %#v, %#v", rule, location)
+	require.Equal(t, "sub", rule.RuleID, "Match() = %#v, %#v", rule, location)
+	require.Equal(t, "/exam/part", location.Path)
+	require.Equal(t, "child.example.com", location.Host)
+	require.Empty(t, location.Port)
+	rule, _, err = policy.Match("https://child.example.com/examination")
+	require.NoError(t, err, "path boundary Match()")
+	require.Nil(t, rule, "path boundary Match()")
 	for input, want := range map[string]string{
 		"https://127.1":            "127.0.0.1",
 		"https://2130706433":       "127.0.0.1",
@@ -45,25 +47,20 @@ func TestBrowserPolicyCanonicalizationAndMatching(t *testing.T) {
 		"https://0x7f.0x0.0x0.0x1": "127.0.0.1",
 	} {
 		location, canonicalErr := CanonicalizeBrowserLocation(input)
-		if canonicalErr != nil || location.Host != want {
-			t.Errorf("CanonicalizeBrowserLocation(%q) = %#v, %v; want host %q", input, location, canonicalErr, want)
-		}
+		assert.NoError(t, canonicalErr, "CanonicalizeBrowserLocation(%q) = %#v, %v; want host", input, location, canonicalErr)
+		assert.Equal(t, want, location.Host, "CanonicalizeBrowserLocation(%q) = %#v, %v; want host", input, location, canonicalErr)
 	}
 }
 
 func TestBrowserPolicyStrictCanonicalCodec(t *testing.T) {
 	disabled := DisabledBrowserPolicy()
 	encoded, err := EncodeBrowserPolicy(disabled)
-	if err != nil {
-		t.Fatalf("EncodeBrowserPolicy() error = %v", err)
-	}
-	if want := []byte(`{"enabled":false}`); !bytes.Equal(encoded, want) {
-		t.Fatalf("encoded = %s, want %s", encoded, want)
-	}
+	require.NoError(t, err)
+	want := []byte(`{"enabled":false}`)
+	require.True(t, bytes.Equal(encoded, want), "encoded = %s, want %s", encoded, want)
 	decoded, err := DecodeBrowserPolicy(encoded)
-	if err != nil || decoded.Enabled {
-		t.Fatalf("DecodeBrowserPolicy() = %#v, %v", decoded, err)
-	}
+	require.NoError(t, err, "DecodeBrowserPolicy() = %#v", decoded)
+	require.False(t, decoded.Enabled, "DecodeBrowserPolicy() = %#v", decoded)
 	invalid := [][]byte{
 		[]byte(`{"schema_version":1,"enabled":false,"rules":[]}`),
 		[]byte(`{"schema_version":1,"schema_version":1,"enabled":false}`),
@@ -71,17 +68,16 @@ func TestBrowserPolicyStrictCanonicalCodec(t *testing.T) {
 		[]byte(`{"schema_version":1,"enabled":true,"start_rule_id":"x","rules":[]}`),
 	}
 	for _, value := range invalid {
-		if _, err = DecodeBrowserPolicy(value); err == nil {
-			t.Errorf("DecodeBrowserPolicy(%s) succeeded", value)
-		}
+		_, err = DecodeBrowserPolicy(value)
+		assert.Error(t, err, "DecodeBrowserPolicy(%s) succeeded", value)
 	}
 }
 
 func TestBrowserPolicyDocumentParserPreservesSchemaAndCanonicalSize(t *testing.T) {
 	parsed, err := ParseBrowserPolicyDocument([]byte(`{ "enabled": false }`))
-	if err != nil || parsed.Enabled || parsed.SchemaVersion != BrowserPolicySchemaVersion {
-		t.Fatalf("ParseBrowserPolicyDocument(reordered disabled) = %#v, %v", parsed, err)
-	}
+	require.NoError(t, err, "ParseBrowserPolicyDocument(reordered disabled) = %#v", parsed)
+	require.False(t, parsed.Enabled, "ParseBrowserPolicyDocument(reordered disabled) = %#v", parsed)
+	require.Equal(t, BrowserPolicySchemaVersion, parsed.SchemaVersion, "ParseBrowserPolicyDocument(reordered disabled) = %#v", parsed)
 	for _, document := range []string{
 		`null`, `{}`, `{"enabled":null}`, `{"schema_version":1}`,
 		`{"schema_version":0,"enabled":false}`,
@@ -89,22 +85,17 @@ func TestBrowserPolicyDocumentParserPreservesSchemaAndCanonicalSize(t *testing.T
 		`{"schema_version":1,"enabled":null}`,
 		`{"schema_version":1,"enabled":false,"rules":[]}`,
 	} {
-		if _, err = ParseBrowserPolicyDocument([]byte(document)); err == nil {
-			t.Errorf("ParseBrowserPolicyDocument(%s) succeeded", document)
-		}
+		_, err = ParseBrowserPolicyDocument([]byte(document))
+		assert.Error(t, err, "ParseBrowserPolicyDocument(%s) succeeded", document)
 	}
 
 	policy, err := NewBrowserPolicy(true, "start", []BrowserPolicyRule{{
 		RuleID: "start", Origin: "https://example.edu", PathPrefix: "/",
 		HostMatch: BrowserPolicyHostExact, BlockedNavigationOutcome: BrowserPolicyBlockedNavigationRecord,
 	}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	encoded, err := EncodeBrowserPolicy(policy)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	// Fill the total limit with individually bounded, distinct rules.
 	for index := 1; index < 15; index++ {
 		policy.Rules = append(policy.Rules, BrowserPolicyRule{
@@ -114,47 +105,36 @@ func TestBrowserPolicyDocumentParserPreservesSchemaAndCanonicalSize(t *testing.T
 		})
 	}
 	encoded, err = EncodeBrowserPolicy(policy)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	policy.Rules[0].PathPrefix += strings.Repeat("a", BrowserPolicyMaximumBytes-len(encoded))
 	encoded, err = EncodeBrowserPolicy(policy)
-	if err != nil || len(encoded) != BrowserPolicyMaximumBytes {
-		t.Fatalf("near-limit canonical Browser Policy size = %d, %v", len(encoded), err)
-	}
+	require.NoError(t, err, "near-limit canonical Browser Policy size")
+	require.Len(t, encoded, BrowserPolicyMaximumBytes, "near-limit canonical Browser Policy size")
 	var jsonbText bytes.Buffer
-	if err = json.Indent(&jsonbText, encoded, "", "  "); err != nil {
-		t.Fatal(err)
-	}
-	if jsonbText.Len() <= BrowserPolicyMaximumBytes {
-		t.Fatalf("expanded Browser Policy size = %d", jsonbText.Len())
-	}
+	err = json.Indent(&jsonbText, encoded, "", "  ")
+	require.NoError(t, err)
+	require.Greater(t, jsonbText.Len(), BrowserPolicyMaximumBytes, "expanded Browser Policy size")
 	parsed, err = ParseBrowserPolicyDocument(jsonbText.Bytes())
-	if err != nil || parsed.Rules[0].PathPrefix != policy.Rules[0].PathPrefix {
-		t.Fatalf("ParseBrowserPolicyDocument(expanded near-limit) = %#v, %v", parsed, err)
-	}
+	require.NoError(t, err, "ParseBrowserPolicyDocument(expanded near-limit) = %#v", parsed)
+	require.Equal(t, policy.Rules[0].PathPrefix, parsed.Rules[0].PathPrefix, "ParseBrowserPolicyDocument(expanded near-limit) = %#v", parsed)
 }
 
 func TestBrowserPolicyRejectsUnsafeURLsAndDuplicateMatches(t *testing.T) {
 	unsafe := []string{"http://example.com", "https://user@example.com", "https://example.com/path", "https://example.com\\evil", "https://example.com?secret=x",
 		"https://256.1", "https://1.2.3.4294967295", "https://1.2.3.4.5", "https://09.0.0.1"}
 	for _, value := range unsafe {
-		if _, err := CanonicalizeBrowserPolicyOrigin(value); err == nil {
-			t.Errorf("CanonicalizeBrowserPolicyOrigin(%q) succeeded", value)
-		}
+		_, err := CanonicalizeBrowserPolicyOrigin(value)
+		assert.Error(t, err, "CanonicalizeBrowserPolicyOrigin(%q) succeeded", value)
 	}
 	for _, value := range []string{"exam", "/exam?secret", "/exam#fragment", "/bad%2", "/bad\\path"} {
-		if _, err := CanonicalizeBrowserPolicyPath(value); err == nil {
-			t.Errorf("CanonicalizeBrowserPolicyPath(%q) succeeded", value)
-		}
+		_, err := CanonicalizeBrowserPolicyPath(value)
+		assert.Error(t, err, "CanonicalizeBrowserPolicyPath(%q) succeeded", value)
 	}
 	_, err := NewBrowserPolicy(true, "a", []BrowserPolicyRule{
 		{RuleID: "a", Origin: "https://example.com", PathPrefix: "/", HostMatch: BrowserPolicyHostExact, BlockedNavigationOutcome: BrowserPolicyBlockedNavigationRecord},
 		{RuleID: "b", Origin: "https://example.com", PathPrefix: "/", HostMatch: BrowserPolicyHostExact, BlockedNavigationOutcome: BrowserPolicyBlockedNavigationRecord},
 	})
-	if err == nil {
-		t.Fatal("NewBrowserPolicy() accepted duplicate match rules")
-	}
+	require.Error(t, err, "NewBrowserPolicy() accepted duplicate match rules")
 }
 
 func TestBrowserPolicyInstitutionHTTPException(t *testing.T) {
@@ -170,69 +150,55 @@ func TestBrowserPolicyInstitutionHTTPException(t *testing.T) {
 		{"https://institution.example", "http://other.example", false},
 		{"http://institution.example", "http://institution.example", false},
 	} {
-		policy, err := NewBrowserPolicy(true, "institution", []BrowserPolicyRule{{RuleID: "institution", Origin: test.origin, PathPrefix: "/exam", HostMatch: BrowserPolicyHostExact, BlockedNavigationOutcome: BrowserPolicyBlockedNavigationIntegrityEvidence, InstitutionHTTPException: true}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = policy.ValidateInstitutionOrigin(test.pin)
-		if (err == nil) != test.valid {
-			t.Errorf("pin %q rule %q validity=%v: %v", test.pin, test.origin, test.valid, err)
-		}
-		raw, err := EncodeBrowserPolicy(policy)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if strings.Contains(string(raw), "schema_version") || !strings.Contains(string(raw), `"institution_http_exception":true`) {
-			t.Fatal("wrong browser policy wire envelope")
-		}
-		decoded, err := DecodeBrowserPolicy(raw)
-		if err != nil {
-			t.Fatal(err)
-		}
-		digest, err := BrowserPolicyDigest(decoded)
-		if err != nil || digest != SHA256Fingerprint(raw) {
-			t.Fatal("policy digest does not cover exact canonical policy")
-		}
-		rule, _, err := policy.Match(policy.Rules[0].Origin + "/exam/part?ignored=private#fragment")
-		if err != nil || rule == nil || rule.BlockedNavigationOutcome != BrowserPolicyBlockedNavigationIntegrityEvidence {
-			t.Fatal("explicit HTTP rule failed", err)
-		}
-		opposite := strings.Replace(policy.Rules[0].Origin, "http:", "https:", 1) + "/exam/part"
-		if rule, _, err := policy.Match(opposite); err != nil || rule != nil {
-			t.Fatal("HTTP exception matched an unconfigured scheme")
-		}
+		t.Run(test.origin, func(t *testing.T) {
+			policy, err := NewBrowserPolicy(true, "institution", []BrowserPolicyRule{{RuleID: "institution", Origin: test.origin, PathPrefix: "/exam", HostMatch: BrowserPolicyHostExact, BlockedNavigationOutcome: BrowserPolicyBlockedNavigationIntegrityEvidence, InstitutionHTTPException: true}})
+			require.NoError(t, err)
+			err = policy.ValidateInstitutionOrigin(test.pin)
+			assert.Equal(t, test.valid, err == nil, "pin %q rule %q validity=%v: %v", test.pin, test.origin, test.valid, err)
+			raw, err := EncodeBrowserPolicy(policy)
+			require.NoError(t, err)
+			require.NotContains(t, string(raw), "schema_version", "wrong browser policy wire envelope")
+			require.Contains(t, string(raw), `"institution_http_exception":true`, "wrong browser policy wire envelope")
+			decoded, err := DecodeBrowserPolicy(raw)
+			require.NoError(t, err)
+			digest, err := BrowserPolicyDigest(decoded)
+			require.NoError(t, err, "policy digest does not cover exact canonical policy")
+			require.Equal(t, SHA256Fingerprint(raw), digest, "policy digest does not cover exact canonical policy")
+			rule, _, err := policy.Match(policy.Rules[0].Origin + "/exam/part?ignored=private#fragment")
+			require.NoError(t, err, "explicit HTTP rule failed")
+			require.NotNil(t, rule, "explicit HTTP rule failed")
+			require.Equal(t, BrowserPolicyBlockedNavigationIntegrityEvidence, rule.BlockedNavigationOutcome, "explicit HTTP rule failed")
+			opposite := strings.Replace(policy.Rules[0].Origin, "http:", "https:", 1) + "/exam/part"
+			rule, _, err = policy.Match(opposite)
+			require.NoError(t, err, "HTTP exception matched an unconfigured scheme")
+			require.Nil(t, rule, "HTTP exception matched an unconfigured scheme")
+		})
 	}
 	for _, test := range []struct {
 		origin    string
 		exception bool
 	}{{"https://institution.example", true}, {"http://institution.example", false}} {
-		if _, err := NewBrowserPolicy(true, "institution", []BrowserPolicyRule{{RuleID: "institution", Origin: test.origin, PathPrefix: "/", HostMatch: BrowserPolicyHostExact, BlockedNavigationOutcome: BrowserPolicyBlockedNavigationRecord, InstitutionHTTPException: test.exception}}); err == nil {
-			t.Fatal("accepted mismatched scheme/exception")
-		}
+		t.Run(test.origin, func(t *testing.T) {
+			_, err := NewBrowserPolicy(true, "institution", []BrowserPolicyRule{{RuleID: "institution", Origin: test.origin, PathPrefix: "/", HostMatch: BrowserPolicyHostExact, BlockedNavigationOutcome: BrowserPolicyBlockedNavigationRecord, InstitutionHTTPException: test.exception}})
+			require.Error(t, err, "accepted mismatched scheme/exception")
+		})
 	}
 }
 
 func TestBrowserPolicyRequiresExplicitExceptionField(t *testing.T) {
 	policy, err := NewBrowserPolicy(true, "start", []BrowserPolicyRule{{RuleID: "start", Origin: "https://example.edu", PathPrefix: "/", HostMatch: BrowserPolicyHostExact, BlockedNavigationOutcome: BrowserPolicyBlockedNavigationRecord}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	raw, err := EncodeBrowserPolicy(policy)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, bad := range []string{strings.Replace(string(raw), `"institution_http_exception":false,`, "", 1), strings.Replace(string(raw), `"institution_http_exception":false`, `"institution_http_exception":null`, 1), strings.Replace(string(raw), `"enabled":true`, `"enabled":true,"schema_version":1`, 1)} {
-		if _, err := ParseBrowserPolicyDocument([]byte(bad)); err == nil {
-			t.Fatal("accepted old or incomplete rule codec")
-		}
+		_, err := ParseBrowserPolicyDocument([]byte(bad))
+		require.Error(t, err, "accepted old or incomplete rule codec")
 	}
 }
 
 func TestBrowserPolicyCanonicalAgreementFixtures(t *testing.T) {
 	raw, err := os.ReadFile("testdata/browser_policies.json")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var fixtures struct {
 		Cases []struct {
 			Name              string          `json:"name"`
@@ -242,26 +208,18 @@ func TestBrowserPolicyCanonicalAgreementFixtures(t *testing.T) {
 			Digest            string          `json:"digest"`
 		} `json:"cases"`
 	}
-	if err := json.Unmarshal(raw, &fixtures); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(raw, &fixtures))
 	for _, fixture := range fixtures.Cases {
 		t.Run(fixture.Name, func(t *testing.T) {
 			policy, err := ParseBrowserPolicyDocument(fixture.Policy)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := policy.ValidateInstitutionOrigin(fixture.InstitutionOrigin); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+			require.NoError(t, policy.ValidateInstitutionOrigin(fixture.InstitutionOrigin))
 			encoded, err := EncodeBrowserPolicy(policy)
-			if err != nil || string(encoded) != fixture.Canonical {
-				t.Fatalf("canonical=%s, %v", encoded, err)
-			}
+			require.NoError(t, err, "canonical")
+			require.Equal(t, fixture.Canonical, string(encoded), "canonical")
 			digest, err := BrowserPolicyDigest(policy)
-			if err != nil || digest != fixture.Digest {
-				t.Fatalf("digest=%s, %v", digest, err)
-			}
+			require.NoError(t, err, "digest")
+			require.Equal(t, fixture.Digest, digest, "digest")
 		})
 	}
 }

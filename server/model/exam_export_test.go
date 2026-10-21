@@ -11,14 +11,14 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestExamExportBoundsAndAvailability(t *testing.T) {
 	at := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 	valid := ExamExport{ID: NewExamExportID(), Scope: RetentionHoldScope{ExamID: NewExamID(), SittingID: NewExamSittingID()}, RequesterUserID: NewUserID(), Categories: []RetentionCategory{RetentionCategoryWork, RetentionCategoryIntegrity}, State: ExamExportQueued, PolicyRevision: 1, CreatedAt: at, ExpiresAt: at.Add(7 * 24 * time.Hour), SourceExpiresAt: at.Add(24 * time.Hour), SubmissionCount: 1}
-	if err := valid.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, valid.Validate())
 	for name, change := range map[string]func(*ExamExport){
 		"unconfigured lifetime":      func(e *ExamExport) { e.ExpiresAt = at },
 		"lifetime beyond seven days": func(e *ExamExport) { e.ExpiresAt = e.ExpiresAt.Add(time.Nanosecond) },
@@ -38,21 +38,14 @@ func TestExamExportBoundsAndAvailability(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			value := valid
 			change(&value)
-			if value.Validate() == nil {
-				t.Fatal("invalid export accepted")
-			}
+			require.Error(t, value.Validate(), "invalid export accepted")
 		})
 	}
 	ready := valid
 	ready.State, ready.ReadyAt, ready.ArchiveSizeBytes, ready.ArchiveSHA256 = ExamExportReady, OptionalTimeFrom(at.Add(time.Minute)), 42, strings.Repeat("a", 64)
-	if err := ready.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, ready.Validate())
 	ready.ReadyAt = OptionalTimeFrom(ready.ExpiresAt)
-	if ready.Validate() == nil {
-		t.Fatal("publication at the expiry boundary accepted")
-	}
-	if ValidExamExportContent(42, strings.Repeat("A", 64)) || ValidExamExportContent(ExamExportMaximumArchiveBytes+1, strings.Repeat("a", 64)) {
-		t.Fatal("unbounded or noncanonical content accepted")
-	}
+	require.Error(t, ready.Validate(), "publication at the expiry boundary accepted")
+	require.False(t, ValidExamExportContent(42, strings.Repeat("A", 64)), "unbounded or noncanonical content accepted")
+	require.False(t, ValidExamExportContent(ExamExportMaximumArchiveBytes+1, strings.Repeat("a", 64)), "unbounded or noncanonical content accepted")
 }

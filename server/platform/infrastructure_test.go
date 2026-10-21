@@ -10,9 +10,11 @@ package platform
 import (
 	"bytes"
 	"context"
-	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	cachepkg "github.com/sudosylabs/proctor/packages/cache"
 	memorycache "github.com/sudosylabs/proctor/packages/cache/memory"
@@ -46,48 +48,30 @@ func TestMemoryCacheAdapterPortableSemantics(t *testing.T) {
 	t.Parallel()
 
 	store, err := memorycache.New(cachepkg.BytesCodec())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cache := NewCacheAdapter(memoryByteCache{store: store})
 	t.Cleanup(func() {
-		if err := cache.Close(); err != nil {
-			t.Error(err)
-		}
+		assert.NoError(t, cache.Close())
 	})
 
 	ctx := context.Background()
-	if err := cache.Ping(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := cache.Get(ctx, "missing"); !errors.Is(err, ErrCacheMiss) {
-		t.Fatalf("missing key error = %v", err)
-	}
-	if err := cache.Set(ctx, "value", []byte("first"), time.Minute, CacheSetIfAbsent); err != nil {
-		t.Fatal(err)
-	}
-	if err := cache.Set(ctx, "value", []byte("second"), time.Minute, CacheSetIfAbsent); !errors.Is(err, ErrCacheNotStored) {
-		t.Fatalf("second set-if-absent error = %v", err)
-	}
+	require.NoError(t, cache.Ping(ctx))
+	_, err = cache.Get(ctx, "missing")
+	require.ErrorIs(t, err, ErrCacheMiss)
+	require.NoError(t, cache.Set(ctx, "value", []byte("first"), time.Minute, CacheSetIfAbsent))
+	require.ErrorIs(t, cache.Set(ctx, "value", []byte("second"), time.Minute, CacheSetIfAbsent), ErrCacheNotStored)
 	value, err := cache.Get(ctx, "value")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(value, []byte("first")) {
-		t.Fatalf("value = %q", value)
-	}
-	if got, err := cache.Add(ctx, "counter", 2, time.Minute); err != nil || got != 2 {
-		t.Fatalf("first Add() = %d, %v", got, err)
-	}
-	if got, err := cache.Add(ctx, "counter", 3, time.Minute); err != nil || got != 5 {
-		t.Fatalf("second Add() = %d, %v", got, err)
-	}
-	if err := cache.Delete(ctx, "value"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := cache.Get(ctx, "value"); !errors.Is(err, ErrCacheMiss) {
-		t.Fatalf("deleted key error = %v", err)
-	}
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(value, []byte("first")), "value = %q", value)
+	got, err := cache.Add(ctx, "counter", 2, time.Minute)
+	require.NoError(t, err, "first Add()")
+	require.Equal(t, int64(2), got, "first Add()")
+	got, err = cache.Add(ctx, "counter", 3, time.Minute)
+	require.NoError(t, err, "second Add()")
+	require.Equal(t, int64(5), got, "second Add()")
+	require.NoError(t, cache.Delete(ctx, "value"))
+	_, err = cache.Get(ctx, "value")
+	require.ErrorIs(t, err, ErrCacheMiss)
 }
 
 func TestDisabledMailerIsExplicitlyUnavailable(t *testing.T) {
@@ -99,18 +83,11 @@ func TestDisabledMailerIsExplicitlyUnavailable(t *testing.T) {
 		Name:    settings.FromName,
 		Address: settings.FromAddress,
 	})
-	if mailer.Enabled() {
-		t.Fatal("disabled mailer reported itself enabled")
-	}
-	if mailer.From().Address != settings.FromAddress {
-		t.Fatalf("From() = %#v", mailer.From())
-	}
-	if _, err := mailer.Send(context.Background(), mailpkg.Message{}); !errors.Is(err, ErrMailDisabled) {
-		t.Fatalf("Send() error = %v", err)
-	}
-	if err := mailer.Test(context.Background()); err != nil {
-		t.Fatalf("disabled mailer health check = %v", err)
-	}
+	require.False(t, mailer.Enabled(), "disabled mailer reported itself enabled")
+	require.Equal(t, settings.FromAddress, mailer.From().Address)
+	_, err := mailer.Send(context.Background(), mailpkg.Message{})
+	require.ErrorIs(t, err, ErrMailDisabled)
+	require.NoError(t, mailer.Test(context.Background()))
 }
 
 func TestLocalVFSAdapterIsUsableAndHealthy(t *testing.T) {
@@ -120,26 +97,17 @@ func TestLocalVFSAdapterIsUsableAndHealthy(t *testing.T) {
 	settings.Backend = "local"
 	settings.Local.Root = t.TempDir()
 	filesystem, err := localvfs.New(settings.Local.Root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	ctx := context.Background()
-	if err := checkVFS(ctx, filesystem); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := filesystem.Write(
+	require.NoError(t, checkVFS(ctx, filesystem))
+	_, err = filesystem.Write(
 		ctx,
 		"health/probe.txt",
 		bytes.NewBufferString("ok"),
 		vfspkg.WriteOptions{},
-	); err != nil {
-		t.Fatal(err)
-	}
+	)
+	require.NoError(t, err)
 	info, err := filesystem.Stat(ctx, "health/probe.txt")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Size != 2 {
-		t.Fatalf("stored object = %#v", info)
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(2), info.Size)
 }

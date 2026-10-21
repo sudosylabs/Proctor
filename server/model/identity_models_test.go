@@ -9,9 +9,10 @@ package model
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestUserNormalizationAndContextualRelationships(t *testing.T) {
@@ -23,27 +24,19 @@ func TestUserNormalizationAndContextualRelationships(t *testing.T) {
 		DisplayName: "Alex Morgan",
 	}
 	u.PrepareCreate(NewUserID(), NowUTC())
-	if err := u.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	if u.Username != "alex.morgan" || u.Email != "alex.morgan@example.edu" {
-		t.Fatalf("normalized user = %#v", u)
-	}
-	if u.Locale != DefaultLocale || u.Timezone != DefaultTimezone {
-		t.Fatalf("defaults: locale=%q timezone=%q", u.Locale, u.Timezone)
-	}
+	require.NoError(t, u.Validate())
+	require.Equal(t, "alex.morgan", u.Username)
+	require.Equal(t, "alex.morgan@example.edu", u.Email)
+	require.Equal(t, DefaultLocale, u.Locale, "defaults: locale")
+	require.Equal(t, DefaultTimezone, u.Timezone, "defaults: locale")
 
 	at := NowUTC()
 	student := &Affiliation{UserID: u.ID, Kind: AffiliationStudent}
 	teacher := &Affiliation{UserID: u.ID, Kind: AffiliationTeacher}
 	student.PrepareCreate(NewAffiliationID(), at)
 	teacher.PrepareCreate(NewAffiliationID(), at)
-	if err := student.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	if err := teacher.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, student.Validate())
+	require.NoError(t, teacher.Validate())
 }
 
 func TestExternalIdentityPreservesOpaqueSubject(t *testing.T) {
@@ -56,12 +49,9 @@ func TestExternalIdentityPreservesOpaqueSubject(t *testing.T) {
 		Subject:  subject,
 	}
 	identity.PrepareCreate(NewExternalIdentityID(), NowUTC())
-	if identity.Provider != "oidc" || identity.Subject != subject {
-		t.Fatalf("identity changed unexpectedly: %#v", identity)
-	}
-	if err := identity.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.Equal(t, "oidc", identity.Provider)
+	require.Equal(t, subject, identity.Subject)
+	require.NoError(t, identity.Validate())
 }
 
 func TestRoleAndRoleBindingTypedLifecycle(t *testing.T) {
@@ -74,22 +64,14 @@ func TestRoleAndRoleBindingTypedLifecycle(t *testing.T) {
 		Permissions: []string{"class.view", "class.members.view"},
 	}
 	role.PrepareCreate(NewRoleID(), at)
-	if err := role.Validate(); err != nil {
-		t.Fatalf("role Validate() = %v", err)
-	}
-	if role.IsArchived() {
-		t.Fatal("new role should not be archived")
-	}
+	require.NoError(t, role.Validate())
+	require.False(t, role.IsArchived(), "new role should not be archived")
 	clone := role.Clone()
 	clone.Permissions[0] = "class.members.manage"
-	if role.Permissions[0] != "class.view" {
-		t.Fatal("Clone exposed role permission storage")
-	}
+	require.Equal(t, "class.view", role.Permissions[0], "Clone exposed role permission storage")
 	audit := role.Auditable()
 	audit["permissions"].([]string)[0] = "class.members.manage"
-	if role.Auditable()["permissions"].([]string)[0] != "class.view" {
-		t.Fatal("Auditable exposed role permission storage")
-	}
+	require.Equal(t, "class.view", role.Auditable()["permissions"].([]string)[0], "Auditable exposed role permission storage")
 
 	binding := &RoleBinding{
 		UserID:    NewUserID(),
@@ -98,28 +80,16 @@ func TestRoleAndRoleBindingTypedLifecycle(t *testing.T) {
 		ScopeID:   NewID(),
 	}
 	binding.PrepareCreate(NewRoleBindingID(), at)
-	if err := binding.Validate(); err != nil {
-		t.Fatalf("binding Validate() = %v", err)
-	}
-	if !binding.IsActiveAt(at) {
-		t.Fatal("binding should be active at create time")
-	}
-	if err := binding.End(at.Add(time.Hour)); err != nil {
-		t.Fatalf("End() = %v", err)
-	}
-	if binding.IsActiveAt(at.Add(time.Hour)) {
-		t.Fatal("binding should not be active at exclusive end time")
-	}
+	require.NoError(t, binding.Validate())
+	require.True(t, binding.IsActiveAt(at), "binding should be active at create time")
+	require.NoError(t, binding.End(at.Add(time.Hour)))
+	require.False(t, binding.IsActiveAt(at.Add(time.Hour)), "binding should not be active at exclusive end time")
 
 	invitationBinding := &RoleBinding{UserID: NewUserID(), RoleID: role.ID, ScopeType: RoleScopeAcademicUnit,
 		ScopeID: NewAcademicUnitID().String(), OriginInvitationID: NewInvitationID(), OriginAcademicUnitMemberID: NewAcademicUnitMemberID()}
 	invitationBinding.PrepareCreate(NewRoleBindingID(), at)
-	if err := invitationBinding.Validate(); err != nil {
-		t.Fatalf("Invitation-origin binding Validate() = %v", err)
-	}
-	if invitationBinding.Auditable()["origin_invitation_id"] != invitationBinding.OriginInvitationID.String() {
-		t.Fatalf("Invitation-origin binding audit = %#v", invitationBinding.Auditable())
-	}
+	require.NoError(t, invitationBinding.Validate())
+	require.Equal(t, invitationBinding.OriginInvitationID.String(), invitationBinding.Auditable()["origin_invitation_id"])
 }
 
 func TestInstallationStateTypedLifecycle(t *testing.T) {
@@ -130,13 +100,9 @@ func TestInstallationStateTypedLifecycle(t *testing.T) {
 		InstitutionID:       NewInstitutionID(),
 		AdministratorUserID: NewUserID(),
 	}
-	if err := state.Validate(); err != nil {
-		t.Fatalf("Validate() = %v", err)
-	}
+	require.NoError(t, state.Validate())
 	fields := state.Auditable()
-	if fields["institution_id"] != state.InstitutionID.String() {
-		t.Fatalf("Auditable() = %#v", fields)
-	}
+	require.Equal(t, state.InstitutionID.String(), fields["institution_id"])
 }
 
 func TestSessionAndCredentialExpiryAndRotation(t *testing.T) {
@@ -154,32 +120,16 @@ func TestSessionAndCredentialExpiryAndRotation(t *testing.T) {
 		ExpiresAt:              beforeCreate.Add(2 * time.Minute),
 	}
 	s.PrepareCreate(NewSessionID(), beforeCreate)
-	if err := s.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, s.Validate())
 	revoked := *s
 	revoked.RevokedAt = OptionalTimeFrom(beforeCreate)
 	revoked.RevocationReason = SessionRevocationUserLogout
-	if err := revoked.Validate(); err != nil {
-		t.Fatalf("stable revocation reason rejected: %v", err)
-	}
+	require.NoError(t, revoked.Validate())
 	revoked.RevocationReason = "user clicked the logout button"
-	if err := revoked.Validate(); err == nil {
-		t.Fatal("presentation prose was accepted as a revocation reason")
-	}
-	if !s.LastActivityAt.Equal(s.CreatedAt) {
-		t.Fatalf(
-			"PrepareCreate() last_activity_at = %v, created_at = %v",
-			s.LastActivityAt,
-			s.CreatedAt,
-		)
-	}
-	if s.IsExpiredAt(s.IdleExpiresAt.Add(-time.Millisecond)) {
-		t.Fatal("session expired before its idle deadline")
-	}
-	if !s.IsExpiredAt(s.IdleExpiresAt) {
-		t.Fatal("session did not expire at its idle deadline")
-	}
+	require.Error(t, revoked.Validate(), "presentation prose was accepted as a revocation reason")
+	require.True(t, s.LastActivityAt.Equal(s.CreatedAt), "PrepareCreate() last_activity_at = %v, created_at", s.LastActivityAt)
+	require.False(t, s.IsExpiredAt(s.IdleExpiresAt.Add(-time.Millisecond)), "session expired before its idle deadline")
+	require.True(t, s.IsExpiredAt(s.IdleExpiresAt), "session did not expire at its idle deadline")
 
 	refresh := &SessionCredential{
 		SessionID: s.ID,
@@ -188,12 +138,8 @@ func TestSessionAndCredentialExpiryAndRotation(t *testing.T) {
 		ExpiresAt: s.ExpiresAt,
 	}
 	refresh.PrepareCreate(NewSessionCredentialID(), beforeCreate)
-	if !IsValidOpaqueID(refresh.FamilyID) {
-		t.Fatalf("refresh family id = %q", refresh.FamilyID)
-	}
-	if err := refresh.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.True(t, IsValidOpaqueID(refresh.FamilyID), "refresh family id")
+	require.NoError(t, refresh.Validate())
 
 	access := &SessionCredential{
 		SessionID: s.ID,
@@ -203,10 +149,9 @@ func TestSessionAndCredentialExpiryAndRotation(t *testing.T) {
 		ExpiresAt: s.ExpiresAt,
 	}
 	access.PrepareCreate(NewSessionCredentialID(), beforeCreate)
-	if err := access.Validate(); err == nil ||
-		err.(*ValidationError).Code != "model.session_credential.is_valid.kind.app_error" {
-		t.Fatalf("access credential error = %v", err)
-	}
+	var validation *ValidationError
+	require.ErrorAs(t, access.Validate(), &validation)
+	require.Equal(t, "model.session_credential.is_valid.kind.app_error", validation.Code)
 
 	token := &PersonalAccessToken{
 		UserID:      NewUserID(),
@@ -216,15 +161,9 @@ func TestSessionAndCredentialExpiryAndRotation(t *testing.T) {
 		ExpiresAt:   beforeCreate.Add(24 * time.Hour),
 	}
 	token.PrepareCreate(NewPersonalAccessTokenID(), beforeCreate)
-	if err := token.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	if !token.IsActiveAt(beforeCreate.Add(time.Hour)) {
-		t.Fatal("token should be active before expiry")
-	}
-	if token.IsActiveAt(token.ExpiresAt) {
-		t.Fatal("token should be inactive at expiry")
-	}
+	require.NoError(t, token.Validate())
+	require.True(t, token.IsActiveAt(beforeCreate.Add(time.Hour)), "token should be active before expiry")
+	require.False(t, token.IsActiveAt(token.ExpiresAt), "token should be inactive at expiry")
 }
 
 func TestSessionRetainsAValidatedExternalProviderIdentity(t *testing.T) {
@@ -238,36 +177,24 @@ func TestSessionRetainsAValidatedExternalProviderIdentity(t *testing.T) {
 		IdleExpiresAt: at.Add(time.Hour), ExpiresAt: at.Add(2 * time.Hour),
 	}
 	valid.PrepareCreate(NewSessionID(), at)
-	if err := valid.Validate(); err != nil {
-		t.Fatalf("external Session rejected: %v", err)
-	}
+	require.NoError(t, valid.Validate())
 	local := *valid
 	local.AuthenticationMethod = "password"
 	local.AuthenticationProviderID = ""
 	local.ExternalIdentityID = ""
-	if err := local.Validate(); err != nil {
-		t.Fatalf("local Session rejected: %v", err)
-	}
+	require.NoError(t, local.Validate())
 	missingProvider := *valid
 	missingProvider.AuthenticationProviderID = ""
-	if err := missingProvider.Validate(); err == nil {
-		t.Fatal("external Session without an exact provider ID was accepted")
-	}
+	require.Error(t, missingProvider.Validate(), "external Session without an exact provider ID was accepted")
 	missingIdentity := *valid
 	missingIdentity.ExternalIdentityID = ""
-	if err := missingIdentity.Validate(); err == nil {
-		t.Fatal("external Session without an exact external identity was accepted")
-	}
+	require.Error(t, missingIdentity.Validate(), "external Session without an exact external identity was accepted")
 	localWithIdentity := local
 	localWithIdentity.ExternalIdentityID = NewExternalIdentityID()
-	if err := localWithIdentity.Validate(); err == nil {
-		t.Fatal("local Session with external identity provenance was accepted")
-	}
+	require.Error(t, localWithIdentity.Validate(), "local Session with external identity provenance was accepted")
 	invalid := *valid
 	invalid.AuthenticationProviderID = ".campus"
-	if err := invalid.Validate(); err == nil {
-		t.Fatal("Session accepted an invalid external provider ID")
-	}
+	require.Error(t, invalid.Validate(), "Session accepted an invalid external provider ID")
 }
 
 func TestSessionValidationAllowsLaterMFAUpgrade(t *testing.T) {
@@ -289,14 +216,10 @@ func TestSessionValidationAllowsLaterMFAUpgrade(t *testing.T) {
 		IdleExpiresAt:          createdAt.Add(time.Hour),
 		ExpiresAt:              createdAt.Add(2 * time.Hour),
 	}
-	if err := session.Validate(); err != nil {
-		t.Fatalf("Validate() rejected a later MFA upgrade: %v", err)
-	}
+	require.NoError(t, session.Validate())
 
 	session.MFACompletedAt = OptionalTimeFrom(completedAt.Add(time.Millisecond))
-	if err := session.Validate(); err == nil {
-		t.Fatal("Validate() accepted MFA completion after the persisted update time")
-	}
+	require.Error(t, session.Validate(), "Validate() accepted MFA completion after the persisted update time")
 }
 
 func TestCredentialSecretsAreExcludedFromJSON(t *testing.T) {
@@ -312,14 +235,10 @@ func TestCredentialSecretsAreExcludedFromJSON(t *testing.T) {
 	}
 	for _, value := range values {
 		encoded, err := json.Marshal(value)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		output := string(encoded)
 		for _, secret := range []string{"private-subject", "private-password-hash", tokenHash} {
-			if strings.Contains(output, secret) {
-				t.Fatalf("%T JSON exposes secret: %s", value, output)
-			}
+			require.NotContains(t, output, secret, "%T JSON exposes secret", value)
 		}
 	}
 }
@@ -329,15 +248,10 @@ func TestCredentialTokenGenerationAndHashing(t *testing.T) {
 
 	first := NewCredentialToken()
 	second := NewCredentialToken()
-	if first == second || len(first) < 40 {
-		t.Fatalf("generated credentials have unexpected shape")
-	}
-	if HashToken(first) == HashToken(second) {
-		t.Fatal("different credentials produced the same hash")
-	}
-	if !IsValidTokenHash(HashToken(first)) {
-		t.Fatal("HashToken returned an invalid persistent hash")
-	}
+	require.NotEqual(t, second, first, "generated credentials have unexpected shape")
+	require.GreaterOrEqual(t, len(first), 40, "generated credentials have unexpected shape")
+	require.NotEqual(t, HashToken(second), HashToken(first), "different credentials produced the same hash")
+	require.True(t, IsValidTokenHash(HashToken(first)), "HashToken returned an invalid persistent hash")
 }
 
 func TestClassMemberRetainsClosedEnrollmentHistory(t *testing.T) {
@@ -350,20 +264,12 @@ func TestClassMemberRetainsClosedEnrollmentHistory(t *testing.T) {
 		UserID:           UserID(NewID()),
 	}
 	m.PrepareCreate(NewClassMemberID(), at)
-	if !m.IsActiveAt(m.StartsAt) {
-		t.Fatal("new class membership is not active")
-	}
+	require.True(t, m.IsActiveAt(m.StartsAt), "new class membership is not active")
 
 	endAt := m.StartsAt.Add(time.Millisecond)
-	if err := m.End(endAt); err != nil {
-		t.Fatal(err)
-	}
-	if m.IsActiveAt(endAt) {
-		t.Fatal("closed class membership remained active")
-	}
-	if m.IsArchived() {
-		t.Fatal("closing enrollment deleted its historical record")
-	}
+	require.NoError(t, m.End(endAt))
+	require.False(t, m.IsActiveAt(endAt), "closed class membership remained active")
+	require.False(t, m.IsArchived(), "closing enrollment deleted its historical record")
 }
 
 func TestMembershipModelsTypedLifecycle(t *testing.T) {
@@ -374,28 +280,20 @@ func TestMembershipModelsTypedLifecycle(t *testing.T) {
 
 	affiliation := &Affiliation{UserID: userID, Kind: AffiliationTeacher}
 	affiliation.PrepareCreate(NewAffiliationID(), at)
-	if err := affiliation.Validate(); err != nil {
-		t.Fatalf("Affiliation.Validate() = %v", err)
-	}
-	if !affiliation.IsActiveAt(at) {
-		t.Fatal("affiliation should be active at create time")
-	}
+	require.NoError(t, affiliation.Validate())
+	require.True(t, affiliation.IsActiveAt(at), "affiliation should be active at create time")
 	audit := affiliation.Auditable()
-	if audit["id"] != affiliation.ID.String() || audit["start_at"] != MillisFromTime(at) || audit["end_at"] != int64(0) {
-		t.Fatalf("affiliation audit = %#v", audit)
-	}
+	require.Equal(t, affiliation.ID.String(), audit["id"])
+	require.Equal(t, MillisFromTime(at), audit["start_at"])
+	require.Equal(t, int64(0), audit["end_at"])
 
 	member := &AcademicUnitMember{
 		AcademicUnitID: AcademicUnitID(NewID()),
 		UserID:         userID,
 	}
 	member.PrepareCreate(NewAcademicUnitMemberID(), at)
-	if err := member.Validate(); err != nil {
-		t.Fatalf("AcademicUnitMember.Validate() = %v", err)
-	}
-	if !member.IsActiveAt(at) {
-		t.Fatal("academic unit member should be active at create time")
-	}
+	require.NoError(t, member.Validate())
+	require.True(t, member.IsActiveAt(at), "academic unit member should be active at create time")
 
 	classMember := &ClassMember{
 		ClassID:          ClassID(NewID()),
@@ -403,9 +301,7 @@ func TestMembershipModelsTypedLifecycle(t *testing.T) {
 		UserID:           userID,
 	}
 	classMember.PrepareCreate(NewClassMemberID(), at)
-	if err := classMember.Validate(); err != nil {
-		t.Fatalf("ClassMember.Validate() = %v", err)
-	}
+	require.NoError(t, classMember.Validate())
 }
 
 func TestIdentityModelsTypedLifecycle(t *testing.T) {
@@ -418,27 +314,18 @@ func TestIdentityModelsTypedLifecycle(t *testing.T) {
 		Username: "alex.morgan", Email: "alex.morgan@example.edu", DisplayName: "Alex",
 	}
 	user.PrepareCreate(userID, at)
-	if err := user.Validate(); err != nil {
-		t.Fatalf("User.Validate() = %v", err)
-	}
-	if !user.IsActive() || user.IsArchived() {
-		t.Fatal("new user should be active")
-	}
+	require.NoError(t, user.Validate())
+	require.True(t, user.IsActive(), "new user should be active")
+	require.False(t, user.IsArchived(), "new user should be active")
 
 	credential := &PasswordCredential{
 		UserID: userID, PasswordHash: "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$aGFzaA",
 	}
 	credential.PrepareCreate(NewPasswordCredentialID(), at)
-	if err := credential.Validate(); err != nil {
-		t.Fatalf("PasswordCredential.Validate() = %v", err)
-	}
-	if credential.Revision != 1 {
-		t.Fatalf("initial password revision = %d, want 1", credential.Revision)
-	}
+	require.NoError(t, credential.Validate())
+	require.Equal(t, int64(1), credential.Revision, "initial password revision")
 	credential.Revision = 0
-	if err := credential.Validate(); err == nil {
-		t.Fatal("password credential accepted a missing revision")
-	}
+	require.Error(t, credential.Validate(), "password credential accepted a missing revision")
 	credential.Revision = 1
 
 	identity := &ExternalIdentity{
@@ -446,12 +333,8 @@ func TestIdentityModelsTypedLifecycle(t *testing.T) {
 		LastSeenAt: OptionalTimeFrom(at),
 	}
 	identity.PrepareCreate(NewExternalIdentityID(), at)
-	if identity.Provider != "oidc" {
-		t.Fatalf("provider = %q", identity.Provider)
-	}
-	if err := identity.Validate(); err != nil {
-		t.Fatalf("ExternalIdentity.Validate() = %v", err)
-	}
+	require.Equal(t, "oidc", identity.Provider)
+	require.NoError(t, identity.Validate())
 
 	tokenHash := HashToken(NewCredentialToken())
 	token := &UserToken{
@@ -460,21 +343,16 @@ func TestIdentityModelsTypedLifecycle(t *testing.T) {
 		ExpiresAt: at.Add(time.Hour),
 	}
 	token.PrepareCreate(NewUserTokenID(), at)
-	if err := token.Validate(); err != nil {
-		t.Fatalf("UserToken.Validate() = %v", err)
-	}
-	if !token.IsActiveAt(at) || token.IsActiveAt(token.ExpiresAt) {
-		t.Fatal("token active window is wrong")
-	}
+	require.NoError(t, token.Validate())
+	require.True(t, token.IsActiveAt(at), "token active window is wrong")
+	require.False(t, token.IsActiveAt(token.ExpiresAt), "token active window is wrong")
 
 	state := &ExternalLoginState{
 		Provider: "campus-cas", StateHash: tokenHash, BindingHash: tokenHash,
 		ReturnTo: "/", ClientType: SessionClientWeb, ExpiresAt: at.Add(time.Minute),
 	}
 	state.PrepareCreate(NewExternalLoginStateID(), at)
-	if err := state.Validate(); err != nil {
-		t.Fatalf("ExternalLoginState.Validate() = %v", err)
-	}
+	require.NoError(t, state.Validate())
 }
 
 func TestSecurityModelValidationReturnsPreciseErrors(t *testing.T) {
@@ -561,9 +439,9 @@ func TestSecurityModelValidationReturnsPreciseErrors(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if test.err == nil || test.err.(*ValidationError).Code != test.code {
-				t.Fatalf("error = %v, want %q", test.err, test.code)
-			}
+			var validation *ValidationError
+			require.ErrorAs(t, test.err, &validation)
+			require.Equal(t, test.code, validation.Code)
 		})
 	}
 }
@@ -581,8 +459,7 @@ func TestUserAuditOmitsProfilePII(t *testing.T) {
 	u.PrepareCreate(NewUserID(), NowUTC())
 	audit := u.Auditable()
 	for _, field := range []string{"email", "display_name", "first_name", "last_name"} {
-		if _, exposed := audit[field]; exposed {
-			t.Fatalf("user audit exposes %q: %#v", field, audit)
-		}
+		_, exposed := audit[field]
+		require.False(t, exposed, "user audit exposes %q: %#v", field, audit)
 	}
 }

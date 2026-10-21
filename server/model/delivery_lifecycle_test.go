@@ -8,9 +8,10 @@
 package model
 
 import (
-	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestDeliverySettlementDoesNotInventReceipts(t *testing.T) {
@@ -18,83 +19,83 @@ func TestDeliverySettlementDoesNotInventReceipts(t *testing.T) {
 		received := []SequenceRange{{First: 2, Last: width}}
 		terminal := []SequenceRange{{First: 1, Last: 1}}
 		progress, err := ResolveDeliveryProgress(width, received, terminal, 0)
-		if err != nil || progress.HighestContiguous != 0 || progress.SettledThrough != width || progress.HighestSeen != width || progress.WindowBase() != width || len(progress.Missing) != 0 {
-			t.Fatalf("terminal first hole: %#v %v", progress, err)
-		}
+		require.NoError(t, err, "terminal first hole: %#v", progress)
+		require.Equal(t, int64(0), progress.HighestContiguous, "terminal first hole: %#v", progress)
+		require.Equal(t, width, progress.SettledThrough, "terminal first hole: %#v", progress)
+		require.Equal(t, width, progress.HighestSeen, "terminal first hole: %#v", progress)
+		require.Equal(t, width, progress.WindowBase(), "terminal first hole: %#v", progress)
+		require.Empty(t, progress.Missing, "terminal first hole: %#v", progress)
 		progress, err = ResolveDeliveryProgress(width+1, []SequenceRange{{First: 2, Last: width + 1}}, terminal, 0)
-		if err != nil || progress.HighestContiguous != 0 || progress.SettledThrough != width+1 {
-			t.Fatal("permanent hole pinned receive window")
-		}
+		require.NoError(t, err, "permanent hole pinned receive window")
+		require.Equal(t, int64(0), progress.HighestContiguous, "permanent hole pinned receive window")
+		require.Equal(t, width+1, progress.SettledThrough, "permanent hole pinned receive window")
 	}
 	progress, err := ResolveDeliveryProgress(7, []SequenceRange{{First: 1, Last: 2}, {First: 4, Last: 6}}, []SequenceRange{{First: 3, Last: 3}}, 0)
-	if err != nil || progress.HighestContiguous != 2 || progress.SettledThrough != 6 || len(progress.Missing) != 1 || progress.Missing[0] != (SequenceRange{7, 7}) {
-		t.Fatalf("middle hole: %#v %v", progress, err)
-	}
+	require.NoError(t, err, "middle hole: %#v", progress)
+	require.Equal(t, int64(2), progress.HighestContiguous, "middle hole: %#v", progress)
+	require.Equal(t, int64(6), progress.SettledThrough, "middle hole: %#v", progress)
+	require.Len(t, progress.Missing, 1, "middle hole: %#v", progress)
+	require.Equal(t, SequenceRange{7, 7}, progress.Missing[0], "middle hole: %#v", progress)
 	expired, err := ResolveDeliveryProgress(7, []SequenceRange{{First: 1, Last: 2}, {First: 4, Last: 6}}, []SequenceRange{{First: 3, Last: 3}}, 7)
-	if err != nil || expired.HighestContiguous != 2 || expired.SettledThrough != 7 || expired.HighestSeen != 6 || len(expired.Missing) != 0 {
-		t.Fatal("expiry erased receipt distinction")
-	}
-	if _, err = ResolveDeliveryProgress(3, []SequenceRange{{1, 3}}, []SequenceRange{{2, 2}}, 0); !errors.Is(err, ErrDeliveryConflict) {
-		t.Fatal("missing range overlaps actual content")
-	}
+	require.NoError(t, err, "expiry erased receipt distinction")
+	require.Equal(t, int64(2), expired.HighestContiguous, "expiry erased receipt distinction")
+	require.Equal(t, int64(7), expired.SettledThrough, "expiry erased receipt distinction")
+	require.Equal(t, int64(6), expired.HighestSeen, "expiry erased receipt distinction")
+	require.Empty(t, expired.Missing, "expiry erased receipt distinction")
+	_, err = ResolveDeliveryProgress(3, []SequenceRange{{1, 3}}, []SequenceRange{{2, 2}}, 0)
+	require.ErrorIs(t, err, ErrDeliveryConflict, "missing range overlaps actual content")
 }
 func TestDeliveryClosureFinalBoundaryAndExpiry(t *testing.T) {
 	at := time.Date(2026, 9, 8, 1, 0, 0, 0, time.UTC)
 	closure, err := (DeliveryClosure{}).Close(true, DeliveryClosedParticipation, 10, at, nil)
-	if err != nil || !closure.UnknownTail || closure.FinalSequence != nil || !closure.UploadExpiresAt.Equal(at.Add(24*time.Hour)) {
-		t.Fatal("invalid initial closure")
-	}
+	require.NoError(t, err, "invalid initial closure")
+	require.True(t, closure.UnknownTail, "invalid initial closure")
+	require.Nil(t, closure.FinalSequence, "invalid initial closure")
+	require.True(t, closure.UploadExpiresAt.Equal(at.Add(24*time.Hour)), "invalid initial closure")
 	repeated, err := closure.Close(true, DeliveryClosedSuspension, 100, at.Add(time.Hour), nil)
-	if err != nil || *repeated.KnownAtClose != 10 || !repeated.ClosedAt.Equal(at) || !repeated.UploadExpiresAt.Equal(*closure.UploadExpiresAt) {
-		t.Fatal("closure retry extended history")
-	}
+	require.NoError(t, err, "closure retry extended history")
+	require.Equal(t, int64(10), *repeated.KnownAtClose, "closure retry extended history")
+	require.True(t, repeated.ClosedAt.Equal(at), "closure retry extended history")
+	require.True(t, repeated.UploadExpiresAt.Equal(*closure.UploadExpiresAt), "closure retry extended history")
 	declared, delta, err := closure.DeclareFinal(true, 0, 10, false, FinalDeliveryDeclaration{DeclarationID: "final", FinalSequence: 15}, at.Add(time.Second))
-	if err != nil || delta != 5 || *declared.FinalSequence != 15 || declared.UnknownTail || *declared.FinalBoundaryOrigin != "client_declared" {
-		t.Fatalf("final boundary: %#v %d %v", declared, delta, err)
-	}
+	require.NoError(t, err, "final boundary: %#v", declared)
+	require.Equal(t, int64(5), delta, "final boundary: %#v", declared)
+	require.Equal(t, int64(15), *declared.FinalSequence, "final boundary: %#v", declared)
+	require.False(t, declared.UnknownTail, "final boundary: %#v", declared)
+	require.Equal(t, "client_declared", *declared.FinalBoundaryOrigin, "final boundary: %#v", declared)
 	for _, final := range []int64{9, 10 + NativeReceiveWindow + 1} {
-		if _, _, err := closure.DeclareFinal(true, 0, 10, false, FinalDeliveryDeclaration{DeclarationID: "bad", FinalSequence: final}, at); err == nil {
-			t.Fatal("invalid tail accepted")
-		}
+		_, _, err = closure.DeclareFinal(true, 0, 10, false, FinalDeliveryDeclaration{DeclarationID: "bad", FinalSequence: final}, at)
+		require.Error(t, err, "invalid tail accepted")
 	}
-	if _, _, err := closure.DeclareFinal(true, 0, 10, true, FinalDeliveryDeclaration{DeclarationID: "stopped", FinalSequence: 11}, at); err == nil {
-		t.Fatal("summary-only boundary raised")
-	}
+	_, _, err = closure.DeclareFinal(true, 0, 10, true, FinalDeliveryDeclaration{DeclarationID: "stopped", FinalSequence: 11}, at)
+	require.Error(t, err, "summary-only boundary raised")
 	expired, err := closure.Expire(true, *closure.UploadExpiresAt)
-	if err != nil || *expired.FinalSequence != 10 || expired.FinalDeclarationID != nil || *expired.FinalBoundaryOrigin != "server_known" || !expired.UnknownTail {
-		t.Fatal("undeclared tail claimed complete")
-	}
+	require.NoError(t, err, "undeclared tail claimed complete")
+	require.Equal(t, int64(10), *expired.FinalSequence, "undeclared tail claimed complete")
+	require.Nil(t, expired.FinalDeclarationID, "undeclared tail claimed complete")
+	require.Equal(t, "server_known", *expired.FinalBoundaryOrigin, "undeclared tail claimed complete")
+	require.True(t, expired.UnknownTail, "undeclared tail claimed complete")
 	declaredExpired, err := declared.Expire(true, *closure.UploadExpiresAt)
-	if err != nil || *declaredExpired.FinalSequence != 15 || *declaredExpired.FinalBoundaryOrigin != "client_declared" {
-		t.Fatal("expiry changed client boundary")
-	}
+	require.NoError(t, err, "expiry changed client boundary")
+	require.Equal(t, int64(15), *declaredExpired.FinalSequence, "expiry changed client boundary")
+	require.Equal(t, "client_declared", *declaredExpired.FinalBoundaryOrigin, "expiry changed client boundary")
 	earlier := at.Add(time.Hour)
 	bounded, err := (DeliveryClosure{}).Close(false, DeliveryClosedRuntimeReset, 0, at, &earlier)
-	if err != nil || !bounded.UploadExpiresAt.Equal(earlier) {
-		t.Fatal("retirement did not bound upload")
-	}
-	if _, err := (DeliveryClosure{}).Close(true, DeliveryClosedRuntimeReset, 0, at, nil); err == nil {
-		t.Fatal("native accepted browser closure reason")
-	}
+	require.NoError(t, err, "retirement did not bound upload")
+	require.True(t, bounded.UploadExpiresAt.Equal(earlier), "retirement did not bound upload")
+	_, err = (DeliveryClosure{}).Close(true, DeliveryClosedRuntimeReset, 0, at, nil)
+	require.Error(t, err, "native accepted browser closure reason")
 }
 func TestDeliveryGapWindowAndRetainedContent(t *testing.T) {
 	at := time.Date(2026, 9, 8, 1, 0, 0, 0, time.UTC)
 	received := []SequenceRange{{2, 1024}}
 	progress, err := ResolveDeliveryProgress(1024, received, []SequenceRange{}, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	gap := DeclareDeliveryGaps{DeclarationID: "lost", AllocatedThroughSequence: 1024, Ranges: []SequenceRange{{1, 1}}, Reason: "spool_lost"}
-	if err := ValidateDeliveryGapPlacement(true, progress, 1024, 0, DeliveryClosure{}, false, gap, received, nil, at); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, ValidateDeliveryGapPlacement(true, progress, 1024, 0, DeliveryClosure{}, false, gap, received, nil, at))
 	gap.Ranges = []SequenceRange{{2, 2}}
-	if err := ValidateDeliveryGapPlacement(true, progress, 1024, 0, DeliveryClosure{}, false, gap, received, nil, at); err == nil {
-		t.Fatal("declaration reclaimed retained content")
-	}
+	require.Error(t, ValidateDeliveryGapPlacement(true, progress, 1024, 0, DeliveryClosure{}, false, gap, received, nil, at), "declaration reclaimed retained content")
 	gap.Ranges = []SequenceRange{{1025, 1025}}
 	gap.AllocatedThroughSequence = 1025
-	if err := ValidateDeliveryGapPlacement(true, progress, 1024, 0, DeliveryClosure{}, false, gap, received, nil, at); err == nil {
-		t.Fatal("declaration exceeded current receive window")
-	}
+	require.Error(t, ValidateDeliveryGapPlacement(true, progress, 1024, 0, DeliveryClosure{}, false, gap, received, nil, at), "declaration exceeded current receive window")
 }

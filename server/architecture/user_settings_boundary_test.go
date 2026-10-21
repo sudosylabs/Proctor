@@ -13,6 +13,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestUserSettingsApplicationBoundary keeps the portable User Settings
@@ -24,9 +27,7 @@ func TestUserSettingsApplicationBoundary(t *testing.T) {
 
 	path := filepath.Join("..", "app", "user_settings.go")
 	parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
-	if err != nil {
-		t.Fatalf("parse %s: %v", path, err)
-	}
+	require.NoError(t, err, "parse %s", path)
 
 	allowed := map[string]struct{}{
 		"context":                         {},
@@ -41,11 +42,8 @@ func TestUserSettingsApplicationBoundary(t *testing.T) {
 	}
 	for _, spec := range parsed.Imports {
 		importPath, err := strconv.Unquote(spec.Path.Value)
-		if err != nil {
-			t.Fatalf("unquote import %s: %v", spec.Path.Value, err)
-		}
-		if _, ok := allowed[importPath]; !ok {
-			t.Errorf("User Settings application imports %q outside its focused boundary", importPath)
-		}
+		require.NoError(t, err, "unquote import %s", spec.Path.Value)
+		_, ok := allowed[importPath]
+		assert.True(t, ok, "User Settings application imports %q outside its focused boundary", importPath)
 	}
 }

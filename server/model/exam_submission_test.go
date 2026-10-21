@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewExamSubmissionSealsCanonicalManifestAndIntegrity(t *testing.T) {
@@ -47,25 +49,19 @@ func TestNewExamSubmissionSealsCanonicalManifestAndIntegrity(t *testing.T) {
 	}
 	input := []ExamSubmissionManifestEntry{starter, directory, attempt}
 	manifest, err := NewExamSubmissionManifest(41, input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := []AttemptWorkspaceEntryID{manifest.Entries[0].EntryID, manifest.Entries[1].EntryID, manifest.Entries[2].EntryID}; !slices.Equal(got, []AttemptWorkspaceEntryID{directory.EntryID, attempt.EntryID, starter.EntryID}) {
-		t.Fatalf("canonical Entry order = %v", got)
-	}
-	if manifest.SchemaVersion != ExamSubmissionManifestSchemaVersion || manifest.WorkspaceCursor != 41 ||
-		manifest.SHA256 != "d1527073b4fa44425a1309a42e4444ab22180877a59c21e88d4d05057d3f4495" ||
-		manifest.EntryCount != 3 || manifest.TotalFileBytes != 19 {
-		t.Fatalf("manifest = %#v", manifest)
-	}
+	require.NoError(t, err)
+	got := []AttemptWorkspaceEntryID{manifest.Entries[0].EntryID, manifest.Entries[1].EntryID, manifest.Entries[2].EntryID}
+	require.True(t, slices.Equal(got, []AttemptWorkspaceEntryID{directory.EntryID, attempt.EntryID, starter.EntryID}), "canonical Entry order = %v", got)
+	require.Equal(t, ExamSubmissionManifestSchemaVersion, manifest.SchemaVersion)
+	require.Equal(t, int64(41), manifest.WorkspaceCursor)
+	require.Equal(t, "d1527073b4fa44425a1309a42e4444ab22180877a59c21e88d4d05057d3f4495", manifest.SHA256)
+	require.Equal(t, 3, manifest.EntryCount)
+	require.Equal(t, int64(19), manifest.TotalFileBytes)
 	input[0].Path = "caller-mutation.go"
-	if manifest.Entries[2].Path != "cmd/main.go" {
-		t.Fatalf("manifest retained caller slice: %#v", manifest.Entries)
-	}
+	require.Equal(t, "cmd/main.go", manifest.Entries[2].Path)
 	reordered, err := NewExamSubmissionManifest(41, []ExamSubmissionManifestEntry{attempt, starter, directory})
-	if err != nil || reordered.SHA256 != manifest.SHA256 {
-		t.Fatalf("row-order-independent digest = %q, %v", reordered.SHA256, err)
-	}
+	require.NoError(t, err, "row-order-independent digest")
+	require.Equal(t, manifest.SHA256, reordered.SHA256, "row-order-independent digest")
 
 	submission, err := NewExamSubmission(ExamSubmissionSpecification{
 		ID: modelSubmissionID("j"), AttemptID: ExamAttemptID(strings.Repeat("k", IDLength)),
@@ -74,67 +70,52 @@ func TestNewExamSubmissionSealsCanonicalManifestAndIntegrity(t *testing.T) {
 		FinalFocusLossSequence: 9, UnresolvedIntegrityCount: 2, Provenance: ExamSubmissionCandidateSubmitted, SubmittedAt: at,
 		BrowserActivity: BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if submission.IntegrityState != SubmissionIntegrityGapped || submission.UnresolvedIntegrityCount != 2 ||
-		submission.ManifestDigest != manifest.SHA256 || submission.ManifestEntryCount != 3 ||
-		submission.ManifestTotalFileBytes != 19 || !submission.SubmittedAt.Equal(at.UTC()) {
-		t.Fatalf("submission = %#v", submission)
-	}
+	require.NoError(t, err)
+	require.Equal(t, SubmissionIntegrityGapped, submission.IntegrityState)
+	require.Equal(t, int64(2), submission.UnresolvedIntegrityCount)
+	require.Equal(t, manifest.SHA256, submission.ManifestDigest)
+	require.Equal(t, 3, submission.ManifestEntryCount)
+	require.Equal(t, int64(19), submission.ManifestTotalFileBytes)
+	require.True(t, submission.SubmittedAt.Equal(at.UTC()))
 
 	manifest.Entries[0].Path = "changed"
-	if submission.ManifestDigest == "" || submission.WorkspaceCursor != 41 {
-		t.Fatalf("submission metadata changed through caller manifest: %#v", submission)
-	}
+	require.NotEmpty(t, submission.ManifestDigest)
+	require.Equal(t, int64(41), submission.WorkspaceCursor)
 }
 
 func TestExamSubmissionSettledIntegrityRequiresNoUnresolvedGaps(t *testing.T) {
 	t.Parallel()
 
 	manifest, err := NewExamSubmissionManifest(0, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	submission, err := NewExamSubmission(ExamSubmissionSpecification{
 		ID: NewSubmissionID(), AttemptID: NewExamAttemptID(), ExamRevisionID: NewExamRevisionID(),
 		WorkspaceID: NewExamAttemptWorkspaceID(), Manifest: manifest,
 		BrowserActivity: BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1},
 		Provenance:      ExamSubmissionCandidateSubmitted, SubmittedAt: time.Unix(100, 0),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if submission.IntegrityState != SubmissionIntegritySettled || submission.UnresolvedIntegrityCount != 0 {
-		t.Fatalf("settled submission = %#v", submission)
-	}
+	require.NoError(t, err)
+	require.Equal(t, SubmissionIntegritySettled, submission.IntegrityState)
+	require.Equal(t, int64(0), submission.UnresolvedIntegrityCount)
 	corrupt := *submission
 	corrupt.ManifestTotalFileBytes = 1
-	if err := corrupt.Validate(); err == nil {
-		t.Fatal("empty Submission header accepted nonzero manifest bytes")
-	}
+	require.Error(t, corrupt.Validate(), "empty Submission header accepted nonzero manifest bytes")
 }
 
 func TestExamSubmissionIntegrityRetirementRequiresRedactedState(t *testing.T) {
 	t.Parallel()
 	manifest, err := NewExamSubmissionManifest(7, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	submission, err := NewExamSubmission(ExamSubmissionSpecification{
 		ID: NewSubmissionID(), AttemptID: NewExamAttemptID(), ExamRevisionID: NewExamRevisionID(),
 		WorkspaceID: NewExamAttemptWorkspaceID(), Manifest: manifest,
 		BrowserActivity: BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1},
 		Provenance:      ExamSubmissionCandidateSubmitted, SubmittedAt: time.Unix(100, 0),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	submission.IntegrityState = SubmissionIntegrityRetired
 	submission.IntegrityRetiredAt = OptionalTimeFrom(time.Unix(200, 0))
-	if err := submission.Validate(); err != nil {
-		t.Fatalf("retired integrity with retained work: %v", err)
-	}
+	require.NoError(t, submission.Validate())
 	for name, corrupt := range map[string]func(*ExamSubmission){
 		"missing retirement time":            func(value *ExamSubmission) { value.IntegrityRetiredAt = OptionalTime{} },
 		"time before submission":             func(value *ExamSubmission) { value.IntegrityRetiredAt = OptionalTimeFrom(time.Unix(99, 0)) },
@@ -146,9 +127,7 @@ func TestExamSubmissionIntegrityRetirementRequiresRedactedState(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			candidate := *submission
 			corrupt(&candidate)
-			if candidate.Validate() == nil {
-				t.Fatal("inconsistent retirement state accepted")
-			}
+			require.Error(t, candidate.Validate(), "inconsistent retirement state accepted")
 		})
 	}
 }
@@ -166,16 +145,10 @@ func TestExamSubmissionManifestLengthFramesVariableFields(t *testing.T) {
 	left.Path, left.MediaType = "a", "bc"
 	right.Path, right.MediaType = "ab", "c"
 	leftManifest, err := NewExamSubmissionManifest(1, []ExamSubmissionManifestEntry{left})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	rightManifest, err := NewExamSubmissionManifest(1, []ExamSubmissionManifestEntry{right})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if leftManifest.SHA256 == rightManifest.SHA256 {
-		t.Fatalf("length framing did not distinguish variable-field boundaries: %q", leftManifest.SHA256)
-	}
+	require.NoError(t, err)
+	require.NotEqual(t, rightManifest.SHA256, leftManifest.SHA256)
 }
 
 func TestExamSubmissionManifestRejectsMutationAndAmbiguousOrigin(t *testing.T) {
@@ -188,17 +161,12 @@ func TestExamSubmissionManifestRejectsMutationAndAmbiguousOrigin(t *testing.T) {
 		AttemptObjectID: AttemptWorkspaceObjectID(strings.Repeat("d", IDLength)),
 	}
 	manifest, err := NewExamSubmissionManifest(1, []ExamSubmissionManifestEntry{entry})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	manifest.Entries[0].Path = "changed.txt"
-	if err := manifest.Validate(); err == nil {
-		t.Fatal("post-seal manifest mutation retained a valid digest")
-	}
+	require.Error(t, manifest.Validate(), "post-seal manifest mutation retained a valid digest")
 	entry.StarterObjectID = NewStarterWorkspaceObjectID()
-	if _, err := NewExamSubmissionManifest(1, []ExamSubmissionManifestEntry{entry}); err == nil {
-		t.Fatal("manifest file accepted both starter and attempt origins")
-	}
+	_, err = NewExamSubmissionManifest(1, []ExamSubmissionManifestEntry{entry})
+	require.Error(t, err, "manifest file accepted both starter and attempt origins")
 }
 
 func TestSubmitExamAttemptKeepsLifecycleTimesMonotonic(t *testing.T) {
@@ -208,38 +176,31 @@ func TestSubmitExamAttemptKeepsLifecycleTimesMonotonic(t *testing.T) {
 	fixture := func(t *testing.T) (*ExamAttempt, *AttemptParticipation, *AttemptConnection) {
 		t.Helper()
 		attempt, err := NewExamAttempt(NewExamAttemptID(), NewExamID(), NewExamSittingID(), NewUserID(), NewExamRevisionID(), startedAt)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		participation, err := NewAttemptParticipation(NewAttemptParticipationID(), attempt.ID, NewSessionID(), 1, HashToken(NewCredentialToken()), startedAt)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		connection, err := NewAttemptConnection(NewAttemptConnectionID(), attempt.ID, participation.ID, NewSessionID(), startedAt.Add(time.Second))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		return attempt, participation, connection
 	}
 
 	attempt, participation, connection := fixture(t)
-	if err := SubmitExamAttempt(attempt, participation, connection, startedAt.Add(500*time.Millisecond)); err == nil ||
-		attempt.State == ExamAttemptSubmitted || participation.State != AttemptParticipationActive {
-		t.Fatalf("seal before the open Connection = %v, %#v", err, attempt)
-	}
+	err := SubmitExamAttempt(attempt, participation, connection, startedAt.Add(500*time.Millisecond))
+	require.Error(t, err, "seal before the open Connection = %v, %#v", err, attempt)
+	require.NotEqual(t, ExamAttemptSubmitted, attempt.State, "seal before the open Connection = %v, %#v", err, attempt)
+	require.Equal(t, AttemptParticipationActive, participation.State, "seal before the open Connection = %v, %#v", err, attempt)
 
 	// A renewal committed after the seal time was read must not be rewound.
 	attempt, participation, connection = fixture(t)
 	renewedAt := startedAt.Add(3 * time.Second)
 	participation.UpdatedAt = renewedAt
 	sealAt := startedAt.Add(2 * time.Second)
-	if err := SubmitExamAttempt(attempt, participation, connection, sealAt); err != nil {
-		t.Fatal(err)
-	}
-	if !participation.UpdatedAt.Equal(renewedAt) || !participation.EndedAt.Time.Equal(sealAt) ||
-		!attempt.SubmittedAt.Time.Equal(sealAt) || attempt.UpdatedAt.Before(sealAt) || !connection.ClosedAt.Time.Equal(sealAt) {
-		t.Fatalf("submitted times = attempt %#v participation %#v connection %#v", attempt, participation, connection)
-	}
+	require.NoError(t, SubmitExamAttempt(attempt, participation, connection, sealAt))
+	require.True(t, participation.UpdatedAt.Equal(renewedAt), "submitted times = attempt %#v participation %#v connection %#v", attempt, participation, connection)
+	require.True(t, participation.EndedAt.Time.Equal(sealAt), "submitted times = attempt %#v participation %#v connection %#v", attempt, participation, connection)
+	require.True(t, attempt.SubmittedAt.Time.Equal(sealAt), "submitted times = attempt %#v participation %#v connection %#v", attempt, participation, connection)
+	require.False(t, attempt.UpdatedAt.Before(sealAt), "submitted times = attempt %#v participation %#v connection %#v", attempt, participation, connection)
+	require.True(t, connection.ClosedAt.Time.Equal(sealAt), "submitted times = attempt %#v participation %#v connection %#v", attempt, participation, connection)
 }
 
 func TestSubmitExamAttemptAppliesCoordinatedTerminalLifecycle(t *testing.T) {
@@ -248,49 +209,33 @@ func TestSubmitExamAttemptAppliesCoordinatedTerminalLifecycle(t *testing.T) {
 	startedAt := time.Unix(100, 0).UTC()
 	submittedAt := startedAt.Add(time.Second)
 	attempt, err := NewExamAttempt(NewExamAttemptID(), NewExamID(), NewExamSittingID(), NewUserID(), NewExamRevisionID(), startedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	participation, err := NewAttemptParticipation(NewAttemptParticipationID(), attempt.ID, NewSessionID(), 1, HashToken(NewCredentialToken()), startedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	connection, err := NewAttemptConnection(NewAttemptConnectionID(), attempt.ID, participation.ID, NewSessionID(), startedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := SubmitExamAttempt(attempt, participation, connection, submittedAt); err != nil {
-		t.Fatal(err)
-	}
-	if attempt.State != ExamAttemptSubmitted || attempt.Revision != 2 || !attempt.SubmittedAt.Valid ||
-		!attempt.SubmittedAt.Time.Equal(submittedAt) || participation.State != AttemptParticipationEnded ||
-		participation.EndReason != AttemptParticipationEndSubmitted || connection.State != AttemptConnectionClosed ||
-		connection.CloseReason != AttemptConnectionCloseSubmitted {
-		t.Fatalf("submitted aggregate = %#v / %#v / %#v", attempt, participation, connection)
-	}
+	require.NoError(t, err)
+	require.NoError(t, SubmitExamAttempt(attempt, participation, connection, submittedAt))
+	require.Equal(t, ExamAttemptSubmitted, attempt.State, "submitted aggregate = %#v / %#v / %#v", attempt, participation, connection)
+	require.Equal(t, int64(2), attempt.Revision, "submitted aggregate = %#v / %#v / %#v", attempt, participation, connection)
+	require.True(t, attempt.SubmittedAt.Valid, "submitted aggregate = %#v / %#v / %#v", attempt, participation, connection)
+	require.True(t, attempt.SubmittedAt.Time.Equal(submittedAt), "submitted aggregate = %#v / %#v / %#v", attempt, participation, connection)
+	require.Equal(t, AttemptParticipationEnded, participation.State, "submitted aggregate = %#v / %#v / %#v", attempt, participation, connection)
+	require.Equal(t, AttemptParticipationEndSubmitted, participation.EndReason, "submitted aggregate = %#v / %#v / %#v", attempt, participation, connection)
+	require.Equal(t, AttemptConnectionClosed, connection.State, "submitted aggregate = %#v / %#v / %#v", attempt, participation, connection)
+	require.Equal(t, AttemptConnectionCloseSubmitted, connection.CloseReason, "submitted aggregate = %#v / %#v / %#v", attempt, participation, connection)
 
 	suspended, err := NewExamAttempt(NewExamAttemptID(), NewExamID(), NewExamSittingID(), NewUserID(), NewExamRevisionID(), startedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	suspendedParticipation, err := NewAttemptParticipation(NewAttemptParticipationID(), suspended.ID, NewSessionID(), 1, HashToken(NewCredentialToken()), startedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	suspendedConnection, err := NewAttemptConnection(NewAttemptConnectionID(), suspended.ID, suspendedParticipation.ID, NewSessionID(), startedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := suspended.Suspend(startedAt.Add(time.Millisecond)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, suspended.Suspend(startedAt.Add(time.Millisecond)))
 	beforeAttempt, beforeParticipation, beforeConnection := *suspended, *suspendedParticipation, *suspendedConnection
-	if err := SubmitExamAttempt(suspended, suspendedParticipation, suspendedConnection, submittedAt); err == nil {
-		t.Fatal("suspended Attempt was submitted voluntarily")
-	}
-	if *suspended != beforeAttempt || *suspendedParticipation != beforeParticipation || *suspendedConnection != beforeConnection {
-		t.Fatalf("failed Submission partially changed aggregate = %#v / %#v / %#v", suspended, suspendedParticipation, suspendedConnection)
-	}
+	require.Error(t, SubmitExamAttempt(suspended, suspendedParticipation, suspendedConnection, submittedAt), "suspended Attempt was submitted voluntarily")
+	require.Equal(t, beforeAttempt, *suspended, "failed Submission partially changed aggregate = %#v / %#v / %#v", suspended, suspendedParticipation, suspendedConnection)
+	require.Equal(t, beforeParticipation, *suspendedParticipation, "failed Submission partially changed aggregate = %#v / %#v / %#v", suspended, suspendedParticipation, suspendedConnection)
+	require.Equal(t, beforeConnection, *suspendedConnection, "failed Submission partially changed aggregate = %#v / %#v / %#v", suspended, suspendedParticipation, suspendedConnection)
 }
 
 func TestSealExamAttemptForSittingClosePreservesPriorFences(t *testing.T) {
@@ -301,82 +246,54 @@ func TestSealExamAttemptForSittingClosePreservesPriorFences(t *testing.T) {
 	newAggregate := func(t *testing.T) (*ExamAttempt, *AttemptParticipation, *AttemptConnection) {
 		t.Helper()
 		attempt, err := NewExamAttempt(NewExamAttemptID(), NewExamID(), NewExamSittingID(), NewUserID(), NewExamRevisionID(), startedAt)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		participation, err := NewAttemptParticipation(NewAttemptParticipationID(), attempt.ID, NewSessionID(), 1, HashToken(NewCredentialToken()), startedAt)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		connection, err := NewAttemptConnection(NewAttemptConnectionID(), attempt.ID, participation.ID, NewSessionID(), startedAt)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		return attempt, participation, connection
 	}
 
 	active, activeParticipation, activeConnection := newAggregate(t)
-	if err := SealExamAttemptForSittingClose(active, activeParticipation, activeConnection, sealedAt); err != nil {
-		t.Fatal(err)
-	}
-	if active.State != ExamAttemptSubmitted || !active.SubmittedAt.Valid || !active.SubmittedAt.Time.Equal(sealedAt) ||
-		activeParticipation.State != AttemptParticipationEnded || activeParticipation.EndReason != AttemptParticipationEndSittingClosed ||
-		activeConnection.State != AttemptConnectionClosed || activeConnection.CloseReason != AttemptConnectionCloseSittingClosed {
-		t.Fatalf("active automatic seal = %#v / %#v / %#v", active, activeParticipation, activeConnection)
-	}
+	require.NoError(t, SealExamAttemptForSittingClose(active, activeParticipation, activeConnection, sealedAt))
+	require.Equal(t, ExamAttemptSubmitted, active.State, "active automatic seal = %#v / %#v / %#v", active, activeParticipation, activeConnection)
+	require.True(t, active.SubmittedAt.Valid, "active automatic seal = %#v / %#v / %#v", active, activeParticipation, activeConnection)
+	require.True(t, active.SubmittedAt.Time.Equal(sealedAt), "active automatic seal = %#v / %#v / %#v", active, activeParticipation, activeConnection)
+	require.Equal(t, AttemptParticipationEnded, activeParticipation.State, "active automatic seal = %#v / %#v / %#v", active, activeParticipation, activeConnection)
+	require.Equal(t, AttemptParticipationEndSittingClosed, activeParticipation.EndReason, "active automatic seal = %#v / %#v / %#v", active, activeParticipation, activeConnection)
+	require.Equal(t, AttemptConnectionClosed, activeConnection.State, "active automatic seal = %#v / %#v / %#v", active, activeParticipation, activeConnection)
+	require.Equal(t, AttemptConnectionCloseSittingClosed, activeConnection.CloseReason, "active automatic seal = %#v / %#v / %#v", active, activeParticipation, activeConnection)
 
 	suspended, endedParticipation, closedConnection := newAggregate(t)
 	policyAt := startedAt.Add(time.Second)
-	if err := suspended.Suspend(policyAt); err != nil {
-		t.Fatal(err)
-	}
-	if err := endedParticipation.End(AttemptParticipationEndPolicySuspended, policyAt); err != nil {
-		t.Fatal(err)
-	}
-	if err := closedConnection.Close(AttemptConnectionClosePolicySuspended, policyAt); err != nil {
-		t.Fatal(err)
-	}
-	if err := SealExamAttemptForSittingClose(suspended, endedParticipation, closedConnection, sealedAt); err != nil {
-		t.Fatal(err)
-	}
-	if suspended.State != ExamAttemptSubmitted || suspended.Revision != 3 ||
-		endedParticipation.EndReason != AttemptParticipationEndPolicySuspended ||
-		closedConnection.CloseReason != AttemptConnectionClosePolicySuspended {
-		t.Fatalf("suspended automatic seal = %#v / %#v / %#v", suspended, endedParticipation, closedConnection)
-	}
+	require.NoError(t, suspended.Suspend(policyAt))
+	require.NoError(t, endedParticipation.End(AttemptParticipationEndPolicySuspended, policyAt))
+	require.NoError(t, closedConnection.Close(AttemptConnectionClosePolicySuspended, policyAt))
+	require.NoError(t, SealExamAttemptForSittingClose(suspended, endedParticipation, closedConnection, sealedAt))
+	require.Equal(t, ExamAttemptSubmitted, suspended.State, "suspended automatic seal = %#v / %#v / %#v", suspended, endedParticipation, closedConnection)
+	require.Equal(t, int64(3), suspended.Revision, "suspended automatic seal = %#v / %#v / %#v", suspended, endedParticipation, closedConnection)
+	require.Equal(t, AttemptParticipationEndPolicySuspended, endedParticipation.EndReason, "suspended automatic seal = %#v / %#v / %#v", suspended, endedParticipation, closedConnection)
+	require.Equal(t, AttemptConnectionClosePolicySuspended, closedConnection.CloseReason, "suspended automatic seal = %#v / %#v / %#v", suspended, endedParticipation, closedConnection)
 
 	ready, readyParticipation, readyConnection := newAggregate(t)
 	readyFenceAt := startedAt.Add(time.Second)
-	if err := ready.Suspend(readyFenceAt); err != nil {
-		t.Fatal(err)
-	}
-	if err := readyParticipation.End(AttemptParticipationEndPolicySuspended, readyFenceAt); err != nil {
-		t.Fatal(err)
-	}
-	if err := readyConnection.Close(AttemptConnectionClosePolicySuspended, readyFenceAt); err != nil {
-		t.Fatal(err)
-	}
-	if err := ready.Reallow(readyFenceAt.Add(time.Millisecond)); err != nil {
-		t.Fatal(err)
-	}
-	if err := SealExamAttemptForSittingClose(ready, readyParticipation, readyConnection, sealedAt); err != nil {
-		t.Fatal(err)
-	}
-	if ready.State != ExamAttemptSubmitted || ready.Revision != 4 ||
-		readyParticipation.EndReason != AttemptParticipationEndPolicySuspended ||
-		readyConnection.CloseReason != AttemptConnectionClosePolicySuspended {
-		t.Fatalf("ready automatic seal = %#v / %#v / %#v", ready, readyParticipation, readyConnection)
-	}
+	require.NoError(t, ready.Suspend(readyFenceAt))
+	require.NoError(t, readyParticipation.End(AttemptParticipationEndPolicySuspended, readyFenceAt))
+	require.NoError(t, readyConnection.Close(AttemptConnectionClosePolicySuspended, readyFenceAt))
+	require.NoError(t, ready.Reallow(readyFenceAt.Add(time.Millisecond)))
+	require.NoError(t, SealExamAttemptForSittingClose(ready, readyParticipation, readyConnection, sealedAt))
+	require.Equal(t, ExamAttemptSubmitted, ready.State, "ready automatic seal = %#v / %#v / %#v", ready, readyParticipation, readyConnection)
+	require.Equal(t, int64(4), ready.Revision, "ready automatic seal = %#v / %#v / %#v", ready, readyParticipation, readyConnection)
+	require.Equal(t, AttemptParticipationEndPolicySuspended, readyParticipation.EndReason, "ready automatic seal = %#v / %#v / %#v", ready, readyParticipation, readyConnection)
+	require.Equal(t, AttemptConnectionClosePolicySuspended, readyConnection.CloseReason, "ready automatic seal = %#v / %#v / %#v", ready, readyParticipation, readyConnection)
 
 	invalid, invalidParticipation, invalidConnection := newAggregate(t)
 	invalidConnection.AttemptID = NewExamAttemptID()
 	beforeAttempt, beforeParticipation, beforeConnection := *invalid, *invalidParticipation, *invalidConnection
-	if err := SealExamAttemptForSittingClose(invalid, invalidParticipation, invalidConnection, sealedAt); err == nil {
-		t.Fatal("automatic seal accepted a foreign Connection")
-	}
-	if *invalid != beforeAttempt || *invalidParticipation != beforeParticipation || *invalidConnection != beforeConnection {
-		t.Fatalf("failed automatic seal partially mutated aggregate = %#v / %#v / %#v", invalid, invalidParticipation, invalidConnection)
-	}
+	require.Error(t, SealExamAttemptForSittingClose(invalid, invalidParticipation, invalidConnection, sealedAt), "automatic seal accepted a foreign Connection")
+	require.Equal(t, beforeAttempt, *invalid, "failed automatic seal partially mutated aggregate = %#v / %#v / %#v", invalid, invalidParticipation, invalidConnection)
+	require.Equal(t, beforeParticipation, *invalidParticipation, "failed automatic seal partially mutated aggregate = %#v / %#v / %#v", invalid, invalidParticipation, invalidConnection)
+	require.Equal(t, beforeConnection, *invalidConnection, "failed automatic seal partially mutated aggregate = %#v / %#v / %#v", invalid, invalidParticipation, invalidConnection)
 }
 
 func TestEndExamAttemptByManagerSealsUnresolvedStatesWithoutJudgment(t *testing.T) {
@@ -386,48 +303,30 @@ func TestEndExamAttemptByManagerSealsUnresolvedStatesWithoutJudgment(t *testing.
 	newAggregate := func(t *testing.T) (*ExamAttempt, *AttemptParticipation, *AttemptConnection) {
 		t.Helper()
 		attempt, err := NewExamAttempt(NewExamAttemptID(), NewExamID(), NewExamSittingID(), NewUserID(), NewExamRevisionID(), startedAt)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		participation, err := NewAttemptParticipation(NewAttemptParticipationID(), attempt.ID, NewSessionID(), 1,
 			HashToken(NewCredentialToken()), startedAt)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		connection, err := NewAttemptConnection(NewAttemptConnectionID(), attempt.ID, participation.ID, participation.SessionID, startedAt)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		return attempt, participation, connection
 	}
 
 	active, activeParticipation, activeConnection := newAggregate(t)
-	if err := EndExamAttemptByManager(active, activeParticipation, activeConnection, endedAt); err != nil {
-		t.Fatal(err)
-	}
-	if active.State != ExamAttemptSubmitted || activeParticipation.EndReason != AttemptParticipationEndManagerEnded ||
-		activeConnection.CloseReason != AttemptConnectionCloseManagerEnded {
-		t.Fatalf("active manager end = %#v / %#v / %#v", active, activeParticipation, activeConnection)
-	}
+	require.NoError(t, EndExamAttemptByManager(active, activeParticipation, activeConnection, endedAt))
+	require.Equal(t, ExamAttemptSubmitted, active.State, "active manager end = %#v / %#v / %#v", active, activeParticipation, activeConnection)
+	require.Equal(t, AttemptParticipationEndManagerEnded, activeParticipation.EndReason, "active manager end = %#v / %#v / %#v", active, activeParticipation, activeConnection)
+	require.Equal(t, AttemptConnectionCloseManagerEnded, activeConnection.CloseReason, "active manager end = %#v / %#v / %#v", active, activeParticipation, activeConnection)
 
 	suspended, suspendedParticipation, suspendedConnection := newAggregate(t)
 	fencedAt := startedAt.Add(time.Second)
-	if err := suspended.Suspend(fencedAt); err != nil {
-		t.Fatal(err)
-	}
-	if err := suspendedParticipation.End(AttemptParticipationEndPolicySuspended, fencedAt); err != nil {
-		t.Fatal(err)
-	}
-	if err := suspendedConnection.Close(AttemptConnectionClosePolicySuspended, fencedAt); err != nil {
-		t.Fatal(err)
-	}
-	if err := EndExamAttemptByManager(suspended, suspendedParticipation, suspendedConnection, endedAt); err != nil {
-		t.Fatal(err)
-	}
-	if suspended.State != ExamAttemptSubmitted || suspendedParticipation.EndReason != AttemptParticipationEndPolicySuspended ||
-		suspendedConnection.CloseReason != AttemptConnectionClosePolicySuspended {
-		t.Fatalf("suspended manager end changed prior fence = %#v / %#v / %#v", suspended, suspendedParticipation, suspendedConnection)
-	}
+	require.NoError(t, suspended.Suspend(fencedAt))
+	require.NoError(t, suspendedParticipation.End(AttemptParticipationEndPolicySuspended, fencedAt))
+	require.NoError(t, suspendedConnection.Close(AttemptConnectionClosePolicySuspended, fencedAt))
+	require.NoError(t, EndExamAttemptByManager(suspended, suspendedParticipation, suspendedConnection, endedAt))
+	require.Equal(t, ExamAttemptSubmitted, suspended.State, "suspended manager end changed prior fence = %#v / %#v / %#v", suspended, suspendedParticipation, suspendedConnection)
+	require.Equal(t, AttemptParticipationEndPolicySuspended, suspendedParticipation.EndReason, "suspended manager end changed prior fence = %#v / %#v / %#v", suspended, suspendedParticipation, suspendedConnection)
+	require.Equal(t, AttemptConnectionClosePolicySuspended, suspendedConnection.CloseReason, "suspended manager end changed prior fence = %#v / %#v / %#v", suspended, suspendedParticipation, suspendedConnection)
 }
 
 func modelSubmissionID(character string) SubmissionID {

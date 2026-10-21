@@ -7,19 +7,21 @@
 
 package model
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func TestExamCapacityPolicyDefaultsAndSafetyCeilings(t *testing.T) {
 	t.Parallel()
 	policy := DefaultExamCapacityPolicy()
-	if err := policy.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	if policy.ResourceMaximumCount != 10 || policy.ResourceMaximumBytes != 10<<20 ||
-		policy.WorkspaceMaximumEntries != 500 || policy.WorkspaceMaximumFileBytes != 10<<20 ||
-		policy.WorkspaceMaximumTotalBytes != 50<<20 {
-		t.Fatalf("default policy = %#v", policy)
-	}
+	require.NoError(t, policy.Validate())
+	require.Equal(t, 10, policy.ResourceMaximumCount)
+	require.Equal(t, int64(10<<20), policy.ResourceMaximumBytes)
+	require.Equal(t, 500, policy.WorkspaceMaximumEntries)
+	require.Equal(t, int64(10<<20), policy.WorkspaceMaximumFileBytes)
+	require.Equal(t, int64(50<<20), policy.WorkspaceMaximumTotalBytes)
 	for _, invalid := range []ExamCapacityPolicy{
 		{},
 		{ResourceMaximumCount: ExamResourceMaximumCount + 1, ResourceMaximumBytes: 1, WorkspaceMaximumEntries: 1, WorkspaceMaximumFileBytes: 1, WorkspaceMaximumTotalBytes: 1},
@@ -27,8 +29,6 @@ func TestExamCapacityPolicyDefaultsAndSafetyCeilings(t *testing.T) {
 		{ResourceMaximumCount: 1, ResourceMaximumBytes: 1, WorkspaceMaximumEntries: ExamWorkspaceMaximumEntries + 1, WorkspaceMaximumFileBytes: 1, WorkspaceMaximumTotalBytes: 1},
 		{ResourceMaximumCount: 1, ResourceMaximumBytes: 1, WorkspaceMaximumEntries: 1, WorkspaceMaximumFileBytes: 2, WorkspaceMaximumTotalBytes: 1},
 	} {
-		if err := invalid.Validate(); err == nil {
-			t.Fatalf("invalid policy accepted: %#v", invalid)
-		}
+		require.Error(t, invalid.Validate(), "invalid policy accepted: %#v", invalid)
 	}
 }

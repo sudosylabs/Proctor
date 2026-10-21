@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -72,25 +74,23 @@ func TestExamRecordsHTTPRequiresExplicitAcknowledgementAndIdempotency(t *testing
 	}
 	for _, body := range []string{`{}`, `{"expected_revision":1}`, `{"expected_revision":1,"acknowledged_evidence_revision":null}`, `{"expected_revision":1,"acknowledged_evidence_revision":0,"acknowledged_evidence_revision":2}`, `{"expected_revision":1,"acknowledged_evidence_revision":-1}`, `{"expected_revision":1,"acknowledged_evidence_revision":0,"unknown":true}`} {
 		response := serve(body, "completion-key")
-		if response.Code != http.StatusBadRequest || application.calls != 0 {
-			t.Fatalf("invalid completion %s = %d %s", body, response.Code, response.Body.String())
-		}
+		require.Equal(t, http.StatusBadRequest, response.Code, "invalid completion %s = %d %s", body, response.Code, response.Body.String())
+		require.Equal(t, 0, application.calls, "invalid completion %s = %d %s", body, response.Code, response.Body.String())
 	}
 	response := serve(`{"expected_revision":1,"acknowledged_evidence_revision":0}`, "")
-	if response.Code != http.StatusBadRequest || application.calls != 0 {
-		t.Fatalf("missing key = %d %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, response.Code, "missing key = %d %s", response.Code, response.Body.String())
+	require.Equal(t, 0, application.calls, "missing key = %d %s", response.Code, response.Body.String())
 	response = serve(`{"expected_revision":1,"acknowledged_evidence_revision":0}`, "completion-key")
-	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "private, no-store" || application.complete.Scope != (model.RetentionHoldScope{ExamID: examID, SittingID: sittingID}) || application.complete.IdempotencyKey != "completion-key" {
-		t.Fatalf("completion = %d %s, command=%#v", response.Code, response.Body.String(), application.complete)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "completion = %d %s, command=%#v", response.Code, response.Body.String(), application.complete)
+	require.Equal(t, "private, no-store", response.Header().Get("Cache-Control"), "completion = %d %s, command=%#v", response.Code, response.Body.String(), application.complete)
+	require.Equal(t, model.RetentionHoldScope{ExamID: examID, SittingID: sittingID}, application.complete.Scope, "completion = %d %s, command=%#v", response.Code, response.Body.String(), application.complete)
+	require.Equal(t, "completion-key", application.complete.IdempotencyKey, "completion = %d %s, command=%#v", response.Code, response.Body.String(), application.complete)
 	var value examRecordsCompletionResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &value); err != nil {
-		t.Fatal(err)
-	}
-	if !value.Current || value.Revision != 2 || value.CompletedAt == "" || value.CompletedByUserID == "" {
-		t.Fatalf("completion projection = %#v", value)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &value))
+	require.True(t, value.Current)
+	require.Equal(t, int64(2), value.Revision)
+	require.NotEmpty(t, value.CompletedAt)
+	require.NotEmpty(t, value.CompletedByUserID)
 }
 
 func TestExamRecordsHTTPHoldScopeAndPartialRetirementDisclosure(t *testing.T) {
@@ -110,21 +110,18 @@ func TestExamRecordsHTTPHoldScopeAndPartialRetirementDisclosure(t *testing.T) {
 	}
 	for _, body := range []string{`{"exam_sitting_id":null,"reason_code":"other","private_reason":"Preserve."}`, `{"submission_id":"` + model.NewSubmissionID().String() + `","reason_code":"other","private_reason":"Preserve."}`, `{"reason_code":"john_doe","private_reason":"Preserve."}`, `{"reason_code":"other","private_reason":"Preserve.","private_reason":"Changed."}`} {
 		response := serve(body)
-		if response.Code != http.StatusBadRequest || application.calls != 0 {
-			t.Fatalf("invalid hold = %d %s", response.Code, response.Body.String())
-		}
+		require.Equal(t, http.StatusBadRequest, response.Code, "invalid hold = %d %s", response.Code, response.Body.String())
+		require.Equal(t, 0, application.calls, "invalid hold = %d %s", response.Code, response.Body.String())
 	}
 	response := serve(`{"reason_code":"institution_request","private_reason":"Preserve the current institutional record."}`)
-	if response.Code != http.StatusCreated || response.Header().Get("Cache-Control") != "private, no-store" || application.create.Scope != (model.RetentionHoldScope{ExamID: examID}) {
-		t.Fatalf("hold = %d %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, response.Code, "hold = %d %s", response.Code, response.Body.String())
+	require.Equal(t, "private, no-store", response.Header().Get("Cache-Control"), "hold = %d %s", response.Code, response.Body.String())
+	require.Equal(t, model.RetentionHoldScope{ExamID: examID}, application.create.Scope, "hold = %d %s", response.Code, response.Body.String())
 	var value retentionHoldResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &value); err != nil {
-		t.Fatal(err)
-	}
-	if value.WorkRetiredSubmissionCount != 1 || value.IntegrityRetiredSubmissionCount != 2 || value.PrivateReason != application.create.PrivateReason {
-		t.Fatalf("partial retirement disclosure = %#v", value)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &value))
+	require.Equal(t, int64(1), value.WorkRetiredSubmissionCount)
+	require.Equal(t, int64(2), value.IntegrityRetiredSubmissionCount)
+	require.Equal(t, application.create.PrivateReason, value.PrivateReason)
 }
 
 func TestExamRecordsHTTPCursorBindsScopeAndReleaseFilter(t *testing.T) {
@@ -144,23 +141,19 @@ func TestExamRecordsHTTPCursorBindsScopeAndReleaseFilter(t *testing.T) {
 	}
 	response := serve(path)
 	var page retentionHoldPageResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil {
-		t.Fatal(err)
-	}
-	if response.Code != http.StatusOK || page.NextCursor == "" || len(page.Items) != 1 {
-		t.Fatalf("page = %d %s", response.Code, response.Body.String())
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &page))
+	require.Equal(t, http.StatusOK, response.Code, "page = %d %s", response.Code, response.Body.String())
+	require.NotEmpty(t, page.NextCursor, "page = %d %s", response.Code, response.Body.String())
+	require.Len(t, page.Items, 1, "page = %d %s", response.Code, response.Body.String())
 	application.page.HasMore = false
 	response = serve(path + "&cursor=" + page.NextCursor)
-	if response.Code != http.StatusOK || application.query.After != hold.ID {
-		t.Fatalf("continuation = %d %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "continuation = %d %s", response.Code, response.Body.String())
+	require.Equal(t, hold.ID, application.query.After, "continuation = %d %s", response.Code, response.Body.String())
 	for _, changed := range []string{path + "&include_released=true&cursor=" + page.NextCursor, strings.Replace(path, sittingID.String(), model.NewExamSittingID().String(), 1) + "&cursor=" + page.NextCursor, path + "&limit=2", path + "&include_released=1", path + "&unexpected=true"} {
 		calls := application.calls
 		response = serve(changed)
-		if response.Code != http.StatusBadRequest || application.calls != calls {
-			t.Fatalf("changed scope/filter = %d %s", response.Code, response.Body.String())
-		}
+		require.Equal(t, http.StatusBadRequest, response.Code, "changed scope/filter = %d %s", response.Code, response.Body.String())
+		require.Equal(t, calls, application.calls, "changed scope/filter = %d %s", response.Code, response.Body.String())
 	}
 }
 
@@ -174,7 +167,7 @@ func TestExamRecordsHTTPReleaseRequiresStrongRecentSession(t *testing.T) {
 	request.Header.Set("Idempotency-Key", "release-key")
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)
-	if response.Code != http.StatusForbidden || application.calls != 0 || !strings.Contains(response.Body.String(), "authentication.strong_required") {
-		t.Fatalf("single-factor release = %d %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusForbidden, response.Code, "single-factor release")
+	require.Equal(t, 0, application.calls, "single-factor release")
+	require.Contains(t, response.Body.String(), "authentication.strong_required", "single-factor release")
 }

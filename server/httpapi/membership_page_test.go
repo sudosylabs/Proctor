@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -37,37 +39,33 @@ func TestAcademicUnitMemberHTTPPagingPreservesArrayAndContinuation(t *testing.T)
 		return response
 	}
 	response := call(path + "?limit=1")
-	if response.Code != http.StatusOK {
-		t.Fatalf("page status = %d: %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "page status = %d: %s", response.Code, response.Body.String())
 	var result []map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || len(result) != 1 {
-		t.Fatalf("page did not retain bare array: %s, %v", response.Body.String(), err)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result), "page did not retain bare array: %s", response.Body.String())
+	require.Len(t, result, 1, "page did not retain bare array: %s", response.Body.String())
 	link := response.Header().Get("Link")
-	if !strings.HasSuffix(link, `>; rel="next"`) {
-		t.Fatalf("next Link = %s", link)
-	}
+	require.True(t, strings.HasSuffix(link, `>; rel="next"`), "next Link = %s", link)
 	target := strings.TrimSuffix(strings.TrimPrefix(link, "<"), `>; rel="next"`)
 	next, err := url.Parse(target)
-	if err != nil || next.Host != "" || next.Path != path || next.Query().Get("active_at") != "1970-01-01T00:00:01Z" || next.Query().Get("limit") != "1" {
-		t.Fatalf("next URL = %#v, %v", next, err)
-	}
+	require.NoError(t, err, "next URL = %#v", next)
+	require.Empty(t, next.Host, "next URL = %#v", next)
+	require.Equal(t, path, next.Path, "next URL = %#v", next)
+	require.Equal(t, "1970-01-01T00:00:01Z", next.Query().Get("active_at"), "next URL = %#v", next)
+	require.Equal(t, "1", next.Query().Get("limit"), "next URL = %#v", next)
 	service.pageResult = &app.AcademicUnitMemberPage{ActiveAt: 1000}
 	response = call(target)
-	if response.Code != http.StatusOK || response.Header().Get("Link") != "" || service.pageQuery.AfterID != member.ID || service.pageQuery.AfterUserID != member.UserID {
-		t.Fatalf("final page/query = %d %#v", response.Code, service.pageQuery)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "final page/query = %d %#v", response.Code, service.pageQuery)
+	require.Empty(t, response.Header().Get("Link"), "final page/query = %d %#v", response.Code, service.pageQuery)
+	require.Equal(t, member.ID, service.pageQuery.AfterID, "final page/query = %d %#v", response.Code, service.pageQuery)
+	require.Equal(t, member.UserID, service.pageQuery.AfterUserID, "final page/query = %d %#v", response.Code, service.pageQuery)
 	for _, suffix := range []string{"?limit=0", "?limit=201", "?limit=1&limit=2", "?cursor=", "?limit=1&history=true&active_at=1970-01-01T00:00:01Z", "?limit=1&history=invalid"} {
-		if response := call(path + suffix); response.Code != http.StatusBadRequest {
-			t.Fatalf("invalid page query %s = %d", suffix, response.Code)
-		}
+		require.Equal(t, http.StatusBadRequest, call(path+suffix).Code, "invalid page query %s", suffix)
 	}
 	service.pageResult = &app.AcademicUnitMemberPage{HasMore: true, Members: []*model.AcademicUnitMember{member}}
 	response = call(path + "?limit=1&history=true")
-	if response.Code != http.StatusOK || !strings.Contains(response.Header().Get("Link"), "history=true") || strings.Contains(response.Header().Get("Link"), "active_at=") {
-		t.Fatalf("history continuation = %s", response.Header().Get("Link"))
-	}
+	require.Equal(t, http.StatusOK, response.Code)
+	require.Contains(t, response.Header().Get("Link"), "history=true")
+	require.NotContains(t, response.Header().Get("Link"), "active_at=")
 }
 
 func TestClassMemberHTTPPagingPreservesArrayAndContinuation(t *testing.T) {
@@ -87,35 +85,31 @@ func TestClassMemberHTTPPagingPreservesArrayAndContinuation(t *testing.T) {
 		return response
 	}
 	response := call(path + "?limit=1")
-	if response.Code != http.StatusOK {
-		t.Fatalf("page status = %d: %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "page status = %d: %s", response.Code, response.Body.String())
 	var result []map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || len(result) != 1 {
-		t.Fatalf("page did not retain bare array: %s, %v", response.Body.String(), err)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result), "page did not retain bare array: %s", response.Body.String())
+	require.Len(t, result, 1, "page did not retain bare array: %s", response.Body.String())
 	link := response.Header().Get("Link")
-	if !strings.HasSuffix(link, `>; rel="next"`) {
-		t.Fatalf("next Link = %s", link)
-	}
+	require.True(t, strings.HasSuffix(link, `>; rel="next"`), "next Link = %s", link)
 	target := strings.TrimSuffix(strings.TrimPrefix(link, "<"), `>; rel="next"`)
 	next, err := url.Parse(target)
-	if err != nil || next.Host != "" || next.Path != path || next.Query().Get("active_at") != "1970-01-01T00:00:01Z" || next.Query().Get("limit") != "1" {
-		t.Fatalf("next URL = %#v, %v", next, err)
-	}
+	require.NoError(t, err, "next URL = %#v", next)
+	require.Empty(t, next.Host, "next URL = %#v", next)
+	require.Equal(t, path, next.Path, "next URL = %#v", next)
+	require.Equal(t, "1970-01-01T00:00:01Z", next.Query().Get("active_at"), "next URL = %#v", next)
+	require.Equal(t, "1", next.Query().Get("limit"), "next URL = %#v", next)
 	service.pageResult = &app.ClassMemberPage{ActiveAt: 1000}
 	response = call(target)
-	if response.Code != http.StatusOK || response.Header().Get("Link") != "" || service.pageQuery.AfterID != member.ID || service.pageQuery.AfterUserID != member.UserID {
-		t.Fatalf("final page/query = %d %#v", response.Code, service.pageQuery)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "final page/query = %d %#v", response.Code, service.pageQuery)
+	require.Empty(t, response.Header().Get("Link"), "final page/query = %d %#v", response.Code, service.pageQuery)
+	require.Equal(t, member.ID, service.pageQuery.AfterID, "final page/query = %d %#v", response.Code, service.pageQuery)
+	require.Equal(t, member.UserID, service.pageQuery.AfterUserID, "final page/query = %d %#v", response.Code, service.pageQuery)
 	for _, suffix := range []string{"?limit=0", "?limit=201", "?limit=1&limit=2", "?cursor=", "?limit=1&history=true&active_at=1970-01-01T00:00:01Z", "?limit=1&history=invalid"} {
-		if response := call(path + suffix); response.Code != http.StatusBadRequest {
-			t.Fatalf("invalid page query %s = %d", suffix, response.Code)
-		}
+		require.Equal(t, http.StatusBadRequest, call(path+suffix).Code, "invalid page query %s", suffix)
 	}
 	service.pageResult = &app.ClassMemberPage{HasMore: true, Members: []*model.ClassMember{member}}
 	response = call(path + "?limit=1&history=true")
-	if response.Code != http.StatusOK || !strings.Contains(response.Header().Get("Link"), "history=true") || strings.Contains(response.Header().Get("Link"), "active_at=") {
-		t.Fatalf("history continuation = %s", response.Header().Get("Link"))
-	}
+	require.Equal(t, http.StatusOK, response.Code)
+	require.Contains(t, response.Header().Get("Link"), "history=true")
+	require.NotContains(t, response.Header().Get("Link"), "active_at=")
 }

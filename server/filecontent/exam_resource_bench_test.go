@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -20,22 +22,16 @@ import (
 func BenchmarkStoreExamResourcePNG512(b *testing.B) {
 	input := benchmarkContentPNG512(b)
 	content, err := New(memoryvfs.New(), Policy{MaximumConcurrentOperations: 2}, nil)
-	if err != nil {
-		b.Fatal(err)
-	}
+	require.NoError(b, err)
 	ctx := context.Background()
 	b.ReportAllocs()
 	b.SetBytes(int64(len(input)))
 	for b.Loop() {
 		revisionID := model.NewFileRevisionID()
 		rendition, err := content.StoreExamResource(ctx, revisionID, model.ExamResourceMediaPNG, bytes.NewReader(input), int64(len(input)), time.Unix(1, 0))
-		if err != nil {
-			b.Fatal(err)
-		}
+		require.NoError(b, err)
 		b.StopTimer()
-		if err := content.RemoveExamResource(ctx, revisionID, rendition.ID); err != nil {
-			b.Fatal(err)
-		}
+		require.NoError(b, content.RemoveExamResource(ctx, revisionID, rendition.ID))
 		b.StartTimer()
 	}
 }

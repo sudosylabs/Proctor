@@ -17,6 +17,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRealtimeContractsHaveOneProductionOwner(t *testing.T) {
@@ -43,30 +46,25 @@ func TestRealtimeContractsHaveOneProductionOwner(t *testing.T) {
 	}
 
 	files, err := filepath.Glob(filepath.Join("..", "app", "*.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, path := range files {
 		if strings.HasSuffix(path, "_test.go") {
 			continue
 		}
 		parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
-		if err != nil {
-			t.Fatalf("parse %s: %v", path, err)
-		}
+		require.NoError(t, err, "parse %s", path)
 		for _, declaration := range parsed.Decls {
 			switch declaration := declaration.(type) {
 			case *ast.GenDecl:
 				for _, specification := range declaration.Specs {
 					typeSpec, ok := specification.(*ast.TypeSpec)
-					if ok && (parentContracts[typeSpec.Name.Name] || parentMechanics[typeSpec.Name.Name]) {
-						t.Errorf("parent app redeclares Realtime child ownership in %s: %s", filepath.Base(path), typeSpec.Name.Name)
+					if ok {
+						assert.False(t, parentContracts[typeSpec.Name.Name], "parent app redeclares Realtime child contract in %s: %s", filepath.Base(path), typeSpec.Name.Name)
+						assert.False(t, parentMechanics[typeSpec.Name.Name], "parent app redeclares Realtime child mechanics in %s: %s", filepath.Base(path), typeSpec.Name.Name)
 					}
 				}
 			case *ast.FuncDecl:
-				if parentMechanics[declaration.Name.Name] {
-					t.Errorf("parent app redeclares Realtime child mechanic in %s: %s", filepath.Base(path), declaration.Name.Name)
-				}
+				assert.False(t, parentMechanics[declaration.Name.Name], "parent app redeclares Realtime child mechanic in")
 			}
 		}
 	}
@@ -106,36 +104,25 @@ func TestRealtimePeerContractsAreDeclaredOnlyByChild(t *testing.T) {
 			value, err := strconv.Unquote(literal.Value)
 			if err == nil && peerContracts[value] {
 				relative, relErr := filepath.Rel(serverRoot, path)
-				if relErr != nil || !strings.HasPrefix(filepath.ToSlash(relative), "app/realtime/") {
-					t.Errorf("peer contract %q is owned outside app/realtime in %s", value, path)
-				}
+				assert.NoError(t, relErr, "peer contract %q is owned outside app/realtime in %s", value, path)
+				assert.True(t, strings.HasPrefix(filepath.ToSlash(relative), "app/realtime/"), "peer contract %q is owned outside app/realtime in %s", value, path)
 			}
 			return true
 		})
 		return nil
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 }
 
 func TestRealtimeAdaptationProvenanceFollowsOwnedSource(t *testing.T) {
 	t.Parallel()
 
 	packageDoc, err := os.ReadFile(filepath.Join("..", "app", "realtime", "doc.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	notice, err := os.ReadFile(filepath.Join("..", "NOTICE"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for name, content := range map[string]string{"app/realtime/doc.go": string(packageDoc), "NOTICE": string(notice)} {
-		if !strings.Contains(content, "10b780cb097b2ec94ab0f9df7ebcbd5b7850f13f") {
-			t.Errorf("%s does not preserve the exact Mattermost revision", name)
-		}
+		assert.Contains(t, content, "10b780cb097b2ec94ab0f9df7ebcbd5b7850f13f", "%s does not preserve the exact Mattermost revision", name)
 	}
-	if !strings.Contains(string(notice), "server/app/realtime/") {
-		t.Error("NOTICE does not point to the canonical Realtime child package")
-	}
+	assert.Contains(t, string(notice), "server/app/realtime/", "NOTICE does not point to the canonical Realtime child package")
 }

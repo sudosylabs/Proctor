@@ -11,6 +11,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestStudentProgressionOpenAPIAgreesWithRuntime(t *testing.T) {
@@ -33,8 +35,6 @@ func TestStudentProgressionOpenAPIAgreesWithRuntime(t *testing.T) {
 		OperationSelector: func(_ string, path string) bool { return strings.HasPrefix(path, "/api/v1/student-progressions") },
 	}
 	runtimeAPI := newRoutingTestAPI("/api/v1")
-	if err := runtimeAPI.collectResources("/api/v1", studentProgressionResource(unavailableStudentProgressionApplication{})); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtimeAPI.collectResources("/api/v1", studentProgressionResource(unavailableStudentProgressionApplication{})))
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 }

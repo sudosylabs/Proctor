@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -39,15 +41,11 @@ func TestOversizedJSONBodyReturnsContentTooLargeProblem(t *testing.T) {
 		route(AuthPublic, http.MethodPost, apiPath(literal("bounded")), []string{"request.invalid"}, decode),
 	)}
 	cookies, err := newBrowserCookies("http://localhost:8065")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	httpAPI := &API{authenticator: classRouteAuthenticator{}, logger: logger, localizer: newTestLocalizer(t), cookies: cookies, recentAuthenticationTTL: time.Minute}
-	if err := httpAPI.buildRoutingKernel(model.APIURLSuffix, 1024, func() error {
+	require.NoError(t, httpAPI.buildRoutingKernel(model.APIURLSuffix, 1024, func() error {
 		return httpAPI.collectResources(model.APIURLSuffix, resources...)
-	}); err != nil {
-		t.Fatal(err)
-	}
+	}))
 
 	for name, configure := range map[string]func(*http.Request){
 		"declared length": func(*http.Request) {},
@@ -62,14 +60,13 @@ func TestOversizedJSONBodyReturnsContentTooLargeProblem(t *testing.T) {
 			response := httptest.NewRecorder()
 			httpAPI.ServeHTTP(response, request)
 			var problem Problem
-			if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-				t.Fatalf("decode problem %q: %v", response.Body.String(), err)
-			}
-			if response.Code != http.StatusRequestEntityTooLarge || problem.Status != http.StatusRequestEntityTooLarge ||
-				problem.Code != "request.too_large" || problem.Title != "Request too large" ||
-				problem.RequestID == "" || response.Header().Get("Content-Type") != "application/problem+json" {
-				t.Fatalf("oversized body = %d %#v", response.Code, problem)
-			}
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &problem), "decode problem %q", response.Body.String())
+			require.Equal(t, http.StatusRequestEntityTooLarge, response.Code, "oversized body = %d %#v", response.Code, problem)
+			require.Equal(t, http.StatusRequestEntityTooLarge, problem.Status, "oversized body = %d %#v", response.Code, problem)
+			require.Equal(t, "request.too_large", problem.Code, "oversized body = %d %#v", response.Code, problem)
+			require.Equal(t, "Request too large", problem.Title, "oversized body = %d %#v", response.Code, problem)
+			require.NotEmpty(t, problem.RequestID, "oversized body = %d %#v", response.Code, problem)
+			require.Equal(t, "application/problem+json", response.Header().Get("Content-Type"), "oversized body = %d %#v", response.Code, problem)
 		})
 	}
 
@@ -77,7 +74,5 @@ func TestOversizedJSONBodyReturnsContentTooLargeProblem(t *testing.T) {
 	small.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, small)
-	if response.Code != http.StatusNoContent {
-		t.Fatalf("bounded body = %d %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusNoContent, response.Code, "bounded body = %d %s", response.Code, response.Body.String())
 }

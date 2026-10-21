@@ -10,21 +10,17 @@ package commands
 import (
 	"bytes"
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDevSeedHelpAndArgumentValidation(t *testing.T) {
 	var out bytes.Buffer
-	if err := Execute(context.Background(), []string{"dev", "seed", "--help"}, &out, &out); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, Execute(context.Background(), []string{"dev", "seed", "--help"}, &out, &out))
 	for _, name := range []string{"--profile", "--seed", "--state-dir", "--refresh-sittings"} {
-		if !strings.Contains(out.String(), name) {
-			t.Errorf("missing %s", name)
-		}
+		assert.Contains(t, out.String(), name)
 	}
-	if err := Execute(context.Background(), []string{"dev", "seed", "extra"}, &out, &out); err == nil {
-		t.Fatal("accepted positional arguments")
-	}
+	require.Error(t, Execute(context.Background(), []string{"dev", "seed", "extra"}, &out, &out), "accepted positional arguments")
 }

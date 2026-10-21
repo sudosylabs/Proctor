@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -52,23 +54,19 @@ func TestSessionAdministrationOpenAPIAgreesWithRuntime(t *testing.T) {
 		},
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, userAdministrationResource(nil, nil)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtimeAPI.collectResources(model.APIURLSuffix, userAdministrationResource(nil, nil)))
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 
 	document := readOpenAPIDocument(t)
 	list := document.Components.Schemas["SessionAdministrationListResponse"]
-	if list.Type != "array" || list.Items.Ref != "#/components/schemas/SessionAdministrationResponse" {
-		t.Fatalf("SessionAdministrationListResponse = %#v", list)
-	}
+	require.Equal(t, "array", list.Type)
+	require.Equal(t, "#/components/schemas/SessionAdministrationResponse", list.Items.Ref)
 
 	// Administrative session projections must never expose usable credentials
 	// or their hashes, even when the underlying Session model gains fields.
 	sessionSchema := document.Components.Schemas["SessionAdministrationResponse"]
 	for _, forbidden := range []string{"token", "access_token", "refresh_token", "credential", "token_hash"} {
-		if _, exists := sessionSchema.Properties[forbidden]; exists {
-			t.Fatalf("session schema exposes %q", forbidden)
-		}
+		_, exists := sessionSchema.Properties[forbidden]
+		require.False(t, exists, "session schema exposes %q", forbidden)
 	}
 }

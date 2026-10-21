@@ -19,6 +19,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type openAPIDocument struct {
@@ -142,28 +145,20 @@ func (v openAPIAgreementViolation) String() string {
 func assertOpenAPIAgreement(t *testing.T, suite openAPIAgreementSuite, runtimeRoutes []Route) {
 	t.Helper()
 	encoded, err := readOpenAPIDocumentFile()
-	if err != nil {
-		t.Fatalf("read checked-in OpenAPI document: %v", err)
-	}
+	require.NoError(t, err)
 	violations, err := evaluateOpenAPIAgreement(encoded, runtimeRoutes, suite)
-	if err != nil {
-		t.Fatalf("evaluate OpenAPI agreement: %v", err)
-	}
+	require.NoError(t, err)
 	for _, violation := range violations {
-		t.Errorf("%s", violation)
+		assert.Fail(t, fmt.Sprint(violation))
 	}
 }
 
 func readOpenAPIDocument(t *testing.T) openAPIDocument {
 	t.Helper()
 	encoded, err := readOpenAPIDocumentFile()
-	if err != nil {
-		t.Fatalf("read checked-in OpenAPI document: %v", err)
-	}
+	require.NoError(t, err)
 	var document openAPIDocument
-	if err := json.Unmarshal(encoded, &document); err != nil {
-		t.Fatalf("decode checked-in OpenAPI document: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(encoded, &document))
 	return document
 }
 

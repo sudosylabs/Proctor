@@ -12,17 +12,17 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	coreoidc "github.com/coreos/go-oidc/v3/oidc"
 	"github.com/coreos/go-oidc/v3/oidc/oidctest"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
 
 	"github.com/sudosylabs/proctor/server/config"
@@ -32,9 +32,7 @@ import (
 
 func TestProviderAuthorizationCodePKCEAndClaims(t *testing.T) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	const (
 		keyID        = "test-key"
 		clientID     = "proctor-client"
@@ -61,9 +59,7 @@ func TestProviderAuthorizationCodePKCEAndClaims(t *testing.T) {
 			oidcServer.ServeHTTP(writer, request)
 			return
 		}
-		if err := request.ParseForm(); err != nil {
-			t.Errorf("parse token request: %v", err)
-		}
+		assert.NoError(t, request.ParseForm())
 		username, password, basic := request.BasicAuth()
 		validClient := basic &&
 			username == clientID &&
@@ -72,11 +68,9 @@ func TestProviderAuthorizationCodePKCEAndClaims(t *testing.T) {
 			validClient = request.Form.Get("client_id") == clientID &&
 				request.Form.Get("client_secret") == clientSecret
 		}
-		if !validClient ||
-			request.Form.Get("code") != code ||
-			request.Form.Get("code_verifier") == "" {
-			t.Errorf("invalid token request: %#v", request.Form)
-		}
+		assert.True(t, validClient, "token request did not authenticate the client: %#v", request.Form)
+		assert.Equal(t, code, request.Form.Get("code"), "token request code")
+		assert.NotEmpty(t, request.Form.Get("code_verifier"), "token request has no PKCE verifier")
 		mutex.Lock()
 		tokenNonce := nonce
 		mutex.Unlock()
@@ -115,9 +109,7 @@ func TestProviderAuthorizationCodePKCEAndClaims(t *testing.T) {
 	oidcServer.SetIssuer(server.URL)
 
 	created, err := NewFactory().New(testSettings(server.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	provider := created.(*Provider)
 	state := model.NewCredentialToken()
 	proof := model.NewCredentialToken()
@@ -128,25 +120,18 @@ func TestProviderAuthorizationCodePKCEAndClaims(t *testing.T) {
 			CallbackURL: callbackURL, State: state, Proof: proof,
 		},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	authorizationURL, err := url.Parse(challenge.RedirectURL)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	mutex.Lock()
 	nonce = authorizationURL.Query().Get("nonce")
 	mutex.Unlock()
-	if authorizationURL.Path != "/auth" ||
-		authorizationURL.Query().Get("state") != state ||
-		authorizationURL.Query().Get("redirect_uri") != callbackURL ||
-		authorizationURL.Query().Get("code_challenge") !=
-			oauth2.S256ChallengeFromVerifier(proof) ||
-		authorizationURL.Query().Get("code_challenge_method") != "S256" ||
-		nonce == "" {
-		t.Fatalf("authorization challenge = %q", challenge.RedirectURL)
-	}
+	require.Equal(t, "/auth", authorizationURL.Path)
+	require.Equal(t, state, authorizationURL.Query().Get("state"))
+	require.Equal(t, callbackURL, authorizationURL.Query().Get("redirect_uri"))
+	require.Equal(t, oauth2.S256ChallengeFromVerifier(proof), authorizationURL.Query().Get("code_challenge"))
+	require.Equal(t, "S256", authorizationURL.Query().Get("code_challenge_method"))
+	require.NotEmpty(t, nonce)
 	assertion, err := provider.Complete(
 		context.Background(),
 		externalauth.CompleteRequest{
@@ -159,19 +144,15 @@ func TestProviderAuthorizationCodePKCEAndClaims(t *testing.T) {
 			},
 		},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if assertion.ProviderID != "campus-oidc" ||
-		assertion.Subject != "opaque-oidc-subject" ||
-		assertion.Username != "oidc.student" ||
-		assertion.Email != "oidc.student@example.edu" ||
-		!assertion.EmailVerified ||
-		assertion.HomeOrganization != "example.edu" ||
-		assertion.AuthenticationStrength != model.AuthenticationMultiFactor ||
-		len(assertion.Affiliations) != 2 {
-		t.Fatalf("Complete() = %#v", assertion)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "campus-oidc", assertion.ProviderID)
+	require.Equal(t, "opaque-oidc-subject", assertion.Subject)
+	require.Equal(t, "oidc.student", assertion.Username)
+	require.Equal(t, "oidc.student@example.edu", assertion.Email)
+	require.True(t, assertion.EmailVerified)
+	require.Equal(t, "example.edu", assertion.HomeOrganization)
+	require.Equal(t, model.AuthenticationMultiFactor, assertion.AuthenticationStrength)
+	require.Len(t, assertion.Affiliations, 2)
 }
 
 func TestProviderRejectsCallbackAndRedactsExchangeFailure(
@@ -192,21 +173,18 @@ func TestProviderRejectsCallbackAndRedactsExchangeFailure(
 	defer server.Close()
 	oidcServer.SetIssuer(server.URL)
 	created, err := NewFactory().New(testSettings(server.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	provider := created.(*Provider)
 	state := model.NewCredentialToken()
 	proof := model.NewCredentialToken()
 	callbackURL := "https://proctor.example.edu/callback"
-	if _, err := provider.Begin(
+	_, err = provider.Begin(
 		context.Background(),
 		externalauth.BeginRequest{
 			CallbackURL: callbackURL, State: state, Proof: proof,
 		},
-	); err != nil {
-		t.Fatal(err)
-	}
+	)
+	require.NoError(t, err)
 	_, err = provider.Complete(
 		context.Background(),
 		externalauth.CompleteRequest{
@@ -219,10 +197,8 @@ func TestProviderRejectsCallbackAndRedactsExchangeFailure(
 			},
 		},
 	)
-	if !errors.Is(err, externalauth.ErrAuthenticationRejected) ||
-		strings.Contains(err.Error(), secretBody) {
-		t.Fatalf("Complete() error = %v", err)
-	}
+	require.ErrorIs(t, err, externalauth.ErrAuthenticationRejected)
+	require.NotContains(t, err.Error(), secretBody)
 }
 
 func testSettings(
@@ -253,9 +229,7 @@ func testSettings(
 
 func TestProviderFreshProofRequiresAuthenticationTimeAfterBoundFlow(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, test := range []struct {
 		name    string
 		offset  time.Duration
@@ -288,32 +262,26 @@ func TestProviderFreshProofRequiresAuthenticationTimeAfterBoundFlow(t *testing.T
 			settings.AutoProvision = false
 			settings.Claims.AllowedHomeOrganizations = nil
 			created, err := NewFactory().New(settings)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			provider := created.(*Provider)
 			provider.now = func() time.Time { return now.Add(500 * time.Millisecond) }
 			state, proof := model.NewCredentialToken(), model.NewCredentialToken()
 			request := externalauth.BeginRequest{CallbackURL: "https://proctor.example.edu/callback", State: state, Proof: proof, FreshAuthentication: true}
 			start, err := provider.Begin(context.Background(), request)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			u, err := url.Parse(start.RedirectURL)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			nonce = u.Query().Get("nonce")
-			if u.Query().Get("prompt") != "login" || u.Query().Get("max_age") != "0" || nonce == "" {
-				t.Fatal("fresh OIDC request lacks authenticated freshness constraints")
-			}
+			require.Equal(t, "login", u.Query().Get("prompt"), "fresh OIDC request lacks authenticated freshness constraints")
+			require.Equal(t, "0", u.Query().Get("max_age"), "fresh OIDC request lacks authenticated freshness constraints")
+			require.NotEmpty(t, nonce, "fresh OIDC request lacks authenticated freshness constraints")
 			assertion, err := provider.Complete(context.Background(), externalauth.CompleteRequest{CallbackURL: request.CallbackURL, State: state, Proof: proof, AuthenticationStartedAt: now.Add(100 * time.Millisecond), Callback: model.ExternalAuthenticationCallback{Values: map[string][]string{"state": {state}, "code": {"fresh-code"}}}})
 			if test.valid {
-				if err != nil || assertion.AuthenticatedAt != now.UnixMilli() {
-					t.Fatalf("fresh proof failed: %v", err)
-				}
-			} else if err == nil || assertion != nil {
-				t.Fatal("unverified primary freshness was accepted")
+				require.NoError(t, err)
+				require.Equal(t, now.UnixMilli(), assertion.AuthenticatedAt)
+			} else {
+				require.Error(t, err, "unverified primary freshness was accepted")
+				require.Nil(t, assertion, "unverified primary freshness was accepted")
 			}
 		})
 	}

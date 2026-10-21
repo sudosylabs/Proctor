@@ -13,6 +13,9 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -47,9 +50,7 @@ func TestExamSittingOpenAPIAgreesWithRuntime(t *testing.T) {
 		},
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, examSittingResource(nil)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtimeAPI.collectResources(model.APIURLSuffix, examSittingResource(nil)))
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 	assertExamSittingListParameters(t, base)
 	assertExamSittingNoShowListParameters(t, member+"/no-shows")
@@ -59,17 +60,13 @@ func assertExamSittingNoShowListParameters(t *testing.T, path string) {
 	t.Helper()
 	document := readOpenAPIDocument(t)
 	var operation openAPIOperation
-	if err := json.Unmarshal(document.Paths[path]["get"], &operation); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(document.Paths[path]["get"], &operation))
 	want := []string{"limit", "cursor"}
 	got := make([]string, 0, len(operation.Parameters))
 	for _, parameter := range operation.Parameters {
 		got = append(got, parameter.Name)
 	}
-	if !slices.Equal(got, want) {
-		t.Errorf("GET %s query parameters = %v, want exactly %v", path, got, want)
-	}
+	assert.True(t, slices.Equal(got, want), "GET %s query parameters = %v, want exactly %v", path, got, want)
 }
 
 func examSittingMutationContractCodes(specific ...string) []string {
@@ -83,20 +80,14 @@ func assertExamSittingListParameters(t *testing.T, path string) {
 	t.Helper()
 	document := readOpenAPIDocument(t)
 	var operation openAPIOperation
-	if err := json.Unmarshal(document.Paths[path]["get"], &operation); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(document.Paths[path]["get"], &operation))
 	want := []string{"class_id", "state", "ends_after", "starts_before", "limit", "cursor"}
 	got := make([]string, 0, len(operation.Parameters))
 	for _, parameter := range operation.Parameters {
 		got = append(got, parameter.Name)
 	}
 	for _, name := range want {
-		if !slices.Contains(got, name) {
-			t.Errorf("GET %s omits query parameter %q: %v", path, name, got)
-		}
+		assert.Contains(t, got, name, "GET %s omits query parameter", path)
 	}
-	if len(got) != len(want) {
-		t.Errorf("GET %s query parameters = %v, want exactly %v", path, got, want)
-	}
+	assert.Len(t, got, len(want), "GET %s query parameters", path)
 }

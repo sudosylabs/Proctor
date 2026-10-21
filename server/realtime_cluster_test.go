@@ -11,9 +11,11 @@ import (
 	"context"
 	"errors"
 	"reflect"
-	"strings"
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/cluster"
@@ -57,50 +59,32 @@ func TestRealtimeClusterAdapterCarriesChildContractWithoutOwningPayloads(t *test
 
 	transport := &recordingBorrowedCluster{}
 	adapter, err := newRealtimeClusterAdapter(transport)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	const event = "websocket.publish"
 	wantPayload := []byte(`{"event":{"id":"yyyyyyyyyyyyyyyyyyyyyyyyyy"}}`)
 	var received []byte
-	if err := adapter.RegisterHandler(event, func(_ context.Context, payload []byte) error {
+	require.NoError(t, adapter.RegisterHandler(event, func(_ context.Context, payload []byte) error {
 		received = append([]byte(nil), payload...)
 		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
+	}))
 	handler := transport.handlers[cluster.Event(event)]
-	if handler == nil {
-		t.Fatalf("handler %q was not registered", event)
-	}
-	if err := handler(context.Background(), &cluster.Message{
+	require.NotNil(t, handler, "handler %q was not registered", event)
+	require.NoError(t, handler(context.Background(), &cluster.Message{
 		Event: cluster.Event(event),
 		Data:  wantPayload,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(received, wantPayload) {
-		t.Fatalf("received payload = %q, want %q", received, wantPayload)
-	}
+	}))
+	require.True(t, reflect.DeepEqual(received, wantPayload), "received payload = %q, want %q", received, wantPayload)
 
-	if err := adapter.Broadcast(context.Background(), event, wantPayload); err != nil {
-		t.Fatal(err)
-	}
-	if len(transport.broadcasts) != 1 {
-		t.Fatalf("broadcasts = %d, want 1", len(transport.broadcasts))
-	}
+	require.NoError(t, adapter.Broadcast(context.Background(), event, wantPayload))
+	require.Len(t, transport.broadcasts, 1, "broadcasts")
 	message := transport.broadcasts[0]
-	if message.Event != cluster.Event(event) || !reflect.DeepEqual(message.Data, wantPayload) || message.Props != nil {
-		t.Fatalf("cluster envelope = %#v", message)
-	}
+	require.Equal(t, cluster.Event(event), message.Event)
+	require.True(t, reflect.DeepEqual(message.Data, wantPayload))
+	require.Nil(t, message.Props)
 
-	if err := adapter.RegisterHandler(event, nil); err == nil {
-		t.Fatal("nil child handler was accepted")
-	}
-	if err := handler(context.Background(), nil); err == nil {
-		t.Fatal("nil cluster message was accepted")
-	}
+	require.Error(t, adapter.RegisterHandler(event, nil), "nil child handler was accepted")
+	require.Error(t, handler(context.Background(), nil), "nil cluster message was accepted")
 }
 
 func TestRealtimeClusterAdapterRegistersStableChildEventsAndPropagatesFailure(t *testing.T) {
@@ -111,71 +95,45 @@ func TestRealtimeClusterAdapterRegistersStableChildEventsAndPropagatesFailure(t 
 		cluster.Event("authorization.invalidated"): registrationErr,
 	}}
 	adapter, err := newRealtimeClusterAdapter(transport)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	service, err := apprealtime.New(noopRealtimeInvalidator{}, silentClusterLogger{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	err = service.SetClusterFanout(adapter)
-	if !errors.Is(err, registrationErr) {
-		t.Fatalf("SetClusterFanout() error = %v, want %v", err, registrationErr)
-	}
+	require.ErrorIs(t, err, registrationErr, "SetClusterFanout() error")
 	want := []cluster.Event{
 		cluster.Event("websocket.publish"),
 		cluster.Event("exam_attempt.connection_unbound"),
 		cluster.Event("authentication.session_revoked"),
 		cluster.Event("authorization.invalidated"),
 	}
-	if !reflect.DeepEqual(transport.registrations, want) {
-		t.Fatalf("registrations = %#v, want %#v", transport.registrations, want)
-	}
-	if err := service.SetClusterFanout(adapter); err == nil || !strings.Contains(err.Error(), "already attached") {
-		t.Fatalf("same-instance retry error = %v", err)
-	}
+	require.Equal(t, want, transport.registrations, "registrations")
+	err = service.SetClusterFanout(adapter)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "already attached")
 }
 
 func TestRealtimeClusterAdapterPreservesSingleNodeLocalFirstPublication(t *testing.T) {
 	t.Parallel()
 
 	transport, err := local.New("node-a", silentClusterLogger{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	adapter, err := newRealtimeClusterAdapter(transport)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	service, err := apprealtime.New(noopRealtimeInvalidator{}, silentClusterLogger{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	sink := &countingRealtimeSink{}
-	if err := service.SetSink(sink); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.SetClusterFanout(adapter); err != nil {
-		t.Fatal(err)
-	}
-	if err := transport.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, service.SetSink(sink))
+	require.NoError(t, service.SetClusterFanout(adapter))
+	require.NoError(t, transport.Start(context.Background()))
 	t.Cleanup(func() {
-		if err := transport.Stop(context.Background()); err != nil {
-			t.Errorf("stop local cluster: %v", err)
-		}
+		assert.NoError(t, transport.Stop(context.Background()))
 	})
 
-	if err := service.Publish(context.Background(), apprealtime.RealtimeEvent{
+	require.NoError(t, service.Publish(context.Background(), apprealtime.RealtimeEvent{
 		Name:   "user.notification",
 		UserID: model.NewID(),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if got := sink.publishCount(); got != 1 {
-		t.Fatalf("local publications = %d, want 1", got)
-	}
+	}))
+	require.Equal(t, 1, sink.publishCount(), "local publications")
 }
 
 type countingRealtimeSink struct {

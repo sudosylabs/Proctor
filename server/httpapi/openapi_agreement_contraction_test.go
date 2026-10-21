@@ -14,23 +14,20 @@ import (
 	"runtime"
 	"sort"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestResourceOpenAPIAgreementsUseSharedEvaluator(t *testing.T) {
 	t.Parallel()
 
 	_, currentFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("locate agreement contraction test")
-	}
+	require.True(t, ok, "locate agreement contraction test")
 	files, err := filepath.Glob(filepath.Join(filepath.Dir(currentFile), "*_openapi_agreement_test.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	sort.Strings(files)
-	if len(files) == 0 {
-		t.Fatal("no resource OpenAPI agreement suites found")
-	}
+	require.NotEmpty(t, files, "no resource OpenAPI agreement suites found")
 	forbidden := [][]byte{
 		[]byte("ApplicationErrorStatuses("),
 		[]byte("canonicalIDRoutePattern("),
@@ -46,16 +43,10 @@ func TestResourceOpenAPIAgreementsUseSharedEvaluator(t *testing.T) {
 		t.Run(filepath.Base(path), func(t *testing.T) {
 			t.Parallel()
 			source, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !bytes.Contains(source, []byte("assertOpenAPIAgreement(")) {
-				t.Error("resource suite does not use the shared agreement evaluator")
-			}
+			require.NoError(t, err)
+			assert.True(t, bytes.Contains(source, []byte("assertOpenAPIAgreement(")), "resource suite does not use the shared agreement evaluator")
 			for _, token := range forbidden {
-				if bytes.Contains(source, token) {
-					t.Errorf("resource suite restores superseded agreement orchestration %q", token)
-				}
+				assert.False(t, bytes.Contains(source, token), "resource suite restores superseded agreement orchestration %q", token)
 			}
 		})
 	}

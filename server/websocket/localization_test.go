@@ -10,16 +10,14 @@ package websocket
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestBoundedCloseReasonFallsBackWithinProtocolLimit(t *testing.T) {
 	t.Parallel()
 	fallback := websocketCloseMessages["server_shutdown"].fallback
-	if got := boundedCloseReason(strings.Repeat("x", maximumCloseReasonBytes+1), fallback); got != fallback {
-		t.Fatalf("bounded close reason = %q, want fallback %q", got, fallback)
-	}
+	require.Equal(t, fallback, boundedCloseReason(strings.Repeat("x", maximumCloseReasonBytes+1), fallback), "bounded close reason")
 	translated := strings.Repeat("x", maximumCloseReasonBytes)
-	if got := boundedCloseReason(translated, fallback); got != translated {
-		t.Fatalf("valid close reason unexpectedly changed")
-	}
+	require.Equal(t, translated, boundedCloseReason(translated, fallback), "valid close reason unexpectedly changed")
 }

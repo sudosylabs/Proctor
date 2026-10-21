@@ -9,12 +9,15 @@
 
 package server
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func TestServiceEnvironmentBuildDefault(t *testing.T) {
 	t.Setenv("PROCTOR_SERVICE_ENVIRONMENT", "")
 	got, err := readServiceEnvironment()
-	if err != nil || got != ServiceEnvironmentProduction {
-		t.Fatalf("build default = %q, %v", got, err)
-	}
+	require.NoError(t, err, "build default")
+	require.Equal(t, ServiceEnvironmentProduction, got, "build default")
 }

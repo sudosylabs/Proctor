@@ -7,7 +7,11 @@
 
 package weborigin
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func TestFromPublicURLSerializesOrigin(t *testing.T) {
 	t.Parallel()
@@ -25,14 +29,12 @@ func TestFromPublicURLSerializesOrigin(t *testing.T) {
 	}
 	for publicURL, want := range tests {
 		got, err := FromPublicURL(publicURL)
-		if err != nil || got != want {
-			t.Fatalf("FromPublicURL(%q) = %q, %v; want %q", publicURL, got, err, want)
-		}
+		require.NoError(t, err, "FromPublicURL(%q)", publicURL)
+		require.Equal(t, want, got, "FromPublicURL(%q)", publicURL)
 	}
 	for _, invalid := range []string{"", "ftp://proctor.example", "https://user@proctor.example", "proctor.example", "mailto:a@b"} {
-		if _, err := FromPublicURL(invalid); err == nil {
-			t.Fatalf("FromPublicURL(%q) succeeded", invalid)
-		}
+		_, err := FromPublicURL(invalid)
+		require.Error(t, err, "FromPublicURL(%q) succeeded", invalid)
 	}
 }
 
@@ -44,13 +46,12 @@ func TestFromHeaderAcceptsOnlyExactOrigins(t *testing.T) {
 		"https://PROCTOR.example:443": "https://proctor.example",
 		"http://localhost:8065":       "http://localhost:8065",
 	} {
-		if got, ok := FromHeader(value); !ok || got != want {
-			t.Fatalf("FromHeader(%q) = %q, %t; want %q", value, got, ok, want)
-		}
+		got, ok := FromHeader(value)
+		require.True(t, ok, "FromHeader(%q)", value)
+		require.Equal(t, want, got, "FromHeader(%q)", value)
 	}
 	for _, invalid := range []string{"", "null", " https://proctor.example", "https://proctor.example/", "https://proctor.example?x", "https://proctor.example#f", "https://u@proctor.example", "chrome-extension://abc"} {
-		if got, ok := FromHeader(invalid); ok {
-			t.Fatalf("FromHeader(%q) = %q, want rejection", invalid, got)
-		}
+		got, ok := FromHeader(invalid)
+		require.False(t, ok, "FromHeader(%q) = %q, want rejection", invalid, got)
 	}
 }

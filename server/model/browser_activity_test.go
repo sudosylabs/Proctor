@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestBlockedBrowserActivityLocationShapes(t *testing.T) {
@@ -33,9 +35,7 @@ func TestBlockedBrowserActivityLocationShapes(t *testing.T) {
 	for _, test := range valid {
 		t.Run(test.name, func(t *testing.T) {
 			event := blockedBrowserActivityEventForTest(test.location, test.reason)
-			if err := event.ValidateClientRecord(); err != nil {
-				t.Fatalf("ValidateClientRecord() error = %v", err)
-			}
+			require.NoError(t, event.ValidateClientRecord())
 		})
 	}
 
@@ -56,9 +56,7 @@ func TestBlockedBrowserActivityLocationShapes(t *testing.T) {
 	for _, test := range invalid {
 		t.Run(test.name, func(t *testing.T) {
 			event := blockedBrowserActivityEventForTest(test.location, test.reason)
-			if err := event.ValidateClientRecord(); err == nil {
-				t.Fatal("ValidateClientRecord() accepted an invalid blocked location")
-			}
+			require.Error(t, event.ValidateClientRecord(), "ValidateClientRecord() accepted an invalid blocked location")
 		})
 	}
 
@@ -69,9 +67,7 @@ func TestBlockedBrowserActivityLocationShapes(t *testing.T) {
 			event.Location = &BrowserLocation{}
 		}
 		event.MatchedRuleID = &ruleID
-		if err := event.ValidateClientRecord(); err == nil {
-			t.Fatalf("ValidateClientRecord() accepted matched rule for %s", reason)
-		}
+		require.Error(t, event.ValidateClientRecord(), "ValidateClientRecord() accepted matched rule for %s", reason)
 	}
 }
 

@@ -10,10 +10,10 @@ package memberlist
 import (
 	"context"
 	"errors"
-	"reflect"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/cluster"
 )
@@ -114,15 +114,9 @@ func TestDiscoveryMaintenanceConstructionIsInertAndCopiesConfiguration(t *testin
 	maintenance, tickerCreations := newDiscoveryMaintenanceForTest(store, diagnostics, time.Now(), seeds)
 	seeds[0] = "127.0.0.1:7999"
 
-	if len(store.operations) != 0 {
-		t.Fatalf("construction operations = %v, want none", store.operations)
-	}
-	if *tickerCreations != 0 {
-		t.Fatalf("construction created %d tickers, want none", *tickerCreations)
-	}
-	if got := maintenance.cfg.seedAddresses; !reflect.DeepEqual(got, []string{"127.0.0.1:7001"}) {
-		t.Fatalf("copied seed addresses = %v", got)
-	}
+	require.Empty(t, store.operations, "construction operations")
+	require.Equal(t, 0, *tickerCreations, "construction created")
+	require.Equal(t, []string{"127.0.0.1:7001"}, maintenance.cfg.seedAddresses)
 }
 
 func TestDiscoveryMaintenancePrepareAdvertisesThenSelectsDeterministicSeeds(t *testing.T) {
@@ -144,19 +138,11 @@ func TestDiscoveryMaintenancePrepareAdvertisesThenSelectsDeterministicSeeds(t *t
 	maintenance, tickerCreations := newDiscoveryMaintenanceForTest(store, diagnostics, now, seeds)
 
 	got, err := maintenance.prepare(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	want := []string{"127.0.0.1:7001", "127.0.0.1:7002", "127.0.0.1:7003", "127.0.0.1:7004"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("seeds = %v, want %v", got, want)
-	}
-	if !reflect.DeepEqual(store.operations, []string{"upsert", "list"}) {
-		t.Fatalf("operations = %v", store.operations)
-	}
-	if len(store.upserts) != 1 {
-		t.Fatalf("upserts = %d, want 1", len(store.upserts))
-	}
+	require.Equal(t, want, got, "seeds")
+	require.Equal(t, []string{"upsert", "list"}, store.operations)
+	require.Len(t, store.upserts, 1, "upserts")
 	wantNow := now.UTC()
 	wantNode := cluster.DiscoveryNode{
 		NodeID:           "node-local",
@@ -167,18 +153,10 @@ func TestDiscoveryMaintenancePrepareAdvertisesThenSelectsDeterministicSeeds(t *t
 		UpdatedAt:        wantNow,
 		ExpiresAt:        wantNow.Add(30 * time.Second),
 	}
-	if gotNode := store.upserts[0]; gotNode != wantNode {
-		t.Fatalf("advertisement = %#v, want %#v", gotNode, wantNode)
-	}
-	if !reflect.DeepEqual(store.listTimes, []time.Time{wantNow}) {
-		t.Fatalf("list instants = %v, want %v", store.listTimes, wantNow)
-	}
-	if len(diagnostics.messages) != 0 {
-		t.Fatalf("unexpected diagnostics = %v", diagnostics.messages)
-	}
-	if *tickerCreations != 0 {
-		t.Fatalf("prepare created %d tickers, want none", *tickerCreations)
-	}
+	require.Equal(t, wantNode, store.upserts[0], "advertisement")
+	require.Equal(t, []time.Time{wantNow}, store.listTimes, "list instants = %v, want %v", store.listTimes, wantNow)
+	require.Empty(t, diagnostics.messages)
+	require.Equal(t, 0, *tickerCreations, "prepare created")
 }
 
 func TestDiscoveryMaintenancePreparePreservesAdvertisementFailure(t *testing.T) {
@@ -194,15 +172,9 @@ func TestDiscoveryMaintenancePreparePreservesAdvertisementFailure(t *testing.T) 
 	)
 
 	_, err := maintenance.prepare(context.Background())
-	if !errors.Is(err, advertiseErr) {
-		t.Fatalf("prepare error = %v, want advertisement error", err)
-	}
-	if !reflect.DeepEqual(store.operations, []string{"upsert"}) {
-		t.Fatalf("operations = %v, want only upsert", store.operations)
-	}
-	if *tickerCreations != 0 {
-		t.Fatalf("failed prepare created %d tickers, want none", *tickerCreations)
-	}
+	require.ErrorIs(t, err, advertiseErr, "prepare error")
+	require.Equal(t, []string{"upsert"}, store.operations, "operations")
+	require.Equal(t, 0, *tickerCreations, "failed prepare created")
 }
 
 func TestDiscoveryMaintenancePrepareRollsBackListingFailureAndRemainsRetryable(t *testing.T) {
@@ -220,42 +192,24 @@ func TestDiscoveryMaintenancePrepareRollsBackListingFailureAndRemainsRetryable(t
 	)
 
 	_, err := maintenance.prepare(context.Background())
-	if !errors.Is(err, listErr) || err.Error() != "list discovery peers: listing unavailable" {
-		t.Fatalf("prepare error = %v, want wrapped listing error", err)
-	}
-	if !reflect.DeepEqual(store.operations, []string{"upsert", "list", "delete"}) {
-		t.Fatalf("failure operations = %v", store.operations)
-	}
-	if !reflect.DeepEqual(store.deletes, []string{"node-local"}) {
-		t.Fatalf("rollback node IDs = %v", store.deletes)
-	}
-	if !reflect.DeepEqual(diagnostics.errors, []error{rollbackErr}) {
-		t.Fatalf("diagnostic errors = %v", diagnostics.errors)
-	}
-	if !reflect.DeepEqual(diagnostics.messages, []string{"cluster discovery startup rollback failed"}) {
-		t.Fatalf("diagnostic messages = %v", diagnostics.messages)
-	}
+	require.ErrorIs(t, err, listErr, "prepare error")
+	require.Equal(t, "list discovery peers: listing unavailable", err.Error(), "prepare error")
+	require.Equal(t, []string{"upsert", "list", "delete"}, store.operations)
+	require.Equal(t, []string{"node-local"}, store.deletes)
+	require.Equal(t, []error{rollbackErr}, diagnostics.errors)
+	require.Equal(t, []string{"cluster discovery startup rollback failed"}, diagnostics.messages)
 	message := diagnostics.messages[0]
-	if strings.Contains(message, "node-local") || strings.Contains(message, "127.0.0.1") {
-		t.Fatalf("rollback diagnostic exposed discovery data: %q", message)
-	}
+	require.NotContains(t, message, "node-local")
+	require.NotContains(t, message, "127.0.0.1")
 
 	store.listErr = nil
 	store.deleteErr = nil
 	got, err := maintenance.prepare(context.Background())
-	if err != nil {
-		t.Fatalf("retry prepare: %v", err)
-	}
-	if !reflect.DeepEqual(got, []string{"127.0.0.1:7001"}) {
-		t.Fatalf("retry seeds = %v", got)
-	}
+	require.NoError(t, err)
+	require.Equal(t, []string{"127.0.0.1:7001"}, got)
 	wantOperations := []string{"upsert", "list", "delete", "upsert", "list"}
-	if !reflect.DeepEqual(store.operations, wantOperations) {
-		t.Fatalf("retry operations = %v, want %v", store.operations, wantOperations)
-	}
-	if *tickerCreations != 0 {
-		t.Fatalf("failed and retried prepare created %d tickers, want none", *tickerCreations)
-	}
+	require.Equal(t, wantOperations, store.operations, "retry operations")
+	require.Equal(t, 0, *tickerCreations, "failed and retried prepare created")
 }
 
 func TestDiscoveryMaintenanceRollbackUsesBoundedCleanupAfterStartupCancellation(t *testing.T) {
@@ -275,18 +229,10 @@ func TestDiscoveryMaintenanceRollbackUsesBoundedCleanupAfterStartupCancellation(
 	cancel()
 
 	_, err := maintenance.prepare(ctx)
-	if !errors.Is(err, listErr) {
-		t.Fatalf("prepare error = %v, want primary listing error", err)
-	}
-	if !reflect.DeepEqual(store.deleteCtx, []error{nil}) {
-		t.Fatalf("rollback context errors = %v, want usable bounded cleanup context", store.deleteCtx)
-	}
-	if !reflect.DeepEqual(store.deleteHasDeadline, []bool{true}) {
-		t.Fatalf("rollback deadline presence = %v, want bounded cleanup context", store.deleteHasDeadline)
-	}
-	if !reflect.DeepEqual(diagnostics.errors, []error{rollbackErr}) {
-		t.Fatalf("rollback diagnostic errors = %v", diagnostics.errors)
-	}
+	require.ErrorIs(t, err, listErr, "prepare error")
+	require.Equal(t, []error{nil}, store.deleteCtx, "rollback context errors")
+	require.Equal(t, []bool{true}, store.deleteHasDeadline, "rollback deadline presence")
+	require.Equal(t, []error{rollbackErr}, diagnostics.errors)
 }
 
 func TestDiscoveryMaintenancePrepareRejectsMissingClockInstantWithoutStoreWork(t *testing.T) {
@@ -301,24 +247,18 @@ func TestDiscoveryMaintenancePrepareRejectsMissingClockInstantWithoutStoreWork(t
 	)
 
 	_, err := maintenance.prepare(context.Background())
-	if err == nil || err.Error() != "discovery now is required" {
-		t.Fatalf("prepare error = %v, want missing-now error", err)
-	}
-	if len(store.operations) != 0 {
-		t.Fatalf("operations = %v, want none", store.operations)
-	}
-	if *tickerCreations != 0 {
-		t.Fatalf("invalid prepare created %d tickers, want none", *tickerCreations)
-	}
+	require.Error(t, err, "prepare error")
+	require.Equal(t, "discovery now is required", err.Error(), "prepare error")
+	require.Empty(t, store.operations, "operations")
+	require.Equal(t, 0, *tickerCreations, "invalid prepare created")
 }
 
 func TestPrivateLeaseRejectsNonPositiveTTL(t *testing.T) {
 	t.Parallel()
 
 	_, _, err := discoveryLease(time.Date(2026, time.August, 13, 9, 0, 0, 0, time.UTC), 0)
-	if err == nil || err.Error() != "discovery ttl must be positive" {
-		t.Fatalf("discoveryLease error = %v", err)
-	}
+	require.Error(t, err)
+	require.Equal(t, "discovery ttl must be positive", err.Error())
 }
 
 func TestDiscoveryMaintenanceTickRenewsThenCleansWithOneInstantAndIndependentFailures(t *testing.T) {
@@ -337,40 +277,25 @@ func TestDiscoveryMaintenanceTickRenewsThenCleansWithOneInstantAndIndependentFai
 	first := time.Date(2026, time.August, 13, 7, 8, 9, 10, time.UTC)
 
 	maintenance.maintainAt(context.Background(), first)
-	if !reflect.DeepEqual(store.operations, []string{"upsert", "cleanup"}) {
-		t.Fatalf("failed tick operations = %v", store.operations)
-	}
-	if got := store.upserts[0].UpdatedAt; !got.Equal(first) {
-		t.Fatalf("renewal instant = %v, want %v", got, first)
-	}
-	if !reflect.DeepEqual(store.cleanupAt, []time.Time{first}) {
-		t.Fatalf("cleanup instants = %v, want %v", store.cleanupAt, first)
-	}
+	require.Equal(t, []string{"upsert", "cleanup"}, store.operations)
+	got := store.upserts[0].UpdatedAt
+	require.True(t, got.Equal(first), "renewal instant = %v", got)
+	require.Equal(t, []time.Time{first}, store.cleanupAt, "cleanup instants = %v, want %v", store.cleanupAt, first)
 	wantMessages := []string{"cluster discovery heartbeat failed", "cluster discovery cleanup failed"}
-	if !reflect.DeepEqual(diagnostics.messages, wantMessages) {
-		t.Fatalf("diagnostic messages = %v, want %v", diagnostics.messages, wantMessages)
-	}
-	if !reflect.DeepEqual(diagnostics.errors, []error{renewErr, cleanupErr}) {
-		t.Fatalf("diagnostic errors = %v", diagnostics.errors)
-	}
+	require.Equal(t, wantMessages, diagnostics.messages, "diagnostic messages")
+	require.Equal(t, []error{renewErr, cleanupErr}, diagnostics.errors)
 
 	store.upsertErr = nil
 	store.cleanupErr = nil
 	second := first.Add(10 * time.Second)
 	maintenance.maintainAt(context.Background(), second)
 	wantOperations := []string{"upsert", "cleanup", "upsert", "cleanup"}
-	if !reflect.DeepEqual(store.operations, wantOperations) {
-		t.Fatalf("continued tick operations = %v, want %v", store.operations, wantOperations)
-	}
-	if got := store.upserts[1].UpdatedAt; !got.Equal(second) {
-		t.Fatalf("second renewal instant = %v, want %v", got, second)
-	}
-	if got := store.cleanupAt[1]; !got.Equal(second) {
-		t.Fatalf("second cleanup instant = %v, want %v", got, second)
-	}
-	if *tickerCreations != 0 {
-		t.Fatalf("direct maintenance created %d tickers, want none", *tickerCreations)
-	}
+	require.Equal(t, wantOperations, store.operations, "continued tick operations")
+	got = store.upserts[1].UpdatedAt
+	require.True(t, got.Equal(second), "second renewal instant = %v", got)
+	got = store.cleanupAt[1]
+	require.True(t, got.Equal(second), "second cleanup instant = %v", got)
+	require.Equal(t, 0, *tickerCreations, "direct maintenance created")
 }
 
 type manualDiscoveryTicker struct {
@@ -437,37 +362,25 @@ func TestDiscoveryMaintenanceRunOwnsScheduleUntilCancellation(t *testing.T) {
 		maintenance.run(runCtx, func(context.Context, []string) error { return nil })
 	}()
 
-	if interval := <-scheduled; interval != 10*time.Second {
-		t.Fatalf("schedule interval = %v, want 10s", interval)
-	}
+	interval := <-scheduled
+	require.Equal(t, 10*time.Second, interval, "schedule interval")
 	ticker.ticks <- time.Time{}
-	if operation := <-events; operation != "upsert" {
-		t.Fatalf("first tick operation = %q, want upsert", operation)
-	}
-	if operation := <-events; operation != "cleanup" {
-		t.Fatalf("second tick operation = %q, want cleanup", operation)
-	}
-	if operation := <-events; operation != "list" {
-		t.Fatalf("third tick operation = %q, want list", operation)
-	}
+	operation := <-events
+	require.Equal(t, "upsert", operation, "first tick operation")
+	operation = <-events
+	require.Equal(t, "cleanup", operation, "second tick operation")
+	operation = <-events
+	require.Equal(t, "list", operation, "third tick operation")
 
 	cancel()
 	<-done
-	if ticker.stops != 1 {
-		t.Fatalf("ticker stops = %d, want 1", ticker.stops)
-	}
-	if !reflect.DeepEqual(store.operations, []string{"upsert", "cleanup", "list"}) {
-		t.Fatalf("loop operations = %v", store.operations)
-	}
-	if got := store.upserts[0].UpdatedAt; !got.Equal(now) {
-		t.Fatalf("loop renewal instant = %v, want %v", got, now)
-	}
-	if got := store.cleanupAt[0]; !got.Equal(now) {
-		t.Fatalf("loop cleanup instant = %v, want %v", got, now)
-	}
-	if len(diagnostics.messages) != 0 {
-		t.Fatalf("unexpected diagnostics = %v", diagnostics.messages)
-	}
+	require.Equal(t, 1, ticker.stops, "ticker stops")
+	require.Equal(t, []string{"upsert", "cleanup", "list"}, store.operations)
+	got := store.upserts[0].UpdatedAt
+	require.True(t, got.Equal(now), "loop renewal instant = %v", got)
+	got = store.cleanupAt[0]
+	require.True(t, got.Equal(now), "loop cleanup instant = %v", got)
+	require.Empty(t, diagnostics.messages)
 }
 
 func TestDiscoveryMaintenanceRunRetriesRejoinAfterFailure(t *testing.T) {
@@ -507,20 +420,14 @@ func TestDiscoveryMaintenanceRunRetriesRejoinAfterFailure(t *testing.T) {
 	<-scheduled
 
 	ticker.ticks <- time.Time{}
-	if got := <-attempts; !reflect.DeepEqual(got, []string{"127.0.0.1:7001"}) {
-		t.Fatalf("first retry seeds = %v", got)
-	}
+	require.Equal(t, []string{"127.0.0.1:7001"}, (<-attempts))
 	ticker.ticks <- time.Time{}
-	if got := <-attempts; !reflect.DeepEqual(got, []string{"127.0.0.1:7001"}) {
-		t.Fatalf("second retry seeds = %v", got)
-	}
+	require.Equal(t, []string{"127.0.0.1:7001"}, (<-attempts))
 	cancel()
 	<-done
 
-	if !reflect.DeepEqual(diagnostics.messages, []string{"memberlist rejoin incomplete"}) ||
-		!reflect.DeepEqual(diagnostics.errors, []error{rejoinErr}) {
-		t.Fatalf("retry diagnostics = %v / %v", diagnostics.messages, diagnostics.errors)
-	}
+	require.Equal(t, []string{"memberlist rejoin incomplete"}, diagnostics.messages, "retry diagnostics")
+	require.Equal(t, []error{rejoinErr}, diagnostics.errors, "retry diagnostics")
 }
 
 func TestTransportStopOwnsMaintenanceTerminationAndWithdrawal(t *testing.T) {
@@ -549,29 +456,17 @@ func TestTransportStopOwnsMaintenanceTerminationAndWithdrawal(t *testing.T) {
 	}()
 	<-scheduled
 
-	if err := transport.Stop(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, transport.Stop(context.Background()))
 	select {
 	case <-done:
 	default:
-		t.Fatal("Stop returned before owned maintenance terminated")
+		require.FailNow(t, "Stop returned before owned maintenance terminated")
 	}
-	if ticker.stops != 1 {
-		t.Fatalf("ticker stops = %d, want 1", ticker.stops)
-	}
-	if !reflect.DeepEqual(store.operations, []string{"delete"}) {
-		t.Fatalf("stop operations = %v, want withdrawal only", store.operations)
-	}
-	if err := transport.Stop(context.Background()); err != nil {
-		t.Fatalf("repeated Stop: %v", err)
-	}
-	if !reflect.DeepEqual(store.operations, []string{"delete"}) {
-		t.Fatalf("repeated Stop operations = %v", store.operations)
-	}
-	if err := transport.Ping(context.Background()); !errors.Is(err, cluster.ErrStopped) {
-		t.Fatalf("Ping after Stop error = %v", err)
-	}
+	require.Equal(t, 1, ticker.stops, "ticker stops")
+	require.Equal(t, []string{"delete"}, store.operations, "stop operations")
+	require.NoError(t, transport.Stop(context.Background()))
+	require.Equal(t, []string{"delete"}, store.operations)
+	require.ErrorIs(t, transport.Ping(context.Background()), cluster.ErrStopped)
 }
 
 func TestTransportStopReportsExpiredDeadlineAfterTerminatingOwnedMaintenance(t *testing.T) {
@@ -606,26 +501,16 @@ func TestTransportStopReportsExpiredDeadlineAfterTerminatingOwnedMaintenance(t *
 
 	stopCtx, cancelStop := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 	defer cancelStop()
-	if err := transport.Stop(stopCtx); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("Stop error = %v, want deadline exceeded", err)
-	}
-	if len(store.operations) != 0 {
-		t.Fatalf("expired-deadline operations = %v, want no withdrawal", store.operations)
-	}
+	require.ErrorIs(t, transport.Stop(stopCtx), context.DeadlineExceeded, "Stop error")
+	require.Empty(t, store.operations, "expired-deadline operations")
 	select {
 	case <-done:
 	default:
-		t.Fatal("deadline Stop returned before owned maintenance terminated")
+		require.FailNow(t, "deadline Stop returned before owned maintenance terminated")
 	}
-	if ticker.stops != 1 {
-		t.Fatalf("ticker stops = %d, want 1", ticker.stops)
-	}
-	if err := transport.Stop(context.Background()); err != nil {
-		t.Fatalf("repeated completed Stop: %v", err)
-	}
-	if len(store.operations) != 0 {
-		t.Fatalf("repeated completed Stop operations = %v", store.operations)
-	}
+	require.Equal(t, 1, ticker.stops, "ticker stops")
+	require.NoError(t, transport.Stop(context.Background()))
+	require.Empty(t, store.operations)
 }
 
 func TestTransportStopCancellationReleasesInFlightDiscoveryWithoutAbandonment(t *testing.T) {
@@ -661,41 +546,25 @@ func TestTransportStopCancellationReleasesInFlightDiscoveryWithoutAbandonment(t 
 
 	stopCtx, cancelStop := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 	defer cancelStop()
-	if err := transport.Stop(stopCtx); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("deadline Stop error = %v, want deadline exceeded", err)
-	}
+	require.ErrorIs(t, transport.Stop(stopCtx), context.DeadlineExceeded, "deadline Stop error")
 	<-store.upsertReleased
-	if err := transport.Ping(context.Background()); !errors.Is(err, cluster.ErrStopped) {
-		t.Fatalf("Ping after deadline shutdown error = %v", err)
-	}
+	require.ErrorIs(t, transport.Ping(context.Background()), cluster.ErrStopped)
 	select {
 	case <-done:
 	default:
-		t.Fatal("deadline Stop returned before in-flight discovery maintenance terminated")
+		require.FailNow(t, "deadline Stop returned before in-flight discovery maintenance terminated")
 	}
-	if ticker.stops != 1 {
-		t.Fatalf("ticker stops = %d, want 1", ticker.stops)
-	}
+	require.Equal(t, 1, ticker.stops, "ticker stops")
 	wantOperations := []string{"upsert", "cleanup", "list"}
-	if !reflect.DeepEqual(store.operations, wantOperations) {
-		t.Fatalf("shutdown operations = %v, want %v", store.operations, wantOperations)
-	}
+	require.Equal(t, wantOperations, store.operations, "shutdown operations")
 	wantDiagnostics := []string{"cluster discovery heartbeat failed", "cluster discovery cleanup failed", "cluster discovery peer listing failed"}
-	if !reflect.DeepEqual(diagnostics.messages, wantDiagnostics) {
-		t.Fatalf("maintenance diagnostics = %v, want %v", diagnostics.messages, wantDiagnostics)
-	}
-	if len(diagnostics.errors) != 3 ||
-		!errors.Is(diagnostics.errors[0], context.Canceled) ||
-		!errors.Is(diagnostics.errors[1], context.Canceled) ||
-		!errors.Is(diagnostics.errors[2], context.Canceled) {
-		t.Fatalf("maintenance diagnostic errors = %v", diagnostics.errors)
-	}
-	if err := transport.Stop(context.Background()); err != nil {
-		t.Fatalf("repeated completed Stop: %v", err)
-	}
-	if !reflect.DeepEqual(store.operations, wantOperations) {
-		t.Fatalf("repeated completed Stop operations = %v", store.operations)
-	}
+	require.Equal(t, wantDiagnostics, diagnostics.messages, "maintenance diagnostics")
+	require.Len(t, diagnostics.errors, 3)
+	require.ErrorIs(t, diagnostics.errors[0], context.Canceled)
+	require.ErrorIs(t, diagnostics.errors[1], context.Canceled)
+	require.ErrorIs(t, diagnostics.errors[2], context.Canceled)
+	require.NoError(t, transport.Stop(context.Background()))
+	require.Equal(t, wantOperations, store.operations)
 }
 
 func TestTransportStopDiagnosesWithdrawalFailureAndRemainsIdempotent(t *testing.T) {
@@ -707,24 +576,12 @@ func TestTransportStopDiagnosesWithdrawalFailureAndRemainsIdempotent(t *testing.
 	maintenance, _ := newDiscoveryMaintenanceForTest(store, diagnostics, time.Now(), nil)
 	transport := &Transport{state: stateStarted, discovery: maintenance}
 
-	if err := transport.Stop(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(store.operations, []string{"delete"}) {
-		t.Fatalf("withdrawal operations = %v", store.operations)
-	}
-	if !reflect.DeepEqual(diagnostics.messages, []string{"cluster discovery delete failed"}) {
-		t.Fatalf("diagnostic messages = %v", diagnostics.messages)
-	}
-	if !reflect.DeepEqual(diagnostics.errors, []error{withdrawErr}) {
-		t.Fatalf("diagnostic errors = %v", diagnostics.errors)
-	}
-	if err := transport.Stop(context.Background()); err != nil {
-		t.Fatalf("repeated Stop: %v", err)
-	}
-	if len(store.operations) != 1 {
-		t.Fatalf("repeated Stop operations = %v", store.operations)
-	}
+	require.NoError(t, transport.Stop(context.Background()))
+	require.Equal(t, []string{"delete"}, store.operations)
+	require.Equal(t, []string{"cluster discovery delete failed"}, diagnostics.messages)
+	require.Equal(t, []error{withdrawErr}, diagnostics.errors)
+	require.NoError(t, transport.Stop(context.Background()))
+	require.Len(t, store.operations, 1)
 }
 
 func TestTransportStopBeforeStartPerformsNoDiscoveryWork(t *testing.T) {
@@ -739,37 +596,29 @@ func TestTransportStopBeforeStartPerformsNoDiscoveryWork(t *testing.T) {
 	)
 	transport := &Transport{state: stateCreated, discovery: maintenance}
 
-	if err := transport.Stop(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if len(store.operations) != 0 {
-		t.Fatalf("Stop before Start operations = %v", store.operations)
-	}
-	if *tickerCreations != 0 {
-		t.Fatalf("Stop before Start created %d tickers", *tickerCreations)
-	}
-	if err := transport.Stop(context.Background()); err != nil {
-		t.Fatalf("repeated Stop before Start: %v", err)
-	}
+	require.NoError(t, transport.Stop(context.Background()))
+	require.Empty(t, store.operations)
+	require.Equal(t, 0, *tickerCreations, "Stop before Start created")
+	require.NoError(t, transport.Stop(context.Background()))
 }
 
 func TestMemberlistLeaveTimeoutUsesRemainingStopDeadline(t *testing.T) {
 	t.Parallel()
 
-	if got, ok := memberlistLeaveTimeout(context.Background()); !ok || got != time.Second {
-		t.Fatalf("background leave timeout = %v, %t; want 1s, true", got, ok)
-	}
+	got, ok := memberlistLeaveTimeout(context.Background())
+	require.True(t, ok, "background leave timeout")
+	require.Equal(t, time.Second, got, "background leave timeout")
 	shortCtx, cancelShort := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancelShort()
-	got, ok := memberlistLeaveTimeout(shortCtx)
-	if !ok || got <= 0 || got > 100*time.Millisecond {
-		t.Fatalf("short-deadline leave timeout = %v, %t", got, ok)
-	}
+	got, ok = memberlistLeaveTimeout(shortCtx)
+	require.True(t, ok, "short-deadline leave timeout")
+	require.Positive(t, int64(got), "short-deadline leave timeout")
+	require.LessOrEqual(t, got, 100*time.Millisecond, "short-deadline leave timeout")
 	expiredCtx, cancelExpired := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 	defer cancelExpired()
-	if got, ok := memberlistLeaveTimeout(expiredCtx); ok || got != 0 {
-		t.Fatalf("expired leave timeout = %v, %t; want 0, false", got, ok)
-	}
+	got, ok = memberlistLeaveTimeout(expiredCtx)
+	require.False(t, ok, "expired leave timeout")
+	require.Equal(t, int64(0), int64(got), "expired leave timeout")
 }
 
 var _ cluster.DiscoveryStore = (*recordingDiscoveryStore)(nil)

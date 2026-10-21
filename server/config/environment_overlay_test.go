@@ -12,22 +12,22 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestEnvironmentOverrideCatalogContracts(t *testing.T) {
-	if len(environmentOverrideCatalog) != 125 {
-		t.Fatalf("environment override definitions = %d, want 125", len(environmentOverrideCatalog))
-	}
+	require.Len(t, environmentOverrideCatalog, 125, "environment override definitions")
 
 	seen := make(map[string]struct{}, len(environmentOverrideCatalog))
 	for _, definition := range environmentOverrideCatalog {
 		definition := definition
 		t.Run(definition.key, func(t *testing.T) {
-			if _, exists := seen[definition.key]; exists {
-				t.Fatalf("environment override %q is duplicated", definition.key)
-			}
+			_, exists := seen[definition.key]
+			require.False(t, exists, "environment override %q is duplicated", definition.key)
 			seen[definition.key] = struct{}{}
 
 			persisted := Default()
@@ -40,20 +40,12 @@ func TestEnvironmentOverrideCatalogContracts(t *testing.T) {
 				},
 				[]environmentOverride{definition},
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(overlay.keys(), []string{definition.key}) {
-				t.Fatalf("applied overrides = %v, want %q", overlay.keys(), definition.key)
-			}
-			if reflect.DeepEqual(candidate, persisted) {
-				t.Fatal("environment override did not change configuration")
-			}
+			require.NoError(t, err)
+			require.Equal(t, []string{definition.key}, overlay.keys(), "applied overrides")
+			require.NotEqual(t, persisted, candidate, "environment override did not change configuration")
 
 			overlay.restore(&candidate, persisted)
-			if !reflect.DeepEqual(candidate, persisted) {
-				t.Fatal("environment override did not restore persisted configuration")
-			}
+			require.Equal(t, persisted, candidate, "environment override did not restore persisted configuration")
 		})
 	}
 }
@@ -66,9 +58,7 @@ func TestEveryEnvironmentOverrideRoundTripsThroughStoreSet(t *testing.T) {
 
 			initial := validBaseForEnvironmentOverride(definition.key)
 			data, err := json.Marshal(initial)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			value := validEnvironmentValue(t, definition, initial)
 			store, err := NewStore(
 				context.Background(),
@@ -77,14 +67,10 @@ func TestEveryEnvironmentOverrideRoundTripsThroughStoreSet(t *testing.T) {
 					return value, key == definition.key
 				}},
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			t.Cleanup(func() { _ = store.Close() })
 
-			if !reflect.DeepEqual(store.EnvironmentOverrides(), []string{definition.key}) {
-				t.Fatalf("environment overrides = %v", store.EnvironmentOverrides())
-			}
+			require.Equal(t, []string{definition.key}, store.EnvironmentOverrides())
 			candidate := store.Get()
 			if definition.key == "PROCTOR_MAIL_FROM_NAME" {
 				candidate.Authentication.Bootstrap.DevelopmentMode = false
@@ -92,9 +78,8 @@ func TestEveryEnvironmentOverrideRoundTripsThroughStoreSet(t *testing.T) {
 			} else {
 				candidate.Mail.FromName = "Changed by Store.Set"
 			}
-			if _, _, err := store.Set(context.Background(), candidate); err != nil {
-				t.Fatal(err)
-			}
+			_, _, err = store.Set(context.Background(), candidate)
+			require.NoError(t, err)
 
 			persisted := store.GetPersisted()
 			want := initial.Clone()
@@ -104,9 +89,7 @@ func TestEveryEnvironmentOverrideRoundTripsThroughStoreSet(t *testing.T) {
 			} else {
 				want.Mail.FromName = "Changed by Store.Set"
 			}
-			if !reflect.DeepEqual(persisted, want) {
-				t.Fatal("Store.Set persisted an environment-owned value")
-			}
+			require.Equal(t, want, persisted, "Store.Set persisted an environment-owned value")
 		})
 	}
 }
@@ -122,15 +105,9 @@ func TestEnvironmentOverrideCatalogRejectsDuplicatesWithoutMutation(t *testing.T
 		func(string) (string, bool) { return "changed", true },
 		catalog,
 	)
-	if err == nil {
-		t.Fatal("duplicate environment override was accepted")
-	}
-	if overlay.keys() != nil {
-		t.Fatalf("applied overrides = %v, want nil", overlay.keys())
-	}
-	if !reflect.DeepEqual(candidate, want) {
-		t.Fatal("duplicate catalog mutated configuration")
-	}
+	require.Error(t, err, "duplicate environment override was accepted")
+	require.Nil(t, overlay.keys(), "applied overrides")
+	require.Equal(t, want, candidate, "duplicate catalog mutated configuration")
 }
 
 func environmentValueThatChanges(
@@ -154,7 +131,7 @@ func environmentValueThatChanges(
 			return value
 		}
 	}
-	t.Fatalf("no test value changes environment override %q", definition.key)
+	require.FailNow(t, fmt.Sprintf("no test value changes environment override %q", definition.key))
 	return ""
 }
 
@@ -223,7 +200,7 @@ func validEnvironmentValue(
 			return value
 		}
 	}
-	t.Fatalf("no valid test value for environment override %q", definition.key)
+	require.FailNow(t, fmt.Sprintf("no valid test value for environment override %q", definition.key))
 	return ""
 }
 

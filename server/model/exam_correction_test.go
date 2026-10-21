@@ -8,9 +8,12 @@
 package model
 
 import (
+	"fmt"
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestCorrectionSelectionsEnforceActualChangedAreaMinimums(t *testing.T) {
@@ -40,17 +43,14 @@ func TestCorrectionSelectionsEnforceActualChangedAreaMinimums(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			for _, required := range []bool{false, true} {
 				notice, err := NewCandidateCorrectionNotice("Updated reference.", test.areas, test.capabilities, required)
-				if (err == nil) != test.valid {
-					t.Fatalf("required=%v, notice=%#v, err=%v", required, notice, err)
-				}
+				require.Equal(t, test.valid, err == nil, "required=%v, notice=%#v, err=%v", required, notice, err)
 				if !test.valid {
 					continue
 				}
 				clone := notice.Clone()
 				clone.AffectedCapabilities[0] = "invalid"
-				if notice.Validate() != nil || clone.Validate() == nil {
-					t.Fatal("clone aliases or loses its selection")
-				}
+				require.NoError(t, notice.Validate(), "clone aliases or loses its selection")
+				require.Error(t, clone.Validate(), "clone aliases or loses its selection")
 			}
 		})
 	}
@@ -64,26 +64,20 @@ func TestPendingCorrectionUnionPreservesOverlapsAndIgnoresNoticeOnly(t *testing.
 		{RevisionID: NewExamRevisionID(), RevisionNumber: 4, EffectiveAt: at, Summary: "Instructions changed.", ChangedAreas: []ExamCorrectionChangedArea{ExamCorrectionChangedInstructions}, AffectedCapabilities: []CandidateCapability{CandidateCapabilitySubmission, CandidateCapabilityWorkspace}, AcknowledgementState: CorrectionAcknowledgementNotRequired},
 	}
 	for _, notice := range notices {
-		if err := notice.Validate(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, notice.Validate())
 	}
-	if got := PendingCorrectionCapabilities(notices); !slices.Equal(got, []CandidateCapability{CandidateCapabilityBrowser}) {
-		t.Fatal(got)
-	}
+	got := PendingCorrectionCapabilities(notices)
+	require.True(t, slices.Equal(got, []CandidateCapability{CandidateCapabilityBrowser}), fmt.Sprint(got))
 	notices[0].AcknowledgementState = CorrectionAcknowledgementAcknowledged
 	notices[0].AcknowledgedAt = OptionalTimeFrom(at.Add(time.Second))
-	if got := PendingCorrectionCapabilities(notices); !slices.Equal(got, []CandidateCapability{CandidateCapabilityBrowser}) {
-		t.Fatal("one acknowledgement removed another gate", got)
-	}
+	got = PendingCorrectionCapabilities(notices)
+	require.True(t, slices.Equal(got, []CandidateCapability{CandidateCapabilityBrowser}), fmt.Sprint("one acknowledgement removed another gate", got))
 	notices[1].AcknowledgementState = CorrectionAcknowledgementAcknowledged
 	notices[1].AcknowledgedAt = OptionalTimeFrom(at.Add(time.Second))
-	if got := PendingCorrectionCapabilities(notices); len(got) != 0 || got == nil {
-		t.Fatal("empty union is not an array", got)
-	}
+	got = PendingCorrectionCapabilities(notices)
+	require.Empty(t, got, "empty union is not an array")
+	require.NotNil(t, got, "empty union is not an array")
 	clone := CloneCandidateLiveCorrections(notices)
 	clone[0].AffectedCapabilities[0] = CandidateCapabilityWorkspace
-	if notices[0].AffectedCapabilities[0] != CandidateCapabilityBrowser {
-		t.Fatal("notice projection aliases its selection")
-	}
+	require.Equal(t, CandidateCapabilityBrowser, notices[0].AffectedCapabilities[0], "notice projection aliases its selection")
 }

@@ -11,6 +11,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRegistryFingerprintIsDistinctFromSHA256(t *testing.T) {
@@ -29,11 +32,9 @@ func TestRegistryFingerprintIsDistinctFromSHA256(t *testing.T) {
 		{name: "non hex", value: "fnv1a64:35ec2f0722dc930g"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if got := IsValidRegistryFingerprint(test.value); got != test.valid {
-				t.Fatalf("registry valid = %v; want %v", got, test.valid)
-			}
-			if test.valid && IsValidSHA256Fingerprint(test.value) {
-				t.Fatal("registry selector was accepted as a cryptographic fingerprint")
+			require.Equal(t, test.valid, IsValidRegistryFingerprint(test.value), "registry valid")
+			if test.valid {
+				require.False(t, IsValidSHA256Fingerprint(test.value), "registry selector was accepted as a cryptographic fingerprint")
 			}
 		})
 	}
@@ -43,14 +44,13 @@ func TestInitialDesktopCompatibilityPolicyIsValid(t *testing.T) {
 	t.Parallel()
 
 	policy := NewInitialDesktopCompatibilityPolicy(NewInstitutionID(), time.UnixMilli(100))
-	if err := policy.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	if policy.Revision != 1 || policy.MinimumDesktopRelease != "" ||
-		len(policy.RevokedDesktopBuildIDs) != 0 || policy.AdministratorMessage != "" ||
-		policy.Availability != DesktopAvailabilityReady || policy.RetryAt.Valid {
-		t.Fatalf("initial policy = %#v", policy)
-	}
+	require.NoError(t, policy.Validate())
+	require.Equal(t, int64(1), policy.Revision)
+	require.Empty(t, policy.MinimumDesktopRelease)
+	require.Empty(t, policy.RevokedDesktopBuildIDs)
+	require.Empty(t, policy.AdministratorMessage)
+	require.Equal(t, DesktopAvailabilityReady, policy.Availability)
+	require.False(t, policy.RetryAt.Valid)
 }
 
 func TestDesktopCompatibilityPolicyReplacementCanonicalizesEmptyBuildSet(t *testing.T) {
@@ -58,12 +58,9 @@ func TestDesktopCompatibilityPolicyReplacementCanonicalizesEmptyBuildSet(t *test
 	at := time.Unix(100, 0)
 	policy := NewInitialDesktopCompatibilityPolicy(NewInstitutionID(), at)
 	settings := DesktopCompatibilityPolicySettings{MinimumDesktopRelease: "1.2.0", Availability: DesktopAvailabilityReady}
-	if err := policy.Replace(1, settings, at.Add(time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	if policy.RevokedDesktopBuildIDs == nil || len(policy.RevokedDesktopBuildIDs) != 0 {
-		t.Fatal("empty revoked build set must remain an array for persistence and HTTP")
-	}
+	require.NoError(t, policy.Replace(1, settings, at.Add(time.Second)))
+	require.NotNil(t, policy.RevokedDesktopBuildIDs, "empty revoked build set must remain an array for persistence and HTTP")
+	require.Empty(t, policy.RevokedDesktopBuildIDs, "empty revoked build set must remain an array for persistence and HTTP")
 }
 
 func TestDesktopCompatibilityPolicySettingsRejectInvalidValues(t *testing.T) {
@@ -98,9 +95,7 @@ func TestDesktopCompatibilityPolicySettingsRejectInvalidValues(t *testing.T) {
 			if candidate.Availability == "" && test.name != "missing availability" {
 				candidate.Availability = DesktopAvailabilityReady
 			}
-			if err := candidate.Validate(); err == nil {
-				t.Fatal("Validate() accepted invalid settings")
-			}
+			require.Error(t, candidate.Validate(), "Validate() accepted invalid settings")
 		})
 	}
 }
@@ -116,27 +111,19 @@ func TestDesktopCompatibilityPolicyReplaceIsRevisionFencedAndDefensive(t *testin
 		Availability:           DesktopAvailabilityMaintenance,
 		RetryAt:                OptionalTimeFrom(time.UnixMilli(500)),
 	}
-	if err := policy.Replace(1, settings, time.UnixMilli(200)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, policy.Replace(1, settings, time.UnixMilli(200)))
 	settings.RevokedDesktopBuildIDs[0] = "mutated"
-	if policy.Revision != 2 || policy.RevokedDesktopBuildIDs[0] != "build-1" ||
-		policy.Availability != DesktopAvailabilityMaintenance || !policy.RetryAt.Valid {
-		t.Fatalf("replacement = %#v", policy)
-	}
-	if err := policy.Replace(1, policy.Settings(), time.UnixMilli(300)); err != ErrDesktopCompatibilityPolicyRevisionConflict {
-		t.Fatalf("stale Replace() error = %v", err)
-	}
+	require.Equal(t, int64(2), policy.Revision)
+	require.Equal(t, "build-1", policy.RevokedDesktopBuildIDs[0])
+	require.Equal(t, DesktopAvailabilityMaintenance, policy.Availability)
+	require.True(t, policy.RetryAt.Valid)
+	require.Equal(t, ErrDesktopCompatibilityPolicyRevisionConflict, policy.Replace(1, policy.Settings(), time.UnixMilli(300)))
 	staleRetry := settings
 	staleRetry.RetryAt = OptionalTimeFrom(time.UnixMilli(300))
-	if err := policy.Replace(policy.Revision, staleRetry, time.UnixMilli(300)); err == nil {
-		t.Fatal("Replace() accepted a retry time at the policy decision time")
-	}
+	require.Error(t, policy.Replace(policy.Revision, staleRetry, time.UnixMilli(300)), "Replace() accepted a retry time at the policy decision time")
 	malformed := policy.Clone()
 	malformed.RetryAt = OptionalTimeFrom(malformed.UpdatedAt)
-	if err := malformed.Validate(); err == nil {
-		t.Fatal("Validate() accepted a nonfuture persisted retry time")
-	}
+	require.Error(t, malformed.Validate(), "Validate() accepted a nonfuture persisted retry time")
 }
 
 func TestDesktopBuildTupleValidatesSignedCatalogIdentity(t *testing.T) {
@@ -153,9 +140,7 @@ func TestDesktopBuildTupleValidatesSignedCatalogIdentity(t *testing.T) {
 		DesktopTarget:                           "darwin-arm64", ConfigurationManifest: EmptyAttemptConfigurationManifest(),
 		CapabilityMatrixIdentity: "matrix-1.2.3",
 	}
-	if err := valid.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, valid.Validate())
 
 	tests := []struct {
 		name   string
@@ -179,9 +164,7 @@ func TestDesktopBuildTupleValidatesSignedCatalogIdentity(t *testing.T) {
 			t.Parallel()
 			candidate := valid
 			test.mutate(&candidate)
-			if err := candidate.Validate(); err == nil {
-				t.Fatal("Validate() accepted invalid tuple")
-			}
+			require.Error(t, candidate.Validate(), "Validate() accepted invalid tuple")
 		})
 	}
 }
@@ -198,9 +181,7 @@ func TestDesktopReleaseValidationFollowsSemanticVersionTwo(t *testing.T) {
 		"999999999999999999999999.2.3-rc.1+build-7",
 	}
 	for _, release := range valid {
-		if !IsValidDesktopRelease(release) {
-			t.Errorf("IsValidDesktopRelease(%q) = false", release)
-		}
+		assert.True(t, IsValidDesktopRelease(release), "IsValidDesktopRelease")
 	}
 
 	invalid := []string{
@@ -209,9 +190,7 @@ func TestDesktopReleaseValidationFollowsSemanticVersionTwo(t *testing.T) {
 		"1.2.3+build+other", "1.2.3-α", " 1.2.3",
 	}
 	for _, release := range invalid {
-		if IsValidDesktopRelease(release) {
-			t.Errorf("IsValidDesktopRelease(%q) = true", release)
-		}
+		assert.False(t, IsValidDesktopRelease(release), "IsValidDesktopRelease")
 	}
 }
 
@@ -233,21 +212,12 @@ func TestDesktopReleaseComparisonUsesSemanticVersionPrecedence(t *testing.T) {
 	}
 	for index := 0; index < len(ordered)-1; index++ {
 		comparison, err := CompareDesktopReleases(ordered[index], ordered[index+1])
-		if err != nil {
-			t.Fatal(err)
-		}
-		if comparison >= 0 {
-			t.Errorf("CompareDesktopReleases(%q, %q) = %d, want < 0", ordered[index], ordered[index+1], comparison)
-		}
+		require.NoError(t, err)
+		assert.Negative(t, comparison, "CompareDesktopReleases")
 	}
 	comparison, err := CompareDesktopReleases("1.2.3+darwin.1", "1.2.3+linux.9")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if comparison != 0 {
-		t.Fatalf("build metadata changed precedence: %d", comparison)
-	}
-	if _, err := CompareDesktopReleases("1.2", "1.2.3"); err == nil {
-		t.Fatal("CompareDesktopReleases() accepted an invalid release")
-	}
+	require.NoError(t, err)
+	require.Equal(t, 0, comparison, "build metadata changed precedence")
+	_, err = CompareDesktopReleases("1.2", "1.2.3")
+	require.Error(t, err, "CompareDesktopReleases() accepted an invalid release")
 }

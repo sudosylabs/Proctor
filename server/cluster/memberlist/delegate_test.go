@@ -17,6 +17,7 @@ import (
 	"time"
 
 	hashimemberlist "github.com/hashicorp/memberlist"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNodeMetadataAdvertisesOnlyCompiledProtocolAndNeverTruncates(t *testing.T) {
@@ -26,15 +27,10 @@ func TestNodeMetadataAdvertisesOnlyCompiledProtocolAndNeverTruncates(t *testing.
 	delegate := &delegate{transport: transport}
 	payload := delegate.NodeMeta(hashimemberlist.MetaMaxSize)
 	var meta nodeMeta
-	if err := json.Unmarshal(payload, &meta); err != nil {
-		t.Fatal(err)
-	}
-	if meta.ProtocolMin != supportedProtocolMin || meta.ProtocolMax != supportedProtocolMax {
-		t.Fatalf("advertised protocol = %d..%d", meta.ProtocolMin, meta.ProtocolMax)
-	}
-	if got := delegate.NodeMeta(len(payload) - 1); got != nil {
-		t.Fatalf("oversized metadata was truncated to %q", got)
-	}
+	require.NoError(t, json.Unmarshal(payload, &meta))
+	require.Equal(t, supportedProtocolMin, meta.ProtocolMin, "advertised protocol")
+	require.Equal(t, supportedProtocolMax, meta.ProtocolMax, "advertised protocol")
+	require.Nil(t, delegate.NodeMeta(len(payload)-1))
 }
 
 func TestTransportConfigurationCopiesAndValidatesKeyring(t *testing.T) {
@@ -45,20 +41,17 @@ func TestTransportConfigurationCopiesAndValidatesKeyring(t *testing.T) {
 	cfg := validInternalConfig(primary)
 	cfg.DecryptionKeys = [][]byte{fallback}
 	transport, err := New(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	primary[0] = 9
 	fallback[0] = 9
-	if transport.cfg.EncryptionKey[0] != 1 || transport.cfg.DecryptionKeys[0][0] != 2 {
-		t.Fatal("transport configuration aliases caller key material")
-	}
+	require.Equal(t, byte(1), transport.cfg.EncryptionKey[0], "transport configuration aliases caller key material")
+	require.Equal(t, byte(2), transport.cfg.DecryptionKeys[0][0], "transport configuration aliases caller key material")
 
 	duplicate := validInternalConfig(bytes.Repeat([]byte{3}, 32))
 	duplicate.DecryptionKeys = [][]byte{bytes.Repeat([]byte{3}, 32)}
-	if _, err := New(duplicate); err == nil || err.Error() != "cluster encryption keyring contains duplicate keys" {
-		t.Fatalf("duplicate keyring error = %v", err)
-	}
+	_, err = New(duplicate)
+	require.Error(t, err)
+	require.Equal(t, "cluster encryption keyring contains duplicate keys", err.Error())
 }
 
 func TestTransportRejectsOversizedLocalMetadataBeforeStart(t *testing.T) {
@@ -66,9 +59,9 @@ func TestTransportRejectsOversizedLocalMetadataBeforeStart(t *testing.T) {
 
 	cfg := validInternalConfig(bytes.Repeat([]byte{1}, 32))
 	cfg.ServerVersion = strings.Repeat("v", 129)
-	if _, err := New(cfg); err == nil || !strings.Contains(err.Error(), "server_version is invalid") {
-		t.Fatalf("oversized metadata error = %v", err)
-	}
+	_, err := New(cfg)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "server_version is invalid")
 }
 
 func TestBroadcastMembersStopsOnCancellationAndPreservesSendErrors(t *testing.T) {
@@ -94,12 +87,10 @@ func TestBroadcastMembersStopsOnCancellationAndPreservesSendErrors(t *testing.T)
 			return sendErr
 		},
 	)
-	if !errors.Is(err, sendErr) || !errors.Is(err, context.Canceled) {
-		t.Fatalf("broadcast error = %v, want send failure joined with cancellation", err)
-	}
-	if len(sent) != 1 || sent[0] != "node-a" {
-		t.Fatalf("sent peers = %v, want only node-a", sent)
-	}
+	require.ErrorIs(t, err, sendErr, "broadcast error")
+	require.ErrorIs(t, err, context.Canceled, "broadcast error")
+	require.Len(t, sent, 1, "sent peers")
+	require.Equal(t, "node-a", sent[0], "sent peers")
 }
 
 func validInternalConfig(key []byte) Config {

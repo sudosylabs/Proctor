@@ -9,8 +9,9 @@ package config
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestWorkLimitsDefaultIndependentlyAndRejectUnboundedConfiguration(t *testing.T) {
@@ -23,31 +24,24 @@ func TestWorkLimitsDefaultIndependentlyAndRejectUnboundedConfiguration(t *testin
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cfg := Default()
-			if *test.field(&cfg) != 2 {
-				t.Fatal("default work limit must admit two operations")
-			}
+			require.Equal(t, 2, *test.field(&cfg), "default work limit must admit two operations")
 			for _, invalid := range []int{0, -1} {
 				*test.field(&cfg) = invalid
-				if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), test.name) {
-					t.Fatalf("validation of limit %d = %v", invalid, err)
-				}
+				err := cfg.Validate()
+				require.Error(t, err, "validation of limit %d", invalid)
+				require.Contains(t, err.Error(), test.name, "validation of limit %d", invalid)
 			}
 			*test.field(&cfg) = 1
-			if err := cfg.Validate(); err != nil {
-				t.Fatalf("one-operation policy rejected: %v", err)
-			}
+			require.NoError(t, cfg.Validate())
 		})
 	}
 }
 
 func TestExistingConfigurationReceivesDefaultWorkLimits(t *testing.T) {
 	configuration, err := NewStore(context.Background(), NewMemoryStore([]byte(`{"Version":1}`)), StoreOptions{LookupEnv: noEnvironment})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = configuration.Close() })
 	current := configuration.Get()
-	if current.Authentication.Password.MaximumConcurrentOperations != 2 || current.FileContent.MaximumConcurrentOperations != 2 {
-		t.Fatal("omitted limits did not receive bounded defaults")
-	}
+	require.Equal(t, 2, current.Authentication.Password.MaximumConcurrentOperations, "omitted limits did not receive bounded defaults")
+	require.Equal(t, 2, current.FileContent.MaximumConcurrentOperations, "omitted limits did not receive bounded defaults")
 }

@@ -11,22 +11,18 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func manualSuspensionAggregate(t *testing.T, at time.Time) (*ExamAttempt, *AttemptParticipation, *AttemptConnection) {
 	t.Helper()
 	attempt, err := NewExamAttempt(NewExamAttemptID(), NewExamID(), NewExamSittingID(), NewUserID(), NewExamRevisionID(), at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	participation, err := NewAttemptParticipation(NewAttemptParticipationID(), attempt.ID, NewSessionID(), 1, HashToken(NewCredentialToken()), at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	connection, err := NewAttemptConnection(NewAttemptConnectionID(), attempt.ID, participation.ID, NewSessionID(), at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return attempt, participation, connection
 }
 
@@ -36,33 +32,28 @@ func TestSuspendExamAttemptByManagerEndsLiveContinuityAsKicked(t *testing.T) {
 	kickedAt := at.Add(time.Minute)
 
 	attempt, participation, connection := manualSuspensionAggregate(t, at)
-	if err := SuspendExamAttemptByManager(attempt, participation, connection, kickedAt); err != nil {
-		t.Fatal(err)
-	}
-	if attempt.State != ExamAttemptSuspended || attempt.Revision != 2 || participation.State != AttemptParticipationEnded ||
-		participation.EndReason != AttemptParticipationEndKicked || connection.State != AttemptConnectionClosed ||
-		connection.CloseReason != AttemptConnectionCloseKicked || !connection.ClosedAt.Time.Equal(kickedAt) {
-		t.Fatalf("kicked aggregate = %#v / %#v / %#v", attempt, participation, connection)
-	}
+	require.NoError(t, SuspendExamAttemptByManager(attempt, participation, connection, kickedAt))
+	require.Equal(t, ExamAttemptSuspended, attempt.State, "kicked aggregate = %#v / %#v / %#v", attempt, participation, connection)
+	require.Equal(t, int64(2), attempt.Revision, "kicked aggregate = %#v / %#v / %#v", attempt, participation, connection)
+	require.Equal(t, AttemptParticipationEnded, participation.State, "kicked aggregate = %#v / %#v / %#v", attempt, participation, connection)
+	require.Equal(t, AttemptParticipationEndKicked, participation.EndReason, "kicked aggregate = %#v / %#v / %#v", attempt, participation, connection)
+	require.Equal(t, AttemptConnectionClosed, connection.State, "kicked aggregate = %#v / %#v / %#v", attempt, participation, connection)
+	require.Equal(t, AttemptConnectionCloseKicked, connection.CloseReason, "kicked aggregate = %#v / %#v / %#v", attempt, participation, connection)
+	require.True(t, connection.ClosedAt.Time.Equal(kickedAt), "kicked aggregate = %#v / %#v / %#v", attempt, participation, connection)
 
 	// A reconnecting candidate has an active generation but no open Connection.
 	attempt, participation, _ = manualSuspensionAggregate(t, at)
-	if err := SuspendExamAttemptByManager(attempt, participation, nil, kickedAt); err != nil ||
-		participation.EndReason != AttemptParticipationEndKicked {
-		t.Fatalf("reconnecting kick = %v / %#v", err, participation)
-	}
+	err := SuspendExamAttemptByManager(attempt, participation, nil, kickedAt)
+	require.NoError(t, err, "reconnecting kick = %v / %#v", err, participation)
+	require.Equal(t, AttemptParticipationEndKicked, participation.EndReason, "reconnecting kick = %v / %#v", err, participation)
 
 	attempt, participation, connection = manualSuspensionAggregate(t, at)
-	if err := SuspendExamAttemptByManager(attempt, participation, connection, at.Add(-time.Second)); err == nil ||
-		attempt.State != ExamAttemptActive || participation.State != AttemptParticipationActive || connection.State != AttemptConnectionOpen {
-		t.Fatalf("kick before the live records mutated them: %v", err)
-	}
-	if err := attempt.Suspend(kickedAt); err != nil {
-		t.Fatal(err)
-	}
-	if err := SuspendExamAttemptByManager(attempt, participation, connection, kickedAt); err == nil {
-		t.Fatal("already suspended Attempt was kicked again")
-	}
+	require.Error(t, SuspendExamAttemptByManager(attempt, participation, connection, at.Add(-time.Second)))
+	require.Equal(t, ExamAttemptActive, attempt.State)
+	require.Equal(t, AttemptParticipationActive, participation.State)
+	require.Equal(t, AttemptConnectionOpen, connection.State)
+	require.NoError(t, attempt.Suspend(kickedAt))
+	require.Error(t, SuspendExamAttemptByManager(attempt, participation, connection, kickedAt), "already suspended Attempt was kicked again")
 }
 
 func TestManualAttemptSuspensionProvenance(t *testing.T) {
@@ -71,30 +62,23 @@ func TestManualAttemptSuspensionProvenance(t *testing.T) {
 	actor := NewUserID()
 	suspension, err := NewManualAttemptSuspension(NewAttemptSuspensionID(), NewExamAttemptID(), NewAttemptParticipationID(), 1,
 		actor, "candidate left the room", at)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if suspension.Source != AttemptSuspensionSourceManual || suspension.CandidateReason != AttemptSuspensionCandidateReasonManagerSuspended ||
-		!suspension.FlagID.IsZero() || suspension.SuspendedByUserID != actor {
-		t.Fatalf("manual suspension = %#v", suspension)
-	}
-	if err = suspension.Reallow(NewUserID(), "returned to the room", at.Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, AttemptSuspensionSourceManual, suspension.Source)
+	require.Equal(t, AttemptSuspensionCandidateReasonManagerSuspended, suspension.CandidateReason)
+	require.True(t, suspension.FlagID.IsZero())
+	require.Equal(t, actor, suspension.SuspendedByUserID)
+	err = suspension.Reallow(NewUserID(), "returned to the room", at.Add(time.Minute))
+	require.NoError(t, err)
 	for _, reason := range []string{"", " padded", strings.Repeat("a", AttemptSuspensionPrivateReasonMaximumRunes+1)} {
-		if _, err = NewManualAttemptSuspension(NewAttemptSuspensionID(), NewExamAttemptID(), NewAttemptParticipationID(), 1,
-			actor, reason, at); err == nil {
-			t.Fatalf("manual suspension accepted private reason %q", reason)
-		}
+		_, err = NewManualAttemptSuspension(NewAttemptSuspensionID(), NewExamAttemptID(), NewAttemptParticipationID(), 1,
+			actor, reason, at)
+		require.Error(t, err, "manual suspension accepted private reason %q", reason)
 	}
 	invalid := *suspension
 	invalid.FlagID = NewIntegrityFlagID()
-	if invalid.Validate() == nil {
-		t.Fatal("manual suspension linked an Integrity Flag")
-	}
+	require.Error(t, invalid.Validate(), "manual suspension linked an Integrity Flag")
 	policy, err := NewPolicyAttemptSuspension(NewAttemptSuspensionID(), NewExamAttemptID(), NewAttemptParticipationID(),
 		NewIntegrityFlagID(), 1, AttemptSuspensionCandidateReasonManagerSuspended, at)
-	if err == nil || policy != nil {
-		t.Fatal("policy suspension accepted the manual candidate reason")
-	}
+	require.Error(t, err, "policy suspension accepted the manual candidate reason")
+	require.Nil(t, policy, "policy suspension accepted the manual candidate reason")
 }

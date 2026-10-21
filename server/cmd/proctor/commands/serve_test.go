@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestReloadSignalsRunOneBoundedReloadEachUntilCanceled(t *testing.T) {
@@ -33,15 +35,13 @@ func TestReloadSignalsRunOneBoundedReloadEachUntilCanceled(t *testing.T) {
 	}()
 	for range 2 {
 		signals <- syscall.SIGHUP
-		if bounded := <-reloads; !bounded {
-			t.Fatal("reload context has no deadline")
-		}
+		require.True(t, (<-reloads), "reload context has no deadline")
 	}
 	cancel()
 	select {
 	case <-done:
 	case <-time.After(time.Second):
-		t.Fatal("reload forwarding did not stop after cancellation")
+		require.FailNow(t, "reload forwarding did not stop after cancellation")
 	}
 }
 
@@ -53,14 +53,13 @@ func TestServeReceivesContextAndConfigPath(t *testing.T) {
 	var gotPath string
 	execute := testExecutors()
 	execute.serve = func(gotContext context.Context, path string) error {
-		if gotContext.Value(contextKey("request")) != "present" {
-			t.Fatal("serve context did not originate at the CLI root")
-		}
+		require.Equal(t, "present", gotContext.Value(contextKey("request")), "serve context did not originate at the CLI root")
 		gotPath = path
 		return nil
 	}
 	code, stdout, stderr := executeForTest(ctx, []string{"serve", "--config", "/etc/proctor.json"}, nil, execute)
-	if code != 0 || stdout != "" || stderr != "" || gotPath != "/etc/proctor.json" {
-		t.Fatalf("code=%d stdout=%q stderr=%q path=%q", code, stdout, stderr, gotPath)
-	}
+	require.Equal(t, 0, code, "code")
+	require.Empty(t, stdout, "code")
+	require.Empty(t, stderr, "code")
+	require.Equal(t, "/etc/proctor.json", gotPath, "code")
 }

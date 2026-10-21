@@ -22,6 +22,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
@@ -36,31 +38,27 @@ func TestCandidateExamPresentationRequiresBoundHeadersAndNeverEchoesSecrets(t *t
 	request := fake.candidateRequest(http.MethodGet, "/api/v1/exam-attempts/"+fake.attempt.ID.String()+"/presentation")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("status/cache = %d/%q: %s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
-	}
-	if fake.presentationAccess.AttemptID != fake.attempt.ID || fake.presentationAccess.ConnectionID != fake.connection.ID ||
-		fake.presentationAccess.ContinuityCredential != fake.credential {
-		t.Fatalf("candidate access = %#v", fake.presentationAccess)
-	}
-	if strings.Contains(response.Body.String(), fake.credential) || strings.Contains(response.Body.String(), "credential") ||
-		strings.Contains(response.Body.String(), "file_revision") || strings.Contains(response.Body.String(), "object_id") {
-		t.Fatalf("candidate response leaked protected internals: %s", response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "status/cache = %d/%q: %s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "status/cache = %d/%q: %s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+	require.Equal(t, fake.attempt.ID, fake.presentationAccess.AttemptID)
+	require.Equal(t, fake.connection.ID, fake.presentationAccess.ConnectionID)
+	require.Equal(t, fake.credential, fake.presentationAccess.ContinuityCredential)
+	require.NotContains(t, response.Body.String(), fake.credential)
+	require.NotContains(t, response.Body.String(), "credential")
+	require.NotContains(t, response.Body.String(), "file_revision")
+	require.NotContains(t, response.Body.String(), "object_id")
 	var payload map[string]json.RawMessage
 	var capabilities candidateRuntimeCapabilitiesResponse
 	var capacity examCapacityPolicyResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || len(payload) != 9 {
-		t.Fatalf("presentation shape = %v, %v", payload, err)
-	}
-	if err := json.Unmarshal(payload["capacity"], &capacity); err != nil || capacity != examCapacityPolicyResponseFromModel(fake.presentation.Capacity) {
-		t.Fatalf("presentation capacity = %#v, %v", capacity, err)
-	}
-	if err := json.Unmarshal(payload["candidate_runtime_capabilities"], &capabilities); err != nil ||
-		!capabilities.FocusLossCollectionEnabled || capabilities.SchemaVersion != 1 ||
-		capabilities.Departure.Allowed || capabilities.Departure.Reason != "attempt_in_progress" {
-		t.Fatalf("presentation capabilities = %#v, %v", capabilities, err)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &payload), "presentation shape")
+	require.Len(t, payload, 9, "presentation shape")
+	require.NoError(t, json.Unmarshal(payload["capacity"], &capacity), "presentation capacity")
+	require.Equal(t, examCapacityPolicyResponseFromModel(fake.presentation.Capacity), capacity, "presentation capacity")
+	require.NoError(t, json.Unmarshal(payload["candidate_runtime_capabilities"], &capabilities), "presentation capabilities = %#v", capabilities)
+	require.True(t, capabilities.FocusLossCollectionEnabled, "presentation capabilities = %#v", capabilities)
+	require.Equal(t, 1, capabilities.SchemaVersion, "presentation capabilities = %#v", capabilities)
+	require.False(t, capabilities.Departure.Allowed, "presentation capabilities = %#v", capabilities)
+	require.Equal(t, "attempt_in_progress", capabilities.Departure.Reason, "presentation capabilities = %#v", capabilities)
 }
 
 func TestCandidateExamHTTPRejectsMissingOrDuplicateProtectionHeadersBeforeApplication(t *testing.T) {
@@ -77,9 +75,9 @@ func TestCandidateExamHTTPRejectsMissingOrDuplicateProtectionHeadersBeforeApplic
 		mutate(request)
 		response := httptest.NewRecorder()
 		httpAPI.ServeHTTP(response, request)
-		if response.Code != http.StatusBadRequest || fake.presentationCalls != 0 || response.Header().Get("Cache-Control") != "no-store" {
-			t.Fatalf("status/calls/cache = %d/%d/%q: %s", response.Code, fake.presentationCalls, response.Header().Get("Cache-Control"), response.Body.String())
-		}
+		require.Equal(t, http.StatusBadRequest, response.Code, "status/calls/cache = %d/%d/%q: %s", response.Code, fake.presentationCalls, response.Header().Get("Cache-Control"), response.Body.String())
+		require.Equal(t, 0, fake.presentationCalls, "status/calls/cache = %d/%d/%q: %s", response.Code, fake.presentationCalls, response.Header().Get("Cache-Control"), response.Body.String())
+		require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "status/calls/cache = %d/%d/%q: %s", response.Code, fake.presentationCalls, response.Header().Get("Cache-Control"), response.Body.String())
 	}
 }
 
@@ -91,25 +89,26 @@ func TestCandidateExamWorkspaceUsesBoundedOpaqueCursor(t *testing.T) {
 	request := fake.candidateRequest(http.MethodGet, "/api/v1/exam-attempts/"+fake.attempt.ID.String()+"/workspace?limit=1")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || fake.workspaceQuery.Limit != 1 || response.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("status/query/cache = %d/%#v/%q: %s", response.Code, fake.workspaceQuery, response.Header().Get("Cache-Control"), response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "status/query/cache = %d/%#v/%q: %s", response.Code, fake.workspaceQuery, response.Header().Get("Cache-Control"), response.Body.String())
+	require.Equal(t, 1, fake.workspaceQuery.Limit, "status/query/cache = %d/%#v/%q: %s", response.Code, fake.workspaceQuery, response.Header().Get("Cache-Control"), response.Body.String())
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "status/query/cache = %d/%#v/%q: %s", response.Code, fake.workspaceQuery, response.Header().Get("Cache-Control"), response.Body.String())
 	var page candidateExamWorkspaceListResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || len(page.Items) != 1 || page.NextCursor == "" || page.Items[0].Size == nil {
-		t.Fatalf("Workspace page = %#v, %v", page, err)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &page), "Workspace page = %#v", page)
+	require.Len(t, page.Items, 1, "Workspace page = %#v", page)
+	require.NotEmpty(t, page.NextCursor, "Workspace page = %#v", page)
+	require.NotNil(t, page.Items[0].Size, "Workspace page = %#v", page)
 	cursor, err := decodeCandidateWorkspaceCursor(page.NextCursor)
-	if err != nil || cursor.ExpectedCursor != fake.workspacePage.Cursor || cursor.ID != fake.workspacePage.Items[0].EntryID ||
-		fake.workspaceQuery.ExpectedCursor != -1 {
-		t.Fatalf("Workspace cursor = %#v, %v", cursor, err)
-	}
+	require.NoError(t, err, "Workspace cursor = %#v", cursor)
+	require.Equal(t, fake.workspacePage.Cursor, cursor.ExpectedCursor, "Workspace cursor = %#v", cursor)
+	require.Equal(t, fake.workspacePage.Items[0].EntryID, cursor.ID, "Workspace cursor = %#v", cursor)
+	require.Equal(t, int64(-1), fake.workspaceQuery.ExpectedCursor, "Workspace cursor = %#v", cursor)
 	fake.workspacePage.HasMore = false
 	second := fake.candidateRequest(http.MethodGet, "/api/v1/exam-attempts/"+fake.attempt.ID.String()+"/workspace?cursor="+url.QueryEscape(page.NextCursor))
 	secondResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(secondResponse, second)
-	if secondResponse.Code != http.StatusOK || fake.workspaceQuery.ExpectedCursor != cursor.ExpectedCursor || fake.workspaceQuery.AfterEntryID != cursor.ID {
-		t.Fatalf("Workspace cursor forwarding = %d query=%#v body=%s", secondResponse.Code, fake.workspaceQuery, secondResponse.Body.String())
-	}
+	require.Equal(t, http.StatusOK, secondResponse.Code, "Workspace cursor forwarding = %d query=%#v body=%s", secondResponse.Code, fake.workspaceQuery, secondResponse.Body.String())
+	require.Equal(t, cursor.ExpectedCursor, fake.workspaceQuery.ExpectedCursor, "Workspace cursor forwarding = %d query=%#v body=%s", secondResponse.Code, fake.workspaceQuery, secondResponse.Body.String())
+	require.Equal(t, cursor.ID, fake.workspaceQuery.AfterEntryID, "Workspace cursor forwarding = %d query=%#v body=%s", secondResponse.Code, fake.workspaceQuery, secondResponse.Body.String())
 	malformed := fake.candidateRequest(http.MethodGet, "/api/v1/exam-attempts/"+fake.attempt.ID.String()+"/workspace?cursor=not-a-cursor")
 	malformedResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(malformedResponse, malformed)
@@ -130,19 +129,21 @@ func TestCandidateSubmitExamAttemptUsesStrictCausalSelectorsAndReturnsSafeReceip
 	request.Header.Set("Idempotency-Key", "submit-once")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusCreated || response.Header().Get("Cache-Control") != "no-store" ||
-		fake.submit.Access.AttemptID != fake.attempt.ID || fake.submit.Access.ParticipationID != fake.participation.ID ||
-		fake.submit.Access.Generation != 1 || fake.submit.ExpectedCurrentRevisionID != fake.submissionReceipt.ExamRevisionID ||
-		fake.submit.ExpectedWorkspaceCursor != 4 ||
-		fake.submit.FinalFocusLossSequence != 0 || fake.submit.IdempotencyKey != "submit-once" {
-		t.Fatalf("status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.submit, response.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, response.Code, "status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.submit, response.Body.String())
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.submit, response.Body.String())
+	require.Equal(t, fake.attempt.ID, fake.submit.Access.AttemptID, "status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.submit, response.Body.String())
+	require.Equal(t, fake.participation.ID, fake.submit.Access.ParticipationID, "status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.submit, response.Body.String())
+	require.Equal(t, int64(1), fake.submit.Access.Generation, "status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.submit, response.Body.String())
+	require.Equal(t, fake.submissionReceipt.ExamRevisionID, fake.submit.ExpectedCurrentRevisionID, "status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.submit, response.Body.String())
+	require.Equal(t, int64(4), fake.submit.ExpectedWorkspaceCursor, "status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.submit, response.Body.String())
+	require.Equal(t, int64(0), fake.submit.FinalFocusLossSequence, "status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.submit, response.Body.String())
+	require.Equal(t, "submit-once", fake.submit.IdempotencyKey, "status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.submit, response.Body.String())
 	var payload map[string]json.RawMessage
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || len(payload) != 8 ||
-		string(payload["exam_revision_id"]) != `"`+fake.submissionReceipt.ExamRevisionID.String()+`"` ||
-		string(payload["state"]) != `"submitted"` || string(payload["workspace_cursor"]) != "4" {
-		t.Fatalf("receipt=%v error=%v", payload, err)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &payload), "receipt")
+	require.Len(t, payload, 8, "receipt")
+	require.Equal(t, `"`+fake.submissionReceipt.ExamRevisionID.String()+`"`, string(payload["exam_revision_id"]), "receipt")
+	require.Equal(t, `"submitted"`, string(payload["state"]), "receipt")
+	require.Equal(t, "4", string(payload["workspace_cursor"]), "receipt")
 	assertNoForbiddenJSONTerms(t, response.Body.Bytes(),
 		"participation", "generation", "connection", "credential", "integrity", "gap", "path", "content", "evidence")
 }
@@ -163,19 +164,21 @@ func TestCandidateAcknowledgesExactCorrectionWithBoundSessionFences(t *testing.T
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
 	command := fake.correctionAcknowledgement
-	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" ||
-		command.Access.AttemptID != fake.attempt.ID || command.Access.ConnectionID != fake.connection.ID ||
-		command.Access.ContinuityCredential != fake.credential || command.Access.ParticipationID != fake.participation.ID ||
-		command.Access.Generation != 1 || command.CorrectionRevisionID != correctionID ||
-		command.ExpectedCurrentRevisionID != currentRevisionID || command.IdempotencyKey != "acknowledge-correction-once" {
-		t.Fatalf("status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), command, response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), command, response.Body.String())
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), command, response.Body.String())
+	require.Equal(t, fake.attempt.ID, command.Access.AttemptID, "status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), command, response.Body.String())
+	require.Equal(t, fake.connection.ID, command.Access.ConnectionID, "status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), command, response.Body.String())
+	require.Equal(t, fake.credential, command.Access.ContinuityCredential, "status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), command, response.Body.String())
+	require.Equal(t, fake.participation.ID, command.Access.ParticipationID, "status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), command, response.Body.String())
+	require.Equal(t, int64(1), command.Access.Generation, "status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), command, response.Body.String())
+	require.Equal(t, correctionID, command.CorrectionRevisionID, "status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), command, response.Body.String())
+	require.Equal(t, currentRevisionID, command.ExpectedCurrentRevisionID, "status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), command, response.Body.String())
+	require.Equal(t, "acknowledge-correction-once", command.IdempotencyKey, "status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), command, response.Body.String())
 	var payload map[string]json.RawMessage
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || len(payload) != 5 ||
-		string(payload["revision_id"]) != `"`+correctionID.String()+`"` ||
-		string(payload["acknowledgement_state"]) != `"acknowledged"` {
-		t.Fatalf("acknowledgement response = %v, %v", payload, err)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &payload), "acknowledgement response")
+	require.Len(t, payload, 5, "acknowledgement response")
+	require.Equal(t, `"`+correctionID.String()+`"`, string(payload["revision_id"]), "acknowledgement response")
+	require.Equal(t, `"acknowledged"`, string(payload["acknowledgement_state"]), "acknowledgement response")
 	assertNoForbiddenJSONTerms(t, response.Body.Bytes(),
 		"credential", "connection", "participation", "generation", "audit", "private")
 
@@ -190,9 +193,7 @@ func TestCandidateAcknowledgesExactCorrectionWithBoundSessionFences(t *testing.T
 	invalidResponse := httptest.NewRecorder()
 	invalidAPI.ServeHTTP(invalidResponse, invalid)
 	assertHTTPProblem(t, invalidResponse, http.StatusBadRequest, "request.invalid")
-	if invalidFake.correctionAcknowledgement.CorrectionRevisionID.IsValid() {
-		t.Fatalf("unknown-member request reached application: %#v", invalidFake.correctionAcknowledgement)
-	}
+	require.False(t, invalidFake.correctionAcknowledgement.CorrectionRevisionID.IsValid())
 }
 
 func TestSubmissionManifestCursorIsVersionedStrictAndPathFree(t *testing.T) {
@@ -200,24 +201,18 @@ func TestSubmissionManifestCursorIsVersionedStrictAndPathFree(t *testing.T) {
 
 	entryID := model.NewAttemptWorkspaceEntryID()
 	raw, err := encodeSubmissionManifestCursor(submissionManifestCursor{EntryID: entryID})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	decoded, err := decodeSubmissionManifestCursor(raw)
-	if err != nil || decoded.EntryID != entryID {
-		t.Fatalf("decoded cursor = %#v, %v", decoded, err)
-	}
-	if strings.Contains(raw, "src") || strings.Contains(raw, "main.go") {
-		t.Fatalf("cursor exposed a Workspace path: %q", raw)
-	}
+	require.NoError(t, err, "decoded cursor = %#v", decoded)
+	require.Equal(t, entryID, decoded.EntryID, "decoded cursor = %#v", decoded)
+	require.NotContains(t, raw, "src")
+	require.NotContains(t, raw, "main.go")
 	unsupported, _ := json.Marshal(submissionManifestCursorWire{Version: 2, EntryID: entryID.String()})
-	if _, err = decodeSubmissionManifestCursor(base64.RawURLEncoding.EncodeToString(unsupported)); err == nil {
-		t.Fatal("unsupported cursor version was accepted")
-	}
+	_, err = decodeSubmissionManifestCursor(base64.RawURLEncoding.EncodeToString(unsupported))
+	require.Error(t, err, "unsupported cursor version was accepted")
 	unknown := base64.RawURLEncoding.EncodeToString([]byte(`{"version":1,"entry_id":"` + entryID.String() + `","path":"src/main.go"}`))
-	if _, err = decodeSubmissionManifestCursor(unknown); err == nil {
-		t.Fatal("cursor containing a path field was accepted")
-	}
+	_, err = decodeSubmissionManifestCursor(unknown)
+	require.Error(t, err, "cursor containing a path field was accepted")
 }
 
 func TestCandidateExamContentIsInlinePrivateNoStoreAndConditional(t *testing.T) {
@@ -229,18 +224,19 @@ func TestCandidateExamContentIsInlinePrivateNoStoreAndConditional(t *testing.T) 
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
 	wantETag := `"` + fake.content.SHA256 + `"`
-	if response.Code != http.StatusOK || response.Body.String() != "protected" || response.Header().Get("Content-Disposition") != "" ||
-		response.Header().Get("Cache-Control") != "private, no-store" || response.Header().Get("ETag") != wantETag {
-		t.Fatalf("content response = %d %#v %q", response.Code, response.Header(), response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "content response = %d %#v", response.Code, response.Header())
+	require.Equal(t, "protected", response.Body.String(), "content response = %d %#v", response.Code, response.Header())
+	require.Empty(t, response.Header().Get("Content-Disposition"), "content response = %d %#v", response.Code, response.Header())
+	require.Equal(t, "private, no-store", response.Header().Get("Cache-Control"), "content response = %d %#v", response.Code, response.Header())
+	require.Equal(t, wantETag, response.Header().Get("ETag"), "content response = %d %#v", response.Code, response.Header())
 
 	request = fake.candidateRequest(http.MethodGet, path)
 	request.Header.Set("If-None-Match", wantETag)
 	response = httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusNotModified || response.Body.Len() != 0 || response.Header().Get("Cache-Control") != "private, no-store" {
-		t.Fatalf("conditional response = %d %#v %q", response.Code, response.Header(), response.Body.String())
-	}
+	require.Equal(t, http.StatusNotModified, response.Code, "conditional response = %d %#v %q", response.Code, response.Header(), response.Body.String())
+	require.Equal(t, 0, response.Body.Len(), "conditional response = %d %#v %q", response.Code, response.Header(), response.Body.String())
+	require.Equal(t, "private, no-store", response.Header().Get("Cache-Control"), "conditional response = %d %#v %q", response.Code, response.Header(), response.Body.String())
 }
 
 func TestCandidateWorkspaceContentUsesContentVersionETagAndExactEntry(t *testing.T) {
@@ -252,10 +248,11 @@ func TestCandidateWorkspaceContentUsesContentVersionETagAndExactEntry(t *testing
 	request := fake.candidateRequest(http.MethodGet, path)
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || fake.workspaceOpen.EntryID != entryID || !fake.workspaceOpen.Access.ConnectionID.IsValid() ||
-		response.Header().Get("ETag") != `"`+fake.workspaceContentVersion.String()+`"` || response.Header().Get("Cache-Control") != "private, no-store" {
-		t.Fatalf("Workspace content = %d query=%#v headers=%#v body=%s", response.Code, fake.workspaceOpen, response.Header(), response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "Workspace content = %d query=%#v headers=%#v body=%s", response.Code, fake.workspaceOpen, response.Header(), response.Body.String())
+	require.Equal(t, entryID, fake.workspaceOpen.EntryID, "Workspace content = %d query=%#v headers=%#v body=%s", response.Code, fake.workspaceOpen, response.Header(), response.Body.String())
+	require.True(t, fake.workspaceOpen.Access.ConnectionID.IsValid(), "Workspace content = %d query=%#v headers=%#v body=%s", response.Code, fake.workspaceOpen, response.Header(), response.Body.String())
+	require.Equal(t, `"`+fake.workspaceContentVersion.String()+`"`, response.Header().Get("ETag"), "Workspace content = %d query=%#v headers=%#v body=%s", response.Code, fake.workspaceOpen, response.Header(), response.Body.String())
+	require.Equal(t, "private, no-store", response.Header().Get("Cache-Control"), "Workspace content = %d query=%#v headers=%#v body=%s", response.Code, fake.workspaceOpen, response.Header(), response.Body.String())
 }
 
 func TestManagedExamAttemptListIsBoundedSafeAndOpaque(t *testing.T) {
@@ -268,28 +265,27 @@ func TestManagedExamAttemptListIsBoundedSafeAndOpaque(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || fake.managerList.Limit != 1 || len(fake.managerList.States) != 1 || response.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("manager response/query = %d/%#v/%q: %s", response.Code, fake.managerList, response.Header().Get("Cache-Control"), response.Body.String())
-	}
-	if strings.Contains(response.Body.String(), "credential") || strings.Contains(response.Body.String(), "session_id") || strings.Contains(response.Body.String(), "hash") {
-		t.Fatalf("manager response leaked secrets: %s", response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "manager response/query = %d/%#v/%q: %s", response.Code, fake.managerList, response.Header().Get("Cache-Control"), response.Body.String())
+	require.Equal(t, 1, fake.managerList.Limit, "manager response/query = %d/%#v/%q: %s", response.Code, fake.managerList, response.Header().Get("Cache-Control"), response.Body.String())
+	require.Len(t, fake.managerList.States, 1, "manager response/query = %d/%#v/%q: %s", response.Code, fake.managerList, response.Header().Get("Cache-Control"), response.Body.String())
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "manager response/query = %d/%#v/%q: %s", response.Code, fake.managerList, response.Header().Get("Cache-Control"), response.Body.String())
+	require.NotContains(t, response.Body.String(), "credential")
+	require.NotContains(t, response.Body.String(), "session_id")
+	require.NotContains(t, response.Body.String(), "hash")
 	var page examAttemptManagerListResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || len(page.Items) != 1 || page.NextCursor == "" {
-		t.Fatalf("manager page = %#v, %v", page, err)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &page), "manager page = %#v", page)
+	require.Len(t, page.Items, 1, "manager page = %#v", page)
+	require.NotEmpty(t, page.NextCursor, "manager page = %#v", page)
 	cursor, err := decodeExamAttemptManagerCursor(page.NextCursor)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	fake.managerPage.HasMore = false
 	second := httptest.NewRequest(http.MethodGet, path+"&cursor="+url.QueryEscape(page.NextCursor), nil)
 	second.Header.Set("Authorization", "Bearer credential")
 	secondResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(secondResponse, second)
-	if secondResponse.Code != http.StatusOK || !fake.managerList.BeforeCreatedAt.Equal(cursor.CreatedAt) || fake.managerList.BeforeAttemptID != cursor.ID {
-		t.Fatalf("manager cursor forwarding = %d query=%#v body=%s", secondResponse.Code, fake.managerList, secondResponse.Body.String())
-	}
+	require.Equal(t, http.StatusOK, secondResponse.Code, "manager cursor forwarding = %d query=%#v body=%s", secondResponse.Code, fake.managerList, secondResponse.Body.String())
+	require.True(t, fake.managerList.BeforeCreatedAt.Equal(cursor.CreatedAt), "manager cursor forwarding = %d query=%#v body=%s", secondResponse.Code, fake.managerList, secondResponse.Body.String())
+	require.Equal(t, cursor.ID, fake.managerList.BeforeAttemptID, "manager cursor forwarding = %d query=%#v body=%s", secondResponse.Code, fake.managerList, secondResponse.Body.String())
 	malformed := httptest.NewRequest(http.MethodGet, path+"&cursor=not-a-cursor", nil)
 	malformed.Header.Set("Authorization", "Bearer credential")
 	malformedResponse := httptest.NewRecorder()
@@ -301,10 +297,11 @@ func TestManagedExamAttemptListIsBoundedSafeAndOpaque(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer credential")
 	response = httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || fake.managerGet.ExamID != fake.attempt.ExamID || fake.managerGet.SittingID != fake.attempt.SittingID ||
-		fake.managerGet.AttemptID != fake.attempt.ID || response.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("manager exact = %d query=%#v headers=%#v body=%s", response.Code, fake.managerGet, response.Header(), response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "manager exact = %d query=%#v headers=%#v body=%s", response.Code, fake.managerGet, response.Header(), response.Body.String())
+	require.Equal(t, fake.attempt.ExamID, fake.managerGet.ExamID, "manager exact = %d query=%#v headers=%#v body=%s", response.Code, fake.managerGet, response.Header(), response.Body.String())
+	require.Equal(t, fake.attempt.SittingID, fake.managerGet.SittingID, "manager exact = %d query=%#v headers=%#v body=%s", response.Code, fake.managerGet, response.Header(), response.Body.String())
+	require.Equal(t, fake.attempt.ID, fake.managerGet.AttemptID, "manager exact = %d query=%#v headers=%#v body=%s", response.Code, fake.managerGet, response.Header(), response.Body.String())
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "manager exact = %d query=%#v headers=%#v body=%s", response.Code, fake.managerGet, response.Header(), response.Body.String())
 }
 
 func TestManagedBrowserActivityIsNestedMinimizedNoStoreAndKeysetPaginated(t *testing.T) {
@@ -318,31 +315,28 @@ func TestManagedBrowserActivityIsNestedMinimizedNoStoreAndKeysetPaginated(t *tes
 	request.Header.Set("Authorization", "Bearer credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || fake.browserActivityQuery.Limit != 1 || response.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("Browser Activity response/query = %d/%#v/%q: %s", response.Code, fake.browserActivityQuery, response.Header().Get("Cache-Control"), response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "Browser Activity response/query = %d/%#v/%q: %s", response.Code, fake.browserActivityQuery, response.Header().Get("Cache-Control"), response.Body.String())
+	require.Equal(t, 1, fake.browserActivityQuery.Limit, "Browser Activity response/query = %d/%#v/%q: %s", response.Code, fake.browserActivityQuery, response.Header().Get("Cache-Control"), response.Body.String())
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "Browser Activity response/query = %d/%#v/%q: %s", response.Code, fake.browserActivityQuery, response.Header().Get("Cache-Control"), response.Body.String())
 	var page browserActivityListResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || len(page.Items) != 1 || page.NextCursor == "" || page.Items[0].Location != nil {
-		t.Fatalf("Browser Activity page = %#v, %v", page, err)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &page), "Browser Activity page = %#v", page)
+	require.Len(t, page.Items, 1, "Browser Activity page = %#v", page)
+	require.NotEmpty(t, page.NextCursor, "Browser Activity page = %#v", page)
+	require.Nil(t, page.Items[0].Location, "Browser Activity page = %#v", page)
 	for _, forbidden := range []string{"participation_id", "connection_id", "registration_id", "credential", "review", "location_scheme"} {
-		if strings.Contains(response.Body.String(), forbidden) {
-			t.Fatalf("Browser Activity response contains %q: %s", forbidden, response.Body.String())
-		}
+		require.NotContains(t, response.Body.String(), forbidden, "Browser Activity response contains")
 	}
 	cursor, err := decodeBrowserActivityCursor(page.NextCursor)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	fake.browserActivityPage.HasMore = false
 	second := httptest.NewRequest(http.MethodGet, path+"&cursor="+url.QueryEscape(page.NextCursor), nil)
 	second.Header.Set("Authorization", "Bearer credential")
 	secondResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(secondResponse, second)
-	if secondResponse.Code != http.StatusOK || !fake.browserActivityQuery.AfterReceivedAt.Equal(cursor.ReceivedAt) ||
-		fake.browserActivityQuery.AfterSourceID != cursor.SourceSessionID || fake.browserActivityQuery.AfterSequence != cursor.Sequence {
-		t.Fatalf("Browser Activity cursor forwarding = %d query=%#v body=%s", secondResponse.Code, fake.browserActivityQuery, secondResponse.Body.String())
-	}
+	require.Equal(t, http.StatusOK, secondResponse.Code, "Browser Activity cursor forwarding = %d query=%#v body=%s", secondResponse.Code, fake.browserActivityQuery, secondResponse.Body.String())
+	require.True(t, fake.browserActivityQuery.AfterReceivedAt.Equal(cursor.ReceivedAt), "Browser Activity cursor forwarding = %d query=%#v body=%s", secondResponse.Code, fake.browserActivityQuery, secondResponse.Body.String())
+	require.Equal(t, cursor.SourceSessionID, fake.browserActivityQuery.AfterSourceID, "Browser Activity cursor forwarding = %d query=%#v body=%s", secondResponse.Code, fake.browserActivityQuery, secondResponse.Body.String())
+	require.Equal(t, cursor.Sequence, fake.browserActivityQuery.AfterSequence, "Browser Activity cursor forwarding = %d query=%#v body=%s", secondResponse.Code, fake.browserActivityQuery, secondResponse.Body.String())
 }
 
 func TestManagerSubmissionReadManifestAndFileArePurposeSpecificAndProtected(t *testing.T) {
@@ -358,32 +352,25 @@ func TestManagerSubmissionReadManifestAndFileArePurposeSpecificAndProtected(t *t
 		request.Header.Set("Authorization", "Bearer credential")
 		response := httptest.NewRecorder()
 		httpAPI.ServeHTTP(response, request)
-		if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" {
-			t.Fatalf("GET %s = %d headers=%v body=%s", path, response.Code, response.Header(), response.Body.String())
-		}
+		require.Equal(t, http.StatusOK, response.Code, "GET %s = %d headers=%v body=%s", path, response.Code, response.Header(), response.Body.String())
+		require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "GET %s = %d headers=%v body=%s", path, response.Code, response.Header(), response.Body.String())
 		for _, forbidden := range []string{"starter_object", "attempt_object", "storage_origin", "vfs", "url"} {
-			if strings.Contains(strings.ToLower(response.Body.String()), forbidden) {
-				t.Fatalf("GET %s exposed %q: %s", path, forbidden, response.Body.String())
-			}
+			require.NotContains(t, strings.ToLower(response.Body.String()), forbidden, "GET %s exposed", path)
 		}
 	}
-	if fake.submissionGet.SubmissionID != fake.submissionView.Submission.ID || fake.submissionManifestQuery.Limit != 1 ||
-		fake.submissionManifestQuery.SubmissionID != fake.submissionView.Submission.ID {
-		t.Fatalf("get=%#v manifest=%#v", fake.submissionGet, fake.submissionManifestQuery)
-	}
+	require.Equal(t, fake.submissionView.Submission.ID, fake.submissionGet.SubmissionID, "get=%#v manifest=%#v", fake.submissionGet, fake.submissionManifestQuery)
+	require.Equal(t, 1, fake.submissionManifestQuery.Limit, "get=%#v manifest=%#v", fake.submissionGet, fake.submissionManifestQuery)
+	require.Equal(t, fake.submissionView.Submission.ID, fake.submissionManifestQuery.SubmissionID, "get=%#v manifest=%#v", fake.submissionGet, fake.submissionManifestQuery)
 	entry := fake.submissionManifest.Items[0]
 	cursor, err := encodeSubmissionManifestCursor(submissionManifestCursor{EntryID: entry.EntryID})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	fake.submissionManifest.HasMore = false
 	cursorRequest := httptest.NewRequest(http.MethodGet, base+"/manifest?cursor="+url.QueryEscape(cursor), nil)
 	cursorRequest.Header.Set("Authorization", "Bearer credential")
 	cursorResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(cursorResponse, cursorRequest)
-	if cursorResponse.Code != http.StatusOK || fake.submissionManifestQuery.AfterEntryID != entry.EntryID {
-		t.Fatalf("manifest cursor forwarding = %d query=%#v body=%s", cursorResponse.Code, fake.submissionManifestQuery, cursorResponse.Body.String())
-	}
+	require.Equal(t, http.StatusOK, cursorResponse.Code, "manifest cursor forwarding = %d query=%#v body=%s", cursorResponse.Code, fake.submissionManifestQuery, cursorResponse.Body.String())
+	require.Equal(t, entry.EntryID, fake.submissionManifestQuery.AfterEntryID, "manifest cursor forwarding = %d query=%#v body=%s", cursorResponse.Code, fake.submissionManifestQuery, cursorResponse.Body.String())
 	malformed := httptest.NewRequest(http.MethodGet, base+"/manifest?cursor=not-a-cursor", nil)
 	malformed.Header.Set("Authorization", "Bearer credential")
 	malformedResponse := httptest.NewRecorder()
@@ -395,12 +382,12 @@ func TestManagerSubmissionReadManifestAndFileArePurposeSpecificAndProtected(t *t
 	request.Header.Set("Authorization", "Bearer credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || response.Body.String() != "protected" ||
-		response.Header().Get("Cache-Control") != "private, no-store" ||
-		response.Header().Get("ETag") != `"`+entry.SHA256+`"` || response.Header().Get("Content-Disposition") != "" ||
-		fake.submissionOpen.EntryID != entry.EntryID {
-		t.Fatalf("content=%d headers=%v query=%#v body=%q", response.Code, response.Header(), fake.submissionOpen, response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "content=%d headers=%v query=%#v body", response.Code, response.Header(), fake.submissionOpen)
+	require.Equal(t, "protected", response.Body.String(), "content=%d headers=%v query=%#v body", response.Code, response.Header(), fake.submissionOpen)
+	require.Equal(t, "private, no-store", response.Header().Get("Cache-Control"), "content=%d headers=%v query=%#v body", response.Code, response.Header(), fake.submissionOpen)
+	require.Equal(t, `"`+entry.SHA256+`"`, response.Header().Get("ETag"), "content=%d headers=%v query=%#v body", response.Code, response.Header(), fake.submissionOpen)
+	require.Empty(t, response.Header().Get("Content-Disposition"), "content=%d headers=%v query=%#v body", response.Code, response.Header(), fake.submissionOpen)
+	require.Equal(t, entry.EntryID, fake.submissionOpen.EntryID, "content=%d headers=%v query=%#v body", response.Code, response.Header(), fake.submissionOpen)
 }
 
 func TestManagerSubmissionIntegrityRetirementOmitsFormerCounters(t *testing.T) {
@@ -428,24 +415,20 @@ func TestManagerSubmissionIntegrityRetirementOmitsFormerCounters(t *testing.T) {
 			request.Header.Set("Authorization", "Bearer credential")
 			response := httptest.NewRecorder()
 			httpAPI.ServeHTTP(response, request)
-			if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" {
-				t.Fatalf("header read = %d: %s", response.Code, response.Body.String())
-			}
+			require.Equal(t, http.StatusOK, response.Code, "header read = %d: %s", response.Code, response.Body.String())
+			require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "header read = %d: %s", response.Code, response.Body.String())
 			var fields map[string]json.RawMessage
-			if err := json.Unmarshal(response.Body.Bytes(), &fields); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &fields))
 			for _, counter := range []string{"final_focus_loss_sequence", "unresolved_integrity_count"} {
 				value, exists := fields[counter]
-				if exists == retired || exists && string(value) != "0" {
-					t.Fatalf("counter presence/value disagrees with retirement: %s", response.Body.String())
-				}
+				require.NotEqual(t, retired, exists)
+				require.False(t, exists && string(value) != "0")
 			}
 			_, hasRetirement := fields["integrity_retired_at"]
-			if hasRetirement != retired || string(fields["integrity_state"]) != `"`+string(submission.IntegrityState)+`"` ||
-				string(fields["manifest_digest"]) != `"`+submission.ManifestDigest+`"` || len(fields["workspace_cursor"]) == 0 {
-				t.Fatalf("retirement/retained-work projection = %s", response.Body.String())
-			}
+			require.Equal(t, retired, hasRetirement)
+			require.Equal(t, `"`+string(submission.IntegrityState)+`"`, string(fields["integrity_state"]))
+			require.Equal(t, `"`+submission.ManifestDigest+`"`, string(fields["manifest_digest"]))
+			require.NotEmpty(t, fields["workspace_cursor"])
 		})
 	}
 }
@@ -458,9 +441,9 @@ func TestCandidateAttemptHeadersRequireOneCanonicalSensitiveCredentialAndConnect
 	valid.Header.Set(candidateAttemptCredentialHeader, credential)
 	valid.Header.Set(candidateAttemptConnectionHeader, connectionID.String())
 	access, err := candidateAttemptAccessHeaders(valid)
-	if err != nil || access.ContinuityCredential != credential || access.ConnectionID != connectionID {
-		t.Fatalf("valid headers = %#v, %v", access, err)
-	}
+	require.NoError(t, err, "valid headers = %#v", access)
+	require.Equal(t, credential, access.ContinuityCredential, "valid headers = %#v", access)
+	require.Equal(t, connectionID, access.ConnectionID, "valid headers = %#v", access)
 
 	tests := []struct {
 		name string
@@ -497,9 +480,8 @@ func TestCandidateAttemptHeadersRequireOneCanonicalSensitiveCredentialAndConnect
 			t.Parallel()
 			request := httptest.NewRequest(http.MethodGet, "/", nil)
 			test.set(request.Header)
-			if _, headerErr := candidateAttemptAccessHeaders(request); headerErr == nil {
-				t.Fatal("invalid candidate Attempt headers were accepted")
-			}
+			_, headerErr := candidateAttemptAccessHeaders(request)
+			require.Error(t, headerErr, "invalid candidate Attempt headers were accepted")
 		})
 	}
 }
@@ -508,20 +490,15 @@ func TestExamAttemptManagerCursorIsOpaqueStrictAndVersioned(t *testing.T) {
 	t.Parallel()
 	want := examAttemptManagerCursor{CreatedAt: time.Date(2026, time.August, 17, 9, 0, 0, 123000000, time.UTC), ID: model.NewExamAttemptID()}
 	encoded, err := encodeExamAttemptManagerCursor(want)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if encoded == "" || strings.ContainsAny(encoded, "+/=") {
-		t.Fatalf("cursor is not raw URL-safe: %q", encoded)
-	}
+	require.NoError(t, err)
+	require.NotEmpty(t, encoded)
+	require.False(t, strings.ContainsAny(encoded, "+/="))
 	got, err := decodeExamAttemptManagerCursor(encoded)
-	if err != nil || got != want {
-		t.Fatalf("round trip = %#v, %v; want %#v", got, err, want)
-	}
+	require.NoError(t, err, "round trip")
+	require.Equal(t, want, got, "round trip")
 	for _, invalid := range []string{"", "%%%", encoded + "trailing"} {
-		if _, decodeErr := decodeExamAttemptManagerCursor(invalid); decodeErr == nil {
-			t.Fatalf("invalid cursor %q was accepted", invalid)
-		}
+		_, decodeErr := decodeExamAttemptManagerCursor(invalid)
+		require.Error(t, decodeErr, "invalid cursor %q was accepted", invalid)
 	}
 }
 
@@ -529,32 +506,25 @@ func TestCandidateWorkspaceCursorContainsNoReversiblePath(t *testing.T) {
 	t.Parallel()
 	want := candidateWorkspaceCursor{ExpectedCursor: 7, ID: model.NewAttemptWorkspaceEntryID()}
 	encoded, err := encodeCandidateWorkspaceCursor(want)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	got, err := decodeCandidateWorkspaceCursor(encoded)
-	if err != nil || got != want {
-		t.Fatalf("round trip = %#v, %v; want %#v", got, err, want)
-	}
+	require.NoError(t, err, "round trip")
+	require.Equal(t, want, got, "round trip")
 	decoded, err := base64.RawURLEncoding.Strict().DecodeString(encoded)
-	if err != nil || strings.Contains(string(decoded), "cmd/main.go") || strings.Contains(string(decoded), `"path"`) {
-		t.Fatalf("cursor exposes Workspace path: %q, %v", decoded, err)
-	}
-	if _, encodeErr := encodeCandidateWorkspaceCursor(candidateWorkspaceCursor{ExpectedCursor: -1, ID: want.ID}); encodeErr == nil {
-		t.Fatal("negative Workspace cursor encoded successfully")
-	}
+	require.NoError(t, err, "cursor exposes Workspace path")
+	require.NotContains(t, string(decoded), "cmd/main.go", "cursor exposes Workspace path")
+	require.NotContains(t, string(decoded), `"path"`, "cursor exposes Workspace path")
+	_, encodeErr := encodeCandidateWorkspaceCursor(candidateWorkspaceCursor{ExpectedCursor: -1, ID: want.ID})
+	require.Error(t, encodeErr, "negative Workspace cursor encoded successfully")
 	withoutEntry, err := encodeCandidateWorkspaceCursor(candidateWorkspaceCursor{ExpectedCursor: want.ExpectedCursor})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	decodedWithoutEntry, err := decodeCandidateWorkspaceCursor(withoutEntry)
-	if err != nil || decodedWithoutEntry.ExpectedCursor != want.ExpectedCursor || decodedWithoutEntry.ID.IsValid() {
-		t.Fatalf("snapshot-only Workspace cursor = %#v, %v", decodedWithoutEntry, err)
-	}
+	require.NoError(t, err, "snapshot-only Workspace cursor = %#v", decodedWithoutEntry)
+	require.Equal(t, want.ExpectedCursor, decodedWithoutEntry.ExpectedCursor, "snapshot-only Workspace cursor = %#v", decodedWithoutEntry)
+	require.False(t, decodedWithoutEntry.ID.IsValid(), "snapshot-only Workspace cursor = %#v", decodedWithoutEntry)
 	for _, invalid := range []string{"", "%%%"} {
-		if _, decodeErr := decodeCandidateWorkspaceCursor(invalid); decodeErr == nil {
-			t.Fatalf("invalid cursor %q was accepted", invalid)
-		}
+		_, decodeErr := decodeCandidateWorkspaceCursor(invalid)
+		require.Error(t, decodeErr, "invalid cursor %q was accepted", invalid)
 	}
 }
 
@@ -570,17 +540,15 @@ func TestManagerReallowExamAttemptUsesExactSuspensionAndNeverReturnsPrivateReaso
 	request.Header.Set("Idempotency-Key", "reallow-once")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("status/cache=%d/%q body=%s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
-	}
-	if fake.reallow.SuspensionID != suspensionID || fake.reallow.ExpectedAttemptRevision != 2 ||
-		fake.reallow.PrivateReason != "manager verified connectivity" || fake.reallow.IdempotencyKey != "reallow-once" {
-		t.Fatalf("reallow command = %#v", fake.reallow)
-	}
-	if strings.Contains(response.Body.String(), "manager verified connectivity") || strings.Contains(response.Body.String(), "private") ||
-		strings.Contains(response.Body.String(), "replayed") {
-		t.Fatalf("reallow response exposed internal data: %s", response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "status/cache=%d/%q body=%s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "status/cache=%d/%q body=%s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+	require.Equal(t, suspensionID, fake.reallow.SuspensionID)
+	require.Equal(t, int64(2), fake.reallow.ExpectedAttemptRevision)
+	require.Equal(t, "manager verified connectivity", fake.reallow.PrivateReason)
+	require.Equal(t, "reallow-once", fake.reallow.IdempotencyKey)
+	require.NotContains(t, response.Body.String(), "manager verified connectivity")
+	require.NotContains(t, response.Body.String(), "private")
+	require.NotContains(t, response.Body.String(), "replayed")
 }
 
 func TestManagerSuspendExamAttemptUsesRevisionFenceAndNeverReturnsPrivateReason(t *testing.T) {
@@ -594,27 +562,25 @@ func TestManagerSuspendExamAttemptUsesRevisionFenceAndNeverReturnsPrivateReason(
 	request.Header.Set("Idempotency-Key", "kick-once")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("status/cache=%d/%q body=%s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
-	}
-	if fake.suspend.AttemptID != fake.attempt.ID || fake.suspend.ExpectedAttemptRevision != 2 ||
-		fake.suspend.PrivateReason != "candidate left the room" || fake.suspend.IdempotencyKey != "kick-once" {
-		t.Fatalf("suspend command = %#v", fake.suspend)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "status/cache=%d/%q body=%s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "status/cache=%d/%q body=%s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+	require.Equal(t, fake.attempt.ID, fake.suspend.AttemptID)
+	require.Equal(t, int64(2), fake.suspend.ExpectedAttemptRevision)
+	require.Equal(t, "candidate left the room", fake.suspend.PrivateReason)
+	require.Equal(t, "kick-once", fake.suspend.IdempotencyKey)
 	body := response.Body.String()
-	if strings.Contains(body, "candidate left the room") || strings.Contains(body, "private") || strings.Contains(body, "replayed") ||
-		!strings.Contains(body, `"source":"manual"`) || !strings.Contains(body, `"candidate_reason":"manager_suspended"`) ||
-		!strings.Contains(body, `"connection_closed":true`) {
-		t.Fatalf("suspend response = %s", body)
-	}
+	require.NotContains(t, body, "candidate left the room")
+	require.NotContains(t, body, "private")
+	require.NotContains(t, body, "replayed")
+	require.Contains(t, body, `"source":"manual"`)
+	require.Contains(t, body, `"candidate_reason":"manager_suspended"`)
+	require.Contains(t, body, `"connection_closed":true`)
 	missing := newJSONRequest(http.MethodPost, path, strings.NewReader(`{"expected_attempt_revision":0,"reason":"x"}`))
 	missing.Header.Set("Authorization", "Bearer credential")
 	missing.Header.Set("Idempotency-Key", "kick-invalid")
 	invalid := httptest.NewRecorder()
 	httpAPI.ServeHTTP(invalid, missing)
-	if invalid.Code != http.StatusBadRequest {
-		t.Fatalf("invalid revision status = %d body=%s", invalid.Code, invalid.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, invalid.Code, "invalid revision status = %d body=%s", invalid.Code, invalid.Body.String())
 }
 
 func TestManagerEndExamAttemptUsesRevisionFenceAndReturnsOnlySafeReceipt(t *testing.T) {
@@ -629,27 +595,24 @@ func TestManagerEndExamAttemptUsesRevisionFenceAndReturnsOnlySafeReceipt(t *test
 	request.Header.Set("Idempotency-Key", "manager-end-once")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("status/cache=%d/%q body=%s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
-	}
-	if fake.managerEnd.ExamID != fake.attempt.ExamID || fake.managerEnd.SittingID != fake.attempt.SittingID ||
-		fake.managerEnd.AttemptID != fake.attempt.ID || fake.managerEnd.ExpectedAttemptRevision != 1 ||
-		fake.managerEnd.PrivateReason != privateReason || fake.managerEnd.IdempotencyKey != "manager-end-once" {
-		t.Fatalf("manager-end command = %#v", fake.managerEnd)
-	}
-	if strings.Contains(response.Body.String(), privateReason) || strings.Contains(response.Body.String(), "private") ||
-		!strings.Contains(response.Body.String(), fake.submissionReceipt.SubmissionID.String()) {
-		t.Fatalf("manager-end response exposed private state or omitted receipt: %s", response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "status/cache=%d/%q body=%s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "status/cache=%d/%q body=%s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+	require.Equal(t, fake.attempt.ExamID, fake.managerEnd.ExamID)
+	require.Equal(t, fake.attempt.SittingID, fake.managerEnd.SittingID)
+	require.Equal(t, fake.attempt.ID, fake.managerEnd.AttemptID)
+	require.Equal(t, int64(1), fake.managerEnd.ExpectedAttemptRevision)
+	require.Equal(t, privateReason, fake.managerEnd.PrivateReason)
+	require.Equal(t, "manager-end-once", fake.managerEnd.IdempotencyKey)
+	require.NotContains(t, response.Body.String(), privateReason)
+	require.NotContains(t, response.Body.String(), "private")
+	require.Contains(t, response.Body.String(), fake.submissionReceipt.SubmissionID.String())
 
 	invalid := newJSONRequest(http.MethodPost, path, strings.NewReader(`{"expected_attempt_revision":1,"reason":"valid","extra":true}`))
 	invalid.Header.Set("Authorization", "Bearer credential")
 	invalid.Header.Set("Idempotency-Key", "manager-end-invalid")
 	invalidResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(invalidResponse, invalid)
-	if invalidResponse.Code != http.StatusBadRequest {
-		t.Fatalf("unknown member status=%d body=%s", invalidResponse.Code, invalidResponse.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, invalidResponse.Code, "unknown member status=%d body=%s", invalidResponse.Code, invalidResponse.Body.String())
 }
 
 func TestManagerAttemptRefetchExposesPrivateFreeActiveSuspensionIdentity(t *testing.T) {
@@ -667,11 +630,10 @@ func TestManagerAttemptRefetchExposesPrivateFreeActiveSuspensionIdentity(t *test
 	request.Header.Set("Authorization", "Bearer credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), suspension.ID.String()) ||
-		!strings.Contains(response.Body.String(), `"candidate_reason":"secure_connectivity_lost"`) ||
-		strings.Contains(response.Body.String(), "private_reason") {
-		t.Fatalf("manager suspension response = %d %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "manager suspension response")
+	require.Contains(t, response.Body.String(), suspension.ID.String(), "manager suspension response")
+	require.Contains(t, response.Body.String(), `"candidate_reason":"secure_connectivity_lost"`, "manager suspension response")
+	require.NotContains(t, response.Body.String(), "private_reason", "manager suspension response")
 }
 
 func TestCandidateWorkspaceJournalAndAllHTTPMutationsMapExactProtectedCommands(t *testing.T) {
@@ -684,10 +646,11 @@ func TestCandidateWorkspaceJournalAndAllHTTPMutationsMapExactProtectedCommands(t
 	journalRequest := fake.candidateRequest(http.MethodGet, base+"/changes?after_cursor=3&limit=20")
 	journalResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(journalResponse, journalRequest)
-	if journalResponse.Code != http.StatusOK || fake.journalQuery.AfterCursor != 3 || fake.journalQuery.Limit != 20 ||
-		!strings.Contains(journalResponse.Body.String(), `"current_cursor":5`) || !strings.Contains(journalResponse.Header().Get("Cache-Control"), "no-store") {
-		t.Fatalf("journal=%d %s query=%#v", journalResponse.Code, journalResponse.Body.String(), fake.journalQuery)
-	}
+	require.Equal(t, http.StatusOK, journalResponse.Code, "journal=%d %s query=%#v", journalResponse.Code, journalResponse.Body.String(), fake.journalQuery)
+	require.Equal(t, int64(3), fake.journalQuery.AfterCursor, "journal=%d %s query=%#v", journalResponse.Code, journalResponse.Body.String(), fake.journalQuery)
+	require.Equal(t, 20, fake.journalQuery.Limit, "journal=%d %s query=%#v", journalResponse.Code, journalResponse.Body.String(), fake.journalQuery)
+	require.Contains(t, journalResponse.Body.String(), `"current_cursor":5`, "journal=%d %s query=%#v", journalResponse.Code, journalResponse.Body.String(), fake.journalQuery)
+	require.Contains(t, journalResponse.Header().Get("Cache-Control"), "no-store", "journal=%d %s query=%#v", journalResponse.Code, journalResponse.Body.String(), fake.journalQuery)
 	fake.journalPage.Entries[0].Operation = model.AttemptWorkspaceMutationDeleteEntry
 	fake.journalPage.Entries[0].EntryKind = model.StarterWorkspaceEntryDirectory
 	fake.journalPage.Entries[0].OldPath = "src"
@@ -695,20 +658,19 @@ func TestCandidateWorkspaceJournalAndAllHTTPMutationsMapExactProtectedCommands(t
 	fake.journalPage.Entries[0].Recursive = true
 	journalResponse = httptest.NewRecorder()
 	httpAPI.ServeHTTP(journalResponse, fake.candidateRequest(http.MethodGet, base+"/changes?after_cursor=3&limit=20"))
-	if journalResponse.Code != http.StatusOK || !strings.Contains(journalResponse.Body.String(), `"recursive":true`) ||
-		!strings.Contains(journalResponse.Body.String(), `"old_path":"src"`) {
-		t.Fatalf("recursive journal=%d %s", journalResponse.Code, journalResponse.Body.String())
-	}
+	require.Equal(t, http.StatusOK, journalResponse.Code, "recursive journal")
+	require.Contains(t, journalResponse.Body.String(), `"recursive":true`, "recursive journal")
+	require.Contains(t, journalResponse.Body.String(), `"old_path":"src"`, "recursive journal")
 
 	directoryBody := strings.NewReader(`{"participation_id":"` + participationID + `","generation":1,"path":"src"}`)
 	directoryRequest := candidateWorkspaceRequest(fake, http.MethodPost, base+"/directories", directoryBody, "application/json", "mkdir-once")
 	directoryResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(directoryResponse, directoryRequest)
 	assertCandidateWorkspaceMutationHTTP(t, fake, directoryResponse, http.StatusCreated)
-	if fake.workspaceDirectory.Path != "src" || fake.workspaceDirectory.Access.ParticipationID != fake.participation.ID ||
-		fake.workspaceDirectory.Access.Generation != 1 || fake.workspaceDirectory.IdempotencyKey != "mkdir-once" {
-		t.Fatalf("directory command=%#v", fake.workspaceDirectory)
-	}
+	require.Equal(t, "src", fake.workspaceDirectory.Path)
+	require.Equal(t, fake.participation.ID, fake.workspaceDirectory.Access.ParticipationID)
+	require.Equal(t, int64(1), fake.workspaceDirectory.Access.Generation)
+	require.Equal(t, "mkdir-once", fake.workspaceDirectory.IdempotencyKey)
 
 	fileMetadata := map[string]any{"participation_id": participationID, "generation": 1, "path": "empty.txt",
 		"media_type": "text/plain", "size": 0, "sha256": strings.Repeat("e", 64)}
@@ -717,9 +679,10 @@ func TestCandidateWorkspaceJournalAndAllHTTPMutationsMapExactProtectedCommands(t
 	fileResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(fileResponse, fileRequest)
 	assertCandidateWorkspaceMutationHTTP(t, fake, fileResponse, http.StatusCreated)
-	if fake.workspaceFile.Size != 0 || fake.workspaceFile.Path != "empty.txt" || len(fake.uploaded) != 0 || fake.workspaceFile.IdempotencyKey != "file-once" {
-		t.Fatalf("file command=%#v uploaded=%q", fake.workspaceFile, fake.uploaded)
-	}
+	require.Equal(t, int64(0), fake.workspaceFile.Size, "file command=%#v uploaded", fake.workspaceFile)
+	require.Equal(t, "empty.txt", fake.workspaceFile.Path, "file command=%#v uploaded", fake.workspaceFile)
+	require.Empty(t, fake.uploaded, "file command=%#v uploaded", fake.workspaceFile)
+	require.Equal(t, "file-once", fake.workspaceFile.IdempotencyKey, "file command=%#v uploaded", fake.workspaceFile)
 
 	entryID := fake.workspacePage.Items[0].EntryID
 	moveBody := strings.NewReader(`{"participation_id":"` + participationID + `","generation":1,"expected_path":"cmd/main.go","destination_path":"src/main.go"}`)
@@ -727,9 +690,9 @@ func TestCandidateWorkspaceJournalAndAllHTTPMutationsMapExactProtectedCommands(t
 	moveResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(moveResponse, moveRequest)
 	assertCandidateWorkspaceMutationHTTP(t, fake, moveResponse, http.StatusOK)
-	if fake.workspaceMove.EntryID != entryID || fake.workspaceMove.ExpectedPath != "cmd/main.go" || fake.workspaceMove.DestinationPath != "src/main.go" {
-		t.Fatalf("move command=%#v", fake.workspaceMove)
-	}
+	require.Equal(t, entryID, fake.workspaceMove.EntryID)
+	require.Equal(t, "cmd/main.go", fake.workspaceMove.ExpectedPath)
+	require.Equal(t, "src/main.go", fake.workspaceMove.DestinationPath)
 
 	version := fake.workspacePage.Items[0].ContentVersion
 	replaceMetadata := map[string]any{"participation_id": participationID, "generation": 1, "expected_path": "cmd/main.go",
@@ -739,18 +702,18 @@ func TestCandidateWorkspaceJournalAndAllHTTPMutationsMapExactProtectedCommands(t
 	replaceResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(replaceResponse, replaceRequest)
 	assertCandidateWorkspaceMutationHTTP(t, fake, replaceResponse, http.StatusOK)
-	if fake.workspaceReplace.EntryID != entryID || fake.workspaceReplace.ExpectedContentVersion != version || string(fake.uploaded) != "new" {
-		t.Fatalf("replace command=%#v uploaded=%q", fake.workspaceReplace, fake.uploaded)
-	}
+	require.Equal(t, entryID, fake.workspaceReplace.EntryID, "replace command=%#v uploaded", fake.workspaceReplace)
+	require.Equal(t, version, fake.workspaceReplace.ExpectedContentVersion, "replace command=%#v uploaded", fake.workspaceReplace)
+	require.Equal(t, "new", string(fake.uploaded), "replace command=%#v uploaded", fake.workspaceReplace)
 
 	deleteBody := strings.NewReader(`{"participation_id":"` + participationID + `","generation":1,"expected_path":"cmd/main.go","expected_content_version":"` + version.String() + `"}`)
 	deleteRequest := candidateWorkspaceRequest(fake, http.MethodDelete, base+"/entries/"+entryID.String(), deleteBody, "application/json", "delete-once")
 	deleteResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(deleteResponse, deleteRequest)
 	assertCandidateWorkspaceMutationHTTP(t, fake, deleteResponse, http.StatusOK)
-	if fake.workspaceDelete.EntryID != entryID || fake.workspaceDelete.ExpectedPath != "cmd/main.go" || fake.workspaceDelete.ExpectedContentVersion != version {
-		t.Fatalf("delete command=%#v", fake.workspaceDelete)
-	}
+	require.Equal(t, entryID, fake.workspaceDelete.EntryID)
+	require.Equal(t, "cmd/main.go", fake.workspaceDelete.ExpectedPath)
+	require.Equal(t, version, fake.workspaceDelete.ExpectedContentVersion)
 }
 
 func TestCandidateWorkspaceMutationsRejectMissingIdempotencyDuplicateJSONAndMissingMultipartSize(t *testing.T) {
@@ -772,9 +735,7 @@ func TestCandidateWorkspaceMutationsRejectMissingIdempotencyDuplicateJSONAndMiss
 			request := candidateWorkspaceRequest(fake, http.MethodPost, test.path, test.body, test.contentType, test.key)
 			response := httptest.NewRecorder()
 			httpAPI.ServeHTTP(response, request)
-			if response.Code != http.StatusBadRequest {
-				t.Fatalf("response=%d %s", response.Code, response.Body.String())
-			}
+			require.Equal(t, http.StatusBadRequest, response.Code, "response=%d %s", response.Code, response.Body.String())
 		})
 	}
 	metadata := map[string]any{"participation_id": participationID, "generation": 1, "path": "x", "media_type": "text/plain", "sha256": strings.Repeat("a", 64)}
@@ -782,9 +743,7 @@ func TestCandidateWorkspaceMutationsRejectMissingIdempotencyDuplicateJSONAndMiss
 	request := candidateWorkspaceRequest(fake, http.MethodPost, base+"/files", body, contentType, "missing-size")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("missing size=%d %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, response.Code, "missing size=%d %s", response.Code, response.Body.String())
 }
 
 func TestCandidateRecursiveWorkspaceDeletionRequiresSnapshot(t *testing.T) {
@@ -808,14 +767,14 @@ func TestCandidateRecursiveWorkspaceDeletionRequiresSnapshot(t *testing.T) {
 			body := strings.NewReader(`{"participation_id":"` + fake.participation.ID.String() + `","generation":1,"expected_path":"src"` + test.fields + `}`)
 			response := httptest.NewRecorder()
 			api.ServeHTTP(response, candidateWorkspaceRequest(fake, http.MethodDelete, path, body, "application/json", "recursive"))
-			if response.Code != test.status {
-				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			require.Equal(t, test.status, response.Code, "status=%d body=%s", response.Code, response.Body.String())
+			if test.status == http.StatusOK {
+				require.True(t, fake.workspaceDelete.Recursive)
+				require.NotNil(t, fake.workspaceDelete.ExpectedWorkspaceCursor)
+				require.Equal(t, int64(0), *fake.workspaceDelete.ExpectedWorkspaceCursor)
 			}
-			if test.status == http.StatusOK && (!fake.workspaceDelete.Recursive || fake.workspaceDelete.ExpectedWorkspaceCursor == nil || *fake.workspaceDelete.ExpectedWorkspaceCursor != 0) {
-				t.Fatalf("command=%#v", fake.workspaceDelete)
-			}
-			if test.status == http.StatusBadRequest && fake.workspaceDelete.EntryID.IsValid() {
-				t.Fatal("invalid recursive request reached application")
+			if test.status == http.StatusBadRequest {
+				require.False(t, fake.workspaceDelete.EntryID.IsValid(), "invalid recursive request reached application")
 			}
 		})
 	}
@@ -838,34 +797,26 @@ func candidateWorkspaceMultipart(t *testing.T, metadata any, content []byte) (*b
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	metadataPart, err := writer.CreateFormField("metadata")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = json.NewEncoder(metadataPart).Encode(metadata); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	err = json.NewEncoder(metadataPart).Encode(metadata)
+	require.NoError(t, err)
 	contentPart, err := writer.CreateFormFile("content", "workspace")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = contentPart.Write(content); err != nil {
-		t.Fatal(err)
-	}
-	if err = writer.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	_, err = contentPart.Write(content)
+	require.NoError(t, err)
+	err = writer.Close()
+	require.NoError(t, err)
 	return &body, writer.FormDataContentType()
 }
 
 func assertCandidateWorkspaceMutationHTTP(t *testing.T, fake *examAttemptHTTPFake, response *httptest.ResponseRecorder, status int) {
 	t.Helper()
-	if response.Code != status || !strings.Contains(response.Header().Get("Cache-Control"), "no-store") {
-		t.Fatalf("response=%d headers=%v body=%s", response.Code, response.Header(), response.Body.String())
-	}
+	require.Equal(t, status, response.Code, "response=%d headers=%v body=%s", response.Code, response.Header(), response.Body.String())
+	require.Contains(t, response.Header().Get("Cache-Control"), "no-store", "response=%d headers=%v body=%s", response.Code, response.Header(), response.Body.String())
 	body := response.Body.String()
 	for _, forbidden := range []string{fake.credential, "continuity_credential", "credential_hash", "participation_id", "generation", "object_id", "session_id"} {
-		if forbidden != "" && strings.Contains(body, forbidden) {
-			t.Fatalf("response contains %q: %s", forbidden, body)
+		if forbidden != "" {
+			require.NotContains(t, body, forbidden, "response contains")
 		}
 	}
 }
@@ -917,13 +868,9 @@ func newExamAttemptHTTPFake(t *testing.T) *examAttemptHTTPFake {
 	t.Helper()
 	at := time.Date(2026, time.August, 17, 9, 0, 0, 123000000, time.UTC)
 	attempt, err := model.NewExamAttempt(model.NewExamAttemptID(), model.NewExamID(), model.NewExamSittingID(), model.NewUserID(), model.NewExamRevisionID(), at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	workspace, err := model.NewExamAttemptWorkspace(model.NewExamAttemptWorkspaceID(), attempt.ID, at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	connectionID := model.NewAttemptConnectionID()
 	resourceID := model.NewExamResourceID()
 	workspaceItem := app.CandidateExamWorkspaceItem{EntryID: model.NewAttemptWorkspaceEntryID(), Kind: model.StarterWorkspaceEntryFile,
@@ -967,16 +914,12 @@ func newExamAttemptHTTPFake(t *testing.T) *examAttemptHTTPFake {
 		SHA256: workspaceItem.SHA256, StorageOrigin: model.AttemptWorkspaceStorageStarter,
 		StarterObjectID: model.NewStarterWorkspaceObjectID(),
 	}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	submission, err := model.NewExamSubmission(model.ExamSubmissionSpecification{ID: fake.submissionReceipt.SubmissionID,
 		AttemptID: attempt.ID, ExamRevisionID: attempt.AdmissionRevisionID, WorkspaceID: workspace.ID, Manifest: submissionManifest,
 		BrowserActivity: model.BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1},
 		Provenance:      model.ExamSubmissionCandidateSubmitted, SubmittedAt: at.Add(time.Minute)})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	fake.submissionView = app.ExamSubmissionManagerView{Authorization: store.ExamSubmissionAuthorization{
 		SubmissionID: submission.ID, ExamID: attempt.ExamID, SittingID: attempt.SittingID, AttemptID: attempt.ID,
 		CandidateUserID: attempt.CandidateUserID, AcademicUnitID: model.NewAcademicUnitID()}, Submission: *submission}
@@ -992,9 +935,7 @@ func candidateTestRuntimeCapabilities(t *testing.T, at time.Time, attempt *model
 	t.Helper()
 	manifest := model.CurrentAttemptConfigurationManifestFingerprint()
 	configuration, err := (model.AttemptConfigurationCandidate{ManifestFingerprint: manifest, RegistryFingerprint: "fnv1a64:" + strings.Repeat("b", 16), UserSettingsRevision: model.NewUserSettingsRevision(), DesktopBuild: "test-build", DesktopTarget: "darwin-arm64", Presentation: model.AttemptConfigurationPresentation{ColorTheme: "dark", ZoomPercent: 100, EditorFontSizePX: 14, EditorLineHeightPX: 22, ScreenReaderMode: "auto", AnnouncementMode: "auto", CursorStyle: "line", CursorBlinking: "blink"}, ApprovedCommands: []string{}, ApprovedKeybindings: []string{}}).Freeze(model.NewID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return store.CandidateRuntimeCapabilities{SchemaVersion: 1, ServerTime: at,
 		InteractionState: store.CandidateInteractionInteractive,
 		AttemptConfiguration: store.CandidateAttemptConfiguration{Revision: configuration.Revision, Presentation: configuration.Presentation,
@@ -1257,9 +1198,7 @@ func (f *examAttemptHTTPFake) StopDeliveryDetails(context.Context, app.Invocatio
 func assertNoForbiddenJSONTerms(t *testing.T, body []byte, forbidden ...string) {
 	t.Helper()
 	var document any
-	if err := json.Unmarshal(body, &document); err != nil {
-		t.Fatalf("decode %s: %v", body, err)
-	}
+	require.NoError(t, json.Unmarshal(body, &document), "decode %s", body)
 	var texts []string
 	var walk func(any)
 	walk = func(value any) {
@@ -1282,9 +1221,7 @@ func assertNoForbiddenJSONTerms(t *testing.T, body []byte, forbidden ...string) 
 	walk(document)
 	for _, text := range texts {
 		for _, term := range forbidden {
-			if strings.Contains(strings.ToLower(text), term) {
-				t.Fatalf("response exposes %q in %q: %s", term, text, body)
-			}
+			require.NotContains(t, strings.ToLower(text), term, "response exposes %q in %q: %s", term, text, body)
 		}
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -118,19 +119,13 @@ func TestExamOpenAPIAgreesWithRuntime(t *testing.T) {
 		},
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, examResource(&examHTTPApplication{})); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtimeAPI.collectResources(model.APIURLSuffix, examResource(&examHTTPApplication{})))
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 
 	document := readOpenAPIDocument(t)
 	var listOperation openAPIOperation
-	if err := json.Unmarshal(document.Paths[model.APIURLSuffix+"/exams"]["get"], &listOperation); err != nil {
-		t.Fatal(err)
-	}
-	if got := academicStructureQueryParameterNames(listOperation.Parameters); !reflect.DeepEqual(got, []string{"academic_unit_id", "archive_state", "cursor", "ends_after", "limit", "q", "sitting_state", "starts_before"}) {
-		t.Fatalf("Exam list query parameters = %v", got)
-	}
+	require.NoError(t, json.Unmarshal(document.Paths[model.APIURLSuffix+"/exams"]["get"], &listOperation))
+	require.Equal(t, []string{"academic_unit_id", "archive_state", "cursor", "ends_after", "limit", "q", "sitting_state", "starts_before"}, academicStructureQueryParameterNames(listOperation.Parameters))
 }
 
 func examManagerAdditionContractCodes() []string {
@@ -154,27 +149,20 @@ func examOwnerTransferContractCodes() []string {
 func TestEditExamDraftTextOpenAPISchemaRequiresANonNullAuthoredValue(t *testing.T) {
 	t.Parallel()
 	document, err := openapi3.NewLoader().LoadFromFile(openAPIDocumentPath(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	schema := document.Components.Schemas["EditExamDraftTextRequest"]
-	if schema == nil || schema.Value == nil {
-		t.Fatal("EditExamDraftTextRequest schema is missing")
-	}
+	require.NotNil(t, schema, "EditExamDraftTextRequest schema is missing")
+	require.NotNil(t, schema.Value, "EditExamDraftTextRequest schema is missing")
 	for _, invalid := range []map[string]any{
 		{"expected_draft_revision": float64(1)},
 		{"expected_draft_revision": float64(1), "title": nil, "instructions_markdown": nil},
 	} {
-		if err := schema.Value.VisitJSON(invalid); err == nil {
-			t.Fatalf("schema accepted %#v", invalid)
-		}
+		require.Error(t, schema.Value.VisitJSON(invalid), "schema accepted %#v", invalid)
 	}
 	for _, valid := range []map[string]any{
 		{"expected_draft_revision": float64(1), "title": "Algorithms"},
 		{"expected_draft_revision": float64(1), "instructions_markdown": ""},
 	} {
-		if err := schema.Value.VisitJSON(valid); err != nil {
-			t.Fatalf("schema rejected %#v: %v", valid, err)
-		}
+		require.NoError(t, schema.Value.VisitJSON(valid), "schema rejected %#v", valid)
 	}
 }

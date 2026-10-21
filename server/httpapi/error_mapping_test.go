@@ -12,8 +12,9 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/httpapi"
@@ -181,31 +182,17 @@ func TestWriteErrorMapsTransportNeutralApplicationErrors(t *testing.T) {
 			t.Parallel()
 
 			response := writeErrorResponse(t, tt.err)
-			if response.Code != tt.wantStatus {
-				t.Fatalf("status = %d, want %d; body = %s", response.Code, tt.wantStatus, response.Body.String())
-			}
-			if strings.Contains(response.Body.String(), "sql:") ||
-				strings.Contains(response.Body.String(), "no rows") {
-				t.Fatalf("wrapped cause leaked: %s", response.Body.String())
-			}
+			require.Equal(t, tt.wantStatus, response.Code, "status = %d, want %d; body = %s", response.Code, tt.wantStatus, response.Body.String())
+			require.NotContains(t, response.Body.String(), "sql:")
+			require.NotContains(t, response.Body.String(), "no rows")
 			var problem httpapi.Problem
-			if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-				t.Fatal(err)
-			}
-			if problem.Code != tt.wantCode {
-				t.Fatalf("code = %q, want %q", problem.Code, tt.wantCode)
-			}
-			if problem.Type != "https://proctor.sudosylabs.com/problems/"+tt.wantCode {
-				t.Fatalf("type = %q", problem.Type)
-			}
-			if problem.Status != tt.wantStatus {
-				t.Fatalf("problem status = %d", problem.Status)
-			}
-			if problem.Instance != "/academic-units/unit123" {
-				t.Fatalf("instance = %q", problem.Instance)
-			}
-			if tt.wantField != "" && problem.Fields[tt.wantField] != tt.wantValue {
-				t.Fatalf("fields = %#v", problem.Fields)
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &problem))
+			require.Equal(t, tt.wantCode, problem.Code, "code")
+			require.Equal(t, "https://proctor.sudosylabs.com/problems/"+tt.wantCode, problem.Type)
+			require.Equal(t, tt.wantStatus, problem.Status, "problem status")
+			require.Equal(t, "/academic-units/unit123", problem.Instance)
+			if tt.wantField != "" {
+				require.Equal(t, tt.wantValue, problem.Fields[tt.wantField])
 			}
 		})
 	}
@@ -217,23 +204,14 @@ func TestWriteErrorFailsSafeForUnmappedApplicationCodes(t *testing.T) {
 	response := writeErrorResponse(t, apperror.New("future.capability.unknown_code").
 		WithField("secret", "should-not-matter").
 		Wrap(errors.New("sensitive operator detail")))
-	if response.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want 500", response.Code)
-	}
-	if strings.Contains(response.Body.String(), "sensitive") ||
-		strings.Contains(response.Body.String(), "future.capability") {
-		t.Fatalf("unmapped error leaked details: %s", response.Body.String())
-	}
+	require.Equal(t, http.StatusInternalServerError, response.Code, "status")
+	require.NotContains(t, response.Body.String(), "sensitive")
+	require.NotContains(t, response.Body.String(), "future.capability")
 	var problem httpapi.Problem
-	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-		t.Fatal(err)
-	}
-	if problem.Code != "server.internal" || problem.Status != http.StatusInternalServerError {
-		t.Fatalf("problem = %#v", problem)
-	}
-	if len(problem.Fields) != 0 {
-		t.Fatalf("unmapped error exposed fields = %#v", problem.Fields)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &problem))
+	require.Equal(t, "server.internal", problem.Code)
+	require.Equal(t, http.StatusInternalServerError, problem.Status)
+	require.Empty(t, problem.Fields)
 }
 
 func TestWriteErrorMapsConflictWithoutLeakingCauses(t *testing.T) {
@@ -242,45 +220,29 @@ func TestWriteErrorMapsConflictWithoutLeakingCauses(t *testing.T) {
 	response := writeErrorResponse(t, apperror.New("installation.already_initialized").
 		WithField("resource_id", "r1").
 		Wrap(errors.New("sensitive internal cause")))
-	if response.Code != http.StatusConflict {
-		t.Fatalf("status = %d", response.Code)
-	}
-	if strings.Contains(response.Body.String(), "sensitive") {
-		t.Fatalf("leaked operator detail: %s", response.Body.String())
-	}
+	require.Equal(t, http.StatusConflict, response.Code, "status")
+	require.NotContains(t, response.Body.String(), "sensitive")
 	var problem httpapi.Problem
-	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-		t.Fatal(err)
-	}
-	if problem.Code != "installation.already_initialized" || problem.Fields["resource_id"] != "r1" {
-		t.Fatalf("problem = %#v", problem)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &problem))
+	require.Equal(t, "installation.already_initialized", problem.Code)
+	require.Equal(t, "r1", problem.Fields["resource_id"])
 }
 
 func TestApplicationErrorMappingCoversEveryRegisteredCode(t *testing.T) {
 	t.Parallel()
 
 	for code, status := range httpapi.ApplicationErrorStatuses() {
-		if status < 400 || status > 599 {
-			t.Fatalf("code %q maps to non-error status %d", code, status)
-		}
-		if code == "" || code == "server.internal" {
-			t.Fatalf("registry contains reserved or empty code %q", code)
-		}
+		require.GreaterOrEqual(t, status, 400, "code %q maps to non-error status", code)
+		require.LessOrEqual(t, status, 599, "code %q maps to non-error status", code)
+		require.NotEmpty(t, code)
+		require.NotEqual(t, "server.internal", code)
 		response := writeErrorResponse(t, apperror.New(apperror.Code(code)))
-		if response.Code != status {
-			t.Fatalf("code %q status = %d, want %d", code, response.Code, status)
-		}
+		require.Equal(t, status, response.Code, "code %q status", code)
 		var problem httpapi.Problem
-		if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-			t.Fatal(err)
-		}
-		if problem.Code != code || problem.Status != status {
-			t.Fatalf("code %q problem = %#v", code, problem)
-		}
-		if problem.Type != "https://proctor.sudosylabs.com/problems/"+code {
-			t.Fatalf("code %q type = %q", code, problem.Type)
-		}
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &problem))
+		require.Equal(t, code, problem.Code, "code %q problem = %#v", code, problem)
+		require.Equal(t, status, problem.Status, "code %q problem = %#v", code, problem)
+		require.Equal(t, "https://proctor.sudosylabs.com/problems/"+code, problem.Type, "code %q type", code)
 	}
 }
 

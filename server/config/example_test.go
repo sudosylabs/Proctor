@@ -17,45 +17,33 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestExampleConfigurationIsCompleteCanonicalDefault(t *testing.T) {
 	t.Parallel()
 
 	data, err := os.ReadFile("config.example.json")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var document map[string]json.RawMessage
-	if err := json.Unmarshal(data, &document); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(data, &document))
 	for _, key := range []string{"Version", "Server", "Metrics", "Database", "Cache", "Cluster"} {
-		if _, exists := document[key]; !exists {
-			t.Fatalf("example configuration is missing PascalCase key %q", key)
-		}
+		_, exists := document[key]
+		require.True(t, exists, "example configuration is missing PascalCase key %q", key)
 	}
-	if _, exists := document["version"]; exists {
-		t.Fatal("example configuration contains legacy lower-case key version")
-	}
+	_, exists := document["version"]
+	require.False(t, exists, "example configuration contains legacy lower-case key version")
 	assertExampleContainsEveryField(t, data, reflect.TypeOf(Config{}), "Config")
 
 	var example Config
-	if err := decodeStrict(data, &example); err != nil {
-		t.Fatalf("decode example configuration: %v", err)
-	}
-	if !reflect.DeepEqual(example, Default()) {
-		t.Fatalf("example configuration does not match config.Default()\nexample: %#v\ndefault: %#v", example, Default())
-	}
+	require.NoError(t, decodeStrict(data, &example))
+	require.Equal(t, Default(), example, "example configuration does not match config.Default()\nexample")
 
 	fileStore, err := NewFileStore("config.example.json")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	store, err := NewStore(context.Background(), fileStore, StoreOptions{LookupEnv: noEnvironment})
-	if err != nil {
-		t.Fatalf("load example configuration: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 }
 
@@ -86,9 +74,7 @@ func TestStructuredConfigurationExamplesAreCompleteAndValid(t *testing.T) {
 			)
 			configuration := Default()
 			configuration.Authentication.External.Providers = []ExternalAuthenticationProvider{provider}
-			if err := configuration.Validate(); err != nil {
-				t.Fatalf("validate provider example: %v", err)
-			}
+			require.NoError(t, configuration.Validate())
 		})
 	}
 }
@@ -96,17 +82,11 @@ func TestStructuredConfigurationExamplesAreCompleteAndValid(t *testing.T) {
 func decodeStructuredExample[T any](t *testing.T, path string, target *T) []byte {
 	t.Helper()
 	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		t.Fatalf("decode %s: %v", path, err)
-	}
-	if err := decoder.Decode(new(any)); err != io.EOF {
-		t.Fatalf("%s must contain exactly one JSON value: %v", path, err)
-	}
+	require.NoError(t, decoder.Decode(target), "decode %s", path)
+	require.Equal(t, io.EOF, decoder.Decode(new(any)), "%s must contain exactly one JSON value", path)
 	return data
 }
 
@@ -129,13 +109,10 @@ func assertNoOmitEmptyFields(
 			continue
 		}
 		parts := strings.Split(field.Tag.Get("json"), ",")
-		if len(parts) == 0 || parts[0] == "" {
-			t.Fatalf("%s.%s has no JSON field name", typeOf.Name(), field.Name)
-		}
+		require.NotEmpty(t, parts)
+		require.NotEmpty(t, parts[0])
 		for _, option := range parts[1:] {
-			if option == "omitempty" {
-				t.Fatalf("%s.%s uses omitempty", typeOf.Name(), field.Name)
-			}
+			require.NotEqual(t, "omitempty", option)
 		}
 		assertNoOmitEmptyFields(t, field.Type, visited)
 	}
@@ -156,9 +133,7 @@ func assertExampleContainsEveryField(
 	}
 	if typeOf.Kind() == reflect.Slice {
 		var elements []json.RawMessage
-		if err := json.Unmarshal(data, &elements); err != nil {
-			t.Fatalf("%s must be an array: %v", path, err)
-		}
+		require.NoError(t, json.Unmarshal(data, &elements), "%s must be an array", path)
 		for index, element := range elements {
 			assertExampleContainsEveryField(
 				t,
@@ -173,9 +148,7 @@ func assertExampleContainsEveryField(
 		return
 	}
 	var object map[string]json.RawMessage
-	if err := json.Unmarshal(data, &object); err != nil {
-		t.Fatalf("%s must be an object: %v", path, err)
-	}
+	require.NoError(t, json.Unmarshal(data, &object), "%s must be an object", path)
 	for index := range typeOf.NumField() {
 		field := typeOf.Field(index)
 		if !field.IsExported() {
@@ -183,9 +156,7 @@ func assertExampleContainsEveryField(
 		}
 		name := strings.Split(field.Tag.Get("json"), ",")[0]
 		value, exists := object[name]
-		if !exists {
-			t.Fatalf("%s is missing field %s", path, name)
-		}
+		require.True(t, exists, "%s is missing field %s", path, name)
 		assertExampleContainsEveryField(t, value, field.Type, path+"."+name)
 	}
 }

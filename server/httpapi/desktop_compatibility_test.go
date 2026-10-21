@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -65,21 +67,15 @@ func TestDesktopCompatibilityRoutesDeclarePublicPingAndProtectedPolicyMutation(t
 	for _, resource := range resources {
 		for _, route := range resource.routes {
 			path, _, err := route.path.compile(model.APIURLSuffix)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			byMethodPath[route.method+" "+path] = route
 		}
 	}
-	if route := byMethodPath["GET /api/v1/system/ping"]; route.auth != AuthPublic {
-		t.Fatalf("ping route = %#v", route)
-	}
-	if route := byMethodPath["GET /api/v1/desktop-compatibility-policy"]; route.auth != AuthPrincipalRequired {
-		t.Fatalf("policy read route = %#v", route)
-	}
-	if route := byMethodPath["PUT /api/v1/desktop-compatibility-policy"]; route.auth != AuthStrongRecentSessionRequired || route.idempotency != IdempotencyRequired {
-		t.Fatalf("policy replacement route = %#v", route)
-	}
+	require.Equal(t, AuthPublic, byMethodPath["GET /api/v1/system/ping"].auth)
+	require.Equal(t, AuthPrincipalRequired, byMethodPath["GET /api/v1/desktop-compatibility-policy"].auth)
+	route := byMethodPath["PUT /api/v1/desktop-compatibility-policy"]
+	require.Equal(t, AuthStrongRecentSessionRequired, route.auth)
+	require.Equal(t, IdempotencyRequired, route.idempotency)
 }
 
 func TestSystemPingReturnsRequestSpecificNoStoreCompatibility(t *testing.T) {
@@ -116,26 +112,23 @@ func TestSystemPingReturnsRequestSpecificNoStoreCompatibility(t *testing.T) {
 	)
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("ping = %d cache=%q body=%s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
-	}
-	if applicationFake.query.DesktopBuildID != "darwin-42" || applicationFake.query.RealtimeProtocol != 2 {
-		t.Fatalf("query = %#v", applicationFake.query)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "ping = %d cache=%q body=%s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "ping = %d cache=%q body=%s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+	require.Equal(t, "darwin-42", applicationFake.query.DesktopBuildID)
+	require.Equal(t, 2, applicationFake.query.RealtimeProtocol)
 	var body map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body["schema_version"] != float64(1) || body["server_time"] != now.Format(time.RFC3339Nano) ||
-		body["availability"] != "ready" || body["reason"] != "ready" ||
-		body["compatibility"] != "compatible" || body["compatibility_reason"] != "compatible" ||
-		body["minimum_desktop_release"] != "1.2.0" || body["maximum_desktop_release"] != "1.4.0" {
-		t.Fatalf("ping body = %#v", body)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	require.Equal(t, float64(1), body["schema_version"])
+	require.Equal(t, now.Format(time.RFC3339Nano), body["server_time"])
+	require.Equal(t, "ready", body["availability"])
+	require.Equal(t, "ready", body["reason"])
+	require.Equal(t, "compatible", body["compatibility"])
+	require.Equal(t, "compatible", body["compatibility_reason"])
+	require.Equal(t, "1.2.0", body["minimum_desktop_release"])
+	require.Equal(t, "1.4.0", body["maximum_desktop_release"])
 	for _, forbidden := range []string{"canonical_origin", "installation", "institution", "provider", "access_policy", "version", "commit", "download"} {
-		if _, exists := body[forbidden]; exists {
-			t.Fatalf("ping exposed %q: %#v", forbidden, body)
-		}
+		_, exists := body[forbidden]
+		require.False(t, exists, "ping exposed %q: %#v", forbidden, body)
 	}
 }
 
@@ -165,18 +158,14 @@ func TestSystemPingPublishesMaintenanceAvailabilityAndRetryTime(t *testing.T) {
 		"/api/v1/system/ping?desktop_release=1.0.0&desktop_build_id=build&platform=darwin&architecture=arm64&realtime_protocol=1",
 		nil,
 	))
-	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("maintenance ping = %d cache=%q body=%s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "maintenance ping = %d cache=%q body=%s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "maintenance ping = %d cache=%q body=%s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
 	var body map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body["availability"] != "maintenance" || body["reason"] != "maintenance" ||
-		body["retry_at"] != retryAt.Format(time.RFC3339Nano) ||
-		body["administrator_message"] != "Scheduled maintenance is in progress." {
-		t.Fatalf("maintenance ping body = %#v", body)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	require.Equal(t, "maintenance", body["availability"])
+	require.Equal(t, "maintenance", body["reason"])
+	require.Equal(t, retryAt.Format(time.RFC3339Nano), body["retry_at"])
+	require.Equal(t, "Scheduled maintenance is in progress.", body["administrator_message"])
 }
 
 func TestSystemPingOmitsRetryTimeNotLaterThanItsServerTime(t *testing.T) {
@@ -204,15 +193,10 @@ func TestSystemPingOmitsRetryTimeNotLaterThanItsServerTime(t *testing.T) {
 		nil,
 	))
 	var body map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body["server_time"] != serverTime.Format(time.RFC3339Nano) {
-		t.Fatalf("server_time = %#v, want %s", body["server_time"], serverTime.Format(time.RFC3339Nano))
-	}
-	if retryAt, exists := body["retry_at"]; exists {
-		t.Fatalf("ping exposed non-future retry_at = %#v", retryAt)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	require.Equal(t, serverTime.Format(time.RFC3339Nano), body["server_time"], "server_time")
+	retryAt, exists := body["retry_at"]
+	require.False(t, exists, "ping exposed non-future retry_at = %#v", retryAt)
 }
 
 func TestSystemPingRejectsMalformedSelectorsWithoutEvaluation(t *testing.T) {
@@ -233,13 +217,10 @@ func TestSystemPingRejectsMalformedSelectorsWithoutEvaluation(t *testing.T) {
 	} {
 		response := httptest.NewRecorder()
 		httpAPI.ServeHTTP(response, httptest.NewRequest(http.MethodGet, target, nil))
-		if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), `"code":"request.invalid"`) {
-			t.Fatalf("%s = %d %s", target, response.Code, response.Body.String())
-		}
+		require.Equal(t, http.StatusBadRequest, response.Code, "%s", target)
+		require.Contains(t, response.Body.String(), `"code":"request.invalid"`, "%s", target)
 	}
-	if applicationFake.evaluations != 0 {
-		t.Fatalf("malformed requests evaluated compatibility %d times", applicationFake.evaluations)
-	}
+	require.Equal(t, 0, applicationFake.evaluations, "malformed requests evaluated compatibility")
 }
 
 func TestSystemPingFailsClosedInsideSuccessfulResponseWhenUnavailable(t *testing.T) {
@@ -260,12 +241,11 @@ func TestSystemPingFailsClosedInsideSuccessfulResponseWhenUnavailable(t *testing
 		"/api/v1/system/ping?desktop_release=1.0.0&desktop_build_id=build&platform=darwin&architecture=arm64&realtime_protocol=1",
 		nil,
 	))
-	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" ||
-		!strings.Contains(response.Body.String(), `"availability":"temporarily_unavailable"`) ||
-		!strings.Contains(response.Body.String(), `"compatibility":"server_incompatible"`) ||
-		strings.Contains(response.Body.String(), "desktop_compatibility_policy.unavailable") {
-		t.Fatalf("unavailable ping = %d %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "unavailable ping")
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "unavailable ping")
+	require.Contains(t, response.Body.String(), `"availability":"temporarily_unavailable"`, "unavailable ping")
+	require.Contains(t, response.Body.String(), `"compatibility":"server_incompatible"`, "unavailable ping")
+	require.NotContains(t, response.Body.String(), "desktop_compatibility_policy.unavailable", "unavailable ping")
 }
 
 func TestDesktopCompatibilityPolicyHTTPUsesCompleteReplacementAndNoStore(t *testing.T) {
@@ -300,17 +280,14 @@ func TestDesktopCompatibilityPolicyHTTPUsesCompleteReplacementAndNoStore(t *test
 	request.Header.Set("Idempotency-Key", "desktop-policy-1")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "private, no-store" {
-		t.Fatalf("replace = %d cache=%q body=%s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
-	}
-	if applicationFake.replaceCommand.ExpectedRevision != 1 ||
-		applicationFake.replaceCommand.IdempotencyKey != "desktop-policy-1" ||
-		applicationFake.replaceCommand.Settings.MinimumDesktopRelease != "1.2.0" ||
-		len(applicationFake.replaceCommand.Settings.RevokedDesktopBuildIDs) != 1 ||
-		applicationFake.replaceCommand.Settings.Availability != model.DesktopAvailabilityReady ||
-		applicationFake.replaceCommand.Settings.RetryAt.Valid {
-		t.Fatalf("replacement command = %#v", applicationFake.replaceCommand)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "replace = %d cache=%q body=%s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+	require.Equal(t, "private, no-store", response.Header().Get("Cache-Control"), "replace = %d cache=%q body=%s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+	require.Equal(t, int64(1), applicationFake.replaceCommand.ExpectedRevision)
+	require.Equal(t, "desktop-policy-1", applicationFake.replaceCommand.IdempotencyKey)
+	require.Equal(t, "1.2.0", applicationFake.replaceCommand.Settings.MinimumDesktopRelease)
+	require.Len(t, applicationFake.replaceCommand.Settings.RevokedDesktopBuildIDs, 1)
+	require.Equal(t, model.DesktopAvailabilityReady, applicationFake.replaceCommand.Settings.Availability)
+	require.False(t, applicationFake.replaceCommand.Settings.RetryAt.Valid)
 
 	for _, invalidBody := range []string{
 		`{"expected_revision":1,"revoked_desktop_build_ids":[],"administrator_message":""}`,
@@ -324,9 +301,7 @@ func TestDesktopCompatibilityPolicyHTTPUsesCompleteReplacementAndNoStore(t *test
 		invalid.Header.Set("Idempotency-Key", "desktop-policy-invalid")
 		invalidResponse := httptest.NewRecorder()
 		httpAPI.ServeHTTP(invalidResponse, invalid)
-		if invalidResponse.Code != http.StatusBadRequest ||
-			!strings.Contains(invalidResponse.Body.String(), `"code":"request.invalid"`) {
-			t.Fatalf("incomplete body = %d %s", invalidResponse.Code, invalidResponse.Body.String())
-		}
+		require.Equal(t, http.StatusBadRequest, invalidResponse.Code, "incomplete body")
+		require.Contains(t, invalidResponse.Body.String(), `"code":"request.invalid"`, "incomplete body")
 	}
 }

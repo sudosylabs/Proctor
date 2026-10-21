@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/app"
@@ -31,37 +33,29 @@ func TestMetricAdapterOutcomesStayBounded(t *testing.T) {
 		want string
 	}{{nil, "success"}, {platform.ErrCacheMiss, "miss"}, {platform.ErrCacheNotStored, "not_stored"}, {context.DeadlineExceeded, "timeout"}, {errors.New("private"), "error"}}
 	for _, test := range cacheCases {
-		if got := cacheOutcome(test.err); got != test.want {
-			t.Fatalf("cacheOutcome(%v) = %q, want %q", test.err, got, test.want)
-		}
+		t.Run(test.want, func(t *testing.T) {
+			require.Equal(t, test.want, cacheOutcome(test.err), "cacheOutcome(%v)", test.err)
+		})
 	}
 	vfsCases := []struct {
 		err  error
 		want string
 	}{{nil, "success"}, {vfspkg.ErrNotFound, "not_found"}, {vfspkg.ErrConflict, "conflict"}, {vfspkg.ErrUnsupported, "unsupported"}, {errors.New("private"), "error"}}
 	for _, test := range vfsCases {
-		if got := vfsOutcome(test.err); got != test.want {
-			t.Fatalf("vfsOutcome(%v) = %q, want %q", test.err, got, test.want)
-		}
+		t.Run(test.want, func(t *testing.T) {
+			require.Equal(t, test.want, vfsOutcome(test.err), "vfsOutcome(%v)", test.err)
+		})
 	}
-	if got := smtpOutcome(mailpkg.WithOutcome(mailpkg.OutcomeAcceptanceUncertain, errors.New("private"))); got != "acceptance_uncertain" {
-		t.Fatalf("smtpOutcome() = %q", got)
-	}
+	require.Equal(t, "acceptance_uncertain", smtpOutcome(mailpkg.WithOutcome(mailpkg.OutcomeAcceptanceUncertain, errors.New("private"))))
 }
 
 func TestMeasuredClusterLabelsOnlyRegisteredEvents(t *testing.T) {
 	t.Parallel()
 
 	recorder := &measuredCluster{events: map[cluster.Event]struct{}{"registered.event": {}}}
-	if got := recorder.metricEvent("registered.event"); got != "registered.event" {
-		t.Fatalf("registered event metric label = %q", got)
-	}
-	if got := recorder.metricEvent("peer.supplied"); got != "unregistered" {
-		t.Fatalf("unregistered event metric label = %q", got)
-	}
-	if got := recorder.metricEvent(""); got != "none" {
-		t.Fatalf("empty event metric label = %q", got)
-	}
+	require.Equal(t, "registered.event", recorder.metricEvent("registered.event"))
+	require.Equal(t, "unregistered", recorder.metricEvent("peer.supplied"))
+	require.Equal(t, "none", recorder.metricEvent(""))
 }
 
 func TestMailQueueMetricsAggregateFailureBucketsAndExposeTruncation(t *testing.T) {
@@ -73,9 +67,9 @@ func TestMailQueueMetricsAggregateFailureBucketsAndExposeTruncation(t *testing.T
 	}
 	aggregates, truncated := aggregateMailQueueMetrics(values)
 	aggregate := aggregates[mailQueueMetricIdentity{template: model.MailTemplateSystemTest, state: model.MailDeliveryQueued}]
-	if aggregate.count != 5 || aggregate.oldestAge != 2*time.Minute || !truncated {
-		t.Fatalf("aggregate = %#v truncated=%v", aggregate, truncated)
-	}
+	require.Equal(t, int64(5), aggregate.count, "aggregate = %#v truncated", aggregate)
+	require.Equal(t, 2*time.Minute, aggregate.oldestAge, "aggregate = %#v truncated", aggregate)
+	require.True(t, truncated, "aggregate = %#v truncated", aggregate)
 }
 
 func TestMeasuredReadCloserCountsBytesAndCompletesOnce(t *testing.T) {
@@ -89,16 +83,10 @@ func TestMeasuredReadCloserCountsBytesAndCompletesOnce(t *testing.T) {
 		outcomes = append(outcomes, outcome)
 	})
 	data, err := io.ReadAll(reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := reader.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if string(data) != "payload" || bytesRead != len("payload") {
-		t.Fatalf("data=%q bytes=%d", data, bytesRead)
-	}
-	if len(outcomes) != 1 || outcomes[0] != "complete" {
-		t.Fatalf("outcomes = %#v", outcomes)
-	}
+	require.NoError(t, err)
+	require.NoError(t, reader.Close())
+	require.Equal(t, "payload", string(data), "data")
+	require.Len(t, "payload", bytesRead, "data")
+	require.Len(t, outcomes, 1)
+	require.Equal(t, "complete", outcomes[0])
 }

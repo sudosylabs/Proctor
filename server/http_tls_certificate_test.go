@@ -19,14 +19,14 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func writeSerialTestCertificate(t *testing.T, certificateFile, privateKeyFile string, serial int64) {
 	t.Helper()
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	now := time.Now()
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(serial), Subject: pkix.Name{CommonName: "proctor.example.edu"},
@@ -34,39 +34,25 @@ func writeSerialTestCertificate(t *testing.T, certificateFile, privateKeyFile st
 		KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}
 	certificateDER, err := x509.CreateCertificate(rand.Reader, template, template, publicKey, privateKey)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	privateKeyDER, err := x509.MarshalPKCS8PrivateKey(privateKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(certificateFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificateDER}), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(privateKeyFile, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateKeyDER}), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(certificateFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificateDER}), 0o600))
+	require.NoError(t, os.WriteFile(privateKeyFile, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateKeyDER}), 0o600))
 	// Distinct modification times make replacement observable on coarse
 	// file-system clocks.
 	stamp := now.Add(time.Duration(serial) * time.Second)
 	for _, path := range []string{certificateFile, privateKeyFile} {
-		if err := os.Chtimes(path, stamp, stamp); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.Chtimes(path, stamp, stamp))
 	}
 }
 
 func servedSerial(t *testing.T, certificate *staticCertificate) int64 {
 	t.Helper()
 	served, err := certificate.GetCertificate(&tls.ClientHelloInfo{ServerName: "proctor.example.edu"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	leaf, err := x509.ParseCertificate(served.Certificate[0])
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return leaf.SerialNumber.Int64()
 }
 
@@ -80,38 +66,21 @@ func TestStaticCertificateReplacesRotatedFilesAndKeepsLastGoodPair(t *testing.T)
 	certificate := newStaticCertificate(certificateFile, privateKeyFile, func(err error) { failures = append(failures, err) })
 	now := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
 	certificate.now = func() time.Time { return now }
-	if err := certificate.Reload(); err != nil {
-		t.Fatal(err)
-	}
-	if got := servedSerial(t, certificate); got != 1 {
-		t.Fatalf("initial serial = %d, want 1", got)
-	}
+	require.NoError(t, certificate.Reload())
+	require.Equal(t, int64(1), servedSerial(t, certificate), "initial serial")
 
 	writeSerialTestCertificate(t, certificateFile, privateKeyFile, 2)
-	if got := servedSerial(t, certificate); got != 1 {
-		t.Fatalf("serial before the check interval = %d, want 1", got)
-	}
+	require.Equal(t, int64(1), servedSerial(t, certificate), "serial before the check interval")
 	now = now.Add(staticCertificateCheckInterval)
-	if got := servedSerial(t, certificate); got != 2 {
-		t.Fatalf("serial after rotation = %d, want 2", got)
-	}
+	require.Equal(t, int64(2), servedSerial(t, certificate), "serial after rotation")
 
-	if err := os.WriteFile(certificateFile, []byte("not a certificate"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(certificateFile, []byte("not a certificate"), 0o600))
 	now = now.Add(staticCertificateCheckInterval)
-	if got := servedSerial(t, certificate); got != 2 || len(failures) != 1 {
-		t.Fatalf("after invalid replacement serial = %d failures = %d, want last good serial 2 and one failure", got, len(failures))
-	}
-	if err := certificate.Reload(); err == nil {
-		t.Fatal("explicit reload accepted an invalid certificate")
-	}
+	require.Equal(t, int64(2), servedSerial(t, certificate), "after invalid replacement serial")
+	require.Len(t, failures, 1, "after invalid replacement serial")
+	require.Error(t, certificate.Reload(), "explicit reload accepted an invalid certificate")
 
 	writeSerialTestCertificate(t, certificateFile, privateKeyFile, 3)
-	if err := certificate.Reload(); err != nil {
-		t.Fatal(err)
-	}
-	if got := servedSerial(t, certificate); got != 3 {
-		t.Fatalf("serial after explicit reload = %d, want 3", got)
-	}
+	require.NoError(t, certificate.Reload())
+	require.Equal(t, int64(3), servedSerial(t, certificate), "serial after explicit reload")
 }

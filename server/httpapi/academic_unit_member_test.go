@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -36,12 +38,8 @@ func TestAcademicUnitMemberHistoryQueryIncludesEndedMemberships(t *testing.T) {
 	request := httptest.NewRequestWithContext(t.Context(), "GET", "/api/v1/academic-units/unit/members?active_at=1970-01-01T00:00:00.123Z&history=true", nil)
 	recorder := httptest.NewRecorder()
 	activeAt, ok := queryActiveAt(recorder, request)
-	if !ok {
-		t.Fatalf("query rejected: status=%d body=%s", recorder.Code, recorder.Body.String())
-	}
-	if activeAt != 0 {
-		t.Fatalf("active at = %d, want 0 for complete history", activeAt)
-	}
+	require.True(t, ok, "query rejected: status=%d body=%s", recorder.Code, recorder.Body.String())
+	require.Equal(t, int64(0), activeAt, "active at")
 }
 
 func TestAcademicUnitMemberHistoryQueryRejectsInvalidBoolean(t *testing.T) {
@@ -49,12 +47,9 @@ func TestAcademicUnitMemberHistoryQueryRejectsInvalidBoolean(t *testing.T) {
 
 	request := httptest.NewRequest("GET", "/api/v1/academic-units/unit/members?history=invalid", nil)
 	recorder := httptest.NewRecorder()
-	if _, ok := queryActiveAt(recorder, request); ok {
-		t.Fatal("invalid history query was accepted")
-	}
-	if recorder.Code != 400 {
-		t.Fatalf("status = %d, want 400", recorder.Code)
-	}
+	_, ok := queryActiveAt(recorder, request)
+	require.False(t, ok, "invalid history query was accepted")
+	require.Equal(t, 400, recorder.Code, "status")
 }
 
 func TestAcademicUnitMemberFalseHistoryQueryUsesActiveAt(t *testing.T) {
@@ -63,9 +58,8 @@ func TestAcademicUnitMemberFalseHistoryQueryUsesActiveAt(t *testing.T) {
 	request := httptest.NewRequestWithContext(t.Context(), "GET", "/api/v1/academic-units/unit/members?history=false&active_at=1970-01-01T00:00:00.123Z", nil)
 	recorder := httptest.NewRecorder()
 	activeAt, ok := queryActiveAt(recorder, request)
-	if !ok || activeAt != 123 {
-		t.Fatalf("active at = %d, ok = %v; want 123, true", activeAt, ok)
-	}
+	require.True(t, ok, "active at")
+	require.Equal(t, int64(123), activeAt, "active at")
 }
 
 func (a *academicUnitMemberHTTPApplication) ListAcademicUnitMembers(_ context.Context, _ app.Invocation, query app.ListAcademicUnitMembersQuery) ([]*model.AcademicUnitMember, error) {
@@ -95,27 +89,21 @@ func TestAcademicUnitMemberResourceRunsThroughRoutingKernel(t *testing.T) {
 	create.Header.Set("Content-Type", "application/json")
 	created := httptest.NewRecorder()
 	httpAPI.ServeHTTP(created, create)
-	if created.Code != http.StatusCreated {
-		t.Fatalf("create status = %d: %s", created.Code, created.Body.String())
-	}
-	if members.createCommand.AcademicUnitID != model.AcademicUnitID(unitID) || members.createCommand.UserID != userID {
-		t.Fatalf("command = %#v", members.createCommand)
-	}
+	require.Equal(t, http.StatusCreated, created.Code, "create status = %d: %s", created.Code, created.Body.String())
+	require.Equal(t, model.AcademicUnitID(unitID), members.createCommand.AcademicUnitID)
+	require.Equal(t, userID, members.createCommand.UserID)
 	var body map[string]any
-	if err := json.Unmarshal(created.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if _, exposed := body["revision"]; exposed {
-		t.Fatalf("persistence revision leaked into DTO: %#v", body)
-	}
+	require.NoError(t, json.Unmarshal(created.Body.Bytes(), &body))
+	_, exposed := body["revision"]
+	require.False(t, exposed, "persistence revision leaked into DTO: %#v", body)
 
 	list := httptest.NewRequest(http.MethodGet, "/api/v1/academic-units/"+unitID+"/members?history=true", nil)
 	list.Header.Set("Authorization", "Bearer credential")
 	listed := httptest.NewRecorder()
 	httpAPI.ServeHTTP(listed, list)
-	if listed.Code != http.StatusOK || members.listQuery.AcademicUnitID != model.AcademicUnitID(unitID) || members.listQuery.ActiveAt != 0 {
-		t.Fatalf("list status/query = %d/%#v: %s", listed.Code, members.listQuery, listed.Body.String())
-	}
+	require.Equal(t, http.StatusOK, listed.Code, "list status/query = %d/%#v: %s", listed.Code, members.listQuery, listed.Body.String())
+	require.Equal(t, model.AcademicUnitID(unitID), members.listQuery.AcademicUnitID, "list status/query = %d/%#v: %s", listed.Code, members.listQuery, listed.Body.String())
+	require.Equal(t, int64(0), members.listQuery.ActiveAt, "list status/query = %d/%#v: %s", listed.Code, members.listQuery, listed.Body.String())
 }
 
 func TestAcademicUnitMemberResourceRejectsInvalidQueryAndMissingPrincipal(t *testing.T) {
@@ -128,16 +116,12 @@ func TestAcademicUnitMemberResourceRejectsInvalidQueryAndMissingPrincipal(t *tes
 	invalid.Header.Set("Authorization", "Bearer credential")
 	invalidResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(invalidResponse, invalid)
-	if invalidResponse.Code != http.StatusBadRequest {
-		t.Fatalf("invalid query status = %d: %s", invalidResponse.Code, invalidResponse.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, invalidResponse.Code, "invalid query status = %d: %s", invalidResponse.Code, invalidResponse.Body.String())
 
 	unauthenticated := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/academic-units/"+model.NewID()+"/members", nil)
 	unauthenticatedResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(unauthenticatedResponse, unauthenticated)
-	if unauthenticatedResponse.Code != http.StatusUnauthorized {
-		t.Fatalf("unauthenticated status = %d: %s", unauthenticatedResponse.Code, unauthenticatedResponse.Body.String())
-	}
+	require.Equal(t, http.StatusUnauthorized, unauthenticatedResponse.Code, "unauthenticated status = %d: %s", unauthenticatedResponse.Code, unauthenticatedResponse.Body.String())
 }
 
 func (a *academicUnitMemberHTTPApplication) ListAcademicUnitMembersPage(_ context.Context, _ app.Invocation, query app.ListAcademicUnitMembersPageQuery) (*app.AcademicUnitMemberPage, error) {

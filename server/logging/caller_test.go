@@ -8,8 +8,9 @@
 package logging_test
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/logging"
 )
@@ -17,21 +18,13 @@ import (
 func TestSourceReportsCallerOutsideLoggingWrapper(t *testing.T) {
 	t.Parallel()
 	logger, err := logging.New()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Shutdown() })
 	var output logging.Buffer
-	if err := logger.Configure(logging.Config{MaxFieldBytes: 1024, Targets: []logging.Target{{
+	require.NoError(t, logger.Configure(logging.Config{MaxFieldBytes: 1024, Targets: []logging.Target{{
 		Name: "test", Type: "console", Level: "info", Format: "json", Writer: &output, AddSource: true,
-	}}}); err != nil {
-		t.Fatal(err)
-	}
+	}}}))
 	logger.Info("caller")
-	if err := logger.Flush(); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(output.String(), "caller_test.go") {
-		t.Fatalf("source = %q", output.String())
-	}
+	require.NoError(t, logger.Flush())
+	require.Contains(t, output.String(), "caller_test.go")
 }

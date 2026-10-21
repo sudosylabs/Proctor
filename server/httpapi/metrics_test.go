@@ -14,6 +14,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type requestMetricsFake struct {
@@ -41,9 +44,8 @@ func TestRequestMetricsCountConsumedBodyBytes(t *testing.T) {
 	metrics := &requestMetricsFake{}
 	handler := observeRequestMetrics(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		buffer := make([]byte, 3)
-		if _, err := io.ReadFull(request.Body, buffer); err != nil {
-			t.Fatal(err)
-		}
+		_, err := io.ReadFull(request.Body, buffer)
+		assert.NoError(t, err)
 		_, _ = writer.Write([]byte("ok"))
 	}), metrics, "/example", http.MethodPost)
 	request := httptest.NewRequest(http.MethodPost, "/example", strings.NewReader("payload"))
@@ -53,8 +55,9 @@ func TestRequestMetricsCountConsumedBodyBytes(t *testing.T) {
 
 	handler.ServeHTTP(response, request)
 
-	if metrics.started != 1 || metrics.finished != 1 || metrics.status != http.StatusOK ||
-		metrics.requestBytes != 3 || metrics.responseBytes != 2 {
-		t.Fatalf("metrics = %#v", metrics)
-	}
+	require.Equal(t, 1, metrics.started)
+	require.Equal(t, 1, metrics.finished)
+	require.Equal(t, http.StatusOK, metrics.status)
+	require.Equal(t, int64(3), metrics.requestBytes)
+	require.Equal(t, int64(2), metrics.responseBytes)
 }

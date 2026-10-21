@@ -13,15 +13,15 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestAcademicPeriodOpenAPIAgreesWithRuntime(t *testing.T) {
 	t.Parallel()
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, academicPeriodResource(nil)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtimeAPI.collectResources(model.APIURLSuffix, academicPeriodResource(nil)))
 	suite := openAPIAgreementSuite{
 		Operations: []openAPIAgreementOperation{
 			{Key: "GET /api/v1/academic-periods", Auth: AuthPrincipalRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/AcademicPeriodListOK", SuccessSchema: "AcademicPeriodListResponse", PublicErrorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
@@ -40,19 +40,12 @@ func TestAcademicPeriodOpenAPIAgreesWithRuntime(t *testing.T) {
 
 	document := readOpenAPIDocument(t)
 	var listOperation openAPIOperation
-	if err := json.Unmarshal(document.Paths[model.APIURLSuffix+"/academic-periods"]["get"], &listOperation); err != nil {
-		t.Fatal(err)
-	}
-	if got := academicStructureQueryParameterNames(listOperation.Parameters); !reflect.DeepEqual(got, []string{"limit", "q"}) {
-		t.Fatalf("Academic Period list query parameters = %v, want [limit q]", got)
-	}
+	require.NoError(t, json.Unmarshal(document.Paths[model.APIURLSuffix+"/academic-periods"]["get"], &listOperation))
+	require.Equal(t, []string{"limit", "q"}, academicStructureQueryParameterNames(listOperation.Parameters), "Academic Period list query parameters")
 	list := document.Components.Schemas["AcademicPeriodListResponse"]
-	if list.Type != "array" || list.Items.Ref != "#/components/schemas/AcademicPeriodResponse" {
-		t.Fatalf("AcademicPeriodListResponse = %#v", list)
-	}
-	if archived := document.Components.Responses["AcademicPeriodArchived"]; archived.Headers["Cache-Control"].Ref != "#/components/headers/NoStore" {
-		t.Fatalf("AcademicPeriodArchived does not require no-store: %#v", archived)
-	}
+	require.Equal(t, "array", list.Type)
+	require.Equal(t, "#/components/schemas/AcademicPeriodResponse", list.Items.Ref)
+	require.Equal(t, "#/components/headers/NoStore", document.Components.Responses["AcademicPeriodArchived"].Headers["Cache-Control"].Ref)
 }
 
 func academicStructureQueryParameterNames(parameters []openAPIParameter) []string {

@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -46,14 +48,10 @@ func TestRetentionOpenAPIAgreesWithRuntime(t *testing.T) {
 		},
 	}
 	api := newRoutingTestAPI(model.APIURLSuffix)
-	if err := api.collectResources(model.APIURLSuffix, retentionResource(nil)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, api.collectResources(model.APIURLSuffix, retentionResource(nil)))
 	assertOpenAPIAgreement(t, suite, api.Routes())
 	document := readOpenAPIDocument(t)
 	for _, name := range []string{"RetentionControlOK", "RetentionPreviewOK", "RetentionRecordsOK", "RetentionNoticesOK"} {
-		if document.Components.Responses[name].Headers["Cache-Control"].Ref != "#/components/headers/PrivateNoStore" {
-			t.Fatalf("%s lacks no-store", name)
-		}
+		require.Equal(t, "#/components/headers/PrivateNoStore", document.Components.Responses[name].Headers["Cache-Control"].Ref, "%s lacks no-store", name)
 	}
 }

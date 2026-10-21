@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -37,35 +39,25 @@ func TestAcademicRevisionHTTPContract(t *testing.T) {
 				return response
 			}
 			response := call(http.MethodPatch, "", `{"expected_revision":7}`)
-			if response.Code != http.StatusOK {
-				t.Fatalf("patch status = %d: %s", response.Code, response.Body.String())
-			}
+			require.Equal(t, http.StatusOK, response.Code, "patch status = %d: %s", response.Code, response.Body.String())
 			var result map[string]any
-			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
-				t.Fatal(err)
-			}
-			if result["revision"] != float64(7) || revision(http.MethodPatch) == nil || *revision(http.MethodPatch) != 7 {
-				t.Fatalf("revision response/command = %#v / %v", result, revision(http.MethodPatch))
-			}
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result))
+			require.Equal(t, float64(7), result["revision"], "revision response/command = %#v", result)
+			require.NotNil(t, revision(http.MethodPatch), "revision response/command = %#v", result)
+			require.Equal(t, int64(7), *revision(http.MethodPatch), "revision response/command = %#v", result)
 			for _, body := range []string{`{"expected_revision":null}`, `{"expected_revision":0}`, `{"expected_revision":-1}`, `{"expected_revision":1.5}`} {
-				if response := call(http.MethodPatch, "", body); response.Code != http.StatusBadRequest {
-					t.Fatalf("invalid patch %s = %d", body, response.Code)
-				}
+				require.Equal(t, http.StatusBadRequest, call(http.MethodPatch, "", body).Code, "invalid patch %s", body)
 			}
-			if response := call(http.MethodPatch, "", `{}`); response.Code != http.StatusOK || revision(http.MethodPatch) != nil {
-				t.Fatalf("legacy patch failed: %d", response.Code)
-			}
-			if response := call(http.MethodDelete, "?expected_revision=7", ""); response.Code != http.StatusNoContent || revision(http.MethodDelete) == nil || *revision(http.MethodDelete) != 7 {
-				t.Fatalf("archive precondition failed: %d", response.Code)
-			}
+			require.Equal(t, http.StatusOK, call(http.MethodPatch, "", `{}`).Code, "legacy patch failed")
+			require.Nil(t, revision(http.MethodPatch), "legacy patch failed")
+			require.Equal(t, http.StatusNoContent, call(http.MethodDelete, "?expected_revision=7", "").Code, "archive precondition failed")
+			require.NotNil(t, revision(http.MethodDelete), "archive precondition failed")
+			require.Equal(t, int64(7), *revision(http.MethodDelete), "archive precondition failed")
 			for _, suffix := range []string{"?expected_revision=", "?expected_revision=0", "?expected_revision=-1", "?expected_revision=1&expected_revision=2"} {
-				if response := call(http.MethodDelete, suffix, ""); response.Code != http.StatusBadRequest {
-					t.Fatalf("invalid archive %s = %d", suffix, response.Code)
-				}
+				require.Equal(t, http.StatusBadRequest, call(http.MethodDelete, suffix, "").Code, "invalid archive %s", suffix)
 			}
-			if response := call(http.MethodDelete, "", ""); response.Code != http.StatusNoContent || revision(http.MethodDelete) != nil {
-				t.Fatalf("legacy archive failed: %d", response.Code)
-			}
+			require.Equal(t, http.StatusNoContent, call(http.MethodDelete, "", "").Code, "legacy archive failed")
+			require.Nil(t, revision(http.MethodDelete), "legacy archive failed")
 		})
 	}
 }

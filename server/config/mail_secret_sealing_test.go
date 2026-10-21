@@ -10,9 +10,11 @@ package config
 import (
 	"encoding/base64"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestMailSecretSealingValidationIsStrictAndIndependent(t *testing.T) {
@@ -79,28 +81,24 @@ func TestMailSecretSealingValidationIsStrictAndIndependent(t *testing.T) {
 			test.setup(&cfg)
 			err := cfg.Validate()
 			var validation *ValidationError
-			if !errors.As(err, &validation) {
-				t.Fatalf("Validate() error = %v, want ValidationError", err)
-			}
+			require.ErrorAs(t, err, &validation, "Validate() error")
 			for _, failure := range validation.Fields {
 				if failure.Field == test.field {
 					return
 				}
 			}
-			t.Fatalf("Validate() fields = %#v, want %q", validation.Fields, test.field)
+			require.FailNow(t, fmt.Sprintf("Validate() fields = %#v, want %q", validation.Fields, test.field))
 		})
 	}
 
 	valid := Default()
 	valid.Mail.Enabled = true
-	if err := valid.Validate(); err == nil || !strings.Contains(err.Error(), "mail.secret_sealing.encryption_key") {
-		t.Fatalf("Validate(enabled mail without durable key ring) = %v", err)
-	}
+	err := valid.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "mail.secret_sealing.encryption_key")
 	valid.Mail.SecretSealing.EncryptionKey = key(1)
 	valid.Mail.SecretSealing.DecryptionKeys = []string{key(2)}
-	if err := valid.Validate(); err != nil {
-		t.Fatalf("Validate(valid mail key ring) = %v", err)
-	}
+	require.NoError(t, valid.Validate())
 }
 
 func TestMFASecretSealingValidationUsesTheSharedKeyRingContract(t *testing.T) {
@@ -154,15 +152,13 @@ func TestMFASecretSealingValidationUsesTheSharedKeyRingContract(t *testing.T) {
 			test.setup(&cfg)
 			err := cfg.Validate()
 			var validation *ValidationError
-			if !errors.As(err, &validation) {
-				t.Fatalf("Validate() error = %v, want ValidationError", err)
-			}
+			require.ErrorAs(t, err, &validation, "Validate() error")
 			for _, failure := range validation.Fields {
 				if failure.Field == test.field {
 					return
 				}
 			}
-			t.Fatalf("Validate() fields = %#v, want %q", validation.Fields, test.field)
+			require.FailNow(t, fmt.Sprintf("Validate() fields = %#v, want %q", validation.Fields, test.field))
 		})
 	}
 }
@@ -247,15 +243,13 @@ func TestSecretSealingRejectsDecodedKeyReuseAcrossDomains(t *testing.T) {
 			test.setup(&cfg)
 			err := cfg.Validate()
 			var validation *ValidationError
-			if !errors.As(err, &validation) {
-				t.Fatalf("Validate() error = %v, want ValidationError", err)
-			}
+			require.ErrorAs(t, err, &validation, "Validate() error")
 			for _, failure := range validation.Fields {
 				if failure.Field == test.field && strings.Contains(failure.Message, "must not reuse") {
 					return
 				}
 			}
-			t.Fatalf("Validate() fields = %#v, want reuse failure for %q", validation.Fields, test.field)
+			require.FailNow(t, fmt.Sprintf("Validate() fields = %#v, want reuse failure for %q", validation.Fields, test.field))
 		})
 	}
 }
@@ -280,25 +274,15 @@ func TestMailSecretSealingKeysAreClonedAndRedacted(t *testing.T) {
 
 	clone := cfg.Clone()
 	clone.Mail.SecretSealing.DecryptionKeys[0] = "changed"
-	if cfg.Mail.SecretSealing.DecryptionKeys[0] != fallback {
-		t.Fatal("Clone() exposed the mail decryption-key slice")
-	}
+	require.Equal(t, fallback, cfg.Mail.SecretSealing.DecryptionKeys[0], "Clone() exposed the mail decryption-key slice")
 	redacted, err := cfg.RedactedJSON()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, forbidden := range []string{primary, fallback} {
-		if strings.Contains(string(redacted), forbidden) {
-			t.Fatalf("RedactedJSON() exposed key material: %s", redacted)
-		}
+		require.NotContains(t, string(redacted), forbidden, "RedactedJSON() exposed key material")
 	}
 	var projected Config
-	if err := json.Unmarshal(redacted, &projected); err != nil {
-		t.Fatal(err)
-	}
-	if projected.Mail.SecretSealing.EncryptionKey != "[redacted]" ||
-		len(projected.Mail.SecretSealing.DecryptionKeys) != 1 ||
-		projected.Mail.SecretSealing.DecryptionKeys[0] != "[redacted]" {
-		t.Fatalf("redacted mail key ring = %#v", projected.Mail.SecretSealing)
-	}
+	require.NoError(t, json.Unmarshal(redacted, &projected))
+	require.Equal(t, "[redacted]", projected.Mail.SecretSealing.EncryptionKey)
+	require.Len(t, projected.Mail.SecretSealing.DecryptionKeys, 1)
+	require.Equal(t, "[redacted]", projected.Mail.SecretSealing.DecryptionKeys[0])
 }

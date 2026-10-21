@@ -12,8 +12,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/localization"
 	"github.com/sudosylabs/proctor/server/model"
@@ -40,18 +41,16 @@ func TestSessionAndBuiltInRolePresentationLocalizesWithoutChangingIdentifiers(t 
 	session := sessionResponseFromModel(request, &model.Session{
 		RevocationReason: model.SessionRevocationUserLogout,
 	})
-	if session.RevocationReasonCode != "user_logout" || session.RevocationReason != "Déconnectée par l’utilisateur." {
-		t.Fatalf("session revocation presentation = %#v", session)
-	}
+	require.Equal(t, "user_logout", session.RevocationReasonCode)
+	require.Equal(t, "Déconnectée par l’utilisateur.", session.RevocationReason)
 
 	role := roleResponseFromModel(request, &model.Role{
 		Name: model.SystemAdministratorRoleName, DisplayName: "System Administrator",
 		Description: "Full installation access.", BuiltIn: true,
 	})
-	if role.Name != model.SystemAdministratorRoleName || role.DisplayName != "Administrateur système" ||
-		role.Description != "Accès complet à l’installation." {
-		t.Fatalf("built-in role presentation = %#v", role)
-	}
+	require.Equal(t, model.SystemAdministratorRoleName, role.Name)
+	require.Equal(t, "Administrateur système", role.DisplayName)
+	require.Equal(t, "Accès complet à l’installation.", role.Description)
 }
 
 func (problemTestLocalizer) SupportedLocales() []string { return []string{"en", "fr"} }
@@ -70,22 +69,16 @@ func TestWriteErrorLocalizesPresentationWithoutChangingMachineCode(t *testing.T)
 	WriteError(response, request, localizedFailure{})
 
 	var problem Problem
-	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-		t.Fatal(err)
-	}
-	if problem.Code != "authorization.denied" || problem.Status != http.StatusForbidden {
-		t.Fatalf("machine problem changed: %#v", problem)
-	}
-	if problem.Title != "Accès refusé" || problem.Detail != "Cette action n’est pas autorisée." {
-		t.Fatalf("localized presentation = %#v", problem)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &problem))
+	require.Equal(t, "authorization.denied", problem.Code)
+	require.Equal(t, http.StatusForbidden, problem.Status)
+	require.Equal(t, "Accès refusé", problem.Title)
+	require.Equal(t, "Cette action n’est pas autorisée.", problem.Detail)
 }
 
 func TestPreferredLocaleHonorsAcceptLanguageQuality(t *testing.T) {
 	t.Parallel()
-	if got := localization.PreferredLocale("de;q=0.4, fr-CA;q=0.9, en;q=0.8", []string{"en", "fr"}); got != "fr" {
-		t.Fatalf("preferred locale = %q", got)
-	}
+	require.Equal(t, "fr", localization.PreferredLocale("de;q=0.4, fr-CA;q=0.9, en;q=0.8", []string{"en", "fr"}))
 }
 
 func TestProblemPresentationHasNoHardcodedProseFallback(t *testing.T) {
@@ -93,26 +86,21 @@ func TestProblemPresentationHasNoHardcodedProseFallback(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodGet, "/protected", nil)
 	title, detail := localizedProblemPresentation(request, http.StatusForbidden)
-	if title != "" || detail != "" {
-		t.Fatalf("presentation without a catalog = (%q, %q), want no synthesized prose", title, detail)
-	}
+	require.Empty(t, title, "presentation without a catalog")
+	require.Empty(t, detail, "presentation without a catalog")
 
 	response := httptest.NewRecorder()
 	WriteProblem(response, Problem{Status: http.StatusTeapot})
 	var problem Problem
-	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-		t.Fatal(err)
-	}
-	if problem.Title != "" {
-		t.Fatalf("problem writer synthesized title %q", problem.Title)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &problem))
+	require.Empty(t, problem.Title)
 }
 
 func TestNewRequiresLocalizer(t *testing.T) {
 	t.Parallel()
 
 	logger, _ := newTestLogger(t)
-	if _, err := New(Options{Logger: logger}); err == nil || !strings.Contains(err.Error(), "localizer is required") {
-		t.Fatalf("New without localizer error = %v, want localizer requirement", err)
-	}
+	_, err := New(Options{Logger: logger})
+	require.Error(t, err, "New without localizer error")
+	require.Contains(t, err.Error(), "localizer is required", "New without localizer error")
 }

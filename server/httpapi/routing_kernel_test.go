@@ -16,6 +16,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -134,9 +137,8 @@ func TestRoutingKernelRejectsInvalidCatalogs(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			err := validateResourceCatalog(model.APIURLSuffix, test.resources)
-			if err == nil || !strings.Contains(err.Error(), test.wantError) {
-				t.Fatalf("validateResourceCatalog() error = %v, want containing %q", err, test.wantError)
-			}
+			require.Error(t, err, "validateResourceCatalog() error")
+			require.Contains(t, err.Error(), test.wantError, "validateResourceCatalog() error")
 		})
 	}
 }
@@ -151,9 +153,7 @@ func TestRoutingKernelAllowsIdempotentSessionJSONAndStreamingRoutes(t *testing.T
 		func(operationRequest) (protocolResult, error) {
 			return streamingUploadProtocolResult(http.StatusCreated, struct{}{}), nil
 		})
-	if err := validateResourceCatalog("/api/v1", []resource{newResource("session-mutations", jsonRoute, streamRoute)}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, validateResourceCatalog("/api/v1", []resource{newResource("session-mutations", jsonRoute, streamRoute)}))
 }
 
 func TestRoutingKernelAppliesPerRouteBodyLimitsAndProtocolIdempotency(t *testing.T) {
@@ -191,24 +191,20 @@ func TestRoutingKernelAppliesPerRouteBodyLimitsAndProtocolIdempotency(t *testing
 		),
 	)}
 	cookies, err := newBrowserCookies("http://localhost:8065")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	httpAPI := &API{authenticator: authenticator, logger: logger, localizer: newTestLocalizer(t), cookies: cookies, recentAuthenticationTTL: time.Minute}
-	if err := httpAPI.buildRoutingKernel(model.APIURLSuffix, 4, func() error {
+	require.NoError(t, httpAPI.buildRoutingKernel(model.APIURLSuffix, 4, func() error {
 		return httpAPI.collectResources(model.APIURLSuffix, resources...)
-	}); err != nil {
-		t.Fatal(err)
-	}
+	}))
 
 	large := httptest.NewRequest(http.MethodPost, "/api/v1/large", strings.NewReader("12345678"))
 	large.Header.Set("Authorization", "Bearer test")
 	large.Header.Set(idempotencyHeader, "upload-1")
 	largeResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(largeResponse, large)
-	if largeResponse.Code != http.StatusCreated || !strings.Contains(largeResponse.Body.String(), `"bytes":8`) || !strings.Contains(largeResponse.Body.String(), `"idempotency_key":"upload-1"`) {
-		t.Fatalf("large upload = %d %s", largeResponse.Code, largeResponse.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, largeResponse.Code, "large upload")
+	require.Contains(t, largeResponse.Body.String(), `"bytes":8`, "large upload")
+	require.Contains(t, largeResponse.Body.String(), `"idempotency_key":"upload-1"`, "large upload")
 
 	// A declared Content-Length over the limit is refused before the
 	// operation runs.
@@ -216,10 +212,9 @@ func TestRoutingKernelAppliesPerRouteBodyLimitsAndProtocolIdempotency(t *testing
 	defaultLimited.Header.Set("Authorization", "Bearer test")
 	defaultResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(defaultResponse, defaultLimited)
-	if defaultResponse.Code != http.StatusRequestEntityTooLarge || !strings.Contains(defaultResponse.Body.String(), `"code":"request.too_large"`) ||
-		defaultResponse.Header().Get("Content-Type") != "application/problem+json" {
-		t.Fatalf("default upload = %d %s", defaultResponse.Code, defaultResponse.Body.String())
-	}
+	require.Equal(t, http.StatusRequestEntityTooLarge, defaultResponse.Code, "default upload")
+	require.Contains(t, defaultResponse.Body.String(), `"code":"request.too_large"`, "default upload")
+	require.Equal(t, "application/problem+json", defaultResponse.Header().Get("Content-Type"), "default upload")
 
 	// A body of unknown length still stops at the limit while streaming.
 	streamed := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/default", io.MultiReader(strings.NewReader("12345")))
@@ -227,9 +222,8 @@ func TestRoutingKernelAppliesPerRouteBodyLimitsAndProtocolIdempotency(t *testing
 	streamed.Header.Set("Authorization", "Bearer test")
 	streamedResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(streamedResponse, streamed)
-	if streamedResponse.Code != http.StatusCreated || !strings.Contains(streamedResponse.Body.String(), `"read":false`) {
-		t.Fatalf("streamed default upload = %d %s", streamedResponse.Code, streamedResponse.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, streamedResponse.Code, "streamed default upload")
+	require.Contains(t, streamedResponse.Body.String(), `"read":false`, "streamed default upload")
 }
 
 func TestRoutingKernelExplicitAuthenticationConstructors(t *testing.T) {
@@ -253,9 +247,7 @@ func TestRoutingKernelExplicitAuthenticationConstructors(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if test.got.auth != test.want {
-				t.Fatalf("authentication = %q, want %q", test.got.auth, test.want)
-			}
+			require.Equal(t, test.want, test.got.auth, "authentication")
 		})
 	}
 }
@@ -311,27 +303,23 @@ func TestRoutingKernelAppliesTypedHeadersProblemsAndNamedProtocolOperations(t *t
 
 	headers := httptest.NewRecorder()
 	httpAPI.ServeHTTP(headers, httptest.NewRequest(http.MethodGet, "/api/v1/headers", nil))
-	if headers.Code != http.StatusOK || headers.Header().Get("X-Kernel-Test") != "preserved" {
-		t.Fatalf("typed headers response = %d %#v", headers.Code, headers.Header())
-	}
+	require.Equal(t, http.StatusOK, headers.Code, "typed headers response = %d %#v", headers.Code, headers.Header())
+	require.Equal(t, "preserved", headers.Header().Get("X-Kernel-Test"), "typed headers response = %d %#v", headers.Code, headers.Header())
 
 	unavailable := httptest.NewRecorder()
 	httpAPI.ServeHTTP(unavailable, httptest.NewRequest(http.MethodGet, "/api/v1/unavailable", nil))
-	if unavailable.Code != http.StatusServiceUnavailable || !strings.Contains(unavailable.Body.String(), `"code":"health.not_ready"`) {
-		t.Fatalf("typed problem response = %d %s", unavailable.Code, unavailable.Body.String())
-	}
+	require.Equal(t, http.StatusServiceUnavailable, unavailable.Code, "typed problem response")
+	require.Contains(t, unavailable.Body.String(), `"code":"health.not_ready"`, "typed problem response")
 
 	redirect := httptest.NewRecorder()
 	httpAPI.ServeHTTP(redirect, httptest.NewRequest(http.MethodGet, "/api/v1/redirect", nil))
-	if redirect.Code != http.StatusSeeOther || redirect.Header().Get("Location") != "/destination" {
-		t.Fatalf("protocol redirect = %d %#v", redirect.Code, redirect.Header())
-	}
+	require.Equal(t, http.StatusSeeOther, redirect.Code, "protocol redirect = %d %#v", redirect.Code, redirect.Header())
+	require.Equal(t, "/destination", redirect.Header().Get("Location"), "protocol redirect = %d %#v", redirect.Code, redirect.Header())
 
 	failure := httptest.NewRecorder()
 	httpAPI.ServeHTTP(failure, httptest.NewRequest(http.MethodGet, "/api/v1/redirect?fail=1", nil))
-	if failure.Code != http.StatusBadRequest || !strings.Contains(failure.Body.String(), `"code":"request.invalid"`) {
-		t.Fatalf("protocol error = %d %s", failure.Code, failure.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, failure.Code, "protocol error")
+	require.Contains(t, failure.Body.String(), `"code":"request.invalid"`, "protocol error")
 }
 
 func TestRoutingKernelValidatesResultsBeforeEmittingResponseEffects(t *testing.T) {
@@ -363,12 +351,10 @@ func TestRoutingKernelValidatesResultsBeforeEmittingResponseEffects(t *testing.T
 	for _, path := range []string{"invalid-ordinary", "undeclared-problem", "invalid-protocol", "invalid-protocol-error"} {
 		response := httptest.NewRecorder()
 		httpAPI.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/"+path, nil))
-		if response.Code != http.StatusInternalServerError || !strings.Contains(response.Body.String(), `"code":"server.internal"`) {
-			t.Fatalf("%s response = %d %s", path, response.Code, response.Body.String())
-		}
-		if response.Header().Get("Set-Cookie") != "" || response.Header().Get("X-Should-Not-Exist") != "" {
-			t.Fatalf("%s emitted unvalidated effects: %#v", path, response.Header())
-		}
+		require.Equal(t, http.StatusInternalServerError, response.Code, "%s response", path)
+		require.Contains(t, response.Body.String(), `"code":"server.internal"`, "%s response", path)
+		require.Empty(t, response.Header().Get("Set-Cookie"), "%s emitted unvalidated effects: %#v", path, response.Header())
+		require.Empty(t, response.Header().Get("X-Should-Not-Exist"), "%s emitted unvalidated effects: %#v", path, response.Header())
 	}
 }
 
@@ -390,13 +376,13 @@ func TestRoutingKernelBoundsBinaryProtocolAndPublishesProtocolManifest(t *testin
 
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/binary", nil))
-	if response.Code != http.StatusOK || response.Body.String() != "abc" || response.Header().Get("Content-Length") != "3" {
-		t.Fatalf("bounded binary response = %d %q %#v", response.Code, response.Body.String(), response.Header())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "bounded binary response = %d %q %#v", response.Code, response.Body.String(), response.Header())
+	require.Equal(t, "abc", response.Body.String(), "bounded binary response = %d %q %#v", response.Code, response.Body.String(), response.Header())
+	require.Equal(t, "3", response.Header().Get("Content-Length"), "bounded binary response = %d %q %#v", response.Code, response.Body.String(), response.Header())
 	routes := httpAPI.Routes()
-	if len(routes) != 1 || routes[0].ProtocolName != "bounded-binary-download" || routes[0].ProtocolKind != RouteProtocolBinaryDownload {
-		t.Fatalf("protocol manifest = %#v", routes)
-	}
+	require.Len(t, routes, 1)
+	require.Equal(t, "bounded-binary-download", routes[0].ProtocolName)
+	require.Equal(t, RouteProtocolBinaryDownload, routes[0].ProtocolKind)
 }
 
 func TestRoutesReturnsDefensiveDeepCopy(t *testing.T) {
@@ -415,9 +401,8 @@ func TestRoutesReturnsDefensiveDeepCopy(t *testing.T) {
 	routes[0].ErrorCodes[0] = "mutated"
 
 	fresh := httpAPI.Routes()
-	if fresh[0].Path == "/mutated" || fresh[0].ErrorCodes[0] == "mutated" {
-		t.Fatalf("Routes() exposed mutable catalog state: %#v", fresh[0])
-	}
+	require.NotEqual(t, "/mutated", fresh[0].Path)
+	require.NotEqual(t, "mutated", fresh[0].ErrorCodes[0])
 }
 
 func TestPublicRoutingKernelOperationDoesNotRequirePrincipal(t *testing.T) {
@@ -433,9 +418,7 @@ func TestPublicRoutingKernelOperationDoesNotRequirePrincipal(t *testing.T) {
 			path:   apiPath(literal("system"), literal("ping")),
 			auth:   AuthPublic,
 			operation: func(request operationRequest) (operationResult, error) {
-				if request.principal.UserID.IsValid() {
-					t.Fatal("public operation received an invented principal")
-				}
+				require.False(t, request.principal.UserID.IsValid(), "public operation received an invented principal")
 				return noContentResult(), nil
 			},
 		}),
@@ -446,9 +429,7 @@ func TestPublicRoutingKernelOperationDoesNotRequirePrincipal(t *testing.T) {
 		response,
 		httptest.NewRequest(http.MethodGet, "/api/v1/system/ping", nil),
 	)
-	if response.Code != http.StatusNoContent {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusNoContent, response.Code, "status = %d: %s", response.Code, response.Body.String())
 }
 
 func TestRoutingKernelPathVocabularyPreservesV1IdentifierPatterns(t *testing.T) {
@@ -489,14 +470,11 @@ func TestRoutingKernelPathVocabularyPreservesV1IdentifierPatterns(t *testing.T) 
 		"/api/v1/auth/providers/{provider_id:" + providerIDRoutePattern() + "}": false,
 	}
 	for _, route := range httpAPI.Routes() {
-		if _, exists := want[route.Path]; !exists {
-			t.Fatalf("unexpected route path %q", route.Path)
-		}
+		_, exists := want[route.Path]
+		require.True(t, exists, "unexpected route path %q", route.Path)
 		want[route.Path] = true
 	}
 	for path, found := range want {
-		if !found {
-			t.Errorf("route path %q is missing", path)
-		}
+		assert.True(t, found, "route path %q is missing", path)
 	}
 }

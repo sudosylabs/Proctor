@@ -7,7 +7,12 @@
 
 package model
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
 func TestNewIDProducesCanonicalUniqueIdentifiers(t *testing.T) {
 	t.Parallel()
@@ -15,12 +20,9 @@ func TestNewIDProducesCanonicalUniqueIdentifiers(t *testing.T) {
 	seen := make(map[string]struct{}, 1000)
 	for range 1000 {
 		id := NewID()
-		if !IsValidOpaqueID(id) {
-			t.Fatalf("NewID() returned invalid identifier %q", id)
-		}
-		if _, exists := seen[id]; exists {
-			t.Fatalf("NewID() returned duplicate identifier %q", id)
-		}
+		require.True(t, IsValidOpaqueID(id), "NewID() returned invalid identifier")
+		_, exists := seen[id]
+		require.False(t, exists, "NewID() returned duplicate identifier %q", id)
 		seen[id] = struct{}{}
 	}
 }
@@ -36,9 +38,7 @@ func TestIsValidOpaqueIDRejectsNonCanonicalIdentifiers(t *testing.T) {
 		"00000000000000000000000000",
 		"ééééééééééééé",
 	} {
-		if IsValidOpaqueID(value) {
-			t.Errorf("IsValidOpaqueID(%q) = true", value)
-		}
+		assert.False(t, IsValidOpaqueID(value), "IsValidOpaqueID")
 	}
 }
 
@@ -46,7 +46,5 @@ func TestSanitizeUnicodeDropsBidirectionalControls(t *testing.T) {
 	t.Parallel()
 
 	const input = "Pro\u202Ector\u2066"
-	if got := SanitizeUnicode(input); got != "Proctor" {
-		t.Fatalf("SanitizeUnicode() = %q", got)
-	}
+	require.Equal(t, "Proctor", SanitizeUnicode(input))
 }

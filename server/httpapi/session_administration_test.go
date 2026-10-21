@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -42,23 +44,16 @@ func TestAdminSessionListUsesApplicationQueryAndOmitsCredentials(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
-	if sessions.listQuery.UserID != model.UserID(userID) || !sessions.listQuery.IncludeRevoked {
-		t.Fatalf("query = %#v", sessions.listQuery)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "status = %d: %s", response.Code, response.Body.String())
+	require.Equal(t, model.UserID(userID), sessions.listQuery.UserID)
+	require.True(t, sessions.listQuery.IncludeRevoked)
 	var body []map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if len(body) != 1 || body[0]["id"] != sessionID {
-		t.Fatalf("body = %#v", body)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	require.Len(t, body, 1)
+	require.Equal(t, sessionID, body[0]["id"])
 	for _, key := range []string{"token", "access_token", "refresh_token", "credential"} {
-		if _, exposed := body[0][key]; exposed {
-			t.Fatalf("credential field %q exposed: %#v", key, body[0])
-		}
+		_, exposed := body[0][key]
+		require.False(t, exposed, "credential field")
 	}
 }
 
@@ -79,10 +74,7 @@ func TestAdminSessionRevokeUsesApplicationCommand(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusNoContent {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
-	if sessions.revokeCommand.UserID != model.UserID(userID) || sessions.revokeCommand.SessionID != model.SessionID(sessionID) {
-		t.Fatalf("command = %#v", sessions.revokeCommand)
-	}
+	require.Equal(t, http.StatusNoContent, response.Code, "status = %d: %s", response.Code, response.Body.String())
+	require.Equal(t, model.UserID(userID), sessions.revokeCommand.UserID)
+	require.Equal(t, model.SessionID(sessionID), sessions.revokeCommand.SessionID)
 }

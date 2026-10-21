@@ -14,6 +14,9 @@ import (
 	"net"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRefusedHandoffIsQuietOnceCloseMarksTheNodeStopping(t *testing.T) {
@@ -22,15 +25,11 @@ func TestRefusedHandoffIsQuietOnceCloseMarksTheNodeStopping(t *testing.T) {
 	// A real listener closed underneath Accept reports "use of closed network
 	// connection", which wraps net.ErrClosed.
 	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	_ = listener.Close()
 	_, closedErr := listener.Accept()
 	closedErr = fmt.Errorf("serve HTTPS: %w", closedErr)
-	if !errors.Is(closedErr, net.ErrClosed) {
-		t.Fatalf("closed listener error = %v, want net.ErrClosed", closedErr)
-	}
+	require.ErrorIs(t, closedErr, net.ErrClosed, "closed listener error")
 
 	live := context.Background()
 	canceled, cancel := context.WithCancel(context.Background())
@@ -50,11 +49,11 @@ func TestRefusedHandoffIsQuietOnceCloseMarksTheNodeStopping(t *testing.T) {
 		{"after serving began", nodeStopping, true, live, closedErr, false},
 		{"other serve failure", nodeStopping, false, live, errors.New("bind failed"), false},
 	} {
-		node := &Server{state: test.state}
-		node.milestones.httpServing = test.serving
-		if got := node.handoffRefusedForShutdown(test.ctx, test.err); got != test.want {
-			t.Errorf("%s: handoffRefusedForShutdown() = %t, want %t", test.name, got, test.want)
-		}
+		t.Run(test.name, func(t *testing.T) {
+			node := &Server{state: test.state}
+			node.milestones.httpServing = test.serving
+			assert.Equal(t, test.want, node.handoffRefusedForShutdown(test.ctx, test.err), "%s: handoffRefusedForShutdown()", test.name)
+		})
 	}
 }
 
@@ -80,14 +79,12 @@ func TestShutdownTreatsClosedListenerFromItsOwnStopAsClean(t *testing.T) {
 	for !readiness.Ready() {
 		select {
 		case err := <-done:
-			t.Fatalf("Run() stopped before readiness: %v", err)
+			require.FailNow(t, fmt.Sprintf("Run() stopped before readiness: %v", err))
 		case <-deadline:
-			t.Fatal("server did not become ready")
+			require.FailNow(t, "server did not become ready")
 		case <-time.After(time.Millisecond):
 		}
 	}
 	cancel()
-	if err := <-done; err != nil {
-		t.Fatalf("Run() = %v, want a clean shutdown", err)
-	}
+	require.NoError(t, (<-done), "Run()")
 }

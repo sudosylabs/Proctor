@@ -11,21 +11,26 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAttemptWorkspaceLimitsAndPathsAreBounded(t *testing.T) {
 	t.Parallel()
-	if AttemptWorkspaceMaximumEntries != 5000 || AttemptWorkspaceMaximumDepth != 16 ||
-		AttemptWorkspaceMaximumSegmentBytes != 255 || AttemptWorkspaceMaximumPathBytes != 1024 ||
-		AttemptWorkspaceMaximumFileBytes != 100<<20 || AttemptWorkspaceMaximumTotalBytes != 1<<30 ||
-		AttemptWorkspaceMaximumRequestBytes != (100<<20)+(64<<10) ||
-		AttemptWorkspaceJournalRetention != 4096 || AttemptWorkspaceJournalReadMaximum != 200 {
-		t.Fatalf("Attempt Workspace limits changed")
-	}
+	require.Equal(t, 5000, AttemptWorkspaceMaximumEntries, "Attempt Workspace limits changed")
+	require.Equal(t, 16, AttemptWorkspaceMaximumDepth, "Attempt Workspace limits changed")
+	require.Equal(t, 255, AttemptWorkspaceMaximumSegmentBytes, "Attempt Workspace limits changed")
+	require.Equal(t, 1024, AttemptWorkspaceMaximumPathBytes, "Attempt Workspace limits changed")
+	require.Equal(t, AttemptWorkspaceMaximumFileBytes, int64(100<<20), "Attempt Workspace limits changed")
+	require.Equal(t, AttemptWorkspaceMaximumTotalBytes, int64(1<<30), "Attempt Workspace limits changed")
+	require.Equal(t, AttemptWorkspaceMaximumRequestBytes, int64((100<<20)+(64<<10)), "Attempt Workspace limits changed")
+	require.Equal(t, 4096, AttemptWorkspaceJournalRetention, "Attempt Workspace limits changed")
+	require.Equal(t, 200, AttemptWorkspaceJournalReadMaximum, "Attempt Workspace limits changed")
 	for _, path := range []string{"main.go", "cmd/proctor/main.go", strings.Repeat("a", 255)} {
-		if normalized, err := NormalizeAttemptWorkspacePath(path); err != nil || normalized != path {
-			t.Errorf("NormalizeAttemptWorkspacePath(%q) = %q, %v", path, normalized, err)
-		}
+		normalized, err := NormalizeAttemptWorkspacePath(path)
+		assert.NoError(t, err, "NormalizeAttemptWorkspacePath")
+		assert.Equal(t, path, normalized, "NormalizeAttemptWorkspacePath")
 	}
 	for _, path := range []string{"", "/main.go", "cmd//main.go", "cmd/../main.go", `.proctor/state`, `cmd\\main.go`,
 		strings.Repeat("a/", AttemptWorkspaceMaximumDepth) + "main.go",
@@ -33,9 +38,8 @@ func TestAttemptWorkspaceLimitsAndPathsAreBounded(t *testing.T) {
 		strings.Repeat("a/", AttemptWorkspaceMaximumPathBytes/2) + "b",
 		"cmd/line\nbreak.go", string([]byte{0xff}),
 	} {
-		if _, err := NormalizeAttemptWorkspacePath(path); err == nil {
-			t.Errorf("NormalizeAttemptWorkspacePath(%q) succeeded", path)
-		}
+		_, err := NormalizeAttemptWorkspacePath(path)
+		assert.Error(t, err, "NormalizeAttemptWorkspacePath(%q) succeeded", path)
 	}
 }
 
@@ -43,36 +47,32 @@ func TestAttemptWorkspaceCandidateEntriesRetainIdentityAcrossMoveAndReplace(t *t
 	t.Parallel()
 	at := time.Date(2026, time.August, 20, 9, 0, 0, 0, time.UTC)
 	workspace, err := NewExamAttemptWorkspace(NewExamAttemptWorkspaceID(), NewExamAttemptID(), at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	object, err := NewAttemptOriginAttemptWorkspaceObject(NewAttemptWorkspaceObjectID(), workspace.ID,
 		NewWorkspaceContentVersion(), "text/x-go", 12, strings.Repeat("a", 64), at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	entry, err := NewCandidateAttemptWorkspaceFile(NewAttemptWorkspaceEntryID(), workspace.ID, NewExamRevisionID(),
 		"main.go", object.ID, at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	entryID := entry.ID
-	if !entry.SourceStarterEntryID.IsZero() || object.StorageOrigin != AttemptWorkspaceStorageAttempt || !object.StarterObjectID.IsZero() {
-		t.Fatalf("candidate entry=%#v object=%#v", entry, object)
-	}
-	if err = entry.Move("cmd/main.go", at.Add(time.Second)); err != nil || entry.ID != entryID || entry.Path != "cmd/main.go" {
-		t.Fatalf("Move() entry=%#v error=%v", entry, err)
-	}
+	require.True(t, entry.SourceStarterEntryID.IsZero(), "candidate entry=%#v object=%#v", entry, object)
+	require.Equal(t, AttemptWorkspaceStorageAttempt, object.StorageOrigin, "candidate entry=%#v object=%#v", entry, object)
+	require.True(t, object.StarterObjectID.IsZero(), "candidate entry=%#v object=%#v", entry, object)
+	err = entry.Move("cmd/main.go", at.Add(time.Second))
+	require.NoError(t, err, "Move() entry=%#v error", entry)
+	require.Equal(t, entryID, entry.ID, "Move() entry=%#v error", entry)
+	require.Equal(t, "cmd/main.go", entry.Path, "Move() entry=%#v error", entry)
 	nextObjectID := NewAttemptWorkspaceObjectID()
-	if err = entry.ReplaceCurrentObject(nextObjectID, at.Add(2*time.Second)); err != nil || entry.ID != entryID || entry.CurrentObjectID != nextObjectID {
-		t.Fatalf("ReplaceCurrentObject() entry=%#v error=%v", entry, err)
-	}
-	if err = workspace.AdvanceCursor(0, at.Add(2*time.Second)); err != nil || workspace.Cursor != 1 {
-		t.Fatalf("AdvanceCursor() workspace=%#v error=%v", workspace, err)
-	}
-	if err = workspace.AdvanceCursor(0, at.Add(3*time.Second)); err == nil || workspace.Cursor != 1 {
-		t.Fatalf("stale AdvanceCursor() workspace=%#v error=%v", workspace, err)
-	}
+	err = entry.ReplaceCurrentObject(nextObjectID, at.Add(2*time.Second))
+	require.NoError(t, err, "ReplaceCurrentObject() entry=%#v error", entry)
+	require.Equal(t, entryID, entry.ID, "ReplaceCurrentObject() entry=%#v error", entry)
+	require.Equal(t, nextObjectID, entry.CurrentObjectID, "ReplaceCurrentObject() entry=%#v error", entry)
+	err = workspace.AdvanceCursor(0, at.Add(2*time.Second))
+	require.NoError(t, err, "AdvanceCursor() workspace=%#v error", workspace)
+	require.Equal(t, int64(1), workspace.Cursor, "AdvanceCursor() workspace=%#v error", workspace)
+	err = workspace.AdvanceCursor(0, at.Add(3*time.Second))
+	require.Error(t, err, "stale AdvanceCursor() workspace=%#v error", workspace)
+	require.Equal(t, int64(1), workspace.Cursor, "stale AdvanceCursor() workspace=%#v error", workspace)
 }
 
 func TestAttemptWorkspaceJournalDescribesSafeOrderedAcknowledgements(t *testing.T) {
@@ -83,42 +83,26 @@ func TestAttemptWorkspaceJournalDescribesSafeOrderedAcknowledgements(t *testing.
 	entry := AttemptWorkspaceJournalEntry{WorkspaceID: workspaceID, Cursor: 3, EntryID: entryID,
 		EntryKind: StarterWorkspaceEntryFile, Operation: AttemptWorkspaceMutationReplaceFile,
 		OldPath: "cmd/main.go", NewPath: "cmd/main.go", ContentVersion: version, ChangedAt: at}
-	if err := entry.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, entry.Validate())
 	move := entry
 	move.Cursor, move.Operation, move.NewPath = 4, AttemptWorkspaceMutationMoveEntry, "internal/main.go"
-	if err := move.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, move.Validate())
 	deleted := entry
 	deleted.Cursor, deleted.Operation, deleted.NewPath, deleted.ContentVersion = 5, AttemptWorkspaceMutationDeleteEntry, "", ""
-	if err := deleted.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, deleted.Validate())
 	deleted.Recursive = true
-	if err := deleted.Validate(); err == nil {
-		t.Fatal("journal accepted recursive file deletion")
-	}
+	require.Error(t, deleted.Validate(), "journal accepted recursive file deletion")
 	deleted.EntryKind = StarterWorkspaceEntryDirectory
-	if err := deleted.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, deleted.Validate())
 	move.Recursive = true
-	if err := move.Validate(); err == nil {
-		t.Fatal("journal accepted a recursive non-deletion")
-	}
+	require.Error(t, move.Validate(), "journal accepted a recursive non-deletion")
 	move.Recursive = false
 	bad := move
 	bad.NewPath = "../escape"
-	if err := bad.Validate(); err == nil {
-		t.Fatal("journal accepted an unsafe path")
-	}
+	require.Error(t, bad.Validate(), "journal accepted an unsafe path")
 	bad = entry
 	bad.Cursor = 0
-	if err := bad.Validate(); err == nil {
-		t.Fatal("journal accepted cursor zero")
-	}
+	require.Error(t, bad.Validate(), "journal accepted cursor zero")
 }
 
 func TestAttemptWorkspaceObjectLifecycleFencesVisibilityAndCleanup(t *testing.T) {
@@ -126,29 +110,30 @@ func TestAttemptWorkspaceObjectLifecycleFencesVisibilityAndCleanup(t *testing.T)
 	at := time.Date(2026, time.August, 20, 9, 0, 0, 0, time.UTC)
 	object, err := NewStagedAttemptWorkspaceObject(NewAttemptWorkspaceObjectID(), NewExamAttemptWorkspaceID(), at,
 		at.Add(AttemptWorkspaceStageLifetime))
-	if err != nil || object.State != AttemptWorkspaceObjectStaged || object.HasContent() {
-		t.Fatalf("NewStagedAttemptWorkspaceObject() = %#v, %v", object, err)
-	}
+	require.NoError(t, err, "NewStagedAttemptWorkspaceObject() = %#v", object)
+	require.Equal(t, AttemptWorkspaceObjectStaged, object.State, "NewStagedAttemptWorkspaceObject() = %#v", object)
+	require.False(t, object.HasContent(), "NewStagedAttemptWorkspaceObject() = %#v", object)
 	version := NewWorkspaceContentVersion()
-	if err = object.MarkContentReady(version, "text/x-go", 12, strings.Repeat("b", 64), at.Add(time.Second)); err != nil ||
-		object.State != AttemptWorkspaceObjectStaged || !object.HasContent() {
-		t.Fatalf("MarkContentReady() = %#v, %v", object, err)
-	}
-	if err = object.MarkCurrent(at.Add(2 * time.Second)); err != nil || object.State != AttemptWorkspaceObjectCurrent || !object.ExpiresAt.IsZero() {
-		t.Fatalf("MarkCurrent() = %#v, %v", object, err)
-	}
+	err = object.MarkContentReady(version, "text/x-go", 12, strings.Repeat("b", 64), at.Add(time.Second))
+	require.NoError(t, err, "MarkContentReady() = %#v", object)
+	require.Equal(t, AttemptWorkspaceObjectStaged, object.State, "MarkContentReady() = %#v", object)
+	require.True(t, object.HasContent(), "MarkContentReady() = %#v", object)
+	err = object.MarkCurrent(at.Add(2 * time.Second))
+	require.NoError(t, err, "MarkCurrent() = %#v", object)
+	require.Equal(t, AttemptWorkspaceObjectCurrent, object.State, "MarkCurrent() = %#v", object)
+	require.True(t, object.ExpiresAt.IsZero(), "MarkCurrent() = %#v", object)
 	reclaimAfter := at.Add(AttemptWorkspaceReclaimSafetyWindow)
-	if err = object.MarkReclaimable(reclaimAfter, at.Add(3*time.Second)); err != nil || object.State != AttemptWorkspaceObjectReclaimable {
-		t.Fatalf("MarkReclaimable() = %#v, %v", object, err)
-	}
+	err = object.MarkReclaimable(reclaimAfter, at.Add(3*time.Second))
+	require.NoError(t, err, "MarkReclaimable() = %#v", object)
+	require.Equal(t, AttemptWorkspaceObjectReclaimable, object.State, "MarkReclaimable() = %#v", object)
 	claimAt := reclaimAfter.Add(time.Second)
-	if err = object.ClaimForCleanup("node-1/claim-1", claimAt); err != nil || object.State != AttemptWorkspaceObjectClaimed {
-		t.Fatalf("ClaimForCleanup() = %#v, %v", object, err)
-	}
-	if err = object.ReleaseCleanup("node-1/claim-1", claimAt.Add(-time.Nanosecond)); err == nil || object.State != AttemptWorkspaceObjectClaimed {
-		t.Fatalf("time-regressing ReleaseCleanup() = %#v, %v", object, err)
-	}
-	if err = object.ReleaseCleanup("node-1/claim-1", claimAt.Add(time.Second)); err != nil || object.State != AttemptWorkspaceObjectReclaimable {
-		t.Fatalf("ReleaseCleanup() = %#v, %v", object, err)
-	}
+	err = object.ClaimForCleanup("node-1/claim-1", claimAt)
+	require.NoError(t, err, "ClaimForCleanup() = %#v", object)
+	require.Equal(t, AttemptWorkspaceObjectClaimed, object.State, "ClaimForCleanup() = %#v", object)
+	err = object.ReleaseCleanup("node-1/claim-1", claimAt.Add(-time.Nanosecond))
+	require.Error(t, err, "time-regressing ReleaseCleanup() = %#v", object)
+	require.Equal(t, AttemptWorkspaceObjectClaimed, object.State, "time-regressing ReleaseCleanup() = %#v", object)
+	err = object.ReleaseCleanup("node-1/claim-1", claimAt.Add(time.Second))
+	require.NoError(t, err, "ReleaseCleanup() = %#v", object)
+	require.Equal(t, AttemptWorkspaceObjectReclaimable, object.State, "ReleaseCleanup() = %#v", object)
 }

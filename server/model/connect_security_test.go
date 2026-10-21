@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestConnectSecurityClosedUnion(t *testing.T) {
@@ -18,30 +20,21 @@ func TestConnectSecurityClosedUnion(t *testing.T) {
 	resume := ConnectSecurity{Kind: "resume", ParticipationID: NewAttemptParticipationID(), Generation: 1, PolicyDigest: SHA256Fingerprint([]byte("policy"))}
 	for _, value := range []ConnectSecurity{preflight, resume} {
 		raw, err := json.Marshal(value)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		var decoded ConnectSecurity
-		if err := json.Unmarshal(raw, &decoded); err != nil || decoded != value {
-			t.Fatalf("roundtrip: %v", err)
-		}
+		require.NoError(t, json.Unmarshal(raw, &decoded))
+		require.Equal(t, value, decoded)
 		for _, bad := range []string{strings.Replace(string(raw), "\"kind\"", "\"Kind\"", 1), strings.TrimSuffix(string(raw), "}") + `,"unknown":false}`, strings.TrimSuffix(string(raw), "}") + `,"kind":"resume"}`, strings.TrimSuffix(string(raw), "}") + `,"extra":null}`} {
-			if json.Unmarshal([]byte(bad), &decoded) == nil {
-				t.Fatalf("accepted %s", bad)
-			}
+			require.Error(t, json.Unmarshal([]byte(bad), &decoded), "accepted %s", bad)
 		}
 	}
 	raw, _ := json.Marshal(preflight)
 	for _, suffix := range []string{`,"generation":0}`, `,"participation_id":null}`, `,"policy_digest":""}`} {
 		var decoded ConnectSecurity
-		if json.Unmarshal([]byte(strings.TrimSuffix(string(raw), "}")+suffix), &decoded) == nil {
-			t.Fatal("accepted contradictory union")
-		}
+		require.Error(t, json.Unmarshal([]byte(strings.TrimSuffix(string(raw), "}")+suffix), &decoded), "accepted contradictory union")
 	}
 	for _, raw := range []string{`{}`, `null`, `{"kind":"resume","generation":9007199254740992}`, `{"kind":"preflight"}`} {
 		var decoded ConnectSecurity
-		if json.Unmarshal([]byte(raw), &decoded) == nil {
-			t.Fatalf("accepted %s", raw)
-		}
+		require.Error(t, json.Unmarshal([]byte(raw), &decoded), "accepted %s", raw)
 	}
 }

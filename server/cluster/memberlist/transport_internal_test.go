@@ -11,10 +11,10 @@ import (
 	"context"
 	"errors"
 	"net"
-	"strings"
 	"testing"
 
 	hashimemberlist "github.com/hashicorp/memberlist"
+	"github.com/stretchr/testify/require"
 )
 
 type routingSender struct{ bestEffort, reliable int }
@@ -46,12 +46,8 @@ func TestMemberSendFuncRoutesOnlyPacketSafeEnvelopesOverUDP(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			sender := &routingSender{}
-			if err := memberSendFunc(sender, test.payloadBytes, limit)(&hashimemberlist.Node{}, nil); err != nil {
-				t.Fatal(err)
-			}
-			if gotReliable := sender.reliable == 1 && sender.bestEffort == 0; gotReliable != test.wantReliable {
-				t.Fatalf("routing for %d bytes = best-effort:%d reliable:%d", test.payloadBytes, sender.bestEffort, sender.reliable)
-			}
+			require.NoError(t, memberSendFunc(sender, test.payloadBytes, limit)(&hashimemberlist.Node{}, nil))
+			require.Equal(t, test.wantReliable, (sender.reliable == 1 && sender.bestEffort == 0), "routing for %d bytes = best-effort:%d reliable:%d", test.payloadBytes, sender.bestEffort, sender.reliable)
 		})
 	}
 }
@@ -61,9 +57,7 @@ func TestResolveAdvertiseHost(t *testing.T) {
 
 	transport := &Transport{
 		lookupIP: func(_ context.Context, host string) ([]net.IPAddr, error) {
-			if host != "node-a" {
-				t.Fatalf("lookup host = %q", host)
-			}
+			require.Equal(t, "node-a", host)
 			return []net.IPAddr{
 				{IP: net.ParseIP("2001:db8::1")},
 				{IP: net.ParseIP("172.20.0.4")},
@@ -72,12 +66,8 @@ func TestResolveAdvertiseHost(t *testing.T) {
 	}
 
 	resolved, err := transport.resolveAdvertiseHost(context.Background(), "node-a")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved != "172.20.0.4" {
-		t.Fatalf("resolved host = %q", resolved)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "172.20.0.4", resolved)
 }
 
 func TestResolveAdvertiseHostPreservesIPLiteral(t *testing.T) {
@@ -85,18 +75,14 @@ func TestResolveAdvertiseHostPreservesIPLiteral(t *testing.T) {
 
 	transport := &Transport{
 		lookupIP: func(context.Context, string) ([]net.IPAddr, error) {
-			t.Fatal("literal address triggered DNS lookup")
+			require.FailNow(t, "literal address triggered DNS lookup")
 			return nil, nil
 		},
 	}
 
 	resolved, err := transport.resolveAdvertiseHost(context.Background(), "127.0.0.1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved != "127.0.0.1" {
-		t.Fatalf("resolved host = %q", resolved)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "127.0.0.1", resolved)
 }
 
 func TestResolveAdvertiseHostFailsClosed(t *testing.T) {
@@ -109,7 +95,6 @@ func TestResolveAdvertiseHostFailsClosed(t *testing.T) {
 	}
 
 	_, err := transport.resolveAdvertiseHost(context.Background(), "node-a")
-	if err == nil || !strings.Contains(err.Error(), "node-a") {
-		t.Fatalf("resolve error = %v", err)
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "node-a")
 }

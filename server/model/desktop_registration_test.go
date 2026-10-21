@@ -13,35 +13,28 @@ import (
 	"crypto/rand"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestDesktopPublicJWKThumbprintAndValidation(t *testing.T) {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	jwk := DesktopPublicJWK{
 		Kty: "EC", Crv: "P-256",
 		X: rawBase64URL.EncodeToString(privateKey.X.FillBytes(make([]byte, 32))),
 		Y: rawBase64URL.EncodeToString(privateKey.Y.FillBytes(make([]byte, 32))),
 	}
 	thumbprint, err := jwk.Thumbprint()
-	if err != nil {
-		t.Fatalf("Thumbprint() error = %v", err)
-	}
-	if !IsValidDPoPKeyThumbprint(thumbprint) {
-		t.Fatalf("Thumbprint() = %q, want canonical SHA-256 thumbprint", thumbprint)
-	}
-	if _, err = (DesktopPublicJWK{Kty: "EC", Crv: "P-256", X: jwk.X, Y: jwk.X}).Thumbprint(); err == nil {
-		t.Fatal("Thumbprint() accepted a point that is not on P-256")
-	}
+	require.NoError(t, err)
+	require.True(t, IsValidDPoPKeyThumbprint(thumbprint), "Thumbprint()")
+	_, err = (DesktopPublicJWK{Kty: "EC", Crv: "P-256", X: jwk.X, Y: jwk.X}).Thumbprint()
+	require.Error(t, err, "Thumbprint() accepted a point that is not on P-256")
 }
 
 func TestDesktopRegistrationValidation(t *testing.T) {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	jwk := DesktopPublicJWK{Kty: "EC", Crv: "P-256",
 		X: rawBase64URL.EncodeToString(privateKey.X.FillBytes(make([]byte, 32))),
 		Y: rawBase64URL.EncodeToString(privateKey.Y.FillBytes(make([]byte, 32)))}
@@ -50,11 +43,9 @@ func TestDesktopRegistrationValidation(t *testing.T) {
 		DisplayName: "Candidate laptop", DesktopRelease: "0.1.0", DesktopBuildID: "build-1",
 		Platform: DesktopPlatformDarwin, Architecture: DesktopArchitectureARM64, RealtimeProtocol: 1}
 	registration.PrepareCreate(NewDesktopRegistrationID(), at)
-	if err = registration.Validate(); err != nil {
-		t.Fatalf("Validate() error = %v", err)
-	}
+	err = registration.Validate()
+	require.NoError(t, err)
 	registration.KeyThumbprint = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-	if err = registration.Validate(); err == nil {
-		t.Fatal("Validate() accepted a mismatched thumbprint")
-	}
+	err = registration.Validate()
+	require.Error(t, err, "Validate() accepted a mismatched thumbprint")
 }

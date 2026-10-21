@@ -13,9 +13,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
 	"github.com/sudosylabs/proctor/server/app"
@@ -46,9 +47,7 @@ func TestAccountMailerAdapterClassifiesPortableAndLegacyFailures(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if got := classifyMailTransportError(fmt.Errorf("wrapped: %w", test.err)); got != test.want {
-				t.Fatalf("classifyMailTransportError() = %q, want %q", got, test.want)
-			}
+			require.Equal(t, test.want, classifyMailTransportError(fmt.Errorf("wrapped: %w", test.err)), "classifyMailTransportError()")
 		})
 	}
 }
@@ -57,12 +56,8 @@ func TestProductionMailTelemetryRetainsBoundedSafeMetrics(t *testing.T) {
 	t.Parallel()
 	recorder, reader := newMailTelemetry(nil, nil)
 	operational, ok := reader.(*operationalMailTelemetry)
-	if !ok {
-		t.Fatalf("production metrics reader type = %T", reader)
-	}
-	if recorder != operational {
-		t.Fatalf("production recorder type = %T, want shared operational telemetry", recorder)
-	}
+	require.True(t, ok, "production metrics reader type = %T", reader)
+	require.Equal(t, recorder, operational, "production recorder type = %T, want shared operational telemetry", recorder)
 	ctx := context.Background()
 	key := mailDeliveryMetricKey{template: model.MailTemplateSystemTest, state: model.MailDeliveryQueued, code: "mail.transport.temporary"}
 	attemptKey := mailDeliveryMetricKey{template: model.MailTemplateSystemTest, state: model.MailDeliverySending, code: "mail.attempt_started"}
@@ -83,106 +78,83 @@ func TestProductionMailTelemetryRetainsBoundedSafeMetrics(t *testing.T) {
 	operational.mu.Lock()
 	aggregate := operational.deliveries[key]
 	attemptAggregate := operational.deliveries[attemptKey]
-	if aggregate.count != 2 || aggregate.attempts != 0 || aggregate.processingLatency != 2*time.Second || aggregate.maximumLatency != time.Second ||
-		attemptAggregate.count != 0 || attemptAggregate.attempts != 2 ||
-		operational.queues[key].Count != 7 ||
-		operational.queueBuckets[key] != "lt_15m0s" || operational.health != app.MailHealthQueueDelayed ||
-		len(snapshot.Deliveries) != 2 || len(snapshot.Queues) != 1 {
-		t.Fatalf("operational telemetry = deliveries %#v queues %#v buckets %#v health %q",
-			operational.deliveries, operational.queues, operational.queueBuckets, operational.health)
-	}
+	require.Equal(t, uint64(2), aggregate.count, "operational telemetry = deliveries %#v queues %#v buckets %#v health", operational.deliveries, operational.queues, operational.queueBuckets)
+	require.Equal(t, uint64(0), aggregate.attempts, "operational telemetry = deliveries %#v queues %#v buckets %#v health", operational.deliveries, operational.queues, operational.queueBuckets)
+	require.Equal(t, 2*time.Second, aggregate.processingLatency, "operational telemetry = deliveries %#v queues %#v buckets %#v health", operational.deliveries, operational.queues, operational.queueBuckets)
+	require.Equal(t, time.Second, aggregate.maximumLatency, "operational telemetry = deliveries %#v queues %#v buckets %#v health", operational.deliveries, operational.queues, operational.queueBuckets)
+	require.Equal(t, uint64(0), attemptAggregate.count, "operational telemetry = deliveries %#v queues %#v buckets %#v health", operational.deliveries, operational.queues, operational.queueBuckets)
+	require.Equal(t, uint64(2), attemptAggregate.attempts, "operational telemetry = deliveries %#v queues %#v buckets %#v health", operational.deliveries, operational.queues, operational.queueBuckets)
+	require.Equal(t, int64(7), operational.queues[key].Count, "operational telemetry = deliveries %#v queues %#v buckets %#v health", operational.deliveries, operational.queues, operational.queueBuckets)
+	require.Equal(t, "lt_15m0s", operational.queueBuckets[key], "operational telemetry = deliveries %#v queues %#v buckets %#v health", operational.deliveries, operational.queues, operational.queueBuckets)
+	require.Equal(t, app.MailHealthQueueDelayed, operational.health, "operational telemetry = deliveries %#v queues %#v buckets %#v health", operational.deliveries, operational.queues, operational.queueBuckets)
+	require.Len(t, snapshot.Deliveries, 2, "operational telemetry = deliveries %#v queues %#v buckets %#v health", operational.deliveries, operational.queues, operational.queueBuckets)
+	require.Len(t, snapshot.Queues, 1, "operational telemetry = deliveries %#v queues %#v buckets %#v health", operational.deliveries, operational.queues, operational.queueBuckets)
 	operational.mu.Unlock()
 	recorder.RecordMailQueueSnapshot(ctx, nil)
-	if len(reader.Snapshot().Queues) != 0 {
-		t.Fatalf("drained queue remained in snapshot: %#v", reader.Snapshot().Queues)
-	}
+	require.Empty(t, reader.Snapshot().Queues)
 }
 
 func TestAccountMailerAdapterEmbedsFrozenLogoWithoutRewritingHTML(t *testing.T) {
 	t.Parallel()
 	files, err := runtimeAssetDirectory("templates")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	assets, err := appmail.NewInlineAssets(files)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	localizer, err := NewEmbeddedLocalizer()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	renderer, err := appmail.NewRenderer(files, localizer)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	content, err := renderer.Render(appmail.RenderRequest{Key: model.MailTemplateSystemTest, Locale: "en"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	transport := &inlineRecordingMailer{}
 	adapter := accountMailerAdapter{mailer: transport, assets: assets}
 	outbound := appmail.Outbound{From: appmail.Address{Address: "from@example.test"}, To: appmail.Address{Address: "to@example.test"},
 		EnvelopeFrom: "from@example.test", Subject: content.Subject, Text: content.Text, HTML: content.HTML,
 		MessageID: "<fixed@example.test>", Date: time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)}
 	for range 2 {
-		if _, sendErr := adapter.Send(t.Context(), outbound); sendErr != nil {
-			t.Fatal(sendErr)
-		}
+		_, sendErr := adapter.Send(t.Context(), outbound)
+		require.NoError(t, sendErr)
 	}
-	if len(transport.messages) != 2 {
-		t.Fatal("transport did not receive both attempts")
-	}
+	require.Len(t, transport.messages, 2, "transport did not receive both attempts")
 	want, err := files.Open("proctor-lockup-25d-v1.png")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer want.Close()
 	wantBytes, err := io.ReadAll(want)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, message := range transport.messages {
-		if message.HTML != outbound.HTML || message.MessageID != outbound.MessageID || len(message.Attachments) != 1 {
-			t.Fatal("adapter rewrote frozen content or omitted its inline image")
-		}
+		require.Equal(t, outbound.HTML, message.HTML, "adapter rewrote frozen content or omitted its inline image")
+		require.Equal(t, outbound.MessageID, message.MessageID, "adapter rewrote frozen content or omitted its inline image")
+		require.Len(t, message.Attachments, 1, "adapter rewrote frozen content or omitted its inline image")
 		image := message.Attachments[0]
-		if !image.Inline || image.ContentType != "image/png" || !bytes.Equal(image.Data, wantBytes) ||
-			!strings.Contains(message.HTML, `src="cid:`+image.ContentID+`"`) {
-			t.Fatal("inline image does not match the frozen HTML")
-		}
+		require.True(t, image.Inline, "inline image does not match the frozen HTML")
+		require.Equal(t, "image/png", image.ContentType, "inline image does not match the frozen HTML")
+		require.True(t, bytes.Equal(image.Data, wantBytes), "inline image does not match the frozen HTML")
+		require.Contains(t, message.HTML, `src="cid:`+image.ContentID+`"`, "inline image does not match the frozen HTML")
 		composer, err := mailpkg.NewComposer(mailpkg.ComposerConfig{MessageIDDomain: "example.test"})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		delivery, err := composer.Compose(message)
-		if err != nil || !bytes.Contains(delivery.Data, []byte("multipart/related")) ||
-			!bytes.Contains(delivery.Data, []byte("<"+image.ContentID+">")) {
-			t.Fatalf("composed message omitted related image: %v", err)
-		}
+		require.NoError(t, err)
+		require.True(t, bytes.Contains(delivery.Data, []byte("multipart/related")))
+		require.True(t, bytes.Contains(delivery.Data, []byte("<"+image.ContentID+">")))
 	}
 }
 
 func TestAccountMailerAdapterRejectsUnknownImageBeforeSending(t *testing.T) {
 	t.Parallel()
 	files, err := runtimeAssetDirectory("templates")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	assets, err := appmail.NewInlineAssets(files)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	transport := &inlineRecordingMailer{}
 	adapter := accountMailerAdapter{mailer: transport, assets: assets}
 	outcome, err := adapter.Send(context.Background(), appmail.Outbound{HTML: `<img src="cid:missing">`})
-	if err == nil || outcome != appmail.TransportPermanent || len(transport.messages) != 0 {
-		t.Fatalf("unknown image reached transport: %s, %v", outcome, err)
-	}
-	if _, err := adapter.Send(context.Background(), appmail.Outbound{HTML: `<img src="proctor-lockup.png">`}); err != nil ||
-		len(transport.messages) != 1 || len(transport.messages[0].Attachments) != 0 {
-		t.Fatalf("legacy frozen message was rejected or received different artwork: %v", err)
-	}
+	require.Error(t, err, "unknown image reached transport")
+	require.Equal(t, appmail.TransportPermanent, outcome, "unknown image reached transport")
+	require.Empty(t, transport.messages, "unknown image reached transport")
+	_, err = adapter.Send(context.Background(), appmail.Outbound{HTML: `<img src="proctor-lockup.png">`})
+	require.NoError(t, err)
+	require.Len(t, transport.messages, 1)
+	require.Empty(t, transport.messages[0].Attachments)
 }
 
 type inlineRecordingMailer struct{ messages []mailpkg.Message }

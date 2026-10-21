@@ -18,6 +18,9 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const licenseHeaderRule = "---------------------------------------------------------------------------------------------"
@@ -111,7 +114,7 @@ func TestServerCodeFilesHaveCanonicalLicenseHeaders(t *testing.T) {
 
 	sort.Strings(issues)
 	for _, issue := range issues {
-		t.Error(issue)
+		assert.Fail(t, issue)
 	}
 }
 
@@ -158,22 +161,18 @@ func TestContributorCopyrightLicenseHeadersRemainCanonical(t *testing.T) {
 				lines := canonicalServerLicenseHeaderLines(test.licenseID, test.mattermost)
 				lines[test.holderLine] = test.holder
 				header := formatServerLicenseHeader(style, lines)
-				if !hasCanonicalContributorLicenseHeader(
+				require.True(t, hasCanonicalContributorLicenseHeader(
 					[]byte(header), style, test.licenseID, test.mattermost,
-				) {
-					t.Fatal("contributor-owned header was rejected")
-				}
+				), "contributor-owned header was rejected")
 			})
 		}
 	}
 
 	lines := canonicalServerLicenseHeaderLines("AGPL-3.0-only", false)
 	lines[1] = "Copyright Example Contributor"
-	if hasCanonicalContributorLicenseHeader(
+	require.False(t, hasCanonicalContributorLicenseHeader(
 		[]byte(formatServerLicenseHeader("slash", lines)), "slash", "AGPL-3.0-only", false,
-	) {
-		t.Fatal("malformed contributor copyright was accepted")
-	}
+	), "malformed contributor copyright was accepted")
 }
 
 func TestServerUsesCanonicalCopyrightHolderName(t *testing.T) {
@@ -193,16 +192,14 @@ func TestServerUsesCanonicalCopyrightHolderName(t *testing.T) {
 
 	sort.Strings(issues)
 	for _, issue := range issues {
-		t.Error(issue)
+		assert.Fail(t, issue)
 	}
 }
 
 func serverModuleRoot(t *testing.T) string {
 	t.Helper()
 	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve architecture test source path")
-	}
+	require.True(t, ok, "resolve architecture test source path")
 	return filepath.Clean(filepath.Join(filepath.Dir(filename), ".."))
 }
 
@@ -243,9 +240,7 @@ func serverModuleCandidates(t *testing.T, moduleRoot string) []string {
 		}
 		return nil
 	})
-	if err != nil {
-		t.Fatalf("walk server source: %v", err)
-	}
+	require.NoError(t, err)
 	sort.Strings(names)
 	return names
 }

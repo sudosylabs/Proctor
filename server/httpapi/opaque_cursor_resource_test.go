@@ -17,18 +17,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 func assertHTTPProblem(t *testing.T, response *httptest.ResponseRecorder, status int, code string) {
 	t.Helper()
 	var problem Problem
-	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-		t.Fatalf("decode problem response: %v; body=%s", err, response.Body.String())
-	}
-	if response.Code != status || problem.Code != code {
-		t.Fatalf("problem response = %d/%q; want %d/%q; body=%s", response.Code, problem.Code, status, code, response.Body.String())
-	}
+	err := json.Unmarshal(response.Body.Bytes(), &problem)
+	require.NoError(t, err, "decode problem response: %v; body=%s", err, response.Body.String())
+	require.Equal(t, status, response.Code, "problem response = %d/%q; want %d/%q; body=%s", response.Code, problem.Code, status, code, response.Body.String())
+	require.Equal(t, code, problem.Code, "problem response = %d/%q; want %d/%q; body=%s", response.Code, problem.Code, status, code, response.Body.String())
 }
 
 func TestResourceCursorContracts(t *testing.T) {
@@ -166,31 +167,20 @@ func TestResourceCursorContracts(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			raw, err := test.encode()
-			if err != nil {
-				t.Fatalf("encode: %v", err)
-			}
+			require.NoError(t, err)
 			got, err := test.decode(raw)
-			if err != nil {
-				t.Fatalf("decode: %v", err)
-			}
-			if !reflect.DeepEqual(got, test.want) {
-				t.Fatalf("round trip = %#v; want %#v", got, test.want)
-			}
-			if test.plainKeyset != "" && strings.Contains(raw, test.plainKeyset) {
-				t.Fatalf("encoded cursor exposes plain keyset %q", test.plainKeyset)
+			require.NoError(t, err)
+			require.True(t, reflect.DeepEqual(got, test.want), "round trip = %#v; want %#v", got, test.want)
+			if test.plainKeyset != "" {
+				require.NotContains(t, raw, test.plainKeyset)
 			}
 
 			documentBytes, err := base64.RawURLEncoding.Strict().DecodeString(raw)
-			if err != nil {
-				t.Fatalf("decode encoded document: %v", err)
-			}
+			require.NoError(t, err)
 			var envelope map[string]any
-			if err = json.Unmarshal(documentBytes, &envelope); err != nil {
-				t.Fatalf("decode encoded JSON: %v", err)
-			}
-			if envelope["version"] != float64(1) {
-				t.Fatalf("new cursor version = %#v; want 1", envelope["version"])
-			}
+			err = json.Unmarshal(documentBytes, &envelope)
+			require.NoError(t, err)
+			require.Equal(t, float64(1), envelope["version"], "new cursor version")
 
 			document := string(documentBytes)
 			invalidDocuments := []string{
@@ -202,23 +192,20 @@ func TestResourceCursorContracts(t *testing.T) {
 			}
 			for _, invalidDocument := range invalidDocuments {
 				invalid := base64.RawURLEncoding.EncodeToString([]byte(invalidDocument))
-				if _, decodeErr := test.decode(invalid); decodeErr == nil {
-					t.Errorf("decode accepted invalid document %s", invalidDocument)
-				}
+				_, decodeErr := test.decode(invalid)
+				assert.Error(t, decodeErr, "decode accepted invalid document %s", invalidDocument)
 			}
 
 			maximum := test.maximumRawLength
 			if maximum == 0 {
 				maximum = defaultOpaqueCursorMaximumEncodedLength
 			}
-			if _, err = test.decode(strings.Repeat("A", maximum+1)); err == nil {
-				t.Error("decode accepted overlong cursor")
-			}
+			_, err = test.decode(strings.Repeat("A", maximum+1))
+			assert.Error(t, err, "decode accepted overlong cursor")
 			for _, legacyDocument := range test.legacyDocuments {
 				legacy := base64.RawURLEncoding.EncodeToString([]byte(legacyDocument))
-				if _, err = test.decode(legacy); err != nil {
-					t.Errorf("decode legacy document %s: %v", legacyDocument, err)
-				}
+				_, err = test.decode(legacy)
+				assert.NoError(t, err, "decode legacy document %s", legacyDocument)
 			}
 		})
 	}

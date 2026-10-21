@@ -16,6 +16,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
 	server "github.com/sudosylabs/proctor/server"
 	"github.com/sudosylabs/proctor/server/app"
@@ -146,58 +149,44 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 		config.NewMemoryStore(nil),
 		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
 	)
-	if err != nil {
-		tb.Fatalf("create test configuration: %v", err)
-	}
+	require.NoError(tb, err)
 	testConfig := store.Get()
 	testConfig.Authentication.Bootstrap.DevelopmentMode = false
 	testConfig.Authentication.Bootstrap.Secret = BootstrapSecret
 	testConfig.Mail.SecretSealing.EncryptionKey = base64.StdEncoding.EncodeToString(make([]byte, 32))
-	if _, _, err := store.Set(context.Background(), testConfig); err != nil {
-		tb.Fatalf("configure test bootstrap secret: %v", err)
-	}
+	_, _, err = store.Set(context.Background(), testConfig)
+	require.NoError(tb, err)
 	if settings.updateConfig != nil {
 		cfg := store.Get()
 		settings.updateConfig(&cfg)
-		if _, _, err := store.Set(context.Background(), cfg); err != nil {
-			tb.Fatalf("update test configuration: %v", err)
-		}
+		_, _, err = store.Set(context.Background(), cfg)
+		require.NoError(tb, err)
 	}
 
 	logs := &logging.Buffer{}
 	logger, err := logging.New()
-	if err != nil {
-		tb.Fatalf("create test logger: %v", err)
-	}
-	if err := logger.Configure(logging.Config{
+	require.NoError(tb, err)
+	require.NoError(tb, logger.Configure(logging.Config{
 		MaxFieldBytes: store.Get().Log.MaxFieldBytes,
 		Targets: []logging.Target{{
 			Name: "test", Type: "console", Level: "trace", Format: "json", Writer: logs,
 		}},
-	}); err != nil {
-		tb.Fatalf("configure test logger: %v", err)
-	}
+	}))
 	logger.LockConfiguration()
 
 	cache, err := newCache()
-	if err != nil {
-		tb.Fatalf("create test cache: %v", err)
-	}
+	require.NoError(tb, err)
 	var mailer *Mailer
 	var mailerOverride platform.Mailer
 	if !settings.configuredMailer {
 		mailer, err = newMailer()
-		if err != nil {
-			tb.Fatalf("create test mailer: %v", err)
-		}
+		require.NoError(tb, err)
 		mailerOverride = mailer
 	}
 	filesystem := memoryvfs.New()
 	if settings.cluster == nil && store.Get().Cluster.Backend == "local" {
 		settings.cluster, err = local.New(store.Get().Cluster.NodeID, testClusterLogger{})
-		if err != nil {
-			tb.Fatalf("create local test cluster: %v", err)
-		}
+		require.NoError(tb, err)
 	}
 
 	persistenceOverride := settings.persistence
@@ -219,9 +208,7 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 		DesktopBuildCatalog: settings.desktopBuilds,
 		ServiceEnvironment:  settings.serviceEnvironment,
 	})
-	if err != nil {
-		tb.Fatalf("create test server: %v", err)
-	}
+	require.NoError(tb, err)
 	helper := &Helper{
 		Server:           runtime.Server,
 		App:              runtime.Application,
@@ -236,9 +223,7 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 		VFS:              filesystem,
 	}
 	tb.Cleanup(func() {
-		if err := runtime.Server.Close(); err != nil {
-			tb.Errorf("close test server: %v", err)
-		}
+		assert.NoError(tb, runtime.Server.Close())
 	})
 	return helper
 }

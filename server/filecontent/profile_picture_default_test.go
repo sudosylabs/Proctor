@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/disintegration/imaging"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/image/webp"
 
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
@@ -45,9 +46,7 @@ func TestDefaultProfilePictureVisualPropertiesAndConsistentRenditions(t *testing
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			content, err := filecontent.New(memoryvfs.New(), filecontent.Policy{MaximumConcurrentOperations: 1}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			revisionID := model.NewFileRevisionID()
 			renditions, err := content.GenerateAndStoreDefaultProfilePicture(
 				context.Background(),
@@ -55,43 +54,29 @@ func TestDefaultProfilePictureVisualPropertiesAndConsistentRenditions(t *testing
 				tc.seed,
 				time.Unix(1, 0),
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(renditions) != 3 {
-				t.Fatalf("got %d renditions, want 3", len(renditions))
-			}
+			require.NoError(t, err)
+			require.Len(t, renditions, 3)
 			images := make(map[int]*image.NRGBA, 3)
 			for _, rendition := range renditions {
 				body, err := content.OpenProfilePictureRendition(context.Background(), revisionID, rendition.ID)
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				decoded := decodeDefaultPicture(t, body)
-				if decoded.Bounds() != image.Rect(0, 0, rendition.Width, rendition.Width) {
-					t.Fatalf("unexpected image dimensions: %v", decoded.Bounds())
-				}
+				require.Equal(t, image.Rect(0, 0, rendition.Width, rendition.Width), decoded.Bounds())
 				images[rendition.Width] = decoded
 			}
 			master := images[512]
-			if master == nil {
-				t.Fatal("512 px master missing")
-			}
+			require.NotNil(t, master, "512 px master missing")
 			assertDefaultPictureSilhouette(t, master)
 			for _, size := range []int{128, 256} {
 				actual := images[size]
-				if actual == nil {
-					t.Fatalf("%d px rendition missing", size)
-				}
+				require.NotNil(t, actual, "%d px rendition missing", size)
 				want := imaging.Resize(
 					master,
 					size,
 					size,
 					imaging.Lanczos,
 				)
-				if !bytes.Equal(actual.Pix, want.Pix) {
-					t.Fatalf("%d px rendition does not match downsampled master", size)
-				}
+				require.True(t, bytes.Equal(actual.Pix, want.Pix), "%d px rendition does not match downsampled master", size)
 			}
 		})
 	}
@@ -101,9 +86,7 @@ func TestDefaultProfilePictureRejectsInvalidInput(t *testing.T) {
 	t.Parallel()
 
 	content, err := filecontent.New(memoryvfs.New(), filecontent.Policy{MaximumConcurrentOperations: 1}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, tc := range []struct{ name, seed string }{
 		{name: "empty"},
 		{name: "short", seed: strings.Repeat("a", 62)},
@@ -112,26 +95,23 @@ func TestDefaultProfilePictureRejectsInvalidInput(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			picture, err := content.RenderDefaultProfilePicture(context.Background(), tc.seed, 128)
-			if err == nil || picture != nil {
-				t.Fatalf("invalid seed rendered: picture=%v error=%v", picture, err)
-			}
+			require.Error(t, err, "invalid seed rendered: picture")
+			require.Nil(t, picture, "invalid seed rendered: picture")
 			renditions, err := content.GenerateAndStoreDefaultProfilePicture(
 				context.Background(),
 				model.NewFileRevisionID(),
 				tc.seed,
 				time.Unix(1, 0),
 			)
-			if err == nil || len(renditions) != 0 {
-				t.Fatalf("invalid seed stored: renditions=%v error=%v", renditions, err)
-			}
+			require.Error(t, err, "invalid seed stored: renditions")
+			require.Empty(t, renditions, "invalid seed stored: renditions")
 		})
 	}
 	for _, size := range []int{-1, 0, 64, 129, 1024} {
 		t.Run(fmt.Sprintf("size %d", size), func(t *testing.T) {
 			picture, err := content.RenderDefaultProfilePicture(context.Background(), defaultProfilePictureSeed, size)
-			if err == nil || picture != nil {
-				t.Fatalf("invalid size rendered: picture=%v error=%v", picture, err)
-			}
+			require.Error(t, err, "invalid size rendered: picture")
+			require.Nil(t, picture, "invalid size rendered: picture")
 		})
 	}
 }
@@ -140,28 +120,20 @@ func TestDefaultProfilePictureSeedHexCaseDoesNotChangeImage(t *testing.T) {
 	t.Parallel()
 
 	content, err := filecontent.New(memoryvfs.New(), filecontent.Policy{MaximumConcurrentOperations: 1}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	picture, err := content.RenderDefaultProfilePicture(
 		context.Background(), strings.ToUpper(defaultProfilePictureSeed), 128,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer picture.Body.Close()
-	if picture.SHA256 != defaultProfilePictureChecksum128 {
-		t.Fatalf("hex case changed the rendered image: %s", picture.SHA256)
-	}
+	require.Equal(t, defaultProfilePictureChecksum128, picture.SHA256)
 }
 
 func decodeDefaultPicture(t *testing.T, body io.ReadCloser) *image.NRGBA {
 	t.Helper()
 	defer body.Close()
 	decoded, err := webp.Decode(body)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return imaging.Clone(decoded)
 }
 
@@ -172,9 +144,7 @@ func assertDefaultPictureSilhouette(t *testing.T, img *image.NRGBA) {
 	for y := range 512 {
 		for x := range 512 {
 			pixel := img.NRGBAAt(x, y)
-			if pixel.A != 255 {
-				t.Fatalf("transparent pixel at (%d, %d)", x, y)
-			}
+			require.Equal(t, uint8(255), pixel.A, "transparent pixel at (%d, %d)", x, y)
 			mirror := img.NRGBAAt(511-x, y)
 			// Mirrored Lanczos weights can round a channel to adjacent byte values.
 			difference := max(
@@ -182,25 +152,15 @@ func assertDefaultPictureSilhouette(t *testing.T, img *image.NRGBA) {
 				math.Abs(float64(pixel.G)-float64(mirror.G)),
 				math.Abs(float64(pixel.B)-float64(mirror.B)),
 			)
-			if difference > 1 {
-				t.Fatalf(
-					"asymmetric pixels at (%d, %d): %v vs %v",
-					x,
-					y,
-					pixel,
-					mirror,
-				)
-			}
+			require.LessOrEqual(t, difference, float64(1), "asymmetric pixels at (%d, %d): %v vs %v", x, y, pixel, mirror)
 			dx, dy := float64(x)-255.5, float64(y)-255.5
-			if dx*dx+dy*dy >= 256*256 && pixel != background {
-				t.Fatalf("circular cropping cuts the glyph at (%d, %d)", x, y)
+			if dx*dx+dy*dy >= 256*256 {
+				require.Equal(t, background, pixel, "circular cropping cuts the glyph at (%d, %d)", x, y)
 			}
 			counts[pixel]++
 		}
 	}
-	if len(counts) <= 2 {
-		t.Fatal("glyph edges are not antialiased")
-	}
+	require.Greater(t, len(counts), 2, "glyph edges are not antialiased")
 	var foreground color.NRGBA
 	var most int
 	for pixel, count := range counts {
@@ -222,25 +182,20 @@ func assertDefaultPictureSilhouette(t *testing.T, img *image.NRGBA) {
 		}
 		return total
 	}
-	if ratio := (luminance(background) + 0.05) / (luminance(foreground) + 0.05); ratio < 4.5 {
-		t.Fatalf("foreground/background contrast = %f, want at least 4.5", ratio)
-	}
+	require.GreaterOrEqual(t, ((luminance(background) + 0.05) / (luminance(foreground) + 0.05)), 4.5, "foreground/background contrast")
 	// Read the glyph's occupied cells from the image, then flood-fill them to
 	// verify one connected silhouette without relying on generator internals.
 	remaining := make(map[image.Point]bool)
 	for row := range 5 {
 		for col := range 5 {
 			if img.NRGBAAt(120+col*68, 120+row*68) == foreground {
-				if img.NRGBAAt(120+(4-col)*68, 120+row*68) != foreground {
-					t.Fatal("glyph cells are not mirrored")
-				}
+				require.Equal(t, foreground, img.NRGBAAt(120+(4-col)*68, 120+row*68), "glyph cells are not mirrored")
 				remaining[image.Pt(col, row)] = true
 			}
 		}
 	}
-	if len(remaining) < 11 || len(remaining) > 17 {
-		t.Fatalf("glyph has %d occupied cells, want 11 through 17", len(remaining))
-	}
+	require.GreaterOrEqual(t, len(remaining), 11, "glyph has")
+	require.LessOrEqual(t, len(remaining), 17, "glyph has")
 	queue := make([]image.Point, 0, len(remaining))
 	for point := range remaining {
 		queue = append(queue, point)
@@ -260,7 +215,5 @@ func assertDefaultPictureSilhouette(t *testing.T, img *image.NRGBA) {
 			}
 		}
 	}
-	if len(remaining) != 0 {
-		t.Fatal("glyph has disconnected cells")
-	}
+	require.Empty(t, remaining, "glyph has disconnected cells")
 }

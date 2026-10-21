@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -64,18 +66,18 @@ func TestStudentProgressionHTTPRequiresRFC3339AndForwardsExactTargets(t *testing
 	request.Header.Set("Authorization", "Bearer session")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusAccepted || response.Header().Get("Cache-Control") != "no-store" ||
-		fake.command.SourcePeriodID != sourcePeriodID.String() || fake.command.SourceClassID != sourceClassID.String() ||
-		fake.command.DestinationPeriodID != destinationPeriodID.String() || fake.command.DestinationClassID != destinationClassID.String() || fake.command.EffectiveAt != at.UnixMilli() {
-		t.Fatalf("student progression = %d %s command=%#v", response.Code, response.Body.String(), fake.command)
-	}
+	require.Equal(t, http.StatusAccepted, response.Code, "student progression = %d %s command=%#v", response.Code, response.Body.String(), fake.command)
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "student progression = %d %s command=%#v", response.Code, response.Body.String(), fake.command)
+	require.Equal(t, sourcePeriodID.String(), fake.command.SourcePeriodID, "student progression = %d %s command=%#v", response.Code, response.Body.String(), fake.command)
+	require.Equal(t, sourceClassID.String(), fake.command.SourceClassID, "student progression = %d %s command=%#v", response.Code, response.Body.String(), fake.command)
+	require.Equal(t, destinationPeriodID.String(), fake.command.DestinationPeriodID, "student progression = %d %s command=%#v", response.Code, response.Body.String(), fake.command)
+	require.Equal(t, destinationClassID.String(), fake.command.DestinationClassID, "student progression = %d %s command=%#v", response.Code, response.Body.String(), fake.command)
+	require.Equal(t, at.UnixMilli(), fake.command.EffectiveAt, "student progression = %d %s command=%#v", response.Code, response.Body.String(), fake.command)
 	invalid := newJSONRequest(http.MethodPost, "/api/v1/student-progressions", strings.NewReader(strings.Replace(body, at.Format(time.RFC3339Nano), "1800000000000", 1)))
 	invalid.Header.Set("Authorization", "Bearer session")
 	invalidResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(invalidResponse, invalid)
-	if invalidResponse.Code != http.StatusBadRequest {
-		t.Fatalf("non-RFC3339 effective_at = %d %s", invalidResponse.Code, invalidResponse.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, invalidResponse.Code, "non-RFC3339 effective_at = %d %s", invalidResponse.Code, invalidResponse.Body.String())
 }
 
 func TestStudentProgressionResponseExposesOnlySafeExactTargetsAndRows(t *testing.T) {
@@ -88,18 +90,12 @@ func TestStudentProgressionResponseExposesOnlySafeExactTargetsAndRows(t *testing
 		CreatedAt: at, UpdatedAt: at, ExpiresAt: at.Add(7 * 24 * time.Hour), Revision: 2, TotalRows: 1, ValidRows: 1}
 	rows := []app.OnboardingImportRowView{{RowNumber: 1, Reference: "safe-membership-reference", Operation: "class.enroll", Status: model.OnboardingImportRowValid}}
 	encoded, err := json.Marshal(onboardingImportResponseFromView(view, rows))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	body := string(encoded)
 	for _, required := range []string{view.SourcePeriodID.String(), view.SourceClassID.String(), view.DestinationPeriodID.String(), view.DestinationClassID.String(), `"effective_at":"`} {
-		if !strings.Contains(body, required) {
-			t.Fatalf("response omits %q: %s", required, body)
-		}
+		require.Contains(t, body, required, "response omits")
 	}
 	for _, forbidden := range []string{"email", "username", "recipient", "claim", "secret", "principal"} {
-		if strings.Contains(body, forbidden) {
-			t.Fatalf("response contains private field %q: %s", forbidden, body)
-		}
+		require.NotContains(t, body, forbidden, "response contains private field")
 	}
 }

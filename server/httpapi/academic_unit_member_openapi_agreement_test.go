@@ -12,6 +12,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -48,9 +50,7 @@ func TestAcademicUnitMemberOpenAPIAgreesWithRuntime(t *testing.T) {
 		},
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, academicUnitMemberResource(&academicUnitMemberHTTPApplication{})); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtimeAPI.collectResources(model.APIURLSuffix, academicUnitMemberResource(&academicUnitMemberHTTPApplication{})))
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 
 	// Relationship history remains an explicit wire-level compatibility rule:
@@ -62,22 +62,18 @@ func TestAcademicUnitMemberOpenAPIAgreesWithRuntime(t *testing.T) {
 			In   string `json:"in"`
 		} `json:"parameters"`
 	}
-	if err := json.Unmarshal(document.Paths["/api/v1/academic-units/{academic_unit_id}/members"]["get"], &listOperation); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(document.Paths["/api/v1/academic-units/{academic_unit_id}/members"]["get"], &listOperation))
 	queryParameters := map[string]bool{}
 	for _, parameter := range listOperation.Parameters {
 		if parameter.In == "query" {
 			queryParameters[parameter.Name] = true
 		}
 	}
-	if !queryParameters["active_at"] || !queryParameters["history"] {
-		t.Fatalf("list query parameters = %#v, want active_at and history", queryParameters)
-	}
+	require.True(t, queryParameters["active_at"], "list query parameters = %#v, want active_at and history", queryParameters)
+	require.True(t, queryParameters["history"], "list query parameters = %#v, want active_at and history", queryParameters)
 
 	// This v1 relationship collection remains a legacy bare array.
 	list := document.Components.Schemas["AcademicUnitMemberListResponse"]
-	if list.Type != "array" || list.Items.Ref != "#/components/schemas/AcademicUnitMemberResponse" {
-		t.Fatalf("AcademicUnitMemberListResponse = %#v", list)
-	}
+	require.Equal(t, "array", list.Type)
+	require.Equal(t, "#/components/schemas/AcademicUnitMemberResponse", list.Items.Ref)
 }

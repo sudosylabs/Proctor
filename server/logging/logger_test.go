@@ -9,12 +9,13 @@ package logging
 
 import (
 	"encoding/json"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 type failingWriter struct{}
@@ -25,9 +26,7 @@ func TestLoggerSupportsIndependentTargetsAndLevels(t *testing.T) {
 	t.Parallel()
 
 	logger, err := New()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Shutdown() })
 	var all Buffer
 	var errorsOnly Buffer
@@ -38,110 +37,73 @@ func TestLoggerSupportsIndependentTargetsAndLevels(t *testing.T) {
 			{Name: "errors", Type: "console", Level: "error", Format: "text", Writer: &errorsOnly},
 		},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	logger.Debug("debug entry", String("component", "test"))
 	logger.Error("error entry", Int("attempt", 2))
-	if err := logger.Flush(); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(all.String(), "debug entry") || !strings.Contains(all.String(), "error entry") {
-		t.Fatalf("all target = %q", all.String())
-	}
-	if strings.Contains(errorsOnly.String(), "debug entry") || !strings.Contains(errorsOnly.String(), "error entry") {
-		t.Fatalf("error target = %q", errorsOnly.String())
-	}
+	require.NoError(t, logger.Flush())
+	require.Contains(t, all.String(), "debug entry")
+	require.Contains(t, all.String(), "error entry")
+	require.NotContains(t, errorsOnly.String(), "debug entry")
+	require.Contains(t, errorsOnly.String(), "error entry")
 }
 
 func TestLoggerReconfiguresWithoutChangingScopedLoggers(t *testing.T) {
 	t.Parallel()
 
 	logger, err := New()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Shutdown() })
 	var first Buffer
 	var second Buffer
-	if err := logger.Configure(writerConfig(&first, "info")); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, logger.Configure(writerConfig(&first, "info")))
 	scoped := logger.With(String("component", "api"))
 	scoped.Info("before")
 
-	if err := logger.Configure(writerConfig(&second, "info")); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, logger.Configure(writerConfig(&second, "info")))
 	scoped.Info("after")
-	if err := logger.Flush(); err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(first.String(), "after") {
-		t.Fatalf("old target received post-reconfiguration entry: %q", first.String())
-	}
-	if !strings.Contains(second.String(), "after") || !strings.Contains(second.String(), `"component":"api"`) {
-		t.Fatalf("scoped logger did not follow reconfiguration: %q", second.String())
-	}
+	require.NoError(t, logger.Flush())
+	require.NotContains(t, first.String(), "after")
+	require.Contains(t, second.String(), "after")
+	require.Contains(t, second.String(), `"component":"api"`)
 }
 
 func TestLoggerConfigurationLockAndFailurePreserveCurrentTargets(t *testing.T) {
 	t.Parallel()
 
 	logger, err := New()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Shutdown() })
 	var output Buffer
-	if err := logger.Configure(writerConfig(&output, "info")); err != nil {
-		t.Fatal(err)
-	}
-	if err := logger.Configure(Config{MaxFieldBytes: 10}); err == nil {
-		t.Fatal("invalid configuration was accepted")
-	}
+	require.NoError(t, logger.Configure(writerConfig(&output, "info")))
+	require.Error(t, logger.Configure(Config{MaxFieldBytes: 10}), "invalid configuration was accepted")
 	logger.Info("still configured")
-	if err := logger.Flush(); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(output.String(), "still configured") {
-		t.Fatal("failed reconfiguration replaced the working target")
-	}
+	require.NoError(t, logger.Flush())
+	require.Contains(t, output.String(), "still configured", "failed reconfiguration replaced the working target")
 
 	logger.LockConfiguration()
-	if err := logger.Configure(writerConfig(&output, "debug")); !errors.Is(err, ErrConfigurationLocked) {
-		t.Fatalf("locked Configure() error = %v", err)
-	}
+	require.ErrorIs(t, logger.Configure(writerConfig(&output, "debug")), ErrConfigurationLocked)
 }
 
 func TestLoggerLimitsLargeFieldsWithoutBreakingUTF8(t *testing.T) {
 	t.Parallel()
 
 	logger, err := New()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Shutdown() })
 	var output Buffer
 	cfg := writerConfig(&output, "info")
 	cfg.MaxFieldBytes = 256
-	if err := logger.Configure(cfg); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, logger.Configure(cfg))
 	logger.Info("large", String("value", strings.Repeat("é", 300)))
-	if err := logger.Flush(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, logger.Flush())
 
 	var entry map[string]any
-	if err := json.Unmarshal(output.Bytes(), &entry); err != nil {
-		t.Fatalf("output is invalid JSON/UTF-8: %v\n%s", err, output.String())
-	}
+	err = json.Unmarshal(output.Bytes(), &entry)
+	require.NoError(t, err, "output is invalid JSON/UTF-8: %v\n%s", err, output.String())
 	value, _ := entry["value"].(string)
-	if len(value) > 256 || !strings.HasSuffix(value, "…") {
-		t.Fatalf("limited value is %d bytes and %q", len(value), value)
-	}
+	require.LessOrEqual(t, len(value), 256, "limited value is")
+	require.True(t, strings.HasSuffix(value, "…"), "limited value is")
 }
 
 func TestFileTargetFlushAndShutdown(t *testing.T) {
@@ -149,76 +111,47 @@ func TestFileTargetFlushAndShutdown(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "proctor.log")
 	logger, err := New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := logger.Configure(Config{
+	require.NoError(t, err)
+	require.NoError(t, logger.Configure(Config{
 		MaxFieldBytes: 1024,
 		Targets: []Target{{
 			Name: "file", Type: "file", Level: "info", Format: "json", File: path,
 		}},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	}))
 	logger.Info("persisted")
-	if err := logger.Flush(); err != nil {
-		t.Fatal(err)
-	}
-	if err := logger.Shutdown(); err != nil {
-		t.Fatal(err)
-	}
-	if err := logger.Shutdown(); err != nil {
-		t.Fatalf("second Shutdown() error = %v", err)
-	}
+	require.NoError(t, logger.Flush())
+	require.NoError(t, logger.Shutdown())
+	require.NoError(t, logger.Shutdown())
 	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(data), "persisted") {
-		t.Fatalf("file target = %q", data)
-	}
+	require.NoError(t, err)
+	require.Contains(t, string(data), "persisted", "file target")
 }
 
 func TestLoggerDoesNotReflectArbitraryValues(t *testing.T) {
 	t.Parallel()
 	logger, err := New()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Shutdown() })
 	var output Buffer
-	if err := logger.Configure(writerConfig(&output, "info")); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, logger.Configure(writerConfig(&output, "info")))
 	secret := struct{ Password string }{Password: "must-not-appear"}
 	logger.Info("safe", Any("payload", secret))
-	if err := logger.Flush(); err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(output.String(), secret.Password) || !strings.Contains(output.String(), "unsupported") {
-		t.Fatalf("arbitrary value handling = %q", output.String())
-	}
+	require.NoError(t, logger.Flush())
+	require.NotContains(t, output.String(), secret.Password)
+	require.Contains(t, output.String(), "unsupported")
 }
 
 func TestLoggerReportsAsynchronousTargetFailures(t *testing.T) {
 	t.Parallel()
 	logger, err := New()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Shutdown() })
-	if err := logger.Configure(Config{MaxFieldBytes: 1024, Targets: []Target{{
+	require.NoError(t, logger.Configure(Config{MaxFieldBytes: 1024, Targets: []Target{{
 		Name: "broken", Type: "console", Level: "info", Format: "json", Writer: failingWriter{},
-	}}}); err != nil {
-		t.Fatal(err)
-	}
+	}}}))
 	logger.Error("write fails")
-	if err := logger.Flush(); err != nil {
-		t.Fatal(err)
-	}
-	if stats := logger.Stats(); stats.InternalErrors == 0 {
-		t.Fatalf("stats = %#v", stats)
-	}
+	require.NoError(t, logger.Flush())
+	require.NotEqual(t, uint64(0), logger.Stats().InternalErrors)
 }
 
 func writerConfig(output *Buffer, level string) Config {

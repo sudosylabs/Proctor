@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -33,17 +35,14 @@ func TestAuthenticationMethodOpenAPIAgreesWithRuntime(t *testing.T) {
 		return strings.HasPrefix(path, model.APIURLSuffix+"/authentication-methods")
 	}}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, authenticationMethodResource(nil, browserCookies{})); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtimeAPI.collectResources(model.APIURLSuffix, authenticationMethodResource(nil, browserCookies{})))
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 	document := readOpenAPIDocument(t)
 	for _, schemaName := range []string{"AuthenticationMethodResponse", "AuthenticationProviderMethodResponse"} {
 		schema := document.Components.Schemas[schemaName]
 		for _, forbidden := range []string{"subject", "password_hash", "token", "credential"} {
-			if _, exists := schema.Properties[forbidden]; exists {
-				t.Fatalf("%s exposes %q", schemaName, forbidden)
-			}
+			_, exists := schema.Properties[forbidden]
+			require.False(t, exists, "%s exposes %q", schemaName, forbidden)
 		}
 	}
 }

@@ -15,6 +15,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/httpapi"
 	"github.com/sudosylabs/proctor/server/testlib"
@@ -40,41 +43,25 @@ func TestHealthVersionAndCommonHeaders(t *testing.T) {
 	helper := testlib.Setup(t, testlib.WithBuildInfo(buildInfo))
 
 	liveness := performRequest(helper.Handler(), http.MethodGet, "/health/live", "desktop-client-1")
-	if liveness.Code != http.StatusOK {
-		t.Fatalf("liveness status = %d: %s", liveness.Code, liveness.Body.String())
-	}
+	require.Equal(t, http.StatusOK, liveness.Code, "liveness status = %d: %s", liveness.Code, liveness.Body.String())
 	// A client-supplied request ID never becomes server correlation.
-	if requestID := liveness.Header().Get(httpapi.RequestIDHeader); requestID == "" || requestID == "desktop-client-1" {
-		t.Errorf("request ID = %q", requestID)
-	}
-	if liveness.Header().Get("X-Content-Type-Options") != "nosniff" {
-		t.Error("security headers were not applied")
-	}
-	if liveness.Header().Get("Content-Type") != "application/json" ||
-		liveness.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("liveness headers = %#v", liveness.Header())
-	}
+	requestID := liveness.Header().Get(httpapi.RequestIDHeader)
+	assert.NotEmpty(t, requestID)
+	assert.NotEqual(t, "desktop-client-1", requestID, "client request ID became server correlation")
+	assert.Equal(t, "nosniff", liveness.Header().Get("X-Content-Type-Options"), "security headers were not applied")
+	require.Equal(t, "application/json", liveness.Header().Get("Content-Type"))
+	require.Equal(t, "no-store", liveness.Header().Get("Cache-Control"))
 	var health map[string]string
-	if err := json.Unmarshal(liveness.Body.Bytes(), &health); err != nil {
-		t.Fatal(err)
-	}
-	if health["status"] != "ok" {
-		t.Fatalf("liveness response = %#v", health)
-	}
+	require.NoError(t, json.Unmarshal(liveness.Body.Bytes(), &health))
+	require.Equal(t, "ok", health["status"])
 
 	readiness := performRequest(helper.Handler(), http.MethodGet, "/health/ready", "")
-	if readiness.Code != http.StatusServiceUnavailable {
-		t.Fatalf("not-ready status = %d", readiness.Code)
-	}
+	require.Equal(t, http.StatusServiceUnavailable, readiness.Code, "not-ready status")
 
 	version := performRequest(helper.Handler(), http.MethodGet, "/api/v1/system/version", "")
 	var got httpapi.BuildInfo
-	if err := json.Unmarshal(version.Body.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got != buildInfo {
-		t.Fatalf("build info = %#v, want %#v", got, buildInfo)
-	}
+	require.NoError(t, json.Unmarshal(version.Body.Bytes(), &got))
+	require.Equal(t, buildInfo, got, "build info")
 }
 
 func TestRoutingFailuresUseProblemDetails(t *testing.T) {
@@ -105,34 +92,30 @@ func TestRoutingFailuresUseProblemDetails(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		response := performRequest(
-			helper.Handler(),
-			test.method,
-			test.path,
-			"compatibility-request",
-		)
-		if response.Code != test.status {
-			t.Errorf("%s %s status = %d", test.method, test.path, response.Code)
-		}
-		if response.Header().Get("Content-Type") != "application/problem+json" {
-			t.Errorf("content type = %q", response.Header().Get("Content-Type"))
-		}
-		if response.Header().Get("Allow") != test.allow {
-			t.Errorf("Allow = %q", response.Header().Get("Allow"))
-		}
-		var problem compatibilityProblem
-		if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-			t.Error(err)
-		} else if problem.Type != test.typeURI ||
-			problem.Title != test.title ||
-			problem.Status != test.status ||
-			problem.Detail != test.detail ||
-			problem.Instance != test.path ||
-			problem.Code != test.code ||
-			problem.RequestID == "" || problem.RequestID == "compatibility-request" ||
-			problem.RequestID != response.Header().Get(httpapi.RequestIDHeader) {
-			t.Errorf("problem = %#v", problem)
-		}
+		t.Run(test.title, func(t *testing.T) {
+			response := performRequest(
+				helper.Handler(),
+				test.method,
+				test.path,
+				"compatibility-request",
+			)
+			assert.Equal(t, test.status, response.Code, "%s %s status", test.method, test.path)
+			assert.Equal(t, "application/problem+json", response.Header().Get("Content-Type"))
+			assert.Equal(t, test.allow, response.Header().Get("Allow"))
+			var problem compatibilityProblem
+			if !assert.NoError(t, json.Unmarshal(response.Body.Bytes(), &problem)) {
+				return
+			}
+			assert.Equal(t, test.typeURI, problem.Type)
+			assert.Equal(t, test.title, problem.Title)
+			assert.Equal(t, test.status, problem.Status)
+			assert.Equal(t, test.detail, problem.Detail)
+			assert.Equal(t, test.path, problem.Instance)
+			assert.Equal(t, test.code, problem.Code)
+			assert.NotEmpty(t, problem.RequestID)
+			assert.NotEqual(t, "compatibility-request", problem.RequestID, "client request ID became server correlation")
+			assert.Equal(t, response.Header().Get(httpapi.RequestIDHeader), problem.RequestID)
+		})
 	}
 }
 
@@ -208,25 +191,18 @@ func TestAuthenticationBoundaryRejectsMissingAmbiguousAndURLCredentials(t *testi
 			}
 			response := httptest.NewRecorder()
 			helper.Handler().ServeHTTP(response, request)
-			if response.Code != http.StatusUnauthorized {
-				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-			}
+			require.Equal(t, http.StatusUnauthorized, response.Code, "status = %d, body = %s", response.Code, response.Body.String())
 			var problem compatibilityProblem
-			if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-				t.Fatal(err)
-			}
-			if problem.Code != "authentication.required" {
-				t.Fatalf("problem = %#v", problem)
-			}
-			if problem.Type != "https://proctor.sudosylabs.com/problems/authentication.required" ||
-				problem.Title != "Authentication required" ||
-				problem.Status != http.StatusUnauthorized ||
-				problem.Detail != "Authentication is required." ||
-				problem.Instance != request.URL.Path ||
-				problem.RequestID == "" || problem.RequestID == "compatibility-request" ||
-				problem.RequestID != response.Header().Get(httpapi.RequestIDHeader) {
-				t.Fatalf("authentication problem contract = %#v", problem)
-			}
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &problem))
+			require.Equal(t, "authentication.required", problem.Code)
+			require.Equal(t, "https://proctor.sudosylabs.com/problems/authentication.required", problem.Type)
+			require.Equal(t, "Authentication required", problem.Title)
+			require.Equal(t, http.StatusUnauthorized, problem.Status)
+			require.Equal(t, "Authentication is required.", problem.Detail)
+			require.Equal(t, request.URL.Path, problem.Instance)
+			require.NotEmpty(t, problem.RequestID)
+			require.NotEqual(t, "compatibility-request", problem.RequestID)
+			require.Equal(t, response.Header().Get(httpapi.RequestIDHeader), problem.RequestID)
 		})
 	}
 }
@@ -248,16 +224,10 @@ func TestAuthenticationRequestsUseStrictJSON(t *testing.T) {
 		request.Header.Set("Content-Type", "application/json")
 		response := httptest.NewRecorder()
 		helper.Handler().ServeHTTP(response, request)
-		if response.Code != http.StatusBadRequest {
-			t.Fatalf("body %q: status = %d, response = %s", body, response.Code, response.Body.String())
-		}
+		require.Equal(t, http.StatusBadRequest, response.Code, "body %q: status = %d, response = %s", body, response.Code, response.Body.String())
 		var problem httpapi.Problem
-		if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-			t.Fatal(err)
-		}
-		if problem.Code != "request.invalid" {
-			t.Fatalf("problem = %#v", problem)
-		}
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &problem))
+		require.Equal(t, "request.invalid", problem.Code)
 	}
 }
 
@@ -274,19 +244,12 @@ func TestWriteErrorMapsApplicationErrorsWithoutLeakingCauses(t *testing.T) {
 		)
 	})
 	response := performRequest(handler, http.MethodGet, "/users", "")
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d", response.Code)
-	}
-	if strings.Contains(response.Body.String(), "sensitive") {
-		t.Fatal("internal cause leaked to client")
-	}
+	require.Equal(t, http.StatusBadRequest, response.Code, "status")
+	require.NotContains(t, response.Body.String(), "sensitive", "internal cause leaked to client")
 	var problem httpapi.Problem
-	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-		t.Fatal(err)
-	}
-	if problem.Code != "request.invalid" || problem.Fields["field"] != "email" {
-		t.Fatalf("problem = %#v", problem)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &problem))
+	require.Equal(t, "request.invalid", problem.Code)
+	require.Equal(t, "email", problem.Fields["field"])
 }
 
 func performRequest(handler http.Handler, method, path, requestID string) *httptest.ResponseRecorder {

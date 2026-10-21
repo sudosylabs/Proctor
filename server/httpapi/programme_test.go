@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -67,19 +69,13 @@ func TestProgrammeHTTPMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusCreated {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
-	if programmes.createCommand.AcademicUnitID != programme.AcademicUnitID || programmes.createCommand.Name != programme.Name {
-		t.Fatalf("create command = %#v", programmes.createCommand)
-	}
+	require.Equal(t, http.StatusCreated, response.Code, "status = %d: %s", response.Code, response.Body.String())
+	require.Equal(t, programme.AcademicUnitID, programmes.createCommand.AcademicUnitID)
+	require.Equal(t, programme.Name, programmes.createCommand.Name)
 	var body programmeResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body.ID != programme.ID.String() || body.AcademicUnitID != programme.AcademicUnitID.String() {
-		t.Fatalf("response = %#v", body)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	require.Equal(t, programme.ID.String(), body.ID)
+	require.Equal(t, programme.AcademicUnitID.String(), body.AcademicUnitID)
 }
 
 func TestProgrammeResourceRejectsInvalidQueryLimit(t *testing.T) {
@@ -107,29 +103,18 @@ func TestProgrammeResourceRejectsInvalidQueryLimit(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, response.Code, "status = %d: %s", response.Code, response.Body.String())
 	var problem Problem
-	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-		t.Fatal(err)
-	}
-	if problem.Code != "request.invalid" {
-		t.Fatalf("problem code = %q, want request.invalid", problem.Code)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &problem))
+	require.Equal(t, "request.invalid", problem.Code, "problem code")
 }
 
 func TestProgrammePatchOptionalWireStates(t *testing.T) {
 	t.Parallel()
 	var body updateProgrammeRequest
-	if err := json.Unmarshal([]byte(`{"name":null,"display_name":""}`), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body.Name.ValuePointer() != nil {
-		t.Fatal("explicit null must preserve v1 no-op semantics")
-	}
+	require.NoError(t, json.Unmarshal([]byte(`{"name":null,"display_name":""}`), &body))
+	require.Nil(t, body.Name.ValuePointer(), "explicit null must preserve v1 no-op semantics")
 	value := body.DisplayName.ValuePointer()
-	if value == nil || *value != "" {
-		t.Fatalf("display name = %#v", value)
-	}
+	require.NotNil(t, value)
+	require.Empty(t, *value)
 }

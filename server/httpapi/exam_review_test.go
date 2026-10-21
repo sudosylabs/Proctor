@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -35,16 +37,16 @@ func TestIntegrityReviewHTTPMapsStrictDecisionAndPrivateManagerProjection(t *tes
 	request.Header.Set("Idempotency-Key", "decision-once")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" ||
-		fake.decision.SubmissionID != fake.submission.ID || fake.decision.FlagID != fake.flag.ID ||
-		fake.decision.ExpectedReviewRevision != 2 || fake.decision.ExpectedDecisionRevision != 1 ||
-		fake.decision.Outcome != model.IntegrityReviewInconclusive ||
-		fake.decision.PrivateRationale != "Manager-only rationale." || fake.decision.IdempotencyKey != "decision-once" {
-		t.Fatalf("response=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.decision, response.Body.String())
-	}
-	if !strings.Contains(response.Body.String(), `"private_rationale":"Manager-only rationale."`) {
-		t.Fatalf("manager mutation response omitted authorized private rationale: %s", response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "response=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.decision, response.Body.String())
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "response=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.decision, response.Body.String())
+	require.Equal(t, fake.submission.ID, fake.decision.SubmissionID, "response=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.decision, response.Body.String())
+	require.Equal(t, fake.flag.ID, fake.decision.FlagID, "response=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.decision, response.Body.String())
+	require.Equal(t, int64(2), fake.decision.ExpectedReviewRevision, "response=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.decision, response.Body.String())
+	require.Equal(t, int64(1), fake.decision.ExpectedDecisionRevision, "response=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.decision, response.Body.String())
+	require.Equal(t, model.IntegrityReviewInconclusive, fake.decision.Outcome, "response=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.decision, response.Body.String())
+	require.Equal(t, "Manager-only rationale.", fake.decision.PrivateRationale, "response=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.decision, response.Body.String())
+	require.Equal(t, "decision-once", fake.decision.IdempotencyKey, "response=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.decision, response.Body.String())
+	require.Contains(t, response.Body.String(), `"private_rationale":"Manager-only rationale."`)
 
 	duplicate := httptest.NewRequest(http.MethodPut, path,
 		strings.NewReader(`{"expected_review_revision":2,"expected_review_revision":3,"expected_decision_revision":1,"outcome":"confirmed","private_rationale":"x"}`))
@@ -53,9 +55,8 @@ func TestIntegrityReviewHTTPMapsStrictDecisionAndPrivateManagerProjection(t *tes
 	duplicate.Header.Set("Idempotency-Key", "duplicate")
 	response = httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, duplicate)
-	if response.Code != http.StatusBadRequest || fake.decision.IdempotencyKey != "decision-once" {
-		t.Fatalf("duplicate JSON response=%d command=%#v body=%s", response.Code, fake.decision, response.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, response.Code, "duplicate JSON response=%d command=%#v body=%s", response.Code, fake.decision, response.Body.String())
+	require.Equal(t, "decision-once", fake.decision.IdempotencyKey, "duplicate JSON response=%d command=%#v body=%s", response.Code, fake.decision, response.Body.String())
 }
 
 func TestIntegrityReviewHTTPUsesBoundedOpaqueEvidenceCursor(t *testing.T) {
@@ -68,21 +69,19 @@ func TestIntegrityReviewHTTPUsesBoundedOpaqueEvidenceCursor(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || fake.evidenceQuery.Limit != 1 || fake.evidenceQuery.FlagID != fake.flag.ID {
-		t.Fatalf("response=%d query=%#v body=%s", response.Code, fake.evidenceQuery, response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "response=%d query=%#v body=%s", response.Code, fake.evidenceQuery, response.Body.String())
+	require.Equal(t, 1, fake.evidenceQuery.Limit, "response=%d query=%#v body=%s", response.Code, fake.evidenceQuery, response.Body.String())
+	require.Equal(t, fake.flag.ID, fake.evidenceQuery.FlagID, "response=%d query=%#v body=%s", response.Code, fake.evidenceQuery, response.Body.String())
 	var page examIntegrityEvidenceListResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || len(page.Items) != 1 || page.NextCursor == "" {
-		t.Fatalf("page=%#v error=%v", page, err)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &page), "page=%#v error", page)
+	require.Len(t, page.Items, 1, "page=%#v error", page)
+	require.NotEmpty(t, page.NextCursor, "page=%#v error", page)
 	id, err := decodeExamIntegrityReviewCursor(page.NextCursor, "evidence")
-	if err != nil || id != fake.evidence.ID.String() {
-		t.Fatalf("cursor=%q id=%q error=%v", page.NextCursor, id, err)
-	}
+	require.NoError(t, err, "cursor=%q id=%q error", page.NextCursor, id)
+	require.Equal(t, fake.evidence.ID.String(), id, "cursor=%q id=%q error", page.NextCursor, id)
 	unknown := base64.RawURLEncoding.EncodeToString([]byte(`{"version":1,"kind":"evidence","id":"` + fake.evidence.ID.String() + `","path":"private"}`))
-	if _, err = decodeExamIntegrityReviewCursor(unknown, "evidence"); err == nil {
-		t.Fatal("cursor accepted an unknown private field")
-	}
+	_, err = decodeExamIntegrityReviewCursor(unknown, "evidence")
+	require.Error(t, err, "cursor accepted an unknown private field")
 }
 
 func TestIntegrityReviewEndpointsForwardExactCursorsAndMapMalformedCursors(t *testing.T) {
@@ -103,43 +102,33 @@ func TestIntegrityReviewEndpointsForwardExactCursorsAndMapMalformedCursors(t *te
 			name: "flags", kind: "flag", id: flagID.String(),
 			path: "/api/v1/submissions/" + fake.submission.ID.String() + "/integrity-flags",
 			assert: func(t *testing.T) {
-				if fake.flagQuery.AfterFlagID != flagID {
-					t.Fatalf("flag query = %#v", fake.flagQuery)
-				}
+				require.Equal(t, flagID, fake.flagQuery.AfterFlagID)
 			},
 		},
 		{
 			name: "evidence", kind: "evidence", id: evidenceID.String(),
 			path: "/api/v1/submissions/" + fake.submission.ID.String() + "/integrity-flags/" + fake.flag.ID.String() + "/evidence",
 			assert: func(t *testing.T) {
-				if fake.evidenceQuery.AfterEvidenceID != evidenceID {
-					t.Fatalf("evidence query = %#v", fake.evidenceQuery)
-				}
+				require.Equal(t, evidenceID, fake.evidenceQuery.AfterEvidenceID)
 			},
 		},
 		{
 			name: "discrepancies", kind: "discrepancy", id: discrepancyID.String(),
 			path: "/api/v1/submissions/" + fake.submission.ID.String() + "/integrity-discrepancies",
 			assert: func(t *testing.T) {
-				if fake.discrepancyQuery.AfterDiscrepancyID != discrepancyID {
-					t.Fatalf("discrepancy query = %#v", fake.discrepancyQuery)
-				}
+				require.Equal(t, discrepancyID, fake.discrepancyQuery.AfterDiscrepancyID)
 			},
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			cursor, err := encodeExamIntegrityReviewCursor(test.kind, test.id)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			request := httptest.NewRequest(http.MethodGet, test.path+"?cursor="+url.QueryEscape(cursor), nil)
 			request.Header.Set("Authorization", "Bearer credential")
 			response := httptest.NewRecorder()
 			httpAPI.ServeHTTP(response, request)
-			if response.Code != http.StatusOK {
-				t.Fatalf("cursor response = %d: %s", response.Code, response.Body.String())
-			}
+			require.Equal(t, http.StatusOK, response.Code, "cursor response = %d: %s", response.Code, response.Body.String())
 			test.assert(t)
 
 			malformed := httptest.NewRequest(http.MethodGet, test.path+"?cursor=not-a-cursor", nil)
@@ -160,17 +149,12 @@ func TestStudentResultHTTPExposesOnlyReleasedSanitizedProjection(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("response=%d headers=%v body=%s", response.Code, response.Header(), response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "response=%d headers=%v body=%s", response.Code, response.Header(), response.Body.String())
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "response=%d headers=%v body=%s", response.Code, response.Header(), response.Body.String())
 	payload := response.Body.String()
-	if !strings.Contains(payload, "Approved **remarks**") {
-		t.Fatalf("student result omitted approved remarks: %s", payload)
-	}
+	require.Contains(t, payload, "Approved **remarks**")
 	for _, forbidden := range []string{"manager_notes", "private_rationale", "integrity_flag", "evidence", "workspace", "candidate_user_id"} {
-		if strings.Contains(payload, forbidden) {
-			t.Fatalf("student result exposed %q: %s", forbidden, payload)
-		}
+		require.NotContains(t, payload, forbidden, "student result exposed")
 	}
 }
 
@@ -183,17 +167,13 @@ func TestIntegrityReviewHTTPListsBoundedLateDiscrepanciesWithoutConnectionSelect
 	request.Header.Set("Authorization", "Bearer credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || fake.discrepancyQuery.Limit != 1 {
-		t.Fatalf("response=%d query=%#v body=%s", response.Code, fake.discrepancyQuery, response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "response=%d query=%#v body=%s", response.Code, fake.discrepancyQuery, response.Body.String())
+	require.Equal(t, 1, fake.discrepancyQuery.Limit, "response=%d query=%#v body=%s", response.Code, fake.discrepancyQuery, response.Body.String())
 	payload := response.Body.String()
-	if !strings.Contains(payload, fake.discrepancy.ID.String()) || !strings.Contains(payload, `"kind":"late_focus_loss"`) {
-		t.Fatalf("discrepancy response=%s", payload)
-	}
+	require.Contains(t, payload, fake.discrepancy.ID.String())
+	require.Contains(t, payload, `"kind":"late_focus_loss"`)
 	for _, forbidden := range []string{"connection_id", "session_id", "credential", "continuity"} {
-		if strings.Contains(payload, forbidden) {
-			t.Fatalf("discrepancy response exposed %q: %s", forbidden, payload)
-		}
+		require.NotContains(t, payload, forbidden, "discrepancy response exposed")
 	}
 }
 
@@ -219,47 +199,32 @@ func newExamIntegrityReviewHTTPFake(t *testing.T) *examIntegrityReviewHTTPFake {
 	at := time.Date(2026, 8, 15, 18, 0, 0, 0, time.UTC)
 	attemptID, submissionID := model.NewExamAttemptID(), model.NewSubmissionID()
 	manifest, err := model.NewExamSubmissionManifest(0, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	submission, err := model.NewExamSubmission(model.ExamSubmissionSpecification{ID: submissionID, AttemptID: attemptID,
 		ExamRevisionID: model.NewExamRevisionID(), WorkspaceID: model.NewExamAttemptWorkspaceID(), Manifest: manifest,
 		BrowserActivity: model.BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1},
 		Provenance:      model.ExamSubmissionCandidateSubmitted, SubmittedAt: at})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	managerID := model.NewUserID()
 	review, err := model.NewSubmissionReview(model.NewSubmissionReviewID(), submissionID, managerID, at)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = review.UpdateDraft(1, "Manager-only note.", "Approved **remarks**", at.Add(time.Second)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	err = review.UpdateDraft(1, "Manager-only note.", "Approved **remarks**", at.Add(time.Second))
+	require.NoError(t, err)
 	flag, err := model.NewIntegrityFlag(model.NewIntegrityFlagID(), attemptID, 1, model.IntegrityPolicyConnectionLoss, at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	decision, err := model.NewIntegrityReviewDecision(model.NewIntegrityReviewDecisionID(), review.ID, flag.ID,
 		model.IntegrityReviewInconclusive, managerID, "Manager-only rationale.", at.Add(time.Second))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	evidence, err := model.NewConnectionLossEvidence(model.NewIntegrityEvidenceID(), attemptID,
 		model.NewAttemptParticipationID(), flag.ID, 1, at.Add(-time.Second), at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	discrepancy, err := model.NewIntegrityDiscrepancy(model.IntegrityDiscrepancySpecification{
 		ID: model.NewIntegrityDiscrepancyID(), SubmissionID: submissionID, AttemptID: attemptID,
 		ParticipationID: model.NewAttemptParticipationID(), Generation: 1,
 		Kind: model.IntegrityDiscrepancyLateFocusLoss, SchemaVersion: model.FocusLossSignalSchemaVersion,
 		SignalID: model.NewFocusLossSignalID(), Sequence: 2, DurationMilliseconds: 900,
 		Source: model.FocusLossSourceWindowBlur, ReceivedAt: at.Add(time.Second)})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal := testExamHTTPPrincipal()
 	authorization := store.ExamIntegrityReviewAuthorization{SubmissionID: submissionID, ExamID: model.NewExamID(),
 		SittingID: model.NewExamSittingID(), AttemptID: attemptID, CandidateUserID: principal.UserID,

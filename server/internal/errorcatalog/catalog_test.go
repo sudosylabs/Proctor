@@ -10,8 +10,10 @@ package errorcatalog_test
 import (
 	"bytes"
 	"go/format"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/internal/errorcatalog"
 )
@@ -49,9 +51,7 @@ func TestParseDerivesStatusesFromTheCondition(t *testing.T) {
 	t.Parallel()
 
 	catalog, err := errorcatalog.Parse([]byte(validCatalog))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for code, want := range map[string]int{
 		"request.invalid":          400,
 		"server.internal":          500,
@@ -60,13 +60,12 @@ func TestParseDerivesStatusesFromTheCondition(t *testing.T) {
 		"widget.revision_conflict": 409,
 		"widget.token_invalid":     401,
 	} {
-		if entry, ok := catalog.Lookup(code); !ok || entry.Status != want {
-			t.Errorf("Lookup(%s) = %#v, %v; want status %d", code, entry, ok, want)
-		}
+		entry, ok := catalog.Lookup(code)
+		assert.True(t, ok, "Lookup(%s)", code)
+		assert.Equal(t, want, entry.Status, "Lookup(%s) status", code)
 	}
-	if _, ok := catalog.Lookup("widget.missing"); ok {
-		t.Fatal("Lookup found an unlisted code")
-	}
+	_, ok := catalog.Lookup("widget.missing")
+	require.False(t, ok, "Lookup found an unlisted code")
 }
 
 func TestParseRejectsInvalidCatalogs(t *testing.T) {
@@ -90,26 +89,21 @@ func TestParseRejectsInvalidCatalogs(t *testing.T) {
 	for name, source := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := errorcatalog.Parse([]byte(vocabulary + source)); err == nil {
-				t.Fatalf("Parse accepted %s catalog", name)
-			}
+			_, err := errorcatalog.Parse([]byte(vocabulary + source))
+			require.Error(t, err, "Parse accepted %s catalog", name)
 		})
 	}
-	if _, err := errorcatalog.Parse([]byte("conditions:\n  Invalid: 400\ndefault_status: 409\ncodes:\n  - {code: a.b, description: x}\n")); err == nil {
-		t.Fatal("Parse accepted a non-snake_case condition")
-	}
-	if _, err := errorcatalog.Parse([]byte("conditions:\n  invalid: 400\ndefault_status: 200\ncodes:\n  - {code: a.b, description: x}\n")); err == nil {
-		t.Fatal("Parse accepted a success default status")
-	}
+	_, err := errorcatalog.Parse([]byte("conditions:\n  Invalid: 400\ndefault_status: 409\ncodes:\n  - {code: a.b, description: x}\n"))
+	require.Error(t, err, "Parse accepted a non-snake_case condition")
+	_, err = errorcatalog.Parse([]byte("conditions:\n  invalid: 400\ndefault_status: 200\ncodes:\n  - {code: a.b, description: x}\n"))
+	require.Error(t, err, "Parse accepted a success default status")
 }
 
 func TestVerifyReportsUnmappedTransportAndDeadCodes(t *testing.T) {
 	t.Parallel()
 
 	catalog, err := errorcatalog.Parse([]byte(validCatalog))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	complete := []errorcatalog.Mint{
 		{Code: "request.invalid", Position: "httpapi/a.go:1", Transport: true},
 		{Code: "widget.archived", Position: "app/a.go:1"},
@@ -117,58 +111,43 @@ func TestVerifyReportsUnmappedTransportAndDeadCodes(t *testing.T) {
 		{Code: "widget.revision_conflict", Position: "app/a.go:3"},
 		{Code: "widget.token_invalid", Position: "app/a.go:4"},
 	}
-	if err = catalog.Verify(complete); err != nil {
-		t.Fatalf("Verify(complete) = %v", err)
-	}
+	err = catalog.Verify(complete)
+	require.NoError(t, err)
 	err = catalog.Verify(append(complete,
 		errorcatalog.Mint{Code: "widget.not_found", Position: "httpapi/b.go:2", Transport: true},
 		errorcatalog.Mint{Code: "widget.unlisted", Position: "app/c.go:3"},
 		errorcatalog.Mint{Code: "server.internal", Position: "app/d.go:4"},
 	))
-	if err == nil {
-		t.Fatal("Verify accepted disagreeing source")
-	}
+	require.Error(t, err, "Verify accepted disagreeing source")
 	for _, want := range []string{
 		"httpapi/b.go:2: transport mints application code widget.not_found",
 		"app/c.go:3: widget.unlisted mints a code missing from the catalog",
 		"app/d.go:4: server.internal is a kernel problem code",
 	} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("Verify error lacks %q:\n%v", want, err)
-		}
+		assert.Contains(t, err.Error(), want, "Verify error lacks %q:\n%v", want, err)
 	}
-	if err := catalog.Verify(complete[:4]); err == nil ||
-		!strings.Contains(err.Error(), "widget.token_invalid: catalog code is never minted") {
-		t.Fatalf("Verify(dead) = %v", err)
-	}
+	err = catalog.Verify(complete[:4])
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "widget.token_invalid: catalog code is never minted")
 }
 
 func TestRenderHTTPMappingIsDeterministicFormattedGo(t *testing.T) {
 	t.Parallel()
 
 	catalog, err := errorcatalog.Parse([]byte(validCatalog))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	rendered := catalog.RenderHTTPMapping()
 	formatted, err := format.Source(rendered)
-	if err != nil || !bytes.Equal(formatted, rendered) {
-		t.Fatalf("rendered mapping is not gofmt output: %v", err)
-	}
-	if !bytes.Equal(rendered, catalog.RenderHTTPMapping()) {
-		t.Fatal("rendering is not deterministic")
-	}
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(formatted, rendered))
+	require.True(t, bytes.Equal(rendered, catalog.RenderHTTPMapping()), "rendering is not deterministic")
 	for _, want := range []string{
 		`"request.invalid":          {status: http.StatusBadRequest}`,
 		`"widget.token_invalid":     {status: http.StatusUnauthorized}`,
 		`"server.internal": http.StatusInternalServerError`,
 		"DO NOT EDIT",
 	} {
-		if !bytes.Contains(rendered, []byte(want)) {
-			t.Errorf("rendered mapping lacks %q:\n%s", want, rendered)
-		}
+		assert.True(t, bytes.Contains(rendered, []byte(want)), "rendered mapping lacks %q:\n%s", want, rendered)
 	}
-	if bytes.Contains(rendered, []byte(`"server.internal":          {status`)) {
-		t.Error("kernel problem code rendered as an application error mapping")
-	}
+	assert.False(t, bytes.Contains(rendered, []byte(`"server.internal":          {status`)), "kernel problem code rendered as an application error mapping")
 }

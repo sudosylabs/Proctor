@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/config/configtest"
 )
@@ -27,13 +29,9 @@ func TestFileStoreConformance(t *testing.T) {
 	t.Parallel()
 	configtest.Run(t, func(tb testing.TB) config.BackingStore {
 		path := filepath.Join(tb.TempDir(), "config.json")
-		if err := os.WriteFile(path, nil, 0o600); err != nil {
-			tb.Fatal(err)
-		}
+		require.NoError(tb, os.WriteFile(path, nil, 0o600))
 		store, err := config.NewFileStore(path)
-		if err != nil {
-			tb.Fatal(err)
-		}
+		require.NoError(tb, err)
 		return store
 	})
 }

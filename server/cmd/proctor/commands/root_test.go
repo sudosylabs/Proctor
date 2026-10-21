@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	server "github.com/sudosylabs/proctor/server"
 )
 
@@ -46,15 +48,9 @@ func TestRunWarnsButContinuesWhenRunningAsRoot(t *testing.T) {
 	execute := testExecutors()
 	execute.effectiveUID = func() int { return 0 }
 	code, stdout, stderr := executeForTest(context.Background(), []string{"version"}, nil, execute)
-	if code != 0 {
-		t.Fatalf("code = %d, want 0", code)
-	}
-	if !strings.Contains(stdout, "proctor dev") {
-		t.Fatalf("stdout = %q, want version output", stdout)
-	}
-	if stderr != "warning: running Proctor as root is not recommended; use a dedicated non-root user\n" {
-		t.Fatalf("stderr = %q", stderr)
-	}
+	require.Equal(t, 0, code, "code")
+	require.Contains(t, stdout, "proctor dev", "stdout")
+	require.Equal(t, "warning: running Proctor as root is not recommended; use a dedicated non-root user\n", stderr)
 }
 
 func executeForTest(ctx context.Context, args []string, stdin io.Reader, execute executors) (int, string, string) {
@@ -95,9 +91,9 @@ func TestRunLocalizesCommandOwnedPresentation(t *testing.T) {
 			locale: "fr",
 		},
 	)
-	if code != 0 || stdout.String() != "configuration valide\n" || stderr.String() != "" {
-		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
-	}
+	require.Equal(t, 0, code, "code")
+	require.Equal(t, "configuration valide\n", stdout.String(), "code")
+	require.Empty(t, stderr.String(), "code")
 }
 
 func TestRunHelpDescribesTheExplicitCommandTree(t *testing.T) {
@@ -105,17 +101,11 @@ func TestRunHelpDescribesTheExplicitCommandTree(t *testing.T) {
 
 	for _, args := range [][]string{{"help"}, {"--help"}, {"-h"}} {
 		code, stdout, stderr := executeForTest(context.Background(), args, nil, testExecutors())
-		if code != 0 {
-			t.Fatalf("run(%q) code = %d, stderr = %q", args, code, stderr)
-		}
+		require.Equal(t, 0, code, "run(%q) code = %d, stderr = %q", args, code, stderr)
 		for _, command := range []string{"administrator", "completion", "config", "migrate", "serve", "version"} {
-			if !strings.Contains(stdout, command) {
-				t.Fatalf("run(%q) help does not contain %q:\n%s", args, command, stdout)
-			}
+			require.Contains(t, stdout, command, "run(%q) help does not contain %q:\n", args, command)
 		}
-		if stderr != "" {
-			t.Fatalf("run(%q) stderr = %q, want empty", args, stderr)
-		}
+		require.Empty(t, stderr, "run(%q) stderr", args)
 	}
 }
 
@@ -123,9 +113,9 @@ func TestRunGeneratesShellCompletion(t *testing.T) {
 	t.Parallel()
 
 	code, stdout, stderr := executeForTest(context.Background(), []string{"completion", "bash"}, nil, testExecutors())
-	if code != 0 || !strings.HasPrefix(stdout, "# bash completion V2 for proctor") || stderr != "" {
-		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
-	}
+	require.Equal(t, 0, code, "code=%d stdout=%q stderr", code, stdout)
+	require.True(t, strings.HasPrefix(stdout, "# bash completion V2 for proctor"), "code=%d stdout=%q stderr", code, stdout)
+	require.Empty(t, stderr, "code=%d stdout=%q stderr", code, stdout)
 }
 
 func TestRunRequiresAKnownCommand(t *testing.T) {
@@ -145,15 +135,10 @@ func TestRunRequiresAKnownCommand(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			code, stdout, stderr := executeForTest(context.Background(), tt.args, nil, testExecutors())
-			if code != 2 {
-				t.Fatalf("run() code = %d, want 2; stderr = %q", code, stderr)
-			}
-			if stdout != "" {
-				t.Fatalf("stdout = %q, want empty", stdout)
-			}
-			if !strings.Contains(stderr, "Usage:") || !strings.Contains(stderr, "proctor: "+tt.want) {
-				t.Fatalf("stderr = %q, want usage and %q", stderr, tt.want)
-			}
+			require.Equal(t, 2, code, "run() code = %d, want 2; stderr = %q", code, stderr)
+			require.Empty(t, stdout, "stdout")
+			require.Contains(t, stderr, "Usage:", "stderr = %q, want usage and %q", stderr, tt.want)
+			require.Contains(t, stderr, "proctor: "+tt.want, "stderr = %q, want usage and %q", stderr, tt.want)
 		})
 	}
 }
@@ -166,20 +151,13 @@ func TestRunDistinguishesUsageAndOperationalFailures(t *testing.T) {
 		return errors.New("open database: connection refused")
 	}
 	code, stdout, stderr := executeForTest(context.Background(), []string{"config", "validate"}, nil, execute)
-	if code != 1 {
-		t.Fatalf("code = %d, want 1", code)
-	}
-	if stdout != "" {
-		t.Fatalf("stdout = %q, want empty", stdout)
-	}
-	if stderr != "proctor: open database: connection refused\n" {
-		t.Fatalf("stderr = %q", stderr)
-	}
+	require.Equal(t, 1, code, "code")
+	require.Empty(t, stdout, "stdout")
+	require.Equal(t, "proctor: open database: connection refused\n", stderr)
 
 	code, _, stderr = executeForTest(context.Background(), []string{"serve", "extra"}, nil, testExecutors())
-	if code != 2 || !strings.Contains(stderr, "unknown command \"extra\"") {
-		t.Fatalf("serve usage failure: code=%d stderr=%q", code, stderr)
-	}
+	require.Equal(t, 2, code, "serve usage failure: code")
+	require.Contains(t, stderr, "unknown command \"extra\"", "serve usage failure: code")
 }
 
 func TestPersistentConfigFlagWorksBeforeOrAfterSubcommands(t *testing.T) {
@@ -197,13 +175,13 @@ func TestPersistentConfigFlagWorksBeforeOrAfterSubcommands(t *testing.T) {
 		{"config", "validate", "-c", "/etc/proctor-second.json"},
 	} {
 		code, stdout, stderr := executeForTest(context.Background(), args, nil, execute)
-		if code != 0 || stdout != "configuration is valid\n" || stderr != "" {
-			t.Fatalf("run(%q): code=%d stdout=%q stderr=%q", args, code, stdout, stderr)
-		}
+		require.Equal(t, 0, code, "run(%q): code=%d stdout=%q stderr", args, code, stdout)
+		require.Equal(t, "configuration is valid\n", stdout, "run(%q): code=%d stdout=%q stderr", args, code, stdout)
+		require.Empty(t, stderr, "run(%q): code=%d stdout=%q stderr", args, code, stdout)
 	}
-	if len(paths) != 2 || paths[0] != "/etc/proctor-first.json" || paths[1] != "/etc/proctor-second.json" {
-		t.Fatalf("paths = %#v", paths)
-	}
+	require.Len(t, paths, 2)
+	require.Equal(t, "/etc/proctor-first.json", paths[0])
+	require.Equal(t, "/etc/proctor-second.json", paths[1])
 }
 
 func TestRunBuildsAFreshCommandTreeForEveryInvocation(t *testing.T) {
@@ -212,8 +190,8 @@ func TestRunBuildsAFreshCommandTreeForEveryInvocation(t *testing.T) {
 	execute := testExecutors()
 	for range 2 {
 		code, stdout, stderr := executeForTest(context.Background(), []string{"version", "--json"}, nil, execute)
-		if code != 0 || !strings.Contains(stdout, `"version": "dev"`) || stderr != "" {
-			t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
-		}
+		require.Equal(t, 0, code, "code")
+		require.Contains(t, stdout, `"version": "dev"`, "code")
+		require.Empty(t, stderr, "code")
 	}
 }

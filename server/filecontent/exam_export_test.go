@@ -20,6 +20,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/app"
@@ -29,15 +31,11 @@ import (
 func exportContentFixture(t *testing.T, filesystem vfspkg.FileSystem) (*Content, app.ExamExportArchiveInput) {
 	t.Helper()
 	content, err := New(filesystem, Policy{MaximumConcurrentOperations: 1}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	objectID := model.NewAttemptWorkspaceObjectID()
 	original := []byte("original answer bytes\x00\n")
 	staged, err := content.StageAttemptWorkspaceObject(context.Background(), objectID, bytes.NewReader(original), int64(len(original)), "application/octet-stream")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	input := app.ExamExportArchiveInput{ExportID: model.NewExamExportID(), AttemptID: model.NewJobAttemptID()}
 	input.Records = []byte(`{"schema_version":1,"export_id":"` + input.ExportID.String() + `","categories":["work"],"submissions":[]}`)
 	input.Files = []app.ExamExportArchiveFile{{SubmissionID: model.NewSubmissionID(), Entry: model.ExamSubmissionManifestEntry{EntryID: model.NewAttemptWorkspaceEntryID(), Kind: model.StarterWorkspaceEntryFile, Path: "answers/answer.txt", ContentVersion: model.NewWorkspaceContentVersion(), MediaType: staged.MediaType, SizeBytes: staged.SizeBytes, SHA256: staged.SHA256, StorageOrigin: model.AttemptWorkspaceStorageAttempt, AttemptObjectID: objectID}}}
@@ -49,69 +47,51 @@ func TestExamExportArchiveIsStandaloneAndVerifiable(t *testing.T) {
 		t.Run(backend.name, func(t *testing.T) {
 			content, input := exportContentFixture(t, backend.open(t))
 			result, err := content.BuildExamExport(context.Background(), input)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			body, err := content.OpenExamExport(context.Background(), input.ExportID, input.AttemptID)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			data, err := io.ReadAll(body)
 			_ = body.Close()
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			digest := sha256.Sum256(data)
-			if int64(len(data)) != result.SizeBytes || hex.EncodeToString(digest[:]) != result.SHA256 {
-				t.Fatal("archive hash or size does not match")
-			}
+			require.Equal(t, result.SizeBytes, int64(len(data)), "archive hash or size does not match")
+			require.Equal(t, result.SHA256, hex.EncodeToString(digest[:]), "archive hash or size does not match")
 			archive, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			members := map[string][]byte{}
 			for _, f := range archive.File {
 				r, err := f.Open()
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				b, err := io.ReadAll(r)
 				_ = r.Close()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if _, exists := members[f.Name]; exists {
-					t.Fatal("duplicate ZIP member")
-				}
+				require.NoError(t, err)
+				_, exists := members[f.Name]
+				require.False(t, exists, "duplicate ZIP member")
 				members[f.Name] = b
 			}
 			var manifest examExportManifestV1
-			if err = json.Unmarshal(members["manifest.json"], &manifest); err != nil {
-				t.Fatal(err)
-			}
-			if manifest.SchemaVersion != 1 || manifest.ExportID != input.ExportID || len(manifest.Entries) != 3 || len(members) != 4 {
-				t.Fatal("incomplete standalone manifest")
-			}
+			err = json.Unmarshal(members["manifest.json"], &manifest)
+			require.NoError(t, err)
+			require.Equal(t, 1, manifest.SchemaVersion, "incomplete standalone manifest")
+			require.Equal(t, input.ExportID, manifest.ExportID, "incomplete standalone manifest")
+			require.Len(t, manifest.Entries, 3, "incomplete standalone manifest")
+			require.Len(t, members, 4, "incomplete standalone manifest")
 			for _, item := range manifest.Entries {
 				b, exists := members[item.ArchivePath]
 				sum := sha256.Sum256(b)
-				if !exists || int64(len(b)) != item.SizeBytes || hex.EncodeToString(sum[:]) != item.SHA256 {
-					t.Fatalf("unverifiable member %s", item.ArchivePath)
-				}
+				require.True(t, exists)
+				require.Equal(t, item.SizeBytes, int64(len(b)))
+				require.Equal(t, item.SHA256, hex.EncodeToString(sum[:]))
 			}
 			file := manifest.Entries[2]
-			if file.OriginalPath != input.Files[0].Entry.Path || file.SubmissionID != input.Files[0].SubmissionID || string(members[file.ArchivePath]) != "original answer bytes\x00\n" {
-				t.Fatal("original file content or path was lost")
-			}
-			if bytes.Contains(data, []byte(input.Files[0].Entry.AttemptObjectID.String())) {
-				t.Fatal("private VFS identity leaked into portable archive")
-			}
-			if err = content.PurgeExamExport(context.Background(), input.ExportID, input.AttemptID); err != nil {
-				t.Fatal(err)
-			}
-			if _, err = content.OpenExamExport(context.Background(), input.ExportID, input.AttemptID); !IsNotFound(err) {
-				t.Fatalf("purged archive reopened: %v", err)
-			}
+			require.Equal(t, input.Files[0].Entry.Path, file.OriginalPath, "original file content or path was lost")
+			require.Equal(t, input.Files[0].SubmissionID, file.SubmissionID, "original file content or path was lost")
+			require.Equal(t, "original answer bytes\x00\n", string(members[file.ArchivePath]), "original file content or path was lost")
+			require.False(t, bytes.Contains(data, []byte(input.Files[0].Entry.AttemptObjectID.String())), "private VFS identity leaked into portable archive")
+			err = content.PurgeExamExport(context.Background(), input.ExportID, input.AttemptID)
+			require.NoError(t, err)
+			_, err = content.OpenExamExport(context.Background(), input.ExportID, input.AttemptID)
+			require.True(t, IsNotFound(err), "purged archive reopened")
 		})
 	}
 }
@@ -133,16 +113,13 @@ func TestExamExportRejectsBadSourcesAndCleansSpool(t *testing.T) {
 			fs := memoryvfs.New()
 			content, input := exportContentFixture(t, fs)
 			test.change(&input)
-			if _, err := content.BuildExamExport(context.Background(), input); err == nil {
-				t.Fatal("invalid export input accepted")
-			}
+			_, err := content.BuildExamExport(context.Background(), input)
+			require.Error(t, err, "invalid export input accepted")
 			entries, err := os.ReadDir(temp)
-			if err != nil || len(entries) != 0 {
-				t.Fatalf("private spool remains: %v %v", entries, err)
-			}
-			if _, err = fs.Stat(context.Background(), examExportKey(input.ExportID, input.AttemptID)); !errors.Is(err, vfspkg.ErrNotFound) {
-				t.Fatalf("unverified archive published: %v", err)
-			}
+			require.NoError(t, err, "private spool remains")
+			require.Empty(t, entries, "private spool remains")
+			_, err = fs.Stat(context.Background(), examExportKey(input.ExportID, input.AttemptID))
+			require.ErrorIs(t, err, vfspkg.ErrNotFound)
 		})
 	}
 }
@@ -182,13 +159,10 @@ func TestExamExportVerifiesStorageAfterEveryWriteOutcome(t *testing.T) {
 			content, input := exportContentFixture(t, fs)
 			content.filesystem = &exportWriteOutcomeVFS{FileSystem: fs, uncertain: test.uncertain, corrupt: test.corrupt}
 			result, err := content.BuildExamExport(context.Background(), input)
-			if (err != nil) != test.wantError || test.wantError && result != nil {
-				t.Fatalf("result=%#v error=%v", result, err)
-			}
+			require.Equal(t, test.wantError, err != nil, "result=%#v error=%v", result, err)
+			require.False(t, test.wantError && result != nil, "result=%#v error=%v", result, err)
 			var uncertain interface{ ExamExportWriteUncertain() }
-			if errors.As(err, &uncertain) != (test.uncertain && test.wantError) {
-				t.Fatal("unverified remote acknowledgement lost uncertainty classification")
-			}
+			require.Equal(t, test.uncertain && test.wantError, errors.As(err, &uncertain), "unverified remote acknowledgement lost uncertainty classification")
 		})
 	}
 }
@@ -202,28 +176,21 @@ func (v exportAcknowledgedRemoveVFS) Remove(context.Context, string, vfspkg.Remo
 func TestExamExportPurgeRequiresObservedAbsence(t *testing.T) {
 	fs := memoryvfs.New()
 	content, input := exportContentFixture(t, fs)
-	if _, err := content.BuildExamExport(context.Background(), input); err != nil {
-		t.Fatal(err)
-	}
+	_, err := content.BuildExamExport(context.Background(), input)
+	require.NoError(t, err)
 	content.filesystem = exportAcknowledgedRemoveVFS{FileSystem: fs}
-	if err := content.PurgeExamExport(context.Background(), input.ExportID, input.AttemptID); err == nil {
-		t.Fatal("acknowledgement was mistaken for absence")
-	}
+	require.Error(t, content.PurgeExamExport(context.Background(), input.ExportID, input.AttemptID), "acknowledgement was mistaken for absence")
 }
 
 func TestExamExportCancellationAndCapacityDoNotConsumeInput(t *testing.T) {
 	content, input := exportContentFixture(t, memoryvfs.New())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := content.BuildExamExport(ctx, input); !errors.Is(err, context.Canceled) {
-		t.Fatalf("cancellation=%v", err)
-	}
+	_, err := content.BuildExamExport(ctx, input)
+	require.ErrorIs(t, err, context.Canceled)
 	release, err := content.beginWork(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer release()
-	if _, err = content.BuildExamExport(context.Background(), input); !errors.Is(err, ErrWorkCapacity) {
-		t.Fatalf("capacity=%v", err)
-	}
+	_, err = content.BuildExamExport(context.Background(), input)
+	require.ErrorIs(t, err, ErrWorkCapacity)
 }

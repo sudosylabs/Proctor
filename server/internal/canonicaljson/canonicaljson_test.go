@@ -10,13 +10,13 @@ package canonicaljson_test
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/internal/canonicaljson"
 )
@@ -24,9 +24,7 @@ import (
 func TestCanonicalizeAgreement(t *testing.T) {
 	t.Parallel()
 	document, err := os.ReadFile("testdata/agreement.json")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var fixtures []struct {
 		Name      string `json:"name"`
 		Input     []byte `json:"input_base64"`
@@ -34,34 +32,24 @@ func TestCanonicalizeAgreement(t *testing.T) {
 		SHA256    string `json:"sha256"`
 		Reject    bool   `json:"reject"`
 	}
-	if err = json.Unmarshal(document, &fixtures); err != nil {
-		t.Fatal(err)
-	}
+	err = json.Unmarshal(document, &fixtures)
+	require.NoError(t, err)
 	for _, fixture := range fixtures {
 		t.Run(fixture.Name, func(t *testing.T) {
 			t.Parallel()
 			canonical, err := canonicaljson.Canonicalize(fixture.Input, 256<<10)
 			if fixture.Reject {
-				if err == nil || canonical != nil {
-					t.Fatal("invalid agreement input was accepted")
-				}
+				require.Error(t, err, "invalid agreement input was accepted")
+				require.Nil(t, canonical, "invalid agreement input was accepted")
 				return
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !bytes.Equal(canonical, fixture.Canonical) {
-				t.Fatalf("canonical bytes = %s; want %s",
-					base64.StdEncoding.EncodeToString(canonical), base64.StdEncoding.EncodeToString(fixture.Canonical))
-			}
+			require.NoError(t, err)
+			require.True(t, bytes.Equal(canonical, fixture.Canonical), "canonical bytes")
 			digest := sha256.Sum256(canonical)
-			if got := "sha256:" + hex.EncodeToString(digest[:]); got != fixture.SHA256 {
-				t.Fatalf("digest = %s; want %s", got, fixture.SHA256)
-			}
+			require.Equal(t, fixture.SHA256, ("sha256:" + hex.EncodeToString(digest[:])), "digest")
 			second, err := canonicaljson.Canonicalize(canonical, len(canonical))
-			if err != nil || !bytes.Equal(second, canonical) {
-				t.Fatal("canonicalization is not idempotent")
-			}
+			require.NoError(t, err, "canonicalization is not idempotent")
+			require.True(t, bytes.Equal(second, canonical), "canonicalization is not idempotent")
 		})
 	}
 }
@@ -83,11 +71,11 @@ func TestCanonicalizeBounds(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := canonicaljson.Canonicalize([]byte(test.input), test.limit)
-			if test.valid && err != nil {
-				t.Fatal(err)
+			if test.valid {
+				require.NoError(t, err)
 			}
-			if !test.valid && !errors.Is(err, canonicaljson.ErrLimit) {
-				t.Fatalf("limit error = %v", err)
+			if !test.valid {
+				require.ErrorIs(t, err, canonicaljson.ErrLimit)
 			}
 		})
 	}
@@ -96,9 +84,8 @@ func TestCanonicalizeBounds(t *testing.T) {
 func TestCanonicalizeErrorsDoNotExposeInput(t *testing.T) {
 	t.Parallel()
 	_, err := canonicaljson.Canonicalize([]byte(`{"private_exam_answer":1,"private_exam_answer":2}`), 1024)
-	if !errors.Is(err, canonicaljson.ErrInvalid) || strings.Contains(err.Error(), "private_exam_answer") {
-		t.Fatalf("unsafe validation error: %v", err)
-	}
+	require.ErrorIs(t, err, canonicaljson.ErrInvalid)
+	require.NotContains(t, err.Error(), "private_exam_answer")
 }
 
 func FuzzCanonicalize(f *testing.F) {
@@ -108,17 +95,12 @@ func FuzzCanonicalize(f *testing.F) {
 	f.Fuzz(func(t *testing.T, input []byte) {
 		canonical, err := canonicaljson.Canonicalize(input, 256<<10)
 		if err != nil {
-			if canonical != nil {
-				t.Fatal("failed canonicalization returned bytes")
-			}
+			require.Nil(t, canonical, "failed canonicalization returned bytes")
 			return
 		}
-		if !json.Valid(canonical) {
-			t.Fatal("canonical output is not JSON")
-		}
+		require.True(t, json.Valid(canonical), "canonical output is not JSON")
 		second, err := canonicaljson.Canonicalize(canonical, 256<<10)
-		if err != nil || !bytes.Equal(second, canonical) {
-			t.Fatal("canonicalization is not idempotent")
-		}
+		require.NoError(t, err, "canonicalization is not idempotent")
+		require.True(t, bytes.Equal(second, canonical), "canonicalization is not idempotent")
 	})
 }

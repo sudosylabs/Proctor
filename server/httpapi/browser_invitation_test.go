@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -49,42 +51,37 @@ func TestBrowserInvitationHTTPKeepsSecondProofInHttpOnlyCookie(t *testing.T) {
 	logger, _ := newTestLogger(t)
 	applicationFake := &browserInvitationHTTPApplication{}
 	cookies, err := newBrowserCookies("https://proctor.example.edu")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, browserInvitationResource(applicationFake, cookies))
 
 	start := httptest.NewRequest(http.MethodPost, "/api/v1/auth/browser/invitations", strings.NewReader(`{"claim":"`+model.NewCredentialToken()+`"}`))
 	start.Header.Set("Content-Type", "application/json")
 	started := httptest.NewRecorder()
 	httpAPI.ServeHTTP(started, start)
-	if started.Code != http.StatusCreated || started.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("start = %d cache=%q body=%s", started.Code, started.Header().Get("Cache-Control"), started.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, started.Code, "start = %d cache=%q body=%s", started.Code, started.Header().Get("Cache-Control"), started.Body.String())
+	require.Equal(t, "no-store", started.Header().Get("Cache-Control"), "start = %d cache=%q body=%s", started.Code, started.Header().Get("Cache-Control"), started.Body.String())
 	proofCookies := started.Result().Cookies()
-	if len(proofCookies) != 1 || proofCookies[0].Name != BrowserInvitationProofCookieName ||
-		!proofCookies[0].HttpOnly || !proofCookies[0].Secure || proofCookies[0].Path != "/api/v1/auth/browser/invitations" {
-		t.Fatalf("proof cookies = %#v", proofCookies)
-	}
-	if strings.Contains(started.Body.String(), proofCookies[0].Value) {
-		t.Fatal("browser proof was disclosed in the JSON response")
-	}
+	require.Len(t, proofCookies, 1)
+	require.Equal(t, BrowserInvitationProofCookieName, proofCookies[0].Name)
+	require.True(t, proofCookies[0].HttpOnly)
+	require.True(t, proofCookies[0].Secure)
+	require.Equal(t, "/api/v1/auth/browser/invitations", proofCookies[0].Path)
+	require.NotContains(t, started.Body.String(), proofCookies[0].Value, "browser proof was disclosed in the JSON response")
 
 	accept := httptest.NewRequest(http.MethodPost, "/api/v1/auth/browser/invitations/accept", strings.NewReader(`{"handle":"`+model.NewCredentialToken()+`","password":"correct horse battery staple","username":"student"}`))
 	accept.Header.Set("Content-Type", "application/json")
 	accept.AddCookie(proofCookies[0])
 	accepted := httptest.NewRecorder()
 	httpAPI.ServeHTTP(accepted, accept)
-	if accepted.Code != http.StatusOK || accepted.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("accept = %d cache=%q body=%s", accepted.Code, accepted.Header().Get("Cache-Control"), accepted.Body.String())
-	}
+	require.Equal(t, http.StatusOK, accepted.Code, "accept = %d cache=%q body=%s", accepted.Code, accepted.Header().Get("Cache-Control"), accepted.Body.String())
+	require.Equal(t, "no-store", accepted.Header().Get("Cache-Control"), "accept = %d cache=%q body=%s", accepted.Code, accepted.Header().Get("Cache-Control"), accepted.Body.String())
 	cleared := accepted.Result().Cookies()
-	if len(cleared) != 1 || cleared[0].Name != BrowserInvitationProofCookieName || cleared[0].MaxAge >= 0 {
-		t.Fatalf("cleared cookies = %#v", cleared)
-	}
-	if applicationFake.start.Source != "192.0.2.1" || applicationFake.local.BrowserProof != proofCookies[0].Value || applicationFake.local.Username != "student" {
-		t.Fatalf("mapped commands = %#v %#v", applicationFake.start, applicationFake.local)
-	}
+	require.Len(t, cleared, 1)
+	require.Equal(t, BrowserInvitationProofCookieName, cleared[0].Name)
+	require.Negative(t, cleared[0].MaxAge)
+	require.Equal(t, "192.0.2.1", applicationFake.start.Source, "mapped commands = %#v %#v", applicationFake.start, applicationFake.local)
+	require.Equal(t, proofCookies[0].Value, applicationFake.local.BrowserProof, "mapped commands = %#v %#v", applicationFake.start, applicationFake.local)
+	require.Equal(t, "student", applicationFake.local.Username, "mapped commands = %#v %#v", applicationFake.start, applicationFake.local)
 }
 
 func TestBrowserInvitationSessionAcceptanceUsesAuthenticatedPrincipal(t *testing.T) {
@@ -92,9 +89,7 @@ func TestBrowserInvitationSessionAcceptanceUsesAuthenticatedPrincipal(t *testing
 	logger, _ := newTestLogger(t)
 	applicationFake := &browserInvitationHTTPApplication{}
 	cookies, err := newBrowserCookies("https://proctor.example.edu")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal := model.Principal{
 		UserID: model.NewUserID(), SessionID: model.NewSessionID(),
 		CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess,
@@ -108,9 +103,8 @@ func TestBrowserInvitationSessionAcceptanceUsesAuthenticatedPrincipal(t *testing
 	request.AddCookie(&http.Cookie{Name: BrowserInvitationProofCookieName, Value: model.NewCredentialToken()})
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || applicationFake.session.BrowserProof == "" {
-		t.Fatalf("accept session = %d command=%#v body=%s", response.Code, applicationFake.session, response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "accept session = %d command=%#v body=%s", response.Code, applicationFake.session, response.Body.String())
+	require.NotEmpty(t, applicationFake.session.BrowserProof, "accept session = %d command=%#v body=%s", response.Code, applicationFake.session, response.Body.String())
 }
 
 func browserInvitationAcceptance() *app.InvitationAcceptanceView {

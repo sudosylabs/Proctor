@@ -13,8 +13,9 @@ import (
 	"errors"
 	"io"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	localvfs "github.com/sudosylabs/proctor/packages/vfs/local"
@@ -27,33 +28,23 @@ func TestContentStoresAndOpensAnExactRenditionAtTheCompatiblePrivateKey(t *testi
 		t.Run(backend.name, func(t *testing.T) {
 			filesystem := backend.open(t)
 			content, err := New(filesystem, Policy{MaximumConcurrentOperations: 2}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			revisionID := model.FileRevisionID("yyyyyyyyyyyyyyyyyyyyyyyyyy")
 			renditionID := model.FileRenditionID("bbbbbbbbbbbbbbbbbbbbbbbbbb")
 			body := []byte("normalized-webp")
 
-			if err = content.storeRendition(context.Background(), revisionID, renditionID, bytes.NewReader(body), int64(len(body))); err != nil {
-				t.Fatalf("stage rendition: %v", err)
-			}
+			err = content.storeRendition(context.Background(), revisionID, renditionID, bytes.NewReader(body), int64(len(body)))
+			require.NoError(t, err)
 			opened, err := content.OpenProfilePictureRendition(context.Background(), revisionID, renditionID)
-			if err != nil {
-				t.Fatalf("open rendition: %v", err)
-			}
+			require.NoError(t, err)
 			actual, err := io.ReadAll(opened)
 			_ = opened.Close()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !bytes.Equal(actual, body) {
-				t.Fatalf("opened bytes = %q, want %q", actual, body)
-			}
+			require.NoError(t, err)
+			require.True(t, bytes.Equal(actual, body), "opened bytes = %q, want %q", actual, body)
 
 			const compatibleKey = "files/yy/yy/revisions/yyyyyyyyyyyyyyyyyyyyyyyyyy/renditions/bbbbbbbbbbbbbbbbbbbbbbbbbb.webp"
-			if _, err = filesystem.Stat(context.Background(), compatibleKey); err != nil {
-				t.Fatalf("compatible private key missing: %v", err)
-			}
+			_, err = filesystem.Stat(context.Background(), compatibleKey)
+			require.NoError(t, err)
 		})
 	}
 }
@@ -62,29 +53,22 @@ func TestContentClassifiesStorageConflictsWithoutExposingPrivateKeys(t *testing.
 	t.Parallel()
 
 	content, err := New(memoryvfs.New(), Policy{MaximumConcurrentOperations: 2}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	revisionID, renditionID := model.NewFileRevisionID(), model.NewFileRenditionID()
-	if err = content.storeRendition(context.Background(), revisionID, renditionID, bytes.NewReader([]byte("first")), 5); err != nil {
-		t.Fatal(err)
-	}
+	err = content.storeRendition(context.Background(), revisionID, renditionID, bytes.NewReader([]byte("first")), 5)
+	require.NoError(t, err)
 	err = content.storeRendition(context.Background(), revisionID, renditionID, bytes.NewReader([]byte("other")), 5)
-	if !IsConflict(err) {
-		t.Fatalf("second stage error = %v, want storage conflict", err)
-	}
-	if strings.Contains(err.Error(), revisionID.String()) || strings.Contains(err.Error(), renditionID.String()) || strings.Contains(err.Error(), "files/") {
-		t.Fatalf("error exposed private storage identity: %v", err)
-	}
+	require.True(t, IsConflict(err), "second stage error")
+	require.NotContains(t, err.Error(), revisionID.String())
+	require.NotContains(t, err.Error(), renditionID.String())
+	require.NotContains(t, err.Error(), "files/")
 }
 
 func TestContentLeavesAnOversizedAbandonedRevisionUntouched(t *testing.T) {
 	for _, backend := range contentTestBackends() {
 		t.Run(backend.name, func(t *testing.T) {
 			content, err := New(backend.open(t), Policy{MaximumConcurrentOperations: 2}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			revisionID := model.NewFileRevisionID()
 			firstID := model.NewFileRenditionID()
 			for index := 0; index < 101; index++ {
@@ -92,18 +76,14 @@ func TestContentLeavesAnOversizedAbandonedRevisionUntouched(t *testing.T) {
 				if index == 0 {
 					firstID = renditionID
 				}
-				if err = content.storeRendition(context.Background(), revisionID, renditionID, bytes.NewReader([]byte{byte(index)}), 1); err != nil {
-					t.Fatal(err)
-				}
+				err = content.storeRendition(context.Background(), revisionID, renditionID, bytes.NewReader([]byte{byte(index)}), 1)
+				require.NoError(t, err)
 			}
 
-			if err = content.purgeAbandonedRevision(context.Background(), revisionID); !errors.Is(err, ErrPurgeLimit) {
-				t.Fatalf("purge error = %v, want ErrPurgeLimit", err)
-			}
+			err = content.purgeAbandonedRevision(context.Background(), revisionID)
+			require.ErrorIs(t, err, ErrPurgeLimit, "purge error")
 			retained, err := content.OpenProfilePictureRendition(context.Background(), revisionID, firstID)
-			if err != nil {
-				t.Fatalf("bounded rejection removed content: %v", err)
-			}
+			require.NoError(t, err)
 			_ = retained.Close()
 		})
 	}
@@ -113,31 +93,23 @@ func TestContentPurgesOnlyOneAbandonedRevisionPrefixIdempotently(t *testing.T) {
 	for _, backend := range contentTestBackends() {
 		t.Run(backend.name, func(t *testing.T) {
 			content, err := New(backend.open(t), Policy{MaximumConcurrentOperations: 2}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			abandonedRevisionID, retainedRevisionID := model.NewFileRevisionID(), model.NewFileRevisionID()
 			abandonedIDs := []model.FileRenditionID{model.NewFileRenditionID(), model.NewFileRenditionID()}
 			retainedID := model.NewFileRenditionID()
 			for _, renditionID := range abandonedIDs {
-				if err = content.storeRendition(context.Background(), abandonedRevisionID, renditionID, bytes.NewReader([]byte("partial")), 7); err != nil {
-					t.Fatal(err)
-				}
+				err = content.storeRendition(context.Background(), abandonedRevisionID, renditionID, bytes.NewReader([]byte("partial")), 7)
+				require.NoError(t, err)
 			}
-			if err = content.storeRendition(context.Background(), retainedRevisionID, retainedID, bytes.NewReader([]byte("retained")), 8); err != nil {
-				t.Fatal(err)
-			}
+			err = content.storeRendition(context.Background(), retainedRevisionID, retainedID, bytes.NewReader([]byte("retained")), 8)
+			require.NoError(t, err)
 
-			if err = content.purgeAbandonedRevision(context.Background(), abandonedRevisionID); err != nil {
-				t.Fatalf("purge abandoned revision: %v", err)
-			}
-			if err = content.purgeAbandonedRevision(context.Background(), abandonedRevisionID); err != nil {
-				t.Fatalf("repeat abandoned revision purge: %v", err)
-			}
+			err = content.purgeAbandonedRevision(context.Background(), abandonedRevisionID)
+			require.NoError(t, err)
+			err = content.purgeAbandonedRevision(context.Background(), abandonedRevisionID)
+			require.NoError(t, err)
 			retained, err := content.OpenProfilePictureRendition(context.Background(), retainedRevisionID, retainedID)
-			if err != nil {
-				t.Fatalf("sibling revision was removed: %v", err)
-			}
+			require.NoError(t, err)
 			_ = retained.Close()
 		})
 	}
@@ -147,31 +119,23 @@ func TestContentRemovesAKnownRenditionManifestIdempotently(t *testing.T) {
 	for _, backend := range contentTestBackends() {
 		t.Run(backend.name, func(t *testing.T) {
 			content, err := New(backend.open(t), Policy{MaximumConcurrentOperations: 2}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			revisionID := model.NewFileRevisionID()
 			firstID, secondID, retainedID := model.NewFileRenditionID(), model.NewFileRenditionID(), model.NewFileRenditionID()
 			for _, renditionID := range []model.FileRenditionID{firstID, secondID, retainedID} {
-				if err = content.storeRendition(context.Background(), revisionID, renditionID, bytes.NewReader([]byte("content")), 7); err != nil {
-					t.Fatalf("stage %s: %v", renditionID, err)
-				}
+				err = content.storeRendition(context.Background(), revisionID, renditionID, bytes.NewReader([]byte("content")), 7)
+				require.NoError(t, err, "stage %s", renditionID)
 			}
 
 			manifest := []model.FileRenditionID{firstID, secondID}
-			if err = content.removeRenditions(context.Background(), revisionID, manifest); err != nil {
-				t.Fatalf("remove manifest: %v", err)
-			}
-			if err = content.removeRenditions(context.Background(), revisionID, manifest); err != nil {
-				t.Fatalf("repeat manifest removal: %v", err)
-			}
-			if _, err = content.OpenProfilePictureRendition(context.Background(), revisionID, firstID); !IsNotFound(err) {
-				t.Fatalf("removed rendition error = %v", err)
-			}
+			err = content.removeRenditions(context.Background(), revisionID, manifest)
+			require.NoError(t, err)
+			err = content.removeRenditions(context.Background(), revisionID, manifest)
+			require.NoError(t, err)
+			_, err = content.OpenProfilePictureRendition(context.Background(), revisionID, firstID)
+			require.True(t, IsNotFound(err), "removed rendition error")
 			retained, err := content.OpenProfilePictureRendition(context.Background(), revisionID, retainedID)
-			if err != nil {
-				t.Fatalf("retained rendition unavailable: %v", err)
-			}
+			require.NoError(t, err)
 			_ = retained.Close()
 		})
 	}
@@ -182,29 +146,22 @@ func TestContentRetriesAKnownManifestAfterAPartialBackendFailure(t *testing.T) {
 		t.Run(backend.name, func(t *testing.T) {
 			filesystem := &removeFailureVFS{FileSystem: backend.open(t), failOnCall: 2}
 			content, err := New(filesystem, Policy{MaximumConcurrentOperations: 2}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			revisionID := model.NewFileRevisionID()
 			firstID, secondID := model.NewFileRenditionID(), model.NewFileRenditionID()
 			for _, renditionID := range []model.FileRenditionID{firstID, secondID} {
-				if err = content.storeRendition(context.Background(), revisionID, renditionID, bytes.NewReader([]byte("content")), 7); err != nil {
-					t.Fatal(err)
-				}
+				err = content.storeRendition(context.Background(), revisionID, renditionID, bytes.NewReader([]byte("content")), 7)
+				require.NoError(t, err)
 			}
 
 			err = content.removeRenditions(context.Background(), revisionID, []model.FileRenditionID{firstID, secondID})
-			if !IsUnavailable(err) {
-				t.Fatalf("partial removal error = %v, want unavailable", err)
-			}
+			require.True(t, IsUnavailable(err), "partial removal error")
 			filesystem.failOnCall = 0
-			if err = content.removeRenditions(context.Background(), revisionID, []model.FileRenditionID{firstID, secondID}); err != nil {
-				t.Fatalf("retry removal: %v", err)
-			}
+			err = content.removeRenditions(context.Background(), revisionID, []model.FileRenditionID{firstID, secondID})
+			require.NoError(t, err)
 			for _, renditionID := range []model.FileRenditionID{firstID, secondID} {
-				if _, err = content.OpenProfilePictureRendition(context.Background(), revisionID, renditionID); !IsNotFound(err) {
-					t.Fatalf("rendition %s survived retry: %v", renditionID, err)
-				}
+				_, err = content.OpenProfilePictureRendition(context.Background(), revisionID, renditionID)
+				require.True(t, IsNotFound(err), "rendition %s survived retry", renditionID)
 			}
 		})
 	}
@@ -235,9 +192,7 @@ func contentTestBackends() []struct {
 		{name: "memory", open: func(*testing.T) vfspkg.FileSystem { return memoryvfs.New() }},
 		{name: "local", open: func(t *testing.T) vfspkg.FileSystem {
 			filesystem, err := localvfs.New(filepath.Join(t.TempDir(), "vfs"))
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			return filesystem
 		}},
 	}

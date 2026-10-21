@@ -10,8 +10,9 @@ package commands
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	server "github.com/sudosylabs/proctor/server"
 )
@@ -19,7 +20,7 @@ import (
 type unusedMFAResetInput struct{ t *testing.T }
 
 func (r unusedMFAResetInput) Read([]byte) (int, error) {
-	r.t.Fatal("MFA reset read a credential from stdin")
+	require.FailNow(r.t, "MFA reset read a credential from stdin")
 	return 0, nil
 }
 
@@ -29,16 +30,18 @@ func TestAdministratorMFAResetIsASeparateHostCommandWithNoCredentialInput(t *tes
 	called := false
 	execute.resetAdministratorMFA = func(ctx context.Context, path string, command server.AdministratorMFAResetCommand) (*server.AdministratorMFAResetResult, error) {
 		called = true
-		if ctx == nil || path != "/etc/proctor.json" || command.InstitutionID != "ybndrfg8ejkmcpqxot1uwisza3" || command.UserID != "ybndrfg8ejkmcpqxot1uwisza4" {
-			t.Fatalf("forwarded path=%q command=%#v", path, command)
-		}
+		require.NotNil(t, ctx, "forwarded path=%q command=%#v", path, command)
+		require.Equal(t, "/etc/proctor.json", path, "forwarded path=%q command=%#v", path, command)
+		require.Equal(t, "ybndrfg8ejkmcpqxot1uwisza3", command.InstitutionID, "forwarded path=%q command=%#v", path, command)
+		require.Equal(t, "ybndrfg8ejkmcpqxot1uwisza4", command.UserID, "forwarded path=%q command=%#v", path, command)
 		return &server.AdministratorMFAResetResult{RecoveryGeneration: 1, ReenrollmentRequired: true}, nil
 	}
 	code, stdout, stderr := executeForTest(context.Background(), []string{"administrator", "reset-mfa", "--config", "/etc/proctor.json",
 		"--institution-id", " ybndrfg8ejkmcpqxot1uwisza3 ", "--user-id", " ybndrfg8ejkmcpqxot1uwisza4 "}, unusedMFAResetInput{t}, execute)
-	if code != 0 || !called || stderr != "" || !strings.Contains(stdout, "enroll a new authenticator") {
-		t.Fatalf("code=%d called=%v stdout=%q stderr=%q", code, called, stdout, stderr)
-	}
+	require.Equal(t, 0, code, "code")
+	require.True(t, called, "code")
+	require.Empty(t, stderr, "code")
+	require.Contains(t, stdout, "enroll a new authenticator", "code")
 }
 
 func TestAdministratorMFAResetRejectsSecretArgumentsWithoutEcho(t *testing.T) {
@@ -46,14 +49,14 @@ func TestAdministratorMFAResetRejectsSecretArgumentsWithoutEcho(t *testing.T) {
 	for _, extra := range [][]string{{"private-proof"}, {"--password=private-proof"}, {"--enable-local-login"}, {"--rotate-password"}} {
 		execute := testExecutors()
 		execute.resetAdministratorMFA = func(context.Context, string, server.AdministratorMFAResetCommand) (*server.AdministratorMFAResetResult, error) {
-			t.Fatal("invalid MFA reset reached execution")
+			require.FailNow(t, "invalid MFA reset reached execution")
 			return nil, nil
 		}
 		args := append([]string{"administrator", "reset-mfa", "--institution-id", "ybndrfg8ejkmcpqxot1uwisza3", "--user-id", "ybndrfg8ejkmcpqxot1uwisza4"}, extra...)
 		code, stdout, stderr := executeForTest(context.Background(), args, unusedMFAResetInput{t}, execute)
-		if code != 2 || stdout != "" || strings.Contains(stderr, "private-proof") {
-			t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
-		}
+		require.Equal(t, 2, code, "code")
+		require.Empty(t, stdout, "code")
+		require.NotContains(t, stderr, "private-proof", "code")
 	}
 }
 
@@ -65,8 +68,8 @@ func TestAdministratorMFAResetDoesNotReportSuccessWithoutCommittedRestriction(t 
 			return nil, failure
 		}
 		code, stdout, stderr := executeForTest(context.Background(), []string{"administrator", "reset-mfa", "--institution-id", "ybndrfg8ejkmcpqxot1uwisza3", "--user-id", "ybndrfg8ejkmcpqxot1uwisza4"}, unusedMFAResetInput{t}, execute)
-		if code != 1 || stdout != "" || stderr == "" {
-			t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
-		}
+		require.Equal(t, 1, code, "code")
+		require.Empty(t, stdout, "code")
+		require.NotEmpty(t, stderr, "code")
 	}
 }

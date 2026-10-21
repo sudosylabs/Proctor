@@ -8,23 +8,24 @@
 package model
 
 import (
-	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestInitialAccessPolicyIsConservativeAndValid(t *testing.T) {
 	t.Parallel()
 
 	policy := NewInitialAccessPolicy(NewAccessPolicyID(), time.UnixMilli(100))
-	if err := policy.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	if policy.Revision != 1 || !policy.LocalLoginEnabled || !policy.InvitationAdmissionEnabled ||
-		!policy.InvitationLocalCredentialEnabled || !policy.DesktopAuthorizationEnabled ||
-		policy.PublicRegistrationEnabled || len(policy.ProviderAdmissions) != 0 {
-		t.Fatalf("initial policy = %#v", policy)
-	}
+	require.NoError(t, policy.Validate())
+	require.Equal(t, int64(1), policy.Revision)
+	require.True(t, policy.LocalLoginEnabled)
+	require.True(t, policy.InvitationAdmissionEnabled)
+	require.True(t, policy.InvitationLocalCredentialEnabled)
+	require.True(t, policy.DesktopAuthorizationEnabled)
+	require.False(t, policy.PublicRegistrationEnabled)
+	require.Empty(t, policy.ProviderAdmissions)
 }
 
 func TestAccessPolicyRejectsProviderAdmissionUnknownToTheClosedVocabulary(t *testing.T) {
@@ -32,9 +33,7 @@ func TestAccessPolicyRejectsProviderAdmissionUnknownToTheClosedVocabulary(t *tes
 
 	policy := NewInitialAccessPolicy(NewAccessPolicyID(), time.UnixMilli(100))
 	policy.ProviderAdmissions = map[string]ProviderAdmissionMode{"oidc-main": "automatic"}
-	if err := policy.Validate(); err == nil {
-		t.Fatal("Validate() accepted an unknown provider admission mode")
-	}
+	require.Error(t, policy.Validate(), "Validate() accepted an unknown provider admission mode")
 }
 
 func TestAccessPolicyProviderIDsMatchDeploymentProviderGrammar(t *testing.T) {
@@ -43,16 +42,12 @@ func TestAccessPolicyProviderIDsMatchDeploymentProviderGrammar(t *testing.T) {
 	for _, providerID := range []string{"0-campus.oidc", "campus_oidc", "campus-oidc"} {
 		settings := NewInitialAccessPolicy(NewAccessPolicyID(), time.UnixMilli(100)).Settings()
 		settings.ProviderAdmissions[providerID] = ProviderAdmissionLinkedOnly
-		if err := settings.Validate(); err != nil {
-			t.Fatalf("provider ID %q rejected: %v", providerID, err)
-		}
+		require.NoError(t, settings.Validate(), "provider ID %q rejected", providerID)
 	}
 	for _, providerID := range []string{".campus", "_campus", "-campus", "Campus", "campus/provider"} {
 		settings := NewInitialAccessPolicy(NewAccessPolicyID(), time.UnixMilli(100)).Settings()
 		settings.ProviderAdmissions[providerID] = ProviderAdmissionLinkedOnly
-		if err := settings.Validate(); err == nil {
-			t.Fatalf("provider ID %q accepted", providerID)
-		}
+		require.Error(t, settings.Validate(), "provider ID %q accepted", providerID)
 	}
 }
 
@@ -72,20 +67,15 @@ func TestAccessPolicyReplaceProducesSafeRevisionTransition(t *testing.T) {
 			"campus-oidc": ProviderAdmissionLinkedOnly,
 		},
 	}, actorID, at.Add(time.Second))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if policy.Revision != 2 || transition.FromRevision != 1 || transition.ToRevision != 2 ||
-		transition.ActorID != actorID || transition.Outcome != AccessPolicyTransitionApplied {
-		t.Fatalf("replacement = policy %#v transition %#v", policy, transition)
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(2), policy.Revision, "replacement = policy %#v transition %#v", policy, transition)
+	require.Equal(t, int64(1), transition.FromRevision, "replacement = policy %#v transition %#v", policy, transition)
+	require.Equal(t, int64(2), transition.ToRevision, "replacement = policy %#v transition %#v", policy, transition)
+	require.Equal(t, actorID, transition.ActorID, "replacement = policy %#v transition %#v", policy, transition)
+	require.Equal(t, AccessPolicyTransitionApplied, transition.Outcome, "replacement = policy %#v transition %#v", policy, transition)
 	want := []string{"desktop_authorization_enabled", "provider_admissions", "public_registration_enabled"}
-	if !reflect.DeepEqual(transition.ChangedFields, want) {
-		t.Fatalf("changed fields = %#v, want %#v", transition.ChangedFields, want)
-	}
-	if err := transition.Validate(); err != nil {
-		t.Fatalf("transition validation: %v", err)
-	}
+	require.Equal(t, want, transition.ChangedFields, "changed fields")
+	require.NoError(t, transition.Validate())
 }
 
 func TestAccessPolicyReplaceRejectsStaleAndIncoherentSettings(t *testing.T) {
@@ -93,12 +83,10 @@ func TestAccessPolicyReplaceRejectsStaleAndIncoherentSettings(t *testing.T) {
 
 	policy := NewInitialAccessPolicy(NewAccessPolicyID(), time.UnixMilli(100))
 	settings := policy.Settings()
-	if _, err := policy.Replace(2, settings, NewUserID(), time.UnixMilli(200)); err == nil {
-		t.Fatal("Replace accepted a stale expected revision")
-	}
+	_, err := policy.Replace(2, settings, NewUserID(), time.UnixMilli(200))
+	require.Error(t, err, "Replace accepted a stale expected revision")
 	settings.LocalLoginEnabled = false
 	settings.PublicRegistrationEnabled = true
-	if _, err := policy.Replace(1, settings, NewUserID(), time.UnixMilli(200)); err == nil {
-		t.Fatal("Replace accepted registration without local login")
-	}
+	_, err = policy.Replace(1, settings, NewUserID(), time.UnixMilli(200))
+	require.Error(t, err, "Replace accepted registration without local login")
 }

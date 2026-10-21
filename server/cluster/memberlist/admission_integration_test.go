@@ -11,18 +11,17 @@ package memberlist
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
-	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	hashimemberlist "github.com/hashicorp/memberlist"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/cluster"
 )
@@ -62,9 +61,7 @@ func (l *synchronizedAdmissionLogger) contains(message string) bool {
 func admissionFreePort(t *testing.T) int {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer listener.Close()
 	return listener.Addr().(*net.TCPAddr).Port
 }
@@ -86,9 +83,7 @@ func TestAdmissionFailureWithdrawsBeforeRetryAndJoinFailureRemainsNonfatal(t *te
 	peerConfig.Delegate = fixedMetaDelegate{meta: []byte("{malformed")}
 	peerConfig.Logger = log.New(io.Discard, "", 0)
 	peer, err := hashimemberlist.Create(peerConfig)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	peerStopped := false
 	t.Cleanup(func() {
 		if !peerStopped {
@@ -112,9 +107,7 @@ func TestAdmissionFailureWithdrawsBeforeRetryAndJoinFailureRemainsNonfatal(t *te
 		ServerVersion:      "test",
 		Logger:             logger,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	ticker := &manualDiscoveryTicker{ticks: make(chan time.Time)}
 	scheduled := make(chan time.Duration, 1)
 	transport.discovery.cfg.newTicker = func(interval time.Duration) discoveryTicker {
@@ -123,44 +116,25 @@ func TestAdmissionFailureWithdrawsBeforeRetryAndJoinFailureRemainsNonfatal(t *te
 	}
 
 	err = transport.Start(context.Background())
-	if !errors.Is(err, errAdmissionMetadataInvalid) {
-		t.Fatalf("first Start error = %v, want invalid peer metadata", err)
-	}
-	if !reflect.DeepEqual(store.operations, []string{"upsert", "list", "delete"}) {
-		t.Fatalf("failed admission operations = %v", store.operations)
-	}
+	require.ErrorIs(t, err, errAdmissionMetadataInvalid, "first Start error")
+	require.Equal(t, []string{"upsert", "list", "delete"}, store.operations)
 	select {
 	case interval := <-scheduled:
-		t.Fatalf("failed admission launched maintenance ticker at %v", interval)
+		require.FailNow(t, fmt.Sprintf("failed admission launched maintenance ticker at %v", interval))
 	default:
 	}
-	if err := transport.Ping(context.Background()); err != nil {
-		t.Fatalf("failed admission made transport terminal: %v", err)
-	}
+	require.NoError(t, transport.Ping(context.Background()))
 
-	if err := peer.Shutdown(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, peer.Shutdown())
 	peerStopped = true
-	if err := transport.Start(context.Background()); err != nil {
-		t.Fatalf("retry Start with unavailable seed: %v", err)
-	}
-	if interval := <-scheduled; interval != time.Second {
-		t.Fatalf("maintenance interval = %v, want 1s", interval)
-	}
-	if !logger.contains("memberlist join incomplete") {
-		t.Fatal("retry did not diagnose nonfatal Memberlist join failure")
-	}
-	if err := transport.Stop(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, transport.Start(context.Background()))
+	interval := <-scheduled
+	require.Equal(t, time.Second, interval, "maintenance interval")
+	require.True(t, logger.contains("memberlist join incomplete"), "retry did not diagnose nonfatal Memberlist join failure")
+	require.NoError(t, transport.Stop(context.Background()))
 	wantOperations := []string{"upsert", "list", "delete", "upsert", "list", "delete"}
-	if !reflect.DeepEqual(store.operations, wantOperations) {
-		t.Fatalf("retry lifecycle operations = %v, want %v", store.operations, wantOperations)
-	}
-	if ticker.stops != 1 {
-		t.Fatalf("retry maintenance ticker stops = %d, want 1", ticker.stops)
-	}
+	require.Equal(t, wantOperations, store.operations, "retry lifecycle operations")
+	require.Equal(t, 1, ticker.stops, "retry maintenance ticker stops")
 }
 
 func TestLateIncompatiblePeerIsRejectedByContinuousAdmission(t *testing.T) {
@@ -178,12 +152,8 @@ func TestLateIncompatiblePeerIsRejectedByContinuousAdmission(t *testing.T) {
 		ServerVersion:      "test",
 		Logger:             &synchronizedAdmissionLogger{},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := transport.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, transport.Start(context.Background()))
 	t.Cleanup(func() { _ = transport.Stop(context.Background()) })
 
 	peerPort := admissionFreePort(t)
@@ -205,9 +175,7 @@ func TestLateIncompatiblePeerIsRejectedByContinuousAdmission(t *testing.T) {
 	})}
 	peerConfig.Logger = log.New(io.Discard, "", 0)
 	peer, err := hashimemberlist.Create(peerConfig)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = peer.Shutdown() })
 
 	// Hashicorp may report the requester's push/pull as successful even when
@@ -218,9 +186,7 @@ func TestLateIncompatiblePeerIsRejectedByContinuousAdmission(t *testing.T) {
 	for transport.list.NumMembers() != 1 && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
-	if got := transport.list.NumMembers(); got != 1 {
-		t.Fatalf("local membership after rejection = %d, want 1", got)
-	}
+	require.Equal(t, 1, transport.list.NumMembers(), "local membership after rejection")
 }
 
 func TestAbruptStableIDRestartReclaimsDeadAddress(t *testing.T) {
@@ -240,21 +206,15 @@ func TestAbruptStableIDRestartReclaimsDeadAddress(t *testing.T) {
 			ServerVersion:      "test",
 			Logger:             logger,
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		return transport
 	}
 
 	nodeA := newTransport("node-a", admissionFreePort(t))
 	oldNodeB := newTransport("node-b", admissionFreePort(t))
-	if err := nodeA.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, nodeA.Start(context.Background()))
 	t.Cleanup(func() { _ = nodeA.Stop(context.Background()) })
-	if err := oldNodeB.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, oldNodeB.Start(context.Background()))
 	oldNodeCrashed := false
 	t.Cleanup(func() {
 		if !oldNodeCrashed {
@@ -271,32 +231,22 @@ func TestAbruptStableIDRestartReclaimsDeadAddress(t *testing.T) {
 	oldNodeB.mu.RUnlock()
 	cancelOld()
 	<-oldDone
-	if err := oldList.Shutdown(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, oldList.Shutdown())
 	oldNodeCrashed = true
 
 	replacement := newTransport("node-b", admissionFreePort(t))
 	var received atomic.Int32
-	if err := replacement.RegisterHandler("test.crash-reclaim", func(context.Context, *cluster.Message) error {
+	require.NoError(t, replacement.RegisterHandler("test.crash-reclaim", func(context.Context, *cluster.Message) error {
 		received.Add(1)
 		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := replacement.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	}))
+	require.NoError(t, replacement.Start(context.Background()))
 	t.Cleanup(func() { _ = replacement.Stop(context.Background()) })
 
 	deadline := time.Now().Add(20 * time.Second)
 	for received.Load() == 0 && time.Now().Before(deadline) {
-		if err := nodeA.Broadcast(context.Background(), &cluster.Message{Event: "test.crash-reclaim"}); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, nodeA.Broadcast(context.Background(), &cluster.Message{Event: "test.crash-reclaim"}))
 		time.Sleep(100 * time.Millisecond)
 	}
-	if received.Load() == 0 {
-		t.Fatal("replacement did not reclaim the stable node ID after abrupt shutdown")
-	}
+	require.NotEqual(t, int32(0), received.Load(), "replacement did not reclaim the stable node ID after abrupt shutdown")
 }

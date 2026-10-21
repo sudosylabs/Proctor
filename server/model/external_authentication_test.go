@@ -10,6 +10,9 @@ package model
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSafeRelativeURL(t *testing.T) {
@@ -26,9 +29,9 @@ func TestSafeRelativeURL(t *testing.T) {
 		{"relative", false},
 	}
 	for _, test := range tests {
-		if got := IsSafeRelativeURL(test.value); got != test.valid {
-			t.Errorf("IsSafeRelativeURL(%q) = %v", test.value, got)
-		}
+		t.Run(test.value, func(t *testing.T) {
+			assert.Equal(t, test.valid, IsSafeRelativeURL(test.value), "IsSafeRelativeURL(%q)", test.value)
+		})
 	}
 }
 
@@ -42,19 +45,11 @@ func TestExternalLoginStateLifecycle(t *testing.T) {
 		ExpiresAt:   TimeFromMillis(GetMillis() + 60_000),
 	}
 	state.PrepareCreate(NewExternalLoginStateID(), NowUTC())
-	if state.Purpose != ExternalAuthenticationPurposeLogin {
-		t.Fatalf("PrepareCreate() purpose = %q", state.Purpose)
-	}
-	if state.Provider != "campus-cas" {
-		t.Fatalf("PreSave() provider = %q", state.Provider)
-	}
-	if appErr := state.Validate(); appErr != nil {
-		t.Fatalf("IsValid() = %v", appErr)
-	}
+	require.Equal(t, ExternalAuthenticationPurposeLogin, state.Purpose)
+	require.Equal(t, "campus-cas", state.Provider)
+	require.NoError(t, state.Validate())
 	state.ClientType = SessionClientCLI
-	if appErr := state.Validate(); appErr == nil {
-		t.Fatal("CLI external login state was accepted")
-	}
+	require.Error(t, state.Validate(), "CLI external login state was accepted")
 }
 
 func TestExternalLoginStateConnectPurposeRequiresExactUser(t *testing.T) {
@@ -65,13 +60,9 @@ func TestExternalLoginStateConnectPurposeRequiresExactUser(t *testing.T) {
 		ClientType: SessionClientWeb, ExpiresAt: TimeFromMillis(GetMillis() + 60_000),
 	}
 	state.PrepareCreate(NewExternalLoginStateID(), NowUTC())
-	if err := state.Validate(); err != nil {
-		t.Fatalf("Validate(connect) = %v", err)
-	}
+	require.NoError(t, state.Validate())
 	state.TargetUserID = ""
-	if err := state.Validate(); err == nil {
-		t.Fatal("connect state without target User was accepted")
-	}
+	require.Error(t, state.Validate(), "connect state without target User was accepted")
 }
 
 func TestExternalLoginStateInvitationAdmissionBindsOnlyInvitation(t *testing.T) {
@@ -83,29 +74,22 @@ func TestExternalLoginStateInvitationAdmissionBindsOnlyInvitation(t *testing.T) 
 		ClientType: SessionClientWeb, ExpiresAt: at.Add(time.Minute),
 	}
 	state.PrepareCreate(NewExternalLoginStateID(), at)
-	if err := state.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, state.Validate())
 	state.TargetUserID = NewUserID()
-	if err := state.Validate(); err == nil {
-		t.Fatal("invitation admission accepted a target User")
-	}
+	require.Error(t, state.Validate(), "invitation admission accepted a target User")
 }
 
 func TestExternalAuthenticationCallbackRequiresOneBoundedValue(t *testing.T) {
 	callback := ExternalAuthenticationCallback{Values: map[string][]string{
 		"state": {"one"},
 	}}
-	if value, err := callback.SingleValue("state", 16); err != nil ||
-		value != "one" {
-		t.Fatalf("SingleValue() = %q, %v", value, err)
-	}
+	value, err := callback.SingleValue("state", 16)
+	require.NoError(t, err, "SingleValue()")
+	require.Equal(t, "one", value, "SingleValue()")
 	callback.Values["state"] = []string{"one", "two"}
-	if _, err := callback.SingleValue("state", 16); err == nil {
-		t.Fatal("duplicate callback value was accepted")
-	}
+	_, err = callback.SingleValue("state", 16)
+	require.Error(t, err, "duplicate callback value was accepted")
 	callback.Values["state"] = []string{"value-that-is-too-long"}
-	if _, err := callback.SingleValue("state", 4); err == nil {
-		t.Fatal("oversized callback value was accepted")
-	}
+	_, err = callback.SingleValue("state", 4)
+	require.Error(t, err, "oversized callback value was accepted")
 }

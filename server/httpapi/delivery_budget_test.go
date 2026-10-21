@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -53,17 +55,16 @@ func TestDeliveryBudgetHTTPRequiresOwnedSelectorAndLiveStopFences(t *testing.T) 
 	request.Header.Del(candidateAttemptConnectionHeader)
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)
-	if response.Code != 200 || response.Header().Get("Cache-Control") != "no-store" || f.query.ParticipationID != f.participation.ID {
-		t.Fatalf("budget=%d %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, 200, response.Code, "budget=%d %s", response.Code, response.Body.String())
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "budget=%d %s", response.Code, response.Body.String())
+	require.Equal(t, f.participation.ID, f.query.ParticipationID, "budget=%d %s", response.Code, response.Body.String())
 	for _, bad := range []string{"", "?participation_id=invalid", "?participation_id=" + f.participation.ID.String() + "&participation_id=" + f.participation.ID.String()} {
 		before := f.calls
 		request = f.candidateRequest(http.MethodGet, base+bad)
 		response = httptest.NewRecorder()
 		api.ServeHTTP(response, request)
-		if response.Code != 400 || f.calls != before {
-			t.Fatal("invalid budget selector reached application")
-		}
+		require.Equal(t, 400, response.Code, "invalid budget selector reached application")
+		require.Equal(t, before, f.calls, "invalid budget selector reached application")
 	}
 	body := `{"family":"browser","reason":"local_loss_inventory_exhausted"}`
 	for _, test := range []struct {
@@ -86,11 +87,12 @@ func TestDeliveryBudgetHTTPRequiresOwnedSelectorAndLiveStopFences(t *testing.T) 
 			}
 			response := httptest.NewRecorder()
 			api.ServeHTTP(response, request)
-			if response.Code != test.want || test.want != 200 && f.calls != before {
-				t.Fatalf("stop=%d %s", response.Code, response.Body.String())
-			}
-			if test.want == 200 && (f.stop.Access.ConnectionID != f.connection.ID || f.stop.Access.ContinuityCredential != f.credential || f.stop.IdempotencyKey != "stop-once") {
-				t.Fatal("live fences or idempotency lost")
+			require.Equal(t, test.want, response.Code, "stop=%d %s", response.Code, response.Body.String())
+			require.False(t, test.want != 200 && f.calls != before, "stop=%d %s", response.Code, response.Body.String())
+			if test.want == 200 {
+				require.Equal(t, f.connection.ID, f.stop.Access.ConnectionID, "live fences or idempotency lost")
+				require.Equal(t, f.credential, f.stop.Access.ContinuityCredential, "live fences or idempotency lost")
+				require.Equal(t, "stop-once", f.stop.IdempotencyKey, "live fences or idempotency lost")
 			}
 		})
 	}

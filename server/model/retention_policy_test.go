@@ -10,9 +10,10 @@ package model
 import (
 	"errors"
 	"math"
-	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestInitialRetentionPolicyDoesNotEnableExpiryOrDeletion(t *testing.T) {
@@ -21,24 +22,21 @@ func TestInitialRetentionPolicyDoesNotEnableExpiryOrDeletion(t *testing.T) {
 	storedAt := at.UTC().Truncate(time.Microsecond)
 	institutionID := NewInstitutionID()
 	policy := NewInitialRetentionPolicy(institutionID, at)
-	if err := policy.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	if policy.InstitutionID != institutionID || policy.Revision != 1 || policy.RetentionPolicySettings != (RetentionPolicySettings{}) ||
-		!policy.CreatedAt.Equal(storedAt) || !policy.UpdatedAt.Equal(storedAt) || policy.CreatedAt.Location() != time.UTC || policy.UpdatedAt.Location() != time.UTC {
-		t.Fatalf("initial policy = %#v", policy)
-	}
+	require.NoError(t, policy.Validate())
+	require.Equal(t, institutionID, policy.InstitutionID)
+	require.Equal(t, int64(1), policy.Revision)
+	require.Equal(t, RetentionPolicySettings{}, policy.RetentionPolicySettings)
+	require.True(t, policy.CreatedAt.Equal(storedAt))
+	require.True(t, policy.UpdatedAt.Equal(storedAt))
+	require.Same(t, time.UTC, policy.CreatedAt.Location())
+	require.Same(t, time.UTC, policy.UpdatedAt.Location())
 	want := map[string]any{"institution_id": institutionID.String(), "revision": int64(1),
 		"submission_retention_days": 0, "integrity_retention_days": 0, "browser_activity_retention_days": 0, "security_operational_retention_days": 0, "audit_retention_days": 0,
 		"export_retention_days": 0, "deletion_grace_days": 0, "candidate_notices": false, "automatic_deletion_enabled": false}
-	if got := policy.Auditable(); !reflect.DeepEqual(got, want) {
-		t.Fatalf("initial audit projection = %#v", got)
-	}
+	require.Equal(t, want, policy.Auditable())
 	projection := policy.Auditable()
 	projection["automatic_deletion_enabled"] = true
-	if policy.Auditable()["automatic_deletion_enabled"] != false {
-		t.Fatal("mutating a returned projection enabled deletion")
-	}
+	require.Equal(t, false, policy.Auditable()["automatic_deletion_enabled"], "mutating a returned projection enabled deletion")
 }
 
 func TestRetentionPolicySettingsAcceptOnlyBoundedNonNegativeDays(t *testing.T) {
@@ -59,9 +57,7 @@ func TestRetentionPolicySettingsAcceptOnlyBoundedNonNegativeDays(t *testing.T) {
 				settings := RetentionPolicySettings{}
 				field.set(&settings, days)
 				err := settings.Validate()
-				if (err == nil) != (days >= 0 && days <= field.maximum) {
-					t.Fatalf("%s retention %d days: %v", field.name, days, err)
-				}
+				require.Equal(t, days >= 0 && days <= field.maximum, err == nil, "%s retention %d days: %v", field.name, days, err)
 			}
 		})
 	}
@@ -72,27 +68,21 @@ func TestRetentionPolicyReplacementPreservesNoOpAndZeroSemantics(t *testing.T) {
 	at := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
 	policy := NewInitialRetentionPolicy(NewInstitutionID(), at)
 	settings := RetentionPolicySettings{SubmissionRetentionDays: 365, IntegrityRetentionDays: 90, AuditRetentionDays: 730, ExportRetentionDays: 7, DeletionGraceDays: 30}
-	if err := policy.Replace(1, settings, at.Add(time.Hour)); err != nil {
-		t.Fatal(err)
-	}
-	if policy.Revision != 2 || policy.RetentionPolicySettings != settings || !policy.CreatedAt.Equal(at) || !policy.UpdatedAt.Equal(at.Add(time.Hour)) {
-		t.Fatalf("changed policy = %#v", policy)
-	}
+	require.NoError(t, policy.Replace(1, settings, at.Add(time.Hour)))
+	require.Equal(t, int64(2), policy.Revision)
+	require.Equal(t, settings, policy.RetentionPolicySettings)
+	require.True(t, policy.CreatedAt.Equal(at))
+	require.True(t, policy.UpdatedAt.Equal(at.Add(time.Hour)))
 	before := *policy
-	if err := policy.Replace(2, settings, at.Add(2*time.Hour)); err != nil || *policy != before {
-		t.Fatalf("no-op changed policy: %#v, %v", policy, err)
-	}
-	if err := policy.Replace(2, RetentionPolicySettings{}, at.Add(3*time.Hour)); err != nil {
-		t.Fatal(err)
-	}
-	if policy.Revision != 3 || policy.RetentionPolicySettings != (RetentionPolicySettings{}) || policy.Auditable()["automatic_deletion_enabled"] != false {
-		t.Fatalf("clearing configured periods enabled expiry or deletion: %#v", policy)
-	}
+	require.NoError(t, policy.Replace(2, settings, at.Add(2*time.Hour)), "no-op changed policy: %#v", policy)
+	require.Equal(t, before, *policy, "no-op changed policy: %#v", policy)
+	require.NoError(t, policy.Replace(2, RetentionPolicySettings{}, at.Add(3*time.Hour)))
+	require.Equal(t, int64(3), policy.Revision)
+	require.Equal(t, RetentionPolicySettings{}, policy.RetentionPolicySettings)
+	require.Equal(t, false, policy.Auditable()["automatic_deletion_enabled"])
 	clone := policy.Clone()
 	clone.SubmissionRetentionDays = 10
-	if policy.SubmissionRetentionDays != 0 {
-		t.Fatal("Clone shared mutable policy values")
-	}
+	require.Equal(t, 0, policy.SubmissionRetentionDays, "Clone shared mutable policy values")
 }
 
 func TestRetentionPolicyRejectedReplacementNeverMutatesRecord(t *testing.T) {
@@ -123,27 +113,28 @@ func TestRetentionPolicyRejectedReplacementNeverMutatesRecord(t *testing.T) {
 			}
 			before := *policy
 			err := policy.Replace(test.revision, test.settings, test.at)
-			if err == nil || errors.Is(err, ErrRetentionPolicyRevisionConflict) != test.conflict || *policy != before {
-				t.Fatalf("rejected replacement mutated policy or returned wrong error: %#v, %v", policy, err)
-			}
+			require.Error(t, err, "rejected replacement mutated policy or returned wrong error: %#v", policy)
+			require.Equal(t, test.conflict, errors.Is(err, ErrRetentionPolicyRevisionConflict), "rejected replacement mutated policy or returned wrong error: %#v", policy)
+			require.Equal(t, before, *policy, "rejected replacement mutated policy or returned wrong error: %#v", policy)
 		})
 	}
 	var missing *RetentionPolicy
-	if missing.Validate() == nil || missing.Replace(1, RetentionPolicySettings{}, at) == nil || missing.Clone() != nil {
-		t.Fatal("nil policy did not fail closed")
-	}
+	require.Error(t, missing.Validate(), "nil policy did not fail closed")
+	require.Error(t, missing.Replace(1, RetentionPolicySettings{}, at), "nil policy did not fail closed")
+	require.Nil(t, missing.Clone(), "nil policy did not fail closed")
 }
 
 func TestRetentionPolicyActionsRequireInteractiveAdministration(t *testing.T) {
 	t.Parallel()
 	for _, action := range []Action{ActionRetentionPolicyView, ActionRetentionPolicyManage} {
 		definition, ok := DefinitionForAction(action)
-		if !ok || definition.ResourceType != ResourceInstitution || !definition.InheritInstitutionScope ||
-			definition.InheritAcademicUnitScopes || !definition.PersonalAccessTokenForbidden || IsPersonalAccessTokenAction(string(action)) {
-			t.Fatalf("retention action definition = %#v", definition)
-		}
+		require.True(t, ok)
+		require.Equal(t, ResourceInstitution, definition.ResourceType)
+		require.True(t, definition.InheritInstitutionScope)
+		require.False(t, definition.InheritAcademicUnitScopes)
+		require.True(t, definition.PersonalAccessTokenForbidden)
+		require.False(t, IsPersonalAccessTokenAction(string(action)))
 	}
-	if IsGrantableAction(string(ActionRetentionPolicyManage)) || !IsSystemAdministratorAction(string(ActionRetentionPolicyManage)) {
-		t.Fatal("retention management escaped the protected system-administrator Role")
-	}
+	require.False(t, IsGrantableAction(string(ActionRetentionPolicyManage)), "retention management escaped the protected system-administrator Role")
+	require.True(t, IsSystemAdministratorAction(string(ActionRetentionPolicyManage)), "retention management escaped the protected system-administrator Role")
 }

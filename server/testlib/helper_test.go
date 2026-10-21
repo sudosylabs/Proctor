@@ -10,6 +10,8 @@ package testlib
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/config"
 )
 
@@ -19,10 +21,6 @@ func TestSetupUsesExplicitBootstrapModeWithANonLoopbackPublicURL(t *testing.T) {
 	}))
 
 	effective := helper.ConfigStore.Get()
-	if effective.Authentication.Bootstrap.DevelopmentMode {
-		t.Fatal("test graph kept loopback-only bootstrap development mode with an external public URL")
-	}
-	if effective.Authentication.Bootstrap.Secret != BootstrapSecret {
-		t.Fatal("test graph did not retain its explicit deployment-owned bootstrap secret")
-	}
+	require.False(t, effective.Authentication.Bootstrap.DevelopmentMode, "test graph kept loopback-only bootstrap development mode with an external public URL")
+	require.Equal(t, BootstrapSecret, effective.Authentication.Bootstrap.Secret, "test graph did not retain its explicit deployment-owned bootstrap secret")
 }

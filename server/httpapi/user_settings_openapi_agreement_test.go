@@ -11,15 +11,15 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestUserSettingsOpenAPIAgreesWithRuntime(t *testing.T) {
 	t.Parallel()
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, userSettingsResource(nil)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtimeAPI.collectResources(model.APIURLSuffix, userSettingsResource(nil)))
 	suite := openAPIAgreementSuite{
 		Operations: []openAPIAgreementOperation{
 			{
@@ -61,11 +61,7 @@ func TestUserSettingsOpenAPIAgreesWithRuntime(t *testing.T) {
 
 	document := readOpenAPIDocument(t)
 	response := document.Components.Responses["UserSettingsOK"]
-	if response.Headers["Cache-Control"].Ref != "#/components/headers/PrivateNoStore" {
-		t.Fatalf("UserSettingsOK does not require private no-store: %#v", response)
-	}
+	require.Equal(t, "#/components/headers/PrivateNoStore", response.Headers["Cache-Control"].Ref)
 	replaced := document.Components.Responses["UserSettingsReplaced"]
-	if replaced.Headers["Cache-Control"].Ref != "#/components/headers/PrivateNoStore" {
-		t.Fatalf("UserSettingsReplaced does not require private no-store: %#v", replaced)
-	}
+	require.Equal(t, "#/components/headers/PrivateNoStore", replaced.Headers["Cache-Control"].Ref)
 }

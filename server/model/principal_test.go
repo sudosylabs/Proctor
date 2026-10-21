@@ -11,6 +11,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestPersonalAccessTokenPrincipalValidation(t *testing.T) {
@@ -22,26 +24,16 @@ func TestPersonalAccessTokenPrincipalValidation(t *testing.T) {
 		CredentialScopes:     []string{string(ActionClassView)},
 		AcademicUnitID:       AcademicUnitID(modelTestID()),
 	}
-	if principal.Validate() != nil {
-		t.Fatalf("valid PAT principal rejected: %#v", principal)
-	}
+	require.NoError(t, principal.Validate())
 	principal.SessionID = SessionID(modelTestID())
-	if principal.Validate() == nil {
-		t.Fatal("PAT principal with a session ID was accepted")
-	}
+	require.Error(t, principal.Validate(), "PAT principal with a session ID was accepted")
 	principal.SessionID = ""
 	principal.CredentialScopes = []string{"unknown.action"}
-	if principal.Validate() == nil {
-		t.Fatal("PAT principal with an unknown action was accepted")
-	}
+	require.Error(t, principal.Validate(), "PAT principal with an unknown action was accepted")
 	principal.CredentialScopes = []string{string(ActionExamSittingParticipate)}
-	if principal.Validate() == nil {
-		t.Fatal("PAT principal with a relationship-only action was accepted")
-	}
+	require.Error(t, principal.Validate(), "PAT principal with a relationship-only action was accepted")
 	principal.CredentialScopes = []string{string(ActionRoleBindingManage)}
-	if principal.Validate() == nil {
-		t.Fatal("PAT principal with an interactive-only action was accepted")
-	}
+	require.Error(t, principal.Validate(), "PAT principal with an interactive-only action was accepted")
 }
 
 func modelTestID() string {
@@ -61,18 +53,10 @@ func TestSessionPrincipalUsesNativeAssuranceTimes(t *testing.T) {
 		AuthenticatedAt:        now.Add(-time.Hour),
 		MFACompletedAt:         OptionalTimeFrom(now.Add(-time.Minute)),
 	}
-	if principal.Validate() != nil {
-		t.Fatalf("valid session principal rejected: %#v", principal)
-	}
-	if got := principal.LastAuthenticationAt(); !got.Equal(now.Add(-time.Minute)) {
-		t.Fatalf("LastAuthenticationAt() = %s", got)
-	}
-	if !principal.IsRecentlyAuthenticated(now, 15*time.Minute) {
-		t.Fatal("recent MFA completion was not accepted")
-	}
-	if principal.IsRecentlyAuthenticated(now, 30*time.Second) {
-		t.Fatal("stale MFA completion was accepted")
-	}
+	require.NoError(t, principal.Validate())
+	require.True(t, principal.LastAuthenticationAt().Equal(now.Add(-time.Minute)))
+	require.True(t, principal.IsRecentlyAuthenticated(now, 15*time.Minute), "recent MFA completion was not accepted")
+	require.False(t, principal.IsRecentlyAuthenticated(now, 30*time.Second), "stale MFA completion was accepted")
 }
 
 func TestSessionPrincipalRetainsExactExternalProviderIdentity(t *testing.T) {
@@ -85,18 +69,12 @@ func TestSessionPrincipalRetainsExactExternalProviderIdentity(t *testing.T) {
 		AuthenticationStrength: AuthenticationSingleFactor, ClientType: SessionClientWeb,
 		AuthenticatedAt: time.Now().UTC(),
 	}
-	if err := principal.Validate(); err != nil {
-		t.Fatalf("valid external principal rejected: %v", err)
-	}
+	require.NoError(t, principal.Validate())
 	principal.AuthenticationProviderID = ""
-	if err := principal.Validate(); err == nil {
-		t.Fatal("external principal without an exact provider identity was accepted")
-	}
+	require.Error(t, principal.Validate(), "external principal without an exact provider identity was accepted")
 	principal.AuthenticationProviderID = "0-campus.oidc"
 	principal.ExternalIdentityID = ""
-	if err := principal.Validate(); err == nil {
-		t.Fatal("external principal without exact identity provenance was accepted")
-	}
+	require.Error(t, principal.Validate(), "external principal without exact identity provenance was accepted")
 }
 
 func TestPrincipalContractsDoNotDeclareWireTags(t *testing.T) {
@@ -106,9 +84,7 @@ func TestPrincipalContractsDoNotDeclareWireTags(t *testing.T) {
 	} {
 		for i := 0; i < contract.NumField(); i++ {
 			field := contract.Field(i)
-			if tag := field.Tag.Get("json"); tag != "" {
-				t.Fatalf("%s.%s declares JSON tag %q", contract.Name(), field.Name, tag)
-			}
+			require.Empty(t, field.Tag.Get("json"))
 		}
 	}
 }

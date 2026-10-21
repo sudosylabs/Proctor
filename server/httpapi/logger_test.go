@@ -12,6 +12,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/localization"
 	"github.com/sudosylabs/proctor/server/logging"
 )
@@ -24,27 +26,21 @@ func newTestLogger(tb testing.TB) (Logger, *logging.Buffer) {
 	tb.Helper()
 	var logs logging.Buffer
 	logger, err := logging.New()
-	if err != nil {
-		tb.Fatal(err)
-	}
+	require.NoError(tb, err)
 	tb.Cleanup(func() { _ = logger.Shutdown() })
-	if err := logger.Configure(logging.Config{
+	require.NoError(tb, logger.Configure(logging.Config{
 		MaxFieldBytes: 1024,
 		Targets: []logging.Target{{
 			Name: "test", Type: "console", Level: "debug", Format: "json", Writer: &logs,
 		}},
-	}); err != nil {
-		tb.Fatal(err)
-	}
+	}))
 	return testLogger{log: logger}, &logs
 }
 
 func newTestLocalizer(tb testing.TB) Localizer {
 	tb.Helper()
 	localizer, err := localization.New(os.DirFS("../i18n"), localization.EnglishLocale)
-	if err != nil {
-		tb.Fatal(err)
-	}
+	require.NoError(tb, err)
 	return localizer
 }
 

@@ -11,6 +11,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -34,8 +36,6 @@ func TestSecurityPreflightOpenAPIAgreesWithRuntime(t *testing.T) {
 		{Name: "FrozenAttemptConfiguration", DTO: reflect.TypeOf(model.AttemptConfiguration{}), Required: []string{"manifest_fingerprint", "registry_fingerprint", "desktop_build", "desktop_target", "user_settings_revision", "presentation", "approved_commands", "approved_keybindings", "attempt_configuration_revision", "digest"}},
 	}}
 	runtime := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtime.collectResources(model.APIURLSuffix, securityPreflightResource(nil)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, runtime.collectResources(model.APIURLSuffix, securityPreflightResource(nil)))
 	assertOpenAPIAgreement(t, suite, runtime.Routes())
 }

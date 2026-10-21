@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -52,27 +54,25 @@ func TestNativeDeliveryHTTPPreservesOptionalHistoricalFences(t *testing.T) {
 		}
 		response := httptest.NewRecorder()
 		api.ServeHTTP(response, request)
-		if response.Code != 200 || response.Header().Get("Cache-Control") != "no-store" {
-			t.Fatalf("response: %d %s", response.Code, response.Body.String())
+		require.Equal(t, 200, response.Code, "response: %d %s", response.Code, response.Body.String())
+		require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "response: %d %s", response.Code, response.Body.String())
+		if live {
+			require.Equal(t, f.credential, f.query.Access.ContinuityCredential, "live fences not forwarded")
+			require.Equal(t, f.connection.ID, f.query.Access.ConnectionID, "live fences not forwarded")
 		}
-		if live && (f.query.Access.ContinuityCredential != f.credential || f.query.Access.ConnectionID != f.connection.ID) {
-			t.Fatal("live fences not forwarded")
+		if !live {
+			require.Empty(t, f.query.Access.ContinuityCredential, "historical request invented live fences")
+			require.Empty(t, f.query.Access.ConnectionID, "historical request invented live fences")
 		}
-		if !live && (f.query.Access.ContinuityCredential != "" || f.query.Access.ConnectionID != "") {
-			t.Fatal("historical request invented live fences")
-		}
-		if strings.Contains(response.Body.String(), f.credential) {
-			t.Fatal("response exposed continuity credential")
-		}
+		require.NotContains(t, response.Body.String(), f.credential, "response exposed continuity credential")
 	}
 	before := f.calls
 	request := f.candidateRequest(http.MethodGet, path)
 	request.Header.Add(candidateAttemptCredentialHeader, f.credential)
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)
-	if response.Code != 400 || f.calls != before {
-		t.Fatalf("duplicate fence reached application: %d", response.Code)
-	}
+	require.Equal(t, 400, response.Code, "duplicate fence reached application")
+	require.Equal(t, before, f.calls, "duplicate fence reached application")
 }
 
 func TestNativeDeliverySummaryStrictBodyAndRetryDelay(t *testing.T) {
@@ -90,9 +90,8 @@ func TestNativeDeliverySummaryStrictBodyAndRetryDelay(t *testing.T) {
 		request.Header.Set("Idempotency-Key", "summary-once")
 		response := httptest.NewRecorder()
 		api.ServeHTTP(response, request)
-		if response.Code != 400 || f.calls != 0 {
-			t.Fatalf("invalid body reached application: %d %s", response.Code, response.Body.String())
-		}
+		require.Equal(t, 400, response.Code, "invalid body reached application: %d %s", response.Code, response.Body.String())
+		require.Equal(t, 0, f.calls, "invalid body reached application: %d %s", response.Code, response.Body.String())
 	}
 	request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"summary_sequence":1,"unretained_record_count":0,"count_complete":false,"first_unretained_at":null,"last_unretained_at":null}`))
 	request.Header.Set("Authorization", "Bearer credential")
@@ -100,9 +99,9 @@ func TestNativeDeliverySummaryStrictBodyAndRetryDelay(t *testing.T) {
 	request.Header.Set("Idempotency-Key", "summary-once")
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)
-	if response.Code != 429 || response.Header().Get("Retry-After") != "1" || f.calls != 1 {
-		t.Fatalf("summary rate response: %d %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, 429, response.Code, "summary rate response: %d %s", response.Code, response.Body.String())
+	require.Equal(t, "1", response.Header().Get("Retry-After"), "summary rate response: %d %s", response.Code, response.Body.String())
+	require.Equal(t, 1, f.calls, "summary rate response: %d %s", response.Code, response.Body.String())
 }
 
 func (f *nativeDeliveryHTTPFake) AppendNativeDelivery(_ context.Context, _ app.Invocation, c app.NativeDeliveryAppendCommand) (*model.NativeSecurityAcknowledgement, error) {
@@ -123,9 +122,7 @@ func TestNativeDeliveryAppendClosedBodyAndBounds(t *testing.T) {
 	path := "/api/v1/exam-attempts/" + f.attempt.ID.String() + "/security-batches"
 	batch := model.NativeSecurityBatch{StreamID: model.NewID(), BatchSequence: 1, ParticipationID: model.NewAttemptParticipationID(), Generation: 1, SecuritySessionID: model.NewID(), PolicyDigest: model.SHA256Fingerprint([]byte("synthetic-policy")), ApplicationReleaseID: "synthetic-release", MatrixID: "synthetic-matrix", Records: []model.NativeRecord{{Gap: &model.NativeSourceGap{Kind: "source_gap", SourceID: model.NativeSourceCapture, SourceInstanceID: model.NewID(), Reason: "source_loss", OccurredAt: time.Date(2026, 9, 8, 0, 0, 0, 0, time.UTC)}}}}
 	raw, err := json.Marshal(batch)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, body := range [][]byte{raw, bytes.Replace(raw, []byte(`"kind":"source_gap"`), []byte(`"raw_inventory":"forbidden","kind":"source_gap"`), 1), append(bytes.Repeat([]byte(" "), 256*1024), raw...)} {
 		before := f.calls
 		request := f.candidateRequest(http.MethodPost, path)
@@ -136,17 +133,17 @@ func TestNativeDeliveryAppendClosedBodyAndBounds(t *testing.T) {
 		response := httptest.NewRecorder()
 		api.ServeHTTP(response, request)
 		if bytes.Equal(body, raw) {
-			if response.Code != 200 || f.calls != before+1 || f.query.StreamID != batch.StreamID || response.Header().Get("Cache-Control") != "no-store" {
-				t.Fatalf("append: %d %s", response.Code, response.Body.String())
-			}
+			require.Equal(t, 200, response.Code, "append: %d %s", response.Code, response.Body.String())
+			require.Equal(t, before+1, f.calls, "append: %d %s", response.Code, response.Body.String())
+			require.Equal(t, batch.StreamID, f.query.StreamID, "append: %d %s", response.Code, response.Body.String())
+			require.Equal(t, "no-store", response.Header().Get("Cache-Control"), "append: %d %s", response.Code, response.Body.String())
 			continue
 		}
 		want := http.StatusBadRequest
 		if len(body) > 256*1024 {
 			want = http.StatusRequestEntityTooLarge
 		}
-		if response.Code != want || f.calls != before {
-			t.Fatalf("invalid append reached application: %d %s", response.Code, response.Body.String())
-		}
+		require.Equal(t, want, response.Code, "invalid append reached application: %d %s", response.Code, response.Body.String())
+		require.Equal(t, before, f.calls, "invalid append reached application: %d %s", response.Code, response.Body.String())
 	}
 }

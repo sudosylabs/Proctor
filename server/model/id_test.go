@@ -10,6 +10,8 @@ package model
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestEntityIDsAreDistinctTypes(t *testing.T) {
@@ -21,47 +23,35 @@ func TestEntityIDsAreDistinctTypes(t *testing.T) {
 	//   var class ClassID = user
 	user := NewUserID()
 	class := NewClassID()
-	if user.String() == class.String() {
-		t.Fatal("generated user and class IDs collided")
-	}
-	if !user.IsValid() || !class.IsValid() {
-		t.Fatal("generated IDs must be valid")
-	}
-	if user.IsZero() || class.IsZero() {
-		t.Fatal("generated IDs must not be zero")
-	}
+	require.NotEqual(t, class.String(), user.String(), "generated user and class IDs collided")
+	require.True(t, user.IsValid(), "generated IDs must be valid")
+	require.True(t, class.IsValid(), "generated IDs must be valid")
+	require.False(t, user.IsZero(), "generated IDs must not be zero")
+	require.False(t, class.IsZero(), "generated IDs must not be zero")
 }
 
 func TestSubmissionIDUsesCanonicalTypedIDContract(t *testing.T) {
 	t.Parallel()
 
 	id := NewSubmissionID()
-	if !id.IsValid() || id.IsZero() {
-		t.Fatalf("NewSubmissionID() = %q", id)
-	}
+	require.True(t, id.IsValid())
+	require.False(t, id.IsZero())
 	parsed, err := ParseSubmissionID(id.String())
-	if err != nil || parsed != id {
-		t.Fatalf("ParseSubmissionID(%q) = %q, %v", id, parsed, err)
-	}
+	require.NoError(t, err, "ParseSubmissionID")
+	require.Equal(t, id, parsed, "ParseSubmissionID")
 }
 
 func TestParseEntityIDRejectsInvalid(t *testing.T) {
 	t.Parallel()
 
-	if _, err := ParseUserID(""); err == nil {
-		t.Fatal("empty user id accepted")
-	}
-	if _, err := ParseUserID("not-a-valid-id"); err == nil {
-		t.Fatal("short user id accepted")
-	}
+	_, err := ParseUserID("")
+	require.Error(t, err, "empty user id accepted")
+	_, err = ParseUserID("not-a-valid-id")
+	require.Error(t, err, "short user id accepted")
 	raw := NewID()
 	got, err := ParseUserID(raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.String() != raw {
-		t.Fatalf("ParseUserID() = %q, want %q", got, raw)
-	}
+	require.NoError(t, err)
+	require.Equal(t, raw, got.String(), "ParseUserID() = %q", got)
 }
 
 func TestEntityIDJSONRoundTrip(t *testing.T) {
@@ -69,26 +59,14 @@ func TestEntityIDJSONRoundTrip(t *testing.T) {
 
 	id := NewSessionID()
 	data, err := json.Marshal(id)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var decoded SessionID
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		t.Fatal(err)
-	}
-	if decoded != id {
-		t.Fatalf("round trip = %q, want %q", decoded, id)
-	}
+	require.NoError(t, json.Unmarshal(data, &decoded))
+	require.Equal(t, id, decoded, "round trip")
 
-	if err := json.Unmarshal([]byte(`""`), &decoded); err != nil {
-		t.Fatal(err)
-	}
-	if !decoded.IsZero() {
-		t.Fatalf("empty JSON string should decode to zero, got %q", decoded)
-	}
-	if err := json.Unmarshal([]byte(`"bad"`), &decoded); err == nil {
-		t.Fatal("invalid id must fail UnmarshalJSON")
-	}
+	require.NoError(t, json.Unmarshal([]byte(`""`), &decoded))
+	require.True(t, decoded.IsZero())
+	require.Error(t, json.Unmarshal([]byte(`"bad"`), &decoded), "invalid id must fail UnmarshalJSON")
 }
 
 func TestLegacyStringIDStillCompilesAlongsideTypedIDs(t *testing.T) {
@@ -96,11 +74,7 @@ func TestLegacyStringIDStillCompilesAlongsideTypedIDs(t *testing.T) {
 
 	// Expand phase: plain NewID()/IsValidOpaqueID remain for unmigrated aggregates.
 	legacy := NewID()
-	if !IsValidOpaqueID(legacy) {
-		t.Fatal(legacy)
-	}
+	require.True(t, IsValidOpaqueID(legacy))
 	typed := UserID(legacy)
-	if !typed.IsValid() {
-		t.Fatal(typed)
-	}
+	require.True(t, typed.IsValid(), typed)
 }

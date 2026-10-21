@@ -9,11 +9,12 @@ package websocket_test
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
@@ -53,9 +54,7 @@ func newTestHub(t *testing.T) *websocket.Hub {
 		nil,
 		15*time.Second,
 	)
-	if err != nil {
-		t.Fatalf("NewHub() error = %v", err)
-	}
+	require.NoError(t, err)
 	return hub
 }
 
@@ -63,24 +62,18 @@ func TestHubConstructionIsInertAndCloseWithoutStart(t *testing.T) {
 	t.Parallel()
 
 	hub := newTestHub(t)
-	if hub.Started() {
-		t.Fatal("NewHub() started the hub")
-	}
+	require.False(t, hub.Started(), "NewHub() started the hub")
 	done := make(chan error, 1)
 	go func() {
 		done <- hub.Close()
 	}()
 	select {
 	case err := <-done:
-		if err != nil {
-			t.Fatalf("Close() without Start error = %v", err)
-		}
+		require.NoError(t, err)
 	case <-time.After(time.Second):
-		t.Fatal("Close() without Start blocked; construction likely started a goroutine")
+		require.FailNow(t, "Close() without Start blocked; construction likely started a goroutine")
 	}
-	if hub.Started() {
-		t.Fatal("Close() left the hub started")
-	}
+	require.False(t, hub.Started(), "Close() left the hub started")
 }
 
 func TestHubStartCloseIdempotent(t *testing.T) {
@@ -88,27 +81,13 @@ func TestHubStartCloseIdempotent(t *testing.T) {
 
 	hub := newTestHub(t)
 	ctx := context.Background()
-	if err := hub.Start(ctx); err != nil {
-		t.Fatalf("Start() error = %v", err)
-	}
-	if !hub.Started() {
-		t.Fatal("Start() left hub unstarted")
-	}
-	if err := hub.Start(ctx); err != nil {
-		t.Fatalf("idempotent Start() error = %v", err)
-	}
-	if err := hub.Close(); err != nil {
-		t.Fatalf("Close() error = %v", err)
-	}
-	if hub.Started() {
-		t.Fatal("Close() left hub started")
-	}
-	if err := hub.Close(); err != nil {
-		t.Fatalf("idempotent Close() error = %v", err)
-	}
-	if err := hub.Start(ctx); err == nil {
-		t.Fatal("Start() after Close() succeeded")
-	}
+	require.NoError(t, hub.Start(ctx))
+	require.True(t, hub.Started(), "Start() left hub unstarted")
+	require.NoError(t, hub.Start(ctx))
+	require.NoError(t, hub.Close())
+	require.False(t, hub.Started(), "Close() left hub started")
+	require.NoError(t, hub.Close())
+	require.Error(t, hub.Start(ctx), "Start() after Close() succeeded")
 }
 
 func TestHubAcceptRequiresStart(t *testing.T) {
@@ -133,9 +112,7 @@ func TestHubAcceptRequiresStart(t *testing.T) {
 		0,
 		false,
 	)
-	if !apperror.Is(err, "websocket.unavailable") {
-		t.Fatalf("Accept() before Start error = %v, want websocket.unavailable", err)
-	}
+	require.True(t, apperror.Is(err, "websocket.unavailable"), "Accept() before Start error = %v, want websocket.unavailable", err)
 }
 
 // TestHubAcceptReturnsRefusedHandshakeUncommitted keeps a malformed upgrade
@@ -146,9 +123,7 @@ func TestHubAcceptReturnsRefusedHandshakeUncommitted(t *testing.T) {
 
 	hub := newTestHub(t)
 	t.Cleanup(func() { _ = hub.Close() })
-	if err := hub.Start(t.Context()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, hub.Start(t.Context()))
 	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "https://proctor.example/api/v1/websocket", nil)
 	request.Header.Set("Origin", "https://proctor.example")
 	recorder := httptest.NewRecorder()
@@ -158,12 +133,10 @@ func TestHubAcceptReturnsRefusedHandshakeUncommitted(t *testing.T) {
 		CredentialID:   model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess,
 	}, model.RequestMetadata{}, "", 0, false)
-	if !apperror.Is(err, "request.invalid") {
-		t.Fatalf("Accept() without upgrade headers error = %v, want request.invalid", err)
-	}
-	if recorder.Body.Len() != 0 || recorder.Code != http.StatusOK || recorder.Flushed {
-		t.Fatalf("refused handshake committed a response: %d %q", recorder.Code, recorder.Body.String())
-	}
+	require.True(t, apperror.Is(err, "request.invalid"), "Accept() without upgrade headers error = %v, want request.invalid", err)
+	require.Equal(t, 0, recorder.Body.Len(), "refused handshake committed a response: %d %q", recorder.Code, recorder.Body.String())
+	require.Equal(t, http.StatusOK, recorder.Code, "refused handshake committed a response: %d %q", recorder.Code, recorder.Body.String())
+	require.False(t, recorder.Flushed, "refused handshake committed a response: %d %q", recorder.Code, recorder.Body.String())
 }
 
 func TestHubOriginAllowed(t *testing.T) {
@@ -171,18 +144,10 @@ func TestHubOriginAllowed(t *testing.T) {
 
 	hub := newTestHub(t)
 	t.Cleanup(func() { _ = hub.Close() })
-	if !hub.OriginAllowed("https://proctor.example", false) {
-		t.Fatal("matching origin rejected")
-	}
-	if hub.OriginAllowed("https://evil.example", false) {
-		t.Fatal("cross-origin allowed")
-	}
-	if hub.OriginAllowed("", false) {
-		t.Fatal("missing origin allowed for cookie clients")
-	}
-	if !hub.OriginAllowed("", true) {
-		t.Fatal("missing origin rejected for bearer clients")
-	}
+	require.True(t, hub.OriginAllowed("https://proctor.example", false), "matching origin rejected")
+	require.False(t, hub.OriginAllowed("https://evil.example", false), "cross-origin allowed")
+	require.False(t, hub.OriginAllowed("", false), "missing origin allowed for cookie clients")
+	require.True(t, hub.OriginAllowed("", true), "missing origin rejected for bearer clients")
 }
 
 // TestHubOriginAllowedMatchesHTTPOriginNormalization keeps browser
@@ -193,19 +158,13 @@ func TestHubOriginAllowedMatchesHTTPOriginNormalization(t *testing.T) {
 
 	for _, publicURL := range []string{"https://Proctor.Example:443/", "https://proctor.example", "HTTPS://PROCTOR.EXAMPLE"} {
 		hub, err := websocket.NewHub(lifecycleApplication{}, lifecycleLogger{}, publicURL, "node-a", nil, 15*time.Second)
-		if err != nil {
-			t.Fatalf("NewHub(%q) error = %v", publicURL, err)
-		}
+		require.NoError(t, err, "NewHub(%q) error", publicURL)
 		t.Cleanup(func() { _ = hub.Close() })
 		for _, origin := range []string{"https://proctor.example", "https://PROCTOR.example", "https://proctor.example:443"} {
-			if !hub.OriginAllowed(origin, false) {
-				t.Fatalf("public URL %q rejected browser origin %q", publicURL, origin)
-			}
+			require.True(t, hub.OriginAllowed(origin, false), "public URL %q rejected browser origin %q", publicURL, origin)
 		}
 		for _, origin := range []string{"http://proctor.example", "https://proctor.example:8443", "https://proctor.example/path", "null", " https://proctor.example"} {
-			if hub.OriginAllowed(origin, false) {
-				t.Fatalf("public URL %q allowed origin %q", publicURL, origin)
-			}
+			require.False(t, hub.OriginAllowed(origin, false), "public URL %q allowed origin %q", publicURL, origin)
 		}
 	}
 }
@@ -217,10 +176,6 @@ func TestHubStartRespectsCanceledContext(t *testing.T) {
 	t.Cleanup(func() { _ = hub.Close() })
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := hub.Start(ctx); !errors.Is(err, context.Canceled) {
-		t.Fatalf("Start(canceled) error = %v, want context.Canceled", err)
-	}
-	if hub.Started() {
-		t.Fatal("Start(canceled) started the hub")
-	}
+	require.ErrorIs(t, hub.Start(ctx), context.Canceled, "Start(canceled) error")
+	require.False(t, hub.Started(), "Start(canceled) started the hub")
 }

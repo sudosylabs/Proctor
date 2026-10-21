@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -42,15 +44,13 @@ func TestAuditActionsComeFromTheModelCatalog(t *testing.T) {
 			switch candidate := node.(type) {
 			case *ast.BasicLit:
 				if value, ok := stringLiteral(candidate); ok {
-					if _, isAction := declared[value]; isAction {
-						t.Errorf("%s spells audit action %q as a literal; use its model.Action constant", path, value)
-					}
+					_, isAction := declared[value]
+					assert.False(t, isAction, "%s spells audit action %q as a literal; use its model.Action constant", path, value)
 				}
 			case *ast.CallExpr:
 				if modelName != "" && len(candidate.Args) == 1 && isModelAction(candidate.Fun, modelName) {
-					if _, ok := candidate.Args[0].(*ast.BasicLit); ok {
-						t.Errorf("%s converts a literal to model.Action; declare it in the model audit action catalog", path)
-					}
+					_, ok := candidate.Args[0].(*ast.BasicLit)
+					assert.False(t, ok, "%s converts a literal to model.Action; declare it in the model audit action catalog", path)
 				}
 			case *ast.GenDecl:
 				if candidate.Tok != token.CONST || modelName == "" {
@@ -58,8 +58,8 @@ func TestAuditActionsComeFromTheModelCatalog(t *testing.T) {
 				}
 				for _, spec := range candidate.Specs {
 					value, ok := spec.(*ast.ValueSpec)
-					if ok && value.Type != nil && isModelAction(value.Type, modelName) {
-						t.Errorf("%s declares model.Action constant %s outside model", path, value.Names[0].Name)
+					if ok && value.Type != nil {
+						assert.False(t, isModelAction(value.Type, modelName))
 					}
 				}
 			case *ast.CompositeLit:
@@ -72,9 +72,8 @@ func TestAuditActionsComeFromTheModelCatalog(t *testing.T) {
 						continue
 					}
 					if key, ok := field.Key.(*ast.Ident); ok && key.Name == "Action" {
-						if _, literal := field.Value.(*ast.BasicLit); literal {
-							t.Errorf("%s writes a literal AuditEvent.Action; use a model.Action constant", path)
-						}
+						_, literal := field.Value.(*ast.BasicLit)
+						assert.False(t, literal, "%s writes a literal AuditEvent.Action; use a model.Action constant", path)
 					}
 				}
 			}
@@ -143,9 +142,8 @@ func TestProductionNeverCallsStoreSeedOperations(t *testing.T) {
 			if !ok || !strings.HasPrefix(selector.Sel.Name, "Seed") {
 				return true
 			}
-			if _, accessor := selector.X.(*ast.CallExpr); accessor {
-				t.Errorf("%s calls fixture-only Store operation %s", path, selector.Sel.Name)
-			}
+			_, accessor := selector.X.(*ast.CallExpr)
+			assert.False(t, accessor, "%s calls fixture-only Store operation %s", path, selector.Sel.Name)
 			return true
 		})
 	})

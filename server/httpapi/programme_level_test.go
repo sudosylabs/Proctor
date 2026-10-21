@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -62,16 +64,11 @@ func TestProgrammeLevelHTTPPreservesMissingProgrammeProblemField(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusNotFound {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusNotFound, response.Code, "status = %d: %s", response.Code, response.Body.String())
 	var problem Problem
-	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-		t.Fatal(err)
-	}
-	if problem.Code != "resource.not_found" || problem.Fields["resource"] != "programme" {
-		t.Fatalf("problem = %#v", problem)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &problem))
+	require.Equal(t, "resource.not_found", problem.Code)
+	require.Equal(t, "programme", problem.Fields["resource"])
 }
 
 func TestProgrammeLevelHTTPMapsDTOWithoutPermissionPreflight(t *testing.T) {
@@ -88,40 +85,27 @@ func TestProgrammeLevelHTTPMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusCreated {
-		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
-	}
-	if levels.createCommand.ProgrammeID != level.ProgrammeID || levels.createCommand.Name != level.Name {
-		t.Fatalf("create command = %#v", levels.createCommand)
-	}
+	require.Equal(t, http.StatusCreated, response.Code, "status = %d: %s", response.Code, response.Body.String())
+	require.Equal(t, level.ProgrammeID, levels.createCommand.ProgrammeID)
+	require.Equal(t, level.Name, levels.createCommand.Name)
 	var body programmeLevelResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body.ID != level.ID.String() || body.ProgrammeID != level.ProgrammeID.String() {
-		t.Fatalf("response = %#v", body)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	require.Equal(t, level.ID.String(), body.ID)
+	require.Equal(t, level.ProgrammeID.String(), body.ProgrammeID)
 	invalid := httptest.NewRequest(http.MethodPost, "/api/v1/programmes/"+level.ProgrammeID.String()+"/levels", strings.NewReader(`{"name":"year-1","display_name":"Year 1","unknown":true}`))
 	invalid.Header.Set("Authorization", "Bearer credential")
 	invalid.Header.Set("Content-Type", "application/json")
 	invalidResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(invalidResponse, invalid)
-	if invalidResponse.Code != http.StatusBadRequest {
-		t.Fatalf("invalid status = %d: %s", invalidResponse.Code, invalidResponse.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, invalidResponse.Code, "invalid status = %d: %s", invalidResponse.Code, invalidResponse.Body.String())
 }
 
 func TestProgrammeLevelPatchOptionalWireStates(t *testing.T) {
 	t.Parallel()
 	var body updateProgrammeLevelRequest
-	if err := json.Unmarshal([]byte(`{"name":null,"display_name":""}`), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body.Name.ValuePointer() != nil {
-		t.Fatal("explicit null must preserve v1 no-op semantics")
-	}
+	require.NoError(t, json.Unmarshal([]byte(`{"name":null,"display_name":""}`), &body))
+	require.Nil(t, body.Name.ValuePointer(), "explicit null must preserve v1 no-op semantics")
 	value := body.DisplayName.ValuePointer()
-	if value == nil || *value != "" {
-		t.Fatalf("display name = %#v", value)
-	}
+	require.NotNil(t, value)
+	require.Empty(t, *value)
 }

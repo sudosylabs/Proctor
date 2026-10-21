@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -74,9 +76,7 @@ func TestAccountSecurityResourcesRunThroughFocusedKernel(t *testing.T) {
 	}
 	applicationStub := &accountSecurityHTTPApplication{}
 	cookies, err := newBrowserCookies("http://localhost:8065")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	httpAPI := newFocusedResourceAPI(
 		t,
 		logger,
@@ -90,9 +90,8 @@ func TestAccountSecurityResourcesRunThroughFocusedKernel(t *testing.T) {
 	statusRequest.Header.Set("Authorization", "Bearer credential")
 	statusResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(statusResponse, statusRequest)
-	if statusResponse.Code != http.StatusOK || statusResponse.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("MFA status = %d, cache = %q: %s", statusResponse.Code, statusResponse.Header().Get("Cache-Control"), statusResponse.Body.String())
-	}
+	require.Equal(t, http.StatusOK, statusResponse.Code, "MFA status = %d, cache = %q: %s", statusResponse.Code, statusResponse.Header().Get("Cache-Control"), statusResponse.Body.String())
+	require.Equal(t, "no-store", statusResponse.Header().Get("Cache-Control"), "MFA status = %d, cache = %q: %s", statusResponse.Code, statusResponse.Header().Get("Cache-Control"), statusResponse.Body.String())
 
 	createRequest := httptest.NewRequest(
 		http.MethodPost,
@@ -103,19 +102,13 @@ func TestAccountSecurityResourcesRunThroughFocusedKernel(t *testing.T) {
 	createRequest.Header.Set("Content-Type", "application/json")
 	createResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(createResponse, createRequest)
-	if createResponse.Code != http.StatusCreated || createResponse.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("token create = %d, cache = %q: %s", createResponse.Code, createResponse.Header().Get("Cache-Control"), createResponse.Body.String())
-	}
-	if applicationStub.createToken.Description != "editor" || applicationStub.createToken.ExpiresAt != 123 {
-		t.Fatalf("token command = %#v", applicationStub.createToken)
-	}
+	require.Equal(t, http.StatusCreated, createResponse.Code, "token create = %d, cache = %q: %s", createResponse.Code, createResponse.Header().Get("Cache-Control"), createResponse.Body.String())
+	require.Equal(t, "no-store", createResponse.Header().Get("Cache-Control"), "token create = %d, cache = %q: %s", createResponse.Code, createResponse.Header().Get("Cache-Control"), createResponse.Body.String())
+	require.Equal(t, "editor", applicationStub.createToken.Description)
+	require.Equal(t, int64(123), applicationStub.createToken.ExpiresAt)
 	var created map[string]any
-	if err := json.Unmarshal(createResponse.Body.Bytes(), &created); err != nil {
-		t.Fatal(err)
-	}
-	if created["credential"] != "one-time-secret" {
-		t.Fatalf("credential response = %#v", created)
-	}
+	require.NoError(t, json.Unmarshal(createResponse.Body.Bytes(), &created))
+	require.Equal(t, "one-time-secret", created["credential"])
 
 	invalidRequest := httptest.NewRequest(
 		http.MethodPost,
@@ -126,15 +119,11 @@ func TestAccountSecurityResourcesRunThroughFocusedKernel(t *testing.T) {
 	invalidRequest.Header.Set("Content-Type", "application/json")
 	invalidResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(invalidResponse, invalidRequest)
-	if invalidResponse.Code != http.StatusBadRequest {
-		t.Fatalf("strict decode status = %d: %s", invalidResponse.Code, invalidResponse.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, invalidResponse.Code, "strict decode status = %d: %s", invalidResponse.Code, invalidResponse.Body.String())
 
 	missingCredential := httptest.NewRecorder()
 	httpAPI.ServeHTTP(missingCredential, httptest.NewRequest(http.MethodGet, "/api/v1/users/me/sessions", nil))
-	if missingCredential.Code != http.StatusUnauthorized {
-		t.Fatalf("missing credential status = %d: %s", missingCredential.Code, missingCredential.Body.String())
-	}
+	require.Equal(t, http.StatusUnauthorized, missingCredential.Code, "missing credential status = %d: %s", missingCredential.Code, missingCredential.Body.String())
 
 	weakPrincipal := principal
 	weakPrincipal.AuthenticationStrength = model.AuthenticationSingleFactor
@@ -149,9 +138,8 @@ func TestAccountSecurityResourcesRunThroughFocusedKernel(t *testing.T) {
 	weakRequest.Header.Set("Authorization", "Bearer credential")
 	weakResponse := httptest.NewRecorder()
 	weakAPI.ServeHTTP(weakResponse, weakRequest)
-	if weakResponse.Code != http.StatusForbidden || !strings.Contains(weakResponse.Body.String(), `"code":"authentication.strong_required"`) {
-		t.Fatalf("weak assurance response = %d: %s", weakResponse.Code, weakResponse.Body.String())
-	}
+	require.Equal(t, http.StatusForbidden, weakResponse.Code, "weak assurance response")
+	require.Contains(t, weakResponse.Body.String(), `"code":"authentication.strong_required"`, "weak assurance response")
 
 	stalePrincipal := principal
 	stalePrincipal.AuthenticatedAt = now.Add(-time.Hour)
@@ -166,7 +154,6 @@ func TestAccountSecurityResourcesRunThroughFocusedKernel(t *testing.T) {
 	staleRequest.Header.Set("Authorization", "Bearer credential")
 	staleResponse := httptest.NewRecorder()
 	staleAPI.ServeHTTP(staleResponse, staleRequest)
-	if staleResponse.Code != http.StatusForbidden || !strings.Contains(staleResponse.Body.String(), `"code":"authentication.reauthentication_required"`) {
-		t.Fatalf("stale assurance response = %d: %s", staleResponse.Code, staleResponse.Body.String())
-	}
+	require.Equal(t, http.StatusForbidden, staleResponse.Code, "stale assurance response")
+	require.Contains(t, staleResponse.Body.String(), `"code":"authentication.reauthentication_required"`, "stale assurance response")
 }

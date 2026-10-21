@@ -10,6 +10,8 @@ package model
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestSessionReauthenticationPreservesAssuranceHistory(t *testing.T) {
@@ -21,27 +23,19 @@ func TestSessionReauthenticationPreservesAssuranceHistory(t *testing.T) {
 	session.PrepareCreate(NewSessionID(), at)
 	session.UpdatedAt = at.Add(30 * time.Minute)
 	session.ReauthenticatedAt = OptionalTimeFrom(session.UpdatedAt)
-	if err := session.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, session.Validate())
 	principal := Principal{UserID: session.UserID, SessionID: session.ID, CredentialID: PrincipalCredentialID(NewID()),
 		CredentialType: CredentialSessionAccess, ClientType: SessionClientWeb, AuthenticationMethod: "password",
 		AuthenticationStrength: AuthenticationSingleFactor, AuthenticatedAt: at, ReauthenticatedAt: session.ReauthenticatedAt}
-	if principal.Validate() != nil || !principal.IsRecentlyAuthenticated(session.UpdatedAt, time.Minute) || principal.HasStrongAuthentication() {
-		t.Fatal("fresh primary proof did not supply recency without supplying MFA")
-	}
+	require.NoError(t, principal.Validate(), "fresh primary proof did not supply recency without supplying MFA")
+	require.True(t, principal.IsRecentlyAuthenticated(session.UpdatedAt, time.Minute), "fresh primary proof did not supply recency without supplying MFA")
+	require.False(t, principal.HasStrongAuthentication(), "fresh primary proof did not supply recency without supplying MFA")
 	principal.MFACompletedAt = OptionalTimeFrom(at.Add(31 * time.Minute))
 	principal.AuthenticationStrength = AuthenticationMultiFactor
-	if !principal.LastAuthenticationAt().Equal(principal.MFACompletedAt.Time) {
-		t.Fatal("later MFA proof lost")
-	}
-	if principal.IsRecentlyAuthenticated(at, time.Hour) {
-		t.Fatal("future proof granted recency")
-	}
+	require.True(t, principal.LastAuthenticationAt().Equal(principal.MFACompletedAt.Time), "later MFA proof lost")
+	require.False(t, principal.IsRecentlyAuthenticated(at, time.Hour), "future proof granted recency")
 	for _, invalid := range []time.Time{at.Add(-time.Microsecond), session.UpdatedAt.Add(time.Microsecond)} {
 		session.ReauthenticatedAt = OptionalTimeFrom(invalid)
-		if session.Validate() == nil {
-			t.Fatalf("invalid refresh accepted: %v", invalid)
-		}
+		require.Error(t, session.Validate(), "invalid refresh accepted: %v", invalid)
 	}
 }

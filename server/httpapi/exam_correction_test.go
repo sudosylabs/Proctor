@@ -20,6 +20,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -40,35 +43,28 @@ func TestExamSittingCorrectionHTTPStagesResourceContentAndReturnsOnlySafeAuthori
 	request.Header.Set("Idempotency-Key", "stage-correction-once")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusCreated {
-		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
-	}
-	if fake.stage.ExamID != fake.examID || fake.stage.SittingID != fake.sittingID || fake.stage.BaseRevisionID != fake.baseRevisionID ||
-		fake.stage.Target != app.ExamSittingCorrectionResourceAddition || fake.stage.ResourceID.IsValid() ||
-		fake.stage.IdempotencyKey != "stage-correction-once" || !bytes.Equal(fake.uploaded, raw) {
-		t.Fatalf("command=%#v uploaded=%q", fake.stage, fake.uploaded)
-	}
+	require.Equal(t, http.StatusCreated, response.Code, "status=%d body=%s", response.Code, response.Body.String())
+	require.Equal(t, fake.examID, fake.stage.ExamID, "command=%#v uploaded=%q", fake.stage, fake.uploaded)
+	require.Equal(t, fake.sittingID, fake.stage.SittingID, "command=%#v uploaded=%q", fake.stage, fake.uploaded)
+	require.Equal(t, fake.baseRevisionID, fake.stage.BaseRevisionID, "command=%#v uploaded=%q", fake.stage, fake.uploaded)
+	require.Equal(t, app.ExamSittingCorrectionResourceAddition, fake.stage.Target, "command=%#v uploaded=%q", fake.stage, fake.uploaded)
+	require.False(t, fake.stage.ResourceID.IsValid(), "command=%#v uploaded=%q", fake.stage, fake.uploaded)
+	require.Equal(t, "stage-correction-once", fake.stage.IdempotencyKey, "command=%#v uploaded=%q", fake.stage, fake.uploaded)
+	require.True(t, bytes.Equal(fake.uploaded, raw), "command=%#v uploaded=%q", fake.stage, fake.uploaded)
 	var payload map[string]json.RawMessage
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &payload))
 	wantKeys := []string{"stage_id", "resource_id", "media_type", "size", "sha256", "expires_at"}
-	if len(payload) != len(wantKeys) {
-		t.Fatalf("response fields=%v", payload)
-	}
+	require.Len(t, payload, len(wantKeys))
 	for _, key := range wantKeys {
-		if _, exists := payload[key]; !exists {
-			t.Errorf("response omitted %q", key)
-		}
+		_, exists := payload[key]
+		assert.True(t, exists, "response omitted %q", key)
 	}
 	for _, forbidden := range []string{"file_entry_id", "file_revision_id", "rendition_id", "upload_lease_id", "object_key", "path", "url"} {
-		if bytes.Contains(response.Body.Bytes(), []byte(forbidden)) {
-			t.Errorf("response exposed %q: %s", forbidden, response.Body.String())
-		}
+		assert.False(t, bytes.Contains(response.Body.Bytes(), []byte(forbidden)), "response exposed %q: %s", forbidden, response.Body.String())
 	}
-	if !bytes.Contains(response.Body.Bytes(), []byte(`"media_type":"text/plain"`)) || !bytes.Contains(response.Body.Bytes(), []byte(strings.Repeat("b", 64))) || bytes.Contains(response.Body.Bytes(), []byte(`"media_type":"text/markdown"`)) {
-		t.Fatalf("response did not use authoritative stage metadata: %s", response.Body.String())
-	}
+	require.True(t, bytes.Contains(response.Body.Bytes(), []byte(`"media_type":"text/plain"`)))
+	require.True(t, bytes.Contains(response.Body.Bytes(), []byte(strings.Repeat("b", 64))))
+	require.False(t, bytes.Contains(response.Body.Bytes(), []byte(`"media_type":"text/markdown"`)))
 }
 
 func TestExamSittingCorrectionHTTPStageMetadataIsStrictAndExplicitZeroIsValid(t *testing.T) {
@@ -96,9 +92,8 @@ func TestExamSittingCorrectionHTTPStageMetadataIsStrictAndExplicitZeroIsValid(t 
 			request.Header.Set("Idempotency-Key", "invalid-stage")
 			response := httptest.NewRecorder()
 			httpAPI.ServeHTTP(response, request)
-			if response.Code != http.StatusBadRequest || fake.stageCalls != 0 {
-				t.Fatalf("status=%d calls=%d body=%s", response.Code, fake.stageCalls, response.Body.String())
-			}
+			require.Equal(t, http.StatusBadRequest, response.Code, "status=%d calls=%d body=%s", response.Code, fake.stageCalls, response.Body.String())
+			require.Equal(t, 0, fake.stageCalls, "status=%d calls=%d body=%s", response.Code, fake.stageCalls, response.Body.String())
 		})
 	}
 
@@ -115,9 +110,10 @@ func TestExamSittingCorrectionHTTPStageMetadataIsStrictAndExplicitZeroIsValid(t 
 	request.Header.Set("Idempotency-Key", "empty-stage")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusCreated || fake.stageCalls != 1 || fake.stage.Size != 0 || len(fake.uploaded) != 0 {
-		t.Fatalf("status=%d calls=%d command=%#v body=%s", response.Code, fake.stageCalls, fake.stage, response.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, response.Code, "status=%d calls=%d command=%#v body=%s", response.Code, fake.stageCalls, fake.stage, response.Body.String())
+	require.Equal(t, 1, fake.stageCalls, "status=%d calls=%d command=%#v body=%s", response.Code, fake.stageCalls, fake.stage, response.Body.String())
+	require.Equal(t, int64(0), fake.stage.Size, "status=%d calls=%d command=%#v body=%s", response.Code, fake.stageCalls, fake.stage, response.Body.String())
+	require.Empty(t, fake.uploaded, "status=%d calls=%d command=%#v body=%s", response.Code, fake.stageCalls, fake.stage, response.Body.String())
 }
 
 func TestExamSittingCorrectionHTTPAppliesCompleteOrderedManifestAndKeepsReasonPrivate(t *testing.T) {
@@ -135,28 +131,31 @@ func TestExamSittingCorrectionHTTPAppliesCompleteOrderedManifestAndKeepsReasonPr
 	request.Header.Set("Idempotency-Key", "apply-correction-once")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusCreated {
-		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, response.Code, "status=%d body=%s", response.Code, response.Body.String())
 	command := fake.apply
-	if command.ExamID != fake.examID || command.SittingID != fake.sittingID || command.ExpectedSittingRevision != 7 ||
-		command.ExpectedCurrentRevisionID != fake.baseRevisionID || !command.Instructions.Present || command.Instructions.Markdown != "" ||
-		command.CandidateSummary != "A reference was corrected." || !command.AcknowledgementRequired ||
-		command.PrivateReason != "Fix misleading reference" || command.IdempotencyKey != "apply-correction-once" || len(command.Resources) != 2 ||
-		command.Resources[0].ResourceID != first || command.Resources[0].StageID != stageID || command.Resources[1].ResourceID != second || command.Resources[1].StageID.IsValid() {
-		t.Fatalf("command=%#v", command)
-	}
-	if bytes.Contains(response.Body.Bytes(), []byte("Fix misleading reference")) || bytes.Contains(response.Body.Bytes(), []byte("Corrected")) || bytes.Contains(response.Body.Bytes(), []byte("stage_id")) {
-		t.Fatalf("private input exposed: %s", response.Body.String())
-	}
+	require.Equal(t, fake.examID, command.ExamID)
+	require.Equal(t, fake.sittingID, command.SittingID)
+	require.Equal(t, int64(7), command.ExpectedSittingRevision)
+	require.Equal(t, fake.baseRevisionID, command.ExpectedCurrentRevisionID)
+	require.True(t, command.Instructions.Present)
+	require.Empty(t, command.Instructions.Markdown)
+	require.Equal(t, "A reference was corrected.", command.CandidateSummary)
+	require.True(t, command.AcknowledgementRequired)
+	require.Equal(t, "Fix misleading reference", command.PrivateReason)
+	require.Equal(t, "apply-correction-once", command.IdempotencyKey)
+	require.Len(t, command.Resources, 2)
+	require.Equal(t, first, command.Resources[0].ResourceID)
+	require.Equal(t, stageID, command.Resources[0].StageID)
+	require.Equal(t, second, command.Resources[1].ResourceID)
+	require.False(t, command.Resources[1].StageID.IsValid())
+	require.False(t, bytes.Contains(response.Body.Bytes(), []byte("Fix misleading reference")))
+	require.False(t, bytes.Contains(response.Body.Bytes(), []byte("Corrected")))
+	require.False(t, bytes.Contains(response.Body.Bytes(), []byte("stage_id")))
 	var payload map[string]json.RawMessage
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &payload))
 	wantKeys := []string{"exam_id", "exam_sitting_id", "previous_revision_id", "revision_id", "revision_number", "sitting_revision", "sitting_state", "effective_at", "affected_capabilities"}
-	if len(payload) != len(wantKeys) || string(payload["affected_capabilities"]) != `["browser","submission","workspace"]` {
-		t.Fatalf("response fields=%v", payload)
-	}
+	require.Len(t, payload, len(wantKeys))
+	require.Equal(t, `["browser","submission","workspace"]`, string(payload["affected_capabilities"]))
 }
 
 func TestExamSittingCorrectionHTTPRejectsPaddedPrivateReasonBeforeApplication(t *testing.T) {
@@ -171,9 +170,8 @@ func TestExamSittingCorrectionHTTPRejectsPaddedPrivateReasonBeforeApplication(t 
 	request.Header.Set("Idempotency-Key", "invalid-correction")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusBadRequest || fake.applyCalls != 0 {
-		t.Fatalf("status=%d calls=%d body=%s", response.Code, fake.applyCalls, response.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, response.Code, "status=%d calls=%d body=%s", response.Code, fake.applyCalls, response.Body.String())
+	require.Equal(t, 0, fake.applyCalls, "status=%d calls=%d body=%s", response.Code, fake.applyCalls, response.Body.String())
 }
 
 func TestExamSittingCorrectionHTTPOmittedInstructionsPreservesCurrentValue(t *testing.T) {
@@ -188,25 +186,23 @@ func TestExamSittingCorrectionHTTPOmittedInstructionsPreservesCurrentValue(t *te
 	request.Header.Set("Idempotency-Key", "resource-only-correction")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusCreated || fake.applyCalls != 1 || fake.apply.Instructions.Present || fake.apply.Instructions.Markdown != "" {
-		t.Fatalf("status=%d calls=%d command=%#v body=%s", response.Code, fake.applyCalls, fake.apply, response.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, response.Code, "status=%d calls=%d command=%#v body=%s", response.Code, fake.applyCalls, fake.apply, response.Body.String())
+	require.Equal(t, 1, fake.applyCalls, "status=%d calls=%d command=%#v body=%s", response.Code, fake.applyCalls, fake.apply, response.Body.String())
+	require.False(t, fake.apply.Instructions.Present, "status=%d calls=%d command=%#v body=%s", response.Code, fake.applyCalls, fake.apply, response.Body.String())
+	require.Empty(t, fake.apply.Instructions.Markdown, "status=%d calls=%d command=%#v body=%s", response.Code, fake.applyCalls, fake.apply, response.Body.String())
 }
 
 func TestApplyExamSittingCorrectionRequestIsClosedDuplicateFreeAndPresenceAware(t *testing.T) {
 	t.Parallel()
 	valid := `{"expected_sitting_revision":4,"expected_current_revision_id":"revision","instructions_markdown":"","candidate_summary":"A misleading reference was corrected.","affected_capabilities":["browser","submission","workspace"],"acknowledgement_required":true,"reason":"Correct a misleading reference","resources":[]}`
 	var body applyExamSittingCorrectionRequest
-	if err := json.Unmarshal([]byte(valid), &body); err != nil {
-		t.Fatalf("decode valid body: %v", err)
-	}
+	require.NoError(t, json.Unmarshal([]byte(valid), &body))
 	instructions := body.InstructionsMarkdown.ValuePointer()
-	if !body.InstructionsMarkdown.IsSet() || body.InstructionsMarkdown.IsNull() || instructions == nil || *instructions != "" {
-		t.Fatalf("instructions = %#v", body.InstructionsMarkdown)
-	}
-	if body.Resources == nil {
-		t.Fatal("explicit empty complete resource manifest became nil")
-	}
+	require.True(t, body.InstructionsMarkdown.IsSet())
+	require.False(t, body.InstructionsMarkdown.IsNull())
+	require.NotNil(t, instructions)
+	require.Empty(t, *instructions)
+	require.NotNil(t, body.Resources, "explicit empty complete resource manifest became nil")
 
 	for name, encoded := range map[string]string{
 		"omitted capability selection": strings.Replace(valid, `"affected_capabilities":["browser","submission","workspace"],`, ``, 1),
@@ -229,9 +225,7 @@ func TestApplyExamSittingCorrectionRequestIsClosedDuplicateFreeAndPresenceAware(
 	} {
 		t.Run(name, func(t *testing.T) {
 			var got applyExamSittingCorrectionRequest
-			if err := json.Unmarshal([]byte(encoded), &got); err == nil {
-				t.Fatalf("accepted %s", encoded)
-			}
+			require.Error(t, json.Unmarshal([]byte(encoded), &got), "accepted %s", encoded)
 		})
 	}
 }

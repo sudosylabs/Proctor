@@ -12,10 +12,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
@@ -86,16 +88,14 @@ type blockingStopCluster struct {
 func completeOwnedResources(t *testing.T, configuration *config.Store) OwnedResources {
 	t.Helper()
 	logger, err := logging.New()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	providers, err := externalauth.NewRegistry(
 		externalauthcas.NewFactory(),
 		externalauthoidc.NewFactory(),
 	)
 	if err != nil {
 		_ = logger.Shutdown()
-		t.Fatal(err)
+		require.NoError(t, err)
 	}
 	return OwnedResources{
 		Configuration:          configuration,
@@ -124,25 +124,19 @@ func TestServiceRequiresConstructedCapabilities(t *testing.T) {
 			config.NewMemoryStore(nil),
 			config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
 		)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		return configuration
 	}
 	newLogger := func(t *testing.T) *logging.Logger {
 		t.Helper()
 		logger, err := logging.New()
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		return logger
 	}
 	newProviders := func(t *testing.T) *externalauth.Registry {
 		t.Helper()
 		providers, err := externalauth.NewRegistry()
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		return providers
 	}
 
@@ -183,9 +177,9 @@ func TestServiceRequiresConstructedCapabilities(t *testing.T) {
 			if settings.Logger == nil {
 				t.Cleanup(func() { _ = logger.Shutdown() })
 			}
-			if _, err := acceptForTest(settings); err == nil || !strings.Contains(err.Error(), "required") {
-				t.Fatalf("New() error = %v, want required dependency failure", err)
-			}
+			_, err := acceptForTest(settings)
+			require.Error(t, err, "New() error")
+			require.Contains(t, err.Error(), "required", "New() error")
 		})
 	}
 }
@@ -196,40 +190,28 @@ func TestSMTPOutageDoesNotFailPlatformReadiness(t *testing.T) {
 		config.NewMemoryStore(nil),
 		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	resources := completeOwnedResources(t, configuration)
-	if err := resources.Logger.Shutdown(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, resources.Logger.Shutdown())
 	var output logging.Buffer
 	capture, err := logging.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := capture.Configure(logging.Config{
+	require.NoError(t, err)
+	require.NoError(t, capture.Configure(logging.Config{
 		MaxFieldBytes: 1024,
 		Targets: []logging.Target{{
 			Name: "test", Type: "console", Level: "info", Format: "json", Writer: &output,
 		}},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	}))
 	capture.LockConfiguration()
 	resources.Logger = capture
 	resources.Mailer = unavailableMailer{}
 	service, err := acceptForTest(resources)
-	if err != nil {
-		t.Fatalf("Accept() failed general readiness for SMTP outage: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = service.Close() })
-	if err = service.CheckDependencies(context.Background()); err != nil {
-		t.Fatalf("CheckDependencies() failed general readiness for SMTP outage: %v", err)
-	}
-	if err = service.Start(context.Background()); err != nil {
-		t.Fatalf("Start() failed because the optional SMTP test failed: %v", err)
-	}
+	err = service.CheckDependencies(context.Background())
+	require.NoError(t, err)
+	err = service.Start(context.Background())
+	require.NoError(t, err)
 	for _, message := range []string{
 		"database ready",
 		"application cache ready",
@@ -239,20 +221,12 @@ func TestSMTPOutageDoesNotFailPlatformReadiness(t *testing.T) {
 		"cluster transport started",
 		"mail connection test failed; mail delivery may be unavailable",
 	} {
-		if !strings.Contains(output.String(), message) {
-			t.Fatalf("startup log is missing %q: %s", message, output.String())
-		}
+		require.Contains(t, output.String(), message, "startup log is missing")
 	}
-	if !strings.Contains(output.String(), `"scope":"process_local"`) ||
-		!strings.Contains(output.String(), `"backend":"memory"`) {
-		t.Fatalf("startup cache selection is missing from logs: %s", output.String())
-	}
-	if strings.Contains(output.String(), "operator-secret-marker") {
-		t.Fatalf("startup log contains raw SMTP dialogue: %s", output.String())
-	}
-	if !strings.Contains(output.String(), `"reason":"connection_test_failed"`) {
-		t.Fatalf("startup log is missing the bounded SMTP failure reason: %s", output.String())
-	}
+	require.Contains(t, output.String(), `"scope":"process_local"`)
+	require.Contains(t, output.String(), `"backend":"memory"`)
+	require.NotContains(t, output.String(), "operator-secret-marker")
+	require.Contains(t, output.String(), `"reason":"connection_test_failed"`)
 }
 
 func TestAcceptOwnsResourcesBeforeRequiredValidation(t *testing.T) {
@@ -263,13 +237,9 @@ func TestAcceptOwnsResourcesBeforeRequiredValidation(t *testing.T) {
 		config.NewMemoryStore(nil),
 		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	logger, err := logging.New()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	persistence := &trackedStore{}
 	cache := &unhealthyCache{}
 	mailer := &trackedMailer{}
@@ -285,19 +255,17 @@ func TestAcceptOwnsResourcesBeforeRequiredValidation(t *testing.T) {
 		VFS:           memoryvfs.New(),
 		// Missing ExternalAuthentication deliberately fails required validation.
 	})
-	if service != nil || err == nil || !strings.Contains(err.Error(), "external authentication registry is required") {
-		t.Fatalf("Accept() = (%#v, %v), want required dependency failure", service, err)
-	}
-	if !persistence.closed.Load() || !cache.closed.Load() || !mailer.closed.Load() ||
-		!clusterTransport.stopped.Load() {
-		t.Fatal("Accept() did not close every supplied lifecycle resource")
-	}
-	if listenerID := configuration.AddListener(func(config.Config, config.Config) {}); listenerID != "" {
-		t.Fatalf("closed configuration accepted listener %q", listenerID)
-	}
-	if err := logger.Configure(logging.Config{}); err == nil || !strings.Contains(err.Error(), "closed") {
-		t.Fatalf("closed logger Configure() error = %v", err)
-	}
+	require.Nil(t, service, "Accept()")
+	require.Error(t, err, "Accept()")
+	require.Contains(t, err.Error(), "external authentication registry is required", "Accept()")
+	require.True(t, persistence.closed.Load(), "Accept() did not close every supplied lifecycle resource")
+	require.True(t, cache.closed.Load(), "Accept() did not close every supplied lifecycle resource")
+	require.True(t, mailer.closed.Load(), "Accept() did not close every supplied lifecycle resource")
+	require.True(t, clusterTransport.stopped.Load(), "Accept() did not close every supplied lifecycle resource")
+	require.Empty(t, configuration.AddListener(func(config.Config, config.Config) {}))
+	err = logger.Configure(logging.Config{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "closed")
 }
 
 func TestAcceptReturnsTheValidatedConstructionSnapshot(t *testing.T) {
@@ -308,29 +276,21 @@ func TestAcceptReturnsTheValidatedConstructionSnapshot(t *testing.T) {
 		config.NewMemoryStore(nil),
 		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	initial := configuration.Get()
 	initial.Server.PublicURL = "https://initial.example.test"
 	initial.Authentication.Bootstrap.DevelopmentMode = false
-	if _, _, err := configuration.Set(context.Background(), initial); err != nil {
-		t.Fatal(err)
-	}
+	_, _, err = configuration.Set(context.Background(), initial)
+	require.NoError(t, err)
 	resources := completeOwnedResources(t, configuration)
 	service, snapshot, err := Accept(context.Background(), resources)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = service.Close() })
 	updated := configuration.Get()
 	updated.Server.PublicURL = "https://updated.example.test"
-	if _, _, err := configuration.Set(context.Background(), updated); err != nil {
-		t.Fatal(err)
-	}
-	if got := snapshot.Server.PublicURL; got != "https://initial.example.test" {
-		t.Fatalf("snapshot public URL = %q, want initial value", got)
-	}
+	_, _, err = configuration.Set(context.Background(), updated)
+	require.NoError(t, err)
+	require.Equal(t, "https://initial.example.test", snapshot.Server.PublicURL, "snapshot public URL")
 }
 
 func TestAcceptClosesOwnedResourcesOnSchemaFailure(t *testing.T) {
@@ -340,21 +300,17 @@ func TestAcceptClosesOwnedResourcesOnSchemaFailure(t *testing.T) {
 	configuration, err := config.NewStore(
 		context.Background(), config.NewMemoryStore(nil), config.StoreOptions{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	resources := completeOwnedResources(t, configuration)
 	persistence := &trackedStore{validateErr: schemaErr}
 	clusterTransport := &trackedCluster{}
 	resources.Persistence = persistence
 	resources.Cluster = clusterTransport
 	service, _, err := Accept(context.Background(), resources)
-	if service != nil || !errors.Is(err, schemaErr) {
-		t.Fatalf("Accept(schema failure) = (%#v, %v), want wrapped %v", service, err, schemaErr)
-	}
-	if !persistence.closed.Load() || !clusterTransport.stopped.Load() {
-		t.Fatal("schema failure did not close accepted resources")
-	}
+	require.Nil(t, service, "Accept(schema failure)")
+	require.ErrorIs(t, err, schemaErr, "Accept(schema failure)")
+	require.True(t, persistence.closed.Load(), "schema failure did not close accepted resources")
+	require.True(t, clusterTransport.stopped.Load(), "schema failure did not close accepted resources")
 }
 
 func TestAcceptClosesOwnedResourcesOnProviderConfigurationFailure(t *testing.T) {
@@ -363,9 +319,7 @@ func TestAcceptClosesOwnedResourcesOnProviderConfigurationFailure(t *testing.T) 
 	configuration, err := config.NewStore(
 		context.Background(), config.NewMemoryStore(nil), config.StoreOptions{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	settings := configuration.Get()
 	settings.Authentication.External.Providers = []config.ExternalAuthenticationProvider{{
 		ID: "missing-factory", Type: config.ExternalAuthenticationTypeCAS,
@@ -376,24 +330,19 @@ func TestAcceptClosesOwnedResourcesOnProviderConfigurationFailure(t *testing.T) 
 		},
 		Claims: config.ExternalClaimMapping{Subject: "user"},
 	}}
-	if _, _, err := configuration.Set(context.Background(), settings); err != nil {
-		t.Fatal(err)
-	}
+	_, _, err = configuration.Set(context.Background(), settings)
+	require.NoError(t, err)
 	resources := completeOwnedResources(t, configuration)
 	providers, err := externalauth.NewRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	persistence := &trackedStore{}
 	resources.Persistence = persistence
 	resources.ExternalAuthentication = providers
 	service, _, err := Accept(context.Background(), resources)
-	if service != nil || err == nil || !strings.Contains(err.Error(), "unregistered type") {
-		t.Fatalf("Accept(provider failure) = (%#v, %v)", service, err)
-	}
-	if !persistence.closed.Load() {
-		t.Fatal("provider configuration failure did not close accepted Store")
-	}
+	require.Nil(t, service, "Accept(provider failure)")
+	require.Error(t, err, "Accept(provider failure)")
+	require.Contains(t, err.Error(), "unregistered type", "Accept(provider failure)")
+	require.True(t, persistence.closed.Load(), "provider configuration failure did not close accepted Store")
 }
 
 func TestAcceptRejectsClosedConfigurationListenerRegistration(t *testing.T) {
@@ -402,22 +351,16 @@ func TestAcceptRejectsClosedConfigurationListenerRegistration(t *testing.T) {
 	configuration, err := config.NewStore(
 		context.Background(), config.NewMemoryStore(nil), config.StoreOptions{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	resources := completeOwnedResources(t, configuration)
 	persistence := &trackedStore{}
 	resources.Persistence = persistence
-	if err := configuration.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, configuration.Close())
 	service, _, err := Accept(context.Background(), resources)
-	if service != nil || err == nil || !strings.Contains(err.Error(), "register dynamic configuration listener") {
-		t.Fatalf("Accept(closed configuration) = (%#v, %v), want listener failure", service, err)
-	}
-	if !persistence.closed.Load() {
-		t.Fatal("listener registration failure did not close accepted Store")
-	}
+	require.Nil(t, service, "Accept(closed configuration)")
+	require.Error(t, err, "Accept(closed configuration)")
+	require.Contains(t, err.Error(), "register dynamic configuration listener", "Accept(closed configuration)")
+	require.True(t, persistence.closed.Load(), "listener registration failure did not close accepted Store")
 }
 
 func (testStore) Institution() store.InstitutionStore   { return nil }
@@ -575,54 +518,37 @@ func TestServiceReconfiguresLoggerFromSharedConfiguration(t *testing.T) {
 		config.NewMemoryStore(nil),
 		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	initial := store.Get()
 	initial.Log.Targets = []config.LogTarget{{
 		Name: "file", Type: "file", Level: "info", Format: "json", File: firstPath,
 		QueueSize: 256, MaxSizeMB: 100,
 	}}
-	if _, _, err := store.Set(context.Background(), initial); err != nil {
-		t.Fatal(err)
-	}
+	_, _, err = store.Set(context.Background(), initial)
+	require.NoError(t, err)
 
 	resources := completeOwnedResources(t, store)
 	logger := resources.Logger
 	service, err := acceptForTest(resources)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = service.Close() })
 	logger.Info("first target")
-	if err := logger.Flush(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, logger.Flush())
 
 	updated := store.Get()
 	updated.Log.Targets[0].File = secondPath
-	if _, _, err := store.Set(context.Background(), updated); err != nil {
-		t.Fatal(err)
-	}
+	_, _, err = store.Set(context.Background(), updated)
+	require.NoError(t, err)
 	logger.Info("second target")
-	if err := logger.Flush(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, logger.Flush())
 
 	firstData, err := os.ReadFile(firstPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	secondData, err := os.ReadFile(secondPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(firstData), "first target") || strings.Contains(string(firstData), "second target") {
-		t.Fatalf("first target = %q", firstData)
-	}
-	if !strings.Contains(string(secondData), "second target") {
-		t.Fatalf("second target = %q", secondData)
-	}
+	require.NoError(t, err)
+	require.Contains(t, string(firstData), "first target")
+	require.NotContains(t, string(firstData), "second target")
+	require.Contains(t, string(secondData), "second target", "second target")
 }
 
 func TestServiceAtomicallyReconfiguresExternalProviders(t *testing.T) {
@@ -635,9 +561,7 @@ func TestServiceAtomicallyReconfiguresExternalProviders(t *testing.T) {
 			LookupEnv: func(string) (string, bool) { return "", false },
 		},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	initial := configuration.Get()
 	initial.Authentication.External.Providers =
 		[]config.ExternalAuthenticationProvider{{
@@ -651,34 +575,28 @@ func TestServiceAtomicallyReconfiguresExternalProviders(t *testing.T) {
 			},
 			Claims: config.ExternalClaimMapping{Subject: "user"},
 		}}
-	if _, _, err := configuration.Set(
+	_, _, err = configuration.Set(
 		context.Background(),
 		initial,
-	); err != nil {
-		t.Fatal(err)
-	}
+	)
+	require.NoError(t, err)
 	resources := completeOwnedResources(t, configuration)
 	providers := resources.ExternalAuthentication
 	service, err := acceptForTest(resources)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = service.Close() })
-	if descriptors := providers.Descriptors(); len(descriptors) != 1 || descriptors[0].ID != "campus-cas" {
-		t.Fatalf("initial external providers = %#v", descriptors)
-	}
+	descriptors := providers.Descriptors()
+	require.Len(t, descriptors, 1)
+	require.Equal(t, "campus-cas", descriptors[0].ID)
 
 	updated := configuration.Get()
 	updated.Authentication.External.Providers[0].Enabled = false
-	if _, _, err := configuration.Set(
+	_, _, err = configuration.Set(
 		context.Background(),
 		updated,
-	); err != nil {
-		t.Fatal(err)
-	}
-	if descriptors := providers.Descriptors(); len(descriptors) != 0 {
-		t.Fatalf("reconfigured external providers = %#v", descriptors)
-	}
+	)
+	require.NoError(t, err)
+	require.Empty(t, providers.Descriptors())
 }
 
 func TestServiceConstructionFailureClosesOwnedInfrastructure(t *testing.T) {
@@ -689,9 +607,7 @@ func TestServiceConstructionFailureClosesOwnedInfrastructure(t *testing.T) {
 		config.NewMemoryStore(nil),
 		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = configuration.Close() })
 
 	persistence := &trackedStore{}
@@ -699,13 +615,9 @@ func TestServiceConstructionFailureClosesOwnedInfrastructure(t *testing.T) {
 	mailer := &trackedMailer{}
 	cluster := &trackedCluster{}
 	logger, err := logging.New()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	providers, err := externalauth.NewRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	_, err = acceptForTest(OwnedResources{
 		Configuration:          configuration,
 		Logger:                 logger,
@@ -716,21 +628,12 @@ func TestServiceConstructionFailureClosesOwnedInfrastructure(t *testing.T) {
 		VFS:                    memoryvfs.New(),
 		ExternalAuthentication: providers,
 	})
-	if err == nil || !strings.Contains(err.Error(), "cache") {
-		t.Fatalf("New() error = %v", err)
-	}
-	if !persistence.closed.Load() {
-		t.Error("store was not closed after dependency failure")
-	}
-	if !cache.closed.Load() {
-		t.Error("cache was not closed after dependency failure")
-	}
-	if !mailer.closed.Load() {
-		t.Error("mailer was not closed after dependency failure")
-	}
-	if !cluster.stopped.Load() {
-		t.Error("cluster transport was not stopped after dependency failure")
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "cache")
+	assert.True(t, persistence.closed.Load(), "store was not closed after dependency failure")
+	assert.True(t, cache.closed.Load(), "cache was not closed after dependency failure")
+	assert.True(t, mailer.closed.Load(), "mailer was not closed after dependency failure")
+	assert.True(t, cluster.stopped.Load(), "cluster transport was not stopped after dependency failure")
 }
 
 func TestServiceConstructionFailurePreservesCleanupError(t *testing.T) {
@@ -741,17 +644,11 @@ func TestServiceConstructionFailurePreservesCleanupError(t *testing.T) {
 		config.NewMemoryStore(nil),
 		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	logger, err := logging.New()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	providers, err := externalauth.NewRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cache := &cleanupErrorCache{}
 	_, err = acceptForTest(OwnedResources{
 		Configuration:          configuration,
@@ -763,12 +660,8 @@ func TestServiceConstructionFailurePreservesCleanupError(t *testing.T) {
 		VFS:                    memoryvfs.New(),
 		ExternalAuthentication: providers,
 	})
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("New() error = %v, want dependency failure", err)
-	}
-	if !errors.Is(err, errCacheCleanup) {
-		t.Fatalf("New() error = %v, want cleanup failure", err)
-	}
+	require.ErrorIs(t, err, context.DeadlineExceeded, "New() error")
+	require.ErrorIs(t, err, errCacheCleanup, "New() error")
 }
 
 func TestServiceOwnsClusterLifecycle(t *testing.T) {
@@ -779,31 +672,17 @@ func TestServiceOwnsClusterLifecycle(t *testing.T) {
 		config.NewMemoryStore(nil),
 		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cluster := &trackedCluster{}
 	settings := completeOwnedResources(t, configuration)
 	settings.Cluster = cluster
 	service, err := acceptForTest(settings)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cluster.started.Load() {
-		t.Fatal("cluster transport started during construction before handlers can be registered")
-	}
-	if err := service.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if !cluster.started.Load() {
-		t.Fatal("platform did not start cluster transport")
-	}
-	if err := service.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if !cluster.stopped.Load() {
-		t.Fatal("platform did not stop cluster transport")
-	}
+	require.NoError(t, err)
+	require.False(t, cluster.started.Load(), "cluster transport started during construction before handlers can be registered")
+	require.NoError(t, service.Start(context.Background()))
+	require.True(t, cluster.started.Load(), "platform did not start cluster transport")
+	require.NoError(t, service.Close())
+	require.True(t, cluster.stopped.Load(), "platform did not stop cluster transport")
 }
 
 func TestServiceDoesNotClosePersistenceBeforeClusterStopReturns(t *testing.T) {
@@ -814,32 +693,22 @@ func TestServiceDoesNotClosePersistenceBeforeClusterStopReturns(t *testing.T) {
 		config.NewMemoryStore(nil),
 		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cluster := &blockingStopCluster{entered: make(chan struct{}), release: make(chan struct{})}
 	persistence := &trackedStore{}
 	settings := completeOwnedResources(t, configuration)
 	settings.Cluster = cluster
 	settings.Persistence = persistence
 	service, err := acceptForTest(settings)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	closed := make(chan error, 1)
 	go func() { closed <- service.Close() }()
 	<-cluster.entered
-	if persistence.closed.Load() {
-		t.Fatal("persistence closed while the owned cluster stop was still running")
-	}
+	require.False(t, persistence.closed.Load(), "persistence closed while the owned cluster stop was still running")
 	close(cluster.release)
-	if err := <-closed; err != nil {
-		t.Fatal(err)
-	}
-	if !persistence.closed.Load() {
-		t.Fatal("persistence remained open after cluster stop completed")
-	}
+	require.NoError(t, (<-closed))
+	require.True(t, persistence.closed.Load(), "persistence remained open after cluster stop completed")
 }
 
 var _ Cluster = (*trackedCluster)(nil)

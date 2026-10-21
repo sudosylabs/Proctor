@@ -11,6 +11,8 @@ import (
 	"encoding/base64"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func memberlistTestKey(fill byte) string {
@@ -29,20 +31,14 @@ func TestMemberlistKeyringValidationAndRedaction(t *testing.T) {
 	cfg.VFS.Backend = "s3"
 	cfg.VFS.S3.Endpoint = "127.0.0.1:9000"
 	cfg.VFS.S3.Bucket = "proctor"
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("valid keyring: %v", err)
-	}
+	require.NoError(t, cfg.Validate())
 
 	cloned := cfg.Clone()
 	cfg.Cluster.Memberlist.DecryptionKeys[0] = memberlistTestKey('c')
-	if cloned.Cluster.Memberlist.DecryptionKeys[0] != memberlistTestKey('b') {
-		t.Fatal("Clone aliased Memberlist decryption keys")
-	}
+	require.Equal(t, memberlistTestKey('b'), cloned.Cluster.Memberlist.DecryptionKeys[0], "Clone aliased Memberlist decryption keys")
 	redacted := cloned.Redacted()
-	if redacted.Cluster.Memberlist.EncryptionKey != "[redacted]" ||
-		redacted.Cluster.Memberlist.DecryptionKeys[0] != "[redacted]" {
-		t.Fatalf("redacted keyring = %#v", redacted.Cluster.Memberlist)
-	}
+	require.Equal(t, "[redacted]", redacted.Cluster.Memberlist.EncryptionKey)
+	require.Equal(t, "[redacted]", redacted.Cluster.Memberlist.DecryptionKeys[0])
 }
 
 func TestMemberlistKeyringRejectsDuplicatesAndExcessFallbacks(t *testing.T) {
@@ -53,9 +49,8 @@ func TestMemberlistKeyringRejectsDuplicatesAndExcessFallbacks(t *testing.T) {
 	cfg.Cluster.Memberlist.EncryptionKey = memberlistTestKey('a')
 	cfg.Cluster.Memberlist.DecryptionKeys = []string{memberlistTestKey('a')}
 	err := cfg.Validate()
-	if err == nil || !strings.Contains(err.Error(), "duplicate decoded keys") {
-		t.Fatalf("duplicate keyring error = %v", err)
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "duplicate decoded keys")
 
 	cfg.Cluster.Memberlist.DecryptionKeys = cfg.Cluster.Memberlist.DecryptionKeys[:0]
 	for index := range 9 {
@@ -65,7 +60,6 @@ func TestMemberlistKeyringRejectsDuplicatesAndExcessFallbacks(t *testing.T) {
 		)
 	}
 	err = cfg.Validate()
-	if err == nil || !strings.Contains(err.Error(), "at most 8 fallback keys") {
-		t.Fatalf("oversized keyring error = %v", err)
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "at most 8 fallback keys")
 }

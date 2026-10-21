@@ -10,11 +10,12 @@ package filecontent
 import (
 	"bytes"
 	"context"
-	"errors"
 	"io"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
@@ -25,30 +26,21 @@ func TestAttemptWorkspaceContentNonConditionalStageReplaysExactBytesAndRejectsMi
 	t.Parallel()
 	filesystem := &examResourceNonConditionalVFS{FileSystem: memoryvfs.New()}
 	content, err := New(filesystem, Policy{MaximumConcurrentOperations: 2}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	objectID := model.NewAttemptWorkspaceObjectID()
 	first, err := content.StageAttemptWorkspaceObject(context.Background(), objectID, strings.NewReader("same"), 4, "text/plain")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	replayed, err := content.StageAttemptWorkspaceObject(context.Background(), objectID, strings.NewReader("same"), 4, "text/plain")
-	if err != nil || *replayed != *first {
-		t.Fatalf("replay=%#v error=%v", replayed, err)
-	}
-	if _, err = content.StageAttemptWorkspaceObject(context.Background(), objectID, strings.NewReader("evil"), 4, "text/plain"); err == nil {
-		t.Fatal("mismatched retry overwrote an existing nonconditional object")
-	}
+	require.NoError(t, err, "replay=%#v error", replayed)
+	require.Equal(t, *first, *replayed, "replay=%#v error", replayed)
+	_, err = content.StageAttemptWorkspaceObject(context.Background(), objectID, strings.NewReader("evil"), 4, "text/plain")
+	require.Error(t, err, "mismatched retry overwrote an existing nonconditional object")
 	opened, err := content.OpenAttemptWorkspaceObject(context.Background(), objectID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	got, readErr := io.ReadAll(opened)
 	_ = opened.Close()
-	if readErr != nil || string(got) != "same" {
-		t.Fatalf("bytes=%q error=%v", got, readErr)
-	}
+	require.NoError(t, readErr, "bytes")
+	require.Equal(t, "same", string(got), "bytes")
 }
 
 func TestAttemptWorkspaceContentStreamsBoundedReadsAndLeavesNoSpool(t *testing.T) {
@@ -66,19 +58,15 @@ func TestAttemptWorkspaceContentStreamsBoundedReadsAndLeavesNoSpool(t *testing.T
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			content, err := New(test.filesystem, Policy{MaximumConcurrentOperations: 2}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			reader := &boundedExamResourceReader{remaining: 1 << 20, maximumRequest: 32 << 10}
 			_, err = content.StageAttemptWorkspaceObject(context.Background(), model.NewAttemptWorkspaceObjectID(), reader,
 				test.declared, "application/octet-stream")
-			if (err != nil) != test.wantError || reader.maximumObserved > 32<<10 {
-				t.Fatalf("error=%v maximum read=%d", err, reader.maximumObserved)
-			}
+			require.Equal(t, test.wantError, err != nil, "error=%v maximum read", err)
+			require.LessOrEqual(t, reader.maximumObserved, 32<<10, "error=%v maximum read", err)
 			entries, readErr := os.ReadDir(temp)
-			if readErr != nil || len(entries) != 0 {
-				t.Fatalf("temporary spools remain: %#v, %v", entries, readErr)
-			}
+			require.NoError(t, readErr, "temporary spools remain")
+			require.Empty(t, entries, "temporary spools remain")
 		})
 	}
 }
@@ -88,35 +76,24 @@ func TestAttemptWorkspaceContentStagesAndOpensOnlyTheExactOpaqueObject(t *testin
 		t.Run(backend.name, func(t *testing.T) {
 			filesystem := backend.open(t)
 			content, err := New(filesystem, Policy{MaximumConcurrentOperations: 2}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			objectID := model.AttemptWorkspaceObjectID("oooooooooooooooooooooooooo")
 			body := []byte("package main\n")
 			staged, err := content.StageAttemptWorkspaceObject(context.Background(), objectID, bytes.NewReader(body), int64(len(body)), "text/x-go")
-			if err != nil {
-				t.Fatalf("stage: %v", err)
-			}
-			if staged.SizeBytes != 13 || staged.MediaType != "text/x-go" ||
-				staged.SHA256 != "df1d036cbbf3df46e2045071e082245ece204c7f53ecf0a4e022bff9bb228f47" {
-				t.Fatalf("staged metadata = %#v", staged)
-			}
+			require.NoError(t, err)
+			require.Equal(t, int64(13), staged.SizeBytes)
+			require.Equal(t, "text/x-go", staged.MediaType)
+			require.Equal(t, "df1d036cbbf3df46e2045071e082245ece204c7f53ecf0a4e022bff9bb228f47", staged.SHA256)
 			opened, err := content.OpenAttemptWorkspaceObject(context.Background(), objectID)
-			if err != nil {
-				t.Fatalf("open: %v", err)
-			}
+			require.NoError(t, err)
 			got, readErr := io.ReadAll(opened)
 			_ = opened.Close()
-			if readErr != nil || !bytes.Equal(got, body) {
-				t.Fatalf("read = %q, %v", got, readErr)
-			}
+			require.NoError(t, readErr, "read = %q", got)
+			require.True(t, bytes.Equal(got, body), "read = %q", got)
 			const key = "exam-attempt-workspace/oo/oo/objects/oooooooooooooooooooooooooo"
-			if _, err = filesystem.Stat(context.Background(), key); err != nil {
-				t.Fatalf("opaque key missing: %v", err)
-			}
-			if strings.Contains(key, "main.go") {
-				t.Fatal("logical path leaked into object key")
-			}
+			_, err = filesystem.Stat(context.Background(), key)
+			require.NoError(t, err)
+			require.NotContains(t, key, "main.go", "logical path leaked into object key")
 		})
 	}
 }
@@ -125,36 +102,26 @@ func TestAttemptWorkspaceContentBoundsUploadsAndPreservesTheFirstObject(t *testi
 	for _, backend := range contentTestBackends() {
 		t.Run(backend.name, func(t *testing.T) {
 			content, err := New(backend.open(t), Policy{MaximumConcurrentOperations: 2}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			oversizeID := model.NewAttemptWorkspaceObjectID()
 			_, err = content.StageAttemptWorkspaceObject(context.Background(), oversizeID, strings.NewReader("x"),
 				model.AttemptWorkspaceMaximumFileBytes+1, "text/plain")
 			var invalid *AttemptWorkspaceInvalidContentError
-			if !errors.As(err, &invalid) {
-				t.Fatalf("oversize error = %T, %v", err, err)
-			}
-			if _, err = content.OpenAttemptWorkspaceObject(context.Background(), oversizeID); !IsNotFound(err) {
-				t.Fatalf("oversize object became visible: %v", err)
-			}
+			require.ErrorAs(t, err, &invalid, "oversize error")
+			_, err = content.OpenAttemptWorkspaceObject(context.Background(), oversizeID)
+			require.True(t, IsNotFound(err), "oversize object became visible")
 
 			objectID := model.NewAttemptWorkspaceObjectID()
-			if _, err = content.StageAttemptWorkspaceObject(context.Background(), objectID, strings.NewReader("one"), 3, "text/plain"); err != nil {
-				t.Fatal(err)
-			}
-			if _, err = content.StageAttemptWorkspaceObject(context.Background(), objectID, strings.NewReader("two"), 3, "text/plain"); err == nil {
-				t.Fatal("second stage overwrote an opaque object")
-			}
+			_, err = content.StageAttemptWorkspaceObject(context.Background(), objectID, strings.NewReader("one"), 3, "text/plain")
+			require.NoError(t, err)
+			_, err = content.StageAttemptWorkspaceObject(context.Background(), objectID, strings.NewReader("two"), 3, "text/plain")
+			require.Error(t, err, "second stage overwrote an opaque object")
 			opened, err := content.OpenAttemptWorkspaceObject(context.Background(), objectID)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			got, readErr := io.ReadAll(opened)
 			_ = opened.Close()
-			if readErr != nil || string(got) != "one" {
-				t.Fatalf("preserved bytes = %q, %v", got, readErr)
-			}
+			require.NoError(t, readErr, "preserved bytes")
+			require.Equal(t, "one", string(got), "preserved bytes")
 		})
 	}
 }
@@ -163,33 +130,25 @@ func TestAttemptWorkspaceContentRejectsSizeMismatchAndRemovesExactly(t *testing.
 	for _, backend := range contentTestBackends() {
 		t.Run(backend.name, func(t *testing.T) {
 			content, err := New(backend.open(t), Policy{MaximumConcurrentOperations: 2}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			mismatchID := model.NewAttemptWorkspaceObjectID()
 			_, err = content.StageAttemptWorkspaceObject(context.Background(), mismatchID, strings.NewReader("two"), 1, "text/plain")
 			var invalid *AttemptWorkspaceInvalidContentError
-			if !errors.As(err, &invalid) {
-				t.Fatalf("size mismatch error = %T, %v", err, err)
-			}
-			if _, err = content.OpenAttemptWorkspaceObject(context.Background(), mismatchID); !IsNotFound(err) {
-				t.Fatalf("mismatched object remained visible: %v", err)
-			}
+			require.ErrorAs(t, err, &invalid, "size mismatch error")
+			_, err = content.OpenAttemptWorkspaceObject(context.Background(), mismatchID)
+			require.True(t, IsNotFound(err), "mismatched object remained visible")
 
 			removedID, retainedID := model.NewAttemptWorkspaceObjectID(), model.NewAttemptWorkspaceObjectID()
 			for _, id := range []model.AttemptWorkspaceObjectID{removedID, retainedID} {
-				if _, err = content.StageAttemptWorkspaceObject(context.Background(), id, strings.NewReader("x"), 1, "text/plain"); err != nil {
-					t.Fatal(err)
-				}
+				_, err = content.StageAttemptWorkspaceObject(context.Background(), id, strings.NewReader("x"), 1, "text/plain")
+				require.NoError(t, err)
 			}
-			if err = content.RemoveAttemptWorkspaceObject(context.Background(), removedID); err != nil {
-				t.Fatal(err)
-			}
-			if err = content.RemoveAttemptWorkspaceObject(context.Background(), removedID); err != nil {
-				t.Fatalf("repeat remove: %v", err)
-			}
+			err = content.RemoveAttemptWorkspaceObject(context.Background(), removedID)
+			require.NoError(t, err)
+			err = content.RemoveAttemptWorkspaceObject(context.Background(), removedID)
+			require.NoError(t, err)
 			if opened, openErr := content.OpenAttemptWorkspaceObject(context.Background(), retainedID); openErr != nil {
-				t.Fatalf("retained object: %v", openErr)
+				require.NoError(t, openErr, "retained object")
 			} else {
 				_ = opened.Close()
 			}
@@ -226,21 +185,13 @@ func TestAttemptWorkspaceContentNeverSpoolsCandidateBytesToLocalDisk(t *testing.
 		}
 		observer := &tempDirectoryObserverVFS{FileSystem: filesystem, directory: temp}
 		content, err := New(observer, Policy{MaximumConcurrentOperations: 2}, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		answer := strings.Repeat("candidate answer\n", 4096)
 		staged, err := content.StageAttemptWorkspaceObject(context.Background(), model.NewAttemptWorkspaceObjectID(),
 			strings.NewReader(answer), int64(len(answer)), "text/plain")
-		if err != nil {
-			t.Fatalf("conditional=%t: %v", conditional, err)
-		}
-		if staged.SizeBytes != int64(len(answer)) {
-			t.Fatalf("conditional=%t: staged = %#v", conditional, staged)
-		}
-		if len(observer.observed) != 0 {
-			t.Fatalf("conditional=%t: candidate bytes were spooled locally during the write: %v", conditional, observer.observed)
-		}
+		require.NoError(t, err, "conditional=%t", conditional)
+		require.Equal(t, int64(len(answer)), staged.SizeBytes, "conditional=%t: staged = %#v", conditional, staged)
+		require.Empty(t, observer.observed, "conditional=%t: candidate bytes were spooled locally during the write", conditional)
 	}
 }
 
@@ -248,18 +199,13 @@ func TestAttemptWorkspaceContentRejectsShortBodyWithoutVisibleObject(t *testing.
 	for _, backend := range contentTestBackends() {
 		t.Run(backend.name, func(t *testing.T) {
 			content, err := New(backend.open(t), Policy{MaximumConcurrentOperations: 2}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			objectID := model.NewAttemptWorkspaceObjectID()
 			_, err = content.StageAttemptWorkspaceObject(context.Background(), objectID, strings.NewReader("ab"), 3, "text/plain")
 			var invalid *AttemptWorkspaceInvalidContentError
-			if !errors.As(err, &invalid) {
-				t.Fatalf("short body error = %T, %v", err, err)
-			}
-			if _, err = content.OpenAttemptWorkspaceObject(context.Background(), objectID); !IsNotFound(err) {
-				t.Fatalf("short object became visible: %v", err)
-			}
+			require.ErrorAs(t, err, &invalid, "short body error")
+			_, err = content.OpenAttemptWorkspaceObject(context.Background(), objectID)
+			require.True(t, IsNotFound(err), "short object became visible")
 		})
 	}
 }

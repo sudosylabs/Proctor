@@ -13,15 +13,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestBrowserCookiesAreBoundedSecureAndCSRFSigned(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	cookies, err := newBrowserCookies("https://proctor.example.edu")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cookies.now = func() time.Time { return now }
 	tokens := &model.AuthenticationTokens{
 		AccessToken: "access-secret", RefreshToken: "refresh-secret",
@@ -31,45 +31,34 @@ func TestBrowserCookiesAreBoundedSecureAndCSRFSigned(t *testing.T) {
 	response := httptest.NewRecorder()
 	cookies.attach(response, tokens)
 	attached := response.Result().Cookies()
-	if len(attached) != 4 {
-		t.Fatalf("cookies = %#v", attached)
-	}
+	require.Len(t, attached, 4)
 	byName := make(map[string]*http.Cookie, len(attached))
 	for _, cookie := range attached {
 		byName[cookie.Name] = cookie
-		if !cookie.Secure || cookie.SameSite != http.SameSiteLaxMode ||
-			cookie.MaxAge <= 0 {
-			t.Fatalf("unsafe browser cookie = %#v", cookie)
-		}
+		require.True(t, cookie.Secure)
+		require.Equal(t, http.SameSiteLaxMode, cookie.SameSite)
+		require.Positive(t, cookie.MaxAge)
 	}
-	if !byName[BrowserAccessCookieName].HttpOnly ||
-		byName[BrowserAccessCookieName].Path != "/" ||
-		!byName[BrowserRefreshCookieName].HttpOnly ||
-		byName[BrowserRefreshCookieName].Path != model.APIURLSuffix+"/auth/refresh" ||
-		!byName[BrowserCSRFBindingCookieName].HttpOnly ||
-		byName[BrowserCSRFCookieName].HttpOnly {
-		t.Fatalf("cookie contracts = %#v", byName)
-	}
+	require.True(t, byName[BrowserAccessCookieName].HttpOnly)
+	require.Equal(t, "/", byName[BrowserAccessCookieName].Path)
+	require.True(t, byName[BrowserRefreshCookieName].HttpOnly)
+	require.Equal(t, model.APIURLSuffix+"/auth/refresh", byName[BrowserRefreshCookieName].Path)
+	require.True(t, byName[BrowserCSRFBindingCookieName].HttpOnly)
+	require.False(t, byName[BrowserCSRFCookieName].HttpOnly)
 
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/roles", nil)
 	for _, cookie := range attached {
 		request.AddCookie(cookie)
 	}
 	request.Header.Set(BrowserCSRFHeader, byName[BrowserCSRFCookieName].Value)
-	if appErr := cookies.verifyCSRF(request); appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, cookies.verifyCSRF(request))
 	request.Header.Set(BrowserCSRFHeader, "tampered")
-	if appErr := cookies.verifyCSRF(request); applicationErrorCode(appErr) != "authentication.csrf.invalid" {
-		t.Fatalf("tampered CSRF error = %v", appErr)
-	}
+	require.Equal(t, "authentication.csrf.invalid", applicationErrorCode(cookies.verifyCSRF(request)), "tampered CSRF error")
 
 	clearedResponse := httptest.NewRecorder()
 	cookies.clear(clearedResponse)
 	for _, cookie := range clearedResponse.Result().Cookies() {
-		if cookie.MaxAge >= 0 {
-			t.Fatalf("cookie was not expired = %#v", cookie)
-		}
+		require.Negative(t, cookie.MaxAge)
 	}
 }
 
@@ -77,14 +66,12 @@ func TestRequestCredentialRejectsAmbiguousSourcesAndDuplicateCookies(t *testing.
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/users/me", nil)
 	request.Header.Set("Authorization", "Bearer header-token")
 	request.AddCookie(&http.Cookie{Name: BrowserAccessCookieName, Value: "cookie-token"})
-	if _, appErr := requestAccessCredential(request); applicationErrorCode(appErr) != "authentication.credential_ambiguous" {
-		t.Fatalf("header and cookie error = %v", appErr)
-	}
+	_, appErr := requestAccessCredential(request)
+	require.Equal(t, "authentication.credential_ambiguous", applicationErrorCode(appErr), "header and cookie error")
 
 	request = httptest.NewRequest(http.MethodGet, "/api/v1/users/me", nil)
 	request.AddCookie(&http.Cookie{Name: BrowserAccessCookieName, Value: "first"})
 	request.AddCookie(&http.Cookie{Name: BrowserAccessCookieName, Value: "second"})
-	if _, appErr := requestAccessCredential(request); applicationErrorCode(appErr) != "authentication.credential_ambiguous" {
-		t.Fatalf("duplicate cookie error = %v", appErr)
-	}
+	_, appErr = requestAccessCredential(request)
+	require.Equal(t, "authentication.credential_ambiguous", applicationErrorCode(appErr), "duplicate cookie error")
 }

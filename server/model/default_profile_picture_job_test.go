@@ -10,19 +10,18 @@ package model
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestDefaultProfilePictureCommandIsVersionedTypedAndStrict(t *testing.T) {
 	t.Parallel()
 	userID := NewUserID()
 	document, err := EncodeDefaultProfilePictureCommand(DefaultProfilePictureCommandV1{UserID: userID})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	decoded, err := DecodeDefaultProfilePictureCommand(1, document)
-	if err != nil || decoded.UserID != userID {
-		t.Fatalf("DecodeDefaultProfilePictureCommand() = %#v, %v", decoded, err)
-	}
+	require.NoError(t, err, "DecodeDefaultProfilePictureCommand() = %#v", decoded)
+	require.Equal(t, userID, decoded.UserID, "DecodeDefaultProfilePictureCommand() = %#v", decoded)
 
 	tests := []struct {
 		name     string
@@ -37,9 +36,8 @@ func TestDefaultProfilePictureCommandIsVersionedTypedAndStrict(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := DecodeDefaultProfilePictureCommand(test.version, test.document); err == nil {
-				t.Fatal("DecodeDefaultProfilePictureCommand() accepted invalid input")
-			}
+			_, err := DecodeDefaultProfilePictureCommand(test.version, test.document)
+			require.Error(t, err, "DecodeDefaultProfilePictureCommand() accepted invalid input")
 		})
 	}
 }

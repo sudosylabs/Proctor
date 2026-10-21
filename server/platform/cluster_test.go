@@ -10,17 +10,17 @@ package platform
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/cluster"
 )
 
 func TestClusterErrorsAreSiblingSentinels(t *testing.T) {
 	t.Parallel()
 
-	if ErrClusterStopped != cluster.ErrStopped ||
-		ErrClusterNotStarted != cluster.ErrNotStarted ||
-		ErrClusterHandlerExists != cluster.ErrHandlerExists ||
-		ErrClusterNodeUnavailable != cluster.ErrNodeUnavailable ||
-		ErrClusterNodeIDInUse != cluster.ErrNodeIDInUse {
-		t.Fatal("platform cluster errors drifted from cluster package sentinels")
-	}
+	require.Equal(t, cluster.ErrStopped, ErrClusterStopped, "platform cluster errors drifted from cluster package sentinels")
+	require.Equal(t, cluster.ErrNotStarted, ErrClusterNotStarted, "platform cluster errors drifted from cluster package sentinels")
+	require.Equal(t, cluster.ErrHandlerExists, ErrClusterHandlerExists, "platform cluster errors drifted from cluster package sentinels")
+	require.Equal(t, cluster.ErrNodeUnavailable, ErrClusterNodeUnavailable, "platform cluster errors drifted from cluster package sentinels")
+	require.Equal(t, cluster.ErrNodeIDInUse, ErrClusterNodeIDInUse, "platform cluster errors drifted from cluster package sentinels")
 }

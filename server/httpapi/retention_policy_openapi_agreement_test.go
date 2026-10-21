@@ -12,6 +12,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -67,34 +69,29 @@ func TestRetentionPolicyOpenAPIAgreesWithRuntime(t *testing.T) {
 		},
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(
+	require.NoError(t, runtimeAPI.collectResources(
 		model.APIURLSuffix,
 		retentionPolicyResource(nil),
-	); err != nil {
-		t.Fatal(err)
-	}
+	))
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 
 	document := readOpenAPIDocument(t)
-	if document.Components.Responses["RetentionPolicyOK"].Headers["Cache-Control"].Ref != "#/components/headers/PrivateNoStore" {
-		t.Fatal("RetentionPolicyOK must require private no-store")
-	}
+	require.Equal(t, "#/components/headers/PrivateNoStore", document.Components.Responses["RetentionPolicyOK"].Headers["Cache-Control"].Ref, "RetentionPolicyOK must require private no-store")
 	for _, name := range []string{"RetentionPolicyRequest", "RetentionPolicyResponse"} {
 		for _, field := range []string{"submission_retention_days", "integrity_retention_days", "browser_activity_retention_days", "security_operational_retention_days", "audit_retention_days", "export_retention_days", "deletion_grace_days"} {
 			var bounds struct {
 				Minimum *int `json:"minimum"`
 				Maximum *int `json:"maximum"`
 			}
-			if err := json.Unmarshal(document.Components.Schemas[name].Properties[field], &bounds); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, json.Unmarshal(document.Components.Schemas[name].Properties[field], &bounds))
 			maximum := 36500
 			if field == "export_retention_days" {
 				maximum = 7
 			}
-			if bounds.Minimum == nil || *bounds.Minimum != 0 || bounds.Maximum == nil || *bounds.Maximum != maximum {
-				t.Fatalf("%s.%s must accept 0 through %d", name, field, maximum)
-			}
+			require.NotNil(t, bounds.Minimum, "%s.%s must accept 0 through", name, field)
+			require.Equal(t, 0, *bounds.Minimum, "%s.%s must accept 0 through", name, field)
+			require.NotNil(t, bounds.Maximum, "%s.%s must accept 0 through", name, field)
+			require.Equal(t, maximum, *bounds.Maximum, "%s.%s must accept 0 through", name, field)
 		}
 	}
 }
