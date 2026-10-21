@@ -5325,3 +5325,69 @@ CREATE INDEX external_login_states_session_id_idx
 CREATE INDEX external_login_states_session_credential_id_idx
     ON external_login_states (session_credential_id) WHERE session_credential_id IS NOT NULL;
 CREATE INDEX exam_attempt_security_owners_session_id_idx ON exam_attempt_security_owners (session_id);
+
+-- The referential probe of a parent update or delete filters on the referencing
+-- columns alone, so it cannot use an index whose predicate names other
+-- columns (such as archived_at IS NULL). These keys serve that probe.
+CREATE INDEX academic_periods_academic_unit_id_fkey_idx
+    ON academic_periods (academic_unit_id) WHERE academic_unit_id IS NOT NULL;
+CREATE INDEX academic_periods_institution_id_fkey_idx
+    ON academic_periods (institution_id) WHERE institution_id IS NOT NULL;
+CREATE INDEX academic_unit_members_academic_unit_id_fkey_idx
+    ON academic_unit_members (academic_unit_id);
+CREATE INDEX academic_unit_members_user_id_fkey_idx
+    ON academic_unit_members (user_id);
+CREATE INDEX academic_units_institution_id_fkey_idx
+    ON academic_units (institution_id);
+CREATE INDEX academic_units_parent_id_fkey_idx
+    ON academic_units (parent_id) WHERE parent_id IS NOT NULL;
+CREATE INDEX affiliations_user_id_fkey_idx
+    ON affiliations (user_id);
+CREATE INDEX class_members_user_id_fkey_idx
+    ON class_members (user_id);
+CREATE INDEX classes_academic_period_id_fkey_idx
+    ON classes (academic_period_id);
+CREATE INDEX classes_programme_level_id_fkey_idx
+    ON classes (programme_level_id);
+CREATE INDEX exam_attempt_participations_session_id_fkey_idx
+    ON exam_attempt_participations (session_id);
+CREATE INDEX external_identities_user_id_fkey_idx
+    ON external_identities (user_id);
+CREATE INDEX mail_deliveries_occurrence_id_fkey_idx
+    ON mail_deliveries (occurrence_id);
+CREATE INDEX mfa_credentials_user_id_fkey_idx
+    ON mfa_credentials (user_id);
+CREATE INDEX mfa_recovery_codes_user_id_fkey_idx
+    ON mfa_recovery_codes (user_id);
+CREATE INDEX onboarding_imports_source_class_id_fkey_idx
+    ON onboarding_imports (source_class_id) WHERE source_class_id IS NOT NULL;
+CREATE INDEX password_credentials_user_id_fkey_idx
+    ON password_credentials (user_id);
+CREATE INDEX personal_access_tokens_user_id_fkey_idx
+    ON personal_access_tokens (user_id);
+CREATE INDEX programme_levels_programme_id_fkey_idx
+    ON programme_levels (programme_id);
+CREATE INDEX programmes_academic_unit_id_fkey_idx
+    ON programmes (academic_unit_id);
+CREATE INDEX retention_holds_exam_id_exam_sitting_id_fkey_idx
+    ON retention_holds (exam_id, exam_sitting_id) WHERE exam_sitting_id IS NOT NULL;
+CREATE INDEX retention_retirements_exam_sitting_id_fkey_idx
+    ON retention_retirements (exam_sitting_id);
+CREATE INDEX retention_retirements_submission_id_fkey_idx
+    ON retention_retirements (submission_id);
+CREATE INDEX role_bindings_role_id_fkey_idx
+    ON role_bindings (role_id);
+CREATE INDEX role_bindings_user_id_fkey_idx
+    ON role_bindings (user_id);
+CREATE INDEX sessions_external_identity_id_fkey_idx
+    ON sessions (external_identity_id) WHERE external_identity_id IS NOT NULL;
+CREATE INDEX sessions_user_id_fkey_idx
+    ON sessions (user_id);
+CREATE INDEX user_tokens_user_id_fkey_idx
+    ON user_tokens (user_id);
+CREATE INDEX exam_attempt_suspensions_exam_attempt_id_fkey_idx
+    ON exam_attempt_suspensions (exam_attempt_id);
+CREATE INDEX exam_revision_starter_workspace_entries_exam_id_fkey_idx
+    ON exam_revision_starter_workspace_entries (exam_id);
+CREATE INDEX integrity_evidence_exam_attempt_id_fkey_idx
+    ON integrity_evidence (exam_attempt_id);

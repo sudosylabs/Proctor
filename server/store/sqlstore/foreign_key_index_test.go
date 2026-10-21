@@ -29,8 +29,8 @@ import (
 // index. A foreign key that deliberately has no such index is listed in
 // unindexedForeignKeys with its reason, or in prefixServedForeignKeys with the
 // column that leads the index serving it through a selective subset of its
-// columns. Partial-index
-// predicates are not judged here.
+// columns. A partial index serves only when its predicate is implied by the
+// referencing columns, because the RI probe filters on nothing else.
 func TestBaselineForeignKeysHaveLeadingIndexes(t *testing.T) {
 	t.Parallel()
 
@@ -67,6 +67,8 @@ CREATE TABLE children (
     prefix_name text,
     stale_id varchar(26),
     wrong_prefix_id varchar(26) REFERENCES parents(id),
+    archived_parent_id varchar(26) REFERENCES parents(id),
+    archived_at timestamptz,
     FOREIGN KEY (pair_name, pair_id) REFERENCES parents(name, id),
     CONSTRAINT children_prefix_fkey FOREIGN KEY (prefix_parent_id, prefix_name) REFERENCES parents(id, name)
 );
@@ -75,6 +77,7 @@ CREATE UNIQUE INDEX children_pair_key ON children USING btree (pair_id, pair_nam
 CREATE INDEX children_gin_parent_id_idx ON children USING gin (gin_parent_id gin_trgm_ops);
 CREATE INDEX children_expression_parent_id_idx ON children (lower(expression_parent_id), expression_parent_id);
 CREATE INDEX children_prefix_idx ON children (prefix_parent_id, id);
+CREATE INDEX children_archived_parent_id_idx ON children (archived_parent_id) WHERE archived_at IS NULL;
 CREATE FUNCTION children_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     ALTER TABLE children ADD CONSTRAINT not_parsed FOREIGN KEY (id) REFERENCES parents(id);
@@ -98,6 +101,7 @@ ALTER TABLE parents ADD CONSTRAINT parents_self_fkey FOREIGN KEY (name, id) REFE
 		},
 	)
 	expected := []string{
+		"children(archived_parent_id) references parents and has no btree index led by exactly its columns",
 		"children(expression_parent_id) references parents and has no btree index led by exactly its columns",
 		"children(gin_parent_id) references parents and has no btree index led by exactly its columns",
 		"unindexedForeignKeys lists children(indexed_parent_id), which is now served by an index; remove the entry",
@@ -128,6 +132,8 @@ type schemaIndex struct {
 	table   string
 	method  string
 	columns []string // "" marks an expression, which ends the usable prefix
+	// predicate holds the tokens of a partial index's WHERE clause.
+	predicate []string
 }
 
 type schemaKeys struct {
@@ -143,7 +149,7 @@ func foreignKeyIndexViolations(schema schemaKeys, unindexed, prefixServed map[fo
 		columns := strings.Split(key.columns, ",")
 		covered := false
 		for _, index := range schema.indexes {
-			if index.table == key.table && index.method == "btree" && leadsWithExactly(index.columns, columns) {
+			if index.table == key.table && index.method == "btree" && leadsWithExactly(index.columns, columns) && servesForeignKeyProbe(index, columns) {
 				covered = true
 				break
 			}
@@ -175,7 +181,8 @@ func foreignKeyIndexViolations(schema schemaKeys, unindexed, prefixServed map[fo
 			continue
 		}
 		leads := slices.ContainsFunc(schema.indexes, func(index schemaIndex) bool {
-			return index.table == key.table && index.method == "btree" && len(index.columns) > 0 && index.columns[0] == leading
+			return index.table == key.table && index.method == "btree" && len(index.columns) > 0 && index.columns[0] == leading &&
+				servesForeignKeyProbe(index, strings.Split(key.columns, ","))
 		})
 		if !leads {
 			stale = append(stale, fmt.Sprintf("prefixServedForeignKeys lists %s as served by an index led by %s, and no btree index leads with it", key, leading))
@@ -342,15 +349,40 @@ func parseCreateIndex(schema *schemaKeys, statement []string) error {
 	if len(statement) > 1 && statement[0] == "using" {
 		index.method, statement = statement[1], statement[2:]
 	}
-	elements, _, err := parenthesized(statement)
+	elements, rest, err := parenthesized(statement)
 	if err != nil {
 		return err
 	}
 	for _, element := range splitSQL(elements, ",") {
 		index.columns = append(index.columns, indexColumn(element))
 	}
+	for i, token := range rest {
+		if token == "where" {
+			index.predicate = rest[i+1:]
+			break
+		}
+	}
 	schema.indexes = append(schema.indexes, index)
 	return nil
+}
+
+// servesForeignKeyProbe reports whether PostgreSQL can use index for the
+// referential probe of a foreign key on columns. The probe filters only on the
+// referencing columns, so a partial index qualifies only when its predicate is
+// implied by them: a conjunction of "<column> IS NOT NULL" on those columns.
+func servesForeignKeyProbe(index schemaIndex, columns []string) bool {
+	if len(index.predicate) == 0 {
+		return true
+	}
+	for _, term := range splitSQL(index.predicate, "and") {
+		for len(term) > 2 && term[0] == "(" && term[len(term)-1] == ")" {
+			term = term[1 : len(term)-1]
+		}
+		if len(term) != 4 || term[1] != "is" || term[2] != "not" || term[3] != "null" || !slices.Contains(columns, term[0]) {
+			return false
+		}
+	}
+	return true
 }
 
 func parseAlterTable(schema *schemaKeys, statement []string) error {
