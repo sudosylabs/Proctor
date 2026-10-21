@@ -156,13 +156,21 @@ held until synchronous processing returns, even when the caller cancels; a
 request cancellation cannot stop an Argon or codec call already in progress.
 
 Runtime reconfiguration is capability-specific. `SIGHUP` (systemd
-`ExecReload`) makes the serving node call `config.Store.Reload`: a source that
-fails decoding or validation is logged and the running configuration stays in
-force; a valid one notifies listeners. The same signal reloads static TLS
-certificate files. Logging and the external provider registry reconfigure
-dynamically; listener addresses, HTTP limits,
-cluster backend and node identity require restart. Structural validation and
-external connectivity diagnostics remain separate.
+`ExecReload`) makes the serving node call `config.Store.Reload`, and the same
+signal reloads static TLS certificate files. `proctor serve` installs the
+handler before construction, so a `SIGHUP` during startup or migration is held
+and applied once the node exists instead of terminating the process. Only the
+`Log` and `Authentication.External` sections reconfigure dynamically. Reload
+is transactional: the store applies the change to each listener in
+registration order, a failing listener restores the listeners that already
+applied it, and the store commits only after all succeed, so a failure keeps
+the whole running configuration in force, is logged, and is retried by the
+next reload. A source that fails decoding or validation is handled the same
+way. Every other changed setting (listener addresses, TLS mode, trusted
+proxies, HSTS, rate limits, body and header limits, cluster backend, node
+identity, and so on) keeps its running value in the effective configuration,
+is named in a restart-required warning, and applies at the next start.
+Structural validation and external connectivity diagnostics remain separate.
 
 Logging configuration bounds the engine and per-target queues, enqueue/flush/
 shutdown deadlines, field size, target level/format, and file rotation. A

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -53,7 +54,7 @@ type Service struct {
 	clusterBackend         string
 	mailBackend            string
 	mailTestTimeout        time.Duration
-	configListener         string
+	configListeners        []string
 	shutdownOnce           sync.Once
 	shutdownErr            error
 }
@@ -175,31 +176,33 @@ func newService(
 		"external authentication ready",
 		logging.Int("enabled_providers", enabledExternalAuthenticationProviders(snapshot)),
 	)
-	service.configListener = service.configStore.AddListener(func(old, current config.Config) {
-		if !reflect.DeepEqual(
-			old.Authentication.External,
-			current.Authentication.External,
-		) {
-			if err := service.externalAuthentication.Configure(
-				current.Authentication.External,
-			); err != nil {
-				service.logger.Error(
-					"failed to reconfigure external authentication providers",
-					logging.Err(err),
-				)
+	// The store applies these in order and restores every applied listener
+	// when a later one fails, so a reload is all-or-nothing.
+	service.configListeners = []string{
+		service.configStore.AddListener(func(old, current config.Config) error {
+			if reflect.DeepEqual(old.Authentication.External, current.Authentication.External) {
+				return nil
 			}
-		}
-		if logConfigurationChanged(old, current) {
+			if err := service.externalAuthentication.Configure(current.Authentication.External); err != nil {
+				return fmt.Errorf("reconfigure external authentication providers: %w", err)
+			}
+			return nil
+		}),
+		service.configStore.AddListener(func(old, current config.Config) error {
+			if !logConfigurationChanged(old, current) {
+				return nil
+			}
 			if err := configureLogger(service.logger, current.Log); err != nil &&
 				!errors.Is(err, logging.ErrConfigurationLocked) {
-				service.logger.Error(
-					"failed to reconfigure logger",
-					logging.Err(err),
-				)
+				return fmt.Errorf("reconfigure logger: %w", err)
 			}
+			return nil
+		}),
+	}
+	if slices.Contains(service.configListeners, "") {
+		for _, id := range service.configListeners {
+			service.configStore.RemoveListener(id)
 		}
-	})
-	if service.configListener == "" {
 		return nil, errors.New("register dynamic configuration listener: configuration store is closed")
 	}
 	service.logger.Info(
@@ -312,17 +315,21 @@ func (s *Service) CheckDependencies(ctx context.Context) error {
 	return nil
 }
 
-// ReloadConfiguration re-reads the operator-owned configuration source and,
-// when it validates, notifies the dynamic listeners (logging and the external
-// provider registry). An invalid source leaves the current configuration in
-// force. Restart-required settings take effect only at the next start.
-func (s *Service) ReloadConfiguration(ctx context.Context) error {
+// ReloadConfiguration re-reads the operator-owned configuration source and
+// applies its logging and external-provider changes to the running consumers.
+// An invalid source, or a change a consumer cannot apply, leaves the whole
+// running configuration in force and returns the failure. Other changed
+// settings keep their running values until restart and are reported in
+// RestartRequired.
+func (s *Service) ReloadConfiguration(ctx context.Context) (config.ReloadResult, error) {
 	return s.configStore.Reload(ctx)
 }
 
 func (s *Service) Close() error {
 	s.shutdownOnce.Do(func() {
-		s.configStore.RemoveListener(s.configListener)
+		for _, id := range s.configListeners {
+			s.configStore.RemoveListener(id)
+		}
 		stopCtx, cancelStop := context.WithTimeout(
 			context.Background(),
 			s.configStore.Get().Server.ShutdownTimeout.Duration,

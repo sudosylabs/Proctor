@@ -719,19 +719,26 @@ func (s *Server) Ready() bool {
 	return s.components.readiness.Ready()
 }
 
-// Reload re-reads the operator-owned configuration file, notifying the
-// dynamically reconfigurable consumers, and reloads static TLS certificate
-// files for a serving node. Each step is independent: a failure keeps that
-// step's current state in force, is logged, and is returned joined. The host
-// process invokes Reload on SIGHUP.
+// Reload re-reads the operator-owned configuration file, applying it to the
+// dynamically reconfigurable consumers as one change, and reloads static TLS
+// certificate files for a serving node. Each step is independent: a failure
+// keeps that step's current state in force, is logged, and is returned
+// joined. Changed settings that apply only at startup keep their running
+// values and are named in a warning. The host process invokes Reload on
+// SIGHUP.
 func (s *Server) Reload(ctx context.Context) error {
 	var result error
-	if reloader, ok := s.components.platform.(interface{ ReloadConfiguration(context.Context) error }); ok {
-		if err := reloader.ReloadConfiguration(ctx); err != nil {
+	if reloader, ok := s.components.platform.(configurationReloader); ok {
+		reloaded, err := reloader.ReloadConfiguration(ctx)
+		switch {
+		case err != nil:
 			result = errors.Join(result, fmt.Errorf("reload configuration: %w", err))
 			s.components.logger.ErrorContext(ctx, "configuration reload failed; keeping the current configuration", logging.Err(err))
-		} else {
-			s.components.logger.InfoContext(ctx, "configuration reloaded; restart-required settings apply at next start")
+		case len(reloaded.RestartRequired) > 0:
+			s.components.logger.WarnContext(ctx, "configuration reloaded; changed settings that require a restart keep their running values",
+				logging.String("restart_required", strings.Join(reloaded.RestartRequired, ", ")))
+		default:
+			s.components.logger.InfoContext(ctx, "configuration reloaded")
 		}
 	}
 	s.httpMu.Lock()
@@ -744,6 +751,11 @@ func (s *Server) Reload(ctx context.Context) error {
 		}
 	}
 	return result
+}
+
+// configurationReloader is the platform capability Reload uses.
+type configurationReloader interface {
+	ReloadConfiguration(context.Context) (config.ReloadResult, error)
 }
 
 func (s *Server) shutdownHTTP(timeout time.Duration) error {

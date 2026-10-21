@@ -41,9 +41,15 @@ display, logs, diagnostics, and errors.
 Reload only when the owning capability can validate a complete replacement and
 swap it atomically while in-flight callers retain a coherent snapshot.
 
-Current dynamic examples include logging targets and the external-provider
-registry. Listener addresses, TLS mode, cluster backend, and node identity require restart. Do not claim a field is reloadable
-because its Go struct can be changed.
+Only logging (`Log`) and the external-provider registry
+(`Authentication.External`) reload. A reload applies their changes as one
+transaction: when either consumer cannot apply its change, the other is
+restored, the running configuration stays in force, and the reload reports
+failure. Every other changed setting, including listener addresses, TLS mode,
+trusted proxies, HSTS, rate limits, body limits, cluster backend, and node
+identity, keeps its running value until restart, and the reload warns with
+the names of those settings. Do not claim a field is reloadable because its
+Go struct can be changed.
 
 When adding configuration:
 

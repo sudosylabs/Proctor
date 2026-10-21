@@ -18,7 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -49,9 +48,10 @@ func TestStoreSetPersistsAndNotifies(t *testing.T) {
 
 	var notifiedOld Config
 	var notifiedCurrent Config
-	listenerID := store.AddListener(func(old, current Config) {
+	listenerID := store.AddListener(func(old, current Config) error {
 		notifiedOld = old
 		notifiedCurrent = current
+		return nil
 	})
 	candidate := store.Get()
 	candidate.Authentication.Bootstrap.DevelopmentMode = false
@@ -283,7 +283,10 @@ func TestSetFailuresDoNotPublishPartialState(t *testing.T) {
 			beforePersisted := store.GetPersisted()
 			beforeEffective := store.Get()
 			var notifications atomic.Int32
-			store.AddListener(func(Config, Config) { notifications.Add(1) })
+			store.AddListener(func(Config, Config) error {
+				notifications.Add(1)
+				return nil
+			})
 			candidate := store.Get()
 			candidate.Server.PublicURL = "https://should-not-persist.example.edu"
 			if test.candidate != nil {
@@ -325,8 +328,9 @@ func TestInvalidEnvironmentDuringSetDoesNotPublishPartialState(t *testing.T) {
 	beforePersisted := store.GetPersisted()
 	beforeEffective := store.Get()
 	var notifications atomic.Int32
-	store.AddListener(func(Config, Config) {
+	store.AddListener(func(Config, Config) error {
 		notifications.Add(1)
+		return nil
 	})
 	environment["PROCTOR_SERVER_MAX_HEADER_BYTES"] = "invalid"
 	candidate := store.Get()
@@ -472,56 +476,88 @@ func TestReloadPublishesExternalBackingChanges(t *testing.T) {
 	t.Cleanup(func() { _ = store.Close() })
 
 	changed := make(chan Config, 1)
-	store.AddListener(func(_, current Config) {
+	store.AddListener(func(_, current Config) error {
 		changed <- current
+		return nil
 	})
 	external := Default()
-	external.Server.ReadTimeout.Duration = 45 * time.Second
+	external.Log.Targets[0].Level = "debug"
 	data, err := json.Marshal(external)
 	require.NoError(t, err)
 	require.NoError(t, backing.Save(context.Background(), data))
-	require.NoError(t, store.Reload(context.Background()))
+	result, err := store.Reload(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, result.RestartRequired)
 
 	select {
 	case current := <-changed:
-		require.Equal(t, 45*time.Second, current.Server.ReadTimeout.Duration)
+		require.Equal(t, "debug", current.Log.Targets[0].Level)
 	case <-time.After(time.Second):
 		require.FailNow(t, "reload listener was not called")
 	}
+	require.Equal(t, "debug", store.Get().Log.Targets[0].Level)
 }
 
-func TestListenerCanSafelyPerformAnotherConfigurationChange(t *testing.T) {
+func TestReloadKeepsRestartRequiredSettingsAndNamesThem(t *testing.T) {
 	t.Parallel()
 
-	store, err := NewStore(context.Background(), NewMemoryStore(nil), StoreOptions{LookupEnv: noEnvironment})
+	backing := NewMemoryStore(nil)
+	store, err := NewStore(context.Background(), backing, StoreOptions{LookupEnv: noEnvironment})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 
-	var nested atomic.Bool
-	store.AddListener(func(_, current Config) {
-		if !nested.CompareAndSwap(false, true) {
-			return
-		}
-		current.Authentication.Bootstrap.DevelopmentMode = false
-		current.Server.PublicURL = "https://nested.example.edu"
-		_, _, err := store.Set(context.Background(), current)
-		assert.NoError(t, err)
+	var notifications atomic.Int32
+	store.AddListener(func(Config, Config) error {
+		notifications.Add(1)
+		return nil
 	})
+	external := Default()
+	external.Server.ReadTimeout.Duration = 45 * time.Second
+	external.Server.MaxHeaderBytes = 2 << 20
+	data, err := json.Marshal(external)
+	require.NoError(t, err)
+	require.NoError(t, backing.Save(context.Background(), data))
 
-	done := make(chan error, 1)
-	go func() {
-		cfg := store.Get()
-		cfg.Server.ReadTimeout.Duration = 40 * time.Second
-		_, _, err := store.Set(context.Background(), cfg)
-		done <- err
-	}()
-	select {
-	case err := <-done:
-		require.NoError(t, err)
-	case <-time.After(time.Second):
-		require.FailNow(t, "listener-triggered Set deadlocked")
+	result, err := store.Reload(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, []string{"Server.MaxHeaderBytes", "Server.ReadTimeout"}, result.RestartRequired)
+	require.Equal(t, Default().Server, store.Get().Server, "restart-required settings changed in the running configuration")
+	require.Equal(t, 45*time.Second, store.GetPersisted().Server.ReadTimeout.Duration, "persisted source")
+	require.Equal(t, int32(0), notifications.Load(), "listeners notified of a change that was not applied")
+}
+
+func TestReloadRollsBackAppliedListenersWhenOneFails(t *testing.T) {
+	t.Parallel()
+
+	backing := NewMemoryStore(nil)
+	store, err := NewStore(context.Background(), backing, StoreOptions{LookupEnv: noEnvironment})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	var applied []string
+	store.AddListener(func(old, current Config) error {
+		applied = append(applied, old.Log.Targets[0].Level+"->"+current.Log.Targets[0].Level)
+		return nil
+	})
+	consumerErr := errors.New("log target cannot be opened")
+	failures := 0
+	store.AddListener(func(Config, Config) error {
+		failures++
+		return consumerErr
+	})
+	external := Default()
+	external.Log.Targets[0].Level = "debug"
+	data, err := json.Marshal(external)
+	require.NoError(t, err)
+	require.NoError(t, backing.Save(context.Background(), data))
+
+	for range 2 {
+		_, err = store.Reload(context.Background())
+		require.ErrorIs(t, err, consumerErr)
+		require.Equal(t, "info", store.Get().Log.Targets[0].Level, "failed reload changed the running configuration")
 	}
-	require.Equal(t, "https://nested.example.edu", store.Get().Server.PublicURL, "nested configuration change was not applied")
+	require.Equal(t, 2, failures, "a repeated reload of the same source was not attempted again")
+	require.Equal(t, []string{"info->debug", "debug->info", "info->debug", "debug->info"}, applied)
 }
 
 func TestStoreRejectsUnknownAndInvalidConfiguration(t *testing.T) {

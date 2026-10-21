@@ -15,6 +15,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/logging"
 )
 
@@ -24,9 +25,9 @@ type reloadingPlatform struct {
 	err     error
 }
 
-func (p *reloadingPlatform) ReloadConfiguration(context.Context) error {
+func (p *reloadingPlatform) ReloadConfiguration(context.Context) (config.ReloadResult, error) {
 	p.reloads++
-	return p.err
+	return config.ReloadResult{}, p.err
 }
 
 type reloadingHTTPRuntime struct {

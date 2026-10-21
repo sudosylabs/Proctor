@@ -9,6 +9,7 @@ package platform
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -262,7 +263,7 @@ func TestAcceptOwnsResourcesBeforeRequiredValidation(t *testing.T) {
 	require.True(t, cache.closed.Load(), "Accept() did not close every supplied lifecycle resource")
 	require.True(t, mailer.closed.Load(), "Accept() did not close every supplied lifecycle resource")
 	require.True(t, clusterTransport.stopped.Load(), "Accept() did not close every supplied lifecycle resource")
-	require.Empty(t, configuration.AddListener(func(config.Config, config.Config) {}))
+	require.Empty(t, configuration.AddListener(func(config.Config, config.Config) error { return nil }))
 	err = logger.Configure(logging.Config{})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "closed")
@@ -713,3 +714,52 @@ func TestServiceDoesNotClosePersistenceBeforeClusterStopReturns(t *testing.T) {
 
 var _ Cluster = (*trackedCluster)(nil)
 var _ Cluster = (*blockingStopCluster)(nil)
+
+func TestServiceReloadRollsBackEveryConsumerWhenOneCannotApply(t *testing.T) {
+	t.Parallel()
+
+	backing := config.NewMemoryStore(nil)
+	configuration, err := config.NewStore(
+		context.Background(),
+		backing,
+		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
+	)
+	require.NoError(t, err)
+	initial := configuration.Get()
+	initial.Authentication.External.Providers = []config.ExternalAuthenticationProvider{{
+		ID: "campus-cas", Type: config.ExternalAuthenticationTypeCAS,
+		DisplayName: "Campus CAS", Enabled: true,
+		CAS: &config.CASProvider{
+			BaseURL:          "https://cas.example.edu/cas",
+			ValidationPath:   "/p3/serviceValidate",
+			Timeout:          config.Duration{Duration: 5 * time.Second},
+			MaxResponseBytes: 64 * 1024,
+		},
+		Claims: config.ExternalClaimMapping{Subject: "user"},
+	}}
+	_, _, err = configuration.Set(context.Background(), initial)
+	require.NoError(t, err)
+	resources := completeOwnedResources(t, configuration)
+	providers := resources.ExternalAuthentication
+	service, err := acceptForTest(resources)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = service.Close() })
+
+	// The provider change applies first; the logger then refuses its change
+	// because it has already shut down.
+	require.NoError(t, resources.Logger.Shutdown(context.Background()))
+	reloaded := configuration.Get()
+	reloaded.Authentication.External.Providers[0].Enabled = false
+	reloaded.Log.Targets[0].Level = "debug"
+	data, err := json.Marshal(reloaded)
+	require.NoError(t, err)
+	require.NoError(t, backing.Save(context.Background(), data))
+
+	for range 2 {
+		_, err = service.ReloadConfiguration(context.Background())
+		require.Error(t, err, "a reload that the logger could not apply reported success")
+		require.Equal(t, initial.Log, configuration.Get().Log)
+		require.True(t, configuration.Get().Authentication.External.Providers[0].Enabled)
+		require.Len(t, providers.Descriptors(), 1, "external providers were not restored")
+	}
+}

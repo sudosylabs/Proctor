@@ -104,6 +104,13 @@ module when a change is not server-only. No module has been released yet.
   instead of sent inline, so a slow or partitioned peer no longer blocks the
   publishing request for up to 10 seconds per peer. A full peer queue drops
   its oldest message and counts it as `dropped`.
+- Server: a `SIGHUP` during startup or migration no longer terminates
+  `proctor serve`; the reload is held until the node exists.
+- Server: configuration reload is all-or-nothing. When logging or the
+  external-provider registry cannot apply a change, the other is restored, the
+  running configuration stays in force, and the reload reports failure instead
+  of "configuration reloaded". Changed settings that need a restart keep their
+  running values and are named in a warning instead of changing silently.
 - Server: re-allowing a focus-loss suspension no longer reports a committed
   re-allow as unavailable.
 - Server: a failed audit completion is joined with, not substituted for, the
