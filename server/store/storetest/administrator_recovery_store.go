@@ -110,7 +110,7 @@ func TestAdministratorRecoveryStore(t *testing.T, ss store.Store, probes ...Admi
 	require.NotEqual(t, before.PasswordHash, after.PasswordHash, "password credential before=%#v after=%#v", before, after)
 	require.Equal(t, before.Revision+1, after.Revision, "password credential before=%#v after=%#v", before, after)
 	require.True(t, after.PasswordChangedAt.After(before.PasswordChangedAt), "password credential before=%#v after=%#v", before, after)
-	sessions, listErr := ss.Session().ListByUser(ctx, installed.Administrator.ID)
+	sessions, listErr := ss.Session().ListByUser(ctx, everySession(installed.Administrator.ID))
 	require.NoError(t, listErr, "recovery sessions")
 	require.Len(t, sessions, 1, "recovery sessions")
 	require.Equal(t, preservedSession.ID, sessions[0].ID, "recovery sessions")

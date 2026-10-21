@@ -99,6 +99,7 @@ func applicationDependencies(
 			AbsoluteTTL:            auth.Sessions.AbsoluteTTL.Duration,
 			ActivityUpdateInterval: auth.Sessions.ActivityUpdateInterval.Duration,
 			MaximumPerUser:         auth.Sessions.MaximumPerUser,
+			RetiredRetention:       auth.Sessions.RetiredRetention.Duration,
 		},
 		LoginRateLimit: app.LoginRateLimitPolicy{
 			Window:                     auth.LoginRateLimit.Window.Duration,

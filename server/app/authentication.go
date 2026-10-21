@@ -37,6 +37,9 @@ type SessionPolicy struct {
 	AbsoluteTTL            time.Duration
 	ActivityUpdateInterval time.Duration
 	MaximumPerUser         int
+	// RetiredRetention is how long maintenance keeps a revoked or expired
+	// Session, or a superseded credential, before deleting it.
+	RetiredRetention time.Duration
 }
 
 // LoginRateLimitPolicy bounds attempts in fixed windows by identity and

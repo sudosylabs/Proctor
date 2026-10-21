@@ -31,6 +31,9 @@ type Sessions struct {
 	AbsoluteTTL            Duration `json:"AbsoluteTTL"`
 	ActivityUpdateInterval Duration `json:"ActivityUpdateInterval"`
 	MaximumPerUser         int      `json:"MaximumPerUser"`
+	// RetiredRetention is how long a revoked or expired Session, or a
+	// superseded credential, is kept before maintenance deletes it.
+	RetiredRetention Duration `json:"RetiredRetention"`
 }
 
 // LoginRateLimit bounds local login attempts in fixed windows by account and
@@ -154,6 +157,9 @@ func validateAuthentication(authentication Authentication, add func(string, stri
 	}
 	if sessions.MaximumPerUser < 1 || sessions.MaximumPerUser > 1000 {
 		add("authentication.sessions.maximum_per_user", "must be between 1 and 1000")
+	}
+	if sessions.RetiredRetention.Duration < time.Hour || sessions.RetiredRetention.Duration > 8760*time.Hour {
+		add("authentication.sessions.retired_retention", "must be between 1h and 8760h")
 	}
 	if authentication.RecentAuthenticationTTL.Duration < time.Minute ||
 		authentication.RecentAuthenticationTTL.Duration > 24*time.Hour {

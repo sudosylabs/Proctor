@@ -8,6 +8,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -39,6 +40,10 @@ func TestSessionAdministrationOpenAPIAgreesWithRuntime(t *testing.T) {
 		},
 		Schemas: []openAPIAgreementSchema{
 			{
+				Name: "SessionAdministrationListResponse", DTO: reflect.TypeOf(sessionAdministrationListResponse{}),
+				Required: []string{"items"},
+			},
+			{
 				Name: "SessionAdministrationResponse", DTO: reflect.TypeOf(sessionResponse{}),
 				Required: []string{
 					"id", "created_at", "updated_at", "user_id", "client_type",
@@ -59,8 +64,14 @@ func TestSessionAdministrationOpenAPIAgreesWithRuntime(t *testing.T) {
 
 	document := readOpenAPIDocument(t)
 	list := document.Components.Schemas["SessionAdministrationListResponse"]
-	require.Equal(t, "array", list.Type)
-	require.Equal(t, "#/components/schemas/SessionAdministrationResponse", list.Items.Ref)
+	require.Equal(t, "object", list.Type)
+	var items struct {
+		Items struct {
+			Ref string `json:"$ref"`
+		} `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(list.Properties["items"], &items))
+	require.Equal(t, "#/components/schemas/SessionAdministrationResponse", items.Items.Ref)
 
 	// Administrative session projections must never expose usable credentials
 	// or their hashes, even when the underlying Session model gains fields.

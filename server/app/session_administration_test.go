@@ -36,7 +36,7 @@ type sessionAdministrationStoreFake struct {
 	revokeAllErr    error
 	replayed        bool
 	noOp            bool
-	listedAt        time.Time
+	listedPage      *store.SessionPageQuery
 }
 
 func (s *sessionAdministrationStoreFake) Get(context.Context, model.SessionID) (*model.Session, error) {
@@ -44,14 +44,9 @@ func (s *sessionAdministrationStoreFake) Get(context.Context, model.SessionID) (
 	return s.session, s.getErr
 }
 
-func (s *sessionAdministrationStoreFake) ListByUser(context.Context, model.UserID) ([]*model.Session, error) {
-	*s.events = append(*s.events, "list-all")
-	return s.list, s.listErr
-}
-
-func (s *sessionAdministrationStoreFake) ListActiveByUser(_ context.Context, _ model.UserID, at time.Time) ([]*model.Session, error) {
-	s.listedAt = at
-	*s.events = append(*s.events, "list-active")
+func (s *sessionAdministrationStoreFake) ListByUser(_ context.Context, page *store.SessionPageQuery) ([]*model.Session, error) {
+	s.listedPage = page
+	*s.events = append(*s.events, "list")
 	return s.list, s.listErr
 }
 
@@ -123,14 +118,48 @@ func TestAdminSessionListAuthorizesThenReads(t *testing.T) {
 		&sessionAdministrationEffectsFake{events: &events},
 		func() time.Time { return at },
 	)
-	got, err := service.ListUserSessions(context.Background(), Invocation{}, ListUserSessionsQuery{UserID: model.UserID(userID)})
+	got, err := service.ListUserSessions(context.Background(), Invocation{}, ListUserSessionsQuery{UserID: model.UserID(userID), Limit: 50})
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	require.Equal(t, session.ID.String(), got[0].ID.String())
 	// Contract: authorization precedes the read.
-	ordertest.RequireInOrder(t, events, "authorize-view", "list-active")
-	require.True(t, persistence.listedAt.Equal(model.TimeUTC(at)), "active Session listing time = %v", persistence.listedAt)
-	require.Same(t, time.UTC, persistence.listedAt.Location(), "active Session listing time = %v", persistence.listedAt)
+	ordertest.RequireInOrder(t, events, "authorize-view", "list")
+	require.Equal(t, 50, persistence.listedPage.Limit)
+	require.True(t, persistence.listedPage.ActiveAt.Equal(model.TimeUTC(at)), "active Session listing time = %v", persistence.listedPage.ActiveAt)
+	require.Same(t, time.UTC, persistence.listedPage.ActiveAt.Location(), "active Session listing time = %v", persistence.listedPage.ActiveAt)
+}
+
+func TestAdminSessionHistoryIsPaged(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	userID := model.NewUserID()
+	persistence := &sessionAdministrationStoreFake{events: &events}
+	service := newSessionAdministrationService(
+		persistence,
+		&sessionAdministrationUserStoreFake{events: &events, user: sessionAdministrationTestUser(userID.String())},
+		&sessionAdministrationAuthorizerFake{events: &events},
+		&institutionAuditorFake{events: &events},
+		&securityNoticeMailerFake{events: &events},
+		&sessionAdministrationEffectsFake{events: &events},
+		time.Now,
+	)
+	before := time.Date(2026, 8, 12, 9, 30, 0, 0, time.UTC)
+	beforeID := model.NewSessionID()
+	_, err := service.ListUserSessions(context.Background(), Invocation{}, ListUserSessionsQuery{
+		UserID: userID, IncludeRevoked: true, Limit: 2, BeforeCreatedAt: before, BeforeID: beforeID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, &store.SessionPageQuery{UserID: userID, Limit: 2, BeforeCreatedAt: before, BeforeID: beforeID}, persistence.listedPage,
+		"history includes revoked Sessions and continues after the cursor")
+
+	for _, query := range []ListUserSessionsQuery{
+		{UserID: userID, Limit: 0},
+		{UserID: userID, Limit: 201},
+		{UserID: userID, Limit: 10, BeforeID: beforeID},
+	} {
+		_, err = service.ListUserSessions(context.Background(), Invocation{}, query)
+		require.True(t, apperror.Is(err, "request.invalid"), "query %#v: err = %v", query, err)
+	}
 }
 
 func TestAdminSessionRevokeCommitsBeforePublishing(t *testing.T) {

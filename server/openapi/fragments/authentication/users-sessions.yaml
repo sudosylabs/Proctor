@@ -13,7 +13,7 @@ paths:
       operationId: listUserSessions
       summary: List a User's Sessions for administrative review
       description: >-
-        Returns safe Session metadata for the exact User when the caller has current administrative authority. Revoked Sessions are excluded unless requested; access and refresh credentials are never exposed.
+        Returns one page of safe Session metadata for the exact User, newest first, when the caller has current administrative authority. Revoked and expired Sessions are excluded unless requested; access and refresh credentials are never exposed.
       tags:
         - Authentication
       x-proctor-auth: principal_required
@@ -45,6 +45,22 @@ paths:
           schema:
             type: boolean
             default: false
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+          description: Maximum number of Sessions to return.
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            description: Opaque versioned Session creation-order cursor.
+          description: Opaque continuation emitted by the preceding Session page.
       responses:
         "200":
           $ref: '#/components/responses/SessionAdministrationListOK'
@@ -438,9 +454,20 @@ components:
           type: string
           description: Localized presentation of revocation_reason_code.
     SessionAdministrationListResponse:
-      type: array
-      items:
-        $ref: '#/components/schemas/SessionAdministrationResponse'
+      description: One bounded page of a User's Sessions, newest first.
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/SessionAdministrationResponse'
+        next_cursor:
+          type: string
+          description: Opaque continuation for the next page, omitted after the final page.
     SessionListResponse:
       type: array
       items:

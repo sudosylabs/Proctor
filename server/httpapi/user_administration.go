@@ -8,6 +8,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -105,20 +106,78 @@ func (m userAdministrationResourceModule) listSessions(request operationRequest)
 	if err != nil {
 		return operationResult{}, apperror.New("request.invalid").WithField("field", "include_revoked")
 	}
-	sessions, listErr := m.sessions.ListUserSessions(
-		request.context,
-		request.invocation(),
-		app.ListUserSessionsQuery{UserID: userID, IncludeRevoked: includeRevoked},
-	)
+	query := app.ListUserSessionsQuery{UserID: userID, IncludeRevoked: includeRevoked, Limit: defaultSessionPageSize}
+	values := request.request.URL.Query()
+	if raw := values.Get("limit"); raw != "" {
+		limit, parseErr := strconv.Atoi(raw)
+		if parseErr != nil || limit < 1 || limit > maximumSessionPageSize {
+			return operationResult{}, apperror.Invalid("request.invalid", "limit")
+		}
+		query.Limit = limit
+	}
+	if raw := values.Get("cursor"); raw != "" {
+		cursor, decodeErr := decodeSessionCursor(raw)
+		if decodeErr != nil {
+			return operationResult{}, apperror.Invalid("request.invalid", "cursor")
+		}
+		query.BeforeCreatedAt, _ = model.ParseRFC3339(cursor.CreatedAt)
+		query.BeforeID = model.SessionID(cursor.ID)
+	}
+	sessions, listErr := m.sessions.ListUserSessions(request.context, request.invocation(), query)
 	if listErr != nil {
 		return operationResult{}, listErr
 	}
-	if sessions == nil {
-		sessions = []*model.Session{}
+	response := sessionAdministrationListResponse{Items: sessionResponsesFromModels(request.request, sessions)}
+	if len(sessions) == query.Limit {
+		last := sessions[len(sessions)-1]
+		var err error
+		response.NextCursor, err = encodeOpaqueCursor(sessionCursor{
+			CreatedAt: model.FormatRFC3339(last.CreatedAt), ID: last.ID.String(),
+		}, sessionCursorSpec())
+		if err != nil {
+			return operationResult{}, unpresentableResult(err)
+		}
 	}
-	// Transport-owned DTOs keep the historical bare-array millis wire shape
-	// while domain Session values use typed IDs and UTC times.
-	return jsonResult(http.StatusOK, sessionResponsesFromModels(request.request, sessions)), nil
+	return jsonResult(http.StatusOK, response), nil
+}
+
+const (
+	defaultSessionPageSize = 50
+	maximumSessionPageSize = 200
+)
+
+// sessionAdministrationListResponse is one page of a User's Sessions, newest
+// first.
+type sessionAdministrationListResponse struct {
+	Items      []sessionResponse `json:"items"`
+	NextCursor string            `json:"next_cursor,omitempty"`
+}
+
+type sessionCursor struct {
+	Version   int    `json:"version,omitempty"`
+	CreatedAt string `json:"created_at"`
+	ID        string `json:"id"`
+}
+
+func decodeSessionCursor(raw string) (sessionCursor, error) {
+	return decodeOpaqueCursor(raw, sessionCursorSpec())
+}
+
+func sessionCursorSpec() opaqueCursorSpec[sessionCursor] {
+	return opaqueCursorSpec[sessionCursor]{
+		label: "session", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: 1,
+		members:        []string{"version", "created_at", "id"},
+		version:        func(cursor sessionCursor) int { return cursor.Version },
+		setVersion:     func(cursor *sessionCursor, version int) { cursor.Version = version },
+		acceptsVersion: func(version int) bool { return version == 1 },
+		validate: func(cursor sessionCursor) error {
+			createdAt, err := model.ParseRFC3339(cursor.CreatedAt)
+			if err != nil || createdAt.IsZero() || !model.SessionID(cursor.ID).IsValid() {
+				return errors.New("invalid session keyset")
+			}
+			return nil
+		},
+	}
 }
 
 func (m userAdministrationResourceModule) revokeSession(request operationRequest) (operationResult, error) {

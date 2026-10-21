@@ -54,6 +54,11 @@ module when a change is not server-only. No module has been released yet.
   security-sensitive Store mutation requires its audit record.
 - Server: when the success audit of a login cannot be recorded, no Session is
   issued at all.
+- Server: the administrative Session list (`GET /api/v1/users/{user_id}/sessions`)
+  returns one page in an `items`/`next_cursor` envelope, newest first, and
+  accepts `limit` and `cursor` (**breaking**).
+- Server: the pre-release SQL baseline gained Session retention indexes;
+  development databases must be reset (**breaking**).
 - Build: `make container` packages Linux binaries with the same recipe as
   `make dist` and builds them with the release Dockerfile, so a local image
   matches a published one; `Dockerfile.runtime` is removed.
@@ -78,6 +83,9 @@ module when a change is not server-only. No module has been released yet.
   that Connection Loss instead and fails with `exam.attempt.connection_lost`.
 - Server: local login attempts are also bounded per account across all
   sources (`Authentication.LoginRateLimit.MaximumIdentityAttempts`).
+- Server: revoked and expired Sessions and superseded Session credentials are
+  deleted after `Authentication.Sessions.RetiredRetention` (default 30 days)
+  by an hourly Job.
 - Server: `Server.TrustedProxies` names the reverse proxies whose forwarded
   client address and request ID are accepted.
 - VFS: `FileSystem.CheckRoot` checks that the backend root (the local root

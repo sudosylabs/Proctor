@@ -402,6 +402,7 @@ const (
 	methodFailOnboardingImport                 methodName = "fail_onboarding_import"
 	methodListExpiredOnboardingImports         methodName = "list_expired_onboarding_imports"
 	methodPurgeOnboardingImport                methodName = "purge_onboarding_import"
+	methodPurgeRetired                         methodName = "purge_retired"
 	methodResolveOnboardingInvitationNoOp      methodName = "resolve_onboarding_invitation_no_op"
 )
 

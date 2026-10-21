@@ -198,9 +198,11 @@ The initial registered work covers:
 - ordinary transactional-mail delivery plus permanently deduplicated daily
   expiry and 90/180-day metadata cleanup;
 - `job.cleanup`, a daily bounded retention pass that cannot delete queued,
-  running, or its own active work; and
+  running, or its own active work;
 - `audit.attempt_sweep`, an hourly bounded pass that terminalizes audit
-  attempts left open for 24 hours.
+  attempts left open for 24 hours; and
+- `session.purge_retired`, an hourly bounded pass that deletes retired Session
+  credentials and unreferenced retired Sessions after their configured grace.
 
 History cleanup retains a bounded deletion budget per occurrence and continues
 through permanently deduplicated successors while eligible history remains.

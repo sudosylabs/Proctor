@@ -21532,10 +21532,25 @@
         "type": "object"
       },
       "SessionAdministrationListResponse": {
-        "items": {
-          "$ref": "#/components/schemas/SessionAdministrationResponse"
+        "additionalProperties": false,
+        "description": "One bounded page of a User's Sessions, newest first.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SessionAdministrationResponse"
+            },
+            "maxItems": 200,
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "Opaque continuation for the next page, omitted after the final page.",
+            "type": "string"
+          }
         },
-        "type": "array"
+        "required": [
+          "items"
+        ],
+        "type": "object"
       },
       "SessionAdministrationResponse": {
         "additionalProperties": false,
@@ -45333,7 +45348,7 @@
     },
     "/api/v1/users/{user_id}/sessions": {
       "get": {
-        "description": "Returns safe Session metadata for the exact User when the caller has current administrative authority. Revoked Sessions are excluded unless requested; access and refresh credentials are never exposed.",
+        "description": "Returns one page of safe Session metadata for the exact User, newest first, when the caller has current administrative authority. Revoked and expired Sessions are excluded unless requested; access and refresh credentials are never exposed.",
         "operationId": "listUserSessions",
         "parameters": [
           {
@@ -45344,6 +45359,28 @@
             "schema": {
               "default": false,
               "type": "boolean"
+            }
+          },
+          {
+            "description": "Maximum number of Sessions to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque continuation emitted by the preceding Session page.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque versioned Session creation-order cursor.",
+              "type": "string"
             }
           }
         ],

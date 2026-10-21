@@ -170,6 +170,7 @@ func buildApplicationJobDefinitions(
 		StarterWorkspaces: deps.Store.ExamStarterWorkspace(), StarterWorkspaceContent: deps.FileContent,
 		AttemptWorkspaces: deps.Store.ExamAttemptWorkspace(), AttemptWorkspaceContent: deps.FileContent,
 		CommandOutcomes: deps.Store.CommandOutcome(), AuditAttempts: deps.Store.Audit(),
+		Sessions: deps.Store.Session(), SessionCredentials: deps.Store.SessionCredential(), SessionRetiredRetention: deps.Sessions.RetiredRetention,
 		ExamExports: examinations.exports, ExamExportStore: deps.Store.ExamExport(), ExamExportContent: deps.FileContent,
 		Retention: deps.Store.Retention(), RetentionContent: deps.FileContent, RetentionAudit: retentionJobAudit{audit: foundation.audit},
 		RetentionExpiry: deps.Store.Retention(), RetentionExpiryAudit: retentionJobAudit{audit: foundation.audit},

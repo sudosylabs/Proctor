@@ -164,6 +164,7 @@ func Default() Config {
 				AbsoluteTTL:            Duration{Duration: 30 * 24 * time.Hour},
 				ActivityUpdateInterval: Duration{Duration: 5 * time.Minute},
 				MaximumPerUser:         10,
+				RetiredRetention:       Duration{Duration: 30 * 24 * time.Hour},
 			},
 			RecentAuthenticationTTL: Duration{Duration: 15 * time.Minute},
 			LoginRateLimit: LoginRateLimit{

@@ -261,7 +261,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 	rollbackExchange.AuditEventID = model.NewAuditEventID()
 	_, rollbackErr = ss.BrowserAuthentication().Exchange(ctx, &rollbackExchange)
 	require.Error(t, rollbackErr, "Exchange() succeeded without its durable audit attempt")
-	rollbackSessions, listErr := ss.Session().ListByUser(ctx, user.ID)
+	rollbackSessions, listErr := ss.Session().ListByUser(ctx, everySession(user.ID))
 	require.NoError(t, listErr)
 	require.Empty(t, rollbackSessions)
 	for name, mutate := range map[string]func(*store.DesktopAuthorizationExchange){
@@ -324,7 +324,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 		require.Equal(t, 5*time.Minute, result.AccessExpiresAt.Sub(result.Session.CreatedAt))
 		require.Equal(t, time.Hour, result.RefreshExpiresAt.Sub(result.Session.CreatedAt))
 	}
-	sessions, err := ss.Session().ListByUser(ctx, user.ID)
+	sessions, err := ss.Session().ListByUser(ctx, everySession(user.ID))
 	require.NoError(t, err)
 	require.Len(t, sessions, 1, "sessions after exchange")
 
@@ -367,7 +367,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 	disabledExchangeAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, disabledUser.ID, "exchange-disabled-user")
 	_, err = ss.BrowserAuthentication().Exchange(ctx, desktopAuthorizationExchange(model.NowUTC(), disabledCode, disabledState, disabledVerifier, disabledExchangeAudit))
 	require.True(t, store.IsNotFound(err), "Exchange(disabled user) error")
-	disabledSessions, listErr := ss.Session().ListByUser(ctx, disabledUser.ID)
+	disabledSessions, listErr := ss.Session().ListByUser(ctx, everySession(disabledUser.ID))
 	require.NoError(t, listErr)
 	require.Empty(t, disabledSessions)
 	disabledExchangeAuditAfter, getErr := ss.Audit().Get(ctx, disabledExchangeAudit.ID)

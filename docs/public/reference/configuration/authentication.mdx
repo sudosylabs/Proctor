@@ -55,6 +55,7 @@ classes after deployment hardware and authentication-load targets are known. */}
 | `Authentication.Sessions.AbsoluteTTL`<br />Default: `720h` (30 days) | Hard upper bound on a session regardless of activity. Must be greater than zero. |
 | `Authentication.Sessions.ActivityUpdateInterval`<br />Default: `5m` | Minimum interval between durable activity updates. Must be greater than zero and less than `IdleTTL`. |
 | `Authentication.Sessions.MaximumPerUser`<br />Default: `10` | Maximum concurrently retained Web Sessions for one User. Must be between `1` and `1000`. |
+| `Authentication.Sessions.RetiredRetention`<br />Default: `720h` | How long a revoked or expired Session, or a superseded credential, is kept before hourly maintenance deletes it. A Session still referenced by audit or examination records is kept until those records are removed. Must be between `1h` and `8760h`. |
 | `Authentication.RecentAuthenticationTTL`<br />Default: `15m` | How long a sufficiently recent sign-in may satisfy a step-up requirement for sensitive actions. Must be between `1m` and `24h`, and no greater than `Sessions.AbsoluteTTL`. |
 
 Shortening lifetimes narrows credential exposure but increases reauthentication

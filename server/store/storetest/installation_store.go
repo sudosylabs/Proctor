@@ -170,7 +170,7 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	credential, err := ss.PasswordCredential().GetByUser(ctx, winner.Administrator.ID)
 	require.NoError(t, err)
 	require.NotEmpty(t, credential.PasswordHash, "bootstrap password hash was not persisted")
-	sessions, err := ss.Session().ListByUser(ctx, winner.Administrator.ID)
+	sessions, err := ss.Session().ListByUser(ctx, everySession(winner.Administrator.ID))
 	require.NoError(t, err)
 	require.Empty(t, sessions)
 	settings, err := ss.UserSettings().Get(ctx, winner.Administrator.ID)

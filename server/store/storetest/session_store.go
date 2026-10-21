@@ -46,6 +46,154 @@ func TestSessionStores(t *testing.T, ss store.Store) {
 	t.Run("ConcurrentRefreshAndRevokeAll", func(t *testing.T) {
 		testSessionConcurrentRefreshAndRevokeAll(t, ss)
 	})
+	t.Run("ListByUserPages", func(t *testing.T) { testSessionListByUserPages(t, ss) })
+	t.Run("PurgeRetired", func(t *testing.T) { testSessionPurgeRetired(t, ss) })
+	t.Run("PurgeRetiredCredentialLineage", func(t *testing.T) { testSessionPurgeRetiredCredentialLineage(t, ss) })
+}
+
+func testSessionListByUserPages(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	user := saveUser(t, ctx, ss)
+	var saved []*model.Session
+	for range 3 {
+		session, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
+		saved = append(saved, session)
+	}
+	_, err := ss.Session().Withdraw(ctx, saved[1].ID, user.ID, model.GetMillis()+1, model.SessionRevocationInactiveUser)
+	require.NoError(t, err)
+
+	var paged []model.SessionID
+	page := &store.SessionPageQuery{UserID: user.ID, Limit: 2}
+	for {
+		sessions, listErr := ss.Session().ListByUser(ctx, page)
+		require.NoError(t, listErr)
+		for _, session := range sessions {
+			paged = append(paged, session.ID)
+		}
+		if len(sessions) < page.Limit {
+			break
+		}
+		last := sessions[len(sessions)-1]
+		page = &store.SessionPageQuery{UserID: user.ID, Limit: 2, BeforeCreatedAt: last.CreatedAt, BeforeID: last.ID}
+	}
+	require.ElementsMatch(t, []model.SessionID{saved[0].ID, saved[1].ID, saved[2].ID}, paged, "pages cover every Session once")
+	require.Len(t, paged, 3)
+
+	active, err := ss.Session().ListByUser(ctx, &store.SessionPageQuery{UserID: user.ID, Limit: 10, ActiveAt: model.NowUTC().Add(time.Second)})
+	require.NoError(t, err)
+	require.Len(t, active, 2, "the active page omits the revoked Session")
+	for _, session := range active {
+		require.NotEqual(t, saved[1].ID, session.ID)
+	}
+
+	for _, invalid := range []*store.SessionPageQuery{
+		nil, {UserID: user.ID}, {UserID: user.ID, Limit: store.MaximumSessionPageSize + 1},
+		{UserID: user.ID, Limit: 1, BeforeID: saved[0].ID},
+	} {
+		_, err = ss.Session().ListByUser(ctx, invalid)
+		require.ErrorAs(t, err, new(*store.ErrInvalidInput), "page %#v", invalid)
+	}
+}
+
+// purgeRetiredUntil runs Session purge passes until gone reports true. Other
+// fixtures may contribute retired Sessions, so it walks every pass.
+func purgeRetiredUntil(t *testing.T, ctx context.Context, ss store.Store, gone func() bool) {
+	t.Helper()
+	for range 20 {
+		_, err := ss.SessionCredential().PurgeRetired(ctx, &store.SessionCredentialPurge{Grace: time.Millisecond, Limit: store.MaximumSessionPurgeBatch})
+		require.NoError(t, err)
+		var after store.SessionPurgePosition
+		for {
+			pass, err := ss.Session().PurgeRetired(ctx, &store.SessionPurge{Grace: time.Millisecond, Limit: store.MaximumSessionPurgeBatch, After: after})
+			require.NoError(t, err)
+			if pass.Examined < store.MaximumSessionPurgeBatch {
+				break
+			}
+			after = pass.Next
+		}
+		if gone() {
+			return
+		}
+	}
+	require.Fail(t, "retired rows were not purged")
+}
+
+func testSessionPurgeRetired(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	_, err := ss.Session().PurgeRetired(ctx, &store.SessionPurge{Grace: time.Hour})
+	require.ErrorAs(t, err, new(*store.ErrInvalidInput), "purge without a limit")
+	_, err = ss.SessionCredential().PurgeRetired(ctx, &store.SessionCredentialPurge{Limit: 1})
+	require.ErrorAs(t, err, new(*store.ErrInvalidInput), "purge without a grace")
+
+	user := saveUser(t, ctx, ss)
+	retired, _, retiredRaw := saveSession(t, ctx, ss, user.ID.String(), 10)
+	live, _, liveRaw := saveSession(t, ctx, ss, user.ID.String(), 10)
+	_, err = ss.Session().Withdraw(ctx, retired.ID, user.ID, model.GetMillis(), model.SessionRevocationInactiveUser)
+	require.NoError(t, err)
+
+	// Within the grace nothing is deleted.
+	_, err = ss.SessionCredential().PurgeRetired(ctx, &store.SessionCredentialPurge{Grace: time.Hour, Limit: store.MaximumSessionPurgeBatch})
+	require.NoError(t, err)
+	_, err = ss.Session().PurgeRetired(ctx, &store.SessionPurge{Grace: time.Hour, Limit: store.MaximumSessionPurgeBatch})
+	require.NoError(t, err)
+	_, err = ss.Session().Get(ctx, retired.ID)
+	require.NoError(t, err, "a Session inside its grace is kept")
+
+	// A rotation revokes the live Session's first access credential and
+	// marks its refresh credential used.
+	now := live.CreatedAt.Add(time.Millisecond)
+	_, err = ss.SessionCredential().RotateRefresh(ctx, model.HashToken(liveRaw.refresh),
+		&model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: now.Add(15 * time.Minute)},
+		&model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: live.ExpiresAt},
+		now, now.Add(time.Hour))
+	require.NoError(t, err)
+
+	time.Sleep(20 * time.Millisecond)
+	purgeRetiredUntil(t, ctx, ss, func() bool {
+		_, getErr := ss.Session().Get(ctx, retired.ID)
+		return store.IsNotFound(getErr)
+	})
+	_, _, err = ss.SessionCredential().GetSessionByTokenHash(ctx, model.HashToken(retiredRaw.access), model.SessionCredentialAccess)
+	require.True(t, store.IsNotFound(err), "a purged Session's credentials are gone: %v", err)
+	_, _, err = ss.SessionCredential().GetSessionByTokenHash(ctx, model.HashToken(liveRaw.access), model.SessionCredentialAccess)
+	require.True(t, store.IsNotFound(err), "a superseded, revoked access credential is purged: %v", err)
+	_, err = ss.Session().Get(ctx, live.ID)
+	require.NoError(t, err, "a live Session is kept")
+
+	// The used refresh credential is unexpired, so replay is still detected.
+	replayAt := now.Add(time.Second)
+	replay, err := ss.SessionCredential().RotateRefresh(ctx, model.HashToken(liveRaw.refresh),
+		&model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: replayAt.Add(15 * time.Minute)},
+		&model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: live.ExpiresAt},
+		replayAt, replayAt.Add(time.Hour))
+	require.NoError(t, err)
+	require.True(t, replay.ReplayDetected)
+}
+
+func testSessionPurgeRetiredCredentialLineage(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	user := saveUser(t, ctx, ss)
+	session, credentials, raw := newSession(user.ID.String())
+	credentials[1].ExpiresAt = model.NowUTC().Add(300 * time.Millisecond)
+	saved, _, err := SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, session, credentials, 10))
+	require.NoError(t, err)
+	now := saved.CreatedAt.Add(time.Millisecond)
+	nextRefresh := model.NewCredentialToken()
+	rotation, err := ss.SessionCredential().RotateRefresh(ctx, model.HashToken(raw.refresh),
+		&model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: now.Add(15 * time.Minute)},
+		&model.SessionCredential{TokenHash: model.HashToken(nextRefresh), ExpiresAt: saved.ExpiresAt},
+		now, now.Add(time.Hour))
+	require.NoError(t, err)
+	require.False(t, rotation.RefreshCredential.ParentID.IsZero())
+
+	time.Sleep(350 * time.Millisecond)
+	purgeRetiredUntil(t, ctx, ss, func() bool {
+		_, _, getErr := ss.SessionCredential().GetSessionByTokenHash(ctx, model.HashToken(raw.refresh), model.SessionCredentialRefresh)
+		return store.IsNotFound(getErr)
+	})
+	current, _, err := ss.SessionCredential().GetSessionByTokenHash(ctx, model.HashToken(nextRefresh), model.SessionCredentialRefresh)
+	require.NoError(t, err, "the surviving child of a purged parent stays usable")
+	require.True(t, current.ParentID.IsZero(), "the purged parent is detached from its child")
 }
 
 func testSelfSessionRevocationsWithAudit(t *testing.T, ss store.Store) {
@@ -139,7 +287,7 @@ func testSessionPasswordProof(t *testing.T, ss store.Store) {
 			require.ErrorIs(t, err, store.ErrPasswordCredentialChanged)
 		})
 	}
-	remaining, err := ss.Session().ListByUser(ctx, user.ID)
+	remaining, err := ss.Session().ListByUser(ctx, everySession(user.ID))
 	require.NoError(t, err)
 	require.Empty(t, remaining, "failed password proof created")
 	credential, err := ss.PasswordCredential().GetByUser(ctx, user.ID)
@@ -221,7 +369,7 @@ func testSessionSaveResolveAndList(t *testing.T, ss store.Store) {
 	require.NoError(t, err)
 	require.Equal(t, session.ID, credential.SessionID, "resolved credential=%#v session=%#v", credential, resolved)
 	require.Equal(t, session.ID, resolved.ID, "resolved credential=%#v session=%#v", credential, resolved)
-	list, err := ss.Session().ListByUser(ctx, user.ID)
+	list, err := ss.Session().ListByUser(ctx, everySession(user.ID))
 	require.NoError(t, err)
 	require.Len(t, list, 1)
 	require.Equal(t, session.ID, list[0].ID)
@@ -723,4 +871,9 @@ func testPasswordProof(t *testing.T, ctx context.Context, ss store.Store, userID
 	}
 	require.NoError(t, err)
 	return store.PasswordCredentialProof{ID: credential.ID, Revision: credential.Revision}
+}
+
+// everySession pages all of one fixture User's Sessions at once.
+func everySession(userID model.UserID) *store.SessionPageQuery {
+	return &store.SessionPageQuery{UserID: userID, Limit: store.MaximumSessionPageSize}
 }

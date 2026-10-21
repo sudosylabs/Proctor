@@ -718,10 +718,13 @@ func decodeIntegrationResponse(t *testing.T, response *httptest.ResponseRecorder
 		}
 		return
 	case *[]*model.Session:
-		var wire []*wireSessionResponse
-		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &wire))
-		*typed = make([]*model.Session, 0, len(wire))
-		for _, item := range wire {
+		// The administrative Session list is one page in the shared envelope.
+		var page struct {
+			Items []*wireSessionResponse `json:"items"`
+		}
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &page))
+		*typed = make([]*model.Session, 0, len(page.Items))
+		for _, item := range page.Items {
 			*typed = append(*typed, item.model())
 		}
 		return

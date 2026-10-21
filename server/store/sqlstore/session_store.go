@@ -316,15 +316,32 @@ func (s SQLSessionStore) Get(ctx context.Context, id model.SessionID) (*model.Se
 	return row.model()
 }
 
-// ListByUser returns every unarchived Session of userID, revoked or expired or
-// not, newest first.
-func (s SQLSessionStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.Session, error) {
-	query := s.sessionsQuery.
-		Where(sq.Eq{
-			"sessions.user_id":     userID,
-			"sessions.archived_at": nil,
-		}).
-		OrderBy("sessions.created_at DESC", "sessions.id")
+// ListByUser returns one page of the unarchived Sessions of the query's User,
+// newest first.
+func (s SQLSessionStore) ListByUser(ctx context.Context, page *store.SessionPageQuery) ([]*model.Session, error) {
+	if page == nil || !page.UserID.IsValid() || page.Limit < 1 || page.Limit > store.MaximumSessionPageSize ||
+		page.BeforeCreatedAt.IsZero() != page.BeforeID.IsZero() ||
+		(!page.BeforeID.IsZero() && !page.BeforeID.IsValid()) {
+		return nil, store.NewErrInvalidInput("session", "page", nil)
+	}
+	query := s.sessionsQuery.Where(sq.Eq{
+		"sessions.user_id":     page.UserID,
+		"sessions.archived_at": nil,
+	})
+	if !page.ActiveAt.IsZero() {
+		at := model.TimeUTC(page.ActiveAt)
+		query = query.Where(sq.Eq{"sessions.revoked_at": nil}).
+			Where(sq.Gt{"sessions.idle_expires_at": at}).
+			Where(sq.Gt{"sessions.expires_at": at})
+	}
+	if !page.BeforeID.IsZero() {
+		before := model.TimeUTC(page.BeforeCreatedAt)
+		query = query.Where(sq.Or{
+			sq.Lt{"sessions.created_at": before},
+			sq.And{sq.Eq{"sessions.created_at": before}, sq.Gt{"sessions.id": page.BeforeID}},
+		})
+	}
+	query = query.OrderBy("sessions.created_at DESC", "sessions.id").Limit(uint64(page.Limit))
 	rows := []sessionRow{}
 	if err := s.GetMaster().SelectBuilder(ctx, &rows, query); err != nil {
 		return nil, fmt.Errorf("list sessions by user: %w", err)

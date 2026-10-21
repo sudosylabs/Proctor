@@ -188,6 +188,18 @@ separate; activity writes are debounced; concurrency is bounded; users can
 list and revoke sessions; account and credential security changes can revoke
 all sessions. Authorization always resolves current role bindings.
 
+Retired state does not accumulate. The hourly `session.purge_retired` Job
+deletes credentials that expired or were revoked longer than
+`Authentication.Sessions.RetiredRetention` ago, including superseded
+credentials of live Sessions (a surviving child loses its lineage link to a
+purged parent, but a used, unexpired refresh credential is kept so replay is
+still detected). It deletes a revoked, expired, or idle-expired Session after
+the same grace, with its credentials, only while no audit, examination,
+Browser Activity, Personal Access Token preparation, or external login record
+references it; those keep their Session until their own retention removes
+them. The administrative Session list is paged newest first with the shared
+`items`/`next_cursor` envelope.
+
 Self-service Session revocation and logout are critical audited mutations.
 The immutable principal selects the owning User; revoking a listed Session
 also verifies its current ownership. These intrinsic self-service operations

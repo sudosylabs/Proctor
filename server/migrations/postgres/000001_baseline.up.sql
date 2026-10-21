@@ -5304,3 +5304,24 @@ CREATE INDEX role_bindings_origin_academic_unit_member_id_idx
 CREATE INDEX exam_sittings_class_id_idx ON exam_sittings (class_id);
 CREATE INDEX retention_retirements_sitting_grace_idx
     ON retention_retirements (exam_sitting_id) WHERE state = 'grace';
+
+-- Session retention purge walks retired Sessions and credentials in retirement
+-- order and deletes them, so every column that references either is indexed.
+CREATE INDEX sessions_retired_at_idx
+    ON sessions ((LEAST(expires_at, idle_expires_at, COALESCE(revoked_at, 'infinity'::timestamptz))), id);
+CREATE INDEX session_credentials_retired_at_idx
+    ON session_credentials ((LEAST(expires_at, COALESCE(revoked_at, 'infinity'::timestamptz))), id);
+CREATE INDEX session_credentials_parent_id_idx
+    ON session_credentials (parent_id) WHERE parent_id IS NOT NULL;
+CREATE INDEX session_credentials_replaced_by_id_idx
+    ON session_credentials (replaced_by_id) WHERE replaced_by_id IS NOT NULL;
+CREATE INDEX audit_events_session_id_idx ON audit_events (session_id) WHERE session_id IS NOT NULL;
+CREATE INDEX exam_attempt_connections_session_id_idx ON exam_attempt_connections (session_id);
+CREATE INDEX browser_activity_sources_session_id_idx ON browser_activity_sources (session_id);
+CREATE INDEX personal_access_token_mutation_preparations_session_id_idx
+    ON personal_access_token_mutation_preparations (session_id);
+CREATE INDEX external_login_states_session_id_idx
+    ON external_login_states (session_id) WHERE session_id IS NOT NULL;
+CREATE INDEX external_login_states_session_credential_id_idx
+    ON external_login_states (session_credential_id) WHERE session_credential_id IS NOT NULL;
+CREATE INDEX exam_attempt_security_owners_session_id_idx ON exam_attempt_security_owners (session_id);

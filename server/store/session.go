@@ -84,7 +84,7 @@ type SessionStore interface {
 	ReauthenticatePassword(context.Context, *SessionPasswordReauthentication) (*SessionReauthenticationResult, error)
 	Save(context.Context, *SessionCreation) (*model.Session, []*model.SessionCredential, error)
 	Get(context.Context, model.SessionID) (*model.Session, error)
-	ListByUser(context.Context, model.UserID) ([]*model.Session, error)
+	ListByUser(context.Context, *SessionPageQuery) ([]*model.Session, error)
 	ListActiveByUser(context.Context, model.UserID, time.Time) ([]*model.Session, error)
 	UpdateActivity(context.Context, model.SessionID, time.Time, time.Time) error
 	EnforceExpiry(context.Context, model.SessionID, model.UserID, time.Time) (*SessionExpiryEnforcementResult, error)
@@ -97,6 +97,60 @@ type SessionStore interface {
 	Withdraw(context.Context, model.SessionID, model.UserID, int64, model.SessionRevocationReason) ([]string, error)
 	Revoke(context.Context, *SessionRevocation) (*SessionRevocationResult, error)
 	RevokeAllForUser(context.Context, *UserSessionsRevocation) (*UserSessionsRevocationResult, error)
+	// PurgeRetired deletes retired Sessions and their credentials once their
+	// grace has passed and nothing else references them.
+	PurgeRetired(context.Context, *SessionPurge) (*SessionPurgeResult, error)
+}
+
+// SessionPageQuery pages one User's Sessions newest first by creation, with
+// the Session ID as the tie-break. A non-zero ActiveAt keeps only Sessions
+// that are unrevoked and unexpired at that UTC microsecond instant. The page
+// continues after BeforeCreatedAt and BeforeID when both are set.
+type SessionPageQuery struct {
+	UserID          model.UserID
+	ActiveAt        time.Time
+	BeforeCreatedAt time.Time
+	BeforeID        model.SessionID
+	Limit           int
+}
+
+// MaximumSessionPageSize bounds one Session page.
+const MaximumSessionPageSize = 200
+
+// MaximumSessionPurgeBatch bounds one Session or credential purge pass.
+const MaximumSessionPurgeBatch = 1000
+
+// SessionPurge examines Sessions retired (revoked, expired, or idle-expired)
+// longer than Grace ago by PostgreSQL time, oldest first after After, and
+// deletes those that no other durable record references, with their
+// credentials.
+type SessionPurge struct {
+	Grace time.Duration
+	Limit int
+	After SessionPurgePosition
+}
+
+// SessionPurgePosition is the retirement order position of the last Session a
+// purge pass examined.
+type SessionPurgePosition struct {
+	RetiredAt time.Time
+	SessionID model.SessionID
+}
+
+// SessionPurgeResult reports one purge pass. Examined below the pass limit
+// means no retired Session remains after Next.
+type SessionPurgeResult struct {
+	Examined    int
+	Sessions    int64
+	Credentials int64
+	Next        SessionPurgePosition
+}
+
+// SessionCredentialPurge deletes credentials that expired or were revoked
+// longer than Grace ago, including superseded credentials of live Sessions.
+type SessionCredentialPurge struct {
+	Grace time.Duration
+	Limit int
 }
 
 // SessionCreation creates one Session and its credentials atomically. Password
@@ -144,4 +198,7 @@ type SessionCredentialStore interface {
 		time.Time,
 		time.Time,
 	) (*SessionRotation, error)
+	// PurgeRetired deletes retired credentials, including superseded
+	// credentials of live Sessions, once their grace has passed.
+	PurgeRetired(context.Context, *SessionCredentialPurge) (int64, error)
 }

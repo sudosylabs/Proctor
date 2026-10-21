@@ -732,8 +732,8 @@ func (s *passwordCredentialStore) GetByUser(ctx context.Context, userID model.Us
 func (s *sessionStore) Get(ctx context.Context, id model.SessionID) (*model.Session, error) {
 	return retryCall1(ctx, s.layer, func() (*model.Session, error) { return s.SessionStore.Get(ctx, id) })
 }
-func (s *sessionStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.Session, error) {
-	return retryCall1(ctx, s.layer, func() ([]*model.Session, error) { return s.SessionStore.ListByUser(ctx, userID) })
+func (s *sessionStore) ListByUser(ctx context.Context, page *store.SessionPageQuery) ([]*model.Session, error) {
+	return retryCall1(ctx, s.layer, func() ([]*model.Session, error) { return s.SessionStore.ListByUser(ctx, page) })
 }
 func (s *sessionStore) ListActiveByUser(ctx context.Context, userID model.UserID, at time.Time) ([]*model.Session, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.Session, error) {

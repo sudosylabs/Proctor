@@ -368,6 +368,9 @@ var environmentOverrideCatalog = []environmentOverride{
 	durationEnvironmentOverride("PROCTOR_AUTHENTICATION_SESSIONS_ACTIVITY_UPDATE_INTERVAL", func(cfg *Config) *Duration {
 		return &cfg.Authentication.Sessions.ActivityUpdateInterval
 	}),
+	durationEnvironmentOverride("PROCTOR_AUTHENTICATION_SESSIONS_RETIRED_RETENTION", func(cfg *Config) *Duration {
+		return &cfg.Authentication.Sessions.RetiredRetention
+	}),
 	durationEnvironmentOverride("PROCTOR_AUTHENTICATION_LOGIN_RATE_LIMIT_WINDOW", func(cfg *Config) *Duration {
 		return &cfg.Authentication.LoginRateLimit.Window
 	}),

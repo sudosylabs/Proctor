@@ -3236,7 +3236,7 @@ func (s *timedSessionStore) Get(arg0 context.Context, arg1 model.SessionID) (*mo
 	})
 }
 
-func (s *timedSessionStore) ListByUser(arg0 context.Context, arg1 model.UserID) ([]*model.Session, error) {
+func (s *timedSessionStore) ListByUser(arg0 context.Context, arg1 *store.SessionPageQuery) ([]*model.Session, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodListByUser), func() ([]*model.Session, error) {
 		return s.next.ListByUser(arg0, arg1)
 	})
@@ -3278,6 +3278,12 @@ func (s *timedSessionStore) RevokeAllForUser(arg0 context.Context, arg1 *store.U
 	})
 }
 
+func (s *timedSessionStore) PurgeRetired(arg0 context.Context, arg1 *store.SessionPurge) (*store.SessionPurgeResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodPurgeRetired), func() (*store.SessionPurgeResult, error) {
+		return s.next.PurgeRetired(arg0, arg1)
+	})
+}
+
 func (s *timedSessionCredentialStore) GetSessionByTokenHash(arg0 context.Context, arg1 string, arg2 model.SessionCredentialKind) (*model.SessionCredential, *model.Session, error) {
 	return timeStoreCall2(s.layer, storeOperation(aggregateSessionCredential, methodGetSessionByTokenHash), func() (*model.SessionCredential, *model.Session, error) {
 		return s.next.GetSessionByTokenHash(arg0, arg1, arg2)
@@ -3287,6 +3293,12 @@ func (s *timedSessionCredentialStore) GetSessionByTokenHash(arg0 context.Context
 func (s *timedSessionCredentialStore) RotateRefresh(arg0 context.Context, arg1 string, arg2 *model.SessionCredential, arg3 *model.SessionCredential, arg4 time.Time, arg5 time.Time) (*store.SessionRotation, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateSessionCredential, methodRotateRefresh), func() (*store.SessionRotation, error) {
 		return s.next.RotateRefresh(arg0, arg1, arg2, arg3, arg4, arg5)
+	})
+}
+
+func (s *timedSessionCredentialStore) PurgeRetired(arg0 context.Context, arg1 *store.SessionCredentialPurge) (int64, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateSessionCredential, methodPurgeRetired), func() (int64, error) {
+		return s.next.PurgeRetired(arg0, arg1)
 	})
 }
 

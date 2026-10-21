@@ -18,9 +18,15 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// ListUserSessionsQuery pages one User's Sessions newest first. Limit is
+// between 1 and 200; a continuation names the last Session of the previous
+// page by its creation instant and ID.
 type ListUserSessionsQuery struct {
-	UserID         model.UserID
-	IncludeRevoked bool
+	UserID          model.UserID
+	IncludeRevoked  bool
+	Limit           int
+	BeforeCreatedAt time.Time
+	BeforeID        model.SessionID
 }
 
 type RevokeUserSessionCommand struct {
@@ -41,8 +47,7 @@ type RevokeUserSessionsCommand struct {
 
 type sessionAdministrationStore interface {
 	Get(context.Context, model.SessionID) (*model.Session, error)
-	ListByUser(context.Context, model.UserID) ([]*model.Session, error)
-	ListActiveByUser(context.Context, model.UserID, time.Time) ([]*model.Session, error)
+	ListByUser(context.Context, *store.SessionPageQuery) ([]*model.Session, error)
 	Revoke(context.Context, *store.SessionRevocation) (*store.SessionRevocationResult, error)
 	RevokeAllForUser(context.Context, *store.UserSessionsRevocation) (*store.UserSessionsRevocationResult, error)
 }
@@ -84,18 +89,24 @@ func (s *sessionAdministrationService) ListUserSessions(
 	if !userID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
+	if query.Limit < 1 || query.Limit > store.MaximumSessionPageSize {
+		return nil, apperror.Invalid("request.invalid", "limit")
+	}
+	if query.BeforeCreatedAt.IsZero() != query.BeforeID.IsZero() ||
+		(!query.BeforeID.IsZero() && !query.BeforeID.IsValid()) {
+		return nil, apperror.Invalid("request.invalid", "cursor")
+	}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionSessionView, model.Resource{Type: model.ResourceUser, ID: userID.String()}); err != nil {
 		return nil, err
 	}
-	var (
-		sessions []*model.Session
-		err      error
-	)
-	if query.IncludeRevoked {
-		sessions, err = s.sessions.ListByUser(ctx, userID)
-	} else {
-		sessions, err = s.sessions.ListActiveByUser(ctx, userID, model.TimeUTC(s.now()))
+	page := &store.SessionPageQuery{
+		UserID: userID, Limit: query.Limit,
+		BeforeCreatedAt: query.BeforeCreatedAt, BeforeID: query.BeforeID,
 	}
+	if !query.IncludeRevoked {
+		page.ActiveAt = model.TimeUTC(s.now())
+	}
+	sessions, err := s.sessions.ListByUser(ctx, page)
 	if err != nil {
 		return nil, sessionAdministrationStoreErrors.Translate(err)
 	}

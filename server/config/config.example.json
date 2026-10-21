@@ -145,7 +145,8 @@
       "IdleTTL": "168h",
       "AbsoluteTTL": "720h",
       "ActivityUpdateInterval": "5m",
-      "MaximumPerUser": 10
+      "MaximumPerUser": 10,
+      "RetiredRetention": "720h"
     },
     "RecentAuthenticationTTL": "15m",
     "LoginRateLimit": {

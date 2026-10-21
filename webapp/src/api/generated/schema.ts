@@ -5153,7 +5153,7 @@ export interface paths {
         };
         /**
          * List a User's Sessions for administrative review
-         * @description Returns safe Session metadata for the exact User when the caller has current administrative authority. Revoked Sessions are excluded unless requested; access and refresh credentials are never exposed.
+         * @description Returns one page of safe Session metadata for the exact User, newest first, when the caller has current administrative authority. Revoked and expired Sessions are excluded unless requested; access and refresh credentials are never exposed.
          */
         get: operations["listUserSessions"];
         put?: never;
@@ -9505,7 +9505,12 @@ export interface components {
             /** Format: int64 */
             last: number;
         };
-        SessionAdministrationListResponse: components["schemas"]["SessionAdministrationResponse"][];
+        /** @description One bounded page of a User's Sessions, newest first. */
+        SessionAdministrationListResponse: {
+            items: components["schemas"]["SessionAdministrationResponse"][];
+            /** @description Opaque continuation for the next page, omitted after the final page. */
+            next_cursor?: string;
+        };
         SessionAdministrationResponse: {
             /** Format: date-time */
             archived_at?: string;
@@ -20653,6 +20658,10 @@ export interface operations {
             query?: {
                 /** @description Include previously revoked Sessions and their safe revocation reason metadata in the result. */
                 include_revoked?: boolean;
+                /** @description Maximum number of Sessions to return. */
+                limit?: number;
+                /** @description Opaque continuation emitted by the preceding Session page. */
+                cursor?: string;
             };
             header?: never;
             path: {

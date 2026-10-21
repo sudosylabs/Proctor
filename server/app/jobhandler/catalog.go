@@ -49,6 +49,9 @@ type CatalogDependencies struct {
 	AttemptWorkspaceContent   AttemptWorkspaceObjectPurger
 	CommandOutcomes           CommandOutcomeCleaner
 	AuditAttempts             AuditAttemptSweeper
+	Sessions                  SessionPurgeStore
+	SessionCredentials        SessionCredentialPurgeStore
+	SessionRetiredRetention   time.Duration
 	Retention                 RetentionMaintenanceStore
 	RetentionContent          RetentionContentPurger
 	RetentionAudit            RetentionSystemAuditor
@@ -104,6 +107,7 @@ func NewCatalog(deps CatalogDependencies) Catalog {
 		filePurgeExpiredContentDescriptor(purgeHandler),
 		commandOutcomeCleanupDescriptor(commandOutcomeCleanupHandler{outcomes: deps.CommandOutcomes}),
 		auditAttemptSweepDescriptor(auditAttemptSweepHandler{audits: deps.AuditAttempts}),
+		sessionPurgeDescriptor(sessionPurgeHandler{sessions: deps.Sessions, credentials: deps.SessionCredentials, retention: deps.SessionRetiredRetention}),
 		mailDeliveryDescriptor(mailDeliveryHandler{deliveries: deps.MailDeliveries, sender: deps.MailSender, sealer: deps.MailSealer, recorder: deps.MailRecorder, health: deps.MailHealth, relevance: deps.MailRelevance, now: now}),
 		mailCredentialDeliveryDescriptor(mailDeliveryHandler{deliveries: deps.MailDeliveries, sender: deps.MailSender, sealer: deps.MailSealer, recorder: deps.MailRecorder, health: deps.MailHealth, relevance: deps.MailRelevance, now: now}),
 		sittingMailExpansionDescriptor(sittingMailExpansionHandler{sittings: deps.SittingMailStore, mail: deps.SittingMail}),
@@ -140,6 +144,7 @@ func NewCatalog(deps CatalogDependencies) Catalog {
 		{Name: "job-history-cleanup", Proposer: jobHistoryCleanupProposer{jobs: deps.JobStore, now: now}},
 		{Name: "command-outcome-cleanup", Proposer: commandOutcomeCleanupProposer{jobs: deps.JobStore, now: now}},
 		{Name: "audit-attempt-sweep", Interval: time.Hour, Proposer: auditAttemptSweepProposer{jobs: deps.JobStore, now: now}},
+		{Name: "session-purge-retired", Interval: time.Hour, Proposer: sessionPurgeProposer{jobs: deps.JobStore, now: now}},
 		{Name: "mail-cleanup", Proposer: mailCleanupProposer{jobs: deps.JobStore, now: now}},
 		{Name: "invitation-maintenance", Proposer: invitationMaintenanceProposer{jobs: deps.JobStore, now: now}},
 		{Name: "exam-sitting-lifecycle-recovery", Proposer: examSittingLifecycleRecoveryProposer{jobs: deps.JobStore, now: now}},

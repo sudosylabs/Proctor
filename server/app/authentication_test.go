@@ -408,7 +408,10 @@ func (s authenticationSessionStore) Get(_ context.Context, id model.SessionID) (
 	cloned := *session
 	return &cloned, nil
 }
-func (authenticationSessionStore) ListByUser(context.Context, model.UserID) ([]*model.Session, error) {
+func (authenticationSessionStore) ListByUser(context.Context, *store.SessionPageQuery) ([]*model.Session, error) {
+	return nil, errors.New("unused")
+}
+func (authenticationSessionStore) PurgeRetired(context.Context, *store.SessionPurge) (*store.SessionPurgeResult, error) {
 	return nil, errors.New("unused")
 }
 func (authenticationSessionStore) ListActiveByUser(context.Context, model.UserID, time.Time) ([]*model.Session, error) {
@@ -458,6 +461,10 @@ func (s authenticationSessionCredentialStore) GetSessionByTokenHash(
 	credentialClone := *credential
 	sessionClone := *session
 	return &credentialClone, &sessionClone, nil
+}
+
+func (authenticationSessionCredentialStore) PurgeRetired(context.Context, *store.SessionCredentialPurge) (int64, error) {
+	return 0, errors.New("unused")
 }
 
 func (s authenticationSessionCredentialStore) RotateRefresh(
