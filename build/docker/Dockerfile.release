@@ -15,8 +15,12 @@
 FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 ARG TARGETARCH
 WORKDIR /opt/proctor
-COPY --chown=65532:65532 ${TARGETARCH}/proctor/ ./
+# Root owns the packaged files (directories 0755, files 0644, binaries 0755),
+# so the runtime user can run but never replace its binaries or webapp, even
+# without a read-only root filesystem.
+COPY --chown=0:0 ${TARGETARCH}/proctor/ ./
 USER 65532:65532
 EXPOSE 8065 8067 7946/tcp 7946/udp
+HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=12 CMD ["/opt/proctor/proctor-healthcheck"]
 ENTRYPOINT ["/opt/proctor/proctor"]
 CMD ["serve", "--config", "/etc/proctor/config.json"]

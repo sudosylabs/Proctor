@@ -141,6 +141,9 @@ module when a change is not server-only. No module has been released yet.
   running values and are named in a warning instead of changing silently.
 - Server: `proctor migrate status` only reads; it no longer creates the
   migration tables or takes the exclusive migration lock.
+- Release image: packaged binaries and webapp are owned by root and read-only
+  to the runtime user, and the image declares a `HEALTHCHECK` that runs
+  `proctor-healthcheck` against readiness.
 - Server: re-allowing a focus-loss suspension no longer reports a committed
   re-allow as unavailable.
 - Server: a client that disconnects mid-mutation no longer leaves its audit

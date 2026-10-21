@@ -132,7 +132,11 @@ test("the local and release images share one package recipe and Dockerfile", asy
   const dockerfile = await readFile(new URL("../docker/Dockerfile.release", import.meta.url), "utf8");
   // The image copies packaged binaries; it never compiles source.
   assert.doesNotMatch(dockerfile, /go build|^FROM .* AS /m);
-  assert.match(dockerfile, /COPY --chown=65532:65532 \$\{TARGETARCH\}\/proctor\/ \.\//);
+  // The runtime user can execute but never replace its binaries or webapp.
+  assert.match(dockerfile, /^COPY --chown=0:0 \$\{TARGETARCH\}\/proctor\/ \.\/$/m);
+  assert.doesNotMatch(dockerfile, /--chown=65532/);
+  assert.match(dockerfile, /^USER 65532:65532$/m);
+  assert.match(dockerfile, /^HEALTHCHECK .*CMD \["\/opt\/proctor\/proctor-healthcheck"\]$/m);
   assert.match(workflow, /file: build\/docker\/Dockerfile\.release/);
   assert.match(container, /--file "\$\(ROOT_DIR\)\/build\/docker\/Dockerfile\.release"/);
   assert.match(container, /\$\(call package-linux,/);
