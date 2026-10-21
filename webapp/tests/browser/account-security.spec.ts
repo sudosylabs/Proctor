@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import jsQR from "jsqr";
 import { PNG } from "pngjs";
 
@@ -73,10 +73,21 @@ function mutations(state: Awaited<ReturnType<typeof mockSecurity>>, suffix: stri
   return state.requests.filter(({ path, method }) => method === "POST" && path.endsWith(suffix));
 }
 
+// enterCode fills a one-time-code field and retries until the value sticks.
+// The OTP control can remount while a page transition settles, and a fill that
+// lands during that remount is discarded under load.
+async function enterCode(field: Locator, code: string) {
+  await expect(field).toBeEditable();
+  await expect(async () => {
+    await field.fill(code);
+    await expect(field).toHaveValue(code, { timeout: 1_000 });
+  }).toPass();
+}
+
 async function activate(page: Page) {
   await page.getByRole("button", { name: "Set up an authenticator", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Add your authenticator", level: 1 })).toBeFocused();
-  await page.getByLabel("Authenticator code", { exact: false }).fill("123456");
+  await enterCode(page.getByLabel("Authenticator code", { exact: false }), "123456");
   await page.getByRole("button", { name: "Activate authenticator", exact: true }).click();
 }
 
@@ -107,7 +118,7 @@ for (const colorScheme of ["light", "dark"] as const) {
       await page.keyboard.press("Enter");
       await expect(page.getByLabel("Setup key", { exact: true })).toHaveValue(setupKey);
       await expect(page.getByLabel("Setup key", { exact: true })).toBeVisible();
-      await page.getByLabel("Authenticator code").fill("012345");
+      await enterCode(page.getByLabel("Authenticator code"), "012345");
       await expect(page.locator("[data-proctor-otp-slot]")).toHaveText(["0", "1", "2", "3", "4", "5"]);
       await page.screenshot({ path: testInfo.outputPath(`mfa-setup-${width}-${colorScheme}.png`), fullPage: true });
       await page.evaluate(() => { document.body.style.zoom = "2"; document.documentElement.dir = "rtl"; });
@@ -177,7 +188,7 @@ test("switching proof methods clears values, restores focus and preserves recove
   const state = await mockSecurity(page, { ...baseContext, enabled: true });
   await page.goto("/account/security");
   await page.getByRole("button", { name: "Verify this session", exact: true }).click();
-  await page.getByLabel("Authenticator code").fill("012345");
+  await enterCode(page.getByLabel("Authenticator code"), "012345");
   await page.getByRole("button", { name: "Use a recovery code instead" }).click();
   const recovery = page.getByRole("textbox", { name: "Recovery code", exact: true });
   await expect(recovery).toBeFocused();
@@ -271,7 +282,7 @@ test("lost activation confirmation reads status and requires explicit challenge 
   expect(mutations(state, "/activate")).toHaveLength(1);
   expect(mutations(state, "/regenerate")).toHaveLength(0);
   await page.getByRole("button", { name: "Verify this session", exact: true }).click();
-  await page.getByLabel("Authenticator code").fill("123456");
+  await enterCode(page.getByLabel("Authenticator code"), "123456");
   await page.getByRole("button", { name: "Verify code", exact: true }).click();
   expect(mutations(state, "/regenerate")).toHaveLength(0);
   await page.getByRole("button", { name: "Generate new recovery codes", exact: true }).click();
@@ -308,7 +319,7 @@ test("fresh password proof and MFA challenge return without replaying the securi
   await page.getByLabel("Current password", { exact: false }).fill("current-password");
   await page.getByRole("button", { name: "Confirm password" }).click();
   await page.getByRole("button", { name: "Use a recovery code instead" }).click();
-  await page.getByRole("textbox", { name: "Recovery code", exact: true }).fill("ABCD-EFGH");
+  await enterCode(page.getByRole("textbox", { name: "Recovery code", exact: true }), "ABCD-EFGH");
   await page.getByRole("button", { name: "Verify code" }).click();
   await expect(page.getByRole("heading", { name: "Your proof is ready" })).toBeVisible();
   await page.getByRole("link", { name: "Return to your task" }).click();
@@ -355,7 +366,7 @@ test("pending enrollment restarts explicitly and invalid codes keep the setup ke
   // after that render so it cannot clear the field under load.
   await expect.poll(() => mutations(state, "/setup").length).toBe(1);
   await expect(page.getByLabel("Setup key", { exact: true })).toHaveValue(setupKey);
-  await page.getByLabel("Authenticator code", { exact: false }).fill("000000");
+  await enterCode(page.getByLabel("Authenticator code", { exact: false }), "000000");
   await page.getByRole("button", { name: "Activate authenticator" }).click();
   await expect(page.getByText("That code could not be verified.", { exact: false })).toBeVisible();
   await expect(page.getByLabel("Setup key", { exact: true })).toHaveValue(setupKey);
@@ -377,7 +388,7 @@ test("a response arriving after page exit cannot restore one-time codes on histo
   });
   await page.goto("/account/security");
   await page.getByRole("button", { name: "Set up an authenticator", exact: true }).click();
-  await page.getByLabel("Authenticator code", { exact: false }).fill("123456");
+  await enterCode(page.getByLabel("Authenticator code", { exact: false }), "123456");
   await page.getByRole("button", { name: "Activate authenticator" }).click();
   await requested;
   await page.evaluate(() => { window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true })); });
