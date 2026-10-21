@@ -16,18 +16,18 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type academicUnitMemberHTTPApplication struct {
-	pageQuery     application.ListAcademicUnitMembersPageQuery
-	pageResult    *application.AcademicUnitMemberPage
+	pageQuery     app.ListAcademicUnitMembersPageQuery
+	pageResult    *app.AcademicUnitMemberPage
 	result        *model.AcademicUnitMember
 	values        []*model.AcademicUnitMember
-	listQuery     application.ListAcademicUnitMembersQuery
-	createCommand application.CreateAcademicUnitMemberCommand
-	endCommand    application.EndAcademicUnitMemberCommand
+	listQuery     app.ListAcademicUnitMembersQuery
+	createCommand app.CreateAcademicUnitMemberCommand
+	endCommand    app.EndAcademicUnitMemberCommand
 }
 
 func TestAcademicUnitMemberHistoryQueryIncludesEndedMemberships(t *testing.T) {
@@ -68,15 +68,15 @@ func TestAcademicUnitMemberFalseHistoryQueryUsesActiveAt(t *testing.T) {
 	}
 }
 
-func (a *academicUnitMemberHTTPApplication) ListAcademicUnitMembers(_ context.Context, _ application.Invocation, query application.ListAcademicUnitMembersQuery) ([]*model.AcademicUnitMember, error) {
+func (a *academicUnitMemberHTTPApplication) ListAcademicUnitMembers(_ context.Context, _ app.Invocation, query app.ListAcademicUnitMembersQuery) ([]*model.AcademicUnitMember, error) {
 	a.listQuery = query
 	return a.values, nil
 }
-func (a *academicUnitMemberHTTPApplication) CreateAcademicUnitMember(_ context.Context, _ application.Invocation, command application.CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
+func (a *academicUnitMemberHTTPApplication) CreateAcademicUnitMember(_ context.Context, _ app.Invocation, command app.CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
 	a.createCommand = command
 	return a.result, nil
 }
-func (a *academicUnitMemberHTTPApplication) EndAcademicUnitMember(_ context.Context, _ application.Invocation, command application.EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
+func (a *academicUnitMemberHTTPApplication) EndAcademicUnitMember(_ context.Context, _ app.Invocation, command app.EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
 	a.endCommand = command
 	return a.result, nil
 }
@@ -140,10 +140,10 @@ func TestAcademicUnitMemberResourceRejectsInvalidQueryAndMissingPrincipal(t *tes
 	}
 }
 
-func (a *academicUnitMemberHTTPApplication) ListAcademicUnitMembersPage(_ context.Context, _ application.Invocation, query application.ListAcademicUnitMembersPageQuery) (*application.AcademicUnitMemberPage, error) {
+func (a *academicUnitMemberHTTPApplication) ListAcademicUnitMembersPage(_ context.Context, _ app.Invocation, query app.ListAcademicUnitMembersPageQuery) (*app.AcademicUnitMemberPage, error) {
 	a.pageQuery = query
 	if a.pageResult != nil {
 		return a.pageResult, nil
 	}
-	return &application.AcademicUnitMemberPage{}, nil
+	return &app.AcademicUnitMemberPage{}, nil
 }

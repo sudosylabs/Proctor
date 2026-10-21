@@ -10,7 +10,7 @@ package httpapi
 import (
 	"net/http"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -68,7 +68,7 @@ func (m programmeResourceModule) list(request operationRequest) (operationResult
 	}
 	programmes, err := m.programmes.ListProgrammes(
 		request.context, request.invocation(),
-		application.ListProgrammesQuery{AcademicUnitID: unitID, Query: request.request.URL.Query().Get("q"), Limit: limit},
+		app.ListProgrammesQuery{AcademicUnitID: unitID, Query: request.request.URL.Query().Get("q"), Limit: limit},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -91,7 +91,7 @@ func (m programmeResourceModule) create(request operationRequest) (operationResu
 	}
 	saved, err := m.programmes.CreateProgramme(
 		request.context, request.invocation(),
-		application.CreateProgrammeCommand{AcademicUnitID: unitID, Name: body.Name, DisplayName: body.DisplayName, Description: body.Description},
+		app.CreateProgrammeCommand{AcademicUnitID: unitID, Name: body.Name, DisplayName: body.DisplayName, Description: body.Description},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -106,7 +106,7 @@ func (m programmeResourceModule) get(request operationRequest) (operationResult,
 	}
 	programme, err := m.programmes.GetProgramme(
 		request.context, request.invocation(),
-		application.GetProgrammeQuery{ID: id},
+		app.GetProgrammeQuery{ID: id},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -128,7 +128,7 @@ func (m programmeResourceModule) patch(request operationRequest) (operationResul
 	}
 	programme, err := m.programmes.UpdateProgramme(
 		request.context, request.invocation(),
-		application.UpdateProgrammeCommand{ExpectedRevision: body.ExpectedRevision.ValuePointer(), ID: id, Name: body.Name.ValuePointer(), DisplayName: body.DisplayName.ValuePointer(), Description: body.Description.ValuePointer()},
+		app.UpdateProgrammeCommand{ExpectedRevision: body.ExpectedRevision.ValuePointer(), ID: id, Name: body.Name.ValuePointer(), DisplayName: body.DisplayName.ValuePointer(), Description: body.Description.ValuePointer()},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -147,7 +147,7 @@ func (m programmeResourceModule) archive(request operationRequest) (operationRes
 	}
 	err = m.programmes.ArchiveProgramme(
 		request.context, request.invocation(),
-		application.ArchiveProgrammeCommand{ExpectedRevision: expectedRevision, ID: id},
+		app.ArchiveProgrammeCommand{ExpectedRevision: expectedRevision, ID: id},
 	)
 	if err != nil {
 		return operationResult{}, err

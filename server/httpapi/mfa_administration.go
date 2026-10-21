@@ -11,11 +11,11 @@ import (
 	"context"
 	"net/http"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 )
 
 type MFAAdministration interface {
-	ResetUserMFA(context.Context, application.Invocation, application.ResetUserMFACommand) error
+	ResetUserMFA(context.Context, app.Invocation, app.ResetUserMFACommand) error
 }
 
 type mfaAdministrationResourceModule struct{ application MFAAdministration }
@@ -39,7 +39,7 @@ func (m mfaAdministrationResourceModule) reset(request operationRequest) (operat
 	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	if err := m.application.ResetUserMFA(request.context, request.invocation(), application.ResetUserMFACommand{UserID: userID, IdentityVerified: body.IdentityVerified, Reason: body.Reason, VerificationReference: body.VerificationReference}); err != nil {
+	if err := m.application.ResetUserMFA(request.context, request.invocation(), app.ResetUserMFACommand{UserID: userID, IdentityVerified: body.IdentityVerified, Reason: body.Reason, VerificationReference: body.VerificationReference}); err != nil {
 		return operationResult{}, err
 	}
 	return noContentResult().withHeaders(noStoreHeaders()), nil

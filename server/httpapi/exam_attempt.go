@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -228,47 +228,47 @@ func candidateWorkspaceCursorSpec() opaqueCursorSpec[candidateWorkspaceCursorWir
 }
 
 type ExamAttemptApplication interface {
-	BrowserSourceStatus(context.Context, application.Invocation, application.BrowserSourceQuery) (*model.BrowserSourceStatus, error)
-	BrowserDeliveryReceipts(context.Context, application.Invocation, application.BrowserSourceQuery, int64, int) (*model.BrowserReceiptPage, error)
-	DeclareBrowserDeliveryGaps(context.Context, application.Invocation, application.BrowserDeliveryGapsCommand) (*model.BrowserDeliveryGapResult, error)
-	SealBrowserDelivery(context.Context, application.Invocation, application.BrowserDeliveryFinalCommand) (*model.BrowserSourceStatus, error)
-	UpdateBrowserDeliverySummary(context.Context, application.Invocation, application.BrowserDeliverySummaryCommand) (*model.BrowserDeliverySummaryResult, error)
-	AppendHistoricalBrowserDelivery(context.Context, application.Invocation, application.BrowserDeliveryAppendCommand) (*model.BrowserActivityAcknowledgement, error)
+	BrowserSourceStatus(context.Context, app.Invocation, app.BrowserSourceQuery) (*model.BrowserSourceStatus, error)
+	BrowserDeliveryReceipts(context.Context, app.Invocation, app.BrowserSourceQuery, int64, int) (*model.BrowserReceiptPage, error)
+	DeclareBrowserDeliveryGaps(context.Context, app.Invocation, app.BrowserDeliveryGapsCommand) (*model.BrowserDeliveryGapResult, error)
+	SealBrowserDelivery(context.Context, app.Invocation, app.BrowserDeliveryFinalCommand) (*model.BrowserSourceStatus, error)
+	UpdateBrowserDeliverySummary(context.Context, app.Invocation, app.BrowserDeliverySummaryCommand) (*model.BrowserDeliverySummaryResult, error)
+	AppendHistoricalBrowserDelivery(context.Context, app.Invocation, app.BrowserDeliveryAppendCommand) (*model.BrowserActivityAcknowledgement, error)
 
-	BrowserSourceList(context.Context, application.Invocation, application.BrowserSourceQuery) ([]model.BrowserSourceStatus, error)
-	AppendNativeDelivery(context.Context, application.Invocation, application.NativeDeliveryAppendCommand) (*model.NativeSecurityAcknowledgement, error)
-	DeliveryBudget(context.Context, application.Invocation, application.DeliveryBudgetQuery) (*model.DeliveryBudgetSnapshot, error)
-	StopDeliveryDetails(context.Context, application.Invocation, application.StopDeliveryDetailsCommand) (*model.StopDeliveryDetailsResult, error)
-	NativeDeliveryStatus(context.Context, application.Invocation, application.NativeDeliveryQuery) (*model.NativeSecurityStreamStatus, error)
-	NativeDeliveryReceipt(context.Context, application.Invocation, application.NativeDeliveryQuery, int64) (*model.NativeBatchReceipt, error)
-	DeclareNativeDeliveryGaps(context.Context, application.Invocation, application.NativeDeliveryGapsCommand) (*model.DeliveryGapReceipt, error)
-	SealNativeDelivery(context.Context, application.Invocation, application.NativeDeliveryFinalCommand) (*model.NativeSecurityStreamStatus, error)
-	UpdateNativeDeliverySummary(context.Context, application.Invocation, application.NativeDeliverySummaryCommand) (*model.NativeSecurityStreamStatus, error)
-	RecoverExamSecurityPolicy(context.Context, application.Invocation, model.ExamAttemptID) (*application.RecoveredSecurityPolicy, error)
-	PrepareExamSecurityPreflight(context.Context, application.Invocation, application.PrepareSecurityPreflightCommand) (*application.PreparedSecurityPreflight, error)
-	ReportExamSecurityPreflight(context.Context, application.Invocation, application.ReportSecurityPreflightCommand) (*model.SecurityPreflightResult, error)
-	GetExamAttempt(context.Context, application.Invocation, application.GetExamAttemptQuery) (application.ExamAttemptManagerView, error)
-	ListExamAttempts(context.Context, application.Invocation, application.ListExamAttemptsQuery) (application.ExamAttemptManagerPage, error)
-	ListSittingCandidateStatuses(context.Context, application.Invocation, application.ListSittingCandidateStatusesQuery) (application.SittingCandidateStatusesPage, error)
-	ListExamAttemptBrowserActivity(context.Context, application.Invocation, application.ListBrowserActivityQuery) (application.BrowserActivityPage, error)
-	AcknowledgeExamAttemptCorrection(context.Context, application.Invocation, application.AcknowledgeExamCorrectionCommand) (application.ExamCorrectionAcknowledgementResult, error)
-	EndExamAttemptByManager(context.Context, application.Invocation, application.EndExamAttemptByManagerCommand) (application.ExamSubmissionReceipt, error)
-	GetCandidateExamPresentation(context.Context, application.Invocation, application.CandidateExamAttemptAccess) (application.CandidateExamPresentation, error)
-	ListCandidateExamWorkspace(context.Context, application.Invocation, application.ListCandidateExamWorkspaceQuery) (application.CandidateExamWorkspacePage, error)
-	ListCandidateExamWorkspaceJournal(context.Context, application.Invocation, application.ListCandidateExamWorkspaceJournalQuery) (application.CandidateExamWorkspaceJournalPage, error)
-	CreateCandidateExamWorkspaceDirectory(context.Context, application.Invocation, application.CreateCandidateExamWorkspaceDirectoryCommand) (application.ExamAttemptWorkspaceMutationResult, error)
-	CreateCandidateExamWorkspaceFile(context.Context, application.Invocation, application.CreateCandidateExamWorkspaceFileCommand) (application.ExamAttemptWorkspaceMutationResult, error)
-	ReplaceCandidateExamWorkspaceFile(context.Context, application.Invocation, application.ReplaceCandidateExamWorkspaceFileCommand) (application.ExamAttemptWorkspaceMutationResult, error)
-	MoveCandidateExamWorkspaceEntry(context.Context, application.Invocation, application.MoveCandidateExamWorkspaceEntryCommand) (application.ExamAttemptWorkspaceMutationResult, error)
-	DeleteCandidateExamWorkspaceEntry(context.Context, application.Invocation, application.DeleteCandidateExamWorkspaceEntryCommand) (application.ExamAttemptWorkspaceMutationResult, error)
-	OpenCandidateExamResource(context.Context, application.Invocation, application.OpenCandidateExamResourceQuery) (application.OpenedExamAttemptContent, error)
-	OpenCandidateExamWorkspaceFile(context.Context, application.Invocation, application.OpenCandidateExamWorkspaceFileQuery) (application.OpenedExamAttemptContent, error)
-	ReallowExamAttempt(context.Context, application.Invocation, application.ReallowExamAttemptCommand) (application.ExamAttemptReallowResult, error)
-	SuspendExamAttempt(context.Context, application.Invocation, application.SuspendExamAttemptCommand) (application.ExamAttemptManualSuspensionResult, error)
-	SubmitExamAttempt(context.Context, application.Invocation, application.SubmitExamAttemptCommand) (application.ExamSubmissionReceipt, error)
-	GetExamSubmission(context.Context, application.Invocation, application.GetExamSubmissionQuery) (application.ExamSubmissionManagerView, error)
-	ListExamSubmissionManifest(context.Context, application.Invocation, application.ListExamSubmissionManifestQuery) (application.ExamSubmissionManifestPage, error)
-	OpenExamSubmissionFile(context.Context, application.Invocation, application.OpenExamSubmissionFileQuery) (application.OpenedExamAttemptContent, error)
+	BrowserSourceList(context.Context, app.Invocation, app.BrowserSourceQuery) ([]model.BrowserSourceStatus, error)
+	AppendNativeDelivery(context.Context, app.Invocation, app.NativeDeliveryAppendCommand) (*model.NativeSecurityAcknowledgement, error)
+	DeliveryBudget(context.Context, app.Invocation, app.DeliveryBudgetQuery) (*model.DeliveryBudgetSnapshot, error)
+	StopDeliveryDetails(context.Context, app.Invocation, app.StopDeliveryDetailsCommand) (*model.StopDeliveryDetailsResult, error)
+	NativeDeliveryStatus(context.Context, app.Invocation, app.NativeDeliveryQuery) (*model.NativeSecurityStreamStatus, error)
+	NativeDeliveryReceipt(context.Context, app.Invocation, app.NativeDeliveryQuery, int64) (*model.NativeBatchReceipt, error)
+	DeclareNativeDeliveryGaps(context.Context, app.Invocation, app.NativeDeliveryGapsCommand) (*model.DeliveryGapReceipt, error)
+	SealNativeDelivery(context.Context, app.Invocation, app.NativeDeliveryFinalCommand) (*model.NativeSecurityStreamStatus, error)
+	UpdateNativeDeliverySummary(context.Context, app.Invocation, app.NativeDeliverySummaryCommand) (*model.NativeSecurityStreamStatus, error)
+	RecoverExamSecurityPolicy(context.Context, app.Invocation, model.ExamAttemptID) (*app.RecoveredSecurityPolicy, error)
+	PrepareExamSecurityPreflight(context.Context, app.Invocation, app.PrepareSecurityPreflightCommand) (*app.PreparedSecurityPreflight, error)
+	ReportExamSecurityPreflight(context.Context, app.Invocation, app.ReportSecurityPreflightCommand) (*model.SecurityPreflightResult, error)
+	GetExamAttempt(context.Context, app.Invocation, app.GetExamAttemptQuery) (app.ExamAttemptManagerView, error)
+	ListExamAttempts(context.Context, app.Invocation, app.ListExamAttemptsQuery) (app.ExamAttemptManagerPage, error)
+	ListSittingCandidateStatuses(context.Context, app.Invocation, app.ListSittingCandidateStatusesQuery) (app.SittingCandidateStatusesPage, error)
+	ListExamAttemptBrowserActivity(context.Context, app.Invocation, app.ListBrowserActivityQuery) (app.BrowserActivityPage, error)
+	AcknowledgeExamAttemptCorrection(context.Context, app.Invocation, app.AcknowledgeExamCorrectionCommand) (app.ExamCorrectionAcknowledgementResult, error)
+	EndExamAttemptByManager(context.Context, app.Invocation, app.EndExamAttemptByManagerCommand) (app.ExamSubmissionReceipt, error)
+	GetCandidateExamPresentation(context.Context, app.Invocation, app.CandidateExamAttemptAccess) (app.CandidateExamPresentation, error)
+	ListCandidateExamWorkspace(context.Context, app.Invocation, app.ListCandidateExamWorkspaceQuery) (app.CandidateExamWorkspacePage, error)
+	ListCandidateExamWorkspaceJournal(context.Context, app.Invocation, app.ListCandidateExamWorkspaceJournalQuery) (app.CandidateExamWorkspaceJournalPage, error)
+	CreateCandidateExamWorkspaceDirectory(context.Context, app.Invocation, app.CreateCandidateExamWorkspaceDirectoryCommand) (app.ExamAttemptWorkspaceMutationResult, error)
+	CreateCandidateExamWorkspaceFile(context.Context, app.Invocation, app.CreateCandidateExamWorkspaceFileCommand) (app.ExamAttemptWorkspaceMutationResult, error)
+	ReplaceCandidateExamWorkspaceFile(context.Context, app.Invocation, app.ReplaceCandidateExamWorkspaceFileCommand) (app.ExamAttemptWorkspaceMutationResult, error)
+	MoveCandidateExamWorkspaceEntry(context.Context, app.Invocation, app.MoveCandidateExamWorkspaceEntryCommand) (app.ExamAttemptWorkspaceMutationResult, error)
+	DeleteCandidateExamWorkspaceEntry(context.Context, app.Invocation, app.DeleteCandidateExamWorkspaceEntryCommand) (app.ExamAttemptWorkspaceMutationResult, error)
+	OpenCandidateExamResource(context.Context, app.Invocation, app.OpenCandidateExamResourceQuery) (app.OpenedExamAttemptContent, error)
+	OpenCandidateExamWorkspaceFile(context.Context, app.Invocation, app.OpenCandidateExamWorkspaceFileQuery) (app.OpenedExamAttemptContent, error)
+	ReallowExamAttempt(context.Context, app.Invocation, app.ReallowExamAttemptCommand) (app.ExamAttemptReallowResult, error)
+	SuspendExamAttempt(context.Context, app.Invocation, app.SuspendExamAttemptCommand) (app.ExamAttemptManualSuspensionResult, error)
+	SubmitExamAttempt(context.Context, app.Invocation, app.SubmitExamAttemptCommand) (app.ExamSubmissionReceipt, error)
+	GetExamSubmission(context.Context, app.Invocation, app.GetExamSubmissionQuery) (app.ExamSubmissionManagerView, error)
+	ListExamSubmissionManifest(context.Context, app.Invocation, app.ListExamSubmissionManifestQuery) (app.ExamSubmissionManifestPage, error)
+	OpenExamSubmissionFile(context.Context, app.Invocation, app.OpenExamSubmissionFileQuery) (app.OpenedExamAttemptContent, error)
 }
 
 type sittingCandidateStatusCursor struct {
@@ -348,9 +348,9 @@ type sittingCandidateSubmissionResponse struct {
 }
 
 type sittingCandidatePresenceResponse struct {
-	State              application.SittingCandidatePresenceState `json:"state"`
-	LastLeaseRenewedAt *string                                   `json:"last_lease_renewed_at,omitempty"`
-	LeaseExpiresAt     *string                                   `json:"lease_expires_at,omitempty"`
+	State              app.SittingCandidatePresenceState `json:"state"`
+	LastLeaseRenewedAt *string                           `json:"last_lease_renewed_at,omitempty"`
+	LeaseExpiresAt     *string                           `json:"lease_expires_at,omitempty"`
 }
 
 type sittingCandidateSuspensionResponse struct {
@@ -840,7 +840,7 @@ func (m examAttemptHTTPModule) endByManager(request operationRequest) (operation
 		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
 	receipt, err := m.application.EndExamAttemptByManager(request.context, request.invocation(),
-		application.EndExamAttemptByManagerCommand{ExamID: examID, SittingID: sittingID, AttemptID: attemptID,
+		app.EndExamAttemptByManagerCommand{ExamID: examID, SittingID: sittingID, AttemptID: attemptID,
 			ExpectedAttemptRevision: body.ExpectedAttemptRevision, PrivateReason: body.Reason,
 			IdempotencyKey: request.idempotencyKey})
 	if err != nil {
@@ -875,7 +875,7 @@ func (m examAttemptHTTPModule) acknowledgeCorrection(request operationRequest) (
 	if err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	result, err := m.application.AcknowledgeExamAttemptCorrection(request.context, request.invocation(), application.AcknowledgeExamCorrectionCommand{
+	result, err := m.application.AcknowledgeExamAttemptCorrection(request.context, request.invocation(), app.AcknowledgeExamCorrectionCommand{
 		Access: mutationAccess, CorrectionRevisionID: correctionRevisionID, ExpectedCurrentRevisionID: currentRevisionID,
 		IdempotencyKey: request.idempotencyKey})
 	if err != nil {
@@ -895,7 +895,7 @@ func (m examAttemptHTTPModule) listCandidateStatuses(request operationRequest) (
 	if err != nil {
 		return operationResult{}, err
 	}
-	query := application.ListSittingCandidateStatusesQuery{ExamID: examID, SittingID: sittingID, Limit: 50}
+	query := app.ListSittingCandidateStatusesQuery{ExamID: examID, SittingID: sittingID, Limit: 50}
 	values := request.request.URL.Query()
 	if raw := values.Get("limit"); raw != "" {
 		query.Limit, err = strconv.Atoi(raw)
@@ -1003,7 +1003,7 @@ func (m examAttemptHTTPModule) reallow(request operationRequest) (operationResul
 	if err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	result, err := m.application.ReallowExamAttempt(request.context, request.invocation(), application.ReallowExamAttemptCommand{
+	result, err := m.application.ReallowExamAttempt(request.context, request.invocation(), app.ReallowExamAttemptCommand{
 		ExamID: examID, SittingID: sittingID, AttemptID: attemptID, SuspensionID: suspensionID,
 		ExpectedAttemptRevision: body.ExpectedAttemptRevision, PrivateReason: body.Reason, IdempotencyKey: request.idempotencyKey,
 	})
@@ -1029,7 +1029,7 @@ func (m examAttemptHTTPModule) suspend(request operationRequest) (operationResul
 	if body.ExpectedAttemptRevision < 1 {
 		return operationResult{}, invalidRequestError(errors.New("expected_attempt_revision must be positive"))
 	}
-	result, err := m.application.SuspendExamAttempt(request.context, request.invocation(), application.SuspendExamAttemptCommand{
+	result, err := m.application.SuspendExamAttempt(request.context, request.invocation(), app.SuspendExamAttemptCommand{
 		ExamID: examID, SittingID: sittingID, AttemptID: attemptID,
 		ExpectedAttemptRevision: body.ExpectedAttemptRevision, PrivateReason: body.Reason, IdempotencyKey: request.idempotencyKey,
 	})
@@ -1049,7 +1049,7 @@ func (m examAttemptHTTPModule) getManaged(request operationRequest) (operationRe
 	if err != nil {
 		return operationResult{}, err
 	}
-	view, err := m.application.GetExamAttempt(request.context, request.invocation(), application.GetExamAttemptQuery{
+	view, err := m.application.GetExamAttempt(request.context, request.invocation(), app.GetExamAttemptQuery{
 		ExamID: examID, SittingID: sittingID, AttemptID: attemptID,
 	})
 	if err != nil {
@@ -1067,7 +1067,7 @@ func (m examAttemptHTTPModule) listManaged(request operationRequest) (operationR
 	if err != nil {
 		return operationResult{}, err
 	}
-	query := application.ListExamAttemptsQuery{ExamID: examID, SittingID: sittingID, Limit: 50}
+	query := app.ListExamAttemptsQuery{ExamID: examID, SittingID: sittingID, Limit: 50}
 	values := request.request.URL.Query()
 	if raw := values.Get("limit"); raw != "" {
 		query.Limit, err = strconv.Atoi(raw)
@@ -1126,7 +1126,7 @@ func (m examAttemptHTTPModule) listBrowserActivity(request operationRequest) (op
 	if err != nil {
 		return operationResult{}, err
 	}
-	query := application.ListBrowserActivityQuery{ExamID: examID, SittingID: sittingID, AttemptID: attemptID, Limit: 50}
+	query := app.ListBrowserActivityQuery{ExamID: examID, SittingID: sittingID, AttemptID: attemptID, Limit: 50}
 	values := request.request.URL.Query()
 	if raw := values.Get("limit"); raw != "" {
 		query.Limit, err = strconv.Atoi(raw)
@@ -1210,7 +1210,7 @@ func candidateLiveCorrectionsFromModel(values []model.CandidateLiveCorrection) [
 	return result
 }
 
-func candidateBrowserPolicyFromStore(value *application.CandidateBrowserPolicy) *candidateBrowserPolicyResponse {
+func candidateBrowserPolicyFromStore(value *app.CandidateBrowserPolicy) *candidateBrowserPolicyResponse {
 	if value == nil {
 		return nil
 	}
@@ -1225,7 +1225,7 @@ func candidateBrowserPolicyFromStore(value *application.CandidateBrowserPolicy) 
 	return response
 }
 
-func candidateRuntimeCapabilitiesFromStore(value application.CandidateRuntimeCapabilities) candidateRuntimeCapabilitiesResponse {
+func candidateRuntimeCapabilitiesFromStore(value app.CandidateRuntimeCapabilities) candidateRuntimeCapabilitiesResponse {
 	browser := candidateBrowserCapabilityResponse{State: string(value.Browser.State)}
 	if value.Browser.PolicyRevisionID.IsValid() {
 		browser.PolicyRevisionID = value.Browser.PolicyRevisionID.String()
@@ -1250,7 +1250,7 @@ func (m examAttemptHTTPModule) workspace(request operationRequest) (operationRes
 	if err != nil {
 		return operationResult{}, err
 	}
-	query := application.ListCandidateExamWorkspaceQuery{Access: access, ExpectedCursor: -1, Limit: 50}
+	query := app.ListCandidateExamWorkspaceQuery{Access: access, ExpectedCursor: -1, Limit: 50}
 	values := request.request.URL.Query()
 	if raw := values.Get("limit"); raw != "" {
 		query.Limit, err = strconv.Atoi(raw)
@@ -1298,7 +1298,7 @@ func (m examAttemptHTTPModule) workspaceChanges(request operationRequest) (opera
 	if err != nil {
 		return operationResult{}, err
 	}
-	query := application.ListCandidateExamWorkspaceJournalQuery{Access: access, Limit: 50}
+	query := app.ListCandidateExamWorkspaceJournalQuery{Access: access, Limit: 50}
 	values := request.request.URL.Query()
 	if raw := values.Get("after_cursor"); raw != "" {
 		query.AfterCursor, err = strconv.ParseInt(raw, 10, 64)
@@ -1342,7 +1342,7 @@ func (m examAttemptHTTPModule) createWorkspaceDirectory(request operationRequest
 		return operationResult{}, err
 	}
 	result, err := m.application.CreateCandidateExamWorkspaceDirectory(request.context, request.invocation(),
-		application.CreateCandidateExamWorkspaceDirectoryCommand{Access: mutationAccess, Path: body.Path,
+		app.CreateCandidateExamWorkspaceDirectoryCommand{Access: mutationAccess, Path: body.Path,
 			IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
@@ -1373,7 +1373,7 @@ func (m examAttemptHTTPModule) submit(request operationRequest) (operationResult
 		return operationResult{}, err
 	}
 	receipt, err := m.application.SubmitExamAttempt(request.context, request.invocation(),
-		application.SubmitExamAttemptCommand{Access: mutationAccess, ExpectedCurrentRevisionID: revisionID,
+		app.SubmitExamAttemptCommand{Access: mutationAccess, ExpectedCurrentRevisionID: revisionID,
 			ExpectedWorkspaceCursor: body.ExpectedWorkspaceCursor, FinalFocusLossSequence: body.FinalFocusLossSequence,
 			IdempotencyKey: request.idempotencyKey})
 	if err != nil {
@@ -1418,7 +1418,7 @@ func (m examAttemptHTTPModule) listSubmissionManifest(request operationRequest) 
 	if err != nil {
 		return operationResult{}, err
 	}
-	query := application.ListExamSubmissionManifestQuery{GetSubmissionQuery: ownership, Limit: 50}
+	query := app.ListExamSubmissionManifestQuery{GetSubmissionQuery: ownership, Limit: 50}
 	values := request.request.URL.Query()
 	if raw := values.Get("limit"); raw != "" {
 		query.Limit, err = strconv.Atoi(raw)
@@ -1470,23 +1470,23 @@ func (m examAttemptHTTPModule) openSubmissionFile(request operationRequest) (pro
 		return protocolResult{}, err
 	}
 	opened, err := m.application.OpenExamSubmissionFile(request.context, request.invocation(),
-		application.OpenExamSubmissionFileQuery{GetSubmissionQuery: ownership, EntryID: entryID})
+		app.OpenExamSubmissionFileQuery{GetSubmissionQuery: ownership, EntryID: entryID})
 	if err != nil {
 		return protocolResult{}, err
 	}
 	return candidateAttemptContentResult(request, opened, `"`+opened.SHA256+`"`)
 }
 
-func managedSubmissionQuery(request operationRequest) (application.GetExamSubmissionQuery, error) {
+func managedSubmissionQuery(request operationRequest) (app.GetExamSubmissionQuery, error) {
 	examID, sittingID, attemptID, err := managedExamAttemptIDs(request)
 	if err != nil {
-		return application.GetExamSubmissionQuery{}, err
+		return app.GetExamSubmissionQuery{}, err
 	}
 	submissionID, err := request.params.RequireSubmissionID()
 	if err != nil {
-		return application.GetExamSubmissionQuery{}, err
+		return app.GetExamSubmissionQuery{}, err
 	}
-	return application.GetExamSubmissionQuery{ExamID: examID, SittingID: sittingID,
+	return app.GetExamSubmissionQuery{ExamID: examID, SittingID: sittingID,
 		AttemptID: attemptID, SubmissionID: submissionID}, nil
 }
 
@@ -1505,7 +1505,7 @@ func (m examAttemptHTTPModule) createWorkspaceFile(request operationRequest) (pr
 		return protocolResult{}, err
 	}
 	result, err := m.application.CreateCandidateExamWorkspaceFile(request.context, request.invocation(),
-		application.CreateCandidateExamWorkspaceFileCommand{Access: mutationAccess, Path: metadata.Path, MediaType: metadata.MediaType,
+		app.CreateCandidateExamWorkspaceFileCommand{Access: mutationAccess, Path: metadata.Path, MediaType: metadata.MediaType,
 			ExpectedSHA256: metadata.SHA256, Body: content, Size: *metadata.Size, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return protocolResult{}, err
@@ -1527,7 +1527,7 @@ func (m examAttemptHTTPModule) moveWorkspaceEntry(request operationRequest) (ope
 		return operationResult{}, err
 	}
 	result, err := m.application.MoveCandidateExamWorkspaceEntry(request.context, request.invocation(),
-		application.MoveCandidateExamWorkspaceEntryCommand{Access: mutationAccess, EntryID: entryID,
+		app.MoveCandidateExamWorkspaceEntryCommand{Access: mutationAccess, EntryID: entryID,
 			ExpectedPath: body.ExpectedPath, DestinationPath: body.DestinationPath, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
@@ -1554,7 +1554,7 @@ func (m examAttemptHTTPModule) replaceWorkspaceFile(request operationRequest) (p
 		return protocolResult{}, invalidRequestError(err)
 	}
 	result, err := m.application.ReplaceCandidateExamWorkspaceFile(request.context, request.invocation(),
-		application.ReplaceCandidateExamWorkspaceFileCommand{Access: mutationAccess, EntryID: entryID,
+		app.ReplaceCandidateExamWorkspaceFileCommand{Access: mutationAccess, EntryID: entryID,
 			ExpectedPath: metadata.ExpectedPath, ExpectedContentVersion: version, MediaType: metadata.MediaType,
 			ExpectedSHA256: metadata.SHA256, Body: content, Size: *metadata.Size, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
@@ -1589,7 +1589,7 @@ func (m examAttemptHTTPModule) deleteWorkspaceEntry(request operationRequest) (o
 		}
 	}
 	result, err := m.application.DeleteCandidateExamWorkspaceEntry(request.context, request.invocation(),
-		application.DeleteCandidateExamWorkspaceEntryCommand{Access: mutationAccess, EntryID: entryID,
+		app.DeleteCandidateExamWorkspaceEntryCommand{Access: mutationAccess, EntryID: entryID,
 			ExpectedPath: body.ExpectedPath, ExpectedContentVersion: version, Recursive: body.Recursive,
 			ExpectedWorkspaceCursor: cursor, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
@@ -1598,14 +1598,14 @@ func (m examAttemptHTTPModule) deleteWorkspaceEntry(request operationRequest) (o
 	return jsonResult(http.StatusOK, candidateWorkspaceMutationResult(result)).withHeaders(noStoreHeaders()), nil
 }
 
-func candidateWorkspaceMutationAccess(access application.CandidateExamAttemptAccess,
+func candidateWorkspaceMutationAccess(access app.CandidateExamAttemptAccess,
 	wire candidateWorkspaceMutationAccessRequest,
-) (application.ExamAttemptWorkspaceMutationAccess, error) {
+) (app.ExamAttemptWorkspaceMutationAccess, error) {
 	participationID, err := model.ParseAttemptParticipationID(wire.ParticipationID)
 	if err != nil || wire.Generation < 1 {
-		return application.ExamAttemptWorkspaceMutationAccess{}, invalidRequestError(errors.New("valid participation_id and generation are required"))
+		return app.ExamAttemptWorkspaceMutationAccess{}, invalidRequestError(errors.New("valid participation_id and generation are required"))
 	}
-	return application.ExamAttemptWorkspaceMutationAccess{CandidateAccess: access, ParticipationID: participationID,
+	return app.ExamAttemptWorkspaceMutationAccess{CandidateAccess: access, ParticipationID: participationID,
 		Generation: wire.Generation}, nil
 }
 
@@ -1632,19 +1632,19 @@ func decodeCandidateWorkspaceJSON(request operationRequest, target any) error {
 	return nil
 }
 
-func candidateWorkspaceEntryAccess(request operationRequest) (application.CandidateExamAttemptAccess, model.AttemptWorkspaceEntryID, error) {
+func candidateWorkspaceEntryAccess(request operationRequest) (app.CandidateExamAttemptAccess, model.AttemptWorkspaceEntryID, error) {
 	access, err := candidateAccess(request)
 	if err != nil {
-		return application.CandidateExamAttemptAccess{}, "", err
+		return app.CandidateExamAttemptAccess{}, "", err
 	}
 	entryID, err := request.params.RequireAttemptWorkspaceEntryID()
 	if err != nil {
-		return application.CandidateExamAttemptAccess{}, "", err
+		return app.CandidateExamAttemptAccess{}, "", err
 	}
 	return access, entryID, nil
 }
 
-func candidateWorkspaceMutationResult(result application.ExamAttemptWorkspaceMutationResult) candidateWorkspaceMutationResponse {
+func candidateWorkspaceMutationResult(result app.ExamAttemptWorkspaceMutationResult) candidateWorkspaceMutationResponse {
 	response := candidateWorkspaceMutationResponse{WorkspaceID: result.WorkspaceID.String(), WorkspaceCursor: result.Change.Cursor,
 		Operation: string(result.Change.Operation)}
 	if result.Entry != nil {
@@ -1669,7 +1669,7 @@ func (m examAttemptHTTPModule) openResource(request operationRequest) (protocolR
 	if err != nil {
 		return protocolResult{}, err
 	}
-	opened, err := m.application.OpenCandidateExamResource(request.context, request.invocation(), application.OpenCandidateExamResourceQuery{Access: access, ResourceID: resourceID})
+	opened, err := m.application.OpenCandidateExamResource(request.context, request.invocation(), app.OpenCandidateExamResourceQuery{Access: access, ResourceID: resourceID})
 	if err != nil {
 		return protocolResult{}, err
 	}
@@ -1685,14 +1685,14 @@ func (m examAttemptHTTPModule) openWorkspaceFile(request operationRequest) (prot
 	if err != nil {
 		return protocolResult{}, err
 	}
-	opened, err := m.application.OpenCandidateExamWorkspaceFile(request.context, request.invocation(), application.OpenCandidateExamWorkspaceFileQuery{Access: access, EntryID: entryID})
+	opened, err := m.application.OpenCandidateExamWorkspaceFile(request.context, request.invocation(), app.OpenCandidateExamWorkspaceFileQuery{Access: access, EntryID: entryID})
 	if err != nil {
 		return protocolResult{}, err
 	}
 	return candidateAttemptContentResult(request, opened, `"`+opened.ContentVersion.String()+`"`)
 }
 
-func candidateAttemptContentResult(request operationRequest, opened application.OpenedExamAttemptContent, etag string) (protocolResult, error) {
+func candidateAttemptContentResult(request operationRequest, opened app.OpenedExamAttemptContent, etag string) (protocolResult, error) {
 	if opened.Body == nil || opened.SizeBytes < 0 || strings.TrimSpace(opened.MediaType) == "" || etag == `""` {
 		return protocolResult{}, errors.New("Exam Attempt application returned incomplete content")
 	}
@@ -1706,16 +1706,16 @@ func candidateAttemptContentResult(request operationRequest, opened application.
 	return binaryDownloadProtocolResult(opened.Body, opened.SizeBytes).withHeaders(headers), nil
 }
 
-func candidateAccess(request operationRequest) (application.CandidateExamAttemptAccess, error) {
+func candidateAccess(request operationRequest) (app.CandidateExamAttemptAccess, error) {
 	attemptID, err := request.params.RequireExamAttemptID()
 	if err != nil {
-		return application.CandidateExamAttemptAccess{}, err
+		return app.CandidateExamAttemptAccess{}, err
 	}
 	headers, err := candidateAttemptAccessHeaders(request.request)
 	if err != nil {
-		return application.CandidateExamAttemptAccess{}, invalidRequestError(err)
+		return app.CandidateExamAttemptAccess{}, invalidRequestError(err)
 	}
-	return application.CandidateExamAttemptAccess{AttemptID: attemptID, ConnectionID: headers.ConnectionID,
+	return app.CandidateExamAttemptAccess{AttemptID: attemptID, ConnectionID: headers.ConnectionID,
 		ContinuityCredential: headers.ContinuityCredential}, nil
 }
 
@@ -1743,7 +1743,7 @@ func managedExamAttemptIDs(request operationRequest) (model.ExamID, model.ExamSi
 	return examID, sittingID, attemptID, nil
 }
 
-func examAttemptManagerResponseFromView(view application.ExamAttemptManagerView) (examAttemptManagerResponse, error) {
+func examAttemptManagerResponseFromView(view app.ExamAttemptManagerView) (examAttemptManagerResponse, error) {
 	if view.Attempt == nil || view.Workspace == nil {
 		return examAttemptManagerResponse{}, errors.New("Exam Attempt application returned an incomplete manager projection")
 	}

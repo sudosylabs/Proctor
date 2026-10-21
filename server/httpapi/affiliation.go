@@ -10,7 +10,7 @@ package httpapi
 import (
 	"net/http"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -89,7 +89,7 @@ func (m affiliationResourceModule) list(request operationRequest) (operationResu
 	if err != nil {
 		return operationResult{}, err
 	}
-	values, err := m.affiliations.ListAffiliations(request.context, request.invocation(), application.ListAffiliationsQuery{UserID: userID})
+	values, err := m.affiliations.ListAffiliations(request.context, request.invocation(), app.ListAffiliationsQuery{UserID: userID})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -113,7 +113,7 @@ func (m affiliationResourceModule) create(request operationRequest) (operationRe
 	if err != nil {
 		return operationResult{}, err
 	}
-	saved, err := m.affiliations.CreateAffiliation(request.context, request.invocation(), application.CreateAffiliationCommand{UserID: userID, Kind: body.Kind, StartAt: startAt, EndAt: endAt})
+	saved, err := m.affiliations.CreateAffiliation(request.context, request.invocation(), app.CreateAffiliationCommand{UserID: userID, Kind: body.Kind, StartAt: startAt, EndAt: endAt})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -125,7 +125,7 @@ func (m affiliationResourceModule) end(request operationRequest) (operationResul
 	if err != nil {
 		return operationResult{}, err
 	}
-	ended, err := m.affiliations.EndAffiliation(request.context, request.invocation(), application.EndAffiliationCommand{ID: id})
+	ended, err := m.affiliations.EndAffiliation(request.context, request.invocation(), app.EndAffiliationCommand{ID: id})
 	if err != nil {
 		return operationResult{}, err
 	}

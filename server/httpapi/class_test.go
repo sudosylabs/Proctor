@@ -16,17 +16,17 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type classHTTPApplication struct {
-	updateCommand  application.UpdateClassCommand
-	archiveCommand application.ArchiveClassCommand
+	updateCommand  app.UpdateClassCommand
+	archiveCommand app.ArchiveClassCommand
 	result         *model.Class
 	list           []*model.Class
-	createCommand  application.CreateClassCommand
+	createCommand  app.CreateClassCommand
 	searchErr      error
 }
 
@@ -239,13 +239,13 @@ func newFocusedResourceAPI(
 	return httpAPI
 }
 
-func (a *classHTTPApplication) GetClass(context.Context, application.Invocation, application.GetClassQuery) (*model.Class, error) {
+func (a *classHTTPApplication) GetClass(context.Context, app.Invocation, app.GetClassQuery) (*model.Class, error) {
 	return a.result, nil
 }
-func (a *classHTTPApplication) ListClasses(context.Context, application.Invocation, application.ListClassesQuery) ([]*model.Class, error) {
+func (a *classHTTPApplication) ListClasses(context.Context, app.Invocation, app.ListClassesQuery) ([]*model.Class, error) {
 	return a.list, nil
 }
-func (a *classHTTPApplication) SearchClasses(context.Context, application.Invocation, application.SearchClassesQuery) ([]*model.Class, error) {
+func (a *classHTTPApplication) SearchClasses(context.Context, app.Invocation, app.SearchClassesQuery) ([]*model.Class, error) {
 	return a.list, a.searchErr
 }
 
@@ -274,15 +274,15 @@ func TestClassSearchMapsMissingAcademicUnit(t *testing.T) {
 		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
 	}
 }
-func (a *classHTTPApplication) CreateClass(_ context.Context, _ application.Invocation, command application.CreateClassCommand) (*model.Class, error) {
+func (a *classHTTPApplication) CreateClass(_ context.Context, _ app.Invocation, command app.CreateClassCommand) (*model.Class, error) {
 	a.createCommand = command
 	return a.result, nil
 }
-func (a *classHTTPApplication) UpdateClass(_ context.Context, _ application.Invocation, command application.UpdateClassCommand) (*model.Class, error) {
+func (a *classHTTPApplication) UpdateClass(_ context.Context, _ app.Invocation, command app.UpdateClassCommand) (*model.Class, error) {
 	a.updateCommand = command
 	return a.result, nil
 }
-func (a *classHTTPApplication) ArchiveClass(_ context.Context, _ application.Invocation, command application.ArchiveClassCommand) error {
+func (a *classHTTPApplication) ArchiveClass(_ context.Context, _ app.Invocation, command app.ArchiveClassCommand) error {
 	a.archiveCommand = command
 	return nil
 }

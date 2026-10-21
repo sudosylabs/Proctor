@@ -10,7 +10,7 @@ package httpapi
 import (
 	"net/http"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -95,7 +95,7 @@ func (m programmeLevelResourceModule) list(request operationRequest) (operationR
 	levels, err := m.programmeLevels.ListProgrammeLevels(
 		request.context,
 		request.invocation(),
-		application.ListProgrammeLevelsQuery{
+		app.ListProgrammeLevelsQuery{
 			ProgrammeID: programmeID,
 			Query:       request.request.URL.Query().Get("q"),
 			Limit:       limit,
@@ -123,7 +123,7 @@ func (m programmeLevelResourceModule) create(request operationRequest) (operatio
 	saved, err := m.programmeLevels.CreateProgrammeLevel(
 		request.context,
 		request.invocation(),
-		application.CreateProgrammeLevelCommand{
+		app.CreateProgrammeLevelCommand{
 			ProgrammeID: programmeID,
 			Name:        body.Name,
 			DisplayName: body.DisplayName,
@@ -142,7 +142,7 @@ func (m programmeLevelResourceModule) get(request operationRequest) (operationRe
 		return operationResult{}, err
 	}
 	level, err := m.programmeLevels.GetProgrammeLevel(
-		request.context, request.invocation(), application.GetProgrammeLevelQuery{ID: id},
+		request.context, request.invocation(), app.GetProgrammeLevelQuery{ID: id},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -165,7 +165,7 @@ func (m programmeLevelResourceModule) patch(request operationRequest) (operation
 	level, err := m.programmeLevels.UpdateProgrammeLevel(
 		request.context,
 		request.invocation(),
-		application.UpdateProgrammeLevelCommand{ExpectedRevision: body.ExpectedRevision.ValuePointer(),
+		app.UpdateProgrammeLevelCommand{ExpectedRevision: body.ExpectedRevision.ValuePointer(),
 			ID:          id,
 			Name:        body.Name.ValuePointer(),
 			DisplayName: body.DisplayName.ValuePointer(),
@@ -188,7 +188,7 @@ func (m programmeLevelResourceModule) archive(request operationRequest) (operati
 		return operationResult{}, err
 	}
 	err = m.programmeLevels.ArchiveProgrammeLevel(
-		request.context, request.invocation(), application.ArchiveProgrammeLevelCommand{ExpectedRevision: expectedRevision, ID: id},
+		request.context, request.invocation(), app.ArchiveProgrammeLevelCommand{ExpectedRevision: expectedRevision, ID: id},
 	)
 	if err != nil {
 		return operationResult{}, err

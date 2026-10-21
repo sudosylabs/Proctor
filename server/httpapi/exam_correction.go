@@ -16,15 +16,15 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 const examSittingCorrectionUploadBodyLimit = model.ExamResourceMaximumBytes + 64*1024
 
 type ExamSittingCorrectionApplication interface {
-	StageExamSittingCorrectionResourceContent(context.Context, application.Invocation, application.StageExamSittingCorrectionResourceContentCommand) (application.ExamSittingCorrectionResourceStage, error)
-	ApplyExamSittingCorrection(context.Context, application.Invocation, application.ApplyExamSittingCorrectionCommand) (application.ExamSittingCorrectionResult, error)
+	StageExamSittingCorrectionResourceContent(context.Context, app.Invocation, app.StageExamSittingCorrectionResourceContentCommand) (app.ExamSittingCorrectionResourceStage, error)
+	ApplyExamSittingCorrection(context.Context, app.Invocation, app.ApplyExamSittingCorrectionCommand) (app.ExamSittingCorrectionResult, error)
 }
 
 type examSittingCorrectionHTTPModule struct {
@@ -145,8 +145,8 @@ func decodeDuplicateFreeExamCorrectionObject(encoded []byte, target any) error {
 	return nil
 }
 
-func examSittingCorrectionResource(app ExamSittingCorrectionApplication) resource {
-	module := examSittingCorrectionHTTPModule{application: app}
+func examSittingCorrectionResource(application ExamSittingCorrectionApplication) resource {
+	module := examSittingCorrectionHTTPModule{application: application}
 	stages := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"), literal("correction-resource-stages"))
 	corrections := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"), literal("corrections"))
 	return newResource(
@@ -201,14 +201,14 @@ func (m examSittingCorrectionHTTPModule) stage(request operationRequest) (protoc
 	if err != nil {
 		return protocolResult{}, invalidRequestError(err)
 	}
-	target := application.ExamSittingCorrectionResourceTarget(metadata.TargetKind)
+	target := app.ExamSittingCorrectionResourceTarget(metadata.TargetKind)
 	var resourceID model.ExamResourceID
 	switch target {
-	case application.ExamSittingCorrectionResourceAddition:
+	case app.ExamSittingCorrectionResourceAddition:
 		if metadata.ReplacesResourceID != "" {
 			return protocolResult{}, invalidRequestError(errors.New("must be omitted for an addition"))
 		}
-	case application.ExamSittingCorrectionResourceReplacement:
+	case app.ExamSittingCorrectionResourceReplacement:
 		if metadata.ReplacesResourceID == "" {
 			return protocolResult{}, invalidRequestError(errors.New("is required for a replacement"))
 		}
@@ -219,7 +219,7 @@ func (m examSittingCorrectionHTTPModule) stage(request operationRequest) (protoc
 	default:
 		return protocolResult{}, invalidRequestError(errors.New("must be addition or replacement"))
 	}
-	result, err := m.application.StageExamSittingCorrectionResourceContent(request.context, request.invocation(), application.StageExamSittingCorrectionResourceContentCommand{
+	result, err := m.application.StageExamSittingCorrectionResourceContent(request.context, request.invocation(), app.StageExamSittingCorrectionResourceContentCommand{
 		ExamID: examID, SittingID: sittingID, BaseRevisionID: baseRevisionID, Target: target, ResourceID: resourceID,
 		MediaType: model.ExamResourceMediaType(metadata.MediaType), Body: content, Size: *metadata.Size,
 		ExpectedSHA256: metadata.SHA256, IdempotencyKey: request.idempotencyKey,
@@ -250,7 +250,7 @@ func (m examSittingCorrectionHTTPModule) apply(request operationRequest) (operat
 	if err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	manifest := make([]application.ExamSittingCorrectionResourceManifestItem, len(body.Resources))
+	manifest := make([]app.ExamSittingCorrectionResourceManifestItem, len(body.Resources))
 	resourceIDs := make(map[model.ExamResourceID]struct{}, len(body.Resources))
 	stageIDs := make(map[model.ExamCorrectionResourceStageID]struct{}, len(body.Resources))
 	for index, item := range body.Resources {
@@ -273,23 +273,23 @@ func (m examSittingCorrectionHTTPModule) apply(request operationRequest) (operat
 			}
 			stageIDs[stageID] = struct{}{}
 		}
-		manifest[index] = application.ExamSittingCorrectionResourceManifestItem{
+		manifest[index] = app.ExamSittingCorrectionResourceManifestItem{
 			ResourceID: resourceID, DisplayName: item.DisplayName,
 			DescriptionMarkdown: item.DescriptionMarkdown, StageID: stageID,
 		}
 	}
-	instructions := application.ExamSittingCorrectionInstructions{Present: body.InstructionsMarkdown.IsSet()}
+	instructions := app.ExamSittingCorrectionInstructions{Present: body.InstructionsMarkdown.IsSet()}
 	if value := body.InstructionsMarkdown.ValuePointer(); value != nil {
 		instructions.Markdown = *value
 	}
-	browserPolicy := application.ExamSittingCorrectionBrowserPolicy{Present: body.BrowserPolicy.IsSet()}
+	browserPolicy := app.ExamSittingCorrectionBrowserPolicy{Present: body.BrowserPolicy.IsSet()}
 	if document := body.BrowserPolicy.ValuePointer(); document != nil {
 		browserPolicy.Policy, err = document.model()
 		if err != nil {
 			return operationResult{}, invalidRequestError(err)
 		}
 	}
-	result, err := m.application.ApplyExamSittingCorrection(request.context, request.invocation(), application.ApplyExamSittingCorrectionCommand{
+	result, err := m.application.ApplyExamSittingCorrection(request.context, request.invocation(), app.ApplyExamSittingCorrectionCommand{
 		ExamID: examID, SittingID: sittingID, ExpectedSittingRevision: body.ExpectedSittingRevision,
 		ExpectedCurrentRevisionID: currentRevisionID, Instructions: instructions, BrowserPolicy: browserPolicy, Resources: manifest,
 		CandidateSummary: body.CandidateSummary, AcknowledgementRequired: body.AcknowledgementRequired, AffectedCapabilities: body.AffectedCapabilities,

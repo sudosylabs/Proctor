@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
@@ -65,7 +65,7 @@ func TestAccessPolicyTwoNodePostgreSQLFenceAndSafeRevisionFanout(t *testing.T) {
 	if bootstrap.Code != http.StatusCreated {
 		t.Fatalf("bootstrap = %d: %s", bootstrap.Code, bootstrap.Body.String())
 	}
-	login, err := primary.App.Login(context.Background(), application.Invocation{}, application.LoginCommand{
+	login, err := primary.App.Login(context.Background(), app.Invocation{}, app.LoginCommand{
 		LoginID: "policy-admin", Password: "correct horse battery staple", ClientType: model.SessionClientCLI,
 		DeviceID: "policy-cli", Source: "127.0.0.1:1",
 	})
@@ -77,19 +77,19 @@ func TestAccessPolicyTwoNodePostgreSQLFenceAndSafeRevisionFanout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	invocation := application.NewInvocation(*principal, model.RequestMetadata{RequestID: "access-policy-two-node"})
+	invocation := app.NewInvocation(*principal, model.RequestMetadata{RequestID: "access-policy-two-node"})
 	current, err := primary.App.GetAccessPolicy(context.Background(), invocation)
 	if err != nil || current.Policy == nil || current.Policy.Revision != 1 {
 		t.Fatalf("initial policy = %#v, %v", current, err)
 	}
 
 	type outcome struct {
-		view application.AccessPolicyView
+		view app.AccessPolicyView
 		err  error
 	}
 	outcomes := make(chan outcome, 2)
 	for _, candidate := range []struct {
-		app      *application.App
+		app      *app.App
 		settings model.AccessPolicySettings
 		key      string
 	}{
@@ -105,11 +105,11 @@ func TestAccessPolicyTwoNodePostgreSQLFenceAndSafeRevisionFanout(t *testing.T) {
 		}(), key: "access-policy-b"},
 	} {
 		go func(candidate struct {
-			app      *application.App
+			app      *app.App
 			settings model.AccessPolicySettings
 			key      string
 		}) {
-			view, replaceErr := candidate.app.ReplaceAccessPolicy(context.Background(), invocation, application.ReplaceAccessPolicyCommand{
+			view, replaceErr := candidate.app.ReplaceAccessPolicy(context.Background(), invocation, app.ReplaceAccessPolicyCommand{
 				ExpectedRevision: 1, Settings: candidate.settings, IdempotencyKey: candidate.key,
 			})
 			outcomes <- outcome{view: view, err: replaceErr}
@@ -273,7 +273,7 @@ func TestAccessPolicyTwoNodePostgreSQLFenceAndSafeRevisionFanout(t *testing.T) {
 	disableLocal.PublicRegistrationEnabled = false
 	disableLocal.InvitationLocalCredentialEnabled = false
 	disableLocal.ProviderAdmissions = map[string]model.ProviderAdmissionMode{"campus": model.ProviderAdmissionLinkedOnly}
-	if _, err = primary.App.ReplaceAccessPolicy(context.Background(), invocation, application.ReplaceAccessPolicyCommand{
+	if _, err = primary.App.ReplaceAccessPolicy(context.Background(), invocation, app.ReplaceAccessPolicyCommand{
 		ExpectedRevision: beforeDisable.Policy.Revision, Settings: disableLocal,
 		IdempotencyKey: "access-policy-application-lockout",
 	}); err != nil {
@@ -281,22 +281,22 @@ func TestAccessPolicyTwoNodePostgreSQLFenceAndSafeRevisionFanout(t *testing.T) {
 	}
 	removedProviderStore := openAdditionalUserSettingsStore(t, dataSource)
 	removedProviderNode := testlib.Setup(t, testlib.WithConfig(baseConfig), testlib.WithStore(removedProviderStore))
-	if _, err = removedProviderNode.App.EndRoleBinding(context.Background(), invocation, application.EndRoleBindingCommand{
+	if _, err = removedProviderNode.App.EndRoleBinding(context.Background(), invocation, app.EndRoleBindingCommand{
 		ID: removedProviderBinding.ID,
 	}); !apperror.Is(err, "role_binding.last_system_admin") {
 		t.Fatalf("removed-provider node counted unavailable external administrator: %v", err)
 	}
-	if _, err = primary.App.EndRoleBinding(context.Background(), invocation, application.EndRoleBindingCommand{
+	if _, err = primary.App.EndRoleBinding(context.Background(), invocation, app.EndRoleBindingCommand{
 		ID: removedProviderBinding.ID,
 	}); err != nil {
 		t.Fatalf("configured-provider node rejected external administrator path: %v", err)
 	}
-	if _, err = primary.App.SetUserEnabled(context.Background(), invocation, application.SetUserEnabledCommand{
+	if _, err = primary.App.SetUserEnabled(context.Background(), invocation, app.SetUserEnabledCommand{
 		ID: externalAdmin.ID, Enabled: false,
 	}); !apperror.Is(err, "user.last_system_admin") {
 		t.Fatalf("disable only policy-usable administrator error = %v", err)
 	}
-	if _, err = primary.App.EndRoleBinding(context.Background(), invocation, application.EndRoleBindingCommand{
+	if _, err = primary.App.EndRoleBinding(context.Background(), invocation, app.EndRoleBindingCommand{
 		ID: externalBinding.ID,
 	}); !apperror.Is(err, "role_binding.last_system_admin") {
 		t.Fatalf("end only policy-usable administrator binding error = %v", err)

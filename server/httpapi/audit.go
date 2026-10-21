@@ -16,7 +16,7 @@ import (
 	"net/http"
 	"strconv"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -117,8 +117,8 @@ func (m auditResourceModule) list(request operationRequest) (operationResult, er
 	return jsonResult(http.StatusOK, response), nil
 }
 
-func auditQueryFromRequest(request *http.Request) (application.ListAuditEventsQuery, error) {
-	query := application.ListAuditEventsQuery{Limit: defaultAuditPageSize}
+func auditQueryFromRequest(request *http.Request) (app.ListAuditEventsQuery, error) {
+	query := app.ListAuditEventsQuery{Limit: defaultAuditPageSize}
 	values := request.URL.Query()
 	if raw := values.Get("limit"); raw != "" {
 		limit, err := strconv.Atoi(raw)

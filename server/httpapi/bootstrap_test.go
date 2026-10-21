@@ -15,7 +15,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -214,16 +214,16 @@ func TestBootstrapUsesApplicationCommand(t *testing.T) {
 }
 
 type recordingBootstrap struct {
-	command      application.BootstrapInstallationCommand
+	command      app.BootstrapInstallationCommand
 	result       *model.InstallationBootstrapResult
 	bootstrapErr error
 }
 
-func (r *recordingBootstrap) GetInstallationStatus(context.Context, application.GetInstallationStatusQuery) (*model.InstallationStatus, error) {
+func (r *recordingBootstrap) GetInstallationStatus(context.Context, app.GetInstallationStatusQuery) (*model.InstallationStatus, error) {
 	return &model.InstallationStatus{Initialized: false}, nil
 }
 
-func (r *recordingBootstrap) BootstrapInstallation(_ context.Context, _ application.Invocation, command application.BootstrapInstallationCommand) (*model.InstallationBootstrapResult, error) {
+func (r *recordingBootstrap) BootstrapInstallation(_ context.Context, _ app.Invocation, command app.BootstrapInstallationCommand) (*model.InstallationBootstrapResult, error) {
 	r.command = command
 	return r.result, r.bootstrapErr
 }

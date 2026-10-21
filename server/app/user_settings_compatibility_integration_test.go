@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -37,14 +37,14 @@ func TestUserSettingsUnsupportedFormatIsOpaqueAndReadOnlyAfterRollback(t *testin
 		t.Fatal(err)
 	}
 	const password = "correct horse battery staple"
-	user, err := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
+	user, err := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "settings-compatibility-user",
 		Email:    "settings-compatibility-user@example.edu",
 	}, Password: password})
 	if err != nil {
 		t.Fatal(err)
 	}
-	login, err := helper.App.Login(ctx, application.Invocation{}, application.LoginCommand{
+	login, err := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{
 		LoginID: user.Username, Password: password, ClientType: model.SessionClientWeb,
 		Source: "127.0.0.1:1",
 	})
@@ -75,7 +75,7 @@ func TestUserSettingsUnsupportedFormatIsOpaqueAndReadOnlyAfterRollback(t *testin
 		FROM user_settings_documents WHERE user_id = $1`, user.ID.String()); err != nil {
 		t.Fatal(err)
 	}
-	invocation := application.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-compatibility"})
+	invocation := app.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-compatibility"})
 	view, err := helper.App.ReadOwnUserSettings(ctx, invocation)
 	if err != nil {
 		t.Fatal(err)
@@ -90,7 +90,7 @@ func TestUserSettingsUnsupportedFormatIsOpaqueAndReadOnlyAfterRollback(t *testin
 		"submit unsupported target version":            2,
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, replaceErr := helper.App.ReplaceOwnUserSettings(ctx, invocation, application.ReplaceOwnUserSettingsCommand{
+			_, replaceErr := helper.App.ReplaceOwnUserSettings(ctx, invocation, app.ReplaceOwnUserSettingsCommand{
 				Source: "{}\n", FormatVersion: targetVersion, ExpectedRevision: view.Revision,
 				IdempotencyKey: "settings-compatibility-" + string(rune('0'+targetVersion)),
 			})

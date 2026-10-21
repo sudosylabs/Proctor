@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/packages/mail"
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -40,7 +40,7 @@ func TestEmailTransitionsUseRealServerGraphAndFrozenRecipients(t *testing.T) {
 	)
 	ctx := context.Background()
 	const password = "correct horse battery staple"
-	bootstrap, appErr := helper.App.BootstrapInstallation(ctx, application.Invocation{}, application.BootstrapInstallationCommand{
+	bootstrap, appErr := helper.App.BootstrapInstallation(ctx, app.Invocation{}, app.BootstrapInstallationCommand{
 		InstitutionName: "email-transition-university", InstitutionDisplayName: "Email Transition University",
 		AdministratorUsername: "email-transition-admin", AdministratorEmail: "email-transition-admin@example.edu",
 		AdministratorDisplayName: "Email Transition Admin", AdministratorLocale: "en", AdministratorTimezone: "UTC",
@@ -49,13 +49,13 @@ func TestEmailTransitionsUseRealServerGraphAndFrozenRecipients(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	first, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
+	first, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "email-transition-first", Email: "first-old@example.edu", DisplayName: "First User",
 	}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	second, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
+	second, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "email-transition-second", Email: "second-old@example.edu", DisplayName: "Second User",
 	}, Password: password})
 	if appErr != nil {

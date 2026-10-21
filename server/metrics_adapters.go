@@ -16,7 +16,7 @@ import (
 
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
-	apppkg "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/filecontent"
@@ -36,7 +36,7 @@ type workMetricsRecorder struct {
 	pool    string
 }
 
-var _ apppkg.PasswordWorkRecorder = workMetricsRecorder{}
+var _ app.PasswordWorkRecorder = workMetricsRecorder{}
 var _ filecontent.WorkRecorder = workMetricsRecorder{}
 
 func (r workMetricsRecorder) Started() { r.metrics.WorkStarted(r.pool) }
@@ -45,7 +45,7 @@ func (r workMetricsRecorder) Finished(duration time.Duration) {
 }
 func (r workMetricsRecorder) Rejected() { r.metrics.WorkRejected(r.pool) }
 
-func (r applicationMetricsRecorder) RecordOperationalEvent(event apppkg.OperationalEvent) {
+func (r applicationMetricsRecorder) RecordOperationalEvent(event app.OperationalEvent) {
 	r.metrics.ObserveApplication(event.Subsystem(), event.Event(), event.Outcome())
 }
 
@@ -59,15 +59,15 @@ func newPrometheusMailRecorder(metrics *metricspkg.Module) *prometheusMailRecord
 	return &prometheusMailRecorder{metrics: metrics, queues: make(map[mailQueueMetricIdentity]struct{})}
 }
 
-func (r *prometheusMailRecorder) RecordMailDelivery(_ context.Context, metric apppkg.MailDeliveryMetric) {
+func (r *prometheusMailRecorder) RecordMailDelivery(_ context.Context, metric app.MailDeliveryMetric) {
 	r.metrics.ObserveMailDelivery(string(metric.TemplateKey), string(metric.State), metric.OutcomeCode, metric.ProcessingLatency)
 }
 
-func (r *prometheusMailRecorder) RecordMailAttempt(_ context.Context, metric apppkg.MailAttemptMetric) {
+func (r *prometheusMailRecorder) RecordMailAttempt(_ context.Context, metric app.MailAttemptMetric) {
 	r.metrics.ObserveMailAttempt(string(metric.TemplateKey), string(metric.State), 1)
 }
 
-func (r *prometheusMailRecorder) RecordMailQueueSnapshot(_ context.Context, values []apppkg.MailQueueMetric) {
+func (r *prometheusMailRecorder) RecordMailQueueSnapshot(_ context.Context, values []app.MailQueueMetric) {
 	r.mu.Lock()
 	aggregates, truncated := aggregateMailQueueMetrics(values)
 	next := make(map[mailQueueMetricIdentity]struct{}, len(aggregates))
@@ -96,7 +96,7 @@ type mailQueueMetricIdentity struct {
 	state    model.MailDeliveryState
 }
 
-func aggregateMailQueueMetrics(values []apppkg.MailQueueMetric) (map[mailQueueMetricIdentity]mailQueueAggregate, bool) {
+func aggregateMailQueueMetrics(values []app.MailQueueMetric) (map[mailQueueMetricIdentity]mailQueueAggregate, bool) {
 	result := make(map[mailQueueMetricIdentity]mailQueueAggregate, len(values))
 	truncated := false
 	for _, value := range values {
@@ -112,31 +112,31 @@ func aggregateMailQueueMetrics(values []apppkg.MailQueueMetric) (map[mailQueueMe
 	return result, truncated
 }
 
-func (r *prometheusMailRecorder) RecordMailHealth(_ context.Context, metric apppkg.MailHealthMetric) {
+func (r *prometheusMailRecorder) RecordMailHealth(_ context.Context, metric app.MailHealthMetric) {
 	r.metrics.SetMailHealth(metric.Code)
 }
 
 type fanoutMailDeliveryRecorder struct {
-	first  apppkg.MailDeliveryRecorder
-	second apppkg.MailDeliveryRecorder
+	first  app.MailDeliveryRecorder
+	second app.MailDeliveryRecorder
 }
 
-func (r fanoutMailDeliveryRecorder) RecordMailDelivery(ctx context.Context, metric apppkg.MailDeliveryMetric) {
+func (r fanoutMailDeliveryRecorder) RecordMailDelivery(ctx context.Context, metric app.MailDeliveryMetric) {
 	r.first.RecordMailDelivery(ctx, metric)
 	r.second.RecordMailDelivery(ctx, metric)
 }
 
-func (r fanoutMailDeliveryRecorder) RecordMailAttempt(ctx context.Context, metric apppkg.MailAttemptMetric) {
+func (r fanoutMailDeliveryRecorder) RecordMailAttempt(ctx context.Context, metric app.MailAttemptMetric) {
 	r.first.RecordMailAttempt(ctx, metric)
 	r.second.RecordMailAttempt(ctx, metric)
 }
 
-func (r fanoutMailDeliveryRecorder) RecordMailQueueSnapshot(ctx context.Context, metrics []apppkg.MailQueueMetric) {
+func (r fanoutMailDeliveryRecorder) RecordMailQueueSnapshot(ctx context.Context, metrics []app.MailQueueMetric) {
 	r.first.RecordMailQueueSnapshot(ctx, metrics)
 	r.second.RecordMailQueueSnapshot(ctx, metrics)
 }
 
-func (r fanoutMailDeliveryRecorder) RecordMailHealth(ctx context.Context, metric apppkg.MailHealthMetric) {
+func (r fanoutMailDeliveryRecorder) RecordMailHealth(ctx context.Context, metric app.MailHealthMetric) {
 	r.first.RecordMailHealth(ctx, metric)
 	r.second.RecordMailHealth(ctx, metric)
 }

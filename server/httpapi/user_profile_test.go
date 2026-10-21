@@ -18,54 +18,54 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
 type userProfileHTTPApplication struct {
 	result             *model.User
-	contextResult      *application.CurrentUserContextView
+	contextResult      *app.CurrentUserContextView
 	contextCalls       int
 	values             []*model.User
-	searchQuery        application.SearchUsersQuery
-	updateCommand      application.UpdateUserProfileCommand
-	changeEmailCommand application.ChangeUserEmailCommand
-	verifyEmailCommand application.VerifyUserEmailPrivilegedCommand
-	uploadCommand      application.UploadProfilePictureCommand
-	removeCommand      application.RemoveProfilePictureCommand
-	pictureQuery       application.GetProfilePictureQuery
-	pictureContent     *application.ProfilePictureContent
+	searchQuery        app.SearchUsersQuery
+	updateCommand      app.UpdateUserProfileCommand
+	changeEmailCommand app.ChangeUserEmailCommand
+	verifyEmailCommand app.VerifyUserEmailPrivilegedCommand
+	uploadCommand      app.UploadProfilePictureCommand
+	removeCommand      app.RemoveProfilePictureCommand
+	pictureQuery       app.GetProfilePictureQuery
+	pictureContent     *app.ProfilePictureContent
 }
 
-func (a *userProfileHTTPApplication) GetCurrentUserContext(context.Context, application.Invocation) (*application.CurrentUserContextView, error) {
+func (a *userProfileHTTPApplication) GetCurrentUserContext(context.Context, app.Invocation) (*app.CurrentUserContextView, error) {
 	a.contextCalls++
 	return a.contextResult, nil
 }
 
-func (a *userProfileHTTPApplication) ListCandidateExamActivity(context.Context, application.Invocation,
-	application.ListCandidateExamActivityQuery,
-) (application.CandidateExamActivityPage, error) {
-	return application.CandidateExamActivityPage{}, nil
+func (a *userProfileHTTPApplication) ListCandidateExamActivity(context.Context, app.Invocation,
+	app.ListCandidateExamActivityQuery,
+) (app.CandidateExamActivityPage, error) {
+	return app.CandidateExamActivityPage{}, nil
 }
 
-func (a *userProfileHTTPApplication) ChangeUserEmail(_ context.Context, _ application.Invocation, command application.ChangeUserEmailCommand) (*application.UserEmailState, error) {
+func (a *userProfileHTTPApplication) ChangeUserEmail(_ context.Context, _ app.Invocation, command app.ChangeUserEmailCommand) (*app.UserEmailState, error) {
 	a.changeEmailCommand = command
-	return &application.UserEmailState{UserID: a.result.ID, EmailVerified: a.result.EmailVerified}, nil
+	return &app.UserEmailState{UserID: a.result.ID, EmailVerified: a.result.EmailVerified}, nil
 }
 
-func (a *userProfileHTTPApplication) VerifyUserEmailPrivileged(_ context.Context, _ application.Invocation, command application.VerifyUserEmailPrivilegedCommand) (*application.UserEmailState, error) {
+func (a *userProfileHTTPApplication) VerifyUserEmailPrivileged(_ context.Context, _ app.Invocation, command app.VerifyUserEmailPrivilegedCommand) (*app.UserEmailState, error) {
 	a.verifyEmailCommand = command
-	return &application.UserEmailState{UserID: a.result.ID, EmailVerified: a.result.EmailVerified}, nil
+	return &app.UserEmailState{UserID: a.result.ID, EmailVerified: a.result.EmailVerified}, nil
 }
 
 type accountStateHTTPApplication struct {
 	AccountStateApplication
 	result  *model.User
-	command application.SetUserEnabledCommand
+	command app.SetUserEnabledCommand
 }
 
-func (a *accountStateHTTPApplication) SetUserEnabled(_ context.Context, _ application.Invocation, command application.SetUserEnabledCommand) (*model.User, error) {
+func (a *accountStateHTTPApplication) SetUserEnabled(_ context.Context, _ app.Invocation, command app.SetUserEnabledCommand) (*model.User, error) {
 	a.command = command
 	return a.result, nil
 }
@@ -73,22 +73,22 @@ func (a *accountStateHTTPApplication) SetUserEnabled(_ context.Context, _ applic
 type sessionAdministrationHTTPApplication struct {
 	SessionAdministrationApplication
 	list             []*model.Session
-	listQuery        application.ListUserSessionsQuery
-	revokeCommand    application.RevokeUserSessionCommand
-	revokeAllCommand application.RevokeUserSessionsCommand
+	listQuery        app.ListUserSessionsQuery
+	revokeCommand    app.RevokeUserSessionCommand
+	revokeAllCommand app.RevokeUserSessionsCommand
 }
 
-func (a *sessionAdministrationHTTPApplication) ListUserSessions(_ context.Context, _ application.Invocation, query application.ListUserSessionsQuery) ([]*model.Session, error) {
+func (a *sessionAdministrationHTTPApplication) ListUserSessions(_ context.Context, _ app.Invocation, query app.ListUserSessionsQuery) ([]*model.Session, error) {
 	a.listQuery = query
 	return a.list, nil
 }
 
-func (a *sessionAdministrationHTTPApplication) RevokeUserSession(_ context.Context, _ application.Invocation, command application.RevokeUserSessionCommand) error {
+func (a *sessionAdministrationHTTPApplication) RevokeUserSession(_ context.Context, _ app.Invocation, command app.RevokeUserSessionCommand) error {
 	a.revokeCommand = command
 	return nil
 }
 
-func (a *sessionAdministrationHTTPApplication) RevokeUserSessions(_ context.Context, _ application.Invocation, command application.RevokeUserSessionsCommand) error {
+func (a *sessionAdministrationHTTPApplication) RevokeUserSessions(_ context.Context, _ app.Invocation, command app.RevokeUserSessionsCommand) error {
 	a.revokeAllCommand = command
 	return nil
 }
@@ -97,30 +97,30 @@ type roleHTTPApplication struct {
 	RoleApplication
 	list           []*model.Role
 	result         *model.Role
-	createCommand  application.CreateRoleCommand
-	updateCommand  application.UpdateRoleCommand
-	archiveCommand application.ArchiveRoleCommand
+	createCommand  app.CreateRoleCommand
+	updateCommand  app.UpdateRoleCommand
+	archiveCommand app.ArchiveRoleCommand
 }
 
-func (a *roleHTTPApplication) ListRoles(context.Context, application.Invocation, application.ListRolesQuery) ([]*model.Role, error) {
+func (a *roleHTTPApplication) ListRoles(context.Context, app.Invocation, app.ListRolesQuery) ([]*model.Role, error) {
 	return a.list, nil
 }
 
-func (a *roleHTTPApplication) GetRole(context.Context, application.Invocation, application.GetRoleQuery) (*model.Role, error) {
+func (a *roleHTTPApplication) GetRole(context.Context, app.Invocation, app.GetRoleQuery) (*model.Role, error) {
 	return a.result, nil
 }
 
-func (a *roleHTTPApplication) CreateRole(_ context.Context, _ application.Invocation, command application.CreateRoleCommand) (*model.Role, error) {
+func (a *roleHTTPApplication) CreateRole(_ context.Context, _ app.Invocation, command app.CreateRoleCommand) (*model.Role, error) {
 	a.createCommand = command
 	return a.result, nil
 }
 
-func (a *roleHTTPApplication) UpdateRole(_ context.Context, _ application.Invocation, command application.UpdateRoleCommand) (*model.Role, error) {
+func (a *roleHTTPApplication) UpdateRole(_ context.Context, _ app.Invocation, command app.UpdateRoleCommand) (*model.Role, error) {
 	a.updateCommand = command
 	return a.result, nil
 }
 
-func (a *roleHTTPApplication) ArchiveRole(_ context.Context, _ application.Invocation, command application.ArchiveRoleCommand) error {
+func (a *roleHTTPApplication) ArchiveRole(_ context.Context, _ app.Invocation, command app.ArchiveRoleCommand) error {
 	a.archiveCommand = command
 	return nil
 }
@@ -131,15 +131,15 @@ type roleBindingHTTPApplication struct {
 	result *model.RoleBinding
 }
 
-func (a *roleBindingHTTPApplication) ListRoleBindings(context.Context, application.Invocation, application.ListRoleBindingsQuery) ([]*model.RoleBinding, error) {
+func (a *roleBindingHTTPApplication) ListRoleBindings(context.Context, app.Invocation, app.ListRoleBindingsQuery) ([]*model.RoleBinding, error) {
 	return a.list, nil
 }
 
-func (a *roleBindingHTTPApplication) CreateRoleBinding(context.Context, application.Invocation, application.CreateRoleBindingCommand) (*model.RoleBinding, error) {
+func (a *roleBindingHTTPApplication) CreateRoleBinding(context.Context, app.Invocation, app.CreateRoleBindingCommand) (*model.RoleBinding, error) {
 	return a.result, nil
 }
 
-func (a *roleBindingHTTPApplication) EndRoleBinding(context.Context, application.Invocation, application.EndRoleBindingCommand) (*model.RoleBinding, error) {
+func (a *roleBindingHTTPApplication) EndRoleBinding(context.Context, app.Invocation, app.EndRoleBindingCommand) (*model.RoleBinding, error) {
 	return a.result, nil
 }
 
@@ -148,7 +148,7 @@ type auditListingHTTPApplication struct {
 	list []*model.AuditEvent
 }
 
-func (a *auditListingHTTPApplication) ListAuditEvents(context.Context, application.Invocation, application.ListAuditEventsQuery) ([]*model.AuditEvent, error) {
+func (a *auditListingHTTPApplication) ListAuditEvents(context.Context, app.Invocation, app.ListAuditEventsQuery) ([]*model.AuditEvent, error) {
 	return a.list, nil
 }
 
@@ -158,14 +158,14 @@ type bootstrapHTTPApplication struct {
 	result *model.InstallationBootstrapResult
 }
 
-func (a *bootstrapHTTPApplication) GetInstallationStatus(context.Context, application.GetInstallationStatusQuery) (*model.InstallationStatus, error) {
+func (a *bootstrapHTTPApplication) GetInstallationStatus(context.Context, app.GetInstallationStatusQuery) (*model.InstallationStatus, error) {
 	if a.status != nil {
 		return a.status, nil
 	}
 	return &model.InstallationStatus{Initialized: false}, nil
 }
 
-func (a *bootstrapHTTPApplication) BootstrapInstallation(context.Context, application.Invocation, application.BootstrapInstallationCommand) (*model.InstallationBootstrapResult, error) {
+func (a *bootstrapHTTPApplication) BootstrapInstallation(context.Context, app.Invocation, app.BootstrapInstallationCommand) (*model.InstallationBootstrapResult, error) {
 	return a.result, nil
 }
 
@@ -176,36 +176,36 @@ type loginRevisionHTTPApplication struct {
 
 func (a *loginRevisionHTTPApplication) Login(
 	context.Context,
-	application.Invocation,
-	application.LoginCommand,
-) (*application.LoginResult, error) {
-	return &application.LoginResult{
+	app.Invocation,
+	app.LoginCommand,
+) (*app.LoginResult, error) {
+	return &app.LoginResult{
 		User:    a.user,
 		Session: &model.Session{ID: model.NewSessionID()},
 		Tokens:  &model.AuthenticationTokens{AccessToken: "access"},
 	}, nil
 }
 
-func (a *userProfileHTTPApplication) SearchUsers(_ context.Context, _ application.Invocation, query application.SearchUsersQuery) ([]*model.User, error) {
+func (a *userProfileHTTPApplication) SearchUsers(_ context.Context, _ app.Invocation, query app.SearchUsersQuery) ([]*model.User, error) {
 	a.searchQuery = query
 	return a.values, nil
 }
-func (a *userProfileHTTPApplication) GetUserProfile(context.Context, application.Invocation, application.GetUserProfileQuery) (*model.User, error) {
+func (a *userProfileHTTPApplication) GetUserProfile(context.Context, app.Invocation, app.GetUserProfileQuery) (*model.User, error) {
 	return a.result, nil
 }
-func (a *userProfileHTTPApplication) UpdateUserProfile(_ context.Context, _ application.Invocation, command application.UpdateUserProfileCommand) (*model.User, error) {
+func (a *userProfileHTTPApplication) UpdateUserProfile(_ context.Context, _ app.Invocation, command app.UpdateUserProfileCommand) (*model.User, error) {
 	a.updateCommand = command
 	return a.result, nil
 }
-func (a *userProfileHTTPApplication) UploadProfilePicture(_ context.Context, _ application.Invocation, command application.UploadProfilePictureCommand) (*model.User, error) {
+func (a *userProfileHTTPApplication) UploadProfilePicture(_ context.Context, _ app.Invocation, command app.UploadProfilePictureCommand) (*model.User, error) {
 	a.uploadCommand = command
 	return a.result, nil
 }
-func (a *userProfileHTTPApplication) RemoveProfilePicture(_ context.Context, _ application.Invocation, command application.RemoveProfilePictureCommand) (*model.User, error) {
+func (a *userProfileHTTPApplication) RemoveProfilePicture(_ context.Context, _ app.Invocation, command app.RemoveProfilePictureCommand) (*model.User, error) {
 	a.removeCommand = command
 	return a.result, nil
 }
-func (a *userProfileHTTPApplication) GetProfilePicture(_ context.Context, _ application.Invocation, query application.GetProfilePictureQuery) (*application.ProfilePictureContent, error) {
+func (a *userProfileHTTPApplication) GetProfilePicture(_ context.Context, _ app.Invocation, query app.GetProfilePictureQuery) (*app.ProfilePictureContent, error) {
 	a.pictureQuery = query
 	return a.pictureContent, nil
 }
@@ -214,7 +214,7 @@ func TestCurrentUserContextHTTPReturnsClosedNoStoreDTO(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
 	userID := model.NewUserID()
-	profiles := &userProfileHTTPApplication{contextResult: &application.CurrentUserContextView{
+	profiles := &userProfileHTTPApplication{contextResult: &app.CurrentUserContextView{
 		UserID: userID, Username: "student", DisplayName: "Student",
 		ProfilePictureReference: "/api/v1/users/" + userID.String() + "/profile-picture",
 		AvailableProductAreas: []store.CurrentUserProductArea{
@@ -310,7 +310,7 @@ func TestUserProfileHTTPUsesAllowlistedDTOAndRouteID(t *testing.T) {
 	if deleteResponse.Code != http.StatusOK || profiles.removeCommand.UserID != model.UserID(userID) || profiles.removeCommand.ExpectedSHA256 != strings.Repeat("b", 64) {
 		t.Fatalf("delete response/command = %d / %#v", deleteResponse.Code, profiles.removeCommand)
 	}
-	profiles.pictureContent = &application.ProfilePictureContent{Body: io.NopCloser(strings.NewReader("webp")), MediaType: "image/webp", Size: 4, ETag: `"checksum"`}
+	profiles.pictureContent = &app.ProfilePictureContent{Body: io.NopCloser(strings.NewReader("webp")), MediaType: "image/webp", Size: 4, ETag: `"checksum"`}
 	pictureRequest := httptest.NewRequest(http.MethodGet, "/api/v1/users/"+userID+"/profile-picture?size=128", nil)
 	pictureRequest.Header.Set("Authorization", "Bearer credential")
 	pictureRequest.Header.Set("If-None-Match", `"different", W/"checksum"`)

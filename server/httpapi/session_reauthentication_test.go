@@ -15,17 +15,17 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type sessionReauthenticationHTTPFake struct {
 	calls      int
-	invocation application.Invocation
-	command    application.ReauthenticatePasswordCommand
+	invocation app.Invocation
+	command    app.ReauthenticatePasswordCommand
 }
 
-func (f *sessionReauthenticationHTTPFake) ReauthenticatePassword(_ context.Context, invocation application.Invocation, command application.ReauthenticatePasswordCommand) (*model.Session, error) {
+func (f *sessionReauthenticationHTTPFake) ReauthenticatePassword(_ context.Context, invocation app.Invocation, command app.ReauthenticatePasswordCommand) (*model.Session, error) {
 	f.calls++
 	f.invocation = invocation
 	f.command = command
@@ -59,6 +59,6 @@ func TestPasswordReauthenticationHTTPRejectsIdentitySelectionAndProtectsResponse
 	}
 }
 
-func (*sessionReauthenticationHTTPFake) BeginExternalReauthentication(context.Context, application.Invocation, application.BeginExternalReauthenticationCommand) (*model.ExternalAuthenticationStart, error) {
+func (*sessionReauthenticationHTTPFake) BeginExternalReauthentication(context.Context, app.Invocation, app.BeginExternalReauthenticationCommand) (*model.ExternalAuthenticationStart, error) {
 	return nil, nil
 }

@@ -13,12 +13,12 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestJobResponseCannotExposePrivateExecutionDocuments(t *testing.T) {
-	view := application.JobView{ID: model.NewJobID(), Type: model.JobTypeProfilePictureGenerateDefault, Status: model.JobStatusRunning, CreatedAt: time.Now(), UpdatedAt: time.Now(), AvailableAt: time.Now(), AttemptCount: 1, MaximumAttempts: 8, Revision: 2}
+	view := app.JobView{ID: model.NewJobID(), Type: model.JobTypeProfilePictureGenerateDefault, Status: model.JobStatusRunning, CreatedAt: time.Now(), UpdatedAt: time.Now(), AvailableAt: time.Now(), AttemptCount: 1, MaximumAttempts: 8, Revision: 2}
 	encoded, err := json.Marshal(jobResponseFromApplication(view))
 	if err != nil {
 		t.Fatal(err)

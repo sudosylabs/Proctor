@@ -10,7 +10,7 @@ package httpapi
 import (
 	"net/http"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -124,7 +124,7 @@ func (m classResourceModule) search(request operationRequest) (operationResult, 
 	classes, err := m.classes.SearchClasses(
 		request.context,
 		request.invocation(),
-		application.SearchClassesQuery{
+		app.SearchClassesQuery{
 			AcademicUnitID: academicUnitID,
 			Query:          request.request.URL.Query().Get("q"),
 			Limit:          limit,
@@ -144,7 +144,7 @@ func (m classResourceModule) list(request operationRequest) (operationResult, er
 	classes, err := m.classes.ListClasses(
 		request.context,
 		request.invocation(),
-		application.ListClassesQuery{ProgrammeLevelID: programmeLevelID},
+		app.ListClassesQuery{ProgrammeLevelID: programmeLevelID},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -164,7 +164,7 @@ func (m classResourceModule) create(request operationRequest) (operationResult, 
 	class, err := m.classes.CreateClass(
 		request.context,
 		request.invocation(),
-		application.CreateClassCommand{
+		app.CreateClassCommand{
 			ProgrammeLevelID: programmeLevelID,
 			AcademicPeriodID: body.AcademicPeriodID,
 			Name:             body.Name,
@@ -186,7 +186,7 @@ func (m classResourceModule) get(request operationRequest) (operationResult, err
 	class, err := m.classes.GetClass(
 		request.context,
 		request.invocation(),
-		application.GetClassQuery{ID: id},
+		app.GetClassQuery{ID: id},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -209,7 +209,7 @@ func (m classResourceModule) patch(request operationRequest) (operationResult, e
 	class, err := m.classes.UpdateClass(
 		request.context,
 		request.invocation(),
-		application.UpdateClassCommand{ExpectedRevision: body.ExpectedRevision.ValuePointer(),
+		app.UpdateClassCommand{ExpectedRevision: body.ExpectedRevision.ValuePointer(),
 			ID:               id,
 			ProgrammeLevelID: body.ProgrammeLevelID.ValuePointer(),
 			AcademicPeriodID: body.AcademicPeriodID.ValuePointer(),
@@ -236,7 +236,7 @@ func (m classResourceModule) archive(request operationRequest) (operationResult,
 	if err := m.classes.ArchiveClass(
 		request.context,
 		request.invocation(),
-		application.ArchiveClassCommand{ExpectedRevision: expectedRevision, ID: id},
+		app.ArchiveClassCommand{ExpectedRevision: expectedRevision, ID: id},
 	); err != nil {
 		return operationResult{}, err
 	}

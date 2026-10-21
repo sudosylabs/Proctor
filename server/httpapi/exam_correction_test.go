@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -44,7 +44,7 @@ func TestExamSittingCorrectionHTTPStagesResourceContentAndReturnsOnlySafeAuthori
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 	if fake.stage.ExamID != fake.examID || fake.stage.SittingID != fake.sittingID || fake.stage.BaseRevisionID != fake.baseRevisionID ||
-		fake.stage.Target != application.ExamSittingCorrectionResourceAddition || fake.stage.ResourceID.IsValid() ||
+		fake.stage.Target != app.ExamSittingCorrectionResourceAddition || fake.stage.ResourceID.IsValid() ||
 		fake.stage.IdempotencyKey != "stage-correction-once" || !bytes.Equal(fake.uploaded, raw) {
 		t.Fatalf("command=%#v uploaded=%q", fake.stage, fake.uploaded)
 	}
@@ -240,13 +240,13 @@ type examSittingCorrectionHTTPFake struct {
 	examID         model.ExamID
 	sittingID      model.ExamSittingID
 	baseRevisionID model.ExamRevisionID
-	stage          application.StageExamSittingCorrectionResourceContentCommand
+	stage          app.StageExamSittingCorrectionResourceContentCommand
 	stageCalls     int
-	apply          application.ApplyExamSittingCorrectionCommand
+	apply          app.ApplyExamSittingCorrectionCommand
 	applyCalls     int
 	uploaded       []byte
-	stageResult    application.ExamSittingCorrectionResourceStage
-	applyResult    application.ExamSittingCorrectionResult
+	stageResult    app.ExamSittingCorrectionResourceStage
+	applyResult    app.ExamSittingCorrectionResult
 }
 
 func newExamSittingCorrectionHTTPFake() *examSittingCorrectionHTTPFake {
@@ -254,12 +254,12 @@ func newExamSittingCorrectionHTTPFake() *examSittingCorrectionHTTPFake {
 	effectiveAt := time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
 	return &examSittingCorrectionHTTPFake{
 		examID: examID, sittingID: sittingID, baseRevisionID: baseRevisionID,
-		stageResult: application.ExamSittingCorrectionResourceStage{
+		stageResult: app.ExamSittingCorrectionResourceStage{
 			StageID: model.NewExamCorrectionResourceStageID(), ResourceID: model.NewExamResourceID(),
 			MediaType: model.ExamResourceMediaText, Size: 19,
 			SHA256: strings.Repeat("b", 64), ExpiresAt: effectiveAt.Add(time.Hour),
 		},
-		applyResult: application.ExamSittingCorrectionResult{
+		applyResult: app.ExamSittingCorrectionResult{
 			ExamID: examID, SittingID: sittingID, PreviousRevisionID: baseRevisionID,
 			RevisionID: model.NewExamRevisionID(), RevisionNumber: 4,
 			SittingState: model.ExamSittingOpen, SittingRevision: 8, EffectiveAt: effectiveAt,
@@ -277,17 +277,17 @@ func (f *examSittingCorrectionHTTPFake) AuthenticateBearer(context.Context, stri
 	return &principal, nil
 }
 
-func (f *examSittingCorrectionHTTPFake) StageExamSittingCorrectionResourceContent(_ context.Context, _ application.Invocation, command application.StageExamSittingCorrectionResourceContentCommand) (application.ExamSittingCorrectionResourceStage, error) {
+func (f *examSittingCorrectionHTTPFake) StageExamSittingCorrectionResourceContent(_ context.Context, _ app.Invocation, command app.StageExamSittingCorrectionResourceContentCommand) (app.ExamSittingCorrectionResourceStage, error) {
 	raw, err := io.ReadAll(command.Body)
 	if err != nil {
-		return application.ExamSittingCorrectionResourceStage{}, apperror.New("exam.sitting.correction.content_invalid")
+		return app.ExamSittingCorrectionResourceStage{}, apperror.New("exam.sitting.correction.content_invalid")
 	}
 	f.stage, f.uploaded = command, raw
 	f.stageCalls++
 	return f.stageResult, nil
 }
 
-func (f *examSittingCorrectionHTTPFake) ApplyExamSittingCorrection(_ context.Context, _ application.Invocation, command application.ApplyExamSittingCorrectionCommand) (application.ExamSittingCorrectionResult, error) {
+func (f *examSittingCorrectionHTTPFake) ApplyExamSittingCorrection(_ context.Context, _ app.Invocation, command app.ApplyExamSittingCorrectionCommand) (app.ExamSittingCorrectionResult, error) {
 	f.apply = command
 	f.applyCalls++
 	result := f.applyResult

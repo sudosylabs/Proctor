@@ -12,20 +12,20 @@ import (
 	"errors"
 	"net/http"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 const examStarterWorkspaceUploadBodyLimit = model.StarterWorkspaceMaximumFileBytes + 64*1024
 
 type ExamStarterWorkspaceApplication interface {
-	ListExamStarterWorkspace(context.Context, application.Invocation, application.ListExamStarterWorkspaceQuery) ([]application.ExamStarterWorkspaceItem, error)
-	OpenExamStarterWorkspaceFile(context.Context, application.Invocation, application.OpenExamStarterWorkspaceFileQuery) (application.OpenedExamStarterWorkspaceFile, error)
-	CreateExamStarterWorkspaceDirectory(context.Context, application.Invocation, application.CreateExamStarterWorkspaceDirectoryCommand) (application.ExamStarterWorkspaceResult, error)
-	CreateExamStarterWorkspaceFile(context.Context, application.Invocation, application.CreateExamStarterWorkspaceFileCommand) (application.ExamStarterWorkspaceResult, error)
-	MoveExamStarterWorkspaceEntry(context.Context, application.Invocation, application.MoveExamStarterWorkspaceEntryCommand) (application.ExamStarterWorkspaceResult, error)
-	ReplaceExamStarterWorkspaceFile(context.Context, application.Invocation, application.ReplaceExamStarterWorkspaceFileCommand) (application.ExamStarterWorkspaceResult, error)
-	RemoveExamStarterWorkspaceEntry(context.Context, application.Invocation, application.RemoveExamStarterWorkspaceEntryCommand) (application.ExamStarterWorkspaceResult, error)
+	ListExamStarterWorkspace(context.Context, app.Invocation, app.ListExamStarterWorkspaceQuery) ([]app.ExamStarterWorkspaceItem, error)
+	OpenExamStarterWorkspaceFile(context.Context, app.Invocation, app.OpenExamStarterWorkspaceFileQuery) (app.OpenedExamStarterWorkspaceFile, error)
+	CreateExamStarterWorkspaceDirectory(context.Context, app.Invocation, app.CreateExamStarterWorkspaceDirectoryCommand) (app.ExamStarterWorkspaceResult, error)
+	CreateExamStarterWorkspaceFile(context.Context, app.Invocation, app.CreateExamStarterWorkspaceFileCommand) (app.ExamStarterWorkspaceResult, error)
+	MoveExamStarterWorkspaceEntry(context.Context, app.Invocation, app.MoveExamStarterWorkspaceEntryCommand) (app.ExamStarterWorkspaceResult, error)
+	ReplaceExamStarterWorkspaceFile(context.Context, app.Invocation, app.ReplaceExamStarterWorkspaceFileCommand) (app.ExamStarterWorkspaceResult, error)
+	RemoveExamStarterWorkspaceEntry(context.Context, app.Invocation, app.RemoveExamStarterWorkspaceEntryCommand) (app.ExamStarterWorkspaceResult, error)
 }
 
 type examStarterWorkspaceHTTPModule struct {
@@ -126,7 +126,7 @@ func (m examStarterWorkspaceHTTPModule) list(request operationRequest) (operatio
 	if err != nil {
 		return operationResult{}, err
 	}
-	items, err := m.application.ListExamStarterWorkspace(request.context, request.invocation(), application.ListExamStarterWorkspaceQuery{ExamID: examID})
+	items, err := m.application.ListExamStarterWorkspace(request.context, request.invocation(), app.ListExamStarterWorkspaceQuery{ExamID: examID})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -146,7 +146,7 @@ func (m examStarterWorkspaceHTTPModule) createDirectory(request operationRequest
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	result, err := m.application.CreateExamStarterWorkspaceDirectory(request.context, request.invocation(), application.CreateExamStarterWorkspaceDirectoryCommand{
+	result, err := m.application.CreateExamStarterWorkspaceDirectory(request.context, request.invocation(), app.CreateExamStarterWorkspaceDirectoryCommand{
 		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision, Path: body.Path, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
@@ -167,7 +167,7 @@ func (m examStarterWorkspaceHTTPModule) createFile(request operationRequest) (pr
 	if metadata.Size == nil {
 		return protocolResult{}, invalidRequestError(errors.New("metadata size is required"))
 	}
-	result, err := m.application.CreateExamStarterWorkspaceFile(request.context, request.invocation(), application.CreateExamStarterWorkspaceFileCommand{
+	result, err := m.application.CreateExamStarterWorkspaceFile(request.context, request.invocation(), app.CreateExamStarterWorkspaceFileCommand{
 		ExamID: examID, ExpectedDraftRevision: metadata.ExpectedDraftRevision, Path: metadata.Path, MediaType: metadata.MediaType,
 		ExpectedSHA256: metadata.SHA256, Body: content, Size: *metadata.Size, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
@@ -185,7 +185,7 @@ func (m examStarterWorkspaceHTTPModule) moveEntry(request operationRequest) (ope
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	result, err := m.application.MoveExamStarterWorkspaceEntry(request.context, request.invocation(), application.MoveExamStarterWorkspaceEntryCommand{
+	result, err := m.application.MoveExamStarterWorkspaceEntry(request.context, request.invocation(), app.MoveExamStarterWorkspaceEntryCommand{
 		ExamID: examID, EntryID: entryID, ExpectedDraftRevision: body.ExpectedDraftRevision, Path: body.Path, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
@@ -210,7 +210,7 @@ func (m examStarterWorkspaceHTTPModule) replaceFile(request operationRequest) (p
 	if err != nil {
 		return protocolResult{}, invalidRequestError(err)
 	}
-	result, err := m.application.ReplaceExamStarterWorkspaceFile(request.context, request.invocation(), application.ReplaceExamStarterWorkspaceFileCommand{
+	result, err := m.application.ReplaceExamStarterWorkspaceFile(request.context, request.invocation(), app.ReplaceExamStarterWorkspaceFileCommand{
 		ExamID: examID, EntryID: entryID, ExpectedDraftRevision: metadata.ExpectedDraftRevision, ExpectedContentVersion: expectedContentVersion, MediaType: metadata.MediaType,
 		ExpectedSHA256: metadata.SHA256, Body: content, Size: *metadata.Size, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
@@ -228,7 +228,7 @@ func (m examStarterWorkspaceHTTPModule) removeEntry(request operationRequest) (o
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	_, err = m.application.RemoveExamStarterWorkspaceEntry(request.context, request.invocation(), application.RemoveExamStarterWorkspaceEntryCommand{
+	_, err = m.application.RemoveExamStarterWorkspaceEntry(request.context, request.invocation(), app.RemoveExamStarterWorkspaceEntryCommand{
 		ExamID: examID, EntryID: entryID, ExpectedDraftRevision: body.ExpectedDraftRevision, Recursive: body.Recursive, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
@@ -241,7 +241,7 @@ func (m examStarterWorkspaceHTTPModule) openFile(request operationRequest) (prot
 	if err != nil {
 		return protocolResult{}, err
 	}
-	opened, err := m.application.OpenExamStarterWorkspaceFile(request.context, request.invocation(), application.OpenExamStarterWorkspaceFileQuery{ExamID: examID, EntryID: entryID})
+	opened, err := m.application.OpenExamStarterWorkspaceFile(request.context, request.invocation(), app.OpenExamStarterWorkspaceFileQuery{ExamID: examID, EntryID: entryID})
 	if err != nil {
 		return protocolResult{}, err
 	}
@@ -277,14 +277,14 @@ func examStarterWorkspaceIDs(request operationRequest) (model.ExamID, model.Star
 	return examID, entryID, nil
 }
 
-func examStarterWorkspaceResultResponse(result application.ExamStarterWorkspaceResult) examStarterWorkspaceEntryResponse {
-	item := examStarterWorkspaceListItem(application.ExamStarterWorkspaceItem{Entry: result.Entry, Object: result.Object})
+func examStarterWorkspaceResultResponse(result app.ExamStarterWorkspaceResult) examStarterWorkspaceEntryResponse {
+	item := examStarterWorkspaceListItem(app.ExamStarterWorkspaceItem{Entry: result.Entry, Object: result.Object})
 	return examStarterWorkspaceEntryResponse{ID: item.ID, Kind: item.Kind, Path: item.Path, ContentVersion: item.ContentVersion,
 		MediaType: item.MediaType, Size: item.Size, SHA256: item.SHA256, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt,
 		DraftRevision: result.DraftRevision}
 }
 
-func examStarterWorkspaceListItem(item application.ExamStarterWorkspaceItem) examStarterWorkspaceListItemResponse {
+func examStarterWorkspaceListItem(item app.ExamStarterWorkspaceItem) examStarterWorkspaceListItemResponse {
 	entry := item.Entry
 	response := examStarterWorkspaceListItemResponse{ID: entry.ID.String(), Kind: string(entry.Kind), Path: entry.Path,
 		CreatedAt: model.FormatRFC3339(entry.CreatedAt), UpdatedAt: model.FormatRFC3339(entry.UpdatedAt)}

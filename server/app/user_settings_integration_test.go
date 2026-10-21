@@ -15,7 +15,7 @@ import (
 	"os"
 	"testing"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -37,7 +37,7 @@ func TestUserSettingsReadOwnIntegrationPreservesExactSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	const password = "correct horse battery staple"
-	user, err := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
+	user, err := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "settings-read-user",
 		Email:    "settings-read-user@example.edu",
 	}, Password: password})
@@ -53,7 +53,7 @@ func TestUserSettingsReadOwnIntegrationPreservesExactSource(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	login, err := helper.App.Login(ctx, application.Invocation{}, application.LoginCommand{
+	login, err := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{
 		LoginID: user.Username, Password: password, ClientType: model.SessionClientWeb,
 		Source: "127.0.0.1:1",
 	})
@@ -66,7 +66,7 @@ func TestUserSettingsReadOwnIntegrationPreservesExactSource(t *testing.T) {
 	}
 	view, err := helper.App.ReadOwnUserSettings(
 		ctx,
-		application.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-read-integration"}),
+		app.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-read-integration"}),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -76,13 +76,13 @@ func TestUserSettingsReadOwnIntegrationPreservesExactSource(t *testing.T) {
 	}
 
 	replacementSource := "{\n  // byte changes create revisions\n  \"editor.fontFamily\": \"A\\\\B\",\n  \"future.unknown\": {\"nested\": false,},\n}\n"
-	command := application.ReplaceOwnUserSettingsCommand{
+	command := app.ReplaceOwnUserSettingsCommand{
 		Source: replacementSource, FormatVersion: model.UserSettingsFormatVersion1,
 		ExpectedRevision: view.Revision, IdempotencyKey: "settings-integration-save",
 	}
 	replaced, err := helper.App.ReplaceOwnUserSettings(
 		ctx,
-		application.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-replace-integration"}),
+		app.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-replace-integration"}),
 		command,
 	)
 	if err != nil {
@@ -93,7 +93,7 @@ func TestUserSettingsReadOwnIntegrationPreservesExactSource(t *testing.T) {
 	}
 	replay, err := helper.App.ReplaceOwnUserSettings(
 		ctx,
-		application.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-replay-integration"}),
+		app.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-replay-integration"}),
 		command,
 	)
 	if err != nil {
@@ -104,8 +104,8 @@ func TestUserSettingsReadOwnIntegrationPreservesExactSource(t *testing.T) {
 	}
 	noOp, err := helper.App.ReplaceOwnUserSettings(
 		ctx,
-		application.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-noop-integration"}),
-		application.ReplaceOwnUserSettingsCommand{
+		app.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-noop-integration"}),
+		app.ReplaceOwnUserSettingsCommand{
 			Source: replacementSource, FormatVersion: model.UserSettingsFormatVersion1,
 			ExpectedRevision: replaced.Revision, IdempotencyKey: "settings-integration-noop",
 		},
@@ -115,8 +115,8 @@ func TestUserSettingsReadOwnIntegrationPreservesExactSource(t *testing.T) {
 	}
 	_, err = helper.App.ReplaceOwnUserSettings(
 		ctx,
-		application.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-conflict-integration"}),
-		application.ReplaceOwnUserSettingsCommand{
+		app.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-conflict-integration"}),
+		app.ReplaceOwnUserSettingsCommand{
 			Source: "{\"editor.fontSize\": 19}\n", FormatVersion: model.UserSettingsFormatVersion1,
 			ExpectedRevision: view.Revision, IdempotencyKey: "settings-integration-conflict",
 		},
@@ -126,7 +126,7 @@ func TestUserSettingsReadOwnIntegrationPreservesExactSource(t *testing.T) {
 	}
 	after, err := helper.App.ReadOwnUserSettings(
 		ctx,
-		application.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-after-integration"}),
+		app.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-after-integration"}),
 	)
 	if err != nil {
 		t.Fatal(err)

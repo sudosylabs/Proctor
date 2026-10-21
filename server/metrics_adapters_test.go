@@ -17,7 +17,7 @@ import (
 
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
-	apppkg "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform"
@@ -67,7 +67,7 @@ func TestMeasuredClusterLabelsOnlyRegisteredEvents(t *testing.T) {
 func TestMailQueueMetricsAggregateFailureBucketsAndExposeTruncation(t *testing.T) {
 	t.Parallel()
 
-	values := []apppkg.MailQueueMetric{
+	values := []app.MailQueueMetric{
 		{TemplateKey: model.MailTemplateSystemTest, State: model.MailDeliveryQueued, OutcomeCode: "temporary", Count: 2, OldestAge: time.Minute},
 		{TemplateKey: model.MailTemplateSystemTest, State: model.MailDeliveryQueued, OutcomeCode: "permanent", Count: 3, OldestAge: 2 * time.Minute, Truncated: true},
 	}

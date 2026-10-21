@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -26,9 +26,9 @@ type academicUnitHTTPApplication struct {
 	principal      model.Principal
 	unit           *model.AcademicUnit
 	created        *model.AcademicUnit
-	createCommand  application.CreateAcademicUnitCommand
-	updateCommand  application.UpdateAcademicUnitCommand
-	archiveCommand application.ArchiveAcademicUnitCommand
+	createCommand  app.CreateAcademicUnitCommand
+	updateCommand  app.UpdateAcademicUnitCommand
+	archiveCommand app.ArchiveAcademicUnitCommand
 	getErr         error
 }
 
@@ -48,8 +48,8 @@ func (a *academicUnitHTTPApplication) AuthenticateBearer(
 
 func (a *academicUnitHTTPApplication) GetAcademicUnit(
 	_ context.Context,
-	invocation application.Invocation,
-	query application.GetAcademicUnitQuery,
+	invocation app.Invocation,
+	query app.GetAcademicUnitQuery,
 ) (*model.AcademicUnit, error) {
 	if invocation.Principal().UserID != a.principal.UserID || query.ID != a.unit.ID {
 		return nil, apperror.New("request.invalid")
@@ -62,24 +62,24 @@ func (a *academicUnitHTTPApplication) GetAcademicUnit(
 
 func (a *academicUnitHTTPApplication) ListAcademicUnits(
 	context.Context,
-	application.Invocation,
-	application.ListAcademicUnitsQuery,
+	app.Invocation,
+	app.ListAcademicUnitsQuery,
 ) ([]*model.AcademicUnit, error) {
 	return nil, nil
 }
 
 func (a *academicUnitHTTPApplication) SearchAcademicUnits(
 	context.Context,
-	application.Invocation,
-	application.SearchAcademicUnitsQuery,
+	app.Invocation,
+	app.SearchAcademicUnitsQuery,
 ) ([]*model.AcademicUnit, error) {
 	return nil, nil
 }
 
 func (a *academicUnitHTTPApplication) CreateAcademicUnit(
 	_ context.Context,
-	invocation application.Invocation,
-	command application.CreateAcademicUnitCommand,
+	invocation app.Invocation,
+	command app.CreateAcademicUnitCommand,
 ) (*model.AcademicUnit, error) {
 	if invocation.Principal().UserID != a.principal.UserID {
 		return nil, apperror.New("request.invalid")
@@ -90,8 +90,8 @@ func (a *academicUnitHTTPApplication) CreateAcademicUnit(
 
 func (a *academicUnitHTTPApplication) UpdateAcademicUnit(
 	_ context.Context,
-	invocation application.Invocation,
-	command application.UpdateAcademicUnitCommand,
+	invocation app.Invocation,
+	command app.UpdateAcademicUnitCommand,
 ) (*model.AcademicUnit, error) {
 	if invocation.Principal().UserID != a.principal.UserID {
 		return nil, apperror.New("request.invalid")
@@ -102,8 +102,8 @@ func (a *academicUnitHTTPApplication) UpdateAcademicUnit(
 
 func (a *academicUnitHTTPApplication) ArchiveAcademicUnit(
 	_ context.Context,
-	invocation application.Invocation,
-	command application.ArchiveAcademicUnitCommand,
+	invocation app.Invocation,
+	command app.ArchiveAcademicUnitCommand,
 ) error {
 	if invocation.Principal().UserID != a.principal.UserID {
 		return apperror.New("request.invalid")
@@ -307,7 +307,7 @@ func TestAcademicUnitHTTPCreateMapsCommandWithoutPermissionPreflight(t *testing.
 			if response.Code != http.StatusCreated {
 				t.Fatalf("status = %d: %s", response.Code, response.Body.String())
 			}
-			wantCommand := application.CreateAcademicUnitCommand{
+			wantCommand := app.CreateAcademicUnitCommand{
 				ParentID: model.AcademicUnitID(tt.wantParentID), Name: "computing",
 				DisplayName: "Computing", Description: "School",
 			}

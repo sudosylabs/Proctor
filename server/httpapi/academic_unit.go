@@ -10,7 +10,7 @@ package httpapi
 import (
 	"net/http"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -73,11 +73,11 @@ func (m academicUnitResourceModule) listRoot(request operationRequest) (operatio
 		units, err = m.academicUnits.SearchAcademicUnits(
 			request.context,
 			request.invocation(),
-			application.SearchAcademicUnitsQuery{Query: query, Limit: limit},
+			app.SearchAcademicUnitsQuery{Query: query, Limit: limit},
 		)
 	} else {
 		units, err = m.academicUnits.ListAcademicUnits(
-			request.context, request.invocation(), application.ListAcademicUnitsQuery{},
+			request.context, request.invocation(), app.ListAcademicUnitsQuery{},
 		)
 	}
 	if err != nil {
@@ -94,7 +94,7 @@ func (m academicUnitResourceModule) createRoot(request operationRequest) (operat
 	saved, err := m.academicUnits.CreateAcademicUnit(
 		request.context,
 		request.invocation(),
-		application.CreateAcademicUnitCommand{
+		app.CreateAcademicUnitCommand{
 			Name: body.Name, DisplayName: body.DisplayName,
 			Description: body.Description, IdempotencyKey: request.idempotencyKey,
 		},
@@ -113,7 +113,7 @@ func (m academicUnitResourceModule) get(request operationRequest) (operationResu
 	unit, err := m.academicUnits.GetAcademicUnit(
 		request.context,
 		request.invocation(),
-		application.GetAcademicUnitQuery{ID: id},
+		app.GetAcademicUnitQuery{ID: id},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -136,7 +136,7 @@ func (m academicUnitResourceModule) patch(request operationRequest) (operationRe
 	unit, err := m.academicUnits.UpdateAcademicUnit(
 		request.context,
 		request.invocation(),
-		application.UpdateAcademicUnitCommand{ExpectedRevision: body.ExpectedRevision.ValuePointer(),
+		app.UpdateAcademicUnitCommand{ExpectedRevision: body.ExpectedRevision.ValuePointer(),
 			ID: id, ParentID: body.ParentID, Name: body.Name,
 			DisplayName: body.DisplayName, Description: body.Description,
 		},
@@ -159,7 +159,7 @@ func (m academicUnitResourceModule) archive(request operationRequest) (operation
 	err = m.academicUnits.ArchiveAcademicUnit(
 		request.context,
 		request.invocation(),
-		application.ArchiveAcademicUnitCommand{ExpectedRevision: expectedRevision, ID: id},
+		app.ArchiveAcademicUnitCommand{ExpectedRevision: expectedRevision, ID: id},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -175,7 +175,7 @@ func (m academicUnitResourceModule) listChildren(request operationRequest) (oper
 	units, err := m.academicUnits.ListAcademicUnits(
 		request.context,
 		request.invocation(),
-		application.ListAcademicUnitsQuery{ParentID: id},
+		app.ListAcademicUnitsQuery{ParentID: id},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -195,7 +195,7 @@ func (m academicUnitResourceModule) createChild(request operationRequest) (opera
 	saved, err := m.academicUnits.CreateAcademicUnit(
 		request.context,
 		request.invocation(),
-		application.CreateAcademicUnitCommand{
+		app.CreateAcademicUnitCommand{
 			ParentID: id, Name: body.Name, DisplayName: body.DisplayName,
 			Description: body.Description,
 		},

@@ -20,96 +20,96 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type invitationHTTPApplication struct {
 	InvitationApplication
-	issue                 application.IssueStudentClassInvitationCommand
-	accept                application.AcceptStudentClassInvitationCommand
-	teacherIssue          application.IssueTeacherAcademicUnitInvitationCommand
-	teacherAccept         application.AcceptTeacherAcademicUnitInvitationCommand
-	unitRoleIssue         application.IssueAcademicUnitRoleInvitationCommand
-	unitRoleAccept        application.AcceptAcademicUnitRoleInvitationCommand
-	institutionRoleIssue  application.IssueInstitutionRoleInvitationCommand
-	institutionRoleAccept application.AcceptInstitutionRoleInvitationCommand
-	resend                application.ResendInvitationCommand
-	revoke                application.RevokeInvitationCommand
-	replace               application.ReplaceInvitationCommand
-	list                  application.ListInvitationsQuery
+	issue                 app.IssueStudentClassInvitationCommand
+	accept                app.AcceptStudentClassInvitationCommand
+	teacherIssue          app.IssueTeacherAcademicUnitInvitationCommand
+	teacherAccept         app.AcceptTeacherAcademicUnitInvitationCommand
+	unitRoleIssue         app.IssueAcademicUnitRoleInvitationCommand
+	unitRoleAccept        app.AcceptAcademicUnitRoleInvitationCommand
+	institutionRoleIssue  app.IssueInstitutionRoleInvitationCommand
+	institutionRoleAccept app.AcceptInstitutionRoleInvitationCommand
+	resend                app.ResendInvitationCommand
+	revoke                app.RevokeInvitationCommand
+	replace               app.ReplaceInvitationCommand
+	list                  app.ListInvitationsQuery
 	listMore              bool
 	listEmpty             bool
 	getID                 string
-	acceptance            *application.InvitationAcceptanceView
-	batch                 application.RunInvitationBatchCommand
+	acceptance            *app.InvitationAcceptanceView
+	batch                 app.RunInvitationBatchCommand
 }
 
-func (a *invitationHTTPApplication) RunInvitationBatch(_ context.Context, _ application.Invocation, command application.RunInvitationBatchCommand) (application.InvitationBatchResult, error) {
+func (a *invitationHTTPApplication) RunInvitationBatch(_ context.Context, _ app.Invocation, command app.RunInvitationBatchCommand) (app.InvitationBatchResult, error) {
 	a.batch = command
-	return application.InvitationBatchResult{Operation: command.Operation, Succeeded: 1, NoOp: 1, Failed: 1,
-		Items: []application.InvitationBatchItemResult{
-			{Index: 0, Status: application.InvitationBatchItemSucceeded, InvitationID: model.NewInvitationID()},
-			{Index: 1, Status: application.InvitationBatchItemNoOp, InvitationID: model.NewInvitationID()},
-			{Index: 2, Status: application.InvitationBatchItemFailed, ErrorCode: "invitation.conflict"},
+	return app.InvitationBatchResult{Operation: command.Operation, Succeeded: 1, NoOp: 1, Failed: 1,
+		Items: []app.InvitationBatchItemResult{
+			{Index: 0, Status: app.InvitationBatchItemSucceeded, InvitationID: model.NewInvitationID()},
+			{Index: 1, Status: app.InvitationBatchItemNoOp, InvitationID: model.NewInvitationID()},
+			{Index: 2, Status: app.InvitationBatchItemFailed, ErrorCode: "invitation.conflict"},
 		}}, nil
 }
 
-func (a *invitationHTTPApplication) IssueAcademicUnitRoleInvitation(_ context.Context, _ application.Invocation, command application.IssueAcademicUnitRoleInvitationCommand) (application.InvitationView, error) {
+func (a *invitationHTTPApplication) IssueAcademicUnitRoleInvitation(_ context.Context, _ app.Invocation, command app.IssueAcademicUnitRoleInvitationCommand) (app.InvitationView, error) {
 	a.unitRoleIssue = command
-	return application.InvitationView{ID: model.NewInvitationID(), Purpose: model.InvitationPurposeAcademicUnitRole,
+	return app.InvitationView{ID: model.NewInvitationID(), Purpose: model.InvitationPurposeAcademicUnitRole,
 		State: model.InvitationPending, AcademicUnitID: model.AcademicUnitID(command.AcademicUnitID), RoleID: model.RoleID(command.RoleID)}, nil
 }
-func (a *invitationHTTPApplication) AcceptAcademicUnitRoleInvitation(_ context.Context, _ application.Invocation, command application.AcceptAcademicUnitRoleInvitationCommand) (*application.InvitationAcceptanceView, error) {
+func (a *invitationHTTPApplication) AcceptAcademicUnitRoleInvitation(_ context.Context, _ app.Invocation, command app.AcceptAcademicUnitRoleInvitationCommand) (*app.InvitationAcceptanceView, error) {
 	a.unitRoleAccept = command
-	return &application.InvitationAcceptanceView{Invitation: application.InvitationView{ID: model.NewInvitationID()},
+	return &app.InvitationAcceptanceView{Invitation: app.InvitationView{ID: model.NewInvitationID()},
 		User: &model.User{ID: model.NewUserID()}, RoleBinding: &model.RoleBinding{ID: model.NewRoleBindingID()}}, nil
 }
-func (a *invitationHTTPApplication) IssueInstitutionRoleInvitation(_ context.Context, _ application.Invocation, command application.IssueInstitutionRoleInvitationCommand) (application.InvitationView, error) {
+func (a *invitationHTTPApplication) IssueInstitutionRoleInvitation(_ context.Context, _ app.Invocation, command app.IssueInstitutionRoleInvitationCommand) (app.InvitationView, error) {
 	a.institutionRoleIssue = command
-	return application.InvitationView{ID: model.NewInvitationID(), Purpose: model.InvitationPurposeInstitutionRole,
+	return app.InvitationView{ID: model.NewInvitationID(), Purpose: model.InvitationPurposeInstitutionRole,
 		State: model.InvitationPending, RoleID: model.RoleID(command.RoleID)}, nil
 }
-func (a *invitationHTTPApplication) AcceptInstitutionRoleInvitation(_ context.Context, _ application.Invocation, command application.AcceptInstitutionRoleInvitationCommand) (*application.InvitationAcceptanceView, error) {
+func (a *invitationHTTPApplication) AcceptInstitutionRoleInvitation(_ context.Context, _ app.Invocation, command app.AcceptInstitutionRoleInvitationCommand) (*app.InvitationAcceptanceView, error) {
 	a.institutionRoleAccept = command
-	return &application.InvitationAcceptanceView{Invitation: application.InvitationView{ID: model.NewInvitationID()},
+	return &app.InvitationAcceptanceView{Invitation: app.InvitationView{ID: model.NewInvitationID()},
 		User: &model.User{ID: model.NewUserID()}, RoleBinding: &model.RoleBinding{ID: model.NewRoleBindingID()}}, nil
 }
 
-func (a *invitationHTTPApplication) IssueTeacherAcademicUnitInvitation(_ context.Context, _ application.Invocation, command application.IssueTeacherAcademicUnitInvitationCommand) (application.InvitationView, error) {
+func (a *invitationHTTPApplication) IssueTeacherAcademicUnitInvitation(_ context.Context, _ app.Invocation, command app.IssueTeacherAcademicUnitInvitationCommand) (app.InvitationView, error) {
 	a.teacherIssue = command
-	return application.InvitationView{ID: model.NewInvitationID(), Purpose: model.InvitationPurposeTeacherAcademicUnit,
+	return app.InvitationView{ID: model.NewInvitationID(), Purpose: model.InvitationPurposeTeacherAcademicUnit,
 		State: model.InvitationPending, AcademicUnitID: model.AcademicUnitID(command.AcademicUnitID), RoleID: model.RoleID(command.RoleID),
 		RoleActions: []string{string(model.ActionAcademicUnitView)}}, nil
 }
-func (a *invitationHTTPApplication) AcceptTeacherAcademicUnitInvitation(_ context.Context, _ application.Invocation, command application.AcceptTeacherAcademicUnitInvitationCommand) (*application.InvitationAcceptanceView, error) {
+func (a *invitationHTTPApplication) AcceptTeacherAcademicUnitInvitation(_ context.Context, _ app.Invocation, command app.AcceptTeacherAcademicUnitInvitationCommand) (*app.InvitationAcceptanceView, error) {
 	a.teacherAccept = command
 	if a.acceptance != nil {
 		return a.acceptance, nil
 	}
-	return &application.InvitationAcceptanceView{Invitation: application.InvitationView{ID: model.NewInvitationID()}, User: &model.User{ID: model.NewUserID()},
+	return &app.InvitationAcceptanceView{Invitation: app.InvitationView{ID: model.NewInvitationID()}, User: &model.User{ID: model.NewUserID()},
 		Affiliation: &model.Affiliation{ID: model.NewAffiliationID()}, AcademicUnitMember: &model.AcademicUnitMember{ID: model.NewAcademicUnitMemberID()},
 		RoleBinding: &model.RoleBinding{ID: model.NewRoleBindingID()}}, nil
 }
 
-func (a *invitationHTTPApplication) IssueStudentClassInvitation(_ context.Context, _ application.Invocation, command application.IssueStudentClassInvitationCommand) (application.InvitationView, error) {
+func (a *invitationHTTPApplication) IssueStudentClassInvitation(_ context.Context, _ app.Invocation, command app.IssueStudentClassInvitationCommand) (app.InvitationView, error) {
 	a.issue = command
-	return application.InvitationView{ID: model.NewInvitationID(), Purpose: model.InvitationPurposeStudentClass,
+	return app.InvitationView{ID: model.NewInvitationID(), Purpose: model.InvitationPurposeStudentClass,
 		State: model.InvitationPending, ClassID: model.ClassID(command.ClassID), AcademicPeriodID: model.NewAcademicPeriodID()}, nil
 }
-func (a *invitationHTTPApplication) AcceptStudentClassInvitation(_ context.Context, _ application.Invocation, command application.AcceptStudentClassInvitationCommand) (*application.InvitationAcceptanceView, error) {
+func (a *invitationHTTPApplication) AcceptStudentClassInvitation(_ context.Context, _ app.Invocation, command app.AcceptStudentClassInvitationCommand) (*app.InvitationAcceptanceView, error) {
 	a.accept = command
 	if a.acceptance != nil {
 		return a.acceptance, nil
 	}
-	return &application.InvitationAcceptanceView{User: &model.User{ID: model.NewUserID(), Username: command.Username}}, nil
+	return &app.InvitationAcceptanceView{User: &model.User{ID: model.NewUserID(), Username: command.Username}}, nil
 }
-func (a *invitationHTTPApplication) ListInvitations(_ context.Context, _ application.Invocation, query application.ListInvitationsQuery) (application.InvitationAdministrationPage, error) {
+func (a *invitationHTTPApplication) ListInvitations(_ context.Context, _ app.Invocation, query app.ListInvitationsQuery) (app.InvitationAdministrationPage, error) {
 	a.list = query
 	if a.listEmpty {
-		return application.InvitationAdministrationPage{More: a.listMore}, nil
+		return app.InvitationAdministrationPage{More: a.listMore}, nil
 	}
-	return application.InvitationAdministrationPage{Items: []application.InvitationAdministrationView{a.administrationView()}, More: a.listMore}, nil
+	return app.InvitationAdministrationPage{Items: []app.InvitationAdministrationView{a.administrationView()}, More: a.listMore}, nil
 }
 
 func TestInvitationAdministrationRejectsNoProgressPage(t *testing.T) {
@@ -231,7 +231,7 @@ func TestInvitationBatchHTTPIsStrictBoundedAndIdempotent(t *testing.T) {
 	httpAPI.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" ||
 		applicationFake.batch.IdempotencyKey != "batch-once" || applicationFake.batch.ScopeID != classID ||
-		applicationFake.batch.Operation != application.InvitationBatchStudentClassCreate || len(applicationFake.batch.Items) != 3 ||
+		applicationFake.batch.Operation != app.InvitationBatchStudentClassCreate || len(applicationFake.batch.Items) != 3 ||
 		!strings.Contains(response.Body.String(), `"succeeded":1`) || !strings.Contains(response.Body.String(), `"no_op":1`) ||
 		!strings.Contains(response.Body.String(), `"error_code":"invitation.conflict"`) || strings.Contains(response.Body.String(), "@example.edu") {
 		t.Fatalf("Invitation batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.batch)
@@ -270,31 +270,31 @@ func TestInvitationAdministrationHTTPRejectsMalformedCursor(t *testing.T) {
 		t.Fatalf("malformed Invitation cursor = %d %s logs=%s", response.Code, response.Body.String(), logs.String())
 	}
 }
-func (a *invitationHTTPApplication) GetInvitation(_ context.Context, _ application.Invocation, id model.InvitationID) (application.InvitationAdministrationView, error) {
+func (a *invitationHTTPApplication) GetInvitation(_ context.Context, _ app.Invocation, id model.InvitationID) (app.InvitationAdministrationView, error) {
 	a.getID = id.String()
 	return a.administrationView(), nil
 }
-func (a *invitationHTTPApplication) ResendInvitation(_ context.Context, _ application.Invocation, command application.ResendInvitationCommand) (application.InvitationAdministrationView, error) {
+func (a *invitationHTTPApplication) ResendInvitation(_ context.Context, _ app.Invocation, command app.ResendInvitationCommand) (app.InvitationAdministrationView, error) {
 	a.resend = command
 	return a.administrationView(), nil
 }
-func (a *invitationHTTPApplication) RevokeInvitation(_ context.Context, _ application.Invocation, command application.RevokeInvitationCommand) (application.InvitationAdministrationView, error) {
+func (a *invitationHTTPApplication) RevokeInvitation(_ context.Context, _ app.Invocation, command app.RevokeInvitationCommand) (app.InvitationAdministrationView, error) {
 	a.revoke = command
 	view := a.administrationView()
 	view.State = model.InvitationRevoked
 	return view, nil
 }
-func (a *invitationHTTPApplication) ReplaceInvitation(_ context.Context, _ application.Invocation, command application.ReplaceInvitationCommand) (application.InvitationAdministrationView, error) {
+func (a *invitationHTTPApplication) ReplaceInvitation(_ context.Context, _ app.Invocation, command app.ReplaceInvitationCommand) (app.InvitationAdministrationView, error) {
 	a.replace = command
 	return a.administrationView(), nil
 }
-func (a *invitationHTTPApplication) administrationView() application.InvitationAdministrationView {
+func (a *invitationHTTPApplication) administrationView() app.InvitationAdministrationView {
 	at := model.TimeFromMillis(1_800_000_000_000)
-	return application.InvitationAdministrationView{InvitationView: application.InvitationView{ID: model.NewInvitationID(),
+	return app.InvitationAdministrationView{InvitationView: app.InvitationView{ID: model.NewInvitationID(),
 		Purpose: model.InvitationPurposeStudentClass, State: model.InvitationPending, ClassID: model.NewClassID(),
 		AcademicPeriodID: model.NewAcademicPeriodID(), IntendedStartsAt: at, ExpiresAt: at.Add(7 * 24 * time.Hour)},
 		TargetEmail: "student@example.edu", InviterUserID: model.NewUserID(), CreatedAt: at, UpdatedAt: at, Revision: 1,
-		Delivery: &application.InvitationDeliveryView{TemplateKey: model.MailTemplateAccessStudentClassInvitation,
+		Delivery: &app.InvitationDeliveryView{TemplateKey: model.MailTemplateAccessStudentClassInvitation,
 			State: model.MailDeliveryQueued, MaskedRecipient: "s***@example.edu", CreatedAt: at, UpdatedAt: at, Deadline: at.Add(7 * 24 * time.Hour)}}
 }
 
@@ -306,8 +306,8 @@ func TestInvitationAcceptanceHTTPReturnsOnlyRecordIDsForFreshAndReplay(t *testin
 			invitationID := model.NewInvitationID()
 			affiliationID := model.NewAffiliationID()
 			classMemberID := model.NewClassMemberID()
-			applicationFake := &invitationHTTPApplication{acceptance: &application.InvitationAcceptanceView{
-				Invitation:  application.InvitationView{ID: invitationID},
+			applicationFake := &invitationHTTPApplication{acceptance: &app.InvitationAcceptanceView{
+				Invitation:  app.InvitationView{ID: invitationID},
 				User:        &model.User{ID: userID, Username: "student", Email: "student@example.edu", EmailVerified: true, LastLoginAt: model.OptionalTimeFrom(time.Now())},
 				Affiliation: &model.Affiliation{ID: affiliationID},
 				ClassMember: &model.ClassMember{ID: classMemberID},

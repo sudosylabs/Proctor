@@ -12,18 +12,18 @@ import (
 	"errors"
 	"net/http"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type ExamRecordsApplication interface {
-	GetExamSittingRecords(context.Context, application.Invocation, model.ExamID, model.ExamSittingID) (*application.ExamSittingRecordsSnapshot, error)
-	GetSubmissionReviewWaiver(context.Context, application.Invocation, model.RetentionHoldScope) (*model.SubmissionReviewWaiver, error)
-	CompleteExamSittingRecords(context.Context, application.Invocation, application.CompleteExamSittingRecordsCommand) (*model.ExamSittingRecordsCompletion, error)
-	WaiveSubmissionReview(context.Context, application.Invocation, application.WaiveSubmissionReviewCommand) (*model.SubmissionReviewWaiver, error)
-	ListRetentionHolds(context.Context, application.Invocation, application.ListRetentionHoldsQuery) (*application.RetentionHoldPage, error)
-	CreateRetentionHold(context.Context, application.Invocation, application.CreateRetentionHoldCommand) (*model.RetentionHold, error)
-	ReleaseRetentionHold(context.Context, application.Invocation, application.ReleaseRetentionHoldCommand) (*model.RetentionHold, error)
+	GetExamSittingRecords(context.Context, app.Invocation, model.ExamID, model.ExamSittingID) (*app.ExamSittingRecordsSnapshot, error)
+	GetSubmissionReviewWaiver(context.Context, app.Invocation, model.RetentionHoldScope) (*model.SubmissionReviewWaiver, error)
+	CompleteExamSittingRecords(context.Context, app.Invocation, app.CompleteExamSittingRecordsCommand) (*model.ExamSittingRecordsCompletion, error)
+	WaiveSubmissionReview(context.Context, app.Invocation, app.WaiveSubmissionReviewCommand) (*model.SubmissionReviewWaiver, error)
+	ListRetentionHolds(context.Context, app.Invocation, app.ListRetentionHoldsQuery) (*app.RetentionHoldPage, error)
+	CreateRetentionHold(context.Context, app.Invocation, app.CreateRetentionHoldCommand) (*model.RetentionHold, error)
+	ReleaseRetentionHold(context.Context, app.Invocation, app.ReleaseRetentionHoldCommand) (*model.RetentionHold, error)
 }
 
 type examRecordsHTTPModule struct{ application ExamRecordsApplication }
@@ -194,7 +194,7 @@ func (m examRecordsHTTPModule) complete(request operationRequest) (operationResu
 	if err != nil {
 		return operationResult{}, err
 	}
-	value, err := m.application.CompleteExamSittingRecords(request.context, request.invocation(), application.CompleteExamSittingRecordsCommand{
+	value, err := m.application.CompleteExamSittingRecords(request.context, request.invocation(), app.CompleteExamSittingRecordsCommand{
 		Scope: model.RetentionHoldScope{ExamID: examID, SittingID: sittingID}, ExpectedRevision: revision, AcknowledgedEvidenceRevision: evidence, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
@@ -246,7 +246,7 @@ func (m examRecordsHTTPModule) waive(request operationRequest) (operationResult,
 			return operationResult{}, err
 		}
 	}
-	value, err := m.application.WaiveSubmissionReview(request.context, request.invocation(), application.WaiveSubmissionReviewCommand{Scope: scope, ExpectedRevision: revision,
+	value, err := m.application.WaiveSubmissionReview(request.context, request.invocation(), app.WaiveSubmissionReviewCommand{Scope: scope, ExpectedRevision: revision,
 		ExpectedDeliveryInventoryRevision: deliveryRevision, ExpectedReviewRevision: reviewRevision, ExpectedDiscrepancyCount: discrepancies, ReasonCode: body.ReasonCode, PrivateReason: body.PrivateReason, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
@@ -272,7 +272,7 @@ func (m examRecordsHTTPModule) createHold(request operationRequest) (operationRe
 	if err = model.ValidateRecordsReason(body.ReasonCode, body.PrivateReason); err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	value, err := m.application.CreateRetentionHold(request.context, request.invocation(), application.CreateRetentionHoldCommand{Scope: scope,
+	value, err := m.application.CreateRetentionHold(request.context, request.invocation(), app.CreateRetentionHoldCommand{Scope: scope,
 		ReasonCode: body.ReasonCode, PrivateReason: body.PrivateReason, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
@@ -306,7 +306,7 @@ func (m examRecordsHTTPModule) releaseHold(request operationRequest) (operationR
 	if err = model.ValidateRecordsReason(body.ReasonCode, body.PrivateReason); err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	value, err := m.application.ReleaseRetentionHold(request.context, request.invocation(), application.ReleaseRetentionHoldCommand{Scope: scope, HoldID: holdID, ExpectedRevision: revision,
+	value, err := m.application.ReleaseRetentionHold(request.context, request.invocation(), app.ReleaseRetentionHoldCommand{Scope: scope, HoldID: holdID, ExpectedRevision: revision,
 		ReasonCode: body.ReasonCode, PrivateReason: body.PrivateReason, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
@@ -348,7 +348,7 @@ func (m examRecordsHTTPModule) listHolds(request operationRequest) (operationRes
 	if err != nil {
 		return operationResult{}, err
 	}
-	query := application.ListRetentionHoldsQuery{Scope: scope, Limit: limit, IncludeReleased: includeReleased}
+	query := app.ListRetentionHoldsQuery{Scope: scope, Limit: limit, IncludeReleased: includeReleased}
 	if raw := values.Get("cursor"); raw != "" {
 		cursor, decodeErr := decodeOpaqueCursor(raw, recordsHoldCursorSpec(scope, includeReleased))
 		if decodeErr != nil {

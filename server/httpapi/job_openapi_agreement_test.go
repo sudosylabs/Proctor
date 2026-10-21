@@ -12,26 +12,26 @@ import (
 	"reflect"
 	"testing"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type jobOperationsAPIFake struct{}
 
-func (jobOperationsAPIFake) ListJobs(context.Context, application.Invocation, application.ListJobsQuery) (application.JobPage, error) {
-	return application.JobPage{}, nil
+func (jobOperationsAPIFake) ListJobs(context.Context, app.Invocation, app.ListJobsQuery) (app.JobPage, error) {
+	return app.JobPage{}, nil
 }
-func (jobOperationsAPIFake) GetJob(context.Context, application.Invocation, application.GetJobQuery) (application.JobView, error) {
-	return application.JobView{}, nil
+func (jobOperationsAPIFake) GetJob(context.Context, app.Invocation, app.GetJobQuery) (app.JobView, error) {
+	return app.JobView{}, nil
 }
-func (jobOperationsAPIFake) ListJobAttempts(context.Context, application.Invocation, application.ListJobAttemptsQuery) (application.JobAttemptPage, error) {
-	return application.JobAttemptPage{}, nil
+func (jobOperationsAPIFake) ListJobAttempts(context.Context, app.Invocation, app.ListJobAttemptsQuery) (app.JobAttemptPage, error) {
+	return app.JobAttemptPage{}, nil
 }
-func (jobOperationsAPIFake) CancelJob(context.Context, application.Invocation, application.CancelJobCommand) (application.JobView, error) {
-	return application.JobView{}, nil
+func (jobOperationsAPIFake) CancelJob(context.Context, app.Invocation, app.CancelJobCommand) (app.JobView, error) {
+	return app.JobView{}, nil
 }
-func (jobOperationsAPIFake) RetryJob(context.Context, application.Invocation, application.RetryJobCommand) (application.JobView, error) {
-	return application.JobView{}, nil
+func (jobOperationsAPIFake) RetryJob(context.Context, app.Invocation, app.RetryJobCommand) (app.JobView, error) {
+	return app.JobView{}, nil
 }
 
 func TestJobOperationsOpenAPIAgreesWithRuntime(t *testing.T) {

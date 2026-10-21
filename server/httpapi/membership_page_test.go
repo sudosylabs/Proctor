@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -26,7 +26,7 @@ func TestAcademicUnitMemberHTTPPagingPreservesArrayAndContinuation(t *testing.T)
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
 	scopeID := model.NewAcademicUnitID()
 	member := &model.AcademicUnitMember{ID: model.NewAcademicUnitMemberID(), UserID: model.NewUserID(), AcademicUnitID: scopeID}
-	service := &academicUnitMemberHTTPApplication{pageResult: &application.AcademicUnitMemberPage{Members: []*model.AcademicUnitMember{member}, HasMore: true, ActiveAt: 1000}}
+	service := &academicUnitMemberHTTPApplication{pageResult: &app.AcademicUnitMemberPage{Members: []*model.AcademicUnitMember{member}, HasMore: true, ActiveAt: 1000}}
 	api := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, academicUnitMemberResource(service))
 	path := "/api/v1/academic-units/" + scopeID.String() + "/members"
 	call := func(target string) *httptest.ResponseRecorder {
@@ -53,7 +53,7 @@ func TestAcademicUnitMemberHTTPPagingPreservesArrayAndContinuation(t *testing.T)
 	if err != nil || next.Host != "" || next.Path != path || next.Query().Get("active_at") != "1970-01-01T00:00:01Z" || next.Query().Get("limit") != "1" {
 		t.Fatalf("next URL = %#v, %v", next, err)
 	}
-	service.pageResult = &application.AcademicUnitMemberPage{ActiveAt: 1000}
+	service.pageResult = &app.AcademicUnitMemberPage{ActiveAt: 1000}
 	response = call(target)
 	if response.Code != http.StatusOK || response.Header().Get("Link") != "" || service.pageQuery.AfterID != member.ID || service.pageQuery.AfterUserID != member.UserID {
 		t.Fatalf("final page/query = %d %#v", response.Code, service.pageQuery)
@@ -63,7 +63,7 @@ func TestAcademicUnitMemberHTTPPagingPreservesArrayAndContinuation(t *testing.T)
 			t.Fatalf("invalid page query %s = %d", suffix, response.Code)
 		}
 	}
-	service.pageResult = &application.AcademicUnitMemberPage{HasMore: true, Members: []*model.AcademicUnitMember{member}}
+	service.pageResult = &app.AcademicUnitMemberPage{HasMore: true, Members: []*model.AcademicUnitMember{member}}
 	response = call(path + "?limit=1&history=true")
 	if response.Code != http.StatusOK || !strings.Contains(response.Header().Get("Link"), "history=true") || strings.Contains(response.Header().Get("Link"), "active_at=") {
 		t.Fatalf("history continuation = %s", response.Header().Get("Link"))
@@ -76,7 +76,7 @@ func TestClassMemberHTTPPagingPreservesArrayAndContinuation(t *testing.T) {
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
 	scopeID := model.NewClassID()
 	member := &model.ClassMember{ID: model.NewClassMemberID(), UserID: model.NewUserID(), ClassID: scopeID}
-	service := &classMemberHTTPApplication{pageResult: &application.ClassMemberPage{Members: []*model.ClassMember{member}, HasMore: true, ActiveAt: 1000}}
+	service := &classMemberHTTPApplication{pageResult: &app.ClassMemberPage{Members: []*model.ClassMember{member}, HasMore: true, ActiveAt: 1000}}
 	api := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, classMemberResource(service))
 	path := "/api/v1/classes/" + scopeID.String() + "/members"
 	call := func(target string) *httptest.ResponseRecorder {
@@ -103,7 +103,7 @@ func TestClassMemberHTTPPagingPreservesArrayAndContinuation(t *testing.T) {
 	if err != nil || next.Host != "" || next.Path != path || next.Query().Get("active_at") != "1970-01-01T00:00:01Z" || next.Query().Get("limit") != "1" {
 		t.Fatalf("next URL = %#v, %v", next, err)
 	}
-	service.pageResult = &application.ClassMemberPage{ActiveAt: 1000}
+	service.pageResult = &app.ClassMemberPage{ActiveAt: 1000}
 	response = call(target)
 	if response.Code != http.StatusOK || response.Header().Get("Link") != "" || service.pageQuery.AfterID != member.ID || service.pageQuery.AfterUserID != member.UserID {
 		t.Fatalf("final page/query = %d %#v", response.Code, service.pageQuery)
@@ -113,7 +113,7 @@ func TestClassMemberHTTPPagingPreservesArrayAndContinuation(t *testing.T) {
 			t.Fatalf("invalid page query %s = %d", suffix, response.Code)
 		}
 	}
-	service.pageResult = &application.ClassMemberPage{HasMore: true, Members: []*model.ClassMember{member}}
+	service.pageResult = &app.ClassMemberPage{HasMore: true, Members: []*model.ClassMember{member}}
 	response = call(path + "?limit=1&history=true")
 	if response.Code != http.StatusOK || !strings.Contains(response.Header().Get("Link"), "history=true") || strings.Contains(response.Header().Get("Link"), "active_at=") {
 		t.Fatalf("history continuation = %s", response.Header().Get("Link"))

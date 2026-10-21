@@ -18,7 +18,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
@@ -83,13 +83,13 @@ func TestUserSettingsTwoNodePostgreSQLConvergencePublishesOnePrivateRefetchHint(
 		t.Fatal(err)
 	}
 	const password = "correct horse battery staple"
-	user, err := primary.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
+	user, err := primary.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "settings-two-node-user", Email: "settings-two-node-user@example.edu",
 	}, Password: password})
 	if err != nil {
 		t.Fatal(err)
 	}
-	login, err := primary.App.Login(ctx, application.Invocation{}, application.LoginCommand{
+	login, err := primary.App.Login(ctx, app.Invocation{}, app.LoginCommand{
 		LoginID: user.Username, Password: password, ClientType: model.SessionClientWeb, Source: "127.0.0.1:1",
 	})
 	if err != nil {
@@ -99,19 +99,19 @@ func TestUserSettingsTwoNodePostgreSQLConvergencePublishesOnePrivateRefetchHint(
 	if err != nil {
 		t.Fatal(err)
 	}
-	invocation := application.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-two-node"})
+	invocation := app.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-two-node"})
 	before, err := primary.App.ReadOwnUserSettings(ctx, invocation)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	type outcome struct {
-		result application.UserSettingsReplacementResult
+		result app.UserSettingsReplacementResult
 		err    error
 	}
 	outcomes := make(chan outcome, 2)
 	for _, candidate := range []struct {
-		app    *application.App
+		app    *app.App
 		source string
 		key    string
 	}{
@@ -119,18 +119,18 @@ func TestUserSettingsTwoNodePostgreSQLConvergencePublishesOnePrivateRefetchHint(
 		{app: secondary.App, source: "{\"workbench.colorTheme\":\"private-b\"}\n", key: "settings-node-b"},
 	} {
 		go func(candidate struct {
-			app    *application.App
+			app    *app.App
 			source string
 			key    string
 		}) {
-			result, replaceErr := candidate.app.ReplaceOwnUserSettings(ctx, invocation, application.ReplaceOwnUserSettingsCommand{
+			result, replaceErr := candidate.app.ReplaceOwnUserSettings(ctx, invocation, app.ReplaceOwnUserSettingsCommand{
 				Source: candidate.source, FormatVersion: 1,
 				ExpectedRevision: before.Revision, IdempotencyKey: candidate.key,
 			})
 			outcomes <- outcome{result: result, err: replaceErr}
 		}(candidate)
 	}
-	var winner application.UserSettingsReplacementResult
+	var winner app.UserSettingsReplacementResult
 	successes, conflicts := 0, 0
 	for range 2 {
 		completed := <-outcomes
@@ -223,13 +223,13 @@ func TestUserSettingsUnknownOutcomeReconcilesByReadWithoutContentLeak(t *testing
 		t.Fatal(err)
 	}
 	const password = "correct horse battery staple"
-	user, err := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
+	user, err := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "settings-unknown-user", Email: "settings-unknown-user@example.edu",
 	}, Password: password})
 	if err != nil {
 		t.Fatal(err)
 	}
-	login, err := helper.App.Login(ctx, application.Invocation{}, application.LoginCommand{
+	login, err := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{
 		LoginID: user.Username, Password: password, ClientType: model.SessionClientWeb, Source: "127.0.0.1:1",
 	})
 	if err != nil {
@@ -239,13 +239,13 @@ func TestUserSettingsUnknownOutcomeReconcilesByReadWithoutContentLeak(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	invocation := application.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-unknown-outcome"})
+	invocation := app.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-unknown-outcome"})
 	before, err := helper.App.ReadOwnUserSettings(ctx, invocation)
 	if err != nil {
 		t.Fatal(err)
 	}
 	const source = "{\n  // private-comment-marker\n  \"private.visual.key\": \"private-value-marker\",\n}\n"
-	command := application.ReplaceOwnUserSettingsCommand{
+	command := app.ReplaceOwnUserSettingsCommand{
 		Source: source, FormatVersion: 1, ExpectedRevision: before.Revision,
 		IdempotencyKey: "private-idempotency-marker",
 	}

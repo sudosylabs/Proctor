@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"strconv"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -70,7 +70,7 @@ func (m userAdministrationResourceModule) setEnabled(request operationRequest, e
 	user, err := m.accounts.SetUserEnabled(
 		request.context,
 		request.invocation(),
-		application.SetUserEnabledCommand{ID: userID, Enabled: enabled},
+		app.SetUserEnabledCommand{ID: userID, Enabled: enabled},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -86,7 +86,7 @@ func (m userAdministrationResourceModule) revokeAllSessions(request operationReq
 	err = m.sessions.RevokeUserSessions(
 		request.context,
 		request.invocation(),
-		application.RevokeUserSessionsCommand{UserID: userID},
+		app.RevokeUserSessionsCommand{UserID: userID},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -108,7 +108,7 @@ func (m userAdministrationResourceModule) listSessions(request operationRequest)
 	sessions, listErr := m.sessions.ListUserSessions(
 		request.context,
 		request.invocation(),
-		application.ListUserSessionsQuery{UserID: userID, IncludeRevoked: includeRevoked},
+		app.ListUserSessionsQuery{UserID: userID, IncludeRevoked: includeRevoked},
 	)
 	if listErr != nil {
 		return operationResult{}, listErr
@@ -133,7 +133,7 @@ func (m userAdministrationResourceModule) revokeSession(request operationRequest
 	err = m.sessions.RevokeUserSession(
 		request.context,
 		request.invocation(),
-		application.RevokeUserSessionCommand{UserID: userID, SessionID: sessionID},
+		app.RevokeUserSessionCommand{UserID: userID, SessionID: sessionID},
 	)
 	if err != nil {
 		return operationResult{}, err

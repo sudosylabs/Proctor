@@ -15,7 +15,7 @@ package httpapi
 import (
 	"net/http"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -129,7 +129,7 @@ func (m personalAccessTokenResourceModule) setDisabled(request operationRequest,
 	updated, err := m.tokens.SetPersonalAccessTokenDisabled(
 		request.context,
 		request.invocation(),
-		application.SetPersonalAccessTokenDisabledCommand{TokenID: tokenID, Disabled: disabled},
+		app.SetPersonalAccessTokenDisabledCommand{TokenID: tokenID, Disabled: disabled},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -149,7 +149,7 @@ func (m personalAccessTokenResourceModule) create(request operationRequest) (ope
 	created, err := m.tokens.CreatePersonalAccessToken(
 		request.context,
 		request.invocation(),
-		application.CreatePersonalAccessTokenCommand{
+		app.CreatePersonalAccessTokenCommand{
 			Description: input.Description, Scopes: input.Scopes,
 			AcademicUnitID: input.AcademicUnitID, ExpiresAt: expiresAt,
 		},
@@ -166,7 +166,7 @@ func (m personalAccessTokenResourceModule) list(request operationRequest) (opera
 	tokens, err := m.tokens.ListPersonalAccessTokens(
 		request.context,
 		request.invocation(),
-		application.ListPersonalAccessTokensQuery{},
+		app.ListPersonalAccessTokensQuery{},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -182,7 +182,7 @@ func (m personalAccessTokenResourceModule) revoke(request operationRequest) (ope
 	if _, err := m.tokens.RevokePersonalAccessToken(
 		request.context,
 		request.invocation(),
-		application.RevokePersonalAccessTokenCommand{TokenID: tokenID},
+		app.RevokePersonalAccessTokenCommand{TokenID: tokenID},
 	); err != nil {
 		return operationResult{}, err
 	}

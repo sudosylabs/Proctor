@@ -157,6 +157,20 @@ func TestFilesAreNamedForTheSingularConcept(t *testing.T) {
 	})
 }
 
+// TestApplicationPackageIsImportedUnderItsName keeps one spelling for the
+// application package: callers import it as app and never shadow that name.
+func TestApplicationPackageIsImportedUnderItsName(t *testing.T) {
+	t.Parallel()
+
+	inspectServerGoFiles(t, func(path string, file *ast.File) {
+		for _, spec := range file.Imports {
+			if spec.Path.Value == `"github.com/sudosylabs/proctor/server/app"` && spec.Name != nil && spec.Name.Name != "app" {
+				t.Errorf("%s imports the application package as %s; import it as app", path, spec.Name.Name)
+			}
+		}
+	})
+}
+
 func receiverTypeName(expression ast.Expr) string {
 	switch typed := expression.(type) {
 	case *ast.StarExpr:

@@ -10,7 +10,7 @@ package httpapi
 import (
 	"net/http"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -97,7 +97,7 @@ func (m userSettingsResourceModule) replace(request operationRequest) (operation
 	result, err := m.settings.ReplaceOwnUserSettings(
 		request.context,
 		request.invocation(),
-		application.ReplaceOwnUserSettingsCommand{
+		app.ReplaceOwnUserSettingsCommand{
 			Source: input.Source, FormatVersion: input.FormatVersion,
 			ExpectedRevision: expectedRevision, IdempotencyKey: request.idempotencyKey,
 		},

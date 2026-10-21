@@ -17,20 +17,20 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type academicAdministrationBatchHTTPApplication struct {
-	command application.RunAcademicAdministrationBatchCommand
+	command app.RunAcademicAdministrationBatchCommand
 }
 
-func (a *academicAdministrationBatchHTTPApplication) RunAcademicAdministrationBatch(_ context.Context, _ application.Invocation, command application.RunAcademicAdministrationBatchCommand) (application.AcademicAdministrationBatchResult, error) {
+func (a *academicAdministrationBatchHTTPApplication) RunAcademicAdministrationBatch(_ context.Context, _ app.Invocation, command app.RunAcademicAdministrationBatchCommand) (app.AcademicAdministrationBatchResult, error) {
 	a.command = command
-	return application.AcademicAdministrationBatchResult{Operation: command.Operation, Succeeded: 1, NoOp: 1, Failed: 1,
-		Items: []application.AcademicAdministrationBatchItemResult{{Index: 0, Status: application.InvitationBatchItemSucceeded, ResourceID: model.NewClassMemberID().String()},
-			{Index: 1, Status: application.InvitationBatchItemNoOp, ResourceID: model.NewClassMemberID().String()},
-			{Index: 2, Status: application.InvitationBatchItemFailed, ErrorCode: "class.enrollment_conflict"}}}, nil
+	return app.AcademicAdministrationBatchResult{Operation: command.Operation, Succeeded: 1, NoOp: 1, Failed: 1,
+		Items: []app.AcademicAdministrationBatchItemResult{{Index: 0, Status: app.InvitationBatchItemSucceeded, ResourceID: model.NewClassMemberID().String()},
+			{Index: 1, Status: app.InvitationBatchItemNoOp, ResourceID: model.NewClassMemberID().String()},
+			{Index: 2, Status: app.InvitationBatchItemFailed, ErrorCode: "class.enrollment_conflict"}}}, nil
 }
 
 func TestAcademicAdministrationBatchHTTPIsStrictBoundedAndSafe(t *testing.T) {
@@ -53,7 +53,7 @@ func TestAcademicAdministrationBatchHTTPIsStrictBoundedAndSafe(t *testing.T) {
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" ||
-		applicationFake.command.Operation != application.AcademicAdministrationClassTransfer || applicationFake.command.ScopeID != classID ||
+		applicationFake.command.Operation != app.AcademicAdministrationClassTransfer || applicationFake.command.ScopeID != classID ||
 		applicationFake.command.IdempotencyKey != "batch-key" || len(applicationFake.command.Items) != 1 ||
 		applicationFake.command.Items[0].UserID != userID || applicationFake.command.Items[0].RelationshipID != previousID ||
 		!strings.Contains(response.Body.String(), `"succeeded":1`) || !strings.Contains(response.Body.String(), `"no_op":1`) ||

@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -132,7 +132,7 @@ func TestExamSittingHTTPCancelKeepsPrivateReasonOutOfResponse(t *testing.T) {
 	canceled.UpdatedAt = canceled.CanceledAt.Time
 	canceled.ReasonCode = model.ExamSittingReasonManagerCanceled
 	canceled.Revision = 2
-	fake.cancelResult = application.ExamSittingView{Sitting: &canceled}
+	fake.cancelResult = app.ExamSittingView{Sitting: &canceled}
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingResource(fake))
 	request := newJSONRequest(http.MethodPost, examSittingMemberPath(fake.sitting.ExamID, fake.sitting.ID)+"/cancel", strings.NewReader(`{"expected_revision":1,"reason":"Suspected identity substitution"}`))
 	request.Header.Set("Authorization", "Bearer credential")
@@ -231,7 +231,7 @@ func TestExamSittingHTTPListNormalizesFiltersAndUsesVersionedDescendingTupleCurs
 	older.ID = model.NewExamSittingID()
 	older.ScheduledStartAt = older.ScheduledStartAt.Add(-time.Hour)
 	older.ScheduledEndAt = older.ScheduledEndAt.Add(-time.Hour)
-	fake.page = application.ExamSittingPage{Items: []application.ExamSittingView{{Sitting: fake.sitting}, {Sitting: &older}}, HasMore: true}
+	fake.page = app.ExamSittingPage{Items: []app.ExamSittingView{{Sitting: fake.sitting}, {Sitting: &older}}, HasMore: true}
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingResource(fake))
 	beforeSittingID := model.NewExamSittingID()
 	cursor, err := encodeExamSittingCursor(examSittingCursor{StartAt: fake.sitting.ScheduledStartAt, ID: beforeSittingID})
@@ -263,7 +263,7 @@ func TestExamSittingHTTPListNormalizesFiltersAndUsesVersionedDescendingTupleCurs
 	if err != nil || decoded.StartAt != older.ScheduledStartAt || decoded.ID != older.ID {
 		t.Fatalf("cursor = %#v err = %v", decoded, err)
 	}
-	fake.page = application.ExamSittingPage{HasMore: true}
+	fake.page = app.ExamSittingPage{HasMore: true}
 	noProgress := httptest.NewRecorder()
 	httpAPI.ServeHTTP(noProgress, request.Clone(request.Context()))
 	if noProgress.Code != http.StatusInternalServerError {
@@ -314,7 +314,7 @@ func TestExamSittingHTTPListsNoShowsWithOpaqueUserCursor(t *testing.T) {
 	logger, _ := newTestLogger(t)
 	fake := newExamSittingHTTPFake(t)
 	first, second := model.NewUserID(), model.NewUserID()
-	fake.noShowPage = application.ExamSittingNoShowPage{Items: []store.ExamSittingNoShow{
+	fake.noShowPage = app.ExamSittingNoShowPage{Items: []store.ExamSittingNoShow{
 		{CandidateUserID: first}, {CandidateUserID: second}}, HasMore: true}
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingResource(fake))
 	request := httptest.NewRequest(http.MethodGet, examSittingMemberPath(fake.sitting.ExamID, fake.sitting.ID)+"/no-shows?limit=2", nil)
@@ -335,7 +335,7 @@ func TestExamSittingHTTPListsNoShowsWithOpaqueUserCursor(t *testing.T) {
 	if err != nil || decoded != second || strings.Contains(body.NextCursor, second.String()) {
 		t.Fatalf("cursor=%q decoded=%s err=%v", body.NextCursor, decoded, err)
 	}
-	fake.noShowPage = application.ExamSittingNoShowPage{}
+	fake.noShowPage = app.ExamSittingNoShowPage{}
 	secondRequest := httptest.NewRequest(http.MethodGet, examSittingMemberPath(fake.sitting.ExamID, fake.sitting.ID)+"/no-shows?cursor="+url.QueryEscape(body.NextCursor), nil)
 	secondRequest.Header.Set("Authorization", "Bearer credential")
 	secondResponse := httptest.NewRecorder()
@@ -348,7 +348,7 @@ func TestExamSittingHTTPListsNoShowsWithOpaqueUserCursor(t *testing.T) {
 	malformedResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(malformedResponse, malformedRequest)
 	assertHTTPProblem(t, malformedResponse, http.StatusBadRequest, "request.invalid")
-	fake.noShowPage = application.ExamSittingNoShowPage{HasMore: true}
+	fake.noShowPage = app.ExamSittingNoShowPage{HasMore: true}
 	noProgress := httptest.NewRecorder()
 	httpAPI.ServeHTTP(noProgress, request.Clone(request.Context()))
 	if noProgress.Code != http.StatusInternalServerError {
@@ -372,20 +372,20 @@ type examSittingHTTPFake struct {
 	Application
 	principal    model.Principal
 	sitting      *model.ExamSitting
-	schedule     application.ScheduleExamSittingCommand
-	get          application.GetExamSittingQuery
-	list         application.ListExamSittingsQuery
-	page         application.ExamSittingPage
-	update       application.UpdateExamSittingScheduleCommand
+	schedule     app.ScheduleExamSittingCommand
+	get          app.GetExamSittingQuery
+	list         app.ListExamSittingsQuery
+	page         app.ExamSittingPage
+	update       app.UpdateExamSittingScheduleCommand
 	updateCalls  int
-	cancel       application.CancelExamSittingCommand
-	cancelResult application.ExamSittingView
-	pause        application.PauseExamSittingCommand
-	resume       application.ResumeExamSittingCommand
-	extend       application.ExtendExamSittingCommand
-	close        application.CloseExamSittingCommand
-	noShows      application.ListExamSittingNoShowsQuery
-	noShowPage   application.ExamSittingNoShowPage
+	cancel       app.CancelExamSittingCommand
+	cancelResult app.ExamSittingView
+	pause        app.PauseExamSittingCommand
+	resume       app.ResumeExamSittingCommand
+	extend       app.ExtendExamSittingCommand
+	close        app.CloseExamSittingCommand
+	noShows      app.ListExamSittingNoShowsQuery
+	noShowPage   app.ExamSittingNoShowPage
 }
 
 func newExamSittingHTTPFake(t *testing.T) *examSittingHTTPFake {
@@ -395,7 +395,7 @@ func newExamSittingHTTPFake(t *testing.T) *examSittingHTTPFake {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &examSittingHTTPFake{principal: testExamHTTPPrincipal(), sitting: sitting, cancelResult: application.ExamSittingView{Sitting: sitting}}
+	return &examSittingHTTPFake{principal: testExamHTTPPrincipal(), sitting: sitting, cancelResult: app.ExamSittingView{Sitting: sitting}}
 }
 
 func (f *examSittingHTTPFake) AuthenticateAccess(context.Context, string) (*model.Principal, error) {
@@ -408,54 +408,54 @@ func (f *examSittingHTTPFake) AuthenticateBearer(context.Context, string) (*mode
 	return &principal, nil
 }
 
-func (f *examSittingHTTPFake) ScheduleExamSitting(_ context.Context, _ application.Invocation, command application.ScheduleExamSittingCommand) (application.ExamSittingView, error) {
+func (f *examSittingHTTPFake) ScheduleExamSitting(_ context.Context, _ app.Invocation, command app.ScheduleExamSittingCommand) (app.ExamSittingView, error) {
 	f.schedule = command
-	return application.ExamSittingView{Sitting: f.sitting}, nil
+	return app.ExamSittingView{Sitting: f.sitting}, nil
 }
 
-func (f *examSittingHTTPFake) GetExamSitting(_ context.Context, _ application.Invocation, query application.GetExamSittingQuery) (application.ExamSittingView, error) {
+func (f *examSittingHTTPFake) GetExamSitting(_ context.Context, _ app.Invocation, query app.GetExamSittingQuery) (app.ExamSittingView, error) {
 	f.get = query
-	return application.ExamSittingView{Sitting: f.sitting}, nil
+	return app.ExamSittingView{Sitting: f.sitting}, nil
 }
 
-func (f *examSittingHTTPFake) ListExamSittings(_ context.Context, _ application.Invocation, query application.ListExamSittingsQuery) (application.ExamSittingPage, error) {
+func (f *examSittingHTTPFake) ListExamSittings(_ context.Context, _ app.Invocation, query app.ListExamSittingsQuery) (app.ExamSittingPage, error) {
 	f.list = query
 	return f.page, nil
 }
 
-func (f *examSittingHTTPFake) UpdateExamSittingSchedule(_ context.Context, _ application.Invocation, command application.UpdateExamSittingScheduleCommand) (application.ExamSittingView, error) {
+func (f *examSittingHTTPFake) UpdateExamSittingSchedule(_ context.Context, _ app.Invocation, command app.UpdateExamSittingScheduleCommand) (app.ExamSittingView, error) {
 	f.update, f.updateCalls = command, f.updateCalls+1
-	return application.ExamSittingView{Sitting: f.sitting}, nil
+	return app.ExamSittingView{Sitting: f.sitting}, nil
 }
 
-func (f *examSittingHTTPFake) CancelExamSitting(_ context.Context, _ application.Invocation, command application.CancelExamSittingCommand) (application.ExamSittingView, error) {
+func (f *examSittingHTTPFake) CancelExamSitting(_ context.Context, _ app.Invocation, command app.CancelExamSittingCommand) (app.ExamSittingView, error) {
 	f.cancel = command
 	return f.cancelResult, nil
 }
 
-func (f *examSittingHTTPFake) PauseExamSitting(_ context.Context, _ application.Invocation, command application.PauseExamSittingCommand) (application.ExamSittingView, error) {
+func (f *examSittingHTTPFake) PauseExamSitting(_ context.Context, _ app.Invocation, command app.PauseExamSittingCommand) (app.ExamSittingView, error) {
 	f.pause = command
-	return application.ExamSittingView{Sitting: f.sitting}, nil
+	return app.ExamSittingView{Sitting: f.sitting}, nil
 }
 
-func (f *examSittingHTTPFake) ResumeExamSitting(_ context.Context, _ application.Invocation, command application.ResumeExamSittingCommand) (application.ExamSittingView, error) {
+func (f *examSittingHTTPFake) ResumeExamSitting(_ context.Context, _ app.Invocation, command app.ResumeExamSittingCommand) (app.ExamSittingView, error) {
 	f.resume = command
-	return application.ExamSittingView{Sitting: f.sitting}, nil
+	return app.ExamSittingView{Sitting: f.sitting}, nil
 }
 
-func (f *examSittingHTTPFake) ExtendExamSitting(_ context.Context, _ application.Invocation, command application.ExtendExamSittingCommand) (application.ExamSittingView, error) {
+func (f *examSittingHTTPFake) ExtendExamSitting(_ context.Context, _ app.Invocation, command app.ExtendExamSittingCommand) (app.ExamSittingView, error) {
 	f.extend = command
-	return application.ExamSittingView{Sitting: f.sitting}, nil
+	return app.ExamSittingView{Sitting: f.sitting}, nil
 }
 
-func (f *examSittingHTTPFake) CloseExamSitting(_ context.Context, _ application.Invocation, command application.CloseExamSittingCommand) (application.ExamSittingView, error) {
+func (f *examSittingHTTPFake) CloseExamSitting(_ context.Context, _ app.Invocation, command app.CloseExamSittingCommand) (app.ExamSittingView, error) {
 	f.close = command
-	return application.ExamSittingView{Sitting: f.sitting}, nil
+	return app.ExamSittingView{Sitting: f.sitting}, nil
 }
 
-func (f *examSittingHTTPFake) ListExamSittingNoShows(_ context.Context, _ application.Invocation,
-	query application.ListExamSittingNoShowsQuery,
-) (application.ExamSittingNoShowPage, error) {
+func (f *examSittingHTTPFake) ListExamSittingNoShows(_ context.Context, _ app.Invocation,
+	query app.ListExamSittingNoShowsQuery,
+) (app.ExamSittingNoShowPage, error) {
 	f.noShows = query
 	return f.noShowPage, nil
 }

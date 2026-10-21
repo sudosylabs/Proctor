@@ -15,7 +15,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -30,7 +30,7 @@ func TestAccountAndAdministrativeSessionNoticesUseRealServerGraph(t *testing.T) 
 	}))
 	ctx := context.Background()
 	const password = "correct horse battery staple"
-	bootstrap, appErr := helper.App.BootstrapInstallation(ctx, application.Invocation{}, application.BootstrapInstallationCommand{
+	bootstrap, appErr := helper.App.BootstrapInstallation(ctx, app.Invocation{}, app.BootstrapInstallationCommand{
 		InstitutionName: "security-notice-university", InstitutionDisplayName: "Security Notice University",
 		AdministratorUsername: "mail11-admin", AdministratorEmail: "mail11-admin@example.edu", AdministratorDisplayName: "Mail 11 Admin",
 		AdministratorLocale: "en", AdministratorTimezone: "UTC", Password: password,
@@ -39,13 +39,13 @@ func TestAccountAndAdministrativeSessionNoticesUseRealServerGraph(t *testing.T) 
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	target, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
+	target, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "mail11-target", Email: "mail11-target@example.edu", DisplayName: "Mail 11 Target", Locale: "en", Timezone: "UTC",
 	}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	adminLogin, appErr := helper.App.Login(ctx, application.Invocation{}, application.LoginCommand{
+	adminLogin, appErr := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{
 		LoginID: bootstrap.Administrator.Username, Password: password, ClientType: model.SessionClientCLI,
 		Source: "203.0.113.42", DeviceName: "mail11-admin-device",
 	})
@@ -56,21 +56,21 @@ func TestAccountAndAdministrativeSessionNoticesUseRealServerGraph(t *testing.T) 
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	adminInvocation := application.NewInvocation(*adminPrincipal, model.RequestMetadata{RequestID: "mail11-admin", IPAddress: "203.0.113.42"})
+	adminInvocation := app.NewInvocation(*adminPrincipal, model.RequestMetadata{RequestID: "mail11-admin", IPAddress: "203.0.113.42"})
 
 	initialTargetLogin := loginIntegrationUser(t, helper.Handler(), target.Username, password, model.SessionClientCLI, "mail11-initial")
-	if _, appErr = helper.App.SetUserEnabled(ctx, adminInvocation, application.SetUserEnabledCommand{ID: target.ID, Enabled: false}); appErr != nil {
+	if _, appErr = helper.App.SetUserEnabled(ctx, adminInvocation, app.SetUserEnabledCommand{ID: target.ID, Enabled: false}); appErr != nil {
 		t.Fatal(appErr)
 	}
-	if _, appErr = helper.App.SetUserEnabled(ctx, adminInvocation, application.SetUserEnabledCommand{ID: target.ID, Enabled: true}); appErr != nil {
+	if _, appErr = helper.App.SetUserEnabled(ctx, adminInvocation, app.SetUserEnabledCommand{ID: target.ID, Enabled: true}); appErr != nil {
 		t.Fatal(appErr)
 	}
 	first := loginIntegrationUser(t, helper.Handler(), target.Username, password, model.SessionClientCLI, "mail11-first")
 	second := loginIntegrationUser(t, helper.Handler(), target.Username, password, model.SessionClientCLI, "mail11-second")
-	if err := helper.App.RevokeUserSession(ctx, adminInvocation, application.RevokeUserSessionCommand{UserID: target.ID, SessionID: first.Session.ID}); err != nil {
+	if err := helper.App.RevokeUserSession(ctx, adminInvocation, app.RevokeUserSessionCommand{UserID: target.ID, SessionID: first.Session.ID}); err != nil {
 		t.Fatal(err)
 	}
-	if err := helper.App.RevokeUserSessions(ctx, adminInvocation, application.RevokeUserSessionsCommand{UserID: target.ID}); err != nil {
+	if err := helper.App.RevokeUserSessions(ctx, adminInvocation, app.RevokeUserSessionsCommand{UserID: target.ID}); err != nil {
 		t.Fatal(err)
 	}
 	self := loginIntegrationUser(t, helper.Handler(), target.Username, password, model.SessionClientCLI, "mail11-self")
@@ -78,8 +78,8 @@ func TestAccountAndAdministrativeSessionNoticesUseRealServerGraph(t *testing.T) 
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	selfInvocation := application.NewInvocation(*selfPrincipal, model.RequestMetadata{RequestID: "mail11-self", IPAddress: "198.51.100.9"})
-	if err := helper.App.RevokeSession(ctx, selfInvocation, application.RevokeSessionCommand{SessionID: self.Session.ID.String()}); err != nil {
+	selfInvocation := app.NewInvocation(*selfPrincipal, model.RequestMetadata{RequestID: "mail11-self", IPAddress: "198.51.100.9"})
+	if err := helper.App.RevokeSession(ctx, selfInvocation, app.RevokeSessionCommand{SessionID: self.Session.ID.String()}); err != nil {
 		t.Fatal(err)
 	}
 	logout := loginIntegrationUser(t, helper.Handler(), target.Username, password, model.SessionClientCLI, "mail11-logout")
@@ -87,10 +87,10 @@ func TestAccountAndAdministrativeSessionNoticesUseRealServerGraph(t *testing.T) 
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	if err := helper.App.Logout(ctx, application.NewInvocation(*logoutPrincipal, model.RequestMetadata{}), application.LogoutCommand{}); err != nil {
+	if err := helper.App.Logout(ctx, app.NewInvocation(*logoutPrincipal, model.RequestMetadata{}), app.LogoutCommand{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := helper.App.Logout(ctx, application.NewInvocation(*logoutPrincipal, model.RequestMetadata{}), application.LogoutCommand{}); err != nil {
+	if err := helper.App.Logout(ctx, app.NewInvocation(*logoutPrincipal, model.RequestMetadata{}), app.LogoutCommand{}); err != nil {
 		t.Fatal(err)
 	}
 	all := loginIntegrationUser(t, helper.Handler(), target.Username, password, model.SessionClientCLI, "mail11-self-all")
@@ -98,9 +98,9 @@ func TestAccountAndAdministrativeSessionNoticesUseRealServerGraph(t *testing.T) 
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	allInvocation := application.NewInvocation(*allPrincipal, model.RequestMetadata{})
+	allInvocation := app.NewInvocation(*allPrincipal, model.RequestMetadata{})
 	for range 2 {
-		if err := helper.App.RevokeAllSessions(ctx, allInvocation, application.RevokeAllSessionsCommand{}); err != nil {
+		if err := helper.App.RevokeAllSessions(ctx, allInvocation, app.RevokeAllSessionsCommand{}); err != nil {
 			t.Fatal(err)
 		}
 	}

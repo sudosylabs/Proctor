@@ -12,12 +12,12 @@ import (
 	"strconv"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-func browserDeliveryResource(app ExamAttemptApplication) resource {
-	m := examAttemptHTTPModule{application: app}
+func browserDeliveryResource(application ExamAttemptApplication) resource {
+	m := examAttemptHTTPModule{application: application}
 	base := []pathPart{literal("exam-attempts"), canonicalID("exam_attempt_id"), literal("browser-activity"), literal("sources")}
 	path := func(tail string) routePath {
 		parts := append(append([]pathPart{}, base...), canonicalUUID("source_session_id"))
@@ -39,12 +39,12 @@ func browserDeliveryResource(app ExamAttemptApplication) resource {
 func browserDeliveryAppendErrorCodes() []string {
 	return append(nativeDeliveryAppendErrorCodes(), "exam.attempt.browser_activity_conflict")
 }
-func browserSourceQuery(request operationRequest, list bool) (application.BrowserSourceQuery, error) {
+func browserSourceQuery(request operationRequest, list bool) (app.BrowserSourceQuery, error) {
 	attemptID, err := request.params.RequireExamAttemptID()
 	if err != nil {
-		return application.BrowserSourceQuery{}, err
+		return app.BrowserSourceQuery{}, err
 	}
-	query := application.BrowserSourceQuery{Access: application.CandidateExamAttemptAccess{AttemptID: attemptID}, SourceSessionID: model.BrowserSourceSessionID(request.params.BrowserSourceSessionID)}
+	query := app.BrowserSourceQuery{Access: app.CandidateExamAttemptAccess{AttemptID: attemptID}, SourceSessionID: model.BrowserSourceSessionID(request.params.BrowserSourceSessionID)}
 	if list {
 		values := request.request.URL.Query()["participation_id"]
 		if len(values) != 1 || !model.AttemptParticipationID(values[0]).IsValid() {
@@ -137,7 +137,7 @@ func (m examAttemptHTTPModule) declareBrowserDeliveryGaps(request operationReque
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	value, err := m.application.DeclareBrowserDeliveryGaps(request.context, request.invocation(), application.BrowserDeliveryGapsCommand{Query: query, Declaration: body, IdempotencyKey: request.idempotencyKey})
+	value, err := m.application.DeclareBrowserDeliveryGaps(request.context, request.invocation(), app.BrowserDeliveryGapsCommand{Query: query, Declaration: body, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -163,7 +163,7 @@ func (m examAttemptHTTPModule) sealBrowserDelivery(request operationRequest) (op
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	value, err := m.application.SealBrowserDelivery(request.context, request.invocation(), application.BrowserDeliveryFinalCommand{Query: query, Declaration: body, IdempotencyKey: request.idempotencyKey})
+	value, err := m.application.SealBrowserDelivery(request.context, request.invocation(), app.BrowserDeliveryFinalCommand{Query: query, Declaration: body, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -181,7 +181,7 @@ func (m examAttemptHTTPModule) updateBrowserDeliverySummary(request operationReq
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	value, err := m.application.UpdateBrowserDeliverySummary(request.context, request.invocation(), application.BrowserDeliverySummaryCommand{Query: query, Summary: body, IdempotencyKey: request.idempotencyKey})
+	value, err := m.application.UpdateBrowserDeliverySummary(request.context, request.invocation(), app.BrowserDeliverySummaryCommand{Query: query, Summary: body, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -202,7 +202,7 @@ func (m examAttemptHTTPModule) appendHistoricalBrowserDelivery(request operation
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	value, err := m.application.AppendHistoricalBrowserDelivery(request.context, request.invocation(), application.BrowserDeliveryAppendCommand{Query: query, Batch: body, IdempotencyKey: request.idempotencyKey})
+	value, err := m.application.AppendHistoricalBrowserDelivery(request.context, request.invocation(), app.BrowserDeliveryAppendCommand{Query: query, Batch: body, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
 	}

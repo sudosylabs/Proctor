@@ -13,16 +13,16 @@ import (
 	"io"
 	"net/http"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type OnboardingImportApplication interface {
-	UploadOnboardingImport(context.Context, application.Invocation, application.UploadOnboardingImportCommand) (application.OnboardingImportView, error)
-	GetOnboardingImport(context.Context, application.Invocation, model.OnboardingImportID) (application.OnboardingImportView, []application.OnboardingImportRowView, error)
-	CommitOnboardingImport(context.Context, application.Invocation, application.CommitOnboardingImportCommand) (application.OnboardingImportView, error)
-	CancelOnboardingImport(context.Context, application.Invocation, model.OnboardingImportID) (application.OnboardingImportView, error)
-	OnboardingImportReport(context.Context, application.Invocation, model.OnboardingImportID, io.Writer) error
+	UploadOnboardingImport(context.Context, app.Invocation, app.UploadOnboardingImportCommand) (app.OnboardingImportView, error)
+	GetOnboardingImport(context.Context, app.Invocation, model.OnboardingImportID) (app.OnboardingImportView, []app.OnboardingImportRowView, error)
+	CommitOnboardingImport(context.Context, app.Invocation, app.CommitOnboardingImportCommand) (app.OnboardingImportView, error)
+	CancelOnboardingImport(context.Context, app.Invocation, model.OnboardingImportID) (app.OnboardingImportView, error)
+	OnboardingImportReport(context.Context, app.Invocation, model.OnboardingImportID, io.Writer) error
 }
 
 type onboardingImportModule struct{ imports OnboardingImportApplication }
@@ -80,7 +80,7 @@ func onboardingImportResource(imports OnboardingImportApplication) resource {
 	module := onboardingImportModule{imports: imports}
 	codes := academicRelationshipMutationErrorCodes("onboarding_import.conflict", "onboarding_import.file_invalid", "onboarding_import.unavailable")
 	return newResource("onboarding-imports",
-		idempotentProtocolRoute(IdempotencyNone, application.MaximumOnboardingImportBytes, "onboarding-import-csv", RouteProtocolStreamingUpload, AuthPrincipalRequired,
+		idempotentProtocolRoute(IdempotencyNone, app.MaximumOnboardingImportBytes, "onboarding-import-csv", RouteProtocolStreamingUpload, AuthPrincipalRequired,
 			http.MethodPost, apiPath(literal("onboarding-imports")), codes, module.upload),
 		principalRoute(http.MethodGet, apiPath(literal("onboarding-imports"), canonicalID("onboarding_import_id")),
 			append(academicRelationshipReadErrorCodes(), "onboarding_import.unavailable"), module.get),
@@ -94,7 +94,7 @@ func onboardingImportResource(imports OnboardingImportApplication) resource {
 
 func (m onboardingImportModule) upload(request operationRequest) (protocolResult, error) {
 	query := request.request.URL.Query()
-	view, err := m.imports.UploadOnboardingImport(request.context, request.invocation(), application.UploadOnboardingImportCommand{
+	view, err := m.imports.UploadOnboardingImport(request.context, request.invocation(), app.UploadOnboardingImportCommand{
 		Mode: model.OnboardingImportMode(query.Get("mode")), ScopeType: model.RoleScopeType(query.Get("scope_type")), ScopeID: query.Get("scope_id"), RoleID: query.Get("role_id"), Body: request.request.Body,
 	})
 	if err != nil {
@@ -124,7 +124,7 @@ func (m onboardingImportModule) commit(request operationRequest) (operationResul
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	view, err := m.imports.CommitOnboardingImport(request.context, request.invocation(), application.CommitOnboardingImportCommand{ID: id,
+	view, err := m.imports.CommitOnboardingImport(request.context, request.invocation(), app.CommitOnboardingImportCommand{ID: id,
 		ExpectedRevision: body.ExpectedRevision, PreviewDigest: body.PreviewDigest, Policy: model.OnboardingImportCommitPolicy(body.Policy), IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
@@ -159,7 +159,7 @@ func (m onboardingImportModule) report(request operationRequest) (protocolResult
 	return binaryDownloadProtocolResult(io.NopCloser(bytes.NewReader(body.Bytes())), int64(body.Len())).withHeaders(headers), nil
 }
 
-func onboardingImportResponseFromView(view application.OnboardingImportView, rows []application.OnboardingImportRowView) onboardingImportResponse {
+func onboardingImportResponseFromView(view app.OnboardingImportView, rows []app.OnboardingImportRowView) onboardingImportResponse {
 	response := onboardingImportResponse{ID: view.ID.String(), Mode: string(view.Mode), State: string(view.State), ScopeType: string(view.ScopeType), ScopeID: view.ScopeID,
 		RoleID: view.RoleID.String(), SourcePeriodID: view.SourcePeriodID.String(), SourceClassID: view.SourceClassID.String(), DestinationPeriodID: view.DestinationPeriodID.String(), DestinationClassID: view.DestinationClassID.String(),
 		PreviewDigest: view.PreviewDigest, IgnoredHeaders: append([]string(nil), view.IgnoredHeaders...), TotalRows: view.TotalRows, ValidRows: view.ValidRows,
@@ -180,18 +180,18 @@ func onboardingImportResponseFromView(view application.OnboardingImportView, row
 
 type unavailableOnboardingImportApplication struct{}
 
-func (unavailableOnboardingImportApplication) UploadOnboardingImport(context.Context, application.Invocation, application.UploadOnboardingImportCommand) (application.OnboardingImportView, error) {
-	return application.OnboardingImportView{}, errUnpresentableResult
+func (unavailableOnboardingImportApplication) UploadOnboardingImport(context.Context, app.Invocation, app.UploadOnboardingImportCommand) (app.OnboardingImportView, error) {
+	return app.OnboardingImportView{}, errUnpresentableResult
 }
-func (unavailableOnboardingImportApplication) GetOnboardingImport(context.Context, application.Invocation, model.OnboardingImportID) (application.OnboardingImportView, []application.OnboardingImportRowView, error) {
-	return application.OnboardingImportView{}, nil, errUnpresentableResult
+func (unavailableOnboardingImportApplication) GetOnboardingImport(context.Context, app.Invocation, model.OnboardingImportID) (app.OnboardingImportView, []app.OnboardingImportRowView, error) {
+	return app.OnboardingImportView{}, nil, errUnpresentableResult
 }
-func (unavailableOnboardingImportApplication) CommitOnboardingImport(context.Context, application.Invocation, application.CommitOnboardingImportCommand) (application.OnboardingImportView, error) {
-	return application.OnboardingImportView{}, errUnpresentableResult
+func (unavailableOnboardingImportApplication) CommitOnboardingImport(context.Context, app.Invocation, app.CommitOnboardingImportCommand) (app.OnboardingImportView, error) {
+	return app.OnboardingImportView{}, errUnpresentableResult
 }
-func (unavailableOnboardingImportApplication) CancelOnboardingImport(context.Context, application.Invocation, model.OnboardingImportID) (application.OnboardingImportView, error) {
-	return application.OnboardingImportView{}, errUnpresentableResult
+func (unavailableOnboardingImportApplication) CancelOnboardingImport(context.Context, app.Invocation, model.OnboardingImportID) (app.OnboardingImportView, error) {
+	return app.OnboardingImportView{}, errUnpresentableResult
 }
-func (unavailableOnboardingImportApplication) OnboardingImportReport(context.Context, application.Invocation, model.OnboardingImportID, io.Writer) error {
+func (unavailableOnboardingImportApplication) OnboardingImportReport(context.Context, app.Invocation, model.OnboardingImportID, io.Writer) error {
 	return errUnpresentableResult
 }

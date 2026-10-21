@@ -16,7 +16,7 @@ package httpapi
 import (
 	"net/http"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -85,7 +85,7 @@ func (m mfaResourceModule) status(request operationRequest) (operationResult, er
 	status, err := m.mfa.GetMFAStatus(
 		request.context,
 		request.invocation(),
-		application.GetMFAStatusQuery{},
+		app.GetMFAStatusQuery{},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -105,7 +105,7 @@ func (m mfaResourceModule) setup(request operationRequest) (operationResult, err
 	setup, err := m.mfa.SetupMFA(
 		request.context,
 		request.invocation(),
-		application.SetupMFACommand{},
+		app.SetupMFACommand{},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -125,7 +125,7 @@ func (m mfaResourceModule) activate(request operationRequest) (operationResult, 
 	activation, err := m.mfa.ActivateMFA(
 		request.context,
 		request.invocation(),
-		application.ActivateMFACommand{Code: code},
+		app.ActivateMFACommand{Code: code},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -143,7 +143,7 @@ func (m mfaResourceModule) challenge(request operationRequest) (operationResult,
 	session, err := m.mfa.ChallengeMFA(
 		request.context,
 		request.invocation(),
-		application.ChallengeMFACommand{Code: code},
+		app.ChallengeMFACommand{Code: code},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -155,7 +155,7 @@ func (m mfaResourceModule) regenerateRecoveryCodes(request operationRequest) (op
 	codes, err := m.mfa.RegenerateMFARecoveryCodes(
 		request.context,
 		request.invocation(),
-		application.RegenerateMFARecoveryCodesCommand{},
+		app.RegenerateMFARecoveryCodesCommand{},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -169,7 +169,7 @@ func (m mfaResourceModule) disable(request operationRequest) (operationResult, e
 	if err := m.mfa.DisableMFA(
 		request.context,
 		request.invocation(),
-		application.DisableMFACommand{},
+		app.DisableMFACommand{},
 	); err != nil {
 		return operationResult{}, err
 	}

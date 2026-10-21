@@ -13,16 +13,16 @@ import (
 	"net/http"
 	"strconv"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 const examRevisionCursorVersion = 1
 
 type ExamRevisionApplication interface {
-	PublishExamRevision(context.Context, application.Invocation, application.PublishExamRevisionCommand) (application.ExamRevisionSummary, error)
-	GetExamRevision(context.Context, application.Invocation, application.GetExamRevisionQuery) (application.ExamRevisionSummary, error)
-	ListExamRevisions(context.Context, application.Invocation, application.ListExamRevisionsQuery) (application.ExamRevisionPage, error)
+	PublishExamRevision(context.Context, app.Invocation, app.PublishExamRevisionCommand) (app.ExamRevisionSummary, error)
+	GetExamRevision(context.Context, app.Invocation, app.GetExamRevisionQuery) (app.ExamRevisionSummary, error)
+	ListExamRevisions(context.Context, app.Invocation, app.ListExamRevisionsQuery) (app.ExamRevisionPage, error)
 }
 
 type publishExamRevisionRequest struct {
@@ -95,7 +95,7 @@ func (m examRevisionHTTPModule) publish(request operationRequest) (operationResu
 	if body.ExpectedDraftRevision < 1 {
 		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
-	summary, err := m.application.PublishExamRevision(request.context, request.invocation(), application.PublishExamRevisionCommand{
+	summary, err := m.application.PublishExamRevision(request.context, request.invocation(), app.PublishExamRevisionCommand{
 		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision, IdempotencyKey: request.idempotencyKey,
 	})
 	if err != nil {
@@ -109,7 +109,7 @@ func (m examRevisionHTTPModule) get(request operationRequest) (operationResult, 
 	if err != nil {
 		return operationResult{}, err
 	}
-	summary, err := m.application.GetExamRevision(request.context, request.invocation(), application.GetExamRevisionQuery{ExamID: examID, RevisionID: revisionID})
+	summary, err := m.application.GetExamRevision(request.context, request.invocation(), app.GetExamRevisionQuery{ExamID: examID, RevisionID: revisionID})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -121,7 +121,7 @@ func (m examRevisionHTTPModule) list(request operationRequest) (operationResult,
 	if err != nil {
 		return operationResult{}, err
 	}
-	query := application.ListExamRevisionsQuery{ExamID: examID, Limit: 50}
+	query := app.ListExamRevisionsQuery{ExamID: examID, Limit: 50}
 	values := request.request.URL.Query()
 	if raw := values.Get("limit"); raw != "" {
 		query.Limit, err = strconv.Atoi(raw)
@@ -178,7 +178,7 @@ func examRevisionIDs(request operationRequest) (model.ExamID, model.ExamRevision
 	return examID, revisionID, nil
 }
 
-func examRevisionResponseFromSummary(summary application.ExamRevisionSummary) examRevisionResponse {
+func examRevisionResponseFromSummary(summary app.ExamRevisionSummary) examRevisionResponse {
 	return examRevisionResponse{
 		ID: summary.ID.String(), ExamID: summary.ExamID.String(), Number: summary.Number,
 		SourceDraftRevision: summary.SourceDraftRevision, Title: summary.Title,

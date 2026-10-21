@@ -12,31 +12,31 @@ import (
 	"net/http"
 	"sort"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type AccessPolicyApplication interface {
-	GetAccessPolicy(context.Context, application.Invocation) (application.AccessPolicyView, error)
-	PreflightAccessPolicy(context.Context, application.Invocation, application.PreflightAccessPolicyCommand) (application.AccessPolicyPreflightResult, error)
-	ReplaceAccessPolicy(context.Context, application.Invocation, application.ReplaceAccessPolicyCommand) (application.AccessPolicyView, error)
-	DiscoverAccess(context.Context) (application.PublicAccessDiscovery, error)
+	GetAccessPolicy(context.Context, app.Invocation) (app.AccessPolicyView, error)
+	PreflightAccessPolicy(context.Context, app.Invocation, app.PreflightAccessPolicyCommand) (app.AccessPolicyPreflightResult, error)
+	ReplaceAccessPolicy(context.Context, app.Invocation, app.ReplaceAccessPolicyCommand) (app.AccessPolicyView, error)
+	DiscoverAccess(context.Context) (app.PublicAccessDiscovery, error)
 }
 
 type unavailableAccessPolicyApplication struct{}
 
-func (unavailableAccessPolicyApplication) GetAccessPolicy(context.Context, application.Invocation) (application.AccessPolicyView, error) {
-	return application.AccessPolicyView{}, errUnpresentableResult
+func (unavailableAccessPolicyApplication) GetAccessPolicy(context.Context, app.Invocation) (app.AccessPolicyView, error) {
+	return app.AccessPolicyView{}, errUnpresentableResult
 }
-func (unavailableAccessPolicyApplication) PreflightAccessPolicy(context.Context, application.Invocation, application.PreflightAccessPolicyCommand) (application.AccessPolicyPreflightResult, error) {
-	return application.AccessPolicyPreflightResult{}, errUnpresentableResult
+func (unavailableAccessPolicyApplication) PreflightAccessPolicy(context.Context, app.Invocation, app.PreflightAccessPolicyCommand) (app.AccessPolicyPreflightResult, error) {
+	return app.AccessPolicyPreflightResult{}, errUnpresentableResult
 }
-func (unavailableAccessPolicyApplication) ReplaceAccessPolicy(context.Context, application.Invocation, application.ReplaceAccessPolicyCommand) (application.AccessPolicyView, error) {
-	return application.AccessPolicyView{}, errUnpresentableResult
+func (unavailableAccessPolicyApplication) ReplaceAccessPolicy(context.Context, app.Invocation, app.ReplaceAccessPolicyCommand) (app.AccessPolicyView, error) {
+	return app.AccessPolicyView{}, errUnpresentableResult
 }
-func (unavailableAccessPolicyApplication) DiscoverAccess(context.Context) (application.PublicAccessDiscovery, error) {
-	return application.PublicAccessDiscovery{}, errUnpresentableResult
+func (unavailableAccessPolicyApplication) DiscoverAccess(context.Context) (app.PublicAccessDiscovery, error) {
+	return app.PublicAccessDiscovery{}, errUnpresentableResult
 }
 
 type accessPolicySettingsRequest struct {
@@ -148,7 +148,7 @@ func (m accessPolicyResourceModule) preflight(request operationRequest) (operati
 	if err != nil {
 		return operationResult{}, err
 	}
-	result, err := m.application.PreflightAccessPolicy(request.context, request.invocation(), application.PreflightAccessPolicyCommand{
+	result, err := m.application.PreflightAccessPolicy(request.context, request.invocation(), app.PreflightAccessPolicyCommand{
 		ExpectedRevision: body.ExpectedRevision, Settings: settings,
 		RevokeExistingSessions: revokeExistingSessions})
 	if err != nil {
@@ -170,7 +170,7 @@ func (m accessPolicyResourceModule) replace(request operationRequest) (operation
 	if err != nil {
 		return operationResult{}, err
 	}
-	view, err := m.application.ReplaceAccessPolicy(request.context, request.invocation(), application.ReplaceAccessPolicyCommand{
+	view, err := m.application.ReplaceAccessPolicy(request.context, request.invocation(), app.ReplaceAccessPolicyCommand{
 		ExpectedRevision: body.ExpectedRevision, Settings: settings,
 		RevokeExistingSessions: revokeExistingSessions, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
@@ -230,7 +230,7 @@ func (m accessPolicyResourceModule) discover(request operationRequest) (operatio
 	return jsonResult(http.StatusOK, publicAccessDiscoveryResponseFromView(discovery)), nil
 }
 
-func accessPolicyResponseFromView(view application.AccessPolicyView) accessPolicyResponse {
+func accessPolicyResponseFromView(view app.AccessPolicyView) accessPolicyResponse {
 	response := accessPolicyResponse{History: []accessPolicyTransitionResponse{}, AvailableProviders: []externalAuthenticationProviderResponse{}}
 	if view.Policy == nil {
 		return response
@@ -254,7 +254,7 @@ func accessPolicyResponseFromView(view application.AccessPolicyView) accessPolic
 	return response
 }
 
-func publicAccessDiscoveryResponseFromView(view application.PublicAccessDiscovery) publicAccessDiscoveryResponse {
+func publicAccessDiscoveryResponseFromView(view app.PublicAccessDiscovery) publicAccessDiscoveryResponse {
 	response := publicAccessDiscoveryResponse{DiscoveryVersion: view.DiscoveryVersion, CanonicalOrigin: view.CanonicalOrigin,
 		InstallationID: view.InstallationID, Initialized: view.Initialized, PolicyRevision: view.PolicyRevision,
 		Capabilities: publicAccessCapabilitiesResponse{LocalLogin: view.Capabilities.LocalLogin, PublicRegistration: view.Capabilities.PublicRegistration,

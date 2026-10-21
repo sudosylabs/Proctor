@@ -11,13 +11,13 @@ import (
 	"context"
 	"net/http"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type SessionReauthentication interface {
-	ReauthenticatePassword(context.Context, application.Invocation, application.ReauthenticatePasswordCommand) (*model.Session, error)
-	BeginExternalReauthentication(context.Context, application.Invocation, application.BeginExternalReauthenticationCommand) (*model.ExternalAuthenticationStart, error)
+	ReauthenticatePassword(context.Context, app.Invocation, app.ReauthenticatePasswordCommand) (*model.Session, error)
+	BeginExternalReauthentication(context.Context, app.Invocation, app.BeginExternalReauthenticationCommand) (*model.ExternalAuthenticationStart, error)
 }
 
 type sessionReauthenticationResourceModule struct {
@@ -51,7 +51,7 @@ func (m sessionReauthenticationResourceModule) password(request operationRequest
 	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
-	session, err := m.authentication.ReauthenticatePassword(request.context, request.invocation(), application.ReauthenticatePasswordCommand{
+	session, err := m.authentication.ReauthenticatePassword(request.context, request.invocation(), app.ReauthenticatePasswordCommand{
 		Password: input.Password, Source: request.metadata.IPAddress,
 	})
 	if err != nil {
@@ -65,7 +65,7 @@ func (m sessionReauthenticationResourceModule) external(request operationRequest
 	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
-	start, err := m.authentication.BeginExternalReauthentication(request.context, request.invocation(), application.BeginExternalReauthenticationCommand{Task: input.Task, Source: request.metadata.IPAddress})
+	start, err := m.authentication.BeginExternalReauthentication(request.context, request.invocation(), app.BeginExternalReauthenticationCommand{Task: input.Task, Source: request.metadata.IPAddress})
 	if err != nil {
 		return operationResult{}, err
 	}

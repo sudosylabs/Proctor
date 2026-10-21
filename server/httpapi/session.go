@@ -16,7 +16,7 @@ package httpapi
 import (
 	"net/http"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -56,7 +56,7 @@ func (m sessionResourceModule) list(request operationRequest) (operationResult, 
 	sessions, err := m.sessions.ListSessions(
 		request.context,
 		request.invocation(),
-		application.ListSessionsQuery{},
+		app.ListSessionsQuery{},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -72,7 +72,7 @@ func (m sessionResourceModule) revoke(request operationRequest) (operationResult
 	if err := m.sessions.RevokeSession(
 		request.context,
 		request.invocation(),
-		application.RevokeSessionCommand{SessionID: input.SessionID},
+		app.RevokeSessionCommand{SessionID: input.SessionID},
 	); err != nil {
 		return operationResult{}, err
 	}
@@ -88,7 +88,7 @@ func (m sessionResourceModule) revokeAll(request operationRequest) (operationRes
 	if err := m.sessions.RevokeAllSessions(
 		request.context,
 		request.invocation(),
-		application.RevokeAllSessionsCommand{},
+		app.RevokeAllSessionsCommand{},
 	); err != nil {
 		return operationResult{}, err
 	}

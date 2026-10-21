@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/testlib"
@@ -32,7 +32,7 @@ func TestPublicLocalRegistrationRealGraph(t *testing.T) {
 			cfg.Authentication.AccountRecovery.RateLimit.MaximumSourceAttempts = 100
 		}),
 	)
-	_, err := helper.App.BootstrapInstallation(context.Background(), application.Invocation{}, application.BootstrapInstallationCommand{
+	_, err := helper.App.BootstrapInstallation(context.Background(), app.Invocation{}, app.BootstrapInstallationCommand{
 		InstitutionName: "registration-university", InstitutionDisplayName: "Registration University",
 		AdministratorUsername: "registration-admin", AdministratorEmail: "registration-admin@example.edu",
 		Password: "bootstrap correct horse battery staple", BootstrapSecret: testlib.BootstrapSecret, Source: "127.0.0.1:1",

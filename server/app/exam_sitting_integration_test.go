@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
@@ -42,7 +42,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	ctx := context.Background()
 	const password = "correct horse battery staple"
 
-	bootstrap, appErr := helper.App.BootstrapInstallation(ctx, application.Invocation{}, application.BootstrapInstallationCommand{
+	bootstrap, appErr := helper.App.BootstrapInstallation(ctx, app.Invocation{}, app.BootstrapInstallationCommand{
 		InstitutionName: "sitting-university", InstitutionDisplayName: "Sitting University",
 		AdministratorUsername: "sitting-administrator", AdministratorEmail: "sitting-administrator@example.edu",
 		AdministratorDisplayName: "Sitting Administrator", AdministratorLocale: "en", AdministratorTimezone: "UTC",
@@ -86,7 +86,7 @@ func TestExamSittingIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	candidate, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
+	candidate, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "sitting-candidate", Email: "sitting-candidate@example.edu", DisplayName: "Sitting Candidate",
 		EmailVerified: true, Locale: "en", Timezone: "UTC",
 	}, Password: password})
@@ -103,13 +103,13 @@ func TestExamSittingIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	manager, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
+	manager, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "sitting-manager", Email: "sitting-manager@example.edu", DisplayName: "Sitting Manager",
 	}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	managerLogin, appErr := helper.App.Login(ctx, application.Invocation{}, application.LoginCommand{
+	managerLogin, appErr := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{
 		LoginID: manager.Username, Password: password, ClientType: model.SessionClientCLI,
 		DeviceID: "sitting-manager-cli", Source: "127.0.0.1:1",
 	})
@@ -120,7 +120,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	managerInvocation := application.NewInvocation(*managerPrincipal, model.RequestMetadata{RequestID: "exam-sitting-manager-integration"})
+	managerInvocation := app.NewInvocation(*managerPrincipal, model.RequestMetadata{RequestID: "exam-sitting-manager-integration"})
 	managerMembership, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
 		AcademicUnitID: unit.ID, UserID: manager.ID, StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000),
 	})
@@ -146,13 +146,13 @@ func TestExamSittingIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	created, appErr := helper.App.CreateExam(ctx, managerInvocation, application.CreateExamCommand{
+	created, appErr := helper.App.CreateExam(ctx, managerInvocation, app.CreateExamCommand{
 		AcademicUnitID: unit.ID, Title: "Concurrent Systems", InstructionsMarkdown: "Write **Go**.", IdempotencyKey: "sitting-exam-create",
 	})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	published, appErr := helper.App.PublishExamRevision(ctx, managerInvocation, application.PublishExamRevisionCommand{
+	published, appErr := helper.App.PublishExamRevision(ctx, managerInvocation, app.PublishExamRevisionCommand{
 		ExamID: created.Exam.ID, ExpectedDraftRevision: created.Draft.Revision, IdempotencyKey: "sitting-exam-publish",
 	})
 	if appErr != nil {
@@ -163,7 +163,7 @@ func TestExamSittingIntegration(t *testing.T) {
 
 	startAt := now.Add(2 * time.Hour).Truncate(time.Millisecond)
 	endAt := startAt.Add(2 * time.Hour)
-	schedule := application.ScheduleExamSittingCommand{
+	schedule := app.ScheduleExamSittingCommand{
 		ExamID: created.Exam.ID, ExamRevisionID: published.ID, ClassID: class.ID,
 		ScheduledStartAt: startAt, ScheduledEndAt: endAt, IdempotencyKey: "sitting-schedule-once",
 	}
@@ -182,13 +182,13 @@ func TestExamSittingIntegration(t *testing.T) {
 	waitForExamSittingMailDelivery(t, ctx, persistence, helper, secondary, candidate.ID,
 		model.MailTemplateExamSittingScheduled)
 
-	got, appErr := helper.App.GetExamSitting(ctx, managerInvocation, application.GetExamSittingQuery{
+	got, appErr := helper.App.GetExamSitting(ctx, managerInvocation, app.GetExamSittingQuery{
 		ExamID: created.Exam.ID, SittingID: scheduled.Sitting.ID,
 	})
 	if appErr != nil || got.Sitting == nil || got.Sitting.ID != scheduled.Sitting.ID {
 		t.Fatalf("get Sitting = %#v, %v", got, appErr)
 	}
-	page, appErr := helper.App.ListExamSittings(ctx, managerInvocation, application.ListExamSittingsQuery{
+	page, appErr := helper.App.ListExamSittings(ctx, managerInvocation, app.ListExamSittingsQuery{
 		ExamID: created.Exam.ID, ClassID: class.ID, States: []model.ExamSittingState{model.ExamSittingScheduled}, Limit: 50,
 	})
 	if appErr != nil || page.HasMore || len(page.Items) != 1 || page.Items[0].Sitting == nil || page.Items[0].Sitting.ID != scheduled.Sitting.ID {
@@ -196,7 +196,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	}
 
 	updatedEndAt := endAt.Add(30 * time.Minute)
-	update := application.UpdateExamSittingScheduleCommand{
+	update := app.UpdateExamSittingScheduleCommand{
 		ExamID: created.Exam.ID, SittingID: scheduled.Sitting.ID, ExpectedRevision: scheduled.Sitting.Revision,
 		ScheduledEndAt: &updatedEndAt, IdempotencyKey: "sitting-update-once",
 	}
@@ -213,7 +213,7 @@ func TestExamSittingIntegration(t *testing.T) {
 		t.Fatalf("update replay = %#v, %v", updatedReplay, appErr)
 	}
 
-	cancel := application.CancelExamSittingCommand{
+	cancel := app.CancelExamSittingCommand{
 		ExamID: created.Exam.ID, SittingID: scheduled.Sitting.ID, ExpectedRevision: updated.Sitting.Revision,
 		PrivateReason: "Schedule superseded by the department", IdempotencyKey: "sitting-cancel-once",
 	}
@@ -235,7 +235,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	// facade and the real PostgreSQL Store. The direct state advance stands in
 	// for the separately tested delayed opening Job so this test can focus on
 	// the user-command composition seam.
-	live, appErr := helper.App.ScheduleExamSitting(ctx, managerInvocation, application.ScheduleExamSittingCommand{
+	live, appErr := helper.App.ScheduleExamSitting(ctx, managerInvocation, app.ScheduleExamSittingCommand{
 		ExamID: created.Exam.ID, ExamRevisionID: published.ID, ClassID: class.ID,
 		ScheduledStartAt: now.Add(10 * time.Hour).Truncate(time.Millisecond),
 		ScheduledEndAt:   now.Add(12 * time.Hour).Truncate(time.Millisecond),
@@ -253,14 +253,14 @@ func TestExamSittingIntegration(t *testing.T) {
 	if affected, affectedErr := result.RowsAffected(); affectedErr != nil || affected != 1 {
 		t.Fatalf("open live Sitting affected=%d error=%v", affected, affectedErr)
 	}
-	paused, appErr := helper.App.PauseExamSitting(ctx, managerInvocation, application.PauseExamSittingCommand{
+	paused, appErr := helper.App.PauseExamSitting(ctx, managerInvocation, app.PauseExamSittingCommand{
 		ExamID: created.Exam.ID, SittingID: live.Sitting.ID, ExpectedRevision: 2,
 		PrivateReason: "Investigating a delivery interruption", IdempotencyKey: "sitting-live-pause",
 	})
 	if appErr != nil || paused.Sitting == nil || paused.Sitting.State != model.ExamSittingPaused || paused.Sitting.Revision != 3 {
 		t.Fatalf("pause live Sitting = %#v, %v", paused, appErr)
 	}
-	resumed, appErr := helper.App.ResumeExamSitting(ctx, managerInvocation, application.ResumeExamSittingCommand{
+	resumed, appErr := helper.App.ResumeExamSitting(ctx, managerInvocation, app.ResumeExamSittingCommand{
 		ExamID: created.Exam.ID, SittingID: live.Sitting.ID, ExpectedRevision: 3,
 		PrivateReason: "Delivery interruption resolved", IdempotencyKey: "sitting-live-resume",
 	})
@@ -268,14 +268,14 @@ func TestExamSittingIntegration(t *testing.T) {
 		t.Fatalf("resume live Sitting = %#v, %v", resumed, appErr)
 	}
 	liveEnd := live.Sitting.ScheduledEndAt.Add(30 * time.Minute)
-	extended, appErr := helper.App.ExtendExamSitting(ctx, managerInvocation, application.ExtendExamSittingCommand{
+	extended, appErr := helper.App.ExtendExamSitting(ctx, managerInvocation, app.ExtendExamSittingCommand{
 		ExamID: created.Exam.ID, SittingID: live.Sitting.ID, ExpectedRevision: 4, ScheduledEndAt: liveEnd,
 		PrivateReason: "Compensating for the interruption", IdempotencyKey: "sitting-live-extend",
 	})
 	if appErr != nil || extended.Sitting == nil || extended.Sitting.Revision != 5 || !extended.Sitting.ScheduledEndAt.Equal(liveEnd) {
 		t.Fatalf("extend live Sitting = %#v, %v", extended, appErr)
 	}
-	closedEarly, appErr := helper.App.CloseExamSitting(ctx, managerInvocation, application.CloseExamSittingCommand{
+	closedEarly, appErr := helper.App.CloseExamSitting(ctx, managerInvocation, app.CloseExamSittingCommand{
 		ExamID: created.Exam.ID, SittingID: live.Sitting.ID, ExpectedRevision: 5,
 		PrivateReason: "Authorized early close", IdempotencyKey: "sitting-live-close",
 	})
@@ -283,7 +283,7 @@ func TestExamSittingIntegration(t *testing.T) {
 		closedEarly.Sitting.Revision != 6 || closedEarly.Sitting.ReasonCode != model.ExamSittingReasonManagerClosed {
 		t.Fatalf("close live Sitting = %#v, %v", closedEarly, appErr)
 	}
-	closedReplay, appErr := helper.App.CloseExamSitting(ctx, managerInvocation, application.CloseExamSittingCommand{
+	closedReplay, appErr := helper.App.CloseExamSitting(ctx, managerInvocation, app.CloseExamSittingCommand{
 		ExamID: created.Exam.ID, SittingID: live.Sitting.ID, ExpectedRevision: 5,
 		PrivateReason: "Authorized early close", IdempotencyKey: "sitting-live-close",
 	})
@@ -295,12 +295,12 @@ func TestExamSittingIntegration(t *testing.T) {
 	if _, err = storetest.EndAcademicUnitMember(ctx, persistence, managerMembership.ID, managerMembership.Revision, model.GetMillis()-100); err != nil {
 		t.Fatal(err)
 	}
-	if _, appErr := helper.App.GetExamSitting(ctx, managerInvocation, application.GetExamSittingQuery{
+	if _, appErr := helper.App.GetExamSitting(ctx, managerInvocation, app.GetExamSittingQuery{
 		ExamID: created.Exam.ID, SittingID: scheduled.Sitting.ID,
 	}); !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("get after membership revocation error = %v", appErr)
 	}
-	if appErr := helper.App.AuthorizeWebSocketSubscription(ctx, application.NewInvocation(*managerPrincipal, model.RequestMetadata{}),
+	if appErr := helper.App.AuthorizeWebSocketSubscription(ctx, app.NewInvocation(*managerPrincipal, model.RequestMetadata{}),
 		model.ActionExamSittingView, model.Resource{Type: model.ResourceExamSitting, ID: scheduled.Sitting.ID.String()}); !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("subscription after membership revocation error = %v", appErr)
 	}
@@ -312,17 +312,17 @@ func TestExamSittingIntegration(t *testing.T) {
 	if _, err = storetest.EndRoleBinding(ctx, persistence, managerBinding.ID, model.GetMillis()-25); err != nil {
 		t.Fatal(err)
 	}
-	if _, appErr := helper.App.GetExamSitting(ctx, managerInvocation, application.GetExamSittingQuery{
+	if _, appErr := helper.App.GetExamSitting(ctx, managerInvocation, app.GetExamSittingQuery{
 		ExamID: created.Exam.ID, SittingID: scheduled.Sitting.ID,
 	}); !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("get after permission revocation error = %v", appErr)
 	}
-	if appErr := helper.App.AuthorizeWebSocketSubscription(ctx, application.NewInvocation(*managerPrincipal, model.RequestMetadata{}),
+	if appErr := helper.App.AuthorizeWebSocketSubscription(ctx, app.NewInvocation(*managerPrincipal, model.RequestMetadata{}),
 		model.ActionExamSittingView, model.Resource{Type: model.ResourceExamSitting, ID: scheduled.Sitting.ID.String()}); !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("subscription after permission revocation error = %v", appErr)
 	}
 
-	overrideUser, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
+	overrideUser, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "sitting-override", Email: "sitting-override@example.edu", DisplayName: "Sitting Override",
 	}, Password: password})
 	if appErr != nil {
@@ -333,7 +333,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	overrideInvocation := application.NewInvocation(*overridePrincipal, model.RequestMetadata{RequestID: "exam-sitting-override-integration"})
+	overrideInvocation := app.NewInvocation(*overridePrincipal, model.RequestMetadata{RequestID: "exam-sitting-override-integration"})
 	overrideRole, err := storetest.SaveRole(ctx, persistence, &model.Role{
 		Name: "exam-sitting-override", DisplayName: "Exam Sitting Override",
 		Permissions: []string{
@@ -351,7 +351,7 @@ func TestExamSittingIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	overrideSchedule := application.ScheduleExamSittingCommand{
+	overrideSchedule := app.ScheduleExamSittingCommand{
 		ExamID: created.Exam.ID, ExamRevisionID: published.ID, ClassID: class.ID,
 		ScheduledStartAt: now.Add(6 * time.Hour).Truncate(time.Millisecond),
 		ScheduledEndAt:   now.Add(8 * time.Hour).Truncate(time.Millisecond),
@@ -361,26 +361,26 @@ func TestExamSittingIntegration(t *testing.T) {
 	if appErr != nil || overrideScheduled.Sitting == nil {
 		t.Fatalf("override schedule = %#v, %v", overrideScheduled, appErr)
 	}
-	if _, appErr := helper.App.GetExamSitting(ctx, overrideInvocation, application.GetExamSittingQuery{
+	if _, appErr := helper.App.GetExamSitting(ctx, overrideInvocation, app.GetExamSittingQuery{
 		ExamID: created.Exam.ID, SittingID: overrideScheduled.Sitting.ID,
 	}); appErr != nil {
 		t.Fatalf("override get error = %v", appErr)
 	}
-	overridePage, appErr := helper.App.ListExamSittings(ctx, overrideInvocation, application.ListExamSittingsQuery{
+	overridePage, appErr := helper.App.ListExamSittings(ctx, overrideInvocation, app.ListExamSittingsQuery{
 		ExamID: created.Exam.ID, Limit: 50,
 	})
 	if appErr != nil || len(overridePage.Items) != 3 {
 		t.Fatalf("override list = %#v, %v", overridePage, appErr)
 	}
 	overrideEndAt := overrideSchedule.ScheduledEndAt.Add(30 * time.Minute)
-	overrideUpdated, appErr := helper.App.UpdateExamSittingSchedule(ctx, overrideInvocation, application.UpdateExamSittingScheduleCommand{
+	overrideUpdated, appErr := helper.App.UpdateExamSittingSchedule(ctx, overrideInvocation, app.UpdateExamSittingScheduleCommand{
 		ExamID: created.Exam.ID, SittingID: overrideScheduled.Sitting.ID, ExpectedRevision: 1,
 		ScheduledEndAt: &overrideEndAt, IdempotencyKey: "sitting-override-update",
 	})
 	if appErr != nil || overrideUpdated.Sitting == nil || overrideUpdated.Sitting.Revision != 2 {
 		t.Fatalf("override update = %#v, %v", overrideUpdated, appErr)
 	}
-	if _, appErr := helper.App.CancelExamSitting(ctx, overrideInvocation, application.CancelExamSittingCommand{
+	if _, appErr := helper.App.CancelExamSitting(ctx, overrideInvocation, app.CancelExamSittingCommand{
 		ExamID: created.Exam.ID, SittingID: overrideScheduled.Sitting.ID, ExpectedRevision: 2,
 		PrivateReason: "Administrator canceled the delivery", IdempotencyKey: "sitting-override-cancel",
 	}); appErr != nil {

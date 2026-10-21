@@ -16,32 +16,32 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type classMemberHTTPApplication struct {
-	pageQuery     application.ListClassMembersPageQuery
-	pageResult    *application.ClassMemberPage
+	pageQuery     app.ListClassMembersPageQuery
+	pageResult    *app.ClassMemberPage
 	result        *model.ClassEnrollment
 	ended         *model.ClassMember
 	values        []*model.ClassMember
-	listQuery     application.ListClassMembersQuery
-	enrollCommand application.EnrollClassMemberCommand
-	endCommand    application.EndClassMemberCommand
+	listQuery     app.ListClassMembersQuery
+	enrollCommand app.EnrollClassMemberCommand
+	endCommand    app.EndClassMemberCommand
 }
 
-func (a *classMemberHTTPApplication) ListClassMembers(_ context.Context, _ application.Invocation, query application.ListClassMembersQuery) ([]*model.ClassMember, error) {
+func (a *classMemberHTTPApplication) ListClassMembers(_ context.Context, _ app.Invocation, query app.ListClassMembersQuery) ([]*model.ClassMember, error) {
 	a.listQuery = query
 	return a.values, nil
 }
 
-func (a *classMemberHTTPApplication) EnrollClassMember(_ context.Context, _ application.Invocation, command application.EnrollClassMemberCommand) (*model.ClassEnrollment, error) {
+func (a *classMemberHTTPApplication) EnrollClassMember(_ context.Context, _ app.Invocation, command app.EnrollClassMemberCommand) (*model.ClassEnrollment, error) {
 	a.enrollCommand = command
 	return a.result, nil
 }
 
-func (a *classMemberHTTPApplication) EndClassMember(_ context.Context, _ application.Invocation, command application.EndClassMemberCommand) (*model.ClassMember, error) {
+func (a *classMemberHTTPApplication) EndClassMember(_ context.Context, _ app.Invocation, command app.EndClassMemberCommand) (*model.ClassMember, error) {
 	a.endCommand = command
 	return a.ended, nil
 }
@@ -115,10 +115,10 @@ func TestClassMemberHistoryQueryIsForwarded(t *testing.T) {
 	}
 }
 
-func (a *classMemberHTTPApplication) ListClassMembersPage(_ context.Context, _ application.Invocation, query application.ListClassMembersPageQuery) (*application.ClassMemberPage, error) {
+func (a *classMemberHTTPApplication) ListClassMembersPage(_ context.Context, _ app.Invocation, query app.ListClassMembersPageQuery) (*app.ClassMemberPage, error) {
 	a.pageQuery = query
 	if a.pageResult != nil {
 		return a.pageResult, nil
 	}
-	return &application.ClassMemberPage{}, nil
+	return &app.ClassMemberPage{}, nil
 }

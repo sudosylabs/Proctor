@@ -20,7 +20,7 @@ import (
 	"strconv"
 	"testing"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -49,7 +49,7 @@ func TestRetentionPolicyHTTPAcrossNodesPreservesAuthorizationAndRetry(t *testing
 	if bootstrap.Code != http.StatusCreated {
 		t.Fatalf("bootstrap: %d %s", bootstrap.Code, bootstrap.Body.String())
 	}
-	login, err := primary.App.Login(context.Background(), application.Invocation{}, application.LoginCommand{
+	login, err := primary.App.Login(context.Background(), app.Invocation{}, app.LoginCommand{
 		LoginID: "retention-admin", Password: "correct horse battery staple", ClientType: model.SessionClientCLI,
 		DeviceID: "retention-cli", Source: "127.0.0.1:1",
 	})
@@ -101,7 +101,7 @@ func TestRetentionPolicyHTTPAcrossNodesPreservesAuthorizationAndRetry(t *testing
 		t.Fatalf("stale replacement: %d %s", stale.Code, stale.Body.String())
 	}
 	ordinary := createIntegrationUser(t, primary, "retention-ordinary", "another correct horse battery staple")
-	ordinaryLogin, err := secondary.App.Login(context.Background(), application.Invocation{}, application.LoginCommand{
+	ordinaryLogin, err := secondary.App.Login(context.Background(), app.Invocation{}, app.LoginCommand{
 		LoginID: ordinary.Username, Password: "another correct horse battery staple", ClientType: model.SessionClientCLI,
 		DeviceID: "ordinary-cli", Source: "127.0.0.1:2",
 	})

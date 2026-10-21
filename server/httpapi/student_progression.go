@@ -13,16 +13,16 @@ import (
 	"io"
 	"net/http"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type StudentProgressionApplication interface {
-	DryRunStudentProgression(context.Context, application.Invocation, application.DryRunStudentProgressionCommand) (application.OnboardingImportView, error)
-	GetStudentProgression(context.Context, application.Invocation, model.OnboardingImportID) (application.OnboardingImportView, []application.OnboardingImportRowView, error)
-	CommitStudentProgression(context.Context, application.Invocation, application.CommitStudentProgressionCommand) (application.OnboardingImportView, error)
-	CancelStudentProgression(context.Context, application.Invocation, model.OnboardingImportID) (application.OnboardingImportView, error)
-	StudentProgressionReport(context.Context, application.Invocation, model.OnboardingImportID, io.Writer) error
+	DryRunStudentProgression(context.Context, app.Invocation, app.DryRunStudentProgressionCommand) (app.OnboardingImportView, error)
+	GetStudentProgression(context.Context, app.Invocation, model.OnboardingImportID) (app.OnboardingImportView, []app.OnboardingImportRowView, error)
+	CommitStudentProgression(context.Context, app.Invocation, app.CommitStudentProgressionCommand) (app.OnboardingImportView, error)
+	CancelStudentProgression(context.Context, app.Invocation, model.OnboardingImportID) (app.OnboardingImportView, error)
+	StudentProgressionReport(context.Context, app.Invocation, model.OnboardingImportID, io.Writer) error
 }
 
 type studentProgressionModule struct{ progressions StudentProgressionApplication }
@@ -66,7 +66,7 @@ func (m studentProgressionModule) dryRun(request operationRequest) (operationRes
 	if err != nil || effectiveAt.IsZero() {
 		return operationResult{}, invalidRequestError(err)
 	}
-	view, err := m.progressions.DryRunStudentProgression(request.context, request.invocation(), application.DryRunStudentProgressionCommand{
+	view, err := m.progressions.DryRunStudentProgression(request.context, request.invocation(), app.DryRunStudentProgressionCommand{
 		SourcePeriodID: body.SourcePeriodID, SourceClassID: body.SourceClassID, DestinationPeriodID: body.DestinationPeriodID,
 		DestinationClassID: body.DestinationClassID, EffectiveAt: model.MillisFromTime(effectiveAt),
 	})
@@ -97,7 +97,7 @@ func (m studentProgressionModule) commit(request operationRequest) (operationRes
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	view, err := m.progressions.CommitStudentProgression(request.context, request.invocation(), application.CommitStudentProgressionCommand{
+	view, err := m.progressions.CommitStudentProgression(request.context, request.invocation(), app.CommitStudentProgressionCommand{
 		ID: id, ExpectedRevision: body.ExpectedRevision, PreviewDigest: body.PreviewDigest, IdempotencyKey: request.idempotencyKey,
 	})
 	if err != nil {
@@ -135,18 +135,18 @@ func (m studentProgressionModule) report(request operationRequest) (protocolResu
 
 type unavailableStudentProgressionApplication struct{}
 
-func (unavailableStudentProgressionApplication) DryRunStudentProgression(context.Context, application.Invocation, application.DryRunStudentProgressionCommand) (application.OnboardingImportView, error) {
-	return application.OnboardingImportView{}, errUnpresentableResult
+func (unavailableStudentProgressionApplication) DryRunStudentProgression(context.Context, app.Invocation, app.DryRunStudentProgressionCommand) (app.OnboardingImportView, error) {
+	return app.OnboardingImportView{}, errUnpresentableResult
 }
-func (unavailableStudentProgressionApplication) GetStudentProgression(context.Context, application.Invocation, model.OnboardingImportID) (application.OnboardingImportView, []application.OnboardingImportRowView, error) {
-	return application.OnboardingImportView{}, nil, errUnpresentableResult
+func (unavailableStudentProgressionApplication) GetStudentProgression(context.Context, app.Invocation, model.OnboardingImportID) (app.OnboardingImportView, []app.OnboardingImportRowView, error) {
+	return app.OnboardingImportView{}, nil, errUnpresentableResult
 }
-func (unavailableStudentProgressionApplication) CommitStudentProgression(context.Context, application.Invocation, application.CommitStudentProgressionCommand) (application.OnboardingImportView, error) {
-	return application.OnboardingImportView{}, errUnpresentableResult
+func (unavailableStudentProgressionApplication) CommitStudentProgression(context.Context, app.Invocation, app.CommitStudentProgressionCommand) (app.OnboardingImportView, error) {
+	return app.OnboardingImportView{}, errUnpresentableResult
 }
-func (unavailableStudentProgressionApplication) CancelStudentProgression(context.Context, application.Invocation, model.OnboardingImportID) (application.OnboardingImportView, error) {
-	return application.OnboardingImportView{}, errUnpresentableResult
+func (unavailableStudentProgressionApplication) CancelStudentProgression(context.Context, app.Invocation, model.OnboardingImportID) (app.OnboardingImportView, error) {
+	return app.OnboardingImportView{}, errUnpresentableResult
 }
-func (unavailableStudentProgressionApplication) StudentProgressionReport(context.Context, application.Invocation, model.OnboardingImportID, io.Writer) error {
+func (unavailableStudentProgressionApplication) StudentProgressionReport(context.Context, app.Invocation, model.OnboardingImportID, io.Writer) error {
 	return errUnpresentableResult
 }

@@ -16,28 +16,28 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type authenticationEntryHTTPApplication struct {
 	authenticationEntryApplication
-	loginCommand        application.LoginCommand
-	loginResult         *application.LoginResult
+	loginCommand        app.LoginCommand
+	loginResult         *app.LoginResult
 	loginError          error
 	loginCalls          int
-	logoutCommand       application.LogoutCommand
+	logoutCommand       app.LogoutCommand
 	logoutCalls         int
-	registrationCommand application.RegisterLocalUserCommand
+	registrationCommand app.RegisterLocalUserCommand
 	registrationCalls   int
 	registrationError   error
 }
 
 func (af *authenticationEntryHTTPApplication) RegisterLocalUser(
 	_ context.Context,
-	_ application.Invocation,
-	command application.RegisterLocalUserCommand,
+	_ app.Invocation,
+	command app.RegisterLocalUserCommand,
 ) error {
 	af.registrationCommand = command
 	af.registrationCalls++
@@ -46,9 +46,9 @@ func (af *authenticationEntryHTTPApplication) RegisterLocalUser(
 
 func (af *authenticationEntryHTTPApplication) Login(
 	_ context.Context,
-	_ application.Invocation,
-	command application.LoginCommand,
-) (*application.LoginResult, error) {
+	_ app.Invocation,
+	command app.LoginCommand,
+) (*app.LoginResult, error) {
 	af.loginCommand = command
 	af.loginCalls++
 	return af.loginResult, af.loginError
@@ -56,8 +56,8 @@ func (af *authenticationEntryHTTPApplication) Login(
 
 func (af *authenticationEntryHTTPApplication) Logout(
 	_ context.Context,
-	_ application.Invocation,
-	command application.LogoutCommand,
+	_ app.Invocation,
+	command app.LogoutCommand,
 ) error {
 	af.logoutCommand = command
 	af.logoutCalls++
@@ -68,16 +68,16 @@ type externalAuthenticationEntryHTTPApplication struct {
 	externalAuthenticationEntryApplication
 	providers       []model.ExternalAuthenticationProvider
 	providersError  error
-	beginCommand    application.BeginExternalAuthenticationCommand
+	beginCommand    app.BeginExternalAuthenticationCommand
 	start           *model.ExternalAuthenticationStart
-	completeCommand application.CompleteExternalAuthenticationCommand
+	completeCommand app.CompleteExternalAuthenticationCommand
 	completion      *model.ExternalAuthenticationCompletion
 }
 
 func (af *externalAuthenticationEntryHTTPApplication) CompleteExternalAuthentication(
 	_ context.Context,
-	_ application.Invocation,
-	command application.CompleteExternalAuthenticationCommand,
+	_ app.Invocation,
+	command app.CompleteExternalAuthenticationCommand,
 ) (*model.ExternalAuthenticationCompletion, error) {
 	af.completeCommand = command
 	return af.completion, nil
@@ -123,8 +123,8 @@ func TestExternalAuthenticationCallbackReturnsValidatedRedirectAndCookies(t *tes
 
 func (af *externalAuthenticationEntryHTTPApplication) BeginExternalAuthentication(
 	_ context.Context,
-	_ application.Invocation,
-	command application.BeginExternalAuthenticationCommand,
+	_ app.Invocation,
+	command app.BeginExternalAuthenticationCommand,
 ) (*model.ExternalAuthenticationStart, error) {
 	af.beginCommand = command
 	return af.start, nil
@@ -203,7 +203,7 @@ func TestAuthenticationResourceRunsPublicAndSessionEntriesThroughKernel(t *testi
 		ClientType: model.SessionClientCLI, AuthenticatedAt: now,
 	}
 	authentication := &authenticationEntryHTTPApplication{
-		loginResult: &application.LoginResult{
+		loginResult: &app.LoginResult{
 			User: &model.User{ID: principal.UserID, Username: "student", Email: "student@example.edu"},
 			Session: &model.Session{
 				ID: principal.SessionID, UserID: principal.UserID, ClientType: model.SessionClientWeb,

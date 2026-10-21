@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -24,19 +24,19 @@ import (
 type affiliationHTTPApplication struct {
 	result        *model.Affiliation
 	values        []*model.Affiliation
-	createCommand application.CreateAffiliationCommand
-	endCommand    application.EndAffiliationCommand
+	createCommand app.CreateAffiliationCommand
+	endCommand    app.EndAffiliationCommand
 	listErr       error
 }
 
-func (a *affiliationHTTPApplication) ListAffiliations(context.Context, application.Invocation, application.ListAffiliationsQuery) ([]*model.Affiliation, error) {
+func (a *affiliationHTTPApplication) ListAffiliations(context.Context, app.Invocation, app.ListAffiliationsQuery) ([]*model.Affiliation, error) {
 	return a.values, a.listErr
 }
-func (a *affiliationHTTPApplication) CreateAffiliation(_ context.Context, _ application.Invocation, command application.CreateAffiliationCommand) (*model.Affiliation, error) {
+func (a *affiliationHTTPApplication) CreateAffiliation(_ context.Context, _ app.Invocation, command app.CreateAffiliationCommand) (*model.Affiliation, error) {
 	a.createCommand = command
 	return a.result, nil
 }
-func (a *affiliationHTTPApplication) EndAffiliation(_ context.Context, _ application.Invocation, command application.EndAffiliationCommand) (*model.Affiliation, error) {
+func (a *affiliationHTTPApplication) EndAffiliation(_ context.Context, _ app.Invocation, command app.EndAffiliationCommand) (*model.Affiliation, error) {
 	a.endCommand = command
 	return a.result, nil
 }

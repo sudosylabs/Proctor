@@ -12,7 +12,7 @@ import (
 	"net/url"
 	"strconv"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -52,9 +52,9 @@ func usesMembershipPaging(request *http.Request) bool {
 	return values.Has("limit") || values.Has("cursor")
 }
 
-func membershipPageQuery(request *http.Request, scope model.Resource) (application.MembershipPageQuery, membershipPageCursor, error) {
+func membershipPageQuery(request *http.Request, scope model.Resource) (app.MembershipPageQuery, membershipPageCursor, error) {
 	values := request.URL.Query()
-	query := application.MembershipPageQuery{Limit: 50}
+	query := app.MembershipPageQuery{Limit: 50}
 	var cursor membershipPageCursor
 	for _, key := range []string{"limit", "cursor", "active_at", "history"} {
 		if entries, present := values[key]; present && (len(entries) != 1 || entries[0] == "") {

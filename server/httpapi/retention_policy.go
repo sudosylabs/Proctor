@@ -11,15 +11,15 @@ import (
 	"context"
 	"net/http"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 // RetentionPolicyApplication is the transport's complete policy capability.
 type RetentionPolicyApplication interface {
-	GetRetentionPolicy(context.Context, application.Invocation) (*model.RetentionPolicy, error)
-	ReplaceRetentionPolicy(context.Context, application.Invocation, application.ReplaceRetentionPolicyCommand) (*model.RetentionPolicy, error)
+	GetRetentionPolicy(context.Context, app.Invocation) (*model.RetentionPolicy, error)
+	ReplaceRetentionPolicy(context.Context, app.Invocation, app.ReplaceRetentionPolicyCommand) (*model.RetentionPolicy, error)
 }
 
 type retentionPolicyRequest struct {
@@ -115,7 +115,7 @@ func (m retentionPolicyResourceModule) replace(
 	policy, err := m.application.ReplaceRetentionPolicy(
 		request.context,
 		request.invocation(),
-		application.ReplaceRetentionPolicyCommand{
+		app.ReplaceRetentionPolicyCommand{
 			ExpectedRevision: body.ExpectedRevision,
 			Settings:         settings,
 			IdempotencyKey:   request.idempotencyKey,

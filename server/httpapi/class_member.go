@@ -10,7 +10,7 @@ package httpapi
 import (
 	"net/http"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -77,7 +77,7 @@ func (m classMemberResourceModule) list(request operationRequest) (operationResu
 		if err != nil {
 			return operationResult{}, err
 		}
-		page, err := m.members.ListClassMembersPage(request.context, request.invocation(), application.ListClassMembersPageQuery{ClassID: classID, MembershipPageQuery: query, AfterUserID: model.UserID(after.AfterUserID), AfterID: model.ClassMemberID(after.AfterID)})
+		page, err := m.members.ListClassMembersPage(request.context, request.invocation(), app.ListClassMembersPageQuery{ClassID: classID, MembershipPageQuery: query, AfterUserID: model.UserID(after.AfterUserID), AfterID: model.ClassMemberID(after.AfterID)})
 		if err != nil {
 			return operationResult{}, err
 		}
@@ -96,7 +96,7 @@ func (m classMemberResourceModule) list(request operationRequest) (operationResu
 	if err != nil {
 		return operationResult{}, err
 	}
-	members, err := m.members.ListClassMembers(request.context, request.invocation(), application.ListClassMembersQuery{ClassID: classID, ActiveAt: activeAt})
+	members, err := m.members.ListClassMembers(request.context, request.invocation(), app.ListClassMembersQuery{ClassID: classID, ActiveAt: activeAt})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -120,7 +120,7 @@ func (m classMemberResourceModule) enroll(request operationRequest) (operationRe
 	if err != nil {
 		return operationResult{}, err
 	}
-	enrollment, err := m.members.EnrollClassMember(request.context, request.invocation(), application.EnrollClassMemberCommand{ClassID: classID, UserID: body.UserID, StartAt: startAt, EndAt: endAt})
+	enrollment, err := m.members.EnrollClassMember(request.context, request.invocation(), app.EnrollClassMemberCommand{ClassID: classID, UserID: body.UserID, StartAt: startAt, EndAt: endAt})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -132,7 +132,7 @@ func (m classMemberResourceModule) end(request operationRequest) (operationResul
 	if err != nil {
 		return operationResult{}, err
 	}
-	ended, err := m.members.EndClassMember(request.context, request.invocation(), application.EndClassMemberCommand{ID: id})
+	ended, err := m.members.EndClassMember(request.context, request.invocation(), app.EndClassMemberCommand{ID: id})
 	if err != nil {
 		return operationResult{}, err
 	}

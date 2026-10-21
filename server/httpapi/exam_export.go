@@ -13,14 +13,14 @@ import (
 	"net/http"
 	"slices"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type ExamExportsApplication interface {
-	CreateExamExport(context.Context, application.Invocation, application.CreateExamExportCommand) (*model.ExamExport, error)
-	GetExamExport(context.Context, application.Invocation, application.ExamExportQuery) (*model.ExamExport, error)
-	OpenExamExport(context.Context, application.Invocation, application.ExamExportQuery) (*application.ExamExportDownload, error)
+	CreateExamExport(context.Context, app.Invocation, app.CreateExamExportCommand) (*model.ExamExport, error)
+	GetExamExport(context.Context, app.Invocation, app.ExamExportQuery) (*model.ExamExport, error)
+	OpenExamExport(context.Context, app.Invocation, app.ExamExportQuery) (*app.ExamExportDownload, error)
 }
 
 type examExportsHTTPModule struct {
@@ -28,10 +28,10 @@ type examExportsHTTPModule struct {
 	submission  bool
 }
 
-func examExportsResource(app ExamExportsApplication) resource {
+func examExportsResource(application ExamExportsApplication) resource {
 	var routes []routeDefinition
 	for _, submission := range []bool{false, true} {
-		m := examExportsHTTPModule{application: app, submission: submission}
+		m := examExportsHTTPModule{application: application, submission: submission}
 		parts := []pathPart{literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id")}
 		if submission {
 			parts = append(parts, literal("submissions"), canonicalID("submission_id"))
@@ -108,16 +108,16 @@ func (m examExportsHTTPModule) scope(request operationRequest) (model.RetentionH
 	return model.RetentionHoldScope{ExamID: exam, SittingID: sitting}, err
 }
 
-func (m examExportsHTTPModule) query(request operationRequest) (application.ExamExportQuery, error) {
+func (m examExportsHTTPModule) query(request operationRequest) (app.ExamExportQuery, error) {
 	scope, err := m.scope(request)
 	if err != nil {
-		return application.ExamExportQuery{}, err
+		return app.ExamExportQuery{}, err
 	}
 	id, err := request.params.RequireExamExportID()
 	if err != nil {
-		return application.ExamExportQuery{}, err
+		return app.ExamExportQuery{}, err
 	}
-	return application.ExamExportQuery{Scope: scope, ExportID: id}, nil
+	return app.ExamExportQuery{Scope: scope, ExportID: id}, nil
 }
 
 func (m examExportsHTTPModule) create(request operationRequest) (operationResult, error) {
@@ -136,7 +136,7 @@ func (m examExportsHTTPModule) create(request operationRequest) (operationResult
 	if !model.ValidExamExportCategories(categories) {
 		return operationResult{}, invalidRequestError(errors.New("select distinct work and/or integrity categories"))
 	}
-	value, err := m.application.CreateExamExport(request.context, request.invocation(), application.CreateExamExportCommand{Scope: scope, Categories: categories, IdempotencyKey: request.idempotencyKey})
+	value, err := m.application.CreateExamExport(request.context, request.invocation(), app.CreateExamExportCommand{Scope: scope, Categories: categories, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
 	}

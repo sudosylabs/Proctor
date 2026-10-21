@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -44,7 +44,7 @@ func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 		t.Fatal(err)
 	}
 	password := "correct horse battery staple"
-	user, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
+	user, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "security-auditor", Email: "security-auditor@example.edu",
 		DisplayName: "Security Auditor",
 	}, Password: password})
@@ -199,7 +199,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 		t.Fatal(err)
 	}
 	password := "correct horse battery staple"
-	user, err := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
+	user, err := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "hierarchy-teacher", Email: "hierarchy-teacher@example.edu",
 		DisplayName: "Hierarchy Teacher",
 	}, Password: password})
@@ -312,14 +312,14 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		t.Fatal(err)
 	}
 	password := "correct horse battery staple"
-	viewer, err := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
+	viewer, err := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "directory-viewer", Email: "directory-viewer@example.edu",
 		DisplayName: "Directory Viewer",
 	}, Password: password})
 	if err != nil {
 		t.Fatal(err)
 	}
-	target, err := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
+	target, err := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "directory-target", Email: "directory-target@example.edu",
 		DisplayName: "Directory Target",
 	}, Password: password})
@@ -357,19 +357,19 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		t.Fatalf("self management without permission = %v, %v", allowed, permErr)
 	}
 	if authErr := helper.App.Authorize(
-		ctx, application.NewInvocation(*principal, metadata), model.ActionUserProfilePictureManage,
+		ctx, app.NewInvocation(*principal, metadata), model.ActionUserProfilePictureManage,
 		model.Resource{Type: model.ResourceUser, ID: viewer.ID.String()},
 	); authErr != nil {
 		t.Fatalf("self profile-picture authorization = %v", authErr)
 	}
 	if authErr := helper.App.Authorize(
-		ctx, application.NewInvocation(*principal, metadata), model.ActionUserProfilePictureManage,
+		ctx, app.NewInvocation(*principal, metadata), model.ActionUserProfilePictureManage,
 		model.Resource{Type: model.ResourceUser, ID: target.ID.String()},
 	); !apperror.Is(authErr, "authorization.denied") {
 		t.Fatalf("cross-user profile-picture authorization = %v", authErr)
 	}
 	if _, err := helper.App.GetUserProfile(
-		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.ID},
+		ctx, app.NewInvocation(*principal, metadata), app.GetUserProfileQuery{ID: target.ID},
 	); !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("unbound cross-user read error = %v", err)
 	}
@@ -390,7 +390,7 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 	}
 
 	visible, err := helper.App.GetUserProfile(
-		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.ID},
+		ctx, app.NewInvocation(*principal, metadata), app.GetUserProfileQuery{ID: target.ID},
 	)
 	if err != nil || visible.ID != target.ID {
 		t.Fatalf("authorized cross-user read = %#v, %v", visible, err)
@@ -407,7 +407,7 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := helper.App.GetUserProfile(
-		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.ID},
+		ctx, app.NewInvocation(*principal, metadata), app.GetUserProfileQuery{ID: target.ID},
 	); !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("ended binding cross-user read error = %v", err)
 	}
@@ -515,7 +515,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	password := "correct horse battery staple"
 	createUser := func(username string) *model.User {
 		t.Helper()
-		user, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
+		user, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 			Username: username, Email: username + "@example.edu", DisplayName: username,
 			EmailVerified: true, Locale: "fr", Timezone: "Europe/Paris",
 		}, Password: password})
@@ -630,7 +630,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	invocation := application.NewInvocation(*principal, model.RequestMetadata{
+	invocation := app.NewInvocation(*principal, model.RequestMetadata{
 		RequestID: model.NewID(), IPAddress: "127.0.0.1", UserAgent: "access-visibility-integration-test",
 	})
 
@@ -863,7 +863,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 		t.Fatalf("historical user read status = %d: %s", historicalRead.Code, historicalRead.Body.String())
 	}
 
-	bindings, listErr := helper.App.ListRoleBindings(ctx, invocation, application.ListRoleBindingsQuery{UserID: bindingUser.ID.String()})
+	bindings, listErr := helper.App.ListRoleBindings(ctx, invocation, app.ListRoleBindingsQuery{UserID: bindingUser.ID.String()})
 	if listErr != nil {
 		t.Fatal(listErr)
 	}

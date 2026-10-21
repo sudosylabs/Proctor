@@ -16,36 +16,36 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type retentionHTTPFake struct {
 	RetentionApplication
-	control    application.ChangeRetentionControlCommand
-	preview    application.CreateRetentionPreviewCommand
-	noticePage *application.RetentionNoticePage
-	recordPage *application.RetentionRecordPage
+	control    app.ChangeRetentionControlCommand
+	preview    app.CreateRetentionPreviewCommand
+	noticePage *app.RetentionNoticePage
+	recordPage *app.RetentionRecordPage
 	after      model.RetentionRetirementID
 	calls      int
 }
 
-func (f *retentionHTTPFake) ChangeRetentionControl(_ context.Context, _ application.Invocation, c application.ChangeRetentionControlCommand) (*model.RetentionControl, error) {
+func (f *retentionHTTPFake) ChangeRetentionControl(_ context.Context, _ app.Invocation, c app.ChangeRetentionControlCommand) (*model.RetentionControl, error) {
 	f.calls++
 	f.control = c
 	return &model.RetentionControl{Revision: 2, State: c.State, ApprovedPolicyRevision: c.ExpectedPolicyRevision, ApprovedPreviewID: c.PreviewID, UpdatedAt: model.NowUTC()}, nil
 }
-func (f *retentionHTTPFake) CreateRetentionPreview(_ context.Context, _ application.Invocation, c application.CreateRetentionPreviewCommand) (*model.RetentionPreview, error) {
+func (f *retentionHTTPFake) CreateRetentionPreview(_ context.Context, _ app.Invocation, c app.CreateRetentionPreviewCommand) (*model.RetentionPreview, error) {
 	f.calls++
 	f.preview = c
 	return &model.RetentionPreview{ID: model.NewRetentionPreviewID(), PolicyRevision: c.ExpectedPolicyRevision, CreatedAt: model.NowUTC(), ExpiresAt: model.NowUTC().Add(time.Hour)}, nil
 }
-func (f *retentionHTTPFake) ListRetentionNotices(_ context.Context, _ application.Invocation, after model.RetentionRetirementID, _ int) (*application.RetentionNoticePage, error) {
+func (f *retentionHTTPFake) ListRetentionNotices(_ context.Context, _ app.Invocation, after model.RetentionRetirementID, _ int) (*app.RetentionNoticePage, error) {
 	f.calls++
 	f.after = after
 	return f.noticePage, nil
 }
-func (f *retentionHTTPFake) ListRetentionRecords(context.Context, application.Invocation, model.SubmissionID, int) (*application.RetentionRecordPage, error) {
+func (f *retentionHTTPFake) ListRetentionRecords(context.Context, app.Invocation, model.SubmissionID, int) (*app.RetentionRecordPage, error) {
 	f.calls++
 	return f.recordPage, nil
 }
@@ -90,16 +90,16 @@ func TestRetentionHTTPControlRequiresInteractiveRecentProofAndIdempotency(t *tes
 		t.Run(test.name, func(t *testing.T) {
 			p := principal
 			test.alter(&p)
-			app := &retentionHTTPFake{}
-			api := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: p}, retentionResource(app))
+			application := &retentionHTTPFake{}
+			api := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: p}, retentionResource(application))
 			r := serveRetentionHTTP(api, "PUT", "/api/v1/retention/control", body, test.key)
 			if r.Code != test.want {
 				t.Fatalf("status=%d body=%s", r.Code, r.Body.String())
 			}
-			if test.want != 200 && app.calls != 0 {
+			if test.want != 200 && application.calls != 0 {
 				t.Fatal("blocked control reached application")
 			}
-			if test.want == 200 && (app.control.PreviewID != previewID || app.control.ExpectedPolicyRevision != 3 || app.control.IdempotencyKey != test.key || r.Header().Get("Cache-Control") != "private, no-store") {
+			if test.want == 200 && (application.control.PreviewID != previewID || application.control.ExpectedPolicyRevision != 3 || application.control.IdempotencyKey != test.key || r.Header().Get("Cache-Control") != "private, no-store") {
 				t.Fatal("approval contract lost")
 			}
 		})
@@ -108,10 +108,10 @@ func TestRetentionHTTPControlRequiresInteractiveRecentProofAndIdempotency(t *tes
 func TestRetentionHTTPRejectsUnknownFieldsAndCrossPurposeCursors(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
-	app := &retentionHTTPFake{}
-	api := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: retentionHTTPPrincipal()}, retentionResource(app))
+	application := &retentionHTTPFake{}
+	api := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: retentionHTTPPrincipal()}, retentionResource(application))
 	r := serveRetentionHTTP(api, "POST", "/api/v1/retention/previews", `{"expected_policy_revision":1,"delete_now":true}`, "preview")
-	if r.Code != 400 || app.calls != 0 {
+	if r.Code != 400 || application.calls != 0 {
 		t.Fatal("unknown destructive parameter reached application")
 	}
 	cursor, err := encodeOpaqueCursor(retentionCursor{After: model.NewSubmissionID().String()}, retentionCursorSpec())
@@ -120,7 +120,7 @@ func TestRetentionHTTPRejectsUnknownFieldsAndCrossPurposeCursors(t *testing.T) {
 	}
 	for _, query := range []string{"?cursor=" + cursor, "?limit=1&limit=2", "?user_id=" + model.NewUserID().String(), "?limit=201"} {
 		r = serveRetentionHTTP(api, "GET", "/api/v1/users/me/retention-notices"+query, "", "")
-		if r.Code != 400 || app.calls != 0 {
+		if r.Code != 400 || application.calls != 0 {
 			t.Fatalf("bad query admitted: %s %d", query, r.Code)
 		}
 	}
@@ -130,8 +130,8 @@ func TestRetentionHTTPNoticeProjectionIsRecipientOnlyAndBounded(t *testing.T) {
 	logger, _ := newTestLogger(t)
 	p := retentionHTTPPrincipal()
 	notice := model.RetentionNotice{RetirementID: model.NewRetentionRetirementID(), RecipientUserID: p.UserID, Scope: model.RetentionHoldScope{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), SubmissionID: model.NewSubmissionID()}, Category: model.RetentionCategoryWork, State: model.RetentionRetirementGrace, CreatedAt: model.NowUTC(), RetireAfter: model.NowUTC().Add(7 * 24 * time.Hour), DeliveryState: "failed", DeliveryErrorCode: "mail.preparation_unavailable"}
-	app := &retentionHTTPFake{noticePage: &application.RetentionNoticePage{Items: []model.RetentionNotice{notice}, HasMore: true}}
-	api := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: p}, retentionResource(app))
+	application := &retentionHTTPFake{noticePage: &app.RetentionNoticePage{Items: []model.RetentionNotice{notice}, HasMore: true}}
+	api := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: p}, retentionResource(application))
 	r := serveRetentionHTTP(api, "GET", "/api/v1/users/me/retention-notices?limit=1", "", "")
 	var page retentionNoticesResponse
 	if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &page) != nil || len(page.Items) != 1 || page.NextCursor == "" || r.Header().Get("Cache-Control") != "private, no-store" {
@@ -140,13 +140,13 @@ func TestRetentionHTTPNoticeProjectionIsRecipientOnlyAndBounded(t *testing.T) {
 	if strings.Contains(r.Body.String(), "recipient_user_id") {
 		t.Fatal("notice leaked recipient selection")
 	}
-	app.noticePage = &application.RetentionNoticePage{Items: []model.RetentionNotice{}}
+	application.noticePage = &app.RetentionNoticePage{Items: []model.RetentionNotice{}}
 	r = serveRetentionHTTP(api, "GET", "/api/v1/users/me/retention-notices?limit=1&cursor="+page.NextCursor, "", "")
-	if r.Code != 200 || app.after != notice.RetirementID {
+	if r.Code != 200 || application.after != notice.RetirementID {
 		t.Fatal("cursor did not roundtrip")
 	}
 	notice.RecipientUserID = model.NewUserID()
-	app.noticePage = &application.RetentionNoticePage{Items: []model.RetentionNotice{notice}}
+	application.noticePage = &app.RetentionNoticePage{Items: []model.RetentionNotice{notice}}
 	r = serveRetentionHTTP(api, "GET", "/api/v1/users/me/retention-notices", "", "")
 	if r.Code != 500 {
 		t.Fatal("wrong recipient response exposed")

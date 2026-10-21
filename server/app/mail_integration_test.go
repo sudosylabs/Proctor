@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
@@ -37,7 +37,7 @@ func TestControlledMailUsesRealApplicationGraphAndDurableWorker(t *testing.T) {
 	)
 	ctx := context.Background()
 	const password = "correct horse battery staple"
-	bootstrap, appErr := helper.App.BootstrapInstallation(ctx, application.Invocation{}, application.BootstrapInstallationCommand{
+	bootstrap, appErr := helper.App.BootstrapInstallation(ctx, app.Invocation{}, app.BootstrapInstallationCommand{
 		InstitutionName: "mail-university", InstitutionDisplayName: "Mail University",
 		AdministratorUsername: "mail-operator", AdministratorEmail: "mail-operator@example.edu",
 		AdministratorDisplayName: "Mail Operator", AdministratorLocale: "en", AdministratorTimezone: "UTC",
@@ -57,7 +57,7 @@ func TestControlledMailUsesRealApplicationGraphAndDurableWorker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	login, appErr := helper.App.Login(ctx, application.Invocation{}, application.LoginCommand{
+	login, appErr := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{
 		LoginID: operator.Username, Password: password, ClientType: model.SessionClientWeb,
 		Source: "127.0.0.1:1", DeviceName: "mail-integration",
 	})
@@ -68,7 +68,7 @@ func TestControlledMailUsesRealApplicationGraphAndDurableWorker(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	invocation := application.NewInvocation(*principal, model.RequestMetadata{RequestID: "mail-integration"})
+	invocation := app.NewInvocation(*principal, model.RequestMetadata{RequestID: "mail-integration"})
 	queued, appErr := helper.App.SendTestMail(ctx, invocation)
 	if appErr != nil {
 		t.Fatal(appErr)
@@ -76,7 +76,7 @@ func TestControlledMailUsesRealApplicationGraphAndDurableWorker(t *testing.T) {
 	if queued.TargetUserID != operator.ID || queued.State != model.MailDeliveryQueued || queued.MaskedRecipient != "m***@example.edu" {
 		t.Fatalf("queued delivery = %#v", queued)
 	}
-	page, appErr := helper.App.ListMailDeliveries(ctx, invocation, application.ListMailDeliveriesQuery{States: []model.MailDeliveryState{model.MailDeliveryQueued}, TemplateKeys: []model.MailTemplateKey{model.MailTemplateSystemTest}, Limit: 20})
+	page, appErr := helper.App.ListMailDeliveries(ctx, invocation, app.ListMailDeliveriesQuery{States: []model.MailDeliveryState{model.MailDeliveryQueued}, TemplateKeys: []model.MailTemplateKey{model.MailTemplateSystemTest}, Limit: 20})
 	if appErr != nil || len(page.Items) != 1 || page.Items[0].ID != queued.ID {
 		t.Fatalf("queued delivery page = %#v, %v", page, appErr)
 	}

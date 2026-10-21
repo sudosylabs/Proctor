@@ -13,7 +13,7 @@ import (
 	"net/http"
 	"strconv"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -21,11 +21,11 @@ import (
 const defaultJobPageSize = 50
 
 type JobOperationsApplication interface {
-	ListJobs(context.Context, application.Invocation, application.ListJobsQuery) (application.JobPage, error)
-	GetJob(context.Context, application.Invocation, application.GetJobQuery) (application.JobView, error)
-	ListJobAttempts(context.Context, application.Invocation, application.ListJobAttemptsQuery) (application.JobAttemptPage, error)
-	CancelJob(context.Context, application.Invocation, application.CancelJobCommand) (application.JobView, error)
-	RetryJob(context.Context, application.Invocation, application.RetryJobCommand) (application.JobView, error)
+	ListJobs(context.Context, app.Invocation, app.ListJobsQuery) (app.JobPage, error)
+	GetJob(context.Context, app.Invocation, app.GetJobQuery) (app.JobView, error)
+	ListJobAttempts(context.Context, app.Invocation, app.ListJobAttemptsQuery) (app.JobAttemptPage, error)
+	CancelJob(context.Context, app.Invocation, app.CancelJobCommand) (app.JobView, error)
+	RetryJob(context.Context, app.Invocation, app.RetryJobCommand) (app.JobView, error)
 }
 
 type jobProgressResponse struct {
@@ -124,7 +124,7 @@ func (m jobResourceModule) get(request operationRequest) (operationResult, error
 	if err != nil {
 		return operationResult{}, err
 	}
-	view, err := m.jobs.GetJob(request.context, request.invocation(), application.GetJobQuery{ID: jobID})
+	view, err := m.jobs.GetJob(request.context, request.invocation(), app.GetJobQuery{ID: jobID})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -139,7 +139,7 @@ func (m jobResourceModule) listAttempts(request operationRequest) (operationResu
 	if err != nil {
 		return operationResult{}, apperror.Invalid("request.invalid", "query")
 	}
-	page, appErr := m.jobs.ListJobAttempts(request.context, request.invocation(), application.ListJobAttemptsQuery{JobID: jobID, BeforeNumber: before, Limit: limit})
+	page, appErr := m.jobs.ListJobAttempts(request.context, request.invocation(), app.ListJobAttemptsQuery{JobID: jobID, BeforeNumber: before, Limit: limit})
 	if appErr != nil {
 		return operationResult{}, appErr
 	}
@@ -160,7 +160,7 @@ func (m jobResourceModule) cancel(request operationRequest) (operationResult, er
 	if err != nil {
 		return operationResult{}, err
 	}
-	view, err := m.jobs.CancelJob(request.context, request.invocation(), application.CancelJobCommand{ID: jobID})
+	view, err := m.jobs.CancelJob(request.context, request.invocation(), app.CancelJobCommand{ID: jobID})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -171,22 +171,22 @@ func (m jobResourceModule) retry(request operationRequest) (operationResult, err
 	if err != nil {
 		return operationResult{}, err
 	}
-	view, err := m.jobs.RetryJob(request.context, request.invocation(), application.RetryJobCommand{ID: jobID})
+	view, err := m.jobs.RetryJob(request.context, request.invocation(), app.RetryJobCommand{ID: jobID})
 	if err != nil {
 		return operationResult{}, err
 	}
 	return jsonResult(http.StatusOK, jobResponseFromApplication(view)), nil
 }
-func listJobsQuery(r *http.Request) (application.ListJobsQuery, error) {
+func listJobsQuery(r *http.Request) (app.ListJobsQuery, error) {
 	limit := defaultJobPageSize
 	if raw := r.URL.Query().Get("limit"); raw != "" {
 		value, err := strconv.Atoi(raw)
 		if err != nil || value < 1 || value > 200 {
-			return application.ListJobsQuery{}, err
+			return app.ListJobsQuery{}, err
 		}
 		limit = value
 	}
-	query := application.ListJobsQuery{Limit: limit}
+	query := app.ListJobsQuery{Limit: limit}
 	if raw := r.URL.Query().Get("cursor"); raw != "" {
 		cursor, err := decodeJobCursor(raw)
 		if err != nil {
@@ -262,7 +262,7 @@ func jobAttemptCursorSpec() opaqueCursorSpec[jobAttemptCursor] {
 		},
 	}
 }
-func jobResponseFromApplication(view application.JobView) jobResponse {
+func jobResponseFromApplication(view app.JobView) jobResponse {
 	response := jobResponse{ID: view.ID.String(), Type: view.Type, Status: view.Status, CreatedAt: model.FormatRFC3339(view.CreatedAt), UpdatedAt: model.FormatRFC3339(view.UpdatedAt), AvailableAt: model.FormatRFC3339(view.AvailableAt), PublicErrorCode: view.PublicErrorCode, AttemptCount: view.AttemptCount, MaximumAttempts: view.MaximumAttempts, Revision: view.Revision}
 	if view.StartedAt.Valid {
 		response.StartedAt = model.FormatRFC3339(view.StartedAt.Time)
@@ -275,7 +275,7 @@ func jobResponseFromApplication(view application.JobView) jobResponse {
 	}
 	return response
 }
-func jobAttemptResponseFromApplication(view application.JobAttemptView) jobAttemptResponse {
+func jobAttemptResponseFromApplication(view app.JobAttemptView) jobAttemptResponse {
 	response := jobAttemptResponse{ID: view.ID.String(), Number: view.Number, Status: view.Status, StartedAt: model.FormatRFC3339(view.StartedAt), HeartbeatAt: model.FormatRFC3339(view.HeartbeatAt), LeaseExpiresAt: model.FormatRFC3339(view.LeaseExpiresAt), PublicErrorCode: view.PublicErrorCode}
 	if view.CompletedAt.Valid {
 		response.CompletedAt = model.FormatRFC3339(view.CompletedAt.Time)

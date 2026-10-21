@@ -11,16 +11,16 @@ import (
 	"context"
 	"net/http"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type authenticationMethodApplication interface {
-	AuthenticationMethods(context.Context, application.Invocation) (application.AuthenticationMethodView, error)
-	EnrollPassword(context.Context, application.Invocation, string) error
-	RemovePassword(context.Context, application.Invocation) error
-	BeginProviderConnection(context.Context, application.Invocation, application.BeginProviderConnectionCommand) (*model.ExternalAuthenticationStart, error)
-	UnlinkExternalIdentity(context.Context, application.Invocation, model.ExternalIdentityID) error
+	AuthenticationMethods(context.Context, app.Invocation) (app.AuthenticationMethodView, error)
+	EnrollPassword(context.Context, app.Invocation, string) error
+	RemovePassword(context.Context, app.Invocation) error
+	BeginProviderConnection(context.Context, app.Invocation, app.BeginProviderConnectionCommand) (*model.ExternalAuthenticationStart, error)
+	UnlinkExternalIdentity(context.Context, app.Invocation, model.ExternalIdentityID) error
 }
 
 type authenticationMethodResourceModule struct {
@@ -49,8 +49,8 @@ type providerConnectionResponse struct {
 	ExpiresAt   string `json:"expires_at"`
 }
 
-func authenticationMethodResource(app authenticationMethodApplication, cookies browserCookies) resource {
-	m := authenticationMethodResourceModule{application: app, cookies: cookies}
+func authenticationMethodResource(application authenticationMethodApplication, cookies browserCookies) resource {
+	m := authenticationMethodResourceModule{application: application, cookies: cookies}
 	base := apiPath(literal("authentication-methods"))
 	password := appendRoutePath(base, literal("password"))
 	return newResource("authentication-method",
@@ -109,7 +109,7 @@ func (m authenticationMethodResourceModule) connect(request operationRequest) (o
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	start, err := m.application.BeginProviderConnection(request.context, request.invocation(), application.BeginProviderConnectionCommand{ProviderID: providerID, ReturnTo: body.ReturnTo, Source: request.metadata.IPAddress})
+	start, err := m.application.BeginProviderConnection(request.context, request.invocation(), app.BeginProviderConnectionCommand{ProviderID: providerID, ReturnTo: body.ReturnTo, Source: request.metadata.IPAddress})
 	if err != nil {
 		return operationResult{}, err
 	}

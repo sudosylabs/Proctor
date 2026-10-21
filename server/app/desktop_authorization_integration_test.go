@@ -24,7 +24,7 @@ import (
 	"time"
 
 	server "github.com/sudosylabs/proctor/server"
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
@@ -79,10 +79,10 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 	if err != nil || institution == nil {
 		t.Fatalf("save institution: %#v, %v", institution, err)
 	}
-	compatibility, err := primary.App.EvaluateDesktopCompatibility(t.Context(), application.DesktopCompatibilityQuery{
+	compatibility, err := primary.App.EvaluateDesktopCompatibility(t.Context(), app.DesktopCompatibilityQuery{
 		DesktopRelease: build.DesktopRelease, DesktopBuildID: build.DesktopBuildID, Platform: string(build.Platform), Architecture: string(build.Architecture), RealtimeProtocol: build.RealtimeProtocol,
 	})
-	if err != nil || compatibility.Compatibility != application.DesktopCompatibilityCompatible {
+	if err != nil || compatibility.Compatibility != app.DesktopCompatibilityCompatible {
 		t.Fatalf("configured build unavailable: %#v, %v", compatibility, err)
 	}
 
@@ -90,21 +90,21 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 		// The test graph must ignore the host environment and default to strict
 		// compatibility even when the test binary itself was built without production.
 		strict := testlib.Setup(t, testlib.WithConfig(publicOrigin), testlib.WithStore(openAdditionalUserSettingsStore(t, dataSource)))
-		result, err := strict.App.EvaluateDesktopCompatibility(t.Context(), application.DesktopCompatibilityQuery{
+		result, err := strict.App.EvaluateDesktopCompatibility(t.Context(), app.DesktopCompatibilityQuery{
 			DesktopRelease: build.DesktopRelease, DesktopBuildID: build.DesktopBuildID, Platform: string(build.Platform), Architecture: string(build.Architecture), RealtimeProtocol: build.RealtimeProtocol,
 		})
-		if err != nil || result.Compatibility != application.DesktopCompatibilityUnsupportedTarget {
+		if err != nil || result.Compatibility != app.DesktopCompatibilityUnsupportedTarget {
 			t.Fatalf("default test graph bypassed compatibility: %#v, %v", result, err)
 		}
 	}
 
-	user, err := primary.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
+	user, err := primary.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "desktop-user", Email: "desktop-user@example.edu",
 	}, Password: "correct horse battery staple"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	web, err := primary.App.Login(ctx, application.Invocation{}, application.LoginCommand{
+	web, err := primary.App.Login(ctx, app.Invocation{}, app.LoginCommand{
 		LoginID: user.Username, Password: "correct horse battery staple",
 		ClientType: model.SessionClientWeb, DeviceID: "browser", Source: "127.0.0.1:1",
 	})
@@ -119,7 +119,7 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 	state := model.NewCredentialToken()
 	verifier := model.NewCredentialToken()
 	privateKey, publicJWK := integrationDesktopDPoPKey(t)
-	started, err := primary.App.StartDesktopAuthorization(ctx, application.Invocation{}, application.StartDesktopAuthorizationCommand{
+	started, err := primary.App.StartDesktopAuthorization(ctx, app.Invocation{}, app.StartDesktopAuthorizationCommand{
 		CallbackURL: "http://127.0.0.1:49152/" + model.NewCredentialToken(),
 		State:       state, CodeChallenge: model.PKCES256Challenge(verifier),
 		DeviceID: "desktop-device", DeviceName: "Exam laptop",
@@ -134,20 +134,20 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding, err := secondary.App.BindDesktopAuthorization(ctx, application.Invocation{}, application.BindDesktopAuthorizationCommand{
+	binding, err := secondary.App.BindDesktopAuthorization(ctx, app.Invocation{}, app.BindDesktopAuthorizationCommand{
 		Handle: authorizationURL.Query().Get("request"), BrowserProof: authorizationURL.Fragment[len("proof="):], State: state,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	authenticated, err := secondary.App.AuthenticateDesktopAuthorizationSession(ctx,
-		application.NewInvocation(*principal, model.RequestMetadata{RequestID: "desktop-node-b"}),
-		application.AuthenticateDesktopAuthorizationCommand{Binding: binding.Binding})
+		app.NewInvocation(*principal, model.RequestMetadata{RequestID: "desktop-node-b"}),
+		app.AuthenticateDesktopAuthorizationCommand{Binding: binding.Binding})
 	if err != nil || authenticated.Account == nil || authenticated.Account.ID != user.ID {
 		t.Fatalf("authenticate Desktop authorization: %#v, %v", authenticated, err)
 	}
-	approved, err := secondary.App.ApproveDesktopAuthorization(ctx, application.Invocation{},
-		application.ApproveDesktopAuthorizationCommand{Binding: binding.Binding, State: state})
+	approved, err := secondary.App.ApproveDesktopAuthorization(ctx, app.Invocation{},
+		app.ApproveDesktopAuthorizationCommand{Binding: binding.Binding, State: state})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 		"htu": origin + "/api/v1/auth/desktop/token",
 		"iat": time.Now().Unix(), "nonce": started.DPoPNonce,
 	})
-	exchanged, err := primary.App.ExchangeDesktopAuthorization(ctx, application.Invocation{}, application.ExchangeDesktopAuthorizationCommand{
+	exchanged, err := primary.App.ExchangeDesktopAuthorization(ctx, app.Invocation{}, app.ExchangeDesktopAuthorizationCommand{
 		Code: callback.Query().Get("code"), State: state, CodeVerifier: verifier,
 		DPoPProof: proof, PublicJWK: publicJWK,
 		DesktopRelease: build.DesktopRelease, DesktopBuildID: build.DesktopBuildID,
@@ -185,7 +185,7 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 			t.Fatalf("%s audits for approving account = %#v, %v", action, events, listErr)
 		}
 	}
-	if _, _, bearerErr := secondary.App.RefreshSession(ctx, application.Invocation{}, application.RefreshSessionCommand{
+	if _, _, bearerErr := secondary.App.RefreshSession(ctx, app.Invocation{}, app.RefreshSessionCommand{
 		RefreshToken: exchanged.Tokens.RefreshToken,
 	}); !apperror.Is(bearerErr, "authentication.token_invalid") {
 		t.Fatalf("Desktop refresh accepted as Bearer: %v", bearerErr)
@@ -195,16 +195,16 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 		"htu": origin + "/api/v1/auth/refresh",
 		"iat": time.Now().Unix(), "nonce": exchanged.DPoPNonce,
 	})
-	_, _, err = secondary.App.RefreshSession(ctx, application.Invocation{}, application.RefreshSessionCommand{
+	_, _, err = secondary.App.RefreshSession(ctx, app.Invocation{}, app.RefreshSessionCommand{
 		RefreshToken: exchanged.Tokens.RefreshToken,
-		DPoP:         &application.DPoPRequestProof{Proof: refreshProof, Method: "POST", Path: "/api/v1/auth/refresh"},
+		DPoP:         &app.DPoPRequestProof{Proof: refreshProof, Method: "POST", Path: "/api/v1/auth/refresh"},
 	})
 	// The two test nodes have independent disposable caches, so the secondary
 	// challenges the primary's nonce before the client retries with fresh proof.
 	if !apperror.Is(err, "authentication.dpop.use_nonce") {
 		t.Fatalf("cross-node refresh error = %v, want nonce challenge", err)
 	}
-	refreshNonce, ok := application.DPoPChallengeNonce(err)
+	refreshNonce, ok := app.DPoPChallengeNonce(err)
 	if !ok {
 		t.Fatal("cross-node refresh challenge did not provide a replacement nonce")
 	}
@@ -213,9 +213,9 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 		"htu": origin + "/api/v1/auth/refresh",
 		"iat": time.Now().Unix(), "nonce": refreshNonce,
 	})
-	rotatedSession, rotated, err := secondary.App.RefreshSession(ctx, application.Invocation{}, application.RefreshSessionCommand{
+	rotatedSession, rotated, err := secondary.App.RefreshSession(ctx, app.Invocation{}, app.RefreshSessionCommand{
 		RefreshToken: exchanged.Tokens.RefreshToken,
-		DPoP:         &application.DPoPRequestProof{Proof: refreshProof, Method: "POST", Path: "/api/v1/auth/refresh"},
+		DPoP:         &app.DPoPRequestProof{Proof: refreshProof, Method: "POST", Path: "/api/v1/auth/refresh"},
 	})
 	if err != nil {
 		t.Fatal(err)

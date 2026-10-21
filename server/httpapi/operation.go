@@ -17,7 +17,7 @@ import (
 	"strconv"
 	"strings"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -467,8 +467,8 @@ func authRequiresPrincipal(requirement AuthRequirement) bool {
 	}
 }
 
-func (r operationRequest) invocation() application.Invocation {
-	return application.NewInvocation(r.principal, r.metadata)
+func (r operationRequest) invocation() app.Invocation {
+	return app.NewInvocation(r.principal, r.metadata)
 }
 
 func (r operationRequest) decodeJSON(target any) error {

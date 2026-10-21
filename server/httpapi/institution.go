@@ -10,7 +10,7 @@ package httpapi
 import (
 	"net/http"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -122,7 +122,7 @@ func (m institutionResourceModule) get(request operationRequest) (operationResul
 	institution, err := m.institutions.GetInstitution(
 		request.context,
 		request.invocation(),
-		application.GetInstitutionQuery{},
+		app.GetInstitutionQuery{},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -143,7 +143,7 @@ func (m institutionResourceModule) patch(request operationRequest) (operationRes
 	institution, err := m.institutions.UpdateInstitution(
 		request.context,
 		request.invocation(),
-		application.UpdateInstitutionCommand{
+		app.UpdateInstitutionCommand{
 			Name: body.Name.ValuePointer(), DisplayName: body.DisplayName.ValuePointer(),
 			Description:  body.Description.ValuePointer(),
 			ExamCapacity: capacity,

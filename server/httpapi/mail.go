@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -312,7 +312,7 @@ func (m mailResourceModule) retryDelivery(request operationRequest) (operationRe
 	return m.mutateDelivery(request, m.mail.RetryMailDelivery)
 }
 
-func (m mailResourceModule) mutateDelivery(request operationRequest, mutate func(context.Context, application.Invocation, model.MailDeliveryID) (application.MailDeliveryView, error)) (operationResult, error) {
+func (m mailResourceModule) mutateDelivery(request operationRequest, mutate func(context.Context, app.Invocation, model.MailDeliveryID) (app.MailDeliveryView, error)) (operationResult, error) {
 	if m.mail == nil {
 		return operationResult{}, errUnpresentableResult
 	}
@@ -341,8 +341,8 @@ func requireEmptyMailBody(request *http.Request) error {
 	return nil
 }
 
-func listMailDeliveriesQuery(request *http.Request) (application.ListMailDeliveriesQuery, error) {
-	query := application.ListMailDeliveriesQuery{Limit: defaultMailDeliveryPageSize}
+func listMailDeliveriesQuery(request *http.Request) (app.ListMailDeliveriesQuery, error) {
+	query := app.ListMailDeliveriesQuery{Limit: defaultMailDeliveryPageSize}
 	if raw := request.URL.Query().Get("limit"); raw != "" {
 		limit, err := strconv.Atoi(raw)
 		if err != nil || limit < 1 || limit > 200 {
@@ -433,7 +433,7 @@ func mailDeliveryCursorSpec() opaqueCursorSpec[mailDeliveryCursor] {
 	}
 }
 
-func mailResponse(view application.MailDeliveryView) mailDeliveryResponse {
+func mailResponse(view app.MailDeliveryView) mailDeliveryResponse {
 	result := mailDeliveryResponse{ID: view.ID.String(), OccurrenceID: view.OccurrenceID.String(), TargetUserID: view.TargetUserID.String(), TemplateKey: view.TemplateKey, TemplateDigest: view.TemplateDigest, MaskedRecipient: view.MaskedRecipient, State: view.State, CreatedAt: model.FormatRFC3339(view.CreatedAt), UpdatedAt: model.FormatRFC3339(view.UpdatedAt), MessageDate: model.FormatRFC3339(view.MessageDate), Deadline: model.FormatRFC3339(view.Deadline), MessageID: view.MessageID, AttemptCount: view.AttemptCount, PublicFailureCode: view.PublicFailureCode}
 	if view.AcceptedAt.Valid {
 		result.AcceptedAt = view.AcceptedAt.FormatRFC3339()

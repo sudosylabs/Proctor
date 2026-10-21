@@ -10,7 +10,7 @@ package httpapi
 import (
 	"net/http"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -70,7 +70,7 @@ func (m academicUnitMemberResourceModule) list(request operationRequest) (operat
 		if err != nil {
 			return operationResult{}, err
 		}
-		page, err := m.members.ListAcademicUnitMembersPage(request.context, request.invocation(), application.ListAcademicUnitMembersPageQuery{AcademicUnitID: unitID, MembershipPageQuery: query, AfterUserID: model.UserID(after.AfterUserID), AfterID: model.AcademicUnitMemberID(after.AfterID)})
+		page, err := m.members.ListAcademicUnitMembersPage(request.context, request.invocation(), app.ListAcademicUnitMembersPageQuery{AcademicUnitID: unitID, MembershipPageQuery: query, AfterUserID: model.UserID(after.AfterUserID), AfterID: model.AcademicUnitMemberID(after.AfterID)})
 		if err != nil {
 			return operationResult{}, err
 		}
@@ -89,7 +89,7 @@ func (m academicUnitMemberResourceModule) list(request operationRequest) (operat
 	if err != nil {
 		return operationResult{}, err
 	}
-	members, err := m.members.ListAcademicUnitMembers(request.context, request.invocation(), application.ListAcademicUnitMembersQuery{AcademicUnitID: unitID, ActiveAt: activeAt})
+	members, err := m.members.ListAcademicUnitMembers(request.context, request.invocation(), app.ListAcademicUnitMembersQuery{AcademicUnitID: unitID, ActiveAt: activeAt})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -109,7 +109,7 @@ func (m academicUnitMemberResourceModule) create(request operationRequest) (oper
 	if err != nil {
 		return operationResult{}, err
 	}
-	saved, err := m.members.CreateAcademicUnitMember(request.context, request.invocation(), application.CreateAcademicUnitMemberCommand{AcademicUnitID: unitID, UserID: body.UserID, StartAt: startAt})
+	saved, err := m.members.CreateAcademicUnitMember(request.context, request.invocation(), app.CreateAcademicUnitMemberCommand{AcademicUnitID: unitID, UserID: body.UserID, StartAt: startAt})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -121,7 +121,7 @@ func (m academicUnitMemberResourceModule) end(request operationRequest) (operati
 	if err != nil {
 		return operationResult{}, err
 	}
-	ended, err := m.members.EndAcademicUnitMember(request.context, request.invocation(), application.EndAcademicUnitMemberCommand{ID: id})
+	ended, err := m.members.EndAcademicUnitMember(request.context, request.invocation(), app.EndAcademicUnitMemberCommand{ID: id})
 	if err != nil {
 		return operationResult{}, err
 	}

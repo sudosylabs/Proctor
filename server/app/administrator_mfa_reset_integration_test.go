@@ -18,7 +18,7 @@ import (
 	"testing"
 
 	server "github.com/sudosylabs/proctor/server"
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -47,7 +47,7 @@ func TestOfflineAdministratorMFAResetReconcilesAndRequiresReenrollment(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	before, err := helper.App.Login(ctx, application.Invocation{}, application.LoginCommand{LoginID: "offline-mfa-admin", Password: password, ClientType: model.SessionClientCLI, DeviceID: "offline-old", Source: "127.0.0.1:1"})
+	before, err := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{LoginID: "offline-mfa-admin", Password: password, ClientType: model.SessionClientCLI, DeviceID: "offline-old", Source: "127.0.0.1:1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,11 +69,11 @@ func TestOfflineAdministratorMFAResetReconcilesAndRequiresReenrollment(t *testin
 	if old.Code == http.StatusOK {
 		t.Fatal("old Session remained usable after offline reset")
 	}
-	_, err = helper.App.Login(ctx, application.Invocation{}, application.LoginCommand{LoginID: "offline-mfa-admin", Password: password, ClientType: model.SessionClientCLI, DeviceID: "offline-cli", Source: "127.0.0.1:2"})
+	_, err = helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{LoginID: "offline-mfa-admin", Password: password, ClientType: model.SessionClientCLI, DeviceID: "offline-cli", Source: "127.0.0.1:2"})
 	if err == nil {
 		t.Fatal("CLI login bypassed mandatory reenrollment")
 	}
-	fresh, err := helper.App.Login(ctx, application.Invocation{}, application.LoginCommand{LoginID: "offline-mfa-admin", Password: password, ClientType: model.SessionClientWeb, DeviceID: "offline-web", Source: "127.0.0.1:3"})
+	fresh, err := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{LoginID: "offline-mfa-admin", Password: password, ClientType: model.SessionClientWeb, DeviceID: "offline-web", Source: "127.0.0.1:3"})
 	if err != nil || fresh == nil || fresh.Session == nil || !fresh.Session.MFARecoveryRequired || fresh.Session.AuthenticationGeneration != 1 {
 		t.Fatalf("restricted fresh Session=%#v error=%v", fresh, err)
 	}

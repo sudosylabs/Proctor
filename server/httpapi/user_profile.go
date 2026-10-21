@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -58,15 +58,15 @@ type userEmailStateResponse struct {
 }
 
 type currentUserContextResponse struct {
-	User                         currentUserContextUserResponse       `json:"user"`
-	NoCurrentAffiliation         bool                                 `json:"no_current_affiliation"`
-	NoAssignedAccess             bool                                 `json:"no_assigned_access"`
-	AvailableProductAreas        []application.CurrentUserProductArea `json:"available_product_areas"`
-	ManagementScopes             []currentUserContextScopeResponse    `json:"management_scopes"`
-	ManagementScopesHasMore      bool                                 `json:"management_scopes_has_more"`
-	UnresolvedAttempt            *currentUserContextAttemptResponse   `json:"unresolved_attempt"`
-	SessionManagementAvailable   bool                                 `json:"session_management_available"`
-	CurrentDesktopRegistrationID *string                              `json:"current_desktop_registration_id"`
+	User                         currentUserContextUserResponse     `json:"user"`
+	NoCurrentAffiliation         bool                               `json:"no_current_affiliation"`
+	NoAssignedAccess             bool                               `json:"no_assigned_access"`
+	AvailableProductAreas        []app.CurrentUserProductArea       `json:"available_product_areas"`
+	ManagementScopes             []currentUserContextScopeResponse  `json:"management_scopes"`
+	ManagementScopesHasMore      bool                               `json:"management_scopes_has_more"`
+	UnresolvedAttempt            *currentUserContextAttemptResponse `json:"unresolved_attempt"`
+	SessionManagementAvailable   bool                               `json:"session_management_available"`
+	CurrentDesktopRegistrationID *string                            `json:"current_desktop_registration_id"`
 }
 
 type currentUserContextScopeResponse struct {
@@ -116,9 +116,9 @@ type candidateExamActivityItemResponse struct {
 	ScheduledEndAt    string                                   `json:"scheduled_end_at"`
 	SittingState      model.ExamSittingState                   `json:"sitting_state"`
 	SittingReasonCode *string                                  `json:"sitting_reason_code"`
-	ActivityState     application.CandidateExamActivityState   `json:"activity_state"`
-	AccessState       application.CandidateExamAccessState     `json:"access_state"`
-	AllowedActions    []application.CandidateExamAllowedAction `json:"allowed_actions"`
+	ActivityState     app.CandidateExamActivityState           `json:"activity_state"`
+	AccessState       app.CandidateExamAccessState             `json:"access_state"`
+	AllowedActions    []app.CandidateExamAllowedAction         `json:"allowed_actions"`
 	Attempt           *candidateExamActivityAttemptResponse    `json:"attempt"`
 	Submission        *candidateExamActivitySubmissionResponse `json:"submission"`
 	Result            *candidateExamActivityResultResponse     `json:"result"`
@@ -173,7 +173,7 @@ func userProfileResource(profiles UserProfileApplication) resource {
 }
 
 func (m userProfileResourceModule) examActivity(request operationRequest) (operationResult, error) {
-	query := application.ListCandidateExamActivityQuery{Limit: 50}
+	query := app.ListCandidateExamActivityQuery{Limit: 50}
 	values := request.request.URL.Query()
 	if raw := values.Get("limit"); raw != "" {
 		limit, err := strconv.Atoi(raw)
@@ -203,7 +203,7 @@ func (m userProfileResourceModule) examActivity(request operationRequest) (opera
 			ScheduledStartAt: model.FormatRFC3339(item.ScheduledStartAt),
 			ScheduledEndAt:   model.FormatRFC3339(item.ScheduledEndAt), SittingState: item.SittingState,
 			ActivityState: item.ActivityState, AccessState: item.AccessState,
-			AllowedActions: append([]application.CandidateExamAllowedAction(nil), item.AllowedActions...)}
+			AllowedActions: append([]app.CandidateExamAllowedAction(nil), item.AllowedActions...)}
 		if item.SittingReasonCode != "" {
 			value := item.SittingReasonCode
 			mapped.SittingReasonCode = &value
@@ -269,7 +269,7 @@ func (m userProfileResourceModule) context(request operationRequest) (operationR
 	response := currentUserContextResponse{User: currentUserContextUserResponse{ID: view.UserID.String(), Username: view.Username,
 		DisplayName: view.DisplayName, ProfilePictureReference: view.ProfilePictureReference},
 		NoCurrentAffiliation: view.NoCurrentAffiliation, NoAssignedAccess: view.NoAssignedAccess,
-		AvailableProductAreas:   append([]application.CurrentUserProductArea(nil), view.AvailableProductAreas...),
+		AvailableProductAreas:   append([]app.CurrentUserProductArea(nil), view.AvailableProductAreas...),
 		ManagementScopesHasMore: view.ManagementScopesHasMore, SessionManagementAvailable: view.SessionManagementAvailable,
 		ManagementScopes: make([]currentUserContextScopeResponse, 0, len(view.ManagementScopes))}
 	for _, scope := range view.ManagementScopes {
@@ -297,7 +297,7 @@ func (m userProfileResourceModule) changeEmail(request operationRequest) (operat
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	state, appErr := m.profiles.ChangeUserEmail(request.context, request.invocation(), application.ChangeUserEmailCommand{UserID: userID, Email: body.Email})
+	state, appErr := m.profiles.ChangeUserEmail(request.context, request.invocation(), app.ChangeUserEmailCommand{UserID: userID, Email: body.Email})
 	if appErr != nil {
 		return operationResult{}, appErr
 	}
@@ -309,14 +309,14 @@ func (m userProfileResourceModule) verifyEmail(request operationRequest) (operat
 	if err != nil {
 		return operationResult{}, err
 	}
-	state, appErr := m.profiles.VerifyUserEmailPrivileged(request.context, request.invocation(), application.VerifyUserEmailPrivilegedCommand{UserID: userID})
+	state, appErr := m.profiles.VerifyUserEmailPrivileged(request.context, request.invocation(), app.VerifyUserEmailPrivilegedCommand{UserID: userID})
 	if appErr != nil {
 		return operationResult{}, appErr
 	}
 	return jsonResult(http.StatusOK, userEmailStateResponseFromApplication(state)), nil
 }
 
-func userEmailStateResponseFromApplication(state *application.UserEmailState) userEmailStateResponse {
+func userEmailStateResponseFromApplication(state *app.UserEmailState) userEmailStateResponse {
 	if state == nil {
 		return userEmailStateResponse{}
 	}
@@ -355,7 +355,7 @@ func (m userProfileResourceModule) uploadPicture(request operationRequest) (prot
 	if err != nil {
 		return protocolResult{}, invalidRequestError(err)
 	}
-	user, err := m.profiles.UploadProfilePicture(request.context, request.invocation(), application.UploadProfilePictureCommand{UserID: userID, ExpectedSHA256: expectedSHA256, Body: request.request.Body, Size: request.request.ContentLength})
+	user, err := m.profiles.UploadProfilePicture(request.context, request.invocation(), app.UploadProfilePictureCommand{UserID: userID, ExpectedSHA256: expectedSHA256, Body: request.request.Body, Size: request.request.ContentLength})
 	if err != nil {
 		return protocolResult{}, err
 	}
@@ -371,7 +371,7 @@ func (m userProfileResourceModule) removePicture(request operationRequest) (oper
 	if err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	user, appErr := m.profiles.RemoveProfilePicture(request.context, request.invocation(), application.RemoveProfilePictureCommand{UserID: userID, ExpectedSHA256: expectedSHA256})
+	user, appErr := m.profiles.RemoveProfilePicture(request.context, request.invocation(), app.RemoveProfilePictureCommand{UserID: userID, ExpectedSHA256: expectedSHA256})
 	if appErr != nil {
 		return operationResult{}, appErr
 	}
@@ -405,7 +405,7 @@ func (m userProfileResourceModule) downloadPicture(request operationRequest) (pr
 	if err != nil {
 		return protocolResult{}, invalidRequestError(err)
 	}
-	content, appErr := m.profiles.GetProfilePicture(request.context, request.invocation(), application.GetProfilePictureQuery{UserID: userID, Size: size})
+	content, appErr := m.profiles.GetProfilePicture(request.context, request.invocation(), app.GetProfilePictureQuery{UserID: userID, Size: size})
 	if appErr != nil {
 		return protocolResult{}, appErr
 	}
@@ -441,7 +441,7 @@ func (m userProfileResourceModule) search(request operationRequest) (operationRe
 	if err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	users, err := m.profiles.SearchUsers(request.context, request.invocation(), application.SearchUsersQuery{Query: request.request.URL.Query().Get("q"), AfterUsername: request.request.URL.Query().Get("after_username"), AfterID: request.request.URL.Query().Get("after_id"), Limit: limit, IncludeDisabled: includeDisabled})
+	users, err := m.profiles.SearchUsers(request.context, request.invocation(), app.SearchUsersQuery{Query: request.request.URL.Query().Get("q"), AfterUsername: request.request.URL.Query().Get("after_username"), AfterID: request.request.URL.Query().Get("after_id"), Limit: limit, IncludeDisabled: includeDisabled})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -449,7 +449,7 @@ func (m userProfileResourceModule) search(request operationRequest) (operationRe
 }
 
 func (m userProfileResourceModule) current(request operationRequest) (operationResult, error) {
-	user, err := m.profiles.GetUserProfile(request.context, request.invocation(), application.GetUserProfileQuery{ID: request.principal.UserID})
+	user, err := m.profiles.GetUserProfile(request.context, request.invocation(), app.GetUserProfileQuery{ID: request.principal.UserID})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -461,7 +461,7 @@ func (m userProfileResourceModule) get(request operationRequest) (operationResul
 	if err != nil {
 		return operationResult{}, err
 	}
-	user, err := m.profiles.GetUserProfile(request.context, request.invocation(), application.GetUserProfileQuery{ID: userID})
+	user, err := m.profiles.GetUserProfile(request.context, request.invocation(), app.GetUserProfileQuery{ID: userID})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -477,7 +477,7 @@ func (m userProfileResourceModule) update(request operationRequest) (operationRe
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	user, err := m.profiles.UpdateUserProfile(request.context, request.invocation(), application.UpdateUserProfileCommand{ID: userID, Username: body.Username, DisplayName: body.DisplayName, FirstName: body.FirstName, LastName: body.LastName, Locale: body.Locale, Timezone: body.Timezone})
+	user, err := m.profiles.UpdateUserProfile(request.context, request.invocation(), app.UpdateUserProfileCommand{ID: userID, Username: body.Username, DisplayName: body.DisplayName, FirstName: body.FirstName, LastName: body.LastName, Locale: body.Locale, Timezone: body.Timezone})
 	if err != nil {
 		return operationResult{}, err
 	}

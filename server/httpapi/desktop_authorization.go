@@ -11,22 +11,22 @@ import (
 	"context"
 	"net/http"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type DesktopAuthorization interface {
-	StartDesktopAuthorization(context.Context, application.Invocation, application.StartDesktopAuthorizationCommand) (*application.DesktopAuthorizationStart, error)
-	BindDesktopAuthorization(context.Context, application.Invocation, application.BindDesktopAuthorizationCommand) (*application.DesktopAuthorizationBinding, error)
-	DesktopAuthorizationContext(context.Context, application.Invocation, string) (*application.DesktopAuthorizationBrowserContext, error)
-	AuthenticateDesktopAuthorizationSession(context.Context, application.Invocation, application.AuthenticateDesktopAuthorizationCommand) (*application.DesktopAuthorizationBrowserContext, error)
-	AuthenticateDesktopAuthorizationLocally(context.Context, application.Invocation, application.AuthenticateDesktopAuthorizationLocallyCommand) (*application.DesktopAuthorizationBrowserContext, error)
-	ResetDesktopAuthorizationAccount(context.Context, application.Invocation, string) error
-	BeginDesktopExternalAuthentication(context.Context, application.Invocation, application.BeginDesktopExternalAuthenticationCommand) (*model.ExternalAuthenticationStart, error)
-	ApproveDesktopAuthorization(context.Context, application.Invocation, application.ApproveDesktopAuthorizationCommand) (*application.DesktopAuthorizationApproval, error)
-	CancelDesktopAuthorization(context.Context, application.Invocation, application.ApproveDesktopAuthorizationCommand) error
-	ExchangeDesktopAuthorization(context.Context, application.Invocation, application.ExchangeDesktopAuthorizationCommand) (*application.DesktopAuthorizationExchangeResult, error)
+	StartDesktopAuthorization(context.Context, app.Invocation, app.StartDesktopAuthorizationCommand) (*app.DesktopAuthorizationStart, error)
+	BindDesktopAuthorization(context.Context, app.Invocation, app.BindDesktopAuthorizationCommand) (*app.DesktopAuthorizationBinding, error)
+	DesktopAuthorizationContext(context.Context, app.Invocation, string) (*app.DesktopAuthorizationBrowserContext, error)
+	AuthenticateDesktopAuthorizationSession(context.Context, app.Invocation, app.AuthenticateDesktopAuthorizationCommand) (*app.DesktopAuthorizationBrowserContext, error)
+	AuthenticateDesktopAuthorizationLocally(context.Context, app.Invocation, app.AuthenticateDesktopAuthorizationLocallyCommand) (*app.DesktopAuthorizationBrowserContext, error)
+	ResetDesktopAuthorizationAccount(context.Context, app.Invocation, string) error
+	BeginDesktopExternalAuthentication(context.Context, app.Invocation, app.BeginDesktopExternalAuthenticationCommand) (*model.ExternalAuthenticationStart, error)
+	ApproveDesktopAuthorization(context.Context, app.Invocation, app.ApproveDesktopAuthorizationCommand) (*app.DesktopAuthorizationApproval, error)
+	CancelDesktopAuthorization(context.Context, app.Invocation, app.ApproveDesktopAuthorizationCommand) error
+	ExchangeDesktopAuthorization(context.Context, app.Invocation, app.ExchangeDesktopAuthorizationCommand) (*app.DesktopAuthorizationExchangeResult, error)
 }
 
 type desktopAuthorizationStartRequest struct {
@@ -125,7 +125,7 @@ func (m desktopAuthorizationResourceModule) authenticateExternal(request operati
 		return protocolResult{}, err
 	}
 	state := request.request.URL.Query().Get("state")
-	start, err := m.application.BeginDesktopExternalAuthentication(request.context, request.invocation(), application.BeginDesktopExternalAuthenticationCommand{
+	start, err := m.application.BeginDesktopExternalAuthentication(request.context, request.invocation(), app.BeginDesktopExternalAuthenticationCommand{
 		ProviderID: provider, Binding: binding, State: state, Source: request.metadata.IPAddress,
 	})
 	if err != nil {
@@ -143,7 +143,7 @@ func (m desktopAuthorizationResourceModule) start(request operationRequest) (ope
 	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
-	result, err := m.application.StartDesktopAuthorization(request.context, request.invocation(), application.StartDesktopAuthorizationCommand{
+	result, err := m.application.StartDesktopAuthorization(request.context, request.invocation(), app.StartDesktopAuthorizationCommand{
 		CallbackURL: input.CallbackURL, State: input.State, CodeChallenge: input.CodeChallenge,
 		DeviceID: input.DeviceID, DeviceName: input.DeviceName, PublicJWK: input.PublicJWK,
 		DesktopRelease: input.DesktopRelease, DesktopBuildID: input.DesktopBuildID,
@@ -161,7 +161,7 @@ func (m desktopAuthorizationResourceModule) bind(request operationRequest) (oper
 	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
-	result, err := m.application.BindDesktopAuthorization(request.context, request.invocation(), application.BindDesktopAuthorizationCommand{
+	result, err := m.application.BindDesktopAuthorization(request.context, request.invocation(), app.BindDesktopAuthorizationCommand{
 		Handle: input.Handle, BrowserProof: input.BrowserProof, State: input.State,
 	})
 	if err != nil {
@@ -191,7 +191,7 @@ func (m desktopAuthorizationResourceModule) authenticateSession(request operatio
 	if err != nil {
 		return operationResult{}, err
 	}
-	result, err := m.application.AuthenticateDesktopAuthorizationSession(request.context, request.invocation(), application.AuthenticateDesktopAuthorizationCommand{Binding: binding})
+	result, err := m.application.AuthenticateDesktopAuthorizationSession(request.context, request.invocation(), app.AuthenticateDesktopAuthorizationCommand{Binding: binding})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -207,7 +207,7 @@ func (m desktopAuthorizationResourceModule) authenticateLocal(request operationR
 	if err = request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
-	result, err := m.application.AuthenticateDesktopAuthorizationLocally(request.context, request.invocation(), application.AuthenticateDesktopAuthorizationLocallyCommand{
+	result, err := m.application.AuthenticateDesktopAuthorizationLocally(request.context, request.invocation(), app.AuthenticateDesktopAuthorizationLocallyCommand{
 		Binding: binding, LoginID: input.LoginID, Password: input.Password, MFACode: input.MFACode, Source: request.metadata.IPAddress,
 	})
 	if err != nil {
@@ -236,7 +236,7 @@ func (m desktopAuthorizationResourceModule) approve(request operationRequest) (o
 	if err = request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
-	result, err := m.application.ApproveDesktopAuthorization(request.context, request.invocation(), application.ApproveDesktopAuthorizationCommand{Binding: binding, State: input.State})
+	result, err := m.application.ApproveDesktopAuthorization(request.context, request.invocation(), app.ApproveDesktopAuthorizationCommand{Binding: binding, State: input.State})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -254,7 +254,7 @@ func (m desktopAuthorizationResourceModule) cancel(request operationRequest) (op
 	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
-	if err := m.application.CancelDesktopAuthorization(request.context, request.invocation(), application.ApproveDesktopAuthorizationCommand{Binding: binding, State: input.State}); err != nil {
+	if err := m.application.CancelDesktopAuthorization(request.context, request.invocation(), app.ApproveDesktopAuthorizationCommand{Binding: binding, State: input.State}); err != nil {
 		return operationResult{}, err
 	}
 	headers := captureResponseHeaders(m.cookies.clearDesktopAuthorizationBinding)
@@ -270,7 +270,7 @@ func (m desktopAuthorizationResourceModule) binding(request *http.Request) (stri
 	return binding, nil
 }
 
-func desktopAuthorizationContextResponseFromApplication(value *application.DesktopAuthorizationBrowserContext) desktopAuthorizationContextResponse {
+func desktopAuthorizationContextResponseFromApplication(value *app.DesktopAuthorizationBrowserContext) desktopAuthorizationContextResponse {
 	if value == nil {
 		return desktopAuthorizationContextResponse{}
 	}
@@ -294,7 +294,7 @@ func (m desktopAuthorizationResourceModule) exchange(request operationRequest) (
 	if proofErr != nil {
 		return operationResult{}, proofErr
 	}
-	result, err := m.application.ExchangeDesktopAuthorization(request.context, request.invocation(), application.ExchangeDesktopAuthorizationCommand{
+	result, err := m.application.ExchangeDesktopAuthorization(request.context, request.invocation(), app.ExchangeDesktopAuthorizationCommand{
 		Code: input.Code, State: input.State, CodeVerifier: input.CodeVerifier, Source: request.metadata.IPAddress,
 		DPoPProof: proof, PublicJWK: input.PublicJWK, DesktopRelease: input.DesktopRelease,
 		DesktopBuildID: input.DesktopBuildID, Platform: input.Platform, Architecture: input.Architecture,
@@ -302,7 +302,7 @@ func (m desktopAuthorizationResourceModule) exchange(request operationRequest) (
 	})
 	if err != nil {
 		headers := http.Header{}
-		if nonce, ok := application.DPoPChallengeNonce(err); ok {
+		if nonce, ok := app.DPoPChallengeNonce(err); ok {
 			headers.Set("DPoP-Nonce", nonce)
 			headers.Set("WWW-Authenticate", `DPoP error="use_dpop_nonce"`)
 		} else if apperror.Is(err, "authentication.dpop.invalid") || apperror.Is(err, "authentication.dpop.replayed") {

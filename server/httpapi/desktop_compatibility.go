@@ -13,7 +13,7 @@ import (
 	"slices"
 	"strings"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -22,22 +22,22 @@ type unavailableDesktopCompatibilityApplication struct{}
 
 func (unavailableDesktopCompatibilityApplication) EvaluateDesktopCompatibility(
 	context.Context,
-	application.DesktopCompatibilityQuery,
-) (application.DesktopCompatibilityResult, error) {
-	return application.DesktopCompatibilityResult{}, errUnpresentableResult
+	app.DesktopCompatibilityQuery,
+) (app.DesktopCompatibilityResult, error) {
+	return app.DesktopCompatibilityResult{}, errUnpresentableResult
 }
 
 func (unavailableDesktopCompatibilityApplication) GetDesktopCompatibilityPolicy(
 	context.Context,
-	application.Invocation,
+	app.Invocation,
 ) (*model.DesktopCompatibilityPolicy, error) {
 	return nil, errUnpresentableResult
 }
 
 func (unavailableDesktopCompatibilityApplication) ReplaceDesktopCompatibilityPolicy(
 	context.Context,
-	application.Invocation,
-	application.ReplaceDesktopCompatibilityPolicyCommand,
+	app.Invocation,
+	app.ReplaceDesktopCompatibilityPolicyCommand,
 ) (*model.DesktopCompatibilityPolicy, error) {
 	return nil, errUnpresentableResult
 }
@@ -128,7 +128,7 @@ func (m desktopCompatibilityPolicyResourceModule) replace(
 	policy, err := m.application.ReplaceDesktopCompatibilityPolicy(
 		request.context,
 		request.invocation(),
-		application.ReplaceDesktopCompatibilityPolicyCommand{
+		app.ReplaceDesktopCompatibilityPolicyCommand{
 			ExpectedRevision: body.ExpectedRevision,
 			Settings:         settings,
 			IdempotencyKey:   request.idempotencyKey,

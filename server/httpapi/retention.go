@@ -13,23 +13,23 @@ import (
 	"net/http"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type RetentionApplication interface {
-	ListRetentionNotices(context.Context, application.Invocation, model.RetentionRetirementID, int) (*application.RetentionNoticePage, error)
-	GetRetentionControl(context.Context, application.Invocation) (*model.RetentionControl, error)
-	GetRetentionPreview(context.Context, application.Invocation, model.RetentionPreviewID) (*model.RetentionPreview, error)
-	CreateRetentionPreview(context.Context, application.Invocation, application.CreateRetentionPreviewCommand) (*model.RetentionPreview, error)
-	ChangeRetentionControl(context.Context, application.Invocation, application.ChangeRetentionControlCommand) (*model.RetentionControl, error)
-	ListRetentionRecords(context.Context, application.Invocation, model.SubmissionID, int) (*application.RetentionRecordPage, error)
+	ListRetentionNotices(context.Context, app.Invocation, model.RetentionRetirementID, int) (*app.RetentionNoticePage, error)
+	GetRetentionControl(context.Context, app.Invocation) (*model.RetentionControl, error)
+	GetRetentionPreview(context.Context, app.Invocation, model.RetentionPreviewID) (*model.RetentionPreview, error)
+	CreateRetentionPreview(context.Context, app.Invocation, app.CreateRetentionPreviewCommand) (*model.RetentionPreview, error)
+	ChangeRetentionControl(context.Context, app.Invocation, app.ChangeRetentionControlCommand) (*model.RetentionControl, error)
+	ListRetentionRecords(context.Context, app.Invocation, model.SubmissionID, int) (*app.RetentionRecordPage, error)
 }
 
 type retentionHTTPModule struct{ application RetentionApplication }
 
-func retentionResource(app RetentionApplication) resource {
-	m := retentionHTTPModule{application: app}
+func retentionResource(application RetentionApplication) resource {
+	m := retentionHTTPModule{application: application}
 	readErrors := operatorReadErrorCodes("request.invalid", "retention.invalid", "retention.unavailable", "retention_policy.unavailable", "resource.not_found")
 	mutationErrors := operatorMutationErrorCodes("request.invalid", "retention.invalid", "retention.conflict", "retention.unavailable", "retention_policy.unavailable", "retention_policy.revision_conflict", "resource.not_found",
 		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")
@@ -142,7 +142,7 @@ func (m retentionHTTPModule) changeControl(request operationRequest) (operationR
 	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	c, err := m.application.ChangeRetentionControl(request.context, request.invocation(), application.ChangeRetentionControlCommand{
+	c, err := m.application.ChangeRetentionControl(request.context, request.invocation(), app.ChangeRetentionControlCommand{
 		ExpectedRevision: body.ExpectedRevision, ExpectedPolicyRevision: body.ExpectedPolicyRevision, PreviewID: model.RetentionPreviewID(body.PreviewID),
 		State: model.RetentionControlState(body.State), IdempotencyKey: request.idempotencyKey})
 	if err != nil {
@@ -155,7 +155,7 @@ func (m retentionHTTPModule) preview(request operationRequest) (operationResult,
 	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	p, err := m.application.CreateRetentionPreview(request.context, request.invocation(), application.CreateRetentionPreviewCommand{ExpectedPolicyRevision: body.ExpectedPolicyRevision, IdempotencyKey: request.idempotencyKey})
+	p, err := m.application.CreateRetentionPreview(request.context, request.invocation(), app.CreateRetentionPreviewCommand{ExpectedPolicyRevision: body.ExpectedPolicyRevision, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
 	}

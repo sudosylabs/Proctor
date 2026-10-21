@@ -15,17 +15,17 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type recoveryMFAHTTPFake struct{ MFA }
 
-func (recoveryMFAHTTPFake) GetMFAStatus(_ context.Context, invocation application.Invocation, _ application.GetMFAStatusQuery) (*application.MFAStatus, error) {
-	return &application.MFAStatus{MFARecoveryRequired: invocation.Principal().MFARecoveryRequired, AuthenticationMethod: "oidc", AuthenticationProviderID: "campus", AuthenticationStrength: model.AuthenticationSingleFactor, RecentlyAuthenticated: true}, nil
+func (recoveryMFAHTTPFake) GetMFAStatus(_ context.Context, invocation app.Invocation, _ app.GetMFAStatusQuery) (*app.MFAStatus, error) {
+	return &app.MFAStatus{MFARecoveryRequired: invocation.Principal().MFARecoveryRequired, AuthenticationMethod: "oidc", AuthenticationProviderID: "campus", AuthenticationStrength: model.AuthenticationSingleFactor, RecentlyAuthenticated: true}, nil
 }
-func (recoveryMFAHTTPFake) SetupMFA(context.Context, application.Invocation, application.SetupMFACommand) (*application.MFASetup, error) {
-	return &application.MFASetup{Secret: "once-only", ProvisioningURI: "otpauth://totp/Proctor", ExpiresAt: time.Now().Add(time.Minute)}, nil
+func (recoveryMFAHTTPFake) SetupMFA(context.Context, app.Invocation, app.SetupMFACommand) (*app.MFASetup, error) {
+	return &app.MFASetup{Secret: "once-only", ProvisioningURI: "otpauth://totp/Proctor", ExpiresAt: time.Now().Add(time.Minute)}, nil
 }
 func TestMFARestrictedSessionOnlyReachesExplicitRecoveryRoutes(t *testing.T) {
 	logger, _ := newTestLogger(t)

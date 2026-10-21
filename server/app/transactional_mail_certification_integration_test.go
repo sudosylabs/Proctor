@@ -28,7 +28,7 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -64,7 +64,7 @@ func TestTransactionalMailPhaseCertification(t *testing.T) {
 	)
 	ctx := context.Background()
 	const password = "correct horse battery staple"
-	bootstrap, appErr := helper.App.BootstrapInstallation(ctx, application.Invocation{}, application.BootstrapInstallationCommand{
+	bootstrap, appErr := helper.App.BootstrapInstallation(ctx, app.Invocation{}, app.BootstrapInstallationCommand{
 		InstitutionName: "mail-certification", InstitutionDisplayName: "Mail Certification University",
 		AdministratorUsername: "mail-cert-admin", AdministratorEmail: "mail-cert-admin@example.edu",
 		AdministratorDisplayName: "Mail Certification Administrator", AdministratorLocale: "en", AdministratorTimezone: "UTC",
@@ -73,7 +73,7 @@ func TestTransactionalMailPhaseCertification(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	adminLogin, appErr := helper.App.Login(ctx, application.Invocation{}, application.LoginCommand{
+	adminLogin, appErr := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{
 		LoginID: bootstrap.Administrator.Username, Password: password, ClientType: model.SessionClientWeb,
 		Source: "127.0.0.1:1", DeviceName: "mail-cert-admin",
 	})
@@ -84,17 +84,17 @@ func TestTransactionalMailPhaseCertification(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	adminInvocation := application.NewInvocation(*adminPrincipal,
+	adminInvocation := app.NewInvocation(*adminPrincipal,
 		model.RequestMetadata{RequestID: "mail-cert-admin", IPAddress: "127.0.0.1"})
 
-	credentialUser, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
+	credentialUser, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "mail-cert-credential", Email: "mail-cert-credential@example.edu",
 		DisplayName: "Mail Credential Candidate", Locale: "en", Timezone: "UTC",
 	}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	credentialLogin, appErr := helper.App.Login(ctx, application.Invocation{}, application.LoginCommand{
+	credentialLogin, appErr := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{
 		LoginID: credentialUser.Username, Password: password, ClientType: model.SessionClientWeb,
 		Source: "127.0.0.1:1", DeviceName: "mail-cert-credential",
 	})
@@ -106,25 +106,25 @@ func TestTransactionalMailPhaseCertification(t *testing.T) {
 		t.Fatal(appErr)
 	}
 	if appErr = helper.App.RequestEmailVerification(ctx,
-		application.NewInvocation(*credentialPrincipal, model.RequestMetadata{RequestID: "mail-cert-verification"}),
-		application.RequestEmailVerificationCommand{Source: "127.0.0.1:1"}); appErr != nil {
+		app.NewInvocation(*credentialPrincipal, model.RequestMetadata{RequestID: "mail-cert-verification"}),
+		app.RequestEmailVerificationCommand{Source: "127.0.0.1:1"}); appErr != nil {
 		t.Fatal(appErr)
 	}
 
-	securityUser, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
+	securityUser, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "mail-cert-security", Email: "mail-cert-security@example.edu",
 		DisplayName: "Mail Security Candidate", EmailVerified: true, Locale: "en", Timezone: "UTC",
 	}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	if _, appErr = helper.App.SetUserEnabled(ctx, adminInvocation, application.SetUserEnabledCommand{
+	if _, appErr = helper.App.SetUserEnabled(ctx, adminInvocation, app.SetUserEnabledCommand{
 		ID: securityUser.ID, Enabled: false, IdempotencyKey: "mail-cert-disable",
 	}); appErr != nil {
 		t.Fatal(appErr)
 	}
 
-	candidate, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
+	candidate, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "mail-cert-candidate", Email: "mail-cert-candidate@example.edu",
 		DisplayName: "Mail Fanout Candidate", EmailVerified: true, Locale: "en", Timezone: "UTC",
 	}, Password: password})
@@ -175,19 +175,19 @@ func TestTransactionalMailPhaseCertification(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	created, appErr := helper.App.CreateExam(ctx, adminInvocation, application.CreateExamCommand{
+	created, appErr := helper.App.CreateExam(ctx, adminInvocation, app.CreateExamCommand{
 		AcademicUnitID: unit.ID, Title: "Mail Certification Exam", IdempotencyKey: "mail-cert-exam",
 	})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	published, appErr := helper.App.PublishExamRevision(ctx, adminInvocation, application.PublishExamRevisionCommand{
+	published, appErr := helper.App.PublishExamRevision(ctx, adminInvocation, app.PublishExamRevisionCommand{
 		ExamID: created.Exam.ID, ExpectedDraftRevision: created.Draft.Revision, IdempotencyKey: "mail-cert-publish",
 	})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	if _, appErr = helper.App.ScheduleExamSitting(ctx, adminInvocation, application.ScheduleExamSittingCommand{
+	if _, appErr = helper.App.ScheduleExamSitting(ctx, adminInvocation, app.ScheduleExamSittingCommand{
 		ExamID: created.Exam.ID, ExamRevisionID: published.ID, ClassID: class.ID,
 		ScheduledStartAt: now.Add(2 * time.Hour), ScheduledEndAt: now.Add(4 * time.Hour),
 		IdempotencyKey: "mail-cert-sitting",

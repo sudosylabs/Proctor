@@ -16,23 +16,23 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type retentionPolicyHTTPApplication struct {
 	policy  *model.RetentionPolicy
-	command application.ReplaceRetentionPolicyCommand
+	command app.ReplaceRetentionPolicyCommand
 	calls   int
 }
 
-func (a *retentionPolicyHTTPApplication) GetRetentionPolicy(context.Context, application.Invocation) (*model.RetentionPolicy, error) {
+func (a *retentionPolicyHTTPApplication) GetRetentionPolicy(context.Context, app.Invocation) (*model.RetentionPolicy, error) {
 	a.calls++
 	return a.policy, nil
 }
 
-func (a *retentionPolicyHTTPApplication) ReplaceRetentionPolicy(_ context.Context, _ application.Invocation,
-	command application.ReplaceRetentionPolicyCommand) (*model.RetentionPolicy, error) {
+func (a *retentionPolicyHTTPApplication) ReplaceRetentionPolicy(_ context.Context, _ app.Invocation,
+	command app.ReplaceRetentionPolicyCommand) (*model.RetentionPolicy, error) {
 	a.calls++
 	a.command = command
 	return a.policy, nil
@@ -48,8 +48,8 @@ func TestRetentionPolicyHTTPRequiresCompleteSettingsAndNeverEnablesDeletion(t *t
 		AuthenticatedAt: time.Now(), MFACompletedAt: model.OptionalTimeFrom(time.Now()), ClientType: model.SessionClientWeb,
 	}
 	policy := model.NewInitialRetentionPolicy(model.NewInstitutionID(), time.Now())
-	app := &retentionPolicyHTTPApplication{policy: policy}
-	api := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, retentionPolicyResource(app))
+	application := &retentionPolicyHTTPApplication{policy: policy}
+	api := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, retentionPolicyResource(application))
 	serve := func(method, body string) *httptest.ResponseRecorder {
 		request := httptest.NewRequest(method, "/api/v1/retention-policy", strings.NewReader(body))
 		request.Header.Set("Authorization", "Bearer session")
@@ -66,10 +66,10 @@ func TestRetentionPolicyHTTPRequiresCompleteSettingsAndNeverEnablesDeletion(t *t
 	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "private, no-store" {
 		t.Fatalf("replace: %d %s", response.Code, response.Body.String())
 	}
-	if app.command.ExpectedRevision != 1 || app.command.IdempotencyKey != "retention-policy-1" ||
-		app.command.Settings != (model.RetentionPolicySettings{SubmissionRetentionDays: 730, IntegrityRetentionDays: 365,
+	if application.command.ExpectedRevision != 1 || application.command.IdempotencyKey != "retention-policy-1" ||
+		application.command.Settings != (model.RetentionPolicySettings{SubmissionRetentionDays: 730, IntegrityRetentionDays: 365,
 			ExportRetentionDays: 7, DeletionGraceDays: 30}) {
-		t.Fatalf("command = %#v", app.command)
+		t.Fatalf("command = %#v", application.command)
 	}
 	response = serve(http.MethodGet, "")
 	var output map[string]any
@@ -111,17 +111,17 @@ func TestRetentionPolicyHTTPRequiresCompleteSettingsAndNeverEnablesDeletion(t *t
 				if err != nil {
 					t.Fatal(err)
 				}
-				before := app.calls
+				before := application.calls
 				response := serve(http.MethodPut, string(encoded))
-				if response.Code != http.StatusBadRequest || app.calls != before {
+				if response.Code != http.StatusBadRequest || application.calls != before {
 					t.Fatalf("invalid settings reached application: %d %s", response.Code, response.Body.String())
 				}
 			})
 		}
 	}
-	before := app.calls
+	before := application.calls
 	response = serve(http.MethodPut, strings.TrimSuffix(valid, "}")+`,"automatic_deletion_enabled":true}`)
-	if response.Code != http.StatusBadRequest || app.calls != before {
+	if response.Code != http.StatusBadRequest || application.calls != before {
 		t.Fatalf("deletion enable attempt reached application: %d %s", response.Code, response.Body.String())
 	}
 }

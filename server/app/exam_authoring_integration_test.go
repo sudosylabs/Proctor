@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -34,7 +34,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	helper := testlib.Setup(t, testlib.WithStore(persistence))
 	ctx := context.Background()
 	password := "correct horse battery staple"
-	bootstrap, appErr := helper.App.BootstrapInstallation(ctx, application.Invocation{}, application.BootstrapInstallationCommand{
+	bootstrap, appErr := helper.App.BootstrapInstallation(ctx, app.Invocation{}, app.BootstrapInstallationCommand{
 		InstitutionName: "northbridge", InstitutionDisplayName: "Northbridge University",
 		AdministratorUsername: "exam-admin", AdministratorEmail: "exam-admin@example.edu",
 		AdministratorDisplayName: "Exam Administrator", AdministratorLocale: "en", AdministratorTimezone: "UTC",
@@ -48,7 +48,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	teacher, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{Username: "exam-teacher", Email: "exam-teacher@example.edu", DisplayName: "Exam Teacher"}, Password: password})
+	teacher, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{Username: "exam-teacher", Email: "exam-teacher@example.edu", DisplayName: "Exam Teacher"}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
@@ -69,15 +69,15 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	invocation := application.NewInvocation(*principal, model.RequestMetadata{RequestID: "exam-create-integration"})
-	created, appErr := helper.App.CreateExam(ctx, invocation, application.CreateExamCommand{AcademicUnitID: unit.ID, Title: "  Systems Programming  ", InstructionsMarkdown: "Use **Go**.", IdempotencyKey: "exam-create-once"})
+	invocation := app.NewInvocation(*principal, model.RequestMetadata{RequestID: "exam-create-integration"})
+	created, appErr := helper.App.CreateExam(ctx, invocation, app.CreateExamCommand{AcademicUnitID: unit.ID, Title: "  Systems Programming  ", InstructionsMarkdown: "Use **Go**.", IdempotencyKey: "exam-create-once"})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
 	if created.Exam.CreatorUserID != teacher.ID || created.Exam.OwnerUserID != teacher.ID || created.Draft.Title != "Systems Programming" || !created.Draft.Policy.Equal(model.DefaultExamPolicySet()) || created.ManagerCount != 1 {
 		t.Fatalf("created = %#v", created)
 	}
-	replayed, appErr := helper.App.CreateExam(ctx, invocation, application.CreateExamCommand{AcademicUnitID: unit.ID, Title: "  Systems Programming  ", InstructionsMarkdown: "Use **Go**.", IdempotencyKey: "exam-create-once"})
+	replayed, appErr := helper.App.CreateExam(ctx, invocation, app.CreateExamCommand{AcademicUnitID: unit.ID, Title: "  Systems Programming  ", InstructionsMarkdown: "Use **Go**.", IdempotencyKey: "exam-create-once"})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
@@ -86,7 +86,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	}
 	editedTitle := "Distributed Systems"
 	clearInstructions := ""
-	edited, appErr := helper.App.EditExamDraftText(ctx, invocation, application.EditExamDraftTextCommand{
+	edited, appErr := helper.App.EditExamDraftText(ctx, invocation, app.EditExamDraftTextCommand{
 		ExamID: created.Exam.ID, ExpectedDraftRevision: created.Draft.Revision,
 		Title: &editedTitle, InstructionsMarkdown: &clearInstructions, IdempotencyKey: "exam-edit-once",
 	})
@@ -96,14 +96,14 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if edited.Draft.Title != editedTitle || edited.Draft.InstructionsMarkdown != "" || edited.Draft.Revision != created.Draft.Revision+1 || edited.Exam.Revision != created.Exam.Revision {
 		t.Fatalf("edited = %#v", edited)
 	}
-	editedReplay, appErr := helper.App.EditExamDraftText(ctx, invocation, application.EditExamDraftTextCommand{
+	editedReplay, appErr := helper.App.EditExamDraftText(ctx, invocation, app.EditExamDraftTextCommand{
 		ExamID: created.Exam.ID, ExpectedDraftRevision: created.Draft.Revision,
 		Title: &editedTitle, InstructionsMarkdown: &clearInstructions, IdempotencyKey: "exam-edit-once",
 	})
 	if appErr != nil || editedReplay.Draft.Revision != edited.Draft.Revision {
 		t.Fatalf("edit replay = %#v, %v", editedReplay, appErr)
 	}
-	focusPolicy, appErr := helper.App.ConfigureExamDraftFocusLoss(ctx, invocation, application.ConfigureExamDraftFocusLossCommand{
+	focusPolicy, appErr := helper.App.ConfigureExamDraftFocusLoss(ctx, invocation, app.ConfigureExamDraftFocusLossCommand{
 		ExamID: created.Exam.ID, ExpectedDraftRevision: edited.Draft.Revision,
 		Enabled: false, MinimumDuration: 500 * time.Millisecond, IncidentCount: 1,
 		Window: 10 * time.Second, Outcome: model.IntegrityOutcomeFlag, IdempotencyKey: "exam-focus-loss-once",
@@ -114,7 +114,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if focusPolicy.Draft.Revision != edited.Draft.Revision+1 || focusPolicy.Draft.Policy.ConnectionLoss != edited.Draft.Policy.ConnectionLoss || focusPolicy.Draft.Policy.FocusLoss.Enabled || focusPolicy.Draft.Policy.FocusLoss.MinimumDuration != 500*time.Millisecond || focusPolicy.Draft.Policy.FocusLoss.IncidentCount != 1 || focusPolicy.Draft.Policy.FocusLoss.Window != 10*time.Second || focusPolicy.Draft.Policy.FocusLoss.Outcome != model.IntegrityOutcomeFlag || focusPolicy.Draft.Title != editedTitle || focusPolicy.Exam.Revision != edited.Exam.Revision {
 		t.Fatalf("focus policy = %#v", focusPolicy)
 	}
-	focusReplay, appErr := helper.App.ConfigureExamDraftFocusLoss(ctx, invocation, application.ConfigureExamDraftFocusLossCommand{
+	focusReplay, appErr := helper.App.ConfigureExamDraftFocusLoss(ctx, invocation, app.ConfigureExamDraftFocusLossCommand{
 		ExamID: created.Exam.ID, ExpectedDraftRevision: edited.Draft.Revision,
 		Enabled: false, MinimumDuration: 500 * time.Millisecond, IncidentCount: 1,
 		Window: 10 * time.Second, Outcome: model.IntegrityOutcomeFlag, IdempotencyKey: "exam-focus-loss-once",
@@ -123,28 +123,28 @@ func TestExamAuthoringIntegration(t *testing.T) {
 		t.Fatalf("focus policy replay = %#v, %v", focusReplay, appErr)
 	}
 	staleTitle := "Operating Systems"
-	_, appErr = helper.App.EditExamDraftText(ctx, invocation, application.EditExamDraftTextCommand{
+	_, appErr = helper.App.EditExamDraftText(ctx, invocation, app.EditExamDraftTextCommand{
 		ExamID: created.Exam.ID, ExpectedDraftRevision: created.Draft.Revision,
 		Title: &staleTitle, IdempotencyKey: "exam-edit-stale",
 	})
 	if !apperror.Is(appErr, "exam.draft.revision_conflict") {
 		t.Fatalf("stale edit error = %v", appErr)
 	}
-	got, appErr := helper.App.GetExam(ctx, invocation, application.GetExamQuery{ExamID: created.Exam.ID})
+	got, appErr := helper.App.GetExam(ctx, invocation, app.GetExamQuery{ExamID: created.Exam.ID})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
 	if got.Exam.ID != created.Exam.ID || got.Draft.Title != editedTitle || got.Draft.InstructionsMarkdown != "" || !got.Draft.Policy.Equal(focusPolicy.Draft.Policy) || got.ManagerCount != 1 || got.ResourceCount != 0 || got.HasStarterWorkspace {
 		t.Fatalf("get = %#v", got)
 	}
-	active, appErr := helper.App.ListExams(ctx, invocation, application.ListExamsQuery{AcademicUnitID: unit.ID})
+	active, appErr := helper.App.ListExams(ctx, invocation, app.ListExamsQuery{AcademicUnitID: unit.ID})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
 	if len(active.Items) != 1 || active.Items[0].ID != created.Exam.ID || active.Items[0].Title != editedTitle || active.Items[0].ArchivedAt.Valid || active.Items[0].ManagerCount != 1 {
 		t.Fatalf("active catalog = %#v", active)
 	}
-	managerUser, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{Username: "exam-manager", Email: "exam-manager@example.edu", DisplayName: "Exam Manager"}, Password: password})
+	managerUser, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{Username: "exam-manager", Email: "exam-manager@example.edu", DisplayName: "Exam Manager"}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
@@ -152,7 +152,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	managerAdded, appErr := helper.App.AddExamManager(ctx, invocation, application.AddExamManagerCommand{
+	managerAdded, appErr := helper.App.AddExamManager(ctx, invocation, app.AddExamManagerCommand{
 		ExamID: created.Exam.ID, UserID: managerUser.ID, ExpectedExamRevision: 1, IdempotencyKey: "exam-manager-add",
 	})
 	if appErr != nil || managerAdded.Exam.Revision != 2 || managerAdded.Manager.UserID != managerUser.ID {
@@ -163,15 +163,15 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	managerInvocation := application.NewInvocation(*managerPrincipal, model.RequestMetadata{RequestID: "exam-manager-integration"})
-	if _, appErr := helper.App.ListExamManagers(ctx, managerInvocation, application.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50}); !apperror.Is(appErr, "resource.not_found") {
+	managerInvocation := app.NewInvocation(*managerPrincipal, model.RequestMetadata{RequestID: "exam-manager-integration"})
+	if _, appErr := helper.App.ListExamManagers(ctx, managerInvocation, app.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50}); !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("Manager without role error = %v", appErr)
 	}
 	managerBinding, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: managerUser.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	managers, appErr := helper.App.ListExamManagers(ctx, managerInvocation, application.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50})
+	managers, appErr := helper.App.ListExamManagers(ctx, managerInvocation, app.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50})
 	if appErr != nil || len(managers.Items) != 2 {
 		t.Fatalf("Manager list = %#v, %v", managers, appErr)
 	}
@@ -179,7 +179,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if _, err = storetest.EndRoleBinding(ctx, persistence, managerBinding.ID, managerBindingEndedAt); err != nil {
 		t.Fatal(err)
 	}
-	if _, appErr := helper.App.ListExamManagers(ctx, managerInvocation, application.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50}); !apperror.Is(appErr, "resource.not_found") {
+	if _, appErr := helper.App.ListExamManagers(ctx, managerInvocation, app.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50}); !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("Manager after role revocation error = %v", appErr)
 	}
 	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: managerUser.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(managerBindingEndedAt)}); err != nil {
@@ -188,7 +188,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if _, err = storetest.EndAcademicUnitMember(ctx, persistence, managerMembership.ID, managerMembership.Revision, model.GetMillis()-100); err != nil {
 		t.Fatal(err)
 	}
-	if _, appErr := helper.App.ListExamManagers(ctx, managerInvocation, application.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50}); !apperror.Is(appErr, "resource.not_found") {
+	if _, appErr := helper.App.ListExamManagers(ctx, managerInvocation, app.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50}); !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("Manager after membership loss error = %v", appErr)
 	}
 	if _, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{AcademicUnitID: unit.ID, UserID: managerUser.ID, StartsAt: model.TimeFromMillis(model.GetMillis() - 50)}); err != nil {
@@ -201,7 +201,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: teacher.ID, RoleID: accountManagerRole.ID, ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000)}); err != nil {
 		t.Fatal(err)
 	}
-	disabledManager, appErr := helper.App.SetUserEnabled(ctx, invocation, application.SetUserEnabledCommand{ID: managerUser.ID, Enabled: false})
+	disabledManager, appErr := helper.App.SetUserEnabled(ctx, invocation, app.SetUserEnabledCommand{ID: managerUser.ID, Enabled: false})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
@@ -222,13 +222,13 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	})); err != nil {
 		t.Fatal(err)
 	}
-	transferred, appErr := helper.App.TransferExamOwnership(ctx, invocation, application.TransferExamOwnershipCommand{
+	transferred, appErr := helper.App.TransferExamOwnership(ctx, invocation, app.TransferExamOwnershipCommand{
 		ExamID: created.Exam.ID, UserID: managerUser.ID, ExpectedExamRevision: 2, IdempotencyKey: "exam-owner-transfer",
 	})
 	if appErr != nil || transferred.Exam.OwnerUserID != managerUser.ID || transferred.Exam.Revision != 3 {
 		t.Fatalf("ownership transfer = %#v, %v", transferred, appErr)
 	}
-	afterTransfer, appErr := helper.App.ListExamManagers(ctx, invocation, application.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50})
+	afterTransfer, appErr := helper.App.ListExamManagers(ctx, invocation, app.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50})
 	if appErr != nil || len(afterTransfer.Items) != 2 {
 		t.Fatalf("Manager relationships after ownership transfer = %#v, %v", afterTransfer, appErr)
 	}
@@ -239,7 +239,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if owner, remainsManager := relationships[teacher.ID]; !remainsManager || owner || !relationships[managerUser.ID] {
 		t.Fatalf("ownership transfer relationships = %#v", afterTransfer.Items)
 	}
-	removedCreator, appErr := helper.App.RemoveExamManager(ctx, managerInvocation, application.RemoveExamManagerCommand{
+	removedCreator, appErr := helper.App.RemoveExamManager(ctx, managerInvocation, app.RemoveExamManagerCommand{
 		ExamID: created.Exam.ID, UserID: teacher.ID, ExpectedExamRevision: 3, IdempotencyKey: "exam-manager-remove-creator",
 	})
 	if appErr != nil || removedCreator.Exam.Revision != 4 || removedCreator.Manager.UserID != teacher.ID {
@@ -250,7 +250,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if _, err = storetest.EndAcademicUnitMember(ctx, persistence, membership.ID, membership.Revision, membershipEndedAt); err != nil {
 		t.Fatal(err)
 	}
-	withoutMembership, appErr := helper.App.ListExams(ctx, invocation, application.ListExamsQuery{AcademicUnitID: unit.ID})
+	withoutMembership, appErr := helper.App.ListExams(ctx, invocation, app.ListExamsQuery{AcademicUnitID: unit.ID})
 	if appErr != nil || len(withoutMembership.Items) != 0 {
 		t.Fatalf("catalog after exact membership ended = %#v, %v", withoutMembership, appErr)
 	}
@@ -263,7 +263,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if _, err = storetest.EndRoleBinding(ctx, persistence, binding.ID, bindingEndedAt); err != nil {
 		t.Fatal(err)
 	}
-	if _, appErr := helper.App.ListExams(ctx, invocation, application.ListExamsQuery{AcademicUnitID: unit.ID}); !apperror.Is(appErr, "authorization.denied") {
+	if _, appErr := helper.App.ListExams(ctx, invocation, app.ListExamsQuery{AcademicUnitID: unit.ID}); !apperror.Is(appErr, "authorization.denied") {
 		t.Fatalf("catalog after role ended error = %v", appErr)
 	}
 	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
@@ -272,7 +272,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	outsider, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{Username: "exam-outsider", Email: "exam-outsider@example.edu", DisplayName: "Exam Outsider"}, Password: password})
+	outsider, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{Username: "exam-outsider", Email: "exam-outsider@example.edu", DisplayName: "Exam Outsider"}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
@@ -281,12 +281,12 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	outsiderInvocation := application.NewInvocation(*outsiderPrincipal, model.RequestMetadata{RequestID: "exam-get-denied-integration"})
-	_, appErr = helper.App.GetExam(ctx, outsiderInvocation, application.GetExamQuery{ExamID: created.Exam.ID})
+	outsiderInvocation := app.NewInvocation(*outsiderPrincipal, model.RequestMetadata{RequestID: "exam-get-denied-integration"})
+	_, appErr = helper.App.GetExam(ctx, outsiderInvocation, app.GetExamQuery{ExamID: created.Exam.ID})
 	if !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("outsider get error = %v, want concealed resource.not_found", appErr)
 	}
-	_, appErr = helper.App.ArchiveExam(ctx, outsiderInvocation, application.ArchiveExamCommand{
+	_, appErr = helper.App.ArchiveExam(ctx, outsiderInvocation, app.ArchiveExamCommand{
 		ExamID: created.Exam.ID, ExpectedExamRevision: created.Exam.Revision, IdempotencyKey: "exam-archive-denied",
 	})
 	if !apperror.Is(appErr, "resource.not_found") {
@@ -304,14 +304,14 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	overrideAdded, appErr := helper.App.AddExamManager(ctx, outsiderInvocation, application.AddExamManagerCommand{
+	overrideAdded, appErr := helper.App.AddExamManager(ctx, outsiderInvocation, app.AddExamManagerCommand{
 		ExamID: created.Exam.ID, UserID: teacher.ID, ExpectedExamRevision: currentExamRevision, IdempotencyKey: "exam-manager-override-add",
 	})
 	if appErr != nil || overrideAdded.Exam.Revision != currentExamRevision+1 || overrideAdded.Manager.UserID != teacher.ID {
 		t.Fatalf("override Manager addition = %#v, %v", overrideAdded, appErr)
 	}
 	currentExamRevision = overrideAdded.Exam.Revision
-	overridePage, appErr := helper.App.ListExams(ctx, outsiderInvocation, application.ListExamsQuery{AcademicUnitID: unit.ID})
+	overridePage, appErr := helper.App.ListExams(ctx, outsiderInvocation, app.ListExamsQuery{AcademicUnitID: unit.ID})
 	if appErr != nil || len(overridePage.Items) != 1 || overridePage.Items[0].ID != created.Exam.ID {
 		t.Fatalf("override catalog = %#v, %v", overridePage, appErr)
 	}
@@ -323,7 +323,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if err != nil || len(viewOverrideAudits) != 1 || viewOverrideAudits[0].Status != model.AuditStatusSuccess || viewOverrideAudits[0].ScopeType != model.RoleScopeInstitution || viewOverrideAudits[0].ScopeID != institution.ID.String() {
 		t.Fatalf("override list audits = %#v, %v", viewOverrideAudits, err)
 	}
-	archived, appErr := helper.App.ArchiveExam(ctx, outsiderInvocation, application.ArchiveExamCommand{
+	archived, appErr := helper.App.ArchiveExam(ctx, outsiderInvocation, app.ArchiveExamCommand{
 		ExamID: created.Exam.ID, ExpectedExamRevision: currentExamRevision, IdempotencyKey: "exam-archive-once",
 	})
 	if appErr != nil {
@@ -350,26 +350,26 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if len(manageOverrideAudits) != 5 || manageStatuses[model.AuditStatusSuccess] != 4 || manageStatuses[model.AuditStatusFail] != 1 {
 		t.Fatalf("override archive audits = %#v, %v", manageOverrideAudits, err)
 	}
-	archiveReplay, appErr := helper.App.ArchiveExam(ctx, outsiderInvocation, application.ArchiveExamCommand{
+	archiveReplay, appErr := helper.App.ArchiveExam(ctx, outsiderInvocation, app.ArchiveExamCommand{
 		ExamID: created.Exam.ID, ExpectedExamRevision: currentExamRevision, IdempotencyKey: "exam-archive-once",
 	})
 	if appErr != nil || archiveReplay.Revision != archived.Revision || !archiveReplay.ArchivedAt.Time.Equal(archived.ArchivedAt.Time) {
 		t.Fatalf("archive replay = %#v, %v", archiveReplay, appErr)
 	}
-	active, appErr = helper.App.ListExams(ctx, invocation, application.ListExamsQuery{AcademicUnitID: unit.ID})
+	active, appErr = helper.App.ListExams(ctx, invocation, app.ListExamsQuery{AcademicUnitID: unit.ID})
 	if appErr != nil || len(active.Items) != 0 {
 		t.Fatalf("active catalog after archive = %#v, %v", active, appErr)
 	}
-	archivedPage, appErr := helper.App.ListExams(ctx, invocation, application.ListExamsQuery{AcademicUnitID: unit.ID, ArchiveFilter: application.ExamArchiveArchived})
+	archivedPage, appErr := helper.App.ListExams(ctx, invocation, app.ListExamsQuery{AcademicUnitID: unit.ID, ArchiveFilter: app.ExamArchiveArchived})
 	if appErr != nil || len(archivedPage.Items) != 1 || archivedPage.Items[0].ID != archived.ID || !archivedPage.Items[0].ArchivedAt.Valid || archivedPage.Items[0].Revision != archived.Revision {
 		t.Fatalf("archived catalog = %#v, %v", archivedPage, appErr)
 	}
-	archivedView, appErr := helper.App.GetExam(ctx, invocation, application.GetExamQuery{ExamID: created.Exam.ID})
+	archivedView, appErr := helper.App.GetExam(ctx, invocation, app.GetExamQuery{ExamID: created.Exam.ID})
 	if appErr != nil || !archivedView.Exam.IsArchived() || archivedView.Draft.Title != editedTitle {
 		t.Fatalf("archived exact Get = %#v, %v", archivedView, appErr)
 	}
 	postArchiveTitle := "Cannot edit archived Exam"
-	_, appErr = helper.App.EditExamDraftText(ctx, invocation, application.EditExamDraftTextCommand{
+	_, appErr = helper.App.EditExamDraftText(ctx, invocation, app.EditExamDraftTextCommand{
 		ExamID: created.Exam.ID, ExpectedDraftRevision: focusPolicy.Draft.Revision,
 		Title: &postArchiveTitle, IdempotencyKey: "exam-edit-after-archive",
 	})

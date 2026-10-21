@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -25,29 +25,29 @@ type accountSecurityHTTPApplication struct {
 	MFA
 	PersonalAccessTokens
 
-	createToken application.CreatePersonalAccessTokenCommand
+	createToken app.CreatePersonalAccessTokenCommand
 }
 
 func (as *accountSecurityHTTPApplication) ListSessions(
 	context.Context,
-	application.Invocation,
-	application.ListSessionsQuery,
+	app.Invocation,
+	app.ListSessionsQuery,
 ) ([]*model.Session, error) {
 	return []*model.Session{}, nil
 }
 
 func (as *accountSecurityHTTPApplication) GetMFAStatus(
 	context.Context,
-	application.Invocation,
-	application.GetMFAStatusQuery,
-) (*application.MFAStatus, error) {
-	return &application.MFAStatus{Enabled: true, RecoveryCodesRemaining: 7}, nil
+	app.Invocation,
+	app.GetMFAStatusQuery,
+) (*app.MFAStatus, error) {
+	return &app.MFAStatus{Enabled: true, RecoveryCodesRemaining: 7}, nil
 }
 
 func (as *accountSecurityHTTPApplication) CreatePersonalAccessToken(
 	_ context.Context,
-	_ application.Invocation,
-	command application.CreatePersonalAccessTokenCommand,
+	_ app.Invocation,
+	command app.CreatePersonalAccessTokenCommand,
 ) (*model.PersonalAccessTokenCreation, error) {
 	as.createToken = command
 	return &model.PersonalAccessTokenCreation{

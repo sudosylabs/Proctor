@@ -18,23 +18,23 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type nativeDeliveryHTTPFake struct {
 	*examAttemptHTTPFake
-	query application.NativeDeliveryQuery
+	query app.NativeDeliveryQuery
 	calls int
 }
 
-func (f *nativeDeliveryHTTPFake) NativeDeliveryStatus(_ context.Context, _ application.Invocation, q application.NativeDeliveryQuery) (*model.NativeSecurityStreamStatus, error) {
+func (f *nativeDeliveryHTTPFake) NativeDeliveryStatus(_ context.Context, _ app.Invocation, q app.NativeDeliveryQuery) (*model.NativeSecurityStreamStatus, error) {
 	f.query = q
 	f.calls++
 	return &model.NativeSecurityStreamStatus{NativeDeliveryProgress: model.NativeDeliveryProgress{MissingBatchRanges: []model.SequenceRange{}, ServerTime: time.Date(2026, 9, 8, 0, 0, 0, 0, time.UTC)}, StreamID: q.StreamID, DetailMode: "collecting"}, nil
 }
-func (f *nativeDeliveryHTTPFake) UpdateNativeDeliverySummary(context.Context, application.Invocation, application.NativeDeliverySummaryCommand) (*model.NativeSecurityStreamStatus, error) {
+func (f *nativeDeliveryHTTPFake) UpdateNativeDeliverySummary(context.Context, app.Invocation, app.NativeDeliverySummaryCommand) (*model.NativeSecurityStreamStatus, error) {
 	f.calls++
 	return nil, apperror.New("exam.delivery.summary_rate_limited")
 }
@@ -105,7 +105,7 @@ func TestNativeDeliverySummaryStrictBodyAndRetryDelay(t *testing.T) {
 	}
 }
 
-func (f *nativeDeliveryHTTPFake) AppendNativeDelivery(_ context.Context, _ application.Invocation, c application.NativeDeliveryAppendCommand) (*model.NativeSecurityAcknowledgement, error) {
+func (f *nativeDeliveryHTTPFake) AppendNativeDelivery(_ context.Context, _ app.Invocation, c app.NativeDeliveryAppendCommand) (*model.NativeSecurityAcknowledgement, error) {
 	f.query = c.Query
 	f.calls++
 	raw, err := c.Batch.Canonical()

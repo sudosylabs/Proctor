@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -60,7 +60,7 @@ func TestExamHTTPListUsesBoundedCatalogQueryAndSummary(t *testing.T) {
 	logger, _ := newTestLogger(t)
 	principal := testExamHTTPPrincipal()
 	unitID, examID := model.NewAcademicUnitID(), model.NewExamID()
-	fake := &examHTTPApplication{principal: principal, catalog: application.ExamCatalogPage{Items: []application.ExamSummary{{
+	fake := &examHTTPApplication{principal: principal, catalog: app.ExamCatalogPage{Items: []app.ExamSummary{{
 		ID: examID, AcademicUnitID: unitID, CreatorUserID: principal.UserID, OwnerUserID: principal.UserID,
 		Title: "Systems", UpdatedAt: time.Date(2026, 8, 14, 8, 0, 0, 0, time.UTC), Revision: 2, ManagerCount: 1,
 	}}}}
@@ -72,7 +72,7 @@ func TestExamHTTPListUsesBoundedCatalogQueryAndSummary(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("list status = %d: %s", response.Code, response.Body.String())
 	}
-	if fake.list.AcademicUnitID != unitID || fake.list.Query != "systems design" || fake.list.ArchiveFilter != application.ExamArchiveAll || fake.list.Limit != 25 {
+	if fake.list.AcademicUnitID != unitID || fake.list.Query != "systems design" || fake.list.ArchiveFilter != app.ExamArchiveAll || fake.list.Limit != 25 {
 		t.Fatalf("list query = %#v", fake.list)
 	}
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"title":"Systems"`)) || bytes.Contains(response.Body.Bytes(), []byte("instructions_markdown")) || bytes.Contains(response.Body.Bytes(), []byte("policy")) {
@@ -140,8 +140,8 @@ func TestExamManagerHTTPListAndMutationsUseStrictBoundedContracts(t *testing.T) 
 	changedExam := view.Exam
 	changedExam.Revision = 2
 	fake := &examHTTPApplication{principal: principal,
-		managerPage:   application.ExamManagerPage{Items: []application.ExamManagerSummary{{Manager: *manager}}},
-		managerChange: application.ExamManagerChange{Exam: &changedExam, Manager: manager},
+		managerPage:   app.ExamManagerPage{Items: []app.ExamManagerSummary{{Manager: *manager}}},
+		managerChange: app.ExamManagerChange{Exam: &changedExam, Manager: manager},
 	}
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examResource(fake))
 
@@ -405,45 +405,45 @@ func TestExamHTTPResponseIsBoundedAndContainsTypedPolicy(t *testing.T) {
 type examHTTPApplication struct {
 	Application
 	principal              model.Principal
-	view                   application.ExamView
-	create                 application.CreateExamCommand
-	edit                   application.EditExamDraftTextCommand
-	configureFocusLoss     application.ConfigureExamDraftFocusLossCommand
-	configureNativePolicy  application.ConfigureExamDraftNativePolicyCommand
-	configureBrowserPolicy application.ConfigureExamDraftBrowserPolicyCommand
-	list                   application.ListExamsQuery
-	catalog                application.ExamCatalogPage
-	archive                application.ArchiveExamCommand
+	view                   app.ExamView
+	create                 app.CreateExamCommand
+	edit                   app.EditExamDraftTextCommand
+	configureFocusLoss     app.ConfigureExamDraftFocusLossCommand
+	configureNativePolicy  app.ConfigureExamDraftNativePolicyCommand
+	configureBrowserPolicy app.ConfigureExamDraftBrowserPolicyCommand
+	list                   app.ListExamsQuery
+	catalog                app.ExamCatalogPage
+	archive                app.ArchiveExamCommand
 	archived               model.Exam
-	get                    application.GetExamQuery
-	managerList            application.ListExamManagersQuery
-	managerCommand         application.AddExamManagerCommand
-	managerPage            application.ExamManagerPage
-	managerChange          application.ExamManagerChange
+	get                    app.GetExamQuery
+	managerList            app.ListExamManagersQuery
+	managerCommand         app.AddExamManagerCommand
+	managerPage            app.ExamManagerPage
+	managerChange          app.ExamManagerChange
 }
 
-func (a *examHTTPApplication) ListExamManagers(_ context.Context, _ application.Invocation, query application.ListExamManagersQuery) (application.ExamManagerPage, error) {
+func (a *examHTTPApplication) ListExamManagers(_ context.Context, _ app.Invocation, query app.ListExamManagersQuery) (app.ExamManagerPage, error) {
 	a.managerList = query
 	return a.managerPage, nil
 }
-func (a *examHTTPApplication) AddExamManager(_ context.Context, _ application.Invocation, command application.AddExamManagerCommand) (application.ExamManagerChange, error) {
+func (a *examHTTPApplication) AddExamManager(_ context.Context, _ app.Invocation, command app.AddExamManagerCommand) (app.ExamManagerChange, error) {
 	a.managerCommand = command
 	return a.managerChange, nil
 }
-func (a *examHTTPApplication) RemoveExamManager(_ context.Context, _ application.Invocation, command application.RemoveExamManagerCommand) (application.ExamManagerChange, error) {
+func (a *examHTTPApplication) RemoveExamManager(_ context.Context, _ app.Invocation, command app.RemoveExamManagerCommand) (app.ExamManagerChange, error) {
 	a.managerCommand = command
 	return a.managerChange, nil
 }
-func (a *examHTTPApplication) TransferExamOwnership(_ context.Context, _ application.Invocation, command application.TransferExamOwnershipCommand) (application.ExamManagerChange, error) {
+func (a *examHTTPApplication) TransferExamOwnership(_ context.Context, _ app.Invocation, command app.TransferExamOwnershipCommand) (app.ExamManagerChange, error) {
 	a.managerCommand = command
 	return a.managerChange, nil
 }
 
-func (a *examHTTPApplication) ListExams(_ context.Context, _ application.Invocation, query application.ListExamsQuery) (application.ExamCatalogPage, error) {
+func (a *examHTTPApplication) ListExams(_ context.Context, _ app.Invocation, query app.ListExamsQuery) (app.ExamCatalogPage, error) {
 	a.list = query
 	return a.catalog, nil
 }
-func (a *examHTTPApplication) ArchiveExam(_ context.Context, _ application.Invocation, command application.ArchiveExamCommand) (model.Exam, error) {
+func (a *examHTTPApplication) ArchiveExam(_ context.Context, _ app.Invocation, command app.ArchiveExamCommand) (model.Exam, error) {
 	a.archive = command
 	return a.archived, nil
 }
@@ -456,29 +456,29 @@ func (a *examHTTPApplication) AuthenticateBearer(context.Context, string) (*mode
 	principal := a.principal
 	return &principal, nil
 }
-func (a *examHTTPApplication) CreateExam(_ context.Context, _ application.Invocation, command application.CreateExamCommand) (application.ExamView, error) {
+func (a *examHTTPApplication) CreateExam(_ context.Context, _ app.Invocation, command app.CreateExamCommand) (app.ExamView, error) {
 	a.create = command
 	return a.view, nil
 }
-func (a *examHTTPApplication) GetExam(_ context.Context, _ application.Invocation, query application.GetExamQuery) (application.ExamView, error) {
+func (a *examHTTPApplication) GetExam(_ context.Context, _ app.Invocation, query app.GetExamQuery) (app.ExamView, error) {
 	a.get = query
 	return a.view, nil
 }
-func (a *examHTTPApplication) EditExamDraftText(_ context.Context, _ application.Invocation, command application.EditExamDraftTextCommand) (application.ExamView, error) {
+func (a *examHTTPApplication) EditExamDraftText(_ context.Context, _ app.Invocation, command app.EditExamDraftTextCommand) (app.ExamView, error) {
 	a.edit = command
 	return a.view, nil
 }
-func (a *examHTTPApplication) ConfigureExamDraftNativePolicy(_ context.Context, _ application.Invocation, command application.ConfigureExamDraftNativePolicyCommand) (application.ExamView, error) {
+func (a *examHTTPApplication) ConfigureExamDraftNativePolicy(_ context.Context, _ app.Invocation, command app.ConfigureExamDraftNativePolicyCommand) (app.ExamView, error) {
 	a.configureNativePolicy = command
 	return a.view, nil
 }
 
-func (a *examHTTPApplication) ConfigureExamDraftFocusLoss(_ context.Context, _ application.Invocation, command application.ConfigureExamDraftFocusLossCommand) (application.ExamView, error) {
+func (a *examHTTPApplication) ConfigureExamDraftFocusLoss(_ context.Context, _ app.Invocation, command app.ConfigureExamDraftFocusLossCommand) (app.ExamView, error) {
 	a.configureFocusLoss = command
 	return a.view, nil
 }
 
-func (a *examHTTPApplication) ConfigureExamDraftBrowserPolicy(_ context.Context, _ application.Invocation, command application.ConfigureExamDraftBrowserPolicyCommand) (application.ExamView, error) {
+func (a *examHTTPApplication) ConfigureExamDraftBrowserPolicy(_ context.Context, _ app.Invocation, command app.ConfigureExamDraftBrowserPolicyCommand) (app.ExamView, error) {
 	a.configureBrowserPolicy = command
 	return a.view, nil
 }
@@ -487,7 +487,7 @@ func testExamHTTPPrincipal() model.Principal {
 	return model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientWeb, AuthenticatedAt: time.Now().UTC()}
 }
 
-func testExamHTTPView(t *testing.T, userID model.UserID) application.ExamView {
+func testExamHTTPView(t *testing.T, userID model.UserID) app.ExamView {
 	t.Helper()
 	at := time.Now().UTC()
 	exam, err := model.NewExam(model.NewExamID(), model.NewAcademicUnitID(), userID, at)
@@ -498,10 +498,10 @@ func testExamHTTPView(t *testing.T, userID model.UserID) application.ExamView {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return application.ExamView{Exam: *exam, Draft: *draft, OwnerUserID: userID, ManagerCount: 1}
+	return app.ExamView{Exam: *exam, Draft: *draft, OwnerUserID: userID, ManagerCount: 1}
 }
 
-func assertExamHTTPResponse(t *testing.T, data []byte, view application.ExamView) {
+func assertExamHTTPResponse(t *testing.T, data []byte, view app.ExamView) {
 	t.Helper()
 	var got examResponse
 	if err := json.Unmarshal(data, &got); err != nil {

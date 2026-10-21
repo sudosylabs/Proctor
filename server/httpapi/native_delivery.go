@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"strconv"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -23,8 +23,8 @@ func nativeDeliveryDeclarationErrorCodes() []string {
 	return append(nativeDeliveryErrorCodes(), "idempotency.key_required", "idempotency.key_invalid")
 }
 
-func nativeDeliveryResource(app ExamAttemptApplication) resource {
-	m := examAttemptHTTPModule{application: app}
+func nativeDeliveryResource(application ExamAttemptApplication) resource {
+	m := examAttemptHTTPModule{application: application}
 	path := func(tail ...pathPart) routePath {
 		parts := []pathPart{literal("exam-attempts"), canonicalID("exam_attempt_id"), literal("security-streams"), canonicalID("stream_id")}
 		return apiPath(append(parts, tail...)...)
@@ -38,16 +38,16 @@ func nativeDeliveryResource(app ExamAttemptApplication) resource {
 		boundedNativeDeliveryRoute(2048, idempotentSessionRoute(IdempotencyRequired, http.MethodPost, path(literal("summary")), nativeDeliveryDeclarationErrorCodes(), m.updateNativeDeliverySummary)))
 }
 
-func nativeDeliveryQuery(request operationRequest) (application.NativeDeliveryQuery, error) {
+func nativeDeliveryQuery(request operationRequest) (app.NativeDeliveryQuery, error) {
 	attemptID, err := request.params.RequireExamAttemptID()
 	if err != nil {
-		return application.NativeDeliveryQuery{}, err
+		return app.NativeDeliveryQuery{}, err
 	}
 	streamID, err := request.params.RequireNativeStreamID()
 	if err != nil {
-		return application.NativeDeliveryQuery{}, err
+		return app.NativeDeliveryQuery{}, err
 	}
-	query := application.NativeDeliveryQuery{Access: application.CandidateExamAttemptAccess{AttemptID: attemptID}, StreamID: streamID}
+	query := app.NativeDeliveryQuery{Access: app.CandidateExamAttemptAccess{AttemptID: attemptID}, StreamID: streamID}
 	// Omission does not select historical authority. The Store decides from the
 	// recorded source closure, and rejects omission for a live source.
 	if len(request.request.Header.Values(candidateAttemptCredentialHeader)) > 0 || len(request.request.Header.Values(candidateAttemptConnectionHeader)) > 0 {
@@ -98,7 +98,7 @@ func (m examAttemptHTTPModule) declareNativeDeliveryGaps(request operationReques
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	value, err := m.application.DeclareNativeDeliveryGaps(request.context, request.invocation(), application.NativeDeliveryGapsCommand{Query: query, Declaration: body, IdempotencyKey: request.idempotencyKey})
+	value, err := m.application.DeclareNativeDeliveryGaps(request.context, request.invocation(), app.NativeDeliveryGapsCommand{Query: query, Declaration: body, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -113,7 +113,7 @@ func (m examAttemptHTTPModule) sealNativeDelivery(request operationRequest) (ope
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	value, err := m.application.SealNativeDelivery(request.context, request.invocation(), application.NativeDeliveryFinalCommand{Query: query, Declaration: body, IdempotencyKey: request.idempotencyKey})
+	value, err := m.application.SealNativeDelivery(request.context, request.invocation(), app.NativeDeliveryFinalCommand{Query: query, Declaration: body, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -128,7 +128,7 @@ func (m examAttemptHTTPModule) updateNativeDeliverySummary(request operationRequ
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	value, err := m.application.UpdateNativeDeliverySummary(request.context, request.invocation(), application.NativeDeliverySummaryCommand{Query: query, Summary: body, IdempotencyKey: request.idempotencyKey})
+	value, err := m.application.UpdateNativeDeliverySummary(request.context, request.invocation(), app.NativeDeliverySummaryCommand{Query: query, Summary: body, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -155,7 +155,7 @@ func (m examAttemptHTTPModule) appendNativeDelivery(request operationRequest) (o
 	if err != nil {
 		return operationResult{}, err
 	}
-	value, err := m.application.AppendNativeDelivery(request.context, request.invocation(), application.NativeDeliveryAppendCommand{Query: query, Batch: body, IdempotencyKey: request.idempotencyKey})
+	value, err := m.application.AppendNativeDelivery(request.context, request.invocation(), app.NativeDeliveryAppendCommand{Query: query, Batch: body, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
 	}

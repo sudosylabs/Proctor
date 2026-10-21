@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -24,7 +24,7 @@ import (
 type institutionHTTPApplication struct {
 	principal model.Principal
 	result    *model.Institution
-	command   application.UpdateInstitutionCommand
+	command   app.UpdateInstitutionCommand
 }
 
 func (a *institutionHTTPApplication) AuthenticateAccess(
@@ -43,8 +43,8 @@ func (a *institutionHTTPApplication) AuthenticateBearer(
 
 func (a *institutionHTTPApplication) GetInstitution(
 	_ context.Context,
-	invocation application.Invocation,
-	_ application.GetInstitutionQuery,
+	invocation app.Invocation,
+	_ app.GetInstitutionQuery,
 ) (*model.Institution, error) {
 	if invocation.Principal().UserID != a.principal.UserID {
 		return nil, apperror.New("request.invalid")
@@ -54,8 +54,8 @@ func (a *institutionHTTPApplication) GetInstitution(
 
 func (a *institutionHTTPApplication) UpdateInstitution(
 	_ context.Context,
-	invocation application.Invocation,
-	command application.UpdateInstitutionCommand,
+	invocation app.Invocation,
+	command app.UpdateInstitutionCommand,
 ) (*model.Institution, error) {
 	if invocation.Principal().UserID != a.principal.UserID {
 		return nil, apperror.New("request.invalid")

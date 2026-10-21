@@ -12,41 +12,41 @@ import (
 	"reflect"
 	"testing"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type mailAPIFake struct{}
 
-func (mailAPIFake) GetMailKeyState(context.Context, application.Invocation) (application.MailKeyStateView, error) {
-	return application.MailKeyStateView{}, nil
+func (mailAPIFake) GetMailKeyState(context.Context, app.Invocation) (app.MailKeyStateView, error) {
+	return app.MailKeyStateView{}, nil
 }
 
-func (mailAPIFake) StartMailRekey(context.Context, application.Invocation, string) (application.MailRekeyView, error) {
-	return application.MailRekeyView{}, nil
+func (mailAPIFake) StartMailRekey(context.Context, app.Invocation, string) (app.MailRekeyView, error) {
+	return app.MailRekeyView{}, nil
 }
 
-func (mailAPIFake) GetMailRekeyStatus(context.Context, application.Invocation, model.JobID) (application.MailRekeyStatusView, error) {
-	return application.MailRekeyStatusView{}, nil
+func (mailAPIFake) GetMailRekeyStatus(context.Context, app.Invocation, model.JobID) (app.MailRekeyStatusView, error) {
+	return app.MailRekeyStatusView{}, nil
 }
 
-func (mailAPIFake) SendTestMail(context.Context, application.Invocation) (application.MailDeliveryView, error) {
-	return application.MailDeliveryView{}, nil
+func (mailAPIFake) SendTestMail(context.Context, app.Invocation) (app.MailDeliveryView, error) {
+	return app.MailDeliveryView{}, nil
 }
-func (mailAPIFake) GetMailMetrics(context.Context, application.Invocation) (application.MailMetricsSnapshot, error) {
-	return application.MailMetricsSnapshot{}, nil
+func (mailAPIFake) GetMailMetrics(context.Context, app.Invocation) (app.MailMetricsSnapshot, error) {
+	return app.MailMetricsSnapshot{}, nil
 }
-func (mailAPIFake) GetMailDelivery(context.Context, application.Invocation, model.MailDeliveryID) (application.MailDeliveryView, error) {
-	return application.MailDeliveryView{}, nil
+func (mailAPIFake) GetMailDelivery(context.Context, app.Invocation, model.MailDeliveryID) (app.MailDeliveryView, error) {
+	return app.MailDeliveryView{}, nil
 }
-func (mailAPIFake) ListMailDeliveries(context.Context, application.Invocation, application.ListMailDeliveriesQuery) (application.MailDeliveryPage, error) {
-	return application.MailDeliveryPage{}, nil
+func (mailAPIFake) ListMailDeliveries(context.Context, app.Invocation, app.ListMailDeliveriesQuery) (app.MailDeliveryPage, error) {
+	return app.MailDeliveryPage{}, nil
 }
-func (mailAPIFake) CancelMailDelivery(context.Context, application.Invocation, model.MailDeliveryID) (application.MailDeliveryView, error) {
-	return application.MailDeliveryView{}, nil
+func (mailAPIFake) CancelMailDelivery(context.Context, app.Invocation, model.MailDeliveryID) (app.MailDeliveryView, error) {
+	return app.MailDeliveryView{}, nil
 }
-func (mailAPIFake) RetryMailDelivery(context.Context, application.Invocation, model.MailDeliveryID) (application.MailDeliveryView, error) {
-	return application.MailDeliveryView{}, nil
+func (mailAPIFake) RetryMailDelivery(context.Context, app.Invocation, model.MailDeliveryID) (app.MailDeliveryView, error) {
+	return app.MailDeliveryView{}, nil
 }
 
 func TestMailOpenAPIAgreesWithRuntime(t *testing.T) {

@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -438,7 +438,7 @@ func (m examResourceModule) create(request operationRequest) (operationResult, e
 	if err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	view, err := m.exams.CreateExam(request.context, request.invocation(), application.CreateExamCommand{
+	view, err := m.exams.CreateExam(request.context, request.invocation(), app.CreateExamCommand{
 		AcademicUnitID: unitID, Title: body.Title, InstructionsMarkdown: body.InstructionsMarkdown,
 		IdempotencyKey: request.idempotencyKey,
 	})
@@ -453,7 +453,7 @@ func (m examResourceModule) get(request operationRequest) (operationResult, erro
 	if err != nil {
 		return operationResult{}, err
 	}
-	view, err := m.exams.GetExam(request.context, request.invocation(), application.GetExamQuery{ExamID: examID})
+	view, err := m.exams.GetExam(request.context, request.invocation(), app.GetExamQuery{ExamID: examID})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -477,7 +477,7 @@ func (m examResourceModule) editDraftText(request operationRequest) (operationRe
 	if body.ExpectedDraftRevision < 1 {
 		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
-	view, err := m.exams.EditExamDraftText(request.context, request.invocation(), application.EditExamDraftTextCommand{
+	view, err := m.exams.EditExamDraftText(request.context, request.invocation(), app.EditExamDraftTextCommand{
 		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision,
 		Title: title, InstructionsMarkdown: instructions, IdempotencyKey: request.idempotencyKey,
 	})
@@ -514,7 +514,7 @@ func (m examResourceModule) configureDraftFocusLoss(request operationRequest) (o
 	default:
 		return operationResult{}, invalidRequestError(errors.New("is not supported"))
 	}
-	view, err := m.exams.ConfigureExamDraftFocusLoss(request.context, request.invocation(), application.ConfigureExamDraftFocusLossCommand{
+	view, err := m.exams.ConfigureExamDraftFocusLoss(request.context, request.invocation(), app.ConfigureExamDraftFocusLossCommand{
 		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision, Enabled: body.Enabled,
 		MinimumDuration: time.Duration(body.MinimumDurationMilliseconds) * time.Millisecond,
 		IncidentCount:   body.IncidentCount, Window: time.Duration(body.WindowMilliseconds) * time.Millisecond,
@@ -542,7 +542,7 @@ func (m examResourceModule) configureDraftBrowserPolicy(request operationRequest
 	if err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	view, err := m.exams.ConfigureExamDraftBrowserPolicy(request.context, request.invocation(), application.ConfigureExamDraftBrowserPolicyCommand{
+	view, err := m.exams.ConfigureExamDraftBrowserPolicy(request.context, request.invocation(), app.ConfigureExamDraftBrowserPolicyCommand{
 		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision, Policy: policy, IdempotencyKey: request.idempotencyKey,
 	})
 	if err != nil {
@@ -566,7 +566,7 @@ func (m examResourceModule) configureDraftNativePolicy(request operationRequest)
 	if err := body.Native.Validate(); err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	view, err := m.exams.ConfigureExamDraftNativePolicy(request.context, request.invocation(), application.ConfigureExamDraftNativePolicyCommand{
+	view, err := m.exams.ConfigureExamDraftNativePolicy(request.context, request.invocation(), app.ConfigureExamDraftNativePolicyCommand{
 		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision, NativePolicy: body.Native, IdempotencyKey: request.idempotencyKey,
 	})
 	if err != nil {
@@ -587,7 +587,7 @@ func (m examResourceModule) archive(request operationRequest) (operationResult, 
 	if body.ExpectedExamRevision < 1 {
 		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
-	exam, err := m.exams.ArchiveExam(request.context, request.invocation(), application.ArchiveExamCommand{
+	exam, err := m.exams.ArchiveExam(request.context, request.invocation(), app.ArchiveExamCommand{
 		ExamID: examID, ExpectedExamRevision: body.ExpectedExamRevision, IdempotencyKey: request.idempotencyKey,
 	})
 	if err != nil {
@@ -601,7 +601,7 @@ func (m examResourceModule) listManagers(request operationRequest) (operationRes
 	if err != nil {
 		return operationResult{}, err
 	}
-	query := application.ListExamManagersQuery{ExamID: examID, Limit: 50}
+	query := app.ListExamManagersQuery{ExamID: examID, Limit: 50}
 	values := request.request.URL.Query()
 	if raw := values.Get("limit"); raw != "" {
 		query.Limit, err = strconv.Atoi(raw)
@@ -648,7 +648,7 @@ func (m examResourceModule) addManager(request operationRequest) (operationResul
 	if err != nil {
 		return operationResult{}, err
 	}
-	change, err := m.exams.AddExamManager(request.context, request.invocation(), application.AddExamManagerCommand{
+	change, err := m.exams.AddExamManager(request.context, request.invocation(), app.AddExamManagerCommand{
 		ExamID: examID, UserID: userID, ExpectedExamRevision: body.ExpectedExamRevision, IdempotencyKey: request.idempotencyKey,
 	})
 	if err != nil {
@@ -673,7 +673,7 @@ func (m examResourceModule) removeManager(request operationRequest) (operationRe
 	if body.ExpectedExamRevision < 1 {
 		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
-	change, err := m.exams.RemoveExamManager(request.context, request.invocation(), application.RemoveExamManagerCommand{
+	change, err := m.exams.RemoveExamManager(request.context, request.invocation(), app.RemoveExamManagerCommand{
 		ExamID: examID, UserID: userID, ExpectedExamRevision: body.ExpectedExamRevision, IdempotencyKey: request.idempotencyKey,
 	})
 	if err != nil {
@@ -695,7 +695,7 @@ func (m examResourceModule) transferOwner(request operationRequest) (operationRe
 	if err != nil {
 		return operationResult{}, err
 	}
-	change, err := m.exams.TransferExamOwnership(request.context, request.invocation(), application.TransferExamOwnershipCommand{
+	change, err := m.exams.TransferExamOwnership(request.context, request.invocation(), app.TransferExamOwnershipCommand{
 		ExamID: examID, UserID: userID, ExpectedExamRevision: body.ExpectedExamRevision, IdempotencyKey: request.idempotencyKey,
 	})
 	if err != nil {
@@ -748,12 +748,12 @@ func examManagerCursorSpec() opaqueCursorSpec[examManagerCursor] {
 	}
 }
 
-func examManagerResponseFromSummary(summary application.ExamManagerSummary) examManagerResponse {
+func examManagerResponseFromSummary(summary app.ExamManagerSummary) examManagerResponse {
 	return examManagerResponse{UserID: summary.Manager.UserID.String(), GrantedByUserID: summary.Manager.GrantedByUserID.String(),
 		GrantedAt: model.FormatRFC3339(summary.Manager.GrantedAt), IsCreator: summary.IsCreator, IsOwner: summary.IsOwner}
 }
 
-func examManagerChangeResponseFromApplication(change application.ExamManagerChange, present bool) examManagerChangeResponse {
+func examManagerChangeResponseFromApplication(change app.ExamManagerChange, present bool) examManagerChangeResponse {
 	return examManagerChangeResponse{Exam: examIdentityResponseFromModel(*change.Exam), Manager: examManagerResponse{
 		UserID: change.Manager.UserID.String(), GrantedByUserID: change.Manager.GrantedByUserID.String(),
 		GrantedAt: model.FormatRFC3339(change.Manager.GrantedAt),
@@ -761,8 +761,8 @@ func examManagerChangeResponseFromApplication(change application.ExamManagerChan
 	}}
 }
 
-func examListQuery(request *http.Request) (application.ListExamsQuery, error) {
-	query := application.ListExamsQuery{ArchiveFilter: application.ExamArchiveActive, Limit: 50}
+func examListQuery(request *http.Request) (app.ListExamsQuery, error) {
+	query := app.ListExamsQuery{ArchiveFilter: app.ExamArchiveActive, Limit: 50}
 	values := request.URL.Query()
 	query.Query = values.Get("q")
 	if raw := values.Get("academic_unit_id"); raw != "" {
@@ -773,7 +773,7 @@ func examListQuery(request *http.Request) (application.ListExamsQuery, error) {
 		query.AcademicUnitID = unitID
 	}
 	if raw := values.Get("archive_state"); raw != "" {
-		query.ArchiveFilter = application.ExamArchiveFilter(raw)
+		query.ArchiveFilter = app.ExamArchiveFilter(raw)
 	}
 	for _, raw := range values["sitting_state"] {
 		state := model.ExamSittingState(raw)
@@ -804,7 +804,7 @@ func examListQuery(request *http.Request) (application.ListExamsQuery, error) {
 		query.EndsAfter, query.StartsBefore = model.TimeUTC(query.EndsAfter), model.TimeUTC(query.StartsBefore)
 	}
 	switch query.ArchiveFilter {
-	case application.ExamArchiveActive, application.ExamArchiveArchived, application.ExamArchiveAll:
+	case app.ExamArchiveActive, app.ExamArchiveArchived, app.ExamArchiveAll:
 	default:
 		return query, errors.New("invalid archive_state")
 	}
@@ -855,7 +855,7 @@ func examCatalogCursorSpec() opaqueCursorSpec[examCatalogCursor] {
 	}
 }
 
-func examSummaryResponseFromApplication(summary application.ExamSummary) examSummaryResponse {
+func examSummaryResponseFromApplication(summary app.ExamSummary) examSummaryResponse {
 	var archivedAt *string
 	if summary.ArchivedAt.Valid {
 		formatted := model.FormatRFC3339(summary.ArchivedAt.Time)
@@ -890,7 +890,7 @@ func examIdentityResponseFromModel(exam model.Exam) examIdentityResponse {
 		ArchivedAt: archivedAt, Revision: exam.Revision}
 }
 
-func examResponseFromView(view application.ExamView) examResponse {
+func examResponseFromView(view app.ExamView) examResponse {
 	policy := view.Draft.Policy
 	identity := examIdentityResponseFromModel(view.Exam)
 	browserPolicy := view.Draft.BrowserPolicy

@@ -11,18 +11,18 @@ import (
 	"context"
 	"net/http"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type AcademicAdministrationBatchApplication interface {
-	RunAcademicAdministrationBatch(context.Context, application.Invocation, application.RunAcademicAdministrationBatchCommand) (application.AcademicAdministrationBatchResult, error)
+	RunAcademicAdministrationBatch(context.Context, app.Invocation, app.RunAcademicAdministrationBatchCommand) (app.AcademicAdministrationBatchResult, error)
 }
 
 type unavailableAcademicAdministrationBatchApplication struct{}
 
-func (unavailableAcademicAdministrationBatchApplication) RunAcademicAdministrationBatch(context.Context, application.Invocation, application.RunAcademicAdministrationBatchCommand) (application.AcademicAdministrationBatchResult, error) {
-	return application.AcademicAdministrationBatchResult{}, errUnpresentableResult
+func (unavailableAcademicAdministrationBatchApplication) RunAcademicAdministrationBatch(context.Context, app.Invocation, app.RunAcademicAdministrationBatchCommand) (app.AcademicAdministrationBatchResult, error) {
+	return app.AcademicAdministrationBatchResult{}, errUnpresentableResult
 }
 
 type academicAdministrationBatchItemRequest struct {
@@ -75,7 +75,7 @@ func (m academicAdministrationBatchResourceModule) run(request operationRequest)
 	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	items := make([]application.AcademicAdministrationBatchItemCommand, 0, len(body.Items))
+	items := make([]app.AcademicAdministrationBatchItemCommand, 0, len(body.Items))
 	for _, item := range body.Items {
 		startAt, err := wireTimeMillis("start_at", item.StartAt)
 		if err != nil {
@@ -85,12 +85,12 @@ func (m academicAdministrationBatchResourceModule) run(request operationRequest)
 		if err != nil {
 			return operationResult{}, err
 		}
-		items = append(items, application.AcademicAdministrationBatchItemCommand{IdempotencyKey: item.Key, UserID: item.UserID,
+		items = append(items, app.AcademicAdministrationBatchItemCommand{IdempotencyKey: item.Key, UserID: item.UserID,
 			RelationshipID: item.RelationshipID, RoleID: item.RoleID, AffiliationKind: model.AffiliationKind(item.AffiliationKind),
 			StartAt: startAt, EndAt: endAt})
 	}
-	result, err := m.batches.RunAcademicAdministrationBatch(request.context, request.invocation(), application.RunAcademicAdministrationBatchCommand{
-		Operation: application.AcademicAdministrationBatchOperation(body.Operation), ScopeType: model.RoleScopeType(body.ScopeType),
+	result, err := m.batches.RunAcademicAdministrationBatch(request.context, request.invocation(), app.RunAcademicAdministrationBatchCommand{
+		Operation: app.AcademicAdministrationBatchOperation(body.Operation), ScopeType: model.RoleScopeType(body.ScopeType),
 		ScopeID: body.ScopeID, IdempotencyKey: request.idempotencyKey, Items: items,
 	})
 	if err != nil {

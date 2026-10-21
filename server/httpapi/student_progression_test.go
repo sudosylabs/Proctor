@@ -17,32 +17,32 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type studentProgressionApplicationFake struct {
-	view    application.OnboardingImportView
-	rows    []application.OnboardingImportRowView
-	command application.DryRunStudentProgressionCommand
+	view    app.OnboardingImportView
+	rows    []app.OnboardingImportRowView
+	command app.DryRunStudentProgressionCommand
 	getID   string
 }
 
-func (f *studentProgressionApplicationFake) DryRunStudentProgression(_ context.Context, _ application.Invocation, command application.DryRunStudentProgressionCommand) (application.OnboardingImportView, error) {
+func (f *studentProgressionApplicationFake) DryRunStudentProgression(_ context.Context, _ app.Invocation, command app.DryRunStudentProgressionCommand) (app.OnboardingImportView, error) {
 	f.command = command
 	return f.view, nil
 }
-func (f *studentProgressionApplicationFake) GetStudentProgression(_ context.Context, _ application.Invocation, id model.OnboardingImportID) (application.OnboardingImportView, []application.OnboardingImportRowView, error) {
+func (f *studentProgressionApplicationFake) GetStudentProgression(_ context.Context, _ app.Invocation, id model.OnboardingImportID) (app.OnboardingImportView, []app.OnboardingImportRowView, error) {
 	f.getID = id.String()
 	return f.view, f.rows, nil
 }
-func (f *studentProgressionApplicationFake) CommitStudentProgression(context.Context, application.Invocation, application.CommitStudentProgressionCommand) (application.OnboardingImportView, error) {
+func (f *studentProgressionApplicationFake) CommitStudentProgression(context.Context, app.Invocation, app.CommitStudentProgressionCommand) (app.OnboardingImportView, error) {
 	return f.view, nil
 }
-func (f *studentProgressionApplicationFake) CancelStudentProgression(context.Context, application.Invocation, model.OnboardingImportID) (application.OnboardingImportView, error) {
+func (f *studentProgressionApplicationFake) CancelStudentProgression(context.Context, app.Invocation, model.OnboardingImportID) (app.OnboardingImportView, error) {
 	return f.view, nil
 }
-func (f *studentProgressionApplicationFake) StudentProgressionReport(context.Context, application.Invocation, model.OnboardingImportID, io.Writer) error {
+func (f *studentProgressionApplicationFake) StudentProgressionReport(context.Context, app.Invocation, model.OnboardingImportID, io.Writer) error {
 	return nil
 }
 
@@ -51,7 +51,7 @@ func TestStudentProgressionHTTPRequiresRFC3339AndForwardsExactTargets(t *testing
 	at := time.Date(2026, 9, 1, 9, 0, 0, 0, time.UTC)
 	sourcePeriodID, sourceClassID := model.NewAcademicPeriodID(), model.NewClassID()
 	destinationPeriodID, destinationClassID := model.NewAcademicPeriodID(), model.NewClassID()
-	fake := &studentProgressionApplicationFake{view: application.OnboardingImportView{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportStudentProgression,
+	fake := &studentProgressionApplicationFake{view: app.OnboardingImportView{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportStudentProgression,
 		State: model.OnboardingImportParsing, ScopeType: model.RoleScopeClass, ScopeID: destinationClassID.String(), SourcePeriodID: sourcePeriodID,
 		SourceClassID: sourceClassID, DestinationPeriodID: destinationPeriodID, DestinationClassID: destinationClassID, EffectiveAt: at,
 		ParseJobID: model.NewJobID(), CreatedAt: at, UpdatedAt: at, ExpiresAt: at.Add(7 * 24 * time.Hour), Revision: 1}}
@@ -81,12 +81,12 @@ func TestStudentProgressionHTTPRequiresRFC3339AndForwardsExactTargets(t *testing
 func TestStudentProgressionResponseExposesOnlySafeExactTargetsAndRows(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, 8, 21, 9, 0, 0, 0, time.UTC)
-	view := application.OnboardingImportView{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportStudentProgression,
+	view := app.OnboardingImportView{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportStudentProgression,
 		State: model.OnboardingImportPreviewReady, ScopeType: model.RoleScopeClass, ScopeID: model.NewClassID().String(),
 		SourcePeriodID: model.NewAcademicPeriodID(), SourceClassID: model.NewClassID(), DestinationPeriodID: model.NewAcademicPeriodID(),
 		DestinationClassID: model.NewClassID(), EffectiveAt: at.Add(24 * time.Hour), ParseJobID: model.NewJobID(),
 		CreatedAt: at, UpdatedAt: at, ExpiresAt: at.Add(7 * 24 * time.Hour), Revision: 2, TotalRows: 1, ValidRows: 1}
-	rows := []application.OnboardingImportRowView{{RowNumber: 1, Reference: "safe-membership-reference", Operation: "class.enroll", Status: model.OnboardingImportRowValid}}
+	rows := []app.OnboardingImportRowView{{RowNumber: 1, Reference: "safe-membership-reference", Operation: "class.enroll", Status: model.OnboardingImportRowValid}}
 	encoded, err := json.Marshal(onboardingImportResponseFromView(view, rows))
 	if err != nil {
 		t.Fatal(err)

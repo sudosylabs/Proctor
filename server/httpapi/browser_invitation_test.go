@@ -15,31 +15,31 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type browserInvitationHTTPApplication struct {
-	start   application.StartBrowserInvitationCommand
-	local   application.BrowserInvitationAcceptanceCommand
-	session application.BrowserInvitationSessionAcceptanceCommand
+	start   app.StartBrowserInvitationCommand
+	local   app.BrowserInvitationAcceptanceCommand
+	session app.BrowserInvitationSessionAcceptanceCommand
 }
 
-func (a *browserInvitationHTTPApplication) StartBrowserInvitation(_ context.Context, _ application.Invocation, command application.StartBrowserInvitationCommand) (*application.BrowserInvitationStart, error) {
+func (a *browserInvitationHTTPApplication) StartBrowserInvitation(_ context.Context, _ app.Invocation, command app.StartBrowserInvitationCommand) (*app.BrowserInvitationStart, error) {
 	a.start = command
-	return &application.BrowserInvitationStart{
+	return &app.BrowserInvitationStart{
 		Handle: model.NewCredentialToken(), BrowserProof: model.NewCredentialToken(),
-		Purpose: model.InvitationPurposeStudentClass, Requirement: application.BrowserInvitationRequirementAccount,
+		Purpose: model.InvitationPurposeStudentClass, Requirement: app.BrowserInvitationRequirementAccount,
 		ExpiresAt: time.Now().Add(time.Minute).UnixMilli(),
 	}, nil
 }
 
-func (a *browserInvitationHTTPApplication) AcceptBrowserInvitation(_ context.Context, _ application.Invocation, command application.BrowserInvitationAcceptanceCommand) (*application.InvitationAcceptanceView, error) {
+func (a *browserInvitationHTTPApplication) AcceptBrowserInvitation(_ context.Context, _ app.Invocation, command app.BrowserInvitationAcceptanceCommand) (*app.InvitationAcceptanceView, error) {
 	a.local = command
 	return browserInvitationAcceptance(), nil
 }
 
-func (a *browserInvitationHTTPApplication) AcceptBrowserInvitationWithSession(_ context.Context, _ application.Invocation, command application.BrowserInvitationSessionAcceptanceCommand) (*application.InvitationAcceptanceView, error) {
+func (a *browserInvitationHTTPApplication) AcceptBrowserInvitationWithSession(_ context.Context, _ app.Invocation, command app.BrowserInvitationSessionAcceptanceCommand) (*app.InvitationAcceptanceView, error) {
 	a.session = command
 	return browserInvitationAcceptance(), nil
 }
@@ -113,9 +113,9 @@ func TestBrowserInvitationSessionAcceptanceUsesAuthenticatedPrincipal(t *testing
 	}
 }
 
-func browserInvitationAcceptance() *application.InvitationAcceptanceView {
-	return &application.InvitationAcceptanceView{
-		Invitation: application.InvitationView{ID: model.NewInvitationID()},
+func browserInvitationAcceptance() *app.InvitationAcceptanceView {
+	return &app.InvitationAcceptanceView{
+		Invitation: app.InvitationView{ID: model.NewInvitationID()},
 		User:       &model.User{ID: model.NewUserID()},
 	}
 }

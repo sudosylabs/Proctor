@@ -18,23 +18,23 @@ import (
 	"time"
 	"unicode/utf8"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 const examIntegrityReviewCursorVersion = 1
 
 type ExamIntegrityReviewApplication interface {
-	ListNativeConditions(context.Context, application.Invocation, application.NativeConditionListQuery) (*application.NativeConditionPage, error)
-	GetExamIntegrityReview(context.Context, application.Invocation, model.SubmissionID) (*application.ExamSubmissionReviewSnapshot, error)
-	ListExamIntegrityFlags(context.Context, application.Invocation, application.ListExamIntegrityFlagsQuery) (*application.ExamIntegrityFlagPage, error)
-	ListExamIntegrityEvidence(context.Context, application.Invocation, application.ListExamIntegrityEvidenceQuery) (*application.ExamIntegrityEvidencePage, error)
-	ListExamIntegrityDiscrepancies(context.Context, application.Invocation, application.ListExamIntegrityDiscrepanciesQuery) (*application.ExamIntegrityDiscrepancyPage, error)
-	SaveExamIntegrityDecision(context.Context, application.Invocation, application.SaveExamIntegrityDecisionCommand) (application.ExamIntegrityReviewResult, error)
-	UpdateExamIntegrityReview(context.Context, application.Invocation, application.UpdateExamIntegrityReviewCommand) (application.ExamIntegrityReviewResult, error)
-	FinalizeExamIntegrityReview(context.Context, application.Invocation, application.FinalizeExamIntegrityReviewCommand) (application.ExamIntegrityReviewResult, error)
-	ReleaseStudentExamResult(context.Context, application.Invocation, application.ReleaseStudentExamResultCommand) (application.ExamIntegrityReviewResult, error)
-	GetStudentExamResult(context.Context, application.Invocation, model.ExamAttemptID) (*application.StudentExamResult, error)
+	ListNativeConditions(context.Context, app.Invocation, app.NativeConditionListQuery) (*app.NativeConditionPage, error)
+	GetExamIntegrityReview(context.Context, app.Invocation, model.SubmissionID) (*app.ExamSubmissionReviewSnapshot, error)
+	ListExamIntegrityFlags(context.Context, app.Invocation, app.ListExamIntegrityFlagsQuery) (*app.ExamIntegrityFlagPage, error)
+	ListExamIntegrityEvidence(context.Context, app.Invocation, app.ListExamIntegrityEvidenceQuery) (*app.ExamIntegrityEvidencePage, error)
+	ListExamIntegrityDiscrepancies(context.Context, app.Invocation, app.ListExamIntegrityDiscrepanciesQuery) (*app.ExamIntegrityDiscrepancyPage, error)
+	SaveExamIntegrityDecision(context.Context, app.Invocation, app.SaveExamIntegrityDecisionCommand) (app.ExamIntegrityReviewResult, error)
+	UpdateExamIntegrityReview(context.Context, app.Invocation, app.UpdateExamIntegrityReviewCommand) (app.ExamIntegrityReviewResult, error)
+	FinalizeExamIntegrityReview(context.Context, app.Invocation, app.FinalizeExamIntegrityReviewCommand) (app.ExamIntegrityReviewResult, error)
+	ReleaseStudentExamResult(context.Context, app.Invocation, app.ReleaseStudentExamResultCommand) (app.ExamIntegrityReviewResult, error)
+	GetStudentExamResult(context.Context, app.Invocation, model.ExamAttemptID) (*app.StudentExamResult, error)
 }
 
 type examIntegrityReviewHTTPModule struct {
@@ -382,7 +382,7 @@ func (m examIntegrityReviewHTTPModule) listFlags(request operationRequest) (oper
 	if err != nil {
 		return operationResult{}, err
 	}
-	query := application.ListExamIntegrityFlagsQuery{SubmissionID: submissionID, Limit: 50}
+	query := app.ListExamIntegrityFlagsQuery{SubmissionID: submissionID, Limit: 50}
 	if err = applyReviewPageQuery(request, "flag", &query.Limit, func(id string) error {
 		query.AfterFlagID, err = model.ParseIntegrityFlagID(id)
 		return err
@@ -422,7 +422,7 @@ func (m examIntegrityReviewHTTPModule) listEvidence(request operationRequest) (o
 	if err != nil {
 		return operationResult{}, err
 	}
-	query := application.ListExamIntegrityEvidenceQuery{SubmissionID: submissionID, FlagID: flagID, Limit: 50}
+	query := app.ListExamIntegrityEvidenceQuery{SubmissionID: submissionID, FlagID: flagID, Limit: 50}
 	if err = applyReviewPageQuery(request, "evidence", &query.Limit, func(id string) error {
 		query.AfterEvidenceID, err = model.ParseIntegrityEvidenceID(id)
 		return err
@@ -460,7 +460,7 @@ func (m examIntegrityReviewHTTPModule) listDiscrepancies(request operationReques
 	if err != nil {
 		return operationResult{}, err
 	}
-	query := application.ListExamIntegrityDiscrepanciesQuery{SubmissionID: submissionID, Limit: 50}
+	query := app.ListExamIntegrityDiscrepanciesQuery{SubmissionID: submissionID, Limit: 50}
 	if err = applyReviewPageQuery(request, "discrepancy", &query.Limit, func(id string) error {
 		query.AfterDiscrepancyID, err = model.ParseIntegrityDiscrepancyID(id)
 		return err
@@ -519,7 +519,7 @@ func (m examIntegrityReviewHTTPModule) saveDecision(request operationRequest) (o
 		return operationResult{}, invalidRequestError(err)
 	}
 	result, err := m.application.SaveExamIntegrityDecision(request.context, request.invocation(),
-		application.SaveExamIntegrityDecisionCommand{SubmissionID: submissionID, ReviewID: reviewID, FlagID: flagID,
+		app.SaveExamIntegrityDecisionCommand{SubmissionID: submissionID, ReviewID: reviewID, FlagID: flagID,
 			ExpectedReviewRevision: body.ExpectedReviewRevision, ExpectedDecisionRevision: body.ExpectedDecisionRevision,
 			Outcome: model.IntegrityReviewOutcome(body.Outcome), PrivateRationale: body.PrivateRationale,
 			IdempotencyKey: request.idempotencyKey})
@@ -543,7 +543,7 @@ func (m examIntegrityReviewHTTPModule) update(request operationRequest) (operati
 		return operationResult{}, invalidRequestError(err)
 	}
 	result, err := m.application.UpdateExamIntegrityReview(request.context, request.invocation(),
-		application.UpdateExamIntegrityReviewCommand{SubmissionID: submissionID, ReviewID: reviewID,
+		app.UpdateExamIntegrityReviewCommand{SubmissionID: submissionID, ReviewID: reviewID,
 			ExpectedReviewRevision: body.ExpectedReviewRevision, ManagerNotes: body.ManagerNotes,
 			StudentRemarksMarkdown: body.StudentRemarksMarkdown, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
@@ -585,9 +585,9 @@ func (m examIntegrityReviewHTTPModule) terminal(request operationRequest,
 	if err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	command := application.FinalizeExamIntegrityReviewCommand{SubmissionID: submissionID, ReviewID: reviewID,
+	command := app.FinalizeExamIntegrityReviewCommand{SubmissionID: submissionID, ReviewID: reviewID,
 		ExpectedReviewRevision: body.ExpectedReviewRevision, IdempotencyKey: request.idempotencyKey}
-	var result application.ExamIntegrityReviewResult
+	var result app.ExamIntegrityReviewResult
 	if operation == integrityReviewRelease {
 		result, err = m.application.ReleaseStudentExamResult(request.context, request.invocation(), command)
 	} else {
@@ -615,7 +615,7 @@ func (m examIntegrityReviewHTTPModule) studentResult(request operationRequest) (
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
-func reviewMutationResult(result application.ExamIntegrityReviewResult) (operationResult, error) {
+func reviewMutationResult(result app.ExamIntegrityReviewResult) (operationResult, error) {
 	if result.Review == nil {
 		return operationResult{}, errors.New("Integrity Review application returned an empty Review")
 	}
@@ -629,7 +629,7 @@ func reviewMutationResult(result application.ExamIntegrityReviewResult) (operati
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
-func examIntegrityReviewSnapshotResponse(snapshot *application.ExamSubmissionReviewSnapshot) (examIntegrityReviewResponse, error) {
+func examIntegrityReviewSnapshotResponse(snapshot *app.ExamSubmissionReviewSnapshot) (examIntegrityReviewResponse, error) {
 	if snapshot == nil || snapshot.Submission == nil {
 		return examIntegrityReviewResponse{}, errors.New("Integrity Review application returned an empty snapshot")
 	}
@@ -730,7 +730,7 @@ func (m examIntegrityReviewHTTPModule) listNativeConditions(request operationReq
 	if err != nil {
 		return operationResult{}, err
 	}
-	query := application.NativeConditionListQuery{SubmissionID: submissionID, Limit: 50}
+	query := app.NativeConditionListQuery{SubmissionID: submissionID, Limit: 50}
 	if err = applyReviewPageQuery(request, "native_condition", &query.Limit, func(id string) error { query.AfterID, err = model.ParseIntegrityEvidenceID(id); return err }); err != nil {
 		return operationResult{}, err
 	}
