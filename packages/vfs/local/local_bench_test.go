@@ -78,3 +78,26 @@ func BenchmarkListPrefix(b *testing.B) {
 		})
 	}
 }
+
+// A first page costs a few directory reads however large the tree is; the
+// whole-tree walk this replaced grew linearly with the file count.
+func BenchmarkListFirstPage(b *testing.B) {
+	for _, files := range []int{100, 20000} {
+		b.Run(fmt.Sprintf("files=%d", files), func(b *testing.B) {
+			root := b.TempDir()
+			for i := range files {
+				full := filepath.Join(root, fmt.Sprintf("%03d", i/100), fmt.Sprintf("%03d.txt", i%100))
+				require.NoError(b, os.MkdirAll(filepath.Dir(full), 0o750))
+				require.NoError(b, os.WriteFile(full, []byte("content"), 0o600))
+			}
+			filesystem, err := local.New(root)
+			require.NoError(b, err)
+			b.ReportAllocs()
+			for b.Loop() {
+				page, err := filesystem.List(b.Context(), vfs.ListOptions{Limit: 1})
+				require.NoError(b, err)
+				require.Len(b, page.Entries, 1)
+			}
+		})
+	}
+}

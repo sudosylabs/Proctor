@@ -274,6 +274,8 @@ dependencies (PostgreSQL, cache, cluster, VFS): at most one probe per second,
 each bounded to two seconds, with concurrent callers observing the previous
 result rather than queueing. A failed probe reports not ready without changing
 lifecycle state, and the public response never names the failed dependency.
+Each dependency probe must cost the same however much data the dependency
+holds: VFS is probed with `CheckRoot`, never a listing.
 
 The `metrics` module owns one private Prometheus registry and one optional,
 node-local scrape listener. It starts after shared infrastructure and before

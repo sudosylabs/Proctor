@@ -274,6 +274,12 @@ type measuredVFS struct {
 }
 
 func (m *measuredVFS) Capabilities() vfspkg.Capabilities { return m.next.Capabilities() }
+func (m *measuredVFS) CheckRoot(ctx context.Context) error {
+	started := time.Now()
+	err := m.next.CheckRoot(ctx)
+	m.metrics.ObserveVFSResult(m.backend, "check_root", vfsOutcome(err), time.Since(started))
+	return err
+}
 func (m *measuredVFS) Open(ctx context.Context, path string, options vfspkg.OpenOptions) (*vfspkg.File, error) {
 	started := time.Now()
 	value, err := m.next.Open(ctx, path, options)

@@ -204,6 +204,31 @@ func Run(t *testing.T, factory Factory) {
 		require.Empty(t, second.NextCursor)
 	})
 
+	t.Run("pagination follows full-path byte order", func(t *testing.T) {
+		filesystem := factory(t)
+		ctx := context.Background()
+		// '-' and '.' sort before '/', so "a-c.txt" precedes everything in "a/".
+		for _, name := range []string{"b.txt", "a0.txt", "a/b.txt", "a/a/z.txt", "a.d/x.txt", "a-c.txt"} {
+			_, err := filesystem.Write(ctx, name, bytes.NewBufferString(name), vfs.WriteOptions{})
+			require.NoError(t, err, "write %q", name)
+		}
+
+		assertPaginated(t, filesystem, vfs.ListOptions{},
+			[]string{"a-c.txt", "a.d/x.txt", "a/a/z.txt", "a/b.txt", "a0.txt", "b.txt"})
+		assertPaginated(t, filesystem, vfs.ListOptions{Delimiter: "/"},
+			[]string{"a-c.txt", "a.d/", "a/", "a0.txt", "b.txt"})
+		assertPaginated(t, filesystem, vfs.ListOptions{Prefix: "a/", Delimiter: "/"},
+			[]string{"a/a/", "a/b.txt"})
+	})
+
+	t.Run("check root", func(t *testing.T) {
+		filesystem := factory(t)
+		require.NoError(t, filesystem.CheckRoot(context.Background()))
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		require.ErrorIs(t, filesystem.CheckRoot(ctx), context.Canceled)
+	})
+
 	t.Run("honors canceled contexts", func(t *testing.T) {
 		filesystem := factory(t)
 		ctx, cancel := context.WithCancel(context.Background())
@@ -218,6 +243,29 @@ func assertRevision(t *testing.T, filesystem vfs.FileSystem, path, want string) 
 	info, err := filesystem.Stat(context.Background(), path)
 	require.NoError(t, err, "stat %q", path)
 	require.Equal(t, want, info.Revision, "revision for %q", path)
+}
+
+// assertPaginated reads every page of size one and also the whole listing in
+// one page, and requires both to equal expected.
+func assertPaginated(t *testing.T, filesystem vfs.FileSystem, options vfs.ListOptions, expected []string) {
+	t.Helper()
+	whole, err := filesystem.List(context.Background(), options)
+	require.NoError(t, err)
+	assertPaths(t, whole.Entries, expected)
+	require.Empty(t, whole.NextCursor)
+
+	options.Limit = 1
+	var got []vfs.Info
+	for range len(expected) + 1 {
+		page, err := filesystem.List(context.Background(), options)
+		require.NoError(t, err)
+		got = append(got, page.Entries...)
+		if page.NextCursor == "" {
+			break
+		}
+		options.Cursor = page.NextCursor
+	}
+	assertPaths(t, got, expected)
 }
 
 func assertPaths(t *testing.T, entries []vfs.Info, expected []string) {

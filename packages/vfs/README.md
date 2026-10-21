@@ -14,7 +14,9 @@ storage semantics are being established.
 - Streaming reads and writes.
 - Opaque revisions for conditional replacement and removal.
 - Range reads.
-- Stable lexicographic listing and pagination.
+- Stable lexicographic listing and pagination, ordered by full-path bytes.
+- A root check (`CheckRoot`) whose cost does not depend on the stored files,
+  for health probes.
 - Explicit backend capabilities.
 - Typed errors compatible with `errors.Is` and `errors.As`.
 - Conformance tests reusable by backend implementations.
@@ -104,8 +106,12 @@ Writes and copies stage their bytes before taking the short publication lock.
 Unrelated operations can proceed while an upload is stalled, and the existing
 destination remains readable until publication. Revision and overwrite
 conditions are checked again before the complete file becomes visible. Listing
-starts in the directory specified by the prefix and skips unrelated subtrees;
-work within the matching subtree can still exceed the requested page size.
+starts in the directory specified by the prefix, skips unrelated subtrees and
+subtrees before the cursor, and stops once the page is full, so a page costs
+work proportional to the directories it reads rather than to the whole tree.
+Each directory is still read whole. Listing takes the lock per file rather
+than for the walk, so a page is not a snapshot: files published or removed
+during the walk may or may not appear, while staged files never do.
 
 Synchronization and temporary-file visibility belong to one `local.FS` value.
 Independently constructed values or processes sharing a directory do not share

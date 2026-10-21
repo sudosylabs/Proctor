@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -497,4 +499,56 @@ func independentOperation(ctx context.Context, filesystem vfs.FileSystem, operat
 		return fmt.Errorf("unknown operation %q", operation)
 	}
 	return nil
+}
+
+func TestCheckRootReportsMissingRoot(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "root")
+	filesystem, err := local.New(root)
+	require.NoError(t, err)
+	require.NoError(t, filesystem.CheckRoot(t.Context()))
+
+	require.NoError(t, os.Remove(root))
+	require.ErrorIs(t, filesystem.CheckRoot(t.Context()), vfs.ErrNotFound)
+}
+
+// A first page must not depend on directories that sort after it. An
+// unreadable directory late in the tree makes a whole-tree walk observable.
+func TestListStopsOnceThePageIsFull(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("directory permissions do not restrict this user")
+	}
+	root := t.TempDir()
+	filesystem, err := local.New(root)
+	require.NoError(t, err)
+	for _, name := range []string{"a/1.txt", "a/2.txt", "b.txt", "c.txt", "z/unreadable/3.txt"} {
+		_, writeErr := filesystem.Write(t.Context(), name, strings.NewReader(name), vfs.WriteOptions{})
+		require.NoError(t, writeErr)
+	}
+	unreadable := filepath.Join(root, "z", "unreadable")
+	require.NoError(t, os.Chmod(unreadable, 0))
+	t.Cleanup(func() { _ = os.Chmod(unreadable, 0o750) })
+
+	for _, test := range []struct {
+		name    string
+		options vfs.ListOptions
+		want    []string
+	}{
+		{"recursive", vfs.ListOptions{Limit: 2}, []string{"a/1.txt", "a/2.txt"}},
+		{"after cursor", vfs.ListOptions{Cursor: "a/1.txt", Limit: 2}, []string{"a/2.txt", "b.txt"}},
+		{"delimited", vfs.ListOptions{Delimiter: "/", Limit: 2}, []string{"a/", "b.txt"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			page, listErr := filesystem.List(t.Context(), test.options)
+			require.NoError(t, listErr)
+			paths := make([]string, 0, len(page.Entries))
+			for _, entry := range page.Entries {
+				paths = append(paths, entry.Path)
+			}
+			require.Equal(t, test.want, paths)
+			require.Equal(t, test.want[len(test.want)-1], page.NextCursor)
+		})
+	}
+
+	_, err = filesystem.List(t.Context(), vfs.ListOptions{})
+	require.ErrorIs(t, err, fs.ErrPermission, "a page reaching the unreadable directory reports it")
 }

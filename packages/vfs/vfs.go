@@ -131,8 +131,14 @@ type Page struct {
 }
 
 // FileSystem is the backend-independent VFS contract.
+//
+// CheckRoot verifies that the backend root (a local root directory, an object
+// store bucket) is reachable, at a cost independent of how many files it
+// holds. It returns ErrNotFound when the root does not exist. Health checks
+// use it instead of listing.
 type FileSystem interface {
 	Capabilities() Capabilities
+	CheckRoot(ctx context.Context) error
 	Open(ctx context.Context, path string, options OpenOptions) (*File, error)
 	Write(ctx context.Context, path string, body io.Reader, options WriteOptions) (Info, error)
 	Stat(ctx context.Context, path string) (Info, error)

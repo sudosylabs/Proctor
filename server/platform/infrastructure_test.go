@@ -10,6 +10,8 @@ package platform
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -110,4 +112,25 @@ func TestLocalVFSAdapterIsUsableAndHealthy(t *testing.T) {
 	info, err := filesystem.Stat(ctx, "health/probe.txt")
 	require.NoError(t, err)
 	require.Equal(t, int64(2), info.Size)
+}
+
+// Readiness probes VFS every second; a probe that lists can walk a large local
+// tree past its deadline and empty the load-balancer pool.
+func TestVFSHealthChecksTheRootWithoutListing(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join(t.TempDir(), "vfs")
+	filesystem, err := localvfs.New(root)
+	require.NoError(t, err)
+	probe := &listForbiddenVFS{FileSystem: filesystem}
+	require.NoError(t, checkVFS(t.Context(), probe))
+
+	require.NoError(t, os.Remove(root))
+	require.ErrorIs(t, checkVFS(t.Context(), probe), vfspkg.ErrNotFound)
+}
+
+type listForbiddenVFS struct{ vfspkg.FileSystem }
+
+func (*listForbiddenVFS) List(context.Context, vfspkg.ListOptions) (vfspkg.Page, error) {
+	panic("the VFS health check listed files")
 }

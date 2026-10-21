@@ -160,3 +160,46 @@ func (zeroReader) Read(buffer []byte) (int, error) {
 	clear(buffer)
 	return len(buffer), nil
 }
+
+func TestCheckRootReportsMissingBucket(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name   string
+		status int
+		want   error
+	}{
+		{"present", http.StatusOK, nil},
+		{"missing", http.StatusNotFound, vfs.ErrNotFound},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			var requests []string
+			var mu sync.Mutex
+			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				mu.Lock()
+				requests = append(requests, request.Method+" "+request.URL.Path)
+				mu.Unlock()
+				response.WriteHeader(test.status)
+			}))
+			defer server.Close()
+			client, err := minio.New(strings.TrimPrefix(server.URL, "http://"), &minio.Options{
+				Creds:  credentials.NewStaticV4("access", "secret", ""),
+				Region: "us-east-1",
+			})
+			require.NoError(t, err)
+			filesystem, err := NewWithClient(client, "bucket", "tenant")
+			require.NoError(t, err)
+
+			err = filesystem.CheckRoot(t.Context())
+			if test.want == nil {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, test.want)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			require.Equal(t, []string{"HEAD /bucket/"}, requests, "CheckRoot requests")
+		})
+	}
+}

@@ -25,7 +25,9 @@ startup reconciliation, Jobs, WebSocket, listener, and HTTP handoff succeed. It
 becomes false before drain. While serving, readiness also probes PostgreSQL,
 the cache, the cluster transport, and VFS at most once per second, each probe
 bounded to 2 seconds; a failed probe reports not ready until a later probe
-succeeds, without stopping the process. A required metrics-listener failure, a
+succeeds, without stopping the process. The VFS probe checks only that the
+local root directory or the S3 bucket exists, so its cost does not grow with
+the number of stored files. A required metrics-listener failure, a
 rejected serving lease, or a lease renewal that keeps failing past its retry
 slack is terminal: Proctor removes readiness and stops serving rather than
 risk operating without its durable node proof.

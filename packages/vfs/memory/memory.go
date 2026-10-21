@@ -41,6 +41,11 @@ func (f *FS) Capabilities() vfs.Capabilities {
 	}
 }
 
+// CheckRoot always succeeds for a live context: memory has no external root.
+func (f *FS) CheckRoot(ctx context.Context) error {
+	return vfs.Error("check root", "", ctx.Err())
+}
+
 func (f *FS) Open(ctx context.Context, name string, options vfs.OpenOptions) (*vfs.File, error) {
 	const op = "open"
 	name, err := vfs.NormalizePath(name)

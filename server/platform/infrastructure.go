@@ -199,9 +199,10 @@ func (m *mailAdapter) Close() error {
 	return nil
 }
 
+// checkVFS runs on every readiness probe, so it checks only that the backend
+// root is reachable; its cost must not grow with the number of stored files.
 func checkVFS(ctx context.Context, filesystem vfspkg.FileSystem) error {
-	_, err := filesystem.List(ctx, vfspkg.ListOptions{Limit: 1})
-	return err
+	return filesystem.CheckRoot(ctx)
 }
 
 var (

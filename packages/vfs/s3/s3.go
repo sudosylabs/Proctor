@@ -81,6 +81,23 @@ func (f *FS) Capabilities() vfs.Capabilities {
 	}
 }
 
+// CheckRoot checks that the bucket exists with one HeadBucket request. The
+// key prefix needs no check: object stores have no directories to create.
+func (f *FS) CheckRoot(ctx context.Context) error {
+	const op = "check root"
+	if err := ctx.Err(); err != nil {
+		return vfs.Error(op, "", err)
+	}
+	exists, err := f.client.BucketExists(ctx, f.bucket)
+	if err != nil {
+		return vfs.Error(op, "", translateError(err))
+	}
+	if !exists {
+		return vfs.Error(op, "", fmt.Errorf("%w: bucket %q does not exist", vfs.ErrNotFound, f.bucket))
+	}
+	return nil
+}
+
 func (f *FS) Open(ctx context.Context, name string, options vfs.OpenOptions) (*vfs.File, error) {
 	const op = "open"
 	name, err := vfs.NormalizePath(name)

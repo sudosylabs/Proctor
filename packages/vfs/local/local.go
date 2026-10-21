@@ -69,6 +69,25 @@ func (f *FS) Capabilities() vfs.Capabilities {
 	}
 }
 
+// CheckRoot stats the root directory without reading its entries.
+func (f *FS) CheckRoot(ctx context.Context) error {
+	const op = "check root"
+	if err := ctx.Err(); err != nil {
+		return vfs.Error(op, "", err)
+	}
+	info, err := os.Stat(f.root)
+	if errors.Is(err, fs.ErrNotExist) {
+		return vfs.Error(op, "", vfs.ErrNotFound)
+	}
+	if err != nil {
+		return vfs.Error(op, "", err)
+	}
+	if !info.IsDir() {
+		return vfs.Error(op, "", fmt.Errorf("%w: root is not a directory", vfs.ErrInvalidPath))
+	}
+	return nil
+}
+
 func (f *FS) Open(ctx context.Context, name string, options vfs.OpenOptions) (*vfs.File, error) {
 	const op = "open"
 	name, err := vfs.NormalizePath(name)
@@ -236,9 +255,6 @@ func (f *FS) List(ctx context.Context, options vfs.ListOptions) (vfs.Page, error
 		return vfs.Page{}, vfs.Error(op, options.Prefix, err)
 	}
 
-	f.mu.RLock()
-	defer f.mu.RUnlock()
-
 	root, exists, err := f.listRoot(ctx, options.Prefix)
 	if err != nil {
 		return vfs.Page{}, vfs.Error(op, options.Prefix, err)
@@ -246,74 +262,188 @@ func (f *FS) List(ctx context.Context, options vfs.ListOptions) (vfs.Page, error
 	if !exists {
 		return vfs.Page{Entries: []vfs.Info{}}, nil
 	}
-	entries := make(map[string]vfs.Info)
-	err = filepath.WalkDir(root, func(fullPath string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if fullPath == root {
-			return nil
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			if entry.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if _, staged := f.staging[fullPath]; staged {
-			return nil
-		}
-		if len(f.staging) > 0 && !entry.IsDir() {
-			info, err := entry.Info()
-			if err != nil {
-				return err
-			}
-			if f.isStaged(info) {
-				return nil
-			}
-		}
-
-		relative, err := filepath.Rel(f.root, fullPath)
-		if err != nil {
-			return err
-		}
-		name := filepath.ToSlash(relative)
-		if entry.IsDir() {
-			// A lexical prefix can end in the middle of a directory name.
-			// Descend only if this directory can contain a matching file.
-			directory := name + "/"
-			if !strings.HasPrefix(directory, options.Prefix) && !strings.HasPrefix(options.Prefix, directory) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasPrefix(name, options.Prefix) {
-			return nil
-		}
-		if options.Delimiter == "/" {
-			remainder := strings.TrimPrefix(name, options.Prefix)
-			if index := strings.Index(remainder, "/"); index >= 0 {
-				directory := options.Prefix + remainder[:index+1]
-				entries[directory] = vfs.Info{Path: directory, IsDir: true}
-				return nil
-			}
-		}
-		info, exists, err := localInfo(name, fullPath)
-		if err != nil {
-			return err
-		}
-		if exists {
-			entries[name] = info
-		}
-		return nil
-	})
+	relative, err := filepath.Rel(f.root, root)
 	if err != nil {
 		return vfs.Page{}, vfs.Error(op, options.Prefix, err)
 	}
-	return makePage(entries, options), nil
+	directory := ""
+	if relative != "." {
+		directory = filepath.ToSlash(relative) + "/"
+	}
+	walk := listWalk{filesystem: f, ctx: ctx, options: options, entries: make([]vfs.Info, 0, min(options.Limit+1, 64))}
+	if _, err := walk.directory(root, directory, true); err != nil {
+		return vfs.Page{}, vfs.Error(op, options.Prefix, err)
+	}
+	page := vfs.Page{Entries: walk.entries}
+	if len(page.Entries) > options.Limit {
+		page.Entries = page.Entries[:options.Limit]
+		page.NextCursor = page.Entries[len(page.Entries)-1].Path
+	}
+	return page, nil
+}
+
+// listWalk visits the tree in full-path byte order and stops once it holds
+// one entry more than the page needs, so a page costs work proportional to its
+// position rather than to the size of the tree. Sibling order alone is not
+// enough: the file "a-b" sorts before the directory "a" whose children all
+// start with "a/", because '-' precedes '/'. Siblings are therefore ordered by
+// name, with a slash appended to directory names.
+//
+// The publication lock is taken per file, not for the whole walk, so writers
+// are never queued behind a large listing. Like an object-store listing, a
+// page is not a snapshot: files published or removed during the walk may or
+// may not appear, but a staged temporary file never does.
+type listWalk struct {
+	filesystem *FS
+	ctx        context.Context
+	options    vfs.ListOptions
+	entries    []vfs.Info
+}
+
+// directory lists one directory whose slash-terminated VFS name is name ("" for
+// the root). It reports whether the page is full. A directory removed while
+// the walk descends contributes no entries; only the listing root's read
+// error is reported for missing directories.
+func (w *listWalk) directory(fullPath, name string, listRoot bool) (bool, error) {
+	children, err := os.ReadDir(fullPath)
+	if err != nil {
+		if !listRoot && errors.Is(err, fs.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	sortListEntries(children)
+	for _, child := range children {
+		if err := w.ctx.Err(); err != nil {
+			return false, err
+		}
+		if child.Type()&os.ModeSymlink != 0 {
+			continue
+		}
+		childPath := filepath.Join(fullPath, child.Name())
+		childName := name + child.Name()
+		if child.IsDir() {
+			full, err := w.subdirectory(childPath, childName+"/")
+			if full || err != nil {
+				return full, err
+			}
+			continue
+		}
+		if !strings.HasPrefix(childName, w.options.Prefix) || (w.options.Cursor != "" && childName <= w.options.Cursor) {
+			continue
+		}
+		info, visible, err := w.filesystem.visibleInfo(childName, childPath, child)
+		if err != nil {
+			return false, err
+		}
+		if visible && w.add(info) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (w *listWalk) subdirectory(fullPath, name string) (bool, error) {
+	prefix, cursor := w.options.Prefix, w.options.Cursor
+	// A lexical prefix can end in the middle of a directory name. Descend
+	// only if this directory can contain a matching file.
+	if !strings.HasPrefix(name, prefix) && !strings.HasPrefix(prefix, name) {
+		return false, nil
+	}
+	if w.options.Delimiter == "/" && strings.HasPrefix(name, prefix) {
+		// The directory collapses to one synthesized entry, listed only when
+		// it contains a visible file.
+		if cursor != "" && name <= cursor {
+			return false, nil
+		}
+		contains, err := w.containsVisibleFile(fullPath, name)
+		if err != nil || !contains {
+			return false, err
+		}
+		return w.add(vfs.Info{Path: name, IsDir: true}), nil
+	}
+	// Every descendant starts with name; when the cursor sorts after name
+	// without extending it, every descendant is at or before the cursor.
+	if cursor != "" && cursor >= name && !strings.HasPrefix(cursor, name) {
+		return false, nil
+	}
+	return w.directory(fullPath, name, false)
+}
+
+func (w *listWalk) containsVisibleFile(fullPath, name string) (bool, error) {
+	children, err := os.ReadDir(fullPath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	for _, child := range children {
+		if err := w.ctx.Err(); err != nil {
+			return false, err
+		}
+		if child.Type()&os.ModeSymlink != 0 {
+			continue
+		}
+		childPath := filepath.Join(fullPath, child.Name())
+		if child.IsDir() {
+			contains, err := w.containsVisibleFile(childPath, name+child.Name()+"/")
+			if contains || err != nil {
+				return contains, err
+			}
+			continue
+		}
+		_, visible, err := w.filesystem.visibleInfo(name+child.Name(), childPath, child)
+		if visible || err != nil {
+			return visible, err
+		}
+	}
+	return false, nil
+}
+
+func (w *listWalk) add(info vfs.Info) bool {
+	w.entries = append(w.entries, info)
+	return len(w.entries) > w.options.Limit
+}
+
+// visibleInfo describes a listed file unless it is an active staging file or
+// disappeared after its directory was read.
+func (f *FS) visibleInfo(name, fullPath string, entry fs.DirEntry) (vfs.Info, bool, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if _, staged := f.staging[fullPath]; staged {
+		return vfs.Info{}, false, nil
+	}
+	if len(f.staging) > 0 {
+		info, err := entry.Info()
+		if errors.Is(err, fs.ErrNotExist) {
+			return vfs.Info{}, false, nil
+		}
+		if err != nil {
+			return vfs.Info{}, false, err
+		}
+		if f.isStaged(info) {
+			return vfs.Info{}, false, nil
+		}
+	}
+	info, exists, err := localInfo(name, fullPath)
+	if err != nil || !exists {
+		return vfs.Info{}, false, err
+	}
+	// A directory may have replaced the file since its parent was read.
+	return info, !info.IsDir, nil
+}
+
+// sortListEntries orders siblings as their full VFS paths sort: a directory
+// sorts by its name followed by a slash.
+func sortListEntries(entries []fs.DirEntry) {
+	key := func(entry fs.DirEntry) string {
+		if entry.IsDir() {
+			return entry.Name() + "/"
+		}
+		return entry.Name()
+	}
+	sort.Slice(entries, func(i, j int) bool { return key(entries[i]) < key(entries[j]) })
 }
 
 func (f *FS) Copy(ctx context.Context, source, destination string, options vfs.TransferOptions) (vfs.Info, error) {
@@ -689,28 +819,6 @@ func normalizeTransfer(source, destination string, options vfs.TransferOptions) 
 		return source, destination, err
 	}
 	return source, destination, nil
-}
-
-func makePage(entries map[string]vfs.Info, options vfs.ListOptions) vfs.Page {
-	names := make([]string, 0, len(entries))
-	for name := range entries {
-		if options.Cursor == "" || name > options.Cursor {
-			names = append(names, name)
-		}
-	}
-	sort.Strings(names)
-	hasMore := len(names) > options.Limit
-	if hasMore {
-		names = names[:options.Limit]
-	}
-	page := vfs.Page{Entries: make([]vfs.Info, 0, len(names))}
-	for _, name := range names {
-		page.Entries = append(page.Entries, entries[name])
-	}
-	if hasMore {
-		page.NextCursor = names[len(names)-1]
-	}
-	return page
 }
 
 type limitedReadCloser struct {

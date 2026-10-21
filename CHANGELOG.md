@@ -68,6 +68,9 @@ module when a change is not server-only. No module has been released yet.
   sources (`Authentication.LoginRateLimit.MaximumIdentityAttempts`).
 - Server: `Server.TrustedProxies` names the reverse proxies whose forwarded
   client address and request ID are accepted.
+- VFS: `FileSystem.CheckRoot` checks that the backend root (the local root
+  directory or the S3 bucket) is reachable without listing it. Every
+  `FileSystem` implementation must add it (**breaking**).
 
 ### Fixed
 
@@ -110,6 +113,10 @@ module when a change is not server-only. No module has been released yet.
 - Server: administrator MFA reset notices and retention grace notices are
   delivered instead of failing every attempt.
 - Cache: counter expirations are fixed windows.
+- VFS: a local listing stops once its page is full instead of walking and
+  sorting the whole tree under the lock, and the server readiness probe checks
+  the VFS root instead of listing, so a large local tree no longer times out
+  readiness or stalls writes.
 - VFS: S3 part size is bounded for unsized writes.
 
 [Unreleased]: https://github.com/sudosylabs/proctor/commits/main
