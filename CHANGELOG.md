@@ -183,6 +183,8 @@ module when a change is not server-only. No module has been released yet.
 - Server: an SMTP relay certificate, STARTTLS, or authentication failure
   retries and reports `mail.smtp_outage` instead of permanently failing every
   in-flight message.
+- Server: Personal Access Token and retention notice mail honor the mail
+  primary-key fence, so a rolling key rotation cannot strand an old-key payload.
 - Cache: counter expirations are fixed windows.
 - Server: `server/go.mod` pins the current cache, mail, and VFS modules, so
   `GOWORK=off` builds include the fixed-window counters and the other module

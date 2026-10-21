@@ -3324,7 +3324,14 @@ func insertInvitation(ctx context.Context, tx *sqlxTxWrapper, invitation *model.
 	return nil
 }
 
+// insertInvitationMail inserts one prepared Invitation mail. An encrypted
+// payload takes the primary-key fence here, as insertRecoveryMail does.
 func insertInvitationMail(ctx context.Context, tx *sqlxTxWrapper, occurrence *model.MailOccurrence, delivery *model.MailDelivery, job *model.Job, payloadKeyID string) error {
+	if payloadKeyID != "" {
+		if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+			return err
+		}
+	}
 	if _, err := tx.Exec(ctx, `INSERT INTO mail_occurrences (id,kind,template_key,actor_user_id,created_at) VALUES (?,?,?,?,?)`, occurrence.ID.String(), string(occurrence.Kind), string(occurrence.TemplateKey), occurrence.ActorUserID.String(), occurrence.CreatedAt); err != nil {
 		return fmt.Errorf("insert invitation mail occurrence: %w", translateError("mail_occurrence", occurrence.ID.String(), err))
 	}

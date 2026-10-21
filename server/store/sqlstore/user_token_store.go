@@ -277,7 +277,15 @@ func validateRecoveryMail(occurrence *model.MailOccurrence, delivery *model.Mail
 	return nil
 }
 
+// insertRecoveryMail inserts one prepared direct mail. An encrypted payload
+// takes the primary-key fence here, so no caller can insert an old-key
+// payload behind a rekey that has started.
 func insertRecoveryMail(ctx context.Context, tx *sqlxTxWrapper, occurrence *model.MailOccurrence, delivery *model.MailDelivery, job *model.Job, payloadKeyID string) error {
+	if payloadKeyID != "" {
+		if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+			return err
+		}
+	}
 	if _, err := tx.Exec(ctx, `INSERT INTO mail_occurrences (id, kind, template_key, actor_user_id, created_at) VALUES (?, ?, ?, ?, ?)`, occurrence.ID.String(), string(occurrence.Kind), string(occurrence.TemplateKey), occurrence.ActorUserID.String(), occurrence.CreatedAt); err != nil {
 		return fmt.Errorf("insert recovery mail occurrence: %w", translateError("mail_occurrence", occurrence.ID.String(), err))
 	}
