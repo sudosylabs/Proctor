@@ -402,6 +402,12 @@ func TestMailMaintenanceRetentionAndSharedRateLimit(t *testing.T) {
 	if err != nil || !ordinary.Allowed {
 		t.Fatalf("ordinary reserved permit = %#v, %v", ordinary, err)
 	}
+	// The limiter refills ten tokens per second from its last update. Pin that
+	// update ahead of PostgreSQL time so a slow host cannot refill past the
+	// credential reserve between the two acquisitions under test.
+	if _, err = persistence.GetMaster().Exec(ctx, `UPDATE mail_send_rate_limit SET updated_at=statement_timestamp()+INTERVAL '1 hour'`); err != nil {
+		t.Fatal(err)
+	}
 	ordinary, err = persistence.Mail().AcquireSendPermit(ctx, store.MailSendOrdinary)
 	if err != nil || ordinary.Allowed || ordinary.RetryAfter <= 0 {
 		t.Fatalf("ordinary reserve fence = %#v, %v", ordinary, err)
