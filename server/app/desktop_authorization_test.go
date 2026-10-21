@@ -301,12 +301,13 @@ func TestDesktopAuthorizationExchangeFailsClosedWhenSessionNonceCannotBeStored(t
 
 	at := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
 	persistence := &desktopAuthorizationStoreFake{}
+	auditor := &recordingDesktopAuthorizationAuditor{}
 	identity := testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at })
 	service, err := newDesktopAuthorizationService(
 		persistence,
 		desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
 		desktopAuthorizationAccessPolicyFake{enabled: true}, &accessPolicyCapabilitiesFake{},
-		desktopAuthorizationAuditorFake{}, &desktopAuthorizationAttemptLimiterFake{}, testDesktopSessionPolicy(),
+		auditor, &desktopAuthorizationAttemptLimiterFake{}, testDesktopSessionPolicy(),
 		DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, model.NewCredentialToken,
 		func() time.Time { return at }, identity,
 	)
@@ -328,6 +329,38 @@ func TestDesktopAuthorizationExchangeFailsClosedWhenSessionNonceCannotBeStored(t
 	require.Equal(t, session.ID.String(), sessions.revokedID)
 	require.Equal(t, session.UserID.String(), sessions.revokedUserID)
 	require.Equal(t, model.SessionRevocationDesktopAuthorizationFailed, sessions.reason)
+	// The exchange's success audit is followed by a record of the withdrawal.
+	require.Equal(t, session.ID, auditor.withdrawnSession)
+	require.Equal(t, session.ID, auditor.completed["session_id"])
+}
+
+func TestDesktopAuthorizationCrossAccountApprovalIsAudited(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	auditor := &recordingDesktopAuthorizationAuditor{}
+	persistence := &desktopAuthorizationStoreFake{}
+	service, err := newDesktopAuthorizationService(
+		persistence,
+		desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
+		desktopAuthorizationAccessPolicyFake{enabled: true},
+		&accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{}}, auditor,
+		&desktopAuthorizationAttemptLimiterFake{},
+		testDesktopSessionPolicy(), DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"},
+		model.NewCredentialToken, func() time.Time { return at },
+		testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at }),
+	)
+	require.NoError(t, err)
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
+		CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess,
+		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
+		ClientType: model.SessionClientWeb, AuthenticatedAt: at}
+	persistence.contextUserID = model.NewUserID()
+	_, err = service.ApproveDesktopAuthorization(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
+		ApproveDesktopAuthorizationCommand{Binding: model.NewCredentialToken(), State: model.NewCredentialToken()})
+	require.True(t, apperror.Is(err, "authentication.desktop_authorization.rejected"), "Approve() error = %v", err)
+	require.Equal(t, persistence.contextUserID, auditor.rejectedTarget, "the refused approval names the handoff's account")
+	require.Equal(t, "authentication.desktop_authorization.rejected", auditor.rejectedCode)
+	require.Zero(t, auditor.prepareIssue, "a refused approval issues no code")
 }
 
 func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
@@ -611,6 +644,15 @@ func (desktopAuthorizationAuditorFake) PrepareIssue(context.Context, Invocation,
 func (desktopAuthorizationAuditorFake) PrepareExchange(context.Context, Invocation, model.UserID, model.InstitutionID) (*model.AuditEvent, error) {
 	return &model.AuditEvent{ID: model.NewAuditEventID()}, nil
 }
+func (desktopAuthorizationAuditorFake) RecordRejectedIssue(context.Context, Invocation, model.UserID, model.InstitutionID, string) error {
+	return nil
+}
+func (desktopAuthorizationAuditorFake) PrepareWithdrawal(context.Context, Invocation, model.UserID, model.InstitutionID, model.SessionID) (*model.AuditEvent, error) {
+	return &model.AuditEvent{ID: model.NewAuditEventID()}, nil
+}
+func (desktopAuthorizationAuditorFake) Complete(context.Context, model.AuditEventID, map[string]any) error {
+	return nil
+}
 func (desktopAuthorizationAuditorFake) Fail(context.Context, model.AuditEventID, string) error {
 	return nil
 }
@@ -622,6 +664,29 @@ type recordingDesktopAuthorizationAuditor struct {
 	prepareIssue, prepareExchange int
 	issueActor, exchangeActor     model.UserID
 	issueRequest, exchangeRequest model.RequestMetadata
+	rejectedTarget                model.UserID
+	rejectedCode                  string
+	withdrawnSession              model.SessionID
+	completed                     map[string]any
+}
+
+func (a *recordingDesktopAuthorizationAuditor) RecordRejectedIssue(_ context.Context, _ Invocation, userID model.UserID,
+	_ model.InstitutionID, errorCode string,
+) error {
+	a.rejectedTarget, a.rejectedCode = userID, errorCode
+	return nil
+}
+
+func (a *recordingDesktopAuthorizationAuditor) PrepareWithdrawal(_ context.Context, _ Invocation, _ model.UserID,
+	_ model.InstitutionID, sessionID model.SessionID,
+) (*model.AuditEvent, error) {
+	a.withdrawnSession = sessionID
+	return &model.AuditEvent{ID: model.NewAuditEventID()}, nil
+}
+
+func (a *recordingDesktopAuthorizationAuditor) Complete(_ context.Context, _ model.AuditEventID, result map[string]any) error {
+	a.completed = result
+	return nil
 }
 
 func (a *recordingDesktopAuthorizationAuditor) PrepareIssue(_ context.Context, invocation Invocation, userID model.UserID, _ model.InstitutionID) (*model.AuditEvent, error) {

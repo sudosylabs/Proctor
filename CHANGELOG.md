@@ -157,6 +157,8 @@ module when a change is not server-only. No module has been released yet.
 - Server: rows written with a node's clock are never later stamped earlier by
   PostgreSQL time (or the reverse), which removes intermittent check-constraint
   failures and unreadable Sessions when node and database clocks differ.
+- Server: a refused cross-account Desktop approval is audited, and a Desktop
+  Session withdrawn after its audited exchange gets its own withdrawal record.
 - Server: audit list cursors keep microsecond precision, so rows created in
   the same millisecond are no longer skipped between pages.
 - Server: Desktop approval audit binds to the approving account, local password

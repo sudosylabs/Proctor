@@ -51,6 +51,14 @@ type DesktopAuthorizationPolicy struct {
 type desktopAuthorizationAuditor interface {
 	PrepareIssue(context.Context, Invocation, model.UserID, model.InstitutionID) (*model.AuditEvent, error)
 	PrepareExchange(context.Context, Invocation, model.UserID, model.InstitutionID) (*model.AuditEvent, error)
+	// RecordRejectedIssue durably records an approval refused because the
+	// approving browser Session belongs to another account than the one the
+	// handoff authenticated.
+	RecordRejectedIssue(context.Context, Invocation, model.UserID, model.InstitutionID, string) error
+	// PrepareWithdrawal records the attempt to take back a Desktop Session
+	// whose exchange committed but whose credentials were never disclosed.
+	PrepareWithdrawal(context.Context, Invocation, model.UserID, model.InstitutionID, model.SessionID) (*model.AuditEvent, error)
+	Complete(context.Context, model.AuditEventID, map[string]any) error
 	Fail(context.Context, model.AuditEventID, string) error
 }
 
@@ -445,12 +453,16 @@ func (s *desktopAuthorizationService) ApproveDesktopAuthorization(ctx context.Co
 	if err != nil || current == nil || current.State != model.BrowserAuthenticationStateAuthenticated || !current.UserID.IsValid() {
 		return nil, desktopAuthorizationStoreErrors.Translate(err)
 	}
-	if caller := invocation.Principal(); caller.UserID != "" && caller.UserID != current.UserID {
-		return nil, apperror.New("authentication.desktop_authorization.rejected")
-	}
 	institution, err := s.institutions.GetSingleton(ctx)
 	if err != nil || institution == nil || !institution.ID.IsValid() {
 		return nil, apperror.New("authentication.desktop_authorization.unavailable").Wrap(err)
+	}
+	if caller := invocation.Principal(); caller.UserID != "" && caller.UserID != current.UserID {
+		failure := apperror.New("authentication.desktop_authorization.rejected")
+		if auditErr := s.audit.RecordRejectedIssue(ctx, invocation, current.UserID, institution.ID, failure.Code()); auditErr != nil {
+			return nil, apperror.New("audit.unavailable").Wrap(auditErr)
+		}
+		return nil, failure
 	}
 	audit, err := s.audit.PrepareIssue(ctx, invocation, current.UserID, institution.ID)
 	if err != nil || audit == nil || !audit.ID.IsValid() {
@@ -603,14 +615,30 @@ func (s *desktopAuthorizationService) ExchangeDesktopAuthorization(ctx context.C
 		// cannot consume the per-user Session allowance with inaccessible
 		// Sessions. The active Desktop Registration remains reusable by a fresh
 		// authorization after nonce storage recovers.
+		// The exchange's success audit already committed, so a separate
+		// withdrawal record says the issued Session was taken back.
 		revokeCtx := context.WithoutCancel(ctx)
+		withdrawal, auditErr := s.audit.PrepareWithdrawal(revokeCtx, invocation, result.Session.UserID,
+			institution.ID, result.Session.ID)
 		hashes, revokeErr := s.authentication.sessions.Withdraw(revokeCtx, result.Session.ID,
 			result.Session.UserID, model.MillisFromTime(s.now()), model.SessionRevocationDesktopAuthorizationFailed)
+		if auditErr == nil && withdrawal != nil {
+			if revokeErr != nil {
+				auditErr = s.audit.Fail(revokeCtx, withdrawal.ID, "authentication.desktop_authorization.unavailable")
+			} else {
+				auditErr = s.audit.Complete(revokeCtx, withdrawal.ID, map[string]any{
+					"session_id": result.Session.ID, "reason": string(model.SessionRevocationDesktopAuthorizationFailed),
+				})
+			}
+		}
 		if revokeErr != nil {
-			return nil, apperror.New("authentication.desktop_authorization.unavailable").Wrap(errors.Join(nonceErr, revokeErr))
+			return nil, apperror.New("authentication.desktop_authorization.unavailable").Wrap(errors.Join(nonceErr, revokeErr, auditErr))
 		}
 		s.authentication.securityEffects.SessionsRevoked(revokeCtx, result.Session.UserID.String(),
 			[]string{result.Session.ID.String()}, hashes)
+		if auditErr != nil {
+			return nil, apperror.New("audit.unavailable").Wrap(errors.Join(nonceErr, auditErr))
+		}
 		return nil, nonceErr
 	}
 	return &DesktopAuthorizationExchangeResult{Session: result.Session, Registration: result.Registration,
@@ -695,6 +723,50 @@ func (a desktopAuthorizationAuditAdapter) PrepareExchange(ctx context.Context, i
 		model.ActionAuthenticationDesktopSessionIssue,
 		model.Resource{Type: model.ResourceUser, ID: userID.String()}, model.RoleScopeInstitution,
 		institutionID.String(), invocation.RequestMetadata(), map[string]any{"operation": "exchange"})
+}
+
+// RecordRejectedIssue records a refused cross-account approval with the
+// approving browser Session's account as the actor and the handoff's account
+// as the resource.
+func (a desktopAuthorizationAuditAdapter) RecordRejectedIssue(ctx context.Context, invocation Invocation,
+	userID model.UserID, institutionID model.InstitutionID, errorCode string,
+) error {
+	caller := invocation.Principal()
+	if a.audit == nil || !caller.UserID.IsValid() || !userID.IsValid() || !institutionID.IsValid() {
+		return apperror.New("audit.unavailable")
+	}
+	event, err := a.audit.BeginAccountActionAtScope(ctx, accountAuditActor{userID: caller.UserID,
+		sessionID: caller.SessionID, clientType: model.SessionClientWeb},
+		model.ActionAuthenticationDesktopAuthorization,
+		model.Resource{Type: model.ResourceUser, ID: userID.String()}, model.RoleScopeInstitution,
+		institutionID.String(), invocation.RequestMetadata(), map[string]any{"operation": "issue_code"})
+	if err != nil {
+		return err
+	}
+	return a.Fail(ctx, event.ID, errorCode)
+}
+
+// PrepareWithdrawal records the compensation that takes back a just-issued
+// Desktop Session.
+func (a desktopAuthorizationAuditAdapter) PrepareWithdrawal(ctx context.Context, invocation Invocation,
+	userID model.UserID, institutionID model.InstitutionID, sessionID model.SessionID,
+) (*model.AuditEvent, error) {
+	if a.audit == nil || !userID.IsValid() || !institutionID.IsValid() || !sessionID.IsValid() {
+		return nil, apperror.New("audit.unavailable")
+	}
+	return a.audit.BeginAccountActionAtScope(ctx, accountAuditActor{userID: userID, clientType: model.SessionClientDesktop},
+		model.ActionAuthenticationDesktopSessionIssue,
+		model.Resource{Type: model.ResourceUser, ID: userID.String()}, model.RoleScopeInstitution,
+		institutionID.String(), invocation.RequestMetadata(),
+		map[string]any{"operation": "withdraw", "value": map[string]any{"session_id": sessionID}})
+}
+
+func (a desktopAuthorizationAuditAdapter) Complete(ctx context.Context, auditID model.AuditEventID, result map[string]any) error {
+	if a.audit == nil {
+		return apperror.New("audit.unavailable")
+	}
+	_, appErr := a.audit.CompleteCriticalAction(ctx, auditID, model.AuditStatusSuccess, "", result)
+	return appErr
 }
 
 func (a desktopAuthorizationAuditAdapter) Fail(ctx context.Context, auditID model.AuditEventID, errorCode string) error {
