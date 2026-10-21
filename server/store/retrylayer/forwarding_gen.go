@@ -16,52 +16,6 @@ import (
 )
 
 type retryStores struct {
-	accessPolicy                   store.AccessPolicyStore
-	accessPolicyOnce               sync.Once
-	browserAuthentication          store.BrowserAuthenticationStore
-	browserAuthenticationOnce      sync.Once
-	clusterDiscovery               store.ClusterDiscoveryStore
-	clusterDiscoveryOnce           sync.Once
-	desktopCompatibilityPolicy     store.DesktopCompatibilityPolicyStore
-	desktopCompatibilityPolicyOnce sync.Once
-	examAttempt                    store.ExamAttemptStore
-	examAttemptOnce                sync.Once
-	examAttemptWorkspace           store.ExamAttemptWorkspaceStore
-	examAttemptWorkspaceOnce       sync.Once
-	examCorrection                 store.ExamCorrectionStore
-	examCorrectionOnce             sync.Once
-	examExport                     store.ExamExportStore
-	examExportOnce                 sync.Once
-	examIntegrityReview            store.ExamIntegrityReviewStore
-	examIntegrityReviewOnce        sync.Once
-	examRecords                    store.ExamRecordsStore
-	examRecordsOnce                sync.Once
-	examResource                   store.ExamResourceStore
-	examResourceOnce               sync.Once
-	examRevision                   store.ExamRevisionStore
-	examRevisionOnce               sync.Once
-	examSitting                    store.ExamSittingStore
-	examSittingOnce                sync.Once
-	examStarterWorkspace           store.ExamStarterWorkspaceStore
-	examStarterWorkspaceOnce       sync.Once
-	examSubmission                 store.ExamSubmissionStore
-	examSubmissionOnce             sync.Once
-	retention                      store.RetentionStore
-	retentionOnce                  sync.Once
-	retentionPolicy                store.RetentionPolicyStore
-	retentionPolicyOnce            sync.Once
-	servingNodeLease               store.ServingNodeLeaseStore
-	servingNodeLeaseOnce           sync.Once
-	examAuthoring                  store.ExamAuthoringStore
-	examAuthoringOnce              sync.Once
-	commandOutcome                 store.CommandOutcomeStore
-	commandOutcomeOnce             sync.Once
-	mail                           store.MailStore
-	mailOnce                       sync.Once
-	job                            store.JobStore
-	jobOnce                        sync.Once
-	file                           store.FileStore
-	fileOnce                       sync.Once
 	institution                    store.InstitutionStore
 	institutionOnce                sync.Once
 	academicUnit                   store.AcademicUnitStore
@@ -72,16 +26,50 @@ type retryStores struct {
 	programmeLevelOnce             sync.Once
 	academicPeriod                 store.AcademicPeriodStore
 	academicPeriodOnce             sync.Once
+	examAuthoring                  store.ExamAuthoringStore
+	examAuthoringOnce              sync.Once
+	examRevision                   store.ExamRevisionStore
+	examRevisionOnce               sync.Once
+	examSitting                    store.ExamSittingStore
+	examSittingOnce                sync.Once
+	examAttempt                    store.ExamAttemptStore
+	examAttemptOnce                sync.Once
+	examAttemptWorkspace           store.ExamAttemptWorkspaceStore
+	examAttemptWorkspaceOnce       sync.Once
+	examSubmission                 store.ExamSubmissionStore
+	examSubmissionOnce             sync.Once
+	examIntegrityReview            store.ExamIntegrityReviewStore
+	examIntegrityReviewOnce        sync.Once
+	examRecords                    store.ExamRecordsStore
+	examRecordsOnce                sync.Once
+	examExport                     store.ExamExportStore
+	examExportOnce                 sync.Once
+	examResource                   store.ExamResourceStore
+	examResourceOnce               sync.Once
+	examCorrection                 store.ExamCorrectionStore
+	examCorrectionOnce             sync.Once
+	examStarterWorkspace           store.ExamStarterWorkspaceStore
+	examStarterWorkspaceOnce       sync.Once
 	class                          store.ClassStore
 	classOnce                      sync.Once
 	user                           store.UserStore
 	userOnce                       sync.Once
 	userSettings                   store.UserSettingsStore
 	userSettingsOnce               sync.Once
+	file                           store.FileStore
+	fileOnce                       sync.Once
+	job                            store.JobStore
+	jobOnce                        sync.Once
+	mail                           store.MailStore
+	mailOnce                       sync.Once
 	externalIdentity               store.ExternalIdentityStore
 	externalIdentityOnce           sync.Once
 	externalLoginState             store.ExternalLoginStateStore
 	externalLoginStateOnce         sync.Once
+	browserAuthentication          store.BrowserAuthenticationStore
+	browserAuthenticationOnce      sync.Once
+	desktopRegistration            store.DesktopRegistrationStore
+	desktopRegistrationOnce        sync.Once
 	userToken                      store.UserTokenStore
 	userTokenOnce                  sync.Once
 	invitation                     store.InvitationStore
@@ -102,8 +90,6 @@ type retryStores struct {
 	passwordCredentialOnce         sync.Once
 	session                        store.SessionStore
 	sessionOnce                    sync.Once
-	desktopRegistration            store.DesktopRegistrationStore
-	desktopRegistrationOnce        sync.Once
 	sessionCredential              store.SessionCredentialStore
 	sessionCredentialOnce          sync.Once
 	role                           store.RoleStore
@@ -114,121 +100,20 @@ type retryStores struct {
 	auditOnce                      sync.Once
 	installation                   store.InstallationStore
 	installationOnce               sync.Once
-}
-
-type accessPolicyStore struct {
-	store.AccessPolicyStore
-	layer *Layer
-}
-
-type browserAuthenticationStore struct {
-	store.BrowserAuthenticationStore
-	layer *Layer
-}
-
-type clusterDiscoveryStore struct {
-	store.ClusterDiscoveryStore
-	layer *Layer
-}
-
-type desktopCompatibilityPolicyStore struct {
-	store.DesktopCompatibilityPolicyStore
-	layer *Layer
-}
-
-type examAttemptStore struct {
-	store.ExamAttemptStore
-	layer *Layer
-}
-
-type examAttemptWorkspaceStore struct {
-	store.ExamAttemptWorkspaceStore
-	layer *Layer
-}
-
-type examCorrectionStore struct {
-	store.ExamCorrectionStore
-	layer *Layer
-}
-
-type examExportStore struct {
-	store.ExamExportStore
-	layer *Layer
-}
-
-type examIntegrityReviewStore struct {
-	store.ExamIntegrityReviewStore
-	layer *Layer
-}
-
-type examRecordsStore struct {
-	store.ExamRecordsStore
-	layer *Layer
-}
-
-type examResourceStore struct {
-	store.ExamResourceStore
-	layer *Layer
-}
-
-type examRevisionStore struct {
-	store.ExamRevisionStore
-	layer *Layer
-}
-
-type examSittingStore struct {
-	store.ExamSittingStore
-	layer *Layer
-}
-
-type examStarterWorkspaceStore struct {
-	store.ExamStarterWorkspaceStore
-	layer *Layer
-}
-
-type examSubmissionStore struct {
-	store.ExamSubmissionStore
-	layer *Layer
-}
-
-type retentionStore struct {
-	store.RetentionStore
-	layer *Layer
-}
-
-type retentionPolicyStore struct {
-	store.RetentionPolicyStore
-	layer *Layer
-}
-
-type servingNodeLeaseStore struct {
-	store.ServingNodeLeaseStore
-	layer *Layer
-}
-
-type examAuthoringStore struct {
-	store.ExamAuthoringStore
-	layer *Layer
-}
-
-type commandOutcomeStore struct {
-	store.CommandOutcomeStore
-	layer *Layer
-}
-
-type mailStore struct {
-	store.MailStore
-	layer *Layer
-}
-
-type jobStore struct {
-	store.JobStore
-	layer *Layer
-}
-
-type fileStore struct {
-	store.FileStore
-	layer *Layer
+	accessPolicy                   store.AccessPolicyStore
+	accessPolicyOnce               sync.Once
+	desktopCompatibilityPolicy     store.DesktopCompatibilityPolicyStore
+	desktopCompatibilityPolicyOnce sync.Once
+	retentionPolicy                store.RetentionPolicyStore
+	retentionPolicyOnce            sync.Once
+	retention                      store.RetentionStore
+	retentionOnce                  sync.Once
+	clusterDiscovery               store.ClusterDiscoveryStore
+	clusterDiscoveryOnce           sync.Once
+	servingNodeLease               store.ServingNodeLeaseStore
+	servingNodeLeaseOnce           sync.Once
+	commandOutcome                 store.CommandOutcomeStore
+	commandOutcomeOnce             sync.Once
 }
 
 type institutionStore struct {
@@ -256,6 +141,66 @@ type academicPeriodStore struct {
 	layer *Layer
 }
 
+type examAuthoringStore struct {
+	store.ExamAuthoringStore
+	layer *Layer
+}
+
+type examRevisionStore struct {
+	store.ExamRevisionStore
+	layer *Layer
+}
+
+type examSittingStore struct {
+	store.ExamSittingStore
+	layer *Layer
+}
+
+type examAttemptStore struct {
+	store.ExamAttemptStore
+	layer *Layer
+}
+
+type examAttemptWorkspaceStore struct {
+	store.ExamAttemptWorkspaceStore
+	layer *Layer
+}
+
+type examSubmissionStore struct {
+	store.ExamSubmissionStore
+	layer *Layer
+}
+
+type examIntegrityReviewStore struct {
+	store.ExamIntegrityReviewStore
+	layer *Layer
+}
+
+type examRecordsStore struct {
+	store.ExamRecordsStore
+	layer *Layer
+}
+
+type examExportStore struct {
+	store.ExamExportStore
+	layer *Layer
+}
+
+type examResourceStore struct {
+	store.ExamResourceStore
+	layer *Layer
+}
+
+type examCorrectionStore struct {
+	store.ExamCorrectionStore
+	layer *Layer
+}
+
+type examStarterWorkspaceStore struct {
+	store.ExamStarterWorkspaceStore
+	layer *Layer
+}
+
 type classStore struct {
 	store.ClassStore
 	layer *Layer
@@ -271,6 +216,21 @@ type userSettingsStore struct {
 	layer *Layer
 }
 
+type fileStore struct {
+	store.FileStore
+	layer *Layer
+}
+
+type jobStore struct {
+	store.JobStore
+	layer *Layer
+}
+
+type mailStore struct {
+	store.MailStore
+	layer *Layer
+}
+
 type externalIdentityStore struct {
 	store.ExternalIdentityStore
 	layer *Layer
@@ -278,6 +238,16 @@ type externalIdentityStore struct {
 
 type externalLoginStateStore struct {
 	store.ExternalLoginStateStore
+	layer *Layer
+}
+
+type browserAuthenticationStore struct {
+	store.BrowserAuthenticationStore
+	layer *Layer
+}
+
+type desktopRegistrationStore struct {
+	store.DesktopRegistrationStore
 	layer *Layer
 }
 
@@ -331,11 +301,6 @@ type sessionStore struct {
 	layer *Layer
 }
 
-type desktopRegistrationStore struct {
-	store.DesktopRegistrationStore
-	layer *Layer
-}
-
 type sessionCredentialStore struct {
 	store.SessionCredentialStore
 	layer *Layer
@@ -358,6 +323,41 @@ type auditStore struct {
 
 type installationStore struct {
 	store.InstallationStore
+	layer *Layer
+}
+
+type accessPolicyStore struct {
+	store.AccessPolicyStore
+	layer *Layer
+}
+
+type desktopCompatibilityPolicyStore struct {
+	store.DesktopCompatibilityPolicyStore
+	layer *Layer
+}
+
+type retentionPolicyStore struct {
+	store.RetentionPolicyStore
+	layer *Layer
+}
+
+type retentionStore struct {
+	store.RetentionStore
+	layer *Layer
+}
+
+type clusterDiscoveryStore struct {
+	store.ClusterDiscoveryStore
+	layer *Layer
+}
+
+type servingNodeLeaseStore struct {
+	store.ServingNodeLeaseStore
+	layer *Layer
+}
+
+type commandOutcomeStore struct {
+	store.CommandOutcomeStore
 	layer *Layer
 }
 
@@ -853,39 +853,33 @@ func (l *Layer) CommandOutcome() store.CommandOutcomeStore {
 
 var (
 	_ store.Store                           = (*Layer)(nil)
-	_ store.AccessPolicyStore               = (*accessPolicyStore)(nil)
-	_ store.BrowserAuthenticationStore      = (*browserAuthenticationStore)(nil)
-	_ store.ClusterDiscoveryStore           = (*clusterDiscoveryStore)(nil)
-	_ store.DesktopCompatibilityPolicyStore = (*desktopCompatibilityPolicyStore)(nil)
-	_ store.ExamAttemptStore                = (*examAttemptStore)(nil)
-	_ store.ExamAttemptWorkspaceStore       = (*examAttemptWorkspaceStore)(nil)
-	_ store.ExamCorrectionStore             = (*examCorrectionStore)(nil)
-	_ store.ExamExportStore                 = (*examExportStore)(nil)
-	_ store.ExamIntegrityReviewStore        = (*examIntegrityReviewStore)(nil)
-	_ store.ExamRecordsStore                = (*examRecordsStore)(nil)
-	_ store.ExamResourceStore               = (*examResourceStore)(nil)
-	_ store.ExamRevisionStore               = (*examRevisionStore)(nil)
-	_ store.ExamSittingStore                = (*examSittingStore)(nil)
-	_ store.ExamStarterWorkspaceStore       = (*examStarterWorkspaceStore)(nil)
-	_ store.ExamSubmissionStore             = (*examSubmissionStore)(nil)
-	_ store.RetentionStore                  = (*retentionStore)(nil)
-	_ store.RetentionPolicyStore            = (*retentionPolicyStore)(nil)
-	_ store.ServingNodeLeaseStore           = (*servingNodeLeaseStore)(nil)
-	_ store.ExamAuthoringStore              = (*examAuthoringStore)(nil)
-	_ store.CommandOutcomeStore             = (*commandOutcomeStore)(nil)
-	_ store.MailStore                       = (*mailStore)(nil)
-	_ store.JobStore                        = (*jobStore)(nil)
-	_ store.FileStore                       = (*fileStore)(nil)
 	_ store.InstitutionStore                = (*institutionStore)(nil)
 	_ store.AcademicUnitStore               = (*academicUnitStore)(nil)
 	_ store.ProgrammeStore                  = (*programmeStore)(nil)
 	_ store.ProgrammeLevelStore             = (*programmeLevelStore)(nil)
 	_ store.AcademicPeriodStore             = (*academicPeriodStore)(nil)
+	_ store.ExamAuthoringStore              = (*examAuthoringStore)(nil)
+	_ store.ExamRevisionStore               = (*examRevisionStore)(nil)
+	_ store.ExamSittingStore                = (*examSittingStore)(nil)
+	_ store.ExamAttemptStore                = (*examAttemptStore)(nil)
+	_ store.ExamAttemptWorkspaceStore       = (*examAttemptWorkspaceStore)(nil)
+	_ store.ExamSubmissionStore             = (*examSubmissionStore)(nil)
+	_ store.ExamIntegrityReviewStore        = (*examIntegrityReviewStore)(nil)
+	_ store.ExamRecordsStore                = (*examRecordsStore)(nil)
+	_ store.ExamExportStore                 = (*examExportStore)(nil)
+	_ store.ExamResourceStore               = (*examResourceStore)(nil)
+	_ store.ExamCorrectionStore             = (*examCorrectionStore)(nil)
+	_ store.ExamStarterWorkspaceStore       = (*examStarterWorkspaceStore)(nil)
 	_ store.ClassStore                      = (*classStore)(nil)
 	_ store.UserStore                       = (*userStore)(nil)
 	_ store.UserSettingsStore               = (*userSettingsStore)(nil)
+	_ store.FileStore                       = (*fileStore)(nil)
+	_ store.JobStore                        = (*jobStore)(nil)
+	_ store.MailStore                       = (*mailStore)(nil)
 	_ store.ExternalIdentityStore           = (*externalIdentityStore)(nil)
 	_ store.ExternalLoginStateStore         = (*externalLoginStateStore)(nil)
+	_ store.BrowserAuthenticationStore      = (*browserAuthenticationStore)(nil)
+	_ store.DesktopRegistrationStore        = (*desktopRegistrationStore)(nil)
 	_ store.UserTokenStore                  = (*userTokenStore)(nil)
 	_ store.InvitationStore                 = (*invitationStore)(nil)
 	_ store.OnboardingImportStore           = (*onboardingImportStore)(nil)
@@ -896,10 +890,16 @@ var (
 	_ store.ClassMemberStore                = (*classMemberStore)(nil)
 	_ store.PasswordCredentialStore         = (*passwordCredentialStore)(nil)
 	_ store.SessionStore                    = (*sessionStore)(nil)
-	_ store.DesktopRegistrationStore        = (*desktopRegistrationStore)(nil)
 	_ store.SessionCredentialStore          = (*sessionCredentialStore)(nil)
 	_ store.RoleStore                       = (*roleStore)(nil)
 	_ store.RoleBindingStore                = (*roleBindingStore)(nil)
 	_ store.AuditStore                      = (*auditStore)(nil)
 	_ store.InstallationStore               = (*installationStore)(nil)
+	_ store.AccessPolicyStore               = (*accessPolicyStore)(nil)
+	_ store.DesktopCompatibilityPolicyStore = (*desktopCompatibilityPolicyStore)(nil)
+	_ store.RetentionPolicyStore            = (*retentionPolicyStore)(nil)
+	_ store.RetentionStore                  = (*retentionStore)(nil)
+	_ store.ClusterDiscoveryStore           = (*clusterDiscoveryStore)(nil)
+	_ store.ServingNodeLeaseStore           = (*servingNodeLeaseStore)(nil)
+	_ store.CommandOutcomeStore             = (*commandOutcomeStore)(nil)
 )

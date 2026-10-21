@@ -17,6 +17,8 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"unicode"
 )
@@ -98,7 +100,8 @@ func parseInterfaces(path string) ([]interfaceSpec, map[string]struct{}, error) 
 		}
 	}
 
-	var interfaces []interfaceSpec
+	contracts := make(map[string]*ast.InterfaceType)
+	var names []string
 	for _, parsed := range parsedFiles {
 		for _, declaration := range parsed.Decls {
 			general, ok := declaration.(*ast.GenDecl)
@@ -108,34 +111,105 @@ func parseInterfaces(path string) ([]interfaceSpec, map[string]struct{}, error) 
 			for _, raw := range general.Specs {
 				spec := raw.(*ast.TypeSpec)
 				contract, ok := spec.Type.(*ast.InterfaceType)
-				if !ok || (spec.Name.Name != "Store" && !strings.HasSuffix(spec.Name.Name, "Store")) {
+				if !ok {
 					continue
 				}
-				parsedInterface := interfaceSpec{name: spec.Name.Name}
-				for _, field := range contract.Methods.List {
-					if len(field.Names) != 1 {
-						return nil, nil, fmt.Errorf("%s contains an embedded or grouped method", spec.Name.Name)
-					}
-					function, ok := field.Type.(*ast.FuncType)
-					if !ok {
-						return nil, nil, fmt.Errorf("%s.%s is not a method", spec.Name.Name, field.Names[0].Name)
-					}
-					method := methodSpec{name: field.Names[0].Name}
-					method.params, err = values(function.Params, "arg", storeTypes)
-					if err != nil {
-						return nil, nil, fmt.Errorf("parse %s.%s parameters: %w", spec.Name.Name, method.name, err)
-					}
-					method.results, err = values(function.Results, "result", storeTypes)
-					if err != nil {
-						return nil, nil, fmt.Errorf("parse %s.%s results: %w", spec.Name.Name, method.name, err)
-					}
-					parsedInterface.methods = append(parsedInterface.methods, method)
+				contracts[spec.Name.Name] = contract
+				if spec.Name.Name == "Store" || strings.HasSuffix(spec.Name.Name, "Store") {
+					names = append(names, spec.Name.Name)
 				}
-				interfaces = append(interfaces, parsedInterface)
 			}
 		}
 	}
-	return interfaces, storeTypes, nil
+	var interfaces []interfaceSpec
+	for _, name := range names {
+		methods, methodErr := interfaceMethods(name, contracts, storeTypes, map[string]bool{})
+		if methodErr != nil {
+			return nil, nil, methodErr
+		}
+		interfaces = append(interfaces, interfaceSpec{name: name, methods: methods})
+	}
+	return orderInterfaces(interfaces), storeTypes, nil
+}
+
+// interfaceMethods returns the methods of the named contract in declaration
+// order, expanding interfaces embedded from the same package (such as the
+// Catalog view embedded by Store).
+func interfaceMethods(name string, contracts map[string]*ast.InterfaceType, storeTypes map[string]struct{}, visiting map[string]bool) ([]methodSpec, error) {
+	if visiting[name] {
+		return nil, fmt.Errorf("%s embeds itself", name)
+	}
+	visiting[name] = true
+	defer delete(visiting, name)
+	var methods []methodSpec
+	for _, field := range contracts[name].Methods.List {
+		if len(field.Names) == 0 {
+			embedded, ok := field.Type.(*ast.Ident)
+			if !ok || contracts[embedded.Name] == nil {
+				return nil, fmt.Errorf("%s embeds an unsupported contract", name)
+			}
+			promoted, err := interfaceMethods(embedded.Name, contracts, storeTypes, visiting)
+			if err != nil {
+				return nil, err
+			}
+			methods = append(methods, promoted...)
+			continue
+		}
+		if len(field.Names) != 1 {
+			return nil, fmt.Errorf("%s contains a grouped method", name)
+		}
+		function, ok := field.Type.(*ast.FuncType)
+		if !ok {
+			return nil, fmt.Errorf("%s.%s is not a method", name, field.Names[0].Name)
+		}
+		method := methodSpec{name: field.Names[0].Name}
+		var err error
+		method.params, err = values(function.Params, "arg", storeTypes)
+		if err != nil {
+			return nil, fmt.Errorf("parse %s.%s parameters: %w", name, method.name, err)
+		}
+		method.results, err = values(function.Results, "result", storeTypes)
+		if err != nil {
+			return nil, fmt.Errorf("parse %s.%s results: %w", name, method.name, err)
+		}
+		methods = append(methods, method)
+	}
+	return methods, nil
+}
+
+// orderInterfaces puts the root Store first and every model store in the
+// order of the root accessors, so generated output does not depend on how
+// the contracts are split across files. Stores without an accessor follow by
+// name.
+func orderInterfaces(interfaces []interfaceSpec) []interfaceSpec {
+	position := make(map[string]int)
+	for _, spec := range interfaces {
+		if spec.name != "Store" {
+			continue
+		}
+		for index, method := range spec.methods {
+			if accessorStore, ok := accessorResult(method); ok {
+				position[accessorStore] = index + 1
+			}
+		}
+	}
+	ordered := slices.Clone(interfaces)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		left, right := ordered[i], ordered[j]
+		if (left.name == "Store") != (right.name == "Store") {
+			return left.name == "Store"
+		}
+		leftPosition, leftOK := position[left.name]
+		rightPosition, rightOK := position[right.name]
+		if leftOK != rightOK {
+			return leftOK
+		}
+		if leftOK {
+			return leftPosition < rightPosition
+		}
+		return left.name < right.name
+	})
+	return ordered
 }
 
 func sourceFiles(path string) ([]string, error) {

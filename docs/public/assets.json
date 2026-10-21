@@ -642,7 +642,7 @@
       "review_triggers": [
         "server/model/user_settings.go",
         "server/app/user_settings.go",
-        "server/store/store.go",
+        "server/store/user_settings.go",
         "server/store/sqlstore/user_settings_store.go",
         "server/httpapi/user_settings.go",
         "server/openapi/fragments/users/users-settings.yaml"

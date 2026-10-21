@@ -99,6 +99,8 @@ and recovery before it can enter the allowlist.
 
 Each layer implements the root store and wraps its sub-stores. Deterministic generated code forwards mechanical methods and is checked into Git; behavioral overrides remain handwritten. Reflection proxies are prohibited.
 
+`store/store.go` declares only the root contracts: `Catalog` lists every model Store accessor once, and `Store` embeds `Catalog` and adds lifecycle and schema authority. Each model or aggregate contract, with its inputs and results, lives in the `store` file named for its topic (`academic.go`, `invitation.go`, `exam_attempt.go`, and so on). The layer generator (`store/storetest/layergen`) expands the embedded `Catalog` and orders its output by the root accessors, so moving a contract between files changes no generated code.
+
 Constrained store layers are allowed only as described above. New layers and
 overridden methods must be explicit, handwritten policy; reflection-based
 interception is prohibited.

@@ -19,52 +19,6 @@ import (
 )
 
 type timedStores struct {
-	accessPolicy                   store.AccessPolicyStore
-	accessPolicyOnce               sync.Once
-	browserAuthentication          store.BrowserAuthenticationStore
-	browserAuthenticationOnce      sync.Once
-	clusterDiscovery               store.ClusterDiscoveryStore
-	clusterDiscoveryOnce           sync.Once
-	desktopCompatibilityPolicy     store.DesktopCompatibilityPolicyStore
-	desktopCompatibilityPolicyOnce sync.Once
-	examAttempt                    store.ExamAttemptStore
-	examAttemptOnce                sync.Once
-	examAttemptWorkspace           store.ExamAttemptWorkspaceStore
-	examAttemptWorkspaceOnce       sync.Once
-	examCorrection                 store.ExamCorrectionStore
-	examCorrectionOnce             sync.Once
-	examExport                     store.ExamExportStore
-	examExportOnce                 sync.Once
-	examIntegrityReview            store.ExamIntegrityReviewStore
-	examIntegrityReviewOnce        sync.Once
-	examRecords                    store.ExamRecordsStore
-	examRecordsOnce                sync.Once
-	examResource                   store.ExamResourceStore
-	examResourceOnce               sync.Once
-	examRevision                   store.ExamRevisionStore
-	examRevisionOnce               sync.Once
-	examSitting                    store.ExamSittingStore
-	examSittingOnce                sync.Once
-	examStarterWorkspace           store.ExamStarterWorkspaceStore
-	examStarterWorkspaceOnce       sync.Once
-	examSubmission                 store.ExamSubmissionStore
-	examSubmissionOnce             sync.Once
-	retention                      store.RetentionStore
-	retentionOnce                  sync.Once
-	retentionPolicy                store.RetentionPolicyStore
-	retentionPolicyOnce            sync.Once
-	servingNodeLease               store.ServingNodeLeaseStore
-	servingNodeLeaseOnce           sync.Once
-	examAuthoring                  store.ExamAuthoringStore
-	examAuthoringOnce              sync.Once
-	commandOutcome                 store.CommandOutcomeStore
-	commandOutcomeOnce             sync.Once
-	mail                           store.MailStore
-	mailOnce                       sync.Once
-	job                            store.JobStore
-	jobOnce                        sync.Once
-	file                           store.FileStore
-	fileOnce                       sync.Once
 	institution                    store.InstitutionStore
 	institutionOnce                sync.Once
 	academicUnit                   store.AcademicUnitStore
@@ -75,16 +29,50 @@ type timedStores struct {
 	programmeLevelOnce             sync.Once
 	academicPeriod                 store.AcademicPeriodStore
 	academicPeriodOnce             sync.Once
+	examAuthoring                  store.ExamAuthoringStore
+	examAuthoringOnce              sync.Once
+	examRevision                   store.ExamRevisionStore
+	examRevisionOnce               sync.Once
+	examSitting                    store.ExamSittingStore
+	examSittingOnce                sync.Once
+	examAttempt                    store.ExamAttemptStore
+	examAttemptOnce                sync.Once
+	examAttemptWorkspace           store.ExamAttemptWorkspaceStore
+	examAttemptWorkspaceOnce       sync.Once
+	examSubmission                 store.ExamSubmissionStore
+	examSubmissionOnce             sync.Once
+	examIntegrityReview            store.ExamIntegrityReviewStore
+	examIntegrityReviewOnce        sync.Once
+	examRecords                    store.ExamRecordsStore
+	examRecordsOnce                sync.Once
+	examExport                     store.ExamExportStore
+	examExportOnce                 sync.Once
+	examResource                   store.ExamResourceStore
+	examResourceOnce               sync.Once
+	examCorrection                 store.ExamCorrectionStore
+	examCorrectionOnce             sync.Once
+	examStarterWorkspace           store.ExamStarterWorkspaceStore
+	examStarterWorkspaceOnce       sync.Once
 	class                          store.ClassStore
 	classOnce                      sync.Once
 	user                           store.UserStore
 	userOnce                       sync.Once
 	userSettings                   store.UserSettingsStore
 	userSettingsOnce               sync.Once
+	file                           store.FileStore
+	fileOnce                       sync.Once
+	job                            store.JobStore
+	jobOnce                        sync.Once
+	mail                           store.MailStore
+	mailOnce                       sync.Once
 	externalIdentity               store.ExternalIdentityStore
 	externalIdentityOnce           sync.Once
 	externalLoginState             store.ExternalLoginStateStore
 	externalLoginStateOnce         sync.Once
+	browserAuthentication          store.BrowserAuthenticationStore
+	browserAuthenticationOnce      sync.Once
+	desktopRegistration            store.DesktopRegistrationStore
+	desktopRegistrationOnce        sync.Once
 	userToken                      store.UserTokenStore
 	userTokenOnce                  sync.Once
 	invitation                     store.InvitationStore
@@ -105,8 +93,6 @@ type timedStores struct {
 	passwordCredentialOnce         sync.Once
 	session                        store.SessionStore
 	sessionOnce                    sync.Once
-	desktopRegistration            store.DesktopRegistrationStore
-	desktopRegistrationOnce        sync.Once
 	sessionCredential              store.SessionCredentialStore
 	sessionCredentialOnce          sync.Once
 	role                           store.RoleStore
@@ -117,121 +103,20 @@ type timedStores struct {
 	auditOnce                      sync.Once
 	installation                   store.InstallationStore
 	installationOnce               sync.Once
-}
-
-type timedAccessPolicyStore struct {
-	layer *Layer
-	next  store.AccessPolicyStore
-}
-
-type timedBrowserAuthenticationStore struct {
-	layer *Layer
-	next  store.BrowserAuthenticationStore
-}
-
-type timedClusterDiscoveryStore struct {
-	layer *Layer
-	next  store.ClusterDiscoveryStore
-}
-
-type timedDesktopCompatibilityPolicyStore struct {
-	layer *Layer
-	next  store.DesktopCompatibilityPolicyStore
-}
-
-type timedExamAttemptStore struct {
-	layer *Layer
-	next  store.ExamAttemptStore
-}
-
-type timedExamAttemptWorkspaceStore struct {
-	layer *Layer
-	next  store.ExamAttemptWorkspaceStore
-}
-
-type timedExamCorrectionStore struct {
-	layer *Layer
-	next  store.ExamCorrectionStore
-}
-
-type timedExamExportStore struct {
-	layer *Layer
-	next  store.ExamExportStore
-}
-
-type timedExamIntegrityReviewStore struct {
-	layer *Layer
-	next  store.ExamIntegrityReviewStore
-}
-
-type timedExamRecordsStore struct {
-	layer *Layer
-	next  store.ExamRecordsStore
-}
-
-type timedExamResourceStore struct {
-	layer *Layer
-	next  store.ExamResourceStore
-}
-
-type timedExamRevisionStore struct {
-	layer *Layer
-	next  store.ExamRevisionStore
-}
-
-type timedExamSittingStore struct {
-	layer *Layer
-	next  store.ExamSittingStore
-}
-
-type timedExamStarterWorkspaceStore struct {
-	layer *Layer
-	next  store.ExamStarterWorkspaceStore
-}
-
-type timedExamSubmissionStore struct {
-	layer *Layer
-	next  store.ExamSubmissionStore
-}
-
-type timedRetentionStore struct {
-	layer *Layer
-	next  store.RetentionStore
-}
-
-type timedRetentionPolicyStore struct {
-	layer *Layer
-	next  store.RetentionPolicyStore
-}
-
-type timedServingNodeLeaseStore struct {
-	layer *Layer
-	next  store.ServingNodeLeaseStore
-}
-
-type timedExamAuthoringStore struct {
-	layer *Layer
-	next  store.ExamAuthoringStore
-}
-
-type timedCommandOutcomeStore struct {
-	layer *Layer
-	next  store.CommandOutcomeStore
-}
-
-type timedMailStore struct {
-	layer *Layer
-	next  store.MailStore
-}
-
-type timedJobStore struct {
-	layer *Layer
-	next  store.JobStore
-}
-
-type timedFileStore struct {
-	layer *Layer
-	next  store.FileStore
+	accessPolicy                   store.AccessPolicyStore
+	accessPolicyOnce               sync.Once
+	desktopCompatibilityPolicy     store.DesktopCompatibilityPolicyStore
+	desktopCompatibilityPolicyOnce sync.Once
+	retentionPolicy                store.RetentionPolicyStore
+	retentionPolicyOnce            sync.Once
+	retention                      store.RetentionStore
+	retentionOnce                  sync.Once
+	clusterDiscovery               store.ClusterDiscoveryStore
+	clusterDiscoveryOnce           sync.Once
+	servingNodeLease               store.ServingNodeLeaseStore
+	servingNodeLeaseOnce           sync.Once
+	commandOutcome                 store.CommandOutcomeStore
+	commandOutcomeOnce             sync.Once
 }
 
 type timedInstitutionStore struct {
@@ -259,6 +144,66 @@ type timedAcademicPeriodStore struct {
 	next  store.AcademicPeriodStore
 }
 
+type timedExamAuthoringStore struct {
+	layer *Layer
+	next  store.ExamAuthoringStore
+}
+
+type timedExamRevisionStore struct {
+	layer *Layer
+	next  store.ExamRevisionStore
+}
+
+type timedExamSittingStore struct {
+	layer *Layer
+	next  store.ExamSittingStore
+}
+
+type timedExamAttemptStore struct {
+	layer *Layer
+	next  store.ExamAttemptStore
+}
+
+type timedExamAttemptWorkspaceStore struct {
+	layer *Layer
+	next  store.ExamAttemptWorkspaceStore
+}
+
+type timedExamSubmissionStore struct {
+	layer *Layer
+	next  store.ExamSubmissionStore
+}
+
+type timedExamIntegrityReviewStore struct {
+	layer *Layer
+	next  store.ExamIntegrityReviewStore
+}
+
+type timedExamRecordsStore struct {
+	layer *Layer
+	next  store.ExamRecordsStore
+}
+
+type timedExamExportStore struct {
+	layer *Layer
+	next  store.ExamExportStore
+}
+
+type timedExamResourceStore struct {
+	layer *Layer
+	next  store.ExamResourceStore
+}
+
+type timedExamCorrectionStore struct {
+	layer *Layer
+	next  store.ExamCorrectionStore
+}
+
+type timedExamStarterWorkspaceStore struct {
+	layer *Layer
+	next  store.ExamStarterWorkspaceStore
+}
+
 type timedClassStore struct {
 	layer *Layer
 	next  store.ClassStore
@@ -274,6 +219,21 @@ type timedUserSettingsStore struct {
 	next  store.UserSettingsStore
 }
 
+type timedFileStore struct {
+	layer *Layer
+	next  store.FileStore
+}
+
+type timedJobStore struct {
+	layer *Layer
+	next  store.JobStore
+}
+
+type timedMailStore struct {
+	layer *Layer
+	next  store.MailStore
+}
+
 type timedExternalIdentityStore struct {
 	layer *Layer
 	next  store.ExternalIdentityStore
@@ -282,6 +242,16 @@ type timedExternalIdentityStore struct {
 type timedExternalLoginStateStore struct {
 	layer *Layer
 	next  store.ExternalLoginStateStore
+}
+
+type timedBrowserAuthenticationStore struct {
+	layer *Layer
+	next  store.BrowserAuthenticationStore
+}
+
+type timedDesktopRegistrationStore struct {
+	layer *Layer
+	next  store.DesktopRegistrationStore
 }
 
 type timedUserTokenStore struct {
@@ -334,11 +304,6 @@ type timedSessionStore struct {
 	next  store.SessionStore
 }
 
-type timedDesktopRegistrationStore struct {
-	layer *Layer
-	next  store.DesktopRegistrationStore
-}
-
 type timedSessionCredentialStore struct {
 	layer *Layer
 	next  store.SessionCredentialStore
@@ -362,6 +327,41 @@ type timedAuditStore struct {
 type timedInstallationStore struct {
 	layer *Layer
 	next  store.InstallationStore
+}
+
+type timedAccessPolicyStore struct {
+	layer *Layer
+	next  store.AccessPolicyStore
+}
+
+type timedDesktopCompatibilityPolicyStore struct {
+	layer *Layer
+	next  store.DesktopCompatibilityPolicyStore
+}
+
+type timedRetentionPolicyStore struct {
+	layer *Layer
+	next  store.RetentionPolicyStore
+}
+
+type timedRetentionStore struct {
+	layer *Layer
+	next  store.RetentionStore
+}
+
+type timedClusterDiscoveryStore struct {
+	layer *Layer
+	next  store.ClusterDiscoveryStore
+}
+
+type timedServingNodeLeaseStore struct {
+	layer *Layer
+	next  store.ServingNodeLeaseStore
+}
+
+type timedCommandOutcomeStore struct {
+	layer *Layer
+	next  store.CommandOutcomeStore
 }
 
 func (l *Layer) Institution() store.InstitutionStore {
@@ -884,129 +884,477 @@ func (l *Layer) Close() error {
 	})
 }
 
-func (s *timedAccessPolicyStore) Get(arg0 context.Context, arg1 int) (*store.AccessPolicySnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAccessPolicy, methodGet), func() (*store.AccessPolicySnapshot, error) {
+func (s *timedInstitutionStore) Save(arg0 context.Context, arg1 *model.Institution) (*model.Institution, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInstitution, methodSave), func() (*model.Institution, error) {
+		return s.next.Save(arg0, arg1)
+	})
+}
+
+func (s *timedInstitutionStore) Get(arg0 context.Context, arg1 model.InstitutionID) (*model.Institution, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInstitution, methodGet), func() (*model.Institution, error) {
 		return s.next.Get(arg0, arg1)
 	})
 }
 
-func (s *timedAccessPolicyStore) Preflight(arg0 context.Context, arg1 *store.AccessPolicyPreflight) ([]store.AccessPolicyBlocker, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAccessPolicy, methodPreflight), func() ([]store.AccessPolicyBlocker, error) {
-		return s.next.Preflight(arg0, arg1)
+func (s *timedInstitutionStore) GetSingleton(arg0 context.Context) (*model.Institution, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInstitution, methodGetSingleton), func() (*model.Institution, error) {
+		return s.next.GetSingleton(arg0)
 	})
 }
 
-func (s *timedAccessPolicyStore) Replace(arg0 context.Context, arg1 *store.AccessPolicyReplacement, arg2 *store.CommandIdempotency) (*store.AccessPolicyReplacementResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAccessPolicy, methodReplace), func() (*store.AccessPolicyReplacementResult, error) {
-		return s.next.Replace(arg0, arg1, arg2)
+func (s *timedInstitutionStore) Update(arg0 context.Context, arg1 *store.InstitutionUpdate) (*model.Institution, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInstitution, methodUpdate), func() (*model.Institution, error) {
+		return s.next.Update(arg0, arg1)
 	})
 }
 
-func (s *timedBrowserAuthenticationStore) CreateDesktopAuthorization(arg0 context.Context, arg1 *store.DesktopAuthorizationCreation) (*store.DesktopAuthorizationCreated, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodCreateDesktopAuthorization), func() (*store.DesktopAuthorizationCreated, error) {
-		return s.next.CreateDesktopAuthorization(arg0, arg1)
+func (s *timedInstitutionStore) Archive(arg0 context.Context, arg1 model.InstitutionID, arg2 int64) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateInstitution, methodArchive), func() error {
+		return s.next.Archive(arg0, arg1, arg2)
 	})
 }
 
-func (s *timedBrowserAuthenticationStore) BindDesktopAuthorization(arg0 context.Context, arg1 *store.DesktopAuthorizationBinding) (*store.DesktopAuthorizationBound, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodBindDesktopAuthorization), func() (*store.DesktopAuthorizationBound, error) {
-		return s.next.BindDesktopAuthorization(arg0, arg1)
+func (s *timedAcademicUnitStore) Create(arg0 context.Context, arg1 *store.AcademicUnitCreation) (*model.AcademicUnit, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodCreate), func() (*model.AcademicUnit, error) {
+		return s.next.Create(arg0, arg1)
 	})
 }
 
-func (s *timedBrowserAuthenticationStore) GetDesktopAuthorizationContext(arg0 context.Context, arg1 string) (*store.DesktopAuthorizationContext, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodGetDesktopAuthorizationContext), func() (*store.DesktopAuthorizationContext, error) {
-		return s.next.GetDesktopAuthorizationContext(arg0, arg1)
+func (s *timedAcademicUnitStore) CreateIdempotently(arg0 context.Context, arg1 *store.AcademicUnitCreation, arg2 *store.CommandIdempotency) (*store.AcademicUnitCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodCreateIdempotently), func() (*store.AcademicUnitCommandResult, error) {
+		return s.next.CreateIdempotently(arg0, arg1, arg2)
 	})
 }
 
-func (s *timedBrowserAuthenticationStore) AuthenticateDesktopAuthorization(arg0 context.Context, arg1 *store.DesktopAuthorizationAuthentication) (*store.DesktopAuthorizationAuthenticationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodAuthenticateDesktopAuthorization), func() (*store.DesktopAuthorizationAuthenticationResult, error) {
-		return s.next.AuthenticateDesktopAuthorization(arg0, arg1)
+func (s *timedAcademicUnitStore) Update(arg0 context.Context, arg1 *store.AcademicUnitUpdate) (*model.AcademicUnit, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodUpdate), func() (*model.AcademicUnit, error) {
+		return s.next.Update(arg0, arg1)
 	})
 }
 
-func (s *timedBrowserAuthenticationStore) ResetDesktopAuthorizationAccount(arg0 context.Context, arg1 *store.DesktopAuthorizationAccountReset) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateBrowserAuthentication, methodResetDesktopAuthorizationAccount), func() error {
-		return s.next.ResetDesktopAuthorizationAccount(arg0, arg1)
+func (s *timedAcademicUnitStore) Archive(arg0 context.Context, arg1 *store.AcademicUnitArchive) (*model.AcademicUnit, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodArchive), func() (*model.AcademicUnit, error) {
+		return s.next.Archive(arg0, arg1)
 	})
 }
 
-func (s *timedBrowserAuthenticationStore) CreateInvitation(arg0 context.Context, arg1 *store.BrowserInvitationTransactionCreation) (*store.BrowserInvitationCreated, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodCreateInvitation), func() (*store.BrowserInvitationCreated, error) {
-		return s.next.CreateInvitation(arg0, arg1)
+func (s *timedAcademicUnitStore) Get(arg0 context.Context, arg1 model.AcademicUnitID) (*model.AcademicUnit, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodGet), func() (*model.AcademicUnit, error) {
+		return s.next.Get(arg0, arg1)
 	})
 }
 
-func (s *timedBrowserAuthenticationStore) ResolveInvitation(arg0 context.Context, arg1 string, arg2 string) (*store.BrowserInvitationResolution, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodResolveInvitation), func() (*store.BrowserInvitationResolution, error) {
-		return s.next.ResolveInvitation(arg0, arg1, arg2)
+func (s *timedAcademicUnitStore) GetByName(arg0 context.Context, arg1 model.InstitutionID, arg2 string) (*model.AcademicUnit, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodGetByName), func() (*model.AcademicUnit, error) {
+		return s.next.GetByName(arg0, arg1, arg2)
 	})
 }
 
-func (s *timedBrowserAuthenticationStore) IssueCode(arg0 context.Context, arg1 *store.DesktopAuthorizationCodeIssue) (*store.DesktopAuthorizationCodeIssued, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodIssueCode), func() (*store.DesktopAuthorizationCodeIssued, error) {
-		return s.next.IssueCode(arg0, arg1)
+func (s *timedAcademicUnitStore) ListChildren(arg0 context.Context, arg1 model.InstitutionID, arg2 model.AcademicUnitID) ([]*model.AcademicUnit, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodListChildren), func() ([]*model.AcademicUnit, error) {
+		return s.next.ListChildren(arg0, arg1, arg2)
 	})
 }
 
-func (s *timedBrowserAuthenticationStore) Cancel(arg0 context.Context, arg1 *store.DesktopAuthorizationCancellation) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateBrowserAuthentication, methodCancel), func() error {
-		return s.next.Cancel(arg0, arg1)
+func (s *timedAcademicUnitStore) ListAncestors(arg0 context.Context, arg1 model.AcademicUnitID) ([]*model.AcademicUnit, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodListAncestors), func() ([]*model.AcademicUnit, error) {
+		return s.next.ListAncestors(arg0, arg1)
 	})
 }
 
-func (s *timedBrowserAuthenticationStore) ResolveDesktopAuthorizationExchange(arg0 context.Context, arg1 *store.DesktopAuthorizationExchangeProof) (*store.DesktopAuthorizationExchangeTarget, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodResolveDesktopAuthorizationExchange), func() (*store.DesktopAuthorizationExchangeTarget, error) {
-		return s.next.ResolveDesktopAuthorizationExchange(arg0, arg1)
+func (s *timedAcademicUnitStore) Search(arg0 context.Context, arg1 model.InstitutionID, arg2 string, arg3 int) ([]*model.AcademicUnit, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodSearch), func() ([]*model.AcademicUnit, error) {
+		return s.next.Search(arg0, arg1, arg2, arg3)
 	})
 }
 
-func (s *timedBrowserAuthenticationStore) Exchange(arg0 context.Context, arg1 *store.DesktopAuthorizationExchange) (*store.DesktopAuthorizationExchangeResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodExchange), func() (*store.DesktopAuthorizationExchangeResult, error) {
-		return s.next.Exchange(arg0, arg1)
+func (s *timedProgrammeStore) Create(arg0 context.Context, arg1 *store.ProgrammeCreation) (*model.Programme, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodCreate), func() (*model.Programme, error) {
+		return s.next.Create(arg0, arg1)
 	})
 }
 
-func (s *timedBrowserAuthenticationStore) Maintain(arg0 context.Context, arg1 int) (*store.BrowserAuthenticationMaintenanceResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodMaintain), func() (*store.BrowserAuthenticationMaintenanceResult, error) {
-		return s.next.Maintain(arg0, arg1)
+func (s *timedProgrammeStore) Update(arg0 context.Context, arg1 *store.ProgrammeUpdate) (*model.Programme, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodUpdate), func() (*model.Programme, error) {
+		return s.next.Update(arg0, arg1)
 	})
 }
 
-func (s *timedClusterDiscoveryStore) Upsert(arg0 context.Context, arg1 *store.ClusterDiscoveryNode) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateClusterDiscovery, methodUpsert), func() error {
-		return s.next.Upsert(arg0, arg1)
+func (s *timedProgrammeStore) Archive(arg0 context.Context, arg1 *store.ProgrammeArchive) (*model.Programme, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodArchive), func() (*model.Programme, error) {
+		return s.next.Archive(arg0, arg1)
 	})
 }
 
-func (s *timedClusterDiscoveryStore) ListLive(arg0 context.Context, arg1 int64) ([]*store.ClusterDiscoveryNode, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClusterDiscovery, methodListLive), func() ([]*store.ClusterDiscoveryNode, error) {
-		return s.next.ListLive(arg0, arg1)
+func (s *timedProgrammeStore) Get(arg0 context.Context, arg1 model.ProgrammeID) (*model.Programme, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodGet), func() (*model.Programme, error) {
+		return s.next.Get(arg0, arg1)
 	})
 }
 
-func (s *timedClusterDiscoveryStore) Delete(arg0 context.Context, arg1 string) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateClusterDiscovery, methodDelete), func() error {
-		return s.next.Delete(arg0, arg1)
+func (s *timedProgrammeStore) GetByName(arg0 context.Context, arg1 model.AcademicUnitID, arg2 string) (*model.Programme, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodGetByName), func() (*model.Programme, error) {
+		return s.next.GetByName(arg0, arg1, arg2)
 	})
 }
 
-func (s *timedClusterDiscoveryStore) DeleteExpired(arg0 context.Context, arg1 int64) (int64, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClusterDiscovery, methodDeleteExpired), func() (int64, error) {
-		return s.next.DeleteExpired(arg0, arg1)
+func (s *timedProgrammeStore) ListByAcademicUnit(arg0 context.Context, arg1 model.AcademicUnitID) ([]*model.Programme, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodListByAcademicUnit), func() ([]*model.Programme, error) {
+		return s.next.ListByAcademicUnit(arg0, arg1)
 	})
 }
 
-func (s *timedDesktopCompatibilityPolicyStore) Get(arg0 context.Context) (*model.DesktopCompatibilityPolicy, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopCompatibilityPolicy, methodGet), func() (*model.DesktopCompatibilityPolicy, error) {
-		return s.next.Get(arg0)
+func (s *timedProgrammeStore) SearchByAcademicUnit(arg0 context.Context, arg1 model.AcademicUnitID, arg2 string, arg3 int) ([]*model.Programme, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodSearchByAcademicUnit), func() ([]*model.Programme, error) {
+		return s.next.SearchByAcademicUnit(arg0, arg1, arg2, arg3)
 	})
 }
 
-func (s *timedDesktopCompatibilityPolicyStore) Replace(arg0 context.Context, arg1 *store.DesktopCompatibilityPolicyReplacement, arg2 *store.CommandIdempotency) (*store.DesktopCompatibilityPolicyReplacementResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopCompatibilityPolicy, methodReplace), func() (*store.DesktopCompatibilityPolicyReplacementResult, error) {
-		return s.next.Replace(arg0, arg1, arg2)
+func (s *timedProgrammeStore) SeedUpdate(arg0 context.Context, arg1 *model.Programme) (*model.Programme, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodSeedUpdate), func() (*model.Programme, error) {
+		return s.next.SeedUpdate(arg0, arg1)
+	})
+}
+
+func (s *timedProgrammeLevelStore) Create(arg0 context.Context, arg1 *store.ProgrammeLevelCreation) (*model.ProgrammeLevel, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodCreate), func() (*model.ProgrammeLevel, error) {
+		return s.next.Create(arg0, arg1)
+	})
+}
+
+func (s *timedProgrammeLevelStore) Update(arg0 context.Context, arg1 *store.ProgrammeLevelUpdate) (*model.ProgrammeLevel, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodUpdate), func() (*model.ProgrammeLevel, error) {
+		return s.next.Update(arg0, arg1)
+	})
+}
+
+func (s *timedProgrammeLevelStore) Archive(arg0 context.Context, arg1 *store.ProgrammeLevelArchive) (*model.ProgrammeLevel, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodArchive), func() (*model.ProgrammeLevel, error) {
+		return s.next.Archive(arg0, arg1)
+	})
+}
+
+func (s *timedProgrammeLevelStore) Get(arg0 context.Context, arg1 model.ProgrammeLevelID) (*model.ProgrammeLevel, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodGet), func() (*model.ProgrammeLevel, error) {
+		return s.next.Get(arg0, arg1)
+	})
+}
+
+func (s *timedProgrammeLevelStore) GetByName(arg0 context.Context, arg1 model.ProgrammeID, arg2 string) (*model.ProgrammeLevel, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodGetByName), func() (*model.ProgrammeLevel, error) {
+		return s.next.GetByName(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedProgrammeLevelStore) ListByProgramme(arg0 context.Context, arg1 model.ProgrammeID) ([]*model.ProgrammeLevel, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodListByProgramme), func() ([]*model.ProgrammeLevel, error) {
+		return s.next.ListByProgramme(arg0, arg1)
+	})
+}
+
+func (s *timedProgrammeLevelStore) SearchByProgramme(arg0 context.Context, arg1 model.ProgrammeID, arg2 string, arg3 int) ([]*model.ProgrammeLevel, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodSearchByProgramme), func() ([]*model.ProgrammeLevel, error) {
+		return s.next.SearchByProgramme(arg0, arg1, arg2, arg3)
+	})
+}
+
+func (s *timedProgrammeLevelStore) SeedUpdate(arg0 context.Context, arg1 *model.ProgrammeLevel) (*model.ProgrammeLevel, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodSeedUpdate), func() (*model.ProgrammeLevel, error) {
+		return s.next.SeedUpdate(arg0, arg1)
+	})
+}
+
+func (s *timedAcademicPeriodStore) Create(arg0 context.Context, arg1 *store.AcademicPeriodCreation) (*model.AcademicPeriod, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodCreate), func() (*model.AcademicPeriod, error) {
+		return s.next.Create(arg0, arg1)
+	})
+}
+
+func (s *timedAcademicPeriodStore) CreateIdempotently(arg0 context.Context, arg1 *store.AcademicPeriodCreation, arg2 *store.CommandIdempotency) (*store.AcademicPeriodCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodCreateIdempotently), func() (*store.AcademicPeriodCommandResult, error) {
+		return s.next.CreateIdempotently(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedAcademicPeriodStore) Update(arg0 context.Context, arg1 *store.AcademicPeriodUpdate) (*model.AcademicPeriod, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodUpdate), func() (*model.AcademicPeriod, error) {
+		return s.next.Update(arg0, arg1)
+	})
+}
+
+func (s *timedAcademicPeriodStore) Archive(arg0 context.Context, arg1 *store.AcademicPeriodArchive) (*model.AcademicPeriod, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodArchive), func() (*model.AcademicPeriod, error) {
+		return s.next.Archive(arg0, arg1)
+	})
+}
+
+func (s *timedAcademicPeriodStore) Get(arg0 context.Context, arg1 model.AcademicPeriodID) (*model.AcademicPeriod, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodGet), func() (*model.AcademicPeriod, error) {
+		return s.next.Get(arg0, arg1)
+	})
+}
+
+func (s *timedAcademicPeriodStore) GetByOwnerName(arg0 context.Context, arg1 model.Resource, arg2 string) (*model.AcademicPeriod, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodGetByOwnerName), func() (*model.AcademicPeriod, error) {
+		return s.next.GetByOwnerName(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedAcademicPeriodStore) ListVisible(arg0 context.Context, arg1 store.AcademicPeriodVisibilityScope, arg2 string, arg3 int) ([]*model.AcademicPeriod, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodListVisible), func() ([]*model.AcademicPeriod, error) {
+		return s.next.ListVisible(arg0, arg1, arg2, arg3)
+	})
+}
+
+func (s *timedExamAuthoringStore) Create(arg0 context.Context, arg1 *store.ExamAuthoringCreation, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodCreate), func() (*store.ExamAuthoringCommandResult, error) {
+		return s.next.Create(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAuthoringStore) UpdateDraftText(arg0 context.Context, arg1 *store.ExamDraftTextUpdate, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodUpdateDraftText), func() (*store.ExamAuthoringCommandResult, error) {
+		return s.next.UpdateDraftText(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAuthoringStore) UpdateDraftFocusLoss(arg0 context.Context, arg1 *store.ExamDraftFocusLossUpdate, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodUpdateDraftFocusLoss), func() (*store.ExamAuthoringCommandResult, error) {
+		return s.next.UpdateDraftFocusLoss(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAuthoringStore) UpdateDraftNativePolicy(arg0 context.Context, arg1 *store.ExamDraftNativePolicyUpdate, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodUpdateDraftNativePolicy), func() (*store.ExamAuthoringCommandResult, error) {
+		return s.next.UpdateDraftNativePolicy(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAuthoringStore) UpdateDraftBrowserPolicy(arg0 context.Context, arg1 *store.ExamDraftBrowserPolicyUpdate, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodUpdateDraftBrowserPolicy), func() (*store.ExamAuthoringCommandResult, error) {
+		return s.next.UpdateDraftBrowserPolicy(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAuthoringStore) List(arg0 context.Context, arg1 store.ExamListOptions) ([]store.ExamSummary, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodList), func() ([]store.ExamSummary, error) {
+		return s.next.List(arg0, arg1)
+	})
+}
+
+func (s *timedExamAuthoringStore) Archive(arg0 context.Context, arg1 *store.ExamArchive, arg2 *store.CommandIdempotency) (*store.ExamArchiveCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodArchive), func() (*store.ExamArchiveCommandResult, error) {
+		return s.next.Archive(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAuthoringStore) ListManagers(arg0 context.Context, arg1 store.ExamManagerListOptions) ([]store.ExamManagerSummary, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodListManagers), func() ([]store.ExamManagerSummary, error) {
+		return s.next.ListManagers(arg0, arg1)
+	})
+}
+
+func (s *timedExamAuthoringStore) AddManager(arg0 context.Context, arg1 *store.ExamManagerMutation, arg2 *store.CommandIdempotency) (*store.ExamManagerCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodAddManager), func() (*store.ExamManagerCommandResult, error) {
+		return s.next.AddManager(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAuthoringStore) RemoveManager(arg0 context.Context, arg1 *store.ExamManagerMutation, arg2 *store.CommandIdempotency) (*store.ExamManagerCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodRemoveManager), func() (*store.ExamManagerCommandResult, error) {
+		return s.next.RemoveManager(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAuthoringStore) TransferOwner(arg0 context.Context, arg1 *store.ExamManagerMutation, arg2 *store.CommandIdempotency) (*store.ExamManagerCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodTransferOwner), func() (*store.ExamManagerCommandResult, error) {
+		return s.next.TransferOwner(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAuthoringStore) Access(arg0 context.Context, arg1 model.ExamID, arg2 model.UserID) (*store.ExamAccessSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodAccess), func() (*store.ExamAccessSnapshot, error) {
+		return s.next.Access(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAuthoringStore) Get(arg0 context.Context, arg1 model.ExamID, arg2 model.UserID) (*store.ExamAuthoringSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodGet), func() (*store.ExamAuthoringSnapshot, error) {
+		return s.next.Get(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAuthoringStore) Resolve(arg0 context.Context, arg1 model.ExamID) (*model.Exam, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodResolve), func() (*model.Exam, error) {
+		return s.next.Resolve(arg0, arg1)
+	})
+}
+
+func (s *timedExamRevisionStore) Publish(arg0 context.Context, arg1 *store.ExamRevisionPublication, arg2 *store.CommandIdempotency) (*store.ExamRevisionPublicationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamRevision, methodPublish), func() (*store.ExamRevisionPublicationResult, error) {
+		return s.next.Publish(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamRevisionStore) GetSummary(arg0 context.Context, arg1 model.ExamID, arg2 model.ExamRevisionID) (*store.ExamRevisionSummary, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamRevision, methodGetSummary), func() (*store.ExamRevisionSummary, error) {
+		return s.next.GetSummary(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamRevisionStore) List(arg0 context.Context, arg1 store.ExamRevisionListOptions) ([]store.ExamRevisionSummary, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamRevision, methodList), func() ([]store.ExamRevisionSummary, error) {
+		return s.next.List(arg0, arg1)
+	})
+}
+
+func (s *timedExamRevisionStore) GetSnapshot(arg0 context.Context, arg1 model.ExamID, arg2 model.ExamRevisionID) (*model.ExamRevision, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamRevision, methodGetSnapshot), func() (*model.ExamRevision, error) {
+		return s.next.GetSnapshot(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamSittingStore) Resolve(arg0 context.Context, arg1 model.ExamSittingID) (*store.ExamSittingSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodResolve), func() (*store.ExamSittingSnapshot, error) {
+		return s.next.Resolve(arg0, arg1)
+	})
+}
+
+func (s *timedExamSittingStore) Get(arg0 context.Context, arg1 model.ExamID, arg2 model.ExamSittingID) (*store.ExamSittingSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodGet), func() (*store.ExamSittingSnapshot, error) {
+		return s.next.Get(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamSittingStore) List(arg0 context.Context, arg1 store.ExamSittingListOptions) ([]store.ExamSittingSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodList), func() ([]store.ExamSittingSnapshot, error) {
+		return s.next.List(arg0, arg1)
+	})
+}
+
+func (s *timedExamSittingStore) ListInvalidationTargetsByClass(arg0 context.Context, arg1 model.ClassID, arg2 model.ExamSittingID, arg3 int) ([]store.ExamSittingInvalidationTarget, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListInvalidationTargetsByClass), func() ([]store.ExamSittingInvalidationTarget, error) {
+		return s.next.ListInvalidationTargetsByClass(arg0, arg1, arg2, arg3)
+	})
+}
+
+func (s *timedExamSittingStore) ListInvalidationTargetsByExam(arg0 context.Context, arg1 model.ExamID, arg2 model.ExamSittingID, arg3 int) ([]store.ExamSittingInvalidationTarget, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListInvalidationTargetsByExam), func() ([]store.ExamSittingInvalidationTarget, error) {
+		return s.next.ListInvalidationTargetsByExam(arg0, arg1, arg2, arg3)
+	})
+}
+
+func (s *timedExamSittingStore) ListCandidateInvalidationTargetsBySitting(arg0 context.Context, arg1 model.ExamSittingID, arg2 model.UserID, arg3 int) ([]model.UserID, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListCandidateInvalidationTargetsBySitting), func() ([]model.UserID, error) {
+		return s.next.ListCandidateInvalidationTargetsBySitting(arg0, arg1, arg2, arg3)
+	})
+}
+
+func (s *timedExamSittingStore) ListLifecycleDue(arg0 context.Context, arg1 store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListLifecycleDue), func() ([]store.ExamSittingLifecycleDue, error) {
+		return s.next.ListLifecycleDue(arg0, arg1)
+	})
+}
+
+func (s *timedExamSittingStore) Schedule(arg0 context.Context, arg1 *store.ExamSittingSchedule, arg2 *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodSchedule), func() (*store.ExamSittingCommandResult, error) {
+		return s.next.Schedule(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamSittingStore) UpdateSchedule(arg0 context.Context, arg1 *store.ExamSittingScheduleUpdate, arg2 *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodUpdateSchedule), func() (*store.ExamSittingCommandResult, error) {
+		return s.next.UpdateSchedule(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamSittingStore) Cancel(arg0 context.Context, arg1 *store.ExamSittingCancellation, arg2 *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodCancel), func() (*store.ExamSittingCommandResult, error) {
+		return s.next.Cancel(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamSittingStore) Pause(arg0 context.Context, arg1 *store.ExamSittingManagerTransition, arg2 *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodPause), func() (*store.ExamSittingLifecycleResult, error) {
+		return s.next.Pause(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamSittingStore) Resume(arg0 context.Context, arg1 *store.ExamSittingManagerTransition, arg2 *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodResume), func() (*store.ExamSittingLifecycleResult, error) {
+		return s.next.Resume(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamSittingStore) Extend(arg0 context.Context, arg1 *store.ExamSittingExtension, arg2 *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodExtend), func() (*store.ExamSittingLifecycleResult, error) {
+		return s.next.Extend(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamSittingStore) EarlyClose(arg0 context.Context, arg1 *store.ExamSittingManagerTransition, arg2 *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodEarlyClose), func() (*store.ExamSittingLifecycleResult, error) {
+		return s.next.EarlyClose(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamSittingStore) AdvanceDue(arg0 context.Context, arg1 *store.ExamSittingDueAdvance) (*store.ExamSittingLifecycleResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodAdvanceDue), func() (*store.ExamSittingLifecycleResult, error) {
+		return s.next.AdvanceDue(arg0, arg1)
+	})
+}
+
+func (s *timedExamSittingStore) FinishSealing(arg0 context.Context, arg1 *store.ExamSittingFinishSealing) (*store.ExamSittingLifecycleResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodFinishSealing), func() (*store.ExamSittingLifecycleResult, error) {
+		return s.next.FinishSealing(arg0, arg1)
+	})
+}
+
+func (s *timedExamSittingStore) ListNoShows(arg0 context.Context, arg1 store.ExamSittingNoShowListOptions) ([]store.ExamSittingNoShow, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListNoShows), func() ([]store.ExamSittingNoShow, error) {
+		return s.next.ListNoShows(arg0, arg1)
+	})
+}
+
+func (s *timedExamSittingStore) GetMailFanout(arg0 context.Context, arg1 model.MailOccurrenceID) (*store.ExamSittingMailFanoutSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodGetMailFanout), func() (*store.ExamSittingMailFanoutSnapshot, error) {
+		return s.next.GetMailFanout(arg0, arg1)
+	})
+}
+
+func (s *timedExamSittingStore) ListMailRecipients(arg0 context.Context, arg1 store.ExamSittingMailRecipientPageRequest) (*store.ExamSittingMailRecipientPage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListMailRecipients), func() (*store.ExamSittingMailRecipientPage, error) {
+		return s.next.ListMailRecipients(arg0, arg1)
+	})
+}
+
+func (s *timedExamSittingStore) CommitMailRecipient(arg0 context.Context, arg1 *store.ExamSittingMailRecipientCommit) (*store.ExamSittingMailRecipientResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodCommitMailRecipient), func() (*store.ExamSittingMailRecipientResult, error) {
+		return s.next.CommitMailRecipient(arg0, arg1)
+	})
+}
+
+func (s *timedExamSittingStore) CompleteMailExpansion(arg0 context.Context, arg1 *store.ExamSittingMailExpansionCompletion) (*store.ExamSittingMailFanoutSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodCompleteMailExpansion), func() (*store.ExamSittingMailFanoutSnapshot, error) {
+		return s.next.CompleteMailExpansion(arg0, arg1)
+	})
+}
+
+func (s *timedExamSittingStore) MaintainMailExpansions(arg0 context.Context, arg1 int) (*store.ExamSittingMailMaintenanceResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodMaintainMailExpansions), func() (*store.ExamSittingMailMaintenanceResult, error) {
+		return s.next.MaintainMailExpansions(arg0, arg1)
+	})
+}
+
+func (s *timedExamSittingStore) ListMailReconciliationDue(arg0 context.Context, arg1 store.ExamSittingMailReconciliationOptions) ([]store.ExamSittingMailReconciliationCandidate, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListMailReconciliationDue), func() ([]store.ExamSittingMailReconciliationCandidate, error) {
+		return s.next.ListMailReconciliationDue(arg0, arg1)
+	})
+}
+
+func (s *timedExamSittingStore) ReconcileMail(arg0 context.Context, arg1 *store.ExamSittingMailReconciliation) (*store.ExamSittingMailFanoutSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodReconcileMail), func() (*store.ExamSittingMailFanoutSnapshot, error) {
+		return s.next.ReconcileMail(arg0, arg1)
 	})
 }
 
@@ -1370,81 +1718,69 @@ func (s *timedExamAttemptWorkspaceStore) ReleaseObjectCleanup(arg0 context.Conte
 	})
 }
 
-func (s *timedExamCorrectionStore) ReserveResourceStage(arg0 context.Context, arg1 *store.ExamCorrectionResourceStageReservation, arg2 *store.CommandIdempotency) (*store.ExamCorrectionResourceStage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamCorrection, methodReserveResourceStage), func() (*store.ExamCorrectionResourceStage, error) {
-		return s.next.ReserveResourceStage(arg0, arg1, arg2)
+func (s *timedExamSubmissionStore) ResolveSealTarget(arg0 context.Context, arg1 store.ExamSubmissionSealAccess) (*store.ExamSubmissionSealTarget, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodResolveSealTarget), func() (*store.ExamSubmissionSealTarget, error) {
+		return s.next.ResolveSealTarget(arg0, arg1)
 	})
 }
 
-func (s *timedExamCorrectionStore) MarkResourceStageReady(arg0 context.Context, arg1 *store.ExamCorrectionResourceStageReadiness) (*store.ExamCorrectionResourceStage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamCorrection, methodMarkResourceStageReady), func() (*store.ExamCorrectionResourceStage, error) {
-		return s.next.MarkResourceStageReady(arg0, arg1)
+func (s *timedExamSubmissionStore) Seal(arg0 context.Context, arg1 *store.ExamSubmissionSeal, arg2 *store.CommandIdempotency) (*store.ExamSubmissionSealResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodSeal), func() (*store.ExamSubmissionSealResult, error) {
+		return s.next.Seal(arg0, arg1, arg2)
 	})
 }
 
-func (s *timedExamCorrectionStore) Apply(arg0 context.Context, arg1 *store.ExamCorrectionApplication, arg2 *store.CommandIdempotency) (*store.ExamCorrectionResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamCorrection, methodApply), func() (*store.ExamCorrectionResult, error) {
-		return s.next.Apply(arg0, arg1, arg2)
+func (s *timedExamSubmissionStore) PrepareManagerEnd(arg0 context.Context, arg1 store.ExamSubmissionManagerEndRequest) (*store.ExamSubmissionManagerEndPreparation, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodPrepareManagerEnd), func() (*store.ExamSubmissionManagerEndPreparation, error) {
+		return s.next.PrepareManagerEnd(arg0, arg1)
 	})
 }
 
-func (s *timedExamExportStore) ListScope(arg0 context.Context, arg1 model.RetentionHoldScope) ([]store.ExamSubmissionAuthorization, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodListScope), func() ([]store.ExamSubmissionAuthorization, error) {
-		return s.next.ListScope(arg0, arg1)
+func (s *timedExamSubmissionStore) EndByManager(arg0 context.Context, arg1 *store.ExamSubmissionManagerEnd, arg2 *store.CommandIdempotency) (*store.ExamSubmissionManagerEndResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodEndByManager), func() (*store.ExamSubmissionManagerEndResult, error) {
+		return s.next.EndByManager(arg0, arg1, arg2)
 	})
 }
 
-func (s *timedExamExportStore) ListCreationScope(arg0 context.Context, arg1 model.RetentionHoldScope, arg2 *store.CommandIdempotency) ([]store.ExamSubmissionAuthorization, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodListCreationScope), func() ([]store.ExamSubmissionAuthorization, error) {
-		return s.next.ListCreationScope(arg0, arg1, arg2)
+func (s *timedExamSubmissionStore) ListAutomaticSealTargets(arg0 context.Context, arg1 store.ExamSubmissionAutomaticSealListOptions) ([]store.ExamSubmissionAutomaticSealTarget, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodListAutomaticSealTargets), func() ([]store.ExamSubmissionAutomaticSealTarget, error) {
+		return s.next.ListAutomaticSealTargets(arg0, arg1)
 	})
 }
 
-func (s *timedExamExportStore) Create(arg0 context.Context, arg1 *store.ExamExportCreation, arg2 *store.CommandIdempotency) (*model.ExamExport, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodCreate), func() (*model.ExamExport, error) {
-		return s.next.Create(arg0, arg1, arg2)
+func (s *timedExamSubmissionStore) PrepareAutomaticSeal(arg0 context.Context, arg1 store.ExamSubmissionAutomaticSealTarget) (*store.ExamSubmissionAutomaticSealPreparation, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodPrepareAutomaticSeal), func() (*store.ExamSubmissionAutomaticSealPreparation, error) {
+		return s.next.PrepareAutomaticSeal(arg0, arg1)
 	})
 }
 
-func (s *timedExamExportStore) Get(arg0 context.Context, arg1 *store.ExamExportAccess) (*store.ExamExportDownload, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodGet), func() (*store.ExamExportDownload, error) {
+func (s *timedExamSubmissionStore) SealForSittingClose(arg0 context.Context, arg1 *store.ExamSubmissionAutomaticSeal) (*store.ExamSubmissionAutomaticSealResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodSealForSittingClose), func() (*store.ExamSubmissionAutomaticSealResult, error) {
+		return s.next.SealForSittingClose(arg0, arg1)
+	})
+}
+
+func (s *timedExamSubmissionStore) Resolve(arg0 context.Context, arg1 model.SubmissionID) (*store.ExamSubmissionAuthorization, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodResolve), func() (*store.ExamSubmissionAuthorization, error) {
+		return s.next.Resolve(arg0, arg1)
+	})
+}
+
+func (s *timedExamSubmissionStore) Get(arg0 context.Context, arg1 model.SubmissionID) (*model.ExamSubmission, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodGet), func() (*model.ExamSubmission, error) {
 		return s.next.Get(arg0, arg1)
 	})
 }
 
-func (s *timedExamExportStore) BeginBuild(arg0 context.Context, arg1 *store.ExamExportBuild) (*store.ExamExportSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodBeginBuild), func() (*store.ExamExportSnapshot, error) {
-		return s.next.BeginBuild(arg0, arg1)
+func (s *timedExamSubmissionStore) ListManifest(arg0 context.Context, arg1 store.ExamSubmissionManifestListOptions) (*store.ExamSubmissionManifestPage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodListManifest), func() (*store.ExamSubmissionManifestPage, error) {
+		return s.next.ListManifest(arg0, arg1)
 	})
 }
 
-func (s *timedExamExportStore) Publish(arg0 context.Context, arg1 *store.ExamExportPublication) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateExamExport, methodPublish), func() error {
-		return s.next.Publish(arg0, arg1)
-	})
-}
-
-func (s *timedExamExportStore) FinishWriter(arg0 context.Context, arg1 store.ExamExportArtifact) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateExamExport, methodFinishWriter), func() error {
-		return s.next.FinishWriter(arg0, arg1)
-	})
-}
-
-func (s *timedExamExportStore) Reconcile(arg0 context.Context, arg1 int) (int, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodReconcile), func() (int, error) {
-		return s.next.Reconcile(arg0, arg1)
-	})
-}
-
-func (s *timedExamExportStore) BeginPurgeBatch(arg0 context.Context, arg1 int) ([]store.ExamExportArtifact, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodBeginPurgeBatch), func() ([]store.ExamExportArtifact, error) {
-		return s.next.BeginPurgeBatch(arg0, arg1)
-	})
-}
-
-func (s *timedExamExportStore) CompletePurge(arg0 context.Context, arg1 store.ExamExportArtifact) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateExamExport, methodCompletePurge), func() error {
-		return s.next.CompletePurge(arg0, arg1)
+func (s *timedExamSubmissionStore) ResolveFile(arg0 context.Context, arg1 model.SubmissionID, arg2 model.AttemptWorkspaceEntryID) (*store.ExamSubmissionFileSelector, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodResolveFile), func() (*store.ExamSubmissionFileSelector, error) {
+		return s.next.ResolveFile(arg0, arg1, arg2)
 	})
 }
 
@@ -1568,6 +1904,66 @@ func (s *timedExamRecordsStore) ReleaseHold(arg0 context.Context, arg1 *store.Ex
 	})
 }
 
+func (s *timedExamExportStore) ListScope(arg0 context.Context, arg1 model.RetentionHoldScope) ([]store.ExamSubmissionAuthorization, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodListScope), func() ([]store.ExamSubmissionAuthorization, error) {
+		return s.next.ListScope(arg0, arg1)
+	})
+}
+
+func (s *timedExamExportStore) ListCreationScope(arg0 context.Context, arg1 model.RetentionHoldScope, arg2 *store.CommandIdempotency) ([]store.ExamSubmissionAuthorization, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodListCreationScope), func() ([]store.ExamSubmissionAuthorization, error) {
+		return s.next.ListCreationScope(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamExportStore) Create(arg0 context.Context, arg1 *store.ExamExportCreation, arg2 *store.CommandIdempotency) (*model.ExamExport, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodCreate), func() (*model.ExamExport, error) {
+		return s.next.Create(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamExportStore) Get(arg0 context.Context, arg1 *store.ExamExportAccess) (*store.ExamExportDownload, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodGet), func() (*store.ExamExportDownload, error) {
+		return s.next.Get(arg0, arg1)
+	})
+}
+
+func (s *timedExamExportStore) BeginBuild(arg0 context.Context, arg1 *store.ExamExportBuild) (*store.ExamExportSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodBeginBuild), func() (*store.ExamExportSnapshot, error) {
+		return s.next.BeginBuild(arg0, arg1)
+	})
+}
+
+func (s *timedExamExportStore) Publish(arg0 context.Context, arg1 *store.ExamExportPublication) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateExamExport, methodPublish), func() error {
+		return s.next.Publish(arg0, arg1)
+	})
+}
+
+func (s *timedExamExportStore) FinishWriter(arg0 context.Context, arg1 store.ExamExportArtifact) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateExamExport, methodFinishWriter), func() error {
+		return s.next.FinishWriter(arg0, arg1)
+	})
+}
+
+func (s *timedExamExportStore) Reconcile(arg0 context.Context, arg1 int) (int, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodReconcile), func() (int, error) {
+		return s.next.Reconcile(arg0, arg1)
+	})
+}
+
+func (s *timedExamExportStore) BeginPurgeBatch(arg0 context.Context, arg1 int) ([]store.ExamExportArtifact, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodBeginPurgeBatch), func() ([]store.ExamExportArtifact, error) {
+		return s.next.BeginPurgeBatch(arg0, arg1)
+	})
+}
+
+func (s *timedExamExportStore) CompletePurge(arg0 context.Context, arg1 store.ExamExportArtifact) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateExamExport, methodCompletePurge), func() error {
+		return s.next.CompletePurge(arg0, arg1)
+	})
+}
+
 func (s *timedExamResourceStore) ReserveUpload(arg0 context.Context, arg1 *store.ExamResourceUploadReservation) (*store.FileUpload, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamResource, methodReserveUpload), func() (*store.FileUpload, error) {
 		return s.next.ReserveUpload(arg0, arg1)
@@ -1610,171 +2006,21 @@ func (s *timedExamResourceStore) Remove(arg0 context.Context, arg1 *store.ExamRe
 	})
 }
 
-func (s *timedExamRevisionStore) Publish(arg0 context.Context, arg1 *store.ExamRevisionPublication, arg2 *store.CommandIdempotency) (*store.ExamRevisionPublicationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamRevision, methodPublish), func() (*store.ExamRevisionPublicationResult, error) {
-		return s.next.Publish(arg0, arg1, arg2)
+func (s *timedExamCorrectionStore) ReserveResourceStage(arg0 context.Context, arg1 *store.ExamCorrectionResourceStageReservation, arg2 *store.CommandIdempotency) (*store.ExamCorrectionResourceStage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamCorrection, methodReserveResourceStage), func() (*store.ExamCorrectionResourceStage, error) {
+		return s.next.ReserveResourceStage(arg0, arg1, arg2)
 	})
 }
 
-func (s *timedExamRevisionStore) GetSummary(arg0 context.Context, arg1 model.ExamID, arg2 model.ExamRevisionID) (*store.ExamRevisionSummary, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamRevision, methodGetSummary), func() (*store.ExamRevisionSummary, error) {
-		return s.next.GetSummary(arg0, arg1, arg2)
+func (s *timedExamCorrectionStore) MarkResourceStageReady(arg0 context.Context, arg1 *store.ExamCorrectionResourceStageReadiness) (*store.ExamCorrectionResourceStage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamCorrection, methodMarkResourceStageReady), func() (*store.ExamCorrectionResourceStage, error) {
+		return s.next.MarkResourceStageReady(arg0, arg1)
 	})
 }
 
-func (s *timedExamRevisionStore) List(arg0 context.Context, arg1 store.ExamRevisionListOptions) ([]store.ExamRevisionSummary, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamRevision, methodList), func() ([]store.ExamRevisionSummary, error) {
-		return s.next.List(arg0, arg1)
-	})
-}
-
-func (s *timedExamRevisionStore) GetSnapshot(arg0 context.Context, arg1 model.ExamID, arg2 model.ExamRevisionID) (*model.ExamRevision, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamRevision, methodGetSnapshot), func() (*model.ExamRevision, error) {
-		return s.next.GetSnapshot(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamSittingStore) Resolve(arg0 context.Context, arg1 model.ExamSittingID) (*store.ExamSittingSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodResolve), func() (*store.ExamSittingSnapshot, error) {
-		return s.next.Resolve(arg0, arg1)
-	})
-}
-
-func (s *timedExamSittingStore) Get(arg0 context.Context, arg1 model.ExamID, arg2 model.ExamSittingID) (*store.ExamSittingSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodGet), func() (*store.ExamSittingSnapshot, error) {
-		return s.next.Get(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamSittingStore) List(arg0 context.Context, arg1 store.ExamSittingListOptions) ([]store.ExamSittingSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodList), func() ([]store.ExamSittingSnapshot, error) {
-		return s.next.List(arg0, arg1)
-	})
-}
-
-func (s *timedExamSittingStore) ListInvalidationTargetsByClass(arg0 context.Context, arg1 model.ClassID, arg2 model.ExamSittingID, arg3 int) ([]store.ExamSittingInvalidationTarget, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListInvalidationTargetsByClass), func() ([]store.ExamSittingInvalidationTarget, error) {
-		return s.next.ListInvalidationTargetsByClass(arg0, arg1, arg2, arg3)
-	})
-}
-
-func (s *timedExamSittingStore) ListInvalidationTargetsByExam(arg0 context.Context, arg1 model.ExamID, arg2 model.ExamSittingID, arg3 int) ([]store.ExamSittingInvalidationTarget, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListInvalidationTargetsByExam), func() ([]store.ExamSittingInvalidationTarget, error) {
-		return s.next.ListInvalidationTargetsByExam(arg0, arg1, arg2, arg3)
-	})
-}
-
-func (s *timedExamSittingStore) ListCandidateInvalidationTargetsBySitting(arg0 context.Context, arg1 model.ExamSittingID, arg2 model.UserID, arg3 int) ([]model.UserID, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListCandidateInvalidationTargetsBySitting), func() ([]model.UserID, error) {
-		return s.next.ListCandidateInvalidationTargetsBySitting(arg0, arg1, arg2, arg3)
-	})
-}
-
-func (s *timedExamSittingStore) ListLifecycleDue(arg0 context.Context, arg1 store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListLifecycleDue), func() ([]store.ExamSittingLifecycleDue, error) {
-		return s.next.ListLifecycleDue(arg0, arg1)
-	})
-}
-
-func (s *timedExamSittingStore) Schedule(arg0 context.Context, arg1 *store.ExamSittingSchedule, arg2 *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodSchedule), func() (*store.ExamSittingCommandResult, error) {
-		return s.next.Schedule(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamSittingStore) UpdateSchedule(arg0 context.Context, arg1 *store.ExamSittingScheduleUpdate, arg2 *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodUpdateSchedule), func() (*store.ExamSittingCommandResult, error) {
-		return s.next.UpdateSchedule(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamSittingStore) Cancel(arg0 context.Context, arg1 *store.ExamSittingCancellation, arg2 *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodCancel), func() (*store.ExamSittingCommandResult, error) {
-		return s.next.Cancel(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamSittingStore) Pause(arg0 context.Context, arg1 *store.ExamSittingManagerTransition, arg2 *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodPause), func() (*store.ExamSittingLifecycleResult, error) {
-		return s.next.Pause(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamSittingStore) Resume(arg0 context.Context, arg1 *store.ExamSittingManagerTransition, arg2 *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodResume), func() (*store.ExamSittingLifecycleResult, error) {
-		return s.next.Resume(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamSittingStore) Extend(arg0 context.Context, arg1 *store.ExamSittingExtension, arg2 *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodExtend), func() (*store.ExamSittingLifecycleResult, error) {
-		return s.next.Extend(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamSittingStore) EarlyClose(arg0 context.Context, arg1 *store.ExamSittingManagerTransition, arg2 *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodEarlyClose), func() (*store.ExamSittingLifecycleResult, error) {
-		return s.next.EarlyClose(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamSittingStore) AdvanceDue(arg0 context.Context, arg1 *store.ExamSittingDueAdvance) (*store.ExamSittingLifecycleResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodAdvanceDue), func() (*store.ExamSittingLifecycleResult, error) {
-		return s.next.AdvanceDue(arg0, arg1)
-	})
-}
-
-func (s *timedExamSittingStore) FinishSealing(arg0 context.Context, arg1 *store.ExamSittingFinishSealing) (*store.ExamSittingLifecycleResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodFinishSealing), func() (*store.ExamSittingLifecycleResult, error) {
-		return s.next.FinishSealing(arg0, arg1)
-	})
-}
-
-func (s *timedExamSittingStore) ListNoShows(arg0 context.Context, arg1 store.ExamSittingNoShowListOptions) ([]store.ExamSittingNoShow, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListNoShows), func() ([]store.ExamSittingNoShow, error) {
-		return s.next.ListNoShows(arg0, arg1)
-	})
-}
-
-func (s *timedExamSittingStore) GetMailFanout(arg0 context.Context, arg1 model.MailOccurrenceID) (*store.ExamSittingMailFanoutSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodGetMailFanout), func() (*store.ExamSittingMailFanoutSnapshot, error) {
-		return s.next.GetMailFanout(arg0, arg1)
-	})
-}
-
-func (s *timedExamSittingStore) ListMailRecipients(arg0 context.Context, arg1 store.ExamSittingMailRecipientPageRequest) (*store.ExamSittingMailRecipientPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListMailRecipients), func() (*store.ExamSittingMailRecipientPage, error) {
-		return s.next.ListMailRecipients(arg0, arg1)
-	})
-}
-
-func (s *timedExamSittingStore) CommitMailRecipient(arg0 context.Context, arg1 *store.ExamSittingMailRecipientCommit) (*store.ExamSittingMailRecipientResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodCommitMailRecipient), func() (*store.ExamSittingMailRecipientResult, error) {
-		return s.next.CommitMailRecipient(arg0, arg1)
-	})
-}
-
-func (s *timedExamSittingStore) CompleteMailExpansion(arg0 context.Context, arg1 *store.ExamSittingMailExpansionCompletion) (*store.ExamSittingMailFanoutSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodCompleteMailExpansion), func() (*store.ExamSittingMailFanoutSnapshot, error) {
-		return s.next.CompleteMailExpansion(arg0, arg1)
-	})
-}
-
-func (s *timedExamSittingStore) MaintainMailExpansions(arg0 context.Context, arg1 int) (*store.ExamSittingMailMaintenanceResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodMaintainMailExpansions), func() (*store.ExamSittingMailMaintenanceResult, error) {
-		return s.next.MaintainMailExpansions(arg0, arg1)
-	})
-}
-
-func (s *timedExamSittingStore) ListMailReconciliationDue(arg0 context.Context, arg1 store.ExamSittingMailReconciliationOptions) ([]store.ExamSittingMailReconciliationCandidate, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListMailReconciliationDue), func() ([]store.ExamSittingMailReconciliationCandidate, error) {
-		return s.next.ListMailReconciliationDue(arg0, arg1)
-	})
-}
-
-func (s *timedExamSittingStore) ReconcileMail(arg0 context.Context, arg1 *store.ExamSittingMailReconciliation) (*store.ExamSittingMailFanoutSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodReconcileMail), func() (*store.ExamSittingMailFanoutSnapshot, error) {
-		return s.next.ReconcileMail(arg0, arg1)
+func (s *timedExamCorrectionStore) Apply(arg0 context.Context, arg1 *store.ExamCorrectionApplication, arg2 *store.CommandIdempotency) (*store.ExamCorrectionResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamCorrection, methodApply), func() (*store.ExamCorrectionResult, error) {
+		return s.next.Apply(arg0, arg1, arg2)
 	})
 }
 
@@ -1847,762 +2093,6 @@ func (s *timedExamStarterWorkspaceStore) CompleteObjectCleanup(arg0 context.Cont
 func (s *timedExamStarterWorkspaceStore) ReleaseObjectCleanup(arg0 context.Context, arg1 model.StarterWorkspaceObjectID, arg2 string) error {
 	return timeStoreCall0(s.layer, storeOperation(aggregateExamStarterWorkspace, methodReleaseObjectCleanup), func() error {
 		return s.next.ReleaseObjectCleanup(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamSubmissionStore) ResolveSealTarget(arg0 context.Context, arg1 store.ExamSubmissionSealAccess) (*store.ExamSubmissionSealTarget, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodResolveSealTarget), func() (*store.ExamSubmissionSealTarget, error) {
-		return s.next.ResolveSealTarget(arg0, arg1)
-	})
-}
-
-func (s *timedExamSubmissionStore) Seal(arg0 context.Context, arg1 *store.ExamSubmissionSeal, arg2 *store.CommandIdempotency) (*store.ExamSubmissionSealResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodSeal), func() (*store.ExamSubmissionSealResult, error) {
-		return s.next.Seal(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamSubmissionStore) PrepareManagerEnd(arg0 context.Context, arg1 store.ExamSubmissionManagerEndRequest) (*store.ExamSubmissionManagerEndPreparation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodPrepareManagerEnd), func() (*store.ExamSubmissionManagerEndPreparation, error) {
-		return s.next.PrepareManagerEnd(arg0, arg1)
-	})
-}
-
-func (s *timedExamSubmissionStore) EndByManager(arg0 context.Context, arg1 *store.ExamSubmissionManagerEnd, arg2 *store.CommandIdempotency) (*store.ExamSubmissionManagerEndResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodEndByManager), func() (*store.ExamSubmissionManagerEndResult, error) {
-		return s.next.EndByManager(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamSubmissionStore) ListAutomaticSealTargets(arg0 context.Context, arg1 store.ExamSubmissionAutomaticSealListOptions) ([]store.ExamSubmissionAutomaticSealTarget, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodListAutomaticSealTargets), func() ([]store.ExamSubmissionAutomaticSealTarget, error) {
-		return s.next.ListAutomaticSealTargets(arg0, arg1)
-	})
-}
-
-func (s *timedExamSubmissionStore) PrepareAutomaticSeal(arg0 context.Context, arg1 store.ExamSubmissionAutomaticSealTarget) (*store.ExamSubmissionAutomaticSealPreparation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodPrepareAutomaticSeal), func() (*store.ExamSubmissionAutomaticSealPreparation, error) {
-		return s.next.PrepareAutomaticSeal(arg0, arg1)
-	})
-}
-
-func (s *timedExamSubmissionStore) SealForSittingClose(arg0 context.Context, arg1 *store.ExamSubmissionAutomaticSeal) (*store.ExamSubmissionAutomaticSealResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodSealForSittingClose), func() (*store.ExamSubmissionAutomaticSealResult, error) {
-		return s.next.SealForSittingClose(arg0, arg1)
-	})
-}
-
-func (s *timedExamSubmissionStore) Resolve(arg0 context.Context, arg1 model.SubmissionID) (*store.ExamSubmissionAuthorization, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodResolve), func() (*store.ExamSubmissionAuthorization, error) {
-		return s.next.Resolve(arg0, arg1)
-	})
-}
-
-func (s *timedExamSubmissionStore) Get(arg0 context.Context, arg1 model.SubmissionID) (*model.ExamSubmission, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodGet), func() (*model.ExamSubmission, error) {
-		return s.next.Get(arg0, arg1)
-	})
-}
-
-func (s *timedExamSubmissionStore) ListManifest(arg0 context.Context, arg1 store.ExamSubmissionManifestListOptions) (*store.ExamSubmissionManifestPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodListManifest), func() (*store.ExamSubmissionManifestPage, error) {
-		return s.next.ListManifest(arg0, arg1)
-	})
-}
-
-func (s *timedExamSubmissionStore) ResolveFile(arg0 context.Context, arg1 model.SubmissionID, arg2 model.AttemptWorkspaceEntryID) (*store.ExamSubmissionFileSelector, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodResolveFile), func() (*store.ExamSubmissionFileSelector, error) {
-		return s.next.ResolveFile(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedRetentionStore) GetControl(arg0 context.Context) (*model.RetentionControl, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodGetControl), func() (*model.RetentionControl, error) {
-		return s.next.GetControl(arg0)
-	})
-}
-
-func (s *timedRetentionStore) CreatePreview(arg0 context.Context, arg1 *store.RetentionPreviewCreation, arg2 *store.CommandIdempotency) (*model.RetentionPreview, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodCreatePreview), func() (*model.RetentionPreview, error) {
-		return s.next.CreatePreview(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedRetentionStore) GetPreview(arg0 context.Context, arg1 model.RetentionPreviewID) (*model.RetentionPreview, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodGetPreview), func() (*model.RetentionPreview, error) {
-		return s.next.GetPreview(arg0, arg1)
-	})
-}
-
-func (s *timedRetentionStore) ChangeControl(arg0 context.Context, arg1 *store.RetentionControlChange, arg2 *store.CommandIdempotency) (*store.RetentionControlResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodChangeControl), func() (*store.RetentionControlResult, error) {
-		return s.next.ChangeControl(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedRetentionStore) ListRecords(arg0 context.Context, arg1 store.RetentionRecordListOptions) (*store.RetentionRecordPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodListRecords), func() (*store.RetentionRecordPage, error) {
-		return s.next.ListRecords(arg0, arg1)
-	})
-}
-
-func (s *timedRetentionStore) ReconcileSubmission(arg0 context.Context, arg1 *store.RetentionReconciliation) (*store.RetentionReconciliationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodReconcileSubmission), func() (*store.RetentionReconciliationResult, error) {
-		return s.next.ReconcileSubmission(arg0, arg1)
-	})
-}
-
-func (s *timedRetentionStore) BeginPurgeBatch(arg0 context.Context, arg1 int) ([]store.RetentionPurgeObject, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodBeginPurgeBatch), func() ([]store.RetentionPurgeObject, error) {
-		return s.next.BeginPurgeBatch(arg0, arg1)
-	})
-}
-
-func (s *timedRetentionStore) CompletePurge(arg0 context.Context, arg1 *store.RetentionPurgeCompletion) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateRetention, methodCompletePurge), func() error {
-		return s.next.CompletePurge(arg0, arg1)
-	})
-}
-
-func (s *timedRetentionStore) ListNotices(arg0 context.Context, arg1 model.UserID, arg2 model.RetentionRetirementID, arg3 int) ([]model.RetentionNotice, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodListNotices), func() ([]model.RetentionNotice, error) {
-		return s.next.ListNotices(arg0, arg1, arg2, arg3)
-	})
-}
-
-func (s *timedRetentionStore) ListPendingNotices(arg0 context.Context, arg1 int) ([]model.RetentionNotice, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodListPendingNotices), func() ([]model.RetentionNotice, error) {
-		return s.next.ListPendingNotices(arg0, arg1)
-	})
-}
-
-func (s *timedRetentionStore) CompleteNotice(arg0 context.Context, arg1 *store.RetentionNoticeMail) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateRetention, methodCompleteNotice), func() error {
-		return s.next.CompleteNotice(arg0, arg1)
-	})
-}
-
-func (s *timedRetentionStore) ListExpiryRecords(arg0 context.Context, arg1 store.RetentionExpiryListOptions) (*store.RetentionExpiryPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodListExpiryRecords), func() (*store.RetentionExpiryPage, error) {
-		return s.next.ListExpiryRecords(arg0, arg1)
-	})
-}
-
-func (s *timedRetentionStore) ReconcileExpiry(arg0 context.Context, arg1 *store.RetentionExpiryReconciliation) (*store.RetentionExpiryResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodReconcileExpiry), func() (*store.RetentionExpiryResult, error) {
-		return s.next.ReconcileExpiry(arg0, arg1)
-	})
-}
-
-func (s *timedRetentionStore) ReconcileCleanupAuditExpiry(arg0 context.Context, arg1 *store.RetentionCleanupAuditReconciliation) (*store.RetentionCleanupAuditResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodReconcileCleanupAuditExpiry), func() (*store.RetentionCleanupAuditResult, error) {
-		return s.next.ReconcileCleanupAuditExpiry(arg0, arg1)
-	})
-}
-
-func (s *timedRetentionPolicyStore) Get(arg0 context.Context) (*model.RetentionPolicy, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetentionPolicy, methodGet), func() (*model.RetentionPolicy, error) {
-		return s.next.Get(arg0)
-	})
-}
-
-func (s *timedRetentionPolicyStore) Replace(arg0 context.Context, arg1 *store.RetentionPolicyReplacement, arg2 *store.CommandIdempotency) (*store.RetentionPolicyReplacementResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateRetentionPolicy, methodReplace), func() (*store.RetentionPolicyReplacementResult, error) {
-		return s.next.Replace(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedServingNodeLeaseStore) Upsert(arg0 context.Context, arg1 *store.ServingNodeLeaseClaim) (*store.ServingNodeLease, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateServingNodeLease, methodUpsert), func() (*store.ServingNodeLease, error) {
-		return s.next.Upsert(arg0, arg1)
-	})
-}
-
-func (s *timedServingNodeLeaseStore) Delete(arg0 context.Context, arg1 string, arg2 string) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateServingNodeLease, methodDelete), func() error {
-		return s.next.Delete(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamAuthoringStore) Create(arg0 context.Context, arg1 *store.ExamAuthoringCreation, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodCreate), func() (*store.ExamAuthoringCommandResult, error) {
-		return s.next.Create(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamAuthoringStore) UpdateDraftText(arg0 context.Context, arg1 *store.ExamDraftTextUpdate, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodUpdateDraftText), func() (*store.ExamAuthoringCommandResult, error) {
-		return s.next.UpdateDraftText(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamAuthoringStore) UpdateDraftFocusLoss(arg0 context.Context, arg1 *store.ExamDraftFocusLossUpdate, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodUpdateDraftFocusLoss), func() (*store.ExamAuthoringCommandResult, error) {
-		return s.next.UpdateDraftFocusLoss(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamAuthoringStore) UpdateDraftNativePolicy(arg0 context.Context, arg1 *store.ExamDraftNativePolicyUpdate, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodUpdateDraftNativePolicy), func() (*store.ExamAuthoringCommandResult, error) {
-		return s.next.UpdateDraftNativePolicy(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamAuthoringStore) UpdateDraftBrowserPolicy(arg0 context.Context, arg1 *store.ExamDraftBrowserPolicyUpdate, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodUpdateDraftBrowserPolicy), func() (*store.ExamAuthoringCommandResult, error) {
-		return s.next.UpdateDraftBrowserPolicy(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamAuthoringStore) List(arg0 context.Context, arg1 store.ExamListOptions) ([]store.ExamSummary, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodList), func() ([]store.ExamSummary, error) {
-		return s.next.List(arg0, arg1)
-	})
-}
-
-func (s *timedExamAuthoringStore) Archive(arg0 context.Context, arg1 *store.ExamArchive, arg2 *store.CommandIdempotency) (*store.ExamArchiveCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodArchive), func() (*store.ExamArchiveCommandResult, error) {
-		return s.next.Archive(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamAuthoringStore) ListManagers(arg0 context.Context, arg1 store.ExamManagerListOptions) ([]store.ExamManagerSummary, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodListManagers), func() ([]store.ExamManagerSummary, error) {
-		return s.next.ListManagers(arg0, arg1)
-	})
-}
-
-func (s *timedExamAuthoringStore) AddManager(arg0 context.Context, arg1 *store.ExamManagerMutation, arg2 *store.CommandIdempotency) (*store.ExamManagerCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodAddManager), func() (*store.ExamManagerCommandResult, error) {
-		return s.next.AddManager(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamAuthoringStore) RemoveManager(arg0 context.Context, arg1 *store.ExamManagerMutation, arg2 *store.CommandIdempotency) (*store.ExamManagerCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodRemoveManager), func() (*store.ExamManagerCommandResult, error) {
-		return s.next.RemoveManager(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamAuthoringStore) TransferOwner(arg0 context.Context, arg1 *store.ExamManagerMutation, arg2 *store.CommandIdempotency) (*store.ExamManagerCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodTransferOwner), func() (*store.ExamManagerCommandResult, error) {
-		return s.next.TransferOwner(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamAuthoringStore) Access(arg0 context.Context, arg1 model.ExamID, arg2 model.UserID) (*store.ExamAccessSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodAccess), func() (*store.ExamAccessSnapshot, error) {
-		return s.next.Access(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamAuthoringStore) Get(arg0 context.Context, arg1 model.ExamID, arg2 model.UserID) (*store.ExamAuthoringSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodGet), func() (*store.ExamAuthoringSnapshot, error) {
-		return s.next.Get(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedExamAuthoringStore) Resolve(arg0 context.Context, arg1 model.ExamID) (*model.Exam, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodResolve), func() (*model.Exam, error) {
-		return s.next.Resolve(arg0, arg1)
-	})
-}
-
-func (s *timedCommandOutcomeStore) Has(arg0 context.Context, arg1 *store.CommandIdempotency) (bool, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateCommandOutcome, methodHas), func() (bool, error) {
-		return s.next.Has(arg0, arg1)
-	})
-}
-
-func (s *timedCommandOutcomeStore) DeleteExpired(arg0 context.Context, arg1 int) (int64, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateCommandOutcome, methodDeleteExpired), func() (int64, error) {
-		return s.next.DeleteExpired(arg0, arg1)
-	})
-}
-
-func (s *timedMailStore) EnqueueTest(arg0 context.Context, arg1 *store.MailTestEnqueue) (*model.MailDelivery, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodEnqueueTest), func() (*model.MailDelivery, error) {
-		return s.next.EnqueueTest(arg0, arg1)
-	})
-}
-
-func (s *timedMailStore) GetDelivery(arg0 context.Context, arg1 model.MailDeliveryID) (*model.MailDelivery, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodGetDelivery), func() (*model.MailDelivery, error) {
-		return s.next.GetDelivery(arg0, arg1)
-	})
-}
-
-func (s *timedMailStore) ListDeliveries(arg0 context.Context, arg1 store.MailDeliveryListOptions) ([]*model.MailDelivery, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodListDeliveries), func() ([]*model.MailDelivery, error) {
-		return s.next.ListDeliveries(arg0, arg1)
-	})
-}
-
-func (s *timedMailStore) StartDelivery(arg0 context.Context, arg1 model.MailDeliveryID, arg2 int64, arg3 time.Time) (*model.MailDelivery, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodStartDelivery), func() (*model.MailDelivery, error) {
-		return s.next.StartDelivery(arg0, arg1, arg2, arg3)
-	})
-}
-
-func (s *timedMailStore) CompleteDelivery(arg0 context.Context, arg1 *store.MailDeliveryCompletion) (*model.MailDelivery, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodCompleteDelivery), func() (*model.MailDelivery, error) {
-		return s.next.CompleteDelivery(arg0, arg1)
-	})
-}
-
-func (s *timedMailStore) CancelDelivery(arg0 context.Context, arg1 *store.MailDeliveryMutation) (*model.MailDelivery, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodCancelDelivery), func() (*model.MailDelivery, error) {
-		return s.next.CancelDelivery(arg0, arg1)
-	})
-}
-
-func (s *timedMailStore) RetryDelivery(arg0 context.Context, arg1 *store.MailDeliveryMutation) (*model.MailDelivery, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodRetryDelivery), func() (*model.MailDelivery, error) {
-		return s.next.RetryDelivery(arg0, arg1)
-	})
-}
-
-func (s *timedMailStore) AcquireSendPermit(arg0 context.Context, arg1 store.MailSendClass) (*store.MailSendPermit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodAcquireSendPermit), func() (*store.MailSendPermit, error) {
-		return s.next.AcquireSendPermit(arg0, arg1)
-	})
-}
-
-func (s *timedMailStore) SuppressOutstanding(arg0 context.Context, arg1 string, arg2 int) (*store.MailMaintenanceResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodSuppressOutstanding), func() (*store.MailMaintenanceResult, error) {
-		return s.next.SuppressOutstanding(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedMailStore) SuppressExpired(arg0 context.Context, arg1 int) (*store.MailMaintenanceResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodSuppressExpired), func() (*store.MailMaintenanceResult, error) {
-		return s.next.SuppressExpired(arg0, arg1)
-	})
-}
-
-func (s *timedMailStore) CleanupTerminal(arg0 context.Context, arg1 int) (*store.MailMaintenanceResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodCleanupTerminal), func() (*store.MailMaintenanceResult, error) {
-		return s.next.CleanupTerminal(arg0, arg1)
-	})
-}
-
-func (s *timedMailStore) QueueSnapshot(arg0 context.Context) (*store.MailQueueSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodQueueSnapshot), func() (*store.MailQueueSnapshot, error) {
-		return s.next.QueueSnapshot(arg0)
-	})
-}
-
-func (s *timedMailStore) ActivePayloadKeyIDs(arg0 context.Context) ([]string, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodActivePayloadKeyIDs), func() ([]string, error) {
-		return s.next.ActivePayloadKeyIDs(arg0)
-	})
-}
-
-func (s *timedMailStore) InspectKeyState(arg0 context.Context) (*store.MailKeyState, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodInspectKeyState), func() (*store.MailKeyState, error) {
-		return s.next.InspectKeyState(arg0)
-	})
-}
-
-func (s *timedMailStore) StartRekey(arg0 context.Context, arg1 *store.MailRekeyStart) (*store.MailRekeyOperation, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodStartRekey), func() (*store.MailRekeyOperation, error) {
-		return s.next.StartRekey(arg0, arg1)
-	})
-}
-
-func (s *timedMailStore) ListRekeyTargets(arg0 context.Context, arg1 *store.MailRekeyTargetPageRequest) (*store.MailRekeyTargetPage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodListRekeyTargets), func() (*store.MailRekeyTargetPage, error) {
-		return s.next.ListRekeyTargets(arg0, arg1)
-	})
-}
-
-func (s *timedMailStore) ReplaceRekeyTarget(arg0 context.Context, arg1 *store.MailRekeyReplacement) (bool, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodReplaceRekeyTarget), func() (bool, error) {
-		return s.next.ReplaceRekeyTarget(arg0, arg1)
-	})
-}
-
-func (s *timedMailStore) ProveRekey(arg0 context.Context, arg1 *store.MailRekeyProofRequest) (*store.MailRekeyProof, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodProveRekey), func() (*store.MailRekeyProof, error) {
-		return s.next.ProveRekey(arg0, arg1)
-	})
-}
-
-func (s *timedJobStore) Enqueue(arg0 context.Context, arg1 *store.JobEnqueue) (*model.Job, bool, error) {
-	return timeStoreCall2(s.layer, storeOperation(aggregateJob, methodEnqueue), func() (*model.Job, bool, error) {
-		return s.next.Enqueue(arg0, arg1)
-	})
-}
-
-func (s *timedJobStore) ClaimNext(arg0 context.Context, arg1 *store.JobClaimRequest) (*store.JobClaim, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodClaimNext), func() (*store.JobClaim, error) {
-		return s.next.ClaimNext(arg0, arg1)
-	})
-}
-
-func (s *timedJobStore) Heartbeat(arg0 context.Context, arg1 *store.JobHeartbeat) (*model.JobAttempt, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodHeartbeat), func() (*model.JobAttempt, error) {
-		return s.next.Heartbeat(arg0, arg1)
-	})
-}
-
-func (s *timedJobStore) Checkpoint(arg0 context.Context, arg1 *store.JobCheckpoint) (*model.Job, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodCheckpoint), func() (*model.Job, error) {
-		return s.next.Checkpoint(arg0, arg1)
-	})
-}
-
-func (s *timedJobStore) ReserveWork(arg0 context.Context, arg1 *store.JobWorkReservation) (*store.JobWorkReservationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodReserveWork), func() (*store.JobWorkReservationResult, error) {
-		return s.next.ReserveWork(arg0, arg1)
-	})
-}
-
-func (s *timedJobStore) Complete(arg0 context.Context, arg1 *store.JobCompletion) (*model.Job, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodComplete), func() (*model.Job, error) {
-		return s.next.Complete(arg0, arg1)
-	})
-}
-
-func (s *timedJobStore) Get(arg0 context.Context, arg1 model.JobID) (*model.Job, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodGet), func() (*model.Job, error) {
-		return s.next.Get(arg0, arg1)
-	})
-}
-
-func (s *timedJobStore) ListAttempts(arg0 context.Context, arg1 model.JobID) ([]model.JobAttempt, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodListAttempts), func() ([]model.JobAttempt, error) {
-		return s.next.ListAttempts(arg0, arg1)
-	})
-}
-
-func (s *timedJobStore) List(arg0 context.Context, arg1 store.JobListOptions) ([]*model.Job, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodList), func() ([]*model.Job, error) {
-		return s.next.List(arg0, arg1)
-	})
-}
-
-func (s *timedJobStore) ListAttemptsPage(arg0 context.Context, arg1 store.JobAttemptListOptions) ([]model.JobAttempt, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodListAttemptsPage), func() ([]model.JobAttempt, error) {
-		return s.next.ListAttemptsPage(arg0, arg1)
-	})
-}
-
-func (s *timedJobStore) CancellationRequested(arg0 context.Context, arg1 model.JobAttemptID, arg2 model.JobClaimToken) (bool, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodCancellationRequested), func() (bool, error) {
-		return s.next.CancellationRequested(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedJobStore) Cancel(arg0 context.Context, arg1 *store.JobMutation) (*model.Job, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodCancel), func() (*model.Job, error) {
-		return s.next.Cancel(arg0, arg1)
-	})
-}
-
-func (s *timedJobStore) Retry(arg0 context.Context, arg1 *store.JobMutation) (*model.Job, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodRetry), func() (*model.Job, error) {
-		return s.next.Retry(arg0, arg1)
-	})
-}
-
-func (s *timedJobStore) DeleteTerminalHistory(arg0 context.Context, arg1 *store.JobHistoryCleanup) (*store.JobHistoryCleanupResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodDeleteTerminalHistory), func() (*store.JobHistoryCleanupResult, error) {
-		return s.next.DeleteTerminalHistory(arg0, arg1)
-	})
-}
-
-func (s *timedFileStore) CreateUpload(arg0 context.Context, arg1 *store.FileUploadCreation) (*store.FileUpload, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodCreateUpload), func() (*store.FileUpload, error) {
-		return s.next.CreateUpload(arg0, arg1)
-	})
-}
-
-func (s *timedFileStore) CreateRevisionUpload(arg0 context.Context, arg1 *store.FileRevisionUploadCreation) (*store.FileUpload, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodCreateRevisionUpload), func() (*store.FileUpload, error) {
-		return s.next.CreateRevisionUpload(arg0, arg1)
-	})
-}
-
-func (s *timedFileStore) DiscardProfilePictureUpload(arg0 context.Context, arg1 *store.ProfilePictureUploadDiscard) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateFile, methodDiscardProfilePictureUpload), func() error {
-		return s.next.DiscardProfilePictureUpload(arg0, arg1)
-	})
-}
-
-func (s *timedFileStore) RenewUploadLease(arg0 context.Context, arg1 model.UploadLeaseID, arg2 model.UserID, arg3 int64, arg4 int64, arg5 time.Time) (*model.UploadLease, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodRenewUploadLease), func() (*model.UploadLease, error) {
-		return s.next.RenewUploadLease(arg0, arg1, arg2, arg3, arg4, arg5)
-	})
-}
-
-func (s *timedFileStore) PublishProfilePicture(arg0 context.Context, arg1 *store.ProfilePicturePublication) (*store.ProfilePicturePublicationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodPublishProfilePicture), func() (*store.ProfilePicturePublicationResult, error) {
-		return s.next.PublishProfilePicture(arg0, arg1)
-	})
-}
-
-func (s *timedFileStore) PublishDefaultProfilePicture(arg0 context.Context, arg1 *store.DefaultProfilePicturePublication) (*store.ProfilePicturePublicationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodPublishDefaultProfilePicture), func() (*store.ProfilePicturePublicationResult, error) {
-		return s.next.PublishDefaultProfilePicture(arg0, arg1)
-	})
-}
-
-func (s *timedFileStore) GetProfilePictureState(arg0 context.Context, arg1 model.UserID) (*store.ProfilePictureState, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodGetProfilePictureState), func() (*store.ProfilePictureState, error) {
-		return s.next.GetProfilePictureState(arg0, arg1)
-	})
-}
-
-func (s *timedFileStore) GetProfilePictureRendition(arg0 context.Context, arg1 model.UserID, arg2 string) (*model.FileRendition, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodGetProfilePictureRendition), func() (*model.FileRendition, error) {
-		return s.next.GetProfilePictureRendition(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedFileStore) RemoveProfilePicture(arg0 context.Context, arg1 *store.ProfilePictureRemoval) (*model.User, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodRemoveProfilePicture), func() (*model.User, error) {
-		return s.next.RemoveProfilePicture(arg0, arg1)
-	})
-}
-
-func (s *timedFileStore) ListPurgeCandidates(arg0 context.Context, arg1 *store.FilePurgeCandidateRequest) (*store.FilePurgeCandidatePage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodListPurgeCandidates), func() (*store.FilePurgeCandidatePage, error) {
-		return s.next.ListPurgeCandidates(arg0, arg1)
-	})
-}
-
-func (s *timedFileStore) ClaimPurgeCandidate(arg0 context.Context, arg1 *store.FilePurgeCandidate) (*store.FilePurgeClaim, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodClaimPurgeCandidate), func() (*store.FilePurgeClaim, error) {
-		return s.next.ClaimPurgeCandidate(arg0, arg1)
-	})
-}
-
-func (s *timedFileStore) CompletePurge(arg0 context.Context, arg1 *store.FilePurgeClaim) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateFile, methodCompletePurge), func() error {
-		return s.next.CompletePurge(arg0, arg1)
-	})
-}
-
-func (s *timedInstitutionStore) Save(arg0 context.Context, arg1 *model.Institution) (*model.Institution, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInstitution, methodSave), func() (*model.Institution, error) {
-		return s.next.Save(arg0, arg1)
-	})
-}
-
-func (s *timedInstitutionStore) Get(arg0 context.Context, arg1 model.InstitutionID) (*model.Institution, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInstitution, methodGet), func() (*model.Institution, error) {
-		return s.next.Get(arg0, arg1)
-	})
-}
-
-func (s *timedInstitutionStore) GetSingleton(arg0 context.Context) (*model.Institution, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInstitution, methodGetSingleton), func() (*model.Institution, error) {
-		return s.next.GetSingleton(arg0)
-	})
-}
-
-func (s *timedInstitutionStore) Update(arg0 context.Context, arg1 *store.InstitutionUpdate) (*model.Institution, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateInstitution, methodUpdate), func() (*model.Institution, error) {
-		return s.next.Update(arg0, arg1)
-	})
-}
-
-func (s *timedInstitutionStore) Archive(arg0 context.Context, arg1 model.InstitutionID, arg2 int64) error {
-	return timeStoreCall0(s.layer, storeOperation(aggregateInstitution, methodArchive), func() error {
-		return s.next.Archive(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedAcademicUnitStore) Create(arg0 context.Context, arg1 *store.AcademicUnitCreation) (*model.AcademicUnit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodCreate), func() (*model.AcademicUnit, error) {
-		return s.next.Create(arg0, arg1)
-	})
-}
-
-func (s *timedAcademicUnitStore) CreateIdempotently(arg0 context.Context, arg1 *store.AcademicUnitCreation, arg2 *store.CommandIdempotency) (*store.AcademicUnitCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodCreateIdempotently), func() (*store.AcademicUnitCommandResult, error) {
-		return s.next.CreateIdempotently(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedAcademicUnitStore) Update(arg0 context.Context, arg1 *store.AcademicUnitUpdate) (*model.AcademicUnit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodUpdate), func() (*model.AcademicUnit, error) {
-		return s.next.Update(arg0, arg1)
-	})
-}
-
-func (s *timedAcademicUnitStore) Archive(arg0 context.Context, arg1 *store.AcademicUnitArchive) (*model.AcademicUnit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodArchive), func() (*model.AcademicUnit, error) {
-		return s.next.Archive(arg0, arg1)
-	})
-}
-
-func (s *timedAcademicUnitStore) Get(arg0 context.Context, arg1 model.AcademicUnitID) (*model.AcademicUnit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodGet), func() (*model.AcademicUnit, error) {
-		return s.next.Get(arg0, arg1)
-	})
-}
-
-func (s *timedAcademicUnitStore) GetByName(arg0 context.Context, arg1 model.InstitutionID, arg2 string) (*model.AcademicUnit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodGetByName), func() (*model.AcademicUnit, error) {
-		return s.next.GetByName(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedAcademicUnitStore) ListChildren(arg0 context.Context, arg1 model.InstitutionID, arg2 model.AcademicUnitID) ([]*model.AcademicUnit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodListChildren), func() ([]*model.AcademicUnit, error) {
-		return s.next.ListChildren(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedAcademicUnitStore) ListAncestors(arg0 context.Context, arg1 model.AcademicUnitID) ([]*model.AcademicUnit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodListAncestors), func() ([]*model.AcademicUnit, error) {
-		return s.next.ListAncestors(arg0, arg1)
-	})
-}
-
-func (s *timedAcademicUnitStore) Search(arg0 context.Context, arg1 model.InstitutionID, arg2 string, arg3 int) ([]*model.AcademicUnit, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodSearch), func() ([]*model.AcademicUnit, error) {
-		return s.next.Search(arg0, arg1, arg2, arg3)
-	})
-}
-
-func (s *timedProgrammeStore) Create(arg0 context.Context, arg1 *store.ProgrammeCreation) (*model.Programme, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodCreate), func() (*model.Programme, error) {
-		return s.next.Create(arg0, arg1)
-	})
-}
-
-func (s *timedProgrammeStore) Update(arg0 context.Context, arg1 *store.ProgrammeUpdate) (*model.Programme, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodUpdate), func() (*model.Programme, error) {
-		return s.next.Update(arg0, arg1)
-	})
-}
-
-func (s *timedProgrammeStore) Archive(arg0 context.Context, arg1 *store.ProgrammeArchive) (*model.Programme, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodArchive), func() (*model.Programme, error) {
-		return s.next.Archive(arg0, arg1)
-	})
-}
-
-func (s *timedProgrammeStore) Get(arg0 context.Context, arg1 model.ProgrammeID) (*model.Programme, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodGet), func() (*model.Programme, error) {
-		return s.next.Get(arg0, arg1)
-	})
-}
-
-func (s *timedProgrammeStore) GetByName(arg0 context.Context, arg1 model.AcademicUnitID, arg2 string) (*model.Programme, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodGetByName), func() (*model.Programme, error) {
-		return s.next.GetByName(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedProgrammeStore) ListByAcademicUnit(arg0 context.Context, arg1 model.AcademicUnitID) ([]*model.Programme, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodListByAcademicUnit), func() ([]*model.Programme, error) {
-		return s.next.ListByAcademicUnit(arg0, arg1)
-	})
-}
-
-func (s *timedProgrammeStore) SearchByAcademicUnit(arg0 context.Context, arg1 model.AcademicUnitID, arg2 string, arg3 int) ([]*model.Programme, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodSearchByAcademicUnit), func() ([]*model.Programme, error) {
-		return s.next.SearchByAcademicUnit(arg0, arg1, arg2, arg3)
-	})
-}
-
-func (s *timedProgrammeStore) SeedUpdate(arg0 context.Context, arg1 *model.Programme) (*model.Programme, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodSeedUpdate), func() (*model.Programme, error) {
-		return s.next.SeedUpdate(arg0, arg1)
-	})
-}
-
-func (s *timedProgrammeLevelStore) Create(arg0 context.Context, arg1 *store.ProgrammeLevelCreation) (*model.ProgrammeLevel, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodCreate), func() (*model.ProgrammeLevel, error) {
-		return s.next.Create(arg0, arg1)
-	})
-}
-
-func (s *timedProgrammeLevelStore) Update(arg0 context.Context, arg1 *store.ProgrammeLevelUpdate) (*model.ProgrammeLevel, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodUpdate), func() (*model.ProgrammeLevel, error) {
-		return s.next.Update(arg0, arg1)
-	})
-}
-
-func (s *timedProgrammeLevelStore) Archive(arg0 context.Context, arg1 *store.ProgrammeLevelArchive) (*model.ProgrammeLevel, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodArchive), func() (*model.ProgrammeLevel, error) {
-		return s.next.Archive(arg0, arg1)
-	})
-}
-
-func (s *timedProgrammeLevelStore) Get(arg0 context.Context, arg1 model.ProgrammeLevelID) (*model.ProgrammeLevel, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodGet), func() (*model.ProgrammeLevel, error) {
-		return s.next.Get(arg0, arg1)
-	})
-}
-
-func (s *timedProgrammeLevelStore) GetByName(arg0 context.Context, arg1 model.ProgrammeID, arg2 string) (*model.ProgrammeLevel, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodGetByName), func() (*model.ProgrammeLevel, error) {
-		return s.next.GetByName(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedProgrammeLevelStore) ListByProgramme(arg0 context.Context, arg1 model.ProgrammeID) ([]*model.ProgrammeLevel, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodListByProgramme), func() ([]*model.ProgrammeLevel, error) {
-		return s.next.ListByProgramme(arg0, arg1)
-	})
-}
-
-func (s *timedProgrammeLevelStore) SearchByProgramme(arg0 context.Context, arg1 model.ProgrammeID, arg2 string, arg3 int) ([]*model.ProgrammeLevel, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodSearchByProgramme), func() ([]*model.ProgrammeLevel, error) {
-		return s.next.SearchByProgramme(arg0, arg1, arg2, arg3)
-	})
-}
-
-func (s *timedProgrammeLevelStore) SeedUpdate(arg0 context.Context, arg1 *model.ProgrammeLevel) (*model.ProgrammeLevel, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodSeedUpdate), func() (*model.ProgrammeLevel, error) {
-		return s.next.SeedUpdate(arg0, arg1)
-	})
-}
-
-func (s *timedAcademicPeriodStore) Create(arg0 context.Context, arg1 *store.AcademicPeriodCreation) (*model.AcademicPeriod, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodCreate), func() (*model.AcademicPeriod, error) {
-		return s.next.Create(arg0, arg1)
-	})
-}
-
-func (s *timedAcademicPeriodStore) CreateIdempotently(arg0 context.Context, arg1 *store.AcademicPeriodCreation, arg2 *store.CommandIdempotency) (*store.AcademicPeriodCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodCreateIdempotently), func() (*store.AcademicPeriodCommandResult, error) {
-		return s.next.CreateIdempotently(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedAcademicPeriodStore) Update(arg0 context.Context, arg1 *store.AcademicPeriodUpdate) (*model.AcademicPeriod, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodUpdate), func() (*model.AcademicPeriod, error) {
-		return s.next.Update(arg0, arg1)
-	})
-}
-
-func (s *timedAcademicPeriodStore) Archive(arg0 context.Context, arg1 *store.AcademicPeriodArchive) (*model.AcademicPeriod, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodArchive), func() (*model.AcademicPeriod, error) {
-		return s.next.Archive(arg0, arg1)
-	})
-}
-
-func (s *timedAcademicPeriodStore) Get(arg0 context.Context, arg1 model.AcademicPeriodID) (*model.AcademicPeriod, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodGet), func() (*model.AcademicPeriod, error) {
-		return s.next.Get(arg0, arg1)
-	})
-}
-
-func (s *timedAcademicPeriodStore) GetByOwnerName(arg0 context.Context, arg1 model.Resource, arg2 string) (*model.AcademicPeriod, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodGetByOwnerName), func() (*model.AcademicPeriod, error) {
-		return s.next.GetByOwnerName(arg0, arg1, arg2)
-	})
-}
-
-func (s *timedAcademicPeriodStore) ListVisible(arg0 context.Context, arg1 store.AcademicPeriodVisibilityScope, arg2 string, arg3 int) ([]*model.AcademicPeriod, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodListVisible), func() ([]*model.AcademicPeriod, error) {
-		return s.next.ListVisible(arg0, arg1, arg2, arg3)
 	})
 }
 
@@ -2738,6 +2228,270 @@ func (s *timedUserSettingsStore) Replace(arg0 context.Context, arg1 *store.UserS
 	})
 }
 
+func (s *timedFileStore) CreateUpload(arg0 context.Context, arg1 *store.FileUploadCreation) (*store.FileUpload, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodCreateUpload), func() (*store.FileUpload, error) {
+		return s.next.CreateUpload(arg0, arg1)
+	})
+}
+
+func (s *timedFileStore) CreateRevisionUpload(arg0 context.Context, arg1 *store.FileRevisionUploadCreation) (*store.FileUpload, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodCreateRevisionUpload), func() (*store.FileUpload, error) {
+		return s.next.CreateRevisionUpload(arg0, arg1)
+	})
+}
+
+func (s *timedFileStore) DiscardProfilePictureUpload(arg0 context.Context, arg1 *store.ProfilePictureUploadDiscard) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateFile, methodDiscardProfilePictureUpload), func() error {
+		return s.next.DiscardProfilePictureUpload(arg0, arg1)
+	})
+}
+
+func (s *timedFileStore) RenewUploadLease(arg0 context.Context, arg1 model.UploadLeaseID, arg2 model.UserID, arg3 int64, arg4 int64, arg5 time.Time) (*model.UploadLease, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodRenewUploadLease), func() (*model.UploadLease, error) {
+		return s.next.RenewUploadLease(arg0, arg1, arg2, arg3, arg4, arg5)
+	})
+}
+
+func (s *timedFileStore) PublishProfilePicture(arg0 context.Context, arg1 *store.ProfilePicturePublication) (*store.ProfilePicturePublicationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodPublishProfilePicture), func() (*store.ProfilePicturePublicationResult, error) {
+		return s.next.PublishProfilePicture(arg0, arg1)
+	})
+}
+
+func (s *timedFileStore) PublishDefaultProfilePicture(arg0 context.Context, arg1 *store.DefaultProfilePicturePublication) (*store.ProfilePicturePublicationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodPublishDefaultProfilePicture), func() (*store.ProfilePicturePublicationResult, error) {
+		return s.next.PublishDefaultProfilePicture(arg0, arg1)
+	})
+}
+
+func (s *timedFileStore) GetProfilePictureState(arg0 context.Context, arg1 model.UserID) (*store.ProfilePictureState, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodGetProfilePictureState), func() (*store.ProfilePictureState, error) {
+		return s.next.GetProfilePictureState(arg0, arg1)
+	})
+}
+
+func (s *timedFileStore) GetProfilePictureRendition(arg0 context.Context, arg1 model.UserID, arg2 string) (*model.FileRendition, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodGetProfilePictureRendition), func() (*model.FileRendition, error) {
+		return s.next.GetProfilePictureRendition(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedFileStore) RemoveProfilePicture(arg0 context.Context, arg1 *store.ProfilePictureRemoval) (*model.User, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodRemoveProfilePicture), func() (*model.User, error) {
+		return s.next.RemoveProfilePicture(arg0, arg1)
+	})
+}
+
+func (s *timedFileStore) ListPurgeCandidates(arg0 context.Context, arg1 *store.FilePurgeCandidateRequest) (*store.FilePurgeCandidatePage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodListPurgeCandidates), func() (*store.FilePurgeCandidatePage, error) {
+		return s.next.ListPurgeCandidates(arg0, arg1)
+	})
+}
+
+func (s *timedFileStore) ClaimPurgeCandidate(arg0 context.Context, arg1 *store.FilePurgeCandidate) (*store.FilePurgeClaim, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodClaimPurgeCandidate), func() (*store.FilePurgeClaim, error) {
+		return s.next.ClaimPurgeCandidate(arg0, arg1)
+	})
+}
+
+func (s *timedFileStore) CompletePurge(arg0 context.Context, arg1 *store.FilePurgeClaim) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateFile, methodCompletePurge), func() error {
+		return s.next.CompletePurge(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) Enqueue(arg0 context.Context, arg1 *store.JobEnqueue) (*model.Job, bool, error) {
+	return timeStoreCall2(s.layer, storeOperation(aggregateJob, methodEnqueue), func() (*model.Job, bool, error) {
+		return s.next.Enqueue(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) ClaimNext(arg0 context.Context, arg1 *store.JobClaimRequest) (*store.JobClaim, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodClaimNext), func() (*store.JobClaim, error) {
+		return s.next.ClaimNext(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) Heartbeat(arg0 context.Context, arg1 *store.JobHeartbeat) (*model.JobAttempt, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodHeartbeat), func() (*model.JobAttempt, error) {
+		return s.next.Heartbeat(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) Checkpoint(arg0 context.Context, arg1 *store.JobCheckpoint) (*model.Job, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodCheckpoint), func() (*model.Job, error) {
+		return s.next.Checkpoint(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) ReserveWork(arg0 context.Context, arg1 *store.JobWorkReservation) (*store.JobWorkReservationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodReserveWork), func() (*store.JobWorkReservationResult, error) {
+		return s.next.ReserveWork(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) Complete(arg0 context.Context, arg1 *store.JobCompletion) (*model.Job, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodComplete), func() (*model.Job, error) {
+		return s.next.Complete(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) Get(arg0 context.Context, arg1 model.JobID) (*model.Job, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodGet), func() (*model.Job, error) {
+		return s.next.Get(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) ListAttempts(arg0 context.Context, arg1 model.JobID) ([]model.JobAttempt, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodListAttempts), func() ([]model.JobAttempt, error) {
+		return s.next.ListAttempts(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) List(arg0 context.Context, arg1 store.JobListOptions) ([]*model.Job, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodList), func() ([]*model.Job, error) {
+		return s.next.List(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) ListAttemptsPage(arg0 context.Context, arg1 store.JobAttemptListOptions) ([]model.JobAttempt, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodListAttemptsPage), func() ([]model.JobAttempt, error) {
+		return s.next.ListAttemptsPage(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) CancellationRequested(arg0 context.Context, arg1 model.JobAttemptID, arg2 model.JobClaimToken) (bool, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodCancellationRequested), func() (bool, error) {
+		return s.next.CancellationRequested(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedJobStore) Cancel(arg0 context.Context, arg1 *store.JobMutation) (*model.Job, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodCancel), func() (*model.Job, error) {
+		return s.next.Cancel(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) Retry(arg0 context.Context, arg1 *store.JobMutation) (*model.Job, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodRetry), func() (*model.Job, error) {
+		return s.next.Retry(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) DeleteTerminalHistory(arg0 context.Context, arg1 *store.JobHistoryCleanup) (*store.JobHistoryCleanupResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodDeleteTerminalHistory), func() (*store.JobHistoryCleanupResult, error) {
+		return s.next.DeleteTerminalHistory(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) EnqueueTest(arg0 context.Context, arg1 *store.MailTestEnqueue) (*model.MailDelivery, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodEnqueueTest), func() (*model.MailDelivery, error) {
+		return s.next.EnqueueTest(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) GetDelivery(arg0 context.Context, arg1 model.MailDeliveryID) (*model.MailDelivery, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodGetDelivery), func() (*model.MailDelivery, error) {
+		return s.next.GetDelivery(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) ListDeliveries(arg0 context.Context, arg1 store.MailDeliveryListOptions) ([]*model.MailDelivery, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodListDeliveries), func() ([]*model.MailDelivery, error) {
+		return s.next.ListDeliveries(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) StartDelivery(arg0 context.Context, arg1 model.MailDeliveryID, arg2 int64, arg3 time.Time) (*model.MailDelivery, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodStartDelivery), func() (*model.MailDelivery, error) {
+		return s.next.StartDelivery(arg0, arg1, arg2, arg3)
+	})
+}
+
+func (s *timedMailStore) CompleteDelivery(arg0 context.Context, arg1 *store.MailDeliveryCompletion) (*model.MailDelivery, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodCompleteDelivery), func() (*model.MailDelivery, error) {
+		return s.next.CompleteDelivery(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) CancelDelivery(arg0 context.Context, arg1 *store.MailDeliveryMutation) (*model.MailDelivery, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodCancelDelivery), func() (*model.MailDelivery, error) {
+		return s.next.CancelDelivery(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) RetryDelivery(arg0 context.Context, arg1 *store.MailDeliveryMutation) (*model.MailDelivery, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodRetryDelivery), func() (*model.MailDelivery, error) {
+		return s.next.RetryDelivery(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) AcquireSendPermit(arg0 context.Context, arg1 store.MailSendClass) (*store.MailSendPermit, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodAcquireSendPermit), func() (*store.MailSendPermit, error) {
+		return s.next.AcquireSendPermit(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) SuppressOutstanding(arg0 context.Context, arg1 string, arg2 int) (*store.MailMaintenanceResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodSuppressOutstanding), func() (*store.MailMaintenanceResult, error) {
+		return s.next.SuppressOutstanding(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedMailStore) SuppressExpired(arg0 context.Context, arg1 int) (*store.MailMaintenanceResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodSuppressExpired), func() (*store.MailMaintenanceResult, error) {
+		return s.next.SuppressExpired(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) CleanupTerminal(arg0 context.Context, arg1 int) (*store.MailMaintenanceResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodCleanupTerminal), func() (*store.MailMaintenanceResult, error) {
+		return s.next.CleanupTerminal(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) QueueSnapshot(arg0 context.Context) (*store.MailQueueSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodQueueSnapshot), func() (*store.MailQueueSnapshot, error) {
+		return s.next.QueueSnapshot(arg0)
+	})
+}
+
+func (s *timedMailStore) ActivePayloadKeyIDs(arg0 context.Context) ([]string, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodActivePayloadKeyIDs), func() ([]string, error) {
+		return s.next.ActivePayloadKeyIDs(arg0)
+	})
+}
+
+func (s *timedMailStore) InspectKeyState(arg0 context.Context) (*store.MailKeyState, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodInspectKeyState), func() (*store.MailKeyState, error) {
+		return s.next.InspectKeyState(arg0)
+	})
+}
+
+func (s *timedMailStore) StartRekey(arg0 context.Context, arg1 *store.MailRekeyStart) (*store.MailRekeyOperation, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodStartRekey), func() (*store.MailRekeyOperation, error) {
+		return s.next.StartRekey(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) ListRekeyTargets(arg0 context.Context, arg1 *store.MailRekeyTargetPageRequest) (*store.MailRekeyTargetPage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodListRekeyTargets), func() (*store.MailRekeyTargetPage, error) {
+		return s.next.ListRekeyTargets(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) ReplaceRekeyTarget(arg0 context.Context, arg1 *store.MailRekeyReplacement) (bool, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodReplaceRekeyTarget), func() (bool, error) {
+		return s.next.ReplaceRekeyTarget(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) ProveRekey(arg0 context.Context, arg1 *store.MailRekeyProofRequest) (*store.MailRekeyProof, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodProveRekey), func() (*store.MailRekeyProof, error) {
+		return s.next.ProveRekey(arg0, arg1)
+	})
+}
+
 func (s *timedExternalIdentityStore) Save(arg0 context.Context, arg1 *model.ExternalIdentity) (*model.ExternalIdentity, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExternalIdentity, methodSave), func() (*model.ExternalIdentity, error) {
 		return s.next.Save(arg0, arg1)
@@ -2807,6 +2561,96 @@ func (s *timedExternalLoginStateStore) Consume(arg0 context.Context, arg1 string
 func (s *timedExternalLoginStateStore) Maintain(arg0 context.Context, arg1 int) (*store.ExternalLoginStateMaintenanceResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExternalLoginState, methodMaintain), func() (*store.ExternalLoginStateMaintenanceResult, error) {
 		return s.next.Maintain(arg0, arg1)
+	})
+}
+
+func (s *timedBrowserAuthenticationStore) CreateDesktopAuthorization(arg0 context.Context, arg1 *store.DesktopAuthorizationCreation) (*store.DesktopAuthorizationCreated, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodCreateDesktopAuthorization), func() (*store.DesktopAuthorizationCreated, error) {
+		return s.next.CreateDesktopAuthorization(arg0, arg1)
+	})
+}
+
+func (s *timedBrowserAuthenticationStore) BindDesktopAuthorization(arg0 context.Context, arg1 *store.DesktopAuthorizationBinding) (*store.DesktopAuthorizationBound, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodBindDesktopAuthorization), func() (*store.DesktopAuthorizationBound, error) {
+		return s.next.BindDesktopAuthorization(arg0, arg1)
+	})
+}
+
+func (s *timedBrowserAuthenticationStore) GetDesktopAuthorizationContext(arg0 context.Context, arg1 string) (*store.DesktopAuthorizationContext, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodGetDesktopAuthorizationContext), func() (*store.DesktopAuthorizationContext, error) {
+		return s.next.GetDesktopAuthorizationContext(arg0, arg1)
+	})
+}
+
+func (s *timedBrowserAuthenticationStore) AuthenticateDesktopAuthorization(arg0 context.Context, arg1 *store.DesktopAuthorizationAuthentication) (*store.DesktopAuthorizationAuthenticationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodAuthenticateDesktopAuthorization), func() (*store.DesktopAuthorizationAuthenticationResult, error) {
+		return s.next.AuthenticateDesktopAuthorization(arg0, arg1)
+	})
+}
+
+func (s *timedBrowserAuthenticationStore) ResetDesktopAuthorizationAccount(arg0 context.Context, arg1 *store.DesktopAuthorizationAccountReset) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateBrowserAuthentication, methodResetDesktopAuthorizationAccount), func() error {
+		return s.next.ResetDesktopAuthorizationAccount(arg0, arg1)
+	})
+}
+
+func (s *timedBrowserAuthenticationStore) CreateInvitation(arg0 context.Context, arg1 *store.BrowserInvitationTransactionCreation) (*store.BrowserInvitationCreated, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodCreateInvitation), func() (*store.BrowserInvitationCreated, error) {
+		return s.next.CreateInvitation(arg0, arg1)
+	})
+}
+
+func (s *timedBrowserAuthenticationStore) ResolveInvitation(arg0 context.Context, arg1 string, arg2 string) (*store.BrowserInvitationResolution, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodResolveInvitation), func() (*store.BrowserInvitationResolution, error) {
+		return s.next.ResolveInvitation(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedBrowserAuthenticationStore) IssueCode(arg0 context.Context, arg1 *store.DesktopAuthorizationCodeIssue) (*store.DesktopAuthorizationCodeIssued, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodIssueCode), func() (*store.DesktopAuthorizationCodeIssued, error) {
+		return s.next.IssueCode(arg0, arg1)
+	})
+}
+
+func (s *timedBrowserAuthenticationStore) Cancel(arg0 context.Context, arg1 *store.DesktopAuthorizationCancellation) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateBrowserAuthentication, methodCancel), func() error {
+		return s.next.Cancel(arg0, arg1)
+	})
+}
+
+func (s *timedBrowserAuthenticationStore) ResolveDesktopAuthorizationExchange(arg0 context.Context, arg1 *store.DesktopAuthorizationExchangeProof) (*store.DesktopAuthorizationExchangeTarget, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodResolveDesktopAuthorizationExchange), func() (*store.DesktopAuthorizationExchangeTarget, error) {
+		return s.next.ResolveDesktopAuthorizationExchange(arg0, arg1)
+	})
+}
+
+func (s *timedBrowserAuthenticationStore) Exchange(arg0 context.Context, arg1 *store.DesktopAuthorizationExchange) (*store.DesktopAuthorizationExchangeResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodExchange), func() (*store.DesktopAuthorizationExchangeResult, error) {
+		return s.next.Exchange(arg0, arg1)
+	})
+}
+
+func (s *timedBrowserAuthenticationStore) Maintain(arg0 context.Context, arg1 int) (*store.BrowserAuthenticationMaintenanceResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodMaintain), func() (*store.BrowserAuthenticationMaintenanceResult, error) {
+		return s.next.Maintain(arg0, arg1)
+	})
+}
+
+func (s *timedDesktopRegistrationStore) Get(arg0 context.Context, arg1 model.DesktopRegistrationID) (*model.DesktopRegistration, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopRegistration, methodGet), func() (*model.DesktopRegistration, error) {
+		return s.next.Get(arg0, arg1)
+	})
+}
+
+func (s *timedDesktopRegistrationStore) ListByUser(arg0 context.Context, arg1 model.UserID) ([]*model.DesktopRegistration, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopRegistration, methodListByUser), func() ([]*model.DesktopRegistration, error) {
+		return s.next.ListByUser(arg0, arg1)
+	})
+}
+
+func (s *timedDesktopRegistrationStore) Revoke(arg0 context.Context, arg1 *store.DesktopRegistrationRevocation) (*store.DesktopRegistrationRevocationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopRegistration, methodRevoke), func() (*store.DesktopRegistrationRevocationResult, error) {
+		return s.next.Revoke(arg0, arg1)
 	})
 }
 
@@ -3434,24 +3278,6 @@ func (s *timedSessionStore) RevokeAllForUser(arg0 context.Context, arg1 *store.U
 	})
 }
 
-func (s *timedDesktopRegistrationStore) Get(arg0 context.Context, arg1 model.DesktopRegistrationID) (*model.DesktopRegistration, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopRegistration, methodGet), func() (*model.DesktopRegistration, error) {
-		return s.next.Get(arg0, arg1)
-	})
-}
-
-func (s *timedDesktopRegistrationStore) ListByUser(arg0 context.Context, arg1 model.UserID) ([]*model.DesktopRegistration, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopRegistration, methodListByUser), func() ([]*model.DesktopRegistration, error) {
-		return s.next.ListByUser(arg0, arg1)
-	})
-}
-
-func (s *timedDesktopRegistrationStore) Revoke(arg0 context.Context, arg1 *store.DesktopRegistrationRevocation) (*store.DesktopRegistrationRevocationResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopRegistration, methodRevoke), func() (*store.DesktopRegistrationRevocationResult, error) {
-		return s.next.Revoke(arg0, arg1)
-	})
-}
-
 func (s *timedSessionCredentialStore) GetSessionByTokenHash(arg0 context.Context, arg1 string, arg2 model.SessionCredentialKind) (*model.SessionCredential, *model.Session, error) {
 	return timeStoreCall2(s.layer, storeOperation(aggregateSessionCredential, methodGetSessionByTokenHash), func() (*model.SessionCredential, *model.Session, error) {
 		return s.next.GetSessionByTokenHash(arg0, arg1, arg2)
@@ -3626,41 +3452,209 @@ func (s *timedInstallationStore) ReconcileAdministratorRecovery(arg0 context.Con
 	})
 }
 
+func (s *timedAccessPolicyStore) Get(arg0 context.Context, arg1 int) (*store.AccessPolicySnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAccessPolicy, methodGet), func() (*store.AccessPolicySnapshot, error) {
+		return s.next.Get(arg0, arg1)
+	})
+}
+
+func (s *timedAccessPolicyStore) Preflight(arg0 context.Context, arg1 *store.AccessPolicyPreflight) ([]store.AccessPolicyBlocker, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAccessPolicy, methodPreflight), func() ([]store.AccessPolicyBlocker, error) {
+		return s.next.Preflight(arg0, arg1)
+	})
+}
+
+func (s *timedAccessPolicyStore) Replace(arg0 context.Context, arg1 *store.AccessPolicyReplacement, arg2 *store.CommandIdempotency) (*store.AccessPolicyReplacementResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAccessPolicy, methodReplace), func() (*store.AccessPolicyReplacementResult, error) {
+		return s.next.Replace(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedDesktopCompatibilityPolicyStore) Get(arg0 context.Context) (*model.DesktopCompatibilityPolicy, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopCompatibilityPolicy, methodGet), func() (*model.DesktopCompatibilityPolicy, error) {
+		return s.next.Get(arg0)
+	})
+}
+
+func (s *timedDesktopCompatibilityPolicyStore) Replace(arg0 context.Context, arg1 *store.DesktopCompatibilityPolicyReplacement, arg2 *store.CommandIdempotency) (*store.DesktopCompatibilityPolicyReplacementResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopCompatibilityPolicy, methodReplace), func() (*store.DesktopCompatibilityPolicyReplacementResult, error) {
+		return s.next.Replace(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedRetentionPolicyStore) Get(arg0 context.Context) (*model.RetentionPolicy, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetentionPolicy, methodGet), func() (*model.RetentionPolicy, error) {
+		return s.next.Get(arg0)
+	})
+}
+
+func (s *timedRetentionPolicyStore) Replace(arg0 context.Context, arg1 *store.RetentionPolicyReplacement, arg2 *store.CommandIdempotency) (*store.RetentionPolicyReplacementResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetentionPolicy, methodReplace), func() (*store.RetentionPolicyReplacementResult, error) {
+		return s.next.Replace(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedRetentionStore) GetControl(arg0 context.Context) (*model.RetentionControl, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodGetControl), func() (*model.RetentionControl, error) {
+		return s.next.GetControl(arg0)
+	})
+}
+
+func (s *timedRetentionStore) CreatePreview(arg0 context.Context, arg1 *store.RetentionPreviewCreation, arg2 *store.CommandIdempotency) (*model.RetentionPreview, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodCreatePreview), func() (*model.RetentionPreview, error) {
+		return s.next.CreatePreview(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedRetentionStore) GetPreview(arg0 context.Context, arg1 model.RetentionPreviewID) (*model.RetentionPreview, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodGetPreview), func() (*model.RetentionPreview, error) {
+		return s.next.GetPreview(arg0, arg1)
+	})
+}
+
+func (s *timedRetentionStore) ChangeControl(arg0 context.Context, arg1 *store.RetentionControlChange, arg2 *store.CommandIdempotency) (*store.RetentionControlResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodChangeControl), func() (*store.RetentionControlResult, error) {
+		return s.next.ChangeControl(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedRetentionStore) ListRecords(arg0 context.Context, arg1 store.RetentionRecordListOptions) (*store.RetentionRecordPage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodListRecords), func() (*store.RetentionRecordPage, error) {
+		return s.next.ListRecords(arg0, arg1)
+	})
+}
+
+func (s *timedRetentionStore) ReconcileSubmission(arg0 context.Context, arg1 *store.RetentionReconciliation) (*store.RetentionReconciliationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodReconcileSubmission), func() (*store.RetentionReconciliationResult, error) {
+		return s.next.ReconcileSubmission(arg0, arg1)
+	})
+}
+
+func (s *timedRetentionStore) BeginPurgeBatch(arg0 context.Context, arg1 int) ([]store.RetentionPurgeObject, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodBeginPurgeBatch), func() ([]store.RetentionPurgeObject, error) {
+		return s.next.BeginPurgeBatch(arg0, arg1)
+	})
+}
+
+func (s *timedRetentionStore) CompletePurge(arg0 context.Context, arg1 *store.RetentionPurgeCompletion) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateRetention, methodCompletePurge), func() error {
+		return s.next.CompletePurge(arg0, arg1)
+	})
+}
+
+func (s *timedRetentionStore) ListNotices(arg0 context.Context, arg1 model.UserID, arg2 model.RetentionRetirementID, arg3 int) ([]model.RetentionNotice, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodListNotices), func() ([]model.RetentionNotice, error) {
+		return s.next.ListNotices(arg0, arg1, arg2, arg3)
+	})
+}
+
+func (s *timedRetentionStore) ListPendingNotices(arg0 context.Context, arg1 int) ([]model.RetentionNotice, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodListPendingNotices), func() ([]model.RetentionNotice, error) {
+		return s.next.ListPendingNotices(arg0, arg1)
+	})
+}
+
+func (s *timedRetentionStore) CompleteNotice(arg0 context.Context, arg1 *store.RetentionNoticeMail) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateRetention, methodCompleteNotice), func() error {
+		return s.next.CompleteNotice(arg0, arg1)
+	})
+}
+
+func (s *timedRetentionStore) ListExpiryRecords(arg0 context.Context, arg1 store.RetentionExpiryListOptions) (*store.RetentionExpiryPage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodListExpiryRecords), func() (*store.RetentionExpiryPage, error) {
+		return s.next.ListExpiryRecords(arg0, arg1)
+	})
+}
+
+func (s *timedRetentionStore) ReconcileExpiry(arg0 context.Context, arg1 *store.RetentionExpiryReconciliation) (*store.RetentionExpiryResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodReconcileExpiry), func() (*store.RetentionExpiryResult, error) {
+		return s.next.ReconcileExpiry(arg0, arg1)
+	})
+}
+
+func (s *timedRetentionStore) ReconcileCleanupAuditExpiry(arg0 context.Context, arg1 *store.RetentionCleanupAuditReconciliation) (*store.RetentionCleanupAuditResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodReconcileCleanupAuditExpiry), func() (*store.RetentionCleanupAuditResult, error) {
+		return s.next.ReconcileCleanupAuditExpiry(arg0, arg1)
+	})
+}
+
+func (s *timedClusterDiscoveryStore) Upsert(arg0 context.Context, arg1 *store.ClusterDiscoveryNode) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateClusterDiscovery, methodUpsert), func() error {
+		return s.next.Upsert(arg0, arg1)
+	})
+}
+
+func (s *timedClusterDiscoveryStore) ListLive(arg0 context.Context, arg1 int64) ([]*store.ClusterDiscoveryNode, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateClusterDiscovery, methodListLive), func() ([]*store.ClusterDiscoveryNode, error) {
+		return s.next.ListLive(arg0, arg1)
+	})
+}
+
+func (s *timedClusterDiscoveryStore) Delete(arg0 context.Context, arg1 string) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateClusterDiscovery, methodDelete), func() error {
+		return s.next.Delete(arg0, arg1)
+	})
+}
+
+func (s *timedClusterDiscoveryStore) DeleteExpired(arg0 context.Context, arg1 int64) (int64, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateClusterDiscovery, methodDeleteExpired), func() (int64, error) {
+		return s.next.DeleteExpired(arg0, arg1)
+	})
+}
+
+func (s *timedServingNodeLeaseStore) Upsert(arg0 context.Context, arg1 *store.ServingNodeLeaseClaim) (*store.ServingNodeLease, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateServingNodeLease, methodUpsert), func() (*store.ServingNodeLease, error) {
+		return s.next.Upsert(arg0, arg1)
+	})
+}
+
+func (s *timedServingNodeLeaseStore) Delete(arg0 context.Context, arg1 string, arg2 string) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateServingNodeLease, methodDelete), func() error {
+		return s.next.Delete(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedCommandOutcomeStore) Has(arg0 context.Context, arg1 *store.CommandIdempotency) (bool, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateCommandOutcome, methodHas), func() (bool, error) {
+		return s.next.Has(arg0, arg1)
+	})
+}
+
+func (s *timedCommandOutcomeStore) DeleteExpired(arg0 context.Context, arg1 int) (int64, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateCommandOutcome, methodDeleteExpired), func() (int64, error) {
+		return s.next.DeleteExpired(arg0, arg1)
+	})
+}
+
 var (
 	_ store.Store                           = (*Layer)(nil)
-	_ store.AccessPolicyStore               = (*timedAccessPolicyStore)(nil)
-	_ store.BrowserAuthenticationStore      = (*timedBrowserAuthenticationStore)(nil)
-	_ store.ClusterDiscoveryStore           = (*timedClusterDiscoveryStore)(nil)
-	_ store.DesktopCompatibilityPolicyStore = (*timedDesktopCompatibilityPolicyStore)(nil)
-	_ store.ExamAttemptStore                = (*timedExamAttemptStore)(nil)
-	_ store.ExamAttemptWorkspaceStore       = (*timedExamAttemptWorkspaceStore)(nil)
-	_ store.ExamCorrectionStore             = (*timedExamCorrectionStore)(nil)
-	_ store.ExamExportStore                 = (*timedExamExportStore)(nil)
-	_ store.ExamIntegrityReviewStore        = (*timedExamIntegrityReviewStore)(nil)
-	_ store.ExamRecordsStore                = (*timedExamRecordsStore)(nil)
-	_ store.ExamResourceStore               = (*timedExamResourceStore)(nil)
-	_ store.ExamRevisionStore               = (*timedExamRevisionStore)(nil)
-	_ store.ExamSittingStore                = (*timedExamSittingStore)(nil)
-	_ store.ExamStarterWorkspaceStore       = (*timedExamStarterWorkspaceStore)(nil)
-	_ store.ExamSubmissionStore             = (*timedExamSubmissionStore)(nil)
-	_ store.RetentionStore                  = (*timedRetentionStore)(nil)
-	_ store.RetentionPolicyStore            = (*timedRetentionPolicyStore)(nil)
-	_ store.ServingNodeLeaseStore           = (*timedServingNodeLeaseStore)(nil)
-	_ store.ExamAuthoringStore              = (*timedExamAuthoringStore)(nil)
-	_ store.CommandOutcomeStore             = (*timedCommandOutcomeStore)(nil)
-	_ store.MailStore                       = (*timedMailStore)(nil)
-	_ store.JobStore                        = (*timedJobStore)(nil)
-	_ store.FileStore                       = (*timedFileStore)(nil)
 	_ store.InstitutionStore                = (*timedInstitutionStore)(nil)
 	_ store.AcademicUnitStore               = (*timedAcademicUnitStore)(nil)
 	_ store.ProgrammeStore                  = (*timedProgrammeStore)(nil)
 	_ store.ProgrammeLevelStore             = (*timedProgrammeLevelStore)(nil)
 	_ store.AcademicPeriodStore             = (*timedAcademicPeriodStore)(nil)
+	_ store.ExamAuthoringStore              = (*timedExamAuthoringStore)(nil)
+	_ store.ExamRevisionStore               = (*timedExamRevisionStore)(nil)
+	_ store.ExamSittingStore                = (*timedExamSittingStore)(nil)
+	_ store.ExamAttemptStore                = (*timedExamAttemptStore)(nil)
+	_ store.ExamAttemptWorkspaceStore       = (*timedExamAttemptWorkspaceStore)(nil)
+	_ store.ExamSubmissionStore             = (*timedExamSubmissionStore)(nil)
+	_ store.ExamIntegrityReviewStore        = (*timedExamIntegrityReviewStore)(nil)
+	_ store.ExamRecordsStore                = (*timedExamRecordsStore)(nil)
+	_ store.ExamExportStore                 = (*timedExamExportStore)(nil)
+	_ store.ExamResourceStore               = (*timedExamResourceStore)(nil)
+	_ store.ExamCorrectionStore             = (*timedExamCorrectionStore)(nil)
+	_ store.ExamStarterWorkspaceStore       = (*timedExamStarterWorkspaceStore)(nil)
 	_ store.ClassStore                      = (*timedClassStore)(nil)
 	_ store.UserStore                       = (*timedUserStore)(nil)
 	_ store.UserSettingsStore               = (*timedUserSettingsStore)(nil)
+	_ store.FileStore                       = (*timedFileStore)(nil)
+	_ store.JobStore                        = (*timedJobStore)(nil)
+	_ store.MailStore                       = (*timedMailStore)(nil)
 	_ store.ExternalIdentityStore           = (*timedExternalIdentityStore)(nil)
 	_ store.ExternalLoginStateStore         = (*timedExternalLoginStateStore)(nil)
+	_ store.BrowserAuthenticationStore      = (*timedBrowserAuthenticationStore)(nil)
+	_ store.DesktopRegistrationStore        = (*timedDesktopRegistrationStore)(nil)
 	_ store.UserTokenStore                  = (*timedUserTokenStore)(nil)
 	_ store.InvitationStore                 = (*timedInvitationStore)(nil)
 	_ store.OnboardingImportStore           = (*timedOnboardingImportStore)(nil)
@@ -3671,10 +3665,16 @@ var (
 	_ store.ClassMemberStore                = (*timedClassMemberStore)(nil)
 	_ store.PasswordCredentialStore         = (*timedPasswordCredentialStore)(nil)
 	_ store.SessionStore                    = (*timedSessionStore)(nil)
-	_ store.DesktopRegistrationStore        = (*timedDesktopRegistrationStore)(nil)
 	_ store.SessionCredentialStore          = (*timedSessionCredentialStore)(nil)
 	_ store.RoleStore                       = (*timedRoleStore)(nil)
 	_ store.RoleBindingStore                = (*timedRoleBindingStore)(nil)
 	_ store.AuditStore                      = (*timedAuditStore)(nil)
 	_ store.InstallationStore               = (*timedInstallationStore)(nil)
+	_ store.AccessPolicyStore               = (*timedAccessPolicyStore)(nil)
+	_ store.DesktopCompatibilityPolicyStore = (*timedDesktopCompatibilityPolicyStore)(nil)
+	_ store.RetentionPolicyStore            = (*timedRetentionPolicyStore)(nil)
+	_ store.RetentionStore                  = (*timedRetentionStore)(nil)
+	_ store.ClusterDiscoveryStore           = (*timedClusterDiscoveryStore)(nil)
+	_ store.ServingNodeLeaseStore           = (*timedServingNodeLeaseStore)(nil)
+	_ store.CommandOutcomeStore             = (*timedCommandOutcomeStore)(nil)
 )
