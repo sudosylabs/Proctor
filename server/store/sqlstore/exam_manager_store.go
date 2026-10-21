@@ -138,6 +138,9 @@ func prepareExamManagerMutation(input *store.ExamManagerMutation) (*store.ExamMa
 }
 
 func addExamManager(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamManagerMutation) (*store.ExamManagerCommandResult, error) {
+	if err := lockCandidateUser(ctx, tx, input.TargetUserID.String()); err != nil {
+		return nil, err
+	}
 	if err := lockExamManagerCandidateFence(ctx, tx, input.TargetUserID); err != nil {
 		return nil, err
 	}

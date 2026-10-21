@@ -41,18 +41,6 @@ type DesktopCompatibilityPolicySerializationProbe func(
 	func() error,
 ) error
 
-// AttemptCandidateLockProbe runs operation while a concurrent transaction
-// takes Invitation acceptance's candidate lock sequence: the User row for
-// update, then the candidate's Class-enrollment fence for the period. It
-// returns the first error from either side.
-type AttemptCandidateLockProbe func(
-	t *testing.T,
-	ctx context.Context,
-	candidateID model.UserID,
-	periodID model.AcademicPeriodID,
-	operation func() error,
-) error
-
 // FocusLossPersistenceProbe exposes bounded persistence totals that cannot be
 // observed through the candidate seam. It is used only by SQL conformance to
 // prove the evidence cap, overflow summary, bucket consumption, and diagnostic
@@ -529,7 +517,7 @@ func TestExamAttemptCompatibilityPolicySerialization(
 // TestExamAttemptConnectCandidateLockOrder verifies that Connect takes the
 // candidate User before its Class-enrollment fence, so it waits behind an
 // Invitation acceptance for the same candidate instead of deadlocking it.
-func TestExamAttemptConnectCandidateLockOrder(t *testing.T, ss store.Store, probe AttemptCandidateLockProbe) {
+func TestExamAttemptConnectCandidateLockOrder(t *testing.T, ss store.Store, probe CandidateLockProbe) {
 	t.Helper()
 	require.NotNil(t, probe, "Attempt candidate lock probe is required")
 	ctx := context.Background()
@@ -546,7 +534,7 @@ func TestExamAttemptConnectCandidateLockOrder(t *testing.T, ss store.Store, prob
 	command := examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation,
 		"attempt-candidate-lock-order", "attempt-candidate-lock-order")
 	var connected *store.ExamAttemptConnectResult
-	err := probe(t, ctx, fixture.candidate.ID, fixture.class.AcademicPeriodID, func() error {
+	err := probe(t, ctx, fixture.candidate.ID, CandidateFence{Kind: CandidateFenceClassEnrollment, AcademicPeriodID: fixture.class.AcademicPeriodID}, func() error {
 		var connectErr error
 		connected, connectErr = ss.ExamAttempt().Connect(ctx, input, command)
 		return connectErr

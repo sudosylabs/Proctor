@@ -95,6 +95,9 @@ module when a change is not server-only. No module has been released yet.
 - Server: profile-picture and Exam Resource JPEGs with more than 32 scans are
   rejected before decoding, so a small progressive file can no longer hold a
   content permit for minutes.
+- Server: adding an Exam Manager or granting a Role Binding locks the User
+  before the Attempt admission fence, so it no longer deadlocks with an
+  Invitation acceptance for the same User.
 - Server: retiring a Submission finds the retry outcomes that cite it through
   indexes, so retirement no longer scans every audit event per Submission.
 - Server: a retention policy preview counts audit expiry in one set-based pass

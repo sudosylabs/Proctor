@@ -789,13 +789,14 @@ func advanceClassMailAudienceRevisions(ctx context.Context, executor sqlxExecuto
 	return result, nil
 }
 
-// lockAttemptCandidate locks the candidate User row before any candidate-scoped
-// advisory fence. Class enrollment and Invitation acceptance lock the User
-// first and then the admission or Class-enrollment fence; Attempt paths take
-// the same order so neither side can hold a fence while waiting for the row.
-func lockAttemptCandidate(ctx context.Context, executor sqlxExecutor, userID string) error {
+// lockCandidateUser locks the User row that a candidate-scoped advisory fence
+// names before the fence itself. Invitation acceptance locks the User first and
+// then the Attempt admission, Class-enrollment, or Class lifecycle lock; every
+// other path that takes one of those for the User takes the same order, so no
+// side can hold a fence while waiting for the row.
+func lockCandidateUser(ctx context.Context, executor sqlxExecutor, userID string) error {
 	if _, err := executor.Exec(ctx, `SELECT 1 FROM users WHERE id=? FOR SHARE`, userID); err != nil {
-		return fmt.Errorf("lock Attempt candidate: %w", err)
+		return fmt.Errorf("lock candidate User: %w", err)
 	}
 	return nil
 }

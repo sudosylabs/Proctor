@@ -109,6 +109,11 @@ func (s SQLRoleBindingStore) Save(
 		}
 	}
 	execute := func(ctx context.Context, tx *sqlxTxWrapper) (*roleBindingMutationResult, error) {
+		// The grant tuple may take the Class lifecycle lock and the insert takes
+		// the Attempt admission fence; both follow the User row.
+		if err := lockCandidateUser(ctx, tx, candidate.UserID.String()); err != nil {
+			return nil, err
+		}
 		if err := lockExpectedRoleForBinding(ctx, tx, candidate.RoleID, input.ExpectedRoleUpdatedAt, input.ExpectedRolePermissions); err != nil {
 			return nil, err
 		}
@@ -178,6 +183,9 @@ func lockExpectedRoleForBinding(ctx context.Context, tx *sqlxTxWrapper, roleID m
 }
 
 func insertRoleBinding(ctx context.Context, tx *sqlxTxWrapper, candidate *model.RoleBinding) error {
+	if err := lockCandidateUser(ctx, tx, candidate.UserID.String()); err != nil {
+		return err
+	}
 	if err := lockRoleBindingGrantTuple(ctx, tx, candidate); err != nil {
 		return err
 	}

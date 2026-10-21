@@ -1155,7 +1155,7 @@ func validateExistingAttemptConfiguration(document []byte, digest string, input 
 // Connection still requires Open.
 func (s *SQLExamAttemptStore) lockExamAttemptEligibility(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptConnect, allowPaused bool) (examAttemptAdmissionGuard, error) {
 	var zero examAttemptAdmissionGuard
-	if err := lockAttemptCandidate(ctx, tx, input.CandidateUserID.String()); err != nil {
+	if err := lockCandidateUser(ctx, tx, input.CandidateUserID.String()); err != nil {
 		return zero, err
 	}
 	lockKey := advisoryLockKey("exam-attempt-admission", input.CandidateUserID.String())
