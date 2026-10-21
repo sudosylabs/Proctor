@@ -76,7 +76,7 @@ func testUserEmailChangeUsesDatabaseClock(t *testing.T, ss store.Store) {
 	user, _ := saveLocalUser(t, ctx, ss)
 	preparedAt := time.Date(2099, 1, 2, 3, 4, 5, 0, time.UTC)
 	tokenLifetime, warningLifetime := 37*time.Minute, 19*time.Hour
-	newEmail := model.NewId() + "@database-clock.example.edu"
+	newEmail := model.NewID() + "@database-clock.example.edu"
 	token := &model.UserToken{UserID: user.ID, Purpose: model.UserTokenEmailVerification,
 		TokenHash: model.HashToken(model.NewCredentialToken()), Target: newEmail, ExpiresAt: preparedAt.Add(tokenLifetime)}
 	token.PrepareCreate(model.NewUserTokenID(), preparedAt)
@@ -155,7 +155,7 @@ func testConcurrentUserEmailChange(t *testing.T, ss store.Store) {
 	user, _ := saveLocalUser(t, ctx, ss)
 	build := func(suffix string) *store.UserEmailChange {
 		at := model.TimeUTC(time.Now().Add(time.Second))
-		email := model.NewId() + suffix + "@example.edu"
+		email := model.NewID() + suffix + "@example.edu"
 		token := &model.UserToken{UserID: user.ID, Purpose: model.UserTokenEmailVerification, TokenHash: model.HashToken(model.NewCredentialToken()), Target: email, ExpiresAt: at.Add(time.Hour)}
 		token.PrepareCreate(model.NewUserTokenID(), at)
 		warningOccurrence, warningDelivery, warningJob := userTokenMailFixture(t, user.ID, model.NewMailOccurrenceID(), model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityEmailChangeWarningOld, model.JobTypeMailDeliver, at, at.Add(24*time.Hour))
@@ -203,7 +203,7 @@ func testUserEmailChangeAtomic(t *testing.T, ss store.Store) {
 	_ = saveInstitution(t, ctx, ss)
 	user, _ := saveLocalUser(t, ctx, ss)
 	at := model.TimeUTC(time.Now().Add(time.Second))
-	newEmail := model.NewId() + "@new.example.edu"
+	newEmail := model.NewID() + "@new.example.edu"
 	token := &model.UserToken{UserID: user.ID, Purpose: model.UserTokenEmailVerification, TokenHash: model.HashToken(model.NewCredentialToken()), Target: newEmail, ExpiresAt: at.Add(time.Hour)}
 	token.PrepareCreate(model.NewUserTokenID(), at)
 	warningOccurrence, warningDelivery, warningJob := userTokenMailFixture(t, user.ID, model.NewMailOccurrenceID(), model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityEmailChangeWarningOld, model.JobTypeMailDeliver, at, at.Add(24*time.Hour))
@@ -278,7 +278,7 @@ func testUserTokenIssueRechecksCurrentEligibleAccount(t *testing.T, ss store.Sto
 	t.Run("changed verification target", func(t *testing.T) {
 		user, _ := saveLocalUser(t, ctx, ss)
 		token := newUserToken(user, model.UserTokenEmailVerification)
-		user = changeUserEmailForTest(t, ctx, ss, user, model.NewId()+"@changed.example.edu")
+		user = changeUserEmailForTest(t, ctx, ss, user, model.NewID()+"@changed.example.edu")
 		var err error
 		if _, err = issueUserToken(t, ss, ctx, token,
 			userTokenAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String())); !store.IsNotFound(err) {
@@ -542,7 +542,7 @@ func testEmailVerificationIsTargetBoundAndSingleUse(t *testing.T, ss store.Store
 		),
 	)
 	requireNoError(t, err)
-	changedUser = changeUserEmailForTest(t, ctx, ss, changedUser, model.NewId()+"@changed.example.edu")
+	changeUserEmailForTest(t, ctx, ss, changedUser, model.NewID()+"@changed.example.edu")
 	if _, err := ss.UserToken().ConsumeEmailVerification(
 		ctx,
 		changedToken.TokenHash,

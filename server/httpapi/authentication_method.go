@@ -101,7 +101,7 @@ func (m authenticationMethodResourceModule) removePassword(request operationRequ
 }
 
 func (m authenticationMethodResourceModule) connect(request operationRequest) (operationResult, error) {
-	providerID, err := request.params.RequireProviderId()
+	providerID, err := request.params.RequireProviderID()
 	if err != nil {
 		return operationResult{}, err
 	}

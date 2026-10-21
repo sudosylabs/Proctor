@@ -42,19 +42,19 @@ func TestEventFromRealtimePreservesWireFieldsAndClonesData(t *testing.T) {
 
 	data := json.RawMessage(`{"status":"ready"}`)
 	source := realtime.RealtimeEvent{
-		ID:     model.NewId(),
+		ID:     model.NewID(),
 		Name:   "academic_unit.updated",
-		UserID: model.NewId(),
+		UserID: model.NewID(),
 		Action: model.ActionAcademicUnitView,
 		Resource: model.Resource{
 			Type: model.ResourceAcademicUnit,
-			ID:   model.NewId(),
+			ID:   model.NewID(),
 		},
 		Data: data,
 	}
 
 	event := eventFromRealtime(source)
-	if event.Id != source.ID || event.Event != source.Name ||
+	if event.ID != source.ID || event.Event != source.Name ||
 		event.UserID != source.UserID || event.Action != source.Action {
 		t.Fatalf("wire event fields = %#v, source = %#v", event, source)
 	}
@@ -87,7 +87,7 @@ func TestHubMetricsObserveBroadcastFanoutAndResumeOutcome(t *testing.T) {
 	if connection, _ := hub.register(newRuntimeTestSocket(), principal, model.RequestMetadata{}, "missing-resume", 0, ""); connection == nil {
 		t.Fatal("register returned nil")
 	}
-	event := realtime.RealtimeEvent{ID: model.NewId(), Name: "academic_unit.updated", UserID: principal.UserID.String(), Data: json.RawMessage(`{"updated":true}`)}
+	event := realtime.RealtimeEvent{ID: model.NewID(), Name: "academic_unit.updated", UserID: principal.UserID.String(), Data: json.RawMessage(`{"updated":true}`)}
 	hub.PublishLocal(context.Background(), event)
 	if recorder.broadcastEvent != "event" || recorder.broadcastOutcome != "published" || recorder.broadcastRecipients != 1 {
 		t.Fatalf("broadcast metrics = (%q, %q, %d)", recorder.broadcastEvent, recorder.broadcastOutcome, recorder.broadcastRecipients)

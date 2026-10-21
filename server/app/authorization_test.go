@@ -14,10 +14,10 @@ import (
 )
 
 func TestRoleBindingAppliesByDeclaredInheritance(t *testing.T) {
-	institutionID := model.NewId()
-	parentID := model.NewId()
-	childID := model.NewId()
-	classID := model.NewId()
+	institutionID := model.NewID()
+	parentID := model.NewID()
+	childID := model.NewID()
+	classID := model.NewID()
 	resolved := resolvedAuthorizationResource{
 		institutionID: model.InstitutionID(institutionID),
 		academicUnitID: map[model.AcademicUnitID]struct{}{
@@ -55,7 +55,7 @@ func TestRoleBindingAppliesByDeclaredInheritance(t *testing.T) {
 		{
 			name: "unrelated academic unit does not inherit",
 			binding: &model.RoleBinding{
-				ScopeType: model.RoleScopeAcademicUnit, ScopeID: model.NewId(),
+				ScopeType: model.RoleScopeAcademicUnit, ScopeID: model.NewID(),
 			},
 			definition: classDefinition,
 			resource:   model.Resource{Type: model.ResourceClass, ID: classID},
@@ -92,9 +92,9 @@ func TestRoleBindingAppliesByDeclaredInheritance(t *testing.T) {
 }
 
 func TestPersonalAccessTokenIsOnlyAnAuthorizationCeiling(t *testing.T) {
-	parentID := model.NewId()
-	childID := model.NewId()
-	classID := model.NewId()
+	parentID := model.NewID()
+	childID := model.NewID()
+	classID := model.NewID()
 	resolved := resolvedAuthorizationResource{
 		institutionID: model.NewInstitutionID(),
 		academicUnitID: map[model.AcademicUnitID]struct{}{

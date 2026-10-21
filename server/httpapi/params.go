@@ -29,7 +29,7 @@ type Params struct {
 	BrowserSourceSessionID  string
 	NativeStreamID          string
 	NativeBatchSequence     string
-	ProviderId              string
+	ProviderID              string
 	RoleID                  string
 	RoleBindingID           string
 	JobID                   string
@@ -66,9 +66,9 @@ type Params struct {
 	StudentProgressionID    string
 	ReturnTo                string
 	ClientType              string
-	DeviceId                string
+	DeviceID                string
 	DeviceName              string
-	ConnectionId            string
+	ConnectionID            string
 	SequenceNumber          string
 }
 
@@ -79,7 +79,7 @@ func ParamsFromRequest(request *http.Request) Params {
 		BrowserSourceSessionID:  variables["source_session_id"],
 		NativeStreamID:          variables["stream_id"],
 		NativeBatchSequence:     variables["batch_sequence"],
-		ProviderId:              strings.ToLower(strings.TrimSpace(variables["provider_id"])),
+		ProviderID:              strings.ToLower(strings.TrimSpace(variables["provider_id"])),
 		RoleID:                  strings.TrimSpace(variables["role_id"]),
 		RoleBindingID:           strings.TrimSpace(variables["role_binding_id"]),
 		JobID:                   strings.TrimSpace(variables["job_id"]),
@@ -116,9 +116,9 @@ func ParamsFromRequest(request *http.Request) Params {
 		StudentProgressionID:    strings.TrimSpace(variables["student_progression_id"]),
 		ReturnTo:                strings.TrimSpace(query.Get("return_to")),
 		ClientType:              strings.TrimSpace(query.Get("client_type")),
-		DeviceId:                strings.TrimSpace(query.Get("device_id")),
+		DeviceID:                strings.TrimSpace(query.Get("device_id")),
 		DeviceName:              strings.TrimSpace(query.Get("device_name")),
-		ConnectionId:            strings.TrimSpace(query.Get("connection_id")),
+		ConnectionID:            strings.TrimSpace(query.Get("connection_id")),
 		SequenceNumber:          strings.TrimSpace(query.Get("sequence_number")),
 	}
 }
@@ -139,11 +139,11 @@ func (p Params) RequireStudentProgressionID() (model.OnboardingImportID, error) 
 	return pathID[model.OnboardingImportID](p.StudentProgressionID)
 }
 
-func (p Params) RequireProviderId() (string, error) {
-	if len(p.ProviderId) == 0 || len(p.ProviderId) > model.IdentityProviderMaxLength {
+func (p Params) RequireProviderID() (string, error) {
+	if len(p.ProviderID) == 0 || len(p.ProviderID) > model.IdentityProviderMaxLength {
 		return "", invalidRequestError(nil)
 	}
-	return p.ProviderId, nil
+	return p.ProviderID, nil
 }
 
 func (p Params) RequireUserID() (model.UserID, error) {

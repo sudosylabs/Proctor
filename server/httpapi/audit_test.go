@@ -18,7 +18,7 @@ func TestAuditResourceResponseWireShapeRemainsSnakeCase(t *testing.T) {
 	t.Parallel()
 
 	response := auditEventResponseFromModel(&model.AuditEvent{
-		Resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()},
+		Resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()},
 	})
 	encoded, err := json.Marshal(response)
 	if err != nil {

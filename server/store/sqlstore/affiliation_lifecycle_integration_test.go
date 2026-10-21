@@ -45,7 +45,7 @@ func TestStudentAffiliationEndSerializesWithEnrollment(t *testing.T) {
 	}
 	class := saveLifecycleClass(t, ctx, persistence, level.ID.String(), period.ID.String(), "affiliation-race-class")
 	for iteration := 0; iteration < 20; iteration++ {
-		userID := model.NewId()
+		userID := model.NewID()
 		user := saveIntegrationUser(t, ctx, persistence, &model.User{Username: "affiliation-" + userID, Email: userID + "@example.edu", DisplayName: "User"})
 		affiliation, err := persistence.Affiliation().Save(ctx, &model.Affiliation{UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(1)})
 		if err != nil {

@@ -87,7 +87,7 @@ func TestAdministratorMFAResetStore(t *testing.T, ss store.Store, probes ...Admi
 		}
 		assertUnchanged(t)
 	}
-	leaseID := model.NewId()
+	leaseID := model.NewID()
 	_, err = ss.ServingNodeLease().Upsert(ctx, &store.ServingNodeLeaseClaim{NodeID: "mfa-reset-serving", LeaseID: leaseID, Lifetime: 30 * time.Second})
 	requireNoError(t, err)
 	if _, err = ss.Installation().ResetAdministratorMFA(ctx, input); !store.IsConflict(err) {

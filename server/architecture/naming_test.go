@@ -13,6 +13,7 @@ import (
 	"go/token"
 	"io/fs"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -62,6 +63,58 @@ func TestReceiverNamesAreShortAndConsistent(t *testing.T) {
 		sort.Strings(names)
 		t.Errorf("%s mixes receiver names %v; use one name for every method", key, names)
 	}
+}
+
+// idWord matches the initialism ID spelled Id inside a Go identifier, such as
+// UserId, IdToken, or sessionIds.
+var idWord = regexp.MustCompile(`Ids?([A-Z0-9_]|$)`)
+
+// TestDeclaredIdentifiersSpellIDAsAnInitialism keeps the identifier initialism
+// ID upper case in every declared Go name. JSON tags and SQL columns keep
+// their snake_case spelling.
+func TestDeclaredIdentifiersSpellIDAsAnInitialism(t *testing.T) {
+	t.Parallel()
+
+	inspectServerGoFiles(t, func(path string, file *ast.File) {
+		check := func(identifier *ast.Ident) {
+			if identifier != nil && idWord.MatchString(identifier.Name) {
+				t.Errorf("%s declares %q; spell the initialism ID", path, identifier.Name)
+			}
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			switch declared := node.(type) {
+			case *ast.FuncDecl:
+				check(declared.Name)
+			case *ast.TypeSpec:
+				check(declared.Name)
+			case *ast.ValueSpec:
+				for _, name := range declared.Names {
+					check(name)
+				}
+			case *ast.Field:
+				for _, name := range declared.Names {
+					check(name)
+				}
+			case *ast.AssignStmt:
+				if declared.Tok == token.DEFINE {
+					for _, expression := range declared.Lhs {
+						if name, ok := expression.(*ast.Ident); ok {
+							check(name)
+						}
+					}
+				}
+			case *ast.RangeStmt:
+				if declared.Tok == token.DEFINE {
+					for _, expression := range []ast.Expr{declared.Key, declared.Value} {
+						if name, ok := expression.(*ast.Ident); ok {
+							check(name)
+						}
+					}
+				}
+			}
+			return true
+		})
+	})
 }
 
 func receiverTypeName(expression ast.Expr) string {

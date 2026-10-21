@@ -23,7 +23,7 @@ func TestAuthorizationRegistryIsClosedAndResourceTyped(t *testing.T) {
 	if _, ok := DefinitionForAction(Action("future.permission")); ok {
 		t.Fatal("unknown action was registered")
 	}
-	if err := (Resource{Type: ResourceClass, ID: NewId()}).Validate(); err != nil {
+	if err := (Resource{Type: ResourceClass, ID: NewID()}).Validate(); err != nil {
 		t.Fatal("valid class resource was rejected")
 	}
 	userDefinition, ok := DefinitionForAction(ActionUserView)
@@ -32,14 +32,14 @@ func TestAuthorizationRegistryIsClosedAndResourceTyped(t *testing.T) {
 		!userDefinition.InheritAcademicUnitScopes {
 		t.Fatalf("user-view definition = %#v, %v", userDefinition, ok)
 	}
-	if err := (Resource{Type: ResourceUser, ID: NewId()}).Validate(); err != nil {
+	if err := (Resource{Type: ResourceUser, ID: NewID()}).Validate(); err != nil {
 		t.Fatal("valid user resource was rejected")
 	}
 	examDefinition, ok := DefinitionForAction(ActionExamView)
 	if !ok || examDefinition.ResourceType != ResourceExam || !examDefinition.InheritInstitutionScope || !examDefinition.InheritAcademicUnitScopes {
 		t.Fatalf("exam-view definition = %#v, %v", examDefinition, ok)
 	}
-	if err := (Resource{Type: ResourceExam, ID: NewId()}).Validate(); err != nil {
+	if err := (Resource{Type: ResourceExam, ID: NewID()}).Validate(); err != nil {
 		t.Fatalf("valid exam resource was rejected: %v", err)
 	}
 	sittingView, ok := DefinitionForAction(ActionExamSittingView)
@@ -50,10 +50,10 @@ func TestAuthorizationRegistryIsClosedAndResourceTyped(t *testing.T) {
 	if !ok || sittingCreate.ResourceType != ResourceExam || !sittingCreate.InheritInstitutionScope || !sittingCreate.InheritAcademicUnitScopes {
 		t.Fatalf("exam-sitting create definition = %#v, %v", sittingCreate, ok)
 	}
-	if err := (Resource{Type: ResourceExamSitting, ID: NewId()}).Validate(); err != nil {
+	if err := (Resource{Type: ResourceExamSitting, ID: NewID()}).Validate(); err != nil {
 		t.Fatalf("valid Exam Sitting resource was rejected: %v", err)
 	}
-	if err := (Resource{Type: ResourceType("future"), ID: NewId()}).Validate(); err == nil {
+	if err := (Resource{Type: ResourceType("future"), ID: NewID()}).Validate(); err == nil {
 		t.Fatal("unimplemented resource type was accepted")
 	}
 }
@@ -221,16 +221,16 @@ func TestSubmissionActionsAreResourceTypedAndGrantable(t *testing.T) {
 			t.Fatalf("Submission action %q is not role grantable", action)
 		}
 	}
-	if err := (Resource{Type: ResourceSubmission, ID: NewId()}).Validate(); err != nil {
+	if err := (Resource{Type: ResourceSubmission, ID: NewID()}).Validate(); err != nil {
 		t.Fatalf("valid Submission resource was rejected: %v", err)
 	}
 }
 
 func TestUserAuditResourceKeepsItsAcademicScopeSeparate(t *testing.T) {
 	event := &AuditEvent{
-		ActorID: NewUserID(), SessionID: SessionID(NewId()), Action: string(ActionUserView),
-		Resource:  Resource{Type: ResourceUser, ID: NewId()},
-		ScopeType: RoleScopeInstitution, ScopeID: NewId(),
+		ActorID: NewUserID(), SessionID: SessionID(NewID()), Action: string(ActionUserView),
+		Resource:  Resource{Type: ResourceUser, ID: NewID()},
+		ScopeType: RoleScopeInstitution, ScopeID: NewID(),
 		Status: AuditStatusSuccess, NodeID: "node-1",
 	}
 	event.PrepareCreate(NewAuditEventID(), NowUTC())
@@ -241,9 +241,9 @@ func TestUserAuditResourceKeepsItsAcademicScopeSeparate(t *testing.T) {
 
 func TestAuditEventValidationCloningAndBounds(t *testing.T) {
 	event := &AuditEvent{
-		ActorID: NewUserID(), SessionID: SessionID(NewId()), Action: string(ActionAuditView),
-		Resource:  Resource{Type: ResourceInstitution, ID: NewId()},
-		ScopeType: RoleScopeInstitution, ScopeID: NewId(),
+		ActorID: NewUserID(), SessionID: SessionID(NewID()), Action: string(ActionAuditView),
+		Resource:  Resource{Type: ResourceInstitution, ID: NewID()},
+		ScopeType: RoleScopeInstitution, ScopeID: NewID(),
 		Status: AuditStatusSuccess, NodeID: "node-1",
 		IPAddress: "fe80::1%en0", UserAgent: strings.Repeat("a", 600),
 		Parameters: []byte(`{"safe":true}`),

@@ -43,7 +43,7 @@ func TestNativeDeliveryHTTPPreservesOptionalHistoricalFences(t *testing.T) {
 	f := &nativeDeliveryHTTPFake{examAttemptHTTPFake: newExamAttemptHTTPFake(t)}
 	logger, _ := newTestLogger(t)
 	api := newFocusedResourceAPI(t, logger, f, nativeDeliveryResource(f))
-	path := "/api/v1/exam-attempts/" + f.attempt.ID.String() + "/security-streams/" + model.NewId()
+	path := "/api/v1/exam-attempts/" + f.attempt.ID.String() + "/security-streams/" + model.NewID()
 	for _, live := range []bool{true, false} {
 		request := f.candidateRequest(http.MethodGet, path)
 		if !live {
@@ -79,7 +79,7 @@ func TestNativeDeliverySummaryStrictBodyAndRetryDelay(t *testing.T) {
 	f := &nativeDeliveryHTTPFake{examAttemptHTTPFake: newExamAttemptHTTPFake(t)}
 	logger, _ := newTestLogger(t)
 	api := newFocusedResourceAPI(t, logger, f, nativeDeliveryResource(f))
-	path := "/api/v1/exam-attempts/" + f.attempt.ID.String() + "/security-streams/" + model.NewId() + "/summary"
+	path := "/api/v1/exam-attempts/" + f.attempt.ID.String() + "/security-streams/" + model.NewID() + "/summary"
 	for _, body := range []string{
 		`{"summary_sequence":1,"unretained_record_count":0,"count_complete":false,"first_unretained_at":null,"last_unretained_at":null,"raw_content":"forbidden"}`,
 		`{"summary_sequence":1,"unretained_record_count":0,"count_complete":false}`,
@@ -121,7 +121,7 @@ func TestNativeDeliveryAppendClosedBodyAndBounds(t *testing.T) {
 	logger, _ := newTestLogger(t)
 	api := newFocusedResourceAPI(t, logger, f, nativeDeliveryResource(f))
 	path := "/api/v1/exam-attempts/" + f.attempt.ID.String() + "/security-batches"
-	batch := model.NativeSecurityBatch{StreamID: model.NewId(), BatchSequence: 1, ParticipationID: model.NewAttemptParticipationID(), Generation: 1, SecuritySessionID: model.NewId(), PolicyDigest: model.SHA256Fingerprint([]byte("synthetic-policy")), ApplicationReleaseID: "synthetic-release", MatrixID: "synthetic-matrix", Records: []model.NativeRecord{{Gap: &model.NativeSourceGap{Kind: "source_gap", SourceID: model.NativeSourceCapture, SourceInstanceID: model.NewId(), Reason: "source_loss", OccurredAt: time.Date(2026, 9, 8, 0, 0, 0, 0, time.UTC)}}}}
+	batch := model.NativeSecurityBatch{StreamID: model.NewID(), BatchSequence: 1, ParticipationID: model.NewAttemptParticipationID(), Generation: 1, SecuritySessionID: model.NewID(), PolicyDigest: model.SHA256Fingerprint([]byte("synthetic-policy")), ApplicationReleaseID: "synthetic-release", MatrixID: "synthetic-matrix", Records: []model.NativeRecord{{Gap: &model.NativeSourceGap{Kind: "source_gap", SourceID: model.NativeSourceCapture, SourceInstanceID: model.NewID(), Reason: "source_loss", OccurredAt: time.Date(2026, 9, 8, 0, 0, 0, 0, time.UTC)}}}}
 	raw, err := json.Marshal(batch)
 	if err != nil {
 		t.Fatal(err)

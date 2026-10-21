@@ -404,7 +404,7 @@ func TestParticipationExpiryEffectOmitsDuplicateCloseAfterTransportTeardown(t *t
 
 func examAttemptPrincipal() model.Principal {
 	return model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
-		CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess,
+		CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientDesktop, AuthenticatedAt: time.Date(2026, time.August, 17, 9, 0, 0, 0, time.UTC)}
 }

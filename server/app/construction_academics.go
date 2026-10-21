@@ -81,7 +81,7 @@ func constructAccessAndAcademics(
 			mutationAuditAdapter{audit: foundation.audit},
 			academicUnitRealtimeEffects{realtime: foundation.realtime},
 			academicUnitEffectReporter{realtime: foundation.realtime},
-			time.Now, model.NewId,
+			time.Now, model.NewID,
 		),
 		institutions: newInstitutionService(
 			deps.Store.Institution(), authorization,
@@ -89,34 +89,34 @@ func constructAccessAndAcademics(
 		),
 		programmes: newProgrammeService(
 			deps.Store.Programme(), authorization,
-			mutationAuditAdapter{audit: foundation.audit}, time.Now, model.NewId,
+			mutationAuditAdapter{audit: foundation.audit}, time.Now, model.NewID,
 		),
 		programmeLevels: newProgrammeLevelService(
 			deps.Store.ProgrammeLevel(), authorization,
-			mutationAuditAdapter{audit: foundation.audit}, time.Now, model.NewId,
+			mutationAuditAdapter{audit: foundation.audit}, time.Now, model.NewID,
 		),
 		academicPeriods: newAcademicPeriodService(
 			deps.Store.AcademicPeriod(), authorization,
-			mutationAuditAdapter{audit: foundation.audit}, time.Now, model.NewId,
+			mutationAuditAdapter{audit: foundation.audit}, time.Now, model.NewID,
 		),
 		classes: newClassService(
 			deps.Store.Class(), authorization,
-			mutationAuditAdapter{audit: foundation.audit}, time.Now, model.NewId,
+			mutationAuditAdapter{audit: foundation.audit}, time.Now, model.NewID,
 		),
 		affiliations: newAffiliationService(
 			deps.Store.Affiliation(), deps.Store.ClassMember(),
 			authorization, mutationAuditAdapter{audit: foundation.audit},
-			affiliationRealtimeEffects{realtime: foundation.realtime}, time.Now, model.NewId,
+			affiliationRealtimeEffects{realtime: foundation.realtime}, time.Now, model.NewID,
 		),
 		academicUnitMembers: newAcademicUnitMemberService(
 			deps.Store.AcademicUnitMember(), deps.Store.User(), authorization,
-			mutationAuditAdapter{audit: foundation.audit}, foundation.mail, foundation.realtime, time.Now, model.NewId,
+			mutationAuditAdapter{audit: foundation.audit}, foundation.mail, foundation.realtime, time.Now, model.NewID,
 		),
 		classMembers: newClassMemberService(
 			deps.Store.ClassMember(), deps.Store.Class(), deps.Store.User(),
 			authorization, mutationAuditAdapter{audit: foundation.audit}, foundation.mail,
 			classMemberRealtimeEffects{sittings: deps.Store.ExamSitting(), realtime: foundation.realtime},
-			time.Now, model.NewId,
+			time.Now, model.NewID,
 		),
 	}, nil
 }

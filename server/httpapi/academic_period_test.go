@@ -50,8 +50,8 @@ func (a *academicPeriodHTTPApplication) ArchiveAcademicPeriod(_ context.Context,
 func TestAcademicPeriodHTTPMapsDTOAndNormalizesRFC3339Bounds(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
-	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
-	period := &model.AcademicPeriod{ID: model.AcademicPeriodID(model.NewId()), Owner: model.NewAcademicUnitAcademicPeriodOwner(model.NewAcademicUnitID()), Name: "2026-2027", DisplayName: "2026-2027", StartsAt: model.TimeFromMillis(100), EndsAt: model.TimeFromMillis(200)}
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
+	period := &model.AcademicPeriod{ID: model.AcademicPeriodID(model.NewID()), Owner: model.NewAcademicUnitAcademicPeriodOwner(model.NewAcademicUnitID()), Name: "2026-2027", DisplayName: "2026-2027", StartsAt: model.TimeFromMillis(100), EndsAt: model.TimeFromMillis(200)}
 	periods := &academicPeriodHTTPApplication{result: period}
 	httpAPI := newFocusedResourceAPI(
 		t, logger, classRouteAuthenticator{principal: principal}, academicPeriodResource(periods),
@@ -82,7 +82,7 @@ func TestAcademicPeriodResourceRejectsInvalidQueryLimit(t *testing.T) {
 	logger, _ := newTestLogger(t)
 	principal := model.Principal{
 		UserID: model.NewUserID(), SessionID: model.NewSessionID(),
-		CredentialID:           model.PrincipalCredentialID(model.NewId()),
+		CredentialID:           model.PrincipalCredentialID(model.NewID()),
 		CredentialType:         model.CredentialSessionAccess,
 		AuthenticationMethod:   "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor,

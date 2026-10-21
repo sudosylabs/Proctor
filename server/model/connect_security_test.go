@@ -14,7 +14,7 @@ import (
 )
 
 func TestConnectSecurityClosedUnion(t *testing.T) {
-	preflight := ConnectSecurity{Kind: "preflight", PreflightID: NewId(), ReportDigest: SHA256Fingerprint([]byte("report"))}
+	preflight := ConnectSecurity{Kind: "preflight", PreflightID: NewID(), ReportDigest: SHA256Fingerprint([]byte("report"))}
 	resume := ConnectSecurity{Kind: "resume", ParticipationID: NewAttemptParticipationID(), Generation: 1, PolicyDigest: SHA256Fingerprint([]byte("policy"))}
 	for _, value := range []ConnectSecurity{preflight, resume} {
 		raw, err := json.Marshal(value)

@@ -28,7 +28,7 @@ const (
 type UserSettingsRevision string
 
 func NewUserSettingsRevision() UserSettingsRevision {
-	return UserSettingsRevision(NewId())
+	return UserSettingsRevision(NewID())
 }
 
 func ParseUserSettingsRevision(value string) (UserSettingsRevision, error) {

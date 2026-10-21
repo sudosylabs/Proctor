@@ -79,7 +79,7 @@ func TestAcademicAdministrationBatchRetainsStableSemanticDuplicateDisposition(t 
 	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 	userID, classID := model.NewUserID().String(), model.NewClassID().String()
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
-		CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess,
+		CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: now}, model.RequestMetadata{})
 
@@ -107,7 +107,7 @@ func TestAcademicAdministrationBatchLooksUpRetainedOutcomeBeforeDispatch(t *test
 	lookup := &academicAdministrationOutcomeLookupFake{found: true}
 	service := newAcademicAdministrationBatchService(commands, &academicAdministrationBatchAuthorizerFake{}, lookup, func() time.Time { return now }, 15*time.Minute)
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
-		CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess,
+		CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: now}, model.RequestMetadata{})
 	result, err := service.RunAcademicAdministrationBatch(context.Background(), invocation, RunAcademicAdministrationBatchCommand{Operation: AcademicAdministrationClassEnroll,
@@ -124,7 +124,7 @@ func TestAcademicAdministrationBatchPreservesDistinctEffectiveHistories(t *testi
 	commands := &academicAdministrationBatchCommandsFake{}
 	service := newAcademicAdministrationBatchService(commands, &academicAdministrationBatchAuthorizerFake{}, nil, func() time.Time { return now }, 15*time.Minute)
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
-		CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess,
+		CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: now}, model.RequestMetadata{})
 	userID := model.NewUserID().String()
@@ -173,7 +173,7 @@ func TestAcademicAdministrationBatchRunsClosedRowsThroughOrdinaryCommands(t *tes
 	previousID := model.NewClassMemberID().String()
 	userID := model.NewUserID().String()
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
-		CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess,
+		CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor, ClientType: model.SessionClientWeb,
 		AuthenticatedAt: now, MFACompletedAt: model.OptionalTimeFrom(now)}, model.RequestMetadata{})
 
@@ -203,10 +203,10 @@ func TestAcademicAdministrationBatchRunsClosedRowsThroughOrdinaryCommands(t *tes
 func TestAcademicAdministrationBatchDispatchesEveryClosedOperation(t *testing.T) {
 	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
-		CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess,
+		CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor, ClientType: model.SessionClientWeb,
 		AuthenticatedAt: now, MFACompletedAt: model.OptionalTimeFrom(now)}, model.RequestMetadata{})
-	userID, relationshipID, roleID := model.NewUserID().String(), model.NewId(), model.NewRoleID().String()
+	userID, relationshipID, roleID := model.NewUserID().String(), model.NewID(), model.NewRoleID().String()
 	cases := []struct {
 		operation AcademicAdministrationBatchOperation
 		scopeType model.RoleScopeType
@@ -231,7 +231,7 @@ func TestAcademicAdministrationBatchDispatchesEveryClosedOperation(t *testing.T)
 			service := newAcademicAdministrationBatchService(commands, &academicAdministrationBatchAuthorizerFake{}, nil, func() time.Time { return now }, 15*time.Minute)
 			testCase.item.IdempotencyKey = "row"
 			result, err := service.RunAcademicAdministrationBatch(context.Background(), invocation, RunAcademicAdministrationBatchCommand{Operation: testCase.operation,
-				ScopeType: testCase.scopeType, ScopeID: model.NewId(), IdempotencyKey: "batch", Items: []AcademicAdministrationBatchItemCommand{testCase.item}})
+				ScopeType: testCase.scopeType, ScopeID: model.NewID(), IdempotencyKey: "batch", Items: []AcademicAdministrationBatchItemCommand{testCase.item}})
 			if err != nil || result.Succeeded != 1 || len(commands.operations) != 1 || commands.operations[0] != testCase.operation {
 				t.Fatalf("Run(%s) = %#v, operations=%#v, error=%v", testCase.operation, result, commands.operations, err)
 			}
@@ -247,7 +247,7 @@ func TestAcademicAdministrationSensitiveBatchRequiresStrongRecentInteractiveSess
 	userID := model.NewUserID().String()
 
 	_, err := service.RunAcademicAdministrationBatch(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID(),
-		CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialPersonalAccessToken}, model.RequestMetadata{}),
+		CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialPersonalAccessToken}, model.RequestMetadata{}),
 		RunAcademicAdministrationBatchCommand{Operation: AcademicAdministrationUserDisable, ScopeType: model.RoleScopeInstitution,
 			ScopeID: institutionID, IdempotencyKey: "batch", Items: []AcademicAdministrationBatchItemCommand{{IdempotencyKey: "row", UserID: userID}}})
 	if !apperror.Is(err, "authentication.token_invalid") {

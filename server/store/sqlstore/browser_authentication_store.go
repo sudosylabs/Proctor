@@ -297,7 +297,7 @@ func validateDesktopAuthorizationCreation(input *store.DesktopAuthorizationCreat
 		model.ValidateDesktopAuthorizationCallback(input.CallbackURL) != nil ||
 		!model.IsValidCredentialToken(input.CodeChallenge) || input.Lifetime <= 0 ||
 		input.Lifetime > model.BrowserAuthenticationTransactionLifetime ||
-		len(input.DeviceID) > model.SessionDeviceIdMaxLength ||
+		len(input.DeviceID) > model.SessionDeviceIDMaxLength ||
 		utf8.RuneCountInString(input.DeviceName) > model.SessionDeviceNameMaxRunes ||
 		input.ProposedPublicJWK.Validate() != nil || !model.IsValidDPoPKeyThumbprint(input.ProposedKeyThumbprint) ||
 		!model.IsValidDesktopRelease(input.DesktopRelease) || !model.IsValidDesktopBuildID(input.DesktopBuildID) ||

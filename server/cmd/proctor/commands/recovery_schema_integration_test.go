@@ -38,7 +38,7 @@ func TestRecoveryCommandsRefuseUnmigratedSchemaIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer admin.Close()
-	name := "proctor_recovery_" + strings.ToLower(model.NewId()[:12])
+	name := "proctor_recovery_" + strings.ToLower(model.NewID()[:12])
 	if _, err := admin.ExecContext(ctx, "CREATE DATABASE "+name); err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestRecoveryCommandsRefuseUnmigratedSchemaIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	institutionID, userID := model.NewId(), model.NewId()
+	institutionID, userID := model.NewID(), model.NewID()
 	for _, args := range [][]string{
 		{"--config", configPath, "administrator", "recover", "--institution-id", institutionID, "--user-id", userID, "--enable-local-login"},
 		{"--config", configPath, "administrator", "reset-mfa", "--institution-id", institutionID, "--user-id", userID},

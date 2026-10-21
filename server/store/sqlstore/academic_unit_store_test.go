@@ -79,15 +79,15 @@ func TestAcademicUnitRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
 }
 
 func TestAcademicUnitRowConversion(t *testing.T) {
-	unitID, err := model.ParseAcademicUnitID(model.NewId())
+	unitID, err := model.ParseAcademicUnitID(model.NewID())
 	if err != nil {
 		t.Fatal(err)
 	}
-	institutionID, err := model.ParseInstitutionID(model.NewId())
+	institutionID, err := model.ParseInstitutionID(model.NewID())
 	if err != nil {
 		t.Fatal(err)
 	}
-	parentID, err := model.ParseAcademicUnitID(model.NewId())
+	parentID, err := model.ParseAcademicUnitID(model.NewID())
 	if err != nil {
 		t.Fatal(err)
 	}

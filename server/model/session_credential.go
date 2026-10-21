@@ -52,7 +52,7 @@ func (sc *SessionCredential) PrepareCreate(id SessionCredentialID, at time.Time)
 	sc.ArchivedAt = OptionalTime{}
 	sc.ExpiresAt = TimeUTC(sc.ExpiresAt)
 	if sc.Kind == SessionCredentialRefresh && sc.FamilyID == "" {
-		sc.FamilyID = NewId()
+		sc.FamilyID = NewID()
 	}
 	if sc.UsedAt.Valid {
 		sc.UsedAt = sc.UsedAt.UTC()

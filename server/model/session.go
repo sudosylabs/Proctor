@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	SessionDeviceIdMaxLength       = 128
+	SessionDeviceIDMaxLength       = 128
 	SessionDeviceNameMaxRunes      = 128
 	SessionRevocationMaxRunes      = 256
 	SessionAuthenticationMaxLength = 64
@@ -257,7 +257,7 @@ func (s *Session) Validate() error {
 		s.DesktopBuildID != "" || s.DesktopPlatform != "" || s.DesktopArchitecture != "" || s.DesktopRealtimeProtocol != 0 {
 		return invalidModelError(where, "session", "desktop_registration", "must be empty for a non-Desktop Session", details)
 	}
-	if len(s.DeviceID) > SessionDeviceIdMaxLength {
+	if len(s.DeviceID) > SessionDeviceIDMaxLength {
 		return invalidModelError(where, "session", "device_id", "is too long", details)
 	}
 	if utf8.RuneCountInString(s.DeviceName) > SessionDeviceNameMaxRunes {

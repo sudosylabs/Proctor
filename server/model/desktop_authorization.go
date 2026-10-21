@@ -162,7 +162,7 @@ func (t *BrowserAuthenticationTransaction) Validate() error {
 	if !t.InvitationID.IsZero() || t.InvitationClaimHash != "" || t.CompletedAt.Valid {
 		return invalidModelError(where, "browser_authentication_transaction", "invitation", "must be empty for desktop authorization", details)
 	}
-	if len(t.DeviceID) > SessionDeviceIdMaxLength ||
+	if len(t.DeviceID) > SessionDeviceIDMaxLength ||
 		utf8.RuneCountInString(t.DeviceName) > SessionDeviceNameMaxRunes {
 		return invalidModelError(where, "browser_authentication_transaction", "device", "exceeds the model bounds", details)
 	}

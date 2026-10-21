@@ -40,11 +40,11 @@ func syntheticNativeAgreement(t *testing.T, build model.DesktopBuildTuple) *mode
 }
 func syntheticPreflightReport(prepared *store.SecurityPreflightPrepared, agreement *model.DesktopNativeAgreement) model.SecurityPreflightReport {
 	resolved := prepared.Resolved
-	report := model.SecurityPreflightReport{Challenge: prepared.Challenge.Challenge, PolicyDigest: resolved.Policy.Digest, PolicyContentDigest: resolved.PolicyContentDigest, CapabilityMatrixDigest: resolved.CapabilityMatrixDigest, SecuritySessionID: model.NewId(), SourceManifestDigest: agreement.SourceManifestDigest(), SelectedSourceCategories: resolved.Categories, Sources: []model.NativeSourceCoverage{}, Coverage: []model.NativeCoverageClaim{}, Baseline: model.NativeBaselineReport{ConstrainedWindow: "verified", SinglePhysicalDisplay: "verified", ContentProtection: "verified"}, Posture: "compliant", ReportedAt: time.Now().UTC().Truncate(time.Millisecond)}
+	report := model.SecurityPreflightReport{Challenge: prepared.Challenge.Challenge, PolicyDigest: resolved.Policy.Digest, PolicyContentDigest: resolved.PolicyContentDigest, CapabilityMatrixDigest: resolved.CapabilityMatrixDigest, SecuritySessionID: model.NewID(), SourceManifestDigest: agreement.SourceManifestDigest(), SelectedSourceCategories: resolved.Categories, Sources: []model.NativeSourceCoverage{}, Coverage: []model.NativeCoverageClaim{}, Baseline: model.NativeBaselineReport{ConstrainedWindow: "verified", SinglePhysicalDisplay: "verified", ContentProtection: "verified"}, Posture: "compliant", ReportedAt: time.Now().UTC().Truncate(time.Millisecond)}
 	for _, source := range resolved.Sources {
 		for _, requirement := range resolved.Requirements {
 			if requirement.SourceID == source {
-				report.Sources = append(report.Sources, model.NativeSourceCoverage{SourceID: source, SourceInstanceID: model.NewId(), Sequence: 0, SourceSchemaDigest: requirement.Entry.SourceSchemaDigest, AdapterVersion: requirement.Entry.AdapterVersion, Health: "healthy", Permission: "granted", Complete: true, GapCount: 0})
+				report.Sources = append(report.Sources, model.NativeSourceCoverage{SourceID: source, SourceInstanceID: model.NewID(), Sequence: 0, SourceSchemaDigest: requirement.Entry.SourceSchemaDigest, AdapterVersion: requirement.Entry.AdapterVersion, Health: "healthy", Permission: "granted", Complete: true, GapCount: 0})
 				break
 			}
 		}
@@ -73,7 +73,7 @@ func TestSecurityPreflightStore(t *testing.T, ss store.Store, probes ...Security
 	build := connection.DesktopBuild
 	build.NativeAgreement = syntheticNativeAgreement(t, build)
 	access := store.SecurityPreflightAccess{SittingID: fixture.sitting.ID, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, DesktopBuild: build, DesktopCompatibilityPolicyRevision: connection.DesktopCompatibilityPolicyRevision}
-	input := &store.SecurityPreflightPrepare{Access: access, PreflightID: model.NewId(), Challenge: model.NewCredentialToken(), NativeRegistryDigest: build.NativeAgreement.RegistryDigest(), SourceManifestDigest: build.NativeAgreement.SourceManifestDigest(), ConfigurationManifestFingerprint: build.ConfigurationManifest.Fingerprint(), AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
+	input := &store.SecurityPreflightPrepare{Access: access, PreflightID: model.NewID(), Challenge: model.NewCredentialToken(), NativeRegistryDigest: build.NativeAgreement.RegistryDigest(), SourceManifestDigest: build.NativeAgreement.SourceManifestDigest(), ConfigurationManifestFingerprint: build.ConfigurationManifest.Fingerprint(), AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	command := examCommand(fixture.candidate.ID, store.SecurityPreflightPrepareOperation, "preflight-prepare", "preflight-prepare")
 	prepared, err := ss.ExamAttempt().PrepareSecurityPreflight(ctx, input, command)
 	requireNoError(t, err)
@@ -82,7 +82,7 @@ func TestSecurityPreflightStore(t *testing.T, ss store.Store, probes ...Security
 	}
 	requireSuccessfulAudit(t, ctx, ss, input.AuditEventID)
 	replay := *input
-	replay.PreflightID = model.NewId()
+	replay.PreflightID = model.NewID()
 	replay.Challenge = model.NewCredentialToken()
 	replay.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	repeated, err := ss.ExamAttempt().PrepareSecurityPreflight(ctx, &replay, command)
@@ -189,7 +189,7 @@ func TestSecurityPreflightStore(t *testing.T, ss store.Store, probes ...Security
 		assertExamAttemptConflict(t, err, "preflight_expired")
 		// Expiry cleanup runs through preparation and cannot revive the old owner.
 		oldID := replay.PreflightID
-		replay.PreflightID = model.NewId()
+		replay.PreflightID = model.NewID()
 		replay.Challenge = model.NewCredentialToken()
 		replay.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 		_, err = ss.ExamAttempt().PrepareSecurityPreflight(ctx, &replay, examCommand(fixture.candidate.ID, store.SecurityPreflightPrepareOperation, "after-expiry", "after-expiry"))
@@ -225,7 +225,7 @@ func TestSecureConnectStore(t *testing.T, ss store.Store, probes ...SecureConnec
 	input.SittingID = testSittingID
 	input.DesktopBuild.NativeAgreement = syntheticNativeAgreement(t, input.DesktopBuild)
 	access := store.SecurityPreflightAccess{SittingID: input.SittingID, CandidateUserID: input.CandidateUserID, SessionID: input.SessionID, DesktopRegistrationID: input.DesktopRegistrationID, DPoPKeyThumbprint: input.DPoPKeyThumbprint, DesktopBuild: input.DesktopBuild, DesktopCompatibilityPolicyRevision: input.DesktopCompatibilityPolicyRevision}
-	prepare := &store.SecurityPreflightPrepare{Access: access, PreflightID: model.NewId(), Challenge: model.NewCredentialToken(), NativeRegistryDigest: access.DesktopBuild.NativeAgreement.RegistryDigest(), SourceManifestDigest: access.DesktopBuild.NativeAgreement.SourceManifestDigest(), ConfigurationManifestFingerprint: input.ConfigurationManifestFingerprint, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
+	prepare := &store.SecurityPreflightPrepare{Access: access, PreflightID: model.NewID(), Challenge: model.NewCredentialToken(), NativeRegistryDigest: access.DesktopBuild.NativeAgreement.RegistryDigest(), SourceManifestDigest: access.DesktopBuild.NativeAgreement.SourceManifestDigest(), ConfigurationManifestFingerprint: input.ConfigurationManifestFingerprint, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	prepared, err := ss.ExamAttempt().PrepareSecurityPreflight(ctx, prepare, examCommand(input.CandidateUserID, store.SecurityPreflightPrepareOperation, "secure-prepare", "secure-prepare"))
 	requireNoError(t, err)
 	report := &store.SecurityPreflightReport{Access: access, PreflightID: prepare.PreflightID, Report: syntheticPreflightReport(prepared, access.DesktopBuild.NativeAgreement), AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
@@ -382,7 +382,7 @@ func TestSecureConnectStore(t *testing.T, ss store.Store, probes ...SecureConnec
 func prepareConnectSecurityFixture(t *testing.T, ctx context.Context, ss store.Store, input *store.ExamAttemptConnect) {
 	t.Helper()
 	input.DesktopBuild.NativeAgreement = syntheticNativeAgreement(t, input.DesktopBuild)
-	input.Security = model.ConnectSecurity{Kind: "preflight", PreflightID: model.NewId(), ReportDigest: model.SHA256Fingerprint([]byte("unavailable-preflight"))}
+	input.Security = model.ConnectSecurity{Kind: "preflight", PreflightID: model.NewID(), ReportDigest: model.SHA256Fingerprint([]byte("unavailable-preflight"))}
 	if !input.SittingID.IsValid() {
 		return
 	}
@@ -417,7 +417,7 @@ func prepareConnectSecurityFixture(t *testing.T, ctx context.Context, ss store.S
 		requireNoError(t, err)
 		return event.ID
 	}
-	prepare := &store.SecurityPreflightPrepare{Access: access, AttemptID: attemptID, PreflightID: model.NewId(), Challenge: model.NewCredentialToken(), NativeRegistryDigest: access.DesktopBuild.NativeAgreement.RegistryDigest(), SourceManifestDigest: access.DesktopBuild.NativeAgreement.SourceManifestDigest(), ConfigurationManifestFingerprint: input.ConfigurationManifestFingerprint, AuditEventID: audit(), AuditAt: model.GetMillis()}
+	prepare := &store.SecurityPreflightPrepare{Access: access, AttemptID: attemptID, PreflightID: model.NewID(), Challenge: model.NewCredentialToken(), NativeRegistryDigest: access.DesktopBuild.NativeAgreement.RegistryDigest(), SourceManifestDigest: access.DesktopBuild.NativeAgreement.SourceManifestDigest(), ConfigurationManifestFingerprint: input.ConfigurationManifestFingerprint, AuditEventID: audit(), AuditAt: model.GetMillis()}
 	key := fmt.Sprintf("fixture-preflight-%s-%s-%d", input.SessionID, input.SittingID, generation)
 	command := examCommand(input.CandidateUserID, store.SecurityPreflightPrepareOperation, key, key)
 	prepared, err := ss.ExamAttempt().PrepareSecurityPreflight(ctx, prepare, command)
@@ -478,7 +478,7 @@ func testProcessedSecurityControl(t *testing.T, ctx context.Context, ss store.St
 	fault := control
 	fault.ControlSequence = 11
 	fault.Sources = append([]model.NativeSourceCoverage{}, control.Sources...)
-	fault.Sources[0].SourceInstanceID = model.NewId()
+	fault.Sources[0].SourceInstanceID = model.NewID()
 	blocked := update(fault)
 	if blocked.CoverageResult != "reset_required" || blocked.ProcessedControlSequence != 11 || blocked.SecurityInteractionAllowed {
 		t.Fatalf("reset fault: %#v", blocked)
@@ -512,7 +512,7 @@ func testProcessedSecurityControl(t *testing.T, ctx context.Context, ss store.St
 	if recovered := update(control); !recovered.SecurityInteractionAllowed || recovered.ProcessedControlSequence != 12 {
 		t.Fatalf("greater healthy control failed recovery: %#v", recovered)
 	}
-	reset := model.NativeSourceReset{Kind: "source_reset", ResetID: model.NewId(), SourceID: control.Sources[0].SourceID, PreviousSourceInstanceID: control.Sources[0].SourceInstanceID, PreviousFinalSequence: control.Sources[0].Sequence, NewSourceInstanceID: fault.Sources[0].SourceInstanceID, Reason: "restart", OccurredAt: time.Now().UTC().Truncate(time.Millisecond)}
+	reset := model.NativeSourceReset{Kind: "source_reset", ResetID: model.NewID(), SourceID: control.Sources[0].SourceID, PreviousSourceInstanceID: control.Sources[0].SourceInstanceID, PreviousFinalSequence: control.Sources[0].Sequence, NewSourceInstanceID: fault.Sources[0].SourceInstanceID, Reason: "restart", OccurredAt: time.Now().UTC().Truncate(time.Millisecond)}
 	reset = nativeResetWithLongTimestamp(t, reset, 40000)
 	control.ControlSequence = 13
 	control.Sources = fault.Sources
@@ -525,9 +525,9 @@ func testProcessedSecurityControl(t *testing.T, ctx context.Context, ss store.St
 	if replay := update(control); !replay.SecurityInteractionAllowed || len(replay.SourceResetReceipts) != 1 {
 		t.Fatalf("reset identity replay refused: %#v", replay)
 	}
-	reset.ResetID = model.NewId()
+	reset.ResetID = model.NewID()
 	reset.PreviousSourceInstanceID = reset.NewSourceInstanceID
-	reset.NewSourceInstanceID = model.NewId()
+	reset.NewSourceInstanceID = model.NewID()
 	control.Sources = append([]model.NativeSourceCoverage{}, control.Sources...)
 	control.Sources[0].SourceInstanceID = reset.NewSourceInstanceID
 	control.SourceResets = []model.NativeSourceReset{reset}
@@ -568,7 +568,7 @@ func testNativeDeliveryGaps(t *testing.T, ctx context.Context, ss store.Store, c
 	}
 	var first *store.NativeDeliveryGapDeclaration
 	for i := int64(0); i < 2; i++ {
-		input := &store.NativeDeliveryGapDeclaration{Access: access, Declaration: model.DeclareDeliveryGaps{DeclarationID: model.NewId(), ExpectedDeclarationRevision: i, AllocatedThroughSequence: (i + 1) * 1024, Ranges: []model.SequenceRange{{First: i*1024 + 1, Last: (i + 1) * 1024}}, Reason: "spool_lost"}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
+		input := &store.NativeDeliveryGapDeclaration{Access: access, Declaration: model.DeclareDeliveryGaps{DeclarationID: model.NewID(), ExpectedDeclarationRevision: i, AllocatedThroughSequence: (i + 1) * 1024, Ranges: []model.SequenceRange{{First: i*1024 + 1, Last: (i + 1) * 1024}}, Reason: "spool_lost"}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		key := fmt.Sprintf("native-gap-%d", i)
 		receipt, err := ss.ExamAttempt().DeclareNativeDeliveryGaps(ctx, input, examCommand(fixture.candidate.ID, store.NativeDeliveryGapsOperation, key, key))
 		requireNoError(t, err)
@@ -604,7 +604,7 @@ func testClosedNativeDelivery(t *testing.T, ctx context.Context, ss store.Store,
 	if closed.Closure.ClosedAt == nil || closed.Closure.KnownAtClose == nil || *closed.Closure.KnownAtClose != 2048 || !closed.Closure.UnknownTail || closed.Closure.UploadExpiresAt.Sub(*closed.Closure.ClosedAt) != 24*time.Hour {
 		t.Fatalf("closure: %#v", closed)
 	}
-	input := &store.NativeDeliveryFinalDeclaration{Access: access, Declaration: model.FinalDeliveryDeclaration{DeclarationID: model.NewId(), ExpectedDeclarationRevision: 2, FinalSequence: 2058}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
+	input := &store.NativeDeliveryFinalDeclaration{Access: access, Declaration: model.FinalDeliveryDeclaration{DeclarationID: model.NewID(), ExpectedDeclarationRevision: 2, FinalSequence: 2058}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	final, err := ss.ExamAttempt().SealNativeDelivery(ctx, input, examCommand(fixture.candidate.ID, store.NativeDeliveryFinalOperation, "native-final", "native-final"))
 	requireNoError(t, err)
 	if final.Closure.FinalSequence == nil || *final.Closure.FinalSequence != 2058 || final.Closure.UnknownTail || final.DeclarationRevision != 3 || !final.Closure.UploadExpiresAt.Equal(*closed.Closure.UploadExpiresAt) {

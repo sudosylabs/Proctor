@@ -127,16 +127,16 @@ func testStudentProgressionCrossPeriod(t *testing.T, ss store.Store) {
 	t.Helper()
 	ctx := context.Background()
 	fixture := saveClassFixture(t, ctx, ss)
-	sourceClass := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "progression-source-"+model.NewId())
-	destinationPeriod := saveAcademicPeriod(t, ctx, ss, fixture.institution.ID.String(), "progression-destination-"+model.NewId(), model.MillisFromTime(fixture.period.EndsAt)+1)
-	destinationClass := saveClass(t, ctx, ss, fixture.level.ID.String(), destinationPeriod.ID.String(), "progression-destination-"+model.NewId())
+	sourceClass := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "progression-source-"+model.NewID())
+	destinationPeriod := saveAcademicPeriod(t, ctx, ss, fixture.institution.ID.String(), "progression-destination-"+model.NewID(), model.MillisFromTime(fixture.period.EndsAt)+1)
+	destinationClass := saveClass(t, ctx, ss, fixture.level.ID.String(), destinationPeriod.ID.String(), "progression-destination-"+model.NewID())
 	actor, student := saveUser(t, ctx, ss), saveUser(t, ctx, ss)
 	effectiveAt := destinationPeriod.StartsAt.Add(time.Second)
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserID: student.ID, Kind: model.AffiliationStudent, StartsAt: fixture.period.StartsAt.Add(-time.Second)})
 	requireNoError(t, err)
 	source, err := ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{ClassID: sourceClass.ID, UserID: student.ID, StartsAt: fixture.period.StartsAt})
 	requireNoError(t, err)
-	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "progression-authority-" + model.NewId(), DisplayName: "Progression Authority",
+	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "progression-authority-" + model.NewID(), DisplayName: "Progression Authority",
 		Permissions: []string{string(model.ActionAcademicProgressionManage), string(model.ActionClassMembersManage)}})
 	requireNoError(t, err)
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: actor.ID, RoleID: authorityRole.ID, ScopeType: model.RoleScopeInstitution,
@@ -245,7 +245,7 @@ func testOnboardingImportAcademicAdministration(t *testing.T, ss store.Store) {
 	institution := saveInstitution(t, ctx, ss)
 	actor, target := saveUser(t, ctx, ss), saveUser(t, ctx, ss)
 	at := model.NowUTC().Add(-time.Minute)
-	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "administration-import-authority-" + model.NewId(), DisplayName: "Administration Import Authority",
+	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "administration-import-authority-" + model.NewID(), DisplayName: "Administration Import Authority",
 		Permissions: []string{string(model.ActionOnboardingBatchManage), string(model.ActionUserManage)}})
 	requireNoError(t, err)
 	authorityBinding, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: actor.ID, RoleID: authorityRole.ID,
@@ -351,13 +351,13 @@ func testOnboardingImportAcademicAdministration(t *testing.T, ss store.Store) {
 func testOnboardingImportTeacherAndRoleNoOps(t *testing.T, ss store.Store) {
 	t.Helper()
 	ctx := context.Background()
-	unit, _ := saveProgrammeParents(t, ctx, ss, "onboarding-cross-kind-"+model.NewId())
+	unit, _ := saveProgrammeParents(t, ctx, ss, "onboarding-cross-kind-"+model.NewID())
 	actor := saveUser(t, ctx, ss)
 	at := model.NowUTC().Add(-time.Minute)
-	targetRole, err := SaveRole(ctx, ss, &model.Role{Name: "onboarding-target-" + model.NewId(), DisplayName: "Onboarding Target",
+	targetRole, err := SaveRole(ctx, ss, &model.Role{Name: "onboarding-target-" + model.NewID(), DisplayName: "Onboarding Target",
 		Permissions: []string{string(model.ActionAcademicUnitView)}})
 	requireNoError(t, err)
-	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "onboarding-authority-" + model.NewId(), DisplayName: "Onboarding Authority",
+	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "onboarding-authority-" + model.NewID(), DisplayName: "Onboarding Authority",
 		Permissions: []string{string(model.ActionOnboardingBatchManage), string(model.ActionInvitationCreate), string(model.ActionAcademicUnitMembersManage),
 			string(model.ActionRoleBindingManage), string(model.ActionAcademicUnitView)}})
 	requireNoError(t, err)
@@ -370,7 +370,7 @@ func testOnboardingImportTeacherAndRoleNoOps(t *testing.T, ss store.Store) {
 		ClientType: session.ClientType, AuthenticatedAt: session.AuthenticatedAt}
 
 	teacherIssue := teacherAcademicUnitInvitationIssueFixture(t, ss, actor, unit, targetRole, at)
-	teacherIssue.Invitation.TargetEmail = "onboarding-teacher-" + model.NewId() + "@example.edu"
+	teacherIssue.Invitation.TargetEmail = "onboarding-teacher-" + model.NewID() + "@example.edu"
 	requireNoError(t, teacherIssue.Invitation.Validate())
 	teacher, err := ss.Invitation().IssueTeacherAcademicUnit(ctx, teacherIssue)
 	requireNoError(t, err)
@@ -391,7 +391,7 @@ func testOnboardingImportTeacherAndRoleNoOps(t *testing.T, ss store.Store) {
 	}
 
 	roleCandidate, err := model.NewScopedRoleInvitation(model.ScopedRoleInvitationInput{ID: model.NewInvitationID(), Purpose: model.InvitationPurposeAcademicUnitRole,
-		TargetEmail: "onboarding-role-" + model.NewId() + "@example.edu", AcademicUnitID: unit.ID, RoleID: targetRole.ID, RoleActions: targetRole.Permissions,
+		TargetEmail: "onboarding-role-" + model.NewID() + "@example.edu", AcademicUnitID: unit.ID, RoleID: targetRole.ID, RoleActions: targetRole.Permissions,
 		IntendedStartsAt: at, InviterUserID: actor.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(),
 		ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: at})
 	requireNoError(t, err)
@@ -694,7 +694,7 @@ func testInvitationBatchCommandIdempotency(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	fixture, class, inviter, issuedAt := invitationAdministrationFixture(t, ctx, ss, "batch-idempotency")
 	issue := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt)
-	issue.Invitation.TargetEmail = "batch-" + model.NewId() + "@example.edu"
+	issue.Invitation.TargetEmail = "batch-" + model.NewID() + "@example.edu"
 	requireNoError(t, issue.Invitation.Validate())
 	issueCommand := invitationTestCommand(inviter.ID, "invitation.student_class.issue.v1", "batch-row-0", "same-issue")
 	created, err := ss.Invitation().IssueStudentClassIdempotently(ctx, issue, issueCommand)
@@ -788,7 +788,7 @@ func testInvitationBatchDuplicateRechecksCurrentInviterAuthority(t *testing.T, s
 	ctx := context.Background()
 	fixture, class, inviter, _, binding, issuedAt := invitationAcceptanceStoreFixture(t, ctx, ss, "batch-duplicate-authority")
 	candidate := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt).Invitation
-	candidate.TargetEmail = "duplicate-authority-" + model.NewId() + "@example.edu"
+	candidate.TargetEmail = "duplicate-authority-" + model.NewID() + "@example.edu"
 	requireNoError(t, candidate.Validate())
 	endedAt := model.GetMillis() - 1_000
 	if _, err := EndRoleBinding(ctx, ss, binding.ID, endedAt); err != nil {
@@ -823,7 +823,7 @@ func testInvitationAdministrationPaginationIsStable(t *testing.T, ss store.Store
 	created := make(map[model.InvitationID]struct{}, 3)
 	for index := 0; index < 3; index++ {
 		issue := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt)
-		issue.Invitation.TargetEmail = "pagination-" + model.NewId() + "@example.edu"
+		issue.Invitation.TargetEmail = "pagination-" + model.NewID() + "@example.edu"
 		requireNoError(t, issue.Invitation.Validate())
 		invitation, err := ss.Invitation().IssueStudentClass(ctx, issue)
 		requireNoError(t, err)
@@ -867,13 +867,13 @@ func testInvitationAdministrationRevokeAndReplaceAreRevisionFenced(t *testing.T,
 	ctx := context.Background()
 	fixture, class, inviter, issuedAt := invitationAdministrationFixture(t, ctx, ss, "revoke-replace-race")
 	issue := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt)
-	issue.Invitation.TargetEmail = "revoke-replace-race-" + model.NewId() + "@example.edu"
+	issue.Invitation.TargetEmail = "revoke-replace-race-" + model.NewID() + "@example.edu"
 	requireNoError(t, issue.Invitation.Validate())
 	current, err := ss.Invitation().IssueStudentClass(ctx, issue)
 	requireNoError(t, err)
 
 	changed, err := model.NewStudentClassInvitation(model.StudentClassInvitationInput{ID: model.NewInvitationID(),
-		TargetEmail: "revoke-replace-winner-" + model.NewId() + "@example.edu", ClassID: class.ID,
+		TargetEmail: "revoke-replace-winner-" + model.NewID() + "@example.edu", ClassID: class.ID,
 		AcademicPeriodID: fixture.period.ID, IntendedStartsAt: fixture.period.StartsAt,
 		IntendedEndsAt: model.OptionalTimeFrom(fixture.period.EndsAt), InviterUserID: inviter.ID,
 		ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(),
@@ -949,7 +949,7 @@ func testInvitationAdministrationResendIsRevisionFenced(t *testing.T, ss store.S
 	ctx := context.Background()
 	fixture, class, inviter, issuedAt := invitationAdministrationFixture(t, ctx, ss, "resend-race")
 	issue := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt)
-	issue.Invitation.TargetEmail = "resend-race-" + model.NewId() + "@example.edu"
+	issue.Invitation.TargetEmail = "resend-race-" + model.NewID() + "@example.edu"
 	requireNoError(t, issue.Invitation.Validate())
 	invitation, err := ss.Invitation().IssueStudentClass(ctx, issue)
 	requireNoError(t, err)
@@ -1005,7 +1005,7 @@ func testInvitationAdministrationLifecycle(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	fixture, class, inviter, issuedAt := invitationAdministrationFixture(t, ctx, ss, "lifecycle")
 	issue := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt)
-	issue.Invitation.TargetEmail = "lifecycle-" + model.NewId() + "@example.edu"
+	issue.Invitation.TargetEmail = "lifecycle-" + model.NewID() + "@example.edu"
 	requireNoError(t, issue.Invitation.Validate())
 	invitation, err := ss.Invitation().IssueStudentClass(ctx, issue)
 	requireNoError(t, err)
@@ -1078,7 +1078,7 @@ func testInvitationAdministrationLifecycle(t *testing.T, ss store.Store) {
 
 	unsentFixture, unsentClass, unsentInviter, unsentAt := invitationAdministrationFixture(t, ctx, ss, "unsent-revoke")
 	unsentIssue := studentClassInvitationIssueFixture(t, ss, unsentInviter, unsentClass, unsentFixture.period, unsentAt)
-	unsentIssue.Invitation.TargetEmail = "unsent-revoke-" + model.NewId() + "@example.edu"
+	unsentIssue.Invitation.TargetEmail = "unsent-revoke-" + model.NewID() + "@example.edu"
 	requireNoError(t, unsentIssue.Invitation.Validate())
 	unsent, err := ss.Invitation().IssueStudentClass(ctx, unsentIssue)
 	requireNoError(t, err)
@@ -1104,7 +1104,7 @@ func testInvitationAdministrationLifecycle(t *testing.T, ss store.Store) {
 
 	replacementFixture, replacementClass, replacementInviter, replacementAt := invitationAdministrationFixture(t, ctx, ss, "replacement")
 	replacementIssue := studentClassInvitationIssueFixture(t, ss, replacementInviter, replacementClass, replacementFixture.period, replacementAt)
-	replacementIssue.Invitation.TargetEmail = "replace-current-" + model.NewId() + "@example.edu"
+	replacementIssue.Invitation.TargetEmail = "replace-current-" + model.NewID() + "@example.edu"
 	requireNoError(t, replacementIssue.Invitation.Validate())
 	current, err := ss.Invitation().IssueStudentClass(ctx, replacementIssue)
 	requireNoError(t, err)
@@ -1129,14 +1129,14 @@ func testInvitationAdministrationLifecycle(t *testing.T, ss store.Store) {
 		t.Fatalf("unchanged replacement delivery = %v", err)
 	}
 	replacementTargetClass := saveClass(t, ctx, ss, replacementFixture.level.ID.String(), replacementFixture.period.ID.String(), "invitation-admin-replacement-target")
-	targetRole, err := SaveRole(ctx, ss, &model.Role{Name: "invitation-replacement-target-" + model.NewId(), DisplayName: "Invitation replacement target",
+	targetRole, err := SaveRole(ctx, ss, &model.Role{Name: "invitation-replacement-target-" + model.NewID(), DisplayName: "Invitation replacement target",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionClassMembersManage)}})
 	requireNoError(t, err)
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: replacementInviter.ID, RoleID: targetRole.ID,
 		ScopeType: model.RoleScopeClass, ScopeID: replacementTargetClass.ID.String(), StartsAt: replacementAt.Add(-time.Second)})
 	requireNoError(t, err)
 	candidate, err := model.NewStudentClassInvitation(model.StudentClassInvitationInput{ID: model.NewInvitationID(),
-		TargetEmail: "replacement-" + model.NewId() + "@example.edu", ClassID: replacementTargetClass.ID,
+		TargetEmail: "replacement-" + model.NewID() + "@example.edu", ClassID: replacementTargetClass.ID,
 		AcademicPeriodID: replacementFixture.period.ID, IntendedStartsAt: replacementFixture.period.StartsAt,
 		IntendedEndsAt: model.OptionalTimeFrom(replacementFixture.period.EndsAt), InviterUserID: replacementInviter.ID,
 		ScopeType: model.RoleScopeClass, ScopeID: replacementTargetClass.ID.String(),
@@ -1180,7 +1180,7 @@ func invitationAdministrationFixture(t *testing.T, ctx context.Context, ss store
 	fixture := saveClassFixture(t, ctx, ss)
 	class := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "invitation-admin-"+suffix)
 	inviter := saveUser(t, ctx, ss)
-	role, err := SaveRole(ctx, ss, &model.Role{Name: "invitation-admin-" + suffix + "-" + model.NewId(), DisplayName: "Invitation administrator",
+	role, err := SaveRole(ctx, ss, &model.Role{Name: "invitation-admin-" + suffix + "-" + model.NewID(), DisplayName: "Invitation administrator",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionInvitationManage), string(model.ActionClassMembersManage), string(model.ActionOnboardingBatchManage)}})
 	requireNoError(t, err)
 	at := model.NowUTC().Add(-time.Minute)
@@ -1259,23 +1259,23 @@ func testScopedRoleAcceptSerializesWithInviterBindingEnd(t *testing.T, ss store.
 
 func scopedRoleInvitationRaceFixture(t *testing.T, ctx context.Context, ss store.Store, suffix string) (*model.Invitation, *model.RoleBinding, *model.Role, *store.ScopedRoleInvitationAcceptance) {
 	t.Helper()
-	unit, _ := saveProgrammeParents(t, ctx, ss, "scoped-role-race-"+suffix+model.NewId())
+	unit, _ := saveProgrammeParents(t, ctx, ss, "scoped-role-race-"+suffix+model.NewID())
 	inviter, existing := saveUser(t, ctx, ss), saveUser(t, ctx, ss)
 	at := model.NowUTC().Add(-time.Minute)
-	issuerRole, err := SaveRole(ctx, ss, &model.Role{Name: "scoped-role-race-issuer-" + model.NewId(), DisplayName: "Scoped Role Race Issuer",
+	issuerRole, err := SaveRole(ctx, ss, &model.Role{Name: "scoped-role-race-issuer-" + model.NewID(), DisplayName: "Scoped Role Race Issuer",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionRoleBindingManage), string(model.ActionAcademicAuditView)}})
 	requireNoError(t, err)
 	issuerBinding, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: inviter.ID, RoleID: issuerRole.ID,
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: at.Add(-time.Second)})
 	requireNoError(t, err)
-	targetRole, err := SaveRole(ctx, ss, &model.Role{Name: "scoped-role-race-target-" + model.NewId(), DisplayName: "Scoped Role Race Target",
+	targetRole, err := SaveRole(ctx, ss, &model.Role{Name: "scoped-role-race-target-" + model.NewID(), DisplayName: "Scoped Role Race Target",
 		Permissions: []string{string(model.ActionAcademicAuditView)}})
 	requireNoError(t, err)
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: inviter.ID, RoleID: targetRole.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: unit.InstitutionID.String(), StartsAt: at.Add(-time.Second)})
 	requireNoError(t, err)
 	candidate, err := model.NewScopedRoleInvitation(model.ScopedRoleInvitationInput{ID: model.NewInvitationID(),
-		Purpose: model.InvitationPurposeAcademicUnitRole, TargetEmail: "scoped-role-race-" + model.NewId() + "@example.edu",
+		Purpose: model.InvitationPurposeAcademicUnitRole, TargetEmail: "scoped-role-race-" + model.NewID() + "@example.edu",
 		AcademicUnitID: unit.ID, RoleID: targetRole.ID, RoleActions: targetRole.Permissions, IntendedStartsAt: at,
 		InviterUserID: inviter.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(),
 		ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: at})
@@ -1289,20 +1289,20 @@ func scopedRoleInvitationRaceFixture(t *testing.T, ctx context.Context, ss store
 
 func testInstitutionRoleInvitationExistingUserAtomicAndReplaySafe(t *testing.T, ss store.Store) {
 	ctx := context.Background()
-	unit, _ := saveProgrammeParents(t, ctx, ss, "institution-role-"+model.NewId())
+	unit, _ := saveProgrammeParents(t, ctx, ss, "institution-role-"+model.NewID())
 	inviter, existing := saveUser(t, ctx, ss), saveUser(t, ctx, ss)
 	issuedAt := model.NowUTC().Add(-time.Minute)
-	issuerRole, err := SaveRole(ctx, ss, &model.Role{Name: "institution-role-issuer-" + model.NewId(), DisplayName: "Institution Role Issuer",
+	issuerRole, err := SaveRole(ctx, ss, &model.Role{Name: "institution-role-issuer-" + model.NewID(), DisplayName: "Institution Role Issuer",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionRoleBindingManage), string(model.ActionAuditView)}})
 	requireNoError(t, err)
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: inviter.ID, RoleID: issuerRole.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: unit.InstitutionID.String(), StartsAt: issuedAt.Add(-time.Second)})
 	requireNoError(t, err)
-	targetRole, err := SaveRole(ctx, ss, &model.Role{Name: "institution-role-target-" + model.NewId(), DisplayName: "Institution Role Target",
+	targetRole, err := SaveRole(ctx, ss, &model.Role{Name: "institution-role-target-" + model.NewID(), DisplayName: "Institution Role Target",
 		Permissions: []string{string(model.ActionAuditView)}})
 	requireNoError(t, err)
 	invitation, err := model.NewScopedRoleInvitation(model.ScopedRoleInvitationInput{ID: model.NewInvitationID(),
-		Purpose: model.InvitationPurposeInstitutionRole, TargetEmail: "institution-invited-" + model.NewId() + "@example.edu",
+		Purpose: model.InvitationPurposeInstitutionRole, TargetEmail: "institution-invited-" + model.NewID() + "@example.edu",
 		RoleID: targetRole.ID, RoleActions: targetRole.Permissions, IntendedStartsAt: issuedAt,
 		InviterUserID: inviter.ID, ScopeType: model.RoleScopeInstitution, ScopeID: unit.InstitutionID.String(),
 		ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: issuedAt})
@@ -1357,20 +1357,20 @@ func testInstitutionRoleInvitationExistingUserAtomicAndReplaySafe(t *testing.T, 
 
 func testScopedRoleInvitationExistingUserAtomicAndReplaySafe(t *testing.T, ss store.Store) {
 	ctx := context.Background()
-	unit, _ := saveProgrammeParents(t, ctx, ss, "scoped-role-"+model.NewId())
+	unit, _ := saveProgrammeParents(t, ctx, ss, "scoped-role-"+model.NewID())
 	inviter, existing, other := saveUser(t, ctx, ss), saveUser(t, ctx, ss), saveUser(t, ctx, ss)
 	issuedAt := model.NowUTC().Add(-time.Minute)
-	issuerRole, err := SaveRole(ctx, ss, &model.Role{Name: "scoped-role-issuer-" + model.NewId(), DisplayName: "Scoped Role Issuer",
+	issuerRole, err := SaveRole(ctx, ss, &model.Role{Name: "scoped-role-issuer-" + model.NewID(), DisplayName: "Scoped Role Issuer",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionRoleBindingManage), string(model.ActionAcademicAuditView)}})
 	requireNoError(t, err)
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: inviter.ID, RoleID: issuerRole.ID,
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: issuedAt.Add(-time.Second)})
 	requireNoError(t, err)
-	targetRole, err := SaveRole(ctx, ss, &model.Role{Name: "scoped-role-target-" + model.NewId(), DisplayName: "Scoped Role Target",
+	targetRole, err := SaveRole(ctx, ss, &model.Role{Name: "scoped-role-target-" + model.NewID(), DisplayName: "Scoped Role Target",
 		Permissions: []string{string(model.ActionAcademicAuditView)}})
 	requireNoError(t, err)
 	invitation, err := model.NewScopedRoleInvitation(model.ScopedRoleInvitationInput{ID: model.NewInvitationID(),
-		Purpose: model.InvitationPurposeAcademicUnitRole, TargetEmail: "invited-" + model.NewId() + "@example.edu",
+		Purpose: model.InvitationPurposeAcademicUnitRole, TargetEmail: "invited-" + model.NewID() + "@example.edu",
 		AcademicUnitID: unit.ID, RoleID: targetRole.ID, RoleActions: targetRole.Permissions, IntendedStartsAt: issuedAt,
 		InviterUserID: inviter.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(),
 		ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: issuedAt})
@@ -1598,7 +1598,7 @@ func testInvitationIssueStudentClassTerminalizesElapsedPendingInvitation(
 	period := saveAcademicPeriod(t, ctx, ss, unit.InstitutionID.String(), "elapsed-period", model.GetMillis()-86_400_000)
 	class := saveClass(t, ctx, ss, level.ID.String(), period.ID.String(), "elapsed-class")
 	inviter := saveUser(t, ctx, ss)
-	role, err := SaveRole(ctx, ss, &model.Role{Name: "elapsed-inviter-" + model.NewId(), DisplayName: "Elapsed Inviter",
+	role, err := SaveRole(ctx, ss, &model.Role{Name: "elapsed-inviter-" + model.NewID(), DisplayName: "Elapsed Inviter",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionClassMembersManage)}})
 	requireNoError(t, err)
 	issuedAt := model.NowUTC()
@@ -1606,7 +1606,7 @@ func testInvitationIssueStudentClassTerminalizesElapsedPendingInvitation(
 		ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(), StartsAt: issuedAt.Add(-time.Second)})
 	requireNoError(t, err)
 	first := studentClassInvitationIssueFixture(t, ss, inviter, class, period, issuedAt)
-	first.Invitation.TargetEmail = "elapsed-" + model.NewId() + "@example.edu"
+	first.Invitation.TargetEmail = "elapsed-" + model.NewID() + "@example.edu"
 	first.Invitation.IntendedStartsAt = issuedAt
 	// The window must outlast claiming and starting the delivery on a loaded host.
 	first.Invitation.IntendedEndsAt = model.OptionalTimeFrom(model.NowUTC().Add(6 * time.Second))
@@ -1661,7 +1661,7 @@ func testInvitationAcceptStudentClassResolvesExistingUser(t *testing.T, ss store
 	ctx := context.Background()
 	fixture, class, inviter, _, _, issuedAt := invitationAcceptanceStoreFixture(t, ctx, ss, "existing-user")
 	existing := newUser()
-	existing.Email = "existing-invited-" + model.NewId() + "@example.edu"
+	existing.Email = "existing-invited-" + model.NewID() + "@example.edu"
 	existing.EmailVerified = false
 	existing, err := createUser(t, ctx, ss, existing)
 	requireNoError(t, err)
@@ -1687,8 +1687,8 @@ func testInvitationAcceptStudentClassResolvesExistingUser(t *testing.T, ss store
 		ID: transaction.ID, HandleHash: model.HashToken(handle), BrowserProofHash: model.HashToken(proof),
 	}
 	otherIssue := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, model.NowUTC())
-	otherIssue.Invitation.TargetEmail = "cross-proof-" + model.NewId() + "@example.edu"
-	otherIssue.Invitation.Suggestions.Username = "cross-proof-" + model.NewId()
+	otherIssue.Invitation.TargetEmail = "cross-proof-" + model.NewID() + "@example.edu"
+	otherIssue.Invitation.Suggestions.Username = "cross-proof-" + model.NewID()
 	otherInvitation, err := ss.Invitation().IssueStudentClass(ctx, otherIssue)
 	requireNoError(t, err)
 	otherAcceptance := studentClassInvitationAcceptanceFixture(t, otherInvitation, model.NowUTC())
@@ -1780,7 +1780,7 @@ func testBrowserInvitationTransactionCreation(t *testing.T, ss store.Store, prob
 	issueInvitation := func(t *testing.T, targetClass *model.Class, period *model.AcademicPeriod, at time.Time, intendedEnd model.OptionalTime) *model.Invitation {
 		t.Helper()
 		input := studentClassInvitationIssueFixture(t, ss, inviter, targetClass, period, at)
-		unique := strings.ToLower(model.NewId())
+		unique := strings.ToLower(model.NewID())
 		input.Invitation.TargetEmail = "browser-" + unique + "@example.edu"
 		input.Invitation.Suggestions.Username = "browser-" + unique
 		input.Invitation.IntendedEndsAt = intendedEnd
@@ -1866,8 +1866,8 @@ func testBrowserInvitationTransactionCreation(t *testing.T, ss store.Store, prob
 		}
 	})
 
-	activePeriod := saveAcademicPeriod(t, ctx, ss, fixture.institution.ID.String(), "browser-handoff-"+model.NewId(), model.MillisFromTime(model.NowUTC().Add(-time.Hour)))
-	activeClass := saveClass(t, ctx, ss, fixture.level.ID.String(), activePeriod.ID.String(), "browser-handoff-"+model.NewId())
+	activePeriod := saveAcademicPeriod(t, ctx, ss, fixture.institution.ID.String(), "browser-handoff-"+model.NewID(), model.MillisFromTime(model.NowUTC().Add(-time.Hour)))
+	activeClass := saveClass(t, ctx, ss, fixture.level.ID.String(), activePeriod.ID.String(), "browser-handoff-"+model.NewID())
 	_, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: inviter.ID, RoleID: role.ID, ScopeType: model.RoleScopeClass, ScopeID: activeClass.ID.String(),
 		StartsAt: activePeriod.StartsAt,
@@ -1970,7 +1970,7 @@ func invitationAcceptanceStoreFixture(t *testing.T, ctx context.Context, ss stor
 	fixture := saveClassFixture(t, ctx, ss)
 	class := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "invitation-"+suffix)
 	inviter := saveUser(t, ctx, ss)
-	role, err := SaveRole(ctx, ss, &model.Role{Name: "invite-" + suffix + "-" + model.NewId(), DisplayName: "Student Inviter",
+	role, err := SaveRole(ctx, ss, &model.Role{Name: "invite-" + suffix + "-" + model.NewID(), DisplayName: "Student Inviter",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionClassMembersManage)}})
 	requireNoError(t, err)
 	issuedAt := model.NowUTC().Add(-time.Minute)
@@ -1986,7 +1986,7 @@ func testInvitationIssueStudentClassAtomic(t *testing.T, ss store.Store) {
 	class := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "invitation-class")
 	inviter := saveUser(t, ctx, ss)
 	role, err := SaveRole(ctx, ss, &model.Role{
-		Name: "student-inviter-" + model.NewId(), DisplayName: "Student Inviter",
+		Name: "student-inviter-" + model.NewID(), DisplayName: "Student Inviter",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionClassMembersManage)},
 	})
 	requireNoError(t, err)
@@ -2087,7 +2087,7 @@ func testInvitationAcceptStudentClassAtomicAndReplaySafe(t *testing.T, ss store.
 	class := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "invitation-accept-class")
 	inviter := saveUser(t, ctx, ss)
 	role, err := SaveRole(ctx, ss, &model.Role{
-		Name: "accept-inviter-" + model.NewId(), DisplayName: "Accept Inviter",
+		Name: "accept-inviter-" + model.NewID(), DisplayName: "Accept Inviter",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionClassMembersManage)},
 	})
 	requireNoError(t, err)

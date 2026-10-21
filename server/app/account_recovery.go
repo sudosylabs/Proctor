@@ -357,7 +357,7 @@ func (s *accountTokenService) CompletePasswordReset(
 	s.effects.SessionsRevoked(
 		ctx,
 		result.User.ID.String(),
-		sessionIds(result.RevokedSessions),
+		sessionIDs(result.RevokedSessions),
 		result.RevokedAccessHashes,
 	)
 	return result.User, nil

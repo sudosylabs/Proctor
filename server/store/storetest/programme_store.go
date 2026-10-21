@@ -45,7 +45,7 @@ func testProgrammeStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	unit, _ := saveProgrammeParents(t, ctx, ss, "audited-programme-parent")
 	createAttempt := saveProgrammeAuditAttempt(t, ctx, ss, unit.ID.String())
 	candidate := &model.Programme{AcademicUnitID: unit.ID, Name: "audited-programme", DisplayName: "Audited Programme"}
-	candidate.PrepareCreate(model.ProgrammeID(model.NewId()), model.NowUTC())
+	candidate.PrepareCreate(model.ProgrammeID(model.NewID()), model.NowUTC())
 	created, err := ss.Programme().Create(ctx, &store.ProgrammeCreation{Programme: candidate, AuditEventID: createAttempt.ID, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	completed, err := ss.Audit().Get(ctx, createAttempt.ID)
@@ -54,7 +54,7 @@ func testProgrammeStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 		t.Fatalf("create audit status = %q", completed.Status)
 	}
 	rolledBackCreate := &model.Programme{AcademicUnitID: unit.ID, Name: "rolled-back-create", DisplayName: "Rolled Back Create"}
-	rolledBackCreate.PrepareCreate(model.ProgrammeID(model.NewId()), model.NowUTC())
+	rolledBackCreate.PrepareCreate(model.ProgrammeID(model.NewID()), model.NowUTC())
 	if _, err = ss.Programme().Create(ctx, &store.ProgrammeCreation{Programme: rolledBackCreate, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}); err == nil {
 		t.Fatal("Create() succeeded without its audit attempt")
 	}
@@ -260,7 +260,7 @@ func testProgrammeStoreUpdate(t *testing.T, ss store.Store) {
 	}
 
 	missing := *updated
-	missing.ID = model.ProgrammeID(model.NewId())
+	missing.ID = model.ProgrammeID(model.NewID())
 	_, err = UpdateProgramme(ctx, ss, &missing)
 	if !store.IsNotFound(err) {
 		t.Fatalf("Update(missing) error = %v, want not found", err)
@@ -284,7 +284,7 @@ func testProgrammeStoreRejectUnknownAcademicUnit(t *testing.T, ss store.Store) {
 	saveInstitution(t, ctx, ss)
 
 	_, err := SaveProgramme(ctx, ss, &model.Programme{
-		AcademicUnitID: model.AcademicUnitID(model.NewId()),
+		AcademicUnitID: model.AcademicUnitID(model.NewID()),
 		Name:           "computer-science",
 		DisplayName:    "Computer Science",
 	})

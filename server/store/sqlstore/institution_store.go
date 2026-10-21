@@ -80,7 +80,7 @@ func (s SQLInstitutionStore) Save(ctx context.Context, institution *model.Instit
 		return nil, store.NewErrInvalidInput("institution", "id", institution.ID.String())
 	}
 
-	id, err := model.ParseInstitutionID(model.NewId())
+	id, err := model.ParseInstitutionID(model.NewID())
 	if err != nil {
 		return nil, err
 	}

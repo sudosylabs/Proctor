@@ -16,9 +16,9 @@ import (
 
 type createRoleBindingRequest struct {
 	UserID    string              `json:"user_id"`
-	RoleId    string              `json:"role_id"`
+	RoleID    string              `json:"role_id"`
 	ScopeType model.RoleScopeType `json:"scope_type"`
-	ScopeId   string              `json:"scope_id"`
+	ScopeID   string              `json:"scope_id"`
 	StartAt   string              `json:"start_at"`
 	EndAt     string              `json:"end_at,omitempty"`
 }
@@ -105,8 +105,8 @@ func (m roleBindingResourceModule) create(request operationRequest) (operationRe
 		request.context,
 		request.invocation(),
 		application.CreateRoleBindingCommand{
-			UserID: input.UserID, RoleID: input.RoleId, ScopeType: input.ScopeType,
-			ScopeID: input.ScopeId, StartAt: startAt, EndAt: endAt,
+			UserID: input.UserID, RoleID: input.RoleID, ScopeType: input.ScopeType,
+			ScopeID: input.ScopeID, StartAt: startAt, EndAt: endAt,
 		},
 	)
 	if err != nil {

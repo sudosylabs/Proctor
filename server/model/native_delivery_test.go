@@ -17,8 +17,8 @@ import (
 
 func TestNativeDeliveryClosedRecords(t *testing.T) {
 	at := time.Date(2026, 9, 8, 0, 0, 0, 0, time.UTC)
-	occurrence := NativeOccurrence{Kind: "occurrence", OccurrenceID: NewId(), ConditionID: "capture.active", DetectorID: "capture", DetectorVersion: 1, CapabilityID: "capture", Mode: NativeClaimObserve, Status: "opened", FirstObservedAt: at, LastConfirmedAt: at, RepeatCount: 1, Certainty: "complete", SourceRanges: []NativeSourceRange{{SourceID: NativeSourceCapture, SourceInstanceID: NewId(), FirstSequence: 0, LastSequence: 1}}}
-	batch := NativeSecurityBatch{StreamID: NewId(), BatchSequence: 1, ParticipationID: NewAttemptParticipationID(), Generation: 1, SecuritySessionID: NewId(), PolicyDigest: SHA256Fingerprint([]byte("policy")), ApplicationReleaseID: "release", MatrixID: "matrix", Records: []NativeRecord{{Occurrence: &occurrence}}}
+	occurrence := NativeOccurrence{Kind: "occurrence", OccurrenceID: NewID(), ConditionID: "capture.active", DetectorID: "capture", DetectorVersion: 1, CapabilityID: "capture", Mode: NativeClaimObserve, Status: "opened", FirstObservedAt: at, LastConfirmedAt: at, RepeatCount: 1, Certainty: "complete", SourceRanges: []NativeSourceRange{{SourceID: NativeSourceCapture, SourceInstanceID: NewID(), FirstSequence: 0, LastSequence: 1}}}
+	batch := NativeSecurityBatch{StreamID: NewID(), BatchSequence: 1, ParticipationID: NewAttemptParticipationID(), Generation: 1, SecuritySessionID: NewID(), PolicyDigest: SHA256Fingerprint([]byte("policy")), ApplicationReleaseID: "release", MatrixID: "matrix", Records: []NativeRecord{{Occurrence: &occurrence}}}
 	raw, err := batch.Canonical()
 	if err != nil {
 		t.Fatal(err)
@@ -49,7 +49,7 @@ func TestNativeDeliveryClosedRecords(t *testing.T) {
 			t.Fatal("accepted non-contract batch")
 		}
 	}
-	gap := NativeSourceGap{Kind: "source_gap", SourceID: NativeSourceCapture, SourceInstanceID: NewId(), Reason: "overflow", OccurredAt: at}
+	gap := NativeSourceGap{Kind: "source_gap", SourceID: NativeSourceCapture, SourceInstanceID: NewID(), Reason: "overflow", OccurredAt: at}
 	if (NativeRecord{Occurrence: &occurrence, Gap: &gap}).Validate() == nil {
 		t.Fatal("accepted ambiguous union")
 	}
@@ -85,7 +85,7 @@ func TestUnretainedDeliverySummaryPreservesUncertainty(t *testing.T) {
 
 func TestNativeOccurrenceContinuity(t *testing.T) {
 	at := time.Date(2026, 9, 8, 0, 0, 0, 0, time.UTC)
-	opened := NativeOccurrence{Kind: "occurrence", OccurrenceID: NewId(), ConditionID: "capture.active", DetectorID: "capture", DetectorVersion: 1, CapabilityID: "capture", Mode: NativeClaimObserve, Status: "opened", FirstObservedAt: at, LastConfirmedAt: at, RepeatCount: 1, Certainty: "complete", SourceRanges: []NativeSourceRange{{SourceID: NativeSourceCapture, SourceInstanceID: NewId(), FirstSequence: 1, LastSequence: 2}}}
+	opened := NativeOccurrence{Kind: "occurrence", OccurrenceID: NewID(), ConditionID: "capture.active", DetectorID: "capture", DetectorVersion: 1, CapabilityID: "capture", Mode: NativeClaimObserve, Status: "opened", FirstObservedAt: at, LastConfirmedAt: at, RepeatCount: 1, Certainty: "complete", SourceRanges: []NativeSourceRange{{SourceID: NativeSourceCapture, SourceInstanceID: NewID(), FirstSequence: 1, LastSequence: 2}}}
 	prior, err := AdvanceNativeOccurrence(nil, opened, false)
 	if err != nil {
 		t.Fatal(err)
@@ -101,7 +101,7 @@ func TestNativeOccurrenceContinuity(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, mutate := range []func(*NativeOccurrence){
-		func(o *NativeOccurrence) { o.SourceRanges[0].SourceInstanceID = NewId() },
+		func(o *NativeOccurrence) { o.SourceRanges[0].SourceInstanceID = NewID() },
 		func(o *NativeOccurrence) { o.SourceRanges[0].FirstSequence++ },
 		func(o *NativeOccurrence) { o.SourceRanges[0].LastSequence = 1 },
 		func(o *NativeOccurrence) { o.RepeatCount = 1 },

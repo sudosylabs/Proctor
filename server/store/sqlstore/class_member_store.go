@@ -912,7 +912,7 @@ func (s SQLClassMemberStore) SeedEnroll(
 	if member == nil || !member.ID.IsZero() || !member.ClassID.IsValid() || !member.UserID.IsValid() {
 		return nil, store.NewErrInvalidInput("class_member", "value", nil)
 	}
-	id, err := model.ParseClassMemberID(model.NewId())
+	id, err := model.ParseClassMemberID(model.NewID())
 	if err != nil {
 		return nil, err
 	}

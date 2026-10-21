@@ -83,14 +83,14 @@ func TestMutationAttemptBeginFailurePreventsMutation(t *testing.T) {
 	events := []string{}
 	beginErr := apperror.New("audit.unavailable")
 	auditor := &mutationAttemptAuditorFake{
-		events: &events, beginID: model.NewId(), beginErr: beginErr,
+		events: &events, beginID: model.NewID(), beginErr: beginErr,
 	}
 	mutated := false
 	_, err := runAuditedMutation(
 		context.Background(), auditor,
 		mutationAttempt{
 			Action:    model.ActionAcademicUnitManage,
-			Resource:  model.Resource{Type: model.ResourceAcademicUnit, ID: model.NewId()},
+			Resource:  model.Resource{Type: model.ResourceAcademicUnit, ID: model.NewID()},
 			Operation: "create",
 		},
 		time.Now,
@@ -115,9 +115,9 @@ func TestMutationAttemptUsesIndependentAuditScope(t *testing.T) {
 	t.Parallel()
 
 	events := []string{}
-	auditID := model.NewId()
-	scopeID := model.NewId()
-	resource := model.Resource{Type: model.ResourceAcademicPeriod, ID: model.NewId()}
+	auditID := model.NewID()
+	scopeID := model.NewID()
+	resource := model.Resource{Type: model.ResourceAcademicPeriod, ID: model.NewID()}
 	auditor := &mutationAttemptAuditorFake{events: &events, beginID: auditID}
 	got, err := runAuditedMutation(
 		context.Background(), auditor,
@@ -148,7 +148,7 @@ func TestMutationAttemptMapsStoreFailureBeforeCompletingAttempt(t *testing.T) {
 	t.Parallel()
 
 	events := []string{}
-	auditID := model.NewId()
+	auditID := model.NewID()
 	storeErr := errors.New("store failed")
 	mapped := apperror.New("programme.conflict").Wrap(storeErr)
 	auditor := &mutationAttemptAuditorFake{events: &events, beginID: auditID}
@@ -157,7 +157,7 @@ func TestMutationAttemptMapsStoreFailureBeforeCompletingAttempt(t *testing.T) {
 		context.Background(), auditor,
 		mutationAttempt{
 			Action:    model.ActionAcademicUnitManage,
-			Resource:  model.Resource{Type: model.ResourceAcademicUnit, ID: model.NewId()},
+			Resource:  model.Resource{Type: model.ResourceAcademicUnit, ID: model.NewID()},
 			Operation: "patch",
 		},
 		func() time.Time { return at },
@@ -194,13 +194,13 @@ func TestMutationAttemptFailureCompletionErrorJoinsOriginalFailure(t *testing.T)
 	storeErr := errors.New("store failed")
 	auditErr := apperror.New("audit.unavailable")
 	auditor := &mutationAttemptAuditorFake{
-		events: &events, beginID: model.NewId(), failErr: auditErr,
+		events: &events, beginID: model.NewID(), failErr: auditErr,
 	}
 	_, err := runAuditedMutation(
 		context.Background(), auditor,
 		mutationAttempt{
 			Action:    model.ActionAcademicUnitManage,
-			Resource:  model.Resource{Type: model.ResourceAcademicUnit, ID: model.NewId()},
+			Resource:  model.Resource{Type: model.ResourceAcademicUnit, ID: model.NewID()},
 			Operation: "archive",
 		},
 		time.Now,
@@ -226,12 +226,12 @@ func TestMutationAttemptRejectsInvalidMappedError(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			events := []string{}
-			auditor := &mutationAttemptAuditorFake{events: &events, beginID: model.NewId()}
+			auditor := &mutationAttemptAuditorFake{events: &events, beginID: model.NewID()}
 			_, err := runAuditedMutation(
 				context.Background(), auditor,
 				mutationAttempt{
 					Action:    model.ActionAcademicUnitManage,
-					Resource:  model.Resource{Type: model.ResourceAcademicUnit, ID: model.NewId()},
+					Resource:  model.Resource{Type: model.ResourceAcademicUnit, ID: model.NewID()},
 					Operation: "create",
 				},
 				time.Now,
@@ -255,14 +255,14 @@ func TestMutationAttemptPreservesMappedErrorWrapper(t *testing.T) {
 	t.Parallel()
 
 	events := []string{}
-	auditor := &mutationAttemptAuditorFake{events: &events, beginID: model.NewId()}
+	auditor := &mutationAttemptAuditorFake{events: &events, beginID: model.NewID()}
 	appFailure := apperror.New("role.conflict")
 	mapped := fmt.Errorf("persistence context: %w", appFailure)
 	_, err := runAuditedMutation(
 		context.Background(), auditor,
 		mutationAttempt{
 			Action:    model.ActionRoleManage,
-			Resource:  model.Resource{Type: model.ResourceInstitution, ID: model.NewId()},
+			Resource:  model.Resource{Type: model.ResourceInstitution, ID: model.NewID()},
 			Operation: "patch",
 		},
 		time.Now,
@@ -283,8 +283,8 @@ func TestMutationAttemptReturnsSuccessWithoutCompletingIt(t *testing.T) {
 	t.Parallel()
 
 	events := []string{}
-	auditID := model.NewId()
-	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: model.NewId()}
+	auditID := model.NewID()
+	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: model.NewID()}
 	value := map[string]any{"name": "computer-science"}
 	prior := map[string]any{"name": "computing"}
 	invocation := Invocation{}

@@ -34,10 +34,10 @@ func timeAuthorityStudentInvitation(t *testing.T, ctx context.Context, ss store.
 	fixture, class, inviter, issuedAt := invitationAdministrationFixture(t, ctx, ss, "ta-"+suffix)
 	issue := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt)
 	if targetEmail == "" {
-		targetEmail = "time-authority-" + model.NewId() + "@example.edu"
+		targetEmail = "time-authority-" + model.NewID() + "@example.edu"
 	}
 	issue.Invitation.TargetEmail = targetEmail
-	issue.Invitation.Suggestions.Username = "time-authority-" + model.NewId()
+	issue.Invitation.Suggestions.Username = "time-authority-" + model.NewID()
 	requireNoError(t, issue.Invitation.Validate())
 	invitation, err := ss.Invitation().IssueStudentClass(ctx, issue)
 	requireNoError(t, err)
@@ -80,7 +80,7 @@ func RunTimeAuthorityInvitationTransitions(t *testing.T, ss store.Store, probe T
 	t.Run("AcceptStudentClassVerifiesLeadingExistingUser", func(t *testing.T) {
 		ctx := context.Background()
 		existing := newUser()
-		existing.Email = "time-authority-existing-" + model.NewId() + "@example.edu"
+		existing.Email = "time-authority-existing-" + model.NewID() + "@example.edu"
 		existing.EmailVerified = false
 		existing, err := createUser(t, ctx, ss, existing)
 		requireNoError(t, err)
@@ -155,7 +155,7 @@ func RunTimeAuthorityOnboardingImportRowOutcome(t *testing.T, ss store.Store) {
 	principal := model.Principal{UserID: actor.ID, SessionID: session.ID, CredentialID: model.PrincipalCredentialID(credentials[0].ID),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: session.ClientType, AuthenticatedAt: session.AuthenticatedAt}
-	email := "time-authority-onboarding-" + model.NewId() + "@example.edu"
+	email := "time-authority-onboarding-" + model.NewID() + "@example.edu"
 	importID := createExecutingStudentOnboardingImport(t, ctx, ss, actor, principal, class, model.NowUTC().Add(timeAuthorityNodeLead), email)
 	executing, err := ss.OnboardingImport().GetOnboardingImport(ctx, importID)
 	requireNoError(t, err)

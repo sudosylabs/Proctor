@@ -17,7 +17,7 @@ import (
 func TestEventValidateForPublish(t *testing.T) {
 	t.Parallel()
 
-	unitID := model.NewId()
+	unitID := model.NewID()
 	valid := &Event{
 		Event:  "academic_unit_created",
 		Action: model.ActionAcademicUnitView,
@@ -32,7 +32,7 @@ func TestEventValidateForPublish(t *testing.T) {
 
 	userTargeted := &Event{
 		Event:  "user.notification",
-		UserID: model.NewId(),
+		UserID: model.NewID(),
 	}
 	if err := userTargeted.ValidateForPublish(); err != nil {
 		t.Fatalf("user-targeted event: %v", err)
@@ -42,7 +42,7 @@ func TestEventValidateForPublish(t *testing.T) {
 		t.Fatal("expected missing target error")
 	}
 	if err := (&Event{
-		Event: "x", UserID: model.NewId(), Data: json.RawMessage(`{`),
+		Event: "x", UserID: model.NewID(), Data: json.RawMessage(`{`),
 	}).ValidateForPublish(); err == nil {
 		t.Fatal("expected invalid data error")
 	}
@@ -55,7 +55,7 @@ func TestSubscriptionIsValid(t *testing.T) {
 		Action: model.ActionInstitutionManage,
 		Resource: Resource{
 			Type: model.ResourceInstitution,
-			ID:   model.NewId(),
+			ID:   model.NewID(),
 		},
 	}
 	if !subscription.IsValid() {
@@ -77,7 +77,7 @@ func TestEventResourceWireShapeRemainsSnakeCase(t *testing.T) {
 		Action: model.ActionAcademicUnitView,
 		Resource: Resource{
 			Type: model.ResourceAcademicUnit,
-			ID:   model.NewId(),
+			ID:   model.NewID(),
 		},
 	}
 	encoded, err := json.Marshal(event)

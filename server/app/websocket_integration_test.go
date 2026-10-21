@@ -105,7 +105,7 @@ func TestWebSocketIntegration(t *testing.T) {
 		t.Fatalf("cross-origin WebSocket response = %#v, %v", response, err)
 	}
 
-	resyncURL := socketURL + "?connection_id=" + model.NewId() + "&sequence_number=0"
+	resyncURL := socketURL + "?connection_id=" + model.NewID() + "&sequence_number=0"
 	resyncConnection, response, err := gwebsocket.DefaultDialer.Dial(resyncURL, headers)
 	if err != nil {
 		t.Fatalf("WebSocket resync dial = %v, response = %#v", err, response)
@@ -133,15 +133,15 @@ func TestWebSocketIntegration(t *testing.T) {
 	hello := readWebSocketEvent(t, connection)
 	if hello.Event != "hello" ||
 		hello.Sequence != 1 ||
-		!model.IsValidOpaqueID(hello.Id) {
+		!model.IsValidOpaqueID(hello.ID) {
 		t.Fatalf("hello event = %#v", hello)
 	}
 	var helloData websocket.Hello
 	if err := json.Unmarshal(hello.Data, &helloData); err != nil {
 		t.Fatal(err)
 	}
-	if !model.IsValidOpaqueID(helloData.ConnectionId) ||
-		helloData.NodeId != helper.ConfigStore.Get().Cluster.NodeID ||
+	if !model.IsValidOpaqueID(helloData.ConnectionID) ||
+		helloData.NodeID != helper.ConfigStore.Get().Cluster.NodeID ||
 		helloData.Resumed {
 		t.Fatalf("hello data = %#v", helloData)
 	}
@@ -192,7 +192,7 @@ func TestWebSocketIntegration(t *testing.T) {
 	_, _, _ = connection.ReadMessage()
 	_ = connection.Close()
 	resumeURL := socketURL + "?connection_id=" +
-		url.QueryEscape(helloData.ConnectionId) + "&sequence_number=1"
+		url.QueryEscape(helloData.ConnectionID) + "&sequence_number=1"
 	var resumed *gwebsocket.Conn
 	for attempt := 0; attempt < 20; attempt++ {
 		candidate, candidateResponse, dialErr := gwebsocket.DefaultDialer.Dial(resumeURL, headers)
@@ -218,7 +218,7 @@ func TestWebSocketIntegration(t *testing.T) {
 	}
 	if resumedHello.Event != "hello" ||
 		resumedHello.Sequence != 3 || !resumedData.Resumed ||
-		resumedData.ConnectionId != helloData.ConnectionId {
+		resumedData.ConnectionID != helloData.ConnectionID {
 		t.Fatalf("resumed hello = %#v, data = %#v", resumedHello, resumedData)
 	}
 

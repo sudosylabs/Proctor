@@ -100,7 +100,7 @@ func (f *realtimeSittingViewFake) AuthorizeView(_ context.Context, invocation In
 
 func testExamPrincipal(userID model.UserID) model.Principal {
 	return model.Principal{
-		UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+		UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientWeb,
 		AuthenticatedAt: time.Now().UTC(),

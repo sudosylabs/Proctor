@@ -74,8 +74,8 @@ func provePostgreSQLReferencedRenditionsSurvivePurge(t *testing.T, filesystem vf
 	proveCustomProfilePicturePipelineMatchesMemory(t, content)
 	now := model.NowUTC()
 	user := &model.User{
-		Username: "purge-storage-" + model.NewId(),
-		Email:    model.NewId() + "@example.test",
+		Username: "purge-storage-" + model.NewID(),
+		Email:    model.NewID() + "@example.test",
 	}
 	user.PrepareCreate(model.NewUserID(), now)
 	command, err := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommandV1{UserID: user.ID})

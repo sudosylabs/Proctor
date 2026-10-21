@@ -39,7 +39,7 @@ func TestAdministratorRecoveryStore(t *testing.T, ss store.Store, probes ...Admi
 
 	installed, err := ss.Installation().Bootstrap(ctx, testInstallationBootstrap(451))
 	requireNoError(t, err)
-	liveLeaseID := model.NewId()
+	liveLeaseID := model.NewID()
 	liveLease, err := ss.ServingNodeLease().Upsert(ctx, &store.ServingNodeLeaseClaim{
 		NodeID: "serving-node-a", LeaseID: liveLeaseID, Lifetime: 30 * time.Second,
 	})
@@ -66,7 +66,7 @@ func TestAdministratorRecoveryStore(t *testing.T, ss store.Store, probes ...Admi
 		t.Fatalf("live-node rejection left pending recovery = %#v", noPendingAfterLiveNode)
 	}
 	requireNoError(t, ss.ServingNodeLease().Delete(ctx, "serving-node-a", liveLeaseID))
-	staleLeaseID := model.NewId()
+	staleLeaseID := model.NewID()
 	_, err = ss.ServingNodeLease().Upsert(ctx, &store.ServingNodeLeaseClaim{
 		NodeID: "stale-serving-node", LeaseID: staleLeaseID, Lifetime: store.ServingNodeLeaseMinimumLifetime,
 	})
@@ -77,7 +77,7 @@ func TestAdministratorRecoveryStore(t *testing.T, ss store.Store, probes ...Admi
 	}); !store.IsConflict(err) {
 		t.Fatalf("Upsert(expired process incarnation) error = %v, want conflict", err)
 	}
-	restartedLeaseID := model.NewId()
+	restartedLeaseID := model.NewID()
 	if _, err = ss.ServingNodeLease().Upsert(ctx, &store.ServingNodeLeaseClaim{
 		NodeID: "stale-serving-node", LeaseID: restartedLeaseID, Lifetime: 30 * time.Second,
 	}); err != nil {
@@ -245,7 +245,7 @@ func TestAdministratorRecoveryStore(t *testing.T, ss store.Store, probes ...Admi
 	}
 	if len(probes) != 0 && probes[0].HoldServingNodeLeaseFence != nil && probes[0].WaitForBlockedTransactions != nil {
 		blockerPID, release := probes[0].HoldServingNodeLeaseFence(t, ctx)
-		leaseID := model.NewId()
+		leaseID := model.NewID()
 		leaseDone := make(chan error, 1)
 		go func() {
 			_, leaseErr := ss.ServingNodeLease().Upsert(ctx, &store.ServingNodeLeaseClaim{

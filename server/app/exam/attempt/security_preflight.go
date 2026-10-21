@@ -84,7 +84,7 @@ func (s *Service) PrepareExamSecurityPreflight(ctx context.Context, invocation i
 	if err != nil {
 		return nil, err
 	}
-	result, err := s.deps.Persistence.PrepareSecurityPreflight(ctx, &store.SecurityPreflightPrepare{Access: access, AttemptID: command.AttemptID, PreflightID: model.NewId(), Challenge: model.NewCredentialToken(), NativeRegistryDigest: command.NativeRegistryDigest, SourceManifestDigest: command.SourceManifestDigest, ConfigurationManifestFingerprint: command.ConfigurationManifestFingerprint, AuditEventID: audit, AuditAt: model.MillisFromTime(s.deps.Now())}, idempotency)
+	result, err := s.deps.Persistence.PrepareSecurityPreflight(ctx, &store.SecurityPreflightPrepare{Access: access, AttemptID: command.AttemptID, PreflightID: model.NewID(), Challenge: model.NewCredentialToken(), NativeRegistryDigest: command.NativeRegistryDigest, SourceManifestDigest: command.SourceManifestDigest, ConfigurationManifestFingerprint: command.ConfigurationManifestFingerprint, AuditEventID: audit, AuditAt: model.MillisFromTime(s.deps.Now())}, idempotency)
 	if err != nil {
 		return nil, s.failAudit(ctx, audit, storeError(securityPreflightStoreErrors, err))
 	}

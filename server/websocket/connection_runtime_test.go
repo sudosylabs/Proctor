@@ -167,7 +167,7 @@ func TestConnectionRuntimeUsesDeterministicLivenessAndValidation(t *testing.T) {
 	principal := model.Principal{
 		UserID:         model.NewUserID(),
 		SessionID:      model.NewSessionID(),
-		CredentialID:   model.PrincipalCredentialID(model.NewId()),
+		CredentialID:   model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess,
 	}
 	runtime := &connectionRuntime{

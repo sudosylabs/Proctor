@@ -101,14 +101,14 @@ func accessPolicyFixture(t *testing.T) (*accessPolicyService, *accessPolicyStore
 		DurableMail: true,
 	}}
 	effects := &accessPolicyEffectsFake{}
-	audit := &accessPolicyAuditFake{beginID: model.NewId()}
+	audit := &accessPolicyAuditFake{beginID: model.NewID()}
 	service, err := newAccessPolicyService(persistence, &accessPolicyInstitutionFake{institution}, &accessPolicyAuthorizationFake{}, capabilities,
 		audit, effects, accessPolicyEffectFailuresFake{}, "https://proctor.example.edu", time.Minute,
 		func() time.Time { return at.Add(time.Minute) })
 	if err != nil {
 		t.Fatal(err)
 	}
-	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor,
 		AuthenticatedAt: at, MFACompletedAt: model.OptionalTimeFrom(at.Add(30 * time.Second)), ClientType: model.SessionClientWeb}
 	return service, persistence, capabilities, effects, audit, NewInvocation(principal, model.RequestMetadata{RequestID: "request-1"})

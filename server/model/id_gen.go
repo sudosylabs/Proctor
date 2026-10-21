@@ -10,190 +10,190 @@
 package model
 
 // NewInstitutionID returns a freshly generated institution identifier.
-func NewInstitutionID() InstitutionID { return InstitutionID(NewId()) }
+func NewInstitutionID() InstitutionID { return InstitutionID(NewID()) }
 
 // NewAccessPolicyID returns a freshly generated access-policy identifier.
-func NewAccessPolicyID() AccessPolicyID { return AccessPolicyID(NewId()) }
+func NewAccessPolicyID() AccessPolicyID { return AccessPolicyID(NewID()) }
 
 // NewAcademicUnitID returns a freshly generated academic-unit identifier.
-func NewAcademicUnitID() AcademicUnitID { return AcademicUnitID(NewId()) }
+func NewAcademicUnitID() AcademicUnitID { return AcademicUnitID(NewID()) }
 
 // NewProgrammeID returns a freshly generated programme identifier.
-func NewProgrammeID() ProgrammeID { return ProgrammeID(NewId()) }
+func NewProgrammeID() ProgrammeID { return ProgrammeID(NewID()) }
 
 // NewProgrammeLevelID returns a freshly generated programme-level identifier.
-func NewProgrammeLevelID() ProgrammeLevelID { return ProgrammeLevelID(NewId()) }
+func NewProgrammeLevelID() ProgrammeLevelID { return ProgrammeLevelID(NewID()) }
 
 // NewClassID returns a freshly generated class identifier.
-func NewClassID() ClassID { return ClassID(NewId()) }
+func NewClassID() ClassID { return ClassID(NewID()) }
 
 // NewAcademicPeriodID returns a freshly generated academic-period identifier.
-func NewAcademicPeriodID() AcademicPeriodID { return AcademicPeriodID(NewId()) }
+func NewAcademicPeriodID() AcademicPeriodID { return AcademicPeriodID(NewID()) }
 
 // NewExamID returns a freshly generated exam identifier.
-func NewExamID() ExamID { return ExamID(NewId()) }
+func NewExamID() ExamID { return ExamID(NewID()) }
 
 // NewExamRevisionID returns a freshly generated exam-revision identifier.
-func NewExamRevisionID() ExamRevisionID { return ExamRevisionID(NewId()) }
+func NewExamRevisionID() ExamRevisionID { return ExamRevisionID(NewID()) }
 
 // NewExamSittingID returns a freshly generated exam-sitting identifier.
-func NewExamSittingID() ExamSittingID { return ExamSittingID(NewId()) }
+func NewExamSittingID() ExamSittingID { return ExamSittingID(NewID()) }
 
 // NewExamResourceID returns a freshly generated exam-resource identifier.
-func NewExamResourceID() ExamResourceID { return ExamResourceID(NewId()) }
+func NewExamResourceID() ExamResourceID { return ExamResourceID(NewID()) }
 
 // NewExamCorrectionResourceStageID returns a freshly generated exam-correction-resource-stage identifier.
 func NewExamCorrectionResourceStageID() ExamCorrectionResourceStageID {
-	return ExamCorrectionResourceStageID(NewId())
+	return ExamCorrectionResourceStageID(NewID())
 }
 
 // NewExamAttemptID returns a freshly generated exam-attempt identifier.
-func NewExamAttemptID() ExamAttemptID { return ExamAttemptID(NewId()) }
+func NewExamAttemptID() ExamAttemptID { return ExamAttemptID(NewID()) }
 
 // NewExamAttemptWorkspaceID returns a freshly generated exam-attempt-workspace identifier.
-func NewExamAttemptWorkspaceID() ExamAttemptWorkspaceID { return ExamAttemptWorkspaceID(NewId()) }
+func NewExamAttemptWorkspaceID() ExamAttemptWorkspaceID { return ExamAttemptWorkspaceID(NewID()) }
 
 // NewSubmissionID returns a freshly generated submission identifier.
-func NewSubmissionID() SubmissionID { return SubmissionID(NewId()) }
+func NewSubmissionID() SubmissionID { return SubmissionID(NewID()) }
 
 // NewRetentionHoldID returns a freshly generated retention hold identifier.
-func NewRetentionHoldID() RetentionHoldID { return RetentionHoldID(NewId()) }
+func NewRetentionHoldID() RetentionHoldID { return RetentionHoldID(NewID()) }
 
 // NewRetentionPreviewID returns a freshly generated retention preview identifier.
-func NewRetentionPreviewID() RetentionPreviewID { return RetentionPreviewID(NewId()) }
+func NewRetentionPreviewID() RetentionPreviewID { return RetentionPreviewID(NewID()) }
 
 // NewRetentionRetirementID returns a freshly generated retention retirement identifier.
-func NewRetentionRetirementID() RetentionRetirementID { return RetentionRetirementID(NewId()) }
+func NewRetentionRetirementID() RetentionRetirementID { return RetentionRetirementID(NewID()) }
 
 // NewExamExportID returns a freshly generated examination export identifier.
-func NewExamExportID() ExamExportID { return ExamExportID(NewId()) }
+func NewExamExportID() ExamExportID { return ExamExportID(NewID()) }
 
 // NewAttemptParticipationID returns a freshly generated attempt-participation identifier.
-func NewAttemptParticipationID() AttemptParticipationID { return AttemptParticipationID(NewId()) }
+func NewAttemptParticipationID() AttemptParticipationID { return AttemptParticipationID(NewID()) }
 
 // NewAttemptConnectionID returns a freshly generated attempt-connection identifier.
-func NewAttemptConnectionID() AttemptConnectionID { return AttemptConnectionID(NewId()) }
+func NewAttemptConnectionID() AttemptConnectionID { return AttemptConnectionID(NewID()) }
 
 // NewFocusLossSignalID returns a freshly generated focus-loss-signal identifier.
-func NewFocusLossSignalID() FocusLossSignalID { return FocusLossSignalID(NewId()) }
+func NewFocusLossSignalID() FocusLossSignalID { return FocusLossSignalID(NewID()) }
 
 // NewIntegrityEvidenceID returns a freshly generated integrity-evidence identifier.
-func NewIntegrityEvidenceID() IntegrityEvidenceID { return IntegrityEvidenceID(NewId()) }
+func NewIntegrityEvidenceID() IntegrityEvidenceID { return IntegrityEvidenceID(NewID()) }
 
 // NewIntegrityFlagID returns a freshly generated integrity-flag identifier.
-func NewIntegrityFlagID() IntegrityFlagID { return IntegrityFlagID(NewId()) }
+func NewIntegrityFlagID() IntegrityFlagID { return IntegrityFlagID(NewID()) }
 
 // NewIntegrityReviewDecisionID returns a freshly generated integrity-review-decision identifier.
 func NewIntegrityReviewDecisionID() IntegrityReviewDecisionID {
-	return IntegrityReviewDecisionID(NewId())
+	return IntegrityReviewDecisionID(NewID())
 }
 
 // NewSubmissionReviewID returns a freshly generated submission-review identifier.
-func NewSubmissionReviewID() SubmissionReviewID { return SubmissionReviewID(NewId()) }
+func NewSubmissionReviewID() SubmissionReviewID { return SubmissionReviewID(NewID()) }
 
 // NewIntegrityDiscrepancyID returns a freshly generated integrity-discrepancy identifier.
-func NewIntegrityDiscrepancyID() IntegrityDiscrepancyID { return IntegrityDiscrepancyID(NewId()) }
+func NewIntegrityDiscrepancyID() IntegrityDiscrepancyID { return IntegrityDiscrepancyID(NewID()) }
 
 // NewAttemptSuspensionID returns a freshly generated attempt-suspension identifier.
-func NewAttemptSuspensionID() AttemptSuspensionID { return AttemptSuspensionID(NewId()) }
+func NewAttemptSuspensionID() AttemptSuspensionID { return AttemptSuspensionID(NewID()) }
 
 // NewAttemptWorkspaceEntryID returns a freshly generated attempt-workspace-entry identifier.
-func NewAttemptWorkspaceEntryID() AttemptWorkspaceEntryID { return AttemptWorkspaceEntryID(NewId()) }
+func NewAttemptWorkspaceEntryID() AttemptWorkspaceEntryID { return AttemptWorkspaceEntryID(NewID()) }
 
 // NewAttemptWorkspaceObjectID returns a freshly generated attempt-workspace-object identifier.
-func NewAttemptWorkspaceObjectID() AttemptWorkspaceObjectID { return AttemptWorkspaceObjectID(NewId()) }
+func NewAttemptWorkspaceObjectID() AttemptWorkspaceObjectID { return AttemptWorkspaceObjectID(NewID()) }
 
 // NewStarterWorkspaceEntryID returns a freshly generated starter-workspace-entry identifier.
-func NewStarterWorkspaceEntryID() StarterWorkspaceEntryID { return StarterWorkspaceEntryID(NewId()) }
+func NewStarterWorkspaceEntryID() StarterWorkspaceEntryID { return StarterWorkspaceEntryID(NewID()) }
 
 // NewStarterWorkspaceObjectID returns a freshly generated starter-workspace-object identifier.
-func NewStarterWorkspaceObjectID() StarterWorkspaceObjectID { return StarterWorkspaceObjectID(NewId()) }
+func NewStarterWorkspaceObjectID() StarterWorkspaceObjectID { return StarterWorkspaceObjectID(NewID()) }
 
 // NewUserID returns a freshly generated user identifier.
-func NewUserID() UserID { return UserID(NewId()) }
+func NewUserID() UserID { return UserID(NewID()) }
 
 // NewSessionID returns a freshly generated session identifier.
-func NewSessionID() SessionID { return SessionID(NewId()) }
+func NewSessionID() SessionID { return SessionID(NewID()) }
 
 // NewDesktopRegistrationID returns a freshly generated desktop-registration identifier.
-func NewDesktopRegistrationID() DesktopRegistrationID { return DesktopRegistrationID(NewId()) }
+func NewDesktopRegistrationID() DesktopRegistrationID { return DesktopRegistrationID(NewID()) }
 
 // NewSessionCredentialID returns a freshly generated session-credential identifier.
-func NewSessionCredentialID() SessionCredentialID { return SessionCredentialID(NewId()) }
+func NewSessionCredentialID() SessionCredentialID { return SessionCredentialID(NewID()) }
 
 // NewRoleID returns a freshly generated role identifier.
-func NewRoleID() RoleID { return RoleID(NewId()) }
+func NewRoleID() RoleID { return RoleID(NewID()) }
 
 // NewRoleBindingID returns a freshly generated role-binding identifier.
-func NewRoleBindingID() RoleBindingID { return RoleBindingID(NewId()) }
+func NewRoleBindingID() RoleBindingID { return RoleBindingID(NewID()) }
 
 // NewAffiliationID returns a freshly generated affiliation identifier.
-func NewAffiliationID() AffiliationID { return AffiliationID(NewId()) }
+func NewAffiliationID() AffiliationID { return AffiliationID(NewID()) }
 
 // NewAcademicUnitMemberID returns a freshly generated academic-unit-member identifier.
-func NewAcademicUnitMemberID() AcademicUnitMemberID { return AcademicUnitMemberID(NewId()) }
+func NewAcademicUnitMemberID() AcademicUnitMemberID { return AcademicUnitMemberID(NewID()) }
 
 // NewClassMemberID returns a freshly generated class-member identifier.
-func NewClassMemberID() ClassMemberID { return ClassMemberID(NewId()) }
+func NewClassMemberID() ClassMemberID { return ClassMemberID(NewID()) }
 
 // NewExternalIdentityID returns a freshly generated external-identity identifier.
-func NewExternalIdentityID() ExternalIdentityID { return ExternalIdentityID(NewId()) }
+func NewExternalIdentityID() ExternalIdentityID { return ExternalIdentityID(NewID()) }
 
 // NewPasswordCredentialID returns a freshly generated password-credential identifier.
-func NewPasswordCredentialID() PasswordCredentialID { return PasswordCredentialID(NewId()) }
+func NewPasswordCredentialID() PasswordCredentialID { return PasswordCredentialID(NewID()) }
 
 // NewPersonalAccessTokenID returns a freshly generated personal-access-token identifier.
-func NewPersonalAccessTokenID() PersonalAccessTokenID { return PersonalAccessTokenID(NewId()) }
+func NewPersonalAccessTokenID() PersonalAccessTokenID { return PersonalAccessTokenID(NewID()) }
 
 // NewPersonalAccessTokenPreparationID returns a freshly generated personal-access-token-preparation identifier.
 func NewPersonalAccessTokenPreparationID() PersonalAccessTokenPreparationID {
-	return PersonalAccessTokenPreparationID(NewId())
+	return PersonalAccessTokenPreparationID(NewID())
 }
 
 // NewUserTokenID returns a freshly generated user-token identifier.
-func NewUserTokenID() UserTokenID { return UserTokenID(NewId()) }
+func NewUserTokenID() UserTokenID { return UserTokenID(NewID()) }
 
 // NewInvitationID returns a freshly generated invitation identifier.
-func NewInvitationID() InvitationID { return InvitationID(NewId()) }
+func NewInvitationID() InvitationID { return InvitationID(NewID()) }
 
 // NewMFACredentialID returns a freshly generated MFA credential identifier.
-func NewMFACredentialID() MFACredentialID { return MFACredentialID(NewId()) }
+func NewMFACredentialID() MFACredentialID { return MFACredentialID(NewID()) }
 
 // NewMFARecoveryCodeID returns a freshly generated MFA recovery-code identifier.
-func NewMFARecoveryCodeID() MFARecoveryCodeID { return MFARecoveryCodeID(NewId()) }
+func NewMFARecoveryCodeID() MFARecoveryCodeID { return MFARecoveryCodeID(NewID()) }
 
 // NewAuditEventID returns a freshly generated audit-event identifier.
-func NewAuditEventID() AuditEventID { return AuditEventID(NewId()) }
+func NewAuditEventID() AuditEventID { return AuditEventID(NewID()) }
 
 // NewMailOccurrenceID returns a freshly generated mail-occurrence identifier.
-func NewMailOccurrenceID() MailOccurrenceID { return MailOccurrenceID(NewId()) }
+func NewMailOccurrenceID() MailOccurrenceID { return MailOccurrenceID(NewID()) }
 
 // NewMailDeliveryID returns a freshly generated mail-delivery identifier.
-func NewMailDeliveryID() MailDeliveryID { return MailDeliveryID(NewId()) }
+func NewMailDeliveryID() MailDeliveryID { return MailDeliveryID(NewID()) }
 
 // NewExternalLoginStateID returns a freshly generated external-login-state identifier.
-func NewExternalLoginStateID() ExternalLoginStateID { return ExternalLoginStateID(NewId()) }
+func NewExternalLoginStateID() ExternalLoginStateID { return ExternalLoginStateID(NewID()) }
 
 // NewBrowserAuthenticationTransactionID returns a freshly generated browser-authentication-transaction identifier.
 func NewBrowserAuthenticationTransactionID() BrowserAuthenticationTransactionID {
-	return BrowserAuthenticationTransactionID(NewId())
+	return BrowserAuthenticationTransactionID(NewID())
 }
 
 // NewFileEntryID returns a freshly generated file-entry identifier.
-func NewFileEntryID() FileEntryID { return FileEntryID(NewId()) }
+func NewFileEntryID() FileEntryID { return FileEntryID(NewID()) }
 
 // NewFileRevisionID returns a freshly generated file-revision identifier.
-func NewFileRevisionID() FileRevisionID { return FileRevisionID(NewId()) }
+func NewFileRevisionID() FileRevisionID { return FileRevisionID(NewID()) }
 
 // NewFileRenditionID returns a freshly generated file-rendition identifier.
-func NewFileRenditionID() FileRenditionID { return FileRenditionID(NewId()) }
+func NewFileRenditionID() FileRenditionID { return FileRenditionID(NewID()) }
 
 // NewUploadLeaseID returns a freshly generated upload-lease identifier.
-func NewUploadLeaseID() UploadLeaseID { return UploadLeaseID(NewId()) }
+func NewUploadLeaseID() UploadLeaseID { return UploadLeaseID(NewID()) }
 
 // NewAdministratorRecoveryRecordID returns a freshly generated administrator-recovery-record identifier.
 func NewAdministratorRecoveryRecordID() AdministratorRecoveryRecordID {
-	return AdministratorRecoveryRecordID(NewId())
+	return AdministratorRecoveryRecordID(NewID())
 }
 
 // ParseInstitutionID validates and converts the shared identifier representation.

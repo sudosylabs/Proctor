@@ -375,7 +375,7 @@ func PrepareExamSittingInvitationLockOrderFixture(t *testing.T, ss store.Store) 
 	t.Helper()
 	ctx := context.Background()
 	fixture := newExamSittingFixture(t, ctx, ss)
-	role, err := SaveRole(ctx, ss, &model.Role{Name: "sitting-inviter-" + model.NewId(), DisplayName: "Sitting inviter",
+	role, err := SaveRole(ctx, ss, &model.Role{Name: "sitting-inviter-" + model.NewID(), DisplayName: "Sitting inviter",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionClassMembersManage)}})
 	requireNoError(t, err)
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: fixture.actor.ID, RoleID: role.ID,

@@ -33,7 +33,7 @@ type WorkspaceContentVersion string
 var workspaceContentVersionPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{26}$`)
 
 func NewWorkspaceContentVersion() WorkspaceContentVersion {
-	return WorkspaceContentVersion(NewId())
+	return WorkspaceContentVersion(NewID())
 }
 
 func ParseWorkspaceContentVersion(value string) (WorkspaceContentVersion, error) {

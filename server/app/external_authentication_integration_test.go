@@ -692,7 +692,7 @@ func seedExternalAdmissionInvitation(
 	if err != nil {
 		t.Fatal(err)
 	}
-	role, err := storetest.SaveRole(ctx, persistence, &model.Role{Name: "external-inviter-" + model.NewId(),
+	role, err := storetest.SaveRole(ctx, persistence, &model.Role{Name: "external-inviter-" + model.NewID(),
 		DisplayName: "External Invitation Manager",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionClassMembersManage)}})
 	if err != nil {

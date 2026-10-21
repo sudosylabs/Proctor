@@ -89,7 +89,7 @@ func (s SQLPersonalAccessTokenStore) PrepareMutation(ctx context.Context, input 
 				return nil, translateError("personal_access_token", input.TokenID.String(), err)
 			}
 		}
-		id := model.NewId()
+		id := model.NewID()
 		expiresAt := at.Add(input.Lifetime)
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO personal_access_token_mutation_preparations (

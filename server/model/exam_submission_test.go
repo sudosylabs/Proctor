@@ -19,31 +19,31 @@ func TestNewExamSubmissionSealsCanonicalManifestAndIntegrity(t *testing.T) {
 
 	at := time.Date(2026, time.August, 15, 12, 30, 0, 0, time.FixedZone("offset", 2*60*60))
 	directory := ExamSubmissionManifestEntry{
-		EntryID: AttemptWorkspaceEntryID(strings.Repeat("b", IdLength)),
+		EntryID: AttemptWorkspaceEntryID(strings.Repeat("b", IDLength)),
 		Kind:    StarterWorkspaceEntryDirectory,
 		Path:    "cmd",
 	}
 	starter := ExamSubmissionManifestEntry{
-		EntryID:         AttemptWorkspaceEntryID(strings.Repeat("d", IdLength)),
+		EntryID:         AttemptWorkspaceEntryID(strings.Repeat("d", IDLength)),
 		Kind:            StarterWorkspaceEntryFile,
 		Path:            "cmd/main.go",
-		ContentVersion:  WorkspaceContentVersion(strings.Repeat("f", IdLength)),
+		ContentVersion:  WorkspaceContentVersion(strings.Repeat("f", IDLength)),
 		MediaType:       "text/x-go",
 		SizeBytes:       12,
 		SHA256:          strings.Repeat("a", 64),
 		StorageOrigin:   AttemptWorkspaceStorageStarter,
-		StarterObjectID: StarterWorkspaceObjectID(strings.Repeat("g", IdLength)),
+		StarterObjectID: StarterWorkspaceObjectID(strings.Repeat("g", IDLength)),
 	}
 	attempt := ExamSubmissionManifestEntry{
-		EntryID:         AttemptWorkspaceEntryID(strings.Repeat("c", IdLength)),
+		EntryID:         AttemptWorkspaceEntryID(strings.Repeat("c", IDLength)),
 		Kind:            StarterWorkspaceEntryFile,
 		Path:            "answer.txt",
-		ContentVersion:  WorkspaceContentVersion(strings.Repeat("e", IdLength)),
+		ContentVersion:  WorkspaceContentVersion(strings.Repeat("e", IDLength)),
 		MediaType:       "text/plain",
 		SizeBytes:       7,
 		SHA256:          strings.Repeat("9", 64),
 		StorageOrigin:   AttemptWorkspaceStorageAttempt,
-		AttemptObjectID: AttemptWorkspaceObjectID(strings.Repeat("h", IdLength)),
+		AttemptObjectID: AttemptWorkspaceObjectID(strings.Repeat("h", IDLength)),
 	}
 	input := []ExamSubmissionManifestEntry{starter, directory, attempt}
 	manifest, err := NewExamSubmissionManifest(41, input)
@@ -68,9 +68,9 @@ func TestNewExamSubmissionSealsCanonicalManifestAndIntegrity(t *testing.T) {
 	}
 
 	submission, err := NewExamSubmission(ExamSubmissionSpecification{
-		ID: modelSubmissionID("j"), AttemptID: ExamAttemptID(strings.Repeat("k", IdLength)),
+		ID: modelSubmissionID("j"), AttemptID: ExamAttemptID(strings.Repeat("k", IDLength)),
 		ExamRevisionID: NewExamRevisionID(),
-		WorkspaceID:    ExamAttemptWorkspaceID(strings.Repeat("m", IdLength)), Manifest: manifest,
+		WorkspaceID:    ExamAttemptWorkspaceID(strings.Repeat("m", IDLength)), Manifest: manifest,
 		FinalFocusLossSequence: 9, UnresolvedIntegrityCount: 2, Provenance: ExamSubmissionCandidateSubmitted, SubmittedAt: at,
 		BrowserActivity: BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1},
 	})
@@ -158,9 +158,9 @@ func TestExamSubmissionManifestLengthFramesVariableFields(t *testing.T) {
 
 	base := ExamSubmissionManifestEntry{
 		EntryID: modelAttemptWorkspaceEntryID("b"), Kind: StarterWorkspaceEntryFile,
-		ContentVersion: WorkspaceContentVersion(strings.Repeat("c", IdLength)), SizeBytes: 1,
+		ContentVersion: WorkspaceContentVersion(strings.Repeat("c", IDLength)), SizeBytes: 1,
 		SHA256: strings.Repeat("a", 64), StorageOrigin: AttemptWorkspaceStorageAttempt,
-		AttemptObjectID: AttemptWorkspaceObjectID(strings.Repeat("d", IdLength)),
+		AttemptObjectID: AttemptWorkspaceObjectID(strings.Repeat("d", IDLength)),
 	}
 	left, right := base, base
 	left.Path, left.MediaType = "a", "bc"
@@ -183,9 +183,9 @@ func TestExamSubmissionManifestRejectsMutationAndAmbiguousOrigin(t *testing.T) {
 
 	entry := ExamSubmissionManifestEntry{
 		EntryID: modelAttemptWorkspaceEntryID("b"), Kind: StarterWorkspaceEntryFile, Path: "answer.txt",
-		ContentVersion: WorkspaceContentVersion(strings.Repeat("c", IdLength)), MediaType: "text/plain", SizeBytes: 1,
+		ContentVersion: WorkspaceContentVersion(strings.Repeat("c", IDLength)), MediaType: "text/plain", SizeBytes: 1,
 		SHA256: strings.Repeat("a", 64), StorageOrigin: AttemptWorkspaceStorageAttempt,
-		AttemptObjectID: AttemptWorkspaceObjectID(strings.Repeat("d", IdLength)),
+		AttemptObjectID: AttemptWorkspaceObjectID(strings.Repeat("d", IDLength)),
 	}
 	manifest, err := NewExamSubmissionManifest(1, []ExamSubmissionManifestEntry{entry})
 	if err != nil {
@@ -431,9 +431,9 @@ func TestEndExamAttemptByManagerSealsUnresolvedStatesWithoutJudgment(t *testing.
 }
 
 func modelSubmissionID(character string) SubmissionID {
-	return SubmissionID(strings.Repeat(character, IdLength))
+	return SubmissionID(strings.Repeat(character, IDLength))
 }
 
 func modelAttemptWorkspaceEntryID(character string) AttemptWorkspaceEntryID {
-	return AttemptWorkspaceEntryID(strings.Repeat(character, IdLength))
+	return AttemptWorkspaceEntryID(strings.Repeat(character, IDLength))
 }

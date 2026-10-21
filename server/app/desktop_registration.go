@@ -99,7 +99,7 @@ func (s *desktopRegistrationService) RevokeDesktopRegistration(
 	}
 	if !result.AlreadyRevoked && len(result.Sessions) > 0 {
 		s.effects.SessionsRevoked(
-			ctx, principal.UserID.String(), sessionIds(result.Sessions), result.TokenHashes,
+			ctx, principal.UserID.String(), sessionIDs(result.Sessions), result.TokenHashes,
 		)
 	}
 	return nil

@@ -76,7 +76,7 @@ type ExternalAuthenticationCompletion struct {
 // a trusted provider adapter. Subject is opaque and must only be persisted in
 // ExternalIdentity; it must never be returned, logged, or audited.
 type ExternalAuthenticationAssertion struct {
-	ProviderId             string
+	ProviderID             string
 	Subject                string
 	Username               string
 	Email                  string
@@ -246,7 +246,7 @@ func (s *ExternalLoginState) Validate() error {
 			details,
 		)
 	}
-	if len(s.DeviceID) > SessionDeviceIdMaxLength ||
+	if len(s.DeviceID) > SessionDeviceIDMaxLength ||
 		utf8.RuneCountInString(s.DeviceName) > SessionDeviceNameMaxRunes {
 		return invalidModelError(
 			where,

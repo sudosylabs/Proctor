@@ -198,7 +198,7 @@ func TestProviderConnectionCallbackLinksOnlyTransactionUserWithoutSession(t *tes
 				t.Fatal(err)
 			}
 			issuer := &providerConnectionSessionIssuerFake{}
-			provider := providerConnectionProvider{state: stateToken, assertion: &model.ExternalAuthenticationAssertion{ProviderId: "campus", Subject: "opaque-subject-never-exposed"}}
+			provider := providerConnectionProvider{state: stateToken, assertion: &model.ExternalAuthenticationAssertion{ProviderID: "campus", Subject: "opaque-subject-never-exposed"}}
 			service := &externalAuthenticationService{registry: externalProviderSourceFake{provider: provider}, loginStates: states,
 				institutions: providerConnectionInstitutionStoreFake{institution: institution}, identities: identities,
 				accessPolicy: allowAllAuthenticationAccessPolicy(), authentication: issuer,
@@ -267,7 +267,7 @@ func TestOrdinaryExternalAuthenticationDoesNotPrepareProvisioningOutsideAutoProv
 				t.Fatal(err)
 			}
 			provider := admissionModeProvider{providerConnectionProvider: providerConnectionProvider{
-				state: stateToken, assertion: &model.ExternalAuthenticationAssertion{ProviderId: "campus", Subject: "opaque-subject",
+				state: stateToken, assertion: &model.ExternalAuthenticationAssertion{ProviderID: "campus", Subject: "opaque-subject",
 					Username: "eligible-user", Email: "eligible@example.edu"}}, autoProvision: true}
 			service := &externalAuthenticationService{registry: externalProviderSourceFake{provider: provider},
 				loginStates:  &externalLoginStateStoreFake{get: state, consumeResult: state, storeNow: databaseNow},
@@ -313,7 +313,7 @@ func TestInvitationAdmissionDelegatesExactProofWithoutCreatingOrdinarySession(t 
 		t.Fatal(err)
 	}
 	provider := admissionModeProvider{providerConnectionProvider: providerConnectionProvider{state: stateToken,
-		assertion: &model.ExternalAuthenticationAssertion{ProviderId: "campus", Subject: "opaque-subject",
+		assertion: &model.ExternalAuthenticationAssertion{ProviderID: "campus", Subject: "opaque-subject",
 			Username: "invited-user", Email: " Invited@Example.EDU ", EmailVerified: true}}, autoProvision: false}
 	service := &externalAuthenticationService{registry: externalProviderSourceFake{provider: provider},
 		loginStates:  &externalLoginStateStoreFake{get: state, consumeResult: state, storeNow: databaseNow},
@@ -380,7 +380,7 @@ func TestInvitationAdmissionCallbackRejectsWhenGloballyDisabledAfterStart(t *tes
 	provider := admissionModeProvider{providerConnectionProvider: providerConnectionProvider{
 		state: stateToken,
 		assertion: &model.ExternalAuthenticationAssertion{
-			ProviderId: "campus", Subject: "private-subject", Username: "invited-user",
+			ProviderID: "campus", Subject: "private-subject", Username: "invited-user",
 			Email: "invited@example.edu", EmailVerified: true,
 		},
 	}}

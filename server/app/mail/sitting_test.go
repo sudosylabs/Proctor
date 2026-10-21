@@ -50,7 +50,7 @@ func TestSittingComposerFreezesAndSelectsRecipientLocales(t *testing.T) {
 		locale      string
 		wantSubject string
 	}{{locale: "fr-FR", wantSubject: "fr:exam.sitting_scheduled"}, {locale: "de", wantSubject: "en:exam.sitting_scheduled"}} {
-		recipient := &model.User{Username: "student", Email: model.NewId() + "@example.test", DisplayName: "Student",
+		recipient := &model.User{Username: "student", Email: model.NewID() + "@example.test", DisplayName: "Student",
 			EmailVerified: true, Locale: test.locale, Timezone: "UTC"}
 		recipient.PrepareCreate(model.NewUserID(), at.Add(-time.Hour))
 		delivery, _, prepareErr := composer.PrepareRecipient(fanout, recipient, model.MailTemplateExamSittingScheduled, bundle)

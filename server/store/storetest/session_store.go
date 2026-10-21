@@ -500,7 +500,7 @@ func saveSessionAuditAttempt(t *testing.T, ctx context.Context, ss store.Store, 
 	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		Action:    string(model.ActionSessionManage),
 		Resource:  model.Resource{Type: model.ResourceUser, ID: userID},
-		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewId(),
+		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewID(),
 		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
 	requireNoError(t, err)

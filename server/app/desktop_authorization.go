@@ -396,7 +396,7 @@ func (s *desktopAuthorizationService) authenticateExternal(ctx context.Context, 
 	user *model.User, identity *model.ExternalIdentity, method string, assertion *model.ExternalAuthenticationAssertion,
 ) error {
 	if !transactionID.IsValid() || user == nil || !user.IsActive() || identity == nil ||
-		identity.UserID != user.ID || assertion == nil || assertion.ProviderId != identity.Provider {
+		identity.UserID != user.ID || assertion == nil || assertion.ProviderID != identity.Provider {
 		return apperror.New("authentication.desktop_authorization.invalid")
 	}
 	mfaCompletedAt := int64(0)
@@ -712,7 +712,7 @@ func (s *desktopAuthorizationService) StartDesktopAuthorization(ctx context.Cont
 	if model.ValidateDesktopAuthorizationCallback(command.CallbackURL) != nil ||
 		!model.IsValidCredentialToken(command.State) ||
 		!model.IsValidCredentialToken(command.CodeChallenge) ||
-		command.PublicJWK.Validate() != nil || len(command.DeviceID) > model.SessionDeviceIdMaxLength ||
+		command.PublicJWK.Validate() != nil || len(command.DeviceID) > model.SessionDeviceIDMaxLength ||
 		utf8.RuneCountInString(command.DeviceName) > model.SessionDeviceNameMaxRunes {
 		return nil, apperror.New("authentication.desktop_authorization.invalid")
 	}

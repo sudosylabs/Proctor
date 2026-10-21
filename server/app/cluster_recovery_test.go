@@ -92,8 +92,8 @@ func TestDuplicateSessionRevocationPropagationIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	userID := model.NewId()
-	sessionID := model.NewId()
+	userID := model.NewID()
+	sessionID := model.NewID()
 	hash := model.HashToken(model.NewCredentialToken())
 	ctx := context.Background()
 	// Seed a cache entry that both propagations must delete.
@@ -122,10 +122,10 @@ func TestMissedAuthorizationInvalidationStillUsesCurrentStoreState(t *testing.T)
 	// Authorization does not cache decisions. Ending a binding on one node
 	// without delivering the cluster invalidation still denies the action on
 	// the peer, because every Can() resolves active bindings from the store.
-	institutionID := model.NewId()
-	userID := model.NewId()
-	roleID := model.NewId()
-	bindingID := model.NewId()
+	institutionID := model.NewID()
+	userID := model.NewID()
+	roleID := model.NewID()
+	bindingID := model.NewID()
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
 
 	role := &model.Role{
@@ -172,7 +172,7 @@ func TestMissedAuthorizationInvalidationStillUsesCurrentStoreState(t *testing.T)
 	principal := model.Principal{
 		UserID:                 model.UserID(userID),
 		SessionID:              model.NewSessionID(),
-		CredentialID:           model.PrincipalCredentialID(model.NewId()),
+		CredentialID:           model.PrincipalCredentialID(model.NewID()),
 		CredentialType:         model.CredentialSessionAccess,
 		AuthenticationMethod:   "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor,
@@ -261,7 +261,7 @@ func TestDuplicateRealtimePeerPublicationDoesNotRebroadcast(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	unitID := model.NewId()
+	unitID := model.NewID()
 	event := apprealtime.RealtimeEvent{
 		Name:   "academic_unit_created",
 		Action: model.ActionAcademicUnitView,
@@ -304,7 +304,7 @@ func seedAuthenticatedSession(
 ) (*model.User, string) {
 	t.Helper()
 	password := "CorrectHorseBatteryStaple1!"
-	suffix := model.NewId()
+	suffix := model.NewID()
 	user, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 		User: &model.User{
 			Username: "cluster-user-" + suffix,

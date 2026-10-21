@@ -60,15 +60,15 @@ func (m webSocketModule) connect(writer http.ResponseWriter, request operationRe
 }
 
 func parseWebSocketResume(params Params) (string, int64, error) {
-	if params.ConnectionId == "" && params.SequenceNumber == "" {
+	if params.ConnectionID == "" && params.SequenceNumber == "" {
 		return "", 0, nil
 	}
-	if !model.IsValidOpaqueID(params.ConnectionId) || params.SequenceNumber == "" {
+	if !model.IsValidOpaqueID(params.ConnectionID) || params.SequenceNumber == "" {
 		return "", 0, invalidRequestError(nil)
 	}
 	sequence, err := strconv.ParseInt(params.SequenceNumber, 10, 64)
 	if err != nil || sequence < 0 {
 		return "", 0, invalidRequestError(err)
 	}
-	return params.ConnectionId, sequence, nil
+	return params.ConnectionID, sequence, nil
 }

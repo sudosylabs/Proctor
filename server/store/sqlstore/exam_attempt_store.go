@@ -1300,7 +1300,7 @@ func (s *sqlExamAttemptStore) firstAdmission(ctx context.Context, tx *sqlxTxWrap
 	if settingsRevision != candidate.UserSettingsRevision.String() {
 		return zero, store.NewErrConflict("exam_attempt", "attempt_configuration_stale", nil)
 	}
-	configuration, err := candidate.Freeze(model.NewId())
+	configuration, err := candidate.Freeze(model.NewID())
 	if err != nil {
 		return zero, store.NewErrInvalidInput("exam_attempt", "initial_configuration", nil)
 	}

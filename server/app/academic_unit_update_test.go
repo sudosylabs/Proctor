@@ -69,10 +69,10 @@ func TestAcademicUnitUpdateReparentAuthorizesBothScopesBeforeCommit(t *testing.T
 	t.Parallel()
 
 	events := []string{}
-	unitID := model.NewId()
-	oldParentID := model.NewId()
-	newParentID := model.NewId()
-	institutionID := model.NewId()
+	unitID := model.NewID()
+	oldParentID := model.NewID()
+	newParentID := model.NewID()
+	institutionID := model.NewID()
 	current := &model.AcademicUnit{
 		ID: model.AcademicUnitID(unitID), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
 		InstitutionID: model.InstitutionID(institutionID), ParentID: model.AcademicUnitID(oldParentID),
@@ -84,7 +84,7 @@ func TestAcademicUnitUpdateReparentAuthorizesBothScopesBeforeCommit(t *testing.T
 	persistence := &academicUnitMutationStore{
 		events: &events, current: current, updated: &updated,
 	}
-	auditor := &academicUnitCommandAuditor{events: &events, beginID: model.NewId()}
+	auditor := &academicUnitCommandAuditor{events: &events, beginID: model.NewID()}
 	effects := &academicUnitCommandEffectsFake{events: &events}
 	service := newAcademicUnitCommandService(
 		persistence,
@@ -100,7 +100,7 @@ func TestAcademicUnitUpdateReparentAuthorizesBothScopesBeforeCommit(t *testing.T
 			},
 		},
 		auditor, effects, &academicUnitEffectFailureReporterFake{events: &events},
-		func() time.Time { return time.UnixMilli(500) }, model.NewId,
+		func() time.Time { return time.UnixMilli(500) }, model.NewID,
 	)
 	got, err := service.UpdateAcademicUnit(context.Background(), Invocation{}, UpdateAcademicUnitCommand{
 		ID: model.AcademicUnitID(unitID), ParentID: &newParentID,
@@ -127,7 +127,7 @@ func TestAcademicUnitUpdateReparentToRootRequiresInstitutionAuthority(t *testing
 	t.Parallel()
 
 	events := []string{}
-	unitID, parentID, institutionID := model.NewId(), model.NewId(), model.NewId()
+	unitID, parentID, institutionID := model.NewID(), model.NewID(), model.NewID()
 	current := &model.AcademicUnit{
 		ID: model.AcademicUnitID(unitID), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
 		InstitutionID: model.InstitutionID(institutionID), ParentID: model.AcademicUnitID(parentID),
@@ -148,7 +148,7 @@ func TestAcademicUnitUpdateReparentToRootRequiresInstitutionAuthority(t *testing
 			return nil
 		}},
 		&academicUnitCommandAuditor{events: &events}, &academicUnitCommandEffectsFake{events: &events},
-		&academicUnitEffectFailureReporterFake{events: &events}, time.Now, model.NewId,
+		&academicUnitEffectFailureReporterFake{events: &events}, time.Now, model.NewID,
 	)
 	emptyParent := ""
 	if _, err := service.UpdateAcademicUnit(context.Background(), Invocation{}, UpdateAcademicUnitCommand{ID: model.AcademicUnitID(unitID), ParentID: &emptyParent}); !apperror.Is(err, "authorization.denied") {
@@ -163,10 +163,10 @@ func TestAcademicUnitUpdateCycleFailureIsAuditedWithoutPublication(t *testing.T)
 	t.Parallel()
 
 	events := []string{}
-	unitID := model.NewId()
+	unitID := model.NewID()
 	current := &model.AcademicUnit{
 		ID: model.AcademicUnitID(unitID), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
-		InstitutionID: model.InstitutionID(model.NewId()), Name: "engineering", DisplayName: "Engineering",
+		InstitutionID: model.InstitutionID(model.NewID()), Name: "engineering", DisplayName: "Engineering",
 		Revision: 1,
 	}
 	persistence := &academicUnitMutationStore{
@@ -175,7 +175,7 @@ func TestAcademicUnitUpdateCycleFailureIsAuditedWithoutPublication(t *testing.T)
 			"academic_unit", "academic_units_acyclic", errors.New("cycle"),
 		),
 	}
-	auditor := &academicUnitCommandAuditor{events: &events, beginID: model.NewId()}
+	auditor := &academicUnitCommandAuditor{events: &events, beginID: model.NewID()}
 	service := newAcademicUnitCommandService(
 		persistence,
 		academicUnitAuthorizerFunc(func(
@@ -185,10 +185,10 @@ func TestAcademicUnitUpdateCycleFailureIsAuditedWithoutPublication(t *testing.T)
 			return nil
 		}),
 		auditor, &academicUnitCommandEffectsFake{events: &events},
-		&academicUnitEffectFailureReporterFake{events: &events}, time.Now, model.NewId,
+		&academicUnitEffectFailureReporterFake{events: &events}, time.Now, model.NewID,
 	)
 	_, err := service.UpdateAcademicUnit(context.Background(), Invocation{}, UpdateAcademicUnitCommand{
-		ID: model.AcademicUnitID(unitID), ParentID: stringPointer(model.NewId()),
+		ID: model.AcademicUnitID(unitID), ParentID: stringPointer(model.NewID()),
 	})
 	if !apperror.Is(err, "academic_unit.conflict") || auditor.failCode != "academic_unit.conflict" {
 		t.Fatalf("Update() error = %v, failure audit = %q", err, auditor.failCode)
@@ -202,10 +202,10 @@ func TestAcademicUnitArchiveCommitsBeforePublishing(t *testing.T) {
 	t.Parallel()
 
 	events := []string{}
-	unitID := model.NewId()
+	unitID := model.NewID()
 	current := &model.AcademicUnit{
 		ID: model.AcademicUnitID(unitID), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
-		InstitutionID: model.InstitutionID(model.NewId()), Name: "engineering", DisplayName: "Engineering",
+		InstitutionID: model.InstitutionID(model.NewID()), Name: "engineering", DisplayName: "Engineering",
 		Revision: 1,
 	}
 	archived := *current
@@ -214,7 +214,7 @@ func TestAcademicUnitArchiveCommitsBeforePublishing(t *testing.T) {
 	persistence := &academicUnitMutationStore{
 		events: &events, current: current, archived: &archived,
 	}
-	auditor := &academicUnitCommandAuditor{events: &events, beginID: model.NewId()}
+	auditor := &academicUnitCommandAuditor{events: &events, beginID: model.NewID()}
 	service := newAcademicUnitCommandService(
 		persistence,
 		academicUnitAuthorizerFunc(func(
@@ -225,7 +225,7 @@ func TestAcademicUnitArchiveCommitsBeforePublishing(t *testing.T) {
 		}),
 		auditor, &academicUnitCommandEffectsFake{events: &events},
 		&academicUnitEffectFailureReporterFake{events: &events},
-		func() time.Time { return time.UnixMilli(500) }, model.NewId,
+		func() time.Time { return time.UnixMilli(500) }, model.NewID,
 	)
 	err := service.ArchiveAcademicUnit(context.Background(), Invocation{}, ArchiveAcademicUnitCommand{ID: model.AcademicUnitID(unitID)})
 	if err != nil {

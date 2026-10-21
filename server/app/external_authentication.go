@@ -342,7 +342,7 @@ func (s *externalAuthenticationService) beginForPurpose(
 	}
 	if !model.IsSafeRelativeURL(returnTo) ||
 		clientType != model.SessionClientWeb ||
-		len(deviceID) > model.SessionDeviceIdMaxLength ||
+		len(deviceID) > model.SessionDeviceIDMaxLength ||
 		utf8.RuneCountInString(deviceName) > model.SessionDeviceNameMaxRunes {
 		return nil, apperror.New("authentication.external.request.invalid")
 	}
@@ -555,7 +555,7 @@ func (s *externalAuthenticationService) complete(
 		}
 		return nil, s.failConsumedProviderConnection(ctx, state, apperror.New(errorCode).Wrap(providerErr))
 	}
-	if assertion == nil || assertion.ProviderId != providerID {
+	if assertion == nil || assertion.ProviderID != providerID {
 		if auditErr := s.audit.RecordExternalAuthenticationFailure(
 			ctx,
 			providerID,

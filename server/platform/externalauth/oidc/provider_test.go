@@ -162,7 +162,7 @@ func TestProviderAuthorizationCodePKCEAndClaims(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if assertion.ProviderId != "campus-oidc" ||
+	if assertion.ProviderID != "campus-oidc" ||
 		assertion.Subject != "opaque-oidc-subject" ||
 		assertion.Username != "oidc.student" ||
 		assertion.Email != "oidc.student@example.edu" ||

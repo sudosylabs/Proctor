@@ -350,7 +350,7 @@ func (h *Hub) register(
 		sessionConnections >= maximumPerSession {
 		return nil, false
 	}
-	connectionID := model.NewId()
+	connectionID := model.NewID()
 	nextSequence := int64(0)
 	var (
 		history       []*Event
@@ -534,7 +534,7 @@ func (h *Hub) CloseAll(reason realtime.ConnectionCloseReason) {
 
 func eventFromRealtime(event realtime.RealtimeEvent) *Event {
 	return &Event{
-		Id:       event.ID,
+		ID:       event.ID,
 		Event:    event.Name,
 		UserID:   event.UserID,
 		Action:   event.Action,

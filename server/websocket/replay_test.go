@@ -22,19 +22,19 @@ func TestConnectionRuntimeFinalSnapshotIsDeeplyImmutable(t *testing.T) {
 
 	subscription := validInboundSubscription()
 	runtime := &connectionRuntime{
-		id: model.NewId(),
+		id: model.NewID(),
 		principal: model.Principal{
 			UserID:           model.NewUserID(),
 			SessionID:        model.NewSessionID(),
-			CredentialID:     model.PrincipalCredentialID(model.NewId()),
+			CredentialID:     model.PrincipalCredentialID(model.NewID()),
 			CredentialScopes: []string{"class.view"},
 		},
 		nextSequence: 12,
 		history: []*Event{{
-			Id:       model.NewId(),
+			ID:       model.NewID(),
 			Event:    "class.updated",
 			Sequence: 12,
-			UserID:   model.NewId(),
+			UserID:   model.NewID(),
 			Data:     json.RawMessage(`{"revision":2}`),
 		}},
 		subscriptions: map[string]Subscription{subscription.Key(): subscription},
@@ -88,7 +88,7 @@ func TestConnectionRuntimeClonesTheAcceptedPrincipal(t *testing.T) {
 		newInboundTestSocket(),
 		principal,
 		model.RequestMetadata{},
-		model.NewId(),
+		model.NewID(),
 		0,
 		nil,
 		map[string]Subscription{},
@@ -128,7 +128,7 @@ func TestConnectionRuntimeFinalSnapshotWaitsForSelectedPublication(t *testing.T)
 		}
 	}
 
-	event := &Event{Id: model.NewId(), Event: "class.updated", UserID: model.NewId()}
+	event := &Event{ID: model.NewID(), Event: "class.updated", UserID: model.NewID()}
 	runtime.enqueueEvent(event)
 	select {
 	case <-snapshotReady:
@@ -143,7 +143,7 @@ func TestConnectionRuntimeFinalSnapshotWaitsForSelectedPublication(t *testing.T)
 	case <-time.After(time.Second):
 		t.Fatal("final snapshot did not complete after selected publication")
 	}
-	if len(snapshot.history) != 1 || snapshot.history[0].Id != event.Id ||
+	if len(snapshot.history) != 1 || snapshot.history[0].ID != event.ID ||
 		snapshot.history[0].Sequence != 1 {
 		t.Fatalf("final snapshot history = %#v, want selected publication", snapshot.history)
 	}
@@ -166,12 +166,12 @@ func TestHubRetainsOnlyTheRuntimeFinalSnapshot(t *testing.T) {
 		SessionID: model.NewSessionID(),
 	}
 	subscription := validInboundSubscription()
-	connectionID := model.NewId()
+	connectionID := model.NewID()
 	runtime := &connectionRuntime{
 		principal:     principal,
 		id:            connectionID,
 		nextSequence:  7,
-		history:       []*Event{{Id: model.NewId(), Event: "class.updated", Sequence: 7, Data: json.RawMessage(`{"ok":true}`)}},
+		history:       []*Event{{ID: model.NewID(), Event: "class.updated", Sequence: 7, Data: json.RawMessage(`{"ok":true}`)}},
 		subscriptions: map[string]Subscription{subscription.Key(): subscription},
 		replayable:    true,
 	}
@@ -183,7 +183,7 @@ func TestHubRetainsOnlyTheRuntimeFinalSnapshot(t *testing.T) {
 	hub.unregister(runtime)
 
 	// Mutating the stopped runtime after unregister must not alter retained replay.
-	runtime.id = model.NewId()
+	runtime.id = model.NewID()
 	runtime.history[0].Data[0] = '['
 	delete(runtime.subscriptions, subscription.Key())
 	shard.mu.RLock()

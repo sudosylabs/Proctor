@@ -23,7 +23,7 @@ import (
 func TestAcademicUnitMemberHTTPPagingPreservesArrayAndContinuation(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
-	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
 	scopeID := model.NewAcademicUnitID()
 	member := &model.AcademicUnitMember{ID: model.NewAcademicUnitMemberID(), UserID: model.NewUserID(), AcademicUnitID: scopeID}
 	service := &academicUnitMemberHTTPApplication{pageResult: &application.AcademicUnitMemberPage{Members: []*model.AcademicUnitMember{member}, HasMore: true, ActiveAt: 1000}}
@@ -73,7 +73,7 @@ func TestAcademicUnitMemberHTTPPagingPreservesArrayAndContinuation(t *testing.T)
 func TestClassMemberHTTPPagingPreservesArrayAndContinuation(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
-	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
 	scopeID := model.NewClassID()
 	member := &model.ClassMember{ID: model.NewClassMemberID(), UserID: model.NewUserID(), ClassID: scopeID}
 	service := &classMemberHTTPApplication{pageResult: &application.ClassMemberPage{Members: []*model.ClassMember{member}, HasMore: true, ActiveAt: 1000}}

@@ -59,7 +59,7 @@ func newServingNodeLeaseRuntime(persistence store.ServingNodeLeaseStore, nodeID 
 	}
 	return &servingNodeLeaseRuntime{
 		store:   persistence,
-		claim:   store.ServingNodeLeaseClaim{NodeID: nodeID, LeaseID: model.NewId(), Lifetime: servingNodeLeaseLifetime},
+		claim:   store.ServingNodeLeaseClaim{NodeID: nodeID, LeaseID: model.NewID(), Lifetime: servingNodeLeaseLifetime},
 		failure: make(chan error, 1), renewalInterval: servingNodeLeaseRenewalInterval, operationLimit: servingNodeLeaseOperationLimit,
 		retryInterval: servingNodeLeaseRetryInterval, stopMargin: servingNodeLeaseStopMargin,
 	}, nil

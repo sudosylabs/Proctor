@@ -63,7 +63,7 @@ func TestPersonalAccessTokenRowConversion(t *testing.T) {
 	unitID := model.NewAcademicUnitID()
 	createdAt := model.TimeFromMillis(1)
 	row := personalAccessTokenRow{
-		ID: model.NewId(), CreatedAt: createdAt, UpdatedAt: createdAt.Add(time.Millisecond), UserID: model.NewId(),
+		ID: model.NewID(), CreatedAt: createdAt, UpdatedAt: createdAt.Add(time.Millisecond), UserID: model.NewID(),
 		Description: "token", TokenHash: model.HashToken(model.NewCredentialToken()),
 		Scopes: []string{string(model.ActionClassView)}, AcademicUnitID: sql.NullString{String: unitID.String(), Valid: true},
 		ExpiresAt: createdAt.Add(2 * time.Millisecond),

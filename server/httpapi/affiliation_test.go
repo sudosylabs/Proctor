@@ -44,8 +44,8 @@ func (a *affiliationHTTPApplication) EndAffiliation(_ context.Context, _ applica
 func TestAffiliationHTTPUsesDTOAndRouteOwnedUser(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
-	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
-	userID := model.NewId()
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
+	userID := model.NewID()
 	created := &model.Affiliation{
 		ID: model.NewAffiliationID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
 		Revision: 1, UserID: model.UserID(userID), Kind: model.AffiliationTeacher, StartsAt: model.TimeFromMillis(100),
@@ -75,10 +75,10 @@ func TestAffiliationHTTPUsesDTOAndRouteOwnedUser(t *testing.T) {
 func TestAffiliationResourceSerializesAllowedAuthorizationFailure(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
-	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, affiliationResource(&affiliationHTTPApplication{listErr: apperror.New("authorization.denied")}))
 
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/users/"+model.NewId()+"/affiliations", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/users/"+model.NewID()+"/affiliations", nil)
 	request.Header.Set("Authorization", "Bearer credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
@@ -97,10 +97,10 @@ func TestAffiliationResourceSerializesAllowedAuthorizationFailure(t *testing.T) 
 func TestAffiliationResourceFailsClosedForUndeclaredError(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
-	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, affiliationResource(&affiliationHTTPApplication{listErr: apperror.New("user.conflict")}))
 
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/users/"+model.NewId()+"/affiliations", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/users/"+model.NewID()+"/affiliations", nil)
 	request.Header.Set("Authorization", "Bearer credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
@@ -119,10 +119,10 @@ func TestAffiliationResourceFailsClosedForUndeclaredError(t *testing.T) {
 func TestAffiliationResourceRejectsInvalidBodyAndIdentifier(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
-	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, affiliationResource(&affiliationHTTPApplication{}))
 
-	invalidBody := httptest.NewRequest(http.MethodPost, "/api/v1/users/"+model.NewId()+"/affiliations", strings.NewReader(`{"kind":"teacher","unknown":true}`))
+	invalidBody := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/users/"+model.NewID()+"/affiliations", strings.NewReader(`{"kind":"teacher","unknown":true}`))
 	invalidBody.Header.Set("Authorization", "Bearer credential")
 	invalidBody.Header.Set("Content-Type", "application/json")
 	bodyResponse := httptest.NewRecorder()

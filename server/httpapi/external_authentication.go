@@ -115,7 +115,7 @@ func externalAuthenticationResource(
 }
 
 func (m externalAuthenticationResourceModule) beginFromBody(request operationRequest) (protocolResult, error) {
-	providerID, appErr := request.params.RequireProviderId()
+	providerID, appErr := request.params.RequireProviderID()
 	if appErr != nil {
 		return protocolResult{}, appErr
 	}
@@ -156,7 +156,7 @@ func (m externalAuthenticationResourceModule) listProviders(request operationReq
 func (m externalAuthenticationResourceModule) begin(
 	request operationRequest,
 ) (protocolResult, error) {
-	providerID, appErr := request.params.RequireProviderId()
+	providerID, appErr := request.params.RequireProviderID()
 	if appErr != nil {
 		return protocolResult{}, appErr
 	}
@@ -169,7 +169,7 @@ func (m externalAuthenticationResourceModule) begin(
 		application.NewInvocation(model.Principal{}, request.metadata),
 		application.BeginExternalAuthenticationCommand{
 			ProviderID: providerID, ReturnTo: request.params.ReturnTo, ClientType: clientType,
-			DeviceID: request.params.DeviceId, DeviceName: request.params.DeviceName, Source: request.metadata.IPAddress,
+			DeviceID: request.params.DeviceID, DeviceName: request.params.DeviceName, Source: request.metadata.IPAddress,
 		},
 	)
 	if err != nil {
@@ -186,7 +186,7 @@ func (m externalAuthenticationResourceModule) complete(
 	request operationRequest,
 ) (protocolResult, error) {
 	clearBinding := captureResponseHeaders(m.cookies.clearExternalLoginBinding)
-	providerID, appErr := request.params.RequireProviderId()
+	providerID, appErr := request.params.RequireProviderID()
 	if appErr != nil {
 		return protocolResult{}, errorWithHeaders(appErr, clearBinding)
 	}

@@ -1865,7 +1865,7 @@ func (s *invitationService) acceptExternalIdentity(ctx context.Context, state *m
 ) (*store.ExternalIdentityInvitationAcceptanceResult, error) {
 	if state == nil || state.Purpose != model.ExternalAuthenticationPurposeInvitationAdmission ||
 		!state.ID.IsValid() || !state.InvitationID.IsValid() || !state.ConsumedAt.Valid || assertion == nil ||
-		assertion.ProviderId != state.Provider || !assertion.EmailVerified {
+		assertion.ProviderID != state.Provider || !assertion.EmailVerified {
 		return nil, store.NewErrInvalidInput("invitation", "external_identity_acceptance", nil)
 	}
 	providerEmail := strings.ToLower(strings.TrimSpace(model.SanitizeUnicode(assertion.Email)))

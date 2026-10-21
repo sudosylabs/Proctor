@@ -108,7 +108,7 @@ func TestExternalReauthenticationCallbackUsesBoundProofAndSafeFailureContinuatio
 			stateToken, binding := model.NewCredentialToken(), model.NewCredentialToken()
 			state := &model.ExternalLoginState{Provider: "campus", Purpose: model.ExternalAuthenticationPurposeReauthenticate, TargetUserID: model.NewUserID(), SessionID: model.NewSessionID(), SessionCredentialID: model.NewSessionCredentialID(), ExternalIdentityID: model.NewExternalIdentityID(), AuditEventID: model.NewAuditEventID().String(), StateHash: model.HashToken(stateToken), BindingHash: model.HashToken(binding), ReturnTo: "/account/connect-provider", ClientType: model.SessionClientWeb, ExpiresAt: now.Add(time.Minute)}
 			state.PrepareCreate(model.NewExternalLoginStateID(), now.Add(-time.Second))
-			provider := &freshExternalProviderFake{providerConnectionProvider: providerConnectionProvider{state: stateToken, completeErr: test.providerErr, assertion: &model.ExternalAuthenticationAssertion{ProviderId: "campus", Subject: "private-subject", AuthenticatedAt: now.Add(test.offset).UnixMilli()}}}
+			provider := &freshExternalProviderFake{providerConnectionProvider: providerConnectionProvider{state: stateToken, completeErr: test.providerErr, assertion: &model.ExternalAuthenticationAssertion{ProviderID: "campus", Subject: "private-subject", AuthenticatedAt: now.Add(test.offset).UnixMilli()}}}
 			service := externalAuthenticationBeginService(t, externalProviderSourceFake{provider: provider}, newAuthenticationCacheFake(), 10)
 			service.now = func() time.Time { return now }
 			states := &externalLoginStateStoreFake{get: state, consumeResult: state, storeNow: now}
@@ -188,7 +188,7 @@ func TestExternalRecoveryRequiresFreshExistingIdentityBeforeSessionIssuance(t *t
 				createdAt = now.Add(-2 * time.Minute)
 			}
 			state.PrepareCreate(model.NewExternalLoginStateID(), createdAt)
-			provider := &freshExternalProviderFake{providerConnectionProvider: providerConnectionProvider{state: stateToken, assertion: &model.ExternalAuthenticationAssertion{ProviderId: "campus", Subject: "existing-identity", AuthenticatedAt: now.UnixMilli()}}}
+			provider := &freshExternalProviderFake{providerConnectionProvider: providerConnectionProvider{state: stateToken, assertion: &model.ExternalAuthenticationAssertion{ProviderID: "campus", Subject: "existing-identity", AuthenticatedAt: now.UnixMilli()}}}
 			service := externalAuthenticationBeginService(t, externalProviderSourceFake{provider: provider}, newAuthenticationCacheFake(), 10)
 			service.now = func() time.Time { return now }
 			states := &externalLoginStateStoreFake{get: state, consumeResult: state, storeNow: now}

@@ -35,7 +35,7 @@ func (f *sessionReauthenticationHTTPFake) ReauthenticatePassword(_ context.Conte
 func TestPasswordReauthenticationHTTPRejectsIdentitySelectionAndProtectsResponse(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
-	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientWeb, AuthenticatedAt: time.Now().Add(-time.Hour)}
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientWeb, AuthenticatedAt: time.Now().Add(-time.Hour)}
 	fake := &sessionReauthenticationHTTPFake{}
 	api := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, sessionReauthenticationResource(fake, browserCookies{}))
 	for _, test := range []struct {

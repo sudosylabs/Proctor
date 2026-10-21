@@ -291,7 +291,7 @@ func TestInvitationAcceptanceAndAuthenticationMethodMutationUseGlobalUserOrder(t
 	audit, err := primary.Audit().Save(ctx, &model.AuditEvent{
 		ActorID: userID, Action: string(model.ActionExternalIdentityManage),
 		Resource:  model.Resource{Type: model.ResourceUser, ID: userID.String()},
-		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewId(), Status: model.AuditStatusAttempt,
+		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewID(), Status: model.AuditStatusAttempt,
 		NodeID: "invitation-authentication-method-order",
 	})
 	if err != nil {

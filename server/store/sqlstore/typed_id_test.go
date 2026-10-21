@@ -28,7 +28,7 @@ func TestNullEntityIDScanAndValue(t *testing.T) {
 		t.Fatalf("Value() = %v, %v", value, err)
 	}
 
-	id := model.NewId()
+	id := model.NewID()
 	if err := n.Scan(id); err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestNullEntityIDScanAndValue(t *testing.T) {
 func TestScanUserID(t *testing.T) {
 	t.Parallel()
 
-	raw := model.NewId()
+	raw := model.NewID()
 	id, err := ScanUserID(raw)
 	if err != nil {
 		t.Fatal(err)

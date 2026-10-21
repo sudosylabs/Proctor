@@ -98,7 +98,7 @@ func validExamAuthoringRow(t *testing.T) examAuthoringRow {
 		t.Fatal(err)
 	}
 	return examAuthoringRow{
-		ID: model.NewId(), AcademicUnitID: model.NewId(), CreatorUserID: model.NewId(), OwnerUserID: model.NewId(),
+		ID: model.NewID(), AcademicUnitID: model.NewID(), CreatorUserID: model.NewID(), OwnerUserID: model.NewID(),
 		DefaultRevisionID: sql.NullString{}, CreatedAt: at, UpdatedAt: at, ExamRevision: 1,
 		DraftTitle: "Test", Policy: jsonValue(policy), BrowserPolicy: jsonValue(browserPolicy),
 		BaseRevisionID: sql.NullString{}, DraftUpdatedAt: at,

@@ -58,7 +58,7 @@ func expiryWorkerFixture(t *testing.T) (retentionExpiryHandler, *expiryWorkerFak
 	at := model.NowUTC()
 	institution := model.NewInstitutionID()
 	f := &expiryWorkerFake{control: model.RetentionControl{InstitutionID: institution, Revision: 1, State: model.RetentionControlEnabled, ApprovedPolicyRevision: 1, ApprovedPreviewID: model.NewRetentionPreviewID(), ChangedByUserID: model.NewUserID(), UpdatedAt: at}, page: store.RetentionExpiryPage{InstitutionID: institution, Before: at, HasMore: true}}
-	ids := []string{model.NewId(), model.NewId()}
+	ids := []string{model.NewID(), model.NewID()}
 	sort.Strings(ids)
 	for _, id := range ids {
 		f.page.Items = append(f.page.Items, model.RetentionExpiryRecord{Kind: model.RetentionExpiryAudit, ID: id, EventAt: at.Add(-48 * time.Hour), EligibleAt: model.OptionalTimeFrom(at.Add(-24 * time.Hour))})

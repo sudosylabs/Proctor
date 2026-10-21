@@ -21,7 +21,7 @@ import (
 func TestMembershipCursorStrictEnvelope(t *testing.T) {
 	t.Parallel()
 	at := int64(0) // history requires an explicit zero; missing and null are invalid
-	cursor := membershipPageCursor{ScopeType: model.ResourceClass, ScopeID: model.NewId(), ActiveAt: &at, AfterUserID: model.NewId(), AfterID: model.NewId()}
+	cursor := membershipPageCursor{ScopeType: model.ResourceClass, ScopeID: model.NewID(), ActiveAt: &at, AfterUserID: model.NewID(), AfterID: model.NewID()}
 	encoded, err := encodeOpaqueCursor(cursor, membershipPageCursorSpec())
 	if err != nil {
 		t.Fatal(err)
@@ -88,9 +88,9 @@ func TestMembershipCursorStrictEnvelope(t *testing.T) {
 
 func TestMembershipCursorScopeAndFilterBinding(t *testing.T) {
 	t.Parallel()
-	scope := model.Resource{Type: model.ResourceClass, ID: model.NewId()}
+	scope := model.Resource{Type: model.ResourceClass, ID: model.NewID()}
 	instant := int64(1000)
-	cursor := membershipPageCursor{ScopeType: scope.Type, ScopeID: scope.ID, ActiveAt: &instant, AfterUserID: model.NewId(), AfterID: model.NewId()}
+	cursor := membershipPageCursor{ScopeType: scope.Type, ScopeID: scope.ID, ActiveAt: &instant, AfterUserID: model.NewID(), AfterID: model.NewID()}
 	encoded, err := encodeOpaqueCursor(cursor, membershipPageCursorSpec())
 	if err != nil {
 		t.Fatal(err)
@@ -105,7 +105,7 @@ func TestMembershipCursorScopeAndFilterBinding(t *testing.T) {
 			t.Fatalf("conflicting filter accepted: %s", suffix)
 		}
 	}
-	for _, other := range []model.Resource{{Type: scope.Type, ID: model.NewId()}, {Type: model.ResourceAcademicUnit, ID: scope.ID}} {
+	for _, other := range []model.Resource{{Type: scope.Type, ID: model.NewID()}, {Type: model.ResourceAcademicUnit, ID: scope.ID}} {
 		if _, _, err := membershipPageQuery(httptest.NewRequest("GET", request(""), nil), other); err == nil {
 			t.Fatalf("cross-scope continuation accepted: %#v", other)
 		}

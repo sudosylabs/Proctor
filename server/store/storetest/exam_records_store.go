@@ -30,7 +30,7 @@ func TestExamRecordsStore(t *testing.T, ss store.Store, probes ...ExamRecordsSQL
 	scope := model.RetentionHoldScope{ExamID: f.examID, SittingID: f.sitting.ID}
 	submissionScope := scope
 	submissionScope.SubmissionID = sealed.Receipt.SubmissionID
-	role, err := SaveRole(ctx, ss, &model.Role{Name: "records-manager-" + model.NewId(), DisplayName: "Records manager", Permissions: []string{
+	role, err := SaveRole(ctx, ss, &model.Role{Name: "records-manager-" + model.NewID(), DisplayName: "Records manager", Permissions: []string{
 		string(model.ActionExamRecordsComplete), string(model.ActionExamRecordsCompleteOverride), string(model.ActionExamRecordsHold), string(model.ActionExamRecordsHoldOverride), string(model.ActionRetentionHoldRelease)}})
 	requireNoError(t, err)
 	binding, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: f.manager.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: f.unitID.String(), StartsAt: model.NowUTC().Add(-time.Minute)})

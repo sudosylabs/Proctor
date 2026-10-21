@@ -750,7 +750,7 @@ func newFixture(t *testing.T) fixture {
 	persistence := &sittingStoreFake{}
 	access := &accessFake{snapshot: &store.ExamAccessSnapshot{Exam: exam, ActorIsManager: true}}
 	memberships := &membershipsFake{items: []*model.AcademicUnitMember{{AcademicUnitID: unitID}}}
-	authorizer, auditor, systemAudit, effects := &authorizerFake{}, &auditorFake{id: model.NewId()}, &systemAuditorFake{id: model.NewId()}, &effectsFake{}
+	authorizer, auditor, systemAudit, effects := &authorizerFake{}, &auditorFake{id: model.NewID()}, &systemAuditorFake{id: model.NewID()}, &effectsFake{}
 	jobs := &lifecycleJobFactoryFake{open: &model.Job{}, deadline: &model.Job{}, finalize: &model.Job{}}
 	mail := &scheduleMailPreparerFake{result: &store.ExamSittingMailFanout{}}
 	service, err := New(Dependencies{
@@ -785,7 +785,7 @@ func assertFaultCode(t *testing.T, err error, want string) {
 }
 
 func testPrincipal(userID model.UserID) model.Principal {
-	return model.Principal{UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+	return model.Principal{UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: testNow.Add(-time.Hour)}
 }

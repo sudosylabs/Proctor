@@ -36,7 +36,7 @@ func testUserStoreCurrentContext(t *testing.T, ss store.Store) {
 			user := saveUser(t, ctx, ss)
 			if test.action != "" {
 				role, err := SaveRole(ctx, ss, &model.Role{
-					Name: "context-" + model.NewId(), DisplayName: "Context role",
+					Name: "context-" + model.NewID(), DisplayName: "Context role",
 					Permissions: []string{string(test.action)},
 				})
 				requireNoError(t, err)

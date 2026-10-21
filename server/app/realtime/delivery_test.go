@@ -30,13 +30,13 @@ func TestRealtimeEventValidateForPublish(t *testing.T) {
 		Action: model.ActionAcademicUnitView,
 		Resource: model.Resource{
 			Type: model.ResourceAcademicUnit,
-			ID:   model.NewId(),
+			ID:   model.NewID(),
 		},
 	}
 	if err := valid.ValidateForPublish(); err != nil {
 		t.Fatalf("valid event: %v", err)
 	}
-	if err := (RealtimeEvent{Name: "user.notification", UserID: model.NewId()}).ValidateForPublish(); err != nil {
+	if err := (RealtimeEvent{Name: "user.notification", UserID: model.NewID()}).ValidateForPublish(); err != nil {
 		t.Fatalf("user-targeted event: %v", err)
 	}
 
@@ -44,10 +44,10 @@ func TestRealtimeEventValidateForPublish(t *testing.T) {
 		name  string
 		event RealtimeEvent
 	}{
-		{name: "empty name", event: RealtimeEvent{UserID: model.NewId()}},
+		{name: "empty name", event: RealtimeEvent{UserID: model.NewID()}},
 		{name: "missing target", event: RealtimeEvent{Name: "orphan.event"}},
 		{name: "invalid data", event: RealtimeEvent{
-			Name: "x", UserID: model.NewId(), Data: json.RawMessage(`{`),
+			Name: "x", UserID: model.NewID(), Data: json.RawMessage(`{`),
 		}},
 	}
 	for _, test := range tests {
@@ -230,7 +230,7 @@ func TestPublishClonesGeneratesIDAndDeliversLocalFirst(t *testing.T) {
 	}
 
 	data := json.RawMessage(`{"ok":true}`)
-	event := RealtimeEvent{Name: "user.notification", UserID: model.NewId(), Data: data}
+	event := RealtimeEvent{Name: "user.notification", UserID: model.NewID(), Data: data}
 	if err := service.Publish(context.Background(), event); err != nil {
 		t.Fatal(err)
 	}
@@ -502,7 +502,7 @@ func TestServiceHasNoBackgroundLifecycle(t *testing.T) {
 }
 
 func validUserEvent() RealtimeEvent {
-	return RealtimeEvent{Name: "user.notification", UserID: model.NewId()}
+	return RealtimeEvent{Name: "user.notification", UserID: model.NewID()}
 }
 
 func newOrdinaryTestService(t *testing.T) *Service {

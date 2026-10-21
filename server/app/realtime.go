@@ -191,7 +191,7 @@ func (s *realtimeService) InvalidateCurrentUserContext(ctx context.Context, user
 
 var _ authenticationSecurityEffects = (*realtimeService)(nil)
 
-func sessionIds(sessions []*model.Session) []string {
+func sessionIDs(sessions []*model.Session) []string {
 	ids := make([]string, 0, len(sessions))
 	for _, session := range sessions {
 		if session != nil {

@@ -154,7 +154,7 @@ func (s SQLAffiliationStore) Save(
 	if !affiliation.ID.IsZero() {
 		return nil, store.NewErrInvalidInput("affiliation", "id", affiliation.ID.String())
 	}
-	id, err := model.ParseAffiliationID(model.NewId())
+	id, err := model.ParseAffiliationID(model.NewID())
 	if err != nil {
 		return nil, err
 	}

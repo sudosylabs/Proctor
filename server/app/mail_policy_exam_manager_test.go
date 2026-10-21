@@ -31,7 +31,7 @@ func TestExamManagerNoticesRemainRelevantAsHistoricalFacts(t *testing.T) {
 			TargetUserID: model.NewUserID(), TemplateKey: key, TemplateDigest: strings.Repeat("a", 64),
 			MaskedRecipient: "m***@example.test", State: model.MailDeliveryQueued,
 			CreatedAt: at, UpdatedAt: at, MessageDate: at, Deadline: at.Add(72 * time.Hour),
-			MessageID: "<mail." + model.NewId() + "@example.test>", EncryptedPayload: json.RawMessage(`{"ciphertext":"secret"}`), Revision: 1,
+			MessageID: "<mail." + model.NewID() + "@example.test>", EncryptedPayload: json.RawMessage(`{"ciphertext":"secret"}`), Revision: 1,
 		}
 		got, err := evaluateMailDeliveryRelevance(context.Background(), delivery)
 		if err != nil {

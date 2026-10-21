@@ -36,7 +36,7 @@ func TestPersonalAccessTokenSecurityNoticesRemainRelevantUntilTheirDeadline(t *t
 				TargetUserID: model.NewUserID(), TemplateKey: key, TemplateDigest: strings.Repeat("a", 64),
 				MaskedRecipient: "o***@example.test", State: model.MailDeliveryQueued,
 				CreatedAt: at, UpdatedAt: at, MessageDate: at, Deadline: at.Add(24 * time.Hour),
-				MessageID:        "<mail." + model.NewId() + "@example.test>",
+				MessageID:        "<mail." + model.NewID() + "@example.test>",
 				EncryptedPayload: json.RawMessage(`{"ciphertext":"secret"}`), Revision: 1,
 			}
 			got, err := evaluateMailDeliveryRelevance(context.Background(), delivery)

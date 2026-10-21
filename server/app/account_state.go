@@ -144,7 +144,7 @@ type accountStateRealtimeEffects struct {
 }
 
 func (e accountStateRealtimeEffects) SessionsRevoked(ctx context.Context, userID string, sessions []*model.Session, hashes []string) {
-	e.effects.SessionsRevoked(ctx, userID, sessionIds(sessions), hashes)
+	e.effects.SessionsRevoked(ctx, userID, sessionIDs(sessions), hashes)
 }
 
 var accountStateStoreErrors = apperror.AdministrationStoreTable("user", "user.conflict", "user.invalid", map[string]apperror.Code{

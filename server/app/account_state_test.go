@@ -89,7 +89,7 @@ func TestAccountDisableCommitsBeforePublishingRevocation(t *testing.T) {
 	updated.DisabledAt = model.OptionalTimeFromMillis(500)
 	updated.Revision++
 	persistence := &accountStateStoreFake{events: &events, user: user, result: &store.UserDisabledStateResult{User: &updated, RevokedSessions: []*model.Session{{ID: model.NewSessionID()}}, RevokedTokenHashes: []string{"hash"}}}
-	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
+	auditor := &institutionAuditorFake{events: &events, beginID: model.NewID()}
 	capabilities := &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{{
 		Descriptor: model.ExternalAuthenticationProvider{ID: "campus", Type: "oidc"},
 	}}}}
@@ -120,7 +120,7 @@ func TestAccountDisableFailurePublishesNoRevocation(t *testing.T) {
 	events := []string{}
 	user := &model.User{ID: model.NewUserID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100), Revision: 3, Username: "student", Locale: "en", Timezone: "UTC"}
 	persistence := &accountStateStoreFake{events: &events, user: user, err: store.NewErrConflict("user", "users_revision", errors.New("stale"))}
-	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, &securityNoticeMailerFake{events: &events}, &accountStateEffectsFake{events: &events}, time.Now)
+	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, &securityNoticeMailerFake{events: &events}, &accountStateEffectsFake{events: &events}, time.Now)
 	_, err := service.SetUserEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID, Enabled: false})
 	if !apperror.Is(err, "user.conflict") {
 		t.Fatalf("error = %v", err)
@@ -140,7 +140,7 @@ func TestAccountEnablePublishesNoRevocation(t *testing.T) {
 	updated.Revision++
 	persistence := &accountStateStoreFake{events: &events, user: user, result: &store.UserDisabledStateResult{User: &updated, RevokedSessions: []*model.Session{}, RevokedTokenHashes: []string{}}}
 	mailer := &securityNoticeMailerFake{events: &events}
-	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, mailer, &accountStateEffectsFake{events: &events}, func() time.Time { return time.UnixMilli(500) })
+	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, mailer, &accountStateEffectsFake{events: &events}, func() time.Time { return time.UnixMilli(500) })
 	result, err := service.SetUserEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID, Enabled: true})
 	if err != nil {
 		t.Fatal(err)
@@ -160,7 +160,7 @@ func TestAccountEnablePublishesNoRevocation(t *testing.T) {
 func TestAccountSelfDisableIsRejectedAfterAuthorization(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	userID := model.NewId()
+	userID := model.NewID()
 	service := newAccountStateService(&accountStateStoreFake{events: &events}, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events}, &securityNoticeMailerFake{events: &events}, &accountStateEffectsFake{events: &events}, time.Now)
 	invocation := NewInvocation(model.Principal{UserID: model.UserID(userID)}, model.RequestMetadata{})
 	_, err := service.SetUserEnabled(context.Background(), invocation, SetUserEnabledCommand{ID: model.UserID(userID), Enabled: false})
@@ -198,7 +198,7 @@ func TestAccountStateIdempotentNoOpPreparesNoticeForAuthoritativeRace(t *testing
 	persistence := &accountStateStoreFake{events: &events, user: user, result: &store.UserDisabledStateResult{User: user}}
 	mailer := &securityNoticeMailerFake{events: &events}
 	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{},
-		&institutionAuditorFake{events: &events, beginID: model.NewId()}, mailer, &accountStateEffectsFake{events: &events}, time.Now)
+		&institutionAuditorFake{events: &events, beginID: model.NewID()}, mailer, &accountStateEffectsFake{events: &events}, time.Now)
 	result, err := service.SetUserEnabled(context.Background(), NewInvocation(model.Principal{UserID: actor}, model.RequestMetadata{}),
 		SetUserEnabledCommand{ID: user.ID, Enabled: false, IdempotencyKey: "row"})
 	if err != nil || result != user || len(mailer.requests) != 1 || persistence.input == nil || persistence.input.Occurrence == nil {
@@ -217,7 +217,7 @@ func TestAccountStateRetainedOutcomeBypassesMailAfterLaterStateChange(t *testing
 	persistence := &accountStateStoreFake{events: &events, user: current, result: &store.UserDisabledStateResult{User: &original}}
 	mailer := &securityNoticeMailerFake{events: &events, err: errors.New("mail unavailable")}
 	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{},
-		&institutionAuditorFake{events: &events, beginID: model.NewId()}, mailer, &accountStateEffectsFake{events: &events}, time.Now)
+		&institutionAuditorFake{events: &events, beginID: model.NewID()}, mailer, &accountStateEffectsFake{events: &events}, time.Now)
 	result, err := service.SetUserEnabled(context.Background(), NewInvocation(model.Principal{UserID: actor}, model.RequestMetadata{}),
 		SetUserEnabledCommand{ID: current.ID, Enabled: false, IdempotencyKey: "row", batchRetainedOutcome: true})
 	if err != nil || result != &original && result.ID != original.ID || len(mailer.requests) != 0 {

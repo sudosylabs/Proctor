@@ -51,12 +51,12 @@ func TestProgrammeHTTPMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
 	principal := model.Principal{
-		UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+		UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType:             model.SessionClientCLI, AuthenticatedAt: time.Now(),
 	}
-	programme := &model.Programme{ID: model.ProgrammeID(model.NewId()), AcademicUnitID: model.AcademicUnitID(model.NewId()), Name: "computer-science", DisplayName: "Computer Science"}
+	programme := &model.Programme{ID: model.ProgrammeID(model.NewID()), AcademicUnitID: model.AcademicUnitID(model.NewID()), Name: "computer-science", DisplayName: "Computer Science"}
 	programmes := &programmeHTTPApplication{result: programme}
 	httpAPI := newFocusedResourceAPI(
 		t, logger, classRouteAuthenticator{principal: principal}, programmeResource(programmes),
@@ -88,7 +88,7 @@ func TestProgrammeResourceRejectsInvalidQueryLimit(t *testing.T) {
 	logger, _ := newTestLogger(t)
 	principal := model.Principal{
 		UserID: model.NewUserID(), SessionID: model.NewSessionID(),
-		CredentialID:           model.PrincipalCredentialID(model.NewId()),
+		CredentialID:           model.PrincipalCredentialID(model.NewID()),
 		CredentialType:         model.CredentialSessionAccess,
 		AuthenticationMethod:   "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor,
@@ -101,7 +101,7 @@ func TestProgrammeResourceRejectsInvalidQueryLimit(t *testing.T) {
 	)
 	request := httptest.NewRequest(
 		http.MethodGet,
-		"/api/v1/academic-units/"+model.NewId()+"/programmes?limit=invalid",
+		"/api/v1/academic-units/"+model.NewID()+"/programmes?limit=invalid",
 		nil,
 	)
 	request.Header.Set("Authorization", "Bearer credential")

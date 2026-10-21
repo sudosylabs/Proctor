@@ -63,7 +63,7 @@ func (s *classStoreFake) Archive(_ context.Context, input *store.ClassArchive) (
 func TestClassGetAuthorizesExactScopeBeforeReading(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	service := newClassService(&classStoreFake{events: &events}, &programmeAuthorizerFake{events: &events, err: apperror.New("authorization.denied")}, &institutionAuditorFake{events: &events}, time.Now, model.NewId)
+	service := newClassService(&classStoreFake{events: &events}, &programmeAuthorizerFake{events: &events, err: apperror.New("authorization.denied")}, &institutionAuditorFake{events: &events}, time.Now, model.NewID)
 	_, err := service.GetClass(context.Background(), Invocation{}, GetClassQuery{ID: model.NewClassID()})
 	if !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("Get() error = %v", err)
@@ -76,19 +76,19 @@ func TestClassGetAuthorizesExactScopeBeforeReading(t *testing.T) {
 func TestClassUpdateMoveAuthorizesCurrentAndDestinationOwners(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	oldUnitID, newLevelID := model.NewId(), model.NewId()
+	oldUnitID, newLevelID := model.NewID(), model.NewID()
 	current := &model.Class{
-		ID:               model.ClassID(model.NewId()),
+		ID:               model.ClassID(model.NewID()),
 		CreatedAt:        model.TimeFromMillis(100),
 		UpdatedAt:        model.TimeFromMillis(100),
 		Revision:         7,
-		ProgrammeLevelID: model.ProgrammeLevelID(model.NewId()),
-		AcademicPeriodID: model.AcademicPeriodID(model.NewId()),
+		ProgrammeLevelID: model.ProgrammeLevelID(model.NewID()),
+		AcademicPeriodID: model.AcademicPeriodID(model.NewID()),
 		Name:             "class-a",
 		DisplayName:      "Class A",
 	}
 	persistence := &classStoreFake{events: &events, current: current, unitID: oldUnitID}
-	service := newClassService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
+	service := newClassService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, func() time.Time { return time.UnixMilli(500) }, model.NewID)
 	updated, err := service.UpdateClass(context.Background(), Invocation{}, UpdateClassCommand{ID: current.ID, ProgrammeLevelID: &newLevelID})
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +122,7 @@ func TestClassMutationMissingClassUsesClassResource(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			events := []string{}
-			service := newClassService(&classStoreFake{events: &events, getUnitErr: store.NewErrNotFound("class", model.NewId())}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events}, time.Now, model.NewId)
+			service := newClassService(&classStoreFake{events: &events, getUnitErr: store.NewErrNotFound("class", model.NewID())}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events}, time.Now, model.NewID)
 			err := test.run(service)
 			appErr, ok := apperror.As(err)
 			if !ok || appErr.Code() != "resource.not_found" || appErr.Fields()["resource"] != "class" {
@@ -135,10 +135,10 @@ func TestClassMutationMissingClassUsesClassResource(t *testing.T) {
 func TestClassCreateConflictCompletesFailedAttempt(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	levelID := model.NewId()
-	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
-	service := newClassService(&classStoreFake{events: &events, createErr: store.NewErrConflict("class", "classes_programme_level_id_academic_period_id_name_key", nil)}, &programmeAuthorizerFake{events: &events}, auditor, time.Now, model.NewId)
-	_, err := service.CreateClass(context.Background(), Invocation{}, CreateClassCommand{ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: model.NewId(), Name: "class-a", DisplayName: "Class A"})
+	levelID := model.NewID()
+	auditor := &institutionAuditorFake{events: &events, beginID: model.NewID()}
+	service := newClassService(&classStoreFake{events: &events, createErr: store.NewErrConflict("class", "classes_programme_level_id_academic_period_id_name_key", nil)}, &programmeAuthorizerFake{events: &events}, auditor, time.Now, model.NewID)
+	_, err := service.CreateClass(context.Background(), Invocation{}, CreateClassCommand{ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: model.NewID(), Name: "class-a", DisplayName: "Class A"})
 	if !apperror.Is(err, "class.conflict") || auditor.failCode != "class.conflict" {
 		t.Fatalf("Create() error = %v, audit = %q", err, auditor.failCode)
 	}
@@ -147,7 +147,7 @@ func TestClassCreateConflictCompletesFailedAttempt(t *testing.T) {
 func TestClassCreatePreservesBothParentsAndAtomicAudit(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	levelID, periodID, classID, auditID := model.NewId(), model.NewId(), model.NewId(), model.NewId()
+	levelID, periodID, classID, auditID := model.NewID(), model.NewID(), model.NewID(), model.NewID()
 	created := &model.Class{ID: model.ClassID(classID), ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: model.AcademicPeriodID(periodID)}
 	persistence := &classStoreFake{events: &events, created: created}
 	service := newClassService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: auditID}, func() time.Time { return time.UnixMilli(500) }, func() string { return classID })

@@ -69,13 +69,13 @@ func TestInstitutionHTTPMapsDTOsWithoutPermissionPreflight(t *testing.T) {
 
 	logger, _ := newTestLogger(t)
 	institution := &model.Institution{
-		ID: model.InstitutionID(model.NewId()), CreatedAt: model.TimeFromMillis(10), UpdatedAt: model.TimeFromMillis(20),
+		ID: model.InstitutionID(model.NewID()), CreatedAt: model.TimeFromMillis(10), UpdatedAt: model.TimeFromMillis(20),
 		Name: "northbridge", DisplayName: "Northbridge University",
 		Description: "A university",
 	}
 	fakeApplication := &institutionHTTPApplication{
 		principal: model.Principal{
-			UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+			UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 			CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
 			AuthenticationStrength: model.AuthenticationSingleFactor,
 			ClientType:             model.SessionClientCLI, AuthenticatedAt: time.Now(),
@@ -131,7 +131,7 @@ func TestInstitutionResourceRejectsUnknownPatchFields(t *testing.T) {
 	fakeApplication := &institutionHTTPApplication{
 		principal: model.Principal{
 			UserID: model.NewUserID(), SessionID: model.NewSessionID(),
-			CredentialID:           model.PrincipalCredentialID(model.NewId()),
+			CredentialID:           model.PrincipalCredentialID(model.NewID()),
 			CredentialType:         model.CredentialSessionAccess,
 			AuthenticationMethod:   "password",
 			AuthenticationStrength: model.AuthenticationSingleFactor,

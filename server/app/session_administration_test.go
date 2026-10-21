@@ -108,7 +108,7 @@ func sessionAdministrationTestUser(id string) *model.User {
 func TestAdminSessionListAuthorizesThenReads(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	userID := model.NewId()
+	userID := model.NewID()
 	session := &model.Session{ID: model.NewSessionID(), UserID: model.UserID(userID)}
 	at := time.Date(2026, 8, 12, 9, 30, 0, 123_456_789, time.FixedZone("offset", 7200))
 	persistence := &sessionAdministrationStoreFake{events: &events, list: []*model.Session{session}}
@@ -140,7 +140,7 @@ func TestAdminSessionListAuthorizesThenReads(t *testing.T) {
 func TestAdminSessionRevokeCommitsBeforePublishing(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	userID := model.NewId()
+	userID := model.NewID()
 	session := &model.Session{
 		ID: model.NewSessionID(), UserID: model.UserID(userID),
 		CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
@@ -159,7 +159,7 @@ func TestAdminSessionRevokeCommitsBeforePublishing(t *testing.T) {
 		persistence,
 		&sessionAdministrationUserStoreFake{events: &events, user: sessionAdministrationTestUser(userID)},
 		&sessionAdministrationAuthorizerFake{events: &events},
-		&institutionAuditorFake{events: &events, beginID: model.NewId()},
+		&institutionAuditorFake{events: &events, beginID: model.NewID()},
 		mailer,
 		&sessionAdministrationEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
@@ -185,7 +185,7 @@ func TestAdminSessionRevokeCommitsBeforePublishing(t *testing.T) {
 func TestAdminSessionRevokeFailurePublishesNoEffect(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	userID := model.NewId()
+	userID := model.NewID()
 	session := &model.Session{
 		ID: model.NewSessionID(), UserID: model.UserID(userID),
 		CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
@@ -198,7 +198,7 @@ func TestAdminSessionRevokeFailurePublishesNoEffect(t *testing.T) {
 		},
 		&sessionAdministrationUserStoreFake{events: &events, user: sessionAdministrationTestUser(userID)},
 		&sessionAdministrationAuthorizerFake{events: &events},
-		&institutionAuditorFake{events: &events, beginID: model.NewId()},
+		&institutionAuditorFake{events: &events, beginID: model.NewID()},
 		&securityNoticeMailerFake{events: &events},
 		&sessionAdministrationEffectsFake{events: &events},
 		time.Now,
@@ -218,7 +218,7 @@ func TestAdminSessionRevokeFailurePublishesNoEffect(t *testing.T) {
 func TestAdminSessionRevokeAllCommitsBeforePublishing(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	userID := model.NewId()
+	userID := model.NewID()
 	session := &model.Session{ID: model.NewSessionID(), UserID: model.UserID(userID)}
 	persistence := &sessionAdministrationStoreFake{
 		events: &events,
@@ -230,7 +230,7 @@ func TestAdminSessionRevokeAllCommitsBeforePublishing(t *testing.T) {
 		persistence,
 		&sessionAdministrationUserStoreFake{events: &events, user: sessionAdministrationTestUser(userID)},
 		&sessionAdministrationAuthorizerFake{events: &events},
-		&institutionAuditorFake{events: &events, beginID: model.NewId()},
+		&institutionAuditorFake{events: &events, beginID: model.NewID()},
 		&securityNoticeMailerFake{events: &events},
 		&sessionAdministrationEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
@@ -255,7 +255,7 @@ func TestAdminSessionIdempotentNoOpPreparesNoticeForAuthoritativeRace(t *testing
 		revokeAllResult: &store.UserSessionsRevocationResult{Sessions: []*model.Session{}, TokenHashes: []string{}}}
 	mailer := &securityNoticeMailerFake{events: &events}
 	service := newSessionAdministrationService(persistence, &sessionAdministrationUserStoreFake{events: &events, user: sessionAdministrationTestUser(userID)},
-		&sessionAdministrationAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, mailer,
+		&sessionAdministrationAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, mailer,
 		&sessionAdministrationEffectsFake{events: &events}, time.Now)
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 	if err := service.RevokeUserSessions(context.Background(), invocation, RevokeUserSessionsCommand{UserID: model.UserID(userID), IdempotencyKey: "row"}); err != nil {
@@ -275,7 +275,7 @@ func TestAdminSessionRetainedOutcomeBypassesMailAfterNewSession(t *testing.T) {
 		revokeAllResult: &store.UserSessionsRevocationResult{Sessions: []*model.Session{}, TokenHashes: []string{}}}
 	mailer := &securityNoticeMailerFake{events: &events, err: errors.New("mail unavailable")}
 	service := newSessionAdministrationService(persistence, &sessionAdministrationUserStoreFake{events: &events, user: sessionAdministrationTestUser(userID)},
-		&sessionAdministrationAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, mailer,
+		&sessionAdministrationAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, mailer,
 		&sessionAdministrationEffectsFake{events: &events}, time.Now)
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 	if err := service.RevokeUserSessions(context.Background(), invocation, RevokeUserSessionsCommand{UserID: model.UserID(userID), IdempotencyKey: "row", batchRetainedOutcome: true}); err != nil {
@@ -289,7 +289,7 @@ func TestAdminSessionRetainedOutcomeBypassesMailAfterNewSession(t *testing.T) {
 func TestAdminSessionCrossUserNotFound(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	userID := model.NewId()
+	userID := model.NewID()
 	session := &model.Session{ID: model.NewSessionID(), UserID: model.NewUserID()}
 	service := newSessionAdministrationService(
 		&sessionAdministrationStoreFake{events: &events, session: session},
@@ -319,7 +319,7 @@ func TestAdminSessionRevocationOutcomesPreserveAuditAndBatchResult(t *testing.T)
 			now := time.UnixMilli(500)
 			userID := model.NewUserID().String()
 			events := []string{}
-			audit := &mutationAttemptAuditorFake{events: &events, beginID: model.NewId()}
+			audit := &mutationAttemptAuditorFake{events: &events, beginID: model.NewID()}
 			persistence := &sessionAdministrationStoreFake{events: &events,
 				revokeAllResult: &store.UserSessionsRevocationResult{Sessions: []*model.Session{
 					{ID: model.NewSessionID(), UserID: model.UserID(userID)},
@@ -374,7 +374,7 @@ func TestAdminSessionRevocationOutcomesPreserveAuditAndBatchResult(t *testing.T)
 			}
 			if outcome == "changed" {
 				want = append(want, "publish-revocation")
-				if effects.userID != userID || !slices.Equal(effects.sessionIDs, sessionIds(persistence.revokeAllResult.Sessions)) ||
+				if effects.userID != userID || !slices.Equal(effects.sessionIDs, sessionIDs(persistence.revokeAllResult.Sessions)) ||
 					!slices.Equal(effects.hashes, persistence.revokeAllResult.TokenHashes) {
 					t.Fatalf("affected Sessions = %#v", effects)
 				}

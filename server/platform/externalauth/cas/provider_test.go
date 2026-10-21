@@ -97,7 +97,7 @@ func TestProviderLoginAndAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if assertion.ProviderId != "campus-cas" ||
+	if assertion.ProviderID != "campus-cas" ||
 		assertion.Subject != "opaque-subject" ||
 		assertion.Username != "student.name" ||
 		assertion.Email != "student.name@example.edu" ||

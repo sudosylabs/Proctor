@@ -330,8 +330,8 @@ func NewJobClaimToken() (JobClaimToken, error) {
 	return JobClaimToken(hex.EncodeToString(value)), nil
 }
 
-func NewJobID() JobID                  { return JobID(NewId()) }
-func NewJobAttemptID() JobAttemptID    { return JobAttemptID(NewId()) }
+func NewJobID() JobID                  { return JobID(NewID()) }
+func NewJobAttemptID() JobAttemptID    { return JobAttemptID(NewID()) }
 func (id JobID) IsZero() bool          { return id == "" }
 func (id JobAttemptID) IsZero() bool   { return id == "" }
 func (id JobID) IsValid() bool         { return IsValidOpaqueID(string(id)) }

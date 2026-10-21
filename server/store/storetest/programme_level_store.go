@@ -45,7 +45,7 @@ func testProgrammeLevelStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	unit, programme := saveProgrammeParents(t, ctx, ss, "audited-level-programme")
 	createAttempt := saveProgrammeLevelAuditAttempt(t, ctx, ss, unit.ID.String())
 	candidate := &model.ProgrammeLevel{ProgrammeID: programme.ID, Name: "audited-level", DisplayName: "Audited Level"}
-	candidate.PrepareCreate(model.ProgrammeLevelID(model.NewId()), model.NowUTC())
+	candidate.PrepareCreate(model.ProgrammeLevelID(model.NewID()), model.NowUTC())
 	created, err := ss.ProgrammeLevel().Create(ctx, &store.ProgrammeLevelCreation{Level: candidate, AuditEventID: createAttempt.ID, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	completed, err := ss.Audit().Get(ctx, createAttempt.ID)
@@ -55,7 +55,7 @@ func testProgrammeLevelStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	}
 
 	rolledBackCreate := &model.ProgrammeLevel{ProgrammeID: programme.ID, Name: "rolled-back-create", DisplayName: "Rolled Back Create"}
-	rolledBackCreate.PrepareCreate(model.ProgrammeLevelID(model.NewId()), model.NowUTC())
+	rolledBackCreate.PrepareCreate(model.ProgrammeLevelID(model.NewID()), model.NowUTC())
 	if _, err = ss.ProgrammeLevel().Create(ctx, &store.ProgrammeLevelCreation{Level: rolledBackCreate, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}); err == nil {
 		t.Fatal("Create() succeeded without its audit attempt")
 	}
@@ -247,7 +247,7 @@ func testProgrammeLevelStoreUpdate(t *testing.T, ss store.Store) {
 	}
 
 	missing := *updated
-	missing.ID = model.ProgrammeLevelID(model.NewId())
+	missing.ID = model.ProgrammeLevelID(model.NewID())
 	_, err = UpdateProgrammeLevel(ctx, ss, &missing)
 	if !store.IsNotFound(err) {
 		t.Fatalf("Update(missing) error = %v, want not found", err)
@@ -270,7 +270,7 @@ func testProgrammeLevelStoreRejectUnknownProgramme(t *testing.T, ss store.Store)
 	saveInstitution(t, ctx, ss)
 
 	_, err := SaveProgrammeLevel(ctx, ss, &model.ProgrammeLevel{
-		ProgrammeID: model.ProgrammeID(model.NewId()),
+		ProgrammeID: model.ProgrammeID(model.NewID()),
 		Name:        "year-1",
 		DisplayName: "Year 1",
 	})

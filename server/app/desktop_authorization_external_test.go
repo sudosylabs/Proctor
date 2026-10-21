@@ -116,7 +116,7 @@ func TestExternalAuthenticationCompletionIsolatesDesktopPurpose(t *testing.T) {
 			case model.ExternalAuthenticationPurposeInvitationAdmission:
 				state.InvitationID = model.NewInvitationID()
 			}
-			assertion := &model.ExternalAuthenticationAssertion{ProviderId: "campus", Subject: identity.Subject, Email: user.Email,
+			assertion := &model.ExternalAuthenticationAssertion{ProviderID: "campus", Subject: identity.Subject, Email: user.Email,
 				EmailVerified: true, AuthenticationStrength: model.AuthenticationMultiFactor, AuthenticatedAt: at.UnixMilli()}
 			service.registry = externalProviderSourceFake{provider: providerConnectionProvider{state: stateToken, assertion: assertion}}
 			service.loginStates = &externalLoginStateStoreFake{get: state, consumeResult: state, storeNow: at}

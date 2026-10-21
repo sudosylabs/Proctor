@@ -269,7 +269,7 @@ func TestJobStore(t *testing.T, ss store.Store) {
 
 func saveJobMutationAudit(t *testing.T, ctx context.Context, ss store.Store, jobID model.JobID, operation string) *model.AuditEvent {
 	t.Helper()
-	event, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionJobManage), Resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}, ScopeType: model.RoleScopeInstitution, ScopeID: model.NewId(), Status: model.AuditStatusAttempt, NodeID: "test-node", Parameters: []byte(`{"operation":"` + operation + `","job_id":"` + jobID.String() + `"}`)})
+	event, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionJobManage), Resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}, ScopeType: model.RoleScopeInstitution, ScopeID: model.NewID(), Status: model.AuditStatusAttempt, NodeID: "test-node", Parameters: []byte(`{"operation":"` + operation + `","job_id":"` + jobID.String() + `"}`)})
 	requireNoError(t, err)
 	return event
 }

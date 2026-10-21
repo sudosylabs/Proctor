@@ -94,7 +94,7 @@ func TestStartMailRekeyRequiresStrongRecentSessionAndEnqueuesAuditedJob(t *testi
 		KeyID: oldSealerKeyID(t, oldKey), ActiveReferences: 4,
 	}}}}
 	authorizer := &mailAuthorizerFake{}
-	auditor := &mailRekeyAuditFake{beginID: model.NewId(), events: &events}
+	auditor := &mailRekeyAuditFake{beginID: model.NewID(), events: &events}
 	service := &mailService{rekey: persistence, keyState: persistence, rekeyAudit: auditor, authorization: authorizer, sealer: sealer,
 		recentAuthenticationTTL: 15 * time.Minute, now: func() time.Time { return now }}
 	woke := 0
@@ -131,7 +131,7 @@ func TestStartMailRekeyRequiresStrongRecentSessionAndEnqueuesAuditedJob(t *testi
 
 	pat := principal
 	pat.SessionID = ""
-	pat.CredentialID = model.PrincipalCredentialID(model.NewId())
+	pat.CredentialID = model.PrincipalCredentialID(model.NewID())
 	pat.CredentialType = model.CredentialPersonalAccessToken
 	pat.AuthenticationStrength = ""
 	pat.AuthenticatedAt = time.Time{}
@@ -188,7 +188,7 @@ func TestStartMailRekeyCompletesConflictAndPersistenceFailureAudits(t *testing.T
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			persistence := &mailRekeyStarterFake{err: test.storeErr}
-			auditor := &mailRekeyAuditFake{beginID: model.NewId(), failErr: test.failErr}
+			auditor := &mailRekeyAuditFake{beginID: model.NewID(), failErr: test.failErr}
 			service := &mailService{rekey: persistence, rekeyAudit: auditor, authorization: &mailAuthorizerFake{}, sealer: sealer,
 				recentAuthenticationTTL: 15 * time.Minute, now: func() time.Time { return now }, wake: func() { t.Fatal("failed rekey woke workers") }}
 			principal := mailTestPrincipal(model.TimeUTC(now))

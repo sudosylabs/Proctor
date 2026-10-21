@@ -452,7 +452,7 @@ func TestDesktopAuthorizationRevalidatesSourceWebSessionProof(t *testing.T) {
 	for _, name := range []string{"live", "future authentication", "revoked session", "expired session", "idle expired session", "revoked credential", "expired credential", "rotated credential", "other Session credential", "refresh credential"} {
 		t.Run(name, func(t *testing.T) {
 			user := saveIntegrationUser(t, ctx, persistence, &model.User{
-				Username: "source-" + model.NewId(), Email: model.NewId() + "@source.example.edu",
+				Username: "source-" + model.NewID(), Email: model.NewID() + "@source.example.edu",
 			})
 			session, credentials := authenticationPolicyTestSession(user.ID, "password", "", "")
 			session.AuthenticationStrength = model.AuthenticationMultiFactor

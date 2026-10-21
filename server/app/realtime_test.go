@@ -27,7 +27,7 @@ func TestRealtimePublishRequiresClusterFanout(t *testing.T) {
 	_ = service.AttachRealtimeSink(&recordingRealtimeSink{})
 	err := service.PublishRealtimeEvent(context.Background(), apprealtime.RealtimeEvent{
 		Name:   "user.notification",
-		UserID: model.NewId(),
+		UserID: model.NewID(),
 	})
 	if err == nil || !apperror.Is(err, "websocket.internal") {
 		t.Fatalf("Publish() error = %v, want websocket.internal", err)

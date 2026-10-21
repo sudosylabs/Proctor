@@ -227,8 +227,8 @@ func saveRoleAuditAttempt(t *testing.T, ctx context.Context, ss store.Store) *mo
 	t.Helper()
 	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		Action:    string(model.ActionRoleManage),
-		Resource:  model.Resource{Type: model.ResourceInstitution, ID: model.NewId()},
-		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewId(),
+		Resource:  model.Resource{Type: model.ResourceInstitution, ID: model.NewID()},
+		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewID(),
 		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
 	requireNoError(t, err)

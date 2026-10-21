@@ -52,10 +52,10 @@ func testTeacherAcademicUnitInvitationIntervalCoverage(t *testing.T, ss store.St
 	ctx := context.Background()
 	unit, _ := saveProgrammeParents(t, ctx, ss, "teacher-invitation-coverage")
 	inviter := saveUser(t, ctx, ss)
-	packageRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-coverage-package-" + model.NewId(), DisplayName: "Teacher Coverage Package",
+	packageRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-coverage-package-" + model.NewID(), DisplayName: "Teacher Coverage Package",
 		Permissions: []string{string(model.ActionAcademicUnitView)}})
 	requireNoError(t, err)
-	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-coverage-authority-" + model.NewId(), DisplayName: "Teacher Coverage Authority",
+	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-coverage-authority-" + model.NewID(), DisplayName: "Teacher Coverage Authority",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionAcademicUnitMembersManage), string(model.ActionAcademicUnitView)}})
 	requireNoError(t, err)
 	issuedAt := model.NowUTC().Add(-time.Minute)
@@ -65,7 +65,7 @@ func testTeacherAcademicUnitInvitationIntervalCoverage(t *testing.T, ss store.St
 
 	firstIssue := teacherAcademicUnitInvitationIssueFixture(t, ss, inviter, unit, packageRole, issuedAt)
 	firstIssue.Invitation.TargetEmail = "teacher-coverage@example.edu"
-	firstIssue.Invitation.Suggestions.Username = "teacher-coverage-" + model.NewId()
+	firstIssue.Invitation.Suggestions.Username = "teacher-coverage-" + model.NewID()
 	firstIssue.Invitation.IntendedEndsAt = model.OptionalTimeFrom(issuedAt.Add(4 * time.Hour))
 	first, err := ss.Invitation().IssueTeacherAcademicUnit(ctx, firstIssue)
 	requireNoError(t, err)
@@ -83,7 +83,7 @@ func testTeacherAcademicUnitInvitationIntervalCoverage(t *testing.T, ss store.St
 		t.Fatalf("bounded compatible package did not reuse covering relationships: %#v / %#v", firstAccepted, coveredAccepted)
 	}
 
-	unboundedRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-unbounded-package-" + model.NewId(), DisplayName: "Unbounded Teacher Package",
+	unboundedRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-unbounded-package-" + model.NewID(), DisplayName: "Unbounded Teacher Package",
 		Permissions: []string{string(model.ActionAcademicUnitView)}})
 	requireNoError(t, err)
 	unboundedIssue := teacherAcademicUnitInvitationIssueFixture(t, ss, inviter, unit, unboundedRole, issuedAt.Add(2*time.Second))
@@ -104,12 +104,12 @@ func teacherInvitationMailFixture(t *testing.T, ss store.Store, suffix string) (
 	t.Helper()
 	ctx := context.Background()
 	parent, _ := saveProgrammeParents(t, ctx, ss, "teacher-mail-"+suffix)
-	unit := saveAcademicUnit(t, ctx, ss, parent.InstitutionID.String(), parent.ID.String(), "teacher-mail-leaf-"+model.NewId())
+	unit := saveAcademicUnit(t, ctx, ss, parent.InstitutionID.String(), parent.ID.String(), "teacher-mail-leaf-"+model.NewID())
 	inviter := saveUser(t, ctx, ss)
-	packageRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-mail-package-" + model.NewId(), DisplayName: "Teacher Mail Package",
+	packageRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-mail-package-" + model.NewID(), DisplayName: "Teacher Mail Package",
 		Permissions: []string{string(model.ActionAcademicUnitView)}})
 	requireNoError(t, err)
-	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-mail-authority-" + model.NewId(), DisplayName: "Teacher Mail Authority",
+	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-mail-authority-" + model.NewID(), DisplayName: "Teacher Mail Authority",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionAcademicUnitMembersManage), string(model.ActionAcademicUnitView)}})
 	requireNoError(t, err)
 	issuedAt := model.NowUTC().Add(-time.Minute)
@@ -158,12 +158,12 @@ func testTeacherInvitationSerializesWithUnitArchive(t *testing.T, ss store.Store
 	t.Helper()
 	ctx := context.Background()
 	parent, _ := saveProgrammeParents(t, ctx, ss, "teacher-invitation-unit-race")
-	unit := saveAcademicUnit(t, ctx, ss, parent.InstitutionID.String(), parent.ID.String(), "teacher-invitation-leaf-"+model.NewId())
+	unit := saveAcademicUnit(t, ctx, ss, parent.InstitutionID.String(), parent.ID.String(), "teacher-invitation-leaf-"+model.NewID())
 	inviter := saveUser(t, ctx, ss)
-	packageRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-unit-race-package-" + model.NewId(), DisplayName: "Teacher Package",
+	packageRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-unit-race-package-" + model.NewID(), DisplayName: "Teacher Package",
 		Permissions: []string{string(model.ActionAcademicUnitView)}})
 	requireNoError(t, err)
-	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-unit-race-authority-" + model.NewId(), DisplayName: "Teacher Inviter",
+	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-unit-race-authority-" + model.NewID(), DisplayName: "Teacher Inviter",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionAcademicUnitMembersManage), string(model.ActionAcademicUnitView)}})
 	requireNoError(t, err)
 	issuedAt := model.NowUTC().Add(-time.Minute)
@@ -194,10 +194,10 @@ func testTeacherAcademicUnitInvitationIssue(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	unit, _ := saveProgrammeParents(t, ctx, ss, "teacher-invitation")
 	inviter := saveUser(t, ctx, ss)
-	packageRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-package-" + model.NewId(), DisplayName: "Teacher Package",
+	packageRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-package-" + model.NewID(), DisplayName: "Teacher Package",
 		Permissions: []string{string(model.ActionAcademicUnitView), string(model.ActionProgrammeManage)}})
 	requireNoError(t, err)
-	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-inviter-" + model.NewId(), DisplayName: "Teacher Inviter",
+	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-inviter-" + model.NewID(), DisplayName: "Teacher Inviter",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionAcademicUnitMembersManage),
 			string(model.ActionAcademicUnitView), string(model.ActionProgrammeManage)}})
 	requireNoError(t, err)
@@ -233,10 +233,10 @@ func testTeacherAcademicUnitInvitationIssue(t *testing.T, ss store.Store) {
 	if _, err = ss.Invitation().Get(ctx, rollback.Invitation.ID); !store.IsNotFound(err) {
 		t.Fatalf("rolled-back teacher Invitation = %v", err)
 	}
-	protectedRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-protected-" + model.NewId(), DisplayName: "Protected Package",
+	protectedRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-protected-" + model.NewID(), DisplayName: "Protected Package",
 		Permissions: []string{string(model.ActionRoleManage)}})
 	requireNoError(t, err)
-	directAuthority, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-direct-protected-" + model.NewId(), DisplayName: "Direct Protected Authority",
+	directAuthority, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-direct-protected-" + model.NewID(), DisplayName: "Direct Protected Authority",
 		Permissions: []string{string(model.ActionRoleManage)}})
 	requireNoError(t, err)
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: inviter.ID, RoleID: directAuthority.ID,
@@ -258,7 +258,7 @@ func testTeacherAcademicUnitInvitationIssue(t *testing.T, ss store.Store) {
 	for _, skew := range []time.Duration{-2 * time.Hour, 2 * time.Hour} {
 		skewedAt := model.NowUTC().Add(skew)
 		skewed := teacherAcademicUnitInvitationIssueFixture(t, ss, inviter, unit, packageRole, skewedAt)
-		skewed.Invitation.TargetEmail = "teacher-skew-" + model.NewId() + "@example.edu"
+		skewed.Invitation.TargetEmail = "teacher-skew-" + model.NewID() + "@example.edu"
 		before := model.NowUTC()
 		persisted, issueErr := ss.Invitation().IssueTeacherAcademicUnit(ctx, skewed)
 		after := model.NowUTC()
@@ -280,10 +280,10 @@ func testTeacherAcademicUnitInvitationAcceptance(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	unit, _ := saveProgrammeParents(t, ctx, ss, "teacher-invitation-accept")
 	inviter := saveUser(t, ctx, ss)
-	packageRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-accept-package-" + model.NewId(), DisplayName: "Teacher Package",
+	packageRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-accept-package-" + model.NewID(), DisplayName: "Teacher Package",
 		Permissions: []string{string(model.ActionAcademicUnitView), string(model.ActionProgrammeManage)}})
 	requireNoError(t, err)
-	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-accept-inviter-" + model.NewId(), DisplayName: "Teacher Inviter",
+	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-accept-inviter-" + model.NewID(), DisplayName: "Teacher Inviter",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionAcademicUnitMembersManage),
 			string(model.ActionAcademicUnitView), string(model.ActionProgrammeManage)}})
 	requireNoError(t, err)
@@ -318,7 +318,7 @@ func testTeacherAcademicUnitInvitationAcceptance(t *testing.T, ss store.Store) {
 		replayed.AcademicUnitMember.ID != accepted.AcademicUnitMember.ID || replayed.RoleBinding.ID != accepted.RoleBinding.ID {
 		t.Fatalf("teacher Invitation replay = %#v; want original %#v", replayed, accepted)
 	}
-	secondRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-compatible-" + model.NewId(), DisplayName: "Compatible Teacher Package",
+	secondRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-compatible-" + model.NewID(), DisplayName: "Compatible Teacher Package",
 		Permissions: []string{string(model.ActionAcademicUnitView)}})
 	requireNoError(t, err)
 	secondIssue := teacherAcademicUnitInvitationIssueFixture(t, ss, inviter, unit, secondRole, issuedAt.Add(time.Second))
@@ -334,14 +334,14 @@ func testTeacherAcademicUnitInvitationAcceptance(t *testing.T, ss store.Store) {
 	if _, err = ss.Mail().GetDelivery(ctx, secondInput.Delivery.ID); !store.IsNotFound(err) {
 		t.Fatalf("existing teacher received redundant welcome delivery: %v", err)
 	}
-	independentRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-independent-" + model.NewId(), DisplayName: "Independent",
+	independentRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-independent-" + model.NewID(), DisplayName: "Independent",
 		Permissions: []string{string(model.ActionAcademicUnitView)}})
 	requireNoError(t, err)
 	independent, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: accepted.User.ID, RoleID: independentRole.ID,
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: issuedAt})
 	requireNoError(t, err)
 	endAt := model.MillisFromTime(model.NowUTC().Add(time.Minute))
-	futureRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-future-package-" + model.NewId(), DisplayName: "Future Package",
+	futureRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-future-package-" + model.NewID(), DisplayName: "Future Package",
 		Permissions: []string{string(model.ActionAcademicUnitView)}})
 	requireNoError(t, err)
 	futurePackage, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: accepted.User.ID, RoleID: futureRole.ID,

@@ -66,7 +66,7 @@ func TestExamSittingAuditExcludesPrivateContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	encoded, err := encodeExamSittingAudit(sitting, true, model.NewId())
+	encoded, err := encodeExamSittingAudit(sitting, true, model.NewID())
 	if err != nil {
 		t.Fatal(err)
 	}

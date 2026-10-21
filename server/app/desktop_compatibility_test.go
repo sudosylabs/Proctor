@@ -60,7 +60,7 @@ func desktopCompatibilityServiceFixture(
 	policy := model.NewInitialDesktopCompatibilityPolicy(institution.ID, at)
 	persistence := &desktopCompatibilityPolicyStoreFake{policy: policy}
 	authorization := &accessPolicyAuthorizationFake{}
-	audit := &accessPolicyAuditFake{beginID: model.NewId()}
+	audit := &accessPolicyAuditFake{beginID: model.NewID()}
 	service, err := newDesktopCompatibilityService(
 		persistence,
 		&accessPolicyInstitutionFake{institution: institution},
@@ -85,7 +85,7 @@ func desktopCompatibilityServiceFixture(
 	principal := model.Principal{
 		UserID:                 model.NewUserID(),
 		SessionID:              model.NewSessionID(),
-		CredentialID:           model.PrincipalCredentialID(model.NewId()),
+		CredentialID:           model.PrincipalCredentialID(model.NewID()),
 		CredentialType:         model.CredentialSessionAccess,
 		AuthenticationMethod:   "password",
 		AuthenticationStrength: model.AuthenticationMultiFactor,

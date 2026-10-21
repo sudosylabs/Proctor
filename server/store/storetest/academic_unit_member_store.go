@@ -132,7 +132,7 @@ func testAcademicUnitMemberActiveIntervalPrecision(t *testing.T, ss store.Store)
 func testAcademicUnitMemberEndBeforeModification(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
-	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "member-backdated-"+model.NewId())
+	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "member-backdated-"+model.NewID())
 	user := saveUser(t, ctx, ss)
 	now := model.GetMillis()
 	saved, err := ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{

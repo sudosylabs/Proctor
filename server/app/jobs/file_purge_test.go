@@ -40,7 +40,7 @@ func TestFilePurgeCommandAndCheckpointAreVersionedTypedAndBounded(t *testing.T) 
 		t.Fatal("accepted unknown field")
 	}
 
-	checkpoint, err := EncodeFilePurgeExpiredContentCheckpoint(FilePurgeExpiredContentCheckpointV1{Cursor: "lease:" + model.NewId(), Examined: 2, Purged: 1})
+	checkpoint, err := EncodeFilePurgeExpiredContentCheckpoint(FilePurgeExpiredContentCheckpointV1{Cursor: "lease:" + model.NewID(), Examined: 2, Purged: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func (f *purgeStoreFake) ClaimPurgeCandidate(_ context.Context, candidate *store
 	if f.claimErrAt > 0 && len(f.claimed) == f.claimErrAt {
 		return nil, store.NewErrConflict("file_revision", "retained", nil)
 	}
-	return &store.FilePurgeClaim{ID: model.NewId(), Candidate: *candidate}, nil
+	return &store.FilePurgeClaim{ID: model.NewID(), Candidate: *candidate}, nil
 }
 func (f *purgeStoreFake) CompletePurge(_ context.Context, claim *store.FilePurgeClaim) error {
 	f.completed = append(f.completed, *claim)
@@ -208,7 +208,7 @@ func (f *purgeContentFake) RemoveFileRevisionRenditions(_ context.Context, revis
 func TestFilePurgeHandlerCheckpointsOnlyAfterContentAndMetadataArePurged(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
-	firstCursor, secondCursor := "lease:"+model.NewId(), "lease:"+model.NewId()
+	firstCursor, secondCursor := "lease:"+model.NewID(), "lease:"+model.NewID()
 	if secondCursor < firstCursor {
 		firstCursor, secondCursor = secondCursor, firstCursor
 	}
@@ -247,8 +247,8 @@ func TestFilePurgeHandlerCheckpointsOnlyAfterContentAndMetadataArePurged(t *test
 func TestFilePurgeHandlerSelectsDeletionByAuthoritativeCandidateKind(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
-	expired := store.FilePurgeCandidate{Cursor: "lease:" + model.NewId(), Kind: store.FilePurgeCandidateExpiredLease, LeaseID: model.NewUploadLeaseID(), RevisionID: model.NewFileRevisionID()}
-	archived := store.FilePurgeCandidate{Cursor: "archived:" + model.NewId(), Kind: store.FilePurgeCandidateArchivedCustom, EntryID: model.NewFileEntryID(), RevisionID: model.NewFileRevisionID(), RenditionIDs: []model.FileRenditionID{model.NewFileRenditionID()}}
+	expired := store.FilePurgeCandidate{Cursor: "lease:" + model.NewID(), Kind: store.FilePurgeCandidateExpiredLease, LeaseID: model.NewUploadLeaseID(), RevisionID: model.NewFileRevisionID()}
+	archived := store.FilePurgeCandidate{Cursor: "archived:" + model.NewID(), Kind: store.FilePurgeCandidateArchivedCustom, EntryID: model.NewFileEntryID(), RevisionID: model.NewFileRevisionID(), RenditionIDs: []model.FileRenditionID{model.NewFileRenditionID()}}
 	persistence := &purgeStoreFake{candidates: []store.FilePurgeCandidate{archived, expired}}
 	content := &purgeContentFake{}
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeFilePurgeExpiredContent, 1, mustPurgeCommand(t, 2), "daily", at, at, 5)
@@ -264,7 +264,7 @@ func TestFilePurgeHandlerSelectsDeletionByAuthoritativeCandidateKind(t *testing.
 func TestFilePurgeHandlerCapsWorkByDurableReservationAndCheckpoint(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
-	candidate := store.FilePurgeCandidate{Cursor: "lease:" + model.NewId(), Kind: store.FilePurgeCandidateExpiredLease, LeaseID: model.NewUploadLeaseID(), RevisionID: model.NewFileRevisionID()}
+	candidate := store.FilePurgeCandidate{Cursor: "lease:" + model.NewID(), Kind: store.FilePurgeCandidateExpiredLease, LeaseID: model.NewUploadLeaseID(), RevisionID: model.NewFileRevisionID()}
 	persistence := &purgeStoreFake{candidates: []store.FilePurgeCandidate{candidate}}
 	content := &purgeContentFake{}
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeFilePurgeExpiredContent, 1, mustPurgeCommand(t, 1), "daily", now, now, 5)
@@ -292,7 +292,7 @@ func TestFilePurgeHandlerCapsWorkByDurableReservationAndCheckpoint(t *testing.T)
 func TestFilePurgeHandlerClaimsBeforeDeletingAndDoesNotCountClaimConflicts(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
-	firstCursor, secondCursor := "lease:"+model.NewId(), "lease:"+model.NewId()
+	firstCursor, secondCursor := "lease:"+model.NewID(), "lease:"+model.NewID()
 	if secondCursor < firstCursor {
 		firstCursor, secondCursor = secondCursor, firstCursor
 	}
@@ -334,7 +334,7 @@ func TestFilePurgeHandlerClaimsBeforeDeletingAndDoesNotCountClaimConflicts(t *te
 func TestFilePurgeHandlerResumesWithCumulativeProgress(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
-	candidate := store.FilePurgeCandidate{Cursor: "lease:" + model.NewId(), Kind: store.FilePurgeCandidateExpiredLease, LeaseID: model.NewUploadLeaseID(), EntryID: model.NewFileEntryID(), RevisionID: model.NewFileRevisionID()}
+	candidate := store.FilePurgeCandidate{Cursor: "lease:" + model.NewID(), Kind: store.FilePurgeCandidateExpiredLease, LeaseID: model.NewUploadLeaseID(), EntryID: model.NewFileEntryID(), RevisionID: model.NewFileRevisionID()}
 	persistence := &purgeStoreFake{candidates: []store.FilePurgeCandidate{candidate}}
 	handler := newFilePurgeExpiredContentHandler(persistence, &purgeContentFake{}, nil, nil, nil, nil)
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeFilePurgeExpiredContent, 1, mustPurgeCommand(t, 10), "daily", now, now, 5)
@@ -343,7 +343,7 @@ func TestFilePurgeHandlerResumesWithCumulativeProgress(t *testing.T) {
 	}
 	job.WorkReserved = 7
 	job.CheckpointVersion = 1
-	job.Checkpoint, err = EncodeFilePurgeExpiredContentCheckpoint(FilePurgeExpiredContentCheckpointV1{Cursor: "archived:" + model.NewId(), Examined: 7, Purged: 5})
+	job.Checkpoint, err = EncodeFilePurgeExpiredContentCheckpoint(FilePurgeExpiredContentCheckpointV1{Cursor: "archived:" + model.NewID(), Examined: 7, Purged: 5})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -368,7 +368,7 @@ func TestFilePurgeHandlerRunsStarterWorkspaceCleanupAfterGenericPurgeWithinOneBa
 	t.Parallel()
 	at := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
 	var order []string
-	candidate := store.FilePurgeCandidate{Cursor: "lease:" + model.NewId(), Kind: store.FilePurgeCandidateExpiredLease, LeaseID: model.NewUploadLeaseID(), RevisionID: model.NewFileRevisionID()}
+	candidate := store.FilePurgeCandidate{Cursor: "lease:" + model.NewID(), Kind: store.FilePurgeCandidateExpiredLease, LeaseID: model.NewUploadLeaseID(), RevisionID: model.NewFileRevisionID()}
 	files := &purgeStoreFake{candidates: []store.FilePurgeCandidate{candidate}, order: &order}
 	genericContent := &purgeContentFake{}
 	workspaceObject := cleanupWorkspaceObject(at)
@@ -446,7 +446,7 @@ func TestFilePurgeHandlerRunsAttemptWorkspaceCleanupAfterStarterWorkspaceWithinO
 	t.Parallel()
 	at := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 	var order []string
-	candidate := store.FilePurgeCandidate{Cursor: "lease:" + model.NewId(), Kind: store.FilePurgeCandidateExpiredLease,
+	candidate := store.FilePurgeCandidate{Cursor: "lease:" + model.NewID(), Kind: store.FilePurgeCandidateExpiredLease,
 		LeaseID: model.NewUploadLeaseID(), RevisionID: model.NewFileRevisionID()}
 	files := &purgeStoreFake{candidates: []store.FilePurgeCandidate{candidate}, order: &order}
 	starterObject := cleanupWorkspaceObject(at)

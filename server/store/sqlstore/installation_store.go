@@ -291,7 +291,7 @@ func prepareInstallationBootstrap(
 		input.BootstrapSecretDigest == ([32]byte{}) || input.CommandFingerprint == ([32]byte{}) {
 		return nil, store.NewErrInvalidInput("installation", "bootstrap", nil)
 	}
-	institutionID, err := model.ParseInstitutionID(model.NewId())
+	institutionID, err := model.ParseInstitutionID(model.NewID())
 	if err != nil {
 		return nil, err
 	}

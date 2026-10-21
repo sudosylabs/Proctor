@@ -54,7 +54,7 @@ func TestWebSocketResourceMapsDeclaredAndRejectsUndeclaredTransportFailures(t *t
 
 	principal := model.Principal{
 		UserID: model.NewUserID(), SessionID: model.NewSessionID(),
-		CredentialID:         model.PrincipalCredentialID(model.NewId()),
+		CredentialID:         model.PrincipalCredentialID(model.NewID()),
 		CredentialType:       model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt: time.Now(), ClientType: model.SessionClientCLI,
@@ -94,7 +94,7 @@ func TestWebSocketResourceRunsNamedUpgradeThroughRoutingKernel(t *testing.T) {
 	logger, _ := newTestLogger(t)
 	principal := model.Principal{
 		UserID: model.NewUserID(), SessionID: model.NewSessionID(),
-		CredentialID:         model.PrincipalCredentialID(model.NewId()),
+		CredentialID:         model.PrincipalCredentialID(model.NewID()),
 		CredentialType:       model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt: time.Now(), ClientType: model.SessionClientCLI,
@@ -115,7 +115,7 @@ func TestWebSocketResourceRunsNamedUpgradeThroughRoutingKernel(t *testing.T) {
 		t.Fatalf("WebSocket manifest = %#v", routes)
 	}
 
-	connectionID := model.NewId()
+	connectionID := model.NewID()
 	request := httptest.NewRequest(
 		http.MethodGet,
 		"/api/v1/websocket?connection_id="+connectionID+"&sequence_number=7",
@@ -143,7 +143,7 @@ func TestWebSocketResourceRejectsMissingCredentialAndInvalidResume(t *testing.T)
 	logger, _ := newTestLogger(t)
 	principal := model.Principal{
 		UserID: model.NewUserID(), SessionID: model.NewSessionID(),
-		CredentialID:         model.PrincipalCredentialID(model.NewId()),
+		CredentialID:         model.PrincipalCredentialID(model.NewID()),
 		CredentialType:       model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt: time.Now(), ClientType: model.SessionClientCLI,

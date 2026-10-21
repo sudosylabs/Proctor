@@ -223,7 +223,7 @@ func decodeStrictPayload(data []byte, target any) error {
 func (s *Service) Publish(ctx context.Context, event RealtimeEvent) error {
 	candidate := event.Clone()
 	if candidate.ID == "" {
-		candidate.ID = model.NewId()
+		candidate.ID = model.NewID()
 	}
 	if err := candidate.ValidateForPublish(); err != nil {
 		return &InvalidPublicationError{err: err}

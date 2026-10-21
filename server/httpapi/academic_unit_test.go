@@ -120,9 +120,9 @@ func (academicUnitHTTPHealth) Ready() bool { return true }
 func TestAcademicUnitResponsePreservesExistingWireShape(t *testing.T) {
 	t.Parallel()
 
-	unitID := model.NewId()
-	institutionID := model.NewId()
-	parentID := model.NewId()
+	unitID := model.NewID()
+	institutionID := model.NewID()
+	parentID := model.NewID()
 	unit := &model.AcademicUnit{
 		ID: model.AcademicUnitID(unitID), CreatedAt: model.TimeFromMillis(10),
 		UpdatedAt:     model.TimeFromMillis(20),
@@ -164,12 +164,12 @@ func TestAcademicUnitHTTPReadMapsDTOWithoutPermissionPreflight(t *testing.T) {
 
 	logger, _ := newTestLogger(t)
 	unit := &model.AcademicUnit{
-		ID: model.AcademicUnitID(model.NewId()), CreatedAt: model.TimeFromMillis(10), UpdatedAt: model.TimeFromMillis(20),
-		InstitutionID: model.InstitutionID(model.NewId()), Name: "computing", DisplayName: "Computing",
+		ID: model.AcademicUnitID(model.NewID()), CreatedAt: model.TimeFromMillis(10), UpdatedAt: model.TimeFromMillis(20),
+		InstitutionID: model.InstitutionID(model.NewID()), Name: "computing", DisplayName: "Computing",
 	}
 	application := &academicUnitHTTPApplication{
 		principal: model.Principal{
-			UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+			UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 			CredentialType:         model.CredentialSessionAccess,
 			AuthenticationMethod:   "password",
 			AuthenticationStrength: model.AuthenticationSingleFactor,
@@ -209,10 +209,10 @@ func TestAcademicUnitHTTPErrorUsesProblemDetailsContract(t *testing.T) {
 	t.Parallel()
 
 	logger, _ := newTestLogger(t)
-	unit := &model.AcademicUnit{ID: model.AcademicUnitID(model.NewId())}
+	unit := &model.AcademicUnit{ID: model.AcademicUnitID(model.NewID())}
 	fakeApplication := &academicUnitHTTPApplication{
 		principal: model.Principal{
-			UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+			UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 			CredentialType:         model.CredentialSessionAccess,
 			AuthenticationMethod:   "password",
 			AuthenticationStrength: model.AuthenticationSingleFactor,
@@ -250,7 +250,7 @@ func TestAcademicUnitHTTPErrorUsesProblemDetailsContract(t *testing.T) {
 func TestAcademicUnitHTTPCreateMapsCommandWithoutPermissionPreflight(t *testing.T) {
 	t.Parallel()
 
-	parentID := model.NewId()
+	parentID := model.NewID()
 	tests := []struct {
 		name         string
 		path         string
@@ -267,13 +267,13 @@ func TestAcademicUnitHTTPCreateMapsCommandWithoutPermissionPreflight(t *testing.
 			t.Parallel()
 			logger, _ := newTestLogger(t)
 			created := &model.AcademicUnit{
-				ID: model.AcademicUnitID(model.NewId()), CreatedAt: model.TimeFromMillis(10), UpdatedAt: model.TimeFromMillis(10),
-				InstitutionID: model.InstitutionID(model.NewId()), ParentID: model.AcademicUnitID(tt.wantParentID),
+				ID: model.AcademicUnitID(model.NewID()), CreatedAt: model.TimeFromMillis(10), UpdatedAt: model.TimeFromMillis(10),
+				InstitutionID: model.InstitutionID(model.NewID()), ParentID: model.AcademicUnitID(tt.wantParentID),
 				Name: "computing", DisplayName: "Computing", Description: "School",
 			}
 			fakeApplication := &academicUnitHTTPApplication{
 				principal: model.Principal{
-					UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+					UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 					CredentialType:       model.CredentialSessionAccess,
 					AuthenticationMethod: "password", ClientType: model.SessionClientCLI,
 					AuthenticationStrength: model.AuthenticationSingleFactor,
@@ -329,13 +329,13 @@ func TestAcademicUnitHTTPMutationsMapCommandsWithoutPermissionPreflight(t *testi
 	t.Parallel()
 
 	unit := &model.AcademicUnit{
-		ID: model.AcademicUnitID(model.NewId()), CreatedAt: model.TimeFromMillis(10), UpdatedAt: model.TimeFromMillis(20),
-		InstitutionID: model.InstitutionID(model.NewId()), ParentID: model.AcademicUnitID(model.NewId()),
+		ID: model.AcademicUnitID(model.NewID()), CreatedAt: model.TimeFromMillis(10), UpdatedAt: model.TimeFromMillis(20),
+		InstitutionID: model.InstitutionID(model.NewID()), ParentID: model.AcademicUnitID(model.NewID()),
 		Name: "computing", DisplayName: "Computing", Description: "School",
 	}
 	fakeApplication := &academicUnitHTTPApplication{
 		principal: model.Principal{
-			UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+			UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 			CredentialType:       model.CredentialSessionAccess,
 			AuthenticationMethod: "password", ClientType: model.SessionClientCLI,
 			AuthenticationStrength: model.AuthenticationSingleFactor,
@@ -355,7 +355,7 @@ func TestAcademicUnitHTTPMutationsMapCommandsWithoutPermissionPreflight(t *testi
 	}
 	t.Cleanup(func() { _ = httpAPI.Close() })
 
-	parentID := model.NewId()
+	parentID := model.NewID()
 	name := "engineering"
 	patchRequest := httptest.NewRequest(
 		http.MethodPatch, "/api/v1/academic-units/"+unit.ID.String(),

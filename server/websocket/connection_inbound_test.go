@@ -228,10 +228,10 @@ func newInboundRuntime(
 		principal: model.Principal{
 			UserID:       model.NewUserID(),
 			SessionID:    model.NewSessionID(),
-			CredentialID: model.PrincipalCredentialID(model.NewId()),
+			CredentialID: model.PrincipalCredentialID(model.NewID()),
 		},
 		metadata:      model.RequestMetadata{RequestID: "upgrade-request"},
-		id:            model.NewId(),
+		id:            model.NewID(),
 		subscriptions: make(map[string]Subscription),
 		replayable:    true,
 		send:          make(chan outboundMessage, maximumSubscriptions+8),
@@ -243,7 +243,7 @@ func validInboundSubscription() Subscription {
 		Action: model.ActionClassView,
 		Resource: Resource{
 			Type: model.ResourceClass,
-			ID:   model.NewId(),
+			ID:   model.NewID(),
 		},
 	}
 }
@@ -1228,7 +1228,7 @@ func (a *inboundTestApplication) UpdateExamSecurityCoverage(context.Context, app
 }
 
 func renewalCoverageFixture() model.SecurityCoverageRenewal {
-	return model.SecurityCoverageRenewal{ControlSequence: 1, PolicyDigest: model.SHA256Fingerprint([]byte("renewal-policy")), SecuritySessionID: model.NewId(), StreamID: model.NewId(), Posture: "compliant", Sources: []model.NativeSourceCoverage{}, Coverage: []model.NativeCoverageClaim{}, SourceResets: []model.NativeSourceReset{}, DeliveryWatermarks: []model.DeliveryWatermark{}}
+	return model.SecurityCoverageRenewal{ControlSequence: 1, PolicyDigest: model.SHA256Fingerprint([]byte("renewal-policy")), SecuritySessionID: model.NewID(), StreamID: model.NewID(), Posture: "compliant", Sources: []model.NativeSourceCoverage{}, Coverage: []model.NativeCoverageClaim{}, SourceResets: []model.NativeSourceReset{}, DeliveryWatermarks: []model.DeliveryWatermark{}}
 }
 func renewalCoverageResultFixture() model.SecurityCoverageResult {
 	digest := model.SHA256Fingerprint([]byte("renewal-control"))

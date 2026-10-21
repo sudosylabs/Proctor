@@ -72,7 +72,7 @@ func (s SQLInstallationStore) RecoverAdministratorAccess(ctx context.Context, in
 			}
 		}
 		row := administratorRecoveryRow{
-			ID: model.NewId(), CreatedAt: databaseNow, InstitutionID: input.InstitutionID.String(), UserID: input.UserID.String(),
+			ID: model.NewID(), CreatedAt: databaseNow, InstitutionID: input.InstitutionID.String(), UserID: input.UserID.String(),
 			LocalLoginEnabled: localLoginChanged, PasswordRotated: input.RotatePasswordHash != "",
 		}
 		if localLoginChanged {

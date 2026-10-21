@@ -35,7 +35,7 @@ func (f *expiryDeliveryStoreFake) ExpireDelivery(_ context.Context, input *store
 func TestDeliveryExpiryScanAuditsBeforeCommitAndRejectsUnboundedWork(t *testing.T) {
 	f := newFixture(t)
 	due := expiryDueFixture(f)
-	persistence := &expiryDeliveryStoreFake{ExamAttemptStore: f.persistence, due: []store.DeliveryExpiryDue{{Family: "native", SourceID: model.NewId(), AttemptID: due.AttemptID, ParticipationID: due.ParticipationID, SittingID: due.SittingID, ClassID: due.ClassID}}}
+	persistence := &expiryDeliveryStoreFake{ExamAttemptStore: f.persistence, due: []store.DeliveryExpiryDue{{Family: "native", SourceID: model.NewID(), AttemptID: due.AttemptID, ParticipationID: due.ParticipationID, SittingID: due.SittingID, ClassID: due.ClassID}}}
 	f.service.deps.Persistence = persistence
 	result, err := f.service.ScanExpiredDeliveries(context.Background(), 1)
 	if err != nil || result.Completed != 1 || persistence.calls != 1 || !model.AuditEventID(persistence.auditID).IsValid() || strings.Join(f.order, ",") != "system.audit" {

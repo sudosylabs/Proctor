@@ -335,7 +335,7 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		t.Fatal(err)
 	}
 	metadata := model.RequestMetadata{
-		RequestID: model.NewId(),
+		RequestID: model.NewID(),
 		IPAddress: "127.0.0.1",
 		UserAgent: "proctor-authorization-integration-test",
 	}
@@ -631,7 +631,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 		t.Fatal(appErr)
 	}
 	invocation := application.NewInvocation(*principal, model.RequestMetadata{
-		RequestID: model.NewId(), IPAddress: "127.0.0.1", UserAgent: "access-visibility-integration-test",
+		RequestID: model.NewID(), IPAddress: "127.0.0.1", UserAgent: "access-visibility-integration-test",
 	})
 
 	search := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/users?limit=50", nil, login.Tokens.AccessToken)
@@ -883,7 +883,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 		event, err := persistence.Audit().Save(ctx, &model.AuditEvent{
 			ActorID: viewer.ID, Action: string(action), Resource: resource,
 			ScopeType: scopeType, ScopeID: scopeID, Status: model.AuditStatusSuccess,
-			RequestID: model.NewId(), NodeID: "visibility-node", ClientType: "cli",
+			RequestID: model.NewID(), NodeID: "visibility-node", ClientType: "cli",
 			AuthMethod: "bearer", IPAddress: "127.0.0.1", UserAgent: "sensitive-agent",
 			Parameters: json.RawMessage(`{"fixture":true}`),
 		})

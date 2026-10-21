@@ -66,7 +66,7 @@ func TestAccountSecurityResourcesRunThroughFocusedKernel(t *testing.T) {
 	now := time.Now()
 	principal := model.Principal{
 		UserID: model.NewUserID(), SessionID: model.NewSessionID(),
-		CredentialID:         model.PrincipalCredentialID(model.NewId()),
+		CredentialID:         model.PrincipalCredentialID(model.NewID()),
 		CredentialType:       model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor,
 		AuthenticatedAt: now, MFACompletedAt: model.OptionalTimeFrom(now),

@@ -117,8 +117,8 @@ func run(args []string, stderr io.Writer) error {
 		case model.MailTemplateExamSubmissionReceived, model.MailTemplateExamSubmissionManagerEnded,
 			model.MailTemplateExamSubmissionAutomaticallySealed:
 			request.Presentation = appmail.SubmissionReceiptDetails{
-				ExamTitle: "Representative programming exam", SittingID: model.ExamSittingID(strings.Repeat("y", model.IdLength)),
-				SubmissionID: model.SubmissionID(strings.Repeat("b", model.IdLength)),
+				ExamTitle: "Representative programming exam", SittingID: model.ExamSittingID(strings.Repeat("y", model.IDLength)),
+				SubmissionID: model.SubmissionID(strings.Repeat("b", model.IDLength)),
 				SealedAt:     time.Date(2026, 8, 21, 9, 30, 0, 0, time.UTC)}
 			request.ActionURL = ""
 		case model.MailTemplateExamResultReleased:

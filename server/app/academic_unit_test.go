@@ -151,7 +151,7 @@ func TestAcademicUnitGetDenialDoesNotReadPersistence(t *testing.T) {
 func TestAcademicUnitGetUsesUnitViewScope(t *testing.T) {
 	t.Parallel()
 
-	unit := &model.AcademicUnit{ID: model.AcademicUnitID(model.NewId()), InstitutionID: model.InstitutionID(model.NewId())}
+	unit := &model.AcademicUnit{ID: model.AcademicUnitID(model.NewID()), InstitutionID: model.InstitutionID(model.NewID())}
 	units := &academicUnitReadStore{unit: unit}
 	var gotAction model.Action
 	var gotResource model.Resource
@@ -182,7 +182,7 @@ func TestAcademicUnitGetUsesUnitViewScope(t *testing.T) {
 func TestAcademicUnitRootListUsesInstitutionScopedAcademicUnitViewAndReturnsEmptyArray(t *testing.T) {
 	t.Parallel()
 
-	institution := &model.Institution{ID: model.InstitutionID(model.NewId())}
+	institution := &model.Institution{ID: model.InstitutionID(model.NewID())}
 	units := &academicUnitReadStore{}
 	var gotAction model.Action
 	var gotResource model.Resource
@@ -214,7 +214,7 @@ func TestAcademicUnitRootListUsesInstitutionScopedAcademicUnitViewAndReturnsEmpt
 func TestAcademicUnitSearchNormalizesInput(t *testing.T) {
 	t.Parallel()
 
-	institution := &model.Institution{ID: model.InstitutionID(model.NewId())}
+	institution := &model.Institution{ID: model.InstitutionID(model.NewID())}
 	units := &academicUnitReadStore{}
 	service := newAcademicUnitQueryService(units, academicUnitAuthorizerStub{
 		authorize: func(context.Context, Invocation, model.Action, model.Resource) error {

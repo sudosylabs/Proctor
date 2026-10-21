@@ -25,7 +25,7 @@ import (
 func operatorTestPrincipal() model.Principal {
 	return model.Principal{
 		UserID: model.NewUserID(), SessionID: model.NewSessionID(),
-		CredentialID:   model.PrincipalCredentialID(model.NewId()),
+		CredentialID:   model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType:             model.SessionClientCLI, AuthenticatedAt: time.Now(),
@@ -141,7 +141,7 @@ func TestAuditResourcePreservesOpaqueCursorAndSafeErrors(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
 	principal := operatorTestPrincipal()
-	last := &model.AuditEvent{ID: model.NewAuditEventID(), CreatedAt: model.TimeFromMillis(100), Action: "role.list", Resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}, Status: model.AuditStatusSuccess}
+	last := &model.AuditEvent{ID: model.NewAuditEventID(), CreatedAt: model.TimeFromMillis(100), Action: "role.list", Resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}, Status: model.AuditStatusSuccess}
 	audits := &focusedAuditApplication{events: []*model.AuditEvent{last}}
 	httpAPI := newFocusedResourceAPI(t, logger, &academicUnitHTTPApplication{principal: principal}, auditResource(audits))
 

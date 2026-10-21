@@ -21,13 +21,13 @@ func TestAdminSessionListUsesApplicationQueryAndOmitsCredentials(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
 	principal := model.Principal{
-		UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+		UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType:             model.SessionClientCLI, AuthenticatedAt: time.Now(),
 	}
-	userID := model.NewId()
-	sessionID := model.NewId()
+	userID := model.NewID()
+	sessionID := model.NewID()
 	sessions := &sessionAdministrationHTTPApplication{
 		list: []*model.Session{{
 			ID: model.SessionID(sessionID), UserID: model.UserID(userID), ClientType: model.SessionClientCLI,
@@ -66,13 +66,13 @@ func TestAdminSessionRevokeUsesApplicationCommand(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
 	principal := model.Principal{
-		UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+		UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType:             model.SessionClientCLI, AuthenticatedAt: time.Now(),
 	}
-	userID := model.NewId()
-	sessionID := model.NewId()
+	userID := model.NewID()
+	sessionID := model.NewID()
 	sessions := &sessionAdministrationHTTPApplication{}
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, userAdministrationResource(&accountStateHTTPApplication{}, sessions))
 	request := httptest.NewRequest(http.MethodDelete, "/api/v1/users/"+userID+"/sessions/"+sessionID, nil)

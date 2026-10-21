@@ -296,7 +296,7 @@ func prepareConcurrentProfilePicturePublication(t *testing.T, ctx context.Contex
 	}
 	audit, err := persistence.Audit().Save(ctx, &model.AuditEvent{
 		Action: string(model.ActionUserProfilePictureManage), Resource: model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
-		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewId(), Status: model.AuditStatusAttempt, NodeID: nodeID,
+		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewID(), Status: model.AuditStatusAttempt, NodeID: nodeID,
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -43,7 +43,7 @@ const (
 	OnboardingImportRowCanceled  OnboardingImportRowStatus = "canceled"
 )
 
-func NewOnboardingImportID() OnboardingImportID { return OnboardingImportID(NewId()) }
+func NewOnboardingImportID() OnboardingImportID { return OnboardingImportID(NewID()) }
 func (id OnboardingImportID) String() string    { return string(id) }
 func (id OnboardingImportID) IsValid() bool     { return IsValidOpaqueID(string(id)) }
 func (id OnboardingImportID) IsZero() bool      { return id == "" }

@@ -120,7 +120,7 @@ func (m desktopAuthorizationResourceModule) authenticateExternal(request operati
 	if err != nil {
 		return protocolResult{}, err
 	}
-	provider, err := request.params.RequireProviderId()
+	provider, err := request.params.RequireProviderID()
 	if err != nil {
 		return protocolResult{}, err
 	}

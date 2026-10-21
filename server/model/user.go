@@ -86,7 +86,7 @@ func (u *User) PrepareCreate(id UserID, at time.Time) {
 		return
 	}
 	if u.Username == "" {
-		u.Username = "u" + NewId()
+		u.Username = "u" + NewID()
 	}
 	u.normalize()
 	u.ID = id

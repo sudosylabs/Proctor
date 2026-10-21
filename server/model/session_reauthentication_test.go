@@ -24,7 +24,7 @@ func TestSessionReauthenticationPreservesAssuranceHistory(t *testing.T) {
 	if err := session.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	principal := Principal{UserID: session.UserID, SessionID: session.ID, CredentialID: PrincipalCredentialID(NewId()),
+	principal := Principal{UserID: session.UserID, SessionID: session.ID, CredentialID: PrincipalCredentialID(NewID()),
 		CredentialType: CredentialSessionAccess, ClientType: SessionClientWeb, AuthenticationMethod: "password",
 		AuthenticationStrength: AuthenticationSingleFactor, AuthenticatedAt: at, ReauthenticatedAt: session.ReauthenticatedAt}
 	if principal.Validate() != nil || !principal.IsRecentlyAuthenticated(session.UpdatedAt, time.Minute) || principal.HasStrongAuthentication() {

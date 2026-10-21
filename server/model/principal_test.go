@@ -45,7 +45,7 @@ func TestPersonalAccessTokenPrincipalValidation(t *testing.T) {
 }
 
 func modelTestID() string {
-	return NewId()
+	return NewID()
 }
 
 func TestSessionPrincipalUsesNativeAssuranceTimes(t *testing.T) {
@@ -53,7 +53,7 @@ func TestSessionPrincipalUsesNativeAssuranceTimes(t *testing.T) {
 	principal := Principal{
 		UserID:                 NewUserID(),
 		SessionID:              NewSessionID(),
-		CredentialID:           PrincipalCredentialID(NewId()),
+		CredentialID:           PrincipalCredentialID(NewID()),
 		CredentialType:         CredentialSessionAccess,
 		AuthenticationMethod:   "password",
 		AuthenticationStrength: AuthenticationMultiFactor,
@@ -80,7 +80,7 @@ func TestSessionPrincipalRetainsExactExternalProviderIdentity(t *testing.T) {
 
 	principal := Principal{
 		UserID: NewUserID(), SessionID: NewSessionID(),
-		CredentialID: PrincipalCredentialID(NewId()), CredentialType: CredentialSessionAccess,
+		CredentialID: PrincipalCredentialID(NewID()), CredentialType: CredentialSessionAccess,
 		AuthenticationMethod: "oidc", AuthenticationProviderID: "0-campus.oidc", ExternalIdentityID: NewExternalIdentityID(),
 		AuthenticationStrength: AuthenticationSingleFactor, ClientType: SessionClientWeb,
 		AuthenticatedAt: time.Now().UTC(),

@@ -51,7 +51,7 @@ func TestExternalIdentityPreservesOpaqueSubject(t *testing.T) {
 
 	const subject = "CaseSensitive/Provider/Subject"
 	identity := &ExternalIdentity{
-		UserID:   UserID(NewId()),
+		UserID:   UserID(NewID()),
 		Provider: "OIDC",
 		Subject:  subject,
 	}
@@ -95,7 +95,7 @@ func TestRoleAndRoleBindingTypedLifecycle(t *testing.T) {
 		UserID:    NewUserID(),
 		RoleID:    role.ID,
 		ScopeType: RoleScopeAcademicUnit,
-		ScopeID:   NewId(),
+		ScopeID:   NewID(),
 	}
 	binding.PrepareCreate(NewRoleBindingID(), at)
 	if err := binding.Validate(); err != nil {
@@ -199,7 +199,7 @@ func TestSessionAndCredentialExpiryAndRotation(t *testing.T) {
 		SessionID: s.ID,
 		Kind:      SessionCredentialAccess,
 		TokenHash: HashToken(NewCredentialToken()),
-		FamilyID:  NewId(),
+		FamilyID:  NewID(),
 		ExpiresAt: s.ExpiresAt,
 	}
 	access.PrepareCreate(NewSessionCredentialID(), beforeCreate)
@@ -345,9 +345,9 @@ func TestClassMemberRetainsClosedEnrollmentHistory(t *testing.T) {
 
 	at := time.UnixMilli(1_700_000_000_000).UTC()
 	m := &ClassMember{
-		ClassID:          ClassID(NewId()),
-		AcademicPeriodID: AcademicPeriodID(NewId()),
-		UserID:           UserID(NewId()),
+		ClassID:          ClassID(NewID()),
+		AcademicPeriodID: AcademicPeriodID(NewID()),
+		UserID:           UserID(NewID()),
 	}
 	m.PrepareCreate(NewClassMemberID(), at)
 	if !m.IsActiveAt(m.StartsAt) {
@@ -370,7 +370,7 @@ func TestMembershipModelsTypedLifecycle(t *testing.T) {
 	t.Parallel()
 
 	at := time.UnixMilli(1_700_000_000_000).UTC()
-	userID := UserID(NewId())
+	userID := UserID(NewID())
 
 	affiliation := &Affiliation{UserID: userID, Kind: AffiliationTeacher}
 	affiliation.PrepareCreate(NewAffiliationID(), at)
@@ -386,7 +386,7 @@ func TestMembershipModelsTypedLifecycle(t *testing.T) {
 	}
 
 	member := &AcademicUnitMember{
-		AcademicUnitID: AcademicUnitID(NewId()),
+		AcademicUnitID: AcademicUnitID(NewID()),
 		UserID:         userID,
 	}
 	member.PrepareCreate(NewAcademicUnitMemberID(), at)
@@ -398,8 +398,8 @@ func TestMembershipModelsTypedLifecycle(t *testing.T) {
 	}
 
 	classMember := &ClassMember{
-		ClassID:          ClassID(NewId()),
-		AcademicPeriodID: AcademicPeriodID(NewId()),
+		ClassID:          ClassID(NewID()),
+		AcademicPeriodID: AcademicPeriodID(NewID()),
 		UserID:           userID,
 	}
 	classMember.PrepareCreate(NewClassMemberID(), at)
@@ -536,7 +536,7 @@ func TestSecurityModelValidationReturnsPreciseErrors(t *testing.T) {
 			name: "external subject with direction control",
 			err: func() error {
 				identity := &ExternalIdentity{
-					UserID:   UserID(NewId()),
+					UserID:   UserID(NewID()),
 					Provider: "oidc",
 					Subject:  "subject\u202E",
 				}
@@ -549,8 +549,8 @@ func TestSecurityModelValidationReturnsPreciseErrors(t *testing.T) {
 			name: "class membership without period",
 			err: func() error {
 				member := &ClassMember{
-					ClassID: ClassID(NewId()),
-					UserID:  UserID(NewId()),
+					ClassID: ClassID(NewID()),
+					UserID:  UserID(NewID()),
 				}
 				member.PrepareCreate(NewClassMemberID(), NowUTC())
 				return member.Validate()

@@ -58,7 +58,7 @@ func TestClassResourceRunsThroughRoutingKernelWithNarrowDependencies(t *testing.
 	principal := model.Principal{
 		UserID:                 model.NewUserID(),
 		SessionID:              model.NewSessionID(),
-		CredentialID:           model.PrincipalCredentialID(model.NewId()),
+		CredentialID:           model.PrincipalCredentialID(model.NewID()),
 		CredentialType:         model.CredentialSessionAccess,
 		AuthenticationMethod:   "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor,
@@ -66,9 +66,9 @@ func TestClassResourceRunsThroughRoutingKernelWithNarrowDependencies(t *testing.
 		AuthenticatedAt:        time.Now(),
 	}
 	class := &model.Class{
-		ID:               model.ClassID(model.NewId()),
-		ProgrammeLevelID: model.ProgrammeLevelID(model.NewId()),
-		AcademicPeriodID: model.AcademicPeriodID(model.NewId()),
+		ID:               model.ClassID(model.NewID()),
+		ProgrammeLevelID: model.ProgrammeLevelID(model.NewID()),
+		AcademicPeriodID: model.AcademicPeriodID(model.NewID()),
 		Name:             "class-a",
 		DisplayName:      "Class A",
 	}
@@ -144,7 +144,7 @@ func TestClassResourceFailsClosedForUndeclaredApplicationError(t *testing.T) {
 	principal := model.Principal{
 		UserID:                 model.NewUserID(),
 		SessionID:              model.NewSessionID(),
-		CredentialID:           model.PrincipalCredentialID(model.NewId()),
+		CredentialID:           model.PrincipalCredentialID(model.NewID()),
 		CredentialType:         model.CredentialSessionAccess,
 		AuthenticationMethod:   "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor,
@@ -160,7 +160,7 @@ func TestClassResourceFailsClosedForUndeclaredApplicationError(t *testing.T) {
 
 	request := httptest.NewRequest(
 		http.MethodGet,
-		"/api/v1/academic-units/"+model.NewId()+"/classes",
+		"/api/v1/academic-units/"+model.NewID()+"/classes",
 		nil,
 	)
 	request.Header.Set("Authorization", "Bearer credential")
@@ -190,7 +190,7 @@ func TestClassResourceFailsClosedForUndeclaredAuthenticationError(t *testing.T) 
 	)
 	request := httptest.NewRequest(
 		http.MethodGet,
-		"/api/v1/classes/"+model.NewId(),
+		"/api/v1/classes/"+model.NewID(),
 		nil,
 	)
 	request.Header.Set("Authorization", "Bearer credential")
@@ -252,7 +252,7 @@ func (a *classHTTPApplication) SearchClasses(context.Context, application.Invoca
 func TestClassSearchMapsMissingAcademicUnit(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
-	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
 	classes := &classHTTPApplication{searchErr: apperror.New("resource.not_found").WithField("resource", "academic_unit")}
 	transport := &academicUnitHTTPApplication{principal: principal}
 	options := validHTTPOptions(t)
@@ -266,7 +266,7 @@ func TestClassSearchMapsMissingAcademicUnit(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = httpAPI.Close() })
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/academic-units/"+model.NewId()+"/classes", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/academic-units/"+model.NewID()+"/classes", nil)
 	request.Header.Set("Authorization", "Bearer credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
@@ -290,8 +290,8 @@ func (a *classHTTPApplication) ArchiveClass(_ context.Context, _ application.Inv
 func TestClassHTTPMapsBothParentsFromRouteAndBody(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
-	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
-	class := &model.Class{ID: model.ClassID(model.NewId()), ProgrammeLevelID: model.ProgrammeLevelID(model.NewId()), AcademicPeriodID: model.AcademicPeriodID(model.NewId()), Name: "class-a", DisplayName: "Class A"}
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
+	class := &model.Class{ID: model.ClassID(model.NewID()), ProgrammeLevelID: model.ProgrammeLevelID(model.NewID()), AcademicPeriodID: model.AcademicPeriodID(model.NewID()), Name: "class-a", DisplayName: "Class A"}
 	classes := &classHTTPApplication{result: class}
 	transport := &academicUnitHTTPApplication{principal: principal}
 	options := validHTTPOptions(t)

@@ -93,6 +93,6 @@ func (c sessionRevocationCoordinator) publish(
 	hashes []string,
 ) {
 	if len(sessions) != 0 {
-		c.effects.SessionsRevoked(ctx, userID, sessionIds(sessions), hashes)
+		c.effects.SessionsRevoked(ctx, userID, sessionIDs(sessions), hashes)
 	}
 }

@@ -84,7 +84,7 @@ func testClassStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 		Name:             "audited-class",
 		DisplayName:      "Audited Class",
 	}
-	candidate.PrepareCreate(model.ClassID(model.NewId()), model.NowUTC())
+	candidate.PrepareCreate(model.ClassID(model.NewID()), model.NowUTC())
 	created, err := ss.Class().Create(ctx, &store.ClassCreation{Class: candidate, AuditEventID: createAttempt.ID, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	completed, err := ss.Audit().Get(ctx, createAttempt.ID)
@@ -99,7 +99,7 @@ func testClassStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 		Name:             "rolled-back-class",
 		DisplayName:      "Rolled Back",
 	}
-	rolledBackCreate.PrepareCreate(model.ClassID(model.NewId()), model.NowUTC())
+	rolledBackCreate.PrepareCreate(model.ClassID(model.NewID()), model.NowUTC())
 	if _, err = ss.Class().Create(ctx, &store.ClassCreation{Class: rolledBackCreate, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}); err == nil {
 		t.Fatal("Create() succeeded without audit attempt")
 	}
@@ -369,7 +369,7 @@ func testClassStoreUpdate(t *testing.T, ss store.Store) {
 	}
 
 	missing := *updated
-	missing.ID = model.ClassID(model.NewId())
+	missing.ID = model.ClassID(model.NewID())
 	_, err = UpdateClass(ctx, ss, &missing)
 	if !store.IsNotFound(err) {
 		t.Fatalf("Update(missing) error = %v, want not found", err)
@@ -382,7 +382,7 @@ func testClassStoreRejectUnknownProgrammeLevel(t *testing.T, ss store.Store) {
 	period := saveAcademicPeriod(t, ctx, ss, institution.ID.String(), "2026-2027", 1_800_000_000_000)
 
 	_, err := SaveClass(ctx, ss, &model.Class{
-		ProgrammeLevelID: model.ProgrammeLevelID(model.NewId()),
+		ProgrammeLevelID: model.ProgrammeLevelID(model.NewID()),
 		AcademicPeriodID: period.ID,
 		Name:             "class-a",
 		DisplayName:      "Class A",
@@ -401,7 +401,7 @@ func testClassStoreRejectUnknownAcademicPeriod(t *testing.T, ss store.Store) {
 
 	_, err := SaveClass(ctx, ss, &model.Class{
 		ProgrammeLevelID: level.ID,
-		AcademicPeriodID: model.AcademicPeriodID(model.NewId()),
+		AcademicPeriodID: model.AcademicPeriodID(model.NewID()),
 		Name:             "class-a",
 		DisplayName:      "Class A",
 	})

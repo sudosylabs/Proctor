@@ -74,15 +74,15 @@ func outboundMetric(message outboundMessage) (string, int) {
 
 func (c *connectionRuntime) enqueueHello(resumed, resyncRequired bool) {
 	data, _ := json.Marshal(Hello{
-		ConnectionId: c.id, NodeId: c.nodeID, Resumed: resumed,
+		ConnectionID: c.id, NodeID: c.nodeID, Resumed: resumed,
 	})
 	c.enqueueEvent(&Event{
-		Id: model.NewId(), Event: string(EventHello),
+		ID: model.NewID(), Event: string(EventHello),
 		UserID: c.principal.UserID.String(), Data: data,
 	})
 	if resyncRequired {
 		c.enqueueEvent(&Event{
-			Id: model.NewId(), Event: string(EventResync),
+			ID: model.NewID(), Event: string(EventResync),
 			UserID: c.principal.UserID.String(),
 		})
 	}
@@ -91,7 +91,7 @@ func (c *connectionRuntime) enqueueHello(resumed, resyncRequired bool) {
 func (c *connectionRuntime) enqueueEvent(event *Event) {
 	c.mu.Lock()
 	for _, sent := range c.history {
-		if sent.Id == event.Id {
+		if sent.ID == event.ID {
 			c.mu.Unlock()
 			return
 		}

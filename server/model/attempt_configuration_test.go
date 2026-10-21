@@ -25,7 +25,7 @@ func configurationCandidate() AttemptConfigurationCandidate {
 func TestAttemptConfigurationDigestCoversCompleteCandidate(t *testing.T) {
 	t.Parallel()
 	original := configurationCandidate()
-	first, err := original.Freeze(NewId())
+	first, err := original.Freeze(NewID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,13 +40,13 @@ func TestAttemptConfigurationDigestCoversCompleteCandidate(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			candidate := original.Clone()
 			mutate(&candidate)
-			other, err := candidate.Freeze(NewId())
-			if err != nil || other.Digest == first.Digest {
-				t.Fatalf("provenance did not affect digest: %v", err)
+			other, freezeErr := candidate.Freeze(NewID())
+			if freezeErr != nil || other.Digest == first.Digest {
+				t.Fatalf("provenance did not affect digest: %v", freezeErr)
 			}
 		})
 	}
-	second, err := original.Freeze(NewId())
+	second, err := original.Freeze(NewID())
 	if err != nil || second.Revision == first.Revision || second.Digest != first.Digest {
 		t.Fatal("server revision changed the candidate digest", err)
 	}
@@ -59,7 +59,7 @@ func TestAttemptConfigurationDigestCoversCompleteCandidate(t *testing.T) {
 func TestAttemptConfigurationStrictCanonicalRoundTrip(t *testing.T) {
 	t.Parallel()
 	candidate := configurationCandidate()
-	frozen, err := candidate.Freeze(NewId())
+	frozen, err := candidate.Freeze(NewID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestAttemptConfigurationPresentationBounds(t *testing.T) {
 			c := configurationCandidate()
 			c.Presentation.ColorTheme = theme
 			c.Presentation.CursorBlinking = blink
-			if _, err := c.Freeze(NewId()); err != nil {
+			if _, err := c.Freeze(NewID()); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -183,7 +183,7 @@ func TestAttemptConfigurationManifestCatalogAndProvenance(t *testing.T) {
 	if c.ValidateForBuild(build) == nil {
 		t.Fatal("new freeze accepted foreign build")
 	}
-	frozen, err := c.Freeze(NewId())
+	frozen, err := c.Freeze(NewID())
 	if err != nil {
 		t.Fatal(err)
 	}

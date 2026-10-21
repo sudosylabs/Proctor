@@ -20,13 +20,13 @@ func TestRequireStrongRecentSessionPreservesAssuranceErrors(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0).UTC()
 	recent := model.Principal{
 		UserID: model.NewUserID(), SessionID: model.NewSessionID(),
-		CredentialID:   model.PrincipalCredentialID(model.NewId()),
+		CredentialID:   model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
 		AuthenticationStrength: model.AuthenticationMultiFactor, ClientType: model.SessionClientWeb,
 		AuthenticatedAt: now.Add(-time.Minute), MFACompletedAt: model.OptionalTimeFrom(now.Add(-time.Minute)),
 	}
 	pat := model.Principal{
-		UserID: model.NewUserID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+		UserID: model.NewUserID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialPersonalAccessToken, AuthenticationMethod: "personal_access_token",
 		ClientType: model.SessionClientCLI, CredentialScopes: []string{string(model.ActionMailManage)},
 	}

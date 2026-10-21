@@ -137,10 +137,10 @@ func TestBootstrapDeniedDoesNotEchoSecretOrAccountDetail(t *testing.T) {
 
 func TestBootstrapResponseDTOPreservesHistoricalEnvelope(t *testing.T) {
 	t.Parallel()
-	institutionID := model.NewId()
-	adminID := model.NewId()
-	roleID := model.NewId()
-	bindingID := model.NewId()
+	institutionID := model.NewID()
+	adminID := model.NewID()
+	roleID := model.NewID()
+	bindingID := model.NewID()
 	result := &model.InstallationBootstrapResult{
 		State: &model.InstallationState{
 			InitializedAt: model.TimeFromMillis(100), InstitutionID: model.InstitutionID(institutionID), AdministratorUserID: model.UserID(adminID),

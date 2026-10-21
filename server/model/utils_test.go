@@ -9,17 +9,17 @@ package model
 
 import "testing"
 
-func TestNewIdProducesCanonicalUniqueIdentifiers(t *testing.T) {
+func TestNewIDProducesCanonicalUniqueIdentifiers(t *testing.T) {
 	t.Parallel()
 
 	seen := make(map[string]struct{}, 1000)
 	for range 1000 {
-		id := NewId()
+		id := NewID()
 		if !IsValidOpaqueID(id) {
-			t.Fatalf("NewId() returned invalid identifier %q", id)
+			t.Fatalf("NewID() returned invalid identifier %q", id)
 		}
 		if _, exists := seen[id]; exists {
-			t.Fatalf("NewId() returned duplicate identifier %q", id)
+			t.Fatalf("NewID() returned duplicate identifier %q", id)
 		}
 		seen[id] = struct{}{}
 	}

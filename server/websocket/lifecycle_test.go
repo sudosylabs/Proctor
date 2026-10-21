@@ -125,7 +125,7 @@ func TestHubAcceptRequiresStart(t *testing.T) {
 		model.Principal{
 			UserID:         model.NewUserID(),
 			SessionID:      model.NewSessionID(),
-			CredentialID:   model.PrincipalCredentialID(model.NewId()),
+			CredentialID:   model.PrincipalCredentialID(model.NewID()),
 			CredentialType: model.CredentialSessionAccess,
 		},
 		model.RequestMetadata{},
@@ -155,7 +155,7 @@ func TestHubAcceptReturnsRefusedHandshakeUncommitted(t *testing.T) {
 	err := hub.Accept(recorder, request, model.Principal{
 		UserID:         model.NewUserID(),
 		SessionID:      model.NewSessionID(),
-		CredentialID:   model.PrincipalCredentialID(model.NewId()),
+		CredentialID:   model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess,
 	}, model.RequestMetadata{}, "", 0, false)
 	if !apperror.Is(err, "request.invalid") {

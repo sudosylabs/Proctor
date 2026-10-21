@@ -169,7 +169,7 @@ func TestRealtimeClusterAdapterPreservesSingleNodeLocalFirstPublication(t *testi
 
 	if err := service.Publish(context.Background(), apprealtime.RealtimeEvent{
 		Name:   "user.notification",
-		UserID: model.NewId(),
+		UserID: model.NewID(),
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -35,7 +35,7 @@ func TestAccessScopeResolverRejectsArchivedAndIncompatibleResources(t *testing.T
 	if _, err = resolver.resolve(context.Background(), model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}); !apperror.Is(err, "resource.not_found") {
 		t.Fatalf("archived institution error = %v", err)
 	}
-	if _, err = resolver.resolve(context.Background(), model.Resource{Type: model.ResourceType("future"), ID: model.NewId()}); !apperror.Is(err, "authorization.request.invalid") {
+	if _, err = resolver.resolve(context.Background(), model.Resource{Type: model.ResourceType("future"), ID: model.NewID()}); !apperror.Is(err, "authorization.request.invalid") {
 		t.Fatalf("incompatible resource error = %v", err)
 	}
 }
@@ -213,7 +213,7 @@ func TestAccessControlAcademicPeriodPreflightDeniesBeforeInspection(t *testing.T
 		t.Fatal(err)
 	}
 	principal := model.Principal{
-		UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+		UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.NowUTC(), ClientType: model.SessionClientWeb,
 	}
@@ -256,7 +256,7 @@ func TestAccessControlMembershipPreflightDeniesBeforeOpaqueTargetInspection(t *t
 		t.Fatal(err)
 	}
 	principal := model.Principal{
-		UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+		UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.NowUTC(), ClientType: model.SessionClientWeb,
 	}
@@ -315,7 +315,7 @@ func TestAccessControlAcademicPeriodScopeInheritanceAndInstitutionView(t *testin
 		t.Fatal(err)
 	}
 	principal := model.Principal{
-		UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+		UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: now, ClientType: model.SessionClientWeb,
 	}
@@ -446,7 +446,7 @@ func TestAccessControlGrantsExamViewThroughAcademicUnitScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	principal := model.Principal{
-		UserID: userID, CredentialID: model.PrincipalCredentialID(model.NewId()),
+		UserID: userID, CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, SessionID: model.NewSessionID(),
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt: model.NowUTC(), ClientType: model.SessionClientWeb,
@@ -482,7 +482,7 @@ func TestAccessControlGrantsExamCreateOverrideThroughInstitutionScope(t *testing
 		t.Fatal(err)
 	}
 	principal := model.Principal{
-		UserID: userID, CredentialID: model.PrincipalCredentialID(model.NewId()),
+		UserID: userID, CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, SessionID: model.NewSessionID(),
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt: model.NowUTC(), ClientType: model.SessionClientWeb,
@@ -505,7 +505,7 @@ func TestAccessControlUsesNativeRoleBindingDecisionTime(t *testing.T) {
 		ScopeID: institutionID.String(), StartsAt: start, EndsAt: model.OptionalTimeFrom(end),
 	}
 	principal := model.Principal{
-		UserID: userID, CredentialID: model.PrincipalCredentialID(model.NewId()),
+		UserID: userID, CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, SessionID: model.NewSessionID(),
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt: start.Add(-time.Hour), ClientType: model.SessionClientWeb,
@@ -574,7 +574,7 @@ func TestAccessScopeConstraintsAreBoundedAndRespectPATCeiling(t *testing.T) {
 	institutionID := model.NewInstitutionID()
 	rootID := model.NewAcademicUnitID()
 	childID := model.NewAcademicUnitID()
-	roleID := model.RoleID(model.NewId())
+	roleID := model.RoleID(model.NewID())
 	userID := model.NewUserID()
 	resolver, err := newAccessScopeResolver(
 		&accessInstitutionStoreFake{institution: &model.Institution{ID: institutionID}},
@@ -598,7 +598,7 @@ func TestAccessScopeConstraintsAreBoundedAndRespectPATCeiling(t *testing.T) {
 	}
 	authorization.now = func() time.Time { return now }
 	principal := model.Principal{
-		UserID: userID, CredentialID: model.PrincipalCredentialID(model.NewId()),
+		UserID: userID, CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType:       model.CredentialPersonalAccessToken,
 		AuthenticationMethod: "personal_access_token", ClientType: model.SessionClientCLI,
 		CredentialScopes: []string{string(model.ActionAcademicUnitView)}, AcademicUnitID: rootID,
@@ -664,7 +664,7 @@ func TestUserVisibilityScopeKeepsRelationshipAndClassMemberAuthoritySeparate(t *
 		return now.Add(time.Duration(clockCalls-1) * time.Microsecond)
 	}
 	principal := model.Principal{
-		UserID: userID, CredentialID: model.PrincipalCredentialID(model.NewId()),
+		UserID: userID, CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, SessionID: model.NewSessionID(),
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt: now, ClientType: model.SessionClientWeb,
@@ -720,7 +720,7 @@ func TestUserReadMatchesInstitutionWideClassMemberVisibility(t *testing.T) {
 	}
 	authorization.now = func() time.Time { return now }
 	principal := model.Principal{
-		UserID: viewerID, CredentialID: model.PrincipalCredentialID(model.NewId()),
+		UserID: viewerID, CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, SessionID: model.NewSessionID(),
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt: now, ClientType: model.SessionClientWeb,
@@ -772,7 +772,7 @@ func TestDelegationCeilingRequiresOwnedActionAndContainingScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	principal := model.Principal{
-		UserID: userID, CredentialID: model.PrincipalCredentialID(model.NewId()),
+		UserID: userID, CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, SessionID: model.NewSessionID(),
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt: model.NowUTC(), ClientType: model.SessionClientWeb,
@@ -835,7 +835,7 @@ func TestAccessScopeResolutionFailsClosedOnPersistenceFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = resolver.resolve(context.Background(), model.Resource{Type: model.ResourceInstitution, ID: model.NewId()})
+	_, err = resolver.resolve(context.Background(), model.Resource{Type: model.ResourceInstitution, ID: model.NewID()})
 	if !apperror.Is(err, "authorization.unavailable") {
 		t.Fatalf("error = %v, want authorization.unavailable", err)
 	}
@@ -867,9 +867,9 @@ func TestAccessControlPreservesIntrinsicSelfRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	principal := model.Principal{
-		UserID: user.ID, CredentialID: model.PrincipalCredentialID(model.NewId()),
+		UserID: user.ID, CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess,
-		SessionID:      model.SessionID(model.NewId()), AuthenticationMethod: "password",
+		SessionID:      model.SessionID(model.NewID()), AuthenticationMethod: "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt:        model.NowUTC(), ClientType: model.SessionClientWeb,
 	}

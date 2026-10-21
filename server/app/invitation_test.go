@@ -261,7 +261,7 @@ func TestInvitationExternalIdentityAcceptancePreparesTheExactTerminalPackage(t *
 	state := &model.ExternalLoginState{ID: model.NewExternalLoginStateID(), Provider: "campus",
 		Purpose: model.ExternalAuthenticationPurposeInvitationAdmission, InvitationID: invitation.ID,
 		ConsumedAt: model.OptionalTimeFrom(now)}
-	assertion := &model.ExternalAuthenticationAssertion{ProviderId: "campus", Subject: "opaque-subject",
+	assertion := &model.ExternalAuthenticationAssertion{ProviderID: "campus", Subject: "opaque-subject",
 		Username: "provider-name", Email: " Provider.Mailbox@Example.EDU ", EmailVerified: true,
 		DisplayName: "Provider Person"}
 	capabilities := store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"campus": {}}}
@@ -616,7 +616,7 @@ func TestInvitationServiceAcceptsAcademicUnitRoleForAuthenticatedExistingUserWit
 	if err != nil {
 		t.Fatal(err)
 	}
-	principal := model.Principal{UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+	principal := model.Principal{UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: now}
 	result, err := service.AcceptAcademicUnitRoleInvitation(context.Background(), NewInvocation(principal, model.RequestMetadata{RequestID: "request-1"}),
@@ -669,7 +669,7 @@ func TestInvitationServiceTerminalizesScopedRoleAcceptanceConflict(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	principal := model.Principal{UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+	principal := model.Principal{UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: now}
 	_, appErr := service.AcceptAcademicUnitRoleInvitation(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
@@ -689,7 +689,7 @@ func TestInvitationServiceInstitutionRoleRequiresStrongRecentInteractiveSession(
 	authorizer := &invitationAuthorizerFake{}
 	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{},
 		invitationRoleStoreFake{role: role}, authorizer, &invitationMailPreparerFake{}, now)
-	principal := model.Principal{UserID: inviterID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+	principal := model.Principal{UserID: inviterID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: now}
 	command := IssueInstitutionRoleInvitationCommand{TargetEmail: "existing@example.edu", InstitutionID: institutionID.String(), RoleID: roleID.String()}

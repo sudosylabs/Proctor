@@ -38,7 +38,7 @@ const (
 // Sequence is assigned independently by each owning connection and is never
 // serialized through the cluster transport.
 type Event struct {
-	Id       string          `json:"id"`
+	ID       string          `json:"id"`
 	Event    string          `json:"event"`
 	Sequence int64           `json:"sequence"`
 	UserID   string          `json:"user_id,omitempty"`
@@ -79,7 +79,7 @@ func (e *Event) ValidateForPublish() error {
 	if e == nil {
 		return errors.New("websocket event is nil")
 	}
-	if e.Id != "" && !model.IsValidOpaqueID(e.Id) {
+	if e.ID != "" && !model.IsValidOpaqueID(e.ID) {
 		return errors.New("websocket event ID is invalid")
 	}
 	if len(e.Event) == 0 || len(e.Event) > MaxEventBytes || !validName(e.Event) {
@@ -176,8 +176,8 @@ type Error struct {
 
 // Hello is the first-event payload identifying a connection.
 type Hello struct {
-	ConnectionId string `json:"connection_id"`
-	NodeId       string `json:"node_id"`
+	ConnectionID string `json:"connection_id"`
+	NodeID       string `json:"node_id"`
 	Resumed      bool   `json:"resumed"`
 }
 

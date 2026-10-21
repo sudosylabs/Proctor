@@ -555,7 +555,7 @@ func newTestAuthenticationServiceWithEffects(
 		cache,
 		mustAuthenticationAttemptAccounting(t, cache),
 		effects,
-		&mutationAttemptAuditorFake{events: &[]string{}, beginID: model.NewId()},
+		&mutationAttemptAuditorFake{events: &[]string{}, beginID: model.NewID()},
 		&localLoginAuditorFake{},
 		hasher,
 		mfa,
@@ -616,7 +616,7 @@ func TestAuthenticationValidatesLongLivedSessionPrincipal(t *testing.T) {
 	)
 	principal := model.Principal{
 		UserID: user.ID, SessionID: session.ID,
-		CredentialID:         model.PrincipalCredentialID(model.NewId()),
+		CredentialID:         model.PrincipalCredentialID(model.NewID()),
 		CredentialType:       model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt: at.Add(-time.Minute), ClientType: model.SessionClientWeb,

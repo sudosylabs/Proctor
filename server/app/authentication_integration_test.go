@@ -663,7 +663,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	disabledAt := model.GetMillis()
 	auditAttempt, err := persistence.Audit().Save(context.Background(), &model.AuditEvent{
 		Action: string(model.ActionUserManage), Resource: model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
-		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewId(), Status: model.AuditStatusAttempt, NodeID: "authentication-integration",
+		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewID(), Status: model.AuditStatusAttempt, NodeID: "authentication-integration",
 	})
 	if err != nil {
 		t.Fatal(err)

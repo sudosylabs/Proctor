@@ -33,7 +33,7 @@ func TestBrowserReviewWaiverStore(t *testing.T, ss store.Store) {
 	_, err = ss.ExamAttempt().SealBrowserDelivery(ctx, &store.BrowserDeliveryFinalDeclaration{Access: owner, Declaration: model.FinalDeliveryDeclaration{DeclarationID: "waiver-final", FinalSequence: 2}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, owner), AuditAt: model.GetMillis()}, examCommand(f.candidate.ID, store.BrowserDeliveryFinalOperation, "waiver-final", "waiver-final"))
 	requireNoError(t, err)
 	closeRecordsSitting(t, ctx, ss, &f)
-	role, err := SaveRole(ctx, ss, &model.Role{Name: "waiver-manager-" + model.NewId(), DisplayName: "Records manager", Permissions: []string{string(model.ActionExamRecordsComplete)}})
+	role, err := SaveRole(ctx, ss, &model.Role{Name: "waiver-manager-" + model.NewID(), DisplayName: "Records manager", Permissions: []string{string(model.ActionExamRecordsComplete)}})
 	requireNoError(t, err)
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: f.manager.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: f.unitID.String(), StartsAt: model.NowUTC().Add(-time.Minute)})
 	requireNoError(t, err)

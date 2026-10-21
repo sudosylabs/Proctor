@@ -14,7 +14,7 @@ import (
 
 func TestSecurityPreflightResultValidation(t *testing.T) {
 	now := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
-	valid := SecurityPreflightResult{PreflightID: NewId(), ReportDigest: SHA256Fingerprint([]byte("report")), Admission: "eligible", ReasonCodes: []SecurityReasonCode{}, ServerTime: now, ExpiresAt: now.Add(time.Minute)}
+	valid := SecurityPreflightResult{PreflightID: NewID(), ReportDigest: SHA256Fingerprint([]byte("report")), Admission: "eligible", ReasonCodes: []SecurityReasonCode{}, ServerTime: now, ExpiresAt: now.Add(time.Minute)}
 	if err := valid.Validate(); err != nil {
 		t.Fatal(err)
 	}

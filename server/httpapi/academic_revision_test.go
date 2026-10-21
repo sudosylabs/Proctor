@@ -23,7 +23,7 @@ func TestAcademicRevisionHTTPContract(t *testing.T) {
 	for _, kind := range []string{"academic_unit", "programme", "programme_level", "academic_period", "class"} {
 		t.Run(kind, func(t *testing.T) {
 			logger, _ := newTestLogger(t)
-			principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
+			principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
 			module, path, revision := academicRevisionHTTPFixture(kind, principal)
 			api := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, module)
 			call := func(method, suffix, body string) *httptest.ResponseRecorder {

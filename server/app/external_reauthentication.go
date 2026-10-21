@@ -56,7 +56,7 @@ func (s *externalAuthenticationService) BeginExternalReauthentication(ctx contex
 }
 
 func (s *externalAuthenticationService) completeReauthentication(ctx context.Context, state *model.ExternalLoginState, assertion *model.ExternalAuthenticationAssertion) (*model.ExternalAuthenticationCompletion, error) {
-	if state == nil || state.Purpose != model.ExternalAuthenticationPurposeReauthenticate || state.Validate() != nil || !state.ConsumedAt.Valid || assertion == nil || assertion.ProviderId != state.Provider || assertion.AuthenticatedAt < state.CreatedAt.Truncate(time.Second).UnixMilli() || assertion.AuthenticatedAt > s.now().UnixMilli() {
+	if state == nil || state.Purpose != model.ExternalAuthenticationPurposeReauthenticate || state.Validate() != nil || !state.ConsumedAt.Valid || assertion == nil || assertion.ProviderID != state.Provider || assertion.AuthenticatedAt < state.CreatedAt.Truncate(time.Second).UnixMilli() || assertion.AuthenticatedAt > s.now().UnixMilli() {
 		return nil, s.failConsumedProviderConnection(ctx, state, apperror.New("authentication.external.rejected"))
 	}
 	result, err := s.sessions.ReauthenticateExternal(ctx, &store.SessionExternalReauthentication{StateID: state.ID, ProviderID: state.Provider, Subject: assertion.Subject, AuthenticatedAt: model.TimeFromMillis(assertion.AuthenticatedAt)})

@@ -18,7 +18,7 @@ func queuedMailDeliveryFixture(at time.Time) *MailDelivery {
 	return &MailDelivery{ID: NewMailDeliveryID(), OccurrenceID: NewMailOccurrenceID(), JobID: NewJobID(), TargetUserID: NewUserID(),
 		TemplateKey: MailTemplateSystemTest, TemplateDigest: strings.Repeat("a", 64), MaskedRecipient: "a***@example.test",
 		State: MailDeliveryQueued, CreatedAt: at, UpdatedAt: at, MessageDate: at, Deadline: at.Add(24 * time.Hour),
-		MessageID: "<mail." + NewId() + "@example.test>", EncryptedPayload: json.RawMessage(`{"version":1,"ciphertext":"secret"}`), Revision: 1}
+		MessageID: "<mail." + NewID() + "@example.test>", EncryptedPayload: json.RawMessage(`{"version":1,"ciphertext":"secret"}`), Revision: 1}
 }
 
 func TestExamManagerMailMeaningsAreClosed(t *testing.T) {

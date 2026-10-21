@@ -16,11 +16,11 @@ func TestAcademicPeriodAndClassTypedLifecycle(t *testing.T) {
 	t.Parallel()
 
 	at := time.UnixMilli(1_700_000_000_000).UTC()
-	institutionID, err := ParseInstitutionID(NewId())
+	institutionID, err := ParseInstitutionID(NewID())
 	if err != nil {
 		t.Fatal(err)
 	}
-	periodID, err := ParseAcademicPeriodID(NewId())
+	periodID, err := ParseAcademicPeriodID(NewID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,11 +51,11 @@ func TestAcademicPeriodAndClassTypedLifecycle(t *testing.T) {
 		t.Fatalf("AcademicPeriod after PrepareUpdate: %v", err)
 	}
 
-	levelID, err := ParseProgrammeLevelID(NewId())
+	levelID, err := ParseProgrammeLevelID(NewID())
 	if err != nil {
 		t.Fatal(err)
 	}
-	classID, err := ParseClassID(NewId())
+	classID, err := ParseClassID(NewID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,11 +121,11 @@ func TestProgrammeAndProgrammeLevelTypedLifecycle(t *testing.T) {
 	t.Parallel()
 
 	at := time.UnixMilli(1_700_000_000_000).UTC()
-	unitID, err := ParseAcademicUnitID(NewId())
+	unitID, err := ParseAcademicUnitID(NewID())
 	if err != nil {
 		t.Fatal(err)
 	}
-	programmeID, err := ParseProgrammeID(NewId())
+	programmeID, err := ParseProgrammeID(NewID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestProgrammeAndProgrammeLevelTypedLifecycle(t *testing.T) {
 		t.Fatalf("Programme after PrepareUpdate: %v", err)
 	}
 
-	levelID, err := ParseProgrammeLevelID(NewId())
+	levelID, err := ParseProgrammeLevelID(NewID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestInstitutionAndAcademicUnitTypedLifecycle(t *testing.T) {
 	t.Parallel()
 
 	at := time.UnixMilli(1_700_000_000_000).UTC()
-	institutionID, err := ParseInstitutionID(NewId())
+	institutionID, err := ParseInstitutionID(NewID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +208,7 @@ func TestInstitutionAndAcademicUnitTypedLifecycle(t *testing.T) {
 		t.Fatalf("Institution after PrepareUpdate: %v", err)
 	}
 
-	unitID, err := ParseAcademicUnitID(NewId())
+	unitID, err := ParseAcademicUnitID(NewID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,11 +236,11 @@ func TestInstitutionAndAcademicUnitTypedLifecycle(t *testing.T) {
 func TestAcademicModelValidationReturnsPreciseTranslationIDs(t *testing.T) {
 	t.Parallel()
 
-	selfParentID, err := ParseAcademicUnitID(NewId())
+	selfParentID, err := ParseAcademicUnitID(NewID())
 	if err != nil {
 		t.Fatal(err)
 	}
-	institutionID, err := ParseInstitutionID(NewId())
+	institutionID, err := ParseInstitutionID(NewID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,11 +268,11 @@ func TestAcademicModelValidationReturnsPreciseTranslationIDs(t *testing.T) {
 		{
 			name: "academic period end",
 			err: (&AcademicPeriod{
-				ID:          AcademicPeriodID(NewId()),
+				ID:          AcademicPeriodID(NewID()),
 				CreatedAt:   at,
 				UpdatedAt:   at,
 				Revision:    1,
-				Owner:       NewInstitutionAcademicPeriodOwner(InstitutionID(NewId())),
+				Owner:       NewInstitutionAcademicPeriodOwner(InstitutionID(NewID())),
 				Name:        "2026-2027",
 				DisplayName: "2026–2027",
 				StartsAt:    time.UnixMilli(100).UTC(),
@@ -283,11 +283,11 @@ func TestAcademicModelValidationReturnsPreciseTranslationIDs(t *testing.T) {
 		{
 			name: "class academic period",
 			err: (&Class{
-				ID:               ClassID(NewId()),
+				ID:               ClassID(NewID()),
 				CreatedAt:        at,
 				UpdatedAt:        at,
 				Revision:         1,
-				ProgrammeLevelID: ProgrammeLevelID(NewId()),
+				ProgrammeLevelID: ProgrammeLevelID(NewID()),
 				Name:             "year-1-a",
 				DisplayName:      "Year 1 - Class A",
 			}).Validate(),
@@ -329,7 +329,7 @@ func TestAcademicModelValidationReturnsPreciseTranslationIDs(t *testing.T) {
 func TestInstitutionSanitizesUnsafeUnicode(t *testing.T) {
 	t.Parallel()
 
-	id, err := ParseInstitutionID(NewId())
+	id, err := ParseInstitutionID(NewID())
 	if err != nil {
 		t.Fatal(err)
 	}

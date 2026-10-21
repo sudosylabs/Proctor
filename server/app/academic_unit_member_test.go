@@ -60,15 +60,15 @@ func (s *academicUnitMemberStoreFake) End(_ context.Context, input *store.Academ
 func TestAcademicUnitMemberCreateUsesAuthorizationWithoutGrantingPermission(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	unitID, userID := model.NewId(), model.NewId()
+	unitID, userID := model.NewID(), model.NewID()
 	persistence := &academicUnitMemberStoreFake{events: &events}
 	effects := &academicUnitMemberEffectsFake{}
 	mail := &relationshipMailPreparerTestFake{}
 	clockCalls := 0
-	service := newAcademicUnitMemberService(persistence, relationshipUserStoreTestFake{}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, mail, effects, func() time.Time {
+	service := newAcademicUnitMemberService(persistence, relationshipUserStoreTestFake{}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, mail, effects, func() time.Time {
 		clockCalls++
 		return time.UnixMilli(500)
-	}, model.NewId)
+	}, model.NewID)
 	created, err := service.CreateAcademicUnitMember(context.Background(), Invocation{}, CreateAcademicUnitMemberCommand{AcademicUnitID: model.AcademicUnitID(unitID), UserID: userID, StartAt: 100})
 	if err != nil {
 		t.Fatal(err)
@@ -97,13 +97,13 @@ func TestAcademicUnitMemberEndCarriesRevision(t *testing.T) {
 	events := []string{}
 	current := &model.AcademicUnitMember{
 		ID: model.NewAcademicUnitMemberID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
-		Revision: 3, AcademicUnitID: model.AcademicUnitID(model.NewId()), UserID: model.UserID(model.NewId()),
+		Revision: 3, AcademicUnitID: model.AcademicUnitID(model.NewID()), UserID: model.UserID(model.NewID()),
 		StartsAt: model.TimeFromMillis(100),
 	}
 	persistence := &academicUnitMemberStoreFake{events: &events, current: current}
 	effects := &academicUnitMemberEffectsFake{}
 	mail := &relationshipMailPreparerTestFake{}
-	service := newAcademicUnitMemberService(persistence, relationshipUserStoreTestFake{}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, mail, effects, func() time.Time { return time.UnixMilli(500) }, model.NewId)
+	service := newAcademicUnitMemberService(persistence, relationshipUserStoreTestFake{}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, mail, effects, func() time.Time { return time.UnixMilli(500) }, model.NewID)
 	ended, err := service.EndAcademicUnitMember(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: current.ID})
 	if err != nil {
 		t.Fatal(err)
@@ -131,7 +131,7 @@ func TestAcademicUnitMemberEndDenialDoesNotInspectOpaqueMemberID(t *testing.T) {
 		&academicUnitMemberStoreFake{events: &events},
 		relationshipUserStoreTestFake{},
 		&programmeAuthorizerFake{events: &events, preflightErr: apperror.New("authorization.denied")},
-		&institutionAuditorFake{events: &events}, &relationshipMailPreparerTestFake{}, &academicUnitMemberEffectsFake{}, time.Now, model.NewId,
+		&institutionAuditorFake{events: &events}, &relationshipMailPreparerTestFake{}, &academicUnitMemberEffectsFake{}, time.Now, model.NewID,
 	)
 	if _, err := service.EndAcademicUnitMember(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: model.NewAcademicUnitMemberID()}); !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("End() error = %v, want authorization.denied", err)
@@ -152,7 +152,7 @@ func TestAcademicUnitMemberEndConcealsCrossScopeTarget(t *testing.T) {
 		&academicUnitMemberStoreFake{events: &events, current: current},
 		relationshipUserStoreTestFake{},
 		&programmeAuthorizerFake{events: &events, err: apperror.New("authorization.denied")},
-		&institutionAuditorFake{events: &events}, &relationshipMailPreparerTestFake{}, &academicUnitMemberEffectsFake{}, time.Now, model.NewId,
+		&institutionAuditorFake{events: &events}, &relationshipMailPreparerTestFake{}, &academicUnitMemberEffectsFake{}, time.Now, model.NewID,
 	)
 	if _, err := service.EndAcademicUnitMember(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: current.ID}); !apperror.Is(err, "resource.not_found") {
 		t.Fatalf("End() error = %v, want concealed resource.not_found", err)

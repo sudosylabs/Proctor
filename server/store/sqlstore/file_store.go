@@ -382,7 +382,7 @@ func (s SQLFileStore) ClaimPurgeCandidate(ctx context.Context, candidate *store.
 			return nil, invalidPersistedState("file_purge_claim", "id", fmt.Errorf("invalid purge claim identifier"))
 		}
 		if claimID == "" {
-			claimID = model.NewId()
+			claimID = model.NewID()
 			result, execErr := tx.Exec(ctx, `UPDATE file_revisions SET purge_claim_id = ?, purge_claimed_at = CURRENT_TIMESTAMP WHERE id = ? AND purge_claim_id IS NULL`, claimID, candidate.RevisionID.String())
 			if execErr != nil {
 				return nil, fmt.Errorf("claim file purge: %w", execErr)

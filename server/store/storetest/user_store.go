@@ -181,10 +181,10 @@ func testPublicLocalUserRegistration(t *testing.T, ss store.Store, probe UserSto
 		t.Fatalf("failed registration persisted delivery: %v", err)
 	}
 
-	sharedEmail := model.NewId() + "@public-registration.example.edu"
+	sharedEmail := model.NewID() + "@public-registration.example.edu"
 	contenders := []*store.PublicLocalUserRegistration{
-		publicLocalUserRegistrationFixture(t, institution.ID, &model.User{Username: "registration-a-" + model.NewId(), Email: sharedEmail}),
-		publicLocalUserRegistrationFixture(t, institution.ID, &model.User{Username: "registration-b-" + model.NewId(), Email: sharedEmail}),
+		publicLocalUserRegistrationFixture(t, institution.ID, &model.User{Username: "registration-a-" + model.NewID(), Email: sharedEmail}),
+		publicLocalUserRegistrationFixture(t, institution.ID, &model.User{Username: "registration-b-" + model.NewID(), Email: sharedEmail}),
 	}
 	start := make(chan struct{})
 	errs := make(chan error, len(contenders))
@@ -387,39 +387,39 @@ func testUserStoreProtectLastAdministrator(t *testing.T, ss store.Store) {
 func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	first := newUser()
-	first.Username = "aaa-" + model.NewId()
+	first.Username = "aaa-" + model.NewID()
 	first.DisplayName = "Searchable Alpha 50%_!"
 	first.FirstName = "Literal_Given"
 	first.LastName = "Literal%Family!"
 	first, err := createUser(t, ctx, ss, first)
 	requireNoError(t, err)
 	second := newUser()
-	second.Username = "bbb-" + model.NewId()
+	second.Username = "bbb-" + model.NewID()
 	second, err = createUser(t, ctx, ss, second)
 	requireNoError(t, err)
 	unitMember := newUser()
-	unitMember.Username = "unit-member-" + model.NewId()
+	unitMember.Username = "unit-member-" + model.NewID()
 	unitMember, err = createUser(t, ctx, ss, unitMember)
 	requireNoError(t, err)
 	unitRoleHolder := newUser()
-	unitRoleHolder.Username = "unit-role-" + model.NewId()
+	unitRoleHolder.Username = "unit-role-" + model.NewID()
 	unitRoleHolder, err = createUser(t, ctx, ss, unitRoleHolder)
 	requireNoError(t, err)
 	archivedRoleHolder := newUser()
-	archivedRoleHolder.Username = "zzz-archived-role-" + model.NewId()
+	archivedRoleHolder.Username = "zzz-archived-role-" + model.NewID()
 	archivedRoleHolder, err = createUser(t, ctx, ss, archivedRoleHolder)
 	requireNoError(t, err)
 	otherClassMember := newUser()
-	otherClassMember.Username = "yyy-class-member-" + model.NewId()
+	otherClassMember.Username = "yyy-class-member-" + model.NewID()
 	otherClassMember, err = createUser(t, ctx, ss, otherClassMember)
 	requireNoError(t, err)
 	activeAt := model.GetMillis() + 100
 	fixture := saveClassFixture(t, ctx, ss)
 	visibleClass := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "user-search-visible")
-	siblingUnit := saveAcademicUnit(t, ctx, ss, fixture.institution.ID.String(), "", "visibility-sibling-"+model.NewId())
-	siblingProgramme := saveProgramme(t, ctx, ss, siblingUnit.ID.String(), "visibility-sibling-programme-"+model.NewId())
-	siblingLevel := saveProgrammeLevel(t, ctx, ss, siblingProgramme.ID.String(), "visibility-sibling-level-"+model.NewId())
-	siblingClass := saveClass(t, ctx, ss, siblingLevel.ID.String(), fixture.period.ID.String(), "visibility-sibling-class-"+model.NewId())
+	siblingUnit := saveAcademicUnit(t, ctx, ss, fixture.institution.ID.String(), "", "visibility-sibling-"+model.NewID())
+	siblingProgramme := saveProgramme(t, ctx, ss, siblingUnit.ID.String(), "visibility-sibling-programme-"+model.NewID())
+	siblingLevel := saveProgrammeLevel(t, ctx, ss, siblingProgramme.ID.String(), "visibility-sibling-level-"+model.NewID())
+	siblingClass := saveClass(t, ctx, ss, siblingLevel.ID.String(), fixture.period.ID.String(), "visibility-sibling-class-"+model.NewID())
 	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{
 		UserID: first.ID, Kind: model.AffiliationStudent,
 		StartsAt: model.TimeFromMillis(activeAt - 10),
@@ -455,7 +455,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	})
 	requireNoError(t, err)
 	unitRole, err := SaveRole(ctx, ss, &model.Role{
-		Name: "unit-directory-" + model.NewId(), DisplayName: "Unit Directory",
+		Name: "unit-directory-" + model.NewID(), DisplayName: "Unit Directory",
 		Permissions: []string{string(model.ActionUserView)},
 	})
 	requireNoError(t, err)
@@ -466,7 +466,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	})
 	requireNoError(t, err)
 	archivedRole, err := SaveRole(ctx, ss, &model.Role{
-		Name: "archived-directory-" + model.NewId(), DisplayName: "Archived Directory",
+		Name: "archived-directory-" + model.NewID(), DisplayName: "Archived Directory",
 		Permissions: []string{string(model.ActionUserView)},
 	})
 	requireNoError(t, err)
@@ -1025,7 +1025,7 @@ func testUserStoreUpdate(t *testing.T, ss store.Store) {
 	}); !store.IsConflict(err) {
 		t.Fatalf("stale UpdateProfile() error = %v", err)
 	}
-	missingID := model.UserID(model.NewId())
+	missingID := model.UserID(model.NewID())
 	missingAttempt := saveUserProfileAuditAttempt(t, ctx, ss, missingID.String())
 	if _, err := ss.User().UpdateProfile(ctx, &store.UserProfileUpdate{
 		UserID: missingID, Changes: model.UserProfileChanges{DisplayName: &displayName}, ExpectedRevision: updated.Revision,
@@ -1040,7 +1040,7 @@ func saveUserProfileAuditAttempt(t *testing.T, ctx context.Context, ss store.Sto
 	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		Action:    string(model.ActionUserManage),
 		Resource:  model.Resource{Type: model.ResourceUser, ID: userID},
-		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewId(),
+		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewID(),
 		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
 	requireNoError(t, err)
@@ -1079,7 +1079,7 @@ func testUserStoreUniqueness(t *testing.T, ss store.Store) {
 }
 
 func newUser() *model.User {
-	id := model.NewId()
+	id := model.NewID()
 	return &model.User{
 		Username:    "user-" + id,
 		Email:       id + "@example.edu",

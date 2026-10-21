@@ -40,7 +40,7 @@ func (f *localLoginAuditorFake) BeginLocalLogin(_ context.Context, invocation In
 	if f.pending == nil {
 		f.pending = map[string]*localLoginAuditRecord{}
 	}
-	id := model.NewId()
+	id := model.NewID()
 	f.pending[id] = &localLoginAuditRecord{status: model.AuditStatusAttempt, actor: userID, target: userID,
 		clientType: clientType, metadata: invocation.RequestMetadata()}
 	return model.AuditEventID(id), nil

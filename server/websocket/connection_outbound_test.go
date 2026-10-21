@@ -78,9 +78,9 @@ func TestConnectionRuntimePreservesConcurrentEventSequenceOrder(t *testing.T) {
 			defer publishers.Done()
 			<-start
 			runtime.enqueueEvent(&Event{
-				Id:     model.NewId(),
+				ID:     model.NewID(),
 				Event:  "exam.updated",
-				UserID: model.NewId(),
+				UserID: model.NewID(),
 				Data:   []byte(`{"index":` + string(rune('0'+index%10)) + `}`),
 			})
 		}()
@@ -110,9 +110,9 @@ func TestConnectionRuntimeClosesOnOutboundQueueSaturation(t *testing.T) {
 			name: "event",
 			enqueue: func(runtime *connectionRuntime) {
 				runtime.enqueueEvent(&Event{
-					Id:     model.NewId(),
+					ID:     model.NewID(),
 					Event:  "exam.updated",
-					UserID: model.NewId(),
+					UserID: model.NewID(),
 				})
 			},
 		},
@@ -170,9 +170,9 @@ func TestConnectionRuntimeWritesOutboundMessagesInQueueOrder(t *testing.T) {
 	socket := newOutboundTestSocket()
 	runtime := newOutboundTestRuntime(socket, 3)
 	runtime.enqueueEvent(&Event{
-		Id:     model.NewId(),
+		ID:     model.NewID(),
 		Event:  "exam.updated",
-		UserID: model.NewId(),
+		UserID: model.NewID(),
 	})
 	runtime.enqueueResponse(7, json.RawMessage(`{"accepted":true}`))
 	runtime.enqueueError(8, "websocket.request.invalid", websocketErrorRequestInvalid)
@@ -219,7 +219,7 @@ func TestConnectionRuntimeEnqueuesHelloAndResyncInSequence(t *testing.T) {
 	t.Parallel()
 
 	runtime := newOutboundTestRuntime(newOutboundTestSocket(), 2)
-	runtime.id = model.NewId()
+	runtime.id = model.NewID()
 	runtime.nodeID = "node-a"
 	runtime.principal = model.Principal{UserID: model.NewUserID()}
 
@@ -234,7 +234,7 @@ func TestConnectionRuntimeEnqueuesHelloAndResyncInSequence(t *testing.T) {
 	if err := json.Unmarshal(helloEvent.Data, &hello); err != nil {
 		t.Fatalf("decode hello: %v", err)
 	}
-	if hello.ConnectionId != runtime.id || hello.NodeId != "node-a" || hello.Resumed {
+	if hello.ConnectionID != runtime.id || hello.NodeID != "node-a" || hello.Resumed {
 		t.Fatalf("hello = %#v", hello)
 	}
 	if resyncEvent == nil || resyncEvent.Event != string(EventResync) || resyncEvent.Sequence != 2 {
@@ -383,7 +383,7 @@ func TestConnectionRuntimeBackpressureDoesNotAffectHealthyConnection(t *testing.
 	slow.send <- outboundMessage{response: &Response{Status: "ok", Sequence: 1}}
 	healthySocket := newOutboundTestSocket()
 	healthy := newOutboundTestRuntime(healthySocket, 1)
-	event := &Event{Id: model.NewId(), Event: "exam.updated", UserID: model.NewId()}
+	event := &Event{ID: model.NewID(), Event: "exam.updated", UserID: model.NewID()}
 
 	slow.enqueueEvent(event)
 	healthy.enqueueEvent(event)
@@ -393,7 +393,7 @@ func TestConnectionRuntimeBackpressureDoesNotAffectHealthyConnection(t *testing.
 	}
 	select {
 	case message := <-healthy.send:
-		if message.event == nil || message.event.Id != event.Id || message.event.Sequence != 1 {
+		if message.event == nil || message.event.ID != event.ID || message.event.Sequence != 1 {
 			t.Fatalf("healthy delivery = %#v", message.event)
 		}
 	default:

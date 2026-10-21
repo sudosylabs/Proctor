@@ -98,7 +98,7 @@ func render(specs []idSpec) ([]byte, error) {
 
 	for _, spec := range specs {
 		fmt.Fprintf(&output, "// New%s returns a freshly generated %s identifier.\n", spec.typeName, spec.constructorSubject)
-		fmt.Fprintf(&output, "func New%s() %s { return %s(NewId()) }\n\n", spec.typeName, spec.typeName, spec.typeName)
+		fmt.Fprintf(&output, "func New%s() %s { return %s(NewID()) }\n\n", spec.typeName, spec.typeName, spec.typeName)
 	}
 	for _, spec := range specs {
 		fmt.Fprintf(&output, "// Parse%s validates and converts the shared identifier representation.\n", spec.typeName)

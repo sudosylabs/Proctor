@@ -169,7 +169,7 @@ func testInstitutionStoreUpdate(t *testing.T, ss store.Store) {
 	}
 
 	missing := *updated
-	missingID, parseErr := model.ParseInstitutionID(model.NewId())
+	missingID, parseErr := model.ParseInstitutionID(model.NewID())
 	requireNoError(t, parseErr)
 	missing.ID = missingID
 	_, err = UpdateInstitution(ctx, ss, &missing)
@@ -203,7 +203,7 @@ func saveInstitution(t *testing.T, ctx context.Context, ss store.Store) *model.I
 	t.Helper()
 	cleanupInstitution(t, ctx, ss)
 	institution, err := ss.Institution().Save(ctx, &model.Institution{
-		Name:        "institution-" + model.NewId(),
+		Name:        "institution-" + model.NewID(),
 		DisplayName: "Northbridge University",
 	})
 	requireNoError(t, err)

@@ -114,7 +114,7 @@ func testClassMemberEndBeforeModification(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	fixture := saveClassFixture(t, ctx, ss)
 	now := model.GetMillis()
-	period := saveAcademicPeriod(t, ctx, ss, fixture.institution.ID.String(), "class-member-backdated-"+model.NewId(), now-3_600_000)
+	period := saveAcademicPeriod(t, ctx, ss, fixture.institution.ID.String(), "class-member-backdated-"+model.NewID(), now-3_600_000)
 	class := saveClass(t, ctx, ss, fixture.level.ID.String(), period.ID.String(), "class-member-backdated")
 	user := saveUser(t, ctx, ss)
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{

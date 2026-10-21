@@ -95,7 +95,7 @@ func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 		StartsAt:    model.TimeFromMillis(100),
 		EndsAt:      model.TimeFromMillis(200),
 	}
-	candidate.PrepareCreate(model.AcademicPeriodID(model.NewId()), model.NowUTC())
+	candidate.PrepareCreate(model.AcademicPeriodID(model.NewID()), model.NowUTC())
 	created, err := ss.AcademicPeriod().Create(ctx, &store.AcademicPeriodCreation{Period: candidate, AuditEventID: createAttempt.ID, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	completed, err := ss.Audit().Get(ctx, createAttempt.ID)
@@ -111,7 +111,7 @@ func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 		StartsAt:    model.TimeFromMillis(300),
 		EndsAt:      model.TimeFromMillis(400),
 	}
-	rolledBackCreate.PrepareCreate(model.AcademicPeriodID(model.NewId()), model.NowUTC())
+	rolledBackCreate.PrepareCreate(model.AcademicPeriodID(model.NewID()), model.NowUTC())
 	if _, err = ss.AcademicPeriod().Create(ctx, &store.AcademicPeriodCreation{Period: rolledBackCreate, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}); err == nil {
 		t.Fatal("Create() succeeded without its audit attempt")
 	}
@@ -339,7 +339,7 @@ func testAcademicPeriodStoreUpdate(t *testing.T, ss store.Store) {
 	}
 
 	missing := *updated
-	missing.ID = model.AcademicPeriodID(model.NewId())
+	missing.ID = model.AcademicPeriodID(model.NewID())
 	_, err = UpdateAcademicPeriod(ctx, ss, &missing)
 	if !store.IsNotFound(err) {
 		t.Fatalf("Update(missing) error = %v, want not found", err)
@@ -350,7 +350,7 @@ func testAcademicPeriodStoreRejectUnknownInstitution(t *testing.T, ss store.Stor
 	ctx := context.Background()
 
 	_, err := SaveAcademicPeriod(ctx, ss, &model.AcademicPeriod{
-		Owner:       model.NewInstitutionAcademicPeriodOwner(model.InstitutionID(model.NewId())),
+		Owner:       model.NewInstitutionAcademicPeriodOwner(model.InstitutionID(model.NewID())),
 		Name:        "2026-2027",
 		DisplayName: "Academic Year 2026-2027",
 		StartsAt:    model.TimeFromMillis(1_800_000_000_000),

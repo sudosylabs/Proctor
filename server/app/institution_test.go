@@ -98,7 +98,7 @@ func TestInstitutionGetAuthorizesSingletonResource(t *testing.T) {
 	t.Parallel()
 
 	events := []string{}
-	institution := &model.Institution{ID: model.InstitutionID(model.NewId())}
+	institution := &model.Institution{ID: model.InstitutionID(model.NewID())}
 	authorizer := &institutionAuthorizerFake{events: &events}
 	service := newInstitutionService(
 		&institutionStoreFake{events: &events, current: institution}, authorizer,
@@ -122,7 +122,7 @@ func TestInstitutionUpdateCommitsSuccessAuditAtomically(t *testing.T) {
 
 	events := []string{}
 	current := &model.Institution{
-		ID: model.InstitutionID(model.NewId()), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
+		ID: model.InstitutionID(model.NewID()), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
 		Name: "northbridge", DisplayName: "Northbridge University", Revision: 1, ExamCapacity: model.DefaultExamCapacityPolicy(),
 	}
 	updated := *current
@@ -133,7 +133,7 @@ func TestInstitutionUpdateCommitsSuccessAuditAtomically(t *testing.T) {
 	persistence := &institutionStoreFake{
 		events: &events, current: current, updated: &updated,
 	}
-	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
+	auditor := &institutionAuditorFake{events: &events, beginID: model.NewID()}
 	service := newInstitutionService(
 		persistence, &institutionAuthorizerFake{events: &events}, auditor,
 		func() time.Time { return time.UnixMilli(500) },
@@ -162,14 +162,14 @@ func TestInstitutionUpdateFailureCompletesFailedAttempt(t *testing.T) {
 
 	events := []string{}
 	current := &model.Institution{
-		ID: model.InstitutionID(model.NewId()), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
+		ID: model.InstitutionID(model.NewID()), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
 		Name: "northbridge", DisplayName: "Northbridge", Revision: 1, ExamCapacity: model.DefaultExamCapacityPolicy(),
 	}
 	persistence := &institutionStoreFake{
 		events: &events, current: current,
 		updateErr: store.NewErrConflict("institution", "institutions_name_key", errors.New("duplicate")),
 	}
-	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
+	auditor := &institutionAuditorFake{events: &events, beginID: model.NewID()}
 	service := newInstitutionService(
 		persistence, &institutionAuthorizerFake{events: &events}, auditor, time.Now,
 	)

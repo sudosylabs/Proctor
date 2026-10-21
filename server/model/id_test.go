@@ -54,7 +54,7 @@ func TestParseEntityIDRejectsInvalid(t *testing.T) {
 	if _, err := ParseUserID("not-a-valid-id"); err == nil {
 		t.Fatal("short user id accepted")
 	}
-	raw := NewId()
+	raw := NewID()
 	got, err := ParseUserID(raw)
 	if err != nil {
 		t.Fatal(err)
@@ -94,8 +94,8 @@ func TestEntityIDJSONRoundTrip(t *testing.T) {
 func TestLegacyStringIDStillCompilesAlongsideTypedIDs(t *testing.T) {
 	t.Parallel()
 
-	// Expand phase: plain NewId()/IsValidOpaqueID remain for unmigrated aggregates.
-	legacy := NewId()
+	// Expand phase: plain NewID()/IsValidOpaqueID remain for unmigrated aggregates.
+	legacy := NewID()
 	if !IsValidOpaqueID(legacy) {
 		t.Fatal(legacy)
 	}

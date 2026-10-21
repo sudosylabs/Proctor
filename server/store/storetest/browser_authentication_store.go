@@ -50,7 +50,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 			}},
 			{name: "PKCE challenge", mutate: func(value *store.DesktopAuthorizationCreation) { value.CodeChallenge = "short" }},
 			{name: "device ID", mutate: func(value *store.DesktopAuthorizationCreation) {
-				value.DeviceID = strings.Repeat("x", model.SessionDeviceIdMaxLength+1)
+				value.DeviceID = strings.Repeat("x", model.SessionDeviceIDMaxLength+1)
 			}},
 			{name: "device name", mutate: func(value *store.DesktopAuthorizationCreation) {
 				value.DeviceName = strings.Repeat("x", model.SessionDeviceNameMaxRunes+1)

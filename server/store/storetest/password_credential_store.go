@@ -30,7 +30,7 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		credential, err := ss.PasswordCredential().Save(ctx, &model.PasswordCredential{UserID: user.ID, PasswordHash: "$argon2id$remove-me"})
 		requireNoError(t, err)
 		identity, err := ss.ExternalIdentity().Save(ctx, &model.ExternalIdentity{UserID: user.ID, Provider: "campus-cas",
-			Subject: "password-removal-subject-" + model.NewId(), LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())})
+			Subject: "password-removal-subject-" + model.NewID(), LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())})
 		requireNoError(t, err)
 
 		passwordSession, passwordCredentials, _ := newSession(user.ID.String())
@@ -173,7 +173,7 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 	t.Run("ReferencesAndUniqueness", func(t *testing.T) {
 		ctx := context.Background()
 		_, err := ss.PasswordCredential().Save(ctx, &model.PasswordCredential{
-			UserID:       model.UserID(model.NewId()),
+			UserID:       model.UserID(model.NewID()),
 			PasswordHash: "$argon2id$missing",
 		})
 		var reference *store.ErrReference
@@ -201,7 +201,7 @@ func saveAuthenticationMethodAuditAttempt(t *testing.T, ctx context.Context, ss 
 	t.Helper()
 	event, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionExternalIdentityManage),
 		Resource: model.Resource{Type: model.ResourceUser, ID: userID}, ScopeType: model.RoleScopeInstitution,
-		ScopeID: model.NewId(), Status: model.AuditStatusAttempt, NodeID: "authentication-method-storetest",
+		ScopeID: model.NewID(), Status: model.AuditStatusAttempt, NodeID: "authentication-method-storetest",
 		Parameters: []byte(`{"operation":"` + operation + `"}`)})
 	requireNoError(t, err)
 	return event

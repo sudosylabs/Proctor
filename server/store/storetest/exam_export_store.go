@@ -35,7 +35,7 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	scope := model.RetentionHoldScope{ExamID: f.examID, SittingID: f.sitting.ID, SubmissionID: sealed.Receipt.SubmissionID}
 	principal := saveRecordsPrincipal(t, ctx, ss, f.manager.ID, false)
 	permissions := []string{string(model.ActionExamRecordsExport), string(model.ActionExamRecordsExportOverride), string(model.ActionSubmissionView), string(model.ActionSubmissionViewOverride), string(model.ActionExamSittingView), string(model.ActionExamSittingViewOverride), string(model.ActionExamAttemptBrowserActivityView)}
-	role, err := SaveRole(ctx, ss, &model.Role{Name: "export-manager-" + model.NewId(), DisplayName: "Export manager", Permissions: permissions})
+	role, err := SaveRole(ctx, ss, &model.Role{Name: "export-manager-" + model.NewID(), DisplayName: "Export manager", Permissions: permissions})
 	requireNoError(t, err)
 	binding, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: f.manager.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: f.unitID.String(), StartsAt: model.NowUTC().Add(-time.Minute)})
 	requireNoError(t, err)
@@ -275,7 +275,7 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	for _, categories := range [][]model.RetentionCategory{{model.RetentionCategoryBrowserActivity}} {
 		denied := makeInput(categories...)
 		denied.ExamRecordsMutation = recordsMutation(t, ctx, ss, f.unitID, scope, nonmanagerPrincipal, model.ActionExamRecordsExportOverride)
-		if _, err := exports.Create(ctx, denied, examCommand(nonmanager.ID, store.ExamExportCreateOperation, model.NewId(), "browser-denied")); !store.IsConflict(err) {
+		if _, err = exports.Create(ctx, denied, examCommand(nonmanager.ID, store.ExamExportCreateOperation, model.NewID(), "browser-denied")); !store.IsConflict(err) {
 			t.Fatalf("nonmanager override created Browser Activity archive: %v", err)
 		}
 		if count := probe.SourceProtectionCount(t, ctx, denied.ExportID); count != 0 {

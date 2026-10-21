@@ -43,7 +43,7 @@ func TestClusteredMailRekeyRecoversCheckpointAndRotatesFanoutBundle(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	bundleID := model.NewId()
+	bundleID := model.NewID()
 	binding := secretseal.Binding{Purpose: "mail.fanout_bundle", Owner: bundleID}
 	oldEnvelope, err := oldSealer.Seal(binding, []byte(`{"version":1,"template":"frozen"}`))
 	if err != nil {

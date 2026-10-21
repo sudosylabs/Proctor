@@ -23,7 +23,7 @@ const FixtureAuditAction = "storetest.fixture"
 // requires and completes. Fixtures use it where they need state rather than an
 // assertion about the mutation's own audit record.
 func beginFixtureAudit(ctx context.Context, ss store.Store) (model.AuditEventID, int64, error) {
-	scope := model.NewId()
+	scope := model.NewID()
 	event, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		Action:   FixtureAuditAction,
 		Resource: model.Resource{Type: model.ResourceInstitution, ID: scope}, ScopeType: model.RoleScopeInstitution,

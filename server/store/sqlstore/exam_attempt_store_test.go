@@ -47,7 +47,7 @@ func TestExistingAttemptConfigurationRetainsOriginalProvenanceOnPatchedBuild(t *
 		DesktopBuild: "original-build", DesktopTarget: "original-target", UserSettingsRevision: model.NewUserSettingsRevision(),
 		Presentation: model.AttemptConfigurationPresentation{ColorTheme: "hcDark", ZoomPercent: 100, EditorFontSizePX: 24, EditorLineHeightPX: 16,
 			ScreenReaderMode: "on", AnnouncementMode: "minimal", CursorStyle: "underline", CursorBlinking: "phase"}, ApprovedCommands: []string{}, ApprovedKeybindings: []string{}}
-	frozen, err := candidate.Freeze(model.NewId())
+	frozen, err := candidate.Freeze(model.NewID())
 	if err != nil {
 		t.Fatal(err)
 	}

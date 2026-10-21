@@ -172,7 +172,7 @@ func (s *sqlExamAttemptStore) prepareSecurityPreflight(ctx context.Context, tx *
 			return nil, err
 		}
 	}
-	resolved, err := model.ResolveNativePolicy(model.NativePolicyResolution{PolicyID: model.NewId(), Revision: guard.RevisionID, Ordinal: ordinal, InstitutionID: institutionID, ExamRevisionID: revisionID, SittingID: access.SittingID, Scope: scope, IssuedAt: now, ActiveFrom: now, ActivationTime: now, Selections: selections, Build: access.DesktopBuild})
+	resolved, err := model.ResolveNativePolicy(model.NativePolicyResolution{PolicyID: model.NewID(), Revision: guard.RevisionID, Ordinal: ordinal, InstitutionID: institutionID, ExamRevisionID: revisionID, SittingID: access.SittingID, Scope: scope, IssuedAt: now, ActiveFrom: now, ActivationTime: now, Selections: selections, Build: access.DesktopBuild})
 	if err != nil {
 		return nil, err
 	}

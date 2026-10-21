@@ -19,15 +19,15 @@ import (
 	"time"
 )
 
-const IdLength = 26
+const IDLength = 26
 
-const IdAlphabet = "ybndrfg8ejkmcpqxot1uwisza345h769"
+const IDAlphabet = "ybndrfg8ejkmcpqxot1uwisza345h769"
 
-var idEncoding = base32.NewEncoding(IdAlphabet).WithPadding(base32.NoPadding)
+var idEncoding = base32.NewEncoding(IDAlphabet).WithPadding(base32.NoPadding)
 
-// NewId returns a random 128-bit identifier encoded as 26 z-base-32
+// NewID returns a random 128-bit identifier encoded as 26 z-base-32
 // characters. It panics only if the operating system random source fails.
-func NewId() string {
+func NewID() string {
 	value := make([]byte, 16)
 	if _, err := rand.Read(value); err != nil {
 		panic("model: operating system random source failed: " + err.Error())
@@ -47,11 +47,11 @@ func NewId() string {
 // mixed-kind cursors and delivery selectors, and for runtime tokens that are
 // not domain entities.
 func IsValidOpaqueID(value string) bool {
-	if len(value) != IdLength {
+	if len(value) != IDLength {
 		return false
 	}
 	for index := range value {
-		if !strings.ContainsRune(IdAlphabet, rune(value[index])) {
+		if !strings.ContainsRune(IDAlphabet, rune(value[index])) {
 			return false
 		}
 	}

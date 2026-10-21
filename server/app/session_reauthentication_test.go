@@ -72,7 +72,7 @@ func TestPasswordReauthenticationBindsCurrentIdentityAndRequiresCommit(t *testin
 			events := []string{}
 			fake := &reauthenticationSessionStoreFake{events: &events, result: &store.SessionReauthenticationResult{Session: session}, err: test.storeErr}
 			service.sessions = fake
-			service.audit = &mutationAttemptAuditorFake{events: &events, beginID: model.NewId(), beginErr: test.auditErr}
+			service.audit = &mutationAttemptAuditorFake{events: &events, beginID: model.NewID(), beginErr: test.auditErr}
 			mfa := &authenticationMFAVerifierFake{}
 			service.mfa = mfa
 			actual, err := service.ReauthenticatePassword(ctx, NewInvocation(principal, model.RequestMetadata{}), ReauthenticatePasswordCommand{Password: test.password, Source: "192.0.2.45"})

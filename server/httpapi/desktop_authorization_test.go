@@ -98,7 +98,7 @@ func TestDesktopAuthorizationHTTPMapsPublicClientProtocolAndDisablesCaching(t *t
 	logger, _ := newTestLogger(t)
 	applicationFake := &desktopAuthorizationHTTPApplication{}
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
-		CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess,
+		CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: time.Now()}
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, desktopAuthorizationResource(applicationFake, testDesktopAuthorizationCookies(t)))

@@ -361,19 +361,19 @@ func testInstallationBootstrap(index int) *store.InstallationBootstrap {
 		Institution:           institution, Administrator: creation.User, AdministratorSettings: creation.Settings,
 		PasswordHash: "$argon2id$v=19$m=19456,t=2,p=1$MTIzNDU2Nzg5MDEyMzQ1Ng$MTIzNDU2Nzg5MDEyMzQ1Ng",
 		Role: &model.Role{
-			ID: model.RoleID(model.NewId()), CreatedAt: model.TimeFromMillis(1),
+			ID: model.RoleID(model.NewID()), CreatedAt: model.TimeFromMillis(1),
 			UpdatedAt: model.TimeFromMillis(1), ArchivedAt: model.OptionalTimeFromMillis(1),
 			Name: model.SystemAdministratorRoleName, DisplayName: "System Administrator",
 			Permissions: permissions, BuiltIn: true,
 		},
 		RoleBinding: &model.RoleBinding{
-			ID: model.RoleBindingID(model.NewId()), CreatedAt: model.TimeFromMillis(1),
+			ID: model.RoleBindingID(model.NewID()), CreatedAt: model.TimeFromMillis(1),
 			UpdatedAt: model.TimeFromMillis(1), ArchivedAt: model.OptionalTimeFromMillis(1),
 			EndsAt: model.OptionalTimeFromMillis(2),
 		},
 		AccessPolicy: model.NewInitialAccessPolicy(model.NewAccessPolicyID(), creation.User.CreatedAt),
 		AuditEvent: &model.AuditEvent{
-			ID: model.AuditEventID(model.NewId()), CreatedAt: model.TimeFromMillis(1),
+			ID: model.AuditEventID(model.NewID()), CreatedAt: model.TimeFromMillis(1),
 			UpdatedAt: model.TimeFromMillis(1),
 			Action:    "installation.bootstrap", NodeID: "store-test",
 			Parameters: parameters,

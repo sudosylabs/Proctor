@@ -51,11 +51,11 @@ func TestProgrammeRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
 }
 
 func TestProgrammeRowConversion(t *testing.T) {
-	id, err := model.ParseProgrammeID(model.NewId())
+	id, err := model.ParseProgrammeID(model.NewID())
 	if err != nil {
 		t.Fatal(err)
 	}
-	unitID, err := model.ParseAcademicUnitID(model.NewId())
+	unitID, err := model.ParseAcademicUnitID(model.NewID())
 	if err != nil {
 		t.Fatal(err)
 	}

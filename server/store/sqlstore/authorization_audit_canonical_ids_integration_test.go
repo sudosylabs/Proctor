@@ -25,7 +25,7 @@ func TestAuthorizationAuditCanonicalIDConstraintsRejectNoncanonicalValues(t *tes
 	resetTestStore(t, persistence)
 	ctx := context.Background()
 	at := model.NowUTC()
-	canonical := model.NewId()
+	canonical := model.NewID()
 	tests := []struct{ name, query, constraint string }{
 		{name: "role id", query: `INSERT INTO roles (id, created_at, updated_at, name, display_name) VALUES ('bad', ?, ?, 'bad-role', 'Bad')`, constraint: "roles_id_canonical_check"},
 		{name: "binding id", query: `INSERT INTO role_bindings (id, created_at, updated_at, user_id, role_id, scope_type, scope_id, start_at) VALUES ('bad', ?, ?, ?, ?, 'institution', ?, ?)`, constraint: "role_bindings_id_canonical_check"},

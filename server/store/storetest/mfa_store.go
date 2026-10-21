@@ -307,7 +307,7 @@ func testMFATransitionMailAndAuditRollbackTogether(t *testing.T, ss store.Store)
 
 func mfaSecurityNoticeFixture(t *testing.T, ctx context.Context, ss store.Store, user *model.User, key model.MailTemplateKey, at int64) (*model.AuditEvent, store.MFASecurityNotice) {
 	t.Helper()
-	scopeID := model.NewId()
+	scopeID := model.NewID()
 	audit, err := ss.Audit().Save(ctx, &model.AuditEvent{ActorID: user.ID, Action: "mfa.security_transition",
 		Resource: model.Resource{Type: model.ResourceUser, ID: user.ID.String()}, ScopeType: model.RoleScopeInstitution,
 		ScopeID: scopeID, Status: model.AuditStatusAttempt, NodeID: "mfa-storetest"})

@@ -160,7 +160,7 @@ func (s SQLAcademicUnitMemberStore) Save(
 	if !member.ID.IsZero() {
 		return nil, store.NewErrInvalidInput("academic_unit_member", "id", member.ID.String())
 	}
-	id, err := model.ParseAcademicUnitMemberID(model.NewId())
+	id, err := model.ParseAcademicUnitMemberID(model.NewID())
 	if err != nil {
 		return nil, err
 	}

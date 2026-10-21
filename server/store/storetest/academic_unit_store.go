@@ -148,7 +148,7 @@ func testAcademicUnitStoreCreateWithAudit(t *testing.T, ss store.Store) {
 		InstitutionID: institution.ID, Name: "audited-engineering",
 		DisplayName: "Audited Engineering",
 	}
-	unit.PrepareCreate(model.AcademicUnitID(model.NewId()), model.NowUTC())
+	unit.PrepareCreate(model.AcademicUnitID(model.NewID()), model.NowUTC())
 	saved, err := ss.AcademicUnit().Create(ctx, &store.AcademicUnitCreation{
 		Unit:         unit,
 		AuditEventID: attempt.ID,
@@ -172,7 +172,7 @@ func testAcademicUnitStoreCreateWithAudit(t *testing.T, ss store.Store) {
 		InstitutionID: institution.ID, Name: "rolled-back-unit",
 		DisplayName: "Rolled Back Unit",
 	}
-	rolledBack.PrepareCreate(model.AcademicUnitID(model.NewId()), model.NowUTC())
+	rolledBack.PrepareCreate(model.AcademicUnitID(model.NewID()), model.NowUTC())
 	_, err = ss.AcademicUnit().Create(ctx, &store.AcademicUnitCreation{
 		Unit:         rolledBack,
 		AuditEventID: model.NewAuditEventID(),
@@ -329,7 +329,7 @@ func testAcademicUnitStoreUpdate(t *testing.T, ss store.Store) {
 	}
 
 	missing := *updated
-	missing.ID = model.AcademicUnitID(model.NewId())
+	missing.ID = model.AcademicUnitID(model.NewID())
 	_, err = UpdateAcademicUnit(ctx, ss, &missing)
 	if !store.IsNotFound(err) {
 		t.Fatalf("Update(missing) error = %v, want not found", err)
@@ -404,7 +404,7 @@ func testAcademicUnitStoreRejectCrossInstitutionParent(t *testing.T, ss store.St
 	requireNoError(t, ss.Institution().Archive(ctx, first.ID, model.GetMillis()))
 
 	second, err := ss.Institution().Save(ctx, &model.Institution{
-		Name:        "second-" + model.NewId(),
+		Name:        "second-" + model.NewID(),
 		DisplayName: "Second University",
 	})
 	requireNoError(t, err)

@@ -860,7 +860,7 @@ func TestRetryServingNodeLeaseIncarnationWritesAreIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	leaseID := model.NewId()
+	leaseID := model.NewID()
 	lease, err := layer.ServingNodeLease().Upsert(context.Background(), &store.ServingNodeLeaseClaim{NodeID: "node-a", LeaseID: leaseID, Lifetime: 30 * time.Second})
 	if err != nil || lease == nil || lease.LeaseID != leaseID || stub.upsertAttempts != 3 {
 		t.Fatalf("Upsert() = %#v, %v after %d attempts, want the lease after 3", lease, err, stub.upsertAttempts)

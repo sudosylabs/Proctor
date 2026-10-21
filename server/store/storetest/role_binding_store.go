@@ -186,7 +186,7 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 	}
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeClass,
-		ScopeID: model.NewId(), StartsAt: model.TimeFromMillis(start),
+		ScopeID: model.NewID(), StartsAt: model.TimeFromMillis(start),
 	})
 	var reference *store.ErrReference
 	if !errors.As(err, &reference) ||

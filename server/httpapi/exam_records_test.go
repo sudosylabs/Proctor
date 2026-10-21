@@ -49,7 +49,7 @@ func (a *recordsHTTPApplication) ListRetentionHolds(_ context.Context, _ applica
 }
 
 func recordsHTTPPrincipal() model.Principal {
-	return model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess,
+	return model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: time.Now(), ClientType: model.SessionClientWeb}
 }
 

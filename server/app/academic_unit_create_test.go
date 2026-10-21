@@ -157,16 +157,16 @@ func (e *academicUnitCommandEffectsFake) Archived(
 func TestAcademicUnitCreateRootCommitsAuditBeforePublishing(t *testing.T) {
 	t.Parallel()
 
-	institutionID := model.NewId()
+	institutionID := model.NewID()
 	saved := &model.AcademicUnit{
-		ID: model.AcademicUnitID(model.NewId()), InstitutionID: model.InstitutionID(institutionID),
+		ID: model.AcademicUnitID(model.NewID()), InstitutionID: model.InstitutionID(institutionID),
 		Name: "engineering", DisplayName: "Engineering",
 	}
 	events := []string{}
 	creator := &academicUnitCreateStore{events: &events, result: saved}
-	auditor := &academicUnitCommandAuditor{events: &events, beginID: model.NewId()}
+	auditor := &academicUnitCommandAuditor{events: &events, beginID: model.NewID()}
 	effects := &academicUnitCommandEffectsFake{events: &events}
-	createdID := model.NewId()
+	createdID := model.NewID()
 	service := newAcademicUnitCommandService(
 		creator,
 		academicUnitAuthorizerStub{
@@ -209,7 +209,7 @@ func TestAcademicUnitCreateRootCommitsAuditBeforePublishing(t *testing.T) {
 }
 
 func TestAcademicUnitCreateReplayDoesNotPublishAgain(t *testing.T) {
-	institutionID := model.NewId()
+	institutionID := model.NewID()
 	saved := &model.AcademicUnit{ID: model.NewAcademicUnitID(), InstitutionID: model.InstitutionID(institutionID), Name: "engineering", DisplayName: "Engineering"}
 	events := []string{}
 	creator := &academicUnitCreateStore{events: &events, idempotentResult: &store.AcademicUnitCommandResult{Value: saved, Replayed: true}}
@@ -218,10 +218,10 @@ func TestAcademicUnitCreateReplayDoesNotPublishAgain(t *testing.T) {
 		academicUnitAuthorizerStub{authorizeInstallation: func(context.Context, Invocation, model.Action) (model.Resource, error) {
 			return model.Resource{Type: model.ResourceInstitution, ID: institutionID}, nil
 		}},
-		&academicUnitCommandAuditor{events: &events, beginID: model.NewId()},
+		&academicUnitCommandAuditor{events: &events, beginID: model.NewID()},
 		&academicUnitCommandEffectsFake{events: &events},
 		&academicUnitEffectFailureReporterFake{events: &events},
-		func() time.Time { return time.UnixMilli(500) }, model.NewId,
+		func() time.Time { return time.UnixMilli(500) }, model.NewID,
 	)
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 	got, err := service.CreateAcademicUnit(context.Background(), invocation, CreateAcademicUnitCommand{Name: "engineering", DisplayName: "Engineering", IdempotencyKey: "retry-key"})
@@ -255,7 +255,7 @@ func TestAcademicUnitCreateDenialStopsBeforeDurableWork(t *testing.T) {
 		&academicUnitCommandEffectsFake{events: &events},
 		&academicUnitEffectFailureReporterFake{events: &events},
 		time.Now,
-		model.NewId,
+		model.NewID,
 	)
 	_, err := service.CreateAcademicUnit(context.Background(), Invocation{}, CreateAcademicUnitCommand{Name: "engineering"})
 	if !apperror.Is(err, "authorization.denied") {
@@ -270,13 +270,13 @@ func TestAcademicUnitCreateFailureAuditsAndDoesNotPublish(t *testing.T) {
 	t.Parallel()
 
 	events := []string{}
-	institutionID := model.NewId()
-	parentID := model.NewId()
+	institutionID := model.NewID()
+	parentID := model.NewID()
 	creator := &academicUnitCreateStore{
 		events: &events,
 		err:    store.NewErrConflict("academic_unit", "name", errors.New("duplicate")),
 	}
-	auditor := &academicUnitCommandAuditor{events: &events, beginID: model.NewId()}
+	auditor := &academicUnitCommandAuditor{events: &events, beginID: model.NewID()}
 	service := newAcademicUnitCommandService(
 		creator,
 		academicUnitAuthorizerStub{
@@ -297,7 +297,7 @@ func TestAcademicUnitCreateFailureAuditsAndDoesNotPublish(t *testing.T) {
 		&academicUnitCommandEffectsFake{events: &events},
 		&academicUnitEffectFailureReporterFake{events: &events},
 		time.Now,
-		model.NewId,
+		model.NewID,
 	)
 	_, err := service.CreateAcademicUnit(context.Background(), Invocation{}, CreateAcademicUnitCommand{
 		ParentID: model.AcademicUnitID(parentID), Name: "computing", DisplayName: "Computing",
@@ -315,7 +315,7 @@ func TestAcademicUnitCreateIgnoresPostCommitEffectFailure(t *testing.T) {
 	t.Parallel()
 
 	events := []string{}
-	saved := &model.AcademicUnit{ID: model.AcademicUnitID(model.NewId()), InstitutionID: model.InstitutionID(model.NewId()), Name: "engineering"}
+	saved := &model.AcademicUnit{ID: model.AcademicUnitID(model.NewID()), InstitutionID: model.InstitutionID(model.NewID()), Name: "engineering"}
 	creator := &academicUnitCreateStore{events: &events, result: saved}
 	reporter := &academicUnitEffectFailureReporterFake{events: &events}
 	effectErr := errors.New("cluster unavailable")
@@ -328,11 +328,11 @@ func TestAcademicUnitCreateIgnoresPostCommitEffectFailure(t *testing.T) {
 				return model.Resource{Type: model.ResourceInstitution, ID: saved.InstitutionID.String()}, nil
 			},
 		},
-		&academicUnitCommandAuditor{events: &events, beginID: model.NewId()},
+		&academicUnitCommandAuditor{events: &events, beginID: model.NewID()},
 		&academicUnitCommandEffectsFake{events: &events, err: effectErr},
 		reporter,
 		time.Now,
-		model.NewId,
+		model.NewID,
 	)
 	got, err := service.CreateAcademicUnit(context.Background(), Invocation{}, CreateAcademicUnitCommand{
 		Name: "engineering", DisplayName: "Engineering",

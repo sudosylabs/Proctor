@@ -135,7 +135,7 @@ func TestExternalAuthenticationServiceRequiresInvalidator(t *testing.T) {
 
 	persistence := newAuthenticationStoreFake()
 	authentication := newTestAuthenticationService(t, persistence)
-	audit, auditErr := newAuditService(securityAuditStore{}, securityInstitutionStore{}, model.NewId())
+	audit, auditErr := newAuditService(securityAuditStore{}, securityInstitutionStore{}, model.NewID())
 	if auditErr != nil {
 		t.Fatal(auditErr)
 	}
@@ -168,10 +168,10 @@ func TestExternalAuthenticationServiceRequiresInvalidator(t *testing.T) {
 func TestAuditServiceRequiresDependencies(t *testing.T) {
 	t.Parallel()
 
-	if _, err := newAuditService(nil, securityInstitutionStore{}, model.NewId()); err == nil {
+	if _, err := newAuditService(nil, securityInstitutionStore{}, model.NewID()); err == nil {
 		t.Fatal("nil audit store was accepted")
 	}
-	if _, err := newAuditService(securityAuditStore{}, nil, model.NewId()); err == nil {
+	if _, err := newAuditService(securityAuditStore{}, nil, model.NewID()); err == nil {
 		t.Fatal("nil audit institution store was accepted")
 	}
 	if _, err := newAuditService(securityAuditStore{}, securityInstitutionStore{}, ""); err == nil {

@@ -206,7 +206,7 @@ func TestRetentionExpiryCompletedHistoryDoesNotPinAuditForever(t *testing.T) {
 		t.Fatal(err)
 	}
 	probe.AgeAudit(t, ctx, a.ID.String())
-	recordID := model.NewId()
+	recordID := model.NewID()
 	if _, err = s.GetMaster().Exec(ctx, `INSERT INTO administrator_recovery_records(id,created_at,institution_id,user_id,local_login_enabled,password_rotated,reconciled_at,audit_event_id) VALUES(?,clock_timestamp()-interval '100 days',?,?,false,true,clock_timestamp(),?)`, recordID, policy.InstitutionID.String(), hold.UserID, a.ID.String()); err != nil {
 		t.Fatal(err)
 	}

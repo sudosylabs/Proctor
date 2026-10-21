@@ -34,7 +34,7 @@ func TestInvitationTerminalizationSuppressesCredentialDelivery(t *testing.T, ss 
 		period := saveAcademicPeriod(t, ctx, ss, unit.InstitutionID.String(), "scheduled-period", model.GetMillis()-86_400_000)
 		class := saveClass(t, ctx, ss, level.ID.String(), period.ID.String(), "scheduled-class")
 		inviter := saveUser(t, ctx, ss)
-		role, err := SaveRole(ctx, ss, &model.Role{Name: "scheduled-inviter-" + model.NewId(), DisplayName: "Scheduled Inviter",
+		role, err := SaveRole(ctx, ss, &model.Role{Name: "scheduled-inviter-" + model.NewID(), DisplayName: "Scheduled Inviter",
 			Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionClassMembersManage)}})
 		requireNoError(t, err)
 		issuedAt := model.NowUTC().Add(-time.Minute)

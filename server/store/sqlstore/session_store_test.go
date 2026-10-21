@@ -63,7 +63,7 @@ func TestSessionCredentialRowConversion(t *testing.T) {
 		ID: model.NewSessionCredentialID(), CreatedAt: now, UpdatedAt: now.Add(time.Millisecond),
 		ArchivedAt: model.OptionalTimeFrom(now.Add(2 * time.Millisecond)),
 		SessionID:  model.NewSessionID(), Kind: model.SessionCredentialRefresh,
-		TokenHash: model.HashToken("token"), FamilyID: model.NewId(),
+		TokenHash: model.HashToken("token"), FamilyID: model.NewID(),
 		ParentID: parent, ReplacedByID: replaced,
 		ExpiresAt: now.Add(10 * time.Millisecond),
 		UsedAt:    model.OptionalTimeFrom(now.Add(4 * time.Millisecond)),
@@ -157,7 +157,7 @@ func validPersistedSessionCredential() *model.SessionCredential {
 	return &model.SessionCredential{
 		ID: model.NewSessionCredentialID(), CreatedAt: now, UpdatedAt: now,
 		SessionID: model.NewSessionID(), Kind: model.SessionCredentialRefresh,
-		TokenHash: model.HashToken("credential"), FamilyID: model.NewId(),
+		TokenHash: model.HashToken("credential"), FamilyID: model.NewID(),
 		ExpiresAt: now.Add(time.Hour),
 	}
 }

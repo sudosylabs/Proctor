@@ -167,7 +167,7 @@ func TestUserProfileUpdateIsAuthorizedAndAuditAtomic(t *testing.T) {
 	events := []string{}
 	current := &model.User{ID: model.NewUserID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100), Revision: 3, Username: "student", Email: "old@example.edu", EmailVerified: true, DisplayName: "Student", Locale: "en", Timezone: "UTC"}
 	persistence := &userProfileStoreFake{events: &events, current: current}
-	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
+	auditor := &institutionAuditorFake{events: &events, beginID: model.NewID()}
 	service := newUserProfileService(persistence, &userProfileAuthorizerFake{events: &events}, auditor, func() time.Time { return time.UnixMilli(500) })
 	displayName := "Updated Student"
 	updated, err := service.UpdateUserProfile(context.Background(), Invocation{}, UpdateUserProfileCommand{ID: current.ID, DisplayName: &displayName})

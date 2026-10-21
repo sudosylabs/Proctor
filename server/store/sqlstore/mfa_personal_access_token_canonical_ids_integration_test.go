@@ -160,7 +160,7 @@ func TestMFAActivationRejectsCorruptionBeforeCommit(t *testing.T) {
 
 func mfaSQLSecurityNoticeFixture(t *testing.T, ctx context.Context, persistence *SQLStore, user *model.User, key model.MailTemplateKey, at int64) (*model.AuditEvent, store.MFASecurityNotice) {
 	t.Helper()
-	scopeID := model.NewId()
+	scopeID := model.NewID()
 	audit, err := persistence.Audit().Save(ctx, &model.AuditEvent{ActorID: user.ID, Action: "mfa.security_transition",
 		Resource: model.Resource{Type: model.ResourceUser, ID: user.ID.String()}, ScopeType: model.RoleScopeInstitution,
 		ScopeID: scopeID, Status: model.AuditStatusAttempt, NodeID: "mfa-integration"})

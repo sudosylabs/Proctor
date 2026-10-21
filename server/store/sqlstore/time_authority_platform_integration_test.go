@@ -187,8 +187,8 @@ func TestTimeAuthorityPlatformJobOperatorCancelAfterLeadingEnqueue(t *testing.T)
 	job := enqueuePlatformJob(t, ctx, persistence, "operator-cancel")
 	leadPlatformRow(t, ctx, persistence, "jobs", "created_at,updated_at", job.ID.String())
 	audit, err := persistence.Audit().Save(ctx, &model.AuditEvent{
-		Action: string(model.ActionJobManage), Resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()},
-		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewId(), Status: model.AuditStatusAttempt, NodeID: "test-node",
+		Action: string(model.ActionJobManage), Resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()},
+		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewID(), Status: model.AuditStatusAttempt, NodeID: "test-node",
 		Parameters: []byte(`{"operation":"cancel","job_id":"` + job.ID.String() + `"}`),
 	})
 	if err != nil {
@@ -386,9 +386,9 @@ func TestTimeAuthorityPlatformBrowserSourceCloseWithinStartMillisecond(t *testin
 	if err = tx.Get(ctx, &startedAt, `SELECT date_trunc('milliseconds', clock_timestamp()) + INTERVAL '700 microseconds'`); err != nil {
 		t.Fatal(err)
 	}
-	attemptID, participationID := model.NewId(), model.NewId()
+	attemptID, participationID := model.NewID(), model.NewID()
 	if _, err = tx.Exec(ctx, `INSERT INTO exam_attempt_participations(id,exam_attempt_id,session_id,state,generation,continuity_credential_hash,started_at,updated_at,lease_expires_at)
-		VALUES(?,?,?,'active',1,?,?,?,?)`, participationID, attemptID, model.NewId(), strings.Repeat("a", 64), startedAt, startedAt, startedAt.Add(20*time.Second)); err != nil {
+		VALUES(?,?,?,'active',1,?,?,?,?)`, participationID, attemptID, model.NewID(), strings.Repeat("a", 64), startedAt, startedAt, startedAt.Add(20*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	sourceID := model.BrowserSourceSessionID("4f1d6a0e-8c43-4f5e-9d2b-6a1c3e5f7b90")
@@ -396,7 +396,7 @@ func TestTimeAuthorityPlatformBrowserSourceCloseWithinStartMillisecond(t *testin
 	if _, err = tx.Exec(ctx, `INSERT INTO browser_activity_sources(id,exam_id,exam_sitting_id,exam_attempt_id,participation_id,generation,session_id,connection_id,
 		candidate_user_id,registration_id,key_thumbprint,policy_revision_id,policy_digest,start_ordinal,start_transition,start_digest,start_canonical,reserved_bytes,state,started_at)
 		VALUES(?::uuid,?,?,?,?,1,?,?,?,?,'thumbprint',?,?,1,'initial',?,'\x00'::bytea,1,'current',?)`,
-		string(sourceID), model.NewId(), model.NewId(), attemptID, participationID, model.NewId(), model.NewId(), model.NewId(), model.NewId(), model.NewId(), digest, digest, startedAt); err != nil {
+		string(sourceID), model.NewID(), model.NewID(), attemptID, participationID, model.NewID(), model.NewID(), model.NewID(), model.NewID(), model.NewID(), digest, digest, startedAt); err != nil {
 		t.Fatal(err)
 	}
 	closeErr := closeBrowserSource(ctx, tx, sourceID, model.DeliveryClosedRuntimeReset, startedAt.Add(200*time.Microsecond))

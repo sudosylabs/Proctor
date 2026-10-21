@@ -111,7 +111,7 @@ func (s SQLInstallationStore) ResetAdministratorMFA(ctx context.Context, input *
 		if reset == nil || reset.Recovery == nil || reset.Recovery.Validate() != nil || !reset.Recovery.ReenrollmentRequired {
 			return nil, invalidPersistedState("administrator_recovery", "mfa_reset", errors.New("reset returned no valid recovery restriction"))
 		}
-		id := model.NewId()
+		id := model.NewID()
 		if _, err = tx.Exec(ctx, `INSERT INTO administrator_recovery_records
 			(id,created_at,institution_id,user_id,local_login_enabled,password_rotated,mfa_reset,mfa_recovery_generation)
 			VALUES(?,?,?,?,false,false,true,?)`, id, at, input.InstitutionID.String(), input.UserID.String(), reset.Recovery.Generation); err != nil {

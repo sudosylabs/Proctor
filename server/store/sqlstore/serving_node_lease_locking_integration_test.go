@@ -46,14 +46,14 @@ func TestServingNodeLeaseWritesSerializeOnlyTheSameNode(t *testing.T) {
 		}
 
 		otherCtx, cancelOther := context.WithTimeout(ctx, 5*time.Second)
-		otherLeaseID := model.NewId()
+		otherLeaseID := model.NewID()
 		_, err = sqlStore.ServingNodeLease().Upsert(otherCtx, &store.ServingNodeLeaseClaim{NodeID: "node-b", LeaseID: otherLeaseID, Lifetime: 30 * time.Second})
 		cancelOther()
 		if err != nil {
 			t.Fatalf("another node's renewal waited behind node-a: %v", err)
 		}
 
-		sameLeaseID := model.NewId()
+		sameLeaseID := model.NewID()
 		sameDone := make(chan error, 1)
 		go func() {
 			_, upsertErr := sqlStore.ServingNodeLease().Upsert(ctx, &store.ServingNodeLeaseClaim{NodeID: "node-a", LeaseID: sameLeaseID, Lifetime: 30 * time.Second})

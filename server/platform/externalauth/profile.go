@@ -89,7 +89,7 @@ func (m *ProfileMapper) Assertion(
 		strength = model.AuthenticationMultiFactor
 	}
 	assertion := &model.ExternalAuthenticationAssertion{
-		ProviderId:       m.descriptor.ID,
+		ProviderID:       m.descriptor.ID,
 		Subject:          subject,
 		Username:         first(m.claims.Username),
 		Email:            first(m.claims.Email),

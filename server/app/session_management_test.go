@@ -32,7 +32,7 @@ func TestSelfSessionServiceUsesCallerOwnershipAndPostCommitEffects(t *testing.T)
 		hashes:  []string{"access-hash"},
 	}
 	effects := &selfSessionEffectsFake{events: &events}
-	service, err := newSelfSessionService(persistence, &mutationAttemptAuditorFake{events: &events, beginID: model.NewId()}, effects, func() time.Time { return now })
+	service, err := newSelfSessionService(persistence, &mutationAttemptAuditorFake{events: &events, beginID: model.NewID()}, effects, func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestSelfSessionServiceHidesAnotherUsersSession(t *testing.T) {
 	}
 	service, err := newSelfSessionService(
 		persistence,
-		&mutationAttemptAuditorFake{events: &[]string{}, beginID: model.NewId()},
+		&mutationAttemptAuditorFake{events: &[]string{}, beginID: model.NewID()},
 		&selfSessionEffectsFake{},
 		func() time.Time { return now },
 	)
@@ -96,7 +96,7 @@ func TestSelfSessionListUsesNativeDecisionTime(t *testing.T) {
 	at := time.Date(2026, 8, 12, 9, 30, 0, 123_456_789, time.FixedZone("offset", 7200))
 	principal := selfSessionPrincipal(model.TimeUTC(at))
 	persistence := &selfSessionStoreFake{session: &model.Session{ID: principal.SessionID, UserID: principal.UserID}}
-	service, err := newSelfSessionService(persistence, &mutationAttemptAuditorFake{events: &[]string{}, beginID: model.NewId()}, &selfSessionEffectsFake{}, func() time.Time { return at })
+	service, err := newSelfSessionService(persistence, &mutationAttemptAuditorFake{events: &[]string{}, beginID: model.NewID()}, &selfSessionEffectsFake{}, func() time.Time { return at })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestSelfSessionRevocationsRequireAuditBeforeMutationAndEffects(t *testing.T
 				events := []string{}
 				persistence := &selfSessionStoreFake{events: &events,
 					session: &model.Session{ID: principal.SessionID, UserID: principal.UserID}, hashes: []string{"access-hash"}}
-				audit := &mutationAttemptAuditorFake{events: &events, beginID: model.NewId()}
+				audit := &mutationAttemptAuditorFake{events: &events, beginID: model.NewID()}
 				effects := &selfSessionEffectsFake{events: &events}
 				if outcome == "attempt unavailable" {
 					audit.beginErr = apperror.New("audit.unavailable")
@@ -206,7 +206,7 @@ func TestSelfSessionRevocationRepeatOutcomes(t *testing.T) {
 			persistence := &selfSessionStoreFake{events: &events, session: &model.Session{
 				ID: principal.SessionID, UserID: principal.UserID, RevokedAt: model.OptionalTimeFrom(now.Add(-time.Minute)),
 			}}
-			audit := &mutationAttemptAuditorFake{events: &events, beginID: model.NewId()}
+			audit := &mutationAttemptAuditorFake{events: &events, beginID: model.NewID()}
 			effects := &selfSessionEffectsFake{events: &events}
 			self, err := newSelfSessionService(persistence, audit, effects, func() time.Time { return now })
 			if err != nil {

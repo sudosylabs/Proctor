@@ -52,8 +52,8 @@ func (a *programmeLevelHTTPApplication) ArchiveProgrammeLevel(_ context.Context,
 func TestProgrammeLevelHTTPPreservesMissingProgrammeProblemField(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
-	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
-	programmeID := model.NewId()
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
+	programmeID := model.NewID()
 	levels := &programmeLevelHTTPApplication{err: apperror.New("resource.not_found").WithField("resource", "programme")}
 	httpAPI := newFocusedResourceAPI(
 		t, logger, classRouteAuthenticator{principal: principal}, programmeLevelResource(levels),
@@ -77,8 +77,8 @@ func TestProgrammeLevelHTTPPreservesMissingProgrammeProblemField(t *testing.T) {
 func TestProgrammeLevelHTTPMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
-	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
-	level := &model.ProgrammeLevel{ID: model.ProgrammeLevelID(model.NewId()), ProgrammeID: model.ProgrammeID(model.NewId()), Name: "year-1", DisplayName: "Year 1"}
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
+	level := &model.ProgrammeLevel{ID: model.ProgrammeLevelID(model.NewID()), ProgrammeID: model.ProgrammeID(model.NewID()), Name: "year-1", DisplayName: "Year 1"}
 	levels := &programmeLevelHTTPApplication{result: level}
 	httpAPI := newFocusedResourceAPI(
 		t, logger, classRouteAuthenticator{principal: principal}, programmeLevelResource(levels),

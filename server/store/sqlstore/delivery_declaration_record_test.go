@@ -18,7 +18,7 @@ import (
 )
 
 func TestRetainedDeliveryDeclarationValidation(t *testing.T) {
-	declaration := model.DeclareDeliveryGaps{DeclarationID: model.NewId(), AllocatedThroughSequence: 4, Ranges: []model.SequenceRange{{First: 1, Last: 2}}, Reason: "spool_lost"}
+	declaration := model.DeclareDeliveryGaps{DeclarationID: model.NewID(), AllocatedThroughSequence: 4, Ranges: []model.SequenceRange{{First: 1, Last: 2}}, Reason: "spool_lost"}
 	raw, err := declaration.Canonical()
 	if err != nil {
 		t.Fatal(err)
@@ -30,7 +30,7 @@ func TestRetainedDeliveryDeclarationValidation(t *testing.T) {
 		change func(*deliveryDeclarationRecord)
 	}{
 		{"negative settlement", func(r *deliveryDeclarationRecord) { r.Receipt.SettledThroughSequence = -1 }},
-		{"wrong receipt identity", func(r *deliveryDeclarationRecord) { r.Receipt.DeclarationID = model.NewId() }},
+		{"wrong receipt identity", func(r *deliveryDeclarationRecord) { r.Receipt.DeclarationID = model.NewID() }},
 		{"wrong request digest", func(r *deliveryDeclarationRecord) { r.RequestDigest = model.SHA256Fingerprint([]byte("other")) }},
 		{"wrong kind", func(r *deliveryDeclarationRecord) { r.Kind = "unknown" }},
 	} {
@@ -83,7 +83,7 @@ func TestRetainedDeliveryDeclarationValidation(t *testing.T) {
 
 func TestRetainedNativeResetBinding(t *testing.T) {
 	part := model.NewAttemptParticipationID()
-	reset := model.NativeSourceReset{Kind: "source_reset", ResetID: model.NewId(), SourceID: model.NativeSourceCapture, PreviousSourceInstanceID: model.NewId(), NewSourceInstanceID: model.NewId(), Reason: "restart", OccurredAt: time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)}
+	reset := model.NativeSourceReset{Kind: "source_reset", ResetID: model.NewID(), SourceID: model.NativeSourceCapture, PreviousSourceInstanceID: model.NewID(), NewSourceInstanceID: model.NewID(), Reason: "restart", OccurredAt: time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)}
 	canonical, err := reset.Canonical()
 	if err != nil {
 		t.Fatal(err)
@@ -96,7 +96,7 @@ func TestRetainedNativeResetBinding(t *testing.T) {
 		{"digest", func(r *nativeResetRecord) { r.Digest = model.SHA256Fingerprint([]byte("other")) }},
 		{"participation", func(r *nativeResetRecord) { r.ParticipationID = model.NewAttemptParticipationID() }},
 		{"reset identity", func(r *nativeResetRecord) {
-			r.Reset.ResetID = model.NewId()
+			r.Reset.ResetID = model.NewID()
 			raw, _ := r.Reset.Canonical()
 			r.Digest = model.SHA256Fingerprint(raw)
 		}},

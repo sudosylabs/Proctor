@@ -42,7 +42,7 @@ func timeAuthorityAccessCheck(t *testing.T, ctx context.Context, persistence *SQ
 
 func timeAuthorityAccessAttempt(t *testing.T, ctx context.Context, persistence *SQLStore, userID model.UserID, action string) *model.AuditEvent {
 	t.Helper()
-	scopeID := model.NewId()
+	scopeID := model.NewID()
 	event, err := persistence.Audit().Save(ctx, &model.AuditEvent{ActorID: userID, Action: action,
 		Resource: model.Resource{Type: model.ResourceInstitution, ID: scopeID}, ScopeType: model.RoleScopeInstitution,
 		ScopeID: scopeID, Status: model.AuditStatusAttempt, NodeID: "time-authority", ClientType: string(model.SessionClientWeb), AuthMethod: "password"})

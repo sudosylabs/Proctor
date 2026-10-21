@@ -58,7 +58,7 @@ func TestInstitutionRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
 }
 
 func TestInstitutionRowConversion(t *testing.T) {
-	id, err := model.ParseInstitutionID(model.NewId())
+	id, err := model.ParseInstitutionID(model.NewID())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -122,7 +122,7 @@ func (s *sqlExamAttemptStore) prepareConnectSecurity(ctx context.Context, tx *sq
 	if _, err := model.ReserveDeliveryMetadata(used, model.NativeOwnerReservationBytes); err != nil {
 		return zero, err
 	}
-	binding := admittedSecurityBinding{Security: model.AdmittedSecurity{Policy: policy, PolicyContentDigest: content, PreflightID: row.PreflightID, PreflightReportDigest: evaluated.ReportDigest, PreflightPolicyDigest: current.Policy.Digest, ParticipationID: input.ParticipationID, Generation: generation, SecuritySessionID: report.SecuritySessionID, DeliveryStreamID: model.NewId(), RenewalIntervalSeconds: int64(model.AttemptParticipationRenewalInterval / time.Second)}, CatalogBindings: current.CatalogBindings, CapabilityMatrixDigest: current.CapabilityMatrixDigest}
+	binding := admittedSecurityBinding{Security: model.AdmittedSecurity{Policy: policy, PolicyContentDigest: content, PreflightID: row.PreflightID, PreflightReportDigest: evaluated.ReportDigest, PreflightPolicyDigest: current.Policy.Digest, ParticipationID: input.ParticipationID, Generation: generation, SecuritySessionID: report.SecuritySessionID, DeliveryStreamID: model.NewID(), RenewalIntervalSeconds: int64(model.AttemptParticipationRenewalInterval / time.Second)}, CatalogBindings: current.CatalogBindings, CapabilityMatrixDigest: current.CapabilityMatrixDigest}
 	encoded, err := canonicalPreflightValue(binding)
 	if err != nil || len(encoded) > model.SecurityPolicyResponseMaxBytes {
 		return zero, store.NewErrInvalidInput("security", "binding_size", nil)

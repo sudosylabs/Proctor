@@ -40,7 +40,7 @@ func TestBrowserExhaustionSettlement(t *testing.T, ss store.Store, mode string, 
 	access.ContinuityCredentialHash = ""
 	for _, source := range sources {
 		owner := store.BrowserDeliveryAccess{Access: access, ParticipationID: connected.Participation.ID, SourceSessionID: source}
-		_, err := ss.ExamAttempt().SealBrowserDelivery(ctx, &store.BrowserDeliveryFinalDeclaration{Access: owner, Declaration: model.FinalDeliveryDeclaration{DeclarationID: model.NewId(), FinalSequence: 2}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, owner), AuditAt: model.GetMillis()}, examCommand(f.candidate.ID, store.BrowserDeliveryFinalOperation, string(source), string(source)))
+		_, err = ss.ExamAttempt().SealBrowserDelivery(ctx, &store.BrowserDeliveryFinalDeclaration{Access: owner, Declaration: model.FinalDeliveryDeclaration{DeclarationID: model.NewID(), FinalSequence: 2}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, owner), AuditAt: model.GetMillis()}, examCommand(f.candidate.ID, store.BrowserDeliveryFinalOperation, string(source), string(source)))
 		requireNoError(t, err)
 	}
 	sub := sealed.Receipt.SubmissionID
@@ -57,7 +57,7 @@ func TestBrowserExhaustionSettlement(t *testing.T, ss store.Store, mode string, 
 	owner := store.BrowserDeliveryAccess{Access: access, ParticipationID: connected.Participation.ID, SourceSessionID: sources[1]}
 	status, err := ss.ExamAttempt().BrowserSourceStatus(ctx, owner)
 	requireNoError(t, err)
-	gap := model.DeclareDeliveryGaps{DeclarationID: model.NewId(), ExpectedDeclarationRevision: 1, AllocatedThroughSequence: 2, Ranges: []model.SequenceRange{{First: 1, Last: 1}}, Reason: "spool_lost"}
+	gap := model.DeclareDeliveryGaps{DeclarationID: model.NewID(), ExpectedDeclarationRevision: 1, AllocatedThroughSequence: 2, Ranges: []model.SequenceRange{{First: 1, Last: 1}}, Reason: "spool_lost"}
 	trigger := func(audit model.AuditEventID) error {
 		if mode == "metadata" || mode == "intervals" {
 			_, err := ss.ExamAttempt().DeclareBrowserDeliveryGaps(ctx, &store.BrowserDeliveryGapDeclaration{Access: owner, Declaration: gap, AuditEventID: audit, AuditAt: model.GetMillis()}, examCommand(f.candidate.ID, store.BrowserDeliveryGapsOperation, "exhaustion-gap", "exhaustion-gap"))

@@ -199,7 +199,7 @@ func (a *API) Close() error {
 }
 
 func canonicalIDRoutePattern() string {
-	return "[" + model.IdAlphabet + "]{" + strconv.Itoa(model.IdLength) + "}"
+	return "[" + model.IDAlphabet + "]{" + strconv.Itoa(model.IDLength) + "}"
 }
 
 func providerIDRoutePattern() string {
