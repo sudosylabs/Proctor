@@ -101,6 +101,8 @@ module when a change is not server-only. No module has been released yet.
   retries within its slack, oversized cluster envelopes use the reliable
   stream, offline recovery commands no longer migrate the schema, and requested
   shutdown no longer reports closed-listener errors.
+- Server: administrator MFA reset notices and retention grace notices are
+  delivered instead of failing every attempt.
 - Cache: counter expirations are fixed windows.
 - VFS: S3 part size is bounded for unsized writes.
 

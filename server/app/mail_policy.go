@@ -43,6 +43,7 @@ func evaluateMailDeliveryRelevance(_ context.Context, delivery *model.MailDelive
 		model.MailTemplateIdentityAccountDisabled,
 		model.MailTemplateIdentityAccountEnabled,
 		model.MailTemplateIdentitySessionsRevokedByAdmin,
+		model.MailTemplateIdentityMFAReset,
 		model.MailTemplateIdentityMFAEnabled,
 		model.MailTemplateIdentityMFADisabled,
 		model.MailTemplateIdentityMFARecoveryCodesRegenerated,
@@ -73,13 +74,15 @@ func evaluateMailDeliveryRelevance(_ context.Context, delivery *model.MailDelive
 		model.MailTemplateExamManagerRemoved,
 		model.MailTemplateExamOwnershipTransferredToYou,
 		model.MailTemplateExamOwnershipTransferredFromYou,
+		model.MailTemplateExamRetentionScheduled,
 		model.MailTemplateExamSubmissionReceived,
 		model.MailTemplateExamSubmissionManagerEnded,
 		model.MailTemplateExamSubmissionAutomaticallySealed,
 		model.MailTemplateExamResultReleased:
-		// Purpose-bound credential deliveries receive their authoritative
-		// multi-node relevance fence in MailStore.StartDelivery. The remaining
-		// immutable notifications are relevant until their deadline.
+		// Purpose-bound credential deliveries and retention grace notices
+		// receive their authoritative multi-node relevance fence in
+		// MailStore.StartDelivery. The remaining immutable notifications are
+		// relevant until their deadline.
 		return mailDeliveryRelevant, nil
 	default:
 		return 0, errors.New("mail delivery relevance policy is unavailable")
