@@ -190,11 +190,7 @@ type UpdateSecurityCoverageCommand struct {
 // and checked against the caller's desktop build.
 func (s *Service) UpdateExamSecurityCoverage(ctx context.Context, invocation invocation.Invocation, command UpdateSecurityCoverageCommand) (_ model.SecurityCoverageResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
-	release, admissionErr := s.enterControl(ctx, invocation, true)
-	if admissionErr != nil {
-		return model.SecurityCoverageResult{}, admissionErr
-	}
-	defer release()
+	// Malformed updates are refused before they can occupy the live lane.
 	selector, err := candidateSelector(invocation, command.Access)
 	if err != nil {
 		return model.SecurityCoverageResult{}, err
@@ -202,6 +198,11 @@ func (s *Service) UpdateExamSecurityCoverage(ctx context.Context, invocation inv
 	if !command.ParticipationID.IsValid() || command.Generation < 1 || command.Coverage.Validate() != nil {
 		return model.SecurityCoverageResult{}, apperror.Invalid("exam.attempt.invalid", "security_coverage")
 	}
+	release, admissionErr := s.enterControl(ctx, invocation, true)
+	if admissionErr != nil {
+		return model.SecurityCoverageResult{}, admissionErr
+	}
+	defer release()
 	build, err := s.deps.DesktopBuilds.ResolveAttemptDesktopBuild(ctx, invocation.Principal())
 	if err != nil || build.Build.Validate() != nil || build.Build.NativeAgreement == nil || build.CompatibilityPolicyRevision < 1 {
 		return model.SecurityCoverageResult{}, apperror.New("exam.attempt.desktop_incompatible").Wrap(err)

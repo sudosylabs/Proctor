@@ -119,7 +119,10 @@ module when a change is not server-only. No module has been released yet.
 - Server: manager re-allow, reschedule, and cancel use database time; voluntary
   seal lifecycle times stay monotonic; and late focus-loss discrepancies
   invalidate review waivers.
-- Server: live renewals queue at the worker cap instead of being refused.
+- Server: live renewals queue at the worker cap instead of being refused; the
+  live lane validates requests before admission, limits each User to twice the
+  renewal cadence, and keeps per-User limits when its identity table is full
+  by evicting the least recently admitted User.
 - Server: every SQL statement is bounded by the query timeout, rejected-value
   SQL errors translate to invalid input, and the Attempt candidate is locked
   before enrollment fences.

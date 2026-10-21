@@ -780,11 +780,8 @@ func projectExpiry(stored *store.ExamAttemptParticipationExpiryResult, due store
 func (s *Service) RenewExamAttemptParticipation(ctx context.Context, invocation invocation.Invocation, command RenewParticipationCommand) (_ ParticipationRenewal, resultErr error) {
 	defer func() { s.recordOperational("renew", resultErr) }()
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
-	release, admissionErr := s.enterControl(ctx, invocation, true)
-	if admissionErr != nil {
-		return ParticipationRenewal{}, admissionErr
-	}
-	defer release()
+	// Requests that can never renew are refused before admission, so they
+	// take no worker, queue place, or allowance from the live lane.
 	principal := invocation.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
 		return ParticipationRenewal{}, apperror.New("authentication.token_invalid")
@@ -796,6 +793,11 @@ func (s *Service) RenewExamAttemptParticipation(ctx context.Context, invocation 
 		command.Generation < 1 || command.Sequence < 1 || command.SecurityCoverage.Validate() != nil || !model.IsValidCredentialToken(command.ContinuityCredential) {
 		return ParticipationRenewal{}, apperror.Invalid("exam.attempt.invalid", "renewal")
 	}
+	release, admissionErr := s.enterControl(ctx, invocation, true)
+	if admissionErr != nil {
+		return ParticipationRenewal{}, admissionErr
+	}
+	defer release()
 	build, err := s.deps.DesktopBuilds.ResolveAttemptDesktopBuild(ctx, principal)
 	if err != nil || build.Build.Validate() != nil || build.CompatibilityPolicyRevision < 1 {
 		return ParticipationRenewal{}, apperror.New("exam.attempt.desktop_incompatible").Wrap(err)

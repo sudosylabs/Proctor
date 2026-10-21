@@ -18,6 +18,7 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 func TestControlAllowanceSeparatesRenewalAndRecoveryAndSharesSessions(t *testing.T) {
@@ -102,13 +103,10 @@ func TestControlWorkerAndIdentityStorageBounds(t *testing.T) {
 		require.NoError(t, err)
 		release()
 	}
-	_, err = allowance.enter(context.Background(), model.NewUserID(), at)
-	require.Error(t, err, "unbounded control identities")
-	require.Len(t, allowance.users, controlUsers, "unbounded control identities")
-	release, err := allowance.enter(context.Background(), model.NewUserID(), at.Add(time.Minute))
-	require.NoError(t, err, "idle slot not reclaimed")
+	release, err := allowance.enter(context.Background(), model.NewUserID(), at)
+	require.NoError(t, err, "a full identity table refused a new User")
 	release()
-	require.Len(t, allowance.users, controlUsers, "idle reclamation changed hard bound")
+	require.Len(t, allowance.users, controlUsers, "unbounded control identities")
 }
 
 func TestLiveRenewalsBeyondWorkerCapQueueInsteadOfRefusing(t *testing.T) {
@@ -152,7 +150,8 @@ func TestLiveRenewalsBeyondWorkerCapQueueInsteadOfRefusing(t *testing.T) {
 }
 
 func TestQueuedControlAdmissionIsBoundedAndRefundsAllowance(t *testing.T) {
-	allowance := controlAdmission{lane: controlLane{workers: 1, waiters: 1, wait: 20 * time.Millisecond, admitUntracked: true}}
+	lane := controlLane{workers: 1, waiters: 1, wait: 20 * time.Millisecond, interval: time.Second, burst: 2}
+	allowance := controlAdmission{lane: lane}
 	at := time.Now()
 	holder, err := allowance.enter(context.Background(), model.NewUserID(), at)
 	require.NoError(t, err)
@@ -179,9 +178,9 @@ func TestQueuedControlAdmissionIsBoundedAndRefundsAllowance(t *testing.T) {
 	require.ErrorAs(t, err, &fault, "queued work waited past its deadline")
 	require.Equal(t, "exam.delivery.control_rate_limited", fault.Code(), "queued work waited past its deadline")
 	allowance.mu.Lock()
-	tokens := allowance.users[user].tokens
+	credit := allowance.users[user].Value.(*controlAllowance).credit
 	allowance.mu.Unlock()
-	require.Equal(t, int64(controlBurst), tokens, "timed-out wait consumed allowance")
+	require.Equal(t, lane.burst*lane.interval.Milliseconds(), credit, "timed-out wait consumed allowance")
 	holder()
 	release, err := allowance.enter(context.Background(), user, at)
 	require.NoError(t, err, "released worker was not reusable")
@@ -190,21 +189,88 @@ func TestQueuedControlAdmissionIsBoundedAndRefundsAllowance(t *testing.T) {
 	require.Empty(t, allowance.slots, "repeated release freed an extra worker")
 }
 
-func TestLiveControlAdmitsNewUsersWhenIdentityTableIsFull(t *testing.T) {
-	live := controlAdmission{lane: liveControlLane}
-	delivery := controlAdmission{}
+func TestControlLanesEvictLeastRecentUserInsteadOfDisablingLimits(t *testing.T) {
 	at := time.Now()
-	for _, allowance := range []*controlAdmission{&live, &delivery} {
-		for range controlUsers {
-			release, err := allowance.enter(context.Background(), model.NewUserID(), at)
+	for name, lane := range map[string]controlLane{"live": liveControlLane, "delivery": deliveryControlLane} {
+		t.Run(name, func(t *testing.T) {
+			allowance := controlAdmission{lane: lane}
+			idle := model.NewUserID()
+			release, err := allowance.enter(context.Background(), idle, at)
 			require.NoError(t, err)
 			release()
-		}
+			for len(allowance.users) < controlUsers {
+				release, err = allowance.enter(context.Background(), model.NewUserID(), at)
+				require.NoError(t, err)
+				release()
+			}
+			caller := model.NewUserID()
+			for range lane.burst {
+				release, err = allowance.enter(context.Background(), caller, at)
+				require.NoError(t, err, "a new User was refused because other Users were recently active")
+				release()
+			}
+			var fault *apperror.Error
+			_, err = allowance.enter(context.Background(), caller, at)
+			require.ErrorAs(t, err, &fault, "a full identity table stopped limiting a new User")
+			require.Equal(t, "exam.delivery.control_rate_limited", fault.Code())
+			require.Len(t, allowance.users, controlUsers, "tracking grew past its bound")
+			require.Equal(t, controlUsers, allowance.recency.Len(), "recency index drifted from the table")
+			require.NotContains(t, allowance.users, idle, "the least recently admitted User was not the one evicted")
+		})
 	}
-	release, err := live.enter(context.Background(), model.NewUserID(), at)
-	require.NoError(t, err, "renewal refused only because other Users renewed recently")
-	release()
-	require.Len(t, live.users, controlUsers, "untracked admission grew the identity table")
-	_, err = delivery.enter(context.Background(), model.NewUserID(), at)
-	require.Error(t, err, "recovery lane stopped bounding identities")
+}
+
+func TestLiveControlAllowanceSustainsTwiceTheRenewalCadence(t *testing.T) {
+	live := controlAdmission{lane: liveControlLane}
+	at := time.Date(2026, time.September, 8, 1, 0, 0, 0, time.UTC)
+	user := model.NewUserID()
+	for range liveControlLane.burst {
+		release, err := live.enter(context.Background(), user, at)
+		require.NoError(t, err)
+		release()
+	}
+	_, err := live.enter(context.Background(), user, at)
+	require.Error(t, err, "live burst exceeded its bound")
+	// Over one renewal interval a User regains exactly two requests.
+	at = at.Add(model.AttemptParticipationRenewalInterval)
+	for range 2 {
+		release, enterErr := live.enter(context.Background(), user, at)
+		require.NoError(t, enterErr, "an honest renewal cadence was refused")
+		release()
+	}
+	_, err = live.enter(context.Background(), user, at)
+	require.Error(t, err, "live refill exceeded twice the renewal cadence")
+}
+
+func TestLiveControlRejectsInvalidRenewalsBeforeAdmission(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	participationID := model.NewAttemptParticipationID()
+	// More malformed requests than any burst: none may take a worker, a queue
+	// place, or the caller's allowance.
+	for range 2 * deliveryControlLane.burst {
+		_, err := f.service.RenewExamAttemptParticipation(context.Background(), f.invocation, RenewParticipationCommand{
+			AttemptID: f.attemptID, ParticipationID: participationID, ConnectionID: f.connectionID,
+			Generation: 0, Sequence: 1, ContinuityCredential: model.NewCredentialToken(),
+		})
+		var fault *apperror.Error
+		require.ErrorAs(t, err, &fault)
+		require.Equal(t, "exam.attempt.invalid", fault.Code())
+		_, err = f.service.UpdateExamSecurityCoverage(context.Background(), f.invocation, UpdateSecurityCoverageCommand{
+			Access: CandidateAccess{AttemptID: f.attemptID}, ParticipationID: participationID, Generation: 0})
+		require.Error(t, err)
+		require.NotEqual(t, "exam.delivery.control_rate_limited", apperror.CodeOf(err, ""))
+	}
+	require.Empty(t, f.service.liveControls.users, "rejected requests were tracked by admission")
+	require.Empty(t, f.service.liveControls.slots, "rejected requests held a worker")
+	f.persistence.renewResult = &store.ExamAttemptParticipationRenewalResult{SecurityCoverage: renewalCoverageResultFixture(),
+		AttemptID: f.attemptID, ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
+		CandidateUserID: f.invocation.Principal().UserID, ParticipationID: participationID, Generation: 3, AcceptedSequence: 7,
+		DatabaseTime: f.at, LeaseExpiresAt: f.at.Add(model.AttemptParticipationInitialLease),
+	}
+	_, err := f.service.RenewExamAttemptParticipation(context.Background(), f.invocation, RenewParticipationCommand{
+		SecurityCoverage: renewalCoverageFixture(), AttemptID: f.attemptID, ParticipationID: participationID,
+		ConnectionID: f.connectionID, Generation: 3, Sequence: 7, ContinuityCredential: model.NewCredentialToken(),
+	})
+	require.NoError(t, err, "malformed renewals spent the caller's live allowance")
 }

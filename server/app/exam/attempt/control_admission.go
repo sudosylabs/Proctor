@@ -7,6 +7,7 @@
 package attempt
 
 import (
+	"container/list"
 	"context"
 	"sync"
 	"time"
@@ -17,10 +18,12 @@ import (
 )
 
 const (
-	controlWorkers              = 32
-	controlUsers                = 4096
-	controlBurst                = 40_000
-	controlTokensPerMillisecond = 20
+	controlWorkers = 32
+	// controlUsers bounds the User allowances one lane retains. When the
+	// table is full, the least recently admitted User's allowance is evicted:
+	// an evicted User restarts at a full burst, so eviction can only favor an
+	// idle User, never a caller hot enough to stay tracked.
+	controlUsers = 4096
 
 	// Live Participation renewal and security-coverage updates queue for a
 	// worker instead of being refused: a refused renewal is indistinguishable
@@ -38,19 +41,29 @@ type controlLane struct {
 	// waiters bounds requests queued for a busy worker; zero refuses at once.
 	waiters int
 	wait    time.Duration
-	// admitUntracked admits a new User whose allowance cannot be retained
-	// because the bounded identity table is full of recently active Users,
-	// instead of refusing them. Worker and queue bounds still apply.
-	admitUntracked bool
+	// interval is the sustained cost of one request: a User's allowance
+	// refills one request per interval, up to burst requests.
+	interval time.Duration
+	burst    int64
 }
 
 var (
-	deliveryControlLane = controlLane{workers: controlWorkers}
-	liveControlLane     = controlLane{workers: controlWorkers, waiters: liveControlWaiters, wait: liveControlWait, admitUntracked: true}
+	// deliveryControlLane admits recovery and status work at 20 requests per
+	// second with a burst of 40, refusing at once when its workers are busy.
+	deliveryControlLane = controlLane{workers: controlWorkers, interval: 50 * time.Millisecond, burst: 40}
+	// liveControlLane sustains two requests per renewal interval (twice the
+	// cadence: one renewal plus one security-coverage update or exact retry)
+	// with a burst of three intervals, so a few callers cannot hold its
+	// workers or queue while an honest candidate never reaches the bound.
+	liveControlLane = controlLane{workers: controlWorkers, waiters: liveControlWaiters, wait: liveControlWait,
+		interval: model.AttemptParticipationRenewalInterval / 2, burst: 6}
 )
 
+// controlAllowance is one User's refill credit, in milliseconds of lane
+// interval; one request costs one interval.
 type controlAllowance struct {
-	tokens int64
+	user   model.UserID
+	credit int64
 	at     time.Time
 }
 
@@ -64,7 +77,9 @@ type controlAdmission struct {
 	mu      sync.Mutex
 	slots   chan struct{}
 	waiting int
-	users   map[model.UserID]controlAllowance
+	// users indexes recency, most recently admitted at the front.
+	users   map[model.UserID]*list.Element
+	recency list.List
 }
 
 func (a *controlAdmission) enter(ctx context.Context, user model.UserID, now time.Time) (func(), error) {
@@ -75,10 +90,7 @@ func (a *controlAdmission) enter(ctx context.Context, user model.UserID, now tim
 		return nil, apperror.New("authentication.token_invalid")
 	}
 	a.mu.Lock()
-	lane := a.lane
-	if lane.workers < 1 {
-		lane = deliveryControlLane
-	}
+	lane := a.shape()
 	if a.slots == nil {
 		a.slots = make(chan struct{}, lane.workers)
 	}
@@ -98,7 +110,7 @@ func (a *controlAdmission) enter(ctx context.Context, user model.UserID, now tim
 	default:
 	}
 	if a.waiting >= lane.waiters {
-		a.refund(user)
+		a.refund(user, lane)
 		a.mu.Unlock()
 		return nil, apperror.New("exam.delivery.control_rate_limited")
 	}
@@ -117,7 +129,7 @@ func (a *controlAdmission) enter(ctx context.Context, user model.UserID, now tim
 	a.mu.Lock()
 	a.waiting--
 	if err != nil {
-		a.refund(user)
+		a.refund(user, lane)
 	}
 	a.mu.Unlock()
 	if err != nil {
@@ -126,52 +138,59 @@ func (a *controlAdmission) enter(ctx context.Context, user model.UserID, now tim
 	return releaseControl(slots), nil
 }
 
+// shape returns the configured lane, or the delivery lane for the zero
+// value. The caller holds mu.
+func (a *controlAdmission) shape() controlLane {
+	if a.lane.workers < 1 {
+		return deliveryControlLane
+	}
+	return a.lane
+}
+
 func releaseControl(slots chan struct{}) func() {
 	var once sync.Once
 	return func() { once.Do(func() { <-slots }) }
 }
 
-// spend consumes one request from the User's allowance. The caller holds mu.
+// spend consumes one request from the User's allowance, tracking a new User
+// by evicting the least recently admitted one when the table is full. The
+// caller holds mu.
 func (a *controlAdmission) spend(user model.UserID, now time.Time, lane controlLane) bool {
+	cost := lane.interval.Milliseconds()
+	capacity := lane.burst * cost
 	if a.users == nil {
-		a.users = make(map[model.UserID]controlAllowance)
+		a.users = make(map[model.UserID]*list.Element)
 	}
-	value, exists := a.users[user]
+	element, exists := a.users[user]
 	if !exists {
-		if len(a.users) >= controlUsers {
-			for id, old := range a.users {
-				if now.Sub(old.at) >= time.Minute {
-					delete(a.users, id)
-					break
-				}
-			}
-			if len(a.users) >= controlUsers {
-				return lane.admitUntracked
-			}
+		if a.recency.Len() >= controlUsers {
+			oldest := a.recency.Back()
+			delete(a.users, oldest.Value.(*controlAllowance).user)
+			a.recency.Remove(oldest)
 		}
-		value = controlAllowance{tokens: controlBurst, at: now}
+		element = a.recency.PushFront(&controlAllowance{user: user, credit: capacity, at: now})
+		a.users[user] = element
 	}
-	// A clock rollback cannot mint tokens or move the refill origin backwards.
+	a.recency.MoveToFront(element)
+	value := element.Value.(*controlAllowance)
+	// A clock rollback cannot mint credit or move the refill origin backwards.
 	if now.After(value.at) {
-		elapsed := min(now.Sub(value.at).Milliseconds(), int64(2000))
-		value.tokens = min(int64(controlBurst), value.tokens+elapsed*controlTokensPerMillisecond)
+		value.credit = min(capacity, value.credit+min(now.Sub(value.at).Milliseconds(), capacity))
 		value.at = now
 	}
-	if value.tokens < 1000 {
-		a.users[user] = value
+	if value.credit < cost {
 		return false
 	}
-	value.tokens -= 1000
-	a.users[user] = value
+	value.credit -= cost
 	return true
 }
 
 // refund returns a request that never reached a worker, so queue timeout or
 // cancellation does not cost the User allowance. The caller holds mu.
-func (a *controlAdmission) refund(user model.UserID) {
-	if value, exists := a.users[user]; exists {
-		value.tokens = min(int64(controlBurst), value.tokens+1000)
-		a.users[user] = value
+func (a *controlAdmission) refund(user model.UserID, lane controlLane) {
+	if element, exists := a.users[user]; exists {
+		value := element.Value.(*controlAllowance)
+		value.credit = min(lane.burst*lane.interval.Milliseconds(), value.credit+lane.interval.Milliseconds())
 	}
 }
 
