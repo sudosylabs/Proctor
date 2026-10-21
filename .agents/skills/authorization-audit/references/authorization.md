@@ -319,7 +319,9 @@ exclude secrets, credentials, exam answers, and unbounded user content. The
 recorded IP address is the direct peer unless that peer is listed in
 `Server.TrustedProxies`; then it is the rightmost `X-Forwarded-For` hop that is
 not itself trusted. Audit request IDs are server-generated or supplied by a
-trusted proxy, never chosen by the client.
+trusted proxy, never chosen by the client directly; a trusted proxy that passes
+a client's `X-Request-ID` through unchanged lets the client choose it, so the
+operator documentation requires proxies to overwrite it.
 
 Audit and minimal retirement receipts follow the current approved Institution
 Retention Policy's audit period. Zero preserves them indefinitely. An audit's

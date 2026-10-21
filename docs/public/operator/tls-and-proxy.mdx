@@ -25,6 +25,10 @@ List every proxy or load-balancer address that connects to the application
 in `Server.TrustedProxies`. Only those peers may supply the client address
 through `X-Forwarded-For` and a correlation ID through `X-Request-ID`; the
 server takes the rightmost forwarded hop that is not itself a trusted proxy.
+A trusted proxy's `X-Request-ID` is accepted as is, and most proxies pass a
+client's header through unchanged, so configure each trusted proxy to
+overwrite (or strip) any incoming `X-Request-ID`; otherwise a client chooses
+the request ID recorded in logs and audit.
 Configure each proxy to append the connecting address to `X-Forwarded-For`.
 The `Forwarded` header is ignored. Without this setting, audit records and
 login rate limits attribute every request to the proxy.
@@ -86,7 +90,7 @@ mode the header is not sent; configure HSTS on the terminating proxy.
 - preserve request size/time bounds rather than adding an unbounded buffer;
 - pass a stable request correlation mechanism without trusting client identity
   headers as authentication; a proxy-supplied `X-Request-ID` is honored only
-  from a trusted proxy;
+  from a trusted proxy, which must overwrite any client-supplied value;
 - remove unready nodes before drain and allow the configured shutdown window;
 - restrict application and cluster listeners to intended networks; and
 - test public discovery, login cookies, DPoP target URI, redirects, upload,
