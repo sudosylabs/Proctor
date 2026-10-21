@@ -608,7 +608,7 @@ func (s *auditService) List(
 	}
 	events, err := s.audits.List(ctx, store.AuditListOptions{
 		ActorID: model.UserID(query.ActorID), Action: query.Action, Resource: query.Resource,
-		BeforeTime: query.BeforeTime, BeforeID: model.AuditEventID(query.BeforeID), Limit: query.Limit,
+		BeforeCreatedAt: query.BeforeCreatedAt, BeforeID: model.AuditEventID(query.BeforeID), Limit: query.Limit,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
 	if err != nil {

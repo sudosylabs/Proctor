@@ -133,7 +133,7 @@ func auditQueryFromRequest(request *http.Request) (app.ListAuditEventsQuery, err
 			return query, err
 		}
 		createdAt, _ := model.ParseRFC3339(cursor.CreatedAt)
-		query.BeforeTime = model.MillisFromTime(createdAt)
+		query.BeforeCreatedAt = createdAt
 		query.BeforeID = cursor.ID
 	}
 	query.ActorID = values.Get("actor_id")

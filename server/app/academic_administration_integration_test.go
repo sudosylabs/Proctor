@@ -511,7 +511,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 			break
 		}
 		last := events[len(events)-1]
-		options.BeforeTime, options.BeforeID = last.CreatedAt.UnixMilli(), last.ID
+		options.BeforeCreatedAt, options.BeforeID = last.CreatedAt, last.ID
 	}
 	for _, action := range []model.Action{
 		model.ActionAcademicUnitManage,

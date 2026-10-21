@@ -67,7 +67,7 @@ func TestAuditStore(t *testing.T, ss store.Store) {
 	require.Equal(t, second.ID, list[0].ID)
 	next, err := ss.Audit().List(ctx, store.AuditListOptions{
 		ActorID: user.ID, Limit: 10,
-		BeforeTime: model.MillisFromTime(list[0].CreatedAt), BeforeID: list[0].ID,
+		BeforeCreatedAt: list[0].CreatedAt, BeforeID: list[0].ID,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
 	require.NoError(t, err)

@@ -67,12 +67,13 @@ type AuditEvent struct {
 
 // AuditQuery is the application/store listing filter for audit events.
 type AuditQuery struct {
-	ActorID    string
-	Action     string
-	Resource   *Resource
-	BeforeTime int64
-	BeforeID   string
-	Limit      int
+	ActorID  string
+	Action   string
+	Resource *Resource
+	// BeforeCreatedAt and BeforeID continue a page at microsecond precision.
+	BeforeCreatedAt time.Time
+	BeforeID        string
+	Limit           int
 }
 
 // PrepareCreate applies application-owned identity and lifecycle fields and

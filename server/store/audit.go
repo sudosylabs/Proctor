@@ -15,13 +15,14 @@ import (
 )
 
 type AuditListOptions struct {
-	ActorID    model.UserID
-	Action     string
-	Resource   *model.Resource
-	BeforeTime int64
-	BeforeID   model.AuditEventID
-	Limit      int
-	Visibility AuditVisibilityScope
+	ActorID  model.UserID
+	Action   string
+	Resource *model.Resource
+	// BeforeCreatedAt and BeforeID continue a page at microsecond precision.
+	BeforeCreatedAt time.Time
+	BeforeID        model.AuditEventID
+	Limit           int
+	Visibility      AuditVisibilityScope
 }
 
 // AuditVisibilityScope constrains audit history in persistence. InstitutionWide

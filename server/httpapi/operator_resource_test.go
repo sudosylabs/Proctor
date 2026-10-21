@@ -149,7 +149,7 @@ func TestAuditResourcePreservesOpaqueCursorAndSafeErrors(t *testing.T) {
 	audits.events = nil
 	second := serveOperatorRequest(httpAPI, http.MethodGet, "/api/v1/audits?limit=1&cursor="+url.QueryEscape(page.NextCursor), "", true)
 	require.Equal(t, http.StatusOK, second.Code, "second page status/query = %d/%#v: %s", second.Code, audits.query, second.Body.String())
-	require.Equal(t, model.MillisFromTime(last.CreatedAt), audits.query.BeforeTime, "second page status/query = %d/%#v: %s", second.Code, audits.query, second.Body.String())
+	require.True(t, last.CreatedAt.Equal(audits.query.BeforeCreatedAt), "second page status/query = %d/%#v: %s", second.Code, audits.query, second.Body.String())
 	require.Equal(t, last.ID.String(), audits.query.BeforeID, "second page status/query = %d/%#v: %s", second.Code, audits.query, second.Body.String())
 	malformed := serveOperatorRequest(httpAPI, http.MethodGet, "/api/v1/audits?cursor=not-a-cursor", "", true)
 	assertHTTPProblem(t, malformed, http.StatusBadRequest, "request.invalid")

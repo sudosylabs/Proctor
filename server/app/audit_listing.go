@@ -10,6 +10,7 @@ package app
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -17,12 +18,13 @@ import (
 )
 
 type ListAuditEventsQuery struct {
-	ActorID    string
-	Action     string
-	Resource   *model.Resource
-	BeforeTime int64
-	BeforeID   string
-	Limit      int
+	ActorID  string
+	Action   string
+	Resource *model.Resource
+	// BeforeCreatedAt and BeforeID continue a page at microsecond precision.
+	BeforeCreatedAt time.Time
+	BeforeID        string
+	Limit           int
 }
 
 type auditListingStore interface {
@@ -64,7 +66,7 @@ func (s *auditListingService) ListAuditEvents(ctx context.Context, invocation In
 	}
 	events, err := s.audits.List(ctx, store.AuditListOptions{
 		ActorID: model.UserID(strings.TrimSpace(query.ActorID)), Action: strings.TrimSpace(query.Action),
-		Resource: query.Resource, BeforeTime: query.BeforeTime, BeforeID: model.AuditEventID(query.BeforeID), Limit: query.Limit,
+		Resource: query.Resource, BeforeCreatedAt: query.BeforeCreatedAt, BeforeID: model.AuditEventID(query.BeforeID), Limit: query.Limit,
 		Visibility: visibility,
 	})
 	if err != nil {

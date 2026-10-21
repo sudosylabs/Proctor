@@ -285,8 +285,8 @@ func (s SQLAuditStore) List(
 			"audit_events.resource_id":   options.Resource.ID,
 		})
 	}
-	if options.BeforeTime > 0 {
-		beforeTime := model.TimeFromMillis(options.BeforeTime)
+	if !options.BeforeCreatedAt.IsZero() {
+		beforeTime := model.TimeUTC(options.BeforeCreatedAt)
 		if options.BeforeID == "" {
 			query = query.Where(sq.Lt{"audit_events.created_at": beforeTime})
 		} else {
