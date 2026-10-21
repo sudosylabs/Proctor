@@ -15,11 +15,13 @@ package storetest
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -96,17 +98,16 @@ func testUserEmailChangeUsesDatabaseClock(t *testing.T, ss store.Store) {
 		AuditEventID: audit.ID, AuditAt: model.GetMillis(),
 	}
 	result, err := ss.UserToken().ChangeEmail(ctx, command)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	// The User's modification time never moves backwards when the database
 	// clock trails the node clock that created the User.
 	wantUserUpdatedAt := result.Token.CreatedAt
 	if user.UpdatedAt.After(wantUserUpdatedAt) {
 		wantUserUpdatedAt = user.UpdatedAt
 	}
-	if result.Token.CreatedAt.Equal(preparedAt) || result.Token.ExpiresAt.Sub(result.Token.CreatedAt) != tokenLifetime ||
-		!result.User.UpdatedAt.Equal(wantUserUpdatedAt) {
-		t.Fatalf("database-clock User/token = %#v / %#v", result.User, result.Token)
-	}
+	require.False(t, result.Token.CreatedAt.Equal(preparedAt), "database-clock User/token = %#v / %#v", result.User, result.Token)
+	require.Equal(t, tokenLifetime, result.Token.ExpiresAt.Sub(result.Token.CreatedAt), "database-clock User/token = %#v / %#v", result.User, result.Token)
+	require.True(t, result.User.UpdatedAt.Equal(wantUserUpdatedAt), "database-clock User/token = %#v / %#v", result.User, result.Token)
 	for _, expected := range []struct {
 		deliveryID model.MailDeliveryID
 		jobID      model.JobID
@@ -116,15 +117,17 @@ func testUserEmailChangeUsesDatabaseClock(t *testing.T, ss store.Store) {
 		{verificationDelivery.ID, verificationJob.ID, tokenLifetime},
 	} {
 		delivery, getErr := ss.Mail().GetDelivery(ctx, expected.deliveryID)
-		requireNoError(t, getErr)
+		require.NoError(t, getErr)
 		job, getErr := ss.Job().Get(ctx, expected.jobID)
-		requireNoError(t, getErr)
-		if !delivery.CreatedAt.Equal(result.Token.CreatedAt) || !delivery.UpdatedAt.Equal(result.Token.CreatedAt) ||
-			!delivery.MessageDate.Equal(result.Token.CreatedAt) || delivery.Deadline.Sub(delivery.CreatedAt) != expected.lifetime ||
-			!job.CreatedAt.Equal(result.Token.CreatedAt) || !job.UpdatedAt.Equal(result.Token.CreatedAt) ||
-			!job.AvailableAt.Equal(result.Token.CreatedAt) || (job.CompletedAt.Valid && !job.CompletedAt.Time.Equal(result.Token.CreatedAt)) {
-			t.Fatalf("database-clock delivery/job = %#v / %#v, token=%#v", delivery, job, result.Token)
-		}
+		require.NoError(t, getErr)
+		require.True(t, delivery.CreatedAt.Equal(result.Token.CreatedAt), "database-clock delivery/job = %#v / %#v, token=%#v", delivery, job, result.Token)
+		require.True(t, delivery.UpdatedAt.Equal(result.Token.CreatedAt), "database-clock delivery/job = %#v / %#v, token=%#v", delivery, job, result.Token)
+		require.True(t, delivery.MessageDate.Equal(result.Token.CreatedAt), "database-clock delivery/job = %#v / %#v, token=%#v", delivery, job, result.Token)
+		require.Equal(t, expected.lifetime, delivery.Deadline.Sub(delivery.CreatedAt), "database-clock delivery/job = %#v / %#v, token=%#v", delivery, job, result.Token)
+		require.True(t, job.CreatedAt.Equal(result.Token.CreatedAt), "database-clock delivery/job = %#v / %#v, token=%#v", delivery, job, result.Token)
+		require.True(t, job.UpdatedAt.Equal(result.Token.CreatedAt), "database-clock delivery/job = %#v / %#v, token=%#v", delivery, job, result.Token)
+		require.True(t, job.AvailableAt.Equal(result.Token.CreatedAt), "database-clock delivery/job = %#v / %#v, token=%#v", delivery, job, result.Token)
+		require.False(t, job.CompletedAt.Valid && !job.CompletedAt.Time.Equal(result.Token.CreatedAt), "database-clock delivery/job = %#v / %#v, token=%#v", delivery, job, result.Token)
 	}
 	for _, invalidLifetime := range []struct {
 		name    string
@@ -142,9 +145,7 @@ func testUserEmailChangeUsesDatabaseClock(t *testing.T, ss store.Store) {
 			invalid.TokenLifetime, invalid.WarningLifetime = invalidLifetime.token, invalidLifetime.warning
 			_, invalidErr := ss.UserToken().ChangeEmail(ctx, &invalid)
 			var typed *store.ErrInvalidInput
-			if !errors.As(invalidErr, &typed) {
-				t.Fatalf("invalid bounded lifetime error = %v", invalidErr)
-			}
+			require.ErrorAs(t, invalidErr, &typed)
 		})
 	}
 }
@@ -190,12 +191,11 @@ func testConcurrentUserEmailChange(t *testing.T, ss store.Store) {
 		} else if store.IsConflict(err) {
 			conflicts++
 		} else {
-			t.Fatalf("concurrent ChangeEmail error = %v", err)
+			require.FailNow(t, fmt.Sprintf("concurrent ChangeEmail error = %v", err))
 		}
 	}
-	if wins != 1 || conflicts != 1 {
-		t.Fatalf("concurrent outcomes wins=%d conflicts=%d", wins, conflicts)
-	}
+	require.Equal(t, 1, wins, "concurrent outcomes wins")
+	require.Equal(t, 1, conflicts, "concurrent outcomes wins")
 }
 
 func testUserEmailChangeAtomic(t *testing.T, ss store.Store) {
@@ -214,16 +214,16 @@ func testUserEmailChangeAtomic(t *testing.T, ss store.Store) {
 		WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
 		VerificationOccurrence: verifyOccurrence, VerificationDelivery: verifyDelivery, VerificationJob: verifyJob,
 		AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at)})
-	requireNoError(t, err)
-	if result.User.Email != newEmail || result.User.EmailVerified || result.User.Revision != user.Revision+1 || result.Token.Target != newEmail {
-		t.Fatalf("email change result = %#v", result)
-	}
+	require.NoError(t, err)
+	require.Equal(t, newEmail, result.User.Email)
+	require.False(t, result.User.EmailVerified)
+	require.Equal(t, user.Revision+1, result.User.Revision)
+	require.Equal(t, newEmail, result.Token.Target)
 	for _, expected := range []*model.MailDelivery{warningDelivery, verifyDelivery} {
 		delivery, getErr := ss.Mail().GetDelivery(ctx, expected.ID)
-		requireNoError(t, getErr)
-		if delivery.TemplateKey != expected.TemplateKey || len(delivery.EncryptedPayload) == 0 {
-			t.Fatalf("%s delivery = %#v", expected.TemplateKey, delivery)
-		}
+		require.NoError(t, getErr)
+		require.Equal(t, expected.TemplateKey, delivery.TemplateKey, "%s delivery = %#v", expected.TemplateKey, delivery)
+		require.NotEmpty(t, delivery.EncryptedPayload, "%s delivery = %#v", expected.TemplateKey, delivery)
 	}
 	second, _ := saveLocalUser(t, ctx, ss)
 	secondAt := at.Add(time.Second)
@@ -237,17 +237,13 @@ func testUserEmailChangeAtomic(t *testing.T, ss store.Store) {
 		WarningOccurrence: conflictWarningOccurrence, WarningDelivery: conflictWarningDelivery, WarningJob: conflictWarningJob,
 		VerificationOccurrence: conflictVerifyOccurrence, VerificationDelivery: conflictVerifyDelivery, VerificationJob: conflictVerifyJob,
 		AuditEventID: conflictAudit.ID, AuditAt: model.MillisFromTime(secondAt)})
-	if !store.IsConflict(err) {
-		t.Fatalf("duplicate email change error = %v, want conflict", err)
-	}
+	require.True(t, store.IsConflict(err), "duplicate email change error")
 	unchanged, getErr := ss.User().Get(ctx, second.ID)
-	requireNoError(t, getErr)
-	if unchanged.Email != second.Email || unchanged.Revision != second.Revision {
-		t.Fatalf("rolled-back User = %#v", unchanged)
-	}
-	if _, getErr = ss.UserToken().GetByHash(ctx, conflictToken.TokenHash, conflictToken.Purpose); !store.IsNotFound(getErr) {
-		t.Fatalf("rolled-back token lookup = %v", getErr)
-	}
+	require.NoError(t, getErr)
+	require.Equal(t, second.Email, unchanged.Email)
+	require.Equal(t, second.Revision, unchanged.Revision)
+	_, getErr = ss.UserToken().GetByHash(ctx, conflictToken.TokenHash, conflictToken.Purpose)
+	require.True(t, store.IsNotFound(getErr), "rolled-back token lookup")
 }
 
 func testPrivilegedEmailVerificationAtomic(t *testing.T, ss store.Store) {
@@ -260,15 +256,13 @@ func testPrivilegedEmailVerificationAtomic(t *testing.T, ss store.Store) {
 	verified, err := ss.UserToken().VerifyEmailPrivileged(ctx, &store.PrivilegedEmailVerification{UserID: user.ID, ExpectedRevision: user.Revision,
 		Occurrence: occurrence, Delivery: delivery, Job: job,
 		AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at)})
-	requireNoError(t, err)
-	if !verified.EmailVerified || verified.Revision != user.Revision+1 {
-		t.Fatalf("verified user = %#v", verified)
-	}
+	require.NoError(t, err)
+	require.True(t, verified.EmailVerified)
+	require.Equal(t, user.Revision+1, verified.Revision)
 	deliveries, err := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: []model.MailTemplateKey{model.MailTemplateIdentityEmailVerifiedByAdmin}, Limit: 10})
-	requireNoError(t, err)
-	if len(deliveries) != 1 || len(deliveries[0].EncryptedPayload) == 0 {
-		t.Fatalf("privileged verification deliveries = %#v", deliveries)
-	}
+	require.NoError(t, err)
+	require.Len(t, deliveries, 1)
+	require.NotEmpty(t, deliveries[0].EncryptedPayload)
 }
 
 func testUserTokenIssueRechecksCurrentEligibleAccount(t *testing.T, ss store.Store) {
@@ -280,10 +274,9 @@ func testUserTokenIssueRechecksCurrentEligibleAccount(t *testing.T, ss store.Sto
 		token := newUserToken(user, model.UserTokenEmailVerification)
 		user = changeUserEmailForTest(t, ctx, ss, user, model.NewID()+"@changed.example.edu")
 		var err error
-		if _, err = issueUserToken(t, ss, ctx, token,
-			userTokenAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String())); !store.IsNotFound(err) {
-			t.Fatalf("changed-target Issue() error = %v, want not found", err)
-		}
+		_, err = issueUserToken(t, ss, ctx, token,
+			userTokenAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()))
+		require.True(t, store.IsNotFound(err), "changed-target Issue() error")
 		assertUserTokenIssueAbsent(t, ctx, ss, token)
 	})
 
@@ -296,42 +289,37 @@ func testUserTokenIssueRechecksCurrentEligibleAccount(t *testing.T, ss store.Sto
 			ChangedAt: at, RevocationReason: model.SessionRevocationAccountDisabled,
 			AuditEventID: audit.ID, AuditAt: at,
 		}))
-		requireNoError(t, err)
+		require.NoError(t, err)
 		token := newUserToken(user, model.UserTokenEmailVerification)
-		if _, err = issueUserToken(t, ss, ctx, token,
-			userTokenAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String())); !store.IsNotFound(err) {
-			t.Fatalf("disabled-user Issue() error = %v, want not found", err)
-		}
+		_, err = issueUserToken(t, ss, ctx, token,
+			userTokenAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()))
+		require.True(t, store.IsNotFound(err), "disabled-user Issue() error")
 		assertUserTokenIssueAbsent(t, ctx, ss, token)
 	})
 
 	t.Run("password reset without active local credential", func(t *testing.T) {
 		user, err := createUser(t, ctx, ss, newUser())
-		requireNoError(t, err)
+		require.NoError(t, err)
 		token := newUserToken(user, model.UserTokenPasswordReset)
-		if _, err = issueUserToken(t, ss, ctx, token,
-			userTokenAudit("authentication.password_reset.request", user.ID.String(), institution.ID.String())); !store.IsNotFound(err) {
-			t.Fatalf("external-only Issue() error = %v, want not found", err)
-		}
+		_, err = issueUserToken(t, ss, ctx, token,
+			userTokenAudit("authentication.password_reset.request", user.ID.String(), institution.ID.String()))
+		require.True(t, store.IsNotFound(err), "external-only Issue() error")
 		assertUserTokenIssueAbsent(t, ctx, ss, token)
 	})
 }
 
 func assertUserTokenIssueAbsent(t *testing.T, ctx context.Context, ss store.Store, token *model.UserToken) {
 	t.Helper()
-	if _, err := ss.UserToken().GetByHash(ctx, token.TokenHash, token.Purpose); !store.IsNotFound(err) {
-		t.Fatalf("ineligible Issue() persisted token: %v", err)
-	}
+	_, err := ss.UserToken().GetByHash(ctx, token.TokenHash, token.Purpose)
+	require.True(t, store.IsNotFound(err), "ineligible Issue() persisted token")
 	key := model.MailTemplateIdentityVerifyEmail
 	if token.Purpose == model.UserTokenPasswordReset {
 		key = model.MailTemplateIdentityPasswordReset
 	}
 	deliveries, err := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: []model.MailTemplateKey{key}, Limit: 100})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	for _, delivery := range deliveries {
-		if delivery.OccurrenceID.String() == token.ID.String() {
-			t.Fatalf("ineligible Issue() persisted delivery = %#v", delivery)
-		}
+		require.NotEqual(t, token.ID.String(), delivery.OccurrenceID.String())
 	}
 }
 
@@ -345,26 +333,23 @@ func testUserTokenIssueReplacesPriorToken(t *testing.T, ss store.Store) {
 		first,
 		userTokenAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()),
 	)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	second := newUserToken(user, model.UserTokenEmailVerification)
 	second, err = issueUserToken(t, ss,
 		ctx,
 		second,
 		userTokenAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()),
 	)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	gotFirst, err := ss.UserToken().GetByHash(ctx, first.TokenHash, first.Purpose)
-	requireNoError(t, err)
-	if !gotFirst.ArchivedAt.Valid {
-		t.Fatalf("prior token remained active: %#v", gotFirst)
-	}
+	require.NoError(t, err)
+	require.True(t, gotFirst.ArchivedAt.Valid)
 	gotSecond, err := ss.UserToken().GetByHash(ctx, second.TokenHash, second.Purpose)
-	requireNoError(t, err)
-	if gotSecond.ArchivedAt.Valid || gotSecond.Target != user.Email {
-		t.Fatalf("replacement token = %#v", gotSecond)
-	}
+	require.NoError(t, err)
+	require.False(t, gotSecond.ArchivedAt.Valid)
+	require.Equal(t, user.Email, gotSecond.Target)
 	deliveries, err := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: []model.MailTemplateKey{model.MailTemplateIdentityVerifyEmail}, Limit: 10})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	var firstDelivery, secondDelivery *model.MailDelivery
 	for _, delivery := range deliveries {
 		switch delivery.OccurrenceID.String() {
@@ -374,26 +359,23 @@ func testUserTokenIssueReplacesPriorToken(t *testing.T, ss store.Store) {
 			secondDelivery = delivery
 		}
 	}
-	if firstDelivery == nil || firstDelivery.State != model.MailDeliverySuppressed ||
-		firstDelivery.PublicFailureCode != model.MailDeliveryObsoleteCode || len(firstDelivery.EncryptedPayload) != 0 {
-		t.Fatalf("superseded delivery = %#v", firstDelivery)
-	}
+	require.NotNil(t, firstDelivery)
+	require.Equal(t, model.MailDeliverySuppressed, firstDelivery.State)
+	require.Equal(t, model.MailDeliveryObsoleteCode, firstDelivery.PublicFailureCode)
+	require.Empty(t, firstDelivery.EncryptedPayload)
 	firstJob, err := ss.Job().Get(ctx, firstDelivery.JobID)
-	requireNoError(t, err)
-	if firstJob.Status != model.JobStatusCanceled {
-		t.Fatalf("superseded delivery job = %#v", firstJob)
-	}
-	if secondDelivery == nil || secondDelivery.State != model.MailDeliveryQueued || len(secondDelivery.EncryptedPayload) == 0 {
-		t.Fatalf("replacement delivery = %#v", secondDelivery)
-	}
-	if _, err := ss.UserToken().ConsumeEmailVerification(
+	require.NoError(t, err)
+	require.Equal(t, model.JobStatusCanceled, firstJob.Status)
+	require.NotNil(t, secondDelivery)
+	require.Equal(t, model.MailDeliveryQueued, secondDelivery.State)
+	require.NotEmpty(t, secondDelivery.EncryptedPayload)
+	_, err = ss.UserToken().ConsumeEmailVerification(
 		ctx,
 		first.TokenHash,
 		model.MillisFromTime(second.CreatedAt)+1,
 		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
-	); !store.IsNotFound(err) {
-		t.Fatalf("superseded token consumption error = %v, want not found", err)
-	}
+	)
+	require.True(t, store.IsNotFound(err), "superseded token consumption error")
 }
 
 func testUserTokenCallerClockCannotBackdateEmailVerification(t *testing.T, ss store.Store) {
@@ -406,7 +388,7 @@ func testUserTokenCallerClockCannotBackdateEmailVerification(t *testing.T, ss st
 		token,
 		userTokenAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()),
 	)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	behindNodeTime := model.MillisFromTime(token.CreatedAt.Add(-time.Minute))
 	result, err := ss.UserToken().ConsumeEmailVerification(
 		ctx,
@@ -414,22 +396,19 @@ func testUserTokenCallerClockCannotBackdateEmailVerification(t *testing.T, ss st
 		behindNodeTime,
 		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
 	)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	// The node clock is a minute behind; PostgreSQL time decides, and a
 	// database clock trailing the token's creating node may only meet it.
-	if !result.Token.ConsumedAt.Valid || result.Token.ConsumedAt.Time.Before(token.CreatedAt) ||
-		result.User.UpdatedAt.Before(token.CreatedAt) ||
-		!result.Token.ConsumedAt.Time.After(model.TimeFromMillis(behindNodeTime)) {
-		t.Fatalf("behind-node verification result = %#v", result)
-	}
+	require.True(t, result.Token.ConsumedAt.Valid)
+	require.False(t, result.Token.ConsumedAt.Time.Before(token.CreatedAt))
+	require.False(t, result.User.UpdatedAt.Before(token.CreatedAt))
+	require.True(t, result.Token.ConsumedAt.Time.After(model.TimeFromMillis(behindNodeTime)))
 	audits, err := ss.Audit().List(ctx, store.AuditListOptions{
 		Action: "authentication.email_verification.complete", Limit: 10,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
-	requireNoError(t, err)
-	if !containsUserTokenAuditAt(audits, user.ID, result.Token.ConsumedAt.Time) {
-		t.Fatalf("behind-node verification audit = %#v", audits)
-	}
+	require.NoError(t, err)
+	require.True(t, containsUserTokenAuditAt(audits, user.ID, result.Token.ConsumedAt.Time), "behind-node verification audit = %#v", audits)
 }
 
 func testUserTokenCallerClockCannotBackdatePasswordReset(t *testing.T, ss store.Store) {
@@ -440,31 +419,29 @@ func testUserTokenCallerClockCannotBackdatePasswordReset(t *testing.T, ss store.
 	token := newUserToken(user, model.UserTokenPasswordReset)
 	token, err := issueUserToken(t, ss, ctx, token,
 		userTokenAudit("authentication.password_reset.request", user.ID.String(), institution.ID.String()))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	behindNodeTime := model.MillisFromTime(token.CreatedAt.Add(-time.Minute))
 	result, err := ss.UserToken().ConsumePasswordReset(ctx,
 		passwordResetCompletion(t, user, token.TokenHash, "behind-node-password-hash", behindNodeTime,
 			userTokenCompletionAudit("authentication.password_reset.complete", institution.ID.String())))
-	requireNoError(t, err)
-	if !result.Token.ConsumedAt.Valid || result.Token.ConsumedAt.Time.Before(token.CreatedAt) ||
-		!result.Token.ConsumedAt.Time.After(model.TimeFromMillis(behindNodeTime)) ||
-		result.PasswordCredential.PasswordChangedAt.Before(token.CreatedAt) || len(result.RevokedSessions) != 1 ||
-		result.RevokedSessions[0].RevokedAt.Time.Before(session.CreatedAt) {
-		t.Fatalf("behind-node password reset result = %#v", result)
-	}
+	require.NoError(t, err)
+	require.True(t, result.Token.ConsumedAt.Valid)
+	require.False(t, result.Token.ConsumedAt.Time.Before(token.CreatedAt))
+	require.True(t, result.Token.ConsumedAt.Time.After(model.TimeFromMillis(behindNodeTime)))
+	require.False(t, result.PasswordCredential.PasswordChangedAt.Before(token.CreatedAt))
+	require.Len(t, result.RevokedSessions, 1)
+	require.False(t, result.RevokedSessions[0].RevokedAt.Time.Before(session.CreatedAt))
 	audits, err := ss.Audit().List(ctx, store.AuditListOptions{
 		Action: "authentication.password_reset.complete", Limit: 10,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	transitionAt := result.Token.ConsumedAt.Time
-	if !containsUserTokenAuditAt(audits, user.ID, transitionAt) {
-		t.Fatalf("behind-node password reset audit = %#v", audits)
-	}
+	require.True(t, containsUserTokenAuditAt(audits, user.ID, transitionAt), "behind-node password reset audit = %#v", audits)
 	notices, err := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{
 		TemplateKeys: []model.MailTemplateKey{model.MailTemplateIdentityPasswordChanged}, Limit: 10,
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	var notice *model.MailDelivery
 	for _, candidate := range notices {
 		if candidate.TargetUserID == user.ID && candidate.CreatedAt.Equal(transitionAt) {
@@ -472,14 +449,13 @@ func testUserTokenCallerClockCannotBackdatePasswordReset(t *testing.T, ss store.
 			break
 		}
 	}
-	if notice == nil || !notice.MessageDate.Equal(transitionAt) {
-		t.Fatalf("behind-node password reset notice = %#v", notices)
-	}
+	require.NotNil(t, notice)
+	require.True(t, notice.MessageDate.Equal(transitionAt))
 	noticeJob, err := ss.Job().Get(ctx, notice.JobID)
-	requireNoError(t, err)
-	if !noticeJob.CreatedAt.Equal(transitionAt) || !noticeJob.UpdatedAt.Equal(transitionAt) || !noticeJob.AvailableAt.Equal(transitionAt) {
-		t.Fatalf("behind-node password reset notice Job = %#v", noticeJob)
-	}
+	require.NoError(t, err)
+	require.True(t, noticeJob.CreatedAt.Equal(transitionAt))
+	require.True(t, noticeJob.UpdatedAt.Equal(transitionAt))
+	require.True(t, noticeJob.AvailableAt.Equal(transitionAt))
 }
 
 func containsUserTokenAuditAt(audits []*model.AuditEvent, userID model.UserID, at time.Time) bool {
@@ -501,7 +477,7 @@ func testEmailVerificationIsTargetBoundAndSingleUse(t *testing.T, ss store.Store
 		token,
 		userTokenAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()),
 	)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	now := model.MillisFromTime(token.CreatedAt) + 100
 	result, err := ss.UserToken().ConsumeEmailVerification(
 		ctx,
@@ -509,26 +485,25 @@ func testEmailVerificationIsTargetBoundAndSingleUse(t *testing.T, ss store.Store
 		now,
 		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
 	)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	transitionAt := result.Token.ConsumedAt.Time
-	if !result.User.EmailVerified || result.User.Revision != user.Revision+1 ||
-		!result.Token.ConsumedAt.Valid || !result.User.UpdatedAt.Equal(transitionAt) {
-		t.Fatalf("verification result = %#v", result)
-	}
+	require.True(t, result.User.EmailVerified)
+	require.Equal(t, user.Revision+1, result.User.Revision)
+	require.True(t, result.Token.ConsumedAt.Valid)
+	require.True(t, result.User.UpdatedAt.Equal(transitionAt))
 	delivery := findUserTokenDelivery(t, ctx, ss, token.ID, model.MailTemplateIdentityVerifyEmail)
 	suppressed, err := ss.Mail().StartDelivery(ctx, delivery.ID, delivery.Revision, transitionAt.Add(time.Millisecond))
-	requireNoError(t, err)
-	if suppressed.State != model.MailDeliverySuppressed || suppressed.PublicFailureCode != model.MailDeliveryObsoleteCode || len(suppressed.EncryptedPayload) != 0 {
-		t.Fatalf("consumed-token delivery start = %#v", suppressed)
-	}
-	if _, err := ss.UserToken().ConsumeEmailVerification(
+	require.NoError(t, err)
+	require.Equal(t, model.MailDeliverySuppressed, suppressed.State)
+	require.Equal(t, model.MailDeliveryObsoleteCode, suppressed.PublicFailureCode)
+	require.Empty(t, suppressed.EncryptedPayload)
+	_, err = ss.UserToken().ConsumeEmailVerification(
 		ctx,
 		token.TokenHash,
 		now+1,
 		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
-	); !store.IsNotFound(err) {
-		t.Fatalf("second consumption error = %v, want not found", err)
-	}
+	)
+	require.True(t, store.IsNotFound(err), "second consumption error")
 
 	changedUser, _ := saveLocalUser(t, ctx, ss)
 	changedToken := newUserToken(changedUser, model.UserTokenEmailVerification)
@@ -541,16 +516,15 @@ func testEmailVerificationIsTargetBoundAndSingleUse(t *testing.T, ss store.Store
 			institution.ID.String(),
 		),
 	)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	changeUserEmailForTest(t, ctx, ss, changedUser, model.NewID()+"@changed.example.edu")
-	if _, err := ss.UserToken().ConsumeEmailVerification(
+	_, err = ss.UserToken().ConsumeEmailVerification(
 		ctx,
 		changedToken.TokenHash,
 		now+2,
 		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
-	); !store.IsNotFound(err) {
-		t.Fatalf("changed-target consumption error = %v, want not found", err)
-	}
+	)
+	require.True(t, store.IsNotFound(err), "changed-target consumption error")
 }
 
 func changeUserEmailForTest(t *testing.T, ctx context.Context, ss store.Store, user *model.User, newEmail string) *model.User {
@@ -574,20 +548,20 @@ func changeUserEmailForTest(t *testing.T, ctx context.Context, ss store.Store, u
 		VerificationOccurrence: verificationOccurrence, VerificationDelivery: verificationDelivery, VerificationJob: verificationJob,
 		AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return result.User
 }
 
 func findUserTokenDelivery(t *testing.T, ctx context.Context, ss store.Store, tokenID model.UserTokenID, key model.MailTemplateKey) *model.MailDelivery {
 	t.Helper()
 	deliveries, err := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: []model.MailTemplateKey{key}, Limit: 20})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	for _, delivery := range deliveries {
 		if delivery.OccurrenceID.String() == tokenID.String() {
 			return delivery
 		}
 	}
-	t.Fatalf("delivery for token %s was not found", tokenID)
+	require.FailNow(t, fmt.Sprintf("delivery for token %s was not found", tokenID))
 	return nil
 }
 
@@ -602,55 +576,53 @@ func testPasswordResetRevokesSessionsAndAudits(t *testing.T, ss store.Store) {
 		token,
 		userTokenAudit("authentication.password_reset.request", user.ID.String(), institution.ID.String()),
 	)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	now := max(model.MillisFromTime(token.CreatedAt), model.MillisFromTime(session.CreatedAt)) + 100
 	result, err := ss.UserToken().ConsumePasswordReset(
 		ctx,
 		passwordResetCompletion(t, user, token.TokenHash, "new-encoded-password-hash", now,
 			userTokenCompletionAudit("authentication.password_reset.complete", institution.ID.String())),
 	)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	transitionAt := result.Token.ConsumedAt.Time
-	if result.PasswordCredential.ID != credential.ID ||
-		result.PasswordCredential.Revision != credential.Revision+1 ||
-		result.PasswordCredential.PasswordHash != "new-encoded-password-hash" ||
-		!result.Token.ConsumedAt.Valid || !result.PasswordCredential.PasswordChangedAt.Equal(transitionAt) ||
-		len(result.RevokedSessions) != 1 ||
-		len(result.RevokedAccessHashes) != 2 || !result.RevokedSessions[0].RevokedAt.Time.Equal(transitionAt) {
-		t.Fatalf("password reset result = %#v", result)
-	}
+	require.Equal(t, credential.ID, result.PasswordCredential.ID)
+	require.Equal(t, credential.Revision+1, result.PasswordCredential.Revision)
+	require.Equal(t, "new-encoded-password-hash", result.PasswordCredential.PasswordHash)
+	require.True(t, result.Token.ConsumedAt.Valid)
+	require.True(t, result.PasswordCredential.PasswordChangedAt.Equal(transitionAt))
+	require.Len(t, result.RevokedSessions, 1)
+	require.Len(t, result.RevokedAccessHashes, 2)
+	require.True(t, result.RevokedSessions[0].RevokedAt.Time.Equal(transitionAt))
 	resetDelivery := findUserTokenDelivery(t, ctx, ss, token.ID, model.MailTemplateIdentityPasswordReset)
 	suppressed, err := ss.Mail().StartDelivery(ctx, resetDelivery.ID, resetDelivery.Revision, transitionAt.Add(time.Millisecond))
-	requireNoError(t, err)
-	if suppressed.State != model.MailDeliverySuppressed || suppressed.PublicFailureCode != model.MailDeliveryObsoleteCode {
-		t.Fatalf("consumed reset delivery = %#v", suppressed)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.MailDeliverySuppressed, suppressed.State)
+	require.Equal(t, model.MailDeliveryObsoleteCode, suppressed.PublicFailureCode)
 	notices, err := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: []model.MailTemplateKey{model.MailTemplateIdentityPasswordChanged}, Limit: 20})
-	requireNoError(t, err)
-	if len(notices) != 1 || notices[0].TargetUserID != user.ID || notices[0].State != model.MailDeliveryQueued ||
-		!notices[0].CreatedAt.Equal(transitionAt) || !notices[0].MessageDate.Equal(transitionAt) {
-		t.Fatalf("password-changed deliveries = %#v", notices)
-	}
+	require.NoError(t, err)
+	require.Len(t, notices, 1)
+	require.Equal(t, user.ID, notices[0].TargetUserID)
+	require.Equal(t, model.MailDeliveryQueued, notices[0].State)
+	require.True(t, notices[0].CreatedAt.Equal(transitionAt))
+	require.True(t, notices[0].MessageDate.Equal(transitionAt))
 	resolved, resolvedSession, err := ss.SessionCredential().GetSessionByTokenHash(
 		ctx,
 		model.HashToken(raw.access),
 		model.SessionCredentialAccess,
 	)
-	requireNoError(t, err)
-	if !resolved.RevokedAt.Time.Equal(transitionAt) || !resolvedSession.RevokedAt.Time.Equal(transitionAt) {
-		t.Fatalf("reset session remained active: %#v %#v", resolved, resolvedSession)
-	}
+	require.NoError(t, err)
+	require.True(t, resolved.RevokedAt.Time.Equal(transitionAt), "reset session remained active: %#v %#v", resolved, resolvedSession)
+	require.True(t, resolvedSession.RevokedAt.Time.Equal(transitionAt), "reset session remained active: %#v %#v", resolved, resolvedSession)
 	audits, err := ss.Audit().List(ctx, store.AuditListOptions{
 		Action:     "authentication.password_reset.complete",
 		Limit:      10,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
-	requireNoError(t, err)
-	if len(audits) != 1 ||
-		audits[0].Resource.ID != user.ID.String() ||
-		audits[0].Status != model.AuditStatusSuccess || !audits[0].CreatedAt.Equal(transitionAt) {
-		t.Fatalf("password reset audit = %#v", audits)
-	}
+	require.NoError(t, err)
+	require.Len(t, audits, 1)
+	require.Equal(t, user.ID.String(), audits[0].Resource.ID)
+	require.Equal(t, model.AuditStatusSuccess, audits[0].Status)
+	require.True(t, audits[0].CreatedAt.Equal(transitionAt))
 }
 
 func testPasswordResetMailFailureRollsBackMutation(t *testing.T, ss store.Store) {
@@ -661,7 +633,7 @@ func testPasswordResetMailFailureRollsBackMutation(t *testing.T, ss store.Store)
 	token := newUserToken(user, model.UserTokenPasswordReset)
 	token, err := issueUserToken(t, ss, ctx, token,
 		userTokenAudit("authentication.password_reset.request", user.ID.String(), institution.ID.String()))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	now := max(model.MillisFromTime(token.CreatedAt), model.MillisFromTime(session.CreatedAt)) + 100
 	completion := passwordResetCompletion(t, user, token.TokenHash, "must-not-commit", now,
 		userTokenCompletionAudit("authentication.password_reset.complete", institution.ID.String()))
@@ -670,30 +642,22 @@ func testPasswordResetMailFailureRollsBackMutation(t *testing.T, ss store.Store)
 	// transaction, proving a delivery persistence failure rolls them all back.
 	completion.Occurrence.ID = model.MailOccurrenceID(token.ID.String())
 	completion.Delivery.OccurrenceID = completion.Occurrence.ID
-	if _, err = ss.UserToken().ConsumePasswordReset(ctx, completion); err == nil {
-		t.Fatal("password reset accepted a colliding notice occurrence")
-	}
+	_, err = ss.UserToken().ConsumePasswordReset(ctx, completion)
+	require.Error(t, err, "password reset accepted a colliding notice occurrence")
 	unchanged, err := ss.PasswordCredential().GetByUser(ctx, user.ID)
-	requireNoError(t, err)
-	if unchanged.ID != credential.ID || unchanged.PasswordHash != credential.PasswordHash {
-		t.Fatalf("failed completion changed password credential = %#v", unchanged)
-	}
+	require.NoError(t, err)
+	require.Equal(t, credential.ID, unchanged.ID)
+	require.Equal(t, credential.PasswordHash, unchanged.PasswordHash)
 	retainedSession, err := ss.Session().Get(ctx, session.ID)
-	requireNoError(t, err)
-	if retainedSession.RevokedAt.Valid {
-		t.Fatalf("failed completion revoked session = %#v", retainedSession)
-	}
+	require.NoError(t, err)
+	require.False(t, retainedSession.RevokedAt.Valid)
 	retainedToken, err := ss.UserToken().GetByHash(ctx, token.TokenHash, token.Purpose)
-	requireNoError(t, err)
-	if retainedToken.ConsumedAt.Valid {
-		t.Fatalf("failed completion consumed token = %#v", retainedToken)
-	}
+	require.NoError(t, err)
+	require.False(t, retainedToken.ConsumedAt.Valid)
 	notices, err := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: []model.MailTemplateKey{model.MailTemplateIdentityPasswordChanged}, Limit: 20})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	for _, notice := range notices {
-		if notice.ID == completion.Delivery.ID {
-			t.Fatalf("failed completion persisted notice = %#v", notice)
-		}
+		require.NotEqual(t, completion.Delivery.ID, notice.ID)
 	}
 }
 
@@ -704,7 +668,7 @@ func testPasswordResetCommitsSuppressedNoticeWhenMailDisabled(t *testing.T, ss s
 	token := newUserToken(user, model.UserTokenPasswordReset)
 	token, err := issueUserToken(t, ss, ctx, token,
 		userTokenAudit("authentication.password_reset.request", user.ID.String(), institution.ID.String()))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	now := model.MillisFromTime(token.CreatedAt) + 100
 	completion := passwordResetCompletion(t, user, token.TokenHash, "disabled-mail-new-password", now,
 		userTokenCompletionAudit("authentication.password_reset.complete", institution.ID.String()))
@@ -712,22 +676,19 @@ func testPasswordResetCommitsSuppressedNoticeWhenMailDisabled(t *testing.T, ss s
 	completion.Delivery.PublicFailureCode = model.MailDeliveryDisabledCode
 	completion.Delivery.EncryptedPayload = nil
 	completion.Job, err = completion.Job.RequestCancellation(completion.Job.CreatedAt)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	result, err := ss.UserToken().ConsumePasswordReset(ctx, completion)
-	requireNoError(t, err)
-	if result.PasswordCredential.PasswordHash != "disabled-mail-new-password" || !result.Token.ConsumedAt.Valid {
-		t.Fatalf("disabled-mail reset result = %#v", result)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "disabled-mail-new-password", result.PasswordCredential.PasswordHash)
+	require.True(t, result.Token.ConsumedAt.Valid)
 	notice, err := ss.Mail().GetDelivery(ctx, completion.Delivery.ID)
-	requireNoError(t, err)
-	if notice.State != model.MailDeliverySuppressed || notice.PublicFailureCode != model.MailDeliveryDisabledCode || len(notice.EncryptedPayload) != 0 {
-		t.Fatalf("disabled-mail notice = %#v", notice)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.MailDeliverySuppressed, notice.State)
+	require.Equal(t, model.MailDeliveryDisabledCode, notice.PublicFailureCode)
+	require.Empty(t, notice.EncryptedPayload)
 	job, err := ss.Job().Get(ctx, completion.Job.ID)
-	requireNoError(t, err)
-	if job.Status != model.JobStatusCanceled {
-		t.Fatalf("disabled-mail notice job = %#v", job)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.JobStatusCanceled, job.Status)
 }
 
 func testUserTokenConcurrentConsumption(t *testing.T, ss store.Store) {
@@ -740,7 +701,7 @@ func testUserTokenConcurrentConsumption(t *testing.T, ss store.Store) {
 		token,
 		userTokenAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()),
 	)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	now := model.MillisFromTime(token.CreatedAt) + 100
 	start := make(chan struct{})
 	errorsByAttempt := make(chan error, 2)
@@ -774,12 +735,11 @@ func testUserTokenConcurrentConsumption(t *testing.T, ss store.Store) {
 		case store.IsNotFound(consumeErr):
 			notFound++
 		default:
-			t.Fatalf("concurrent consumption error = %v", consumeErr)
+			require.FailNow(t, fmt.Sprintf("concurrent consumption error = %v", consumeErr))
 		}
 	}
-	if successes != 1 || notFound != 1 {
-		t.Fatalf("concurrent results success=%d not_found=%d", successes, notFound)
-	}
+	require.Equal(t, 1, successes, "concurrent results success")
+	require.Equal(t, 1, notFound, "concurrent results success")
 }
 
 func testUserTokenAuditFailureRollsBack(t *testing.T, ss store.Store) {
@@ -787,43 +747,39 @@ func testUserTokenAuditFailureRollsBack(t *testing.T, ss store.Store) {
 	institution := saveInstitution(t, ctx, ss)
 	user, _ := saveLocalUser(t, ctx, ss)
 	unissued := newUserToken(user, model.UserTokenEmailVerification)
-	if _, err := issueUserToken(t, ss,
+	_, err := issueUserToken(t, ss,
 		ctx,
 		unissued,
 		&model.AuditEvent{},
-	); err == nil {
-		t.Fatal("token issue accepted an invalid terminal audit")
-	}
-	if _, err := ss.UserToken().GetByHash(
+	)
+	require.Error(t, err, "token issue accepted an invalid terminal audit")
+	_, err = ss.UserToken().GetByHash(
 		ctx, unissued.TokenHash, unissued.Purpose,
-	); !store.IsNotFound(err) {
-		t.Fatalf("audit-failed issue persisted token: %v", err)
-	}
+	)
+	require.True(t, store.IsNotFound(err), "audit-failed issue persisted token")
 
 	token := newUserToken(user, model.UserTokenEmailVerification)
-	token, err := issueUserToken(t, ss,
+	token, err = issueUserToken(t, ss,
 		ctx,
 		token,
 		userTokenAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()),
 	)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	now := model.MillisFromTime(token.CreatedAt) + 100
-	if _, err := ss.UserToken().ConsumeEmailVerification(
+	_, err = ss.UserToken().ConsumeEmailVerification(
 		ctx,
 		token.TokenHash,
 		now,
 		&model.AuditEvent{},
-	); err == nil {
-		t.Fatal("token consumption accepted an invalid terminal audit")
-	}
-	if _, err := ss.UserToken().ConsumeEmailVerification(
+	)
+	require.Error(t, err, "token consumption accepted an invalid terminal audit")
+	_, err = ss.UserToken().ConsumeEmailVerification(
 		ctx,
 		token.TokenHash,
 		now+1,
 		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
-	); err != nil {
-		t.Fatalf("audit-failed consumption changed token state: %v", err)
-	}
+	)
+	require.NoError(t, err)
 }
 
 func saveLocalUser(
@@ -836,7 +792,7 @@ func saveLocalUser(
 		newUser(),
 		&model.PasswordCredential{PasswordHash: "encoded-password-hash"},
 	))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return result.User, result.PasswordCredential
 }
 
@@ -876,9 +832,9 @@ func userTokenMailFixture(t *testing.T, userID model.UserID, occurrenceID model.
 	t.Helper()
 	deliveryID := model.NewMailDeliveryID()
 	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	job, err := model.NewJob(model.NewJobID(), jobType, 1, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: kind, TemplateKey: key, ActorUserID: userID, CreatedAt: at}
 	delivery := &model.MailDelivery{
 		ID: deliveryID, OccurrenceID: occurrenceID, JobID: job.ID, TargetUserID: userID,
@@ -887,12 +843,10 @@ func userTokenMailFixture(t *testing.T, userID model.UserID, occurrenceID model.
 		MessageID:        "<mail." + deliveryID.String() + "@example.test>",
 		EncryptedPayload: json.RawMessage(`{"key_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`), Revision: 1,
 	}
-	if err = occurrence.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	if err = delivery.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	err = occurrence.Validate()
+	require.NoError(t, err)
+	err = delivery.Validate()
+	require.NoError(t, err)
 	return occurrence, delivery, job
 }
 

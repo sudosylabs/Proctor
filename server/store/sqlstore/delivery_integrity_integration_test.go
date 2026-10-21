@@ -14,6 +14,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store/storetest"
 )
@@ -29,59 +31,43 @@ func TestDeliveryCorruptReads(t *testing.T) {
 		switch field {
 		case "native_progress":
 			var allocated int64
-			if err := s.GetMaster().Get(ctx, &allocated, `SELECT allocated_through_sequence FROM exam_attempt_security_owners WHERE participation_id=?`, part.String()); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := s.GetMaster().Exec(ctx, `UPDATE exam_attempt_security_owners SET allocated_through_sequence=0 WHERE participation_id=?`, part.String()); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, s.GetMaster().Get(ctx, &allocated, `SELECT allocated_through_sequence FROM exam_attempt_security_owners WHERE participation_id=?`, part.String()))
+			_, err := s.GetMaster().Exec(ctx, `UPDATE exam_attempt_security_owners SET allocated_through_sequence=0 WHERE participation_id=?`, part.String())
+			require.NoError(t, err)
 			return func() {
-				if _, err := s.GetMaster().Exec(ctx, `UPDATE exam_attempt_security_owners SET allocated_through_sequence=? WHERE participation_id=?`, allocated, part.String()); err != nil {
-					t.Fatal(err)
-				}
+				_, err := s.GetMaster().Exec(ctx, `UPDATE exam_attempt_security_owners SET allocated_through_sequence=? WHERE participation_id=?`, allocated, part.String())
+				require.NoError(t, err)
 			}
 		case "native_pending_transition":
 			read = `SELECT record_canonical FROM exam_native_delivery_records WHERE participation_id=? AND batch_sequence=4 AND record_index=0`
 			write = `UPDATE exam_native_delivery_records SET record_canonical=? WHERE participation_id=? AND batch_sequence=4 AND record_index=0`
 			id = part.String()
 			var raw []byte
-			if err := s.GetMaster().Get(ctx, &raw, read, id); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, s.GetMaster().Get(ctx, &raw, read, id))
 			var record model.NativeRecord
-			if err := json.Unmarshal(raw, &record); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, json.Unmarshal(raw, &record))
 			record.Occurrence.Status = "opened"
 			var err error
 			invalid, err = json.Marshal(record)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 		case "native_source_sequence", "native_source_id", "native_coverage_state":
 			read = `SELECT latest_report_canonical FROM exam_attempt_security_owners WHERE participation_id=?`
 			write = `UPDATE exam_attempt_security_owners SET latest_report_canonical=? WHERE participation_id=?`
 			id = part.String()
 			var raw []byte
-			if err := s.GetMaster().Get(ctx, &raw, read, id); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, s.GetMaster().Get(ctx, &raw, read, id))
 			var snapshot map[string]json.RawMessage
-			if err := json.Unmarshal(raw, &snapshot); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, json.Unmarshal(raw, &snapshot))
 			if field == "native_coverage_state" {
 				var values []model.NativeCoverageClaim
-				if err := json.Unmarshal(snapshot["coverage"], &values); err != nil || len(values) == 0 {
-					t.Fatal("missing coverage fixture")
-				}
+				require.NoError(t, json.Unmarshal(snapshot["coverage"], &values), "missing coverage fixture")
+				require.NotEmpty(t, values, "missing coverage fixture")
 				values[0].State = "unknown"
 				snapshot["coverage"], _ = json.Marshal(values)
 			} else {
 				var values []model.NativeSourceCoverage
-				if err := json.Unmarshal(snapshot["sources"], &values); err != nil || len(values) == 0 {
-					t.Fatal("missing source fixture")
-				}
+				require.NoError(t, json.Unmarshal(snapshot["sources"], &values), "missing source fixture")
+				require.NotEmpty(t, values, "missing source fixture")
 				if field == "native_source_sequence" {
 					values[0].Sequence = -1
 				} else {
@@ -91,9 +77,7 @@ func TestDeliveryCorruptReads(t *testing.T) {
 			}
 			var err error
 			invalid, err = json.Marshal(snapshot)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 		case "native_binding":
 			read = `SELECT binding_canonical FROM exam_attempt_security_owners WHERE participation_id=?`
 			write = `UPDATE exam_attempt_security_owners SET binding_canonical=? WHERE participation_id=?`
@@ -124,19 +108,15 @@ func TestDeliveryCorruptReads(t *testing.T) {
 			write = `UPDATE browser_activity_events SET receipt_canonical=? WHERE source_session_id=?::uuid AND sequence=1`
 			id = string(source)
 		default:
-			t.Fatal("unknown corruption field")
+			require.FailNow(t, "unknown corruption field")
 		}
 		var original []byte
-		if err := s.GetMaster().Get(ctx, &original, read, id); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := s.GetMaster().Exec(ctx, write, invalid, id); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, s.GetMaster().Get(ctx, &original, read, id))
+		_, err := s.GetMaster().Exec(ctx, write, invalid, id)
+		require.NoError(t, err)
 		return func() {
-			if _, err := s.GetMaster().Exec(ctx, write, original, id); err != nil {
-				t.Fatal(err)
-			}
+			_, err := s.GetMaster().Exec(ctx, write, original, id)
+			require.NoError(t, err)
 		}
 	})
 }

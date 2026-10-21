@@ -15,9 +15,12 @@ package storetest
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -58,7 +61,7 @@ func testPersonalAccessTokenConcurrentReplay(t *testing.T, ss store.Store) {
 	saveInstitution(t, ctx, ss)
 	user, _ := saveLocalUser(t, ctx, ss)
 	token, err := createPersonalAccessTokenWithNotice(t, ctx, ss, newPersonalAccessToken(user.ID.String(), model.NewCredentialToken()), 10)
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	type transitionResult struct {
 		result *store.PersonalAccessTokenMutationResult
@@ -79,20 +82,16 @@ func testPersonalAccessTokenConcurrentReplay(t *testing.T, ss store.Store) {
 	fresh := 0
 	for range 2 {
 		result := <-results
-		requireNoError(t, result.err)
-		if result.result == nil || result.result.Token == nil || !result.result.Token.DisabledAt.Valid {
-			t.Fatalf("concurrent disable result=%#v", result.result)
-		}
+		require.NoError(t, result.err)
+		require.NotNil(t, result.result)
+		require.NotNil(t, result.result.Token)
+		require.True(t, result.result.Token.DisabledAt.Valid)
 		if result.result.Fresh {
 			fresh++
 		}
 	}
-	if fresh != 1 {
-		t.Fatalf("fresh concurrent disables=%d, want 1", fresh)
-	}
-	if got := countPersonalAccessTokenTerminalAudits(t, ctx, ss, user.ID, "personal_access_token.disable"); got != 1 {
-		t.Fatalf("disable audits=%d, want 1", got)
-	}
+	require.Equal(t, 1, fresh, "fresh concurrent disables")
+	require.Equal(t, 1, countPersonalAccessTokenTerminalAudits(t, ctx, ss, user.ID, "personal_access_token.disable"), "disable audits")
 	requirePersonalAccessTokenDelivery(t, ctx, ss, user.ID, model.MailTemplateIdentityPersonalAccessTokenDisabled, model.MailDeliveryQueued)
 
 	revokeResults := make(chan transitionResult, 2)
@@ -109,17 +108,16 @@ func testPersonalAccessTokenConcurrentReplay(t *testing.T, ss store.Store) {
 	fresh = 0
 	for range 2 {
 		result := <-revokeResults
-		requireNoError(t, result.err)
-		if result.result == nil || result.result.Token == nil || !result.result.Token.RevokedAt.Valid {
-			t.Fatalf("concurrent revoke result=%#v", result.result)
-		}
+		require.NoError(t, result.err)
+		require.NotNil(t, result.result)
+		require.NotNil(t, result.result.Token)
+		require.True(t, result.result.Token.RevokedAt.Valid)
 		if result.result.Fresh {
 			fresh++
 		}
 	}
-	if fresh != 1 || countPersonalAccessTokenTerminalAudits(t, ctx, ss, user.ID, "personal_access_token.revoke") != 1 {
-		t.Fatalf("fresh concurrent revokes=%d", fresh)
-	}
+	require.Equal(t, 1, fresh, "fresh concurrent revokes")
+	require.Equal(t, 1, countPersonalAccessTokenTerminalAudits(t, ctx, ss, user.ID, "personal_access_token.revoke"), "fresh concurrent revokes")
 	requirePersonalAccessTokenDelivery(t, ctx, ss, user.ID, model.MailTemplateIdentityPersonalAccessTokenRevoked, model.MailDeliveryQueued)
 }
 
@@ -139,21 +137,18 @@ func testPersonalAccessTokenDatabaseClock(t *testing.T, ss store.Store) {
 			Token: candidate, MaximumActive: 10, MinimumLifetime: time.Minute, MaximumLifetime: 48 * time.Hour,
 			PreparationID: preparation.ID, Notice: notice,
 		})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		created := createdResult.Token
 		wallAfter := model.NowUTC().Add(time.Minute)
-		if created.CreatedAt.Before(wallBefore) || created.CreatedAt.After(wallAfter) {
-			t.Fatalf("Create(skew=%v) created_at = %s, want PostgreSQL wall time", skew, created.CreatedAt)
-		}
-		if !notice.Occurrence.CreatedAt.Equal(originalOccurrenceAt) {
-			t.Fatalf("Create(skew=%v) mutated caller occurrence", skew)
-		}
+		require.False(t, created.CreatedAt.Before(wallBefore), "Create(skew=%v) created_at = %s, want PostgreSQL wall time", skew, created.CreatedAt)
+		require.False(t, created.CreatedAt.After(wallAfter), "Create(skew=%v) created_at = %s, want PostgreSQL wall time", skew, created.CreatedAt)
+		require.True(t, notice.Occurrence.CreatedAt.Equal(originalOccurrenceAt), "Create(skew=%v) mutated caller occurrence", skew)
 		completed := requirePersonalAccessTokenTerminalAudit(t, ctx, ss, user.ID, "personal_access_token.create")
-		if completed.UpdatedAt.Before(wallBefore) || completed.UpdatedAt.After(wallAfter) || completed.UpdatedAt.Before(created.CreatedAt) {
-			t.Fatalf("Create(skew=%v) audit=%s token=%s, want one authoritative wall-time window", skew, completed.UpdatedAt, created.CreatedAt)
-		}
+		require.False(t, completed.UpdatedAt.Before(wallBefore), "Create(skew=%v) audit=%s token", skew, completed.UpdatedAt)
+		require.False(t, completed.UpdatedAt.After(wallAfter), "Create(skew=%v) audit=%s token", skew, completed.UpdatedAt)
+		require.False(t, completed.UpdatedAt.Before(created.CreatedAt), "Create(skew=%v) audit=%s token", skew, completed.UpdatedAt)
 		deliveries, listErr := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: []model.MailTemplateKey{model.MailTemplateIdentityPersonalAccessTokenCreated}, Limit: 20})
-		requireNoError(t, listErr)
+		require.NoError(t, listErr)
 		var delivery *model.MailDelivery
 		for _, candidateDelivery := range deliveries {
 			if candidateDelivery.TargetUserID == user.ID {
@@ -161,14 +156,13 @@ func testPersonalAccessTokenDatabaseClock(t *testing.T, ss store.Store) {
 				break
 			}
 		}
-		if delivery == nil || !delivery.CreatedAt.Equal(created.CreatedAt) || delivery.Deadline.Sub(delivery.CreatedAt) != 24*time.Hour {
-			t.Fatalf("Create(skew=%v) delivery=%#v token_at=%s", skew, delivery, created.CreatedAt)
-		}
+		require.NotNil(t, delivery, "Create(skew=%v) delivery=%#v token_at", skew, delivery)
+		require.True(t, delivery.CreatedAt.Equal(created.CreatedAt), "Create(skew=%v) delivery=%#v token_at", skew, delivery)
+		require.Equal(t, 24*time.Hour, delivery.Deadline.Sub(delivery.CreatedAt), "Create(skew=%v) delivery=%#v token_at", skew, delivery)
 		job, getErr := ss.Job().Get(ctx, delivery.JobID)
-		requireNoError(t, getErr)
-		if !job.CreatedAt.Equal(created.CreatedAt) || !job.AvailableAt.Equal(created.CreatedAt) {
-			t.Fatalf("Create(skew=%v) job=%#v token_at=%s", skew, job, created.CreatedAt)
-		}
+		require.NoError(t, getErr)
+		require.True(t, job.CreatedAt.Equal(created.CreatedAt), "Create(skew=%v) job=%#v token_at", skew, job)
+		require.True(t, job.AvailableAt.Equal(created.CreatedAt), "Create(skew=%v) job=%#v token_at", skew, job)
 	}
 }
 
@@ -185,11 +179,10 @@ func testPersonalAccessTokenAtomicSecurityNotices(t *testing.T, ss store.Store) 
 		Token: candidate, MaximumActive: 10, MinimumLifetime: time.Minute, MaximumLifetime: 24 * time.Hour,
 		PreparationID: createPreparation.ID, Notice: createdNotice,
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	created := createdResult.Token
-	if created.TokenHash != candidate.TokenHash || created.TokenHash == "" {
-		t.Fatalf("Create() = %#v", created)
-	}
+	require.Equal(t, candidate.TokenHash, created.TokenHash)
+	require.NotEmpty(t, created.TokenHash)
 	requirePersonalAccessTokenTerminalAudit(t, ctx, ss, user.ID, "personal_access_token.create")
 	requirePersonalAccessTokenDelivery(t, ctx, ss, user.ID, model.MailTemplateIdentityPersonalAccessTokenCreated, model.MailDeliveryQueued)
 
@@ -201,49 +194,40 @@ func testPersonalAccessTokenAtomicSecurityNotices(t *testing.T, ss store.Store) 
 		ID: created.ID, UserID: user.ID, Disabled: true, MaximumActive: 10,
 		PreparationID: disablePreparation.ID, Notice: disableNotice,
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	disabled := disabledResult.Token
-	if !disabled.DisabledAt.Valid {
-		t.Fatalf("ChangeState(disable) = %#v", disabled)
-	}
+	require.True(t, disabled.DisabledAt.Valid)
 	requirePersonalAccessTokenTerminalAudit(t, ctx, ss, user.ID, "personal_access_token.disable")
 	requirePersonalAccessTokenDelivery(t, ctx, ss, user.ID, model.MailTemplateIdentityPersonalAccessTokenDisabled, model.MailDeliverySuppressed)
 
 	failedAt := disableAt.Add(time.Second)
 	failedNotice := personalAccessTokenNoticeFixture(t, user.ID, model.MailTemplateIdentityPersonalAccessTokenEnabled, failedAt, created.ExpiresAt)
-	if _, err = ss.PersonalAccessToken().ChangeState(ctx, &store.PersonalAccessTokenStateMutation{
+	_, err = ss.PersonalAccessToken().ChangeState(ctx, &store.PersonalAccessTokenStateMutation{
 		ID: created.ID, UserID: user.ID, Disabled: false, MaximumActive: 10,
 		PreparationID: model.NewPersonalAccessTokenPreparationID(), Notice: failedNotice,
-	}); err == nil {
-		t.Fatal("ChangeState() committed without its persisted audit attempt")
-	}
+	})
+	require.Error(t, err, "ChangeState() committed without its persisted audit attempt")
 	unchanged, getErr := ss.PersonalAccessToken().Get(ctx, created.ID)
-	requireNoError(t, getErr)
-	if !unchanged.DisabledAt.Valid {
-		t.Fatalf("failed ChangeState() changed token = %#v", unchanged)
-	}
+	require.NoError(t, getErr)
+	require.True(t, unchanged.DisabledAt.Valid)
 	enablePreparation := preparePersonalAccessTokenMutation(t, ctx, ss, user.ID, created.ID.String(), store.PersonalAccessTokenMutationEnable, disabled.Auditable())
 	enabledResult, err := ss.PersonalAccessToken().ChangeState(ctx, &store.PersonalAccessTokenStateMutation{
 		ID: created.ID, UserID: user.ID, Disabled: false, MaximumActive: 10,
 		PreparationID: enablePreparation.ID,
 		Notice:        personalAccessTokenNoticeFixture(t, user.ID, model.MailTemplateIdentityPersonalAccessTokenEnabled, enablePreparation.ActionAt, created.ExpiresAt),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	enabled := enabledResult.Token
-	if enabled.DisabledAt.Valid {
-		t.Fatalf("ChangeState(enable) = %#v", enabled)
-	}
+	require.False(t, enabled.DisabledAt.Valid)
 
 	revokePreparation := preparePersonalAccessTokenMutation(t, ctx, ss, user.ID, created.ID.String(), store.PersonalAccessTokenMutationRevoke, enabled.Auditable())
 	revokedResult, err := ss.PersonalAccessToken().Revoke(ctx, &store.PersonalAccessTokenRevocation{
 		ID: created.ID, UserID: user.ID, PreparationID: revokePreparation.ID,
 		Notice: personalAccessTokenNoticeFixture(t, user.ID, model.MailTemplateIdentityPersonalAccessTokenRevoked, revokePreparation.ActionAt, created.ExpiresAt),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	revoked := revokedResult.Token
-	if !revoked.RevokedAt.Valid {
-		t.Fatalf("Revoke() = %#v", revoked)
-	}
+	require.True(t, revoked.RevokedAt.Valid)
 }
 
 func personalAccessTokenNoticeFixture(t *testing.T, userID model.UserID, key model.MailTemplateKey, at, expiresAt time.Time) store.PersonalAccessTokenSecurityNotice {
@@ -255,16 +239,14 @@ func personalAccessTokenNoticeFixture(t *testing.T, userID model.UserID, key mod
 func requirePersonalAccessTokenDelivery(t *testing.T, ctx context.Context, ss store.Store, userID model.UserID, key model.MailTemplateKey, state model.MailDeliveryState) {
 	t.Helper()
 	deliveries, err := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: []model.MailTemplateKey{key}, Limit: 10})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	matches := 0
 	for _, delivery := range deliveries {
 		if delivery.TargetUserID == userID && delivery.State == state {
 			matches++
 		}
 	}
-	if matches != 1 {
-		t.Fatalf("deliveries for user=%s key=%q = %#v, want one %q", userID, key, deliveries, state)
-	}
+	require.Equal(t, 1, matches, "deliveries for user=%s key=%q = %#v, want one %q", userID, key, deliveries, state)
 }
 
 func createPersonalAccessTokenWithNotice(t *testing.T, ctx context.Context, ss store.Store, token *model.PersonalAccessToken, maximum int) (*model.PersonalAccessToken, error) {
@@ -323,13 +305,13 @@ func revokePersonalAccessTokenWithNotice(t *testing.T, ctx context.Context, ss s
 func preparePersonalAccessTokenMutation(t *testing.T, ctx context.Context, ss store.Store, userID model.UserID, tokenID string, kind store.PersonalAccessTokenMutationKind, prior map[string]any) *store.PreparedPersonalAccessTokenMutation {
 	t.Helper()
 	institution, err := ss.Institution().GetSingleton(ctx)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	session, _, _ := saveSession(t, ctx, ss, userID.String(), 100)
 	prepared, err := ss.PersonalAccessToken().PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{
 		UserID: userID, TokenID: model.PersonalAccessTokenID(tokenID), Kind: kind, Lifetime: 5 * time.Minute,
 		AuditEvent: personalAccessTokenAuditDraft(userID, session.ID, institution.ID, kind, prior),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return prepared
 }
 
@@ -350,20 +332,20 @@ func personalAccessTokenAuditDraft(userID model.UserID, sessionID model.SessionI
 func requirePersonalAccessTokenTerminalAudit(t *testing.T, ctx context.Context, ss store.Store, userID model.UserID, action string) *model.AuditEvent {
 	t.Helper()
 	events, err := ss.Audit().List(ctx, store.AuditListOptions{ActorID: userID, Action: action, Limit: 20, Visibility: store.AuditVisibilityScope{InstitutionWide: true}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	for _, event := range events {
 		if event.Status == model.AuditStatusSuccess {
 			return event
 		}
 	}
-	t.Fatalf("missing successful %s audit for %s: %#v", action, userID, events)
+	require.FailNow(t, fmt.Sprintf("missing successful %s audit for %s: %#v", action, userID, events))
 	return nil
 }
 
 func countPersonalAccessTokenTerminalAudits(t *testing.T, ctx context.Context, ss store.Store, userID model.UserID, action string) int {
 	t.Helper()
 	events, err := ss.Audit().List(ctx, store.AuditListOptions{ActorID: userID, Action: action, Limit: 20, Visibility: store.AuditVisibilityScope{InstitutionWide: true}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	count := 0
 	for _, event := range events {
 		if event.Status == model.AuditStatusSuccess || event.Status == model.AuditStatusFail {
@@ -379,7 +361,7 @@ func testPersonalAccessTokenRejectsDisabledAccount(t *testing.T, ss store.Store)
 	user, _ := saveLocalUser(t, ctx, ss)
 	raw := model.NewCredentialToken()
 	token, err := createPersonalAccessTokenWithNotice(t, ctx, ss, newPersonalAccessToken(user.ID.String(), raw), 10)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	at := model.MillisFromTime(token.CreatedAt) + 10
 	audit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 	_, err = ss.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
@@ -387,16 +369,15 @@ func testPersonalAccessTokenRejectsDisabledAccount(t *testing.T, ss store.Store)
 		ChangedAt: at, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: audit.ID, AuditAt: at,
 	}))
-	requireNoError(t, err)
+	require.NoError(t, err)
 
-	if _, err := ss.PersonalAccessToken().Resolve(
+	_, err = ss.PersonalAccessToken().Resolve(
 		ctx,
 		model.HashToken(raw),
 		model.TimeFromMillis(at+1),
 		time.Second,
-	); !store.IsNotFound(err) {
-		t.Fatalf("disabled-account Resolve() error = %v, want not found", err)
-	}
+	)
+	require.True(t, store.IsNotFound(err), "disabled-account Resolve() error")
 }
 
 func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
@@ -408,15 +389,13 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	token := newPersonalAccessToken(user.ID.String(), raw)
 	token.AcademicUnitID = unit.ID
 	token, err := createPersonalAccessTokenWithNotice(t, ctx, ss, token, 10)
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	got, err := ss.PersonalAccessToken().Get(ctx, token.ID)
-	requireNoError(t, err)
-	if got.TokenHash != model.HashToken(raw) ||
-		got.AcademicUnitID != unit.ID ||
-		len(got.Scopes) != 2 {
-		t.Fatalf("Get() = %#v", got)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.HashToken(raw), got.TokenHash)
+	require.Equal(t, unit.ID, got.AcademicUnitID)
+	require.Len(t, got.Scopes, 2)
 	now := model.MillisFromTime(token.CreatedAt) + 10
 	resolved, err := ss.PersonalAccessToken().Resolve(
 		ctx,
@@ -424,83 +403,67 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 		model.TimeFromMillis(now),
 		time.Second,
 	)
-	requireNoError(t, err)
-	if resolved.User.ID.String() != user.ID.String() ||
-		resolved.Token.ID != token.ID ||
-		resolved.Token.LastUsedAt.Millis() != now {
-		t.Fatalf("Resolve() = %#v", resolved)
-	}
+	require.NoError(t, err)
+	require.Equal(t, user.ID.String(), resolved.User.ID.String())
+	require.Equal(t, token.ID, resolved.Token.ID)
+	require.Equal(t, now, resolved.Token.LastUsedAt.Millis())
 	debounced, err := ss.PersonalAccessToken().Resolve(
 		ctx,
 		model.HashToken(raw),
 		model.TimeFromMillis(now+100),
 		time.Second,
 	)
-	requireNoError(t, err)
-	if debounced.Token.LastUsedAt.Millis() != now {
-		t.Fatalf("debounced last_used_at = %d, want %d", debounced.Token.LastUsedAt.Millis(), now)
-	}
+	require.NoError(t, err)
+	require.Equal(t, now, debounced.Token.LastUsedAt.Millis(), "debounced last_used_at")
 	disabled, err := changePersonalAccessTokenStateWithNotice(t, ctx, ss, token, true, 10)
-	requireNoError(t, err)
-	if !disabled.DisabledAt.Valid || disabled.IsActiveAt(model.NowUTC()) {
-		t.Fatalf("disabled token = %#v", disabled)
-	}
-	if _, err := ss.PersonalAccessToken().Resolve(
+	require.NoError(t, err)
+	require.True(t, disabled.DisabledAt.Valid)
+	require.False(t, disabled.IsActiveAt(model.NowUTC()))
+	_, err = ss.PersonalAccessToken().Resolve(
 		ctx,
 		model.HashToken(raw),
 		model.TimeFromMillis(now+151),
 		time.Second,
-	); !store.IsNotFound(err) {
-		t.Fatalf("disabled Resolve() error = %v, want not found", err)
-	}
+	)
+	require.True(t, store.IsNotFound(err), "disabled Resolve() error")
 	enabled, err := changePersonalAccessTokenStateWithNotice(t, ctx, ss, disabled, false, 10)
-	requireNoError(t, err)
-	if enabled.DisabledAt.Valid || !enabled.IsActiveAt(model.NowUTC()) {
-		t.Fatalf("enabled token = %#v", enabled)
-	}
+	require.NoError(t, err)
+	require.False(t, enabled.DisabledAt.Valid)
+	require.True(t, enabled.IsActiveAt(model.NowUTC()))
 	other, _ := saveLocalUser(t, ctx, ss)
 	otherSession, _, _ := saveSession(t, ctx, ss, other.ID.String(), 10)
-	if _, err := ss.PersonalAccessToken().PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{
+	_, err = ss.PersonalAccessToken().PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{
 		UserID: other.ID, TokenID: token.ID, Kind: store.PersonalAccessTokenMutationRevoke, Lifetime: 5 * time.Minute,
 		AuditEvent: personalAccessTokenAuditDraft(other.ID, otherSession.ID, institution.ID, store.PersonalAccessTokenMutationRevoke, token.Auditable()),
-	}); !store.IsNotFound(err) {
-		t.Fatalf("cross-user revoke error = %v, want not found", err)
-	}
+	})
+	require.True(t, store.IsNotFound(err), "cross-user revoke error")
 	revoked, err := revokePersonalAccessTokenWithNotice(t, ctx, ss, token, user.ID)
-	requireNoError(t, err)
-	if !revoked.RevokedAt.Valid {
-		t.Fatalf("revoked_at = %d", revoked.RevokedAt.Millis())
-	}
-	if _, err := ss.PersonalAccessToken().Resolve(
+	require.NoError(t, err)
+	require.True(t, revoked.RevokedAt.Valid, "revoked_at")
+	_, err = ss.PersonalAccessToken().Resolve(
 		ctx,
 		model.HashToken(raw),
 		model.TimeFromMillis(now+201),
 		time.Second,
-	); !store.IsNotFound(err) {
-		t.Fatalf("revoked Resolve() error = %v, want not found", err)
-	}
+	)
+	require.True(t, store.IsNotFound(err), "revoked Resolve() error")
 	list, err := ss.PersonalAccessToken().ListByUser(ctx, user.ID)
-	requireNoError(t, err)
-	if len(list) != 1 || !list[0].RevokedAt.Valid {
-		t.Fatalf("ListByUser() = %#v", list)
-	}
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	require.True(t, list[0].RevokedAt.Valid)
 
 	unscopedRaw := model.NewCredentialToken()
 	unscoped, err := createPersonalAccessTokenWithNotice(t, ctx, ss, newPersonalAccessToken(user.ID.String(), unscopedRaw), 10)
-	requireNoError(t, err)
-	if !unscoped.AcademicUnitID.IsZero() {
-		t.Fatalf("unscoped token acquired academic unit %q", unscoped.AcademicUnitID)
-	}
+	require.NoError(t, err)
+	require.True(t, unscoped.AcademicUnitID.IsZero())
 	unscopedResolved, err := ss.PersonalAccessToken().Resolve(
 		ctx,
 		model.HashToken(unscopedRaw),
 		unscoped.CreatedAt.Add(time.Millisecond),
 		time.Second,
 	)
-	requireNoError(t, err)
-	if !unscopedResolved.Token.AcademicUnitID.IsZero() {
-		t.Fatalf("unscoped resolution acquired academic unit %q", unscopedResolved.Token.AcademicUnitID)
-	}
+	require.NoError(t, err)
+	require.True(t, unscopedResolved.Token.AcademicUnitID.IsZero())
 }
 
 func testPersonalAccessTokenReenableMaximum(t *testing.T, ss store.Store) {
@@ -508,21 +471,18 @@ func testPersonalAccessTokenReenableMaximum(t *testing.T, ss store.Store) {
 	saveInstitution(t, ctx, ss)
 	user, _ := saveLocalUser(t, ctx, ss)
 	first, err := createPersonalAccessTokenWithNotice(t, ctx, ss, newPersonalAccessToken(user.ID.String(), model.NewCredentialToken()), 1)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	_, err = changePersonalAccessTokenStateWithNotice(t, ctx, ss, first, true, 1)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	second, err := createPersonalAccessTokenWithNotice(t, ctx, ss, newPersonalAccessToken(user.ID.String(), model.NewCredentialToken()), 1)
-	requireNoError(t, err)
-	if _, err := changePersonalAccessTokenStateWithNotice(t, ctx, ss, first, false, 1); !store.IsConflict(err) {
-		t.Fatalf("reenable at active limit error = %v, want conflict", err)
-	}
+	require.NoError(t, err)
+	_, err = changePersonalAccessTokenStateWithNotice(t, ctx, ss, first, false, 1)
+	require.True(t, store.IsConflict(err), "reenable at active limit error")
 	_, err = revokePersonalAccessTokenWithNotice(t, ctx, ss, second, user.ID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	enabled, err := changePersonalAccessTokenStateWithNotice(t, ctx, ss, first, false, 1)
-	requireNoError(t, err)
-	if enabled.DisabledAt.Valid {
-		t.Fatalf("reenabled token = %#v", enabled)
-	}
+	require.NoError(t, err)
+	require.False(t, enabled.DisabledAt.Valid)
 }
 
 func testPersonalAccessTokenMaximumActive(t *testing.T, ss store.Store) {
@@ -558,12 +518,11 @@ func testPersonalAccessTokenMaximumActive(t *testing.T, ss store.Store) {
 		case store.IsConflict(err):
 			conflicts++
 		default:
-			t.Fatalf("concurrent Create() error = %v", err)
+			require.FailNow(t, fmt.Sprintf("concurrent Create() error = %v", err))
 		}
 	}
-	if successes != 1 || conflicts != contenders-1 {
-		t.Fatalf("successes=%d conflicts=%d", successes, conflicts)
-	}
+	require.Equal(t, 1, successes, "successes")
+	require.Equal(t, contenders-1, conflicts, "successes")
 }
 
 func testPersonalAccessTokenRejectsUnknownScope(t *testing.T, ss store.Store) {
@@ -572,14 +531,12 @@ func testPersonalAccessTokenRejectsUnknownScope(t *testing.T, ss store.Store) {
 	user, _ := saveLocalUser(t, ctx, ss)
 	token := newPersonalAccessToken(user.ID.String(), model.NewCredentialToken())
 	token.Scopes = []string{"future.permission"}
-	if _, err := createPersonalAccessTokenWithNotice(t, ctx, ss, token, 10); err == nil {
-		t.Fatal("Create() accepted an unknown action scope")
-	}
+	_, err := createPersonalAccessTokenWithNotice(t, ctx, ss, token, 10)
+	require.Error(t, err, "Create() accepted an unknown action scope")
 	token = newPersonalAccessToken(user.ID.String(), model.NewCredentialToken())
 	token.Scopes = []string{string(model.ActionRoleBindingManage)}
-	if _, err := createPersonalAccessTokenWithNotice(t, ctx, ss, token, 10); err == nil {
-		t.Fatal("Create() accepted an interactive-only action scope")
-	}
+	_, err = createPersonalAccessTokenWithNotice(t, ctx, ss, token, 10)
+	require.Error(t, err, "Create() accepted an interactive-only action scope")
 }
 
 func newPersonalAccessToken(

@@ -10,9 +10,11 @@ package storetest
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -56,7 +58,7 @@ func saveAcademicUnitAuditAttempt(
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID,
 		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return attempt
 }
 
@@ -71,24 +73,19 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	updated, err := ss.AcademicUnit().Update(ctx, &store.AcademicUnitUpdate{
 		Unit: &candidate, AuditEventID: attempt.ID, AuditAt: model.GetMillis(),
 	})
-	requireNoError(t, err)
-	if updated.DisplayName != "Audited Update" {
-		t.Fatalf("Update() = %#v", updated)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "Audited Update", updated.DisplayName)
 	completed, err := ss.Audit().Get(ctx, attempt.ID)
-	requireNoError(t, err)
-	if completed.Status != model.AuditStatusSuccess {
-		t.Fatalf("update audit status = %q, want success", completed.Status)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.AuditStatusSuccess, completed.Status, "update audit status")
 	staleAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, unit.ID.String())
 	stale := *unit
 	stale.DisplayName = "Stale Update"
 	stale.PrepareUpdate(model.NowUTC())
-	if _, err = ss.AcademicUnit().Update(ctx, &store.AcademicUnitUpdate{
+	_, err = ss.AcademicUnit().Update(ctx, &store.AcademicUnitUpdate{
 		Unit: &stale, AuditEventID: staleAttempt.ID, AuditAt: model.GetMillis(),
-	}); !store.IsConflict(err) {
-		t.Fatalf("stale Update() error = %v, want conflict", err)
-	}
+	})
+	require.True(t, store.IsConflict(err), "stale Update() error")
 
 	rolledBack := *updated
 	rolledBack.DisplayName = "Must Roll Back"
@@ -96,14 +93,10 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	_, err = ss.AcademicUnit().Update(ctx, &store.AcademicUnitUpdate{
 		Unit: &rolledBack, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
 	})
-	if err == nil {
-		t.Fatal("Update() succeeded without its audit attempt")
-	}
+	require.Error(t, err, "Update() succeeded without its audit attempt")
 	persisted, getErr := ss.AcademicUnit().Get(ctx, unit.ID)
-	requireNoError(t, getErr)
-	if persisted.DisplayName != updated.DisplayName {
-		t.Fatalf("update survived audit rollback: %#v", persisted)
-	}
+	require.NoError(t, getErr)
+	require.Equal(t, updated.DisplayName, persisted.DisplayName)
 
 	archiveUnit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "audited-archive")
 	archiveAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, archiveUnit.ID.String())
@@ -111,27 +104,20 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 		ID: archiveUnit.ID, ArchiveAt: model.GetMillis(),
 		AuditEventID: archiveAttempt.ID, AuditAt: model.GetMillis(),
 	})
-	requireNoError(t, err)
-	if archived.ArchivedAt.Millis() == 0 {
-		t.Fatalf("Archive() = %#v", archived)
-	}
+	require.NoError(t, err)
+	require.NotEqual(t, int64(0), archived.ArchivedAt.Millis())
 	completed, err = ss.Audit().Get(ctx, archiveAttempt.ID)
-	requireNoError(t, err)
-	if completed.Status != model.AuditStatusSuccess {
-		t.Fatalf("archive audit status = %q, want success", completed.Status)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.AuditStatusSuccess, completed.Status, "archive audit status")
 
 	rollbackArchive := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "rollback-archive")
 	_, err = ss.AcademicUnit().Archive(ctx, &store.AcademicUnitArchive{
 		ID: rollbackArchive.ID, ArchiveAt: model.GetMillis(),
 		AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
 	})
-	if err == nil {
-		t.Fatal("Archive() succeeded without its audit attempt")
-	}
-	if _, getErr = ss.AcademicUnit().Get(ctx, rollbackArchive.ID); getErr != nil {
-		t.Fatalf("archive survived audit rollback: %v", getErr)
-	}
+	require.Error(t, err, "Archive() succeeded without its audit attempt")
+	_, getErr = ss.AcademicUnit().Get(ctx, rollbackArchive.ID)
+	require.NoError(t, getErr)
 }
 
 func testAcademicUnitStoreCreateWithAudit(t *testing.T, ss store.Store) {
@@ -143,7 +129,7 @@ func testAcademicUnitStoreCreateWithAudit(t *testing.T, ss store.Store) {
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	unit := &model.AcademicUnit{
 		InstitutionID: institution.ID, Name: "audited-engineering",
 		DisplayName: "Audited Engineering",
@@ -154,19 +140,13 @@ func testAcademicUnitStoreCreateWithAudit(t *testing.T, ss store.Store) {
 		AuditEventID: attempt.ID,
 		AuditAt:      model.GetMillis(),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	completed, err := ss.Audit().Get(ctx, attempt.ID)
-	requireNoError(t, err)
-	if completed.Status != model.AuditStatusSuccess {
-		t.Fatalf("audit status = %q, want success", completed.Status)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.AuditStatusSuccess, completed.Status, "audit status")
 	var result map[string]any
-	if err := json.Unmarshal(completed.Result, &result); err != nil {
-		t.Fatal(err)
-	}
-	if result["id"] != saved.ID.String() {
-		t.Fatalf("audit result = %#v, want unit ID %q", result, saved.ID.String())
-	}
+	require.NoError(t, json.Unmarshal(completed.Result, &result))
+	require.Equal(t, saved.ID.String(), result["id"], "audit result = %#v, want unit ID", result)
 
 	rolledBack := &model.AcademicUnit{
 		InstitutionID: institution.ID, Name: "rolled-back-unit",
@@ -178,14 +158,10 @@ func testAcademicUnitStoreCreateWithAudit(t *testing.T, ss store.Store) {
 		AuditEventID: model.NewAuditEventID(),
 		AuditAt:      model.GetMillis(),
 	})
-	if err == nil {
-		t.Fatal("Create() succeeded without its audit attempt")
-	}
+	require.Error(t, err, "Create() succeeded without its audit attempt")
 	found, searchErr := ss.AcademicUnit().Search(ctx, institution.ID, "rolled-back-unit", 10)
-	requireNoError(t, searchErr)
-	if len(found) != 0 {
-		t.Fatalf("unit survived audit rollback: %#v", found)
-	}
+	require.NoError(t, searchErr)
+	require.Empty(t, found)
 }
 
 func testAcademicUnitStoreSearchAndArchive(t *testing.T, ss store.Store) {
@@ -195,39 +171,30 @@ func testAcademicUnitStoreSearchAndArchive(t *testing.T, ss store.Store) {
 	child := saveAcademicUnit(t, ctx, ss, institution.ID.String(), parent.ID.String(), "distinct-computing")
 	child.DisplayName = "Literal 50%_! Computing"
 	child, err := UpdateAcademicUnit(ctx, ss, child)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	found, err := ss.AcademicUnit().Search(ctx, institution.ID, "distinct-comput", 10)
-	requireNoError(t, err)
-	if len(found) != 1 || found[0].ID != child.ID {
-		t.Fatalf("Search() = %#v", found)
-	}
+	require.NoError(t, err)
+	require.Len(t, found, 1)
+	require.Equal(t, child.ID, found[0].ID)
 	for _, query := range []string{"LITERAL 50%_!", "%", "_", "!"} {
 		found, err = ss.AcademicUnit().Search(ctx, institution.ID, query, 10)
-		requireNoError(t, err)
-		if len(found) != 1 || found[0].ID != child.ID {
-			t.Fatalf("Search(%q) = %#v, want only %s", query, found, child.ID)
-		}
+		require.NoError(t, err)
+		require.Len(t, found, 1, "Search(%q)", query)
+		require.Equal(t, child.ID, found[0].ID, "Search(%q)", query)
 	}
 	exact, err := ss.AcademicUnit().GetByName(ctx, institution.ID, child.Name)
-	requireNoError(t, err)
-	if exact.ID != child.ID {
-		t.Fatalf("GetByName() = %#v", exact)
-	}
+	require.NoError(t, err)
+	require.Equal(t, child.ID, exact.ID)
 	otherInstitution := saveInstitution(t, ctx, ss)
-	if _, err = ss.AcademicUnit().GetByName(ctx, otherInstitution.ID, child.Name); !store.IsNotFound(err) {
-		t.Fatalf("cross-Institution GetByName() error = %v", err)
-	}
-	if _, err = ArchiveAcademicUnit(ctx, ss, parent.ID, model.GetMillis()); !store.IsConflict(err) {
-		t.Fatalf("Archive(parent with child) error = %v", err)
-	}
+	_, err = ss.AcademicUnit().GetByName(ctx, otherInstitution.ID, child.Name)
+	require.True(t, store.IsNotFound(err), "cross-Institution GetByName() error")
+	_, err = ArchiveAcademicUnit(ctx, ss, parent.ID, model.GetMillis())
+	require.True(t, store.IsConflict(err), "Archive(parent with child) error")
 	archived, err := ArchiveAcademicUnit(ctx, ss, child.ID, model.GetMillis())
-	requireNoError(t, err)
-	if archived.ArchivedAt.Millis() == 0 {
-		t.Fatalf("Archive(child) = %#v", archived)
-	}
-	if _, err = ss.AcademicUnit().Get(ctx, child.ID); !store.IsNotFound(err) {
-		t.Fatalf("Get(archived) error = %v", err)
-	}
+	require.NoError(t, err)
+	require.NotEqual(t, int64(0), archived.ArchivedAt.Millis())
+	_, err = ss.AcademicUnit().Get(ctx, child.ID)
+	require.True(t, store.IsNotFound(err), "Get(archived) error")
 }
 
 func testAcademicUnitStoreListAncestors(t *testing.T, ss store.Store) {
@@ -238,16 +205,13 @@ func testAcademicUnitStoreListAncestors(t *testing.T, ss store.Store) {
 	leaf := saveAcademicUnit(t, ctx, ss, institution.ID.String(), child.ID.String(), "software")
 
 	ancestors, err := ss.AcademicUnit().ListAncestors(ctx, leaf.ID)
-	requireNoError(t, err)
-	if len(ancestors) != 3 ||
-		ancestors[0].ID != leaf.ID ||
-		ancestors[1].ID != child.ID ||
-		ancestors[2].ID != root.ID {
-		t.Fatalf("ListAncestors() = %#v", ancestors)
-	}
-	if _, err := ss.AcademicUnit().ListAncestors(ctx, model.NewAcademicUnitID()); !store.IsNotFound(err) {
-		t.Fatalf("ListAncestors(missing) error = %v", err)
-	}
+	require.NoError(t, err)
+	require.Len(t, ancestors, 3)
+	require.Equal(t, leaf.ID, ancestors[0].ID)
+	require.Equal(t, child.ID, ancestors[1].ID)
+	require.Equal(t, root.ID, ancestors[2].ID)
+	_, err = ss.AcademicUnit().ListAncestors(ctx, model.NewAcademicUnitID())
+	require.True(t, store.IsNotFound(err), "ListAncestors(missing) error")
 }
 
 func testAcademicUnitStoreSave(t *testing.T, ss store.Store) {
@@ -256,15 +220,12 @@ func testAcademicUnitStoreSave(t *testing.T, ss store.Store) {
 	root := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "engineering")
 	child := saveAcademicUnit(t, ctx, ss, institution.ID.String(), root.ID.String(), "computing")
 
-	if !root.ID.IsValid() || child.ParentID != root.ID {
-		t.Fatalf("saved units = root %#v, child %#v", root, child)
-	}
+	require.True(t, root.ID.IsValid(), "saved units = root %#v, child %#v", root, child)
+	require.Equal(t, root.ID, child.ParentID, "saved units = root %#v, child %#v", root, child)
 
 	_, err := SaveAcademicUnit(ctx, ss, child)
 	var invalid *store.ErrInvalidInput
-	if !errors.As(err, &invalid) {
-		t.Fatalf("second Save(child) error = %v, want invalid input", err)
-	}
+	require.ErrorAs(t, err, &invalid, "second Save(child) error")
 }
 
 func testAcademicUnitStoreGet(t *testing.T, ss store.Store) {
@@ -273,13 +234,10 @@ func testAcademicUnitStoreGet(t *testing.T, ss store.Store) {
 	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "engineering")
 
 	got, err := ss.AcademicUnit().Get(ctx, unit.ID)
-	requireNoError(t, err)
-	if *got != *unit {
-		t.Fatalf("Get() = %#v, want %#v", got, unit)
-	}
-	if _, err := ss.AcademicUnit().Get(ctx, model.NewAcademicUnitID()); !store.IsNotFound(err) {
-		t.Fatalf("Get(missing) error = %v, want not found", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, *unit, *got, "Get() = %#v, want %#v", got, unit)
+	_, err = ss.AcademicUnit().Get(ctx, model.NewAcademicUnitID())
+	require.True(t, store.IsNotFound(err), "Get(missing) error")
 }
 
 func testAcademicUnitStoreListChildren(t *testing.T, ss store.Store) {
@@ -291,15 +249,15 @@ func testAcademicUnitStoreListChildren(t *testing.T, ss store.Store) {
 	childA := saveAcademicUnit(t, ctx, ss, institution.ID.String(), rootA.ID.String(), "computing")
 
 	roots, err := ss.AcademicUnit().ListChildren(ctx, institution.ID, "")
-	requireNoError(t, err)
-	if len(roots) != 2 || roots[0].ID != rootA.ID || roots[1].ID != rootB.ID {
-		t.Fatalf("ListChildren(root) = %#v", roots)
-	}
+	require.NoError(t, err)
+	require.Len(t, roots, 2)
+	require.Equal(t, rootA.ID, roots[0].ID)
+	require.Equal(t, rootB.ID, roots[1].ID)
 	children, err := ss.AcademicUnit().ListChildren(ctx, institution.ID, rootA.ID)
-	requireNoError(t, err)
-	if len(children) != 2 || children[0].ID != childA.ID || children[1].ID != childB.ID {
-		t.Fatalf("ListChildren(%s) = %#v", rootA.ID.String(), children)
-	}
+	require.NoError(t, err)
+	require.Len(t, children, 2, "ListChildren(%s)", rootA.ID.String())
+	require.Equal(t, childA.ID, children[0].ID, "ListChildren(%s)", rootA.ID.String())
+	require.Equal(t, childB.ID, children[1].ID, "ListChildren(%s)", rootA.ID.String())
 }
 
 func testAcademicUnitStoreUpdate(t *testing.T, ss store.Store) {
@@ -312,28 +270,22 @@ func testAcademicUnitStoreUpdate(t *testing.T, ss store.Store) {
 	child.ParentID = secondRoot.ID
 	child.DisplayName = "Applied Computing"
 	updated, err := UpdateAcademicUnit(ctx, ss, child)
-	requireNoError(t, err)
-	if updated.ParentID != secondRoot.ID || updated.DisplayName != "Applied Computing" {
-		t.Fatalf("Update() = %#v", updated)
-	}
+	require.NoError(t, err)
+	require.Equal(t, secondRoot.ID, updated.ParentID)
+	require.Equal(t, "Applied Computing", updated.DisplayName)
 	ancestors, err := ss.AcademicUnit().ListAncestors(ctx, updated.ID)
-	requireNoError(t, err)
-	if len(ancestors) != 2 || ancestors[0].ID != updated.ID ||
-		ancestors[1].ID != secondRoot.ID {
-		t.Fatalf("ancestors after reparent = %#v", ancestors)
-	}
+	require.NoError(t, err)
+	require.Len(t, ancestors, 2)
+	require.Equal(t, updated.ID, ancestors[0].ID)
+	require.Equal(t, secondRoot.ID, ancestors[1].ID)
 	for _, ancestor := range ancestors {
-		if ancestor.ID == firstRoot.ID {
-			t.Fatalf("old parent remains after reparent: %#v", ancestors)
-		}
+		require.NotEqual(t, firstRoot.ID, ancestor.ID, "old parent remains after reparent: %#v", ancestors)
 	}
 
 	missing := *updated
 	missing.ID = model.AcademicUnitID(model.NewID())
 	_, err = UpdateAcademicUnit(ctx, ss, &missing)
-	if !store.IsNotFound(err) {
-		t.Fatalf("Update(missing) error = %v, want not found", err)
-	}
+	require.True(t, store.IsNotFound(err), "Update(missing) error")
 }
 
 func testAcademicUnitStoreRejectCycle(t *testing.T, ss store.Store) {
@@ -346,9 +298,8 @@ func testAcademicUnitStoreRejectCycle(t *testing.T, ss store.Store) {
 	root.ParentID = grandchild.ID
 	_, err := UpdateAcademicUnit(ctx, ss, root)
 	var conflict *store.ErrConflict
-	if !errors.As(err, &conflict) || conflict.Constraint != "academic_units_acyclic" {
-		t.Fatalf("cycle Update() error = %v, want hierarchy conflict", err)
-	}
+	require.ErrorAs(t, err, &conflict, "cycle Update() error")
+	require.Equal(t, "academic_units_acyclic", conflict.Constraint, "cycle Update() error")
 }
 
 func testAcademicUnitStoreRejectConcurrentCycle(t *testing.T, ss store.Store) {
@@ -383,31 +334,28 @@ func testAcademicUnitStoreRejectConcurrentCycle(t *testing.T, ss store.Store) {
 		case store.IsConflict(err):
 			conflicts++
 		default:
-			t.Fatalf("concurrent Update() error = %v", err)
+			require.FailNow(t, fmt.Sprintf("concurrent Update() error = %v", err))
 		}
 	}
-	if successes != 1 || conflicts != 1 {
-		t.Fatalf("concurrent updates: successes=%d conflicts=%d", successes, conflicts)
-	}
-	if _, err := ss.AcademicUnit().ListAncestors(ctx, first.ID); err != nil {
-		t.Fatalf("first hierarchy after concurrent updates: %v", err)
-	}
-	if _, err := ss.AcademicUnit().ListAncestors(ctx, second.ID); err != nil {
-		t.Fatalf("second hierarchy after concurrent updates: %v", err)
-	}
+	require.Equal(t, 1, successes, "concurrent updates: successes")
+	require.Equal(t, 1, conflicts, "concurrent updates: successes")
+	_, err := ss.AcademicUnit().ListAncestors(ctx, first.ID)
+	require.NoError(t, err)
+	_, err = ss.AcademicUnit().ListAncestors(ctx, second.ID)
+	require.NoError(t, err)
 }
 
 func testAcademicUnitStoreRejectCrossInstitutionParent(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	first := saveInstitution(t, ctx, ss)
 	parent := saveAcademicUnit(t, ctx, ss, first.ID.String(), "", "engineering")
-	requireNoError(t, ss.Institution().Archive(ctx, first.ID, model.GetMillis()))
+	require.NoError(t, ss.Institution().Archive(ctx, first.ID, model.GetMillis()))
 
 	second, err := ss.Institution().Save(ctx, &model.Institution{
 		Name:        "second-" + model.NewID(),
 		DisplayName: "Second University",
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	_, err = SaveAcademicUnit(ctx, ss, &model.AcademicUnit{
 		InstitutionID: second.ID,
@@ -416,10 +364,8 @@ func testAcademicUnitStoreRejectCrossInstitutionParent(t *testing.T, ss store.St
 		DisplayName:   "Computing",
 	})
 	var reference *store.ErrReference
-	if !errors.As(err, &reference) ||
-		reference.Constraint != "academic_units_parent_same_institution" {
-		t.Fatalf("cross-institution parent error = %v, want reference error", err)
-	}
+	require.ErrorAs(t, err, &reference, "cross-institution parent error")
+	require.Equal(t, "academic_units_parent_same_institution", reference.Constraint, "cross-institution parent error")
 }
 
 func testAcademicUnitStoreEnforceInstitutionNameUniqueness(t *testing.T, ss store.Store) {
@@ -435,18 +381,14 @@ func testAcademicUnitStoreEnforceInstitutionNameUniqueness(t *testing.T, ss stor
 		DisplayName:   "Duplicate Computing",
 	})
 	var conflict *store.ErrConflict
-	if !errors.As(err, &conflict) {
-		t.Fatalf("duplicate sibling name error = %v, want conflict", err)
-	}
+	require.ErrorAs(t, err, &conflict, "duplicate sibling name error")
 
 	_, err = SaveAcademicUnit(ctx, ss, &model.AcademicUnit{
 		InstitutionID: institution.ID,
 		Name:          "computing",
 		DisplayName:   "Root Computing",
 	})
-	if !errors.As(err, &conflict) {
-		t.Fatalf("duplicate name under another parent error = %v, want conflict", err)
-	}
+	require.ErrorAs(t, err, &conflict, "duplicate name under another parent error")
 }
 
 func saveAcademicUnit(
@@ -464,6 +406,6 @@ func saveAcademicUnit(
 		Name:          name,
 		DisplayName:   name,
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return unit
 }

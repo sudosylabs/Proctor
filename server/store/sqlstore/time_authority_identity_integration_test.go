@@ -13,6 +13,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store/storetest"
 )
@@ -24,12 +26,10 @@ func timeAuthorityIdentityProbe(persistence *SQLStore) storetest.TimeAuthorityId
 	lead := func(t *testing.T, ctx context.Context, query, id string) {
 		t.Helper()
 		result, err := persistence.GetMaster().Exec(ctx, query, id)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if affected, affectedErr := result.RowsAffected(); affectedErr != nil || affected != 1 {
-			t.Fatalf("lead database clock: affected=%d err=%v", affected, affectedErr)
-		}
+		require.NoError(t, err)
+		affected, affectedErr := result.RowsAffected()
+		require.NoError(t, affectedErr, "lead database clock: affected")
+		require.Equal(t, int64(1), affected, "lead database clock: affected")
 	}
 	return storetest.TimeAuthorityIdentitySQLProbe{
 		LeadInvitation: func(t *testing.T, ctx context.Context, id model.InvitationID) {

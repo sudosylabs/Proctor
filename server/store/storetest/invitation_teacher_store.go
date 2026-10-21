@@ -10,11 +10,12 @@ package storetest
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -54,50 +55,46 @@ func testTeacherAcademicUnitInvitationIntervalCoverage(t *testing.T, ss store.St
 	inviter := saveUser(t, ctx, ss)
 	packageRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-coverage-package-" + model.NewID(), DisplayName: "Teacher Coverage Package",
 		Permissions: []string{string(model.ActionAcademicUnitView)}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-coverage-authority-" + model.NewID(), DisplayName: "Teacher Coverage Authority",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionAcademicUnitMembersManage), string(model.ActionAcademicUnitView)}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	issuedAt := model.NowUTC().Add(-time.Minute)
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: inviter.ID, RoleID: authorityRole.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: unit.InstitutionID.String(), StartsAt: issuedAt.Add(-time.Second)})
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	firstIssue := teacherAcademicUnitInvitationIssueFixture(t, ss, inviter, unit, packageRole, issuedAt)
 	firstIssue.Invitation.TargetEmail = "teacher-coverage@example.edu"
 	firstIssue.Invitation.Suggestions.Username = "teacher-coverage-" + model.NewID()
 	firstIssue.Invitation.IntendedEndsAt = model.OptionalTimeFrom(issuedAt.Add(4 * time.Hour))
 	first, err := ss.Invitation().IssueTeacherAcademicUnit(ctx, firstIssue)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	firstAccepted, err := ss.Invitation().AcceptTeacherAcademicUnit(ctx, teacherAcademicUnitInvitationAcceptanceFixture(t, first, issuedAt.Add(time.Minute)))
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	coveredIssue := teacherAcademicUnitInvitationIssueFixture(t, ss, inviter, unit, packageRole, issuedAt.Add(time.Second))
 	coveredIssue.Invitation.TargetEmail = first.TargetEmail
 	coveredIssue.Invitation.IntendedEndsAt = model.OptionalTimeFrom(issuedAt.Add(3 * time.Hour))
 	covered, err := ss.Invitation().IssueTeacherAcademicUnit(ctx, coveredIssue)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	coveredAccepted, err := ss.Invitation().AcceptTeacherAcademicUnit(ctx, teacherAcademicUnitInvitationAcceptanceFixture(t, covered, issuedAt.Add(2*time.Minute)))
-	requireNoError(t, err)
-	if coveredAccepted.AcademicUnitMember.ID != firstAccepted.AcademicUnitMember.ID || coveredAccepted.RoleBinding.ID != firstAccepted.RoleBinding.ID {
-		t.Fatalf("bounded compatible package did not reuse covering relationships: %#v / %#v", firstAccepted, coveredAccepted)
-	}
+	require.NoError(t, err)
+	require.Equal(t, firstAccepted.AcademicUnitMember.ID, coveredAccepted.AcademicUnitMember.ID, "bounded compatible package did not reuse covering relationships: %#v / %#v", firstAccepted, coveredAccepted)
+	require.Equal(t, firstAccepted.RoleBinding.ID, coveredAccepted.RoleBinding.ID, "bounded compatible package did not reuse covering relationships: %#v / %#v", firstAccepted, coveredAccepted)
 
 	unboundedRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-unbounded-package-" + model.NewID(), DisplayName: "Unbounded Teacher Package",
 		Permissions: []string{string(model.ActionAcademicUnitView)}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	unboundedIssue := teacherAcademicUnitInvitationIssueFixture(t, ss, inviter, unit, unboundedRole, issuedAt.Add(2*time.Second))
 	unboundedIssue.Invitation.TargetEmail = first.TargetEmail
 	unbounded, err := ss.Invitation().IssueTeacherAcademicUnit(ctx, unboundedIssue)
-	requireNoError(t, err)
-	if _, err = ss.Invitation().AcceptTeacherAcademicUnit(ctx, teacherAcademicUnitInvitationAcceptanceFixture(t, unbounded, issuedAt.Add(3*time.Minute))); !store.IsConflict(err) {
-		t.Fatalf("unbounded package reused finite membership: %v", err)
-	}
+	require.NoError(t, err)
+	_, err = ss.Invitation().AcceptTeacherAcademicUnit(ctx, teacherAcademicUnitInvitationAcceptanceFixture(t, unbounded, issuedAt.Add(3*time.Minute)))
+	require.True(t, store.IsConflict(err), "unbounded package reused finite membership")
 	persisted, err := ss.Invitation().Get(ctx, unbounded.ID)
-	requireNoError(t, err)
-	if persisted.State != model.InvitationPending {
-		t.Fatalf("under-covered package was consumed: %#v", persisted)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.InvitationPending, persisted.State)
 }
 
 func teacherInvitationMailFixture(t *testing.T, ss store.Store, suffix string) (context.Context, *model.AcademicUnit, *model.Role, *store.TeacherAcademicUnitInvitationIssue) {
@@ -108,18 +105,18 @@ func teacherInvitationMailFixture(t *testing.T, ss store.Store, suffix string) (
 	inviter := saveUser(t, ctx, ss)
 	packageRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-mail-package-" + model.NewID(), DisplayName: "Teacher Mail Package",
 		Permissions: []string{string(model.ActionAcademicUnitView)}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-mail-authority-" + model.NewID(), DisplayName: "Teacher Mail Authority",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionAcademicUnitMembersManage), string(model.ActionAcademicUnitView)}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	issuedAt := model.NowUTC().Add(-time.Minute)
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: inviter.ID, RoleID: authorityRole.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: unit.InstitutionID.String(), StartsAt: issuedAt.Add(-time.Second)})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	issue := teacherAcademicUnitInvitationIssueFixture(t, ss, inviter, unit, packageRole, issuedAt)
 	issue.Invitation.TargetEmail = "teacher-mail-" + suffix + "@example.edu"
 	_, err = ss.Invitation().IssueTeacherAcademicUnit(ctx, issue)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return ctx, unit, packageRole, issue
 }
 
@@ -130,7 +127,7 @@ func testTeacherInvitationMailSerializesWithUnitArchive(t *testing.T, ss store.S
 		_, startErr := ss.Mail().StartDelivery(ctx, issue.Delivery.ID, issue.Delivery.Revision, model.NowUTC())
 		return startErr
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	assertObsoleteTeacherInvitationDelivery(t, ctx, ss, issue.Delivery.ID)
 }
 
@@ -141,17 +138,17 @@ func testTeacherInvitationMailSerializesWithRoleMutation(t *testing.T, ss store.
 		_, startErr := ss.Mail().StartDelivery(ctx, issue.Delivery.ID, issue.Delivery.Revision, model.NowUTC())
 		return startErr
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	assertObsoleteTeacherInvitationDelivery(t, ctx, ss, issue.Delivery.ID)
 }
 
 func assertObsoleteTeacherInvitationDelivery(t *testing.T, ctx context.Context, ss store.Store, id model.MailDeliveryID) {
 	t.Helper()
 	delivery, err := ss.Mail().GetDelivery(ctx, id)
-	requireNoError(t, err)
-	if delivery.State != model.MailDeliverySuppressed || delivery.PublicFailureCode != model.MailDeliveryObsoleteCode || len(delivery.EncryptedPayload) != 0 {
-		t.Fatalf("stale teacher Invitation credential delivery = %#v", delivery)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.MailDeliverySuppressed, delivery.State)
+	require.Equal(t, model.MailDeliveryObsoleteCode, delivery.PublicFailureCode)
+	require.Empty(t, delivery.EncryptedPayload)
 }
 
 func testTeacherInvitationSerializesWithUnitArchive(t *testing.T, ss store.Store, archive func(*testing.T, context.Context, *model.AcademicUnit, func() error) error) {
@@ -162,31 +159,27 @@ func testTeacherInvitationSerializesWithUnitArchive(t *testing.T, ss store.Store
 	inviter := saveUser(t, ctx, ss)
 	packageRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-unit-race-package-" + model.NewID(), DisplayName: "Teacher Package",
 		Permissions: []string{string(model.ActionAcademicUnitView)}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-unit-race-authority-" + model.NewID(), DisplayName: "Teacher Inviter",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionAcademicUnitMembersManage), string(model.ActionAcademicUnitView)}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	issuedAt := model.NowUTC().Add(-time.Minute)
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: inviter.ID, RoleID: authorityRole.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: unit.InstitutionID.String(), StartsAt: issuedAt.Add(-time.Second)})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	issue := teacherAcademicUnitInvitationIssueFixture(t, ss, inviter, unit, packageRole, issuedAt)
 	issue.Invitation.TargetEmail = "teacher-unit-race@example.edu"
 	invitation, err := ss.Invitation().IssueTeacherAcademicUnit(ctx, issue)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	acceptance := teacherAcademicUnitInvitationAcceptanceFixture(t, invitation, issuedAt.Add(30*time.Second))
 	err = archive(t, ctx, unit, func() error {
 		_, acceptErr := ss.Invitation().AcceptTeacherAcademicUnit(ctx, acceptance)
 		return acceptErr
 	})
-	if err == nil {
-		t.Fatal("AcceptTeacherAcademicUnit() succeeded after concurrent Academic Unit archival")
-	}
+	require.Error(t, err, "AcceptTeacherAcademicUnit() succeeded after concurrent Academic Unit archival")
 	persisted, getErr := ss.Invitation().Get(ctx, invitation.ID)
-	requireNoError(t, getErr)
-	if persisted.State != model.InvitationPending {
-		t.Fatalf("failed teacher acceptance consumed Invitation: %#v", persisted)
-	}
+	require.NoError(t, getErr)
+	require.Equal(t, model.InvitationPending, persisted.State)
 }
 
 func testTeacherAcademicUnitInvitationIssue(t *testing.T, ss store.Store) {
@@ -196,64 +189,59 @@ func testTeacherAcademicUnitInvitationIssue(t *testing.T, ss store.Store) {
 	inviter := saveUser(t, ctx, ss)
 	packageRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-package-" + model.NewID(), DisplayName: "Teacher Package",
 		Permissions: []string{string(model.ActionAcademicUnitView), string(model.ActionProgrammeManage)}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-inviter-" + model.NewID(), DisplayName: "Teacher Inviter",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionAcademicUnitMembersManage),
 			string(model.ActionAcademicUnitView), string(model.ActionProgrammeManage)}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	issuedAt := model.NowUTC().Add(-time.Minute)
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: inviter.ID, RoleID: authorityRole.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: unit.InstitutionID.String(), StartsAt: issuedAt.Add(-time.Second)})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	input := teacherAcademicUnitInvitationIssueFixture(t, ss, inviter, unit, packageRole, issuedAt)
 	created, err := ss.Invitation().IssueTeacherAcademicUnit(ctx, input)
-	requireNoError(t, err)
-	if created.ID != input.Invitation.ID || created.Purpose != model.InvitationPurposeTeacherAcademicUnit ||
-		created.AcademicUnitID != unit.ID || created.RoleID != packageRole.ID ||
-		!slices.Equal(created.RoleActions, []string{string(model.ActionAcademicUnitView), string(model.ActionProgrammeManage)}) {
-		t.Fatalf("IssueTeacherAcademicUnit() = %#v", created)
-	}
+	require.NoError(t, err)
+	require.Equal(t, input.Invitation.ID, created.ID)
+	require.Equal(t, model.InvitationPurposeTeacherAcademicUnit, created.Purpose)
+	require.Equal(t, unit.ID, created.AcademicUnitID)
+	require.Equal(t, packageRole.ID, created.RoleID)
+	require.True(t, slices.Equal(created.RoleActions, []string{string(model.ActionAcademicUnitView), string(model.ActionProgrammeManage)}))
 	stored, err := ss.Invitation().Get(ctx, created.ID)
-	requireNoError(t, err)
-	if stored.AcademicUnitID != unit.ID || stored.RoleID != packageRole.ID || !slices.Equal(stored.RoleActions, created.RoleActions) {
-		t.Fatalf("stored teacher Invitation = %#v", stored)
-	}
+	require.NoError(t, err)
+	require.Equal(t, unit.ID, stored.AcademicUnitID)
+	require.Equal(t, packageRole.ID, stored.RoleID)
+	require.True(t, slices.Equal(stored.RoleActions, created.RoleActions))
 	delivery, err := ss.Mail().GetDelivery(ctx, input.Delivery.ID)
-	requireNoError(t, err)
-	if delivery.TemplateKey != model.MailTemplateAccessTeacherAcademicUnitInvitation || delivery.TargetInvitationID != created.ID {
-		t.Fatalf("teacher Invitation delivery = %#v", delivery)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.MailTemplateAccessTeacherAcademicUnitInvitation, delivery.TemplateKey)
+	require.Equal(t, created.ID, delivery.TargetInvitationID)
 
 	rollback := teacherAcademicUnitInvitationIssueFixture(t, ss, inviter, unit, packageRole, issuedAt.Add(time.Second))
 	rollback.Invitation.TargetEmail = "rollback-teacher@example.edu"
 	rollback.AuditEventID = model.NewAuditEventID()
-	if _, err = ss.Invitation().IssueTeacherAcademicUnit(ctx, rollback); err == nil {
-		t.Fatal("IssueTeacherAcademicUnit() succeeded without durable audit attempt")
-	}
-	if _, err = ss.Invitation().Get(ctx, rollback.Invitation.ID); !store.IsNotFound(err) {
-		t.Fatalf("rolled-back teacher Invitation = %v", err)
-	}
+	_, err = ss.Invitation().IssueTeacherAcademicUnit(ctx, rollback)
+	require.Error(t, err, "IssueTeacherAcademicUnit() succeeded without durable audit attempt")
+	_, err = ss.Invitation().Get(ctx, rollback.Invitation.ID)
+	require.True(t, store.IsNotFound(err), "rolled-back teacher Invitation")
 	protectedRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-protected-" + model.NewID(), DisplayName: "Protected Package",
 		Permissions: []string{string(model.ActionRoleManage)}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	directAuthority, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-direct-protected-" + model.NewID(), DisplayName: "Direct Protected Authority",
 		Permissions: []string{string(model.ActionRoleManage)}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: inviter.ID, RoleID: directAuthority.ID,
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: issuedAt.Add(-time.Second)})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	protected := teacherAcademicUnitInvitationIssueFixture(t, ss, inviter, unit, protectedRole, issuedAt.Add(2*time.Second))
 	protected.Invitation.TargetEmail = "protected-teacher@example.edu"
-	if _, err = ss.Invitation().IssueTeacherAcademicUnit(ctx, protected); err == nil {
-		t.Fatal("IssueTeacherAcademicUnit() delegated a protected action at the same Academic Unit scope")
-	}
+	_, err = ss.Invitation().IssueTeacherAcademicUnit(ctx, protected)
+	require.Error(t, err, "IssueTeacherAcademicUnit() delegated a protected action at the same Academic Unit scope")
 	unboundedLifetime := teacherAcademicUnitInvitationIssueFixture(t, ss, inviter, unit, packageRole, issuedAt.Add(3*time.Second))
 	unboundedLifetime.Invitation.TargetEmail = "teacher-unbounded-lifetime@example.edu"
 	unboundedLifetime.Lifetime = model.InvitationLifetime + time.Hour
 	var invalidInput *store.ErrInvalidInput
-	if _, err = ss.Invitation().IssueTeacherAcademicUnit(ctx, unboundedLifetime); !errors.As(err, &invalidInput) {
-		t.Fatalf("IssueTeacherAcademicUnit() unbounded lifetime error = %v", err)
-	}
+	_, err = ss.Invitation().IssueTeacherAcademicUnit(ctx, unboundedLifetime)
+	require.ErrorAs(t, err, &invalidInput)
 
 	for _, skew := range []time.Duration{-2 * time.Hour, 2 * time.Hour} {
 		skewedAt := model.NowUTC().Add(skew)
@@ -262,16 +250,14 @@ func testTeacherAcademicUnitInvitationIssue(t *testing.T, ss store.Store) {
 		before := model.NowUTC()
 		persisted, issueErr := ss.Invitation().IssueTeacherAcademicUnit(ctx, skewed)
 		after := model.NowUTC()
-		requireNoError(t, issueErr)
-		if persisted.CreatedAt.Before(before.Add(-time.Second)) || persisted.CreatedAt.After(after.Add(time.Second)) ||
-			persisted.ExpiresAt.Sub(persisted.CreatedAt) != model.InvitationLifetime {
-			t.Fatalf("skew %v teacher Invitation lifecycle = %v..%v; local window %v..%v", skew, persisted.CreatedAt, persisted.ExpiresAt, before, after)
-		}
+		require.NoError(t, issueErr)
+		require.False(t, persisted.CreatedAt.Before(before.Add(-time.Second)), "skew %v teacher Invitation lifecycle = %v..%v; local window %v..%v", skew, persisted.CreatedAt, persisted.ExpiresAt, before, after)
+		require.False(t, persisted.CreatedAt.After(after.Add(time.Second)), "skew %v teacher Invitation lifecycle = %v..%v; local window %v..%v", skew, persisted.CreatedAt, persisted.ExpiresAt, before, after)
+		require.Equal(t, model.InvitationLifetime, persisted.ExpiresAt.Sub(persisted.CreatedAt), "skew %v teacher Invitation lifecycle = %v..%v; local window %v..%v", skew, persisted.CreatedAt, persisted.ExpiresAt, before, after)
 		delivery, deliveryErr := ss.Mail().GetDelivery(ctx, skewed.Delivery.ID)
-		requireNoError(t, deliveryErr)
-		if !delivery.CreatedAt.Equal(persisted.CreatedAt) || !delivery.Deadline.Equal(persisted.ExpiresAt) {
-			t.Fatalf("skew %v delivery lifecycle = %v..%v; Invitation %v..%v", skew, delivery.CreatedAt, delivery.Deadline, persisted.CreatedAt, persisted.ExpiresAt)
-		}
+		require.NoError(t, deliveryErr)
+		require.True(t, delivery.CreatedAt.Equal(persisted.CreatedAt), "skew %v delivery lifecycle = %v..%v; Invitation", skew, delivery.CreatedAt, delivery.Deadline)
+		require.True(t, delivery.Deadline.Equal(persisted.ExpiresAt), "skew %v delivery lifecycle = %v..%v; Invitation", skew, delivery.CreatedAt, delivery.Deadline)
 	}
 }
 
@@ -282,86 +268,82 @@ func testTeacherAcademicUnitInvitationAcceptance(t *testing.T, ss store.Store) {
 	inviter := saveUser(t, ctx, ss)
 	packageRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-accept-package-" + model.NewID(), DisplayName: "Teacher Package",
 		Permissions: []string{string(model.ActionAcademicUnitView), string(model.ActionProgrammeManage)}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	authorityRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-accept-inviter-" + model.NewID(), DisplayName: "Teacher Inviter",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionAcademicUnitMembersManage),
 			string(model.ActionAcademicUnitView), string(model.ActionProgrammeManage)}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	issuedAt := model.NowUTC().Add(-time.Minute)
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: inviter.ID, RoleID: authorityRole.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: unit.InstitutionID.String(), StartsAt: issuedAt.Add(-time.Second)})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	issue := teacherAcademicUnitInvitationIssueFixture(t, ss, inviter, unit, packageRole, issuedAt)
 	invitation, err := ss.Invitation().IssueTeacherAcademicUnit(ctx, issue)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	startedCredential, err := ss.Mail().StartDelivery(ctx, issue.Delivery.ID, issue.Delivery.Revision, issuedAt.Add(20*time.Second))
-	requireNoError(t, err)
-	if startedCredential.State != model.MailDeliverySending {
-		t.Fatalf("active teacher Invitation credential = %#v", startedCredential)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.MailDeliverySending, startedCredential.State)
 	input := teacherAcademicUnitInvitationAcceptanceFixture(t, invitation, issuedAt.Add(30*time.Second))
 	accepted, err := ss.Invitation().AcceptTeacherAcademicUnit(ctx, input)
-	requireNoError(t, err)
-	if accepted.Invitation.State != model.InvitationAccepted || accepted.Affiliation.Kind != model.AffiliationTeacher ||
-		accepted.AcademicUnitMember.AcademicUnitID != unit.ID || accepted.RoleBinding.RoleID != packageRole.ID ||
-		accepted.RoleBinding.OriginInvitationID != invitation.ID {
-		t.Fatalf("AcceptTeacherAcademicUnit() = %#v", accepted)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.InvitationAccepted, accepted.Invitation.State)
+	require.Equal(t, model.AffiliationTeacher, accepted.Affiliation.Kind)
+	require.Equal(t, unit.ID, accepted.AcademicUnitMember.AcademicUnitID)
+	require.Equal(t, packageRole.ID, accepted.RoleBinding.RoleID)
+	require.Equal(t, invitation.ID, accepted.RoleBinding.OriginInvitationID)
 	suppressedCredential, err := ss.Mail().GetDelivery(ctx, issue.Delivery.ID)
-	requireNoError(t, err)
-	if suppressedCredential.State != model.MailDeliverySuppressed || len(suppressedCredential.EncryptedPayload) != 0 {
-		t.Fatalf("accepted teacher credential = %#v", suppressedCredential)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.MailDeliverySuppressed, suppressedCredential.State)
+	require.Empty(t, suppressedCredential.EncryptedPayload)
 	replayed, err := ss.Invitation().AcceptTeacherAcademicUnit(ctx, input)
-	requireNoError(t, err)
-	if !replayed.Replayed || replayed.User.ID != accepted.User.ID || replayed.Affiliation.ID != accepted.Affiliation.ID ||
-		replayed.AcademicUnitMember.ID != accepted.AcademicUnitMember.ID || replayed.RoleBinding.ID != accepted.RoleBinding.ID {
-		t.Fatalf("teacher Invitation replay = %#v; want original %#v", replayed, accepted)
-	}
+	require.NoError(t, err)
+	require.True(t, replayed.Replayed, "teacher Invitation replay = %#v; want original %#v", replayed, accepted)
+	require.Equal(t, accepted.User.ID, replayed.User.ID, "teacher Invitation replay = %#v; want original %#v", replayed, accepted)
+	require.Equal(t, accepted.Affiliation.ID, replayed.Affiliation.ID, "teacher Invitation replay = %#v; want original %#v", replayed, accepted)
+	require.Equal(t, accepted.AcademicUnitMember.ID, replayed.AcademicUnitMember.ID, "teacher Invitation replay = %#v; want original %#v", replayed, accepted)
+	require.Equal(t, accepted.RoleBinding.ID, replayed.RoleBinding.ID, "teacher Invitation replay = %#v; want original %#v", replayed, accepted)
 	secondRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-compatible-" + model.NewID(), DisplayName: "Compatible Teacher Package",
 		Permissions: []string{string(model.ActionAcademicUnitView)}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	secondIssue := teacherAcademicUnitInvitationIssueFixture(t, ss, inviter, unit, secondRole, issuedAt.Add(time.Second))
 	secondInvitation, err := ss.Invitation().IssueTeacherAcademicUnit(ctx, secondIssue)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	secondInput := teacherAcademicUnitInvitationAcceptanceFixture(t, secondInvitation, issuedAt.Add(40*time.Second))
 	secondAccepted, err := ss.Invitation().AcceptTeacherAcademicUnit(ctx, secondInput)
-	requireNoError(t, err)
-	if secondAccepted.User.ID != accepted.User.ID || secondAccepted.Affiliation.ID != accepted.Affiliation.ID ||
-		secondAccepted.AcademicUnitMember.ID != accepted.AcademicUnitMember.ID || secondAccepted.RoleBinding.ID == accepted.RoleBinding.ID {
-		t.Fatalf("compatible teacher Invitation = %#v; first %#v", secondAccepted, accepted)
-	}
-	if _, err = ss.Mail().GetDelivery(ctx, secondInput.Delivery.ID); !store.IsNotFound(err) {
-		t.Fatalf("existing teacher received redundant welcome delivery: %v", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, accepted.User.ID, secondAccepted.User.ID, "compatible teacher Invitation = %#v; first %#v", secondAccepted, accepted)
+	require.Equal(t, accepted.Affiliation.ID, secondAccepted.Affiliation.ID, "compatible teacher Invitation = %#v; first %#v", secondAccepted, accepted)
+	require.Equal(t, accepted.AcademicUnitMember.ID, secondAccepted.AcademicUnitMember.ID, "compatible teacher Invitation = %#v; first %#v", secondAccepted, accepted)
+	require.NotEqual(t, accepted.RoleBinding.ID, secondAccepted.RoleBinding.ID, "compatible teacher Invitation = %#v; first %#v", secondAccepted, accepted)
+	_, err = ss.Mail().GetDelivery(ctx, secondInput.Delivery.ID)
+	require.True(t, store.IsNotFound(err), "existing teacher received redundant welcome delivery")
 	independentRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-independent-" + model.NewID(), DisplayName: "Independent",
 		Permissions: []string{string(model.ActionAcademicUnitView)}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	independent, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: accepted.User.ID, RoleID: independentRole.ID,
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: issuedAt})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	endAt := model.MillisFromTime(model.NowUTC().Add(time.Minute))
 	futureRole, err := SaveRole(ctx, ss, &model.Role{Name: "teacher-future-package-" + model.NewID(), DisplayName: "Future Package",
 		Permissions: []string{string(model.ActionAcademicUnitView)}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	futurePackage, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: accepted.User.ID, RoleID: futureRole.ID,
 		OriginInvitationID: invitation.ID, OriginAcademicUnitMemberID: accepted.AcademicUnitMember.ID,
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(endAt).Add(time.Hour)})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	_, err = EndAcademicUnitMember(ctx, ss, accepted.AcademicUnitMember.ID, accepted.AcademicUnitMember.Revision, endAt)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	endedPackage, err := ss.RoleBinding().Get(ctx, accepted.RoleBinding.ID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	endedSecondPackage, err := ss.RoleBinding().Get(ctx, secondAccepted.RoleBinding.ID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	retainedIndependent, err := ss.RoleBinding().Get(ctx, independent.ID)
-	requireNoError(t, err)
-	if endedPackage.EndsAt.Millis() != endAt || endedSecondPackage.EndsAt.Millis() != endAt || retainedIndependent.EndsAt.Valid {
-		t.Fatalf("ended packages/independent bindings = %#v / %#v / %#v", endedPackage, endedSecondPackage, retainedIndependent)
-	}
-	if _, err = ss.RoleBinding().Get(ctx, futurePackage.ID); !store.IsNotFound(err) {
-		t.Fatalf("future package binding remained current after membership ended: %v", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, endAt, endedPackage.EndsAt.Millis(), "ended packages/independent bindings = %#v / %#v / %#v", endedPackage, endedSecondPackage, retainedIndependent)
+	require.Equal(t, endAt, endedSecondPackage.EndsAt.Millis(), "ended packages/independent bindings = %#v / %#v / %#v", endedPackage, endedSecondPackage, retainedIndependent)
+	require.False(t, retainedIndependent.EndsAt.Valid, "ended packages/independent bindings = %#v / %#v / %#v", endedPackage, endedSecondPackage, retainedIndependent)
+	_, err = ss.RoleBinding().Get(ctx, futurePackage.ID)
+	require.True(t, store.IsNotFound(err), "future package binding remained current after membership ended")
 }
 
 func teacherAcademicUnitInvitationIssueFixture(t *testing.T, ss store.Store, inviter *model.User, unit *model.AcademicUnit, role *model.Role, issuedAt time.Time) *store.TeacherAcademicUnitInvitationIssue {
@@ -373,12 +355,12 @@ func teacherAcademicUnitInvitationIssueFixture(t *testing.T, ss store.Store, inv
 		InviterUserID: inviter.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(),
 		ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: issuedAt,
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	occurrenceID, deliveryID, jobID := model.NewMailOccurrenceID(), model.NewMailDeliveryID(), model.NewJobID()
 	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	job, err := model.NewJob(jobID, model.JobTypeMailDeliverCredential, 1, command, deliveryID.String(), issuedAt, issuedAt, model.MailMaximumAttempts)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	delivery := &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: jobID, TargetInvitationID: invitation.ID,
 		TemplateKey: model.MailTemplateAccessTeacherAcademicUnitInvitation, TemplateDigest: strings.Repeat("c", 64),
 		MaskedRecipient: "t***@example.edu", State: model.MailDeliveryQueued, CreatedAt: issuedAt, UpdatedAt: issuedAt,
@@ -387,7 +369,7 @@ func teacherAcademicUnitInvitationIssueFixture(t *testing.T, ss store.Store, inv
 	attempt, err := ss.Audit().Save(context.Background(), &model.AuditEvent{ActorID: inviter.ID, Action: string(model.ActionInvitationCreate),
 		Resource: model.Resource{Type: model.ResourceAcademicUnit, ID: unit.ID.String()}, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: unit.ID.String(), Status: model.AuditStatusAttempt, NodeID: "teacher-invitation-store-test"})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return &store.TeacherAcademicUnitInvitationIssue{Invitation: invitation, Lifetime: model.InvitationLifetime,
 		Occurrence: &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceInvitation,
 			TemplateKey: model.MailTemplateAccessTeacherAcademicUnitInvitation, ActorUserID: inviter.ID, CreatedAt: issuedAt},

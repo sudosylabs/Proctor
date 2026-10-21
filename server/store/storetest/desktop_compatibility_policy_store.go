@@ -11,10 +11,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
-	"errors"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -26,15 +26,16 @@ func TestDesktopCompatibilityPolicyStore(t *testing.T, stores store.Store) {
 	defer cancel()
 
 	bootstrap, err := stores.Installation().Bootstrap(ctx, testInstallationBootstrap(811))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	initial, err := stores.DesktopCompatibilityPolicy().Get(ctx)
-	requireNoError(t, err)
-	if initial.InstitutionID != bootstrap.Institution.ID || initial.Revision != 1 ||
-		initial.MinimumDesktopRelease != "" || len(initial.RevokedDesktopBuildIDs) != 0 ||
-		initial.AdministratorMessage != "" || initial.Availability != model.DesktopAvailabilityReady ||
-		initial.RetryAt.Valid {
-		t.Fatalf("initial policy = %#v", initial)
-	}
+	require.NoError(t, err)
+	require.Equal(t, bootstrap.Institution.ID, initial.InstitutionID)
+	require.Equal(t, int64(1), initial.Revision)
+	require.Empty(t, initial.MinimumDesktopRelease)
+	require.Empty(t, initial.RevokedDesktopBuildIDs)
+	require.Empty(t, initial.AdministratorMessage)
+	require.Equal(t, model.DesktopAvailabilityReady, initial.Availability)
+	require.False(t, initial.RetryAt.Valid)
 
 	retryAt := time.Unix(2_000_000_000, 0).UTC()
 	settings := model.DesktopCompatibilityPolicySettings{
@@ -52,15 +53,16 @@ func TestDesktopCompatibilityPolicyStore(t *testing.T, stores store.Store) {
 	prepareDesktopCompatibilityPolicyAttempt(t, ctx, stores, bootstrap, replacement)
 	command := desktopCompatibilityPolicyCommand(bootstrap.Administrator.ID, "replace")
 	result, err := stores.DesktopCompatibilityPolicy().Replace(ctx, replacement, command)
-	requireNoError(t, err)
-	if result.Replayed || !result.Changed || result.Policy.Revision != 2 ||
-		result.Policy.MinimumDesktopRelease != settings.MinimumDesktopRelease ||
-		len(result.Policy.RevokedDesktopBuildIDs) != 2 ||
-		result.Policy.AdministratorMessage != settings.AdministratorMessage ||
-		result.Policy.Availability != model.DesktopAvailabilityMaintenance ||
-		!result.Policy.RetryAt.Valid || !result.Policy.RetryAt.Time.Equal(retryAt) {
-		t.Fatalf("replacement = %#v", result)
-	}
+	require.NoError(t, err)
+	require.False(t, result.Replayed)
+	require.True(t, result.Changed)
+	require.Equal(t, int64(2), result.Policy.Revision)
+	require.Equal(t, settings.MinimumDesktopRelease, result.Policy.MinimumDesktopRelease)
+	require.Len(t, result.Policy.RevokedDesktopBuildIDs, 2)
+	require.Equal(t, settings.AdministratorMessage, result.Policy.AdministratorMessage)
+	require.Equal(t, model.DesktopAvailabilityMaintenance, result.Policy.Availability)
+	require.True(t, result.Policy.RetryAt.Valid)
+	require.True(t, result.Policy.RetryAt.Time.Equal(retryAt))
 	assertDesktopCompatibilityPolicyAuditIsSafe(t, ctx, stores, replacement.AuditEventID, settings)
 
 	replayReplacement := &store.DesktopCompatibilityPolicyReplacement{
@@ -70,10 +72,10 @@ func TestDesktopCompatibilityPolicyStore(t *testing.T, stores store.Store) {
 	}
 	prepareDesktopCompatibilityPolicyAttempt(t, ctx, stores, bootstrap, replayReplacement)
 	replay, err := stores.DesktopCompatibilityPolicy().Replace(ctx, replayReplacement, command)
-	requireNoError(t, err)
-	if !replay.Replayed || !replay.Changed || replay.Policy.Revision != 2 {
-		t.Fatalf("replay = %#v", replay)
-	}
+	require.NoError(t, err)
+	require.True(t, replay.Replayed)
+	require.True(t, replay.Changed)
+	require.Equal(t, int64(2), replay.Policy.Revision)
 	assertDesktopCompatibilityPolicyAuditIsSafe(t, ctx, stores, replayReplacement.AuditEventID, settings)
 
 	conflictingCommand := *command
@@ -82,9 +84,7 @@ func TestDesktopCompatibilityPolicyStore(t *testing.T, stores store.Store) {
 	prepareDesktopCompatibilityPolicyAttempt(t, ctx, stores, bootstrap, &conflictReplacement)
 	_, err = stores.DesktopCompatibilityPolicy().Replace(ctx, &conflictReplacement, &conflictingCommand)
 	var idempotencyConflict *store.ErrIdempotencyConflict
-	if !errors.As(err, &idempotencyConflict) {
-		t.Fatalf("conflicting idempotency key error = %v", err)
-	}
+	require.ErrorAs(t, err, &idempotencyConflict)
 
 	stale := &store.DesktopCompatibilityPolicyReplacement{
 		ActorID:          bootstrap.Administrator.ID,
@@ -98,9 +98,8 @@ func TestDesktopCompatibilityPolicyStore(t *testing.T, stores store.Store) {
 		desktopCompatibilityPolicyCommand(bootstrap.Administrator.ID, "stale"),
 	)
 	var revisionConflict *store.ErrDesktopCompatibilityPolicyRevisionConflict
-	if !errors.As(err, &revisionConflict) || revisionConflict.CurrentRevision != 2 {
-		t.Fatalf("stale revision error = %v", err)
-	}
+	require.ErrorAs(t, err, &revisionConflict)
+	require.Equal(t, int64(2), revisionConflict.CurrentRevision)
 
 	noOp := &store.DesktopCompatibilityPolicyReplacement{
 		ActorID:          bootstrap.Administrator.ID,
@@ -113,13 +112,12 @@ func TestDesktopCompatibilityPolicyStore(t *testing.T, stores store.Store) {
 		noOp,
 		desktopCompatibilityPolicyCommand(bootstrap.Administrator.ID, "no-op"),
 	)
-	requireNoError(t, err)
-	if noOpResult.Changed || noOpResult.Policy.Revision != 2 {
-		t.Fatalf("no-op replacement = %#v", noOpResult)
-	}
+	require.NoError(t, err)
+	require.False(t, noOpResult.Changed)
+	require.Equal(t, int64(2), noOpResult.Policy.Revision)
 
 	ordinary, err := stores.User().Create(ctx, testUserCreation(newUser(), nil))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	unauthorized := &store.DesktopCompatibilityPolicyReplacement{
 		ActorID:          ordinary.User.ID,
 		ExpectedRevision: 2,
@@ -139,10 +137,8 @@ func TestDesktopCompatibilityPolicyStore(t *testing.T, stores store.Store) {
 		desktopCompatibilityPolicyCommand(ordinary.User.ID, "unauthorized"),
 	)
 	var administratorConflict *store.ErrConflict
-	if !errors.As(err, &administratorConflict) ||
-		administratorConflict.Constraint != "actor_not_system_administrator" {
-		t.Fatalf("ordinary actor error = %v", err)
-	}
+	require.ErrorAs(t, err, &administratorConflict)
+	require.Equal(t, "actor_not_system_administrator", administratorConflict.Constraint)
 }
 
 func desktopCompatibilityPolicyCommand(userID model.UserID, identity string) *store.CommandIdempotency {
@@ -199,7 +195,7 @@ func prepareDesktopCompatibilityPolicyAttemptForActor(
 		ClientType: string(model.SessionClientWeb),
 		AuthMethod: "password",
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	replacement.AuditEventID = event.ID
 	replacement.AuditAt = model.MillisFromTime(event.CreatedAt)
 }
@@ -213,22 +209,14 @@ func assertDesktopCompatibilityPolicyAuditIsSafe(
 ) {
 	t.Helper()
 	event, err := stores.Audit().Get(ctx, eventID)
-	requireNoError(t, err)
-	if event.Status != model.AuditStatusSuccess {
-		t.Fatalf("audit status = %q", event.Status)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.AuditStatusSuccess, event.Status)
 	var result map[string]any
-	if err := json.Unmarshal(event.Result, &result); err != nil {
-		t.Fatalf("decode audit result: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(event.Result, &result))
 	encoded := string(event.Result)
 	for _, sensitive := range append(settings.RevokedDesktopBuildIDs, settings.AdministratorMessage) {
-		if strings.Contains(encoded, sensitive) {
-			t.Fatalf("audit result exposed policy content %q: %s", sensitive, encoded)
-		}
+		require.NotContains(t, encoded, sensitive, "audit result exposed policy content")
 	}
-	if result["revoked_build_count"] != float64(len(settings.RevokedDesktopBuildIDs)) ||
-		result["administrator_message_set"] != true {
-		t.Fatalf("audit result = %#v", result)
-	}
+	require.Equal(t, float64(len(settings.RevokedDesktopBuildIDs)), result["revoked_build_count"])
+	require.Equal(t, true, result["administrator_message_set"])
 }

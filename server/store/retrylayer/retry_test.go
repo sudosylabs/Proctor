@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/retrylayer"
@@ -295,20 +297,12 @@ func TestRetryAllowlistedReadPreservesEventualResult(t *testing.T) {
 		MaxBackoff:     time.Nanosecond,
 		IsTransient:    func(err error) bool { return err == transientErr },
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	got, err := layer.Institution().Get(context.Background(), model.NewInstitutionID())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != want {
-		t.Fatalf("Get() = %#v, want original pointer %#v", got, want)
-	}
-	if stub.getAttempts != 3 {
-		t.Fatalf("Get() attempts = %d, want 3", stub.getAttempts)
-	}
+	require.NoError(t, err)
+	require.Same(t, want, got, "Get()")
+	require.Equal(t, 3, stub.getAttempts, "Get() attempts")
 }
 
 func TestRetryNeverRetriesUnsafeMutation(t *testing.T) {
@@ -322,17 +316,11 @@ func TestRetryNeverRetriesUnsafeMutation(t *testing.T) {
 		MaxBackoff:     time.Nanosecond,
 		IsTransient:    func(error) bool { return true },
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	_, gotErr := layer.Institution().Save(context.Background(), &model.Institution{})
-	if gotErr != transientErr {
-		t.Fatalf("Save() error = %v, want exact error %v", gotErr, transientErr)
-	}
-	if stub.saveAttempts != 1 {
-		t.Fatalf("Save() attempts = %d, want 1", stub.saveAttempts)
-	}
+	require.Equal(t, transientErr, gotErr, "Save() error")
+	require.Equal(t, 1, stub.saveAttempts, "Save() attempts")
 }
 
 func TestRetryNeverRetriesPasswordRehashWithUnknownCommitOutcome(t *testing.T) {
@@ -343,17 +331,13 @@ func TestRetryNeverRetriesPasswordRehashWithUnknownCommitOutcome(t *testing.T) {
 		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
 		IsTransient: func(error) bool { return true },
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	input := &store.PasswordCredentialRehash{ID: model.NewPasswordCredentialID(), UserID: model.NewUserID(),
 		ExpectedHash: "encoded-original", ExpectedRevision: 1, PasswordHash: "encoded-rehash"}
-	if err := layer.PasswordCredential().Rehash(context.Background(), input); err != unknown { //nolint:errorlint // Rehash must return the original error instance unchanged.
-		t.Fatalf("Rehash() error = %v, want original unknown-outcome error", err)
-	}
-	if stub.attempts != 1 || stub.input != input {
-		t.Fatalf("Rehash() attempts = %d, want one unchanged input", stub.attempts)
-	}
+	// Rehash must return the original error instance unchanged.
+	require.Same(t, unknown, layer.PasswordCredential().Rehash(context.Background(), input), "Rehash() error, want original unknown-outcome error")
+	require.Equal(t, 1, stub.attempts, "Rehash() attempts")
+	require.Same(t, input, stub.input, "Rehash() attempts")
 }
 
 func TestRetryNeverRetriesSystemSittingMutationsWithoutCommandOutcomes(t *testing.T) {
@@ -364,18 +348,13 @@ func TestRetryNeverRetriesSystemSittingMutationsWithoutCommandOutcomes(t *testin
 		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
 		IsTransient: func(error) bool { return true },
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, got := layer.ExamSitting().AdvanceDue(context.Background(), &store.ExamSittingDueAdvance{}); got != transientErr {
-		t.Fatalf("AdvanceDue() error = %v", got)
-	}
-	if _, got := layer.ExamSitting().FinishSealing(context.Background(), &store.ExamSittingFinishSealing{}); got != transientErr {
-		t.Fatalf("FinishSealing() error = %v", got)
-	}
-	if stub.advanceAttempts != 1 || stub.finishAttempts != 1 {
-		t.Fatalf("system mutation attempts = advance %d finish %d", stub.advanceAttempts, stub.finishAttempts)
-	}
+	require.NoError(t, err)
+	_, got := layer.ExamSitting().AdvanceDue(context.Background(), &store.ExamSittingDueAdvance{})
+	require.Equal(t, transientErr, got)
+	_, got = layer.ExamSitting().FinishSealing(context.Background(), &store.ExamSittingFinishSealing{})
+	require.Equal(t, transientErr, got)
+	require.Equal(t, 1, stub.advanceAttempts, "system mutation attempts = advance")
+	require.Equal(t, 1, stub.finishAttempts, "system mutation attempts = advance")
 }
 
 func TestRetryOnlyRetriesExamAttemptMutationWithDurableCommandOutcome(t *testing.T) {
@@ -386,19 +365,14 @@ func TestRetryOnlyRetriesExamAttemptMutationWithDurableCommandOutcome(t *testing
 		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
 		IsTransient: func(error) bool { return true },
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	command := &store.CommandIdempotency{UserID: model.NewUserID()}
-	if _, got := layer.ExamAttempt().Connect(context.Background(), &store.ExamAttemptConnect{}, command); got != transientErr {
-		t.Fatalf("Connect() error = %v", got)
-	}
-	if _, got := layer.ExamAttempt().CloseConnection(context.Background(), &store.ExamAttemptConnectionClose{}); got != transientErr {
-		t.Fatalf("CloseConnection() error = %v", got)
-	}
-	if stub.connectAttempts != 3 || stub.closeAttempts != 1 {
-		t.Fatalf("Exam Attempt mutation attempts = connect %d close %d", stub.connectAttempts, stub.closeAttempts)
-	}
+	_, got := layer.ExamAttempt().Connect(context.Background(), &store.ExamAttemptConnect{}, command)
+	require.Equal(t, transientErr, got)
+	_, got = layer.ExamAttempt().CloseConnection(context.Background(), &store.ExamAttemptConnectionClose{})
+	require.Equal(t, transientErr, got)
+	require.Equal(t, 3, stub.connectAttempts, "Exam Attempt mutation attempts = connect")
+	require.Equal(t, 1, stub.closeAttempts, "Exam Attempt mutation attempts = connect")
 }
 
 func TestRetryInvitationMutationsOnlyWithDurableCommandOutcomes(t *testing.T) {
@@ -409,16 +383,13 @@ func TestRetryInvitationMutationsOnlyWithDurableCommandOutcomes(t *testing.T) {
 		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
 		IsTransient: func(error) bool { return true },
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	command := &store.CommandIdempotency{UserID: model.NewUserID()}
 	_, _ = layer.Invitation().IssueStudentClassIdempotently(context.Background(), &store.StudentClassInvitationIssue{}, command)
 	_, _ = layer.Invitation().ResendIdempotently(context.Background(), &store.InvitationResend{}, command)
 	_, _ = layer.Invitation().IssueStudentClassIdempotently(context.Background(), &store.StudentClassInvitationIssue{}, nil)
-	if stub.issueAttempts != 4 || stub.resendAttempts != 3 {
-		t.Fatalf("Invitation attempts issue/resend = %d/%d, want 4/3", stub.issueAttempts, stub.resendAttempts)
-	}
+	require.Equal(t, 4, stub.issueAttempts, "Invitation attempts issue/resend")
+	require.Equal(t, 3, stub.resendAttempts, "Invitation attempts issue/resend")
 }
 
 func TestRetryExamAttemptRenewalExpiryAndReallowUseTheirDurableFences(t *testing.T) {
@@ -429,24 +400,20 @@ func TestRetryExamAttemptRenewalExpiryAndReallowUseTheirDurableFences(t *testing
 		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
 		IsTransient: func(error) bool { return true },
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	ctx := context.Background()
 	_, _ = layer.ExamAttempt().RenewParticipation(ctx, &store.ExamAttemptParticipationRenewal{DesktopCompatibilityPolicyRevision: 1})
 	_, _ = layer.ExamAttempt().ResolveParticipationExpiry(ctx, model.NewExamAttemptID(), model.NewAttemptParticipationID(), 1)
 	_, _ = layer.ExamAttempt().ListExpiredParticipations(ctx, 10)
 	_, _ = layer.ExamAttempt().ExpireParticipation(ctx, &store.ExamAttemptParticipationExpiry{})
 	_, _ = layer.ExamAttempt().ReallowAttempt(ctx, &store.ExamAttemptReallow{}, &store.CommandIdempotency{})
-	if stub.renewAttempts != 3 || stub.resolveExpiryAttempts != 3 || stub.listExpiryAttempts != 3 ||
-		stub.expireAttempts != 1 || stub.reallowAttempts != 3 {
-		t.Fatalf("attempts renew/resolve/list/expire/reallow = %d/%d/%d/%d/%d, want 3/3/3/1/3",
-			stub.renewAttempts, stub.resolveExpiryAttempts, stub.listExpiryAttempts, stub.expireAttempts, stub.reallowAttempts)
-	}
+	require.Equal(t, 3, stub.renewAttempts, "attempts renew/resolve/list/expire/reallow")
+	require.Equal(t, 3, stub.resolveExpiryAttempts, "attempts renew/resolve/list/expire/reallow")
+	require.Equal(t, 3, stub.listExpiryAttempts, "attempts renew/resolve/list/expire/reallow")
+	require.Equal(t, 1, stub.expireAttempts, "attempts renew/resolve/list/expire/reallow")
+	require.Equal(t, 3, stub.reallowAttempts, "attempts renew/resolve/list/expire/reallow")
 	_, _ = layer.ExamAttempt().ReallowAttempt(ctx, &store.ExamAttemptReallow{}, nil)
-	if stub.reallowAttempts != 4 {
-		t.Fatalf("ReallowAttempt() attempts without command = %d, want one additional call", stub.reallowAttempts)
-	}
+	require.Equal(t, 4, stub.reallowAttempts, "ReallowAttempt() attempts without command")
 }
 
 func TestRetryReadsButDoesNotAutomaticallyRetryAuditedFocusLossMutation(t *testing.T) {
@@ -457,15 +424,12 @@ func TestRetryReadsButDoesNotAutomaticallyRetryAuditedFocusLossMutation(t *testi
 		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
 		IsTransient: func(error) bool { return true },
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	ctx := context.Background()
 	_, _ = layer.ExamAttempt().ResolveFocusLossTarget(ctx, store.ExamAttemptFocusLossAccess{})
 	_, _ = layer.ExamAttempt().RecordFocusLoss(ctx, &store.ExamAttemptFocusLossSignal{})
-	if stub.resolveFocusAttempts != 3 || stub.recordFocusAttempts != 1 {
-		t.Fatalf("Focus Loss attempts resolve/record = %d/%d, want 3/1", stub.resolveFocusAttempts, stub.recordFocusAttempts)
-	}
+	require.Equal(t, 3, stub.resolveFocusAttempts, "Focus Loss attempts resolve/record")
+	require.Equal(t, 1, stub.recordFocusAttempts, "Focus Loss attempts resolve/record")
 }
 
 func TestRetryOnlyRetriesExamAttemptWorkspaceMutationWithDurableCommandOutcome(t *testing.T) {
@@ -477,23 +441,15 @@ func TestRetryOnlyRetriesExamAttemptWorkspaceMutationWithDurableCommandOutcome(t
 		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
 		IsTransient: func(error) bool { return true },
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	ctx := context.Background()
-	if _, got := layer.ExamAttemptWorkspace().ApplyMutation(ctx, &store.ExamAttemptWorkspaceMutation{}, &store.CommandIdempotency{}); got != transientErr {
-		t.Fatalf("ApplyMutation() error = %v", got)
-	}
-	if stub.applyAttempts != 3 {
-		t.Fatalf("ApplyMutation() attempts with command = %d, want 3", stub.applyAttempts)
-	}
-	if _, got := layer.ExamAttemptWorkspace().ApplyMutation(ctx, &store.ExamAttemptWorkspaceMutation{}, nil); got != transientErr {
-		t.Fatalf("ApplyMutation() without command error = %v", got)
-	}
-	if stub.applyAttempts != 4 {
-		t.Fatalf("ApplyMutation() attempts without command = %d, want one additional call", stub.applyAttempts)
-	}
+	_, got := layer.ExamAttemptWorkspace().ApplyMutation(ctx, &store.ExamAttemptWorkspaceMutation{}, &store.CommandIdempotency{})
+	require.Equal(t, transientErr, got)
+	require.Equal(t, 3, stub.applyAttempts, "ApplyMutation() attempts with command")
+	_, got = layer.ExamAttemptWorkspace().ApplyMutation(ctx, &store.ExamAttemptWorkspaceMutation{}, nil)
+	require.Equal(t, transientErr, got)
+	require.Equal(t, 4, stub.applyAttempts, "ApplyMutation() attempts without command")
 }
 
 func TestRetryForwardsExamAttemptWorkspaceCleanupMutationsOnce(t *testing.T) {
@@ -505,9 +461,7 @@ func TestRetryForwardsExamAttemptWorkspaceCleanupMutationsOnce(t *testing.T) {
 		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
 		IsTransient: func(error) bool { return true },
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	ctx := context.Background()
 	objectID := model.NewAttemptWorkspaceObjectID()
@@ -515,10 +469,10 @@ func TestRetryForwardsExamAttemptWorkspaceCleanupMutationsOnce(t *testing.T) {
 	_, _ = layer.ExamAttemptWorkspace().ClaimObjectsForCleanup(ctx, 1, "claim")
 	_ = layer.ExamAttemptWorkspace().CompleteObjectCleanup(ctx, objectID, "claim")
 	_ = layer.ExamAttemptWorkspace().ReleaseObjectCleanup(ctx, objectID, "claim")
-	if stub.markAttempts != 1 || stub.claimAttempts != 1 || stub.completeAttempts != 1 || stub.releaseAttempts != 1 {
-		t.Fatalf("cleanup attempts = mark %d, claim %d, complete %d, release %d; want one each",
-			stub.markAttempts, stub.claimAttempts, stub.completeAttempts, stub.releaseAttempts)
-	}
+	require.Equal(t, 1, stub.markAttempts, "cleanup attempts = mark")
+	require.Equal(t, 1, stub.claimAttempts, "cleanup attempts = mark")
+	require.Equal(t, 1, stub.completeAttempts, "cleanup attempts = mark")
+	require.Equal(t, 1, stub.releaseAttempts, "cleanup attempts = mark")
 }
 
 func TestRetryDoesNotTreatMutatingResolveAsARead(t *testing.T) {
@@ -533,17 +487,11 @@ func TestRetryDoesNotTreatMutatingResolveAsARead(t *testing.T) {
 		IsTransient:    func(error) bool { return true },
 	}
 	layer, err := retrylayer.New(&rootStub{personalAccessToken: stub}, policy)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	_, gotErr := layer.PersonalAccessToken().Resolve(context.Background(), "hash", model.TimeFromMillis(1), 2*time.Millisecond)
-	if gotErr != transientErr {
-		t.Fatalf("Resolve() error = %v, want exact error %v", gotErr, transientErr)
-	}
-	if stub.attempts != 1 {
-		t.Fatalf("Resolve() attempts = %d, want 1", stub.attempts)
-	}
+	require.Equal(t, transientErr, gotErr, "Resolve() error")
+	require.Equal(t, 1, stub.attempts, "Resolve() attempts")
 }
 
 func TestRetryExamAuthoringIdempotentCreateAndReads(t *testing.T) {
@@ -555,9 +503,7 @@ func TestRetryExamAuthoringIdempotentCreateAndReads(t *testing.T) {
 		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
 		IsTransient: func(err error) bool { return err == transientErr },
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	_, _ = layer.ExamAuthoring().Create(context.Background(), &store.ExamAuthoringCreation{}, &store.CommandIdempotency{})
 	_, _ = layer.ExamAuthoring().UpdateDraftText(context.Background(), &store.ExamDraftTextUpdate{}, &store.CommandIdempotency{})
@@ -567,10 +513,14 @@ func TestRetryExamAuthoringIdempotentCreateAndReads(t *testing.T) {
 	_, _ = layer.ExamAuthoring().Access(context.Background(), model.NewExamID(), model.NewUserID())
 	_, _ = layer.ExamAuthoring().Get(context.Background(), model.NewExamID(), model.NewUserID())
 	_, _ = layer.ExamAuthoring().Resolve(context.Background(), model.NewExamID())
-	if stub.createAttempts != 3 || stub.updateAttempts != 3 || stub.focusAttempts != 3 || stub.listAttempts != 3 || stub.archiveAttempts != 3 || stub.accessAttempts != 3 || stub.getAttempts != 3 || stub.resolveAttempts != 3 {
-		t.Fatalf("attempts create/update/focus/list/archive/access/get/resolve = %d/%d/%d/%d/%d/%d/%d/%d, want all 3",
-			stub.createAttempts, stub.updateAttempts, stub.focusAttempts, stub.listAttempts, stub.archiveAttempts, stub.accessAttempts, stub.getAttempts, stub.resolveAttempts)
-	}
+	require.Equal(t, 3, stub.createAttempts, "attempts create/update/focus/list/archive/access/get/resolve")
+	require.Equal(t, 3, stub.updateAttempts, "attempts create/update/focus/list/archive/access/get/resolve")
+	require.Equal(t, 3, stub.focusAttempts, "attempts create/update/focus/list/archive/access/get/resolve")
+	require.Equal(t, 3, stub.listAttempts, "attempts create/update/focus/list/archive/access/get/resolve")
+	require.Equal(t, 3, stub.archiveAttempts, "attempts create/update/focus/list/archive/access/get/resolve")
+	require.Equal(t, 3, stub.accessAttempts, "attempts create/update/focus/list/archive/access/get/resolve")
+	require.Equal(t, 3, stub.getAttempts, "attempts create/update/focus/list/archive/access/get/resolve")
+	require.Equal(t, 3, stub.resolveAttempts, "attempts create/update/focus/list/archive/access/get/resolve")
 }
 
 func TestRetryExamAuthoringDoesNotRetryCreateWithoutIdempotency(t *testing.T) {
@@ -581,25 +531,15 @@ func TestRetryExamAuthoringDoesNotRetryCreateWithoutIdempotency(t *testing.T) {
 		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
 		IsTransient: func(error) bool { return true },
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	_, _ = layer.ExamAuthoring().Create(context.Background(), &store.ExamAuthoringCreation{}, nil)
 	_, _ = layer.ExamAuthoring().UpdateDraftText(context.Background(), &store.ExamDraftTextUpdate{}, nil)
 	_, _ = layer.ExamAuthoring().UpdateDraftFocusLoss(context.Background(), &store.ExamDraftFocusLossUpdate{}, nil)
 	_, _ = layer.ExamAuthoring().Archive(context.Background(), &store.ExamArchive{}, nil)
-	if stub.createAttempts != 1 {
-		t.Fatalf("Create() attempts = %d, want 1 without idempotency", stub.createAttempts)
-	}
-	if stub.updateAttempts != 1 {
-		t.Fatalf("UpdateDraftText() attempts = %d, want 1 without idempotency", stub.updateAttempts)
-	}
-	if stub.focusAttempts != 1 {
-		t.Fatalf("UpdateDraftFocusLoss() attempts = %d, want 1 without idempotency", stub.focusAttempts)
-	}
-	if stub.archiveAttempts != 1 {
-		t.Fatalf("Archive() attempts = %d, want 1 without idempotency", stub.archiveAttempts)
-	}
+	require.Equal(t, 1, stub.createAttempts, "Create() attempts")
+	require.Equal(t, 1, stub.updateAttempts, "UpdateDraftText() attempts")
+	require.Equal(t, 1, stub.focusAttempts, "UpdateDraftFocusLoss() attempts")
+	require.Equal(t, 1, stub.archiveAttempts, "Archive() attempts")
 }
 
 func TestRetryPassesUnclassifiedErrorThroughUnchanged(t *testing.T) {
@@ -610,12 +550,8 @@ func TestRetryPassesUnclassifiedErrorThroughUnchanged(t *testing.T) {
 	layer := newLayer(t, stub, func(error) bool { return false }, 3, time.Nanosecond)
 
 	_, gotErr := layer.Institution().Get(context.Background(), "missing")
-	if gotErr != domainErr {
-		t.Fatalf("Get() error = %v, want exact domain error %v", gotErr, domainErr)
-	}
-	if stub.getAttempts != 1 {
-		t.Fatalf("Get() attempts = %d, want 1", stub.getAttempts)
-	}
+	require.Equal(t, gotErr, domainErr, "Get() error = %v, want exact domain error %v", gotErr, domainErr)
+	require.Equal(t, 1, stub.getAttempts, "Get() attempts")
 }
 
 func TestRetryReturnsExactTransientErrorAfterBoundedAttempts(t *testing.T) {
@@ -626,12 +562,8 @@ func TestRetryReturnsExactTransientErrorAfterBoundedAttempts(t *testing.T) {
 	layer := newLayer(t, stub, func(err error) bool { return err == transientErr }, 3, time.Nanosecond)
 
 	_, gotErr := layer.Institution().Get(context.Background(), model.NewInstitutionID())
-	if gotErr != transientErr {
-		t.Fatalf("Get() error = %v, want exact transient error %v", gotErr, transientErr)
-	}
-	if stub.getAttempts != 3 {
-		t.Fatalf("Get() attempts = %d, want 3", stub.getAttempts)
-	}
+	require.Equal(t, transientErr, gotErr, "Get() error")
+	require.Equal(t, 3, stub.getAttempts, "Get() attempts")
 }
 
 func TestRetryCancellationStopsBeforeAnotherAttempt(t *testing.T) {
@@ -645,15 +577,9 @@ func TestRetryCancellationStopsBeforeAnotherAttempt(t *testing.T) {
 
 	startedAt := time.Now()
 	_, gotErr := layer.Institution().Get(ctx, model.NewInstitutionID())
-	if gotErr != context.Canceled {
-		t.Fatalf("Get() error = %v, want context.Canceled", gotErr)
-	}
-	if elapsed := time.Since(startedAt); elapsed > time.Second {
-		t.Fatalf("cancellation took %s", elapsed)
-	}
-	if stub.getAttempts != 1 {
-		t.Fatalf("Get() attempts = %d, want 1", stub.getAttempts)
-	}
+	require.Equal(t, context.Canceled, gotErr, "Get() error")
+	require.LessOrEqual(t, time.Since(startedAt), time.Second)
+	require.Equal(t, 1, stub.getAttempts, "Get() attempts")
 }
 
 func TestRetryDeadlineStopsBeforeAnotherAttempt(t *testing.T) {
@@ -667,15 +593,9 @@ func TestRetryDeadlineStopsBeforeAnotherAttempt(t *testing.T) {
 
 	startedAt := time.Now()
 	_, gotErr := layer.Institution().Get(ctx, model.NewInstitutionID())
-	if gotErr != context.DeadlineExceeded {
-		t.Fatalf("Get() error = %v, want context.DeadlineExceeded", gotErr)
-	}
-	if elapsed := time.Since(startedAt); elapsed > time.Second {
-		t.Fatalf("deadline took %s", elapsed)
-	}
-	if stub.getAttempts != 1 {
-		t.Fatalf("Get() attempts = %d, want 1", stub.getAttempts)
-	}
+	require.Equal(t, context.DeadlineExceeded, gotErr, "Get() error")
+	require.LessOrEqual(t, time.Since(startedAt), time.Second)
+	require.Equal(t, 1, stub.getAttempts, "Get() attempts")
 }
 
 func TestRetryPreservesStableAndMissingAccessors(t *testing.T) {
@@ -683,12 +603,9 @@ func TestRetryPreservesStableAndMissingAccessors(t *testing.T) {
 
 	stub := &institutionStub{get: func() (*model.Institution, error) { return nil, nil }}
 	layer := newLayer(t, stub, func(error) bool { return false }, 3, time.Nanosecond)
-	if layer.Institution() != layer.Institution() {
-		t.Fatal("Institution() returned different wrappers")
-	}
-	if layer.AcademicUnit() != nil {
-		t.Fatal("AcademicUnit() wrapped a nil underlying store")
-	}
+	institution := layer.Institution()
+	require.Same(t, institution, layer.Institution(), "Institution() returned different wrappers")
+	require.Nil(t, layer.AcademicUnit(), "AcademicUnit() wrapped a nil underlying store")
 }
 
 func TestNewRejectsUnboundedOrIncompletePolicy(t *testing.T) {
@@ -708,14 +625,12 @@ func TestNewRejectsUnboundedOrIncompletePolicy(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := retrylayer.New(&rootStub{}, test.policy); err == nil {
-				t.Fatal("New() accepted invalid policy")
-			}
+			_, err := retrylayer.New(&rootStub{}, test.policy)
+			require.Error(t, err, "New() accepted invalid policy")
 		})
 	}
-	if _, err := retrylayer.New(nil, valid); err == nil {
-		t.Fatal("New() accepted nil store")
-	}
+	_, err := retrylayer.New(nil, valid)
+	require.Error(t, err, "New() accepted nil store")
 }
 
 func TestRetryGeneratedForwardingIsCurrent(t *testing.T) {
@@ -727,20 +642,13 @@ func TestRetryGeneratedForwardingIsCurrent(t *testing.T) {
 		"go", "run", "../storetest/layergen", "-layer", "retry", "-source", "..", "-output", generatedPath,
 	)
 	command.Env = append(os.Environ(), "GOCACHE="+filepath.Join(temporary, "go-cache"))
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("regenerate forwarding: %v\n%s", err, output)
-	}
+	output, err := command.CombinedOutput()
+	require.NoError(t, err, "regenerate forwarding: %v\n%s", err, output)
 	want, err := os.ReadFile("forwarding_gen.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	got, err := os.ReadFile(generatedPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(got, want) {
-		t.Fatal("forwarding_gen.go is stale; run go generate ./store/retrylayer")
-	}
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(got, want), "forwarding_gen.go is stale; run go generate ./store/retrylayer")
 }
 
 func TestRetryRecorderReportsAttemptsAndExhaustion(t *testing.T) {
@@ -753,20 +661,13 @@ func TestRetryRecorderReportsAttemptsAndExhaustion(t *testing.T) {
 		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
 		IsTransient: func(err error) bool { return errors.Is(err, transient) },
 	}, recorder)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := layer.Institution().Get(context.Background(), "institution"); !errors.Is(err, transient) {
-		t.Fatalf("Get() error = %v", err)
-	}
+	require.NoError(t, err)
+	_, err = layer.Institution().Get(context.Background(), "institution")
+	require.ErrorIs(t, err, transient)
 	want := []string{"retry", "retry", "exhausted"}
-	if len(recorder.outcomes) != len(want) {
-		t.Fatalf("outcomes = %#v, want %#v", recorder.outcomes, want)
-	}
+	require.Len(t, recorder.outcomes, len(want), "outcomes")
 	for index := range want {
-		if recorder.outcomes[index] != want[index] {
-			t.Fatalf("outcomes = %#v, want %#v", recorder.outcomes, want)
-		}
+		require.Equal(t, want[index], recorder.outcomes[index], "outcomes = %#v, want %#v", recorder.outcomes, want)
 	}
 }
 
@@ -804,9 +705,7 @@ func newLayer(
 		MaxBackoff:     backoff,
 		IsTransient:    classifier,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return layer
 }
 
@@ -857,15 +756,13 @@ func TestRetryServingNodeLeaseIncarnationWritesAreIdempotent(t *testing.T) {
 		MaxBackoff:     time.Nanosecond,
 		IsTransient:    func(err error) bool { return errors.Is(err, transientErr) },
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	leaseID := model.NewID()
 	lease, err := layer.ServingNodeLease().Upsert(context.Background(), &store.ServingNodeLeaseClaim{NodeID: "node-a", LeaseID: leaseID, Lifetime: 30 * time.Second})
-	if err != nil || lease == nil || lease.LeaseID != leaseID || stub.upsertAttempts != 3 {
-		t.Fatalf("Upsert() = %#v, %v after %d attempts, want the lease after 3", lease, err, stub.upsertAttempts)
-	}
-	if err := layer.ServingNodeLease().Delete(context.Background(), "node-a", leaseID); err != nil || stub.deleteAttempts != 3 {
-		t.Fatalf("Delete() = %v after %d attempts, want success after 3", err, stub.deleteAttempts)
-	}
+	require.NoError(t, err, "Upsert()")
+	require.NotNil(t, lease, "Upsert()")
+	require.Equal(t, leaseID, lease.LeaseID, "Upsert()")
+	require.Equal(t, 3, stub.upsertAttempts, "Upsert()")
+	require.NoError(t, layer.ServingNodeLease().Delete(context.Background(), "node-a", leaseID), "Delete()")
+	require.Equal(t, 3, stub.deleteAttempts, "Delete()")
 }

@@ -8,6 +8,7 @@
 package sqlstore
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -16,6 +17,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSQLStoreTransactionLifecycleHasOneOwner(t *testing.T) {
@@ -41,7 +45,7 @@ func TestSQLStoreTransactionLifecycleHasOneOwner(t *testing.T) {
 			}
 			switch selector.Sel.Name {
 			case "Begin", "Commit", "Rollback":
-				t.Errorf("%s contains direct transaction lifecycle call %s; use runSQLTransaction", name, selector.Sel.Name)
+				assert.Fail(t, fmt.Sprintf("%s contains direct transaction lifecycle call %s; use runSQLTransaction", name, selector.Sel.Name))
 			}
 			return true
 		})
@@ -67,14 +71,14 @@ func TestSQLStoreRowProjectionsCanReportCorruption(t *testing.T) {
 				// projection, so typed-ID rehydration is deliberately inapplicable.
 				continue
 			}
-			if function.Type.Results == nil || function.Type.Results.NumFields() != 2 {
-				t.Errorf("%s: %s.model must return (value, error) so malformed persisted state fails closed", name, receiver)
+			returnsPair := function.Type.Results != nil && function.Type.Results.NumFields() == 2
+			if !assert.True(t, returnsPair, "%s: %s.model must return (value, error) so malformed persisted state fails closed", name, receiver) {
 				continue
 			}
 			second := function.Type.Results.List[1].Type
 			identifier, ok := second.(*ast.Ident)
-			if !ok || identifier.Name != "error" {
-				t.Errorf("%s: %s.model second result must be error", name, receiver)
+			if assert.True(t, ok, "%s: %s.model second result must be error", name, receiver) {
+				assert.Equal(t, "error", identifier.Name, "%s: %s.model second result must be error", name, receiver)
 			}
 		}
 	}
@@ -84,9 +88,7 @@ func TestSQLStoreUsesSinglePreReleaseBaseline(t *testing.T) {
 	t.Parallel()
 
 	entries, err := os.ReadDir("../../migrations/postgres")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	files := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".sql") {
@@ -94,18 +96,14 @@ func TestSQLStoreUsesSinglePreReleaseBaseline(t *testing.T) {
 		}
 	}
 	want := []string{"000001_baseline.down.sql", "000001_baseline.up.sql"}
-	if !slices.Equal(files, want) {
-		t.Errorf("pre-release migration files = %v; want the single rewritable baseline %v", files, want)
-	}
+	assert.True(t, slices.Equal(files, want), "pre-release migration files = %v; want the single rewritable baseline %v", files, want)
 }
 
 func TestDirectorySearchIndexesCoverEverySearchableCatalog(t *testing.T) {
 	t.Parallel()
 
 	baseline, err := os.ReadFile("../../migrations/postgres/000001_baseline.up.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	source := string(baseline)
 	for _, required := range []string{
 		"CREATE EXTENSION IF NOT EXISTS pg_trgm;",
@@ -117,18 +115,14 @@ func TestDirectorySearchIndexesCoverEverySearchableCatalog(t *testing.T) {
 		"users_directory_search_idx",
 		"exam_drafts_title_search_idx",
 	} {
-		if !strings.Contains(source, required) {
-			t.Errorf("PostgreSQL baseline lacks %q", required)
-		}
+		assert.Contains(t, source, required)
 	}
 }
 
 func sqlstoreProductionSyntax(t *testing.T) map[string]*ast.File {
 	t.Helper()
 	entries, err := os.ReadDir(".")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	files := make(map[string]*ast.File)
 	set := token.NewFileSet()
 	for _, entry := range entries {
@@ -137,9 +131,7 @@ func sqlstoreProductionSyntax(t *testing.T) map[string]*ast.File {
 			continue
 		}
 		file, err := parser.ParseFile(set, filepath.Clean(name), nil, 0)
-		if err != nil {
-			t.Fatalf("parse %s: %v", name, err)
-		}
+		require.NoError(t, err, "parse %s", name)
 		files[name] = file
 	}
 	return files

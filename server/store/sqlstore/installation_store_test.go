@@ -8,9 +8,10 @@
 package sqlstore
 
 import (
-	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -36,12 +37,9 @@ func TestInstallationStateRowRehydrationRejectsInvalidPersistedState(t *testing.
 		t.Run(test.name, func(t *testing.T) {
 			_, err := test.row.model()
 			var persisted *persistedStateError
-			if !errors.As(err, &persisted) {
-				t.Fatalf("model() error = %v, want persisted-state error", err)
-			}
-			if persisted.Entity != "installation" || persisted.Field != test.field {
-				t.Fatalf("persisted-state context = %s.%s, want installation.%s", persisted.Entity, persisted.Field, test.field)
-			}
+			require.ErrorAs(t, err, &persisted, "model() error")
+			require.Equal(t, "installation", persisted.Entity, "persisted-state context")
+			require.Equal(t, test.field, persisted.Field, "persisted-state context")
 		})
 	}
 }
@@ -55,15 +53,10 @@ func TestInstallationStateRowRehydrationReturnsValidatedModel(t *testing.T) {
 		AdministratorUserID: model.NewUserID().String(),
 	}
 	state, err := row.model()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := state.Validate(); err != nil {
-		t.Fatalf("rehydrated state is invalid: %v", err)
-	}
-	if state.InstitutionID.String() != row.InstitutionID || state.AdministratorUserID.String() != row.AdministratorUserID {
-		t.Fatalf("model() = %#v, want persisted identities", state)
-	}
+	require.NoError(t, err)
+	require.NoError(t, state.Validate())
+	require.Equal(t, row.InstitutionID, state.InstitutionID.String(), "model() = %#v, want persisted identities", state)
+	require.Equal(t, row.AdministratorUserID, state.AdministratorUserID.String(), "model() = %#v, want persisted identities", state)
 }
 
 func replaceInstallationStateRow(row installationStateRow, replace func(*installationStateRow)) installationStateRow {

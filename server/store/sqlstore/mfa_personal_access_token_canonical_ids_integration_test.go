@@ -12,12 +12,12 @@ package sqlstore
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/lib/pq"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -29,9 +29,7 @@ func TestMFAPersonalAccessTokenCanonicalIDConstraints(t *testing.T) {
 	resetTestStore(t, persistence)
 	ctx := context.Background()
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "credential-constraints", DisplayName: "Credential Constraints"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	user := saveIntegrationUser(t, ctx, persistence, &model.User{
 		Username: "credential-constraints", Email: "credential-constraints@example.edu", DisplayName: "Credential Constraints",
@@ -40,23 +38,18 @@ func TestMFAPersonalAccessTokenCanonicalIDConstraints(t *testing.T) {
 		UserID: user.ID, State: model.MFAStatePending, EncryptedSecret: "ciphertext",
 		EncryptionKeyID: "0123456789abcdef0123456789abcdef", PendingExpiresAt: model.OptionalTimeFromMillis(model.GetMillis() + 60_000),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	recoveryID := model.NewMFARecoveryCodeID()
-	if _, err := persistence.GetMaster().Exec(ctx, `
+	_, err = persistence.GetMaster().Exec(ctx, `
 		INSERT INTO mfa_recovery_codes (id, created_at, updated_at, user_id, code_hash)
-		VALUES (?, NOW(), NOW(), ?, ?)`, recoveryID.String(), user.ID.String(), model.HashToken(model.NewCredentialToken())); err != nil {
-		t.Fatal(err)
-	}
+		VALUES (?, NOW(), NOW(), ?, ?)`, recoveryID.String(), user.ID.String(), model.HashToken(model.NewCredentialToken()))
+	require.NoError(t, err)
 	token := &model.PersonalAccessToken{
 		UserID: user.ID, Description: "constraint token", TokenHash: model.HashToken(model.NewCredentialToken()),
 		Scopes: []string{string(model.ActionClassView)}, ExpiresAt: model.TimeFromMillis(model.GetMillis() + 60_000),
 	}
 	token.PrepareCreate(model.NewPersonalAccessTokenID(), model.NowUTC())
-	if err := insertPersonalAccessToken(ctx, persistence.GetMaster(), token); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, insertPersonalAccessToken(ctx, persistence.GetMaster(), token))
 	patSession := savePersonalAccessTokenMutationSession(t, ctx, persistence, user.ID)
 	preparation, err := persistence.PersonalAccessToken().PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{
 		UserID: user.ID, TokenID: token.ID, Kind: store.PersonalAccessTokenMutationRevoke, Lifetime: time.Minute,
@@ -64,9 +57,7 @@ func TestMFAPersonalAccessTokenCanonicalIDConstraints(t *testing.T) {
 			Resource: model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, ScopeType: model.RoleScopeInstitution,
 			ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "constraint-test"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	tests := []struct {
 		name       string
@@ -87,9 +78,9 @@ func TestMFAPersonalAccessTokenCanonicalIDConstraints(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := persistence.GetMaster().Exec(ctx, test.query, test.id)
 			var postgresErr *pq.Error
-			if !errors.As(err, &postgresErr) || string(postgresErr.Code) != "23514" || postgresErr.Constraint != test.constraint {
-				t.Fatalf("constraint error = %#v, want check violation %s", err, test.constraint)
-			}
+			require.ErrorAs(t, err, &postgresErr, "constraint error")
+			require.Equal(t, "23514", string(postgresErr.Code), "constraint error")
+			require.Equal(t, test.constraint, postgresErr.Constraint, "constraint error")
 		})
 	}
 }
@@ -111,21 +102,16 @@ func TestMFAActivationRejectsCorruptionBeforeCommit(t *testing.T) {
 		{Kind: model.SessionCredentialAccess, TokenHash: model.HashToken("mfa-corruption-access"), ExpiresAt: now.Add(30 * time.Minute)},
 		{Kind: model.SessionCredentialRefresh, TokenHash: model.HashToken("mfa-corruption-refresh"), ExpiresAt: now.Add(2 * time.Hour)},
 	}, 10))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	pending, err := persistence.MFA().SeedPending(ctx, &model.MFACredential{
 		UserID: user.ID, State: model.MFAStatePending, EncryptedSecret: "ciphertext",
 		EncryptionKeyID: "0123456789abcdef0123456789abcdef", PendingExpiresAt: model.OptionalTimeFrom(now.Add(time.Hour)),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := persistence.GetMaster().Exec(ctx,
+	require.NoError(t, err)
+	_, err = persistence.GetMaster().Exec(ctx,
 		"UPDATE mfa_credentials SET encrypted_secret = '' WHERE id = ?", pending.ID.String(),
-	); err != nil {
-		t.Fatal(err)
-	}
+	)
+	require.NoError(t, err)
 	activationAt := model.MillisFromTime(pending.CreatedAt) + 1
 	audit, notice := mfaSQLSecurityNoticeFixture(t, ctx, persistence, user, model.MailTemplateIdentityMFAEnabled, activationAt)
 	_, err = persistence.MFA().Activate(ctx, &store.MFAActivationMutation{
@@ -135,27 +121,20 @@ func TestMFAActivationRejectsCorruptionBeforeCommit(t *testing.T) {
 		SessionID:     session.ID, At: model.TimeFromMillis(activationAt), AuditEventID: audit.ID, AuditAt: activationAt, Notice: notice,
 	})
 	var persisted *persistedStateError
-	if !errors.As(err, &persisted) || persisted.Entity != "mfa_credential" || persisted.Field != "encrypted_secret" {
-		t.Fatalf("Activate() error = %v, want mfa_credential.encrypted_secret persisted-state error", err)
-	}
+	require.ErrorAs(t, err, &persisted, "Activate() error")
+	require.Equal(t, "mfa_credential", persisted.Entity, "Activate() error")
+	require.Equal(t, "encrypted_secret", persisted.Field, "Activate() error")
 
 	var state string
-	if err := persistence.GetMaster().Get(ctx, &state, "SELECT state FROM mfa_credentials WHERE id = ?", pending.ID.String()); err != nil {
-		t.Fatal(err)
-	}
-	if state != string(model.MFAStatePending) {
-		t.Fatalf("credential state = %q, want pending after rollback", state)
-	}
-	if count, countErr := persistence.MFA().CountRecoveryCodes(ctx, user.ID); countErr != nil || count != 0 {
-		t.Fatalf("recovery codes after rollback = %d, %v; want 0", count, countErr)
-	}
+	require.NoError(t, persistence.GetMaster().Get(ctx, &state, "SELECT state FROM mfa_credentials WHERE id = ?", pending.ID.String()))
+	require.Equal(t, string(model.MFAStatePending), state, "credential state")
+	count, countErr := persistence.MFA().CountRecoveryCodes(ctx, user.ID)
+	require.NoError(t, countErr, "recovery codes after rollback")
+	require.Equal(t, 0, count, "recovery codes after rollback")
 	gotSession, err := persistence.Session().Get(ctx, session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if gotSession.AuthenticationStrength != model.AuthenticationSingleFactor || gotSession.MFACompletedAt.Valid {
-		t.Fatalf("session assurance changed despite rollback: %#v", gotSession)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.AuthenticationSingleFactor, gotSession.AuthenticationStrength)
+	require.False(t, gotSession.MFACompletedAt.Valid)
 }
 
 func mfaSQLSecurityNoticeFixture(t *testing.T, ctx context.Context, persistence *SQLStore, user *model.User, key model.MailTemplateKey, at int64) (*model.AuditEvent, store.MFASecurityNotice) {
@@ -164,19 +143,13 @@ func mfaSQLSecurityNoticeFixture(t *testing.T, ctx context.Context, persistence 
 	audit, err := persistence.Audit().Save(ctx, &model.AuditEvent{ActorID: user.ID, Action: "mfa.security_transition",
 		Resource: model.Resource{Type: model.ResourceUser, ID: user.ID.String()}, ScopeType: model.RoleScopeInstitution,
 		ScopeID: scopeID, Status: model.AuditStatusAttempt, NodeID: "mfa-integration"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	when := model.TimeFromMillis(at)
 	deliveryID, occurrenceID, jobID := model.NewMailDeliveryID(), model.NewMailOccurrenceID(), model.NewJobID()
 	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	job, err := model.NewJob(jobID, model.JobTypeMailDeliver, 1, command, deliveryID.String(), when, when, model.MailMaximumAttempts)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceSecurityNotice, TemplateKey: key, ActorUserID: user.ID, CreatedAt: when}
 	delivery := &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: jobID, TargetUserID: user.ID, TemplateKey: key,
 		TemplateDigest: strings.Repeat("a", 64), MaskedRecipient: "m***@example.edu", State: model.MailDeliveryQueued,

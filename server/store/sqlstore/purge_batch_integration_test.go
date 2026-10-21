@@ -15,6 +15,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/storetest"
@@ -54,17 +56,13 @@ func retentionPurgeBatchProbe(s *SQLStore, current, peer store.RetentionStore) s
 		Seed: func(t *testing.T, ctx context.Context, count int, unknownLast bool) []store.RetentionPurgeObject {
 			t.Helper()
 			var retirement string
-			if err := s.GetMaster().Get(ctx, &retirement, `SELECT id FROM retention_retirements WHERE category='work' AND state='retired' ORDER BY id LIMIT 1`); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, s.GetMaster().Get(ctx, &retirement, `SELECT id FROM retention_retirements WHERE category='work' AND state='retired' ORDER BY id LIMIT 1`))
 			keys := make([]store.RetentionPurgeObject, count)
 			for i := range keys {
 				key := store.RetentionPurgeObject{RetirementID: model.RetentionRetirementID(retirement), ObjectID: model.NewAttemptWorkspaceObjectID()}
 				_, err := s.GetMaster().Exec(ctx, `INSERT INTO retention_purge_objects(retirement_id,object_id,writer_finished,verify_after)
 					VALUES(?,?,?,statement_timestamp()-interval '10 days'+?*interval '1 second')`, key.RetirementID.String(), key.ObjectID.String(), !unknownLast || i != count-1, i)
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				keys[i] = key
 			}
 			return keys
@@ -78,24 +76,20 @@ func retentionPurgeBatchProbe(s *SQLStore, current, peer store.RetentionStore) s
 			}
 			err := s.GetMaster().Get(ctx, &row, `SELECT last_absence_observed_at IS NOT NULL AS observed,absence_verified_at IS NOT NULL AS verified,verify_after>clock_timestamp() AS deferred
 				FROM retention_purge_objects WHERE retirement_id=? AND object_id=?`, key.RetirementID.String(), key.ObjectID.String())
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			return storetest.PurgeBatchObservation{Exists: true, ObservedAbsent: row.Observed, VerifiedAbsent: row.Verified, NextAttemptDeferred: row.Deferred}
 		},
 		RetryNow: func(t *testing.T, ctx context.Context, keys []store.RetentionPurgeObject) {
 			t.Helper()
 			for _, key := range keys {
-				if _, err := s.GetMaster().Exec(ctx, `UPDATE retention_purge_objects SET verify_after=clock_timestamp()-interval '1 second' WHERE retirement_id=? AND object_id=?`, key.RetirementID.String(), key.ObjectID.String()); err != nil {
-					t.Fatal(err)
-				}
+				_, err := s.GetMaster().Exec(ctx, `UPDATE retention_purge_objects SET verify_after=clock_timestamp()-interval '1 second' WHERE retirement_id=? AND object_id=?`, key.RetirementID.String(), key.ObjectID.String())
+				require.NoError(t, err)
 			}
 		},
 		FinishWriter: func(t *testing.T, ctx context.Context, key store.RetentionPurgeObject) {
 			t.Helper()
-			if _, err := s.GetMaster().Exec(ctx, `UPDATE retention_purge_objects SET writer_finished=true WHERE retirement_id=? AND object_id=?`, key.RetirementID.String(), key.ObjectID.String()); err != nil {
-				t.Fatal(err)
-			}
+			_, err := s.GetMaster().Exec(ctx, `UPDATE retention_purge_objects SET writer_finished=true WHERE retirement_id=? AND object_id=?`, key.RetirementID.String(), key.ObjectID.String())
+			require.NoError(t, err)
 		},
 	}
 }
@@ -116,14 +110,10 @@ func exportPurgeBatchProbe(s *SQLStore, current, peer store.ExamExportStore) sto
 					statement_timestamp()-interval '2 days',statement_timestamp()-interval '1 day',statement_timestamp()-interval '1 day',1,0,0,?
 					FROM retention_retirements r JOIN exam_submissions sub ON sub.id=r.submission_id JOIN exam_attempts a ON a.id=sub.exam_attempt_id
 					WHERE r.category='work' AND r.state='retired' ORDER BY r.id LIMIT 1`, key.ExportID.String(), model.NewJobID().String())
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				_, err = s.GetMaster().Exec(ctx, `INSERT INTO exam_export_artifacts(export_id,attempt_id,created_at,writer_finished,reconcile_after)
 					VALUES(?,?,statement_timestamp()-interval '2 days',?,statement_timestamp()-interval '10 days'+?*interval '1 second')`, key.ExportID.String(), key.AttemptID.String(), !unknownLast || i != count-1, i)
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				keys[i] = key
 			}
 			return keys
@@ -138,24 +128,19 @@ func exportPurgeBatchProbe(s *SQLStore, current, peer store.ExamExportStore) sto
 			if errors.Is(err, sql.ErrNoRows) {
 				return storetest.PurgeBatchObservation{}
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			return storetest.PurgeBatchObservation{Exists: true, ObservedAbsent: row.Observed, NextAttemptDeferred: row.Deferred}
 		},
 		RetryNow: func(t *testing.T, ctx context.Context, keys []store.ExamExportArtifact) {
 			t.Helper()
 			for _, key := range keys {
-				if _, err := s.GetMaster().Exec(ctx, `UPDATE exam_export_artifacts SET reconcile_after=clock_timestamp()-interval '1 second' WHERE export_id=? AND attempt_id=?`, key.ExportID.String(), key.AttemptID.String()); err != nil {
-					t.Fatal(err)
-				}
+				_, err := s.GetMaster().Exec(ctx, `UPDATE exam_export_artifacts SET reconcile_after=clock_timestamp()-interval '1 second' WHERE export_id=? AND attempt_id=?`, key.ExportID.String(), key.AttemptID.String())
+				require.NoError(t, err)
 			}
 		},
 		FinishWriter: func(t *testing.T, ctx context.Context, key store.ExamExportArtifact) {
 			t.Helper()
-			if err := current.FinishWriter(ctx, key); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, current.FinishWriter(ctx, key))
 		},
 	}
 }

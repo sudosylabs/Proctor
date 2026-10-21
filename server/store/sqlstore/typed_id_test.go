@@ -10,6 +10,8 @@ package sqlstore
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -17,31 +19,20 @@ func TestNullEntityIDScanAndValue(t *testing.T) {
 	t.Parallel()
 
 	var n NullEntityID
-	if err := n.Scan(nil); err != nil {
-		t.Fatal(err)
-	}
-	if n.Valid {
-		t.Fatal("nil scan should be invalid")
-	}
+	require.NoError(t, n.Scan(nil))
+	require.False(t, n.Valid, "nil scan should be invalid")
 	value, err := n.Value()
-	if err != nil || value != nil {
-		t.Fatalf("Value() = %v, %v", value, err)
-	}
+	require.NoError(t, err, "Value()")
+	require.Nil(t, value, "Value()")
 
 	id := model.NewID()
-	if err := n.Scan(id); err != nil {
-		t.Fatal(err)
-	}
-	if !n.Valid || n.ID != id {
-		t.Fatalf("scan = %#v", n)
-	}
+	require.NoError(t, n.Scan(id))
+	require.True(t, n.Valid)
+	require.Equal(t, id, n.ID)
 	value, err = n.Value()
-	if err != nil || value != id {
-		t.Fatalf("Value() = %v, %v", value, err)
-	}
-	if err := n.Scan("bad"); err == nil {
-		t.Fatal("invalid id should fail scan")
-	}
+	require.NoError(t, err, "Value()")
+	require.Equal(t, id, value, "Value()")
+	require.Error(t, n.Scan("bad"), "invalid id should fail scan")
 }
 
 func TestScanUserID(t *testing.T) {
@@ -49,41 +40,28 @@ func TestScanUserID(t *testing.T) {
 
 	raw := model.NewID()
 	id, err := ScanUserID(raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if id.String() != raw {
-		t.Fatalf("ScanUserID() = %q", id)
-	}
-	if _, err := ScanUserID(nil); err == nil {
-		t.Fatal("null required id should fail")
-	}
+	require.NoError(t, err)
+	require.Equal(t, raw, id.String())
+	_, err = ScanUserID(nil)
+	require.Error(t, err, "null required id should fail")
 	value, err := UserIDValue(id)
-	if err != nil || value != raw {
-		t.Fatalf("UserIDValue() = %v, %v", value, err)
-	}
-	if _, err := UserIDValue(""); err == nil {
-		t.Fatal("invalid typed id must fail Value")
-	}
+	require.NoError(t, err, "UserIDValue()")
+	require.Equal(t, raw, value, "UserIDValue()")
+	_, err = UserIDValue("")
+	require.Error(t, err, "invalid typed id must fail Value")
 }
 
 func TestTimeBoundaryHelpers(t *testing.T) {
 	t.Parallel()
 
 	absent := model.OptionalTime{}
-	if absent.Valid {
-		t.Fatal("zero optional time is absent")
-	}
+	require.False(t, absent.Valid, "zero optional time is absent")
 	present := model.OptionalTimeFromMillis(1_700_000_000_000)
-	if !present.Valid || present.Millis() != 1_700_000_000_000 {
-		t.Fatalf("%#v", present)
-	}
+	require.True(t, present.Valid)
+	require.Equal(t, int64(1_700_000_000_000), present.Millis())
 	nullTime := NullTimeFromOptional(present)
-	if !nullTime.Valid {
-		t.Fatal("expected valid NullTime")
-	}
+	require.True(t, nullTime.Valid, "expected valid NullTime")
 	back := OptionalTimeFromNullTime(nullTime)
-	if !back.Valid || back.Millis() != present.Millis() {
-		t.Fatalf("%#v", back)
-	}
+	require.True(t, back.Valid)
+	require.Equal(t, present.Millis(), back.Millis())
 }

@@ -9,9 +9,10 @@ package sqlstore
 
 import (
 	"database/sql"
-	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -45,12 +46,9 @@ func TestAcademicUnitMemberRowRehydrationRejectsInvalidPersistedState(t *testing
 		t.Run(test.name, func(t *testing.T) {
 			_, err := test.row.model()
 			var persisted *persistedStateError
-			if !errors.As(err, &persisted) {
-				t.Fatalf("model() error = %v, want persisted-state error", err)
-			}
-			if persisted.Entity != "academic_unit_member" || persisted.Field != test.field {
-				t.Fatalf("persisted-state context = %s.%s, want academic_unit_member.%s", persisted.Entity, persisted.Field, test.field)
-			}
+			require.ErrorAs(t, err, &persisted, "model() error")
+			require.Equal(t, "academic_unit_member", persisted.Entity, "persisted-state context")
+			require.Equal(t, test.field, persisted.Field, "persisted-state context")
 		})
 	}
 }
@@ -70,15 +68,12 @@ func TestAcademicUnitMemberRowRehydrationReturnsValidatedModel(t *testing.T) {
 	}
 
 	got, err := row.model()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := got.Validate(); err != nil {
-		t.Fatalf("rehydrated academic unit member is invalid: %v", err)
-	}
-	if got.ID.String() != row.ID || got.AcademicUnitID.String() != row.AcademicUnitID || got.UserID.String() != row.UserID || got.Revision != row.Revision {
-		t.Fatalf("model() = %#v, want row identity and relationship fields", got)
-	}
+	require.NoError(t, err)
+	require.NoError(t, got.Validate())
+	require.Equal(t, row.ID, got.ID.String(), "model() = %#v, want row identity and relationship fields", got)
+	require.Equal(t, row.AcademicUnitID, got.AcademicUnitID.String(), "model() = %#v, want row identity and relationship fields", got)
+	require.Equal(t, row.UserID, got.UserID.String(), "model() = %#v, want row identity and relationship fields", got)
+	require.Equal(t, row.Revision, got.Revision, "model() = %#v, want row identity and relationship fields", got)
 }
 
 func replaceAcademicUnitMemberRow(row academicUnitMemberRow, replace func(*academicUnitMemberRow)) academicUnitMemberRow {

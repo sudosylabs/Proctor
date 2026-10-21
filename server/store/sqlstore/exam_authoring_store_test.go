@@ -9,9 +9,10 @@ package sqlstore
 
 import (
 	"database/sql"
-	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -39,9 +40,9 @@ func TestExamAuthoringRowFailsClosed(t *testing.T) {
 			test.mutate(&row)
 			_, err := row.model()
 			var persisted *persistedStateError
-			if !errors.As(err, &persisted) || persisted.Entity != test.entity || persisted.Field != test.field {
-				t.Fatalf("model error = %v, want %s.%s persisted-state error", err, test.entity, test.field)
-			}
+			require.ErrorAs(t, err, &persisted, "model error")
+			require.Equal(t, test.entity, persisted.Entity, "model error")
+			require.Equal(t, test.field, persisted.Field, "model error")
 		})
 	}
 }
@@ -57,46 +58,35 @@ func TestExamAccessRowFailsClosed(t *testing.T) {
 	row.AcademicUnitID = "bad"
 	_, err := row.model()
 	var persisted *persistedStateError
-	if !errors.As(err, &persisted) || persisted.Entity != "exam" || persisted.Field != "academic_unit_id" {
-		t.Fatalf("model error = %v, want exam.academic_unit_id persisted-state error", err)
-	}
+	require.ErrorAs(t, err, &persisted, "model error")
+	require.Equal(t, "exam", persisted.Entity, "model error")
+	require.Equal(t, "academic_unit_id", persisted.Field, "model error")
 }
 
 func TestPrepareExamAuthoringCreationRejectsBrokenAggregate(t *testing.T) {
 	t.Parallel()
 	at := time.Now().UTC()
 	exam, err := model.NewExam(model.NewExamID(), model.NewAcademicUnitID(), model.NewUserID(), at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	draft, err := model.NewExamDraft(exam.ID, "Test", "", model.DefaultExamPolicySet(), at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	manager, err := model.NewExamManager(exam.ID, model.NewUserID(), exam.CreatorUserID, at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	_, _, err = prepareExamAuthoringCreation(&store.ExamAuthoringCreation{
 		Exam: exam, Draft: draft, Manager: manager, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
 	})
 	var invalid *store.ErrInvalidInput
-	if !errors.As(err, &invalid) || invalid.Field != "aggregate" {
-		t.Fatalf("error = %v, want aggregate invalid input", err)
-	}
+	require.ErrorAs(t, err, &invalid)
+	require.Equal(t, "aggregate", invalid.Field)
 }
 
 func validExamAuthoringRow(t *testing.T) examAuthoringRow {
 	t.Helper()
 	at := time.Now().UTC()
 	policy, err := model.EncodeExamPolicySet(model.DefaultExamPolicySet())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	browserPolicy, err := model.EncodeBrowserPolicy(model.DisabledBrowserPolicy())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return examAuthoringRow{
 		ID: model.NewID(), AcademicUnitID: model.NewID(), CreatorUserID: model.NewID(), OwnerUserID: model.NewID(),
 		DefaultRevisionID: sql.NullString{}, CreatedAt: at, UpdatedAt: at, ExamRevision: 1,

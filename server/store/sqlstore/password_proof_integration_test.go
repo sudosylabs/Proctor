@@ -11,9 +11,11 @@ package sqlstore
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -30,23 +32,16 @@ func TestPasswordProofResetPreservesNewPasswordAgainstStaleRehash(t *testing.T) 
 		ExpectedHash: password.PasswordHash, ExpectedRevision: password.Revision, PasswordHash: "upgraded-old-password"}
 	completion := passwordProofReset(t, ctx, persistence, institution, user)
 	reset, err := persistence.UserToken().ConsumePasswordReset(ctx, completion)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = persistence.PasswordCredential().Rehash(ctx, rehash); !errors.Is(err, store.ErrPasswordCredentialChanged) {
-		t.Fatalf("stale rehash error = %v", err)
-	}
+	require.NoError(t, err)
+	err = persistence.PasswordCredential().Rehash(ctx, rehash)
+	require.ErrorIs(t, err, store.ErrPasswordCredentialChanged)
 	current, err := persistence.PasswordCredential().GetByUser(ctx, user.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if current.PasswordHash != completion.PasswordHash || current.Revision != password.Revision+1 ||
-		!current.PasswordChangedAt.Equal(reset.PasswordCredential.PasswordChangedAt) {
-		t.Fatal("stale rehash changed the reset credential or its lifecycle metadata")
-	}
-	if _, _, err = storetest.SaveSession(ctx, persistence, creation); !errors.Is(err, store.ErrPasswordCredentialChanged) {
-		t.Fatalf("old proof after reset error = %v", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, completion.PasswordHash, current.PasswordHash, "stale rehash changed the reset credential or its lifecycle metadata")
+	require.Equal(t, password.Revision+1, current.Revision, "stale rehash changed the reset credential or its lifecycle metadata")
+	require.True(t, current.PasswordChangedAt.Equal(reset.PasswordCredential.PasswordChangedAt), "stale rehash changed the reset credential or its lifecycle metadata")
+	_, _, err = storetest.SaveSession(ctx, persistence, creation)
+	require.ErrorIs(t, err, store.ErrPasswordCredentialChanged)
 }
 
 func TestPasswordProofRehashPreservesOutstandingProof(t *testing.T) {
@@ -54,15 +49,12 @@ func TestPasswordProofRehashPreservesOutstandingProof(t *testing.T) {
 	persistence, _, user, password := passwordProofFixture(t, ctx)
 	session, credentials := authenticationPolicyTestSession(user.ID, "password", "", "")
 	creation := sessionCreationForSQLTest(t, ctx, persistence, session, credentials, 10)
-	if err := persistence.PasswordCredential().Rehash(ctx, &store.PasswordCredentialRehash{
+	require.NoError(t, persistence.PasswordCredential().Rehash(ctx, &store.PasswordCredentialRehash{
 		ID: password.ID, UserID: user.ID, ExpectedHash: password.PasswordHash,
 		ExpectedRevision: password.Revision, PasswordHash: "upgraded-same-password",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := storetest.SaveSession(ctx, persistence, creation); err != nil {
-		t.Fatalf("rehash invalidated outstanding proof: %v", err)
-	}
+	}))
+	_, _, err := storetest.SaveSession(ctx, persistence, creation)
+	require.NoError(t, err)
 }
 
 func TestPasswordProofRehashSerializesWithReset(t *testing.T) {
@@ -85,16 +77,12 @@ func TestPasswordProofRehashSerializesWithReset(t *testing.T) {
 	}()
 	waitForBlockedMailQuery(t, ctx, persistence, resetPID, "UPDATE password_credentials")
 	release()
-	if err := <-resetResult; err != nil {
-		t.Fatal(err)
-	}
-	if err := <-rehashResult; !errors.Is(err, store.ErrPasswordCredentialChanged) {
-		t.Fatalf("concurrent rehash error = %v", err)
-	}
+	require.NoError(t, (<-resetResult))
+	require.ErrorIs(t, (<-rehashResult), store.ErrPasswordCredentialChanged)
 	current, err := persistence.PasswordCredential().GetByUser(ctx, user.ID)
-	if err != nil || current.PasswordHash != completion.PasswordHash || current.Revision != password.Revision+1 {
-		t.Fatalf("concurrent rehash replaced the reset credential: %v", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, completion.PasswordHash, current.PasswordHash)
+	require.Equal(t, password.Revision+1, current.Revision)
 }
 
 func TestPasswordProofResetSerializesWithSessionCreation(t *testing.T) {
@@ -156,21 +144,17 @@ func TestPasswordProofResetSerializesWithSessionCreation(t *testing.T) {
 				waitForBlockedMailQuery(t, ctx, persistence, firstPID, "pg_advisory_xact_lock")
 				release()
 				one, two := <-firstResult, <-secondResult
-				if one.err != nil {
-					t.Fatalf("first operation: %v", one.err)
-				}
+				require.NoError(t, one.err)
 				if resetFirst {
-					if !errors.Is(two.err, store.ErrPasswordCredentialChanged) || two.session != nil {
-						t.Fatalf("creation escaped earlier reset: %v", two.err)
-					}
+					require.ErrorIs(t, two.err, store.ErrPasswordCredentialChanged)
+					require.Nil(t, two.session)
 				} else {
-					if two.err != nil || one.session == nil {
-						t.Fatalf("reset following creation: %v", two.err)
-					}
+					require.NoError(t, two.err)
+					require.NotNil(t, one.session)
 					current, err := persistence.Session().Get(ctx, one.session.ID)
-					if err != nil || !current.RevokedAt.Valid || current.RevocationReason != model.SessionRevocationPasswordReset {
-						t.Fatalf("created Session escaped reset revocation: %v", err)
-					}
+					require.NoError(t, err)
+					require.True(t, current.RevokedAt.Valid)
+					require.Equal(t, model.SessionRevocationPasswordReset, current.RevocationReason)
 				}
 			})
 		}
@@ -183,13 +167,10 @@ func TestPasswordProofResetFencesEachDesktopTransition(t *testing.T) {
 			ctx := context.Background()
 			persistence, institution, user, password := passwordProofFixture(t, ctx)
 			transaction, handle, browserProof, state, verifier := desktopAuthorizationTransactionForSQLTest(model.NowUTC(), institution.ID)
-			if _, err := persistence.BrowserAuthentication().CreateDesktopAuthorization(ctx, transaction); err != nil {
-				t.Fatal(err)
-			}
+			_, err := persistence.BrowserAuthentication().CreateDesktopAuthorization(ctx, transaction)
+			require.NoError(t, err)
 			binding, err := bindDesktopAuthorizationForSQLTest(ctx, persistence, handle, browserProof, state)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			authenticate := func() error {
 				_, err := persistence.BrowserAuthentication().AuthenticateDesktopAuthorization(ctx, &store.DesktopAuthorizationAuthentication{
 					BindingHash: model.HashToken(binding), UserID: user.ID, AuthenticationMethod: "password",
@@ -210,18 +191,15 @@ func TestPasswordProofResetFencesEachDesktopTransition(t *testing.T) {
 				return err
 			}
 			if stage != "authenticate" {
-				if err = authenticate(); err != nil {
-					t.Fatal(err)
-				}
+				err = authenticate()
+				require.NoError(t, err)
 			}
 			if stage == "exchange" {
-				if err = issue(); err != nil {
-					t.Fatal(err)
-				}
+				err = issue()
+				require.NoError(t, err)
 			}
-			if _, err = persistence.UserToken().ConsumePasswordReset(ctx, passwordProofReset(t, ctx, persistence, institution, user)); err != nil {
-				t.Fatal(err)
-			}
+			_, err = persistence.UserToken().ConsumePasswordReset(ctx, passwordProofReset(t, ctx, persistence, institution, user))
+			require.NoError(t, err)
 			switch stage {
 			case "authenticate":
 				err = authenticate()
@@ -231,9 +209,7 @@ func TestPasswordProofResetFencesEachDesktopTransition(t *testing.T) {
 				audit := saveDesktopAuthorizationAuditForSQLTest(t, ctx, persistence, institution.ID, user.ID, "exchange")
 				_, err = persistence.BrowserAuthentication().Exchange(ctx, desktopAuthorizationExchangeForSQLTest(code, state, verifier, audit))
 			}
-			if !errors.Is(err, store.ErrPasswordCredentialChanged) {
-				t.Fatalf("%s accepted pre-reset proof: %v", stage, err)
-			}
+			require.ErrorIs(t, err, store.ErrPasswordCredentialChanged, "%s accepted pre-reset proof", stage)
 		})
 	}
 }
@@ -243,9 +219,7 @@ func TestPasswordProofDesktopRejectsRevokedSourceSession(t *testing.T) {
 	persistence, institution, user, _ := passwordProofFixture(t, ctx)
 	session, credentials := authenticationPolicyTestSession(user.ID, "password", "", "")
 	session, credentials, err := storetest.SaveSession(ctx, persistence, sessionCreationForSQLTest(t, ctx, persistence, session, credentials, 10))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var accessID model.SessionCredentialID
 	for _, credential := range credentials {
 		if credential.Kind == model.SessionCredentialAccess {
@@ -253,24 +227,18 @@ func TestPasswordProofDesktopRejectsRevokedSourceSession(t *testing.T) {
 		}
 	}
 	transaction, handle, proof, state, _ := desktopAuthorizationTransactionForSQLTest(model.NowUTC(), institution.ID)
-	if _, err = persistence.BrowserAuthentication().CreateDesktopAuthorization(ctx, transaction); err != nil {
-		t.Fatal(err)
-	}
+	_, err = persistence.BrowserAuthentication().CreateDesktopAuthorization(ctx, transaction)
+	require.NoError(t, err)
 	binding, err := bindDesktopAuthorizationForSQLTest(ctx, persistence, handle, proof, state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = persistence.UserToken().ConsumePasswordReset(ctx, passwordProofReset(t, ctx, persistence, institution, user)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	_, err = persistence.UserToken().ConsumePasswordReset(ctx, passwordProofReset(t, ctx, persistence, institution, user))
+	require.NoError(t, err)
 	_, err = persistence.BrowserAuthentication().AuthenticateDesktopAuthorization(ctx, &store.DesktopAuthorizationAuthentication{
 		BindingHash: model.HashToken(binding), UserID: user.ID, SourceSessionID: session.ID, SourceCredentialID: accessID,
 		AuthenticationMethod: session.AuthenticationMethod, AuthenticationStrength: session.AuthenticationStrength,
 		AuthenticatedAt: session.AuthenticatedAt.UnixMilli(), Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 	})
-	if !store.IsNotFound(err) {
-		t.Fatalf("revoked source Session error = %v", err)
-	}
+	require.True(t, store.IsNotFound(err), "revoked source Session error")
 }
 
 func passwordProofFixture(t *testing.T, ctx context.Context) (*SQLStore, *model.Institution, *model.User, *model.PasswordCredential) {
@@ -278,14 +246,10 @@ func passwordProofFixture(t *testing.T, ctx context.Context) (*SQLStore, *model.
 	persistence := openTestStore(t)
 	resetTestStore(t, persistence)
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "password-proof", DisplayName: "Password Proof"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	user := saveIntegrationUser(t, ctx, persistence, &model.User{Username: "password-proof", Email: "password-proof@example.edu"})
 	password, err := persistence.PasswordCredential().Save(ctx, &model.PasswordCredential{UserID: user.ID, PasswordHash: "encoded-original-password"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return persistence, institution, user, password
 }
 
@@ -294,9 +258,7 @@ func passwordProofReset(t *testing.T, ctx context.Context, persistence *SQLStore
 	token, err := authenticationPolicyTestIssue(t, ctx, persistence, &model.UserToken{UserID: user.ID, Purpose: model.UserTokenPasswordReset,
 		TokenHash: model.HashToken(model.NewCredentialToken()), Target: user.Email, ExpiresAt: model.NowUTC().Add(time.Hour)},
 		authenticationPolicyTestAudit("authentication.password_reset.request", user.ID.String(), institution.ID.String()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return authenticationPolicyTestResetCompletion(t, user, token.TokenHash, "encoded-reset-password", model.GetMillis(), authenticationPolicyTestCompletionAudit(institution.ID.String()))
 }
 
@@ -307,22 +269,17 @@ func pausePasswordProofWrite(t *testing.T, ctx context.Context, persistence *SQL
 	t.Helper()
 	const key int64 = 8154700260905
 	controller, err := persistence.GetMaster().DB().Conn(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var pid int
-	if err = controller.QueryRowContext(ctx, `SELECT pg_backend_pid()`).Scan(&pid); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, key); err != nil {
-		t.Fatal(err)
-	}
+	err = controller.QueryRowContext(ctx, `SELECT pg_backend_pid()`).Scan(&pid)
+	require.NoError(t, err)
+	_, err = controller.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, key)
+	require.NoError(t, err)
 	locked := true
 	release := func() {
 		if locked {
-			if _, err := controller.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, key); err != nil {
-				t.Error(err)
-			}
+			_, err := controller.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, key)
+			assert.NoError(t, err)
 			locked = false
 		}
 	}
@@ -334,14 +291,11 @@ func pausePasswordProofWrite(t *testing.T, ctx context.Context, persistence *SQL
 		release()
 		_ = controller.Close()
 		_, err := persistence.GetMaster().Exec(context.Background(), `DROP TRIGGER IF EXISTS proctor_test_pause_password_proof ON `+table+`; DROP FUNCTION IF EXISTS proctor_test_pause_password_proof()`)
-		if err != nil {
-			t.Error(err)
-		}
+		assert.NoError(t, err)
 	})
-	if _, err = persistence.GetMaster().Exec(ctx, `CREATE FUNCTION proctor_test_pause_password_proof() RETURNS trigger LANGUAGE plpgsql AS $$
+	_, err = persistence.GetMaster().Exec(ctx, `CREATE FUNCTION proctor_test_pause_password_proof() RETURNS trigger LANGUAGE plpgsql AS $$
 		BEGIN PERFORM pg_advisory_xact_lock(8154700260905); RETURN NEW; END $$;
-		CREATE TRIGGER proctor_test_pause_password_proof BEFORE `+event+` ON `+table+` FOR EACH ROW EXECUTE FUNCTION proctor_test_pause_password_proof()`); err != nil {
-		t.Fatal(err)
-	}
+		CREATE TRIGGER proctor_test_pause_password_proof BEFORE `+event+` ON `+table+` FOR EACH ROW EXECUTE FUNCTION proctor_test_pause_password_proof()`)
+	require.NoError(t, err)
 	return pid, release
 }

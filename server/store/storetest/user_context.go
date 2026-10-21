@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -39,32 +41,31 @@ func testUserStoreCurrentContext(t *testing.T, ss store.Store) {
 					Name: "context-" + model.NewID(), DisplayName: "Context role",
 					Permissions: []string{string(test.action)},
 				})
-				requireNoError(t, err)
+				require.NoError(t, err)
 				_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{
 					UserID: user.ID, RoleID: role.ID, ScopeType: test.scopeType, ScopeID: test.scopeID,
 					StartsAt: model.TimeUTC(time.Now().Add(-time.Minute)),
 				})
-				requireNoError(t, err)
+				require.NoError(t, err)
 			}
 			got, err := ss.User().GetCurrentContext(ctx, user.ID, 2)
-			requireNoError(t, err)
+			require.NoError(t, err)
 			wantAreas := []store.CurrentUserProductArea{store.CurrentUserProductAreaAccount}
 			if test.administration {
 				wantAreas = append(wantAreas, store.CurrentUserProductAreaAdministration)
 			}
 			wantAreas = append(wantAreas, store.CurrentUserProductAreaSettings)
-			if got.UserID != user.ID || !slices.Equal(got.AvailableProductAreas, wantAreas) || got.NoAssignedAccess != (test.action == "") {
-				t.Fatalf("current context = %#v, want areas %v", got, wantAreas)
-			}
-			if got.ManagementScopesHasMore || got.UnresolvedAttempt != nil {
-				t.Fatalf("unexpected continuation or Attempt: %#v", got)
-			}
+			require.Equal(t, user.ID, got.UserID, "current context = %#v, want areas %v", got, wantAreas)
+			require.True(t, slices.Equal(got.AvailableProductAreas, wantAreas), "current context = %#v, want areas %v", got, wantAreas)
+			require.Equal(t, test.action == "", got.NoAssignedAccess, "current context = %#v, want areas %v", got, wantAreas)
+			require.False(t, got.ManagementScopesHasMore)
+			require.Nil(t, got.UnresolvedAttempt)
 			if test.administration {
-				if len(got.ManagementScopes) != 1 || got.ManagementScopes[0].ScopeType != test.scopeType || got.ManagementScopes[0].ScopeID != test.scopeID {
-					t.Fatalf("management scopes = %#v", got.ManagementScopes)
-				}
-			} else if len(got.ManagementScopes) != 0 {
-				t.Fatalf("unexpected management scopes = %#v", got.ManagementScopes)
+				require.Len(t, got.ManagementScopes, 1)
+				require.Equal(t, test.scopeType, got.ManagementScopes[0].ScopeType)
+				require.Equal(t, test.scopeID, got.ManagementScopes[0].ScopeID)
+			} else {
+				require.Empty(t, got.ManagementScopes, "unexpected management scopes")
 			}
 		})
 	}

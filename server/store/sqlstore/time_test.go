@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -28,24 +30,19 @@ func TestNullableTimeUsesDurablePrecision(t *testing.T) {
 		{name: "concrete", got: NullTimeFromTime(instant)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if !tc.got.Valid || tc.got.Time != want {
-				t.Fatalf("nullable time = %#v, want present %v", tc.got, want)
-			}
-			if got := TimeFromNullTime(tc.got); got != want {
-				t.Fatalf("concrete round trip = %v, want %v", got, want)
-			}
-			if got := OptionalTimeFromNullTime(tc.got); !got.Valid || got.Time != want {
-				t.Fatalf("optional round trip = %#v, want present %v", got, want)
-			}
+			require.True(t, tc.got.Valid, "nullable time = %#v, want present", tc.got)
+			require.Equal(t, want, tc.got.Time, "nullable time = %#v, want present", tc.got)
+			require.Equal(t, want, TimeFromNullTime(tc.got), "concrete round trip")
+			got := OptionalTimeFromNullTime(tc.got)
+			require.True(t, got.Valid, "optional round trip = %#v, want present", got)
+			require.Equal(t, want, got.Time, "optional round trip = %#v, want present", got)
 		})
 	}
-	if NullTimeFromTime(time.Time{}).Valid || NullTimeFromOptional(model.OptionalTime{}).Valid {
-		t.Fatal("absent time must remain SQL NULL")
-	}
-	if got := NullTimeFromOptional(model.OptionalTimeFrom(time.Time{})); !got.Valid || !got.Time.IsZero() {
-		t.Fatalf("present zero time lost its presence: %#v", got)
-	}
-	if !TimeFromNullTime(sql.NullTime{}).IsZero() || OptionalTimeFromNullTime(sql.NullTime{}).Valid {
-		t.Fatal("SQL NULL must remain absent")
-	}
+	require.False(t, NullTimeFromTime(time.Time{}).Valid, "absent time must remain SQL NULL")
+	require.False(t, NullTimeFromOptional(model.OptionalTime{}).Valid, "absent time must remain SQL NULL")
+	got := NullTimeFromOptional(model.OptionalTimeFrom(time.Time{}))
+	require.True(t, got.Valid)
+	require.True(t, got.Time.IsZero())
+	require.True(t, TimeFromNullTime(sql.NullTime{}).IsZero(), "SQL NULL must remain absent")
+	require.False(t, OptionalTimeFromNullTime(sql.NullTime{}).Valid, "SQL NULL must remain absent")
 }

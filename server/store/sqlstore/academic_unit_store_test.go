@@ -9,8 +9,9 @@ package sqlstore
 
 import (
 	"database/sql"
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -68,29 +69,20 @@ func TestAcademicUnitRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := test.row.model()
 			var persisted *persistedStateError
-			if !errors.As(err, &persisted) {
-				t.Fatalf("model() error = %v, want persisted-state error", err)
-			}
-			if persisted.Entity != "academic_unit" || persisted.Field != test.field {
-				t.Fatalf("persisted-state context = %s.%s, want academic_unit.%s", persisted.Entity, persisted.Field, test.field)
-			}
+			require.ErrorAs(t, err, &persisted, "model() error")
+			require.Equal(t, "academic_unit", persisted.Entity, "persisted-state context")
+			require.Equal(t, test.field, persisted.Field, "persisted-state context")
 		})
 	}
 }
 
 func TestAcademicUnitRowConversion(t *testing.T) {
 	unitID, err := model.ParseAcademicUnitID(model.NewID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	institutionID, err := model.ParseInstitutionID(model.NewID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	parentID, err := model.ParseAcademicUnitID(model.NewID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	unit := &model.AcademicUnit{
 		ID:            unitID,
 		CreatedAt:     model.TimeFromMillis(1),
@@ -104,29 +96,17 @@ func TestAcademicUnitRowConversion(t *testing.T) {
 		Description:   "School",
 	}
 	row := newAcademicUnitRow(unit)
-	if !row.ParentID.Valid {
-		t.Fatal("non-empty parent ID became NULL")
-	}
+	require.True(t, row.ParentID.Valid, "non-empty parent ID became NULL")
 	got, err := row.model()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if *got != *unit {
-		t.Fatalf("row.model() = %#v, want %#v", got, unit)
-	}
+	require.NoError(t, err)
+	require.Equal(t, *unit, *got, "row.model() = %#v, want %#v", got, unit)
 
 	unit.ParentID = ""
 	row = newAcademicUnitRow(unit)
-	if row.ParentID.Valid {
-		t.Fatal("empty parent ID did not become NULL")
-	}
+	require.False(t, row.ParentID.Valid, "empty parent ID did not become NULL")
 	got, err = row.model()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.ParentID != "" {
-		t.Fatalf("NULL parent mapped to %q", got.ParentID)
-	}
+	require.NoError(t, err)
+	require.Empty(t, got.ParentID)
 }
 
 func replaceAcademicUnitRow(row academicUnitRow, replace func(*academicUnitRow)) academicUnitRow {

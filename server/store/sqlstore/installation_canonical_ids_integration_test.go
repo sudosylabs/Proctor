@@ -11,10 +11,10 @@ package sqlstore
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/lib/pq"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -27,26 +27,21 @@ func TestInstallationCanonicalIDConstraints(t *testing.T) {
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{
 		Name: "installation-constraint", DisplayName: "Installation Constraint",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	user := saveIntegrationUser(t, ctx, persistence, &model.User{
 		Username: "installation-constraint", Email: "installation-constraint@example.edu", DisplayName: "Administrator",
 	})
 	policy := model.NewInitialAccessPolicy(model.NewAccessPolicyID(), model.NowUTC())
-	if err := insertInitialAccessPolicy(ctx, persistence.GetMaster(), policy); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := persistence.GetMaster().Exec(ctx, `
+	require.NoError(t, insertInitialAccessPolicy(ctx, persistence.GetMaster(), policy))
+	_, err = persistence.GetMaster().Exec(ctx, `
 		INSERT INTO installation_states (
 			singleton, initialized_at, institution_id, administrator_user_id,
 			access_policy_id, bootstrap_secret_digest, bootstrap_command_fingerprint,
 			bootstrap_result
 		) VALUES (1, NOW(), ?, ?, ?, decode(repeat('01', 32), 'hex'),
 		          decode(repeat('02', 32), 'hex'), '{}'::jsonb)`,
-		institution.ID.String(), user.ID.String(), policy.ID.String()); err != nil {
-		t.Fatal(err)
-	}
+		institution.ID.String(), user.ID.String(), policy.ID.String())
+	require.NoError(t, err)
 
 	tests := []struct {
 		name       string
@@ -61,9 +56,9 @@ func TestInstallationCanonicalIDConstraints(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := persistence.GetMaster().Exec(ctx, test.query)
 			var postgresErr *pq.Error
-			if !errors.As(err, &postgresErr) || string(postgresErr.Code) != "23514" || postgresErr.Constraint != test.constraint {
-				t.Fatalf("constraint error = %#v, want check violation %s", err, test.constraint)
-			}
+			require.ErrorAs(t, err, &postgresErr, "constraint error")
+			require.Equal(t, "23514", string(postgresErr.Code), "constraint error")
+			require.Equal(t, test.constraint, postgresErr.Constraint, "constraint error")
 		})
 	}
 }

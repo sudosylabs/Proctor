@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -55,13 +57,12 @@ func securityNoticeMailFixture(t *testing.T, userID model.UserID, key model.Mail
 func suppressSecurityNoticeForDisabledMail(t *testing.T, delivery *model.MailDelivery, job *model.Job) (*model.MailDelivery, *model.Job) {
 	t.Helper()
 	canceled, err := job.RequestCancellation(delivery.CreatedAt)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	suppressed := delivery.Clone()
 	suppressed.State = model.MailDeliverySuppressed
 	suppressed.PublicFailureCode = model.MailDeliveryDisabledCode
 	suppressed.EncryptedPayload = nil
-	if err = suppressed.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	err = suppressed.Validate()
+	require.NoError(t, err)
 	return suppressed, canceled
 }

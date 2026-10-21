@@ -13,6 +13,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/storetest"
 )
@@ -41,18 +43,16 @@ func administratorMFAResetSQLProbe(sqlStore *SQLStore) storetest.AdministratorMF
 		},
 		RejectRecoveryEvidence: func(t *testing.T, ctx context.Context) func() {
 			t.Helper()
-			if _, err := sqlStore.GetMaster().Exec(ctx, `ALTER TABLE administrator_recovery_records ADD CONSTRAINT test_reject_mfa_recovery CHECK (NOT mfa_reset) NOT VALID`); err != nil {
-				t.Fatal(err)
-			}
+			_, err := sqlStore.GetMaster().Exec(ctx, `ALTER TABLE administrator_recovery_records ADD CONSTRAINT test_reject_mfa_recovery CHECK (NOT mfa_reset) NOT VALID`)
+			require.NoError(t, err)
 			released := false
 			release := func() {
 				if released {
 					return
 				}
 				released = true
-				if _, err := sqlStore.GetMaster().Exec(context.Background(), `ALTER TABLE administrator_recovery_records DROP CONSTRAINT test_reject_mfa_recovery`); err != nil {
-					t.Fatal(err)
-				}
+				_, err := sqlStore.GetMaster().Exec(context.Background(), `ALTER TABLE administrator_recovery_records DROP CONSTRAINT test_reject_mfa_recovery`)
+				require.NoError(t, err)
 			}
 			t.Cleanup(release)
 			return release

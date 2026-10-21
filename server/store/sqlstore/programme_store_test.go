@@ -8,9 +8,10 @@
 package sqlstore
 
 import (
-	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -40,25 +41,18 @@ func TestProgrammeRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := test.row.model()
 			var persisted *persistedStateError
-			if !errors.As(err, &persisted) {
-				t.Fatalf("model() error = %v, want persisted-state error", err)
-			}
-			if persisted.Entity != "programme" || persisted.Field != test.field {
-				t.Fatalf("persisted-state context = %s.%s, want programme.%s", persisted.Entity, persisted.Field, test.field)
-			}
+			require.ErrorAs(t, err, &persisted, "model() error")
+			require.Equal(t, "programme", persisted.Entity, "persisted-state context")
+			require.Equal(t, test.field, persisted.Field, "persisted-state context")
 		})
 	}
 }
 
 func TestProgrammeRowConversion(t *testing.T) {
 	id, err := model.ParseProgrammeID(model.NewID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	unitID, err := model.ParseAcademicUnitID(model.NewID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	programme := &model.Programme{
 		ID:             id,
 		CreatedAt:      model.TimeFromMillis(1),
@@ -72,17 +66,12 @@ func TestProgrammeRowConversion(t *testing.T) {
 	}
 	row := newProgrammeRow(programme)
 	got, err := row.model()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if *got != *programme {
-		t.Fatalf("row.model() = %#v, want %#v", got, programme)
-	}
-	if !row.CreatedAt.Equal(programme.CreatedAt) ||
-		!row.UpdatedAt.Equal(programme.UpdatedAt) ||
-		!row.ArchivedAt.Valid || !row.ArchivedAt.Time.Equal(programme.ArchivedAt.Time) {
-		t.Fatalf("row times = %#v", row)
-	}
+	require.NoError(t, err)
+	require.Equal(t, *programme, *got, "row.model() = %#v, want %#v", got, programme)
+	require.True(t, row.CreatedAt.Equal(programme.CreatedAt))
+	require.True(t, row.UpdatedAt.Equal(programme.UpdatedAt))
+	require.True(t, row.ArchivedAt.Valid)
+	require.True(t, row.ArchivedAt.Time.Equal(programme.ArchivedAt.Time))
 }
 
 func replaceProgrammeRow(row programmeRow, replace func(*programmeRow)) programmeRow {

@@ -10,11 +10,12 @@ package storetest
 import (
 	"bytes"
 	"context"
-	"errors"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -72,11 +73,11 @@ func submissionReceiptNotice(t *testing.T, candidate *model.User, submissionID m
 	occurrenceID := model.MailOccurrenceID(submissionID.String())
 	deliveryID, jobID := model.NewMailDeliveryID(), model.NewJobID()
 	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	job, err := model.NewJob(jobID, model.JobTypeMailDeliver, 1, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	job, err = job.RequestCancellation(at)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceSubmissionReceipt,
 		TemplateKey: key, ActorUserID: candidate.ID, CreatedAt: at}
 	delivery := &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: jobID, TargetUserID: candidate.ID,
@@ -84,12 +85,10 @@ func submissionReceiptNotice(t *testing.T, candidate *model.User, submissionID m
 		State: model.MailDeliverySuppressed, CreatedAt: at, UpdatedAt: at, MessageDate: at,
 		Deadline: at.Add(72 * time.Hour), MessageID: "<receipt." + deliveryID.String() + "@example.test>",
 		PublicFailureCode: model.MailDeliveryDisabledCode, Revision: 1}
-	if err = occurrence.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	if err = delivery.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	err = occurrence.Validate()
+	require.NoError(t, err)
+	err = delivery.Validate()
+	require.NoError(t, err)
 	return &store.PreparedMail{Occurrence: occurrence, Delivery: delivery, Job: job}
 }
 
@@ -111,7 +110,7 @@ func TestExamSubmissionStore(t *testing.T, ss store.Store, submissions store.Exa
 	prepareExamAttemptConnect(t, ctx, ss, connect)
 	connected, err := ss.ExamAttempt().Connect(ctx, connect,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "submission-connect", "submission-connect"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	workspaceAccess := store.ExamAttemptWorkspaceMutationAccess{AttemptID: connected.Attempt.ID,
 		ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
@@ -121,19 +120,19 @@ func TestExamSubmissionStore(t *testing.T, ss store.Store, submissions store.Exa
 	object, err := ss.ExamAttemptWorkspace().ReserveObject(ctx, &store.ExamAttemptWorkspaceObjectReservation{
 		Access: workspaceAccess, ObjectID: model.NewAttemptWorkspaceObjectID(),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	object, err = ss.ExamAttemptWorkspace().MarkObjectReady(ctx, &store.ExamAttemptWorkspaceObjectReady{
 		Access: workspaceAccess, ObjectID: object.ID, ContentVersion: model.NewWorkspaceContentVersion(),
 		Content: model.AttemptWorkspaceContent{MediaType: "text/plain", SizeBytes: 7, SHA256: strings.Repeat("b", 64)},
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	attemptEntryID := model.NewAttemptWorkspaceEntryID()
 	mutation, err := ss.ExamAttemptWorkspace().ApplyMutation(ctx, &store.ExamAttemptWorkspaceMutation{
 		Access: workspaceAccess, Operation: model.AttemptWorkspaceMutationCreateFile, EntryID: attemptEntryID,
 		DestinationPath: "answer.txt", ObjectID: object.ID,
 		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis(),
 	}, examCommand(fixture.candidate.ID, store.ExamAttemptWorkspaceMutationOperation, "submission-file", "submission-file"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	access := store.ExamSubmissionSealAccess{
 		AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID,
@@ -143,87 +142,99 @@ func TestExamSubmissionStore(t *testing.T, ss store.Store, submissions store.Exa
 		ExpectedCurrentRevisionID: fixture.sitting.ExamRevisionID,
 	}
 	target, err := submissions.ResolveSealTarget(ctx, access)
-	requireNoError(t, err)
-	if target == nil || target.ExamID != fixture.examID || target.SittingID != fixture.sitting.ID ||
-		target.ClassID != fixture.class.ID || target.CandidateUserID != fixture.candidate.ID ||
-		target.WorkspaceID != connected.Workspace.ID || target.SealAt.IsZero() {
-		t.Fatalf("ResolveSealTarget() = %#v", target)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, target)
+	require.Equal(t, fixture.examID, target.ExamID)
+	require.Equal(t, fixture.sitting.ID, target.SittingID)
+	require.Equal(t, fixture.class.ID, target.ClassID)
+	require.Equal(t, fixture.candidate.ID, target.CandidateUserID)
+	require.Equal(t, connected.Workspace.ID, target.WorkspaceID)
+	require.False(t, target.SealAt.IsZero())
 
 	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
 		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.MillisFromTime(target.SealAt)}
 	attachSubmissionReceipt(t, ctx, ss, fixture.candidate, input)
 	command := examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-seal", "submission-seal")
 	sealed, err := submissions.Seal(ctx, input, command)
-	requireNoError(t, err)
-	if sealed == nil || sealed.Replayed || sealed.Receipt.SubmissionID != input.SubmissionID ||
-		sealed.Receipt.AttemptID != connected.Attempt.ID || sealed.Receipt.State != model.ExamAttemptSubmitted ||
-		sealed.Receipt.WorkspaceCursor != mutation.Change.Cursor || !validStoretestDigest(sealed.Receipt.ManifestDigest) ||
-		!sealed.Receipt.SubmittedAt.Equal(input.Notice.Occurrence.CreatedAt) ||
-		sealed.ExamID != fixture.examID || sealed.SittingID != fixture.sitting.ID ||
-		sealed.ClassID != fixture.class.ID || sealed.CandidateUserID != fixture.candidate.ID ||
-		sealed.ParticipationID != connected.Participation.ID || sealed.Generation != connected.Participation.Generation ||
-		sealed.ConnectionID != connected.Connection.ID {
-		t.Fatalf("Seal() = %#v", sealed)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, sealed)
+	require.False(t, sealed.Replayed)
+	require.Equal(t, input.SubmissionID, sealed.Receipt.SubmissionID)
+	require.Equal(t, connected.Attempt.ID, sealed.Receipt.AttemptID)
+	require.Equal(t, model.ExamAttemptSubmitted, sealed.Receipt.State)
+	require.Equal(t, mutation.Change.Cursor, sealed.Receipt.WorkspaceCursor)
+	require.True(t, validStoretestDigest(sealed.Receipt.ManifestDigest))
+	require.True(t, sealed.Receipt.SubmittedAt.Equal(input.Notice.Occurrence.CreatedAt))
+	require.Equal(t, fixture.examID, sealed.ExamID)
+	require.Equal(t, fixture.sitting.ID, sealed.SittingID)
+	require.Equal(t, fixture.class.ID, sealed.ClassID)
+	require.Equal(t, fixture.candidate.ID, sealed.CandidateUserID)
+	require.Equal(t, connected.Participation.ID, sealed.ParticipationID)
+	require.Equal(t, connected.Participation.Generation, sealed.Generation)
+	require.Equal(t, connected.Connection.ID, sealed.ConnectionID)
 	requireSuccessfulAudit(t, ctx, ss, input.AuditEventID)
 	replayTarget, err := submissions.ResolveSealTarget(ctx, access)
-	requireNoError(t, err)
-	if replayTarget == nil || !replayTarget.Replayed {
-		t.Fatalf("ResolveSealTarget(after seal) = %#v", replayTarget)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, replayTarget)
+	require.True(t, replayTarget.Replayed)
 	receiptDelivery, err := ss.Mail().GetDelivery(ctx, input.Notice.Delivery.ID)
-	requireNoError(t, err)
-	if receiptDelivery.OccurrenceID != model.MailOccurrenceID(input.SubmissionID.String()) ||
-		receiptDelivery.TemplateKey != model.MailTemplateExamSubmissionReceived || receiptDelivery.TargetUserID != fixture.candidate.ID {
-		t.Fatalf("voluntary Submission receipt delivery = %#v", receiptDelivery)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.MailOccurrenceID(input.SubmissionID.String()), receiptDelivery.OccurrenceID)
+	require.Equal(t, model.MailTemplateExamSubmissionReceived, receiptDelivery.TemplateKey)
+	require.Equal(t, fixture.candidate.ID, receiptDelivery.TargetUserID)
 	audit, err := ss.Audit().Get(ctx, input.AuditEventID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	for _, secret := range []string{credentialHash, fixture.session.ID.String(), "cmd/main.go"} {
-		if bytes.Contains(audit.Result, []byte(secret)) {
-			t.Fatalf("Submission audit exposed protected value %q: %s", secret, audit.Result)
-		}
+		require.False(t, bytes.Contains(audit.Result, []byte(secret)), "Submission audit exposed protected value %q: %s", secret, audit.Result)
 	}
 
 	authorization, err := submissions.Resolve(ctx, sealed.Receipt.SubmissionID)
-	requireNoError(t, err)
-	if authorization == nil || authorization.SubmissionID != sealed.Receipt.SubmissionID ||
-		authorization.ExamID != fixture.examID || authorization.SittingID != fixture.sitting.ID ||
-		authorization.AttemptID != connected.Attempt.ID || authorization.AcademicUnitID != fixture.unitID {
-		t.Fatalf("Resolve() = %#v", authorization)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, authorization)
+	require.Equal(t, sealed.Receipt.SubmissionID, authorization.SubmissionID)
+	require.Equal(t, fixture.examID, authorization.ExamID)
+	require.Equal(t, fixture.sitting.ID, authorization.SittingID)
+	require.Equal(t, connected.Attempt.ID, authorization.AttemptID)
+	require.Equal(t, fixture.unitID, authorization.AcademicUnitID)
 	header, err := submissions.Get(ctx, sealed.Receipt.SubmissionID)
-	requireNoError(t, err)
-	if header == nil || header.ID != sealed.Receipt.SubmissionID || header.AttemptID != connected.Attempt.ID ||
-		header.WorkspaceID != connected.Workspace.ID || header.WorkspaceCursor != mutation.Change.Cursor ||
-		header.ManifestDigest != sealed.Receipt.ManifestDigest || header.ManifestEntryCount != 3 || header.ManifestTotalFileBytes != 20 ||
-		header.IntegrityState != model.SubmissionIntegritySettled || header.UnresolvedIntegrityCount != 0 ||
-		!header.SubmittedAt.Equal(sealed.Receipt.SubmittedAt) {
-		t.Fatalf("Get() = %#v", header)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, header)
+	require.Equal(t, sealed.Receipt.SubmissionID, header.ID)
+	require.Equal(t, connected.Attempt.ID, header.AttemptID)
+	require.Equal(t, connected.Workspace.ID, header.WorkspaceID)
+	require.Equal(t, mutation.Change.Cursor, header.WorkspaceCursor)
+	require.Equal(t, sealed.Receipt.ManifestDigest, header.ManifestDigest)
+	require.Equal(t, 3, header.ManifestEntryCount)
+	require.Equal(t, int64(20), header.ManifestTotalFileBytes)
+	require.Equal(t, model.SubmissionIntegritySettled, header.IntegrityState)
+	require.Equal(t, int64(0), header.UnresolvedIntegrityCount)
+	require.True(t, header.SubmittedAt.Equal(sealed.Receipt.SubmittedAt))
 	page, err := submissions.ListManifest(ctx, store.ExamSubmissionManifestListOptions{
 		SubmissionID: header.ID, Limit: 200,
 	})
-	requireNoError(t, err)
-	if page == nil || page.SubmissionID != header.ID || page.WorkspaceCursor != header.WorkspaceCursor ||
-		page.ManifestDigest != header.ManifestDigest || page.HasMore || len(page.Items) != 3 ||
-		page.Items[0].EntryID.String() >= page.Items[1].EntryID.String() ||
-		page.Items[1].EntryID.String() >= page.Items[2].EntryID.String() {
-		t.Fatalf("ListManifest() = %#v", page)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, page)
+	require.Equal(t, header.ID, page.SubmissionID)
+	require.Equal(t, header.WorkspaceCursor, page.WorkspaceCursor)
+	require.Equal(t, header.ManifestDigest, page.ManifestDigest)
+	require.False(t, page.HasMore)
+	require.Len(t, page.Items, 3)
+	require.Less(t, page.Items[0].EntryID.String(), page.Items[1].EntryID.String())
+	require.Less(t, page.Items[1].EntryID.String(), page.Items[2].EntryID.String())
 	firstPage, err := submissions.ListManifest(ctx, store.ExamSubmissionManifestListOptions{SubmissionID: header.ID, Limit: 1})
-	requireNoError(t, err)
-	if firstPage == nil || !firstPage.HasMore || len(firstPage.Items) != 1 || firstPage.Items[0] != page.Items[0] {
-		t.Fatalf("ListManifest(first bounded page) = %#v", firstPage)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, firstPage)
+	require.True(t, firstPage.HasMore)
+	require.Len(t, firstPage.Items, 1)
+	require.Equal(t, page.Items[0], firstPage.Items[0])
 	secondPage, err := submissions.ListManifest(ctx, store.ExamSubmissionManifestListOptions{
 		SubmissionID: header.ID, AfterEntryID: firstPage.Items[0].EntryID, Limit: 1,
 	})
-	requireNoError(t, err)
-	if secondPage == nil || !secondPage.HasMore || len(secondPage.Items) != 1 || secondPage.Items[0] != page.Items[1] {
-		t.Fatalf("ListManifest(second bounded page) = %#v", secondPage)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, secondPage)
+	require.True(t, secondPage.HasMore)
+	require.Len(t, secondPage.Items, 1)
+	require.Equal(t, page.Items[1], secondPage.Items[0])
 	var starterFile, attemptFile, directory store.ExamSubmissionManifestItem
 	for _, item := range page.Items {
 		switch item.Kind {
@@ -238,74 +249,71 @@ func TestExamSubmissionStore(t *testing.T, ss store.Store, submissions store.Exa
 		}
 	}
 	selector, err := submissions.ResolveFile(ctx, header.ID, starterFile.EntryID)
-	requireNoError(t, err)
-	if selector == nil || selector.Entry != starterFile || selector.StorageOrigin != model.AttemptWorkspaceStorageStarter ||
-		!selector.StarterObjectID.IsValid() || !selector.AttemptObjectID.IsZero() || selector.ContentVersion != starterFile.ContentVersion {
-		t.Fatalf("ResolveFile() = %#v", selector)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, selector)
+	require.Equal(t, starterFile, selector.Entry)
+	require.Equal(t, model.AttemptWorkspaceStorageStarter, selector.StorageOrigin)
+	require.True(t, selector.StarterObjectID.IsValid())
+	require.True(t, selector.AttemptObjectID.IsZero())
+	require.Equal(t, starterFile.ContentVersion, selector.ContentVersion)
 	attemptSelector, err := submissions.ResolveFile(ctx, header.ID, attemptFile.EntryID)
-	requireNoError(t, err)
-	if attemptSelector == nil || attemptSelector.Entry != attemptFile ||
-		attemptSelector.StorageOrigin != model.AttemptWorkspaceStorageAttempt ||
-		!attemptSelector.AttemptObjectID.IsValid() || !attemptSelector.StarterObjectID.IsZero() ||
-		attemptSelector.AttemptObjectID != object.ID || attemptSelector.ContentVersion != object.ContentVersion {
-		t.Fatalf("ResolveFile(attempt origin) = %#v", attemptSelector)
-	}
-	if _, err = submissions.ResolveFile(ctx, header.ID, directory.EntryID); !store.IsNotFound(err) {
-		t.Fatalf("ResolveFile(directory) error = %v", err)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, attemptSelector)
+	require.Equal(t, attemptFile, attemptSelector.Entry)
+	require.Equal(t, model.AttemptWorkspaceStorageAttempt, attemptSelector.StorageOrigin)
+	require.True(t, attemptSelector.AttemptObjectID.IsValid())
+	require.True(t, attemptSelector.StarterObjectID.IsZero())
+	require.Equal(t, object.ID, attemptSelector.AttemptObjectID)
+	require.Equal(t, object.ContentVersion, attemptSelector.ContentVersion)
+	_, err = submissions.ResolveFile(ctx, header.ID, directory.EntryID)
+	require.True(t, store.IsNotFound(err), "ResolveFile(directory) error")
 
-	if _, err = ss.ExamAttemptWorkspace().List(ctx, store.CandidateWorkspaceListOptions{Access: store.CandidateAttemptAccess{
+	_, err = ss.ExamAttemptWorkspace().List(ctx, store.CandidateWorkspaceListOptions{Access: store.CandidateAttemptAccess{
 		AttemptID: access.AttemptID, CandidateUserID: access.CandidateUserID, SessionID: access.SessionID,
 		DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint,
 		ConnectionID: access.ConnectionID, ContinuityCredentialHash: access.ContinuityCredentialHash,
-	}, ExpectedCursor: -1, Limit: 200}); !store.IsNotFound(err) {
-		t.Fatalf("candidate Workspace read after Submission error = %v", err)
-	}
+	}, ExpectedCursor: -1, Limit: 200})
+	require.True(t, store.IsNotFound(err), "candidate Workspace read after Submission error")
 	manager, err := ss.ExamAttempt().Get(ctx, fixture.examID, connected.Attempt.ID)
-	requireNoError(t, err)
-	if manager.Attempt.State != model.ExamAttemptSubmitted || manager.LatestParticipation == nil ||
-		manager.LatestParticipation.State != model.AttemptParticipationEnded ||
-		manager.LatestParticipation.EndReason != model.AttemptParticipationEndSubmitted || manager.CurrentConnection != nil {
-		t.Fatalf("terminal Attempt aggregate = %#v", manager)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.ExamAttemptSubmitted, manager.Attempt.State)
+	require.NotNil(t, manager.LatestParticipation)
+	require.Equal(t, model.AttemptParticipationEnded, manager.LatestParticipation.State)
+	require.Equal(t, model.AttemptParticipationEndSubmitted, manager.LatestParticipation.EndReason)
+	require.Nil(t, manager.CurrentConnection)
 
 	replay := *input
 	replay.SubmissionID = model.NewSubmissionID()
 	replay.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	replayed, err := submissions.Seal(ctx, &replay, command)
-	requireNoError(t, err)
-	if replayed == nil || !replayed.Replayed || replayed.Receipt != sealed.Receipt ||
-		replayed.ParticipationID != sealed.ParticipationID || replayed.ConnectionID != sealed.ConnectionID {
-		t.Fatalf("Seal(exact replay) = %#v, first = %#v", replayed, sealed)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, replayed, "Seal(exact replay) = %#v, first = %#v", replayed, sealed)
+	require.True(t, replayed.Replayed, "Seal(exact replay) = %#v, first = %#v", replayed, sealed)
+	require.Equal(t, sealed.Receipt, replayed.Receipt, "Seal(exact replay) = %#v, first = %#v", replayed, sealed)
+	require.Equal(t, sealed.ParticipationID, replayed.ParticipationID, "Seal(exact replay) = %#v, first = %#v", replayed, sealed)
+	require.Equal(t, sealed.ConnectionID, replayed.ConnectionID, "Seal(exact replay) = %#v, first = %#v", replayed, sealed)
 	requireSuccessfulAudit(t, ctx, ss, replay.AuditEventID)
 	receipts, err := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{
 		TemplateKeys: []model.MailTemplateKey{model.MailTemplateExamSubmissionReceived}, Limit: 200})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	matchingReceipts := 0
 	for _, delivery := range receipts {
 		if delivery.OccurrenceID == model.MailOccurrenceID(input.SubmissionID.String()) {
 			matchingReceipts++
 		}
-		if delivery.OccurrenceID == model.MailOccurrenceID(replay.SubmissionID.String()) {
-			t.Fatalf("replay created a second Submission receipt: %#v", delivery)
-		}
+		require.NotEqual(t, model.MailOccurrenceID(replay.SubmissionID.String()), delivery.OccurrenceID)
 	}
-	if matchingReceipts != 1 {
-		t.Fatalf("voluntary receipt count=%d, deliveries=%#v", matchingReceipts, receipts)
-	}
+	require.Equal(t, 1, matchingReceipts, "voluntary receipt count=%d, deliveries=%#v", matchingReceipts, receipts)
 
 	different := *input
 	different.SubmissionID = model.NewSubmissionID()
 	different.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
-	if _, err = submissions.Seal(ctx, &different,
-		examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-second", "submission-second")); err == nil {
-		t.Fatal("Seal(different key after terminal state) succeeded")
-	}
-	if got, getErr := submissions.Get(ctx, different.SubmissionID); !store.IsNotFound(getErr) || got != nil {
-		t.Fatalf("Get(uncommitted second Submission) = %#v, %v", got, getErr)
-	}
+	_, err = submissions.Seal(ctx, &different,
+		examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-second", "submission-second"))
+	require.Error(t, err, "Seal(different key after terminal state) succeeded")
+	got, getErr := submissions.Get(ctx, different.SubmissionID)
+	require.True(t, store.IsNotFound(getErr), "Get(uncommitted second Submission)")
+	require.Nil(t, got, "Get(uncommitted second Submission)")
 
 	testExamSubmissionRollback(t, ctx, ss, submissions)
 	testExamSubmissionIntegrityGap(t, ctx, ss, submissions, probes...)
@@ -329,9 +337,8 @@ func TestExamSubmissionStore(t *testing.T, ss store.Store, submissions store.Exa
 		}
 		if probe.CorruptManifest != nil {
 			probe.CorruptManifest(t, ctx, header.ID)
-			if _, getErr := submissions.Get(ctx, header.ID); getErr == nil {
-				t.Fatal("Get(corrupt immutable manifest) succeeded")
-			}
+			_, getErr := submissions.Get(ctx, header.ID)
+			require.Error(t, getErr, "Get(corrupt immutable manifest) succeeded")
 		}
 	}
 }
@@ -353,7 +360,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 			PrivateReason: "exercise ordered acknowledgement", AppliedAt: model.NowUTC(),
 			AuditEventID: firstAudit.ID, AuditAt: model.GetMillis(),
 		}, examCommand(fixture.manager.ID, "exam.correction.apply.v1", "correction-acknowledgement-first", "correction-acknowledgement-first"))
-		requireNoError(t, err)
+		require.NoError(t, err)
 		secondInstructions := "Second corrected instructions"
 		secondAudit := saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID)
 		second, err := ss.ExamCorrection().Apply(ctx, &store.ExamCorrectionApplication{
@@ -364,7 +371,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 			PrivateReason: "exercise ordered acknowledgement", AppliedAt: model.NowUTC(),
 			AuditEventID: secondAudit.ID, AuditAt: model.GetMillis(),
 		}, examCommand(fixture.manager.ID, "exam.correction.apply.v1", "correction-acknowledgement-second", "correction-acknowledgement-second"))
-		requireNoError(t, err)
+		require.NoError(t, err)
 
 		candidateAccess := store.CandidateAttemptAccess{
 			AttemptID: connected.Attempt.ID, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID,
@@ -372,13 +379,13 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 			ConnectionID: connected.Connection.ID, ContinuityCredentialHash: focusAccess.ContinuityCredentialHash,
 		}
 		presentation, err := ss.ExamAttempt().GetCandidatePresentation(ctx, candidateAccess)
-		requireNoError(t, err)
-		if !presentation.RuntimeCapabilities.ExamRevision.AcknowledgementRequired || len(presentation.LiveCorrections) != 2 ||
-			presentation.LiveCorrections[0].RevisionID != first.Revision.ID || presentation.LiveCorrections[1].RevisionID != second.Revision.ID ||
-			presentation.LiveCorrections[0].AcknowledgementState != model.CorrectionAcknowledgementPending ||
-			presentation.LiveCorrections[1].AcknowledgementState != model.CorrectionAcknowledgementPending {
-			t.Fatalf("pending correction presentation = %#v", presentation)
-		}
+		require.NoError(t, err)
+		require.True(t, presentation.RuntimeCapabilities.ExamRevision.AcknowledgementRequired)
+		require.Len(t, presentation.LiveCorrections, 2)
+		require.Equal(t, first.Revision.ID, presentation.LiveCorrections[0].RevisionID)
+		require.Equal(t, second.Revision.ID, presentation.LiveCorrections[1].RevisionID)
+		require.Equal(t, model.CorrectionAcknowledgementPending, presentation.LiveCorrections[0].AcknowledgementState)
+		require.Equal(t, model.CorrectionAcknowledgementPending, presentation.LiveCorrections[1].AcknowledgementState)
 
 		newAcknowledgement := func(revisionID, currentRevisionID model.ExamRevisionID) *store.ExamAttemptCorrectionAcknowledgement {
 			return &store.ExamAttemptCorrectionAcknowledgement{Access: candidateAccess,
@@ -388,12 +395,12 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 		}
 		stale := newAcknowledgement(first.Revision.ID, first.Revision.ID)
 		_, err = ss.ExamAttempt().ResolveCorrectionAcknowledgementTarget(ctx, *stale)
-		assertExamAttemptConflict(t, err, "exam_sitting_revision_selection")
+		requireConflictConstraint(t, err, "exam_sitting_revision_selection")
 		outOfOrder := newAcknowledgement(second.Revision.ID, second.Revision.ID)
 		_, err = ss.ExamAttempt().AcknowledgeCorrection(ctx, outOfOrder,
 			examCommand(fixture.candidate.ID, store.ExamAttemptCorrectionAcknowledgementOperation,
 				"correction-acknowledgement-out-of-order", "correction-acknowledgement-out-of-order"))
-		assertExamAttemptConflict(t, err, "exam_correction_acknowledgement_order")
+		requireConflictConstraint(t, err, "exam_correction_acknowledgement_order")
 
 		blockedAccess := submissionAccess(focusAccess, second.Revision.ID, connected.Workspace.Cursor, 0)
 		blockedSubmission := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: blockedAccess,
@@ -402,14 +409,14 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 		_, err = submissions.Seal(ctx, blockedSubmission,
 			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation,
 				"correction-acknowledgement-blocked-submission", "correction-acknowledgement-blocked-submission"))
-		assertSubmissionConflict(t, err, "exam_correction_acknowledgement_required")
+		requireConflictConstraint(t, err, "exam_correction_acknowledgement_required")
 
 		paused, err := ss.ExamSitting().Pause(ctx, &store.ExamSittingManagerTransition{ExamID: fixture.examID,
 			SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: second.Sitting.Sitting.Revision,
 			PrivateReason: "prove acknowledgement remains allowed while paused", ChangedAt: model.NowUTC(),
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
 			examCommand(fixture.manager.ID, "exam.sitting.pause.v1", "correction-acknowledgement-pause", "correction-acknowledgement-pause"))
-		requireNoError(t, err)
+		require.NoError(t, err)
 		firstInputs := [2]*store.ExamAttemptCorrectionAcknowledgement{
 			newAcknowledgement(first.Revision.ID, second.Revision.ID),
 			newAcknowledgement(first.Revision.ID, second.Revision.ID),
@@ -421,11 +428,12 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 				"correction-acknowledgement-first-ack-b", "correction-acknowledgement-first-ack"),
 		}
 		target, err := ss.ExamAttempt().ResolveCorrectionAcknowledgementTarget(ctx, *firstInputs[0])
-		requireNoError(t, err)
-		if target == nil || target.AttemptID != connected.Attempt.ID || target.CorrectionRevisionID != first.Revision.ID ||
-			target.CurrentRevisionID != second.Revision.ID || target.CandidateUserID != fixture.candidate.ID {
-			t.Fatalf("ResolveCorrectionAcknowledgementTarget() = %#v", target)
-		}
+		require.NoError(t, err)
+		require.NotNil(t, target)
+		require.Equal(t, connected.Attempt.ID, target.AttemptID)
+		require.Equal(t, first.Revision.ID, target.CorrectionRevisionID)
+		require.Equal(t, second.Revision.ID, target.CurrentRevisionID)
+		require.Equal(t, fixture.candidate.ID, target.CandidateUserID)
 		type acknowledgementOutcome struct {
 			index  int
 			result *store.ExamAttemptCorrectionAcknowledgementResult
@@ -446,10 +454,8 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 		var acknowledged, duplicateAcknowledgement *store.ExamAttemptCorrectionAcknowledgementResult
 		winnerIndex, fresh, duplicates := -1, 0, 0
 		for outcome := range outcomes {
-			requireNoError(t, outcome.err)
-			if outcome.result == nil {
-				t.Fatal("concurrent AcknowledgeCorrection() returned nil")
-			}
+			require.NoError(t, outcome.err)
+			require.NotNil(t, outcome.result, "concurrent AcknowledgeCorrection() returned nil")
 			if outcome.result.Duplicate {
 				duplicates++
 				duplicateAcknowledgement = outcome.result
@@ -458,54 +464,57 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 				winnerIndex, acknowledged = outcome.index, outcome.result
 			}
 		}
-		if fresh != 1 || duplicates != 1 || acknowledged == nil || duplicateAcknowledgement == nil || acknowledged.Replayed ||
-			acknowledged.AttemptID != connected.Attempt.ID || acknowledged.CorrectionRevisionID != first.Revision.ID ||
-			acknowledged.CurrentRevisionID != second.Revision.ID || acknowledged.AcknowledgedAt.IsZero() ||
-			duplicateAcknowledgement.AcknowledgedAt != acknowledged.AcknowledgedAt ||
-			duplicateAcknowledgement.MutationAuditEventID != acknowledged.MutationAuditEventID {
-			t.Fatalf("concurrent AcknowledgeCorrection() fresh=%d duplicates=%d result=%#v", fresh, duplicates, acknowledged)
-		}
+		require.Equal(t, 1, fresh, "concurrent AcknowledgeCorrection() fresh")
+		require.Equal(t, 1, duplicates, "concurrent AcknowledgeCorrection() fresh")
+		require.NotNil(t, acknowledged, "concurrent AcknowledgeCorrection() fresh")
+		require.NotNil(t, duplicateAcknowledgement, "concurrent AcknowledgeCorrection() fresh")
+		require.False(t, acknowledged.Replayed, "concurrent AcknowledgeCorrection() fresh")
+		require.Equal(t, connected.Attempt.ID, acknowledged.AttemptID, "concurrent AcknowledgeCorrection() fresh")
+		require.Equal(t, first.Revision.ID, acknowledged.CorrectionRevisionID, "concurrent AcknowledgeCorrection() fresh")
+		require.Equal(t, second.Revision.ID, acknowledged.CurrentRevisionID, "concurrent AcknowledgeCorrection() fresh")
+		require.False(t, acknowledged.AcknowledgedAt.IsZero(), "concurrent AcknowledgeCorrection() fresh")
+		require.Equal(t, acknowledged.AcknowledgedAt, duplicateAcknowledgement.AcknowledgedAt, "concurrent AcknowledgeCorrection() fresh")
+		require.Equal(t, acknowledged.MutationAuditEventID, duplicateAcknowledgement.MutationAuditEventID, "concurrent AcknowledgeCorrection() fresh")
 		requireSuccessfulAudit(t, ctx, ss, acknowledged.MutationAuditEventID)
 
 		replayInput := newAcknowledgement(first.Revision.ID, second.Revision.ID)
 		replayed, err := ss.ExamAttempt().AcknowledgeCorrection(ctx, replayInput, firstCommands[winnerIndex])
-		requireNoError(t, err)
-		if replayed == nil || !replayed.Replayed || replayed.Duplicate || replayed.AcknowledgedAt != acknowledged.AcknowledgedAt ||
-			replayed.MutationAuditEventID != acknowledged.MutationAuditEventID || !replayInput.AuditEvent.ID.IsZero() {
-			t.Fatalf("AcknowledgeCorrection(exact replay) = %#v, first=%#v", replayed, acknowledged)
-		}
+		require.NoError(t, err)
+		require.NotNil(t, replayed, "AcknowledgeCorrection(exact replay) = %#v, first=%#v", replayed, acknowledged)
+		require.True(t, replayed.Replayed, "AcknowledgeCorrection(exact replay) = %#v, first=%#v", replayed, acknowledged)
+		require.False(t, replayed.Duplicate, "AcknowledgeCorrection(exact replay) = %#v, first=%#v", replayed, acknowledged)
+		require.Equal(t, acknowledged.AcknowledgedAt, replayed.AcknowledgedAt, "AcknowledgeCorrection(exact replay) = %#v, first=%#v", replayed, acknowledged)
+		require.Equal(t, acknowledged.MutationAuditEventID, replayed.MutationAuditEventID, "AcknowledgeCorrection(exact replay) = %#v, first=%#v", replayed, acknowledged)
+		require.True(t, replayInput.AuditEvent.ID.IsZero(), "AcknowledgeCorrection(exact replay) = %#v, first=%#v", replayed, acknowledged)
 		replayAudit, err := ss.Audit().Get(ctx, replayed.MutationAuditEventID)
-		requireNoError(t, err)
-		if bytes.Contains(replayAudit.Result, []byte(`"idempotency_replayed"`)) ||
-			bytes.Contains(replayAudit.Result, []byte(focusAccess.ContinuityCredentialHash)) ||
-			bytes.Contains(replayAudit.Result, []byte(fixture.session.ID.String())) {
-			t.Fatalf("correction acknowledgement replay audit = %#v", replayAudit)
-		}
+		require.NoError(t, err)
+		require.False(t, bytes.Contains(replayAudit.Result, []byte(`"idempotency_replayed"`)))
+		require.False(t, bytes.Contains(replayAudit.Result, []byte(focusAccess.ContinuityCredentialHash)))
+		require.False(t, bytes.Contains(replayAudit.Result, []byte(fixture.session.ID.String())))
 
 		duplicateInput := newAcknowledgement(first.Revision.ID, second.Revision.ID)
 		duplicate, err := ss.ExamAttempt().AcknowledgeCorrection(ctx, duplicateInput,
 			examCommand(fixture.candidate.ID, store.ExamAttemptCorrectionAcknowledgementOperation,
 				"correction-acknowledgement-alternate-key", "correction-acknowledgement-first-ack"))
-		requireNoError(t, err)
-		if duplicate == nil || !duplicate.Duplicate || duplicate.Replayed || duplicate.AcknowledgedAt != acknowledged.AcknowledgedAt {
-			t.Fatalf("AcknowledgeCorrection(alternate key) = %#v", duplicate)
-		}
+		require.NoError(t, err)
+		require.NotNil(t, duplicate)
+		require.True(t, duplicate.Duplicate)
+		require.False(t, duplicate.Replayed)
+		require.Equal(t, acknowledged.AcknowledgedAt, duplicate.AcknowledgedAt)
 
 		secondInput := newAcknowledgement(second.Revision.ID, second.Revision.ID)
 		secondAcknowledged, err := ss.ExamAttempt().AcknowledgeCorrection(ctx, secondInput,
 			examCommand(fixture.candidate.ID, store.ExamAttemptCorrectionAcknowledgementOperation,
 				"correction-acknowledgement-second-ack", "correction-acknowledgement-second-ack"))
-		requireNoError(t, err)
-		if secondAcknowledged == nil || secondAcknowledged.Duplicate || secondAcknowledged.Replayed {
-			t.Fatalf("AcknowledgeCorrection(second) = %#v", secondAcknowledged)
-		}
+		require.NoError(t, err)
+		require.NotNil(t, secondAcknowledged)
+		require.False(t, secondAcknowledged.Duplicate)
+		require.False(t, secondAcknowledged.Replayed)
 		presentation, err = ss.ExamAttempt().GetCandidatePresentation(ctx, candidateAccess)
-		requireNoError(t, err)
-		if presentation.RuntimeCapabilities.ExamRevision.AcknowledgementRequired ||
-			presentation.LiveCorrections[0].AcknowledgementState != model.CorrectionAcknowledgementAcknowledged ||
-			presentation.LiveCorrections[1].AcknowledgementState != model.CorrectionAcknowledgementAcknowledged {
-			t.Fatalf("acknowledged correction presentation = %#v", presentation)
-		}
+		require.NoError(t, err)
+		require.False(t, presentation.RuntimeCapabilities.ExamRevision.AcknowledgementRequired)
+		require.Equal(t, model.CorrectionAcknowledgementAcknowledged, presentation.LiveCorrections[0].AcknowledgementState)
+		require.Equal(t, model.CorrectionAcknowledgementAcknowledged, presentation.LiveCorrections[1].AcknowledgementState)
 
 		pausedSubmission := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: blockedAccess,
 			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
@@ -513,16 +522,14 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 		_, err = submissions.Seal(ctx, pausedSubmission,
 			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation,
 				"correction-acknowledgement-paused-submission", "correction-acknowledgement-paused-submission"))
-		assertSubmissionConflict(t, err, "exam_sitting_state")
+		requireConflictConstraint(t, err, "exam_sitting_state")
 		resumed, err := ss.ExamSitting().Resume(ctx, &store.ExamSittingManagerTransition{ExamID: fixture.examID,
 			SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: paused.Value.Sitting.Revision,
 			PrivateReason: "finish correction acknowledgement conformance", ChangedAt: model.NowUTC(),
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
 			examCommand(fixture.manager.ID, "exam.sitting.resume.v1", "correction-acknowledgement-resume", "correction-acknowledgement-resume"))
-		requireNoError(t, err)
-		if resumed.Value.Sitting.State != model.ExamSittingOpen {
-			t.Fatalf("Resume() = %#v", resumed)
-		}
+		require.NoError(t, err)
+		require.Equal(t, model.ExamSittingOpen, resumed.Value.Sitting.State)
 		thirdInstructions := "Third corrected instructions"
 		third, err := ss.ExamCorrection().Apply(ctx, &store.ExamCorrectionApplication{
 			RevisionID: model.NewExamRevisionID(), ExamID: fixture.examID, SittingID: fixture.sitting.ID,
@@ -534,23 +541,25 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 			AuditAt:      model.GetMillis(),
 		}, examCommand(fixture.manager.ID, "exam.correction.apply.v1",
 			"correction-acknowledgement-third", "correction-acknowledgement-third"))
-		requireNoError(t, err)
+		require.NoError(t, err)
 		afterCorrectionReplay := newAcknowledgement(first.Revision.ID, second.Revision.ID)
 		replayed, err = ss.ExamAttempt().AcknowledgeCorrection(ctx, afterCorrectionReplay, firstCommands[winnerIndex])
-		requireNoError(t, err)
-		if replayed == nil || !replayed.Replayed || replayed.Duplicate ||
-			replayed.CurrentRevisionID != second.Revision.ID || replayed.AcknowledgedAt != acknowledged.AcknowledgedAt {
-			t.Fatalf("AcknowledgeCorrection(replay after later correction) = %#v", replayed)
-		}
+		require.NoError(t, err)
+		require.NotNil(t, replayed)
+		require.True(t, replayed.Replayed)
+		require.False(t, replayed.Duplicate)
+		require.Equal(t, second.Revision.ID, replayed.CurrentRevisionID)
+		require.Equal(t, acknowledged.AcknowledgedAt, replayed.AcknowledgedAt)
 		afterCorrectionDuplicate := newAcknowledgement(first.Revision.ID, second.Revision.ID)
 		duplicate, err = ss.ExamAttempt().AcknowledgeCorrection(ctx, afterCorrectionDuplicate,
 			examCommand(fixture.candidate.ID, store.ExamAttemptCorrectionAcknowledgementOperation,
 				"correction-acknowledgement-after-later-correction", "correction-acknowledgement-first-ack"))
-		requireNoError(t, err)
-		if duplicate == nil || !duplicate.Duplicate || duplicate.Replayed ||
-			duplicate.CurrentRevisionID != second.Revision.ID || duplicate.AcknowledgedAt != acknowledged.AcknowledgedAt {
-			t.Fatalf("AcknowledgeCorrection(duplicate after later correction) = %#v", duplicate)
-		}
+		require.NoError(t, err)
+		require.NotNil(t, duplicate)
+		require.True(t, duplicate.Duplicate)
+		require.False(t, duplicate.Replayed)
+		require.Equal(t, second.Revision.ID, duplicate.CurrentRevisionID)
+		require.Equal(t, acknowledged.AcknowledgedAt, duplicate.AcknowledgedAt)
 		blockedAccess.ExpectedCurrentRevisionID = third.Revision.ID
 		terminalInput := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: blockedAccess,
 			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
@@ -558,17 +567,13 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 		sealed, err := submissions.Seal(ctx, terminalInput,
 			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation,
 				"correction-acknowledgement-terminal-submission", "correction-acknowledgement-terminal-submission"))
-		requireNoError(t, err)
-		if sealed.Receipt.ExamRevisionID != third.Revision.ID {
-			t.Fatalf("Submission correction Revision = %#v", sealed)
-		}
+		require.NoError(t, err)
+		require.Equal(t, third.Revision.ID, sealed.Receipt.ExamRevisionID)
 		terminalAcknowledgement := newAcknowledgement(first.Revision.ID, second.Revision.ID)
 		_, err = ss.ExamAttempt().AcknowledgeCorrection(ctx, terminalAcknowledgement,
 			examCommand(fixture.candidate.ID, store.ExamAttemptCorrectionAcknowledgementOperation,
 				"correction-acknowledgement-after-terminal", "correction-acknowledgement-after-terminal"))
-		if err == nil {
-			t.Fatal("AcknowledgeCorrection(after Submission) succeeded")
-		}
+		require.Error(t, err, "AcknowledgeCorrection(after Submission) succeeded")
 	})
 }
 
@@ -585,71 +590,68 @@ func testManagerEndedExamSubmission(t *testing.T, ctx context.Context, ss store.
 		selfRequest := request
 		selfRequest.ActorUserID = fixture.candidate.ID
 		selfRequest.ManagerOverride = true
-		if selfPreparation, selfErr := submissions.PrepareManagerEnd(ctx, selfRequest); selfPreparation != nil || !store.IsNotFound(selfErr) {
-			t.Fatalf("PrepareManagerEnd(self) = %#v, %v; want concealed not found", selfPreparation, selfErr)
-		}
+		selfPreparation, selfErr := submissions.PrepareManagerEnd(ctx, selfRequest)
+		require.Nil(t, selfPreparation, "PrepareManagerEnd(self)")
+		require.True(t, store.IsNotFound(selfErr), "PrepareManagerEnd(self)")
 		preparation, err := submissions.PrepareManagerEnd(ctx, request)
-		requireNoError(t, err)
-		if preparation == nil || preparation.Replayed || preparation.Target.AttemptID != connected.Attempt.ID ||
-			preparation.Target.CurrentRevisionID != fixture.sitting.ExamRevisionID || preparation.SealAt.IsZero() {
-			t.Fatalf("PrepareManagerEnd() = %#v", preparation)
-		}
+		require.NoError(t, err)
+		require.NotNil(t, preparation)
+		require.False(t, preparation.Replayed)
+		require.Equal(t, connected.Attempt.ID, preparation.Target.AttemptID)
+		require.Equal(t, fixture.sitting.ExamRevisionID, preparation.Target.CurrentRevisionID)
+		require.False(t, preparation.SealAt.IsZero())
 		audit := saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID)
 		input := &store.ExamSubmissionManagerEnd{Request: request, Target: preparation.Target,
 			SubmissionID: model.NewSubmissionID(), AuditEventID: audit.ID, AuditAt: model.MillisFromTime(preparation.SealAt)}
 		attachManagerEndedSubmissionReceipt(t, fixture.candidate, input)
 		command := examCommand(fixture.manager.ID, store.ExamSubmissionManagerEndOperation, "manager-end-once", "manager-end-once")
 		ended, err := submissions.EndByManager(ctx, input, command)
-		requireNoError(t, err)
-		if ended == nil || ended.Replayed || !ended.ConnectionClosed || ended.Receipt.SubmissionID != input.SubmissionID ||
-			ended.Receipt.AttemptID != connected.Attempt.ID || ended.Receipt.ExamRevisionID != fixture.sitting.ExamRevisionID {
-			t.Fatalf("EndByManager() = %#v", ended)
-		}
+		require.NoError(t, err)
+		require.NotNil(t, ended)
+		require.False(t, ended.Replayed)
+		require.True(t, ended.ConnectionClosed)
+		require.Equal(t, input.SubmissionID, ended.Receipt.SubmissionID)
+		require.Equal(t, connected.Attempt.ID, ended.Receipt.AttemptID)
+		require.Equal(t, fixture.sitting.ExamRevisionID, ended.Receipt.ExamRevisionID)
 		header, err := submissions.Get(ctx, ended.Receipt.SubmissionID)
-		requireNoError(t, err)
-		if header.Provenance != model.ExamSubmissionManagerEndedAttempt || header.IntegrityState != model.SubmissionIntegrityGapped ||
-			header.UnresolvedIntegrityCount != 1 {
-			t.Fatalf("manager-ended Submission = %#v", header)
-		}
+		require.NoError(t, err)
+		require.Equal(t, model.ExamSubmissionManagerEndedAttempt, header.Provenance)
+		require.Equal(t, model.SubmissionIntegrityGapped, header.IntegrityState)
+		require.Equal(t, int64(1), header.UnresolvedIntegrityCount)
 		discrepancies, err := ss.ExamIntegrityReview().ListDiscrepancies(ctx, store.ExamIntegrityDiscrepancyListOptions{
 			SubmissionID: header.ID, Limit: store.ExamIntegrityReviewDiscrepancyReadMaximum,
 		})
-		requireNoError(t, err)
-		if len(discrepancies.Items) != 1 || discrepancies.Items[0].Kind != model.IntegrityDiscrepancyFocusLossGap ||
-			discrepancies.Items[0].GapReason != string(model.IntegrityDiscrepancyFocusLossSourceNotFinalized) ||
-			discrepancies.Items[0].UnresolvedCount != 1 {
-			t.Fatalf("manager-ended Integrity Discrepancies = %#v", discrepancies)
-		}
+		require.NoError(t, err)
+		require.Len(t, discrepancies.Items, 1)
+		require.Equal(t, model.IntegrityDiscrepancyFocusLossGap, discrepancies.Items[0].Kind)
+		require.Equal(t, string(model.IntegrityDiscrepancyFocusLossSourceNotFinalized), discrepancies.Items[0].GapReason)
+		require.Equal(t, int64(1), discrepancies.Items[0].UnresolvedCount)
 		managed, err := ss.ExamAttempt().Get(ctx, fixture.examID, connected.Attempt.ID)
-		requireNoError(t, err)
-		if managed.Attempt.State != model.ExamAttemptSubmitted || managed.LatestParticipation == nil ||
-			managed.LatestParticipation.EndReason != model.AttemptParticipationEndManagerEnded || managed.CurrentConnection != nil {
-			t.Fatalf("manager-ended Attempt aggregate = %#v", managed)
-		}
+		require.NoError(t, err)
+		require.Equal(t, model.ExamAttemptSubmitted, managed.Attempt.State)
+		require.NotNil(t, managed.LatestParticipation)
+		require.Equal(t, model.AttemptParticipationEndManagerEnded, managed.LatestParticipation.EndReason)
+		require.Nil(t, managed.CurrentConnection)
 		delivery, err := ss.Mail().GetDelivery(ctx, input.Notice.Delivery.ID)
-		requireNoError(t, err)
-		if delivery.TemplateKey != model.MailTemplateExamSubmissionManagerEnded {
-			t.Fatalf("manager-ended receipt delivery = %#v", delivery)
-		}
+		require.NoError(t, err)
+		require.Equal(t, model.MailTemplateExamSubmissionManagerEnded, delivery.TemplateKey)
 		replayPreparation, err := submissions.PrepareManagerEnd(ctx, request)
-		requireNoError(t, err)
-		if replayPreparation == nil || !replayPreparation.Replayed {
-			t.Fatalf("PrepareManagerEnd(replay) = %#v", replayPreparation)
-		}
+		require.NoError(t, err)
+		require.NotNil(t, replayPreparation)
+		require.True(t, replayPreparation.Replayed)
 		replay := &store.ExamSubmissionManagerEnd{Request: request, Target: replayPreparation.Target,
 			SubmissionID: model.NewSubmissionID(), AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID,
 				fixture.examID, fixture.unitID).ID, AuditAt: model.MillisFromTime(replayPreparation.SealAt)}
 		replayed, err := submissions.EndByManager(ctx, replay, command)
-		requireNoError(t, err)
-		if replayed == nil || !replayed.Replayed || replayed.ConnectionClosed || replayed.Receipt != ended.Receipt {
-			t.Fatalf("EndByManager(replay) = %#v", replayed)
-		}
+		require.NoError(t, err)
+		require.NotNil(t, replayed)
+		require.True(t, replayed.Replayed)
+		require.False(t, replayed.ConnectionClosed)
+		require.Equal(t, ended.Receipt, replayed.Receipt)
 		receipts, err := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{
 			TemplateKeys: []model.MailTemplateKey{model.MailTemplateExamSubmissionManagerEnded}, Limit: 200})
-		requireNoError(t, err)
-		if len(receipts) != 1 {
-			t.Fatalf("manager-ended receipt count = %d", len(receipts))
-		}
+		require.NoError(t, err)
+		require.Len(t, receipts, 1, "manager-ended receipt count")
 	})
 }
 
@@ -667,10 +669,10 @@ func testAutomaticExamSubmissionSealing(t *testing.T, ctx context.Context, ss st
 		suspended, suspendedAccess := connectFocusLossFixture(t, ctx, ss, suspendedFixture, "automatic-suspended-connect")
 		suspension := recordFocusLoss(t, ctx, ss, suspendedFixture, suspendedAccess, 1, 500,
 			model.FocusLossSourceApplicationBackgrounded)
-		if suspension.Attempt == nil || suspension.Attempt.State != model.ExamAttemptSuspended ||
-			suspension.Participation == nil || suspension.Participation.EndReason != model.AttemptParticipationEndPolicySuspended {
-			t.Fatalf("Focus Loss suspension fixture = %#v", suspension)
-		}
+		require.NotNil(t, suspension.Attempt)
+		require.Equal(t, model.ExamAttemptSuspended, suspension.Attempt.State)
+		require.NotNil(t, suspension.Participation)
+		require.Equal(t, model.AttemptParticipationEndPolicySuspended, suspension.Participation.EndReason)
 
 		submittedFixture := addExamAttemptCandidate(t, ctx, ss, fixture, fixture.sitting.OpenedAt.Time.Add(-time.Minute))
 		submitted, submittedAccess := connectFocusLossFixture(t, ctx, ss, submittedFixture, "automatic-submitted-connect")
@@ -681,7 +683,7 @@ func testAutomaticExamSubmissionSealing(t *testing.T, ctx context.Context, ss st
 		alreadySubmitted, err := submissions.Seal(ctx, submittedInput,
 			examCommand(submittedFixture.candidate.ID, store.ExamSubmissionSealOperation,
 				"automatic-existing-submission", "automatic-existing-submission"))
-		requireNoError(t, err)
+		require.NoError(t, err)
 
 		noShowFixture := addExamAttemptCandidate(t, ctx, ss, fixture, fixture.sitting.OpenedAt.Time.Add(-time.Minute))
 		lateFixture := addExamAttemptCandidate(t, ctx, ss, fixture, fixture.sitting.OpenedAt.Time.Add(time.Minute))
@@ -700,39 +702,33 @@ func testAutomaticExamSubmissionSealing(t *testing.T, ctx context.Context, ss st
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID,
 			AuditAt:      model.GetMillis()},
 			examCommand(fixture.manager.ID, "exam.sitting.close.v1", "automatic-close", "automatic-close"))
-		requireNoError(t, err)
-		if !closing.Changed || closing.Value.Sitting.State != model.ExamSittingClosing {
-			t.Fatalf("EarlyClose() = %#v", closing)
-		}
+		require.NoError(t, err)
+		require.True(t, closing.Changed)
+		require.Equal(t, model.ExamSittingClosing, closing.Value.Sitting.State)
 		_, err = ss.ExamAttempt().RenewParticipation(ctx, renewal)
-		assertExamAttemptConflict(t, err, "exam_sitting_state")
+		requireConflictConstraint(t, err, "exam_sitting_state")
 
 		unfinished, err := ss.ExamSitting().FinishSealing(ctx, &store.ExamSittingFinishSealing{SittingID: fixture.sitting.ID,
 			AuditEventID: saveExamSittingSystemAudit(t, ctx, ss, fixture.sitting.ID, fixture.unitID).ID,
 			AuditAt:      model.GetMillis()})
-		requireNoError(t, err)
-		if unfinished.Changed || unfinished.Value.Sitting.State != model.ExamSittingClosing {
-			t.Fatalf("FinishSealing(with unfinished Attempts) = %#v", unfinished)
-		}
+		require.NoError(t, err)
+		require.False(t, unfinished.Changed)
+		require.Equal(t, model.ExamSittingClosing, unfinished.Value.Sitting.State)
 
 		page, err := submissions.ListAutomaticSealTargets(ctx, store.ExamSubmissionAutomaticSealListOptions{
 			SittingID: fixture.sitting.ID, Limit: 1})
-		requireNoError(t, err)
-		if len(page) != 1 {
-			t.Fatalf("ListAutomaticSealTargets(first page) = %#v", page)
-		}
+		require.NoError(t, err)
+		require.Len(t, page, 1)
 		secondPage, err := submissions.ListAutomaticSealTargets(ctx, store.ExamSubmissionAutomaticSealListOptions{
 			SittingID: fixture.sitting.ID, AfterAttemptID: page[0].AttemptID, Limit: 2})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		allTargets := append(append([]store.ExamSubmissionAutomaticSealTarget(nil), page...), secondPage...)
-		if len(allTargets) != 2 || allTargets[0].AttemptID.String() >= allTargets[1].AttemptID.String() {
-			t.Fatalf("automatic seal target pages = %#v / %#v", page, secondPage)
-		}
+		require.Len(t, allTargets, 2, "automatic seal target pages = %#v / %#v", page, secondPage)
+		require.Less(t, allTargets[0].AttemptID.String(), allTargets[1].AttemptID.String(), "automatic seal target pages = %#v / %#v", page, secondPage)
 		wantAttempts := map[model.ExamAttemptID]bool{active.Attempt.ID: true, suspended.Attempt.ID: true}
 		for _, target := range allTargets {
-			if !wantAttempts[target.AttemptID] || target.AttemptID == submitted.Attempt.ID {
-				t.Fatalf("automatic seal target = %#v, submitted=%s", target, submitted.Attempt.ID)
-			}
+			require.True(t, wantAttempts[target.AttemptID], "automatic seal target = %#v, submitted", target)
+			require.NotEqual(t, submitted.Attempt.ID, target.AttemptID, "automatic seal target = %#v, submitted", target)
 		}
 
 		var activeTarget, suspendedTarget store.ExamSubmissionAutomaticSealTarget
@@ -744,108 +740,93 @@ func testAutomaticExamSubmissionSealing(t *testing.T, ctx context.Context, ss st
 			}
 		}
 		activeResult := raceAutomaticExamSubmissionSeal(t, ctx, ss, submissions, activeTarget, probes...)
-		if !activeResult.ConnectionClosed {
-			t.Fatalf("active automatic seal did not close Connection: %#v", activeResult)
-		}
+		require.True(t, activeResult.ConnectionClosed)
 		automaticPreparation, replayErr := submissions.PrepareAutomaticSeal(ctx, activeTarget)
-		requireNoError(t, replayErr)
-		if automaticPreparation == nil || !automaticPreparation.Replayed || automaticPreparation.SealAt.IsZero() {
-			t.Fatalf("PrepareAutomaticSeal(after seal) = %#v", automaticPreparation)
-		}
+		require.NoError(t, replayErr)
+		require.NotNil(t, automaticPreparation)
+		require.True(t, automaticPreparation.Replayed)
+		require.False(t, automaticPreparation.SealAt.IsZero())
 		suspendedAudit := saveExamSittingSystemAudit(t, ctx, ss, fixture.sitting.ID, fixture.unitID)
 		suspendedPreparation, preparationErr := submissions.PrepareAutomaticSeal(ctx, suspendedTarget)
-		requireNoError(t, preparationErr)
-		if suspendedPreparation == nil || suspendedPreparation.Replayed || suspendedPreparation.SealAt.IsZero() {
-			t.Fatalf("PrepareAutomaticSeal(suspended) = %#v", suspendedPreparation)
-		}
+		require.NoError(t, preparationErr)
+		require.NotNil(t, suspendedPreparation)
+		require.False(t, suspendedPreparation.Replayed)
+		require.False(t, suspendedPreparation.SealAt.IsZero())
 		rollbackInput := &store.ExamSubmissionAutomaticSeal{Target: suspendedTarget, SubmissionID: model.NewSubmissionID(),
 			AuditEventID: model.NewAuditEventID(), AuditAt: model.MillisFromTime(suspendedPreparation.SealAt)}
 		attachAutomaticSubmissionReceipt(t, suspendedFixture.candidate, rollbackInput)
-		if _, rollbackErr := submissions.SealForSittingClose(ctx, rollbackInput); rollbackErr == nil {
-			t.Fatal("automatic Seal(with missing audit) succeeded")
-		}
-		if delivery, deliveryErr := ss.Mail().GetDelivery(ctx, rollbackInput.Notice.Delivery.ID); !store.IsNotFound(deliveryErr) || delivery != nil {
-			t.Fatalf("automatic rolled-back receipt = %#v, %v", delivery, deliveryErr)
-		}
+		_, rollbackErr := submissions.SealForSittingClose(ctx, rollbackInput)
+		require.Error(t, rollbackErr, "automatic Seal(with missing audit) succeeded")
+		delivery, deliveryErr := ss.Mail().GetDelivery(ctx, rollbackInput.Notice.Delivery.ID)
+		require.True(t, store.IsNotFound(deliveryErr), "automatic rolled-back receipt")
+		require.Nil(t, delivery, "automatic rolled-back receipt")
 		suspendedInput := &store.ExamSubmissionAutomaticSeal{
 			Target: suspendedTarget, SubmissionID: model.NewSubmissionID(), AuditEventID: suspendedAudit.ID,
 			AuditAt: model.MillisFromTime(suspendedPreparation.SealAt)}
 		attachAutomaticSubmissionReceipt(t, suspendedFixture.candidate, suspendedInput)
 		suspendedResult, err := submissions.SealForSittingClose(ctx, suspendedInput)
-		requireNoError(t, err)
-		if suspendedResult.Replayed || suspendedResult.ConnectionClosed {
-			t.Fatalf("suspended automatic seal = %#v", suspendedResult)
-		}
+		require.NoError(t, err)
+		require.False(t, suspendedResult.Replayed)
+		require.False(t, suspendedResult.ConnectionClosed)
 		automaticReceipts, listErr := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{
 			TemplateKeys: []model.MailTemplateKey{model.MailTemplateExamSubmissionAutomaticallySealed}, Limit: 200})
-		requireNoError(t, listErr)
-		if len(automaticReceipts) != 2 {
-			t.Fatalf("automatic receipt deliveries=%#v", automaticReceipts)
-		}
+		require.NoError(t, listErr)
+		require.Len(t, automaticReceipts, 2)
 		requireSuccessfulAudit(t, ctx, ss, suspendedAudit.ID)
 
 		for _, result := range []*store.ExamSubmissionAutomaticSealResult{activeResult, suspendedResult} {
 			header, getErr := submissions.Get(ctx, result.Receipt.SubmissionID)
-			requireNoError(t, getErr)
-			if header.IntegrityState != model.SubmissionIntegrityGapped || header.UnresolvedIntegrityCount < 1 ||
-				header.WorkspaceCursor != result.Receipt.WorkspaceCursor || header.ManifestDigest != result.Receipt.ManifestDigest {
-				t.Fatalf("automatic Submission header = %#v", header)
-			}
+			require.NoError(t, getErr)
+			require.Equal(t, model.SubmissionIntegrityGapped, header.IntegrityState)
+			require.GreaterOrEqual(t, header.UnresolvedIntegrityCount, int64(1))
+			require.Equal(t, result.Receipt.WorkspaceCursor, header.WorkspaceCursor)
+			require.Equal(t, result.Receipt.ManifestDigest, header.ManifestDigest)
 			manifest, listErr := submissions.ListManifest(ctx, store.ExamSubmissionManifestListOptions{
 				SubmissionID: header.ID, Limit: model.ExamSubmissionManifestReadMaximum})
-			requireNoError(t, listErr)
-			if len(manifest.Items) != 2 || manifest.ManifestDigest != header.ManifestDigest {
-				t.Fatalf("automatic Submission manifest = %#v", manifest)
-			}
+			require.NoError(t, listErr)
+			require.Len(t, manifest.Items, 2)
+			require.Equal(t, header.ManifestDigest, manifest.ManifestDigest)
 			discrepancies, discrepancyErr := ss.ExamIntegrityReview().ListDiscrepancies(ctx,
 				store.ExamIntegrityDiscrepancyListOptions{SubmissionID: header.ID,
 					Limit: store.ExamIntegrityReviewDiscrepancyReadMaximum})
-			requireNoError(t, discrepancyErr)
-			if len(discrepancies.Items) != 1 || discrepancies.Items[0].Kind != model.IntegrityDiscrepancyFocusLossGap ||
-				discrepancies.Items[0].GapReason != string(model.IntegrityDiscrepancyFocusLossSourceNotFinalized) ||
-				discrepancies.Items[0].UnresolvedCount != 1 {
-				t.Fatalf("automatic Submission Integrity Discrepancies = %#v", discrepancies)
-			}
+			require.NoError(t, discrepancyErr)
+			require.Len(t, discrepancies.Items, 1)
+			require.Equal(t, model.IntegrityDiscrepancyFocusLossGap, discrepancies.Items[0].Kind)
+			require.Equal(t, string(model.IntegrityDiscrepancyFocusLossSourceNotFinalized), discrepancies.Items[0].GapReason)
+			require.Equal(t, int64(1), discrepancies.Items[0].UnresolvedCount)
 		}
 
 		activeManager, err := ss.ExamAttempt().Get(ctx, fixture.examID, active.Attempt.ID)
-		requireNoError(t, err)
-		if activeManager.Attempt.State != model.ExamAttemptSubmitted || activeManager.LatestParticipation == nil ||
-			activeManager.LatestParticipation.EndReason != model.AttemptParticipationEndSittingClosed {
-			t.Fatalf("active automatically sealed Attempt = %#v", activeManager)
-		}
+		require.NoError(t, err)
+		require.Equal(t, model.ExamAttemptSubmitted, activeManager.Attempt.State)
+		require.NotNil(t, activeManager.LatestParticipation)
+		require.Equal(t, model.AttemptParticipationEndSittingClosed, activeManager.LatestParticipation.EndReason)
 		suspendedManager, err := ss.ExamAttempt().Get(ctx, fixture.examID, suspended.Attempt.ID)
-		requireNoError(t, err)
-		if suspendedManager.Attempt.State != model.ExamAttemptSubmitted || suspendedManager.LatestParticipation == nil ||
-			suspendedManager.LatestParticipation.EndReason != model.AttemptParticipationEndPolicySuspended {
-			t.Fatalf("suspended automatically sealed Attempt = %#v", suspendedManager)
-		}
+		require.NoError(t, err)
+		require.Equal(t, model.ExamAttemptSubmitted, suspendedManager.Attempt.State)
+		require.NotNil(t, suspendedManager.LatestParticipation)
+		require.Equal(t, model.AttemptParticipationEndPolicySuspended, suspendedManager.LatestParticipation.EndReason)
 
 		remaining, err := submissions.ListAutomaticSealTargets(ctx, store.ExamSubmissionAutomaticSealListOptions{
 			SittingID: fixture.sitting.ID, Limit: 200})
-		requireNoError(t, err)
-		if len(remaining) != 0 {
-			t.Fatalf("remaining automatic seal targets = %#v", remaining)
-		}
+		require.NoError(t, err)
+		require.Empty(t, remaining)
 		closed, err := ss.ExamSitting().FinishSealing(ctx, &store.ExamSittingFinishSealing{SittingID: fixture.sitting.ID,
 			AuditEventID: saveExamSittingSystemAudit(t, ctx, ss, fixture.sitting.ID, fixture.unitID).ID,
 			AuditAt:      model.GetMillis()})
-		requireNoError(t, err)
-		if !closed.Changed || closed.Transition != store.ExamSittingTransitionSealingCompleted ||
-			closed.Value.Sitting.State != model.ExamSittingClosed {
-			t.Fatalf("FinishSealing() = %#v", closed)
-		}
+		require.NoError(t, err)
+		require.True(t, closed.Changed)
+		require.Equal(t, store.ExamSittingTransitionSealingCompleted, closed.Transition)
+		require.Equal(t, model.ExamSittingClosed, closed.Value.Sitting.State)
 
 		noShows, err := ss.ExamSitting().ListNoShows(ctx, store.ExamSittingNoShowListOptions{
 			SittingID: fixture.sitting.ID, Limit: 200})
-		requireNoError(t, err)
-		if len(noShows) != 1 || noShows[0].CandidateUserID != noShowFixture.candidate.ID {
-			t.Fatalf("ListNoShows() = %#v; want=%s late=%s", noShows, noShowFixture.candidate.ID, lateFixture.candidate.ID)
-		}
-		if existing, getErr := submissions.Get(ctx, alreadySubmitted.Receipt.SubmissionID); getErr != nil ||
-			existing.ID != alreadySubmitted.Receipt.SubmissionID {
-			t.Fatalf("existing Submission after automatic sealing = %#v, %v", existing, getErr)
-		}
+		require.NoError(t, err)
+		require.Len(t, noShows, 1, "ListNoShows() = %#v; want=%s late=%s", noShows, noShowFixture.candidate.ID, lateFixture.candidate.ID)
+		require.Equal(t, noShowFixture.candidate.ID, noShows[0].CandidateUserID, "ListNoShows() = %#v; want=%s late=%s", noShows, noShowFixture.candidate.ID, lateFixture.candidate.ID)
+		existing, getErr := submissions.Get(ctx, alreadySubmitted.Receipt.SubmissionID)
+		require.NoError(t, getErr, "existing Submission after automatic sealing = %#v", existing)
+		require.Equal(t, alreadySubmitted.Receipt.SubmissionID, existing.ID, "existing Submission after automatic sealing = %#v", existing)
 	})
 }
 
@@ -856,10 +837,10 @@ func addExamAttemptCandidate(t *testing.T, ctx context.Context, ss store.Store, 
 	candidate := saveUser(t, ctx, ss)
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserID: candidate.ID, Kind: model.AffiliationStudent,
 		StartsAt: startsAt.Add(-time.Hour)})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	enrollment, err := ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{ClassID: fixture.class.ID,
 		UserID: candidate.ID, StartsAt: startsAt})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	session := saveRegisteredDesktopSession(t, ctx, ss, candidate.ID, fixture.institutionID)
 	fixture.candidate, fixture.session, fixture.membership = candidate, session, enrollment.Membership
 	return fixture
@@ -876,14 +857,14 @@ func raceAutomaticExamSubmissionSeal(t *testing.T, ctx context.Context, ss store
 	adapters := [2]store.ExamSubmissionStore{primary, peer}
 	inputs := [2]*store.ExamSubmissionAutomaticSeal{}
 	candidate, err := ss.User().Get(ctx, target.CandidateUserID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	for index := range inputs {
 		audit := saveExamSittingSystemAudit(t, ctx, ss, target.SittingID, target.AcademicUnitID)
 		preparation, preparationErr := adapters[index].PrepareAutomaticSeal(ctx, target)
-		requireNoError(t, preparationErr)
-		if preparation == nil || preparation.Replayed || preparation.SealAt.IsZero() {
-			t.Fatalf("PrepareAutomaticSeal(fresh) = %#v", preparation)
-		}
+		require.NoError(t, preparationErr)
+		require.NotNil(t, preparation)
+		require.False(t, preparation.Replayed)
+		require.False(t, preparation.SealAt.IsZero())
 		inputs[index] = &store.ExamSubmissionAutomaticSeal{Target: target, SubmissionID: model.NewSubmissionID(),
 			AuditEventID: audit.ID, AuditAt: model.MillisFromTime(preparation.SealAt)}
 		attachAutomaticSubmissionReceipt(t, candidate, inputs[index])
@@ -911,33 +892,30 @@ func raceAutomaticExamSubmissionSeal(t *testing.T, ctx context.Context, ss store
 	close(results)
 	close(errorsFound)
 	for err := range errorsFound {
-		requireNoError(t, err)
+		require.NoError(t, err)
 	}
 	values := make([]*store.ExamSubmissionAutomaticSealResult, 0, 2)
 	for indexed := range results {
-		if indexed.result != nil && !indexed.result.Replayed &&
-			!indexed.result.Receipt.SubmittedAt.Equal(inputs[indexed.index].Notice.Occurrence.CreatedAt) {
-			t.Fatalf("automatic seal time=%s, receipt occurrence=%s", indexed.result.Receipt.SubmittedAt,
-				inputs[indexed.index].Notice.Occurrence.CreatedAt)
+		if indexed.result != nil && !indexed.result.Replayed {
+			require.True(t, indexed.result.Receipt.SubmittedAt.Equal(inputs[indexed.index].Notice.Occurrence.CreatedAt), "automatic seal time=%s, receipt occurrence", indexed.result.Receipt.SubmittedAt)
 		}
 		values = append(values, indexed.result)
 	}
-	if len(values) != 2 || values[0] == nil || values[1] == nil || values[0].Replayed == values[1].Replayed ||
-		values[0].Receipt != values[1].Receipt || values[0].ConnectionClosed == values[1].ConnectionClosed {
-		t.Fatalf("concurrent automatic Seals = %#v", values)
-	}
+	require.Len(t, values, 2)
+	require.NotNil(t, values[0])
+	require.NotNil(t, values[1])
+	require.NotEqual(t, values[1].Replayed, values[0].Replayed)
+	require.Equal(t, values[1].Receipt, values[0].Receipt)
+	require.NotEqual(t, values[1].ConnectionClosed, values[0].ConnectionClosed)
 	for _, input := range inputs {
 		requireSuccessfulAudit(t, ctx, ss, input.AuditEventID)
 		audit, err := ss.Audit().Get(ctx, input.AuditEventID)
-		requireNoError(t, err)
-		if !audit.ActorID.IsZero() || audit.SessionID.IsValid() {
-			t.Fatalf("automatic Submission audit invented an actor or Session: %#v", audit)
-		}
+		require.NoError(t, err)
+		require.True(t, audit.ActorID.IsZero())
+		require.False(t, audit.SessionID.IsValid())
 		encoded := bytes.ToLower(audit.Result)
 		for _, forbidden := range []string{"path", "content", "credential", "session", "private_reason"} {
-			if bytes.Contains(encoded, []byte(forbidden)) {
-				t.Fatalf("automatic Submission audit contains %q: %s", forbidden, audit.Result)
-			}
+			require.False(t, bytes.Contains(encoded, []byte(forbidden)), "automatic Submission audit contains %q: %s", forbidden, audit.Result)
 		}
 	}
 	if values[0].Replayed {
@@ -958,14 +936,6 @@ func validStoretestDigest(value string) bool {
 	return true
 }
 
-func assertSubmissionConflict(t *testing.T, err error, constraint string) {
-	t.Helper()
-	var conflict *store.ErrConflict
-	if !errors.As(err, &conflict) || conflict.Constraint != constraint {
-		t.Fatalf("conflict = %v, want %s", err, constraint)
-	}
-}
-
 func testExamSubmissionRollback(t *testing.T, ctx context.Context, ss store.Store, submissions store.ExamSubmissionStore) {
 	t.Helper()
 	fixture := newExamAttemptFixture(t, ctx, ss)
@@ -975,31 +945,29 @@ func testExamSubmissionRollback(t *testing.T, ctx context.Context, ss store.Stor
 		AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}
 	attachSubmissionReceipt(t, ctx, ss, fixture.candidate, input)
 	command := examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-rollback", "submission-rollback")
-	if _, err := submissions.Seal(ctx, input, command); err == nil {
-		t.Fatal("Seal(with missing audit) succeeded")
-	}
-	if got, err := submissions.Get(ctx, input.SubmissionID); !store.IsNotFound(err) || got != nil {
-		t.Fatalf("Get(rolled-back Submission) = %#v, %v", got, err)
-	}
-	if delivery, err := ss.Mail().GetDelivery(ctx, input.Notice.Delivery.ID); !store.IsNotFound(err) || delivery != nil {
-		t.Fatalf("GetDelivery(rolled-back voluntary receipt) = %#v, %v", delivery, err)
-	}
-	if _, err := submissions.ResolveSealTarget(ctx, access); err != nil {
-		t.Fatalf("ResolveSealTarget(after rollback) error = %v", err)
-	}
+	_, err := submissions.Seal(ctx, input, command)
+	require.Error(t, err, "Seal(with missing audit) succeeded")
+	got, err := submissions.Get(ctx, input.SubmissionID)
+	require.True(t, store.IsNotFound(err), "Get(rolled-back Submission)")
+	require.Nil(t, got, "Get(rolled-back Submission)")
+	delivery, err := ss.Mail().GetDelivery(ctx, input.Notice.Delivery.ID)
+	require.True(t, store.IsNotFound(err), "GetDelivery(rolled-back voluntary receipt)")
+	require.Nil(t, delivery, "GetDelivery(rolled-back voluntary receipt)")
+	_, err = submissions.ResolveSealTarget(ctx, access)
+	require.NoError(t, err)
 	manager, err := ss.ExamAttempt().Get(ctx, fixture.examID, connected.Attempt.ID)
-	requireNoError(t, err)
-	if manager.Attempt.State != model.ExamAttemptActive || manager.LatestParticipation == nil ||
-		manager.LatestParticipation.State != model.AttemptParticipationActive || manager.CurrentConnection == nil ||
-		manager.CurrentConnection.State != model.AttemptConnectionOpen {
-		t.Fatalf("Attempt changed despite rolled-back seal = %#v", manager)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.ExamAttemptActive, manager.Attempt.State)
+	require.NotNil(t, manager.LatestParticipation)
+	require.Equal(t, model.AttemptParticipationActive, manager.LatestParticipation.State)
+	require.NotNil(t, manager.CurrentConnection)
+	require.Equal(t, model.AttemptConnectionOpen, manager.CurrentConnection.State)
 	input.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	retried, err := submissions.Seal(ctx, input, command)
-	requireNoError(t, err)
-	if retried == nil || retried.Replayed || retried.Receipt.SubmissionID != input.SubmissionID {
-		t.Fatalf("Seal(retry after rollback) = %#v", retried)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, retried)
+	require.False(t, retried.Replayed)
+	require.Equal(t, input.SubmissionID, retried.Receipt.SubmissionID)
 }
 
 func testExamSubmissionIntegrityGap(t *testing.T, ctx context.Context, ss store.Store,
@@ -1009,17 +977,18 @@ func testExamSubmissionIntegrityGap(t *testing.T, ctx context.Context, ss store.
 	fixture := newExamAttemptFixture(t, ctx, ss)
 	connected, focusAccess := connectFocusLossFixture(t, ctx, ss, fixture, "submission-integrity-connect")
 	gap := recordFocusLoss(t, ctx, ss, fixture, focusAccess, 2, 2000, model.FocusLossSourceWindowBlur)
-	if gap.AcceptedSequence != 2 || gap.MissingBefore != 1 || !gap.Qualified || gap.ThresholdCrossed {
-		t.Fatalf("Focus Loss pre-seal gap = %#v", gap)
-	}
+	require.Equal(t, int64(2), gap.AcceptedSequence)
+	require.Equal(t, int64(1), gap.MissingBefore)
+	require.True(t, gap.Qualified)
+	require.False(t, gap.ThresholdCrossed)
 	stale := store.ExamSubmissionSealAccess(submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 1))
 	staleInput := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: stale,
 		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	if _, err := submissions.Seal(ctx, staleInput,
 		examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-stale-focus", "submission-stale-focus")); err == nil {
-		t.Fatal("Seal(with final Focus Loss sequence behind accepted high-water) succeeded")
+		require.FailNow(t, "Seal(with final Focus Loss sequence behind accepted high-water) succeeded")
 	} else {
-		assertSubmissionConflict(t, err, "focus_loss_sequence")
+		requireConflictConstraint(t, err, "focus_loss_sequence")
 	}
 	access := submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 5)
 	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
@@ -1027,23 +996,20 @@ func testExamSubmissionIntegrityGap(t *testing.T, ctx context.Context, ss store.
 	attachSubmissionReceipt(t, ctx, ss, fixture.candidate, input)
 	sealed, err := submissions.Seal(ctx, input,
 		examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-gapped", "submission-gapped"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	header, err := submissions.Get(ctx, sealed.Receipt.SubmissionID)
-	requireNoError(t, err)
-	if header.FinalFocusLossSequence != 5 || header.IntegrityState != model.SubmissionIntegrityGapped ||
-		header.UnresolvedIntegrityCount != 4 {
-		t.Fatalf("gapped Submission = %#v", header)
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(5), header.FinalFocusLossSequence)
+	require.Equal(t, model.SubmissionIntegrityGapped, header.IntegrityState)
+	require.Equal(t, int64(4), header.UnresolvedIntegrityCount)
 	if len(probes) != 0 && probes[0].IntegrityPersistence != nil {
 		persisted := probes[0].IntegrityPersistence(t, ctx, connected.Attempt.ID, connected.Participation.Generation)
-		if persisted.PendingQualifiers != 0 || persisted.UnresolvedMissing != 4 {
-			t.Fatalf("terminal integrity persistence = %#v", persisted)
-		}
+		require.Equal(t, int64(0), persisted.PendingQualifiers)
+		require.Equal(t, int64(4), persisted.UnresolvedMissing)
 	}
 	late := newFocusLossInput(t, ctx, ss, fixture, focusAccess, 3, 2000, model.FocusLossSourceDocumentHidden)
-	if _, err = ss.ExamAttempt().RecordFocusLoss(ctx, late); err == nil {
-		t.Fatal("RecordFocusLoss(after Submission) succeeded")
-	}
+	_, err = ss.ExamAttempt().RecordFocusLoss(ctx, late)
+	require.Error(t, err, "RecordFocusLoss(after Submission) succeeded")
 }
 
 func testExamSubmissionHistoricalIntegrityGap(t *testing.T, ctx context.Context, ss store.Store,
@@ -1055,20 +1021,20 @@ func testExamSubmissionHistoricalIntegrityGap(t *testing.T, ctx context.Context,
 	fixture := newExamAttemptFixtureWithFocusLoss(t, ctx, ss, &policy)
 	connected, firstAccess := connectFocusLossFixture(t, ctx, ss, fixture, "submission-history-connect")
 	crossed := recordFocusLoss(t, ctx, ss, fixture, firstAccess, 2, 500, model.FocusLossSourceWindowBlur)
-	if crossed.MissingBefore != 1 || !crossed.ThresholdCrossed || crossed.Suspension == nil || crossed.Attempt == nil ||
-		crossed.Attempt.State != model.ExamAttemptSuspended {
-		t.Fatalf("historical Focus Loss suspension = %#v", crossed)
-	}
+	require.Equal(t, int64(1), crossed.MissingBefore)
+	require.True(t, crossed.ThresholdCrossed)
+	require.NotNil(t, crossed.Suspension)
+	require.NotNil(t, crossed.Attempt)
+	require.Equal(t, model.ExamAttemptSuspended, crossed.Attempt.State)
 	reallowed, err := ss.ExamAttempt().ReallowAttempt(ctx, &store.ExamAttemptReallow{ExamID: fixture.examID,
 		SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID, SuspensionID: crossed.Suspension.ID,
 		ActorUserID: fixture.manager.ID, ExpectedAttemptRevision: crossed.Attempt.Revision,
 		PrivateReason: "verify Submission retains uncertainty across Participation generations",
 		AuditEventID:  saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()},
 		examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "submission-history-reallow", "submission-history-reallow"))
-	requireNoError(t, err)
-	if reallowed.Attempt.State != model.ExamAttemptReady || !reallowed.FocusLossWindowReset {
-		t.Fatalf("historical gap ReallowAttempt() = %#v", reallowed)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.ExamAttemptReady, reallowed.Attempt.State)
+	require.True(t, reallowed.FocusLossWindowReset)
 	secondCredentialHash := model.HashToken(model.NewCredentialToken())
 	reconnect := &store.ExamAttemptConnect{SittingID: fixture.sitting.ID,
 		CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID,
@@ -1080,10 +1046,9 @@ func testExamSubmissionHistoricalIntegrityGap(t *testing.T, ctx context.Context,
 	prepareExamAttemptConnect(t, ctx, ss, reconnect)
 	reconnected, err := ss.ExamAttempt().Connect(ctx, reconnect,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "submission-history-reconnect", "submission-history-reconnect"))
-	requireNoError(t, err)
-	if reconnected.Attempt.ID != connected.Attempt.ID || reconnected.Participation.Generation != connected.Participation.Generation+1 {
-		t.Fatalf("historical gap reconnect = %#v", reconnected)
-	}
+	require.NoError(t, err)
+	require.Equal(t, connected.Attempt.ID, reconnected.Attempt.ID)
+	require.Equal(t, connected.Participation.Generation+1, reconnected.Participation.Generation)
 	access := store.ExamSubmissionSealAccess{AttemptID: reconnected.Attempt.ID,
 		ParticipationID: reconnected.Participation.ID, Generation: reconnected.Participation.Generation,
 		ConnectionID: reconnected.Connection.ID, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID,
@@ -1095,13 +1060,12 @@ func testExamSubmissionHistoricalIntegrityGap(t *testing.T, ctx context.Context,
 	attachSubmissionReceipt(t, ctx, ss, fixture.candidate, input)
 	sealed, err := submissions.Seal(ctx, input,
 		examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-history-seal", "submission-history-seal"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	header, err := submissions.Get(ctx, sealed.Receipt.SubmissionID)
-	requireNoError(t, err)
-	if header.IntegrityState != model.SubmissionIntegrityGapped || header.UnresolvedIntegrityCount != 3 ||
-		header.FinalFocusLossSequence != 2 {
-		t.Fatalf("Submission omitted historical/current-generation uncertainty = %#v", header)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.SubmissionIntegrityGapped, header.IntegrityState)
+	require.Equal(t, int64(3), header.UnresolvedIntegrityCount)
+	require.Equal(t, int64(2), header.FinalFocusLossSequence)
 }
 
 func testExamSubmissionAccessFences(t *testing.T, ctx context.Context, ss store.Store, submissions store.ExamSubmissionStore) {
@@ -1115,7 +1079,7 @@ func testExamSubmissionAccessFences(t *testing.T, ctx context.Context, ss store.
 			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		_, err := submissions.Seal(ctx, input,
 			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-stale-cursor", "submission-stale-cursor"))
-		assertSubmissionConflict(t, err, "attempt_workspace_cursor")
+		requireConflictConstraint(t, err, "attempt_workspace_cursor")
 	})
 
 	t.Run("closed Connection", func(t *testing.T) {
@@ -1126,13 +1090,13 @@ func testExamSubmissionAccessFences(t *testing.T, ctx context.Context, ss store.
 			Reason:       model.AttemptConnectionCloseTransport,
 			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis(),
 		})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		access := submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 0)
 		input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
 			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		_, err = submissions.Seal(ctx, input,
 			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-closed", "submission-closed"))
-		assertSubmissionConflict(t, err, "attempt_connection_closed")
+		requireConflictConstraint(t, err, "attempt_connection_closed")
 	})
 
 	t.Run("Paused Sitting", func(t *testing.T) {
@@ -1143,13 +1107,13 @@ func testExamSubmissionAccessFences(t *testing.T, ctx context.Context, ss store.
 			PrivateReason: "verify voluntary Submission rejects Paused Sitting", ChangedAt: model.NowUTC(),
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
 			examCommand(fixture.manager.ID, "exam.sitting.pause.v1", "submission-pause", "submission-pause"))
-		requireNoError(t, err)
+		require.NoError(t, err)
 		access := submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 0)
 		input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
 			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		_, err = submissions.Seal(ctx, input,
 			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-paused", "submission-paused"))
-		assertSubmissionConflict(t, err, "exam_sitting_state")
+		requireConflictConstraint(t, err, "exam_sitting_state")
 	})
 
 	t.Run("Closing Sitting", func(t *testing.T) {
@@ -1162,16 +1126,16 @@ func testExamSubmissionAccessFences(t *testing.T, ctx context.Context, ss store.
 			PrivateReason: "verify voluntary Submission rejects Closing Sitting", ChangedAt: closeAt,
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
 			examCommand(fixture.manager.ID, "exam.sitting.close.v1", "submission-close", "submission-close"))
-		requireNoError(t, err)
+		require.NoError(t, err)
 		access := submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 0)
 		input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
 			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		_, err = submissions.Seal(ctx, input,
 			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-closing", "submission-closing"))
-		assertSubmissionConflict(t, err, "exam_sitting_state")
-		if got, getErr := submissions.Get(ctx, input.SubmissionID); !store.IsNotFound(getErr) || got != nil {
-			t.Fatalf("Get(Closing-denied Submission) = %#v, %v", got, getErr)
-		}
+		requireConflictConstraint(t, err, "exam_sitting_state")
+		got, getErr := submissions.Get(ctx, input.SubmissionID)
+		require.True(t, store.IsNotFound(getErr), "Get(Closing-denied Submission)")
+		require.Nil(t, got, "Get(Closing-denied Submission)")
 	})
 
 	t.Run("Suspended Attempt", func(t *testing.T) {
@@ -1180,39 +1144,34 @@ func testExamSubmissionAccessFences(t *testing.T, ctx context.Context, ss store.
 		fixture := newExamAttemptFixtureWithFocusLoss(t, ctx, ss, &policy)
 		connected, focusAccess := connectFocusLossFixture(t, ctx, ss, fixture, "submission-suspended-connect")
 		crossed := recordFocusLoss(t, ctx, ss, fixture, focusAccess, 1, 500, model.FocusLossSourceWindowBlur)
-		if crossed.Attempt == nil || crossed.Attempt.State != model.ExamAttemptSuspended {
-			t.Fatalf("Focus Loss did not suspend Submission fixture = %#v", crossed)
-		}
+		require.NotNil(t, crossed.Attempt)
+		require.Equal(t, model.ExamAttemptSuspended, crossed.Attempt.State)
 		access := submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 1)
 		input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
 			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
-		if _, err := submissions.Seal(ctx, input,
-			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-suspended", "submission-suspended")); err == nil {
-			t.Fatal("Seal(Suspended Attempt) succeeded")
-		}
-		if got, getErr := submissions.Get(ctx, input.SubmissionID); !store.IsNotFound(getErr) || got != nil {
-			t.Fatalf("Get(Suspended-denied Submission) = %#v, %v", got, getErr)
-		}
+		_, err := submissions.Seal(ctx, input,
+			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-suspended", "submission-suspended"))
+		require.Error(t, err, "Seal(Suspended Attempt) succeeded")
+		got, getErr := submissions.Get(ctx, input.SubmissionID)
+		require.True(t, store.IsNotFound(getErr), "Get(Suspended-denied Submission)")
+		require.Nil(t, got, "Get(Suspended-denied Submission)")
 		manager, err := ss.ExamAttempt().Get(ctx, fixture.examID, connected.Attempt.ID)
-		requireNoError(t, err)
-		if manager.Attempt.State != model.ExamAttemptSuspended {
-			t.Fatalf("Suspended Attempt changed after denied seal = %#v", manager)
-		}
+		require.NoError(t, err)
+		require.Equal(t, model.ExamAttemptSuspended, manager.Attempt.State)
 	})
 
 	t.Run("lost exact Class membership", func(t *testing.T) {
 		fixture := newExamAttemptFixture(t, ctx, ss)
 		connected, focusAccess := connectFocusLossFixture(t, ctx, ss, fixture, "submission-membership-connect")
 		_, err := ss.ClassMember().SeedEnd(ctx, fixture.membership.ID, fixture.membership.Revision, model.GetMillis())
-		requireNoError(t, err)
+		require.NoError(t, err)
 		time.Sleep(100 * time.Millisecond)
 		access := submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 0)
 		input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
 			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
-		if _, err = submissions.Seal(ctx, input,
-			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-membership", "submission-membership")); !store.IsNotFound(err) {
-			t.Fatalf("Seal(after membership loss) error = %v", err)
-		}
+		_, err = submissions.Seal(ctx, input,
+			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-membership", "submission-membership"))
+		require.True(t, store.IsNotFound(err), "Seal(after membership loss) error")
 	})
 }
 
@@ -1229,16 +1188,17 @@ func testIndependentExamSubmissionReplay(t *testing.T, ctx context.Context, ss s
 	command := examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation,
 		"submission-peer-replay", "submission-peer-replay")
 	sealed, err := first.Seal(ctx, input, command)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	replay := *input
 	replay.SubmissionID = model.NewSubmissionID()
 	replay.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	replayed, err := second.Seal(ctx, &replay, command)
-	requireNoError(t, err)
-	if replayed == nil || !replayed.Replayed || replayed.Receipt != sealed.Receipt ||
-		replayed.ParticipationID != sealed.ParticipationID || replayed.ConnectionID != sealed.ConnectionID {
-		t.Fatalf("Seal(independent unknown-commit replay) = %#v, first = %#v", replayed, sealed)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, replayed, "Seal(independent unknown-commit replay) = %#v, first = %#v", replayed, sealed)
+	require.True(t, replayed.Replayed, "Seal(independent unknown-commit replay) = %#v, first = %#v", replayed, sealed)
+	require.Equal(t, sealed.Receipt, replayed.Receipt, "Seal(independent unknown-commit replay) = %#v, first = %#v", replayed, sealed)
+	require.Equal(t, sealed.ParticipationID, replayed.ParticipationID, "Seal(independent unknown-commit replay) = %#v, first = %#v", replayed, sealed)
+	require.Equal(t, sealed.ConnectionID, replayed.ConnectionID, "Seal(independent unknown-commit replay) = %#v, first = %#v", replayed, sealed)
 	requireSuccessfulAudit(t, ctx, ss, replay.AuditEventID)
 }
 
@@ -1289,16 +1249,16 @@ func testConcurrentExamSubmission(t *testing.T, ctx context.Context, ss store.St
 			succeeded = append(succeeded, result)
 		}
 	}
-	if len(succeeded) != 1 || failed != 1 || succeeded[0].Replayed {
-		t.Fatalf("concurrent different-key Seals = %#v, failures=%d", succeeded, failed)
-	}
+	require.Len(t, succeeded, 1, "concurrent different-key Seals")
+	require.Equal(t, 1, failed, "concurrent different-key Seals")
+	require.False(t, succeeded[0].Replayed, "concurrent different-key Seals")
 	losingID := inputs[0].SubmissionID
 	if losingID == succeeded[0].Receipt.SubmissionID {
 		losingID = inputs[1].SubmissionID
 	}
-	if got, err := first.Get(ctx, losingID); !store.IsNotFound(err) || got != nil {
-		t.Fatalf("Get(concurrent losing Submission) = %#v, %v", got, err)
-	}
+	got, err := first.Get(ctx, losingID)
+	require.True(t, store.IsNotFound(err), "Get(concurrent losing Submission)")
+	require.Nil(t, got, "Get(concurrent losing Submission)")
 }
 
 func submissionAccess(access store.ExamAttemptFocusLossAccess, currentRevisionID model.ExamRevisionID,

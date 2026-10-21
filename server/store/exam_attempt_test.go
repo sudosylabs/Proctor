@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -22,9 +24,8 @@ func TestExamAttemptOutboundViewsCannotCarryContinuityCredentialMaterial(t *test
 		typ := reflect.TypeOf(target)
 		for index := 0; index < typ.NumField(); index++ {
 			name := strings.ToLower(typ.Field(index).Name)
-			if strings.Contains(name, "credential") || strings.Contains(name, "hash") {
-				t.Fatalf("outbound %s exposes sensitive field %s", typ, typ.Field(index).Name)
-			}
+			require.NotContains(t, name, "credential", "outbound")
+			require.NotContains(t, name, "hash", "outbound")
 		}
 	}
 }
@@ -36,10 +37,10 @@ func TestExamAttemptManagerSnapshotCanRecoverExactActiveSuspension(t *testing.T)
 		State: model.AttemptSuspensionActive, Source: model.AttemptSuspensionSourcePolicy,
 		CandidateReason: model.AttemptSuspensionCandidateReasonSecureContinuityLost, StartedAt: model.NowUTC()}
 	snapshot := ExamAttemptManagerSnapshot{ActiveSuspension: suspension}
-	if snapshot.ActiveSuspension == nil || snapshot.ActiveSuspension.ID != suspension.ID ||
-		snapshot.ActiveSuspension.FlagID != suspension.FlagID || snapshot.ActiveSuspension.State != model.AttemptSuspensionActive {
-		t.Fatalf("manager active Suspension recovery = %#v", snapshot.ActiveSuspension)
-	}
+	require.NotNil(t, snapshot.ActiveSuspension)
+	require.Equal(t, suspension.ID, snapshot.ActiveSuspension.ID)
+	require.Equal(t, suspension.FlagID, snapshot.ActiveSuspension.FlagID)
+	require.Equal(t, model.AttemptSuspensionActive, snapshot.ActiveSuspension.State)
 }
 
 func TestExamAttemptParticipationRenewalContractIsHashOnlyAndSafe(t *testing.T) {
@@ -54,10 +55,9 @@ func TestExamAttemptParticipationRenewalContractIsHashOnlyAndSafe(t *testing.T) 
 	result := ExamAttemptParticipationRenewalResult{AttemptID: input.AttemptID, ParticipationID: input.ParticipationID,
 		Generation: input.Generation, AcceptedSequence: input.Sequence, DatabaseTime: databaseNow,
 		LeaseExpiresAt: databaseNow.Add(model.AttemptParticipationInitialLease)}
-	if input.ContinuityCredentialHash != credentialHash || result.AcceptedSequence != 9 ||
-		result.LeaseExpiresAt.Sub(result.DatabaseTime) != model.AttemptParticipationInitialLease {
-		t.Fatalf("renewal contract = %#v / %#v", input, result)
-	}
+	require.Equal(t, credentialHash, input.ContinuityCredentialHash, "renewal contract = %#v / %#v", input, result)
+	require.Equal(t, int64(9), result.AcceptedSequence, "renewal contract = %#v / %#v", input, result)
+	require.Equal(t, model.AttemptParticipationInitialLease, result.LeaseExpiresAt.Sub(result.DatabaseTime), "renewal contract = %#v / %#v", input, result)
 	assertNoCredentialMaterialFields(t, reflect.TypeOf(result))
 }
 
@@ -65,9 +65,8 @@ func assertNoCredentialMaterialFields(t *testing.T, typ reflect.Type) {
 	t.Helper()
 	for index := 0; index < typ.NumField(); index++ {
 		name := strings.ToLower(typ.Field(index).Name)
-		if strings.Contains(name, "credential") || strings.Contains(name, "hash") {
-			t.Fatalf("outbound %s exposes sensitive field %s", typ, typ.Field(index).Name)
-		}
+		require.NotContains(t, name, "credential", "outbound")
+		require.NotContains(t, name, "hash", "outbound")
 	}
 }
 
@@ -82,16 +81,16 @@ func TestExamAttemptParticipationExpiryContractIsConditionalBoundedAndSafe(t *te
 		SuspensionID: model.NewAttemptSuspensionID(), AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}
 	result := ExamAttemptParticipationExpiryResult{ExamID: due.ExamID, SittingID: due.SittingID, ClassID: due.ClassID,
 		CandidateUserID: due.CandidateUserID, DatabaseTime: due.LeaseExpiresAt.Add(time.Second), Replayed: true}
-	if input.Generation != due.Generation || !input.EvidenceID.IsValid() || !input.FlagID.IsValid() ||
-		!input.SuspensionID.IsValid() || !result.Replayed {
-		t.Fatalf("expiry contract = %#v / %#v / %#v", due, input, result)
-	}
+	require.Equal(t, due.Generation, input.Generation, "expiry contract = %#v / %#v / %#v", due, input, result)
+	require.True(t, input.EvidenceID.IsValid(), "expiry contract = %#v / %#v / %#v", due, input, result)
+	require.True(t, input.FlagID.IsValid(), "expiry contract = %#v / %#v / %#v", due, input, result)
+	require.True(t, input.SuspensionID.IsValid(), "expiry contract = %#v / %#v / %#v", due, input, result)
+	require.True(t, result.Replayed, "expiry contract = %#v / %#v / %#v", due, input, result)
 	for _, target := range []any{due, result} {
 		assertNoCredentialMaterialFields(t, reflect.TypeOf(target))
 	}
-	if _, exists := reflect.TypeOf((*ExamAttemptStore)(nil)).Elem().MethodByName("ResolveParticipationExpiry"); !exists {
-		t.Fatal("ExamAttemptStore is missing exact late-renew expiry resolution")
-	}
+	_, exists := reflect.TypeOf((*ExamAttemptStore)(nil)).Elem().MethodByName("ResolveParticipationExpiry")
+	require.True(t, exists, "ExamAttemptStore is missing exact late-renew expiry resolution")
 }
 
 func TestExamAttemptReallowContractIsRevisionFencedAndPrivateReasonSafe(t *testing.T) {
@@ -102,16 +101,14 @@ func TestExamAttemptReallowContractIsRevisionFencedAndPrivateReasonSafe(t *testi
 		AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}
 	result := ExamAttemptReallowResult{ExamID: input.ExamID, SittingID: input.SittingID, ClassID: model.NewClassID(),
 		CandidateUserID: model.NewUserID(), Replayed: true}
-	if input.ExpectedAttemptRevision != 7 || input.PrivateReason == "" || !result.Replayed {
-		t.Fatalf("re-allow contract = %#v / %#v", input, result)
-	}
+	require.Equal(t, int64(7), input.ExpectedAttemptRevision, "re-allow contract = %#v / %#v", input, result)
+	require.NotEmpty(t, input.PrivateReason, "re-allow contract = %#v / %#v", input, result)
+	require.True(t, result.Replayed, "re-allow contract = %#v / %#v", input, result)
 	for _, target := range []any{ExamAttemptSuspensionView{}, result} {
 		typ := reflect.TypeOf(target)
 		assertNoCredentialMaterialFields(t, typ)
 		for index := 0; index < typ.NumField(); index++ {
-			if strings.Contains(strings.ToLower(typ.Field(index).Name), "private") {
-				t.Fatalf("outbound %s exposes private field %s", typ, typ.Field(index).Name)
-			}
+			require.NotContains(t, strings.ToLower(typ.Field(index).Name), "private", "outbound %s exposes private field", typ)
 		}
 	}
 }
@@ -122,7 +119,7 @@ func TestCandidateAttemptSelectorsBindTheAuthenticatedSession(t *testing.T) {
 	access := CandidateAttemptAccess{AttemptID: model.NewExamAttemptID(), CandidateUserID: model.NewUserID(),
 		SessionID: sessionID, ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken())}
 	closure := ExamAttemptConnectionClose{ConnectionID: access.ConnectionID, CandidateUserID: access.CandidateUserID, SessionID: sessionID}
-	if access.SessionID != sessionID || closure.SessionID != sessionID || closure.CandidateUserID != access.CandidateUserID {
-		t.Fatalf("session-bound selectors = %#v / %#v", access, closure)
-	}
+	require.Equal(t, sessionID, access.SessionID, "session-bound selectors = %#v / %#v", access, closure)
+	require.Equal(t, sessionID, closure.SessionID, "session-bound selectors = %#v / %#v", access, closure)
+	require.Equal(t, access.CandidateUserID, closure.CandidateUserID, "session-bound selectors = %#v / %#v", access, closure)
 }

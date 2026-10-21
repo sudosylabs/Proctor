@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store/storetest"
 )
@@ -31,42 +33,31 @@ func TestDeliveryExpiryStore(t *testing.T) {
 			if table == "browser_activity_sources" {
 				selector = "id::text"
 			}
-			if err := s.GetMaster().Select(ctx, &rows, `SELECT `+selector+` AS part,closure_canonical FROM `+table+` WHERE exam_attempt_id=?`, attempt.String()); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, s.GetMaster().Select(ctx, &rows, `SELECT `+selector+` AS part,closure_canonical FROM `+table+` WHERE exam_attempt_id=?`, attempt.String()))
 			for _, row := range rows {
 				var closure model.DeliveryClosure
-				if err := json.Unmarshal(row.Raw, &closure); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, json.Unmarshal(row.Raw, &closure))
 				*closure.ClosedAt = closure.ClosedAt.Add(-25 * time.Hour)
 				*closure.UploadExpiresAt = closure.UploadExpiresAt.Add(-25 * time.Hour)
 				raw, err := canonicalPreflightValue(closure)
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				query := `UPDATE exam_attempt_security_owners SET closure_canonical=?,upload_expires_at=? WHERE participation_id=?`
 				if table == "browser_activity_sources" {
 					query = `UPDATE browser_activity_sources SET closure_canonical=?,upload_expires_at=?,started_at=started_at-interval '25 hours',ended_at=ended_at-interval '25 hours' WHERE id=?::uuid`
 				}
-				if _, err := s.GetMaster().Exec(ctx, query, raw, closure.UploadExpiresAt, row.Part); err != nil {
-					t.Fatal(err)
-				}
+				_, err = s.GetMaster().Exec(ctx, query, raw, closure.UploadExpiresAt, row.Part)
+				require.NoError(t, err)
 			}
 		}
 	}, func(source, raw string) func() {
 		ctx := context.Background()
 		var original []byte
-		if err := s.GetMaster().Get(ctx, &original, `SELECT closure_canonical FROM exam_attempt_security_owners WHERE delivery_stream_id=?`, source); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := s.GetMaster().Exec(ctx, `UPDATE exam_attempt_security_owners SET closure_canonical=? WHERE delivery_stream_id=?`, []byte(raw), source); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, s.GetMaster().Get(ctx, &original, `SELECT closure_canonical FROM exam_attempt_security_owners WHERE delivery_stream_id=?`, source))
+		_, err := s.GetMaster().Exec(ctx, `UPDATE exam_attempt_security_owners SET closure_canonical=? WHERE delivery_stream_id=?`, []byte(raw), source)
+		require.NoError(t, err)
 		return func() {
-			if _, err := s.GetMaster().Exec(ctx, `UPDATE exam_attempt_security_owners SET closure_canonical=? WHERE delivery_stream_id=?`, original, source); err != nil {
-				t.Fatal(err)
-			}
+			_, err := s.GetMaster().Exec(ctx, `UPDATE exam_attempt_security_owners SET closure_canonical=? WHERE delivery_stream_id=?`, original, source)
+			require.NoError(t, err)
 		}
 	})
 }
@@ -105,8 +96,7 @@ func TestBrowserIntegrityCopyBoundaries(t *testing.T) {
 	s := openTestStore(t)
 	resetTestStore(t, s)
 	storetest.TestBrowserIntegrityCopyBoundaries(t, s, func(t *testing.T, ctx context.Context, attempt model.ExamAttemptID, records, bytes int64) {
-		if _, err := s.GetMaster().Exec(ctx, `UPDATE exam_attempt_delivery_budgets SET browser_evidence_records=?,browser_evidence_bytes=? WHERE exam_attempt_id=?`, records, bytes, attempt.String()); err != nil {
-			t.Fatal(err)
-		}
+		_, err := s.GetMaster().Exec(ctx, `UPDATE exam_attempt_delivery_budgets SET browser_evidence_records=?,browser_evidence_bytes=? WHERE exam_attempt_id=?`, records, bytes, attempt.String())
+		require.NoError(t, err)
 	})
 }

@@ -8,8 +8,9 @@
 package sqlstore
 
 import (
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -24,12 +25,8 @@ func TestPasswordCredentialRowConversion(t *testing.T) {
 	}
 	row := newPasswordCredentialRow(credential)
 	got, err := row.model()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if *got != *credential {
-		t.Fatalf("row.model() = %#v, want %#v", got, credential)
-	}
+	require.NoError(t, err)
+	require.Equal(t, *credential, *got, "row.model() = %#v, want %#v", got, credential)
 }
 
 func TestPasswordCredentialRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
@@ -54,9 +51,9 @@ func TestPasswordCredentialRowRehydrationRejectsInvalidPersistedState(t *testing
 			test.mutate(&row)
 			_, err := row.model()
 			var persisted *persistedStateError
-			if !errors.As(err, &persisted) || persisted.Entity != "password_credential" || persisted.Field != test.field {
-				t.Fatalf("model() error = %v, want password_credential.%s persisted-state error", err, test.field)
-			}
+			require.ErrorAs(t, err, &persisted, "model() error")
+			require.Equal(t, "password_credential", persisted.Entity, "model() error")
+			require.Equal(t, test.field, persisted.Field, "model() error")
 		})
 	}
 }

@@ -11,8 +11,11 @@ package sqlstore
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -36,15 +39,11 @@ func TestUserEmailChangePreservesLifecycleAcrossClockSkew(t *testing.T) {
 			persistence := openTestStore(t)
 			resetTestStore(t, persistence)
 			institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "email-clock", DisplayName: "Email Clock"})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			databaseNow := func() time.Time {
 				t.Helper()
 				var at time.Time
-				if err := persistence.GetMaster().Get(ctx, &at, `SELECT clock_timestamp()`); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, persistence.GetMaster().Get(ctx, &at, `SELECT clock_timestamp()`))
 				return model.TimeUTC(at)
 			}
 			now := databaseNow()
@@ -59,22 +58,14 @@ func TestUserEmailChangePreservesLifecycleAcrossClockSkew(t *testing.T) {
 				user.UpdatedAt = future.Add(time.Hour)
 			}
 			pictureCommand, err := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommandV1{UserID: user.ID})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			pictureJob, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1,
 				pictureCommand, user.ID.String(), createdAt, createdAt, 8)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			settings, err := model.NewUserSettingsDocument(user.ID, model.NewUserSettingsRevision(), createdAt)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			created, err := persistence.User().Create(ctx, &store.UserCreation{User: user, Settings: settings, DefaultProfilePictureJob: pictureJob})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			user = created.User
 			var prior *model.UserToken
 			var priorDelivery *model.MailDelivery
@@ -91,9 +82,7 @@ func TestUserEmailChangePreservesLifecycleAcrossClockSkew(t *testing.T) {
 				prior, err = persistence.UserToken().Issue(ctx, &store.UserTokenMailIssue{Token: prior,
 					Occurrence: occurrence, Delivery: priorDelivery, Job: priorJob,
 					AuditEvent: authenticationPolicyTestAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String())})
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 			}
 
 			preparedAt := future.Add(24 * time.Hour)
@@ -110,9 +99,7 @@ func TestUserEmailChangePreservesLifecycleAcrossClockSkew(t *testing.T) {
 			audit := authenticationPolicyTestAudit("user.email.change", user.ID.String(), institution.ID.String())
 			audit.Status = model.AuditStatusAttempt
 			audit, err = persistence.Audit().Save(ctx, audit)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			before := databaseNow()
 			changed, err := persistence.UserToken().ChangeEmail(ctx, &store.UserEmailChange{
 				UserID: user.ID, ExpectedRevision: user.Revision, NewEmail: token.Target, Token: token,
@@ -121,94 +108,77 @@ func TestUserEmailChangePreservesLifecycleAcrossClockSkew(t *testing.T) {
 				VerificationOccurrence: verifyOccurrence, VerificationDelivery: verifyDelivery, VerificationJob: verifyJob,
 				AuditEventID: audit.ID, AuditAt: model.MillisFromTime(before),
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			after := databaseNow()
 			persistedUser, err := persistence.User().Get(ctx, user.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err = persistedUser.Validate(); err != nil {
-				t.Fatal(err)
-			}
-			if !persistedUser.CreatedAt.Equal(createdAt) || persistedUser.UpdatedAt.Before(user.UpdatedAt) ||
-				(test.futureUpdated && !persistedUser.UpdatedAt.Equal(user.UpdatedAt)) {
-				t.Fatal("email change rewrote or moved the User lifecycle backward")
-			}
-			if persistedUser.Email != token.Target || persistedUser.EmailVerified || persistedUser.Revision != user.Revision+1 ||
-				!persistedUser.UpdatedAt.Equal(changed.User.UpdatedAt) {
-				t.Fatal("email change did not persist the returned User transition")
-			}
+			require.NoError(t, err)
+			err = persistedUser.Validate()
+			require.NoError(t, err)
+			require.True(t, persistedUser.CreatedAt.Equal(createdAt), "email change rewrote or moved the User lifecycle backward")
+			require.False(t, persistedUser.UpdatedAt.Before(user.UpdatedAt), "email change rewrote or moved the User lifecycle backward")
+			require.False(t, test.futureUpdated && !persistedUser.UpdatedAt.Equal(user.UpdatedAt), "email change rewrote or moved the User lifecycle backward")
+			require.Equal(t, token.Target, persistedUser.Email, "email change did not persist the returned User transition")
+			require.False(t, persistedUser.EmailVerified, "email change did not persist the returned User transition")
+			require.Equal(t, user.Revision+1, persistedUser.Revision, "email change did not persist the returned User transition")
+			require.True(t, persistedUser.UpdatedAt.Equal(changed.User.UpdatedAt), "email change did not persist the returned User transition")
 			persistedToken, err := persistence.UserToken().Get(ctx, token.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err = persistedToken.Validate(); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+			err = persistedToken.Validate()
+			require.NoError(t, err)
 			at := persistedToken.CreatedAt
-			if at.Before(before) || at.After(after) || !persistedToken.UpdatedAt.Equal(at) ||
-				persistedToken.ExpiresAt.Sub(at) != tokenLifetime || !changed.Token.CreatedAt.Equal(at) {
-				t.Fatal("replacement token lifetime did not use the current PostgreSQL instant")
-			}
+			require.False(t, at.Before(before), "replacement token lifetime did not use the current PostgreSQL instant")
+			require.False(t, at.After(after), "replacement token lifetime did not use the current PostgreSQL instant")
+			require.True(t, persistedToken.UpdatedAt.Equal(at), "replacement token lifetime did not use the current PostgreSQL instant")
+			require.Equal(t, tokenLifetime, persistedToken.ExpiresAt.Sub(at), "replacement token lifetime did not use the current PostgreSQL instant")
+			require.True(t, changed.Token.CreatedAt.Equal(at), "replacement token lifetime did not use the current PostgreSQL instant")
 			for _, expected := range []struct {
 				delivery *model.MailDelivery
 				job      *model.Job
 				lifetime time.Duration
 			}{{warningDelivery, warningJob, warningLifetime}, {verifyDelivery, verifyJob, tokenLifetime}} {
-				delivery, err := persistence.Mail().GetDelivery(ctx, expected.delivery.ID)
-				if err != nil {
-					t.Fatal(err)
-				}
-				job, err := persistence.Job().Get(ctx, expected.job.ID)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err = delivery.Validate(); err != nil {
-					t.Fatal(err)
-				}
-				if err = job.Validate(); err != nil {
-					t.Fatal(err)
-				}
-				if !delivery.CreatedAt.Equal(at) || !delivery.UpdatedAt.Equal(at) || !delivery.MessageDate.Equal(at) ||
-					delivery.Deadline.Sub(at) != expected.lifetime || !job.CreatedAt.Equal(at) ||
-					!job.UpdatedAt.Equal(at) || !job.AvailableAt.Equal(at) {
-					t.Fatal("replacement mail or Job inherited a future lifecycle timestamp")
-				}
+				t.Run(fmt.Sprintf("lifetime=%v", expected.lifetime), func(t *testing.T) {
+					delivery, err := persistence.Mail().GetDelivery(ctx, expected.delivery.ID)
+					require.NoError(t, err)
+					job, err := persistence.Job().Get(ctx, expected.job.ID)
+					require.NoError(t, err)
+					err = delivery.Validate()
+					require.NoError(t, err)
+					err = job.Validate()
+					require.NoError(t, err)
+					require.True(t, delivery.CreatedAt.Equal(at), "replacement mail or Job inherited a future lifecycle timestamp")
+					require.True(t, delivery.UpdatedAt.Equal(at), "replacement mail or Job inherited a future lifecycle timestamp")
+					require.True(t, delivery.MessageDate.Equal(at), "replacement mail or Job inherited a future lifecycle timestamp")
+					require.Equal(t, expected.lifetime, delivery.Deadline.Sub(at), "replacement mail or Job inherited a future lifecycle timestamp")
+					require.True(t, job.CreatedAt.Equal(at), "replacement mail or Job inherited a future lifecycle timestamp")
+					require.True(t, job.UpdatedAt.Equal(at), "replacement mail or Job inherited a future lifecycle timestamp")
+					require.True(t, job.AvailableAt.Equal(at), "replacement mail or Job inherited a future lifecycle timestamp")
+				})
 			}
 			if prior != nil {
 				archived, err := persistence.UserToken().Get(ctx, prior.ID)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err = archived.Validate(); err != nil {
-					t.Fatal(err)
-				}
-				if !archived.CreatedAt.Equal(prior.CreatedAt) || !archived.ExpiresAt.Equal(prior.ExpiresAt) ||
-					!archived.UpdatedAt.Equal(prior.UpdatedAt) || !archived.ArchivedAt.Valid ||
-					!archived.ArchivedAt.Time.Equal(prior.UpdatedAt) || archived.IsActiveAt(after) {
-					t.Fatal("prior token history or immediate invalidation was not preserved")
-				}
+				require.NoError(t, err)
+				err = archived.Validate()
+				require.NoError(t, err)
+				require.True(t, archived.CreatedAt.Equal(prior.CreatedAt), "prior token history or immediate invalidation was not preserved")
+				require.True(t, archived.ExpiresAt.Equal(prior.ExpiresAt), "prior token history or immediate invalidation was not preserved")
+				require.True(t, archived.UpdatedAt.Equal(prior.UpdatedAt), "prior token history or immediate invalidation was not preserved")
+				require.True(t, archived.ArchivedAt.Valid, "prior token history or immediate invalidation was not preserved")
+				require.True(t, archived.ArchivedAt.Time.Equal(prior.UpdatedAt), "prior token history or immediate invalidation was not preserved")
+				require.False(t, archived.IsActiveAt(after), "prior token history or immediate invalidation was not preserved")
 				delivery, err := persistence.Mail().GetDelivery(ctx, priorDelivery.ID)
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				job, err := persistence.Job().Get(ctx, priorJob.ID)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err = delivery.Validate(); err != nil {
-					t.Fatal(err)
-				}
-				if err = job.Validate(); err != nil {
-					t.Fatal(err)
-				}
-				if delivery.State != model.MailDeliverySuppressed || len(delivery.EncryptedPayload) != 0 ||
-					!delivery.CreatedAt.Equal(priorDelivery.CreatedAt) || !delivery.Deadline.Equal(priorDelivery.Deadline) ||
-					job.Status != model.JobStatusCanceled || job.UpdatedAt.Before(priorJob.UpdatedAt) {
-					t.Fatal("superseded frozen mail was not safely suppressed")
-				}
+				require.NoError(t, err)
+				err = delivery.Validate()
+				require.NoError(t, err)
+				err = job.Validate()
+				require.NoError(t, err)
+				require.Equal(t, model.MailDeliverySuppressed, delivery.State, "superseded frozen mail was not safely suppressed")
+				require.Empty(t, delivery.EncryptedPayload, "superseded frozen mail was not safely suppressed")
+				require.True(t, delivery.CreatedAt.Equal(priorDelivery.CreatedAt), "superseded frozen mail was not safely suppressed")
+				require.True(t, delivery.Deadline.Equal(priorDelivery.Deadline), "superseded frozen mail was not safely suppressed")
+				require.Equal(t, model.JobStatusCanceled, job.Status, "superseded frozen mail was not safely suppressed")
+				require.False(t, job.UpdatedAt.Before(priorJob.UpdatedAt), "superseded frozen mail was not safely suppressed")
 			}
 		})
 	}
@@ -218,25 +188,21 @@ func TestPasswordResetSerializesWithPasswordRemoval(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	persistence, institution, user, password := passwordProofFixture(t, ctx)
-	if _, err := persistence.GetMaster().Exec(ctx, `UPDATE access_policies
-		SET provider_admissions=jsonb_build_object('campus-cas', ?::text) WHERE singleton=1`, string(model.ProviderAdmissionLinkedOnly)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := persistence.ExternalIdentity().Save(ctx, &model.ExternalIdentity{
+	_, err := persistence.GetMaster().Exec(ctx, `UPDATE access_policies
+		SET provider_admissions=jsonb_build_object('campus-cas', ?::text) WHERE singleton=1`, string(model.ProviderAdmissionLinkedOnly))
+	require.NoError(t, err)
+	_, err = persistence.ExternalIdentity().Save(ctx, &model.ExternalIdentity{
 		UserID: user.ID, Provider: "campus-cas", Subject: "password-reset-removal",
 		LastSeenAt: model.OptionalTimeFrom(model.NowUTC()),
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
+	require.NoError(t, err)
 	audit, err := persistence.Audit().Save(ctx, &model.AuditEvent{
 		ActorID: user.ID, Action: string(model.ActionExternalIdentityManage),
 		Resource:  model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt,
 		NodeID: "password-reset-removal-order",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	completion := passwordProofReset(t, ctx, persistence, institution, user)
 	controllerPID, release := pausePasswordProofWrite(t, ctx, persistence, true)
 	type resetOutcome struct {
@@ -268,23 +234,21 @@ func TestPasswordResetSerializesWithPasswordRemoval(t *testing.T) {
 	waitForBlockedMailQuery(t, ctx, persistence, resetPID, "pg_advisory_xact_lock")
 	release()
 	reset, remove := <-resetDone, <-removed
-	if reset.err != nil || reset.result == nil || !reset.result.Token.ConsumedAt.Valid {
-		t.Fatalf("reset before removal = %#v, %v", reset.result, reset.err)
-	}
-	if remove.err != nil || remove.result == nil || remove.result.PasswordCredential == nil {
-		t.Fatalf("removal after reset = %#v, %v", remove.result, remove.err)
-	}
+	require.NoError(t, reset.err, "reset before removal")
+	require.NotNil(t, reset.result, "reset before removal")
+	require.True(t, reset.result.Token.ConsumedAt.Valid, "reset before removal")
+	require.NoError(t, remove.err, "removal after reset")
+	require.NotNil(t, remove.result, "removal after reset")
+	require.NotNil(t, remove.result.PasswordCredential, "removal after reset")
 	credential := remove.result.PasswordCredential
-	if !credential.ArchivedAt.Valid || credential.Revision != password.Revision+1 || credential.PasswordHash != completion.PasswordHash {
-		t.Fatal("removal did not archive the password produced by the preceding reset")
-	}
-	if _, err = persistence.PasswordCredential().GetByUser(ctx, user.ID); !store.IsNotFound(err) {
-		t.Fatalf("password remained active after removal: %v", err)
-	}
+	require.True(t, credential.ArchivedAt.Valid, "removal did not archive the password produced by the preceding reset")
+	require.Equal(t, password.Revision+1, credential.Revision, "removal did not archive the password produced by the preceding reset")
+	require.Equal(t, completion.PasswordHash, credential.PasswordHash, "removal did not archive the password produced by the preceding reset")
+	_, err = persistence.PasswordCredential().GetByUser(ctx, user.ID)
+	require.True(t, store.IsNotFound(err), "password remained active after removal")
 	terminal, err := persistence.Audit().Get(ctx, audit.ID)
-	if err != nil || terminal.Status != model.AuditStatusSuccess {
-		t.Fatalf("removal audit = %#v, %v", terminal, err)
-	}
+	require.NoError(t, err, "removal audit = %#v", terminal)
+	require.Equal(t, model.AuditStatusSuccess, terminal.Status, "removal audit = %#v", terminal)
 }
 
 func TestPasswordResetSerializesWithResetTokenReissue(t *testing.T) {
@@ -325,24 +289,23 @@ func TestPasswordResetSerializesWithResetTokenReissue(t *testing.T) {
 	waitForBlockedMailQuery(t, ctx, persistence, resetPID, "pg_advisory_xact_lock")
 	release()
 	reset, reissued := <-resetDone, <-issued
-	if reset.err != nil || reset.result == nil || !reset.result.Token.ConsumedAt.Valid {
-		t.Fatalf("reset before token reissue = %#v, %v", reset.result, reset.err)
-	}
-	if reissued.err != nil || reissued.token == nil || reissued.token.ID != next.ID {
-		t.Fatalf("token reissue after reset = %#v, %v", reissued.token, reissued.err)
-	}
+	require.NoError(t, reset.err, "reset before token reissue")
+	require.NotNil(t, reset.result, "reset before token reissue")
+	require.True(t, reset.result.Token.ConsumedAt.Valid, "reset before token reissue")
+	require.NoError(t, reissued.err, "token reissue after reset")
+	require.NotNil(t, reissued.token, "token reissue after reset")
+	require.Equal(t, next.ID, reissued.token.ID, "token reissue after reset")
 	current, err := persistence.PasswordCredential().GetByUser(ctx, user.ID)
-	if err != nil || current.Revision != password.Revision+1 || current.PasswordHash != completion.PasswordHash {
-		t.Fatalf("token reissue changed reset password: %v", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, password.Revision+1, current.Revision)
+	require.Equal(t, completion.PasswordHash, current.PasswordHash)
 	retained, err := persistence.UserToken().Get(ctx, reset.result.Token.ID)
-	if err != nil || !retained.ConsumedAt.Valid {
-		t.Fatalf("token reissue lost preceding consumption: %v", err)
-	}
+	require.NoError(t, err)
+	require.True(t, retained.ConsumedAt.Valid)
 	active, err := persistence.UserToken().GetByHash(ctx, next.TokenHash, model.UserTokenPasswordReset)
-	if err != nil || active.ArchivedAt.Valid || active.ConsumedAt.Valid {
-		t.Fatalf("new reset token is not active after reissue: %v", err)
-	}
+	require.NoError(t, err)
+	require.False(t, active.ArchivedAt.Valid)
+	require.False(t, active.ConsumedAt.Valid)
 }
 
 func TestEmailVerificationConsumptionUsesPostgreSQLTime(t *testing.T) {
@@ -351,30 +314,23 @@ func TestEmailVerificationConsumptionUsesPostgreSQLTime(t *testing.T) {
 	persistence := openTestStore(t)
 	resetTestStore(t, persistence)
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "verification-consume-time", DisplayName: "Verification Consume Time"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	user := saveIntegrationUser(t, ctx, persistence, &model.User{Username: "verification-consume-time", Email: "verification-consume-time@example.edu"})
 	token := &model.UserToken{UserID: user.ID, Purpose: model.UserTokenEmailVerification,
 		TokenHash: model.HashToken(model.NewCredentialToken()), Target: user.Email, ExpiresAt: model.NowUTC().Add(time.Hour)}
 	token, err = authenticationPolicyTestIssue(t, ctx, persistence, token,
 		authenticationPolicyTestAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	behindNodeAt := expireTokenAfterObservedNodeTime(t, ctx, persistence, token.ID)
-	if _, err = persistence.UserToken().ConsumeEmailVerification(ctx, token.TokenHash, model.MillisFromTime(behindNodeAt),
-		authenticationPolicyTestAudit("authentication.email_verification.complete", "", institution.ID.String())); !store.IsNotFound(err) {
-		t.Fatalf("expired verification with behind-node time error = %v, want not found", err)
-	}
+	_, err = persistence.UserToken().ConsumeEmailVerification(ctx, token.TokenHash, model.MillisFromTime(behindNodeAt),
+		authenticationPolicyTestAudit("authentication.email_verification.complete", "", institution.ID.String()))
+	require.True(t, store.IsNotFound(err), "expired verification with behind-node time error")
 	current, err := persistence.User().Get(ctx, user.ID)
-	if err != nil || current.EmailVerified {
-		t.Fatalf("expired verification changed User = %#v, %v", current, err)
-	}
+	require.NoError(t, err, "expired verification changed User = %#v", current)
+	require.False(t, current.EmailVerified, "expired verification changed User = %#v", current)
 	retained, err := persistence.UserToken().GetByHash(ctx, token.TokenHash, token.Purpose)
-	if err != nil || retained.ConsumedAt.Valid {
-		t.Fatalf("expired verification consumed token = %#v, %v", retained, err)
-	}
+	require.NoError(t, err, "expired verification consumed token = %#v", retained)
+	require.False(t, retained.ConsumedAt.Valid, "expired verification consumed token = %#v", retained)
 	assertExpiredConsumptionAuditAbsent(t, ctx, persistence, "authentication.email_verification.complete")
 }
 
@@ -384,51 +340,39 @@ func TestPasswordResetConsumptionUsesPostgreSQLTime(t *testing.T) {
 	persistence := openTestStore(t)
 	resetTestStore(t, persistence)
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "reset-consume-time", DisplayName: "Reset Consume Time"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	user := saveIntegrationUser(t, ctx, persistence, &model.User{Username: "reset-consume-time", Email: "reset-consume-time@example.edu"})
 	credential, err := persistence.PasswordCredential().Save(ctx, &model.PasswordCredential{UserID: user.ID, PasswordHash: "encoded-original-password"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	session, sessionCredentials := authenticationPolicyTestSession(user.ID, "password", "", "")
 	session, _, err = storetest.SaveSession(ctx, persistence, sessionCreationForSQLTest(t, ctx, persistence, session, sessionCredentials, 10))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	token := &model.UserToken{UserID: user.ID, Purpose: model.UserTokenPasswordReset,
 		TokenHash: model.HashToken(model.NewCredentialToken()), Target: user.Email, ExpiresAt: model.NowUTC().Add(time.Hour)}
 	token, err = authenticationPolicyTestIssue(t, ctx, persistence, token,
 		authenticationPolicyTestAudit("authentication.password_reset.request", user.ID.String(), institution.ID.String()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	behindNodeAt := expireTokenAfterObservedNodeTime(t, ctx, persistence, token.ID)
 	completion := authenticationPolicyTestResetCompletion(t, user, token.TokenHash, "encoded-must-not-commit",
 		model.MillisFromTime(behindNodeAt), authenticationPolicyTestCompletionAudit(institution.ID.String()))
-	if _, err = persistence.UserToken().ConsumePasswordReset(ctx, completion); !store.IsNotFound(err) {
-		t.Fatalf("expired reset with behind-node time error = %v, want not found", err)
-	}
+	_, err = persistence.UserToken().ConsumePasswordReset(ctx, completion)
+	require.True(t, store.IsNotFound(err), "expired reset with behind-node time error")
 	unchangedCredential, err := persistence.PasswordCredential().GetByUser(ctx, user.ID)
-	if err != nil || unchangedCredential.ID != credential.ID || unchangedCredential.PasswordHash != credential.PasswordHash {
-		t.Fatalf("expired reset changed credential = %#v, %v", unchangedCredential, err)
-	}
+	require.NoError(t, err, "expired reset changed credential = %#v", unchangedCredential)
+	require.Equal(t, credential.ID, unchangedCredential.ID, "expired reset changed credential = %#v", unchangedCredential)
+	require.Equal(t, credential.PasswordHash, unchangedCredential.PasswordHash, "expired reset changed credential = %#v", unchangedCredential)
 	unchangedSession, err := persistence.Session().Get(ctx, session.ID)
-	if err != nil || unchangedSession.RevokedAt.Valid {
-		t.Fatalf("expired reset revoked Session = %#v, %v", unchangedSession, err)
-	}
+	require.NoError(t, err, "expired reset revoked Session = %#v", unchangedSession)
+	require.False(t, unchangedSession.RevokedAt.Valid, "expired reset revoked Session = %#v", unchangedSession)
 	retained, err := persistence.UserToken().GetByHash(ctx, token.TokenHash, token.Purpose)
-	if err != nil || retained.ConsumedAt.Valid {
-		t.Fatalf("expired reset consumed token = %#v, %v", retained, err)
-	}
+	require.NoError(t, err, "expired reset consumed token = %#v", retained)
+	require.False(t, retained.ConsumedAt.Valid, "expired reset consumed token = %#v", retained)
 	assertExpiredConsumptionAuditAbsent(t, ctx, persistence, "authentication.password_reset.complete")
 	deliveries, err := persistence.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{
 		TemplateKeys: []model.MailTemplateKey{model.MailTemplateIdentityPasswordChanged}, Limit: 10,
 	})
-	if err != nil || len(deliveries) != 0 {
-		t.Fatalf("expired reset deliveries = %#v, %v", deliveries, err)
-	}
+	require.NoError(t, err, "expired reset deliveries")
+	require.Empty(t, deliveries, "expired reset deliveries")
 }
 
 // TestUserTokenConsumptionPreservesLifecycleWhenNodeClockLeads moves every
@@ -439,22 +383,17 @@ func TestPasswordResetConsumptionUsesPostgreSQLTime(t *testing.T) {
 func TestUserTokenConsumptionPreservesLifecycleWhenNodeClockLeads(t *testing.T) {
 	lead := func(t *testing.T, ctx context.Context, persistence *SQLStore, query string, id string) {
 		t.Helper()
-		if _, err := persistence.GetMaster().Exec(ctx, query, id); err != nil {
-			t.Fatal(err)
-		}
+		_, err := persistence.GetMaster().Exec(ctx, query, id)
+		require.NoError(t, err)
 	}
 	setup := func(t *testing.T, ctx context.Context, persistence *SQLStore, purpose model.UserTokenPurpose, name string) (*model.Institution, *model.User, *model.UserToken) {
 		t.Helper()
 		institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: name, DisplayName: name})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		user := saveIntegrationUser(t, ctx, persistence, &model.User{Username: name, Email: name + "@example.edu"})
 		if purpose == model.UserTokenPasswordReset {
 			credential, saveErr := persistence.PasswordCredential().Save(ctx, &model.PasswordCredential{UserID: user.ID, PasswordHash: "encoded-original-password"})
-			if saveErr != nil {
-				t.Fatal(saveErr)
-			}
+			require.NoError(t, saveErr)
 			lead(t, ctx, persistence, `UPDATE password_credentials SET created_at=created_at+INTERVAL '1 minute',
 				updated_at=updated_at+INTERVAL '1 minute', password_changed_at=password_changed_at+INTERVAL '1 minute' WHERE id=?`, credential.ID.String())
 		}
@@ -466,16 +405,12 @@ func TestUserTokenConsumptionPreservesLifecycleWhenNodeClockLeads(t *testing.T) 
 		}
 		token, err = authenticationPolicyTestIssue(t, ctx, persistence, token,
 			authenticationPolicyTestAudit(action, user.ID.String(), institution.ID.String()))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		lead(t, ctx, persistence, `UPDATE users SET updated_at=updated_at+INTERVAL '1 minute' WHERE id=?`, user.ID.String())
 		lead(t, ctx, persistence, `UPDATE user_tokens SET created_at=created_at+INTERVAL '1 minute',
 			updated_at=updated_at+INTERVAL '1 minute', expires_at=expires_at+INTERVAL '1 minute' WHERE id=?`, token.ID.String())
 		token, err = persistence.UserToken().GetByHash(ctx, token.TokenHash, token.Purpose)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		return institution, user, token
 	}
 	consumedAudit := func(t *testing.T, ctx context.Context, persistence *SQLStore, action string, at time.Time) {
@@ -483,9 +418,9 @@ func TestUserTokenConsumptionPreservesLifecycleWhenNodeClockLeads(t *testing.T) 
 		audits, err := persistence.Audit().List(ctx, store.AuditListOptions{
 			Action: action, Limit: 10, Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 		})
-		if err != nil || len(audits) != 1 || !audits[0].CreatedAt.Equal(at) {
-			t.Fatalf("consumption audits = %#v, %v; want one at %v", audits, err, at)
-		}
+		require.NoError(t, err, "consumption audits")
+		require.Len(t, audits, 1, "consumption audits")
+		require.True(t, audits[0].CreatedAt.Equal(at), "consumption audits")
 	}
 
 	t.Run("email_verification", func(t *testing.T) {
@@ -496,20 +431,17 @@ func TestUserTokenConsumptionPreservesLifecycleWhenNodeClockLeads(t *testing.T) 
 		institution, user, token := setup(t, ctx, persistence, model.UserTokenEmailVerification, "verification-node-leads")
 		result, err := persistence.UserToken().ConsumeEmailVerification(ctx, token.TokenHash, model.GetMillis(),
 			authenticationPolicyTestAudit("authentication.email_verification.complete", "", institution.ID.String()))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		at := result.Token.ConsumedAt.Time
-		if at.Before(token.UpdatedAt) || !result.User.UpdatedAt.Equal(at) || !result.Token.UpdatedAt.Equal(at) {
-			t.Fatalf("verification result = %#v / %#v", result.Token, result.User)
-		}
-		if persisted, getErr := persistence.User().Get(ctx, user.ID); getErr != nil || !persisted.UpdatedAt.Equal(at) {
-			t.Fatalf("persisted User = %#v, %v", persisted, getErr)
-		}
-		if persisted, getErr := persistence.UserToken().GetByHash(ctx, token.TokenHash, token.Purpose); getErr != nil ||
-			!persisted.ConsumedAt.Time.Equal(at) {
-			t.Fatalf("persisted token = %#v, %v", persisted, getErr)
-		}
+		require.False(t, at.Before(token.UpdatedAt), "verification result = %#v / %#v", result.Token, result.User)
+		require.True(t, result.User.UpdatedAt.Equal(at), "verification result = %#v / %#v", result.Token, result.User)
+		require.True(t, result.Token.UpdatedAt.Equal(at), "verification result = %#v / %#v", result.Token, result.User)
+		persisted, getErr := persistence.User().Get(ctx, user.ID)
+		require.NoError(t, getErr, "persisted User = %#v", persisted)
+		require.True(t, persisted.UpdatedAt.Equal(at), "persisted User = %#v", persisted)
+		persistedToken, getErr := persistence.UserToken().GetByHash(ctx, token.TokenHash, token.Purpose)
+		require.NoError(t, getErr, "persisted token")
+		require.True(t, persistedToken.ConsumedAt.Time.Equal(at), "persisted token = %#v", persistedToken)
 		consumedAudit(t, ctx, persistence, "authentication.email_verification.complete", at)
 	})
 
@@ -521,28 +453,24 @@ func TestUserTokenConsumptionPreservesLifecycleWhenNodeClockLeads(t *testing.T) 
 		institution, user, token := setup(t, ctx, persistence, model.UserTokenPasswordReset, "reset-node-leads")
 		session, sessionCredentials := authenticationPolicyTestSession(user.ID, "password", "", "")
 		session, _, err := storetest.SaveSession(ctx, persistence, sessionCreationForSQLTest(t, ctx, persistence, session, sessionCredentials, 10))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		leadSessionDatabaseClock(t, ctx, persistence, session.ID)
 		completion := authenticationPolicyTestResetCompletion(t, user, token.TokenHash, "encoded-replacement-password",
 			model.GetMillis(), authenticationPolicyTestCompletionAudit(institution.ID.String()))
 		result, err := persistence.UserToken().ConsumePasswordReset(ctx, completion)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		at := result.Token.ConsumedAt.Time
-		if at.Before(token.UpdatedAt) || !result.PasswordCredential.PasswordChangedAt.Equal(at) ||
-			len(result.RevokedSessions) != 1 || !result.RevokedSessions[0].RevokedAt.Time.Equal(at) {
-			t.Fatalf("reset result = %#v / %#v / %#v", result.Token, result.PasswordCredential, result.RevokedSessions)
-		}
-		if persisted, getErr := persistence.Session().Get(ctx, session.ID); getErr != nil || !persisted.RevokedAt.Time.Equal(at) {
-			t.Fatalf("persisted Session = %#v, %v", persisted, getErr)
-		}
-		if persisted, getErr := persistence.PasswordCredential().GetByUser(ctx, user.ID); getErr != nil ||
-			!persisted.PasswordChangedAt.Equal(at) || !persisted.UpdatedAt.Equal(at) {
-			t.Fatalf("persisted credential = %#v, %v", persisted, getErr)
-		}
+		require.False(t, at.Before(token.UpdatedAt), "reset result = %#v / %#v", result.Token, result.PasswordCredential)
+		require.True(t, result.PasswordCredential.PasswordChangedAt.Equal(at), "reset result = %#v / %#v", result.Token, result.PasswordCredential)
+		require.Len(t, result.RevokedSessions, 1, "reset result = %#v / %#v", result.Token, result.PasswordCredential)
+		require.True(t, result.RevokedSessions[0].RevokedAt.Time.Equal(at), "reset result = %#v / %#v", result.Token, result.PasswordCredential)
+		persisted, getErr := persistence.Session().Get(ctx, session.ID)
+		require.NoError(t, getErr, "persisted Session = %#v", persisted)
+		require.True(t, persisted.RevokedAt.Time.Equal(at), "persisted Session = %#v", persisted)
+		persistedCredential, getErr := persistence.PasswordCredential().GetByUser(ctx, user.ID)
+		require.NoError(t, getErr, "persisted credential")
+		require.True(t, persistedCredential.PasswordChangedAt.Equal(at), "persisted credential = %#v", persistedCredential)
+		require.True(t, persistedCredential.UpdatedAt.Equal(at), "persisted credential = %#v", persistedCredential)
 		consumedAudit(t, ctx, persistence, "authentication.password_reset.complete", at)
 	})
 }
@@ -552,32 +480,24 @@ func assertExpiredConsumptionAuditAbsent(t *testing.T, ctx context.Context, pers
 	audits, err := persistence.Audit().List(ctx, store.AuditListOptions{
 		Action: action, Limit: 10, Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
-	if err != nil || len(audits) != 0 {
-		t.Fatalf("expired consumption audits = %#v, %v", audits, err)
-	}
+	require.NoError(t, err, "expired consumption audits")
+	require.Empty(t, audits, "expired consumption audits")
 }
 
 func expireTokenAfterObservedNodeTime(t *testing.T, ctx context.Context, persistence *SQLStore, tokenID model.UserTokenID) time.Time {
 	t.Helper()
 	var behindNodeAt time.Time
-	if err := persistence.GetMaster().Get(ctx, &behindNodeAt, `SELECT GREATEST(clock_timestamp(), created_at + interval '10 milliseconds') FROM user_tokens WHERE id=?`, tokenID.String()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, persistence.GetMaster().Get(ctx, &behindNodeAt, `SELECT GREATEST(clock_timestamp(), created_at + interval '10 milliseconds') FROM user_tokens WHERE id=?`, tokenID.String()))
 	expiresAt := model.TimeUTC(behindNodeAt).Add(time.Millisecond)
-	if _, err := persistence.GetMaster().Exec(ctx, `UPDATE user_tokens SET expires_at=? WHERE id=?`, expiresAt, tokenID.String()); err != nil {
-		t.Fatal(err)
-	}
+	_, err := persistence.GetMaster().Exec(ctx, `UPDATE user_tokens SET expires_at=? WHERE id=?`, expiresAt, tokenID.String())
+	require.NoError(t, err)
 	for {
 		var expired bool
-		if err := persistence.GetMaster().Get(ctx, &expired, `SELECT clock_timestamp()>=?`, expiresAt); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, persistence.GetMaster().Get(ctx, &expired, `SELECT clock_timestamp()>=?`, expiresAt))
 		if expired {
 			return model.TimeUTC(behindNodeAt)
 		}
-		if err := ctx.Err(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, ctx.Err())
 	}
 }
 
@@ -591,52 +511,42 @@ func TestUserTokenReissueFencesConcurrentDeliveryStart(t *testing.T) {
 	persistence := openTestStore(t)
 	resetPristineTestStore(t, persistence)
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "token-mail-fence", DisplayName: "Token Mail Fence"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	user := saveIntegrationUser(t, ctx, persistence, &model.User{Username: "token-mail-fence", Email: "token-mail-fence@example.edu"})
 	first := &model.UserToken{UserID: user.ID, Purpose: model.UserTokenEmailVerification,
 		TokenHash: model.HashToken(model.NewCredentialToken()), Target: user.Email, ExpiresAt: model.NowUTC().Add(time.Hour)}
 	first, err = authenticationPolicyTestIssue(t, ctx, persistence, first,
 		authenticationPolicyTestAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	deliveries, err := persistence.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: []model.MailTemplateKey{model.MailTemplateIdentityVerifyEmail}, Limit: 10})
-	if err != nil || len(deliveries) != 1 {
-		t.Fatalf("initial delivery = %#v, %v", deliveries, err)
-	}
+	require.NoError(t, err, "initial delivery")
+	require.Len(t, deliveries, 1, "initial delivery")
 	oldDelivery := deliveries[0]
 
 	const advisoryKey int64 = 8154700260819
 	controller, err := persistence.GetMaster().DB().Conn(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer controller.Close()
 	var controllerPID int
-	if err = controller.QueryRowContext(ctx, `SELECT pg_backend_pid()`).Scan(&controllerPID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, advisoryKey); err != nil {
-		t.Fatal(err)
-	}
+	err = controller.QueryRowContext(ctx, `SELECT pg_backend_pid()`).Scan(&controllerPID)
+	require.NoError(t, err)
+	_, err = controller.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, advisoryKey)
+	require.NoError(t, err)
 	locked := true
 	defer func() {
 		if locked {
 			_, _ = controller.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, advisoryKey)
 		}
 	}()
-	if _, err = persistence.GetMaster().Exec(ctx, `
+	_, err = persistence.GetMaster().Exec(ctx, `
 		CREATE OR REPLACE FUNCTION proctor_test_pause_token_reissue() RETURNS trigger LANGUAGE plpgsql AS $$
 		BEGIN
 			PERFORM pg_advisory_xact_lock(8154700260819);
 			RETURN NEW;
 		END $$;
 		CREATE TRIGGER proctor_test_pause_token_reissue BEFORE INSERT ON user_tokens
-		FOR EACH ROW EXECUTE FUNCTION proctor_test_pause_token_reissue()`); err != nil {
-		t.Fatal(err)
-	}
+		FOR EACH ROW EXECUTE FUNCTION proctor_test_pause_token_reissue()`)
+	require.NoError(t, err)
 	defer func() {
 		_, _ = persistence.GetMaster().Exec(context.Background(), `DROP TRIGGER IF EXISTS proctor_test_pause_token_reissue ON user_tokens; DROP FUNCTION IF EXISTS proctor_test_pause_token_reissue()`)
 	}()
@@ -665,21 +575,18 @@ func TestUserTokenReissueFencesConcurrentDeliveryStart(t *testing.T) {
 	}()
 	_ = waitForBlockedMailQuery(t, ctx, persistence, reissuePID, "pg_advisory_xact_lock")
 
-	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, advisoryKey); err != nil {
-		t.Fatal(err)
-	}
+	_, err = controller.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, advisoryKey)
+	require.NoError(t, err)
 	locked = false
 	result := <-issued
-	if result.err != nil || result.token == nil {
-		t.Fatalf("reissue = %#v, %v", result.token, result.err)
-	}
-	if startErr := <-started; !store.IsConflict(startErr) {
-		t.Fatalf("concurrent stale StartDelivery error = %v, want conflict", startErr)
-	}
+	require.NoError(t, result.err, "reissue")
+	require.NotNil(t, result.token, "reissue")
+	require.True(t, store.IsConflict((<-started)), "concurrent stale StartDelivery error")
 	oldDelivery, err = persistence.Mail().GetDelivery(ctx, oldDelivery.ID)
-	if err != nil || oldDelivery.State != model.MailDeliverySuppressed || oldDelivery.PublicFailureCode != model.MailDeliveryObsoleteCode || len(oldDelivery.EncryptedPayload) != 0 {
-		t.Fatalf("superseded delivery = %#v, %v", oldDelivery, err)
-	}
+	require.NoError(t, err, "superseded delivery = %#v", oldDelivery)
+	require.Equal(t, model.MailDeliverySuppressed, oldDelivery.State, "superseded delivery = %#v", oldDelivery)
+	require.Equal(t, model.MailDeliveryObsoleteCode, oldDelivery.PublicFailureCode, "superseded delivery = %#v", oldDelivery)
+	require.Empty(t, oldDelivery.EncryptedPayload, "superseded delivery = %#v", oldDelivery)
 }
 
 // TestUserTokenConsumptionFencesConcurrentDeliveryStart proves that token
@@ -692,43 +599,34 @@ func TestUserTokenConsumptionFencesConcurrentDeliveryStart(t *testing.T) {
 	persistence := openTestStore(t)
 	resetPristineTestStore(t, persistence)
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "token-consume-fence", DisplayName: "Token Consume Fence"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	user := saveIntegrationUser(t, ctx, persistence, &model.User{Username: "token-consume-fence", Email: "token-consume-fence@example.edu"})
 	token := &model.UserToken{UserID: user.ID, Purpose: model.UserTokenEmailVerification,
 		TokenHash: model.HashToken(model.NewCredentialToken()), Target: user.Email, ExpiresAt: model.NowUTC().Add(time.Hour)}
 	token, err = authenticationPolicyTestIssue(t, ctx, persistence, token,
 		authenticationPolicyTestAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	deliveries, err := persistence.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: []model.MailTemplateKey{model.MailTemplateIdentityVerifyEmail}, Limit: 10})
-	if err != nil || len(deliveries) != 1 {
-		t.Fatalf("delivery = %#v, %v", deliveries, err)
-	}
+	require.NoError(t, err, "delivery")
+	require.Len(t, deliveries, 1, "delivery")
 	delivery := deliveries[0]
 
 	const advisoryKey int64 = 8154700260820
 	controller, err := persistence.GetMaster().DB().Conn(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer controller.Close()
 	var controllerPID int
-	if err = controller.QueryRowContext(ctx, `SELECT pg_backend_pid()`).Scan(&controllerPID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, advisoryKey); err != nil {
-		t.Fatal(err)
-	}
+	err = controller.QueryRowContext(ctx, `SELECT pg_backend_pid()`).Scan(&controllerPID)
+	require.NoError(t, err)
+	_, err = controller.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, advisoryKey)
+	require.NoError(t, err)
 	locked := true
 	defer func() {
 		if locked {
 			_, _ = controller.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, advisoryKey)
 		}
 	}()
-	if _, err = persistence.GetMaster().Exec(ctx, `
+	_, err = persistence.GetMaster().Exec(ctx, `
 		CREATE OR REPLACE FUNCTION proctor_test_pause_token_consumption() RETURNS trigger LANGUAGE plpgsql AS $$
 		BEGIN
 			PERFORM pg_advisory_xact_lock(8154700260820);
@@ -736,9 +634,8 @@ func TestUserTokenConsumptionFencesConcurrentDeliveryStart(t *testing.T) {
 		END $$;
 		CREATE TRIGGER proctor_test_pause_token_consumption BEFORE UPDATE ON user_tokens
 		FOR EACH ROW WHEN (OLD.consumed_at IS NULL AND NEW.consumed_at IS NOT NULL)
-		EXECUTE FUNCTION proctor_test_pause_token_consumption()`); err != nil {
-		t.Fatal(err)
-	}
+		EXECUTE FUNCTION proctor_test_pause_token_consumption()`)
+	require.NoError(t, err)
 	defer func() {
 		_, _ = persistence.GetMaster().Exec(context.Background(), `DROP TRIGGER IF EXISTS proctor_test_pause_token_consumption ON user_tokens; DROP FUNCTION IF EXISTS proctor_test_pause_token_consumption()`)
 	}()
@@ -763,18 +660,16 @@ func TestUserTokenConsumptionFencesConcurrentDeliveryStart(t *testing.T) {
 		}{result, startErr}
 	}()
 	_ = waitForBlockedMailQuery(t, ctx, persistence, consumePID, "pg_advisory_xact_lock")
-	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, advisoryKey); err != nil {
-		t.Fatal(err)
-	}
+	_, err = controller.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, advisoryKey)
+	require.NoError(t, err)
 	locked = false
-	if consumeErr := <-consumed; consumeErr != nil {
-		t.Fatalf("consume = %v", consumeErr)
-	}
+	require.NoError(t, (<-consumed))
 	start := <-started
-	if start.err != nil || start.delivery == nil || start.delivery.State != model.MailDeliverySuppressed ||
-		start.delivery.PublicFailureCode != model.MailDeliveryObsoleteCode || len(start.delivery.EncryptedPayload) != 0 {
-		t.Fatalf("StartDelivery after consumption = %#v, %v", start.delivery, start.err)
-	}
+	require.NoError(t, start.err, "StartDelivery after consumption")
+	require.NotNil(t, start.delivery, "StartDelivery after consumption")
+	require.Equal(t, model.MailDeliverySuppressed, start.delivery.State, "StartDelivery after consumption")
+	require.Equal(t, model.MailDeliveryObsoleteCode, start.delivery.PublicFailureCode, "StartDelivery after consumption")
+	require.Empty(t, start.delivery.EncryptedPayload, "StartDelivery after consumption")
 }
 
 func TestRecoveryDeliveryRelevanceUsesPostgreSQLTime(t *testing.T) {
@@ -783,38 +678,32 @@ func TestRecoveryDeliveryRelevanceUsesPostgreSQLTime(t *testing.T) {
 	persistence := openTestStore(t)
 	resetPristineTestStore(t, persistence)
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "token-database-time", DisplayName: "Token Database Time"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	user := saveIntegrationUser(t, ctx, persistence, &model.User{Username: "token-database-time", Email: "token-database-time@example.edu"})
 	token := &model.UserToken{UserID: user.ID, Purpose: model.UserTokenEmailVerification,
 		TokenHash: model.HashToken(model.NewCredentialToken()), Target: user.Email, ExpiresAt: model.NowUTC().Add(time.Hour)}
 	token, err = authenticationPolicyTestIssue(t, ctx, persistence, token,
 		authenticationPolicyTestAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = persistence.GetMaster().Exec(ctx, `UPDATE user_tokens SET
+	require.NoError(t, err)
+	_, err = persistence.GetMaster().Exec(ctx, `UPDATE user_tokens SET
 		created_at=clock_timestamp()-interval '2 seconds',
 		updated_at=clock_timestamp()-interval '2 seconds',
 		expires_at=clock_timestamp()-interval '1 second'
-		WHERE id=?`, token.ID.String()); err != nil {
-		t.Fatal(err)
-	}
+		WHERE id=?`, token.ID.String())
+	require.NoError(t, err)
 	var expiredAtDatabase bool
-	if err = persistence.GetMaster().Get(ctx, &expiredAtDatabase, `SELECT expires_at < clock_timestamp() FROM user_tokens WHERE id=?`, token.ID.String()); err != nil || !expiredAtDatabase {
-		t.Fatalf("database expiry observation = %t, %v", expiredAtDatabase, err)
-	}
+	err = persistence.GetMaster().Get(ctx, &expiredAtDatabase, `SELECT expires_at < clock_timestamp() FROM user_tokens WHERE id=?`, token.ID.String())
+	require.NoError(t, err, "database expiry observation")
+	require.True(t, expiredAtDatabase, "database expiry observation")
 	deliveries, err := persistence.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: []model.MailTemplateKey{model.MailTemplateIdentityVerifyEmail}, Limit: 10})
-	if err != nil || len(deliveries) != 1 {
-		t.Fatalf("delivery = %#v, %v", deliveries, err)
-	}
+	require.NoError(t, err, "delivery")
+	require.Len(t, deliveries, 1, "delivery")
 	// The supplied node time deliberately predates expiry. PostgreSQL time is
 	// authoritative and must still suppress the expired token.
 	result, err := persistence.Mail().StartDelivery(ctx, deliveries[0].ID, deliveries[0].Revision, token.CreatedAt)
-	if err != nil || result.State != model.MailDeliverySuppressed || result.PublicFailureCode != model.MailDeliveryObsoleteCode {
-		t.Fatalf("StartDelivery with stale node clock = %#v, %v", result, err)
-	}
+	require.NoError(t, err, "StartDelivery with stale node clock = %#v", result)
+	require.Equal(t, model.MailDeliverySuppressed, result.State, "StartDelivery with stale node clock = %#v", result)
+	require.Equal(t, model.MailDeliveryObsoleteCode, result.PublicFailureCode, "StartDelivery with stale node clock = %#v", result)
 }
 
 // TestUserTokenIssueSerializesWithTargetChange proves Issue rechecks the exact
@@ -827,32 +716,26 @@ func TestUserTokenIssueSerializesWithTargetChange(t *testing.T) {
 	persistence := openTestStore(t)
 	resetPristineTestStore(t, persistence)
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "token-target-fence", DisplayName: "Token Target Fence"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	user := saveIntegrationUser(t, ctx, persistence, &model.User{Username: "token-target-fence", Email: "token-target-fence@example.edu"})
 	staleEmail := user.Email
 
 	const advisoryKey int64 = 8154700260821
 	controller, err := persistence.GetMaster().DB().Conn(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer controller.Close()
 	var controllerPID int
-	if err = controller.QueryRowContext(ctx, `SELECT pg_backend_pid()`).Scan(&controllerPID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, advisoryKey); err != nil {
-		t.Fatal(err)
-	}
+	err = controller.QueryRowContext(ctx, `SELECT pg_backend_pid()`).Scan(&controllerPID)
+	require.NoError(t, err)
+	_, err = controller.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, advisoryKey)
+	require.NoError(t, err)
 	locked := true
 	defer func() {
 		if locked {
 			_, _ = controller.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, advisoryKey)
 		}
 	}()
-	if _, err = persistence.GetMaster().Exec(ctx, `
+	_, err = persistence.GetMaster().Exec(ctx, `
 		CREATE OR REPLACE FUNCTION proctor_test_pause_user_email_change() RETURNS trigger LANGUAGE plpgsql AS $$
 		BEGIN
 			PERFORM pg_advisory_xact_lock(8154700260821);
@@ -860,9 +743,8 @@ func TestUserTokenIssueSerializesWithTargetChange(t *testing.T) {
 		END $$;
 		CREATE TRIGGER proctor_test_pause_user_email_change BEFORE UPDATE ON users
 		FOR EACH ROW WHEN (OLD.email IS DISTINCT FROM NEW.email)
-		EXECUTE FUNCTION proctor_test_pause_user_email_change()`); err != nil {
-		t.Fatal(err)
-	}
+		EXECUTE FUNCTION proctor_test_pause_user_email_change()`)
+	require.NoError(t, err)
 	defer func() {
 		_, _ = persistence.GetMaster().Exec(context.Background(), `DROP TRIGGER IF EXISTS proctor_test_pause_user_email_change ON users; DROP FUNCTION IF EXISTS proctor_test_pause_user_email_change()`)
 	}()
@@ -882,9 +764,7 @@ func TestUserTokenIssueSerializesWithTargetChange(t *testing.T) {
 	changeAudit := authenticationPolicyTestAudit("user.email.change", user.ID.String(), institution.ID.String())
 	changeAudit.Status = model.AuditStatusAttempt
 	changeAudit, err = persistence.Audit().Save(ctx, changeAudit)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	change := &store.UserEmailChange{UserID: user.ID, ExpectedRevision: user.Revision, NewEmail: changedEmail, Token: changeToken,
 		TokenLifetime: time.Hour, WarningLifetime: 24 * time.Hour,
 		WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
@@ -909,16 +789,11 @@ func TestUserTokenIssueSerializesWithTargetChange(t *testing.T) {
 		issued <- issueErr
 	}()
 	_ = waitForBlockedMailQuery(t, ctx, persistence, updatePID, "pg_advisory_xact_lock")
-	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, advisoryKey); err != nil {
-		t.Fatal(err)
-	}
+	_, err = controller.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, advisoryKey)
+	require.NoError(t, err)
 	locked = false
-	if updateErr := <-updated; updateErr != nil {
-		t.Fatalf("email update = %v", updateErr)
-	}
-	if issueErr := <-issued; !store.IsNotFound(issueErr) {
-		t.Fatalf("Issue after target change = %v, want not found", issueErr)
-	}
+	require.NoError(t, (<-updated))
+	require.True(t, store.IsNotFound((<-issued)), "Issue after target change")
 }
 
 // TestUserDisableAndEmailChangeShareUserEligibilityLockOrder proves account
@@ -933,9 +808,7 @@ func TestUserDisableAndEmailChangeShareUserEligibilityLockOrder(t *testing.T) {
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{
 		Name: "disable-email-order", DisplayName: "Disable Email Order",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	user := saveIntegrationUser(t, ctx, persistence, &model.User{
 		Username: "disable-email-order", Email: "disable-email-order@example.edu",
 	})
@@ -954,9 +827,7 @@ func TestUserDisableAndEmailChangeShareUserEligibilityLockOrder(t *testing.T) {
 	changeAudit := authenticationPolicyTestAudit("user.email.change", user.ID.String(), institution.ID.String())
 	changeAudit.Status = model.AuditStatusAttempt
 	changeAudit, err = persistence.Audit().Save(ctx, changeAudit)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	change := &store.UserEmailChange{UserID: user.ID, ExpectedRevision: user.Revision, NewEmail: newEmail, Token: token,
 		TokenLifetime: time.Hour, WarningLifetime: 24 * time.Hour,
 		WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
@@ -966,32 +837,26 @@ func TestUserDisableAndEmailChangeShareUserEligibilityLockOrder(t *testing.T) {
 	disableAudit := authenticationPolicyTestAudit("user.disable", user.ID.String(), institution.ID.String())
 	disableAudit.Status = model.AuditStatusAttempt
 	disableAudit, err = persistence.Audit().Save(ctx, disableAudit)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	disable := storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID, ExpectedRevision: user.Revision, Disabled: true, ChangedAt: disableAt,
 		RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID, AuditAt: disableAt,
 	})
 
 	controller, err := persistence.GetMaster().DB().Conn(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer controller.Close()
 	controllerBackendPID := controllerPID(t, ctx, controller)
-	if _, err = controller.ExecContext(ctx, `BEGIN`); err != nil {
-		t.Fatal(err)
-	}
+	_, err = controller.ExecContext(ctx, `BEGIN`)
+	require.NoError(t, err)
 	locked := true
 	defer func() {
 		if locked {
 			_, _ = controller.ExecContext(context.Background(), `ROLLBACK`)
 		}
 	}()
-	if _, err = controller.ExecContext(ctx, `SELECT id FROM users WHERE id=$1 FOR UPDATE`, user.ID.String()); err != nil {
-		t.Fatal(err)
-	}
+	_, err = controller.ExecContext(ctx, `SELECT id FROM users WHERE id=$1 FOR UPDATE`, user.ID.String())
+	require.NoError(t, err)
 
 	changeResult := make(chan error, 1)
 	go func() {
@@ -1005,16 +870,11 @@ func TestUserDisableAndEmailChangeShareUserEligibilityLockOrder(t *testing.T) {
 		disableResult <- disableErr
 	}()
 	_ = waitForBlockedMailQuery(t, ctx, persistence, changePID, "SELECT id FROM users")
-	if _, err = controller.ExecContext(ctx, `ROLLBACK`); err != nil {
-		t.Fatal(err)
-	}
+	_, err = controller.ExecContext(ctx, `ROLLBACK`)
+	require.NoError(t, err)
 	locked = false
 
 	changeErr, disableErr := <-changeResult, <-disableResult
-	if changeErr != nil {
-		t.Fatalf("ChangeEmail: %v", changeErr)
-	}
-	if !store.IsConflict(disableErr) {
-		t.Fatalf("SetDisabled after email change = %v, want conflict", disableErr)
-	}
+	require.NoError(t, changeErr)
+	require.True(t, store.IsConflict(disableErr), "SetDisabled after email change")
 }

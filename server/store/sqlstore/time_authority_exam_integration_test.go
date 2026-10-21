@@ -15,6 +15,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/storetest"
@@ -61,13 +64,11 @@ type timeAuthorityLead struct {
 func (l *timeAuthorityLead) exec(ctx context.Context, query string, args ...any) {
 	l.t.Helper()
 	result, err := l.persistence.GetMaster().Exec(ctx, query, args...)
-	if err != nil {
-		l.t.Errorf("lead database clock: %v", err)
+	if !assert.NoError(l.t, err) {
 		return
 	}
 	affected, err := result.RowsAffected()
-	if err != nil {
-		l.t.Error(err)
+	if !assert.NoError(l.t, err) {
 		return
 	}
 	l.mu.Lock()
@@ -79,9 +80,7 @@ func (l *timeAuthorityLead) requireMoved() {
 	l.t.Helper()
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.moved == 0 {
-		l.t.Fatal("no row was moved ahead of the database clock")
-	}
+	require.NotEqual(l.t, int64(0), l.moved, "no row was moved ahead of the database clock")
 }
 
 type timeAuthorityManagerStore struct {
@@ -136,13 +135,9 @@ func TestTimeAuthorityExamResourceReorderKeepsResourceLifecycle(t *testing.T) {
 	storetest.TestExamResourceStore(t, decorated)
 	lead.requireMoved()
 	var violations int
-	if err := persistence.GetMaster().Get(context.Background(), &violations, `SELECT count(*) FROM exam_resources
-		WHERE updated_at<created_at OR archived_at<created_at`); err != nil {
-		t.Fatal(err)
-	}
-	if violations != 0 {
-		t.Fatalf("Exam Resources with modification before creation: %d", violations)
-	}
+	require.NoError(t, persistence.GetMaster().Get(context.Background(), &violations, `SELECT count(*) FROM exam_resources
+		WHERE updated_at<created_at OR archived_at<created_at`))
+	require.Equal(t, 0, violations, "Exam Resources with modification before creation")
 }
 
 type timeAuthorityCorrectionStore struct {
@@ -181,14 +176,10 @@ func TestTimeAuthorityExamCorrectionConsumesStagesAfterTheirLifecycle(t *testing
 	storetest.TestExamCorrectionStore(t, decorated, examCorrectionSQLProbe(t, persistence))
 	lead.requireMoved()
 	var violations int
-	if err := persistence.GetMaster().Get(context.Background(), &violations, `SELECT
+	require.NoError(t, persistence.GetMaster().Get(context.Background(), &violations, `SELECT
 		(SELECT count(*) FROM exam_correction_resource_stages WHERE consumed_at<ready_at OR ready_at<created_at)+
-		(SELECT count(*) FROM upload_leases WHERE consumed_at<created_at OR updated_at<created_at)`); err != nil {
-		t.Fatal(err)
-	}
-	if violations != 0 {
-		t.Fatalf("correction stages or leases consumed before their lifecycle: %d", violations)
-	}
+		(SELECT count(*) FROM upload_leases WHERE consumed_at<created_at OR updated_at<created_at)`))
+	require.Equal(t, 0, violations, "correction stages or leases consumed before their lifecycle")
 }
 
 type timeAuthorityReviewStore struct {
@@ -216,29 +207,20 @@ func (s *timeAuthorityReviewStore) leadFinalizedReview(ctx context.Context, revi
 	t := s.lead.t
 	t.Helper()
 	tx, err := s.lead.persistence.GetMaster().DB().BeginTxx(ctx, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer func() { _ = tx.Rollback() }()
-	if _, err = tx.ExecContext(ctx, `ALTER TABLE submission_reviews DISABLE TRIGGER submission_reviews_guard`); err != nil {
-		t.Fatal(err)
-	}
+	_, err = tx.ExecContext(ctx, `ALTER TABLE submission_reviews DISABLE TRIGGER submission_reviews_guard`)
+	require.NoError(t, err)
 	result, err := tx.ExecContext(ctx, `UPDATE submission_reviews SET created_at=created_at+INTERVAL '1 minute',
 		updated_at=updated_at+INTERVAL '1 minute',finalized_at=finalized_at+INTERVAL '1 minute'
 		WHERE id=$1 AND state='finalized' AND release_state='withheld'`, reviewID.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = tx.ExecContext(ctx, `ALTER TABLE submission_reviews ENABLE TRIGGER submission_reviews_guard`); err != nil {
-		t.Fatal(err)
-	}
-	if err = tx.Commit(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, `ALTER TABLE submission_reviews ENABLE TRIGGER submission_reviews_guard`)
+	require.NoError(t, err)
+	err = tx.Commit()
+	require.NoError(t, err)
 	affected, err := result.RowsAffected()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	s.lead.mu.Lock()
 	s.lead.moved += affected
 	s.lead.mu.Unlock()
@@ -259,13 +241,9 @@ func TestTimeAuthorityStudentResultReleaseFollowsFinalization(t *testing.T) {
 		storetest.ExamIntegrityReviewSQLProbe{ConcurrentPeer: NewSQLExamIntegrityReviewStore(peerPersistence)})
 	lead.requireMoved()
 	var violations int
-	if err := persistence.GetMaster().Get(context.Background(), &violations, `SELECT count(*) FROM submission_reviews
-		WHERE released_at<finalized_at OR updated_at<created_at OR finalized_at<created_at`); err != nil {
-		t.Fatal(err)
-	}
-	if violations != 0 {
-		t.Fatalf("Submission Reviews released before finalization: %d", violations)
-	}
+	require.NoError(t, persistence.GetMaster().Get(context.Background(), &violations, `SELECT count(*) FROM submission_reviews
+		WHERE released_at<finalized_at OR updated_at<created_at OR finalized_at<created_at`))
+	require.Equal(t, 0, violations, "Submission Reviews released before finalization")
 }
 
 // TestTimeAuthoritySittingMailFanoutTerminalizationFollowsCreation proves
@@ -276,50 +254,35 @@ func TestTimeAuthoritySittingMailFanoutTerminalizationFollowsCreation(t *testing
 	resetTestStore(t, persistence)
 	fixture := storetest.PrepareExamSittingMailRecoveryFixture(t, persistence)
 	ctx := context.Background()
-	if _, err := persistence.GetMaster().Exec(ctx, `UPDATE exam_sitting_mail_fanouts
+	_, err := persistence.GetMaster().Exec(ctx, `UPDATE exam_sitting_mail_fanouts
 		SET created_at=created_at+INTERVAL '1 minute',deadline=deadline+INTERVAL '1 minute' WHERE occurrence_id=?`,
-		fixture.OrphanOccurrence.String()); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := persistence.GetMaster().Exec(ctx, `DELETE FROM jobs WHERE id=?`, fixture.OrphanJob.String()); err != nil {
-		t.Fatal(err)
-	}
+		fixture.OrphanOccurrence.String())
+	require.NoError(t, err)
+	_, err = persistence.GetMaster().Exec(ctx, `DELETE FROM jobs WHERE id=?`, fixture.OrphanJob.String())
+	require.NoError(t, err)
 	result, err := persistence.ExamSitting().MaintainMailExpansions(ctx, 2)
-	if err != nil {
-		t.Fatalf("MaintainMailExpansions() error = %v", err)
-	}
-	if result.FanoutsTerminalized != 1 {
-		t.Fatalf("maintenance=%#v", result)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 1, result.FanoutsTerminalized)
 	var row struct {
 		CreatedAt      time.Time `db:"created_at"`
 		CompletedAt    time.Time `db:"completed_at"`
 		TerminalReason string    `db:"terminal_reason"`
 	}
-	if err = persistence.GetMaster().Get(ctx, &row, `SELECT created_at,completed_at,terminal_reason
-		FROM exam_sitting_mail_fanouts WHERE occurrence_id=?`, fixture.OrphanOccurrence.String()); err != nil {
-		t.Fatal(err)
-	}
-	if row.TerminalReason != "orphaned" || row.CompletedAt.Before(row.CreatedAt) {
-		t.Fatalf("terminal fan-out=%#v", row)
-	}
+	err = persistence.GetMaster().Get(ctx, &row, `SELECT created_at,completed_at,terminal_reason
+		FROM exam_sitting_mail_fanouts WHERE occurrence_id=?`, fixture.OrphanOccurrence.String())
+	require.NoError(t, err)
+	require.Equal(t, "orphaned", row.TerminalReason)
+	require.False(t, row.CompletedAt.Before(row.CreatedAt))
 	fanout, err := persistence.ExamSitting().GetMailFanout(ctx, fixture.OrphanOccurrence)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !fanout.CompletedAt.Valid || !fanout.CompletedAt.Time.Equal(model.TimeUTC(row.CompletedAt)) {
-		t.Fatalf("GetMailFanout().CompletedAt=%v stored=%v", fanout.CompletedAt, row.CompletedAt)
-	}
+	require.NoError(t, err)
+	require.True(t, fanout.CompletedAt.Valid, "GetMailFanout().CompletedAt=%v stored=%v", fanout.CompletedAt, row.CompletedAt)
+	require.True(t, fanout.CompletedAt.Time.Equal(model.TimeUTC(row.CompletedAt)), "GetMailFanout().CompletedAt=%v stored=%v", fanout.CompletedAt, row.CompletedAt)
 }
 
 func requireExamLifecycleRows(t *testing.T, persistence *SQLStore) {
 	t.Helper()
 	var violations int
-	if err := persistence.GetMaster().Get(context.Background(), &violations, `SELECT count(*) FROM exams
-		WHERE updated_at<created_at OR archived_at<created_at`); err != nil {
-		t.Fatal(err)
-	}
-	if violations != 0 {
-		t.Fatalf("Exams with modification before creation: %d", violations)
-	}
+	require.NoError(t, persistence.GetMaster().Get(context.Background(), &violations, `SELECT count(*) FROM exams
+		WHERE updated_at<created_at OR archived_at<created_at`))
+	require.Equal(t, 0, violations, "Exams with modification before creation")
 }

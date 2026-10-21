@@ -17,69 +17,62 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
 func TestInstallationStore(t *testing.T, ss store.Store) {
 	ctx := context.Background()
-	if _, err := ss.Installation().Get(ctx); !store.IsNotFound(err) {
-		t.Fatalf("Get(pristine) error = %v", err)
-	}
+	_, err := ss.Installation().Get(ctx)
+	require.True(t, store.IsNotFound(err), "Get(pristine) error")
 	pristine, err := ss.Installation().ReconcileSystemAdministratorRole(
 		ctx,
 		testSystemAdministratorRoleReconciliation(0),
 	)
-	requireNoError(t, err)
-	if pristine == nil || pristine.Changed || pristine.Role != nil || len(pristine.AddedPermissions) != 0 {
-		t.Fatalf("ReconcileSystemAdministratorRole(pristine) = %#v", pristine)
-	}
-	if events, err := ss.Audit().List(ctx, store.AuditListOptions{
+	require.NoError(t, err)
+	require.NotNil(t, pristine)
+	require.False(t, pristine.Changed)
+	require.Nil(t, pristine.Role)
+	require.Empty(t, pristine.AddedPermissions)
+	events, err := ss.Audit().List(ctx, store.AuditListOptions{
 		Action: "role.system_admin.reconcile", Limit: 10,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
-	}); err != nil || len(events) != 0 {
-		t.Fatalf("pristine reconciliation audit events=%#v error=%v", events, err)
-	}
+	})
+	require.NoError(t, err, "pristine reconciliation audit events")
+	require.Empty(t, events, "pristine reconciliation audit events")
 	mismatched := testInstallationBootstrap(97)
 	mismatched.DefaultProfilePictureJob.Command = defaultProfilePictureCommand(model.NewUserID())
-	if _, err := ss.Installation().Bootstrap(ctx, mismatched); err == nil {
-		t.Fatal("Bootstrap() accepted a default-picture Job targeting another User")
-	}
-	if _, err := ss.Installation().Get(ctx); !store.IsNotFound(err) {
-		t.Fatalf("bootstrap state survived mismatched Job rollback: %v", err)
-	}
-	if _, err := ss.User().GetByEmail(ctx, mismatched.Administrator.Email); !store.IsNotFound(err) {
-		t.Fatalf("bootstrap administrator survived mismatched Job rollback: %v", err)
-	}
-	if _, err := ss.Job().Get(ctx, mismatched.DefaultProfilePictureJob.ID); !store.IsNotFound(err) {
-		t.Fatalf("mismatched bootstrap Job was persisted: %v", err)
-	}
-	if events, err := ss.Audit().List(ctx, store.AuditListOptions{
+	_, err = ss.Installation().Bootstrap(ctx, mismatched)
+	require.Error(t, err, "Bootstrap() accepted a default-picture Job targeting another User")
+	_, err = ss.Installation().Get(ctx)
+	require.True(t, store.IsNotFound(err), "bootstrap state survived mismatched Job rollback")
+	_, err = ss.User().GetByEmail(ctx, mismatched.Administrator.Email)
+	require.True(t, store.IsNotFound(err), "bootstrap administrator survived mismatched Job rollback")
+	_, err = ss.Job().Get(ctx, mismatched.DefaultProfilePictureJob.ID)
+	require.True(t, store.IsNotFound(err), "mismatched bootstrap Job was persisted")
+	events, err = ss.Audit().List(ctx, store.AuditListOptions{
 		Action: "installation.bootstrap", Limit: 10,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
-	}); err != nil || len(events) != 0 {
-		t.Fatalf("bootstrap audit survived mismatched Job rollback: events=%#v error=%v", events, err)
-	}
+	})
+	require.NoError(t, err, "bootstrap audit survived mismatched Job rollback: events")
+	require.Empty(t, events, "bootstrap audit survived mismatched Job rollback: events")
 	permanent := testInstallationBootstrap(98)
 	permanent.DefaultProfilePictureJob.DedupePolicy = model.JobDedupePermanent
-	if _, err := ss.Installation().Bootstrap(ctx, permanent); err == nil {
-		t.Fatal("Bootstrap() accepted a permanent-dedupe default-picture intent")
-	}
+	_, err = ss.Installation().Bootstrap(ctx, permanent)
+	require.Error(t, err, "Bootstrap() accepted a permanent-dedupe default-picture intent")
 	blocker := mustJob(t, "bootstrap-job-id-blocker", model.NowUTC())
-	if _, _, err := ss.Job().Enqueue(ctx, &store.JobEnqueue{Job: blocker}); err != nil {
-		t.Fatal(err)
-	}
+	_, _, err = ss.Job().Enqueue(ctx, &store.JobEnqueue{Job: blocker})
+	require.NoError(t, err)
 	rolledBack := testInstallationBootstrap(98)
 	rolledBack.DefaultProfilePictureJob.ID = blocker.ID
-	if _, err := ss.Installation().Bootstrap(ctx, rolledBack); err == nil {
-		t.Fatal("Bootstrap() succeeded when its default-picture Job insert failed")
-	}
-	if _, err := ss.Installation().Get(ctx); !store.IsNotFound(err) {
-		t.Fatalf("bootstrap state survived Job rollback: %v", err)
-	}
-	if _, err := ss.User().GetByEmail(ctx, rolledBack.Administrator.Email); !store.IsNotFound(err) {
-		t.Fatalf("bootstrap administrator survived Job rollback: %v", err)
-	}
+	_, err = ss.Installation().Bootstrap(ctx, rolledBack)
+	require.Error(t, err, "Bootstrap() succeeded when its default-picture Job insert failed")
+	_, err = ss.Installation().Get(ctx)
+	require.True(t, store.IsNotFound(err), "bootstrap state survived Job rollback")
+	_, err = ss.User().GetByEmail(ctx, rolledBack.Administrator.Email)
+	require.True(t, store.IsNotFound(err), "bootstrap administrator survived Job rollback")
 
 	const attempts = 4
 	type outcome struct {
@@ -109,19 +102,16 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	for current := range outcomes {
 		switch {
 		case current.err == nil:
-			if winner != nil {
-				t.Fatal("more than one concurrent bootstrap succeeded")
-			}
+			require.Nil(t, winner, "more than one concurrent bootstrap succeeded")
 			winner = current.result
 		case store.IsConflict(current.err):
 			conflicts++
 		default:
-			t.Fatalf("Bootstrap() error = %v", current.err)
+			require.FailNow(t, fmt.Sprintf("Bootstrap() error = %v", current.err))
 		}
 	}
-	if winner == nil || conflicts != attempts-1 {
-		t.Fatalf("winner/conflicts = %#v/%d", winner, conflicts)
-	}
+	require.NotNil(t, winner, "winner/conflicts")
+	require.Equal(t, attempts-1, conflicts, "winner/conflicts")
 	var winnerInput *store.InstallationBootstrap
 	for _, input := range inputs {
 		if input.Administrator.Email == winner.Administrator.Email {
@@ -130,102 +120,85 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 		}
 	}
 	replayed, err := ss.Installation().Bootstrap(ctx, winnerInput)
-	requireNoError(t, err)
-	if replayed.State.InstitutionID != winner.State.InstitutionID ||
-		replayed.State.AdministratorUserID != winner.State.AdministratorUserID ||
-		replayed.AccessPolicy.ID != winner.AccessPolicy.ID ||
-		replayed.DesktopCompatibilityPolicy.InstitutionID != winner.DesktopCompatibilityPolicy.InstitutionID {
-		t.Fatalf("Bootstrap(exact replay) = %#v, want identities from %#v", replayed, winner)
-	}
-	if err = ss.User().UpdateLastLogin(ctx, winner.Administrator.ID, winner.Administrator.CreatedAt.Add(time.Minute).UnixMilli()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, winner.State.InstitutionID, replayed.State.InstitutionID, "Bootstrap(exact replay) = %#v, want identities from %#v", replayed, winner)
+	require.Equal(t, winner.State.AdministratorUserID, replayed.State.AdministratorUserID, "Bootstrap(exact replay) = %#v, want identities from %#v", replayed, winner)
+	require.Equal(t, winner.AccessPolicy.ID, replayed.AccessPolicy.ID, "Bootstrap(exact replay) = %#v, want identities from %#v", replayed, winner)
+	require.Equal(t, winner.DesktopCompatibilityPolicy.InstitutionID, replayed.DesktopCompatibilityPolicy.InstitutionID, "Bootstrap(exact replay) = %#v, want identities from %#v", replayed, winner)
+	err = ss.User().UpdateLastLogin(ctx, winner.Administrator.ID, winner.Administrator.CreatedAt.Add(time.Minute).UnixMilli())
+	require.NoError(t, err)
 	replayed, err = ss.Installation().Bootstrap(ctx, winnerInput)
-	requireNoError(t, err)
-	if replayed.Administrator.LastLoginAt.Valid {
-		t.Fatalf("exact replay returned mutable current administrator state: %#v", replayed.Administrator)
-	}
-	if winner.State.Validate() != nil ||
-		winner.Institution.ID != winner.State.InstitutionID ||
-		winner.Administrator.ID != winner.State.AdministratorUserID ||
-		winner.Role.Name != model.SystemAdministratorRoleName ||
-		!winner.Role.BuiltIn ||
-		winner.RoleBinding.ScopeType != model.RoleScopeInstitution ||
-		winner.RoleBinding.ScopeID != winner.Institution.ID.String() ||
-		winner.AccessPolicy == nil || winner.AccessPolicy.Validate() != nil ||
-		winner.AccessPolicy.Revision != 1 || !winner.AccessPolicy.LocalLoginEnabled ||
-		winner.AccessPolicy.PublicRegistrationEnabled ||
-		!winner.AccessPolicy.InvitationAdmissionEnabled ||
-		!winner.AccessPolicy.InvitationLocalCredentialEnabled ||
-		!winner.AccessPolicy.DesktopAuthorizationEnabled ||
-		len(winner.AccessPolicy.ProviderAdmissions) != 0 ||
-		winner.DesktopCompatibilityPolicy == nil ||
-		winner.DesktopCompatibilityPolicy.Validate() != nil ||
-		winner.DesktopCompatibilityPolicy.InstitutionID != winner.Institution.ID ||
-		winner.DesktopCompatibilityPolicy.Revision != 1 ||
-		winner.DesktopCompatibilityPolicy.MinimumDesktopRelease != "" ||
-		len(winner.DesktopCompatibilityPolicy.RevokedDesktopBuildIDs) != 0 ||
-		winner.DesktopCompatibilityPolicy.AdministratorMessage != "" ||
-		winner.Institution.IsArchived() ||
-		winner.Administrator.ArchivedAt.Valid ||
-		winner.Administrator.EmailVerified ||
-		winner.Administrator.DisabledAt.Valid ||
-		winner.Role.ArchivedAt.Millis() != 0 ||
-		winner.RoleBinding.ArchivedAt.Millis() != 0 ||
-		winner.RoleBinding.EndsAt.Millis() != 0 {
-		t.Fatalf("Bootstrap() = %#v", winner)
-	}
+	require.NoError(t, err)
+	require.False(t, replayed.Administrator.LastLoginAt.Valid)
+	require.NoError(t, winner.State.Validate())
+	require.Equal(t, winner.State.InstitutionID, winner.Institution.ID)
+	require.Equal(t, winner.State.AdministratorUserID, winner.Administrator.ID)
+	require.Equal(t, model.SystemAdministratorRoleName, winner.Role.Name)
+	require.True(t, winner.Role.BuiltIn)
+	require.Equal(t, model.RoleScopeInstitution, winner.RoleBinding.ScopeType)
+	require.Equal(t, winner.Institution.ID.String(), winner.RoleBinding.ScopeID)
+	require.NotNil(t, winner.AccessPolicy)
+	require.NoError(t, winner.AccessPolicy.Validate())
+	require.Equal(t, int64(1), winner.AccessPolicy.Revision)
+	require.True(t, winner.AccessPolicy.LocalLoginEnabled)
+	require.False(t, winner.AccessPolicy.PublicRegistrationEnabled)
+	require.True(t, winner.AccessPolicy.InvitationAdmissionEnabled)
+	require.True(t, winner.AccessPolicy.InvitationLocalCredentialEnabled)
+	require.True(t, winner.AccessPolicy.DesktopAuthorizationEnabled)
+	require.Empty(t, winner.AccessPolicy.ProviderAdmissions)
+	require.NotNil(t, winner.DesktopCompatibilityPolicy)
+	require.NoError(t, winner.DesktopCompatibilityPolicy.Validate())
+	require.Equal(t, winner.Institution.ID, winner.DesktopCompatibilityPolicy.InstitutionID)
+	require.Equal(t, int64(1), winner.DesktopCompatibilityPolicy.Revision)
+	require.Empty(t, winner.DesktopCompatibilityPolicy.MinimumDesktopRelease)
+	require.Empty(t, winner.DesktopCompatibilityPolicy.RevokedDesktopBuildIDs)
+	require.Empty(t, winner.DesktopCompatibilityPolicy.AdministratorMessage)
+	require.False(t, winner.Institution.IsArchived())
+	require.False(t, winner.Administrator.ArchivedAt.Valid)
+	require.False(t, winner.Administrator.EmailVerified)
+	require.False(t, winner.Administrator.DisabledAt.Valid)
+	require.Equal(t, int64(0), winner.Role.ArchivedAt.Millis())
+	require.Equal(t, int64(0), winner.RoleBinding.ArchivedAt.Millis())
+	require.Equal(t, int64(0), winner.RoleBinding.EndsAt.Millis())
 	state, err := ss.Installation().Get(ctx)
-	requireNoError(t, err)
-	if *state != *winner.State {
-		t.Fatalf("Get() = %#v, want %#v", state, winner.State)
-	}
+	require.NoError(t, err)
+	require.Equal(t, *winner.State, *state, "Get() = %#v, want %#v", state, winner.State)
 	desktopPolicy, err := ss.DesktopCompatibilityPolicy().Get(ctx)
-	requireNoError(t, err)
-	if desktopPolicy.InstitutionID != winner.Institution.ID || desktopPolicy.Revision != 1 {
-		t.Fatalf("desktop compatibility policy = %#v", desktopPolicy)
-	}
+	require.NoError(t, err)
+	require.Equal(t, winner.Institution.ID, desktopPolicy.InstitutionID)
+	require.Equal(t, int64(1), desktopPolicy.Revision)
 	credential, err := ss.PasswordCredential().GetByUser(ctx, winner.Administrator.ID)
-	requireNoError(t, err)
-	if credential.PasswordHash == "" {
-		t.Fatal("bootstrap password hash was not persisted")
-	}
+	require.NoError(t, err)
+	require.NotEmpty(t, credential.PasswordHash, "bootstrap password hash was not persisted")
 	sessions, err := ss.Session().ListByUser(ctx, winner.Administrator.ID)
-	requireNoError(t, err)
-	if len(sessions) != 0 {
-		t.Fatalf("bootstrap created Sessions: %#v", sessions)
-	}
+	require.NoError(t, err)
+	require.Empty(t, sessions)
 	settings, err := ss.UserSettings().Get(ctx, winner.Administrator.ID)
-	requireNoError(t, err)
-	if settings.Source != model.UserSettingsInitialSource ||
-		settings.FormatVersion != model.UserSettingsFormatVersion1 ||
-		!settings.CreatedAt.Equal(winner.Administrator.CreatedAt) {
-		t.Fatalf("bootstrap administrator settings = %#v", settings)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.UserSettingsInitialSource, settings.Source)
+	require.Equal(t, model.UserSettingsFormatVersion1, settings.FormatVersion)
+	require.True(t, settings.CreatedAt.Equal(winner.Administrator.CreatedAt))
 	probe := testUserCreation(winner.Administrator, nil).DefaultProfilePictureJob
 	queued, inserted, err := ss.Job().Enqueue(ctx, &store.JobEnqueue{Job: probe})
-	requireNoError(t, err)
-	if inserted || queued.DedupeKey != winner.Administrator.ID.String() {
-		t.Fatalf("bootstrap default-picture job inserted=%t job=%#v", inserted, queued)
-	}
-	events, err := ss.Audit().List(ctx, store.AuditListOptions{
+	require.NoError(t, err)
+	require.False(t, inserted, "bootstrap default-picture job inserted=%t job=%#v", inserted, queued)
+	require.Equal(t, winner.Administrator.ID.String(), queued.DedupeKey, "bootstrap default-picture job inserted=%t job=%#v", inserted, queued)
+	events, err = ss.Audit().List(ctx, store.AuditListOptions{
 		Action: "installation.bootstrap", Limit: 10,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
-	requireNoError(t, err)
-	if len(events) != 1 ||
-		events[0].Status != model.AuditStatusSuccess ||
-		events[0].ActorID != winner.Administrator.ID {
-		t.Fatalf("bootstrap audit events = %#v", events)
-	}
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, model.AuditStatusSuccess, events[0].Status)
+	require.Equal(t, winner.Administrator.ID, events[0].ActorID)
 	customRole, err := SaveRole(ctx, ss, &model.Role{
 		Name: "reconciliation-control", DisplayName: "Reconciliation Control",
 		Permissions: []string{string(model.ActionClassView)},
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	customRoleBefore := customRole.Clone()
 	bindingBefore, err := ss.RoleBinding().Get(ctx, winner.RoleBinding.ID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	type reconciliationOutcome struct {
 		result *store.SystemAdministratorRoleReconciliationResult
@@ -249,93 +222,72 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	reconciled := 0
 	missing := model.AllActions()[0]
 	for current := range reconciliations {
-		requireNoError(t, current.err)
-		if current.result == nil || current.result.Role == nil {
-			t.Fatalf("ReconcileSystemAdministratorRole() = %#v", current.result)
-		}
+		require.NoError(t, current.err)
+		require.NotNil(t, current.result)
+		require.NotNil(t, current.result.Role)
 		if current.result.Changed {
 			reconciled++
-			if !slices.Equal(current.result.AddedPermissions, []string{missing}) {
-				t.Fatalf("added permissions = %#v, want %q", current.result.AddedPermissions, missing)
-			}
+			require.True(t, slices.Equal(current.result.AddedPermissions, []string{missing}), "added permissions = %#v, want %q", current.result.AddedPermissions, missing)
 		}
 	}
-	if reconciled != 1 {
-		t.Fatalf("changed reconciliation outcomes = %d, want 1", reconciled)
-	}
+	require.Equal(t, 1, reconciled, "changed reconciliation outcomes")
 
 	protected, err := ss.Role().GetByName(ctx, model.SystemAdministratorRoleName)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	for _, permission := range model.AllActions() {
-		if !slices.Contains(protected.Permissions, permission) {
-			t.Fatalf("reconciled role omitted required permission %q: %#v", permission, protected.Permissions)
-		}
+		require.Contains(t, protected.Permissions, permission, "reconciled role omitted required permission")
 	}
-	if !slices.Contains(protected.Permissions, "future.unknown") {
-		t.Fatalf("reconciliation removed an unknown downgrade permission: %#v", protected.Permissions)
-	}
+	require.Contains(t, protected.Permissions, "future.unknown")
 	customRole, err = ss.Role().Get(ctx, customRole.ID)
-	requireNoError(t, err)
-	if customRole.ID != customRoleBefore.ID || customRole.Name != customRoleBefore.Name ||
-		customRole.DisplayName != customRoleBefore.DisplayName ||
-		!customRole.UpdatedAt.Equal(customRoleBefore.UpdatedAt) ||
-		!slices.Equal(customRole.Permissions, customRoleBefore.Permissions) {
-		t.Fatalf("reconciliation changed a custom Role: before=%#v after=%#v", customRoleBefore, customRole)
-	}
+	require.NoError(t, err)
+	require.Equal(t, customRoleBefore.ID, customRole.ID, "reconciliation changed a custom Role: before=%#v after=%#v", customRoleBefore, customRole)
+	require.Equal(t, customRoleBefore.Name, customRole.Name, "reconciliation changed a custom Role: before=%#v after=%#v", customRoleBefore, customRole)
+	require.Equal(t, customRoleBefore.DisplayName, customRole.DisplayName, "reconciliation changed a custom Role: before=%#v after=%#v", customRoleBefore, customRole)
+	require.True(t, customRole.UpdatedAt.Equal(customRoleBefore.UpdatedAt), "reconciliation changed a custom Role: before=%#v after=%#v", customRoleBefore, customRole)
+	require.True(t, slices.Equal(customRole.Permissions, customRoleBefore.Permissions), "reconciliation changed a custom Role: before=%#v after=%#v", customRoleBefore, customRole)
 	bindingAfter, err := ss.RoleBinding().Get(ctx, winner.RoleBinding.ID)
-	requireNoError(t, err)
-	if *bindingAfter != *bindingBefore {
-		t.Fatalf("reconciliation changed a Role Binding: before=%#v after=%#v", bindingBefore, bindingAfter)
-	}
+	require.NoError(t, err)
+	require.Equal(t, *bindingBefore, *bindingAfter, "reconciliation changed a Role Binding: before=%#v after=%#v", bindingBefore, bindingAfter)
 	reconciliationEvents, err := ss.Audit().List(ctx, store.AuditListOptions{
 		Action: "role.system_admin.reconcile", Limit: 10,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
-	requireNoError(t, err)
-	if len(reconciliationEvents) != 1 ||
-		reconciliationEvents[0].Status != model.AuditStatusSuccess ||
-		!reconciliationEvents[0].ActorID.IsZero() ||
-		reconciliationEvents[0].Resource.Type != model.ResourceInstitution ||
-		reconciliationEvents[0].Resource.ID != winner.Institution.ID.String() ||
-		reconciliationEvents[0].ScopeType != model.RoleScopeInstitution ||
-		reconciliationEvents[0].ScopeID != winner.Institution.ID.String() {
-		t.Fatalf("reconciliation audit events = %#v", reconciliationEvents)
-	}
+	require.NoError(t, err)
+	require.Len(t, reconciliationEvents, 1)
+	require.Equal(t, model.AuditStatusSuccess, reconciliationEvents[0].Status)
+	require.True(t, reconciliationEvents[0].ActorID.IsZero())
+	require.Equal(t, model.ResourceInstitution, reconciliationEvents[0].Resource.Type)
+	require.Equal(t, winner.Institution.ID.String(), reconciliationEvents[0].Resource.ID)
+	require.Equal(t, model.RoleScopeInstitution, reconciliationEvents[0].ScopeType)
+	require.Equal(t, winner.Institution.ID.String(), reconciliationEvents[0].ScopeID)
 	var auditResult struct {
 		RoleID           string   `json:"role_id"`
 		AddedPermissions []string `json:"added_permissions"`
 	}
-	if err := json.Unmarshal(reconciliationEvents[0].Result, &auditResult); err != nil {
-		t.Fatal(err)
-	}
-	if auditResult.RoleID != protected.ID.String() || !slices.Equal(auditResult.AddedPermissions, []string{missing}) {
-		t.Fatalf("reconciliation audit result = %#v", auditResult)
-	}
+	require.NoError(t, json.Unmarshal(reconciliationEvents[0].Result, &auditResult))
+	require.Equal(t, protected.ID.String(), auditResult.RoleID)
+	require.True(t, slices.Equal(auditResult.AddedPermissions, []string{missing}))
 
 	noOp, err := ss.Installation().ReconcileSystemAdministratorRole(ctx, testSystemAdministratorRoleReconciliation(10))
-	requireNoError(t, err)
-	if noOp == nil || noOp.Role == nil || noOp.Changed || len(noOp.AddedPermissions) != 0 {
-		t.Fatalf("ReconcileSystemAdministratorRole(no-op) = %#v", noOp)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, noOp)
+	require.NotNil(t, noOp.Role)
+	require.False(t, noOp.Changed)
+	require.Empty(t, noOp.AddedPermissions)
 	reconciliationEvents, err = ss.Audit().List(ctx, store.AuditListOptions{
 		Action: "role.system_admin.reconcile", Limit: 10,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
-	requireNoError(t, err)
-	if len(reconciliationEvents) != 1 {
-		t.Fatalf("no-op reconciliation wrote an audit event: %#v", reconciliationEvents)
-	}
+	require.NoError(t, err)
+	require.Len(t, reconciliationEvents, 1)
 	invalid := testSystemAdministratorRoleReconciliation(11)
 	invalid.RequiredPermissions = []string{"future.unknown"}
-	if _, err := ss.Installation().ReconcileSystemAdministratorRole(ctx, invalid); err == nil {
-		t.Fatal("ReconcileSystemAdministratorRole() accepted an unknown required permission")
-	}
-	if _, err := ss.Installation().Bootstrap(ctx, testInstallationBootstrap(99)); !store.IsConflict(err) {
-		t.Fatalf("Bootstrap(initialized) error = %v", err)
-	}
-	if _, err := ss.Installation().Bootstrap(ctx, nil); err == nil {
-		t.Fatal("Bootstrap(nil) succeeded")
-	}
+	_, err = ss.Installation().ReconcileSystemAdministratorRole(ctx, invalid)
+	require.Error(t, err, "ReconcileSystemAdministratorRole() accepted an unknown required permission")
+	_, err = ss.Installation().Bootstrap(ctx, testInstallationBootstrap(99))
+	require.True(t, store.IsConflict(err), "Bootstrap(initialized) error")
+	_, err = ss.Installation().Bootstrap(ctx, nil)
+	require.Error(t, err, "Bootstrap(nil) succeeded")
 }
 
 func testInstallationBootstrap(index int) *store.InstallationBootstrap {

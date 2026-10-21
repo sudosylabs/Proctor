@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -65,37 +67,20 @@ func TestTimerPreservesResultsErrorsAndUsesBoundedMetrics(t *testing.T) {
 	wrapped := &institutionStub{result: want}
 	metrics := &recordingMetrics{}
 	layer := newLayer(&rootStub{institution: wrapped}, metrics, now)
-	if layer.Institution() != layer.Institution() {
-		t.Fatal("Institution() returned a different wrapper for the same store")
-	}
+	institution := layer.Institution()
+	require.Same(t, institution, layer.Institution(), "Institution() returned a different wrapper for the same store")
 
 	const sensitiveID = "student-secret-must-not-be-a-label"
 	got, err := layer.Institution().Get(context.Background(), sensitiveID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != want {
-		t.Fatalf("Get() result = %#v, want original pointer %#v", got, want)
-	}
-	if wrapped.id != sensitiveID {
-		t.Fatalf("wrapped Get() id = %q, want %q", wrapped.id, sensitiveID)
-	}
-	if len(metrics.events) != 1 {
-		t.Fatalf("metrics = %#v, want one event", metrics.events)
-	}
+	require.NoError(t, err)
+	require.Same(t, want, got, "Get() result")
+	require.Equal(t, sensitiveID, wrapped.id, "wrapped Get() id")
+	require.Len(t, metrics.events, 1, "metrics")
 	event := metrics.events[0]
-	if event.operation.String() != "institution.get" {
-		t.Fatalf("operation = %q", event.operation.String())
-	}
-	if event.outcome != OutcomeSuccess {
-		t.Fatalf("outcome = %q", event.outcome)
-	}
-	if event.duration != 25*time.Millisecond {
-		t.Fatalf("duration = %s", event.duration)
-	}
-	if event.operation.String() == sensitiveID {
-		t.Fatal("sensitive argument leaked into operation label")
-	}
+	require.Equal(t, "institution.get", event.operation.String())
+	require.Equal(t, OutcomeSuccess, event.outcome)
+	require.Equal(t, 25*time.Millisecond, event.duration)
+	require.NotEqual(t, sensitiveID, event.operation.String(), "sensitive argument leaked into operation label")
 }
 
 func TestTimerPreservesExactErrorAndRecordsFailure(t *testing.T) {
@@ -111,15 +96,10 @@ func TestTimerPreservesExactErrorAndRecordsFailure(t *testing.T) {
 	)
 
 	got, err := layer.Institution().Get(context.Background(), model.NewInstitutionID())
-	if got != nil {
-		t.Fatalf("Get() result = %#v, want nil", got)
-	}
-	if err != wantErr {
-		t.Fatalf("Get() error = %v, want exact error %v", err, wantErr)
-	}
-	if len(metrics.events) != 1 || metrics.events[0].outcome != OutcomeError {
-		t.Fatalf("metrics = %#v, want one error event", metrics.events)
-	}
+	require.Nil(t, got, "Get() result")
+	require.Equal(t, wantErr, err, "Get() error")
+	require.Len(t, metrics.events, 1, "metrics")
+	require.Equal(t, OutcomeError, metrics.events[0].outcome, "metrics")
 }
 
 func TestRecorderPanicCannotChangeStoreSemantics(t *testing.T) {
@@ -133,9 +113,8 @@ func TestRecorderPanicCannotChangeStoreSemantics(t *testing.T) {
 	)
 
 	got, err := layer.Institution().Get(context.Background(), model.NewInstitutionID())
-	if err != nil || got != want {
-		t.Fatalf("Get() = %#v, %v", got, err)
-	}
+	require.NoError(t, err, "Get()")
+	require.Same(t, want, got, "Get()")
 }
 
 func TestTimerMeasuresRootOperations(t *testing.T) {
@@ -144,32 +123,25 @@ func TestTimerMeasuresRootOperations(t *testing.T) {
 	wantErr := errors.New("database unavailable")
 	metrics := &recordingMetrics{}
 	layer := newLayer(&rootStub{pingErr: wantErr}, metrics, time.Now)
-	if err := layer.Ping(context.Background()); err != wantErr {
-		t.Fatalf("Ping() error = %v, want %v", err, wantErr)
-	}
-	if len(metrics.events) != 1 || metrics.events[0].operation.String() != "store.ping" {
-		t.Fatalf("metrics = %#v", metrics.events)
-	}
+	require.Equal(t, wantErr, layer.Ping(context.Background()), "Ping() error")
+	require.Len(t, metrics.events, 1)
+	require.Equal(t, "store.ping", metrics.events[0].operation.String())
 }
 
 func TestNewRejectsMissingDependencies(t *testing.T) {
 	t.Parallel()
 
-	if _, err := New(nil, NopRecorder{}); err == nil {
-		t.Fatal("New() accepted a nil store")
-	}
-	if _, err := New(&rootStub{}, nil); err == nil {
-		t.Fatal("New() accepted a nil recorder")
-	}
+	_, err := New(nil, NopRecorder{})
+	require.Error(t, err, "New() accepted a nil store")
+	_, err = New(&rootStub{}, nil)
+	require.Error(t, err, "New() accepted a nil recorder")
 }
 
 func TestTimerPreservesMissingPerModelStores(t *testing.T) {
 	t.Parallel()
 
 	layer := newLayer(&rootStub{}, NopRecorder{}, time.Now)
-	if layer.Institution() != nil {
-		t.Fatal("Institution() wrapped a nil underlying store")
-	}
+	require.Nil(t, layer.Institution(), "Institution() wrapped a nil underlying store")
 }
 
 func TestGeneratedForwardingIsCurrent(t *testing.T) {
@@ -181,20 +153,13 @@ func TestGeneratedForwardingIsCurrent(t *testing.T) {
 		"go", "run", "../storetest/layergen", "-layer", "timer", "-source", "..", "-output", generatedPath,
 	)
 	command.Env = append(os.Environ(), "GOCACHE="+filepath.Join(temporary, "go-cache"))
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("regenerate forwarding: %v\n%s", err, output)
-	}
+	output, err := command.CombinedOutput()
+	require.NoError(t, err, "regenerate forwarding: %v\n%s", err, output)
 	want, err := os.ReadFile("forwarding_gen.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	got, err := os.ReadFile(generatedPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(got, want) {
-		t.Fatal("forwarding_gen.go is stale; run go generate ./store/timerlayer")
-	}
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(got, want), "forwarding_gen.go is stale; run go generate ./store/timerlayer")
 }
 
 func sequenceClock(values ...time.Time) func() time.Time {

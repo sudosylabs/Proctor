@@ -12,10 +12,11 @@ package storetest
 
 import (
 	"context"
-	"errors"
-	"slices"
+	"fmt"
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -29,30 +30,25 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 			Permissions: []string{string(model.ActionClassView)},
 		}
 		saved, err := SaveRole(ctx, ss, input)
-		requireNoError(t, err)
-		if !saved.ID.IsValid() || !input.ID.IsZero() {
-			t.Fatalf("Save() = %#v, input = %#v", saved, input)
-		}
+		require.NoError(t, err)
+		require.True(t, saved.ID.IsValid(), "Save() = %#v, input = %#v", saved, input)
+		require.True(t, input.ID.IsZero(), "Save() = %#v, input = %#v", saved, input)
 		byID, err := ss.Role().Get(ctx, saved.ID)
-		requireNoError(t, err)
+		require.NoError(t, err)
 		byName, err := ss.Role().GetByName(ctx, saved.Name)
-		requireNoError(t, err)
-		if byID.ID != saved.ID || byName.ID != saved.ID {
-			t.Fatalf("role queries = %#v, %#v", byID, byName)
-		}
+		require.NoError(t, err)
+		require.Equal(t, saved.ID, byID.ID, "role queries = %#v, %#v", byID, byName)
+		require.Equal(t, saved.ID, byName.ID, "role queries = %#v, %#v", byID, byName)
 		saved.Permissions = append(saved.Permissions, string(model.ActionClassMembersView))
 		updated, err := UpdateRole(ctx, ss, saved)
-		requireNoError(t, err)
-		if len(updated.Permissions) != 2 {
-			t.Fatalf("Update() = %#v", updated)
-		}
+		require.NoError(t, err)
+		require.Len(t, updated.Permissions, 2)
 		list, err := ss.Role().List(ctx)
-		requireNoError(t, err)
+		require.NoError(t, err)
 		batch, err := ss.Role().GetByIDs(ctx, []model.RoleID{saved.ID, model.NewRoleID()})
-		requireNoError(t, err)
-		if len(list) != 1 || len(batch) != 1 {
-			t.Fatalf("List/GetByIDs = %d/%d", len(list), len(batch))
-		}
+		require.NoError(t, err)
+		require.Len(t, list, 1, "List/GetByIDs")
+		require.Len(t, batch, 1, "List/GetByIDs")
 		firstUpdate := saved.Clone()
 		firstUpdate.DisplayName = "Concurrent First"
 		secondUpdate := saved.Clone()
@@ -81,22 +77,18 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 			case store.IsConflict(updateErr):
 				conflicted++
 			default:
-				t.Fatalf("concurrent Update() error = %v", updateErr)
+				require.FailNow(t, fmt.Sprintf("concurrent Update() error = %v", updateErr))
 			}
 		}
-		if succeeded != 1 || conflicted != 1 {
-			t.Fatalf("concurrent Update() results = success %d conflict %d", succeeded, conflicted)
-		}
+		require.Equal(t, 1, succeeded, "concurrent Update() results = success")
+		require.Equal(t, 1, conflicted, "concurrent Update() results = success")
 		saved, err = ss.Role().Get(ctx, saved.ID)
-		requireNoError(t, err)
+		require.NoError(t, err)
 		archived, err := ArchiveRole(ctx, ss, saved.ID, model.GetMillis())
-		requireNoError(t, err)
-		if !archived.IsArchived() {
-			t.Fatalf("Archive() = %#v", archived)
-		}
-		if _, err := ss.Role().Get(ctx, saved.ID); !store.IsNotFound(err) {
-			t.Fatalf("Get(archived) error = %v", err)
-		}
+		require.NoError(t, err)
+		require.True(t, archived.IsArchived())
+		_, err = ss.Role().Get(ctx, saved.ID)
+		require.True(t, store.IsNotFound(err), "Get(archived) error")
 	})
 
 	t.Run("UniquenessAndBuiltInProtection", func(t *testing.T) {
@@ -104,38 +96,32 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		first, err := SaveRole(ctx, ss, &model.Role{
 			Name: "course-owner", DisplayName: "Course Owner", BuiltIn: true,
 		})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		_, err = SaveRole(ctx, ss, &model.Role{
 			Name: first.Name, DisplayName: "Duplicate",
 		})
 		var conflict *store.ErrConflict
-		if !errors.As(err, &conflict) || conflict.Constraint != "roles_name_key" {
-			t.Fatalf("duplicate role error = %v", err)
-		}
-		if _, err := ArchiveRole(ctx, ss, first.ID, model.GetMillis()); !store.IsConflict(err) {
-			t.Fatalf("Archive(built-in) error = %v", err)
-		}
+		require.ErrorAs(t, err, &conflict)
+		require.Equal(t, "roles_name_key", conflict.Constraint)
+		_, err = ArchiveRole(ctx, ss, first.ID, model.GetMillis())
+		require.True(t, store.IsConflict(err), "Archive(built-in) error")
 		first.DisplayName = "Modified Built-in"
-		if _, err := UpdateRole(ctx, ss, first); !store.IsConflict(err) {
-			t.Fatalf("Update(built-in) error = %v", err)
-		}
+		_, err = UpdateRole(ctx, ss, first)
+		require.True(t, store.IsConflict(err), "Update(built-in) error")
 	})
 
 	t.Run("AuditedMutationsAreAtomic", func(t *testing.T) {
 		ctx := context.Background()
 		at := model.GetMillis() + 100
-		if _, err := ss.Role().Save(ctx, &store.RoleCreation{
+		_, err := ss.Role().Save(ctx, &store.RoleCreation{
 			Role:         &model.Role{Name: "audited-teacher", DisplayName: "Audited Teacher", Permissions: []string{string(model.ActionClassView)}},
 			AuditEventID: model.NewAuditEventID(), AuditAt: at,
-		}); err == nil {
-			t.Fatal("Save() succeeded without its audit attempt")
-		}
+		})
+		require.Error(t, err, "Save() succeeded without its audit attempt")
 		list, err := ss.Role().List(ctx)
-		requireNoError(t, err)
+		require.NoError(t, err)
 		for _, role := range list {
-			if role.Name == "audited-teacher" {
-				t.Fatalf("role survived audit rollback: %#v", role)
-			}
+			require.NotEqual(t, "audited-teacher", role.Name)
 		}
 
 		createAttempt := saveRoleAuditAttempt(t, ctx, ss)
@@ -143,32 +129,25 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 			Role:         &model.Role{Name: "audited-teacher", DisplayName: "Audited Teacher", Permissions: []string{string(model.ActionClassView)}},
 			AuditEventID: createAttempt.ID, AuditAt: at,
 		})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		createAudit, err := ss.Audit().Get(ctx, createAttempt.ID)
-		requireNoError(t, err)
-		if createAudit.Status != model.AuditStatusSuccess {
-			t.Fatalf("create audit = %#v", createAudit)
-		}
+		require.NoError(t, err)
+		require.Equal(t, model.AuditStatusSuccess, createAudit.Status)
 
 		created.DisplayName = "Audited Teacher Updated"
-		if _, err = ss.Role().Update(ctx, &store.RoleUpdate{
+		_, err = ss.Role().Update(ctx, &store.RoleUpdate{
 			Role: created, AuditEventID: model.NewAuditEventID(), AuditAt: at + 1,
-		}); err == nil {
-			t.Fatal("Update() succeeded without its audit attempt")
-		}
+		})
+		require.Error(t, err, "Update() succeeded without its audit attempt")
 		unchanged, err := ss.Role().Get(ctx, created.ID)
-		requireNoError(t, err)
-		if unchanged.DisplayName != "Audited Teacher" {
-			t.Fatalf("role update survived audit rollback: %#v", unchanged)
-		}
+		require.NoError(t, err)
+		require.Equal(t, "Audited Teacher", unchanged.DisplayName)
 		updateAttempt := saveRoleAuditAttempt(t, ctx, ss)
 		updated, err := ss.Role().Update(ctx, &store.RoleUpdate{
 			Role: created, AuditEventID: updateAttempt.ID, AuditAt: at + 1,
 		})
-		requireNoError(t, err)
-		if updated.DisplayName != "Audited Teacher Updated" {
-			t.Fatalf("Update() = %#v", updated)
-		}
+		require.NoError(t, err)
+		require.Equal(t, "Audited Teacher Updated", updated.DisplayName)
 
 		institution := saveInstitution(t, ctx, ss)
 		user := saveUser(t, ctx, ss)
@@ -176,50 +155,38 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 			UserID: user.ID, RoleID: updated.ID, ScopeType: model.RoleScopeInstitution,
 			ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(at + 2),
 		})
-		if err != nil {
-			t.Fatalf("bind role before permission fence: %v", err)
-		}
+		require.NoError(t, err)
 		permissionCandidate := updated.Clone()
 		permissionCandidate.Permissions = append(permissionCandidate.Permissions, string(model.ActionClassManage))
 		permissionAttempt := saveRoleAuditAttempt(t, ctx, ss)
-		if _, err = ss.Role().Update(ctx, &store.RoleUpdate{
+		_, err = ss.Role().Update(ctx, &store.RoleUpdate{
 			Role: permissionCandidate, AuditEventID: permissionAttempt.ID, AuditAt: at + 3,
-		}); !store.IsConflict(err) {
-			t.Fatalf("bound role permission Update() error = %v, want conflict", err)
-		}
-		if _, err = EndRoleBinding(ctx, ss, binding.ID, at+4); err != nil {
-			t.Fatalf("end historical binding: %v", err)
-		}
+		})
+		require.True(t, store.IsConflict(err), "bound role permission Update() error")
+		_, err = EndRoleBinding(ctx, ss, binding.ID, at+4)
+		require.NoError(t, err)
 		historicalAttempt := saveRoleAuditAttempt(t, ctx, ss)
 		permissionCandidate, err = ss.Role().Update(ctx, &store.RoleUpdate{
 			Role: permissionCandidate, AuditEventID: historicalAttempt.ID, AuditAt: at + 5,
 		})
-		requireNoError(t, err)
-		if !slices.Contains(permissionCandidate.Permissions, string(model.ActionClassManage)) {
-			t.Fatalf("historically bound role permissions = %#v", permissionCandidate.Permissions)
-		}
+		require.NoError(t, err)
+		require.Contains(t, permissionCandidate.Permissions, string(model.ActionClassManage))
 
-		if _, err = ss.Role().Archive(ctx, &store.RoleArchive{
+		_, err = ss.Role().Archive(ctx, &store.RoleArchive{
 			ID: created.ID, ArchiveAt: at + 2, AuditEventID: model.NewAuditEventID(), AuditAt: at + 2,
-		}); err == nil {
-			t.Fatal("Archive() succeeded without its audit attempt")
-		}
+		})
+		require.Error(t, err, "Archive() succeeded without its audit attempt")
 		stillPresent, err := ss.Role().Get(ctx, created.ID)
-		requireNoError(t, err)
-		if stillPresent.IsArchived() {
-			t.Fatalf("role archive survived audit rollback: %#v", stillPresent)
-		}
+		require.NoError(t, err)
+		require.False(t, stillPresent.IsArchived())
 		archiveAttempt := saveRoleAuditAttempt(t, ctx, ss)
 		archived, err := ss.Role().Archive(ctx, &store.RoleArchive{
 			ID: created.ID, ArchiveAt: at + 2, AuditEventID: archiveAttempt.ID, AuditAt: at + 2,
 		})
-		requireNoError(t, err)
-		if archived.ArchivedAt.Millis() != at+2 {
-			t.Fatalf("Archive() = %#v", archived)
-		}
-		if _, err := ss.Role().Get(ctx, created.ID); !store.IsNotFound(err) {
-			t.Fatalf("Get(archived) error = %v", err)
-		}
+		require.NoError(t, err)
+		require.Equal(t, at+2, archived.ArchivedAt.Millis())
+		_, err = ss.Role().Get(ctx, created.ID)
+		require.True(t, store.IsNotFound(err), "Get(archived) error")
 	})
 }
 
@@ -231,6 +198,6 @@ func saveRoleAuditAttempt(t *testing.T, ctx context.Context, ss store.Store) *mo
 		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewID(),
 		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return attempt
 }

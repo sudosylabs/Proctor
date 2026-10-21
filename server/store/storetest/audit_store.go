@@ -12,9 +12,10 @@ package storetest
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -31,25 +32,21 @@ func TestAuditStore(t *testing.T, ss store.Store) {
 		Status: model.AuditStatusAttempt, NodeID: "test-node",
 		Parameters: []byte(`{"role_id":"safe"}`),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	got, err := ss.Audit().Get(ctx, event.ID)
-	requireNoError(t, err)
-	if got.Status != model.AuditStatusAttempt || string(got.Parameters) == "" {
-		t.Fatalf("Get() = %#v", got)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.AuditStatusAttempt, got.Status)
+	require.NotEmpty(t, string(got.Parameters))
 	completed, err := ss.Audit().Complete(
 		ctx, event.ID, model.AuditStatusSuccess, "", []byte(`{"updated":true}`),
 		model.MillisFromTime(event.UpdatedAt)+1,
 	)
-	requireNoError(t, err)
-	if completed.Status != model.AuditStatusSuccess {
-		t.Fatalf("Complete() = %#v", completed)
-	}
-	if _, err := ss.Audit().Complete(
+	require.NoError(t, err)
+	require.Equal(t, model.AuditStatusSuccess, completed.Status)
+	_, err = ss.Audit().Complete(
 		ctx, event.ID, model.AuditStatusFail, "late", nil, model.MillisFromTime(event.UpdatedAt)+2,
-	); !store.IsNotFound(err) {
-		t.Fatalf("second Complete() error = %v", err)
-	}
+	)
+	require.True(t, store.IsNotFound(err), "second Complete() error")
 	time.Sleep(2 * time.Millisecond)
 	second, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		ActorID: user.ID, Action: string(model.ActionAuditView),
@@ -57,29 +54,25 @@ func TestAuditStore(t *testing.T, ss store.Store) {
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 		Status: model.AuditStatusSuccess, NodeID: "test-node",
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	withoutVisibility, err := ss.Audit().List(ctx, store.AuditListOptions{ActorID: user.ID, Limit: 10})
-	requireNoError(t, err)
-	if len(withoutVisibility) != 0 {
-		t.Fatalf("List(zero visibility) = %#v, want empty", withoutVisibility)
-	}
+	require.NoError(t, err)
+	require.Empty(t, withoutVisibility, "List(zero visibility)")
 	list, err := ss.Audit().List(ctx, store.AuditListOptions{
 		ActorID: user.ID, Limit: 1,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
-	requireNoError(t, err)
-	if len(list) != 1 || list[0].ID != second.ID {
-		t.Fatalf("List() = %#v", list)
-	}
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	require.Equal(t, second.ID, list[0].ID)
 	next, err := ss.Audit().List(ctx, store.AuditListOptions{
 		ActorID: user.ID, Limit: 10,
 		BeforeTime: model.MillisFromTime(list[0].CreatedAt), BeforeID: list[0].ID,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
-	requireNoError(t, err)
-	if len(next) != 1 || next[0].ID != event.ID {
-		t.Fatalf("cursor List() = %#v", next)
-	}
+	require.NoError(t, err)
+	require.Len(t, next, 1)
+	require.Equal(t, event.ID, next[0].ID)
 
 	fixture := saveClassFixture(t, ctx, ss)
 	visibleClass := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "audit-visible-class")
@@ -90,28 +83,28 @@ func TestAuditStore(t *testing.T, ss store.Store) {
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: fixture.programme.AcademicUnitID.String(),
 		Status: model.AuditStatusSuccess, NodeID: "test-node",
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	visibleClassEvent, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		ActorID: user.ID, Action: string(model.ActionClassMembersManage),
 		Resource:  model.Resource{Type: model.ResourceClass, ID: visibleClass.ID.String()},
 		ScopeType: model.RoleScopeClass, ScopeID: visibleClass.ID.String(),
 		Status: model.AuditStatusSuccess, NodeID: "test-node",
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	siblingUnitEvent, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		ActorID: user.ID, Action: string(model.ActionAcademicUnitMembersManage),
 		Resource:  model.Resource{Type: model.ResourceAcademicUnit, ID: sibling.ID.String()},
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: sibling.ID.String(),
 		Status: model.AuditStatusSuccess, NodeID: "test-node",
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	_, err = ss.Audit().Save(ctx, &model.AuditEvent{
 		ActorID: user.ID, Action: string(model.ActionExternalIdentityManage),
 		Resource:  model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: fixture.programme.AcademicUnitID.String(),
 		Status: model.AuditStatusSuccess, NodeID: "test-node",
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	scoped, err := ss.Audit().List(ctx, store.AuditListOptions{
 		Limit: 10,
 		Visibility: store.AuditVisibilityScope{
@@ -119,14 +112,14 @@ func TestAuditStore(t *testing.T, ss store.Store) {
 			AllowedActions:      []string{string(model.ActionAcademicUnitMembersManage), string(model.ActionClassMembersManage)},
 		},
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	seen := map[model.AuditEventID]bool{}
 	for _, item := range scoped {
 		seen[item.ID] = true
 	}
-	if len(scoped) != 2 || !seen[visibleUnitEvent.ID] || !seen[visibleClassEvent.ID] {
-		t.Fatalf("scoped academic audit = %#v", scoped)
-	}
+	require.Len(t, scoped, 2)
+	require.True(t, seen[visibleUnitEvent.ID])
+	require.True(t, seen[visibleClassEvent.ID])
 	academicInstitutionWide, err := ss.Audit().List(ctx, store.AuditListOptions{
 		Limit: 10,
 		Visibility: store.AuditVisibilityScope{
@@ -136,25 +129,23 @@ func TestAuditStore(t *testing.T, ss store.Store) {
 			},
 		},
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	seen = map[model.AuditEventID]bool{}
 	for _, item := range academicInstitutionWide {
 		seen[item.ID] = true
 	}
-	if len(academicInstitutionWide) != 3 || !seen[visibleUnitEvent.ID] || !seen[visibleClassEvent.ID] ||
-		!seen[siblingUnitEvent.ID] {
-		t.Fatalf("institution academic audit = %#v", academicInstitutionWide)
-	}
+	require.Len(t, academicInstitutionWide, 3)
+	require.True(t, seen[visibleUnitEvent.ID])
+	require.True(t, seen[visibleClassEvent.ID])
+	require.True(t, seen[siblingUnitEvent.ID])
 	withoutAcademicActions, err := ss.Audit().List(ctx, store.AuditListOptions{
 		Limit: 10,
 		Visibility: store.AuditVisibilityScope{
 			AcademicInstitutionWide: true,
 		},
 	})
-	requireNoError(t, err)
-	if len(withoutAcademicActions) != 0 {
-		t.Fatalf("institution academic audit without action catalog = %#v, want empty", withoutAcademicActions)
-	}
+	require.NoError(t, err)
+	require.Empty(t, withoutAcademicActions, "institution academic audit without action catalog")
 	_, err = ss.Audit().List(ctx, store.AuditListOptions{
 		Limit: 10,
 		Visibility: store.AuditVisibilityScope{
@@ -164,9 +155,7 @@ func TestAuditStore(t *testing.T, ss store.Store) {
 		},
 	})
 	var invalid *store.ErrInvalidInput
-	if !errors.As(err, &invalid) {
-		t.Fatalf("conflicting institution audit visibility error = %v, want invalid input", err)
-	}
+	require.ErrorAs(t, err, &invalid, "conflicting institution audit visibility error")
 	_, err = ss.Audit().List(ctx, store.AuditListOptions{
 		Limit: 10,
 		Visibility: store.AuditVisibilityScope{
@@ -175,7 +164,5 @@ func TestAuditStore(t *testing.T, ss store.Store) {
 			AllowedActions:          []string{string(model.ActionAcademicUnitMembersManage)},
 		},
 	})
-	if !errors.As(err, &invalid) {
-		t.Fatalf("mixed academic audit visibility error = %v, want invalid input", err)
-	}
+	require.ErrorAs(t, err, &invalid, "mixed academic audit visibility error")
 }

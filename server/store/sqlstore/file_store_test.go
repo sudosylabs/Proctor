@@ -9,7 +9,6 @@ package sqlstore
 
 import (
 	"database/sql"
-	"errors"
 	"testing"
 
 	"github.com/lib/pq"
@@ -38,7 +37,7 @@ func TestFileRenditionRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
 			row := valid
 			test.mutate(&row)
 			_, err := row.model("file_rendition")
-			assertFilePersistedStateError(t, err, "file_rendition", test.field)
+			requirePersistedStateError(t, err, "file_rendition", test.field)
 		})
 	}
 }
@@ -65,7 +64,7 @@ func TestUploadLeaseRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
 			row := valid
 			test.mutate(&row)
 			_, err := row.model()
-			assertFilePersistedStateError(t, err, "upload_lease", test.field)
+			requirePersistedStateError(t, err, "upload_lease", test.field)
 		})
 	}
 }
@@ -93,15 +92,7 @@ func TestFilePurgeCandidateRowRehydrationRejectsMalformedIdentifiers(t *testing.
 			row := valid
 			test.mutate(&row)
 			_, err := row.model()
-			assertFilePersistedStateError(t, err, "file_purge_candidate", test.field)
+			requirePersistedStateError(t, err, "file_purge_candidate", test.field)
 		})
-	}
-}
-
-func assertFilePersistedStateError(t *testing.T, err error, entity, field string) {
-	t.Helper()
-	var persisted *persistedStateError
-	if !errors.As(err, &persisted) || persisted.Entity != entity || persisted.Field != field {
-		t.Fatalf("error = %v, want %s.%s persisted-state error", err, entity, field)
 	}
 }

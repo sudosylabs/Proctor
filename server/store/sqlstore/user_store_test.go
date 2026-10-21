@@ -9,9 +9,10 @@ package sqlstore
 
 import (
 	"database/sql"
-	"errors"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -30,12 +31,8 @@ func TestUserRowConversion(t *testing.T) {
 	}
 	row := newUserRow(user)
 	got, err := row.model()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if *got != *user {
-		t.Fatalf("row.model() = %#v, want %#v", got, user)
-	}
+	require.NoError(t, err)
+	require.Equal(t, *user, *got, "row.model() = %#v, want %#v", got, user)
 }
 
 func TestUserRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
@@ -61,9 +58,9 @@ func TestUserRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
 			test.mutate(&row)
 			_, err := row.model()
 			var persisted *persistedStateError
-			if !errors.As(err, &persisted) || persisted.Entity != "user" || persisted.Field != test.field {
-				t.Fatalf("model() error = %v, want user.%s persisted-state error", err, test.field)
-			}
+			require.ErrorAs(t, err, &persisted, "model() error")
+			require.Equal(t, "user", persisted.Entity, "model() error")
+			require.Equal(t, test.field, persisted.Field, "model() error")
 		})
 	}
 }

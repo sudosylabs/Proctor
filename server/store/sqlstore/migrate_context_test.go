@@ -9,9 +9,10 @@ package sqlstore
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestMigrationLockContextDetachesAfterAcquisition(t *testing.T) {
@@ -19,18 +20,12 @@ func TestMigrationLockContextDetachesAfterAcquisition(t *testing.T) {
 
 	parent, cancelParent := context.WithCancel(context.Background())
 	lockCtx, finishAcquisition, release := newMigrationLockContext(parent, time.Minute)
-	if err := finishAcquisition(); err != nil {
-		t.Fatalf("finish acquisition: %v", err)
-	}
+	require.NoError(t, finishAcquisition())
 
 	cancelParent()
-	if err := lockCtx.Err(); err != nil {
-		t.Fatalf("acquired lock context followed caller cancellation: %v", err)
-	}
+	require.NoError(t, lockCtx.Err())
 	release(context.Canceled)
-	if !errors.Is(lockCtx.Err(), context.Canceled) {
-		t.Fatalf("released lock context error = %v, want context canceled", lockCtx.Err())
-	}
+	require.ErrorIs(t, lockCtx.Err(), context.Canceled, "released lock context error")
 }
 
 func TestMigrationLockContextCancelsWhileWaiting(t *testing.T) {
@@ -40,9 +35,7 @@ func TestMigrationLockContextCancelsWhileWaiting(t *testing.T) {
 	lockCtx, finishAcquisition, release := newMigrationLockContext(parent, time.Minute)
 	cancelParent()
 	<-lockCtx.Done()
-	if err := finishAcquisition(); !errors.Is(err, context.Canceled) {
-		t.Fatalf("finish acquisition error = %v, want context canceled", err)
-	}
+	require.ErrorIs(t, finishAcquisition(), context.Canceled, "finish acquisition error")
 	release(context.Canceled)
 }
 
@@ -56,10 +49,8 @@ func TestMigrationLockContextTimesOutWhileWaiting(t *testing.T) {
 	select {
 	case <-lockCtx.Done():
 	case <-time.After(time.Second):
-		t.Fatal("migration lock context did not enforce the acquisition timeout")
+		require.FailNow(t, "migration lock context did not enforce the acquisition timeout")
 	}
-	if err := finishAcquisition(); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("finish acquisition error = %v, want deadline exceeded", err)
-	}
+	require.ErrorIs(t, finishAcquisition(), context.DeadlineExceeded, "finish acquisition error")
 	release(context.Canceled)
 }

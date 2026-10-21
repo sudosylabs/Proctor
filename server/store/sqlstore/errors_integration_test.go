@@ -11,9 +11,10 @@ package sqlstore
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -39,13 +40,11 @@ func TestTranslateErrorClassifiesPostgreSQLRejectedValues(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := persistence.GetMaster().Exec(ctx, test.query, test.args...)
-			if err == nil {
-				t.Fatal("PostgreSQL accepted the rejected value")
-			}
+			require.Error(t, err, "PostgreSQL accepted the rejected value")
 			var invalid *store.ErrInvalidInput
-			if got := translateError("user", user.ID.String(), err); !errors.As(got, &invalid) || invalid.Field != test.field {
-				t.Fatalf("translateError(%v) = %#v; want invalid input on %q", err, got, test.field)
-			}
+			got := translateError("user", user.ID.String(), err)
+			require.ErrorAs(t, got, &invalid, "translateError(%v) = %#v; want invalid input on", err, got)
+			require.Equal(t, test.field, invalid.Field, "translateError(%v) = %#v; want invalid input on", err, got)
 		})
 	}
 }

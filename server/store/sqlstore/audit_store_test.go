@@ -9,9 +9,10 @@ package sqlstore
 
 import (
 	"database/sql"
-	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -33,9 +34,9 @@ func TestAuditRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := test.row.model()
 			var persisted *persistedStateError
-			if !errors.As(err, &persisted) || persisted.Entity != "audit_event" || persisted.Field != test.field {
-				t.Fatalf("model() error = %v, want audit_event.%s persisted-state error", err, test.field)
-			}
+			require.ErrorAs(t, err, &persisted, "model() error")
+			require.Equal(t, "audit_event", persisted.Entity, "model() error")
+			require.Equal(t, test.field, persisted.Field, "model() error")
 		})
 	}
 }
@@ -43,12 +44,9 @@ func TestAuditRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
 func TestAuditRowRehydrationAllowsAbsentOptionalActorAndSession(t *testing.T) {
 	row := auditRow{ID: model.NewAuditEventID().String(), CreatedAt: time.Unix(10, 0).UTC(), UpdatedAt: time.Unix(11, 0).UTC(), Action: string(model.ActionAuditView), ResourceType: model.ResourceInstitution, ResourceID: model.NewInstitutionID().String(), ScopeType: model.RoleScopeInstitution, ScopeID: model.NewInstitutionID().String(), Status: model.AuditStatusAttempt, NodeID: "node"}
 	got, err := row.model()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !got.ActorID.IsZero() || !got.SessionID.IsZero() {
-		t.Fatalf("optional IDs = %q, %q, want absent", got.ActorID, got.SessionID)
-	}
+	require.NoError(t, err)
+	require.True(t, got.ActorID.IsZero(), "optional IDs = %q, %q, want absent", got.ActorID, got.SessionID)
+	require.True(t, got.SessionID.IsZero(), "optional IDs = %q, %q, want absent", got.ActorID, got.SessionID)
 }
 
 func replaceAuditRow(row auditRow, replace func(*auditRow)) auditRow { replace(&row); return row }

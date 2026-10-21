@@ -13,6 +13,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store/storetest"
 )
@@ -41,13 +43,11 @@ func TestAccessPolicyStore(t *testing.T) {
 // the database does.
 func leadSessionDatabaseClock(t *testing.T, ctx context.Context, persistence *SQLStore, id model.SessionID) {
 	t.Helper()
-	if _, err := persistence.GetMaster().Exec(ctx, `UPDATE sessions SET created_at=created_at+INTERVAL '1 minute',
+	_, err := persistence.GetMaster().Exec(ctx, `UPDATE sessions SET created_at=created_at+INTERVAL '1 minute',
 		updated_at=updated_at+INTERVAL '1 minute', authenticated_at=authenticated_at+INTERVAL '1 minute',
-		last_activity_at=last_activity_at+INTERVAL '1 minute' WHERE id=?`, id.String()); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := persistence.GetMaster().Exec(ctx, `UPDATE session_credentials SET created_at=created_at+INTERVAL '1 minute',
-		updated_at=updated_at+INTERVAL '1 minute' WHERE session_id=?`, id.String()); err != nil {
-		t.Fatal(err)
-	}
+		last_activity_at=last_activity_at+INTERVAL '1 minute' WHERE id=?`, id.String())
+	require.NoError(t, err)
+	_, err = persistence.GetMaster().Exec(ctx, `UPDATE session_credentials SET created_at=created_at+INTERVAL '1 minute',
+		updated_at=updated_at+INTERVAL '1 minute' WHERE session_id=?`, id.String())
+	require.NoError(t, err)
 }

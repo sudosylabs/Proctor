@@ -11,9 +11,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -24,16 +27,17 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		ctx := context.Background()
 		user := saveUser(t, ctx, ss)
 		_, err := ss.PasswordCredential().Save(ctx, &model.PasswordCredential{UserID: user.ID, PasswordHash: "$argon2id$concurrent-fallback"})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		identity, err := ss.ExternalIdentity().Save(ctx, &model.ExternalIdentity{UserID: user.ID, Provider: "campus-cas",
 			Subject: "concurrent-session-" + model.NewID(), LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		candidate, credentials, _ := newSession(user.ID.String())
 		candidate.AuthenticationMethod = "oidc"
 		candidate.AuthenticationProviderID = identity.Provider
 		candidate.ExternalIdentityID = identity.ID
 		audit := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "unlink_provider")
 		start := make(chan struct{})
+		creation := testSessionCreation(t, ctx, ss, candidate, credentials, 10)
 		var saved *model.Session
 		var saveErr, unlinkErr error
 		var wait sync.WaitGroup
@@ -41,7 +45,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		go func() {
 			defer wait.Done()
 			<-start
-			saved, _, saveErr = SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, candidate, credentials, 10))
+			saved, _, saveErr = SaveSession(ctx, ss, creation)
 		}()
 		go func() {
 			defer wait.Done()
@@ -52,16 +56,14 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		}()
 		close(start)
 		wait.Wait()
-		requireNoError(t, unlinkErr)
-		if saveErr != nil && !errors.Is(saveErr, store.ErrAuthenticationMethodDisabled) {
-			t.Fatalf("concurrent Session Save error = %v", saveErr)
+		require.NoError(t, unlinkErr)
+		if saveErr != nil {
+			require.ErrorIs(t, saveErr, store.ErrAuthenticationMethodDisabled)
 		}
 		if saved != nil {
 			persisted, getErr := ss.Session().Get(ctx, saved.ID)
-			requireNoError(t, getErr)
-			if !persisted.RevokedAt.Valid {
-				t.Fatalf("concurrent exact-identity Session survived unlink: %#v", persisted)
-			}
+			require.NoError(t, getErr)
+			require.True(t, persisted.RevokedAt.Valid)
 		}
 	})
 
@@ -106,22 +108,21 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 				conflicted++
 				continue
 			}
-			t.Fatalf("Link() concurrent error = %v", err)
+			require.FailNow(t, fmt.Sprintf("Link() concurrent error = %v", err))
 		}
-		if succeeded != 1 || conflicted != 1 {
-			t.Fatalf("Link() outcomes success=%d conflict=%d errors=%v", succeeded, conflicted, errs)
-		}
+		require.Equal(t, 1, succeeded, "Link() outcomes success=%d conflict=%d errors=%v", succeeded, conflicted, errs)
+		require.Equal(t, 1, conflicted, "Link() outcomes success=%d conflict=%d errors=%v", succeeded, conflicted, errs)
 	})
 
 	t.Run("UnlinkRevokesOnlyExactIdentitySessions", func(t *testing.T) {
 		ctx := context.Background()
 		user := saveUser(t, ctx, ss)
 		_, err := ss.PasswordCredential().Save(ctx, &model.PasswordCredential{UserID: user.ID, PasswordHash: "$argon2id$another-method"})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		otherIdentity, err := ss.ExternalIdentity().Save(ctx, &model.ExternalIdentity{UserID: user.ID,
 			Provider: "campus-cas", Subject: "other-revocation-subject-" + model.NewID(),
 			LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		capabilities := store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{
 			"campus-cas": {},
 		}}
@@ -131,48 +132,43 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 				Subject: "revocation-subject-" + model.NewID(), LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())},
 			Capabilities: capabilities, AuditEventID: linkAttempt.ID, AuditAt: model.GetMillis(),
 		})
-		requireNoError(t, err)
+		require.NoError(t, err)
 
 		passwordSession, passwordCredentials, _ := newSession(user.ID.String())
 		passwordSession, _, err = SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, passwordSession, passwordCredentials, 10))
-		requireNoError(t, err)
+		require.NoError(t, err)
 		providerSession, providerCredentials, _ := newSession(user.ID.String())
 		providerSession.AuthenticationMethod = "oidc"
 		providerSession.AuthenticationProviderID = "campus-cas"
 		providerSession.ExternalIdentityID = linked.Identity.ID
 		providerSession, _, err = SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, providerSession, providerCredentials, 10))
-		requireNoError(t, err)
+		require.NoError(t, err)
 		otherProviderSession, otherProviderCredentials, _ := newSession(user.ID.String())
 		otherProviderSession.AuthenticationMethod = "oidc"
 		otherProviderSession.AuthenticationProviderID = "campus-cas"
 		otherProviderSession.ExternalIdentityID = otherIdentity.ID
 		otherProviderSession, _, err = SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, otherProviderSession, otherProviderCredentials, 10))
-		requireNoError(t, err)
+		require.NoError(t, err)
 
 		unlinkAttempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "unlink_provider")
 		result, err := ss.ExternalIdentity().Unlink(ctx, &store.ExternalIdentityUnlink{
 			ID: linked.Identity.ID, UserID: user.ID, Capabilities: capabilities, ChangedAt: model.GetMillis(),
 			RevocationReason: model.SessionRevocationExternalIdentityUnlinked, AuditEventID: unlinkAttempt.ID, AuditAt: model.GetMillis(),
 		})
-		requireNoError(t, err)
-		if len(result.RevokedSessions) != 1 || result.RevokedSessions[0].ID != providerSession.ID || len(result.RevokedTokenHashes) != 2 {
-			t.Fatalf("Unlink() revocations = %#v", result)
-		}
+		require.NoError(t, err)
+		require.Len(t, result.RevokedSessions, 1)
+		require.Equal(t, providerSession.ID, result.RevokedSessions[0].ID)
+		require.Len(t, result.RevokedTokenHashes, 2)
 		retained, err := ss.Session().Get(ctx, passwordSession.ID)
-		requireNoError(t, err)
-		if retained.RevokedAt.Valid {
-			t.Fatalf("password Session was revoked = %#v", retained)
-		}
+		require.NoError(t, err)
+		require.False(t, retained.RevokedAt.Valid)
 		retained, err = ss.Session().Get(ctx, otherProviderSession.ID)
-		requireNoError(t, err)
-		if retained.RevokedAt.Valid {
-			t.Fatalf("other identity Session was revoked = %#v", retained)
-		}
+		require.NoError(t, err)
+		require.False(t, retained.RevokedAt.Valid)
 		revoked, err := ss.Session().Get(ctx, providerSession.ID)
-		requireNoError(t, err)
-		if !revoked.RevokedAt.Valid || revoked.RevocationReason != model.SessionRevocationExternalIdentityUnlinked {
-			t.Fatalf("provider Session was not revoked = %#v", revoked)
-		}
+		require.NoError(t, err)
+		require.True(t, revoked.RevokedAt.Valid)
+		require.Equal(t, model.SessionRevocationExternalIdentityUnlinked, revoked.RevocationReason)
 	})
 
 	t.Run("SaveGetAndList", func(t *testing.T) {
@@ -182,35 +178,29 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			UserID: user.ID, Provider: "campus-cas",
 			Subject: "Opaque-Subject/123", LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
 		})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		got, err := ss.ExternalIdentity().Get(ctx, identity.ID)
-		requireNoError(t, err)
-		if got.Subject != identity.Subject || got.Provider != "campus-cas" {
-			t.Fatalf("Get() = %#v", got)
-		}
+		require.NoError(t, err)
+		require.Equal(t, identity.Subject, got.Subject)
+		require.Equal(t, "campus-cas", got.Provider)
 		bySubject, err := ss.ExternalIdentity().GetByProviderSubject(
 			ctx,
 			" CAMPUS-CAS ",
 			identity.Subject,
 		)
-		requireNoError(t, err)
-		if bySubject.ID != identity.ID {
-			t.Fatalf("GetByProviderSubject() = %#v", bySubject)
-		}
+		require.NoError(t, err)
+		require.Equal(t, identity.ID, bySubject.ID)
 		list, err := ss.ExternalIdentity().ListByUser(ctx, user.ID)
-		requireNoError(t, err)
-		if len(list) != 1 || list[0].ID != identity.ID {
-			t.Fatalf("ListByUser() = %#v", list)
-		}
+		require.NoError(t, err)
+		require.Len(t, list, 1)
+		require.Equal(t, identity.ID, list[0].ID)
 		_, err = ss.ExternalIdentity().Save(ctx, &model.ExternalIdentity{
 			UserID: saveUser(t, ctx, ss).ID, Provider: "campus-cas",
 			Subject: identity.Subject, LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
 		})
 		var conflict *store.ErrConflict
-		if !errors.As(err, &conflict) ||
-			conflict.Constraint != "external_identities_provider_subject_key" {
-			t.Fatalf("duplicate identity error = %v", err)
-		}
+		require.ErrorAs(t, err, &conflict)
+		require.Equal(t, "external_identities_provider_subject_key", conflict.Constraint)
 	})
 
 	t.Run("ResolveAndProvision", func(t *testing.T) {
@@ -231,35 +221,28 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 					NodeID: "test-node", AuthMethod: "cas",
 				}, DefaultProfilePictureJob: creation.DefaultProfilePictureJob},
 		)
-		requireNoError(t, err)
-		if !resolved.Provisioned ||
-			resolved.Identity.UserID != resolved.User.ID ||
-			!candidate.ID.IsZero() {
-			t.Fatalf("ResolveOrProvision(new) = %#v", resolved)
-		}
+		require.NoError(t, err)
+		require.True(t, resolved.Provisioned)
+		require.Equal(t, resolved.User.ID, resolved.Identity.UserID)
+		require.True(t, candidate.ID.IsZero())
 		queued, err := ss.Job().Get(ctx, creation.DefaultProfilePictureJob.ID)
-		requireNoError(t, err)
-		if queued.DedupeKey != resolved.User.ID.String() || queued.Status != model.JobStatusQueued {
-			t.Fatalf("provisioned default-picture job = %#v", queued)
-		}
+		require.NoError(t, err)
+		require.Equal(t, resolved.User.ID.String(), queued.DedupeKey)
+		require.Equal(t, model.JobStatusQueued, queued.Status)
 		settings, err := ss.UserSettings().Get(ctx, resolved.User.ID)
-		requireNoError(t, err)
-		if settings.Source != model.UserSettingsInitialSource ||
-			settings.FormatVersion != model.UserSettingsFormatVersion1 ||
-			!settings.CreatedAt.Equal(resolved.User.CreatedAt) {
-			t.Fatalf("provisioned user settings = %#v", settings)
-		}
+		require.NoError(t, err)
+		require.Equal(t, model.UserSettingsInitialSource, settings.Source)
+		require.Equal(t, model.UserSettingsFormatVersion1, settings.FormatVersion)
+		require.True(t, settings.CreatedAt.Equal(resolved.User.CreatedAt))
 		audits, err := ss.Audit().List(ctx, store.AuditListOptions{
 			Action:     "authentication.external_provision",
 			Limit:      10,
 			Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 		})
-		requireNoError(t, err)
-		if len(audits) != 1 ||
-			audits[0].ActorID != resolved.User.ID ||
-			audits[0].Resource.ID != resolved.User.ID.String() {
-			t.Fatalf("provision audits = %#v", audits)
-		}
+		require.NoError(t, err)
+		require.Len(t, audits, 1)
+		require.Equal(t, resolved.User.ID, audits[0].ActorID)
+		require.Equal(t, resolved.User.ID.String(), audits[0].Resource.ID)
 		changedClaims := newUser()
 		originalUsername := resolved.User.Username
 		again, err := ss.ExternalIdentity().ResolveOrProvision(
@@ -268,12 +251,12 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 				LastSeenAt: model.OptionalTimeFromMillis(now + 100),
 			}, User: changedClaims, Capabilities: externalIdentityCapabilities(false)},
 		)
-		requireNoError(t, err)
-		if again.Provisioned || again.User.ID != resolved.User.ID ||
-			again.Identity.LastSeenAt.Millis() != now+100 ||
-			again.User.Username != originalUsername || again.User.Username == changedClaims.Username {
-			t.Fatalf("ResolveOrProvision(existing) = %#v", again)
-		}
+		require.NoError(t, err)
+		require.False(t, again.Provisioned)
+		require.Equal(t, resolved.User.ID, again.User.ID)
+		require.Equal(t, now+100, again.Identity.LastSeenAt.Millis())
+		require.Equal(t, originalUsername, again.User.Username)
+		require.NotEqual(t, changedClaims.Username, again.User.Username)
 	})
 
 	t.Run("NoImplicitAccountLinking", func(t *testing.T) {
@@ -283,7 +266,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			institution = saveInstitution(t, ctx, ss)
 			err = nil
 		}
-		requireNoError(t, err)
+		require.NoError(t, err)
 		existing := saveUser(t, ctx, ss)
 		candidate := newUser()
 		candidate.Email = existing.Email
@@ -300,23 +283,18 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			}, DefaultProfilePictureJob: creation.DefaultProfilePictureJob},
 		)
 		var conflict *store.ErrConflict
-		if !errors.As(err, &conflict) ||
-			conflict.Constraint != "users_email_key" {
-			t.Fatalf("email collision error = %v", err)
-		}
-		if _, err := ss.ExternalIdentity().GetByProviderSubject(
+		require.ErrorAs(t, err, &conflict)
+		require.Equal(t, "users_email_key", conflict.Constraint)
+		_, err = ss.ExternalIdentity().GetByProviderSubject(
 			ctx,
 			"campus-cas",
 			"different-subject",
-		); !store.IsNotFound(err) {
-			t.Fatalf("colliding identity was persisted: %v", err)
-		}
-		if _, err := ss.Job().Get(ctx, creation.DefaultProfilePictureJob.ID); !store.IsNotFound(err) {
-			t.Fatalf("colliding provision default-picture job was persisted: %v", err)
-		}
-		if _, err := ss.UserSettings().Get(ctx, creation.User.ID); !store.IsNotFound(err) {
-			t.Fatalf("colliding provision settings were persisted: %v", err)
-		}
+		)
+		require.True(t, store.IsNotFound(err), "colliding identity was persisted")
+		_, err = ss.Job().Get(ctx, creation.DefaultProfilePictureJob.ID)
+		require.True(t, store.IsNotFound(err), "colliding provision default-picture job was persisted")
+		_, err = ss.UserSettings().Get(ctx, creation.User.ID)
+		require.True(t, store.IsNotFound(err), "colliding provision settings were persisted")
 	})
 
 	t.Run("ProvisioningRejectsMismatchedDefaultJobTarget", func(t *testing.T) {
@@ -326,7 +304,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			institution = saveInstitution(t, ctx, ss)
 			err = nil
 		}
-		requireNoError(t, err)
+		require.NoError(t, err)
 		creation := testUserCreation(newUser(), nil)
 		creation.DefaultProfilePictureJob.Command = defaultProfilePictureCommand(model.NewUserID())
 		subject := "mismatched-job-" + model.NewID()
@@ -334,7 +312,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			Action: "authentication.external_provision", Limit: 100,
 			Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 		})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		_, err = ss.ExternalIdentity().ResolveOrProvision(
 			ctx, &store.ExternalIdentityResolutionRequest{Identity: &model.ExternalIdentity{
 				Provider: "campus-cas", Subject: subject,
@@ -345,29 +323,21 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 				NodeID: "test-node", AuthMethod: "cas",
 			}, DefaultProfilePictureJob: creation.DefaultProfilePictureJob},
 		)
-		if err == nil {
-			t.Fatal("ResolveOrProvision() accepted a default-picture Job targeting another User")
-		}
-		if _, err = ss.User().Get(ctx, creation.User.ID); !store.IsNotFound(err) {
-			t.Fatalf("provisioned User survived mismatched Job rollback: %v", err)
-		}
-		if _, err = ss.ExternalIdentity().GetByProviderSubject(ctx, "campus-cas", subject); !store.IsNotFound(err) {
-			t.Fatalf("external identity survived mismatched Job rollback: %v", err)
-		}
-		if _, err = ss.Job().Get(ctx, creation.DefaultProfilePictureJob.ID); !store.IsNotFound(err) {
-			t.Fatalf("mismatched provision Job was persisted: %v", err)
-		}
-		if _, err = ss.UserSettings().Get(ctx, creation.User.ID); !store.IsNotFound(err) {
-			t.Fatalf("mismatched provision settings survived rollback: %v", err)
-		}
+		require.Error(t, err, "ResolveOrProvision() accepted a default-picture Job targeting another User")
+		_, err = ss.User().Get(ctx, creation.User.ID)
+		require.True(t, store.IsNotFound(err), "provisioned User survived mismatched Job rollback")
+		_, err = ss.ExternalIdentity().GetByProviderSubject(ctx, "campus-cas", subject)
+		require.True(t, store.IsNotFound(err), "external identity survived mismatched Job rollback")
+		_, err = ss.Job().Get(ctx, creation.DefaultProfilePictureJob.ID)
+		require.True(t, store.IsNotFound(err), "mismatched provision Job was persisted")
+		_, err = ss.UserSettings().Get(ctx, creation.User.ID)
+		require.True(t, store.IsNotFound(err), "mismatched provision settings survived rollback")
 		after, err := ss.Audit().List(ctx, store.AuditListOptions{
 			Action: "authentication.external_provision", Limit: 100,
 			Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 		})
-		requireNoError(t, err)
-		if len(after) != len(before) {
-			t.Fatalf("provision audit survived mismatched Job rollback: before=%d after=%d", len(before), len(after))
-		}
+		require.NoError(t, err)
+		require.Len(t, after, len(before), "provision audit survived mismatched Job rollback: before")
 		permanent := testUserCreation(newUser(), nil)
 		permanent.DefaultProfilePictureJob.DedupePolicy = model.JobDedupePermanent
 		_, err = ss.ExternalIdentity().ResolveOrProvision(ctx, &store.ExternalIdentityResolutionRequest{
@@ -377,9 +347,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 				ScopeID: institution.ID.String(), Status: model.AuditStatusSuccess, NodeID: "test-node", AuthMethod: "cas",
 			}, DefaultProfilePictureJob: permanent.DefaultProfilePictureJob,
 		})
-		if err == nil {
-			t.Fatal("ResolveOrProvision() accepted a permanent-dedupe default-picture intent")
-		}
+		require.Error(t, err, "ResolveOrProvision() accepted a permanent-dedupe default-picture intent")
 	})
 
 	t.Run("ConfiguredProviderWithoutAutoProvisionCapabilityFailsClosed", func(t *testing.T) {
@@ -389,9 +357,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 				LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
 			}, Capabilities: externalIdentityCapabilities(false)},
 		)
-		if !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
-			t.Fatalf("ResolveOrProvision(unlinked) error = %v", err)
-		}
+		require.ErrorIs(t, err, store.ErrAuthenticationMethodDisabled)
 	})
 
 	t.Run("ConfiguredProviderRemovalPreservesDurableLink", func(t *testing.T) {
@@ -401,20 +367,17 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			UserID: user.ID, Provider: "campus-cas", Subject: "removed-provider-" + model.NewID(),
 			LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
 		})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		_, err = ss.ExternalIdentity().ResolveOrProvision(ctx, &store.ExternalIdentityResolutionRequest{
 			Identity: &model.ExternalIdentity{Provider: identity.Provider, Subject: identity.Subject,
 				LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())},
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 		})
-		if !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
-			t.Fatalf("removed provider resolution error = %v", err)
-		}
+		require.ErrorIs(t, err, store.ErrAuthenticationMethodDisabled)
 		preserved, getErr := ss.ExternalIdentity().GetByProviderSubject(ctx, identity.Provider, identity.Subject)
-		requireNoError(t, getErr)
-		if preserved.ID != identity.ID || preserved.UserID != user.ID {
-			t.Fatalf("removed provider changed durable link = %#v", preserved)
-		}
+		require.NoError(t, getErr)
+		require.Equal(t, identity.ID, preserved.ID)
+		require.Equal(t, user.ID, preserved.UserID)
 	})
 }
 
@@ -438,9 +401,9 @@ func TestExternalIdentityAdmissionMode(t *testing.T, ss store.Store, mode model.
 		issue := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt)
 		var err error
 		invitation, err = ss.Invitation().IssueStudentClass(ctx, issue)
-		requireNoError(t, err)
+		require.NoError(t, err)
 		institution, err = ss.Institution().GetSingleton(ctx)
-		requireNoError(t, err)
+		require.NoError(t, err)
 	} else {
 		institution = saveInstitution(t, ctx, ss)
 	}
@@ -449,17 +412,17 @@ func TestExternalIdentityAdmissionMode(t *testing.T, ss store.Store, mode model.
 		UserID: existingUser.ID, Provider: "campus-cas", Subject: "existing-" + model.NewID(),
 		LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	resolved, err := ss.ExternalIdentity().ResolveOrProvision(ctx, &store.ExternalIdentityResolutionRequest{
 		Identity: &model.ExternalIdentity{Provider: existingIdentity.Provider, Subject: existingIdentity.Subject,
 			LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())},
 		Capabilities: externalIdentityCapabilities(false),
 	})
-	requireNoError(t, err)
-	if resolved.Provisioned || resolved.User.ID != existingUser.ID || resolved.Identity.ID != existingIdentity.ID {
-		t.Fatalf("%s existing immutable link resolution = %#v", mode, resolved)
-	}
+	require.NoError(t, err)
+	require.False(t, resolved.Provisioned, "%s existing immutable link resolution = %#v", mode, resolved)
+	require.Equal(t, existingUser.ID, resolved.User.ID, "%s existing immutable link resolution = %#v", mode, resolved)
+	require.Equal(t, existingIdentity.ID, resolved.Identity.ID, "%s existing immutable link resolution = %#v", mode, resolved)
 
 	candidate := newUser()
 	if invitation != nil {
@@ -475,22 +438,22 @@ func TestExternalIdentityAdmissionMode(t *testing.T, ss store.Store, mode model.
 	}, DefaultProfilePictureJob: creation.DefaultProfilePictureJob}
 	if invitation != nil {
 		establishExternalAdmissionPolicyAdministrator(t, ctx, ss, existingUser.ID, institution.ID)
-		if admitted, admissionErr := ss.ExternalIdentity().ResolveOrProvision(ctx, request); admitted != nil || !store.IsNotFound(admissionErr) {
-			t.Fatalf("ordinary resolution admitted an Invitation candidate = %#v, %v", admitted, admissionErr)
-		}
+		admitted, admissionErr := ss.ExternalIdentity().ResolveOrProvision(ctx, request)
+		require.Nil(t, admitted, "ordinary resolution admitted an Invitation candidate")
+		require.True(t, store.IsNotFound(admissionErr), "ordinary resolution admitted an Invitation candidate")
 		stateToken, bindingToken := model.NewCredentialToken(), model.NewCredentialToken()
 		state, stateErr := ss.ExternalLoginState().SaveInvitationAdmission(ctx, &model.ExternalLoginState{
 			Provider: "campus-cas", Purpose: model.ExternalAuthenticationPurposeInvitationAdmission,
 			StateHash: model.HashToken(stateToken), BindingHash: model.HashToken(bindingToken), ReturnTo: "/join",
 			ClientType: model.SessionClientWeb,
 		}, time.Minute, invitation.ClaimHash)
-		requireNoError(t, stateErr)
+		require.NoError(t, stateErr)
 		state, stateErr = ss.ExternalLoginState().Consume(ctx, state.Provider, state.StateHash, state.BindingHash)
-		requireNoError(t, stateErr)
+		require.NoError(t, stateErr)
 		acceptance := studentClassInvitationAcceptanceFixture(t, invitation, model.NowUTC())
 		acceptance.AuditEvent.ClientType, acceptance.AuditEvent.AuthMethod = string(model.SessionClientWeb), "cas"
 		acceptance.AuditEvent.Parameters, stateErr = model.EncodeAuditData(map[string]string{"provider": "campus-cas"})
-		requireNoError(t, stateErr)
+		require.NoError(t, stateErr)
 		external := &store.ExternalIdentityInvitationAcceptance{
 			ExternalStateID: state.ID,
 			Identity: &model.ExternalIdentity{UserID: acceptance.User.ID, Provider: "campus-cas", Subject: "invited-" + model.NewID(),
@@ -509,42 +472,39 @@ func TestExternalIdentityAdmissionMode(t *testing.T, ss store.Store, mode model.
 				StateHash: model.HashToken(expiredToken), BindingHash: model.HashToken(expiredBinding), ReturnTo: "/join",
 				ClientType: model.SessionClientWeb,
 			}, time.Minute, invitation.ClaimHash)
-			requireNoError(t, expiredErr)
+			require.NoError(t, expiredErr)
 			expiredState, expiredErr = ss.ExternalLoginState().Consume(ctx, expiredState.Provider, expiredState.StateHash, expiredState.BindingHash)
-			requireNoError(t, expiredErr)
+			require.NoError(t, expiredErr)
 			probe.BackdateState(t, expiredState.ID, model.NowUTC().Add(-time.Minute))
 			expiredInput := *external
 			expiredInput.ExternalStateID = expiredState.ID
-			if value, expiredErr := ss.Invitation().AcceptExternalIdentity(ctx, &expiredInput); value != nil || !store.IsConflict(expiredErr) {
-				t.Fatalf("expired external Invitation proof = %#v, %v", value, expiredErr)
-			}
+			value, expiredErr := ss.Invitation().AcceptExternalIdentity(ctx, &expiredInput)
+			require.Nil(t, value, "expired external Invitation proof")
+			require.True(t, store.IsConflict(expiredErr), "expired external Invitation proof")
 		}
 		removedProvider := *external
 		removedProvider.Capabilities = store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}}
-		if value, removedErr := ss.Invitation().AcceptExternalIdentity(ctx, &removedProvider); value != nil ||
-			!errors.Is(removedErr, store.ErrAuthenticationMethodDisabled) {
-			t.Fatalf("removed provider external Invitation acceptance = %#v, %v", value, removedErr)
-		}
+		value, removedErr := ss.Invitation().AcceptExternalIdentity(ctx, &removedProvider)
+		require.Nil(t, value, "removed provider external Invitation acceptance")
+		require.ErrorIs(t, removedErr, store.ErrAuthenticationMethodDisabled, "removed provider external Invitation acceptance")
 		replaceExternalAdmissionPolicy(t, ctx, ss, existingUser.ID, institution.ID, false)
 		blocked, blockedErr := ss.Invitation().AcceptExternalIdentity(ctx, external)
-		if blocked != nil || !errors.Is(blockedErr, store.ErrAuthenticationMethodDisabled) {
-			t.Fatalf("globally disabled invitation admission = %#v, %v", blocked, blockedErr)
-		}
-		if _, getErr := ss.User().Get(ctx, external.User.ID); !store.IsNotFound(getErr) {
-			t.Fatalf("globally disabled invitation admission persisted User: %v", getErr)
-		}
+		require.Nil(t, blocked, "globally disabled invitation admission")
+		require.ErrorIs(t, blockedErr, store.ErrAuthenticationMethodDisabled, "globally disabled invitation admission")
+		_, getErr := ss.User().Get(ctx, external.User.ID)
+		require.True(t, store.IsNotFound(getErr), "globally disabled invitation admission persisted User")
 		replaceExternalAdmissionPolicy(t, ctx, ss, existingUser.ID, institution.ID, true)
 		ownedMailbox := *external
 		ownedMailbox.ProviderEmail = existingUser.Email
-		if value, ownedErr := ss.Invitation().AcceptExternalIdentity(ctx, &ownedMailbox); value != nil || !store.IsConflict(ownedErr) {
-			t.Fatalf("already-owned provider mailbox = %#v, %v", value, ownedErr)
-		}
+		value, ownedErr := ss.Invitation().AcceptExternalIdentity(ctx, &ownedMailbox)
+		require.Nil(t, value, "already-owned provider mailbox")
+		require.True(t, store.IsConflict(ownedErr), "already-owned provider mailbox")
 		ownedSubject := *external
 		ownedSubject.Identity = &model.ExternalIdentity{UserID: external.User.ID, Provider: existingIdentity.Provider, Subject: existingIdentity.Subject,
 			LastSeenAt: model.OptionalTimeFrom(model.NowUTC())}
-		if value, ownedErr := ss.Invitation().AcceptExternalIdentity(ctx, &ownedSubject); value != nil || !store.IsConflict(ownedErr) {
-			t.Fatalf("already-linked provider subject = %#v, %v", value, ownedErr)
-		}
+		value, ownedErr = ss.Invitation().AcceptExternalIdentity(ctx, &ownedSubject)
+		require.Nil(t, value, "already-linked provider subject")
+		require.True(t, store.IsConflict(ownedErr), "already-linked provider subject")
 		results := make([]*store.ExternalIdentityInvitationAcceptanceResult, 2)
 		errorsByIndex := make([]error, 2)
 		start := make(chan struct{})
@@ -567,49 +527,49 @@ func TestExternalIdentityAdmissionMode(t *testing.T, ss store.Store, mode model.
 			} else if store.IsConflict(errorsByIndex[index]) {
 				conflicts++
 			} else {
-				t.Fatalf("concurrent external acceptance %d = %#v, %v", index, result, errorsByIndex[index])
+				require.FailNow(t, fmt.Sprintf("concurrent external acceptance %d = %#v, %v", index, result, errorsByIndex[index]))
 			}
 		}
-		if accepted == nil || conflicts != 1 {
-			t.Fatalf("concurrent external acceptance results=%#v errors=%v", results, errorsByIndex)
-		}
-		if accepted.Invitation.State != model.InvitationAccepted || accepted.User.ID != external.User.ID ||
-			accepted.Identity.UserID != accepted.User.ID || accepted.Identity.Subject != external.Identity.Subject ||
-			accepted.Affiliation == nil || accepted.ClassMember == nil || accepted.ClassMember.UserID != accepted.User.ID {
-			t.Fatalf("terminal external Invitation acceptance = %#v", accepted)
-		}
-		if _, credentialErr := ss.PasswordCredential().GetByUser(ctx, accepted.User.ID); !store.IsNotFound(credentialErr) {
-			t.Fatalf("external Invitation acceptance created a local credential: %v", credentialErr)
-		}
-		if delivery, deliveryErr := ss.Mail().GetDelivery(ctx, acceptance.Delivery.ID); deliveryErr != nil ||
-			delivery.TargetUserID != accepted.User.ID || delivery.TargetInvitationID.IsValid() {
-			t.Fatalf("external acceptance notice = %#v, %v", delivery, deliveryErr)
-		}
-		if replay, replayErr := ss.Invitation().AcceptExternalIdentity(ctx, external); replay != nil || !store.IsConflict(replayErr) {
-			t.Fatalf("external acceptance replay = %#v, %v", replay, replayErr)
-		}
+		require.NotNil(t, accepted, "concurrent external acceptance results=%#v errors=%v", results, errorsByIndex)
+		require.Equal(t, 1, conflicts, "concurrent external acceptance results=%#v errors=%v", results, errorsByIndex)
+		require.Equal(t, model.InvitationAccepted, accepted.Invitation.State)
+		require.Equal(t, external.User.ID, accepted.User.ID)
+		require.Equal(t, accepted.User.ID, accepted.Identity.UserID)
+		require.Equal(t, external.Identity.Subject, accepted.Identity.Subject)
+		require.NotNil(t, accepted.Affiliation)
+		require.NotNil(t, accepted.ClassMember)
+		require.Equal(t, accepted.User.ID, accepted.ClassMember.UserID)
+		_, credentialErr := ss.PasswordCredential().GetByUser(ctx, accepted.User.ID)
+		require.True(t, store.IsNotFound(credentialErr), "external Invitation acceptance created a local credential")
+		delivery, deliveryErr := ss.Mail().GetDelivery(ctx, acceptance.Delivery.ID)
+		require.NoError(t, deliveryErr, "external acceptance notice = %#v", delivery)
+		require.Equal(t, accepted.User.ID, delivery.TargetUserID, "external acceptance notice = %#v", delivery)
+		require.False(t, delivery.TargetInvitationID.IsValid(), "external acceptance notice = %#v", delivery)
+		replay, replayErr := ss.Invitation().AcceptExternalIdentity(ctx, external)
+		require.Nil(t, replay, "external acceptance replay")
+		require.True(t, store.IsConflict(replayErr), "external acceptance replay")
 		class, getErr := ss.Class().Get(ctx, invitation.ClassID)
-		requireNoError(t, getErr)
+		require.NoError(t, getErr)
 		period, getErr := ss.AcademicPeriod().Get(ctx, invitation.AcademicPeriodID)
-		requireNoError(t, getErr)
+		require.NoError(t, getErr)
 		existingIssue := studentClassInvitationIssueFixture(t, ss, existingUser, class, period, model.NowUTC())
 		existingIssue.Invitation.TargetEmail = existingUser.Email
-		requireNoError(t, existingIssue.Invitation.Validate())
+		require.NoError(t, existingIssue.Invitation.Validate())
 		existingInvitation, issueErr := ss.Invitation().IssueStudentClass(ctx, existingIssue)
-		requireNoError(t, issueErr)
+		require.NoError(t, issueErr)
 		existingStateToken, existingBindingToken := model.NewCredentialToken(), model.NewCredentialToken()
 		existingState, stateErr := ss.ExternalLoginState().SaveInvitationAdmission(ctx, &model.ExternalLoginState{
 			Provider: "campus-cas", Purpose: model.ExternalAuthenticationPurposeInvitationAdmission,
 			StateHash: model.HashToken(existingStateToken), BindingHash: model.HashToken(existingBindingToken), ReturnTo: "/join",
 			ClientType: model.SessionClientWeb,
 		}, time.Minute, existingInvitation.ClaimHash)
-		requireNoError(t, stateErr)
+		require.NoError(t, stateErr)
 		existingState, stateErr = ss.ExternalLoginState().Consume(ctx, existingState.Provider, existingState.StateHash, existingState.BindingHash)
-		requireNoError(t, stateErr)
+		require.NoError(t, stateErr)
 		existingAcceptance := studentClassInvitationAcceptanceFixture(t, existingInvitation, model.NowUTC())
 		existingAcceptance.AuditEvent.ClientType, existingAcceptance.AuditEvent.AuthMethod = string(model.SessionClientWeb), "cas"
 		existingAcceptance.AuditEvent.Parameters, stateErr = model.EncodeAuditData(map[string]string{"provider": "campus-cas"})
-		requireNoError(t, stateErr)
+		require.NoError(t, stateErr)
 		existingCandidateID := existingAcceptance.User.ID
 		existingInput := &store.ExternalIdentityInvitationAcceptance{ExternalStateID: existingState.ID,
 			Identity:      &model.ExternalIdentity{UserID: existingAcceptance.User.ID, Provider: "campus-cas", Subject: "existing-target-" + model.NewID(), LastSeenAt: model.OptionalTimeFrom(model.NowUTC())},
@@ -619,35 +579,29 @@ func TestExternalIdentityAdmissionMode(t *testing.T, ss store.Store, mode model.
 			Notice:      &store.PreparedMail{Occurrence: existingAcceptance.Occurrence, Delivery: existingAcceptance.Delivery, Job: existingAcceptance.DeliveryJob},
 			AuditEvent:  existingAcceptance.AuditEvent, Capabilities: externalIdentityCapabilities(false), RequiredActions: existingAcceptance.RequiredActions}
 		existingResult, existingErr := ss.Invitation().AcceptExternalIdentity(ctx, existingInput)
-		requireNoError(t, existingErr)
-		if existingResult.User.ID != existingUser.ID || existingResult.Identity.UserID != existingUser.ID ||
-			existingResult.ClassMember.UserID != existingUser.ID {
-			t.Fatalf("existing canonical User external acceptance = %#v", existingResult)
-		}
-		if _, candidateErr := ss.User().Get(ctx, existingCandidateID); !store.IsNotFound(candidateErr) {
-			t.Fatalf("existing-User acceptance persisted prepared candidate: %v", candidateErr)
-		}
-		if _, noticeErr := ss.Mail().GetDelivery(ctx, existingAcceptance.Delivery.ID); !store.IsNotFound(noticeErr) {
-			t.Fatalf("existing-User acceptance persisted a redundant welcome: %v", noticeErr)
-		}
+		require.NoError(t, existingErr)
+		require.Equal(t, existingUser.ID, existingResult.User.ID)
+		require.Equal(t, existingUser.ID, existingResult.Identity.UserID)
+		require.Equal(t, existingUser.ID, existingResult.ClassMember.UserID)
+		_, candidateErr := ss.User().Get(ctx, existingCandidateID)
+		require.True(t, store.IsNotFound(candidateErr), "existing-User acceptance persisted prepared candidate")
+		_, noticeErr := ss.Mail().GetDelivery(ctx, existingAcceptance.Delivery.ID)
+		require.True(t, store.IsNotFound(noticeErr), "existing-User acceptance persisted a redundant welcome")
 		return
 	}
 	admitted, err := ss.ExternalIdentity().ResolveOrProvision(ctx, request)
 	if mode == model.ProviderAdmissionAutoProvision {
-		requireNoError(t, err)
-		if !admitted.Provisioned || admitted.User.ID != creation.User.ID {
-			t.Fatalf("auto_provision admission = %#v", admitted)
-		}
+		require.NoError(t, err)
+		require.True(t, admitted.Provisioned)
+		require.Equal(t, creation.User.ID, admitted.User.ID)
 		assertRelationshipFreeUser(t, ctx, ss, admitted.User.ID)
 		assertConcurrentExternalAutoProvision(t, ctx, ss, institution)
 		return
 	}
-	if !store.IsNotFound(err) || admitted != nil {
-		t.Fatalf("%s unlinked admission = %#v, %v", mode, admitted, err)
-	}
-	if _, getErr := ss.ExternalIdentity().GetByProviderSubject(ctx, request.Identity.Provider, request.Identity.Subject); !store.IsNotFound(getErr) {
-		t.Fatalf("%s persisted an unlinked identity: %v", mode, getErr)
-	}
+	require.True(t, store.IsNotFound(err), "%s unlinked admission", mode)
+	require.Nil(t, admitted, "%s unlinked admission", mode)
+	_, getErr := ss.ExternalIdentity().GetByProviderSubject(ctx, request.Identity.Provider, request.Identity.Subject)
+	require.True(t, store.IsNotFound(getErr), "%s persisted an unlinked identity", mode)
 }
 
 func establishExternalAdmissionPolicyAdministrator(
@@ -661,17 +615,17 @@ func establishExternalAdmissionPolicyAdministrator(
 	_, err := ss.PasswordCredential().Save(ctx, &model.PasswordCredential{
 		UserID: userID, PasswordHash: "$argon2id$external-admission-policy-test",
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	role, err := SaveRole(ctx, ss, &model.Role{
 		Name: model.SystemAdministratorRoleName, DisplayName: "System Administrator",
 		Permissions: model.AllActions(), BuiltIn: true,
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: userID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institutionID.String(), StartsAt: model.NowUTC().Add(-time.Second),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 }
 
 func replaceExternalAdmissionPolicy(
@@ -684,7 +638,7 @@ func replaceExternalAdmissionPolicy(
 ) {
 	t.Helper()
 	snapshot, err := ss.AccessPolicy().Get(ctx, 1)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	settings := snapshot.Policy.Settings()
 	settings.InvitationAdmissionEnabled = enabled
 	settings.InvitationLocalCredentialEnabled = enabled
@@ -696,7 +650,7 @@ func replaceExternalAdmissionPolicy(
 		ScopeType: model.RoleScopeInstitution, ScopeID: institutionID.String(),
 		Status: model.AuditStatusAttempt, NodeID: "external-identity-store-test",
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	nonce := model.NewID()
 	command := &store.CommandIdempotency{
 		UserID: actorID, Operation: "access_policy.replace.v1",
@@ -711,10 +665,10 @@ func replaceExternalAdmissionPolicy(
 		},
 		ActorID: actorID, AuditEventID: event.ID, AuditAt: model.MillisFromTime(event.CreatedAt),
 	}, command)
-	requireNoError(t, err)
-	if result == nil || !result.Changed || result.Snapshot.Policy.InvitationAdmissionEnabled != enabled {
-		t.Fatalf("invitation admission replacement = %#v", result)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.Changed)
+	require.Equal(t, enabled, result.Snapshot.Policy.InvitationAdmissionEnabled)
 }
 
 func assertConcurrentExternalAutoProvision(t *testing.T, ctx context.Context, ss store.Store, institution *model.Institution) {
@@ -748,29 +702,28 @@ func assertConcurrentExternalAutoProvision(t *testing.T, ctx context.Context, ss
 	close(start)
 	wait.Wait()
 	for _, err := range errs {
-		requireNoError(t, err)
+		require.NoError(t, err)
 	}
-	if results[0].User.ID != results[1].User.ID || results[0].Identity.ID != results[1].Identity.ID ||
-		results[0].Provisioned == results[1].Provisioned {
-		t.Fatalf("concurrent auto-provision outcomes = %#v", results)
-	}
+	require.Equal(t, results[1].User.ID, results[0].User.ID)
+	require.Equal(t, results[1].Identity.ID, results[0].Identity.ID)
+	require.NotEqual(t, results[1].Provisioned, results[0].Provisioned)
 	assertRelationshipFreeUser(t, ctx, ss, results[0].User.ID)
 }
 
 func assertRelationshipFreeUser(t *testing.T, ctx context.Context, ss store.Store, userID model.UserID) {
 	t.Helper()
 	affiliations, err := ss.Affiliation().ListByUser(ctx, userID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	academicMemberships, err := ss.AcademicUnitMember().ListByUser(ctx, userID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	classMemberships, err := ss.ClassMember().ListByUser(ctx, userID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	bindings, err := ss.RoleBinding().ListByUser(ctx, userID)
-	requireNoError(t, err)
-	if len(affiliations) != 0 || len(academicMemberships) != 0 || len(classMemberships) != 0 || len(bindings) != 0 {
-		t.Fatalf("auto-provisioned User gained authority: affiliations=%#v academic_memberships=%#v class_memberships=%#v role_bindings=%#v",
-			affiliations, academicMemberships, classMemberships, bindings)
-	}
+	require.NoError(t, err)
+	require.Empty(t, affiliations, "auto-provisioned User gained authority: affiliations")
+	require.Empty(t, academicMemberships, "auto-provisioned User gained authority: affiliations")
+	require.Empty(t, classMemberships, "auto-provisioned User gained authority: affiliations")
+	require.Empty(t, bindings, "auto-provisioned User gained authority: affiliations")
 }
 
 func externalIdentityCapabilities(autoProvision bool) store.AccessDeploymentCapabilities {

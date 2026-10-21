@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -31,66 +33,60 @@ func TestExternalLoginStateStore(t *testing.T, ss store.Store, probe ExternalLog
 		DeviceName: "Desktop",
 	}
 	saved, err := ss.ExternalLoginState().Save(ctx, input, time.Minute)
-	requireNoError(t, err)
-	if !saved.ID.IsValid() || !input.ID.IsZero() || !input.CreatedAt.IsZero() || !input.ExpiresAt.IsZero() {
-		t.Fatalf("Save() saved=%#v input=%#v", saved, input)
-	}
-	if saved.ExpiresAt.Sub(saved.CreatedAt) != time.Minute {
-		t.Fatalf("Save() lifetime = %v, want %v", saved.ExpiresAt.Sub(saved.CreatedAt), time.Minute)
-	}
+	require.NoError(t, err)
+	require.True(t, saved.ID.IsValid(), "Save() saved=%#v input=%#v", saved, input)
+	require.True(t, input.ID.IsZero(), "Save() saved=%#v input=%#v", saved, input)
+	require.True(t, input.CreatedAt.IsZero(), "Save() saved=%#v input=%#v", saved, input)
+	require.True(t, input.ExpiresAt.IsZero(), "Save() saved=%#v input=%#v", saved, input)
+	require.Equal(t, time.Minute, saved.ExpiresAt.Sub(saved.CreatedAt), "Save() lifetime")
 	got, err := ss.ExternalLoginState().GetByStateHash(ctx, saved.StateHash)
-	requireNoError(t, err)
-	if got.ID != saved.ID || got.BindingHash != saved.BindingHash {
-		t.Fatalf("GetByStateHash() = %#v", got)
-	}
-	if _, err := ss.ExternalLoginState().Consume(
+	require.NoError(t, err)
+	require.Equal(t, saved.ID, got.ID)
+	require.Equal(t, saved.BindingHash, got.BindingHash)
+	_, err = ss.ExternalLoginState().Consume(
 		ctx,
 		saved.Provider,
 		saved.StateHash,
 		model.HashToken(model.NewCredentialToken()),
-	); !store.IsNotFound(err) {
-		t.Fatalf("Consume(wrong binding) error = %v", err)
-	}
+	)
+	require.True(t, store.IsNotFound(err), "Consume(wrong binding) error")
 	consumed, err := ss.ExternalLoginState().Consume(
 		ctx,
 		saved.Provider,
 		saved.StateHash,
 		saved.BindingHash,
 	)
-	requireNoError(t, err)
-	if !consumed.ConsumedAt.Valid || consumed.ConsumedAt.Time.Before(saved.CreatedAt) || !consumed.ConsumedAt.Time.Before(saved.ExpiresAt) {
-		t.Fatalf("Consume() = %#v", consumed)
-	}
-	if _, err := ss.ExternalLoginState().Consume(
+	require.NoError(t, err)
+	require.True(t, consumed.ConsumedAt.Valid)
+	require.False(t, consumed.ConsumedAt.Time.Before(saved.CreatedAt))
+	require.True(t, consumed.ConsumedAt.Time.Before(saved.ExpiresAt))
+	_, err = ss.ExternalLoginState().Consume(
 		ctx,
 		saved.Provider,
 		saved.StateHash,
 		saved.BindingHash,
-	); !store.IsNotFound(err) {
-		t.Fatalf("Consume(replay) error = %v", err)
-	}
+	)
+	require.True(t, store.IsNotFound(err), "Consume(replay) error")
 
 	fixture, class, inviter, _, _, issuedAt := invitationAcceptanceStoreFixture(t, ctx, ss, "external-admission")
 	issue := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt)
 	invitation, err := ss.Invitation().IssueStudentClass(ctx, issue)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	admissionInput := &model.ExternalLoginState{
 		Provider: "campus-cas", Purpose: model.ExternalAuthenticationPurposeInvitationAdmission,
 		StateHash: model.HashToken(model.NewCredentialToken()), BindingHash: model.HashToken(model.NewCredentialToken()),
 		ReturnTo: "/join", ClientType: model.SessionClientWeb,
 	}
 	admission, err := ss.ExternalLoginState().SaveInvitationAdmission(ctx, admissionInput, time.Minute, invitation.ClaimHash)
-	requireNoError(t, err)
-	if admission.InvitationID != invitation.ID || !admissionInput.InvitationID.IsZero() {
-		t.Fatalf("SaveInvitationAdmission() = %#v input=%#v", admission, admissionInput)
-	}
-	if _, err = ss.ExternalLoginState().SaveInvitationAdmission(ctx, &model.ExternalLoginState{
+	require.NoError(t, err)
+	require.Equal(t, invitation.ID, admission.InvitationID, "SaveInvitationAdmission() = %#v input=%#v", admission, admissionInput)
+	require.True(t, admissionInput.InvitationID.IsZero(), "SaveInvitationAdmission() = %#v input=%#v", admission, admissionInput)
+	_, err = ss.ExternalLoginState().SaveInvitationAdmission(ctx, &model.ExternalLoginState{
 		Provider: "campus-cas", Purpose: model.ExternalAuthenticationPurposeInvitationAdmission,
 		StateHash: model.HashToken(model.NewCredentialToken()), BindingHash: model.HashToken(model.NewCredentialToken()),
 		ReturnTo: "/join", ClientType: model.SessionClientWeb,
-	}, time.Minute, model.HashInvitationClaim(model.NewCredentialToken())); !store.IsNotFound(err) {
-		t.Fatalf("SaveInvitationAdmission(unknown claim) error = %v", err)
-	}
+	}, time.Minute, model.HashInvitationClaim(model.NewCredentialToken()))
+	require.True(t, store.IsNotFound(err), "SaveInvitationAdmission(unknown claim) error")
 
 	expired := &model.ExternalLoginState{
 		Provider:    "campus-cas",
@@ -99,17 +95,16 @@ func TestExternalLoginStateStore(t *testing.T, ss store.Store, probe ExternalLog
 		ReturnTo:    "/", ClientType: model.SessionClientWeb,
 	}
 	expired, err = ss.ExternalLoginState().Save(ctx, expired, 2*time.Minute)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	pastExpiry := model.NowUTC().Add(-time.Minute)
 	probe.Backdate(t, expired.ID, pastExpiry.Add(-2*time.Minute), pastExpiry)
-	if _, err := ss.ExternalLoginState().Consume(
+	_, err = ss.ExternalLoginState().Consume(
 		ctx,
 		expired.Provider,
 		expired.StateHash,
 		expired.BindingHash,
-	); !store.IsNotFound(err) {
-		t.Fatalf("Consume(expired) error = %v", err)
-	}
+	)
+	require.True(t, store.IsNotFound(err), "Consume(expired) error")
 
 	user := saveUser(t, ctx, ss)
 	institution := saveInstitution(t, ctx, ss)
@@ -117,45 +112,40 @@ func TestExternalLoginStateStore(t *testing.T, ss store.Store, probe ExternalLog
 		Action: string(model.ActionExternalIdentityManage), Resource: model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt,
 		NodeID: "external-login-maintenance-test"})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	abandoned, err := ss.ExternalLoginState().Save(ctx, &model.ExternalLoginState{Provider: "campus-cas",
 		Purpose: model.ExternalAuthenticationPurposeConnect, TargetUserID: user.ID, AuditEventID: audit.ID.String(),
 		StateHash: model.HashToken(model.NewCredentialToken()), BindingHash: model.HashToken(model.NewCredentialToken()),
 		ReturnTo: "/account/security", ClientType: model.SessionClientWeb}, time.Minute)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	pastExpiry = model.NowUTC().Add(-time.Minute)
 	probe.Backdate(t, abandoned.ID, pastExpiry.Add(-time.Minute), pastExpiry)
 	maintained, err := ss.ExternalLoginState().Maintain(ctx, 1)
-	requireNoError(t, err)
-	if maintained.Terminalized != 1 || maintained.Purged != 0 || maintained.More {
-		t.Fatalf("Maintain(abandoned) = %#v", maintained)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 1, maintained.Terminalized)
+	require.Equal(t, 0, maintained.Purged)
+	require.False(t, maintained.More)
 	terminalAudit, err := ss.Audit().Get(ctx, audit.ID)
-	requireNoError(t, err)
-	if terminalAudit.Status != model.AuditStatusFail || terminalAudit.ErrorCode != "authentication.external.expired" {
-		t.Fatalf("abandoned audit = %#v", terminalAudit)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.AuditStatusFail, terminalAudit.Status)
+	require.Equal(t, "authentication.external.expired", terminalAudit.ErrorCode)
 	retainedExpiry := model.NowUTC().Add(-25 * time.Hour)
 	probe.Backdate(t, abandoned.ID, retainedExpiry.Add(-time.Minute), retainedExpiry)
 	maintained, err = ss.ExternalLoginState().Maintain(ctx, 1)
-	requireNoError(t, err)
-	if maintained.Terminalized != 0 || maintained.Purged != 1 {
-		t.Fatalf("Maintain(retained) = %#v", maintained)
-	}
-	if _, err = ss.ExternalLoginState().GetByStateHash(ctx, abandoned.StateHash); !store.IsNotFound(err) {
-		t.Fatalf("purged state error = %v", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 0, maintained.Terminalized)
+	require.Equal(t, 1, maintained.Purged)
+	_, err = ss.ExternalLoginState().GetByStateHash(ctx, abandoned.StateHash)
+	require.True(t, store.IsNotFound(err), "purged state error")
 	for _, invalidLimit := range []int{0, 1001} {
-		if _, err = ss.ExternalLoginState().Maintain(ctx, invalidLimit); err == nil {
-			t.Fatalf("Maintain(%d) accepted invalid limit", invalidLimit)
-		}
+		_, err = ss.ExternalLoginState().Maintain(ctx, invalidLimit)
+		require.Error(t, err, "Maintain(%d) accepted invalid limit", invalidLimit)
 	}
 	for _, invalidLifetime := range []time.Duration{0, time.Minute - time.Millisecond, 30*time.Minute + time.Millisecond} {
-		if _, err = ss.ExternalLoginState().Save(ctx, &model.ExternalLoginState{
+		_, err = ss.ExternalLoginState().Save(ctx, &model.ExternalLoginState{
 			Provider: "campus-cas", StateHash: model.HashToken(model.NewCredentialToken()),
 			BindingHash: model.HashToken(model.NewCredentialToken()), ReturnTo: "/", ClientType: model.SessionClientWeb,
-		}, invalidLifetime); err == nil {
-			t.Fatalf("Save(lifetime=%v) accepted invalid lifetime", invalidLifetime)
-		}
+		}, invalidLifetime)
+		require.Error(t, err, "Save(lifetime=%v) accepted invalid lifetime", invalidLifetime)
 	}
 }

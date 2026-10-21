@@ -11,11 +11,11 @@ package sqlstore
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
 	"github.com/lib/pq"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store/storetest"
@@ -38,9 +38,7 @@ func TestSessionCanonicalIDConstraintsRejectNoncanonicalValues(t *testing.T) {
 		{Kind: model.SessionCredentialAccess, TokenHash: model.HashToken("session-constraint-access"), ExpiresAt: now.Add(30 * time.Minute)},
 		{Kind: model.SessionCredentialRefresh, TokenHash: model.HashToken("session-constraint-refresh"), ExpiresAt: now.Add(2 * time.Hour)},
 	}, 10))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var refreshID string
 	for _, credential := range credentials {
 		if credential.Kind == model.SessionCredentialRefresh {
@@ -48,9 +46,7 @@ func TestSessionCanonicalIDConstraintsRejectNoncanonicalValues(t *testing.T) {
 			break
 		}
 	}
-	if refreshID == "" {
-		t.Fatal("saved session has no refresh credential")
-	}
+	require.NotEmpty(t, refreshID, "saved session has no refresh credential")
 
 	tests := []struct {
 		name       string
@@ -70,9 +66,9 @@ func TestSessionCanonicalIDConstraintsRejectNoncanonicalValues(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := persistence.GetMaster().Exec(ctx, test.query, test.id)
 			var postgresErr *pq.Error
-			if !errors.As(err, &postgresErr) || string(postgresErr.Code) != "23514" || postgresErr.Constraint != test.constraint {
-				t.Fatalf("constraint error = %#v, want check violation %s", err, test.constraint)
-			}
+			require.ErrorAs(t, err, &postgresErr, "constraint error")
+			require.Equal(t, "23514", string(postgresErr.Code), "constraint error")
+			require.Equal(t, test.constraint, postgresErr.Constraint, "constraint error")
 		})
 	}
 }

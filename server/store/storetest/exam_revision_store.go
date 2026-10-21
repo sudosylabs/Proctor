@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -57,15 +59,15 @@ func testExamRevisionStore(t *testing.T, ss store.Store, probe *ExamRevisionRete
 
 	resource := reserveExamResource(t, ctx, ss, examID, creator.ID, model.NewExamResourceID(), "Reference", 0, 1, at.Add(time.Second), model.ExamResourceMediaText, nil)
 	resourceResult, err := ss.ExamResource().FinalizeUpload(ctx, resource.finalization, examCommand(creator.ID, "exam.resource.add.v1", "revision-resource", "revision-resource-command"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	directoryID := model.NewStarterWorkspaceEntryID()
 	directory := starterWorkspaceMutation(t, ctx, ss, examID, creator.ID, unit.ID, 2, directoryID, "cmd", at.Add(2*time.Second))
 	_, err = ss.ExamStarterWorkspace().CreateDirectory(ctx, directory, examCommand(creator.ID, "exam.starter_workspace.directory.create.v1", "revision-directory", "revision-directory-command"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	fileID := model.NewStarterWorkspaceEntryID()
 	file := reserveStarterWorkspaceObject(t, ctx, ss, examID, creator.ID, unit.ID, 3, fileID, "cmd/main.go", at.Add(3*time.Second), 12)
 	fileResult, err := ss.ExamStarterWorkspace().CreateFile(ctx, file, examCommand(creator.ID, "exam.starter_workspace.file.create.v1", "revision-file", "revision-file-command"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	retentionFixture := ExamRevisionRetentionFixture{OldResourceRevisionID: resourceResult.Value.Resource.SelectedFileRevisionID,
 		OldResourceRenditionID: resourceResult.Value.Rendition.ID, OldWorkspaceObjectID: fileResult.Object.ID,
 		ExamID: examID, ActorUserID: creator.ID, Past: at}
@@ -78,47 +80,48 @@ func testExamRevisionStore(t *testing.T, ss store.Store, probe *ExamRevisionRete
 	rollbackInput := examRevisionPublication(t, ctx, ss, examID, creator.ID, unit.ID, 4, at.Add(3500*time.Millisecond))
 	rollbackInput.AuditEventID = model.NewAuditEventID()
 	_, err = ss.ExamRevision().Publish(ctx, rollbackInput, examCommand(creator.ID, "exam.revision.publish.v1", "revision-rollback", "revision-rollback-command"))
-	if err == nil {
-		t.Fatal("publication with a missing audit attempt committed")
-	}
+	require.Error(t, err, "publication with a missing audit attempt committed")
 	rolledBack, err := ss.ExamRevision().List(ctx, store.ExamRevisionListOptions{ExamID: examID, Limit: 10})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	authoringAfterRollback, authoringErr := ss.ExamAuthoring().Get(ctx, examID, creator.ID)
-	requireNoError(t, authoringErr)
-	if len(rolledBack) != 0 || authoringAfterRollback.Exam.Revision != 1 || authoringAfterRollback.Draft.Revision != 4 ||
-		!authoringAfterRollback.Exam.DefaultRevisionID.IsZero() || !authoringAfterRollback.Draft.BaseRevisionID.IsZero() {
-		t.Fatalf("failed publication leaked state: revisions=%#v authoring=%#v", rolledBack, authoringAfterRollback)
-	}
+	require.NoError(t, authoringErr)
+	require.Empty(t, rolledBack, "failed publication leaked state: revisions=%#v authoring=%#v", rolledBack, authoringAfterRollback)
+	require.Equal(t, int64(1), authoringAfterRollback.Exam.Revision, "failed publication leaked state: revisions=%#v authoring=%#v", rolledBack, authoringAfterRollback)
+	require.Equal(t, int64(4), authoringAfterRollback.Draft.Revision, "failed publication leaked state: revisions=%#v authoring=%#v", rolledBack, authoringAfterRollback)
+	require.True(t, authoringAfterRollback.Exam.DefaultRevisionID.IsZero(), "failed publication leaked state: revisions=%#v authoring=%#v", rolledBack, authoringAfterRollback)
+	require.True(t, authoringAfterRollback.Draft.BaseRevisionID.IsZero(), "failed publication leaked state: revisions=%#v authoring=%#v", rolledBack, authoringAfterRollback)
 	capacity := model.DefaultExamCapacityPolicy()
 	capacity.WorkspaceMaximumEntries = 1
 	institution.ExamCapacity = capacity
 	institution, err = UpdateInstitution(ctx, ss, institution)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	capacityInput := examRevisionPublication(t, ctx, ss, examID, creator.ID, unit.ID, 4, at.Add(3750*time.Millisecond))
 	_, err = ss.ExamRevision().Publish(ctx, capacityInput,
 		examCommand(creator.ID, "exam.revision.publish.v1", "revision-capacity", "revision-capacity-command"))
 	var capacityConflict *store.ErrConflict
-	if !errors.As(err, &capacityConflict) || capacityConflict.Constraint != "exam_revision_capacity" {
-		t.Fatalf("publication capacity error=%v", err)
-	}
+	require.ErrorAs(t, err, &capacityConflict)
+	require.Equal(t, "exam_revision_capacity", capacityConflict.Constraint)
 	institution.ExamCapacity = model.DefaultExamCapacityPolicy()
 	institution, err = UpdateInstitution(ctx, ss, institution)
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	firstInput := examRevisionPublication(t, ctx, ss, examID, creator.ID, unit.ID, 4, at.Add(4*time.Second))
 	firstCommand := examCommand(creator.ID, "exam.revision.publish.v1", "revision-publish", "revision-publish-command")
 	first, err := ss.ExamRevision().Publish(ctx, firstInput, firstCommand)
-	requireNoError(t, err)
-	if first.Replayed || first.Revision.Number != 1 || first.Revision.SourceDraftRevision != 4 || first.DraftRevision != 5 || first.ExamRevision != 2 || first.Revision.BaseRevisionID != "" {
-		t.Fatalf("first publication=%#v", first)
-	}
+	require.NoError(t, err)
+	require.False(t, first.Replayed)
+	require.Equal(t, int64(1), first.Revision.Number)
+	require.Equal(t, int64(4), first.Revision.SourceDraftRevision)
+	require.Equal(t, int64(5), first.DraftRevision)
+	require.Equal(t, int64(2), first.ExamRevision)
+	require.Empty(t, first.Revision.BaseRevisionID)
 	firstSnapshot, err := ss.ExamRevision().GetSnapshot(ctx, examID, first.Revision.ID)
-	requireNoError(t, err)
-	if len(firstSnapshot.Resources) != 1 || firstSnapshot.Resources[0].FileRevisionID != resourceResult.Value.Resource.SelectedFileRevisionID ||
-		len(firstSnapshot.StarterWorkspace) != 2 || firstSnapshot.StarterWorkspace[1].ObjectID != fileResult.Object.ID ||
-		firstSnapshot.Capacity != model.DefaultExamCapacityPolicy() {
-		t.Fatalf("publication did not pin exact Draft: %#v", firstSnapshot)
-	}
+	require.NoError(t, err)
+	require.Len(t, firstSnapshot.Resources, 1)
+	require.Equal(t, resourceResult.Value.Resource.SelectedFileRevisionID, firstSnapshot.Resources[0].FileRevisionID)
+	require.Len(t, firstSnapshot.StarterWorkspace, 2)
+	require.Equal(t, fileResult.Object.ID, firstSnapshot.StarterWorkspace[1].ObjectID)
+	require.Equal(t, model.DefaultExamCapacityPolicy(), firstSnapshot.Capacity)
 	retentionFixture.RevisionID = first.Revision.ID
 	retentionFixture.ResourceID = firstSnapshot.Resources[0].ResourceID
 	retentionFixture.OldResourceEntryID = firstSnapshot.Resources[0].FileEntryID
@@ -127,17 +130,17 @@ func testExamRevisionStore(t *testing.T, ss store.Store, probe *ExamRevisionRete
 	// generated Revision ID. The stored outcome must win before stale/no-change.
 	retry := examRevisionPublication(t, ctx, ss, examID, creator.ID, unit.ID, 4, at.Add(5*time.Second))
 	replayed, err := ss.ExamRevision().Publish(ctx, retry, firstCommand)
-	requireNoError(t, err)
-	if !replayed.Replayed || replayed.Revision.ID != first.Revision.ID || replayed.DraftRevision != 5 || replayed.ExamRevision != 2 {
-		t.Fatalf("publication replay=%#v", replayed)
-	}
+	require.NoError(t, err)
+	require.True(t, replayed.Replayed)
+	require.Equal(t, first.Revision.ID, replayed.Revision.ID)
+	require.Equal(t, int64(5), replayed.DraftRevision)
+	require.Equal(t, int64(2), replayed.ExamRevision)
 
 	unchanged := examRevisionPublication(t, ctx, ss, examID, creator.ID, unit.ID, 5, at.Add(6*time.Second))
 	_, err = ss.ExamRevision().Publish(ctx, unchanged, examCommand(creator.ID, "exam.revision.publish.v1", "revision-no-change", "revision-no-change-command"))
 	var conflict *store.ErrConflict
-	if !errors.As(err, &conflict) || conflict.Constraint != "exam_revision_no_changes" {
-		t.Fatalf("unchanged publication error=%v", err)
-	}
+	require.ErrorAs(t, err, &conflict)
+	require.Equal(t, "exam_revision_no_changes", conflict.Constraint)
 
 	// Change both content families after publication. The first Revision must
 	// keep its exact old bytes while the second freezes the new selections.
@@ -146,49 +149,48 @@ func testExamRevisionStore(t *testing.T, ss store.Store, probe *ExamRevisionRete
 	alteredCapacity.WorkspaceMaximumEntries = 750
 	institution.ExamCapacity = alteredCapacity
 	_, err = UpdateInstitution(ctx, ss, institution)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	replacement := reserveExamResource(t, ctx, ss, examID, creator.ID, resourceResult.Value.Resource.ID, "Reference", 0, 5, at.Add(7*time.Second), model.ExamResourceMediaText, resourceResult.Value)
 	replacedResource, err := ss.ExamResource().FinalizeUpload(ctx, replacement.finalization, examCommand(creator.ID, "exam.resource.replace.v1", "revision-resource-replace", "revision-resource-replace-command"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	workspaceReplacement := reserveStarterWorkspaceObject(t, ctx, ss, examID, creator.ID, unit.ID, 6, fileID, "", at.Add(8*time.Second), 14)
 	workspaceReplacement.ExpectedContentVersion = fileResult.Object.ContentVersion
 	replacedWorkspace, err := ss.ExamStarterWorkspace().ReplaceFile(ctx, workspaceReplacement, examCommand(creator.ID, "exam.starter_workspace.file.replace.v1", "revision-workspace-replace", "revision-workspace-replace-command"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	secondInput := examRevisionPublication(t, ctx, ss, examID, creator.ID, unit.ID, 7, at.Add(9*time.Second))
 	second, err := ss.ExamRevision().Publish(ctx, secondInput, examCommand(creator.ID, "exam.revision.publish.v1", "revision-publish-second", "revision-publish-second-command"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	secondSnapshot, err := ss.ExamRevision().GetSnapshot(ctx, examID, second.Revision.ID)
-	requireNoError(t, err)
-	if second.Revision.Number != 2 || second.Revision.BaseRevisionID != first.Revision.ID || secondSnapshot.Capacity != alteredCapacity ||
-		secondSnapshot.Resources[0].FileRevisionID != replacedResource.Value.Resource.SelectedFileRevisionID || secondSnapshot.StarterWorkspace[1].ObjectID != replacedWorkspace.Object.ID {
-		t.Fatalf("second publication=%#v", second)
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(2), second.Revision.Number)
+	require.Equal(t, first.Revision.ID, second.Revision.BaseRevisionID)
+	require.Equal(t, alteredCapacity, secondSnapshot.Capacity)
+	require.Equal(t, replacedResource.Value.Resource.SelectedFileRevisionID, secondSnapshot.Resources[0].FileRevisionID)
+	require.Equal(t, replacedWorkspace.Object.ID, secondSnapshot.StarterWorkspace[1].ObjectID)
 	retained, err := ss.ExamRevision().GetSnapshot(ctx, examID, first.Revision.ID)
-	requireNoError(t, err)
-	if retained.Capacity != model.DefaultExamCapacityPolicy() || retained.Resources[0].FileRevisionID != resourceResult.Value.Resource.SelectedFileRevisionID || retained.StarterWorkspace[1].ObjectID != fileResult.Object.ID {
-		t.Fatalf("published history changed=%#v", retained)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.DefaultExamCapacityPolicy(), retained.Capacity)
+	require.Equal(t, resourceResult.Value.Resource.SelectedFileRevisionID, retained.Resources[0].FileRevisionID)
+	require.Equal(t, fileResult.Object.ID, retained.StarterWorkspace[1].ObjectID)
 	summary, err := ss.ExamRevision().GetSummary(ctx, examID, first.Revision.ID)
-	requireNoError(t, err)
-	if summary.ResourceCount != 1 || summary.StarterWorkspaceEntries != 2 || summary.PolicyDigest != first.Revision.PolicyDigest {
-		t.Fatalf("summary=%#v", summary)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 1, summary.ResourceCount)
+	require.Equal(t, 2, summary.StarterWorkspaceEntries)
+	require.Equal(t, first.Revision.PolicyDigest, summary.PolicyDigest)
 	listed, err := ss.ExamRevision().List(ctx, store.ExamRevisionListOptions{ExamID: examID, Limit: 1})
-	requireNoError(t, err)
-	if len(listed) != 1 || listed[0].ID != second.Revision.ID {
-		t.Fatalf("first revision page=%#v", listed)
-	}
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	require.Equal(t, second.Revision.ID, listed[0].ID)
 	listed, err = ss.ExamRevision().List(ctx, store.ExamRevisionListOptions{ExamID: examID, BeforeNumber: listed[0].Number, BeforeRevisionID: listed[0].ID, Limit: 200})
-	requireNoError(t, err)
-	if len(listed) != 1 || listed[0].ID != first.Revision.ID {
-		t.Fatalf("second revision page=%#v", listed)
-	}
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	require.Equal(t, first.Revision.ID, listed[0].ID)
 
 	// The Exam/Draft lock serializes two fresh commands against the same fence:
 	// exactly one publishes and the loser observes the advanced Draft.
 	thirdReplacement := reserveExamResource(t, ctx, ss, examID, creator.ID, resourceResult.Value.Resource.ID, "Reference", 0, 8, at.Add(10*time.Second), model.ExamResourceMediaText, replacedResource.Value)
 	thirdResource, err := ss.ExamResource().FinalizeUpload(ctx, thirdReplacement.finalization, examCommand(creator.ID, "exam.resource.replace.v1", "revision-race-replace", "revision-race-replace-command"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	inputs := []*store.ExamRevisionPublication{
 		examRevisionPublication(t, ctx, ss, examID, creator.ID, unit.ID, 9, at.Add(11*time.Second)),
 		examRevisionPublication(t, ctx, ss, examID, creator.ID, unit.ID, 9, at.Add(12*time.Second)),
@@ -219,15 +221,14 @@ func testExamRevisionStore(t *testing.T, ss store.Store, probe *ExamRevisionRete
 			stale++
 		}
 	}
-	if successes != 1 || stale != 1 {
-		t.Fatalf("concurrent publications successes=%d stale=%d errors=%v", successes, stale, errs)
-	}
+	require.Equal(t, 1, successes, "concurrent publications successes=%d stale=%d errors=%v", successes, stale, errs)
+	require.Equal(t, 1, stale, "concurrent publications successes=%d stale=%d errors=%v", successes, stale, errs)
 
 	// Publication and each authoring family share the same Exam/Draft lock. A
 	// race must produce one complete before-or-after state, never a mixed one.
 	raceTitle := "Revision race title"
 	_, err = ss.ExamAuthoring().UpdateDraftText(ctx, newExamDraftTextUpdate(t, ctx, ss, examID, creator.ID, 10, &raceTitle, nil, at.Add(13*time.Second)), examCommand(creator.ID, "exam.draft.text.edit.v1", "revision-race-title", "revision-race-title-command"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	fourthReplacement := reserveExamResource(t, ctx, ss, examID, creator.ID, resourceResult.Value.Resource.ID, "Reference", 0, 11, at.Add(14*time.Second), model.ExamResourceMediaText, thirdResource.Value)
 	resourceRacePublication := examRevisionPublication(t, ctx, ss, examID, creator.ID, unit.ID, 11, at.Add(15*time.Second))
 	var resourceRaceRevision *store.ExamRevisionPublicationResult
@@ -246,15 +247,14 @@ func testExamRevisionStore(t *testing.T, ss store.Store, probe *ExamRevisionRete
 	assertOneRevisionRaceWinner(t, publicationErr, resourceErr)
 	if resourceRaceRevision != nil {
 		snapshot, snapshotErr := ss.ExamRevision().GetSnapshot(ctx, examID, resourceRaceRevision.Revision.ID)
-		requireNoError(t, snapshotErr)
-		if snapshot.Resources[0].FileRevisionID != thirdResource.Value.Resource.SelectedFileRevisionID || resourceRaceResource != nil {
-			t.Fatalf("resource race produced mixed snapshot=%#v mutation=%#v", snapshot, resourceRaceResource)
-		}
+		require.NoError(t, snapshotErr)
+		require.Equal(t, thirdResource.Value.Resource.SelectedFileRevisionID, snapshot.Resources[0].FileRevisionID, "resource race produced mixed snapshot=%#v mutation", snapshot)
+		require.Nil(t, resourceRaceResource, "resource race produced mixed snapshot=%#v mutation", snapshot)
 	}
 
 	raceInstructions := "Revision race instructions"
 	_, err = ss.ExamAuthoring().UpdateDraftText(ctx, newExamDraftTextUpdate(t, ctx, ss, examID, creator.ID, 12, nil, &raceInstructions, at.Add(16*time.Second)), examCommand(creator.ID, "exam.draft.text.edit.v1", "revision-race-instructions", "revision-race-instructions-command"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	workspaceRace := reserveStarterWorkspaceObject(t, ctx, ss, examID, creator.ID, unit.ID, 13, fileID, "", at.Add(17*time.Second), 16)
 	workspaceRace.ExpectedContentVersion = replacedWorkspace.Object.ContentVersion
 	workspaceRacePublication := examRevisionPublication(t, ctx, ss, examID, creator.ID, unit.ID, 13, at.Add(18*time.Second))
@@ -274,10 +274,9 @@ func testExamRevisionStore(t *testing.T, ss store.Store, probe *ExamRevisionRete
 	assertOneRevisionRaceWinner(t, workspacePublicationErr, workspaceErr)
 	if workspaceRaceRevision != nil {
 		snapshot, snapshotErr := ss.ExamRevision().GetSnapshot(ctx, examID, workspaceRaceRevision.Revision.ID)
-		requireNoError(t, snapshotErr)
-		if snapshot.StarterWorkspace[1].ObjectID != replacedWorkspace.Object.ID || workspaceRaceResult != nil {
-			t.Fatalf("Starter Workspace race produced mixed snapshot=%#v mutation=%#v", snapshot, workspaceRaceResult)
-		}
+		require.NoError(t, snapshotErr)
+		require.Equal(t, replacedWorkspace.Object.ID, snapshot.StarterWorkspace[1].ObjectID, "Starter Workspace race produced mixed snapshot=%#v mutation", snapshot)
+		require.Nil(t, workspaceRaceResult, "Starter Workspace race produced mixed snapshot=%#v mutation", snapshot)
 	}
 	if probe != nil && probe.Verify != nil {
 		probe.Verify(t, ctx, ss, retentionFixture)
@@ -286,17 +285,14 @@ func testExamRevisionStore(t *testing.T, ss store.Store, probe *ExamRevisionRete
 
 func assertOneRevisionRaceWinner(t *testing.T, publishErr, authoringErr error) {
 	t.Helper()
-	if (publishErr == nil) == (authoringErr == nil) {
-		t.Fatalf("race publish error=%v authoring error=%v; want exactly one success", publishErr, authoringErr)
-	}
+	require.NotEqual(t, authoringErr == nil, publishErr == nil, "race publish error=%v authoring error=%v; want exactly one success", publishErr, authoringErr)
 	loser := publishErr
 	if loser == nil {
 		loser = authoringErr
 	}
 	var conflict *store.ErrConflict
-	if !errors.As(loser, &conflict) || conflict.Constraint != "exam_draft_revision" {
-		t.Fatalf("race loser error=%v, want Draft revision conflict", loser)
-	}
+	require.ErrorAs(t, loser, &conflict, "race loser error")
+	require.Equal(t, "exam_draft_revision", conflict.Constraint, "race loser error")
 }
 
 func examRevisionPublication(t *testing.T, ctx context.Context, ss store.Store, examID model.ExamID, actorID model.UserID, unitID model.AcademicUnitID, expected int64, at time.Time) *store.ExamRevisionPublication {

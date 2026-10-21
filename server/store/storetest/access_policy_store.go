@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -32,42 +34,38 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	bootstrap, err := ss.Installation().Bootstrap(ctx, testInstallationBootstrap(301))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	snapshot, err := ss.AccessPolicy().Get(ctx, model.AccessPolicyTransitionHistoryLimit)
-	requireNoError(t, err)
-	if snapshot.Policy.ID != bootstrap.AccessPolicy.ID || snapshot.Policy.Revision != 1 || len(snapshot.History) != 0 {
-		t.Fatalf("initial policy snapshot = %#v", snapshot)
-	}
+	require.NoError(t, err)
+	require.Equal(t, bootstrap.AccessPolicy.ID, snapshot.Policy.ID)
+	require.Equal(t, int64(1), snapshot.Policy.Revision)
+	require.Empty(t, snapshot.History)
 
 	settings := snapshot.Policy.Settings()
 	settings.LocalLoginEnabled = false
 	settings.InvitationLocalCredentialEnabled = false
 	blocked, err := ss.AccessPolicy().Preflight(ctx, &store.AccessPolicyPreflight{ExpectedRevision: 1, Settings: settings,
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}}, CheckedAt: model.NowUTC()})
-	requireNoError(t, err)
-	if !hasAccessPolicyBlocker(blocked, store.AccessPolicyBlockerLastAdministratorPath, "") {
-		t.Fatalf("local lockout blockers = %#v", blocked)
-	}
+	require.NoError(t, err)
+	require.True(t, hasAccessPolicyBlocker(blocked, store.AccessPolicyBlockerLastAdministratorPath, ""), "local lockout blockers = %#v", blocked)
 
 	_, err = ss.ExternalIdentity().Save(ctx, &model.ExternalIdentity{UserID: bootstrap.Administrator.ID,
 		Provider: "campus", Subject: "admin-subject", LastSeenAt: model.OptionalTimeFrom(model.NowUTC())})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	localOnlyResult, err := ss.User().Create(ctx, testUserCreation(newUser(), &model.PasswordCredential{PasswordHash: "encoded-password"}))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: localOnlyResult.User.ID, RoleID: bootstrap.Role.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: bootstrap.Institution.ID.String(),
 		StartsAt: model.TimeFromMillis(model.GetMillis() - 100),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	settings.ProviderAdmissions["campus"] = model.ProviderAdmissionLinkedOnly
 	capabilities := store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"campus": {AutoProvision: true}}, DurableMail: true}
 	blocked, err = ss.AccessPolicy().Preflight(ctx, &store.AccessPolicyPreflight{ExpectedRevision: 1, Settings: settings,
 		Capabilities: capabilities, CheckedAt: model.NowUTC()})
-	requireNoError(t, err)
-	if len(blocked) != 0 {
-		t.Fatalf("linked administrator blockers = %#v", blocked)
-	}
+	require.NoError(t, err)
+	require.Empty(t, blocked)
 	passwordSession, _, _ := saveSession(t, ctx, ss, bootstrap.Administrator.ID.String(), 10)
 
 	command := &store.CommandIdempotency{UserID: bootstrap.Administrator.ID, Operation: "access_policy.replace.v1",
@@ -78,11 +76,12 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 	}
 	prepareAccessPolicyAttempt(t, ctx, ss, bootstrap, replacement)
 	result, err := ss.AccessPolicy().Replace(ctx, replacement, command)
-	requireNoError(t, err)
-	if result.Replayed || !result.Changed || result.Snapshot.Policy.Revision != 2 || len(result.Snapshot.History) != 1 ||
-		result.Snapshot.History[0].ActorID != bootstrap.Administrator.ID {
-		t.Fatalf("replacement result = %#v", result)
-	}
+	require.NoError(t, err)
+	require.False(t, result.Replayed)
+	require.True(t, result.Changed)
+	require.Equal(t, int64(2), result.Snapshot.Policy.Revision)
+	require.Len(t, result.Snapshot.History, 1)
+	require.Equal(t, bootstrap.Administrator.ID, result.Snapshot.History[0].ActorID)
 	// The replacement deliberately leaves the first administrator's external
 	// identity as the installation's only usable path. The second administrator
 	// has a password, but local login is now disabled by policy.
@@ -93,12 +92,11 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 		AuditEventID: disableAttempt.ID, AuditAt: model.MillisFromTime(disableAttempt.CreatedAt),
 	}))
 	var lastPathConflict *store.ErrConflict
-	if !errors.As(err, &lastPathConflict) || lastPathConflict.Constraint != "users_last_system_admin" {
-		t.Fatalf("disable only usable administrator path error = %v", err)
-	}
-	if _, err = EndRoleBinding(ctx, ss, bootstrap.RoleBinding.ID, model.GetMillis()); !errors.As(err, &lastPathConflict) || lastPathConflict.Constraint != "role_bindings_last_system_admin" {
-		t.Fatalf("end only usable administrator path binding error = %v", err)
-	}
+	require.ErrorAs(t, err, &lastPathConflict)
+	require.Equal(t, "users_last_system_admin", lastPathConflict.Constraint)
+	_, err = EndRoleBinding(ctx, ss, bootstrap.RoleBinding.ID, model.GetMillis())
+	require.ErrorAs(t, err, &lastPathConflict)
+	require.Equal(t, "role_bindings_last_system_admin", lastPathConflict.Constraint)
 	// Durable policy retains campus while deployment capability snapshots may
 	// remove it. Omission must fail closed; restoring the exact provider makes
 	// the external administrator usable again. Local credentials remain governed
@@ -109,9 +107,8 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 		Disabled: true, ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: removedProviderAttempt.ID, AuditAt: model.MillisFromTime(removedProviderAttempt.CreatedAt),
 	}))
-	if !errors.As(err, &lastPathConflict) || lastPathConflict.Constraint != "users_last_system_admin" {
-		t.Fatalf("removed provider counted as a usable administrator path: %v", err)
-	}
+	require.ErrorAs(t, err, &lastPathConflict)
+	require.Equal(t, "users_last_system_admin", lastPathConflict.Constraint)
 	availableProviderAttempt := saveUserProfileAuditAttempt(t, ctx, ss, localOnlyResult.User.ID.String())
 	disabledLocalOnly, err := ss.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: localOnlyResult.User.ID, ExpectedRevision: localOnlyResult.User.Revision,
@@ -119,48 +116,43 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 		RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: availableProviderAttempt.ID,
 		AuditAt: model.MillisFromTime(availableProviderAttempt.CreatedAt),
 	}))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	reenableLocalOnlyAttempt := saveUserProfileAuditAttempt(t, ctx, ss, localOnlyResult.User.ID.String())
 	_, err = ss.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: localOnlyResult.User.ID, ExpectedRevision: disabledLocalOnly.User.Revision,
 		Disabled: false, ChangedAt: model.GetMillis(), AuditEventID: reenableLocalOnlyAttempt.ID,
 		AuditAt: model.MillisFromTime(reenableLocalOnlyAttempt.CreatedAt),
 	}))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	replayReplacement := &store.AccessPolicyReplacement{Preflight: replacement.Preflight, ActorID: bootstrap.Administrator.ID}
 	prepareAccessPolicyAttempt(t, ctx, ss, bootstrap, replayReplacement)
 	replay, err := ss.AccessPolicy().Replace(ctx, replayReplacement, command)
-	requireNoError(t, err)
-	if !replay.Replayed || replay.Snapshot.Policy.Revision != 2 {
-		t.Fatalf("replay = %#v", replay)
-	}
+	require.NoError(t, err)
+	require.True(t, replay.Replayed)
+	require.Equal(t, int64(2), replay.Snapshot.Policy.Revision)
 	conflictingCommand := *command
 	conflictingCommand.Fingerprint = sha256.Sum256([]byte("different-access-policy-command"))
 	conflictReplacement := &store.AccessPolicyReplacement{Preflight: replacement.Preflight, ActorID: bootstrap.Administrator.ID}
 	prepareAccessPolicyAttempt(t, ctx, ss, bootstrap, conflictReplacement)
 	_, err = ss.AccessPolicy().Replace(ctx, conflictReplacement, &conflictingCommand)
 	var conflict *store.ErrIdempotencyConflict
-	if !errors.As(err, &conflict) {
-		t.Fatalf("conflicting key reuse error = %v", err)
-	}
+	require.ErrorAs(t, err, &conflict)
 	_, err = ss.Audit().Complete(ctx, conflictReplacement.AuditEventID, model.AuditStatusFail, "idempotency.conflict", nil, conflictReplacement.AuditAt)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	for _, id := range []model.SessionID{passwordSession.ID} {
 		preserved, getErr := ss.Session().Get(ctx, id)
-		requireNoError(t, getErr)
-		if preserved.RevokedAt.Valid {
-			t.Fatalf("revoke_existing_sessions=false revoked %s", id)
-		}
+		require.NoError(t, getErr)
+		require.False(t, preserved.RevokedAt.Valid, "revoke_existing_sessions=false revoked %s", id)
 	}
 	campusCandidate, campusCredentials, _ := newSession(bootstrap.Administrator.ID.String())
 	campusIdentity, err := ss.ExternalIdentity().Save(ctx, &model.ExternalIdentity{UserID: bootstrap.Administrator.ID,
 		Provider: "campus", Subject: "access-policy-session-" + model.NewID(), LastSeenAt: model.OptionalTimeFrom(model.NowUTC())})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	campusCandidate.AuthenticationMethod = "oidc"
 	campusCandidate.AuthenticationProviderID = "campus"
 	campusCandidate.ExternalIdentityID = campusIdentity.ID
 	campusSession, _, err := SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, campusCandidate, campusCredentials, 10))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	if len(probes) > 0 && probes[0].LeadDatabaseClock != nil {
 		probes[0].LeadDatabaseClock(t, ctx, campusSession.ID)
 	}
@@ -176,7 +168,7 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 	}, ActorID: bootstrap.Administrator.ID}
 	prepareAccessPolicyAttempt(t, ctx, ss, bootstrap, reenableReplacement)
 	reenabledResult, err := ss.AccessPolicy().Replace(ctx, reenableReplacement, reenableCommand)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	revokeCommand := &store.CommandIdempotency{UserID: bootstrap.Administrator.ID, Operation: "access_policy.replace.v1",
 		KeyDigest: sha256.Sum256([]byte("access-policy-revoke-key")), FingerprintVersion: 1,
 		Fingerprint: sha256.Sum256([]byte("access-policy-revoke-command")), OutcomeVersion: 1, Retention: time.Hour, Wait: time.Second}
@@ -189,55 +181,46 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 	providerRemoved.ProviderAdmissions = map[string]model.ProviderAdmissionMode{}
 	revokeReplacement.Preflight.Settings = providerRemoved
 	result, err = ss.AccessPolicy().Replace(ctx, revokeReplacement, revokeCommand)
-	requireNoError(t, err)
-	if len(result.SessionRevocations) != 1 || len(result.SessionRevocations[0].SessionIDs) != 1 ||
-		!containsSessionID(result.SessionRevocations[0].SessionIDs, campusSession.ID) ||
-		len(result.SessionRevocations[0].AccessTokenHashes) != 1 {
-		t.Fatalf("targeted revocations = %#v", result.SessionRevocations)
-	}
-	if len(result.Snapshot.History) == 0 || !containsString(result.Snapshot.History[0].ChangedFields, "revoke_existing_sessions") {
-		t.Fatalf("revocation choice history = %#v", result.Snapshot.History)
-	}
+	require.NoError(t, err)
+	require.Len(t, result.SessionRevocations, 1)
+	require.Len(t, result.SessionRevocations[0].SessionIDs, 1)
+	require.True(t, containsSessionID(result.SessionRevocations[0].SessionIDs, campusSession.ID))
+	require.Len(t, result.SessionRevocations[0].AccessTokenHashes, 1)
+	require.NotEmpty(t, result.Snapshot.History)
+	require.True(t, containsString(result.Snapshot.History[0].ChangedFields, "revoke_existing_sessions"))
 	revokeReplayReplacement := &store.AccessPolicyReplacement{Preflight: store.AccessPolicyPreflight{
 		ExpectedRevision: reenabledResult.Snapshot.Policy.Revision, Settings: providerRemoved, RevokeExistingSessions: true,
 		Capabilities: capabilities, CheckedAt: model.NowUTC(),
 	}, ActorID: bootstrap.Administrator.ID}
 	prepareAccessPolicyAttempt(t, ctx, ss, bootstrap, revokeReplayReplacement)
 	revocationReplay, err := ss.AccessPolicy().Replace(ctx, revokeReplayReplacement, revokeCommand)
-	requireNoError(t, err)
-	if !revocationReplay.Replayed || len(revocationReplay.SessionRevocations) != 0 {
-		t.Fatalf("revocation replay = %#v", revocationReplay)
-	}
+	require.NoError(t, err)
+	require.True(t, revocationReplay.Replayed)
+	require.Empty(t, revocationReplay.SessionRevocations)
 	revokedPassword, err := ss.Session().Get(ctx, passwordSession.ID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	revokedCampus, err := ss.Session().Get(ctx, campusSession.ID)
-	requireNoError(t, err)
-	if revokedPassword.RevokedAt.Valid || !revokedCampus.RevokedAt.Valid || revokedCampus.RevokedAt.Time.Before(revokedCampus.CreatedAt) {
-		t.Fatalf("password=%#v campus=%#v", revokedPassword, revokedCampus)
-	}
+	require.NoError(t, err)
+	require.False(t, revokedPassword.RevokedAt.Valid, "password=%#v campus=%#v", revokedPassword, revokedCampus)
+	require.True(t, revokedCampus.RevokedAt.Valid, "password=%#v campus=%#v", revokedPassword, revokedCampus)
+	require.False(t, revokedCampus.RevokedAt.Time.Before(revokedCampus.CreatedAt), "password=%#v campus=%#v", revokedPassword, revokedCampus)
 
 	removed := settings
 	removed.ProviderAdmissions = map[string]model.ProviderAdmissionMode{"campus": model.ProviderAdmissionLinkedOnly}
 	blocked, err = ss.AccessPolicy().Preflight(ctx, &store.AccessPolicyPreflight{ExpectedRevision: result.Snapshot.Policy.Revision, Settings: removed,
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}}, CheckedAt: model.NowUTC()})
-	requireNoError(t, err)
-	if !hasAccessPolicyBlocker(blocked, store.AccessPolicyBlockerProviderUnavailable, "campus") {
-		t.Fatalf("removed provider blockers = %#v", blocked)
-	}
+	require.NoError(t, err)
+	require.True(t, hasAccessPolicyBlocker(blocked, store.AccessPolicyBlockerProviderUnavailable, "campus"), "removed provider blockers = %#v", blocked)
 	removed.ProviderAdmissions["campus"] = model.ProviderAdmissionAutoProvision
 	blocked, err = ss.AccessPolicy().Preflight(ctx, &store.AccessPolicyPreflight{ExpectedRevision: result.Snapshot.Policy.Revision, Settings: removed,
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"campus": {}}, DurableMail: true}, CheckedAt: model.NowUTC()})
-	requireNoError(t, err)
-	if !hasAccessPolicyBlocker(blocked, store.AccessPolicyBlockerProviderAdmissionUnsupported, "campus") {
-		t.Fatalf("unsupported admission blockers = %#v", blocked)
-	}
+	require.NoError(t, err)
+	require.True(t, hasAccessPolicyBlocker(blocked, store.AccessPolicyBlockerProviderAdmissionUnsupported, "campus"), "unsupported admission blockers = %#v", blocked)
 	removed.ProviderAdmissions["campus"] = model.ProviderAdmissionInvitationRequired
 	blocked, err = ss.AccessPolicy().Preflight(ctx, &store.AccessPolicyPreflight{ExpectedRevision: result.Snapshot.Policy.Revision, Settings: removed,
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"campus": {}}, DurableMail: false}, CheckedAt: model.NowUTC()})
-	requireNoError(t, err)
-	if !hasAccessPolicyBlocker(blocked, store.AccessPolicyBlockerInvitationMailUnavailable, "campus") {
-		t.Fatalf("invitation delivery blockers = %#v", blocked)
-	}
+	require.NoError(t, err)
+	require.True(t, hasAccessPolicyBlocker(blocked, store.AccessPolicyBlockerInvitationMailUnavailable, "campus"), "invitation delivery blockers = %#v", blocked)
 
 	current := result.Snapshot.Policy
 	for i := 0; i < model.AccessPolicyTransitionHistoryLimit+1; i++ {
@@ -253,23 +236,20 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 		}, ActorID: bootstrap.Administrator.ID}
 		prepareAccessPolicyAttempt(t, ctx, ss, bootstrap, boundedReplacement)
 		boundedResult, replaceErr := ss.AccessPolicy().Replace(ctx, boundedReplacement, boundedCommand)
-		requireNoError(t, replaceErr)
+		require.NoError(t, replaceErr)
 		current = boundedResult.Snapshot.Policy
 	}
 	bounded, err := ss.AccessPolicy().Get(ctx, model.AccessPolicyTransitionHistoryLimit)
-	requireNoError(t, err)
-	if len(bounded.History) != model.AccessPolicyTransitionHistoryLimit || bounded.History[0].ToRevision != current.Revision ||
-		bounded.History[len(bounded.History)-1].ToRevision != current.Revision-int64(model.AccessPolicyTransitionHistoryLimit)+1 {
-		t.Fatalf("bounded transition history = %d %#v", len(bounded.History), bounded.History)
-	}
+	require.NoError(t, err)
+	require.Len(t, bounded.History, model.AccessPolicyTransitionHistoryLimit, "bounded transition history")
+	require.Equal(t, current.Revision, bounded.History[0].ToRevision, "bounded transition history")
+	require.Equal(t, current.Revision-int64(model.AccessPolicyTransitionHistoryLimit)+1, bounded.History[len(bounded.History)-1].ToRevision, "bounded transition history")
 	audits, err := ss.Audit().List(ctx, store.AuditListOptions{
 		Action: string(model.ActionAccessPolicyManage), Limit: 200,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
-	requireNoError(t, err)
-	if len(audits) != model.AccessPolicyTransitionHistoryLimit+7 {
-		t.Fatalf("access policy audits = %d, want %d", len(audits), model.AccessPolicyTransitionHistoryLimit+7)
-	}
+	require.NoError(t, err)
+	require.Len(t, audits, model.AccessPolicyTransitionHistoryLimit+7, "access policy audits")
 	var foundRevocationAudit, foundReplayAudit, foundConflictAudit bool
 	for _, audit := range audits {
 		var parameters struct {
@@ -284,9 +264,9 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 		foundReplayAudit = foundReplayAudit || parameters.IdempotencyReplayed && model.AuditEventID(parameters.OriginalAuditEventID).IsValid()
 		foundConflictAudit = foundConflictAudit || audit.Status == model.AuditStatusFail && audit.ErrorCode == "idempotency.conflict"
 	}
-	if !foundRevocationAudit || !foundReplayAudit || !foundConflictAudit {
-		t.Fatalf("Access Policy audit coverage revocation=%v replay=%v conflict=%v", foundRevocationAudit, foundReplayAudit, foundConflictAudit)
-	}
+	require.True(t, foundRevocationAudit, "Access Policy audit coverage revocation")
+	require.True(t, foundReplayAudit, "Access Policy audit coverage revocation")
+	require.True(t, foundConflictAudit, "Access Policy audit coverage revocation")
 	if len(probes) != 0 && probes[0].HoldAuthenticationPathFence != nil && probes[0].WaitForBlockedTransactions != nil {
 		testConcurrentAccessPolicyAndAdministratorDisable(t, ctx, ss, bootstrap, current, probes[0])
 	}
@@ -327,12 +307,13 @@ func testConcurrentAccessPolicyAndAdministratorDisable(t *testing.T, ctx context
 		_, err := ss.AccessPolicy().Replace(ctx, replacement, command)
 		outcomes <- outcome{operation: "policy", err: err}
 	}()
+	disable := userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+		ID: bootstrap.Administrator.ID, ExpectedRevision: bootstrap.Administrator.Revision,
+		Disabled: true, ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationAccountDisabled,
+		AuditEventID: disableAttempt.ID, AuditAt: model.MillisFromTime(disableAttempt.CreatedAt),
+	})
 	go func() {
-		_, err := ss.User().SetDisabled(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-			ID: bootstrap.Administrator.ID, ExpectedRevision: bootstrap.Administrator.Revision,
-			Disabled: true, ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationAccountDisabled,
-			AuditEventID: disableAttempt.ID, AuditAt: model.MillisFromTime(disableAttempt.CreatedAt),
-		}))
+		_, err := ss.User().SetDisabled(ctx, disable)
 		outcomes <- outcome{operation: "disable", err: err}
 	}()
 	probe.WaitForBlockedTransactions(t, ctx, blockerPID, 2)
@@ -356,12 +337,11 @@ func testConcurrentAccessPolicyAndAdministratorDisable(t *testing.T, ctx context
 			userConflict.Constraint == "users_last_system_admin":
 			rejected++
 		default:
-			t.Fatalf("concurrent %s error = %v", result.operation, result.err)
+			require.FailNow(t, fmt.Sprintf("concurrent %s error = %v", result.operation, result.err))
 		}
 	}
-	if successes != 1 || rejected != 1 {
-		t.Fatalf("concurrent policy/disable outcomes success=%d rejected=%d", successes, rejected)
-	}
+	require.Equal(t, 1, successes, "concurrent policy/disable outcomes success")
+	require.Equal(t, 1, rejected, "concurrent policy/disable outcomes success")
 }
 
 func containsString(values []string, target string) bool {
@@ -397,7 +377,7 @@ func prepareAccessPolicyAttempt(t *testing.T, ctx context.Context, ss store.Stor
 		Resource:  model.Resource{Type: model.ResourceInstitution, ID: bootstrap.Institution.ID.String()},
 		ScopeType: model.RoleScopeInstitution, ScopeID: bootstrap.Institution.ID.String(), Status: model.AuditStatusAttempt,
 		NodeID: "store-test", ClientType: string(model.SessionClientWeb), AuthMethod: "password"})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	replacement.AuditEventID = event.ID
 	replacement.AuditAt = model.MillisFromTime(event.CreatedAt)
 }

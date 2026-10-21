@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/storetest"
@@ -24,9 +26,7 @@ func TestPersonalAccessTokenPreparationMaintenanceIsBoundedAndAppendOnly(t *test
 	resetTestStore(t, persistence)
 	ctx := context.Background()
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "pat-preparations", DisplayName: "PAT Preparations"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	user := saveIntegrationUser(t, ctx, persistence, &model.User{Username: "pat-preparations", Email: "pat-preparations@example.edu", DisplayName: "PAT Preparations"})
 	session := savePersonalAccessTokenMutationSession(t, ctx, persistence, user.ID)
 
@@ -35,37 +35,28 @@ func TestPersonalAccessTokenPreparationMaintenanceIsBoundedAndAppendOnly(t *test
 			UserID: user.ID, Kind: store.PersonalAccessTokenMutationCreate, Lifetime: 30 * time.Second,
 			AuditEvent: personalAccessTokenPreparationAudit(user.ID, session.ID, institution.ID),
 		})
-		if prepareErr != nil {
-			t.Fatal(prepareErr)
-		}
-		if _, updateErr := persistence.GetMaster().Exec(ctx, `UPDATE personal_access_token_mutation_preparations SET created_at=clock_timestamp()-interval '31 seconds', expires_at=clock_timestamp()-interval '1 second' WHERE id=?`, prepared.ID); updateErr != nil {
-			t.Fatal(updateErr)
-		}
+		require.NoError(t, prepareErr)
+		_, updateErr := persistence.GetMaster().Exec(ctx, `UPDATE personal_access_token_mutation_preparations SET created_at=clock_timestamp()-interval '31 seconds', expires_at=clock_timestamp()-interval '1 second' WHERE id=?`, prepared.ID)
+		require.NoError(t, updateErr)
 	}
 
 	first, err := persistence.PersonalAccessToken().MaintainMutationPreparations(ctx, 1)
-	if err != nil || first.Failed != 1 || !first.More {
-		t.Fatalf("first maintenance=%#v err=%v", first, err)
-	}
+	require.NoError(t, err, "first maintenance=%#v err", first)
+	require.Equal(t, 1, first.Failed, "first maintenance=%#v err", first)
+	require.True(t, first.More, "first maintenance=%#v err", first)
 	second, err := persistence.PersonalAccessToken().MaintainMutationPreparations(ctx, 1)
-	if err != nil || second.Failed != 1 || second.More {
-		t.Fatalf("second maintenance=%#v err=%v", second, err)
-	}
+	require.NoError(t, err, "second maintenance=%#v err", second)
+	require.Equal(t, 1, second.Failed, "second maintenance=%#v err", second)
+	require.False(t, second.More, "second maintenance=%#v err", second)
 	var remaining int
-	if err := persistence.GetMaster().Get(ctx, &remaining, `SELECT COUNT(*) FROM personal_access_token_mutation_preparations`); err != nil || remaining != 0 {
-		t.Fatalf("remaining preparations=%d err=%v", remaining, err)
-	}
+	require.NoError(t, persistence.GetMaster().Get(ctx, &remaining, `SELECT COUNT(*) FROM personal_access_token_mutation_preparations`), "remaining preparations")
+	require.Equal(t, 0, remaining, "remaining preparations")
 	events, err := persistence.Audit().List(ctx, store.AuditListOptions{ActorID: user.ID, Action: "personal_access_token.create", Limit: 10, Visibility: store.AuditVisibilityScope{InstitutionWide: true}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(events) != 2 {
-		t.Fatalf("terminal failure audits=%#v, want 2", events)
-	}
+	require.NoError(t, err)
+	require.Len(t, events, 2, "terminal failure audits")
 	for _, event := range events {
-		if event.Status != model.AuditStatusFail || event.ErrorCode != personalAccessTokenPreparationFailureCode {
-			t.Fatalf("maintenance audit=%#v", event)
-		}
+		require.Equal(t, model.AuditStatusFail, event.Status)
+		require.Equal(t, personalAccessTokenPreparationFailureCode, event.ErrorCode)
 	}
 }
 
@@ -78,9 +69,7 @@ func TestPersonalAccessTokenPreparationExpiryIsCheckedAfterUserFence(t *testing.
 	persistence := openTestStore(t)
 	resetTestStore(t, persistence)
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "pat-preparation-fence", DisplayName: "PAT Preparation Fence"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	user := saveIntegrationUser(t, ctx, persistence, &model.User{Username: "pat-preparation-fence", Email: "pat-preparation-fence@example.edu"})
 	session := savePersonalAccessTokenMutationSession(t, ctx, persistence, user.ID)
 	token := &model.PersonalAccessToken{
@@ -88,31 +77,23 @@ func TestPersonalAccessTokenPreparationExpiryIsCheckedAfterUserFence(t *testing.
 		Scopes: []string{string(model.ActionClassView)}, ExpiresAt: model.NowUTC().Add(time.Hour),
 	}
 	token.PrepareCreate(model.NewPersonalAccessTokenID(), model.NowUTC())
-	if err := insertPersonalAccessToken(ctx, persistence.GetMaster(), token); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, insertPersonalAccessToken(ctx, persistence.GetMaster(), token))
 	preparation, err := persistence.PersonalAccessToken().PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{
 		UserID: user.ID, TokenID: token.ID, Kind: store.PersonalAccessTokenMutationDisable, Lifetime: 30 * time.Second,
 		AuditEvent: &model.AuditEvent{ActorID: user.ID, SessionID: session.ID, Action: "personal_access_token.disable",
 			Resource: model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, ScopeType: model.RoleScopeInstitution,
 			ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "pat-preparation-fence"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = persistence.GetMaster().Exec(ctx, `UPDATE personal_access_token_mutation_preparations SET expires_at=clock_timestamp()+interval '150 milliseconds' WHERE id=?`, preparation.ID); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	_, err = persistence.GetMaster().Exec(ctx, `UPDATE personal_access_token_mutation_preparations SET expires_at=clock_timestamp()+interval '150 milliseconds' WHERE id=?`, preparation.ID)
+	require.NoError(t, err)
 
 	controller, err := persistence.GetMaster().DB().Conn(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer controller.Close()
 	fenceKey := advisoryLockKey("personal-access-token-user", user.ID.String())
-	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_lock(hashtextextended($1, 0))`, fenceKey); err != nil {
-		t.Fatal(err)
-	}
+	_, err = controller.ExecContext(ctx, `SELECT pg_advisory_lock(hashtextextended($1, 0))`, fenceKey)
+	require.NoError(t, err)
 	locked := true
 	defer func() {
 		if locked {
@@ -120,9 +101,8 @@ func TestPersonalAccessTokenPreparationExpiryIsCheckedAfterUserFence(t *testing.
 		}
 	}()
 	var controllerPID int
-	if err = controller.QueryRowContext(ctx, `SELECT pg_backend_pid()`).Scan(&controllerPID); err != nil {
-		t.Fatal(err)
-	}
+	err = controller.QueryRowContext(ctx, `SELECT pg_backend_pid()`).Scan(&controllerPID)
+	require.NoError(t, err)
 	result := make(chan error, 1)
 	go func() {
 		_, changeErr := persistence.PersonalAccessToken().ChangeState(ctx, &store.PersonalAccessTokenStateMutation{
@@ -133,13 +113,10 @@ func TestPersonalAccessTokenPreparationExpiryIsCheckedAfterUserFence(t *testing.
 	}()
 	_ = waitForBlockedMailQuery(t, ctx, persistence, controllerPID, "pg_advisory_xact_lock")
 	time.Sleep(200 * time.Millisecond)
-	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_unlock(hashtextextended($1, 0))`, fenceKey); err != nil {
-		t.Fatal(err)
-	}
+	_, err = controller.ExecContext(ctx, `SELECT pg_advisory_unlock(hashtextextended($1, 0))`, fenceKey)
+	require.NoError(t, err)
 	locked = false
-	if err := <-result; !store.IsConflict(err) {
-		t.Fatalf("ChangeState() after blocked expiry error = %v, want conflict", err)
-	}
+	require.True(t, store.IsConflict((<-result)), "ChangeState() after blocked expiry error")
 }
 
 func personalAccessTokenPreparationAudit(userID model.UserID, sessionID model.SessionID, institutionID model.InstitutionID) *model.AuditEvent {
@@ -163,8 +140,6 @@ func savePersonalAccessTokenMutationSession(t *testing.T, ctx context.Context, p
 		{Kind: model.SessionCredentialAccess, TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: now.Add(30 * time.Minute)},
 		{Kind: model.SessionCredentialRefresh, TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: now.Add(2 * time.Hour)},
 	}, 100))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return session
 }

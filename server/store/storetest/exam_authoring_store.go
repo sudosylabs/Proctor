@@ -11,9 +11,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
-	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -46,62 +47,54 @@ func testExamAuthoringCreateGetAndReplay(t *testing.T, ss store.Store) {
 	}
 
 	first, err := ss.ExamAuthoring().Create(ctx, creation, command)
-	requireNoError(t, err)
-	if first.Replayed || first.Value.ManagerCount != 1 || !first.Value.ActorIsManager || first.Value.OwnerUserID != creator.ID ||
-		first.Value.Capacity != model.DefaultExamCapacityPolicy() {
-		t.Fatalf("first create = %#v", first)
-	}
-	if first.Value.ResourceCount != 0 || first.Value.HasStarterWorkspace {
-		t.Fatalf("new draft has resource/starter state: %#v", first.Value)
-	}
+	require.NoError(t, err)
+	require.False(t, first.Replayed)
+	require.Equal(t, 1, first.Value.ManagerCount)
+	require.True(t, first.Value.ActorIsManager)
+	require.Equal(t, creator.ID, first.Value.OwnerUserID)
+	require.Equal(t, model.DefaultExamCapacityPolicy(), first.Value.Capacity)
+	require.Equal(t, 0, first.Value.ResourceCount)
+	require.False(t, first.Value.HasStarterWorkspace)
 	completed, err := ss.Audit().Get(ctx, creation.AuditEventID)
-	requireNoError(t, err)
-	if completed.Status != model.AuditStatusSuccess {
-		t.Fatalf("creation audit status = %q, want success", completed.Status)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.AuditStatusSuccess, completed.Status, "creation audit status")
 
 	replayCreation := newExamAuthoringCreation(t, ctx, ss, unit.ID, creator.ID, at.Add(time.Second))
 	replayCreation.Exam.ID = creation.Exam.ID
 	replayCreation.Draft.ExamID = creation.Exam.ID
 	replayCreation.Manager.ExamID = creation.Exam.ID
 	replayed, err := ss.ExamAuthoring().Create(ctx, replayCreation, command)
-	requireNoError(t, err)
-	if !replayed.Replayed || replayed.Value.Exam.ID != first.Value.Exam.ID || replayed.Value.Capacity != first.Value.Capacity {
-		t.Fatalf("replay = %#v", replayed)
-	}
+	require.NoError(t, err)
+	require.True(t, replayed.Replayed)
+	require.Equal(t, first.Value.Exam.ID, replayed.Value.Exam.ID)
+	require.Equal(t, first.Value.Capacity, replayed.Value.Capacity)
 	replayAudit, err := ss.Audit().Get(ctx, replayCreation.AuditEventID)
-	requireNoError(t, err)
-	if replayAudit.Status != model.AuditStatusSuccess {
-		t.Fatalf("replay audit status = %q, want success", replayAudit.Status)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.AuditStatusSuccess, replayAudit.Status, "replay audit status")
 	var replayResult map[string]any
-	if err := json.Unmarshal(replayAudit.Result, &replayResult); err != nil {
-		t.Fatalf("decode replay audit result: %v", err)
-	}
-	if replayResult["idempotency_replayed"] != true || replayResult["original_audit_event_id"] != creation.AuditEventID.String() {
-		t.Fatalf("replay audit result = %#v", replayResult)
-	}
+	require.NoError(t, json.Unmarshal(replayAudit.Result, &replayResult))
+	require.Equal(t, true, replayResult["idempotency_replayed"])
+	require.Equal(t, creation.AuditEventID.String(), replayResult["original_audit_event_id"])
 
 	managerView, err := ss.ExamAuthoring().Get(ctx, first.Value.Exam.ID, creator.ID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	outsiderView, err := ss.ExamAuthoring().Get(ctx, first.Value.Exam.ID, other.ID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	managerAccess, err := ss.ExamAuthoring().Access(ctx, first.Value.Exam.ID, creator.ID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	outsiderAccess, err := ss.ExamAuthoring().Access(ctx, first.Value.Exam.ID, other.ID)
-	requireNoError(t, err)
-	if !managerView.ActorIsManager || outsiderView.ActorIsManager || managerView.ManagerCount != 1 || outsiderView.ManagerCount != 1 {
-		t.Fatalf("manager/outsider views = %#v / %#v", managerView, outsiderView)
-	}
-	if !managerAccess.ActorIsManager || outsiderAccess.ActorIsManager || managerAccess.Exam.ID != first.Value.Exam.ID || outsiderAccess.Exam.ID != first.Value.Exam.ID {
-		t.Fatalf("manager/outsider access = %#v / %#v", managerAccess, outsiderAccess)
-	}
-	if !managerView.Draft.Policy.Equal(model.DefaultExamPolicySet()) {
-		t.Fatalf("persisted policy = %#v", managerView.Draft.Policy)
-	}
-	if managerView.Capacity != model.DefaultExamCapacityPolicy() || outsiderView.Capacity != managerView.Capacity {
-		t.Fatalf("persisted capacity = %#v / %#v", managerView.Capacity, outsiderView.Capacity)
-	}
+	require.NoError(t, err)
+	require.True(t, managerView.ActorIsManager, "manager/outsider views = %#v / %#v", managerView, outsiderView)
+	require.False(t, outsiderView.ActorIsManager, "manager/outsider views = %#v / %#v", managerView, outsiderView)
+	require.Equal(t, 1, managerView.ManagerCount, "manager/outsider views = %#v / %#v", managerView, outsiderView)
+	require.Equal(t, 1, outsiderView.ManagerCount, "manager/outsider views = %#v / %#v", managerView, outsiderView)
+	require.True(t, managerAccess.ActorIsManager, "manager/outsider access = %#v / %#v", managerAccess, outsiderAccess)
+	require.False(t, outsiderAccess.ActorIsManager, "manager/outsider access = %#v / %#v", managerAccess, outsiderAccess)
+	require.Equal(t, first.Value.Exam.ID, managerAccess.Exam.ID, "manager/outsider access = %#v / %#v", managerAccess, outsiderAccess)
+	require.Equal(t, first.Value.Exam.ID, outsiderAccess.Exam.ID, "manager/outsider access = %#v / %#v", managerAccess, outsiderAccess)
+	require.True(t, managerView.Draft.Policy.Equal(model.DefaultExamPolicySet()))
+	require.Equal(t, model.DefaultExamCapacityPolicy(), managerView.Capacity, "persisted capacity")
+	require.Equal(t, managerView.Capacity, outsiderView.Capacity, "persisted capacity")
 }
 
 func testExamAuthoringAuditAtomicity(t *testing.T, ss store.Store) {
@@ -116,12 +109,10 @@ func testExamAuthoringAuditAtomicity(t *testing.T, ss store.Store) {
 		FingerprintVersion: 1, Fingerprint: sha256.Sum256([]byte("rollback-command")), OutcomeVersion: 1,
 		Retention: time.Hour, Wait: time.Second,
 	}
-	if _, err := ss.ExamAuthoring().Create(ctx, creation, command); err == nil {
-		t.Fatal("Create succeeded without its audit attempt")
-	}
-	if _, err := ss.ExamAuthoring().Get(ctx, creation.Exam.ID, creator.ID); !store.IsNotFound(err) {
-		t.Fatalf("exam survived audit rollback: %v", err)
-	}
+	_, err := ss.ExamAuthoring().Create(ctx, creation, command)
+	require.Error(t, err, "Create succeeded without its audit attempt")
+	_, err = ss.ExamAuthoring().Get(ctx, creation.Exam.ID, creator.ID)
+	require.True(t, store.IsNotFound(err), "exam survived audit rollback")
 }
 
 func testExamAuthoringUpdateDraftTextAndConflict(t *testing.T, ss store.Store) {
@@ -133,7 +124,7 @@ func testExamAuthoringUpdateDraftTextAndConflict(t *testing.T, ss store.Store) {
 	creation := newExamAuthoringCreation(t, ctx, ss, unit.ID, creator.ID, createdAt)
 	createCommand := examCommand(creator.ID, "exam.create.v1", "edit-create", "edit-create-command")
 	created, err := ss.ExamAuthoring().Create(ctx, creation, createCommand)
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	title := "  Distributed Systems  "
 	clearInstructions := ""
@@ -141,38 +132,33 @@ func testExamAuthoringUpdateDraftTextAndConflict(t *testing.T, ss store.Store) {
 	update := newExamDraftTextUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, &title, &clearInstructions, updatedAt)
 	updateCommand := examCommand(creator.ID, "exam.draft.text.edit.v1", "edit-key", "edit-command")
 	updated, err := ss.ExamAuthoring().UpdateDraftText(ctx, update, updateCommand)
-	requireNoError(t, err)
-	if updated.Replayed || updated.Value.Draft.Title != "Distributed Systems" || updated.Value.Draft.InstructionsMarkdown != "" || updated.Value.Draft.Revision != 2 {
-		t.Fatalf("updated Draft = %#v", updated)
-	}
-	if updated.Value.Exam.Revision != created.Value.Exam.Revision || !updated.Value.Draft.Policy.Equal(created.Value.Draft.Policy) {
-		t.Fatalf("text update changed unrelated state: %#v", updated.Value)
-	}
+	require.NoError(t, err)
+	require.False(t, updated.Replayed)
+	require.Equal(t, "Distributed Systems", updated.Value.Draft.Title)
+	require.Empty(t, updated.Value.Draft.InstructionsMarkdown)
+	require.Equal(t, int64(2), updated.Value.Draft.Revision)
+	require.Equal(t, created.Value.Exam.Revision, updated.Value.Exam.Revision)
+	require.True(t, updated.Value.Draft.Policy.Equal(created.Value.Draft.Policy))
 
 	replay := newExamDraftTextUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, &title, &clearInstructions, updatedAt.Add(time.Second))
 	replayed, err := ss.ExamAuthoring().UpdateDraftText(ctx, replay, updateCommand)
-	requireNoError(t, err)
-	if !replayed.Replayed || replayed.Value.Draft.Revision != 2 {
-		t.Fatalf("replayed update = %#v", replayed)
-	}
+	require.NoError(t, err)
+	require.True(t, replayed.Replayed)
+	require.Equal(t, int64(2), replayed.Value.Draft.Revision)
 	replayAudit, err := ss.Audit().Get(ctx, replay.AuditEventID)
-	requireNoError(t, err)
-	if replayAudit.Status != model.AuditStatusSuccess {
-		t.Fatalf("replay audit status = %s", replayAudit.Status)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.AuditStatusSuccess, replayAudit.Status)
 
 	staleTitle := "Operating Systems"
 	stale := newExamDraftTextUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, &staleTitle, nil, updatedAt.Add(2*time.Second))
 	_, err = ss.ExamAuthoring().UpdateDraftText(ctx, stale, examCommand(creator.ID, "exam.draft.text.edit.v1", "stale-key", "stale-command"))
 	var conflict *store.ErrConflict
-	if !errors.As(err, &conflict) || conflict.Constraint != "exam_draft_revision" {
-		t.Fatalf("stale update error = %v, want exam_draft_revision conflict", err)
-	}
+	require.ErrorAs(t, err, &conflict, "stale update error")
+	require.Equal(t, "exam_draft_revision", conflict.Constraint, "stale update error")
 	current, err := ss.ExamAuthoring().Get(ctx, created.Value.Exam.ID, creator.ID)
-	requireNoError(t, err)
-	if current.Draft.Title != "Distributed Systems" || current.Draft.Revision != 2 {
-		t.Fatalf("stale update changed Draft: %#v", current.Draft)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "Distributed Systems", current.Draft.Title)
+	require.Equal(t, int64(2), current.Draft.Revision)
 }
 
 func testExamAuthoringUpdateDraftFocusLossAndConflict(t *testing.T, ss store.Store) {
@@ -183,7 +169,7 @@ func testExamAuthoringUpdateDraftFocusLossAndConflict(t *testing.T, ss store.Sto
 	createdAt := model.NowUTC()
 	creation := newExamAuthoringCreation(t, ctx, ss, unit.ID, creator.ID, createdAt)
 	created, err := ss.ExamAuthoring().Create(ctx, creation, examCommand(creator.ID, "exam.create.v1", "focus-create", "focus-create-command"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	focus := model.FocusLossPolicy{
 		Enabled: false, MinimumDuration: 500 * time.Millisecond, IncidentCount: 100,
@@ -193,39 +179,38 @@ func testExamAuthoringUpdateDraftFocusLossAndConflict(t *testing.T, ss store.Sto
 	update := newExamDraftFocusLossUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, focus, updatedAt)
 	command := examCommand(creator.ID, "exam.draft.focus_loss.configure.v1", "focus-key", "focus-command")
 	updated, err := ss.ExamAuthoring().UpdateDraftFocusLoss(ctx, update, command)
-	requireNoError(t, err)
-	if updated.Replayed || updated.Value.Draft.Policy.FocusLoss != focus || updated.Value.Draft.Revision != 2 {
-		t.Fatalf("updated Draft = %#v", updated)
-	}
-	if updated.Value.Draft.Policy.ConnectionLoss != created.Value.Draft.Policy.ConnectionLoss || updated.Value.Draft.Title != created.Value.Draft.Title || updated.Value.Exam.Revision != created.Value.Exam.Revision {
-		t.Fatalf("Focus Loss update changed unrelated state: %#v", updated.Value)
-	}
+	require.NoError(t, err)
+	require.False(t, updated.Replayed)
+	require.Equal(t, focus, updated.Value.Draft.Policy.FocusLoss)
+	require.Equal(t, int64(2), updated.Value.Draft.Revision)
+	require.Equal(t, created.Value.Draft.Policy.ConnectionLoss, updated.Value.Draft.Policy.ConnectionLoss)
+	require.Equal(t, created.Value.Draft.Title, updated.Value.Draft.Title)
+	require.Equal(t, created.Value.Exam.Revision, updated.Value.Exam.Revision)
 
 	replay := newExamDraftFocusLossUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, focus, updatedAt.Add(time.Second))
 	replayed, err := ss.ExamAuthoring().UpdateDraftFocusLoss(ctx, replay, command)
-	requireNoError(t, err)
-	if !replayed.Replayed || replayed.Value.Draft.Revision != 2 || replayed.Value.Draft.Policy.FocusLoss != focus {
-		t.Fatalf("replayed update = %#v", replayed)
-	}
+	require.NoError(t, err)
+	require.True(t, replayed.Replayed)
+	require.Equal(t, int64(2), replayed.Value.Draft.Revision)
+	require.Equal(t, focus, replayed.Value.Draft.Policy.FocusLoss)
 
 	staleFocus := model.DefaultExamPolicySet().FocusLoss
 	stale := newExamDraftFocusLossUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, staleFocus, updatedAt.Add(2*time.Second))
 	_, err = ss.ExamAuthoring().UpdateDraftFocusLoss(ctx, stale, examCommand(creator.ID, "exam.draft.focus_loss.configure.v1", "focus-stale", "focus-stale-command"))
 	var conflict *store.ErrConflict
-	if !errors.As(err, &conflict) || conflict.Constraint != "exam_draft_revision" {
-		t.Fatalf("stale update error = %v, want exam_draft_revision conflict", err)
-	}
+	require.ErrorAs(t, err, &conflict, "stale update error")
+	require.Equal(t, "exam_draft_revision", conflict.Constraint, "stale update error")
 }
 
 func newExamDraftFocusLossUpdate(t *testing.T, ctx context.Context, ss store.Store, examID model.ExamID, actorID model.UserID, expectedRevision int64, focus model.FocusLossPolicy, at time.Time) *store.ExamDraftFocusLossUpdate {
 	t.Helper()
 	exam, err := ss.ExamAuthoring().Resolve(ctx, examID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	audit, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		ActorID: actorID, Action: string(model.ActionExamManage), Resource: model.Resource{Type: model.ResourceExam, ID: examID.String()},
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: exam.AcademicUnitID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return &store.ExamDraftFocusLossUpdate{
 		ExamID: examID, ActorUserID: actorID, ExpectedRevision: expectedRevision, FocusLoss: focus,
 		UpdatedAt: model.MillisFromTime(at), AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at),
@@ -235,14 +220,14 @@ func newExamDraftFocusLossUpdate(t *testing.T, ctx context.Context, ss store.Sto
 func newExamDraftTextUpdate(t *testing.T, ctx context.Context, ss store.Store, examID model.ExamID, actorID model.UserID, expectedRevision int64, title, instructions *string, at time.Time) *store.ExamDraftTextUpdate {
 	t.Helper()
 	exam, err := ss.ExamAuthoring().Resolve(ctx, examID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	audit, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		ActorID: actorID, Action: string(model.ActionExamManage),
 		Resource:  model.Resource{Type: model.ResourceExam, ID: examID.String()},
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: exam.AcademicUnitID.String(),
 		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return &store.ExamDraftTextUpdate{
 		ExamID: examID, ActorUserID: actorID, ExpectedRevision: expectedRevision,
 		Title: title, InstructionsMarkdown: instructions, UpdatedAt: model.MillisFromTime(at),
@@ -261,18 +246,18 @@ func examCommand(userID model.UserID, operation, key, fingerprint string) *store
 func newExamAuthoringCreation(t *testing.T, ctx context.Context, ss store.Store, unitID model.AcademicUnitID, creatorID model.UserID, at time.Time) *store.ExamAuthoringCreation {
 	t.Helper()
 	exam, err := model.NewExam(model.NewExamID(), unitID, creatorID, at)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	draft, err := model.NewExamDraft(exam.ID, "Programming Languages", "", model.DefaultExamPolicySet(), at)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	manager, err := model.NewExamManager(exam.ID, creatorID, creatorID, at)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	audit, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		ActorID: creatorID, Action: string(model.ActionExamCreate),
 		Resource:  model.Resource{Type: model.ResourceAcademicUnit, ID: unitID.String()},
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID.String(),
 		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return &store.ExamAuthoringCreation{
 		Exam: exam, Draft: draft, Manager: manager,
 		AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at),
@@ -287,47 +272,46 @@ func testExamAuthoringUpdateDraftNativePolicyAndConflict(t *testing.T, ss store.
 	createdAt := model.NowUTC()
 	creation := newExamAuthoringCreation(t, ctx, ss, unit.ID, creator.ID, createdAt)
 	created, err := ss.ExamAuthoring().Create(ctx, creation, examCommand(creator.ID, "exam.create.v1", "native-create", "native-create-command"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	native := model.DefaultNativeSecurityPolicy()
-	requireNoError(t, json.Unmarshal([]byte(`{"id":"interactive_session","mode":"observe"}`), &native.Families[1]))
+	require.NoError(t, json.Unmarshal([]byte(`{"id":"interactive_session","mode":"observe"}`), &native.Families[1]))
 	updatedAt := createdAt.Add(time.Minute)
 	update := newExamDraftNativePolicyUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, native, updatedAt)
 	command := examCommand(creator.ID, "exam.draft.native_policy.configure.v1", "native-key", "native-command")
 	updated, err := ss.ExamAuthoring().UpdateDraftNativePolicy(ctx, update, command)
-	requireNoError(t, err)
-	if updated.Replayed || updated.Value.Draft.Policy.Native.Families[1].Mode() != model.NativeModeObserve || updated.Value.Draft.Revision != 2 {
-		t.Fatalf("updated Draft = %#v", updated)
-	}
-	if updated.Value.Draft.Policy.ConnectionLoss != created.Value.Draft.Policy.ConnectionLoss || updated.Value.Draft.Title != created.Value.Draft.Title || updated.Value.Exam.Revision != created.Value.Exam.Revision {
-		t.Fatalf("Focus Loss update changed unrelated state: %#v", updated.Value)
-	}
+	require.NoError(t, err)
+	require.False(t, updated.Replayed)
+	require.Equal(t, model.NativeModeObserve, updated.Value.Draft.Policy.Native.Families[1].Mode())
+	require.Equal(t, int64(2), updated.Value.Draft.Revision)
+	require.Equal(t, created.Value.Draft.Policy.ConnectionLoss, updated.Value.Draft.Policy.ConnectionLoss)
+	require.Equal(t, created.Value.Draft.Title, updated.Value.Draft.Title)
+	require.Equal(t, created.Value.Exam.Revision, updated.Value.Exam.Revision)
 
 	replay := newExamDraftNativePolicyUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, native, updatedAt.Add(time.Second))
 	replayed, err := ss.ExamAuthoring().UpdateDraftNativePolicy(ctx, replay, command)
-	requireNoError(t, err)
-	if !replayed.Replayed || replayed.Value.Draft.Revision != 2 || replayed.Value.Draft.Policy.Native.Families[1].Mode() != model.NativeModeObserve {
-		t.Fatalf("replayed update = %#v", replayed)
-	}
+	require.NoError(t, err)
+	require.True(t, replayed.Replayed)
+	require.Equal(t, int64(2), replayed.Value.Draft.Revision)
+	require.Equal(t, model.NativeModeObserve, replayed.Value.Draft.Policy.Native.Families[1].Mode())
 
 	staleFocus := model.DefaultNativeSecurityPolicy()
 	stale := newExamDraftNativePolicyUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, staleFocus, updatedAt.Add(2*time.Second))
 	_, err = ss.ExamAuthoring().UpdateDraftNativePolicy(ctx, stale, examCommand(creator.ID, "exam.draft.native_policy.configure.v1", "native-stale", "native-stale-command"))
 	var conflict *store.ErrConflict
-	if !errors.As(err, &conflict) || conflict.Constraint != "exam_draft_revision" {
-		t.Fatalf("stale update error = %v, want exam_draft_revision conflict", err)
-	}
+	require.ErrorAs(t, err, &conflict, "stale update error")
+	require.Equal(t, "exam_draft_revision", conflict.Constraint, "stale update error")
 }
 
 func newExamDraftNativePolicyUpdate(t *testing.T, ctx context.Context, ss store.Store, examID model.ExamID, actorID model.UserID, expectedRevision int64, native model.NativeSecurityPolicy, at time.Time) *store.ExamDraftNativePolicyUpdate {
 	t.Helper()
 	exam, err := ss.ExamAuthoring().Resolve(ctx, examID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	audit, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		ActorID: actorID, Action: string(model.ActionExamManage), Resource: model.Resource{Type: model.ResourceExam, ID: examID.String()},
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: exam.AcademicUnitID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return &store.ExamDraftNativePolicyUpdate{
 		ExamID: examID, ActorUserID: actorID, ExpectedRevision: expectedRevision, NativePolicy: native,
 		UpdatedAt: model.MillisFromTime(at), AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at),
@@ -342,36 +326,28 @@ func testBrowserPolicyInstitutionPin(t *testing.T, ss store.Store) {
 	at := model.NowUTC()
 	creation := newExamAuthoringCreation(t, ctx, ss, unit.ID, creator.ID, at)
 	created, err := ss.ExamAuthoring().Create(ctx, creation, examCommand(creator.ID, "exam.create.v1", "pin-create", "pin-create"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	policy, err := model.NewBrowserPolicy(true, "start", []model.BrowserPolicyRule{{RuleID: "start", Origin: "http://institution.example:8080", PathPrefix: "/exam", HostMatch: model.BrowserPolicyHostExact, BlockedNavigationOutcome: model.BrowserPolicyBlockedNavigationIntegrityEvidence, InstitutionHTTPException: true}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	base := newExamDraftTextUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, nil, nil, at.Add(time.Second))
 	input := &store.ExamDraftBrowserPolicyUpdate{ExamID: base.ExamID, ActorUserID: creator.ID, ExpectedRevision: 1, Policy: policy, InstitutionOrigin: "https://unrelated.example:8080", UpdatedAt: base.UpdatedAt, AuditEventID: base.AuditEventID, AuditAt: base.AuditAt}
 	command := examCommand(creator.ID, "exam.draft.browser_policy.configure.v1", "pin-update", "pin-update")
 	_, err = ss.ExamAuthoring().UpdateDraftBrowserPolicy(ctx, input, command)
 	var invalid *store.ErrInvalidInput
-	if !errors.As(err, &invalid) {
-		t.Fatalf("unrelated pin accepted: %v", err)
-	}
+	require.ErrorAs(t, err, &invalid)
 	unchanged, err := ss.ExamAuthoring().Get(ctx, input.ExamID, creator.ID)
-	requireNoError(t, err)
-	if unchanged.Draft.Revision != 1 || unchanged.Draft.BrowserPolicy.Enabled {
-		t.Fatal("refused exception changed draft")
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(1), unchanged.Draft.Revision, "refused exception changed draft")
+	require.False(t, unchanged.Draft.BrowserPolicy.Enabled, "refused exception changed draft")
 	input.InstitutionOrigin = "https://institution.example:8080"
 	updated, err := ss.ExamAuthoring().UpdateDraftBrowserPolicy(ctx, input, command)
-	requireNoError(t, err)
-	if updated.Value.Draft.Revision != 2 || !updated.Value.Draft.BrowserPolicy.MayCreateIntegrityEvidence() {
-		t.Fatalf("saved policy = %#v", updated)
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(2), updated.Value.Draft.Revision)
+	require.True(t, updated.Value.Draft.BrowserPolicy.MayCreateIntegrityEvidence())
 	reloaded, err := ss.ExamAuthoring().Get(ctx, input.ExamID, creator.ID)
-	requireNoError(t, err)
-	if err := reloaded.Draft.BrowserPolicy.ValidateInstitutionOrigin(input.InstitutionOrigin); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, reloaded.Draft.BrowserPolicy.ValidateInstitutionOrigin(input.InstitutionOrigin))
 	digest, err := model.BrowserPolicyDigest(reloaded.Draft.BrowserPolicy)
-	requireNoError(t, err)
-	if !model.IsValidSHA256Fingerprint(digest) {
-		t.Fatalf("invalid persisted digest %q", digest)
-	}
+	require.NoError(t, err)
+	require.True(t, model.IsValidSHA256Fingerprint(digest), "invalid persisted digest")
 }

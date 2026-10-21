@@ -14,8 +14,9 @@ package storetest
 
 import (
 	"context"
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -39,35 +40,30 @@ func testInstitutionStoreUpdateWithAudit(t *testing.T, ss store.Store) {
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	candidate := *institution
 	candidate.DisplayName = "Audited Northbridge"
 	candidate.PrepareUpdate(model.NowUTC())
 	updated, err := ss.Institution().Update(ctx, &store.InstitutionUpdate{
 		Institution: &candidate, AuditEventID: attempt.ID, AuditAt: model.GetMillis(),
 	})
-	requireNoError(t, err)
-	if updated.DisplayName != "Audited Northbridge" {
-		t.Fatalf("Update() = %#v", updated)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "Audited Northbridge", updated.DisplayName)
 	completed, err := ss.Audit().Get(ctx, attempt.ID)
-	requireNoError(t, err)
-	if completed.Status != model.AuditStatusSuccess {
-		t.Fatalf("audit status = %q", completed.Status)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.AuditStatusSuccess, completed.Status)
 	staleAttempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		Action: string(model.ActionInstitutionManage), Resource: model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()},
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	stale := *institution
 	stale.DisplayName = "Stale Northbridge"
 	stale.PrepareUpdate(model.NowUTC())
-	if _, err = ss.Institution().Update(ctx, &store.InstitutionUpdate{
+	_, err = ss.Institution().Update(ctx, &store.InstitutionUpdate{
 		Institution: &stale, AuditEventID: staleAttempt.ID, AuditAt: model.GetMillis(),
-	}); !store.IsConflict(err) {
-		t.Fatalf("stale Update() error = %v, want conflict", err)
-	}
+	})
+	require.True(t, store.IsConflict(err), "stale Update() error")
 
 	rolledBack := *updated
 	rolledBack.DisplayName = "Must Roll Back"
@@ -75,14 +71,10 @@ func testInstitutionStoreUpdateWithAudit(t *testing.T, ss store.Store) {
 	_, err = ss.Institution().Update(ctx, &store.InstitutionUpdate{
 		Institution: &rolledBack, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
 	})
-	if err == nil {
-		t.Fatal("Update() succeeded without its audit attempt")
-	}
+	require.Error(t, err, "Update() succeeded without its audit attempt")
 	persisted, getErr := ss.Institution().GetSingleton(ctx)
-	requireNoError(t, getErr)
-	if persisted.DisplayName != updated.DisplayName {
-		t.Fatalf("update survived audit rollback: %#v", persisted)
-	}
+	require.NoError(t, getErr)
+	require.Equal(t, updated.DisplayName, persisted.DisplayName)
 }
 
 func testInstitutionStoreSave(t *testing.T, ss store.Store) {
@@ -95,28 +87,21 @@ func testInstitutionStoreSave(t *testing.T, ss store.Store) {
 		Description: "Primary institution",
 	}
 	saved, err := ss.Institution().Save(ctx, institution)
-	requireNoError(t, err)
-	if !saved.ID.IsValid() {
-		t.Fatalf("Save() id = %q", saved.ID.String())
-	}
-	if !institution.ID.IsZero() {
-		t.Fatalf("Save() mutated input id to %q", institution.ID.String())
-	}
+	require.NoError(t, err)
+	require.True(t, saved.ID.IsValid(), "Save() id = %q", saved.ID.String())
+	require.True(t, institution.ID.IsZero(), "Save() mutated input id to %q", institution.ID.String())
 
 	_, err = ss.Institution().Save(ctx, saved)
 	var invalid *store.ErrInvalidInput
-	if !errors.As(err, &invalid) {
-		t.Fatalf("second Save(saved) error = %v, want invalid input", err)
-	}
+	require.ErrorAs(t, err, &invalid, "second Save(saved) error")
 
 	_, err = ss.Institution().Save(ctx, &model.Institution{
 		Name:        "second",
 		DisplayName: "Second University",
 	})
 	var conflict *store.ErrConflict
-	if !errors.As(err, &conflict) || conflict.Constraint != "institutions_singleton_key" {
-		t.Fatalf("second active institution error = %v, want singleton conflict", err)
-	}
+	require.ErrorAs(t, err, &conflict, "second active institution error")
+	require.Equal(t, "institutions_singleton_key", conflict.Constraint, "second active institution error")
 }
 
 func testInstitutionStoreGet(t *testing.T, ss store.Store) {
@@ -124,15 +109,11 @@ func testInstitutionStoreGet(t *testing.T, ss store.Store) {
 	institution := saveInstitution(t, ctx, ss)
 
 	got, err := ss.Institution().Get(ctx, institution.ID)
-	requireNoError(t, err)
-	if *got != *institution {
-		t.Fatalf("Get() = %#v, want %#v", got, institution)
-	}
+	require.NoError(t, err)
+	require.Equal(t, *institution, *got, "Get() = %#v, want %#v", got, institution)
 
 	_, err = ss.Institution().Get(ctx, model.NewInstitutionID())
-	if !store.IsNotFound(err) {
-		t.Fatalf("Get(missing) error = %v, want not found", err)
-	}
+	require.True(t, store.IsNotFound(err), "Get(missing) error")
 }
 
 func testInstitutionStoreGetSingleton(t *testing.T, ss store.Store) {
@@ -140,10 +121,8 @@ func testInstitutionStoreGetSingleton(t *testing.T, ss store.Store) {
 	institution := saveInstitution(t, ctx, ss)
 
 	got, err := ss.Institution().GetSingleton(ctx)
-	requireNoError(t, err)
-	if got.ID.String() != institution.ID.String() {
-		t.Fatalf("GetSingleton() id = %q, want %q", got.ID.String(), institution.ID.String())
-	}
+	require.NoError(t, err)
+	require.Equal(t, institution.ID.String(), got.ID.String(), "GetSingleton() id")
 }
 
 func testInstitutionStoreUpdate(t *testing.T, ss store.Store) {
@@ -157,46 +136,33 @@ func testInstitutionStoreUpdate(t *testing.T, ss store.Store) {
 	capacity.WorkspaceMaximumEntries = 750
 	institution.ExamCapacity = capacity
 	updated, err := UpdateInstitution(ctx, ss, institution)
-	requireNoError(t, err)
-	if updated.DisplayName != "Northbridge" {
-		t.Fatalf("Update() display name = %q", updated.DisplayName)
-	}
-	if updated.ExamCapacity != capacity {
-		t.Fatalf("Update() Exam capacity = %#v", updated.ExamCapacity)
-	}
-	if !updated.CreatedAt.Equal(createAt) || updated.UpdatedAt.Before(institution.UpdatedAt) {
-		t.Fatalf("Update() timestamps = %#v", updated)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "Northbridge", updated.DisplayName)
+	require.Equal(t, capacity, updated.ExamCapacity)
+	require.True(t, updated.CreatedAt.Equal(createAt))
+	require.False(t, updated.UpdatedAt.Before(institution.UpdatedAt))
 
 	missing := *updated
 	missingID, parseErr := model.ParseInstitutionID(model.NewID())
-	requireNoError(t, parseErr)
+	require.NoError(t, parseErr)
 	missing.ID = missingID
 	_, err = UpdateInstitution(ctx, ss, &missing)
-	if !store.IsNotFound(err) {
-		t.Fatalf("Update(missing) error = %v, want not found", err)
-	}
+	require.True(t, store.IsNotFound(err), "Update(missing) error")
 }
 
 func testInstitutionStoreArchive(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
 
-	if err := ss.Institution().Archive(ctx, institution.ID, model.GetMillis()); err != nil {
-		t.Fatalf("Archive() error = %v", err)
-	}
-	if _, err := ss.Institution().Get(ctx, institution.ID); !store.IsNotFound(err) {
-		t.Fatalf("Get(archived) error = %v, want not found", err)
-	}
-	if err := ss.Institution().Archive(ctx, institution.ID, model.GetMillis()); !store.IsNotFound(err) {
-		t.Fatalf("second Archive() error = %v, want not found", err)
-	}
-	if _, err := ss.Institution().Save(ctx, &model.Institution{
+	require.NoError(t, ss.Institution().Archive(ctx, institution.ID, model.GetMillis()))
+	_, err := ss.Institution().Get(ctx, institution.ID)
+	require.True(t, store.IsNotFound(err), "Get(archived) error")
+	require.True(t, store.IsNotFound(ss.Institution().Archive(ctx, institution.ID, model.GetMillis())), "second Archive() error")
+	_, err = ss.Institution().Save(ctx, &model.Institution{
 		Name:        "replacement",
 		DisplayName: "Replacement University",
-	}); err != nil {
-		t.Fatalf("Save() after archive error = %v", err)
-	}
+	})
+	require.NoError(t, err)
 }
 
 func saveInstitution(t *testing.T, ctx context.Context, ss store.Store) *model.Institution {
@@ -206,7 +172,7 @@ func saveInstitution(t *testing.T, ctx context.Context, ss store.Store) *model.I
 		Name:        "institution-" + model.NewID(),
 		DisplayName: "Northbridge University",
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	t.Cleanup(func() { cleanupInstitution(t, context.Background(), ss) })
 	return institution
 }
@@ -217,15 +183,6 @@ func cleanupInstitution(t *testing.T, ctx context.Context, ss store.Store) {
 	if store.IsNotFound(err) {
 		return
 	}
-	requireNoError(t, err)
-	if err := ss.Institution().Archive(ctx, institution.ID, model.GetMillis()); err != nil {
-		t.Fatalf("cleanup institution: %v", err)
-	}
-}
-
-func requireNoError(t *testing.T, err error) {
-	t.Helper()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, ss.Institution().Archive(ctx, institution.ID, model.GetMillis()))
 }

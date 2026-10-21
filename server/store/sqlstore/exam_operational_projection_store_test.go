@@ -10,6 +10,8 @@ package sqlstore
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -34,9 +36,7 @@ func TestCandidateActivityAttemptAccessMembershipFence(t *testing.T) {
 			t.Parallel()
 			got := candidateActivityAttemptAccess(test.attemptState, model.ExamSittingOpen,
 				test.currentMembership, test.establishedAccess, false)
-			if got != test.want {
-				t.Fatalf("candidateActivityAttemptAccess() = %q, want %q", got, test.want)
-			}
+			require.Equal(t, test.want, got, "candidateActivityAttemptAccess()")
 		})
 	}
 }

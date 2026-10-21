@@ -8,8 +8,9 @@
 package sqlstore
 
 import (
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -47,21 +48,16 @@ func TestInstitutionRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := test.row.model()
 			var persisted *persistedStateError
-			if !errors.As(err, &persisted) {
-				t.Fatalf("model() error = %v, want persisted-state error", err)
-			}
-			if persisted.Entity != "institution" || persisted.Field != test.field {
-				t.Fatalf("persisted-state context = %s.%s, want institution.%s", persisted.Entity, persisted.Field, test.field)
-			}
+			require.ErrorAs(t, err, &persisted, "model() error")
+			require.Equal(t, "institution", persisted.Entity, "persisted-state context")
+			require.Equal(t, test.field, persisted.Field, "persisted-state context")
 		})
 	}
 }
 
 func TestInstitutionRowConversion(t *testing.T) {
 	id, err := model.ParseInstitutionID(model.NewID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	institution := &model.Institution{
 		ID:           id,
 		CreatedAt:    model.TimeFromMillis(1),
@@ -75,17 +71,12 @@ func TestInstitutionRowConversion(t *testing.T) {
 	}
 	row := newInstitutionRow(institution)
 	got, err := row.model()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if *got != *institution {
-		t.Fatalf("row.model() = %#v, want %#v", got, institution)
-	}
-	if !row.CreatedAt.Equal(institution.CreatedAt) ||
-		!row.UpdatedAt.Equal(institution.UpdatedAt) ||
-		!row.ArchivedAt.Valid || !row.ArchivedAt.Time.Equal(institution.ArchivedAt.Time) {
-		t.Fatalf("row times = %#v", row)
-	}
+	require.NoError(t, err)
+	require.Equal(t, *institution, *got, "row.model() = %#v, want %#v", got, institution)
+	require.True(t, row.CreatedAt.Equal(institution.CreatedAt))
+	require.True(t, row.UpdatedAt.Equal(institution.UpdatedAt))
+	require.True(t, row.ArchivedAt.Valid)
+	require.True(t, row.ArchivedAt.Time.Equal(institution.ArchivedAt.Time))
 }
 
 func replaceInstitutionRow(row institutionRow, replace func(*institutionRow)) institutionRow {

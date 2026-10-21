@@ -15,9 +15,12 @@ package storetest
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -60,110 +63,89 @@ func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
 		SessionID: session.ID, At: model.TimeFromMillis(now), AuditEventID: activationAudit.ID, AuditAt: now,
 		Notice: activationNotice,
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	requireMFATransitionCommitted(t, ctx, ss, user.ID, activationAudit, model.MailTemplateIdentityMFAEnabled, model.MailDeliveryQueued)
-	if !activated.Credential.IsActive() ||
-		activated.Session.AuthenticationStrength != model.AuthenticationMultiFactor ||
-		activated.Session.MFACompletedAt.Time.Before(model.TimeFromMillis(now-1)) || activated.Session.MFACompletedAt.Time.After(model.NowUTC()) ||
-		len(activated.AccessTokenHashes) != 1 ||
-		activated.AccessTokenHashes[0] != model.HashToken(raw.access) {
-		t.Fatalf("Activate() = %#v", activated)
-	}
+	require.True(t, activated.Credential.IsActive())
+	require.Equal(t, model.AuthenticationMultiFactor, activated.Session.AuthenticationStrength)
+	require.False(t, activated.Session.MFACompletedAt.Time.Before(model.TimeFromMillis(now-1)))
+	require.False(t, activated.Session.MFACompletedAt.Time.After(model.NowUTC()))
+	require.Len(t, activated.AccessTokenHashes, 1)
+	require.Equal(t, model.HashToken(raw.access), activated.AccessTokenHashes[0])
 	count, err := ss.MFA().CountRecoveryCodes(ctx, user.ID)
-	requireNoError(t, err)
-	if count != 2 {
-		t.Fatalf("CountRecoveryCodes() = %d, want 2", count)
-	}
-	requireNoError(t, ss.MFA().ConsumeSecondFactor(
+	require.NoError(t, err)
+	require.Equal(t, 2, count, "CountRecoveryCodes()")
+	require.NoError(t, ss.MFA().ConsumeSecondFactor(
 		ctx, user.ID, time.Now().Unix()/30+1, "", now+1,
 	))
-	if err := ss.MFA().ConsumeSecondFactor(
+
+	require.True(t, store.IsNotFound(ss.MFA().ConsumeSecondFactor(
 		ctx, user.ID, time.Now().Unix()/30+1, "", now+2,
-	); !store.IsNotFound(err) {
-		t.Fatalf("replayed TOTP time step error = %v, want not found", err)
-	}
-	requireNoError(t, ss.MFA().ConsumeSecondFactor(
+	)), "replayed TOTP time step error")
+	require.NoError(t, ss.MFA().ConsumeSecondFactor(
 		ctx, user.ID, 0, firstHash, now+3,
 	))
-	if err := ss.MFA().ConsumeSecondFactor(
+
+	require.True(t, store.IsNotFound(ss.MFA().ConsumeSecondFactor(
 		ctx, user.ID, 0, firstHash, now+4,
-	); !store.IsNotFound(err) {
-		t.Fatalf("replayed recovery code error = %v, want not found", err)
-	}
+	)), "replayed recovery code error")
 	count, err = ss.MFA().CountRecoveryCodes(ctx, user.ID)
-	requireNoError(t, err)
-	if count != 1 {
-		t.Fatalf("remaining recovery codes = %d, want 1", count)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 1, count, "remaining recovery codes")
 	replacementHash := model.HashToken(model.NewCredentialToken())
 	regenerationAudit, regenerationNotice := mfaSecurityNoticeFixture(t, ctx, ss, user, model.MailTemplateIdentityMFARecoveryCodesRegenerated, now+5)
-	requireNoError(t, ss.MFA().ReplaceRecoveryCodes(ctx, &store.MFARecoveryCodesRegeneration{
+	require.NoError(t, ss.MFA().ReplaceRecoveryCodes(ctx, &store.MFARecoveryCodesRegeneration{
 		Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour,
 		UserID: user.ID, RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: replacementHash}}, At: now + 5,
 		AuditEventID: regenerationAudit.ID, AuditAt: now + 5, Notice: regenerationNotice,
 	}))
+
 	requireMFATransitionCommitted(t, ctx, ss, user.ID, regenerationAudit, model.MailTemplateIdentityMFARecoveryCodesRegenerated, model.MailDeliveryQueued)
 	count, err = ss.MFA().CountRecoveryCodes(ctx, user.ID)
-	requireNoError(t, err)
-	if count != 1 {
-		t.Fatalf("replacement recovery codes = %d, want 1", count)
-	}
-	if err := ss.MFA().ConsumeSecondFactor(
+	require.NoError(t, err)
+	require.Equal(t, 1, count, "replacement recovery codes")
+	require.True(t, store.IsNotFound(ss.MFA().ConsumeSecondFactor(
 		ctx, user.ID, 0, secondHash, now+6,
-	); !store.IsNotFound(err) {
-		t.Fatalf("superseded recovery code error = %v, want not found", err)
-	}
+	)), "superseded recovery code error")
 	disableAudit, disableNotice := mfaSecurityNoticeFixture(t, ctx, ss, user, model.MailTemplateIdentityMFADisabled, now+7)
 	disableNotice = suppressedMFASecurityNotice(t, disableNotice, model.TimeFromMillis(now+7))
 	disabled, err := ss.MFA().Disable(ctx, &store.MFADisablement{Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour, UserID: user.ID, At: now + 7,
 		AuditEventID: disableAudit.ID, AuditAt: now + 7, Notice: disableNotice})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	requireMFATransitionCommitted(t, ctx, ss, user.ID, disableAudit, model.MailTemplateIdentityMFADisabled, model.MailDeliverySuppressed)
-	if len(disabled.AccessTokenHashes) != 1 ||
-		disabled.AccessTokenHashes[0] != model.HashToken(raw.access) {
-		t.Fatalf("Disable() = %#v", disabled)
-	}
+	require.Len(t, disabled.AccessTokenHashes, 1)
+	require.Equal(t, model.HashToken(raw.access), disabled.AccessTokenHashes[0])
 	gotSession, err := ss.Session().Get(ctx, session.ID)
-	requireNoError(t, err)
-	if gotSession.AuthenticationStrength != model.AuthenticationSingleFactor ||
-		gotSession.MFACompletedAt.Valid {
-		t.Fatalf("disabled session assurance = %#v", gotSession)
-	}
-	if _, err := ss.MFA().GetByUser(ctx, user.ID); !store.IsNotFound(err) {
-		t.Fatalf("GetByUser() after Disable error = %v, want not found", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.AuthenticationSingleFactor, gotSession.AuthenticationStrength)
+	require.False(t, gotSession.MFACompletedAt.Valid)
+	_, err = ss.MFA().GetByUser(ctx, user.ID)
+	require.True(t, store.IsNotFound(err), "GetByUser() after Disable error")
 }
 
 func requireMFATransitionCommitted(t *testing.T, ctx context.Context, ss store.Store, userID model.UserID, audit *model.AuditEvent, key model.MailTemplateKey, state model.MailDeliveryState) {
 	t.Helper()
 	completed, err := ss.Audit().Get(ctx, audit.ID)
-	requireNoError(t, err)
-	if completed.Status != model.AuditStatusSuccess {
-		t.Fatalf("%s audit status = %s, want success", key, completed.Status)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.AuditStatusSuccess, completed.Status, "%s audit status", key)
 	deliveries, err := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: []model.MailTemplateKey{key}, Limit: 200})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	matched := 0
 	for _, delivery := range deliveries {
 		if delivery.TargetUserID != userID {
 			continue
 		}
 		matched++
-		if delivery.State != state || delivery.TargetInvitationID.IsValid() {
-			t.Fatalf("%s delivery = %#v", key, delivery)
-		}
+		require.Equal(t, state, delivery.State, "%s delivery = %#v", key, delivery)
+		require.False(t, delivery.TargetInvitationID.IsValid(), "%s delivery = %#v", key, delivery)
 		job, jobErr := ss.Job().Get(ctx, delivery.JobID)
-		requireNoError(t, jobErr)
-		if job.Type != model.JobTypeMailDeliver {
-			t.Fatalf("%s job type = %s", key, job.Type)
-		}
-		if state == model.MailDeliverySuppressed && (len(delivery.EncryptedPayload) != 0 || job.Status != model.JobStatusCanceled) {
-			t.Fatalf("disabled %s mail retained work: delivery=%#v job=%#v", key, delivery, job)
+		require.NoError(t, jobErr)
+		require.Equal(t, model.JobTypeMailDeliver, job.Type, "%s job type", key)
+		if state == model.MailDeliverySuppressed {
+			require.Empty(t, delivery.EncryptedPayload, "disabled %s mail retained work: delivery=%#v job=%#v", key, delivery, job)
+			require.Equal(t, model.JobStatusCanceled, job.Status, "disabled %s mail retained work: delivery=%#v job=%#v", key, delivery, job)
 		}
 	}
-	if matched != 1 {
-		t.Fatalf("%s deliveries for user = %d, want exactly 1", key, matched)
-	}
+	require.Equal(t, 1, matched, "%s deliveries for user", key)
 }
 
 func suppressedMFASecurityNotice(t *testing.T, notice store.MFASecurityNotice, at time.Time) store.MFASecurityNotice {
@@ -174,9 +156,9 @@ func suppressedMFASecurityNotice(t *testing.T, notice store.MFASecurityNotice, a
 	delivery.EncryptedPayload = nil
 	delivery.UpdatedAt = model.TimeUTC(at)
 	delivery.Revision = 1
-	requireNoError(t, delivery.Validate())
+	require.NoError(t, delivery.Validate())
 	job, err := notice.Job.RequestCancellation(at)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	notice.Delivery, notice.Job = delivery, job
 	return notice
 }
@@ -186,14 +168,10 @@ func testMFAPendingReplacement(t *testing.T, ss store.Store) {
 	user := saveUser(t, ctx, ss)
 	first := savePendingMFA(t, ctx, ss, user.ID)
 	second := savePendingMFA(t, ctx, ss, user.ID)
-	if first.ID == second.ID {
-		t.Fatal("pending MFA setup was not replaced")
-	}
+	require.NotEqual(t, second.ID, first.ID, "pending MFA setup was not replaced")
 	current, err := ss.MFA().GetByUser(ctx, user.ID)
-	requireNoError(t, err)
-	if current.ID != second.ID {
-		t.Fatalf("GetByUser() = %s, want %s", current.ID, second.ID)
-	}
+	require.NoError(t, err)
+	require.Equal(t, second.ID, current.ID, "GetByUser()")
 }
 
 func testMFARecoveryCodeConsumptionIsSerialized(t *testing.T, ss store.Store) {
@@ -210,7 +188,7 @@ func testMFARecoveryCodeConsumptionIsSerialized(t *testing.T, ss store.Store) {
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: codeHash}}, SessionID: session.ID, At: model.TimeFromMillis(base + 1),
 		AuditEventID: audit.ID, AuditAt: base + 1, Notice: notice,
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	const contenders = 8
 	start := make(chan struct{})
@@ -241,12 +219,11 @@ func testMFARecoveryCodeConsumptionIsSerialized(t *testing.T, ss store.Store) {
 		case store.IsNotFound(err):
 			rejected++
 		default:
-			t.Fatalf("concurrent ConsumeSecondFactor() error = %v", err)
+			require.FailNow(t, fmt.Sprintf("concurrent ConsumeSecondFactor() error = %v", err))
 		}
 	}
-	if successes != 1 || rejected != contenders-1 {
-		t.Fatalf("successes=%d rejected=%d", successes, rejected)
-	}
+	require.Equal(t, 1, successes, "successes")
+	require.Equal(t, contenders-1, rejected, "successes")
 }
 
 func testMFATransitionMailAndAuditRollbackTogether(t *testing.T, ss store.Store) {
@@ -263,20 +240,14 @@ func testMFATransitionMailAndAuditRollbackTogether(t *testing.T, ss store.Store)
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
 		SessionID:     session.ID, At: model.TimeFromMillis(at), AuditEventID: missingAuditID, AuditAt: at, Notice: notice,
 	})
-	if err == nil {
-		t.Fatal("Activate() without durable audit attempt succeeded")
-	}
+	require.Error(t, err, "Activate() without durable audit attempt succeeded")
 	current, getErr := ss.MFA().GetByUser(ctx, user.ID)
-	requireNoError(t, getErr)
-	if current.State != model.MFAStatePending {
-		t.Fatalf("credential state after rollback = %s", current.State)
-	}
+	require.NoError(t, getErr)
+	require.Equal(t, model.MFAStatePending, current.State)
 	deliveries, listErr := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: []model.MailTemplateKey{model.MailTemplateIdentityMFAEnabled}, Limit: 200})
-	requireNoError(t, listErr)
+	require.NoError(t, listErr)
 	for _, delivery := range deliveries {
-		if delivery.TargetUserID == user.ID {
-			t.Fatalf("failed activation persisted delivery %s", delivery.ID)
-		}
+		require.NotEqual(t, user.ID, delivery.TargetUserID, "failed activation persisted delivery %s", delivery.ID)
 	}
 
 	audit, replayNotice := mfaSecurityNoticeFixture(t, ctx, ss, user, model.MailTemplateIdentityMFAEnabled, at+1)
@@ -286,7 +257,7 @@ func testMFATransitionMailAndAuditRollbackTogether(t *testing.T, ss store.Store)
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
 		SessionID:     session.ID, At: model.TimeFromMillis(at + 1), AuditEventID: audit.ID, AuditAt: at + 1, Notice: replayNotice,
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	replayAudit, secondNotice := mfaSecurityNoticeFixture(t, ctx, ss, user, model.MailTemplateIdentityMFAEnabled, at+2)
 	_, err = ss.MFA().Activate(ctx, &store.MFAActivationMutation{
 		Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour,
@@ -294,15 +265,11 @@ func testMFATransitionMailAndAuditRollbackTogether(t *testing.T, ss store.Store)
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
 		SessionID:     session.ID, At: model.TimeFromMillis(at + 2), AuditEventID: replayAudit.ID, AuditAt: at + 2, Notice: secondNotice,
 	})
-	if err == nil {
-		t.Fatal("replayed activation succeeded")
-	}
+	require.Error(t, err, "replayed activation succeeded")
 	requireMFATransitionCommitted(t, ctx, ss, user.ID, audit, model.MailTemplateIdentityMFAEnabled, model.MailDeliveryQueued)
 	replayAuditAfter, auditErr := ss.Audit().Get(ctx, replayAudit.ID)
-	requireNoError(t, auditErr)
-	if replayAuditAfter.Status != model.AuditStatusAttempt {
-		t.Fatalf("replay audit status = %s, want attempt for caller failure completion", replayAuditAfter.Status)
-	}
+	require.NoError(t, auditErr)
+	require.Equal(t, model.AuditStatusAttempt, replayAuditAfter.Status, "replay audit status")
 }
 
 func mfaSecurityNoticeFixture(t *testing.T, ctx context.Context, ss store.Store, user *model.User, key model.MailTemplateKey, at int64) (*model.AuditEvent, store.MFASecurityNotice) {
@@ -311,7 +278,7 @@ func mfaSecurityNoticeFixture(t *testing.T, ctx context.Context, ss store.Store,
 	audit, err := ss.Audit().Save(ctx, &model.AuditEvent{ActorID: user.ID, Action: "mfa.security_transition",
 		Resource: model.Resource{Type: model.ResourceUser, ID: user.ID.String()}, ScopeType: model.RoleScopeInstitution,
 		ScopeID: scopeID, Status: model.AuditStatusAttempt, NodeID: "mfa-storetest"})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	when := model.TimeFromMillis(at)
 	occurrence, delivery, job := userTokenMailFixture(t, user.ID, model.NewMailOccurrenceID(), model.MailOccurrenceSecurityNotice, key, model.JobTypeMailDeliver, when, when.Add(24*time.Hour))
 	return audit, store.MFASecurityNotice{Occurrence: occurrence, Delivery: delivery, Job: job}
@@ -333,14 +300,14 @@ func savePendingMFA(
 		PendingExpiresAt: model.OptionalTimeFrom(now.Add(10 * time.Minute)),
 		CreatedAt:        now,
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return credential
 }
 
 func mfaPrincipal(t *testing.T, ctx context.Context, ss store.Store, rawAccess string) model.Principal {
 	t.Helper()
 	credential, session, err := ss.SessionCredential().GetSessionByTokenHash(ctx, model.HashToken(rawAccess), model.SessionCredentialAccess)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return mfaSessionPrincipal(session, credential)
 }
 func mfaSessionPrincipal(session *model.Session, credential *model.SessionCredential) model.Principal {

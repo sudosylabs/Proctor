@@ -13,26 +13,23 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRenderTypeRejectsUnsupportedContractSyntax(t *testing.T) {
 	t.Parallel()
 
 	_, err := renderType(&ast.ChanType{Value: ast.NewIdent("string")}, nil)
-	if err == nil || !strings.Contains(err.Error(), "unsupported store contract type") {
-		t.Fatalf("renderType() error = %v", err)
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unsupported store contract type")
 }
 
 func TestMethodIdentifierPreservesIDInitialism(t *testing.T) {
 	t.Parallel()
 
-	if got := methodIdentifier("GetAcademicUnitID"); got != "GetAcademicUnitID" {
-		t.Fatalf("methodIdentifier(Id) = %q", got)
-	}
-	if got := methodIdentifier("GetByIDs"); got != "GetByIDs" {
-		t.Fatalf("methodIdentifier(Ids) = %q", got)
-	}
+	require.Equal(t, "GetAcademicUnitID", methodIdentifier("GetAcademicUnitID"))
+	require.Equal(t, "GetByIDs", methodIdentifier("GetByIDs"))
 }
 
 func TestParseInterfacesExpandsCatalogAndOrdersByAccessor(t *testing.T) {
@@ -57,26 +54,18 @@ type Store interface {
 		"zebra.go": "package store\n\ntype ZebraStore interface{ Get() error }\n",
 	}
 	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(directory, name), []byte(content), 0o600); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.WriteFile(filepath.Join(directory, name), []byte(content), 0o600))
 	}
 	interfaces, _, err := parseInterfaces(directory)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var names []string
 	for _, spec := range interfaces {
 		names = append(names, spec.name)
 	}
-	if got := strings.Join(names, ","); got != "Store,ZebraStore,AppleStore" {
-		t.Fatalf("interface order = %s", got)
-	}
+	require.Equal(t, "Store,ZebraStore,AppleStore", strings.Join(names, ","))
 	var methods []string
 	for _, method := range interfaces[0].methods {
 		methods = append(methods, method.name)
 	}
-	if got := strings.Join(methods, ","); got != "Zebra,Apple,Close" {
-		t.Fatalf("Store methods = %s", got)
-	}
+	require.Equal(t, "Zebra,Apple,Close", strings.Join(methods, ","))
 }

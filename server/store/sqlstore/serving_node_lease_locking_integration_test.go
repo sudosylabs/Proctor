@@ -11,8 +11,11 @@ package sqlstore
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -26,9 +29,7 @@ func TestServingNodeLeaseWritesSerializeOnlyTheSameNode(t *testing.T) {
 
 		// An open lease transaction for node-a holds exactly what Upsert holds.
 		blocker, err := sqlStore.GetMaster().Begin(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		released := false
 		release := func() {
 			if !released {
@@ -37,21 +38,15 @@ func TestServingNodeLeaseWritesSerializeOnlyTheSameNode(t *testing.T) {
 			}
 		}
 		defer release()
-		if err := lockServingNodeLease(ctx, blocker, "node-a"); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, lockServingNodeLease(ctx, blocker, "node-a"))
 		var blockerPID int
-		if err := blocker.Get(ctx, &blockerPID, `SELECT pg_backend_pid()`); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, blocker.Get(ctx, &blockerPID, `SELECT pg_backend_pid()`))
 
 		otherCtx, cancelOther := context.WithTimeout(ctx, 5*time.Second)
 		otherLeaseID := model.NewID()
 		_, err = sqlStore.ServingNodeLease().Upsert(otherCtx, &store.ServingNodeLeaseClaim{NodeID: "node-b", LeaseID: otherLeaseID, Lifetime: 30 * time.Second})
 		cancelOther()
-		if err != nil {
-			t.Fatalf("another node's renewal waited behind node-a: %v", err)
-		}
+		require.NoError(t, err)
 
 		sameLeaseID := model.NewID()
 		sameDone := make(chan error, 1)
@@ -62,18 +57,12 @@ func TestServingNodeLeaseWritesSerializeOnlyTheSameNode(t *testing.T) {
 		waitForBlockedSystemAdministratorAuthenticationPathTransactions(t, ctx, sqlStore, blockerPID, 1)
 		select {
 		case err := <-sameDone:
-			t.Fatalf("same-node renewal did not wait for the open node-a transaction: %v", err)
+			require.FailNow(t, fmt.Sprintf("same-node renewal did not wait for the open node-a transaction: %v", err))
 		default:
 		}
 		release()
-		if err := <-sameDone; err != nil {
-			t.Fatal(err)
-		}
-		if err := sqlStore.ServingNodeLease().Delete(ctx, "node-a", sameLeaseID); err != nil {
-			t.Fatal(err)
-		}
-		if err := sqlStore.ServingNodeLease().Delete(ctx, "node-b", otherLeaseID); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, (<-sameDone))
+		require.NoError(t, sqlStore.ServingNodeLease().Delete(ctx, "node-a", sameLeaseID))
+		require.NoError(t, sqlStore.ServingNodeLease().Delete(ctx, "node-b", otherLeaseID))
 	})
 }

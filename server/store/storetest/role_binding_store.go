@@ -13,10 +13,12 @@ package storetest
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -29,44 +31,42 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 		institution := saveInstitution(t, ctx, ss)
 		user := saveUser(t, ctx, ss)
 		role, err := SaveRole(ctx, ss, &model.Role{Name: "audited-binding-role", DisplayName: "Audited", Permissions: []string{string(model.ActionClassView)}})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		at := model.GetMillis()
-		if _, err = ss.RoleBinding().Save(ctx, &store.RoleBindingCreation{
+		_, err = ss.RoleBinding().Save(ctx, &store.RoleBindingCreation{
 			Binding: &model.RoleBinding{
 				UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
 				ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(at),
 			},
 			AuditEventID: model.NewAuditEventID(), AuditAt: at,
-		}); err == nil {
-			t.Fatal("Save succeeded without audit attempt")
-		}
+		})
+		require.Error(t, err, "Save succeeded without audit attempt")
 		attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 			Action:    string(model.ActionRoleManage),
 			Resource:  model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()},
 			ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 			Status: model.AuditStatusAttempt, NodeID: "test-node",
 		})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		staleUpdatedAt := role.UpdatedAt
 		stalePermissions := append([]string(nil), role.Permissions...)
 		role.DisplayName = "Audited Updated"
 		role, err = UpdateRole(ctx, ss, role)
-		requireNoError(t, err)
-		if _, err = ss.RoleBinding().Save(ctx, &store.RoleBindingCreation{
+		require.NoError(t, err)
+		_, err = ss.RoleBinding().Save(ctx, &store.RoleBindingCreation{
 			Binding: &model.RoleBinding{
 				UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
 				ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(at),
 			},
 			ExpectedRoleUpdatedAt: staleUpdatedAt, ExpectedRolePermissions: stalePermissions,
 			AuditEventID: attempt.ID, AuditAt: at,
-		}); !store.IsConflict(err) {
-			t.Fatalf("Save(stale role snapshot) error = %v, want conflict", err)
-		}
+		})
+		require.True(t, store.IsConflict(err), "Save(stale role snapshot) error")
 		attempt, err = ss.Audit().Save(ctx, &model.AuditEvent{
 			Action: string(model.ActionRoleManage), Resource: model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()},
 			ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node",
 		})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		createNotice := classMemberPreparedMail(t, &model.ClassMember{UserID: user.ID},
 			model.MailTemplateAuthorizationInstitutionRoleAssigned, model.TimeFromMillis(at))
 		saved, err := ss.RoleBinding().Save(ctx, &store.RoleBindingCreation{
@@ -78,26 +78,24 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 			ExpectedRecipientRevision: user.Revision, Notice: createNotice,
 			AuditEventID: attempt.ID, AuditAt: at,
 		})
-		requireNoError(t, err)
-		requireNoError(t, requireClassMemberMail(t, ctx, ss, createNotice, model.MailTemplateAuthorizationInstitutionRoleAssigned))
+		require.NoError(t, err)
+		require.NoError(t, requireClassMemberMail(t, ctx, ss, createNotice, model.MailTemplateAuthorizationInstitutionRoleAssigned))
 		endAttempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 			Action:    string(model.ActionRoleManage),
 			Resource:  model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()},
 			ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 			Status: model.AuditStatusAttempt, NodeID: "test-node",
 		})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		endNotice := classMemberPreparedMail(t, &model.ClassMember{UserID: user.ID},
 			model.MailTemplateAuthorizationInstitutionRoleEnded, model.TimeFromMillis(at+1))
 		ended, err := ss.RoleBinding().End(ctx, &store.RoleBindingEnd{
 			ID: saved.ID, EndAt: at + 1, ExpectedRecipientRevision: user.Revision, Notice: endNotice,
 			AuditEventID: endAttempt.ID, AuditAt: at + 1,
 		})
-		requireNoError(t, err)
-		requireNoError(t, requireClassMemberMail(t, ctx, ss, endNotice, model.MailTemplateAuthorizationInstitutionRoleEnded))
-		if ended.EndsAt.Millis() != at+1 {
-			t.Fatalf("End = %#v", ended)
-		}
+		require.NoError(t, err)
+		require.NoError(t, requireClassMemberMail(t, ctx, ss, endNotice, model.MailTemplateAuthorizationInstitutionRoleEnded))
+		require.Equal(t, at+1, ended.EndsAt.Millis())
 	})
 	t.Run("ScopedUserProjection", func(t *testing.T) {
 		ctx := context.Background()
@@ -111,7 +109,7 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 		class := saveClass(t, ctx, ss, level.ID.String(), period.ID.String(), "binding-class")
 		user := saveUser(t, ctx, ss)
 		role, err := SaveRole(ctx, ss, &model.Role{Name: "binding-scope-reader", DisplayName: "Reader", Permissions: []string{string(model.ActionClassView)}})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		start := model.GetMillis()
 		bindings := make([]*model.RoleBinding, 0, 4)
 		for _, scope := range []struct {
@@ -124,18 +122,20 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 			{model.RoleScopeClass, class.ID.String()},
 		} {
 			saved, saveErr := SaveRoleBinding(ctx, ss, &model.RoleBinding{UserID: user.ID, RoleID: role.ID, ScopeType: scope.type_, ScopeID: scope.id, StartsAt: model.TimeFromMillis(start)})
-			requireNoError(t, saveErr)
+			require.NoError(t, saveErr)
 			bindings = append(bindings, saved)
 		}
 		visible, err := ss.RoleBinding().ListVisibleByUser(ctx, user.ID, store.UserVisibilityScope{AcademicUnitRootIDs: []model.AcademicUnitID{root.ID}})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		seen := map[model.RoleBindingID]bool{}
 		for _, binding := range visible {
 			seen[binding.ID] = true
 		}
-		if len(visible) != 2 || !seen[bindings[1].ID] || !seen[bindings[3].ID] || seen[bindings[0].ID] || seen[bindings[2].ID] {
-			t.Fatalf("scoped bindings = %#v", visible)
-		}
+		require.Len(t, visible, 2)
+		require.True(t, seen[bindings[1].ID])
+		require.True(t, seen[bindings[3].ID])
+		require.False(t, seen[bindings[0].ID])
+		require.False(t, seen[bindings[2].ID])
 	})
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
@@ -144,84 +144,73 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 		Name: "class-reader", DisplayName: "Class Reader",
 		Permissions: []string{string(model.ActionClassView)},
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	start := model.GetMillis()
 	binding, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(start),
 	})
-	requireNoError(t, err)
-	if !binding.ID.IsValid() {
-		t.Fatalf("Save() = %#v", binding)
-	}
+	require.NoError(t, err)
+	require.True(t, binding.ID.IsValid())
 	got, err := ss.RoleBinding().Get(ctx, binding.ID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	byUser, err := ss.RoleBinding().ListByUser(ctx, user.ID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	byScope, err := ss.RoleBinding().ListByScope(
 		ctx, model.RoleScopeInstitution, institution.ID.String(),
 	)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	active, err := ss.RoleBinding().ListActiveByUser(ctx, user.ID, model.TimeFromMillis(start+1))
-	requireNoError(t, err)
-	if got.ID != binding.ID || len(byUser) != 1 || len(byScope) != 1 || len(active) != 1 {
-		t.Fatalf("binding queries = %#v/%d/%d/%d", got, len(byUser), len(byScope), len(active))
-	}
+	require.NoError(t, err)
+	require.Equal(t, binding.ID, got.ID, "binding queries = %#v/%d/%d", got, len(byUser), len(byScope))
+	require.Len(t, byUser, 1, "binding queries = %#v/%d/%d", got, len(byUser), len(byScope))
+	require.Len(t, byScope, 1, "binding queries = %#v/%d/%d", got, len(byUser), len(byScope))
+	require.Len(t, active, 1, "binding queries = %#v/%d/%d", got, len(byUser), len(byScope))
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(start + 1),
 	})
-	if !store.IsConflict(err) {
-		t.Fatalf("overlapping Save() error = %v", err)
-	}
+	require.True(t, store.IsConflict(err), "overlapping Save() error")
 	ended, err := EndRoleBinding(ctx, ss, binding.ID, start+2)
-	requireNoError(t, err)
-	if ended.EndsAt.Millis() != start+2 {
-		t.Fatalf("End() = %#v", ended)
-	}
+	require.NoError(t, err)
+	require.Equal(t, start+2, ended.EndsAt.Millis())
 	active, err = ss.RoleBinding().ListActiveByUser(ctx, user.ID, model.TimeFromMillis(start+3))
-	requireNoError(t, err)
-	if len(active) != 0 {
-		t.Fatalf("active ended bindings = %#v", active)
-	}
+	require.NoError(t, err)
+	require.Empty(t, active)
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeClass,
 		ScopeID: model.NewID(), StartsAt: model.TimeFromMillis(start),
 	})
 	var reference *store.ErrReference
-	if !errors.As(err, &reference) ||
-		reference.Constraint != "role_bindings_class_scope_fkey" {
-		t.Fatalf("invalid scope error = %v", err)
-	}
+	require.ErrorAs(t, err, &reference)
+	require.Equal(t, "role_bindings_class_scope_fkey", reference.Constraint)
 
 	adminRole, err := SaveRole(ctx, ss, &model.Role{
 		Name: model.SystemAdministratorRoleName, DisplayName: "System Administrator",
 		Permissions: model.AllActions(), BuiltIn: true,
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	firstAdmin, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: user.ID, RoleID: adminRole.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(start),
 	})
-	requireNoError(t, err)
-	if _, err = EndRoleBinding(ctx, ss, firstAdmin.ID, start+10); !store.IsConflict(err) {
-		t.Fatalf("End(last system administrator) error = %v", err)
-	}
+	require.NoError(t, err)
+	_, err = EndRoleBinding(ctx, ss, firstAdmin.ID, start+10)
+	require.True(t, store.IsConflict(err), "End(last system administrator) error")
 	secondUser := saveUserWithPassword(t, ctx, ss)
 	secondAdmin, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: secondUser.ID, RoleID: adminRole.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(start),
 	})
-	requireNoError(t, err)
-	if _, err = EndRoleBinding(ctx, ss, firstAdmin.ID, start+10); err != nil {
-		t.Fatalf("End(system administrator with successor) error = %v", err)
-	}
+	require.NoError(t, err)
+	_, err = EndRoleBinding(ctx, ss, firstAdmin.ID, start+10)
+	require.NoError(t, err)
 	thirdUser := saveUserWithPassword(t, ctx, ss)
 	thirdAdmin, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: thirdUser.ID, RoleID: adminRole.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(start),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	startRace := make(chan struct{})
 	endErrors := make(chan error, 2)
 	var workers sync.WaitGroup
@@ -246,12 +235,11 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 		case store.IsConflict(endErr):
 			conflicted++
 		default:
-			t.Fatalf("concurrent administrator End() error = %v", endErr)
+			require.FailNow(t, fmt.Sprintf("concurrent administrator End() error = %v", endErr))
 		}
 	}
-	if succeeded != 1 || conflicted != 1 {
-		t.Fatalf("concurrent administrator End() results = success %d conflict %d", succeeded, conflicted)
-	}
+	require.Equal(t, 1, succeeded, "concurrent administrator End() results = success")
+	require.Equal(t, 1, conflicted, "concurrent administrator End() results = success")
 }
 
 func testRoleBindingActiveIntervalPrecision(t *testing.T, ss store.Store) {
@@ -262,14 +250,14 @@ func testRoleBindingActiveIntervalPrecision(t *testing.T, ss store.Store) {
 		Name: "precise-binding-reader", DisplayName: "Precise Binding Reader",
 		Permissions: []string{string(model.ActionClassView)},
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	start := time.Date(2026, 9, 5, 12, 0, 0, 123200000, time.FixedZone("offset", 3600))
 	end := start.Add(time.Second + 500*time.Microsecond)
 	binding, err := SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: start, EndsAt: model.OptionalTimeFrom(end),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	for _, test := range []struct {
 		name   string
 		at     time.Time
@@ -284,13 +272,12 @@ func testRoleBindingActiveIntervalPrecision(t *testing.T, ss store.Store) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			active, err := ss.RoleBinding().ListActiveByUser(ctx, user.ID, test.at)
-			requireNoError(t, err)
+			require.NoError(t, err)
 			if test.active {
-				if len(active) != 1 || active[0].ID != binding.ID {
-					t.Fatalf("active bindings at %v = %#v, want saved binding", test.at, active)
-				}
-			} else if len(active) != 0 {
-				t.Fatalf("active bindings at %v = %#v, want empty", test.at, active)
+				require.Len(t, active, 1, "active bindings at %v", test.at)
+				require.Equal(t, binding.ID, active[0].ID, "active bindings at %v", test.at)
+			} else {
+				require.Empty(t, active, "active bindings at %v", test.at)
 			}
 		})
 	}

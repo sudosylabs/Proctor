@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -32,13 +34,13 @@ func TestExamAttemptWorkspaceMutationContractUsesSelectiveFencesAndSafeResults(t
 			EntryID: entryID, EntryKind: model.StarterWorkspaceEntryFile, Operation: mutation.Operation,
 			OldPath: mutation.ExpectedPath, NewPath: mutation.ExpectedPath,
 			ContentVersion: model.NewWorkspaceContentVersion(), ChangedAt: model.NowUTC()}, Replayed: true}
-	if mutation.Access.Generation != 2 || mutation.DestinationPath != "" || !result.Replayed || result.Change.Cursor != 7 {
-		t.Fatalf("Workspace mutation contract = %#v / %#v", mutation, result)
-	}
+	require.Equal(t, int64(2), mutation.Access.Generation, "Workspace mutation contract = %#v / %#v", mutation, result)
+	require.Empty(t, mutation.DestinationPath, "Workspace mutation contract = %#v / %#v", mutation, result)
+	require.True(t, result.Replayed, "Workspace mutation contract = %#v / %#v", mutation, result)
+	require.Equal(t, int64(7), result.Change.Cursor, "Workspace mutation contract = %#v / %#v", mutation, result)
 	assertNoWorkspaceSecrets(t, reflect.TypeOf(result))
-	if _, exists := reflect.TypeOf((*ExamAttemptWorkspaceStore)(nil)).Elem().MethodByName("ApplyMutation"); !exists {
-		t.Fatal("ExamAttemptWorkspaceStore is missing ApplyMutation")
-	}
+	_, exists := reflect.TypeOf((*ExamAttemptWorkspaceStore)(nil)).Elem().MethodByName("ApplyMutation")
+	require.True(t, exists, "ExamAttemptWorkspaceStore is missing ApplyMutation")
 }
 
 func TestCandidateWorkspaceRecoveryCursorsNeverCarryPaths(t *testing.T) {
@@ -53,13 +55,14 @@ func TestCandidateWorkspaceRecoveryCursorsNeverCarryPaths(t *testing.T) {
 	page := CandidateAttemptWorkspacePage{WorkspaceID: model.NewExamAttemptWorkspaceID(), Cursor: 41, RefreshRequired: true}
 	journal := CandidateWorkspaceJournalOptions{Access: access, AfterCursor: 40, Limit: model.AttemptWorkspaceJournalReadMaximum}
 	recovery := CandidateWorkspaceJournalPage{WorkspaceID: page.WorkspaceID, CurrentCursor: 41, RefreshRequired: true}
-	if initial.ExpectedCursor != -1 || !initial.AfterEntryID.IsZero() || manifest.ExpectedCursor != 41 || page.Cursor != 41 ||
-		journal.AfterCursor != 40 || !recovery.RefreshRequired {
-		t.Fatalf("manifest=%#v page=%#v journal=%#v recovery=%#v", manifest, page, journal, recovery)
-	}
-	if _, exists := reflect.TypeOf(manifest).FieldByName("AfterPath"); exists {
-		t.Fatal("candidate manifest cursor exposes a Workspace Path")
-	}
+	require.Equal(t, int64(-1), initial.ExpectedCursor, "manifest=%#v page=%#v journal=%#v recovery=%#v", manifest, page, journal, recovery)
+	require.True(t, initial.AfterEntryID.IsZero(), "manifest=%#v page=%#v journal=%#v recovery=%#v", manifest, page, journal, recovery)
+	require.Equal(t, int64(41), manifest.ExpectedCursor, "manifest=%#v page=%#v journal=%#v recovery=%#v", manifest, page, journal, recovery)
+	require.Equal(t, int64(41), page.Cursor, "manifest=%#v page=%#v journal=%#v recovery=%#v", manifest, page, journal, recovery)
+	require.Equal(t, int64(40), journal.AfterCursor, "manifest=%#v page=%#v journal=%#v recovery=%#v", manifest, page, journal, recovery)
+	require.True(t, recovery.RefreshRequired, "manifest=%#v page=%#v journal=%#v recovery=%#v", manifest, page, journal, recovery)
+	_, exists := reflect.TypeOf(manifest).FieldByName("AfterPath")
+	require.False(t, exists, "candidate manifest cursor exposes a Workspace Path")
 }
 
 func TestExamAttemptWorkspaceMutationResolvesSafeAuditAndEffectScope(t *testing.T) {
@@ -74,13 +77,13 @@ func TestExamAttemptWorkspaceMutationResolvesSafeAuditAndEffectScope(t *testing.
 		EntryID: model.NewAttemptWorkspaceEntryID(), DestinationPath: "cmd", AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}
 	result := ExamAttemptWorkspaceMutationResult{SittingID: target.SittingID, ClassID: target.ClassID,
 		CandidateUserID: target.CandidateUserID, WorkspaceID: target.WorkspaceID}
-	if input.AuditEventID == "" || input.AuditAt < 1 || result.SittingID != target.SittingID || result.ClassID != target.ClassID ||
-		result.CandidateUserID != access.CandidateUserID {
-		t.Fatalf("target=%#v input=%#v result=%#v", target, input, result)
-	}
-	if _, exists := reflect.TypeOf((*ExamAttemptWorkspaceStore)(nil)).Elem().MethodByName("ResolveMutationTarget"); !exists {
-		t.Fatal("ExamAttemptWorkspaceStore is missing ResolveMutationTarget")
-	}
+	require.NotEmpty(t, input.AuditEventID, "target=%#v input=%#v result=%#v", target, input, result)
+	require.GreaterOrEqual(t, input.AuditAt, int64(1), "target=%#v input=%#v result=%#v", target, input, result)
+	require.Equal(t, target.SittingID, result.SittingID, "target=%#v input=%#v result=%#v", target, input, result)
+	require.Equal(t, target.ClassID, result.ClassID, "target=%#v input=%#v result=%#v", target, input, result)
+	require.Equal(t, access.CandidateUserID, result.CandidateUserID, "target=%#v input=%#v result=%#v", target, input, result)
+	_, exists := reflect.TypeOf((*ExamAttemptWorkspaceStore)(nil)).Elem().MethodByName("ResolveMutationTarget")
+	require.True(t, exists, "ExamAttemptWorkspaceStore is missing ResolveMutationTarget")
 	assertNoWorkspaceSecrets(t, reflect.TypeOf(target))
 }
 
@@ -94,14 +97,12 @@ func TestExamAttemptWorkspaceObjectContractSeparatesStagingFromCleanup(t *testin
 	reservation := ExamAttemptWorkspaceObjectReservation{Access: access, ObjectID: objectID}
 	ready := ExamAttemptWorkspaceObjectReady{Access: access, ObjectID: objectID, ContentVersion: model.NewWorkspaceContentVersion(),
 		Content: model.AttemptWorkspaceContent{MediaType: "text/plain", SizeBytes: 7, SHA256: strings.Repeat("a", 64)}}
-	if reservation.ObjectID != ready.ObjectID || ready.Content.SizeBytes != 7 {
-		t.Fatalf("reservation=%#v ready=%#v", reservation, ready)
-	}
+	require.Equal(t, ready.ObjectID, reservation.ObjectID, "reservation=%#v ready=%#v", reservation, ready)
+	require.Equal(t, int64(7), ready.Content.SizeBytes, "reservation=%#v ready=%#v", reservation, ready)
 	methods := reflect.TypeOf((*ExamAttemptWorkspaceStore)(nil)).Elem()
 	for _, name := range []string{"ReserveObject", "MarkObjectReady", "MarkObjectReclaimable", "ClaimObjectsForCleanup", "CompleteObjectCleanup", "ReleaseObjectCleanup"} {
-		if _, exists := methods.MethodByName(name); !exists {
-			t.Fatalf("ExamAttemptWorkspaceStore is missing %s", name)
-		}
+		_, exists := methods.MethodByName(name)
+		require.True(t, exists, "ExamAttemptWorkspaceStore is missing %s", name)
 	}
 }
 
@@ -110,9 +111,7 @@ func assertNoWorkspaceSecrets(t *testing.T, typ reflect.Type) {
 	for index := 0; index < typ.NumField(); index++ {
 		name := strings.ToLower(typ.Field(index).Name)
 		for _, forbidden := range []string{"credential", "session", "object", "backend", "storage"} {
-			if strings.Contains(name, forbidden) {
-				t.Fatalf("outbound %s exposes %s", typ, typ.Field(index).Name)
-			}
+			require.NotContains(t, name, forbidden, "outbound")
 		}
 	}
 }

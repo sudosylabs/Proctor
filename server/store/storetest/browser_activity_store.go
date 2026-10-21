@@ -9,10 +9,11 @@ package storetest
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -46,19 +47,19 @@ func testBrowserActivityLifecycle(t *testing.T, ss store.Store) {
 		Access: access, ParticipationID: connected.Participation.ID,
 		Generation: connected.Participation.Generation, SourceSessionID: sourceID,
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	assertBrowserSourceStart(t, started)
 	replayedStart, err := startBrowserSourceFixture(t, ctx, ss, &store.BrowserActivitySourceStart{
 		Access: access, ParticipationID: connected.Participation.ID,
 		Generation: connected.Participation.Generation, SourceSessionID: sourceID,
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	assertBrowserSourceStart(t, replayedStart)
 	_, err = startBrowserSourceFixture(t, ctx, ss, &store.BrowserActivitySourceStart{
 		Access: access, ParticipationID: connected.Participation.ID,
 		Generation: connected.Participation.Generation, SourceSessionID: browserSourceID(2),
 	})
-	assertExamAttemptConflict(t, err, "browser_source_current")
+	requireConflictConstraint(t, err, "browser_source_current")
 
 	evenEvents := make([]model.BrowserActivityEvent, 0, 33)
 	for sequence := int64(2); sequence <= 66; sequence += 2 {
@@ -68,34 +69,34 @@ func testBrowserActivityLifecycle(t *testing.T, ss store.Store) {
 		Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
 		SourceSessionID: sourceID, Events: evenEvents,
 	})
-	requireNoError(t, err)
-	if acknowledgement.HighestContiguous != 0 || acknowledgement.HighestSeen != 66 ||
-		len(acknowledgement.MissingRanges) != model.BrowserActivityMaximumMissingRanges ||
-		!acknowledgement.MissingRangesTruncated || acknowledgement.MissingRanges[0] != (model.BrowserActivityMissingRange{First: 1, Last: 1}) ||
-		acknowledgement.MissingRanges[31] != (model.BrowserActivityMissingRange{First: 63, Last: 63}) {
-		t.Fatalf("gapped Browser Activity acknowledgement = %#v", acknowledgement)
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(0), acknowledgement.HighestContiguous)
+	require.Equal(t, int64(66), acknowledgement.HighestSeen)
+	require.Len(t, acknowledgement.MissingRanges, model.BrowserActivityMaximumMissingRanges)
+	require.True(t, acknowledgement.MissingRangesTruncated)
+	require.Equal(t, model.BrowserActivityMissingRange{First: 1, Last: 1}, acknowledgement.MissingRanges[0])
+	require.Equal(t, model.BrowserActivityMissingRange{First: 63, Last: 63}, acknowledgement.MissingRanges[31])
 	duplicate, err := appendBrowserActivityFixture(t, ctx, ss, &store.BrowserActivityAppend{
 		Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
 		SourceSessionID: sourceID, Events: evenEvents,
 	})
-	requireNoError(t, err)
-	if duplicate.HighestContiguous != acknowledgement.HighestContiguous || duplicate.HighestSeen != acknowledgement.HighestSeen ||
-		len(duplicate.MissingRanges) != len(acknowledgement.MissingRanges) || !duplicate.MissingRangesTruncated {
-		t.Fatalf("duplicate Browser Activity acknowledgement = %#v, first=%#v", duplicate, acknowledgement)
-	}
+	require.NoError(t, err)
+	require.Equal(t, acknowledgement.HighestContiguous, duplicate.HighestContiguous, "duplicate Browser Activity acknowledgement = %#v, first=%#v", duplicate, acknowledgement)
+	require.Equal(t, acknowledgement.HighestSeen, duplicate.HighestSeen, "duplicate Browser Activity acknowledgement = %#v, first=%#v", duplicate, acknowledgement)
+	require.Len(t, duplicate.MissingRanges, len(acknowledgement.MissingRanges), "duplicate Browser Activity acknowledgement = %#v, first=%#v", duplicate, acknowledgement)
+	require.True(t, duplicate.MissingRangesTruncated, "duplicate Browser Activity acknowledgement = %#v, first=%#v", duplicate, acknowledgement)
 	changed := browserActivityEvent(2, model.BrowserActivityClosed, fixture.revisionID)
 	_, err = appendBrowserActivityFixture(t, ctx, ss, &store.BrowserActivityAppend{
 		Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
 		SourceSessionID: sourceID, Events: []model.BrowserActivityEvent{changed},
 	})
-	assertExamAttemptConflict(t, err, "browser_activity_sequence")
+	requireConflictConstraint(t, err, "browser_activity_sequence")
 	tooFar := browserActivityEvent(model.BrowserActivityMaximumReorderWindow+1, model.BrowserActivityOpened, fixture.revisionID)
 	_, err = appendBrowserActivityFixture(t, ctx, ss, &store.BrowserActivityAppend{
 		Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
 		SourceSessionID: sourceID, Events: []model.BrowserActivityEvent{tooFar},
 	})
-	assertExamAttemptConflict(t, err, "replay_window_exceeded")
+	requireConflictConstraint(t, err, "replay_window_exceeded")
 
 	oddEvents := make([]model.BrowserActivityEvent, 0, 33)
 	for sequence := int64(1); sequence <= 65; sequence += 2 {
@@ -105,7 +106,7 @@ func testBrowserActivityLifecycle(t *testing.T, ss store.Store) {
 		Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
 		SourceSessionID: sourceID, Events: oddEvents,
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	assertBrowserActivityAcknowledgement(t, acknowledgement, sourceID, 66, 66, nil, false)
 
 	paused, err := ss.ExamSitting().Pause(ctx, &store.ExamSittingManagerTransition{ExamID: fixture.examID,
@@ -113,7 +114,7 @@ func testBrowserActivityLifecycle(t *testing.T, ss store.Store) {
 		PrivateReason: "prove Browser Activity is fenced while paused", ChangedAt: model.NowUTC(),
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
 		examCommand(fixture.manager.ID, "exam.sitting.pause.v1", "browser-activity-pause", "browser-activity-pause"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	schemeBlockedReason := model.BrowserBlockSchemeNotAllowed
 	invalidURLReason := model.BrowserBlockInvalidURL
 	matchedRuleID := "start"
@@ -132,66 +133,72 @@ func testBrowserActivityLifecycle(t *testing.T, ss store.Store) {
 		Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
 		SourceSessionID: sourceID, Events: finalEvents,
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	assertBrowserActivityAcknowledgement(t, pausedAcknowledgement, sourceID, 70, 70, nil, false)
 	replacementID := browserSourceID(2)
 	_, err = startBrowserSourceFixture(t, ctx, ss, &store.BrowserActivitySourceStart{
 		Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
 		SourceSessionID: replacementID, Transition: model.BrowserStartTransition{Kind: "runtime_reset", PredecessorSourceSessionID: sourceID, Reason: model.BrowserSourceResetCoordinatorRestarted},
 	})
-	assertExamAttemptConflict(t, err, "exam_sitting_state")
+	requireConflictConstraint(t, err, "exam_sitting_state")
 	resumed, err := ss.ExamSitting().Resume(ctx, &store.ExamSittingManagerTransition{ExamID: fixture.examID,
 		SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: paused.Value.Sitting.Revision,
 		PrivateReason: "finish Browser Activity conformance", ChangedAt: model.NowUTC(),
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
 		examCommand(fixture.manager.ID, "exam.sitting.resume.v1", "browser-activity-resume", "browser-activity-resume"))
-	requireNoError(t, err)
-	if resumed.Value.Sitting.State != model.ExamSittingOpen {
-		t.Fatalf("Resume() = %#v", resumed)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.ExamSittingOpen, resumed.Value.Sitting.State)
 	acknowledgement, err = appendBrowserActivityFixture(t, ctx, ss, &store.BrowserActivityAppend{
 		Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
 		SourceSessionID: sourceID, Events: finalEvents,
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	assertBrowserActivityAcknowledgement(t, acknowledgement, sourceID, 70, 70, nil, false)
 
 	listed, err := ss.ExamAttempt().ListBrowserActivity(ctx, store.BrowserActivityListOptions{
 		ExamID: fixture.examID, SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID, Limit: 201,
 	})
-	requireNoError(t, err)
-	if len(listed) != 70 || listed[66].Event.Kind != model.BrowserActivityBlockedNavigation ||
-		listed[66].Event.BlockReason == nil || *listed[66].Event.BlockReason != schemeBlockedReason ||
-		listed[66].Event.Location == nil || listed[66].Event.Location.Scheme != "http" || listed[66].Event.MatchedRuleID != nil ||
-		listed[67].Event.Kind != model.BrowserActivityBlockedNavigation || listed[67].Event.BlockReason == nil ||
-		*listed[67].Event.BlockReason != invalidURLReason || listed[67].Event.Location == nil ||
-		*listed[67].Event.Location != (model.BrowserLocation{}) || listed[67].Event.MatchedRuleID != nil ||
-		listed[68].Event.Kind != model.BrowserActivityTopNavigation || listed[68].Event.MatchedRuleID == nil ||
-		listed[69].Event.Kind != model.BrowserActivityClosed || listed[69].Event.Location != nil ||
-		listed[69].Event.MatchedRuleID != nil || listed[69].Event.BlockReason != nil {
-		t.Fatalf("listed Browser Activity = %#v", listed)
-	}
+	require.NoError(t, err)
+	require.Len(t, listed, 70)
+	require.Equal(t, model.BrowserActivityBlockedNavigation, listed[66].Event.Kind)
+	require.NotNil(t, listed[66].Event.BlockReason)
+	require.Equal(t, schemeBlockedReason, *listed[66].Event.BlockReason)
+	require.NotNil(t, listed[66].Event.Location)
+	require.Equal(t, "http", listed[66].Event.Location.Scheme)
+	require.Nil(t, listed[66].Event.MatchedRuleID)
+	require.Equal(t, model.BrowserActivityBlockedNavigation, listed[67].Event.Kind)
+	require.NotNil(t, listed[67].Event.BlockReason)
+	require.Equal(t, invalidURLReason, *listed[67].Event.BlockReason)
+	require.NotNil(t, listed[67].Event.Location)
+	require.Equal(t, model.BrowserLocation{}, *listed[67].Event.Location)
+	require.Nil(t, listed[67].Event.MatchedRuleID)
+	require.Equal(t, model.BrowserActivityTopNavigation, listed[68].Event.Kind)
+	require.NotNil(t, listed[68].Event.MatchedRuleID)
+	require.Equal(t, model.BrowserActivityClosed, listed[69].Event.Kind)
+	require.Nil(t, listed[69].Event.Location)
+	require.Nil(t, listed[69].Event.MatchedRuleID)
+	require.Nil(t, listed[69].Event.BlockReason)
 	page, err := ss.ExamAttempt().ListBrowserActivity(ctx, store.BrowserActivityListOptions{
 		ExamID: fixture.examID, SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID,
 		AfterReceivedAt: listed[0].Event.ReceivedAt, AfterSourceID: listed[0].SourceSessionID,
 		AfterSequence: listed[0].Event.Sequence, Limit: 1,
 	})
-	requireNoError(t, err)
-	if len(page) != 1 || page[0].SourceSessionID != listed[1].SourceSessionID || page[0].Event.Sequence != listed[1].Event.Sequence {
-		t.Fatalf("Browser Activity keyset page = %#v, all=%#v", page, listed[:2])
-	}
+	require.NoError(t, err)
+	require.Len(t, page, 1, "Browser Activity keyset page")
+	require.Equal(t, listed[1].SourceSessionID, page[0].SourceSessionID, "Browser Activity keyset page")
+	require.Equal(t, listed[1].Event.Sequence, page[0].Event.Sequence, "Browser Activity keyset page")
 
 	replaced, err := startBrowserSourceFixture(t, ctx, ss, &store.BrowserActivitySourceStart{
 		Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
 		SourceSessionID: replacementID, Transition: model.BrowserStartTransition{Kind: "runtime_reset", PredecessorSourceSessionID: sourceID, Reason: model.BrowserSourceResetCoordinatorRestarted},
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	assertBrowserSourceStart(t, replaced)
 	_, err = appendBrowserActivityFixture(t, ctx, ss, &store.BrowserActivityAppend{
 		Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
 		SourceSessionID: sourceID, Events: []model.BrowserActivityEvent{browserActivityEvent(71, model.BrowserActivityOpened, fixture.revisionID)},
 	})
-	assertExamAttemptConflict(t, err, "browser_source_fence")
+	requireConflictConstraint(t, err, "browser_source_fence")
 	replacementEvents := []model.BrowserActivityEvent{
 		browserActivityEvent(1, model.BrowserActivityOpened, fixture.revisionID),
 		browserActivityEvent(2, model.BrowserActivityClosed, fixture.revisionID),
@@ -200,7 +207,7 @@ func testBrowserActivityLifecycle(t *testing.T, ss store.Store) {
 		Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
 		SourceSessionID: replacementID, Events: replacementEvents,
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	sealAccess := store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID,
 		Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID,
 		CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID,
@@ -212,20 +219,20 @@ func testBrowserActivityLifecycle(t *testing.T, ss store.Store) {
 	attachSubmissionReceipt(t, ctx, ss, fixture.candidate, seal)
 	sealed, err := ss.ExamSubmission().Seal(ctx, seal,
 		examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "browser-activity-seal", "browser-activity-seal"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	header, err := ss.ExamSubmission().Get(ctx, sealed.Receipt.SubmissionID)
-	requireNoError(t, err)
-	if header.BrowserActivity.State != "pending" || header.BrowserActivity.SourceCount != 2 || header.BrowserActivity.PendingSourceCount != 2 || header.BrowserActivity.IncompleteSourceCount != 2 || header.IntegrityState != model.SubmissionIntegritySettled ||
-		header.UnresolvedIntegrityCount != 0 {
-		t.Fatalf("Browser Activity Submission = %#v", header)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "pending", header.BrowserActivity.State)
+	require.Equal(t, int64(2), header.BrowserActivity.SourceCount)
+	require.Equal(t, int64(2), header.BrowserActivity.PendingSourceCount)
+	require.Equal(t, int64(2), header.BrowserActivity.IncompleteSourceCount)
+	require.Equal(t, model.SubmissionIntegritySettled, header.IntegrityState)
+	require.Equal(t, int64(0), header.UnresolvedIntegrityCount)
 	discrepancies, err := ss.ExamIntegrityReview().ListDiscrepancies(ctx, store.ExamIntegrityDiscrepancyListOptions{
 		SubmissionID: header.ID, Limit: store.ExamIntegrityReviewDiscrepancyReadMaximum,
 	})
-	requireNoError(t, err)
-	if len(discrepancies.Items) != 0 {
-		t.Fatalf("browser delivery uncertainty became immutable evidence: %#v", discrepancies)
-	}
+	require.NoError(t, err)
+	require.Empty(t, discrepancies.Items)
 }
 
 func testCompleteBrowserActivitySubmission(t *testing.T, ss store.Store) {
@@ -235,36 +242,38 @@ func testCompleteBrowserActivitySubmission(t *testing.T, ss store.Store) {
 	sourceID := browserSourceID(20)
 	_, err := startBrowserSourceFixture(t, ctx, ss, &store.BrowserActivitySourceStart{Access: access,
 		ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: sourceID})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	_, err = appendBrowserActivityFixture(t, ctx, ss, &store.BrowserActivityAppend{Access: access,
 		ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: sourceID,
 		Events: []model.BrowserActivityEvent{browserActivityEvent(1, model.BrowserActivityOpened, fixture.revisionID)}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	sealAccess := store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: fixture.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}
 	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: sealAccess, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	attachSubmissionReceipt(t, ctx, ss, fixture.candidate, input)
 	sealed, err := ss.ExamSubmission().Seal(ctx, input, examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "browser-complete-submit", "browser-complete-submit"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	header, err := ss.ExamSubmission().Get(ctx, sealed.Receipt.SubmissionID)
-	requireNoError(t, err)
-	if header.BrowserActivity.State != "pending" || header.BrowserActivity.SourceCount != 1 {
-		t.Fatalf("submit must close without waiting for browser_closed: %#v", header)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "pending", header.BrowserActivity.State)
+	require.Equal(t, int64(1), header.BrowserActivity.SourceCount)
 	initialRevision := header.BrowserActivity.InventoryRevision
 	historical := access
 	historical.ConnectionID = ""
 	historical.ContinuityCredentialHash = ""
 	selector := store.BrowserDeliveryAccess{Access: historical, SourceSessionID: sourceID, ParticipationID: connected.Participation.ID}
 	final, err := ss.ExamAttempt().SealBrowserDelivery(ctx, &store.BrowserDeliveryFinalDeclaration{Access: selector, Declaration: model.FinalDeliveryDeclaration{DeclarationID: "browser-complete-final", FinalSequence: 2}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, selector), AuditAt: model.GetMillis()}, examCommand(fixture.candidate.ID, store.BrowserDeliveryFinalOperation, "browser-complete-final", "browser-complete-final"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	_, err = ss.ExamAttempt().AppendHistoricalBrowserDelivery(ctx, &store.BrowserActivityAppend{Access: historical, SourceSessionID: sourceID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, PolicyRevisionID: final.PolicyRevisionID, PolicyDigest: final.PolicyDigest, Events: []model.BrowserActivityEvent{browserActivityEvent(2, model.BrowserActivityClosed, fixture.revisionID)}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, selector), AuditAt: model.GetMillis()}, examCommand(fixture.candidate.ID, store.BrowserDeliveryAppendOperation, "browser-complete-tail", "browser-complete-tail"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	after, err := ss.ExamSubmission().Get(ctx, sealed.Receipt.SubmissionID)
-	requireNoError(t, err)
-	if after.BrowserActivity.State != "settled" || after.BrowserActivity.PendingSourceCount != 0 || after.BrowserActivity.IncompleteSourceCount != 0 || after.BrowserActivity.InventoryRevision <= initialRevision || after.ManifestDigest != header.ManifestDigest || !after.SubmittedAt.Equal(header.SubmittedAt) {
-		t.Fatalf("late collection changed immutable submission or lost settlement: before=%#v after=%#v", header, after)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "settled", after.BrowserActivity.State, "late collection changed immutable submission or lost settlement: before=%#v after=%#v", header, after)
+	require.Equal(t, int64(0), after.BrowserActivity.PendingSourceCount, "late collection changed immutable submission or lost settlement: before=%#v after=%#v", header, after)
+	require.Equal(t, int64(0), after.BrowserActivity.IncompleteSourceCount, "late collection changed immutable submission or lost settlement: before=%#v after=%#v", header, after)
+	require.Greater(t, after.BrowserActivity.InventoryRevision, initialRevision, "late collection changed immutable submission or lost settlement: before=%#v after=%#v", header, after)
+	require.Equal(t, header.ManifestDigest, after.ManifestDigest, "late collection changed immutable submission or lost settlement: before=%#v after=%#v", header, after)
+	require.True(t, after.SubmittedAt.Equal(header.SubmittedAt), "late collection changed immutable submission or lost settlement: before=%#v after=%#v", header, after)
 }
 
 func testBrowserActivitySourceLimit(t *testing.T, ss store.Store) {
@@ -274,50 +283,50 @@ func testBrowserActivitySourceLimit(t *testing.T, ss store.Store) {
 	current := browserSourceID(100)
 	_, err := startBrowserSourceFixture(t, ctx, ss, &store.BrowserActivitySourceStart{Access: access,
 		ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: current})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	for index := 1; index <= model.BrowserRuntimeResetStartLimit; index++ {
 		next := browserSourceID(100 + index)
 		_, err = startBrowserSourceFixture(t, ctx, ss, &store.BrowserActivitySourceStart{Access: access,
 			ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
 			SourceSessionID: next, Transition: model.BrowserStartTransition{Kind: "runtime_reset", PredecessorSourceSessionID: current, Reason: model.BrowserSourceResetSpoolUnavailable}})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		current = next
 	}
 	refusedInput := &store.BrowserActivitySourceStart{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: browserSourceID(100 + model.BrowserSourceMaximumPerParticipation), Transition: model.BrowserStartTransition{Kind: "runtime_reset", PredecessorSourceSessionID: current, Reason: model.BrowserSourceResetSourceCorrupt}}
 	_, err = startBrowserSourceFixture(t, ctx, ss, refusedInput)
 	var refusal *store.BrowserSourceRefusal
-	if !errors.As(err, &refusal) || refusal.Code != "exam.browser.source_budget_exhausted" || refusal.Status.Closure.CloseReason == nil || *refusal.Status.Closure.CloseReason != model.DeliveryClosedRuntimeReset || refusal.Status.RemainingRuntimeResetStarts != 0 {
-		t.Fatalf("reset refusal did not retain closed predecessor: %#v, %v", refusal, err)
-	}
+	require.ErrorAs(t, err, &refusal, "reset refusal did not retain closed predecessor: %#v", refusal)
+	require.Equal(t, "exam.browser.source_budget_exhausted", refusal.Code, "reset refusal did not retain closed predecessor: %#v", refusal)
+	require.NotNil(t, refusal.Status.Closure.CloseReason, "reset refusal did not retain closed predecessor: %#v", refusal)
+	require.Equal(t, model.DeliveryClosedRuntimeReset, *refusal.Status.Closure.CloseReason, "reset refusal did not retain closed predecessor: %#v", refusal)
+	require.Equal(t, int64(0), refusal.Status.RemainingRuntimeResetStarts, "reset refusal did not retain closed predecessor: %#v", refusal)
 	closedAt := *refusal.Status.Closure.ClosedAt
 	_, err = startBrowserSourceFixture(t, ctx, ss, refusedInput)
 	var replay *store.BrowserSourceRefusal
-	if !errors.As(err, &replay) || !replay.Status.Closure.ClosedAt.Equal(closedAt) || replay.Status.RemainingRuntimeResetStarts != 0 {
-		t.Fatalf("refusal replay changed closure: %#v, %v", replay, err)
-	}
+	require.ErrorAs(t, err, &replay, "refusal replay changed closure: %#v", replay)
+	require.True(t, replay.Status.Closure.ClosedAt.Equal(closedAt), "refusal replay changed closure: %#v", replay)
+	require.Equal(t, int64(0), replay.Status.RemainingRuntimeResetStarts, "refusal replay changed closure: %#v", replay)
 	altered := *refusedInput
 	altered.Transition.Reason = model.BrowserSourceResetCoordinatorRestarted
 	_, err = startBrowserSourceFixture(t, ctx, ss, &altered)
-	assertExamAttemptConflict(t, err, "browser_source_conflict")
+	requireConflictConstraint(t, err, "browser_source_conflict")
 	altered = *refusedInput
 	altered.SourceSessionID = browserSourceID(999)
 	_, err = startBrowserSourceFixture(t, ctx, ss, &altered)
-	assertExamAttemptConflict(t, err, "browser_source_predecessor")
+	requireConflictConstraint(t, err, "browser_source_predecessor")
 	status, err := ss.ExamAttempt().BrowserSourceStatus(ctx, store.BrowserDeliveryAccess{Access: access, SourceSessionID: current})
-	requireNoError(t, err)
-	if !status.Closure.ClosedAt.Equal(closedAt) {
-		t.Fatal("lost response recovery moved deadline")
-	}
+	require.NoError(t, err)
+	require.True(t, status.Closure.ClosedAt.Equal(closedAt), "lost response recovery moved deadline")
 	statuses, err := ss.ExamAttempt().BrowserSourceList(ctx, store.BrowserDeliveryAccess{Access: access, ParticipationID: connected.Participation.ID})
-	requireNoError(t, err)
-	if len(statuses) != 17 || statuses[0].SourceSessionID != browserSourceID(100) || statuses[16].SourceSessionID != current {
-		t.Fatalf("source ledger = %#v", statuses)
-	}
+	require.NoError(t, err)
+	require.Len(t, statuses, 17)
+	require.Equal(t, browserSourceID(100), statuses[0].SourceSessionID)
+	require.Equal(t, current, statuses[16].SourceSessionID)
 	presentation, err := ss.ExamAttempt().GetCandidatePresentation(ctx, access)
-	requireNoError(t, err)
-	if presentation.RuntimeCapabilities.Browser.State != store.CandidateBrowserTemporarilyUnavailable || !presentation.RuntimeCapabilities.WorkspaceMutationAllowed || !presentation.RuntimeCapabilities.SubmissionAllowed {
-		t.Fatalf("reset refusal affected independent capabilities: %#v", presentation.RuntimeCapabilities)
-	}
+	require.NoError(t, err)
+	require.Equal(t, store.CandidateBrowserTemporarilyUnavailable, presentation.RuntimeCapabilities.Browser.State)
+	require.True(t, presentation.RuntimeCapabilities.WorkspaceMutationAllowed)
+	require.True(t, presentation.RuntimeCapabilities.SubmissionAllowed)
 	// Exhausting runtime resets does not spend correction starts. A genuine
 	// later policy revision recovers the Browser and may use all 32 successors.
 	renewal := &store.ExamAttemptParticipationRenewal{DesktopCompatibilityPolicyRevision: 1, AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, ConnectionID: connected.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, Generation: connected.Participation.Generation, DesktopRegistrationID: f.session.DesktopRegistrationID, DPoPKeyThumbprint: f.session.DPoPKeyThumbprint, ContinuityCredentialHash: access.ContinuityCredentialHash}
@@ -325,19 +334,19 @@ func testBrowserActivitySourceLimit(t *testing.T, ss store.Store) {
 	for index := 1; index <= model.BrowserCorrectionStartLimit; index++ {
 		renewal.Sequence++
 		_, err = ss.ExamAttempt().RenewParticipation(ctx, renewal)
-		requireNoError(t, err)
+		require.NoError(t, err)
 		policy, err := model.NewBrowserPolicy(true, "start", []model.BrowserPolicyRule{{RuleID: "start", Origin: "https://example.edu", PathPrefix: fmt.Sprintf("/revision-%d", index), HostMatch: model.BrowserPolicyHostExact, AllowRedirects: true, BlockedNavigationOutcome: model.BrowserPolicyBlockedNavigationRecord}})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		key := fmt.Sprintf("source-capacity-correction-%d", index)
 		corrected, err := ss.ExamCorrection().Apply(ctx, &store.ExamCorrectionApplication{RevisionID: model.NewExamRevisionID(), ExamID: f.examID, SittingID: f.sitting.ID, CurrentRevisionID: f.revisionID, ExpectedSittingRevision: f.sitting.Revision, ActorUserID: f.manager.ID, Resources: []store.ExamCorrectionResourceManifestItem{}, BrowserPolicy: &policy, CandidateSummary: "Updated browser references", AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser}, PrivateReason: "Verify independent Browser source budgets", AppliedAt: model.NowUTC(), AuditEventID: saveExamSittingAudit(t, ctx, ss, f.manager.ID, f.examID, f.unitID).ID, AuditAt: model.GetMillis()}, examCommand(f.manager.ID, "exam.sitting.correction.apply.v1", key, key))
-		requireNoError(t, err)
+		require.NoError(t, err)
 		f.revisionID, f.sitting = corrected.Revision.ID, corrected.Sitting.Sitting
 		next := browserSourceID(200 + index)
 		successor, err := startBrowserSourceFixture(t, ctx, ss, &store.BrowserActivitySourceStart{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: next, Transition: model.BrowserStartTransition{Kind: "policy_correction", PredecessorSourceSessionID: current}})
-		requireNoError(t, err)
-		if successor.RemainingRuntimeResetStarts != 0 || successor.RemainingCorrectionStarts != int64(model.BrowserCorrectionStartLimit-index) || successor.Closure.ClosedAt != nil {
-			t.Fatal("correction successor lost independent lifetime counters")
-		}
+		require.NoError(t, err)
+		require.Equal(t, int64(0), successor.RemainingRuntimeResetStarts, "correction successor lost independent lifetime counters")
+		require.Equal(t, int64(model.BrowserCorrectionStartLimit-index), successor.RemainingCorrectionStarts, "correction successor lost independent lifetime counters")
+		require.Nil(t, successor.Closure.ClosedAt, "correction successor lost independent lifetime counters")
 		current = next
 	}
 	// Replay the original canonical command, not a helper that substitutes the
@@ -345,30 +354,25 @@ func testBrowserActivitySourceLimit(t *testing.T, ss store.Store) {
 	refusedInput.AuditEventID = browserDeliveryAuditFixture(t, ctx, ss, store.BrowserDeliveryAccess{Access: access, SourceSessionID: refusal.Status.SourceSessionID, ParticipationID: connected.Participation.ID})
 	refusedInput.AuditAt = model.GetMillis()
 	_, err = ss.ExamAttempt().StartBrowserActivity(ctx, refusedInput)
-	if !errors.As(err, &replay) || replay.Status.SourceSessionID != refusal.Status.SourceSessionID || !replay.Status.Closure.ClosedAt.Equal(closedAt) || replay.Status.RemainingCorrectionStarts != 0 {
-		t.Fatalf("historical refusal replay after correction: %#v %v", replay, err)
-	}
+	require.ErrorAs(t, err, &replay, "historical refusal replay after correction: %#v", replay)
+	require.Equal(t, refusal.Status.SourceSessionID, replay.Status.SourceSessionID, "historical refusal replay after correction: %#v", replay)
+	require.True(t, replay.Status.Closure.ClosedAt.Equal(closedAt), "historical refusal replay after correction: %#v", replay)
+	require.Equal(t, int64(0), replay.Status.RemainingCorrectionStarts, "historical refusal replay after correction: %#v", replay)
 	altered = *refusedInput
 	altered.Transition.Reason = model.BrowserSourceResetCoordinatorRestarted
 	_, err = ss.ExamAttempt().StartBrowserActivity(ctx, &altered)
-	assertExamAttemptConflict(t, err, "browser_source_conflict")
+	requireConflictConstraint(t, err, "browser_source_conflict")
 	statuses, err = ss.ExamAttempt().BrowserSourceList(ctx, store.BrowserDeliveryAccess{Access: access, ParticipationID: connected.Participation.ID})
-	requireNoError(t, err)
-	if len(statuses) != model.BrowserSourceMaximumPerParticipation {
-		t.Fatalf("mixed source budget retained %d sources; want 49", len(statuses))
-	}
+	require.NoError(t, err)
+	require.Len(t, statuses, model.BrowserSourceMaximumPerParticipation, "mixed source budget retained")
 	budget, err := ss.ExamAttempt().DeliveryBudget(ctx, store.DeliveryBudgetAccess{Access: access, ParticipationID: connected.Participation.ID})
-	requireNoError(t, err)
-	if budget.ControlMetadataBytes != model.NativeOwnerReservationBytes+49*model.BrowserOwnerReservationBytes {
-		t.Fatal("empty source reservation was omitted or refused starts were charged")
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.NativeOwnerReservationBytes+49*model.BrowserOwnerReservationBytes, budget.ControlMetadataBytes, "empty source reservation was omitted or refused starts were charged")
 	foreign := access
 	foreign.CandidateUserID = model.NewUserID()
 	_, err = ss.ExamAttempt().BrowserSourceStatus(ctx, store.BrowserDeliveryAccess{Access: foreign, SourceSessionID: current})
 	var missing *store.ErrNotFound
-	if !errors.As(err, &missing) {
-		t.Fatalf("foreign source visible: %v", err)
-	}
+	require.ErrorAs(t, err, &missing)
 }
 
 func newBrowserActivityFixture(t *testing.T, ctx context.Context, ss store.Store,
@@ -378,7 +382,7 @@ func newBrowserActivityFixture(t *testing.T, ctx context.Context, ss store.Store
 	policy, err := model.NewBrowserPolicy(true, "start", []model.BrowserPolicyRule{{RuleID: "start",
 		Origin: "https://example.edu", PathPrefix: "/", HostMatch: model.BrowserPolicyHostExact,
 		AllowRedirects: true, BlockedNavigationOutcome: model.BrowserPolicyBlockedNavigationRecord}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	fixture := newExamAttemptFixtureWithBrowserPolicy(t, ctx, ss, &policy)
 	connected, focusAccess := connectFocusLossFixture(t, ctx, ss, fixture, key)
 	access := store.CandidateAttemptAccess{AttemptID: connected.Attempt.ID, CandidateUserID: fixture.candidate.ID,
@@ -407,14 +411,15 @@ func assertBrowserActivityAcknowledgement(t *testing.T, value *model.BrowserActi
 	sourceID model.BrowserSourceSessionID, contiguous, seen int64, missing []model.BrowserActivityMissingRange, truncated bool,
 ) {
 	t.Helper()
-	if value == nil || value.SourceSessionID != sourceID || value.HighestContiguous != contiguous || value.HighestSeen != seen ||
-		value.MissingRangesTruncated != truncated || value.ServerTime.IsZero() || len(value.MissingRanges) != len(missing) {
-		t.Fatalf("Browser Activity acknowledgement = %#v", value)
-	}
+	require.NotNil(t, value)
+	require.Equal(t, sourceID, value.SourceSessionID)
+	require.Equal(t, contiguous, value.HighestContiguous)
+	require.Equal(t, seen, value.HighestSeen)
+	require.Equal(t, truncated, value.MissingRangesTruncated)
+	require.False(t, value.ServerTime.IsZero())
+	require.Len(t, value.MissingRanges, len(missing))
 	for index := range missing {
-		if value.MissingRanges[index] != missing[index] {
-			t.Fatalf("Browser Activity acknowledgement = %#v, missing=%#v", value, missing)
-		}
+		require.Equal(t, missing[index], value.MissingRanges[index], "Browser Activity acknowledgement = %#v, missing=%#v", value, missing)
 	}
 }
 
@@ -434,16 +439,18 @@ func startBrowserSourceFixture(t *testing.T, ctx context.Context, ss store.Store
 		return nil, err
 	}
 	audit, err := ss.Audit().Save(ctx, &model.AuditEvent{ActorID: input.Access.CandidateUserID, Action: string(model.ActionExamSittingParticipate), Resource: model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, ScopeType: model.RoleScopeClass, ScopeID: target.ClassID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	input.AuditEventID = audit.ID
 	input.AuditAt = model.GetMillis()
 	return ss.ExamAttempt().StartBrowserActivity(ctx, input)
 }
 func assertBrowserSourceStart(t *testing.T, status *model.BrowserSourceStatus) {
 	t.Helper()
-	if status == nil || status.Validate() != nil || status.HighestSeen != 0 || status.HighestContiguous != 0 || status.Closure.ClosedAt != nil {
-		t.Fatalf("new Browser source status: %#v", status)
-	}
+	require.NotNil(t, status)
+	require.NoError(t, status.Validate())
+	require.Equal(t, int64(0), status.HighestSeen)
+	require.Equal(t, int64(0), status.HighestContiguous)
+	require.Nil(t, status.Closure.ClosedAt)
 }
 
 func appendBrowserActivityFixture(t *testing.T, ctx context.Context, ss store.Store, input *store.BrowserActivityAppend) (*model.BrowserActivityAcknowledgement, error) {
@@ -459,7 +466,7 @@ func appendBrowserActivityFixture(t *testing.T, ctx context.Context, ss store.St
 		return nil, err
 	}
 	audit, err := ss.Audit().Save(ctx, &model.AuditEvent{ActorID: input.Access.CandidateUserID, Action: string(model.ActionExamSittingParticipate), Resource: model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, ScopeType: model.RoleScopeClass, ScopeID: target.ClassID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	input.AuditEventID = audit.ID
 	input.AuditAt = model.GetMillis()
 	return ss.ExamAttempt().AppendBrowserActivity(ctx, input)

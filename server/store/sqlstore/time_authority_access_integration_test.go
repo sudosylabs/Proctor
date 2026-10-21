@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/storetest"
@@ -27,17 +29,15 @@ import (
 
 func timeAuthorityAccessLead(t *testing.T, ctx context.Context, persistence *SQLStore, query string, args ...any) {
 	t.Helper()
-	if _, err := persistence.GetMaster().Exec(ctx, query, args...); err != nil {
-		t.Fatal(err)
-	}
+	_, err := persistence.GetMaster().Exec(ctx, query, args...)
+	require.NoError(t, err)
 }
 
 func timeAuthorityAccessCheck(t *testing.T, ctx context.Context, persistence *SQLStore, query string, args ...any) {
 	t.Helper()
 	var ok bool
-	if err := persistence.GetMaster().Get(ctx, &ok, query, args...); err != nil || !ok {
-		t.Fatalf("stored lifecycle check %q = %v, %v", query, ok, err)
-	}
+	require.NoError(t, persistence.GetMaster().Get(ctx, &ok, query, args...), "stored lifecycle check %q", query)
+	require.True(t, ok, "stored lifecycle check %q", query)
 }
 
 func timeAuthorityAccessAttempt(t *testing.T, ctx context.Context, persistence *SQLStore, userID model.UserID, action string) *model.AuditEvent {
@@ -46,9 +46,7 @@ func timeAuthorityAccessAttempt(t *testing.T, ctx context.Context, persistence *
 	event, err := persistence.Audit().Save(ctx, &model.AuditEvent{ActorID: userID, Action: action,
 		Resource: model.Resource{Type: model.ResourceInstitution, ID: scopeID}, ScopeType: model.RoleScopeInstitution,
 		ScopeID: scopeID, Status: model.AuditStatusAttempt, NodeID: "time-authority", ClientType: string(model.SessionClientWeb), AuthMethod: "password"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return event
 }
 
@@ -57,9 +55,7 @@ func timeAuthorityAccessSession(t *testing.T, ctx context.Context, persistence *
 	user := saveIntegrationUser(t, ctx, persistence, &model.User{Username: name, Email: name + "@example.edu"})
 	session, credentials := authenticationPolicyTestSession(user.ID, "password", "", "")
 	saved, savedCredentials, err := storetest.SaveSession(ctx, persistence, sessionCreationForSQLTest(t, ctx, persistence, session, credentials, 10))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return user, saved, savedCredentials
 }
 
@@ -70,9 +66,7 @@ func TestTimeAuthorityAccessPolicyReplacementAfterLeadingPolicyClock(t *testing.
 	s := f.persistence
 	timeAuthorityAccessLead(t, ctx, s, `UPDATE access_policies SET created_at=created_at+INTERVAL '1 minute', updated_at=updated_at+INTERVAL '1 minute'`)
 	before, err := s.AccessPolicy().Get(ctx, model.AccessPolicyTransitionHistoryLimit)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	settings := before.Policy.Settings()
 	settings.PublicRegistrationEnabled = !settings.PublicRegistrationEnabled
 	audit := timeAuthorityAccessAttempt(t, ctx, s, f.actor.ID, string(model.ActionAccessPolicyManage))
@@ -83,18 +77,16 @@ func TestTimeAuthorityAccessPolicyReplacementAfterLeadingPolicyClock(t *testing.
 		KeyDigest: sha256.Sum256([]byte("time-authority-access-policy")), FingerprintVersion: 1,
 		Fingerprint: sha256.Sum256([]byte("time-authority-access-policy-command")), OutcomeVersion: 1, Retention: time.Hour, Wait: time.Second}
 	result, err := s.AccessPolicy().Replace(ctx, replacement, command)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	policy := result.Snapshot.Policy
-	if !result.Changed || policy.UpdatedAt.Before(before.Policy.UpdatedAt) || len(result.Snapshot.History) == 0 ||
-		!result.Snapshot.History[0].ChangedAt.Equal(policy.UpdatedAt) {
-		t.Fatalf("replacement after leading policy clock = %#v", result.Snapshot)
-	}
+	require.True(t, result.Changed)
+	require.False(t, policy.UpdatedAt.Before(before.Policy.UpdatedAt))
+	require.NotEmpty(t, result.Snapshot.History)
+	require.True(t, result.Snapshot.History[0].ChangedAt.Equal(policy.UpdatedAt))
 	stored, err := s.AccessPolicy().Get(ctx, model.AccessPolicyTransitionHistoryLimit)
-	if err != nil || !stored.Policy.UpdatedAt.Equal(policy.UpdatedAt) || stored.Policy.Revision != policy.Revision {
-		t.Fatalf("stored policy = %#v, %v; want %#v", stored, err, policy)
-	}
+	require.NoError(t, err, "stored policy = %#v, %v; want %#v", stored, err, policy)
+	require.True(t, stored.Policy.UpdatedAt.Equal(policy.UpdatedAt), "stored policy = %#v, %v; want %#v", stored, err, policy)
+	require.Equal(t, policy.Revision, stored.Policy.Revision, "stored policy = %#v, %v; want %#v", stored, err, policy)
 }
 
 func TestTimeAuthorityAccessPasswordReauthenticationAfterLeadingSessionClock(t *testing.T) {
@@ -104,22 +96,17 @@ func TestTimeAuthorityAccessPasswordReauthenticationAfterLeadingSessionClock(t *
 	s := f.persistence
 	leadSessionDatabaseClock(t, ctx, s, f.targetSession.ID)
 	session, err := s.Session().Get(ctx, f.targetSession.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	audit, _ := mfaSQLSecurityNoticeFixture(t, ctx, s, f.target, model.MailTemplateIdentityMFAEnabled, model.GetMillis())
 	result, err := s.Session().ReauthenticatePassword(ctx, &store.SessionPasswordReauthentication{SessionID: session.ID,
 		CredentialID: f.targetCredential.ID, UserID: f.target.ID, PasswordProof: passwordProofForSQLTest(t, ctx, s, f.target.ID), AuditEventID: audit.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.Session.ReauthenticatedAt.Valid || result.Session.ReauthenticatedAt.Time.Before(session.AuthenticatedAt) {
-		t.Fatalf("reauthenticated Session = %#v", result.Session)
-	}
+	require.NoError(t, err)
+	require.True(t, result.Session.ReauthenticatedAt.Valid)
+	require.False(t, result.Session.ReauthenticatedAt.Time.Before(session.AuthenticatedAt))
 	stored, err := s.Session().Get(ctx, session.ID)
-	if err != nil || !stored.ReauthenticatedAt.Time.Equal(result.Session.ReauthenticatedAt.Time) || !stored.UpdatedAt.Equal(result.Session.UpdatedAt) {
-		t.Fatalf("stored Session = %#v, %v; want %#v", stored, err, result.Session)
-	}
+	require.NoError(t, err, "stored Session = %#v, %v; want %#v", stored, err, result.Session)
+	require.True(t, stored.ReauthenticatedAt.Time.Equal(result.Session.ReauthenticatedAt.Time), "stored Session = %#v, %v; want %#v", stored, err, result.Session)
+	require.True(t, stored.UpdatedAt.Equal(result.Session.UpdatedAt), "stored Session = %#v, %v; want %#v", stored, err, result.Session)
 }
 
 func TestTimeAuthorityAccessMFAUpgradeAfterLeadingSessionClock(t *testing.T) {
@@ -129,14 +116,13 @@ func TestTimeAuthorityAccessMFAUpgradeAfterLeadingSessionClock(t *testing.T) {
 	resetTestStore(t, s)
 	user, session, _ := timeAuthorityAccessSession(t, ctx, s, "time-authority-mfa-upgrade")
 	leadSessionDatabaseClock(t, ctx, s, session.ID)
-	if _, err := s.MFA().UpgradeSession(ctx, session.ID, user.ID, model.NowUTC()); err != nil {
-		t.Fatal(err)
-	}
+	_, err := s.MFA().UpgradeSession(ctx, session.ID, user.ID, model.NowUTC())
+	require.NoError(t, err)
 	stored, err := s.Session().Get(ctx, session.ID)
-	if err != nil || stored.AuthenticationStrength != model.AuthenticationMultiFactor ||
-		!stored.MFACompletedAt.Valid || stored.MFACompletedAt.Time.Before(stored.AuthenticatedAt) {
-		t.Fatalf("upgraded Session = %#v, %v", stored, err)
-	}
+	require.NoError(t, err, "upgraded Session = %#v", stored)
+	require.Equal(t, model.AuthenticationMultiFactor, stored.AuthenticationStrength, "upgraded Session = %#v", stored)
+	require.True(t, stored.MFACompletedAt.Valid, "upgraded Session = %#v", stored)
+	require.False(t, stored.MFACompletedAt.Time.Before(stored.AuthenticatedAt), "upgraded Session = %#v", stored)
 }
 
 func TestTimeAuthorityAccessRecoveryCodeConsumptionAfterLeadingCodeClock(t *testing.T) {
@@ -152,9 +138,7 @@ func TestTimeAuthorityAccessRecoveryCodeConsumptionAfterLeadingCodeClock(t *test
 	timeAuthorityAccessLead(t, ctx, s, `INSERT INTO mfa_recovery_codes(id,created_at,updated_at,user_id,code_hash)
 		VALUES(?,clock_timestamp()+INTERVAL '1 minute',clock_timestamp()+INTERVAL '1 minute',?,?)`,
 		model.NewMFARecoveryCodeID().String(), user.ID.String(), codeHash)
-	if err := s.MFA().ConsumeSecondFactor(ctx, user.ID, 0, codeHash, model.GetMillis()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, s.MFA().ConsumeSecondFactor(ctx, user.ID, 0, codeHash, model.GetMillis()))
 	timeAuthorityAccessCheck(t, ctx, s, `SELECT consumed_at >= created_at FROM mfa_recovery_codes WHERE code_hash=?`, codeHash)
 }
 
@@ -169,17 +153,14 @@ func TestTimeAuthorityAccessMFAResetAfterLeadingNodeClock(t *testing.T) {
 		VALUES(?,clock_timestamp()+INTERVAL '1 minute',clock_timestamp()+INTERVAL '1 minute',?,'password_reset',?,?,clock_timestamp()+INTERVAL '1 hour')`,
 		tokenID.String(), f.target.ID.String(), model.HashToken(model.NewCredentialToken()), f.target.Email)
 	result, err := s.MFA().Reset(ctx, f.resetInput(t, ctx))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result.Sessions) != 1 {
-		t.Fatalf("reset Sessions = %#v", result.Sessions)
-	}
+	require.NoError(t, err)
+	require.Len(t, result.Sessions, 1)
 	returned := result.Sessions[0]
 	stored, err := s.Session().Get(ctx, returned.ID)
-	if err != nil || !stored.RevokedAt.Valid || !stored.RevokedAt.Time.Equal(returned.RevokedAt.Time) || !stored.UpdatedAt.Equal(returned.UpdatedAt) {
-		t.Fatalf("stored reset Session = %#v, %v; returned %#v", stored, err, returned)
-	}
+	require.NoError(t, err, "stored reset Session = %#v, %v; returned %#v", stored, err, returned)
+	require.True(t, stored.RevokedAt.Valid, "stored reset Session = %#v, %v; returned %#v", stored, err, returned)
+	require.True(t, stored.RevokedAt.Time.Equal(returned.RevokedAt.Time), "stored reset Session = %#v, %v; returned %#v", stored, err, returned)
+	require.True(t, stored.UpdatedAt.Equal(returned.UpdatedAt), "stored reset Session = %#v, %v; returned %#v", stored, err, returned)
 	timeAuthorityAccessCheck(t, ctx, s, `SELECT archived_at >= created_at FROM user_tokens WHERE id=?`, tokenID.String())
 }
 
@@ -191,20 +172,15 @@ func TestTimeAuthorityAccessExternalIdentityUnlinkAfterLeadingIdentityClock(t *t
 	user := saveIntegrationUser(t, ctx, s, &model.User{Username: "time-authority-unlink", Email: "time-authority-unlink@example.edu"})
 	passwordProofForSQLTest(t, ctx, s, user.ID)
 	identity, err := s.ExternalIdentity().Save(ctx, &model.ExternalIdentity{UserID: user.ID, Provider: "campus", Subject: "time-authority-unlink"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	timeAuthorityAccessLead(t, ctx, s, `UPDATE external_identities SET created_at=created_at+INTERVAL '1 minute', updated_at=updated_at+INTERVAL '1 minute' WHERE id=?`, identity.ID.String())
 	audit := timeAuthorityAccessAttempt(t, ctx, s, user.ID, "authentication.external_identity.unlink")
 	result, err := s.ExternalIdentity().Unlink(ctx, &store.ExternalIdentityUnlink{ID: identity.ID, UserID: user.ID,
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}}, ChangedAt: model.GetMillis(),
 		RevocationReason: model.SessionRevocationExternalIdentityUnlinked, AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = result.Identity.Validate(); err != nil {
-		t.Fatalf("unlinked identity = %#v: %v", result.Identity, err)
-	}
+	require.NoError(t, err)
+	err = result.Identity.Validate()
+	require.NoError(t, err, "unlinked identity = %#v", result.Identity)
 	timeAuthorityAccessCheck(t, ctx, s, `SELECT archived_at=? AND updated_at=? FROM external_identities WHERE id=?`,
 		result.Identity.ArchivedAt.Time, result.Identity.UpdatedAt, identity.ID.String())
 }
@@ -215,34 +191,28 @@ func TestTimeAuthorityAccessDesktopRegistrationRevocationAfterLeadingNodeClock(t
 	s := openTestStore(t)
 	resetTestStore(t, s)
 	institution, err := s.Institution().Save(ctx, &model.Institution{Name: "time-authority-desktop", DisplayName: "Time Authority Desktop"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	user := saveIntegrationUser(t, ctx, s, &model.User{Username: "time-authority-desktop", Email: "time-authority-desktop@example.edu"})
 	_, code, state, verifier := issueDesktopAuthorizationForSQLTest(t, ctx, s, institution.ID, user.ID)
 	exchanged, err := s.BrowserAuthentication().Exchange(ctx, desktopAuthorizationExchangeForSQLTest(code, state, verifier,
 		saveDesktopAuthorizationAuditForSQLTest(t, ctx, s, institution.ID, user.ID, "exchange")))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	timeAuthorityAccessLead(t, ctx, s, `UPDATE desktop_registrations SET created_at=created_at+INTERVAL '1 minute',
 		updated_at=updated_at+INTERVAL '1 minute', last_used_at=last_used_at+INTERVAL '1 minute' WHERE id=?`, exchanged.Registration.ID.String())
 	leadSessionDatabaseClock(t, ctx, s, exchanged.Session.ID)
 	audit := saveDesktopAuthorizationAuditForSQLTest(t, ctx, s, institution.ID, user.ID, "registration-revoke")
 	revoked, err := s.DesktopRegistration().Revoke(ctx, &store.DesktopRegistrationRevocation{RegistrationID: exchanged.Registration.ID,
 		UserID: user.ID, RevokedAt: model.GetMillis(), AuditEventID: audit.ID, AuditAt: model.GetMillis()})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	stored, err := s.DesktopRegistration().Get(ctx, exchanged.Registration.ID)
-	if err != nil || !stored.RevokedAt.Valid || !stored.RevokedAt.Time.Equal(revoked.Registration.RevokedAt.Time) ||
-		!stored.UpdatedAt.Equal(revoked.Registration.UpdatedAt) {
-		t.Fatalf("stored registration = %#v, %v; returned %#v", stored, err, revoked.Registration)
-	}
+	require.NoError(t, err, "stored registration = %#v, %v; returned %#v", stored, err, revoked.Registration)
+	require.True(t, stored.RevokedAt.Valid, "stored registration = %#v, %v; returned %#v", stored, err, revoked.Registration)
+	require.True(t, stored.RevokedAt.Time.Equal(revoked.Registration.RevokedAt.Time), "stored registration = %#v, %v; returned %#v", stored, err, revoked.Registration)
+	require.True(t, stored.UpdatedAt.Equal(revoked.Registration.UpdatedAt), "stored registration = %#v, %v; returned %#v", stored, err, revoked.Registration)
 	session, err := s.Session().Get(ctx, exchanged.Session.ID)
-	if err != nil || len(revoked.Sessions) != 1 || !session.RevokedAt.Time.Equal(revoked.Sessions[0].RevokedAt.Time) {
-		t.Fatalf("stored Session = %#v, %v; returned %#v", session, err, revoked.Sessions)
-	}
+	require.NoError(t, err, "stored Session = %#v, %v; returned", session, err)
+	require.Len(t, revoked.Sessions, 1, "stored Session = %#v, %v; returned", session, err)
+	require.True(t, session.RevokedAt.Time.Equal(revoked.Sessions[0].RevokedAt.Time), "stored Session = %#v, %v; returned", session, err)
 	timeAuthorityAccessCheck(t, ctx, s, `SELECT bool_and(revoked_at >= created_at) FROM session_credentials WHERE session_id=?`, exchanged.Session.ID.String())
 }
 
@@ -265,23 +235,19 @@ func TestTimeAuthorityAccessRefreshReplayAfterLeadingSessionClock(t *testing.T) 
 			&model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: now.Add(time.Hour)},
 			now, now.Add(30*time.Minute))
 	}
-	if _, err := rotate(); err != nil {
-		t.Fatal(err)
-	}
+	_, err := rotate()
+	require.NoError(t, err)
 	leadSessionDatabaseClock(t, ctx, s, session.ID)
 	timeAuthorityAccessLead(t, ctx, s, `UPDATE session_credentials SET used_at=used_at+INTERVAL '1 minute',
 		revoked_at=revoked_at+INTERVAL '1 minute' WHERE session_id=?`, session.ID.String())
 	replay, err := rotate()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !replay.ReplayDetected || !replay.Session.RevokedAt.Valid {
-		t.Fatalf("refresh replay = %#v", replay)
-	}
+	require.NoError(t, err)
+	require.True(t, replay.ReplayDetected)
+	require.True(t, replay.Session.RevokedAt.Valid)
 	stored, err := s.Session().Get(ctx, session.ID)
-	if err != nil || !stored.RevokedAt.Time.Equal(replay.Session.RevokedAt.Time) || !stored.UpdatedAt.Equal(replay.Session.UpdatedAt) {
-		t.Fatalf("stored replayed Session = %#v, %v; returned %#v", stored, err, replay.Session)
-	}
+	require.NoError(t, err, "stored replayed Session = %#v, %v; returned %#v", stored, err, replay.Session)
+	require.True(t, stored.RevokedAt.Time.Equal(replay.Session.RevokedAt.Time), "stored replayed Session = %#v, %v; returned %#v", stored, err, replay.Session)
+	require.True(t, stored.UpdatedAt.Equal(replay.Session.UpdatedAt), "stored replayed Session = %#v, %v; returned %#v", stored, err, replay.Session)
 	timeAuthorityAccessCheck(t, ctx, s, `SELECT bool_and(revoked_at >= created_at) FROM session_credentials WHERE session_id=?`, session.ID.String())
 }
 
@@ -295,13 +261,11 @@ func TestTimeAuthorityAccessSessionRevocationModelAfterLeadingSessionClock(t *te
 	audit := timeAuthorityAccessAttempt(t, ctx, s, user.ID, "authentication.session.revoke")
 	result, err := s.Session().Revoke(ctx, &store.SessionRevocation{SessionID: session.ID, UserID: user.ID, RevokedAt: model.GetMillis(),
 		Reason: model.SessionRevocationUserSession, AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt)})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	stored, err := s.Session().Get(ctx, session.ID)
-	if err != nil || !stored.RevokedAt.Time.Equal(result.Session.RevokedAt.Time) || !stored.UpdatedAt.Equal(result.Session.UpdatedAt) {
-		t.Fatalf("stored revoked Session = %#v, %v; returned %#v", stored, err, result.Session)
-	}
+	require.NoError(t, err, "stored revoked Session = %#v, %v; returned %#v", stored, err, result.Session)
+	require.True(t, stored.RevokedAt.Time.Equal(result.Session.RevokedAt.Time), "stored revoked Session = %#v, %v; returned %#v", stored, err, result.Session)
+	require.True(t, stored.UpdatedAt.Equal(result.Session.UpdatedAt), "stored revoked Session = %#v, %v; returned %#v", stored, err, result.Session)
 }
 
 func TestTimeAuthorityAccessPersonalAccessTokenUseAfterLeadingTokenClock(t *testing.T) {
@@ -315,12 +279,10 @@ func TestTimeAuthorityAccessPersonalAccessTokenUseAfterLeadingTokenClock(t *test
 		VALUES(?,clock_timestamp()+INTERVAL '1 minute',clock_timestamp()+INTERVAL '1 minute',?,'time authority',?,ARRAY['user.view_self'],clock_timestamp()+INTERVAL '1 hour')`,
 		tokenID.String(), user.ID.String(), tokenHash)
 	resolved, err := s.PersonalAccessToken().Resolve(ctx, tokenHash, model.NowUTC(), time.Minute)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	stored, err := s.PersonalAccessToken().Get(ctx, tokenID)
-	if err != nil || !stored.LastUsedAt.Valid || !stored.LastUsedAt.Time.Equal(resolved.Token.LastUsedAt.Time) ||
-		!stored.UpdatedAt.Equal(resolved.Token.UpdatedAt) {
-		t.Fatalf("stored token = %#v, %v; resolved %#v", stored, err, resolved.Token)
-	}
+	require.NoError(t, err, "stored token = %#v, %v; resolved %#v", stored, err, resolved.Token)
+	require.True(t, stored.LastUsedAt.Valid, "stored token = %#v, %v; resolved %#v", stored, err, resolved.Token)
+	require.True(t, stored.LastUsedAt.Time.Equal(resolved.Token.LastUsedAt.Time), "stored token = %#v, %v; resolved %#v", stored, err, resolved.Token)
+	require.True(t, stored.UpdatedAt.Equal(resolved.Token.UpdatedAt), "stored token = %#v, %v; resolved %#v", stored, err, resolved.Token)
 }

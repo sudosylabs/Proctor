@@ -11,8 +11,12 @@ package sqlstore
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/app/jobhandler"
@@ -40,57 +44,38 @@ func TestJobHistoryCleanupContinuesAcrossNodesPastOneDailyBatch(t *testing.T) {
 			proposer = value.Proposer
 		}
 	}
-	if descriptor.Handler == nil || proposer == nil {
-		t.Fatal("history cleanup catalog is incomplete")
-	}
+	require.NotNil(t, descriptor.Handler, "history cleanup catalog is incomplete")
+	require.NotNil(t, proposer, "history cleanup catalog is incomplete")
 	occurrence := model.NowUTC()
 	for range 2 {
-		if err := proposer.Propose(ctx, occurrence); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, proposer.Propose(ctx, occurrence))
 	}
 	for _, nodeID := range []string{"cleanup-node-a", "cleanup-node-b"} {
 		engine, err := jobengine.New(jobengine.Config{Store: ss.Job(), Descriptors: []jobengine.Descriptor{descriptor}, NodeID: nodeID,
 			Diagnostics: historyCleanupDiagnostics{t: t}, Policy: jobengine.Policy{PollInterval: 5 * time.Millisecond, ShutdownTimeout: time.Second}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err = engine.Start(ctx); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
+		err = engine.Start(ctx)
+		require.NoError(t, err)
 		t.Cleanup(func() {
-			if err := engine.Close(); err != nil {
-				t.Error(err)
-			}
+			assert.NoError(t, engine.Close())
 		})
 	}
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		var remaining, completed int
-		if err := ss.GetMaster().Get(ctx, &remaining, `SELECT COUNT(*) FROM jobs WHERE type=?`, string(model.JobTypeProfilePictureGenerateDefault)); err != nil {
-			t.Fatal(err)
-		}
-		if err := ss.GetMaster().Get(ctx, &completed, `SELECT COUNT(*) FROM jobs WHERE type=? AND status='succeeded' AND work_reserved=100`, string(model.JobTypeCleanup)); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, ss.GetMaster().Get(ctx, &remaining, `SELECT COUNT(*) FROM jobs WHERE type=?`, string(model.JobTypeProfilePictureGenerateDefault)))
+		require.NoError(t, ss.GetMaster().Get(ctx, &completed, `SELECT COUNT(*) FROM jobs WHERE type=? AND status='succeeded' AND work_reserved=100`, string(model.JobTypeCleanup)))
 		if remaining == 0 && completed == 3 {
 			break
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("cleanup did not converge: retained Jobs=%d succeeded bounded passes=%d", remaining, completed)
-		}
+		require.False(t, time.Now().After(deadline), "cleanup did not converge: retained Jobs=%d succeeded bounded passes=%d", remaining, completed)
 		time.Sleep(10 * time.Millisecond)
 	}
 	var attempts, occurrences int
-	if err := ss.GetMaster().Get(ctx, &attempts, `SELECT COUNT(*) FROM job_attempts a JOIN jobs j ON j.id=a.job_id WHERE j.type=?`, string(model.JobTypeProfilePictureGenerateDefault)); err != nil {
-		t.Fatal(err)
-	}
-	if err := ss.GetMaster().Get(ctx, &occurrences, `SELECT COUNT(*) FROM job_permanent_occurrences WHERE type=?`, string(model.JobTypeCleanup)); err != nil {
-		t.Fatal(err)
-	}
-	if attempts != 0 || occurrences != 3 {
-		t.Fatalf("cleanup left attempts or forked occurrences: attempts=%d occurrences=%d", attempts, occurrences)
-	}
+	require.NoError(t, ss.GetMaster().Get(ctx, &attempts, `SELECT COUNT(*) FROM job_attempts a JOIN jobs j ON j.id=a.job_id WHERE j.type=?`, string(model.JobTypeProfilePictureGenerateDefault)))
+	require.NoError(t, ss.GetMaster().Get(ctx, &occurrences, `SELECT COUNT(*) FROM job_permanent_occurrences WHERE type=?`, string(model.JobTypeCleanup)))
+	require.Equal(t, 0, attempts, "cleanup left attempts or forked occurrences: attempts")
+	require.Equal(t, 3, occurrences, "cleanup left attempts or forked occurrences: attempts")
 }
 
 type historyCleanupDiagnostics struct{ t *testing.T }
@@ -99,7 +84,7 @@ func (d historyCleanupDiagnostics) ErrorContext(ctx context.Context, message str
 	if ctx.Err() != nil {
 		return
 	}
-	d.t.Errorf("%s: %v", message, err)
+	assert.Fail(d.t, fmt.Sprintf("%s: %v", message, err))
 }
 
 func TestJobHistoryCleanupHonorsStateRetentionAndSelfPreservation(t *testing.T) {
@@ -123,30 +108,21 @@ func TestJobHistoryCleanupHonorsStateRetentionAndSelfPreservation(t *testing.T) 
 		Limit: 1,
 	}
 	first, err := ss.Job().DeleteTerminalHistory(ctx, request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first.Deleted != 1 || first.Done {
-		t.Fatalf("first cleanup page = %#v", first)
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(1), first.Deleted)
+	require.False(t, first.Done)
 	request.AfterCompletedAt, request.AfterJobID = first.LastCompletedAt, first.LastJobID
 	second, err := ss.Job().DeleteTerminalHistory(ctx, request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if second.Deleted != 1 {
-		t.Fatalf("second cleanup page = %#v", second)
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(1), second.Deleted)
 
 	for _, id := range []model.JobID{oldSuccess, oldFailure} {
-		if _, err = ss.Job().Get(ctx, id); !store.IsNotFound(err) {
-			t.Fatalf("expired terminal job %s remains: %v", id, err)
-		}
+		_, err = ss.Job().Get(ctx, id)
+		require.True(t, store.IsNotFound(err), "expired terminal job %s remains", id)
 	}
 	for _, id := range []model.JobID{recentSuccess, recentFailure, queued, self} {
-		if _, err = ss.Job().Get(ctx, id); err != nil {
-			t.Fatalf("protected job %s was removed: %v", id, err)
-		}
+		_, err = ss.Job().Get(ctx, id)
+		require.NoError(t, err, "protected job %s was removed", id)
 	}
 }
 
@@ -155,17 +131,15 @@ func insertTerminalJobHistoryFixture(t *testing.T, ss *SQLStore, jobType model.J
 	id := model.NewJobID()
 	completedAt := model.NowUTC().Add(-age)
 	createdAt := completedAt.Add(-time.Minute)
-	if _, err := ss.GetMaster().Exec(context.Background(), `INSERT INTO jobs (id, type, status, created_at, updated_at, available_at, started_at, completed_at, command_version, command, dedupe_key, attempt_count, maximum_attempts, revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, '{}'::jsonb, ?, ?, 3, 1)`, id.String(), string(jobType), string(status), createdAt, completedAt, createdAt, createdAt, completedAt, id.String(), boolInt(withAttempt)); err != nil {
-		t.Fatal(err)
-	}
+	_, err := ss.GetMaster().Exec(context.Background(), `INSERT INTO jobs (id, type, status, created_at, updated_at, available_at, started_at, completed_at, command_version, command, dedupe_key, attempt_count, maximum_attempts, revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, '{}'::jsonb, ?, ?, 3, 1)`, id.String(), string(jobType), string(status), createdAt, completedAt, createdAt, createdAt, completedAt, id.String(), boolInt(withAttempt))
+	require.NoError(t, err)
 	if withAttempt {
 		attemptStatus := model.JobAttemptStatusFailed
 		if status == model.JobStatusSucceeded {
 			attemptStatus = model.JobAttemptStatusSucceeded
 		}
-		if _, err := ss.GetMaster().Exec(context.Background(), `INSERT INTO job_attempts (id, job_id, number, status, node_id, claim_token, started_at, heartbeat_at, lease_expires_at, completed_at) VALUES (?, ?, 1, ?, 'node-a', ?, ?, ?, ?, ?)`, model.NewJobAttemptID().String(), id.String(), string(attemptStatus), string(mustClaimTokenForHistory(t)), createdAt, createdAt, createdAt.Add(time.Minute), completedAt); err != nil {
-			t.Fatal(err)
-		}
+		_, err := ss.GetMaster().Exec(context.Background(), `INSERT INTO job_attempts (id, job_id, number, status, node_id, claim_token, started_at, heartbeat_at, lease_expires_at, completed_at) VALUES (?, ?, 1, ?, 'node-a', ?, ?, ?, ?, ?)`, model.NewJobAttemptID().String(), id.String(), string(attemptStatus), string(mustClaimTokenForHistory(t)), createdAt, createdAt, createdAt.Add(time.Minute), completedAt)
+		require.NoError(t, err)
 	}
 	return id
 }
@@ -174,18 +148,15 @@ func insertQueuedJobHistoryFixture(t *testing.T, ss *SQLStore, age time.Duration
 	t.Helper()
 	id := model.NewJobID()
 	at := model.NowUTC().Add(-age)
-	if _, err := ss.GetMaster().Exec(context.Background(), `INSERT INTO jobs (id, type, status, created_at, updated_at, available_at, command_version, command, dedupe_key, maximum_attempts, revision) VALUES (?, ?, 'queued', ?, ?, ?, 1, '{}'::jsonb, ?, 3, 1)`, id.String(), string(model.JobTypeProfilePictureGenerateDefault), at, at, at, id.String()); err != nil {
-		t.Fatal(err)
-	}
+	_, err := ss.GetMaster().Exec(context.Background(), `INSERT INTO jobs (id, type, status, created_at, updated_at, available_at, command_version, command, dedupe_key, maximum_attempts, revision) VALUES (?, ?, 'queued', ?, ?, ?, 1, '{}'::jsonb, ?, 3, 1)`, id.String(), string(model.JobTypeProfilePictureGenerateDefault), at, at, at, id.String())
+	require.NoError(t, err)
 	return id
 }
 
 func mustClaimTokenForHistory(t *testing.T) model.JobClaimToken {
 	t.Helper()
 	token, err := model.NewJobClaimToken()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return token
 }
 

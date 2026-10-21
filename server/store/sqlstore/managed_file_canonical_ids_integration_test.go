@@ -11,11 +11,11 @@ package sqlstore
 
 import (
 	"context"
-	"errors"
 	"slices"
 	"testing"
 
 	"github.com/lib/pq"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -39,15 +39,11 @@ func TestManagedFileCanonicalIDConstraints(t *testing.T) {
 		"upload_leases_id_canonical_check",
 	}
 	var got []string
-	if err := persistence.GetMaster().Select(ctx, &got, `
+	require.NoError(t, persistence.GetMaster().Select(ctx, &got, `
 		SELECT conname FROM pg_constraint
 		 WHERE conname = ANY(?)
-		 ORDER BY conname`, pq.Array(want)); err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Equal(got, want) {
-		t.Fatalf("managed-file canonical constraints = %v, want %v", got, want)
-	}
+		 ORDER BY conname`, pq.Array(want)))
+	require.True(t, slices.Equal(got, want), "managed-file canonical constraints = %v, want %v", got, want)
 
 	at := model.NowUTC()
 	_, err := persistence.GetMaster().Exec(ctx, `
@@ -55,7 +51,7 @@ func TestManagedFileCanonicalIDConstraints(t *testing.T) {
 			id, created_at, updated_at, revision, indexing_policy, purpose
 		) VALUES ('bad', ?, ?, 1, 'none', 'profile_picture_custom')`, at, at)
 	var postgresErr *pq.Error
-	if !errors.As(err, &postgresErr) || string(postgresErr.Code) != "23514" || postgresErr.Constraint != "file_entries_id_canonical_check" {
-		t.Fatalf("constraint violation = %v, want file_entries_id_canonical_check", err)
-	}
+	require.ErrorAs(t, err, &postgresErr, "constraint violation")
+	require.Equal(t, "23514", string(postgresErr.Code), "constraint violation")
+	require.Equal(t, "file_entries_id_canonical_check", postgresErr.Constraint, "constraint violation")
 }

@@ -12,8 +12,9 @@ package storetest
 
 import (
 	"context"
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -25,67 +26,58 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		candidate := newUser()
 		candidate.EmailVerified = true
 		user, err := createUser(t, ctx, ss, candidate)
-		requireNoError(t, err)
+		require.NoError(t, err)
 		// #nosec G101 -- Nonfunctional password hash used only to exercise Store removal.
 		credential, err := ss.PasswordCredential().Save(ctx, &model.PasswordCredential{UserID: user.ID, PasswordHash: "$argon2id$remove-me"})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		identity, err := ss.ExternalIdentity().Save(ctx, &model.ExternalIdentity{UserID: user.ID, Provider: "campus-cas",
 			Subject: "password-removal-subject-" + model.NewID(), LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())})
-		requireNoError(t, err)
+		require.NoError(t, err)
 
 		passwordSession, passwordCredentials, _ := newSession(user.ID.String())
 		passwordSession, _, err = SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, passwordSession, passwordCredentials, 10))
-		requireNoError(t, err)
+		require.NoError(t, err)
 		providerSession, providerCredentials, _ := newSession(user.ID.String())
 		providerSession.AuthenticationMethod = "oidc"
 		providerSession.AuthenticationProviderID = "campus-cas"
 		providerSession.ExternalIdentityID = identity.ID
 		providerSession, _, err = SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, providerSession, providerCredentials, 10))
-		requireNoError(t, err)
+		require.NoError(t, err)
 
 		attempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "remove_password")
 		result, err := ss.PasswordCredential().Remove(ctx, &store.PasswordCredentialRemoval{
 			UserID: user.ID, Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"campus-cas": {}}},
 			ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationPasswordRemoved, AuditEventID: attempt.ID, AuditAt: model.GetMillis(),
 		})
-		requireNoError(t, err)
-		if len(result.RevokedSessions) != 1 || result.RevokedSessions[0].ID != passwordSession.ID || len(result.RevokedTokenHashes) != 2 {
-			t.Fatalf("Remove() revocations = %#v", result)
-		}
+		require.NoError(t, err)
+		require.Len(t, result.RevokedSessions, 1)
+		require.Equal(t, passwordSession.ID, result.RevokedSessions[0].ID)
+		require.Len(t, result.RevokedTokenHashes, 2)
 		revoked, err := ss.Session().Get(ctx, passwordSession.ID)
-		requireNoError(t, err)
-		if !revoked.RevokedAt.Valid {
-			t.Fatalf("password Session was not revoked = %#v", revoked)
-		}
+		require.NoError(t, err)
+		require.True(t, revoked.RevokedAt.Valid)
 		retained, err := ss.Session().Get(ctx, providerSession.ID)
-		requireNoError(t, err)
-		if retained.RevokedAt.Valid {
-			t.Fatalf("provider Session was revoked = %#v", retained)
-		}
+		require.NoError(t, err)
+		require.False(t, retained.RevokedAt.Valid)
 		// #nosec G101 -- Synthetic replacement must be rejected before any hash is stored.
 		oldRehash := &store.PasswordCredentialRehash{ID: credential.ID, UserID: user.ID,
 			ExpectedHash: credential.PasswordHash, ExpectedRevision: credential.Revision, PasswordHash: "must-not-resurrect"}
-		if err = ss.PasswordCredential().Rehash(ctx, oldRehash); !errors.Is(err, store.ErrPasswordCredentialChanged) {
-			t.Fatalf("Rehash(removed credential) = %v", err)
-		}
+		err = ss.PasswordCredential().Rehash(ctx, oldRehash)
+		require.ErrorIs(t, err, store.ErrPasswordCredentialChanged)
 		replacement, err := ss.PasswordCredential().Save(ctx, &model.PasswordCredential{
 			UserID: user.ID, PasswordHash: "encoded-reenrolled-password",
 		})
-		requireNoError(t, err)
-		if replacement.ID == credential.ID || replacement.Revision != credential.Revision {
-			t.Fatal("re-enrollment did not create a distinct credential with initial revision")
-		}
-		if err = ss.PasswordCredential().Rehash(ctx, oldRehash); !errors.Is(err, store.ErrPasswordCredentialChanged) {
-			t.Fatalf("Rehash(replaced credential) = %v", err)
-		}
+		require.NoError(t, err)
+		require.NotEqual(t, credential.ID, replacement.ID, "re-enrollment did not create a distinct credential with initial revision")
+		require.Equal(t, credential.Revision, replacement.Revision, "re-enrollment did not create a distinct credential with initial revision")
+		err = ss.PasswordCredential().Rehash(ctx, oldRehash)
+		require.ErrorIs(t, err, store.ErrPasswordCredentialChanged)
 		staleSession, staleCredentials, _ := newSession(user.ID.String())
 		_, _, err = SaveSession(ctx, ss, &store.SessionCreation{
 			Session: staleSession, Credentials: staleCredentials, MaximumActive: 10,
 			PasswordProof: store.PasswordCredentialProof{ID: credential.ID, Revision: credential.Revision},
 		})
-		if !errors.Is(err, store.ErrPasswordCredentialChanged) {
-			t.Fatalf("Save(replaced password proof) = %v", err)
-		}
+		require.ErrorIs(t, err, store.ErrPasswordCredentialChanged)
 	})
 
 	t.Run("AuditedEnrollmentRequiresVerifiedMailboxAndProtectsLastMethod", func(t *testing.T) {
@@ -93,57 +85,51 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		candidate := newUser()
 		candidate.EmailVerified = true
 		user, err := createUser(t, ctx, ss, candidate)
-		requireNoError(t, err)
+		require.NoError(t, err)
 		attempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "enroll_password")
 		result, err := ss.PasswordCredential().Enroll(ctx, &store.PasswordCredentialEnrollment{
 			Credential:   &model.PasswordCredential{UserID: user.ID, PasswordHash: "$argon2id$enrolled"},
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 			AuditEventID: attempt.ID, AuditAt: model.GetMillis(),
 		})
-		requireNoError(t, err)
-		if result.PasswordCredential == nil || result.PasswordCredential.UserID != user.ID {
-			t.Fatalf("Enroll() = %#v", result)
-		}
+		require.NoError(t, err)
+		require.NotNil(t, result.PasswordCredential)
+		require.Equal(t, user.ID, result.PasswordCredential.UserID)
 		terminal, err := ss.Audit().Get(ctx, attempt.ID)
-		requireNoError(t, err)
-		if terminal.Status != model.AuditStatusSuccess {
-			t.Fatalf("audit status = %s", terminal.Status)
-		}
+		require.NoError(t, err)
+		require.Equal(t, model.AuditStatusSuccess, terminal.Status)
 		removeAttempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "remove_password")
 		_, err = ss.PasswordCredential().Remove(ctx, &store.PasswordCredentialRemoval{UserID: user.ID,
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 			ChangedAt:    model.GetMillis(), RevocationReason: model.SessionRevocationPasswordRemoved, AuditEventID: removeAttempt.ID, AuditAt: model.GetMillis()})
-		if !errors.Is(err, store.ErrLastUsableAuthenticationMethod) {
-			t.Fatalf("Remove(last) error = %v", err)
-		}
+		require.ErrorIs(t, err, store.ErrLastUsableAuthenticationMethod)
 		unchanged, err := ss.PasswordCredential().GetByUser(ctx, user.ID)
-		requireNoError(t, err)
-		if unchanged.ID != result.PasswordCredential.ID {
-			t.Fatalf("credential changed = %#v", unchanged)
-		}
+		require.NoError(t, err)
+		require.Equal(t, result.PasswordCredential.ID, unchanged.ID)
 	})
 	t.Run("RehashPreservesPasswordRevisionAndLifecycle", func(t *testing.T) {
 		ctx := context.Background()
 		user := saveUser(t, ctx, ss)
 		input := &model.PasswordCredential{UserID: user.ID, PasswordHash: "encoded-original-password"}
 		saved, err := ss.PasswordCredential().Save(ctx, input)
-		requireNoError(t, err)
-		if !saved.ID.IsValid() || !input.ID.IsZero() || saved.Revision != 1 {
-			t.Fatalf("Save() identity/revision = %s/%d", saved.ID, saved.Revision)
-		}
+		require.NoError(t, err)
+		require.True(t, saved.ID.IsValid(), "Save() identity/revision = %s", saved.ID)
+		require.True(t, input.ID.IsZero(), "Save() identity/revision = %s", saved.ID)
+		require.Equal(t, int64(1), saved.Revision, "Save() identity/revision = %s", saved.ID)
 		request := &store.PasswordCredentialRehash{ID: saved.ID, UserID: user.ID,
 			ExpectedHash: saved.PasswordHash, ExpectedRevision: saved.Revision, PasswordHash: "encoded-rehashed-password"}
-		requireNoError(t, ss.PasswordCredential().Rehash(ctx, request))
+		require.NoError(t, ss.PasswordCredential().Rehash(ctx, request))
 		got, err := ss.PasswordCredential().GetByUser(ctx, user.ID)
-		requireNoError(t, err)
-		if got.PasswordHash != request.PasswordHash || got.ID != saved.ID || got.UserID != saved.UserID ||
-			got.Revision != saved.Revision || !got.CreatedAt.Equal(saved.CreatedAt) ||
-			!got.PasswordChangedAt.Equal(saved.PasswordChangedAt) || got.UpdatedAt.Before(saved.UpdatedAt) {
-			t.Fatal("rehash did not preserve password identity, revision, and lifecycle")
-		}
-		if err = ss.PasswordCredential().Rehash(ctx, request); !errors.Is(err, store.ErrPasswordCredentialChanged) {
-			t.Fatalf("Rehash(stale hash) = %v", err)
-		}
+		require.NoError(t, err)
+		require.Equal(t, request.PasswordHash, got.PasswordHash, "rehash did not preserve password identity, revision, and lifecycle")
+		require.Equal(t, saved.ID, got.ID, "rehash did not preserve password identity, revision, and lifecycle")
+		require.Equal(t, saved.UserID, got.UserID, "rehash did not preserve password identity, revision, and lifecycle")
+		require.Equal(t, saved.Revision, got.Revision, "rehash did not preserve password identity, revision, and lifecycle")
+		require.True(t, got.CreatedAt.Equal(saved.CreatedAt), "rehash did not preserve password identity, revision, and lifecycle")
+		require.True(t, got.PasswordChangedAt.Equal(saved.PasswordChangedAt), "rehash did not preserve password identity, revision, and lifecycle")
+		require.False(t, got.UpdatedAt.Before(saved.UpdatedAt), "rehash did not preserve password identity, revision, and lifecycle")
+		err = ss.PasswordCredential().Rehash(ctx, request)
+		require.ErrorIs(t, err, store.ErrPasswordCredentialChanged)
 		cases := []struct {
 			name   string
 			mutate func(*store.PasswordCredentialRehash)
@@ -158,14 +144,10 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 				candidate.ExpectedHash = got.PasswordHash
 				candidate.PasswordHash = "must-not-be-written"
 				test.mutate(&candidate)
-				if err := ss.PasswordCredential().Rehash(ctx, &candidate); !errors.Is(err, store.ErrPasswordCredentialChanged) {
-					t.Fatalf("Rehash(stale %s) = %v", test.name, err)
-				}
+				require.ErrorIs(t, ss.PasswordCredential().Rehash(ctx, &candidate), store.ErrPasswordCredentialChanged, "Rehash(stale %s)", test.name)
 				unchanged, err := ss.PasswordCredential().GetByUser(ctx, user.ID)
-				requireNoError(t, err)
-				if *unchanged != *got {
-					t.Fatal("failed rehash changed persisted credential")
-				}
+				require.NoError(t, err)
+				require.Equal(t, *got, *unchanged, "failed rehash changed persisted credential")
 			})
 		}
 	})
@@ -177,23 +159,19 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 			PasswordHash: "$argon2id$missing",
 		})
 		var reference *store.ErrReference
-		if !errors.As(err, &reference) ||
-			reference.Constraint != "password_credentials_user_id_fkey" {
-			t.Fatalf("unknown user error = %v", err)
-		}
+		require.ErrorAs(t, err, &reference)
+		require.Equal(t, "password_credentials_user_id_fkey", reference.Constraint)
 		user := saveUser(t, ctx, ss)
 		first := &model.PasswordCredential{UserID: user.ID, PasswordHash: "$argon2id$first"}
 		_, err = ss.PasswordCredential().Save(ctx, first)
-		requireNoError(t, err)
+		require.NoError(t, err)
 		_, err = ss.PasswordCredential().Save(ctx, &model.PasswordCredential{
 			UserID:       user.ID,
 			PasswordHash: "$argon2id$second",
 		})
 		var conflict *store.ErrConflict
-		if !errors.As(err, &conflict) ||
-			conflict.Constraint != "password_credentials_user_id_key" {
-			t.Fatalf("duplicate user credential error = %v", err)
-		}
+		require.ErrorAs(t, err, &conflict)
+		require.Equal(t, "password_credentials_user_id_key", conflict.Constraint)
 	})
 }
 
@@ -203,6 +181,6 @@ func saveAuthenticationMethodAuditAttempt(t *testing.T, ctx context.Context, ss 
 		Resource: model.Resource{Type: model.ResourceUser, ID: userID}, ScopeType: model.RoleScopeInstitution,
 		ScopeID: model.NewID(), Status: model.AuditStatusAttempt, NodeID: "authentication-method-storetest",
 		Parameters: []byte(`{"operation":"` + operation + `"}`)})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return event
 }

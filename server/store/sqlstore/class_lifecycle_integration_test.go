@@ -11,10 +11,11 @@ package sqlstore
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -26,34 +27,21 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 	resetTestStore(t, persistence)
 	ctx := context.Background()
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "northbridge", DisplayName: "Northbridge"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	unit, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{InstitutionID: institution.ID, Name: "computing", DisplayName: "Computing"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	programme, err := storetest.SaveProgramme(ctx, persistence, &model.Programme{AcademicUnitID: unit.ID, Name: "computer-science", DisplayName: "Computer Science"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	level, err := storetest.SaveProgrammeLevel(ctx, persistence, &model.ProgrammeLevel{ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	period, err := storetest.SaveAcademicPeriod(ctx, persistence, &model.AcademicPeriod{Owner: model.NewInstitutionAcademicPeriodOwner(institution.ID), Name: "2026", DisplayName: "2026", StartsAt: model.TimeFromMillis(100), EndsAt: model.TimeFromMillis(10_000_000)})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	userID := model.NewID()
 	user := saveIntegrationUser(t, ctx, persistence, &model.User{Username: "user-" + userID, Email: userID + "@example.edu", DisplayName: "User"})
-	if _, err := persistence.Affiliation().Save(ctx, &model.Affiliation{UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(1)}); err != nil {
-		t.Fatal(err)
-	}
+	_, err = persistence.Affiliation().Save(ctx, &model.Affiliation{UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(1)})
+	require.NoError(t, err)
 	role, err := storetest.SaveRole(ctx, persistence, &model.Role{Name: "class-reader", DisplayName: "Class Reader", Permissions: []string{string(model.ActionClassView)}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	t.Run("enrollment", func(t *testing.T) {
 		baseStart := model.GetMillis() + 1_000
@@ -106,33 +94,27 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 
 func assertClassLifecycleWinner(t *testing.T, iteration int, archiveErr, dependentErr error) {
 	t.Helper()
-	if (archiveErr == nil) == (dependentErr == nil) {
-		t.Fatalf("iteration %d must have exactly one winner: archive=%v dependent=%v", iteration, archiveErr, dependentErr)
-	}
+	require.NotEqual(t, dependentErr == nil, archiveErr == nil, "iteration %d must have exactly one winner: archive=%v dependent=%v", iteration, archiveErr, dependentErr)
 	if archiveErr == nil {
 		var reference *store.ErrReference
-		if !store.IsNotFound(dependentErr) && !errors.As(dependentErr, &reference) {
-			t.Fatalf("iteration %d archive won but dependent error = %v", iteration, dependentErr)
+		if !store.IsNotFound(dependentErr) {
+			require.ErrorAs(t, dependentErr, &reference, "iteration %d archive won but dependent error", iteration)
 		}
 	}
-	if dependentErr == nil && !store.IsConflict(archiveErr) {
-		t.Fatalf("iteration %d dependent won but archive error = %v", iteration, archiveErr)
+	if dependentErr == nil {
+		require.True(t, store.IsConflict(archiveErr), "iteration %d dependent won but archive error", iteration)
 	}
 }
 
 func saveLifecycleClass(t *testing.T, ctx context.Context, persistence store.Store, levelID, periodID, name string) *model.Class {
 	t.Helper()
 	class, err := storetest.SaveClass(ctx, persistence, &model.Class{ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: model.AcademicPeriodID(periodID), Name: name, DisplayName: name})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return class
 }
 func saveLifecycleClassAudit(t *testing.T, ctx context.Context, persistence store.Store, unitID string) *model.AuditEvent {
 	t.Helper()
 	attempt, err := persistence.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID, Status: model.AuditStatusAttempt, NodeID: "test-node"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return attempt
 }

@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -45,12 +47,9 @@ func testInvitationIssueSerializesWithProgrammeScopeMove(
 		_, issueErr := ss.Invitation().IssueStudentClass(ctx, issue)
 		return issueErr
 	})
-	if !store.IsConflict(err) {
-		t.Fatalf("IssueStudentClass() concurrent Programme move error = %v", err)
-	}
-	if _, err = ss.Invitation().Get(ctx, issue.Invitation.ID); !store.IsNotFound(err) {
-		t.Fatalf("Invitation survived concurrent Programme move: %v", err)
-	}
+	require.True(t, store.IsConflict(err), "IssueStudentClass() concurrent Programme move error")
+	_, err = ss.Invitation().Get(ctx, issue.Invitation.ID)
+	require.True(t, store.IsNotFound(err), "Invitation survived concurrent Programme move")
 }
 
 func testInvitationAcceptSerializesWithLevelScopeMove(
@@ -64,7 +63,7 @@ func testInvitationAcceptSerializesWithLevelScopeMove(
 	replaceInvitationClassAuthorityWithUnit(t, ctx, ss, inviter, role, binding, fixture.programme.AcademicUnitID, issuedAt)
 	issue := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt)
 	invitation, err := ss.Invitation().IssueStudentClass(ctx, issue)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	targetUnit := saveAcademicUnit(t, ctx, ss, fixture.institution.ID.String(), "", "invitation-level-move-target")
 	targetProgramme := saveProgramme(t, ctx, ss, targetUnit.ID.String(), "invitation-level-move-programme")
 	acceptance := studentClassInvitationAcceptanceFixture(t, invitation, model.NowUTC())
@@ -72,14 +71,10 @@ func testInvitationAcceptSerializesWithLevelScopeMove(
 		_, acceptErr := ss.Invitation().AcceptStudentClass(ctx, acceptance)
 		return acceptErr
 	})
-	if !store.IsConflict(err) {
-		t.Fatalf("AcceptStudentClass() concurrent Programme Level move error = %v", err)
-	}
+	require.True(t, store.IsConflict(err), "AcceptStudentClass() concurrent Programme Level move error")
 	current, err := ss.Invitation().Get(ctx, invitation.ID)
-	requireNoError(t, err)
-	if current.State != model.InvitationPending {
-		t.Fatalf("Invitation state after concurrent Programme Level move = %q", current.State)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.InvitationPending, current.State)
 }
 
 func replaceInvitationClassAuthorityWithUnit(
@@ -94,10 +89,10 @@ func replaceInvitationClassAuthorityWithUnit(
 ) {
 	t.Helper()
 	_, err := EndRoleBinding(ctx, ss, binding.ID, model.GetMillis())
-	requireNoError(t, err)
+	require.NoError(t, err)
 	_, err = SaveRoleBinding(ctx, ss, &model.RoleBinding{
 		UserID: inviter.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: unitID.String(), StartsAt: issuedAt.Add(-time.Second),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 }

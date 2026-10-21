@@ -11,9 +11,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -33,10 +34,8 @@ func TestJobRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := test.row.model()
-			assertPersistedJobStateError(t, err, "job", test.field)
-			if strings.Contains(err.Error(), "bad") {
-				t.Fatalf("persisted-state error exposed raw value: %v", err)
-			}
+			requirePersistedStateError(t, err, "job", test.field)
+			require.NotContains(t, err.Error(), "bad")
 		})
 	}
 }
@@ -57,10 +56,8 @@ func TestJobAttemptRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := test.row.model()
-			assertPersistedJobStateError(t, err, "job_attempt", test.field)
-			if strings.Contains(err.Error(), "bad") {
-				t.Fatalf("persisted-state error exposed raw value: %v", err)
-			}
+			requirePersistedStateError(t, err, "job_attempt", test.field)
+			require.NotContains(t, err.Error(), "bad")
 		})
 	}
 }
@@ -86,20 +83,18 @@ func TestJobTransactionPoliciesPreserveLegacyBranchSemantics(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if test.got == nil || test.got.Error() != test.want || !errors.Is(test.got, failure) {
-				t.Fatalf("policy error = %v, want %q wrapping primary failure", test.got, test.want)
-			}
+			require.Error(t, test.got, "policy error")
+			require.Equal(t, test.want, test.got.Error(), "policy error")
+			require.ErrorIs(t, test.got, failure, "policy error")
 		})
 	}
 
 	raw := rawSQLTransactionPolicy[bool](false, nil)
-	if raw.commit || raw.beginError(failure) != failure {
-		t.Fatalf("rollback-only observation policy = %#v", raw)
-	}
+	require.False(t, raw.commit)
+	require.Equal(t, failure, raw.beginError(failure))
 	rawCommit := rawSQLTransactionPolicy[bool](true, func(_ bool, err error) error { return err })
-	if !rawCommit.commit || rawCommit.commitError(true, failure) != failure {
-		t.Fatalf("raw commit policy = %#v", rawCommit)
-	}
+	require.True(t, rawCommit.commit)
+	require.Equal(t, failure, rawCommit.commitError(true, failure))
 }
 
 func validJobRow(t *testing.T) jobRow {
@@ -118,9 +113,7 @@ func validJobAttemptRow(t *testing.T) jobAttemptRow {
 	t.Helper()
 	now := time.UnixMilli(1_700_000_000_000).UTC()
 	token, err := model.NewJobClaimToken()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return jobAttemptRow{
 		ID: model.NewJobAttemptID().String(), JobID: model.NewJobID().String(), Number: 1,
 		Status: string(model.JobAttemptStatusRunning), NodeID: "node-a", ClaimToken: string(token),
@@ -138,13 +131,12 @@ func replaceJobAttemptRow(row jobAttemptRow, replace func(*jobAttemptRow)) jobAt
 	return row
 }
 
-func assertPersistedJobStateError(t *testing.T, err error, entity, field string) {
+// requirePersistedStateError asserts that err reports the corrupt persisted
+// entity and field.
+func requirePersistedStateError(t *testing.T, err error, entity, field string) {
 	t.Helper()
 	var persisted *persistedStateError
-	if !errors.As(err, &persisted) {
-		t.Fatalf("model() error = %v, want persisted-state error", err)
-	}
-	if persisted.Entity != entity || persisted.Field != field {
-		t.Fatalf("persisted-state context = %s.%s, want %s.%s", persisted.Entity, persisted.Field, entity, field)
-	}
+	require.ErrorAs(t, err, &persisted)
+	require.Equal(t, entity, persisted.Entity)
+	require.Equal(t, field, persisted.Field)
 }

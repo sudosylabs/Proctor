@@ -17,6 +17,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -35,7 +38,7 @@ func syntheticNativeAgreement(t *testing.T, build model.DesktopBuildTuple) *mode
 		matrix.Entries = append(matrix.Entries, model.NativeCapabilityMatrixEntry{CoverageKey: item.key, SourceSchemaDigest: digest, Claim: model.NativeClaimEnforce, ComponentID: "synthetic-component", AdapterVersion: "synthetic-adapter", RequiredPermissions: []string{}, Limitations: []string{}, Verification: "passed"})
 	}
 	agreement, err := model.NewDesktopNativeAgreement(model.NativeRegistryDigest, model.SHA256Fingerprint([]byte("synthetic-manifest")), model.SHA256Fingerprint([]byte("synthetic-matrix")), model.SHA256Fingerprint([]byte("synthetic-detectors")), definitions, matrix, []model.NativeDetectorDefinition{{DetectorID: "synthetic-baseline", Version: 1, CapabilityID: "baseline", ConditionIDs: []string{"baseline.capture"}, SourceIDs: []model.NativeSourceID{model.NativeSourceCapture}, AllowedModes: []model.NativeCapabilityClaim{model.NativeClaimEnforce}}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return agreement
 }
 func syntheticPreflightReport(prepared *store.SecurityPreflightPrepared, agreement *model.DesktopNativeAgreement) model.SecurityPreflightReport {
@@ -76,20 +79,20 @@ func TestSecurityPreflightStore(t *testing.T, ss store.Store, probes ...Security
 	input := &store.SecurityPreflightPrepare{Access: access, PreflightID: model.NewID(), Challenge: model.NewCredentialToken(), NativeRegistryDigest: build.NativeAgreement.RegistryDigest(), SourceManifestDigest: build.NativeAgreement.SourceManifestDigest(), ConfigurationManifestFingerprint: build.ConfigurationManifest.Fingerprint(), AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	command := examCommand(fixture.candidate.ID, store.SecurityPreflightPrepareOperation, "preflight-prepare", "preflight-prepare")
 	prepared, err := ss.ExamAttempt().PrepareSecurityPreflight(ctx, input, command)
-	requireNoError(t, err)
-	if prepared.Replayed || prepared.FrozenAttemptConfiguration != nil || prepared.Challenge.PreflightID != input.PreflightID || prepared.Challenge.ExpiresAt.Sub(prepared.Challenge.IssuedAt) != model.SecurityPreflightLifetime {
-		t.Fatalf("prepared = %#v", prepared)
-	}
+	require.NoError(t, err)
+	require.False(t, prepared.Replayed)
+	require.Nil(t, prepared.FrozenAttemptConfiguration)
+	require.Equal(t, input.PreflightID, prepared.Challenge.PreflightID)
+	require.Equal(t, model.SecurityPreflightLifetime, prepared.Challenge.ExpiresAt.Sub(prepared.Challenge.IssuedAt))
 	requireSuccessfulAudit(t, ctx, ss, input.AuditEventID)
 	replay := *input
 	replay.PreflightID = model.NewID()
 	replay.Challenge = model.NewCredentialToken()
 	replay.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	repeated, err := ss.ExamAttempt().PrepareSecurityPreflight(ctx, &replay, command)
-	requireNoError(t, err)
-	if !repeated.Replayed || repeated.Challenge != prepared.Challenge {
-		t.Fatal("replay replaced or extended the challenge")
-	}
+	require.NoError(t, err)
+	require.True(t, repeated.Replayed, "replay replaced or extended the challenge")
+	require.Equal(t, prepared.Challenge, repeated.Challenge, "replay replaced or extended the challenge")
 	report := &store.SecurityPreflightReport{Access: access, PreflightID: input.PreflightID, Report: syntheticPreflightReport(prepared, build.NativeAgreement), AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	// Authenticated selectors cannot be rebound even with a valid report body.
 	for name, mutate := range map[string]func(*store.SecurityPreflightAccess){
@@ -102,46 +105,35 @@ func TestSecurityPreflightStore(t *testing.T, ss store.Store, probes ...Security
 		foreign := *report
 		mutate(&foreign.Access)
 		foreign.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
-		if _, err := ss.ExamAttempt().ReportSecurityPreflight(ctx, &foreign, examCommand(fixture.candidate.ID, store.SecurityPreflightReportOperation, "foreign-"+name, "foreign-"+name)); err == nil {
-			t.Fatalf("%s selector accepted a foreign preflight report", name)
-		}
+		_, err = ss.ExamAttempt().ReportSecurityPreflight(ctx, &foreign, examCommand(fixture.candidate.ID, store.SecurityPreflightReportOperation, "foreign-"+name, "foreign-"+name))
+		require.Error(t, err, "%s selector accepted a foreign preflight report", name)
 	}
 	if len(probes) > 0 {
 		// Completing a nonexistent audit must roll back the preceding report write.
 		unaudited := *report
 		unaudited.AuditEventID = model.NewAuditEventID()
-		if _, err := ss.ExamAttempt().ReportSecurityPreflight(ctx, &unaudited, examCommand(fixture.candidate.ID, store.SecurityPreflightReportOperation, "unaudited-report", "unaudited-report")); err == nil {
-			t.Fatal("accepted report without durable audit")
-		}
-		if probes[0].HasReport(input.PreflightID) {
-			t.Fatal("failed audit left a report behind")
-		}
+		_, err = ss.ExamAttempt().ReportSecurityPreflight(ctx, &unaudited, examCommand(fixture.candidate.ID, store.SecurityPreflightReportOperation, "unaudited-report", "unaudited-report"))
+		require.Error(t, err, "accepted report without durable audit")
+		require.False(t, probes[0].HasReport(input.PreflightID), "failed audit left a report behind")
 	}
 	report.Report.Baseline.ContentProtection = "unavailable"
 	blocked, err := ss.ExamAttempt().ReportSecurityPreflight(ctx, report, examCommand(fixture.candidate.ID, store.SecurityPreflightReportOperation, "blocked-report", "blocked-report"))
-	requireNoError(t, err)
-	if blocked.Admission != "blocked" {
-		t.Fatal("missing baseline admitted")
-	}
+	require.NoError(t, err)
+	require.Equal(t, "blocked", blocked.Admission, "missing baseline admitted")
 	report.Report.Baseline.ContentProtection = "verified"
 	report.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	reportCommand := examCommand(fixture.candidate.ID, store.SecurityPreflightReportOperation, "eligible-report", "eligible-report")
 	eligible, err := ss.ExamAttempt().ReportSecurityPreflight(ctx, report, reportCommand)
-	requireNoError(t, err)
-	if eligible.Admission != "eligible" {
-		t.Fatalf("eligible = %#v", eligible)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "eligible", eligible.Admission)
 	report.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	retried, err := ss.ExamAttempt().ReportSecurityPreflight(ctx, report, reportCommand)
-	requireNoError(t, err)
-	if retried.ReportDigest != eligible.ReportDigest || !retried.ServerTime.Equal(eligible.ServerTime) {
-		t.Fatal("retry changed report receipt or freshness")
-	}
+	require.NoError(t, err)
+	require.Equal(t, eligible.ReportDigest, retried.ReportDigest, "retry changed report receipt or freshness")
+	require.True(t, retried.ServerTime.Equal(eligible.ServerTime), "retry changed report receipt or freshness")
 	attempts, err := ss.ExamAttempt().List(ctx, store.ExamAttemptManagerListOptions{ExamID: fixture.examID, SittingID: fixture.sitting.ID, ExcludeCandidateUserID: fixture.manager.ID, Limit: 10})
-	requireNoError(t, err)
-	if len(attempts) != 0 {
-		t.Fatal("preflight created an Attempt")
-	}
+	require.NoError(t, err)
+	require.Empty(t, attempts, "preflight created an Attempt")
 	// Concurrent copies of one command have one retained receipt/freshness instant.
 	type reportOutcome struct {
 		result *model.SecurityPreflightResult
@@ -163,40 +155,38 @@ func TestSecurityPreflightStore(t *testing.T, ss store.Store, probes ...Security
 	var concurrentReceipt *model.SecurityPreflightResult
 	for range 2 {
 		outcome := <-outcomes
-		requireNoError(t, outcome.err)
+		require.NoError(t, outcome.err)
 		if concurrentReceipt == nil {
 			concurrentReceipt = outcome.result
 		}
-		if outcome.result.ReportDigest != eligible.ReportDigest || !outcome.result.ServerTime.Equal(concurrentReceipt.ServerTime) {
-			t.Fatal("concurrent replay replaced the original receipt")
-		}
+		require.Equal(t, eligible.ReportDigest, outcome.result.ReportDigest, "concurrent replay replaced the original receipt")
+		require.True(t, outcome.result.ServerTime.Equal(concurrentReceipt.ServerTime), "concurrent replay replaced the original receipt")
 	}
 	// Supersession invalidates the earlier prepared command and its report.
 	time.Sleep(1100 * time.Millisecond)
 	replay.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	_, err = ss.ExamAttempt().PrepareSecurityPreflight(ctx, &replay, examCommand(fixture.candidate.ID, store.SecurityPreflightPrepareOperation, "successor", "successor"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	input.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	_, err = ss.ExamAttempt().PrepareSecurityPreflight(ctx, input, command)
-	assertExamAttemptConflict(t, err, "preflight_superseded")
+	requireConflictConstraint(t, err, "preflight_superseded")
 	report.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	_, err = ss.ExamAttempt().ReportSecurityPreflight(ctx, report, reportCommand)
-	assertExamAttemptConflict(t, err, "preflight_superseded")
+	requireConflictConstraint(t, err, "preflight_superseded")
 	if len(probes) > 0 {
 		probes[0].Expire(replay.PreflightID)
 		replay.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 		_, err = ss.ExamAttempt().PrepareSecurityPreflight(ctx, &replay, examCommand(fixture.candidate.ID, store.SecurityPreflightPrepareOperation, "successor", "successor"))
-		assertExamAttemptConflict(t, err, "preflight_expired")
+		requireConflictConstraint(t, err, "preflight_expired")
 		// Expiry cleanup runs through preparation and cannot revive the old owner.
 		oldID := replay.PreflightID
 		replay.PreflightID = model.NewID()
 		replay.Challenge = model.NewCredentialToken()
 		replay.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 		_, err = ss.ExamAttempt().PrepareSecurityPreflight(ctx, &replay, examCommand(fixture.candidate.ID, store.SecurityPreflightPrepareOperation, "after-expiry", "after-expiry"))
-		requireNoError(t, err)
-		if probes[0].Exists(oldID) || !probes[0].Exists(replay.PreflightID) {
-			t.Fatal("expiry cleanup retained or revived the old preflight")
-		}
+		require.NoError(t, err)
+		require.False(t, probes[0].Exists(oldID), "expiry cleanup retained or revived the old preflight")
+		require.True(t, probes[0].Exists(replay.PreflightID), "expiry cleanup retained or revived the old preflight")
 	}
 }
 
@@ -227,26 +217,23 @@ func TestSecureConnectStore(t *testing.T, ss store.Store, probes ...SecureConnec
 	access := store.SecurityPreflightAccess{SittingID: input.SittingID, CandidateUserID: input.CandidateUserID, SessionID: input.SessionID, DesktopRegistrationID: input.DesktopRegistrationID, DPoPKeyThumbprint: input.DPoPKeyThumbprint, DesktopBuild: input.DesktopBuild, DesktopCompatibilityPolicyRevision: input.DesktopCompatibilityPolicyRevision}
 	prepare := &store.SecurityPreflightPrepare{Access: access, PreflightID: model.NewID(), Challenge: model.NewCredentialToken(), NativeRegistryDigest: access.DesktopBuild.NativeAgreement.RegistryDigest(), SourceManifestDigest: access.DesktopBuild.NativeAgreement.SourceManifestDigest(), ConfigurationManifestFingerprint: input.ConfigurationManifestFingerprint, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	prepared, err := ss.ExamAttempt().PrepareSecurityPreflight(ctx, prepare, examCommand(input.CandidateUserID, store.SecurityPreflightPrepareOperation, "secure-prepare", "secure-prepare"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	report := &store.SecurityPreflightReport{Access: access, PreflightID: prepare.PreflightID, Report: syntheticPreflightReport(prepared, access.DesktopBuild.NativeAgreement), AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	if len(probes) > 0 && probes[0].CorruptPrepared != nil {
 		for _, field := range []string{"challenge", "categories", "sources", "requirements"} {
 			restore := probes[0].CorruptPrepared(prepare.PreflightID, field)
 			_, err := ss.ExamAttempt().ReportSecurityPreflight(ctx, report, examCommand(input.CandidateUserID, store.SecurityPreflightReportOperation, "secure-report", "secure-report"))
 			restore()
-			if !errors.Is(err, store.ErrInvalidState) {
-				t.Fatalf("corrupt prepared %s became client refusal: %v", field, err)
-			}
+			require.ErrorIs(t, err, store.ErrInvalidState, "corrupt prepared %s became client refusal", field)
 		}
 	}
 	accepted, err := ss.ExamAttempt().ReportSecurityPreflight(ctx, report, examCommand(input.CandidateUserID, store.SecurityPreflightReportOperation, "secure-report", "secure-report"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	input.Security = model.ConnectSecurity{Kind: "preflight", PreflightID: prepare.PreflightID, ReportDigest: model.SHA256Fingerprint([]byte("wrong report"))}
 	_, err = ss.ExamAttempt().Connect(ctx, input, examCommand(input.CandidateUserID, store.ExamAttemptConnectOperation, "wrong-report", "wrong-report"))
-	assertExamAttemptConflict(t, err, "preflight_report_changed")
-	if _, err = ss.ExamAttempt().Get(ctx, fixture.examID, input.AttemptID); !store.IsNotFound(err) {
-		t.Fatalf("refusal allocated Attempt: %v", err)
-	}
+	requireConflictConstraint(t, err, "preflight_report_changed")
+	_, err = ss.ExamAttempt().Get(ctx, fixture.examID, input.AttemptID)
+	require.True(t, store.IsNotFound(err), "refusal allocated Attempt")
 	if len(probes) > 0 && probes[0].AgeReport != nil {
 		// Report freshness is independent of the still-valid 120-second challenge.
 		restore := probes[0].AgeReport(prepare.PreflightID)
@@ -255,13 +242,10 @@ func TestSecureConnectStore(t *testing.T, ss store.Store, probes ...SecureConnec
 		stale.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 		_, staleErr := ss.ExamAttempt().Connect(ctx, &stale, examCommand(input.CandidateUserID, store.ExamAttemptConnectOperation, "stale-report", "stale-report"))
 		restore()
-		assertExamAttemptConflict(t, staleErr, "preflight_expired")
-		if probes[0].Consumed(prepare.PreflightID) {
-			t.Fatal("stale report consumed preflight")
-		}
-		if _, err := ss.ExamAttempt().Get(ctx, fixture.examID, input.AttemptID); !store.IsNotFound(err) {
-			t.Fatalf("stale report created partial Attempt: %v", err)
-		}
+		requireConflictConstraint(t, staleErr, "preflight_expired")
+		require.False(t, probes[0].Consumed(prepare.PreflightID), "stale report consumed preflight")
+		_, err = ss.ExamAttempt().Get(ctx, fixture.examID, input.AttemptID)
+		require.True(t, store.IsNotFound(err), "stale report created partial Attempt")
 	}
 	input.Security.ReportDigest = accepted.ReportDigest
 	input.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
@@ -270,65 +254,58 @@ func TestSecureConnectStore(t *testing.T, ss store.Store, probes ...SecureConnec
 		restore := probes[0].CorruptReport(prepare.PreflightID)
 		_, corruptErr := ss.ExamAttempt().Connect(ctx, input, command)
 		restore()
-		if !errors.Is(corruptErr, store.ErrInvalidState) {
-			t.Errorf("stored report corruption became client refusal: %v", corruptErr)
-		}
-		if probes[0].Consumed(prepare.PreflightID) {
-			t.Fatal("corrupt report consumed preflight")
-		}
-		if _, err := ss.ExamAttempt().Get(ctx, fixture.examID, input.AttemptID); !store.IsNotFound(err) {
-			t.Fatalf("corrupt report allocated Attempt: %v", err)
-		}
+		assert.ErrorIs(t, corruptErr, store.ErrInvalidState)
+		require.False(t, probes[0].Consumed(prepare.PreflightID), "corrupt report consumed preflight")
+		_, err = ss.ExamAttempt().Get(ctx, fixture.examID, input.AttemptID)
+		require.True(t, store.IsNotFound(err), "corrupt report allocated Attempt")
 	}
 	connected, err := ss.ExamAttempt().Connect(ctx, input, command)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	receipt := connected.Security
-	requireNoError(t, receipt.Validate())
-	if receipt.Policy.Scope.AttemptID != connected.Attempt.ID || receipt.PolicyContentDigest != prepared.Resolved.PolicyContentDigest || receipt.PreflightPolicyDigest != prepared.Resolved.Policy.Digest || receipt.Policy.Digest == receipt.PreflightPolicyDigest || receipt.SecuritySessionID != report.Report.SecuritySessionID {
-		t.Fatalf("invalid admission binding: %#v", receipt)
-	}
+	require.NoError(t, receipt.Validate())
+	require.Equal(t, connected.Attempt.ID, receipt.Policy.Scope.AttemptID)
+	require.Equal(t, prepared.Resolved.PolicyContentDigest, receipt.PolicyContentDigest)
+	require.Equal(t, prepared.Resolved.Policy.Digest, receipt.PreflightPolicyDigest)
+	require.NotEqual(t, receipt.PreflightPolicyDigest, receipt.Policy.Digest)
+	require.Equal(t, report.Report.SecuritySessionID, receipt.SecuritySessionID)
 	requireSuccessfulAudit(t, ctx, ss, input.AuditEventID)
 	recovered, err := ss.ExamAttempt().RecoverSecurityPolicy(ctx, access, connected.Attempt.ID)
-	requireNoError(t, err)
-	if recovered.Security.DeliveryStreamID != receipt.DeliveryStreamID || recovered.FrozenAttemptConfiguration.Digest != connected.Configuration.Digest {
-		t.Fatal("recovery changed immutable admission provenance")
-	}
+	require.NoError(t, err)
+	require.Equal(t, receipt.DeliveryStreamID, recovered.Security.DeliveryStreamID, "recovery changed immutable admission provenance")
+	require.Equal(t, connected.Configuration.Digest, recovered.FrozenAttemptConfiguration.Digest, "recovery changed immutable admission provenance")
 	for _, mutate := range []func(*store.SecurityPreflightAccess){func(a *store.SecurityPreflightAccess) { a.CandidateUserID = model.NewUserID() }, func(a *store.SecurityPreflightAccess) { a.SessionID = model.NewSessionID() }, func(a *store.SecurityPreflightAccess) { a.DPoPKeyThumbprint = strings.Repeat("B", 42) + "A" }} {
 		foreign := access
 		mutate(&foreign)
-		if _, err := ss.ExamAttempt().RecoverSecurityPolicy(ctx, foreign, connected.Attempt.ID); !store.IsNotFound(err) {
-			t.Fatalf("foreign recovery exposed owner: %v", err)
-		}
+		_, err = ss.ExamAttempt().RecoverSecurityPolicy(ctx, foreign, connected.Attempt.ID)
+		require.True(t, store.IsNotFound(err), "foreign recovery exposed owner")
 	}
 	input.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	replay, err := ss.ExamAttempt().Connect(ctx, input, command)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	originalBytes, _ := json.Marshal(receipt)
 	replayedBytes, _ := json.Marshal(replay.Security)
-	if !replay.Replayed || replay.ConnectionOpened || !bytes.Equal(originalBytes, replayedBytes) {
-		t.Fatal("replay changed binding or duplicated connection effect")
-	}
+	require.True(t, replay.Replayed, "replay changed binding or duplicated connection effect")
+	require.False(t, replay.ConnectionOpened, "replay changed binding or duplicated connection effect")
+	require.True(t, bytes.Equal(originalBytes, replayedBytes), "replay changed binding or duplicated connection effect")
 	input.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	_, err = ss.ExamAttempt().Connect(ctx, input, examCommand(input.CandidateUserID, store.ExamAttemptConnectOperation, "consumed-new-key", "consumed-new-key"))
-	assertExamAttemptConflict(t, err, "resume_required")
+	requireConflictConstraint(t, err, "resume_required")
 	input.Security = model.ConnectSecurity{Kind: "resume", ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, PolicyDigest: receipt.Policy.Digest}
 	input.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	resumed, err := ss.ExamAttempt().Connect(ctx, input, examCommand(input.CandidateUserID, store.ExamAttemptConnectOperation, "secure-resume", "secure-resume"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	resumedBytes, _ := json.Marshal(resumed.Security)
-	if resumed.Participation.ID != connected.Participation.ID || !bytes.Equal(originalBytes, resumedBytes) {
-		t.Fatal("resume replaced source ownership")
-	}
+	require.Equal(t, connected.Participation.ID, resumed.Participation.ID, "resume replaced source ownership")
+	require.True(t, bytes.Equal(originalBytes, resumedBytes), "resume replaced source ownership")
 	input.Security.Generation++
 	input.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	_, err = ss.ExamAttempt().Connect(ctx, input, examCommand(input.CandidateUserID, store.ExamAttemptConnectOperation, "wrong-generation", "wrong-generation"))
-	assertExamAttemptConflict(t, err, "resume_required")
+	requireConflictConstraint(t, err, "resume_required")
 	if len(probes) > 0 {
 		probe := probes[0]
 		used, owners := probe.Totals(connected.Attempt.ID)
-		if used != model.NativeOwnerReservationBytes || owners != 1 {
-			t.Fatalf("replay double-charged metadata: %d %d", used, owners)
-		}
+		require.Equal(t, model.NativeOwnerReservationBytes, used, "replay double-charged metadata")
+		require.Equal(t, int64(1), owners, "replay double-charged metadata")
 		if probe.RefreshLease != nil {
 			probe.RefreshLease(connected.Participation.ID)
 		}
@@ -339,17 +316,14 @@ func TestSecureConnectStore(t *testing.T, ss store.Store, probes ...SecureConnec
 		deliveryAccess := testNativeDeliveryGaps(t, ctx, ss, input, resumed, fixture)
 		probe.ExpireLease(connected.Participation.ID)
 		expired, err := ss.ExamAttempt().ExpireParticipation(ctx, &store.ExamAttemptParticipationExpiry{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, EvidenceID: model.NewIntegrityEvidenceID(), FlagID: model.NewIntegrityFlagID(), SuspensionID: model.NewAttemptSuspensionID(), AuditEventID: saveExamAttemptSystemAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		testClosedNativeDelivery(t, ctx, ss, deliveryAccess, fixture)
 		_, err = ss.ExamAttempt().ReallowAttempt(ctx, &store.ExamAttemptReallow{ExamID: fixture.examID, SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID, SuspensionID: expired.Suspension.ID, ActorUserID: fixture.manager.ID, ExpectedAttemptRevision: expired.Attempt.Revision, PrivateReason: "secure rejoin capacity test", AuditEventID: saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}, examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "secure-reallow", "secure-reallow"))
-		requireNoError(t, err)
-		if _, err = ss.ExamAttempt().RecoverSecurityPolicy(ctx, access, connected.Attempt.ID); !store.IsNotFound(err) {
-			t.Fatalf("Ready recovered obsolete active receipt: %v", err)
-		}
+		require.NoError(t, err)
+		_, err = ss.ExamAttempt().RecoverSecurityPolicy(ctx, access, connected.Attempt.ID)
+		require.True(t, store.IsNotFound(err), "Ready recovered obsolete active receipt")
 		prepareExamAttemptConnect(t, ctx, ss, input)
-		if input.Security.Kind != "preflight" {
-			t.Fatal("Ready requires a fresh preflight")
-		}
+		require.Equal(t, "preflight", input.Security.Kind, "Ready requires a fresh preflight")
 		probe.FillMetadata(connected.Attempt.ID)
 		input.AttemptID = model.NewExamAttemptID()
 		input.ParticipationID = model.NewAttemptParticipationID()
@@ -357,21 +331,14 @@ func TestSecureConnectStore(t *testing.T, ss store.Store, probes ...SecureConnec
 		input.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 		_, err = ss.ExamAttempt().Connect(ctx, input, examCommand(input.CandidateUserID, store.ExamAttemptConnectOperation, "metadata-refused", "metadata-refused"))
 		var capacity *model.DeliveryMetadataCapacity
-		if !errors.As(err, &capacity) || capacity.RemainingReservableBytes != 0 {
-			t.Fatalf("metadata refusal: %v", err)
-		}
-		if probe.Consumed(input.Security.PreflightID) {
-			t.Fatal("capacity refusal consumed preflight")
-		}
+		require.ErrorAs(t, err, &capacity)
+		require.Equal(t, int64(0), capacity.RemainingReservableBytes)
+		require.False(t, probe.Consumed(input.Security.PreflightID), "capacity refusal consumed preflight")
 		_, owners = probe.Totals(connected.Attempt.ID)
-		if owners != 1 {
-			t.Fatal("capacity refusal created security owner")
-		}
+		require.Equal(t, int64(1), owners, "capacity refusal created security owner")
 		snapshot, err := ss.ExamAttempt().Get(ctx, fixture.examID, connected.Attempt.ID)
-		requireNoError(t, err)
-		if snapshot.Attempt.State != model.ExamAttemptReady {
-			t.Fatal("capacity refusal activated Ready Attempt")
-		}
+		require.NoError(t, err)
+		require.Equal(t, model.ExamAttemptReady, snapshot.Attempt.State, "capacity refusal activated Ready Attempt")
 	}
 
 }
@@ -387,10 +354,10 @@ func prepareConnectSecurityFixture(t *testing.T, ctx context.Context, ss store.S
 		return
 	}
 	sitting, err := ss.ExamSitting().Resolve(ctx, input.SittingID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	access := store.SecurityPreflightAccess{SittingID: input.SittingID, CandidateUserID: input.CandidateUserID, SessionID: input.SessionID, DesktopRegistrationID: input.DesktopRegistrationID, DPoPKeyThumbprint: input.DPoPKeyThumbprint, DesktopBuild: input.DesktopBuild, DesktopCompatibilityPolicyRevision: input.DesktopCompatibilityPolicyRevision}
 	attempts, err := ss.ExamAttempt().List(ctx, store.ExamAttemptManagerListOptions{ExamID: sitting.Sitting.ExamID, SittingID: input.SittingID, ExcludeCandidateUserID: model.NewUserID(), Limit: 100})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	var attemptID model.ExamAttemptID
 	generation := int64(1)
 	for _, snapshot := range attempts {
@@ -414,7 +381,7 @@ func prepareConnectSecurityFixture(t *testing.T, ctx context.Context, ss store.S
 	}
 	audit := func() model.AuditEventID {
 		event, err := ss.Audit().Save(ctx, &model.AuditEvent{ActorID: input.CandidateUserID, Action: string(model.ActionExamSittingParticipate), Resource: model.Resource{Type: model.ResourceExamSitting, ID: input.SittingID.String()}, ScopeType: model.RoleScopeClass, ScopeID: sitting.Sitting.ClassID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		return event.ID
 	}
 	prepare := &store.SecurityPreflightPrepare{Access: access, AttemptID: attemptID, PreflightID: model.NewID(), Challenge: model.NewCredentialToken(), NativeRegistryDigest: access.DesktopBuild.NativeAgreement.RegistryDigest(), SourceManifestDigest: access.DesktopBuild.NativeAgreement.SourceManifestDigest(), ConfigurationManifestFingerprint: input.ConfigurationManifestFingerprint, AuditEventID: audit(), AuditAt: model.GetMillis()}
@@ -431,7 +398,7 @@ func prepareConnectSecurityFixture(t *testing.T, ctx context.Context, ss store.S
 		if store.IsNotFound(err) || errors.As(err, &conflict) {
 			return
 		}
-		requireNoError(t, err)
+		require.NoError(t, err)
 	}
 	report := syntheticPreflightReport(prepared, access.DesktopBuild.NativeAgreement)
 	report.SecuritySessionID = prepared.Challenge.PreflightID
@@ -440,13 +407,11 @@ func prepareConnectSecurityFixture(t *testing.T, ctx context.Context, ss store.S
 		report.Sources[i].SourceInstanceID = prepared.Challenge.PreflightID
 	}
 	canonical, err := report.Canonical()
-	requireNoError(t, err)
+	require.NoError(t, err)
 	reportKey := "fixture-report-" + prepared.Challenge.PreflightID
 	result, err := ss.ExamAttempt().ReportSecurityPreflight(ctx, &store.SecurityPreflightReport{Access: access, PreflightID: prepared.Challenge.PreflightID, Report: report, AuditEventID: audit(), AuditAt: model.GetMillis()}, examCommand(input.CandidateUserID, store.SecurityPreflightReportOperation, reportKey, model.SHA256Fingerprint(canonical)))
-	requireNoError(t, err)
-	if result.Admission != "eligible" {
-		t.Fatalf("synthetic baseline preflight blocked: %#v", result)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "eligible", result.Admission)
 	input.Security = model.ConnectSecurity{Kind: "preflight", PreflightID: prepared.Challenge.PreflightID, ReportDigest: result.ReportDigest}
 }
 
@@ -456,7 +421,7 @@ func prepareParticipationRenewalCoverage(t *testing.T, ctx context.Context, ss s
 	prepareExamAttemptConnect(t, ctx, ss, connect)
 	input.DesktopBuild = connect.DesktopBuild
 	recovery, err := ss.ExamAttempt().RecoverSecurityPolicy(ctx, store.SecurityPreflightAccess{CandidateUserID: input.CandidateUserID, SessionID: input.SessionID, DesktopRegistrationID: input.DesktopRegistrationID, DPoPKeyThumbprint: input.DPoPKeyThumbprint, DesktopBuild: input.DesktopBuild, DesktopCompatibilityPolicyRevision: input.DesktopCompatibilityPolicyRevision}, input.AttemptID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	input.SecurityCoverage = model.SecurityCoverageRenewal{ControlSequence: 1, PolicyDigest: recovery.Security.Policy.Digest, SecuritySessionID: recovery.Security.SecuritySessionID, StreamID: recovery.Security.DeliveryStreamID, Posture: "compliant", Sources: recovery.CurrentSources, Coverage: recovery.CurrentCoverage, SourceResets: []model.NativeSourceReset{}, DeliveryWatermarks: []model.DeliveryWatermark{}}
 }
 
@@ -467,64 +432,62 @@ func testProcessedSecurityControl(t *testing.T, ctx context.Context, ss store.St
 	update := func(body model.SecurityCoverageRenewal) model.SecurityCoverageResult {
 		t.Helper()
 		result, err := ss.ExamAttempt().UpdateSecurityCoverage(ctx, &store.ExamAttemptSecurityCoverageUpdate{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, DesktopBuild: connect.DesktopBuild, DesktopCompatibilityPolicyRevision: connect.DesktopCompatibilityPolicyRevision, Coverage: body})
-		requireNoError(t, err)
-		requireNoError(t, result.Validate())
+		require.NoError(t, err)
+		require.NoError(t, result.Validate())
 		return result
 	}
 	healthy := update(control)
-	if healthy.ProcessedControlSequence != 9 || !healthy.SecurityInteractionAllowed {
-		t.Fatalf("healthy control: %#v", healthy)
-	}
+	require.Equal(t, int64(9), healthy.ProcessedControlSequence)
+	require.True(t, healthy.SecurityInteractionAllowed)
 	fault := control
 	fault.ControlSequence = 11
 	fault.Sources = append([]model.NativeSourceCoverage{}, control.Sources...)
 	fault.Sources[0].SourceInstanceID = model.NewID()
 	blocked := update(fault)
-	if blocked.CoverageResult != "reset_required" || blocked.ProcessedControlSequence != 11 || blocked.SecurityInteractionAllowed {
-		t.Fatalf("reset fault: %#v", blocked)
-	}
+	require.Equal(t, "reset_required", blocked.CoverageResult)
+	require.Equal(t, int64(11), blocked.ProcessedControlSequence)
+	require.False(t, blocked.SecurityInteractionAllowed)
 
 	workspaceAccess := store.ExamAttemptWorkspaceMutationAccess{AttemptID: access.AttemptID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: access.ConnectionID, CandidateUserID: access.CandidateUserID, SessionID: access.SessionID, DesktopRegistrationID: access.DesktopRegistrationID, DPoPKeyThumbprint: access.DPoPKeyThumbprint, ContinuityCredentialHash: access.ContinuityCredentialHash}
 	_, gateErr := ss.ExamAttemptWorkspace().ResolveMutationTarget(ctx, workspaceAccess)
-	assertExamAttemptConflict(t, gateErr, "posture_blocked")
+	requireConflictConstraint(t, gateErr, "posture_blocked")
 	_, gateErr = ss.ExamSubmission().ResolveSealTarget(ctx, store.ExamSubmissionSealAccess{AttemptID: access.AttemptID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: access.ConnectionID, CandidateUserID: access.CandidateUserID, SessionID: access.SessionID, ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: connected.Security.Policy.ExamRevisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor})
-	assertExamAttemptConflict(t, gateErr, "posture_blocked")
+	requireConflictConstraint(t, gateErr, "posture_blocked")
 	stale := control
 	stale.ControlSequence = 10
 	delayed := update(stale)
-	if delayed.CoverageResult != "stale_control" || delayed.ProcessedControlSequence != 11 || delayed.SecurityInteractionAllowed {
-		t.Fatalf("delayed control reopened gate: %#v", delayed)
-	}
+	require.Equal(t, "stale_control", delayed.CoverageResult)
+	require.Equal(t, int64(11), delayed.ProcessedControlSequence)
+	require.False(t, delayed.SecurityInteractionAllowed)
 	replay := update(control)
-	if replay.CoverageResult != "accepted" || replay.ProcessedControlSequence != 11 || replay.SecurityInteractionAllowed {
-		t.Fatalf("old receipt reopened gate: %#v", replay)
-	}
+	require.Equal(t, "accepted", replay.CoverageResult)
+	require.Equal(t, int64(11), replay.ProcessedControlSequence)
+	require.False(t, replay.SecurityInteractionAllowed)
 	altered := fault
 	altered.Posture = "degraded"
 	_, err := ss.ExamAttempt().UpdateSecurityCoverage(ctx, &store.ExamAttemptSecurityCoverageUpdate{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, DesktopBuild: connect.DesktopBuild, DesktopCompatibilityPolicyRevision: connect.DesktopCompatibilityPolicyRevision, Coverage: altered})
-	assertExamAttemptConflict(t, err, "control_conflict")
+	requireConflictConstraint(t, err, "control_conflict")
 	renewed, err := ss.ExamAttempt().RenewParticipation(ctx, &store.ExamAttemptParticipationRenewal{AttemptID: access.AttemptID, ParticipationID: connected.Participation.ID, ConnectionID: access.ConnectionID, CandidateUserID: access.CandidateUserID, SessionID: access.SessionID, DesktopRegistrationID: access.DesktopRegistrationID, DPoPKeyThumbprint: access.DPoPKeyThumbprint, ContinuityCredentialHash: access.ContinuityCredentialHash, Generation: connected.Participation.Generation, Sequence: 1, DesktopBuild: connect.DesktopBuild, DesktopCompatibilityPolicyRevision: connect.DesktopCompatibilityPolicyRevision, SecurityCoverage: stale})
-	requireNoError(t, err)
-	if renewed.AcceptedSequence != 1 || renewed.SecurityCoverage.SecurityInteractionAllowed || renewed.SecurityCoverage.ProcessedControlSequence != 11 {
-		t.Fatalf("stale control prevented lease renewal or reopened gate: %#v", renewed)
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(1), renewed.AcceptedSequence)
+	require.False(t, renewed.SecurityCoverage.SecurityInteractionAllowed)
+	require.Equal(t, int64(11), renewed.SecurityCoverage.ProcessedControlSequence)
 	control.ControlSequence = 12
-	if recovered := update(control); !recovered.SecurityInteractionAllowed || recovered.ProcessedControlSequence != 12 {
-		t.Fatalf("greater healthy control failed recovery: %#v", recovered)
-	}
+	recovered := update(control)
+	require.True(t, recovered.SecurityInteractionAllowed)
+	require.Equal(t, int64(12), recovered.ProcessedControlSequence)
 	reset := model.NativeSourceReset{Kind: "source_reset", ResetID: model.NewID(), SourceID: control.Sources[0].SourceID, PreviousSourceInstanceID: control.Sources[0].SourceInstanceID, PreviousFinalSequence: control.Sources[0].Sequence, NewSourceInstanceID: fault.Sources[0].SourceInstanceID, Reason: "restart", OccurredAt: time.Now().UTC().Truncate(time.Millisecond)}
 	reset = nativeResetWithLongTimestamp(t, reset, 40000)
 	control.ControlSequence = 13
 	control.Sources = fault.Sources
 	control.SourceResets = []model.NativeSourceReset{reset}
 	accepted := update(control)
-	if !accepted.SecurityInteractionAllowed || len(accepted.SourceResetReceipts) != 1 {
-		t.Fatalf("valid reset refused: %#v", accepted)
-	}
+	require.True(t, accepted.SecurityInteractionAllowed)
+	require.Len(t, accepted.SourceResetReceipts, 1)
 	control.ControlSequence = 14
-	if replay := update(control); !replay.SecurityInteractionAllowed || len(replay.SourceResetReceipts) != 1 {
-		t.Fatalf("reset identity replay refused: %#v", replay)
-	}
+	replay = update(control)
+	require.True(t, replay.SecurityInteractionAllowed)
+	require.Len(t, replay.SourceResetReceipts, 1)
 	reset.ResetID = model.NewID()
 	reset.PreviousSourceInstanceID = reset.NewSourceInstanceID
 	reset.NewSourceInstanceID = model.NewID()
@@ -532,9 +495,9 @@ func testProcessedSecurityControl(t *testing.T, ctx context.Context, ss store.St
 	control.Sources[0].SourceInstanceID = reset.NewSourceInstanceID
 	control.SourceResets = []model.NativeSourceReset{reset}
 	control.ControlSequence = 15
-	if conflict := update(control); conflict.CoverageResult != "reset_conflict" || conflict.SecurityInteractionAllowed {
-		t.Fatalf("second automatic restart admitted: %#v", conflict)
-	}
+	conflict := update(control)
+	require.Equal(t, "reset_conflict", conflict.CoverageResult)
+	require.False(t, conflict.SecurityInteractionAllowed)
 	// Eviction forgets a receipt, never the processed high-water boundary. The
 	// last usable source head survives the rejected reset and is recoverable.
 	control.Sources = fault.Sources
@@ -542,57 +505,55 @@ func testProcessedSecurityControl(t *testing.T, ctx context.Context, ss store.St
 	last := int64(16 + model.SecurityControlReceiptLimit)
 	for seq := int64(16); seq <= last; seq++ {
 		control.ControlSequence = seq
-		if current := update(control); !current.SecurityInteractionAllowed || current.ProcessedControlSequence != seq {
-			t.Fatal("bounded control cache lost current healthy authority")
-		}
+		current := update(control)
+		require.True(t, current.SecurityInteractionAllowed, "bounded control cache lost current healthy authority")
+		require.Equal(t, seq, current.ProcessedControlSequence, "bounded control cache lost current healthy authority")
 	}
 	evicted := control
 	evicted.ControlSequence = 9
-	if result := update(evicted); result.CoverageResult != "stale_control" || result.ProcessedControlSequence != last || !result.SecurityInteractionAllowed {
-		t.Fatalf("evicted control crossed durable high-water boundary: %#v", result)
-	}
+	result := update(evicted)
+	require.Equal(t, "stale_control", result.CoverageResult)
+	require.Equal(t, last, result.ProcessedControlSequence)
+	require.True(t, result.SecurityInteractionAllowed)
 	recovery, err := ss.ExamAttempt().RecoverSecurityPolicy(ctx, store.SecurityPreflightAccess{CandidateUserID: connect.CandidateUserID, SessionID: connect.SessionID, DesktopRegistrationID: connect.DesktopRegistrationID, DPoPKeyThumbprint: connect.DPoPKeyThumbprint, DesktopBuild: connect.DesktopBuild, DesktopCompatibilityPolicyRevision: connect.DesktopCompatibilityPolicyRevision}, connected.Attempt.ID)
-	requireNoError(t, err)
-	if recovery.SecurityCoverage.ProcessedControlSequence != last || !recovery.SecurityCoverage.SecurityInteractionAllowed || len(recovery.SourceResetReceipts) != 1 {
-		t.Fatal("fresh recovery lost control boundary or accepted reset receipt")
-	}
+	require.NoError(t, err)
+	require.Equal(t, last, recovery.SecurityCoverage.ProcessedControlSequence, "fresh recovery lost control boundary or accepted reset receipt")
+	require.True(t, recovery.SecurityCoverage.SecurityInteractionAllowed, "fresh recovery lost control boundary or accepted reset receipt")
+	require.Len(t, recovery.SourceResetReceipts, 1, "fresh recovery lost control boundary or accepted reset receipt")
 }
 
 func testNativeDeliveryGaps(t *testing.T, ctx context.Context, ss store.Store, connect *store.ExamAttemptConnect, connected *store.ExamAttemptConnectResult, fixture examAttemptFixture) store.NativeDeliveryAccess {
 	t.Helper()
 	access := store.NativeDeliveryAccess{Access: store.CandidateAttemptAccess{AttemptID: connected.Attempt.ID, ConnectionID: connected.Connection.ID, CandidateUserID: connect.CandidateUserID, SessionID: connect.SessionID, DesktopRegistrationID: connect.DesktopRegistrationID, DPoPKeyThumbprint: connect.DPoPKeyThumbprint, ContinuityCredentialHash: connect.ContinuityCredentialHash}, StreamID: connected.Security.DeliveryStreamID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation}
 	status, err := ss.ExamAttempt().NativeDeliveryStatus(ctx, access)
-	requireNoError(t, err)
-	if status.Closure.ClosedAt != nil || status.AllocatedThroughSequence != 0 {
-		t.Fatalf("initial delivery status: %#v", status)
-	}
+	require.NoError(t, err)
+	require.Nil(t, status.Closure.ClosedAt)
+	require.Equal(t, int64(0), status.AllocatedThroughSequence)
 	var first *store.NativeDeliveryGapDeclaration
 	for i := int64(0); i < 2; i++ {
 		input := &store.NativeDeliveryGapDeclaration{Access: access, Declaration: model.DeclareDeliveryGaps{DeclarationID: model.NewID(), ExpectedDeclarationRevision: i, AllocatedThroughSequence: (i + 1) * 1024, Ranges: []model.SequenceRange{{First: i*1024 + 1, Last: (i + 1) * 1024}}, Reason: "spool_lost"}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		key := fmt.Sprintf("native-gap-%d", i)
 		receipt, err := ss.ExamAttempt().DeclareNativeDeliveryGaps(ctx, input, examCommand(fixture.candidate.ID, store.NativeDeliveryGapsOperation, key, key))
-		requireNoError(t, err)
-		if receipt.DeclarationRevision != i+1 || receipt.SettledThroughSequence != (i+1)*1024 {
-			t.Fatalf("gap receipt: %#v", receipt)
-		}
+		require.NoError(t, err)
+		require.Equal(t, i+1, receipt.DeclarationRevision)
+		require.Equal(t, (i+1)*1024, receipt.SettledThroughSequence)
 		if i == 0 {
 			first = input
 		}
 	}
 	first.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	replay, err := ss.ExamAttempt().DeclareNativeDeliveryGaps(ctx, first, examCommand(fixture.candidate.ID, store.NativeDeliveryGapsOperation, "native-gap-0", "native-gap-0"))
-	requireNoError(t, err)
-	if replay.DeclarationRevision != 1 || replay.SettledThroughSequence != 1024 {
-		t.Fatalf("old exact declaration changed receipt: %#v", replay)
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(1), replay.DeclarationRevision)
+	require.Equal(t, int64(1024), replay.SettledThroughSequence)
 	status, err = ss.ExamAttempt().NativeDeliveryStatus(ctx, access)
-	requireNoError(t, err)
-	if status.HighestContiguousBatchSequence != 0 || status.SettledThroughBatchSequence != 2048 || status.DeclarationRevision != 2 || len(status.MissingBatchRanges) != 0 {
-		t.Fatalf("terminal gap progress invented receipts: %#v", status)
-	}
-	if _, err := ss.ExamAttempt().NativeDeliveryReceipt(ctx, access, 1); !store.IsNotFound(err) {
-		t.Fatalf("gap invented receipt: %v", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(0), status.HighestContiguousBatchSequence)
+	require.Equal(t, int64(2048), status.SettledThroughBatchSequence)
+	require.Equal(t, int64(2), status.DeclarationRevision)
+	require.Empty(t, status.MissingBatchRanges)
+	_, err = ss.ExamAttempt().NativeDeliveryReceipt(ctx, access, 1)
+	require.True(t, store.IsNotFound(err), "gap invented receipt")
 	return access
 }
 func testClosedNativeDelivery(t *testing.T, ctx context.Context, ss store.Store, access store.NativeDeliveryAccess, fixture examAttemptFixture) {
@@ -600,27 +561,29 @@ func testClosedNativeDelivery(t *testing.T, ctx context.Context, ss store.Store,
 	access.Access.ConnectionID = ""
 	access.Access.ContinuityCredentialHash = ""
 	closed, err := ss.ExamAttempt().NativeDeliveryStatus(ctx, access)
-	requireNoError(t, err)
-	if closed.Closure.ClosedAt == nil || closed.Closure.KnownAtClose == nil || *closed.Closure.KnownAtClose != 2048 || !closed.Closure.UnknownTail || closed.Closure.UploadExpiresAt.Sub(*closed.Closure.ClosedAt) != 24*time.Hour {
-		t.Fatalf("closure: %#v", closed)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, closed.Closure.ClosedAt)
+	require.NotNil(t, closed.Closure.KnownAtClose)
+	require.Equal(t, int64(2048), *closed.Closure.KnownAtClose)
+	require.True(t, closed.Closure.UnknownTail)
+	require.Equal(t, 24*time.Hour, closed.Closure.UploadExpiresAt.Sub(*closed.Closure.ClosedAt))
 	input := &store.NativeDeliveryFinalDeclaration{Access: access, Declaration: model.FinalDeliveryDeclaration{DeclarationID: model.NewID(), ExpectedDeclarationRevision: 2, FinalSequence: 2058}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	final, err := ss.ExamAttempt().SealNativeDelivery(ctx, input, examCommand(fixture.candidate.ID, store.NativeDeliveryFinalOperation, "native-final", "native-final"))
-	requireNoError(t, err)
-	if final.Closure.FinalSequence == nil || *final.Closure.FinalSequence != 2058 || final.Closure.UnknownTail || final.DeclarationRevision != 3 || !final.Closure.UploadExpiresAt.Equal(*closed.Closure.UploadExpiresAt) {
-		t.Fatalf("final boundary changed close time: %#v", final)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, final.Closure.FinalSequence)
+	require.Equal(t, int64(2058), *final.Closure.FinalSequence)
+	require.False(t, final.Closure.UnknownTail)
+	require.Equal(t, int64(3), final.DeclarationRevision)
+	require.True(t, final.Closure.UploadExpiresAt.Equal(*closed.Closure.UploadExpiresAt))
 	summary := model.UnretainedDeliverySummary{SummarySequence: 1, UnretainedRecordCount: 4, CountComplete: false}
 	status, err := ss.ExamAttempt().UpdateNativeDeliverySummary(ctx, &store.NativeDeliverySummaryUpdate{Access: access, Summary: summary, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}, examCommand(fixture.candidate.ID, store.NativeDeliverySummaryOperation, "native-summary", "native-summary"))
-	requireNoError(t, err)
-	if status.Summary == nil || status.Summary.CountComplete {
-		t.Fatal("summary lost uncertainty")
-	}
+	require.NoError(t, err)
+	require.NotNil(t, status.Summary, "summary lost uncertainty")
+	require.False(t, status.Summary.CountComplete, "summary lost uncertainty")
 	for _, mutate := range []func(*store.NativeDeliveryAccess){func(a *store.NativeDeliveryAccess) { a.Access.CandidateUserID = model.NewUserID() }, func(a *store.NativeDeliveryAccess) { a.Access.DPoPKeyThumbprint = strings.Repeat("B", 42) + "A" }} {
 		foreign := access
 		mutate(&foreign)
-		if _, err := ss.ExamAttempt().NativeDeliveryStatus(ctx, foreign); !store.IsNotFound(err) {
-			t.Fatalf("foreign historical delivery: %v", err)
-		}
+		_, err := ss.ExamAttempt().NativeDeliveryStatus(ctx, foreign)
+		require.True(t, store.IsNotFound(err), "foreign historical delivery")
 	}
 }

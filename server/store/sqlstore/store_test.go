@@ -20,6 +20,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -28,21 +31,13 @@ func saveIntegrationUser(t *testing.T, ctx context.Context, persistence store.St
 	t.Helper()
 	user.PrepareCreate(model.NewUserID(), model.NowUTC())
 	command, err := json.Marshal(map[string]string{"user_id": user.ID.String()})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, command, user.ID.String(), user.CreatedAt, user.CreatedAt, 8)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	settings, err := model.NewUserSettingsDocument(user.ID, model.NewUserSettingsRevision(), user.CreatedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	result, err := persistence.User().Create(ctx, &store.UserCreation{User: user, Settings: settings, DefaultProfilePictureJob: job})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return result.User
 }
 
@@ -65,9 +60,7 @@ func passwordProofForSQLTest(t *testing.T, ctx context.Context, persistence stor
 			UserID: userID, PasswordHash: "encoded-session-fixture-password",
 		})
 	}
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return store.PasswordCredentialProof{ID: credential.ID, Revision: credential.Revision}
 }
 
@@ -104,10 +97,8 @@ func seedTestAuthenticationPolicy(t *testing.T, sqlStore *SQLStore, providerAdmi
 	}
 	policy := model.NewInitialAccessPolicy(model.NewAccessPolicyID(), model.NowUTC())
 	encoded, err := json.Marshal(providerAdmissions)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = sqlStore.GetMaster().Exec(context.Background(), `INSERT INTO access_policies (
+	require.NoError(t, err)
+	_, err = sqlStore.GetMaster().Exec(context.Background(), `INSERT INTO access_policies (
 		singleton, id, revision, created_at, updated_at, local_login_enabled,
 		public_registration_enabled, invitation_admission_enabled,
 		invitation_local_credential_enabled, desktop_authorization_enabled,
@@ -116,30 +107,25 @@ func seedTestAuthenticationPolicy(t *testing.T, sqlStore *SQLStore, providerAdmi
 		policy.CreatedAt, policy.UpdatedAt, policy.LocalLoginEnabled,
 		policy.PublicRegistrationEnabled, policy.InvitationAdmissionEnabled,
 		policy.InvitationLocalCredentialEnabled, policy.DesktopAuthorizationEnabled,
-		encoded); err != nil {
-		t.Fatal(err)
-	}
+		encoded)
+	require.NoError(t, err)
 }
 
 func openTestStore(t *testing.T) *SQLStore {
 	t.Helper()
 	settings := testSettings(t)
 	sqlStore, err := New(context.Background(), settings)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if _, err := sqlStore.ApplyPendingMigrations(context.Background()); err != nil {
 		_ = sqlStore.Close()
-		t.Fatal(err)
+		require.NoError(t, err)
 	}
 	if err := sqlStore.ValidateSchema(context.Background()); err != nil {
 		_ = sqlStore.Close()
-		t.Fatal(err)
+		require.NoError(t, err)
 	}
 	t.Cleanup(func() {
-		if err := sqlStore.Close(); err != nil {
-			t.Errorf("close SQL store: %v", err)
-		}
+		assert.NoError(t, sqlStore.Close())
 	})
 	return sqlStore
 }
@@ -159,20 +145,15 @@ func resetPristineTestStore(t *testing.T, sqlStore *SQLStore) {
 			affiliations, password_credentials, external_identities, users, file_revisions, file_entries,
 			classes, academic_periods, programme_levels, programmes,
 			academic_units, institutions CASCADE`)
-	if err != nil {
-		t.Fatalf("reset SQL store: %v", err)
-	}
-	if _, err = sqlStore.GetMaster().Exec(context.Background(), `INSERT INTO mail_key_state(singleton, required_primary_key_id, active_rekey_job_id, updated_at) VALUES (TRUE, NULL, NULL, clock_timestamp())`); err != nil {
-		t.Fatalf("restore mail key state singleton: %v", err)
-	}
+	require.NoError(t, err)
+	_, err = sqlStore.GetMaster().Exec(context.Background(), `INSERT INTO mail_key_state(singleton, required_primary_key_id, active_rekey_job_id, updated_at) VALUES (TRUE, NULL, NULL, clock_timestamp())`)
+	require.NoError(t, err)
 }
 
 func testSettings(t *testing.T) Settings {
 	t.Helper()
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	return Settings{
 		DataSource:            dataSource,
 		MaxOpenConnections:    10,

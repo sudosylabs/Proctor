@@ -7,11 +7,13 @@
 
 package sqlstore
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func TestDirectorySearchPatternTreatsSQLWildcardsLiterally(t *testing.T) {
 	t.Parallel()
-	if got, want := directorySearchPattern("  50%_done!  "), "%50!%!_done!!%"; got != want {
-		t.Fatalf("directorySearchPattern() = %q, want %q", got, want)
-	}
+	require.Equal(t, "%50!%!_done!!%", directorySearchPattern("  50%_done!  "), "directorySearchPattern()")
 }

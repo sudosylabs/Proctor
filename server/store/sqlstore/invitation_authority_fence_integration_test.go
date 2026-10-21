@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/storetest"
@@ -26,40 +28,32 @@ func invitationAuthoritySQLProbe(t *testing.T, primary *SQLStore) storetest.Invi
 	return storetest.InvitationSQLProbe{
 		PayloadKeyReferences: func(t *testing.T, ctx context.Context, keyID string) int64 {
 			var references int64
-			if err := primary.GetMaster().Get(ctx, &references,
-				`SELECT COALESCE((SELECT active_references FROM mail_payload_keys WHERE key_id=?),0)`, keyID); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, primary.GetMaster().Get(ctx, &references,
+				`SELECT COALESCE((SELECT active_references FROM mail_payload_keys WHERE key_id=?),0)`, keyID))
 			return references
 		},
 		SetInvitationExpiresAt: func(t *testing.T, ctx context.Context, id model.InvitationID, expiresAt time.Time) {
 			t.Helper()
 			result, err := primary.GetMaster().Exec(ctx, `UPDATE invitations SET created_at=?, expires_at=? WHERE id=?`,
 				expiresAt.Add(-model.InvitationLifetime), expiresAt, id.String())
-			if err != nil {
-				t.Fatal(err)
-			}
-			if affected, affectedErr := result.RowsAffected(); affectedErr != nil || affected != 1 {
-				t.Fatalf("set Invitation expiry: affected=%d err=%v", affected, affectedErr)
-			}
+			require.NoError(t, err)
+			affected, affectedErr := result.RowsAffected()
+			require.NoError(t, affectedErr, "set Invitation expiry: affected")
+			require.Equal(t, int64(1), affected, "set Invitation expiry: affected")
 		},
 		SetInvitationIntendedEndsAt: func(t *testing.T, ctx context.Context, id model.InvitationID, intendedEnd time.Time) {
 			t.Helper()
 			result, err := primary.GetMaster().Exec(ctx, `UPDATE invitations SET intended_end_at=? WHERE id=?`, intendedEnd, id.String())
-			if err != nil {
-				t.Fatal(err)
-			}
-			if affected, affectedErr := result.RowsAffected(); affectedErr != nil || affected != 1 {
-				t.Fatalf("set Invitation intended end: affected=%d err=%v", affected, affectedErr)
-			}
+			require.NoError(t, err)
+			affected, affectedErr := result.RowsAffected()
+			require.NoError(t, affectedErr, "set Invitation intended end: affected")
+			require.Equal(t, int64(1), affected, "set Invitation intended end: affected")
 		},
 		BrowserTransactionExists: func(t *testing.T, ctx context.Context, id model.BrowserAuthenticationTransactionID) bool {
 			t.Helper()
 			var exists bool
-			if err := primary.GetMaster().Get(ctx, &exists,
-				`SELECT EXISTS (SELECT 1 FROM browser_authentication_transactions WHERE id=?)`, id.String()); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, primary.GetMaster().Get(ctx, &exists,
+				`SELECT EXISTS (SELECT 1 FROM browser_authentication_transactions WHERE id=?)`, id.String()))
 			return exists
 		},
 		ArchiveTeacherUnitBeforeAccept: func(t *testing.T, ctx context.Context, unit *model.AcademicUnit, operation func() error) error {
@@ -143,10 +137,8 @@ func invitationHierarchySQLProbe(t *testing.T, primary *SQLStore) storetest.Invi
 func invitationRoleActorID(t *testing.T, ctx context.Context, persistence *SQLStore, roleID model.RoleID) model.UserID {
 	t.Helper()
 	var id string
-	if err := persistence.GetMaster().Get(ctx, &id, `SELECT user_id FROM role_bindings
-		WHERE role_id=? AND archived_at IS NULL ORDER BY id LIMIT 1`, roleID.String()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, persistence.GetMaster().Get(ctx, &id, `SELECT user_id FROM role_bindings
+		WHERE role_id=? AND archived_at IS NULL ORDER BY id LIMIT 1`, roleID.String()))
 	return model.UserID(id)
 }
 
@@ -165,17 +157,13 @@ func runInvitationAuthorityMutationFirst(
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	controller, err := persistence.GetMaster().DB().Conn(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer controller.Close()
 	var controllerPID int
-	if err = controller.QueryRowContext(ctx, `SELECT pg_backend_pid()`).Scan(&controllerPID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, pauseKey); err != nil {
-		t.Fatal(err)
-	}
+	err = controller.QueryRowContext(ctx, `SELECT pg_backend_pid()`).Scan(&controllerPID)
+	require.NoError(t, err)
+	_, err = controller.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, pauseKey)
+	require.NoError(t, err)
 	locked := true
 	defer func() {
 		if locked {
@@ -192,9 +180,8 @@ func runInvitationAuthorityMutationFirst(
 		END $$;
 		CREATE TRIGGER %s BEFORE UPDATE ON %s
 		FOR EACH ROW EXECUTE FUNCTION %s()`, functionName, pauseKey, triggerName, table, functionName)
-	if _, err = persistence.GetMaster().Exec(ctx, statement); err != nil {
-		t.Fatal(err)
-	}
+	_, err = persistence.GetMaster().Exec(ctx, statement)
+	require.NoError(t, err)
 	defer func() {
 		_, _ = persistence.GetMaster().Exec(context.Background(), fmt.Sprintf(
 			`DROP TRIGGER IF EXISTS %s ON %s; DROP FUNCTION IF EXISTS %s()`, triggerName, table, functionName))
@@ -213,29 +200,23 @@ func runInvitationAuthorityMutationFirst(
 		case operationErr := <-operationResult:
 			_, _ = controller.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, pauseKey)
 			locked = false
-			if mutationErr := <-mutationResult; mutationErr != nil {
-				t.Fatalf("authority mutation: %v", mutationErr)
-			}
+			require.NoError(t, (<-mutationResult))
 			return operationErr
 		case <-ticker.C:
 			var blocked bool
-			if err = persistence.GetMaster().Get(ctx, &blocked, `SELECT EXISTS (
-				SELECT 1 FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid)))`, mutationPID); err != nil {
-				t.Fatal(err)
-			}
+			err = persistence.GetMaster().Get(ctx, &blocked, `SELECT EXISTS (
+				SELECT 1 FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid)))`, mutationPID)
+			require.NoError(t, err)
 			if !blocked {
 				continue
 			}
-			if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, pauseKey); err != nil {
-				t.Fatal(err)
-			}
+			_, err = controller.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, pauseKey)
+			require.NoError(t, err)
 			locked = false
-			if mutationErr := <-mutationResult; mutationErr != nil {
-				t.Fatalf("authority mutation: %v", mutationErr)
-			}
+			require.NoError(t, (<-mutationResult))
 			return <-operationResult
 		case <-ctx.Done():
-			t.Fatalf("wait for Invitation authority serialization: %v", ctx.Err())
+			require.FailNow(t, fmt.Sprintf("wait for Invitation authority serialization: %v", ctx.Err()))
 		}
 	}
 }
@@ -243,9 +224,7 @@ func runInvitationAuthorityMutationFirst(
 func invitationTestInstitutionID(t *testing.T, ctx context.Context, persistence *SQLStore) model.InstitutionID {
 	t.Helper()
 	var id string
-	if err := persistence.GetMaster().Get(ctx, &id, `SELECT id FROM institutions ORDER BY id LIMIT 1`); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, persistence.GetMaster().Get(ctx, &id, `SELECT id FROM institutions ORDER BY id LIMIT 1`))
 	return model.InstitutionID(id)
 }
 
@@ -265,8 +244,6 @@ func saveInvitationAuthorityAudit(
 		ActorID: actorID, Action: action, Resource: model.Resource{Type: resourceType, ID: resourceID},
 		ScopeType: scopeType, ScopeID: scopeID, Status: model.AuditStatusAttempt, NodeID: "invitation-authority-fence-test",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return audit
 }

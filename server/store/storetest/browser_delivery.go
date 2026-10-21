@@ -9,11 +9,12 @@ package storetest
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -22,9 +23,9 @@ import (
 func browserDeliveryAuditFixture(t *testing.T, ctx context.Context, ss store.Store, access store.BrowserDeliveryAccess) model.AuditEventID {
 	t.Helper()
 	target, err := ss.ExamAttempt().ResolveBrowserDeliveryTarget(ctx, access)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	audit, err := ss.Audit().Save(ctx, &model.AuditEvent{ActorID: access.Access.CandidateUserID, Action: string(model.ActionExamSittingParticipate), Resource: model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, ScopeType: model.RoleScopeClass, ScopeID: target.ClassID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return audit.ID
 }
 func testBrowserDeliveryRecovery(t *testing.T, ss store.Store) {
@@ -32,81 +33,78 @@ func testBrowserDeliveryRecovery(t *testing.T, ss store.Store) {
 	fixture, connected, access := newBrowserActivityFixture(t, ctx, ss, "browser-delivery-recovery")
 	source := browserSourceID(10001)
 	status, err := startBrowserSourceFixture(t, ctx, ss, &store.BrowserActivitySourceStart{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: source})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	selector := store.BrowserDeliveryAccess{Access: access, SourceSessionID: source, ParticipationID: connected.Participation.ID}
 	event := browserActivityEvent(2, model.BrowserActivityOpened, fixture.revisionID)
 	ack, err := appendBrowserActivityFixture(t, ctx, ss, &store.BrowserActivityAppend{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: source, Events: []model.BrowserActivityEvent{event}})
-	requireNoError(t, err)
-	if ack.HighestContiguous != 0 || ack.SettledThrough != 0 || ack.AllocatedThrough != 2 || len(ack.Receipts) != 1 || ack.Receipts[0].Validate() != nil {
-		t.Fatalf("initial out-of-order receipt: %#v", ack)
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(0), ack.HighestContiguous)
+	require.Equal(t, int64(0), ack.SettledThrough)
+	require.Equal(t, int64(2), ack.AllocatedThrough)
+	require.Len(t, ack.Receipts, 1)
+	require.NoError(t, ack.Receipts[0].Validate())
 	original := ack.Receipts[0]
 	gap := model.DeclareDeliveryGaps{DeclarationID: "browser-gap-1", AllocatedThroughSequence: 4, Ranges: []model.SequenceRange{{First: 1, Last: 1}}, Reason: "spool_lost"}
 	gapInput := &store.BrowserDeliveryGapDeclaration{Access: selector, Declaration: gap, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, selector), AuditAt: model.GetMillis()}
 	gapCommand := examCommand(access.CandidateUserID, store.BrowserDeliveryGapsOperation, "browser-gap-1", "browser-gap-1")
 	gapped, err := ss.ExamAttempt().DeclareBrowserDeliveryGaps(ctx, gapInput, gapCommand)
-	requireNoError(t, err)
-	if gapped.Status.HighestContiguous != 0 || gapped.Status.SettledThrough != 2 || gapped.Status.AllocatedThrough != 4 || gapped.Receipt.DeclarationRevision != 1 {
-		t.Fatalf("permanent gap manufactured receipt or lost allocation: %#v", gapped)
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(0), gapped.Status.HighestContiguous)
+	require.Equal(t, int64(2), gapped.Status.SettledThrough)
+	require.Equal(t, int64(4), gapped.Status.AllocatedThrough)
+	require.Equal(t, int64(1), gapped.Receipt.DeclarationRevision)
 	gapInput.AuditEventID = browserDeliveryAuditFixture(t, ctx, ss, selector)
 	replay, err := ss.ExamAttempt().DeclareBrowserDeliveryGaps(ctx, gapInput, gapCommand)
-	requireNoError(t, err)
-	if replay.Receipt != gapped.Receipt {
-		t.Fatalf("gap receipt changed: %#v", replay)
-	}
+	require.NoError(t, err)
+	require.Equal(t, gapped.Receipt, replay.Receipt)
 	_, err = appendBrowserActivityFixture(t, ctx, ss, &store.BrowserActivityAppend{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: source, Events: []model.BrowserActivityEvent{browserActivityEvent(1, model.BrowserActivityOpened, fixture.revisionID)}})
-	assertExamAttemptConflict(t, err, "declaration_conflict")
+	requireConflictConstraint(t, err, "declaration_conflict")
 	page, err := ss.ExamAttempt().BrowserDeliveryReceipts(ctx, selector, 1, 1)
-	requireNoError(t, err)
-	if len(page.Receipts) != 1 || page.Receipts[0] != original || page.NextSequence != nil {
-		t.Fatalf("receipt page invented missing positions: %#v", page)
-	}
+	require.NoError(t, err)
+	require.Len(t, page.Receipts, 1)
+	require.Equal(t, original, page.Receipts[0])
+	require.Nil(t, page.NextSequence)
 	_, err = startBrowserSourceFixture(t, ctx, ss, &store.BrowserActivitySourceStart{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: browserSourceID(10002), Transition: model.BrowserStartTransition{Kind: "runtime_reset", PredecessorSourceSessionID: source, Reason: model.BrowserSourceResetCoordinatorRestarted}})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	historical := access
 	historical.ConnectionID = ""
 	historical.ContinuityCredentialHash = ""
 	selector.Access = historical
 	batch := &store.BrowserActivityAppend{Access: historical, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: source, PolicyRevisionID: status.PolicyRevisionID, PolicyDigest: status.PolicyDigest, Events: []model.BrowserActivityEvent{browserActivityEvent(5, model.BrowserActivityClosed, fixture.revisionID)}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, selector), AuditAt: model.GetMillis()}
 	_, err = ss.ExamAttempt().AppendHistoricalBrowserDelivery(ctx, batch, examCommand(access.CandidateUserID, store.BrowserDeliveryAppendOperation, "browser-before-seal", "browser-before-seal"))
-	assertExamAttemptConflict(t, err, "replay_window_exceeded")
+	requireConflictConstraint(t, err, "replay_window_exceeded")
 	final := &store.BrowserDeliveryFinalDeclaration{Access: selector, Declaration: model.FinalDeliveryDeclaration{DeclarationID: "browser-final", ExpectedDeclarationRevision: 1, FinalSequence: 6}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, selector), AuditAt: model.GetMillis()}
 	sealed, err := ss.ExamAttempt().SealBrowserDelivery(ctx, final, examCommand(access.CandidateUserID, store.BrowserDeliveryFinalOperation, "browser-final", "browser-final"))
-	requireNoError(t, err)
-	if sealed.Closure.FinalSequence == nil || *sealed.Closure.FinalSequence != 6 || sealed.AllocatedThrough != 6 {
-		t.Fatalf("seal: %#v", sealed)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, sealed.Closure.FinalSequence)
+	require.Equal(t, int64(6), *sealed.Closure.FinalSequence)
+	require.Equal(t, int64(6), sealed.AllocatedThrough)
 	batch.Events = []model.BrowserActivityEvent{event, browserActivityEvent(5, model.BrowserActivityOpened, fixture.revisionID), browserActivityEvent(6, model.BrowserActivityClosed, fixture.revisionID)}
 	batch.AuditEventID = browserDeliveryAuditFixture(t, ctx, ss, selector)
 	appendCommand := examCommand(access.CandidateUserID, store.BrowserDeliveryAppendOperation, "browser-history", "browser-history")
 	ack, err = ss.ExamAttempt().AppendHistoricalBrowserDelivery(ctx, batch, appendCommand)
-	requireNoError(t, err)
-	if len(ack.Receipts) != 3 || ack.Receipts[0] != original || ack.HighestSeen != 6 || ack.SettledThrough != 2 {
-		t.Fatalf("historical repacking lost original receipt: %#v", ack)
-	}
+	require.NoError(t, err)
+	require.Len(t, ack.Receipts, 3)
+	require.Equal(t, original, ack.Receipts[0])
+	require.Equal(t, int64(6), ack.HighestSeen)
+	require.Equal(t, int64(2), ack.SettledThrough)
 	batch.AuditEventID = browserDeliveryAuditFixture(t, ctx, ss, selector)
 	repeated, err := ss.ExamAttempt().AppendHistoricalBrowserDelivery(ctx, batch, appendCommand)
-	requireNoError(t, err)
-	if len(repeated.Receipts) != len(ack.Receipts) {
-		t.Fatal("HTTP replay lost receipts")
-	}
+	require.NoError(t, err)
+	require.Len(t, repeated.Receipts, len(ack.Receipts), "HTTP replay lost receipts")
 	for i := range ack.Receipts {
-		if repeated.Receipts[i] != ack.Receipts[i] {
-			t.Fatal("HTTP replay changed receipt")
-		}
+		require.Equal(t, ack.Receipts[i], repeated.Receipts[i], "HTTP replay changed receipt")
 	}
 	gapInput = &store.BrowserDeliveryGapDeclaration{Access: selector, Declaration: model.DeclareDeliveryGaps{DeclarationID: "browser-gap-2", ExpectedDeclarationRevision: 2, AllocatedThroughSequence: 6, Ranges: []model.SequenceRange{{First: 3, Last: 4}}, Reason: "spool_lost"}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, selector), AuditAt: model.GetMillis()}
 	gapped, err = ss.ExamAttempt().DeclareBrowserDeliveryGaps(ctx, gapInput, examCommand(access.CandidateUserID, store.BrowserDeliveryGapsOperation, "browser-gap-2", "browser-gap-2"))
-	requireNoError(t, err)
-	if gapped.Status.SettledThrough != 6 || gapped.Status.HighestContiguous != 0 || len(gapped.Status.MissingRanges) != 0 {
-		t.Fatalf("gap repair settlement: %#v", gapped)
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(6), gapped.Status.SettledThrough)
+	require.Equal(t, int64(0), gapped.Status.HighestContiguous)
+	require.Empty(t, gapped.Status.MissingRanges)
 	page, err = ss.ExamAttempt().BrowserDeliveryReceipts(ctx, selector, 1, 1)
-	requireNoError(t, err)
-	if page.NextSequence == nil || *page.NextSequence != 5 {
-		t.Fatalf("bounded sparse pagination: %#v", page)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, page.NextSequence)
+	require.Equal(t, int64(5), *page.NextSequence)
 }
 
 func testBrowserDeliveryWindowAfterPermanentGaps(t *testing.T, ss store.Store) {
@@ -114,7 +112,7 @@ func testBrowserDeliveryWindowAfterPermanentGaps(t *testing.T, ss store.Store) {
 	f, connected, access := newBrowserActivityFixture(t, ctx, ss, "browser-large-gaps")
 	source := browserSourceID(11001)
 	_, err := startBrowserSourceFixture(t, ctx, ss, &store.BrowserActivitySourceStart{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: source})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	selector := store.BrowserDeliveryAccess{Access: access, SourceSessionID: source, ParticipationID: connected.Participation.ID}
 	for i := int64(0); i < 2; i++ {
 		first, last := int64(1), int64(4096)
@@ -124,28 +122,26 @@ func testBrowserDeliveryWindowAfterPermanentGaps(t *testing.T, ss store.Store) {
 		key := fmt.Sprintf("browser-large-gap-%d", i)
 		input := &store.BrowserDeliveryGapDeclaration{Access: selector, Declaration: model.DeclareDeliveryGaps{DeclarationID: key, ExpectedDeclarationRevision: i, AllocatedThroughSequence: last, Ranges: []model.SequenceRange{{First: first, Last: last}}, Reason: "spool_lost"}, AuditEventID: browserDeliveryAuditFixture(t, ctx, ss, selector), AuditAt: model.GetMillis()}
 		result, err := ss.ExamAttempt().DeclareBrowserDeliveryGaps(ctx, input, examCommand(f.candidate.ID, store.BrowserDeliveryGapsOperation, key, key))
-		requireNoError(t, err)
-		if result.Status.HighestContiguous != 0 || result.Status.SettledThrough != last {
-			t.Fatal("permanent gap fabricated content or failed to advance window")
-		}
+		require.NoError(t, err)
+		require.Equal(t, int64(0), result.Status.HighestContiguous, "permanent gap fabricated content or failed to advance window")
+		require.Equal(t, last, result.Status.SettledThrough, "permanent gap fabricated content or failed to advance window")
 		ack, err := appendBrowserActivityFixture(t, ctx, ss, &store.BrowserActivityAppend{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: source, Events: []model.BrowserActivityEvent{browserActivityEvent(last+1, model.BrowserActivityOpened, f.revisionID)}})
-		requireNoError(t, err)
-		if ack.SettledThrough != last+1 || ack.HighestContiguous != 0 {
-			t.Fatal("settled window failed beyond permanent first/middle gaps")
-		}
+		require.NoError(t, err)
+		require.Equal(t, last+1, ack.SettledThrough, "settled window failed beyond permanent first/middle gaps")
+		require.Equal(t, int64(0), ack.HighestContiguous, "settled window failed beyond permanent first/middle gaps")
 	}
 	replay, err := appendBrowserActivityFixture(t, ctx, ss, &store.BrowserActivityAppend{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: source, Events: []model.BrowserActivityEvent{browserActivityEvent(4097, model.BrowserActivityOpened, f.revisionID)}})
-	requireNoError(t, err)
-	if len(replay.Receipts) != 1 || replay.Receipts[0].Sequence != 4097 || replay.SettledThrough != 8193 {
-		t.Fatal("exact receipt replay was lost behind the active window")
-	}
+	require.NoError(t, err)
+	require.Len(t, replay.Receipts, 1, "exact receipt replay was lost behind the active window")
+	require.Equal(t, int64(4097), replay.Receipts[0].Sequence, "exact receipt replay was lost behind the active window")
+	require.Equal(t, int64(8193), replay.SettledThrough, "exact receipt replay was lost behind the active window")
 }
 
 func testBrowserSourceReservationRace(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	f, connected, access := newBrowserActivityFixture(t, ctx, ss, "browser-start-race")
 	presentation, err := ss.ExamAttempt().GetCandidatePresentation(ctx, access)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	results := make(chan error, 2)
 	start := make(chan struct{})
 	for i := range 2 {
@@ -158,22 +154,16 @@ func testBrowserSourceReservationRace(t *testing.T, ss store.Store) {
 		if err := <-results; err == nil {
 			successes++
 		} else {
-			assertExamAttemptConflict(t, err, "browser_source_current")
+			requireConflictConstraint(t, err, "browser_source_current")
 		}
 	}
-	if successes != 1 {
-		t.Fatalf("concurrent initial starts succeeded %d times", successes)
-	}
+	require.Equal(t, 1, successes, "concurrent initial starts succeeded")
 	budget, err := ss.ExamAttempt().DeliveryBudget(ctx, store.DeliveryBudgetAccess{Access: access, ParticipationID: connected.Participation.ID})
-	requireNoError(t, err)
-	if budget.ControlMetadataBytes != model.NativeOwnerReservationBytes+model.BrowserOwnerReservationBytes {
-		t.Fatal("refused source reserved lifetime metadata")
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.NativeOwnerReservationBytes+model.BrowserOwnerReservationBytes, budget.ControlMetadataBytes, "refused source reserved lifetime metadata")
 	sources, err := ss.ExamAttempt().BrowserSourceList(ctx, store.BrowserDeliveryAccess{Access: access, ParticipationID: connected.Participation.ID})
-	requireNoError(t, err)
-	if len(sources) != 1 {
-		t.Fatal("concurrent start retained an extra source")
-	}
+	require.NoError(t, err)
+	require.Len(t, sources, 1, "concurrent start retained an extra source")
 }
 
 func testBrowserPendingRepairReservation(t *testing.T, ss store.Store) {
@@ -182,7 +172,7 @@ func testBrowserPendingRepairReservation(t *testing.T, ss store.Store) {
 	f, connected, access := newBrowserActivityFixture(t, ctx, ss, "browser-repair-reservation")
 	source := browserSourceID(13001)
 	_, err := startBrowserSourceFixture(t, ctx, ss, &store.BrowserActivitySourceStart{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: source})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	event := func(seq int64) model.BrowserActivityEvent {
 		value := browserActivityEvent(seq, model.BrowserActivityTopNavigation, f.revisionID)
 		rule := "start"
@@ -195,7 +185,7 @@ func testBrowserPendingRepairReservation(t *testing.T, ss store.Store) {
 	}
 	budget := func() *model.DeliveryBudgetSnapshot {
 		value, err := ss.ExamAttempt().DeliveryBudget(ctx, store.DeliveryBudgetAccess{Access: access, ParticipationID: connected.Participation.ID})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		return value
 	}
 	// The rounds outlast one initial Participation lease on a loaded
@@ -205,7 +195,7 @@ func testBrowserPendingRepairReservation(t *testing.T, ss store.Store) {
 	renew := func() {
 		renewal.Sequence++
 		_, renewErr := ss.ExamAttempt().RenewParticipation(ctx, renewal)
-		requireNoError(t, renewErr)
+		require.NoError(t, renewErr)
 	}
 	next := int64(2)
 	var refused []model.BrowserActivityEvent
@@ -219,16 +209,14 @@ func testBrowserPendingRepairReservation(t *testing.T, ss store.Store) {
 		_, err := appendEvents(events)
 		if err != nil {
 			var conflict *store.ErrConflict
-			if !errors.As(err, &conflict) || conflict.Constraint != "pending_capacity" {
-				t.Fatalf("unexpected out-of-order refusal: %v", err)
-			}
+			require.ErrorAs(t, err, &conflict)
+			require.Equal(t, "pending_capacity", conflict.Constraint)
 			after := budget()
-			if after.Browser.PendingBytes != before.Browser.PendingBytes || after.Browser.Attempt.RetainedRecords != before.Browser.Attempt.RetainedRecords || after.Browser.Participation.SummaryOnly {
-				t.Fatal("pending refusal retained partial bytes or latched detail stop")
-			}
-			if after.Browser.PendingBytes == 0 || after.Browser.PendingBytes > model.DeliveryPendingByteLimit-model.DeliveryRepairReservationBytes {
-				t.Fatal("out-of-order traffic consumed repair reservation")
-			}
+			require.Equal(t, before.Browser.PendingBytes, after.Browser.PendingBytes, "pending refusal retained partial bytes or latched detail stop")
+			require.Equal(t, before.Browser.Attempt.RetainedRecords, after.Browser.Attempt.RetainedRecords, "pending refusal retained partial bytes or latched detail stop")
+			require.False(t, after.Browser.Participation.SummaryOnly, "pending refusal retained partial bytes or latched detail stop")
+			require.NotEqual(t, int64(0), after.Browser.PendingBytes, "out-of-order traffic consumed repair reservation")
+			require.LessOrEqual(t, after.Browser.PendingBytes, model.DeliveryPendingByteLimit-model.DeliveryRepairReservationBytes, "out-of-order traffic consumed repair reservation")
 			refused = events
 			break
 		}
@@ -236,22 +224,19 @@ func testBrowserPendingRepairReservation(t *testing.T, ss store.Store) {
 		// Refilling the shared append bucket is separate from byte admission.
 		time.Sleep(150 * time.Millisecond)
 	}
-	if refused == nil {
-		t.Fatal("bounded pending pool never refused out-of-order details")
-	}
+	require.NotNil(t, refused, "bounded pending pool never refused out-of-order details")
 	time.Sleep(150 * time.Millisecond)
 	renew()
 	repaired, err := appendEvents([]model.BrowserActivityEvent{event(1)})
-	requireNoError(t, err)
-	if repaired.HighestContiguous != next-1 || repaired.SettledThrough != next-1 || budget().Browser.PendingBytes != 0 {
-		t.Fatal("head repair did not release the retained queue")
-	}
+	require.NoError(t, err)
+	require.Equal(t, next-1, repaired.HighestContiguous, "head repair did not release the retained queue")
+	require.Equal(t, next-1, repaired.SettledThrough, "head repair did not release the retained queue")
+	require.Equal(t, int64(0), budget().Browser.PendingBytes, "head repair did not release the retained queue")
 	time.Sleep(150 * time.Millisecond)
 	resumed, err := appendEvents(refused)
-	requireNoError(t, err)
-	if resumed.HighestContiguous != next+int64(len(refused))-1 || budget().Browser.Participation.SummaryOnly {
-		t.Fatal("pending backpressure prevented ordinary delivery after repair")
-	}
+	require.NoError(t, err)
+	require.Equal(t, next+int64(len(refused))-1, resumed.HighestContiguous, "pending backpressure prevented ordinary delivery after repair")
+	require.False(t, budget().Browser.Participation.SummaryOnly, "pending backpressure prevented ordinary delivery after repair")
 }
 
 // TestBrowserRetainedRepairReservation exercises durable byte-limit boundaries.
@@ -263,10 +248,10 @@ func TestBrowserRetainedRepairReservation(t *testing.T, ss store.Store, prime fu
 			f, connected, access := newBrowserActivityFixture(t, ctx, ss, "browser-retained-repair-"+scope)
 			source := browserSourceID(14001 + index)
 			_, err := startBrowserSourceFixture(t, ctx, ss, &store.BrowserActivitySourceStart{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: source})
-			requireNoError(t, err)
+			require.NoError(t, err)
 			selector := store.DeliveryBudgetAccess{Access: access, ParticipationID: connected.Participation.ID}
 			budget, err := ss.ExamAttempt().DeliveryBudget(ctx, selector)
-			requireNoError(t, err)
+			require.NoError(t, err)
 			var partBytes, attemptBytes int64
 			if scope == "participation" {
 				partBytes = budget.Browser.Participation.ByteLimit - model.DeliveryRepairReservationBytes
@@ -274,25 +259,25 @@ func TestBrowserRetainedRepairReservation(t *testing.T, ss store.Store, prime fu
 			} else {
 				attemptBytes = budget.Browser.Attempt.ByteLimit - model.DeliveryRepairReservationBytes
 			}
-			requireNoError(t, prime(ctx, connected.Attempt.ID, connected.Participation.ID, partBytes, attemptBytes))
+			require.NoError(t, prime(ctx, connected.Attempt.ID, connected.Participation.ID, partBytes, attemptBytes))
 			appendEvent := func(sequence int64) (*model.BrowserActivityAcknowledgement, error) {
 				return appendBrowserActivityFixture(t, ctx, ss, &store.BrowserActivityAppend{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: source, Events: []model.BrowserActivityEvent{browserActivityEvent(sequence, model.BrowserActivityOpened, f.revisionID)}})
 			}
 			_, err = appendEvent(2)
 			var conflict *store.ErrConflict
-			if !errors.As(err, &conflict) || conflict.Constraint != "pending_capacity" {
-				t.Fatalf("first gap consumed retained repair reserve: %v", err)
-			}
+			require.ErrorAs(t, err, &conflict)
+			require.Equal(t, "pending_capacity", conflict.Constraint)
 			after, err := ss.ExamAttempt().DeliveryBudget(ctx, selector)
-			requireNoError(t, err)
-			if after.Browser.PendingBytes != 0 || after.Browser.Participation.RetainedBytes != partBytes || after.Browser.Attempt.RetainedBytes != attemptBytes || after.Browser.Participation.SummaryOnly || after.Browser.Attempt.SummaryOnly {
-				t.Fatal("gap refusal charged bytes or permanently stopped details")
-			}
+			require.NoError(t, err)
+			require.Equal(t, int64(0), after.Browser.PendingBytes, "gap refusal charged bytes or permanently stopped details")
+			require.Equal(t, partBytes, after.Browser.Participation.RetainedBytes, "gap refusal charged bytes or permanently stopped details")
+			require.Equal(t, attemptBytes, after.Browser.Attempt.RetainedBytes, "gap refusal charged bytes or permanently stopped details")
+			require.False(t, after.Browser.Participation.SummaryOnly, "gap refusal charged bytes or permanently stopped details")
+			require.False(t, after.Browser.Attempt.SummaryOnly, "gap refusal charged bytes or permanently stopped details")
 			repaired, err := appendEvent(1)
-			requireNoError(t, err)
-			if repaired.HighestContiguous != 1 || repaired.SettledThrough != 1 {
-				t.Fatal("in-order repair cannot use reserved retained bytes")
-			}
+			require.NoError(t, err)
+			require.Equal(t, int64(1), repaired.HighestContiguous, "in-order repair cannot use reserved retained bytes")
+			require.Equal(t, int64(1), repaired.SettledThrough, "in-order repair cannot use reserved retained bytes")
 		})
 	}
 }

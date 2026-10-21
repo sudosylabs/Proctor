@@ -12,10 +12,11 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -34,40 +35,33 @@ func TestMailPrimaryKeyFenceSerializesEnqueueBeforeRekey(t *testing.T) {
 	persistence := openTestStore(t)
 	resetTestStore(t, persistence)
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "mail-fence", DisplayName: "Mail Fence"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	user := saveIntegrationUser(t, ctx, persistence, &model.User{Username: "mail-fence", Email: "mail-fence@example.edu"})
 
 	const advisoryKey int64 = 8154700260818
 	controller, err := persistence.GetMaster().DB().Conn(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer controller.Close()
 	var controllerPID int
-	if err = controller.QueryRowContext(ctx, `SELECT pg_backend_pid()`).Scan(&controllerPID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, advisoryKey); err != nil {
-		t.Fatal(err)
-	}
+	err = controller.QueryRowContext(ctx, `SELECT pg_backend_pid()`).Scan(&controllerPID)
+	require.NoError(t, err)
+	_, err = controller.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, advisoryKey)
+	require.NoError(t, err)
 	locked := true
 	defer func() {
 		if locked {
 			_, _ = controller.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, advisoryKey)
 		}
 	}()
-	if _, err = persistence.GetMaster().Exec(ctx, `
+	_, err = persistence.GetMaster().Exec(ctx, `
 		CREATE OR REPLACE FUNCTION proctor_test_pause_mail_enqueue() RETURNS trigger LANGUAGE plpgsql AS $$
 		BEGIN
 			PERFORM pg_advisory_xact_lock(8154700260818);
 			RETURN NEW;
 		END $$;
 		CREATE TRIGGER proctor_test_pause_mail_enqueue BEFORE INSERT ON mail_occurrences
-		FOR EACH ROW EXECUTE FUNCTION proctor_test_pause_mail_enqueue()`); err != nil {
-		t.Fatal(err)
-	}
+		FOR EACH ROW EXECUTE FUNCTION proctor_test_pause_mail_enqueue()`)
+	require.NoError(t, err)
 	defer func() {
 		_, _ = persistence.GetMaster().Exec(context.Background(), `DROP TRIGGER IF EXISTS proctor_test_pause_mail_enqueue ON mail_occurrences; DROP FUNCTION IF EXISTS proctor_test_pause_mail_enqueue()`)
 	}()
@@ -89,24 +83,19 @@ func TestMailPrimaryKeyFenceSerializesEnqueueBeforeRekey(t *testing.T) {
 	}()
 	_ = waitForBlockedMailQuery(t, ctx, persistence, enqueuePID, "mail_key_state")
 
-	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, advisoryKey); err != nil {
-		t.Fatal(err)
-	}
+	_, err = controller.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, advisoryKey)
+	require.NoError(t, err)
 	locked = false
-	if err = <-enqueueResult; err != nil {
-		t.Fatalf("EnqueueTest() error = %v", err)
-	}
-	if err = <-rekeyResult; err != nil {
-		t.Fatalf("StartRekey() error = %v", err)
-	}
+	err = <-enqueueResult
+	require.NoError(t, err)
+	err = <-rekeyResult
+	require.NoError(t, err)
 	proof, err := persistence.Mail().ProveRekey(ctx, &store.MailRekeyProofRequest{JobID: rekeyInput.Job.ID,
 		PrimaryKeyID: rekeyInput.PrimaryKeyID, RetiringKeyID: rekeyInput.RetiringKeyID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if proof.NonPrimaryReferences != 1 || proof.RetiringReferences != 1 || proof.RetirementSafe {
-		t.Fatalf("post-fence proof = %#v", proof)
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(1), proof.NonPrimaryReferences)
+	require.Equal(t, int64(1), proof.RetiringReferences)
+	require.False(t, proof.RetirementSafe)
 }
 
 func waitForBlockedMailQuery(t *testing.T, ctx context.Context, persistence *SQLStore, blockerPID int, queryFragment string) int {
@@ -122,12 +111,10 @@ func waitForBlockedMailQuery(t *testing.T, ctx context.Context, persistence *SQL
 		if err == nil {
 			return pid
 		}
-		if !errors.Is(err, sql.ErrNoRows) {
-			t.Fatalf("inspect PostgreSQL blocking graph: %v", err)
-		}
+		require.ErrorIs(t, err, sql.ErrNoRows)
 		select {
 		case <-ctx.Done():
-			t.Fatal(fmt.Errorf("wait for %q blocked by pid %d: %w", queryFragment, blockerPID, ctx.Err()))
+			require.FailNow(t, fmt.Sprint(fmt.Errorf("wait for %q blocked by pid %d: %w", queryFragment, blockerPID, ctx.Err())))
 		case <-ticker.C:
 		}
 	}

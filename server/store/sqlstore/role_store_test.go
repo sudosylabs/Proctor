@@ -8,11 +8,11 @@
 package sqlstore
 
 import (
-	"errors"
 	"testing"
 	"time"
 
 	"github.com/lib/pq"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -30,9 +30,9 @@ func TestRoleRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := test.row.model()
 			var persisted *persistedStateError
-			if !errors.As(err, &persisted) || persisted.Entity != "role" || persisted.Field != test.field {
-				t.Fatalf("model() error = %v, want role.%s persisted-state error", err, test.field)
-			}
+			require.ErrorAs(t, err, &persisted, "model() error")
+			require.Equal(t, "role", persisted.Entity, "model() error")
+			require.Equal(t, test.field, persisted.Field, "model() error")
 		})
 	}
 }

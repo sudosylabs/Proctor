@@ -14,8 +14,9 @@ package storetest
 
 import (
 	"context"
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -58,20 +59,18 @@ func testClassStoreEnforceAcademicPeriodApplicability(t *testing.T, ss store.Sto
 	applicable := saveAcademicUnitPeriod(t, ctx, ss, root.ID, "root-period", 1_800_000_000_000)
 	inapplicable := saveAcademicUnitPeriod(t, ctx, ss, sibling.ID, "sibling-period", 1_800_000_000_000)
 
-	if _, err := SaveClass(ctx, ss, &model.Class{
+	_, err := SaveClass(ctx, ss, &model.Class{
 		ProgrammeLevelID: level.ID, AcademicPeriodID: applicable.ID,
 		Name: "applicable", DisplayName: "Applicable",
-	}); err != nil {
-		t.Fatalf("descendant Class rejected owner-ancestor period: %v", err)
-	}
-	_, err := SaveClass(ctx, ss, &model.Class{
+	})
+	require.NoError(t, err)
+	_, err = SaveClass(ctx, ss, &model.Class{
 		ProgrammeLevelID: level.ID, AcademicPeriodID: inapplicable.ID,
 		Name: "cross-subtree", DisplayName: "Cross Subtree",
 	})
 	var reference *store.ErrReference
-	if !errors.As(err, &reference) || reference.Constraint != "classes_academic_period_not_applicable" {
-		t.Fatalf("cross-subtree Class error = %v, want applicability reference", err)
-	}
+	require.ErrorAs(t, err, &reference, "cross-subtree Class error")
+	require.Equal(t, "classes_academic_period_not_applicable", reference.Constraint, "cross-subtree Class error")
 }
 
 func testClassStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
@@ -86,12 +85,10 @@ func testClassStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	}
 	candidate.PrepareCreate(model.ClassID(model.NewID()), model.NowUTC())
 	created, err := ss.Class().Create(ctx, &store.ClassCreation{Class: candidate, AuditEventID: createAttempt.ID, AuditAt: model.GetMillis()})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	completed, err := ss.Audit().Get(ctx, createAttempt.ID)
-	requireNoError(t, err)
-	if completed.Status != model.AuditStatusSuccess {
-		t.Fatalf("create audit status = %q", completed.Status)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.AuditStatusSuccess, completed.Status)
 
 	rolledBackCreate := &model.Class{
 		ProgrammeLevelID: fixture.level.ID,
@@ -100,72 +97,56 @@ func testClassStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 		DisplayName:      "Rolled Back",
 	}
 	rolledBackCreate.PrepareCreate(model.ClassID(model.NewID()), model.NowUTC())
-	if _, err = ss.Class().Create(ctx, &store.ClassCreation{Class: rolledBackCreate, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}); err == nil {
-		t.Fatal("Create() succeeded without audit attempt")
-	}
-	if _, err = ss.Class().Get(ctx, rolledBackCreate.ID); !store.IsNotFound(err) {
-		t.Fatalf("create survived rollback: %v", err)
-	}
+	_, err = ss.Class().Create(ctx, &store.ClassCreation{Class: rolledBackCreate, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()})
+	require.Error(t, err, "Create() succeeded without audit attempt")
+	_, err = ss.Class().Get(ctx, rolledBackCreate.ID)
+	require.True(t, store.IsNotFound(err), "create survived rollback")
 
 	updateAttempt := saveClassAuditAttempt(t, ctx, ss, fixture.programme.AcademicUnitID.String())
 	updatedCandidate := *created
 	updatedCandidate.DisplayName = "Updated Class"
 	updatedCandidate.PrepareUpdate(created.UpdatedAt.Add(1_000_000)) // 1ms
 	updated, err := ss.Class().Update(ctx, &store.ClassUpdate{Class: &updatedCandidate, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: created.Revision, AuditEventID: updateAttempt.ID, AuditAt: model.GetMillis()})
-	requireNoError(t, err)
-	if updated.Revision != created.Revision+1 {
-		t.Fatalf("update revision = %d, want %d", updated.Revision, created.Revision+1)
-	}
+	require.NoError(t, err)
+	require.Equal(t, created.Revision+1, updated.Revision, "update revision")
 	staleLegacy := *created
 	staleLegacy.DisplayName = "Stale Legacy Update"
-	if _, err = UpdateClass(ctx, ss, &staleLegacy); !store.IsConflict(err) {
-		t.Fatalf("stale Update() error = %v", err)
-	}
+	_, err = UpdateClass(ctx, ss, &staleLegacy)
+	require.True(t, store.IsConflict(err), "stale Update() error")
 	staleAttempt := saveClassAuditAttempt(t, ctx, ss, fixture.programme.AcademicUnitID.String())
 	staleCandidate := *updated
 	staleCandidate.DisplayName = "Stale Update"
 	staleCandidate.PrepareUpdate(updated.UpdatedAt.Add(1_000_000))
-	if _, err = ss.Class().Update(ctx, &store.ClassUpdate{Class: &staleCandidate, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: created.Revision, AuditEventID: staleAttempt.ID, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
-		t.Fatalf("stale Update() error = %v", err)
-	}
+	_, err = ss.Class().Update(ctx, &store.ClassUpdate{Class: &staleCandidate, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: created.Revision, AuditEventID: staleAttempt.ID, AuditAt: model.GetMillis()})
+	require.True(t, store.IsConflict(err), "stale Update() error")
 	wrongOwnerAttempt := saveClassAuditAttempt(t, ctx, ss, fixture.programme.AcademicUnitID.String())
-	if _, err = ss.Class().Archive(ctx, &store.ClassArchive{ID: updated.ID, ExpectedAcademicUnitID: model.NewAcademicUnitID(), ExpectedRevision: updated.Revision, ArchiveAt: model.MillisFromTime(updated.UpdatedAt) + 1, AuditEventID: wrongOwnerAttempt.ID, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
-		t.Fatalf("wrong-owner Archive() error = %v", err)
-	}
+	_, err = ss.Class().Archive(ctx, &store.ClassArchive{ID: updated.ID, ExpectedAcademicUnitID: model.NewAcademicUnitID(), ExpectedRevision: updated.Revision, ArchiveAt: model.MillisFromTime(updated.UpdatedAt) + 1, AuditEventID: wrongOwnerAttempt.ID, AuditAt: model.GetMillis()})
+	require.True(t, store.IsConflict(err), "wrong-owner Archive() error")
 	rolledBack := *updated
 	rolledBack.DisplayName = "Must Roll Back"
 	rolledBack.PrepareUpdate(updated.UpdatedAt.Add(1_000_000))
-	if _, err = ss.Class().Update(ctx, &store.ClassUpdate{Class: &rolledBack, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: updated.Revision, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}); err == nil {
-		t.Fatal("Update() succeeded without audit attempt")
-	}
+	_, err = ss.Class().Update(ctx, &store.ClassUpdate{Class: &rolledBack, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: updated.Revision, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()})
+	require.Error(t, err, "Update() succeeded without audit attempt")
 	persisted, err := ss.Class().Get(ctx, updated.ID)
-	requireNoError(t, err)
-	if persisted.DisplayName != updated.DisplayName {
-		t.Fatalf("update survived rollback: %#v", persisted)
-	}
+	require.NoError(t, err)
+	require.Equal(t, updated.DisplayName, persisted.DisplayName)
 
 	archiveAttempt := saveClassAuditAttempt(t, ctx, ss, fixture.programme.AcademicUnitID.String())
 	archived, err := ss.Class().Archive(ctx, &store.ClassArchive{ID: updated.ID, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: updated.Revision, ArchiveAt: model.MillisFromTime(updated.UpdatedAt) + 1, AuditEventID: archiveAttempt.ID, AuditAt: model.GetMillis()})
-	requireNoError(t, err)
-	if archived.Revision != updated.Revision+1 {
-		t.Fatalf("archive revision = %d, want %d", archived.Revision, updated.Revision+1)
-	}
-	if !archived.IsArchived() {
-		t.Fatalf("Archive() = %#v", archived)
-	}
+	require.NoError(t, err)
+	require.Equal(t, updated.Revision+1, archived.Revision, "archive revision")
+	require.True(t, archived.IsArchived())
 	archiveRollback := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "rolled-back-archive")
-	if _, err := ss.Class().Archive(ctx, &store.ClassArchive{ID: archiveRollback.ID, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: archiveRollback.Revision, ArchiveAt: model.GetMillis(), AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}); err == nil {
-		t.Fatal("Archive() succeeded without audit attempt")
-	}
-	if _, err := ss.Class().Get(ctx, archiveRollback.ID); err != nil {
-		t.Fatalf("archive survived rollback: %v", err)
-	}
+	_, err = ss.Class().Archive(ctx, &store.ClassArchive{ID: archiveRollback.ID, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID, ExpectedRevision: archiveRollback.Revision, ArchiveAt: model.GetMillis(), AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()})
+	require.Error(t, err, "Archive() succeeded without audit attempt")
+	_, err = ss.Class().Get(ctx, archiveRollback.ID)
+	require.NoError(t, err)
 }
 
 func saveClassAuditAttempt(t *testing.T, ctx context.Context, ss store.Store, unitID string) *model.AuditEvent {
 	t.Helper()
 	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID, Status: model.AuditStatusAttempt, NodeID: "test-node"})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return attempt
 }
 
@@ -177,26 +158,22 @@ func testClassStoreSearchAndArchive(t *testing.T, ss store.Store) {
 	)
 	class.DisplayName = "Literal 50%_! Zeta"
 	class, err := UpdateClass(ctx, ss, class)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	unitID, err := ss.Class().GetAcademicUnitID(ctx, class.ID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	found, err := ss.Class().SearchByAcademicUnit(ctx, unitID, "zeta", 10)
-	requireNoError(t, err)
-	if len(found) != 1 || found[0].ID != class.ID {
-		t.Fatalf("SearchByAcademicUnit() = %#v", found)
-	}
+	require.NoError(t, err)
+	require.Len(t, found, 1)
+	require.Equal(t, class.ID, found[0].ID)
 	for _, query := range []string{"LITERAL 50%_!", "%", "_", "!"} {
 		found, err = ss.Class().SearchByAcademicUnit(ctx, unitID, query, 10)
-		requireNoError(t, err)
-		if len(found) != 1 || found[0].ID != class.ID {
-			t.Fatalf("SearchByAcademicUnit(%q) = %#v, want only %s", query, found, class.ID)
-		}
+		require.NoError(t, err)
+		require.Len(t, found, 1, "SearchByAcademicUnit(%q)", query)
+		require.Equal(t, class.ID, found[0].ID, "SearchByAcademicUnit(%q)", query)
 	}
 	archived, err := ArchiveClass(ctx, ss, class.ID, model.GetMillis())
-	requireNoError(t, err)
-	if !archived.IsArchived() {
-		t.Fatalf("Archive() = %#v", archived)
-	}
+	require.NoError(t, err)
+	require.True(t, archived.IsArchived())
 }
 
 func testClassStoreGetAcademicUnitID(t *testing.T, ss store.Store) {
@@ -204,15 +181,12 @@ func testClassStoreGetAcademicUnitID(t *testing.T, ss store.Store) {
 	fixture := saveClassFixture(t, ctx, ss)
 	class := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "class-a")
 	academicUnitID, err := ss.Class().GetAcademicUnitID(ctx, class.ID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	programme, err := ss.Programme().Get(ctx, fixture.programme.ID)
-	requireNoError(t, err)
-	if academicUnitID != programme.AcademicUnitID {
-		t.Fatalf("GetAcademicUnitID() = %q, want %q", academicUnitID, programme.AcademicUnitID)
-	}
-	if _, err := ss.Class().GetAcademicUnitID(ctx, model.NewClassID()); !store.IsNotFound(err) {
-		t.Fatalf("GetAcademicUnitID(missing) error = %v", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, programme.AcademicUnitID, academicUnitID, "GetAcademicUnitID()")
+	_, err = ss.Class().GetAcademicUnitID(ctx, model.NewClassID())
+	require.True(t, store.IsNotFound(err), "GetAcademicUnitID(missing) error")
 }
 
 func testClassStoreSave(t *testing.T, ss store.Store) {
@@ -227,19 +201,13 @@ func testClassStoreSave(t *testing.T, ss store.Store) {
 	}
 
 	saved, err := SaveClass(ctx, ss, class)
-	requireNoError(t, err)
-	if !saved.ID.IsValid() {
-		t.Fatalf("Save() id = %q", saved.ID)
-	}
-	if !class.ID.IsZero() {
-		t.Fatalf("Save() mutated input id to %q", class.ID)
-	}
+	require.NoError(t, err)
+	require.True(t, saved.ID.IsValid())
+	require.True(t, class.ID.IsZero())
 
 	_, err = SaveClass(ctx, ss, saved)
 	var invalid *store.ErrInvalidInput
-	if !errors.As(err, &invalid) {
-		t.Fatalf("second Save(saved) error = %v, want invalid input", err)
-	}
+	require.ErrorAs(t, err, &invalid, "second Save(saved) error")
 }
 
 func testClassStoreGet(t *testing.T, ss store.Store) {
@@ -248,13 +216,10 @@ func testClassStoreGet(t *testing.T, ss store.Store) {
 	class := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "class-a")
 
 	got, err := ss.Class().Get(ctx, class.ID)
-	requireNoError(t, err)
-	if *got != *class {
-		t.Fatalf("Get() = %#v, want %#v", got, class)
-	}
-	if _, err := ss.Class().Get(ctx, model.NewClassID()); !store.IsNotFound(err) {
-		t.Fatalf("Get(missing) error = %v, want not found", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, *class, *got, "Get() = %#v, want %#v", got, class)
+	_, err = ss.Class().Get(ctx, model.NewClassID())
+	require.True(t, store.IsNotFound(err), "Get(missing) error")
 }
 
 func testClassStoreGetByName(t *testing.T, ss store.Store) {
@@ -263,18 +228,15 @@ func testClassStoreGetByName(t *testing.T, ss store.Store) {
 	class := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "class-a")
 
 	got, err := ss.Class().GetByName(ctx, fixture.level.ID, fixture.period.ID, class.Name)
-	requireNoError(t, err)
-	if got.ID != class.ID {
-		t.Fatalf("GetByName() id = %q, want %q", got.ID, class.ID)
-	}
-	if _, err := ss.Class().GetByName(
+	require.NoError(t, err)
+	require.Equal(t, class.ID, got.ID, "GetByName() id")
+	_, err = ss.Class().GetByName(
 		ctx,
 		fixture.level.ID,
 		fixture.period.ID,
 		"missing",
-	); !store.IsNotFound(err) {
-		t.Fatalf("GetByName(missing) error = %v, want not found", err)
-	}
+	)
+	require.True(t, store.IsNotFound(err), "GetByName(missing) error")
 }
 
 func testClassStoreListByProgrammeLevel(t *testing.T, ss store.Store) {
@@ -294,15 +256,13 @@ func testClassStoreListByProgrammeLevel(t *testing.T, ss store.Store) {
 	saveClass(t, ctx, ss, otherLevel.ID.String(), fixture.period.ID.String(), "class-a")
 
 	classes, err := ss.Class().ListByProgrammeLevel(ctx, fixture.level.ID)
-	requireNoError(t, err)
-	if len(classes) != 2 || classes[0].ID != first.ID || classes[1].ID != second.ID {
-		t.Fatalf("ListByProgrammeLevel() = %#v", classes)
-	}
+	require.NoError(t, err)
+	require.Len(t, classes, 2)
+	require.Equal(t, first.ID, classes[0].ID)
+	require.Equal(t, second.ID, classes[1].ID)
 	empty, err := ss.Class().ListByProgrammeLevel(ctx, model.NewProgrammeLevelID())
-	requireNoError(t, err)
-	if len(empty) != 0 {
-		t.Fatalf("ListByProgrammeLevel(missing) = %#v, want empty", empty)
-	}
+	require.NoError(t, err)
+	require.Empty(t, empty, "ListByProgrammeLevel(missing)")
 }
 
 func testClassStoreListByAcademicPeriod(t *testing.T, ss store.Store) {
@@ -322,19 +282,14 @@ func testClassStoreListByAcademicPeriod(t *testing.T, ss store.Store) {
 	saveClass(t, ctx, ss, fixture.level.ID.String(), nextPeriod.ID.String(), "class-a")
 
 	classes, err := ss.Class().ListByAcademicPeriod(ctx, fixture.period.ID)
-	requireNoError(t, err)
-	if len(classes) != 2 {
-		t.Fatalf("ListByAcademicPeriod() = %#v", classes)
-	}
+	require.NoError(t, err)
+	require.Len(t, classes, 2)
 	gotIDs := map[model.ClassID]bool{classes[0].ID: true, classes[1].ID: true}
-	if !gotIDs[first.ID] || !gotIDs[second.ID] {
-		t.Fatalf("ListByAcademicPeriod() ids = %#v", gotIDs)
-	}
+	require.True(t, gotIDs[first.ID])
+	require.True(t, gotIDs[second.ID])
 	empty, err := ss.Class().ListByAcademicPeriod(ctx, model.NewAcademicPeriodID())
-	requireNoError(t, err)
-	if len(empty) != 0 {
-		t.Fatalf("ListByAcademicPeriod(missing) = %#v, want empty", empty)
-	}
+	require.NoError(t, err)
+	require.Empty(t, empty, "ListByAcademicPeriod(missing)")
 }
 
 func testClassStoreUpdate(t *testing.T, ss store.Store) {
@@ -358,22 +313,17 @@ func testClassStoreUpdate(t *testing.T, ss store.Store) {
 	class.Name = "class-b"
 	class.DisplayName = "Class B"
 	updated, err := UpdateClass(ctx, ss, class)
-	requireNoError(t, err)
-	if updated.ProgrammeLevelID != otherLevel.ID ||
-		updated.AcademicPeriodID != nextPeriod.ID ||
-		updated.Name != "class-b" {
-		t.Fatalf("Update() = %#v", updated)
-	}
-	if !updated.CreatedAt.Equal(createAt) || updated.UpdatedAt.Before(previousUpdateAt) {
-		t.Fatalf("Update() timestamps = %#v", updated)
-	}
+	require.NoError(t, err)
+	require.Equal(t, otherLevel.ID, updated.ProgrammeLevelID)
+	require.Equal(t, nextPeriod.ID, updated.AcademicPeriodID)
+	require.Equal(t, "class-b", updated.Name)
+	require.True(t, updated.CreatedAt.Equal(createAt))
+	require.False(t, updated.UpdatedAt.Before(previousUpdateAt))
 
 	missing := *updated
 	missing.ID = model.ClassID(model.NewID())
 	_, err = UpdateClass(ctx, ss, &missing)
-	if !store.IsNotFound(err) {
-		t.Fatalf("Update(missing) error = %v, want not found", err)
-	}
+	require.True(t, store.IsNotFound(err), "Update(missing) error")
 }
 
 func testClassStoreRejectUnknownProgrammeLevel(t *testing.T, ss store.Store) {
@@ -388,10 +338,8 @@ func testClassStoreRejectUnknownProgrammeLevel(t *testing.T, ss store.Store) {
 		DisplayName:      "Class A",
 	})
 	var reference *store.ErrReference
-	if !errors.As(err, &reference) ||
-		reference.Constraint != "classes_programme_level_id_fkey" {
-		t.Fatalf("Save(unknown programme level) error = %v, want reference error", err)
-	}
+	require.ErrorAs(t, err, &reference, "Save(unknown programme level) error")
+	require.Equal(t, "classes_programme_level_id_fkey", reference.Constraint, "Save(unknown programme level) error")
 }
 
 func testClassStoreRejectUnknownAcademicPeriod(t *testing.T, ss store.Store) {
@@ -406,10 +354,8 @@ func testClassStoreRejectUnknownAcademicPeriod(t *testing.T, ss store.Store) {
 		DisplayName:      "Class A",
 	})
 	var reference *store.ErrReference
-	if !errors.As(err, &reference) ||
-		reference.Constraint != "classes_academic_period_id_fkey" {
-		t.Fatalf("Save(unknown academic period) error = %v, want reference error", err)
-	}
+	require.ErrorAs(t, err, &reference, "Save(unknown academic period) error")
+	require.Equal(t, "classes_academic_period_id_fkey", reference.Constraint, "Save(unknown academic period) error")
 }
 
 func testClassStoreEnforceScopedNameUniqueness(t *testing.T, ss store.Store) {
@@ -433,26 +379,23 @@ func testClassStoreEnforceScopedNameUniqueness(t *testing.T, ss store.Store) {
 		DisplayName:      "Duplicate",
 	})
 	var conflict *store.ErrConflict
-	if !errors.As(err, &conflict) || conflict.Constraint != "classes_programme_level_id_academic_period_id_name_key" {
-		t.Fatalf("duplicate class error = %v, want scoped-name conflict", err)
-	}
+	require.ErrorAs(t, err, &conflict, "duplicate class error")
+	require.Equal(t, "classes_programme_level_id_academic_period_id_name_key", conflict.Constraint, "duplicate class error")
 
-	if _, err := SaveClass(ctx, ss, &model.Class{
+	_, err = SaveClass(ctx, ss, &model.Class{
 		ProgrammeLevelID: otherLevel.ID,
 		AcademicPeriodID: fixture.period.ID,
 		Name:             "class-a",
 		DisplayName:      "Class A",
-	}); err != nil {
-		t.Fatalf("same name for another programme level error = %v", err)
-	}
-	if _, err := SaveClass(ctx, ss, &model.Class{
+	})
+	require.NoError(t, err)
+	_, err = SaveClass(ctx, ss, &model.Class{
 		ProgrammeLevelID: fixture.level.ID,
 		AcademicPeriodID: nextPeriod.ID,
 		Name:             "class-a",
 		DisplayName:      "Class A",
-	}); err != nil {
-		t.Fatalf("same name for another academic period error = %v", err)
-	}
+	})
+	require.NoError(t, err)
 }
 
 type classFixture struct {
@@ -490,6 +433,6 @@ func saveClass(
 		Name:             name,
 		DisplayName:      name,
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return class
 }

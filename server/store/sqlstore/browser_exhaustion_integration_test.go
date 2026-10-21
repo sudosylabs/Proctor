@@ -13,6 +13,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store/storetest"
 )
@@ -49,14 +51,11 @@ func TestBrowserExhaustionSettlement(t *testing.T) {
 					query = `UPDATE exam_attempt_delivery_budgets SET explicit_missing_intervals=? WHERE exam_attempt_id=?`
 					value = model.DeliveryMissingIntervalLimit
 				}
-				if _, err := s.GetMaster().Exec(ctx, query, value, id); err != nil {
-					t.Fatal(err)
-				}
+				_, err := s.GetMaster().Exec(ctx, query, value, id)
+				require.NoError(t, err)
 			}, func(attempt model.ExamAttemptID) int64 {
 				var bytes int64
-				if err := s.GetMaster().Get(ctx, &bytes, `SELECT browser_pending_bytes FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=?`, attempt.String()); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, s.GetMaster().Get(ctx, &bytes, `SELECT browser_pending_bytes FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=?`, attempt.String()))
 				return bytes
 			})
 		})

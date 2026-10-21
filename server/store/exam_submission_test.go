@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -44,15 +46,14 @@ func TestExamSubmissionStoreOwnsAtomicCandidateSealAndExactReplaySelector(t *tes
 		CandidateUserID: access.CandidateUserID, ParticipationID: access.ParticipationID,
 		Generation: access.Generation, ConnectionID: access.ConnectionID, Replayed: true,
 	}
-	if command.Access.ExpectedWorkspaceCursor != 41 || command.Access.FinalFocusLossSequence != 9 ||
-		result.Receipt.State != model.ExamAttemptSubmitted || !result.Replayed {
-		t.Fatalf("command/result = %#v / %#v", command, result)
-	}
+	require.Equal(t, int64(41), command.Access.ExpectedWorkspaceCursor, "command/result = %#v / %#v", command, result)
+	require.Equal(t, int64(9), command.Access.FinalFocusLossSequence, "command/result = %#v / %#v", command, result)
+	require.Equal(t, model.ExamAttemptSubmitted, result.Receipt.State, "command/result = %#v / %#v", command, result)
+	require.True(t, result.Replayed, "command/result = %#v / %#v", command, result)
 	methods := reflect.TypeOf((*ExamSubmissionStore)(nil)).Elem()
 	for _, name := range []string{"ResolveSealTarget", "Seal", "Resolve", "Get", "ListManifest", "ResolveFile"} {
-		if _, exists := methods.MethodByName(name); !exists {
-			t.Fatalf("ExamSubmissionStore is missing %s", name)
-		}
+		_, exists := methods.MethodByName(name)
+		require.True(t, exists, "ExamSubmissionStore is missing %s", name)
 	}
 	assertSubmissionProjectionHasNoSecrets(t, reflect.TypeOf(target))
 	assertSubmissionProjectionHasNoSecrets(t, reflect.TypeOf(receipt))
@@ -81,13 +82,12 @@ func TestExamSubmissionManagerReadsSeparateAuthorizationManifestAndContentSelect
 		StarterObjectID: model.NewStarterWorkspaceObjectID(), ContentVersion: item.ContentVersion,
 	}
 	options := ExamSubmissionManifestListOptions{SubmissionID: submissionID, AfterEntryID: entryID, Limit: model.ExamSubmissionManifestReadMaximum}
-	if authorization.SubmissionID != submissionID || page.Items[0].Path != "cmd/main.go" ||
-		selector.Entry.EntryID != entryID || options.AfterEntryID != entryID {
-		t.Fatalf("authorization/page/selector = %#v / %#v / %#v", authorization, page, selector)
-	}
-	if _, exists := reflect.TypeOf(options).FieldByName("AfterPath"); exists {
-		t.Fatal("Submission manifest cursor exposes a protected Workspace Path")
-	}
+	require.Equal(t, submissionID, authorization.SubmissionID, "authorization/page/selector = %#v / %#v / %#v", authorization, page, selector)
+	require.Equal(t, "cmd/main.go", page.Items[0].Path, "authorization/page/selector = %#v / %#v / %#v", authorization, page, selector)
+	require.Equal(t, entryID, selector.Entry.EntryID, "authorization/page/selector = %#v / %#v / %#v", authorization, page, selector)
+	require.Equal(t, entryID, options.AfterEntryID, "authorization/page/selector = %#v / %#v / %#v", authorization, page, selector)
+	_, exists := reflect.TypeOf(options).FieldByName("AfterPath")
+	require.False(t, exists, "Submission manifest cursor exposes a protected Workspace Path")
 	assertSubmissionProjectionHasNoSecrets(t, reflect.TypeOf(page))
 }
 
@@ -96,9 +96,7 @@ func assertSubmissionProjectionHasNoSecrets(t *testing.T, typ reflect.Type) {
 	for index := 0; index < typ.NumField(); index++ {
 		name := strings.ToLower(typ.Field(index).Name)
 		for _, forbidden := range []string{"credential", "session", "private", "evidence", "source"} {
-			if strings.Contains(name, forbidden) {
-				t.Fatalf("outbound %s exposes %s", typ, typ.Field(index).Name)
-			}
+			require.NotContains(t, name, forbidden, "outbound")
 		}
 	}
 }

@@ -10,30 +10,32 @@ package sqlstore
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRunSQLTransactionPreservesLifecycleAndPrimaryErrors(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.WithValue(context.Background(), transactionTestContextKey{}, "exact")
+	// The transaction lifecycle order (begin, body, commit, deferred rollback)
+	// is the contract under test, so these assertions compare exact sequences.
 	var events []string
 	beginFailure := errors.New("begin failed")
 	beginFailed := func(got context.Context) (*transactionTestTx, error) {
 		events = append(events, "begin")
-		if got != ctx {
-			t.Fatal("begin received a replaced context")
-		}
+		require.Equal(t, ctx, got, "begin received a replaced context")
 		return nil, beginFailure
 	}
 	result, err := runSQLTransaction(ctx, beginFailed, "affiliation save", func(context.Context, *transactionTestTx) (string, error) {
-		t.Fatal("body called after begin failure")
+		require.FailNow(t, "body called after begin failure")
 		return "", nil
 	})
-	if !errors.Is(err, beginFailure) || err.Error() != "begin affiliation save: begin failed" || result != "" || !reflect.DeepEqual(events, []string{"begin"}) {
-		t.Fatalf("begin result=%q error=%v events=%v", result, err, events)
-	}
+	require.ErrorIs(t, err, beginFailure, "begin result")
+	require.Equal(t, "begin affiliation save: begin failed", err.Error(), "begin result")
+	require.Empty(t, result, "begin result")
+	require.Equal(t, []string{"begin"}, events, "begin result")
 
 	events = nil
 	bodyFailure := errors.New("body failed")
@@ -42,9 +44,9 @@ func TestRunSQLTransactionPreservesLifecycleAndPrimaryErrors(t *testing.T) {
 		events = append(events, "body")
 		return "discarded", bodyFailure
 	})
-	if !errors.Is(err, bodyFailure) || result != "" || !reflect.DeepEqual(events, []string{"begin", "body", "rollback"}) {
-		t.Fatalf("body outcome result=%q error=%v events=%v", result, err, events)
-	}
+	require.ErrorIs(t, err, bodyFailure, "body outcome result")
+	require.Empty(t, result, "body outcome result")
+	require.Equal(t, []string{"begin", "body", "rollback"}, events, "body outcome result")
 
 	events = nil
 	commitFailure := errors.New("commit failed")
@@ -53,36 +55,34 @@ func TestRunSQLTransactionPreservesLifecycleAndPrimaryErrors(t *testing.T) {
 		events = append(events, "body")
 		return "discarded", nil
 	})
-	if !errors.Is(err, commitFailure) || err.Error() != "commit affiliation save: commit failed" || result != "" || !reflect.DeepEqual(events, []string{"begin", "body", "commit", "rollback"}) {
-		t.Fatalf("commit outcome result=%q error=%v events=%v", result, err, events)
-	}
+	require.ErrorIs(t, err, commitFailure, "commit outcome result")
+	require.Equal(t, "commit affiliation save: commit failed", err.Error(), "commit outcome result")
+	require.Empty(t, result, "commit outcome result")
+	require.Equal(t, []string{"begin", "body", "commit", "rollback"}, events, "commit outcome result")
 
 	events = nil
 	successTx := &transactionTestTx{events: &events, rollbackErr: errors.New("rollback after commit failed")}
 	result, err = runSQLTransaction(ctx, transactionTestBegin(successTx, &events), "affiliation save", func(got context.Context, tx *transactionTestTx) (string, error) {
 		events = append(events, "body")
-		if got != ctx || tx != successTx {
-			t.Fatal("body received replaced transaction inputs")
-		}
+		require.Equal(t, ctx, got, "body received replaced transaction inputs")
+		require.Same(t, successTx, tx, "body received replaced transaction inputs")
 		return "result", nil
 	})
-	if err != nil || result != "result" || !reflect.DeepEqual(events, []string{"begin", "body", "commit", "rollback"}) {
-		t.Fatalf("success outcome result=%q error=%v events=%v", result, err, events)
-	}
+	require.NoError(t, err, "success outcome result")
+	require.Equal(t, "result", result, "success outcome result")
+	require.Equal(t, []string{"begin", "body", "commit", "rollback"}, events, "success outcome result")
 }
 
 func TestRunSQLTransactionRollsBackPanic(t *testing.T) {
 	t.Parallel()
 
+	// The transaction lifecycle order is the contract under test.
 	var events []string
 	tx := &transactionTestTx{events: &events}
 	defer func() {
-		if recovered := recover(); recovered != "boom" {
-			t.Fatalf("recovered = %v, want boom", recovered)
-		}
-		if !reflect.DeepEqual(events, []string{"begin", "body", "rollback"}) {
-			t.Fatalf("events = %v", events)
-		}
+		recovered := recover()
+		require.Equal(t, "boom", recovered, "recovered")
+		require.Equal(t, []string{"begin", "body", "rollback"}, events)
 	}()
 	_, _ = runSQLTransaction(context.Background(), transactionTestBegin(tx, &events), "affiliation save", func(context.Context, *transactionTestTx) (string, error) {
 		events = append(events, "body")
@@ -99,10 +99,10 @@ func TestExecuteSQLTransactionSupportsCharacterizedCompletionPolicies(t *testing
 		sqlTransactionPolicy[string]{beginError: func(err error) error { return err }},
 		func(context.Context, *transactionTestTx) (string, error) { return "unexpected", nil },
 	)
-	if err != beginFailure || result != "" {
-		t.Fatalf("raw begin result=%q error=%v", result, err)
-	}
+	require.Equal(t, beginFailure, err, "raw begin result")
+	require.Empty(t, result, "raw begin result")
 
+	// The transaction lifecycle order is the contract under test.
 	var events []string
 	rollbackOnly := &transactionTestTx{events: &events}
 	result, err = executeSQLTransaction(context.Background(), transactionTestBegin(rollbackOnly, &events),
@@ -112,9 +112,9 @@ func TestExecuteSQLTransactionSupportsCharacterizedCompletionPolicies(t *testing
 			return "observed", nil
 		},
 	)
-	if err != nil || result != "observed" || !reflect.DeepEqual(events, []string{"begin", "body", "rollback"}) {
-		t.Fatalf("rollback-only result=%q error=%v events=%v", result, err, events)
-	}
+	require.NoError(t, err, "rollback-only result")
+	require.Equal(t, "observed", result, "rollback-only result")
+	require.Equal(t, []string{"begin", "body", "rollback"}, events, "rollback-only result")
 
 	events = nil
 	commitFailure := errors.New("commit")
@@ -129,9 +129,10 @@ func TestExecuteSQLTransactionSupportsCharacterizedCompletionPolicies(t *testing
 			return "deduplicated", nil
 		},
 	)
-	if result != "" || err == nil || err.Error() != "deduplicated: commit" || !reflect.DeepEqual(events, []string{"begin", "body", "commit", "rollback"}) {
-		t.Fatalf("branch commit result=%q error=%v events=%v", result, err, events)
-	}
+	require.Empty(t, result, "branch commit result")
+	require.Error(t, err, "branch commit result")
+	require.Equal(t, "deduplicated: commit", err.Error(), "branch commit result")
+	require.Equal(t, []string{"begin", "body", "commit", "rollback"}, events, "branch commit result")
 }
 
 type transactionTestContextKey struct{}

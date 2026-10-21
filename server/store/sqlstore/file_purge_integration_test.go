@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -27,16 +29,13 @@ func TestFilePurgeCandidatesRespectPurposeReferencesAndLegalHolds(t *testing.T) 
 
 	eligible := insertArchivedPurgeFixture(t, ss, model.FilePurposeProfilePictureCustom, old)
 	held := insertArchivedPurgeFixture(t, ss, model.FilePurposeProfilePictureCustom, old)
-	if _, err := ss.GetMaster().Exec(ctx, `INSERT INTO file_legal_holds (file_entry_id, created_at, reason_code) VALUES (?, ?, 'litigation')`, held.entryID.String(), now); err != nil {
-		t.Fatal(err)
-	}
+	_, err := ss.GetMaster().Exec(ctx, `INSERT INTO file_legal_holds (file_entry_id, created_at, reason_code) VALUES (?, ?, 'litigation')`, held.entryID.String(), now)
+	require.NoError(t, err)
 	defaultPicture := insertArchivedPurgeFixture(t, ss, model.FilePurposeProfilePictureDefault, old)
 	submission := insertArchivedPurgeFixture(t, ss, model.FilePurposeSubmission, old)
 
 	page, err := ss.File().ListPurgeCandidates(ctx, &store.FilePurgeCandidateRequest{Limit: 100})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	seen := map[model.FileRevisionID]bool{}
 	var candidate *store.FilePurgeCandidate
 	for index := range page.Candidates {
@@ -45,42 +44,29 @@ func TestFilePurgeCandidatesRespectPurposeReferencesAndLegalHolds(t *testing.T) 
 			candidate = &page.Candidates[index]
 		}
 	}
-	if candidate == nil {
-		t.Fatal("eligible archived custom content was not selected")
-	}
+	require.NotNil(t, candidate, "eligible archived custom content was not selected")
 	for _, excluded := range []model.FileRevisionID{held.revisionID, defaultPicture.revisionID, submission.revisionID} {
-		if seen[excluded] {
-			t.Fatalf("retained revision %s became purge eligible", excluded)
-		}
+		require.False(t, seen[excluded], "retained revision %s became purge eligible", excluded)
 	}
 	claim, err := ss.File().ClaimPurgeCandidate(ctx, candidate)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !model.IsValidOpaqueID(claim.ID) || claim.Candidate.RevisionID != candidate.RevisionID {
-		t.Fatalf("purge claim = %#v", claim)
-	}
-	if _, holdErr := ss.GetMaster().Exec(ctx, `INSERT INTO file_legal_holds (file_entry_id, created_at, reason_code) VALUES (?, CURRENT_TIMESTAMP, 'too_late')`, eligible.entryID.String()); holdErr == nil {
-		t.Fatal("legal hold was added after the durable purge tombstone")
-	}
+	require.NoError(t, err)
+	require.True(t, model.IsValidOpaqueID(claim.ID))
+	require.Equal(t, candidate.RevisionID, claim.Candidate.RevisionID)
+	_, holdErr := ss.GetMaster().Exec(ctx, `INSERT INTO file_legal_holds (file_entry_id, created_at, reason_code) VALUES (?, CURRENT_TIMESTAMP, 'too_late')`, eligible.entryID.String())
+	require.Error(t, holdErr, "legal hold was added after the durable purge tombstone")
 	relisted, err := ss.File().ListPurgeCandidates(ctx, &store.FilePurgeCandidateRequest{Limit: 100})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	claimedStillVisible := false
 	for _, item := range relisted.Candidates {
 		claimedStillVisible = claimedStillVisible || item.RevisionID == candidate.RevisionID
 	}
-	if !claimedStillVisible {
-		t.Fatal("durably claimed purge disappeared before physical deletion")
-	}
-	if err = ss.File().CompletePurge(ctx, claim); err != nil {
-		t.Fatal(err)
-	}
+	require.True(t, claimedStillVisible, "durably claimed purge disappeared before physical deletion")
+	err = ss.File().CompletePurge(ctx, claim)
+	require.NoError(t, err)
 	var count int
-	if err = ss.GetMaster().Get(ctx, &count, `SELECT COUNT(*) FROM file_revisions WHERE id = ?`, eligible.revisionID.String()); err != nil || count != 0 {
-		t.Fatalf("purged revision count = %d, %v", count, err)
-	}
+	err = ss.GetMaster().Get(ctx, &count, `SELECT COUNT(*) FROM file_revisions WHERE id = ?`, eligible.revisionID.String())
+	require.NoError(t, err, "purged revision count")
+	require.Equal(t, 0, count, "purged revision count")
 }
 
 func TestFilePurgeClaimRevalidatesLegalHoldBeforeBytesCanBeRemoved(t *testing.T) {
@@ -90,28 +76,22 @@ func TestFilePurgeClaimRevalidatesLegalHoldBeforeBytesCanBeRemoved(t *testing.T)
 	old := model.NowUTC().Add(-60 * 24 * time.Hour)
 	fixture := insertArchivedPurgeFixture(t, ss, model.FilePurposeProfilePictureCustom, old)
 	page, err := ss.File().ListPurgeCandidates(ctx, &store.FilePurgeCandidateRequest{Limit: 100})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var candidate *store.FilePurgeCandidate
 	for index := range page.Candidates {
 		if page.Candidates[index].RevisionID == fixture.revisionID {
 			candidate = &page.Candidates[index]
 		}
 	}
-	if candidate == nil {
-		t.Fatal("eligible fixture was not listed")
-	}
-	if _, err = ss.GetMaster().Exec(ctx, `INSERT INTO file_legal_holds (file_entry_id, created_at, reason_code) VALUES (?, CURRENT_TIMESTAMP, 'review')`, fixture.entryID.String()); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = ss.File().ClaimPurgeCandidate(ctx, candidate); !store.IsConflict(err) {
-		t.Fatalf("ClaimPurgeCandidate(held after listing) error = %v", err)
-	}
+	require.NotNil(t, candidate, "eligible fixture was not listed")
+	_, err = ss.GetMaster().Exec(ctx, `INSERT INTO file_legal_holds (file_entry_id, created_at, reason_code) VALUES (?, CURRENT_TIMESTAMP, 'review')`, fixture.entryID.String())
+	require.NoError(t, err)
+	_, err = ss.File().ClaimPurgeCandidate(ctx, candidate)
+	require.True(t, store.IsConflict(err), "ClaimPurgeCandidate(held after listing) error")
 	var claimID *string
-	if err = ss.GetMaster().Get(ctx, &claimID, `SELECT purge_claim_id FROM file_revisions WHERE id = ?`, fixture.revisionID.String()); err != nil || claimID != nil {
-		t.Fatalf("purge claim persisted despite hold: %v, %v", claimID, err)
-	}
+	err = ss.GetMaster().Get(ctx, &claimID, `SELECT purge_claim_id FROM file_revisions WHERE id = ?`, fixture.revisionID.String())
+	require.NoError(t, err, "purge claim persisted despite hold")
+	require.Nil(t, claimID, "purge claim persisted despite hold")
 }
 
 type archivedPurgeFixture struct {
@@ -123,14 +103,11 @@ func insertArchivedPurgeFixture(t *testing.T, ss *SQLStore, purpose model.FilePu
 	t.Helper()
 	ctx := context.Background()
 	entryID, revisionID := model.NewFileEntryID(), model.NewFileRevisionID()
-	if _, err := ss.GetMaster().Exec(ctx, `INSERT INTO file_entries (id, created_at, updated_at, archived_at, revision, current_revision_id, indexing_policy, purpose) VALUES (?, ?, ?, ?, 1, NULL, 'none', ?)`, entryID.String(), at.Add(-time.Hour), at, at, string(purpose)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := ss.GetMaster().Exec(ctx, `INSERT INTO file_revisions (id, file_entry_id, created_at, availability, indexing_state) VALUES (?, ?, ?, 'available', 'not_required')`, revisionID.String(), entryID.String(), at.Add(-time.Hour)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := ss.GetMaster().Exec(ctx, `UPDATE file_entries SET current_revision_id = ? WHERE id = ?`, revisionID.String(), entryID.String()); err != nil {
-		t.Fatal(err)
-	}
+	_, err := ss.GetMaster().Exec(ctx, `INSERT INTO file_entries (id, created_at, updated_at, archived_at, revision, current_revision_id, indexing_policy, purpose) VALUES (?, ?, ?, ?, 1, NULL, 'none', ?)`, entryID.String(), at.Add(-time.Hour), at, at, string(purpose))
+	require.NoError(t, err)
+	_, err = ss.GetMaster().Exec(ctx, `INSERT INTO file_revisions (id, file_entry_id, created_at, availability, indexing_state) VALUES (?, ?, ?, 'available', 'not_required')`, revisionID.String(), entryID.String(), at.Add(-time.Hour))
+	require.NoError(t, err)
+	_, err = ss.GetMaster().Exec(ctx, `UPDATE file_entries SET current_revision_id = ? WHERE id = ?`, revisionID.String(), entryID.String())
+	require.NoError(t, err)
 	return archivedPurgeFixture{entryID: entryID, revisionID: revisionID}
 }

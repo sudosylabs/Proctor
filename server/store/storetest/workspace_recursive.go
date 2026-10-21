@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -43,7 +45,7 @@ func testStarterWorkspaceRecursiveRemoval(t *testing.T, ss store.Store, probes .
 	directory := func(path string) model.StarterWorkspaceEntryID {
 		id := model.NewStarterWorkspaceEntryID()
 		result, err := workspace.CreateDirectory(ctx, mutate(id, path), command("directory.create", path))
-		requireNoError(t, err)
+		require.NoError(t, err)
 		revision = result.DraftRevision
 		return id
 	}
@@ -51,7 +53,7 @@ func testStarterWorkspaceRecursiveRemoval(t *testing.T, ss store.Store, probes .
 		input := reserveStarterWorkspaceObject(t, ctx, ss, examID, user.ID, unit.ID, revision,
 			model.NewStarterWorkspaceEntryID(), path, model.NowUTC(), 1)
 		result, err := workspace.CreateFile(ctx, input, command("file.create", path))
-		requireNoError(t, err)
+		require.NoError(t, err)
 		revision = result.DraftRevision
 		return result
 	}
@@ -62,53 +64,47 @@ func testStarterWorkspaceRecursiveRemoval(t *testing.T, ss store.Store, probes .
 	pinned := file("src%_!/nested/published.txt")
 	publication, err := ss.ExamRevision().Publish(ctx, examRevisionPublication(t, ctx, ss, examID, user.ID, unit.ID, revision, model.NowUTC()),
 		examCommand(user.ID, "exam.revision.publish.v1", "recursive-publish", "recursive-publish"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	revision = publication.DraftRevision
 	stale := mutate(root, "")
 	stale.Recursive = true
 	unpinned := file("src%_!/nested/draft.txt")
 	_, err = workspace.RemoveEntry(ctx, stale, command("entry.remove", "stale-recursive"))
-	assertExamAttemptConflict(t, err, "exam_draft_revision")
+	requireConflictConstraint(t, err, "exam_draft_revision")
 	items, err := workspace.List(ctx, examID)
-	requireNoError(t, err)
-	if len(items) != 6 {
-		t.Fatalf("stale recursive removal changed hierarchy: %#v", items)
-	}
+	require.NoError(t, err)
+	require.Len(t, items, 6)
 	invalidFile := mutate(unpinned.Entry.ID, "")
 	invalidFile.Recursive = true
-	if _, err = workspace.RemoveEntry(ctx, invalidFile, command("entry.remove", "recursive-file")); err == nil {
-		t.Fatal("recursive file removal succeeded")
-	}
+	_, err = workspace.RemoveEntry(ctx, invalidFile, command("entry.remove", "recursive-file"))
+	require.Error(t, err, "recursive file removal succeeded")
 	// Remove earlier creation outcomes before testing the subtree's own outcome
 	// protection. Expired-but-retained records must still protect bytes.
 	time.Sleep(2 * time.Millisecond)
 	_, err = ss.CommandOutcome().DeleteExpired(ctx, 500)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	input := mutate(root, "")
 	input.Recursive = true
 	deleteCommand := command("entry.remove", "recursive-delete")
 	removed, err := workspace.RemoveEntry(ctx, input, deleteCommand)
-	requireNoError(t, err)
-	if removed.DraftRevision != revision+1 || removed.Entry.ID != root || !removed.Entry.ArchivedAt.Valid {
-		t.Fatalf("recursive removal=%#v", removed)
-	}
+	require.NoError(t, err)
+	require.Equal(t, revision+1, removed.DraftRevision)
+	require.Equal(t, root, removed.Entry.ID)
+	require.True(t, removed.Entry.ArchivedAt.Valid)
 	replay := mutate(root, "")
 	replay.Recursive = true
 	replayed, err := workspace.RemoveEntry(ctx, replay, deleteCommand)
-	requireNoError(t, err)
-	if !replayed.Replayed || replayed.DraftRevision != removed.DraftRevision {
-		t.Fatalf("recursive replay=%#v", replayed)
-	}
+	require.NoError(t, err)
+	require.True(t, replayed.Replayed)
+	require.Equal(t, removed.DraftRevision, replayed.DraftRevision)
 	items, err = workspace.List(ctx, examID)
-	requireNoError(t, err)
-	if len(items) != 2 || items[0].Entry.Path != "src%_!-sibling" || items[1].Entry.Path != "srcXYZ" {
-		t.Fatalf("recursive removal affected sibling prefixes: %#v", items)
-	}
+	require.NoError(t, err)
+	require.Len(t, items, 2)
+	require.Equal(t, "src%_!-sibling", items[0].Entry.Path)
+	require.Equal(t, "srcXYZ", items[1].Entry.Path)
 	snapshot, err := ss.ExamRevision().GetSnapshot(ctx, examID, publication.Revision.ID)
-	requireNoError(t, err)
-	if len(snapshot.StarterWorkspace) != 5 {
-		t.Fatalf("published hierarchy changed: %#v", snapshot.StarterWorkspace)
-	}
+	require.NoError(t, err)
+	require.Len(t, snapshot.StarterWorkspace, 5)
 	if len(probes) == 0 || probes[0].MakeObjectCleanupDue == nil {
 		return
 	}
@@ -116,20 +112,17 @@ func testStarterWorkspaceRecursiveRemoval(t *testing.T, ss store.Store, probes .
 		probes[0].MakeObjectCleanupDue(t, ctx, object.ID)
 	}
 	claimed, err := workspace.ClaimObjectsForCleanup(ctx, 100, "recursive-starter-retained")
-	requireNoError(t, err)
-	if len(claimed) != 0 {
-		t.Fatalf("retained recursive outcome lost object protection: %#v", claimed)
-	}
+	require.NoError(t, err)
+	require.Empty(t, claimed)
 	time.Sleep(2 * time.Millisecond)
 	_, err = ss.CommandOutcome().DeleteExpired(ctx, 500)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	claimed, err = workspace.ClaimObjectsForCleanup(ctx, 100, "recursive-starter-reclaim")
-	requireNoError(t, err)
-	if len(claimed) != 1 || claimed[0].ID != unpinned.Object.ID {
-		t.Fatalf("recursive cleanup did not preserve published pin: %#v", claimed)
-	}
-	requireNoError(t, workspace.CompleteObjectCleanup(ctx, unpinned.Object.ID, "recursive-starter-reclaim"))
-	requireNoError(t, workspace.CompleteObjectCleanup(ctx, unpinned.Object.ID, "recursive-starter-reclaim"))
+	require.NoError(t, err)
+	require.Len(t, claimed, 1)
+	require.Equal(t, unpinned.Object.ID, claimed[0].ID)
+	require.NoError(t, workspace.CompleteObjectCleanup(ctx, unpinned.Object.ID, "recursive-starter-reclaim"))
+	require.NoError(t, workspace.CompleteObjectCleanup(ctx, unpinned.Object.ID, "recursive-starter-reclaim"))
 }
 
 func testAttemptWorkspaceRecursiveDeletion(t *testing.T, ss store.Store, workspace store.ExamAttemptWorkspaceStore, probes ...ExamAttemptWorkspaceSQLProbe) {
@@ -144,7 +137,7 @@ func testAttemptWorkspaceRecursiveDeletion(t *testing.T, ss store.Store, workspa
 		AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}
 	prepareExamAttemptConnect(t, ctx, ss, connect)
 	connected, err := ss.ExamAttempt().Connect(ctx, connect, examCommand(f.candidate.ID, store.ExamAttemptConnectOperation, "recursive-connect", "recursive-connect"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	access := store.ExamAttemptWorkspaceMutationAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID,
 		Generation: connected.Participation.Generation, CandidateUserID: f.candidate.ID, SessionID: f.session.ID,
 		DesktopRegistrationID: f.session.DesktopRegistrationID, DPoPKeyThumbprint: f.session.DPoPKeyThumbprint,
@@ -158,7 +151,7 @@ func testAttemptWorkspaceRecursiveDeletion(t *testing.T, ss store.Store, workspa
 	}
 	manifest := func() *store.CandidateAttemptWorkspacePage {
 		page, listErr := workspace.List(ctx, store.CandidateWorkspaceListOptions{Access: journalAccess(access), ExpectedCursor: -1, Limit: 200})
-		requireNoError(t, listErr)
+		require.NoError(t, listErr)
 		return page
 	}
 	var root model.AttemptWorkspaceEntryID
@@ -170,37 +163,35 @@ func testAttemptWorkspaceRecursiveDeletion(t *testing.T, ss store.Store, workspa
 	createDir, dirCommand := prepare(model.AttemptWorkspaceMutationCreateDirectory, "recursive-nested")
 	createDir.DestinationPath = "cmd/nested"
 	_, err = workspace.ApplyMutation(ctx, createDir, dirCommand)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	ready := func() *model.AttemptWorkspaceObject {
 		object, readyErr := workspace.ReserveObject(ctx, &store.ExamAttemptWorkspaceObjectReservation{Access: access, ObjectID: model.NewAttemptWorkspaceObjectID()})
-		requireNoError(t, readyErr)
+		require.NoError(t, readyErr)
 		object, readyErr = workspace.MarkObjectReady(ctx, &store.ExamAttemptWorkspaceObjectReady{Access: access, ObjectID: object.ID,
 			ContentVersion: model.NewWorkspaceContentVersion(), Content: model.AttemptWorkspaceContent{MediaType: "text/plain", SizeBytes: 1, SHA256: strings.Repeat("a", 64)}})
-		requireNoError(t, readyErr)
+		require.NoError(t, readyErr)
 		return object
 	}
 	object := ready()
 	createFile, fileCommand := prepare(model.AttemptWorkspaceMutationCreateFile, "recursive-owned")
 	createFile.DestinationPath, createFile.ObjectID = "cmd/nested/owned.txt", object.ID
 	_, err = workspace.ApplyMutation(ctx, createFile, fileCommand)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	staleCursor := manifest().Cursor
 	sibling, siblingCommand := prepare(model.AttemptWorkspaceMutationCreateDirectory, "recursive-sibling")
 	sibling.DestinationPath = "cmd-sibling"
 	_, err = workspace.ApplyMutation(ctx, sibling, siblingCommand)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	staleDelete, staleCommand := prepare(model.AttemptWorkspaceMutationDeleteEntry, "recursive-stale")
 	staleDelete.EntryID, staleDelete.ExpectedPath, staleDelete.Recursive, staleDelete.ExpectedWorkspaceCursor = root, "cmd", true, &staleCursor
 	_, err = workspace.ApplyMutation(ctx, staleDelete, staleCommand)
-	assertExamAttemptConflict(t, err, "attempt_workspace_cursor")
-	if len(manifest().Items) != 5 {
-		t.Fatal("stale subtree deletion changed hierarchy")
-	}
+	requireConflictConstraint(t, err, "attempt_workspace_cursor")
+	require.Len(t, manifest().Items, 5, "stale subtree deletion changed hierarchy")
 	// Expire the creation outcome so cleanup must rely on the recursive
 	// deletion's bounded retirement group, rather than a file-ID list.
 	time.Sleep(2 * time.Millisecond)
 	_, err = ss.CommandOutcome().DeleteExpired(ctx, 500)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	cursor := manifest().Cursor
 	deletion, deleteCommand := prepare(model.AttemptWorkspaceMutationDeleteEntry, "recursive-delete-race")
 	deletion.EntryID, deletion.ExpectedPath, deletion.Recursive, deletion.ExpectedWorkspaceCursor = root, "cmd", true, &cursor
@@ -232,62 +223,55 @@ func testAttemptWorkspaceRecursiveDeletion(t *testing.T, ss store.Store, workspa
 	if first.err != nil {
 		first, second = second, first
 	}
-	if first.err != nil || !store.IsConflict(second.err) {
-		t.Fatalf("subtree/edit race errors=%v, %v", first.err, second.err)
-	}
+	require.NoError(t, first.err, "subtree/edit race errors")
+	require.True(t, store.IsConflict(second.err), "subtree/edit race errors")
 	removed := first.value
 	if !first.deletion {
 		object = replacementObject
 		time.Sleep(2 * time.Millisecond)
 		_, err = ss.CommandOutcome().DeleteExpired(ctx, 500)
-		requireNoError(t, err)
+		require.NoError(t, err)
 		cursor = manifest().Cursor
 		deletion, deleteCommand = prepare(model.AttemptWorkspaceMutationDeleteEntry, "recursive-delete-after-race")
 		deletion.EntryID, deletion.ExpectedPath, deletion.Recursive, deletion.ExpectedWorkspaceCursor = root, "cmd", true, &cursor
 		removed, err = workspace.ApplyMutation(ctx, deletion, deleteCommand)
-		requireNoError(t, err)
+		require.NoError(t, err)
 	}
-	if removed.Entry != nil || !removed.Change.Recursive || removed.Change.OldPath != "cmd" || removed.Change.Cursor != cursor+1 {
-		t.Fatalf("recursive acknowledgement=%#v", removed)
-	}
+	require.Nil(t, removed.Entry)
+	require.True(t, removed.Change.Recursive)
+	require.Equal(t, "cmd", removed.Change.OldPath)
+	require.Equal(t, cursor+1, removed.Change.Cursor)
 	replay := *deletion
 	replay.AuditEventID = saveExamAttemptAudit(t, ctx, ss, f).ID
 	replayed, err := workspace.ApplyMutation(ctx, &replay, deleteCommand)
-	requireNoError(t, err)
-	if !replayed.Replayed || replayed.Change != removed.Change {
-		t.Fatalf("recursive replay=%#v", replayed)
-	}
+	require.NoError(t, err)
+	require.True(t, replayed.Replayed)
+	require.Equal(t, removed.Change, replayed.Change)
 	page := manifest()
-	if len(page.Items) != 1 || page.Items[0].EntryID != sibling.EntryID {
-		t.Fatalf("recursive manifest=%#v", page)
-	}
+	require.Len(t, page.Items, 1)
+	require.Equal(t, sibling.EntryID, page.Items[0].EntryID)
 	journal, err := workspace.ListJournal(ctx, store.CandidateWorkspaceJournalOptions{Access: journalAccess(access), AfterCursor: cursor, Limit: 200})
-	requireNoError(t, err)
-	if len(journal.Entries) != 1 || !journal.Entries[0].Recursive || journal.Entries[0] != removed.Change {
-		t.Fatalf("recursive journal=%#v", journal)
-	}
+	require.NoError(t, err)
+	require.Len(t, journal.Entries, 1)
+	require.True(t, journal.Entries[0].Recursive)
+	require.Equal(t, removed.Change, journal.Entries[0])
 	snapshot, err := ss.ExamRevision().GetSnapshot(ctx, f.examID, f.revisionID)
-	requireNoError(t, err)
-	if len(snapshot.StarterWorkspace) != 2 {
-		t.Fatal("recursive deletion changed the published source")
-	}
+	require.NoError(t, err)
+	require.Len(t, snapshot.StarterWorkspace, 2, "recursive deletion changed the published source")
 	if len(probes) == 0 || probes[0].MakeObjectCleanupDue == nil {
 		return
 	}
 	probes[0].MakeObjectCleanupDue(t, ctx, object.ID)
 	claimed, err := workspace.ClaimObjectsForCleanup(ctx, 200, "recursive-attempt-retained")
-	requireNoError(t, err)
-	if len(claimed) != 0 {
-		t.Fatalf("retained recursive outcome lost protection: %#v", claimed)
-	}
+	require.NoError(t, err)
+	require.Empty(t, claimed)
 	time.Sleep(2 * time.Millisecond)
 	_, err = ss.CommandOutcome().DeleteExpired(ctx, 500)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	claimed, err = workspace.ClaimObjectsForCleanup(ctx, 200, "recursive-attempt-reclaim")
-	requireNoError(t, err)
-	if len(claimed) != 1 || claimed[0].ID != object.ID {
-		t.Fatalf("recursive cleanup=%#v", claimed)
-	}
-	requireNoError(t, workspace.CompleteObjectCleanup(ctx, object.ID, "recursive-attempt-reclaim"))
-	requireNoError(t, workspace.CompleteObjectCleanup(ctx, object.ID, "recursive-attempt-reclaim"))
+	require.NoError(t, err)
+	require.Len(t, claimed, 1)
+	require.Equal(t, object.ID, claimed[0].ID)
+	require.NoError(t, workspace.CompleteObjectCleanup(ctx, object.ID, "recursive-attempt-reclaim"))
+	require.NoError(t, workspace.CompleteObjectCleanup(ctx, object.ID, "recursive-attempt-reclaim"))
 }

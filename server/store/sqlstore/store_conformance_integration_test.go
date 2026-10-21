@@ -13,7 +13,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -21,6 +20,8 @@ import (
 	"time"
 
 	"github.com/lib/pq"
+	"github.com/stretchr/testify/require"
+
 	cachepkg "github.com/sudosylabs/proctor/packages/cache"
 	memorycache "github.com/sudosylabs/proctor/packages/cache/memory"
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
@@ -45,13 +46,9 @@ func newLocalCacheConformanceStore(t *testing.T, sqlStore *SQLStore) store.Store
 		MaxEntries: 128,
 		MaxBytes:   64 << 20,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cache, err := localcachelayer.NewCacheAdapter(storeCache)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cachedStore, err := localcachelayer.New(
 		sqlStore,
 		cache,
@@ -59,9 +56,7 @@ func newLocalCacheConformanceStore(t *testing.T, sqlStore *SQLStore) store.Store
 		localcachelayer.NopRecorder{},
 		localcachelayer.NopInvalidationFanout{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return cachedStore
 }
 
@@ -73,9 +68,7 @@ func TestRetryLayerConformance(t *testing.T) {
 func newRetryConformanceStore(t *testing.T, sqlStore *SQLStore) store.Store {
 	t.Helper()
 	retriedStore, err := retrylayer.New(sqlStore, retrylayer.DefaultPolicy(IsTransientError))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return retriedStore
 }
 
@@ -87,9 +80,7 @@ func TestTimerLayerConformance(t *testing.T) {
 func newTimerConformanceStore(t *testing.T, sqlStore *SQLStore) store.Store {
 	t.Helper()
 	timedStore, err := timerlayer.New(sqlStore, timerlayer.NopRecorder{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return timedStore
 }
 
@@ -307,10 +298,9 @@ func TestBrowserAuthenticationStore(t *testing.T) {
 func browserAuthenticationSQLProbe(sqlStore *SQLStore) storetest.BrowserAuthenticationSQLProbe {
 	return storetest.BrowserAuthenticationSQLProbe{Backdate: func(t *testing.T, id model.BrowserAuthenticationTransactionID, createdAt, expiresAt time.Time) {
 		t.Helper()
-		if _, err := sqlStore.GetMaster().Exec(context.Background(), `UPDATE browser_authentication_transactions
-			SET created_at=?,updated_at=?,expires_at=? WHERE id=?`, createdAt, createdAt, expiresAt, id.String()); err != nil {
-			t.Fatal(err)
-		}
+		_, err := sqlStore.GetMaster().Exec(context.Background(), `UPDATE browser_authentication_transactions
+			SET created_at=?,updated_at=?,expires_at=? WHERE id=?`, createdAt, createdAt, expiresAt, id.String())
+		require.NoError(t, err)
 	}}
 }
 
@@ -345,77 +335,61 @@ func TestMailMaintenanceRetentionAndSharedRateLimit(t *testing.T) {
 	ctx := context.Background()
 
 	var suppressedID, failedID string
-	if err := persistence.GetMaster().Get(ctx, &suppressedID, `SELECT id FROM mail_deliveries WHERE state='suppressed' ORDER BY id LIMIT 1`); err != nil {
-		t.Fatal(err)
-	}
-	if err := persistence.GetMaster().Get(ctx, &failedID, `SELECT id FROM mail_deliveries WHERE state='accepted' ORDER BY id LIMIT 1`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := persistence.GetMaster().Exec(ctx, `UPDATE mail_deliveries SET
+	require.NoError(t, persistence.GetMaster().Get(ctx, &suppressedID, `SELECT id FROM mail_deliveries WHERE state='suppressed' ORDER BY id LIMIT 1`))
+	require.NoError(t, persistence.GetMaster().Get(ctx, &failedID, `SELECT id FROM mail_deliveries WHERE state='accepted' ORDER BY id LIMIT 1`))
+	_, err := persistence.GetMaster().Exec(ctx, `UPDATE mail_deliveries SET
 		created_at=statement_timestamp()-INTERVAL '101 days',message_date=statement_timestamp()-INTERVAL '101 days',
 		deadline=statement_timestamp()-INTERVAL '100 days',updated_at=statement_timestamp()-INTERVAL '100 days'
-		WHERE id=?`, suppressedID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := persistence.GetMaster().Exec(ctx, `UPDATE mail_deliveries SET state='failed',accepted_at=NULL,
+		WHERE id=?`, suppressedID)
+	require.NoError(t, err)
+	_, err = persistence.GetMaster().Exec(ctx, `UPDATE mail_deliveries SET state='failed',accepted_at=NULL,
 		created_at=statement_timestamp()-INTERVAL '182 days',message_date=statement_timestamp()-INTERVAL '182 days',
 		deadline=statement_timestamp()-INTERVAL '181 days',updated_at=statement_timestamp()-INTERVAL '181 days',
 		failed_at=statement_timestamp()-INTERVAL '181 days',public_failure_code='mail.transport.permanent',
 		payload_key_id='11111111111111111111111111111111',
-		encrypted_payload='{"version":1,"key_id":"11111111111111111111111111111111","ciphertext":"retained"}'::jsonb WHERE id=?`, failedID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := persistence.GetMaster().Exec(ctx, `INSERT INTO mail_payload_keys(key_id,active_references)
+		encrypted_payload='{"version":1,"key_id":"11111111111111111111111111111111","ciphertext":"retained"}'::jsonb WHERE id=?`, failedID)
+	require.NoError(t, err)
+	_, err = persistence.GetMaster().Exec(ctx, `INSERT INTO mail_payload_keys(key_id,active_references)
 		VALUES('11111111111111111111111111111111',1)
-		ON CONFLICT(key_id) DO UPDATE SET active_references=mail_payload_keys.active_references+1`); err != nil {
-		t.Fatal(err)
-	}
+		ON CONFLICT(key_id) DO UPDATE SET active_references=mail_payload_keys.active_references+1`)
+	require.NoError(t, err)
 	var auditsBefore int64
-	if err := persistence.GetMaster().Get(ctx, &auditsBefore, `SELECT COUNT(*) FROM audit_events`); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, persistence.GetMaster().Get(ctx, &auditsBefore, `SELECT COUNT(*) FROM audit_events`))
 	first, err := persistence.Mail().CleanupTerminal(ctx, 1)
-	if err != nil || first.Affected != 1 || !first.More {
-		t.Fatalf("first cleanup = %#v, %v", first, err)
-	}
+	require.NoError(t, err, "first cleanup = %#v", first)
+	require.Equal(t, 1, first.Affected, "first cleanup = %#v", first)
+	require.True(t, first.More, "first cleanup = %#v", first)
 	second, err := persistence.Mail().CleanupTerminal(ctx, 1)
-	if err != nil || second.Affected != 1 {
-		t.Fatalf("second cleanup = %#v, %v", second, err)
-	}
+	require.NoError(t, err, "second cleanup = %#v", second)
+	require.Equal(t, 1, second.Affected, "second cleanup = %#v", second)
 	for _, id := range []string{suppressedID, failedID} {
-		if _, err = persistence.Mail().GetDelivery(ctx, model.MailDeliveryID(id)); !store.IsNotFound(err) {
-			t.Fatalf("retained delivery %s error = %v", id, err)
-		}
+		_, err = persistence.Mail().GetDelivery(ctx, model.MailDeliveryID(id))
+		require.True(t, store.IsNotFound(err), "retained delivery %s error", id)
 	}
 	var auditsAfter int64
-	if err = persistence.GetMaster().Get(ctx, &auditsAfter, `SELECT COUNT(*) FROM audit_events`); err != nil || auditsAfter != auditsBefore {
-		t.Fatalf("audit retention before=%d after=%d err=%v", auditsBefore, auditsAfter, err)
-	}
+	err = persistence.GetMaster().Get(ctx, &auditsAfter, `SELECT COUNT(*) FROM audit_events`)
+	require.NoError(t, err, "audit retention before")
+	require.Equal(t, auditsBefore, auditsAfter, "audit retention before")
 
-	if _, err = persistence.GetMaster().Exec(ctx, `DELETE FROM mail_send_rate_limit`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = persistence.GetMaster().Exec(ctx, `INSERT INTO mail_send_rate_limit(singleton,tokens,updated_at) VALUES(TRUE,5,statement_timestamp()+INTERVAL '1 hour')`); err != nil {
-		t.Fatal(err)
-	}
+	_, err = persistence.GetMaster().Exec(ctx, `DELETE FROM mail_send_rate_limit`)
+	require.NoError(t, err)
+	_, err = persistence.GetMaster().Exec(ctx, `INSERT INTO mail_send_rate_limit(singleton,tokens,updated_at) VALUES(TRUE,5,statement_timestamp()+INTERVAL '1 hour')`)
+	require.NoError(t, err)
 	ordinary, err := persistence.Mail().AcquireSendPermit(ctx, store.MailSendOrdinary)
-	if err != nil || !ordinary.Allowed {
-		t.Fatalf("ordinary reserved permit = %#v, %v", ordinary, err)
-	}
+	require.NoError(t, err, "ordinary reserved permit = %#v", ordinary)
+	require.True(t, ordinary.Allowed, "ordinary reserved permit = %#v", ordinary)
 	// The limiter refills ten tokens per second from its last update. Pin that
 	// update ahead of PostgreSQL time so a slow host cannot refill past the
 	// credential reserve between the two acquisitions under test.
-	if _, err = persistence.GetMaster().Exec(ctx, `UPDATE mail_send_rate_limit SET updated_at=statement_timestamp()+INTERVAL '1 hour'`); err != nil {
-		t.Fatal(err)
-	}
+	_, err = persistence.GetMaster().Exec(ctx, `UPDATE mail_send_rate_limit SET updated_at=statement_timestamp()+INTERVAL '1 hour'`)
+	require.NoError(t, err)
 	ordinary, err = persistence.Mail().AcquireSendPermit(ctx, store.MailSendOrdinary)
-	if err != nil || ordinary.Allowed || ordinary.RetryAfter <= 0 {
-		t.Fatalf("ordinary reserve fence = %#v, %v", ordinary, err)
-	}
+	require.NoError(t, err, "ordinary reserve fence = %#v", ordinary)
+	require.False(t, ordinary.Allowed, "ordinary reserve fence = %#v", ordinary)
+	require.Positive(t, int64(ordinary.RetryAfter), "ordinary reserve fence = %#v", ordinary)
 	credential, err := persistence.Mail().AcquireSendPermit(ctx, store.MailSendCredential)
-	if err != nil || !credential.Allowed {
-		t.Fatalf("credential reserved permit = %#v, %v", credential, err)
-	}
+	require.NoError(t, err, "credential reserved permit = %#v", credential)
+	require.True(t, credential.Allowed, "credential reserved permit = %#v", credential)
 }
 
 func TestExamAuthoringStore(t *testing.T) {
@@ -491,19 +465,17 @@ func examSubmissionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamS
 				PendingQualifiers int64 `db:"pending_qualifiers"`
 				UnresolvedMissing int64 `db:"unresolved_missing"`
 			}
-			if err := persistence.GetMaster().Get(ctx, &row, `SELECT
+			require.NoError(t, persistence.GetMaster().Get(ctx, &row, `SELECT
 				(SELECT count(*) FROM exam_attempt_focus_loss_pending WHERE exam_attempt_id=? AND generation=?) AS pending_qualifiers,
 				COALESCE((SELECT unresolved_missing_count FROM exam_attempt_focus_loss_evaluations
 				 WHERE exam_attempt_id=? AND generation=?),0) AS unresolved_missing`,
-				attemptID.String(), generation, attemptID.String(), generation); err != nil {
-				t.Fatal(err)
-			}
+				attemptID.String(), generation, attemptID.String(), generation))
 			return storetest.SubmissionIntegrityPersistence{PendingQualifiers: row.PendingQualifiers, UnresolvedMissing: row.UnresolvedMissing}
 		},
 		AssertSchema: func(t *testing.T, ctx context.Context) {
 			t.Helper()
 			var constraints []string
-			if err := persistence.GetMaster().Select(ctx, &constraints, `SELECT conname FROM pg_constraint WHERE conname IN (
+			require.NoError(t, persistence.GetMaster().Select(ctx, &constraints, `SELECT conname FROM pg_constraint WHERE conname IN (
 				'exam_attempt_workspaces_submission_owner_key',
 				'exam_attempt_workspace_entries_submission_owner_key','exam_submissions_workspace_fkey',
 				'exam_submissions_participation_fkey','exam_submissions_connection_fkey',
@@ -522,12 +494,8 @@ func examSubmissionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamS
 				'exam_submission_manifest_entries_starter_object_id_canonical_check',
 				'exam_submission_manifest_entries_attempt_object_id_canonical_check',
 				'exam_submission_manifest_entries_workspace_object_id_canonical_check'
-			) ORDER BY conname`); err != nil {
-				t.Fatal(err)
-			}
-			if len(constraints) != 22 {
-				t.Fatalf("Submission named schema constraints = %#v", constraints)
-			}
+			) ORDER BY conname`))
+			require.Len(t, constraints, 22)
 			for name, fragment := range map[string]string{
 				"exam_submissions_participation_fkey":                   "(participation_id, exam_attempt_id, generation)",
 				"exam_submissions_connection_fkey":                      "(connection_id, exam_attempt_id, participation_id)",
@@ -535,43 +503,27 @@ func examSubmissionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamS
 				"exam_submission_manifest_entries_workspace_entry_fkey": "(workspace_id, entry_id, workspace_object_id)",
 			} {
 				var definition string
-				if err := persistence.GetMaster().Get(ctx, &definition,
-					`SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname=?`, name); err != nil {
-					t.Fatal(err)
-				}
-				if !strings.Contains(definition, fragment) {
-					t.Fatalf("%s definition = %q", name, definition)
-				}
+				require.NoError(t, persistence.GetMaster().Get(ctx, &definition,
+					`SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname=?`, name))
+				require.Contains(t, definition, fragment, "%s definition", name)
 			}
 			var triggers []string
-			if err := persistence.GetMaster().Select(ctx, &triggers, `SELECT tgname FROM pg_trigger
+			require.NoError(t, persistence.GetMaster().Select(ctx, &triggers, `SELECT tgname FROM pg_trigger
 				WHERE NOT tgisinternal AND tgname IN ('exam_submissions_immutable',
 				'exam_submission_manifest_entries_immutable','exam_submission_manifest_entries_insert_guard',
-				'exam_submission_manifest_entries_object_provenance','exam_submissions_sealed_check') ORDER BY tgname`); err != nil {
-				t.Fatal(err)
-			}
-			if len(triggers) != 5 {
-				t.Fatalf("Submission immutable/seal triggers = %#v", triggers)
-			}
+				'exam_submission_manifest_entries_object_provenance','exam_submissions_sealed_check') ORDER BY tgname`))
+			require.Len(t, triggers, 5)
 			var auditResourceConstraint string
-			if err := persistence.GetMaster().Get(ctx, &auditResourceConstraint,
-				`SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audit_events_resource_type_check'`); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, persistence.GetMaster().Get(ctx, &auditResourceConstraint,
+				`SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audit_events_resource_type_check'`))
 			for _, resourceType := range []string{"'programme'", "'programme_level'", "'submission'"} {
-				if !strings.Contains(auditResourceConstraint, resourceType) {
-					t.Fatalf("audit resource constraint missing %s: %q", resourceType, auditResourceConstraint)
-				}
+				require.Contains(t, auditResourceConstraint, resourceType, "audit resource constraint missing")
 			}
 			var indexes []string
-			if err := persistence.GetMaster().Select(ctx, &indexes, `SELECT indexname FROM pg_indexes
+			require.NoError(t, persistence.GetMaster().Select(ctx, &indexes, `SELECT indexname FROM pg_indexes
 				WHERE schemaname=current_schema() AND indexname IN (
-				'class_members_class_user_history_idx','exam_attempts_sitting_unfinished_id_idx') ORDER BY indexname`); err != nil {
-				t.Fatal(err)
-			}
-			if len(indexes) != 2 {
-				t.Fatalf("automatic sealing/no-show indexes = %#v", indexes)
-			}
+				'class_members_class_user_history_idx','exam_attempts_sitting_unfinished_id_idx') ORDER BY indexname`))
+			require.Len(t, indexes, 2)
 		},
 		AssertRetentionFence: func(t *testing.T, ctx context.Context, submissionID model.SubmissionID) {
 			t.Helper()
@@ -582,7 +534,7 @@ func examSubmissionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamS
 				EntryID          string `db:"entry_id"`
 				DirectoryEntryID string `db:"directory_entry_id"`
 			}
-			if err := persistence.GetMaster().Get(ctx, &selectors, `SELECT
+			require.NoError(t, persistence.GetMaster().Get(ctx, &selectors, `SELECT
 				(SELECT starter_object_id FROM exam_submission_manifest_entries
 				 WHERE submission_id=? AND starter_object_id IS NOT NULL ORDER BY entry_id LIMIT 1) AS starter_object_id,
 				(SELECT attempt_object_id FROM exam_submission_manifest_entries
@@ -593,21 +545,15 @@ func examSubmissionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamS
 				 WHERE submission_id=? AND attempt_object_id IS NOT NULL ORDER BY entry_id LIMIT 1) AS entry_id,
 				(SELECT entry_id FROM exam_submission_manifest_entries
 				 WHERE submission_id=? AND kind='directory' ORDER BY entry_id LIMIT 1) AS directory_entry_id`,
-				submissionID.String(), submissionID.String(), submissionID.String(), submissionID.String(), submissionID.String()); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := persistence.GetMaster().Exec(ctx, `DELETE FROM exam_starter_workspace_objects WHERE id=?`, selectors.StarterID); err == nil {
-				t.Fatal("starter object retention fence allowed deletion")
-			}
-			if _, err := persistence.GetMaster().Exec(ctx, `DELETE FROM exam_attempt_workspace_objects WHERE id=?`, selectors.AttemptID); err == nil {
-				t.Fatal("attempt object retention fence allowed deletion")
-			}
-			if _, err := persistence.GetMaster().Exec(ctx, `DELETE FROM exam_attempt_workspace_entries WHERE workspace_id=? AND id=?`, selectors.Workspace, selectors.EntryID); err == nil {
-				t.Fatal("Submission-owned Workspace Entry retention fence allowed deletion")
-			}
-			if _, err := persistence.GetMaster().Exec(ctx, `UPDATE exam_submission_manifest_entries SET path='changed' WHERE submission_id=?`, submissionID.String()); err == nil {
-				t.Fatal("immutable Submission manifest accepted mutation")
-			}
+				submissionID.String(), submissionID.String(), submissionID.String(), submissionID.String(), submissionID.String()))
+			_, err := persistence.GetMaster().Exec(ctx, `DELETE FROM exam_starter_workspace_objects WHERE id=?`, selectors.StarterID)
+			require.Error(t, err, "starter object retention fence allowed deletion")
+			_, err = persistence.GetMaster().Exec(ctx, `DELETE FROM exam_attempt_workspace_objects WHERE id=?`, selectors.AttemptID)
+			require.Error(t, err, "attempt object retention fence allowed deletion")
+			_, err = persistence.GetMaster().Exec(ctx, `DELETE FROM exam_attempt_workspace_entries WHERE workspace_id=? AND id=?`, selectors.Workspace, selectors.EntryID)
+			require.Error(t, err, "Submission-owned Workspace Entry retention fence allowed deletion")
+			_, err = persistence.GetMaster().Exec(ctx, `UPDATE exam_submission_manifest_entries SET path='changed' WHERE submission_id=?`, submissionID.String())
+			require.Error(t, err, "immutable Submission manifest accepted mutation")
 			assertExamSubmissionManifestInsertFence(t, ctx, persistence,
 				`INSERT INTO exam_submission_manifest_entries (submission_id,workspace_id,entry_id,kind,path)
 				 VALUES (?,?,?,'directory','missing')`, submissionID.String(), selectors.Workspace,
@@ -633,7 +579,7 @@ func examSubmissionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamS
 			// Workspace Entry and making its object cleanup-eligible. The direct
 			// Submission reference must independently fence every cleanup phase
 			// before a VFS purge can occur.
-			_, err := runSQLTransaction(ctx, persistence.GetMaster().Begin, "isolate Submission object retention fixture", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
+			_, err = runSQLTransaction(ctx, persistence.GetMaster().Begin, "isolate Submission object retention fixture", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
 				if _, execErr := tx.Exec(ctx, `ALTER TABLE exam_attempt_workspace_entries DISABLE TRIGGER ALL`); execErr != nil {
 					return struct{}{}, execErr
 				}
@@ -656,17 +602,12 @@ func examSubmissionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamS
 				}
 				return struct{}{}, nil
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			workspaceStore := NewSQLExamAttemptWorkspaceStore(persistence)
 			attemptObjectID, err := model.ParseAttemptWorkspaceObjectID(selectors.AttemptID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err = workspaceStore.MarkObjectReclaimable(ctx, attemptObjectID); !store.IsConflict(err) {
-				t.Fatalf("MarkObjectReclaimable(Submission pinned) error = %v", err)
-			}
+			require.NoError(t, err)
+			err = workspaceStore.MarkObjectReclaimable(ctx, attemptObjectID)
+			require.True(t, store.IsConflict(err), "MarkObjectReclaimable(Submission pinned) error")
 			_, err = runSQLTransaction(ctx, persistence.GetMaster().Begin, "make Submission object cleanup due", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
 				if _, execErr := tx.Exec(ctx, `ALTER TABLE exam_attempt_workspace_objects DISABLE TRIGGER exam_attempt_workspace_objects_immutable`); execErr != nil {
 					return struct{}{}, execErr
@@ -681,17 +622,11 @@ func examSubmissionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamS
 				}
 				return struct{}{}, nil
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			claimed, err := workspaceStore.ClaimObjectsForCleanup(ctx, 200, "submission-retention")
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			for _, object := range claimed {
-				if object.ID == attemptObjectID {
-					t.Fatalf("ClaimObjectsForCleanup claimed Submission-pinned object %#v", object)
-				}
+				require.NotEqual(t, attemptObjectID, object.ID)
 			}
 			_, err = runSQLTransaction(ctx, persistence.GetMaster().Begin, "force Submission object cleanup claim", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
 				if _, execErr := tx.Exec(ctx, `ALTER TABLE exam_attempt_workspace_objects DISABLE TRIGGER exam_attempt_workspace_objects_immutable`); execErr != nil {
@@ -707,39 +642,28 @@ func examSubmissionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamS
 				}
 				return struct{}{}, nil
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err = workspaceStore.CompleteObjectCleanup(ctx, attemptObjectID, "submission-retention"); !store.IsConflict(err) {
-				t.Fatalf("CompleteObjectCleanup(Submission pinned) error = %v", err)
-			}
+			require.NoError(t, err)
+			err = workspaceStore.CompleteObjectCleanup(ctx, attemptObjectID, "submission-retention")
+			require.True(t, store.IsConflict(err), "CompleteObjectCleanup(Submission pinned) error")
 		},
 		CorruptManifest: func(t *testing.T, ctx context.Context, submissionID model.SubmissionID) {
 			t.Helper()
-			if _, err := persistence.GetMaster().Exec(ctx, `UPDATE exam_submissions SET manifest_digest=? WHERE id=?`,
-				strings.Repeat("c", 64), submissionID.String()); err == nil {
-				t.Fatal("immutable Submission header accepted an update")
-			}
+			_, err := persistence.GetMaster().Exec(ctx, `UPDATE exam_submissions SET manifest_digest=? WHERE id=?`,
+				strings.Repeat("c", 64), submissionID.String())
+			require.Error(t, err, "immutable Submission header accepted an update")
 			connection, err := persistence.GetMaster().DB().Connx(ctx)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			defer connection.Close()
 			transaction, err := connection.BeginTxx(ctx, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			defer transaction.Rollback()
-			if _, err = transaction.ExecContext(ctx, `SET LOCAL session_replication_role = replica`); err != nil {
-				t.Fatal(err)
-			}
-			if _, err = transaction.ExecContext(ctx, persistence.GetMaster().DB().Rebind(`UPDATE exam_submissions SET manifest_digest=? WHERE id=?`),
-				strings.Repeat("c", 64), submissionID.String()); err != nil {
-				t.Fatal(err)
-			}
-			if err = transaction.Commit(); err != nil {
-				t.Fatal(err)
-			}
+			_, err = transaction.ExecContext(ctx, `SET LOCAL session_replication_role = replica`)
+			require.NoError(t, err)
+			_, err = transaction.ExecContext(ctx, persistence.GetMaster().DB().Rebind(`UPDATE exam_submissions SET manifest_digest=? WHERE id=?`),
+				strings.Repeat("c", 64), submissionID.String())
+			require.NoError(t, err)
+			err = transaction.Commit()
+			require.NoError(t, err)
 		},
 	}
 }
@@ -763,9 +687,8 @@ func assertExamSubmissionManifestInsertFence(t *testing.T, ctx context.Context, 
 		return struct{}{}, nil
 	})
 	var pqErr *pq.Error
-	if !errors.As(err, &pqErr) || pqErr.Constraint != "exam_submission_manifest_entries_object_provenance" {
-		t.Fatalf("direct manifest insert state fence error = %v", err)
-	}
+	require.ErrorAs(t, err, &pqErr)
+	require.Equal(t, "exam_submission_manifest_entries_object_provenance", pqErr.Constraint)
 }
 
 func examAttemptWorkspaceSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamAttemptWorkspaceSQLProbe {
@@ -777,9 +700,7 @@ func examAttemptWorkspaceSQLProbe(t *testing.T, persistence *SQLStore) storetest
 			_, err := persistence.GetMaster().Exec(ctx, `UPDATE exam_attempt_workspace_objects
 			SET updated_at=GREATEST(updated_at,statement_timestamp()),reclaim_after=statement_timestamp()-INTERVAL '1 microsecond'
 			WHERE id=? AND state='reclaimable'`, id.String())
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 		}, MakeCleanupClaimStale: func(t *testing.T, ctx context.Context, id model.AttemptWorkspaceObjectID) {
 			t.Helper()
 			_, err := runSQLTransaction(ctx, persistence.GetMaster().Begin, "age Attempt Workspace cleanup claim fixture", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
@@ -797,9 +718,7 @@ func examAttemptWorkspaceSQLProbe(t *testing.T, persistence *SQLStore) storetest
 				}
 				return struct{}{}, nil
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 		}, FillWorkspaceEntryQuota: func(t *testing.T, ctx context.Context, workspaceID model.ExamAttemptWorkspaceID) {
 			t.Helper()
 			_, err := runSQLTransaction(ctx, persistence.GetMaster().Begin, "fill Attempt Workspace entry quota fixture", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
@@ -825,9 +744,7 @@ func examAttemptWorkspaceSQLProbe(t *testing.T, persistence *SQLStore) storetest
 				}
 				return struct{}{}, nil
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 		}, MakeJournalGap: func(t *testing.T, ctx context.Context, workspaceID model.ExamAttemptWorkspaceID) {
 			t.Helper()
 			_, err := runSQLTransaction(ctx, persistence.GetMaster().Begin, "create Attempt Workspace journal gap fixture", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
@@ -854,9 +771,7 @@ func examAttemptWorkspaceSQLProbe(t *testing.T, persistence *SQLStore) storetest
 				}
 				return struct{}{}, nil
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 		}}
 }
 
@@ -880,9 +795,7 @@ func refreshParticipationLease(t *testing.T, ctx context.Context, persistence *S
 		}
 		return struct{}{}, nil
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 }
 
 func examAttemptSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamAttemptSQLProbe {
@@ -904,9 +817,7 @@ func examAttemptSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamAtte
 			}
 			return struct{}{}, nil
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 	}, FenceRenewalPastDeadline: func(t *testing.T, ctx context.Context, id model.AttemptParticipationID, contender func() error) error {
 		t.Helper()
 		var completed chan error
@@ -931,29 +842,22 @@ func examAttemptSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamAtte
 			time.Sleep(200 * time.Millisecond)
 			return struct{}{}, nil
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		return <-completed
 	}, UnresolvedFocusLossMissing: func(t *testing.T, ctx context.Context, attemptID model.ExamAttemptID, generation int64) int64 {
 		t.Helper()
 		var count int64
-		if err := persistence.GetMaster().Get(ctx, &count, `SELECT unresolved_missing_count
-			FROM exam_attempt_focus_loss_evaluations WHERE exam_attempt_id=? AND generation=?`, attemptID.String(), generation); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, persistence.GetMaster().Get(ctx, &count, `SELECT unresolved_missing_count
+			FROM exam_attempt_focus_loss_evaluations WHERE exam_attempt_id=? AND generation=?`, attemptID.String(), generation))
 		return count
 	}, AgeFocusLossPending: func(t *testing.T, ctx context.Context, attemptID model.ExamAttemptID, generation, sequence int64, age time.Duration) {
 		t.Helper()
 		result, err := persistence.GetMaster().Exec(ctx, `UPDATE exam_attempt_focus_loss_pending
 			SET received_at=statement_timestamp()-(? * INTERVAL '1 microsecond')
 			WHERE exam_attempt_id=? AND generation=? AND sequence=?`, age.Microseconds(), attemptID.String(), generation, sequence)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if affected, _ := result.RowsAffected(); affected != 1 {
-			t.Fatalf("age Focus Loss pending affected=%d", affected)
-		}
+		require.NoError(t, err)
+		affected, _ := result.RowsAffected()
+		require.Equal(t, int64(1), affected, "age Focus Loss pending affected")
 	}, FocusLossPersistence: func(t *testing.T, ctx context.Context, attemptID model.ExamAttemptID, generation int64) storetest.FocusLossPersistenceProbe {
 		t.Helper()
 		var row struct {
@@ -963,39 +867,30 @@ func examAttemptSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamAtte
 			OverflowCount   int64 `db:"overflow_count"`
 			DiagnosticCount int64 `db:"diagnostic_count"`
 		}
-		if err := persistence.GetMaster().Get(ctx, &row, `SELECT
+		require.NoError(t, persistence.GetMaster().Get(ctx, &row, `SELECT
 			(SELECT count(*) FROM integrity_flags WHERE exam_attempt_id=? AND generation=? AND policy_kind='focus_loss') AS flags,
 			(SELECT count(*) FROM integrity_evidence WHERE exam_attempt_id=? AND generation=? AND policy_kind='focus_loss') AS evidence,
 			(SELECT count(*) FROM exam_attempt_focus_loss_pending WHERE exam_attempt_id=? AND generation=?) AS pending,
 			COALESCE((SELECT overflow_count FROM exam_attempt_focus_loss_evaluations WHERE exam_attempt_id=? AND generation=?),0) AS overflow_count,
 			COALESCE((SELECT diagnostic_count FROM exam_attempt_focus_loss_evaluations WHERE exam_attempt_id=? AND generation=?),0) AS diagnostic_count`,
 			attemptID.String(), generation, attemptID.String(), generation, attemptID.String(), generation,
-			attemptID.String(), generation, attemptID.String(), generation); err != nil {
-			t.Fatal(err)
-		}
+			attemptID.String(), generation, attemptID.String(), generation))
 		return storetest.FocusLossPersistenceProbe{Flags: row.Flags, Evidence: row.Evidence, Pending: row.Pending,
 			OverflowCount: row.OverflowCount, DiagnosticCount: row.DiagnosticCount}
 	}, AssertFocusLossSchema: func(t *testing.T, ctx context.Context) {
 		t.Helper()
 		var columns []string
-		if err := persistence.GetMaster().Select(ctx, &columns, `SELECT column_name FROM information_schema.columns
+		require.NoError(t, persistence.GetMaster().Select(ctx, &columns, `SELECT column_name FROM information_schema.columns
 			WHERE table_schema=current_schema() AND table_name='exam_attempt_suspensions'
-			AND column_name IN ('suspension_attempt_revision','expiry_attempt_revision') ORDER BY column_name`); err != nil {
-			t.Fatal(err)
-		}
-		if len(columns) != 1 || columns[0] != "suspension_attempt_revision" {
-			t.Fatalf("Attempt Suspension revision columns = %#v", columns)
-		}
+			AND column_name IN ('suspension_attempt_revision','expiry_attempt_revision') ORDER BY column_name`))
+		require.Len(t, columns, 1)
+		require.Equal(t, "suspension_attempt_revision", columns[0])
 		var sourceColumns int
-		if err := persistence.GetMaster().Get(ctx, &sourceColumns, `SELECT count(*) FROM information_schema.columns
-			WHERE table_schema=current_schema() AND table_name='integrity_evidence' AND column_name='source'`); err != nil {
-			t.Fatal(err)
-		}
-		if sourceColumns != 1 {
-			t.Fatalf("Integrity Evidence source column count = %d", sourceColumns)
-		}
+		require.NoError(t, persistence.GetMaster().Get(ctx, &sourceColumns, `SELECT count(*) FROM information_schema.columns
+			WHERE table_schema=current_schema() AND table_name='integrity_evidence' AND column_name='source'`))
+		require.Equal(t, 1, sourceColumns, "Integrity Evidence source column count")
 		var constraints []string
-		if err := persistence.GetMaster().Select(ctx, &constraints, `SELECT conname FROM pg_constraint
+		require.NoError(t, persistence.GetMaster().Select(ctx, &constraints, `SELECT conname FROM pg_constraint
 			WHERE conname IN (
 			'exam_attempt_focus_loss_evaluations_connection_fkey',
 			'exam_attempt_focus_loss_evaluations_participation_fkey',
@@ -1013,25 +908,15 @@ func examAttemptSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamAtte
 			'exam_attempt_focus_loss_pending_participation_id_canonical_check',
 			'exam_attempt_focus_loss_pending_signal_id_canonical_check',
 			'exam_attempt_focus_loss_pending_evidence_id_canonical_check',
-			'integrity_evidence_focus_loss_signal_id_canonical_check') ORDER BY conname`); err != nil {
-			t.Fatal(err)
-		}
-		if len(constraints) != 17 {
-			t.Fatalf("Focus Loss named schema constraints = %#v", constraints)
-		}
+			'integrity_evidence_focus_loss_signal_id_canonical_check') ORDER BY conname`))
+		require.Len(t, constraints, 17)
 		var connectionDefinition, suspensionDefinition string
-		if err := persistence.GetMaster().Get(ctx, &connectionDefinition, `SELECT pg_get_constraintdef(oid) FROM pg_constraint
-			WHERE conname='exam_attempt_focus_loss_evaluations_connection_fkey'`); err != nil {
-			t.Fatal(err)
-		}
-		if err := persistence.GetMaster().Get(ctx, &suspensionDefinition, `SELECT pg_get_constraintdef(oid) FROM pg_constraint
-			WHERE conname='exam_attempt_focus_loss_evaluations_suspension_fkey'`); err != nil {
-			t.Fatal(err)
-		}
-		if !strings.Contains(connectionDefinition, "(last_connection_id, exam_attempt_id, participation_id)") ||
-			!strings.Contains(suspensionDefinition, "(last_suspension_id, exam_attempt_id, participation_id, generation)") {
-			t.Fatalf("Focus Loss exact-owner FKs = %q, %q", connectionDefinition, suspensionDefinition)
-		}
+		require.NoError(t, persistence.GetMaster().Get(ctx, &connectionDefinition, `SELECT pg_get_constraintdef(oid) FROM pg_constraint
+			WHERE conname='exam_attempt_focus_loss_evaluations_connection_fkey'`))
+		require.NoError(t, persistence.GetMaster().Get(ctx, &suspensionDefinition, `SELECT pg_get_constraintdef(oid) FROM pg_constraint
+			WHERE conname='exam_attempt_focus_loss_evaluations_suspension_fkey'`))
+		require.Contains(t, connectionDefinition, "(last_connection_id, exam_attempt_id, participation_id)", "Focus Loss exact-owner FKs")
+		require.Contains(t, suspensionDefinition, "(last_suspension_id, exam_attempt_id, participation_id, generation)", "Focus Loss exact-owner FKs")
 		for _, name := range []string{
 			"integrity_evidence_participation_fkey",
 			"exam_attempt_focus_loss_evaluations_participation_fkey",
@@ -1039,23 +924,15 @@ func examAttemptSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamAtte
 			"exam_attempt_suspensions_participation_fkey",
 		} {
 			var definition string
-			if err := persistence.GetMaster().Get(ctx, &definition, `SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname=?`, name); err != nil {
-				t.Fatal(err)
-			}
-			if !strings.Contains(definition, "(participation_id, exam_attempt_id, generation)") ||
-				!strings.Contains(definition, "(id, exam_attempt_id, generation)") {
-				t.Fatalf("%s does not enforce exact Participation generation ownership: %q", name, definition)
-			}
+			require.NoError(t, persistence.GetMaster().Get(ctx, &definition, `SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname=?`, name))
+			require.Contains(t, definition, "(participation_id, exam_attempt_id, generation)", "%s does not enforce exact Participation generation ownership", name)
+			require.Contains(t, definition, "(id, exam_attempt_id, generation)", "%s does not enforce exact Participation generation ownership", name)
 		}
 		var generationOwnerKeys int
-		if err := persistence.GetMaster().Get(ctx, &generationOwnerKeys, `SELECT count(*) FROM pg_constraint
+		require.NoError(t, persistence.GetMaster().Get(ctx, &generationOwnerKeys, `SELECT count(*) FROM pg_constraint
 			WHERE conrelid='exam_attempt_participations'::regclass AND contype='u'
-			AND pg_get_constraintdef(oid)='UNIQUE (id, exam_attempt_id, generation)'`); err != nil {
-			t.Fatal(err)
-		}
-		if generationOwnerKeys != 1 {
-			t.Fatalf("Participation exact-generation owner keys = %d", generationOwnerKeys)
-		}
+			AND pg_get_constraintdef(oid)='UNIQUE (id, exam_attempt_id, generation)'`))
+		require.Equal(t, 1, generationOwnerKeys, "Participation exact-generation owner keys")
 	}}
 }
 
@@ -1069,44 +946,33 @@ func examCorrectionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamC
 	t.Helper()
 	filesystem := memoryvfs.New()
 	content, err := filecontent.New(filesystem, filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return storetest.ExamCorrectionSQLProbe{OpenSitting: func(t *testing.T, ctx context.Context, sittingID model.ExamSittingID) {
 		t.Helper()
 		result, execErr := persistence.GetMaster().Exec(ctx, `UPDATE exam_sittings SET state='open',
 			scheduled_start_at=statement_timestamp()-INTERVAL '1 minute',scheduled_end_at=statement_timestamp()+INTERVAL '1 hour',
 			opened_at=GREATEST(created_at,statement_timestamp()),updated_at=GREATEST(created_at,statement_timestamp()),revision=revision+1
 			WHERE id=? AND state='scheduled'`, sittingID.String())
-		if execErr != nil {
-			t.Fatal(execErr)
-		}
-		if affected, _ := result.RowsAffected(); affected != 1 {
-			t.Fatalf("open correction Sitting affected=%d", affected)
-		}
+		require.NoError(t, execErr)
+		affected, _ := result.RowsAffected()
+		require.Equal(t, int64(1), affected, "open correction Sitting affected")
 	}, StageBytes: func(t *testing.T, ctx context.Context, revisionID model.FileRevisionID, renditionID model.FileRenditionID, body string) {
 		t.Helper()
-		if _, stageErr := content.StoreExamResourceRendition(ctx, revisionID, renditionID, model.ExamResourceMediaText,
-			strings.NewReader(body), int64(len(body)), model.NowUTC()); stageErr != nil {
-			t.Fatal(stageErr)
-		}
+		_, stageErr := content.StoreExamResourceRendition(ctx, revisionID, renditionID, model.ExamResourceMediaText,
+			strings.NewReader(body), int64(len(body)), model.NowUTC())
+		require.NoError(t, stageErr)
 	}, VerifyBytes: func(t *testing.T, ctx context.Context, revisionID model.FileRevisionID, renditionID model.FileRenditionID, want string) {
 		t.Helper()
 		opened, openErr := content.OpenExamResource(ctx, revisionID, renditionID)
-		if openErr != nil {
-			t.Fatal(openErr)
-		}
+		require.NoError(t, openErr)
 		defer opened.Close()
 		got, readErr := io.ReadAll(opened)
-		if readErr != nil || string(got) != want {
-			t.Fatalf("retained correction bytes=%q error=%v want=%q", got, readErr, want)
-		}
+		require.NoError(t, readErr, "retained correction bytes")
+		require.Equal(t, want, string(got), "retained correction bytes")
 	}, FileAvailability: func(t *testing.T, ctx context.Context, revisionID model.FileRevisionID) model.FileAvailability {
 		t.Helper()
 		var availability string
-		if getErr := persistence.GetMaster().Get(ctx, &availability, `SELECT availability FROM file_revisions WHERE id=?`, revisionID.String()); getErr != nil {
-			t.Fatal(getErr)
-		}
+		require.NoError(t, persistence.GetMaster().Get(ctx, &availability, `SELECT availability FROM file_revisions WHERE id=?`, revisionID.String()))
 		return model.FileAvailability(availability)
 	}, Corrections: func(t *testing.T, ctx context.Context, sittingID model.ExamSittingID) []storetest.ExamCorrectionProvenanceProbe {
 		t.Helper()
@@ -1116,31 +982,23 @@ func examCorrectionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamC
 			PrivateReason        string `db:"private_reason"`
 			SittingRevision      int64  `db:"sitting_revision"`
 		}
-		if selectErr := persistence.GetMaster().Select(ctx, &rows, `SELECT previous_revision_id,correction_revision_id,private_reason,sitting_revision FROM exam_sitting_live_corrections WHERE exam_sitting_id=? ORDER BY sitting_revision`, sittingID.String()); selectErr != nil {
-			t.Fatal(selectErr)
-		}
+		require.NoError(t, persistence.GetMaster().Select(ctx, &rows, `SELECT previous_revision_id,correction_revision_id,private_reason,sitting_revision FROM exam_sitting_live_corrections WHERE exam_sitting_id=? ORDER BY sitting_revision`, sittingID.String()))
 		items := make([]storetest.ExamCorrectionProvenanceProbe, len(rows))
 		for index, row := range rows {
 			previousID, parseErr := model.ParseExamRevisionID(row.PreviousRevisionID)
-			if parseErr != nil {
-				t.Fatal(parseErr)
-			}
+			require.NoError(t, parseErr)
 			correctionID, parseErr := model.ParseExamRevisionID(row.CorrectionRevisionID)
-			if parseErr != nil {
-				t.Fatal(parseErr)
-			}
+			require.NoError(t, parseErr)
 			items[index] = storetest.ExamCorrectionProvenanceProbe{PreviousRevisionID: previousID, CorrectionRevisionID: correctionID,
 				PrivateReason: row.PrivateReason, SittingRevision: row.SittingRevision}
 		}
 		return items
 	}, AssertAppendOnly: func(t *testing.T, ctx context.Context, sittingID model.ExamSittingID) {
 		t.Helper()
-		if _, updateErr := persistence.GetMaster().Exec(ctx, `UPDATE exam_sitting_live_corrections SET private_reason='tampered' WHERE exam_sitting_id=?`, sittingID.String()); updateErr == nil {
-			t.Fatal("live correction provenance UPDATE unexpectedly succeeded")
-		}
-		if _, deleteErr := persistence.GetMaster().Exec(ctx, `DELETE FROM exam_sitting_live_corrections WHERE exam_sitting_id=?`, sittingID.String()); deleteErr == nil {
-			t.Fatal("live correction provenance DELETE unexpectedly succeeded")
-		}
+		_, updateErr := persistence.GetMaster().Exec(ctx, `UPDATE exam_sitting_live_corrections SET private_reason='tampered' WHERE exam_sitting_id=?`, sittingID.String())
+		require.Error(t, updateErr, "live correction provenance UPDATE unexpectedly succeeded")
+		_, deleteErr := persistence.GetMaster().Exec(ctx, `DELETE FROM exam_sitting_live_corrections WHERE exam_sitting_id=?`, sittingID.String())
+		require.Error(t, deleteErr, "live correction provenance DELETE unexpectedly succeeded")
 	}, ExpireStage: func(t *testing.T, ctx context.Context, stageID model.ExamCorrectionResourceStageID) {
 		t.Helper()
 		_, transactionErr := runSQLTransaction(ctx, persistence.GetMaster().Begin, "age correction stage", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
@@ -1156,32 +1014,22 @@ func examCorrectionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamC
 			}
 			return struct{}{}, nil
 		})
-		if transactionErr != nil {
-			t.Fatal(transactionErr)
-		}
+		require.NoError(t, transactionErr)
 	}, ExpireStageOutcome: func(t *testing.T, ctx context.Context, stageID model.ExamCorrectionResourceStageID) {
 		t.Helper()
 		result, execErr := persistence.GetMaster().Exec(ctx, `UPDATE command_outcomes SET created_at=statement_timestamp()-INTERVAL '26 hours',expires_at=statement_timestamp()-INTERVAL '1 hour' WHERE operation=? AND outcome->>'stage_id'=?`, store.ExamCorrectionResourceStageOperation, stageID.String())
-		if execErr != nil {
-			t.Fatal(execErr)
-		}
-		if affected, _ := result.RowsAffected(); affected != 1 {
-			t.Fatalf("expire correction stage outcome affected=%d", affected)
-		}
+		require.NoError(t, execErr)
+		affected, _ := result.RowsAffected()
+		require.Equal(t, int64(1), affected, "expire correction stage outcome affected")
 	}, ReleaseStageCleanupProtection: func(t *testing.T, ctx context.Context, stageID model.ExamCorrectionResourceStageID) {
 		t.Helper()
 		result, execErr := persistence.GetMaster().Exec(ctx, `UPDATE exam_correction_resource_stages SET cleanup_protected_until=statement_timestamp()-INTERVAL '1 second' WHERE id=?`, stageID.String())
-		if execErr != nil {
-			t.Fatal(execErr)
-		}
-		if affected, _ := result.RowsAffected(); affected != 1 {
-			t.Fatalf("release correction stage cleanup protection affected=%d", affected)
-		}
+		require.NoError(t, execErr)
+		affected, _ := result.RowsAffected()
+		require.Equal(t, int64(1), affected, "release correction stage cleanup protection affected")
 	}, RemoveBytes: func(t *testing.T, ctx context.Context, revisionID model.FileRevisionID, renditionID model.FileRenditionID) {
 		t.Helper()
-		if removeErr := content.RemoveExamResource(ctx, revisionID, renditionID); removeErr != nil {
-			t.Fatal(removeErr)
-		}
+		require.NoError(t, content.RemoveExamResource(ctx, revisionID, renditionID))
 	}, AssertPurged: func(t *testing.T, ctx context.Context, stage *store.ExamCorrectionResourceStage) {
 		t.Helper()
 		for _, query := range []struct {
@@ -1196,21 +1044,15 @@ func examCorrectionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamC
 			{"identity", `SELECT COUNT(*) FROM exam_resource_identities WHERE id=?`, stage.ResourceID.String()},
 			{"entry", `SELECT COUNT(*) FROM file_entries WHERE id=?`, stage.FileEntryID.String()},
 		} {
-			var count int
-			if getErr := persistence.GetMaster().Get(ctx, &count, query.sql, query.arg); getErr != nil {
-				t.Fatal(getErr)
-			}
-			if count != 0 {
-				t.Fatalf("purged correction %s count=%d", query.name, count)
-			}
+			t.Run(query.name, func(t *testing.T) {
+				var count int
+				require.NoError(t, persistence.GetMaster().Get(ctx, &count, query.sql, query.arg))
+				require.Equal(t, 0, count, "purged correction %s count", query.name)
+			})
 		}
 		var outcomeCount int
-		if getErr := persistence.GetMaster().Get(ctx, &outcomeCount, `SELECT COUNT(*) FROM command_outcomes WHERE operation=? AND outcome->>'stage_id'=?`, store.ExamCorrectionResourceStageOperation, stage.ID.String()); getErr != nil {
-			t.Fatal(getErr)
-		}
-		if outcomeCount != 0 {
-			t.Fatalf("purged correction command outcome count=%d", outcomeCount)
-		}
+		require.NoError(t, persistence.GetMaster().Get(ctx, &outcomeCount, `SELECT COUNT(*) FROM command_outcomes WHERE operation=? AND outcome->>'stage_id'=?`, store.ExamCorrectionResourceStageOperation, stage.ID.String()))
+		require.Equal(t, 0, outcomeCount, "purged correction command outcome count")
 	}}
 }
 
@@ -1219,63 +1061,44 @@ func TestExamRevisionPublishedBytesSurviveDraftReplacementAndCleanup(t *testing.
 	resetTestStore(t, persistence)
 	filesystem := memoryvfs.New()
 	content, err := filecontent.New(filesystem, filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	resourceBytes := []byte("old resource bytes")
 	workspaceBytes := []byte("old workspace")
 	storetest.TestExamRevisionStoreWithRetention(t, persistence, storetest.ExamRevisionRetentionProbe{StageOriginal: func(t *testing.T, ctx context.Context, _ store.Store, fixture storetest.ExamRevisionRetentionFixture) {
 		resourceSize := int64(len(resourceBytes))
 		resourceKey := examRevisionResourceObjectKey(fixture.OldResourceRevisionID, fixture.OldResourceRenditionID)
-		if _, writeErr := filesystem.Write(ctx, resourceKey, bytes.NewReader(resourceBytes), vfspkg.WriteOptions{Size: &resourceSize, NoOverwrite: true}); writeErr != nil {
-			t.Fatal(writeErr)
-		}
-		if _, stageErr := content.StageStarterWorkspaceObject(ctx, fixture.OldWorkspaceObjectID, bytes.NewReader(workspaceBytes), int64(len(workspaceBytes)), "text/plain"); stageErr != nil {
-			t.Fatal(stageErr)
-		}
+		_, writeErr := filesystem.Write(ctx, resourceKey, bytes.NewReader(resourceBytes), vfspkg.WriteOptions{Size: &resourceSize, NoOverwrite: true})
+		require.NoError(t, writeErr)
+		_, stageErr := content.StageStarterWorkspaceObject(ctx, fixture.OldWorkspaceObjectID, bytes.NewReader(workspaceBytes), int64(len(workspaceBytes)), "text/plain")
+		require.NoError(t, stageErr)
 	}, Verify: func(t *testing.T, ctx context.Context, ss store.Store, fixture storetest.ExamRevisionRetentionFixture) {
 		neighborAt := model.NowUTC().Add(-48 * time.Hour)
 		neighbor, newErr := model.NewStagedStarterWorkspaceObject(model.NewStarterWorkspaceObjectID(), fixture.ExamID, fixture.ActorUserID, neighborAt, neighborAt.Add(model.StarterWorkspaceUploadLease))
-		if newErr != nil {
-			t.Fatal(newErr)
-		}
-		if _, reserveErr := ss.ExamStarterWorkspace().ReserveObject(ctx, &store.ExamStarterWorkspaceReservation{Object: neighbor}); reserveErr != nil {
-			t.Fatal(reserveErr)
-		}
+		require.NoError(t, newErr)
+		_, reserveErr := ss.ExamStarterWorkspace().ReserveObject(ctx, &store.ExamStarterWorkspaceReservation{Object: neighbor})
+		require.NoError(t, reserveErr)
 		neighborBytes := []byte("unpinned")
-		if _, stageErr := content.StageStarterWorkspaceObject(ctx, neighbor.ID, bytes.NewReader(neighborBytes), int64(len(neighborBytes)), "text/plain"); stageErr != nil {
-			t.Fatal(stageErr)
-		}
-		if _, advanceErr := persistence.GetMaster().Exec(ctx, `UPDATE exam_starter_workspace_objects SET reclaim_after=created_at WHERE id=?`, fixture.OldWorkspaceObjectID.String()); advanceErr != nil {
-			t.Fatal(advanceErr)
-		}
+		_, stageErr := content.StageStarterWorkspaceObject(ctx, neighbor.ID, bytes.NewReader(neighborBytes), int64(len(neighborBytes)), "text/plain")
+		require.NoError(t, stageErr)
+		_, advanceErr := persistence.GetMaster().Exec(ctx, `UPDATE exam_starter_workspace_objects SET reclaim_after=created_at WHERE id=?`, fixture.OldWorkspaceObjectID.String())
+		require.NoError(t, advanceErr)
 
 		claimed, claimErr := ss.ExamStarterWorkspace().ClaimObjectsForCleanup(ctx, 100, "revision-vfs-retention")
-		if claimErr != nil {
-			t.Fatal(claimErr)
-		}
+		require.NoError(t, claimErr)
 		foundNeighbor := false
 		for _, object := range claimed {
-			if object.ID == fixture.OldWorkspaceObjectID {
-				t.Fatalf("cleanup claimed published object %s", object.ID)
-			}
+			require.NotEqual(t, fixture.OldWorkspaceObjectID, object.ID)
 			if object.ID != neighbor.ID {
 				continue
 			}
 			foundNeighbor = true
-			if removeErr := content.RemoveStarterWorkspaceObject(ctx, object.ID); removeErr != nil {
-				t.Fatal(removeErr)
-			}
-			if completeErr := ss.ExamStarterWorkspace().CompleteObjectCleanup(ctx, object.ID, "revision-vfs-retention"); completeErr != nil {
-				t.Fatal(completeErr)
-			}
+			require.NoError(t, content.RemoveStarterWorkspaceObject(ctx, object.ID))
+			require.NoError(t, ss.ExamStarterWorkspace().CompleteObjectCleanup(ctx, object.ID, "revision-vfs-retention"))
 		}
-		if !foundNeighbor {
-			t.Fatal("cleanup did not claim unpinned neighbor")
-		}
+		require.True(t, foundNeighbor, "cleanup did not claim unpinned neighbor")
 		if opened, openErr := content.OpenStarterWorkspaceObject(ctx, neighbor.ID); openErr == nil {
 			_ = opened.Close()
-			t.Fatal("cleaned neighbor bytes remain")
+			require.FailNow(t, "cleaned neighbor bytes remain")
 		}
 		assertOpenedBytes(t, func() (io.ReadCloser, error) {
 			return content.OpenExamResource(ctx, fixture.OldResourceRevisionID, fixture.OldResourceRenditionID)
@@ -1292,9 +1115,8 @@ func assertExamRevisionDatabaseImmutability(t *testing.T, ctx context.Context, p
 	resourceID, entryID, revisionID, renditionID := createExamRevisionConstraintResource(t, ctx, persistence, fixture.ExamID)
 	workspaceEntryID := model.NewStarterWorkspaceEntryID()
 	at := model.NowUTC()
-	if _, err := persistence.GetMaster().Exec(ctx, `INSERT INTO exam_starter_workspace_entries (id,exam_id,kind,path,current_object_id,created_at,updated_at,archived_at) VALUES (?,?, 'directory','appendable',NULL,?,?,NULL)`, workspaceEntryID.String(), fixture.ExamID.String(), at, at); err != nil {
-		t.Fatal(err)
-	}
+	_, err := persistence.GetMaster().Exec(ctx, `INSERT INTO exam_starter_workspace_entries (id,exam_id,kind,path,current_object_id,created_at,updated_at,archived_at) VALUES (?,?, 'directory','appendable',NULL,?,?,NULL)`, workspaceEntryID.String(), fixture.ExamID.String(), at, at)
+	require.NoError(t, err)
 	queries := []struct {
 		name  string
 		query string
@@ -1316,9 +1138,8 @@ func assertExamRevisionDatabaseImmutability(t *testing.T, ctx context.Context, p
 		_, err := persistence.GetMaster().Exec(ctx, test.query, test.args...)
 		assertPostgresCode(t, test.name, err, "55000")
 	}
-	if _, err := persistence.ExamRevision().GetSnapshot(ctx, fixture.ExamID, fixture.RevisionID); err != nil {
-		t.Fatalf("read immutable Revision after rejected mutations: %v", err)
-	}
+	_, err = persistence.ExamRevision().GetSnapshot(ctx, fixture.ExamID, fixture.RevisionID)
+	require.NoError(t, err)
 	assertExamRevisionSealCompleteness(t, ctx, persistence, fixture)
 	assertExamRevisionResourceOwnershipConstraint(t, ctx, persistence, fixture, resourceID)
 }
@@ -1327,21 +1148,16 @@ func createExamRevisionConstraintResource(t *testing.T, ctx context.Context, per
 	t.Helper()
 	entryID, revisionID, renditionID, resourceID := model.NewFileEntryID(), model.NewFileRevisionID(), model.NewFileRenditionID(), model.NewExamResourceID()
 	at := model.NowUTC()
-	if _, err := persistence.GetMaster().Exec(ctx, `INSERT INTO file_entries (id,created_at,updated_at,revision,indexing_policy,purpose,purge_claimed) VALUES (?,?,?,1,'none','exam_resource',FALSE)`, entryID.String(), at, at); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := persistence.GetMaster().Exec(ctx, `INSERT INTO file_revisions (id,file_entry_id,created_at,availability,indexing_state) VALUES (?,?,?,'available','not_required')`, revisionID.String(), entryID.String(), at); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := persistence.GetMaster().Exec(ctx, `INSERT INTO file_renditions (id,file_revision_id,created_at,name,media_type,size_bytes,width,height,sha256) VALUES (?,?,?,'original','text/plain',1,0,0,?)`, renditionID.String(), revisionID.String(), at, strings.Repeat("b", 64)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := persistence.GetMaster().Exec(ctx, `INSERT INTO exam_resource_identities (id,exam_id,file_entry_id) VALUES (?,?,?)`, resourceID.String(), examID.String(), entryID.String()); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := persistence.GetMaster().Exec(ctx, `INSERT INTO exam_resources (id,exam_id,file_entry_id,selected_file_revision_id,display_name,description_markdown,position,created_at,updated_at) VALUES (?,?,?,?,'Other','',1,?,?)`, resourceID.String(), examID.String(), entryID.String(), revisionID.String(), at, at); err != nil {
-		t.Fatal(err)
-	}
+	_, err := persistence.GetMaster().Exec(ctx, `INSERT INTO file_entries (id,created_at,updated_at,revision,indexing_policy,purpose,purge_claimed) VALUES (?,?,?,1,'none','exam_resource',FALSE)`, entryID.String(), at, at)
+	require.NoError(t, err)
+	_, err = persistence.GetMaster().Exec(ctx, `INSERT INTO file_revisions (id,file_entry_id,created_at,availability,indexing_state) VALUES (?,?,?,'available','not_required')`, revisionID.String(), entryID.String(), at)
+	require.NoError(t, err)
+	_, err = persistence.GetMaster().Exec(ctx, `INSERT INTO file_renditions (id,file_revision_id,created_at,name,media_type,size_bytes,width,height,sha256) VALUES (?,?,?,'original','text/plain',1,0,0,?)`, renditionID.String(), revisionID.String(), at, strings.Repeat("b", 64))
+	require.NoError(t, err)
+	_, err = persistence.GetMaster().Exec(ctx, `INSERT INTO exam_resource_identities (id,exam_id,file_entry_id) VALUES (?,?,?)`, resourceID.String(), examID.String(), entryID.String())
+	require.NoError(t, err)
+	_, err = persistence.GetMaster().Exec(ctx, `INSERT INTO exam_resources (id,exam_id,file_entry_id,selected_file_revision_id,display_name,description_markdown,position,created_at,updated_at) VALUES (?,?,?,?,'Other','',1,?,?)`, resourceID.String(), examID.String(), entryID.String(), revisionID.String(), at, at)
+	require.NoError(t, err)
 	return resourceID, entryID, revisionID, renditionID
 }
 
@@ -1357,50 +1173,41 @@ func assertExamRevisionSealCompleteness(t *testing.T, ctx context.Context, persi
 		{name: "incomplete sealed snapshot", number: 3000, sealed: true, count: 1},
 	} {
 		tx, err := persistence.GetMaster().DB().BeginTxx(ctx, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		revisionID := model.NewExamRevisionID()
 		_, err = tx.ExecContext(ctx, `INSERT INTO exam_revisions (id,exam_id,number,snapshot_schema_version,source_draft_revision,title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,browser_policy_document,browser_policy_canonical,browser_policy_digest,starter_workspace_digest,content_digest,resource_count,starter_entry_count,starter_total_bytes,published_by_user_id,published_at,base_revision_id,publication_kind,sealed)
 			SELECT $1,exam_id,number+$2,snapshot_schema_version,source_draft_revision,title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,browser_policy_document,browser_policy_canonical,browser_policy_digest,starter_workspace_digest,content_digest,$3,0,0,published_by_user_id,published_at,NULL,publication_kind,$4 FROM exam_revisions WHERE id=$5`, revisionID.String(), test.number, test.count, test.sealed, fixture.RevisionID.String())
 		if err != nil {
 			_ = tx.Rollback()
-			t.Fatal(err)
+			require.NoError(t, err)
 		}
 		err = tx.Commit()
 		assertPostgresCode(t, test.name, err, "23514")
 		var exists bool
-		if queryErr := persistence.GetMaster().Get(ctx, &exists, `SELECT EXISTS (SELECT 1 FROM exam_revisions WHERE id=?)`, revisionID.String()); queryErr != nil || exists {
-			t.Fatalf("%s persisted after rejected commit: exists=%v err=%v", test.name, exists, queryErr)
-		}
+		require.NoError(t, persistence.GetMaster().Get(ctx, &exists, `SELECT EXISTS (SELECT 1 FROM exam_revisions WHERE id=?)`, revisionID.String()), "%s persisted after rejected commit: exists=%v err", test.name, exists)
+		require.False(t, exists, "%s persisted after rejected commit: exists=%v err", test.name, exists)
 	}
 }
 
 func assertExamRevisionResourceOwnershipConstraint(t *testing.T, ctx context.Context, persistence *SQLStore, fixture storetest.ExamRevisionRetentionFixture, resourceID model.ExamResourceID) {
 	t.Helper()
 	tx, err := persistence.GetMaster().DB().BeginTxx(ctx, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer func() { _ = tx.Rollback() }()
 	unsealedRevisionID := model.NewExamRevisionID()
-	if _, err = tx.ExecContext(ctx, `INSERT INTO exam_revisions (id,exam_id,number,snapshot_schema_version,source_draft_revision,title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,browser_policy_document,browser_policy_canonical,browser_policy_digest,starter_workspace_digest,content_digest,resource_count,starter_entry_count,starter_total_bytes,published_by_user_id,published_at,base_revision_id,publication_kind,sealed)
-		SELECT $1,exam_id,number+1000,snapshot_schema_version,source_draft_revision,title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,browser_policy_document,browser_policy_canonical,browser_policy_digest,starter_workspace_digest,content_digest,resource_count,starter_entry_count,starter_total_bytes,published_by_user_id,published_at,NULL,publication_kind,FALSE FROM exam_revisions WHERE id=$2`, unsealedRevisionID.String(), fixture.RevisionID.String()); err != nil {
-		t.Fatal(err)
-	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO exam_revisions (id,exam_id,number,snapshot_schema_version,source_draft_revision,title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,browser_policy_document,browser_policy_canonical,browser_policy_digest,starter_workspace_digest,content_digest,resource_count,starter_entry_count,starter_total_bytes,published_by_user_id,published_at,base_revision_id,publication_kind,sealed)
+		SELECT $1,exam_id,number+1000,snapshot_schema_version,source_draft_revision,title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,browser_policy_document,browser_policy_canonical,browser_policy_digest,starter_workspace_digest,content_digest,resource_count,starter_entry_count,starter_total_bytes,published_by_user_id,published_at,NULL,publication_kind,FALSE FROM exam_revisions WHERE id=$2`, unsealedRevisionID.String(), fixture.RevisionID.String())
+	require.NoError(t, err)
 	_, err = tx.ExecContext(ctx, `INSERT INTO exam_revision_resources (exam_revision_id,exam_id,resource_id,file_entry_id,file_revision_id,rendition_id,display_name,description_markdown,position,media_type,size_bytes,sha256) VALUES ($1,$2,$3,$4,$5,$6,'Mismatched','',0,'text/plain',1,$7)`,
 		unsealedRevisionID.String(), fixture.ExamID.String(), resourceID.String(), fixture.OldResourceEntryID.String(), fixture.OldResourceRevisionID.String(), fixture.OldResourceRenditionID.String(), strings.Repeat("a", 64))
-	if err == nil {
-		t.Fatal("Exam Revision resource accepted a File Entry owned by another Exam Resource")
-	}
+	require.Error(t, err, "Exam Revision resource accepted a File Entry owned by another Exam Resource")
 }
 
 func assertPostgresCode(t *testing.T, name string, err error, want string) {
 	t.Helper()
 	var postgresErr *pq.Error
-	if !errors.As(err, &postgresErr) || string(postgresErr.Code) != want {
-		t.Fatalf("%s error=%v, want PostgreSQL code %s", name, err, want)
-	}
+	require.ErrorAs(t, err, &postgresErr, "%s error", name)
+	require.Equal(t, want, string(postgresErr.Code), "%s error", name)
 }
 
 func examRevisionResourceObjectKey(revisionID model.FileRevisionID, renditionID model.FileRenditionID) string {
@@ -1411,17 +1218,11 @@ func examRevisionResourceObjectKey(revisionID model.FileRevisionID, renditionID 
 func assertOpenedBytes(t *testing.T, open func() (io.ReadCloser, error), want []byte) {
 	t.Helper()
 	reader, err := open()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer reader.Close()
 	got, err := io.ReadAll(reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(got, want) {
-		t.Fatalf("opened bytes=%q want=%q", got, want)
-	}
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(got, want), "opened bytes=%q want=%q", got, want)
 }
 
 func TestExamResourceStore(t *testing.T) {
@@ -1440,9 +1241,7 @@ func starterWorkspaceSQLProbe(persistence *SQLStore) storetest.StarterWorkspaceS
 		_, err := persistence.GetMaster().Exec(ctx, `UPDATE exam_starter_workspace_objects
 			SET updated_at=GREATEST(updated_at,statement_timestamp()),reclaim_after=statement_timestamp()-INTERVAL '1 microsecond'
 			WHERE id=? AND state='reclaimable'`, id.String())
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 	}}
 }
 
@@ -1459,19 +1258,16 @@ func TestUserStore(t *testing.T) {
 func userRegistrationSQLProbe(persistence *SQLStore) storetest.UserStoreSQLProbe {
 	return storetest.UserStoreSQLProbe{SetPublicRegistration: func(t *testing.T, enabled, localLogin bool) {
 		t.Helper()
-		if _, err := persistence.GetMaster().Exec(context.Background(), `
+		_, err := persistence.GetMaster().Exec(context.Background(), `
 			UPDATE access_policies
 			   SET local_login_enabled=?, public_registration_enabled=?, invitation_local_credential_enabled=?, revision=revision+1,
 			       updated_at=clock_timestamp()
-			 WHERE singleton=1`, localLogin, enabled, localLogin); err != nil {
-			t.Fatal(err)
-		}
+			 WHERE singleton=1`, localLogin, enabled, localLogin)
+		require.NoError(t, err)
 	}, DatabaseNow: func(t *testing.T) time.Time {
 		t.Helper()
 		var now time.Time
-		if err := persistence.GetMaster().Get(context.Background(), &now, `SELECT clock_timestamp()`); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, persistence.GetMaster().Get(context.Background(), &now, `SELECT clock_timestamp()`))
 		return now.UTC().Truncate(time.Millisecond)
 	}}
 }
@@ -1489,37 +1285,31 @@ func TestUserSettingsRequiredRowAndCascade(t *testing.T) {
 		Username: "settings-missing-row",
 		Email:    "settings-missing-row@example.test",
 	})
-	if _, err := persistence.GetMaster().Exec(
+	_, err := persistence.GetMaster().Exec(
 		ctx,
 		"DELETE FROM user_settings_documents WHERE user_id = $1",
 		missing.ID.String(),
-	); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := persistence.UserSettings().Get(ctx, missing.ID); err == nil || store.IsNotFound(err) ||
-		strings.Contains(err.Error(), missing.ID.String()) {
-		t.Fatalf("missing required settings row error = %v", err)
-	}
+	)
+	require.NoError(t, err)
+	_, err = persistence.UserSettings().Get(ctx, missing.ID)
+	require.Error(t, err)
+	require.False(t, store.IsNotFound(err))
+	require.NotContains(t, err.Error(), missing.ID.String())
 
 	cascaded := saveIntegrationUser(t, ctx, persistence, &model.User{
 		Username: "settings-cascade",
 		Email:    "settings-cascade@example.test",
 	})
-	if _, err := persistence.GetMaster().Exec(ctx, "DELETE FROM users WHERE id = $1", cascaded.ID.String()); err != nil {
-		t.Fatal(err)
-	}
+	_, err = persistence.GetMaster().Exec(ctx, "DELETE FROM users WHERE id = $1", cascaded.ID.String())
+	require.NoError(t, err)
 	var count int
-	if err := persistence.GetMaster().Get(
+	require.NoError(t, persistence.GetMaster().Get(
 		ctx,
 		&count,
 		"SELECT count(*) FROM user_settings_documents WHERE user_id = $1",
 		cascaded.ID.String(),
-	); err != nil {
-		t.Fatal(err)
-	}
-	if count != 0 {
-		t.Fatalf("hard-deleted User retained %d settings rows", count)
-	}
+	))
+	require.Equal(t, 0, count, "hard-deleted User retained")
 }
 
 func TestFileStore(t *testing.T) {
@@ -1549,11 +1339,10 @@ func TestExternalIdentityAdmissionModes(t *testing.T) {
 			storetest.TestExternalIdentityAdmissionMode(t, persistence, mode, storetest.ExternalIdentityAdmissionSQLProbe{
 				BackdateState: func(t *testing.T, id model.ExternalLoginStateID, expiresAt time.Time) {
 					t.Helper()
-					if _, err := persistence.GetMaster().Exec(context.Background(), `UPDATE external_login_states
+					_, err := persistence.GetMaster().Exec(context.Background(), `UPDATE external_login_states
 						SET created_at=?,updated_at=?,consumed_at=?,expires_at=? WHERE id=?`, expiresAt.Add(-2*time.Minute),
-						expiresAt.Add(-time.Minute), expiresAt.Add(-time.Minute), expiresAt, id.String()); err != nil {
-						t.Fatal(err)
-					}
+						expiresAt.Add(-time.Minute), expiresAt.Add(-time.Minute), expiresAt, id.String())
+					require.NoError(t, err)
 				},
 			})
 		})
@@ -1569,9 +1358,8 @@ func TestExternalLoginStateStore(t *testing.T) {
 func externalLoginStateSQLProbe(sqlStore *SQLStore) storetest.ExternalLoginStateSQLProbe {
 	return storetest.ExternalLoginStateSQLProbe{Backdate: func(t *testing.T, id model.ExternalLoginStateID, createdAt, expiresAt time.Time) {
 		t.Helper()
-		if _, err := sqlStore.GetMaster().Exec(context.Background(), `UPDATE external_login_states SET created_at=?, updated_at=?, expires_at=? WHERE id=?`, createdAt, createdAt, expiresAt, id.String()); err != nil {
-			t.Fatal(err)
-		}
+		_, err := sqlStore.GetMaster().Exec(context.Background(), `UPDATE external_login_states SET created_at=?, updated_at=?, expires_at=? WHERE id=?`, createdAt, createdAt, expiresAt, id.String())
+		require.NoError(t, err)
 	}}
 }
 
@@ -1597,28 +1385,23 @@ func TestInvitationStore(t *testing.T) {
 		InvitationID string `db:"invitation_id"`
 		DeliveryID   string `db:"delivery_id"`
 	}
-	if err := sqlStore.GetMaster().Get(ctx, &target, `SELECT i.id invitation_id,d.id delivery_id FROM invitations i JOIN mail_deliveries d ON d.target_invitation_id=i.id
+	require.NoError(t, sqlStore.GetMaster().Get(ctx, &target, `SELECT i.id invitation_id,d.id delivery_id FROM invitations i JOIN mail_deliveries d ON d.target_invitation_id=i.id
 		WHERE i.state='accepted' AND d.state IN ('accepted','suppressed','canceled')
 		  AND NOT EXISTS (SELECT 1 FROM browser_authentication_transactions bat WHERE bat.invitation_id=i.id)
-		ORDER BY i.id LIMIT 1`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := sqlStore.GetMaster().Exec(ctx, `UPDATE invitations SET created_at=created_at-interval '100 days',
+		ORDER BY i.id LIMIT 1`))
+	_, err := sqlStore.GetMaster().Exec(ctx, `UPDATE invitations SET created_at=created_at-interval '100 days',
 		updated_at=updated_at-interval '100 days',expires_at=expires_at-interval '100 days',accepted_at=accepted_at-interval '100 days'
-		WHERE id=?`, target.InvitationID); err != nil {
-		t.Fatal(err)
-	}
+		WHERE id=?`, target.InvitationID)
+	require.NoError(t, err)
 	maintained, err := sqlStore.Invitation().Maintain(ctx, 500)
-	if err != nil || maintained.Purged != 1 {
-		t.Fatalf("Maintain() = %#v, %v", maintained, err)
-	}
-	if _, err = sqlStore.Invitation().Get(ctx, model.InvitationID(target.InvitationID)); !store.IsNotFound(err) {
-		t.Fatalf("purged Invitation error = %v", err)
-	}
+	require.NoError(t, err, "Maintain() = %#v", maintained)
+	require.Equal(t, 1, maintained.Purged, "Maintain() = %#v", maintained)
+	_, err = sqlStore.Invitation().Get(ctx, model.InvitationID(target.InvitationID))
+	require.True(t, store.IsNotFound(err), "purged Invitation error")
 	delivery, err := sqlStore.Mail().GetDelivery(ctx, model.MailDeliveryID(target.DeliveryID))
-	if err != nil || delivery.TargetInvitationID != model.InvitationID(target.InvitationID) || delivery.TargetUserID.IsValid() {
-		t.Fatalf("preserved historical delivery = %#v, %v", delivery, err)
-	}
+	require.NoError(t, err, "preserved historical delivery = %#v", delivery)
+	require.Equal(t, model.InvitationID(target.InvitationID), delivery.TargetInvitationID, "preserved historical delivery = %#v", delivery)
+	require.False(t, delivery.TargetUserID.IsValid(), "preserved historical delivery = %#v", delivery)
 }
 
 func TestPersonalAccessTokenStore(t *testing.T) {
@@ -1684,12 +1467,8 @@ func TestAuditStoreAcceptsGranularAcademicResources(t *testing.T) {
 				Status: model.AuditStatusSuccess, NodeID: "node-test",
 			}
 			saved, err := persistence.Audit().Save(context.Background(), event)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if saved.Resource != test.resource {
-				t.Fatalf("saved resource = %#v, want %#v", saved.Resource, test.resource)
-			}
+			require.NoError(t, err)
+			require.Equal(t, test.resource, saved.Resource, "saved resource")
 		})
 	}
 }
@@ -1748,22 +1527,17 @@ func TestSecurityPreflightStore(t *testing.T) {
 	ctx := context.Background()
 	storetest.TestSecurityPreflightStore(t, persistence, storetest.SecurityPreflightProbe{
 		Expire: func(id string) {
-			if _, err := persistence.GetMaster().Exec(ctx, `UPDATE exam_security_preflights SET issued_at=issued_at-interval '3 minutes',expires_at=expires_at-interval '3 minutes' WHERE preflight_id=?`, id); err != nil {
-				t.Fatal(err)
-			}
+			_, err := persistence.GetMaster().Exec(ctx, `UPDATE exam_security_preflights SET issued_at=issued_at-interval '3 minutes',expires_at=expires_at-interval '3 minutes' WHERE preflight_id=?`, id)
+			require.NoError(t, err)
 		},
 		HasReport: func(id string) bool {
 			var present bool
-			if err := persistence.GetMaster().Get(ctx, &present, `SELECT report_canonical IS NOT NULL FROM exam_security_preflights WHERE preflight_id=?`, id); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, persistence.GetMaster().Get(ctx, &present, `SELECT report_canonical IS NOT NULL FROM exam_security_preflights WHERE preflight_id=?`, id))
 			return present
 		},
 		Exists: func(id string) bool {
 			var present bool
-			if err := persistence.GetMaster().Get(ctx, &present, `SELECT EXISTS(SELECT 1 FROM exam_security_preflights WHERE preflight_id=?)`, id); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, persistence.GetMaster().Get(ctx, &present, `SELECT EXISTS(SELECT 1 FROM exam_security_preflights WHERE preflight_id=?)`, id))
 			return present
 		},
 	})
@@ -1773,20 +1547,15 @@ func TestSecureConnectStore(t *testing.T) {
 	sqlStore := openTestStore(t)
 	mustExec := func(query string, args ...any) {
 		t.Helper()
-		if _, err := sqlStore.GetMaster().Exec(context.Background(), query, args...); err != nil {
-			t.Fatal(err)
-		}
+		_, err := sqlStore.GetMaster().Exec(context.Background(), query, args...)
+		require.NoError(t, err)
 	}
 	storetest.TestSecureConnectStore(t, sqlStore, storetest.SecureConnectProbe{
 		CorruptPrepared: func(id, field string) func() {
 			var original []byte
-			if err := sqlStore.GetMaster().Get(context.Background(), &original, `SELECT prepared_canonical FROM exam_security_preflights WHERE preflight_id=?`, id); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, sqlStore.GetMaster().Get(context.Background(), &original, `SELECT prepared_canonical FROM exam_security_preflights WHERE preflight_id=?`, id))
 			var prepared store.SecurityPreflightPrepared
-			if err := json.Unmarshal(original, &prepared); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, json.Unmarshal(original, &prepared))
 			switch field {
 			case "challenge":
 				prepared.Challenge.Challenge = "invalid"
@@ -1797,12 +1566,10 @@ func TestSecureConnectStore(t *testing.T) {
 			case "requirements":
 				prepared.Resolved.Requirements[0].RequiredClaim = "unknown"
 			default:
-				t.Fatal("unknown prepared field")
+				require.FailNow(t, "unknown prepared field")
 			}
 			raw, err := json.Marshal(prepared)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			mustExec(`UPDATE exam_security_preflights SET prepared_canonical=? WHERE preflight_id=?`, raw, id)
 			return func() {
 				mustExec(`UPDATE exam_security_preflights SET prepared_canonical=? WHERE preflight_id=?`, original, id)
@@ -1810,9 +1577,7 @@ func TestSecureConnectStore(t *testing.T) {
 		},
 		CorruptReport: func(id string) func() {
 			var original []byte
-			if err := sqlStore.GetMaster().Get(context.Background(), &original, `SELECT report_canonical FROM exam_security_preflights WHERE preflight_id=?`, id); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, sqlStore.GetMaster().Get(context.Background(), &original, `SELECT report_canonical FROM exam_security_preflights WHERE preflight_id=?`, id))
 			mustExec(`UPDATE exam_security_preflights SET report_canonical=? WHERE preflight_id=?`, []byte(`{}`), id)
 			return func() {
 				mustExec(`UPDATE exam_security_preflights SET report_canonical=? WHERE preflight_id=?`, original, id)
@@ -1820,9 +1585,7 @@ func TestSecureConnectStore(t *testing.T) {
 		},
 		AgeReport: func(id string) func() {
 			var original time.Time
-			if err := sqlStore.GetMaster().Get(context.Background(), &original, `SELECT reported_at FROM exam_security_preflights WHERE preflight_id=?`, id); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, sqlStore.GetMaster().Get(context.Background(), &original, `SELECT reported_at FROM exam_security_preflights WHERE preflight_id=?`, id))
 			mustExec(`UPDATE exam_security_preflights SET reported_at=reported_at-interval '31 seconds' WHERE preflight_id=?`, id)
 			return func() {
 				mustExec(`UPDATE exam_security_preflights SET reported_at=? WHERE preflight_id=?`, original, id)
@@ -1839,19 +1602,13 @@ func TestSecureConnectStore(t *testing.T) {
 		},
 		Totals: func(id model.ExamAttemptID) (int64, int64) {
 			var used, owners int64
-			if err := sqlStore.GetMaster().Get(context.Background(), &used, `SELECT control_metadata_bytes FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=?`, id.String()); err != nil {
-				t.Fatal(err)
-			}
-			if err := sqlStore.GetMaster().Get(context.Background(), &owners, `SELECT COUNT(*) FROM exam_attempt_security_owners WHERE exam_attempt_id=?`, id.String()); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, sqlStore.GetMaster().Get(context.Background(), &used, `SELECT control_metadata_bytes FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=?`, id.String()))
+			require.NoError(t, sqlStore.GetMaster().Get(context.Background(), &owners, `SELECT COUNT(*) FROM exam_attempt_security_owners WHERE exam_attempt_id=?`, id.String()))
 			return used, owners
 		},
 		Consumed: func(id string) bool {
 			var consumed bool
-			if err := sqlStore.GetMaster().Get(context.Background(), &consumed, `SELECT consumed_at IS NOT NULL FROM exam_security_preflights WHERE preflight_id=?`, id); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, sqlStore.GetMaster().Get(context.Background(), &consumed, `SELECT consumed_at IS NOT NULL FROM exam_security_preflights WHERE preflight_id=?`, id))
 			return consumed
 		},
 	})
@@ -1871,12 +1628,14 @@ func TestNativeDeliveryAppendStore(t *testing.T) {
 			Metadata    int64 `db:"metadata"`
 		}
 		err := s.GetMaster().Get(context.Background(), &row, `SELECT o.retained_records AS records,(SELECT count(*) FROM exam_native_occurrences WHERE participation_id=o.participation_id) AS occurrences,(SELECT count(*) FROM exam_native_occurrences WHERE participation_id=o.participation_id AND unresolved_opener) AS unresolved,b.native_pending_bytes AS pending,(SELECT count(*) FROM integrity_flags WHERE exam_attempt_id=o.exam_attempt_id) AS flags,o.retained_bytes AS bytes,(SELECT sum(counted_bytes) FROM exam_native_delivery_batches WHERE participation_id=o.participation_id) AS counted,b.control_metadata_bytes AS metadata FROM exam_attempt_security_owners o JOIN exam_attempt_delivery_budgets b USING(exam_attempt_id) WHERE o.participation_id=?`, part.String())
-		if err != nil {
-			t.Fatal(err)
-		}
-		if row.Records != records || row.Occurrences != occurrences || row.Unresolved != 1 || row.Pending != 0 || row.Flags != 0 || row.Bytes != row.Counted || row.Metadata <= model.NativeOwnerReservationBytes {
-			t.Fatalf("invalid retained accounting/provenance: %#v", row)
-		}
+		require.NoError(t, err)
+		require.Equal(t, records, row.Records)
+		require.Equal(t, occurrences, row.Occurrences)
+		require.Equal(t, int64(1), row.Unresolved)
+		require.Equal(t, int64(0), row.Pending)
+		require.Equal(t, int64(0), row.Flags)
+		require.Equal(t, row.Counted, row.Bytes)
+		require.Greater(t, row.Metadata, model.NativeOwnerReservationBytes)
 	})
 }
 

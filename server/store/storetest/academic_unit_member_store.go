@@ -9,9 +9,10 @@ package storetest
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -29,38 +30,31 @@ func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 	saved, err := ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
 		AcademicUnitID: unit.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	active, err := ss.AcademicUnitMember().ListByAcademicUnit(ctx, unit.ID, start+1)
-	requireNoError(t, err)
-	if len(active) != 1 || active[0].ID != saved.ID {
-		t.Fatalf("ListByAcademicUnit() = %#v", active)
-	}
+	require.NoError(t, err)
+	require.Len(t, active, 1)
+	require.Equal(t, saved.ID, active[0].ID)
 	byUser, err := ss.AcademicUnitMember().ListActiveByUser(ctx, user.ID, model.TimeFromMillis(start+1))
-	requireNoError(t, err)
-	if len(byUser) != 1 || byUser[0].AcademicUnitID != unit.ID {
-		t.Fatalf("ListActiveByUser() = %#v", byUser)
-	}
+	require.NoError(t, err)
+	require.Len(t, byUser, 1)
+	require.Equal(t, unit.ID, byUser[0].AcademicUnitID)
 	_, err = ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
 		AcademicUnitID: unit.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 2),
 	})
 	var conflict *store.ErrConflict
-	if !errors.As(err, &conflict) {
-		t.Fatalf("duplicate active membership error = %v", err)
-	}
+	require.ErrorAs(t, err, &conflict)
 	ended, err := EndAcademicUnitMember(ctx, ss, saved.ID, saved.Revision, start+10)
-	requireNoError(t, err)
-	if ended.EndsAt.Millis() != start+10 {
-		t.Fatalf("End() = %#v", ended)
-	}
+	require.NoError(t, err)
+	require.Equal(t, start+10, ended.EndsAt.Millis())
 	history, err := ss.AcademicUnitMember().ListByUser(ctx, user.ID)
-	requireNoError(t, err)
-	if len(history) != 1 || !history[0].EndsAt.Valid {
-		t.Fatalf("ListByUser() = %#v", history)
-	}
+	require.NoError(t, err)
+	require.Len(t, history, 1)
+	require.True(t, history[0].EndsAt.Valid)
 	_, err = ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
 		AcademicUnitID: unit.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 10),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	auditedUser := saveUser(t, ctx, ss)
 	createAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, unit.ID.String())
 	candidate := &model.AcademicUnitMember{AcademicUnitID: unit.ID, UserID: auditedUser.ID, StartsAt: model.TimeFromMillis(start)}
@@ -70,8 +64,8 @@ func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 	created, err := ss.AcademicUnitMember().Create(ctx, &store.AcademicUnitMemberCreation{Member: candidate,
 		ExpectedRecipientRevision: auditedUser.Revision, Notice: createNotice,
 		AuditEventID: createAttempt.ID, AuditAt: model.GetMillis()})
-	requireNoError(t, err)
-	requireNoError(t, requireClassMemberMail(t, ctx, ss, createNotice, model.MailTemplateAcademicUnitAssigned))
+	require.NoError(t, err)
+	require.NoError(t, requireClassMemberMail(t, ctx, ss, createNotice, model.MailTemplateAcademicUnitAssigned))
 	endAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, unit.ID.String())
 	endAt := model.TimeFromMillis(start + 20)
 	endNotice := classMemberPreparedMail(t, &model.ClassMember{UserID: auditedUser.ID},
@@ -79,14 +73,11 @@ func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 	endedAudited, err := ss.AcademicUnitMember().End(ctx, &store.AcademicUnitMemberEnd{ID: created.ID,
 		ExpectedRevision: created.Revision, ExpectedRecipientRevision: auditedUser.Revision, Notice: endNotice,
 		EndAt: start + 20, AuditEventID: endAttempt.ID, AuditAt: model.GetMillis()})
-	requireNoError(t, err)
-	requireNoError(t, requireClassMemberMail(t, ctx, ss, endNotice, model.MailTemplateAcademicUnitAssignmentEnded))
-	if endedAudited.Revision != created.Revision+1 {
-		t.Fatalf("End() = %#v", endedAudited)
-	}
-	if _, err := EndAcademicUnitMember(ctx, ss, created.ID, created.Revision, start+21); !store.IsConflict(err) {
-		t.Fatalf("stale End() error = %v", err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, requireClassMemberMail(t, ctx, ss, endNotice, model.MailTemplateAcademicUnitAssignmentEnded))
+	require.Equal(t, created.Revision+1, endedAudited.Revision)
+	_, err = EndAcademicUnitMember(ctx, ss, created.ID, created.Revision, start+21)
+	require.True(t, store.IsConflict(err), "stale End() error")
 }
 
 func testAcademicUnitMemberActiveIntervalPrecision(t *testing.T, ss store.Store) {
@@ -99,7 +90,7 @@ func testAcademicUnitMemberActiveIntervalPrecision(t *testing.T, ss store.Store)
 	member, err := ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
 		AcademicUnitID: unit.ID, UserID: user.ID, StartsAt: start, EndsAt: model.OptionalTimeFrom(end),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	for _, test := range []struct {
 		name   string
 		at     time.Time
@@ -114,13 +105,12 @@ func testAcademicUnitMemberActiveIntervalPrecision(t *testing.T, ss store.Store)
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			active, err := ss.AcademicUnitMember().ListActiveByUser(ctx, user.ID, test.at)
-			requireNoError(t, err)
+			require.NoError(t, err)
 			if test.active {
-				if len(active) != 1 || active[0].ID != member.ID {
-					t.Fatalf("active memberships at %v = %#v, want saved membership", test.at, active)
-				}
-			} else if len(active) != 0 {
-				t.Fatalf("active memberships at %v = %#v, want empty", test.at, active)
+				require.Len(t, active, 1, "active memberships at %v", test.at)
+				require.Equal(t, member.ID, active[0].ID, "active memberships at %v", test.at)
+			} else {
+				require.Empty(t, active, "active memberships at %v", test.at)
 			}
 		})
 	}
@@ -138,16 +128,13 @@ func testAcademicUnitMemberEndBeforeModification(t *testing.T, ss store.Store) {
 	saved, err := ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
 		AcademicUnitID: unit.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(now - 2_000_000),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	endAt := now - 1_000_000
 	ended, err := EndAcademicUnitMember(ctx, ss, saved.ID, saved.Revision, endAt)
-	requireNoError(t, err)
-	if ended.EndsAt.Millis() != endAt || !ended.UpdatedAt.Equal(saved.UpdatedAt) {
-		t.Fatalf("End(before creation) = %#v, created %#v", ended, saved)
-	}
+	require.NoError(t, err)
+	require.Equal(t, endAt, ended.EndsAt.Millis(), "End(before creation) = %#v, created %#v", ended, saved)
+	require.True(t, ended.UpdatedAt.Equal(saved.UpdatedAt), "End(before creation) = %#v, created %#v", ended, saved)
 	stored, err := ss.AcademicUnitMember().Get(ctx, saved.ID)
-	requireNoError(t, err)
-	if *stored != *ended {
-		t.Fatalf("Get() = %#v, want %#v", stored, ended)
-	}
+	require.NoError(t, err)
+	require.Equal(t, *ended, *stored, "Get() = %#v, want %#v", stored, ended)
 }

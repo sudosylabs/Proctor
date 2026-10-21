@@ -9,8 +9,9 @@ package sqlstore
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -40,16 +41,12 @@ func TestExamCatalogListUsesOneExamDrivenQuery(t *testing.T) {
 			ActorUserID: model.NewUserID(), OverrideInstitutionWide: true,
 		},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(items) != 0 || reader.calls != 1 {
-		t.Fatalf("items/query count = %d/%d, want 0/1", len(items), reader.calls)
-	}
-	if strings.Contains(reader.query, "visible_exams") || strings.Contains(reader.query, " UNION ") ||
-		!strings.Contains(reader.query, "FROM exams e JOIN exam_drafts") ||
-		!strings.Contains(reader.query, "d.title ILIKE ? ESCAPE '!'") ||
-		!strings.Contains(reader.query, "ORDER BY e.updated_at DESC, e.id DESC LIMIT") {
-		t.Fatalf("catalog query is not Exam-driven and bounded:\n%s", reader.query)
-	}
+	require.NoError(t, err)
+	require.Empty(t, items, "items/query count")
+	require.Equal(t, 1, reader.calls, "items/query count")
+	require.NotContains(t, reader.query, "visible_exams")
+	require.NotContains(t, reader.query, " UNION ")
+	require.Contains(t, reader.query, "FROM exams e JOIN exam_drafts")
+	require.Contains(t, reader.query, "d.title ILIKE ? ESCAPE '!'")
+	require.Contains(t, reader.query, "ORDER BY e.updated_at DESC, e.id DESC LIMIT")
 }

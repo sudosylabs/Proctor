@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -19,9 +21,7 @@ import (
 func TestExamSubmissionHeaderRetirementNullability(t *testing.T) {
 	t.Parallel()
 	manifest, err := model.NewExamSubmissionManifest(5, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	base := examSubmissionHeaderRow{BrowserState: "not_applicable", BrowserInventoryRevision: 1, ID: model.NewSubmissionID().String(), AttemptID: model.NewExamAttemptID().String(),
 		ExamRevisionID: model.NewExamRevisionID().String(), WorkspaceID: model.NewExamAttemptWorkspaceID().String(),
 		ManifestSchemaVersion: model.ExamSubmissionManifestSchemaVersion,
@@ -30,9 +30,10 @@ func TestExamSubmissionHeaderRetirementNullability(t *testing.T) {
 		IntegrityState: string(model.SubmissionIntegrityRetired), IntegrityRetiredAt: sql.NullTime{Time: time.Unix(200, 0), Valid: true},
 		Provenance: string(model.ExamSubmissionCandidateSubmitted), SubmittedAt: time.Unix(100, 0)}
 	value, err := base.model()
-	if err != nil || value.IntegrityState != model.SubmissionIntegrityRetired || value.WorkspaceCursor != 5 || value.ManifestDigest != manifest.SHA256 {
-		t.Fatalf("read retained work after integrity retirement: %#v %v", value, err)
-	}
+	require.NoError(t, err, "read retained work after integrity retirement: %#v", value)
+	require.Equal(t, model.SubmissionIntegrityRetired, value.IntegrityState, "read retained work after integrity retirement: %#v", value)
+	require.Equal(t, int64(5), value.WorkspaceCursor, "read retained work after integrity retirement: %#v", value)
+	require.Equal(t, manifest.SHA256, value.ManifestDigest, "read retained work after integrity retirement: %#v", value)
 	for name, corrupt := range map[string]func(*examSubmissionHeaderRow){
 		"retired focus zero still persisted":   func(row *examSubmissionHeaderRow) { row.FinalFocusLossSequence.Valid = true },
 		"retired count zero still persisted":   func(row *examSubmissionHeaderRow) { row.UnresolvedIntegrityCount.Valid = true },
@@ -44,9 +45,8 @@ func TestExamSubmissionHeaderRetirementNullability(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			row := base
 			corrupt(&row)
-			if _, err := row.model(); err == nil {
-				t.Fatal("malformed persisted redaction accepted")
-			}
+			_, modelErr := row.model()
+			require.Error(t, modelErr, "malformed persisted redaction accepted")
 		})
 	}
 	retiredWork := base
@@ -55,7 +55,6 @@ func TestExamSubmissionHeaderRetirementNullability(t *testing.T) {
 	retiredWork.ManifestDigest = sql.NullString{}
 	retiredWork.ManifestEntryCount = sql.NullInt64{}
 	retiredWork.ManifestTotalFileBytes = sql.NullInt64{}
-	if _, err := retiredWork.model(); !store.IsNotFound(err) {
-		t.Fatalf("work receipt became a readable zero-value header: %v", err)
-	}
+	_, err = retiredWork.model()
+	require.True(t, store.IsNotFound(err), "work receipt became a readable zero-value header")
 }

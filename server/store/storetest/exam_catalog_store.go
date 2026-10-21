@@ -10,9 +10,12 @@ package storetest
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -28,24 +31,25 @@ func testExamCatalogListAndArchive(t *testing.T, ss store.Store) {
 	membership, err := ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
 		AcademicUnitID: unit.ID, UserID: creator.ID, StartsAt: membershipBase.Add(-time.Minute),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	first := createCatalogExam(t, ctx, ss, unit.ID, creator.ID, firstAt, "catalog-first_100%")
 	second := createCatalogExam(t, ctx, ss, unit.ID, creator.ID, firstAt.Add(time.Minute), "catalog!second")
 
 	visibility := store.ExamListVisibility{ActorUserID: creator.ID, OrdinaryMembershipAt: membershipBase.Add(10 * time.Minute), OrdinaryInstitutionWide: true}
 	page, err := ss.ExamAuthoring().List(ctx, store.ExamListOptions{ArchiveFilter: store.ExamArchiveActive, Limit: 1, Visibility: visibility})
-	requireNoError(t, err)
-	if len(page) != 1 || page[0].ID != second.Value.Exam.ID || page[0].Title != second.Value.Draft.Title || page[0].ManagerCount != 1 || page[0].ArchivedAt.Valid {
-		t.Fatalf("first page = %#v", page)
-	}
+	require.NoError(t, err)
+	require.Len(t, page, 1)
+	require.Equal(t, second.Value.Exam.ID, page[0].ID)
+	require.Equal(t, second.Value.Draft.Title, page[0].Title)
+	require.Equal(t, 1, page[0].ManagerCount)
+	require.False(t, page[0].ArchivedAt.Valid)
 	next, err := ss.ExamAuthoring().List(ctx, store.ExamListOptions{
 		ArchiveFilter: store.ExamArchiveActive, Limit: 1, Visibility: visibility,
 		BeforeUpdatedAt: page[0].UpdatedAt, BeforeExamID: page[0].ID,
 	})
-	requireNoError(t, err)
-	if len(next) != 1 || next[0].ID != first.Value.Exam.ID {
-		t.Fatalf("next page = %#v", next)
-	}
+	require.NoError(t, err)
+	require.Len(t, next, 1)
+	require.Equal(t, first.Value.Exam.ID, next[0].ID)
 	for _, search := range []struct {
 		query string
 		want  model.ExamID
@@ -58,68 +62,59 @@ func testExamCatalogListAndArchive(t *testing.T, ss store.Store) {
 		found, searchErr := ss.ExamAuthoring().List(ctx, store.ExamListOptions{
 			Query: search.query, ArchiveFilter: store.ExamArchiveActive, Limit: 50, Visibility: visibility,
 		})
-		requireNoError(t, searchErr)
-		if len(found) != 1 || found[0].ID != search.want {
-			t.Fatalf("search %q = %#v, want Exam %s", search.query, found, search.want)
-		}
+		require.NoError(t, searchErr)
+		require.Len(t, found, 1, "search %q", search.query)
+		require.Equal(t, search.want, found[0].ID, "search %q", search.query)
 	}
 
 	outsider := saveUser(t, ctx, ss)
 	hidden, err := ss.ExamAuthoring().List(ctx, store.ExamListOptions{ArchiveFilter: store.ExamArchiveAll, Limit: 50,
 		Visibility: store.ExamListVisibility{ActorUserID: outsider.ID, OrdinaryMembershipAt: membershipBase.Add(10 * time.Minute), OrdinaryInstitutionWide: true}})
-	requireNoError(t, err)
-	if len(hidden) != 0 {
-		t.Fatalf("ordinary non-manager saw Exams: %#v", hidden)
-	}
+	require.NoError(t, err)
+	require.Empty(t, hidden)
 	overridden, err := ss.ExamAuthoring().List(ctx, store.ExamListOptions{AcademicUnitID: unit.ID, ArchiveFilter: store.ExamArchiveAll, Limit: 50,
 		Visibility: store.ExamListVisibility{ActorUserID: outsider.ID, OverrideInstitutionWide: true}})
-	requireNoError(t, err)
-	if len(overridden) != 2 {
-		t.Fatalf("override list = %#v", overridden)
-	}
+	require.NoError(t, err)
+	require.Len(t, overridden, 2)
 	otherUnit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "exam-catalog-other-unit")
 	_ = createCatalogExam(t, ctx, ss, otherUnit.ID, creator.ID, firstAt.Add(2*time.Minute), "catalog-other-unit")
 	exact, err := ss.ExamAuthoring().List(ctx, store.ExamListOptions{AcademicUnitID: unit.ID, ArchiveFilter: store.ExamArchiveAll, Limit: 50, Visibility: visibility})
-	requireNoError(t, err)
-	if len(exact) != 2 || exact[0].AcademicUnitID != unit.ID || exact[1].AcademicUnitID != unit.ID {
-		t.Fatalf("exact-unit list = %#v", exact)
-	}
+	require.NoError(t, err)
+	require.Len(t, exact, 2)
+	require.Equal(t, unit.ID, exact[0].AcademicUnitID)
+	require.Equal(t, unit.ID, exact[1].AcademicUnitID)
 	_, err = EndAcademicUnitMember(ctx, ss, membership.ID, membership.Revision, model.MillisFromTime(membershipBase.Add(5*time.Minute)))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	revokedMembership, err := ss.ExamAuthoring().List(ctx, store.ExamListOptions{AcademicUnitID: unit.ID, ArchiveFilter: store.ExamArchiveAll, Limit: 50, Visibility: visibility})
-	requireNoError(t, err)
-	if len(revokedMembership) != 0 {
-		t.Fatalf("ended exact membership still exposed Exams: %#v", revokedMembership)
-	}
+	require.NoError(t, err)
+	require.Empty(t, revokedMembership)
 	_, err = ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
 		AcademicUnitID: unit.ID, UserID: creator.ID, StartsAt: membershipBase.Add(6 * time.Minute),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	archiveAt := firstAt.Add(2 * time.Hour)
 	archive := newExamArchive(t, ctx, ss, first.Value.Exam.ID, creator.ID, 1, archiveAt)
 	command := examCommand(creator.ID, "exam.archive.v1", "archive-key", "archive-command")
 	archived, err := ss.ExamAuthoring().Archive(ctx, archive, command)
-	requireNoError(t, err)
-	if archived.Replayed || !archived.Value.IsArchived() || archived.Value.Revision != 2 || !archived.Value.ArchivedAt.Time.Equal(archiveAt) {
-		t.Fatalf("archived = %#v", archived)
-	}
+	require.NoError(t, err)
+	require.False(t, archived.Replayed)
+	require.True(t, archived.Value.IsArchived())
+	require.Equal(t, int64(2), archived.Value.Revision)
+	require.True(t, archived.Value.ArchivedAt.Time.Equal(archiveAt))
 	replay := newExamArchive(t, ctx, ss, first.Value.Exam.ID, creator.ID, 1, archiveAt.Add(time.Minute))
 	replayed, err := ss.ExamAuthoring().Archive(ctx, replay, command)
-	requireNoError(t, err)
-	if !replayed.Replayed || replayed.Value.Revision != 2 {
-		t.Fatalf("archive replay = %#v", replayed)
-	}
+	require.NoError(t, err)
+	require.True(t, replayed.Replayed)
+	require.Equal(t, int64(2), replayed.Value.Revision)
 	archivedPage, err := ss.ExamAuthoring().List(ctx, store.ExamListOptions{ArchiveFilter: store.ExamArchiveArchived, Limit: 50, Visibility: visibility})
-	requireNoError(t, err)
-	if len(archivedPage) != 1 || archivedPage[0].ID != first.Value.Exam.ID {
-		t.Fatalf("archived page = %#v", archivedPage)
-	}
+	require.NoError(t, err)
+	require.Len(t, archivedPage, 1)
+	require.Equal(t, first.Value.Exam.ID, archivedPage[0].ID)
 	_, err = ss.ExamAuthoring().Archive(ctx, newExamArchive(t, ctx, ss, first.Value.Exam.ID, creator.ID, 2, archiveAt.Add(time.Minute)), examCommand(creator.ID, "exam.archive.v1", "archive-again", "archive-again-command"))
 	var conflict *store.ErrConflict
-	if !errors.As(err, &conflict) || conflict.Constraint != "exam_archived" {
-		t.Fatalf("second archive error = %v", err)
-	}
+	require.ErrorAs(t, err, &conflict)
+	require.Equal(t, "exam_archived", conflict.Constraint)
 
 	concurrent := createCatalogExam(t, ctx, ss, unit.ID, creator.ID, firstAt.Add(3*time.Minute), "catalog-concurrent")
 	left := newExamArchive(t, ctx, ss, concurrent.Value.Exam.ID, creator.ID, 1, archiveAt.Add(2*time.Minute))
@@ -156,11 +151,10 @@ func testExamCatalogListAndArchive(t *testing.T, ss store.Store) {
 			conflicted++
 			continue
 		}
-		t.Fatalf("concurrent archive result = %#v, err = %v", result.result, result.err)
+		require.FailNow(t, fmt.Sprintf("concurrent archive result = %#v, err = %v", result.result, result.err))
 	}
-	if succeeded != 1 || conflicted != 1 {
-		t.Fatalf("concurrent archives: successes=%d conflicts=%d", succeeded, conflicted)
-	}
+	require.Equal(t, 1, succeeded, "concurrent archives: successes")
+	require.Equal(t, 1, conflicted, "concurrent archives: successes")
 }
 
 func createCatalogExam(t *testing.T, ctx context.Context, ss store.Store, unitID model.AcademicUnitID, creatorID model.UserID, at time.Time, key string) *store.ExamAuthoringCommandResult {
@@ -168,18 +162,18 @@ func createCatalogExam(t *testing.T, ctx context.Context, ss store.Store, unitID
 	creation := newExamAuthoringCreation(t, ctx, ss, unitID, creatorID, at)
 	creation.Draft.Title = key
 	created, err := ss.ExamAuthoring().Create(ctx, creation, examCommand(creatorID, "exam.create.v1", key, key+"-command"))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return created
 }
 
 func newExamArchive(t *testing.T, ctx context.Context, ss store.Store, examID model.ExamID, actorID model.UserID, expectedRevision int64, at time.Time) *store.ExamArchive {
 	t.Helper()
 	exam, err := ss.ExamAuthoring().Resolve(ctx, examID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	audit, err := ss.Audit().Save(ctx, &model.AuditEvent{ActorID: actorID, Action: string(model.ActionExamManage),
 		Resource: model.Resource{Type: model.ResourceExam, ID: examID.String()}, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: exam.AcademicUnitID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return &store.ExamArchive{ExamID: examID, ActorUserID: actorID, ExpectedRevision: expectedRevision,
 		ArchivedAt: model.MillisFromTime(at), AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at)}
 }

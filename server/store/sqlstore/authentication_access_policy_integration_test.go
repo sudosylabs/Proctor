@@ -12,10 +12,11 @@ package sqlstore
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -32,113 +33,82 @@ func TestAuthenticationTerminalCommitsRecheckCurrentAccessPolicy(t *testing.T) {
 		"password": model.ProviderAdmissionLinkedOnly,
 	})
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "policy-fence", DisplayName: "Policy Fence"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	user := saveIntegrationUser(t, ctx, persistence, &model.User{Username: "policy-fence-user", Email: "policy-fence@example.edu"})
 	credential, err := persistence.PasswordCredential().Save(ctx, &model.PasswordCredential{
 		UserID: user.ID, PasswordHash: "encoded-original-password",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	identity, err := persistence.ExternalIdentity().Save(ctx, &model.ExternalIdentity{UserID: user.ID, Provider: "campus",
 		Subject: "policy-fence-subject", LastSeenAt: model.OptionalTimeFrom(model.NowUTC())})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	localSession, localCredentials := authenticationPolicyTestSession(user.ID, "password", "", "")
 	savedLocal, _, err := storetest.SaveSession(ctx, persistence, sessionCreationForSQLTest(t, ctx, persistence, localSession, localCredentials, 10))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	externalSession, externalCredentials := authenticationPolicyTestSession(user.ID, "oidc", "campus", identity.ID)
 	savedExternal, _, err := storetest.SaveSession(ctx, persistence, sessionCreationForSQLTest(t, ctx, persistence, externalSession, externalCredentials, 10))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	snapshot, err := persistence.AccessPolicy().Get(ctx, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	withoutCollidingProviderIDs := snapshot.Policy.Clone()
 	delete(withoutCollidingProviderIDs.ProviderAdmissions, "password")
 	delete(withoutCollidingProviderIDs.ProviderAdmissions, "oidc")
 	revocations, err := runSQLTransaction(ctx, persistence.GetMaster().Begin, "exact authentication provider revocation", func(ctx context.Context, tx *sqlxTxWrapper) ([]store.AccessPolicySessionRevocation, error) {
 		return revokeSessionsForDisabledAccessMethods(ctx, tx, snapshot.Policy, withoutCollidingProviderIDs, model.NowUTC())
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(revocations) != 0 {
-		t.Fatalf("provider IDs colliding with password/oidc revoked unrelated sessions: %#v", revocations)
-	}
+	require.NoError(t, err)
+	require.Empty(t, revocations)
 
 	resetToken := &model.UserToken{UserID: user.ID, Purpose: model.UserTokenPasswordReset,
 		TokenHash: model.HashToken(model.NewCredentialToken()), Target: user.Email, ExpiresAt: model.NowUTC().Add(time.Hour)}
 	resetToken, err = authenticationPolicyTestIssue(t, ctx, persistence, resetToken, authenticationPolicyTestAudit(
 		"authentication.password_reset.request", user.ID.String(), institution.ID.String(),
 	))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if _, err = persistence.GetMaster().Exec(ctx, `UPDATE access_policies SET local_login_enabled=FALSE,
-		invitation_local_credential_enabled=FALSE, provider_admissions='{}'::jsonb WHERE singleton=1`); err != nil {
-		t.Fatal(err)
-	}
+	_, err = persistence.GetMaster().Exec(ctx, `UPDATE access_policies SET local_login_enabled=FALSE,
+		invitation_local_credential_enabled=FALSE, provider_admissions='{}'::jsonb WHERE singleton=1`)
+	require.NoError(t, err)
 
 	blockedLocal, blockedLocalCredentials := authenticationPolicyTestSession(user.ID, "password", "", "")
-	if _, _, err = storetest.SaveSession(ctx, persistence, sessionCreationForSQLTest(t, ctx, persistence, blockedLocal, blockedLocalCredentials, 10)); !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
-		t.Fatalf("disabled local session error = %v", err)
-	}
+	_, _, err = storetest.SaveSession(ctx, persistence, sessionCreationForSQLTest(t, ctx, persistence, blockedLocal, blockedLocalCredentials, 10))
+	require.ErrorIs(t, err, store.ErrAuthenticationMethodDisabled)
 	blockedExternal, blockedExternalCredentials := authenticationPolicyTestSession(user.ID, "oidc", "campus", identity.ID)
-	if _, _, err = storetest.SaveSession(ctx, persistence, sessionCreationForSQLTest(t, ctx, persistence, blockedExternal, blockedExternalCredentials, 10)); !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
-		t.Fatalf("disabled provider session error = %v", err)
-	}
+	_, _, err = storetest.SaveSession(ctx, persistence, sessionCreationForSQLTest(t, ctx, persistence, blockedExternal, blockedExternalCredentials, 10))
+	require.ErrorIs(t, err, store.ErrAuthenticationMethodDisabled)
 	blockedIssue := &model.UserToken{UserID: user.ID, Purpose: model.UserTokenPasswordReset,
 		TokenHash: model.HashToken(model.NewCredentialToken()), Target: user.Email, ExpiresAt: model.NowUTC().Add(time.Hour)}
-	if _, err = authenticationPolicyTestIssue(t, ctx, persistence, blockedIssue, authenticationPolicyTestAudit(
+	_, err = authenticationPolicyTestIssue(t, ctx, persistence, blockedIssue, authenticationPolicyTestAudit(
 		"authentication.password_reset.request", user.ID.String(), institution.ID.String(),
-	)); !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
-		t.Fatalf("disabled reset issue error = %v", err)
-	}
+	))
+	require.ErrorIs(t, err, store.ErrAuthenticationMethodDisabled)
 	completion := authenticationPolicyTestResetCompletion(t, user, resetToken.TokenHash, "encoded-new-password",
 		model.GetMillis(), authenticationPolicyTestCompletionAudit(institution.ID.String()))
-	if _, err = persistence.UserToken().ConsumePasswordReset(ctx, completion); !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
-		t.Fatalf("disabled reset completion error = %v", err)
-	}
+	_, err = persistence.UserToken().ConsumePasswordReset(ctx, completion)
+	require.ErrorIs(t, err, store.ErrAuthenticationMethodDisabled)
 	unchangedCredential, err := persistence.PasswordCredential().GetByUser(ctx, user.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if unchangedCredential.ID != credential.ID || unchangedCredential.PasswordHash != credential.PasswordHash {
-		t.Fatalf("disabled reset changed credential = %#v", unchangedCredential)
-	}
+	require.NoError(t, err)
+	require.Equal(t, credential.ID, unchangedCredential.ID)
+	require.Equal(t, credential.PasswordHash, unchangedCredential.PasswordHash)
 	retainedToken, err := persistence.UserToken().GetByHash(ctx, resetToken.TokenHash, model.UserTokenPasswordReset)
-	if err != nil || retainedToken.ConsumedAt.Valid {
-		t.Fatalf("disabled reset consumed token=%#v err=%v", retainedToken, err)
-	}
+	require.NoError(t, err, "disabled reset consumed token=%#v err", retainedToken)
+	require.False(t, retainedToken.ConsumedAt.Valid, "disabled reset consumed token=%#v err", retainedToken)
 	for _, sessionID := range []model.SessionID{savedLocal.ID, savedExternal.ID} {
 		retained, getErr := persistence.Session().Get(ctx, sessionID)
-		if getErr != nil || retained.RevokedAt.Valid {
-			t.Fatalf("policy fence changed existing session %s: %#v %v", sessionID, retained, getErr)
-		}
+		require.NoError(t, getErr, "policy fence changed existing session %s: %#v", sessionID, retained)
+		require.False(t, retained.RevokedAt.Valid, "policy fence changed existing session %s: %#v", sessionID, retained)
 	}
 
 	disabledIdentity, err := persistence.ExternalIdentity().Save(ctx, &model.ExternalIdentity{UserID: user.ID, Provider: "campus",
 		Subject: "subject", LastSeenAt: model.OptionalTimeFrom(model.NowUTC())})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = persistence.ExternalIdentity().ResolveOrProvision(ctx, &store.ExternalIdentityResolutionRequest{Identity: &model.ExternalIdentity{
+	require.NoError(t, err)
+	_, err = persistence.ExternalIdentity().ResolveOrProvision(ctx, &store.ExternalIdentityResolutionRequest{Identity: &model.ExternalIdentity{
 		Provider: disabledIdentity.Provider, Subject: disabledIdentity.Subject, LastSeenAt: model.OptionalTimeFrom(model.NowUTC()),
 	}, Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{
 		"campus": {},
-	}}}); !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
-		t.Fatalf("disabled provider resolution error = %v", err)
-	}
+	}}})
+	require.ErrorIs(t, err, store.ErrAuthenticationMethodDisabled)
 }
 
 func authenticationPolicyTestSession(userID model.UserID, method, providerID string, identityID model.ExternalIdentityID) (*model.Session, []*model.SessionCredential) {
@@ -185,13 +155,9 @@ func authenticationPolicyTestMail(t *testing.T, userID model.UserID, occurrenceI
 	t.Helper()
 	deliveryID := model.NewMailDeliveryID()
 	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	job, err := model.NewJob(model.NewJobID(), jobType, 1, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: kind, TemplateKey: key, ActorUserID: userID, CreatedAt: at}
 	delivery := &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: job.ID, TargetUserID: userID,
 		TemplateKey: key, TemplateDigest: strings.Repeat("a", 64), MaskedRecipient: "u***@example.test",

@@ -9,10 +9,10 @@ package sqlstore
 
 import (
 	"encoding/base64"
-	"errors"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -39,20 +39,18 @@ func TestSessionRowConversion(t *testing.T) {
 	}
 	row := newSessionRow(session)
 	got, err := row.model()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.ID != session.ID ||
-		!got.CreatedAt.Equal(session.CreatedAt) ||
-		!got.UpdatedAt.Equal(session.UpdatedAt) ||
-		got.ArchivedAt.Millis() != session.ArchivedAt.Millis() ||
-		got.UserID != session.UserID ||
-		got.DeviceID != session.DeviceID || got.AuthenticationProviderID != session.AuthenticationProviderID || got.ExternalIdentityID != session.ExternalIdentityID ||
-		!got.AuthenticatedAt.Equal(session.AuthenticatedAt) ||
-		got.RevokedAt.Millis() != session.RevokedAt.Millis() ||
-		got.RevocationReason != session.RevocationReason {
-		t.Fatalf("row.model() = %#v, want %#v", got, session)
-	}
+	require.NoError(t, err)
+	require.Equal(t, session.ID, got.ID, "row.model() = %#v, want %#v", got, session)
+	require.True(t, got.CreatedAt.Equal(session.CreatedAt), "row.model() = %#v, want %#v", got, session)
+	require.True(t, got.UpdatedAt.Equal(session.UpdatedAt), "row.model() = %#v, want %#v", got, session)
+	require.Equal(t, session.ArchivedAt.Millis(), got.ArchivedAt.Millis(), "row.model() = %#v, want %#v", got, session)
+	require.Equal(t, session.UserID, got.UserID, "row.model() = %#v, want %#v", got, session)
+	require.Equal(t, session.DeviceID, got.DeviceID, "row.model() = %#v, want %#v", got, session)
+	require.Equal(t, session.AuthenticationProviderID, got.AuthenticationProviderID, "row.model() = %#v, want %#v", got, session)
+	require.Equal(t, session.ExternalIdentityID, got.ExternalIdentityID, "row.model() = %#v, want %#v", got, session)
+	require.True(t, got.AuthenticatedAt.Equal(session.AuthenticatedAt), "row.model() = %#v, want %#v", got, session)
+	require.Equal(t, session.RevokedAt.Millis(), got.RevokedAt.Millis(), "row.model() = %#v, want %#v", got, session)
+	require.Equal(t, session.RevocationReason, got.RevocationReason, "row.model() = %#v, want %#v", got, session)
 }
 
 func TestSessionCredentialRowConversion(t *testing.T) {
@@ -71,19 +69,15 @@ func TestSessionCredentialRowConversion(t *testing.T) {
 	}
 	row := newSessionCredentialRow(credential)
 	got, err := row.model()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.ID != credential.ID ||
-		got.SessionID != credential.SessionID ||
-		got.FamilyID != credential.FamilyID ||
-		got.ParentID != credential.ParentID ||
-		got.ReplacedByID != credential.ReplacedByID ||
-		!got.ExpiresAt.Equal(credential.ExpiresAt) ||
-		got.UsedAt.Millis() != credential.UsedAt.Millis() ||
-		got.RevokedAt.Millis() != credential.RevokedAt.Millis() {
-		t.Fatalf("row.model() = %#v, want %#v", got, credential)
-	}
+	require.NoError(t, err)
+	require.Equal(t, credential.ID, got.ID, "row.model() = %#v, want %#v", got, credential)
+	require.Equal(t, credential.SessionID, got.SessionID, "row.model() = %#v, want %#v", got, credential)
+	require.Equal(t, credential.FamilyID, got.FamilyID, "row.model() = %#v, want %#v", got, credential)
+	require.Equal(t, credential.ParentID, got.ParentID, "row.model() = %#v, want %#v", got, credential)
+	require.Equal(t, credential.ReplacedByID, got.ReplacedByID, "row.model() = %#v, want %#v", got, credential)
+	require.True(t, got.ExpiresAt.Equal(credential.ExpiresAt), "row.model() = %#v, want %#v", got, credential)
+	require.Equal(t, credential.UsedAt.Millis(), got.UsedAt.Millis(), "row.model() = %#v, want %#v", got, credential)
+	require.Equal(t, credential.RevokedAt.Millis(), got.RevokedAt.Millis(), "row.model() = %#v, want %#v", got, credential)
 }
 
 func TestSessionRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
@@ -103,7 +97,7 @@ func TestSessionRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := test.row.model()
-			assertPersistedSessionStateError(t, err, "session", test.field)
+			requirePersistedStateError(t, err, "session", test.field)
 		})
 	}
 }
@@ -133,10 +127,8 @@ func TestSessionCredentialRowRehydrationRejectsInvalidPersistedState(t *testing.
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := test.row.model()
-			assertPersistedSessionStateError(t, err, "session_credential", test.field)
-			if strings.Contains(err.Error(), "bad") {
-				t.Fatalf("persisted-state error exposed raw value: %v", err)
-			}
+			requirePersistedStateError(t, err, "session_credential", test.field)
+			require.NotContains(t, err.Error(), "bad")
 		})
 	}
 }
@@ -170,15 +162,4 @@ func replaceSessionRow(row sessionRow, replace func(*sessionRow)) sessionRow {
 func replaceSessionCredentialRow(row sessionCredentialRow, replace func(*sessionCredentialRow)) sessionCredentialRow {
 	replace(&row)
 	return row
-}
-
-func assertPersistedSessionStateError(t *testing.T, err error, entity, field string) {
-	t.Helper()
-	var persisted *persistedStateError
-	if !errors.As(err, &persisted) {
-		t.Fatalf("model() error = %v, want persisted-state error", err)
-	}
-	if persisted.Entity != entity || persisted.Field != field {
-		t.Fatalf("persisted-state context = %s.%s, want %s.%s", persisted.Entity, persisted.Field, entity, field)
-	}
 }

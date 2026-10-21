@@ -8,8 +8,9 @@
 package sqlstore
 
 import (
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -24,12 +25,8 @@ func TestExternalIdentityRowConversion(t *testing.T) {
 	}
 	row := newExternalIdentityRow(identity)
 	got, err := row.model()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if *got != *identity {
-		t.Fatalf("row.model() = %#v, want %#v", got, identity)
-	}
+	require.NoError(t, err)
+	require.Equal(t, *identity, *got, "row.model() = %#v, want %#v", got, identity)
 }
 
 func TestExternalIdentityRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
@@ -53,9 +50,9 @@ func TestExternalIdentityRowRehydrationRejectsInvalidPersistedState(t *testing.T
 			test.mutate(&row)
 			_, err := row.model()
 			var persisted *persistedStateError
-			if !errors.As(err, &persisted) || persisted.Entity != "external_identity" || persisted.Field != test.field {
-				t.Fatalf("model() error = %v, want external_identity.%s persisted-state error", err, test.field)
-			}
+			require.ErrorAs(t, err, &persisted, "model() error")
+			require.Equal(t, "external_identity", persisted.Entity, "model() error")
+			require.Equal(t, test.field, persisted.Field, "model() error")
 		})
 	}
 }

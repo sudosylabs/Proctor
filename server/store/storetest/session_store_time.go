@@ -9,9 +9,10 @@ package storetest
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -28,10 +29,9 @@ func testSessionNativeTimeBoundaries(t *testing.T, ss store.Store) {
 				for _, test := range sessionDecisionCases(deadline) {
 					t.Run(test.name, func(t *testing.T) {
 						active, err := ss.Session().ListActiveByUser(context.Background(), user.ID, test.at)
-						requireNoError(t, err)
-						if test.expired && len(active) != 0 || !test.expired && (len(active) != 1 || active[0].ID != session.ID) {
-							t.Fatalf("active Sessions at %v = %#v", test.at, active)
-						}
+						require.NoError(t, err)
+						require.False(t, test.expired && len(active) != 0, "active Sessions at %v = %#v", test.at, active)
+						require.False(t, !test.expired && (len(active) != 1 || active[0].ID != session.ID), "active Sessions at %v = %#v", test.at, active)
 					})
 				}
 			})
@@ -39,54 +39,47 @@ func testSessionNativeTimeBoundaries(t *testing.T, ss store.Store) {
 				t.Run("EnforceExpiry/"+test.name, func(t *testing.T) {
 					user, session, raw := saveSessionTimeFixture(t, ss, expiry, deadline)
 					result, err := ss.Session().EnforceExpiry(context.Background(), session.ID, user.ID, test.at)
-					requireNoError(t, err)
-					if result == nil || result.Session == nil || result.Expired != test.expired {
-						t.Fatalf("EnforceExpiry(%v) = %#v", test.at, result)
-					}
+					require.NoError(t, err)
+					require.NotNil(t, result, "EnforceExpiry(%v)", test.at)
+					require.NotNil(t, result.Session, "EnforceExpiry(%v)", test.at)
+					require.Equal(t, test.expired, result.Expired, "EnforceExpiry(%v)", test.at)
 					if !test.expired {
-						if result.Session.RevokedAt.Valid || len(result.TokenHashes) != 0 {
-							t.Fatal("expiry enforcement changed an active Session")
-						}
+						require.False(t, result.Session.RevokedAt.Valid, "expiry enforcement changed an active Session")
+						require.Empty(t, result.TokenHashes, "expiry enforcement changed an active Session")
 						return
 					}
 					at := model.TimeUTC(test.at)
-					if !result.Session.RevokedAt.Time.Equal(at) || len(result.TokenHashes) != 2 {
-						t.Fatalf("expiry result lost decision precision: %#v", result)
-					}
+					require.True(t, result.Session.RevokedAt.Time.Equal(at))
+					require.Len(t, result.TokenHashes, 2)
 					credential, saved, err := ss.SessionCredential().GetSessionByTokenHash(
 						context.Background(), model.HashToken(raw.access), model.SessionCredentialAccess,
 					)
-					requireNoError(t, err)
-					if !credential.RevokedAt.Time.Equal(at) || !saved.RevokedAt.Time.Equal(at) {
-						t.Fatalf("persisted expiry time = %v/%v, want %v", credential.RevokedAt, saved.RevokedAt, at)
-					}
+					require.NoError(t, err)
+					require.True(t, credential.RevokedAt.Time.Equal(at), "persisted expiry time = %v/%v", credential.RevokedAt, saved.RevokedAt)
+					require.True(t, saved.RevokedAt.Time.Equal(at), "persisted expiry time = %v/%v", credential.RevokedAt, saved.RevokedAt)
 				})
 				t.Run("UpdateActivity/"+test.name, func(t *testing.T) {
 					_, session, _ := saveSessionTimeFixture(t, ss, expiry, deadline)
 					idle := test.at.Add(time.Hour + 500*time.Microsecond)
 					err := ss.Session().UpdateActivity(context.Background(), session.ID, test.at, idle)
 					if test.expired {
-						if !store.IsNotFound(err) {
-							t.Fatalf("UpdateActivity(expired) = %v", err)
-						}
+						require.True(t, store.IsNotFound(err), "UpdateActivity(expired)")
 					} else {
-						requireNoError(t, err)
+						require.NoError(t, err)
 					}
 					saved, err := ss.Session().Get(context.Background(), session.ID)
-					requireNoError(t, err)
+					require.NoError(t, err)
 					if test.expired {
-						if !saved.LastActivityAt.Equal(session.LastActivityAt) || !saved.IdleExpiresAt.Equal(session.IdleExpiresAt) {
-							t.Fatal("activity update revived an expired Session")
-						}
+						require.True(t, saved.LastActivityAt.Equal(session.LastActivityAt), "activity update revived an expired Session")
+						require.True(t, saved.IdleExpiresAt.Equal(session.IdleExpiresAt), "activity update revived an expired Session")
 						return
 					}
 					wantIdle := model.TimeUTC(idle)
 					if session.ExpiresAt.Before(wantIdle) {
 						wantIdle = session.ExpiresAt
 					}
-					if !saved.LastActivityAt.Equal(model.TimeUTC(test.at)) || !saved.IdleExpiresAt.Equal(wantIdle) {
-						t.Fatalf("activity precision = %v/%v, want %v/%v", saved.LastActivityAt, saved.IdleExpiresAt, model.TimeUTC(test.at), wantIdle)
-					}
+					require.True(t, saved.LastActivityAt.Equal(model.TimeUTC(test.at)), "activity precision")
+					require.True(t, saved.IdleExpiresAt.Equal(wantIdle), "activity precision")
 				})
 			}
 		})
@@ -102,29 +95,30 @@ func testSessionNativeTimeBoundaries(t *testing.T, ss store.Store) {
 						test.at, test.at.Add(time.Hour+500*time.Microsecond))
 					if test.expired && expiry == "refresh" {
 						var conflict *store.ErrConflict
-						if !errors.As(err, &conflict) || result != nil {
-							t.Fatalf("RotateRefresh(expired credential) = %#v, %v", result, err)
-						}
+						require.ErrorAs(t, err, &conflict, "RotateRefresh(expired credential)")
+						require.Nil(t, result, "RotateRefresh(expired credential)")
 						return
 					}
-					requireNoError(t, err)
+					require.NoError(t, err)
 					at := model.TimeUTC(test.at)
-					if result == nil || result.Session == nil || result.Expired != test.expired || result.ReplayDetected {
-						t.Fatalf("RotateRefresh(%v) = %#v", test.at, result)
-					}
+					require.NotNil(t, result, "RotateRefresh(%v)", test.at)
+					require.NotNil(t, result.Session, "RotateRefresh(%v)", test.at)
+					require.Equal(t, test.expired, result.Expired, "RotateRefresh(%v)", test.at)
+					require.False(t, result.ReplayDetected, "RotateRefresh(%v)", test.at)
 					if test.expired {
-						if !result.Session.RevokedAt.Time.Equal(at) || result.AccessCredential != nil || result.RefreshCredential != nil {
-							t.Fatalf("refresh expiry result = %#v", result)
-						}
-					} else if !result.AccessCredential.CreatedAt.Equal(at) || !result.RefreshCredential.CreatedAt.Equal(at) ||
-						!result.Session.LastActivityAt.Equal(at) || result.Session.IdleExpiresAt.After(session.ExpiresAt) {
-						t.Fatalf("refresh result lost native time or absolute cap: %#v", result)
+						require.True(t, result.Session.RevokedAt.Time.Equal(at))
+						require.Nil(t, result.AccessCredential)
+						require.Nil(t, result.RefreshCredential)
+					} else {
+						require.True(t, result.AccessCredential.CreatedAt.Equal(at), "refresh access credential lost native time")
+						require.True(t, result.RefreshCredential.CreatedAt.Equal(at), "refresh credential lost native time")
+						require.True(t, result.Session.LastActivityAt.Equal(at), "refresh Session activity lost native time")
+						require.False(t, result.Session.IdleExpiresAt.After(session.ExpiresAt), "refresh idle expiry passed the absolute cap")
 					}
 					old, saved, err := ss.SessionCredential().GetSessionByTokenHash(context.Background(), model.HashToken(raw.access), model.SessionCredentialAccess)
-					requireNoError(t, err)
-					if !old.RevokedAt.Time.Equal(at) || test.expired && !saved.RevokedAt.Time.Equal(at) {
-						t.Fatalf("refresh revocation precision = %v/%v, want %v", old.RevokedAt, saved.RevokedAt, at)
-					}
+					require.NoError(t, err)
+					require.True(t, old.RevokedAt.Time.Equal(at), "refresh revocation precision = %v/%v", old.RevokedAt, saved.RevokedAt)
+					require.False(t, test.expired && !saved.RevokedAt.Time.Equal(at), "refresh revocation precision = %v/%v", old.RevokedAt, saved.RevokedAt)
 				})
 			}
 		})
@@ -166,6 +160,6 @@ func saveSessionTimeFixture(t *testing.T, ss store.Store, expiry string, deadlin
 		credentials[1].ExpiresAt = deadline
 	}
 	saved, _, err := SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, session, credentials, 10))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return user, saved, raw
 }

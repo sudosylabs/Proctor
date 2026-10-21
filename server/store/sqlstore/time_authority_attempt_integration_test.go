@@ -13,6 +13,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -28,7 +30,7 @@ func TestTimeAuthorityAttemptWorkspaceCleanupClaimFollowsLaterModification(t *te
 	objectID := model.NewAttemptWorkspaceObjectID()
 	// The object is the only row under test; replica role skips the
 	// Workspace and Starter foreign keys while every CHECK still applies.
-	if _, err := runSQLTransaction(ctx, persistence.GetMaster().Begin, "insert leading Attempt Workspace object fixture",
+	_, err := runSQLTransaction(ctx, persistence.GetMaster().Begin, "insert leading Attempt Workspace object fixture",
 		func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
 			if _, err := tx.Exec(ctx, `SET LOCAL session_replication_role = replica`); err != nil {
 				return struct{}{}, err
@@ -39,29 +41,23 @@ func TestTimeAuthorityAttemptWorkspaceCleanupClaimFollowsLaterModification(t *te
 					statement_timestamp()+INTERVAL '1 minute',statement_timestamp()-INTERVAL '1 second')`,
 				objectID.String(), model.NewExamAttemptWorkspaceID().String(), model.NewExamRevisionID().String())
 			return struct{}{}, err
-		}); err != nil {
-		t.Fatal(err)
-	}
+		})
+	require.NoError(t, err)
 
 	claimed, err := NewSQLExamAttemptWorkspaceStore(persistence).ClaimObjectsForCleanup(ctx, 10, "time-authority-claim")
-	if err != nil {
-		t.Fatalf("ClaimObjectsForCleanup() error = %v", err)
-	}
-	if len(claimed) != 1 || claimed[0].ID != objectID || claimed[0].State != model.AttemptWorkspaceObjectClaimed ||
-		!claimed[0].ClaimedAt.Valid || !claimed[0].ClaimedAt.Time.Equal(claimed[0].UpdatedAt) ||
-		claimed[0].UpdatedAt.Before(claimed[0].CreatedAt) {
-		t.Fatalf("claimed = %#v", claimed)
-	}
+	require.NoError(t, err)
+	require.Len(t, claimed, 1)
+	require.Equal(t, objectID, claimed[0].ID)
+	require.Equal(t, model.AttemptWorkspaceObjectClaimed, claimed[0].State)
+	require.True(t, claimed[0].ClaimedAt.Valid)
+	require.True(t, claimed[0].ClaimedAt.Time.Equal(claimed[0].UpdatedAt))
+	require.False(t, claimed[0].UpdatedAt.Before(claimed[0].CreatedAt))
 	var row attemptWorkspaceObjectRow
-	if err = persistence.GetMaster().Get(ctx, &row, attemptWorkspaceObjectSelect+` WHERE id=?`, objectID.String()); err != nil {
-		t.Fatal(err)
-	}
+	err = persistence.GetMaster().Get(ctx, &row, attemptWorkspaceObjectSelect+` WHERE id=?`, objectID.String())
+	require.NoError(t, err)
 	stored, err := row.model()
-	if err != nil {
-		t.Fatalf("stored claimed object: %v", err)
-	}
-	if !stored.ClaimedAt.Time.Equal(claimed[0].ClaimedAt.Time) || !stored.UpdatedAt.Equal(claimed[0].UpdatedAt) ||
-		stored.ClaimToken != claimed[0].ClaimToken {
-		t.Fatalf("stored = %#v, claimed = %#v", stored, claimed[0])
-	}
+	require.NoError(t, err)
+	require.True(t, stored.ClaimedAt.Time.Equal(claimed[0].ClaimedAt.Time), "stored")
+	require.True(t, stored.UpdatedAt.Equal(claimed[0].UpdatedAt), "stored")
+	require.Equal(t, claimed[0].ClaimToken, stored.ClaimToken, "stored")
 }

@@ -11,6 +11,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestSQLXDBWrapperQueryContext(t *testing.T) {
@@ -29,12 +31,10 @@ func assertQueryContextBoundsEveryStatement(
 	assertRemaining := func(name string, ctx context.Context, upper time.Duration) {
 		t.Helper()
 		deadline, ok := ctx.Deadline()
-		if !ok {
-			t.Fatalf("%s: query context has no deadline", name)
-		}
-		if remaining := time.Until(deadline); remaining <= 0 || remaining > upper {
-			t.Fatalf("%s: query deadline remaining = %v, want (0, %v]", name, remaining, upper)
-		}
+		require.True(t, ok, "%s: query context has no deadline", name)
+		remaining := time.Until(deadline)
+		require.Positive(t, int64(remaining), "%s: query deadline remaining = %v, want (0, %v]", name, remaining, upper)
+		require.LessOrEqual(t, remaining, upper, "%s: query deadline remaining = %v, want (0, %v]", name, remaining, upper)
 	}
 
 	ctx, cancel := queryContext(context.Background())
@@ -52,7 +52,7 @@ func assertQueryContextBoundsEveryStatement(
 	defer earlierCancel()
 	ctx, cancel = queryContext(earlier)
 	defer cancel()
-	if deadline, ok := ctx.Deadline(); !ok || !deadline.Equal(earlierDeadline) {
-		t.Fatalf("earlier caller deadline = %v, want %v", deadline, earlierDeadline)
-	}
+	deadline, ok := ctx.Deadline()
+	require.True(t, ok, "earlier caller deadline = %v", deadline)
+	require.True(t, deadline.Equal(earlierDeadline), "earlier caller deadline = %v", deadline)
 }

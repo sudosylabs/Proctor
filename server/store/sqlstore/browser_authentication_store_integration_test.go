@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -26,17 +28,13 @@ func TestDesktopAuthorizationAuthenticationClock(t *testing.T) {
 		"campus-oidc": model.ProviderAdmissionLinkedOnly,
 	})
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "desktop-clock", DisplayName: "Desktop Clock"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	user := saveIntegrationUser(t, ctx, persistence, &model.User{Username: "desktop-clock", Email: "desktop-clock@example.edu"})
 	password := passwordProofForSQLTest(t, ctx, persistence, user.ID)
 	identity, err := persistence.ExternalIdentity().Save(ctx, &model.ExternalIdentity{
 		UserID: user.ID, Provider: "campus-oidc", Subject: "desktop-clock",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	capabilities := store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"campus-oidc": {}}}
 	for _, test := range []struct {
 		name       string
@@ -56,17 +54,12 @@ func TestDesktopAuthorizationAuthenticationClock(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			transaction, handle, proof, state, _ := desktopAuthorizationTransactionForSQLTest(model.NowUTC(), institution.ID)
 			created, err := persistence.BrowserAuthentication().CreateDesktopAuthorization(ctx, transaction)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			binding, err := bindDesktopAuthorizationForSQLTest(ctx, persistence, handle, proof, state)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			var before time.Time
-			if err = persistence.GetMaster().Get(ctx, &before, `SELECT clock_timestamp()`); err != nil {
-				t.Fatal(err)
-			}
+			err = persistence.GetMaster().Get(ctx, &before, `SELECT clock_timestamp()`)
+			require.NoError(t, err)
 			input := &store.DesktopAuthorizationAuthentication{
 				BindingHash: model.HashToken(binding), UserID: user.ID, AuthenticationMethod: "password",
 				PasswordProof: password, AuthenticationStrength: model.AuthenticationSingleFactor,
@@ -81,24 +74,20 @@ func TestDesktopAuthorizationAuthenticationClock(t *testing.T) {
 				input.MFACompletedAt = before.Add(test.mfaOffset).UnixMilli()
 			}
 			result, err := persistence.BrowserAuthentication().AuthenticateDesktopAuthorization(ctx, input)
-			if err != nil || result == nil || result.Denied {
-				t.Fatalf("AuthenticateDesktopAuthorization() = %#v, %v", result, err)
-			}
+			require.NoError(t, err, "AuthenticateDesktopAuthorization()")
+			require.NotNil(t, result, "AuthenticateDesktopAuthorization()")
+			require.False(t, result.Denied, "AuthenticateDesktopAuthorization()")
 			var after time.Time
-			if err = persistence.GetMaster().Get(ctx, &after, `SELECT clock_timestamp()`); err != nil {
-				t.Fatal(err)
-			}
+			err = persistence.GetMaster().Get(ctx, &after, `SELECT clock_timestamp()`)
+			require.NoError(t, err)
 			var row browserAuthenticationRow
-			if err = persistence.GetMaster().Get(ctx, &row, `SELECT `+browserAuthenticationColumns+` FROM browser_authentication_transactions WHERE id=?`, created.ID.String()); err != nil {
-				t.Fatal(err)
-			}
+			err = persistence.GetMaster().Get(ctx, &row, `SELECT `+browserAuthenticationColumns+` FROM browser_authentication_transactions WHERE id=?`, created.ID.String())
+			require.NoError(t, err)
 			authenticated, err := row.model()
-			if err != nil {
-				t.Fatalf("AuthenticateDesktopAuthorization committed invalid state: %v", err)
-			}
-			if authenticated.UpdatedAt.Before(before) || authenticated.UpdatedAt.After(after) || !authenticated.ExpiresAt.Equal(created.ExpiresAt) {
-				t.Fatal("authentication moved the database transition time or transaction deadline")
-			}
+			require.NoError(t, err)
+			require.False(t, authenticated.UpdatedAt.Before(before), "authentication moved the database transition time or transaction deadline")
+			require.False(t, authenticated.UpdatedAt.After(after), "authentication moved the database transition time or transaction deadline")
+			require.True(t, authenticated.ExpiresAt.Equal(created.ExpiresAt), "authentication moved the database transition time or transaction deadline")
 			wantAuth := authenticated.UpdatedAt
 			wantMFA := model.OptionalTime{}
 			if test.external && model.TimeFromMillis(input.AuthenticatedAt).Before(wantAuth) {
@@ -110,31 +99,25 @@ func TestDesktopAuthorizationAuthenticationClock(t *testing.T) {
 					wantMFA = model.OptionalTimeFromMillis(input.MFACompletedAt)
 				}
 			}
-			if !authenticated.AuthenticatedAt.Time.Equal(wantAuth) || authenticated.MFACompletedAt != wantMFA {
-				t.Fatalf("authentication provenance = %s, %v; want %s, %v", authenticated.AuthenticatedAt.Time,
-					authenticated.MFACompletedAt, wantAuth, wantMFA)
-			}
+			require.True(t, authenticated.AuthenticatedAt.Time.Equal(wantAuth), "authentication provenance = %s", authenticated.AuthenticatedAt.Time)
+			require.Equal(t, wantMFA, authenticated.MFACompletedAt, "authentication provenance = %s", authenticated.AuthenticatedAt.Time)
 			audit := saveDesktopAuthorizationAuditForSQLTest(t, ctx, persistence, institution.ID, user.ID, "clock-issue")
 			issued, err := persistence.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
 				BindingHash: model.HashToken(binding), StateHash: model.HashToken(state), CodeHash: model.HashToken(model.NewCredentialToken()),
 				ExpectedUserID: user.ID, CodeLifetime: 45 * time.Second, Capabilities: capabilities,
 				AuditEventID: audit.ID, AuditAt: model.GetMillis(),
 			})
-			if err != nil || issued == nil {
-				t.Fatalf("IssueCode() = %#v, %v", issued, err)
-			}
-			if err = persistence.GetMaster().Get(ctx, &row, `SELECT `+browserAuthenticationColumns+` FROM browser_authentication_transactions WHERE id=?`, created.ID.String()); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err, "IssueCode()")
+			require.NotNil(t, issued, "IssueCode()")
+			err = persistence.GetMaster().Get(ctx, &row, `SELECT `+browserAuthenticationColumns+` FROM browser_authentication_transactions WHERE id=?`, created.ID.String())
+			require.NoError(t, err)
 			codeIssued, err := row.model()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !codeIssued.AuthenticatedAt.Time.Equal(wantAuth) || codeIssued.MFACompletedAt != wantMFA ||
-				!codeIssued.ExpiresAt.Equal(created.ExpiresAt) || issued.CodeExpiresAt.After(created.ExpiresAt) ||
-				!issued.CodeExpiresAt.Equal(codeIssued.UpdatedAt.Add(45*time.Second)) {
-				t.Fatal("code issuance changed authentication provenance or extended its database-clock deadline")
-			}
+			require.NoError(t, err)
+			require.True(t, codeIssued.AuthenticatedAt.Time.Equal(wantAuth), "code issuance changed authentication provenance or extended its database-clock deadline")
+			require.Equal(t, wantMFA, codeIssued.MFACompletedAt, "code issuance changed authentication provenance or extended its database-clock deadline")
+			require.True(t, codeIssued.ExpiresAt.Equal(created.ExpiresAt), "code issuance changed authentication provenance or extended its database-clock deadline")
+			require.False(t, issued.CodeExpiresAt.After(created.ExpiresAt), "code issuance changed authentication provenance or extended its database-clock deadline")
+			require.True(t, issued.CodeExpiresAt.Equal(codeIssued.UpdatedAt.Add(45*time.Second)), "code issuance changed authentication provenance or extended its database-clock deadline")
 		})
 	}
 }

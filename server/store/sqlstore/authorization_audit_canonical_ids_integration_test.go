@@ -11,11 +11,11 @@ package sqlstore
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
 	"github.com/lib/pq"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -43,9 +43,9 @@ func TestAuthorizationAuditCanonicalIDConstraintsRejectNoncanonicalValues(t *tes
 			args := canonicalConstraintArgs(test.name, canonical, at)
 			_, err := persistence.GetMaster().Exec(ctx, test.query, args...)
 			var postgresErr *pq.Error
-			if !errors.As(err, &postgresErr) || string(postgresErr.Code) != "23514" || postgresErr.Constraint != test.constraint {
-				t.Fatalf("constraint error = %#v, want %s", err, test.constraint)
-			}
+			require.ErrorAs(t, err, &postgresErr, "constraint error")
+			require.Equal(t, "23514", string(postgresErr.Code), "constraint error")
+			require.Equal(t, test.constraint, postgresErr.Constraint, "constraint error")
 		})
 	}
 }

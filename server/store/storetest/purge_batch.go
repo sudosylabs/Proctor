@@ -12,6 +12,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // PurgeBatchObservation exposes only the persistence facts needed to prove
@@ -41,79 +43,71 @@ func TestPurgeBatchProgress[K comparable](t *testing.T, probe PurgeBatchProbe[K]
 	defer cancel()
 	const batch = 100
 	keys := probe.Seed(t, ctx, 2*batch+1, true)
-	if len(keys) != 2*batch+1 {
-		t.Fatal("invalid purge fixture")
-	}
+	require.Len(t, keys, 2*batch+1, "invalid purge fixture")
 	for _, limit := range []int{0, -1, probe.MaximumBatch + 1} {
-		if _, err := probe.Begin(ctx, limit); err == nil {
-			t.Fatalf("invalid purge batch limit %d accepted", limit)
-		}
+		_, err := probe.Begin(ctx, limit)
+		require.Error(t, err, "invalid purge batch limit %d accepted", limit)
 	}
 	first, err := probe.Begin(ctx, batch)
-	requireNoError(t, err)
-	if !slices.Equal(first, keys[:batch]) {
-		t.Fatal("purge selection is not bounded oldest-due order")
-	}
+	require.NoError(t, err)
+	require.True(t, slices.Equal(first, keys[:batch]), "purge selection is not bounded oldest-due order")
 	// Every first-batch VFS operation fails, or its selected result is lost.
 	// Neither condition permits an absence completion.
 	for _, key := range first {
 		observed := probe.Observe(t, ctx, key)
-		if !observed.Exists || observed.ObservedAbsent || observed.VerifiedAbsent || !observed.NextAttemptDeferred {
-			t.Fatalf("selection changed absence or lost its retry delay: %#v", observed)
-		}
+		require.True(t, observed.Exists)
+		require.False(t, observed.ObservedAbsent)
+		require.False(t, observed.VerifiedAbsent)
+		require.True(t, observed.NextAttemptDeferred)
 	}
 	second, err := probe.PeerBegin(ctx, batch)
-	requireNoError(t, err)
-	if !slices.Equal(second, keys[batch:2*batch]) {
-		t.Fatal("a full failed first batch starved later healthy keys")
-	}
+	require.NoError(t, err)
+	require.True(t, slices.Equal(second, keys[batch:2*batch]), "a full failed first batch starved later healthy keys")
 	for _, key := range second {
-		requireNoError(t, probe.Complete(ctx, key))
+		require.NoError(t, probe.Complete(ctx, key))
 		observed := probe.Observe(t, ctx, key)
-		if observed.Exists && (!observed.VerifiedAbsent || observed.NextAttemptDeferred) {
-			t.Fatalf("finished verified key remains pending behind selection backoff: %#v", observed)
+		if observed.Exists {
+			require.True(t, observed.VerifiedAbsent)
+			require.False(t, observed.NextAttemptDeferred)
 		}
 	}
 	last, err := probe.Begin(ctx, batch)
-	requireNoError(t, err)
-	if len(last) != 1 || last[0] != keys[2*batch] {
-		t.Fatal("cleanup did not progress beyond two full batches")
-	}
+	require.NoError(t, err)
+	require.Len(t, last, 1, "cleanup did not progress beyond two full batches")
+	require.Equal(t, keys[2*batch], last[0], "cleanup did not progress beyond two full batches")
 	unknown := last[0]
-	requireNoError(t, probe.Complete(ctx, unknown))
+	require.NoError(t, probe.Complete(ctx, unknown))
 	observed := probe.Observe(t, ctx, unknown)
-	if !observed.Exists || !observed.ObservedAbsent || observed.VerifiedAbsent || !observed.NextAttemptDeferred {
-		t.Fatalf("unknown writer lost its exact-key reconciliation reference: %#v", observed)
-	}
+	require.True(t, observed.Exists)
+	require.True(t, observed.ObservedAbsent)
+	require.False(t, observed.VerifiedAbsent)
+	require.True(t, observed.NextAttemptDeferred)
 	none, err := probe.Begin(ctx, batch)
-	requireNoError(t, err)
-	if len(none) != 0 {
-		t.Fatal("selected failures bypassed their retry interval")
-	}
+	require.NoError(t, err)
+	require.Empty(t, none, "selected failures bypassed their retry interval")
 	probe.RetryNow(t, ctx, first)
 	retry, err := probe.PeerBegin(ctx, batch)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	assertPurgeKeySet(t, retry, first)
 	for _, key := range retry {
-		requireNoError(t, probe.Complete(ctx, key))
+		require.NoError(t, probe.Complete(ctx, key))
 	}
 	// Another absence observation cannot finish a still-unknown writer.
 	probe.RetryNow(t, ctx, []K{unknown})
 	again, err := probe.Begin(ctx, batch)
-	requireNoError(t, err)
-	if len(again) != 1 || again[0] != unknown {
-		t.Fatal("unknown writer was not eligible for exact-key re-observation")
-	}
-	requireNoError(t, probe.Complete(ctx, unknown))
+	require.NoError(t, err)
+	require.Len(t, again, 1, "unknown writer was not eligible for exact-key re-observation")
+	require.Equal(t, unknown, again[0], "unknown writer was not eligible for exact-key re-observation")
+	require.NoError(t, probe.Complete(ctx, unknown))
 	observed = probe.Observe(t, ctx, unknown)
-	if !observed.Exists || observed.VerifiedAbsent {
-		t.Fatal("repeated absence falsely proved an unfinished writer complete")
-	}
+	require.True(t, observed.Exists, "repeated absence falsely proved an unfinished writer complete")
+	require.False(t, observed.VerifiedAbsent, "repeated absence falsely proved an unfinished writer complete")
 	probe.FinishWriter(t, ctx, unknown)
-	requireNoError(t, probe.Complete(ctx, unknown))
+	require.NoError(t, probe.Complete(ctx, unknown))
 	observed = probe.Observe(t, ctx, unknown)
-	if observed.Exists && (!observed.VerifiedAbsent || observed.NextAttemptDeferred) {
-		t.Fatal("finished writer remained pending after its independent absence observation")
+	if observed.Exists {
+		require.True(t, observed.VerifiedAbsent, "finished writer remained pending after its independent absence observation")
+		require.False(t, observed.NextAttemptDeferred, "finished writer remained pending after its independent absence observation")
 	}
 
 	concurrent := probe.Seed(t, ctx, 2*batch, false)
@@ -132,22 +126,20 @@ func TestPurgeBatchProgress[K comparable](t *testing.T, probe PurgeBatchProbe[K]
 	}
 	close(start)
 	left, right := <-results, <-results
-	requireNoError(t, left.err)
-	requireNoError(t, right.err)
-	if len(left.keys) != batch || len(right.keys) != batch {
-		t.Fatal("concurrent purge batches exceeded or lost their bounds")
-	}
+	require.NoError(t, left.err)
+	require.NoError(t, right.err)
+	require.Len(t, left.keys, batch, "concurrent purge batches exceeded or lost their bounds")
+	require.Len(t, right.keys, batch, "concurrent purge batches exceeded or lost their bounds")
 	assertPurgeKeySet(t, append(left.keys, right.keys...), concurrent)
 	none, err = probe.Begin(ctx, batch)
-	requireNoError(t, err)
-	if len(none) != 0 {
-		t.Fatal("concurrent selection did not durably defer both batches")
-	}
+	require.NoError(t, err)
+	require.Empty(t, none, "concurrent selection did not durably defer both batches")
 	for _, key := range concurrent {
 		observed = probe.Observe(t, ctx, key)
-		if !observed.Exists || observed.ObservedAbsent || observed.VerifiedAbsent || !observed.NextAttemptDeferred {
-			t.Fatal("uncompleted concurrent claim lost its exact key or claimed absence")
-		}
+		require.True(t, observed.Exists, "uncompleted concurrent claim lost its exact key or claimed absence")
+		require.False(t, observed.ObservedAbsent, "uncompleted concurrent claim lost its exact key or claimed absence")
+		require.False(t, observed.VerifiedAbsent, "uncompleted concurrent claim lost its exact key or claimed absence")
+		require.True(t, observed.NextAttemptDeferred, "uncompleted concurrent claim lost its exact key or claimed absence")
 	}
 }
 
@@ -157,13 +149,10 @@ func assertPurgeKeySet[K comparable](t *testing.T, got, want []K) {
 	for _, key := range want {
 		remaining[key] = true
 	}
-	if len(got) != len(want) || len(remaining) != len(want) {
-		t.Fatal("purge batch count or fixture identity is invalid")
-	}
+	require.Len(t, got, len(want), "purge batch count or fixture identity is invalid")
+	require.Len(t, remaining, len(want), "purge batch count or fixture identity is invalid")
 	for _, key := range got {
-		if !remaining[key] {
-			t.Fatal("purge batches overlapped or returned an unrelated key")
-		}
+		require.True(t, remaining[key], "purge batches overlapped or returned an unrelated key")
 		delete(remaining, key)
 	}
 }

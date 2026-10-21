@@ -11,10 +11,10 @@ package sqlstore
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/lib/pq"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store/storetest"
@@ -28,27 +28,19 @@ func TestAcademicPeriodClassCanonicalIDConstraintsRejectNoncanonicalValues(t *te
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{
 		Name: "period-class-constraint", DisplayName: "Period Class Constraint",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	unit, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{
 		InstitutionID: institution.ID, Name: "unit", DisplayName: "Unit",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	programme, err := storetest.SaveProgramme(ctx, persistence, &model.Programme{
 		AcademicUnitID: unit.ID, Name: "programme", DisplayName: "Programme",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	level, err := storetest.SaveProgrammeLevel(ctx, persistence, &model.ProgrammeLevel{
 		ProgrammeID: programme.ID, Name: "level", DisplayName: "Level",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	period, err := storetest.SaveAcademicPeriod(ctx, persistence, &model.AcademicPeriod{
 		Owner:       model.NewInstitutionAcademicPeriodOwner(institution.ID),
 		Name:        "period",
@@ -56,15 +48,11 @@ func TestAcademicPeriodClassCanonicalIDConstraintsRejectNoncanonicalValues(t *te
 		StartsAt:    model.TimeFromMillis(1),
 		EndsAt:      model.TimeFromMillis(model.GetMillis() + 1_000_000),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	class, err := storetest.SaveClass(ctx, persistence, &model.Class{
 		ProgrammeLevelID: level.ID, AcademicPeriodID: period.ID, Name: "class-a", DisplayName: "Class A",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	tests := []struct {
 		name       string
@@ -83,9 +71,9 @@ func TestAcademicPeriodClassCanonicalIDConstraintsRejectNoncanonicalValues(t *te
 		t.Run(test.name, func(t *testing.T) {
 			_, err := persistence.GetMaster().Exec(ctx, test.query, test.id)
 			var postgresErr *pq.Error
-			if !errors.As(err, &postgresErr) || string(postgresErr.Code) != "23514" || postgresErr.Constraint != test.constraint {
-				t.Fatalf("constraint error = %#v, want check violation %s", err, test.constraint)
-			}
+			require.ErrorAs(t, err, &postgresErr, "constraint error")
+			require.Equal(t, "23514", string(postgresErr.Code), "constraint error")
+			require.Equal(t, test.constraint, postgresErr.Constraint, "constraint error")
 		})
 	}
 }

@@ -9,9 +9,10 @@ package sqlstore
 
 import (
 	"database/sql"
-	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -42,12 +43,9 @@ func TestAffiliationRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := test.row.model()
 			var persisted *persistedStateError
-			if !errors.As(err, &persisted) {
-				t.Fatalf("model() error = %v, want persisted-state error", err)
-			}
-			if persisted.Entity != "affiliation" || persisted.Field != test.field {
-				t.Fatalf("persisted-state context = %s.%s, want affiliation.%s", persisted.Entity, persisted.Field, test.field)
-			}
+			require.ErrorAs(t, err, &persisted, "model() error")
+			require.Equal(t, "affiliation", persisted.Entity, "persisted-state context")
+			require.Equal(t, test.field, persisted.Field, "persisted-state context")
 		})
 	}
 }
@@ -68,15 +66,12 @@ func TestAffiliationRowRehydrationReturnsValidatedModel(t *testing.T) {
 	}
 
 	got, err := row.model()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := got.Validate(); err != nil {
-		t.Fatalf("rehydrated affiliation is invalid: %v", err)
-	}
-	if got.ID.String() != row.ID || got.UserID.String() != row.UserID || got.Kind != row.Kind || got.Revision != row.Revision {
-		t.Fatalf("model() = %#v, want row identity and relationship fields", got)
-	}
+	require.NoError(t, err)
+	require.NoError(t, got.Validate())
+	require.Equal(t, row.ID, got.ID.String(), "model() = %#v, want row identity and relationship fields", got)
+	require.Equal(t, row.UserID, got.UserID.String(), "model() = %#v, want row identity and relationship fields", got)
+	require.Equal(t, row.Kind, got.Kind, "model() = %#v, want row identity and relationship fields", got)
+	require.Equal(t, row.Revision, got.Revision, "model() = %#v, want row identity and relationship fields", got)
 }
 
 func replaceAffiliationRow(row affiliationRow, replace func(*affiliationRow)) affiliationRow {

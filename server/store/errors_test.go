@@ -10,6 +10,8 @@ package store
 import (
 	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestStoreErrorsPreserveClassificationAndCause(t *testing.T) {
@@ -17,14 +19,12 @@ func TestStoreErrorsPreserveClassificationAndCause(t *testing.T) {
 
 	cause := errors.New("driver detail")
 	notFound := NewErrNotFound("institution", "id").Wrap(cause)
-	if !IsNotFound(notFound) || !errors.Is(notFound, cause) {
-		t.Fatalf("not found classification or cause was lost: %v", notFound)
-	}
+	require.True(t, IsNotFound(notFound))
+	require.ErrorIs(t, notFound, cause)
 
 	conflict := NewErrConflict("institution", "institutions_singleton_key", cause)
-	if !IsConflict(conflict) || !errors.Is(conflict, cause) {
-		t.Fatalf("conflict classification or cause was lost: %v", conflict)
-	}
+	require.True(t, IsConflict(conflict))
+	require.ErrorIs(t, conflict, cause)
 }
 
 func TestIsUserIdentityConflictIsNarrow(t *testing.T) {
@@ -45,9 +45,7 @@ func TestIsUserIdentityConflictIsNarrow(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if got := IsUserIdentityConflict(test.err); got != test.want {
-				t.Fatalf("IsUserIdentityConflict(%v) = %t, want %t", test.err, got, test.want)
-			}
+			require.Equal(t, test.want, IsUserIdentityConflict(test.err), "IsUserIdentityConflict(%v)", test.err)
 		})
 	}
 }

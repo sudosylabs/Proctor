@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/storetest"
@@ -27,9 +29,7 @@ func TestPasswordReauthenticationCommitsOnlyCurrentProofAndAudit(t *testing.T) {
 			f := mfaRecoveryFixture(t, ctx)
 			s := f.persistence
 			session, err := s.Session().Get(ctx, f.principal.SessionID)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			audit, _ := mfaSQLSecurityNoticeFixture(t, ctx, s, f.actor, model.MailTemplateIdentityMFAEnabled, model.GetMillis())
 			input := &store.SessionPasswordReauthentication{SessionID: session.ID, CredentialID: model.SessionCredentialID(f.principal.CredentialID), UserID: f.actor.ID, PasswordProof: passwordProofForSQLTest(t, ctx, s, f.actor.ID), AuditEventID: audit.ID}
 			switch name {
@@ -42,31 +42,31 @@ func TestPasswordReauthenticationCommitsOnlyCurrentProofAndAudit(t *testing.T) {
 			case "recovery generation changed":
 				_, err = s.GetMaster().Exec(ctx, `INSERT INTO user_mfa_recovery(user_id,generation,reset_at,reenrollment_required,updated_at) VALUES(?,1,clock_timestamp(),true,clock_timestamp())`, f.actor.ID.String())
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			before := model.NowUTC()
 			result, err := s.Session().ReauthenticatePassword(ctx, input)
 			current, getErr := s.Session().Get(ctx, session.ID)
-			if getErr != nil {
-				t.Fatal(getErr)
-			}
+			require.NoError(t, getErr)
 			if name != "success" {
-				if err == nil || result != nil || current.ReauthenticatedAt.Valid {
-					t.Fatalf("failed proof or audit changed Session: %#v %v", current, err)
-				}
+				require.Error(t, err, "failed proof or audit changed Session: %#v", current)
+				require.Nil(t, result, "failed proof or audit changed Session: %#v", current)
+				require.False(t, current.ReauthenticatedAt.Valid, "failed proof or audit changed Session: %#v", current)
 				return
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if result.Session.ID != session.ID || !current.ReauthenticatedAt.Valid || current.ReauthenticatedAt.Time.Before(before) || current.ReauthenticatedAt.Time.After(model.NowUTC()) || !current.AuthenticatedAt.Equal(session.AuthenticatedAt) || current.MFACompletedAt != session.MFACompletedAt || current.ExpiresAt != session.ExpiresAt || current.IdleExpiresAt != session.IdleExpiresAt || current.AuthenticationStrength != session.AuthenticationStrength || len(result.AccessTokenHashes) != 1 {
-				t.Fatalf("reauthentication changed original provenance or expiry: %#v", current)
-			}
+			require.NoError(t, err)
+			require.Equal(t, session.ID, result.Session.ID)
+			require.True(t, current.ReauthenticatedAt.Valid)
+			require.False(t, current.ReauthenticatedAt.Time.Before(before))
+			require.False(t, current.ReauthenticatedAt.Time.After(model.NowUTC()))
+			require.True(t, current.AuthenticatedAt.Equal(session.AuthenticatedAt))
+			require.Equal(t, session.MFACompletedAt, current.MFACompletedAt)
+			require.Equal(t, session.ExpiresAt, current.ExpiresAt)
+			require.Equal(t, session.IdleExpiresAt, current.IdleExpiresAt)
+			require.Equal(t, session.AuthenticationStrength, current.AuthenticationStrength)
+			require.Len(t, result.AccessTokenHashes, 1)
 			storedAudit, err := s.Audit().Get(ctx, audit.ID)
-			if err != nil || storedAudit.Status != model.AuditStatusSuccess {
-				t.Fatal("fresh proof omitted terminal audit")
-			}
+			require.NoError(t, err, "fresh proof omitted terminal audit")
+			require.Equal(t, model.AuditStatusSuccess, storedAudit.Status, "fresh proof omitted terminal audit")
 		})
 	}
 }
@@ -81,25 +81,17 @@ func TestExternalReauthenticationRechecksExactIdentityAndLiveBoundSession(t *tes
 			seedTestAuthenticationPolicy(t, s, map[string]model.ProviderAdmissionMode{"campus": model.ProviderAdmissionLinkedOnly})
 			user := saveIntegrationUser(t, ctx, s, &model.User{Username: "fresh-provider", Email: "provider@example.edu"})
 			identity, err := s.ExternalIdentity().Save(ctx, &model.ExternalIdentity{UserID: user.ID, Provider: "campus", Subject: "exact-subject"})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			candidate, credentials := authenticationPolicyTestSession(user.ID, "oidc", "campus", identity.ID)
 			session, savedCredentials, err := storetest.SaveSession(ctx, s, sessionCreationForSQLTest(t, ctx, s, candidate, credentials, 10))
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			audit, _ := mfaSQLSecurityNoticeFixture(t, ctx, s, user, model.MailTemplateIdentityMFAEnabled, model.GetMillis())
 			auditID := audit.ID.String()
 			stateHash, bindingHash := model.HashToken(model.NewCredentialToken()), model.HashToken(model.NewCredentialToken())
 			state, err := s.ExternalLoginState().Save(ctx, &model.ExternalLoginState{Provider: "campus", Purpose: model.ExternalAuthenticationPurposeReauthenticate, TargetUserID: user.ID, SessionID: session.ID, SessionCredentialID: savedCredentials[0].ID, ExternalIdentityID: identity.ID, AuditEventID: auditID, StateHash: stateHash, BindingHash: bindingHash, ReturnTo: "/account/security", ClientType: model.SessionClientWeb}, time.Minute)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			state, err = s.ExternalLoginState().Consume(ctx, "campus", stateHash, bindingHash)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			input := &store.SessionExternalReauthentication{StateID: state.ID, ProviderID: "campus", Subject: identity.Subject, AuthenticatedAt: model.NowUTC()}
 			switch name {
 			case "wrong subject":
@@ -115,29 +107,24 @@ func TestExternalReauthenticationRechecksExactIdentityAndLiveBoundSession(t *tes
 			case "terminal audit":
 				_, err = s.Audit().Complete(ctx, audit.ID, model.AuditStatusFail, "authentication.token_invalid", nil, model.GetMillis())
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			result, err := s.Session().ReauthenticateExternal(ctx, input)
 			current, getErr := s.Session().Get(ctx, session.ID)
-			if getErr != nil {
-				t.Fatal(getErr)
-			}
+			require.NoError(t, getErr)
 			if name != "success" {
-				if err == nil || result != nil || current.ReauthenticatedAt.Valid {
-					t.Fatalf("invalid provider proof changed Session: %#v %v", current, err)
-				}
+				require.Error(t, err, "invalid provider proof changed Session: %#v", current)
+				require.Nil(t, result, "invalid provider proof changed Session: %#v", current)
+				require.False(t, current.ReauthenticatedAt.Valid, "invalid provider proof changed Session: %#v", current)
 				return
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !current.ReauthenticatedAt.Time.Equal(input.AuthenticatedAt) || !current.AuthenticatedAt.Equal(session.AuthenticatedAt) || current.MFACompletedAt != session.MFACompletedAt || current.AuthenticationMethod != session.AuthenticationMethod || current.ExternalIdentityID != identity.ID {
-				t.Fatalf("fresh provider proof rewrote original provenance: %#v", current)
-			}
-			if _, err = s.Session().ReauthenticateExternal(ctx, input); err == nil {
-				t.Fatal("completed one-use proof committed a second audit transition")
-			}
+			require.NoError(t, err)
+			require.True(t, current.ReauthenticatedAt.Time.Equal(input.AuthenticatedAt))
+			require.True(t, current.AuthenticatedAt.Equal(session.AuthenticatedAt))
+			require.Equal(t, session.MFACompletedAt, current.MFACompletedAt)
+			require.Equal(t, session.AuthenticationMethod, current.AuthenticationMethod)
+			require.Equal(t, identity.ID, current.ExternalIdentityID)
+			_, err = s.Session().ReauthenticateExternal(ctx, input)
+			require.Error(t, err, "completed one-use proof committed a second audit transition")
 		})
 	}
 }
@@ -154,15 +141,11 @@ func TestPasswordReauthenticationRechecksCredentialAfterWaitingForFence(t *testi
 	done := make(chan error, 1)
 	go func() { _, err := s.Session().ReauthenticatePassword(ctx, input); done <- err }()
 	waitForBlockedSystemAdministratorAuthenticationPathTransactions(t, ctx, s, pid, 1)
-	if _, err := s.GetMaster().Exec(ctx, `UPDATE session_credentials SET revoked_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id=?`, f.targetCredential.ID.String()); err != nil {
-		t.Fatal(err)
-	}
+	_, err := s.GetMaster().Exec(ctx, `UPDATE session_credentials SET revoked_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id=?`, f.targetCredential.ID.String())
+	require.NoError(t, err)
 	release()
-	if err := <-done; err == nil {
-		t.Fatal("proof collected before revocation survived the fence")
-	}
+	require.Error(t, (<-done), "proof collected before revocation survived the fence")
 	current, err := s.Session().Get(ctx, f.targetSession.ID)
-	if err != nil || current.ReauthenticatedAt.Valid {
-		t.Fatal("revoked proof refreshed authentication")
-	}
+	require.NoError(t, err, "revoked proof refreshed authentication")
+	require.False(t, current.ReauthenticatedAt.Valid, "revoked proof refreshed authentication")
 }

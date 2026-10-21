@@ -11,10 +11,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
-	"errors"
-	"reflect"
+	"fmt"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -25,18 +26,19 @@ func TestRetentionPolicyStore(t *testing.T, stores store.Store) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if policy, err := stores.RetentionPolicy().Get(ctx); !store.IsNotFound(err) || policy != nil {
-		t.Fatalf("Get before bootstrap = %#v, %v", policy, err)
-	}
+	policy, err := stores.RetentionPolicy().Get(ctx)
+	require.True(t, store.IsNotFound(err), "Get before bootstrap")
+	require.Nil(t, policy, "Get before bootstrap")
 	bootstrap, err := stores.Installation().Bootstrap(ctx, testInstallationBootstrap(812))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	initial, err := stores.RetentionPolicy().Get(ctx)
-	requireNoError(t, err)
-	if initial.Validate() != nil || initial.InstitutionID != bootstrap.Institution.ID || initial.Revision != 1 ||
-		initial.RetentionPolicySettings != (model.RetentionPolicySettings{}) ||
-		!initial.CreatedAt.Equal(initial.UpdatedAt) || !reflect.DeepEqual(initial, bootstrap.RetentionPolicy) {
-		t.Fatalf("bootstrap retention policy = %#v, bootstrap result = %#v", initial, bootstrap.RetentionPolicy)
-	}
+	require.NoError(t, err)
+	require.NoError(t, initial.Validate(), "bootstrap retention policy")
+	require.Equal(t, bootstrap.Institution.ID, initial.InstitutionID, "bootstrap retention policy")
+	require.Equal(t, int64(1), initial.Revision, "bootstrap retention policy")
+	require.Equal(t, model.RetentionPolicySettings{}, initial.RetentionPolicySettings, "bootstrap retention policy")
+	require.True(t, initial.CreatedAt.Equal(initial.UpdatedAt), "bootstrap retention policy")
+	require.Equal(t, bootstrap.RetentionPolicy, initial, "bootstrap retention policy")
 
 	settings := model.RetentionPolicySettings{SubmissionRetentionDays: 365, IntegrityRetentionDays: 180,
 		AuditRetentionDays: 730, ExportRetentionDays: 1, DeletionGraceDays: 7}
@@ -46,30 +48,26 @@ func TestRetentionPolicyStore(t *testing.T, stores store.Store) {
 	prepareRetentionPolicyAttempt(t, ctx, stores, bootstrap.Institution.ID, replacement)
 	command := retentionPolicyCommand(replacement.Principal.UserID, "replace")
 	result, err := stores.RetentionPolicy().Replace(ctx, replacement, command)
-	if err != nil {
-		t.Fatalf("initial retention replacement: %v (cause=%v, initial time=%s)", err, errors.Unwrap(err), initial.UpdatedAt)
-	}
-	if result.Replayed || !result.Changed || result.Policy.Revision != 2 || result.Policy.RetentionPolicySettings != settings ||
-		!result.Policy.CreatedAt.Equal(initial.CreatedAt) || result.Policy.UpdatedAt.Before(initial.UpdatedAt) {
-		t.Fatalf("replacement = %#v", result)
-	}
+	require.NoError(t, err, "initial retention replacement")
+	require.False(t, result.Replayed)
+	require.True(t, result.Changed)
+	require.Equal(t, int64(2), result.Policy.Revision)
+	require.Equal(t, settings, result.Policy.RetentionPolicySettings)
+	require.True(t, result.Policy.CreatedAt.Equal(initial.CreatedAt))
+	require.False(t, result.Policy.UpdatedAt.Before(initial.UpdatedAt))
 	assertRetentionPolicyAudit(t, ctx, stores, replacement, result, "")
 	assertRetentionPolicyOutcome(t, ctx, stores, command, true)
 	persisted, err := stores.RetentionPolicy().Get(ctx)
-	requireNoError(t, err)
-	if !reflect.DeepEqual(persisted, result.Policy) {
-		t.Fatalf("persisted policy = %#v, result = %#v", persisted, result.Policy)
-	}
+	require.NoError(t, err)
+	require.Equal(t, result.Policy, persisted, "persisted policy")
 
 	replayInput := &store.RetentionPolicyReplacement{RetentionMutation: replacement.RetentionMutation, ExpectedRevision: initial.Revision, Settings: settings}
 	prepareRetentionPolicyAttempt(t, ctx, stores, bootstrap.Institution.ID, replayInput)
 	replay, err := stores.RetentionPolicy().Replace(ctx, replayInput, command)
-	if err != nil {
-		t.Fatalf("exact retention replay: %v (cause=%v)", err, errors.Unwrap(err))
-	}
-	if !replay.Replayed || !replay.Changed || !reflect.DeepEqual(replay.Policy, result.Policy) {
-		t.Fatalf("exact replay = %#v, original = %#v", replay, result)
-	}
+	require.NoError(t, err, "exact retention replay")
+	require.True(t, replay.Replayed, "exact replay = %#v, original = %#v", replay, result)
+	require.True(t, replay.Changed, "exact replay = %#v, original = %#v", replay, result)
+	require.Equal(t, result.Policy, replay.Policy, "exact replay = %#v, original = %#v", replay, result)
 	assertRetentionPolicyAudit(t, ctx, stores, replayInput, replay, replacement.AuditEventID)
 
 	conflictInput := *replayInput
@@ -79,9 +77,7 @@ func TestRetentionPolicyStore(t *testing.T, stores store.Store) {
 	conflictCommand.Fingerprint = sha256.Sum256([]byte("different retention policy content"))
 	_, err = stores.RetentionPolicy().Replace(ctx, &conflictInput, &conflictCommand)
 	var keyConflict *store.ErrIdempotencyConflict
-	if !errors.As(err, &keyConflict) {
-		t.Fatalf("same key with different content error = %v", err)
-	}
+	require.ErrorAs(t, err, &keyConflict)
 	assertRetentionPolicyAttemptPending(t, ctx, stores, conflictInput.AuditEventID)
 
 	staleInput := *replayInput
@@ -89,9 +85,8 @@ func TestRetentionPolicyStore(t *testing.T, stores store.Store) {
 	staleCommand := retentionPolicyCommand(staleInput.Principal.UserID, "different-key-stale-revision")
 	_, err = stores.RetentionPolicy().Replace(ctx, &staleInput, staleCommand)
 	var revisionConflict *store.ErrRetentionPolicyRevisionConflict
-	if !errors.As(err, &revisionConflict) || revisionConflict.CurrentRevision != result.Policy.Revision {
-		t.Fatalf("different key with stale revision error = %v", err)
-	}
+	require.ErrorAs(t, err, &revisionConflict)
+	require.Equal(t, result.Policy.Revision, revisionConflict.CurrentRevision)
 	assertRetentionPolicyOutcome(t, ctx, stores, staleCommand, false)
 	assertRetentionPolicyAttemptPending(t, ctx, stores, staleInput.AuditEventID)
 
@@ -99,12 +94,10 @@ func TestRetentionPolicyStore(t *testing.T, stores store.Store) {
 	prepareRetentionPolicyAttempt(t, ctx, stores, bootstrap.Institution.ID, noOp)
 	noOpCommand := retentionPolicyCommand(noOp.Principal.UserID, "no-op")
 	noOpResult, err := stores.RetentionPolicy().Replace(ctx, noOp, noOpCommand)
-	if err != nil {
-		t.Fatalf("retention no-op: %v (cause=%v, previous time=%s)", err, errors.Unwrap(err), result.Policy.UpdatedAt)
-	}
-	if noOpResult.Replayed || noOpResult.Changed || !reflect.DeepEqual(noOpResult.Policy, result.Policy) {
-		t.Fatalf("no-op changed revision or timestamps: %#v, prior=%#v", noOpResult, result.Policy)
-	}
+	require.NoError(t, err, "retention no-op")
+	require.False(t, noOpResult.Replayed, "no-op changed revision or timestamps: %#v, prior", noOpResult)
+	require.False(t, noOpResult.Changed, "no-op changed revision or timestamps: %#v, prior", noOpResult)
+	require.Equal(t, result.Policy, noOpResult.Policy, "no-op changed revision or timestamps: %#v, prior", noOpResult)
 	assertRetentionPolicyAudit(t, ctx, stores, noOp, noOpResult, "")
 	assertRetentionPolicyOutcome(t, ctx, stores, noOpCommand, true)
 
@@ -113,25 +106,20 @@ func TestRetentionPolicyStore(t *testing.T, stores store.Store) {
 	missingAudit.AuditEventID, missingAudit.AuditAt = model.NewAuditEventID(), model.GetMillis()
 	missingAudit.Settings.SubmissionRetentionDays++
 	missingAuditCommand := retentionPolicyCommand(missingAudit.Principal.UserID, "missing-audit")
-	if _, err = stores.RetentionPolicy().Replace(ctx, missingAudit, missingAuditCommand); err == nil {
-		t.Fatal("replacement succeeded without an audit attempt")
-	}
+	_, err = stores.RetentionPolicy().Replace(ctx, missingAudit, missingAuditCommand)
+	require.Error(t, err, "replacement succeeded without an audit attempt")
 	assertRetentionPolicyOutcome(t, ctx, stores, missingAuditCommand, false)
 	persisted, err = stores.RetentionPolicy().Get(ctx)
-	requireNoError(t, err)
-	if !reflect.DeepEqual(persisted, result.Policy) {
-		t.Fatalf("policy survived audit rollback: %#v, prior=%#v", persisted, result.Policy)
-	}
+	require.NoError(t, err)
+	require.Equal(t, result.Policy, persisted, "policy survived audit rollback")
 	// Retrying the same command after a fresh audit proves the failed attempt
 	// did not reserve an outcome or consume the expected revision.
 	prepareRetentionPolicyAttempt(t, ctx, stores, bootstrap.Institution.ID, missingAudit)
 	recovered, err := stores.RetentionPolicy().Replace(ctx, missingAudit, missingAuditCommand)
-	if err != nil {
-		t.Fatalf("retention recovery after missing audit: %v (cause=%v)", err, errors.Unwrap(err))
-	}
-	if recovered.Replayed || !recovered.Changed || recovered.Policy.Revision != result.Policy.Revision+1 {
-		t.Fatalf("recovery after missing audit = %#v", recovered)
-	}
+	require.NoError(t, err, "retention recovery after missing audit")
+	require.False(t, recovered.Replayed)
+	require.True(t, recovered.Changed)
+	require.Equal(t, result.Policy.Revision+1, recovered.Policy.Revision)
 	assertRetentionPolicyAudit(t, ctx, stores, missingAudit, recovered, "")
 
 	testRetentionPolicyConcurrentEditors(t, ctx, stores, bootstrap, recovered.Policy)
@@ -146,14 +134,14 @@ func testRetentionPolicyCurrentCredentialAndAssurance(t *testing.T, ctx context.
 	t.Helper()
 	principal := saveRecordsPrincipal(t, ctx, stores, bootstrap.Administrator.ID, true)
 	current, err := stores.RetentionPolicy().Get(ctx)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	original := &store.RetentionPolicyReplacement{RetentionMutation: store.RetentionMutation{Principal: principal, RecentAuthenticationTTL: time.Hour},
 		ExpectedRevision: current.Revision, Settings: current.RetentionPolicySettings}
 	original.Settings.AuditRetentionDays++
 	prepareRetentionPolicyAttempt(t, ctx, stores, bootstrap.Institution.ID, original)
 	originalCommand := retentionPolicyCommand(principal.UserID, "assurance-original")
 	first, err := stores.RetentionPolicy().Replace(ctx, original, originalCommand)
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	for _, state := range []string{"single factor", "expired assurance", "revoked Session"} {
 		t.Run(state, func(t *testing.T) {
@@ -166,14 +154,14 @@ func testRetentionPolicyCurrentCredentialAndAssurance(t *testing.T, ctx context.
 				session.MFACompletedAt = model.OptionalTimeFrom(session.AuthenticatedAt)
 			}
 			saved, credentials, saveErr := SaveSession(ctx, stores, testSessionCreation(t, ctx, stores, session, credentials, 10))
-			requireNoError(t, saveErr)
+			require.NoError(t, saveErr)
 			// Keep the request snapshot strong and fresh. The stored Session and
 			// exact credential must decide even when a caller has stale facts.
 			stale := principal
 			stale.SessionID, stale.CredentialID = saved.ID, model.PrincipalCredentialID(credentials[0].ID)
 			if state == "revoked Session" {
 				_, revokeErr := stores.Session().Withdraw(ctx, saved.ID, principal.UserID, model.GetMillis(), model.SessionRevocationInactiveUser)
-				requireNoError(t, revokeErr)
+				require.NoError(t, revokeErr)
 			}
 			for _, operation := range []string{"change", "no-op", "replay"} {
 				t.Run(operation, func(t *testing.T) {
@@ -190,16 +178,14 @@ func testRetentionPolicyCurrentCredentialAndAssurance(t *testing.T, ctx context.
 					prepareRetentionPolicyAttempt(t, ctx, stores, bootstrap.Institution.ID, &input)
 					result, replaceErr := stores.RetentionPolicy().Replace(ctx, &input, command)
 					var conflict *store.ErrConflict
-					if result != nil || !errors.As(replaceErr, &conflict) || conflict.Resource != "authorization" {
-						t.Fatalf("stale credential or assurance admitted %s: result=%#v error=%v", operation, result, replaceErr)
-					}
+					require.Nil(t, result, "stale credential or assurance admitted %s: result=%#v error", operation, result)
+					require.ErrorAs(t, replaceErr, &conflict, "stale credential or assurance admitted %s: result=%#v error", operation, result)
+					require.Equal(t, "authorization", conflict.Resource, "stale credential or assurance admitted %s: result=%#v error", operation, result)
 					assertRetentionPolicyAttemptPending(t, ctx, stores, input.AuditEventID)
 					assertRetentionPolicyOutcome(t, ctx, stores, command, operation == "replay")
 					persisted, getErr := stores.RetentionPolicy().Get(ctx)
-					requireNoError(t, getErr)
-					if !reflect.DeepEqual(persisted, first.Policy) {
-						t.Fatalf("rejected %s changed policy: %#v", operation, persisted)
-					}
+					require.NoError(t, getErr)
+					require.Equal(t, first.Policy, persisted, "rejected %s changed policy", operation)
 				})
 			}
 		})
@@ -210,18 +196,19 @@ func testRetentionPolicyReplacementInstitution(t *testing.T, ctx context.Context
 	bootstrap *model.InstallationBootstrapResult,
 ) {
 	t.Helper()
-	requireNoError(t, stores.Institution().Archive(ctx, bootstrap.Institution.ID, model.GetMillis()))
-	if policy, err := stores.RetentionPolicy().Get(ctx); !store.IsNotFound(err) || policy != nil {
-		t.Fatalf("Get without an active Institution = %#v, %v", policy, err)
-	}
-	replacement, err := stores.Institution().Save(ctx, &model.Institution{Name: "replacement-retention-institution", DisplayName: "Replacement Institution"})
-	requireNoError(t, err)
+	require.NoError(t, stores.Institution().Archive(ctx, bootstrap.Institution.ID, model.GetMillis()))
 	policy, err := stores.RetentionPolicy().Get(ctx)
-	requireNoError(t, err)
-	if policy.InstitutionID != replacement.ID || policy.Revision != 1 || policy.RetentionPolicySettings != (model.RetentionPolicySettings{}) ||
-		!policy.CreatedAt.Equal(replacement.CreatedAt) || !policy.UpdatedAt.Equal(policy.CreatedAt) {
-		t.Fatalf("replacement Institution inherited archived policy: %#v, Institution=%#v", policy, replacement)
-	}
+	require.True(t, store.IsNotFound(err), "Get without an active Institution")
+	require.Nil(t, policy, "Get without an active Institution")
+	replacement, err := stores.Institution().Save(ctx, &model.Institution{Name: "replacement-retention-institution", DisplayName: "Replacement Institution"})
+	require.NoError(t, err)
+	policy, err = stores.RetentionPolicy().Get(ctx)
+	require.NoError(t, err)
+	require.Equal(t, replacement.ID, policy.InstitutionID, "replacement Institution inherited archived policy: %#v, Institution=%#v", policy, replacement)
+	require.Equal(t, int64(1), policy.Revision, "replacement Institution inherited archived policy: %#v, Institution=%#v", policy, replacement)
+	require.Equal(t, model.RetentionPolicySettings{}, policy.RetentionPolicySettings, "replacement Institution inherited archived policy: %#v, Institution=%#v", policy, replacement)
+	require.True(t, policy.CreatedAt.Equal(replacement.CreatedAt), "replacement Institution inherited archived policy: %#v, Institution=%#v", policy, replacement)
+	require.True(t, policy.UpdatedAt.Equal(policy.CreatedAt), "replacement Institution inherited archived policy: %#v, Institution=%#v", policy, replacement)
 }
 
 func testRetentionPolicyConcurrentEditors(t *testing.T, ctx context.Context, stores store.Store,
@@ -231,7 +218,7 @@ func testRetentionPolicyConcurrentEditors(t *testing.T, ctx context.Context, sto
 	other := saveUserWithPassword(t, ctx, stores)
 	_, err := SaveRoleBinding(ctx, stores, &model.RoleBinding{UserID: other.ID, RoleID: bootstrap.Role.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: bootstrap.Institution.ID.String(), StartsAt: model.NowUTC().Add(-time.Hour)})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	inputs := make([]*store.RetentionPolicyReplacement, 2)
 	commands := make([]*store.CommandIdempotency, 2)
 	for index, actorID := range []model.UserID{bootstrap.Administrator.ID, other.ID} {
@@ -263,36 +250,33 @@ func testRetentionPolicyConcurrentEditors(t *testing.T, ctx context.Context, sto
 		select {
 		case completedEdit = <-completed:
 		case <-ctx.Done():
-			t.Fatal("concurrent retention editors did not complete:", ctx.Err())
+			require.FailNow(t, fmt.Sprint("concurrent retention editors did not complete:", ctx.Err()))
 		}
 		input, command := inputs[completedEdit.index], commands[completedEdit.index]
 		if completedEdit.err == nil {
 			winners++
 			result := completedEdit.result
-			if result.Replayed || !result.Changed || result.Policy.Revision != current.Revision+1 || result.Policy.RetentionPolicySettings != input.Settings {
-				t.Fatalf("concurrent winner = %#v", result)
-			}
+			require.False(t, result.Replayed)
+			require.True(t, result.Changed)
+			require.Equal(t, current.Revision+1, result.Policy.Revision)
+			require.Equal(t, input.Settings, result.Policy.RetentionPolicySettings)
 			winner = result.Policy
 			assertRetentionPolicyAudit(t, ctx, stores, input, result, "")
 			assertRetentionPolicyOutcome(t, ctx, stores, command, true)
 			continue
 		}
 		var conflict *store.ErrRetentionPolicyRevisionConflict
-		if !errors.As(completedEdit.err, &conflict) || conflict.CurrentRevision != current.Revision+1 {
-			t.Fatalf("concurrent edit error = %v", completedEdit.err)
-		}
+		require.ErrorAs(t, completedEdit.err, &conflict)
+		require.Equal(t, current.Revision+1, conflict.CurrentRevision)
 		losers++
 		assertRetentionPolicyAttemptPending(t, ctx, stores, input.AuditEventID)
 		assertRetentionPolicyOutcome(t, ctx, stores, command, false)
 	}
-	if winners != 1 || losers != 1 {
-		t.Fatalf("concurrent edits: winners=%d conflicts=%d", winners, losers)
-	}
+	require.Equal(t, 1, winners, "concurrent edits: winners")
+	require.Equal(t, 1, losers, "concurrent edits: winners")
 	persisted, err := stores.RetentionPolicy().Get(ctx)
-	requireNoError(t, err)
-	if !reflect.DeepEqual(persisted, winner) {
-		t.Fatalf("persisted concurrent winner = %#v, returned=%#v", persisted, winner)
-	}
+	require.NoError(t, err)
+	require.Equal(t, winner, persisted, "persisted concurrent winner")
 }
 
 func testRetentionPolicyActiveAdministratorGuard(t *testing.T, ctx context.Context, stores store.Store,
@@ -300,7 +284,7 @@ func testRetentionPolicyActiveAdministratorGuard(t *testing.T, ctx context.Conte
 ) {
 	t.Helper()
 	current, err := stores.RetentionPolicy().Get(ctx)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	for _, test := range []struct {
 		name     string
 		binding  bool
@@ -316,10 +300,10 @@ func testRetentionPolicyActiveAdministratorGuard(t *testing.T, ctx context.Conte
 			if test.binding {
 				binding, saveErr := SaveRoleBinding(ctx, stores, &model.RoleBinding{UserID: actor.ID, RoleID: bootstrap.Role.ID,
 					ScopeType: model.RoleScopeInstitution, ScopeID: bootstrap.Institution.ID.String(), StartsAt: model.NowUTC().Add(-time.Hour)})
-				requireNoError(t, saveErr)
+				require.NoError(t, saveErr)
 				if test.ended {
 					_, endErr := EndRoleBinding(ctx, stores, binding.ID, model.GetMillis())
-					requireNoError(t, endErr)
+					require.NoError(t, endErr)
 				}
 			}
 			principal := saveRecordsPrincipal(t, ctx, stores, actor.ID, true)
@@ -329,7 +313,7 @@ func testRetentionPolicyActiveAdministratorGuard(t *testing.T, ctx context.Conte
 					ID: actor.ID, ExpectedRevision: actor.Revision, Disabled: true, ChangedAt: model.GetMillis(),
 					RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt),
 				}))
-				requireNoError(t, disableErr)
+				require.NoError(t, disableErr)
 			}
 			input := &store.RetentionPolicyReplacement{RetentionMutation: store.RetentionMutation{Principal: principal, RecentAuthenticationTTL: time.Hour}, ExpectedRevision: current.Revision, Settings: current.RetentionPolicySettings}
 			input.Settings.DeletionGraceDays++
@@ -337,16 +321,13 @@ func testRetentionPolicyActiveAdministratorGuard(t *testing.T, ctx context.Conte
 			command := retentionPolicyCommand(actor.ID, "unauthorized")
 			_, replaceErr := stores.RetentionPolicy().Replace(ctx, input, command)
 			var conflict *store.ErrConflict
-			if !errors.As(replaceErr, &conflict) || conflict.Resource != "authorization" {
-				t.Fatalf("inactive administrator replacement error = %v", replaceErr)
-			}
+			require.ErrorAs(t, replaceErr, &conflict)
+			require.Equal(t, "authorization", conflict.Resource)
 			assertRetentionPolicyAttemptPending(t, ctx, stores, input.AuditEventID)
 			assertRetentionPolicyOutcome(t, ctx, stores, command, false)
 			persisted, getErr := stores.RetentionPolicy().Get(ctx)
-			requireNoError(t, getErr)
-			if !reflect.DeepEqual(persisted, current) {
-				t.Fatalf("unauthorized edit changed policy = %#v, prior=%#v", persisted, current)
-			}
+			require.NoError(t, getErr)
+			require.Equal(t, current, persisted, "unauthorized edit changed policy")
 		})
 	}
 }
@@ -366,7 +347,7 @@ func prepareRetentionPolicyAttempt(t *testing.T, ctx context.Context, stores sto
 		Action: string(model.ActionRetentionPolicyManage), Resource: model.Resource{Type: model.ResourceInstitution, ID: institutionID.String()},
 		ScopeType: model.RoleScopeInstitution, ScopeID: institutionID.String(), Status: model.AuditStatusAttempt,
 		NodeID: "store-test", ClientType: string(model.SessionClientWeb), AuthMethod: "password"})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	replacement.AuditEventID, replacement.AuditAt = event.ID, model.MillisFromTime(event.CreatedAt)
 }
 
@@ -375,40 +356,36 @@ func assertRetentionPolicyAudit(t *testing.T, ctx context.Context, stores store.
 ) {
 	t.Helper()
 	event, err := stores.Audit().Get(ctx, input.AuditEventID)
-	requireNoError(t, err)
-	if event.Status != model.AuditStatusSuccess {
-		t.Fatalf("retention audit status = %q", event.Status)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.AuditStatusSuccess, event.Status)
 	var result map[string]any
-	requireNoError(t, json.Unmarshal(event.Result, &result))
-	if result["operation"] != "replace" || result["changed"] != outcome.Changed ||
-		result["expected_revision"] != float64(input.ExpectedRevision) || result["resulting_revision"] != float64(outcome.Policy.Revision) ||
-		result["submission_retention_days"] != float64(outcome.Policy.SubmissionRetentionDays) ||
-		result["integrity_retention_days"] != float64(outcome.Policy.IntegrityRetentionDays) ||
-		result["audit_retention_days"] != float64(outcome.Policy.AuditRetentionDays) ||
-		result["export_retention_days"] != float64(outcome.Policy.ExportRetentionDays) ||
-		result["deletion_grace_days"] != float64(outcome.Policy.DeletionGraceDays) || result["automatic_deletion_enabled"] != false {
-		t.Fatalf("retention audit result = %#v", result)
-	}
-	if originalAuditID != "" && (result["idempotency_replayed"] != true || result["original_audit_event_id"] != originalAuditID.String()) {
-		t.Fatalf("replay audit lost original identity: %#v", result)
+	require.NoError(t, json.Unmarshal(event.Result, &result))
+	require.Equal(t, "replace", result["operation"])
+	require.Equal(t, outcome.Changed, result["changed"])
+	require.Equal(t, float64(input.ExpectedRevision), result["expected_revision"])
+	require.Equal(t, float64(outcome.Policy.Revision), result["resulting_revision"])
+	require.Equal(t, float64(outcome.Policy.SubmissionRetentionDays), result["submission_retention_days"])
+	require.Equal(t, float64(outcome.Policy.IntegrityRetentionDays), result["integrity_retention_days"])
+	require.Equal(t, float64(outcome.Policy.AuditRetentionDays), result["audit_retention_days"])
+	require.Equal(t, float64(outcome.Policy.ExportRetentionDays), result["export_retention_days"])
+	require.Equal(t, float64(outcome.Policy.DeletionGraceDays), result["deletion_grace_days"])
+	require.Equal(t, false, result["automatic_deletion_enabled"])
+	if originalAuditID != "" {
+		require.Equal(t, true, result["idempotency_replayed"])
+		require.Equal(t, originalAuditID.String(), result["original_audit_event_id"])
 	}
 }
 
 func assertRetentionPolicyAttemptPending(t *testing.T, ctx context.Context, stores store.Store, auditID model.AuditEventID) {
 	t.Helper()
 	event, err := stores.Audit().Get(ctx, auditID)
-	requireNoError(t, err)
-	if event.Status != model.AuditStatusAttempt {
-		t.Fatalf("failed replacement completed audit: %#v", event)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.AuditStatusAttempt, event.Status)
 }
 
 func assertRetentionPolicyOutcome(t *testing.T, ctx context.Context, stores store.Store, command *store.CommandIdempotency, want bool) {
 	t.Helper()
 	found, err := stores.CommandOutcome().Has(ctx, command)
-	requireNoError(t, err)
-	if found != want {
-		t.Fatalf("retention command outcome exists = %v, want %v", found, want)
-	}
+	require.NoError(t, err)
+	require.Equal(t, want, found, "retention command outcome exists")
 }

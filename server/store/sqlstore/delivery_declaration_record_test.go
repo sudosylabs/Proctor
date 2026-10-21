@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -20,9 +22,7 @@ import (
 func TestRetainedDeliveryDeclarationValidation(t *testing.T) {
 	declaration := model.DeclareDeliveryGaps{DeclarationID: model.NewID(), AllocatedThroughSequence: 4, Ranges: []model.SequenceRange{{First: 1, Last: 2}}, Reason: "spool_lost"}
 	raw, err := declaration.Canonical()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	receipt := model.DeliveryGapReceipt{DeclarationID: declaration.DeclarationID, RequestDigest: model.SHA256Fingerprint(raw), DeclarationRevision: 1, SettledThroughSequence: 2}
 	valid := deliveryDeclarationRecord{Kind: "gaps", RequestDigest: receipt.RequestDigest, Gaps: &declaration, Receipt: receipt}
 	for _, tc := range []struct {
@@ -38,26 +38,18 @@ func TestRetainedDeliveryDeclarationValidation(t *testing.T) {
 			value := valid
 			tc.change(&value)
 			raw, err := json.Marshal(value)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := decodeDeliveryDeclarationRecord(raw); !errors.Is(err, store.ErrInvalidState) {
-				t.Fatalf("corruption not internal: %v", err)
-			}
+			require.NoError(t, err)
+			_, err = decodeDeliveryDeclarationRecord(raw)
+			require.ErrorIs(t, err, store.ErrInvalidState)
 		})
 	}
 	raw, err = json.Marshal(valid)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := decodeDeliveryDeclarationRecord(raw); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	_, err = decodeDeliveryDeclarationRecord(raw)
+	require.NoError(t, err)
 	_, capacityErr := model.ReserveDeliveryMetadata(model.DeliveryMetadataLimitBytes, 1)
 	var capacity *model.DeliveryMetadataCapacity
-	if !errors.As(capacityErr, &capacity) {
-		t.Fatal(capacityErr)
-	}
+	require.ErrorAs(t, capacityErr, &capacity)
 	for _, tc := range []struct {
 		name, refusal string
 		receipt       model.DeliveryGapReceipt
@@ -74,9 +66,8 @@ func TestRetainedDeliveryDeclarationValidation(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := validateDeliveryDeclarationOutcome(tc.refusal, tc.receipt, tc.capacity)
-			if tc.valid && err != nil || !tc.valid && !errors.Is(err, store.ErrInvalidState) {
-				t.Fatalf("valid=%v err=%v", tc.valid, err)
-			}
+			require.False(t, tc.valid && err != nil, "valid=%v err=%v", tc.valid, err)
+			require.False(t, !tc.valid && !errors.Is(err, store.ErrInvalidState), "valid=%v err=%v", tc.valid, err)
 		})
 	}
 }
@@ -85,9 +76,7 @@ func TestRetainedNativeResetBinding(t *testing.T) {
 	part := model.NewAttemptParticipationID()
 	reset := model.NativeSourceReset{Kind: "source_reset", ResetID: model.NewID(), SourceID: model.NativeSourceCapture, PreviousSourceInstanceID: model.NewID(), NewSourceInstanceID: model.NewID(), Reason: "restart", OccurredAt: time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)}
 	canonical, err := reset.Canonical()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	valid := nativeResetRecord{ParticipationID: part, Reset: reset, Digest: model.SHA256Fingerprint(canonical)}
 	for _, tc := range []struct {
 		name   string
@@ -105,28 +94,20 @@ func TestRetainedNativeResetBinding(t *testing.T) {
 			value := valid
 			tc.change(&value)
 			raw, err := json.Marshal(value)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := decodeNativeResetRecord(raw, part, reset.ResetID); !errors.Is(err, store.ErrInvalidState) {
-				t.Fatalf("corrupt reset: %v", err)
-			}
+			require.NoError(t, err)
+			_, err = decodeNativeResetRecord(raw, part, reset.ResetID)
+			require.ErrorIs(t, err, store.ErrInvalidState)
 		})
 	}
 	raw, err := json.Marshal(valid)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := decodeNativeResetRecord(raw, part, reset.ResetID); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	_, err = decodeNativeResetRecord(raw, part, reset.ResetID)
+	require.NoError(t, err)
 }
 
 func TestRetainedSourceRefusalValidation(t *testing.T) {
 	valid := browserSourceRefusalRecord{SourceSessionID: "00000000-0000-4000-8000-000000000001", RequestDigest: model.SHA256Fingerprint([]byte("source")), Code: "exam.browser.source_budget_exhausted"}
-	if err := valid.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, valid.Validate())
 	for _, tc := range []struct {
 		name   string
 		change func(*browserSourceRefusalRecord)
@@ -142,9 +123,7 @@ func TestRetainedSourceRefusalValidation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			value := valid
 			tc.change(&value)
-			if value.Validate() == nil {
-				t.Fatal("invalid refusal accepted")
-			}
+			require.Error(t, value.Validate(), "invalid refusal accepted")
 		})
 	}
 }

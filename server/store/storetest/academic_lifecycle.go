@@ -9,8 +9,11 @@ package storetest
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -25,44 +28,34 @@ func TestAcademicLifecycleRevisionConformance(t *testing.T, ss store.Store) {
 			resource, _ := academicArchiveFixture(t, ctx, ss, kind, model.NowUTC())
 			update, archive, get := academicLifecycleRevisionOperations(t, ctx, ss, resource)
 			institution, err := ss.Institution().GetSingleton(ctx)
-			requireNoError(t, err)
+			require.NoError(t, err)
 			action := map[model.ResourceType]model.Action{model.ResourceAcademicUnit: model.ActionAcademicUnitManage, model.ResourceProgramme: model.ActionProgrammeManage, model.ResourceProgrammeLevel: model.ActionProgrammeLevelManage, model.ResourceAcademicPeriod: model.ActionAcademicPeriodManage, model.ResourceClass: model.ActionClassManage}[kind]
 			attempt := func() model.AuditEventID {
 				audit, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(action), Resource: resource, ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"})
-				requireNoError(t, err)
+				require.NoError(t, err)
 				return audit.ID
 			}
 			assertAttempt := func(id model.AuditEventID, status model.AuditStatus) {
 				audit, err := ss.Audit().Get(ctx, id)
-				requireNoError(t, err)
-				if audit.Status != status {
-					t.Fatalf("audit status = %s, want %s", audit.Status, status)
-				}
+				require.NoError(t, err)
+				require.Equal(t, status, audit.Status, "audit status")
 			}
-			requireNoError(t, update(1, "legacy", ""))
+			require.NoError(t, update(1, "legacy", ""))
 			auditID := attempt()
-			requireNoError(t, update(2, "audited", auditID))
+			require.NoError(t, update(2, "audited", auditID))
 			assertAttempt(auditID, model.AuditStatusSuccess)
-			if err := update(2, "stale-legacy", ""); !store.IsConflict(err) {
-				t.Fatalf("stale legacy update = %v", err)
-			}
+			require.True(t, store.IsConflict(update(2, "stale-legacy", "")), "stale legacy update")
 			staleID := attempt()
-			if err := update(2, "stale-audited", staleID); !store.IsConflict(err) {
-				t.Fatalf("stale audited update = %v", err)
-			}
+			require.True(t, store.IsConflict(update(2, "stale-audited", staleID)), "stale audited update")
 			assertAttempt(staleID, model.AuditStatusAttempt)
-			if err := archive(2, staleID); !store.IsConflict(err) {
-				t.Fatalf("stale archive = %v", err)
-			}
+			require.True(t, store.IsConflict(archive(2, staleID)), "stale archive")
 			assertAttempt(staleID, model.AuditStatusAttempt)
-			if err = archive(3, model.NewAuditEventID()); err == nil {
-				t.Fatal("archive committed without its pending audit")
-			}
+			err = archive(3, model.NewAuditEventID())
+			require.Error(t, err, "archive committed without its pending audit")
 			revision, name, err := get()
-			requireNoError(t, err)
-			if revision != 3 || name != "audited" {
-				t.Fatalf("failed mutations changed resource: %d %s", revision, name)
-			}
+			require.NoError(t, err)
+			require.Equal(t, int64(3), revision, "failed mutations changed resource")
+			require.Equal(t, "audited", name, "failed mutations changed resource")
 
 			ids := []model.AuditEventID{attempt(), attempt()}
 			results := make([]error, 2)
@@ -80,30 +73,21 @@ func TestAcademicLifecycleRevisionConformance(t *testing.T, ss store.Store) {
 					successes++
 					assertAttempt(ids[i], model.AuditStatusSuccess)
 				} else {
-					if !store.IsConflict(err) {
-						t.Fatalf("concurrent update = %v", err)
-					}
+					require.True(t, store.IsConflict(err), "concurrent update")
 					assertAttempt(ids[i], model.AuditStatusAttempt)
 				}
 			}
-			if successes != 1 {
-				t.Fatalf("concurrent successes = %d", successes)
-			}
+			require.Equal(t, 1, successes, "concurrent successes")
 			revision, _, err = get()
-			requireNoError(t, err)
-			if revision != 4 {
-				t.Fatalf("concurrent revision = %d", revision)
-			}
+			require.NoError(t, err)
+			require.Equal(t, int64(4), revision, "concurrent revision")
 			finalID := attempt()
-			if err := archive(3, finalID); !store.IsConflict(err) {
-				t.Fatalf("archive overwrote winning editor: %v", err)
-			}
+			require.True(t, store.IsConflict(archive(3, finalID)), "archive overwrote winning editor")
 			assertAttempt(finalID, model.AuditStatusAttempt)
-			requireNoError(t, archive(4, finalID))
+			require.NoError(t, archive(4, finalID))
 			assertAttempt(finalID, model.AuditStatusSuccess)
-			if _, _, err := get(); !store.IsNotFound(err) {
-				t.Fatalf("archived resource is active: %v", err)
-			}
+			_, _, err = get()
+			require.True(t, store.IsNotFound(err), "archived resource is active")
 		})
 	}
 }
@@ -209,7 +193,7 @@ func academicLifecycleRevisionOperations(t *testing.T, ctx context.Context, ss s
 			}
 	case model.ResourceClass:
 		unitID, err := ss.Class().GetAcademicUnitID(ctx, model.ClassID(resource.ID))
-		requireNoError(t, err)
+		require.NoError(t, err)
 		return func(revision int64, display string, auditID model.AuditEventID) error {
 				current, err := ss.Class().Get(ctx, model.ClassID(resource.ID))
 				if err != nil {
@@ -234,7 +218,7 @@ func academicLifecycleRevisionOperations(t *testing.T, ctx context.Context, ss s
 				return current.Revision, current.DisplayName, nil
 			}
 	default:
-		t.Fatalf("unsupported resource %s", resource.Type)
+		require.FailNow(t, fmt.Sprintf("unsupported resource %s", resource.Type))
 		return nil, nil, nil
 	}
 }

@@ -9,10 +9,10 @@ package sqlstore
 
 import (
 	"database/sql"
-	"errors"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -46,15 +46,10 @@ func TestPersonalAccessTokenRowRehydrationRejectsInvalidPersistedState(t *testin
 		t.Run(test.name, func(t *testing.T) {
 			_, err := test.row.model()
 			var persisted *persistedStateError
-			if !errors.As(err, &persisted) {
-				t.Fatalf("model() error = %v, want persisted-state error", err)
-			}
-			if persisted.Entity != "personal_access_token" || persisted.Field != test.field {
-				t.Fatalf("persisted-state context = %s.%s, want personal_access_token.%s", persisted.Entity, persisted.Field, test.field)
-			}
-			if strings.Contains(err.Error(), valid.TokenHash) {
-				t.Fatalf("model() error exposed token hash: %v", err)
-			}
+			require.ErrorAs(t, err, &persisted, "model() error")
+			require.Equal(t, "personal_access_token", persisted.Entity, "persisted-state context")
+			require.Equal(t, test.field, persisted.Field, "persisted-state context")
+			require.NotContains(t, err.Error(), valid.TokenHash)
 		})
 	}
 }
@@ -69,16 +64,11 @@ func TestPersonalAccessTokenRowConversion(t *testing.T) {
 		ExpiresAt: createdAt.Add(2 * time.Millisecond),
 	}
 	token, err := row.model()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if token.AcademicUnitID != unitID || len(token.Scopes) != 1 {
-		t.Fatalf("row.model() = %#v", token)
-	}
+	require.NoError(t, err)
+	require.Equal(t, unitID, token.AcademicUnitID)
+	require.Len(t, token.Scopes, 1)
 	token.Scopes[0] = "mutated"
-	if row.Scopes[0] != string(model.ActionClassView) {
-		t.Fatal("row.model() exposed mutable scopes")
-	}
+	require.Equal(t, string(model.ActionClassView), row.Scopes[0], "row.model() exposed mutable scopes")
 }
 
 func replacePersonalAccessTokenRow(row personalAccessTokenRow, replace func(*personalAccessTokenRow)) personalAccessTokenRow {

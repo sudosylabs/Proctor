@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -27,16 +29,8 @@ func TestClusterDiscoveryNodeValidateAndLiveness(t *testing.T) {
 		UpdatedAt:        now,
 		ExpiresAt:        now + 30_000,
 	}
-	if err := node.Validate(); err != nil {
-		t.Fatalf("Validate() error = %v", err)
-	}
-	if !node.IsLive(now) {
-		t.Fatal("expected live node")
-	}
-	if node.IsLive(node.ExpiresAt) {
-		t.Fatal("exclusive expiry treated as live")
-	}
-	if err := (&store.ClusterDiscoveryNode{}).Validate(); err == nil {
-		t.Fatal("expected empty node validation error")
-	}
+	require.NoError(t, node.Validate())
+	require.True(t, node.IsLive(now), "expected live node")
+	require.False(t, node.IsLive(node.ExpiresAt), "exclusive expiry treated as live")
+	require.Error(t, (&store.ClusterDiscoveryNode{}).Validate(), "expected empty node validation error")
 }

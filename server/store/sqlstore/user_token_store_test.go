@@ -8,8 +8,9 @@
 package sqlstore
 
 import (
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -27,12 +28,8 @@ func TestUserTokenRowConversion(t *testing.T) {
 	}
 	row := newUserTokenRow(token)
 	got, err := row.model()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if *got != *token {
-		t.Fatalf("row.model() = %#v, want %#v", got, token)
-	}
+	require.NoError(t, err)
+	require.Equal(t, *token, *got, "row.model() = %#v, want %#v", got, token)
 }
 
 func TestUserTokenRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
@@ -58,9 +55,9 @@ func TestUserTokenRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
 			test.mutate(&row)
 			_, err := row.model()
 			var persisted *persistedStateError
-			if !errors.As(err, &persisted) || persisted.Entity != "user_token" || persisted.Field != test.field {
-				t.Fatalf("model() error = %v, want user_token.%s persisted-state error", err, test.field)
-			}
+			require.ErrorAs(t, err, &persisted, "model() error")
+			require.Equal(t, "user_token", persisted.Entity, "model() error")
+			require.Equal(t, test.field, persisted.Field, "model() error")
 		})
 	}
 }

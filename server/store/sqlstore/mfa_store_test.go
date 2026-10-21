@@ -9,10 +9,10 @@ package sqlstore
 
 import (
 	"database/sql"
-	"errors"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -44,15 +44,10 @@ func TestMFACredentialRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := test.row.model()
 			var persisted *persistedStateError
-			if !errors.As(err, &persisted) {
-				t.Fatalf("model() error = %v, want persisted-state error", err)
-			}
-			if persisted.Entity != "mfa_credential" || persisted.Field != test.field {
-				t.Fatalf("persisted-state context = %s.%s, want mfa_credential.%s", persisted.Entity, persisted.Field, test.field)
-			}
-			if strings.Contains(err.Error(), valid.EncryptedSecret) {
-				t.Fatalf("model() error exposed encrypted secret: %v", err)
-			}
+			require.ErrorAs(t, err, &persisted, "model() error")
+			require.Equal(t, "mfa_credential", persisted.Entity, "persisted-state context")
+			require.Equal(t, test.field, persisted.Field, "persisted-state context")
+			require.NotContains(t, err.Error(), valid.EncryptedSecret)
 		})
 	}
 }
@@ -73,16 +68,13 @@ func TestMFACredentialRowConversion(t *testing.T) {
 		PendingExpiresAt: sql.NullTime{Time: expires, Valid: true},
 	}
 	credential, err := row.model()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if credential.ID != id ||
-		credential.UserID != userID ||
-		credential.EncryptionKeyID != row.EncryptionKeyID ||
-		!credential.PendingExpiresAt.Valid || !credential.PendingExpiresAt.Time.Equal(expires) ||
-		credential.ActivatedAt.Valid {
-		t.Fatalf("row.model() = %#v", credential)
-	}
+	require.NoError(t, err)
+	require.Equal(t, id, credential.ID)
+	require.Equal(t, userID, credential.UserID)
+	require.Equal(t, row.EncryptionKeyID, credential.EncryptionKeyID)
+	require.True(t, credential.PendingExpiresAt.Valid)
+	require.True(t, credential.PendingExpiresAt.Time.Equal(expires))
+	require.False(t, credential.ActivatedAt.Valid)
 
 	activeRow := row
 	activeRow.State = model.MFAStateActive
@@ -90,14 +82,10 @@ func TestMFACredentialRowConversion(t *testing.T) {
 	activeRow.ActivatedAt = sql.NullTime{Time: created, Valid: true}
 	activeRow.LastUsedTimeStep = 42
 	active, err := activeRow.model()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !active.IsActive() ||
-		active.ActivatedAt.Millis() != model.MillisFromTime(created) ||
-		active.LastUsedTimeStep != 42 {
-		t.Fatalf("active row.model() = %#v", active)
-	}
+	require.NoError(t, err)
+	require.True(t, active.IsActive())
+	require.Equal(t, model.MillisFromTime(created), active.ActivatedAt.Millis())
+	require.Equal(t, int64(42), active.LastUsedTimeStep)
 }
 
 func replaceMFACredentialRow(row mfaCredentialRow, replace func(*mfaCredentialRow)) mfaCredentialRow {

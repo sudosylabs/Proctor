@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/storetest"
@@ -28,9 +30,7 @@ func TestDesktopAuthorizationExchangeSerializesWithCompatibilityPolicyReplacemen
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{
 		Name: "desktop-policy-fence", DisplayName: "Desktop Policy Fence",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	user := saveIntegrationUser(t, ctx, persistence, &model.User{
 		Username: "desktop-policy-fence", Email: "desktop-policy-fence@example.edu",
 	})
@@ -45,16 +45,13 @@ func TestDesktopAuthorizationExchangeSerializesWithCompatibilityPolicyReplacemen
 		)
 		return exchangeErr
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if exchanged == nil || exchanged.Session == nil || exchanged.Session.UserID != user.ID {
-		t.Fatalf("serialized Exchange() = %#v", exchanged)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, exchanged)
+	require.NotNil(t, exchanged.Session)
+	require.Equal(t, user.ID, exchanged.Session.UserID)
 	policy, err := persistence.DesktopCompatibilityPolicy().Get(ctx)
-	if err != nil || policy.Revision != 2 {
-		t.Fatalf("policy after serialized Exchange = %#v, %v", policy, err)
-	}
+	require.NoError(t, err, "policy after serialized Exchange = %#v", policy)
+	require.Equal(t, int64(2), policy.Revision, "policy after serialized Exchange = %#v", policy)
 }
 
 func TestExamAttemptAdmissionSerializesWithCompatibilityPolicyReplacement(t *testing.T) {

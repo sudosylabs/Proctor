@@ -19,6 +19,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -52,31 +55,24 @@ func TestClusteredProfilePicturePublicationHasOneVisibleWinner(t *testing.T) {
 		result := <-results
 		switch {
 		case result.err == nil:
-			if winner != nil {
-				t.Fatal("more than one concurrent profile-picture publication succeeded")
-			}
+			require.Nil(t, winner, "more than one concurrent profile-picture publication succeeded")
 			winner = result.result
 		case store.IsConflict(result.err):
 			conflicts++
 		default:
-			t.Fatalf("concurrent publication error = %v", result.err)
+			require.FailNow(t, fmt.Sprintf("concurrent publication error = %v", result.err))
 		}
 	}
-	if winner == nil || conflicts != 1 {
-		t.Fatalf("winner/conflicts = %#v/%d", winner, conflicts)
-	}
+	require.NotNil(t, winner, "winner/conflicts")
+	require.Equal(t, 1, conflicts, "winner/conflicts")
 
 	state, err := nodeB.File().GetProfilePictureState(ctx, user.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if state.EntryID != winner.User.CustomProfilePictureFileID || state.RevisionID != winner.Revision.ID || len(state.Renditions) != 3 {
-		t.Fatalf("visible state = %#v, winner = %#v", state, winner)
-	}
+	require.NoError(t, err)
+	require.Equal(t, winner.User.CustomProfilePictureFileID, state.EntryID, "visible state = %#v, winner = %#v", state, winner)
+	require.Equal(t, winner.Revision.ID, state.RevisionID, "visible state = %#v, winner = %#v", state, winner)
+	require.Len(t, state.Renditions, 3, "visible state = %#v, winner = %#v", state, winner)
 	for _, rendition := range state.Renditions {
-		if rendition.RevisionID != state.RevisionID {
-			t.Fatalf("visible state mixed revisions: %#v", state)
-		}
+		require.Equal(t, state.RevisionID, rendition.RevisionID)
 	}
 }
 
@@ -119,11 +115,9 @@ func TestClusteredJobsDeduplicateOccurrencesAndClaimDistinctWork(t *testing.T) {
 	enqueueGroup.Wait()
 	close(errorsByNode)
 	for err := range errorsByNode {
-		t.Fatal(err)
+		require.FailNow(t, fmt.Sprint(err))
 	}
-	if inserted.Load() != 1 {
-		t.Fatalf("permanent occurrence insertions = %d, want 1", inserted.Load())
-	}
+	require.Equal(t, int64(1), inserted.Load(), "permanent occurrence insertions")
 
 	const workCount = 12
 	jobIDs := make(map[model.JobID]struct{}, workCount)
@@ -132,12 +126,10 @@ func TestClusteredJobsDeduplicateOccurrencesAndClaimDistinctWork(t *testing.T) {
 			model.NewJobID(), model.JobTypeFilePurgeExpiredContent, 1,
 			json.RawMessage(`{"batch_size":1}`), fmt.Sprintf("parallel:%02d", index), at, at, 3,
 		)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, created, err := nodeA.Job().Enqueue(ctx, &store.JobEnqueue{Job: job}); err != nil || !created {
-			t.Fatalf("enqueue parallel job %d = %v, %v", index, created, err)
-		}
+		require.NoError(t, err)
+		_, created, err := nodeA.Job().Enqueue(ctx, &store.JobEnqueue{Job: job})
+		require.NoError(t, err, "enqueue parallel job %d", index)
+		require.True(t, created, "enqueue parallel job %d", index)
 		jobIDs[job.ID] = struct{}{}
 	}
 
@@ -185,19 +177,14 @@ func TestClusteredJobsDeduplicateOccurrencesAndClaimDistinctWork(t *testing.T) {
 	claimGroup.Wait()
 	close(claimErrors)
 	for err := range claimErrors {
-		t.Fatal(err)
+		require.FailNow(t, fmt.Sprint(err))
 	}
-	if len(claimed) != workCount {
-		t.Fatalf("distinct claimed jobs = %d, want %d", len(claimed), workCount)
-	}
+	require.Len(t, claimed, workCount, "distinct claimed jobs")
 	for id := range jobIDs {
 		attempts, err := nodeB.Job().ListAttempts(ctx, id)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(attempts) != 1 || attempts[0].Status != model.JobAttemptStatusSucceeded {
-			t.Fatalf("job %s attempts = %#v", id, attempts)
-		}
+		require.NoError(t, err)
+		require.Len(t, attempts, 1, "job %s attempts", id)
+		require.Equal(t, model.JobAttemptStatusSucceeded, attempts[0].Status, "job %s attempts", id)
 	}
 }
 
@@ -208,45 +195,30 @@ func TestClusteredJobLeaseRecoveryFencesTheDeadNodeAndPreservesAttempts(t *testi
 	nodeB := openPeerTestStore(t)
 	at := model.NowUTC().Add(-time.Second)
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeFilePurgeExpiredContent, 1, json.RawMessage(`{"batch_size":1}`), "recover-across-nodes", at, at, 3)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, inserted, err := nodeA.Job().Enqueue(ctx, &store.JobEnqueue{Job: job}); err != nil || !inserted {
-		t.Fatalf("Enqueue() = %v, %v", inserted, err)
-	}
+	require.NoError(t, err)
+	_, inserted, err := nodeA.Job().Enqueue(ctx, &store.JobEnqueue{Job: job})
+	require.NoError(t, err, "Enqueue()")
+	require.True(t, inserted, "Enqueue()")
 	deadToken, err := model.NewJobClaimToken()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	dead, err := nodeA.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{job.Type}, NodeID: "dead-node", ClaimToken: deadToken, LeaseDuration: 20 * time.Millisecond})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	time.Sleep(40 * time.Millisecond)
 	liveToken, err := model.NewJobClaimToken()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	live, err := nodeB.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{job.Type}, NodeID: "live-node", ClaimToken: liveToken, LeaseDuration: time.Minute})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if live.Job.ID != dead.Job.ID || live.Attempt.Number != 2 {
-		t.Fatalf("recovered claim = %#v", live)
-	}
-	if _, err = nodeA.Job().Complete(ctx, &store.JobCompletion{AttemptID: dead.Attempt.ID, ClaimToken: deadToken, Kind: store.JobCompletionSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)}); !store.IsConflict(err) {
-		t.Fatalf("dead-node completion error = %v", err)
-	}
-	if _, err = nodeB.Job().Complete(ctx, &store.JobCompletion{AttemptID: live.Attempt.ID, ClaimToken: liveToken, Kind: store.JobCompletionSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, dead.Job.ID, live.Job.ID)
+	require.Equal(t, 2, live.Attempt.Number)
+	_, err = nodeA.Job().Complete(ctx, &store.JobCompletion{AttemptID: dead.Attempt.ID, ClaimToken: deadToken, Kind: store.JobCompletionSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)})
+	require.True(t, store.IsConflict(err), "dead-node completion error")
+	_, err = nodeB.Job().Complete(ctx, &store.JobCompletion{AttemptID: live.Attempt.ID, ClaimToken: liveToken, Kind: store.JobCompletionSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)})
+	require.NoError(t, err)
 	attempts, err := nodeA.Job().ListAttempts(ctx, job.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(attempts) != 2 || attempts[0].Status != model.JobAttemptStatusLeaseExpired || attempts[1].Status != model.JobAttemptStatusSucceeded {
-		t.Fatalf("recovered attempts = %#v", attempts)
-	}
+	require.NoError(t, err)
+	require.Len(t, attempts, 2)
+	require.Equal(t, model.JobAttemptStatusLeaseExpired, attempts[0].Status)
+	require.Equal(t, model.JobAttemptStatusSucceeded, attempts[1].Status)
 }
 
 type profilePictureRaceResult struct {
@@ -257,13 +229,9 @@ type profilePictureRaceResult struct {
 func openPeerTestStore(t *testing.T) *SQLStore {
 	t.Helper()
 	peer, err := New(context.Background(), testSettings(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() {
-		if err := peer.Close(); err != nil {
-			t.Errorf("close peer SQL store: %v", err)
-		}
+		assert.NoError(t, peer.Close())
 	})
 	return peer
 }
@@ -272,35 +240,24 @@ func prepareConcurrentProfilePicturePublication(t *testing.T, ctx context.Contex
 	t.Helper()
 	at := model.NowUTC()
 	entry, err := model.NewFileEntryForPurpose(model.NewFileEntryID(), model.FilePurposeProfilePictureCustom, model.FileIndexingNone, at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	revision, err := model.NewFileRevision(model.NewFileRevisionID(), entry.ID, model.FileAvailabilityPending, model.FileIndexingNotRequired, at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	lease, err := model.NewUploadLease(model.NewUploadLeaseID(), revision.ID, user.ID, at, at.Add(time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = persistence.File().CreateUpload(ctx, &store.FileUploadCreation{Entry: entry, Revision: revision, Lease: lease}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	_, err = persistence.File().CreateUpload(ctx, &store.FileUploadCreation{Entry: entry, Revision: revision, Lease: lease})
+	require.NoError(t, err)
 	renditions := make([]model.FileRendition, 0, 3)
 	for _, size := range []int{128, 256, 512} {
 		rendition, renditionErr := model.NewFileRendition(model.NewFileRenditionID(), revision.ID, fmt.Sprintf("profile_%d", size), "image/webp", int64(size), size, size, strings.Repeat(checksumCharacter, 64), at)
-		if renditionErr != nil {
-			t.Fatal(renditionErr)
-		}
+		require.NoError(t, renditionErr)
 		renditions = append(renditions, *rendition)
 	}
 	audit, err := persistence.Audit().Save(ctx, &model.AuditEvent{
 		Action: string(model.ActionUserProfilePictureManage), Resource: model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
 		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewID(), Status: model.AuditStatusAttempt, NodeID: nodeID,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return &store.ProfilePicturePublication{
 		ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: user.Revision,
 		EntryID: entry.ID, RevisionID: revision.ID, LeaseID: lease.ID, Renditions: renditions,

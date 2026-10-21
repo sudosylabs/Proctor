@@ -10,9 +10,11 @@ package storetest
 import (
 	"context"
 	"encoding/json"
-	"reflect"
+	"fmt"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -60,7 +62,7 @@ func TestAcademicArchiveTimestamps(t *testing.T, ss store.Store, readArchived Ac
 							var auditID model.AuditEventID
 							if audited {
 								institution, err := ss.Institution().GetSingleton(ctx)
-								requireNoError(t, err)
+								require.NoError(t, err)
 								action := map[model.ResourceType]model.Action{
 									model.ResourceAcademicUnit:   model.ActionAcademicUnitManage,
 									model.ResourceAcademicPeriod: model.ActionAcademicPeriodManage,
@@ -73,12 +75,12 @@ func TestAcademicArchiveTimestamps(t *testing.T, ss store.Store, readArchived Ac
 									ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 									Status: model.AuditStatusAttempt, NodeID: "test-node",
 								})
-								requireNoError(t, err)
+								require.NoError(t, err)
 								auditID = audit.ID
 							}
 							archived, err := archive(tc.at, auditID)
-							requireNoError(t, err)
-							requireNoError(t, archived.Validate())
+							require.NoError(t, err)
+							require.NoError(t, archived.Validate())
 							actual := academicArchiveState(archived)
 							at := model.TimeFromMillis(tc.at)
 							if at.Before(createdAt) {
@@ -88,28 +90,20 @@ func TestAcademicArchiveTimestamps(t *testing.T, ss store.Store, readArchived Ac
 								CreatedAt: createdAt, UpdatedAt: at,
 								ArchivedAt: model.OptionalTimeFrom(at), Revision: 2,
 							}
-							if actual != want {
-								t.Fatalf("archive lifecycle = %#v, want %#v", actual, want)
-							}
+							require.Equal(t, want, actual, "archive lifecycle")
 							stored, err := readArchived(ctx, resource)
-							requireNoError(t, err)
-							if stored != actual {
-								t.Fatalf("stored lifecycle = %#v, returned %#v", stored, actual)
-							}
+							require.NoError(t, err)
+							require.Equal(t, actual, stored, "stored lifecycle")
 							if audited {
 								completed, err := ss.Audit().Get(ctx, auditID)
-								requireNoError(t, err)
-								if completed.Status != model.AuditStatusSuccess {
-									t.Fatalf("archive audit status = %q", completed.Status)
-								}
+								require.NoError(t, err)
+								require.Equal(t, model.AuditStatusSuccess, completed.Status)
 								wantJSON, err := model.EncodeAuditData(archived.Auditable())
-								requireNoError(t, err)
+								require.NoError(t, err)
 								var wantAudit, gotAudit map[string]any
-								requireNoError(t, json.Unmarshal(wantJSON, &wantAudit))
-								requireNoError(t, json.Unmarshal(completed.Result, &gotAudit))
-								if !reflect.DeepEqual(gotAudit, wantAudit) {
-									t.Fatalf("archive audit = %#v, returned %#v", gotAudit, wantAudit)
-								}
+								require.NoError(t, json.Unmarshal(wantJSON, &wantAudit))
+								require.NoError(t, json.Unmarshal(completed.Result, &gotAudit))
+								require.Equal(t, wantAudit, gotAudit, "archive audit")
 							}
 						})
 					}
@@ -144,7 +138,7 @@ func academicArchiveFixture(
 		created, err := ss.AcademicUnit().Create(ctx, &store.AcademicUnitCreation{
 			Unit: candidate, AuditEventID: audit.ID, AuditAt: model.GetMillis(),
 		})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		resource.ID = created.ID.String()
 		return resource, func(at int64, auditID model.AuditEventID) (academicArchivedModel, error) {
 			if auditID == "" {
@@ -164,7 +158,7 @@ func academicArchiveFixture(
 		created, err := ss.AcademicPeriod().Create(ctx, &store.AcademicPeriodCreation{
 			Period: candidate, AuditEventID: audit.ID, AuditAt: model.GetMillis(),
 		})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		resource.ID = created.ID.String()
 		return resource, func(at int64, auditID model.AuditEventID) (academicArchivedModel, error) {
 			if auditID == "" {
@@ -183,7 +177,7 @@ func academicArchiveFixture(
 		created, err := ss.Class().Create(ctx, &store.ClassCreation{
 			Class: candidate, AuditEventID: audit.ID, AuditAt: model.GetMillis(),
 		})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		resource.ID = created.ID.String()
 		return resource, func(at int64, auditID model.AuditEventID) (academicArchivedModel, error) {
 			if auditID == "" {
@@ -203,7 +197,7 @@ func academicArchiveFixture(
 		created, err := ss.Programme().Create(ctx, &store.ProgrammeCreation{
 			Programme: candidate, AuditEventID: audit.ID, AuditAt: model.GetMillis(),
 		})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		resource.ID = created.ID.String()
 		return resource, func(at int64, auditID model.AuditEventID) (academicArchivedModel, error) {
 			if auditID == "" {
@@ -221,7 +215,7 @@ func academicArchiveFixture(
 		created, err := ss.ProgrammeLevel().Create(ctx, &store.ProgrammeLevelCreation{
 			Level: candidate, AuditEventID: audit.ID, AuditAt: model.GetMillis(),
 		})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		resource.ID = created.ID.String()
 		return resource, func(at int64, auditID model.AuditEventID) (academicArchivedModel, error) {
 			if auditID == "" {
@@ -232,7 +226,7 @@ func academicArchiveFixture(
 			})
 		}
 	default:
-		t.Fatalf("unsupported academic resource %q", kind)
+		require.FailNow(t, fmt.Sprintf("unsupported academic resource %q", kind))
 		return model.Resource{}, nil
 	}
 }

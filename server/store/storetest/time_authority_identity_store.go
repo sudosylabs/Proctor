@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -38,31 +40,31 @@ func timeAuthorityStudentInvitation(t *testing.T, ctx context.Context, ss store.
 	}
 	issue.Invitation.TargetEmail = targetEmail
 	issue.Invitation.Suggestions.Username = "time-authority-" + model.NewID()
-	requireNoError(t, issue.Invitation.Validate())
+	require.NoError(t, issue.Invitation.Validate())
 	invitation, err := ss.Invitation().IssueStudentClass(ctx, issue)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	probe.LeadInvitation(t, ctx, invitation.ID)
 	invitation, err = ss.Invitation().Get(ctx, invitation.ID)
-	requireNoError(t, err)
-	if !invitation.CreatedAt.After(model.NowUTC()) {
-		t.Fatalf("led Invitation creation %v does not lead the clock", invitation.CreatedAt)
-	}
+	require.NoError(t, err)
+	require.True(t, invitation.CreatedAt.After(model.NowUTC()), "led Invitation creation %v does not lead the clock", invitation.CreatedAt)
 	return invitation, class, inviter
 }
 
 func requireTimeAuthorityInvitationPersisted(t *testing.T, ctx context.Context, ss store.Store, returned *model.Invitation, superseded *model.Invitation, state model.InvitationState) {
 	t.Helper()
-	if returned.State != state || returned.UpdatedAt.Before(returned.CreatedAt) || returned.UpdatedAt.Before(superseded.UpdatedAt) ||
-		(returned.AcceptedAt.Valid && (returned.AcceptedAt.Time.Before(returned.CreatedAt) || !returned.AcceptedAt.Time.Equal(returned.UpdatedAt))) {
-		t.Fatalf("Invitation transition = %#v; superseded %#v", returned, superseded)
-	}
+	require.Equal(t, state, returned.State, "Invitation transition = %#v; superseded %#v", returned, superseded)
+	require.False(t, returned.UpdatedAt.Before(returned.CreatedAt), "Invitation transition = %#v; superseded %#v", returned, superseded)
+	require.False(t, returned.UpdatedAt.Before(superseded.UpdatedAt), "Invitation transition = %#v; superseded %#v", returned, superseded)
+	require.False(t, returned.AcceptedAt.Valid && (returned.AcceptedAt.Time.Before(returned.CreatedAt) || !returned.AcceptedAt.Time.Equal(returned.UpdatedAt)), "Invitation transition = %#v; superseded %#v", returned, superseded)
 	persisted, err := ss.Invitation().Get(ctx, returned.ID)
-	requireNoError(t, err)
-	if persisted.State != returned.State || persisted.Revision != returned.Revision || !persisted.CreatedAt.Equal(returned.CreatedAt) ||
-		!persisted.UpdatedAt.Equal(returned.UpdatedAt) || persisted.AcceptedAt.Valid != returned.AcceptedAt.Valid ||
-		(persisted.AcceptedAt.Valid && !persisted.AcceptedAt.Time.Equal(returned.AcceptedAt.Time)) || persisted.ClaimHash != returned.ClaimHash {
-		t.Fatalf("persisted Invitation = %#v; returned %#v", persisted, returned)
-	}
+	require.NoError(t, err)
+	require.Equal(t, returned.State, persisted.State, "persisted Invitation = %#v; returned %#v", persisted, returned)
+	require.Equal(t, returned.Revision, persisted.Revision, "persisted Invitation = %#v; returned %#v", persisted, returned)
+	require.True(t, persisted.CreatedAt.Equal(returned.CreatedAt), "persisted Invitation = %#v; returned %#v", persisted, returned)
+	require.True(t, persisted.UpdatedAt.Equal(returned.UpdatedAt), "persisted Invitation = %#v; returned %#v", persisted, returned)
+	require.Equal(t, returned.AcceptedAt.Valid, persisted.AcceptedAt.Valid, "persisted Invitation = %#v; returned %#v", persisted, returned)
+	require.False(t, persisted.AcceptedAt.Valid && !persisted.AcceptedAt.Time.Equal(returned.AcceptedAt.Time), "persisted Invitation = %#v; returned %#v", persisted, returned)
+	require.Equal(t, returned.ClaimHash, persisted.ClaimHash, "persisted Invitation = %#v; returned %#v", persisted, returned)
 }
 
 // RunTimeAuthorityInvitationTransitions proves that PostgreSQL-timed
@@ -74,7 +76,7 @@ func RunTimeAuthorityInvitationTransitions(t *testing.T, ss store.Store, probe T
 		invitation, _, _ := timeAuthorityStudentInvitation(t, ctx, ss, probe, "accept", "")
 		acceptance := studentClassInvitationAcceptanceFixture(t, invitation, model.NowUTC())
 		accepted, err := ss.Invitation().AcceptStudentClass(ctx, acceptance)
-		requireNoError(t, err)
+		require.NoError(t, err)
 		requireTimeAuthorityInvitationPersisted(t, ctx, ss, accepted.Invitation, invitation, model.InvitationAccepted)
 	})
 	t.Run("AcceptStudentClassVerifiesLeadingExistingUser", func(t *testing.T) {
@@ -83,21 +85,21 @@ func RunTimeAuthorityInvitationTransitions(t *testing.T, ss store.Store, probe T
 		existing.Email = "time-authority-existing-" + model.NewID() + "@example.edu"
 		existing.EmailVerified = false
 		existing, err := createUser(t, ctx, ss, existing)
-		requireNoError(t, err)
+		require.NoError(t, err)
 		probe.LeadUser(t, ctx, existing.ID)
 		led, err := ss.User().Get(ctx, existing.ID)
-		requireNoError(t, err)
+		require.NoError(t, err)
 		invitation, _, _ := timeAuthorityStudentInvitation(t, ctx, ss, probe, "existing", existing.Email)
 		accepted, err := ss.Invitation().AcceptStudentClass(ctx, studentClassInvitationAcceptanceFixture(t, invitation, model.NowUTC()))
-		requireNoError(t, err)
-		if accepted.User.ID != existing.ID || !accepted.User.EmailVerified || accepted.User.UpdatedAt.Before(led.UpdatedAt) {
-			t.Fatalf("accepted existing User = %#v; led %#v", accepted.User, led)
-		}
+		require.NoError(t, err)
+		require.Equal(t, existing.ID, accepted.User.ID, "accepted existing User = %#v; led %#v", accepted.User, led)
+		require.True(t, accepted.User.EmailVerified, "accepted existing User = %#v; led %#v", accepted.User, led)
+		require.False(t, accepted.User.UpdatedAt.Before(led.UpdatedAt), "accepted existing User = %#v; led %#v", accepted.User, led)
 		persisted, err := ss.User().Get(ctx, existing.ID)
-		requireNoError(t, err)
-		if !persisted.EmailVerified || !persisted.UpdatedAt.Equal(accepted.User.UpdatedAt) || persisted.Revision != accepted.User.Revision {
-			t.Fatalf("persisted existing User = %#v; returned %#v", persisted, accepted.User)
-		}
+		require.NoError(t, err)
+		require.True(t, persisted.EmailVerified, "persisted existing User = %#v; returned %#v", persisted, accepted.User)
+		require.True(t, persisted.UpdatedAt.Equal(accepted.User.UpdatedAt), "persisted existing User = %#v; returned %#v", persisted, accepted.User)
+		require.Equal(t, accepted.User.Revision, persisted.Revision, "persisted existing User = %#v; returned %#v", persisted, accepted.User)
 		requireTimeAuthorityInvitationPersisted(t, ctx, ss, accepted.Invitation, invitation, model.InvitationAccepted)
 	})
 	t.Run("Resend", func(t *testing.T) {
@@ -109,7 +111,7 @@ func RunTimeAuthorityInvitationTransitions(t *testing.T, ss store.Store, probe T
 		resent, err := ss.Invitation().Resend(ctx, &store.InvitationResend{ID: invitation.ID, ExpectedRevision: invitation.Revision,
 			ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), Occurrence: occurrence, Delivery: delivery, DeliveryJob: job,
 			ActorUserID: inviter.ID, AuditEventID: audit.ID, AuditAt: model.GetMillis()})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		requireTimeAuthorityInvitationPersisted(t, ctx, ss, resent.Invitation, invitation, model.InvitationPending)
 	})
 	t.Run("Revoke", func(t *testing.T) {
@@ -118,7 +120,7 @@ func RunTimeAuthorityInvitationTransitions(t *testing.T, ss store.Store, probe T
 		audit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "invitation.revoke")
 		revoked, err := ss.Invitation().Revoke(ctx, &store.InvitationRevocation{ID: invitation.ID, ExpectedRevision: invitation.Revision,
 			ActorUserID: inviter.ID, AuditEventID: audit.ID, AuditAt: model.GetMillis()})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		requireTimeAuthorityInvitationPersisted(t, ctx, ss, revoked.Invitation, invitation, model.InvitationRevoked)
 	})
 	t.Run("ReplaceSupersedes", func(t *testing.T) {
@@ -129,7 +131,7 @@ func RunTimeAuthorityInvitationTransitions(t *testing.T, ss store.Store, probe T
 		candidate.Suggestions.DisplayName = "Replacement Student"
 		candidate.CreatedAt, candidate.UpdatedAt = model.NowUTC(), model.NowUTC()
 		candidate.ExpiresAt, candidate.Revision = candidate.CreatedAt.Add(model.InvitationLifetime), 1
-		requireNoError(t, candidate.Validate())
+		require.NoError(t, candidate.Validate())
 		occurrence, delivery, job := invitationLifecycleMailFixture(t, candidate.ID, inviter.ID,
 			model.MailTemplateAccessStudentClassInvitation, model.JobTypeMailDeliverCredential, model.NowUTC(), candidate.ExpiresAt)
 		currentAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "invitation.supersede")
@@ -138,9 +140,9 @@ func RunTimeAuthorityInvitationTransitions(t *testing.T, ss store.Store, probe T
 			ExpectedCurrentRevision: invitation.Revision, Replacement: &candidate, Lifetime: model.InvitationLifetime,
 			Occurrence: occurrence, Delivery: delivery, DeliveryJob: job, ActorUserID: inviter.ID,
 			CurrentAuditEventID: currentAudit.ID, ReplacementAuditEventID: replacementAudit.ID, AuditAt: model.GetMillis()})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		superseded, err := ss.Invitation().Get(ctx, invitation.ID)
-		requireNoError(t, err)
+		require.NoError(t, err)
 		requireTimeAuthorityInvitationPersisted(t, ctx, ss, superseded, invitation, model.InvitationSuperseded)
 	})
 }
@@ -158,25 +160,25 @@ func RunTimeAuthorityOnboardingImportRowOutcome(t *testing.T, ss store.Store) {
 	email := "time-authority-onboarding-" + model.NewID() + "@example.edu"
 	importID := createExecutingStudentOnboardingImport(t, ctx, ss, actor, principal, class, model.NowUTC().Add(timeAuthorityNodeLead), email)
 	executing, err := ss.OnboardingImport().GetOnboardingImport(ctx, importID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	issue := studentClassInvitationIssueFixture(t, ss, actor, class, fixture.period, issuedAt)
 	issue.Invitation.TargetEmail = email
-	requireNoError(t, issue.Invitation.Validate())
+	require.NoError(t, issue.Invitation.Validate())
 	command := invitationTestCommand(actor.ID, "invitation.student_class.issue.v1", "time-authority-"+importID.String(), "time-authority-"+importID.String())
 	command.OnboardingImportID, command.OnboardingImportRowNumber = importID, 1
 	_, err = ss.Invitation().IssueStudentClassIdempotently(ctx, issue, command)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	completed, err := ss.OnboardingImport().GetOnboardingImport(ctx, importID)
-	requireNoError(t, err)
-	if completed.State != model.OnboardingImportCompleted || completed.SucceededRows != 1 ||
-		completed.UpdatedAt.Before(completed.CreatedAt) || completed.UpdatedAt.Before(executing.UpdatedAt) {
-		t.Fatalf("completed onboarding import = %#v; executing %#v", completed, executing)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.OnboardingImportCompleted, completed.State, "completed onboarding import = %#v; executing %#v", completed, executing)
+	require.Equal(t, 1, completed.SucceededRows, "completed onboarding import = %#v; executing %#v", completed, executing)
+	require.False(t, completed.UpdatedAt.Before(completed.CreatedAt), "completed onboarding import = %#v; executing %#v", completed, executing)
+	require.False(t, completed.UpdatedAt.Before(executing.UpdatedAt), "completed onboarding import = %#v; executing %#v", completed, executing)
 	page, err := ss.OnboardingImport().ListOnboardingImportRows(ctx, importID, 0, 10)
-	requireNoError(t, err)
-	if len(page.Rows) != 1 || page.Rows[0].Status != model.OnboardingImportRowSucceeded || page.Rows[0].UpdatedAt.Before(executing.UpdatedAt) {
-		t.Fatalf("onboarding import rows = %#v; executing %#v", page, executing)
-	}
+	require.NoError(t, err)
+	require.Len(t, page.Rows, 1, "onboarding import rows = %#v; executing %#v", page, executing)
+	require.Equal(t, model.OnboardingImportRowSucceeded, page.Rows[0].Status, "onboarding import rows = %#v; executing %#v", page, executing)
+	require.False(t, page.Rows[0].UpdatedAt.Before(executing.UpdatedAt), "onboarding import rows = %#v; executing %#v", page, executing)
 }
 
 // RunTimeAuthorityUserDisable proves that disabling a User whose lifecycle
@@ -187,22 +189,22 @@ func RunTimeAuthorityUserDisable(t *testing.T, ss store.Store, probe TimeAuthori
 	user := saveUser(t, ctx, ss)
 	probe.LeadUser(t, ctx, user.ID)
 	led, err := ss.User().Get(ctx, user.ID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	attempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 	result, err := ss.User().SetDisabled(ctx, UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID, ExpectedRevision: led.Revision, Disabled: true, ChangedAt: model.GetMillis(),
 		RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: attempt.ID, AuditAt: model.MillisFromTime(attempt.CreatedAt),
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 	}))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	disabled := result.User
-	if !disabled.DisabledAt.Valid || disabled.DisabledAt.Time.Before(disabled.CreatedAt) ||
-		disabled.UpdatedAt.Before(led.UpdatedAt) || disabled.UpdatedAt.Before(disabled.CreatedAt) {
-		t.Fatalf("disabled User = %#v; led %#v", disabled, led)
-	}
+	require.True(t, disabled.DisabledAt.Valid, "disabled User = %#v; led %#v", disabled, led)
+	require.False(t, disabled.DisabledAt.Time.Before(disabled.CreatedAt), "disabled User = %#v; led %#v", disabled, led)
+	require.False(t, disabled.UpdatedAt.Before(led.UpdatedAt), "disabled User = %#v; led %#v", disabled, led)
+	require.False(t, disabled.UpdatedAt.Before(disabled.CreatedAt), "disabled User = %#v; led %#v", disabled, led)
 	persisted, err := ss.User().Get(ctx, user.ID)
-	requireNoError(t, err)
-	if !persisted.UpdatedAt.Equal(disabled.UpdatedAt) || !persisted.DisabledAt.Time.Equal(disabled.DisabledAt.Time) || persisted.Revision != disabled.Revision {
-		t.Fatalf("persisted disabled User = %#v; returned %#v", persisted, disabled)
-	}
+	require.NoError(t, err)
+	require.True(t, persisted.UpdatedAt.Equal(disabled.UpdatedAt), "persisted disabled User = %#v; returned %#v", persisted, disabled)
+	require.True(t, persisted.DisabledAt.Time.Equal(disabled.DisabledAt.Time), "persisted disabled User = %#v; returned %#v", persisted, disabled)
+	require.Equal(t, disabled.Revision, persisted.Revision, "persisted disabled User = %#v; returned %#v", persisted, disabled)
 }

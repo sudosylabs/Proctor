@@ -11,39 +11,28 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestTeacherInvitationDelegationRequirementRejectsInertAcademicUnitAction(t *testing.T) {
-	if _, err := teacherInvitationDelegationRequirement(model.ActionRoleManage); err == nil {
-		t.Fatal("role.manage produced an Academic Unit delegation requirement")
-	}
+	_, err := teacherInvitationDelegationRequirement(model.ActionRoleManage)
+	require.Error(t, err, "role.manage produced an Academic Unit delegation requirement")
 	requirement, err := teacherInvitationDelegationRequirement(model.ActionProgrammeManage)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !requirement.Institution || !requirement.AcademicUnit {
-		t.Fatalf("programme.manage delegation requirement = %#v", requirement)
-	}
+	require.NoError(t, err)
+	require.True(t, requirement.Institution)
+	require.True(t, requirement.AcademicUnit)
 	examRequirement, err := teacherInvitationDelegationRequirement(model.ActionExamManage)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !examRequirement.Institution || !examRequirement.AcademicUnit {
-		t.Fatalf("exam.manage delegation requirement = %#v", examRequirement)
-	}
+	require.NoError(t, err)
+	require.True(t, examRequirement.Institution)
+	require.True(t, examRequirement.AcademicUnit)
 }
 
 func TestInvitationEffectiveIntervalCovered(t *testing.T) {
 	start := model.TimeUTC(time.Date(2026, time.August, 18, 10, 0, 0, 0, time.UTC))
 	finite := model.OptionalTimeFrom(start.Add(4 * time.Hour))
-	if invitationEffectiveIntervalCovered(start, finite, start, model.OptionalTime{}) {
-		t.Fatal("finite relationship covered an unbounded package")
-	}
-	if !invitationEffectiveIntervalCovered(start, finite, start.Add(time.Hour), model.OptionalTimeFrom(start.Add(3*time.Hour))) {
-		t.Fatal("covering bounded relationship was rejected")
-	}
-	if invitationEffectiveIntervalCovered(start.Add(time.Hour), model.OptionalTime{}, start, model.OptionalTimeFrom(start.Add(3*time.Hour))) {
-		t.Fatal("relationship beginning after package start was accepted")
-	}
+	require.False(t, invitationEffectiveIntervalCovered(start, finite, start, model.OptionalTime{}), "finite relationship covered an unbounded package")
+	require.True(t, invitationEffectiveIntervalCovered(start, finite, start.Add(time.Hour), model.OptionalTimeFrom(start.Add(3*time.Hour))), "covering bounded relationship was rejected")
+	require.False(t, invitationEffectiveIntervalCovered(start.Add(time.Hour), model.OptionalTime{}, start, model.OptionalTimeFrom(start.Add(3*time.Hour))), "relationship beginning after package start was accepted")
 }

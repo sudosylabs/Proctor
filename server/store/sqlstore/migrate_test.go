@@ -14,6 +14,9 @@ import (
 	"fmt"
 	"slices"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var baselineTables = []string{
@@ -144,50 +147,38 @@ var baselineTables = []string{
 func TestMigrationsRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	migrator, err := NewMigrator(ctx, testSettings(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() {
-		if err := migrator.Close(); err != nil {
-			t.Errorf("close migrator: %v", err)
-		}
+		assert.NoError(t, migrator.Close())
 	})
 
 	// Other integration tests share this disposable database and may have
 	// already installed the baseline. Roll it back first so this test always
 	// proves that version zero can be built solely from the squashed baseline.
 	version, err := migrator.SchemaVersion(ctx)
-	if err != nil {
-		t.Fatalf("read initial schema version: %v", err)
-	}
+	require.NoError(t, err)
 	switch version {
 	case 0:
 	case 1:
 		truncateBaselineTables(t, ctx, migrator)
 		rolledBack, err := migrator.Down(1)
-		if err != nil || rolledBack != 1 {
-			t.Fatalf("prepare version-zero database: Down(1) = %d, %v", rolledBack, err)
-		}
+		require.NoError(t, err, "prepare version-zero database: Down(1)")
+		require.Equal(t, 1, rolledBack, "prepare version-zero database: Down(1)")
 	default:
-		t.Fatalf("database schema version = %d; recreate this pre-release development database before testing baseline version 1", version)
+		require.FailNow(t, fmt.Sprintf("database schema version = %d; recreate this pre-release development database before testing baseline version 1", version))
 	}
 	assertBaselineAbsent(t, ctx, migrator)
 
-	if err := migrator.Up(); err != nil {
-		t.Fatalf("first Up() error = %v", err)
-	}
+	require.NoError(t, migrator.Up())
 	assertBaselineSchema(t, ctx, migrator)
 
 	truncateBaselineTables(t, ctx, migrator)
 	rolledBack, err := migrator.Down(1)
-	if err != nil || rolledBack != 1 {
-		t.Fatalf("Down(1) = %d, %v", rolledBack, err)
-	}
+	require.NoError(t, err, "Down(1)")
+	require.Equal(t, 1, rolledBack, "Down(1)")
 	assertBaselineAbsent(t, ctx, migrator)
 
-	if err := migrator.Up(); err != nil {
-		t.Fatalf("second Up() error = %v", err)
-	}
+	require.NoError(t, migrator.Up())
 	assertBaselineSchema(t, ctx, migrator)
 }
 
@@ -195,28 +186,22 @@ func assertBaselineSchema(t *testing.T, ctx context.Context, migrator *Migrator)
 	t.Helper()
 
 	pending, err := migrator.Pending()
-	if err != nil || len(pending) != 0 {
-		t.Fatalf("Pending() = %d, %v", len(pending), err)
-	}
+	require.NoError(t, err, "Pending()")
+	require.Empty(t, pending, "Pending()")
 	version, err := migrator.SchemaVersion(ctx)
-	if err != nil || version != 1 {
-		t.Fatalf("SchemaVersion() = %d, %v; want 1", version, err)
-	}
+	require.NoError(t, err, "SchemaVersion()")
+	require.Equal(t, 1, version, "SchemaVersion()")
 
 	var tables []string
-	if err := migrator.store.GetMaster().Select(ctx, &tables, `
+	require.NoError(t, migrator.store.GetMaster().Select(ctx, &tables, `
 		SELECT table_name
 		  FROM information_schema.tables
 		 WHERE table_schema = 'public'
 		   AND table_type = 'BASE TABLE'
 		   AND table_name NOT IN ('db_lock', 'db_migrations')
 		 ORDER BY table_name
-	`); err != nil {
-		t.Fatalf("list baseline tables: %v", err)
-	}
-	if !slices.Equal(tables, baselineTables) {
-		t.Fatalf("baseline tables = %v; want %v", tables, baselineTables)
-	}
+	`))
+	require.True(t, slices.Equal(tables, baselineTables), "baseline tables = %v; want %v", tables, baselineTables)
 
 	type temporalColumn struct {
 		TableName  string `db:"table_name"`
@@ -224,7 +209,7 @@ func assertBaselineSchema(t *testing.T, ctx context.Context, migrator *Migrator)
 		DataType   string `db:"data_type"`
 	}
 	var temporalColumns []temporalColumn
-	if err := migrator.store.GetMaster().Select(ctx, &temporalColumns, `
+	require.NoError(t, migrator.store.GetMaster().Select(ctx, &temporalColumns, `
 		SELECT table_name, column_name, data_type
 		  FROM information_schema.columns
 		 WHERE table_schema = 'public'
@@ -236,16 +221,10 @@ func assertBaselineSchema(t *testing.T, ctx context.Context, migrator *Migrator)
 		   )
 		   AND column_name LIKE '%\_at' ESCAPE '\'
 		 ORDER BY table_name, ordinal_position
-	`); err != nil {
-		t.Fatalf("inspect temporal columns: %v", err)
-	}
-	if len(temporalColumns) == 0 {
-		t.Fatal("baseline contains no temporal columns")
-	}
+	`))
+	require.NotEmpty(t, temporalColumns, "baseline contains no temporal columns")
 	for _, column := range temporalColumns {
-		if column.DataType != "timestamp with time zone" {
-			t.Errorf("%s.%s type = %q; want timestamp with time zone", column.TableName, column.ColumnName, column.DataType)
-		}
+		assert.Equal(t, "timestamp with time zone", column.DataType, "%s.%s type = %q; want timestamp with time zone", column.TableName, column.ColumnName, column.DataType)
 	}
 
 	for _, column := range []struct {
@@ -271,17 +250,14 @@ func assertBaselineSchema(t *testing.T, ctx context.Context, migrator *Migrator)
 		{table: "upload_leases", name: "consumed_at"},
 	} {
 		var nullable string
-		if err := migrator.store.GetMaster().Get(ctx, &nullable, `
+		if !assert.NoError(t, migrator.store.GetMaster().Get(ctx, &nullable, `
 			SELECT is_nullable
 			  FROM information_schema.columns
 			 WHERE table_schema = 'public' AND table_name = ? AND column_name = ?
-		`, column.table, column.name); err != nil {
-			t.Errorf("inspect %s.%s nullability: %v", column.table, column.name, err)
+		`, column.table, column.name), "inspect %s.%s nullability", column.table, column.name) {
 			continue
 		}
-		if nullable != "YES" {
-			t.Errorf("%s.%s is_nullable = %q; want YES", column.table, column.name, nullable)
-		}
+		assert.Equal(t, "YES", nullable, "%s.%s is_nullable = %q; want YES", column.table, column.name, nullable)
 	}
 }
 
@@ -289,22 +265,20 @@ func assertBaselineAbsent(t *testing.T, ctx context.Context, migrator *Migrator)
 	t.Helper()
 
 	version, err := migrator.SchemaVersion(ctx)
-	if err != nil || version != 0 {
-		t.Fatalf("SchemaVersion() after rollback = %d, %v; want 0", version, err)
-	}
+	require.NoError(t, err, "SchemaVersion() after rollback")
+	require.Equal(t, 0, version, "SchemaVersion() after rollback")
 	for _, table := range baselineTables {
 		var absent bool
 		query := fmt.Sprintf("SELECT to_regclass('public.%s') IS NULL", table)
-		if err := migrator.store.GetMaster().Get(ctx, &absent, query); err != nil || !absent {
-			t.Errorf("table %s absent after rollback = %v, %v", table, absent, err)
-		}
+		assert.NoError(t, migrator.store.GetMaster().Get(ctx, &absent, query), "table %s absent after rollback", table)
+		assert.True(t, absent, "table %s absent after rollback", table)
 	}
 }
 
 func truncateBaselineTables(t *testing.T, ctx context.Context, migrator *Migrator) {
 	t.Helper()
 
-	if _, err := migrator.store.GetMaster().Exec(ctx, `
+	_, err := migrator.store.GetMaster().Exec(ctx, `
 		TRUNCATE TABLE
 			cluster_discovery_nodes, mail_send_rate_limit, mail_key_state, mail_fanout_bundles, mail_payload_keys, mail_deliveries, mail_occurrences, onboarding_import_rows, onboarding_imports, invitations, job_attempts, jobs, browser_authentication_transactions, external_login_states, installation_states, desktop_compatibility_policies, access_policy_transitions, access_policies,
 			audit_events, mfa_recovery_codes, mfa_credentials, user_tokens,
@@ -321,7 +295,6 @@ func truncateBaselineTables(t *testing.T, ctx context.Context, migrator *Migrato
 			file_renditions, file_revisions, file_entries, classes,
 			academic_periods, programme_levels, programmes, academic_units,
 			institutions CASCADE
-	`); err != nil {
-		t.Fatalf("truncate baseline tables: %v", err)
-	}
+	`)
+	require.NoError(t, err)
 }

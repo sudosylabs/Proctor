@@ -13,6 +13,9 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestBaselineHotPathIndexes guards the leading columns and partial predicates
@@ -39,22 +42,16 @@ func TestBaselineHotPathIndexes(t *testing.T) {
 		"integrity_review_decisions_integrity_flag_id_idx":             "(integrity_flag_id, exam_attempt_id)",
 	} {
 		var definitions []string
-		if err := persistence.GetMaster().Select(ctx, &definitions, `SELECT indexdef FROM pg_indexes
-			WHERE schemaname = current_schema() AND indexname = ?`, name); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, persistence.GetMaster().Select(ctx, &definitions, `SELECT indexdef FROM pg_indexes
+			WHERE schemaname = current_schema() AND indexname = ?`, name))
 		want := "USING btree " + definition
-		if len(definitions) != 1 || !strings.HasSuffix(definitions[0], want) {
-			t.Errorf("index %s = %q; want suffix %q", name, definitions, want)
+		if assert.Len(t, definitions, 1, "index %s", name) {
+			assert.True(t, strings.HasSuffix(definitions[0], want), "index %s = %q; want suffix %q", name, definitions[0], want)
 		}
 	}
 
 	var stale bool
-	if err := persistence.GetMaster().Get(ctx, &stale,
-		`SELECT to_regclass('sessions_user_id_last_activity_at_idx') IS NOT NULL`); err != nil {
-		t.Fatal(err)
-	}
-	if stale {
-		t.Error("misnamed sessions_user_id_last_activity_at_idx still exists")
-	}
+	require.NoError(t, persistence.GetMaster().Get(ctx, &stale,
+		`SELECT to_regclass('sessions_user_id_last_activity_at_idx') IS NOT NULL`))
+	assert.False(t, stale, "misnamed sessions_user_id_last_activity_at_idx still exists")
 }

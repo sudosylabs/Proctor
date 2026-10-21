@@ -11,10 +11,10 @@ package sqlstore
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/lib/pq"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -35,9 +35,7 @@ func TestInstitutionAcademicUnitCanonicalIDConstraints(t *testing.T) {
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{
 		Name: "canonical-ids", DisplayName: "Canonical IDs",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	at := model.NowUTC()
 	tests := []struct {
 		name       string
@@ -85,7 +83,7 @@ func assertCanonicalCheckViolation(t *testing.T, constraint string, operation fu
 	t.Helper()
 	err := operation()
 	var postgresErr *pq.Error
-	if !errors.As(err, &postgresErr) || string(postgresErr.Code) != "23514" || postgresErr.Constraint != constraint {
-		t.Fatalf("constraint violation = %v, want PostgreSQL check %s", err, constraint)
-	}
+	require.ErrorAs(t, err, &postgresErr, "constraint violation")
+	require.Equal(t, "23514", string(postgresErr.Code), "constraint violation")
+	require.Equal(t, constraint, postgresErr.Constraint, "constraint violation")
 }

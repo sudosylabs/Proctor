@@ -11,11 +11,11 @@ package sqlstore
 
 import (
 	"context"
-	"errors"
 	"slices"
 	"testing"
 
 	"github.com/lib/pq"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -38,15 +38,11 @@ func TestUserIdentityRecoveryCanonicalIDConstraints(t *testing.T) {
 		"users_id_canonical_check",
 	}
 	var constraints []string
-	if err := persistence.GetMaster().Select(ctx, &constraints, `
+	require.NoError(t, persistence.GetMaster().Select(ctx, &constraints, `
 		SELECT conname FROM pg_constraint
 		 WHERE conname = ANY(?)
-		 ORDER BY conname`, pq.Array(wantConstraints)); err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Equal(constraints, wantConstraints) {
-		t.Fatalf("identity canonical constraints = %v, want %v", constraints, wantConstraints)
-	}
+		 ORDER BY conname`, pq.Array(wantConstraints)))
+	require.True(t, slices.Equal(constraints, wantConstraints), "identity canonical constraints = %v, want %v", constraints, wantConstraints)
 
 	_, err := persistence.GetMaster().Exec(ctx, `
 		INSERT INTO users (
@@ -61,7 +57,7 @@ func TestUserIdentityRecoveryCanonicalIDConstraints(t *testing.T) {
 func assertIdentityCanonicalViolation(t *testing.T, err error, constraint string) {
 	t.Helper()
 	var postgresErr *pq.Error
-	if !errors.As(err, &postgresErr) || string(postgresErr.Code) != "23514" || postgresErr.Constraint != constraint {
-		t.Fatalf("constraint violation = %v, want PostgreSQL check %s", err, constraint)
-	}
+	require.ErrorAs(t, err, &postgresErr, "constraint violation")
+	require.Equal(t, "23514", string(postgresErr.Code), "constraint violation")
+	require.Equal(t, constraint, postgresErr.Constraint, "constraint violation")
 }

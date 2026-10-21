@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -25,30 +27,24 @@ func TestCommandOutcomeStore(t *testing.T, ss store.Store) {
 	period.PrepareCreate(model.NewAcademicPeriodID(), model.NowUTC())
 	audit := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
 	command := &store.CommandIdempotency{UserID: user.ID, Operation: "academic_period.create.v1", KeyDigest: sha256.Sum256([]byte("expiring")), FingerprintVersion: 1, Fingerprint: sha256.Sum256([]byte("command")), OutcomeVersion: 1, Retention: 100 * time.Millisecond, Wait: time.Second}
-	if _, err := ss.AcademicPeriod().CreateIdempotently(ctx, &store.AcademicPeriodCreation{Period: period, AuditEventID: audit.ID, AuditAt: model.GetMillis()}, command); err != nil {
-		t.Fatal(err)
-	}
-	if found, err := ss.CommandOutcome().Has(ctx, command); err != nil || !found {
-		t.Fatalf("Has(committed) = %v, %v", found, err)
-	}
+	_, err := ss.AcademicPeriod().CreateIdempotently(ctx, &store.AcademicPeriodCreation{Period: period, AuditEventID: audit.ID, AuditAt: model.GetMillis()}, command)
+	require.NoError(t, err)
+	found, err := ss.CommandOutcome().Has(ctx, command)
+	require.NoError(t, err, "Has(committed)")
+	require.True(t, found, "Has(committed)")
 	deadline := time.Now().Add(time.Second)
 	for {
 		deleted, err := ss.CommandOutcome().DeleteExpired(ctx, 500)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		if deleted == 1 {
 			break
 		}
-		if time.Now().After(deadline) {
-			t.Fatal("expired command outcome was not deleted")
-		}
+		require.False(t, time.Now().After(deadline), "expired command outcome was not deleted")
 		time.Sleep(time.Millisecond)
 	}
-	if found, err := ss.CommandOutcome().Has(ctx, command); err != nil || found {
-		t.Fatalf("Has(expired) = %v, %v", found, err)
-	}
-	if _, err := ss.CommandOutcome().DeleteExpired(ctx, 0); err == nil {
-		t.Fatal("DeleteExpired accepted an invalid limit")
-	}
+	found, err = ss.CommandOutcome().Has(ctx, command)
+	require.NoError(t, err, "Has(expired)")
+	require.False(t, found, "Has(expired)")
+	_, err = ss.CommandOutcome().DeleteExpired(ctx, 0)
+	require.Error(t, err, "DeleteExpired accepted an invalid limit")
 }

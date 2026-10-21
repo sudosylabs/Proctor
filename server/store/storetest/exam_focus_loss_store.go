@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -27,78 +29,93 @@ func testExamAttemptFocusLoss(t *testing.T, ctx context.Context, ss store.Store,
 		Generation: connected.Participation.Generation, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID,
 		ConnectionID: connected.Connection.ID, ContinuityCredentialHash: credentialHash}
 	target, err := ss.ExamAttempt().ResolveFocusLossTarget(ctx, access)
-	requireNoError(t, err)
-	if target.ExamID != fixture.examID || target.SittingID != fixture.sitting.ID || target.ClassID != fixture.class.ID ||
-		target.CandidateUserID != fixture.candidate.ID || target.AttemptID != connected.Attempt.ID ||
-		target.ParticipationID != connected.Participation.ID || target.Generation != connected.Participation.Generation {
-		t.Fatalf("ResolveFocusLossTarget() = %#v", target)
-	}
+	require.NoError(t, err)
+	require.Equal(t, fixture.examID, target.ExamID)
+	require.Equal(t, fixture.sitting.ID, target.SittingID)
+	require.Equal(t, fixture.class.ID, target.ClassID)
+	require.Equal(t, fixture.candidate.ID, target.CandidateUserID)
+	require.Equal(t, connected.Attempt.ID, target.AttemptID)
+	require.Equal(t, connected.Participation.ID, target.ParticipationID)
+	require.Equal(t, connected.Participation.Generation, target.Generation)
 
 	first := recordFocusLoss(t, ctx, ss, fixture, access, 1, 2000, model.FocusLossSourceWindowBlur)
 	second := recordFocusLoss(t, ctx, ss, fixture, access, 2, 2000, model.FocusLossSourceDocumentHidden)
-	if !first.Qualified || first.ThresholdCrossed || first.WindowIncidentCount != 1 ||
-		!second.Qualified || second.ThresholdCrossed || second.WindowIncidentCount != 2 {
-		t.Fatalf("Focus Loss rolling bucket = %#v, %#v", first, second)
-	}
+	require.True(t, first.Qualified, "Focus Loss rolling bucket = %#v, %#v", first, second)
+	require.False(t, first.ThresholdCrossed, "Focus Loss rolling bucket = %#v, %#v", first, second)
+	require.Equal(t, 1, first.WindowIncidentCount, "Focus Loss rolling bucket = %#v, %#v", first, second)
+	require.True(t, second.Qualified, "Focus Loss rolling bucket = %#v, %#v", first, second)
+	require.False(t, second.ThresholdCrossed, "Focus Loss rolling bucket = %#v, %#v", first, second)
+	require.Equal(t, 2, second.WindowIncidentCount, "Focus Loss rolling bucket = %#v, %#v", first, second)
 	crossingInput := newFocusLossInput(t, ctx, ss, fixture, access, 4, 2000, model.FocusLossSourceFullscreenExited)
 	crossed, err := ss.ExamAttempt().RecordFocusLoss(ctx, crossingInput)
-	requireNoError(t, err)
-	if crossed.Duplicate || !crossed.CollectionEnabled || !crossed.Qualified || crossed.MissingBefore != 1 ||
-		!crossed.ThresholdCrossed || crossed.WindowIncidentCount != 0 || crossed.PolicyOutcome != model.IntegrityOutcomeFlagAndWarn ||
-		crossed.RetainedEvidenceCount != 3 || crossed.Flag == nil || !crossed.FlagCreated || !crossed.CandidateWarningCreated ||
-		!crossed.ManagerNotificationRequired || crossed.Attempt != nil || crossed.Suspension != nil {
-		t.Fatalf("RecordFocusLoss(threshold) = %#v", crossed)
-	}
+	require.NoError(t, err)
+	require.False(t, crossed.Duplicate)
+	require.True(t, crossed.CollectionEnabled)
+	require.True(t, crossed.Qualified)
+	require.Equal(t, int64(1), crossed.MissingBefore)
+	require.True(t, crossed.ThresholdCrossed)
+	require.Equal(t, 0, crossed.WindowIncidentCount)
+	require.Equal(t, model.IntegrityOutcomeFlagAndWarn, crossed.PolicyOutcome)
+	require.Equal(t, 3, crossed.RetainedEvidenceCount)
+	require.NotNil(t, crossed.Flag)
+	require.True(t, crossed.FlagCreated)
+	require.True(t, crossed.CandidateWarningCreated)
+	require.True(t, crossed.ManagerNotificationRequired)
+	require.Nil(t, crossed.Attempt)
+	require.Nil(t, crossed.Suspension)
 	requireSuccessfulAudit(t, ctx, ss, crossingInput.AuditEventID)
 	assertFocusLossAuditAllowlist(t, ctx, ss, crossingInput.AuditEventID)
 	audit, err := ss.Audit().Get(ctx, crossingInput.AuditEventID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	for _, forbidden := range []string{credentialHash, string(crossingInput.Source), "2000"} {
-		if bytes.Contains(audit.Result, []byte(forbidden)) {
-			t.Fatalf("Focus Loss audit exposed %q", forbidden)
-		}
+		require.False(t, bytes.Contains(audit.Result, []byte(forbidden)), "Focus Loss audit exposed %q", forbidden)
 	}
 
 	replay := *crossingInput
 	replay.SignalID, replay.EvidenceID, replay.FlagID, replay.SuspensionID = model.NewFocusLossSignalID(), model.NewIntegrityEvidenceID(), model.NewIntegrityFlagID(), model.NewAttemptSuspensionID()
 	replay.AuditEventID, replay.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
 	replayed, err := ss.ExamAttempt().RecordFocusLoss(ctx, &replay)
-	requireNoError(t, err)
-	if !replayed.Duplicate || replayed.Signal.ID != crossed.Signal.ID || !replayed.DatabaseTime.Equal(crossed.DatabaseTime) ||
-		replayed.RetainedEvidenceCount != crossed.RetainedEvidenceCount || !replayed.FlagCreated || !replayed.CandidateWarningCreated ||
-		!replayed.ManagerNotificationRequired {
-		t.Fatalf("RecordFocusLoss(duplicate) = %#v, first = %#v", replayed, crossed)
-	}
+	require.NoError(t, err)
+	require.True(t, replayed.Duplicate, "RecordFocusLoss(duplicate) = %#v, first = %#v", replayed, crossed)
+	require.Equal(t, crossed.Signal.ID, replayed.Signal.ID, "RecordFocusLoss(duplicate) = %#v, first = %#v", replayed, crossed)
+	require.True(t, replayed.DatabaseTime.Equal(crossed.DatabaseTime), "RecordFocusLoss(duplicate) = %#v, first = %#v", replayed, crossed)
+	require.Equal(t, crossed.RetainedEvidenceCount, replayed.RetainedEvidenceCount, "RecordFocusLoss(duplicate) = %#v, first = %#v", replayed, crossed)
+	require.True(t, replayed.FlagCreated, "RecordFocusLoss(duplicate) = %#v, first = %#v", replayed, crossed)
+	require.True(t, replayed.CandidateWarningCreated, "RecordFocusLoss(duplicate) = %#v, first = %#v", replayed, crossed)
+	require.True(t, replayed.ManagerNotificationRequired, "RecordFocusLoss(duplicate) = %#v, first = %#v", replayed, crossed)
 	requireSuccessfulAudit(t, ctx, ss, replay.AuditEventID)
 	assertFocusLossAuditAllowlist(t, ctx, ss, replay.AuditEventID)
 	changed := replay
 	changed.DurationMilliseconds++
 	changed.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	_, err = ss.ExamAttempt().RecordFocusLoss(ctx, &changed)
-	assertExamAttemptConflict(t, err, "focus_loss_sequence")
+	requireConflictConstraint(t, err, "focus_loss_sequence")
 	stale := replay
 	stale.Sequence = 3
 	stale.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	_, err = ss.ExamAttempt().RecordFocusLoss(ctx, &stale)
-	assertExamAttemptConflict(t, err, "focus_loss_sequence")
+	requireConflictConstraint(t, err, "focus_loss_sequence")
 
 	recordFocusLoss(t, ctx, ss, fixture, access, 5, 2000, "")
 	recordFocusLoss(t, ctx, ss, fixture, access, 6, 2000, "")
 	secondCrossing := recordFocusLoss(t, ctx, ss, fixture, access, 7, 2000, "")
-	if !secondCrossing.ThresholdCrossed || secondCrossing.Flag == nil || secondCrossing.Flag.ID != crossed.Flag.ID ||
-		secondCrossing.FlagCreated || secondCrossing.CandidateWarningCreated || secondCrossing.ManagerNotificationRequired ||
-		secondCrossing.RetainedEvidenceCount != 6 {
-		t.Fatalf("RecordFocusLoss(second warning crossing) = %#v", secondCrossing)
-	}
+	require.True(t, secondCrossing.ThresholdCrossed)
+	require.NotNil(t, secondCrossing.Flag)
+	require.Equal(t, crossed.Flag.ID, secondCrossing.Flag.ID)
+	require.False(t, secondCrossing.FlagCreated)
+	require.False(t, secondCrossing.CandidateWarningCreated)
+	require.False(t, secondCrossing.ManagerNotificationRequired)
+	require.Equal(t, 6, secondCrossing.RetainedEvidenceCount)
 	gap := recordFocusLoss(t, ctx, ss, fixture, access, 9, 1000, "")
 	later := recordFocusLoss(t, ctx, ss, fixture, access, 10, 1000, "")
-	if gap.MissingBefore != 1 || gap.Qualified || gap.PolicyOutcome != "" || later.MissingBefore != 0 || later.Qualified {
-		t.Fatalf("Focus Loss nonqualifying gap = %#v, later = %#v", gap, later)
-	}
+	require.Equal(t, int64(1), gap.MissingBefore, "Focus Loss nonqualifying gap = %#v, later = %#v", gap, later)
+	require.False(t, gap.Qualified, "Focus Loss nonqualifying gap = %#v, later = %#v", gap, later)
+	require.Empty(t, gap.PolicyOutcome, "Focus Loss nonqualifying gap = %#v, later = %#v", gap, later)
+	require.Equal(t, int64(0), later.MissingBefore, "Focus Loss nonqualifying gap = %#v, later = %#v", gap, later)
+	require.False(t, later.Qualified, "Focus Loss nonqualifying gap = %#v, later = %#v", gap, later)
 	if len(probes) != 0 && probes[0].UnresolvedFocusLossMissing != nil {
-		if count := probes[0].UnresolvedFocusLossMissing(t, ctx, access.AttemptID, access.Generation); count != 2 {
-			t.Fatalf("unresolved Focus Loss missing count = %d, want 2", count)
-		}
+		count := probes[0].UnresolvedFocusLossMissing(t, ctx, access.AttemptID, access.Generation)
+		require.Equal(t, int64(2), count, "unresolved Focus Loss missing count")
 	}
 	return newFocusLossInput(t, ctx, ss, fixture, access, 11, 2000, model.FocusLossSourceApplicationBackgrounded)
 }
@@ -106,20 +123,16 @@ func testExamAttemptFocusLoss(t *testing.T, ctx context.Context, ss store.Store,
 func assertFocusLossAuditAllowlist(t *testing.T, ctx context.Context, ss store.Store, id model.AuditEventID) {
 	t.Helper()
 	audit, err := ss.Audit().Get(ctx, id)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	var data map[string]any
-	if err = json.Unmarshal(audit.Result, &data); err != nil {
-		t.Fatalf("decode Focus Loss audit: %v", err)
-	}
+	err = json.Unmarshal(audit.Result, &data)
+	require.NoError(t, err)
 	allowed := map[string]struct{}{"exam_id": {}, "exam_sitting_id": {}, "exam_attempt_id": {}, "participation_id": {},
 		"generation": {}, "signal_id": {}, "accepted_sequence": {}, "replayed": {}}
-	if len(data) != len(allowed) {
-		t.Fatalf("Focus Loss audit keys = %#v", data)
-	}
+	require.Len(t, data, len(allowed))
 	for key := range data {
-		if _, ok := allowed[key]; !ok {
-			t.Fatalf("Focus Loss audit exposed non-allowlisted key %q: %#v", key, data)
-		}
+		_, ok := allowed[key]
+		require.True(t, ok, "Focus Loss audit exposed non-allowlisted key %q: %#v", key, data)
 	}
 }
 
@@ -135,21 +148,28 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 			DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint,
 			ConnectionID:             connected.Connection.ID,
 			ContinuityCredentialHash: access.ContinuityCredentialHash})
-		requireNoError(t, err)
-		if presentation.RuntimeCapabilities.FocusLossCollectionEnabled {
-			t.Fatal("disabled Focus Loss policy told the candidate to collect signals")
-		}
+		require.NoError(t, err)
+		require.False(t, presentation.RuntimeCapabilities.FocusLossCollectionEnabled, "disabled Focus Loss policy told the candidate to collect signals")
 		first := recordFocusLoss(t, ctx, ss, fixture, access, 1, model.FocusLossMaximumDurationMilliseconds, model.FocusLossSourceWindowBlur)
 		second := recordFocusLoss(t, ctx, ss, fixture, access, 3, 500, "")
-		if first.CollectionEnabled || first.Qualified || first.ThresholdCrossed || first.Flag != nil || first.DiagnosticCount != 1 ||
-			second.CollectionEnabled || second.Qualified || second.ThresholdCrossed || second.Flag != nil || second.DiagnosticCount != 2 ||
-			second.MissingBefore != 1 || second.PolicyOutcome != "" {
-			t.Fatalf("disabled Focus Loss decisions = %#v, %#v", first, second)
-		}
+		require.False(t, first.CollectionEnabled, "disabled Focus Loss decisions = %#v, %#v", first, second)
+		require.False(t, first.Qualified, "disabled Focus Loss decisions = %#v, %#v", first, second)
+		require.False(t, first.ThresholdCrossed, "disabled Focus Loss decisions = %#v, %#v", first, second)
+		require.Nil(t, first.Flag, "disabled Focus Loss decisions = %#v, %#v", first, second)
+		require.Equal(t, int64(1), first.DiagnosticCount, "disabled Focus Loss decisions = %#v, %#v", first, second)
+		require.False(t, second.CollectionEnabled, "disabled Focus Loss decisions = %#v, %#v", first, second)
+		require.False(t, second.Qualified, "disabled Focus Loss decisions = %#v, %#v", first, second)
+		require.False(t, second.ThresholdCrossed, "disabled Focus Loss decisions = %#v, %#v", first, second)
+		require.Nil(t, second.Flag, "disabled Focus Loss decisions = %#v, %#v", first, second)
+		require.Equal(t, int64(2), second.DiagnosticCount, "disabled Focus Loss decisions = %#v, %#v", first, second)
+		require.Equal(t, int64(1), second.MissingBefore, "disabled Focus Loss decisions = %#v, %#v", first, second)
+		require.Empty(t, second.PolicyOutcome, "disabled Focus Loss decisions = %#v, %#v", first, second)
 		persisted := probe.FocusLossPersistence(t, ctx, connected.Attempt.ID, connected.Participation.Generation)
-		if persisted.Flags != 0 || persisted.Evidence != 0 || persisted.Pending != 0 || persisted.OverflowCount != 0 || persisted.DiagnosticCount != 2 {
-			t.Fatalf("disabled Focus Loss persistence = %#v", persisted)
-		}
+		require.Equal(t, 0, persisted.Flags)
+		require.Equal(t, 0, persisted.Evidence)
+		require.Equal(t, 0, persisted.Pending)
+		require.Equal(t, int64(0), persisted.OverflowCount)
+		require.Equal(t, int64(2), persisted.DiagnosticCount)
 	})
 
 	t.Run("receipt-time window expires old qualifiers", func(t *testing.T) {
@@ -160,10 +180,12 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 		first := recordFocusLoss(t, ctx, ss, fixture, access, 1, 500, "")
 		probe.AgeFocusLossPending(t, ctx, connected.Attempt.ID, connected.Participation.Generation, 1, 11*time.Second)
 		second := recordFocusLoss(t, ctx, ss, fixture, access, 2, 500, "")
-		if !first.Qualified || first.WindowIncidentCount != 1 || second.ThresholdCrossed || second.WindowIncidentCount != 1 ||
-			second.PolicyOutcome != "" || second.DatabaseTime.Before(first.DatabaseTime) {
-			t.Fatalf("receipt-time rolling window = %#v, %#v", first, second)
-		}
+		require.True(t, first.Qualified, "receipt-time rolling window = %#v, %#v", first, second)
+		require.Equal(t, 1, first.WindowIncidentCount, "receipt-time rolling window = %#v, %#v", first, second)
+		require.False(t, second.ThresholdCrossed, "receipt-time rolling window = %#v, %#v", first, second)
+		require.Equal(t, 1, second.WindowIncidentCount, "receipt-time rolling window = %#v, %#v", first, second)
+		require.Empty(t, second.PolicyOutcome, "receipt-time rolling window = %#v, %#v", first, second)
+		require.False(t, second.DatabaseTime.Before(first.DatabaseTime), "receipt-time rolling window = %#v, %#v", first, second)
 	})
 
 	t.Run("flag evidence is capped and overflow is bounded", func(t *testing.T) {
@@ -174,30 +196,35 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 		var firstFlag model.IntegrityFlagID
 		for sequence := int64(1); sequence <= model.FocusLossMaximumEvidenceEpisodes+1; sequence++ {
 			result := recordFocusLoss(t, ctx, ss, fixture, access, sequence, 500+sequence, "")
-			if !result.ThresholdCrossed || result.WindowIncidentCount != 0 || result.PolicyOutcome != model.IntegrityOutcomeFlag ||
-				result.Flag == nil || result.CandidateWarningCreated || result.Suspension != nil {
-				t.Fatalf("Focus Loss crossing %d = %#v", sequence, result)
-			}
+			require.True(t, result.ThresholdCrossed, "Focus Loss crossing %d = %#v", sequence, result)
+			require.Equal(t, 0, result.WindowIncidentCount, "Focus Loss crossing %d = %#v", sequence, result)
+			require.Equal(t, model.IntegrityOutcomeFlag, result.PolicyOutcome, "Focus Loss crossing %d = %#v", sequence, result)
+			require.NotNil(t, result.Flag, "Focus Loss crossing %d = %#v", sequence, result)
+			require.False(t, result.CandidateWarningCreated, "Focus Loss crossing %d = %#v", sequence, result)
+			require.Nil(t, result.Suspension, "Focus Loss crossing %d = %#v", sequence, result)
 			if sequence == 1 {
 				firstFlag = result.Flag.ID
-				if !result.FlagCreated || !result.ManagerNotificationRequired {
-					t.Fatalf("first Focus Loss Flag = %#v", result)
-				}
-			} else if result.Flag.ID != firstFlag || result.FlagCreated || result.ManagerNotificationRequired {
-				t.Fatalf("reused Focus Loss Flag %d = %#v", sequence, result)
+				require.True(t, result.FlagCreated)
+				require.True(t, result.ManagerNotificationRequired)
+			} else {
+				require.Equal(t, firstFlag, result.Flag.ID, "reused Focus Loss Flag %d", sequence)
+				require.False(t, result.FlagCreated, "reused Focus Loss Flag %d", sequence)
+				require.False(t, result.ManagerNotificationRequired, "reused Focus Loss Flag %d", sequence)
 			}
 			if sequence == model.FocusLossMaximumEvidenceEpisodes+1 {
-				if result.RetainedEvidenceCount != model.FocusLossMaximumEvidenceEpisodes || result.Overflow == nil ||
-					result.Overflow.Count != 1 || result.Overflow.MaximumDurationMilliseconds != 500+sequence ||
-					!result.Overflow.FirstReceivedAt.Equal(result.DatabaseTime) || !result.Overflow.LastReceivedAt.Equal(result.DatabaseTime) {
-					t.Fatalf("Focus Loss overflow result = %#v", result)
-				}
+				require.Equal(t, model.FocusLossMaximumEvidenceEpisodes, result.RetainedEvidenceCount)
+				require.NotNil(t, result.Overflow)
+				require.Equal(t, int64(1), result.Overflow.Count)
+				require.Equal(t, 500+sequence, result.Overflow.MaximumDurationMilliseconds)
+				require.True(t, result.Overflow.FirstReceivedAt.Equal(result.DatabaseTime))
+				require.True(t, result.Overflow.LastReceivedAt.Equal(result.DatabaseTime))
 			}
 		}
 		persisted := probe.FocusLossPersistence(t, ctx, connected.Attempt.ID, connected.Participation.Generation)
-		if persisted.Flags != 1 || persisted.Evidence != model.FocusLossMaximumEvidenceEpisodes || persisted.Pending != 0 || persisted.OverflowCount != 1 {
-			t.Fatalf("Focus Loss evidence persistence = %#v", persisted)
-		}
+		require.Equal(t, 1, persisted.Flags)
+		require.Equal(t, model.FocusLossMaximumEvidenceEpisodes, persisted.Evidence)
+		require.Equal(t, 0, persisted.Pending)
+		require.Equal(t, int64(1), persisted.OverflowCount)
 	})
 
 	t.Run("suspension is atomic replayable and causal reallow resets", func(t *testing.T) {
@@ -208,41 +235,49 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 		recordFocusLoss(t, ctx, ss, fixture, access, 1, 500, model.FocusLossSourceDocumentHidden)
 		crossingInput := newFocusLossInput(t, ctx, ss, fixture, access, 2, 500, model.FocusLossSourceFullscreenExited)
 		crossed, err := ss.ExamAttempt().RecordFocusLoss(ctx, crossingInput)
-		requireNoError(t, err)
-		if !crossed.ThresholdCrossed || crossed.PolicyOutcome != model.IntegrityOutcomeFlagAndSuspend || crossed.Flag == nil ||
-			crossed.Attempt == nil || crossed.Attempt.State != model.ExamAttemptSuspended || crossed.Attempt.Revision != 2 ||
-			crossed.Participation == nil || crossed.Participation.State != model.AttemptParticipationEnded ||
-			crossed.Participation.EndReason != model.AttemptParticipationEndPolicySuspended || crossed.Connection == nil ||
-			crossed.Connection.State != model.AttemptConnectionClosed || crossed.Connection.CloseReason != model.AttemptConnectionClosePolicySuspended ||
-			!crossed.ConnectionClosed || crossed.Suspension == nil || crossed.Suspension.ID != crossingInput.SuspensionID ||
-			crossed.Suspension.CandidateReason != model.AttemptSuspensionCandidateReasonFocusLossPolicy {
-			t.Fatalf("Focus Loss suspension = %#v", crossed)
-		}
+		require.NoError(t, err)
+		require.True(t, crossed.ThresholdCrossed)
+		require.Equal(t, model.IntegrityOutcomeFlagAndSuspend, crossed.PolicyOutcome)
+		require.NotNil(t, crossed.Flag)
+		require.NotNil(t, crossed.Attempt)
+		require.Equal(t, model.ExamAttemptSuspended, crossed.Attempt.State)
+		require.Equal(t, int64(2), crossed.Attempt.Revision)
+		require.NotNil(t, crossed.Participation)
+		require.Equal(t, model.AttemptParticipationEnded, crossed.Participation.State)
+		require.Equal(t, model.AttemptParticipationEndPolicySuspended, crossed.Participation.EndReason)
+		require.NotNil(t, crossed.Connection)
+		require.Equal(t, model.AttemptConnectionClosed, crossed.Connection.State)
+		require.Equal(t, model.AttemptConnectionClosePolicySuspended, crossed.Connection.CloseReason)
+		require.True(t, crossed.ConnectionClosed)
+		require.NotNil(t, crossed.Suspension)
+		require.Equal(t, crossingInput.SuspensionID, crossed.Suspension.ID)
+		require.Equal(t, model.AttemptSuspensionCandidateReasonFocusLossPolicy, crossed.Suspension.CandidateReason)
 		resolved, err := ss.ExamAttempt().ResolveFocusLossTarget(ctx, access)
-		requireNoError(t, err)
-		if resolved.AttemptID != connected.Attempt.ID || resolved.Generation != connected.Participation.Generation {
-			t.Fatalf("ResolveFocusLossTarget(self-suspended) = %#v", resolved)
-		}
+		require.NoError(t, err)
+		require.Equal(t, connected.Attempt.ID, resolved.AttemptID)
+		require.Equal(t, connected.Participation.Generation, resolved.Generation)
 		replay := *crossingInput
 		replay.SignalID, replay.EvidenceID, replay.FlagID, replay.SuspensionID = model.NewFocusLossSignalID(), model.NewIntegrityEvidenceID(), model.NewIntegrityFlagID(), model.NewAttemptSuspensionID()
 		replay.AuditEventID, replay.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
 		replayed, err := ss.ExamAttempt().RecordFocusLoss(ctx, &replay)
-		requireNoError(t, err)
-		if !replayed.Duplicate || replayed.Signal.ID != crossed.Signal.ID || replayed.Suspension == nil ||
-			replayed.Suspension.ID != crossed.Suspension.ID || replayed.Attempt == nil || replayed.Attempt.Revision != crossed.Attempt.Revision ||
-			!replayed.DatabaseTime.Equal(crossed.DatabaseTime) {
-			t.Fatalf("Focus Loss self-suspended replay = %#v, first = %#v", replayed, crossed)
-		}
+		require.NoError(t, err)
+		require.True(t, replayed.Duplicate, "Focus Loss self-suspended replay = %#v, first = %#v", replayed, crossed)
+		require.Equal(t, crossed.Signal.ID, replayed.Signal.ID, "Focus Loss self-suspended replay = %#v, first = %#v", replayed, crossed)
+		require.NotNil(t, replayed.Suspension, "Focus Loss self-suspended replay = %#v, first = %#v", replayed, crossed)
+		require.Equal(t, crossed.Suspension.ID, replayed.Suspension.ID, "Focus Loss self-suspended replay = %#v, first = %#v", replayed, crossed)
+		require.NotNil(t, replayed.Attempt, "Focus Loss self-suspended replay = %#v, first = %#v", replayed, crossed)
+		require.Equal(t, crossed.Attempt.Revision, replayed.Attempt.Revision, "Focus Loss self-suspended replay = %#v, first = %#v", replayed, crossed)
+		require.True(t, replayed.DatabaseTime.Equal(crossed.DatabaseTime), "Focus Loss self-suspended replay = %#v, first = %#v", replayed, crossed)
 		changed := replay
 		changed.DurationMilliseconds++
 		changed.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 		_, err = ss.ExamAttempt().RecordFocusLoss(ctx, &changed)
-		assertExamAttemptConflict(t, err, "focus_loss_sequence")
+		requireConflictConstraint(t, err, "focus_loss_sequence")
 		later := replay
 		later.Sequence++
 		later.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 		_, err = ss.ExamAttempt().RecordFocusLoss(ctx, &later)
-		assertExamAttemptConflict(t, err, "exam_attempt_state")
+		requireConflictConstraint(t, err, "exam_attempt_state")
 
 		reallow := &store.ExamAttemptReallow{ExamID: fixture.examID, SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID,
 			SuspensionID: crossed.Suspension.ID, ActorUserID: fixture.manager.ID, ExpectedAttemptRevision: crossed.Attempt.Revision,
@@ -250,14 +285,14 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 			AuditEventID:  saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		reallowed, err := ss.ExamAttempt().ReallowAttempt(ctx, reallow,
 			examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "focus-reallow", "focus-reallow"))
-		requireNoError(t, err)
-		if !reallowed.FocusLossWindowReset || reallowed.Attempt.State != model.ExamAttemptReady || reallowed.Attempt.Revision != 3 {
-			t.Fatalf("ReallowAttempt(Focus Loss) = %#v", reallowed)
-		}
+		require.NoError(t, err)
+		require.True(t, reallowed.FocusLossWindowReset)
+		require.Equal(t, model.ExamAttemptReady, reallowed.Attempt.State)
+		require.Equal(t, int64(3), reallowed.Attempt.Revision)
 		persisted := probe.FocusLossPersistence(t, ctx, connected.Attempt.ID, connected.Participation.Generation)
-		if persisted.Pending != 0 || persisted.Flags != 1 || persisted.Evidence != 2 {
-			t.Fatalf("Focus Loss causal reset persistence = %#v", persisted)
-		}
+		require.Equal(t, 0, persisted.Pending)
+		require.Equal(t, 1, persisted.Flags)
+		require.Equal(t, 2, persisted.Evidence)
 	})
 
 	t.Run("established monitoring preserves access vocabulary", func(t *testing.T) {
@@ -269,35 +304,31 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 		wrongCredential := newFocusLossInput(t, ctx, ss, fixture, access, 1, 500, "")
 		wrongCredential.Access.ContinuityCredentialHash = model.HashToken(model.NewCredentialToken())
 		_, err := ss.ExamAttempt().RecordFocusLoss(ctx, wrongCredential)
-		assertExamAttemptConflict(t, err, "attempt_participation_credential")
+		requireConflictConstraint(t, err, "attempt_participation_credential")
 		wrongGeneration := newFocusLossInput(t, ctx, ss, fixture, access, 1, 500, "")
 		wrongGeneration.Access.Generation++
 		_, err = ss.ExamAttempt().RecordFocusLoss(ctx, wrongGeneration)
-		assertExamAttemptConflict(t, err, "attempt_participation_generation")
+		requireConflictConstraint(t, err, "attempt_participation_generation")
 		wrongSession := newFocusLossInput(t, ctx, ss, fixture, access, 1, 500, "")
 		wrongSession.Access.SessionID = model.NewSessionID()
-		if _, err = ss.ExamAttempt().RecordFocusLoss(ctx, wrongSession); !store.IsNotFound(err) {
-			t.Fatalf("RecordFocusLoss(foreign Session) error = %v", err)
-		}
+		_, err = ss.ExamAttempt().RecordFocusLoss(ctx, wrongSession)
+		require.True(t, store.IsNotFound(err), "RecordFocusLoss(foreign Session) error")
 
 		endedAt := model.GetMillis()
 		_, err = ss.ClassMember().SeedEnd(ctx, fixture.membership.ID, fixture.membership.Revision, endedAt)
-		requireNoError(t, err)
+		require.NoError(t, err)
 		time.Sleep(100 * time.Millisecond)
 		accepted := recordFocusLoss(t, ctx, ss, fixture, access, 1, 500, "")
-		if !accepted.Qualified || accepted.WindowIncidentCount != 1 {
-			t.Fatalf("Focus Loss after membership ended = %#v", accepted)
-		}
+		require.True(t, accepted.Qualified)
+		require.Equal(t, 1, accepted.WindowIncidentCount)
 		closed, err := ss.ExamAttempt().CloseConnection(ctx, &store.ExamAttemptConnectionClose{ConnectionID: connected.Connection.ID,
 			CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, Reason: model.AttemptConnectionCloseTransport,
 			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()})
-		requireNoError(t, err)
-		if !closed.Changed {
-			t.Fatalf("CloseConnection(Focus Loss access) = %#v", closed)
-		}
+		require.NoError(t, err)
+		require.True(t, closed.Changed)
 		closedInput := newFocusLossInput(t, ctx, ss, fixture, access, 2, 500, "")
 		_, err = ss.ExamAttempt().RecordFocusLoss(ctx, closedInput)
-		assertExamAttemptConflict(t, err, "attempt_connection_closed")
+		requireConflictConstraint(t, err, "attempt_connection_closed")
 
 		closeAt := model.NowUTC()
 		_, err = ss.ExamSitting().EarlyClose(ctx, &store.ExamSittingManagerTransition{ExamID: fixture.examID,
@@ -306,10 +337,10 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 			PrivateReason: "verify terminal Focus Loss fence", ChangedAt: closeAt,
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
 			examCommand(fixture.manager.ID, "exam.sitting.close.v1", "focus-close", "focus-close"))
-		requireNoError(t, err)
+		require.NoError(t, err)
 		terminalInput := newFocusLossInput(t, ctx, ss, fixture, access, 2, 500, "")
 		_, err = ss.ExamAttempt().RecordFocusLoss(ctx, terminalInput)
-		assertExamAttemptConflict(t, err, "exam_sitting_state")
+		requireConflictConstraint(t, err, "exam_sitting_state")
 	})
 
 	t.Run("expiry serializes ahead of Focus Loss", func(t *testing.T) {
@@ -322,10 +353,8 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 			_, recordErr := ss.ExamAttempt().RecordFocusLoss(ctx, input)
 			return recordErr
 		})
-		assertExamAttemptConflict(t, err, "attempt_participation_expired")
-		if persisted := probe.FocusLossPersistence(t, ctx, connected.Attempt.ID, connected.Participation.Generation); persisted != (FocusLossPersistenceProbe{}) {
-			t.Fatalf("expired Focus Loss race left persistence = %#v", persisted)
-		}
+		requireConflictConstraint(t, err, "attempt_participation_expired")
+		require.Equal(t, FocusLossPersistenceProbe{}, probe.FocusLossPersistence(t, ctx, connected.Attempt.ID, connected.Participation.Generation))
 	})
 
 	t.Run("connection-loss reallow preserves unrelated Focus bucket", func(t *testing.T) {
@@ -339,20 +368,16 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 			ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
 			EvidenceID: model.NewIntegrityEvidenceID(), FlagID: model.NewIntegrityFlagID(), SuspensionID: model.NewAttemptSuspensionID(),
 			AuditEventID: saveExamAttemptSystemAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()})
-		requireNoError(t, err)
+		require.NoError(t, err)
 		reallow := &store.ExamAttemptReallow{ExamID: fixture.examID, SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID,
 			SuspensionID: expired.Suspension.ID, ActorUserID: fixture.manager.ID, ExpectedAttemptRevision: expired.Attempt.Revision,
 			PrivateReason: "connectivity was restored",
 			AuditEventID:  saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		reallowed, err := ss.ExamAttempt().ReallowAttempt(ctx, reallow,
 			examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "connection-loss-reallow-focus", "connection-loss-reallow-focus"))
-		requireNoError(t, err)
-		if reallowed.FocusLossWindowReset {
-			t.Fatalf("Connection Loss reallow reset Focus Loss window: %#v", reallowed)
-		}
-		if persisted := probe.FocusLossPersistence(t, ctx, connected.Attempt.ID, connected.Participation.Generation); persisted.Pending != 1 {
-			t.Fatalf("Connection Loss reallow changed Focus Loss bucket = %#v", persisted)
-		}
+		require.NoError(t, err)
+		require.False(t, reallowed.FocusLossWindowReset)
+		require.Equal(t, 1, probe.FocusLossPersistence(t, ctx, connected.Attempt.ID, connected.Participation.Generation).Pending)
 	})
 
 	t.Run("audit rollback leaves no accepted sequence", func(t *testing.T) {
@@ -362,18 +387,14 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 		connected, access := connectFocusLossFixture(t, ctx, ss, fixture, "focus-audit-rollback")
 		input := newFocusLossInput(t, ctx, ss, fixture, access, 1, 500, model.FocusLossSourceWindowBlur)
 		input.AuditEventID = model.NewAuditEventID()
-		if _, err := ss.ExamAttempt().RecordFocusLoss(ctx, input); err == nil {
-			t.Fatal("RecordFocusLoss with missing audit unexpectedly succeeded")
-		}
-		if persisted := probe.FocusLossPersistence(t, ctx, connected.Attempt.ID, connected.Participation.Generation); persisted != (FocusLossPersistenceProbe{}) {
-			t.Fatalf("failed Focus Loss audit left partial persistence = %#v", persisted)
-		}
+		_, err := ss.ExamAttempt().RecordFocusLoss(ctx, input)
+		require.Error(t, err, "RecordFocusLoss with missing audit unexpectedly succeeded")
+		require.Equal(t, FocusLossPersistenceProbe{}, probe.FocusLossPersistence(t, ctx, connected.Attempt.ID, connected.Participation.Generation))
 		input.AuditEventID, input.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
 		accepted, err := ss.ExamAttempt().RecordFocusLoss(ctx, input)
-		requireNoError(t, err)
-		if accepted.Duplicate || accepted.AcceptedSequence != 1 {
-			t.Fatalf("RecordFocusLoss after audit rollback = %#v", accepted)
-		}
+		require.NoError(t, err)
+		require.False(t, accepted.Duplicate)
+		require.Equal(t, int64(1), accepted.AcceptedSequence)
 	})
 
 	t.Run("two stores converge the same sequence", func(t *testing.T) {
@@ -407,19 +428,22 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 		close(start)
 		wait.Wait()
 		first, second := <-results, <-results
-		requireNoError(t, <-errorsFound)
-		requireNoError(t, <-errorsFound)
+		require.NoError(t, <-errorsFound)
+		require.NoError(t, <-errorsFound)
 		requireSuccessfulAudit(t, ctx, ss, inputs[0].AuditEventID)
 		requireSuccessfulAudit(t, ctx, ss, inputs[1].AuditEventID)
 		assertFocusLossAuditAllowlist(t, ctx, ss, inputs[0].AuditEventID)
 		assertFocusLossAuditAllowlist(t, ctx, ss, inputs[1].AuditEventID)
-		if first.Duplicate == second.Duplicate || first.Signal.ID != second.Signal.ID || first.Flag == nil || second.Flag == nil ||
-			first.Flag.ID != second.Flag.ID || !first.DatabaseTime.Equal(second.DatabaseTime) {
-			t.Fatalf("concurrent Focus Loss convergence = %#v, %#v", first, second)
-		}
-		if persisted := probe.FocusLossPersistence(t, ctx, connected.Attempt.ID, connected.Participation.Generation); persisted.Flags != 1 || persisted.Evidence != 2 || persisted.Pending != 0 {
-			t.Fatalf("concurrent Focus Loss persistence = %#v", persisted)
-		}
+		require.NotEqual(t, second.Duplicate, first.Duplicate, "concurrent Focus Loss convergence = %#v, %#v", first, second)
+		require.Equal(t, second.Signal.ID, first.Signal.ID, "concurrent Focus Loss convergence = %#v, %#v", first, second)
+		require.NotNil(t, first.Flag, "concurrent Focus Loss convergence = %#v, %#v", first, second)
+		require.NotNil(t, second.Flag, "concurrent Focus Loss convergence = %#v, %#v", first, second)
+		require.Equal(t, second.Flag.ID, first.Flag.ID, "concurrent Focus Loss convergence = %#v, %#v", first, second)
+		require.True(t, first.DatabaseTime.Equal(second.DatabaseTime), "concurrent Focus Loss convergence = %#v, %#v", first, second)
+		persisted := probe.FocusLossPersistence(t, ctx, connected.Attempt.ID, connected.Participation.Generation)
+		require.Equal(t, 1, persisted.Flags)
+		require.Equal(t, 2, persisted.Evidence)
+		require.Equal(t, 0, persisted.Pending)
 	})
 
 	if probe.AssertFocusLossSchema != nil {
@@ -437,7 +461,7 @@ func connectFocusLossFixture(t *testing.T, ctx context.Context, ss store.Store, 
 		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	prepareExamAttemptConnect(t, ctx, ss, input)
 	connected, err := ss.ExamAttempt().Connect(ctx, input, examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, key, key))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return connected, store.ExamAttemptFocusLossAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID,
 		Generation: connected.Participation.Generation, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID,
 		ConnectionID: connected.Connection.ID, ContinuityCredentialHash: credentialHash}
@@ -449,7 +473,7 @@ func recordFocusLoss(t *testing.T, ctx context.Context, ss store.Store, fixture 
 	t.Helper()
 	input := newFocusLossInput(t, ctx, ss, fixture, access, sequence, duration, source)
 	result, err := ss.ExamAttempt().RecordFocusLoss(ctx, input)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return result
 }
 

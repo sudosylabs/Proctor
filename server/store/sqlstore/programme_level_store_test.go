@@ -8,9 +8,10 @@
 package sqlstore
 
 import (
-	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -40,25 +41,18 @@ func TestProgrammeLevelRowRehydrationRejectsInvalidPersistedState(t *testing.T) 
 		t.Run(test.name, func(t *testing.T) {
 			_, err := test.row.model()
 			var persisted *persistedStateError
-			if !errors.As(err, &persisted) {
-				t.Fatalf("model() error = %v, want persisted-state error", err)
-			}
-			if persisted.Entity != "programme_level" || persisted.Field != test.field {
-				t.Fatalf("persisted-state context = %s.%s, want programme_level.%s", persisted.Entity, persisted.Field, test.field)
-			}
+			require.ErrorAs(t, err, &persisted, "model() error")
+			require.Equal(t, "programme_level", persisted.Entity, "persisted-state context")
+			require.Equal(t, test.field, persisted.Field, "persisted-state context")
 		})
 	}
 }
 
 func TestProgrammeLevelRowConversion(t *testing.T) {
 	id, err := model.ParseProgrammeLevelID(model.NewID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	programmeID, err := model.ParseProgrammeID(model.NewID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	level := &model.ProgrammeLevel{
 		ID:          id,
 		CreatedAt:   model.TimeFromMillis(1),
@@ -72,17 +66,12 @@ func TestProgrammeLevelRowConversion(t *testing.T) {
 	}
 	row := newProgrammeLevelRow(level)
 	got, err := row.model()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if *got != *level {
-		t.Fatalf("row.model() = %#v, want %#v", got, level)
-	}
-	if !row.CreatedAt.Equal(level.CreatedAt) ||
-		!row.UpdatedAt.Equal(level.UpdatedAt) ||
-		!row.ArchivedAt.Valid || !row.ArchivedAt.Time.Equal(level.ArchivedAt.Time) {
-		t.Fatalf("row times = %#v", row)
-	}
+	require.NoError(t, err)
+	require.Equal(t, *level, *got, "row.model() = %#v, want %#v", got, level)
+	require.True(t, row.CreatedAt.Equal(level.CreatedAt))
+	require.True(t, row.UpdatedAt.Equal(level.UpdatedAt))
+	require.True(t, row.ArchivedAt.Valid)
+	require.True(t, row.ArchivedAt.Time.Equal(level.ArchivedAt.Time))
 }
 
 func replaceProgrammeLevelRow(row programmeLevelRow, replace func(*programmeLevelRow)) programmeLevelRow {

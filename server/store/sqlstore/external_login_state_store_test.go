@@ -9,8 +9,9 @@ package sqlstore
 
 import (
 	"errors"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -28,12 +29,8 @@ func TestExternalLoginStateRowConversion(t *testing.T) {
 	}
 	row := newExternalLoginStateRow(state)
 	got, err := row.model()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if *got != *state {
-		t.Fatalf("row.model() = %#v, want %#v", got, state)
-	}
+	require.NoError(t, err)
+	require.Equal(t, *state, *got, "row.model() = %#v, want %#v", got, state)
 }
 
 func TestExternalLoginStateRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
@@ -58,15 +55,13 @@ func TestExternalLoginStateRowRehydrationRejectsInvalidPersistedState(t *testing
 			test.mutate(&row)
 			_, err := row.model()
 			var persisted *persistedStateError
-			if !errors.As(err, &persisted) || persisted.Entity != "external_login_state" || persisted.Field != test.field {
-				t.Fatalf("model() error = %v, want external_login_state.%s persisted-state error", err, test.field)
+			require.ErrorAs(t, err, &persisted, "model() error")
+			require.Equal(t, "external_login_state", persisted.Entity, "model() error")
+			require.Equal(t, test.field, persisted.Field, "model() error")
+			if test.name == "domain state" {
+				require.Error(t, errors.Unwrap(err), "persisted-state error discarded the validation cause")
 			}
-			if test.name == "domain state" && errors.Unwrap(err) == nil {
-				t.Fatal("persisted-state error discarded the validation cause")
-			}
-			if strings.Contains(err.Error(), "secret-value-must-not-appear") {
-				t.Fatalf("persisted-state error exposed credential material: %v", err)
-			}
+			require.NotContains(t, err.Error(), "secret-value-must-not-appear")
 		})
 	}
 }

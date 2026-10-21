@@ -9,10 +9,11 @@ package storetest
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -23,60 +24,51 @@ func TestFileStore(t *testing.T, ss store.Store) {
 	user := saveUser(t, ctx, ss)
 	at := model.NowUTC()
 	entry, err := model.NewFileEntry(model.NewFileEntryID(), model.FileIndexingNone, at)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	revision, err := model.NewFileRevision(model.NewFileRevisionID(), entry.ID, model.FileAvailabilityPending, model.FileIndexingNotRequired, at)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	lease, err := model.NewUploadLease(model.NewUploadLeaseID(), revision.ID, user.ID, at, at.Add(time.Hour))
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	nonPristineEntry := *entry
 	nonPristineEntry.CurrentRevisionID = revision.ID
-	if _, err = ss.File().CreateUpload(ctx, &store.FileUploadCreation{Entry: &nonPristineEntry, Revision: revision, Lease: lease}); err == nil {
-		t.Fatal("CreateUpload() accepted an entry with a current revision")
-	}
+	_, err = ss.File().CreateUpload(ctx, &store.FileUploadCreation{Entry: &nonPristineEntry, Revision: revision, Lease: lease})
+	require.Error(t, err, "CreateUpload() accepted an entry with a current revision")
 	created, err := ss.File().CreateUpload(ctx, &store.FileUploadCreation{Entry: entry, Revision: revision, Lease: lease})
-	requireNoError(t, err)
-	if created.Entry.ID != entry.ID || created.Lease.FileRevisionID != revision.ID {
-		t.Fatalf("CreateUpload() = %#v", created)
-	}
+	require.NoError(t, err)
+	require.Equal(t, entry.ID, created.Entry.ID)
+	require.Equal(t, revision.ID, created.Lease.FileRevisionID)
 	renewedUntil := model.NowUTC().Add(30 * time.Minute)
 	renewed, err := ss.File().RenewUploadLease(ctx, lease.ID, user.ID, lease.Revision, 1, renewedUntil)
-	if err != nil {
-		t.Fatalf("RenewUploadLease() error = %v (cause: %v)", err, errors.Unwrap(err))
-	}
-	if !renewed.ExpiresAt.Equal(renewedUntil) {
-		t.Fatalf("RenewUploadLease() = %#v", renewed)
-	}
-	if _, err = ss.File().RenewUploadLease(ctx, lease.ID, user.ID, renewed.Revision, 1, renewedUntil); !store.IsConflict(err) {
-		t.Fatalf("RenewUploadLease(without progress) error = %v", err)
-	}
+	require.NoError(t, err, "RenewUploadLease() error")
+	require.True(t, renewed.ExpiresAt.Equal(renewedUntil))
+	_, err = ss.File().RenewUploadLease(ctx, lease.ID, user.ID, renewed.Revision, 1, renewedUntil)
+	require.True(t, store.IsConflict(err), "RenewUploadLease(without progress) error")
 	// Creation timestamps arrive from an application node, while renewal leases
 	// are fenced by the primary database clock. Small forward node skew must not
 	// make a valid, progressing lease fail its monotonic domain validation.
 	futureAt := model.NowUTC().Add(5 * time.Minute)
 	futureEntry, err := model.NewFileEntry(model.NewFileEntryID(), model.FileIndexingNone, futureAt)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	futureRevision, err := model.NewFileRevision(model.NewFileRevisionID(), futureEntry.ID, model.FileAvailabilityPending, model.FileIndexingNotRequired, futureAt)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	futureLease, err := model.NewUploadLease(model.NewUploadLeaseID(), futureRevision.ID, user.ID, futureAt, futureAt.Add(time.Hour))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	_, err = ss.File().CreateUpload(ctx, &store.FileUploadCreation{Entry: futureEntry, Revision: futureRevision, Lease: futureLease})
-	requireNoError(t, err)
-	if _, err = ss.File().RenewUploadLease(ctx, futureLease.ID, user.ID, futureLease.Revision, 1, futureAt.Add(30*time.Minute)); err != nil {
-		t.Fatalf("RenewUploadLease(forward node clock skew) error = %v", err)
-	}
+	require.NoError(t, err)
+	_, err = ss.File().RenewUploadLease(ctx, futureLease.ID, user.ID, futureLease.Revision, 1, futureAt.Add(30*time.Minute))
+	require.NoError(t, err)
 	renditions := make([]model.FileRendition, 0, 3)
 	for _, size := range []int{128, 256, 512} {
 		rendition, renditionErr := model.NewFileRendition(model.NewFileRenditionID(), revision.ID, fmt.Sprintf("profile_%d", size), "image/webp", 8, size, size, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", at)
-		requireNoError(t, renditionErr)
+		require.NoError(t, renditionErr)
 		renditions = append(renditions, *rendition)
 	}
-	if _, err = ss.File().PublishProfilePicture(ctx, &store.ProfilePicturePublication{
+	_, err = ss.File().PublishProfilePicture(ctx, &store.ProfilePicturePublication{
 		ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: user.Revision, EntryID: entry.ID,
 		RevisionID: revision.ID, LeaseID: lease.ID, Renditions: renditions[:1], ChangedAt: model.NowUTC(),
-	}); err == nil {
-		t.Fatal("PublishProfilePicture() accepted an incomplete rendition set")
-	}
+	})
+	require.Error(t, err, "PublishProfilePicture() accepted an incomplete rendition set")
 	changeAt := model.NowUTC()
 	auditAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 	published, err := ss.File().PublishProfilePicture(ctx, &store.ProfilePicturePublication{
@@ -84,159 +76,144 @@ func TestFileStore(t *testing.T, ss store.Store) {
 		RevisionID: revision.ID, LeaseID: lease.ID, Renditions: renditions, ChangedAt: changeAt,
 		AuditEventID: auditAttempt.ID, AuditAt: changeAt.UnixMilli(),
 	})
-	requireNoError(t, err)
-	if published.User.CustomProfilePictureFileID != entry.ID || published.Revision.Availability != model.FileAvailabilityAvailable {
-		t.Fatalf("PublishProfilePicture() = %#v", published)
-	}
+	require.NoError(t, err)
+	require.Equal(t, entry.ID, published.User.CustomProfilePictureFileID)
+	require.Equal(t, model.FileAvailabilityAvailable, published.Revision.Availability)
 	got, err := ss.File().GetProfilePictureRendition(ctx, user.ID, "profile_128")
-	requireNoError(t, err)
-	if got.ID != renditions[0].ID {
-		t.Fatalf("GetProfilePictureRendition() = %#v", got)
-	}
+	require.NoError(t, err)
+	require.Equal(t, renditions[0].ID, got.ID)
 
 	replacementAt := model.NowUTC()
 	replacementRevision, err := model.NewFileRevision(model.NewFileRevisionID(), entry.ID, model.FileAvailabilityPending, model.FileIndexingNotRequired, replacementAt)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	replacementLease, err := model.NewUploadLease(model.NewUploadLeaseID(), replacementRevision.ID, user.ID, replacementAt, replacementAt.Add(time.Hour))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	_, err = ss.File().CreateRevisionUpload(ctx, &store.FileRevisionUploadCreation{EntryID: entry.ID, Revision: replacementRevision, Lease: replacementLease})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	replacementRenditions := make([]model.FileRendition, 0, 3)
 	for _, size := range []int{128, 256, 512} {
 		rendition, renditionErr := model.NewFileRendition(model.NewFileRenditionID(), replacementRevision.ID, fmt.Sprintf("profile_%d", size), "image/webp", 9, size, size, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", replacementAt)
-		requireNoError(t, renditionErr)
+		require.NoError(t, renditionErr)
 		replacementRenditions = append(replacementRenditions, *rendition)
 	}
 	replacementAudit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 	replaced, err := ss.File().PublishProfilePicture(ctx, &store.ProfilePicturePublication{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: published.User.Revision, EntryID: entry.ID, RevisionID: replacementRevision.ID, LeaseID: replacementLease.ID, Renditions: replacementRenditions, ChangedAt: replacementAt, AuditEventID: replacementAudit.ID, AuditAt: replacementAt.UnixMilli()})
-	requireNoError(t, err)
-	if replaced.User.CustomProfilePictureFileID != entry.ID || replaced.Revision.ID != replacementRevision.ID {
-		t.Fatalf("replacement = %#v", replaced)
-	}
+	require.NoError(t, err)
+	require.Equal(t, entry.ID, replaced.User.CustomProfilePictureFileID)
+	require.Equal(t, replacementRevision.ID, replaced.Revision.ID)
 	state, err := ss.File().GetProfilePictureState(ctx, user.ID)
-	requireNoError(t, err)
-	if state.EntryID != entry.ID || state.RevisionID != replacementRevision.ID {
-		t.Fatalf("replacement state = %#v", state)
-	}
+	require.NoError(t, err)
+	require.Equal(t, entry.ID, state.EntryID)
+	require.Equal(t, replacementRevision.ID, state.RevisionID)
 	discardAt := model.NowUTC()
 	discardRevision, err := model.NewFileRevision(model.NewFileRevisionID(), entry.ID, model.FileAvailabilityPending, model.FileIndexingNotRequired, discardAt)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	discardLease, err := model.NewUploadLease(model.NewUploadLeaseID(), discardRevision.ID, user.ID, discardAt, discardAt.Add(time.Hour))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	_, err = ss.File().CreateRevisionUpload(ctx, &store.FileRevisionUploadCreation{EntryID: entry.ID, Revision: discardRevision, Lease: discardLease})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	err = ss.File().DiscardProfilePictureUpload(ctx, &store.ProfilePictureUploadDiscard{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: replaced.User.Revision, ExpectedActiveEntryID: entry.ID, ExpectedCurrentRevisionID: replacementRevision.ID, UploadEntryID: entry.ID, RevisionID: discardRevision.ID, LeaseID: discardLease.ID})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	state, err = ss.File().GetProfilePictureState(ctx, user.ID)
-	requireNoError(t, err)
-	if state.RevisionID != replacementRevision.ID {
-		t.Fatalf("discard changed visible state = %#v", state)
-	}
+	require.NoError(t, err)
+	require.Equal(t, replacementRevision.ID, state.RevisionID)
 	rollbackAt := model.NowUTC()
 	rollbackRevision, err := model.NewFileRevision(model.NewFileRevisionID(), entry.ID, model.FileAvailabilityPending, model.FileIndexingNotRequired, rollbackAt)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	rollbackLease, err := model.NewUploadLease(model.NewUploadLeaseID(), rollbackRevision.ID, user.ID, rollbackAt, rollbackAt.Add(time.Hour))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	_, err = ss.File().CreateRevisionUpload(ctx, &store.FileRevisionUploadCreation{EntryID: entry.ID, Revision: rollbackRevision, Lease: rollbackLease})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	rollbackRenditions := make([]model.FileRendition, 0, 3)
 	for _, size := range []int{128, 256, 512} {
 		rendition, renditionErr := model.NewFileRendition(model.NewFileRenditionID(), rollbackRevision.ID, fmt.Sprintf("profile_%d", size), "image/webp", 10, size, size, "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", rollbackAt)
-		requireNoError(t, renditionErr)
+		require.NoError(t, renditionErr)
 		rollbackRenditions = append(rollbackRenditions, *rendition)
 	}
-	if _, err = ss.File().PublishProfilePicture(ctx, &store.ProfilePicturePublication{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: replaced.User.Revision, EntryID: entry.ID, RevisionID: rollbackRevision.ID, LeaseID: rollbackLease.ID, Renditions: rollbackRenditions, ChangedAt: rollbackAt, AuditEventID: model.NewAuditEventID(), AuditAt: rollbackAt.UnixMilli()}); err == nil {
-		t.Fatal("PublishProfilePicture() succeeded without its audit attempt")
-	}
+	_, err = ss.File().PublishProfilePicture(ctx, &store.ProfilePicturePublication{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: replaced.User.Revision, EntryID: entry.ID, RevisionID: rollbackRevision.ID, LeaseID: rollbackLease.ID, Renditions: rollbackRenditions, ChangedAt: rollbackAt, AuditEventID: model.NewAuditEventID(), AuditAt: rollbackAt.UnixMilli()})
+	require.Error(t, err, "PublishProfilePicture() succeeded without its audit attempt")
 	state, err = ss.File().GetProfilePictureState(ctx, user.ID)
-	requireNoError(t, err)
-	if state.RevisionID != replacementRevision.ID {
-		t.Fatalf("audit failure changed visible state = %#v", state)
-	}
+	require.NoError(t, err)
+	require.Equal(t, replacementRevision.ID, state.RevisionID)
 
 	removalAt := model.NowUTC()
 	removalAudit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 	removed, err := ss.File().RemoveProfilePicture(ctx, &store.ProfilePictureRemoval{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: replaced.User.Revision, EntryID: entry.ID, ExpectedCurrentRevisionID: replacementRevision.ID, ExpectedSHA256: replacementRenditions[0].SHA256, ChangedAt: removalAt, AuditEventID: removalAudit.ID, AuditAt: removalAt.UnixMilli()})
-	requireNoError(t, err)
-	if !removed.CustomProfilePictureFileID.IsZero() || removed.Revision != replaced.User.Revision+1 {
-		t.Fatalf("removal = %#v", removed)
-	}
+	require.NoError(t, err)
+	require.True(t, removed.CustomProfilePictureFileID.IsZero())
+	require.Equal(t, replaced.User.Revision+1, removed.Revision)
 	defaultAt := model.NowUTC()
 	defaultEntry, err := model.NewFileEntry(model.NewFileEntryID(), model.FileIndexingNone, defaultAt)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	defaultRevision, err := model.NewFileRevision(model.NewFileRevisionID(), defaultEntry.ID, model.FileAvailabilityPending, model.FileIndexingNotRequired, defaultAt)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	defaultLease, err := model.NewUploadLease(model.NewUploadLeaseID(), defaultRevision.ID, user.ID, defaultAt, defaultAt.Add(time.Hour))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	_, err = ss.File().CreateUpload(ctx, &store.FileUploadCreation{Entry: defaultEntry, Revision: defaultRevision, Lease: defaultLease})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	defaultRenditions := make([]model.FileRendition, 0, 3)
 	for _, size := range []int{128, 256, 512} {
 		rendition, renditionErr := model.NewFileRendition(model.NewFileRenditionID(), defaultRevision.ID, fmt.Sprintf("profile_%d", size), "image/webp", 11, size, size, "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", defaultAt)
-		requireNoError(t, renditionErr)
+		require.NoError(t, renditionErr)
 		defaultRenditions = append(defaultRenditions, *rendition)
 	}
 	withDefault, err := ss.File().PublishDefaultProfilePicture(ctx, &store.DefaultProfilePicturePublication{UserID: user.ID, ExpectedUserRevision: removed.Revision, EntryID: defaultEntry.ID, RevisionID: defaultRevision.ID, LeaseID: defaultLease.ID, Renditions: defaultRenditions, AttachedAt: defaultAt})
-	requireNoError(t, err)
-	if withDefault.User.DefaultProfilePictureFileID != defaultEntry.ID || withDefault.User.Revision != removed.Revision+1 || !withDefault.User.ProfilePictureChangedAt.Time.Equal(removed.ProfilePictureChangedAt.Time) {
-		t.Fatalf("default publication = %#v", withDefault)
-	}
+	require.NoError(t, err)
+	require.Equal(t, defaultEntry.ID, withDefault.User.DefaultProfilePictureFileID)
+	require.Equal(t, removed.Revision+1, withDefault.User.Revision)
+	require.True(t, withDefault.User.ProfilePictureChangedAt.Time.Equal(removed.ProfilePictureChangedAt.Time))
 	got, err = ss.File().GetProfilePictureRendition(ctx, user.ID, "profile_128")
-	requireNoError(t, err)
-	if got.ID != defaultRenditions[0].ID {
-		t.Fatalf("fallback rendition = %#v", got)
-	}
+	require.NoError(t, err)
+	require.Equal(t, defaultRenditions[0].ID, got.ID)
 	archivedAt := model.NowUTC()
 	archivedRevision, err := model.NewFileRevision(model.NewFileRevisionID(), entry.ID, model.FileAvailabilityPending, model.FileIndexingNotRequired, archivedAt)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	archivedLease, err := model.NewUploadLease(model.NewUploadLeaseID(), archivedRevision.ID, user.ID, archivedAt, archivedAt.Add(time.Hour))
-	requireNoError(t, err)
-	if _, err = ss.File().CreateRevisionUpload(ctx, &store.FileRevisionUploadCreation{EntryID: entry.ID, Revision: archivedRevision, Lease: archivedLease}); !store.IsNotFound(err) {
-		t.Fatalf("CreateRevisionUpload(archived) error = %v", err)
-	}
+	require.NoError(t, err)
+	_, err = ss.File().CreateRevisionUpload(ctx, &store.FileRevisionUploadCreation{EntryID: entry.ID, Revision: archivedRevision, Lease: archivedLease})
+	require.True(t, store.IsNotFound(err), "CreateRevisionUpload(archived) error")
 	expiredAt := model.NowUTC().Add(-48 * time.Hour)
 	expiredEntry, err := model.NewFileEntry(model.NewFileEntryID(), model.FileIndexingNone, expiredAt.Add(-time.Hour))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	expiredRevision, err := model.NewFileRevision(model.NewFileRevisionID(), expiredEntry.ID, model.FileAvailabilityPending, model.FileIndexingNotRequired, expiredAt.Add(-time.Hour))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	expiredLease, err := model.NewUploadLease(model.NewUploadLeaseID(), expiredRevision.ID, user.ID, expiredAt.Add(-time.Hour), expiredAt)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	_, err = ss.File().CreateUpload(ctx, &store.FileUploadCreation{Entry: expiredEntry, Revision: expiredRevision, Lease: expiredLease})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	expiredRenditions := make([]model.FileRendition, 0, 3)
 	for _, size := range []int{128, 256, 512} {
 		rendition, renditionErr := model.NewFileRendition(model.NewFileRenditionID(), expiredRevision.ID, fmt.Sprintf("profile_%d", size), "image/webp", 8, size, size, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", expiredAt)
-		requireNoError(t, renditionErr)
+		require.NoError(t, renditionErr)
 		expiredRenditions = append(expiredRenditions, *rendition)
 	}
 	expiredAudit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
-	if _, err = ss.File().PublishProfilePicture(ctx, &store.ProfilePicturePublication{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: withDefault.User.Revision, EntryID: expiredEntry.ID, RevisionID: expiredRevision.ID, LeaseID: expiredLease.ID, Renditions: expiredRenditions, ChangedAt: model.NowUTC(), AuditEventID: expiredAudit.ID, AuditAt: model.NowUTC().UnixMilli()}); !store.IsConflict(err) {
-		t.Fatalf("PublishProfilePicture(expired lease) error = %v", err)
-	}
+	_, err = ss.File().PublishProfilePicture(ctx, &store.ProfilePicturePublication{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: withDefault.User.Revision, EntryID: expiredEntry.ID, RevisionID: expiredRevision.ID, LeaseID: expiredLease.ID, Renditions: expiredRenditions, ChangedAt: model.NowUTC(), AuditEventID: expiredAudit.ID, AuditAt: model.NowUTC().UnixMilli()})
+	require.True(t, store.IsConflict(err), "PublishProfilePicture(expired lease) error")
 	page, err := ss.File().ListPurgeCandidates(ctx, &store.FilePurgeCandidateRequest{Limit: 10})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	var expiredCandidate *store.FilePurgeCandidate
 	for index := range page.Candidates {
 		if page.Candidates[index].LeaseID == expiredLease.ID {
 			expiredCandidate = &page.Candidates[index]
 		}
 	}
-	if expiredCandidate == nil {
-		t.Fatal("expired lease was not selected from authoritative metadata")
-	}
+	require.NotNil(t, expiredCandidate, "expired lease was not selected from authoritative metadata")
 	claim, err := ss.File().ClaimPurgeCandidate(ctx, expiredCandidate)
-	requireNoError(t, err)
-	if claim.ID == "" || claim.Candidate.RevisionID != expiredCandidate.RevisionID {
-		t.Fatalf("ClaimPurgeCandidate() = %#v", claim)
+	require.NoError(t, err)
+	require.NotEmpty(t, claim.ID)
+	require.Equal(t, expiredCandidate.RevisionID, claim.Candidate.RevisionID)
+	_, err = ss.File().RenewUploadLease(ctx, expiredLease.ID, user.ID, expiredLease.Revision, 1, model.NowUTC().Add(time.Hour))
+	if !store.IsConflict(err) {
+		require.True(t, store.IsNotFound(err), "RenewUploadLease(claimed) error")
 	}
-	if _, err = ss.File().RenewUploadLease(ctx, expiredLease.ID, user.ID, expiredLease.Revision, 1, model.NowUTC().Add(time.Hour)); !store.IsConflict(err) && !store.IsNotFound(err) {
-		t.Fatalf("RenewUploadLease(claimed) error = %v", err)
+	_, err = ss.File().PublishProfilePicture(ctx, &store.ProfilePicturePublication{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: withDefault.User.Revision, EntryID: expiredEntry.ID, RevisionID: expiredRevision.ID, LeaseID: expiredLease.ID, Renditions: expiredRenditions, ChangedAt: model.NowUTC(), AuditEventID: expiredAudit.ID, AuditAt: model.NowUTC().UnixMilli()})
+	if !store.IsConflict(err) {
+		require.True(t, store.IsNotFound(err), "PublishProfilePicture(claimed) error")
 	}
-	if _, err = ss.File().PublishProfilePicture(ctx, &store.ProfilePicturePublication{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: withDefault.User.Revision, EntryID: expiredEntry.ID, RevisionID: expiredRevision.ID, LeaseID: expiredLease.ID, Renditions: expiredRenditions, ChangedAt: model.NowUTC(), AuditEventID: expiredAudit.ID, AuditAt: model.NowUTC().UnixMilli()}); !store.IsConflict(err) && !store.IsNotFound(err) {
-		t.Fatalf("PublishProfilePicture(claimed) error = %v", err)
-	}
-	requireNoError(t, ss.File().CompletePurge(ctx, claim))
-	if err = ss.File().CompletePurge(ctx, claim); !store.IsConflict(err) && !store.IsNotFound(err) {
-		t.Fatalf("CompletePurge(idempotent) error = %v", err)
+	require.NoError(t, ss.File().CompletePurge(ctx, claim))
+	err = ss.File().CompletePurge(ctx, claim)
+	if !store.IsConflict(err) {
+		require.True(t, store.IsNotFound(err), "CompletePurge(idempotent) error")
 	}
 }

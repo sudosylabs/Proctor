@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -31,22 +33,20 @@ func TestFocusLossSignalContractIsHashOnlySequencedAndEffectSafe(t *testing.T) {
 		CandidateUserID: target.CandidateUserID, AttemptID: access.AttemptID, ParticipationID: access.ParticipationID,
 		Generation: access.Generation, AcceptedSequence: input.Sequence, DatabaseTime: model.NowUTC(), CollectionEnabled: true,
 		Qualified: true, MissingBefore: 2, WindowIncidentCount: 1}
-	if result.AcceptedSequence != 7 || result.MissingBefore != 2 || input.DurationMilliseconds != 500 ||
-		target.ParticipationID != access.ParticipationID {
-		t.Fatalf("Focus Loss contract = %#v / %#v / %#v", access, target, result)
-	}
+	require.Equal(t, int64(7), result.AcceptedSequence, "Focus Loss contract = %#v / %#v / %#v", access, target, result)
+	require.Equal(t, int64(2), result.MissingBefore, "Focus Loss contract = %#v / %#v / %#v", access, target, result)
+	require.Equal(t, int64(500), input.DurationMilliseconds, "Focus Loss contract = %#v / %#v / %#v", access, target, result)
+	require.Equal(t, access.ParticipationID, target.ParticipationID, "Focus Loss contract = %#v / %#v / %#v", access, target, result)
 	inputType := reflect.TypeOf(input)
 	for _, forbidden := range []string{"ClientTimestamp", "ReceivedAt", "Outcome", "Severity", "Guilt", "Payload"} {
-		if _, exists := inputType.FieldByName(forbidden); exists {
-			t.Fatalf("Focus Loss input lets the client supply %s", forbidden)
-		}
+		_, exists := inputType.FieldByName(forbidden)
+		require.False(t, exists, "Focus Loss input lets the client supply %s", forbidden)
 	}
 	assertFocusLossResultSafe(t, reflect.TypeOf(result))
 	methods := reflect.TypeOf((*ExamAttemptStore)(nil)).Elem()
 	for _, name := range []string{"ResolveFocusLossTarget", "RecordFocusLoss"} {
-		if _, exists := methods.MethodByName(name); !exists {
-			t.Fatalf("ExamAttemptStore is missing %s", name)
-		}
+		_, exists := methods.MethodByName(name)
+		require.True(t, exists, "ExamAttemptStore is missing %s", name)
 	}
 }
 
@@ -57,41 +57,37 @@ func TestFocusLossResultExpressesDisabledDuplicateThresholdAndOverflowWithoutPay
 		FlagCreated: true, CandidateWarningCreated: true, ManagerNotificationRequired: true, DatabaseTime: receivedAt,
 		Overflow: &model.FocusLossEvidenceOverflow{AttemptID: model.NewExamAttemptID(), ParticipationID: model.NewAttemptParticipationID(),
 			Generation: 2, Count: 1, FirstReceivedAt: receivedAt, LastReceivedAt: receivedAt, MaximumDurationMilliseconds: 500}}
-	if !result.ThresholdCrossed || result.WindowIncidentCount != 0 || !result.FlagCreated ||
-		!result.CandidateWarningCreated || !result.ManagerNotificationRequired {
-		t.Fatalf("threshold result = %#v", result)
-	}
+	require.True(t, result.ThresholdCrossed)
+	require.Equal(t, 0, result.WindowIncidentCount)
+	require.True(t, result.FlagCreated)
+	require.True(t, result.CandidateWarningCreated)
+	require.True(t, result.ManagerNotificationRequired)
 	disabled := ExamAttemptFocusLossResult{AcceptedSequence: 1, DatabaseTime: receivedAt, DiagnosticCount: 1}
-	if disabled.CollectionEnabled || disabled.Qualified || disabled.Flag != nil || disabled.Suspension != nil {
-		t.Fatalf("disabled result invented enforcement: %#v", disabled)
-	}
+	require.False(t, disabled.CollectionEnabled)
+	require.False(t, disabled.Qualified)
+	require.Nil(t, disabled.Flag)
+	require.Nil(t, disabled.Suspension)
 	replay := result
 	replay.Duplicate = true
-	if !replay.Duplicate || !replay.CandidateWarningCreated {
-		t.Fatalf("duplicate did not retain its prior accepted result: %#v", replay)
-	}
+	require.True(t, replay.Duplicate)
+	require.True(t, replay.CandidateWarningCreated)
 	assertFocusLossResultSafe(t, reflect.TypeOf(result))
 }
 
 func TestExamAttemptReallowResultMakesCausalFocusWindowResetExplicit(t *testing.T) {
 	t.Parallel()
 	result := ExamAttemptReallowResult{FocusLossWindowReset: true}
-	if !result.FocusLossWindowReset {
-		t.Fatal("Focus Loss causal evaluation reset is not observable")
-	}
+	require.True(t, result.FocusLossWindowReset, "Focus Loss causal evaluation reset is not observable")
 }
 
 func TestCandidateExamPresentationExposesOnlyTheSafeCollectionDecision(t *testing.T) {
 	t.Parallel()
 	presentation := CandidateExamPresentation{RuntimeCapabilities: CandidateRuntimeCapabilities{FocusLossCollectionEnabled: true}}
-	if !presentation.RuntimeCapabilities.FocusLossCollectionEnabled {
-		t.Fatal("candidate presentation omitted the current Revision's Focus Loss collection decision")
-	}
+	require.True(t, presentation.RuntimeCapabilities.FocusLossCollectionEnabled, "candidate presentation omitted the current Revision's Focus Loss collection decision")
 	typ := reflect.TypeOf(presentation)
 	for _, forbidden := range []string{"FocusLossPolicy", "MinimumDuration", "Threshold", "Window", "Outcome"} {
-		if _, exists := typ.FieldByName(forbidden); exists {
-			t.Fatalf("candidate presentation exposes private policy field %s", forbidden)
-		}
+		_, exists := typ.FieldByName(forbidden)
+		require.False(t, exists, "candidate presentation exposes private policy field %s", forbidden)
 	}
 }
 
@@ -100,9 +96,7 @@ func assertFocusLossResultSafe(t *testing.T, typ reflect.Type) {
 	for index := 0; index < typ.NumField(); index++ {
 		name := strings.ToLower(typ.Field(index).Name)
 		for _, forbidden := range []string{"credential", "session", "clipboard", "screenshot", "terminal", "sourcecode", "payload"} {
-			if strings.Contains(name, forbidden) {
-				t.Fatalf("outbound %s exposes unsafe field %s", typ, typ.Field(index).Name)
-			}
+			require.NotContains(t, name, forbidden, "outbound")
 		}
 	}
 }

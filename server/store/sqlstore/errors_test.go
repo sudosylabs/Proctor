@@ -8,11 +8,11 @@
 package sqlstore
 
 import (
-	"errors"
 	"fmt"
 	"testing"
 
 	"github.com/lib/pq"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -37,9 +37,7 @@ func TestRetryTransientErrorClassification(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if got := IsTransientError(test.err); got != test.want {
-				t.Fatalf("IsTransientError() = %v, want %v", got, test.want)
-			}
+			require.Equal(t, test.want, IsTransientError(test.err), "IsTransientError()")
 		})
 	}
 }
@@ -61,19 +59,14 @@ func TestTranslateErrorClassifiesRejectedValues(t *testing.T) {
 			t.Parallel()
 			got := translateError("user", "id", fmt.Errorf("save: %w", test.err))
 			var invalid *store.ErrInvalidInput
-			if !errors.As(got, &invalid) {
-				t.Fatalf("translateError() = %T %v, want *store.ErrInvalidInput", got, got)
-			}
-			if invalid.Entity != "user" || invalid.Field != test.field || invalid.Value != nil {
-				t.Fatalf("translateError() = %+v, want entity user field %q without value", invalid, test.field)
-			}
+			require.ErrorAs(t, got, &invalid, "translateError()")
+			require.Equal(t, "user", invalid.Entity, "translateError() = %+v, want entity user field %q without value", invalid, test.field)
+			require.Equal(t, test.field, invalid.Field, "translateError() = %+v, want entity user field %q without value", invalid, test.field)
+			require.Nil(t, invalid.Value, "translateError() = %+v, want entity user field %q without value", invalid, test.field)
 			var driver *pq.Error
-			if !errors.As(got, &driver) || driver != test.err {
-				t.Fatalf("translateError() does not wrap the driver error: %v", got)
-			}
-			if IsTransientError(got) {
-				t.Fatal("rejected values classified as transient")
-			}
+			require.ErrorAs(t, got, &driver)
+			require.Same(t, test.err, driver)
+			require.False(t, IsTransientError(got), "rejected values classified as transient")
 		})
 	}
 }

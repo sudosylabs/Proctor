@@ -12,13 +12,14 @@ package sqlstore
 import (
 	"context"
 	"crypto/sha256"
-	"errors"
-	"reflect"
+	"fmt"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/lib/pq"
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/storetest"
@@ -41,16 +42,12 @@ func TestRetentionPolicyCurrentCredentialAndAssurancePreserveGrace(t *testing.T)
 			f := mfaRecoveryFixture(t, ctx)
 			s := f.persistence
 			institution, err := s.Institution().GetSingleton(ctx)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			mutation := func(action model.Action) store.RetentionMutation {
 				audit, err := s.Audit().Save(ctx, &model.AuditEvent{ActorID: f.principal.UserID, SessionID: f.principal.SessionID,
 					Action: string(action), Resource: model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()},
 					ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "policy-test"})
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				return store.RetentionMutation{Principal: f.principal, RecentAuthenticationTTL: time.Hour,
 					AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt)}
 			}
@@ -63,65 +60,47 @@ func TestRetentionPolicyCurrentCredentialAndAssurancePreserveGrace(t *testing.T)
 				Settings: model.RetentionPolicySettings{AuditRetentionDays: 1, ExportRetentionDays: 1, DeletionGraceDays: 1}}
 			originalCommand := command("retention_policy.replace.v1", "original")
 			first, err := s.RetentionPolicy().Replace(ctx, original, originalCommand)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			preview, err := s.Retention().CreatePreview(ctx, &store.RetentionPreviewCreation{RetentionMutation: mutation(model.ActionRetentionPolicyView),
 				PreviewID: model.NewRetentionPreviewID(), ExpectedPolicyRevision: first.Policy.Revision}, command(store.RetentionPreviewOperation, "preview"))
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			_, err = s.Retention().ChangeControl(ctx, &store.RetentionControlChange{RetentionMutation: mutation(model.ActionRetentionCleanupManage),
 				ExpectedRevision: 1, ExpectedPolicyRevision: first.Policy.Revision, State: model.RetentionControlEnabled, PreviewID: preview.ID},
 				command(store.RetentionControlOperation, "enable"))
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			before, err := s.RetentionPolicy().Get(ctx)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			control, err := s.Retention().GetControl(ctx)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			// Age a completed audit, then use the real scheduling operation.
 			// Rejected writes must neither cancel grace nor pause live approval.
 			target := mutation(model.ActionAuditView)
 			scheduledID := target.AuditEventID
-			if _, err = s.Audit().Complete(ctx, scheduledID, model.AuditStatusSuccess, "", nil, model.GetMillis()); err != nil {
-				t.Fatal(err)
-			}
-			if _, err = s.GetMaster().Exec(ctx, `UPDATE audit_events SET created_at=clock_timestamp()-INTERVAL '3 days',
-				updated_at=clock_timestamp()-INTERVAL '2 days' WHERE id=?`, scheduledID); err != nil {
-				t.Fatal(err)
-			}
+			_, err = s.Audit().Complete(ctx, scheduledID, model.AuditStatusSuccess, "", nil, model.GetMillis())
+			require.NoError(t, err)
+			_, err = s.GetMaster().Exec(ctx, `UPDATE audit_events SET created_at=clock_timestamp()-INTERVAL '3 days',
+				updated_at=clock_timestamp()-INTERVAL '2 days' WHERE id=?`, scheduledID)
+			require.NoError(t, err)
 			cleanupAudit, err := s.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionRetentionCleanupManage),
 				Resource: model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, ScopeType: model.RoleScopeInstitution,
 				ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "policy-test"})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			scheduled, err := s.Retention().ReconcileExpiry(ctx, &store.RetentionExpiryReconciliation{Kind: model.RetentionExpiryAudit,
 				RecordID: scheduledID.String(), AuditEventID: cleanupAudit.ID, AuditAt: model.MillisFromTime(cleanupAudit.CreatedAt)})
-			if err != nil || !scheduled.Scheduled {
-				t.Fatalf("audit expiry was not scheduled: %#v, %v", scheduled, err)
-			}
+			require.NoError(t, err, "audit expiry was not scheduled: %#v", scheduled)
+			require.True(t, scheduled.Scheduled, "audit expiry was not scheduled: %#v", scheduled)
 			defer func() {
 				_, _ = s.GetMaster().Exec(context.Background(), `DELETE FROM retention_expiry_schedules WHERE record_id=?`, scheduledID)
 			}()
 			var expiresAfter time.Time
 			err = s.GetMaster().Get(ctx, &expiresAfter, `SELECT expires_after FROM retention_expiry_schedules WHERE record_id=?`, scheduledID)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			id := f.principal.SessionID.String()
 			if state.name == "revoked credential" || state.name == "expired credential" {
 				id = f.principal.CredentialID.String()
 			}
-			if _, err = s.GetMaster().Exec(ctx, state.query, id); err != nil {
-				t.Fatal(err)
-			}
+			_, err = s.GetMaster().Exec(ctx, state.query, id)
+			require.NoError(t, err)
 			for _, operation := range []string{"change", "no-op", "replay"} {
 				t.Run(operation, func(t *testing.T) {
 					input := *original
@@ -135,29 +114,25 @@ func TestRetentionPolicyCurrentCredentialAndAssurancePreserveGrace(t *testing.T)
 					}
 					result, err := s.RetentionPolicy().Replace(ctx, &input, key)
 					var conflict *store.ErrConflict
-					if result != nil || !errors.As(err, &conflict) || conflict.Resource != "authorization" {
-						t.Fatalf("stale request admitted: result=%#v error=%v", result, err)
-					}
+					require.Nil(t, result, "stale request admitted: result")
+					require.ErrorAs(t, err, &conflict, "stale request admitted: result")
+					require.Equal(t, "authorization", conflict.Resource, "stale request admitted: result")
 					after, err := s.RetentionPolicy().Get(ctx)
-					if err != nil || !reflect.DeepEqual(after, before) {
-						t.Fatalf("rejected write changed policy: %#v, %v", after, err)
-					}
+					require.NoError(t, err, "rejected write changed policy")
+					require.Equal(t, before, after, "rejected write changed policy")
 					afterControl, err := s.Retention().GetControl(ctx)
-					if err != nil || !reflect.DeepEqual(afterControl, control) {
-						t.Fatalf("rejected write changed approval: %#v, %v", afterControl, err)
-					}
+					require.NoError(t, err, "rejected write changed approval")
+					require.Equal(t, control, afterControl, "rejected write changed approval")
 					var afterExpiry time.Time
-					if err = s.GetMaster().Get(ctx, &afterExpiry, `SELECT expires_after FROM retention_expiry_schedules WHERE record_id=?`, scheduledID); err != nil || !afterExpiry.Equal(expiresAfter) {
-						t.Fatalf("rejected write reset grace: expiry=%s error=%v", afterExpiry, err)
-					}
+					err = s.GetMaster().Get(ctx, &afterExpiry, `SELECT expires_after FROM retention_expiry_schedules WHERE record_id=?`, scheduledID)
+					require.NoError(t, err, "rejected write reset grace: expiry=%s error", afterExpiry)
+					require.True(t, afterExpiry.Equal(expiresAfter), "rejected write reset grace: expiry=%s error", afterExpiry)
 					audit, err := s.Audit().Get(ctx, input.AuditEventID)
-					if err != nil || audit.Status != model.AuditStatusAttempt {
-						t.Fatalf("rejected write completed audit: %#v, %v", audit, err)
-					}
+					require.NoError(t, err, "rejected write completed audit: %#v", audit)
+					require.Equal(t, model.AuditStatusAttempt, audit.Status, "rejected write completed audit: %#v", audit)
 					found, err := s.CommandOutcome().Has(ctx, key)
-					if err != nil || found != (operation == "replay") {
-						t.Fatalf("rejected write changed retained outcome: found=%v error=%v", found, err)
-					}
+					require.NoError(t, err, "rejected write changed retained outcome: found")
+					require.Equal(t, operation == "replay", found, "rejected write changed retained outcome: found")
 				})
 			}
 		})
@@ -170,30 +145,28 @@ func TestRetentionPolicyExportCeilingDatabaseConstraint(t *testing.T) {
 	s := openTestStore(t)
 	resetTestStore(t, s)
 	institution, err := s.Institution().Save(ctx, &model.Institution{Name: "export-ceiling", DisplayName: "Export Ceiling"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	lastAccepted := 0
 	for _, days := range []int{0, 1, 7, -1, 8, 36500} {
 		t.Run(strconv.Itoa(days), func(t *testing.T) {
 			_, err := s.GetMaster().Exec(ctx, `UPDATE retention_policies SET export_retention_days=?,
 				submission_retention_days=36500,integrity_retention_days=36500,audit_retention_days=36500,deletion_grace_days=36500 WHERE institution_id=?`, days, institution.ID.String())
 			if days >= 0 && days <= 7 {
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				lastAccepted = days
 			} else {
 				var constraint *pq.Error
-				if !errors.As(err, &constraint) || constraint.Code != "23514" || constraint.Constraint != "retention_policies_export_retention_days_check" {
-					t.Fatalf("out-of-range export period was not rejected by its CHECK: %v", err)
-				}
+				require.ErrorAs(t, err, &constraint)
+				require.Equal(t, "23514", string(constraint.Code))
+				require.Equal(t, "retention_policies_export_retention_days_check", constraint.Constraint)
 			}
 			policy, err := s.RetentionPolicy().Get(ctx)
-			if err != nil || policy.ExportRetentionDays != lastAccepted || policy.SubmissionRetentionDays != 36500 ||
-				policy.IntegrityRetentionDays != 36500 || policy.AuditRetentionDays != 36500 || policy.DeletionGraceDays != 36500 {
-				t.Fatalf("persisted bounds disagree: %#v, %v", policy, err)
-			}
+			require.NoError(t, err, "persisted bounds disagree: %#v", policy)
+			require.Equal(t, lastAccepted, policy.ExportRetentionDays, "persisted bounds disagree: %#v", policy)
+			require.Equal(t, 36500, policy.SubmissionRetentionDays, "persisted bounds disagree: %#v", policy)
+			require.Equal(t, 36500, policy.IntegrityRetentionDays, "persisted bounds disagree: %#v", policy)
+			require.Equal(t, 36500, policy.AuditRetentionDays, "persisted bounds disagree: %#v", policy)
+			require.Equal(t, 36500, policy.DeletionGraceDays, "persisted bounds disagree: %#v", policy)
 		})
 	}
 }
@@ -204,32 +177,24 @@ func TestRetentionPolicyReplacementKeepsMonotonicMetadata(t *testing.T) {
 	persistence := openTestStore(t)
 	resetTestStore(t, persistence)
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "retention-clock", DisplayName: "Retention Clock Institution"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	actor := saveIntegrationUser(t, ctx, persistence, &model.User{Username: "retention-administrator",
 		Email: "retention-administrator@example.test", DisplayName: "Administrator"})
 	role, err := storetest.SaveRole(ctx, persistence, &model.Role{Name: model.SystemAdministratorRoleName,
 		DisplayName: "System Administrator", Permissions: model.AllActions(), BuiltIn: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: actor.ID, RoleID: role.ID,
-		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), StartsAt: model.NowUTC().Add(-time.Hour)}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	_, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: actor.ID, RoleID: role.ID,
+		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), StartsAt: model.NowUTC().Add(-time.Hour)})
+	require.NoError(t, err)
 	session, credential, _, _ := saveMFARecoverySQLSession(t, ctx, persistence, actor.ID, 0, false, true)
 	principal := mfaSQLPrincipal(session, credential)
 	// Policy metadata can originate from another node whose clock was ahead.
 	// Keep administrator activity at the real time: only policy metadata is skewed.
-	if _, err = persistence.GetMaster().Exec(ctx, `UPDATE retention_policies
-        SET updated_at=clock_timestamp()+INTERVAL '1 minute' WHERE institution_id=?`, institution.ID.String()); err != nil {
-		t.Fatal(err)
-	}
+	_, err = persistence.GetMaster().Exec(ctx, `UPDATE retention_policies
+        SET updated_at=clock_timestamp()+INTERVAL '1 minute' WHERE institution_id=?`, institution.ID.String())
+	require.NoError(t, err)
 	initial, err := persistence.RetentionPolicy().Get(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, test := range []struct {
 		name     string
 		settings model.RetentionPolicySettings
@@ -243,25 +208,21 @@ func TestRetentionPolicyReplacementKeepsMonotonicMetadata(t *testing.T) {
 			audit, saveErr := persistence.Audit().Save(ctx, &model.AuditEvent{ActorID: actor.ID, Action: string(model.ActionRetentionPolicyManage),
 				Resource: model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, ScopeType: model.RoleScopeInstitution,
 				ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "store-test"})
-			if saveErr != nil {
-				t.Fatal(saveErr)
-			}
+			require.NoError(t, saveErr)
 			command := &store.CommandIdempotency{UserID: actor.ID, Operation: "retention_policy.replace.v1",
 				KeyDigest: sha256.Sum256([]byte(test.name)), FingerprintVersion: 1,
 				Fingerprint: sha256.Sum256([]byte("retention-clock:" + test.name)), OutcomeVersion: 1, Retention: time.Hour, Wait: time.Second}
 			result, replaceErr := persistence.RetentionPolicy().Replace(ctx, &store.RetentionPolicyReplacement{RetentionMutation: store.RetentionMutation{Principal: principal, RecentAuthenticationTTL: time.Hour, AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt)}, ExpectedRevision: 1, Settings: test.settings}, command)
-			if replaceErr != nil {
-				t.Fatalf("policy metadata ahead of database clock rejected %s: %v (cause=%v)", test.name, replaceErr, errors.Unwrap(replaceErr))
-			}
-			if result.Replayed || result.Changed != test.changed || result.Policy.Revision != test.revision ||
-				result.Policy.RetentionPolicySettings != test.settings || !result.Policy.UpdatedAt.Equal(initial.UpdatedAt) ||
-				!result.Policy.CreatedAt.Equal(initial.CreatedAt) {
-				t.Fatalf("non-monotonic policy transition: %#v, previous=%#v", result, initial)
-			}
+			require.NoError(t, replaceErr, "policy metadata ahead of database clock rejected")
+			require.False(t, result.Replayed, "non-monotonic policy transition: %#v, previous=%#v", result, initial)
+			require.Equal(t, test.changed, result.Changed, "non-monotonic policy transition: %#v, previous=%#v", result, initial)
+			require.Equal(t, test.revision, result.Policy.Revision, "non-monotonic policy transition: %#v, previous=%#v", result, initial)
+			require.Equal(t, test.settings, result.Policy.RetentionPolicySettings, "non-monotonic policy transition: %#v, previous=%#v", result, initial)
+			require.True(t, result.Policy.UpdatedAt.Equal(initial.UpdatedAt), "non-monotonic policy transition: %#v, previous=%#v", result, initial)
+			require.True(t, result.Policy.CreatedAt.Equal(initial.CreatedAt), "non-monotonic policy transition: %#v, previous=%#v", result, initial)
 			storedAudit, auditErr := persistence.Audit().Get(ctx, audit.ID)
-			if auditErr != nil || storedAudit.Status != model.AuditStatusSuccess {
-				t.Fatalf("policy transition did not complete audit: %#v, %v", storedAudit, auditErr)
-			}
+			require.NoError(t, auditErr, "policy transition did not complete audit: %#v", storedAudit)
+			require.Equal(t, model.AuditStatusSuccess, storedAudit.Status, "policy transition did not complete audit: %#v", storedAudit)
 		})
 	}
 }
@@ -311,14 +272,10 @@ func TestPolicyReplacementRechecksAdministratorAfterBindingEnd(t *testing.T) {
 			persistence := openTestStore(t)
 			resetTestStore(t, persistence)
 			institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "policy-clock", DisplayName: "Policy Clock Institution"})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			role, err := storetest.SaveRole(ctx, persistence, &model.Role{Name: model.SystemAdministratorRoleName,
 				DisplayName: "System Administrator", Permissions: model.AllActions(), BuiltIn: true})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			var actor *model.User
 			var binding *model.RoleBinding
 			for _, username := range []string{"remaining-administrator", "revoked-administrator"} {
@@ -326,9 +283,7 @@ func TestPolicyReplacementRechecksAdministratorAfterBindingEnd(t *testing.T) {
 				passwordProofForSQLTest(t, ctx, persistence, user.ID)
 				binding, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: user.ID, RoleID: role.ID,
 					ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), StartsAt: model.NowUTC().Add(-time.Hour)})
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				actor = user
 			}
 			session, credential, _, _ := saveMFARecoverySQLSession(t, ctx, persistence, actor.ID, 0, false, true)
@@ -336,9 +291,7 @@ func TestPolicyReplacementRechecksAdministratorAfterBindingEnd(t *testing.T) {
 			audit, err := persistence.Audit().Save(ctx, &model.AuditEvent{ActorID: actor.ID, Action: string(test.action),
 				Resource: model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, ScopeType: model.RoleScopeInstitution,
 				ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "store-test"})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			command := &store.CommandIdempotency{UserID: actor.ID, Operation: test.operation,
 				KeyDigest: sha256.Sum256([]byte("serialized-policy-edit")), FingerprintVersion: 1,
 				Fingerprint: sha256.Sum256([]byte("serialized-policy-content")), OutcomeVersion: 1, Retention: time.Hour, Wait: time.Second}
@@ -347,47 +300,39 @@ func TestPolicyReplacementRechecksAdministratorAfterBindingEnd(t *testing.T) {
 			// The SQL fixture controls only the lock timing; endRoleBinding is the
 			// production mutation called by RoleBindingStore.End in this transaction.
 			ending, err := persistence.GetMaster().Begin(ctx)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			defer func() { _ = ending.Rollback() }()
-			if err = lockSystemAdministratorAuthenticationPaths(ctx, ending); err != nil {
-				t.Fatal(err)
-			}
+			err = lockSystemAdministratorAuthenticationPaths(ctx, ending)
+			require.NoError(t, err)
 			var blockerPID int
-			if err = ending.Get(ctx, &blockerPID, `SELECT pg_backend_pid()`); err != nil {
-				t.Fatal(err)
-			}
+			err = ending.Get(ctx, &blockerPID, `SELECT pg_backend_pid()`)
+			require.NoError(t, err)
 			completed := make(chan error, 1)
 			go func() { completed <- test.replace(ctx, persistence, principal, audit, command) }()
 			waitForBlockedSystemAdministratorAuthenticationPathTransactions(t, ctx, persistence, blockerPID, 1)
 			endAt := policyBindingEndAfterWaitingTransaction(t, ctx, ending, blockerPID)
-			if _, err = endRoleBinding(ctx, ending, binding.ID.String(), endAt, store.AccessDeploymentCapabilities{}); err != nil {
-				t.Fatal(err)
-			}
-			if err = ending.Commit(); err != nil {
-				t.Fatal(err)
-			}
+			_, err = endRoleBinding(ctx, ending, binding.ID.String(), endAt, store.AccessDeploymentCapabilities{})
+			require.NoError(t, err)
+			err = ending.Commit()
+			require.NoError(t, err)
 			var replaceErr error
 			select {
 			case replaceErr = <-completed:
 			case <-ctx.Done():
-				t.Fatal("replacement did not complete after binding End:", ctx.Err())
+				require.FailNow(t, fmt.Sprint("replacement did not complete after binding End:", ctx.Err()))
 			}
 			var conflict *store.ErrConflict
-			if !errors.As(replaceErr, &conflict) || (conflict.Constraint != "actor_not_system_administrator" && conflict.Resource != "authorization") {
-				t.Fatalf("replacement admitted ended administrator: %v", replaceErr)
-			}
-			if revision, readErr := test.revision(ctx, persistence); readErr != nil || revision != 1 {
-				t.Fatalf("policy changed after administrator End: revision=%d err=%v", revision, readErr)
-			}
-			if found, outcomeErr := persistence.CommandOutcome().Has(ctx, command); outcomeErr != nil || found {
-				t.Fatalf("revoked administrator recorded an outcome: exists=%v err=%v", found, outcomeErr)
-			}
+			require.ErrorAs(t, replaceErr, &conflict)
+			require.False(t, conflict.Constraint != "actor_not_system_administrator" && conflict.Resource != "authorization")
+			revision, readErr := test.revision(ctx, persistence)
+			require.NoError(t, readErr, "policy changed after administrator End: revision")
+			require.Equal(t, int64(1), revision, "policy changed after administrator End: revision")
+			found, outcomeErr := persistence.CommandOutcome().Has(ctx, command)
+			require.NoError(t, outcomeErr, "revoked administrator recorded an outcome: exists")
+			require.False(t, found, "revoked administrator recorded an outcome: exists")
 			storedAudit, err := persistence.Audit().Get(ctx, audit.ID)
-			if err != nil || storedAudit.Status != model.AuditStatusAttempt {
-				t.Fatalf("revoked administrator completed audit: event=%#v err=%v", storedAudit, err)
-			}
+			require.NoError(t, err, "revoked administrator completed audit: event=%#v err", storedAudit)
+			require.Equal(t, model.AuditStatusAttempt, storedAudit.Status, "revoked administrator completed audit: event=%#v err", storedAudit)
 		})
 	}
 }
@@ -395,26 +340,22 @@ func TestPolicyReplacementRechecksAdministratorAfterBindingEnd(t *testing.T) {
 func policyBindingEndAfterWaitingTransaction(t *testing.T, ctx context.Context, ending *sqlxTxWrapper, blockerPID int) int64 {
 	t.Helper()
 	var waitingSince time.Time
-	if err := ending.Get(ctx, &waitingSince, `SELECT MIN(xact_start) FROM pg_stat_activity
-        WHERE $1=ANY(pg_blocking_pids(pid)) AND query LIKE '%pg_advisory_xact_lock%'`, blockerPID); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, ending.Get(ctx, &waitingSince, `SELECT MIN(xact_start) FROM pg_stat_activity
+        WHERE $1=ANY(pg_blocking_pids(pid)) AND query LIKE '%pg_advisory_xact_lock%'`, blockerPID))
 	// End accepts millisecond instants. Ensure its PostgreSQL timestamp is
 	// strictly later than Replace's start even within the same millisecond.
 	ticker := time.NewTicker(time.Millisecond)
 	defer ticker.Stop()
 	for {
 		var databaseNow time.Time
-		if err := ending.Get(ctx, &databaseNow, `SELECT clock_timestamp()`); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, ending.Get(ctx, &databaseNow, `SELECT clock_timestamp()`))
 		endAt := model.MillisFromTime(databaseNow)
 		if model.TimeFromMillis(endAt).After(waitingSince) {
 			return endAt
 		}
 		select {
 		case <-ctx.Done():
-			t.Fatal("binding End time did not pass transaction start:", ctx.Err())
+			require.FailNow(t, fmt.Sprint("binding End time did not pass transaction start:", ctx.Err()))
 		case <-ticker.C:
 		}
 	}

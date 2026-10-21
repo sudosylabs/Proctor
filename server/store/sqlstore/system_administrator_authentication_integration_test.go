@@ -11,9 +11,12 @@ package sqlstore
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func holdSystemAdministratorAuthenticationPathFence(t *testing.T, ctx context.Context, persistence *SQLStore) (int, func()) {
@@ -27,17 +30,15 @@ func holdServingNodeLeaseFence(t *testing.T, ctx context.Context, persistence *S
 func holdSQLAdvisoryFence(t *testing.T, ctx context.Context, persistence *SQLStore, key string) (int, func()) {
 	t.Helper()
 	connection, err := persistence.GetMaster().DB().Conn(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var pid int
 	if err = connection.QueryRowContext(ctx, `SELECT pg_backend_pid()`).Scan(&pid); err != nil {
 		_ = connection.Close()
-		t.Fatal(err)
+		require.NoError(t, err)
 	}
 	if _, err = connection.ExecContext(ctx, `SELECT pg_advisory_lock(hashtextextended($1, 0))`, key); err != nil {
 		_ = connection.Close()
-		t.Fatal(err)
+		require.NoError(t, err)
 	}
 	var once sync.Once
 	return pid, func() {
@@ -59,12 +60,10 @@ func waitForBlockedSystemAdministratorAuthenticationPathTransactions(t *testing.
 		if err == nil && count >= want {
 			return
 		}
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		select {
 		case <-ctx.Done():
-			t.Fatalf("wait for %d authentication-path transactions: %v", want, ctx.Err())
+			require.FailNow(t, fmt.Sprintf("wait for %d authentication-path transactions: %v", want, ctx.Err()))
 		case <-ticker.C:
 		}
 	}

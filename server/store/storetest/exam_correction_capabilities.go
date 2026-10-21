@@ -12,6 +12,8 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -31,7 +33,7 @@ func testCorrectionCapabilityGates(t *testing.T, ss store.Store) {
 			ctx := context.Background()
 			fixture, connected, access := newBrowserActivityFixture(t, ctx, ss, "correction-capabilities-connect")
 			before, err := ss.ExamAttempt().GetCandidatePresentation(ctx, access)
-			requireNoError(t, err)
+			require.NoError(t, err)
 			command := &store.ExamCorrectionApplication{
 				RevisionID: model.NewExamRevisionID(), ExamID: fixture.examID, SittingID: fixture.sitting.ID,
 				CurrentRevisionID: fixture.revisionID, ExpectedSittingRevision: fixture.sitting.Revision,
@@ -45,23 +47,20 @@ func testCorrectionCapabilityGates(t *testing.T, ss store.Store) {
 				command.InstructionsMarkdown = &instructions
 			} else {
 				policy, err := model.NewBrowserPolicy(true, "start", []model.BrowserPolicyRule{{RuleID: "start", Origin: "https://example.edu", PathPrefix: "/reference", HostMatch: model.BrowserPolicyHostExact, AllowRedirects: true, BlockedNavigationOutcome: model.BrowserPolicyBlockedNavigationRecord}})
-				requireNoError(t, err)
+				require.NoError(t, err)
 				command.BrowserPolicy = &policy
 			}
 			corrected, err := ss.ExamCorrection().Apply(ctx, command, examCommand(fixture.manager.ID, "exam.sitting.correction.apply.v1", "correction-capabilities", "correction-capabilities"))
-			requireNoError(t, err)
+			require.NoError(t, err)
 			snapshot, err := ss.ExamRevision().GetSnapshot(ctx, fixture.examID, corrected.Revision.ID)
-			requireNoError(t, err)
-			if !slices.Equal(snapshot.CandidateCorrection.AffectedCapabilities, test.selected) {
-				t.Fatal("revision lost its selection")
-			}
+			require.NoError(t, err)
+			require.True(t, slices.Equal(snapshot.CandidateCorrection.AffectedCapabilities, test.selected), "revision lost its selection")
 			presentation, err := ss.ExamAttempt().GetCandidatePresentation(ctx, access)
-			requireNoError(t, err)
-			if presentation.Capacity != before.Capacity || presentation.Capacity.Validate() != nil ||
-				presentation.RuntimeCapabilities.ExamRevision.AdmissionRevisionID != fixture.revisionID ||
-				presentation.RuntimeCapabilities.ExamRevision.CurrentRevisionID != corrected.Revision.ID {
-				t.Fatalf("correction changed admission capacity or lost current presentation: %#v", presentation)
-			}
+			require.NoError(t, err)
+			require.Equal(t, before.Capacity, presentation.Capacity)
+			require.NoError(t, presentation.Capacity.Validate())
+			require.Equal(t, fixture.revisionID, presentation.RuntimeCapabilities.ExamRevision.AdmissionRevisionID)
+			require.Equal(t, corrected.Revision.ID, presentation.RuntimeCapabilities.ExamRevision.CurrentRevisionID)
 			blocked := func(capability model.CandidateCapability) bool {
 				return test.required && slices.Contains(test.selected, capability)
 			}
@@ -69,14 +68,13 @@ func testCorrectionCapabilityGates(t *testing.T, ss store.Store) {
 			if test.required {
 				pending = test.selected
 			}
-			if presentation.RuntimeCapabilities.Validate() != nil || !slices.Equal(presentation.RuntimeCapabilities.PendingCorrectionCapabilities, pending) ||
-				presentation.RuntimeCapabilities.WorkspaceMutationAllowed == blocked(model.CandidateCapabilityWorkspace) || presentation.RuntimeCapabilities.SubmissionAllowed == blocked(model.CandidateCapabilitySubmission) ||
-				len(presentation.LiveCorrections) != 1 || !slices.Equal(presentation.LiveCorrections[0].AffectedCapabilities, test.selected) {
-				t.Fatalf("independent capability projection = %#v", presentation)
-			}
-			if (presentation.BrowserPolicy == nil) != blocked(model.CandidateCapabilityBrowser) {
-				t.Fatal("usable browser policy escaped its gate")
-			}
+			require.NoError(t, presentation.RuntimeCapabilities.Validate())
+			require.True(t, slices.Equal(presentation.RuntimeCapabilities.PendingCorrectionCapabilities, pending))
+			require.NotEqual(t, blocked(model.CandidateCapabilityWorkspace), presentation.RuntimeCapabilities.WorkspaceMutationAllowed)
+			require.NotEqual(t, blocked(model.CandidateCapabilitySubmission), presentation.RuntimeCapabilities.SubmissionAllowed)
+			require.Len(t, presentation.LiveCorrections, 1)
+			require.True(t, slices.Equal(presentation.LiveCorrections[0].AffectedCapabilities, test.selected))
+			require.Equal(t, blocked(model.CandidateCapabilityBrowser), presentation.BrowserPolicy == nil, "usable browser policy escaped its gate")
 			workspaceAccess := store.ExamAttemptWorkspaceMutationAccess{AttemptID: connected.Attempt.ID,
 				ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
 				CandidateUserID: access.CandidateUserID, SessionID: access.SessionID, DesktopRegistrationID: access.DesktopRegistrationID,
@@ -88,22 +86,22 @@ func testCorrectionCapabilityGates(t *testing.T, ss store.Store) {
 				examCommand(fixture.candidate.ID, store.ExamAttemptWorkspaceMutationOperation, "correction-workspace", "correction-workspace"))
 			cursor := connected.Workspace.Cursor
 			if blocked(model.CandidateCapabilityWorkspace) {
-				assertExamAttemptConflict(t, err, "exam_correction_acknowledgement_required")
+				requireConflictConstraint(t, err, "exam_correction_acknowledgement_required")
 			} else {
-				requireNoError(t, err)
+				require.NoError(t, err)
 				cursor = changed.Change.Cursor
 			}
 			source := browserSourceID(501 + caseIndex)
 			_, err = startBrowserSourceFixture(t, ctx, ss, &store.BrowserActivitySourceStart{Access: access,
 				ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: source})
 			if blocked(model.CandidateCapabilityBrowser) {
-				assertExamAttemptConflict(t, err, "exam_correction_acknowledgement_required")
+				requireConflictConstraint(t, err, "exam_correction_acknowledgement_required")
 			} else {
-				requireNoError(t, err)
+				require.NoError(t, err)
 				_, err = appendBrowserActivityFixture(t, ctx, ss, &store.BrowserActivityAppend{Access: access,
 					ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
 					SourceSessionID: source, Events: []model.BrowserActivityEvent{browserActivityEvent(1, model.BrowserActivityOpened, corrected.Revision.ID), browserActivityEvent(2, model.BrowserActivityClosed, corrected.Revision.ID)}})
-				requireNoError(t, err)
+				require.NoError(t, err)
 			}
 			seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{
 				AttemptID: access.AttemptID, CandidateUserID: access.CandidateUserID, SessionID: access.SessionID,
@@ -114,9 +112,9 @@ func testCorrectionCapabilityGates(t *testing.T, ss store.Store) {
 			attachSubmissionReceipt(t, ctx, ss, fixture.candidate, seal)
 			_, err = ss.ExamSubmission().Seal(ctx, seal, examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "correction-submit", "correction-submit"))
 			if blocked(model.CandidateCapabilitySubmission) {
-				assertSubmissionConflict(t, err, "exam_correction_acknowledgement_required")
+				requireConflictConstraint(t, err, "exam_correction_acknowledgement_required")
 			} else {
-				requireNoError(t, err)
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -155,22 +153,19 @@ func testCorrectionPublicationWorkspaceRace(t *testing.T, ss store.Store) {
 	close(start)
 	published, publishErr := ss.ExamCorrection().Apply(ctx, correction, correctionKey)
 	outcome := <-completed
-	requireNoError(t, publishErr)
+	require.NoError(t, publishErr)
 	if outcome.err == nil {
-		if outcome.value.Change.ChangedAt.After(published.EffectiveAt) {
-			t.Fatal("Workspace write passed a correction already in effect")
-		}
+		require.False(t, outcome.value.Change.ChangedAt.After(published.EffectiveAt), "Workspace write passed a correction already in effect")
 	} else {
-		assertExamAttemptConflict(t, outcome.err, "exam_correction_acknowledgement_required")
+		requireConflictConstraint(t, outcome.err, "exam_correction_acknowledgement_required")
 	}
 	// Once publication returns, both a new write and an exact previously
 	// accepted replay must see the current Workspace gate.
 	write.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	_, err := ss.ExamAttemptWorkspace().ApplyMutation(ctx, write, writeKey)
-	assertExamAttemptConflict(t, err, "exam_correction_acknowledgement_required")
+	requireConflictConstraint(t, err, "exam_correction_acknowledgement_required")
 	presentation, err := ss.ExamAttempt().GetCandidatePresentation(ctx, access)
-	requireNoError(t, err)
-	if presentation.RuntimeCapabilities.WorkspaceMutationAllowed || presentation.RuntimeCapabilities.ExamRevision.CurrentRevisionID != published.Revision.ID {
-		t.Fatal("post-publication state lost its gate")
-	}
+	require.NoError(t, err)
+	require.False(t, presentation.RuntimeCapabilities.WorkspaceMutationAllowed, "post-publication state lost its gate")
+	require.Equal(t, published.Revision.ID, presentation.RuntimeCapabilities.ExamRevision.CurrentRevisionID, "post-publication state lost its gate")
 }

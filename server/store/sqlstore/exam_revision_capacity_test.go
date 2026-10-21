@@ -10,6 +10,8 @@ package sqlstore
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -41,12 +43,8 @@ func TestExamRevisionCapacityExceededChecksEveryPolicyDimension(t *testing.T) {
 		{name: "workspace total bytes", policy: workspaceTotalBytes, workspace: []model.ExamRevisionStarterWorkspaceEntry{file, file}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if !examRevisionCapacityExceeded(test.policy, test.resources, test.workspace) {
-				t.Fatal("capacity excess was accepted")
-			}
+			require.True(t, examRevisionCapacityExceeded(test.policy, test.resources, test.workspace), "capacity excess was accepted")
 		})
 	}
-	if examRevisionCapacityExceeded(model.DefaultExamCapacityPolicy(), []model.ExamRevisionResource{resource}, []model.ExamRevisionStarterWorkspaceEntry{file}) {
-		t.Fatal("bounded content was rejected")
-	}
+	require.False(t, examRevisionCapacityExceeded(model.DefaultExamCapacityPolicy(), []model.ExamRevisionResource{resource}, []model.ExamRevisionStarterWorkspaceEntry{file}), "bounded content was rejected")
 }

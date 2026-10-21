@@ -11,11 +11,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
-	"errors"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -34,7 +35,7 @@ func TestClassMemberStore(t *testing.T, ss store.Store) {
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{
 		UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start - 1),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	first, err := ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{
 		ClassID:          firstClass.ID,
@@ -42,54 +43,39 @@ func TestClassMemberStore(t *testing.T, ss store.Store) {
 		UserID:           user.ID,
 		StartsAt:         model.TimeFromMillis(start),
 	})
-	requireNoError(t, err)
-	if first.Previous != nil || first.Membership.AcademicPeriodID != fixture.period.ID {
-		t.Fatalf("first Enroll() = %#v", first)
-	}
-	if first.Membership.Revision != 1 {
-		t.Fatalf("first enrollment revision = %d, want 1", first.Membership.Revision)
-	}
+	require.NoError(t, err)
+	require.Nil(t, first.Previous)
+	require.Equal(t, fixture.period.ID, first.Membership.AcademicPeriodID)
+	require.Equal(t, int64(1), first.Membership.Revision, "first enrollment revision")
 	_, err = ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{
 		ClassID: firstClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 1),
 	})
 	var conflict *store.ErrConflict
-	if !errors.As(err, &conflict) {
-		t.Fatalf("duplicate enrollment error = %v", err)
-	}
+	require.ErrorAs(t, err, &conflict)
 	transfer, err := ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{
 		ClassID: secondClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 10),
 	})
-	requireNoError(t, err)
-	if transfer.Previous == nil ||
-		transfer.Previous.ID != first.Membership.ID ||
-		transfer.Previous.EndsAt.Millis() != start+10 ||
-		transfer.Previous.Revision != first.Membership.Revision+1 {
-		t.Fatalf("transfer Enroll() = %#v", transfer)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, transfer.Previous)
+	require.Equal(t, first.Membership.ID, transfer.Previous.ID)
+	require.Equal(t, start+10, transfer.Previous.EndsAt.Millis())
+	require.Equal(t, first.Membership.Revision+1, transfer.Previous.Revision)
 	active, err := ss.ClassMember().ListActiveByUser(ctx, user.ID, start+11)
-	requireNoError(t, err)
-	if len(active) != 1 || active[0].ID != transfer.Membership.ID {
-		t.Fatalf("ListActiveByUser() = %#v", active)
-	}
+	require.NoError(t, err)
+	require.Len(t, active, 1)
+	require.Equal(t, transfer.Membership.ID, active[0].ID)
 	history, err := ss.ClassMember().ListByUser(ctx, user.ID)
-	requireNoError(t, err)
-	if len(history) != 2 {
-		t.Fatalf("ListByUser() = %#v", history)
-	}
+	require.NoError(t, err)
+	require.Len(t, history, 2)
 	ended, err := ss.ClassMember().SeedEnd(ctx, transfer.Membership.ID, transfer.Membership.Revision, start+20)
-	requireNoError(t, err)
-	if ended.EndsAt.Millis() != start+20 {
-		t.Fatalf("End() = %#v", ended)
-	}
-	if _, err = ss.ClassMember().SeedEnd(ctx, transfer.Membership.ID, transfer.Membership.Revision, start+21); !store.IsConflict(err) {
-		t.Fatalf("stale End() error = %v", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, start+20, ended.EndsAt.Millis())
+	_, err = ss.ClassMember().SeedEnd(ctx, transfer.Membership.ID, transfer.Membership.Revision, start+21)
+	require.True(t, store.IsConflict(err), "stale End() error")
 	_, err = ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{
 		ClassID: firstClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 5),
 	})
-	if !errors.As(err, &conflict) {
-		t.Fatalf("backdated overlapping enrollment error = %v", err)
-	}
+	require.ErrorAs(t, err, &conflict)
 
 	t.Run("AuditedLifecycle", func(t *testing.T) {
 		testAuditedClassMemberLifecycle(t, ss, firstClass, secondClass, start+100)
@@ -120,22 +106,19 @@ func testClassMemberEndBeforeModification(t *testing.T, ss store.Store) {
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{
 		UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(now - 3_000_000),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	enrolled, err := ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{
 		ClassID: class.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(now - 2_000_000),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	endAt := now - 1_000_000
 	ended, err := ss.ClassMember().SeedEnd(ctx, enrolled.Membership.ID, enrolled.Membership.Revision, endAt)
-	requireNoError(t, err)
-	if ended.EndsAt.Millis() != endAt || !ended.UpdatedAt.Equal(enrolled.Membership.UpdatedAt) {
-		t.Fatalf("End(before creation) = %#v, created %#v", ended, enrolled.Membership)
-	}
+	require.NoError(t, err)
+	require.Equal(t, endAt, ended.EndsAt.Millis(), "End(before creation) = %#v, created %#v", ended, enrolled.Membership)
+	require.True(t, ended.UpdatedAt.Equal(enrolled.Membership.UpdatedAt), "End(before creation) = %#v, created %#v", ended, enrolled.Membership)
 	stored, err := ss.ClassMember().Get(ctx, ended.ID)
-	requireNoError(t, err)
-	if *stored != *ended {
-		t.Fatalf("Get() = %#v, want %#v", stored, ended)
-	}
+	require.NoError(t, err)
+	require.Equal(t, *ended, *stored, "Get() = %#v, want %#v", stored, ended)
 }
 
 func testAuditedClassMemberLifecycle(
@@ -151,7 +134,7 @@ func testAuditedClassMemberLifecycle(
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{
 		UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start - 1),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	first := &model.ClassMember{ClassID: firstClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start)}
 	first.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
@@ -163,26 +146,24 @@ func testAuditedClassMemberLifecycle(
 		Member: first, ExpectedRecipientRevision: user.Revision,
 		Notice: createNotice, AuditEventID: createAttempt.ID, AuditAt: model.GetMillis(),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	requireSuccessfulAudit(t, ctx, ss, createAttempt.ID)
-	requireNoError(t, requireClassMemberMail(t, ctx, ss, createNotice, model.MailTemplateAcademicClassEnrolled))
+	require.NoError(t, requireClassMemberMail(t, ctx, ss, createNotice, model.MailTemplateAcademicClassEnrolled))
 
 	rolledBackTransfer := &model.ClassMember{ClassID: secondClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 5)}
 	rolledBackTransfer.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 	rolledBackTransfer.AcademicPeriodID = secondClass.AcademicPeriodID
-	if _, err = ss.ClassMember().Enroll(ctx, &store.ClassMemberEnrollment{
+	_, err = ss.ClassMember().Enroll(ctx, &store.ClassMemberEnrollment{
 		Member: rolledBackTransfer, ExpectedPreviousID: created.Membership.ID, ExpectedRecipientRevision: user.Revision,
 		Notice:               classMemberPreparedMail(t, rolledBackTransfer, model.MailTemplateAcademicClassTransferred, rolledBackTransfer.CreatedAt),
 		AuditEventID:         model.NewAuditEventID(),
 		PreviousAuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
-	}); err == nil {
-		t.Fatal("transfer succeeded without its audit attempt")
-	}
+	})
+	require.Error(t, err, "transfer succeeded without its audit attempt")
 	unchanged, err := ss.ClassMember().Get(ctx, created.Membership.ID)
-	requireNoError(t, err)
-	if unchanged.EndsAt.Valid || unchanged.Revision != created.Membership.Revision {
-		t.Fatalf("prior enrollment close survived transfer audit rollback: %#v", unchanged)
-	}
+	require.NoError(t, err)
+	require.False(t, unchanged.EndsAt.Valid)
+	require.Equal(t, created.Membership.Revision, unchanged.Revision)
 
 	second := &model.ClassMember{ClassID: secondClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 10)}
 	second.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
@@ -198,34 +179,30 @@ func testAuditedClassMemberLifecycle(
 		Member: second, ExpectedPreviousID: created.Membership.ID, ExpectedRecipientRevision: user.Revision, Notice: transferNotice,
 		AuditEventID: transferAttempt.ID, PreviousAuditEventID: previousTransferAttempt.ID, AuditAt: model.GetMillis(), Command: transferCommand,
 	})
-	requireNoError(t, err)
-	if transferred.Previous == nil || transferred.Previous.ID != created.Membership.ID ||
-		transferred.Previous.EndsAt.Millis() != model.MillisFromTime(second.StartsAt) || transferred.Previous.Revision != 2 {
-		t.Fatalf("audited transfer = %#v", transferred)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, transferred.Previous)
+	require.Equal(t, created.Membership.ID, transferred.Previous.ID)
+	require.Equal(t, model.MillisFromTime(second.StartsAt), transferred.Previous.EndsAt.Millis())
+	require.Equal(t, int64(2), transferred.Previous.Revision)
 	requireSuccessfulAudit(t, ctx, ss, transferAttempt.ID)
 	requireSuccessfulAudit(t, ctx, ss, previousTransferAttempt.ID)
 	destinationAudit, err := ss.Audit().Get(ctx, transferAttempt.ID)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	sourceAudit, err := ss.Audit().Get(ctx, previousTransferAttempt.ID)
-	requireNoError(t, err)
-	if strings.Contains(string(destinationAudit.Result), created.Membership.ID.String()) ||
-		!strings.Contains(string(destinationAudit.Result), transferred.Membership.ID.String()) {
-		t.Fatalf("destination transfer audit crossed into source membership: %s", destinationAudit.Result)
-	}
-	if strings.Contains(string(sourceAudit.Result), transferred.Membership.ID.String()) ||
-		!strings.Contains(string(sourceAudit.Result), created.Membership.ID.String()) {
-		t.Fatalf("source transfer audit crossed into destination membership: %s", sourceAudit.Result)
-	}
-	requireNoError(t, requireClassMemberMail(t, ctx, ss, transferNotice, model.MailTemplateAcademicClassTransferred))
+	require.NoError(t, err)
+	require.NotContains(t, string(destinationAudit.Result), created.Membership.ID.String())
+	require.Contains(t, string(destinationAudit.Result), transferred.Membership.ID.String())
+	require.NotContains(t, string(sourceAudit.Result), transferred.Membership.ID.String())
+	require.Contains(t, string(sourceAudit.Result), created.Membership.ID.String())
+	require.NoError(t, requireClassMemberMail(t, ctx, ss, transferNotice, model.MailTemplateAcademicClassTransferred))
 	replayDestinationAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
 	replaySourceAttempt := saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String())
 	replayInput := &store.ClassMemberEnrollment{Member: second, ExpectedPreviousID: created.Membership.ID,
 		ExpectedRecipientRevision: user.Revision, AuditEventID: replayDestinationAttempt.ID,
 		PreviousAuditEventID: replaySourceAttempt.ID, AuditAt: model.GetMillis(), Command: transferCommand}
-	if _, err = ss.ClassMember().Enroll(ctx, replayInput); err != nil || !replayInput.Replayed {
-		t.Fatalf("retained transfer replay = %v, replayed=%v", err, replayInput.Replayed)
-	}
+	_, err = ss.ClassMember().Enroll(ctx, replayInput)
+	require.NoError(t, err, "retained transfer replay")
+	require.True(t, replayInput.Replayed, "retained transfer replay")
 	requireSuccessfulAudit(t, ctx, ss, replayDestinationAttempt.ID)
 	requireSuccessfulAudit(t, ctx, ss, replaySourceAttempt.ID)
 	duplicateDestinationAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
@@ -236,9 +213,9 @@ func testAuditedClassMemberLifecycle(
 	duplicateInput := &store.ClassMemberEnrollment{Member: second, ExpectedPreviousID: created.Membership.ID,
 		ExpectedRecipientRevision: user.Revision, AuditEventID: duplicateDestinationAttempt.ID,
 		PreviousAuditEventID: duplicateSourceAttempt.ID, AuditAt: model.GetMillis(), Command: &duplicateCommand}
-	if _, err = ss.ClassMember().Enroll(ctx, duplicateInput); err != nil || !duplicateInput.Command.Batch.Duplicate {
-		t.Fatalf("duplicate transfer = %v, duplicate=%v", err, duplicateInput.Command.Batch.Duplicate)
-	}
+	_, err = ss.ClassMember().Enroll(ctx, duplicateInput)
+	require.NoError(t, err, "duplicate transfer")
+	require.True(t, duplicateInput.Command.Batch.Duplicate, "duplicate transfer")
 	requireClassMemberDuplicateAudit(t, ctx, ss, duplicateDestinationAttempt.ID)
 	requireClassMemberDuplicateAudit(t, ctx, ss, duplicateSourceAttempt.ID)
 	duplicateReplayDestination := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
@@ -246,18 +223,18 @@ func testAuditedClassMemberLifecycle(
 	duplicateReplayInput := &store.ClassMemberEnrollment{Member: second, ExpectedPreviousID: created.Membership.ID,
 		ExpectedRecipientRevision: user.Revision, AuditEventID: duplicateReplayDestination.ID,
 		PreviousAuditEventID: duplicateReplaySource.ID, AuditAt: model.GetMillis(), Command: &duplicateCommand}
-	if _, err = ss.ClassMember().Enroll(ctx, duplicateReplayInput); err != nil || !duplicateReplayInput.Replayed {
-		t.Fatalf("retained duplicate transfer = %v, replayed=%v", err, duplicateReplayInput.Replayed)
-	}
+	_, err = ss.ClassMember().Enroll(ctx, duplicateReplayInput)
+	require.NoError(t, err, "retained duplicate transfer")
+	require.True(t, duplicateReplayInput.Replayed, "retained duplicate transfer")
 	requireClassMemberDuplicateAudit(t, ctx, ss, duplicateReplayDestination.ID)
 	requireClassMemberDuplicateAudit(t, ctx, ss, duplicateReplaySource.ID)
 
 	history, err := ss.ClassMember().ListByUser(ctx, user.ID)
-	requireNoError(t, err)
-	if len(history) != 2 || history[1].ID != created.Membership.ID ||
-		history[1].EndsAt.Millis() != model.MillisFromTime(second.StartsAt) || history[1].Revision != 2 {
-		t.Fatalf("audited enrollment history = %#v", history)
-	}
+	require.NoError(t, err)
+	require.Len(t, history, 2)
+	require.Equal(t, created.Membership.ID, history[1].ID)
+	require.Equal(t, model.MillisFromTime(second.StartsAt), history[1].EndsAt.Millis())
+	require.Equal(t, int64(2), history[1].Revision)
 
 	endAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
 	endNotice := classMemberPreparedMail(t, transferred.Membership, model.MailTemplateAcademicClassEnrollmentEnded, model.TimeFromMillis(start+30))
@@ -265,47 +242,43 @@ func testAuditedClassMemberLifecycle(
 		ID: transferred.Membership.ID, ExpectedRevision: transferred.Membership.Revision, ExpectedRecipientRevision: user.Revision,
 		EndAt: start + 30, Notice: endNotice, AuditEventID: endAttempt.ID, AuditAt: model.GetMillis(),
 	})
-	requireNoError(t, err)
-	if ended.Revision != transferred.Membership.Revision+1 || ended.EndsAt.Millis() != start+30 {
-		t.Fatalf("End() = %#v", ended)
-	}
+	require.NoError(t, err)
+	require.Equal(t, transferred.Membership.Revision+1, ended.Revision)
+	require.Equal(t, start+30, ended.EndsAt.Millis())
 	requireSuccessfulAudit(t, ctx, ss, endAttempt.ID)
-	requireNoError(t, requireClassMemberMail(t, ctx, ss, endNotice, model.MailTemplateAcademicClassEnrollmentEnded))
+	require.NoError(t, requireClassMemberMail(t, ctx, ss, endNotice, model.MailTemplateAcademicClassEnrollmentEnded))
 
 	staleAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
-	if _, err = ss.ClassMember().End(ctx, &store.ClassMemberEnd{
+	_, err = ss.ClassMember().End(ctx, &store.ClassMemberEnd{
 		ID: ended.ID, ExpectedRevision: transferred.Membership.Revision, ExpectedRecipientRevision: user.Revision,
 		EndAt:        start + 31,
 		Notice:       classMemberPreparedMail(t, transferred.Membership, model.MailTemplateAcademicClassEnrollmentEnded, model.TimeFromMillis(start+31)),
 		AuditEventID: staleAttempt.ID, AuditAt: model.GetMillis(),
-	}); !store.IsConflict(err) {
-		t.Fatalf("stale End() error = %v", err)
-	}
+	})
+	require.True(t, store.IsConflict(err), "stale End() error")
 
 	rollbackUser := saveUser(t, ctx, ss)
 	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{
 		UserID: rollbackUser.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start - 1),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	rolledBack := &model.ClassMember{ClassID: firstClass.ID, UserID: rollbackUser.ID, StartsAt: model.TimeFromMillis(start)}
 	rolledBack.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 	rolledBack.AcademicPeriodID = firstClass.AcademicPeriodID
-	if _, err = ss.ClassMember().Enroll(ctx, &store.ClassMemberEnrollment{
+	_, err = ss.ClassMember().Enroll(ctx, &store.ClassMemberEnrollment{
 		Member: rolledBack, ExpectedRecipientRevision: rollbackUser.Revision,
 		Notice:       classMemberPreparedMail(t, rolledBack, model.MailTemplateAcademicClassEnrolled, rolledBack.CreatedAt),
 		AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
-	}); err == nil {
-		t.Fatal("Enroll() succeeded without its audit attempt")
-	}
-	if _, err = ss.ClassMember().Get(ctx, rolledBack.ID); !store.IsNotFound(err) {
-		t.Fatalf("enrollment survived audit rollback: %v", err)
-	}
+	})
+	require.Error(t, err, "Enroll() succeeded without its audit attempt")
+	_, err = ss.ClassMember().Get(ctx, rolledBack.ID)
+	require.True(t, store.IsNotFound(err), "enrollment survived audit rollback")
 
 	disabledMailUser := saveUser(t, ctx, ss)
 	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{
 		UserID: disabledMailUser.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start - 1),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	disabledMailMember := &model.ClassMember{ClassID: firstClass.ID, AcademicPeriodID: firstClass.AcademicPeriodID,
 		UserID: disabledMailUser.ID, StartsAt: model.TimeFromMillis(start)}
 	disabledMailMember.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
@@ -315,18 +288,17 @@ func testAuditedClassMemberLifecycle(
 		Member: disabledMailMember, ExpectedRecipientRevision: disabledMailUser.Revision, Notice: disabledNotice,
 		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String()).ID, AuditAt: model.GetMillis(),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	disabledDelivery, err := ss.Mail().GetDelivery(ctx, disabledNotice.Delivery.ID)
-	requireNoError(t, err)
-	if disabledDelivery.State != model.MailDeliverySuppressed ||
-		disabledDelivery.PublicFailureCode != model.MailDeliveryDisabledCode || len(disabledDelivery.EncryptedPayload) != 0 {
-		t.Fatalf("disabled Class transition delivery = %#v", disabledDelivery)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.MailDeliverySuppressed, disabledDelivery.State)
+	require.Equal(t, model.MailDeliveryDisabledCode, disabledDelivery.PublicFailureCode)
+	require.Empty(t, disabledDelivery.EncryptedPayload)
 
 	ineligibleUser := saveUser(t, ctx, ss)
 	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{UserID: ineligibleUser.ID, Kind: model.AffiliationStudent,
 		StartsAt: model.TimeFromMillis(start - 1)})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	activeRecipientRevision := ineligibleUser.Revision
 	staleQueuedMember := &model.ClassMember{ClassID: firstClass.ID, AcademicPeriodID: firstClass.AcademicPeriodID,
 		UserID: ineligibleUser.ID, StartsAt: model.TimeFromMillis(start)}
@@ -337,17 +309,15 @@ func testAuditedClassMemberLifecycle(
 		ID: ineligibleUser.ID, ExpectedRevision: ineligibleUser.Revision, Disabled: true,
 		ChangedAt: disableAt, RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: saveUserProfileAuditAttempt(t, ctx, ss, ineligibleUser.ID.String()).ID, AuditAt: disableAt,
 	}))
-	requireNoError(t, err)
+	require.NoError(t, err)
 	ineligibleUser = disabledResult.User
-	if _, err = ss.ClassMember().Enroll(ctx, &store.ClassMemberEnrollment{
+	_, err = ss.ClassMember().Enroll(ctx, &store.ClassMemberEnrollment{
 		Member: staleQueuedMember, ExpectedRecipientRevision: activeRecipientRevision, Notice: staleQueuedNotice,
 		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String()).ID, AuditAt: model.GetMillis(),
-	}); !store.IsConflict(err) {
-		t.Fatalf("queued notice raced recipient disable error=%v", err)
-	}
-	if _, err = ss.ClassMember().Get(ctx, staleQueuedMember.ID); !store.IsNotFound(err) {
-		t.Fatalf("recipient-disable race committed membership: %v", err)
-	}
+	})
+	require.True(t, store.IsConflict(err), "queued notice raced recipient disable error")
+	_, err = ss.ClassMember().Get(ctx, staleQueuedMember.ID)
+	require.True(t, store.IsNotFound(err), "recipient-disable race committed membership")
 	ineligibleMember := &model.ClassMember{ClassID: firstClass.ID, AcademicPeriodID: firstClass.AcademicPeriodID,
 		UserID: ineligibleUser.ID, StartsAt: model.TimeFromMillis(start)}
 	ineligibleMember.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
@@ -357,13 +327,12 @@ func testAuditedClassMemberLifecycle(
 		Member: ineligibleMember, ExpectedRecipientRevision: ineligibleUser.Revision, Notice: ineligibleNotice,
 		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String()).ID, AuditAt: model.GetMillis(),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	ineligibleDelivery, err := ss.Mail().GetDelivery(ctx, ineligibleNotice.Delivery.ID)
-	requireNoError(t, err)
-	if ineligibleDelivery.State != model.MailDeliverySuppressed ||
-		ineligibleDelivery.PublicFailureCode != model.MailDeliveryRecipientIneligibleCode || len(ineligibleDelivery.EncryptedPayload) != 0 {
-		t.Fatalf("ineligible-recipient Class transition delivery = %#v", ineligibleDelivery)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.MailDeliverySuppressed, ineligibleDelivery.State)
+	require.Equal(t, model.MailDeliveryRecipientIneligibleCode, ineligibleDelivery.PublicFailureCode)
+	require.Empty(t, ineligibleDelivery.EncryptedPayload)
 	disabledRecipientRevision := ineligibleUser.Revision
 	staleEndAt := start + 100
 	staleEndNotice := classMemberPreparedMail(t, ineligibleMember, model.MailTemplateAcademicClassEnrollmentEnded, model.TimeFromMillis(staleEndAt))
@@ -373,31 +342,26 @@ func testAuditedClassMemberLifecycle(
 		ID: ineligibleUser.ID, ExpectedRevision: disabledRecipientRevision,
 		ChangedAt: enabledAt, AuditEventID: saveUserProfileAuditAttempt(t, ctx, ss, ineligibleUser.ID.String()).ID, AuditAt: enabledAt,
 	}))
-	requireNoError(t, err)
-	if _, err = ss.ClassMember().End(ctx, &store.ClassMemberEnd{
+	require.NoError(t, err)
+	_, err = ss.ClassMember().End(ctx, &store.ClassMemberEnd{
 		ID: ineligibleMember.ID, ExpectedRevision: ineligibleMember.Revision,
 		ExpectedRecipientRevision: disabledRecipientRevision, EndAt: staleEndAt, Notice: staleEndNotice,
 		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String()).ID, AuditAt: model.GetMillis(),
-	}); !store.IsConflict(err) {
-		t.Fatalf("ineligible suppression raced recipient enable error=%v", err)
-	}
-	if enabledResult.User.Revision == disabledRecipientRevision {
-		t.Fatal("recipient enable did not advance User revision")
-	}
+	})
+	require.True(t, store.IsConflict(err), "ineligible suppression raced recipient enable error")
+	require.NotEqual(t, disabledRecipientRevision, enabledResult.User.Revision, "recipient enable did not advance User revision")
 	unchangedAfterEnable, err := ss.ClassMember().Get(ctx, ineligibleMember.ID)
-	requireNoError(t, err)
-	if unchangedAfterEnable.EndsAt.Valid {
-		t.Fatalf("recipient-enable race ended membership: %#v", unchangedAfterEnable)
-	}
+	require.NoError(t, err)
+	require.False(t, unchangedAfterEnable.EndsAt.Valid)
 }
 
 func classMemberPreparedMail(t *testing.T, member *model.ClassMember, key model.MailTemplateKey, at time.Time) *store.PreparedMail {
 	t.Helper()
 	occurrenceID, deliveryID := model.NewMailOccurrenceID(), model.NewMailDeliveryID()
 	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailDeliver, 1, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceAcademicAdministration,
 		TemplateKey: key, ActorUserID: member.UserID, CreatedAt: at}
 	delivery := &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: job.ID, TargetUserID: member.UserID,
@@ -405,20 +369,20 @@ func classMemberPreparedMail(t *testing.T, member *model.ClassMember, key model.
 		State: model.MailDeliveryQueued, CreatedAt: at, UpdatedAt: at, MessageDate: at, Deadline: at.Add(72 * time.Hour),
 		MessageID:        "<class-transition." + deliveryID.String() + "@example.test>",
 		EncryptedPayload: json.RawMessage(`{"version":1,"key_id":"11111111111111111111111111111111","ciphertext":"class-transition"}`), Revision: 1}
-	requireNoError(t, occurrence.Validate())
-	requireNoError(t, delivery.Validate())
+	require.NoError(t, occurrence.Validate())
+	require.NoError(t, delivery.Validate())
 	return &store.PreparedMail{Occurrence: occurrence, Delivery: delivery, Job: job}
 }
 
 func suppressClassMemberMail(t *testing.T, prepared *store.PreparedMail, publicCode string) *store.PreparedMail {
 	t.Helper()
 	job, err := prepared.Job.RequestCancellation(prepared.Occurrence.CreatedAt)
-	requireNoError(t, err)
+	require.NoError(t, err)
 	delivery := prepared.Delivery.Clone()
 	delivery.State = model.MailDeliverySuppressed
 	delivery.PublicFailureCode = publicCode
 	delivery.EncryptedPayload = nil
-	requireNoError(t, delivery.Validate())
+	require.NoError(t, delivery.Validate())
 	return &store.PreparedMail{Occurrence: prepared.Occurrence, Delivery: delivery, Job: job}
 }
 
@@ -428,9 +392,8 @@ func requireClassMemberMail(t *testing.T, ctx context.Context, ss store.Store, n
 	if err != nil {
 		return err
 	}
-	if delivery.TemplateKey != key || delivery.TargetUserID != notice.Delivery.TargetUserID {
-		t.Fatalf("Class transition delivery = %#v", delivery)
-	}
+	require.Equal(t, key, delivery.TemplateKey)
+	require.Equal(t, notice.Delivery.TargetUserID, delivery.TargetUserID)
 	return nil
 }
 
@@ -439,19 +402,16 @@ func testDistinctPeriodClassMemberEnrollment(t *testing.T, ss store.Store, first
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start - 1)})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	first, err := ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{ClassID: firstClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start)})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	next, err := ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{ClassID: nextClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start)})
-	requireNoError(t, err)
-	if next.Previous != nil {
-		t.Fatalf("distinct-period enrollment replaced prior membership: %#v", next)
-	}
+	require.NoError(t, err)
+	require.Nil(t, next.Previous)
 	active, err := ss.ClassMember().ListActiveByUser(ctx, user.ID, start+1)
-	requireNoError(t, err)
-	if len(active) != 2 || first.Membership.AcademicPeriodID == next.Membership.AcademicPeriodID {
-		t.Fatalf("distinct-period active enrollments = %#v", active)
-	}
+	require.NoError(t, err)
+	require.Len(t, active, 2)
+	require.NotEqual(t, next.Membership.AcademicPeriodID, first.Membership.AcademicPeriodID)
 }
 
 func testFiniteAffiliationCannotBackOpenEnrollment(t *testing.T, ss store.Store, class *model.Class, start int64) {
@@ -462,11 +422,9 @@ func testFiniteAffiliationCannotBackOpenEnrollment(t *testing.T, ss store.Store,
 		UserID: user.ID, Kind: model.AffiliationStudent,
 		StartsAt: model.TimeFromMillis(start - 1), EndsAt: model.OptionalTimeFromMillis(start + 100),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	_, err = ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{ClassID: class.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start)})
-	if !store.IsConflict(err) {
-		t.Fatalf("open enrollment with finite affiliation error = %v", err)
-	}
+	require.True(t, store.IsConflict(err), "open enrollment with finite affiliation error")
 }
 
 func testConcurrentClassMemberEnrollment(
@@ -482,7 +440,7 @@ func testConcurrentClassMemberEnrollment(
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{
 		UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start - 1),
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	members := []*model.ClassMember{
 		{ClassID: firstClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start)},
 		{ClassID: secondClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start)},
@@ -516,31 +474,25 @@ func testConcurrentClassMemberEnrollment(
 	for _, err := range errs {
 		if err == nil {
 			successes++
-		} else if !store.IsConflict(err) {
-			t.Fatalf("concurrent enrollment error = %v", err)
+			continue
 		}
+		require.True(t, store.IsConflict(err), "concurrent enrollment error = %v", err)
 	}
-	if successes != 1 {
-		t.Fatalf("concurrent enrollment successes = %d, errors = %v", successes, errs)
-	}
+	require.Equal(t, 1, successes, "concurrent enrollment successes = %d, errors = %v", successes, errs)
 	active, err := ss.ClassMember().ListActiveByUser(ctx, user.ID, start+1)
-	requireNoError(t, err)
-	if len(active) != 1 {
-		t.Fatalf("active concurrent enrollments = %#v", active)
-	}
+	require.NoError(t, err)
+	require.Len(t, active, 1)
 	completedAudits := 0
 	for _, attempt := range attempts {
 		event, err := ss.Audit().Get(ctx, attempt.ID)
-		requireNoError(t, err)
+		require.NoError(t, err)
 		if event.Status == model.AuditStatusSuccess {
 			completedAudits++
-		} else if event.Status != model.AuditStatusAttempt {
-			t.Fatalf("concurrent enrollment audit = %#v", event)
+			continue
 		}
+		require.Equal(t, model.AuditStatusAttempt, event.Status, "concurrent enrollment audit")
 	}
-	if completedAudits != 1 {
-		t.Fatalf("completed concurrent enrollment audits = %d, want 1", completedAudits)
-	}
+	require.Equal(t, 1, completedAudits, "completed concurrent enrollment audits")
 }
 
 func saveClassMemberAuditAttempt(
@@ -556,24 +508,21 @@ func saveClassMemberAuditAttempt(
 		ScopeType: model.RoleScopeClass, ScopeID: classID,
 		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
-	requireNoError(t, err)
+	require.NoError(t, err)
 	return attempt
 }
 
 func requireSuccessfulAudit(t *testing.T, ctx context.Context, ss store.Store, id model.AuditEventID) {
 	t.Helper()
 	event, err := ss.Audit().Get(ctx, id)
-	requireNoError(t, err)
-	if event.Status != model.AuditStatusSuccess {
-		t.Fatalf("audit %s status = %q, want success", id, event.Status)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.AuditStatusSuccess, event.Status, "audit %s status", id)
 }
 
 func requireClassMemberDuplicateAudit(t *testing.T, ctx context.Context, ss store.Store, id model.AuditEventID) {
 	t.Helper()
 	audit, err := ss.Audit().Get(ctx, id)
-	requireNoError(t, err)
-	if audit.Status != model.AuditStatusFail || audit.ErrorCode != "onboarding_batch.duplicate" {
-		t.Fatalf("duplicate audit %s = status %q code %q", id, audit.Status, audit.ErrorCode)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.AuditStatusFail, audit.Status, "duplicate audit %s = status %q code", id, audit.Status)
+	require.Equal(t, "onboarding_batch.duplicate", audit.ErrorCode, "duplicate audit %s = status %q code", id, audit.Status)
 }
