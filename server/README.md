@@ -798,6 +798,36 @@ only the operator's own verified address. SMTP delivery remains asynchronous
 and `accepted` means only that the configured transport accepted the message
 data.
 
+## Write tests
+
+Tests assert through [testify](https://github.com/stretchr/testify):
+`require` stops the test at the first failure and is the default; `assert`
+continues and is used only where reporting every failure is useful, such as a
+loop that inspects many files, and inside HTTP handlers or goroutines, which
+must not stop the test. The testing failure methods (`t.Fatal`, `t.Error`,
+and their formatted forms) are not used.
+
+- Write one assertion per checked property, with the expected value first, so
+  a failure names the clause that broke. Do not hide a compound condition in
+  `if a || b { require.FailNow(...) }` or in `require.True(t, a && b)`.
+- Call testify directly; do not add a helper that only forwards to one
+  assertion, such as `requireNoError`. A helper earns its place when it checks
+  a domain property, such as `requireConflictConstraint`.
+- Give every case of a table-driven test a descriptive name and run it with
+  `t.Run`.
+- Assert outcomes: what was persisted, audited, and emitted. Assert the order
+  of collaborator calls only where the order is the contract, such as
+  authorization before the audit, the audit before the durable write
+  (guardrail 8), and the durable commit before its effects (guardrail 14).
+  Use `testlib/ordertest.RequireInOrder` for those events alone, and say in a
+  comment why the order matters.
+
+In the server, cache, and VFS modules the architecture gate rejects the testing
+failure methods, failure-only conditionals, splittable compound assertions, and
+forwarding helpers, and `make quality` runs `testifylint`. The mail module
+keeps no third-party Go dependencies, so its tests use the standard `testing`
+package.
+
 ## Verify
 
 ```sh

@@ -21,6 +21,7 @@ linters:
     - nolintlint
     - rowserrcheck
     - staticcheck
+    - testifylint
     - unconvert
     - unused
   settings:
@@ -36,6 +37,15 @@ linters:
         - all
         - -QF*
         - -ST1005
+    testifylint:
+      enable-all: true
+      disable:
+        # Deterministic tests compare exact float values on purpose.
+        - float-compare
+        # Canonical encodings are compared byte for byte on purpose.
+        - encoded-compare
+        # assert error checks stay where a test reports every failure.
+        - require-error
   exclusions:
     generated: lax
     presets:
