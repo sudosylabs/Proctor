@@ -312,6 +312,10 @@ func (r *Engine) execute(parent context.Context, descriptor Descriptor, claim *s
 		defer close(heartbeatStopped)
 		ticker := time.NewTicker(descriptor.HeartbeatInterval)
 		defer ticker.Stop()
+		// The lease runs from the last renewal the store accepted. A failed
+		// heartbeat abandons the attempt only when the store reports the claim
+		// lost or when the next heartbeat could no longer land inside the lease.
+		renewedAt := startedAt
 		for {
 			select {
 			case <-heartbeatDone:
@@ -323,6 +327,9 @@ func (r *Engine) execute(parent context.Context, descriptor Descriptor, claim *s
 				if _, err := r.jobs.Heartbeat(handlerCtx, &store.JobHeartbeat{AttemptID: claim.Attempt.ID, ClaimToken: claim.Attempt.ClaimToken, LeaseDuration: descriptor.LeaseDuration}); err != nil {
 					r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "heartbeat", Outcome: "error", Duration: time.Since(heartbeatStarted)})
 					r.diagnostics.ErrorContext(parent, "heartbeat durable job", err)
+					if !heartbeatClaimLost(err) && time.Since(renewedAt)+descriptor.HeartbeatInterval < descriptor.LeaseDuration {
+						continue
+					}
 					select {
 					case claimLost <- struct{}{}:
 					default:
@@ -330,6 +337,7 @@ func (r *Engine) execute(parent context.Context, descriptor Descriptor, claim *s
 					cancelHandler()
 					return
 				}
+				renewedAt = heartbeatStarted
 				r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "heartbeat", Outcome: "success", Duration: time.Since(heartbeatStarted)})
 				if descriptor.Cancelable {
 					cancellationStarted := time.Now()
@@ -337,6 +345,9 @@ func (r *Engine) execute(parent context.Context, descriptor Descriptor, claim *s
 					if err != nil {
 						r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "cancellation_check", Outcome: "error", Duration: time.Since(cancellationStarted)})
 						r.diagnostics.ErrorContext(parent, "observe durable job cancellation", err)
+						if !heartbeatClaimLost(err) && time.Since(renewedAt)+descriptor.HeartbeatInterval < descriptor.LeaseDuration {
+							continue
+						}
 						select {
 						case claimLost <- struct{}{}:
 						default:
@@ -396,11 +407,20 @@ func (r *Engine) execute(parent context.Context, descriptor Descriptor, claim *s
 		metricOutcome = ExecutionShutdown
 		return
 	}
-	if errors.Is(handlerCtx.Err(), context.DeadlineExceeded) {
+	// A handler that returned success has committed its work, even when it
+	// finished as its timeout elapsed; only an unfinished outcome is a timeout.
+	if outcome.Kind != OutcomeSucceeded && errors.Is(handlerCtx.Err(), context.DeadlineExceeded) {
 		outcome = RetryableFailure("job.timeout", handlerCtx.Err())
 	}
 	metricOutcome = executionOutcomeFromHandler(outcome.Kind)
 	r.complete(parent, descriptor, claim, outcome)
+}
+
+// heartbeatClaimLost reports a heartbeat the store refused because another
+// owner holds the attempt or its lease already expired. Any other failure is
+// an unknown outcome that later heartbeats may still repair.
+func heartbeatClaimLost(err error) bool {
+	return store.IsConflict(err) || store.IsNotFound(err)
 }
 
 func runHandler(ctx context.Context, handler Handler, execution Execution) (outcome Outcome) {

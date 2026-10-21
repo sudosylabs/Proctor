@@ -42,7 +42,11 @@ time, using row locking such as `FOR UPDATE SKIP LOCKED`. A claim creates a Job
 Attempt with worker node ID, an unguessable claim token, heartbeat time, and
 lease expiry. Heartbeat, checkpoint, and terminal updates require the current
 token. An expired lease is reclaimable, and a former worker cannot commit job
-state after losing its fence.
+state after losing its fence. A worker abandons an attempt when the store
+reports its claim lost, or when a failed heartbeat leaves too little lease for
+the next one; a single failed heartbeat within the lease slack is retried. A
+handler that returns success as its timeout elapses has committed its work and
+completes as succeeded.
 
 A handler may relinquish an immutable command when the claiming node lacks a
 required deployment capability but another node can execute it. Relinquishment

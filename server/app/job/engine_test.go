@@ -25,6 +25,7 @@ import (
 type jobRunnerStoreFake struct {
 	mu              sync.Mutex
 	heartbeats      int
+	heartbeatErrors []error
 	checkpoints     int
 	checkpoint      *store.JobCheckpoint
 	completion      *store.JobCompletion
@@ -100,6 +101,13 @@ func (s *jobRunnerStoreFake) Heartbeat(_ context.Context, _ *store.JobHeartbeat)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.heartbeats++
+	if len(s.heartbeatErrors) > 0 {
+		err := s.heartbeatErrors[0]
+		s.heartbeatErrors = s.heartbeatErrors[1:]
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &model.JobAttempt{}, nil
 }
 func (s *jobRunnerStoreFake) Checkpoint(_ context.Context, checkpoint *store.JobCheckpoint) (*model.Job, error) {
@@ -373,6 +381,68 @@ func TestEngineHeartbeatsLongWorkAndCompletesWithItsFence(t *testing.T) {
 	require.NotNil(t, persistence.completion, "execution: heartbeats")
 	require.Equal(t, store.JobCompletionSucceeded, persistence.completion.Kind, "execution: heartbeats")
 	require.Equal(t, claim.Attempt.ClaimToken, persistence.completion.ClaimToken, "execution: heartbeats")
+}
+
+func TestEngineToleratesHeartbeatFailuresWithinLeaseSlack(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name     string
+		failure  error
+		complete bool
+	}{
+		{"unknown outcome keeps the claim", errors.New("database unavailable"), true},
+		{"lost claim abandons the attempt", store.NewErrConflict("job_attempt", "claim_lost", nil), false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			claim := jobRunnerClaim(t)
+			descriptor := testDescriptor(handlerFunc(func(ctx context.Context, _ Execution) Outcome {
+				select {
+				case <-time.After(60 * time.Millisecond):
+					return succeededOutcome()
+				case <-ctx.Done():
+					return RetryableFailure("job.timeout", ctx.Err())
+				}
+			}))
+			descriptor.HeartbeatInterval = 5 * time.Millisecond
+			descriptor.LeaseDuration = time.Minute
+			registry, err := NewRegistry([]Descriptor{descriptor})
+			require.NoError(t, err)
+			persistence := &jobRunnerStoreFake{heartbeatErrors: []error{test.failure}}
+			runner, err := newTestEngine(persistence, registry, "node-a", &jobDiagnosticsFake{}, time.Second)
+			require.NoError(t, err)
+			runner.execute(context.Background(), descriptor, claim)
+			persistence.mu.Lock()
+			defer persistence.mu.Unlock()
+			if !test.complete {
+				require.Nil(t, persistence.completion, "lost claim completed")
+				return
+			}
+			require.NotNil(t, persistence.completion, "one failed heartbeat abandoned the attempt")
+			require.Equal(t, store.JobCompletionSucceeded, persistence.completion.Kind)
+			require.Greater(t, persistence.heartbeats, 1, "heartbeats after the failure")
+		})
+	}
+}
+
+func TestEngineCompletesHandlerThatSucceedsAtItsTimeout(t *testing.T) {
+	t.Parallel()
+	claim := jobRunnerClaim(t)
+	descriptor := testDescriptor(handlerFunc(func(ctx context.Context, _ Execution) Outcome {
+		<-ctx.Done()
+		return succeededOutcome()
+	}))
+	descriptor.Timeout = 10 * time.Millisecond
+	registry, err := NewRegistry([]Descriptor{descriptor})
+	require.NoError(t, err)
+	persistence := &jobRunnerStoreFake{}
+	runner, err := newTestEngine(persistence, registry, "node-a", &jobDiagnosticsFake{}, time.Second)
+	require.NoError(t, err)
+	runner.execute(context.Background(), descriptor, claim)
+	persistence.mu.Lock()
+	defer persistence.mu.Unlock()
+	require.NotNil(t, persistence.completion)
+	require.Equal(t, store.JobCompletionSucceeded, persistence.completion.Kind, "committed success was re-run as a timeout")
 }
 
 func TestEngineObservesDurableCancellationCooperatively(t *testing.T) {
