@@ -40,14 +40,50 @@ type SessionPolicy struct {
 }
 
 // LoginRateLimitPolicy bounds attempts in fixed windows by identity and
-// source. MaximumIdentityAttempts applies only to local login: it bounds one
-// account's attempts across every source, so spreading guesses over many
-// addresses cannot multiply the per-account budget.
+// source. The account-failure fields apply only to local login: once one
+// account has AccountFailuresBeforeDelay failed password verifications in the
+// window, from any source and through any of its identifiers, each further
+// attempt against it waits a delay that doubles per failure up to
+// MaximumAccountFailureDelay. The delay never refuses a correct password, so
+// failures sent by someone else cannot lock the account out.
 type LoginRateLimitPolicy struct {
-	Window                  time.Duration
-	MaximumAttempts         int
-	MaximumIdentityAttempts int
-	MaximumSourceAttempts   int
+	Window                     time.Duration
+	MaximumAttempts            int
+	MaximumSourceAttempts      int
+	AccountFailuresBeforeDelay int
+	MaximumAccountFailureDelay time.Duration
+}
+
+// loginFailureDelayBase is the first delay applied once an account reaches
+// its failure threshold; each further failure doubles it.
+const loginFailureDelayBase = 250 * time.Millisecond
+
+// loginFailureDelay returns the wait applied before verifying a password for
+// an account that already has failures recorded in the current window.
+func loginFailureDelay(failures int64, threshold int, maximum time.Duration) time.Duration {
+	if threshold <= 0 || maximum <= 0 || failures < int64(threshold) {
+		return 0
+	}
+	delay := loginFailureDelayBase
+	for steps := failures - int64(threshold); steps > 0 && delay < maximum; steps-- {
+		delay *= 2
+	}
+	return min(delay, maximum)
+}
+
+// waitContext waits for delay or until ctx ends.
+func waitContext(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return ctx.Err()
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // PersonalAccessTokenPolicy controls PAT lifetime bounds, per-user limits, and
@@ -86,6 +122,7 @@ type localAuthenticationProof struct {
 	AuthenticatedAt          int64
 	MFACompletedAt           int64
 	receipt                  authenticationAttemptReceipt
+	failures                 authenticationFailureSubject
 }
 
 // CreateLocalUserCommand creates a local user with a password credential.
@@ -171,6 +208,8 @@ type authenticationService struct {
 	operational        OperationalRecorder
 	newCredential      func() string
 	now                func() time.Time
+	// wait applies a progressive login delay; tests replace it.
+	wait func(context.Context, time.Duration) error
 }
 
 type authenticationDesktopDependencies struct {
@@ -319,7 +358,7 @@ func newAuthenticationService(
 		securityEffects: securityEffects, audit: audit, loginAudit: loginAudit, hasher: hasher, mfa: mfa,
 		personalTokens: personalTokens, sessionPolicy: sessionPolicy,
 		loginRateLimit: loginRateLimit, diagnostics: diagnostics,
-		newCredential: newCredential, now: now,
+		newCredential: newCredential, now: now, wait: waitContext,
 		registrations: desktop.registrations, dpop: desktop.dpop,
 	}, nil
 }
@@ -397,7 +436,7 @@ func (s *authenticationService) Login(
 		}
 		return nil, sessionErr
 	}
-	s.resetLocalAuthenticationAttempts(ctx, proof.receipt)
+	s.resetLocalAuthenticationAttempts(ctx, proof)
 	return &LoginResult{User: proof.User, Session: savedSession, Tokens: tokens}, nil
 }
 
@@ -460,14 +499,24 @@ func (s *authenticationService) proveLocalSubject(
 	if err == nil && user != nil {
 		subject.userID = user.ID
 	}
-	if err != nil {
+	if err != nil && !store.IsNotFound(err) {
 		if dummyErr := s.hasher.VerifyDummy(ctx, command.Password); dummyErr != nil {
 			return nil, passwordWorkError(dummyErr, "authentication.internal")
 		}
-		if !store.IsNotFound(err) {
-			return nil, authenticationUnavailable(err)
+		return nil, authenticationUnavailable(err)
+	}
+	if err != nil {
+		user = nil
+	}
+	failures, err := s.delayAfterLoginFailures(ctx, command.LoginID, user)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		if dummyErr := s.hasher.VerifyDummy(ctx, command.Password); dummyErr != nil {
+			return nil, passwordWorkError(dummyErr, "authentication.internal")
 		}
-		return nil, invalidCredentialsAppError()
+		return nil, s.recordLoginFailure(ctx, failures)
 	}
 	credential, err := s.passwords.GetByUser(ctx, user.ID)
 	if err != nil {
@@ -477,7 +526,7 @@ func (s *authenticationService) proveLocalSubject(
 		if !store.IsNotFound(err) {
 			return nil, authenticationUnavailable(err)
 		}
-		return nil, invalidCredentialsAppError()
+		return nil, s.recordLoginFailure(ctx, failures)
 	}
 	// Recovery state exists only for active Users. Do equivalent password work
 	// before rejecting disabled accounts, without consulting their MFA state.
@@ -485,7 +534,7 @@ func (s *authenticationService) proveLocalSubject(
 		if dummyErr := s.hasher.VerifyDummy(ctx, command.Password); dummyErr != nil {
 			return nil, passwordWorkError(dummyErr, "authentication.internal")
 		}
-		return nil, invalidCredentialsAppError()
+		return nil, s.recordLoginFailure(ctx, failures)
 	}
 	recovery, err := s.mfa.recoveryState(ctx, user.ID)
 	if err != nil {
@@ -495,7 +544,7 @@ func (s *authenticationService) proveLocalSubject(
 		if !errors.Is(verifyErr, ErrPasswordMismatch) {
 			return nil, passwordWorkError(verifyErr, "authentication.internal")
 		}
-		return nil, invalidCredentialsAppError()
+		return nil, s.recordLoginFailure(ctx, failures)
 	}
 	if !user.IsActive() {
 		return nil, invalidCredentialsAppError()
@@ -532,11 +581,60 @@ func (s *authenticationService) proveLocalSubject(
 
 	return &localAuthenticationProof{User: user, AuthenticationStrength: authenticationStrength, AuthenticationGeneration: recovery.Generation, MFARecoveryRequired: recovery.ReenrollmentRequired,
 		PasswordProof:   store.PasswordCredentialProof{ID: credential.ID, Revision: credential.Revision},
-		AuthenticatedAt: now.UnixMilli(), MFACompletedAt: mfaCompletedAt, receipt: receipt}, nil
+		AuthenticatedAt: now.UnixMilli(), MFACompletedAt: mfaCompletedAt, receipt: receipt, failures: failures}, nil
 }
 
-func (s *authenticationService) resetLocalAuthenticationAttempts(ctx context.Context, receipt authenticationAttemptReceipt) {
-	if err := s.attempts.reset(ctx, receipt, authenticationAttemptDimensionIdentitySource); err != nil {
+// delayAfterLoginFailures waits the progressive delay earned by earlier failed
+// verifications and returns the failure subject for this attempt. The subject
+// is the resolved account, so every identifier of one account shares one
+// budget; an identifier that resolves to no account is its own subject and
+// waits by the same rule, so the delay does not reveal whether it exists. The
+// wait happens before password work, so it holds no hashing permit.
+func (s *authenticationService) delayAfterLoginFailures(
+	ctx context.Context,
+	loginID string,
+	user *model.User,
+) (authenticationFailureSubject, error) {
+	identity := "identifier:" + normalizeLoginIdentity(loginID)
+	if user != nil {
+		identity = "account:" + user.ID.String()
+	}
+	subject, err := s.attempts.failureSubject(authenticationAttemptPurposeLocalLogin, identity)
+	if err != nil {
+		return authenticationFailureSubject{}, rateLimitUnavailableAppError(err)
+	}
+	failures, err := s.attempts.failures(ctx, subject, s.loginRateLimit.Window)
+	if err != nil {
+		return authenticationFailureSubject{}, rateLimitUnavailableAppError(err)
+	}
+	delay := loginFailureDelay(failures, s.loginRateLimit.AccountFailuresBeforeDelay,
+		s.loginRateLimit.MaximumAccountFailureDelay)
+	if delay > 0 {
+		if err = s.wait(ctx, delay); err != nil {
+			return authenticationFailureSubject{}, authenticationUnavailable(err)
+		}
+	}
+	return subject, nil
+}
+
+// recordLoginFailure counts one failed verification and returns the public
+// credential failure. Losing the count only shortens a later delay, so a cache
+// failure is diagnostic rather than a different answer.
+func (s *authenticationService) recordLoginFailure(
+	ctx context.Context,
+	subject authenticationFailureSubject,
+) error {
+	if err := s.attempts.recordFailure(ctx, subject, s.loginRateLimit.Window); err != nil {
+		s.warn(ctx, "login failure count failed", err)
+	}
+	return invalidCredentialsAppError()
+}
+
+func (s *authenticationService) resetLocalAuthenticationAttempts(ctx context.Context, proof *localAuthenticationProof) {
+	if err := errors.Join(
+		s.attempts.reset(ctx, proof.receipt, authenticationAttemptDimensionIdentitySource),
+		s.attempts.clearFailures(ctx, proof.failures),
+	); err != nil {
 		s.warn(ctx, "login rate-limit reset failed", err)
 	}
 }
@@ -669,11 +767,6 @@ func (s *authenticationService) checkLoginRateLimit(
 				maximum:   settings.MaximumAttempts,
 				identity:  loginID,
 				source:    source,
-			},
-			{
-				dimension: authenticationAttemptDimensionIdentity,
-				maximum:   settings.MaximumIdentityAttempts,
-				identity:  loginID,
 			},
 			{
 				dimension: authenticationAttemptDimensionSource,

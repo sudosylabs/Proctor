@@ -198,7 +198,7 @@ func TestAuthenticationAttemptAccountingIsolatesAllFourCallerFlowsAndProtectsInp
 	cache := newExpiringAuthenticationAttemptCache(time.Now)
 	accounting := mustAuthenticationAttemptAccounting(t, cache)
 	policy := LoginRateLimitPolicy{
-		Window: time.Minute, MaximumAttempts: 1, MaximumIdentityAttempts: 1, MaximumSourceAttempts: 1,
+		Window: time.Minute, MaximumAttempts: 1, MaximumSourceAttempts: 1,
 	}
 	login := &authenticationService{attempts: accounting, loginRateLimit: policy}
 	recovery := &accountTokenService{
@@ -251,7 +251,7 @@ func TestAuthenticationAttemptAccountingIsolatesAllFourCallerFlowsAndProtectsInp
 		}
 	}
 	entries := cache.snapshot()
-	const expectedKeys = 7 // login 3 + recovery 2 + external 1 + bootstrap 1
+	const expectedKeys = 6 // login 2 + recovery 2 + external 1 + bootstrap 1
 	require.Len(t, entries, expectedKeys, "counter keys")
 	for key := range entries {
 		for _, sensitive := range sensitiveValues {
@@ -493,30 +493,138 @@ func TestSuccessfulLoginTreatsAttemptResetFailureAsDiagnosticOnly(t *testing.T) 
 	}
 }
 
-func TestLoginIdentityLimitHoldsAcrossSources(t *testing.T) {
-	t.Parallel()
+// recordingLoginWait records each progressive login delay instead of sleeping.
+type recordingLoginWait struct {
+	mu     sync.Mutex
+	delays []time.Duration
+}
 
+func (w *recordingLoginWait) wait(_ context.Context, delay time.Duration) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.delays = append(w.delays, delay)
+	return nil
+}
+
+func (w *recordingLoginWait) recorded() []time.Duration {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return append([]time.Duration(nil), w.delays...)
+}
+
+func newAccountFailureLoginService(t *testing.T) (*authenticationService, *recordingLoginWait) {
+	t.Helper()
 	persistence := newAuthenticationStoreFake()
 	service := newTestAuthenticationService(t, persistence)
-	service.loginRateLimit = LoginRateLimitPolicy{Window: time.Minute, MaximumAttempts: 2, MaximumIdentityAttempts: 3, MaximumSourceAttempts: 100}
+	service.loginRateLimit = LoginRateLimitPolicy{
+		Window: time.Minute, MaximumAttempts: 2, MaximumSourceAttempts: 100,
+		AccountFailuresBeforeDelay: 2, MaximumAccountFailureDelay: time.Second,
+	}
+	waits := &recordingLoginWait{}
+	service.wait = waits.wait
 	_, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 		User: &model.User{Username: "spread-user", Email: "spread-user@example.edu"}, Password: "CorrectHorseBatteryStaple1!",
 	})
 	require.NoError(t, err)
-	// Each source stays under its per-account-and-source budget, but the
-	// account-wide budget is shared by every source.
-	for index, source := range []string{"198.51.100.1:1", "198.51.100.2:1", "198.51.100.3:1"} {
-		_, err = service.Login(context.Background(), Invocation{}, LoginCommand{
+	return service, waits
+}
+
+func TestLoginAccountFailuresFromOtherSourcesCannotRefuseTheCorrectPassword(t *testing.T) {
+	t.Parallel()
+
+	service, waits := newAccountFailureLoginService(t)
+	// Every source stays under its per-account-and-source budget while the
+	// account accumulates far more failures than its delay threshold.
+	for index := range 20 {
+		source := fmt.Sprintf("198.51.100.%d:1", index+1)
+		_, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 			LoginID: "spread-user", Password: "wrong-password-value", ClientType: model.SessionClientCLI, Source: source,
 		})
 		require.True(t, apperror.Is(err, "authentication.credentials_invalid"), "attempt %d from %s: err = %v", index, source, err)
 	}
-	_, err = service.Login(context.Background(), Invocation{}, LoginCommand{
-		LoginID: "spread-user", Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientCLI, Source: "198.51.100.4:1",
+	result, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+		LoginID: "spread-user", Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientCLI, Source: "203.0.113.1:1",
 	})
-	require.True(t, apperror.Is(err, "authentication.rate_limited"), "attempt from a fresh source after the account budget = %v, want rate limited", err)
+	require.NoError(t, err, "the account holder's correct password after other sources' failures")
+	require.NotNil(t, result)
+	delays := waits.recorded()
+	require.Equal(t, time.Second, delays[len(delays)-1], "the correct password waits the bounded delay instead of being refused")
+
+	// Success forgets the account's failures.
 	_, err = service.Login(context.Background(), Invocation{}, LoginCommand{
-		LoginID: "other-user", Password: "wrong-password-value", ClientType: model.SessionClientCLI, Source: "198.51.100.4:1",
+		LoginID: "spread-user", Password: "wrong-password-value", ClientType: model.SessionClientCLI, Source: "203.0.113.2:1",
 	})
-	require.True(t, apperror.Is(err, "authentication.credentials_invalid"), "another account from the same source = %v, want an independent budget", err)
+	require.True(t, apperror.Is(err, "authentication.credentials_invalid"), "err = %v", err)
+	require.Len(t, waits.recorded(), len(delays), "no delay after the successful login reset the failures")
+}
+
+func TestLoginAccountFailuresAreSharedByEveryIdentifierOfTheAccount(t *testing.T) {
+	t.Parallel()
+
+	service, waits := newAccountFailureLoginService(t)
+	for _, loginID := range []string{"spread-user", "Spread-User@Example.edu"} {
+		_, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+			LoginID: loginID, Password: "wrong-password-value", ClientType: model.SessionClientCLI, Source: "198.51.100.1:1",
+		})
+		require.True(t, apperror.Is(err, "authentication.credentials_invalid"), "%s: err = %v", loginID, err)
+	}
+	require.Empty(t, waits.recorded(), "no delay below the threshold")
+	_, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+		LoginID: "spread-user@example.edu", Password: "wrong-password-value", ClientType: model.SessionClientCLI, Source: "198.51.100.2:1",
+	})
+	require.True(t, apperror.Is(err, "authentication.credentials_invalid"), "err = %v", err)
+	require.Equal(t, []time.Duration{loginFailureDelayBase}, waits.recorded(),
+		"username and email failures count against one account")
+
+	// Another account from the same source has its own budget.
+	_, err = service.Login(context.Background(), Invocation{}, LoginCommand{
+		LoginID: "other-user", Password: "wrong-password-value", ClientType: model.SessionClientCLI, Source: "198.51.100.2:1",
+	})
+	require.True(t, apperror.Is(err, "authentication.credentials_invalid"), "err = %v", err)
+	require.Len(t, waits.recorded(), 1)
+}
+
+func TestLoginAccountFailureDelayGrowsToItsBound(t *testing.T) {
+	t.Parallel()
+
+	for _, loginID := range []string{"spread-user", "unknown-user"} {
+		t.Run(loginID, func(t *testing.T) {
+			t.Parallel()
+
+			service, waits := newAccountFailureLoginService(t)
+			for index := range 7 {
+				_, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+					LoginID: loginID, Password: "wrong-password-value", ClientType: model.SessionClientCLI,
+					Source: fmt.Sprintf("198.51.100.%d:1", index+1),
+				})
+				require.True(t, apperror.Is(err, "authentication.credentials_invalid"), "attempt %d: err = %v", index, err)
+			}
+			// Unknown identifiers wait by the same rule, so the delay does not
+			// reveal whether an account exists.
+			require.Equal(t, []time.Duration{
+				250 * time.Millisecond, 500 * time.Millisecond, time.Second, time.Second, time.Second,
+			}, waits.recorded())
+		})
+	}
+}
+
+func TestLoginFailureDelay(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		failures int64
+		want     time.Duration
+	}{
+		{failures: 0, want: 0},
+		{failures: 4, want: 0},
+		{failures: 5, want: 250 * time.Millisecond},
+		{failures: 6, want: 500 * time.Millisecond},
+		{failures: 9, want: 4 * time.Second},
+		{failures: 1 << 40, want: 4 * time.Second},
+	} {
+		t.Run(fmt.Sprint(test.failures), func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, test.want, loginFailureDelay(test.failures, 5, 4*time.Second))
+		})
+	}
 }

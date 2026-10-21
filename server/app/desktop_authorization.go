@@ -360,7 +360,7 @@ func (s *desktopAuthorizationService) AuthenticateDesktopAuthorizationLocally(ct
 		return nil, err
 	}
 	if !result.Denied {
-		s.authentication.resetLocalAuthenticationAttempts(ctx, proof.receipt)
+		s.authentication.resetLocalAuthenticationAttempts(ctx, proof)
 	}
 	return s.DesktopAuthorizationContext(ctx, invocation, command.Binding)
 }

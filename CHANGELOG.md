@@ -64,8 +64,12 @@ module when a change is not server-only. No module has been released yet.
 ### Added
 
 - Server: Exam Managers can manually suspend an active Attempt.
-- Server: local login attempts are also bounded per account across all
-  sources (`Authentication.LoginRateLimit.MaximumIdentityAttempts`).
+- Server: failed password checks against one account, counted across all
+  sources and both its username and email address, delay further logins for
+  that account progressively
+  (`Authentication.LoginRateLimit.AccountFailuresBeforeDelay` and
+  `MaximumAccountFailureDelay`). The delay never refuses a correct password,
+  so other people's failures cannot lock an account out.
 - Server: `Server.TrustedProxies` names the reverse proxies whose forwarded
   client address and request ID are accepted.
 - VFS: `FileSystem.CheckRoot` checks that the backend root (the local root

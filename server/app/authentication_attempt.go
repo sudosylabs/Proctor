@@ -87,6 +87,11 @@ const (
 	authenticationAttemptDimensionIdentitySource authenticationAttemptDimension = iota + 1
 	authenticationAttemptDimensionIdentity
 	authenticationAttemptDimensionSource
+	// authenticationAttemptDimensionAccountFailure counts only failed
+	// credential verifications against one resolved account (or, when no
+	// account resolves, one normalized identifier). It never refuses an
+	// attempt; callers derive a progressive delay from it.
+	authenticationAttemptDimensionAccountFailure
 )
 
 func (d authenticationAttemptDimension) keySegment() (string, bool) {
@@ -97,6 +102,8 @@ func (d authenticationAttemptDimension) keySegment() (string, bool) {
 		return "identity", true
 	case authenticationAttemptDimensionSource:
 		return "source", true
+	case authenticationAttemptDimensionAccountFailure:
+		return "account-failure", true
 	default:
 		return "", false
 	}
@@ -180,6 +187,67 @@ func (a *authenticationAttemptAccounting) reset(
 	return a.cache.Delete(ctx, key)
 }
 
+// authenticationFailureSubject names one failure counter without exposing its
+// cache key.
+type authenticationFailureSubject struct {
+	key string
+}
+
+// failureSubject derives the failure counter for one subject. The subject is
+// domain-separated by purpose and hashed like every other attempt key.
+func (a *authenticationAttemptAccounting) failureSubject(
+	purpose authenticationAttemptPurpose,
+	subject string,
+) (authenticationFailureSubject, error) {
+	segment, valid := purpose.keySegment()
+	if !valid || subject == "" || len(subject) > maxAuthenticationAttemptIdentityBytes {
+		return authenticationFailureSubject{}, errors.New("authentication failure subject is invalid")
+	}
+	dimension, _ := authenticationAttemptDimensionAccountFailure.keySegment()
+	limit := authenticationAttemptLimit{dimension: authenticationAttemptDimensionAccountFailure, identity: subject}
+	return authenticationFailureSubject{
+		key: "authentication/attempts/" + segment + "/" + dimension + "/" +
+			digestAuthenticationAttempt(authenticationAttemptIntent{purpose: purpose}, limit),
+	}, nil
+}
+
+// failures reports the failures recorded for subject in its current fixed
+// window without recording another.
+func (a *authenticationAttemptAccounting) failures(
+	ctx context.Context,
+	subject authenticationFailureSubject,
+	window time.Duration,
+) (int64, error) {
+	if subject.key == "" || window <= 0 {
+		return 0, errors.New("authentication failure subject is invalid")
+	}
+	return a.cache.Add(ctx, subject.key, 0, window)
+}
+
+// recordFailure counts one failed verification for subject.
+func (a *authenticationAttemptAccounting) recordFailure(
+	ctx context.Context,
+	subject authenticationFailureSubject,
+	window time.Duration,
+) error {
+	if subject.key == "" || window <= 0 {
+		return errors.New("authentication failure subject is invalid")
+	}
+	_, err := a.cache.Add(ctx, subject.key, 1, window)
+	return err
+}
+
+// clearFailures forgets the failures recorded for subject.
+func (a *authenticationAttemptAccounting) clearFailures(
+	ctx context.Context,
+	subject authenticationFailureSubject,
+) error {
+	if subject.key == "" {
+		return errors.New("authentication failure subject is invalid")
+	}
+	return a.cache.Delete(ctx, subject.key)
+}
+
 func validateAuthenticationAttemptIntent(
 	intent authenticationAttemptIntent,
 ) (string, []authenticationAttemptLimit, error) {
@@ -217,7 +285,7 @@ func digestAuthenticationAttempt(
 	case authenticationAttemptDimensionIdentitySource:
 		writeAuthenticationAttemptDigestPart(hash, []byte(normalizeLoginIdentity(limit.identity)))
 		writeAuthenticationAttemptDigestPart(hash, []byte(normalizeLoginSource(limit.source)))
-	case authenticationAttemptDimensionIdentity:
+	case authenticationAttemptDimensionIdentity, authenticationAttemptDimensionAccountFailure:
 		writeAuthenticationAttemptDigestPart(hash, []byte(normalizeLoginIdentity(limit.identity)))
 	case authenticationAttemptDimensionSource:
 		writeAuthenticationAttemptDigestPart(hash, []byte(normalizeLoginSource(limit.source)))

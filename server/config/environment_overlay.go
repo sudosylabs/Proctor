@@ -371,6 +371,9 @@ var environmentOverrideCatalog = []environmentOverride{
 	durationEnvironmentOverride("PROCTOR_AUTHENTICATION_LOGIN_RATE_LIMIT_WINDOW", func(cfg *Config) *Duration {
 		return &cfg.Authentication.LoginRateLimit.Window
 	}),
+	durationEnvironmentOverride("PROCTOR_AUTHENTICATION_LOGIN_RATE_LIMIT_MAXIMUM_ACCOUNT_FAILURE_DELAY", func(cfg *Config) *Duration {
+		return &cfg.Authentication.LoginRateLimit.MaximumAccountFailureDelay
+	}),
 	durationEnvironmentOverride("PROCTOR_AUTHENTICATION_RECENT_AUTHENTICATION_TTL", func(cfg *Config) *Duration {
 		return &cfg.Authentication.RecentAuthenticationTTL
 	}),
@@ -452,8 +455,8 @@ var environmentOverrideCatalog = []environmentOverride{
 	intEnvironmentOverride("PROCTOR_AUTHENTICATION_LOGIN_RATE_LIMIT_MAXIMUM_ATTEMPTS", func(cfg *Config) *int {
 		return &cfg.Authentication.LoginRateLimit.MaximumAttempts
 	}),
-	intEnvironmentOverride("PROCTOR_AUTHENTICATION_LOGIN_RATE_LIMIT_MAXIMUM_IDENTITY_ATTEMPTS", func(cfg *Config) *int {
-		return &cfg.Authentication.LoginRateLimit.MaximumIdentityAttempts
+	intEnvironmentOverride("PROCTOR_AUTHENTICATION_LOGIN_RATE_LIMIT_ACCOUNT_FAILURES_BEFORE_DELAY", func(cfg *Config) *int {
+		return &cfg.Authentication.LoginRateLimit.AccountFailuresBeforeDelay
 	}),
 	intEnvironmentOverride("PROCTOR_AUTHENTICATION_LOGIN_RATE_LIMIT_MAXIMUM_SOURCE_ATTEMPTS", func(cfg *Config) *int {
 		return &cfg.Authentication.LoginRateLimit.MaximumSourceAttempts

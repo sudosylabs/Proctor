@@ -9,22 +9,25 @@ package config
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
-func TestLoginIdentityAttemptLimitIsBoundedByTheOtherLoginLimits(t *testing.T) {
+func TestLoginAccountFailureDelayIsBounded(t *testing.T) {
 	t.Parallel()
 
 	require.NoError(t, Default().Validate())
-	for _, maximum := range []int{0, 9, 1_000_001} {
+	for _, failures := range []int{0, 10_001} {
 		cfg := Default()
-		cfg.Authentication.LoginRateLimit.MaximumIdentityAttempts = maximum
+		cfg.Authentication.LoginRateLimit.AccountFailuresBeforeDelay = failures
 		err := cfg.Validate()
-		require.Error(t, err, "MaximumIdentityAttempts=%d: Validate()", maximum)
-		require.Contains(t, err.Error(), "authentication.login_rate_limit.maximum_identity_attempts:", "MaximumIdentityAttempts=%d: Validate()", maximum)
+		require.ErrorContains(t, err, "authentication.login_rate_limit.account_failures_before_delay:", "AccountFailuresBeforeDelay=%d", failures)
 	}
-	cfg := Default()
-	cfg.Authentication.LoginRateLimit.MaximumIdentityAttempts = cfg.Authentication.LoginRateLimit.MaximumAttempts
-	require.NoError(t, cfg.Validate())
+	for _, delay := range []time.Duration{0, 249 * time.Millisecond, 31 * time.Second} {
+		cfg := Default()
+		cfg.Authentication.LoginRateLimit.MaximumAccountFailureDelay = Duration{Duration: delay}
+		err := cfg.Validate()
+		require.ErrorContains(t, err, "authentication.login_rate_limit.maximum_account_failure_delay:", "MaximumAccountFailureDelay=%s", delay)
+	}
 }

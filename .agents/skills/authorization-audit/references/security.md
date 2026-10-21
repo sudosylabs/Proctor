@@ -38,10 +38,13 @@ extend it, so continued guessing cannot keep a victim's counter alive
 indefinitely. Multi-dimension attempts increment each applicable
 counter sequentially before evaluating the combined limit. Cache failure fails
 closed, including a failure after an earlier dimension was incremented. A
-successful password login clears only its combined identity/source counter;
-the account-wide counter continues to bound attempts spread across sources
-against one account, and the source-wide counter continues to protect against
-attempts spread across identities. Changing these dimensions, ordering, window semantics, or reset
+successful password login clears its combined identity/source counter and its
+account-failure count; the source-wide counter continues to protect against
+attempts spread across identities. Local login never hard-refuses a correct
+password on account-wide evidence: failed verifications of one resolved account
+(an unresolved identifier counts as itself) only earn a bounded progressive
+delay taken before password work, so attempts sent by others cannot lock the
+account out. Changing these dimensions, ordering, window semantics, or reset
 behavior is a security-policy change rather than an implementation refactor.
 
 ## Examination containment and integrity

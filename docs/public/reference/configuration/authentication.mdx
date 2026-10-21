@@ -65,16 +65,25 @@ and refresh pressure. The absolute lifetime is always the final ceiling.
 Both limiters count attempts in fixed windows that start at a counter's first
 attempt; continued attempts never extend a window, so repeated guessing cannot
 keep an account locked indefinitely. The per-source ceiling cannot be lower than
-the per-account ceiling. Login also has an account-wide ceiling shared by every
-source, so spreading guesses across many addresses cannot multiply the attempts
-allowed against one account.
+the per-account ceiling.
+
+Login also slows guessing spread across many addresses without letting anyone
+lock an account out. Failed password checks against one account count together
+from every source and through both its username and email address. Once they
+reach `AccountFailuresBeforeDelay` in the window, each further login for that
+account waits 250 ms, doubling with each failure up to
+`MaximumAccountFailureDelay`, before its password is checked. The wait applies
+to a correct password too, but never refuses it, and a successful login clears
+the count. An identifier that matches no account waits by the same rule, so the
+delay does not reveal whether an account exists.
 
 | Path and default | Meaning and accepted value |
 | --- | --- |
 | `Authentication.LoginRateLimit.Window`<br />Default: `1m` | Fixed login-attempt window. Must be between `1s` and `24h`. |
 | `Authentication.LoginRateLimit.MaximumAttempts`<br />Default: `10` | Maximum attempts associated with one account key from one source in the window. Must be between `1` and `10000`. |
-| `Authentication.LoginRateLimit.MaximumIdentityAttempts`<br />Default: `50` | Maximum attempts associated with one account key from all sources together in the window. Must be between `MaximumAttempts` and `1000000`. |
 | `Authentication.LoginRateLimit.MaximumSourceAttempts`<br />Default: `1000` | Maximum attempts from one source in the window. Must be between `MaximumAttempts` and `1000000`. |
+| `Authentication.LoginRateLimit.AccountFailuresBeforeDelay`<br />Default: `5` | Failed password checks against one account, from all sources together in the window, before its logins are delayed. Must be between `1` and `10000`. |
+| `Authentication.LoginRateLimit.MaximumAccountFailureDelay`<br />Default: `4s` | Longest delay applied to one login for an account with failed password checks. Must be between `250ms` and `30s`. |
 | `Authentication.AccountRecovery.EmailVerificationTTL`<br />Default: `24h` | Lifetime of an email-verification credential. Must be between `5m` and `720h`. |
 | `Authentication.AccountRecovery.PasswordResetTTL`<br />Default: `1h` | Lifetime of a password-reset credential. Must be between `5m` and `24h`. |
 | `Authentication.AccountRecovery.RateLimit.Window`<br />Default: `15m` | Fixed recovery-attempt window. Must be between `1s` and `24h`. |

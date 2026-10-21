@@ -151,8 +151,9 @@
     "LoginRateLimit": {
       "Window": "1m",
       "MaximumAttempts": 10,
-      "MaximumIdentityAttempts": 50,
-      "MaximumSourceAttempts": 1000
+      "MaximumSourceAttempts": 1000,
+      "AccountFailuresBeforeDelay": 5,
+      "MaximumAccountFailureDelay": "4s"
     },
     "AccountRecovery": {
       "EmailVerificationTTL": "24h",

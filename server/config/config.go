@@ -167,10 +167,11 @@ func Default() Config {
 			},
 			RecentAuthenticationTTL: Duration{Duration: 15 * time.Minute},
 			LoginRateLimit: LoginRateLimit{
-				Window:                  Duration{Duration: time.Minute},
-				MaximumAttempts:         10,
-				MaximumIdentityAttempts: 50,
-				MaximumSourceAttempts:   1000,
+				Window:                     Duration{Duration: time.Minute},
+				MaximumAttempts:            10,
+				MaximumSourceAttempts:      1000,
+				AccountFailuresBeforeDelay: 5,
+				MaximumAccountFailureDelay: Duration{Duration: 4 * time.Second},
 			},
 			AccountRecovery: AccountRecovery{
 				EmailVerificationTTL: Duration{Duration: 24 * time.Hour},

@@ -34,12 +34,16 @@ type Sessions struct {
 }
 
 // LoginRateLimit bounds local login attempts in fixed windows by account and
-// source together, by account alone across every source, and by source alone.
+// source together and by source alone. Failed password verifications against
+// one account from every source slow further attempts against it by a delay
+// that starts after AccountFailuresBeforeDelay failures and doubles up to
+// MaximumAccountFailureDelay; the delay never refuses a correct password.
 type LoginRateLimit struct {
-	Window                  Duration `json:"Window"`
-	MaximumAttempts         int      `json:"MaximumAttempts"`
-	MaximumIdentityAttempts int      `json:"MaximumIdentityAttempts"`
-	MaximumSourceAttempts   int      `json:"MaximumSourceAttempts"`
+	Window                     Duration `json:"Window"`
+	MaximumAttempts            int      `json:"MaximumAttempts"`
+	MaximumSourceAttempts      int      `json:"MaximumSourceAttempts"`
+	AccountFailuresBeforeDelay int      `json:"AccountFailuresBeforeDelay"`
+	MaximumAccountFailureDelay Duration `json:"MaximumAccountFailureDelay"`
 }
 
 // AttemptRateLimit bounds attempts in fixed windows by one identity and by
@@ -173,9 +177,12 @@ func validateAuthentication(authentication Authentication, add func(string, stri
 			MaximumSourceAttempts: rateLimit.MaximumSourceAttempts,
 		}, add,
 	)
-	if rateLimit.MaximumIdentityAttempts < rateLimit.MaximumAttempts ||
-		rateLimit.MaximumIdentityAttempts > 1_000_000 {
-		add("authentication.login_rate_limit.maximum_identity_attempts", "must be between maximum_attempts and 1000000")
+	if rateLimit.AccountFailuresBeforeDelay < 1 || rateLimit.AccountFailuresBeforeDelay > 10_000 {
+		add("authentication.login_rate_limit.account_failures_before_delay", "must be between 1 and 10000")
+	}
+	if rateLimit.MaximumAccountFailureDelay.Duration < 250*time.Millisecond ||
+		rateLimit.MaximumAccountFailureDelay.Duration > 30*time.Second {
+		add("authentication.login_rate_limit.maximum_account_failure_delay", "must be between 250ms and 30s")
 	}
 
 	recovery := authentication.AccountRecovery

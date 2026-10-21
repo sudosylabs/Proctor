@@ -101,10 +101,11 @@ func applicationDependencies(
 			MaximumPerUser:         auth.Sessions.MaximumPerUser,
 		},
 		LoginRateLimit: app.LoginRateLimitPolicy{
-			Window:                  auth.LoginRateLimit.Window.Duration,
-			MaximumAttempts:         auth.LoginRateLimit.MaximumAttempts,
-			MaximumIdentityAttempts: auth.LoginRateLimit.MaximumIdentityAttempts,
-			MaximumSourceAttempts:   auth.LoginRateLimit.MaximumSourceAttempts,
+			Window:                     auth.LoginRateLimit.Window.Duration,
+			MaximumAttempts:            auth.LoginRateLimit.MaximumAttempts,
+			MaximumSourceAttempts:      auth.LoginRateLimit.MaximumSourceAttempts,
+			AccountFailuresBeforeDelay: auth.LoginRateLimit.AccountFailuresBeforeDelay,
+			MaximumAccountFailureDelay: auth.LoginRateLimit.MaximumAccountFailureDelay.Duration,
 		},
 		PersonalAccessToken: app.PersonalAccessTokenPolicy{
 			MinimumLifetime:        auth.PersonalAccessTokens.MinimumLifetime.Duration,

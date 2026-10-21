@@ -177,7 +177,8 @@ func TestAuthenticationAndRealtimeRetainOnlyNarrowSiblingPorts(t *testing.T) {
 	for index := 0; index < authenticationType.NumField(); index++ {
 		field := authenticationType.Field(index)
 		require.NotEqual(t, realtimePointerType, field.Type, "authenticationService retains realtimeService in field %q", field.Name)
-		if field.Type.Kind() == reflect.Func && field.Name != "now" {
+		// now and wait are clock primitives, not sibling callbacks.
+		if field.Type.Kind() == reflect.Func && field.Name != "now" && field.Name != "wait" {
 			require.Equal(t, "newCredential", field.Name)
 		}
 	}
