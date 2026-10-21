@@ -279,6 +279,14 @@ func retireSubmissionIntegrity(ctx context.Context, tx *sqlxTxWrapper, id model.
 	return nil
 }
 
+// workOutcomeRetirement removes the retry outcomes that cite a retired
+// Submission's work. Every disjunct is served by an audit index, so
+// PostgreSQL combines them with a bitmap OR instead of scanning every audit
+// event for each retired Submission.
+const workOutcomeRetirement = `DELETE FROM command_outcomes WHERE operation <> '` + store.ExamExportCreateOperation + `' AND original_audit_event_id IN (SELECT e.id FROM audit_events e JOIN exam_submissions sub ON sub.id=?
+ WHERE (e.resource_type='submission' AND e.resource_id=sub.id) OR e.result->>'workspace_id'=sub.workspace_id OR
+ e.result->>'exam_attempt_workspace_id'=sub.workspace_id OR e.result->>'exam_submission_id'=sub.id OR e.result->>'exam_attempt_id'=sub.exam_attempt_id)`
+
 func retireSubmissionWork(ctx context.Context, tx *sqlxTxWrapper, retirement *model.RetentionRetirement, at time.Time) error {
 	id := retirement.Scope.SubmissionID.String()
 	// Content metadata already carries the immutable managed object identity;
@@ -294,9 +302,7 @@ func retireSubmissionWork(ctx context.Context, tx *sqlxTxWrapper, retirement *mo
 		`DELETE FROM exam_attempt_workspace_entries WHERE workspace_id=(SELECT workspace_id FROM exam_submissions WHERE id=?)`,
 		`DELETE FROM exam_attempt_workspace_journal WHERE workspace_id=(SELECT workspace_id FROM exam_submissions WHERE id=?)`,
 		`DELETE FROM exam_attempt_workspace_objects WHERE workspace_id=(SELECT workspace_id FROM exam_submissions WHERE id=?) AND storage_origin='starter'`,
-		`DELETE FROM command_outcomes WHERE operation <> '` + store.ExamExportCreateOperation + `' AND original_audit_event_id IN (SELECT e.id FROM audit_events e JOIN exam_submissions sub ON sub.id=?
-		 WHERE (e.resource_type='submission' AND e.resource_id=sub.id) OR e.result->>'workspace_id'=sub.workspace_id OR
-		 e.result->>'exam_attempt_workspace_id'=sub.workspace_id OR e.result->>'exam_submission_id'=sub.id OR e.result->>'exam_attempt_id'=sub.exam_attempt_id)`,
+		workOutcomeRetirement,
 	}
 	for _, query := range queries {
 		if _, err = tx.Exec(ctx, query, id); err != nil {

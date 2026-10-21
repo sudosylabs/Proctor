@@ -3397,6 +3397,27 @@ CREATE INDEX audit_events_resource_type_resource_id_created_at_id_idx
     ON audit_events (resource_type, resource_id, created_at DESC, id DESC);
 CREATE INDEX audit_events_status_created_at_id_idx
     ON audit_events (created_at, id) WHERE status = 'attempt';
+-- Retention retirement deletes the retry outcomes of one Attempt, Workspace,
+-- Submission or delivery stream through the identities their audit results
+-- record. Each key is indexed only where present.
+CREATE INDEX audit_events_result_exam_attempt_id_idx
+    ON audit_events ((result->>'exam_attempt_id')) WHERE (result->>'exam_attempt_id') IS NOT NULL;
+CREATE INDEX audit_events_result_workspace_id_idx
+    ON audit_events ((result->>'workspace_id')) WHERE (result->>'workspace_id') IS NOT NULL;
+CREATE INDEX audit_events_result_exam_attempt_workspace_id_idx
+    ON audit_events ((result->>'exam_attempt_workspace_id')) WHERE (result->>'exam_attempt_workspace_id') IS NOT NULL;
+CREATE INDEX audit_events_result_exam_submission_id_idx
+    ON audit_events ((result->>'exam_submission_id')) WHERE (result->>'exam_submission_id') IS NOT NULL;
+CREATE INDEX audit_events_result_stream_id_idx
+    ON audit_events ((result->>'stream_id')) WHERE (result->>'stream_id') IS NOT NULL;
+CREATE INDEX audit_events_result_source_session_id_idx
+    ON audit_events ((result->>'source_session_id')) WHERE (result->>'source_session_id') IS NOT NULL;
+-- PostgreSQL does not estimate from partial expression indexes, so the same
+-- expressions carry statistics that keep these lookups on their indexes.
+CREATE STATISTICS audit_events_result_identity_stats
+    ON (result->>'exam_attempt_id'), (result->>'workspace_id'), (result->>'exam_attempt_workspace_id'),
+       (result->>'exam_submission_id'), (result->>'stream_id'), (result->>'source_session_id')
+    FROM audit_events;
 
 ALTER TABLE external_login_states
     ADD CONSTRAINT external_login_states_audit_event_id_fkey

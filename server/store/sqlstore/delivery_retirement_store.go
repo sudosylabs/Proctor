@@ -94,7 +94,10 @@ func retireSubmissionSecurityOperational(ctx context.Context, tx *sqlxTxWrapper,
 			return err
 		}
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM command_outcomes WHERE (operation IN (?,?) AND user_id=(SELECT candidate_user_id FROM exam_attempts WHERE id=?) AND original_audit_event_id IN (SELECT id FROM audit_events WHERE resource_id=(SELECT exam_sitting_id FROM exam_attempts WHERE id=?))) OR (operation=? AND original_audit_event_id IN (SELECT id FROM audit_events WHERE result->>'exam_attempt_id'=?))`, store.SecurityPreflightPrepareOperation, store.SecurityPreflightReportOperation, attempt.String(), attempt.String(), store.ExamAttemptConnectOperation, attempt.String()); err != nil {
+	if _, err = tx.Exec(ctx, preflightOutcomeRetirement, store.SecurityPreflightPrepareOperation, store.SecurityPreflightReportOperation, attempt.String(), attempt.String()); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, connectOutcomeRetirement, store.ExamAttemptConnectOperation, attempt.String()); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM exam_security_preflights WHERE attempt_id=? OR (candidate_user_id=(SELECT candidate_user_id FROM exam_attempts WHERE id=?) AND sitting_id=(SELECT exam_sitting_id FROM exam_attempts WHERE id=?))`, attempt.String(), attempt.String(), attempt.String()); err != nil {
@@ -117,8 +120,8 @@ func deleteDeliveryRetryCopies(ctx context.Context, tx *sqlxTxWrapper, attempt m
 	if browser {
 		operations = []string{store.BrowserDeliveryAppendOperation, store.BrowserDeliveryGapsOperation, store.BrowserDeliveryFinalOperation, store.BrowserDeliverySummaryOperation}
 	}
-	for _, op := range operations {
-		if _, err := tx.Exec(ctx, `DELETE FROM command_outcomes WHERE operation=? AND original_audit_event_id IN (SELECT id FROM audit_events WHERE result->>'stream_id' IN (SELECT delivery_stream_id FROM exam_attempt_security_owners WHERE exam_attempt_id=?) OR result->>'source_session_id' IN (SELECT source_session_id::text FROM browser_delivery_retired_sources WHERE exam_attempt_id=?))`, op, attempt.String(), attempt.String()); err != nil {
+	for _, query := range []string{streamOutcomeRetirement, sourceSessionOutcomeRetirement} {
+		if _, err := tx.Exec(ctx, query, operations[0], operations[1], operations[2], operations[3], attempt.String()); err != nil {
 			return err
 		}
 	}
@@ -126,6 +129,19 @@ func deleteDeliveryRetryCopies(ctx context.Context, tx *sqlxTxWrapper, attempt m
 	if browser {
 		family = "browser"
 	}
-	_, err := tx.Exec(ctx, `DELETE FROM command_outcomes WHERE operation=? AND original_audit_event_id IN (SELECT id FROM audit_events WHERE result->>'exam_attempt_id'=? AND result->>'family'=?)`, store.DeliveryStopDetailsOperation, attempt.String(), family)
+	_, err := tx.Exec(ctx, deliveryStopOutcomeRetirement, store.DeliveryStopDetailsOperation, attempt.String(), family)
 	return err
 }
+
+// Retirement removes the retry outcomes that still cite a retired Attempt's
+// delivery or admission. Each statement reaches audit_events through one index
+// (the candidate's command key, or one audited result identity): an OR across
+// two lookups would scan every audit event for each retired Submission.
+const (
+	preflightOutcomeRetirement = `DELETE FROM command_outcomes co WHERE co.operation IN (?,?) AND co.user_id=(SELECT candidate_user_id FROM exam_attempts WHERE id=?)
+  AND EXISTS(SELECT 1 FROM audit_events a WHERE a.id=co.original_audit_event_id AND a.resource_id=(SELECT exam_sitting_id FROM exam_attempts WHERE id=?))`
+	connectOutcomeRetirement       = `DELETE FROM command_outcomes WHERE operation=? AND original_audit_event_id IN (SELECT id FROM audit_events WHERE result->>'exam_attempt_id'=?)`
+	streamOutcomeRetirement        = `DELETE FROM command_outcomes WHERE operation IN (?,?,?,?) AND original_audit_event_id IN (SELECT id FROM audit_events WHERE result->>'stream_id' IN (SELECT delivery_stream_id FROM exam_attempt_security_owners WHERE exam_attempt_id=?))`
+	sourceSessionOutcomeRetirement = `DELETE FROM command_outcomes WHERE operation IN (?,?,?,?) AND original_audit_event_id IN (SELECT id FROM audit_events WHERE result->>'source_session_id' IN (SELECT source_session_id::text FROM browser_delivery_retired_sources WHERE exam_attempt_id=?))`
+	deliveryStopOutcomeRetirement  = `DELETE FROM command_outcomes WHERE operation=? AND original_audit_event_id IN (SELECT id FROM audit_events WHERE result->>'exam_attempt_id'=? AND result->>'family'=?)`
+)

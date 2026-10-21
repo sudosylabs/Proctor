@@ -87,6 +87,8 @@ module when a change is not server-only. No module has been released yet.
 - Server: profile-picture and Exam Resource JPEGs with more than 32 scans are
   rejected before decoding, so a small progressive file can no longer hold a
   content permit for minutes.
+- Server: retiring a Submission finds the retry outcomes that cite it through
+  indexes, so retirement no longer scans every audit event per Submission.
 - Server: a retention policy preview counts audit expiry in one set-based pass
   instead of probing every side table per audit event, so previews finish
   within the query timeout at any audit volume.
