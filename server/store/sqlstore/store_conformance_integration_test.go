@@ -1497,6 +1497,26 @@ func TestExamAttemptManualSuspensionStore(t *testing.T) {
 	StoreTestWithAuthenticationPolicy(t, nil, storetest.TestExamAttemptManualSuspensionStore)
 }
 
+func TestExamAttemptManualSuspensionBounds(t *testing.T) {
+	StoreTestWithAuthenticationPolicy(t, nil, func(t *testing.T, ss store.Store) {
+		sqlStore, ok := ss.(*SQLStore)
+		require.True(t, ok)
+		storetest.TestExamAttemptManualSuspensionBounds(t, ss, storetest.ExamAttemptManualSuspensionSQLProbe{
+			SetParticipationLeaseExpired: examAttemptSQLProbe(t, sqlStore).SetParticipationLeaseExpired,
+			PassSittingScheduledEnd: func(t *testing.T, ctx context.Context, id model.ExamSittingID) {
+				t.Helper()
+				result, err := sqlStore.GetMaster().Exec(ctx, `UPDATE exam_sittings
+					SET scheduled_end_at=GREATEST(scheduled_start_at+INTERVAL '1 microsecond',statement_timestamp()-INTERVAL '1 second')
+					WHERE id=?`, id.String())
+				require.NoError(t, err)
+				affected, err := result.RowsAffected()
+				require.NoError(t, err)
+				require.Equal(t, int64(1), affected, "pass Sitting scheduled end affected")
+			},
+		})
+	})
+}
+
 func TestAdministratorRecoveryStore(t *testing.T) {
 	PristineStoreTest(t, func(t *testing.T, persistence store.Store) {
 		sqlPersistence := persistence.(*SQLStore)

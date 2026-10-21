@@ -70,6 +70,11 @@ module when a change is not server-only. No module has been released yet.
   (`Authentication.LoginRateLimit.AccountFailuresBeforeDelay` and
   `MaximumAccountFailureDelay`). The delay never refuses a correct password,
   so other people's failures cannot lock an account out.
+- Server: Exam Managers can manually suspend an active Attempt before the
+  Sitting's scheduled end. A kick after the candidate's lease lapsed records
+  that Connection Loss instead and fails with `exam.attempt.connection_lost`.
+- Server: local login attempts are also bounded per account across all
+  sources (`Authentication.LoginRateLimit.MaximumIdentityAttempts`).
 - Server: `Server.TrustedProxies` names the reverse proxies whose forwarded
   client address and request ID are accepted.
 - VFS: `FileSystem.CheckRoot` checks that the backend root (the local root

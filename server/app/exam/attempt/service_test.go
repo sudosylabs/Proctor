@@ -1673,6 +1673,7 @@ type attemptStoreFake struct {
 	managerOptions                  store.ExamAttemptManagerListOptions
 	managerRows                     []store.ExamAttemptManagerSnapshot
 	managerSuspension               *store.ExamAttemptSuspensionView
+	latestParticipation             *store.ExamAttemptParticipationView
 	renew                           *store.ExamAttemptParticipationRenewal
 	renewResult                     *store.ExamAttemptParticipationRenewalResult
 	renewErr                        error
@@ -1955,7 +1956,8 @@ func (f *attemptStoreFake) Get(_ context.Context, examID model.ExamID, attemptID
 	if f.attempt == nil || f.attempt.ExamID != examID || f.attempt.ID != attemptID {
 		return nil, errors.New("not configured")
 	}
-	return &store.ExamAttemptManagerSnapshot{Attempt: f.attempt, ActiveSuspension: f.managerSuspension}, nil
+	return &store.ExamAttemptManagerSnapshot{Attempt: f.attempt, ActiveSuspension: f.managerSuspension,
+		LatestParticipation: f.latestParticipation}, nil
 }
 func (f *attemptStoreFake) List(_ context.Context, options store.ExamAttemptManagerListOptions) ([]store.ExamAttemptManagerSnapshot, error) {
 	f.f.order = append(f.f.order, "manager.list")

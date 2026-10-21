@@ -714,6 +714,31 @@ func (s *Service) expireParticipation(ctx context.Context, due store.ExamAttempt
 	return result, nil
 }
 
+// expireLapsedParticipation completes the expiry transition for a generation
+// whose lapse a Store operation refused to act on (a late renewal, a kick),
+// so Connection Loss is recorded exactly as the scanner would record it
+// rather than waiting for its next pass. It returns the caller's stable
+// connection_lost failure once the transition is durable, or once another
+// path already ended the generation.
+func (s *Service) expireLapsedParticipation(ctx context.Context, attemptID model.ExamAttemptID,
+	participationID model.AttemptParticipationID, generation int64, cause error,
+) error {
+	due, err := s.deps.Persistence.ResolveParticipationExpiry(ctx, attemptID, participationID, generation)
+	if err != nil {
+		if store.IsNotFound(err) {
+			return apperror.New("exam.attempt.connection_lost").Wrap(cause)
+		}
+		return storeError(storeErrors, err)
+	}
+	if due == nil || due.AttemptID != attemptID || due.ParticipationID != participationID || due.Generation != generation {
+		return apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent lapsed Participation expiry target"))
+	}
+	if _, err = s.expireParticipation(ctx, *due); err != nil {
+		return err
+	}
+	return apperror.New("exam.attempt.connection_lost").Wrap(cause)
+}
+
 func validExpiryDue(due store.ExamAttemptParticipationExpiryDue) bool {
 	return due.ExamID.IsValid() && due.SittingID.IsValid() && due.ClassID.IsValid() && due.CandidateUserID.IsValid() &&
 		due.AttemptID.IsValid() && due.ParticipationID.IsValid() && due.Generation > 0 && !due.LeaseExpiresAt.IsZero()
@@ -786,20 +811,7 @@ func (s *Service) RenewExamAttemptParticipation(ctx context.Context, invocation 
 	if err != nil {
 		var conflict *store.ErrConflict
 		if errors.As(err, &conflict) && conflict.Constraint == "attempt_participation_expired" {
-			due, resolveErr := s.deps.Persistence.ResolveParticipationExpiry(ctx, command.AttemptID, command.ParticipationID, command.Generation)
-			if resolveErr != nil {
-				if store.IsNotFound(resolveErr) {
-					return ParticipationRenewal{}, apperror.New("exam.attempt.connection_lost").Wrap(err)
-				}
-				return ParticipationRenewal{}, storeError(storeErrors, resolveErr)
-			}
-			if due == nil || due.AttemptID != command.AttemptID || due.ParticipationID != command.ParticipationID || due.Generation != command.Generation {
-				return ParticipationRenewal{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent late-renewal expiry target"))
-			}
-			if _, expireErr := s.expireParticipation(ctx, *due); expireErr != nil {
-				return ParticipationRenewal{}, expireErr
-			}
-			return ParticipationRenewal{}, apperror.New("exam.attempt.connection_lost").Wrap(err)
+			return ParticipationRenewal{}, s.expireLapsedParticipation(ctx, command.AttemptID, command.ParticipationID, command.Generation, err)
 		}
 		return ParticipationRenewal{}, storeError(storeErrors, err)
 	}

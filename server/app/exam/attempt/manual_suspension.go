@@ -47,7 +47,10 @@ type ManualSuspensionResult struct {
 // SuspendExamAttempt authorizes the exact Sitting before reading the Attempt,
 // audits the attempt, and lets the named Store operation end the live
 // generation and open one manual Suspension episode atomically. Effects are
-// published only for a fresh commit.
+// published only for a fresh commit. A kick past the Sitting's scheduled end
+// is refused; a kick of a generation whose lease already lapsed records that
+// Connection Loss through the expiry transition and is refused as
+// connection_lost.
 func (s *Service) SuspendExamAttempt(ctx context.Context, invocation invocation.Invocation, command ManualSuspensionCommand) (_ ManualSuspensionResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	principal := invocation.Principal()
@@ -108,6 +111,18 @@ func (s *Service) SuspendExamAttempt(ctx context.Context, invocation invocation.
 		ActorUserID: principal.UserID, ManagerOverride: override, ExpectedAttemptRevision: command.ExpectedAttemptRevision,
 		PrivateReason: command.PrivateReason, AuditEventID: auditID, AuditAt: model.MillisFromTime(s.deps.Now()),
 	}, idempotency)
+	var conflict *store.ErrConflict
+	if errors.As(err, &conflict) && conflict.Constraint == "attempt_participation_expired" {
+		// The generation lapsed before the kick: that is Connection Loss,
+		// which the kick must not erase. Record it as the scanner would and
+		// refuse the kick with the stable outcome the manager can act on.
+		latest := managerSnapshot.LatestParticipation
+		if latest == nil || !latest.ID.IsValid() || latest.Generation < 1 {
+			return ManualSuspensionResult{}, s.failAudit(ctx, auditID, apperror.New("exam.attempt.connection_lost").Wrap(err))
+		}
+		return ManualSuspensionResult{}, s.failAudit(ctx, auditID,
+			s.expireLapsedParticipation(ctx, command.AttemptID, latest.ID, latest.Generation, err))
+	}
 	if err != nil {
 		return ManualSuspensionResult{}, s.failAudit(ctx, auditID, err)
 	}

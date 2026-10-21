@@ -460,8 +460,14 @@ operation, under PostgreSQL time, ends the active Participation and its open
 Connection as `kicked`, closes native delivery, and opens a `manual` episode
 with the `manager_suspended` candidate reason, the suspending manager, and the
 private reason, but no Integrity Flag or evidence: a Kick is a manager
-control, not suspicion of a violation. The candidate's own Attempt is
-concealed, and exact retry replays the original outcome. Re-allow requires the exact
+control, not suspicion of a violation. PostgreSQL time bounds a Kick as it
+bounds renewal: it is refused once the Sitting's scheduled end is reached, and
+a generation whose lease has already lapsed is Connection Loss, never a Kick.
+The refused Kick runs the same expiry transition the scanner would (end as
+`lease_expired`, evidence, Flag, policy episode) and reports
+`connection_lost`, so a Kick cannot erase Connection Loss evidence. The
+candidate's own Attempt is concealed, and exact retry replays the original
+outcome. Re-allow requires the exact
 Suspension, the expected Attempt revision, and a private trimmed UTF-8 reason
 of 1 to 1,000 characters. It preserves flags and evidence, closes only the
 active episode, resets only the triggering evaluation window, and allows later

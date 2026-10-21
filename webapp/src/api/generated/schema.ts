@@ -2734,7 +2734,7 @@ export interface paths {
         put?: never;
         /**
          * Suspend (kick) one exact active Exam Attempt
-         * @description An Exam Manager's immediate manual control. Ends the active Participation generation as kicked, closes its open Connection, and opens one manual suspension episode without an Integrity Flag. The suspended Attempt denies connections, workspace and exam-material access, and candidate submission until an authorized re-allow. The candidate sees only the safe manager_suspended reason; the private manager reason is retained only in suspension provenance.
+         * @description An Exam Manager's immediate manual control. Ends the active Participation generation as kicked, closes its open Connection, and opens one manual suspension episode without an Integrity Flag. The suspended Attempt denies connections, workspace and exam-material access, and candidate submission until an authorized re-allow. The candidate sees only the safe manager_suspended reason; the private manager reason is retained only in suspension provenance. PostgreSQL time bounds the kick: once the Sitting's scheduled end is reached it fails with exam.attempt.sitting_not_open, and when the generation's lease has already lapsed the server records that Connection Loss (Flag, evidence, and policy suspension) and fails with exam.attempt.connection_lost instead of ending the generation as kicked.
          */
         post: operations["suspendExamAttempt"];
         delete?: never;

@@ -85,6 +85,7 @@ type manualSuspensionAttemptRow struct {
 	CreatedAt           time.Time    `db:"created_at"`
 	UpdatedAt           time.Time    `db:"updated_at"`
 	SubmittedAt         sql.NullTime `db:"submitted_at"`
+	ScheduledEndAt      time.Time    `db:"scheduled_end_at"`
 	Revision            int64        `db:"revision"`
 }
 
@@ -115,7 +116,7 @@ func (row manualSuspensionAttemptRow) domain(attemptID model.ExamAttemptID) (*mo
 }
 
 const manualSuspensionAttemptSelect = `SELECT a.exam_id,a.exam_sitting_id,s.class_id,a.candidate_user_id,a.admission_revision_id,
-	a.state,a.created_at,a.updated_at,a.submitted_at,a.revision
+	a.state,a.created_at,a.updated_at,a.submitted_at,s.scheduled_end_at,a.revision
 	FROM exam_attempts a JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id WHERE a.id=?`
 
 type manualSuspensionParticipationRow struct {
@@ -212,6 +213,16 @@ func suspendExamAttemptByManager(ctx context.Context, tx *sqlxTxWrapper,
 	var at time.Time
 	if err = tx.Get(ctx, &at, `SELECT statement_timestamp()`); err != nil {
 		return zero, fmt.Errorf("read Exam Attempt manual suspension time: %w", err)
+	}
+	// PostgreSQL time decides both bounds, as it does for renewal and Focus
+	// Loss: a kick never suspends past the Sitting's scheduled end, and it
+	// never ends a lapsed generation as kicked. The lapse is Connection Loss,
+	// which only the expiry transition may record; the caller runs it.
+	if !at.Before(attemptRow.ScheduledEndAt) {
+		return zero, store.NewErrConflict("exam_sitting", "exam_sitting_deadline_reached", nil)
+	}
+	if !at.Before(participation.LeaseExpiresAt) {
+		return zero, store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
 	}
 	at = model.TimeUTC(at)
 	if err = model.SuspendExamAttemptByManager(attempt, participation, connection, at); err != nil {

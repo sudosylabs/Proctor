@@ -292,7 +292,11 @@ paths:
         closes its open Connection, and opens one manual suspension episode without an Integrity Flag.
         The suspended Attempt denies connections, workspace and exam-material access, and candidate
         submission until an authorized re-allow. The candidate sees only the safe manager_suspended
-        reason; the private manager reason is retained only in suspension provenance.
+        reason; the private manager reason is retained only in suspension provenance. PostgreSQL time
+        bounds the kick: once the Sitting's scheduled end is reached it fails with
+        exam.attempt.sitting_not_open, and when the generation's lease has already lapsed the server
+        records that Connection Loss (Flag, evidence, and policy suspension) and fails with
+        exam.attempt.connection_lost instead of ending the generation as kicked.
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -310,6 +314,7 @@ paths:
         - exam.attempt.revision_conflict
         - exam.attempt.state_conflict
         - exam.attempt.sitting_not_open
+        - exam.attempt.connection_lost
         - exam.attempt.conflict
         - exam.attempt.unavailable
         - idempotency.key_required

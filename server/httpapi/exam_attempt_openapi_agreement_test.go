@@ -49,7 +49,7 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")
 	suspendCodes := principalMutationContractCodes("request.invalid", "resource.not_found", "exam.attempt.invalid",
 		"exam.attempt.revision_conflict", "exam.attempt.state_conflict", "exam.attempt.sitting_not_open",
-		"exam.attempt.conflict", "exam.attempt.unavailable",
+		"exam.attempt.connection_lost", "exam.attempt.conflict", "exam.attempt.unavailable",
 		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")
 	managerEndCodes := principalMutationContractCodes("request.invalid", "resource.not_found",
 		"exam.attempt.invalid", "exam.attempt.revision_conflict", "exam.attempt.state_conflict",

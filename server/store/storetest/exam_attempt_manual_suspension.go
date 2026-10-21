@@ -133,3 +133,79 @@ func TestExamAttemptManualSuspensionStore(t *testing.T, ss store.Store) {
 	require.ErrorAs(t, err, &conflict, "SuspendAttempt(ready) error")
 	require.Equal(t, "exam_attempt_state", conflict.Constraint, "SuspendAttempt(ready) error")
 }
+
+// ExamAttemptManualSuspensionSQLProbe moves PostgreSQL-owned instants that
+// the shared contract cannot reach: one generation's lease and one Sitting's
+// scheduled end.
+type ExamAttemptManualSuspensionSQLProbe struct {
+	SetParticipationLeaseExpired func(*testing.T, context.Context, model.AttemptParticipationID)
+	PassSittingScheduledEnd      func(*testing.T, context.Context, model.ExamSittingID)
+}
+
+// TestExamAttemptManualSuspensionBounds verifies that PostgreSQL time bounds a
+// kick: a lapsed lease is refused without ending the generation, so the
+// expiry transition still records Connection Loss for it, and a Sitting past
+// its scheduled end refuses the kick.
+func TestExamAttemptManualSuspensionBounds(t *testing.T, ss store.Store, probe ExamAttemptManualSuspensionSQLProbe) {
+	t.Helper()
+	ctx := context.Background()
+	connect := func(fixture examAttemptFixture, key string) *store.ExamAttemptConnectResult {
+		input := &store.ExamAttemptConnect{
+			SittingID: fixture.sitting.ID, CandidateUserID: fixture.candidate.ID,
+			SessionID: fixture.session.ID, DesktopRegistrationID: fixture.session.DesktopRegistrationID,
+			DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(),
+			WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
+			ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()),
+			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis(),
+		}
+		prepareExamAttemptConnect(t, ctx, ss, input)
+		connected, err := ss.ExamAttempt().Connect(ctx, input,
+			examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, key, key))
+		require.NoError(t, err)
+		return connected
+	}
+	kick := func(fixture examAttemptFixture, connected *store.ExamAttemptConnectResult, key string) error {
+		_, err := ss.ExamAttempt().SuspendAttempt(ctx, &store.ExamAttemptManualSuspension{ExamID: fixture.examID,
+			SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID, SuspensionID: model.NewAttemptSuspensionID(),
+			ActorUserID: fixture.manager.ID, ExpectedAttemptRevision: connected.Attempt.Revision,
+			PrivateReason: "candidate left the examination room",
+			AuditEventID:  saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()},
+			examCommand(fixture.manager.ID, store.ExamAttemptSuspendOperation, key, key))
+		return err
+	}
+	requireUnkicked := func(fixture examAttemptFixture, connected *store.ExamAttemptConnectResult) {
+		t.Helper()
+		snapshot, err := ss.ExamAttempt().Get(ctx, fixture.examID, connected.Attempt.ID)
+		require.NoError(t, err)
+		require.Equal(t, model.ExamAttemptActive, snapshot.Attempt.State)
+		require.Equal(t, connected.Attempt.Revision, snapshot.Attempt.Revision)
+		require.Nil(t, snapshot.ActiveSuspension)
+		require.NotNil(t, snapshot.LatestParticipation)
+		require.Equal(t, model.AttemptParticipationActive, snapshot.LatestParticipation.State)
+	}
+
+	lapsed := newExamAttemptFixture(t, ctx, ss)
+	connected := connect(lapsed, "kick-lapsed-connect")
+	probe.SetParticipationLeaseExpired(t, ctx, connected.Participation.ID)
+	requireConflictConstraint(t, kick(lapsed, connected, "kick-lapsed"), "attempt_participation_expired")
+	requireUnkicked(lapsed, connected)
+	due, err := ss.ExamAttempt().ResolveParticipationExpiry(ctx, connected.Attempt.ID, connected.Participation.ID,
+		connected.Participation.Generation)
+	require.NoError(t, err)
+	expired, err := ss.ExamAttempt().ExpireParticipation(ctx, &store.ExamAttemptParticipationExpiry{
+		AttemptID: due.AttemptID, ParticipationID: due.ParticipationID, Generation: due.Generation,
+		EvidenceID: model.NewIntegrityEvidenceID(), FlagID: model.NewIntegrityFlagID(), SuspensionID: model.NewAttemptSuspensionID(),
+		AuditEventID: saveExamAttemptSystemAudit(t, ctx, ss, lapsed).ID, AuditAt: model.GetMillis(),
+	})
+	require.NoError(t, err)
+	require.False(t, expired.Replayed)
+	require.Equal(t, model.AttemptParticipationEndLeaseExpired, expired.Participation.EndReason)
+	require.Equal(t, model.IntegrityPolicyConnectionLoss, expired.Flag.Kind)
+	require.Equal(t, model.AttemptSuspensionSourcePolicy, expired.Suspension.Source)
+
+	late := newExamAttemptFixture(t, ctx, ss)
+	connected = connect(late, "kick-late-connect")
+	probe.PassSittingScheduledEnd(t, ctx, late.sitting.ID)
+	requireConflictConstraint(t, kick(late, connected, "kick-late"), "exam_sitting_deadline_reached")
+	requireUnkicked(late, connected)
+}

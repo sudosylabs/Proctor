@@ -1049,7 +1049,11 @@ type ExamAttemptStore interface {
 	// commits audit and the idempotent outcome atomically using PostgreSQL
 	// time. Exact retries return the retained result after current authority
 	// is rechecked. Stable conflicts are exam_attempt_revision,
-	// exam_attempt_state, and exam_sitting_state; the candidate's own Attempt
+	// exam_attempt_state, exam_sitting_state, exam_sitting_deadline_reached
+	// when PostgreSQL time has reached the Sitting's scheduled end, and
+	// attempt_participation_expired when the active generation's lease has
+	// lapsed: that generation is Connection Loss, never a kick, and the caller
+	// records it through ExpireParticipation. The candidate's own Attempt
 	// and a missing manager relationship are not found.
 	SuspendAttempt(context.Context, *ExamAttemptManualSuspension, *CommandIdempotency) (*ExamAttemptManualSuspensionResult, error)
 	CloseConnection(context.Context, *ExamAttemptConnectionClose) (*ExamAttemptConnectionCloseResult, error)

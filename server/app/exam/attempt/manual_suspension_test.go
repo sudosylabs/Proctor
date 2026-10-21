@@ -163,3 +163,49 @@ func TestReallowAcceptsClosedManualSuspension(t *testing.T) {
 	require.Equal(t, 1, f.effects.reallowed, "Reallow(manual) = %#v", result)
 	require.Equal(t, managerID, result.Suspension.ReallowedByUserID, "Reallow(manual) = %#v", result)
 }
+
+func TestSuspendByManagerRecordsLapsedLeaseAsConnectionLossInsteadOfKick(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	useManagerCall(f)
+	f.persistence.attempt, _ = managerAttemptFixture(t, f, model.ExamAttemptActive, 3, "")
+	due := expiryDueFixture(f)
+	f.persistence.latestParticipation = &store.ExamAttemptParticipationView{ID: due.ParticipationID, AttemptID: f.attemptID,
+		State: model.AttemptParticipationActive, Generation: due.Generation, StartedAt: f.at.Add(-time.Hour), UpdatedAt: f.at.Add(-time.Minute),
+		LeaseExpiresAt: due.LeaseExpiresAt}
+	f.persistence.manualSuspensionErr = store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
+	f.persistence.resolvedExpiry = &due
+	f.persistence.expireResult = expiryResultFixture(t, f, due, false)
+	_, err := f.service.SuspendExamAttempt(context.Background(), f.invocation, ManualSuspensionCommand{ExamID: f.sitting.ExamID,
+		SittingID: f.sitting.ID, AttemptID: f.attemptID, ExpectedAttemptRevision: 3,
+		PrivateReason: "candidate left the examination room", IdempotencyKey: "kick-key"})
+	var fault *apperror.Error
+	require.ErrorAs(t, err, &fault, "error=%v order=%v", err, f.order)
+	require.Equal(t, "exam.attempt.connection_lost", fault.Code(), "error=%v order=%v", err, f.order)
+	require.Equal(t, fault.Code(), f.audit.failedCode, "error=%v order=%v", err, f.order)
+	require.NotNil(t, f.persistence.expireInput, "the lapsed generation was not expired")
+	require.Equal(t, due.ParticipationID, f.persistence.expireInput.ParticipationID)
+	require.Equal(t, due.Generation, f.persistence.expireInput.Generation)
+	require.Equal(t, 1, f.effects.expired, "error=%v order=%v", err, f.order)
+	require.Equal(t, 0, f.effects.kicked, "error=%v order=%v", err, f.order)
+	// Contract (guardrails 8 and 14): the refused kick stays audited as
+	// failed, and the expiry audit begins before its commit and effect.
+	ordertest.RequireInOrder(t, f.order, "audit", "suspend", "system.audit", "expiry.commit", "effect.expire")
+}
+
+func TestSuspendByManagerRefusesPastScheduledEnd(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	useManagerCall(f)
+	f.persistence.attempt, _ = managerAttemptFixture(t, f, model.ExamAttemptActive, 3, "")
+	f.persistence.manualSuspensionErr = store.NewErrConflict("exam_sitting", "exam_sitting_deadline_reached", nil)
+	_, err := f.service.SuspendExamAttempt(context.Background(), f.invocation, ManualSuspensionCommand{ExamID: f.sitting.ExamID,
+		SittingID: f.sitting.ID, AttemptID: f.attemptID, ExpectedAttemptRevision: 3,
+		PrivateReason: "candidate left the examination room", IdempotencyKey: "kick-key"})
+	var fault *apperror.Error
+	require.ErrorAs(t, err, &fault, "error=%v order=%v", err, f.order)
+	require.Equal(t, "exam.attempt.sitting_not_open", fault.Code(), "error=%v order=%v", err, f.order)
+	require.Equal(t, fault.Code(), f.audit.failedCode)
+	require.Nil(t, f.persistence.expireInput)
+	require.Equal(t, 0, f.effects.kicked)
+}
