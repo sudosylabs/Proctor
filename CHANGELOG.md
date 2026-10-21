@@ -206,6 +206,10 @@ module when a change is not server-only. No module has been released yet.
   the page's last object.
 - Mail: relay TLS, STARTTLS, and authentication failures classify as
   temporary rather than permanent.
+- Server: file purge shares each batch between the FileRevision, Starter
+  Workspace, and Attempt Workspace phases and continues through successor
+  Jobs while work remains, instead of 50 objects a day in which a FileRevision
+  backlog starved workspace cleanup.
 - VFS: the local backend fsyncs parent directories after publishing, moving,
   or removing a file and after creating directories, so a completed operation
   survives a crash.

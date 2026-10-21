@@ -96,11 +96,12 @@ func NewCatalog(deps CatalogDependencies) Catalog {
 	if now == nil {
 		now = time.Now
 	}
-	purgeHandler := newFilePurgeExpiredContentHandler(
-		deps.Files, deps.FileContent,
-		deps.StarterWorkspaces, deps.StarterWorkspaceContent,
-		deps.AttemptWorkspaces, deps.AttemptWorkspaceContent,
-	)
+	purgeHandler := filePurgeExpiredContentHandler{
+		files: deps.Files, content: deps.FileContent,
+		starterWorkspace: deps.StarterWorkspaces, starterWorkspaceContent: deps.StarterWorkspaceContent,
+		attemptWorkspace: deps.AttemptWorkspaces, attemptWorkspaceContent: deps.AttemptWorkspaceContent,
+		continuations: deps.JobStore, now: now,
+	}
 	descriptors := []jobengine.Descriptor{
 		defaultProfilePictureDescriptor(defaultProfilePictureHandler{generator: deps.DefaultProfilePictureGenerator}),
 		defaultProfilePictureReconciliationDescriptor(defaultProfilePictureReconciliationHandler{users: deps.Users, defaults: deps.DefaultProfilePictureJobs, now: now}),

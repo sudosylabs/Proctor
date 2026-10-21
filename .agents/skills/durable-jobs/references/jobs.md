@@ -195,7 +195,12 @@ The initial registered work covers:
 - `profile_picture.generate_default`, deduplicated by user ID;
 - `profile_picture.reconcile_defaults`, a bounded recovery/backfill batch;
 - `file.purge_expired_content`, a bounded cleanup of expired Upload Leases,
-  partial renditions, and retention-eligible archived content;
+  partial renditions, retention-eligible archived content, and released
+  Starter and Attempt Workspace objects. Each workspace phase gets an equal
+  share of the batch before the FileRevision phase takes the rest, so no phase
+  starves another; when a phase examines its whole allowance, the Job enqueues
+  one continuation, deduplicated permanently on its own ID, that resumes the
+  FileRevision cursor with a fresh batch;
 - delayed and recovery-driven Exam Sitting lifecycle work, plus bounded
   non-cancelable sealing of Closing Sittings; and
 - ordinary bounded Exam Sitting mail expansion, with a stable User cursor,
