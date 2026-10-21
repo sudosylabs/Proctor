@@ -1126,7 +1126,6 @@ CREATE TABLE exam_revisions (
     )
 );
 
-CREATE INDEX exam_revisions_exam_id_number_idx ON exam_revisions (exam_id, number DESC);
 
 CREATE TABLE exam_revision_resources (
     exam_revision_id varchar(26) NOT NULL,
@@ -1408,8 +1407,6 @@ CREATE TABLE class_members (
 CREATE UNIQUE INDEX class_members_one_active_class_per_period_key
     ON class_members (user_id, academic_period_id)
     WHERE archived_at IS NULL AND end_at IS NULL;
-CREATE INDEX class_members_class_id_idx
-    ON class_members (class_id) WHERE archived_at IS NULL;
 CREATE INDEX class_members_current_class_user_idx
     ON class_members (class_id, user_id, start_at, end_at)
     WHERE archived_at IS NULL;
@@ -3749,9 +3746,6 @@ CREATE TABLE cluster_discovery_nodes (
     CONSTRAINT cluster_discovery_nodes_advertise_address_check
         CHECK (char_length(btrim(advertise_address)) > 0)
 );
-
-CREATE INDEX cluster_discovery_nodes_expires_at_idx
-    ON cluster_discovery_nodes (expires_at);
 
 CREATE INDEX cluster_discovery_nodes_expires_at_node_id_idx
     ON cluster_discovery_nodes (expires_at, node_id);

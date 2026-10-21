@@ -127,7 +127,7 @@ var prefixServedForeignKeys = map[foreignKeyColumns]string{
 	{"browser_activity_sources", "connection_id,exam_attempt_id,participation_id"}:                            "participation_id",     // browser_activity_sources_participation_id_start_ordinal_key(participation_id,start_ordinal)
 	{"browser_activity_sources", "exam_attempt_id,exam_id,exam_sitting_id"}:                                   "exam_attempt_id",      // browser_activity_sources_attempt_started_id_idx(exam_attempt_id,started_at,id)
 	{"browser_activity_sources", "participation_id,exam_attempt_id"}:                                          "participation_id",     // browser_activity_sources_participation_id_start_ordinal_key(participation_id,start_ordinal)
-	{"class_members", "class_id,academic_period_id"}:                                                          "class_id",             // class_members_class_id_idx(class_id)
+	{"class_members", "class_id,academic_period_id"}:                                                          "class_id",             // class_members_class_user_history_idx(class_id,user_id,start_at,end_at,archived_at)
 	{"exam_attempt_connections", "participation_id,exam_attempt_id"}:                                          "exam_attempt_id",      // exam_attempt_connections_one_open_attempt_key(exam_attempt_id)
 	{"exam_attempt_correction_acknowledgements", "exam_id,exam_sitting_id"}:                                   "exam_sitting_id",      // exam_attempt_correction_ack_sitting_attempt_idx(exam_sitting_id,exam_attempt_id,correction_revision_id)
 	{"exam_attempt_focus_loss_evaluations", "integrity_flag_id,exam_attempt_id,generation"}:                   "exam_attempt_id",      // exam_attempt_focus_loss_evaluations_pkey(exam_attempt_id,generation)
