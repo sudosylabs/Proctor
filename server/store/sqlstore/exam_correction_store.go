@@ -602,7 +602,7 @@ func applyExamCorrection(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 		if err = requireExamResourceAffected(result, 1, "exam_correction_resource_stage"); err != nil {
 			return nil, err
 		}
-		result, err = tx.Exec(ctx, `UPDATE upload_leases SET consumed_at=?,updated_at=GREATEST(updated_at,?),revision=revision+1,bytes_received=? WHERE id=? AND consumed_at IS NULL`, databaseNow, databaseNow, stage.Rendition.Size, stage.UploadLeaseID.String())
+		result, err = tx.Exec(ctx, `UPDATE upload_leases SET consumed_at=GREATEST(created_at,?),updated_at=GREATEST(updated_at,?),revision=revision+1,bytes_received=? WHERE id=? AND consumed_at IS NULL`, databaseNow, databaseNow, stage.Rendition.Size, stage.UploadLeaseID.String())
 		if err != nil {
 			return nil, err
 		}
@@ -616,7 +616,7 @@ func applyExamCorrection(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 		if err = requireExamResourceAffected(result, 1, "exam_correction_resource_stage"); err != nil {
 			return nil, err
 		}
-		result, err = tx.Exec(ctx, `UPDATE exam_correction_resource_stages SET state='consumed',consumed_at=? WHERE id=? AND state='ready'`, databaseNow, stage.ID.String())
+		result, err = tx.Exec(ctx, `UPDATE exam_correction_resource_stages SET state='consumed',consumed_at=GREATEST(ready_at,?) WHERE id=? AND state='ready'`, databaseNow, stage.ID.String())
 		if err != nil {
 			return nil, err
 		}

@@ -695,7 +695,7 @@ func (s sqlExamSittingStore) CompleteMailExpansion(ctx context.Context, input *s
 				input.OccurrenceID.String()); err != nil {
 				return nil, translateError("mail_fanout_bundle", input.OccurrenceID.String(), err)
 			}
-			if _, err = tx.Exec(ctx, `UPDATE exam_sitting_mail_fanouts SET bundle_id=NULL,completed_at=?,terminal_reason='completed'
+			if _, err = tx.Exec(ctx, `UPDATE exam_sitting_mail_fanouts SET bundle_id=NULL,completed_at=GREATEST(created_at,?),terminal_reason='completed'
 				WHERE occurrence_id=? AND bundle_id=? AND completed_at IS NULL`, now, input.OccurrenceID.String(), bundle.ID); err != nil {
 				return nil, fmt.Errorf("complete Sitting mail fan-out: %w", err)
 			}
@@ -706,7 +706,7 @@ func (s sqlExamSittingStore) CompleteMailExpansion(ctx context.Context, input *s
 				return nil, err
 			}
 			fanout.Bundle = nil
-			fanout.CompletedAt = model.OptionalTimeFrom(now)
+			fanout.CompletedAt = model.OptionalTimeFrom(latestTime(fanout.Occurrence.CreatedAt, now))
 			return fanout, nil
 		})
 	if err != nil {
@@ -834,7 +834,7 @@ func terminalizeSittingMailExpansion(ctx context.Context, tx *sqlxTxWrapper, occ
 			return false, err
 		}
 	}
-	if _, err := tx.Exec(ctx, `UPDATE exam_sitting_mail_fanouts SET bundle_id=NULL,completed_at=?,terminal_reason=?
+	if _, err := tx.Exec(ctx, `UPDATE exam_sitting_mail_fanouts SET bundle_id=NULL,completed_at=GREATEST(created_at,?),terminal_reason=?
 		WHERE occurrence_id=? AND completed_at IS NULL`, now, reason, occurrenceID.String()); err != nil {
 		return false, fmt.Errorf("terminalize Sitting mail expansion: %w", err)
 	}

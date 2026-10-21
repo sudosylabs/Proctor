@@ -839,7 +839,7 @@ func supersedeActiveSittingMailFanouts(ctx context.Context, tx *sqlxTxWrapper, s
 				return err
 			}
 		}
-		if _, err = tx.Exec(ctx, `UPDATE exam_sitting_mail_fanouts SET bundle_id=NULL,completed_at=?,terminal_reason='superseded'
+		if _, err = tx.Exec(ctx, `UPDATE exam_sitting_mail_fanouts SET bundle_id=NULL,completed_at=GREATEST(created_at,?),terminal_reason='superseded'
 			WHERE occurrence_id=? AND completed_at IS NULL`, model.TimeUTC(at), row.OccurrenceID); err != nil {
 			return fmt.Errorf("complete superseded Sitting mail fan-out: %w", err)
 		}

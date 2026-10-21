@@ -266,14 +266,14 @@ func finalizeExamResourceUpload(ctx context.Context, tx *sqlxTxWrapper, input *s
 	if err = requireExamResourceAffected(result, 1, "file_revision_changed"); err != nil {
 		return nil, err
 	}
-	result, err = tx.Exec(ctx, `UPDATE upload_leases SET consumed_at=?,updated_at=?,revision=revision+1,bytes_received=? WHERE id=? AND consumed_at IS NULL`, input.ChangedAt, input.ChangedAt, r.Size, input.LeaseID.String())
+	result, err = tx.Exec(ctx, `UPDATE upload_leases SET consumed_at=GREATEST(created_at,?),updated_at=GREATEST(updated_at,?),revision=revision+1,bytes_received=? WHERE id=? AND consumed_at IS NULL`, input.ChangedAt, input.ChangedAt, r.Size, input.LeaseID.String())
 	if err != nil {
 		return nil, err
 	}
 	if err = requireExamResourceAffected(result, 1, "upload_lease_changed"); err != nil {
 		return nil, err
 	}
-	result, err = tx.Exec(ctx, `UPDATE file_entries SET current_revision_id=?,updated_at=?,revision=revision+1 WHERE id=?`, r.RevisionID.String(), input.ChangedAt, input.Resource.FileEntryID.String())
+	result, err = tx.Exec(ctx, `UPDATE file_entries SET current_revision_id=?,updated_at=GREATEST(updated_at,?),revision=revision+1 WHERE id=?`, r.RevisionID.String(), input.ChangedAt, input.Resource.FileEntryID.String())
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +288,7 @@ func finalizeExamResourceUpload(ctx context.Context, tx *sqlxTxWrapper, input *s
 			return nil, fmt.Errorf("attach exam resource: %w", translateError("exam_resource", input.Resource.ID.String(), err))
 		}
 	} else {
-		result, err = tx.Exec(ctx, `UPDATE exam_resources SET selected_file_revision_id=?,updated_at=? WHERE exam_id=? AND id=? AND archived_at IS NULL`, r.RevisionID.String(), input.ChangedAt, input.ExamID.String(), input.Resource.ID.String())
+		result, err = tx.Exec(ctx, `UPDATE exam_resources SET selected_file_revision_id=?,updated_at=GREATEST(updated_at,?) WHERE exam_id=? AND id=? AND archived_at IS NULL`, r.RevisionID.String(), input.ChangedAt, input.ExamID.String(), input.Resource.ID.String())
 		if err != nil {
 			return nil, err
 		}
@@ -447,7 +447,7 @@ func (s SQLExamResourceStore) Reorder(ctx context.Context, input *store.ExamReso
 				return reorderOutcome{}, err
 			}
 			for position, id := range input.ResourceIDs {
-				result, err = tx.Exec(ctx, `UPDATE exam_resources SET position=?,updated_at=? WHERE exam_id=? AND id=? AND archived_at IS NULL`, position, input.ChangedAt, input.ExamID.String(), id.String())
+				result, err = tx.Exec(ctx, `UPDATE exam_resources SET position=?,updated_at=GREATEST(updated_at,?) WHERE exam_id=? AND id=? AND archived_at IS NULL`, position, input.ChangedAt, input.ExamID.String(), id.String())
 				if err != nil {
 					return reorderOutcome{}, err
 				}
@@ -533,7 +533,7 @@ func (s SQLExamResourceStore) Remove(ctx context.Context, input *store.ExamResou
 			if err != nil {
 				return nil, fmt.Errorf("read exam resource affected rows: %w", err)
 			}
-			result, err = tx.Exec(ctx, `UPDATE exam_resources SET position=position-101,updated_at=? WHERE exam_id=? AND archived_at IS NULL AND position>?`, input.ChangedAt, input.ExamID.String(), 100+current.Resource.Position)
+			result, err = tx.Exec(ctx, `UPDATE exam_resources SET position=position-101,updated_at=GREATEST(updated_at,?) WHERE exam_id=? AND archived_at IS NULL AND position>?`, input.ChangedAt, input.ExamID.String(), 100+current.Resource.Position)
 			if err != nil {
 				return nil, err
 			}

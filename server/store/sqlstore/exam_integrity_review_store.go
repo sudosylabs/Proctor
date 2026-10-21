@@ -641,7 +641,9 @@ func (s *SQLExamIntegrityReviewStore) PrepareRelease(ctx context.Context, submis
 		if err = tx.Get(ctx, &databaseNow, `SELECT statement_timestamp()`); err != nil {
 			return nil, fmt.Errorf("read Student Result release time: %w", err)
 		}
-		releaseAt := model.TimeFromMillis(model.MillisFromTime(databaseNow))
+		// PostgreSQL time chooses the release instant, raised to the Review's own
+		// lifecycle so a node-clock finalization never postdates its release.
+		releaseAt := resultReleaseInstant(databaseNow, review)
 		if replayed {
 			return &store.ExamIntegrityReviewReleasePreparation{Replayed: true, ReleaseAt: releaseAt}, nil
 		}
@@ -1141,7 +1143,7 @@ func releaseReview(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamInte
 	if preparation.SubmissionID != input.SubmissionID.String() ||
 		preparation.ExpectedReviewRevision != input.ExpectedReviewRevision ||
 		!releaseAt.Equal(model.TimeFromMillis(input.AuditAt)) || !releaseAt.Equal(input.ChangedAt) ||
-		releaseAt.After(model.TimeUTC(databaseNow)) {
+		releaseAt.After(resultReleaseInstant(databaseNow, review)) {
 		return examIntegrityReviewOutcome{}, store.NewErrConflict("submission_review", "result_release_time", nil)
 	}
 	if auth.CandidateUserID != input.CandidateUserID || recipient.Revision != input.ExpectedRecipientRevision {
@@ -1173,6 +1175,12 @@ func releaseReview(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamInte
 		return examIntegrityReviewOutcome{}, err
 	}
 	return out, nil
+}
+
+// resultReleaseInstant is the millisecond Student Result release instant for
+// PostgreSQL time: never earlier than the Review lifecycle it follows.
+func resultReleaseInstant(databaseNow time.Time, review *model.SubmissionReview) time.Time {
+	return transitionInstant(databaseNow, review.CreatedAt, review.UpdatedAt, review.FinalizedAt.Time)
 }
 
 type resultReleasePreparationRow struct {

@@ -332,9 +332,9 @@ func getExamManager(ctx context.Context, tx *sqlxTxWrapper, examID model.ExamID,
 }
 
 func completeExamManagerMutation(ctx context.Context, tx *sqlxTxWrapper, exam *model.Exam, manager *model.ExamManager, input *store.ExamManagerMutation) (*store.ExamManagerCommandResult, error) {
-	exam.UpdatedAt = model.TimeFromMillis(input.ChangedAt)
+	exam.UpdatedAt = latestTime(exam.UpdatedAt, model.TimeFromMillis(input.ChangedAt))
 	exam.Revision++
-	result, err := tx.Exec(ctx, `UPDATE exams SET owner_user_id = ?, updated_at = ?, revision = ? WHERE id = ? AND revision = ?`,
+	result, err := tx.Exec(ctx, `UPDATE exams SET owner_user_id = ?, updated_at = GREATEST(updated_at, ?), revision = ? WHERE id = ? AND revision = ?`,
 		exam.OwnerUserID.String(), exam.UpdatedAt, exam.Revision, exam.ID.String(), input.ExpectedRevision)
 	if err != nil {
 		return nil, fmt.Errorf("update Exam management revision: %w", err)
