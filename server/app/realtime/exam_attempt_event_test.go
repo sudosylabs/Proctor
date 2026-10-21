@@ -70,9 +70,9 @@ func TestExamAttemptSuspensionAndReallowEventsSeparateCandidateAndManagerPayload
 	privateReason := "manager verified secure continuity"
 	at := time.Date(2026, time.August, 18, 9, 5, 0, 0, time.UTC)
 	candidateSuspended, err := NewCandidateExamAttemptSuspendedEvent(sittingID, attemptID, candidateID,
-		model.AttemptSuspensionCandidateReasonSecureContinuityLost, at)
+		model.AttemptSuspensionSourcePolicy, model.AttemptSuspensionCandidateReasonSecureContinuityLost, at)
 	require.NoError(t, err)
-	managerSuspended, err := NewExamAttemptSuspendedEvent(sittingID, attemptID, candidateID, connectionID, flagID, suspensionID, 2, at)
+	managerSuspended, err := NewExamAttemptPolicySuspendedEvent(sittingID, attemptID, candidateID, connectionID, flagID, suspensionID, 2, at)
 	require.NoError(t, err)
 	candidateReallowed, err := NewCandidateExamAttemptReallowedEvent(sittingID, attemptID, candidateID, at.Add(time.Minute))
 	require.NoError(t, err)
@@ -111,7 +111,7 @@ func TestExamAttemptSuspensionAndReallowEventsSeparateCandidateAndManagerPayload
 func TestCandidateExamAttemptSuspendedEventAcceptsFocusPolicyReviewReason(t *testing.T) {
 	t.Parallel()
 	event, err := NewCandidateExamAttemptSuspendedEvent(model.NewExamSittingID(), model.NewExamAttemptID(),
-		model.NewUserID(), model.AttemptSuspensionCandidateReasonFocusLossPolicy, time.Now().UTC())
+		model.NewUserID(), model.AttemptSuspensionSourcePolicy, model.AttemptSuspensionCandidateReasonFocusLossPolicy, time.Now().UTC())
 	require.NoError(t, err)
 	var data map[string]any
 	err = json.Unmarshal(event.Data, &data)
@@ -224,4 +224,49 @@ func assertCandidateSittingEvent(t *testing.T, event RealtimeEvent, name string,
 	require.Equal(t, model.ActionExamSittingParticipate, event.Action)
 	require.Equal(t, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, event.Resource)
 	require.NoError(t, event.ValidateForPublish())
+}
+
+func TestExamAttemptSuspendedEventsValidateProvenancePerSource(t *testing.T) {
+	t.Parallel()
+	sittingID, attemptID, candidateID := model.NewExamSittingID(), model.NewExamAttemptID(), model.NewUserID()
+	connectionID, flagID, suspensionID := model.NewAttemptConnectionID(), model.NewIntegrityFlagID(), model.NewAttemptSuspensionID()
+	at := time.Date(2026, time.August, 18, 9, 5, 0, 0, time.UTC)
+
+	_, err := NewExamAttemptPolicySuspendedEvent(sittingID, attemptID, candidateID, connectionID, "", suspensionID, 2, at)
+	require.Error(t, err, "policy suspension without its Integrity Flag")
+	_, err = NewExamAttemptPolicySuspendedEvent(sittingID, attemptID, candidateID, "", flagID, suspensionID, 2, at)
+	require.Error(t, err, "policy suspension without its Connection")
+
+	kicked, err := NewExamAttemptKickedEvent(sittingID, attemptID, candidateID, "", suspensionID, 2, at)
+	require.NoError(t, err, "kick of a reconnecting candidate")
+	var data map[string]any
+	require.NoError(t, json.Unmarshal(kicked.Data, &data))
+	require.NotContains(t, data, "integrity_flag_id")
+	require.NotContains(t, data, "attempt_connection_id")
+	kicked, err = NewExamAttemptKickedEvent(sittingID, attemptID, candidateID, connectionID, suspensionID, 2, at)
+	require.NoError(t, err)
+	data = nil
+	require.NoError(t, json.Unmarshal(kicked.Data, &data))
+	require.Equal(t, connectionID.String(), data["attempt_connection_id"])
+	require.NotContains(t, data, "integrity_flag_id")
+
+	for _, test := range []struct {
+		name   string
+		source model.AttemptSuspensionSource
+		reason model.AttemptSuspensionCandidateReason
+		valid  bool
+	}{
+		{"policy continuity", model.AttemptSuspensionSourcePolicy, model.AttemptSuspensionCandidateReasonSecureContinuityLost, true},
+		{"policy focus", model.AttemptSuspensionSourcePolicy, model.AttemptSuspensionCandidateReasonFocusLossPolicy, true},
+		{"manual kick", model.AttemptSuspensionSourceManual, model.AttemptSuspensionCandidateReasonManagerSuspended, true},
+		{"policy claiming a kick", model.AttemptSuspensionSourcePolicy, model.AttemptSuspensionCandidateReasonManagerSuspended, false},
+		{"kick claiming policy", model.AttemptSuspensionSourceManual, model.AttemptSuspensionCandidateReasonSecureContinuityLost, false},
+		{"unknown source", "", model.AttemptSuspensionCandidateReasonManagerSuspended, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := NewCandidateExamAttemptSuspendedEvent(sittingID, attemptID, candidateID, test.source, test.reason, at)
+			require.Equal(t, test.valid, err == nil, "error = %v", err)
+		})
+	}
 }

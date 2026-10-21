@@ -509,11 +509,18 @@ func NewCandidateExamAttemptWorkspaceChangedEvent(sittingID model.ExamSittingID,
 		Data: data}, nil
 }
 
+// NewCandidateExamAttemptSuspendedEvent tells the candidate their Attempt is
+// suspended with the safe reason that belongs to the episode's source: a
+// policy reason for automatic enforcement, manager_suspended for a kick.
 func NewCandidateExamAttemptSuspendedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID,
-	candidateID model.UserID, reason model.AttemptSuspensionCandidateReason, changedAt time.Time,
+	candidateID model.UserID, source model.AttemptSuspensionSource, reason model.AttemptSuspensionCandidateReason,
+	changedAt time.Time,
 ) (RealtimeEvent, error) {
-	if !reason.IsValid() {
-		return RealtimeEvent{}, errors.New("candidate Exam Attempt suspension event requires a safe reason")
+	switch {
+	case source == model.AttemptSuspensionSourcePolicy && reason.IsPolicy():
+	case source == model.AttemptSuspensionSourceManual && reason == model.AttemptSuspensionCandidateReasonManagerSuspended:
+	default:
+		return RealtimeEvent{}, errors.New("candidate Exam Attempt suspension event requires the safe reason of its source")
 	}
 	return newCandidateExamAttemptAccessEvent("exam_attempt_access_suspended", sittingID, attemptID, candidateID,
 		model.ExamAttemptSuspended, string(reason), changedAt)
@@ -542,15 +549,41 @@ func newCandidateExamAttemptAccessEvent(name string, sittingID model.ExamSitting
 		Resource: model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, Data: data}, nil
 }
 
-// NewExamAttemptSuspendedEvent announces a suspension to Sitting viewers. A
-// policy episode names its Integrity Flag; a manual episode (an Exam Manager's
-// kick) has none, and a kicked reconnecting candidate has no Connection.
-func NewExamAttemptSuspendedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID, candidateID model.UserID,
+// NewExamAttemptPolicySuspendedEvent announces an automatic policy
+// suspension (Connection Loss or Focus Loss) to Sitting viewers. Policy
+// enforcement always links its Integrity Flag and the Connection the
+// enforced generation held, so both are required.
+func NewExamAttemptPolicySuspendedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID, candidateID model.UserID,
+	connectionID model.AttemptConnectionID, flagID model.IntegrityFlagID, suspensionID model.AttemptSuspensionID,
+	revision int64, changedAt time.Time,
+) (RealtimeEvent, error) {
+	if !connectionID.IsValid() || !flagID.IsValid() {
+		return RealtimeEvent{}, errors.New("policy Exam Attempt suspension event requires its Connection and Integrity Flag")
+	}
+	return newExamAttemptSuspendedEvent(sittingID, attemptID, candidateID, connectionID, flagID, suspensionID, revision, changedAt)
+}
+
+// NewExamAttemptKickedEvent announces an Exam Manager's kick to Sitting
+// viewers. A kick is a manager control, not suspicion, so it links no
+// Integrity Flag; connectionID is zero when the kicked generation had no
+// open Connection (a reconnecting candidate).
+func NewExamAttemptKickedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID, candidateID model.UserID,
+	connectionID model.AttemptConnectionID, suspensionID model.AttemptSuspensionID, revision int64, changedAt time.Time,
+) (RealtimeEvent, error) {
+	if !connectionID.IsValid() && !connectionID.IsZero() {
+		return RealtimeEvent{}, errors.New("manual Exam Attempt suspension event requires a valid Connection when present")
+	}
+	return newExamAttemptSuspendedEvent(sittingID, attemptID, candidateID, connectionID, "", suspensionID, revision, changedAt)
+}
+
+// newExamAttemptSuspendedEvent builds the exam_attempt_suspended payload;
+// attempt_connection_id and integrity_flag_id are omitted when absent, as the
+// source-specific constructors allow.
+func newExamAttemptSuspendedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID, candidateID model.UserID,
 	connectionID model.AttemptConnectionID, flagID model.IntegrityFlagID, suspensionID model.AttemptSuspensionID,
 	revision int64, changedAt time.Time,
 ) (RealtimeEvent, error) {
 	if !sittingID.IsValid() || !attemptID.IsValid() || !candidateID.IsValid() ||
-		(!connectionID.IsValid() && !connectionID.IsZero()) || (!flagID.IsValid() && !flagID.IsZero()) ||
 		!suspensionID.IsValid() || revision < 1 || changedAt.IsZero() {
 		return RealtimeEvent{}, errors.New("manager Exam Attempt suspension event requires valid bounded metadata")
 	}

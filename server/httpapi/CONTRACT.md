@@ -1418,6 +1418,21 @@ trimmed private manager reason with the same retention and redaction rules.
 It ends the active Participation and its open Connection as `kicked` and opens
 one manual suspension episode (`source` `manual`, safe candidate reason
 `manager_suspended`, no `flag_id`). The same re-allow operation closes it.
+PostgreSQL time bounds it: it fails with `exam.attempt.sitting_not_open` once
+the Sitting's scheduled end is reached, and with `exam.attempt.connection_lost`
+after recording Connection Loss when the generation's lease had already lapsed.
+
+Suspension provenance is source-specific on the wire. In HTTP suspension
+objects `flag_id` is present exactly for a `policy` episode and
+`suspended_by_user_id` exactly for a `manual` one. The Sitting viewers'
+`exam_attempt_suspended` realtime event carries `exam_sitting_id`,
+`exam_attempt_id`, `candidate_user_id`, `suspension_id`, `attempt_revision`
+and `changed_at`; a policy suspension (Connection Loss or Focus Loss) also
+always carries `integrity_flag_id` and `attempt_connection_id`, while a kick
+never carries `integrity_flag_id` and carries `attempt_connection_id` only when
+it closed an open Connection. The candidate's `exam_attempt_access_suspended`
+event names only the safe `reason_code` of its source: a policy reason for
+automatic enforcement, `manager_suspended` for a kick.
 
 The OpenAPI document describes the wire contract only. It does not generate or
 dictate domain models, application commands, persistence rows, or handlers.

@@ -392,13 +392,13 @@ func (e examAttemptRealtimeEffects) BrowserActivityGapChanged(ctx context.Contex
 }
 
 func (e examAttemptRealtimeEffects) ParticipationExpired(ctx context.Context, result examattempt.ParticipationExpiry) error {
-	managerEvent, err := apprealtime.NewExamAttemptSuspendedEvent(result.SittingID, result.Attempt.ID, result.CandidateUserID,
+	managerEvent, err := apprealtime.NewExamAttemptPolicySuspendedEvent(result.SittingID, result.Attempt.ID, result.CandidateUserID,
 		result.Connection.ID, result.Flag.ID, result.Suspension.ID, result.Attempt.Revision, result.DatabaseTime)
 	if err != nil {
 		return err
 	}
 	candidateEvent, err := apprealtime.NewCandidateExamAttemptSuspendedEvent(result.SittingID, result.Attempt.ID,
-		result.CandidateUserID, result.Suspension.CandidateReason, result.DatabaseTime)
+		result.CandidateUserID, result.Suspension.Source, result.Suspension.CandidateReason, result.DatabaseTime)
 	if err != nil {
 		return err
 	}
@@ -439,13 +439,13 @@ func (e examAttemptRealtimeEffects) AttemptSuspendedByManager(ctx context.Contex
 	if result.Connection != nil {
 		connectionID = result.Connection.ID
 	}
-	managerEvent, err := apprealtime.NewExamAttemptSuspendedEvent(result.SittingID, result.Attempt.ID, result.CandidateUserID,
-		connectionID, "", result.Suspension.ID, result.Attempt.Revision, result.Suspension.StartedAt)
+	managerEvent, err := apprealtime.NewExamAttemptKickedEvent(result.SittingID, result.Attempt.ID, result.CandidateUserID,
+		connectionID, result.Suspension.ID, result.Attempt.Revision, result.Suspension.StartedAt)
 	if err != nil {
 		return err
 	}
 	candidateEvent, err := apprealtime.NewCandidateExamAttemptSuspendedEvent(result.SittingID, result.Attempt.ID,
-		result.CandidateUserID, result.Suspension.CandidateReason, result.Suspension.StartedAt)
+		result.CandidateUserID, result.Suspension.Source, result.Suspension.CandidateReason, result.Suspension.StartedAt)
 	if err != nil {
 		return err
 	}
@@ -501,14 +501,14 @@ func (e examAttemptRealtimeEffects) FocusLossEvaluated(ctx context.Context, resu
 		events = append(events, event)
 	}
 	if result.SuspensionCreated {
-		managerEvent, err := apprealtime.NewExamAttemptSuspendedEvent(result.SittingID, result.AttemptID,
+		managerEvent, err := apprealtime.NewExamAttemptPolicySuspendedEvent(result.SittingID, result.AttemptID,
 			result.CandidateUserID, result.Connection.ID, result.Flag.ID, result.Suspension.ID,
 			result.Attempt.Revision, result.ReceivedAt)
 		if err != nil {
 			return err
 		}
 		candidateEvent, err := apprealtime.NewCandidateExamAttemptSuspendedEvent(result.SittingID, result.AttemptID,
-			result.CandidateUserID, result.Suspension.CandidateReason, result.ReceivedAt)
+			result.CandidateUserID, result.Suspension.Source, result.Suspension.CandidateReason, result.ReceivedAt)
 		if err != nil {
 			return err
 		}

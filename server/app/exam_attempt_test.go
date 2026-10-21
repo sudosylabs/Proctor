@@ -136,7 +136,7 @@ func TestParticipationExpiryEffectPublishesCloseManagerSuspensionAndCandidateSus
 			OpenedAt: at.Add(-time.Minute), ClosedAt: model.OptionalTimeFrom(at), CloseReason: model.AttemptConnectionCloseLeaseExpired},
 		ConnectionClosed: true,
 		Flag:             model.IntegrityFlag{ID: model.NewIntegrityFlagID()},
-		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(),
+		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(), Source: model.AttemptSuspensionSourcePolicy,
 			CandidateReason: model.AttemptSuspensionCandidateReasonSecureContinuityLost}}
 	require.NoError(t, (examAttemptRealtimeEffects{realtime: realtime}).ParticipationExpired(context.Background(), result))
 	sink.mu.Lock()
@@ -305,7 +305,7 @@ func TestFocusLossSuspensionEffectPublishesCloseFlagAndSeparatedSuspensions(t *t
 		Connection: store.ExamAttemptManagerConnection{ID: model.NewAttemptConnectionID(), State: model.AttemptConnectionClosed,
 			OpenedAt: at.Add(-time.Minute), ClosedAt: model.OptionalTimeFrom(at), CloseReason: model.AttemptConnectionClosePolicySuspended},
 		Attempt: model.ExamAttempt{Revision: 2}, SuspensionCreated: true,
-		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(), FlagID: flagID,
+		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(), Source: model.AttemptSuspensionSourcePolicy, FlagID: flagID,
 			CandidateReason: model.AttemptSuspensionCandidateReasonFocusLossPolicy}}
 	require.NoError(t, (examAttemptRealtimeEffects{realtime: realtime}).FocusLossEvaluated(context.Background(), result))
 	sink.mu.Lock()
@@ -342,7 +342,7 @@ func TestParticipationExpiryEffectOmitsDuplicateCloseAfterTransportTeardown(t *t
 		Connection: store.ExamAttemptManagerConnection{ID: model.NewAttemptConnectionID(), State: model.AttemptConnectionClosed,
 			OpenedAt: at.Add(-time.Minute), ClosedAt: model.OptionalTimeFrom(at.Add(-time.Second)), CloseReason: model.AttemptConnectionCloseTransport},
 		Flag: model.IntegrityFlag{ID: model.NewIntegrityFlagID()},
-		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(),
+		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(), Source: model.AttemptSuspensionSourcePolicy,
 			CandidateReason: model.AttemptSuspensionCandidateReasonSecureContinuityLost}}
 	require.NoError(t, (examAttemptRealtimeEffects{realtime: realtime}).ParticipationExpired(context.Background(), result))
 	sink.mu.Lock()
