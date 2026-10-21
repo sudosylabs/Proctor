@@ -167,6 +167,9 @@ module when a change is not server-only. No module has been released yet.
 - Server: forwarded client identity is trusted only from configured proxies,
   HSTS is sent when the server terminates TLS, and transport refusals answer
   with Problem Details.
+- Server: Workspace file content is served with `Content-Security-Policy:
+  sandbox`, and HTML, XML, and SVG media types as plain text, so authored
+  content cannot render as an application page.
 - Server: every inbound WebSocket frame is rate-limited, and HTTP and WebSocket
   share origin normalization.
 - Server: candidate answers are no longer spooled to the temporary directory,

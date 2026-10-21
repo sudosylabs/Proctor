@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -1474,7 +1475,7 @@ func (m examAttemptHTTPModule) openSubmissionFile(request operationRequest) (pro
 	if err != nil {
 		return protocolResult{}, err
 	}
-	return candidateAttemptContentResult(request, opened, `"`+opened.SHA256+`"`)
+	return candidateAttemptContentResult(request, opened, `"`+opened.SHA256+`"`, untrustedWorkspaceContentHeaders)
 }
 
 func managedSubmissionQuery(request operationRequest) (app.GetExamSubmissionQuery, error) {
@@ -1673,7 +1674,7 @@ func (m examAttemptHTTPModule) openResource(request operationRequest) (protocolR
 	if err != nil {
 		return protocolResult{}, err
 	}
-	return candidateAttemptContentResult(request, opened, `"`+opened.SHA256+`"`)
+	return candidateAttemptContentResult(request, opened, `"`+opened.SHA256+`"`, nil)
 }
 
 func (m examAttemptHTTPModule) openWorkspaceFile(request operationRequest) (protocolResult, error) {
@@ -1689,15 +1690,47 @@ func (m examAttemptHTTPModule) openWorkspaceFile(request operationRequest) (prot
 	if err != nil {
 		return protocolResult{}, err
 	}
-	return candidateAttemptContentResult(request, opened, `"`+opened.ContentVersion.String()+`"`)
+	return candidateAttemptContentResult(request, opened, `"`+opened.ContentVersion.String()+`"`, untrustedWorkspaceContentHeaders)
 }
 
-func candidateAttemptContentResult(request operationRequest, opened app.OpenedExamAttemptContent, etag string) (protocolResult, error) {
+// untrustedWorkspaceContentHeaders keeps Workspace bytes, whose media type an
+// author chose, from rendering as an application page. A media type that a
+// browser renders as an active document (HTML, XML, or SVG) is served as plain
+// text, and the sandbox policy gives any rendering an opaque origin with no
+// scripts or form submission. The content stays inline: the protected clients
+// read it with fetch and take its authored media type from the metadata.
+func untrustedWorkspaceContentHeaders(headers http.Header) {
+	headers.Set("Content-Type", passiveWorkspaceMediaType(headers.Get("Content-Type")))
+	headers.Set("Content-Security-Policy", "sandbox")
+}
+
+// passiveWorkspaceMediaType returns mediaType unless a browser would render it
+// as an active document, in which case it returns plain text.
+func passiveWorkspaceMediaType(mediaType string) string {
+	parsed, _, err := mime.ParseMediaType(mediaType)
+	if err != nil {
+		return "application/octet-stream"
+	}
+	switch {
+	case parsed == "text/html", parsed == "text/xml", parsed == "text/xsl",
+		parsed == "application/xml", strings.HasSuffix(parsed, "+xml"):
+		return "text/plain; charset=utf-8"
+	default:
+		return mediaType
+	}
+}
+
+func candidateAttemptContentResult(request operationRequest, opened app.OpenedExamAttemptContent, etag string,
+	untrusted func(http.Header),
+) (protocolResult, error) {
 	if opened.Body == nil || opened.SizeBytes < 0 || strings.TrimSpace(opened.MediaType) == "" || etag == `""` {
 		return protocolResult{}, errors.New("Exam Attempt application returned incomplete content")
 	}
 	headers := privateNoStoreHeaders()
 	headers.Set("Content-Type", opened.MediaType)
+	if untrusted != nil {
+		untrusted(headers)
+	}
 	headers.Set("ETag", etag)
 	if etagMatches(request.request.Header.Get("If-None-Match"), etag) {
 		_ = opened.Body.Close()

@@ -387,6 +387,7 @@ func TestManagerSubmissionReadManifestAndFileArePurposeSpecificAndProtected(t *t
 	require.Equal(t, "private, no-store", response.Header().Get("Cache-Control"), "content=%d headers=%v query=%#v body", response.Code, response.Header(), fake.submissionOpen)
 	require.Equal(t, `"`+entry.SHA256+`"`, response.Header().Get("ETag"), "content=%d headers=%v query=%#v body", response.Code, response.Header(), fake.submissionOpen)
 	require.Empty(t, response.Header().Get("Content-Disposition"), "content=%d headers=%v query=%#v body", response.Code, response.Header(), fake.submissionOpen)
+	require.Contains(t, response.Header().Values("Content-Security-Policy"), "sandbox", "authored content renders with an opaque origin")
 	require.Equal(t, entry.EntryID, fake.submissionOpen.EntryID, "content=%d headers=%v query=%#v body", response.Code, response.Header(), fake.submissionOpen)
 }
 
@@ -1223,5 +1224,31 @@ func assertNoForbiddenJSONTerms(t *testing.T, body []byte, forbidden ...string) 
 		for _, term := range forbidden {
 			require.NotContains(t, strings.ToLower(text), term, "response exposes %q in %q: %s", term, text, body)
 		}
+	}
+}
+
+func TestWorkspaceContentNeverRendersAsAnActiveDocument(t *testing.T) {
+	t.Parallel()
+
+	for mediaType, want := range map[string]string{
+		"text/x-go":                 "text/x-go",
+		"text/plain; charset=utf-8": "text/plain; charset=utf-8",
+		"image/png":                 "image/png",
+		"application/pdf":           "application/pdf",
+		"text/html":                 "text/plain; charset=utf-8",
+		"Text/HTML; charset=utf-8":  "text/plain; charset=utf-8",
+		"application/xhtml+xml":     "text/plain; charset=utf-8",
+		"image/svg+xml":             "text/plain; charset=utf-8",
+		"application/xml":           "text/plain; charset=utf-8",
+		"text/xml":                  "text/plain; charset=utf-8",
+		"not a media type;;":        "application/octet-stream",
+	} {
+		t.Run(mediaType, func(t *testing.T) {
+			t.Parallel()
+			headers := http.Header{"Content-Type": {mediaType}}
+			untrustedWorkspaceContentHeaders(headers)
+			require.Equal(t, want, headers.Get("Content-Type"))
+			require.Equal(t, "sandbox", headers.Get("Content-Security-Policy"))
+		})
 	}
 }

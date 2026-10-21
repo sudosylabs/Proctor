@@ -250,6 +250,7 @@ func (m examStarterWorkspaceHTTPModule) openFile(request operationRequest) (prot
 	}
 	etag := `"` + opened.SHA256 + `"`
 	headers := http.Header{"Content-Type": {opened.MediaType}, "Cache-Control": {"private, no-store"}, "ETag": {etag}}
+	untrustedWorkspaceContentHeaders(headers)
 	if request.request.Header.Get("If-None-Match") == etag {
 		_ = opened.Body.Close()
 		return notModifiedProtocolResult(opened.SizeBytes).withHeaders(headers), nil

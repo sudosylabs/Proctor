@@ -1094,7 +1094,12 @@ preserves published and admitted content pins. The flag is invalid for files.
 Protected content responses set a strong checksum ETag,
 `X-Content-Type-Options: nosniff`, and no `Content-Disposition` header. Exam
 Resources use `Cache-Control: private, max-age=300`; mutable Starter Workspace
-files use `Cache-Control: private, no-store`. These operations provide only an
+files use `Cache-Control: private, no-store`. Workspace content (Starter
+Workspace, Attempt Workspace, and Submission files) has an author-chosen media
+type, so it also carries `Content-Security-Policy: sandbox`, and a media type
+that browsers render as an active document (HTML, XML, or any `+xml` type such
+as SVG) is served as `text/plain; charset=utf-8`; clients take the authored
+media type from the entry metadata. These operations provide only an
 authorized in-application content stream. Metadata never exposes VFS paths,
 object keys, or public URLs, and the API defines no download/export operation.
 
@@ -1303,7 +1308,8 @@ Candidate Workspace results are ordered by canonical path and entry identity
 ascending. Both catalogs default to 50 and accept at most 200 items, using
 distinct opaque versioned keyset cursors. JSON is `no-store`. Candidate binary
 content is inline, `private, no-store`, `nosniff`, and conditionally readable
-with a strong ETag; it has no `Content-Disposition`, public URL, object key, or
+with a strong ETag; Workspace files follow the sandboxed passive-media rule
+above. It has no `Content-Disposition`, public URL, object key, or
 download/export contract.
 
 Candidate Exam Activity and manager candidate-status collections likewise

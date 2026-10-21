@@ -162,6 +162,7 @@ func TestExamStarterWorkspaceHTTPContentIsInlinePrivateAndConditional(t *testing
 	require.Equal(t, http.StatusOK, response.Code, "response=%d headers=%v body", response.Code, response.Header())
 	require.Equal(t, "protected code", response.Body.String(), "response=%d headers=%v body", response.Code, response.Header())
 	require.Empty(t, response.Header().Get("Content-Disposition"), "response=%d headers=%v body", response.Code, response.Header())
+	require.Contains(t, response.Header().Values("Content-Security-Policy"), "sandbox", "authored content renders with an opaque origin")
 	require.Equal(t, "private, no-store", response.Header().Get("Cache-Control"), "response=%d headers=%v body", response.Code, response.Header())
 	require.Equal(t, etag, response.Header().Get("ETag"), "response=%d headers=%v body", response.Code, response.Header())
 	require.Len(t, response.Header().Values("X-Content-Type-Options"), 1, "response=%d headers=%v body", response.Code, response.Header())
