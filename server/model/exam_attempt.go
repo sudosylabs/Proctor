@@ -8,7 +8,6 @@
 package model
 
 import (
-	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -63,19 +62,19 @@ func (attempt *ExamAttempt) Validate() error {
 	if attempt == nil || !attempt.ID.IsValid() || !attempt.ExamID.IsValid() || !attempt.SittingID.IsValid() ||
 		!attempt.CandidateUserID.IsValid() || !attempt.AdmissionRevisionID.IsValid() || attempt.CreatedAt.IsZero() ||
 		attempt.UpdatedAt.IsZero() || attempt.UpdatedAt.Before(attempt.CreatedAt) || attempt.Revision < 1 {
-		return fmt.Errorf("model: invalid Exam Attempt")
+		return invalidModelError("ExamAttempt.Validate", "exam_attempt", "", "invalid Exam Attempt", "")
 	}
 	switch attempt.State {
 	case ExamAttemptReady, ExamAttemptActive, ExamAttemptSuspended:
 		if attempt.SubmittedAt.Valid {
-			return fmt.Errorf("model: non-submitted Exam Attempt has submitted_at")
+			return invalidModelError("ExamAttempt.Validate", "exam_attempt", "", "non-submitted Exam Attempt has submitted_at", "")
 		}
 	case ExamAttemptSubmitted:
 		if !attempt.SubmittedAt.Valid || attempt.SubmittedAt.Time.IsZero() || attempt.SubmittedAt.Time.Before(attempt.CreatedAt) || attempt.SubmittedAt.Time.After(attempt.UpdatedAt) {
-			return fmt.Errorf("model: invalid submitted Exam Attempt lifecycle")
+			return invalidModelError("ExamAttempt.Validate", "exam_attempt", "", "invalid submitted Exam Attempt lifecycle", "")
 		}
 	default:
-		return fmt.Errorf("model: invalid Exam Attempt state")
+		return invalidModelError("ExamAttempt.Validate", "exam_attempt", "", "invalid Exam Attempt state", "")
 	}
 	return nil
 }
@@ -85,7 +84,7 @@ func (attempt *ExamAttempt) Validate() error {
 // transition atomically.
 func (attempt *ExamAttempt) Suspend(at time.Time) error {
 	if attempt == nil || attempt.State != ExamAttemptActive {
-		return fmt.Errorf("model: Exam Attempt cannot suspend")
+		return invalidModelError("ExamAttempt.Suspend", "exam_attempt", "", "Exam Attempt cannot suspend", "")
 	}
 	candidate := *attempt
 	candidate.State = ExamAttemptSuspended
@@ -103,7 +102,7 @@ func (attempt *ExamAttempt) Suspend(at time.Time) error {
 // is the only transition that can make the Attempt active again.
 func (attempt *ExamAttempt) Reallow(at time.Time) error {
 	if attempt == nil || attempt.State != ExamAttemptSuspended {
-		return fmt.Errorf("model: Exam Attempt cannot be re-allowed")
+		return invalidModelError("ExamAttempt.Reallow", "exam_attempt", "", "Exam Attempt cannot be re-allowed", "")
 	}
 	candidate := *attempt
 	candidate.State = ExamAttemptReady
@@ -120,7 +119,7 @@ func (attempt *ExamAttempt) Reallow(at time.Time) error {
 // registered-key, compatibility, and posture checks have succeeded.
 func (attempt *ExamAttempt) Activate(at time.Time) error {
 	if attempt == nil || attempt.State != ExamAttemptReady {
-		return fmt.Errorf("model: Exam Attempt cannot activate")
+		return invalidModelError("ExamAttempt.Activate", "exam_attempt", "", "Exam Attempt cannot activate", "")
 	}
 	candidate := *attempt
 	candidate.State = ExamAttemptActive
@@ -152,7 +151,7 @@ const (
 	AttemptParticipationEndSittingClosed   AttemptParticipationEndReason = "sitting_closed"
 )
 
-func (reason AttemptParticipationEndReason) isValid() bool {
+func (reason AttemptParticipationEndReason) IsValid() bool {
 	switch reason {
 	case AttemptParticipationEndInterrupted, AttemptParticipationEndLeaseExpired, AttemptParticipationEndPolicySuspended, AttemptParticipationEndKicked,
 		AttemptParticipationEndSubmitted, AttemptParticipationEndManagerEnded, AttemptParticipationEndSittingClosed:
@@ -196,20 +195,20 @@ func (participation *AttemptParticipation) Validate() error {
 		participation.ContinuityCredentialHash != strings.ToLower(participation.ContinuityCredentialHash) ||
 		participation.StartedAt.IsZero() || participation.UpdatedAt.IsZero() || participation.UpdatedAt.Before(participation.StartedAt) ||
 		participation.LeaseExpiresAt.IsZero() || participation.LeaseExpiresAt.Before(participation.StartedAt) {
-		return fmt.Errorf("model: invalid Attempt Participation")
+		return invalidModelError("AttemptParticipation.Validate", "attempt_participation", "", "invalid Attempt Participation", "")
 	}
 	switch participation.State {
 	case AttemptParticipationActive:
 		if participation.EndedAt.Valid || participation.EndReason != "" {
-			return fmt.Errorf("model: active Attempt Participation has end metadata")
+			return invalidModelError("AttemptParticipation.Validate", "attempt_participation", "", "active Attempt Participation has end metadata", "")
 		}
 	case AttemptParticipationEnded:
 		if !participation.EndedAt.Valid || participation.EndedAt.Time.IsZero() || participation.EndedAt.Time.Before(participation.StartedAt) ||
-			participation.EndedAt.Time.After(participation.UpdatedAt) || !participation.EndReason.isValid() {
-			return fmt.Errorf("model: invalid ended Attempt Participation")
+			participation.EndedAt.Time.After(participation.UpdatedAt) || !participation.EndReason.IsValid() {
+			return invalidModelError("AttemptParticipation.Validate", "attempt_participation", "", "invalid ended Attempt Participation", "")
 		}
 	default:
-		return fmt.Errorf("model: invalid Attempt Participation state")
+		return invalidModelError("AttemptParticipation.Validate", "attempt_participation", "", "invalid Attempt Participation state", "")
 	}
 	return nil
 }
@@ -226,11 +225,11 @@ func (participation *AttemptParticipation) IsExpiredAt(at time.Time) bool {
 func (participation *AttemptParticipation) Renew(generation, sequence int64, databaseNow time.Time) (bool, error) {
 	if participation == nil || participation.State != AttemptParticipationActive ||
 		generation != participation.Generation || sequence < 1 || sequence < participation.RenewalSequence {
-		return false, fmt.Errorf("model: Attempt Participation renewal is fenced")
+		return false, invalidModelError("AttemptParticipation.Renew", "attempt_participation", "", "Attempt Participation renewal is fenced", "")
 	}
 	databaseNow = TimeUTC(databaseNow)
 	if databaseNow.IsZero() || databaseNow.Before(participation.UpdatedAt) || participation.IsExpiredAt(databaseNow) {
-		return false, fmt.Errorf("model: Attempt Participation renewal is expired")
+		return false, invalidModelError("AttemptParticipation.Renew", "attempt_participation", "", "Attempt Participation renewal is expired", "")
 	}
 	if sequence == participation.RenewalSequence {
 		return true, nil
@@ -247,8 +246,8 @@ func (participation *AttemptParticipation) Renew(generation, sequence int64, dat
 }
 
 func (participation *AttemptParticipation) End(reason AttemptParticipationEndReason, at time.Time) error {
-	if participation == nil || participation.State != AttemptParticipationActive || !reason.isValid() {
-		return fmt.Errorf("model: Attempt Participation cannot end")
+	if participation == nil || participation.State != AttemptParticipationActive || !reason.IsValid() {
+		return invalidModelError("AttemptParticipation.End", "attempt_participation", "", "Attempt Participation cannot end", "")
 	}
 	candidate := *participation
 	candidate.State = AttemptParticipationEnded
@@ -318,26 +317,26 @@ func NewAttemptConnection(id AttemptConnectionID, attemptID ExamAttemptID, parti
 func (connection *AttemptConnection) Validate() error {
 	if connection == nil || !connection.ID.IsValid() || !connection.AttemptID.IsValid() || !connection.ParticipationID.IsValid() ||
 		!connection.SessionID.IsValid() || connection.OpenedAt.IsZero() {
-		return fmt.Errorf("model: invalid Attempt Connection")
+		return invalidModelError("AttemptConnection.Validate", "attempt_connection", "", "invalid Attempt Connection", "")
 	}
 	switch connection.State {
 	case AttemptConnectionOpen:
 		if connection.ClosedAt.Valid || connection.CloseReason != "" {
-			return fmt.Errorf("model: open Attempt Connection has close metadata")
+			return invalidModelError("AttemptConnection.Validate", "attempt_connection", "", "open Attempt Connection has close metadata", "")
 		}
 	case AttemptConnectionClosed:
 		if !connection.ClosedAt.Valid || connection.ClosedAt.Time.IsZero() || connection.ClosedAt.Time.Before(connection.OpenedAt) || !connection.CloseReason.IsValid() {
-			return fmt.Errorf("model: invalid closed Attempt Connection")
+			return invalidModelError("AttemptConnection.Validate", "attempt_connection", "", "invalid closed Attempt Connection", "")
 		}
 	default:
-		return fmt.Errorf("model: invalid Attempt Connection state")
+		return invalidModelError("AttemptConnection.Validate", "attempt_connection", "", "invalid Attempt Connection state", "")
 	}
 	return nil
 }
 
 func (connection *AttemptConnection) Close(reason AttemptConnectionCloseReason, at time.Time) error {
 	if connection == nil || connection.State != AttemptConnectionOpen || !reason.IsValid() {
-		return fmt.Errorf("model: Attempt Connection cannot close")
+		return invalidModelError("AttemptConnection.Close", "attempt_connection", "", "Attempt Connection cannot close", "")
 	}
 	candidate := *connection
 	candidate.State = AttemptConnectionClosed
@@ -360,7 +359,7 @@ const (
 	IntegrityPolicyBrowserNavigation IntegrityPolicyKind = "browser_navigation"
 )
 
-func (kind IntegrityPolicyKind) isValid() bool {
+func (kind IntegrityPolicyKind) IsValid() bool {
 	return kind == IntegrityPolicyConnectionLoss || kind == IntegrityPolicyFocusLoss || kind == IntegrityPolicyBrowserNavigation
 }
 
@@ -413,25 +412,25 @@ func NewFocusLossEvidence(id IntegrityEvidenceID, signal FocusLossSignal, flagID
 
 func (evidence *IntegrityEvidence) Validate() error {
 	if evidence == nil || !evidence.ID.IsValid() || !evidence.AttemptID.IsValid() || !evidence.ParticipationID.IsValid() ||
-		evidence.Generation < 1 || !evidence.Kind.isValid() || evidence.ObservedAt.IsZero() ||
+		evidence.Generation < 1 || !evidence.Kind.IsValid() || evidence.ObservedAt.IsZero() ||
 		evidence.RecordedAt.IsZero() || evidence.RecordedAt.Before(evidence.ObservedAt) {
-		return fmt.Errorf("model: invalid Integrity Evidence")
+		return invalidModelError("IntegrityEvidence.Validate", "integrity_evidence", "", "invalid Integrity Evidence", "")
 	}
 	switch evidence.Kind {
 	case IntegrityPolicyBrowserNavigation:
 		if !evidence.FlagID.IsValid() || evidence.Browser == nil || evidence.Browser.Validate() != nil || !evidence.SignalID.IsZero() || evidence.Sequence != 0 || evidence.DurationMilliseconds != 0 || evidence.Source != "" || evidence.MissingBefore != 0 {
-			return fmt.Errorf("model: invalid Browser integrity evidence")
+			return invalidModelError("IntegrityEvidence.Validate", "integrity_evidence", "", "invalid Browser integrity evidence", "")
 		}
 	case IntegrityPolicyConnectionLoss:
 		if evidence.Browser != nil || !evidence.FlagID.IsValid() || !evidence.SignalID.IsZero() || evidence.Sequence != 0 ||
 			evidence.DurationMilliseconds != 0 || evidence.Source != "" || evidence.MissingBefore != 0 {
-			return fmt.Errorf("model: invalid Connection Loss evidence")
+			return invalidModelError("IntegrityEvidence.Validate", "integrity_evidence", "", "invalid Connection Loss evidence", "")
 		}
 	case IntegrityPolicyFocusLoss:
 		if evidence.Browser != nil || !evidence.FlagID.IsValid() || !evidence.SignalID.IsValid() || evidence.Sequence < 1 ||
 			evidence.DurationMilliseconds < 1 || evidence.DurationMilliseconds > FocusLossMaximumDurationMilliseconds ||
 			!evidence.Source.IsValid() || evidence.MissingBefore < 0 {
-			return fmt.Errorf("model: invalid Focus Loss evidence")
+			return invalidModelError("IntegrityEvidence.Validate", "integrity_evidence", "", "invalid Focus Loss evidence", "")
 		}
 	}
 	return nil
@@ -462,8 +461,8 @@ func NewIntegrityFlag(id IntegrityFlagID, attemptID ExamAttemptID, generation in
 
 func (flag *IntegrityFlag) Validate() error {
 	if flag == nil || !flag.ID.IsValid() || !flag.AttemptID.IsValid() || flag.Generation < 1 ||
-		!flag.Kind.isValid() || flag.State != IntegrityFlagOpen || flag.CreatedAt.IsZero() {
-		return fmt.Errorf("model: invalid Integrity Flag")
+		!flag.Kind.IsValid() || flag.State != IntegrityFlagOpen || flag.CreatedAt.IsZero() {
+		return invalidModelError("IntegrityFlag.Validate", "integrity_flag", "", "invalid Integrity Flag", "")
 	}
 	return nil
 }
@@ -561,34 +560,34 @@ func NewManualAttemptSuspension(id AttemptSuspensionID, attemptID ExamAttemptID,
 func (suspension *AttemptSuspension) Validate() error {
 	if suspension == nil || !suspension.ID.IsValid() || !suspension.AttemptID.IsValid() || !suspension.ParticipationID.IsValid() ||
 		suspension.Generation < 1 || suspension.StartedAt.IsZero() {
-		return fmt.Errorf("model: invalid Attempt Suspension")
+		return invalidModelError("AttemptSuspension.Validate", "attempt_suspension", "", "invalid Attempt Suspension", "")
 	}
 	switch suspension.Source {
 	case AttemptSuspensionSourcePolicy:
 		if !suspension.FlagID.IsValid() || !suspension.CandidateReason.IsPolicy() || !suspension.SuspendedByUserID.IsZero() ||
 			suspension.SuspensionPrivateReason != "" {
-			return fmt.Errorf("model: invalid policy Attempt Suspension")
+			return invalidModelError("AttemptSuspension.Validate", "attempt_suspension", "", "invalid policy Attempt Suspension", "")
 		}
 	case AttemptSuspensionSourceManual:
 		if !suspension.FlagID.IsZero() || suspension.CandidateReason != AttemptSuspensionCandidateReasonManagerSuspended ||
 			!suspension.SuspendedByUserID.IsValid() || !validAttemptSuspensionPrivateReason(suspension.SuspensionPrivateReason) {
-			return fmt.Errorf("model: invalid manual Attempt Suspension")
+			return invalidModelError("AttemptSuspension.Validate", "attempt_suspension", "", "invalid manual Attempt Suspension", "")
 		}
 	default:
-		return fmt.Errorf("model: invalid Attempt Suspension source")
+		return invalidModelError("AttemptSuspension.Validate", "attempt_suspension", "", "invalid Attempt Suspension source", "")
 	}
 	switch suspension.State {
 	case AttemptSuspensionActive:
 		if suspension.EndedAt.Valid || !suspension.ReallowedByUserID.IsZero() || suspension.PrivateReason != "" {
-			return fmt.Errorf("model: active Attempt Suspension has re-allow metadata")
+			return invalidModelError("AttemptSuspension.Validate", "attempt_suspension", "", "active Attempt Suspension has re-allow metadata", "")
 		}
 	case AttemptSuspensionClosed:
 		if !suspension.EndedAt.Valid || suspension.EndedAt.Time.Before(suspension.StartedAt) ||
 			!suspension.ReallowedByUserID.IsValid() || !validAttemptSuspensionPrivateReason(suspension.PrivateReason) {
-			return fmt.Errorf("model: invalid closed Attempt Suspension")
+			return invalidModelError("AttemptSuspension.Validate", "attempt_suspension", "", "invalid closed Attempt Suspension", "")
 		}
 	default:
-		return fmt.Errorf("model: invalid Attempt Suspension state")
+		return invalidModelError("AttemptSuspension.Validate", "attempt_suspension", "", "invalid Attempt Suspension state", "")
 	}
 	return nil
 }
@@ -596,7 +595,7 @@ func (suspension *AttemptSuspension) Validate() error {
 func (suspension *AttemptSuspension) Reallow(actorID UserID, privateReason string, at time.Time) error {
 	if suspension == nil || suspension.State != AttemptSuspensionActive || !actorID.IsValid() ||
 		!validAttemptSuspensionPrivateReason(privateReason) {
-		return fmt.Errorf("model: Attempt Suspension cannot be re-allowed")
+		return invalidModelError("AttemptSuspension.Reallow", "attempt_suspension", "", "Attempt Suspension cannot be re-allowed", "")
 	}
 	candidate := *suspension
 	candidate.State = AttemptSuspensionClosed
@@ -651,7 +650,7 @@ func NewExamAttemptWorkspace(id ExamAttemptWorkspaceID, attemptID ExamAttemptID,
 func (workspace *ExamAttemptWorkspace) Validate() error {
 	if workspace == nil || !workspace.ID.IsValid() || !workspace.AttemptID.IsValid() || workspace.Cursor < 0 ||
 		workspace.CreatedAt.IsZero() || workspace.UpdatedAt.IsZero() || workspace.UpdatedAt.Before(workspace.CreatedAt) {
-		return fmt.Errorf("model: invalid Exam Attempt Workspace")
+		return invalidModelError("ExamAttemptWorkspace.Validate", "exam_attempt_workspace", "", "invalid Exam Attempt Workspace", "")
 	}
 	return nil
 }
@@ -715,7 +714,7 @@ func NewAttemptWorkspaceDirectory(id AttemptWorkspaceEntryID, workspaceID ExamAt
 
 func newAttemptWorkspaceEntry(id AttemptWorkspaceEntryID, workspaceID ExamAttemptWorkspaceID, revisionID ExamRevisionID, sourceID StarterWorkspaceEntryID, kind StarterWorkspaceEntryKind, path string, objectID AttemptWorkspaceObjectID, at time.Time) (*AttemptWorkspaceEntry, error) {
 	if !sourceID.IsValid() {
-		return nil, fmt.Errorf("model: Attempt Workspace bootstrap requires source entry")
+		return nil, invalidModelError("newAttemptWorkspaceEntry", "exam_attempt", "", "Attempt Workspace bootstrap requires source entry", "")
 	}
 	normalized, err := NormalizeStarterWorkspacePath(path)
 	if err != nil {
@@ -733,22 +732,22 @@ func newAttemptWorkspaceEntry(id AttemptWorkspaceEntryID, workspaceID ExamAttemp
 func (entry *AttemptWorkspaceEntry) Validate() error {
 	if entry == nil || !entry.ID.IsValid() || !entry.WorkspaceID.IsValid() || !entry.AdmissionRevisionID.IsValid() ||
 		(!entry.SourceStarterEntryID.IsZero() && !entry.SourceStarterEntryID.IsValid()) || entry.CreatedAt.IsZero() || entry.UpdatedAt.IsZero() || entry.UpdatedAt.Before(entry.CreatedAt) {
-		return fmt.Errorf("model: invalid Attempt Workspace entry")
+		return invalidModelError("AttemptWorkspaceEntry.Validate", "attempt_workspace_entry", "", "invalid Attempt Workspace entry", "")
 	}
 	if normalized, err := NormalizeStarterWorkspacePath(entry.Path); err != nil || normalized != entry.Path {
-		return fmt.Errorf("model: invalid Attempt Workspace entry path")
+		return invalidModelError("AttemptWorkspaceEntry.Validate", "attempt_workspace_entry", "", "invalid Attempt Workspace entry path", "")
 	}
 	switch entry.Kind {
 	case StarterWorkspaceEntryFile:
 		if !entry.CurrentObjectID.IsValid() {
-			return fmt.Errorf("model: Attempt Workspace file requires current object")
+			return invalidModelError("AttemptWorkspaceEntry.Validate", "attempt_workspace_entry", "", "Attempt Workspace file requires current object", "")
 		}
 	case StarterWorkspaceEntryDirectory:
 		if !entry.CurrentObjectID.IsZero() {
-			return fmt.Errorf("model: Attempt Workspace directory cannot have content")
+			return invalidModelError("AttemptWorkspaceEntry.Validate", "attempt_workspace_entry", "", "Attempt Workspace directory cannot have content", "")
 		}
 	default:
-		return fmt.Errorf("model: invalid Attempt Workspace entry kind")
+		return invalidModelError("AttemptWorkspaceEntry.Validate", "attempt_workspace_entry", "", "invalid Attempt Workspace entry kind", "")
 	}
 	return nil
 }

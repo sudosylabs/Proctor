@@ -13,7 +13,6 @@
 package model
 
 import (
-	"fmt"
 	"regexp"
 	"time"
 )
@@ -103,17 +102,17 @@ func (r *Role) PrepareUpdate(at time.Time) {
 // Archive marks the role soft-archived (legacy soft-delete).
 func (r *Role) Archive(at time.Time) error {
 	if r == nil {
-		return fmt.Errorf("model: role is nil")
+		return invalidModelError("Role.Archive", "role", "", "role is nil", "")
 	}
 	at = TimeUTC(at)
 	if at.IsZero() {
-		return fmt.Errorf("model: role archive time is required")
+		return invalidModelError("Role.Archive", "role", "", "role archive time is required", "")
 	}
 	if r.IsArchived() {
-		return fmt.Errorf("model: role is already archived")
+		return invalidModelError("Role.Archive", "role", "", "role is already archived", "")
 	}
 	if r.BuiltIn {
-		return fmt.Errorf("model: built-in role cannot be archived")
+		return invalidModelError("Role.Archive", "role", "", "built-in role cannot be archived", "")
 	}
 	r.ArchivedAt = OptionalTimeFrom(at)
 	r.UpdatedAt = at

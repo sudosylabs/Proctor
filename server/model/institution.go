@@ -8,7 +8,6 @@
 package model
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -38,11 +37,11 @@ func NewInstitution(
 	at time.Time,
 ) (*Institution, error) {
 	if !id.IsValid() {
-		return nil, fmt.Errorf("model: institution id is invalid")
+		return nil, invalidModelError("NewInstitution", "institution", "", "institution id is invalid", "")
 	}
 	at = TimeUTC(at)
 	if at.IsZero() {
-		return nil, fmt.Errorf("model: institution create time is required")
+		return nil, invalidModelError("NewInstitution", "institution", "", "institution create time is required", "")
 	}
 	institution := &Institution{
 		ID:           id,
@@ -68,20 +67,20 @@ func (i *Institution) UpdateProfile(
 	at time.Time,
 ) error {
 	if i == nil {
-		return fmt.Errorf("model: institution is nil")
+		return invalidModelError("Institution.UpdateProfile", "institution", "", "institution is nil", "")
 	}
 	if i.IsArchived() {
-		return fmt.Errorf("model: institution is archived")
+		return invalidModelError("Institution.UpdateProfile", "institution", "", "institution is archived", "")
 	}
 	if expectedRevision != 0 && i.Revision != expectedRevision {
-		return fmt.Errorf("model: institution revision conflict")
+		return invalidModelError("Institution.UpdateProfile", "institution", "", "institution revision conflict", "")
 	}
 	at = TimeUTC(at)
 	if at.IsZero() {
-		return fmt.Errorf("model: institution update time is required")
+		return invalidModelError("Institution.UpdateProfile", "institution", "", "institution update time is required", "")
 	}
 	if at.Before(i.CreatedAt) {
-		return fmt.Errorf("model: institution update time precedes create time")
+		return invalidModelError("Institution.UpdateProfile", "institution", "", "institution update time precedes create time", "")
 	}
 	i.Name = name
 	i.DisplayName = displayName
@@ -114,14 +113,14 @@ func (i *Institution) PrepareUpdate(at time.Time) {
 // the singleton institution; the method exists for domain completeness.
 func (i *Institution) Archive(at time.Time) error {
 	if i == nil {
-		return fmt.Errorf("model: institution is nil")
+		return invalidModelError("Institution.Archive", "institution", "", "institution is nil", "")
 	}
 	at = TimeUTC(at)
 	if at.IsZero() {
-		return fmt.Errorf("model: institution archive time is required")
+		return invalidModelError("Institution.Archive", "institution", "", "institution archive time is required", "")
 	}
 	if i.IsArchived() {
-		return fmt.Errorf("model: institution is already archived")
+		return invalidModelError("Institution.Archive", "institution", "", "institution is already archived", "")
 	}
 	i.ArchivedAt = OptionalTimeFrom(at)
 	i.UpdatedAt = at

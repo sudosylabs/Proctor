@@ -33,7 +33,7 @@ func (phase ExamSittingLifecycleJobPhase) IsValid() bool {
 // resulting Sitting revision receives distinct authoritative work.
 func ExamSittingLifecycleDedupeKey(id ExamSittingID, phase ExamSittingLifecycleJobPhase, revision int64) (string, error) {
 	if !id.IsValid() || !phase.IsValid() || revision < 1 {
-		return "", errors.New("invalid Exam Sitting lifecycle dedupe identity")
+		return "", invalidModelError("ExamSittingLifecycleDedupeKey", "exam_sitting_job", "", "invalid Exam Sitting lifecycle dedupe identity", "")
 	}
 	return "exam-sitting:" + id.String() + ":" + string(phase) + ":" + strconv.FormatInt(revision, 10), nil
 }
@@ -47,7 +47,7 @@ type ExamSittingLifecycleCommandV1 struct {
 
 func EncodeExamSittingLifecycleCommand(command ExamSittingLifecycleCommandV1) (json.RawMessage, error) {
 	if !command.ExamSittingID.IsValid() {
-		return nil, errors.New("Exam Sitting lifecycle command has invalid Sitting ID")
+		return nil, invalidModelError("EncodeExamSittingLifecycleCommand", "exam_sitting_job", "", "Exam Sitting lifecycle command has invalid Sitting ID", "")
 	}
 	return json.Marshal(command)
 }
@@ -55,7 +55,7 @@ func EncodeExamSittingLifecycleCommand(command ExamSittingLifecycleCommandV1) (j
 func DecodeExamSittingLifecycleCommand(version int, document json.RawMessage) (ExamSittingLifecycleCommandV1, error) {
 	var command ExamSittingLifecycleCommandV1
 	if version != 1 {
-		return command, fmt.Errorf("unsupported Exam Sitting lifecycle command version %d", version)
+		return command, invalidModelError("DecodeExamSittingLifecycleCommand", "exam_sitting_job", "", fmt.Sprintf("unsupported Exam Sitting lifecycle command version %d", version), "")
 	}
 	if err := rejectDuplicateExamSittingLifecycleMembers(document); err != nil {
 		return command, err
@@ -63,17 +63,17 @@ func DecodeExamSittingLifecycleCommand(version int, document json.RawMessage) (E
 	decoder := json.NewDecoder(bytes.NewReader(document))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&command); err != nil {
-		return command, fmt.Errorf("decode Exam Sitting lifecycle command: %w", err)
+		return command, invalidModelError("DecodeExamSittingLifecycleCommand", "exam_sitting_job", "", "decode Exam Sitting lifecycle command", "").wrap(err)
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		if err == nil {
-			return command, errors.New("Exam Sitting lifecycle command contains trailing JSON")
+			return command, invalidModelError("DecodeExamSittingLifecycleCommand", "exam_sitting_job", "", "Exam Sitting lifecycle command contains trailing JSON", "")
 		}
-		return command, fmt.Errorf("decode trailing Exam Sitting lifecycle command: %w", err)
+		return command, invalidModelError("DecodeExamSittingLifecycleCommand", "exam_sitting_job", "", "decode trailing Exam Sitting lifecycle command", "").wrap(err)
 	}
 	if !command.ExamSittingID.IsValid() {
-		return command, errors.New("Exam Sitting lifecycle command has invalid Sitting ID")
+		return command, invalidModelError("DecodeExamSittingLifecycleCommand", "exam_sitting_job", "", "Exam Sitting lifecycle command has invalid Sitting ID", "")
 	}
 	return command, nil
 }
@@ -82,7 +82,7 @@ func rejectDuplicateExamSittingLifecycleMembers(document json.RawMessage) error 
 	decoder := json.NewDecoder(bytes.NewReader(document))
 	token, err := decoder.Token()
 	if err != nil || token != json.Delim('{') {
-		return errors.New("Exam Sitting lifecycle command must be an object")
+		return invalidModelError("rejectDuplicateExamSittingLifecycleMembers", "exam_sitting_job", "", "Exam Sitting lifecycle command must be an object", "")
 	}
 	seen := make(map[string]struct{})
 	for decoder.More() {
@@ -92,10 +92,10 @@ func rejectDuplicateExamSittingLifecycleMembers(document json.RawMessage) error 
 		}
 		name, ok := member.(string)
 		if !ok {
-			return errors.New("Exam Sitting lifecycle command member is invalid")
+			return invalidModelError("rejectDuplicateExamSittingLifecycleMembers", "exam_sitting_job", "", "Exam Sitting lifecycle command member is invalid", "")
 		}
 		if _, duplicate := seen[name]; duplicate {
-			return errors.New("Exam Sitting lifecycle command contains a duplicate member")
+			return invalidModelError("rejectDuplicateExamSittingLifecycleMembers", "exam_sitting_job", "", "Exam Sitting lifecycle command contains a duplicate member", "")
 		}
 		seen[name] = struct{}{}
 		var value json.RawMessage

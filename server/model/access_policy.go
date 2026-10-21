@@ -128,23 +128,23 @@ func (p *AccessPolicy) Validate() error {
 
 func (s AccessPolicySettings) Validate() error {
 	if len(s.ProviderAdmissions) > AccessPolicyProviderMaxCount {
-		return errors.New("contains too many provider admissions")
+		return invalidModelError("AccessPolicySettings.Validate", "access_policy_settings", "", "contains too many provider admissions", "")
 	}
 	if s.PublicRegistrationEnabled && !s.LocalLoginEnabled {
-		return errors.New("public registration requires local login")
+		return invalidModelError("AccessPolicySettings.Validate", "access_policy_settings", "", "public registration requires local login", "")
 	}
 	if s.InvitationLocalCredentialEnabled &&
 		(!s.InvitationAdmissionEnabled || !s.LocalLoginEnabled) {
-		return errors.New("invitation local credentials require invitation admission and local login")
+		return invalidModelError("AccessPolicySettings.Validate", "access_policy_settings", "", "invitation local credentials require invitation admission and local login", "")
 	}
 	for providerID, mode := range s.ProviderAdmissions {
 		if !IsValidIdentityProviderID(providerID) {
-			return errors.New("provider ID is invalid")
+			return invalidModelError("AccessPolicySettings.Validate", "access_policy_settings", "", "provider ID is invalid", "")
 		}
 		switch mode {
 		case ProviderAdmissionLinkedOnly, ProviderAdmissionInvitationRequired, ProviderAdmissionAutoProvision:
 		default:
-			return fmt.Errorf("provider admission %q is invalid", mode)
+			return invalidModelError("AccessPolicySettings.Validate", "access_policy_settings", "", fmt.Sprintf("provider admission %q is invalid", mode), "")
 		}
 	}
 	return nil

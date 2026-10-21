@@ -8,7 +8,6 @@
 package model
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -92,17 +91,17 @@ func (au *AcademicUnit) Update(
 	at time.Time,
 ) error {
 	if au == nil {
-		return fmt.Errorf("model: academic unit is nil")
+		return invalidModelError("AcademicUnit.Update", "academic_unit", "", "academic unit is nil", "")
 	}
 	if au.IsArchived() {
-		return fmt.Errorf("model: academic unit is archived")
+		return invalidModelError("AcademicUnit.Update", "academic_unit", "", "academic unit is archived", "")
 	}
 	if expectedRevision != 0 && au.Revision != expectedRevision {
-		return fmt.Errorf("model: academic unit revision conflict")
+		return invalidModelError("AcademicUnit.Update", "academic_unit", "", "academic unit revision conflict", "")
 	}
 	at = TimeUTC(at)
 	if at.IsZero() {
-		return fmt.Errorf("model: academic unit update time is required")
+		return invalidModelError("AcademicUnit.Update", "academic_unit", "", "academic unit update time is required", "")
 	}
 	au.ParentID = parentID
 	au.Name = name
@@ -121,14 +120,14 @@ func (au *AcademicUnit) Update(
 // Archive marks the unit archived.
 func (au *AcademicUnit) Archive(at time.Time) error {
 	if au == nil {
-		return fmt.Errorf("model: academic unit is nil")
+		return invalidModelError("AcademicUnit.Archive", "academic_unit", "", "academic unit is nil", "")
 	}
 	at = TimeUTC(at)
 	if at.IsZero() {
-		return fmt.Errorf("model: academic unit archive time is required")
+		return invalidModelError("AcademicUnit.Archive", "academic_unit", "", "academic unit archive time is required", "")
 	}
 	if au.IsArchived() {
-		return fmt.Errorf("model: academic unit is already archived")
+		return invalidModelError("AcademicUnit.Archive", "academic_unit", "", "academic unit is already archived", "")
 	}
 	au.ArchivedAt = OptionalTimeFrom(at)
 	au.UpdatedAt = at

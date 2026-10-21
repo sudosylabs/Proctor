@@ -8,7 +8,6 @@
 package model
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -32,7 +31,7 @@ func (owner AcademicPeriodOwner) Validate() error {
 	institution := owner.InstitutionID.IsValid()
 	unit := owner.AcademicUnitID.IsValid()
 	if institution == unit {
-		return fmt.Errorf("model: academic period owner must contain exactly one institution or academic unit")
+		return invalidModelError("AcademicPeriodOwner.Validate", "academic_period_owner", "", "academic period owner must contain exactly one institution or academic unit", "")
 	}
 	return nil
 }
@@ -130,14 +129,14 @@ func (ap *AcademicPeriod) PrepareUpdate(at time.Time) {
 // Archive marks the period archived.
 func (ap *AcademicPeriod) Archive(at time.Time) error {
 	if ap == nil {
-		return fmt.Errorf("model: academic period is nil")
+		return invalidModelError("AcademicPeriod.Archive", "academic_period", "", "academic period is nil", "")
 	}
 	at = TimeUTC(at)
 	if at.IsZero() {
-		return fmt.Errorf("model: academic period archive time is required")
+		return invalidModelError("AcademicPeriod.Archive", "academic_period", "", "academic period archive time is required", "")
 	}
 	if ap.IsArchived() {
-		return fmt.Errorf("model: academic period is already archived")
+		return invalidModelError("AcademicPeriod.Archive", "academic_period", "", "academic period is already archived", "")
 	}
 	ap.ArchivedAt = OptionalTimeFrom(at)
 	ap.UpdatedAt = at

@@ -7,8 +7,6 @@
 
 package model
 
-import "errors"
-
 const (
 	DeliveryParticipationRecordLimit  int64 = 50_000
 	DeliveryAttemptRecordLimit        int64 = 200_000
@@ -46,7 +44,7 @@ type DeliveryMetadataCapacity struct {
 func (e *DeliveryMetadataCapacity) Error() string { return "delivery metadata capacity is exhausted" }
 func ReserveDeliveryMetadata(used, required int64) (int64, error) {
 	if used < 0 || used > DeliveryMetadataLimitBytes || required <= 0 || required > DeliveryMetadataLimitBytes {
-		return used, errors.New("delivery metadata reservation is invalid")
+		return used, invalidModelError("ReserveDeliveryMetadata", "delivery_budget", "", "delivery metadata reservation is invalid", "")
 	}
 	remaining := DeliveryMetadataLimitBytes - used
 	if required > remaining {
@@ -93,13 +91,13 @@ func NewDeliveryQuotaUsage(native, attempt bool) DeliveryQuotaUsage {
 }
 func (q DeliveryQuotaUsage) Validate() error {
 	if !securitySafeInt(q.RetainedRecords) || !securitySafeInt(q.RetainedBytes) || !securitySafeInt(q.AllocatedPositions) || !securitySafeInt(q.RecordLimit) || !securitySafeInt(q.ByteLimit) || !securitySafeInt(q.PositionLimit) || q.RecordLimit < 1 || q.ByteLimit < 1 || q.PositionLimit < 1 || q.RetainedRecords > q.RecordLimit || q.RetainedBytes > q.ByteLimit || q.AllocatedPositions > q.PositionLimit || q.SummaryOnly != (q.StopReason != nil) {
-		return errors.New("delivery quota is invalid")
+		return invalidModelError("DeliveryQuotaUsage.Validate", "delivery_quota_usage", "", "delivery quota is invalid", "")
 	}
 	if q.StopReason != nil {
 		switch *q.StopReason {
 		case DeliveryStopRecords, DeliveryStopBytes, DeliveryStopPositions, DeliveryStopMetadata, DeliveryStopLocalLossInventory:
 		default:
-			return errors.New("delivery stop reason is invalid")
+			return invalidModelError("DeliveryQuotaUsage.Validate", "delivery_quota_usage", "", "delivery stop reason is invalid", "")
 		}
 	}
 	return nil
@@ -109,7 +107,7 @@ func (q DeliveryQuotaUsage) Validate() error {
 // with the corresponding records/receipt. Exhaustion freezes all boundaries.
 func (q DeliveryQuotaUsage) Charge(records, bytes, positions int64) (DeliveryQuotaUsage, error) {
 	if q.Validate() != nil || !securitySafeInt(records) || !securitySafeInt(bytes) || !securitySafeInt(positions) {
-		return q, errors.New("delivery charge is invalid")
+		return q, invalidModelError("DeliveryQuotaUsage.Charge", "delivery_quota_usage", "", "delivery charge is invalid", "")
 	}
 	if q.SummaryOnly {
 		return q, nil
@@ -151,7 +149,7 @@ func CanRetainPendingDelivery(pending, retained, retainedLimit, bytes int64, rep
 
 func (e DeliveryMetadataCapacity) Validate() error {
 	if e.ControlMetadataLimitBytes != DeliveryMetadataLimitBytes || e.ControlMetadataBytes < 0 || e.ControlMetadataBytes > DeliveryMetadataLimitBytes || e.RequiredReservationBytes <= 0 || e.RequiredReservationBytes > DeliveryMetadataLimitBytes || e.RemainingReservableBytes != DeliveryMetadataLimitBytes-e.ControlMetadataBytes || e.RequiredReservationBytes <= e.RemainingReservableBytes {
-		return errors.New("invalid metadata capacity refusal")
+		return invalidModelError("DeliveryMetadataCapacity.Validate", "delivery_metadata_capacity", "", "invalid metadata capacity refusal", "")
 	}
 	return nil
 }

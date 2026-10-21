@@ -7,8 +7,6 @@
 
 package model
 
-import "fmt"
-
 type OnboardingImportID string
 type OnboardingImportMode string
 type OnboardingImportState string
@@ -81,14 +79,14 @@ func (status OnboardingImportRowStatus) IsValid() bool {
 
 func ValidateOnboardingImportScope(mode OnboardingImportMode, scopeType RoleScopeType, scopeID string) error {
 	if !mode.IsValid() || !IsValidOpaqueID(scopeID) {
-		return fmt.Errorf("model: invalid onboarding import scope")
+		return invalidModelError("ValidateOnboardingImportScope", "onboarding_import", "", "invalid onboarding import scope", "")
 	}
 	if (mode == OnboardingImportStudentClass && scopeType != RoleScopeClass) ||
 		(mode == OnboardingImportTeacherAcademicUnit && scopeType != RoleScopeAcademicUnit) ||
 		(mode == OnboardingImportInstitution && scopeType != RoleScopeInstitution) ||
 		(mode == OnboardingImportStudentProgression && scopeType != RoleScopeClass) ||
 		(mode == OnboardingImportAcademicAdministration && scopeType != RoleScopeInstitution && scopeType != RoleScopeAcademicUnit && scopeType != RoleScopeClass) {
-		return fmt.Errorf("model: onboarding import mode and scope do not match")
+		return invalidModelError("ValidateOnboardingImportScope", "onboarding_import", "", "onboarding import mode and scope do not match", "")
 	}
 	return nil
 }

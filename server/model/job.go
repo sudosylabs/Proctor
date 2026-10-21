@@ -129,14 +129,14 @@ func NewJobWithDedupePolicy(id JobID, jobType JobType, commandVersion int, comma
 
 func (j *Job) Validate() error {
 	if j == nil || !j.ID.IsValid() || !validJobType(j.Type) || !validJobStatus(j.Status) || j.CreatedAt.IsZero() || j.UpdatedAt.Before(j.CreatedAt) || j.AvailableAt.IsZero() || j.CommandVersion <= 0 || !validJobDocument(j.Command, false) || len(j.DedupeKey) == 0 || len(j.DedupeKey) > 255 || !validJobDedupePolicy(j.DedupePolicy) || j.AttemptCount < 0 || j.MaximumAttempts <= 0 || j.AttemptCount > j.MaximumAttempts || j.WorkReserved < 0 || j.Revision <= 0 {
-		return fmt.Errorf("model: invalid job")
+		return invalidModelError("Job.Validate", "job", "", "invalid job", "")
 	}
 	if !validJobDocument(j.Checkpoint, true) || (len(j.Checkpoint) > 0 && j.CheckpointVersion <= 0) || (len(j.Checkpoint) == 0 && j.CheckpointVersion != 0) || !validJobDocument(j.Result, true) || (len(j.Result) > 0 && j.ResultVersion <= 0) || (len(j.Result) == 0 && j.ResultVersion != 0) || !validPublicJobCode(j.PublicErrorCode) || !validJobProgress(j.Progress) {
-		return fmt.Errorf("model: invalid job result state")
+		return invalidModelError("Job.Validate", "job", "", "invalid job result state", "")
 	}
 	terminal := j.Status == JobStatusSucceeded || j.Status == JobStatusFailed || j.Status == JobStatusCanceled
 	if terminal != j.CompletedAt.Valid || (j.Status == JobStatusRunning && j.AttemptCount == 0) {
-		return fmt.Errorf("model: invalid job lifecycle")
+		return invalidModelError("Job.Validate", "job", "", "invalid job lifecycle", "")
 	}
 	return nil
 }
@@ -147,7 +147,7 @@ func validJobDedupePolicy(policy JobDedupePolicy) bool {
 
 func (j *Job) Start(at time.Time) (*Job, error) {
 	if j == nil || j.Status != JobStatusQueued || j.AttemptCount >= j.MaximumAttempts || TimeUTC(at).Before(j.AvailableAt) {
-		return nil, fmt.Errorf("model: job cannot start")
+		return nil, invalidModelError("Job.Start", "job", "", "job cannot start", "")
 	}
 	result := *j
 	result.Status = JobStatusRunning
@@ -162,7 +162,7 @@ func (j *Job) Start(at time.Time) (*Job, error) {
 
 func (j *Job) UpdateProgress(progress *JobProgress, checkpointVersion int, checkpoint json.RawMessage, at time.Time) (*Job, error) {
 	if j == nil || (j.Status != JobStatusRunning && j.Status != JobStatusCancelRequested) || !validJobProgress(progress) || !validJobDocument(checkpoint, true) || (len(checkpoint) > 0) != (checkpointVersion > 0) || TimeUTC(at).Before(j.UpdatedAt) {
-		return nil, fmt.Errorf("model: job progress cannot be updated")
+		return nil, invalidModelError("Job.UpdateProgress", "job", "", "job progress cannot be updated", "")
 	}
 	result := *j
 	if progress != nil {
@@ -180,7 +180,7 @@ func (j *Job) UpdateProgress(progress *JobProgress, checkpointVersion int, check
 
 func (j *Job) Succeed(resultVersion int, document json.RawMessage, at time.Time) (*Job, error) {
 	if j == nil || (j.Status != JobStatusRunning && j.Status != JobStatusCancelRequested) || resultVersion <= 0 || !validJobDocument(document, false) || TimeUTC(at).Before(j.UpdatedAt) {
-		return nil, fmt.Errorf("model: job cannot succeed")
+		return nil, invalidModelError("Job.Succeed", "job", "", "job cannot succeed", "")
 	}
 	result := *j
 	result.Status = JobStatusSucceeded
@@ -195,7 +195,7 @@ func (j *Job) Succeed(resultVersion int, document json.RawMessage, at time.Time)
 
 func (j *Job) Retry(publicErrorCode string, availableAt, at time.Time) (*Job, error) {
 	if j == nil || j.Status != JobStatusRunning || j.AttemptCount >= j.MaximumAttempts || !validPublicJobCode(publicErrorCode) || !TimeUTC(availableAt).After(TimeUTC(at)) || TimeUTC(at).Before(j.UpdatedAt) {
-		return nil, fmt.Errorf("model: job cannot retry")
+		return nil, invalidModelError("Job.Retry", "job", "", "job cannot retry", "")
 	}
 	result := *j
 	result.Status = JobStatusQueued
@@ -213,7 +213,7 @@ func (j *Job) Relinquish(publicErrorCode string, availableAt, at time.Time) (*Jo
 	if j == nil || j.Status != JobStatusRunning || j.MaximumAttempts == int(^uint(0)>>1) ||
 		!validPublicJobCode(publicErrorCode) || publicErrorCode == "" ||
 		!TimeUTC(availableAt).After(TimeUTC(at)) || TimeUTC(at).Before(j.UpdatedAt) {
-		return nil, fmt.Errorf("model: job cannot be relinquished")
+		return nil, invalidModelError("Job.Relinquish", "job", "", "job cannot be relinquished", "")
 	}
 	result := *j
 	result.Status = JobStatusQueued
@@ -227,7 +227,7 @@ func (j *Job) Relinquish(publicErrorCode string, availableAt, at time.Time) (*Jo
 
 func (j *Job) Fail(publicErrorCode string, at time.Time) (*Job, error) {
 	if j == nil || (j.Status != JobStatusRunning && j.Status != JobStatusCancelRequested) || !validPublicJobCode(publicErrorCode) || publicErrorCode == "" || TimeUTC(at).Before(j.UpdatedAt) {
-		return nil, fmt.Errorf("model: job cannot fail")
+		return nil, invalidModelError("Job.Fail", "job", "", "job cannot fail", "")
 	}
 	result := *j
 	result.Status = JobStatusFailed
@@ -240,7 +240,7 @@ func (j *Job) Fail(publicErrorCode string, at time.Time) (*Job, error) {
 
 func (j *Job) Cancel(publicErrorCode string, at time.Time) (*Job, error) {
 	if j == nil || (j.Status != JobStatusRunning && j.Status != JobStatusCancelRequested && j.Status != JobStatusQueued) || !validPublicJobCode(publicErrorCode) || TimeUTC(at).Before(j.UpdatedAt) {
-		return nil, fmt.Errorf("model: job cannot cancel")
+		return nil, invalidModelError("Job.Cancel", "job", "", "job cannot cancel", "")
 	}
 	result := *j
 	result.Status = JobStatusCanceled
@@ -255,7 +255,7 @@ func (j *Job) Cancel(publicErrorCode string, at time.Time) (*Job, error) {
 // running work for cooperative cancellation by its fenced worker.
 func (j *Job) RequestCancellation(at time.Time) (*Job, error) {
 	if j == nil || (j.Status != JobStatusQueued && j.Status != JobStatusRunning) || TimeUTC(at).Before(j.UpdatedAt) {
-		return nil, fmt.Errorf("model: job cancellation cannot be requested")
+		return nil, invalidModelError("Job.RequestCancellation", "job", "", "job cancellation cannot be requested", "")
 	}
 	if j.Status == JobStatusQueued {
 		return j.Cancel("job.canceled", at)
@@ -271,7 +271,7 @@ func (j *Job) RequestCancellation(at time.Time) (*Job, error) {
 // additional claim is admitted; policy decides which terminal Jobs may call it.
 func (j *Job) ExplicitRetry(at time.Time) (*Job, error) {
 	if j == nil || (j.Status != JobStatusFailed && j.Status != JobStatusCanceled) || TimeUTC(at).Before(j.UpdatedAt) {
-		return nil, fmt.Errorf("model: job cannot be explicitly retried")
+		return nil, invalidModelError("Job.ExplicitRetry", "job", "", "job cannot be explicitly retried", "")
 	}
 	result := *j
 	result.Status = JobStatusQueued
@@ -293,17 +293,17 @@ func NewJobAttempt(id JobAttemptID, jobID JobID, number int, nodeID string, toke
 
 func (a *JobAttempt) Validate() error {
 	if a == nil || !a.ID.IsValid() || !a.JobID.IsValid() || a.Number <= 0 || !validJobAttemptStatus(a.Status) || a.NodeID == "" || len(a.NodeID) > 255 || !a.ClaimToken.IsValid() || a.StartedAt.IsZero() || a.HeartbeatAt.Before(a.StartedAt) || !a.LeaseExpiresAt.After(a.HeartbeatAt) || !validPublicJobCode(a.PublicErrorCode) {
-		return fmt.Errorf("model: invalid job attempt")
+		return invalidModelError("JobAttempt.Validate", "job_attempt", "", "invalid job attempt", "")
 	}
 	if (a.Status == JobAttemptStatusRunning) == a.CompletedAt.Valid {
-		return fmt.Errorf("model: invalid job attempt lifecycle")
+		return invalidModelError("JobAttempt.Validate", "job_attempt", "", "invalid job attempt lifecycle", "")
 	}
 	return nil
 }
 
 func (a *JobAttempt) Heartbeat(at, leaseExpiresAt time.Time) (*JobAttempt, error) {
 	if a == nil || a.Status != JobAttemptStatusRunning || TimeUTC(at).Before(a.HeartbeatAt) || !TimeUTC(leaseExpiresAt).After(TimeUTC(at)) {
-		return nil, fmt.Errorf("model: job attempt cannot heartbeat")
+		return nil, invalidModelError("JobAttempt.Heartbeat", "job_attempt", "", "job attempt cannot heartbeat", "")
 	}
 	result := *a
 	result.HeartbeatAt = TimeUTC(at)
@@ -313,7 +313,7 @@ func (a *JobAttempt) Heartbeat(at, leaseExpiresAt time.Time) (*JobAttempt, error
 
 func (a *JobAttempt) Complete(status JobAttemptStatus, publicErrorCode string, at time.Time) (*JobAttempt, error) {
 	if a == nil || a.Status != JobAttemptStatusRunning || status == JobAttemptStatusRunning || !validJobAttemptStatus(status) || TimeUTC(at).Before(a.HeartbeatAt) {
-		return nil, fmt.Errorf("model: job attempt cannot complete")
+		return nil, invalidModelError("JobAttempt.Complete", "job_attempt", "", "job attempt cannot complete", "")
 	}
 	result := *a
 	result.Status = status

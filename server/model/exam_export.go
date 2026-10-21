@@ -9,7 +9,6 @@ package model
 
 import (
 	"encoding/hex"
-	"errors"
 	"time"
 )
 
@@ -68,20 +67,20 @@ func (e *ExamExport) Validate() error {
 		!e.SourceExpiresAt.After(e.CreatedAt) || e.SourceExpiresAt.After(e.CreatedAt.Add(ExamExportSourceLifetime)) || e.SourceExpiresAt.After(e.ExpiresAt) ||
 		e.SubmissionCount < 1 || e.SubmissionCount > ExamExportMaximumSubmissions || e.FileCount < 0 || e.FileCount > ExamExportMaximumEntries ||
 		e.SourceBytes < 0 || e.SourceBytes > ExamExportMaximumSourceBytes {
-		return errors.New("model: invalid Exam export")
+		return invalidModelError("ExamExport.Validate", "exam_export", "", "invalid Exam export", "")
 	}
 	switch e.State {
 	case ExamExportQueued, ExamExportFailed, ExamExportExpired:
 		if e.ArchiveSizeBytes != 0 || e.ArchiveSHA256 != "" || e.ReadyAt.Valid {
-			return errors.New("model: unavailable Exam export contains archive metadata")
+			return invalidModelError("ExamExport.Validate", "exam_export", "", "unavailable Exam export contains archive metadata", "")
 		}
 	case ExamExportReady:
 		if !e.ReadyAt.Valid || e.ReadyAt.Time.Before(e.CreatedAt) || !e.ReadyAt.Time.Before(e.ExpiresAt) ||
 			!ValidExamExportContent(e.ArchiveSizeBytes, e.ArchiveSHA256) {
-			return errors.New("model: invalid ready Exam export")
+			return invalidModelError("ExamExport.Validate", "exam_export", "", "invalid ready Exam export", "")
 		}
 	default:
-		return errors.New("model: invalid Exam export state")
+		return invalidModelError("ExamExport.Validate", "exam_export", "", "invalid Exam export state", "")
 	}
 	return nil
 }

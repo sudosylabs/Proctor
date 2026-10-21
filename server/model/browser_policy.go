@@ -10,7 +10,6 @@ package model
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -77,7 +76,7 @@ func DisabledBrowserPolicy() BrowserPolicy {
 
 func NewBrowserPolicy(enabled bool, startRuleID string, rules []BrowserPolicyRule) (BrowserPolicy, error) {
 	if len(rules) > BrowserPolicyMaximumRules || !enabled && (startRuleID != "" || len(rules) != 0) {
-		return BrowserPolicy{}, errors.New("model: invalid Browser Policy fields or rule count")
+		return BrowserPolicy{}, invalidModelError("NewBrowserPolicy", "browser_policy", "", "invalid Browser Policy fields or rule count", "")
 	}
 	policy := BrowserPolicy{SchemaVersion: BrowserPolicySchemaVersion, Enabled: enabled, StartRuleID: startRuleID,
 		Rules: append([]BrowserPolicyRule(nil), rules...)}
@@ -88,11 +87,11 @@ func NewBrowserPolicy(enabled bool, startRuleID string, rules []BrowserPolicyRul
 	for index := range policy.Rules {
 		origin, err := canonicalizeBrowserPolicyRuleOrigin(policy.Rules[index].Origin, policy.Rules[index].InstitutionHTTPException)
 		if err != nil {
-			return BrowserPolicy{}, fmt.Errorf("model: browser policy rule %d origin: %w", index, err)
+			return BrowserPolicy{}, invalidModelError("NewBrowserPolicy", "browser_policy", "", fmt.Sprintf("browser policy rule %d origin", index), "").wrap(err)
 		}
 		prefix, err := CanonicalizeBrowserPolicyPath(policy.Rules[index].PathPrefix)
 		if err != nil {
-			return BrowserPolicy{}, fmt.Errorf("model: browser policy rule %d path: %w", index, err)
+			return BrowserPolicy{}, invalidModelError("NewBrowserPolicy", "browser_policy", "", fmt.Sprintf("browser policy rule %d path", index), "").wrap(err)
 		}
 		policy.Rules[index].Origin = origin
 		policy.Rules[index].PathPrefix = prefix
@@ -106,16 +105,16 @@ func NewBrowserPolicy(enabled bool, startRuleID string, rules []BrowserPolicyRul
 
 func (policy BrowserPolicy) Validate() error {
 	if policy.SchemaVersion != BrowserPolicySchemaVersion {
-		return errors.New("model: unsupported Browser Policy schema version")
+		return invalidModelError("BrowserPolicy.Validate", "browser_policy", "", "unsupported Browser Policy schema version", "")
 	}
 	if !policy.Enabled {
 		if policy.StartRuleID != "" || len(policy.Rules) != 0 {
-			return errors.New("model: disabled Browser Policy contains enabled fields")
+			return invalidModelError("BrowserPolicy.Validate", "browser_policy", "", "disabled Browser Policy contains enabled fields", "")
 		}
 		return nil
 	}
 	if !validBrowserPolicyRuleID(policy.StartRuleID) || len(policy.Rules) < 1 || len(policy.Rules) > BrowserPolicyMaximumRules {
-		return errors.New("model: invalid enabled Browser Policy")
+		return invalidModelError("BrowserPolicy.Validate", "browser_policy", "", "invalid enabled Browser Policy", "")
 	}
 	ids := make(map[string]struct{}, len(policy.Rules))
 	matchKeys := make(map[string]struct{}, len(policy.Rules))
@@ -123,35 +122,35 @@ func (policy BrowserPolicy) Validate() error {
 	for _, rule := range policy.Rules {
 		if !validBrowserPolicyRuleID(rule.RuleID) || rule.RuleID <= previous || !rule.HostMatch.IsValid() ||
 			!slices.Contains([]BrowserPolicyBlockedNavigationOutcome{BrowserPolicyBlockedNavigationRecord, BrowserPolicyBlockedNavigationIntegrityEvidence}, rule.BlockedNavigationOutcome) {
-			return errors.New("model: invalid canonical Browser Policy rule")
+			return invalidModelError("BrowserPolicy.Validate", "browser_policy", "", "invalid canonical Browser Policy rule", "")
 		}
 		origin, err := canonicalizeBrowserPolicyRuleOrigin(rule.Origin, rule.InstitutionHTTPException)
 		if err != nil || origin != rule.Origin {
-			return errors.New("model: invalid canonical Browser Policy origin")
+			return invalidModelError("BrowserPolicy.Validate", "browser_policy", "", "invalid canonical Browser Policy origin", "")
 		}
 		parsed, _ := url.Parse(origin)
 		if net.ParseIP(parsed.Hostname()) != nil && rule.HostMatch != BrowserPolicyHostExact {
-			return errors.New("model: IP Browser Policy rule requires exact host match")
+			return invalidModelError("BrowserPolicy.Validate", "browser_policy", "", "IP Browser Policy rule requires exact host match", "")
 		}
 		prefix, err := CanonicalizeBrowserPolicyPath(rule.PathPrefix)
 		if err != nil || prefix != rule.PathPrefix {
-			return errors.New("model: invalid canonical Browser Policy path")
+			return invalidModelError("BrowserPolicy.Validate", "browser_policy", "", "invalid canonical Browser Policy path", "")
 		}
 		if _, exists := ids[rule.RuleID]; exists {
-			return errors.New("model: duplicate Browser Policy rule identity")
+			return invalidModelError("BrowserPolicy.Validate", "browser_policy", "", "duplicate Browser Policy rule identity", "")
 		}
 		key := rule.Origin + "\x00" + rule.PathPrefix + "\x00" + string(rule.HostMatch)
 		if _, exists := matchKeys[key]; exists {
-			return errors.New("model: duplicate Browser Policy match rule")
+			return invalidModelError("BrowserPolicy.Validate", "browser_policy", "", "duplicate Browser Policy match rule", "")
 		}
 		ids[rule.RuleID], matchKeys[key], previous = struct{}{}, struct{}{}, rule.RuleID
 	}
 	if _, exists := ids[policy.StartRuleID]; !exists {
-		return errors.New("model: Browser Policy start rule does not exist")
+		return invalidModelError("BrowserPolicy.Validate", "browser_policy", "", "Browser Policy start rule does not exist", "")
 	}
 	encoded, err := EncodeBrowserPolicy(policy)
 	if err != nil || len(encoded) > BrowserPolicyMaximumBytes {
-		return errors.New("model: Browser Policy exceeds its canonical size limit")
+		return invalidModelError("BrowserPolicy.Validate", "browser_policy", "", "Browser Policy exceeds its canonical size limit", "")
 	}
 	return nil
 }
@@ -261,13 +260,13 @@ type browserPolicyRuleWire struct {
 
 func EncodeBrowserPolicy(policy BrowserPolicy) ([]byte, error) {
 	if policy.SchemaVersion != BrowserPolicySchemaVersion {
-		return nil, errors.New("model: unsupported Browser Policy schema version")
+		return nil, invalidModelError("EncodeBrowserPolicy", "browser_policy", "", "unsupported Browser Policy schema version", "")
 	}
 	var encoded []byte
 	var err error
 	if !policy.Enabled {
 		if policy.StartRuleID != "" || len(policy.Rules) != 0 {
-			return nil, errors.New("model: disabled Browser Policy contains enabled fields")
+			return nil, invalidModelError("EncodeBrowserPolicy", "browser_policy", "", "disabled Browser Policy contains enabled fields", "")
 		}
 		encoded, err = encodeCanonicalExamDocument(struct {
 			Enabled bool `json:"enabled"`
@@ -284,7 +283,7 @@ func EncodeBrowserPolicy(policy BrowserPolicy) ([]byte, error) {
 		}{true, policy.StartRuleID, rules})
 	}
 	if err != nil || len(encoded) > BrowserPolicyMaximumBytes {
-		return nil, errors.New("model: Browser Policy encoding failed or exceeded its limit")
+		return nil, invalidModelError("EncodeBrowserPolicy", "browser_policy", "", "Browser Policy encoding failed or exceeded its limit", "")
 	}
 	return encoded, nil
 }
@@ -306,7 +305,7 @@ func decodeBrowserPolicy(data []byte, requireCanonical bool) (BrowserPolicy, err
 		maximumBytes = browserPolicyMaximumDocumentBytes
 	}
 	if len(data) == 0 || len(data) > maximumBytes {
-		return BrowserPolicy{}, errors.New("model: invalid Browser Policy size")
+		return BrowserPolicy{}, invalidModelError("decodeBrowserPolicy", "browser_policy", "", "invalid Browser Policy size", "")
 	}
 	if err := validateExamDocumentJSON(data); err != nil {
 		return BrowserPolicy{}, err
@@ -314,7 +313,7 @@ func decodeBrowserPolicy(data []byte, requireCanonical bool) (BrowserPolicy, err
 
 	var members map[string]json.RawMessage
 	if json.Unmarshal(data, &members) != nil || members["enabled"] == nil || bytes.Equal(bytes.TrimSpace(members["enabled"]), []byte("null")) {
-		return BrowserPolicy{}, errors.New("model: Browser Policy enabled is required")
+		return BrowserPolicy{}, invalidModelError("decodeBrowserPolicy", "browser_policy", "", "Browser Policy enabled is required", "")
 	}
 	var wire struct {
 		Enabled     bool                    `json:"enabled"`
@@ -328,10 +327,10 @@ func decodeBrowserPolicy(data []byte, requireCanonical bool) (BrowserPolicy, err
 	}
 	if wire.Enabled {
 		if len(members) != 3 || members["start_rule_id"] == nil || wire.Rules == nil {
-			return BrowserPolicy{}, errors.New("model: enabled Browser Policy requires its rules")
+			return BrowserPolicy{}, invalidModelError("decodeBrowserPolicy", "browser_policy", "", "enabled Browser Policy requires its rules", "")
 		}
 	} else if len(members) != 1 {
-		return BrowserPolicy{}, errors.New("model: disabled Browser Policy has enabled fields")
+		return BrowserPolicy{}, invalidModelError("decodeBrowserPolicy", "browser_policy", "", "disabled Browser Policy has enabled fields", "")
 	}
 	rules := make([]BrowserPolicyRule, len(wire.Rules))
 	for i, rule := range wire.Rules {
@@ -346,14 +345,14 @@ func decodeBrowserPolicy(data []byte, requireCanonical bool) (BrowserPolicy, err
 		return BrowserPolicy{}, err
 	}
 	if requireCanonical && !bytes.Equal(data, canonical) {
-		return BrowserPolicy{}, errors.New("model: Browser Policy is not canonical")
+		return BrowserPolicy{}, invalidModelError("decodeBrowserPolicy", "browser_policy", "", "Browser Policy is not canonical", "")
 	}
 	return policy, nil
 }
 
 func (rule *browserPolicyRuleWire) UnmarshalJSON(raw []byte) error {
 	if rule == nil {
-		return errors.New("model: nil browser rule")
+		return invalidModelError("browserPolicyRuleWire.UnmarshalJSON", "browser_policy_rule_wire", "", "nil browser rule", "")
 	}
 	type wire browserPolicyRuleWire
 	var decoded wire
@@ -377,7 +376,7 @@ func (policy BrowserPolicy) ValidateInstitutionOrigin(institutionOrigin string) 
 		}
 		pin, err := CanonicalizeBrowserPolicyOrigin(institutionOrigin)
 		if err != nil {
-			return errors.New("model: institution HTTP exception needs a supported HTTPS origin")
+			return invalidModelError("BrowserPolicy.ValidateInstitutionOrigin", "browser_policy", "", "institution HTTP exception needs a supported HTTPS origin", "")
 		}
 		origin, _ := url.Parse(pin)
 		candidate, _ := url.Parse(rule.Origin)
@@ -390,7 +389,7 @@ func (policy BrowserPolicy) ValidateInstitutionOrigin(institutionOrigin string) 
 			return err
 		}
 		if host != candidateHost || port != candidatePort {
-			return errors.New("model: HTTP exception differs from the pinned institution origin")
+			return invalidModelError("BrowserPolicy.ValidateInstitutionOrigin", "browser_policy", "", "HTTP exception differs from the pinned institution origin", "")
 		}
 	}
 	return nil

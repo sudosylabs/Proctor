@@ -11,8 +11,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -67,7 +65,7 @@ func newExamRevisionPolicy(schemaVersion int, encoded []byte) ExamRevisionPolicy
 func (policy ExamRevisionPolicy) Validate() error {
 	canonical, err := CanonicalizeExamRevisionPolicy(policy.Bytes)
 	if err != nil || policy.SchemaVersion != canonical.SchemaVersion || policy.SHA256 != canonical.SHA256 || !slices.Equal(policy.Bytes, canonical.Bytes) {
-		return errors.New("model: invalid canonical Exam Revision policy")
+		return invalidModelError("ExamRevisionPolicy.Validate", "exam_revision_policy", "", "invalid canonical Exam Revision policy", "")
 	}
 	return nil
 }
@@ -87,11 +85,11 @@ type ExamRevisionResource struct {
 
 func (resource ExamRevisionResource) Validate() error {
 	if !resource.ResourceID.IsValid() || !resource.FileEntryID.IsValid() || !resource.FileRevisionID.IsValid() || !resource.RenditionID.IsValid() {
-		return errors.New("model: invalid Exam Revision resource identity")
+		return invalidModelError("ExamRevisionResource.Validate", "exam_revision_resource", "", "invalid Exam Revision resource identity", "")
 	}
 	probe, err := NewExamResource(resource.ResourceID, NewExamID(), resource.FileEntryID, resource.FileRevisionID, resource.DisplayName, resource.DescriptionMarkdown, resource.Position, time.Unix(1, 0).UTC())
 	if err != nil || probe.DisplayName != resource.DisplayName || !resource.MediaType.IsValid() || resource.SizeBytes < 0 || resource.SizeBytes > ExamResourceMaximumBytes || !validLowerSHA256(resource.SHA256) {
-		return errors.New("model: invalid Exam Revision resource snapshot")
+		return invalidModelError("ExamRevisionResource.Validate", "exam_revision_resource", "", "invalid Exam Revision resource snapshot", "")
 	}
 	return nil
 }
@@ -109,23 +107,23 @@ type ExamRevisionStarterWorkspaceEntry struct {
 
 func (entry ExamRevisionStarterWorkspaceEntry) Validate() error {
 	if !entry.EntryID.IsValid() {
-		return errors.New("model: invalid Exam Revision Starter Workspace identity")
+		return invalidModelError("ExamRevisionStarterWorkspaceEntry.Validate", "exam_revision_starter_workspace_entry", "", "invalid Exam Revision Starter Workspace identity", "")
 	}
 	path, err := NormalizeStarterWorkspacePath(entry.Path)
 	if err != nil || path != entry.Path {
-		return errors.New("model: invalid Exam Revision Starter Workspace path")
+		return invalidModelError("ExamRevisionStarterWorkspaceEntry.Validate", "exam_revision_starter_workspace_entry", "", "invalid Exam Revision Starter Workspace path", "")
 	}
 	switch entry.Kind {
 	case StarterWorkspaceEntryDirectory:
 		if !entry.ObjectID.IsZero() || !entry.ContentVersion.IsZero() || entry.MediaType != "" || entry.SizeBytes != 0 || entry.SHA256 != "" {
-			return errors.New("model: Exam Revision directory cannot carry content")
+			return invalidModelError("ExamRevisionStarterWorkspaceEntry.Validate", "exam_revision_starter_workspace_entry", "", "Exam Revision directory cannot carry content", "")
 		}
 	case StarterWorkspaceEntryFile:
 		if !entry.ObjectID.IsValid() || !entry.ContentVersion.IsValid() || entry.MediaType == "" || strings.TrimSpace(entry.MediaType) != entry.MediaType || len(entry.MediaType) > 255 || entry.SizeBytes < 0 || entry.SizeBytes > StarterWorkspaceMaximumFileBytes || !validLowerSHA256(entry.SHA256) {
-			return errors.New("model: invalid Exam Revision Starter Workspace file")
+			return invalidModelError("ExamRevisionStarterWorkspaceEntry.Validate", "exam_revision_starter_workspace_entry", "", "invalid Exam Revision Starter Workspace file", "")
 		}
 	default:
-		return errors.New("model: invalid Exam Revision Starter Workspace kind")
+		return invalidModelError("ExamRevisionStarterWorkspaceEntry.Validate", "exam_revision_starter_workspace_entry", "", "invalid Exam Revision Starter Workspace kind", "")
 	}
 	return nil
 }
@@ -233,10 +231,10 @@ type LiveCorrectionExamRevisionSpecification struct {
 
 func NewLiveCorrectionExamRevision(base *ExamRevision, spec LiveCorrectionExamRevisionSpecification) (*ExamRevision, error) {
 	if base == nil {
-		return nil, errors.New("model: live correction requires a base Exam Revision")
+		return nil, invalidModelError("NewLiveCorrectionExamRevision", "exam_revision", "", "live correction requires a base Exam Revision", "")
 	}
 	if err := base.Validate(); err != nil || spec.Number <= base.Number {
-		return nil, errors.New("model: invalid live correction base or number")
+		return nil, invalidModelError("NewLiveCorrectionExamRevision", "exam_revision", "", "invalid live correction base or number", "")
 	}
 	browserPolicy := spec.BrowserPolicy.Clone()
 	if browserPolicy.SchemaVersion == 0 {
@@ -272,7 +270,7 @@ func NewLiveCorrectionExamRevision(base *ExamRevision, spec LiveCorrectionExamRe
 
 func CandidateCorrectionChangedAreas(base *ExamRevision, instructionsMarkdown string, resources []ExamRevisionResource, browserPolicy BrowserPolicy) ([]ExamCorrectionChangedArea, error) {
 	if base == nil || base.Validate() != nil {
-		return nil, errors.New("model: invalid live correction base")
+		return nil, invalidModelError("CandidateCorrectionChangedAreas", "exam_revision", "", "invalid live correction base", "")
 	}
 	changedAreas := make([]ExamCorrectionChangedArea, 0, 3)
 	if base.InstructionsMarkdown != instructionsMarkdown {
@@ -296,30 +294,30 @@ func (revision *ExamRevision) Validate() error {
 	if revision == nil || !revision.ID.IsValid() || !revision.ExamID.IsValid() || revision.Number < 1 || revision.SourceDraftRevision < 1 ||
 		revision.Title == "" || strings.TrimSpace(revision.Title) != revision.Title || !revision.PublishedByUserID.IsValid() || revision.PublishedAt.IsZero() ||
 		!revision.Kind.IsValid() || !revision.BaseRevisionID.IsZero() && (!revision.BaseRevisionID.IsValid() || revision.BaseRevisionID == revision.ID) {
-		return errors.New("model: invalid Exam Revision metadata")
+		return invalidModelError("ExamRevision.Validate", "exam_revision", "", "invalid Exam Revision metadata", "")
 	}
 	if revision.Kind == ExamRevisionPublicationLiveCorrection {
 		if !revision.BaseRevisionID.IsValid() || revision.CandidateCorrection.Validate() != nil {
-			return errors.New("model: live correction Revision requires Candidate Correction Notice")
+			return invalidModelError("ExamRevision.Validate", "exam_revision", "", "live correction Revision requires Candidate Correction Notice", "")
 		}
 	} else if revision.CandidateCorrection != nil {
-		return errors.New("model: standard Revision cannot contain Candidate Correction Notice")
+		return invalidModelError("ExamRevision.Validate", "exam_revision", "", "standard Revision cannot contain Candidate Correction Notice", "")
 	}
 	draft := &ExamDraft{ExamID: revision.ExamID, Title: revision.Title, InstructionsMarkdown: revision.InstructionsMarkdown,
 		Policy: DefaultExamPolicySet(), BrowserPolicy: revision.BrowserPolicy.Clone(),
 		UpdatedAt: revision.PublishedAt, Revision: revision.SourceDraftRevision}
 	if err := draft.Validate(); err != nil {
-		return fmt.Errorf("model: invalid Exam Revision authored text: %w", err)
+		return invalidModelError("ExamRevision.Validate", "exam_revision", "", "invalid Exam Revision authored text", "").wrap(err)
 	}
 	if err := revision.Policy.Validate(); err != nil || revision.PolicyDigest != revision.Policy.SHA256 {
-		return errors.New("model: invalid Exam Revision policy")
+		return invalidModelError("ExamRevision.Validate", "exam_revision", "", "invalid Exam Revision policy", "")
 	}
 	if err := revision.Capacity.Validate(); err != nil {
-		return errors.New("model: invalid Exam Revision capacity policy")
+		return invalidModelError("ExamRevision.Validate", "exam_revision", "", "invalid Exam Revision capacity policy", "")
 	}
 	browserDigest, err := BrowserPolicyDigest(revision.BrowserPolicy)
 	if err != nil || revision.BrowserPolicyDigest != browserDigest {
-		return errors.New("model: invalid Exam Revision Browser Policy")
+		return invalidModelError("ExamRevision.Validate", "exam_revision", "", "invalid Exam Revision Browser Policy", "")
 	}
 	if err := validateExamRevisionResources(revision.Resources, revision.Capacity); err != nil {
 		return err
@@ -329,7 +327,7 @@ func (revision *ExamRevision) Validate() error {
 	}
 	workspaceDigest, contentDigest, err := revision.computeDigests()
 	if err != nil || revision.StarterWorkspaceDigest != workspaceDigest || revision.ContentDigest != contentDigest {
-		return errors.New("model: invalid Exam Revision digest")
+		return invalidModelError("ExamRevision.Validate", "exam_revision", "", "invalid Exam Revision digest", "")
 	}
 	return nil
 }
@@ -382,18 +380,18 @@ func sameExamRevisionResources(left, right []ExamRevisionResource) bool {
 
 func validateExamRevisionResources(resources []ExamRevisionResource, capacity ExamCapacityPolicy) error {
 	if len(resources) > capacity.ResourceMaximumCount {
-		return errors.New("model: too many Exam Revision resources")
+		return invalidModelError("validateExamRevisionResources", "exam_revision", "", "too many Exam Revision resources", "")
 	}
 	resourceIDs, entryIDs := map[ExamResourceID]struct{}{}, map[FileEntryID]struct{}{}
 	for position, resource := range resources {
 		if err := resource.Validate(); err != nil || resource.Position != position || resource.SizeBytes > capacity.ResourceMaximumBytes {
-			return errors.New("model: invalid ordered Exam Revision resources")
+			return invalidModelError("validateExamRevisionResources", "exam_revision", "", "invalid ordered Exam Revision resources", "")
 		}
 		if _, exists := resourceIDs[resource.ResourceID]; exists {
-			return errors.New("model: duplicate Exam Revision resource")
+			return invalidModelError("validateExamRevisionResources", "exam_revision", "", "duplicate Exam Revision resource", "")
 		}
 		if _, exists := entryIDs[resource.FileEntryID]; exists {
-			return errors.New("model: duplicate Exam Revision resource file")
+			return invalidModelError("validateExamRevisionResources", "exam_revision", "", "duplicate Exam Revision resource file", "")
 		}
 		resourceIDs[resource.ResourceID], entryIDs[resource.FileEntryID] = struct{}{}, struct{}{}
 	}
@@ -402,7 +400,7 @@ func validateExamRevisionResources(resources []ExamRevisionResource, capacity Ex
 
 func validateExamRevisionStarterWorkspace(entries []ExamRevisionStarterWorkspaceEntry, capacity ExamCapacityPolicy) error {
 	if len(entries) > capacity.WorkspaceMaximumEntries {
-		return errors.New("model: too many Exam Revision Starter Workspace entries")
+		return invalidModelError("validateExamRevisionStarterWorkspace", "exam_revision", "", "too many Exam Revision Starter Workspace entries", "")
 	}
 	paths := make(map[string]StarterWorkspaceEntryKind, len(entries))
 	ids, objects := map[StarterWorkspaceEntryID]struct{}{}, map[StarterWorkspaceObjectID]struct{}{}
@@ -410,22 +408,22 @@ func validateExamRevisionStarterWorkspace(entries []ExamRevisionStarterWorkspace
 	previous := ""
 	for index, entry := range entries {
 		if err := entry.Validate(); err != nil || entry.SizeBytes > capacity.WorkspaceMaximumFileBytes || index > 0 && strings.Compare(previous, entry.Path) >= 0 {
-			return errors.New("model: invalid canonical Exam Revision Starter Workspace")
+			return invalidModelError("validateExamRevisionStarterWorkspace", "exam_revision", "", "invalid canonical Exam Revision Starter Workspace", "")
 		}
 		if _, exists := ids[entry.EntryID]; exists {
-			return errors.New("model: duplicate Exam Revision Starter Workspace entry")
+			return invalidModelError("validateExamRevisionStarterWorkspace", "exam_revision", "", "duplicate Exam Revision Starter Workspace entry", "")
 		}
 		if _, exists := paths[entry.Path]; exists {
-			return errors.New("model: duplicate Exam Revision Starter Workspace path")
+			return invalidModelError("validateExamRevisionStarterWorkspace", "exam_revision", "", "duplicate Exam Revision Starter Workspace path", "")
 		}
 		if entry.Kind == StarterWorkspaceEntryFile {
 			if _, exists := objects[entry.ObjectID]; exists {
-				return errors.New("model: duplicate Exam Revision Starter Workspace object")
+				return invalidModelError("validateExamRevisionStarterWorkspace", "exam_revision", "", "duplicate Exam Revision Starter Workspace object", "")
 			}
 			objects[entry.ObjectID] = struct{}{}
 			total += entry.SizeBytes
 			if total > capacity.WorkspaceMaximumTotalBytes {
-				return errors.New("model: Exam Revision Starter Workspace is too large")
+				return invalidModelError("validateExamRevisionStarterWorkspace", "exam_revision", "", "Exam Revision Starter Workspace is too large", "")
 			}
 		}
 		ids[entry.EntryID] = struct{}{}
@@ -435,7 +433,7 @@ func validateExamRevisionStarterWorkspace(entries []ExamRevisionStarterWorkspace
 	for path := range paths {
 		for parent := parentWorkspacePath(path); parent != ""; parent = parentWorkspacePath(parent) {
 			if paths[parent] != StarterWorkspaceEntryDirectory {
-				return errors.New("model: Exam Revision Starter Workspace parent is missing")
+				return invalidModelError("validateExamRevisionStarterWorkspace", "exam_revision", "", "Exam Revision Starter Workspace parent is missing", "")
 			}
 		}
 	}

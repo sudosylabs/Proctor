@@ -25,7 +25,7 @@ type DefaultProfilePictureCommandV1 struct {
 
 func EncodeDefaultProfilePictureCommand(command DefaultProfilePictureCommandV1) (json.RawMessage, error) {
 	if !command.UserID.IsValid() {
-		return nil, errors.New("default profile-picture command has invalid user ID")
+		return nil, invalidModelError("EncodeDefaultProfilePictureCommand", "default_profile_picture_job", "", "default profile-picture command has invalid user ID", "")
 	}
 	return json.Marshal(command)
 }
@@ -33,22 +33,22 @@ func EncodeDefaultProfilePictureCommand(command DefaultProfilePictureCommandV1) 
 func DecodeDefaultProfilePictureCommand(version int, document json.RawMessage) (DefaultProfilePictureCommandV1, error) {
 	var command DefaultProfilePictureCommandV1
 	if version != 1 {
-		return command, fmt.Errorf("unsupported default profile-picture command version %d", version)
+		return command, invalidModelError("DecodeDefaultProfilePictureCommand", "default_profile_picture_job", "", fmt.Sprintf("unsupported default profile-picture command version %d", version), "")
 	}
 	decoder := json.NewDecoder(bytes.NewReader(document))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&command); err != nil {
-		return command, fmt.Errorf("decode default profile-picture command: %w", err)
+		return command, invalidModelError("DecodeDefaultProfilePictureCommand", "default_profile_picture_job", "", "decode default profile-picture command", "").wrap(err)
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		if err == nil {
-			return command, errors.New("job command contains trailing JSON")
+			return command, invalidModelError("DecodeDefaultProfilePictureCommand", "default_profile_picture_job", "", "job command contains trailing JSON", "")
 		}
-		return command, fmt.Errorf("decode trailing job command: %w", err)
+		return command, invalidModelError("DecodeDefaultProfilePictureCommand", "default_profile_picture_job", "", "decode trailing job command", "").wrap(err)
 	}
 	if !command.UserID.IsValid() {
-		return command, errors.New("default profile-picture command has invalid user ID")
+		return command, invalidModelError("DecodeDefaultProfilePictureCommand", "default_profile_picture_job", "", "default profile-picture command has invalid user ID", "")
 	}
 	return command, nil
 }

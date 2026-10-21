@@ -173,14 +173,14 @@ func (d *ExamDraft) Validate() error {
 		return invalidModelError(where, "exam_draft", "revision", "must be positive", details)
 	}
 	if _, err := EncodeExamPolicySet(d.Policy); err != nil {
-		return fmt.Errorf("%s: policy: %w", where, err)
+		return invalidModelError(where, "exam_draft", "", fmt.Sprintf("%s: policy", where), "").wrap(err)
 	}
 	browserPolicy := d.BrowserPolicy
 	if browserPolicy.SchemaVersion == 0 {
 		browserPolicy = DisabledBrowserPolicy()
 	}
 	if err := browserPolicy.Validate(); err != nil {
-		return fmt.Errorf("%s: browser policy: %w", where, err)
+		return invalidModelError(where, "exam_draft", "", fmt.Sprintf("%s: browser policy", where), "").wrap(err)
 	}
 	return nil
 }
@@ -297,7 +297,7 @@ func NewExamManager(examID ExamID, userID, grantedByUserID UserID, at time.Time)
 func (m *ExamManager) Validate() error {
 	const where = "ExamManager.Validate"
 	if m == nil || !m.ExamID.IsValid() || !m.UserID.IsValid() || !m.GrantedByUserID.IsValid() || m.GrantedAt.IsZero() {
-		return fmt.Errorf("%s: manager identity and grant time are required", where)
+		return invalidModelError(where, "exam_manager", "", fmt.Sprintf("%s: manager identity and grant time are required", where), "")
 	}
 	return nil
 }

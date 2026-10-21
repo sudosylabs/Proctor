@@ -8,7 +8,6 @@
 package model
 
 import (
-	"errors"
 	"time"
 )
 
@@ -54,7 +53,7 @@ func (c RetentionExpiryCounts) Validate() error {
 	if c.Total < 0 || c.Eligible < 0 || c.AwaitingDeadline < 0 || c.Unconfigured < 0 || c.Unfinished < 0 ||
 		c.Referenced < 0 || c.Held < 0 || c.PurgePending < 0 || c.SourceProtected < 0 ||
 		c.Total != c.Eligible+c.AwaitingDeadline+c.Unconfigured+c.Unfinished+c.Referenced+c.Held+c.PurgePending+c.SourceProtected {
-		return errors.New("model: invalid retention expiry counts")
+		return invalidModelError("RetentionExpiryCounts.Validate", "retention_expiry_counts", "", "invalid retention expiry counts", "")
 	}
 	return nil
 }
@@ -77,16 +76,16 @@ func (r RetentionExpiryRecord) Validate() error {
 	if !r.Kind.IsValid() || !IsValidOpaqueID(r.ID) || r.EventAt.IsZero() ||
 		r.ScheduledAt.Valid != r.ExpiresAfter.Valid ||
 		(r.ScheduledAt.Valid && (r.ScheduledAt.Time.IsZero() || !r.ExpiresAfter.Time.After(r.ScheduledAt.Time))) {
-		return errors.New("model: invalid retention expiry record")
+		return invalidModelError("RetentionExpiryRecord.Validate", "retention_expiry_record", "", "invalid retention expiry record", "")
 	}
 	switch r.Blocker {
 	case RetentionExpiryEligible, RetentionExpiryDeadline:
 		if !r.EligibleAt.Valid || r.EligibleAt.Time.Before(r.EventAt) {
-			return errors.New("model: invalid retention expiry deadline")
+			return invalidModelError("RetentionExpiryRecord.Validate", "retention_expiry_record", "", "invalid retention expiry deadline", "")
 		}
 	case RetentionExpiryUnconfigured, RetentionExpiryUnfinished, RetentionExpiryReferenced, RetentionExpiryHeld, RetentionExpiryPurgePending, RetentionExpirySourceProtected:
 	default:
-		return errors.New("model: invalid retention expiry blocker")
+		return invalidModelError("RetentionExpiryRecord.Validate", "retention_expiry_record", "", "invalid retention expiry blocker", "")
 	}
 	return nil
 }

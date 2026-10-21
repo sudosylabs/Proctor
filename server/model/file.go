@@ -9,7 +9,6 @@ package model
 
 import (
 	"encoding/hex"
-	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -39,7 +38,7 @@ func NewWorkspaceContentVersion() WorkspaceContentVersion {
 
 func ParseWorkspaceContentVersion(value string) (WorkspaceContentVersion, error) {
 	if !workspaceContentVersionPattern.MatchString(value) {
-		return "", fmt.Errorf("model: invalid workspace content version")
+		return "", invalidModelError("ParseWorkspaceContentVersion", "file", "", "invalid workspace content version", "")
 	}
 	return WorkspaceContentVersion(value), nil
 }
@@ -105,10 +104,10 @@ func NewFileEntryForPurpose(id FileEntryID, purpose FilePurpose, indexing FileIn
 
 func (f *FileEntry) Validate() error {
 	if f == nil || !f.ID.IsValid() || f.CreatedAt.IsZero() || f.UpdatedAt.Before(f.CreatedAt) || f.Revision <= 0 || !validFileIndexingPolicy(f.IndexingPolicy) || !validFilePurpose(f.Purpose) {
-		return fmt.Errorf("model: invalid file entry")
+		return invalidModelError("FileEntry.Validate", "file_entry", "", "invalid file entry", "")
 	}
 	if !f.CurrentRevisionID.IsZero() && !f.CurrentRevisionID.IsValid() {
-		return fmt.Errorf("model: invalid file entry current revision")
+		return invalidModelError("FileEntry.Validate", "file_entry", "", "invalid file entry current revision", "")
 	}
 	return nil
 }
@@ -137,17 +136,17 @@ func NewFileRevision(id FileRevisionID, entryID FileEntryID, availability FileAv
 
 func (f *FileRevision) Validate() error {
 	if f == nil || !f.ID.IsValid() || !f.FileEntryID.IsValid() || f.CreatedAt.IsZero() || !validFileAvailability(f.Availability) || !validFileIndexingState(f.IndexingState) {
-		return fmt.Errorf("model: invalid file revision")
+		return invalidModelError("FileRevision.Validate", "file_revision", "", "invalid file revision", "")
 	}
 	if f.Availability == FileAvailabilityAvailable && len(f.Renditions) == 0 {
-		return fmt.Errorf("model: available file revision must have renditions")
+		return invalidModelError("FileRevision.Validate", "file_revision", "", "available file revision must have renditions", "")
 	}
 	if f.Availability == FileAvailabilityPending && len(f.Renditions) != 0 {
-		return fmt.Errorf("model: pending file revision cannot have renditions")
+		return invalidModelError("FileRevision.Validate", "file_revision", "", "pending file revision cannot have renditions", "")
 	}
 	for index := range f.Renditions {
 		if err := f.Renditions[index].Validate(); err != nil || f.Renditions[index].RevisionID != f.ID {
-			return fmt.Errorf("model: invalid file revision rendition")
+			return invalidModelError("FileRevision.Validate", "file_revision", "", "invalid file revision rendition", "")
 		}
 	}
 	return nil
@@ -156,7 +155,7 @@ func (f *FileRevision) Validate() error {
 // MakeAvailable returns a published copy after every supplied rendition validates.
 func (f *FileRevision) MakeAvailable(renditions []FileRendition) (*FileRevision, error) {
 	if f == nil || f.Availability != FileAvailabilityPending || len(renditions) == 0 {
-		return nil, fmt.Errorf("model: only a pending revision with renditions can become available")
+		return nil, invalidModelError("FileRevision.MakeAvailable", "file_revision", "", "only a pending revision with renditions can become available", "")
 	}
 	result := *f
 	result.Availability = FileAvailabilityAvailable
@@ -191,10 +190,10 @@ func NewFileRendition(id FileRenditionID, revisionID FileRevisionID, name, media
 func (f *FileRendition) Validate() error {
 	validDimensions := f != nil && ((f.Width == 0 && f.Height == 0) || (f.Width > 0 && f.Height > 0))
 	if f == nil || !f.ID.IsValid() || !f.RevisionID.IsValid() || f.CreatedAt.IsZero() || strings.TrimSpace(f.Name) == "" || f.MediaType == "" || f.Size < 0 || !validDimensions || len(f.SHA256) != 64 {
-		return fmt.Errorf("model: invalid file rendition")
+		return invalidModelError("FileRendition.Validate", "file_rendition", "", "invalid file rendition", "")
 	}
 	if _, err := hex.DecodeString(f.SHA256); err != nil {
-		return fmt.Errorf("model: invalid file rendition checksum")
+		return invalidModelError("FileRendition.Validate", "file_rendition", "", "invalid file rendition checksum", "")
 	}
 	return nil
 }
@@ -214,7 +213,7 @@ type UploadLease struct {
 
 func NewUploadLease(id UploadLeaseID, revisionID FileRevisionID, createdBy UserID, at, expiresAt time.Time) (*UploadLease, error) {
 	if !TimeUTC(expiresAt).Equal(TimeUTC(at).Add(UploadLeaseMaximumLifetime)) {
-		return nil, fmt.Errorf("model: upload lease must initially expire after one hour")
+		return nil, invalidModelError("NewUploadLease", "file", "", "upload lease must initially expire after one hour", "")
 	}
 	lease := &UploadLease{ID: id, FileRevisionID: revisionID, CreatedByUserID: createdBy, CreatedAt: TimeUTC(at), UpdatedAt: TimeUTC(at), ExpiresAt: TimeUTC(expiresAt), Revision: 1}
 	if err := lease.Validate(); err != nil {
@@ -225,17 +224,17 @@ func NewUploadLease(id UploadLeaseID, revisionID FileRevisionID, createdBy UserI
 
 func (u *UploadLease) Validate() error {
 	if u == nil || !u.ID.IsValid() || !u.FileRevisionID.IsValid() || !u.CreatedByUserID.IsValid() || u.CreatedAt.IsZero() || u.UpdatedAt.Before(u.CreatedAt) || !u.ExpiresAt.After(u.CreatedAt) || u.ExpiresAt.After(u.UpdatedAt.Add(UploadLeaseMaximumLifetime)) || u.Revision <= 0 || u.BytesReceived < 0 {
-		return fmt.Errorf("model: invalid upload lease")
+		return invalidModelError("UploadLease.Validate", "upload_lease", "", "invalid upload lease", "")
 	}
 	if u.ConsumedAt.Valid && u.ConsumedAt.Time.Before(u.CreatedAt) {
-		return fmt.Errorf("model: invalid upload lease consumption time")
+		return invalidModelError("UploadLease.Validate", "upload_lease", "", "invalid upload lease consumption time", "")
 	}
 	return nil
 }
 
 func (u *UploadLease) Renew(now, expiresAt time.Time, bytesReceived int64) (*UploadLease, error) {
 	if u == nil || u.ConsumedAt.Valid || bytesReceived <= u.BytesReceived || !TimeUTC(now).Before(u.ExpiresAt) || !TimeUTC(expiresAt).After(TimeUTC(now)) || TimeUTC(expiresAt).After(TimeUTC(now).Add(UploadLeaseMaximumLifetime)) {
-		return nil, fmt.Errorf("model: upload lease cannot be renewed")
+		return nil, invalidModelError("UploadLease.Renew", "upload_lease", "", "upload lease cannot be renewed", "")
 	}
 	result := *u
 	result.UpdatedAt = TimeUTC(now)
@@ -247,7 +246,7 @@ func (u *UploadLease) Renew(now, expiresAt time.Time, bytesReceived int64) (*Upl
 
 func (u *UploadLease) Consume(now time.Time) (*UploadLease, error) {
 	if u == nil || u.ConsumedAt.Valid || TimeUTC(now).Before(u.CreatedAt) || !TimeUTC(now).Before(u.ExpiresAt) {
-		return nil, fmt.Errorf("model: upload lease cannot be consumed")
+		return nil, invalidModelError("UploadLease.Consume", "upload_lease", "", "upload lease cannot be consumed", "")
 	}
 	result := *u
 	result.UpdatedAt = TimeUTC(now)

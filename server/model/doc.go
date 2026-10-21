@@ -55,4 +55,11 @@
 // belongs to that boundary: request and response DTOs in httpapi or
 // websocket, persisted spellings in sqlstore. A json:"-" tag on a secret field
 // is a leak guard and is always allowed.
+//
+// Errors: a model failure is either a package-level sentinel that callers
+// match with errors.Is, or a *ValidationError built by invalidModelError,
+// which names the model, the field (empty for the whole value), and the
+// reason, and may wrap an underlying cause. The model never formats an ad hoc
+// error. Closed vocabularies and identifiers answer IsValid() bool; structured
+// values answer Validate() error.
 package model

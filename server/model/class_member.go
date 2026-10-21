@@ -13,7 +13,6 @@
 package model
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -122,11 +121,11 @@ func (cm *ClassMember) IsArchived() bool {
 // End closes an open-ended enrollment at the exclusive end time.
 func (cm *ClassMember) End(at time.Time) error {
 	if cm == nil {
-		return fmt.Errorf("model: class member is nil")
+		return invalidModelError("ClassMember.End", "class_member", "", "class member is nil", "")
 	}
 	at = TimeUTC(at)
 	if cm.EndsAt.Valid {
-		return fmt.Errorf("model: class member already ended")
+		return invalidModelError("ClassMember.End", "class_member", "", "class member already ended", "")
 	}
 	cm.EndsAt = OptionalTimeFrom(at)
 	cm.UpdatedAt = at

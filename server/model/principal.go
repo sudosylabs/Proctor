@@ -8,7 +8,6 @@
 package model
 
 import (
-	"errors"
 	"time"
 )
 
@@ -72,7 +71,7 @@ type AuthenticationTokens struct {
 // consistent for its credential type.
 func (p Principal) Validate() error {
 	if p.MFARecoveryRequired {
-		return errors.New("model: principal is restricted to MFA reenrollment")
+		return invalidModelError("Principal.Validate", "principal", "", "principal is restricted to MFA reenrollment", "")
 	}
 	return p.validateIdentity()
 }
@@ -82,18 +81,18 @@ func (p Principal) Validate() error {
 // bounded MFA recovery operations may call this instead of Validate.
 func (p Principal) ValidateMFARecovery() error {
 	if p.MFARecoveryRequired && (p.AuthenticationGeneration <= 0 || p.ClientType != SessionClientWeb || p.CredentialType != CredentialSessionAccess) {
-		return errors.New("model: MFA recovery principal is invalid")
+		return invalidModelError("Principal.ValidateMFARecovery", "principal", "", "MFA recovery principal is invalid", "")
 	}
 	return p.validateIdentity()
 }
 
 func (p Principal) validateIdentity() error {
 	if p.AuthenticationGeneration < 0 {
-		return errors.New("model: principal authentication generation is invalid")
+		return invalidModelError("Principal.validateIdentity", "principal", "", "principal authentication generation is invalid", "")
 	}
 	if !p.UserID.IsValid() || !p.CredentialID.IsValid() ||
 		p.AuthenticationMethod == "" || !p.ClientType.IsValid() {
-		return errors.New("model: principal identity is invalid")
+		return invalidModelError("Principal.validateIdentity", "principal", "", "principal identity is invalid", "")
 	}
 	switch p.CredentialType {
 	case CredentialSessionAccess:
@@ -102,26 +101,26 @@ func (p Principal) validateIdentity() error {
 			p.AuthenticatedAt.IsZero() ||
 			len(p.CredentialScopes) != 0 ||
 			!p.AcademicUnitID.IsZero() {
-			return errors.New("model: session principal is invalid")
+			return invalidModelError("Principal.validateIdentity", "principal", "", "session principal is invalid", "")
 		}
 		if p.RegisteredDesktopKey {
 			if p.ClientType != SessionClientDesktop || !p.DesktopRegistrationID.IsValid() ||
 				!IsValidDPoPKeyThumbprint(p.DPoPKeyThumbprint) || !IsValidDesktopRelease(p.DesktopRelease) ||
 				!IsValidDesktopBuildID(p.DesktopBuildID) || !p.DesktopPlatform.IsValid() ||
 				!p.DesktopArchitecture.IsValid() || p.DesktopRealtimeProtocol < 1 {
-				return errors.New("model: registered Desktop-key principal is invalid")
+				return invalidModelError("Principal.validateIdentity", "principal", "", "registered Desktop-key principal is invalid", "")
 			}
 		} else if !p.DesktopRegistrationID.IsZero() || p.DPoPKeyThumbprint != "" || p.DesktopRelease != "" ||
 			p.DesktopBuildID != "" || p.DesktopPlatform != "" || p.DesktopArchitecture != "" || p.DesktopRealtimeProtocol != 0 {
-			return errors.New("model: unproved Desktop-key principal is invalid")
+			return invalidModelError("Principal.validateIdentity", "principal", "", "unproved Desktop-key principal is invalid", "")
 		}
 		if (p.AuthenticationMethod == "password" && (p.AuthenticationProviderID != "" || !p.ExternalIdentityID.IsZero())) ||
 			(p.AuthenticationMethod != "password" &&
 				(!IsValidIdentityProviderID(p.AuthenticationProviderID) || !p.ExternalIdentityID.IsValid())) {
-			return errors.New("model: session principal authentication provider is invalid")
+			return invalidModelError("Principal.validateIdentity", "principal", "", "session principal authentication provider is invalid", "")
 		}
 		if p.ReauthenticatedAt.Valid && p.ReauthenticatedAt.Time.Before(p.AuthenticatedAt) {
-			return errors.New("model: session principal reauthentication is invalid")
+			return invalidModelError("Principal.validateIdentity", "principal", "", "session principal reauthentication is invalid", "")
 		}
 		return nil
 	case CredentialPersonalAccessToken:
@@ -133,21 +132,21 @@ func (p Principal) validateIdentity() error {
 			p.DesktopRelease != "" || p.DesktopBuildID != "" || p.DesktopPlatform != "" || p.DesktopArchitecture != "" || p.DesktopRealtimeProtocol != 0 ||
 			len(p.CredentialScopes) == 0 ||
 			(!p.AcademicUnitID.IsZero() && !p.AcademicUnitID.IsValid()) {
-			return errors.New("model: personal access token principal is invalid")
+			return invalidModelError("Principal.validateIdentity", "principal", "", "personal access token principal is invalid", "")
 		}
 		seen := make(map[string]struct{}, len(p.CredentialScopes))
 		for _, scope := range p.CredentialScopes {
 			if !IsPersonalAccessTokenAction(scope) {
-				return errors.New("model: personal access token scope is invalid")
+				return invalidModelError("Principal.validateIdentity", "principal", "", "personal access token scope is invalid", "")
 			}
 			if _, exists := seen[scope]; exists {
-				return errors.New("model: personal access token scope is duplicated")
+				return invalidModelError("Principal.validateIdentity", "principal", "", "personal access token scope is duplicated", "")
 			}
 			seen[scope] = struct{}{}
 		}
 		return nil
 	default:
-		return errors.New("model: principal credential type is invalid")
+		return invalidModelError("Principal.validateIdentity", "principal", "", "principal credential type is invalid", "")
 	}
 }
 

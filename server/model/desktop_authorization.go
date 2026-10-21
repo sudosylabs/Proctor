@@ -346,25 +346,25 @@ func validAuthenticationIdentity(providerID string, identityID ExternalIdentityI
 // loopback-development policy; production origins remain HTTPS-only.
 func ValidateBrowserAuthenticationIssuer(issuer string, allowLoopbackHTTPDevelopment bool) error {
 	if issuer == "" || len(issuer) > ExternalLoginReturnToMaxLength {
-		return errors.New("browser authentication issuer is invalid")
+		return invalidModelError("ValidateBrowserAuthenticationIssuer", "desktop_authorization", "", "browser authentication issuer is invalid", "")
 	}
 	parsed, err := url.Parse(issuer)
 	if err != nil || parsed.Host == "" || parsed.User != nil ||
 		parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Opaque != "" {
-		return errors.New("browser authentication issuer is invalid")
+		return invalidModelError("ValidateBrowserAuthenticationIssuer", "desktop_authorization", "", "browser authentication issuer is invalid", "")
 	}
 	if parsed.Scheme == "https" {
 		return nil
 	}
 	if parsed.Scheme != "http" || !allowLoopbackHTTPDevelopment {
-		return errors.New("browser authentication issuer requires HTTPS")
+		return invalidModelError("ValidateBrowserAuthenticationIssuer", "desktop_authorization", "", "browser authentication issuer requires HTTPS", "")
 	}
 	if strings.EqualFold(parsed.Hostname(), "localhost") {
 		return nil
 	}
 	ip := net.ParseIP(parsed.Hostname())
 	if ip == nil || !ip.IsLoopback() {
-		return errors.New("browser authentication HTTP issuer must be loopback")
+		return invalidModelError("ValidateBrowserAuthenticationIssuer", "desktop_authorization", "", "browser authentication HTTP issuer must be loopback", "")
 	}
 	return nil
 }

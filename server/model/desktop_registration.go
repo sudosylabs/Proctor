@@ -13,7 +13,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"math/big"
 	"time"
 	"unicode/utf8"
@@ -38,18 +37,18 @@ type DesktopPublicJWK struct {
 // Validate restricts Desktop proof keys to ES256 on the P-256 curve.
 func (j DesktopPublicJWK) Validate() error {
 	if j.Kty != "EC" || j.Crv != "P-256" {
-		return errors.New("desktop public JWK must use EC P-256")
+		return invalidModelError("DesktopPublicJWK.Validate", "desktop_public_jwk", "", "desktop public JWK must use EC P-256", "")
 	}
 	x, err := decodeP256Coordinate(j.X)
 	if err != nil {
-		return errors.New("desktop public JWK x coordinate is invalid")
+		return invalidModelError("DesktopPublicJWK.Validate", "desktop_public_jwk", "", "desktop public JWK x coordinate is invalid", "")
 	}
 	y, err := decodeP256Coordinate(j.Y)
 	if err != nil {
-		return errors.New("desktop public JWK y coordinate is invalid")
+		return invalidModelError("DesktopPublicJWK.Validate", "desktop_public_jwk", "", "desktop public JWK y coordinate is invalid", "")
 	}
 	if !elliptic.P256().IsOnCurve(x, y) {
-		return errors.New("desktop public JWK point is not on P-256")
+		return invalidModelError("DesktopPublicJWK.Validate", "desktop_public_jwk", "", "desktop public JWK point is not on P-256", "")
 	}
 	return nil
 }
@@ -86,7 +85,7 @@ func (j DesktopPublicJWK) Thumbprint() (string, error) {
 func decodeP256Coordinate(value string) (*big.Int, error) {
 	decoded, err := rawBase64URL.DecodeString(value)
 	if err != nil || len(decoded) != 32 || rawBase64URL.EncodeToString(decoded) != value {
-		return nil, errors.New("invalid P-256 coordinate")
+		return nil, invalidModelError("decodeP256Coordinate", "desktop_registration", "", "invalid P-256 coordinate", "")
 	}
 	return new(big.Int).SetBytes(decoded), nil
 }

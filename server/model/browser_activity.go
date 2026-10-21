@@ -9,7 +9,6 @@ package model
 
 import (
 	"encoding/json"
-	"errors"
 	"net/url"
 	"regexp"
 	"strings"
@@ -93,7 +92,7 @@ type BrowserActivityEvent struct {
 
 func (event BrowserActivityEvent) ValidateClientRecord() error {
 	if event.Sequence < 1 || !securitySafeInt(event.Sequence) || !event.PolicyRevisionID.IsValid() || !securityInstant(event.ClientOccurredAt) || !event.ReceivedAt.IsZero() {
-		return errors.New("model: invalid Browser Activity event metadata")
+		return invalidModelError("BrowserActivityEvent.ValidateClientRecord", "browser_activity_event", "", "invalid Browser Activity event metadata", "")
 	}
 	if event.RedirectFromSequence != nil && (*event.RedirectFromSequence < 1 || *event.RedirectFromSequence >= event.Sequence) {
 		return ErrDeliveryInvalid
@@ -107,11 +106,11 @@ func (event BrowserActivityEvent) ValidateClientRecord() error {
 	switch event.Kind {
 	case BrowserActivityOpened, BrowserActivityClosed:
 		if event.Location != nil || event.MatchedRuleID != nil || event.BlockReason != nil {
-			return errors.New("model: browser open/close event contains navigation fields")
+			return invalidModelError("BrowserActivityEvent.ValidateClientRecord", "browser_activity_event", "", "browser open/close event contains navigation fields", "")
 		}
 	case BrowserActivityTopNavigation, BrowserActivityTopRedirect:
 		if event.Location == nil || event.MatchedRuleID == nil || !validBrowserPolicyRuleID(*event.MatchedRuleID) || event.BlockReason != nil {
-			return errors.New("model: successful Browser Activity navigation is incomplete")
+			return invalidModelError("BrowserActivityEvent.ValidateClientRecord", "browser_activity_event", "", "successful Browser Activity navigation is incomplete", "")
 		}
 		if err := event.Location.Validate(); err != nil {
 			return err
@@ -119,16 +118,16 @@ func (event BrowserActivityEvent) ValidateClientRecord() error {
 	case BrowserActivityBlockedNavigation:
 		if event.Location == nil || event.BlockReason == nil || !event.BlockReason.IsValid() ||
 			event.MatchedRuleID != nil && !validBrowserPolicyRuleID(*event.MatchedRuleID) {
-			return errors.New("model: blocked Browser Activity navigation is incomplete")
+			return invalidModelError("BrowserActivityEvent.ValidateClientRecord", "browser_activity_event", "", "blocked Browser Activity navigation is incomplete", "")
 		}
 		if (*event.BlockReason == BrowserBlockSchemeNotAllowed || *event.BlockReason == BrowserBlockInvalidURL) && event.MatchedRuleID != nil {
-			return errors.New("model: blocked Browser Activity location cannot claim a matched rule")
+			return invalidModelError("BrowserActivityEvent.ValidateClientRecord", "browser_activity_event", "", "blocked Browser Activity location cannot claim a matched rule", "")
 		}
 		if err := event.Location.ValidateBlocked(*event.BlockReason); err != nil {
 			return err
 		}
 	default:
-		return errors.New("model: invalid Browser Activity kind")
+		return invalidModelError("BrowserActivityEvent.ValidateClientRecord", "browser_activity_event", "", "invalid Browser Activity kind", "")
 	}
 	return nil
 }
@@ -150,44 +149,44 @@ func (location BrowserLocation) ValidateBlocked(reason BrowserActivityBlockReaso
 	switch reason {
 	case BrowserBlockInvalidURL:
 		if location != (BrowserLocation{}) {
-			return errors.New("model: invalid URL Browser Activity location retained components")
+			return invalidModelError("BrowserLocation.ValidateBlocked", "browser_location", "", "invalid URL Browser Activity location retained components", "")
 		}
 		return nil
 	case BrowserBlockSchemeNotAllowed:
 		if len(location.Scheme) < 1 || len(location.Scheme) > BrowserActivityLocationSchemeMaximumBytes ||
 			!browserActivitySchemePattern.MatchString(location.Scheme) || location.Scheme == "https" {
-			return errors.New("model: invalid blocked Browser Activity scheme")
+			return invalidModelError("BrowserLocation.ValidateBlocked", "browser_location", "", "invalid blocked Browser Activity scheme", "")
 		}
 		if location.Scheme == "http" {
 			return location.validateNetwork("http", "80")
 		}
 		if location.Host != "" || location.Port != "" || location.Path != "" {
-			return errors.New("model: blocked non-HTTP scheme retained unsafe location components")
+			return invalidModelError("BrowserLocation.ValidateBlocked", "browser_location", "", "blocked non-HTTP scheme retained unsafe location components", "")
 		}
 		return nil
 	case BrowserBlockOriginNotAllowed, BrowserBlockPathNotAllowed, BrowserBlockRedirectNotAllowed:
 		return location.Validate()
 	default:
-		return errors.New("model: invalid Browser Activity block reason")
+		return invalidModelError("BrowserLocation.ValidateBlocked", "browser_location", "", "invalid Browser Activity block reason", "")
 	}
 }
 
 func (location BrowserLocation) validateNetwork(scheme, defaultPort string) error {
 	if location.Scheme != scheme || location.Host == "" || strings.ToLower(location.Host) != location.Host ||
 		strings.ContainsAny(location.Host, "\\/?#@") || len(location.Path) > browserLocationMaximumPathBytes {
-		return errors.New("model: invalid minimized Browser Activity location")
+		return invalidModelError("BrowserLocation.validateNetwork", "browser_location", "", "invalid minimized Browser Activity location", "")
 	}
 	parsed, err := url.Parse(scheme + "://" + browserHostPort(location.Host, location.Port))
 	if err != nil {
-		return errors.New("model: invalid minimized Browser Activity authority")
+		return invalidModelError("BrowserLocation.validateNetwork", "browser_location", "", "invalid minimized Browser Activity authority", "")
 	}
 	host, port, err := canonicalBrowserHostPortWithDefault(parsed, defaultPort)
 	if err != nil || host != location.Host || port != location.Port {
-		return errors.New("model: non-canonical Browser Activity authority")
+		return invalidModelError("BrowserLocation.validateNetwork", "browser_location", "", "non-canonical Browser Activity authority", "")
 	}
 	canonicalPath, err := canonicalBrowserPath(location.Path)
 	if err != nil || canonicalPath != location.Path {
-		return errors.New("model: non-canonical Browser Activity path")
+		return invalidModelError("BrowserLocation.validateNetwork", "browser_location", "", "non-canonical Browser Activity path", "")
 	}
 	return nil
 }

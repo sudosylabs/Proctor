@@ -210,7 +210,7 @@ type idLike interface {
 func parseID[T idLike](value, field string) (T, error) {
 	var zero T
 	if !IsValidOpaqueID(value) {
-		return zero, fmt.Errorf("model: invalid %s %q", field, value)
+		return zero, invalidModelError("parseID", "id", "", fmt.Sprintf("invalid %s %q", field, value), "")
 	}
 	return T(value), nil
 }
@@ -218,14 +218,14 @@ func parseID[T idLike](value, field string) (T, error) {
 func marshalID[T idLike](id T) ([]byte, error) {
 	value := string(id)
 	if value != "" && !IsValidOpaqueID(value) {
-		return nil, fmt.Errorf("model: cannot marshal invalid id %q", value)
+		return nil, invalidModelError("marshalID", "id", "", fmt.Sprintf("cannot marshal invalid id %q", value), "")
 	}
 	return []byte(value), nil
 }
 
 func unmarshalID[T idLike](target *T, data []byte, parse func(string) (T, error)) error {
 	if target == nil {
-		return fmt.Errorf("model: id unmarshal target is nil")
+		return invalidModelError("unmarshalID", "id", "", "id unmarshal target is nil", "")
 	}
 	if len(data) == 0 {
 		*target = T("")
@@ -248,14 +248,14 @@ var (
 func marshalIDJSON[T idLike](id T) ([]byte, error) {
 	value := string(id)
 	if value != "" && !IsValidOpaqueID(value) {
-		return nil, fmt.Errorf("model: cannot marshal invalid id %q", value)
+		return nil, invalidModelError("marshalIDJSON", "id", "", fmt.Sprintf("cannot marshal invalid id %q", value), "")
 	}
 	return json.Marshal(value)
 }
 
 func unmarshalIDJSON[T idLike](target *T, data []byte, parse func(string) (T, error)) error {
 	if target == nil {
-		return fmt.Errorf("model: id unmarshal target is nil")
+		return invalidModelError("unmarshalIDJSON", "id", "", "id unmarshal target is nil", "")
 	}
 	if string(data) == "null" {
 		*target = T("")

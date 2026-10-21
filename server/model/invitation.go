@@ -10,7 +10,6 @@ package model
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"slices"
 	"sort"
 	"strings"
@@ -339,12 +338,12 @@ func (i *Invitation) Validate() error {
 // remain responsible for authoritative policy and relationship rechecks.
 func (i *Invitation) Accept(userID UserID, affiliationID AffiliationID, classMemberID ClassMemberID, at time.Time) error {
 	if i == nil || i.Purpose != InvitationPurposeStudentClass || i.State != InvitationPending || !userID.IsValid() || !affiliationID.IsValid() || !classMemberID.IsValid() {
-		return fmt.Errorf("model: invitation cannot be accepted")
+		return invalidModelError("Invitation.Accept", "invitation", "", "invitation cannot be accepted", "")
 	}
 	at = TimeUTC(at)
 	if at.Before(i.CreatedAt) || !at.Before(i.ExpiresAt) ||
 		(i.IntendedEndsAt.Valid && !at.Before(i.IntendedEndsAt.Time)) {
-		return fmt.Errorf("model: invitation cannot be accepted at this time")
+		return invalidModelError("Invitation.Accept", "invitation", "", "invitation cannot be accepted at this time", "")
 	}
 	i.State = InvitationAccepted
 	i.AcceptedAt = OptionalTimeFrom(at)
@@ -365,12 +364,12 @@ func (i *Invitation) Accept(userID UserID, affiliationID AffiliationID, classMem
 func (i *Invitation) AcceptTeacherAcademicUnit(userID UserID, affiliationID AffiliationID, memberID AcademicUnitMemberID, bindingID RoleBindingID, at time.Time) error {
 	if i == nil || i.Purpose != InvitationPurposeTeacherAcademicUnit || i.State != InvitationPending ||
 		!userID.IsValid() || !affiliationID.IsValid() || !memberID.IsValid() || !bindingID.IsValid() {
-		return fmt.Errorf("model: teacher academic unit invitation cannot be accepted")
+		return invalidModelError("Invitation.AcceptTeacherAcademicUnit", "invitation", "", "teacher academic unit invitation cannot be accepted", "")
 	}
 	at = TimeUTC(at)
 	if at.Before(i.CreatedAt) || !at.Before(i.ExpiresAt) ||
 		(i.IntendedEndsAt.Valid && !at.Before(i.IntendedEndsAt.Time)) {
-		return fmt.Errorf("model: teacher academic unit invitation cannot be accepted at this time")
+		return invalidModelError("Invitation.AcceptTeacherAcademicUnit", "invitation", "", "teacher academic unit invitation cannot be accepted at this time", "")
 	}
 	i.State = InvitationAccepted
 	i.AcceptedAt = OptionalTimeFrom(at)
@@ -388,12 +387,12 @@ func (i *Invitation) AcceptTeacherAcademicUnit(userID UserID, affiliationID Affi
 func (i *Invitation) AcceptScopedRole(userID UserID, bindingID RoleBindingID, at time.Time) error {
 	if i == nil || (i.Purpose != InvitationPurposeAcademicUnitRole && i.Purpose != InvitationPurposeInstitutionRole) ||
 		i.State != InvitationPending || !userID.IsValid() || !bindingID.IsValid() {
-		return fmt.Errorf("model: scoped Role invitation cannot be accepted")
+		return invalidModelError("Invitation.AcceptScopedRole", "invitation", "", "scoped Role invitation cannot be accepted", "")
 	}
 	at = TimeUTC(at)
 	if at.Before(i.CreatedAt) || !at.Before(i.ExpiresAt) ||
 		(i.IntendedEndsAt.Valid && !at.Before(i.IntendedEndsAt.Time)) {
-		return fmt.Errorf("model: scoped Role invitation cannot be accepted at this time")
+		return invalidModelError("Invitation.AcceptScopedRole", "invitation", "", "scoped Role invitation cannot be accepted at this time", "")
 	}
 	i.State = InvitationAccepted
 	i.AcceptedAt = OptionalTimeFrom(at)
@@ -422,12 +421,12 @@ func invitationScopedRoleTargetIsValid(invitation *Invitation) bool {
 // packaged relationship interval has elapsed at authoritative database time.
 func (i *Invitation) Expire(at time.Time) error {
 	if i == nil || i.State != InvitationPending {
-		return fmt.Errorf("model: invitation cannot be expired")
+		return invalidModelError("Invitation.Expire", "invitation", "", "invitation cannot be expired", "")
 	}
 	at = TimeUTC(at)
 	elapsed := !at.Before(i.ExpiresAt) || (i.IntendedEndsAt.Valid && !at.Before(i.IntendedEndsAt.Time))
 	if at.Before(i.CreatedAt) || !elapsed {
-		return fmt.Errorf("model: invitation cannot be expired at this time")
+		return invalidModelError("Invitation.Expire", "invitation", "", "invitation cannot be expired at this time", "")
 	}
 	i.State = InvitationExpired
 	i.UpdatedAt = at
@@ -440,12 +439,12 @@ func (i *Invitation) Expire(at time.Time) error {
 // expiry; extending an Invitation requires an explicit replacement package.
 func (i *Invitation) Resend(claimHash string, at time.Time) error {
 	if i == nil || i.State != InvitationPending || !IsValidTokenHash(claimHash) || claimHash == i.ClaimHash {
-		return fmt.Errorf("model: invitation cannot be resent")
+		return invalidModelError("Invitation.Resend", "invitation", "", "invitation cannot be resent", "")
 	}
 	at = TimeUTC(at)
 	if at.Before(i.CreatedAt) || !at.Before(i.ExpiresAt) ||
 		(i.IntendedEndsAt.Valid && !at.Before(i.IntendedEndsAt.Time)) {
-		return fmt.Errorf("model: invitation cannot be resent at this time")
+		return invalidModelError("Invitation.Resend", "invitation", "", "invitation cannot be resent at this time", "")
 	}
 	i.ClaimHash = claimHash
 	i.UpdatedAt = at
@@ -485,12 +484,12 @@ func sameInvitationOptionalTime(first, second OptionalTime) bool {
 
 func (i *Invitation) terminalizeAdministratively(state InvitationState, at time.Time) error {
 	if i == nil || i.State != InvitationPending || (state != InvitationRevoked && state != InvitationSuperseded) {
-		return fmt.Errorf("model: invitation cannot be terminalized administratively")
+		return invalidModelError("Invitation.terminalizeAdministratively", "invitation", "", "invitation cannot be terminalized administratively", "")
 	}
 	at = TimeUTC(at)
 	if at.Before(i.CreatedAt) || !at.Before(i.ExpiresAt) ||
 		(i.IntendedEndsAt.Valid && !at.Before(i.IntendedEndsAt.Time)) {
-		return fmt.Errorf("model: invitation cannot be terminalized administratively at this time")
+		return invalidModelError("Invitation.terminalizeAdministratively", "invitation", "", "invitation cannot be terminalized administratively at this time", "")
 	}
 	i.State = state
 	i.UpdatedAt = at
@@ -583,18 +582,18 @@ func normalizeInvitationSuggestions(value InvitationProfileSuggestions) Invitati
 
 func validateInvitationSuggestions(value InvitationProfileSuggestions) error {
 	if value.Username != "" && !IsValidUsername(value.Username) {
-		return fmt.Errorf("username has an invalid format")
+		return invalidModelError("validateInvitationSuggestions", "invitation", "", "username has an invalid format", "")
 	}
 	if utf8.RuneCountInString(value.DisplayName) > UserDisplayNameMaxRunes ||
 		utf8.RuneCountInString(value.FirstName) > UserPersonalNameMaxRunes ||
 		utf8.RuneCountInString(value.LastName) > UserPersonalNameMaxRunes {
-		return fmt.Errorf("profile name is too long")
+		return invalidModelError("validateInvitationSuggestions", "invitation", "", "profile name is too long", "")
 	}
 	if value.Locale != "" && (len(value.Locale) > UserLocaleMaxLength || !validLocale.MatchString(value.Locale)) {
-		return fmt.Errorf("locale has an invalid format")
+		return invalidModelError("validateInvitationSuggestions", "invitation", "", "locale has an invalid format", "")
 	}
 	if len(value.Timezone) > UserTimezoneMaxLength {
-		return fmt.Errorf("timezone is too long")
+		return invalidModelError("validateInvitationSuggestions", "invitation", "", "timezone is too long", "")
 	}
 	return nil
 }

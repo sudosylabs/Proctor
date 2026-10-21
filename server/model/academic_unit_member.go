@@ -13,7 +13,6 @@
 package model
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -116,11 +115,11 @@ func (m *AcademicUnitMember) IsArchived() bool {
 // End closes an open-ended membership at the exclusive end time.
 func (m *AcademicUnitMember) End(at time.Time) error {
 	if m == nil {
-		return fmt.Errorf("model: academic unit member is nil")
+		return invalidModelError("AcademicUnitMember.End", "academic_unit_member", "", "academic unit member is nil", "")
 	}
 	at = TimeUTC(at)
 	if m.EndsAt.Valid {
-		return fmt.Errorf("model: academic unit member already ended")
+		return invalidModelError("AcademicUnitMember.End", "academic_unit_member", "", "academic unit member already ended", "")
 	}
 	m.EndsAt = OptionalTimeFrom(at)
 	m.UpdatedAt = at

@@ -8,7 +8,6 @@
 package model
 
 import (
-	"errors"
 	"time"
 )
 
@@ -24,12 +23,12 @@ func SuspendExamAttemptByManager(attempt *ExamAttempt, participation *AttemptPar
 		participation.AttemptID != attempt.ID || attempt.State != ExamAttemptActive || participation.State != AttemptParticipationActive ||
 		(connection != nil && (connection.Validate() != nil || connection.AttemptID != attempt.ID ||
 			connection.ParticipationID != participation.ID || connection.State != AttemptConnectionOpen)) {
-		return errors.New("model: invalid manual Exam Attempt suspension aggregate")
+		return invalidModelError("SuspendExamAttemptByManager", "exam_attempt_manual_suspension", "", "invalid manual Exam Attempt suspension aggregate", "")
 	}
 	at = TimeUTC(at)
 	if at.IsZero() || at.Before(attempt.UpdatedAt) || at.Before(participation.UpdatedAt) ||
 		(connection != nil && at.Before(connection.OpenedAt)) {
-		return errors.New("model: invalid manual Exam Attempt suspension time")
+		return invalidModelError("SuspendExamAttemptByManager", "exam_attempt_manual_suspension", "", "invalid manual Exam Attempt suspension time", "")
 	}
 	attemptCandidate, participationCandidate := *attempt, *participation
 	if err := attemptCandidate.Suspend(at); err != nil {

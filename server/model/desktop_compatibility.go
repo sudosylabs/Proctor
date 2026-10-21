@@ -246,10 +246,10 @@ func (t DesktopBuildTuple) Validate() error {
 		t.ConfigurationManifest.Fingerprint() != t.AttemptConfigurationManifestFingerprint ||
 		!IsValidRegistryFingerprint(t.DesktopSettingsRegistryFingerprint) ||
 		!validBoundedDesktopIdentity(t.CapabilityMatrixIdentity, DesktopCapabilityMatrixIdentityMaxBytes) {
-		return errors.New("desktop build tuple is invalid")
+		return invalidModelError("DesktopBuildTuple.Validate", "desktop_build_tuple", "", "desktop build tuple is invalid", "")
 	}
 	if t.NativeAgreement != nil && (t.NativeAgreement.Matrix().MatrixID != t.CapabilityMatrixIdentity || t.NativeAgreement.Matrix().TargetTuple != t.DesktopTarget) {
-		return errors.New("desktop build native agreement binding is invalid")
+		return invalidModelError("DesktopBuildTuple.Validate", "desktop_build_tuple", "", "desktop build native agreement binding is invalid", "")
 	}
 	return nil
 }
@@ -299,7 +299,7 @@ func CompareDesktopReleases(left, right string) (int, error) {
 	leftRelease, leftValid := parseDesktopRelease(left)
 	rightRelease, rightValid := parseDesktopRelease(right)
 	if !leftValid || !rightValid {
-		return 0, errors.New("desktop release is invalid")
+		return 0, invalidModelError("CompareDesktopReleases", "desktop_compatibility", "", "desktop release is invalid", "")
 	}
 	for index := range leftRelease.core {
 		if comparison := compareSemanticNumericIdentifier(

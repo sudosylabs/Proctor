@@ -10,7 +10,6 @@ package model
 import (
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"regexp"
 	"sort"
 	"strings"
@@ -230,7 +229,7 @@ type MailOccurrence struct {
 func (o *MailOccurrence) Validate() error {
 	if o == nil || !o.ID.IsValid() || !o.ActorUserID.IsValid() || o.CreatedAt.IsZero() ||
 		!validMailOccurrenceMeaning(o.Kind, o.TemplateKey) {
-		return errors.New("model: invalid mail occurrence")
+		return invalidModelError("MailOccurrence.Validate", "mail_occurrence", "", "invalid mail occurrence", "")
 	}
 	return nil
 }
@@ -279,7 +278,7 @@ func (bundle *MailFanoutBundle) Validate() error {
 	if bundle == nil || !bundle.ID.IsValid() || bundle.CreatedAt.IsZero() || bundle.Revision != 1 ||
 		len(bundle.EncryptedPayload) == 0 || len(bundle.EncryptedPayload) > MailEncryptedFanoutBundleMaximumBytes ||
 		!json.Valid(bundle.EncryptedPayload) {
-		return errors.New("model: invalid mail fan-out bundle")
+		return invalidModelError("MailFanoutBundle.Validate", "mail_fanout_bundle", "", "invalid mail fan-out bundle", "")
 	}
 	return nil
 }
@@ -295,38 +294,38 @@ func (d *MailDelivery) Validate() error {
 		len(d.MessageID) > MailMessageIDMaximumBytes || d.AttemptCount < 0 ||
 		d.AttemptCount > MailMaximumAttempts || d.Revision <= 0 ||
 		!validMailPublicCode(d.PublicFailureCode) {
-		return errors.New("model: invalid mail delivery")
+		return invalidModelError("MailDelivery.Validate", "mail_delivery", "", "invalid mail delivery", "")
 	}
 	if len(d.EncryptedPayload) > MailEncryptedPayloadMaximumBytes ||
 		(len(d.EncryptedPayload) > 0 && !json.Valid(d.EncryptedPayload)) {
-		return errors.New("model: invalid encrypted mail payload")
+		return invalidModelError("MailDelivery.Validate", "mail_delivery", "", "invalid encrypted mail payload", "")
 	}
 	terminalWithoutPayload := d.State == MailDeliveryAccepted || d.State == MailDeliverySuppressed || d.State == MailDeliveryCanceled
 	if terminalWithoutPayload != (len(d.EncryptedPayload) == 0) {
-		return errors.New("model: invalid mail payload lifecycle")
+		return invalidModelError("MailDelivery.Validate", "mail_delivery", "", "invalid mail payload lifecycle", "")
 	}
 	if (d.State == MailDeliveryAccepted) != d.AcceptedAt.Valid ||
 		(d.State == MailDeliveryFailed) != d.FailedAt.Valid ||
 		(d.AcceptedAt.Valid && d.AcceptedAt.Time.Before(d.CreatedAt)) ||
 		(d.FailedAt.Valid && d.FailedAt.Time.Before(d.CreatedAt)) {
-		return errors.New("model: invalid mail delivery lifecycle")
+		return invalidModelError("MailDelivery.Validate", "mail_delivery", "", "invalid mail delivery lifecycle", "")
 	}
 	switch d.State {
 	case MailDeliveryQueued:
 		if (d.AttemptCount == 0) != (d.PublicFailureCode == "") {
-			return errors.New("model: invalid queued mail delivery")
+			return invalidModelError("MailDelivery.Validate", "mail_delivery", "", "invalid queued mail delivery", "")
 		}
 	case MailDeliverySending:
 		if d.AttemptCount == 0 || d.PublicFailureCode != "" {
-			return errors.New("model: invalid sending mail delivery")
+			return invalidModelError("MailDelivery.Validate", "mail_delivery", "", "invalid sending mail delivery", "")
 		}
 	case MailDeliveryAccepted:
 		if d.AttemptCount == 0 || d.PublicFailureCode != "" || !d.AcceptedAt.Time.Equal(d.UpdatedAt) {
-			return errors.New("model: invalid accepted mail delivery")
+			return invalidModelError("MailDelivery.Validate", "mail_delivery", "", "invalid accepted mail delivery", "")
 		}
 	case MailDeliveryFailed:
 		if d.AttemptCount == 0 || d.PublicFailureCode == "" || !d.FailedAt.Time.Equal(d.UpdatedAt) {
-			return errors.New("model: invalid failed mail delivery")
+			return invalidModelError("MailDelivery.Validate", "mail_delivery", "", "invalid failed mail delivery", "")
 		}
 	}
 	return nil
@@ -335,7 +334,7 @@ func (d *MailDelivery) Validate() error {
 func (d *MailDelivery) Start(at time.Time) (*MailDelivery, error) {
 	if d == nil || (d.State != MailDeliveryQueued && d.State != MailDeliverySending) ||
 		d.AttemptCount >= MailMaximumAttempts || TimeUTC(at).Before(d.UpdatedAt) || !TimeUTC(at).Before(d.Deadline) {
-		return nil, errors.New("model: mail delivery cannot start")
+		return nil, invalidModelError("MailDelivery.Start", "mail_delivery", "", "mail delivery cannot start", "")
 	}
 	result := d.Clone()
 	result.State = MailDeliverySending
@@ -349,7 +348,7 @@ func (d *MailDelivery) Start(at time.Time) (*MailDelivery, error) {
 func (d *MailDelivery) Retry(publicCode string, at time.Time) (*MailDelivery, error) {
 	if d == nil || d.State != MailDeliverySending || !validRequiredMailPublicCode(publicCode) ||
 		TimeUTC(at).Before(d.UpdatedAt) || !TimeUTC(at).Before(d.Deadline) {
-		return nil, errors.New("model: mail delivery cannot retry")
+		return nil, invalidModelError("MailDelivery.Retry", "mail_delivery", "", "mail delivery cannot retry", "")
 	}
 	result := d.Clone()
 	result.State = MailDeliveryQueued
@@ -361,7 +360,7 @@ func (d *MailDelivery) Retry(publicCode string, at time.Time) (*MailDelivery, er
 
 func (d *MailDelivery) Fail(publicCode string, at time.Time) (*MailDelivery, error) {
 	if d == nil || d.State != MailDeliverySending || !validRequiredMailPublicCode(publicCode) || TimeUTC(at).Before(d.UpdatedAt) {
-		return nil, errors.New("model: mail delivery cannot fail")
+		return nil, invalidModelError("MailDelivery.Fail", "mail_delivery", "", "mail delivery cannot fail", "")
 	}
 	result := d.Clone()
 	result.State = MailDeliveryFailed
@@ -374,7 +373,7 @@ func (d *MailDelivery) Fail(publicCode string, at time.Time) (*MailDelivery, err
 
 func (d *MailDelivery) Accept(at time.Time) (*MailDelivery, error) {
 	if d == nil || d.State != MailDeliverySending || TimeUTC(at).Before(d.UpdatedAt) {
-		return nil, errors.New("model: mail delivery cannot be accepted")
+		return nil, invalidModelError("MailDelivery.Accept", "mail_delivery", "", "mail delivery cannot be accepted", "")
 	}
 	result := d.Clone()
 	result.State = MailDeliveryAccepted
@@ -392,7 +391,7 @@ func (d *MailDelivery) Expire(at time.Time) (*MailDelivery, error) {
 	at = TimeUTC(at)
 	if d == nil || (d.State != MailDeliveryQueued && d.State != MailDeliverySending) ||
 		at.Before(d.UpdatedAt) || at.Before(d.Deadline) {
-		return nil, errors.New("model: mail delivery cannot expire")
+		return nil, invalidModelError("MailDelivery.Expire", "mail_delivery", "", "mail delivery cannot expire", "")
 	}
 	result := d.Clone()
 	result.State = MailDeliverySuppressed
@@ -412,7 +411,7 @@ func (d *MailDelivery) Suppress(publicCode string, at time.Time) (*MailDelivery,
 		(publicCode != MailDeliveryDisabledCode && publicCode != MailDeliveryRecipientIneligibleCode &&
 			publicCode != MailDeliveryObsoleteCode && publicCode != MailDeliveryExpiredCode) ||
 		at.Before(d.UpdatedAt) {
-		return nil, errors.New("model: mail delivery cannot be suppressed")
+		return nil, invalidModelError("MailDelivery.Suppress", "mail_delivery", "", "mail delivery cannot be suppressed", "")
 	}
 	result := d.Clone()
 	result.State = MailDeliverySuppressed
@@ -430,7 +429,7 @@ func (d *MailDelivery) Suppress(publicCode string, at time.Time) (*MailDelivery,
 func (d *MailDelivery) Cancel(at time.Time) (*MailDelivery, error) {
 	at = TimeUTC(at)
 	if d == nil || d.State != MailDeliveryQueued || at.Before(d.UpdatedAt) {
-		return nil, errors.New("model: mail delivery cannot be canceled")
+		return nil, invalidModelError("MailDelivery.Cancel", "mail_delivery", "", "mail delivery cannot be canceled", "")
 	}
 	result := d.Clone()
 	result.State = MailDeliveryCanceled
@@ -448,7 +447,7 @@ func (d *MailDelivery) OperatorRetry(at time.Time) (*MailDelivery, error) {
 	at = TimeUTC(at)
 	if d == nil || d.State != MailDeliveryFailed || d.AttemptCount >= MailMaximumAttempts ||
 		at.Before(d.UpdatedAt) || !at.Before(d.Deadline) || len(d.EncryptedPayload) == 0 {
-		return nil, errors.New("model: mail delivery cannot be retried by an operator")
+		return nil, invalidModelError("MailDelivery.OperatorRetry", "mail_delivery", "", "mail delivery cannot be retried by an operator", "")
 	}
 	result := d.Clone()
 	result.State = MailDeliveryQueued

@@ -8,7 +8,6 @@
 package model
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -84,14 +83,14 @@ func (pl *ProgrammeLevel) PrepareUpdate(at time.Time) {
 // Archive marks the programme level archived.
 func (pl *ProgrammeLevel) Archive(at time.Time) error {
 	if pl == nil {
-		return fmt.Errorf("model: programme level is nil")
+		return invalidModelError("ProgrammeLevel.Archive", "programme_level", "", "programme level is nil", "")
 	}
 	at = TimeUTC(at)
 	if at.IsZero() {
-		return fmt.Errorf("model: programme level archive time is required")
+		return invalidModelError("ProgrammeLevel.Archive", "programme_level", "", "programme level archive time is required", "")
 	}
 	if pl.IsArchived() {
-		return fmt.Errorf("model: programme level is already archived")
+		return invalidModelError("ProgrammeLevel.Archive", "programme_level", "", "programme level is already archived", "")
 	}
 	pl.ArchivedAt = OptionalTimeFrom(at)
 	pl.UpdatedAt = at

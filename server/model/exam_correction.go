@@ -8,7 +8,6 @@
 package model
 
 import (
-	"errors"
 	"slices"
 	"strings"
 	"time"
@@ -40,11 +39,11 @@ func (capability CandidateCapability) IsValid() bool {
 // An empty set is valid for a pending union; authored selections must be nonempty.
 func ValidateCandidateCapabilities(capabilities []CandidateCapability) error {
 	if len(capabilities) > 3 {
-		return errors.New("model: invalid Candidate capabilities")
+		return invalidModelError("ValidateCandidateCapabilities", "exam_correction", "", "invalid Candidate capabilities", "")
 	}
 	for index, capability := range capabilities {
 		if !capability.IsValid() || index > 0 && capabilities[index-1] >= capability {
-			return errors.New("model: invalid Candidate capabilities")
+			return invalidModelError("ValidateCandidateCapabilities", "exam_correction", "", "invalid Candidate capabilities", "")
 		}
 	}
 	return nil
@@ -54,7 +53,7 @@ func ValidateCandidateCapabilities(capabilities []CandidateCapability) error {
 // changed areas are known. Revision creation also enforces their semantic minimum.
 func ValidateCandidateCorrectionSelection(summary string, capabilities []CandidateCapability) error {
 	if !validCandidateCorrectionSummary(summary) || len(capabilities) == 0 {
-		return errors.New("model: invalid Candidate Correction selection")
+		return invalidModelError("ValidateCandidateCorrectionSelection", "exam_correction", "", "invalid Candidate Correction selection", "")
 	}
 	return ValidateCandidateCapabilities(capabilities)
 }
@@ -119,16 +118,16 @@ func NewCandidateCorrectionNotice(summary string, changedAreas []ExamCorrectionC
 
 func (notice *CandidateCorrectionNotice) Validate() error {
 	if notice == nil || ValidateCandidateCorrectionSelection(notice.Summary, notice.AffectedCapabilities) != nil || len(notice.ChangedAreas) < 1 || len(notice.ChangedAreas) > 3 {
-		return errors.New("model: invalid Candidate Correction Notice")
+		return invalidModelError("CandidateCorrectionNotice.Validate", "candidate_correction_notice", "", "invalid Candidate Correction Notice", "")
 	}
 	for index, area := range notice.ChangedAreas {
 		if !area.IsValid() || index > 0 && strings.Compare(string(notice.ChangedAreas[index-1]), string(area)) >= 0 {
-			return errors.New("model: invalid Candidate Correction Notice changed areas")
+			return invalidModelError("CandidateCorrectionNotice.Validate", "candidate_correction_notice", "", "invalid Candidate Correction Notice changed areas", "")
 		}
 	}
 	for _, required := range MinimumCorrectionCapabilities(notice.ChangedAreas) {
 		if !slices.Contains(notice.AffectedCapabilities, required) {
-			return errors.New("model: Candidate Correction selection omits an affected capability")
+			return invalidModelError("CandidateCorrectionNotice.Validate", "candidate_correction_notice", "", "Candidate Correction selection omits an affected capability", "")
 		}
 	}
 	return nil
@@ -179,24 +178,24 @@ type CandidateLiveCorrection struct {
 func (correction CandidateLiveCorrection) Validate() error {
 	notice, err := NewCandidateCorrectionNotice(correction.Summary, correction.ChangedAreas, correction.AffectedCapabilities, correction.AcknowledgementRequired)
 	if err != nil || !correction.RevisionID.IsValid() || correction.RevisionNumber < 1 || correction.EffectiveAt.IsZero() {
-		return errors.New("model: invalid Candidate Live Correction")
+		return invalidModelError("CandidateLiveCorrection.Validate", "candidate_live_correction", "", "invalid Candidate Live Correction", "")
 	}
 	_ = notice
 	switch correction.AcknowledgementState {
 	case CorrectionAcknowledgementNotRequired:
 		if correction.AcknowledgementRequired || correction.AcknowledgedAt.Valid {
-			return errors.New("model: inconsistent notice-only Candidate Live Correction")
+			return invalidModelError("CandidateLiveCorrection.Validate", "candidate_live_correction", "", "inconsistent notice-only Candidate Live Correction", "")
 		}
 	case CorrectionAcknowledgementPending:
 		if !correction.AcknowledgementRequired || correction.AcknowledgedAt.Valid {
-			return errors.New("model: inconsistent pending Candidate Live Correction")
+			return invalidModelError("CandidateLiveCorrection.Validate", "candidate_live_correction", "", "inconsistent pending Candidate Live Correction", "")
 		}
 	case CorrectionAcknowledgementAcknowledged:
 		if !correction.AcknowledgementRequired || !correction.AcknowledgedAt.Valid || correction.AcknowledgedAt.Time.Before(correction.EffectiveAt) {
-			return errors.New("model: inconsistent acknowledged Candidate Live Correction")
+			return invalidModelError("CandidateLiveCorrection.Validate", "candidate_live_correction", "", "inconsistent acknowledged Candidate Live Correction", "")
 		}
 	default:
-		return errors.New("model: invalid Candidate Live Correction acknowledgement state")
+		return invalidModelError("CandidateLiveCorrection.Validate", "candidate_live_correction", "", "invalid Candidate Live Correction acknowledgement state", "")
 	}
 	return nil
 }

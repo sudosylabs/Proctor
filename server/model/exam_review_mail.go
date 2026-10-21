@@ -9,14 +9,13 @@ package model
 import (
 	"crypto/sha256"
 	"encoding/binary"
-	"errors"
 )
 
 // ResultReleaseOccurrenceID identifies one approved Review revision. Releasing
 // a newly reviewed inventory is a different transition; retries are the same.
 func ResultReleaseOccurrenceID(review SubmissionReviewID, revision int64) (MailOccurrenceID, error) {
 	if !review.IsValid() || revision < 1 {
-		return "", errors.New("model: invalid result release identity")
+		return "", invalidModelError("ResultReleaseOccurrenceID", "exam_review_mail", "", "invalid result release identity", "")
 	}
 	h := sha256.New()
 	h.Write([]byte("proctor.result-release.v1\x00"))

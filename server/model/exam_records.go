@@ -8,7 +8,6 @@
 package model
 
 import (
-	"errors"
 	"math"
 	"strings"
 	"time"
@@ -41,7 +40,7 @@ func (c *ExamSittingRecordsCompletion) Validate() error {
 		(!c.CompletedAt.Valid && (c.CompletedEvidenceRevision != 0 || !c.CompletedByUserID.IsZero() || c.StaleAt.Valid)) ||
 		(c.StaleAt.Valid && (c.StaleAt.Time.IsZero() || c.StaleAt.Time.Before(c.CompletedAt.Time))) ||
 		(c.CompletedAt.Valid && !c.StaleAt.Valid && c.CompletedEvidenceRevision != c.EvidenceRevision) {
-		return errors.New("model: invalid Sitting records completion")
+		return invalidModelError("ExamSittingRecordsCompletion.Validate", "exam_sitting_records_completion", "", "invalid Sitting records completion", "")
 	}
 	return nil
 }
@@ -54,17 +53,17 @@ func (c *ExamSittingRecordsCompletion) IsCurrent() bool {
 // Repeating an already-current completion never restarts its retention clock.
 func (c *ExamSittingRecordsCompletion) Complete(expected, acknowledged int64, actor UserID, at time.Time) (bool, error) {
 	if c.Validate() != nil || !actor.IsValid() || at.IsZero() || c.Revision != expected || acknowledged != c.EvidenceRevision {
-		return false, errors.New("model: Sitting records completion conflict")
+		return false, invalidModelError("ExamSittingRecordsCompletion.Complete", "exam_sitting_records_completion", "", "Sitting records completion conflict", "")
 	}
 	if c.IsCurrent() {
 		return false, nil
 	}
 	if c.Revision == math.MaxInt64 {
-		return false, errors.New("model: Sitting records revision exhausted")
+		return false, invalidModelError("ExamSittingRecordsCompletion.Complete", "exam_sitting_records_completion", "", "Sitting records revision exhausted", "")
 	}
 	at = TimeUTC(at)
 	if c.StaleAt.Valid && at.Before(c.StaleAt.Time) || c.CompletedAt.Valid && at.Before(c.CompletedAt.Time) {
-		return false, errors.New("model: Sitting records completion time regressed")
+		return false, invalidModelError("ExamSittingRecordsCompletion.Complete", "exam_sitting_records_completion", "", "Sitting records completion time regressed", "")
 	}
 	c.Revision++
 	c.CompletedEvidenceRevision = c.EvidenceRevision
@@ -76,11 +75,11 @@ func (c *ExamSittingRecordsCompletion) Complete(expected, acknowledged int64, ac
 // replay before invoking it. Previous completion provenance remains visible.
 func (c *ExamSittingRecordsCompletion) ObserveIntegrity(at time.Time) error {
 	if c.Validate() != nil || at.IsZero() || c.Revision == math.MaxInt64 || c.EvidenceRevision == math.MaxInt64 {
-		return errors.New("model: invalid Sitting records integrity change")
+		return invalidModelError("ExamSittingRecordsCompletion.ObserveIntegrity", "exam_sitting_records_completion", "", "invalid Sitting records integrity change", "")
 	}
 	at = TimeUTC(at)
 	if c.CompletedAt.Valid && at.Before(c.CompletedAt.Time) {
-		return errors.New("model: Sitting records integrity time regressed")
+		return invalidModelError("ExamSittingRecordsCompletion.ObserveIntegrity", "exam_sitting_records_completion", "", "Sitting records integrity time regressed", "")
 	}
 	c.Revision++
 	c.EvidenceRevision++
@@ -110,7 +109,7 @@ func (w *SubmissionReviewWaiver) Validate() error {
 	if w == nil || w.DeliveryInventoryRevision < 0 || !w.SubmissionID.IsValid() || w.Revision < 1 || w.ReviewRevision < 0 ||
 		w.DiscrepancyCount < 0 || !w.ActorUserID.IsValid() || w.RecordedAt.IsZero() ||
 		ValidateRecordsReason(w.ReasonCode, w.PrivateReason) != nil {
-		return errors.New("model: invalid Submission Review waiver")
+		return invalidModelError("SubmissionReviewWaiver.Validate", "submission_review_waiver", "", "invalid Submission Review waiver", "")
 	}
 	return nil
 }
@@ -126,7 +125,7 @@ type RetentionHoldScope struct {
 func (s RetentionHoldScope) Validate() error {
 	if !s.ExamID.IsValid() || !s.SittingID.IsZero() && !s.SittingID.IsValid() ||
 		!s.SubmissionID.IsZero() && (!s.SubmissionID.IsValid() || !s.SittingID.IsValid()) {
-		return errors.New("model: invalid retention hold scope")
+		return invalidModelError("RetentionHoldScope.Validate", "retention_hold_scope", "", "invalid retention hold scope", "")
 	}
 	return nil
 }
@@ -168,7 +167,7 @@ func (h *RetentionHold) Validate() error {
 		(h.ReleasedAt.Valid != h.ReleasedByUserID.IsValid()) ||
 		(h.ReleasedAt.Valid && (h.ReleasedAt.Time.Before(h.CreatedAt) || ValidateRecordsReason(h.ReleaseReasonCode, h.ReleasePrivateReason) != nil)) ||
 		(!h.ReleasedAt.Valid && (!h.ReleasedByUserID.IsZero() || h.ReleaseReasonCode != "" || h.ReleasePrivateReason != "")) {
-		return errors.New("model: invalid retention hold")
+		return invalidModelError("RetentionHold.Validate", "retention_hold", "", "invalid retention hold", "")
 	}
 	return nil
 }
@@ -176,7 +175,7 @@ func (h *RetentionHold) Validate() error {
 func (h *RetentionHold) Release(expected int64, actor UserID, code, reason string, at time.Time) error {
 	if h.Validate() != nil || expected != h.Revision || h.ReleasedAt.Valid || h.Revision == math.MaxInt64 ||
 		!actor.IsValid() || ValidateRecordsReason(code, reason) != nil || at.IsZero() || TimeUTC(at).Before(h.CreatedAt) {
-		return errors.New("model: retention hold release conflict")
+		return invalidModelError("RetentionHold.Release", "retention_hold", "", "retention hold release conflict", "")
 	}
 	h.Revision++
 	h.ReleasedAt, h.ReleasedByUserID = OptionalTimeFrom(at), actor
@@ -190,11 +189,11 @@ func ValidateRecordsReason(code, private string) error {
 	switch code {
 	case "institution_request", "integrity_review", "records_review", "review_not_required", "case_closed", "mistake", "other":
 	default:
-		return errors.New("model: invalid records reason code")
+		return invalidModelError("ValidateRecordsReason", "exam_records", "", "invalid records reason code", "")
 	}
 	if !utf8.ValidString(private) || private != strings.TrimSpace(private) ||
 		utf8.RuneCountInString(private) < 1 || utf8.RuneCountInString(private) > 1000 || len(private) > 4000 {
-		return errors.New("model: invalid records reason")
+		return invalidModelError("ValidateRecordsReason", "exam_records", "", "invalid records reason", "")
 	}
 	return nil
 }

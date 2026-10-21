@@ -8,7 +8,6 @@
 package model
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -160,11 +159,11 @@ var _ Auditable = (*Affiliation)(nil)
 // End closes an open-ended affiliation at the given exclusive end time.
 func (a *Affiliation) End(at time.Time) error {
 	if a == nil {
-		return fmt.Errorf("model: affiliation is nil")
+		return invalidModelError("Affiliation.End", "affiliation", "", "affiliation is nil", "")
 	}
 	at = TimeUTC(at)
 	if a.EndsAt.Valid {
-		return fmt.Errorf("model: affiliation already ended")
+		return invalidModelError("Affiliation.End", "affiliation", "", "affiliation already ended", "")
 	}
 	a.EndsAt = OptionalTimeFrom(at)
 	a.UpdatedAt = at

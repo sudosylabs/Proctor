@@ -8,7 +8,6 @@
 package model
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -149,11 +148,11 @@ func (rb *RoleBinding) IsArchived() bool {
 // End closes an open-ended binding at the given exclusive end time.
 func (rb *RoleBinding) End(at time.Time) error {
 	if rb == nil {
-		return fmt.Errorf("model: role binding is nil")
+		return invalidModelError("RoleBinding.End", "role_binding", "", "role binding is nil", "")
 	}
 	at = TimeUTC(at)
 	if rb.EndsAt.Valid {
-		return fmt.Errorf("model: role binding already ended")
+		return invalidModelError("RoleBinding.End", "role_binding", "", "role binding already ended", "")
 	}
 	rb.EndsAt = OptionalTimeFrom(at)
 	rb.UpdatedAt = at

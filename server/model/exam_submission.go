@@ -11,7 +11,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"hash"
 	"math"
 	"slices"
@@ -68,37 +67,37 @@ type ExamSubmissionManifestEntry struct {
 
 func (entry ExamSubmissionManifestEntry) Validate() error {
 	if !entry.EntryID.IsValid() {
-		return errors.New("model: invalid Submission manifest Entry identity")
+		return invalidModelError("ExamSubmissionManifestEntry.Validate", "exam_submission_manifest_entry", "", "invalid Submission manifest Entry identity", "")
 	}
 	path, err := NormalizeAttemptWorkspacePath(entry.Path)
 	if err != nil || path != entry.Path {
-		return errors.New("model: invalid Submission manifest path")
+		return invalidModelError("ExamSubmissionManifestEntry.Validate", "exam_submission_manifest_entry", "", "invalid Submission manifest path", "")
 	}
 	switch entry.Kind {
 	case StarterWorkspaceEntryDirectory:
 		if !entry.ContentVersion.IsZero() || entry.MediaType != "" || entry.SizeBytes != 0 || entry.SHA256 != "" ||
 			entry.StorageOrigin != "" || !entry.StarterObjectID.IsZero() || !entry.AttemptObjectID.IsZero() {
-			return errors.New("model: Submission manifest directory cannot carry content")
+			return invalidModelError("ExamSubmissionManifestEntry.Validate", "exam_submission_manifest_entry", "", "Submission manifest directory cannot carry content", "")
 		}
 	case StarterWorkspaceEntryFile:
 		content := AttemptWorkspaceContent{MediaType: entry.MediaType, SizeBytes: entry.SizeBytes, SHA256: entry.SHA256}
 		if !entry.ContentVersion.IsValid() || content.Validate() != nil {
-			return errors.New("model: invalid Submission manifest file content")
+			return invalidModelError("ExamSubmissionManifestEntry.Validate", "exam_submission_manifest_entry", "", "invalid Submission manifest file content", "")
 		}
 		switch entry.StorageOrigin {
 		case AttemptWorkspaceStorageStarter:
 			if !entry.StarterObjectID.IsValid() || !entry.AttemptObjectID.IsZero() {
-				return errors.New("model: invalid starter-origin Submission manifest file")
+				return invalidModelError("ExamSubmissionManifestEntry.Validate", "exam_submission_manifest_entry", "", "invalid starter-origin Submission manifest file", "")
 			}
 		case AttemptWorkspaceStorageAttempt:
 			if !entry.AttemptObjectID.IsValid() || !entry.StarterObjectID.IsZero() {
-				return errors.New("model: invalid attempt-origin Submission manifest file")
+				return invalidModelError("ExamSubmissionManifestEntry.Validate", "exam_submission_manifest_entry", "", "invalid attempt-origin Submission manifest file", "")
 			}
 		default:
-			return errors.New("model: invalid Submission manifest storage origin")
+			return invalidModelError("ExamSubmissionManifestEntry.Validate", "exam_submission_manifest_entry", "", "invalid Submission manifest storage origin", "")
 		}
 	default:
-		return errors.New("model: invalid Submission manifest Entry kind")
+		return invalidModelError("ExamSubmissionManifestEntry.Validate", "exam_submission_manifest_entry", "", "invalid Submission manifest Entry kind", "")
 	}
 	return nil
 }
@@ -126,7 +125,7 @@ func NewExamSubmissionManifest(workspaceCursor int64, entries []ExamSubmissionMa
 	for _, entry := range manifest.Entries {
 		if entry.Kind == StarterWorkspaceEntryFile {
 			if entry.SizeBytes > math.MaxInt64-manifest.TotalFileBytes {
-				return ExamSubmissionManifest{}, errors.New("model: Submission manifest size overflows")
+				return ExamSubmissionManifest{}, invalidModelError("NewExamSubmissionManifest", "exam_submission", "", "Submission manifest size overflows", "")
 			}
 			manifest.TotalFileBytes += entry.SizeBytes
 		}
@@ -143,7 +142,7 @@ func (manifest ExamSubmissionManifest) Validate() error {
 		manifest.EntryCount != len(manifest.Entries) || manifest.EntryCount > AttemptWorkspaceMaximumEntries ||
 		manifest.TotalFileBytes < 0 || manifest.TotalFileBytes > AttemptWorkspaceMaximumTotalBytes ||
 		!validLowerSHA256(manifest.SHA256) {
-		return errors.New("model: invalid Submission manifest metadata")
+		return invalidModelError("ExamSubmissionManifest.Validate", "exam_submission_manifest", "", "invalid Submission manifest metadata", "")
 	}
 	var total int64
 	paths := make(map[string]struct{}, len(manifest.Entries))
@@ -152,21 +151,21 @@ func (manifest ExamSubmissionManifest) Validate() error {
 			return err
 		}
 		if index > 0 && strings.Compare(manifest.Entries[index-1].EntryID.String(), entry.EntryID.String()) >= 0 {
-			return errors.New("model: Submission manifest Entries are not in canonical order")
+			return invalidModelError("ExamSubmissionManifest.Validate", "exam_submission_manifest", "", "Submission manifest Entries are not in canonical order", "")
 		}
 		if _, exists := paths[entry.Path]; exists {
-			return errors.New("model: Submission manifest contains duplicate path")
+			return invalidModelError("ExamSubmissionManifest.Validate", "exam_submission_manifest", "", "Submission manifest contains duplicate path", "")
 		}
 		paths[entry.Path] = struct{}{}
 		if entry.Kind == StarterWorkspaceEntryFile {
 			if entry.SizeBytes > math.MaxInt64-total {
-				return errors.New("model: Submission manifest size overflows")
+				return invalidModelError("ExamSubmissionManifest.Validate", "exam_submission_manifest", "", "Submission manifest size overflows", "")
 			}
 			total += entry.SizeBytes
 		}
 	}
 	if total != manifest.TotalFileBytes || computeExamSubmissionManifestDigest(manifest) != manifest.SHA256 {
-		return errors.New("model: invalid Submission manifest digest")
+		return invalidModelError("ExamSubmissionManifest.Validate", "exam_submission_manifest", "", "invalid Submission manifest digest", "")
 	}
 	return nil
 }
@@ -238,10 +237,10 @@ func (submission *ExamSubmission) Validate() error {
 		submission.ManifestTotalFileBytes > AttemptWorkspaceMaximumTotalBytes || submission.FinalFocusLossSequence < 0 ||
 		submission.UnresolvedIntegrityCount < 0 || submission.SubmittedAt.IsZero() || !submission.IntegrityState.IsValid() ||
 		!submission.Provenance.IsValid() {
-		return errors.New("model: invalid Exam Submission")
+		return invalidModelError("ExamSubmission.Validate", "exam_submission", "", "invalid Exam Submission", "")
 	}
 	if submission.ManifestEntryCount == 0 && submission.ManifestTotalFileBytes != 0 {
-		return errors.New("model: empty Exam Submission manifest has content bytes")
+		return invalidModelError("ExamSubmission.Validate", "exam_submission", "", "empty Exam Submission manifest has content bytes", "")
 	}
 	if err := submission.BrowserActivity.Validate(); err != nil {
 		return err
@@ -250,16 +249,16 @@ func (submission *ExamSubmission) Validate() error {
 		if !submission.IntegrityRetiredAt.Valid || submission.IntegrityRetiredAt.Time.IsZero() ||
 			submission.IntegrityRetiredAt.Time.Before(submission.SubmittedAt) || submission.FinalFocusLossSequence != 0 ||
 			submission.UnresolvedIntegrityCount != 0 {
-			return errors.New("model: retired Exam Submission retains integrity data or lacks its retirement time")
+			return invalidModelError("ExamSubmission.Validate", "exam_submission", "", "retired Exam Submission retains integrity data or lacks its retirement time", "")
 		}
 		return nil
 	}
 	if submission.IntegrityRetiredAt.Valid || !submission.IntegrityRetiredAt.Time.IsZero() {
-		return errors.New("model: retained Exam Submission integrity has a retirement time")
+		return invalidModelError("ExamSubmission.Validate", "exam_submission", "", "retained Exam Submission integrity has a retirement time", "")
 	}
 
 	if (submission.IntegrityState == SubmissionIntegritySettled) != (submission.UnresolvedIntegrityCount == 0) {
-		return errors.New("model: inconsistent Exam Submission integrity state")
+		return invalidModelError("ExamSubmission.Validate", "exam_submission", "", "inconsistent Exam Submission integrity state", "")
 	}
 	return nil
 }
@@ -274,7 +273,7 @@ func SubmitExamAttempt(attempt *ExamAttempt, participation *AttemptParticipation
 		participation.Validate() != nil || connection.Validate() != nil || participation.AttemptID != attempt.ID ||
 		connection.AttemptID != attempt.ID || connection.ParticipationID != participation.ID ||
 		attempt.State != ExamAttemptActive || participation.State != AttemptParticipationActive || connection.State != AttemptConnectionOpen {
-		return errors.New("model: invalid Exam Submission lifecycle aggregate")
+		return invalidModelError("SubmitExamAttempt", "exam_submission", "", "invalid Exam Submission lifecycle aggregate", "")
 	}
 	at = TimeUTC(at)
 	// The voluntary seal time is read from PostgreSQL before the sealing
@@ -283,7 +282,7 @@ func SubmitExamAttempt(attempt *ExamAttempt, participation *AttemptParticipation
 	// to refuse the candidate's Submission, but the terminal transition must
 	// neither precede the episode it ends nor move an updated_at backwards.
 	if at.IsZero() || at.Before(participation.StartedAt) || at.Before(connection.OpenedAt) {
-		return errors.New("model: invalid Exam Submission time")
+		return invalidModelError("SubmitExamAttempt", "exam_submission", "", "invalid Exam Submission time", "")
 	}
 	attemptCandidate, participationCandidate, connectionCandidate := *attempt, *participation, *connection
 	attemptCandidate.State = ExamAttemptSubmitted
@@ -328,11 +327,11 @@ func SealExamAttemptForSittingClose(attempt *ExamAttempt, participation *Attempt
 		connection.AttemptID != attempt.ID || connection.ParticipationID != participation.ID ||
 		(attempt.State != ExamAttemptActive && attempt.State != ExamAttemptReady && attempt.State != ExamAttemptSuspended) ||
 		(participation.State == AttemptParticipationEnded && connection.State != AttemptConnectionClosed) {
-		return errors.New("model: invalid automatic Exam Submission lifecycle aggregate")
+		return invalidModelError("SealExamAttemptForSittingClose", "exam_submission", "", "invalid automatic Exam Submission lifecycle aggregate", "")
 	}
 	at = TimeUTC(at)
 	if at.IsZero() || at.Before(attempt.UpdatedAt) || at.Before(participation.UpdatedAt) || at.Before(connection.OpenedAt) {
-		return errors.New("model: invalid automatic Exam Submission time")
+		return invalidModelError("SealExamAttemptForSittingClose", "exam_submission", "", "invalid automatic Exam Submission time", "")
 	}
 	attemptCandidate, participationCandidate, connectionCandidate := *attempt, *participation, *connection
 	attemptCandidate.State = ExamAttemptSubmitted
@@ -369,11 +368,11 @@ func EndExamAttemptByManager(attempt *ExamAttempt, participation *AttemptPartici
 		connection.AttemptID != attempt.ID || connection.ParticipationID != participation.ID ||
 		!attempt.State.IsUnresolved() ||
 		(participation.State == AttemptParticipationEnded && connection.State != AttemptConnectionClosed) {
-		return errors.New("model: invalid manager-ended Exam Submission lifecycle aggregate")
+		return invalidModelError("EndExamAttemptByManager", "exam_submission", "", "invalid manager-ended Exam Submission lifecycle aggregate", "")
 	}
 	at = TimeUTC(at)
 	if at.IsZero() || at.Before(attempt.UpdatedAt) || at.Before(participation.UpdatedAt) || at.Before(connection.OpenedAt) {
-		return errors.New("model: invalid manager-ended Exam Submission time")
+		return invalidModelError("EndExamAttemptByManager", "exam_submission", "", "invalid manager-ended Exam Submission time", "")
 	}
 	attemptCandidate, participationCandidate, connectionCandidate := *attempt, *participation, *connection
 	attemptCandidate.State = ExamAttemptSubmitted

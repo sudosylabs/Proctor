@@ -11,7 +11,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"sort"
 	"strings"
 	"time"
@@ -113,7 +112,7 @@ func NewIntegrityDiscrepancy(specification IntegrityDiscrepancySpecification) (*
 func (value *IntegrityDiscrepancy) Validate() error {
 	if value == nil || !value.ID.IsValid() || !value.SubmissionID.IsValid() || !value.AttemptID.IsValid() ||
 		!value.ParticipationID.IsValid() || value.Generation < 1 || value.SchemaVersion != 1 || value.ReceivedAt.IsZero() {
-		return errors.New("model: invalid Integrity Discrepancy")
+		return invalidModelError("IntegrityDiscrepancy.Validate", "integrity_discrepancy", "", "invalid Integrity Discrepancy", "")
 	}
 	switch value.Kind {
 	case IntegrityDiscrepancyLateFocusLoss:
@@ -121,30 +120,30 @@ func (value *IntegrityDiscrepancy) Validate() error {
 			value.DurationMilliseconds > FocusLossMaximumDurationMilliseconds || !value.Source.IsValid() ||
 			value.MissingBefore < 0 || value.CorrectionRevisionID != "" || value.BrowserSourceSessionID != "" ||
 			value.FinalSequence != nil || value.GapReason != "" || value.UnresolvedCount != 0 {
-			return errors.New("model: invalid late Focus Loss Integrity Discrepancy")
+			return invalidModelError("IntegrityDiscrepancy.Validate", "integrity_discrepancy", "", "invalid late Focus Loss Integrity Discrepancy", "")
 		}
 	case IntegrityDiscrepancyFocusLossGap:
 		if value.SignalID != "" || value.Sequence != 0 || value.DurationMilliseconds != 0 || value.Source != "" ||
 			value.MissingBefore != 0 || value.CorrectionRevisionID != "" || value.BrowserSourceSessionID != "" ||
 			value.FinalSequence != nil || !IntegrityDiscrepancyFocusLossGapReason(value.GapReason).IsValid() ||
 			value.UnresolvedCount < 1 {
-			return errors.New("model: invalid Focus Loss gap Integrity Discrepancy")
+			return invalidModelError("IntegrityDiscrepancy.Validate", "integrity_discrepancy", "", "invalid Focus Loss gap Integrity Discrepancy", "")
 		}
 	case IntegrityDiscrepancyBrowserActivityGap:
 		if value.SignalID != "" || value.Sequence != 0 || value.DurationMilliseconds != 0 || value.Source != "" ||
 			value.MissingBefore != 0 || value.CorrectionRevisionID != "" || !value.BrowserSourceSessionID.IsValid() ||
 			value.FinalSequence != nil && *value.FinalSequence < 1 ||
 			!IntegrityDiscrepancyBrowserActivityGapReason(value.GapReason).IsValid() || value.UnresolvedCount < 1 {
-			return errors.New("model: invalid Browser Activity gap Integrity Discrepancy")
+			return invalidModelError("IntegrityDiscrepancy.Validate", "integrity_discrepancy", "", "invalid Browser Activity gap Integrity Discrepancy", "")
 		}
 	case IntegrityDiscrepancyCorrectionAcknowledgementMissing:
 		if value.SignalID != "" || value.Sequence != 0 || value.DurationMilliseconds != 0 || value.Source != "" ||
 			value.MissingBefore != 0 || !value.CorrectionRevisionID.IsValid() || value.BrowserSourceSessionID != "" ||
 			value.FinalSequence != nil || value.GapReason != "" || value.UnresolvedCount != 1 {
-			return errors.New("model: invalid correction acknowledgement Integrity Discrepancy")
+			return invalidModelError("IntegrityDiscrepancy.Validate", "integrity_discrepancy", "", "invalid correction acknowledgement Integrity Discrepancy", "")
 		}
 	default:
-		return errors.New("model: invalid Integrity Discrepancy kind")
+		return invalidModelError("IntegrityDiscrepancy.Validate", "integrity_discrepancy", "", "invalid Integrity Discrepancy kind", "")
 	}
 	return nil
 }
@@ -193,7 +192,7 @@ func (decision *IntegrityReviewDecision) Validate() error {
 		!decision.Outcome.IsValid() || decision.Revision < 1 || !decision.ActorUserID.IsValid() || decision.DecidedAt.IsZero() ||
 		!validBoundedReviewText(decision.PrivateRationale, 1, IntegrityReviewPrivateRationaleMaximumRunes,
 			IntegrityReviewPrivateRationaleMaximumBytes) {
-		return errors.New("model: invalid Integrity Review decision")
+		return invalidModelError("IntegrityReviewDecision.Validate", "integrity_review_decision", "", "invalid Integrity Review decision", "")
 	}
 	return nil
 }
@@ -202,7 +201,7 @@ func (decision *IntegrityReviewDecision) Revise(expectedRevision int64, outcome 
 	actorID UserID, rationale string, at time.Time,
 ) error {
 	if decision == nil || decision.Validate() != nil || decision.Revision != expectedRevision {
-		return errors.New("model: Integrity Review decision revision conflict")
+		return invalidModelError("IntegrityReviewDecision.Revise", "integrity_review_decision", "", "Integrity Review decision revision conflict", "")
 	}
 	candidate := *decision
 	candidate.InventoryStale = false
@@ -271,43 +270,43 @@ func (review *SubmissionReview) Validate() error {
 		!review.CreatedByUserID.IsValid() || review.CreatedAt.IsZero() || review.UpdatedAt.IsZero() || review.UpdatedAt.Before(review.CreatedAt) ||
 		!validBoundedReviewText(review.ManagerNotes, 0, SubmissionReviewPrivateNotesMaximumRunes, SubmissionReviewPrivateNotesMaximumBytes) ||
 		!validBoundedReviewText(review.StudentRemarksMarkdown, 0, SubmissionReviewStudentRemarksMaximumRunes, SubmissionReviewStudentRemarksMaximumBytes) {
-		return errors.New("model: invalid Submission Review")
+		return invalidModelError("SubmissionReview.Validate", "submission_review", "", "invalid Submission Review", "")
 	}
 	switch review.State {
 	case SubmissionReviewDraft:
 		if review.ReleaseState != SubmissionReviewWithheld || review.FlagCount != 0 || review.EvidenceCount != 0 ||
 			review.DiscrepancyCount != 0 || review.EvidenceInventoryDigest != "" || review.FinalizedAt.Valid ||
 			!review.FinalizedByUserID.IsZero() || review.ReleasedAt.Valid || !review.ReleasedByUserID.IsZero() {
-			return errors.New("model: invalid draft Submission Review")
+			return invalidModelError("SubmissionReview.Validate", "submission_review", "", "invalid draft Submission Review", "")
 		}
 	case SubmissionReviewFinalized:
 		if review.FlagCount < 0 || review.FlagCount > SubmissionReviewMaximumFlags || review.EvidenceCount < 0 ||
 			review.EvidenceCount > SubmissionReviewMaximumEvidence || review.DiscrepancyCount < 0 ||
 			review.DiscrepancyCount > SubmissionReviewMaximumDiscrepancies || !validLowerSHA256(review.EvidenceInventoryDigest) ||
 			!review.FinalizedAt.Valid || review.FinalizedAt.Time.Before(review.CreatedAt) || !review.FinalizedByUserID.IsValid() {
-			return errors.New("model: invalid finalized Submission Review")
+			return invalidModelError("SubmissionReview.Validate", "submission_review", "", "invalid finalized Submission Review", "")
 		}
 		switch review.ReleaseState {
 		case SubmissionReviewWithheld:
 			if review.ReleasedAt.Valid || !review.ReleasedByUserID.IsZero() {
-				return errors.New("model: withheld Submission Review has release metadata")
+				return invalidModelError("SubmissionReview.Validate", "submission_review", "", "withheld Submission Review has release metadata", "")
 			}
 		case SubmissionReviewReleased:
 			if !review.ReleasedAt.Valid || review.ReleasedAt.Time.Before(review.FinalizedAt.Time) || !review.ReleasedByUserID.IsValid() {
-				return errors.New("model: invalid released Submission Review")
+				return invalidModelError("SubmissionReview.Validate", "submission_review", "", "invalid released Submission Review", "")
 			}
 		default:
-			return errors.New("model: invalid Submission Review release state")
+			return invalidModelError("SubmissionReview.Validate", "submission_review", "", "invalid Submission Review release state", "")
 		}
 	default:
-		return errors.New("model: invalid Submission Review state")
+		return invalidModelError("SubmissionReview.Validate", "submission_review", "", "invalid Submission Review state", "")
 	}
 	return nil
 }
 
 func (review *SubmissionReview) UpdateDraft(expectedRevision int64, managerNotes, studentRemarks string, at time.Time) error {
 	if review == nil || review.Validate() != nil || review.State != SubmissionReviewDraft || review.Revision != expectedRevision {
-		return errors.New("model: Submission Review cannot be edited")
+		return invalidModelError("SubmissionReview.UpdateDraft", "submission_review", "", "Submission Review cannot be edited", "")
 	}
 	candidate := *review
 	candidate.ManagerNotes = managerNotes
@@ -325,7 +324,7 @@ func (review *SubmissionReview) UpdateDraft(expectedRevision int64, managerNotes
 // created or revised without changing Review text.
 func (review *SubmissionReview) TouchDraft(expectedRevision int64, at time.Time) error {
 	if review == nil || review.Validate() != nil || review.State != SubmissionReviewDraft || review.Revision != expectedRevision {
-		return errors.New("model: Submission Review cannot advance")
+		return invalidModelError("SubmissionReview.TouchDraft", "submission_review", "", "Submission Review cannot advance", "")
 	}
 	candidate := *review
 	candidate.Revision++
@@ -341,7 +340,7 @@ func (review *SubmissionReview) Finalize(expectedRevision int64, actorID UserID,
 	discrepancyCount int, inventoryDigest string, at time.Time,
 ) error {
 	if review == nil || review.Validate() != nil || review.State != SubmissionReviewDraft || review.Revision != expectedRevision {
-		return errors.New("model: Submission Review cannot be finalized")
+		return invalidModelError("SubmissionReview.Finalize", "submission_review", "", "Submission Review cannot be finalized", "")
 	}
 	candidate := *review
 	candidate.State = SubmissionReviewFinalized
@@ -363,7 +362,7 @@ func (review *SubmissionReview) Finalize(expectedRevision int64, actorID UserID,
 func (review *SubmissionReview) Release(expectedRevision int64, actorID UserID, at time.Time) error {
 	if review == nil || review.Validate() != nil || review.State != SubmissionReviewFinalized ||
 		review.ReleaseState != SubmissionReviewWithheld || review.Revision != expectedRevision {
-		return errors.New("model: Submission Review cannot be released")
+		return invalidModelError("SubmissionReview.Release", "submission_review", "", "Submission Review cannot be released", "")
 	}
 	candidate := *review
 	candidate.ReleaseState = SubmissionReviewReleased
@@ -392,7 +391,7 @@ type StudentResult struct {
 func (review *SubmissionReview) StudentResult(attemptID ExamAttemptID, candidateID UserID) (*StudentResult, error) {
 	if review == nil || review.Validate() != nil || review.State != SubmissionReviewFinalized ||
 		review.ReleaseState != SubmissionReviewReleased || !attemptID.IsValid() || !candidateID.IsValid() {
-		return nil, errors.New("model: Student Result is unavailable")
+		return nil, invalidModelError("SubmissionReview.StudentResult", "submission_review", "", "Student Result is unavailable", "")
 	}
 	return &StudentResult{ReviewID: review.ID, SubmissionID: review.SubmissionID, AttemptID: attemptID,
 		CandidateUserID: candidateID, StudentRemarksMarkdown: review.StudentRemarksMarkdown, ReleasedAt: review.ReleasedAt.Time}, nil
@@ -429,24 +428,24 @@ func IntegrityReviewInventoryDigest(flags []IntegrityReviewInventoryFlag,
 ) (string, error) {
 	if len(flags) > SubmissionReviewMaximumFlags || len(evidence) > SubmissionReviewMaximumEvidence ||
 		len(discrepancies) > SubmissionReviewMaximumDiscrepancies {
-		return "", errors.New("model: Integrity Review inventory exceeds bounds")
+		return "", invalidModelError("IntegrityReviewInventoryDigest", "exam_review", "", "Integrity Review inventory exceeds bounds", "")
 	}
 	flagCopy := append([]IntegrityReviewInventoryFlag(nil), flags...)
 	evidenceCopy := append([]IntegrityReviewInventoryEvidence(nil), evidence...)
 	discrepancyCopy := append([]IntegrityReviewInventoryDiscrepancy(nil), discrepancies...)
 	for _, item := range flagCopy {
 		if !item.FlagID.IsValid() || !item.DecisionID.IsValid() || item.DecisionRevision < 1 {
-			return "", errors.New("model: invalid Integrity Review Flag inventory")
+			return "", invalidModelError("IntegrityReviewInventoryDigest", "exam_review", "", "invalid Integrity Review Flag inventory", "")
 		}
 	}
 	for _, item := range evidenceCopy {
 		if !item.EvidenceID.IsValid() || !item.FlagID.IsValid() {
-			return "", errors.New("model: invalid Integrity Review Evidence inventory")
+			return "", invalidModelError("IntegrityReviewInventoryDigest", "exam_review", "", "invalid Integrity Review Evidence inventory", "")
 		}
 	}
 	for _, item := range discrepancyCopy {
 		if !item.DiscrepancyID.IsValid() {
-			return "", errors.New("model: invalid Integrity Review Discrepancy inventory")
+			return "", invalidModelError("IntegrityReviewInventoryDigest", "exam_review", "", "invalid Integrity Review Discrepancy inventory", "")
 		}
 	}
 	sort.Slice(flagCopy, func(i, j int) bool { return flagCopy[i].FlagID.String() < flagCopy[j].FlagID.String() })

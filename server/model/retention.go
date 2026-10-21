@@ -8,7 +8,6 @@
 package model
 
 import (
-	"errors"
 	"time"
 )
 
@@ -54,19 +53,19 @@ type RetentionControl struct {
 
 func (c *RetentionControl) Validate() error {
 	if c == nil || !c.InstitutionID.IsValid() || c.Revision < 1 || c.UpdatedAt.IsZero() {
-		return errors.New("model: invalid retention control")
+		return invalidModelError("RetentionControl.Validate", "retention_control", "", "invalid retention control", "")
 	}
 	switch c.State {
 	case RetentionControlDisabled:
 		if c.ApprovedPolicyRevision != 0 || !c.ApprovedPreviewID.IsZero() {
-			return errors.New("model: disabled retention has approval")
+			return invalidModelError("RetentionControl.Validate", "retention_control", "", "disabled retention has approval", "")
 		}
 	case RetentionControlEnabled, RetentionControlPaused:
 		if c.ApprovedPolicyRevision < 1 || !c.ApprovedPreviewID.IsValid() || !c.ChangedByUserID.IsValid() {
-			return errors.New("model: invalid retention approval")
+			return invalidModelError("RetentionControl.Validate", "retention_control", "", "invalid retention approval", "")
 		}
 	default:
-		return errors.New("model: invalid retention control state")
+		return invalidModelError("RetentionControl.Validate", "retention_control", "", "invalid retention control state", "")
 	}
 	return nil
 }
@@ -112,13 +111,13 @@ func (p *RetentionPreview) Validate() error {
 	if p == nil || !p.ID.IsValid() || !p.InstitutionID.IsValid() || p.PolicyRevision < 1 ||
 		!p.CreatedByUserID.IsValid() || p.CreatedAt.IsZero() || !p.ExpiresAt.After(p.CreatedAt) ||
 		p.ExpiresAt.Sub(p.CreatedAt) > RetentionPreviewLifetime {
-		return errors.New("model: invalid retention preview")
+		return invalidModelError("RetentionPreview.Validate", "retention_preview", "", "invalid retention preview", "")
 	}
 	for _, c := range []RetentionPreviewCounts{p.Work, p.Integrity, p.BrowserActivity, p.SecurityOperational} {
 		if c.Total < 0 || c.Eligible < 0 || c.AwaitingDeadline < 0 || c.Incomplete < 0 ||
 			c.Held < 0 || c.Unconfigured < 0 || c.SupportingWork < 0 || c.ExportProtected < 0 || c.Retired < 0 ||
 			c.Total != c.Eligible+c.AwaitingDeadline+c.Incomplete+c.Held+c.Unconfigured+c.SupportingWork+c.ExportProtected+c.Retired {
-			return errors.New("model: invalid retention preview counts")
+			return invalidModelError("RetentionPreview.Validate", "retention_preview", "", "invalid retention preview counts", "")
 		}
 	}
 	if err := p.Audit.Validate(); err != nil {
@@ -171,7 +170,7 @@ func (r RetentionRecord) Eligibility(policy *RetentionPolicy, at time.Time) (Ret
 	if policy.Validate() != nil || r.Scope.Validate() != nil || !r.Scope.SubmissionID.IsValid() ||
 		!r.Category.IsValid() || at.IsZero() || r.SharedPublishedObjects < 0 ||
 		(r.CompletionCurrent && (!r.CompletedAt.Valid || r.CompletedAt.Time.IsZero() || r.CompletionRevision < 1)) {
-		return RetentionEligibility{}, errors.New("model: invalid retention record")
+		return RetentionEligibility{}, invalidModelError("RetentionRecord.Eligibility", "retention_record", "", "invalid retention record", "")
 	}
 	if r.RetiredAt.Valid {
 		return RetentionEligibility{Blocker: RetentionBlockerRetired}, nil
@@ -246,23 +245,23 @@ func (r *RetentionRetirement) Validate() error {
 	if r == nil || !r.ID.IsValid() || r.Scope.Validate() != nil || !r.Scope.SubmissionID.IsValid() ||
 		!r.Category.IsValid() || r.PolicyRevision < 1 || r.ControlRevision < 1 || r.CompletionRevision < 1 ||
 		r.ScheduledAt.IsZero() || !r.RetireAfter.After(r.ScheduledAt) || r.PurgePending < 0 || r.PurgeVerified < 0 {
-		return errors.New("model: invalid retention retirement")
+		return invalidModelError("RetentionRetirement.Validate", "retention_retirement", "", "invalid retention retirement", "")
 	}
 	switch r.State {
 	case RetentionRetirementGrace:
 		if r.RetiredAt.Valid || r.CancelledAt.Valid || r.CancellationReason != "" || r.PurgePending != 0 || r.PurgeVerified != 0 {
-			return errors.New("model: invalid retirement grace")
+			return invalidModelError("RetentionRetirement.Validate", "retention_retirement", "", "invalid retirement grace", "")
 		}
 	case RetentionRetirementCancelled:
 		if r.RetiredAt.Valid || !r.CancelledAt.Valid || r.CancelledAt.Time.Before(r.ScheduledAt) || r.CancellationReason == "" {
-			return errors.New("model: invalid cancelled retirement")
+			return invalidModelError("RetentionRetirement.Validate", "retention_retirement", "", "invalid cancelled retirement", "")
 		}
 	case RetentionRetirementCommitted:
 		if !r.RetiredAt.Valid || r.RetiredAt.Time.Before(r.RetireAfter) || r.CancelledAt.Valid || r.CancellationReason != "" {
-			return errors.New("model: invalid committed retirement")
+			return invalidModelError("RetentionRetirement.Validate", "retention_retirement", "", "invalid committed retirement", "")
 		}
 	default:
-		return errors.New("model: invalid retirement state")
+		return invalidModelError("RetentionRetirement.Validate", "retention_retirement", "", "invalid retirement state", "")
 	}
 	return nil
 }

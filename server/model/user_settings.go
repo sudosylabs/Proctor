@@ -8,7 +8,6 @@
 package model
 
 import (
-	"fmt"
 	"time"
 	"unicode/utf8"
 )
@@ -34,7 +33,7 @@ func NewUserSettingsRevision() UserSettingsRevision {
 
 func ParseUserSettingsRevision(value string) (UserSettingsRevision, error) {
 	if !IsValidOpaqueID(value) {
-		return "", fmt.Errorf("model: invalid user settings revision")
+		return "", invalidModelError("ParseUserSettingsRevision", "user_settings", "", "invalid user settings revision", "")
 	}
 	return UserSettingsRevision(value), nil
 }
