@@ -420,7 +420,7 @@ the same public JWK, exact Desktop build selectors, and a nonce-bound DPoP
 proof. It repeats compatibility, atomically consumes the code, creates or
 refreshes the User's Desktop Registration for that public-key thumbprint,
 binds the Desktop Session to it, and returns `DPoP` access and refresh
-credentials plus a Session-bound nonce. Invalid, expired, cancelled, mixed-up,
+credentials plus a Session-bound nonce. Invalid, expired, canceled, mixed-up,
 replayed, or key-mismatched proofs use bounded public errors and never reveal
 which proof or policy check failed.
 

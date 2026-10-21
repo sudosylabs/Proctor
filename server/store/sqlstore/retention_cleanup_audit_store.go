@@ -132,7 +132,7 @@ func (s *SQLRetentionStore) ReconcileCleanupAuditExpiry(ctx context.Context, inp
 				result.Expired++
 			}
 		}
-		encoded, err := model.EncodeAuditData(map[string]any{"operation": "retention.expire_cleanup_history", "policy_revision": policy.Revision, "control_revision": control.Revision, "examined": result.Examined, "scheduled": result.Scheduled, "cancelled": result.Cancelled, "expired": result.Expired})
+		encoded, err := model.EncodeAuditData(map[string]any{"operation": "retention.expire_cleanup_history", "policy_revision": policy.Revision, "control_revision": control.Revision, "examined": result.Examined, "scheduled": result.Scheduled, "canceled": result.Cancelled, "expired": result.Expired})
 		if err != nil {
 			return nil, err
 		}

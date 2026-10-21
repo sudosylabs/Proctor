@@ -20348,7 +20348,7 @@
       "RetentionNoticeResponse": {
         "additionalProperties": false,
         "properties": {
-          "cancelled_at": {
+          "canceled_at": {
             "format": "date-time",
             "type": "string"
           },
@@ -20397,7 +20397,7 @@
           "state": {
             "enum": [
               "grace",
-              "cancelled",
+              "canceled",
               "retired"
             ],
             "type": "string"
@@ -20885,7 +20885,7 @@
           "state": {
             "enum": [
               "grace",
-              "cancelled",
+              "canceled",
               "retired"
             ],
             "type": "string"
@@ -43636,7 +43636,7 @@
     },
     "/api/v1/users/me/retention-notices": {
       "get": {
-        "description": "Returns the current Session User’s own durable grace notices, including cancellation and delivery status. The notice grants no examination record access. Reading it neither acknowledges delivery nor changes cleanup. Candidate notices are optional; responsible Exam Managers and institution operators receive them by default. Pending dates are invalidated when grace is cancelled.",
+        "description": "Returns the current Session User’s own durable grace notices, including cancellation and delivery status. The notice grants no examination record access. Reading it neither acknowledges delivery nor changes cleanup. Candidate notices are optional; responsible Exam Managers and institution operators receive them by default. Pending dates are invalidated when grace is canceled.",
         "operationId": "listRetentionNotices",
         "parameters": [
           {

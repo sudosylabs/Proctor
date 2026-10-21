@@ -20,6 +20,12 @@ module when a change is not server-only. No module has been released yet.
   while active), Job `complete_at` and `start_at` become `completed_at` and
   `started_at`, timestamp query parameters take RFC 3339, and absent optional
   timestamps are omitted instead of `null` (**breaking**).
+- Server: cancellation is spelled `canceled` on the wire. Retention Notice
+  `cancelled_at` becomes `canceled_at`, and the Retention Notice and Record
+  Retirement `state` value `cancelled` becomes `canceled`, matching Sitting
+  `canceled_at` and every other `canceled` state. The pre-release SQL baseline
+  renames the matching retention columns and state; development databases
+  must be reset (**breaking**).
 - Server: error codes follow one grammar, and the HTTP status derives from the
   code. Several codes were renamed (for example
   `authentication.invalid_credentials` became

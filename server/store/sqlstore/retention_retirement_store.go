@@ -30,21 +30,21 @@ type retentionRetirementRow struct {
 	ScheduledAt        time.Time      `db:"scheduled_at"`
 	RetireAfter        time.Time      `db:"retire_after"`
 	RetiredAt          sql.NullTime   `db:"retired_at"`
-	CancelledAt        sql.NullTime   `db:"cancelled_at"`
+	CanceledAt         sql.NullTime   `db:"canceled_at"`
 	CancellationReason sql.NullString `db:"cancellation_reason"`
 	PurgePending       int64          `db:"purge_pending"`
 	PurgeVerified      int64          `db:"purge_verified"`
 }
 
 const retentionRetirementQuery = `SELECT r.id,r.exam_id,r.exam_sitting_id,r.submission_id,r.category,r.state,r.policy_revision,r.control_revision,
-		r.completion_revision,r.scheduled_at,r.retire_after,r.retired_at,r.cancelled_at,r.cancellation_reason,
+		r.completion_revision,r.scheduled_at,r.retire_after,r.retired_at,r.canceled_at,r.cancellation_reason,
 		(SELECT count(*) FROM retention_purge_objects WHERE retirement_id=r.id AND absence_verified_at IS NULL) AS purge_pending,
 		(SELECT count(*) FROM retention_purge_objects WHERE retirement_id=r.id AND absence_verified_at IS NOT NULL) AS purge_verified
 		FROM retention_retirements r`
 
 func getActiveRetirement(ctx context.Context, executor sqlxExecutor, id model.SubmissionID, category model.RetentionCategory) (*model.RetentionRetirement, error) {
 	var row retentionRetirementRow
-	err := executor.Get(ctx, &row, retentionRetirementQuery+` WHERE r.submission_id=? AND r.category=? AND r.state<>'cancelled'`, id.String(), category)
+	err := executor.Get(ctx, &row, retentionRetirementQuery+` WHERE r.submission_id=? AND r.category=? AND r.state<>'canceled'`, id.String(), category)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -60,7 +60,7 @@ func (row retentionRetirementRow) retirement() (*model.RetentionRetirement, erro
 		Category: model.RetentionCategory(row.Category), State: model.RetentionRetirementState(row.State), PolicyRevision: row.PolicyRevision,
 		ControlRevision: row.ControlRevision, CompletionRevision: row.CompletionRevision,
 		ScheduledAt: model.TimeUTC(row.ScheduledAt), RetireAfter: model.TimeUTC(row.RetireAfter),
-		RetiredAt: optionalTime(row.RetiredAt), CancelledAt: optionalTime(row.CancelledAt), CancellationReason: row.CancellationReason.String,
+		RetiredAt: optionalTime(row.RetiredAt), CanceledAt: optionalTime(row.CanceledAt), CancellationReason: row.CancellationReason.String,
 		PurgePending: row.PurgePending, PurgeVerified: row.PurgeVerified}
 	if err := r.Validate(); err != nil {
 		return nil, invalidPersistedState("retention_retirement", "value", err)
@@ -172,7 +172,7 @@ func (s *SQLRetentionStore) ReconcileSubmission(ctx context.Context, input *stor
 			result.Retired++
 		}
 		encoded, err := model.EncodeAuditData(map[string]any{"submission_id": input.SubmissionID.String(), "policy_revision": policy.Revision,
-			"control_revision": control.Revision, "scheduled": result.Scheduled, "cancelled": result.Cancelled, "retired": result.Retired})
+			"control_revision": control.Revision, "scheduled": result.Scheduled, "canceled": result.Cancelled, "retired": result.Retired})
 		if err != nil {
 			return nil, err
 		}
@@ -184,9 +184,9 @@ func (s *SQLRetentionStore) ReconcileSubmission(ctx context.Context, input *stor
 }
 
 func cancelOneRetirement(ctx context.Context, tx *sqlxTxWrapper, id model.RetentionRetirementID, at time.Time, reason string) error {
-	_, err := tx.Exec(ctx, `WITH cancelled AS (UPDATE retention_retirements SET state='cancelled',cancelled_at=GREATEST(scheduled_at,?),cancellation_reason=?
+	_, err := tx.Exec(ctx, `WITH canceled AS (UPDATE retention_retirements SET state='canceled',canceled_at=GREATEST(scheduled_at,?),cancellation_reason=?
 		WHERE id=? AND state='grace' RETURNING id)
-		UPDATE retention_notices SET cancelled_at=GREATEST(created_at,?),delivery_state=CASE WHEN mail_delivery_id IS NULL AND delivery_state='pending' THEN 'suppressed' ELSE delivery_state END WHERE retirement_id IN (SELECT id FROM cancelled) AND cancelled_at IS NULL`, at, reason, id.String(), at)
+		UPDATE retention_notices SET canceled_at=GREATEST(created_at,?),delivery_state=CASE WHEN mail_delivery_id IS NULL AND delivery_state='pending' THEN 'suppressed' ELSE delivery_state END WHERE retirement_id IN (SELECT id FROM canceled) AND canceled_at IS NULL`, at, reason, id.String(), at)
 	return err
 }
 

@@ -27,13 +27,13 @@ type retentionNoticeRow struct {
 	State         string       `db:"state"`
 	CreatedAt     time.Time    `db:"created_at"`
 	RetireAfter   time.Time    `db:"retire_after"`
-	CancelledAt   sql.NullTime `db:"cancelled_at"`
+	CanceledAt    sql.NullTime `db:"canceled_at"`
 	DeliveryState string       `db:"delivery_state"`
 	DeliveryCode  string       `db:"delivery_error_code"`
 }
 
 const retentionNoticeSelect = `SELECT n.retirement_id,n.recipient_user_id,r.exam_id,r.exam_sitting_id,r.submission_id,r.category,r.state,
-	n.created_at,r.retire_after,n.cancelled_at,n.delivery_state,n.delivery_error_code FROM retention_notices n JOIN retention_retirements r ON r.id=n.retirement_id`
+	n.created_at,r.retire_after,n.canceled_at,n.delivery_state,n.delivery_error_code FROM retention_notices n JOIN retention_retirements r ON r.id=n.retirement_id`
 
 func listRetentionNotices(ctx context.Context, executor sqlxExecutor, query string, args ...any) ([]model.RetentionNotice, error) {
 	var rows []retentionNoticeRow
@@ -42,7 +42,7 @@ func listRetentionNotices(ctx context.Context, executor sqlxExecutor, query stri
 	}
 	items := make([]model.RetentionNotice, 0, len(rows))
 	for _, row := range rows {
-		n := model.RetentionNotice{RetirementID: model.RetentionRetirementID(row.RetirementID), RecipientUserID: model.UserID(row.RecipientID), Scope: model.RetentionHoldScope{ExamID: model.ExamID(row.ExamID), SittingID: model.ExamSittingID(row.SittingID), SubmissionID: model.SubmissionID(row.SubmissionID)}, Category: model.RetentionCategory(row.Category), State: model.RetentionRetirementState(row.State), CreatedAt: model.TimeUTC(row.CreatedAt), RetireAfter: model.TimeUTC(row.RetireAfter), CancelledAt: optionalTime(row.CancelledAt), DeliveryState: row.DeliveryState, DeliveryErrorCode: row.DeliveryCode}
+		n := model.RetentionNotice{RetirementID: model.RetentionRetirementID(row.RetirementID), RecipientUserID: model.UserID(row.RecipientID), Scope: model.RetentionHoldScope{ExamID: model.ExamID(row.ExamID), SittingID: model.ExamSittingID(row.SittingID), SubmissionID: model.SubmissionID(row.SubmissionID)}, Category: model.RetentionCategory(row.Category), State: model.RetentionRetirementState(row.State), CreatedAt: model.TimeUTC(row.CreatedAt), RetireAfter: model.TimeUTC(row.RetireAfter), CanceledAt: optionalTime(row.CanceledAt), DeliveryState: row.DeliveryState, DeliveryErrorCode: row.DeliveryCode}
 		if !n.RetirementID.IsValid() || !n.RecipientUserID.IsValid() || n.Scope.Validate() != nil || !n.Category.IsValid() {
 			return nil, invalidPersistedState("retention_notice", "identity", errors.New("invalid notice"))
 		}
@@ -62,7 +62,7 @@ func (s *SQLRetentionStore) ListPendingNotices(ctx context.Context, limit int) (
 	if limit < 1 || limit > model.RetentionMaximumPageSize {
 		return nil, store.NewErrInvalidInput("retention_notice", "limit", nil)
 	}
-	return listRetentionNotices(ctx, s.GetMaster(), retentionNoticeSelect+` WHERE n.delivery_state='pending' AND n.cancelled_at IS NULL AND r.state='grace'
+	return listRetentionNotices(ctx, s.GetMaster(), retentionNoticeSelect+` WHERE n.delivery_state='pending' AND n.canceled_at IS NULL AND r.state='grace'
 		ORDER BY n.retirement_id,n.recipient_user_id LIMIT ?`, limit)
 }
 
@@ -78,10 +78,10 @@ func (s *SQLRetentionStore) CompleteNotice(ctx context.Context, input *store.Ret
 		}
 		var current struct {
 			State           string       `db:"delivery_state"`
-			CancelledAt     sql.NullTime `db:"cancelled_at"`
+			CanceledAt      sql.NullTime `db:"canceled_at"`
 			RetirementState string       `db:"state"`
 		}
-		if err := tx.Get(ctx, &current, `SELECT n.delivery_state,n.cancelled_at,r.state FROM retention_notices n JOIN retention_retirements r ON r.id=n.retirement_id
+		if err := tx.Get(ctx, &current, `SELECT n.delivery_state,n.canceled_at,r.state FROM retention_notices n JOIN retention_retirements r ON r.id=n.retirement_id
 			WHERE n.retirement_id=? AND n.recipient_user_id=? FOR UPDATE OF n`, input.RetirementID.String(), input.RecipientUserID.String()); err != nil {
 			return false, translateError("retention_notice", input.RetirementID.String(), err)
 		}
@@ -93,7 +93,7 @@ func (s *SQLRetentionStore) CompleteNotice(ctx context.Context, input *store.Ret
 			return false, err
 		}
 		state, code, deliveryID := "failed", input.FailureCode, ""
-		if current.CancelledAt.Valid || current.RetirementState != "grace" || !retireAfter.After(at) {
+		if current.CanceledAt.Valid || current.RetirementState != "grace" || !retireAfter.After(at) {
 			state, code = "suppressed", model.MailDeliveryObsoleteCode
 		} else if input.Mail != nil {
 			p := input.Mail
@@ -135,6 +135,6 @@ func lockRetentionNoticeMail(ctx context.Context, tx *sqlxTxWrapper, id model.Ma
 	}
 	var relevant bool
 	err := tx.Get(ctx, &relevant, `SELECT EXISTS(SELECT 1 FROM retention_notices n JOIN retention_retirements r ON r.id=n.retirement_id
-		WHERE n.mail_delivery_id=? AND n.cancelled_at IS NULL AND r.state='grace' AND r.retire_after>clock_timestamp())`, id.String())
+		WHERE n.mail_delivery_id=? AND n.canceled_at IS NULL AND r.state='grace' AND r.retire_after>clock_timestamp())`, id.String())
 	return relevant, err
 }

@@ -353,9 +353,9 @@ func retentionControlAudit(c *model.RetentionControl) map[string]any {
 }
 
 func cancelInstitutionRetirements(ctx context.Context, tx *sqlxTxWrapper, id model.InstitutionID, at time.Time, reason string) error {
-	_, err := tx.Exec(ctx, `WITH cancelled AS (UPDATE retention_retirements SET state='cancelled',cancelled_at=GREATEST(scheduled_at,?),cancellation_reason=?
+	_, err := tx.Exec(ctx, `WITH canceled AS (UPDATE retention_retirements SET state='canceled',canceled_at=GREATEST(scheduled_at,?),cancellation_reason=?
 		WHERE institution_id=? AND state='grace' RETURNING id)
-		UPDATE retention_notices SET cancelled_at=GREATEST(created_at,?),delivery_state=CASE WHEN mail_delivery_id IS NULL AND delivery_state='pending' THEN 'suppressed' ELSE delivery_state END WHERE retirement_id IN (SELECT id FROM cancelled) AND cancelled_at IS NULL`, at, reason, id.String(), at)
+		UPDATE retention_notices SET canceled_at=GREATEST(created_at,?),delivery_state=CASE WHEN mail_delivery_id IS NULL AND delivery_state='pending' THEN 'suppressed' ELSE delivery_state END WHERE retirement_id IN (SELECT id FROM canceled) AND canceled_at IS NULL`, at, reason, id.String(), at)
 	if err != nil {
 		return err
 	}
@@ -512,7 +512,7 @@ func (s *SQLRetentionStore) ListRecords(ctx context.Context, options store.Reten
 				placeholders[i], args[i] = "?", row.SubmissionID
 			}
 			var values []retentionRetirementRow
-			if err := tx.Select(ctx, &values, retentionRetirementQuery+` WHERE r.state<>'cancelled' AND r.submission_id IN (`+strings.Join(placeholders, ",")+`)`, args...); err != nil {
+			if err := tx.Select(ctx, &values, retentionRetirementQuery+` WHERE r.state<>'canceled' AND r.submission_id IN (`+strings.Join(placeholders, ",")+`)`, args...); err != nil {
 				return nil, err
 			}
 			for _, row := range values {

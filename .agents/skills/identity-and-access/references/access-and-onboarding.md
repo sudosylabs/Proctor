@@ -352,7 +352,7 @@ callback and code expiry, or the created Session with authoritative credential
 expiries. They never return a mutable whole transaction for application code to
 transition. PostgreSQL acquires the necessary locks, obtains one authoritative
 timestamp for each transition, computes deadlines, and destroys consumed or
-cancelled proofs in the same atomic operation. Application code validates the
+canceled proofs in the same atomic operation. Application code validates the
 narrow result and cannot reconstruct transition state from a broad aggregate.
 
 The hosted `/account/connect-provider` page starts the implemented

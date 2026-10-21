@@ -15,7 +15,7 @@ paths:
         Returns the current Session User’s own durable grace notices, including cancellation and delivery
         status. The notice grants no examination record access. Reading it neither acknowledges delivery nor
         changes cleanup. Candidate notices are optional; responsible Exam Managers and institution operators
-        receive them by default. Pending dates are invalidated when grace is cancelled.
+        receive them by default. Pending dates are invalidated when grace is canceled.
       x-proctor-auth: session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -111,7 +111,7 @@ components:
           type: string
           enum:
             - grace
-            - cancelled
+            - canceled
             - retired
         created_at:
           type: string
@@ -119,7 +119,7 @@ components:
         retire_after:
           type: string
           format: date-time
-        cancelled_at:
+        canceled_at:
           type: string
           format: date-time
         delivery_state:

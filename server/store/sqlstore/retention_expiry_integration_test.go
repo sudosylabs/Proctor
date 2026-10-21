@@ -91,7 +91,7 @@ func retentionExpirySQLProbe(s *SQLStore) storetest.RetentionExpirySQLProbe {
 		},
 		AgeReceipt: func(t *testing.T, ctx context.Context, id model.RetentionRetirementID) {
 			t.Helper()
-			_, err := s.GetMaster().Exec(ctx, `UPDATE retention_retirements SET scheduled_at=clock_timestamp()-interval '103 days',retire_after=clock_timestamp()-interval '102 days',retired_at=CASE WHEN state='retired' THEN clock_timestamp()-interval '101 days' END,cancelled_at=CASE WHEN state='cancelled' THEN clock_timestamp()-interval '101 days' END WHERE id=?`, id.String())
+			_, err := s.GetMaster().Exec(ctx, `UPDATE retention_retirements SET scheduled_at=clock_timestamp()-interval '103 days',retire_after=clock_timestamp()-interval '102 days',retired_at=CASE WHEN state='retired' THEN clock_timestamp()-interval '101 days' END,canceled_at=CASE WHEN state='canceled' THEN clock_timestamp()-interval '101 days' END WHERE id=?`, id.String())
 			require.NoError(t, err)
 		},
 		FinishReceiptPurge: func(t *testing.T, ctx context.Context, id model.RetentionRetirementID) {

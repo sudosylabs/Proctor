@@ -23,7 +23,7 @@ type retentionNoticeResponse struct {
 	State             string  `json:"state"`
 	CreatedAt         string  `json:"created_at"`
 	RetireAfter       string  `json:"retire_after"`
-	CancelledAt       *string `json:"cancelled_at,omitempty"`
+	CanceledAt        *string `json:"canceled_at,omitempty"`
 	DeliveryState     string  `json:"delivery_state"`
 	DeliveryErrorCode string  `json:"delivery_error_code,omitempty"`
 }
@@ -78,7 +78,7 @@ func (m retentionHTTPModule) notices(request operationRequest) (operationResult,
 		if !n.RetirementID.IsValid() || n.RetirementID <= previous || n.RecipientUserID != request.invocation().Principal().UserID {
 			return operationResult{}, errUnpresentableResult
 		}
-		response.Items = append(response.Items, retentionNoticeResponse{RetirementID: n.RetirementID.String(), ExamID: n.Scope.ExamID.String(), SittingID: n.Scope.SittingID.String(), SubmissionID: n.Scope.SubmissionID.String(), Category: string(n.Category), State: string(n.State), CreatedAt: retentionTime(n.CreatedAt), RetireAfter: retentionTime(n.RetireAfter), CancelledAt: retentionOptionalTime(n.CancelledAt), DeliveryState: n.DeliveryState, DeliveryErrorCode: n.DeliveryErrorCode})
+		response.Items = append(response.Items, retentionNoticeResponse{RetirementID: n.RetirementID.String(), ExamID: n.Scope.ExamID.String(), SittingID: n.Scope.SittingID.String(), SubmissionID: n.Scope.SubmissionID.String(), Category: string(n.Category), State: string(n.State), CreatedAt: retentionTime(n.CreatedAt), RetireAfter: retentionTime(n.RetireAfter), CanceledAt: retentionOptionalTime(n.CanceledAt), DeliveryState: n.DeliveryState, DeliveryErrorCode: n.DeliveryErrorCode})
 		previous = n.RetirementID
 	}
 	if page.HasMore {

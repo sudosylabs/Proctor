@@ -170,8 +170,8 @@ func TestRetentionStore(t *testing.T, ss store.Store, probe RetentionSQLProbe) {
 	notices, err = ss.Retention().ListNotices(ctx, principal.UserID, "", 100)
 	require.NoError(t, err)
 	for _, n := range notices {
-		require.True(t, n.CancelledAt.Valid, "hold left notice date active")
-		require.Equal(t, model.RetentionRetirementCancelled, n.State, "hold left notice date active")
+		require.True(t, n.CanceledAt.Valid, "hold left notice date active")
+		require.Equal(t, model.RetentionRetirementCanceled, n.State, "hold left notice date active")
 	}
 	page, err = ss.Retention().ListRecords(ctx, store.RetentionRecordListOptions{Limit: 1})
 	require.NoError(t, err)

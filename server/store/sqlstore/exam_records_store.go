@@ -504,11 +504,11 @@ func invalidateSittingRecordsForIntegrity(ctx context.Context, tx *sqlxTxWrapper
 	if err = saveRecordsCompletion(ctx, tx, c); err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `WITH cancelled AS (UPDATE retention_retirements
-		SET state='cancelled',cancelled_at=GREATEST(scheduled_at,?),cancellation_reason='records_stale'
+	_, err = tx.Exec(ctx, `WITH canceled AS (UPDATE retention_retirements
+		SET state='canceled',canceled_at=GREATEST(scheduled_at,?),cancellation_reason='records_stale'
 		WHERE exam_sitting_id=? AND state='grace' RETURNING id)
-		UPDATE retention_notices SET cancelled_at=GREATEST(created_at,?),delivery_state=CASE WHEN mail_delivery_id IS NULL AND delivery_state='pending' THEN 'suppressed' ELSE delivery_state END
-		WHERE retirement_id IN (SELECT id FROM cancelled) AND cancelled_at IS NULL`, at, id.String(), at)
+		UPDATE retention_notices SET canceled_at=GREATEST(created_at,?),delivery_state=CASE WHEN mail_delivery_id IS NULL AND delivery_state='pending' THEN 'suppressed' ELSE delivery_state END
+		WHERE retirement_id IN (SELECT id FROM canceled) AND canceled_at IS NULL`, at, id.String(), at)
 	if err != nil {
 		return err
 	}
@@ -608,12 +608,12 @@ func (s *SQLExamRecordsStore) CreateHold(ctx context.Context, input *store.ExamR
 		}
 		// Invalidate the advertised dates in the same commit as the hold.
 		// Reconciliation may only establish a new grace after the hold ends.
-		_, err = tx.Exec(ctx, `WITH cancelled AS (UPDATE retention_retirements
-			SET state='cancelled',cancelled_at=GREATEST(scheduled_at,?),cancellation_reason='preservation_hold'
+		_, err = tx.Exec(ctx, `WITH canceled AS (UPDATE retention_retirements
+			SET state='canceled',canceled_at=GREATEST(scheduled_at,?),cancellation_reason='preservation_hold'
 			WHERE exam_id=? AND (?='' OR exam_sitting_id=?) AND (?='' OR submission_id=?)
 			AND state='grace' RETURNING id)
-			UPDATE retention_notices SET cancelled_at=GREATEST(created_at,?),delivery_state=CASE WHEN mail_delivery_id IS NULL AND delivery_state='pending' THEN 'suppressed' ELSE delivery_state END
-			WHERE retirement_id IN (SELECT id FROM cancelled) AND cancelled_at IS NULL`, at, h.Scope.ExamID.String(),
+			UPDATE retention_notices SET canceled_at=GREATEST(created_at,?),delivery_state=CASE WHEN mail_delivery_id IS NULL AND delivery_state='pending' THEN 'suppressed' ELSE delivery_state END
+			WHERE retirement_id IN (SELECT id FROM canceled) AND canceled_at IS NULL`, at, h.Scope.ExamID.String(),
 			h.Scope.SittingID.String(), h.Scope.SittingID.String(), h.Scope.SubmissionID.String(), h.Scope.SubmissionID.String(), at)
 		if err != nil {
 			return nil, err

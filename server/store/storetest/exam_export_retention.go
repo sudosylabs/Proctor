@@ -94,7 +94,7 @@ func TestExamExportRetention(t *testing.T, ss store.Store, dates RetentionSQLPro
 	require.NoError(t, err)
 	require.Len(t, currentNotices, 2, "source protection notice count")
 	for _, notice := range currentNotices {
-		require.Equal(t, notice.Category == model.RetentionCategoryWork, notice.CancelledAt.Valid)
+		require.Equal(t, notice.Category == model.RetentionCategoryWork, notice.CanceledAt.Valid)
 	}
 	// Integrity may retire independently. The peer cannot retire protected work.
 	dates.ExpireGrace(t, ctx, id)

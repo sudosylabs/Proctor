@@ -23,7 +23,7 @@ Resource validation, uploaded profile-picture normalization, default-picture
 generation, and fallback rendering share one node-local processing limit.
 Admission refuses immediately before reading input or creating content when
 all slots are occupied; there is no waiting queue. The slot remains occupied
-until synchronous processing returns even if the request is cancelled. Exact
+until synchronous processing returns even if the request is canceled. Exact
 content reads, deletion and purge, and ordinary streaming Workspace and
 onboarding operations remain independent of this limit. It bounds concurrent
 operations, not aggregate memory. The root supplies a narrow optional recorder

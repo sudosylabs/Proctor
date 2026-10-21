@@ -4566,24 +4566,24 @@ CREATE TABLE retention_retirements (
     exam_sitting_id varchar(26) NOT NULL REFERENCES exam_sittings(id),
     submission_id varchar(26) NOT NULL REFERENCES exam_submissions(id),
     category varchar(24) NOT NULL CHECK (category IN ('work','integrity','browser_activity','security_operational')),
-    state varchar(16) NOT NULL CHECK (state IN ('grace','cancelled','retired')),
+    state varchar(16) NOT NULL CHECK (state IN ('grace','canceled','retired')),
     policy_revision bigint NOT NULL CHECK (policy_revision > 0),
     control_revision bigint NOT NULL CHECK (control_revision > 0),
     completion_revision bigint NOT NULL CHECK (completion_revision > 0),
     scheduled_at timestamptz NOT NULL,
     retire_after timestamptz NOT NULL CHECK (retire_after > scheduled_at),
     retired_at timestamptz,
-    cancelled_at timestamptz,
+    canceled_at timestamptz,
     cancellation_reason varchar(64),
     CONSTRAINT retention_retirements_lifecycle_check CHECK (
-        (state = 'grace' AND retired_at IS NULL AND cancelled_at IS NULL AND cancellation_reason IS NULL) OR
-        (state = 'cancelled' AND retired_at IS NULL AND cancelled_at IS NOT NULL AND cancelled_at >= scheduled_at AND
+        (state = 'grace' AND retired_at IS NULL AND canceled_at IS NULL AND cancellation_reason IS NULL) OR
+        (state = 'canceled' AND retired_at IS NULL AND canceled_at IS NOT NULL AND canceled_at >= scheduled_at AND
          cancellation_reason IS NOT NULL AND cancellation_reason ~ '^[a-z][a-z0-9_]{0,63}$') OR
-        (state = 'retired' AND retired_at IS NOT NULL AND retired_at >= retire_after AND cancelled_at IS NULL AND cancellation_reason IS NULL)
+        (state = 'retired' AND retired_at IS NOT NULL AND retired_at >= retire_after AND canceled_at IS NULL AND cancellation_reason IS NULL)
     )
 );
 CREATE UNIQUE INDEX retention_retirements_active_record_idx
-    ON retention_retirements (submission_id, category) WHERE state <> 'cancelled';
+    ON retention_retirements (submission_id, category) WHERE state <> 'canceled';
 CREATE INDEX retention_retirements_grace_idx ON retention_retirements (retire_after, id) WHERE state = 'grace';
 
 -- Durable in-product notices precede optional mail delivery. Cancellation
@@ -4605,7 +4605,7 @@ CREATE TABLE retention_notices (
     retirement_id varchar(26) NOT NULL REFERENCES retention_retirements(id) ON DELETE CASCADE,
     recipient_user_id varchar(26) NOT NULL REFERENCES users(id),
     created_at timestamptz NOT NULL,
-    cancelled_at timestamptz,
+    canceled_at timestamptz,
     delivery_state varchar(16) NOT NULL DEFAULT 'pending' CHECK (delivery_state IN ('pending','queued','sending','accepted','suppressed','failed','canceled')),
     delivery_error_code varchar(128) NOT NULL DEFAULT '',
     mail_delivery_id varchar(26) REFERENCES mail_deliveries(id) ON DELETE SET NULL,

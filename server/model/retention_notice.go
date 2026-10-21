@@ -20,7 +20,7 @@ type RetentionNotice struct {
 	State             RetentionRetirementState
 	CreatedAt         time.Time
 	RetireAfter       time.Time
-	CancelledAt       OptionalTime
+	CanceledAt        OptionalTime
 	DeliveryState     string
 	DeliveryErrorCode string
 }

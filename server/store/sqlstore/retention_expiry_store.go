@@ -65,7 +65,7 @@ const auditExpiryFacts = `SELECT a.id,a.created_at AS scan_at, (` + terminalClea
  LEFT JOIN exam_sittings sit ON sit.id=CASE WHEN a.resource_type='exam_sitting' THEN a.resource_id ELSE attempt.exam_sitting_id END
  LEFT JOIN exams e ON e.id=CASE WHEN a.resource_type='exam' THEN a.resource_id ELSE sit.exam_id END`
 
-const receiptExpiryFacts = `SELECT r.id,r.scheduled_at AS scan_at,false AS cleanup_audit,COALESCE(r.retired_at,r.cancelled_at,r.scheduled_at) AS event_at,
+const receiptExpiryFacts = `SELECT r.id,r.scheduled_at AS scan_at,false AS cleanup_audit,COALESCE(r.retired_at,r.canceled_at,r.scheduled_at) AS event_at,
  r.exam_id,r.exam_sitting_id AS sitting_id,r.submission_id,
  (r.state='grace' OR (r.state='retired' AND CASE r.category WHEN 'work' THEN sub.work_retired_at IS NULL WHEN 'integrity' THEN sub.integrity_retired_at IS NULL WHEN 'browser_activity' THEN (SELECT browser_retired_at IS NULL FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=sub.exam_attempt_id) ELSE (SELECT security_retired_at IS NULL FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=sub.exam_attempt_id) END)) AS unfinished,
  false AS referenced,
@@ -324,7 +324,7 @@ func expireRetentionRecord(ctx context.Context, tx *sqlxTxWrapper, kind model.Re
 		}
 		// FK-owned notices have the same lifetime as their receipt. All immutable
 		// Submission identities and category markers survive this history deletion.
-		if _, err := tx.Exec(ctx, `DELETE FROM retention_retirements WHERE id=? AND state IN ('cancelled','retired')`, id); err != nil {
+		if _, err := tx.Exec(ctx, `DELETE FROM retention_retirements WHERE id=? AND state IN ('canceled','retired')`, id); err != nil {
 			return err
 		}
 	}

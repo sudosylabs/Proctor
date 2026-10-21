@@ -218,7 +218,7 @@ type RetentionRetirementState string
 
 const (
 	RetentionRetirementGrace     RetentionRetirementState = "grace"
-	RetentionRetirementCancelled RetentionRetirementState = "cancelled"
+	RetentionRetirementCanceled  RetentionRetirementState = "canceled"
 	RetentionRetirementCommitted RetentionRetirementState = "retired"
 )
 
@@ -235,7 +235,7 @@ type RetentionRetirement struct {
 	ScheduledAt        time.Time
 	RetireAfter        time.Time
 	RetiredAt          OptionalTime
-	CancelledAt        OptionalTime
+	CanceledAt         OptionalTime
 	CancellationReason string
 	PurgePending       int64
 	PurgeVerified      int64
@@ -249,15 +249,15 @@ func (r *RetentionRetirement) Validate() error {
 	}
 	switch r.State {
 	case RetentionRetirementGrace:
-		if r.RetiredAt.Valid || r.CancelledAt.Valid || r.CancellationReason != "" || r.PurgePending != 0 || r.PurgeVerified != 0 {
+		if r.RetiredAt.Valid || r.CanceledAt.Valid || r.CancellationReason != "" || r.PurgePending != 0 || r.PurgeVerified != 0 {
 			return invalidModelError("RetentionRetirement.Validate", "retention_retirement", "", "invalid retirement grace", "")
 		}
-	case RetentionRetirementCancelled:
-		if r.RetiredAt.Valid || !r.CancelledAt.Valid || r.CancelledAt.Time.Before(r.ScheduledAt) || r.CancellationReason == "" {
-			return invalidModelError("RetentionRetirement.Validate", "retention_retirement", "", "invalid cancelled retirement", "")
+	case RetentionRetirementCanceled:
+		if r.RetiredAt.Valid || !r.CanceledAt.Valid || r.CanceledAt.Time.Before(r.ScheduledAt) || r.CancellationReason == "" {
+			return invalidModelError("RetentionRetirement.Validate", "retention_retirement", "", "invalid canceled retirement", "")
 		}
 	case RetentionRetirementCommitted:
-		if !r.RetiredAt.Valid || r.RetiredAt.Time.Before(r.RetireAfter) || r.CancelledAt.Valid || r.CancellationReason != "" {
+		if !r.RetiredAt.Valid || r.RetiredAt.Time.Before(r.RetireAfter) || r.CanceledAt.Valid || r.CancellationReason != "" {
 			return invalidModelError("RetentionRetirement.Validate", "retention_retirement", "", "invalid committed retirement", "")
 		}
 	default:

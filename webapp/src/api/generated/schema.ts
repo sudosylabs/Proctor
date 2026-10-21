@@ -4753,7 +4753,7 @@ export interface paths {
         };
         /**
          * List my retention notices
-         * @description Returns the current Session User’s own durable grace notices, including cancellation and delivery status. The notice grants no examination record access. Reading it neither acknowledges delivery nor changes cleanup. Candidate notices are optional; responsible Exam Managers and institution operators receive them by default. Pending dates are invalidated when grace is cancelled.
+         * @description Returns the current Session User’s own durable grace notices, including cancellation and delivery status. The notice grants no examination record access. Reading it neither acknowledges delivery nor changes cleanup. Candidate notices are optional; responsible Exam Managers and institution operators receive them by default. Pending dates are invalidated when grace is canceled.
          */
         get: operations["listRetentionNotices"];
         put?: never;
@@ -9162,7 +9162,7 @@ export interface components {
         };
         RetentionNoticeResponse: {
             /** Format: date-time */
-            cancelled_at?: string;
+            canceled_at?: string;
             /** @enum {string} */
             category: "work" | "integrity" | "browser_activity" | "security_operational";
             /** Format: date-time */
@@ -9176,7 +9176,7 @@ export interface components {
             retire_after: string;
             retirement_id: components["schemas"]["ID"];
             /** @enum {string} */
-            state: "grace" | "cancelled" | "retired";
+            state: "grace" | "canceled" | "retired";
             submission_id: components["schemas"]["ID"];
         };
         RetentionNoticesResponse: {
@@ -9329,7 +9329,7 @@ export interface components {
             /** Format: date-time */
             scheduled_at: string;
             /** @enum {string} */
-            state: "grace" | "cancelled" | "retired";
+            state: "grace" | "canceled" | "retired";
         };
         RevokeSessionRequest: {
             session_id: components["schemas"]["ID"];
