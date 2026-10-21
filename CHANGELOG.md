@@ -39,6 +39,15 @@ module when a change is not server-only. No module has been released yet.
   reset before use (**breaking**).
 - Server: static TLS certificates and configuration reload on `SIGHUP`, and the
   systemd unit gains `ExecReload`.
+- Server: Let's Encrypt mode requires
+  `Server.TLS.LetsEncrypt.AcceptTermsOfService` to be `true` (**breaking**).
+- Server: named advisory locks hash with one key scheme, so a node on an
+  earlier build does not exclude a node on this one; upgrade every node of a
+  cluster together (**breaking**).
+- Server: Store timer metric labels drop the `_with_audit` suffix, and every
+  security-sensitive Store mutation requires its audit record.
+- Server: when the success audit of a login cannot be recorded, no Session is
+  issued at all.
 - Build: `make container` packages Linux binaries with the same recipe as
   `make dist` and builds them with the release Dockerfile, so a local image
   matches a published one; `Dockerfile.runtime` is removed.
@@ -51,9 +60,18 @@ module when a change is not server-only. No module has been released yet.
 - Server: Exam Managers can manually suspend an active Attempt.
 - Server: local login attempts are also bounded per account across all
   sources (`Authentication.LoginRateLimit.MaximumIdentityAttempts`).
+- Server: `Server.TrustedProxies` names the reverse proxies whose forwarded
+  client address and request ID are accepted.
 
 ### Fixed
 
+- Server: re-allowing a focus-loss suspension no longer reports a committed
+  re-allow as unavailable.
+- Server: a failed audit completion is joined with, not substituted for, the
+  original failure.
+- Server: rows written with a node's clock are never later stamped earlier by
+  PostgreSQL time (or the reverse), which removes intermittent check-constraint
+  failures and unreadable Sessions when node and database clocks differ.
 - Server: Desktop approval audit binds to the approving account, local password
   login outcomes are durably audited, and result-release audit begins before
   release time is reserved.
