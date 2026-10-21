@@ -302,7 +302,7 @@ func guardExamManagerMutation(ctx context.Context, tx *sqlxTxWrapper, exam *mode
 				AND m.academic_unit_id = ? AND m.archived_at IS NULL AND m.start_at <= statement_timestamp()
 				AND (m.end_at IS NULL OR m.end_at > statement_timestamp())
 			LIMIT 1 FOR SHARE OF u, m`, input.TargetUserID.String(), exam.AcademicUnitID.String()); err != nil {
-			if err == sql.ErrNoRows {
+			if errors.Is(err, sql.ErrNoRows) {
 				return store.NewErrConflict("exam_manager", "exam_manager_ineligible", nil)
 			}
 			return fmt.Errorf("recheck Exam Manager eligibility: %w", err)
@@ -312,8 +312,8 @@ func guardExamManagerMutation(ctx context.Context, tx *sqlxTxWrapper, exam *mode
 }
 
 func lockExamManagerCandidateFence(ctx context.Context, tx *sqlxTxWrapper, userID model.UserID) error {
-	lockKey := "proctor:exam-attempt-admission:" + userID.String()
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(?, 0))`, lockKey); err != nil {
+	lockKey := advisoryLockKey("exam-attempt-admission", userID.String())
+	if err := lockAdvisory(ctx, tx, lockKey); err != nil {
 		return fmt.Errorf("lock Exam Manager candidate fence: %w", err)
 	}
 	return nil
@@ -323,7 +323,7 @@ func getExamManager(ctx context.Context, tx *sqlxTxWrapper, examID model.ExamID,
 	var row examManagerRow
 	if err := tx.Get(ctx, &row, `SELECT exam_id, user_id, granted_by_user_id, granted_at, false AS is_creator, false AS is_owner
 		FROM exam_managers WHERE exam_id = ? AND user_id = ?`, examID.String(), userID.String()); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, store.NewErrConflict("exam_manager", "exam_manager_missing", nil)
 		}
 		return nil, fmt.Errorf("get Exam Manager: %w", err)

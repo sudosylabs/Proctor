@@ -62,10 +62,7 @@ func (s SQLInstallationStore) Bootstrap(
 	}
 
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "installation bootstrap", func(ctx context.Context, tx *sqlxTxWrapper) (*model.InstallationBootstrapResult, error) {
-		if _, err := tx.Exec(ctx,
-			`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
-			installationBootstrapLock,
-		); err != nil {
+		if err := lockAdvisory(ctx, tx, installationBootstrapLock); err != nil {
 			return nil, fmt.Errorf("lock installation bootstrap: %w", err)
 		}
 		pristine, err := installationIsPristine(ctx, tx)
@@ -118,7 +115,7 @@ func (s SQLInstallationStore) Bootstrap(
 			singleton, initialized_at, institution_id, administrator_user_id,
 			access_policy_id, bootstrap_secret_digest, bootstrap_command_fingerprint,
 			bootstrap_result
-		) VALUES (1, $1, $2, $3, $4, $5, $6, $7)`,
+		) VALUES (1, ?, ?, ?, ?, ?, ?, ?)`,
 			prepared.State.InitializedAt,
 			prepared.State.InstitutionID.String(),
 			prepared.State.AdministratorUserID.String(),
@@ -169,7 +166,7 @@ func (s SQLInstallationStore) ReconcileSystemAdministratorRole(
 			SELECT id, created_at, updated_at, archived_at, name, display_name,
 			       description, permissions, built_in
 			  FROM roles
-			 WHERE name = $1
+			 WHERE name = ?
 			 FOR UPDATE`, model.SystemAdministratorRoleName); err != nil {
 			return nil, fmt.Errorf("get protected role for reconciliation: %w", translateError("role", "name="+model.SystemAdministratorRoleName, err))
 		}
@@ -198,8 +195,8 @@ func (s SQLInstallationStore) ReconcileSystemAdministratorRole(
 		updated := newRoleRow(candidate)
 		if _, err := tx.Exec(ctx, `
 			UPDATE roles
-			   SET updated_at = $1, permissions = $2
-			 WHERE id = $3 AND built_in = TRUE AND archived_at IS NULL`,
+			   SET updated_at = ?, permissions = ?
+			 WHERE id = ? AND built_in = TRUE AND archived_at IS NULL`,
 			updated.UpdatedAt, updated.Permissions, updated.ID,
 		); err != nil {
 			return nil, fmt.Errorf("update protected role reconciliation: %w", translateError("role", candidate.ID.String(), err))
@@ -436,7 +433,7 @@ func insertInitialAccessPolicy(
 			local_login_enabled, public_registration_enabled,
 			invitation_admission_enabled, invitation_local_credential_enabled,
 			desktop_authorization_enabled, provider_admissions
-		) VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		policy.ID.String(), policy.Revision, policy.CreatedAt, policy.UpdatedAt,
 		policy.LocalLoginEnabled, policy.PublicRegistrationEnabled,
 		policy.InvitationAdmissionEnabled, policy.InvitationLocalCredentialEnabled,
@@ -465,7 +462,7 @@ func insertInitialDesktopCompatibilityPolicy(
 		INSERT INTO desktop_compatibility_policies (
 			singleton, institution_id, revision, minimum_desktop_release,
 			revoked_desktop_build_ids, administrator_message, availability, retry_at, created_at, updated_at
-		) VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		policy.InstitutionID.String(), policy.Revision, policy.MinimumDesktopRelease,
 		revokedBuildIDs, policy.AdministratorMessage, policy.Availability, policy.RetryAt.Ptr(), policy.CreatedAt, policy.UpdatedAt,
 	); err != nil {

@@ -24,13 +24,13 @@ import (
 // candidate Workspace state and attempt-owned staged content metadata.
 type SQLExamAttemptWorkspaceStore struct {
 	*SQLStore
-	attempts *sqlExamAttemptStore
+	attempts *SQLExamAttemptStore
 }
 
 // NewSQLExamAttemptWorkspaceStore constructs the adapter for registration by
 // the root SQL Store. It performs no I/O and owns no lifecycle.
 func NewSQLExamAttemptWorkspaceStore(sqlStore *SQLStore) store.ExamAttemptWorkspaceStore {
-	return &SQLExamAttemptWorkspaceStore{SQLStore: sqlStore, attempts: &sqlExamAttemptStore{SQLStore: sqlStore}}
+	return &SQLExamAttemptWorkspaceStore{SQLStore: sqlStore, attempts: &SQLExamAttemptStore{SQLStore: sqlStore}}
 }
 
 func (s *SQLExamAttemptWorkspaceStore) List(ctx context.Context, options store.CandidateWorkspaceListOptions) (*store.CandidateAttemptWorkspacePage, error) {

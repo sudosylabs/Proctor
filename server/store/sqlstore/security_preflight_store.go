@@ -29,14 +29,14 @@ func preflightConnectSelector(access store.SecurityPreflightAccess) *store.ExamA
 func preflightConflict(reason string) error {
 	return store.NewErrConflict("security_preflight", reason, nil)
 }
-func (s *sqlExamAttemptStore) lockPreflightEligibility(ctx context.Context, tx *sqlxTxWrapper, access store.SecurityPreflightAccess) (examAttemptAdmissionGuard, error) {
+func (s *SQLExamAttemptStore) lockPreflightEligibility(ctx context.Context, tx *sqlxTxWrapper, access store.SecurityPreflightAccess) (examAttemptAdmissionGuard, error) {
 	if err := requireDesktopCompatibilityPolicyRevision(ctx, tx, access.DesktopCompatibilityPolicyRevision); err != nil {
 		return examAttemptAdmissionGuard{}, err
 	}
 	return s.lockExamAttemptEligibility(ctx, tx, preflightConnectSelector(access), false)
 }
 
-func (s *sqlExamAttemptStore) PrepareSecurityPreflight(ctx context.Context, input *store.SecurityPreflightPrepare, command *store.CommandIdempotency) (*store.SecurityPreflightPrepared, error) {
+func (s *SQLExamAttemptStore) PrepareSecurityPreflight(ctx context.Context, input *store.SecurityPreflightPrepare, command *store.CommandIdempotency) (*store.SecurityPreflightPrepared, error) {
 	if input == nil || command == nil || !validSecurityPreflightAccess(input.Access) || !model.IsValidAgreementID(input.PreflightID) || !input.AuditEventID.IsValid() || input.AuditAt <= 0 || input.AttemptID != "" && !input.AttemptID.IsValid() {
 		return nil, store.NewErrInvalidInput("security_preflight", "prepare", nil)
 	}
@@ -93,7 +93,7 @@ func (s *sqlExamAttemptStore) PrepareSecurityPreflight(ctx context.Context, inpu
 	return result.Value, nil
 }
 
-func (s *sqlExamAttemptStore) prepareSecurityPreflight(ctx context.Context, tx *sqlxTxWrapper, input *store.SecurityPreflightPrepare) (*store.SecurityPreflightPrepared, error) {
+func (s *SQLExamAttemptStore) prepareSecurityPreflight(ctx context.Context, tx *sqlxTxWrapper, input *store.SecurityPreflightPrepare) (*store.SecurityPreflightPrepared, error) {
 	access := input.Access
 	guard, err := s.lockPreflightEligibility(ctx, tx, access)
 	if err != nil {
@@ -263,7 +263,7 @@ func lockCurrentSecurityPreflight(ctx context.Context, tx *sqlxTxWrapper, access
 	return row, nil
 }
 
-func (s *sqlExamAttemptStore) ReportSecurityPreflight(ctx context.Context, input *store.SecurityPreflightReport, command *store.CommandIdempotency) (*model.SecurityPreflightResult, error) {
+func (s *SQLExamAttemptStore) ReportSecurityPreflight(ctx context.Context, input *store.SecurityPreflightReport, command *store.CommandIdempotency) (*model.SecurityPreflightResult, error) {
 	if input == nil || command == nil || !validSecurityPreflightAccess(input.Access) || !model.IsValidAgreementID(input.PreflightID) || !input.AuditEventID.IsValid() || input.AuditAt <= 0 || input.Report.Validate() != nil {
 		return nil, store.NewErrInvalidInput("security_preflight", "report", nil)
 	}
@@ -358,7 +358,7 @@ func completeSecurityPreflightAudit(ctx context.Context, tx *sqlxTxWrapper, id m
 
 // ResolveSecurityPreflightSitting reveals only a stable resource selector owned
 // by this User and Session. Reporting rechecks current eligibility and fences.
-func (s *sqlExamAttemptStore) ResolveSecurityPreflightSitting(ctx context.Context, id string, userID model.UserID, sessionID model.SessionID) (model.ExamSittingID, error) {
+func (s *SQLExamAttemptStore) ResolveSecurityPreflightSitting(ctx context.Context, id string, userID model.UserID, sessionID model.SessionID) (model.ExamSittingID, error) {
 	if !model.IsValidAgreementID(id) || !userID.IsValid() || !sessionID.IsValid() {
 		return "", store.NewErrInvalidInput("security_preflight", "selector", nil)
 	}

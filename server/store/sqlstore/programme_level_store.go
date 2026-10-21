@@ -284,7 +284,7 @@ func (s SQLProgrammeLevelStore) archiveProgrammeLevel(ctx context.Context, id mo
 }
 
 func lockProgrammeLevelLifecycle(ctx context.Context, tx sqlxExecutor) error {
-	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext(?))", programmeLevelLifecycleLock); err != nil {
+	if err := lockAdvisory(ctx, tx, programmeLevelLifecycleLock); err != nil {
 		return fmt.Errorf("lock programme level lifecycle: %w", err)
 	}
 	return nil

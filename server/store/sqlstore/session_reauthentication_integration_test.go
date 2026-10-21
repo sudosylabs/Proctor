@@ -149,7 +149,7 @@ func TestPasswordReauthenticationRechecksCredentialAfterWaitingForFence(t *testi
 	s := f.persistence
 	audit, _ := mfaSQLSecurityNoticeFixture(t, ctx, s, f.target, model.MailTemplateIdentityMFAEnabled, model.GetMillis())
 	input := &store.SessionPasswordReauthentication{SessionID: f.targetSession.ID, CredentialID: f.targetCredential.ID, UserID: f.target.ID, PasswordProof: passwordProofForSQLTest(t, ctx, s, f.target.ID), AuditEventID: audit.ID}
-	pid, release := holdSQLAdvisoryFence(t, ctx, s, "proctor:session-user:"+f.target.ID.String())
+	pid, release := holdSQLAdvisoryFence(t, ctx, s, advisoryLockKey("session-user", f.target.ID.String()))
 	defer release()
 	done := make(chan error, 1)
 	go func() { _, err := s.Session().ReauthenticatePassword(ctx, input); done <- err }()

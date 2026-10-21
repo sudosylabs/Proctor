@@ -179,6 +179,19 @@ Store mutation follows one rule:
 Regression tests inject skew by moving a row's instants ahead of the database
 clock (`TestTimeAuthority*` in `sqlstore`).
 
+## SQL idiom
+
+- Store implementations are exported `SQL<Model>Store` types in `sqlstore`.
+- Queries use `?` placeholders, which the executor rebinds. Write `$N` only
+  when a query reuses an argument positionally, or in a test that executes on a
+  raw `database/sql` connection.
+- A missing row is `errors.Is(err, sql.ErrNoRows)`.
+- A named advisory lock is `lockAdvisory` or `lockAdvisoryShared` on an
+  `advisoryLockKey("<kebab-topic>", parts...)` key (`proctor:<topic>:<part>`),
+  hashed with `hashtextextended` and held for the transaction. Acquisition
+  order stays with the operation that takes the locks. Command idempotency
+  fences use `lockCommandIdempotency`.
+
 ## Examination persistence
 
 The examination boundary is divided into cohesive Store contracts for Exam

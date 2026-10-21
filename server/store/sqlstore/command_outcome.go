@@ -12,7 +12,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -43,17 +42,8 @@ func (s SQLCommandOutcomeStore) Has(ctx context.Context, command *store.CommandI
 		return false, store.NewErrInvalidInput("command_outcome", "lookup", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "retain command outcome", func(ctx context.Context, tx *sqlxTxWrapper) (bool, error) {
-		lockInput := append([]byte(command.UserID.String()+"\x00"+command.Operation+"\x00"), command.KeyDigest[:]...)
-		lockDigest := sha256.Sum256(lockInput)
-		lockID := int64(binary.BigEndian.Uint64(lockDigest[:8]))
-		lockCtx, cancel := context.WithTimeout(ctx, command.Wait)
-		defer cancel()
-		var locked bool
-		if err := tx.Get(lockCtx, &locked, `SELECT true FROM pg_advisory_xact_lock(?)`, lockID); err != nil {
-			if errors.Is(lockCtx.Err(), context.DeadlineExceeded) {
-				return false, &store.ErrIdempotencyInProgress{}
-			}
-			return false, fmt.Errorf("lock command outcome lookup: %w", err)
+		if err := lockCommandIdempotency(ctx, tx, command); err != nil {
+			return false, err
 		}
 		var found bool
 		err := tx.Get(ctx, &found, `UPDATE command_outcomes
@@ -122,17 +112,8 @@ func runIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, opera
 		return nil, store.NewErrInvalidInput("command_outcome", "mutation", nil)
 	}
 	return runSQLTransaction(ctx, sqlStore.GetMaster().Begin, operation, func(ctx context.Context, tx *sqlxTxWrapper) (*idempotentResult[T], error) {
-		lockInput := append([]byte(command.UserID.String()+"\x00"+command.Operation+"\x00"), command.KeyDigest[:]...)
-		lockDigest := sha256.Sum256(lockInput)
-		lockID := int64(binary.BigEndian.Uint64(lockDigest[:8]))
-		lockCtx, cancel := context.WithTimeout(ctx, command.Wait)
-		defer cancel()
-		var locked bool
-		if err := tx.Get(lockCtx, &locked, `SELECT true FROM pg_advisory_xact_lock(?)`, lockID); err != nil {
-			if errors.Is(lockCtx.Err(), context.DeadlineExceeded) {
-				return nil, &store.ErrIdempotencyInProgress{}
-			}
-			return nil, fmt.Errorf("lock idempotent command: %w", err)
+		if err := lockCommandIdempotency(ctx, tx, command); err != nil {
+			return nil, err
 		}
 		if command.Operation == "user.enabled_state.v1" || command.Operation == "role_binding.end.v1" {
 			if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {

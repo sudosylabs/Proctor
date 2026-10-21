@@ -416,7 +416,7 @@ func lockPersonalAccessTokensForUser(ctx context.Context, tx *sqlxTxWrapper, use
 	if err := lockUserSessions(ctx, tx, userID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", "personal_access_tokens:user:"+userID); err != nil {
+	if err := lockAdvisory(ctx, tx, advisoryLockKey("personal-access-token-user", userID)); err != nil {
 		return fmt.Errorf("lock personal access tokens: %w", err)
 	}
 	return nil

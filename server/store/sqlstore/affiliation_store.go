@@ -375,14 +375,14 @@ func (s SQLAffiliationStore) endAffiliation(ctx context.Context, tx sqlxExecutor
 }
 
 func lockAffiliationLifecycle(ctx context.Context, executor sqlxExecutor) error {
-	if _, err := executor.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext(?))", affiliationLifecycleLock); err != nil {
+	if err := lockAdvisory(ctx, executor, affiliationLifecycleLock); err != nil {
 		return fmt.Errorf("lock affiliation lifecycle: %w", err)
 	}
 	return nil
 }
 
 func lockAffiliationKind(ctx context.Context, executor sqlxExecutor, userID string, kind model.AffiliationKind) error {
-	if _, err := executor.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext(?))", "proctor:affiliation:"+userID+":"+string(kind)); err != nil {
+	if err := lockAdvisory(ctx, executor, advisoryLockKey("affiliation", userID, string(kind))); err != nil {
 		return fmt.Errorf("lock affiliation: %w", err)
 	}
 	return nil

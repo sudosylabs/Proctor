@@ -16,6 +16,7 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -775,11 +776,7 @@ func lockUserTokenPurpose(
 	userID string,
 	purpose model.UserTokenPurpose,
 ) error {
-	if _, err := executor.Exec(
-		ctx,
-		`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
-		"proctor:user-token:"+userID+":"+string(purpose),
-	); err != nil {
+	if err := lockAdvisory(ctx, executor, advisoryLockKey("user-token", userID, string(purpose))); err != nil {
 		return fmt.Errorf("lock user token purpose: %w", err)
 	}
 	return nil
@@ -810,7 +807,7 @@ func lockEligibleUserTokenIssueTarget(
 		 WHERE id = ? AND email = ?
 		   AND archived_at IS NULL AND disabled_at IS NULL
 		 FOR SHARE`, token.UserID.String(), token.Target); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return store.NewErrNotFound("user_token", "").Wrap(err)
 		}
 		return fmt.Errorf("lock user token issue target: %w", err)
@@ -824,7 +821,7 @@ func lockEligibleUserTokenIssueTarget(
 		  FROM password_credentials
 		 WHERE user_id = ? AND archived_at IS NULL
 		 FOR SHARE`, userID); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return store.NewErrNotFound("user_token", "").Wrap(err)
 		}
 		return fmt.Errorf("lock password reset credential: %w", err)

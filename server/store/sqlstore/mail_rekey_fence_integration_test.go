@@ -12,6 +12,7 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -121,7 +122,7 @@ func waitForBlockedMailQuery(t *testing.T, ctx context.Context, persistence *SQL
 		if err == nil {
 			return pid
 		}
-		if err != sql.ErrNoRows {
+		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("inspect PostgreSQL blocking graph: %v", err)
 		}
 		select {

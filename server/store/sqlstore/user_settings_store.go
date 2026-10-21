@@ -66,12 +66,12 @@ func (s SQLUserSettingsStore) Get(ctx context.Context, userID model.UserID) (*mo
 	}
 	var row userSettingsDocumentRow
 	if err := s.GetMaster().Get(ctx, &row, query, arguments...); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			var userExists bool
 			if existsErr := s.GetMaster().Get(
 				ctx,
 				&userExists,
-				"SELECT EXISTS (SELECT 1 FROM users WHERE id = $1)",
+				"SELECT EXISTS (SELECT 1 FROM users WHERE id = ?)",
 				userID.String(),
 			); existsErr != nil {
 				return nil, fmt.Errorf("check user settings owner: %w", existsErr)

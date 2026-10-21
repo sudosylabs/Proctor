@@ -120,7 +120,7 @@ func validateFocusLossSignal(input *store.ExamAttemptFocusLossSignal) error {
 	return nil
 }
 
-func (s *sqlExamAttemptStore) ResolveFocusLossTarget(ctx context.Context, access store.ExamAttemptFocusLossAccess) (*store.ExamAttemptFocusLossTarget, error) {
+func (s *SQLExamAttemptStore) ResolveFocusLossTarget(ctx context.Context, access store.ExamAttemptFocusLossAccess) (*store.ExamAttemptFocusLossTarget, error) {
 	if err := validateFocusLossAccess(access); err != nil {
 		return nil, err
 	}
@@ -139,7 +139,7 @@ func (s *sqlExamAttemptStore) ResolveFocusLossTarget(ctx context.Context, access
 	})
 }
 
-func (s *sqlExamAttemptStore) RecordFocusLoss(ctx context.Context, input *store.ExamAttemptFocusLossSignal) (*store.ExamAttemptFocusLossResult, error) {
+func (s *SQLExamAttemptStore) RecordFocusLoss(ctx context.Context, input *store.ExamAttemptFocusLossSignal) (*store.ExamAttemptFocusLossResult, error) {
 	if err := validateFocusLossSignal(input); err != nil {
 		return nil, err
 	}

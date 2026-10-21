@@ -13,6 +13,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -558,7 +559,7 @@ func lockOnboardingImportCommand(ctx context.Context, tx *sqlxTxWrapper, command
 	if value.Mode == model.OnboardingImportStudentProgression && projectedRow.UserID.Valid && projectedRow.UserID.String != value.Principal.UserID.String() {
 		var lockedUserID string
 		if err = tx.Get(ctx, &lockedUserID, `SELECT id FROM users WHERE id=? AND archived_at IS NULL AND disabled_at IS NULL FOR SHARE`, projectedRow.UserID.String); err != nil {
-			if isNoRows(err) {
+			if errors.Is(err, sql.ErrNoRows) {
 				return store.NewErrConflict("student_progression", "target_ineligible", nil)
 			}
 			return translateError("user", projectedRow.UserID.String, err)
@@ -616,7 +617,7 @@ func validateStudentProgressionFrozenState(ctx context.Context, tx *sqlxTxWrappe
 	}
 	for _, check := range checks {
 		var revision int64
-		if err := tx.Get(ctx, &revision, check.query, check.id); isNoRows(err) || err == nil && revision != check.revision {
+		if err := tx.Get(ctx, &revision, check.query, check.id); errors.Is(err, sql.ErrNoRows) || err == nil && revision != check.revision {
 			return store.NewErrConflict("student_progression", "target_changed", nil)
 		} else if err != nil {
 			return err
@@ -627,7 +628,7 @@ func validateStudentProgressionFrozenState(ctx context.Context, tx *sqlxTxWrappe
 			Revision int64  `db:"revision"`
 			UserID   string `db:"user_id"`
 		}
-		if err := tx.Get(ctx, &relationship, `SELECT revision,user_id FROM class_members WHERE id=? AND archived_at IS NULL FOR SHARE`, row.RelationshipID.String); isNoRows(err) ||
+		if err := tx.Get(ctx, &relationship, `SELECT revision,user_id FROM class_members WHERE id=? AND archived_at IS NULL FOR SHARE`, row.RelationshipID.String); errors.Is(err, sql.ErrNoRows) ||
 			err == nil && (relationship.Revision != row.RelationshipRevision || relationship.UserID != row.UserID.String) {
 			return store.NewErrConflict("student_progression", "relationship_changed", nil)
 		} else if err != nil {
@@ -642,7 +643,7 @@ func validateStudentProgressionFrozenState(ctx context.Context, tx *sqlxTxWrappe
 			StartsAt time.Time    `db:"start_at"`
 			EndsAt   sql.NullTime `db:"end_at"`
 		}
-		if err := tx.Get(ctx, &relationship, `SELECT revision,user_id,class_id,start_at,end_at FROM class_members WHERE id=? AND archived_at IS NULL FOR SHARE`, row.DestinationRelationshipID.String); isNoRows(err) ||
+		if err := tx.Get(ctx, &relationship, `SELECT revision,user_id,class_id,start_at,end_at FROM class_members WHERE id=? AND archived_at IS NULL FOR SHARE`, row.DestinationRelationshipID.String); errors.Is(err, sql.ErrNoRows) ||
 			err == nil && (relationship.Revision != row.DestinationRelationshipRevision || relationship.UserID != row.UserID.String ||
 				relationship.ClassID != value.DestinationClassID.String() || relationship.StartsAt.After(value.EffectiveAt) ||
 				(relationship.EndsAt.Valid && !relationship.EndsAt.Time.After(value.EffectiveAt))) {
@@ -687,7 +688,7 @@ func validateStudentProgressionTargets(ctx context.Context, tx *sqlxTxWrapper, v
 			continue
 		}
 		var snapshot periodSnapshot
-		if err := tx.Get(ctx, &snapshot, `SELECT id,revision,start_at,end_at FROM academic_periods WHERE id=? AND archived_at IS NULL FOR SHARE`, expected.id.String()); isNoRows(err) {
+		if err := tx.Get(ctx, &snapshot, `SELECT id,revision,start_at,end_at FROM academic_periods WHERE id=? AND archived_at IS NULL FOR SHARE`, expected.id.String()); errors.Is(err, sql.ErrNoRows) {
 			return store.NewErrConflict("student_progression", "target_changed", nil)
 		} else if err != nil {
 			return err
@@ -714,7 +715,7 @@ func validateStudentProgressionTargets(ctx context.Context, tx *sqlxTxWrapper, v
 		if err := tx.Get(ctx, &snapshot, `SELECT c.id,c.revision,c.academic_period_id,pl.programme_id
 			FROM classes c JOIN programme_levels pl ON pl.id=c.programme_level_id AND pl.archived_at IS NULL
 			JOIN programmes p ON p.id=pl.programme_id AND p.archived_at IS NULL
-			WHERE c.id=? AND c.archived_at IS NULL FOR SHARE OF c,pl,p`, classID.String()); isNoRows(err) {
+			WHERE c.id=? AND c.archived_at IS NULL FOR SHARE OF c,pl,p`, classID.String()); errors.Is(err, sql.ErrNoRows) {
 			return store.NewErrConflict("student_progression", "target_changed", nil)
 		} else if err != nil {
 			return err
@@ -889,7 +890,7 @@ func validateOnboardingImportFrozenTarget(ctx context.Context, tx *sqlxTxWrapper
 	default:
 		return store.NewErrConflict("onboarding_import_row", "operation", nil)
 	}
-	if isNoRows(err) || err == nil && revision != row.TargetRevision {
+	if errors.Is(err, sql.ErrNoRows) || err == nil && revision != row.TargetRevision {
 		return store.NewErrConflict("onboarding_import_row", "target_changed", nil)
 	}
 	if err != nil {
@@ -897,7 +898,7 @@ func validateOnboardingImportFrozenTarget(ctx context.Context, tx *sqlxTxWrapper
 	}
 	if row.RoleID.Valid {
 		var updatedAt time.Time
-		if err = tx.Get(ctx, &updatedAt, `SELECT updated_at FROM roles WHERE id=? AND archived_at IS NULL FOR SHARE`, row.RoleID.String); isNoRows(err) || err == nil && updatedAt.UnixMicro() != row.RoleRevision {
+		if err = tx.Get(ctx, &updatedAt, `SELECT updated_at FROM roles WHERE id=? AND archived_at IS NULL FOR SHARE`, row.RoleID.String); errors.Is(err, sql.ErrNoRows) || err == nil && updatedAt.UnixMicro() != row.RoleRevision {
 			return store.NewErrConflict("onboarding_import_row", "role_changed", nil)
 		}
 		if err != nil {
@@ -1204,7 +1205,7 @@ func requireCurrentPrincipalCredential(ctx context.Context, tx *sqlxTxWrapper, p
 	}
 	var active bool
 	if err = tx.Get(ctx, &active, `SELECT true FROM users WHERE id=? AND archived_at IS NULL AND disabled_at IS NULL FOR SHARE`, principal.UserID.String()); err != nil {
-		if isNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return time.Time{}, store.NewErrConflict("authorization", "authority", nil)
 		}
 		return time.Time{}, err
@@ -1230,7 +1231,7 @@ func requireCurrentPrincipalCredential(ctx context.Context, tx *sqlxTxWrapper, p
 	default:
 		return time.Time{}, store.NewErrConflict("authorization", "credential", nil)
 	}
-	if isNoRows(err) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return time.Time{}, store.NewErrConflict("authorization", "credential", nil)
 	}
 	if err != nil {
@@ -1289,7 +1290,7 @@ func requireUserActionAtScopeWithDelegation(ctx context.Context, tx *sqlxTxWrapp
 	default:
 		return store.NewErrInvalidInput("authorization", "scope_type", nil)
 	}
-	if isNoRows(err) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return store.NewErrConflict("authorization", "authority", nil)
 	}
 	return err

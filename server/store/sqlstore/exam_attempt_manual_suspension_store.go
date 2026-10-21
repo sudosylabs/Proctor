@@ -27,7 +27,7 @@ type examAttemptManualSuspensionOutcomeV1 struct {
 	ConnectionClosed                                                                  bool
 }
 
-func (s *sqlExamAttemptStore) SuspendAttempt(ctx context.Context, input *store.ExamAttemptManualSuspension,
+func (s *SQLExamAttemptStore) SuspendAttempt(ctx context.Context, input *store.ExamAttemptManualSuspension,
 	command *store.CommandIdempotency,
 ) (*store.ExamAttemptManualSuspensionResult, error) {
 	if input == nil || command == nil || command.Operation != store.ExamAttemptSuspendOperation || command.OutcomeVersion != 1 ||
@@ -278,7 +278,7 @@ func completeExamAttemptManualSuspensionAudit(ctx context.Context, tx *sqlxTxWra
 // loadExamAttemptManualSuspensionResult rehydrates the committed kick from
 // its immutable episode start, ended generation, and closed Connection, so an
 // exact replay returns the original result even after a later re-allow.
-func (s *sqlExamAttemptStore) loadExamAttemptManualSuspensionResult(ctx context.Context,
+func (s *SQLExamAttemptStore) loadExamAttemptManualSuspensionResult(ctx context.Context,
 	value examAttemptManualSuspensionOutcomeV1,
 ) (*store.ExamAttemptManualSuspensionResult, error) {
 	attemptID, err := model.ParseExamAttemptID(value.AttemptID)

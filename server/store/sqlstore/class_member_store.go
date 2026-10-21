@@ -15,6 +15,7 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -346,7 +347,7 @@ func (s SQLClassMemberStore) enrollInTransaction(ctx context.Context, tx *sqlxTx
 				}
 			}
 			return &classMemberMutationResult{Enrollment: &store.ClassEnrollmentResult{Membership: existing}, NoOp: true}, nil
-		case err != nil && !isNoRows(err):
+		case !errors.Is(err, sql.ErrNoRows):
 			return nil, fmt.Errorf("find progression destination enrollment: %w", err)
 		}
 	}
@@ -408,7 +409,7 @@ func (s SQLClassMemberStore) enrollInTransaction(ctx context.Context, tx *sqlxTx
 		previous.UpdatedAt = latestTime(previous.UpdatedAt, candidate.UpdatedAt)
 		previous.EndsAt = model.OptionalTimeFrom(candidate.StartsAt)
 		previous.Revision++
-	case err != nil && !isNoRows(err):
+	case !errors.Is(err, sql.ErrNoRows):
 		return nil, fmt.Errorf("find current class enrollment: %w", err)
 	}
 	actualPreviousID := model.ClassMemberID("")
@@ -506,10 +507,6 @@ func (s SQLClassMemberStore) enrollInTransaction(ctx context.Context, tx *sqlxTx
 		}
 	}
 	return &classMemberMutationResult{Enrollment: result}, nil
-}
-
-func isNoRows(err error) bool {
-	return err == sql.ErrNoRows
 }
 
 func (s SQLClassMemberStore) Get(ctx context.Context, id model.ClassMemberID) (*model.ClassMember, error) {
@@ -796,11 +793,7 @@ func lockAttemptCandidate(ctx context.Context, executor sqlxExecutor, userID str
 }
 
 func lockClassEnrollment(ctx context.Context, executor sqlxExecutor, userID, periodID string) error {
-	if _, err := executor.Exec(
-		ctx,
-		"SELECT pg_advisory_xact_lock(hashtext(?))",
-		"proctor:class-enrollment:"+userID+":"+periodID,
-	); err != nil {
+	if err := lockAdvisory(ctx, executor, advisoryLockKey("class-enrollment", userID, periodID)); err != nil {
 		return fmt.Errorf("lock class enrollment: %w", err)
 	}
 	return nil

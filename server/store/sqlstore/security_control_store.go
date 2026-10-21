@@ -77,7 +77,7 @@ type nativeControlOwnerRow struct {
 
 // processSecurityCoverage runs under the existing Attempt/Participation/Session
 // locks. It deliberately does not renew or expire the Participation lease.
-func (s *sqlExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptParticipationRenewal, sittingOpen bool, now time.Time) (model.SecurityCoverageResult, error) {
+func (s *SQLExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptParticipationRenewal, sittingOpen bool, now time.Time) (model.SecurityCoverageResult, error) {
 	var zero model.SecurityCoverageResult
 	control := input.SecurityCoverage
 	raw, err := control.Canonical()
@@ -347,7 +347,7 @@ func projectSecurityControl(ctx context.Context, tx *sqlxTxWrapper, attemptID mo
 	return result, nil
 }
 
-func (s *sqlExamAttemptStore) UpdateSecurityCoverage(ctx context.Context, input *store.ExamAttemptSecurityCoverageUpdate) (model.SecurityCoverageResult, error) {
+func (s *SQLExamAttemptStore) UpdateSecurityCoverage(ctx context.Context, input *store.ExamAttemptSecurityCoverageUpdate) (model.SecurityCoverageResult, error) {
 	if input == nil {
 		return model.SecurityCoverageResult{}, store.NewErrInvalidInput("security_control", "update", nil)
 	}

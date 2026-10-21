@@ -186,7 +186,7 @@ func (s SQLAcademicUnitStore) ListAncestors(ctx context.Context, id model.Academ
 			SELECT id, created_at, updated_at, archived_at, revision, institution_id, parent_id,
 			       name, display_name, description, 0 AS depth
 			  FROM academic_units
-			 WHERE id = $1 AND archived_at IS NULL
+			 WHERE id = ? AND archived_at IS NULL
 			UNION ALL
 			SELECT parent.id, parent.created_at, parent.updated_at, parent.archived_at, parent.revision,
 			       parent.institution_id, parent.parent_id, parent.name,
@@ -437,7 +437,7 @@ func academicUnitFromExecutor(
 }
 
 func lockAcademicUnitHierarchy(ctx context.Context, tx sqlxExecutor) error {
-	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext(?))", academicUnitHierarchyLock); err != nil {
+	if err := lockAdvisory(ctx, tx, academicUnitHierarchyLock); err != nil {
 		return fmt.Errorf("lock academic unit hierarchy: %w", err)
 	}
 	return nil

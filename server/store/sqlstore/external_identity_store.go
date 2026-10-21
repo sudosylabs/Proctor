@@ -240,8 +240,7 @@ func (s SQLExternalIdentityStore) ResolveOrProvision(
 }
 
 func lockExternalIdentitySubject(ctx context.Context, tx *sqlxTxWrapper, provider, subject string) error {
-	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
-		strconv.Itoa(len(provider))+":"+provider+subject); err != nil {
+	if err := lockAdvisory(ctx, tx, advisoryLockKey("external-identity-subject", strconv.Itoa(len(provider)), provider+subject)); err != nil {
 		return fmt.Errorf("lock external identity resolution: %w", err)
 	}
 	return nil

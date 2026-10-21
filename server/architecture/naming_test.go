@@ -117,6 +117,28 @@ func TestDeclaredIdentifiersSpellIDAsAnInitialism(t *testing.T) {
 	})
 }
 
+// TestSQLStoreAdvisoryLocksUseOneHelper keeps named advisory locks on the
+// sqlstore helpers so every key shares one hash function and prefix.
+func TestSQLStoreAdvisoryLocksUseOneHelper(t *testing.T) {
+	t.Parallel()
+
+	inspectProductionGoFiles(t, []string{"store/sqlstore"}, func(path string, file *ast.File) {
+		if filepath.Base(path) == "advisory_lock.go" {
+			return
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			literal, ok := node.(*ast.BasicLit)
+			if !ok {
+				return true
+			}
+			if value, isString := stringLiteral(literal); isString && strings.Contains(value, "pg_advisory") {
+				t.Errorf("%s spells an advisory lock query; use lockAdvisory, lockAdvisoryShared, or lockCommandIdempotency", path)
+			}
+			return true
+		})
+	})
+}
+
 func receiverTypeName(expression ast.Expr) string {
 	switch typed := expression.(type) {
 	case *ast.StarExpr:

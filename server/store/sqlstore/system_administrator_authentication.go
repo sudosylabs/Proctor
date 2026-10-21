@@ -40,7 +40,7 @@ func validAccessDeploymentCapabilities(capabilities store.AccessDeploymentCapabi
 }
 
 func lockSystemAdministratorAuthenticationPaths(ctx context.Context, tx *sqlxTxWrapper) error {
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, systemAdministratorAuthenticationPathLock); err != nil {
+	if err := lockAdvisory(ctx, tx, systemAdministratorAuthenticationPathLock); err != nil {
 		return fmt.Errorf("lock system administrator authentication paths: %w", err)
 	}
 	return nil

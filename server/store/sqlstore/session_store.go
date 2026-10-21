@@ -852,12 +852,8 @@ func lockUserSessions(
 	executor sqlxExecutor,
 	userID string,
 ) error {
-	lockKey := "proctor:session-user:" + userID
-	if _, err := executor.Exec(
-		ctx,
-		"SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
-		lockKey,
-	); err != nil {
+	lockKey := advisoryLockKey("session-user", userID)
+	if err := lockAdvisory(ctx, executor, lockKey); err != nil {
 		return fmt.Errorf("lock user sessions: %w", err)
 	}
 	return nil

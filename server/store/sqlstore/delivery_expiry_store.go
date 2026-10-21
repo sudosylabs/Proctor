@@ -17,7 +17,7 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-func (s *sqlExamAttemptStore) ListExpiredDeliveries(ctx context.Context, limit int) ([]store.DeliveryExpiryDue, error) {
+func (s *SQLExamAttemptStore) ListExpiredDeliveries(ctx context.Context, limit int) ([]store.DeliveryExpiryDue, error) {
 	if limit < 1 || limit > 200 {
 		return nil, store.NewErrInvalidInput("delivery_expiry", "limit", nil)
 	}
@@ -48,7 +48,7 @@ func (s *sqlExamAttemptStore) ListExpiredDeliveries(ctx context.Context, limit i
 	}
 	return result, nil
 }
-func (s *sqlExamAttemptStore) ExpireDelivery(ctx context.Context, input *store.DeliveryExpiry) (bool, error) {
+func (s *SQLExamAttemptStore) ExpireDelivery(ctx context.Context, input *store.DeliveryExpiry) (bool, error) {
 	if input == nil || !input.Due.Valid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return false, store.NewErrInvalidInput("delivery_expiry", "input", nil)
 	}

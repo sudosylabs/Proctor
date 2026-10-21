@@ -11,6 +11,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -794,7 +795,7 @@ func resolveOnboardingInvitationNoOp(ctx context.Context, tx *sqlxTxWrapper, can
 		if existing.IsPendingAt(databaseNow) && existing.HasSamePackage(candidate) {
 			return existing, true, nil
 		}
-	} else if !isNoRows(err) {
+	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, false, err
 	}
 	effectiveAt := candidate.EffectiveStartsAt(databaseNow)
@@ -822,7 +823,7 @@ func resolveOnboardingInvitationNoOp(ctx context.Context, tx *sqlxTxWrapper, can
 			AND rb.archived_at IS NULL AND rb.start_at<=? AND (rb.end_at IS NULL OR rb.end_at>?)
 			LIMIT 1 FOR SHARE OF u,rb`, candidate.TargetEmail, candidate.RoleID.String(), candidate.ScopeType, candidate.ScopeID, effectiveAt, effectiveAt)
 	}
-	if isNoRows(err) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, false, nil
 	}
 	if err != nil {
@@ -836,7 +837,7 @@ func terminalizeElapsedScopedRoleInvitationConflict(ctx context.Context, tx *sql
 	err := tx.Get(ctx, &row, `SELECT `+invitationColumns+` FROM invitations
 		WHERE target_email=? AND role_id=? AND scope_type=? AND scope_id=? AND purpose=? AND state='pending'
 		FOR UPDATE`, candidate.TargetEmail, candidate.RoleID.String(), candidate.ScopeType, candidate.ScopeID, candidate.Purpose)
-	if isNoRows(err) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
@@ -863,7 +864,7 @@ func terminalizeElapsedTeacherAcademicUnitInvitationConflict(ctx context.Context
 	err := tx.Get(ctx, &row, `SELECT `+invitationColumns+` FROM invitations
 		WHERE target_email=? AND academic_unit_id=? AND role_id=? AND purpose='teacher_academic_unit' AND state='pending'
 		FOR UPDATE`, targetEmail, unitID.String(), roleID.String())
-	if isNoRows(err) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
@@ -896,7 +897,7 @@ func terminalizeElapsedStudentClassInvitationConflict(
 	err := tx.Get(ctx, &row, `SELECT `+invitationColumns+` FROM invitations
 		WHERE target_email=? AND academic_period_id=? AND purpose='student_class' AND state='pending'
 		FOR UPDATE`, targetEmail, periodID.String())
-	if isNoRows(err) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
@@ -1101,7 +1102,7 @@ func (s SQLInvitationStore) administrationRecord(ctx context.Context, row invita
 	var delivery mailDeliveryRow
 	err = s.GetMaster().Get(ctx, &delivery, `SELECT `+mailDeliveryColumns+` FROM mail_deliveries
 		WHERE target_invitation_id=? ORDER BY created_at DESC,id DESC LIMIT 1`, invitation.ID.String())
-	if isNoRows(err) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return &store.InvitationAdministrationRecord{Invitation: invitation}, nil
 	}
 	if err != nil {
@@ -1562,7 +1563,7 @@ func requireInvitationManagementAuthority(ctx context.Context, tx *sqlxTxWrapper
 	}
 	var active bool
 	if err := tx.Get(ctx, &active, `SELECT true FROM users WHERE id=? AND archived_at IS NULL AND disabled_at IS NULL FOR SHARE`, actor.String()); err != nil {
-		if isNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return store.NewErrConflict("invitation", "invitation_authority", nil)
 		}
 		return fmt.Errorf("lock Invitation manager: %w", err)
@@ -1602,7 +1603,7 @@ func requireInvitationManagementAuthority(ctx context.Context, tx *sqlxTxWrapper
 	default:
 		return store.NewErrInvalidInput("invitation", "scope", nil)
 	}
-	if isNoRows(err) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return store.NewErrConflict("invitation", "invitation_authority", nil)
 	}
 	if err != nil {
@@ -2096,7 +2097,7 @@ func resolveExternalInvitationUser(ctx context.Context, tx *sqlxTxWrapper, invit
 ) (*model.User, bool, error) {
 	var targetRow userRow
 	err := tx.Get(ctx, &targetRow, `SELECT `+strings.Join(userSliceColumns(), ",")+` FROM users WHERE email=? AND archived_at IS NULL FOR UPDATE`, invitation.TargetEmail)
-	if err != nil && !isNoRows(err) {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, false, err
 	}
 	var target *model.User
@@ -2115,7 +2116,7 @@ func resolveExternalInvitationUser(ctx context.Context, tx *sqlxTxWrapper, invit
 		if ownerErr == nil && (target == nil || providerOwner != target.ID.String()) {
 			return nil, false, store.NewErrConflict("invitation", "invitation_provider_mailbox_owned", nil)
 		}
-		if ownerErr != nil && !isNoRows(ownerErr) {
+		if ownerErr != nil && !errors.Is(ownerErr, sql.ErrNoRows) {
 			return nil, false, ownerErr
 		}
 	}
@@ -2284,7 +2285,7 @@ func (s SQLInvitationStore) AcceptScopedRole(ctx context.Context, input *store.S
 		var persistedUser userRow
 		if err = tx.Get(ctx, &persistedUser, `SELECT `+strings.Join(userSliceColumns(), ",")+` FROM users
 			WHERE id=? AND archived_at IS NULL AND disabled_at IS NULL FOR UPDATE`, input.UserID.String()); err != nil {
-			if isNoRows(err) {
+			if errors.Is(err, sql.ErrNoRows) {
 				return nil, store.NewErrConflict("invitation", "invitation_user_unavailable", nil)
 			}
 			return nil, fmt.Errorf("lock scoped Role Invitation User: %w", err)
@@ -2373,7 +2374,7 @@ func ensureScopedRoleInvitationBinding(ctx context.Context, tx *sqlxTxWrapper, i
 		}
 		return existing, nil
 	}
-	if !isNoRows(err) {
+	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("find scoped Invitation Role Binding: %w", err)
 	}
 	candidate := *prepared
@@ -2538,7 +2539,7 @@ func resolveInvitationUser(ctx context.Context, tx *sqlxTxWrapper, invitation *m
 		}
 		return user, nil
 	}
-	if !isNoRows(err) {
+	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("resolve invited user: %w", err)
 	}
 	user := *input.User
@@ -2561,7 +2562,7 @@ func resolveInvitationUser(ctx context.Context, tx *sqlxTxWrapper, invitation *m
 }
 
 func lockInvitationMailbox(ctx context.Context, tx sqlxExecutor, email string) error {
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(?,0))`, "proctor:invitation-mailbox:"+email); err != nil {
+	if err := lockAdvisory(ctx, tx, advisoryLockKey("invitation-mailbox", email)); err != nil {
 		return fmt.Errorf("lock Invitation mailbox: %w", err)
 	}
 	return nil
@@ -2578,7 +2579,7 @@ func ensureInvitationStudentAffiliation(ctx context.Context, tx *sqlxTxWrapper, 
 	if err == nil {
 		return row.model()
 	}
-	if !isNoRows(err) {
+	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("find student affiliation: %w", err)
 	}
 	candidate := *prepared
@@ -2623,7 +2624,7 @@ func ensureInvitationClassMember(ctx context.Context, tx *sqlxTxWrapper, invitat
 		}
 		return existing, nil
 	}
-	if !isNoRows(err) {
+	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("find invitation class membership: %w", err)
 	}
 	candidate := *prepared
@@ -2679,7 +2680,7 @@ func ensureInvitationTeacherAffiliation(ctx context.Context, tx *sqlxTxWrapper, 
 	if err == nil {
 		return row.model()
 	}
-	if !isNoRows(err) {
+	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("find teacher affiliation: %w", err)
 	}
 	candidate := *prepared
@@ -2719,7 +2720,7 @@ func ensureInvitationAcademicUnitMember(ctx context.Context, tx *sqlxTxWrapper, 
 		}
 		return existing, nil
 	}
-	if !isNoRows(err) {
+	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("find teacher Academic Unit membership: %w", err)
 	}
 	candidate := *prepared
@@ -2754,7 +2755,7 @@ func ensureInvitationRoleBinding(ctx context.Context, tx *sqlxTxWrapper, invitat
 		}
 		return existing, nil
 	}
-	if !isNoRows(err) {
+	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("find teacher Role Binding: %w", err)
 	}
 	candidate := *prepared
@@ -3001,14 +3002,14 @@ func validateTeacherAcademicUnitInvitationPackage(ctx context.Context, tx *sqlxT
 	}
 	var active bool
 	if err := tx.Get(ctx, &active, `SELECT true FROM academic_units WHERE id=? AND archived_at IS NULL FOR SHARE`, invitation.AcademicUnitID.String()); err != nil {
-		if isNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return store.NewErrConflict("invitation", "invitation_academic_unit", nil)
 		}
 		return fmt.Errorf("lock Invitation Academic Unit: %w", err)
 	}
 	var permissions pq.StringArray
 	if err := tx.Get(ctx, &permissions, `SELECT permissions FROM roles WHERE id=? AND archived_at IS NULL AND built_in=FALSE FOR SHARE`, invitation.RoleID.String()); err != nil {
-		if isNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return store.NewErrConflict("invitation", "invitation_role", nil)
 		}
 		return fmt.Errorf("lock Invitation Role: %w", err)
@@ -3030,7 +3031,7 @@ func validateScopedRoleInvitationPackage(ctx context.Context, tx *sqlxTxWrapper,
 		}
 		var active bool
 		if err := tx.Get(ctx, &active, `SELECT true FROM academic_units WHERE id=? AND archived_at IS NULL FOR SHARE`, invitation.AcademicUnitID.String()); err != nil {
-			if isNoRows(err) {
+			if errors.Is(err, sql.ErrNoRows) {
 				return store.NewErrConflict("invitation", "invitation_academic_unit", nil)
 			}
 			return fmt.Errorf("lock scoped Role Invitation Academic Unit: %w", err)
@@ -3039,7 +3040,7 @@ func validateScopedRoleInvitationPackage(ctx context.Context, tx *sqlxTxWrapper,
 		resourceType = model.ResourceInstitution
 		var active bool
 		if err := tx.Get(ctx, &active, `SELECT true FROM institutions WHERE id=? AND archived_at IS NULL FOR SHARE`, invitation.ScopeID); err != nil {
-			if isNoRows(err) {
+			if errors.Is(err, sql.ErrNoRows) {
 				return store.NewErrConflict("invitation", "invitation_institution", nil)
 			}
 			return fmt.Errorf("lock scoped Role Invitation Institution: %w", err)
@@ -3049,7 +3050,7 @@ func validateScopedRoleInvitationPackage(ctx context.Context, tx *sqlxTxWrapper,
 	}
 	var permissions pq.StringArray
 	if err := tx.Get(ctx, &permissions, `SELECT permissions FROM roles WHERE id=? AND archived_at IS NULL AND built_in=FALSE FOR SHARE`, invitation.RoleID.String()); err != nil {
-		if isNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return store.NewErrConflict("invitation", "invitation_role", nil)
 		}
 		return fmt.Errorf("lock scoped Role Invitation Role: %w", err)
@@ -3075,7 +3076,7 @@ func validateScopedRoleInvitationPackage(ctx context.Context, tx *sqlxTxWrapper,
 func requireScopedRoleInvitationAuthority(ctx context.Context, tx *sqlxTxWrapper, invitation *model.Invitation, at time.Time) error {
 	var active bool
 	if err := tx.Get(ctx, &active, `SELECT true FROM users WHERE id=? AND archived_at IS NULL AND disabled_at IS NULL FOR SHARE`, invitation.InviterUserID.String()); err != nil {
-		if isNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return store.NewErrConflict("invitation", "invitation_authority", nil)
 		}
 		return fmt.Errorf("lock scoped Role Invitation inviter: %w", err)
@@ -3110,7 +3111,7 @@ func requireScopedRoleInvitationAuthority(ctx context.Context, tx *sqlxTxWrapper
 			ORDER BY r.id,rb.id LIMIT 1 FOR SHARE OF r,rb`, invitation.AcademicUnitID.String(), invitation.InviterUserID.String(), model.TimeUTC(at),
 				action, definition.InheritInstitutionScope, definition.InheritAcademicUnitScopes, strictParent)
 		}
-		if isNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return store.NewErrConflict("invitation", "invitation_authority", nil)
 		}
 		if err != nil {
@@ -3123,7 +3124,7 @@ func requireScopedRoleInvitationAuthority(ctx context.Context, tx *sqlxTxWrapper
 func requireTeacherAcademicUnitInvitationAuthority(ctx context.Context, tx *sqlxTxWrapper, invitation *model.Invitation, at time.Time) error {
 	var active bool
 	if err := tx.Get(ctx, &active, `SELECT true FROM users WHERE id=? AND archived_at IS NULL AND disabled_at IS NULL FOR SHARE`, invitation.InviterUserID.String()); err != nil {
-		if isNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return store.NewErrConflict("invitation", "invitation_authority", nil)
 		}
 		return fmt.Errorf("lock Invitation inviter: %w", err)
@@ -3145,7 +3146,7 @@ func requireTeacherAcademicUnitInvitationAuthority(ctx context.Context, tx *sqlx
 			(rb.scope_type='academic_unit' AND $6 AND rb.scope_id IN (SELECT id FROM ancestors WHERE NOT $7 OR depth>0)))
 		ORDER BY r.id,rb.id LIMIT 1 FOR SHARE OF r,rb`, invitation.AcademicUnitID.String(), invitation.InviterUserID.String(), model.TimeUTC(at),
 			action, requirement.Institution, requirement.AcademicUnit, requirement.StrictParent)
-		if isNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return store.NewErrConflict("invitation", "invitation_authority", nil)
 		}
 		if err != nil {
@@ -3164,7 +3165,7 @@ func lockInvitationInviterBeforeHierarchy(ctx context.Context, tx *sqlxTxWrapper
 	var activeInviterID string
 	if err := tx.Get(ctx, &activeInviterID, `SELECT id FROM users
 		WHERE id=? AND archived_at IS NULL AND disabled_at IS NULL FOR SHARE`, inviterID.String()); err != nil {
-		if isNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return store.NewErrConflict("invitation", "invitation_authority", nil)
 		}
 		return fmt.Errorf("lock Invitation inviter before hierarchy: %w", err)
@@ -3268,7 +3269,7 @@ func requireStudentClassInvitationAuthority(ctx context.Context, tx *sqlxTxWrapp
 	var active bool
 	if err := tx.Get(ctx, &active, `SELECT true FROM users
 		WHERE id=? AND archived_at IS NULL AND disabled_at IS NULL FOR SHARE`, inviterID.String()); err != nil {
-		if isNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return store.NewErrConflict("invitation", "invitation_authority", nil)
 		}
 		return fmt.Errorf("lock Invitation inviter: %w", err)
@@ -3295,7 +3296,7 @@ func requireStudentClassInvitationAuthority(ctx context.Context, tx *sqlxTxWrapp
 		AND (rb.scope_type='institution' OR (rb.scope_type='class' AND rb.scope_id=$1)
 			OR (rb.scope_type='academic_unit' AND rb.scope_id IN (SELECT id FROM ancestors)))
 		ORDER BY r.id,rb.id LIMIT 1 FOR SHARE OF r,rb`, classID.String(), inviterID.String(), model.TimeUTC(at), string(action))
-		if isNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return store.NewErrConflict("invitation", "invitation_authority", nil)
 		}
 		if err != nil {

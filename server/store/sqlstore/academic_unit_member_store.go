@@ -416,14 +416,14 @@ func (s SQLAcademicUnitMemberStore) endAcademicUnitMember(ctx context.Context, t
 }
 
 func lockAcademicUnitMemberLifecycle(ctx context.Context, executor sqlxExecutor) error {
-	if _, err := executor.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext(?))", academicUnitMemberLifecycleLock); err != nil {
+	if err := lockAdvisory(ctx, executor, academicUnitMemberLifecycleLock); err != nil {
 		return fmt.Errorf("lock academic unit member lifecycle: %w", err)
 	}
 	return nil
 }
 
 func lockAcademicUnitMember(ctx context.Context, executor sqlxExecutor, unitID, userID string) error {
-	if _, err := executor.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext(?))", "proctor:academic-unit-member:"+unitID+":"+userID); err != nil {
+	if err := lockAdvisory(ctx, executor, advisoryLockKey("academic-unit-member", unitID, userID)); err != nil {
 		return fmt.Errorf("lock academic unit member: %w", err)
 	}
 	return nil

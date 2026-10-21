@@ -54,8 +54,8 @@ func TestExamAttemptConnectCandidateLockOrder(t *testing.T) {
 		go func() { operationResult <- operation() }()
 		_ = waitForBlockedMailQuery(t, ctx, persistence, acceptancePID, "users")
 
-		if _, err = acceptance.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`,
-			"proctor:class-enrollment:"+candidateID.String()+":"+periodID.String()); err != nil {
+		if _, err = acceptance.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+			advisoryLockKey("class-enrollment", candidateID.String(), periodID.String())); err != nil {
 			return fmt.Errorf("acceptance Class-enrollment fence after Connect queued: %w", err)
 		}
 		if err = acceptance.Commit(); err != nil {

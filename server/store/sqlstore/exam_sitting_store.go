@@ -22,13 +22,13 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-// sqlExamSittingStore owns the PostgreSQL representation of scheduled Exam
+// SQLExamSittingStore owns the PostgreSQL representation of scheduled Exam
 // delivery. Its mutations deliberately acquire the academic lifecycle locks
 // in the same global order as the catalog Stores before locking Exam rows.
-type sqlExamSittingStore struct{ *SQLStore }
+type SQLExamSittingStore struct{ *SQLStore }
 
 func newSQLExamSittingStore(sqlStore *SQLStore) store.ExamSittingStore {
-	return &sqlExamSittingStore{SQLStore: sqlStore}
+	return &SQLExamSittingStore{SQLStore: sqlStore}
 }
 
 type examSittingRow struct {
@@ -90,7 +90,7 @@ func (row examSittingRow) model() (*model.ExamSitting, error) {
 	return sitting, nil
 }
 
-func (s sqlExamSittingStore) Resolve(ctx context.Context, id model.ExamSittingID) (*store.ExamSittingSnapshot, error) {
+func (s SQLExamSittingStore) Resolve(ctx context.Context, id model.ExamSittingID) (*store.ExamSittingSnapshot, error) {
 	if !id.IsValid() {
 		return nil, store.NewErrInvalidInput("exam_sitting", "id", nil)
 	}
@@ -101,7 +101,7 @@ func (s sqlExamSittingStore) Resolve(ctx context.Context, id model.ExamSittingID
 	return examSittingSnapshot(row)
 }
 
-func (s sqlExamSittingStore) Get(ctx context.Context, examID model.ExamID, id model.ExamSittingID) (*store.ExamSittingSnapshot, error) {
+func (s SQLExamSittingStore) Get(ctx context.Context, examID model.ExamID, id model.ExamSittingID) (*store.ExamSittingSnapshot, error) {
 	if !examID.IsValid() || !id.IsValid() {
 		return nil, store.NewErrInvalidInput("exam_sitting", "identity", nil)
 	}
@@ -124,7 +124,7 @@ func examSittingSnapshot(row examSittingRow) (*store.ExamSittingSnapshot, error)
 	return &store.ExamSittingSnapshot{Sitting: sitting, AcademicUnitID: unitID}, nil
 }
 
-func (s sqlExamSittingStore) List(ctx context.Context, options store.ExamSittingListOptions) ([]store.ExamSittingSnapshot, error) {
+func (s SQLExamSittingStore) List(ctx context.Context, options store.ExamSittingListOptions) ([]store.ExamSittingSnapshot, error) {
 	if err := validateExamSittingListOptions(options); err != nil {
 		return nil, err
 	}
@@ -167,7 +167,7 @@ func (s sqlExamSittingStore) List(ctx context.Context, options store.ExamSitting
 	return items, nil
 }
 
-func (s sqlExamSittingStore) ListInvalidationTargetsByClass(
+func (s SQLExamSittingStore) ListInvalidationTargetsByClass(
 	ctx context.Context,
 	classID model.ClassID,
 	afterSittingID model.ExamSittingID,
@@ -206,7 +206,7 @@ func (s sqlExamSittingStore) ListInvalidationTargetsByClass(
 	return targets, nil
 }
 
-func (s sqlExamSittingStore) ListInvalidationTargetsByExam(
+func (s SQLExamSittingStore) ListInvalidationTargetsByExam(
 	ctx context.Context,
 	examID model.ExamID,
 	afterSittingID model.ExamSittingID,
@@ -245,7 +245,7 @@ func (s sqlExamSittingStore) ListInvalidationTargetsByExam(
 	return targets, nil
 }
 
-func (s sqlExamSittingStore) ListCandidateInvalidationTargetsBySitting(
+func (s SQLExamSittingStore) ListCandidateInvalidationTargetsBySitting(
 	ctx context.Context,
 	sittingID model.ExamSittingID,
 	afterUserID model.UserID,
@@ -288,7 +288,7 @@ func (s sqlExamSittingStore) ListCandidateInvalidationTargetsBySitting(
 	return targets, nil
 }
 
-func (s sqlExamSittingStore) ListLifecycleDue(ctx context.Context, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
+func (s SQLExamSittingStore) ListLifecycleDue(ctx context.Context, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
 	if options.Limit < 1 || options.Limit > 201 || (options.AfterDueAt.IsZero() != options.AfterSittingID.IsZero()) {
 		return nil, store.NewErrInvalidInput("exam_sitting", "lifecycle_due_options", nil)
 	}
@@ -363,7 +363,7 @@ func validateExamSittingListOptions(options store.ExamSittingListOptions) error 
 	return nil
 }
 
-func (s sqlExamSittingStore) Schedule(ctx context.Context, input *store.ExamSittingSchedule, command *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
+func (s SQLExamSittingStore) Schedule(ctx context.Context, input *store.ExamSittingSchedule, command *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
 	if err := prepareExamSittingSchedule(input); err != nil {
 		return nil, err
 	}
@@ -390,7 +390,7 @@ func prepareExamSittingSchedule(input *store.ExamSittingSchedule) error {
 	return nil
 }
 
-func (s sqlExamSittingStore) UpdateSchedule(ctx context.Context, input *store.ExamSittingScheduleUpdate, command *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
+func (s SQLExamSittingStore) UpdateSchedule(ctx context.Context, input *store.ExamSittingScheduleUpdate, command *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
 	if err := prepareExamSittingUpdate(input); err != nil {
 		return nil, err
 	}
@@ -445,7 +445,7 @@ func validateExamSittingLifecycleJob(job *model.Job, sittingID model.ExamSitting
 	return nil
 }
 
-func (s sqlExamSittingStore) Cancel(ctx context.Context, input *store.ExamSittingCancellation, command *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
+func (s SQLExamSittingStore) Cancel(ctx context.Context, input *store.ExamSittingCancellation, command *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
 	if err := prepareExamSittingCancellation(input); err != nil {
 		return nil, err
 	}
@@ -465,7 +465,7 @@ func prepareExamSittingCancellation(input *store.ExamSittingCancellation) error 
 	return nil
 }
 
-func (s sqlExamSittingStore) runExamSittingMutation(ctx context.Context, label string, auditID model.AuditEventID, auditAt int64, command *store.CommandIdempotency,
+func (s SQLExamSittingStore) runExamSittingMutation(ctx context.Context, label string, auditID model.AuditEventID, auditAt int64, command *store.CommandIdempotency,
 	execute func(context.Context, *sqlxTxWrapper) (*model.ExamSitting, error),
 ) (*store.ExamSittingCommandResult, error) {
 	if command == nil {
@@ -798,7 +798,7 @@ func lockDisabledExamSittingMailChronology(ctx context.Context, tx *sqlxTxWrappe
 	var activeActorID string
 	if err := tx.Get(ctx, &activeActorID, `SELECT id FROM users
 		WHERE id=? AND archived_at IS NULL AND disabled_at IS NULL FOR SHARE`, actorID.String()); err != nil {
-		if isNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return 0, store.NewErrConflict("exam_sitting_mail", "actor_unavailable", nil)
 		}
 		return 0, fmt.Errorf("lock disabled Sitting mail actor: %w", err)
@@ -886,7 +886,7 @@ func insertExamSittingPrivateAction(ctx context.Context, tx *sqlxTxWrapper, sitt
 	return nil
 }
 
-func (s sqlExamSittingStore) Pause(ctx context.Context, input *store.ExamSittingManagerTransition, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+func (s SQLExamSittingStore) Pause(ctx context.Context, input *store.ExamSittingManagerTransition, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
 	if err := prepareExamSittingManagerTransition(input, false); err != nil {
 		return nil, err
 	}
@@ -894,7 +894,7 @@ func (s sqlExamSittingStore) Pause(ctx context.Context, input *store.ExamSitting
 		func(current *model.ExamSitting, at time.Time) error { return current.Pause(at) })
 }
 
-func (s sqlExamSittingStore) Resume(ctx context.Context, input *store.ExamSittingManagerTransition, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+func (s SQLExamSittingStore) Resume(ctx context.Context, input *store.ExamSittingManagerTransition, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
 	if err := prepareExamSittingManagerTransition(input, false); err != nil {
 		return nil, err
 	}
@@ -902,7 +902,7 @@ func (s sqlExamSittingStore) Resume(ctx context.Context, input *store.ExamSittin
 		func(current *model.ExamSitting, at time.Time) error { return current.Resume(at) })
 }
 
-func (s sqlExamSittingStore) EarlyClose(ctx context.Context, input *store.ExamSittingManagerTransition, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+func (s SQLExamSittingStore) EarlyClose(ctx context.Context, input *store.ExamSittingManagerTransition, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
 	if err := prepareExamSittingManagerTransition(input, true); err != nil {
 		return nil, err
 	}
@@ -930,7 +930,7 @@ func validExamSittingPrivateReason(reason string) bool {
 		utf8.RuneCountInString(reason) <= 1000 && len(reason) <= 4000
 }
 
-func (s sqlExamSittingStore) runManagerLifecycleMutation(ctx context.Context, label string, input *store.ExamSittingManagerTransition,
+func (s SQLExamSittingStore) runManagerLifecycleMutation(ctx context.Context, label string, input *store.ExamSittingManagerTransition,
 	command *store.CommandIdempotency, transition store.ExamSittingLifecycleTransitionCode, allowArchived bool,
 	apply func(*model.ExamSitting, time.Time) error,
 ) (*store.ExamSittingLifecycleResult, error) {
@@ -1025,7 +1025,7 @@ func examSittingManagerTransitionAllowed(state model.ExamSittingState, transitio
 	}
 }
 
-func (s sqlExamSittingStore) Extend(ctx context.Context, input *store.ExamSittingExtension, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+func (s SQLExamSittingStore) Extend(ctx context.Context, input *store.ExamSittingExtension, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
 	if input == nil || !input.ExamID.IsValid() || !input.SittingID.IsValid() || !input.ActorUserID.IsValid() ||
 		input.ExpectedRevision < 1 || input.ScheduledEndAt.IsZero() || input.ChangedAt.IsZero() || input.DeadlineJob == nil ||
 		!validExamSittingPrivateReason(input.PrivateReason) || !input.AuditEventID.IsValid() || input.AuditAt <= 0 || command == nil {
@@ -1176,7 +1176,7 @@ func examSittingStructureStatus(ctx context.Context, tx *sqlxTxWrapper, sitting 
 	return status.SameUnit, status.Contained, status.Future, nil
 }
 
-func (s sqlExamSittingStore) AdvanceDue(ctx context.Context, input *store.ExamSittingDueAdvance) (*store.ExamSittingLifecycleResult, error) {
+func (s SQLExamSittingStore) AdvanceDue(ctx context.Context, input *store.ExamSittingDueAdvance) (*store.ExamSittingLifecycleResult, error) {
 	if input == nil || !input.SittingID.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_sitting", "advance_due", nil)
 	}
@@ -1308,7 +1308,7 @@ func isStaleExamSittingFinalizeJob(job *model.Job, current *model.ExamSitting) b
 	return err == nil && preparedRevision > 0 && preparedRevision != current.Revision+1
 }
 
-func (s sqlExamSittingStore) FinishSealing(ctx context.Context, input *store.ExamSittingFinishSealing) (*store.ExamSittingLifecycleResult, error) {
+func (s SQLExamSittingStore) FinishSealing(ctx context.Context, input *store.ExamSittingFinishSealing) (*store.ExamSittingLifecycleResult, error) {
 	if input == nil || !input.SittingID.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_sitting", "finish_sealing", nil)
 	}
@@ -1375,7 +1375,7 @@ func (s sqlExamSittingStore) FinishSealing(ctx context.Context, input *store.Exa
 	return result, nil
 }
 
-func (s sqlExamSittingStore) ListNoShows(ctx context.Context, options store.ExamSittingNoShowListOptions) ([]store.ExamSittingNoShow, error) {
+func (s SQLExamSittingStore) ListNoShows(ctx context.Context, options store.ExamSittingNoShowListOptions) ([]store.ExamSittingNoShow, error) {
 	if !options.SittingID.IsValid() || (!options.AfterCandidateUserID.IsZero() && !options.AfterCandidateUserID.IsValid()) ||
 		options.Limit < 1 || options.Limit > 201 {
 		return nil, store.NewErrInvalidInput("exam_sitting", "no_show_list", nil)
@@ -1405,7 +1405,7 @@ func (s sqlExamSittingStore) ListNoShows(ctx context.Context, options store.Exam
 // the idempotency outcome. Only the Exam's immutable Academic Unit identity is
 // resolved after commit; re-reading the Sitting here would allow a concurrent
 // later transition to replace the command's own result.
-func (s sqlExamSittingStore) snapshotFromCommittedOutcome(ctx context.Context, sitting *model.ExamSitting) (*store.ExamSittingSnapshot, error) {
+func (s SQLExamSittingStore) snapshotFromCommittedOutcome(ctx context.Context, sitting *model.ExamSitting) (*store.ExamSittingSnapshot, error) {
 	snapshot := &store.ExamSittingSnapshot{Sitting: sitting}
 	if err := s.completeCommittedSnapshot(ctx, snapshot); err != nil {
 		return nil, err
@@ -1413,7 +1413,7 @@ func (s sqlExamSittingStore) snapshotFromCommittedOutcome(ctx context.Context, s
 	return snapshot, nil
 }
 
-func (s sqlExamSittingStore) completeCommittedSnapshot(ctx context.Context, snapshot *store.ExamSittingSnapshot) error {
+func (s SQLExamSittingStore) completeCommittedSnapshot(ctx context.Context, snapshot *store.ExamSittingSnapshot) error {
 	if snapshot == nil || snapshot.Sitting == nil {
 		return invalidPersistedState("exam_sitting", "outcome", errors.New("missing committed Sitting"))
 	}

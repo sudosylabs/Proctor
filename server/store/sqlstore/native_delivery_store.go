@@ -74,12 +74,12 @@ func closeNativeDelivery(ctx context.Context, tx *sqlxTxWrapper, participationID
 	return closeParticipationBrowserSources(ctx, tx, participationID, reason, at)
 }
 
-func (s *sqlExamAttemptStore) lockNativeDelivery(ctx context.Context, tx *sqlxTxWrapper, access store.NativeDeliveryAccess) (nativeDeliveryOwner, error) {
+func (s *SQLExamAttemptStore) lockNativeDelivery(ctx context.Context, tx *sqlxTxWrapper, access store.NativeDeliveryAccess) (nativeDeliveryOwner, error) {
 	return s.nativeDeliveryOwner(ctx, tx, access, true)
 }
 
 // Read projections must not settle evidence or complete lifecycle transitions.
-func (s *sqlExamAttemptStore) nativeDeliveryOwner(ctx context.Context, tx *sqlxTxWrapper, access store.NativeDeliveryAccess, persist bool) (nativeDeliveryOwner, error) {
+func (s *SQLExamAttemptStore) nativeDeliveryOwner(ctx context.Context, tx *sqlxTxWrapper, access store.NativeDeliveryAccess, persist bool) (nativeDeliveryOwner, error) {
 	var owner nativeDeliveryOwner
 	a := access.Access
 	if !a.AttemptID.IsValid() || !a.CandidateUserID.IsValid() || !a.SessionID.IsValid() || !a.DesktopRegistrationID.IsValid() || !model.IsValidDPoPKeyThumbprint(a.DPoPKeyThumbprint) || !model.IsValidAgreementID(access.StreamID) || access.ParticipationID != "" && !access.ParticipationID.IsValid() || access.Generation < 0 {
@@ -291,7 +291,7 @@ func projectNativeDeliveryStatus(ctx context.Context, tx *sqlxTxWrapper, owner n
 	return status, nil
 }
 
-func (s *sqlExamAttemptStore) NativeDeliveryStatus(ctx context.Context, access store.NativeDeliveryAccess) (*model.NativeSecurityStreamStatus, error) {
+func (s *SQLExamAttemptStore) NativeDeliveryStatus(ctx context.Context, access store.NativeDeliveryAccess) (*model.NativeSecurityStreamStatus, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "native delivery status", func(ctx context.Context, tx *sqlxTxWrapper) (*model.NativeSecurityStreamStatus, error) {
 		owner, err := s.nativeDeliveryOwner(ctx, tx, access, false)
 		if err != nil {
@@ -300,7 +300,7 @@ func (s *sqlExamAttemptStore) NativeDeliveryStatus(ctx context.Context, access s
 		return projectNativeDeliveryStatus(ctx, tx, owner, access.StreamID)
 	})
 }
-func (s *sqlExamAttemptStore) NativeDeliveryReceipt(ctx context.Context, access store.NativeDeliveryAccess, sequence int64) (*model.NativeBatchReceipt, error) {
+func (s *SQLExamAttemptStore) NativeDeliveryReceipt(ctx context.Context, access store.NativeDeliveryAccess, sequence int64) (*model.NativeBatchReceipt, error) {
 	if sequence < 1 || sequence > model.NativeParticipationPositionLimit {
 		return nil, store.NewErrInvalidInput("native_delivery", "sequence", nil)
 	}
@@ -357,7 +357,7 @@ type nativeDeclarationOutcome struct {
 	Capacity *model.DeliveryMetadataCapacity   `json:"capacity"`
 }
 
-func (s *sqlExamAttemptStore) DeclareNativeDeliveryGaps(ctx context.Context, input *store.NativeDeliveryGapDeclaration, command *store.CommandIdempotency) (*model.DeliveryGapReceipt, error) {
+func (s *SQLExamAttemptStore) DeclareNativeDeliveryGaps(ctx context.Context, input *store.NativeDeliveryGapDeclaration, command *store.CommandIdempotency) (*model.DeliveryGapReceipt, error) {
 	if input == nil || input.Declaration.Validate() != nil {
 		return nil, store.NewErrInvalidInput("native_delivery", "gaps", nil)
 	}
@@ -377,7 +377,7 @@ func (s *sqlExamAttemptStore) DeclareNativeDeliveryGaps(ctx context.Context, inp
 	}
 	return &result.Receipt, nil
 }
-func (s *sqlExamAttemptStore) SealNativeDelivery(ctx context.Context, input *store.NativeDeliveryFinalDeclaration, command *store.CommandIdempotency) (*model.NativeSecurityStreamStatus, error) {
+func (s *SQLExamAttemptStore) SealNativeDelivery(ctx context.Context, input *store.NativeDeliveryFinalDeclaration, command *store.CommandIdempotency) (*model.NativeSecurityStreamStatus, error) {
 	if input == nil || input.Declaration.Validate() != nil {
 		return nil, store.NewErrInvalidInput("native_delivery", "final", nil)
 	}
@@ -398,7 +398,7 @@ func (s *sqlExamAttemptStore) SealNativeDelivery(ctx context.Context, input *sto
 	return result.Status, nil
 }
 
-func (s *sqlExamAttemptStore) declareNativeDelivery(ctx context.Context, access store.NativeDeliveryAccess, auditID model.AuditEventID, auditAt int64, command *store.CommandIdempotency, record deliveryDeclarationRecord) (*nativeDeclarationOutcome, error) {
+func (s *SQLExamAttemptStore) declareNativeDelivery(ctx context.Context, access store.NativeDeliveryAccess, auditID model.AuditEventID, auditAt int64, command *store.CommandIdempotency, record deliveryDeclarationRecord) (*nativeDeclarationOutcome, error) {
 	if command == nil || command.UserID != access.Access.CandidateUserID || !auditID.IsValid() || auditAt <= 0 {
 		return nil, store.NewErrInvalidInput("native_delivery", "declaration", nil)
 	}
@@ -603,7 +603,7 @@ func completeNativeDeliveryAudit(ctx context.Context, tx *sqlxTxWrapper, id mode
 	return err
 }
 
-func (s *sqlExamAttemptStore) UpdateNativeDeliverySummary(ctx context.Context, input *store.NativeDeliverySummaryUpdate, command *store.CommandIdempotency) (*model.NativeSecurityStreamStatus, error) {
+func (s *SQLExamAttemptStore) UpdateNativeDeliverySummary(ctx context.Context, input *store.NativeDeliverySummaryUpdate, command *store.CommandIdempotency) (*model.NativeSecurityStreamStatus, error) {
 	if input == nil || input.Summary.Validate() != nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 || command == nil || command.Operation != store.NativeDeliverySummaryOperation || command.UserID != input.Access.Access.CandidateUserID {
 		return nil, store.NewErrInvalidInput("native_delivery", "summary", nil)
 	}
@@ -680,7 +680,7 @@ func (s *sqlExamAttemptStore) UpdateNativeDeliverySummary(ctx context.Context, i
 	return result.Value, nil
 }
 
-func (s *sqlExamAttemptStore) ResolveNativeDeliveryTarget(ctx context.Context, access store.NativeDeliveryAccess) (*store.NativeDeliveryTarget, error) {
+func (s *SQLExamAttemptStore) ResolveNativeDeliveryTarget(ctx context.Context, access store.NativeDeliveryAccess) (*store.NativeDeliveryTarget, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "resolve native delivery target", func(ctx context.Context, tx *sqlxTxWrapper) (*store.NativeDeliveryTarget, error) {
 		owner, err := s.nativeDeliveryOwner(ctx, tx, access, false)
 		if err != nil {

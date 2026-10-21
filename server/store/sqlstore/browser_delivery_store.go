@@ -28,7 +28,7 @@ type browserDeclarationOwner struct {
 	Now                                             time.Time
 }
 
-func (s *sqlExamAttemptStore) lockBrowserDeclaration(ctx context.Context, tx *sqlxTxWrapper, access store.BrowserDeliveryAccess) (browserDeclarationOwner, error) {
+func (s *SQLExamAttemptStore) lockBrowserDeclaration(ctx context.Context, tx *sqlxTxWrapper, access store.BrowserDeliveryAccess) (browserDeclarationOwner, error) {
 	var owner browserDeclarationOwner
 	if err := s.lockBrowserDelivery(ctx, tx, access); err != nil {
 		return owner, err
@@ -83,7 +83,7 @@ type browserDeclarationOutcome struct {
 	Capacity *model.DeliveryMetadataCapacity `json:"capacity"`
 }
 
-func (s *sqlExamAttemptStore) DeclareBrowserDeliveryGaps(ctx context.Context, input *store.BrowserDeliveryGapDeclaration, command *store.CommandIdempotency) (*model.BrowserDeliveryGapResult, error) {
+func (s *SQLExamAttemptStore) DeclareBrowserDeliveryGaps(ctx context.Context, input *store.BrowserDeliveryGapDeclaration, command *store.CommandIdempotency) (*model.BrowserDeliveryGapResult, error) {
 	if input == nil || input.Declaration.Validate() != nil {
 		return nil, store.NewErrInvalidInput("browser_delivery", "gaps", nil)
 	}
@@ -103,7 +103,7 @@ func (s *sqlExamAttemptStore) DeclareBrowserDeliveryGaps(ctx context.Context, in
 	}
 	return &model.BrowserDeliveryGapResult{Receipt: result.Receipt, Status: *result.Status}, nil
 }
-func (s *sqlExamAttemptStore) SealBrowserDelivery(ctx context.Context, input *store.BrowserDeliveryFinalDeclaration, command *store.CommandIdempotency) (*model.BrowserSourceStatus, error) {
+func (s *SQLExamAttemptStore) SealBrowserDelivery(ctx context.Context, input *store.BrowserDeliveryFinalDeclaration, command *store.CommandIdempotency) (*model.BrowserSourceStatus, error) {
 	if input == nil || input.Declaration.Validate() != nil {
 		return nil, store.NewErrInvalidInput("browser_delivery", "final", nil)
 	}
@@ -124,7 +124,7 @@ func (s *sqlExamAttemptStore) SealBrowserDelivery(ctx context.Context, input *st
 	return result.Status, nil
 }
 
-func (s *sqlExamAttemptStore) declareBrowserDelivery(ctx context.Context, access store.BrowserDeliveryAccess, auditID model.AuditEventID, auditAt int64, command *store.CommandIdempotency, record deliveryDeclarationRecord) (*browserDeclarationOutcome, error) {
+func (s *SQLExamAttemptStore) declareBrowserDelivery(ctx context.Context, access store.BrowserDeliveryAccess, auditID model.AuditEventID, auditAt int64, command *store.CommandIdempotency, record deliveryDeclarationRecord) (*browserDeclarationOutcome, error) {
 	expectedOperation := store.BrowserDeliveryFinalOperation
 	if record.Gaps != nil {
 		expectedOperation = store.BrowserDeliveryGapsOperation
@@ -358,7 +358,7 @@ func browserDeliveryRanges(ctx context.Context, tx *sqlxTxWrapper, source model.
 	}
 	return received, mergeNativeDeliveryRanges(gaps), nil
 }
-func (s *sqlExamAttemptStore) ResolveBrowserDeliveryTarget(ctx context.Context, access store.BrowserDeliveryAccess) (*store.DeliveryOwnerTarget, error) {
+func (s *SQLExamAttemptStore) ResolveBrowserDeliveryTarget(ctx context.Context, access store.BrowserDeliveryAccess) (*store.DeliveryOwnerTarget, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "resolve browser delivery owner", func(ctx context.Context, tx *sqlxTxWrapper) (*store.DeliveryOwnerTarget, error) {
 		if err := s.lockBrowserDelivery(ctx, tx, access); err != nil {
 			return nil, err
@@ -373,7 +373,7 @@ func (s *sqlExamAttemptStore) ResolveBrowserDeliveryTarget(ctx context.Context, 
 		return &store.DeliveryOwnerTarget{SittingID: model.ExamSittingID(row.Sitting), ClassID: model.ClassID(row.Class)}, nil
 	})
 }
-func (s *sqlExamAttemptStore) BrowserDeliveryReceipts(ctx context.Context, access store.BrowserDeliveryAccess, first int64, limit int) (*model.BrowserReceiptPage, error) {
+func (s *SQLExamAttemptStore) BrowserDeliveryReceipts(ctx context.Context, access store.BrowserDeliveryAccess, first int64, limit int) (*model.BrowserReceiptPage, error) {
 	if first < 1 || first > model.BrowserParticipationPositionLimit || limit < 1 || limit > 64 {
 		return nil, store.NewErrInvalidInput("browser_delivery", "receipt_page", nil)
 	}
@@ -408,7 +408,7 @@ func (s *sqlExamAttemptStore) BrowserDeliveryReceipts(ctx context.Context, acces
 		return value, nil
 	})
 }
-func (s *sqlExamAttemptStore) UpdateBrowserDeliverySummary(ctx context.Context, input *store.BrowserDeliverySummaryUpdate, command *store.CommandIdempotency) (*model.BrowserDeliverySummaryResult, error) {
+func (s *SQLExamAttemptStore) UpdateBrowserDeliverySummary(ctx context.Context, input *store.BrowserDeliverySummaryUpdate, command *store.CommandIdempotency) (*model.BrowserDeliverySummaryResult, error) {
 	if input == nil || input.Summary.Validate() != nil || command == nil || command.Operation != store.BrowserDeliverySummaryOperation || command.UserID != input.Access.Access.CandidateUserID || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("browser_delivery", "summary", nil)
 	}

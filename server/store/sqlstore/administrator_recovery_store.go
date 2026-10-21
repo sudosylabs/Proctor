@@ -48,7 +48,7 @@ func (s SQLInstallationStore) RecoverAdministratorAccess(ctx context.Context, in
 			return nil, err
 		}
 		var credential passwordCredentialRow
-		if err := tx.Get(ctx, &credential, `SELECT id, created_at, updated_at, archived_at, user_id, revision, password_hash, password_changed_at FROM password_credentials WHERE user_id=$1 AND archived_at IS NULL FOR UPDATE`, input.UserID.String()); err != nil {
+		if err := tx.Get(ctx, &credential, `SELECT id, created_at, updated_at, archived_at, user_id, revision, password_hash, password_changed_at FROM password_credentials WHERE user_id=? AND archived_at IS NULL FOR UPDATE`, input.UserID.String()); err != nil {
 			return nil, fmt.Errorf("get recovery password credential: %w", translateError("password_credential", input.UserID.String(), err))
 		}
 		if _, err := credential.model(); err != nil {
@@ -67,7 +67,7 @@ func (s SQLInstallationStore) RecoverAdministratorAccess(ctx context.Context, in
 			}
 		}
 		if localLoginChanged {
-			if _, err := tx.Exec(ctx, `UPDATE access_policies SET revision=revision+1, updated_at=GREATEST(updated_at, $1), local_login_enabled=TRUE WHERE singleton=1 AND id=$2`, databaseNow, policy.ID.String()); err != nil {
+			if _, err := tx.Exec(ctx, `UPDATE access_policies SET revision=revision+1, updated_at=GREATEST(updated_at, ?), local_login_enabled=TRUE WHERE singleton=1 AND id=?`, databaseNow, policy.ID.String()); err != nil {
 				return nil, fmt.Errorf("enable local login for administrator recovery: %w", err)
 			}
 		}
@@ -143,7 +143,7 @@ func (s SQLInstallationStore) ReconcileAdministratorRecovery(ctx context.Context
 		if err := insertInstallationAudit(ctx, tx, event); err != nil {
 			return nil, fmt.Errorf("save administrator recovery audit: %w", err)
 		}
-		if _, err := tx.Exec(ctx, `UPDATE administrator_recovery_records SET reconciled_at=$1, audit_event_id=$2 WHERE id=$3 AND reconciled_at IS NULL`, databaseNow, event.ID.String(), row.ID); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE administrator_recovery_records SET reconciled_at=?, audit_event_id=? WHERE id=? AND reconciled_at IS NULL`, databaseNow, event.ID.String(), row.ID); err != nil {
 			return nil, fmt.Errorf("complete administrator recovery record: %w", err)
 		}
 		return &store.AdministratorRecoveryReconciliationResult{Reconciled: 1}, nil

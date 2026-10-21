@@ -191,7 +191,7 @@ func (s SQLClassStore) GetAcademicUnitID(ctx context.Context, id model.ClassID) 
 		  FROM classes
 		  JOIN programme_levels ON programme_levels.id = classes.programme_level_id
 		  JOIN programmes ON programmes.id = programme_levels.programme_id
-		 WHERE classes.id = $1
+		 WHERE classes.id = ?
 		   AND classes.archived_at IS NULL
 		   AND programme_levels.archived_at IS NULL
 		   AND programmes.archived_at IS NULL`, id); err != nil {
@@ -349,7 +349,7 @@ func (s SQLClassStore) archiveClass(ctx context.Context, id model.ClassID, archi
 }
 
 func lockClassLifecycle(ctx context.Context, tx sqlxExecutor) error {
-	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext(?))", classLifecycleLock); err != nil {
+	if err := lockAdvisory(ctx, tx, classLifecycleLock); err != nil {
 		return fmt.Errorf("lock class lifecycle: %w", err)
 	}
 	return nil

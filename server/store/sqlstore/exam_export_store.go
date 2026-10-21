@@ -12,7 +12,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"slices"
@@ -95,16 +94,7 @@ func (s *SQLExamExportStore) ListCreationScope(ctx context.Context, scope model.
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "resolve Exam export creation scope", func(ctx context.Context, tx *sqlxTxWrapper) ([]store.ExamSubmissionAuthorization, error) {
 		// Share the command's normal advisory fence so an in-flight original
 		// creation finishes before deciding whether this is a fresh capture.
-		lockInput := append([]byte(command.UserID.String()+"\x00"+command.Operation+"\x00"), command.KeyDigest[:]...)
-		lockDigest := sha256.Sum256(lockInput)
-		lockID := int64(binary.BigEndian.Uint64(lockDigest[:8]))
-		lockCtx, cancel := context.WithTimeout(ctx, command.Wait)
-		defer cancel()
-		var locked bool
-		if err := tx.Get(lockCtx, &locked, `SELECT true FROM pg_advisory_xact_lock(?)`, lockID); err != nil {
-			if errors.Is(lockCtx.Err(), context.DeadlineExceeded) {
-				return nil, &store.ErrIdempotencyInProgress{}
-			}
+		if err := lockCommandIdempotency(ctx, tx, command); err != nil {
 			return nil, err
 		}
 		var outcome commandOutcomeRow

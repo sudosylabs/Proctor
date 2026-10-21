@@ -63,7 +63,7 @@ const endedFocusLossAccessSelect = `SELECT a.exam_id,a.exam_sitting_id AS sittin
 	JOIN sessions se ON se.id=co.session_id JOIN users u ON u.id=se.user_id
 	WHERE a.id=? AND a.candidate_user_id=?`
 
-func (s *sqlExamAttemptStore) ResolveEndedFocusLossTarget(ctx context.Context,
+func (s *SQLExamAttemptStore) ResolveEndedFocusLossTarget(ctx context.Context,
 	access store.ExamAttemptFocusLossAccess,
 ) (*store.ExamAttemptFocusLossDiscrepancyTarget, error) {
 	if err := validateFocusLossAccess(access); err != nil {
@@ -90,7 +90,7 @@ func validateEndedFocusLoss(input *store.ExamAttemptFocusLossDiscrepancy) error 
 	return nil
 }
 
-func (s *sqlExamAttemptStore) RecordEndedFocusLoss(ctx context.Context,
+func (s *SQLExamAttemptStore) RecordEndedFocusLoss(ctx context.Context,
 	input *store.ExamAttemptFocusLossDiscrepancy,
 ) (*store.ExamAttemptFocusLossDiscrepancyResult, error) {
 	if err := validateEndedFocusLoss(input); err != nil {

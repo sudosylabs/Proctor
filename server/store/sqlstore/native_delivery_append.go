@@ -21,7 +21,7 @@ import (
 // The rate debit commits separately from the append transaction: replay and a
 // refused request consume the same shared User/Attempt allowance. The Attempt
 // has exactly one candidate; Session and transport changes cannot refill it.
-func (s *sqlExamAttemptStore) debitNativeAppend(ctx context.Context, access store.NativeDeliveryAccess) error {
+func (s *SQLExamAttemptStore) debitNativeAppend(ctx context.Context, access store.NativeDeliveryAccess) error {
 	allowed, err := runSQLTransaction(ctx, s.GetMaster().Begin, "native append allowance", func(ctx context.Context, tx *sqlxTxWrapper) (bool, error) {
 		owner, err := s.lockNativeDelivery(ctx, tx, access)
 		if err != nil {
@@ -60,7 +60,7 @@ type nativeAppendOutcome struct {
 	Progress model.NativeDeliveryProgress    `json:"-"`
 }
 
-func (s *sqlExamAttemptStore) AppendNativeDelivery(ctx context.Context, input *store.NativeDeliveryAppend, command *store.CommandIdempotency) (*model.NativeSecurityAcknowledgement, error) {
+func (s *SQLExamAttemptStore) AppendNativeDelivery(ctx context.Context, input *store.NativeDeliveryAppend, command *store.CommandIdempotency) (*model.NativeSecurityAcknowledgement, error) {
 	if input == nil || input.Batch.Validate() != nil || command == nil || command.UserID != input.Access.Access.CandidateUserID || command.Operation != store.NativeDeliveryAppendOperation || !input.AuditEventID.IsValid() || input.AuditAt <= 0 || input.Access.StreamID != input.Batch.StreamID {
 		return nil, store.NewErrInvalidInput("native_delivery", "batch", nil)
 	}

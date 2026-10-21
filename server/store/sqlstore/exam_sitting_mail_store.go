@@ -19,7 +19,7 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-func (s sqlExamSittingStore) GetMailFanout(ctx context.Context, occurrenceID model.MailOccurrenceID) (*store.ExamSittingMailFanoutSnapshot, error) {
+func (s SQLExamSittingStore) GetMailFanout(ctx context.Context, occurrenceID model.MailOccurrenceID) (*store.ExamSittingMailFanoutSnapshot, error) {
 	if !occurrenceID.IsValid() {
 		return nil, store.NewErrInvalidInput("exam_sitting_mail_fanout", "id", nil)
 	}
@@ -80,7 +80,7 @@ func (s sqlExamSittingStore) GetMailFanout(ctx context.Context, occurrenceID mod
 	return snapshot, nil
 }
 
-func (s sqlExamSittingStore) ListMailRecipients(ctx context.Context, request store.ExamSittingMailRecipientPageRequest) (*store.ExamSittingMailRecipientPage, error) {
+func (s SQLExamSittingStore) ListMailRecipients(ctx context.Context, request store.ExamSittingMailRecipientPageRequest) (*store.ExamSittingMailRecipientPage, error) {
 	if !request.OccurrenceID.IsValid() || request.Limit < 1 || request.Limit > model.SittingMailExpansionPageSize ||
 		(!request.AfterUserID.IsZero() && !request.AfterUserID.IsValid()) {
 		return nil, store.NewErrInvalidInput("exam_sitting_mail_fanout", "recipient_page", nil)
@@ -201,7 +201,7 @@ func sittingMailRecipientTemplate(fanout *store.ExamSittingMailFanoutSnapshot, s
 	return ""
 }
 
-func (s sqlExamSittingStore) CommitMailRecipient(ctx context.Context, input *store.ExamSittingMailRecipientCommit) (*store.ExamSittingMailRecipientResult, error) {
+func (s SQLExamSittingStore) CommitMailRecipient(ctx context.Context, input *store.ExamSittingMailRecipientCommit) (*store.ExamSittingMailRecipientResult, error) {
 	if input == nil || !input.OccurrenceID.IsValid() || input.SittingRevision < 1 || input.Recipient == nil ||
 		input.Recipient.Validate() != nil {
 		return nil, store.NewErrInvalidInput("exam_sitting_mail_recipient", "value", nil)
@@ -409,7 +409,7 @@ func lockSittingMailProjection(ctx context.Context, tx *sqlxTxWrapper, sittingID
 	err := tx.Get(ctx, &row, `SELECT desired_occurrence_id,desired_delivery_id,desired_sitting_revision,desired_template_key,
 		communicated_sitting_revision,communicated_template_key,communicated_class_id
 		FROM exam_sitting_mail_recipients WHERE exam_sitting_id=? AND user_id=? FOR UPDATE`, sittingID.String(), userID.String())
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return sittingMailProjectionRow{}, nil
 	}
 	if err != nil {
@@ -671,7 +671,7 @@ func clearExactSittingDesiredDelivery(ctx context.Context, tx *sqlxTxWrapper, fe
 	return nil
 }
 
-func (s sqlExamSittingStore) CompleteMailExpansion(ctx context.Context, input *store.ExamSittingMailExpansionCompletion) (*store.ExamSittingMailFanoutSnapshot, error) {
+func (s SQLExamSittingStore) CompleteMailExpansion(ctx context.Context, input *store.ExamSittingMailExpansionCompletion) (*store.ExamSittingMailFanoutSnapshot, error) {
 	if input == nil || !input.OccurrenceID.IsValid() {
 		return nil, store.NewErrInvalidInput("exam_sitting_mail_fanout", "completion", nil)
 	}
@@ -715,7 +715,7 @@ func (s sqlExamSittingStore) CompleteMailExpansion(ctx context.Context, input *s
 	return result, nil
 }
 
-func (s sqlExamSittingStore) MaintainMailExpansions(ctx context.Context, limit int) (*store.ExamSittingMailMaintenanceResult, error) {
+func (s SQLExamSittingStore) MaintainMailExpansions(ctx context.Context, limit int) (*store.ExamSittingMailMaintenanceResult, error) {
 	if limit < 1 || limit > mailMaintenanceMaximumBatch {
 		return nil, store.NewErrInvalidInput("exam_sitting_mail_fanout", "maintenance", nil)
 	}
@@ -928,7 +928,7 @@ func suppressTerminalSittingMailChildren(ctx context.Context, tx *sqlxTxWrapper,
 	return suppressed, more, nil
 }
 
-func (s sqlExamSittingStore) ListMailReconciliationDue(ctx context.Context,
+func (s SQLExamSittingStore) ListMailReconciliationDue(ctx context.Context,
 	options store.ExamSittingMailReconciliationOptions,
 ) ([]store.ExamSittingMailReconciliationCandidate, error) {
 	if options.Limit < 1 || options.Limit > model.SittingMailExpansionPageSize ||
@@ -1005,7 +1005,7 @@ func sittingMailReconciliationDueSQL(alias string) string {
 			AND u.archived_at IS NULL AND u.disabled_at IS NULL AND u.email_verified=TRUE))`
 }
 
-func (s sqlExamSittingStore) ReconcileMail(ctx context.Context,
+func (s SQLExamSittingStore) ReconcileMail(ctx context.Context,
 	input *store.ExamSittingMailReconciliation,
 ) (*store.ExamSittingMailFanoutSnapshot, error) {
 	if input == nil || !input.SittingID.IsValid() || input.ExpectedRevision < 1 || !input.ActorUserID.IsValid() || input.Mail == nil {

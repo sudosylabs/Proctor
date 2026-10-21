@@ -165,13 +165,13 @@ func TestExamSittingReconciliationAndInvitationAcceptanceShareUserClassLockOrder
 	}
 	defer controller.Close()
 	controllerBackendPID := controllerPID(t, ctx, controller)
-	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_lock(hashtext($1))`, classLifecycleLock); err != nil {
+	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_lock(hashtextextended($1, 0))`, classLifecycleLock); err != nil {
 		t.Fatal(err)
 	}
 	locked := true
 	defer func() {
 		if locked {
-			_, _ = controller.ExecContext(context.Background(), `SELECT pg_advisory_unlock(hashtext($1))`, classLifecycleLock)
+			_, _ = controller.ExecContext(context.Background(), `SELECT pg_advisory_unlock(hashtextextended($1, 0))`, classLifecycleLock)
 		}
 	}()
 	reconcileResult := make(chan error, 1)
@@ -186,7 +186,7 @@ func TestExamSittingReconciliationAndInvitationAcceptanceShareUserClassLockOrder
 		acceptResult <- acceptErr
 	}()
 	_ = waitForBlockedMailQuery(t, ctx, persistence, reconcilePID, "FROM users WHERE email")
-	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_unlock(hashtext($1))`, classLifecycleLock); err != nil {
+	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_unlock(hashtextextended($1, 0))`, classLifecycleLock); err != nil {
 		t.Fatal(err)
 	}
 	locked = false
@@ -252,7 +252,7 @@ func TestDisabledSittingReconciliationAndInvitationAcceptanceUseUserSingletonCla
 		t.Fatal(err)
 	}
 	var classAvailable bool
-	if err = probe.QueryRowContext(ctx, `SELECT pg_try_advisory_xact_lock(hashtext($1))`, classLifecycleLock).Scan(&classAvailable); err != nil {
+	if err = probe.QueryRowContext(ctx, `SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0))`, classLifecycleLock).Scan(&classAvailable); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = probe.ExecContext(ctx, `ROLLBACK`); err != nil {

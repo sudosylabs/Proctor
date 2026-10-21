@@ -299,7 +299,7 @@ func (s SQLProgrammeStore) archiveProgramme(ctx context.Context, id model.Progra
 }
 
 func lockProgrammeLifecycle(ctx context.Context, tx sqlxExecutor) error {
-	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext(?))", programmeLifecycleLock); err != nil {
+	if err := lockAdvisory(ctx, tx, programmeLifecycleLock); err != nil {
 		return fmt.Errorf("lock programme lifecycle: %w", err)
 	}
 	return nil

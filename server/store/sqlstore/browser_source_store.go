@@ -44,7 +44,7 @@ func (r browserSourceRefusalRecord) Validate() error {
 	return nil
 }
 
-func (s *sqlExamAttemptStore) StartBrowserActivity(ctx context.Context, input *store.BrowserActivitySourceStart) (*model.BrowserSourceStatus, error) {
+func (s *SQLExamAttemptStore) StartBrowserActivity(ctx context.Context, input *store.BrowserActivitySourceStart) (*model.BrowserSourceStatus, error) {
 	if input == nil || input.Declaration().Validate() != nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("browser_activity", "source_start", nil)
 	}
@@ -466,7 +466,7 @@ func closeParticipationBrowserSources(ctx context.Context, tx *sqlxTxWrapper, pa
 	return nil
 }
 
-func (s *sqlExamAttemptStore) BrowserSourceStatus(ctx context.Context, access store.BrowserDeliveryAccess) (*model.BrowserSourceStatus, error) {
+func (s *SQLExamAttemptStore) BrowserSourceStatus(ctx context.Context, access store.BrowserDeliveryAccess) (*model.BrowserSourceStatus, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "get Browser source status", func(ctx context.Context, tx *sqlxTxWrapper) (*model.BrowserSourceStatus, error) {
 		if err := s.lockBrowserDelivery(ctx, tx, access); err != nil {
 			return nil, err
@@ -474,7 +474,7 @@ func (s *sqlExamAttemptStore) BrowserSourceStatus(ctx context.Context, access st
 		return browserSourceStatus(ctx, tx, access.SourceSessionID)
 	})
 }
-func (s *sqlExamAttemptStore) BrowserSourceList(ctx context.Context, access store.BrowserDeliveryAccess) ([]model.BrowserSourceStatus, error) {
+func (s *SQLExamAttemptStore) BrowserSourceList(ctx context.Context, access store.BrowserDeliveryAccess) ([]model.BrowserSourceStatus, error) {
 	if !access.ParticipationID.IsValid() {
 		return nil, store.NewErrInvalidInput("browser_activity", "participation_id", nil)
 	}
@@ -517,7 +517,7 @@ func lockBrowserParticipationOwner(ctx context.Context, tx *sqlxTxWrapper, acces
 	}
 	return nil
 }
-func (s *sqlExamAttemptStore) lockBrowserDelivery(ctx context.Context, tx *sqlxTxWrapper, access store.BrowserDeliveryAccess) error {
+func (s *SQLExamAttemptStore) lockBrowserDelivery(ctx context.Context, tx *sqlxTxWrapper, access store.BrowserDeliveryAccess) error {
 	if !access.SourceSessionID.IsValid() {
 		return store.NewErrInvalidInput("browser_activity", "source", nil)
 	}
@@ -592,7 +592,7 @@ func closeSittingBrowserSources(ctx context.Context, tx *sqlxTxWrapper, sittingI
 	}
 }
 
-func (s *sqlExamAttemptStore) ResolveLiveDeliveryTarget(ctx context.Context, access store.CandidateAttemptAccess) (*store.DeliveryOwnerTarget, error) {
+func (s *SQLExamAttemptStore) ResolveLiveDeliveryTarget(ctx context.Context, access store.CandidateAttemptAccess) (*store.DeliveryOwnerTarget, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "resolve Browser source owner", func(ctx context.Context, tx *sqlxTxWrapper) (*store.DeliveryOwnerTarget, error) {
 		guard, err := s.lockCandidateGuard(ctx, tx, access)
 		if err != nil {

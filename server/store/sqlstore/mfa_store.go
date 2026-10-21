@@ -454,11 +454,7 @@ const mfaCredentialSelect = `
 	  FROM mfa_credentials`
 
 func lockMFAUser(ctx context.Context, executor sqlxExecutor, userID string) error {
-	if _, err := executor.Exec(
-		ctx,
-		"SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
-		"proctor:mfa-user:"+userID,
-	); err != nil {
+	if err := lockAdvisory(ctx, executor, advisoryLockKey("mfa-user", userID)); err != nil {
 		return fmt.Errorf("lock MFA user: %w", err)
 	}
 	return nil

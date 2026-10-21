@@ -30,7 +30,7 @@ type connectSecurityAllocation struct {
 	now     time.Time
 }
 
-func (s *sqlExamAttemptStore) prepareConnectSecurity(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptConnect, guard examAttemptAdmissionGuard, attemptID model.ExamAttemptID, generation int64, first bool) (connectSecurityAllocation, error) {
+func (s *SQLExamAttemptStore) prepareConnectSecurity(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptConnect, guard examAttemptAdmissionGuard, attemptID model.ExamAttemptID, generation int64, first bool) (connectSecurityAllocation, error) {
 	var zero connectSecurityAllocation
 	if input.Security.Kind != "preflight" {
 		return zero, preflightConflict("preflight_required")
@@ -235,7 +235,7 @@ func validateSecurityResume(ctx context.Context, tx *sqlxTxWrapper, input *store
 	return nil
 }
 
-func (s *sqlExamAttemptStore) RecoverSecurityPolicy(ctx context.Context, access store.SecurityPreflightAccess, attemptID model.ExamAttemptID) (*store.SecurityPolicyRecovery, error) {
+func (s *SQLExamAttemptStore) RecoverSecurityPolicy(ctx context.Context, access store.SecurityPreflightAccess, attemptID model.ExamAttemptID) (*store.SecurityPolicyRecovery, error) {
 	if !attemptID.IsValid() || !access.CandidateUserID.IsValid() || !access.SessionID.IsValid() || !access.DesktopRegistrationID.IsValid() || !model.IsValidDPoPKeyThumbprint(access.DPoPKeyThumbprint) || access.DesktopBuild.Validate() != nil || access.DesktopBuild.NativeAgreement == nil || access.DesktopCompatibilityPolicyRevision < 1 {
 		return nil, store.NewErrInvalidInput("security_owner", "recovery", nil)
 	}

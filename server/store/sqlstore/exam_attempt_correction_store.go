@@ -44,7 +44,7 @@ func hasPendingCandidateCorrectionCapability(ctx context.Context, executor sqlxE
 	return pending, nil
 }
 
-func (s *sqlExamAttemptStore) ResolveCorrectionAcknowledgementTarget(ctx context.Context, input store.ExamAttemptCorrectionAcknowledgement) (*store.ExamAttemptCorrectionAcknowledgementTarget, error) {
+func (s *SQLExamAttemptStore) ResolveCorrectionAcknowledgementTarget(ctx context.Context, input store.ExamAttemptCorrectionAcknowledgement) (*store.ExamAttemptCorrectionAcknowledgementTarget, error) {
 	if err := validateCorrectionAcknowledgement(&input, false); err != nil {
 		return nil, err
 	}
@@ -53,7 +53,7 @@ func (s *sqlExamAttemptStore) ResolveCorrectionAcknowledgementTarget(ctx context
 	})
 }
 
-func (s *sqlExamAttemptStore) AcknowledgeCorrection(ctx context.Context, input *store.ExamAttemptCorrectionAcknowledgement, command *store.CommandIdempotency) (*store.ExamAttemptCorrectionAcknowledgementResult, error) {
+func (s *SQLExamAttemptStore) AcknowledgeCorrection(ctx context.Context, input *store.ExamAttemptCorrectionAcknowledgement, command *store.CommandIdempotency) (*store.ExamAttemptCorrectionAcknowledgementResult, error) {
 	if err := validateCorrectionAcknowledgement(input, true); err != nil || command == nil {
 		if err != nil {
 			return nil, err
@@ -112,7 +112,7 @@ func validateCorrectionAcknowledgement(input *store.ExamAttemptCorrectionAcknowl
 	return nil
 }
 
-func (s *sqlExamAttemptStore) resolveCorrectionAcknowledgementTarget(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptCorrectionAcknowledgement) (*store.ExamAttemptCorrectionAcknowledgementTarget, error) {
+func (s *SQLExamAttemptStore) resolveCorrectionAcknowledgementTarget(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptCorrectionAcknowledgement) (*store.ExamAttemptCorrectionAcknowledgementTarget, error) {
 	guard, err := s.lockCandidateGuard(ctx, tx, input.Access)
 	if err != nil {
 		return nil, err
@@ -184,9 +184,9 @@ func (s *sqlExamAttemptStore) resolveCorrectionAcknowledgementTarget(ctx context
 		CurrentRevisionID: input.ExpectedCurrentRevisionID}, nil
 }
 
-func (s *sqlExamAttemptStore) acknowledgeCorrection(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptCorrectionAcknowledgement) (*store.ExamAttemptCorrectionAcknowledgementResult, error) {
-	lockKey := "proctor:exam-attempt-correction-acknowledgement:" + input.Access.AttemptID.String()
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(?, 0))`, lockKey); err != nil {
+func (s *SQLExamAttemptStore) acknowledgeCorrection(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptCorrectionAcknowledgement) (*store.ExamAttemptCorrectionAcknowledgementResult, error) {
+	lockKey := advisoryLockKey("exam-attempt-correction-acknowledgement", input.Access.AttemptID.String())
+	if err := lockAdvisory(ctx, tx, lockKey); err != nil {
 		return nil, fmt.Errorf("lock Exam correction acknowledgement: %w", err)
 	}
 	target, err := s.resolveCorrectionAcknowledgementTarget(ctx, tx, input)

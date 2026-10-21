@@ -19,7 +19,7 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-func (s *sqlExamAttemptStore) ListSessionRevocationInvalidationTargets(
+func (s *SQLExamAttemptStore) ListSessionRevocationInvalidationTargets(
 	ctx context.Context,
 	candidateID model.UserID,
 	sessionIDs []model.SessionID,
@@ -99,7 +99,7 @@ type candidateExamActivityRow struct {
 	ReleasedAt              sql.NullTime   `db:"released_at"`
 }
 
-func (s *sqlExamAttemptStore) ListCandidateActivity(ctx context.Context,
+func (s *SQLExamAttemptStore) ListCandidateActivity(ctx context.Context,
 	options store.CandidateExamActivityListOptions,
 ) (*store.CandidateExamActivityPage, error) {
 	desktopSelector := options.DesktopSessionID.IsValid() && options.DesktopRegistrationID.IsValid() &&
@@ -380,7 +380,7 @@ type sittingCandidateStatusRow struct {
 	IntegrityAttention       int64          `db:"integrity_attention_count"`
 }
 
-func (s *sqlExamAttemptStore) ListSittingCandidateStatuses(ctx context.Context,
+func (s *SQLExamAttemptStore) ListSittingCandidateStatuses(ctx context.Context,
 	options store.SittingCandidateStatusListOptions,
 ) (*store.SittingCandidateStatusPage, error) {
 	if !options.ExamID.IsValid() || !options.SittingID.IsValid() || !options.ExcludeCandidateUserID.IsValid() ||

@@ -109,14 +109,14 @@ func TestPersonalAccessTokenPreparationExpiryIsCheckedAfterUserFence(t *testing.
 		t.Fatal(err)
 	}
 	defer controller.Close()
-	const fencePrefix = "personal_access_tokens:user:"
-	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_lock(hashtextextended($1, 0))`, fencePrefix+user.ID.String()); err != nil {
+	fenceKey := advisoryLockKey("personal-access-token-user", user.ID.String())
+	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_lock(hashtextextended($1, 0))`, fenceKey); err != nil {
 		t.Fatal(err)
 	}
 	locked := true
 	defer func() {
 		if locked {
-			_, _ = controller.ExecContext(context.Background(), `SELECT pg_advisory_unlock(hashtextextended($1, 0))`, fencePrefix+user.ID.String())
+			_, _ = controller.ExecContext(context.Background(), `SELECT pg_advisory_unlock(hashtextextended($1, 0))`, fenceKey)
 		}
 	}()
 	var controllerPID int
@@ -133,7 +133,7 @@ func TestPersonalAccessTokenPreparationExpiryIsCheckedAfterUserFence(t *testing.
 	}()
 	_ = waitForBlockedMailQuery(t, ctx, persistence, controllerPID, "pg_advisory_xact_lock")
 	time.Sleep(200 * time.Millisecond)
-	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_unlock(hashtextextended($1, 0))`, fencePrefix+user.ID.String()); err != nil {
+	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_unlock(hashtextextended($1, 0))`, fenceKey); err != nil {
 		t.Fatal(err)
 	}
 	locked = false

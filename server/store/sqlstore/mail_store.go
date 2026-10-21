@@ -501,7 +501,7 @@ func activeRecoveryTokenMail(ctx context.Context, executor sqlxExecutor, deliver
 		WHERE t.id=? AND t.user_id=? AND t.purpose=? AND t.archived_at IS NULL AND t.consumed_at IS NULL
 		  AND t.expires_at>? AND u.archived_at IS NULL AND u.disabled_at IS NULL AND u.email=t.target
 		FOR SHARE OF t,u`, delivery.OccurrenceID.String(), delivery.TargetUserID.String(), purpose, model.TimeUTC(at)); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return false, nil
 		}
 		return false, fmt.Errorf("check recovery mail relevance: %w", err)
@@ -553,7 +553,7 @@ func lockActiveInvitationMail(ctx context.Context, executor sqlxExecutor, invita
 	var currentPermissions pq.StringArray
 	if err := executor.Get(ctx, &currentPermissions, `SELECT permissions FROM roles
 		WHERE id=? AND archived_at IS NULL AND built_in=FALSE FOR SHARE`, invitation.RoleID.String); err != nil {
-		if isNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return false, nil
 		}
 		return false, fmt.Errorf("lock teacher Invitation Role mail lineage: %w", err)

@@ -177,8 +177,8 @@ func completeAuditEvent(
 	var row auditRow
 	err := executor.Get(ctx, &row, `
 		UPDATE audit_events
-		   SET updated_at = GREATEST(updated_at, $1), status = $2, error_code = $3, result = $4
-		 WHERE id = $5 AND status = 'attempt'
+		   SET updated_at = GREATEST(updated_at, ?), status = ?, error_code = ?, result = ?
+		 WHERE id = ? AND status = 'attempt'
 		RETURNING id, created_at, updated_at, actor_id, session_id, action,
 		          resource_type, resource_id, scope_type, scope_id, status,
 		          request_id, node_id, client_type, authentication_method,

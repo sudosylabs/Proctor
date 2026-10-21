@@ -33,7 +33,7 @@ type browserAppendResult struct {
 	Refusal         string
 }
 
-func (s *sqlExamAttemptStore) debitBrowserAppend(ctx context.Context, access store.BrowserDeliveryAccess) error {
+func (s *SQLExamAttemptStore) debitBrowserAppend(ctx context.Context, access store.BrowserDeliveryAccess) error {
 	allowed, err := runSQLTransaction(ctx, s.GetMaster().Begin, "browser append allowance", func(ctx context.Context, tx *sqlxTxWrapper) (bool, error) {
 		if err := s.lockBrowserDelivery(ctx, tx, access); err != nil {
 			return false, err
@@ -65,16 +65,16 @@ func (s *sqlExamAttemptStore) debitBrowserAppend(ctx context.Context, access sto
 	return nil
 }
 
-func (s *sqlExamAttemptStore) AppendBrowserActivity(ctx context.Context, input *store.BrowserActivityAppend) (*model.BrowserActivityAcknowledgement, error) {
+func (s *SQLExamAttemptStore) AppendBrowserActivity(ctx context.Context, input *store.BrowserActivityAppend) (*model.BrowserActivityAcknowledgement, error) {
 	return s.appendBrowserActivity(ctx, input, nil)
 }
-func (s *sqlExamAttemptStore) AppendHistoricalBrowserDelivery(ctx context.Context, input *store.BrowserActivityAppend, command *store.CommandIdempotency) (*model.BrowserActivityAcknowledgement, error) {
+func (s *SQLExamAttemptStore) AppendHistoricalBrowserDelivery(ctx context.Context, input *store.BrowserActivityAppend, command *store.CommandIdempotency) (*model.BrowserActivityAcknowledgement, error) {
 	if input == nil || command == nil || command.Operation != store.BrowserDeliveryAppendOperation || command.UserID != input.Access.CandidateUserID || input.Access.ConnectionID != "" || input.Access.ContinuityCredentialHash != "" {
 		return nil, store.NewErrInvalidInput("browser_delivery", "historical_append", nil)
 	}
 	return s.appendBrowserActivity(ctx, input, command)
 }
-func (s *sqlExamAttemptStore) appendBrowserActivity(ctx context.Context, input *store.BrowserActivityAppend, command *store.CommandIdempotency) (*model.BrowserActivityAcknowledgement, error) {
+func (s *SQLExamAttemptStore) appendBrowserActivity(ctx context.Context, input *store.BrowserActivityAppend, command *store.CommandIdempotency) (*model.BrowserActivityAcknowledgement, error) {
 	if input == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("browser_activity", "append", nil)
 	}

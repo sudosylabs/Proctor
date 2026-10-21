@@ -15,6 +15,7 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -167,7 +168,7 @@ func lockExpectedRoleForBinding(ctx context.Context, tx *sqlxTxWrapper, roleID m
 		UpdatedAt   time.Time      `db:"updated_at"`
 		Permissions pq.StringArray `db:"permissions"`
 	}
-	if err := tx.Get(ctx, &row, `SELECT updated_at,permissions FROM roles WHERE id=$1 AND archived_at IS NULL FOR SHARE`, roleID.String()); err != nil {
+	if err := tx.Get(ctx, &row, `SELECT updated_at,permissions FROM roles WHERE id=? AND archived_at IS NULL FOR SHARE`, roleID.String()); err != nil {
 		return translateError("role", roleID.String(), err)
 	}
 	if !row.UpdatedAt.Equal(model.TimeUTC(expectedUpdatedAt)) || !slices.Equal([]string(row.Permissions), expectedPermissions) {
@@ -231,8 +232,8 @@ func insertRoleBinding(ctx context.Context, tx *sqlxTxWrapper, candidate *model.
 // A historical binding that has already ended cannot confer authority and is
 // therefore outside the fence.
 func guardRoleBindingExamCandidateConflict(ctx context.Context, tx *sqlxTxWrapper, candidate *model.RoleBinding) error {
-	lockKey := "proctor:exam-attempt-admission:" + candidate.UserID.String()
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(?, 0))`, lockKey); err != nil {
+	lockKey := advisoryLockKey("exam-attempt-admission", candidate.UserID.String())
+	if err := lockAdvisory(ctx, tx, lockKey); err != nil {
 		return fmt.Errorf("lock Role Binding candidate fence: %w", err)
 	}
 	var conflicts bool
@@ -280,9 +281,9 @@ func lockRoleBindingGrantTuple(ctx context.Context, tx *sqlxTxWrapper, candidate
 			return err
 		}
 	}
-	lockKey := candidate.UserID.String() + ":" + candidate.RoleID.String() + ":" +
-		string(candidate.ScopeType) + ":" + candidate.ScopeID
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, lockKey); err != nil {
+	lockKey := advisoryLockKey("role-binding-grant", candidate.UserID.String(), candidate.RoleID.String(),
+		string(candidate.ScopeType), candidate.ScopeID)
+	if err := lockAdvisory(ctx, tx, lockKey); err != nil {
 		return fmt.Errorf("lock role binding grant: %w", err)
 	}
 	return nil
@@ -327,7 +328,7 @@ func validateRoleBindingReferences(
 	}
 	for _, check := range checks {
 		var exists bool
-		query := fmt.Sprintf(`SELECT EXISTS (SELECT 1 FROM %s WHERE id = $1 AND archived_at IS NULL)`, check.table)
+		query := fmt.Sprintf(`SELECT EXISTS (SELECT 1 FROM %s WHERE id = ? AND archived_at IS NULL)`, check.table)
 		if err := executor.Get(ctx, &exists, query, check.id); err != nil {
 			return fmt.Errorf("validate role binding reference: %w", err)
 		}
@@ -347,7 +348,7 @@ func validateSystemAdministratorScope(
 	if err := executor.Get(
 		ctx,
 		&roleName,
-		`SELECT name FROM roles WHERE id = $1 AND archived_at IS NULL`,
+		`SELECT name FROM roles WHERE id = ? AND archived_at IS NULL`,
 		binding.RoleID.String(),
 	); err != nil {
 		return translateError("role", binding.RoleID.String(), err)
@@ -567,7 +568,7 @@ func findExactRoleBinding(ctx context.Context, tx sqlxExecutor, candidate *model
 	err := tx.Get(ctx, &row, `SELECT id,created_at,updated_at,archived_at,user_id,role_id,origin_invitation_id,origin_academic_unit_member_id,scope_type,scope_id,start_at,end_at
 		FROM role_bindings WHERE user_id=? AND role_id=? AND scope_type=? AND scope_id=? AND start_at=? AND end_at IS NOT DISTINCT FROM ? AND archived_at IS NULL ORDER BY id LIMIT 1`,
 		candidate.UserID.String(), candidate.RoleID.String(), candidate.ScopeType, candidate.ScopeID, candidate.StartsAt, endAt)
-	if isNoRows(err) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {

@@ -124,7 +124,7 @@ func (s *SQLRetentionStore) CompleteNotice(ctx context.Context, input *store.Ret
 func lockRetentionNoticeMail(ctx context.Context, tx *sqlxTxWrapper, id model.MailDeliveryID) (bool, error) {
 	var retirementID string
 	if err := tx.Get(ctx, &retirementID, `SELECT retirement_id FROM retention_notices WHERE mail_delivery_id=?`, id.String()); err != nil {
-		if isNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return false, nil
 		}
 		return false, err

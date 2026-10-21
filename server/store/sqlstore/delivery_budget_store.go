@@ -103,7 +103,7 @@ func deliveryBudgetSnapshot(ctx context.Context, tx *sqlxTxWrapper, access store
 	}
 	return value, nil
 }
-func (s *sqlExamAttemptStore) DeliveryBudget(ctx context.Context, access store.DeliveryBudgetAccess) (*model.DeliveryBudgetSnapshot, error) {
+func (s *SQLExamAttemptStore) DeliveryBudget(ctx context.Context, access store.DeliveryBudgetAccess) (*model.DeliveryBudgetSnapshot, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "delivery budget", func(ctx context.Context, tx *sqlxTxWrapper) (*model.DeliveryBudgetSnapshot, error) {
 		if err := lockDeliveryParticipationOwner(ctx, tx, access); err != nil {
 			return nil, err
@@ -111,7 +111,7 @@ func (s *sqlExamAttemptStore) DeliveryBudget(ctx context.Context, access store.D
 		return deliveryBudgetSnapshot(ctx, tx, access)
 	})
 }
-func (s *sqlExamAttemptStore) lockDeliveryStop(ctx context.Context, tx *sqlxTxWrapper, access store.CandidateAttemptAccess) (store.DeliveryBudgetAccess, error) {
+func (s *SQLExamAttemptStore) lockDeliveryStop(ctx context.Context, tx *sqlxTxWrapper, access store.CandidateAttemptAccess) (store.DeliveryBudgetAccess, error) {
 	var part string
 	if !access.ConnectionID.IsValid() {
 		return store.DeliveryBudgetAccess{}, store.NewErrInvalidInput("delivery_budget", "connection", nil)
@@ -128,7 +128,7 @@ func (s *sqlExamAttemptStore) lockDeliveryStop(ctx context.Context, tx *sqlxTxWr
 	}
 	return value, nil
 }
-func (s *sqlExamAttemptStore) StopDeliveryDetails(ctx context.Context, input *store.DeliveryDetailsStop, command *store.CommandIdempotency) (*model.StopDeliveryDetailsResult, error) {
+func (s *SQLExamAttemptStore) StopDeliveryDetails(ctx context.Context, input *store.DeliveryDetailsStop, command *store.CommandIdempotency) (*model.StopDeliveryDetailsResult, error) {
 	if input == nil || input.Request.Validate() != nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 || command == nil || command.Operation != store.DeliveryStopDetailsOperation || command.UserID != input.Access.CandidateUserID {
 		return nil, store.NewErrInvalidInput("delivery_budget", "stop", nil)
 	}

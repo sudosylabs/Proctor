@@ -22,11 +22,7 @@ import (
 // servingNodeLeaseFenceKey fences offline administrator recovery against
 // every serving node. Recovery holds it exclusively; node lease writes hold it
 // shared so they exclude recovery without serializing one another.
-const servingNodeLeaseFenceKey = "administrator_recovery:serving_nodes"
-
-// servingNodeLeaseNodeKeyPrefix scopes the per-node advisory key that
-// serializes competing incarnations claiming the same node ID.
-const servingNodeLeaseNodeKeyPrefix = "serving_node_lease:"
+const servingNodeLeaseFenceKey = "proctor:serving-node-lease-fence"
 
 type SQLServingNodeLeaseStore struct{ *SQLStore }
 
@@ -58,7 +54,7 @@ func (s SQLServingNodeLeaseStore) Upsert(ctx context.Context, claim *store.Servi
 			return nil, fmt.Errorf("read serving node lease time: %w", err)
 		}
 		var current servingNodeLeaseRow
-		err := tx.Get(ctx, &current, `SELECT node_id, lease_id, updated_at, expires_at FROM serving_node_leases WHERE node_id=$1`, nodeID)
+		err := tx.Get(ctx, &current, `SELECT node_id, lease_id, updated_at, expires_at FROM serving_node_leases WHERE node_id=?`, nodeID)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("read serving node lease: %w", err)
 		}
@@ -72,7 +68,7 @@ func (s SQLServingNodeLeaseStore) Upsert(ctx context.Context, claim *store.Servi
 		var row servingNodeLeaseRow
 		if err := tx.Get(ctx, &row, `
 			INSERT INTO serving_node_leases (node_id, lease_id, updated_at, expires_at)
-			VALUES ($1, $2, $3, $4)
+			VALUES (?, ?, ?, ?)
 			ON CONFLICT (node_id) DO UPDATE
 			SET lease_id = EXCLUDED.lease_id, updated_at = EXCLUDED.updated_at, expires_at = EXCLUDED.expires_at
 			RETURNING node_id, lease_id, updated_at, expires_at`, nodeID, leaseID, databaseAt, expiresAt); err != nil {
@@ -91,7 +87,7 @@ func (s SQLServingNodeLeaseStore) Delete(ctx context.Context, nodeID, leaseID st
 		if err := lockServingNodeLease(ctx, tx, nodeID); err != nil {
 			return struct{}{}, err
 		}
-		if _, err := tx.Exec(ctx, `DELETE FROM serving_node_leases WHERE node_id=$1 AND lease_id=$2`, nodeID, leaseID); err != nil {
+		if _, err := tx.Exec(ctx, `DELETE FROM serving_node_leases WHERE node_id=? AND lease_id=?`, nodeID, leaseID); err != nil {
 			return struct{}{}, fmt.Errorf("delete serving node lease: %w", err)
 		}
 		return struct{}{}, nil
@@ -102,10 +98,10 @@ func (s SQLServingNodeLeaseStore) Delete(ctx context.Context, nodeID, leaseID st
 // lockServingNodeLease admits one node's lease write: it shares the recovery
 // fence with other nodes and exclusively serializes only the same node ID.
 func lockServingNodeLease(ctx context.Context, tx *sqlxTxWrapper, nodeID string) error {
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock_shared(hashtextextended($1, 0))`, servingNodeLeaseFenceKey); err != nil {
+	if err := lockAdvisoryShared(ctx, tx, servingNodeLeaseFenceKey); err != nil {
 		return fmt.Errorf("lock serving node lease fence: %w", err)
 	}
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, servingNodeLeaseNodeKeyPrefix+nodeID); err != nil {
+	if err := lockAdvisory(ctx, tx, advisoryLockKey("serving-node-lease", nodeID)); err != nil {
 		return fmt.Errorf("lock serving node lease: %w", err)
 	}
 	return nil
@@ -113,7 +109,7 @@ func lockServingNodeLease(ctx context.Context, tx *sqlxTxWrapper, nodeID string)
 
 // lockServingNodeLeaseFence exclusively fences every serving node lease write.
 func lockServingNodeLeaseFence(ctx context.Context, tx *sqlxTxWrapper) error {
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, servingNodeLeaseFenceKey); err != nil {
+	if err := lockAdvisory(ctx, tx, servingNodeLeaseFenceKey); err != nil {
 		return fmt.Errorf("lock serving node lease fence: %w", err)
 	}
 	return nil

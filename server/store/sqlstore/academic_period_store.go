@@ -344,7 +344,7 @@ func (s SQLAcademicPeriodStore) archiveAcademicPeriod(ctx context.Context, id mo
 }
 
 func lockAcademicPeriodLifecycle(ctx context.Context, tx sqlxExecutor) error {
-	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext(?))", academicPeriodLifecycleLock); err != nil {
+	if err := lockAdvisory(ctx, tx, academicPeriodLifecycleLock); err != nil {
 		return fmt.Errorf("lock academic period lifecycle: %w", err)
 	}
 	return nil

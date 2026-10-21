@@ -148,7 +148,7 @@ func lockRetentionAuthority(ctx context.Context, tx *sqlxTxWrapper, input store.
 		AND c.archived_at IS NULL AND c.revoked_at IS NULL AND s.expires_at>? AND s.idle_expires_at>? AND c.expires_at>?
 		AND NOT s.mfa_recovery_required AND s.authentication_generation=COALESCE((SELECT generation FROM user_mfa_recovery WHERE user_id=s.user_id),0)`,
 		input.Principal.SessionID.String(), input.Principal.UserID.String(), input.Principal.CredentialID.String(), at, at, at)
-	if isNoRows(err) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, time.Time{}, store.NewErrConflict("authorization", "credential", nil)
 	}
 	if err != nil {

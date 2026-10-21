@@ -137,7 +137,7 @@ func browserActivityAcknowledgement(ctx context.Context, tx *sqlxTxWrapper, sour
 		MissingRanges: ranges, MissingRangesTruncated: truncated, ServerTime: model.TimeUTC(serverTime)}, nil
 }
 
-func (s *sqlExamAttemptStore) ListBrowserActivity(ctx context.Context, options store.BrowserActivityListOptions) ([]store.BrowserActivityRecord, error) {
+func (s *SQLExamAttemptStore) ListBrowserActivity(ctx context.Context, options store.BrowserActivityListOptions) ([]store.BrowserActivityRecord, error) {
 	if !options.ExamID.IsValid() || !options.SittingID.IsValid() || !options.AttemptID.IsValid() || options.Limit < 1 || options.Limit > 201 ||
 		(options.AfterReceivedAt.IsZero() != !options.AfterSourceID.IsValid()) ||
 		(!options.AfterReceivedAt.IsZero() && options.AfterSequence < 1) {
