@@ -25,8 +25,6 @@ type revokeSessionRequest struct {
 }
 
 func sessionResponsesFromModels(request *http.Request, sessions []*model.Session) []sessionResponse {
-	// Historical self-service listing returns a non-null array body. Prefer
-	// stability over introducing an envelope mid-migration.
 	items := make([]sessionResponse, 0, len(sessions))
 	for _, session := range sessions {
 		if mapped := sessionResponseFromModel(request, session); mapped != nil {
@@ -61,7 +59,23 @@ func (m sessionResourceModule) list(request operationRequest) (operationResult, 
 	if err != nil {
 		return operationResult{}, err
 	}
-	return jsonResult(http.StatusOK, sessionResponsesFromModels(request.request, sessions)), nil
+	presentable := make([]*model.Session, 0, len(sessions))
+	for _, session := range sessions {
+		if sessionResponseFromModel(request.request, session) != nil {
+			presentable = append(presentable, session)
+		}
+	}
+	response, err := boundedListResult(request, "Session", presentable,
+		func(session *model.Session) boundedPageKey {
+			return boundedPageKey{At: session.CreatedAt, ID: session.ID.String()}
+		},
+		func(session *model.Session) sessionResponse {
+			return *sessionResponseFromModel(request.request, session)
+		})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, response), nil
 }
 
 func (m sessionResourceModule) revoke(request operationRequest) (operationResult, error) {

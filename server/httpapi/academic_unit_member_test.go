@@ -27,7 +27,6 @@ type academicUnitMemberHTTPApplication struct {
 	pageResult    *app.AcademicUnitMemberPage
 	result        *model.AcademicUnitMember
 	values        []*model.AcademicUnitMember
-	listQuery     app.ListAcademicUnitMembersQuery
 	createCommand app.CreateAcademicUnitMemberCommand
 	endCommand    app.EndAcademicUnitMemberCommand
 }
@@ -35,37 +34,31 @@ type academicUnitMemberHTTPApplication struct {
 func TestAcademicUnitMemberHistoryQueryIncludesEndedMemberships(t *testing.T) {
 	t.Parallel()
 
-	request := httptest.NewRequestWithContext(t.Context(), "GET", "/api/v1/academic-units/unit/members?active_at=1970-01-01T00:00:00.123Z&history=true", nil)
-	recorder := httptest.NewRecorder()
-	activeAt, ok := queryActiveAt(recorder, request)
-	require.True(t, ok, "query rejected: status=%d body=%s", recorder.Code, recorder.Body.String())
-	require.Equal(t, int64(0), activeAt, "active at")
+	request := httptest.NewRequestWithContext(t.Context(), "GET", "/api/v1/academic-units/unit/members?history=true", nil)
+	query, _, err := membershipPageQuery(request, model.Resource{Type: model.ResourceAcademicUnit, ID: model.NewID()})
+	require.NoError(t, err)
+	require.NotNil(t, query.History)
+	require.True(t, *query.History, "history")
 }
 
 func TestAcademicUnitMemberHistoryQueryRejectsInvalidBoolean(t *testing.T) {
 	t.Parallel()
 
 	request := httptest.NewRequest("GET", "/api/v1/academic-units/unit/members?history=invalid", nil)
-	recorder := httptest.NewRecorder()
-	_, ok := queryActiveAt(recorder, request)
-	require.False(t, ok, "invalid history query was accepted")
-	require.Equal(t, 400, recorder.Code, "status")
+	_, _, err := membershipPageQuery(request, model.Resource{Type: model.ResourceAcademicUnit, ID: model.NewID()})
+	require.Error(t, err, "invalid history query was accepted")
 }
 
 func TestAcademicUnitMemberFalseHistoryQueryUsesActiveAt(t *testing.T) {
 	t.Parallel()
 
 	request := httptest.NewRequestWithContext(t.Context(), "GET", "/api/v1/academic-units/unit/members?history=false&active_at=1970-01-01T00:00:00.123Z", nil)
-	recorder := httptest.NewRecorder()
-	activeAt, ok := queryActiveAt(recorder, request)
-	require.True(t, ok, "active at")
-	require.Equal(t, int64(123), activeAt, "active at")
+	query, _, err := membershipPageQuery(request, model.Resource{Type: model.ResourceAcademicUnit, ID: model.NewID()})
+	require.NoError(t, err)
+	require.NotNil(t, query.ActiveAt)
+	require.Equal(t, int64(123), *query.ActiveAt, "active at")
 }
 
-func (a *academicUnitMemberHTTPApplication) ListAcademicUnitMembers(_ context.Context, _ app.Invocation, query app.ListAcademicUnitMembersQuery) ([]*model.AcademicUnitMember, error) {
-	a.listQuery = query
-	return a.values, nil
-}
 func (a *academicUnitMemberHTTPApplication) CreateAcademicUnitMember(_ context.Context, _ app.Invocation, command app.CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
 	a.createCommand = command
 	return a.result, nil
@@ -101,9 +94,11 @@ func TestAcademicUnitMemberResourceRunsThroughRoutingKernel(t *testing.T) {
 	list.Header.Set("Authorization", "Bearer credential")
 	listed := httptest.NewRecorder()
 	httpAPI.ServeHTTP(listed, list)
-	require.Equal(t, http.StatusOK, listed.Code, "list status/query = %d/%#v: %s", listed.Code, members.listQuery, listed.Body.String())
-	require.Equal(t, model.AcademicUnitID(unitID), members.listQuery.AcademicUnitID, "list status/query = %d/%#v: %s", listed.Code, members.listQuery, listed.Body.String())
-	require.Equal(t, int64(0), members.listQuery.ActiveAt, "list status/query = %d/%#v: %s", listed.Code, members.listQuery, listed.Body.String())
+	require.Equal(t, http.StatusOK, listed.Code, "list status/query = %d/%#v: %s", listed.Code, members.pageQuery, listed.Body.String())
+	require.Equal(t, model.AcademicUnitID(unitID), members.pageQuery.AcademicUnitID)
+	require.NotNil(t, members.pageQuery.History)
+	require.True(t, *members.pageQuery.History, "history listing")
+	require.JSONEq(t, `{"items":[]}`, listed.Body.String(), "empty collection envelope")
 }
 
 func TestAcademicUnitMemberResourceRejectsInvalidQueryAndMissingPrincipal(t *testing.T) {

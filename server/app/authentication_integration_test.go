@@ -1015,7 +1015,7 @@ func decodeAuthenticationResponse(
 func decodeSessionList(t *testing.T, response *httptest.ResponseRecorder) []*model.Session {
 	t.Helper()
 	var wire []*wireSessionResponse
-	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &wire))
+	require.NoError(t, json.Unmarshal(integrationListItems(t, response.Body.Bytes()), &wire))
 	sessions := make([]*model.Session, 0, len(wire))
 	for _, item := range wire {
 		sessions = append(sessions, item.model())

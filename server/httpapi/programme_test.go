@@ -33,8 +33,8 @@ type programmeHTTPApplication struct {
 func (a *programmeHTTPApplication) GetProgramme(context.Context, app.Invocation, app.GetProgrammeQuery) (*model.Programme, error) {
 	return a.result, nil
 }
-func (a *programmeHTTPApplication) ListProgrammes(context.Context, app.Invocation, app.ListProgrammesQuery) ([]*model.Programme, error) {
-	return a.list, nil
+func (a *programmeHTTPApplication) ListProgrammes(context.Context, app.Invocation, app.ListProgrammesQuery) (app.Page[*model.Programme], error) {
+	return app.Page[*model.Programme]{Items: a.list}, nil
 }
 func (a *programmeHTTPApplication) CreateProgramme(_ context.Context, _ app.Invocation, command app.CreateProgrammeCommand) (*model.Programme, error) {
 	a.createCommand = command

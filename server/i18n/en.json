@@ -872,48 +872,48 @@
     "translation": "An exam sitting assignment was removed"
   },
   {
-    "id": "mail.exam.sitting_cancelled.body",
-    "translation": "The scheduled exam sitting shown below was cancelled. Open the Proctor client to review your current examination schedule."
+    "id": "mail.exam.sitting_canceled.body",
+    "translation": "The scheduled exam sitting shown below was canceled. Open the Proctor client to review your current examination schedule."
   },
   {
-    "id": "mail.exam.sitting_cancelled.footer",
+    "id": "mail.exam.sitting_canceled.footer",
     "translation": "This automated message was sent by your Proctor installation. Please do not reply."
   },
   {
-    "id": "mail.exam.sitting_cancelled.heading",
-    "translation": "Exam sitting cancelled"
+    "id": "mail.exam.sitting_canceled.heading",
+    "translation": "Exam sitting canceled"
   },
   {
-    "id": "mail.exam.sitting_cancelled.preheader",
+    "id": "mail.exam.sitting_canceled.preheader",
     "translation": "Your Proctor examination schedule changed."
   },
   {
-    "id": "mail.exam.sitting_cancelled.sitting_schedule.class_label",
+    "id": "mail.exam.sitting_canceled.sitting_schedule.class_label",
     "translation": "Class"
   },
   {
-    "id": "mail.exam.sitting_cancelled.sitting_schedule.ends_at_label",
+    "id": "mail.exam.sitting_canceled.sitting_schedule.ends_at_label",
     "translation": "Ends at"
   },
   {
-    "id": "mail.exam.sitting_cancelled.sitting_schedule.exam_label",
+    "id": "mail.exam.sitting_canceled.sitting_schedule.exam_label",
     "translation": "Exam"
   },
   {
-    "id": "mail.exam.sitting_cancelled.sitting_schedule.starts_at_label",
+    "id": "mail.exam.sitting_canceled.sitting_schedule.starts_at_label",
     "translation": "Starts at"
   },
   {
-    "id": "mail.exam.sitting_cancelled.sitting_schedule.timezone_label",
+    "id": "mail.exam.sitting_canceled.sitting_schedule.timezone_label",
     "translation": "Timezone"
   },
   {
-    "id": "mail.exam.sitting_cancelled.sitting_schedule.timezone_utc",
+    "id": "mail.exam.sitting_canceled.sitting_schedule.timezone_utc",
     "translation": "UTC"
   },
   {
-    "id": "mail.exam.sitting_cancelled.subject",
-    "translation": "An exam sitting was cancelled"
+    "id": "mail.exam.sitting_canceled.subject",
+    "translation": "An exam sitting was canceled"
   },
   {
     "id": "mail.exam.sitting_rescheduled.body",
@@ -2008,20 +2008,20 @@
     "translation": "Cancel request"
   },
   {
-    "id": "webapp.desktop_authorization.cancelled.body",
+    "id": "webapp.desktop_authorization.canceled.body",
     "translation": "This Desktop request can no longer be approved. You can close this page."
   },
   {
-    "id": "webapp.desktop_authorization.cancelled.heading",
-    "translation": "The request was cancelled"
+    "id": "webapp.desktop_authorization.canceled.heading",
+    "translation": "The request was canceled"
   },
   {
-    "id": "webapp.desktop_authorization.cancelled.label",
-    "translation": "Request cancelled"
+    "id": "webapp.desktop_authorization.canceled.label",
+    "translation": "Request canceled"
   },
   {
-    "id": "webapp.desktop_authorization.cancelling",
-    "translation": "Cancelling request…"
+    "id": "webapp.desktop_authorization.canceling",
+    "translation": "Canceling request…"
   },
   {
     "id": "webapp.desktop_authorization.caution",
@@ -2061,7 +2061,7 @@
   },
   {
     "id": "webapp.desktop_authorization.invalid.body",
-    "translation": "It may have expired, been cancelled, or already been used. Start another request from Proctor Desktop."
+    "translation": "It may have expired, been canceled, or already been used. Start another request from Proctor Desktop."
   },
   {
     "id": "webapp.desktop_authorization.invalid.heading",

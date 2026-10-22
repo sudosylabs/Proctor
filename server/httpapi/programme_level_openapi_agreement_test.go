@@ -27,9 +27,10 @@ func TestProgrammeLevelOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Key: "POST /api/v1/programmes/{programme_id}/levels", Auth: AuthPrincipalRequired, RequestBodyRef: "#/components/requestBodies/CreateProgrammeLevel", RequestSchema: "CreateProgrammeLevelRequest", SuccessStatus: "201", SuccessRef: "#/components/responses/ProgrammeLevelCreated", SuccessSchema: "ProgrammeLevelResponse", PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "programme_level.invalid", "programme_level.conflict", "administration.unavailable")},
 			{Key: "GET /api/v1/programme-levels/{programme_level_id}", Auth: AuthPrincipalRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/ProgrammeLevelOK", SuccessSchema: "ProgrammeLevelResponse", PublicErrorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
 			{Key: "PATCH /api/v1/programme-levels/{programme_level_id}", Auth: AuthPrincipalRequired, RequestBodyRef: "#/components/requestBodies/UpdateProgrammeLevel", RequestSchema: "UpdateProgrammeLevelRequest", SuccessStatus: "200", SuccessRef: "#/components/responses/ProgrammeLevelOK", SuccessSchema: "ProgrammeLevelResponse", PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "programme_level.invalid", "programme_level.conflict", "administration.unavailable")},
-			{Key: "DELETE /api/v1/programme-levels/{programme_level_id}", Auth: AuthPrincipalRequired, SuccessStatus: "204", SuccessRef: "#/components/responses/ProgrammeLevelArchived", PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "programme_level.conflict", "administration.unavailable")},
+			{Key: "DELETE /api/v1/programme-levels/{programme_level_id}", Auth: AuthPrincipalRequired, RequestBodyRef: "#/components/requestBodies/ArchiveAcademic", RequestSchema: "ArchiveAcademicRequest", SuccessStatus: "204", SuccessRef: "#/components/responses/ProgrammeLevelArchived", PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "programme_level.conflict", "administration.unavailable")},
 		},
 		Schemas: []openAPIAgreementSchema{
+			{Name: "ArchiveAcademicRequest", DTO: reflect.TypeOf(archiveAcademicRequest{}), NonNullable: []string{"expected_revision"}},
 			{Name: "ProgrammeLevelResponse", DTO: reflect.TypeOf(programmeLevelResponse{}), Required: []string{"revision", "id", "created_at", "updated_at", "programme_id", "name", "display_name", "description"}},
 			{Name: "CreateProgrammeLevelRequest", DTO: reflect.TypeOf(createProgrammeLevelRequest{}), Required: []string{"name", "display_name"}},
 			{Name: "UpdateProgrammeLevelRequest", DTO: reflect.TypeOf(updateProgrammeLevelRequest{}), NonNullable: []string{"expected_revision"}},
@@ -41,9 +42,8 @@ func TestProgrammeLevelOpenAPIAgreesWithRuntime(t *testing.T) {
 	var listOperation openAPIOperation
 	path := model.APIURLSuffix + "/programmes/{programme_id}/levels"
 	require.NoError(t, json.Unmarshal(document.Paths[path]["get"], &listOperation))
-	require.Equal(t, []string{"limit", "q"}, academicStructureQueryParameterNames(listOperation.Parameters), "Programme Level list query parameters")
+	require.Equal(t, []string{"cursor", "limit", "q"}, academicStructureQueryParameterNames(listOperation.Parameters), "Programme Level list query parameters")
 	list := document.Components.Schemas["ProgrammeLevelListResponse"]
-	require.Equal(t, "array", list.Type)
-	require.Equal(t, "#/components/schemas/ProgrammeLevelResponse", list.Items.Ref)
+	requireOpenAPIListEnvelope(t, list, "#/components/schemas/ProgrammeLevelResponse")
 	require.Equal(t, "#/components/headers/NoStore", document.Components.Responses["ProgrammeLevelArchived"].Headers["Cache-Control"].Ref)
 }

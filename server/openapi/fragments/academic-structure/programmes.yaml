@@ -103,8 +103,8 @@ paths:
         "503":
           $ref: '#/components/responses/ServiceUnavailable'
     delete:
-      parameters:
-        - $ref: '#/components/parameters/AcademicExpectedRevision'
+      requestBody:
+        $ref: '#/components/requestBodies/ArchiveAcademic'
       operationId: archiveProgramme
       summary: Archive a Programme that has no active Programme Levels
       tags:

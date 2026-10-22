@@ -32,8 +32,8 @@ func TestAuditListingOpenAPIAgreesWithRuntime(t *testing.T) {
 				Required: []string{"id", "created_at", "updated_at", "action", "resource", "status"},
 			},
 			{
-				Name: "AuditListResponse", DTO: reflect.TypeOf(auditListResponse{}),
-				Required: []string{"events"},
+				Name: "AuditListResponse", DTO: reflect.TypeOf(listResponse[auditEventResponse]{}),
+				Required: []string{"items"},
 			},
 		},
 	}

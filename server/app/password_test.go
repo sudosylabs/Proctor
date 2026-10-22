@@ -88,7 +88,7 @@ func TestPasswordHasherReleasesCapacityAfterMismatch(t *testing.T) {
 	require.NoError(t, hasher.VerifyDummy(context.Background(), "incorrect password"))
 }
 
-func TestPasswordHasherSharesCapacityAndRetainsCancelledWorkUntilReturn(t *testing.T) {
+func TestPasswordHasherSharesCapacityAndRetainsCanceledWorkUntilReturn(t *testing.T) {
 	for _, operation := range []string{"hash", "verify", "verify mismatch", "dummy"} {
 		t.Run(operation, func(t *testing.T) {
 			entered, proceed := make(chan struct{}), make(chan struct{})
@@ -135,7 +135,7 @@ func TestPasswordHasherSharesCapacityAndRetainsCancelledWorkUntilReturn(t *testi
 			cancel()
 			select {
 			case err := <-done:
-				require.FailNow(t, fmt.Sprintf("cancelled password work returned before synchronous work finished: %v", err))
+				require.FailNow(t, fmt.Sprintf("canceled password work returned before synchronous work finished: %v", err))
 			default:
 			}
 			checkBusy()
@@ -143,7 +143,7 @@ func TestPasswordHasherSharesCapacityAndRetainsCancelledWorkUntilReturn(t *testi
 			verifyErr := hasher.Verify(ctx, "malformed", "incorrect password")
 			dummyErr := hasher.VerifyDummy(ctx, "incorrect password")
 			for _, err := range []error{hashErr, verifyErr, dummyErr} {
-				require.ErrorIs(t, err, context.Canceled, "cancelled request")
+				require.ErrorIs(t, err, context.Canceled, "canceled request")
 			}
 			_, err = hasher.Hash(context.Background(), "short")
 			require.True(t, apperror.Is(err, "authentication.password.invalid"), "invalid password consumed capacity: %v", err)
@@ -153,7 +153,7 @@ func TestPasswordHasherSharesCapacityAndRetainsCancelledWorkUntilReturn(t *testi
 			case err := <-done:
 				require.ErrorIs(t, err, context.Canceled)
 			case <-time.After(5 * time.Second):
-				require.FailNow(t, "cancelled password work did not finish")
+				require.FailNow(t, "canceled password work did not finish")
 			}
 			require.NoError(t, hasher.VerifyDummy(context.Background(), "incorrect password"))
 			require.Equal(t, int64(2), recorder.started.Load(), "work metrics = started")
@@ -215,7 +215,7 @@ func testPasswordHashFailures(t *testing.T, unavailableCode string, invoke func(
 		code string
 	}{
 		{name: "busy", err: apperror.New("service.busy"), code: "service.busy"},
-		{name: "cancelled", err: context.Canceled, code: unavailableCode},
+		{name: "canceled", err: context.Canceled, code: unavailableCode},
 		{name: "operational failure", err: errors.New("password work unavailable"), code: unavailableCode},
 		{name: "invalid password", err: apperror.New("authentication.password.invalid"), code: "authentication.password.invalid"},
 	} {

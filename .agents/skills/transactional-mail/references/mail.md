@@ -50,7 +50,7 @@ The initial closed catalog contains these template keys:
 - Examination administration and candidate facts: `exam.manager_added`,
   `exam.manager_removed`, `exam.ownership_transferred_to_you`,
   `exam.ownership_transferred_from_you`, `exam.sitting_scheduled`,
-  `exam.sitting_rescheduled`, `exam.sitting_cancelled`,
+  `exam.sitting_rescheduled`, `exam.sitting_canceled`,
   `exam.sitting_assignment_removed`, `exam.submission_received`,
   `exam.submission_automatically_sealed`, `exam.result_released`, and
   `exam.retention_scheduled`.

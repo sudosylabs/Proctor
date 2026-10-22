@@ -50,7 +50,7 @@ func (a sittingScheduleMailPreparationAdapter) Prepare(ctx context.Context,
 	sitting := &model.ExamSitting{ID: request.SittingID, ExamID: request.ExamID, ExamRevisionID: request.ExamRevisionID,
 		ClassID: request.ClassID, ScheduledStartAt: request.StartsAt, ScheduledEndAt: request.EndsAt,
 		State: model.ExamSittingScheduled, Revision: request.SittingRevision}
-	if request.ChangeKind == store.ExamSittingMailCancelled {
+	if request.ChangeKind == store.ExamSittingMailCanceled {
 		sitting.State = model.ExamSittingCanceled
 		sitting.ReasonCode = model.ExamSittingReasonManagerCanceled
 	}

@@ -93,7 +93,15 @@ func (m affiliationResourceModule) list(request operationRequest) (operationResu
 	if err != nil {
 		return operationResult{}, err
 	}
-	return jsonResult(http.StatusOK, affiliationResponses(values)), nil
+	response, err := boundedListResult(request, "Affiliation", values,
+		func(value *model.Affiliation) boundedPageKey {
+			return boundedPageKey{At: value.CreatedAt, ID: value.ID.String()}
+		},
+		affiliationResponseFromModel)
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, response), nil
 }
 
 func (m affiliationResourceModule) create(request operationRequest) (operationResult, error) {
@@ -146,12 +154,4 @@ func affiliationResponseFromModel(value *model.Affiliation) affiliationResponse 
 		StartAt:    model.FormatRFC3339(value.StartsAt),
 		EndAt:      value.EndsAt.FormatRFC3339(),
 	}
-}
-
-func affiliationResponses(values []*model.Affiliation) []affiliationResponse {
-	result := make([]affiliationResponse, 0, len(values))
-	for _, value := range values {
-		result = append(result, affiliationResponseFromModel(value))
-	}
-	return result
 }

@@ -41,27 +41,6 @@ paths:
           description: Literal case-insensitive substring matched against visible User directory fields.
           schema:
             type: string
-        - name: after_username
-          in: query
-          required: false
-          schema:
-            type: string
-          description: Canonical username from the preceding page; supply together with after_id.
-        - name: after_id
-          in: query
-          required: false
-          schema:
-            type: string
-          description: Stable User identity from the preceding page; supply together with after_username.
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 200
-            default: 100
-          description: Maximum number of visible User profiles to return.
         - name: include_disabled
           in: query
           required: false
@@ -69,6 +48,8 @@ paths:
           schema:
             type: boolean
             default: false
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
       responses:
         "200":
           $ref: '#/components/responses/UserProfileListOK'
@@ -285,7 +266,8 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/UserProfileListResponse'
-          example: []
+          example:
+            items: []
   schemas:
     CurrentUserContextResponse:
       type: object
@@ -389,9 +371,17 @@ components:
           type: string
     UserProfileListResponse:
       description: Visible User profiles ordered by canonical username and identity.
-      type: array
-      items:
-        $ref: '#/components/schemas/UserProfileResponse'
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserProfileResponse'
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'
     UpdateUserProfileRequest:
       description: Partial User presentation update; omitted and explicit null values leave a field unchanged.
       type: object

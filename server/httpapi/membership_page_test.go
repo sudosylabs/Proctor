@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"testing"
 	"time"
 
@@ -22,7 +21,7 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-func TestAcademicUnitMemberHTTPPagingPreservesArrayAndContinuation(t *testing.T) {
+func TestAcademicUnitMemberHTTPPagingUsesTheCollectionEnvelope(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
@@ -40,22 +39,17 @@ func TestAcademicUnitMemberHTTPPagingPreservesArrayAndContinuation(t *testing.T)
 	}
 	response := call(path + "?limit=1")
 	require.Equal(t, http.StatusOK, response.Code, "page status = %d: %s", response.Code, response.Body.String())
-	var result []map[string]any
-	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result), "page did not retain bare array: %s", response.Body.String())
-	require.Len(t, result, 1, "page did not retain bare array: %s", response.Body.String())
-	link := response.Header().Get("Link")
-	require.True(t, strings.HasSuffix(link, `>; rel="next"`), "next Link = %s", link)
-	target := strings.TrimSuffix(strings.TrimPrefix(link, "<"), `>; rel="next"`)
-	next, err := url.Parse(target)
-	require.NoError(t, err, "next URL = %#v", next)
-	require.Empty(t, next.Host, "next URL = %#v", next)
-	require.Equal(t, path, next.Path, "next URL = %#v", next)
-	require.Equal(t, "1970-01-01T00:00:01Z", next.Query().Get("active_at"), "next URL = %#v", next)
-	require.Equal(t, "1", next.Query().Get("limit"), "next URL = %#v", next)
+	result := decodeMembershipPage(t, response)
+	require.Len(t, result.Items, 1, "page: %s", response.Body.String())
+	require.Empty(t, response.Header().Get("Link"), "continuation travels in the body")
+	cursor, err := decodeOpaqueCursor(result.NextCursor, membershipPageCursorSpec())
+	require.NoError(t, err, "next_cursor")
+	require.Equal(t, int64(1000), *cursor.ActiveAt, "continuation freezes the effective instant")
+	target := path + "?limit=1&cursor=" + url.QueryEscape(result.NextCursor)
 	service.pageResult = &app.AcademicUnitMemberPage{ActiveAt: 1000}
 	response = call(target)
 	require.Equal(t, http.StatusOK, response.Code, "final page/query = %d %#v", response.Code, service.pageQuery)
-	require.Empty(t, response.Header().Get("Link"), "final page/query = %d %#v", response.Code, service.pageQuery)
+	require.Empty(t, decodeMembershipPage(t, response).NextCursor, "final page/query = %d %#v", response.Code, service.pageQuery)
 	require.Equal(t, member.ID, service.pageQuery.AfterID, "final page/query = %d %#v", response.Code, service.pageQuery)
 	require.Equal(t, member.UserID, service.pageQuery.AfterUserID, "final page/query = %d %#v", response.Code, service.pageQuery)
 	for _, suffix := range []string{"?limit=0", "?limit=201", "?limit=1&limit=2", "?cursor=", "?limit=1&history=true&active_at=1970-01-01T00:00:01Z", "?limit=1&history=invalid"} {
@@ -64,11 +58,12 @@ func TestAcademicUnitMemberHTTPPagingPreservesArrayAndContinuation(t *testing.T)
 	service.pageResult = &app.AcademicUnitMemberPage{HasMore: true, Members: []*model.AcademicUnitMember{member}}
 	response = call(path + "?limit=1&history=true")
 	require.Equal(t, http.StatusOK, response.Code)
-	require.Contains(t, response.Header().Get("Link"), "history=true")
-	require.NotContains(t, response.Header().Get("Link"), "active_at=")
+	historyCursor, err := decodeOpaqueCursor(decodeMembershipPage(t, response).NextCursor, membershipPageCursorSpec())
+	require.NoError(t, err)
+	require.Equal(t, int64(0), *historyCursor.ActiveAt, "history continuation keeps the history filter")
 }
 
-func TestClassMemberHTTPPagingPreservesArrayAndContinuation(t *testing.T) {
+func TestClassMemberHTTPPagingUsesTheCollectionEnvelope(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
@@ -86,22 +81,17 @@ func TestClassMemberHTTPPagingPreservesArrayAndContinuation(t *testing.T) {
 	}
 	response := call(path + "?limit=1")
 	require.Equal(t, http.StatusOK, response.Code, "page status = %d: %s", response.Code, response.Body.String())
-	var result []map[string]any
-	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result), "page did not retain bare array: %s", response.Body.String())
-	require.Len(t, result, 1, "page did not retain bare array: %s", response.Body.String())
-	link := response.Header().Get("Link")
-	require.True(t, strings.HasSuffix(link, `>; rel="next"`), "next Link = %s", link)
-	target := strings.TrimSuffix(strings.TrimPrefix(link, "<"), `>; rel="next"`)
-	next, err := url.Parse(target)
-	require.NoError(t, err, "next URL = %#v", next)
-	require.Empty(t, next.Host, "next URL = %#v", next)
-	require.Equal(t, path, next.Path, "next URL = %#v", next)
-	require.Equal(t, "1970-01-01T00:00:01Z", next.Query().Get("active_at"), "next URL = %#v", next)
-	require.Equal(t, "1", next.Query().Get("limit"), "next URL = %#v", next)
+	result := decodeMembershipPage(t, response)
+	require.Len(t, result.Items, 1, "page: %s", response.Body.String())
+	require.Empty(t, response.Header().Get("Link"), "continuation travels in the body")
+	cursor, err := decodeOpaqueCursor(result.NextCursor, membershipPageCursorSpec())
+	require.NoError(t, err, "next_cursor")
+	require.Equal(t, int64(1000), *cursor.ActiveAt, "continuation freezes the effective instant")
+	target := path + "?limit=1&cursor=" + url.QueryEscape(result.NextCursor)
 	service.pageResult = &app.ClassMemberPage{ActiveAt: 1000}
 	response = call(target)
 	require.Equal(t, http.StatusOK, response.Code, "final page/query = %d %#v", response.Code, service.pageQuery)
-	require.Empty(t, response.Header().Get("Link"), "final page/query = %d %#v", response.Code, service.pageQuery)
+	require.Empty(t, decodeMembershipPage(t, response).NextCursor, "final page/query = %d %#v", response.Code, service.pageQuery)
 	require.Equal(t, member.ID, service.pageQuery.AfterID, "final page/query = %d %#v", response.Code, service.pageQuery)
 	require.Equal(t, member.UserID, service.pageQuery.AfterUserID, "final page/query = %d %#v", response.Code, service.pageQuery)
 	for _, suffix := range []string{"?limit=0", "?limit=201", "?limit=1&limit=2", "?cursor=", "?limit=1&history=true&active_at=1970-01-01T00:00:01Z", "?limit=1&history=invalid"} {
@@ -110,6 +100,20 @@ func TestClassMemberHTTPPagingPreservesArrayAndContinuation(t *testing.T) {
 	service.pageResult = &app.ClassMemberPage{HasMore: true, Members: []*model.ClassMember{member}}
 	response = call(path + "?limit=1&history=true")
 	require.Equal(t, http.StatusOK, response.Code)
-	require.Contains(t, response.Header().Get("Link"), "history=true")
-	require.NotContains(t, response.Header().Get("Link"), "active_at=")
+	historyCursor, err := decodeOpaqueCursor(decodeMembershipPage(t, response).NextCursor, membershipPageCursorSpec())
+	require.NoError(t, err)
+	require.Equal(t, int64(0), *historyCursor.ActiveAt, "history continuation keeps the history filter")
+}
+
+type membershipPageBody struct {
+	Items      []map[string]any `json:"items"`
+	NextCursor string           `json:"next_cursor"`
+}
+
+func decodeMembershipPage(t *testing.T, response *httptest.ResponseRecorder) membershipPageBody {
+	t.Helper()
+	var page membershipPageBody
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &page), "page envelope: %s", response.Body.String())
+	require.NotNil(t, page.Items, "page envelope: %s", response.Body.String())
+	return page
 }

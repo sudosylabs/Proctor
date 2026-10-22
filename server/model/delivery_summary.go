@@ -20,8 +20,8 @@ type UnretainedDeliverySummary struct {
 	SummarySequence       int64      `json:"summary_sequence"`
 	UnretainedRecordCount int64      `json:"unretained_record_count"`
 	CountComplete         bool       `json:"count_complete"`
-	FirstUnretainedAt     *time.Time `json:"first_unretained_at"`
-	LastUnretainedAt      *time.Time `json:"last_unretained_at"`
+	FirstUnretainedAt     *time.Time `json:"first_unretained_at,omitempty"`
+	LastUnretainedAt      *time.Time `json:"last_unretained_at,omitempty"`
 }
 
 func (s UnretainedDeliverySummary) Validate() error {
@@ -76,8 +76,8 @@ func (s UnretainedDeliverySummary) MarshalJSON() ([]byte, error) {
 	type wire UnretainedDeliverySummary
 	return json.Marshal(struct {
 		*wire
-		FirstUnretainedAt *securityJSONInstant `json:"first_unretained_at"`
-		LastUnretainedAt  *securityJSONInstant `json:"last_unretained_at"`
+		FirstUnretainedAt *securityJSONInstant `json:"first_unretained_at,omitempty"`
+		LastUnretainedAt  *securityJSONInstant `json:"last_unretained_at,omitempty"`
 	}{wire: (*wire)(&s), FirstUnretainedAt: optionalSecurityJSONInstant(s.FirstUnretainedAt, s.firstUnretainedAtSpelling), LastUnretainedAt: optionalSecurityJSONInstant(s.LastUnretainedAt, s.lastUnretainedAtSpelling)})
 }
 func (s *UnretainedDeliverySummary) UnmarshalJSON(raw []byte) error {
@@ -88,8 +88,8 @@ func (s *UnretainedDeliverySummary) UnmarshalJSON(raw []byte) error {
 	var decoded wire
 	value := struct {
 		*wire
-		FirstUnretainedAt *securityJSONInstant `json:"first_unretained_at"`
-		LastUnretainedAt  *securityJSONInstant `json:"last_unretained_at"`
+		FirstUnretainedAt *securityJSONInstant `json:"first_unretained_at,omitempty"`
+		LastUnretainedAt  *securityJSONInstant `json:"last_unretained_at,omitempty"`
 	}{wire: &decoded}
 	if decodeClosedDeliveryDeclaration(raw, &value, 2048) != nil {
 		return ErrDeliveryInvalid

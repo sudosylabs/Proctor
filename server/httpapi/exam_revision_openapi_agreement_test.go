@@ -34,7 +34,7 @@ func TestExamRevisionOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Key: "GET " + member, Auth: AuthPrincipalRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/ExamRevisionOK", SuccessSchema: "ExamRevisionResponse", PublicErrorCodes: readCodes},
 		},
 		Schemas: []openAPIAgreementSchema{
-			{Name: "PublishExamRevisionRequest", DTO: reflect.TypeOf(publishExamRevisionRequest{}), Required: []string{"expected_draft_revision"}},
+			{Name: "PublishExamRevisionRequest", DTO: reflect.TypeOf(publishExamRevisionRequest{}), Required: []string{"expected_revision"}},
 			{Name: "ExamRevisionResponse", DTO: reflect.TypeOf(examRevisionResponse{}), Required: []string{"id", "exam_id", "number", "source_draft_revision", "title", "policy_schema_version", "policy_digest", "capacity", "starter_workspace_digest", "content_digest", "resource_count", "starter_workspace_entry_count", "starter_workspace_total_bytes", "published_by_user_id", "published_at", "publication_kind"}},
 			{Name: "ExamRevisionListResponse", DTO: reflect.TypeOf(examRevisionListResponse{}), Required: []string{"items"}},
 		},

@@ -62,13 +62,13 @@ func (s *academicUnitCreateStore) Archive(
 func (*academicUnitCreateStore) Get(context.Context, model.AcademicUnitID) (*model.AcademicUnit, error) {
 	panic("unexpected Get")
 }
-func (*academicUnitCreateStore) ListChildren(context.Context, model.InstitutionID, model.AcademicUnitID) ([]*model.AcademicUnit, error) {
+func (*academicUnitCreateStore) ListChildren(context.Context, model.InstitutionID, model.AcademicUnitID, store.AcademicNameListOptions) ([]*model.AcademicUnit, error) {
 	panic("unexpected ListChildren")
 }
 func (*academicUnitCreateStore) ListAncestors(context.Context, string) ([]*model.AcademicUnit, error) {
 	panic("unexpected ListAncestors")
 }
-func (*academicUnitCreateStore) Search(context.Context, model.InstitutionID, string, int) ([]*model.AcademicUnit, error) {
+func (*academicUnitCreateStore) Search(context.Context, model.InstitutionID, store.AcademicNameListOptions) ([]*model.AcademicUnit, error) {
 	panic("unexpected Search")
 }
 

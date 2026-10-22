@@ -87,7 +87,7 @@ func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 			Status    model.AuditStatus `json:"status"`
 			RequestID string            `json:"request_id"`
 			NodeID    string            `json:"node_id"`
-		} `json:"events"`
+		} `json:"items"`
 	}
 	require.NoError(t, json.Unmarshal(allowed.Body.Bytes(), &response))
 	require.GreaterOrEqual(t, len(response.Events), 2, "audit events")
@@ -514,7 +514,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	search := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/users?limit=50", nil, login.Tokens.AccessToken)
 	require.Equal(t, http.StatusOK, search.Code, "scoped user search status = %d: %s", search.Code, search.Body.String())
 	var directory []map[string]any
-	require.NoError(t, json.Unmarshal(search.Body.Bytes(), &directory))
+	require.NoError(t, json.Unmarshal(integrationListItems(t, search.Body.Bytes()), &directory))
 	wanted := map[string]bool{
 		unitUser.ID.String(): false, classUser.ID.String(): false, bindingUser.ID.String(): false,
 	}
@@ -555,7 +555,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 		response := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/users?limit=50", nil, credential)
 		require.Equal(t, http.StatusOK, response.Code, "%s class-member search status = %d: %s", label, response.Code, response.Body.String())
 		var users []map[string]any
-		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &users))
+		require.NoError(t, json.Unmarshal(integrationListItems(t, response.Body.Bytes()), &users))
 		seenClassMember := false
 		for _, user := range users {
 			id, _ := user["id"].(string)
@@ -633,7 +633,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 		var users []struct {
 			ID string `json:"id"`
 		}
-		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &users))
+		require.NoError(t, json.Unmarshal(integrationListItems(t, response.Body.Bytes()), &users))
 		for _, user := range users {
 			require.NotEqual(t, unitUser.ID.String(), user.ID, "scoped disabled search %q exposed User", path)
 		}
@@ -668,7 +668,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 				ID         string    `json:"id"`
 				DisabledAt time.Time `json:"disabled_at"`
 			}
-			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &users))
+			require.NoError(t, json.Unmarshal(integrationListItems(t, response.Body.Bytes()), &users))
 			found := false
 			for _, user := range users {
 				if user.ID == unitUser.ID.String() {
@@ -715,7 +715,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	audits := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/audits?limit=100", nil, login.Tokens.AccessToken)
 	require.Equal(t, http.StatusOK, audits.Code, "scoped audit list status = %d: %s", audits.Code, audits.Body.String())
 	var auditBody struct {
-		Events []map[string]any `json:"events"`
+		Events []map[string]any `json:"items"`
 	}
 	require.NoError(t, json.Unmarshal(audits.Body.Bytes(), &auditBody))
 	seenAudits := map[string]bool{}
@@ -752,7 +752,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 		response := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/audits?limit=100", nil, credential)
 		require.Equal(t, http.StatusOK, response.Code, "%s academic audit status = %d: %s", label, response.Code, response.Body.String())
 		var body struct {
-			Events []map[string]any `json:"events"`
+			Events []map[string]any `json:"items"`
 		}
 		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 		seen := map[string]bool{}

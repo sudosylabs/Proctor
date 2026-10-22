@@ -44,7 +44,7 @@ func retentionResource(application RetentionApplication) resource {
 }
 
 type retentionPreviewRequest struct {
-	ExpectedPolicyRevision int64 `json:"expected_policy_revision"`
+	ExpectedPolicyRevision int64 `json:"expected_revision"`
 }
 type retentionControlRequest struct {
 	ExpectedRevision       int64  `json:"expected_revision"`

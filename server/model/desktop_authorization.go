@@ -45,7 +45,7 @@ const (
 	BrowserAuthenticationStateCodeIssued    BrowserAuthenticationState = "code_issued"
 	BrowserAuthenticationStateExchanged     BrowserAuthenticationState = "exchanged"
 	BrowserAuthenticationStateCompleted     BrowserAuthenticationState = "completed"
-	BrowserAuthenticationStateCancelled     BrowserAuthenticationState = "cancelled"
+	BrowserAuthenticationStateCanceled      BrowserAuthenticationState = "canceled"
 	BrowserAuthenticationStateDenied        BrowserAuthenticationState = "denied"
 	BrowserAuthenticationStateExpired       BrowserAuthenticationState = "expired"
 )
@@ -104,7 +104,7 @@ type BrowserAuthenticationTransaction struct {
 	MFACompletedAt             OptionalTime
 	CodeHash                   string `json:"-"`
 	CodeExpiresAt              OptionalTime
-	CancelledAt                OptionalTime
+	CanceledAt                 OptionalTime
 	DeniedAt                   OptionalTime
 	DenialReason               DesktopAuthorizationDenialReason
 	ExchangedAt                OptionalTime
@@ -211,24 +211,24 @@ func (t *BrowserAuthenticationTransaction) Validate() error {
 			t.CodeExpiresAt.Time.After(t.ExpiresAt) || !t.hasNoDesktopTerminal() {
 			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid issued-code state", details)
 		}
-	case BrowserAuthenticationStateCancelled:
+	case BrowserAuthenticationStateCanceled:
 		if t.HandleHash != "" || t.BrowserProofHash != "" || t.StateHash != "" || t.CallbackURL != "" ||
-			t.CodeChallenge != "" || t.CodeHash != "" || t.CodeExpiresAt.Valid || !noProposedKey || !t.CancelledAt.Valid ||
-			!t.hasNoDesktopAuthentication() || t.CancelledAt.Time != t.UpdatedAt || t.DeniedAt.Valid ||
+			t.CodeChallenge != "" || t.CodeHash != "" || t.CodeExpiresAt.Valid || !noProposedKey || !t.CanceledAt.Valid ||
+			!t.hasNoDesktopAuthentication() || t.CanceledAt.Time != t.UpdatedAt || t.DeniedAt.Valid ||
 			t.DenialReason != "" || t.ExchangedAt.Valid || t.ExpiredAt.Valid {
-			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid cancelled state", details)
+			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid canceled state", details)
 		}
 	case BrowserAuthenticationStateDenied:
 		if t.HandleHash != "" || t.BrowserProofHash != "" || t.StateHash != "" || t.CallbackURL != "" ||
 			t.CodeChallenge != "" || t.CodeHash != "" || t.CodeExpiresAt.Valid || !noProposedKey || !t.hasNoDesktopAuthentication() ||
-			t.CancelledAt.Valid || !t.DeniedAt.Valid || t.DeniedAt.Time != t.UpdatedAt ||
+			t.CanceledAt.Valid || !t.DeniedAt.Valid || t.DeniedAt.Time != t.UpdatedAt ||
 			!t.DenialReason.IsValid() || t.ExchangedAt.Valid || t.ExpiredAt.Valid {
 			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid denied state", details)
 		}
 	case BrowserAuthenticationStateExchanged:
 		if t.HandleHash != "" || t.BrowserProofHash != "" || t.StateHash != "" || t.CallbackURL != "" ||
 			t.CodeChallenge != "" || t.CodeHash != "" || t.CodeExpiresAt.Valid || !noProposedKey || !t.hasValidDesktopAuthentication() ||
-			t.CancelledAt.Valid || t.DeniedAt.Valid || t.DenialReason != "" ||
+			t.CanceledAt.Valid || t.DeniedAt.Valid || t.DenialReason != "" ||
 			!t.ExchangedAt.Valid || t.ExchangedAt.Time != t.UpdatedAt || t.ExpiredAt.Valid {
 			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid exchanged state", details)
 		}
@@ -243,7 +243,7 @@ func (t *BrowserAuthenticationTransaction) Validate() error {
 			((t.AuthenticationStrength == AuthenticationSingleFactor && !t.MFACompletedAt.Valid) ||
 				(t.AuthenticationStrength == AuthenticationMultiFactor && t.MFACompletedAt.Valid &&
 					!t.MFACompletedAt.Time.Before(t.AuthenticatedAt.Time) && !t.MFACompletedAt.Time.After(t.UpdatedAt)))
-		if !proofsDestroyed || !noProposedKey || (!noResolvedUser && !resolvedUser) || t.CancelledAt.Valid || t.DeniedAt.Valid || t.DenialReason != "" || t.ExchangedAt.Valid ||
+		if !proofsDestroyed || !noProposedKey || (!noResolvedUser && !resolvedUser) || t.CanceledAt.Valid || t.DeniedAt.Valid || t.DenialReason != "" || t.ExchangedAt.Valid ||
 			!t.ExpiredAt.Valid || !t.ExpiredAt.Time.Equal(t.UpdatedAt) || t.UpdatedAt.After(t.ExpiresAt) ||
 			(noResolvedUser && !t.UpdatedAt.Equal(t.ExpiresAt)) {
 			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid expired state", details)
@@ -282,7 +282,7 @@ func (t *BrowserAuthenticationTransaction) hasValidPasswordProof() bool {
 }
 
 func (t *BrowserAuthenticationTransaction) hasNoDesktopTerminal() bool {
-	return !t.CancelledAt.Valid && !t.DeniedAt.Valid && t.DenialReason == "" &&
+	return !t.CanceledAt.Valid && !t.DeniedAt.Valid && t.DenialReason == "" &&
 		!t.ExchangedAt.Valid && !t.ExpiredAt.Valid
 }
 
@@ -300,23 +300,23 @@ func (t *BrowserAuthenticationTransaction) validateInvitationAcceptance(details 
 	switch t.State {
 	case BrowserAuthenticationStatePending:
 		if !IsValidTokenHash(t.HandleHash) || !IsValidTokenHash(t.BrowserProofHash) ||
-			!IsValidTokenHash(t.InvitationClaimHash) || !t.UserID.IsZero() || t.CancelledAt.Valid ||
+			!IsValidTokenHash(t.InvitationClaimHash) || !t.UserID.IsZero() || t.CanceledAt.Valid ||
 			t.CompletedAt.Valid || t.ExpiredAt.Valid {
 			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid pending invitation state", details)
 		}
 	case BrowserAuthenticationStateCompleted:
 		if t.HandleHash != "" || t.BrowserProofHash != "" || t.InvitationClaimHash != "" || !t.UserID.IsValid() ||
-			t.CancelledAt.Valid || !t.CompletedAt.Valid || !t.CompletedAt.Time.Equal(t.UpdatedAt) || t.ExpiredAt.Valid {
+			t.CanceledAt.Valid || !t.CompletedAt.Valid || !t.CompletedAt.Time.Equal(t.UpdatedAt) || t.ExpiredAt.Valid {
 			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid completed invitation state", details)
 		}
-	case BrowserAuthenticationStateCancelled:
+	case BrowserAuthenticationStateCanceled:
 		if t.HandleHash != "" || t.BrowserProofHash != "" || t.InvitationClaimHash != "" || !t.UserID.IsZero() ||
-			!t.CancelledAt.Valid || !t.CancelledAt.Time.Equal(t.UpdatedAt) || t.CompletedAt.Valid || t.ExpiredAt.Valid {
-			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid cancelled invitation state", details)
+			!t.CanceledAt.Valid || !t.CanceledAt.Time.Equal(t.UpdatedAt) || t.CompletedAt.Valid || t.ExpiredAt.Valid {
+			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid canceled invitation state", details)
 		}
 	case BrowserAuthenticationStateExpired:
 		if t.HandleHash != "" || t.BrowserProofHash != "" || t.InvitationClaimHash != "" || !t.UserID.IsZero() ||
-			t.CancelledAt.Valid || t.CompletedAt.Valid || !t.ExpiredAt.Valid || !t.ExpiredAt.Time.Equal(t.UpdatedAt) ||
+			t.CanceledAt.Valid || t.CompletedAt.Valid || !t.ExpiredAt.Valid || !t.ExpiredAt.Time.Equal(t.UpdatedAt) ||
 			!t.UpdatedAt.Equal(t.ExpiresAt) {
 			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid expired invitation state", details)
 		}
@@ -386,7 +386,7 @@ func (t *BrowserAuthenticationTransaction) Auditable() map[string]any {
 		"created_at":                 MillisFromTime(t.CreatedAt), "updated_at": MillisFromTime(t.UpdatedAt),
 		"expires_at": MillisFromTime(t.ExpiresAt), "authenticated_at": t.AuthenticatedAt.Millis(),
 		"mfa_completed_at": t.MFACompletedAt.Millis(),
-		"code_expires_at":  t.CodeExpiresAt.Millis(), "cancelled_at": t.CancelledAt.Millis(),
+		"code_expires_at":  t.CodeExpiresAt.Millis(), "canceled_at": t.CanceledAt.Millis(),
 		"denied_at": t.DeniedAt.Millis(), "denial_reason": t.DenialReason,
 		"exchanged_at": t.ExchangedAt.Millis(), "completed_at": t.CompletedAt.Millis(), "expired_at": t.ExpiredAt.Millis(),
 	}

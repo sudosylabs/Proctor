@@ -335,7 +335,7 @@ func (s *SQLRetentionStore) ReconcileExpiry(ctx context.Context, input *store.Re
 				if _, err = tx.Exec(ctx, `DELETE FROM retention_expiry_schedules WHERE record_kind=? AND record_id=?`, input.Kind, input.RecordID); err != nil {
 					return nil, err
 				}
-				result.Cancelled = true
+				result.Canceled = true
 				row.ScheduledAt.Valid = false
 			}
 			if permitted {

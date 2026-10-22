@@ -8,6 +8,9 @@
 paths:
   /api/v1/users/me/tokens:
     get:
+      parameters:
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
       operationId: listPersonalAccessTokens
       summary: List current-user Personal Access Tokens
       description: >-
@@ -377,6 +380,15 @@ components:
         credential:
           type: string
     PersonalAccessTokenListResponse:
-      type: array
-      items:
-        $ref: '#/components/schemas/PersonalAccessTokenResponse'
+      description: One page of the collection in its stable order.
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PersonalAccessTokenResponse'
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'

@@ -116,7 +116,7 @@ async function mockProviders(page: Page) {
   await page.route("**/api/v1/auth/providers", async (route) => {
     await route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify(defaultDiscovery.providers),
+      body: JSON.stringify({ items: defaultDiscovery.providers }),
     });
   });
 }
@@ -1118,11 +1118,11 @@ test("Desktop cancellation announces and focuses the replacement task", async ({
 
   const heading = page.getByRole("heading", {
     level: 1,
-    name: "The request was cancelled",
+    name: "The request was canceled",
   });
   await expect(heading).toBeFocused();
   await expect(page.getByRole("status")).toContainText(
-    "The request was cancelled",
+    "The request was canceled",
   );
   await expect(
     page.getByRole("button", { name: "Continue to desktop" }),
@@ -1476,7 +1476,7 @@ test("provider retry announces and focuses the resulting task", async ({
     }
     await route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify(defaultDiscovery.providers),
+      body: JSON.stringify({ items: defaultDiscovery.providers }),
     });
   });
   await page.goto("/account/connect-provider");

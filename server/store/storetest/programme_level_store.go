@@ -118,12 +118,12 @@ func testProgrammeLevelStoreSearchAndArchive(t *testing.T, ss store.Store) {
 	level.DisplayName = "Literal 50%_! Foundation"
 	level, err := UpdateProgrammeLevel(ctx, ss, level)
 	require.NoError(t, err)
-	found, err := ss.ProgrammeLevel().SearchByProgramme(ctx, programme.ID, "foundation", 10)
+	found, err := ss.ProgrammeLevel().SearchByProgramme(ctx, programme.ID, store.AcademicNameListOptions{Term: "foundation", Limit: 10})
 	require.NoError(t, err)
 	require.Len(t, found, 1)
 	require.Equal(t, level.ID, found[0].ID)
 	for _, query := range []string{"LITERAL 50%_!", "%", "_", "!"} {
-		found, err = ss.ProgrammeLevel().SearchByProgramme(ctx, programme.ID, query, 10)
+		found, err = ss.ProgrammeLevel().SearchByProgramme(ctx, programme.ID, store.AcademicNameListOptions{Term: query, Limit: 10})
 		require.NoError(t, err)
 		require.Len(t, found, 1, "SearchByProgramme(%q)", query)
 		require.Equal(t, level.ID, found[0].ID, "SearchByProgramme(%q)", query)
@@ -298,7 +298,7 @@ func testProgrammeLevelStoreSearchLimit(t *testing.T, ss store.Store) {
 	first := saveProgrammeLevel(t, ctx, ss, programme.ID.String(), "bounded-first")
 	saveProgrammeLevel(t, ctx, ss, programme.ID.String(), "bounded-second")
 	for _, term := range []string{"", "  \t", "bounded"} {
-		found, err := ss.ProgrammeLevel().SearchByProgramme(ctx, programme.ID, term, 1)
+		found, err := ss.ProgrammeLevel().SearchByProgramme(ctx, programme.ID, store.AcademicNameListOptions{Term: term, Limit: 1})
 		require.NoError(t, err)
 		require.Len(t, found, 1, "SearchByProgramme(q=%q, limit=1)", term)
 		require.Equal(t, first.ID, found[0].ID, "SearchByProgramme(q=%q, limit=1)", term)

@@ -155,7 +155,7 @@ func TestExamManagerHTTPListAndMutationsUseStrictBoundedContracts(t *testing.T) 
 	httpAPI.ServeHTTP(malformedResponse, malformed)
 	assertHTTPProblem(t, malformedResponse, http.StatusBadRequest, "request.invalid")
 
-	add := httptest.NewRequest(http.MethodPost, "/api/v1/exams/"+view.Exam.ID.String()+"/managers", bytes.NewReader([]byte(`{"user_id":"`+target.String()+`","expected_exam_revision":1}`)))
+	add := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/exams/"+view.Exam.ID.String()+"/managers", bytes.NewReader([]byte(`{"user_id":"`+target.String()+`","expected_revision":1}`)))
 	add.Header.Set("Authorization", "Bearer credential")
 	add.Header.Set("Content-Type", "application/json")
 	add.Header.Set("Idempotency-Key", "add-manager")
@@ -166,7 +166,7 @@ func TestExamManagerHTTPListAndMutationsUseStrictBoundedContracts(t *testing.T) 
 	require.Equal(t, int64(1), fake.managerCommand.ExpectedExamRevision, "add = %d command=%#v body=%s", added.Code, fake.managerCommand, added.Body.String())
 	require.Equal(t, "add-manager", fake.managerCommand.IdempotencyKey, "add = %d command=%#v body=%s", added.Code, fake.managerCommand, added.Body.String())
 
-	invalidDelete := httptest.NewRequest(http.MethodDelete, "/api/v1/exams/"+view.Exam.ID.String()+"/managers/"+target.String(), bytes.NewReader([]byte(`{"expected_exam_revision":2,"unexpected":true}`)))
+	invalidDelete := httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "/api/v1/exams/"+view.Exam.ID.String()+"/managers/"+target.String(), bytes.NewReader([]byte(`{"expected_revision":2,"unexpected":true}`)))
 	invalidDelete.Header.Set("Authorization", "Bearer credential")
 	invalidDelete.Header.Set("Content-Type", "application/json")
 	invalidDelete.Header.Set("Idempotency-Key", "remove-manager")
@@ -197,7 +197,7 @@ func TestExamHTTPArchiveUsesRequiredIdempotentApplicationCommand(t *testing.T) {
 	_ = archived.Archive(time.Now().UTC().Add(time.Minute))
 	fake := &examHTTPApplication{principal: principal, archived: archived}
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examResource(fake))
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/exams/"+view.Exam.ID.String()+"/archive", bytes.NewReader([]byte(`{"expected_exam_revision":1}`)))
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/exams/"+view.Exam.ID.String()+"/archive", bytes.NewReader([]byte(`{"expected_revision":1}`)))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Idempotency-Key", "archive-once")
@@ -231,7 +231,7 @@ func TestExamHTTPPatchDraftPreservesOmittedAndExplicitEmptyFields(t *testing.T) 
 	view := testExamHTTPView(t, principal.UserID)
 	fake := &examHTTPApplication{principal: principal, view: view}
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examResource(fake))
-	request := httptest.NewRequest(http.MethodPatch, "/api/v1/exams/"+view.Exam.ID.String()+"/draft", bytes.NewReader([]byte(`{"expected_draft_revision":1,"instructions_markdown":""}`)))
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/api/v1/exams/"+view.Exam.ID.String()+"/draft", bytes.NewReader([]byte(`{"expected_revision":1,"instructions_markdown":""}`)))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Idempotency-Key", "clear-instructions")
@@ -253,7 +253,7 @@ func TestExamHTTPPatchDraftTreatsNullAsUnchangedAndRequiresAValue(t *testing.T) 
 	view := testExamHTTPView(t, principal.UserID)
 	fake := &examHTTPApplication{principal: principal, view: view}
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examResource(fake))
-	request := httptest.NewRequest(http.MethodPatch, "/api/v1/exams/"+view.Exam.ID.String()+"/draft", bytes.NewReader([]byte(`{"expected_draft_revision":1,"title":null,"instructions_markdown":null}`)))
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/api/v1/exams/"+view.Exam.ID.String()+"/draft", bytes.NewReader([]byte(`{"expected_revision":1,"title":null,"instructions_markdown":null}`)))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Idempotency-Key", "null-fields")
@@ -270,7 +270,7 @@ func TestExamHTTPPatchDraftRequiresIdempotencyKey(t *testing.T) {
 	view := testExamHTTPView(t, principal.UserID)
 	fake := &examHTTPApplication{principal: principal, view: view}
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examResource(fake))
-	request := httptest.NewRequest(http.MethodPatch, "/api/v1/exams/"+view.Exam.ID.String()+"/draft", bytes.NewReader([]byte(`{"expected_draft_revision":1,"title":"Algorithms"}`)))
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/api/v1/exams/"+view.Exam.ID.String()+"/draft", bytes.NewReader([]byte(`{"expected_revision":1,"title":"Algorithms"}`)))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
@@ -286,7 +286,7 @@ func TestExamHTTPConfigureDraftFocusLossUsesTypedApplicationCommand(t *testing.T
 	view := testExamHTTPView(t, principal.UserID)
 	fake := &examHTTPApplication{principal: principal, view: view}
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examResource(fake))
-	request := httptest.NewRequest(http.MethodPut, "/api/v1/exams/"+view.Exam.ID.String()+"/draft/policies/focus-loss", bytes.NewReader([]byte(`{"expected_draft_revision":1,"enabled":false,"minimum_duration_milliseconds":500,"incident_count":1,"window_milliseconds":10000,"outcome":"flag"}`)))
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/api/v1/exams/"+view.Exam.ID.String()+"/draft/policies/focus-loss", bytes.NewReader([]byte(`{"expected_revision":1,"enabled":false,"minimum_duration_milliseconds":500,"incident_count":1,"window_milliseconds":10000,"outcome":"flag"}`)))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Idempotency-Key", "focus-loss-policy")
@@ -309,10 +309,10 @@ func TestExamHTTPConfigureDraftFocusLossRequiresExplicitEnabledAndRejectsRawPoli
 	principal := testExamHTTPPrincipal()
 	view := testExamHTTPView(t, principal.UserID)
 	for name, body := range map[string]string{
-		"enabled omitted":   `{"expected_draft_revision":1,"minimum_duration_milliseconds":500,"incident_count":1,"window_milliseconds":10000,"outcome":"flag"}`,
-		"raw policy member": `{"expected_draft_revision":1,"enabled":true,"minimum_duration_milliseconds":500,"incident_count":1,"window_milliseconds":10000,"outcome":"flag","connection_loss":{"outcome":"flag"}}`,
-		"duplicate enabled": `{"expected_draft_revision":1,"enabled":true,"enabled":false,"minimum_duration_milliseconds":500,"incident_count":1,"window_milliseconds":10000,"outcome":"flag"}`,
-		"duplicate outcome": `{"expected_draft_revision":1,"enabled":true,"minimum_duration_milliseconds":500,"incident_count":1,"window_milliseconds":10000,"outcome":"flag","outcome":"flag_and_suspend"}`,
+		"enabled omitted":   `{"expected_revision":1,"minimum_duration_milliseconds":500,"incident_count":1,"window_milliseconds":10000,"outcome":"flag"}`,
+		"raw policy member": `{"expected_revision":1,"enabled":true,"minimum_duration_milliseconds":500,"incident_count":1,"window_milliseconds":10000,"outcome":"flag","connection_loss":{"outcome":"flag"}}`,
+		"duplicate enabled": `{"expected_revision":1,"enabled":true,"enabled":false,"minimum_duration_milliseconds":500,"incident_count":1,"window_milliseconds":10000,"outcome":"flag"}`,
+		"duplicate outcome": `{"expected_revision":1,"enabled":true,"minimum_duration_milliseconds":500,"incident_count":1,"window_milliseconds":10000,"outcome":"flag","outcome":"flag_and_suspend"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

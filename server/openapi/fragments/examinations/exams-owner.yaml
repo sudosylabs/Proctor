@@ -83,18 +83,18 @@ components:
             $ref: '#/components/schemas/TransferExamOwnershipRequest'
           example:
             user_id: ybndrfg8ejkmcpqxot1uwisza3
-            expected_exam_revision: 5
+            expected_revision: 5
   schemas:
     TransferExamOwnershipRequest:
       type: object
       additionalProperties: false
       required:
         - user_id
-        - expected_exam_revision
+        - expected_revision
       properties:
         user_id:
           $ref: '#/components/schemas/ID'
-        expected_exam_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1

@@ -135,7 +135,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 		Type        string `json:"type"`
 	}
 	require.Equal(t, http.StatusOK, providers.Code, "provider discovery status")
-	require.NoError(t, json.Unmarshal(providers.Body.Bytes(), &providerList), "provider discovery status")
+	require.NoError(t, json.Unmarshal(integrationListItems(t, providers.Body.Bytes()), &providerList), "provider discovery status")
 	require.Len(t, providerList, 3, "provider discovery status")
 	require.NotContains(t, providers.Body.String(), casServer.URL, "provider discovery status")
 

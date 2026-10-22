@@ -133,9 +133,9 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Name: "ExamAttemptConnectionResponse", DTO: reflect.TypeOf(examAttemptConnectionResponse{}), Required: []string{"id", "state", "opened_at"}},
 			{Name: "ExamAttemptSuspensionResponse", DTO: reflect.TypeOf(examAttemptSuspensionResponse{}), Required: []string{"id", "participation_id", "generation", "state", "source", "candidate_reason", "started_at"}},
 			{Name: "ExamAttemptManagerListResponse", DTO: reflect.TypeOf(examAttemptManagerListResponse{}), Required: []string{"items"}},
-			{Name: "ReallowExamAttemptRequest", DTO: reflect.TypeOf(reallowExamAttemptRequest{}), Required: []string{"suspension_id", "expected_attempt_revision", "reason"}},
-			{Name: "EndExamAttemptByManagerRequest", DTO: reflect.TypeOf(endExamAttemptByManagerRequest{}), Required: []string{"expected_attempt_revision", "reason"}},
-			{Name: "SuspendExamAttemptRequest", DTO: reflect.TypeOf(suspendExamAttemptRequest{}), Required: []string{"expected_attempt_revision", "reason"}},
+			{Name: "ReallowExamAttemptRequest", DTO: reflect.TypeOf(reallowExamAttemptRequest{}), Required: []string{"suspension_id", "expected_revision", "reason"}},
+			{Name: "EndExamAttemptByManagerRequest", DTO: reflect.TypeOf(endExamAttemptByManagerRequest{}), Required: []string{"expected_revision", "reason"}},
+			{Name: "SuspendExamAttemptRequest", DTO: reflect.TypeOf(suspendExamAttemptRequest{}), Required: []string{"expected_revision", "reason"}},
 			{Name: "ExamAttemptSuspendResponse", DTO: reflect.TypeOf(examAttemptSuspendResponse{}), Required: []string{"exam_attempt_id", "exam_sitting_id", "state", "attempt_revision", "suspension_id", "suspension_state", "source", "candidate_reason", "suspended_by_user_id", "connection_closed"}},
 			{Name: "ExamAttemptReallowResponse", DTO: reflect.TypeOf(examAttemptReallowResponse{}), Required: []string{"exam_attempt_id", "exam_sitting_id", "state", "attempt_revision", "suspension_id", "suspension_state", "candidate_reason", "reallowed_by_user_id"}},
 			{Name: "CandidateExamPresentationResponse", DTO: reflect.TypeOf(candidateExamPresentationResponse{}), Required: []string{"attempt_id", "exam_sitting_id", "title", "instructions_markdown", "capacity", "candidate_runtime_capabilities", "browser_policy", "live_corrections", "resources"}, Nullable: []string{"browser_policy"}, NonNullable: []string{"live_corrections.acknowledged_at"}},
@@ -152,7 +152,7 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Name: "AttemptConfigurationCandidate", DTO: reflect.TypeOf(model.AttemptConfigurationCandidate{}), Required: []string{"manifest_fingerprint", "registry_fingerprint", "desktop_build", "desktop_target", "user_settings_revision", "presentation", "approved_commands", "approved_keybindings"}},
 			{Name: "CandidateWorkspaceMutationResponse", DTO: reflect.TypeOf(candidateWorkspaceMutationResponse{}), Required: []string{"workspace_id", "workspace_cursor", "operation"}},
 			{Name: "CandidateWorkspaceJournalEntryResponse", DTO: reflect.TypeOf(candidateWorkspaceJournalEntryResponse{}), Required: []string{"cursor", "entry_id", "kind", "operation", "changed_at"}},
-			{Name: "CandidateWorkspaceJournalResponse", DTO: reflect.TypeOf(candidateWorkspaceJournalResponse{}), Required: []string{"workspace_id", "current_cursor", "entries", "has_more", "refresh_required"}},
+			{Name: "CandidateWorkspaceJournalResponse", DTO: reflect.TypeOf(candidateWorkspaceJournalResponse{}), Required: []string{"workspace_id", "current_cursor", "items", "refresh_required"}},
 			{Name: "BrowserActivityListResponse", DTO: reflect.TypeOf(browserActivityListResponse{}), Required: []string{"items"}, Nullable: []string{"items.location", "items.matched_rule_id", "items.block_reason", "items.redirect_from_sequence"}},
 			{Name: "BrowserActivityItemResponse", DTO: reflect.TypeOf(browserActivityItemResponse{}), Required: []string{"source_session_id", "generation", "sequence", "kind", "policy_revision_id", "client_occurred_at", "location", "matched_rule_id", "block_reason", "received_at", "redirect_from_sequence"}, Nullable: []string{"location", "matched_rule_id", "block_reason", "redirect_from_sequence"}},
 			{Name: "SubmitExamAttemptRequest", DTO: reflect.TypeOf(submitExamAttemptRequest{}), Required: []string{"participation_id", "generation", "expected_current_revision_id", "expected_workspace_cursor", "final_focus_loss_sequence"}, NonNullable: []string{"browser_activity.final_sequence"}},
@@ -212,7 +212,7 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 	assertExamAttemptQueryParameters(t, document, managerBase, []string{"state", "limit", "cursor"})
 	assertExamAttemptQueryParameters(t, document, managerBrowserActivity, []string{"limit", "cursor"})
 	assertExamAttemptQueryParameters(t, document, workspace, []string{"limit", "cursor"})
-	assertExamAttemptQueryParameters(t, document, workspaceChanges, []string{"after_cursor", "limit"})
+	assertExamAttemptQueryParameters(t, document, workspaceChanges, []string{"cursor", "limit", "workspace_cursor"})
 	assertExamAttemptQueryParameters(t, document, managerSubmissionManifest, []string{"limit", "cursor"})
 }
 
@@ -229,11 +229,7 @@ func assertExamAttemptQueryParameters(t *testing.T, document openAPIDocument, pa
 	t.Helper()
 	operation := decodeExamContentOpenAPIOperation(t, document, path, "get")
 	got := make([]string, 0, len(operation.Parameters))
-	for _, parameter := range operation.Parameters {
-		if parameter.In == "query" {
-			got = append(got, parameter.Name)
-		}
-	}
+	got = append(got, academicStructureQueryParameterNames(operation.Parameters)...)
 	for _, name := range want {
 		assert.Contains(t, got, name, "GET %s omits query parameter", path)
 	}

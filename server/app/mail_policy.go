@@ -68,7 +68,7 @@ func evaluateMailDeliveryRelevance(_ context.Context, delivery *model.MailDelive
 		model.MailTemplateAuthorizationInstitutionRoleEnded,
 		model.MailTemplateExamSittingScheduled,
 		model.MailTemplateExamSittingRescheduled,
-		model.MailTemplateExamSittingCancelled,
+		model.MailTemplateExamSittingCanceled,
 		model.MailTemplateExamSittingAssignmentRemoved,
 		model.MailTemplateExamManagerAdded,
 		model.MailTemplateExamManagerRemoved,

@@ -194,7 +194,7 @@ type ExamSittingMailChangeKind string
 const (
 	ExamSittingMailScheduled   ExamSittingMailChangeKind = "scheduled"
 	ExamSittingMailRescheduled ExamSittingMailChangeKind = "rescheduled"
-	ExamSittingMailCancelled   ExamSittingMailChangeKind = "cancelled"
+	ExamSittingMailCanceled    ExamSittingMailChangeKind = "canceled"
 	ExamSittingMailReconciled  ExamSittingMailChangeKind = "reconciled"
 )
 

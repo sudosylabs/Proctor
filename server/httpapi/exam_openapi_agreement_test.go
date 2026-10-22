@@ -94,15 +94,15 @@ func TestExamOpenAPIAgreesWithRuntime(t *testing.T) {
 		},
 		Schemas: []openAPIAgreementSchema{
 			{Name: "CreateExamRequest", DTO: reflect.TypeOf(createExamRequest{}), Required: []string{"academic_unit_id", "title"}},
-			{Name: "EditExamDraftTextRequest", DTO: reflect.TypeOf(editExamDraftTextRequest{}), Required: []string{"expected_draft_revision"}},
-			{Name: "ConfigureExamDraftNativePolicyRequest", DTO: reflect.TypeOf(configureExamDraftNativePolicyRequest{}), Required: []string{"expected_draft_revision", "native"}},
+			{Name: "EditExamDraftTextRequest", DTO: reflect.TypeOf(editExamDraftTextRequest{}), Required: []string{"expected_revision"}},
+			{Name: "ConfigureExamDraftNativePolicyRequest", DTO: reflect.TypeOf(configureExamDraftNativePolicyRequest{}), Required: []string{"expected_revision", "native"}},
 			{Name: "NativeSecurityPolicy", DTO: reflect.TypeOf(model.NativeSecurityPolicy{}), Required: []string{"registry_digest", "baseline_id", "families"}},
-			{Name: "ConfigureExamDraftFocusLossRequest", DTO: reflect.TypeOf(configureExamDraftFocusLossRequest{}), Required: []string{"expected_draft_revision", "enabled", "minimum_duration_milliseconds", "incident_count", "window_milliseconds", "outcome"}},
-			{Name: "ConfigureExamDraftBrowserPolicyRequest", DTO: reflect.TypeOf(configureExamDraftBrowserPolicyRequest{}), Required: []string{"expected_draft_revision", "browser_policy"}},
-			{Name: "ArchiveExamRequest", DTO: reflect.TypeOf(archiveExamRequest{}), Required: []string{"expected_exam_revision"}},
-			{Name: "AddExamManagerRequest", DTO: reflect.TypeOf(addExamManagerRequest{}), Required: []string{"user_id", "expected_exam_revision"}},
-			{Name: "RemoveExamManagerRequest", DTO: reflect.TypeOf(removeExamManagerRequest{}), Required: []string{"expected_exam_revision"}},
-			{Name: "TransferExamOwnershipRequest", DTO: reflect.TypeOf(transferExamOwnershipRequest{}), Required: []string{"user_id", "expected_exam_revision"}},
+			{Name: "ConfigureExamDraftFocusLossRequest", DTO: reflect.TypeOf(configureExamDraftFocusLossRequest{}), Required: []string{"expected_revision", "enabled", "minimum_duration_milliseconds", "incident_count", "window_milliseconds", "outcome"}},
+			{Name: "ConfigureExamDraftBrowserPolicyRequest", DTO: reflect.TypeOf(configureExamDraftBrowserPolicyRequest{}), Required: []string{"expected_revision", "browser_policy"}},
+			{Name: "ArchiveExamRequest", DTO: reflect.TypeOf(archiveExamRequest{}), Required: []string{"expected_revision"}},
+			{Name: "AddExamManagerRequest", DTO: reflect.TypeOf(addExamManagerRequest{}), Required: []string{"user_id", "expected_revision"}},
+			{Name: "RemoveExamManagerRequest", DTO: reflect.TypeOf(removeExamManagerRequest{}), Required: []string{"expected_revision"}},
+			{Name: "TransferExamOwnershipRequest", DTO: reflect.TypeOf(transferExamOwnershipRequest{}), Required: []string{"user_id", "expected_revision"}},
 			{Name: "ExamManagerListResponse", DTO: reflect.TypeOf(examManagerListResponse{}), Required: []string{"items"}},
 			{Name: "ExamManagerResponse", DTO: reflect.TypeOf(examManagerResponse{}), Required: []string{"user_id", "granted_by_user_id", "granted_at", "is_creator", "is_owner"}},
 			{Name: "ExamManagerChangeResponse", DTO: reflect.TypeOf(examManagerChangeResponse{}), Required: []string{"exam", "manager"}},
@@ -154,14 +154,14 @@ func TestEditExamDraftTextOpenAPISchemaRequiresANonNullAuthoredValue(t *testing.
 	require.NotNil(t, schema, "EditExamDraftTextRequest schema is missing")
 	require.NotNil(t, schema.Value, "EditExamDraftTextRequest schema is missing")
 	for _, invalid := range []map[string]any{
-		{"expected_draft_revision": float64(1)},
-		{"expected_draft_revision": float64(1), "title": nil, "instructions_markdown": nil},
+		{"expected_revision": float64(1)},
+		{"expected_revision": float64(1), "title": nil, "instructions_markdown": nil},
 	} {
 		require.Error(t, schema.Value.VisitJSON(invalid), "schema accepted %#v", invalid)
 	}
 	for _, valid := range []map[string]any{
-		{"expected_draft_revision": float64(1), "title": "Algorithms"},
-		{"expected_draft_revision": float64(1), "instructions_markdown": ""},
+		{"expected_revision": float64(1), "title": "Algorithms"},
+		{"expected_revision": float64(1), "instructions_markdown": ""},
 	} {
 		require.NoError(t, schema.Value.VisitJSON(valid), "schema rejected %#v", valid)
 	}

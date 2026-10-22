@@ -39,7 +39,7 @@ func TestSittingMailPreparerFreezesAllFourSafeRenderVariants(t *testing.T) {
 	opened, err := preparer.OpenBundle(prepared.Bundle)
 	require.NoError(t, err, "opened bundle=(%#v,%v)", opened, err)
 	require.Len(t, opened.Messages, 1, "opened bundle=(%#v,%v)", opened, err)
-	require.NotEmpty(t, opened.Messages["en"][model.MailTemplateExamSittingCancelled].Subject, "opened bundle=(%#v,%v)", opened, err)
+	require.NotEmpty(t, opened.Messages["en"][model.MailTemplateExamSittingCanceled].Subject, "opened bundle=(%#v,%v)", opened, err)
 }
 
 type sittingMailRendererFake struct{}

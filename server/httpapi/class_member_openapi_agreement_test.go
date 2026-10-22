@@ -79,6 +79,5 @@ func TestClassMemberOpenAPIAgreesWithRuntime(t *testing.T) {
 
 	// This v1 relationship collection remains a legacy bare array.
 	list := document.Components.Schemas["ClassMemberListResponse"]
-	require.Equal(t, "array", list.Type)
-	require.Equal(t, "#/components/schemas/ClassMemberResponse", list.Items.Ref)
+	requireOpenAPIListEnvelope(t, list, "#/components/schemas/ClassMemberResponse")
 }

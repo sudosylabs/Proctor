@@ -53,6 +53,5 @@ func TestAffiliationOpenAPIAgreesWithRuntime(t *testing.T) {
 	// not an ordinary DTO contract and not a pattern for new collection routes.
 	document := readOpenAPIDocument(t)
 	list := document.Components.Schemas["AffiliationListResponse"]
-	require.Equal(t, "array", list.Type)
-	require.Equal(t, "#/components/schemas/AffiliationResponse", list.Items.Ref)
+	requireOpenAPIListEnvelope(t, list, "#/components/schemas/AffiliationResponse")
 }

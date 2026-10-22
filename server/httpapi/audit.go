@@ -55,11 +55,6 @@ type auditResourceResponse struct {
 	ID   string             `json:"id"`
 }
 
-type auditListResponse struct {
-	Events     []auditEventResponse `json:"events"`
-	NextCursor string               `json:"next_cursor,omitempty"`
-}
-
 func auditEventResponseFromModel(event *model.AuditEvent) auditEventResponse {
 	return auditEventResponse{
 		ID: event.ID.String(), CreatedAt: model.FormatRFC3339(event.CreatedAt),
@@ -99,9 +94,9 @@ func (m auditResourceModule) list(request operationRequest) (operationResult, er
 	if listErr != nil {
 		return operationResult{}, listErr
 	}
-	response := auditListResponse{Events: make([]auditEventResponse, 0, len(events))}
+	response := listResponse[auditEventResponse]{Items: make([]auditEventResponse, 0, len(events))}
 	for _, event := range events {
-		response.Events = append(response.Events, auditEventResponseFromModel(event))
+		response.Items = append(response.Items, auditEventResponseFromModel(event))
 	}
 	if len(events) == query.Limit {
 		last := events[len(events)-1]

@@ -94,25 +94,29 @@ func academicPeriodResource(academicPeriods AcademicPeriodApplication) resource 
 }
 
 func (m academicPeriodResourceModule) list(request operationRequest) (operationResult, error) {
-	limit, err := request.queryLimit()
+	paging, err := request.pageRequest()
 	if err != nil {
 		return operationResult{}, err
 	}
-	periods, err := m.academicPeriods.ListAcademicPeriods(
-		request.context,
-		request.invocation(),
-		app.ListAcademicPeriodsQuery{
-			Query: request.request.URL.Query().Get("q"), Limit: limit,
-		},
-	)
+	cursor, present, err := decodePageCursor(paging, academicPeriodCursorSpec())
 	if err != nil {
 		return operationResult{}, err
 	}
-	responses := make([]academicPeriodResponse, 0, len(periods))
-	for _, period := range periods {
-		responses = append(responses, academicPeriodResponseFromModel(period))
+	query := app.ListAcademicPeriodsQuery{Query: request.request.URL.Query().Get("q"), Limit: paging.Limit}
+	if present {
+		query.AfterStartAt, query.AfterName, query.AfterID = academicPeriodCursorStart(cursor), cursor.Name, model.AcademicPeriodID(cursor.ID)
 	}
-	return jsonResult(http.StatusOK, responses), nil
+	page, err := m.academicPeriods.ListAcademicPeriods(request.context, request.invocation(), query)
+	if err != nil {
+		return operationResult{}, err
+	}
+	response, err := newListResponse(page.Items, page.HasMore, academicPeriodResponseFromModel, func(last *model.AcademicPeriod) (string, error) {
+		return encodeOpaqueCursor(academicPeriodCursor{StartAt: model.FormatRFC3339(last.StartsAt), Name: last.Name, ID: last.ID.String()}, academicPeriodCursorSpec())
+	})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, response), nil
 }
 
 func (m academicPeriodResourceModule) create(request operationRequest) (operationResult, error) {

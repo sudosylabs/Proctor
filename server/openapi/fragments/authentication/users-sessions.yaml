@@ -191,6 +191,9 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/users/me/sessions:
     get:
+      parameters:
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
       operationId: listCurrentUserSessions
       summary: List the current user's sessions
       description: >-
@@ -469,9 +472,18 @@ components:
           type: string
           description: Opaque continuation for the next page, omitted after the final page.
     SessionListResponse:
-      type: array
-      items:
-        $ref: '#/components/schemas/SessionResponse'
+      description: One page of the collection in its stable order.
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionResponse'
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'
     RevokeSessionRequest:
       type: object
       additionalProperties: false

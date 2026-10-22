@@ -133,7 +133,7 @@ func TestMFAAssistedResetAtomicRetirementAndRestrictedReenrollment(t *testing.T)
 	require.NoError(t, err)
 	retiredDesktop, err := desktopRow.model()
 	require.NoError(t, err, "unfinished Desktop proof survived: %#v", retiredDesktop)
-	require.Equal(t, model.BrowserAuthenticationStateCancelled, retiredDesktop.State, "unfinished Desktop proof survived: %#v", retiredDesktop)
+	require.Equal(t, model.BrowserAuthenticationStateCanceled, retiredDesktop.State, "unfinished Desktop proof survived: %#v", retiredDesktop)
 	var preparations int
 	err = s.GetMaster().Get(ctx, &preparations, `SELECT count(*) FROM personal_access_token_mutation_preparations WHERE id=?`, patPreparation.ID)
 	require.NoError(t, err, "unfinished PAT survived")

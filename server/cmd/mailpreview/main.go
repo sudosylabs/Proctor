@@ -92,7 +92,7 @@ func run(args []string, stderr io.Writer) error {
 			request.ActionURL = ""
 		case model.MailTemplateExamSittingScheduled,
 			model.MailTemplateExamSittingRescheduled,
-			model.MailTemplateExamSittingCancelled,
+			model.MailTemplateExamSittingCanceled,
 			model.MailTemplateExamSittingAssignmentRemoved:
 			request.Presentation = appmail.SittingScheduleDetails{
 				ExamTitle: "Representative programming exam", ClassDisplayName: "Year 2 · Class A",

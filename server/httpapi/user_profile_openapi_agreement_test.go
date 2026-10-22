@@ -173,8 +173,7 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 	assertOpenAPIIfMatchForProfile(t, "DELETE "+picturePath, remove, true)
 
 	list := document.Components.Schemas["UserProfileListResponse"]
-	require.Equal(t, "array", list.Type)
-	require.Equal(t, "#/components/schemas/UserProfileResponse", list.Items.Ref)
+	requireOpenAPIListEnvelope(t, list, "#/components/schemas/UserProfileResponse")
 }
 
 func decodeOpenAPIOperationForProfile(

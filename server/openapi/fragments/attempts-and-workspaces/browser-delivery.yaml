@@ -65,6 +65,8 @@ paths:
           description: Owned Participation whose bounded source inventory is requested.
           schema:
             $ref: '#/components/schemas/ID'
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
       responses:
         '200':
           $ref: '#/components/responses/BrowserSourceListOK'
@@ -513,7 +515,7 @@ paths:
       summary: Read bounded per-event Browser receipts
       description: >-
         Return up to 64 retained receipts in ascending sequence order, omitting missing positions.
-        next_sequence is the first retained sequence on the next page or null. Response is bounded at 16 KiB;
+        next_cursor continues at the next retained receipt and is omitted on the last page. Response is bounded at 16 KiB;
         current registered-key ownership and live Connection rules apply.
       tags:
         - Attempts and workspaces
@@ -558,23 +560,16 @@ paths:
       parameters:
         - $ref: '#/components/parameters/NativeDeliveryCredential'
         - $ref: '#/components/parameters/NativeDeliveryConnectionID'
-        - name: first_sequence
-          in: query
-          required: true
-          description: First sequence to examine, inclusive.
-          schema:
-            type: integer
-            format: int64
-            minimum: 1
-            maximum: 50000
         - name: limit
           in: query
-          required: true
-          description: Maximum number of retained receipts.
+          required: false
+          description: Maximum number of retained receipts in the page.
           schema:
             type: integer
             minimum: 1
             maximum: 64
+            default: 64
+        - $ref: '#/components/parameters/PageCursor'
       responses:
         '200':
           $ref: '#/components/responses/BrowserReceiptPageOK'
@@ -694,8 +689,6 @@ components:
             - summary_sequence
             - unretained_record_count
             - count_complete
-            - first_unretained_at
-            - last_unretained_at
           properties:
             summary_sequence:
               type: integer
@@ -710,14 +703,10 @@ components:
             count_complete:
               type: boolean
             first_unretained_at:
-              type:
-                - string
-                - 'null'
+              type: string
               format: date-time
             last_unretained_at:
-              type:
-                - string
-                - 'null'
+              type: string
               format: date-time
         highest_contiguous_sequence:
           type: integer
@@ -799,13 +788,15 @@ components:
       type: object
       additionalProperties: false
       required:
-        - sources
+        - items
       properties:
-        sources:
+        items:
           type: array
-          maxItems: 49
+          maxItems: 200
           items:
             $ref: '#/components/schemas/BrowserSourceStatus'
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'
     BrowserEventReceipt:
       type: object
       additionalProperties: false
@@ -891,21 +882,15 @@ components:
       type: object
       additionalProperties: false
       required:
-        - receipts
-        - next_sequence
+        - items
       properties:
-        receipts:
+        items:
           type: array
           maxItems: 64
           items:
             $ref: '#/components/schemas/BrowserEventReceipt'
-        next_sequence:
-          type:
-            - integer
-            - 'null'
-          format: int64
-          minimum: 1
-          maximum: 50000
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'
     BrowserDeliveryGapResult:
       type: object
       additionalProperties: false

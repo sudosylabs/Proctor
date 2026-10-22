@@ -543,7 +543,7 @@ components:
       additionalProperties: false
       required:
         - declaration_id
-        - expected_declaration_revision
+        - expected_revision
         - allocated_through_sequence
         - ranges
         - reason
@@ -553,7 +553,7 @@ components:
           minLength: 1
           maxLength: 128
           pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
-        expected_declaration_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 0
@@ -607,7 +607,7 @@ components:
       additionalProperties: false
       required:
         - declaration_id
-        - expected_declaration_revision
+        - expected_revision
         - final_sequence
       properties:
         declaration_id:
@@ -615,7 +615,7 @@ components:
           minLength: 1
           maxLength: 128
           pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
-        expected_declaration_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 0
@@ -628,25 +628,18 @@ components:
     DeliveryClosure:
       type: object
       additionalProperties: false
+      description: >-
+        Delivery closure. An open delivery carries only unknown_tail false; a closed one carries
+        closed_at, close_reason, known_at_close and upload_expires_at, plus the final sequence,
+        declaration and boundary origin when they are known. Absent members are omitted, never null.
       required:
-        - closed_at
-        - close_reason
-        - known_at_close
-        - final_sequence
-        - final_declaration_id
-        - final_boundary_origin
         - unknown_tail
-        - upload_expires_at
       properties:
         closed_at:
-          type:
-            - string
-            - 'null'
+          type: string
           format: date-time
         close_reason:
-          type:
-            - string
-            - 'null'
+          type: string
           enum:
             - submission
             - suspension
@@ -657,42 +650,30 @@ components:
             - policy_correction
             - runtime_reset
             - browser_disabled
-            - null
         known_at_close:
-          type:
-            - integer
-            - 'null'
+          type: integer
           format: int64
           minimum: 0
           maximum: 9007199254740991
         final_sequence:
-          type:
-            - integer
-            - 'null'
+          type: integer
           format: int64
           minimum: 0
           maximum: 9007199254740991
         final_declaration_id:
-          type:
-            - string
-            - 'null'
+          type: string
           minLength: 1
           maxLength: 128
           pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
         final_boundary_origin:
-          type:
-            - string
-            - 'null'
+          type: string
           enum:
             - client_declared
             - server_known
-            - null
         unknown_tail:
           type: boolean
         upload_expires_at:
-          type:
-            - string
-            - 'null'
+          type: string
           format: date-time
     UnretainedDeliverySummary:
       type: object
@@ -701,8 +682,6 @@ components:
         - summary_sequence
         - unretained_record_count
         - count_complete
-        - first_unretained_at
-        - last_unretained_at
       properties:
         summary_sequence:
           type: integer
@@ -717,14 +696,10 @@ components:
         count_complete:
           type: boolean
         first_unretained_at:
-          type:
-            - string
-            - 'null'
+          type: string
           format: date-time
         last_unretained_at:
-          type:
-            - string
-            - 'null'
+          type: string
           format: date-time
     NativeBatchReceipt:
       type: object
@@ -851,8 +826,6 @@ components:
             - summary_sequence
             - unretained_record_count
             - count_complete
-            - first_unretained_at
-            - last_unretained_at
           properties:
             summary_sequence:
               type: integer
@@ -867,14 +840,10 @@ components:
             count_complete:
               type: boolean
             first_unretained_at:
-              type:
-                - string
-                - 'null'
+              type: string
               format: date-time
             last_unretained_at:
-              type:
-                - string
-                - 'null'
+              type: string
               format: date-time
     NativeSourceRange:
       type: object
@@ -1308,7 +1277,7 @@ components:
             $ref: '#/components/schemas/DeclareDeliveryGaps'
           example:
             declaration_id: loss-0001
-            expected_declaration_revision: 0
+            expected_revision: 0
             allocated_through_sequence: 4
             ranges:
               - first: 2
@@ -1325,7 +1294,7 @@ components:
             $ref: '#/components/schemas/FinalDeliveryDeclaration'
           example:
             declaration_id: final-0001
-            expected_declaration_revision: 1
+            expected_revision: 1
             final_sequence: 4
     UnretainedDeliverySummary:
       description: >-

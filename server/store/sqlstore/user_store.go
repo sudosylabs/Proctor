@@ -294,7 +294,7 @@ func (s SQLUserStore) List(
 	ctx context.Context,
 	options store.UserListOptions,
 ) ([]*model.User, error) {
-	if options.Limit < 1 || options.Limit > 200 ||
+	if options.Limit < 1 || options.Limit > 201 ||
 		(options.ID != "" && !options.ID.IsValid()) ||
 		(options.AfterUsername == "") != (options.AfterID == "") ||
 		(options.AfterID != "" && !options.AfterID.IsValid()) ||

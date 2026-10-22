@@ -188,9 +188,9 @@ func (a *loginRevisionHTTPApplication) Login(
 	}, nil
 }
 
-func (a *userProfileHTTPApplication) SearchUsers(_ context.Context, _ app.Invocation, query app.SearchUsersQuery) ([]*model.User, error) {
+func (a *userProfileHTTPApplication) SearchUsers(_ context.Context, _ app.Invocation, query app.SearchUsersQuery) (app.Page[*model.User], error) {
 	a.searchQuery = query
-	return a.values, nil
+	return app.Page[*model.User]{Items: a.values}, nil
 }
 func (a *userProfileHTTPApplication) GetUserProfile(context.Context, app.Invocation, app.GetUserProfileQuery) (*model.User, error) {
 	return a.result, nil

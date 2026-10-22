@@ -10,6 +10,9 @@ paths:
     parameters:
       - $ref: '#/components/parameters/ExamID'
     get:
+      parameters:
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
       operationId: listExamDraftStarterWorkspace
       summary: List the complete Starter Workspace manifest for an Exam Draft
       description: >-
@@ -134,7 +137,7 @@ paths:
             curl --request POST \
               --header "Authorization: Bearer $PROCTOR_TOKEN" \
               --header "Idempotency-Key: starter-file-create-001" \
-              --form 'metadata={"expected_draft_revision":3,"path":"starter/main.go","media_type":"text/plain","size":128,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"};type=application/json' \
+              --form 'metadata={"expected_revision":3,"path":"starter/main.go","media_type":"text/plain","size":128,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"};type=application/json' \
               --form 'content=@./main.go;type=application/octet-stream' \
               https://proctor.example.edu/api/v1/exams/ybndrfg8ejkmcpqxot1uwisza3/draft/starter-workspace/files
       tags:
@@ -408,7 +411,7 @@ paths:
             curl --request PUT \
               --header "Authorization: Bearer $PROCTOR_TOKEN" \
               --header "Idempotency-Key: starter-file-replace-002" \
-              --form 'metadata={"expected_draft_revision":4,"expected_content_version":"ybndrfg8ejkmcpqxot1uwisza4","media_type":"text/plain","size":192,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"};type=application/json' \
+              --form 'metadata={"expected_revision":4,"expected_content_version":"ybndrfg8ejkmcpqxot1uwisza4","media_type":"text/plain","size":192,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"};type=application/json' \
               --form 'content=@./main.go;type=application/octet-stream' \
               https://proctor.example.edu/api/v1/exams/ybndrfg8ejkmcpqxot1uwisza3/draft/starter-workspace/files/ybndrfg8ejkmcpqxot1uwisza5/content
       tags:
@@ -501,7 +504,7 @@ components:
           schema:
             $ref: '#/components/schemas/CreateExamStarterWorkspaceDirectoryRequest'
           example:
-            expected_draft_revision: 2
+            expected_revision: 2
             path: starter/tests
     MoveExamStarterWorkspaceEntry:
       required: true
@@ -511,7 +514,7 @@ components:
           schema:
             $ref: '#/components/schemas/MoveExamStarterWorkspaceEntryRequest'
           example:
-            expected_draft_revision: 5
+            expected_revision: 5
             path: starter/src/main.go
     RemoveExamStarterWorkspaceEntry:
       required: true
@@ -521,7 +524,7 @@ components:
           schema:
             $ref: '#/components/schemas/RemoveExamStarterWorkspaceEntryRequest'
           example:
-            expected_draft_revision: 6
+            expected_revision: 6
   responses:
     ExamStarterWorkspaceEntryOK:
       description: Exam Draft Starter Workspace entry changed
@@ -593,10 +596,10 @@ components:
       type: object
       additionalProperties: false
       required:
-        - expected_draft_revision
+        - expected_revision
         - path
       properties:
-        expected_draft_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1
@@ -606,13 +609,13 @@ components:
       type: object
       additionalProperties: false
       required:
-        - expected_draft_revision
+        - expected_revision
         - path
         - media_type
         - size
         - sha256
       properties:
-        expected_draft_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1
@@ -634,13 +637,13 @@ components:
       type: object
       additionalProperties: false
       required:
-        - expected_draft_revision
+        - expected_revision
         - expected_content_version
         - media_type
         - size
         - sha256
       properties:
-        expected_draft_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1
@@ -690,10 +693,10 @@ components:
       type: object
       additionalProperties: false
       required:
-        - expected_draft_revision
+        - expected_revision
         - path
       properties:
-        expected_draft_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1
@@ -703,9 +706,9 @@ components:
       type: object
       additionalProperties: false
       required:
-        - expected_draft_revision
+        - expected_revision
       properties:
-        expected_draft_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1
@@ -849,3 +852,5 @@ components:
           maxItems: 500
           items:
             $ref: '#/components/schemas/ExamStarterWorkspaceListItemResponse'
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'

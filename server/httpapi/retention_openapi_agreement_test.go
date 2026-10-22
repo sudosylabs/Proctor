@@ -32,7 +32,7 @@ func TestRetentionOpenAPIAgreesWithRuntime(t *testing.T) {
 		},
 		Schemas: []openAPIAgreementSchema{
 			{Name: "RetentionControlRequest", DTO: reflect.TypeOf(retentionControlRequest{}), Required: []string{"expected_revision", "expected_policy_revision", "state"}, NonNullable: []string{"expected_revision", "expected_policy_revision", "state", "preview_id"}},
-			{Name: "RetentionPreviewRequest", DTO: reflect.TypeOf(retentionPreviewRequest{}), Required: []string{"expected_policy_revision"}},
+			{Name: "RetentionPreviewRequest", DTO: reflect.TypeOf(retentionPreviewRequest{}), Required: []string{"expected_revision"}},
 			{Name: "RetentionControlResponse", DTO: reflect.TypeOf(retentionControlResponse{}), Required: []string{"revision", "state", "updated_at"}},
 			{Name: "RetentionPreviewResponse", DTO: reflect.TypeOf(retentionPreviewResponse{}), Required: []string{"id", "policy_revision", "created_at", "expires_at", "work", "integrity", "browser_activity", "security_operational", "audit", "receipts"}},
 			{Name: "RetentionPreviewCounts", DTO: reflect.TypeOf(retentionPreviewCountsResponse{}), Required: []string{"total", "eligible", "awaiting_deadline", "incomplete", "held", "unconfigured", "supporting_work", "export_protected", "retired"}},

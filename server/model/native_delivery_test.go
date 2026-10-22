@@ -68,7 +68,9 @@ func TestUnretainedDeliverySummaryPreservesUncertainty(t *testing.T) {
 	require.Equal(t, int64(9007199254740991), count, "overflow")
 	require.False(t, complete, "overflow")
 	var decoded UnretainedDeliverySummary
-	require.Error(t, json.Unmarshal([]byte(`{"summary_sequence":1,"unretained_record_count":0,"count_complete":false}`), &decoded), "accepted missing explicit nullable members")
+	require.NoError(t, json.Unmarshal([]byte(`{"summary_sequence":1,"unretained_record_count":0,"count_complete":false}`), &decoded), "rejected omitted absent instants")
+	require.Nil(t, decoded.FirstUnretainedAt)
+	require.Error(t, json.Unmarshal([]byte(`{"summary_sequence":1,"unretained_record_count":0,"count_complete":false,"first_unretained_at":null}`), &decoded), "accepted an explicit null instant")
 }
 
 func TestNativeOccurrenceContinuity(t *testing.T) {

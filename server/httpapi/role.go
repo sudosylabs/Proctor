@@ -63,14 +63,6 @@ func roleResponseFromModel(request *http.Request, role *model.Role) roleResponse
 	}
 }
 
-func roleResponsesFromModels(request *http.Request, roles []*model.Role) []roleResponse {
-	result := make([]roleResponse, 0, len(roles))
-	for _, role := range roles {
-		result = append(result, roleResponseFromModel(request, role))
-	}
-	return result
-}
-
 type roleResourceModule struct {
 	roles RoleApplication
 }
@@ -115,7 +107,13 @@ func (m roleResourceModule) list(request operationRequest) (operationResult, err
 	if err != nil {
 		return operationResult{}, err
 	}
-	return jsonResult(http.StatusOK, roleResponsesFromModels(request.request, roles)), nil
+	response, err := boundedListResult(request, "Role", roles,
+		func(role *model.Role) boundedPageKey { return boundedPageKey{Name: role.Name, ID: role.ID.String()} },
+		func(role *model.Role) roleResponse { return roleResponseFromModel(request.request, role) })
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, response), nil
 }
 
 func (m roleResourceModule) get(request operationRequest) (operationResult, error) {

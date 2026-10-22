@@ -53,9 +53,9 @@ func TestExamIntegrityReviewOpenAPIAgreesWithRuntime(t *testing.T) {
 		},
 		Schemas: []openAPIAgreementSchema{
 			{Name: "NativeConditionListResponse", DTO: reflect.TypeOf(nativeConditionListResponse{}), Required: []string{"items"}},
-			{Name: "SaveExamIntegrityDecisionRequest", DTO: reflect.TypeOf(saveExamIntegrityDecisionRequest{}), Required: []string{"expected_review_revision", "expected_decision_revision", "outcome", "private_rationale"}},
-			{Name: "UpdateExamIntegrityReviewRequest", DTO: reflect.TypeOf(updateExamIntegrityReviewRequest{}), Required: []string{"expected_review_revision", "manager_notes", "student_remarks_markdown"}},
-			{Name: "TerminalExamIntegrityReviewRequest", DTO: reflect.TypeOf(terminalExamIntegrityReviewRequest{}), Required: []string{"submission_review_id", "expected_review_revision"}},
+			{Name: "SaveExamIntegrityDecisionRequest", DTO: reflect.TypeOf(saveExamIntegrityDecisionRequest{}), Required: []string{"expected_revision", "expected_review_revision", "outcome", "private_rationale"}},
+			{Name: "UpdateExamIntegrityReviewRequest", DTO: reflect.TypeOf(updateExamIntegrityReviewRequest{}), Required: []string{"expected_revision", "manager_notes", "student_remarks_markdown"}},
+			{Name: "TerminalExamIntegrityReviewRequest", DTO: reflect.TypeOf(terminalExamIntegrityReviewRequest{}), Required: []string{"submission_review_id", "expected_revision"}},
 			{Name: "ExamIntegrityReviewDecisionResponse", DTO: reflect.TypeOf(examIntegrityReviewDecisionResponse{}), Required: []string{"id", "integrity_flag_id", "outcome", "revision", "actor_user_id", "private_rationale", "decided_at", "inventory_stale"}},
 			{Name: "ExamSubmissionReviewResponse", DTO: reflect.TypeOf(examSubmissionReviewResponse{}), Required: []string{"id", "submission_id", "state", "release_state", "revision", "created_by_user_id", "manager_notes", "student_remarks_markdown", "flag_count", "evidence_count", "discrepancy_count", "created_at", "updated_at"}},
 			{Name: "ExamIntegrityReviewResponse", DTO: reflect.TypeOf(examIntegrityReviewResponse{}), Required: []string{"browser_activity", "submission_id", "exam_id", "exam_sitting_id", "exam_attempt_id", "candidate_user_id", "integrity_state", "unresolved_integrity_count", "decisions", "delivery_inventory_revision", "native_conditions"}},

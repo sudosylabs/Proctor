@@ -84,8 +84,8 @@ func (p *SittingComposer) Prepare(actorID model.UserID, sitting *model.ExamSitti
 	case store.ExamSittingMailScheduled:
 	case store.ExamSittingMailRescheduled:
 		primaryKey = model.MailTemplateExamSittingRescheduled
-	case store.ExamSittingMailCancelled:
-		primaryKey = model.MailTemplateExamSittingCancelled
+	case store.ExamSittingMailCanceled:
+		primaryKey = model.MailTemplateExamSittingCanceled
 	case store.ExamSittingMailReconciled:
 	default:
 		return nil, errors.New("sitting mail change is invalid")
@@ -243,7 +243,7 @@ func (p *SittingComposer) PrepareRecipient(fanout *store.ExamSittingMailFanoutSn
 
 func sittingTemplateKeys() []model.MailTemplateKey {
 	return []model.MailTemplateKey{model.MailTemplateExamSittingScheduled, model.MailTemplateExamSittingRescheduled,
-		model.MailTemplateExamSittingCancelled, model.MailTemplateExamSittingAssignmentRemoved}
+		model.MailTemplateExamSittingCanceled, model.MailTemplateExamSittingAssignmentRemoved}
 }
 
 func normalizeSittingLocale(locale string) string {

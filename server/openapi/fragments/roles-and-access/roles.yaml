@@ -8,6 +8,9 @@
 paths:
   /api/v1/roles:
     get:
+      parameters:
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
       operationId: listRoles
       summary: List Roles
       tags:
@@ -307,9 +310,17 @@ components:
   schemas:
     RoleListResponse:
       description: Roles visible to the authorized caller.
-      type: array
-      items:
-        $ref: '#/components/schemas/RoleResponse'
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoleResponse'
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'
     CreateRoleRequest:
       description: Canonical identity, presentation, and complete permission set for a new custom Role.
       type: object

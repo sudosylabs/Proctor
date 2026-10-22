@@ -22,8 +22,6 @@ components:
         - participation_id
         - policy_revision_id
         - rule_id
-        - overflow_first_received_at
-        - overflow_last_received_at
       properties:
         participation_id:
           $ref: '#/components/schemas/ID'
@@ -34,17 +32,13 @@ components:
           minLength: 1
           maxLength: 64
         overflow_first_received_at:
-          oneOf:
-            - type: string
-              format: date-time
-            - type: 'null'
+          type: string
+          format: date-time
         overflow_last_received_at:
-          oneOf:
-            - type: string
-              format: date-time
-            - type: 'null'
+          type: string
+          format: date-time
       description: >-
-        Frozen Browser rule group with server-received overflow times. Counts exclude unretained client
+        Frozen Browser rule group with server-received overflow times, omitted while the group has no overflow. Counts exclude unretained client
         summaries.
     BrowserIntegrityEvidence:
       type: object

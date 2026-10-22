@@ -45,7 +45,7 @@ func ValidateSequenceRanges(ranges []SequenceRange, maximum int) error {
 
 type DeclareDeliveryGaps struct {
 	DeclarationID               string          `json:"declaration_id"`
-	ExpectedDeclarationRevision int64           `json:"expected_declaration_revision"`
+	ExpectedDeclarationRevision int64           `json:"expected_revision"`
 	AllocatedThroughSequence    int64           `json:"allocated_through_sequence"`
 	Ranges                      []SequenceRange `json:"ranges"`
 	Reason                      string          `json:"reason"`
@@ -103,7 +103,7 @@ func (r DeliveryGapReceipt) Validate() error {
 
 type FinalDeliveryDeclaration struct {
 	DeclarationID               string `json:"declaration_id"`
-	ExpectedDeclarationRevision int64  `json:"expected_declaration_revision"`
+	ExpectedDeclarationRevision int64  `json:"expected_revision"`
 	FinalSequence               int64  `json:"final_sequence"`
 }
 
@@ -175,14 +175,14 @@ func (r DeliveryCloseReason) ValidFor(native bool) bool {
 }
 
 type DeliveryClosure struct {
-	ClosedAt            *time.Time           `json:"closed_at"`
-	CloseReason         *DeliveryCloseReason `json:"close_reason"`
-	KnownAtClose        *int64               `json:"known_at_close"`
-	FinalSequence       *int64               `json:"final_sequence"`
-	FinalDeclarationID  *string              `json:"final_declaration_id"`
-	FinalBoundaryOrigin *string              `json:"final_boundary_origin"`
+	ClosedAt            *time.Time           `json:"closed_at,omitempty"`
+	CloseReason         *DeliveryCloseReason `json:"close_reason,omitempty"`
+	KnownAtClose        *int64               `json:"known_at_close,omitempty"`
+	FinalSequence       *int64               `json:"final_sequence,omitempty"`
+	FinalDeclarationID  *string              `json:"final_declaration_id,omitempty"`
+	FinalBoundaryOrigin *string              `json:"final_boundary_origin,omitempty"`
 	UnknownTail         bool                 `json:"unknown_tail"`
-	UploadExpiresAt     *time.Time           `json:"upload_expires_at"`
+	UploadExpiresAt     *time.Time           `json:"upload_expires_at,omitempty"`
 }
 
 func (c DeliveryClosure) Validate(native bool) error {

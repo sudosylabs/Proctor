@@ -139,7 +139,7 @@ func (h retentionExpiryHandler) Run(ctx context.Context, e jobengine.Execution) 
 			if result == nil || result.Scheduled && result.Expired {
 				return jobengine.PermanentFailure("job.invariant_failed", errors.New("invalid retention expiry outcome"))
 			}
-			if result.Scheduled || result.Cancelled || result.Expired {
+			if result.Scheduled || result.Canceled || result.Expired {
 				cp.Changed++
 			}
 		}
@@ -221,7 +221,7 @@ func (h retentionExpiryHandler) cleanupAuditBatch(ctx context.Context, e jobengi
 	if err != nil {
 		return jobengine.RetryableFailure("retention.unavailable", err)
 	}
-	if result == nil || result.Examined < 0 || result.Examined > limit || result.Changed < 0 || result.Changed > result.Examined || result.Scheduled < 0 || result.Scheduled > result.Changed || result.Cancelled < 0 || result.Cancelled > result.Changed || result.Expired < 0 || result.Expired > result.Changed ||
+	if result == nil || result.Examined < 0 || result.Examined > limit || result.Changed < 0 || result.Changed > result.Examined || result.Scheduled < 0 || result.Scheduled > result.Changed || result.Canceled < 0 || result.Canceled > result.Changed || result.Expired < 0 || result.Expired > result.Changed ||
 		!result.Before.Equal(cp.Before) || result.AfterID.String() < cp.AfterID || (result.AfterID != "" && !result.AfterID.IsValid()) || (result.HasMore && result.Examined == 0) {
 		return jobengine.PermanentFailure("job.invariant_failed", errors.New("invalid cleanup audit batch result"))
 	}

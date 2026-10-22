@@ -70,14 +70,6 @@ func personalAccessTokenResponseFromModel(token *model.PersonalAccessToken) pers
 	}
 }
 
-func personalAccessTokenResponsesFromModels(tokens []*model.PersonalAccessToken) []personalAccessTokenResponse {
-	result := make([]personalAccessTokenResponse, 0, len(tokens))
-	for _, token := range tokens {
-		result = append(result, personalAccessTokenResponseFromModel(token))
-	}
-	return result
-}
-
 type personalAccessTokenResourceModule struct {
 	tokens PersonalAccessTokens
 }
@@ -171,7 +163,14 @@ func (m personalAccessTokenResourceModule) list(request operationRequest) (opera
 	if err != nil {
 		return operationResult{}, err
 	}
-	return jsonResult(http.StatusOK, personalAccessTokenResponsesFromModels(tokens)).withHeaders(noStoreHeaders()), nil
+	response, err := boundedListResult(request, "personal access token", tokens,
+		func(token *model.PersonalAccessToken) boundedPageKey {
+			return boundedPageKey{At: token.CreatedAt, ID: token.ID.String()}
+		}, personalAccessTokenResponseFromModel)
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
 func (m personalAccessTokenResourceModule) revoke(request operationRequest) (operationResult, error) {

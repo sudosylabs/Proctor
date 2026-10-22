@@ -78,7 +78,7 @@ components:
           schema:
             $ref: '#/components/schemas/ArchiveExamRequest'
           example:
-            expected_exam_revision: 3
+            expected_revision: 3
   responses:
     ExamIdentityOK:
       description: Exam identity
@@ -94,9 +94,9 @@ components:
       type: object
       additionalProperties: false
       required:
-        - expected_exam_revision
+        - expected_revision
       properties:
-        expected_exam_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1

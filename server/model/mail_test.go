@@ -324,7 +324,7 @@ func TestSittingScheduleMailMeaningsAreClosed(t *testing.T) {
 	for _, key := range []MailTemplateKey{
 		MailTemplateExamSittingScheduled,
 		MailTemplateExamSittingRescheduled,
-		MailTemplateExamSittingCancelled,
+		MailTemplateExamSittingCanceled,
 		MailTemplateExamSittingAssignmentRemoved,
 	} {
 		require.True(t, key.IsValid(), "Sitting template %q is not in the closed catalog", key)

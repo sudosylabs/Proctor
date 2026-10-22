@@ -61,7 +61,7 @@ creates the Review; otherwise send its identity and exact current revision.
 ```json
 {
   "submission_review_id": "<review-id>",
-  "expected_review_revision": 3,
+  "expected_revision": 3,
   "manager_notes": "Private evidence assessment is complete.",
   "student_remarks_markdown": "Your submission was received and reviewed."
 }
@@ -80,8 +80,8 @@ create; a positive value must equal the current revision.
 ```json
 {
   "submission_review_id": "<review-id>",
+  "expected_revision": 0,
   "expected_review_revision": 4,
-  "expected_decision_revision": 0,
   "outcome": "inconclusive",
   "private_rationale": "The retained evidence does not establish a reliable conclusion."
 }
@@ -105,7 +105,7 @@ Fetch a fresh snapshot and verify that integrity collection is terminal as
 ```json
 {
   "submission_review_id": "<review-id>",
-  "expected_review_revision": 7
+  "expected_revision": 7
 }
 ```
 
@@ -129,7 +129,7 @@ terminal request shape:
 ```json
 {
   "submission_review_id": "<review-id>",
-  "expected_review_revision": 8
+  "expected_revision": 8
 }
 ```
 

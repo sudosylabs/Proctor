@@ -536,7 +536,7 @@ func TestManagerReallowExamAttemptUsesExactSuspensionAndNeverReturnsPrivateReaso
 	suspensionID := model.NewAttemptSuspensionID()
 	path := "/api/v1/exams/" + fake.attempt.ExamID.String() + "/sittings/" + fake.attempt.SittingID.String() +
 		"/attempts/" + fake.attempt.ID.String() + "/reallow"
-	request := newJSONRequest(http.MethodPost, path, strings.NewReader(`{"suspension_id":"`+suspensionID.String()+`","expected_attempt_revision":2,"reason":"manager verified connectivity"}`))
+	request := newJSONRequest(http.MethodPost, path, strings.NewReader(`{"suspension_id":"`+suspensionID.String()+`","expected_revision":2,"reason":"manager verified connectivity"}`))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Idempotency-Key", "reallow-once")
 	response := httptest.NewRecorder()
@@ -558,7 +558,7 @@ func TestManagerSuspendExamAttemptUsesRevisionFenceAndNeverReturnsPrivateReason(
 	httpAPI := newExamAttemptFocusedAPI(t, fake)
 	path := "/api/v1/exams/" + fake.attempt.ExamID.String() + "/sittings/" + fake.attempt.SittingID.String() +
 		"/attempts/" + fake.attempt.ID.String() + "/suspend"
-	request := newJSONRequest(http.MethodPost, path, strings.NewReader(`{"expected_attempt_revision":2,"reason":"candidate left the room"}`))
+	request := newJSONRequest(http.MethodPost, path, strings.NewReader(`{"expected_revision":2,"reason":"candidate left the room"}`))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Idempotency-Key", "kick-once")
 	response := httptest.NewRecorder()
@@ -576,7 +576,7 @@ func TestManagerSuspendExamAttemptUsesRevisionFenceAndNeverReturnsPrivateReason(
 	require.Contains(t, body, `"source":"manual"`)
 	require.Contains(t, body, `"candidate_reason":"manager_suspended"`)
 	require.Contains(t, body, `"connection_closed":true`)
-	missing := newJSONRequest(http.MethodPost, path, strings.NewReader(`{"expected_attempt_revision":0,"reason":"x"}`))
+	missing := newJSONRequest(http.MethodPost, path, strings.NewReader(`{"expected_revision":0,"reason":"x"}`))
 	missing.Header.Set("Authorization", "Bearer credential")
 	missing.Header.Set("Idempotency-Key", "kick-invalid")
 	invalid := httptest.NewRecorder()
@@ -591,7 +591,7 @@ func TestManagerEndExamAttemptUsesRevisionFenceAndReturnsOnlySafeReceipt(t *test
 	path := "/api/v1/exams/" + fake.attempt.ExamID.String() + "/sittings/" + fake.attempt.SittingID.String() +
 		"/attempts/" + fake.attempt.ID.String() + "/end"
 	privateReason := "candidate requested an assisted early end"
-	request := newJSONRequest(http.MethodPost, path, strings.NewReader(`{"expected_attempt_revision":1,"reason":"`+privateReason+`"}`))
+	request := newJSONRequest(http.MethodPost, path, strings.NewReader(`{"expected_revision":1,"reason":"`+privateReason+`"}`))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Idempotency-Key", "manager-end-once")
 	response := httptest.NewRecorder()
@@ -608,7 +608,7 @@ func TestManagerEndExamAttemptUsesRevisionFenceAndReturnsOnlySafeReceipt(t *test
 	require.NotContains(t, response.Body.String(), "private")
 	require.Contains(t, response.Body.String(), fake.submissionReceipt.SubmissionID.String())
 
-	invalid := newJSONRequest(http.MethodPost, path, strings.NewReader(`{"expected_attempt_revision":1,"reason":"valid","extra":true}`))
+	invalid := newJSONRequest(http.MethodPost, path, strings.NewReader(`{"expected_revision":1,"reason":"valid","extra":true}`))
 	invalid.Header.Set("Authorization", "Bearer credential")
 	invalid.Header.Set("Idempotency-Key", "manager-end-invalid")
 	invalidResponse := httptest.NewRecorder()
@@ -644,7 +644,7 @@ func TestCandidateWorkspaceJournalAndAllHTTPMutationsMapExactProtectedCommands(t
 	base := "/api/v1/exam-attempts/" + fake.attempt.ID.String() + "/workspace"
 	participationID := fake.participation.ID.String()
 
-	journalRequest := fake.candidateRequest(http.MethodGet, base+"/changes?after_cursor=3&limit=20")
+	journalRequest := fake.candidateRequest(http.MethodGet, base+"/changes?workspace_cursor=3&limit=20")
 	journalResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(journalResponse, journalRequest)
 	require.Equal(t, http.StatusOK, journalResponse.Code, "journal=%d %s query=%#v", journalResponse.Code, journalResponse.Body.String(), fake.journalQuery)
@@ -658,10 +658,27 @@ func TestCandidateWorkspaceJournalAndAllHTTPMutationsMapExactProtectedCommands(t
 	fake.journalPage.Entries[0].NewPath, fake.journalPage.Entries[0].ContentVersion = "", ""
 	fake.journalPage.Entries[0].Recursive = true
 	journalResponse = httptest.NewRecorder()
-	httpAPI.ServeHTTP(journalResponse, fake.candidateRequest(http.MethodGet, base+"/changes?after_cursor=3&limit=20"))
+	httpAPI.ServeHTTP(journalResponse, fake.candidateRequest(http.MethodGet, base+"/changes?workspace_cursor=3&limit=20"))
 	require.Equal(t, http.StatusOK, journalResponse.Code, "recursive journal")
 	require.Contains(t, journalResponse.Body.String(), `"recursive":true`, "recursive journal")
 	require.Contains(t, journalResponse.Body.String(), `"old_path":"src"`, "recursive journal")
+	fake.journalPage.HasMore = true
+	journalResponse = httptest.NewRecorder()
+	httpAPI.ServeHTTP(journalResponse, fake.candidateRequest(http.MethodGet, base+"/changes?workspace_cursor=3&limit=1"))
+	require.Equal(t, http.StatusOK, journalResponse.Code, "paged journal")
+	var journal candidateWorkspaceJournalResponse
+	require.NoError(t, json.Unmarshal(journalResponse.Body.Bytes(), &journal))
+	next, err := decodeOpaqueCursor(journal.NextCursor, candidateWorkspaceJournalCursorSpec())
+	require.NoError(t, err, "next_cursor")
+	require.Equal(t, fake.journalPage.Entries[len(fake.journalPage.Entries)-1].Cursor, next.After, "continuation after the last change")
+	journalResponse = httptest.NewRecorder()
+	httpAPI.ServeHTTP(journalResponse, fake.candidateRequest(http.MethodGet, base+"/changes?cursor="+journal.NextCursor))
+	require.Equal(t, http.StatusOK, journalResponse.Code, "continued journal")
+	require.Equal(t, next.After, fake.journalQuery.AfterCursor, "continued journal")
+	journalResponse = httptest.NewRecorder()
+	httpAPI.ServeHTTP(journalResponse, fake.candidateRequest(http.MethodGet, base+"/changes?workspace_cursor=3&cursor="+journal.NextCursor))
+	require.Equal(t, http.StatusBadRequest, journalResponse.Code, "a continuation cannot restart at another Workspace Cursor")
+	fake.journalPage.HasMore = false
 
 	directoryBody := strings.NewReader(`{"participation_id":"` + participationID + `","generation":1,"path":"src"}`)
 	directoryRequest := candidateWorkspaceRequest(fake, http.MethodPost, base+"/directories", directoryBody, "application/json", "mkdir-once")

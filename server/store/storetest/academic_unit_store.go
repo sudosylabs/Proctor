@@ -159,7 +159,7 @@ func testAcademicUnitStoreCreateWithAudit(t *testing.T, ss store.Store) {
 		AuditAt:      model.GetMillis(),
 	})
 	require.Error(t, err, "Create() succeeded without its audit attempt")
-	found, searchErr := ss.AcademicUnit().Search(ctx, institution.ID, "rolled-back-unit", 10)
+	found, searchErr := ss.AcademicUnit().Search(ctx, institution.ID, store.AcademicNameListOptions{Term: "rolled-back-unit", Limit: 10})
 	require.NoError(t, searchErr)
 	require.Empty(t, found)
 }
@@ -172,12 +172,12 @@ func testAcademicUnitStoreSearchAndArchive(t *testing.T, ss store.Store) {
 	child.DisplayName = "Literal 50%_! Computing"
 	child, err := UpdateAcademicUnit(ctx, ss, child)
 	require.NoError(t, err)
-	found, err := ss.AcademicUnit().Search(ctx, institution.ID, "distinct-comput", 10)
+	found, err := ss.AcademicUnit().Search(ctx, institution.ID, store.AcademicNameListOptions{Term: "distinct-comput", Limit: 10})
 	require.NoError(t, err)
 	require.Len(t, found, 1)
 	require.Equal(t, child.ID, found[0].ID)
 	for _, query := range []string{"LITERAL 50%_!", "%", "_", "!"} {
-		found, err = ss.AcademicUnit().Search(ctx, institution.ID, query, 10)
+		found, err = ss.AcademicUnit().Search(ctx, institution.ID, store.AcademicNameListOptions{Term: query, Limit: 10})
 		require.NoError(t, err)
 		require.Len(t, found, 1, "Search(%q)", query)
 		require.Equal(t, child.ID, found[0].ID, "Search(%q)", query)
@@ -248,16 +248,41 @@ func testAcademicUnitStoreListChildren(t *testing.T, ss store.Store) {
 	childB := saveAcademicUnit(t, ctx, ss, institution.ID.String(), rootA.ID.String(), "software")
 	childA := saveAcademicUnit(t, ctx, ss, institution.ID.String(), rootA.ID.String(), "computing")
 
-	roots, err := ss.AcademicUnit().ListChildren(ctx, institution.ID, "")
+	roots, err := ss.AcademicUnit().ListChildren(ctx, institution.ID, "", store.AcademicNameListOptions{Limit: 200})
 	require.NoError(t, err)
 	require.Len(t, roots, 2)
 	require.Equal(t, rootA.ID, roots[0].ID)
 	require.Equal(t, rootB.ID, roots[1].ID)
-	children, err := ss.AcademicUnit().ListChildren(ctx, institution.ID, rootA.ID)
+	children, err := ss.AcademicUnit().ListChildren(ctx, institution.ID, rootA.ID, store.AcademicNameListOptions{Limit: 200})
 	require.NoError(t, err)
 	require.Len(t, children, 2, "ListChildren(%s)", rootA.ID.String())
 	require.Equal(t, childA.ID, children[0].ID, "ListChildren(%s)", rootA.ID.String())
 	require.Equal(t, childB.ID, children[1].ID, "ListChildren(%s)", rootA.ID.String())
+
+	first, err := ss.AcademicUnit().ListChildren(ctx, institution.ID, "", store.AcademicNameListOptions{Limit: 1})
+	require.NoError(t, err)
+	require.Len(t, first, 1)
+	require.Equal(t, rootA.ID, first[0].ID, "first page")
+	next, err := ss.AcademicUnit().ListChildren(ctx, institution.ID, "", store.AcademicNameListOptions{
+		AfterName: first[0].Name, AfterID: first[0].ID.String(), Limit: 201,
+	})
+	require.NoError(t, err)
+	require.Len(t, next, 1, "continuation after (name, id)")
+	require.Equal(t, rootB.ID, next[0].ID, "continuation after (name, id)")
+	searched, err := ss.AcademicUnit().Search(ctx, institution.ID, store.AcademicNameListOptions{
+		AfterName: rootA.Name, AfterID: rootA.ID.String(), Limit: 10,
+	})
+	require.NoError(t, err)
+	for _, unit := range searched {
+		require.Greater(t, unit.Name, rootA.Name, "search continuation stays after its keyset")
+	}
+	for _, invalid := range []store.AcademicNameListOptions{
+		{Limit: 0}, {Limit: 202}, {AfterName: "x", Limit: 1}, {AfterID: rootA.ID.String(), Limit: 1}, {AfterName: "x", AfterID: "bad", Limit: 1},
+	} {
+		_, err = ss.AcademicUnit().ListChildren(ctx, institution.ID, "", invalid)
+		var invalidInput *store.ErrInvalidInput
+		require.ErrorAs(t, err, &invalidInput, "invalid options %#v", invalid)
+	}
 }
 
 func testAcademicUnitStoreUpdate(t *testing.T, ss store.Store) {

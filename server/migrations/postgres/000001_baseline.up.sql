@@ -593,7 +593,7 @@ CREATE TABLE mail_occurrences (
         'authorization.scoped_role_assigned', 'authorization.scoped_role_ended',
         'authorization.institution_role_assigned', 'authorization.institution_role_ended',
         'exam.sitting_scheduled', 'exam.sitting_rescheduled',
-        'exam.sitting_cancelled', 'exam.sitting_assignment_removed',
+        'exam.sitting_canceled', 'exam.sitting_assignment_removed',
         'exam.manager_added', 'exam.manager_removed',
         'exam.ownership_transferred_to_you', 'exam.ownership_transferred_from_you',
         'exam.submission_received', 'exam.submission_manager_ended', 'exam.submission_automatically_sealed',
@@ -639,7 +639,7 @@ CREATE TABLE mail_deliveries (
         'authorization.scoped_role_assigned', 'authorization.scoped_role_ended',
         'authorization.institution_role_assigned', 'authorization.institution_role_ended',
         'exam.sitting_scheduled', 'exam.sitting_rescheduled',
-        'exam.sitting_cancelled', 'exam.sitting_assignment_removed',
+        'exam.sitting_canceled', 'exam.sitting_assignment_removed',
         'exam.manager_added', 'exam.manager_removed',
         'exam.ownership_transferred_to_you', 'exam.ownership_transferred_from_you',
         'exam.submission_received', 'exam.submission_manager_ended', 'exam.submission_automatically_sealed',
@@ -1423,7 +1423,7 @@ CREATE TABLE exam_sitting_mail_fanouts (
     exam_sitting_id varchar(26) NOT NULL REFERENCES exam_sittings(id),
     sitting_revision bigint NOT NULL CHECK (sitting_revision > 0),
     prior_class_id varchar(26) REFERENCES classes(id),
-    change_kind varchar(16) NOT NULL CHECK (change_kind IN ('scheduled', 'rescheduled', 'cancelled', 'reconciled')),
+    change_kind varchar(16) NOT NULL CHECK (change_kind IN ('scheduled', 'rescheduled', 'canceled', 'reconciled')),
     created_at timestamptz NOT NULL,
     deadline timestamptz NOT NULL CHECK (deadline > created_at),
     completed_at timestamptz,
@@ -1460,13 +1460,13 @@ CREATE TABLE exam_sitting_mail_recipients (
         (desired_delivery_id IS NULL) = (desired_sitting_revision IS NULL) AND
         (desired_sitting_revision IS NULL) = (desired_template_key IS NULL) AND
         (desired_template_key IS NULL OR desired_template_key IN
-            ('exam.sitting_scheduled', 'exam.sitting_rescheduled', 'exam.sitting_cancelled', 'exam.sitting_assignment_removed'))
+            ('exam.sitting_scheduled', 'exam.sitting_rescheduled', 'exam.sitting_canceled', 'exam.sitting_assignment_removed'))
     ),
     CONSTRAINT exam_sitting_mail_recipients_communicated_check CHECK (
         (communicated_sitting_revision IS NULL) = (communicated_template_key IS NULL) AND
         (communicated_template_key IS NULL) = (communicated_class_id IS NULL) AND
         (communicated_template_key IS NULL OR communicated_template_key IN
-            ('exam.sitting_scheduled', 'exam.sitting_rescheduled', 'exam.sitting_cancelled', 'exam.sitting_assignment_removed'))
+            ('exam.sitting_scheduled', 'exam.sitting_rescheduled', 'exam.sitting_canceled', 'exam.sitting_assignment_removed'))
     )
 );
 
@@ -3178,7 +3178,7 @@ CREATE TABLE browser_authentication_transactions (
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
     purpose varchar(32) NOT NULL CHECK (purpose IN ('desktop_authorization', 'invitation_acceptance')),
-    state varchar(16) NOT NULL CHECK (state IN ('pending', 'bound', 'authenticated', 'code_issued', 'exchanged', 'completed', 'cancelled', 'denied', 'expired')),
+    state varchar(16) NOT NULL CHECK (state IN ('pending', 'bound', 'authenticated', 'code_issued', 'exchanged', 'completed', 'canceled', 'denied', 'expired')),
     institution_id varchar(26) NOT NULL REFERENCES institutions(id),
     issuer varchar(2048) NOT NULL,
     invitation_id varchar(26) REFERENCES invitations(id),
@@ -3212,7 +3212,7 @@ CREATE TABLE browser_authentication_transactions (
     mfa_completed_at timestamptz,
     code_hash char(64),
     code_expires_at timestamptz,
-    cancelled_at timestamptz,
+    canceled_at timestamptz,
     denied_at timestamptz,
     denial_reason varchar(48) CHECK (denial_reason IN ('active_attempt_session_lock')),
     exchanged_at timestamptz,
@@ -3243,7 +3243,7 @@ CREATE TABLE browser_authentication_transactions (
          desktop_release IS NOT NULL AND desktop_build_id IS NOT NULL AND
          desktop_platform IN ('darwin', 'win32', 'linux') AND desktop_architecture IN ('arm64', 'x64') AND
          desktop_realtime_protocol > 0) OR
-        ((purpose = 'desktop_authorization' AND state IN ('exchanged', 'cancelled', 'denied', 'expired')) OR
+        ((purpose = 'desktop_authorization' AND state IN ('exchanged', 'canceled', 'denied', 'expired')) OR
          purpose = 'invitation_acceptance') AND
          proposed_public_jwk IS NULL AND proposed_key_thumbprint IS NULL AND desktop_release IS NULL AND
          desktop_build_id IS NULL AND desktop_platform IS NULL AND desktop_architecture IS NULL AND
@@ -3256,12 +3256,12 @@ CREATE TABLE browser_authentication_transactions (
          state_hash IS NOT NULL AND callback_url IS NOT NULL AND code_challenge IS NOT NULL AND
          user_id IS NULL AND authentication_method IS NULL AND authentication_provider_id IS NULL AND external_identity_id IS NULL AND
          authentication_strength IS NULL AND authenticated_at IS NULL AND mfa_completed_at IS NULL AND code_hash IS NULL AND
-         code_expires_at IS NULL AND cancelled_at IS NULL AND denied_at IS NULL AND denial_reason IS NULL AND exchanged_at IS NULL AND expired_at IS NULL) OR
+         code_expires_at IS NULL AND canceled_at IS NULL AND denied_at IS NULL AND denial_reason IS NULL AND exchanged_at IS NULL AND expired_at IS NULL) OR
         (state = 'bound' AND handle_hash IS NULL AND browser_proof_hash IS NOT NULL AND
          state_hash IS NOT NULL AND callback_url IS NOT NULL AND code_challenge IS NOT NULL AND
          user_id IS NULL AND authentication_method IS NULL AND authentication_provider_id IS NULL AND external_identity_id IS NULL AND
          authentication_strength IS NULL AND authenticated_at IS NULL AND mfa_completed_at IS NULL AND code_hash IS NULL AND
-         code_expires_at IS NULL AND cancelled_at IS NULL AND denied_at IS NULL AND denial_reason IS NULL AND exchanged_at IS NULL AND expired_at IS NULL) OR
+         code_expires_at IS NULL AND canceled_at IS NULL AND denied_at IS NULL AND denial_reason IS NULL AND exchanged_at IS NULL AND expired_at IS NULL) OR
         (state = 'authenticated' AND handle_hash IS NULL AND browser_proof_hash IS NOT NULL AND
          state_hash IS NOT NULL AND callback_url IS NOT NULL AND code_challenge IS NOT NULL AND
          user_id IS NOT NULL AND authentication_method IS NOT NULL AND
@@ -3270,7 +3270,7 @@ CREATE TABLE browser_authentication_transactions (
          authentication_strength IN ('single_factor', 'multi_factor') AND authenticated_at IS NOT NULL AND
          ((authentication_strength = 'single_factor' AND mfa_completed_at IS NULL) OR
           (authentication_strength = 'multi_factor' AND mfa_completed_at BETWEEN authenticated_at AND updated_at)) AND
-         code_hash IS NULL AND code_expires_at IS NULL AND cancelled_at IS NULL AND denied_at IS NULL AND denial_reason IS NULL AND
+         code_hash IS NULL AND code_expires_at IS NULL AND canceled_at IS NULL AND denied_at IS NULL AND denial_reason IS NULL AND
          exchanged_at IS NULL AND expired_at IS NULL) OR
         (state = 'code_issued' AND handle_hash IS NULL AND browser_proof_hash IS NULL AND
          state_hash IS NOT NULL AND callback_url IS NOT NULL AND code_challenge IS NOT NULL AND
@@ -3282,17 +3282,17 @@ CREATE TABLE browser_authentication_transactions (
           (authentication_strength = 'multi_factor' AND mfa_completed_at BETWEEN authenticated_at AND updated_at)) AND
          code_hash IS NOT NULL AND code_expires_at > updated_at AND
          code_expires_at <= LEAST(expires_at, updated_at + interval '1 minute') AND
-         cancelled_at IS NULL AND denied_at IS NULL AND denial_reason IS NULL AND exchanged_at IS NULL AND expired_at IS NULL) OR
-        (state = 'cancelled' AND handle_hash IS NULL AND browser_proof_hash IS NULL AND
+         canceled_at IS NULL AND denied_at IS NULL AND denial_reason IS NULL AND exchanged_at IS NULL AND expired_at IS NULL) OR
+        (state = 'canceled' AND handle_hash IS NULL AND browser_proof_hash IS NULL AND
          state_hash IS NULL AND callback_url IS NULL AND code_challenge IS NULL AND
          user_id IS NULL AND authentication_method IS NULL AND authentication_provider_id IS NULL AND external_identity_id IS NULL AND
          authentication_strength IS NULL AND authenticated_at IS NULL AND mfa_completed_at IS NULL AND code_hash IS NULL AND
-         code_expires_at IS NULL AND cancelled_at = updated_at AND denied_at IS NULL AND denial_reason IS NULL AND exchanged_at IS NULL AND expired_at IS NULL) OR
+         code_expires_at IS NULL AND canceled_at = updated_at AND denied_at IS NULL AND denial_reason IS NULL AND exchanged_at IS NULL AND expired_at IS NULL) OR
         (state = 'denied' AND handle_hash IS NULL AND browser_proof_hash IS NULL AND
          state_hash IS NULL AND callback_url IS NULL AND code_challenge IS NULL AND
          user_id IS NULL AND authentication_method IS NULL AND authentication_provider_id IS NULL AND external_identity_id IS NULL AND
          authentication_strength IS NULL AND authenticated_at IS NULL AND mfa_completed_at IS NULL AND code_hash IS NULL AND
-         code_expires_at IS NULL AND cancelled_at IS NULL AND denied_at = updated_at AND denial_reason = 'active_attempt_session_lock' AND
+         code_expires_at IS NULL AND canceled_at IS NULL AND denied_at = updated_at AND denial_reason = 'active_attempt_session_lock' AND
          exchanged_at IS NULL AND expired_at IS NULL) OR
         (state = 'exchanged' AND handle_hash IS NULL AND browser_proof_hash IS NULL AND
          state_hash IS NULL AND callback_url IS NULL AND code_challenge IS NULL AND
@@ -3302,11 +3302,11 @@ CREATE TABLE browser_authentication_transactions (
          authentication_strength IN ('single_factor', 'multi_factor') AND authenticated_at IS NOT NULL AND
          ((authentication_strength = 'single_factor' AND mfa_completed_at IS NULL) OR
           (authentication_strength = 'multi_factor' AND mfa_completed_at BETWEEN authenticated_at AND updated_at)) AND
-         code_hash IS NULL AND code_expires_at IS NULL AND cancelled_at IS NULL AND denied_at IS NULL AND denial_reason IS NULL AND
+         code_hash IS NULL AND code_expires_at IS NULL AND canceled_at IS NULL AND denied_at IS NULL AND denial_reason IS NULL AND
          exchanged_at = updated_at AND expired_at IS NULL) OR
         (state = 'expired' AND handle_hash IS NULL AND browser_proof_hash IS NULL AND
          state_hash IS NULL AND callback_url IS NULL AND code_challenge IS NULL AND code_hash IS NULL AND
-         code_expires_at IS NULL AND cancelled_at IS NULL AND denied_at IS NULL AND denial_reason IS NULL AND exchanged_at IS NULL AND
+         code_expires_at IS NULL AND canceled_at IS NULL AND denied_at IS NULL AND denial_reason IS NULL AND exchanged_at IS NULL AND
          expired_at = updated_at AND updated_at <= expires_at AND
 		 ((user_id IS NULL AND authentication_method IS NULL AND authentication_provider_id IS NULL AND external_identity_id IS NULL AND
 		   authentication_strength IS NULL AND authenticated_at IS NULL AND mfa_completed_at IS NULL AND updated_at = expires_at) OR
@@ -3324,13 +3324,13 @@ CREATE TABLE browser_authentication_transactions (
        authentication_strength IS NULL AND authenticated_at IS NULL AND mfa_completed_at IS NULL AND
        code_hash IS NULL AND code_expires_at IS NULL AND denied_at IS NULL AND denial_reason IS NULL AND exchanged_at IS NULL AND (
         (state = 'pending' AND handle_hash IS NOT NULL AND browser_proof_hash IS NOT NULL AND invitation_claim_hash IS NOT NULL AND
-         user_id IS NULL AND cancelled_at IS NULL AND completed_at IS NULL AND expired_at IS NULL) OR
+         user_id IS NULL AND canceled_at IS NULL AND completed_at IS NULL AND expired_at IS NULL) OR
         (state = 'completed' AND handle_hash IS NULL AND browser_proof_hash IS NULL AND invitation_claim_hash IS NULL AND
-         user_id IS NOT NULL AND cancelled_at IS NULL AND completed_at = updated_at AND expired_at IS NULL) OR
-        (state = 'cancelled' AND handle_hash IS NULL AND browser_proof_hash IS NULL AND invitation_claim_hash IS NULL AND
-         user_id IS NULL AND cancelled_at = updated_at AND completed_at IS NULL AND expired_at IS NULL) OR
+         user_id IS NOT NULL AND canceled_at IS NULL AND completed_at = updated_at AND expired_at IS NULL) OR
+        (state = 'canceled' AND handle_hash IS NULL AND browser_proof_hash IS NULL AND invitation_claim_hash IS NULL AND
+         user_id IS NULL AND canceled_at = updated_at AND completed_at IS NULL AND expired_at IS NULL) OR
         (state = 'expired' AND handle_hash IS NULL AND browser_proof_hash IS NULL AND invitation_claim_hash IS NULL AND
-         user_id IS NULL AND cancelled_at IS NULL AND completed_at IS NULL AND expired_at = updated_at AND updated_at = expires_at)
+         user_id IS NULL AND canceled_at IS NULL AND completed_at IS NULL AND expired_at = updated_at AND updated_at = expires_at)
        ))
     )
 );
@@ -3351,7 +3351,7 @@ CREATE INDEX browser_authentication_transactions_code_expiry_idx
 	WHERE state = 'code_issued';
 CREATE INDEX browser_authentication_transactions_terminal_retention_idx
     ON browser_authentication_transactions (updated_at, id)
-    WHERE state IN ('cancelled', 'denied', 'exchanged', 'completed', 'expired');
+    WHERE state IN ('canceled', 'denied', 'exchanged', 'completed', 'expired');
 
 -- ---------------------------------------------------------------------------
 -- Authorization audit and installation marker

@@ -273,7 +273,7 @@ func TestDesktopCompatibilityPolicyHTTPUsesCompleteReplacementAndNoStore(t *test
 	request := httptest.NewRequest(
 		http.MethodPut,
 		"/api/v1/desktop-compatibility-policy",
-		strings.NewReader(`{"expected_revision":1,"minimum_desktop_release":"1.2.0","revoked_desktop_build_ids":["build-7"],"administrator_message":"Update before the exam.","availability":"ready","retry_at":null}`),
+		strings.NewReader(`{"expected_revision":1,"minimum_desktop_release":"1.2.0","revoked_desktop_build_ids":["build-7"],"administrator_message":"Update before the exam.","availability":"ready"}`),
 	)
 	request.Header.Set("Authorization", "Bearer session")
 	request.Header.Set("Content-Type", "application/json")
@@ -293,7 +293,7 @@ func TestDesktopCompatibilityPolicyHTTPUsesCompleteReplacementAndNoStore(t *test
 		`{"expected_revision":1,"revoked_desktop_build_ids":[],"administrator_message":""}`,
 		`{"expected_revision":1,"minimum_desktop_release":"","administrator_message":""}`,
 		`{"expected_revision":1,"minimum_desktop_release":"","revoked_desktop_build_ids":[]}`,
-		`{"expected_revision":1,"minimum_desktop_release":"","revoked_desktop_build_ids":[],"administrator_message":"","availability":"ready"}`,
+		`{"expected_revision":1,"minimum_desktop_release":"","revoked_desktop_build_ids":[],"administrator_message":"","availability":"ready","retry_at":null}`,
 	} {
 		invalid := httptest.NewRequest(http.MethodPut, "/api/v1/desktop-compatibility-policy", strings.NewReader(invalidBody))
 		invalid.Header.Set("Authorization", "Bearer session")

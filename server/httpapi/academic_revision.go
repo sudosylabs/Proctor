@@ -7,8 +7,6 @@
 
 package httpapi
 
-import "strconv"
-
 func validateAcademicRevision(value Optional[int64]) error {
 	if value.IsNull() {
 		return invalidRequestError(nil)
@@ -19,17 +17,23 @@ func validateAcademicRevision(value Optional[int64]) error {
 	return nil
 }
 
+// archiveAcademicRequest is the optional revision fence of an academic
+// archive. Like every other fence it travels in the JSON body; a DELETE
+// without a body archives unconditionally.
+type archiveAcademicRequest struct {
+	ExpectedRevision Optional[int64] `json:"expected_revision"`
+}
+
 func (r operationRequest) academicRevision() (*int64, error) {
-	values, present := r.request.URL.Query()["expected_revision"]
-	if !present {
+	if r.request.ContentLength == 0 && r.request.Header.Get("Content-Type") == "" {
 		return nil, nil
 	}
-	if len(values) != 1 {
-		return nil, invalidRequestError(nil)
+	var body archiveAcademicRequest
+	if err := r.decodeJSON(&body); err != nil {
+		return nil, err
 	}
-	revision, err := strconv.ParseInt(values[0], 10, 64)
-	if err != nil || revision <= 0 {
-		return nil, invalidRequestError(err)
+	if err := validateAcademicRevision(body.ExpectedRevision); err != nil {
+		return nil, err
 	}
-	return &revision, nil
+	return body.ExpectedRevision.ValuePointer(), nil
 }

@@ -142,7 +142,7 @@ components:
           schema:
             $ref: '#/components/schemas/ConfigureExamDraftBrowserPolicyRequest'
           example:
-            expected_draft_revision: 4
+            expected_revision: 4
             browser_policy:
               enabled: false
     ConfigureExamDraftFocusLoss:
@@ -153,7 +153,7 @@ components:
           schema:
             $ref: '#/components/schemas/ConfigureExamDraftFocusLossRequest'
           example:
-            expected_draft_revision: 4
+            expected_revision: 4
             enabled: true
             minimum_duration_milliseconds: 1500
             incident_count: 3
@@ -164,10 +164,10 @@ components:
       type: object
       additionalProperties: false
       required:
-        - expected_draft_revision
+        - expected_revision
         - browser_policy
       properties:
-        expected_draft_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1
@@ -177,14 +177,14 @@ components:
       type: object
       additionalProperties: false
       required:
-        - expected_draft_revision
+        - expected_revision
         - enabled
         - minimum_duration_milliseconds
         - incident_count
         - window_milliseconds
         - outcome
       properties:
-        expected_draft_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1

@@ -30,7 +30,7 @@ func TestIntegrityReviewHTTPMapsStrictDecisionAndPrivateManagerProjection(t *tes
 	fake := newExamIntegrityReviewHTTPFake(t)
 	httpAPI := newExamIntegrityReviewFocusedAPI(t, fake)
 	path := "/api/v1/submissions/" + fake.submission.ID.String() + "/review/decisions/" + fake.flag.ID.String()
-	body := `{"expected_review_revision":2,"expected_decision_revision":1,"outcome":"inconclusive","private_rationale":"Manager-only rationale."}`
+	body := `{"expected_review_revision":2,"expected_revision":1,"outcome":"inconclusive","private_rationale":"Manager-only rationale."}`
 	request := httptest.NewRequest(http.MethodPut, path, strings.NewReader(body))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
@@ -49,7 +49,7 @@ func TestIntegrityReviewHTTPMapsStrictDecisionAndPrivateManagerProjection(t *tes
 	require.Contains(t, response.Body.String(), `"private_rationale":"Manager-only rationale."`)
 
 	duplicate := httptest.NewRequest(http.MethodPut, path,
-		strings.NewReader(`{"expected_review_revision":2,"expected_review_revision":3,"expected_decision_revision":1,"outcome":"confirmed","private_rationale":"x"}`))
+		strings.NewReader(`{"expected_review_revision":2,"expected_review_revision":3,"expected_revision":1,"outcome":"confirmed","private_rationale":"x"}`))
 	duplicate.Header.Set("Authorization", "Bearer credential")
 	duplicate.Header.Set("Content-Type", "application/json")
 	duplicate.Header.Set("Idempotency-Key", "duplicate")

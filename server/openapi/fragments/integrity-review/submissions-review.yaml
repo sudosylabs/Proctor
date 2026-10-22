@@ -325,8 +325,8 @@ components:
           schema:
             $ref: '#/components/schemas/SaveExamIntegrityDecisionRequest'
           example:
+            expected_revision: 0
             expected_review_revision: 0
-            expected_decision_revision: 0
             outcome: inconclusive
             private_rationale: The retained evidence does not establish a reliable conclusion.
     UpdateExamIntegrityReview:
@@ -337,7 +337,7 @@ components:
           schema:
             $ref: '#/components/schemas/UpdateExamIntegrityReviewRequest'
           example:
-            expected_review_revision: 0
+            expected_revision: 0
             manager_notes: Review opened; evidence assessment is pending.
             student_remarks_markdown: ''
     TerminalExamIntegrityReview:
@@ -349,7 +349,7 @@ components:
             $ref: '#/components/schemas/TerminalExamIntegrityReviewRequest'
           example:
             submission_review_id: ybndrfg8ejkmcpqxot1uwisza3
-            expected_review_revision: 7
+            expected_revision: 7
   responses:
     ExamIntegrityReviewOK:
       description: Manager-authorized Review snapshot including private Review fields
@@ -379,14 +379,19 @@ components:
       type: object
       additionalProperties: false
       required:
+        - expected_revision
         - expected_review_revision
-        - expected_decision_revision
         - outcome
         - private_rationale
       properties:
         submission_review_id:
           $ref: '#/components/schemas/ID'
           description: Required when revising an existing Review; omitted only when creating its first decision.
+        expected_revision:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Zero for the first decision on this Flag; otherwise the exact current decision revision.
         expected_review_revision:
           type: integer
           format: int64
@@ -394,11 +399,6 @@ components:
           description: >-
             Zero when creating the first Review through this command; otherwise the exact current Review
             revision.
-        expected_decision_revision:
-          type: integer
-          format: int64
-          minimum: 0
-          description: Zero for the first decision on this Flag; otherwise the exact current decision revision.
         outcome:
           type: string
           enum:
@@ -418,14 +418,14 @@ components:
       type: object
       additionalProperties: false
       required:
-        - expected_review_revision
+        - expected_revision
         - manager_notes
         - student_remarks_markdown
       properties:
         submission_review_id:
           $ref: '#/components/schemas/ID'
           description: Required when revising an existing Review; omitted only when creating it.
-        expected_review_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 0
@@ -445,11 +445,11 @@ components:
       additionalProperties: false
       required:
         - submission_review_id
-        - expected_review_revision
+        - expected_revision
       properties:
         submission_review_id:
           $ref: '#/components/schemas/ID'
-        expected_review_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1

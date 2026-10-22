@@ -85,7 +85,7 @@ paths:
               --header 'Authorization: Bearer <access-token>' \
               --header 'Content-Type: application/json' \
               --header 'Idempotency-Key: docs-exam-publish-012' \
-              --data '{"expected_draft_revision":12}'
+              --data '{"expected_revision":12}'
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -206,7 +206,7 @@ components:
           schema:
             $ref: '#/components/schemas/PublishExamRevisionRequest'
           example:
-            expected_draft_revision: 12
+            expected_revision: 12
       description: >-
         The exact mutable Draft revision expected by the publisher. Publication fails on a stale revision rather than publishing unintended changes.
   responses:
@@ -242,9 +242,9 @@ components:
       type: object
       additionalProperties: false
       required:
-        - expected_draft_revision
+        - expected_revision
       properties:
-        expected_draft_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1

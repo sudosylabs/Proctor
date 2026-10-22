@@ -478,14 +478,9 @@ func (r operationRequest) decodeJSON(target any) error {
 	return nil
 }
 
+// queryLimit returns the collection page size with the shared default and
+// bound.
 func (r operationRequest) queryLimit() (int, error) {
-	value := r.request.URL.Query().Get("limit")
-	if value == "" {
-		return 100, nil
-	}
-	limit, err := strconv.Atoi(value)
-	if err != nil || limit < 1 || limit > 200 {
-		return 0, invalidRequestError(err)
-	}
-	return limit, nil
+	page, err := r.pageRequest()
+	return page.Limit, err
 }

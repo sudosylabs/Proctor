@@ -37,11 +37,11 @@ content compares the Draft revision.
 ## 2. Edit Text Through the Draft Revision
 
 <Link to="/api/reference/edit-exam-draft-text">Edit Draft text</Link> requires
-the exact `expected_draft_revision`.
+the exact `expected_revision`.
 
 ```json
 {
-  "expected_draft_revision": 3,
+  "expected_revision": 3,
   "title": "Algorithms — final examination",
   "instructions_markdown": "Answer all questions. Save source files in answers/."
 }
@@ -62,7 +62,7 @@ blocked-navigation behavior.
 
 ```json
 {
-  "expected_draft_revision": 4,
+  "expected_revision": 4,
   "browser_policy": {
     "schema_version": 1,
     "enabled": true,
@@ -85,7 +85,7 @@ Its duration, threshold, time window, and outcome are one coherent rule.
 
 ```json
 {
-  "expected_draft_revision": 5,
+  "expected_revision": 5,
   "enabled": true,
   "minimum_duration_milliseconds": 1500,
   "incident_count": 3,
@@ -135,7 +135,7 @@ belong to the Exam's exact Academic Unit.
 - <Link to="/api/reference/remove-exam-manager">Remove Exam Manager</Link>
   cannot remove the current owner.
 
-All three compare `expected_exam_revision`, require idempotency, preserve
+All three compare `expected_revision`, require idempotency, preserve
 provenance, and commit the matching safe notice without duplicating it on exact
 replay.
 
@@ -153,7 +153,7 @@ curl --request POST \
   --header 'Authorization: Bearer <interactive-session-access-token>' \
   --header 'Content-Type: application/json' \
   --header 'Idempotency-Key: publish-algorithms-final-12' \
-  --data '{"expected_draft_revision":12}'
+  --data '{"expected_revision":12}'
 ```
 
 Publication validates and freezes the entire Draft, current capacity values,

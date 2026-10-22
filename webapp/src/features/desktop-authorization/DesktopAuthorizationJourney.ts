@@ -16,7 +16,7 @@ import {
   type DesktopLocalAuthenticationSubmission,
 } from "./DesktopAuthorizationApi";
 
-export type DesktopTerminalState = "approved" | "cancelled" | "invalid" | "locked";
+export type DesktopTerminalState = "approved" | "canceled" | "invalid" | "locked";
 type PendingAction = "approve" | "cancel" | "reset" | "authenticate" | "provider";
 export type DesktopLocalFeedback =
   | "authenticated"
@@ -220,8 +220,8 @@ export function createDesktopAuthorizationJourney(
     async cancel() {
       if (input.state === undefined || resource.getSnapshot().value.kind !== "ready") return;
       await perform("cancel", () => api.cancel(input.state!), (result) => {
-        if (result.kind === "cancelled") {
-          terminal = "cancelled";
+        if (result.kind === "canceled") {
+          terminal = "canceled";
           focusHeading = true;
         } else failed(result);
       });

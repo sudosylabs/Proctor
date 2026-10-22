@@ -208,7 +208,7 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 	canceled, err := ss.ExamSitting().Cancel(ctx, &store.ExamSittingCancellation{ExamID: fixture.examID, SittingID: sitting.ID,
 		ActorUserID: fixture.actor.ID, ExpectedRevision: 2, PrivateReason: "Room unavailable",
 		AuditEventID: cancelAudit.ID, AuditAt: model.GetMillis(),
-		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailCancelled, model.MailTemplateExamSittingCancelled)}, cancelCommand)
+		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailCanceled, model.MailTemplateExamSittingCanceled)}, cancelCommand)
 	require.NoError(t, err)
 	require.Equal(t, model.ExamSittingCanceled, canceled.Value.Sitting.State)
 	require.Equal(t, model.ExamSittingReasonManagerCanceled, canceled.Value.Sitting.ReasonCode)
@@ -230,7 +230,7 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 	staleAudit := saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID)
 	_, err = ss.ExamSitting().Cancel(ctx, &store.ExamSittingCancellation{ExamID: fixture.examID, SittingID: sitting.ID, ActorUserID: fixture.actor.ID,
 		ExpectedRevision: 2, PrivateReason: "stale", AuditEventID: staleAudit.ID, AuditAt: model.GetMillis(),
-		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailCancelled, model.MailTemplateExamSittingCancelled)},
+		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailCanceled, model.MailTemplateExamSittingCanceled)},
 		examCommand(fixture.actor.ID, "exam.sitting.cancel.v1", "sitting-cancel-stale", "sitting-cancel-stale-command"))
 	requireConflictConstraint(t, err, "exam_sitting_revision")
 
@@ -1587,7 +1587,7 @@ func TestExamSittingStoreSQLGuards(t *testing.T, ss store.Store, probe ExamSitti
 	_, err = ss.ExamSitting().Cancel(ctx, &store.ExamSittingCancellation{ExamID: fixture.examID, SittingID: precedence.Value.Sitting.ID,
 		ActorUserID: fixture.actor.ID, ExpectedRevision: 1, PrivateReason: "precedence",
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis(),
-		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailCancelled, model.MailTemplateExamSittingCancelled)},
+		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailCanceled, model.MailTemplateExamSittingCanceled)},
 		examCommand(fixture.actor.ID, "exam.sitting.cancel.v1", "sitting-precedence-cancel", "sitting-precedence-cancel-command"))
 	require.NoError(t, err)
 	invalidUpdate := func(expected int64, key string) error {
@@ -1615,7 +1615,7 @@ func TestExamSittingStoreSQLGuards(t *testing.T, ss store.Store, probe ExamSitti
 	raceOpenJob, raceDeadlineJob := newExamSittingLifecycleJobs(t, race.Value.Sitting.ID, 2,
 		fixture.period.StartsAt.Add(15*time.Hour), fixture.period.StartsAt.Add(16*time.Hour))
 	rescheduledMail := newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailRescheduled, model.MailTemplateExamSittingRescheduled)
-	cancelledMail := newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailCancelled, model.MailTemplateExamSittingCancelled)
+	canceledMail := newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailCanceled, model.MailTemplateExamSittingCanceled)
 	var updateErr, cancelErr error
 	var wait sync.WaitGroup
 	wait.Add(2)
@@ -1634,7 +1634,7 @@ func TestExamSittingStoreSQLGuards(t *testing.T, ss store.Store, probe ExamSitti
 		_, cancelErr = ss.ExamSitting().Cancel(ctx, &store.ExamSittingCancellation{ExamID: fixture.examID,
 			SittingID: race.Value.Sitting.ID, ActorUserID: fixture.actor.ID, ExpectedRevision: 1,
 			PrivateReason: "race", AuditEventID: cancelAudit.ID, AuditAt: model.GetMillis(),
-			Mail: cancelledMail},
+			Mail: canceledMail},
 			examCommand(fixture.actor.ID, "exam.sitting.cancel.v1", "sitting-race-cancel", "sitting-race-cancel-command"))
 	}()
 	wait.Wait()

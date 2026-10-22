@@ -190,14 +190,14 @@ func testAcademicPeriodStoreSearchAndArchive(t *testing.T, ss store.Store) {
 	period, err := UpdateAcademicPeriod(ctx, ss, period)
 	require.NoError(t, err)
 	found, err := ss.AcademicPeriod().ListVisible(
-		ctx, store.AcademicPeriodVisibilityScope{InstitutionID: institution.ID, InstitutionWide: true}, "summer", 10,
+		ctx, store.AcademicPeriodVisibilityScope{InstitutionID: institution.ID, InstitutionWide: true}, store.AcademicPeriodListOptions{Term: "summer", Limit: 10},
 	)
 	require.NoError(t, err)
 	require.Len(t, found, 1)
 	require.Equal(t, period.ID, found[0].ID)
 	visibility := store.AcademicPeriodVisibilityScope{InstitutionID: institution.ID, InstitutionWide: true}
 	for _, query := range []string{"LITERAL 50%_!", "%", "_", "!"} {
-		found, err = ss.AcademicPeriod().ListVisible(ctx, visibility, query, 10)
+		found, err = ss.AcademicPeriod().ListVisible(ctx, visibility, store.AcademicPeriodListOptions{Term: query, Limit: 10})
 		require.NoError(t, err)
 		require.Len(t, found, 1, "ListVisible(%q)", query)
 		require.Equal(t, period.ID, found[0].ID, "ListVisible(%q)", query)
@@ -267,7 +267,7 @@ func testAcademicPeriodStoreListVisible(t *testing.T, ss store.Store) {
 
 	periods, err := ss.AcademicPeriod().ListVisible(ctx, store.AcademicPeriodVisibilityScope{
 		InstitutionID: institution.ID, AcademicUnitRootIDs: []model.AcademicUnitID{root.ID},
-	}, "", 100)
+	}, store.AcademicPeriodListOptions{Limit: 100})
 	require.NoError(t, err)
 	require.Len(t, periods, 3)
 	require.Equal(t, institutionPeriod.ID, periods[0].ID)
@@ -275,7 +275,7 @@ func testAcademicPeriodStoreListVisible(t *testing.T, ss store.Store) {
 	require.Equal(t, childPeriod.ID, periods[2].ID)
 	empty, err := ss.AcademicPeriod().ListVisible(ctx, store.AcademicPeriodVisibilityScope{
 		InstitutionID: institution.ID,
-	}, "", 100)
+	}, store.AcademicPeriodListOptions{Limit: 100})
 	require.NoError(t, err)
 	require.Empty(t, empty, "ListVisible(no grants)")
 }

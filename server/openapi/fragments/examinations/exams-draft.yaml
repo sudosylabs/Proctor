@@ -79,7 +79,7 @@ components:
           schema:
             $ref: '#/components/schemas/EditExamDraftTextRequest'
           example:
-            expected_draft_revision: 2
+            expected_revision: 2
             title: Distributed Systems Final
             instructions_markdown: "Read every question carefully. Save your work before submitting."
   schemas:
@@ -87,7 +87,7 @@ components:
       type: object
       additionalProperties: false
       required:
-        - expected_draft_revision
+        - expected_revision
       anyOf:
         - required:
             - title
@@ -100,7 +100,7 @@ components:
             instructions_markdown:
               type: string
       properties:
-        expected_draft_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1

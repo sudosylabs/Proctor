@@ -145,6 +145,6 @@ func (r *runner) examChange(key, token, path, examPath, method string, body obje
 	if err = json.Unmarshal(raw, &value); err != nil || value.Draft.Revision < 1 {
 		return nil, errors.New("invalid exam draft response")
 	}
-	body["expected_draft_revision"] = value.Draft.Revision
+	body["expected_revision"] = value.Draft.Revision
 	return r.step(key, token, method, path, body, content, nil)
 }

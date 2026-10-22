@@ -31,7 +31,7 @@ func TestAcademicRevisionHTTPContract(t *testing.T) {
 			call := func(method, suffix, body string) *httptest.ResponseRecorder {
 				request := httptest.NewRequest(method, path+suffix, strings.NewReader(body))
 				request.Header.Set("Authorization", "Bearer credential")
-				if method == http.MethodPatch {
+				if body != "" {
 					request.Header.Set("Content-Type", "application/json")
 				}
 				response := httptest.NewRecorder()
@@ -50,11 +50,11 @@ func TestAcademicRevisionHTTPContract(t *testing.T) {
 			}
 			require.Equal(t, http.StatusOK, call(http.MethodPatch, "", `{}`).Code, "legacy patch failed")
 			require.Nil(t, revision(http.MethodPatch), "legacy patch failed")
-			require.Equal(t, http.StatusNoContent, call(http.MethodDelete, "?expected_revision=7", "").Code, "archive precondition failed")
+			require.Equal(t, http.StatusNoContent, call(http.MethodDelete, "", `{"expected_revision":7}`).Code, "archive precondition failed")
 			require.NotNil(t, revision(http.MethodDelete), "archive precondition failed")
 			require.Equal(t, int64(7), *revision(http.MethodDelete), "archive precondition failed")
-			for _, suffix := range []string{"?expected_revision=", "?expected_revision=0", "?expected_revision=-1", "?expected_revision=1&expected_revision=2"} {
-				require.Equal(t, http.StatusBadRequest, call(http.MethodDelete, suffix, "").Code, "invalid archive %s", suffix)
+			for _, body := range []string{`{"expected_revision":null}`, `{"expected_revision":0}`, `{"expected_revision":-1}`, `{"expected_revision":"7"}`, `{"revision":7}`} {
+				require.Equal(t, http.StatusBadRequest, call(http.MethodDelete, "", body).Code, "invalid archive %s", body)
 			}
 			require.Equal(t, http.StatusNoContent, call(http.MethodDelete, "", "").Code, "legacy archive failed")
 			require.Nil(t, revision(http.MethodDelete), "legacy archive failed")

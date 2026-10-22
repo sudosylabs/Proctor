@@ -21,11 +21,6 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type ListClassMembersQuery struct {
-	ClassID  model.ClassID
-	ActiveAt int64
-}
-
 type EnrollClassMemberCommand struct {
 	ClassID                       model.ClassID
 	UserID                        string
@@ -59,7 +54,6 @@ type EndClassMemberCommand struct {
 
 type classMemberStore interface {
 	Get(context.Context, model.ClassMemberID) (*model.ClassMember, error)
-	ListByClass(context.Context, model.ClassID, int64) ([]*model.ClassMember, error)
 	ListPageByClass(context.Context, store.ClassMemberPageOptions) (*store.ClassMemberPage, error)
 	Enroll(context.Context, *store.ClassMemberEnrollment) (*store.ClassEnrollmentResult, error)
 	End(context.Context, *store.ClassMemberEnd) (*model.ClassMember, error)
@@ -175,21 +169,6 @@ func (s *classMemberService) publishMembershipChanged(
 	if err := s.effects.MembershipChanged(ctx, candidateID, classIDs); err != nil {
 		s.effects.Report(ctx, "class_member.membership_changed", err)
 	}
-}
-
-func (s *classMemberService) ListClassMembers(ctx context.Context, invocation Invocation, query ListClassMembersQuery) ([]*model.ClassMember, error) {
-	resource, err := s.authorizeClass(ctx, invocation, query.ClassID, model.ActionClassMembersView)
-	if err != nil {
-		return nil, err
-	}
-	members, err := s.store.ListByClass(ctx, model.ClassID(resource.ID), query.ActiveAt)
-	if err != nil {
-		return nil, classMemberStoreErrors.Translate(err)
-	}
-	if members == nil {
-		members = []*model.ClassMember{}
-	}
-	return members, nil
 }
 
 func (s *classMemberService) EnrollClassMember(ctx context.Context, invocation Invocation, command EnrollClassMemberCommand) (*model.ClassEnrollment, error) {

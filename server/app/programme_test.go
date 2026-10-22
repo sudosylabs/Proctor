@@ -40,9 +40,9 @@ func (s *programmeStoreFake) Get(context.Context, model.ProgrammeID) (*model.Pro
 func (s *programmeStoreFake) ListByAcademicUnit(context.Context, string) ([]*model.Programme, error) {
 	return s.listed, nil
 }
-func (s *programmeStoreFake) SearchByAcademicUnit(_ context.Context, _ model.AcademicUnitID, term string, limit int) ([]*model.Programme, error) {
-	s.searchTerm, s.searchLimit = term, limit
-	return s.listed[:min(limit, len(s.listed))], nil
+func (s *programmeStoreFake) SearchByAcademicUnit(_ context.Context, _ model.AcademicUnitID, options store.AcademicNameListOptions) ([]*model.Programme, error) {
+	s.searchTerm, s.searchLimit = options.Term, options.Limit
+	return s.listed[:min(options.Limit, len(s.listed))], nil
 }
 func (s *programmeStoreFake) Create(_ context.Context, input *store.ProgrammeCreation) (*model.Programme, error) {
 	*s.events = append(*s.events, "store-create")
@@ -225,13 +225,14 @@ func TestProgrammeListPreservesLimitWithoutSearch(t *testing.T) {
 				&institutionAuditorFake{events: &events}, time.Now, model.NewID,
 			)
 			got, err := service.ListProgrammes(context.Background(), Invocation{}, ListProgrammesQuery{
-				AcademicUnitID: model.NewAcademicUnitID(), Query: term, Limit: 1,
+				AcademicUnitID: model.NewAcademicUnitID(), Query: term, NamePageQuery: NamePageQuery{Limit: 1},
 			})
 			require.NoError(t, err)
-			require.Len(t, got, 1, "List(limit=1, q=%q)", term)
-			require.Same(t, first, got[0], "List(limit=1, q=%q)", term)
+			require.Len(t, got.Items, 1, "List(limit=1, q=%q)", term)
+			require.Same(t, first, got.Items[0], "List(limit=1, q=%q)", term)
+			require.Equal(t, len(persistence.listed) > 1, got.HasMore, "List(limit=1) reports a further page")
 			require.Equal(t, strings.TrimSpace(term), persistence.searchTerm, "bounded query")
-			require.Equal(t, 1, persistence.searchLimit, "bounded query")
+			require.Equal(t, 2, persistence.searchLimit, "bounded query probes one row past the page")
 		})
 	}
 }

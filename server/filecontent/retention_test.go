@@ -56,7 +56,7 @@ func TestRetentionPurgeRequiresIndependentExactKeyAbsence(t *testing.T) {
 		{name: "confirmed removal"},
 		{name: "acknowledged but still present", retain: true, wantError: true},
 		{name: "observation unavailable", statErr: errors.New("provider secret detail"), wantError: true},
-		{name: "cancelled observation", statErr: context.Canceled, wantError: true},
+		{name: "canceled observation", statErr: context.Canceled, wantError: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			fs := &retentionObservationVFS{FileSystem: memoryvfs.New()}

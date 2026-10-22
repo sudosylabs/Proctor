@@ -43,15 +43,8 @@ paths:
           description: Literal case-insensitive substring matched against name and display name.
           schema:
             type: string
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 200
-            default: 100
-          description: Maximum number of Programmes to return.
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
       responses:
         "200":
           $ref: '#/components/responses/ProgrammeListOK'
@@ -146,9 +139,18 @@ components:
             $ref: '#/components/schemas/ProgrammeListResponse'
   schemas:
     ProgrammeListResponse:
-      type: array
-      items:
-        $ref: '#/components/schemas/ProgrammeResponse'
+      description: One page of the collection in its stable order.
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProgrammeResponse'
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'
     CreateProgrammeRequest:
       description: Canonical and human-facing fields for a new Programme.
       type: object

@@ -141,10 +141,10 @@ func (h retentionHandler) reconcilePage(ctx context.Context, e jobengine.Executi
 			if err != nil {
 				return errors.Join(err, h.audit.FailRetention(ctx, auditID))
 			}
-			if result == nil || result.Scheduled < 0 || result.Cancelled < 0 || result.Retired < 0 || result.Scheduled > 4 || result.Cancelled > 4 || result.Retired > 4 {
+			if result == nil || result.Scheduled < 0 || result.Canceled < 0 || result.Retired < 0 || result.Scheduled > 4 || result.Canceled > 4 || result.Retired > 4 {
 				return errors.New("invalid retention result")
 			}
-			if result.Scheduled+result.Cancelled+result.Retired > 0 {
+			if result.Scheduled+result.Canceled+result.Retired > 0 {
 				cp.Changed++
 			}
 		}

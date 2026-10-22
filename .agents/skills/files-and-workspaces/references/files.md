@@ -184,7 +184,7 @@ source protections, and a finite Job under Exam/Sitting/Submission locks.
 Source protections last at most 24 hours. Their fresh reservation immediately
 cancels applicable content grace/notices and relevant audit/receipt grace,
 even if construction completes before a scheduler scan. Exact retries hydrate
-current metadata without renewing deadlines or cancelling grace.
+current metadata without renewing deadlines or canceling grace.
 
 Each build attempt registers its exact artifact identity before I/O. File
 Content builds a private bounded ZIP spool, validates original file lengths

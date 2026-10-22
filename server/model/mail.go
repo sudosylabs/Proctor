@@ -57,7 +57,7 @@ func (key MailTemplateKey) OccurrenceKind() (MailOccurrenceKind, bool) {
 		MailTemplateAuthorizationScopedRoleEnded, MailTemplateAuthorizationInstitutionRoleAssigned,
 		MailTemplateAuthorizationInstitutionRoleEnded:
 		return MailOccurrenceAcademicAdministration, true
-	case MailTemplateExamSittingScheduled, MailTemplateExamSittingRescheduled, MailTemplateExamSittingCancelled,
+	case MailTemplateExamSittingScheduled, MailTemplateExamSittingRescheduled, MailTemplateExamSittingCanceled,
 		MailTemplateExamSittingAssignmentRemoved:
 		return MailOccurrenceSittingSchedule, true
 	case MailTemplateExamManagerAdded, MailTemplateExamManagerRemoved, MailTemplateExamOwnershipTransferredToYou,
@@ -110,7 +110,7 @@ const (
 	MailTemplateAuthorizationInstitutionRoleEnded    MailTemplateKey = "authorization.institution_role_ended"
 	MailTemplateExamSittingScheduled                 MailTemplateKey = "exam.sitting_scheduled"
 	MailTemplateExamSittingRescheduled               MailTemplateKey = "exam.sitting_rescheduled"
-	MailTemplateExamSittingCancelled                 MailTemplateKey = "exam.sitting_cancelled"
+	MailTemplateExamSittingCanceled                  MailTemplateKey = "exam.sitting_canceled"
 	MailTemplateExamSittingAssignmentRemoved         MailTemplateKey = "exam.sitting_assignment_removed"
 	MailTemplateExamManagerAdded                     MailTemplateKey = "exam.manager_added"
 	MailTemplateExamManagerRemoved                   MailTemplateKey = "exam.manager_removed"
@@ -183,7 +183,7 @@ var mailTemplateKeys = []MailTemplateKey{
 	MailTemplateAuthorizationInstitutionRoleEnded,
 	MailTemplateExamSittingScheduled,
 	MailTemplateExamSittingRescheduled,
-	MailTemplateExamSittingCancelled,
+	MailTemplateExamSittingCanceled,
 	MailTemplateExamSittingAssignmentRemoved,
 	MailTemplateExamManagerAdded,
 	MailTemplateExamManagerRemoved,

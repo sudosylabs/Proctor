@@ -387,7 +387,7 @@ type examAttemptConnectionResponse struct {
 type examAttemptSuspensionResponse struct {
 	ID                string `json:"id"`
 	ParticipationID   string `json:"participation_id"`
-	FlagID            string `json:"flag_id,omitempty"`
+	FlagID            string `json:"integrity_flag_id,omitempty"`
 	Generation        int64  `json:"generation"`
 	State             string `json:"state"`
 	Source            string `json:"source"`
@@ -431,7 +431,7 @@ type browserActivityLocationResponse struct {
 
 type reallowExamAttemptRequest struct {
 	SuspensionID            string `json:"suspension_id"`
-	ExpectedAttemptRevision int64  `json:"expected_attempt_revision"`
+	ExpectedAttemptRevision int64  `json:"expected_revision"`
 	Reason                  string `json:"reason"`
 }
 
@@ -447,7 +447,7 @@ type examAttemptReallowResponse struct {
 }
 
 type suspendExamAttemptRequest struct {
-	ExpectedAttemptRevision int64  `json:"expected_attempt_revision"`
+	ExpectedAttemptRevision int64  `json:"expected_revision"`
 	Reason                  string `json:"reason"`
 }
 
@@ -648,7 +648,7 @@ type acknowledgeExamCorrectionResponse struct {
 }
 
 type endExamAttemptByManagerRequest struct {
-	ExpectedAttemptRevision int64  `json:"expected_attempt_revision"`
+	ExpectedAttemptRevision int64  `json:"expected_revision"`
 	Reason                  string `json:"reason"`
 }
 
@@ -716,9 +716,28 @@ type candidateWorkspaceJournalEntryResponse struct {
 type candidateWorkspaceJournalResponse struct {
 	WorkspaceID     string                                   `json:"workspace_id"`
 	CurrentCursor   int64                                    `json:"current_cursor"`
-	Entries         []candidateWorkspaceJournalEntryResponse `json:"entries"`
-	HasMore         bool                                     `json:"has_more"`
+	Items           []candidateWorkspaceJournalEntryResponse `json:"items"`
+	NextCursor      string                                   `json:"next_cursor,omitempty"`
 	RefreshRequired bool                                     `json:"refresh_required"`
+}
+
+// candidateWorkspaceJournalCursor continues the change journal after the
+// last Workspace Cursor of the previous page.
+type candidateWorkspaceJournalCursor struct {
+	After int64 `json:"after_workspace_cursor"`
+}
+
+func candidateWorkspaceJournalCursorSpec() opaqueCursorSpec[candidateWorkspaceJournalCursor] {
+	return opaqueCursorSpec[candidateWorkspaceJournalCursor]{
+		label: "Workspace journal", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength,
+		members: []string{"after_workspace_cursor"},
+		validate: func(cursor candidateWorkspaceJournalCursor) error {
+			if cursor.After < 1 {
+				return errors.New("invalid Workspace journal keyset")
+			}
+			return nil
+		},
+	}
 }
 
 func examAttemptResource(application ExamAttemptApplication) resource {
@@ -1003,7 +1022,7 @@ func (m examAttemptHTTPModule) suspend(request operationRequest) (operationResul
 		return operationResult{}, err
 	}
 	if body.ExpectedAttemptRevision < 1 {
-		return operationResult{}, invalidRequestError(errors.New("expected_attempt_revision must be positive"))
+		return operationResult{}, invalidRequestError(errors.New("expected_revision must be positive"))
 	}
 	result, err := m.application.SuspendExamAttempt(request.context, request.invocation(), app.SuspendExamAttemptCommand{
 		ExamID: examID, SittingID: sittingID, AttemptID: attemptID,
@@ -1274,18 +1293,28 @@ func (m examAttemptHTTPModule) workspaceChanges(request operationRequest) (opera
 	if err != nil {
 		return operationResult{}, err
 	}
-	query := app.ListCandidateExamWorkspaceJournalQuery{Access: access, Limit: 50}
+	paging, err := request.pageRequest()
+	if err != nil {
+		return operationResult{}, err
+	}
+	if paging.Limit > model.AttemptWorkspaceJournalReadMaximum {
+		return operationResult{}, invalidRequestError(errors.New("must be between 1 and 200"))
+	}
+	query := app.ListCandidateExamWorkspaceJournalQuery{Access: access, Limit: paging.Limit}
 	values := request.request.URL.Query()
-	if raw := values.Get("after_cursor"); raw != "" {
+	cursor, continued, err := decodePageCursor(paging, candidateWorkspaceJournalCursorSpec())
+	if err != nil {
+		return operationResult{}, err
+	}
+	switch raw := values.Get("workspace_cursor"); {
+	case continued && values.Has("workspace_cursor"):
+		return operationResult{}, invalidRequestError(errors.New("workspace_cursor starts a listing that cursor continues"))
+	case continued:
+		query.AfterCursor = cursor.After
+	case raw != "":
 		query.AfterCursor, err = strconv.ParseInt(raw, 10, 64)
 		if err != nil || query.AfterCursor < 0 {
 			return operationResult{}, invalidRequestError(errors.New("must be nonnegative"))
-		}
-	}
-	if raw := values.Get("limit"); raw != "" {
-		query.Limit, err = strconv.Atoi(raw)
-		if err != nil || query.Limit < 1 || query.Limit > model.AttemptWorkspaceJournalReadMaximum {
-			return operationResult{}, invalidRequestError(errors.New("must be between 1 and 200"))
 		}
 	}
 	page, err := m.application.ListCandidateExamWorkspaceJournal(request.context, request.invocation(), query)
@@ -1293,10 +1322,18 @@ func (m examAttemptHTTPModule) workspaceChanges(request operationRequest) (opera
 		return operationResult{}, err
 	}
 	response := candidateWorkspaceJournalResponse{WorkspaceID: page.WorkspaceID.String(), CurrentCursor: page.CurrentCursor,
-		Entries: make([]candidateWorkspaceJournalEntryResponse, 0, len(page.Entries)), HasMore: page.HasMore,
-		RefreshRequired: page.RefreshRequired}
+		Items: make([]candidateWorkspaceJournalEntryResponse, 0, len(page.Entries)), RefreshRequired: page.RefreshRequired}
+	if page.HasMore {
+		if len(page.Entries) == 0 {
+			return operationResult{}, unpresentableResult(errors.New("Workspace journal page made no progress"))
+		}
+		next := candidateWorkspaceJournalCursor{After: page.Entries[len(page.Entries)-1].Cursor}
+		if response.NextCursor, err = encodeOpaqueCursor(next, candidateWorkspaceJournalCursorSpec()); err != nil {
+			return operationResult{}, unpresentableResult(err)
+		}
+	}
 	for _, entry := range page.Entries {
-		response.Entries = append(response.Entries, candidateWorkspaceJournalEntryResponse{Cursor: entry.Cursor,
+		response.Items = append(response.Items, candidateWorkspaceJournalEntryResponse{Cursor: entry.Cursor,
 			EntryID: entry.EntryID.String(), Kind: string(entry.EntryKind), Operation: string(entry.Operation), OldPath: entry.OldPath,
 			NewPath: entry.NewPath, ContentVersion: entry.ContentVersion.String(),
 			ChangedAt: model.FormatRFC3339(entry.ChangedAt), Recursive: entry.Recursive})

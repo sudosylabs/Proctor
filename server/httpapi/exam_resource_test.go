@@ -35,7 +35,7 @@ func TestExamResourceHTTPUploadUsesStrictMetadataFirstStreamingContract(t *testi
 	api := newFocusedResourceAPI(t, logger, fake, examResourceHTTPResource(fake))
 	raw := []byte("# Notes")
 	checksum := fmt.Sprintf("%x", sha256.Sum256(raw))
-	body, contentType := examResourceMultipart(t, `{"expected_draft_revision":1,"display_name":"Reference","description_markdown":"Read **this**.","media_type":"text/markdown","size":7,"sha256":"`+checksum+`"}`, raw, false)
+	body, contentType := examResourceMultipart(t, `{"expected_revision":1,"display_name":"Reference","description_markdown":"Read **this**.","media_type":"text/markdown","size":7,"sha256":"`+checksum+`"}`, raw, false)
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/exams/"+fake.examID.String()+"/draft/resources", body)
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", contentType)
@@ -61,7 +61,7 @@ func TestExamResourceHTTPRejectsTrailingMultipartPartBeforeApplicationCommit(t *
 	api := newFocusedResourceAPI(t, logger, fake, examResourceHTTPResource(fake))
 	raw := []byte("notes")
 	checksum := fmt.Sprintf("%x", sha256.Sum256(raw))
-	body, contentType := examResourceMultipart(t, `{"expected_draft_revision":1,"display_name":"Reference","description_markdown":"","media_type":"text/plain","size":5,"sha256":"`+checksum+`"}`, raw, true)
+	body, contentType := examResourceMultipart(t, `{"expected_revision":1,"display_name":"Reference","description_markdown":"","media_type":"text/plain","size":5,"sha256":"`+checksum+`"}`, raw, true)
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/exams/"+fake.examID.String()+"/draft/resources", body)
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", contentType)
@@ -79,9 +79,9 @@ func TestExamResourceHTTPRejectsDuplicateOrMissingMultipartMetadata(t *testing.T
 		name     string
 		metadata string
 	}{
-		{name: "duplicate expected revision", metadata: `{"expected_draft_revision":1,"expected_draft_revision":2,"display_name":"Reference","media_type":"text/plain","size":5,"sha256":"` + checksum + `"}`},
-		{name: "duplicate checksum", metadata: `{"expected_draft_revision":1,"display_name":"Reference","media_type":"text/plain","size":5,"sha256":"` + checksum + `","sha256":"` + checksum + `"}`},
-		{name: "missing size", metadata: `{"expected_draft_revision":1,"display_name":"Reference","media_type":"text/plain","sha256":"` + checksum + `"}`},
+		{name: "duplicate expected revision", metadata: `{"expected_revision":1,"expected_revision":2,"display_name":"Reference","media_type":"text/plain","size":5,"sha256":"` + checksum + `"}`},
+		{name: "duplicate checksum", metadata: `{"expected_revision":1,"display_name":"Reference","media_type":"text/plain","size":5,"sha256":"` + checksum + `","sha256":"` + checksum + `"}`},
+		{name: "missing size", metadata: `{"expected_revision":1,"display_name":"Reference","media_type":"text/plain","sha256":"` + checksum + `"}`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			logger, _ := newTestLogger(t)
@@ -108,7 +108,7 @@ func TestExamResourceHTTPAcceptsExplicitZeroSizeText(t *testing.T) {
 	fake := newExamResourceHTTPFake(principal)
 	api := newFocusedResourceAPI(t, logger, fake, examResourceHTTPResource(fake))
 	checksum := fmt.Sprintf("%x", sha256.Sum256(nil))
-	body, contentType := examResourceMultipart(t, `{"expected_draft_revision":1,"display_name":"Empty notes","media_type":"text/plain","size":0,"sha256":"`+checksum+`"}`, nil, false)
+	body, contentType := examResourceMultipart(t, `{"expected_revision":1,"display_name":"Empty notes","media_type":"text/plain","size":0,"sha256":"`+checksum+`"}`, nil, false)
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/exams/"+fake.examID.String()+"/draft/resources", body)
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", contentType)
@@ -128,7 +128,7 @@ func TestExamResourceHTTPMetadataPatchIsPresenceAware(t *testing.T) {
 	fake := newExamResourceHTTPFake(principal)
 	api := newFocusedResourceAPI(t, logger, fake, examResourceHTTPResource(fake))
 	path := "/api/v1/exams/" + fake.examID.String() + "/draft/resources/" + fake.record.Resource.ID.String()
-	request := httptest.NewRequest(http.MethodPatch, path, strings.NewReader(`{"expected_draft_revision":1,"description_markdown":""}`))
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, path, strings.NewReader(`{"expected_revision":1,"description_markdown":""}`))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Idempotency-Key", "resource-metadata")
@@ -139,7 +139,7 @@ func TestExamResourceHTTPMetadataPatchIsPresenceAware(t *testing.T) {
 	require.NotNil(t, fake.edit.DescriptionMarkdown, "status=%d edit=%#v body=%s", response.Code, fake.edit, response.Body.String())
 	require.Empty(t, *fake.edit.DescriptionMarkdown, "status=%d edit=%#v body=%s", response.Code, fake.edit, response.Body.String())
 
-	omitted := httptest.NewRequest(http.MethodPatch, path, strings.NewReader(`{"expected_draft_revision":1}`))
+	omitted := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, path, strings.NewReader(`{"expected_revision":1}`))
 	omitted.Header = request.Header.Clone()
 	omittedResponse := httptest.NewRecorder()
 	api.ServeHTTP(omittedResponse, omitted)
@@ -154,7 +154,7 @@ func TestExamResourceHTTPRemoveReturnsNoContent(t *testing.T) {
 	fake := newExamResourceHTTPFake(principal)
 	api := newFocusedResourceAPI(t, logger, fake, examResourceHTTPResource(fake))
 	path := "/api/v1/exams/" + fake.examID.String() + "/draft/resources/" + fake.record.Resource.ID.String()
-	request := httptest.NewRequest(http.MethodDelete, path, strings.NewReader(`{"expected_draft_revision":1}`))
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodDelete, path, strings.NewReader(`{"expected_revision":1}`))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Idempotency-Key", "resource-remove")

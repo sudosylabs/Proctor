@@ -22,7 +22,7 @@ type GetProgrammeQuery struct{ ID model.ProgrammeID }
 type ListProgrammesQuery struct {
 	AcademicUnitID model.AcademicUnitID
 	Query          string
-	Limit          int
+	NamePageQuery
 }
 type CreateProgrammeCommand struct {
 	AcademicUnitID model.AcademicUnitID
@@ -44,7 +44,7 @@ type ArchiveProgrammeCommand struct {
 
 type programmeStore interface {
 	Get(context.Context, model.ProgrammeID) (*model.Programme, error)
-	SearchByAcademicUnit(context.Context, model.AcademicUnitID, string, int) ([]*model.Programme, error)
+	SearchByAcademicUnit(context.Context, model.AcademicUnitID, store.AcademicNameListOptions) ([]*model.Programme, error)
 	Create(context.Context, *store.ProgrammeCreation) (*model.Programme, error)
 	Update(context.Context, *store.ProgrammeUpdate) (*model.Programme, error)
 	Archive(context.Context, *store.ProgrammeArchive) (*model.Programme, error)
@@ -87,24 +87,25 @@ func (s *programmeService) GetProgramme(ctx context.Context, invocation Invocati
 	return programme, nil
 }
 
-func (s *programmeService) ListProgrammes(ctx context.Context, invocation Invocation, query ListProgrammesQuery) ([]*model.Programme, error) {
+func (s *programmeService) ListProgrammes(ctx context.Context, invocation Invocation, query ListProgrammesQuery) (Page[*model.Programme], error) {
 	unitID := query.AcademicUnitID
 	if !unitID.IsValid() {
-		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id")
+		return Page[*model.Programme]{}, apperror.New("request.invalid").WithField("field", "academic_unit_id")
+	}
+	limit, probe, err := resolvePageLimit(query.Limit, "limit")
+	if err != nil {
+		return Page[*model.Programme]{}, err
 	}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionProgrammeView, model.Resource{Type: model.ResourceAcademicUnit, ID: unitID.String()}); err != nil {
-		return nil, err
+		return Page[*model.Programme]{}, err
 	}
-	programmes, err := s.store.SearchByAcademicUnit(
-		ctx, unitID, strings.TrimSpace(query.Query), normalizeAdministrationLimit(query.Limit),
-	)
+	programmes, err := s.store.SearchByAcademicUnit(ctx, unitID, store.AcademicNameListOptions{
+		Term: strings.TrimSpace(query.Query), AfterName: query.AfterName, AfterID: query.AfterID, Limit: probe,
+	})
 	if err != nil {
-		return nil, programmeStoreErrors.Translate(err)
+		return Page[*model.Programme]{}, programmeStoreErrors.Translate(err)
 	}
-	if programmes == nil {
-		programmes = []*model.Programme{}
-	}
-	return programmes, nil
+	return newPage(programmes, limit), nil
 }
 
 func (s *programmeService) CreateProgramme(ctx context.Context, invocation Invocation, command CreateProgrammeCommand) (*model.Programme, error) {

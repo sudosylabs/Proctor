@@ -22,7 +22,7 @@ type GetProgrammeLevelQuery struct{ ID model.ProgrammeLevelID }
 type ListProgrammeLevelsQuery struct {
 	ProgrammeID model.ProgrammeID
 	Query       string
-	Limit       int
+	NamePageQuery
 }
 type CreateProgrammeLevelCommand struct {
 	ProgrammeID model.ProgrammeID
@@ -44,7 +44,7 @@ type ArchiveProgrammeLevelCommand struct {
 
 type programmeLevelStore interface {
 	Get(context.Context, model.ProgrammeLevelID) (*model.ProgrammeLevel, error)
-	SearchByProgramme(context.Context, model.ProgrammeID, string, int) ([]*model.ProgrammeLevel, error)
+	SearchByProgramme(context.Context, model.ProgrammeID, store.AcademicNameListOptions) ([]*model.ProgrammeLevel, error)
 	Create(context.Context, *store.ProgrammeLevelCreation) (*model.ProgrammeLevel, error)
 	Update(context.Context, *store.ProgrammeLevelUpdate) (*model.ProgrammeLevel, error)
 	Archive(context.Context, *store.ProgrammeLevelArchive) (*model.ProgrammeLevel, error)
@@ -83,24 +83,25 @@ func (s *programmeLevelService) GetProgrammeLevel(ctx context.Context, invocatio
 	return level, nil
 }
 
-func (s *programmeLevelService) ListProgrammeLevels(ctx context.Context, invocation Invocation, query ListProgrammeLevelsQuery) ([]*model.ProgrammeLevel, error) {
+func (s *programmeLevelService) ListProgrammeLevels(ctx context.Context, invocation Invocation, query ListProgrammeLevelsQuery) (Page[*model.ProgrammeLevel], error) {
 	programmeID := query.ProgrammeID
 	if !programmeID.IsValid() {
-		return nil, apperror.New("request.invalid").WithField("field", "programme_id")
+		return Page[*model.ProgrammeLevel]{}, apperror.New("request.invalid").WithField("field", "programme_id")
+	}
+	limit, probe, err := resolvePageLimit(query.Limit, "limit")
+	if err != nil {
+		return Page[*model.ProgrammeLevel]{}, err
 	}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionProgrammeLevelView, model.Resource{Type: model.ResourceProgramme, ID: programmeID.String()}); err != nil {
-		return nil, err
+		return Page[*model.ProgrammeLevel]{}, err
 	}
-	levels, err := s.store.SearchByProgramme(
-		ctx, programmeID, strings.TrimSpace(query.Query), normalizeAdministrationLimit(query.Limit),
-	)
+	levels, err := s.store.SearchByProgramme(ctx, programmeID, store.AcademicNameListOptions{
+		Term: strings.TrimSpace(query.Query), AfterName: query.AfterName, AfterID: query.AfterID, Limit: probe,
+	})
 	if err != nil {
-		return nil, programmeLevelStoreErrors.Translate(err)
+		return Page[*model.ProgrammeLevel]{}, programmeLevelStoreErrors.Translate(err)
 	}
-	if levels == nil {
-		levels = []*model.ProgrammeLevel{}
-	}
-	return levels, nil
+	return newPage(levels, limit), nil
 }
 
 func (s *programmeLevelService) CreateProgrammeLevel(ctx context.Context, invocation Invocation, command CreateProgrammeLevelCommand) (*model.ProgrammeLevel, error) {

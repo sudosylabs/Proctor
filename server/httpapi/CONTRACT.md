@@ -848,23 +848,37 @@ payload data.
 ## Academic revisions and membership pages
 
 Academic Unit, Programme, Programme Level, Academic Period, and Class responses
-include `revision`. Their PATCH commands accept an optional positive,
-non-null `expected_revision`; DELETE accepts the same optional positive value
-as a query parameter. Omission preserves existing clients. When supplied,
+include `revision`. Their PATCH and DELETE commands accept an optional
+positive, non-null `expected_revision` in the JSON body; a DELETE without a
+body archives unconditionally. When supplied,
 the application checks the editor's revision after authorization and the Store
 fences the mutation atomically. Conflicts use each resource's existing
 `*.conflict` code; a stale editor cannot update or archive newer state.
 
-Academic Unit Member and Class Member GET collections preserve bare-array
-responses. Supplying `limit` or `cursor` opts into bounded keyset paging, with
-50 items by default and a maximum of 200. A continuation is returned in a
-relative `Link` with `rel="next"`; no continuation means the page is final.
-Ordering is the immutable `(user_id, id)` tuple. Every page freshly authorizes
-the scope. Its bounded cursor fixes scope and effective time/history filters;
-omitted filters inherit the cursor, while conflicting values are rejected.
-Paged `history=true` cannot be combined with `active_at`. Results remain a live
-view, not a retained database snapshot. Calls without paging parameters retain
-their existing full-list behavior.
+Academic Unit Member and Class Member collections page like every other
+collection, ordered by the immutable `(user_id, id)` tuple. Every page freshly
+authorizes the scope. Its bounded cursor fixes scope and effective time/history
+filters; omitted filters inherit the cursor, while conflicting values are
+rejected. Paged `history=true` cannot be combined with `active_at`. Results
+remain a live view, not a retained database snapshot.
+
+## Collections
+
+Every collection operation answers one envelope: an object with a non-null
+`items` array and an optional `next_cursor` string, omitted on the last page.
+It takes exactly two paging query parameters, `limit` (1 to 200, default 50,
+unless the resource documents a smaller bound) and `cursor`, the previous
+page's `next_cursor` returned unchanged. No collection answers a bare array, a
+`Link` header, `has_more`, or another `next_*` member, and no collection takes
+`after_*`, `first_*`, or offset parameters; a filter that starts a feed at
+client-held state, such as the Workspace change journal's `workspace_cursor`,
+is a filter, not a paging parameter. Database-unbounded collections page with
+a Store keyset; a collection the application already bounds and returns whole
+(a User's Sessions, the configured providers, a Draft's Resources) is paged on
+the wire as keyset slices of its stable order. A collection may carry
+non-paging context members beside the envelope, such as a snapshot's
+`workspace_cursor`. `TestOpenAPIListOperationsUseOneEnvelope` enforces the
+idiom over the reviewed OpenAPI document.
 
 ## Ownership and extension workflow
 
@@ -923,8 +937,6 @@ patterns:
 - its v1 PATCH DTO uses pointers, so omitted and explicit `null` currently have
   the same meaning. Later slices must use the architecture's `Optional[T]`
   representation when those states differ; do not copy the pointer shape;
-- its v1 collection response is a bare JSON array. New collection contracts
-  use an object with non-null `items` and, where applicable, `next_cursor`;
 - Role PATCH uses pointers, so omitted and explicit `null` leave each mutable
   field unchanged while empty strings or arrays are present and validated.
   Later slices use `Optional[T]` when omission and null have different meaning.
@@ -976,7 +988,7 @@ both descending. Its `next_cursor` is an opaque URL-safe token carrying
 that tuple; clients return it unchanged, and malformed, trailing, or
 unknown-member payloads are invalid requests. Publication uses
 `POST /api/v1/exams/{exam_id}/revisions`, requires `Idempotency-Key`, and accepts
-only the positive `expected_draft_revision` fence. Collection and exact reads
+only the positive `expected_revision` fence. Collection and exact reads
 return bounded publication metadata: identity, number, source Draft revision,
 title, policy and content digests, the frozen Exam Capacity Policy, aggregate
 resource/Starter Workspace counts, publisher, time, base Revision, and
@@ -1044,7 +1056,7 @@ responses are `no-store`; there is no delete operation.
 Exam Resource and Starter Workspace operations are purpose-specific authoring
 surfaces. Every route requires an authenticated principal and applies current
 Exam management authorization. Every mutation requires `Idempotency-Key` and
-the current `expected_draft_revision`; JSON bodies are closed objects and
+the current `expected_revision`; JSON bodies are closed objects and
 reject unknown fields.
 
 | Method and path | Request | Success |
@@ -1087,7 +1099,7 @@ the default per-file limit remains 10 MiB.
 
 Starter Workspace directory removal defaults to empty directories. Explicit
 `recursive: true` archives the directory and every descendant atomically under
-the existing `expected_draft_revision`, advances that revision once, and
+the existing `expected_revision`, advances that revision once, and
 preserves published and admitted content pins. The flag is invalid for files.
 
 Protected content responses set a strong checksum ETag,
@@ -1416,13 +1428,13 @@ Suspend (kick) requires the expected revision of an Active Attempt and a
 trimmed private manager reason with the same retention and redaction rules.
 It ends the active Participation and its open Connection as `kicked` and opens
 one manual suspension episode (`source` `manual`, safe candidate reason
-`manager_suspended`, no `flag_id`). The same re-allow operation closes it.
+`manager_suspended`, no `integrity_flag_id`). The same re-allow operation closes it.
 PostgreSQL time bounds it: it fails with `exam.attempt.sitting_not_open` once
 the Sitting's scheduled end is reached, and with `exam.attempt.connection_lost`
 after recording Connection Loss when the generation's lease had already lapsed.
 
 Suspension provenance is source-specific on the wire. In HTTP suspension
-objects `flag_id` is present exactly for a `policy` episode and
+objects `integrity_flag_id` is present exactly for a `policy` episode and
 `suspended_by_user_id` exactly for a `manual` one. The Sitting viewers'
 `exam_attempt_suspended` realtime event carries `exam_sitting_id`,
 `exam_attempt_id`, `candidate_user_id`, `suspension_id`, `attempt_revision`

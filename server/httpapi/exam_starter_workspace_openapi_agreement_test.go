@@ -35,14 +35,14 @@ func TestExamStarterWorkspaceOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Key: "GET " + content, Auth: AuthPrincipalRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/ExamStarterWorkspaceProtectedContent", ExceptionalSuccess: true, PublicErrorCodes: readCodes},
 		},
 		Schemas: []openAPIAgreementSchema{
-			{Name: "CreateExamStarterWorkspaceDirectoryRequest", DTO: reflect.TypeOf(createExamStarterWorkspaceDirectoryRequest{}), Required: []string{"expected_draft_revision", "path"}},
-			{Name: "ExamStarterWorkspaceFileUploadMetadata", DTO: reflect.TypeOf(examStarterWorkspaceFileUploadMetadata{}), Required: []string{"expected_draft_revision", "path", "media_type", "size", "sha256"}},
-			{Name: "ExamStarterWorkspaceFileReplacementMetadata", DTO: reflect.TypeOf(examStarterWorkspaceFileReplacementMetadata{}), Required: []string{"expected_draft_revision", "expected_content_version", "media_type", "size", "sha256"}},
-			{Name: "MoveExamStarterWorkspaceEntryRequest", DTO: reflect.TypeOf(moveExamStarterWorkspaceEntryRequest{}), Required: []string{"expected_draft_revision", "path"}},
-			{Name: "RemoveExamStarterWorkspaceEntryRequest", DTO: reflect.TypeOf(removeExamStarterWorkspaceEntryRequest{}), Required: []string{"expected_draft_revision"}},
+			{Name: "CreateExamStarterWorkspaceDirectoryRequest", DTO: reflect.TypeOf(createExamStarterWorkspaceDirectoryRequest{}), Required: []string{"expected_revision", "path"}},
+			{Name: "ExamStarterWorkspaceFileUploadMetadata", DTO: reflect.TypeOf(examStarterWorkspaceFileUploadMetadata{}), Required: []string{"expected_revision", "path", "media_type", "size", "sha256"}},
+			{Name: "ExamStarterWorkspaceFileReplacementMetadata", DTO: reflect.TypeOf(examStarterWorkspaceFileReplacementMetadata{}), Required: []string{"expected_revision", "expected_content_version", "media_type", "size", "sha256"}},
+			{Name: "MoveExamStarterWorkspaceEntryRequest", DTO: reflect.TypeOf(moveExamStarterWorkspaceEntryRequest{}), Required: []string{"expected_revision", "path"}},
+			{Name: "RemoveExamStarterWorkspaceEntryRequest", DTO: reflect.TypeOf(removeExamStarterWorkspaceEntryRequest{}), Required: []string{"expected_revision"}},
 			{Name: "ExamStarterWorkspaceEntryResponse", DTO: reflect.TypeOf(examStarterWorkspaceEntryResponse{}), Required: []string{"id", "kind", "path", "created_at", "updated_at", "draft_revision"}},
 			{Name: "ExamStarterWorkspaceListItemResponse", DTO: reflect.TypeOf(examStarterWorkspaceListItemResponse{}), Required: []string{"id", "kind", "path", "created_at", "updated_at"}},
-			{Name: "ExamStarterWorkspaceListResponse", DTO: reflect.TypeOf(examStarterWorkspaceListResponse{}), Required: []string{"items"}},
+			{Name: "ExamStarterWorkspaceListResponse", DTO: reflect.TypeOf(listResponse[examStarterWorkspaceListItemResponse]{}), Required: []string{"items"}},
 		},
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)

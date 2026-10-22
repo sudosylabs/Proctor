@@ -163,19 +163,16 @@ func (s SQLProgrammeStore) ListByAcademicUnit(ctx context.Context, academicUnitI
 	return programmes, nil
 }
 
-// SearchByAcademicUnit returns up to limit unarchived Programmes of the
-// Academic Unit whose name or display name contains term, case-insensitively. A
-// limit outside 1..200 is invalid input.
-func (s SQLProgrammeStore) SearchByAcademicUnit(ctx context.Context, academicUnitID model.AcademicUnitID, term string, limit int) ([]*model.Programme, error) {
-	if limit < 1 || limit > 200 {
-		return nil, store.NewErrInvalidInput("programme", "limit", limit)
-	}
-	query := s.programmesQuery.Where(sq.Eq{
+// SearchByAcademicUnit returns one page of unarchived Programmes of the
+// Academic Unit selected and ordered by options.
+func (s SQLProgrammeStore) SearchByAcademicUnit(ctx context.Context, academicUnitID model.AcademicUnitID, options store.AcademicNameListOptions) ([]*model.Programme, error) {
+	query, valid := academicNamePage(s.programmesQuery.Where(sq.Eq{
 		"programmes.academic_unit_id": academicUnitID,
 		"programmes.archived_at":      nil,
-	}).Where("(programmes.name ILIKE ? ESCAPE '!' OR programmes.display_name ILIKE ? ESCAPE '!')",
-		directorySearchPattern(term), directorySearchPattern(term)).
-		OrderBy("programmes.name", "programmes.id").Limit(uint64(limit))
+	}), "programmes", options)
+	if !valid {
+		return nil, store.NewErrInvalidInput("programme", "list_options", options)
+	}
 	rows := []programmeRow{}
 	if err := s.GetMaster().SelectBuilder(ctx, &rows, query); err != nil {
 		return nil, fmt.Errorf("search programmes: %w", err)

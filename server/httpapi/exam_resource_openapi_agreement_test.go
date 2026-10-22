@@ -35,13 +35,13 @@ func TestExamResourceOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Key: "GET " + content, Auth: AuthPrincipalRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/ExamResourceProtectedContent", ExceptionalSuccess: true, PublicErrorCodes: readCodes},
 		},
 		Schemas: []openAPIAgreementSchema{
-			{Name: "ExamResourceUploadMetadata", DTO: reflect.TypeOf(examResourceUploadMetadata{}), Required: []string{"expected_draft_revision", "display_name", "media_type", "size", "sha256"}},
-			{Name: "ExamResourceContentReplacementMetadata", DTO: reflect.TypeOf(examResourceContentReplacementMetadata{}), Required: []string{"expected_draft_revision", "media_type", "size", "sha256"}},
-			{Name: "EditExamResourceMetadataRequest", DTO: reflect.TypeOf(editExamResourceMetadataRequest{}), Required: []string{"expected_draft_revision"}},
-			{Name: "ReorderExamResourcesRequest", DTO: reflect.TypeOf(reorderExamResourcesRequest{}), Required: []string{"expected_draft_revision", "resource_ids"}},
-			{Name: "RemoveExamResourceRequest", DTO: reflect.TypeOf(removeExamResourceRequest{}), Required: []string{"expected_draft_revision"}},
+			{Name: "ExamResourceUploadMetadata", DTO: reflect.TypeOf(examResourceUploadMetadata{}), Required: []string{"expected_revision", "display_name", "media_type", "size", "sha256"}},
+			{Name: "ExamResourceContentReplacementMetadata", DTO: reflect.TypeOf(examResourceContentReplacementMetadata{}), Required: []string{"expected_revision", "media_type", "size", "sha256"}},
+			{Name: "EditExamResourceMetadataRequest", DTO: reflect.TypeOf(editExamResourceMetadataRequest{}), Required: []string{"expected_revision"}},
+			{Name: "ReorderExamResourcesRequest", DTO: reflect.TypeOf(reorderExamResourcesRequest{}), Required: []string{"expected_revision", "resource_ids"}},
+			{Name: "RemoveExamResourceRequest", DTO: reflect.TypeOf(removeExamResourceRequest{}), Required: []string{"expected_revision"}},
 			{Name: "ExamResourceResponse", DTO: reflect.TypeOf(examResourceResponse{}), Required: []string{"id", "display_name", "description_markdown", "position", "content_revision_id", "media_type", "size", "sha256", "updated_at", "draft_revision"}},
-			{Name: "ExamResourceListResponse", DTO: reflect.TypeOf(examResourceListResponse{}), Required: []string{"items"}},
+			{Name: "ExamResourceListResponse", DTO: reflect.TypeOf(listResponse[examResourceResponse]{}), Required: []string{"items"}},
 		},
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)

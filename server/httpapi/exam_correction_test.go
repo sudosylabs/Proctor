@@ -123,7 +123,7 @@ func TestExamSittingCorrectionHTTPAppliesCompleteOrderedManifestAndKeepsReasonPr
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingCorrectionResource(fake))
 	first, second := model.NewExamResourceID(), model.NewExamResourceID()
 	stageID := model.NewExamCorrectionResourceStageID()
-	body := fmt.Sprintf(`{"expected_sitting_revision":7,"expected_current_revision_id":"%s","instructions_markdown":"","candidate_summary":"A reference was corrected.","affected_capabilities":["browser","submission","workspace"],"acknowledgement_required":true,"reason":"Fix misleading reference","resources":[{"resource_id":"%s","display_name":"New reference","description_markdown":"**Corrected**","stage_id":"%s"},{"resource_id":"%s","display_name":"Existing reference","description_markdown":""}]}`,
+	body := fmt.Sprintf(`{"expected_revision":7,"expected_current_revision_id":"%s","instructions_markdown":"","candidate_summary":"A reference was corrected.","affected_capabilities":["browser","submission","workspace"],"acknowledgement_required":true,"reason":"Fix misleading reference","resources":[{"resource_id":"%s","display_name":"New reference","description_markdown":"**Corrected**","stage_id":"%s"},{"resource_id":"%s","display_name":"Existing reference","description_markdown":""}]}`,
 		fake.baseRevisionID, first, stageID, second)
 	request := httptest.NewRequest(http.MethodPost, examSittingCorrectionBasePath(fake)+"/corrections", strings.NewReader(body))
 	request.Header.Set("Authorization", "Bearer credential")
@@ -163,7 +163,7 @@ func TestExamSittingCorrectionHTTPRejectsPaddedPrivateReasonBeforeApplication(t 
 	logger, _ := newTestLogger(t)
 	fake := newExamSittingCorrectionHTTPFake()
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingCorrectionResource(fake))
-	body := fmt.Sprintf(`{"expected_sitting_revision":7,"expected_current_revision_id":"%s","candidate_summary":"A correction was made.","affected_capabilities":["browser","submission","workspace"],"acknowledgement_required":false,"reason":" padded ","resources":[]}`, fake.baseRevisionID)
+	body := fmt.Sprintf(`{"expected_revision":7,"expected_current_revision_id":"%s","candidate_summary":"A correction was made.","affected_capabilities":["browser","submission","workspace"],"acknowledgement_required":false,"reason":" padded ","resources":[]}`, fake.baseRevisionID)
 	request := httptest.NewRequest(http.MethodPost, examSittingCorrectionBasePath(fake)+"/corrections", strings.NewReader(body))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
@@ -179,7 +179,7 @@ func TestExamSittingCorrectionHTTPOmittedInstructionsPreservesCurrentValue(t *te
 	logger, _ := newTestLogger(t)
 	fake := newExamSittingCorrectionHTTPFake()
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingCorrectionResource(fake))
-	body := fmt.Sprintf(`{"expected_sitting_revision":7,"expected_current_revision_id":"%s","candidate_summary":"The resource list was corrected.","affected_capabilities":["browser","submission","workspace"],"acknowledgement_required":false,"reason":"Resource-only correction","resources":[]}`, fake.baseRevisionID)
+	body := fmt.Sprintf(`{"expected_revision":7,"expected_current_revision_id":"%s","candidate_summary":"The resource list was corrected.","affected_capabilities":["browser","submission","workspace"],"acknowledgement_required":false,"reason":"Resource-only correction","resources":[]}`, fake.baseRevisionID)
 	request := httptest.NewRequest(http.MethodPost, examSittingCorrectionBasePath(fake)+"/corrections", strings.NewReader(body))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
@@ -194,7 +194,7 @@ func TestExamSittingCorrectionHTTPOmittedInstructionsPreservesCurrentValue(t *te
 
 func TestApplyExamSittingCorrectionRequestIsClosedDuplicateFreeAndPresenceAware(t *testing.T) {
 	t.Parallel()
-	valid := `{"expected_sitting_revision":4,"expected_current_revision_id":"revision","instructions_markdown":"","candidate_summary":"A misleading reference was corrected.","affected_capabilities":["browser","submission","workspace"],"acknowledgement_required":true,"reason":"Correct a misleading reference","resources":[]}`
+	valid := `{"expected_revision":4,"expected_current_revision_id":"revision","instructions_markdown":"","candidate_summary":"A misleading reference was corrected.","affected_capabilities":["browser","submission","workspace"],"acknowledgement_required":true,"reason":"Correct a misleading reference","resources":[]}`
 	var body applyExamSittingCorrectionRequest
 	require.NoError(t, json.Unmarshal([]byte(valid), &body))
 	instructions := body.InstructionsMarkdown.ValuePointer()

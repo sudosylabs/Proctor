@@ -124,12 +124,12 @@ func testProgrammeStoreSearchAndArchive(t *testing.T, ss store.Store) {
 	programme.DisplayName = "Literal 50%_! Robotics"
 	programme, err := UpdateProgramme(ctx, ss, programme)
 	require.NoError(t, err)
-	found, err := ss.Programme().SearchByAcademicUnit(ctx, unit.ID, "robot", 10)
+	found, err := ss.Programme().SearchByAcademicUnit(ctx, unit.ID, store.AcademicNameListOptions{Term: "robot", Limit: 10})
 	require.NoError(t, err)
 	require.Len(t, found, 1)
 	require.Equal(t, programme.ID, found[0].ID)
 	for _, query := range []string{"LITERAL 50%_!", "%", "_", "!"} {
-		found, err = ss.Programme().SearchByAcademicUnit(ctx, unit.ID, query, 10)
+		found, err = ss.Programme().SearchByAcademicUnit(ctx, unit.ID, store.AcademicNameListOptions{Term: query, Limit: 10})
 		require.NoError(t, err)
 		require.Len(t, found, 1, "SearchByAcademicUnit(%q)", query)
 		require.Equal(t, programme.ID, found[0].ID, "SearchByAcademicUnit(%q)", query)
@@ -299,7 +299,7 @@ func testProgrammeStoreSearchLimit(t *testing.T, ss store.Store) {
 	first := saveProgramme(t, ctx, ss, unit.ID.String(), "bounded-first")
 	saveProgramme(t, ctx, ss, unit.ID.String(), "bounded-second")
 	for _, term := range []string{"", "  \t", "bounded"} {
-		found, err := ss.Programme().SearchByAcademicUnit(ctx, unit.ID, term, 1)
+		found, err := ss.Programme().SearchByAcademicUnit(ctx, unit.ID, store.AcademicNameListOptions{Term: term, Limit: 1})
 		require.NoError(t, err)
 		require.Len(t, found, 1, "SearchByAcademicUnit(q=%q, limit=1)", term)
 		require.Equal(t, first.ID, found[0].ID, "SearchByAcademicUnit(q=%q, limit=1)", term)

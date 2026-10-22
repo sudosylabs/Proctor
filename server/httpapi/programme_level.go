@@ -88,27 +88,25 @@ func (m programmeLevelResourceModule) list(request operationRequest) (operationR
 	if err != nil {
 		return operationResult{}, err
 	}
-	limit, err := request.queryLimit()
+	pageQuery, err := request.academicNamePageQuery()
 	if err != nil {
 		return operationResult{}, err
 	}
-	levels, err := m.programmeLevels.ListProgrammeLevels(
+	page, err := m.programmeLevels.ListProgrammeLevels(
 		request.context,
 		request.invocation(),
 		app.ListProgrammeLevelsQuery{
-			ProgrammeID: programmeID,
-			Query:       request.request.URL.Query().Get("q"),
-			Limit:       limit,
+			ProgrammeID:   programmeID,
+			Query:         request.request.URL.Query().Get("q"),
+			NamePageQuery: pageQuery,
 		},
 	)
 	if err != nil {
 		return operationResult{}, err
 	}
-	responses := make([]programmeLevelResponse, 0, len(levels))
-	for _, level := range levels {
-		responses = append(responses, programmeLevelResponseFromModel(level))
-	}
-	return jsonResult(http.StatusOK, responses), nil
+	return academicNameListResult(page, programmeLevelResponseFromModel, func(level *model.ProgrammeLevel) (string, string) {
+		return level.Name, level.ID.String()
+	})
 }
 
 func (m programmeLevelResourceModule) create(request operationRequest) (operationResult, error) {

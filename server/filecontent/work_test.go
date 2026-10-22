@@ -123,7 +123,7 @@ func TestContentWorkPipelinesShareCapacityAndRefuseBeforeInputOrStorage(t *testi
 	}
 }
 
-func TestContentWorkCancelledBeforeAdmissionDoesNoWork(t *testing.T) {
+func TestContentWorkCanceledBeforeAdmissionDoesNoWork(t *testing.T) {
 	for _, test := range contentWorkCases(t) {
 		t.Run(test.name, func(t *testing.T) {
 			recorder := &contentWorkRecorder{}
@@ -134,10 +134,10 @@ func TestContentWorkCancelledBeforeAdmissionDoesNoWork(t *testing.T) {
 			cancel()
 			body := &unreadContentWorkBody{}
 			require.ErrorIs(t, test.run(content, ctx, body), context.Canceled)
-			require.Equal(t, int64(0), body.reads.Load(), "cancelled request consumed processing capacity, input, or storage")
-			require.Equal(t, int64(0), filesystem.writes.Load(), "cancelled request consumed processing capacity, input, or storage")
-			require.Equal(t, int64(0), recorder.started.Load(), "cancelled request consumed processing capacity, input, or storage")
-			require.Equal(t, int64(0), recorder.rejected.Load(), "cancelled request consumed processing capacity, input, or storage")
+			require.Equal(t, int64(0), body.reads.Load(), "canceled request consumed processing capacity, input, or storage")
+			require.Equal(t, int64(0), filesystem.writes.Load(), "canceled request consumed processing capacity, input, or storage")
+			require.Equal(t, int64(0), recorder.started.Load(), "canceled request consumed processing capacity, input, or storage")
+			require.Equal(t, int64(0), recorder.rejected.Load(), "canceled request consumed processing capacity, input, or storage")
 			require.NoError(t, test.run(content, context.Background(), bytes.NewReader(test.body)))
 		})
 	}
@@ -166,14 +166,14 @@ func TestContentWorkCancellationDoesNotReleaseRunningReader(t *testing.T) {
 	require.ErrorIs(t, err, ErrWorkCapacity)
 	select {
 	case <-done:
-		require.FailNow(t, "cancelled operation returned before its synchronous reader")
+		require.FailNow(t, "canceled operation returned before its synchronous reader")
 	default:
 	}
 	releaseOnce.Do(func() { close(release) })
 	awaitContentWork(t, done)
-	require.ErrorIs(t, (<-outcome), context.Canceled, "cancelled outcome")
-	require.Equal(t, int64(0), filesystem.writes.Load(), "cancelled outcome")
-	require.Equal(t, int64(0), recorder.active.Load(), "cancelled outcome")
+	require.ErrorIs(t, (<-outcome), context.Canceled, "canceled outcome")
+	require.Equal(t, int64(0), filesystem.writes.Load(), "canceled outcome")
+	require.Equal(t, int64(0), recorder.active.Load(), "canceled outcome")
 	_, err = content.StoreExamResource(context.Background(), model.NewFileRevisionID(), model.ExamResourceMediaText, strings.NewReader("notes"), 5, time.Unix(1, 0))
 	require.NoError(t, err)
 }
@@ -189,11 +189,11 @@ func TestContentWorkCancellationAfterAdmissionStopsBeforeProcessing(t *testing.T
 			require.NoError(t, err)
 			body := &unreadContentWorkBody{}
 			require.ErrorIs(t, test.run(content, ctx, body), context.Canceled)
-			require.Equal(t, int64(0), body.reads.Load(), "cancelled admitted operation processed content or retained capacity")
-			require.Equal(t, int64(0), filesystem.writes.Load(), "cancelled admitted operation processed content or retained capacity")
-			require.Equal(t, int64(1), recorder.started.Load(), "cancelled admitted operation processed content or retained capacity")
-			require.Equal(t, int64(1), recorder.finished.Load(), "cancelled admitted operation processed content or retained capacity")
-			require.Equal(t, int64(0), recorder.active.Load(), "cancelled admitted operation processed content or retained capacity")
+			require.Equal(t, int64(0), body.reads.Load(), "canceled admitted operation processed content or retained capacity")
+			require.Equal(t, int64(0), filesystem.writes.Load(), "canceled admitted operation processed content or retained capacity")
+			require.Equal(t, int64(1), recorder.started.Load(), "canceled admitted operation processed content or retained capacity")
+			require.Equal(t, int64(1), recorder.finished.Load(), "canceled admitted operation processed content or retained capacity")
+			require.Equal(t, int64(0), recorder.active.Load(), "canceled admitted operation processed content or retained capacity")
 		})
 	}
 }
@@ -223,7 +223,7 @@ func TestContentWorkFailureReleasesCapacityAndDoesNotGateExactReadsOrRemoval(t *
 	require.NoError(t, err)
 }
 
-func TestContentWorkReadSeekerBoundsReadsAndStopsBeforeCancelledIO(t *testing.T) {
+func TestContentWorkReadSeekerBoundsReadsAndStopsBeforeCanceledIO(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -238,13 +238,13 @@ func TestContentWorkReadSeekerBoundsReadsAndStopsBeforeCancelledIO(t *testing.T)
 	require.Equal(t, int64(7), offset, "live seek")
 	cancel()
 	n, err = reader.Read(body)
-	require.ErrorIs(t, err, context.Canceled, "cancelled read")
-	require.Equal(t, 0, n, "cancelled read")
+	require.ErrorIs(t, err, context.Canceled, "canceled read")
+	require.Equal(t, 0, n, "canceled read")
 	_, err = reader.Seek(0, io.SeekStart)
 	require.ErrorIs(t, err, context.Canceled)
 	offset, err = source.Seek(0, io.SeekCurrent)
-	require.NoError(t, err, "cancelled I/O moved source: offset")
-	require.Equal(t, int64(7), offset, "cancelled I/O moved source: offset")
+	require.NoError(t, err, "canceled I/O moved source: offset")
+	require.Equal(t, int64(7), offset, "canceled I/O moved source: offset")
 }
 
 type contentWorkRecorder struct {

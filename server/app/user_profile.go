@@ -115,26 +115,25 @@ func newUserProfileService(users userProfileStore, authorization userProfileAuth
 	return &userProfileService{users: users, authorization: authorization, audit: audit, now: now}
 }
 
-func (s *userProfileService) SearchUsers(ctx context.Context, invocation Invocation, query SearchUsersQuery) ([]*model.User, error) {
+func (s *userProfileService) SearchUsers(ctx context.Context, invocation Invocation, query SearchUsersQuery) (Page[*model.User], error) {
+	limit, probe, err := resolvePageLimit(query.Limit, "limit")
+	if err != nil {
+		return Page[*model.User]{}, err
+	}
 	visibility, err := s.authorization.AuthorizeSearch(ctx, invocation)
 	if err != nil {
-		return nil, err
-	}
-	if query.Limit == 0 {
-		query.Limit = defaultAdministrationListLimit
+		return Page[*model.User]{}, err
 	}
 	includeDisabled := query.IncludeDisabled && visibility.InstitutionWide
-	users, err := s.users.List(ctx, store.UserListOptions{Query: query.Query, AfterUsername: query.AfterUsername, AfterID: model.UserID(query.AfterID), Limit: query.Limit, IncludeDisabled: includeDisabled, Visibility: visibility})
+	users, err := s.users.List(ctx, store.UserListOptions{Query: query.Query, AfterUsername: query.AfterUsername, AfterID: model.UserID(query.AfterID), Limit: probe, IncludeDisabled: includeDisabled, Visibility: visibility})
 	if err != nil {
-		return nil, userStoreErrors.Translate(err)
+		return Page[*model.User]{}, userStoreErrors.Translate(err)
 	}
-	if users == nil {
-		users = []*model.User{}
-	}
+	page := newPage(users, limit)
 	if !visibility.InstitutionWide {
-		users = scopedUserDirectoryProjection(users)
+		page.Items = scopedUserDirectoryProjection(page.Items)
 	}
-	return users, nil
+	return page, nil
 }
 
 func (s *userProfileService) GetUserProfile(ctx context.Context, invocation Invocation, query GetUserProfileQuery) (*model.User, error) {

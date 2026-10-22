@@ -46,14 +46,6 @@ func roleBindingResponseFromModel(binding *model.RoleBinding) roleBindingRespons
 	}
 }
 
-func roleBindingResponsesFromModels(bindings []*model.RoleBinding) []roleBindingResponse {
-	result := make([]roleBindingResponse, 0, len(bindings))
-	for _, binding := range bindings {
-		result = append(result, roleBindingResponseFromModel(binding))
-	}
-	return result
-}
-
 type roleBindingResourceModule struct {
 	bindings RoleBindingApplication
 }
@@ -89,7 +81,14 @@ func (m roleBindingResourceModule) list(request operationRequest) (operationResu
 	if err != nil {
 		return operationResult{}, err
 	}
-	return jsonResult(http.StatusOK, roleBindingResponsesFromModels(bindings)), nil
+	response, err := boundedListResult(request, "Role Binding", bindings,
+		func(binding *model.RoleBinding) boundedPageKey {
+			return boundedPageKey{At: binding.CreatedAt, ID: binding.ID.String()}
+		}, roleBindingResponseFromModel)
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, response), nil
 }
 
 func (m roleBindingResourceModule) create(request operationRequest) (operationResult, error) {

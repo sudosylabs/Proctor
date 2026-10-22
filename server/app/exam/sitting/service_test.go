@@ -587,7 +587,7 @@ func TestCancelRetainsPrivateReasonOnlyInStoreCommand(t *testing.T) {
 	require.Equal(t, "Room became unavailable", fixture.persistence.cancel.PrivateReason)
 	require.Equal(t, int64(1), fixture.persistence.cancel.ExpectedRevision)
 	require.Same(t, fixture.mail.result, fixture.persistence.cancel.Mail, "cancellation mail = %#v, store", fixture.mail.request)
-	require.Equal(t, store.ExamSittingMailCancelled, fixture.mail.request.ChangeKind, "cancellation mail = %#v, store", fixture.mail.request)
+	require.Equal(t, store.ExamSittingMailCanceled, fixture.mail.request.ChangeKind, "cancellation mail = %#v, store", fixture.mail.request)
 	wantIdempotency, err := prepareTransitionIdempotency(fixture.invocation, idempotencyOperationCancel, PauseCommand(command))
 	require.NoError(t, err)
 	require.Equal(t, wantIdempotency, fixture.persistence.command)

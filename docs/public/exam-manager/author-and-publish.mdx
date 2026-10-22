@@ -23,7 +23,7 @@ schedule; those belong to Draft, Revision, or Sitting.
 
 ## Edit Through One Revision Fence
 
-Every Draft mutation supplies `expected_draft_revision`. After success, use the
+Every Draft mutation supplies `expected_revision`. After success, use the
 returned revision for the next operation. On conflict, fetch the complete
 current authoring view, compare all changed areas, and deliberately reapply the
 edit. Do not increment a stale number or replay one field over another

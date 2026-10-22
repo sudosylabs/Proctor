@@ -63,27 +63,28 @@ func academicUnitResource(academicUnits AcademicUnitApplication) resource {
 }
 
 func (m academicUnitResourceModule) listRoot(request operationRequest) (operationResult, error) {
-	var units []*model.AcademicUnit
-	var err error
+	pageQuery, err := request.academicNamePageQuery()
+	if err != nil {
+		return operationResult{}, err
+	}
+	var page app.Page[*model.AcademicUnit]
 	if query := request.request.URL.Query().Get("q"); query != "" {
-		limit, limitErr := request.queryLimit()
-		if limitErr != nil {
-			return operationResult{}, limitErr
-		}
-		units, err = m.academicUnits.SearchAcademicUnits(
+		page, err = m.academicUnits.SearchAcademicUnits(
 			request.context,
 			request.invocation(),
-			app.SearchAcademicUnitsQuery{Query: query, Limit: limit},
+			app.SearchAcademicUnitsQuery{Query: query, NamePageQuery: pageQuery},
 		)
 	} else {
-		units, err = m.academicUnits.ListAcademicUnits(
-			request.context, request.invocation(), app.ListAcademicUnitsQuery{},
+		page, err = m.academicUnits.ListAcademicUnits(
+			request.context, request.invocation(), app.ListAcademicUnitsQuery{NamePageQuery: pageQuery},
 		)
 	}
 	if err != nil {
 		return operationResult{}, err
 	}
-	return jsonResult(http.StatusOK, academicUnitResponsesFromModels(units)), nil
+	return academicNameListResult(page, academicUnitResponseFromModel, func(unit *model.AcademicUnit) (string, string) {
+		return unit.Name, unit.ID.String()
+	})
 }
 
 func (m academicUnitResourceModule) createRoot(request operationRequest) (operationResult, error) {
@@ -172,15 +173,21 @@ func (m academicUnitResourceModule) listChildren(request operationRequest) (oper
 	if err != nil {
 		return operationResult{}, err
 	}
-	units, err := m.academicUnits.ListAcademicUnits(
+	pageQuery, err := request.academicNamePageQuery()
+	if err != nil {
+		return operationResult{}, err
+	}
+	page, err := m.academicUnits.ListAcademicUnits(
 		request.context,
 		request.invocation(),
-		app.ListAcademicUnitsQuery{ParentID: id},
+		app.ListAcademicUnitsQuery{ParentID: id, NamePageQuery: pageQuery},
 	)
 	if err != nil {
 		return operationResult{}, err
 	}
-	return jsonResult(http.StatusOK, academicUnitResponsesFromModels(units)), nil
+	return academicNameListResult(page, academicUnitResponseFromModel, func(unit *model.AcademicUnit) (string, string) {
+		return unit.Name, unit.ID.String()
+	})
 }
 
 func (m academicUnitResourceModule) createChild(request operationRequest) (operationResult, error) {
@@ -221,12 +228,4 @@ func academicUnitResponseFromModel(unit *model.AcademicUnit) academicUnitRespons
 		DisplayName:   unit.DisplayName,
 		Description:   unit.Description,
 	}
-}
-
-func academicUnitResponsesFromModels(units []*model.AcademicUnit) []academicUnitResponse {
-	responses := make([]academicUnitResponse, len(units))
-	for index, unit := range units {
-		responses[index] = academicUnitResponseFromModel(unit)
-	}
-	return responses
 }

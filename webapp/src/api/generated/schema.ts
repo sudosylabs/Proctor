@@ -265,7 +265,7 @@ export interface paths {
         };
         /**
          * List effective-dated organizational members
-         * @description Lists authorized current or historical organizational memberships for one Academic Unit at the requested effective instant. Membership describes a relationship only and is never presented as an unrestricted permission grant. Bounded pages use immutable (user_id, id) ordering. The next Link freezes the effective instant or history filter, but pages are a live view: later membership edits and insertions can change later results; no database snapshot is retained across requests.
+         * @description Lists authorized current or historical organizational memberships for one Academic Unit at the requested effective instant. Membership describes a relationship only and is never presented as an unrestricted permission grant. Bounded pages use immutable (user_id, id) ordering. The next_cursor freezes the effective instant or history filter, but pages are a live view: later membership edits and insertions can change later results; no database snapshot is retained across requests.
          */
         get: operations["listAcademicUnitMembers"];
         put?: never;
@@ -605,7 +605,7 @@ export interface paths {
         put?: never;
         /**
          * Terminally cancel the browser-bound Desktop transaction
-         * @description Validates the binding cookie and exact pinned state before terminally cancelling the transaction and destroying every remaining browser and code proof.
+         * @description Validates the binding cookie and exact pinned state before terminally canceling the transaction and destroying every remaining browser and code proof.
          */
         post: operations["cancelDesktopAuthorization"];
         delete?: never;
@@ -1127,7 +1127,7 @@ export interface paths {
         };
         /**
          * List active or historical student enrollments for a Class
-         * @description Lists authorized student enrollments for one Class at the requested effective instant or across retained history. The roster projection contains relationship state and does not expand student credentials, answers, or unrestricted profile data. Bounded pages use immutable (user_id, id) ordering. The next Link freezes the effective instant or history filter, but pages are a live view: later membership edits and insertions can change later results; no database snapshot is retained across requests.
+         * @description Lists authorized student enrollments for one Class at the requested effective instant or across retained history. The roster projection contains relationship state and does not expand student credentials, answers, or unrestricted profile data. Bounded pages use immutable (user_id, id) ordering. The next_cursor freezes the effective instant or history filter, but pages are a live view: later membership edits and insertions can change later results; no database snapshot is retained across requests.
          */
         get: operations["listClassMembers"];
         put?: never;
@@ -1298,7 +1298,7 @@ export interface paths {
         };
         /**
          * Read bounded per-event Browser receipts
-         * @description Return up to 64 retained receipts in ascending sequence order, omitting missing positions. next_sequence is the first retained sequence on the next page or null. Response is bounded at 16 KiB; current registered-key ownership and live Connection rules apply.
+         * @description Return up to 64 retained receipts in ascending sequence order, omitting missing positions. next_cursor continues at the next retained receipt and is omitted on the last page. Response is bounded at 16 KiB; current registered-key ownership and live Connection rules apply.
          */
         get: operations["browserDeliveryReceipts"];
         put?: never;
@@ -1732,7 +1732,7 @@ export interface paths {
         };
         /**
          * List ordered acknowledged Workspace changes
-         * @description Returns acknowledged Workspace mutations after the supplied journal cursor in strict order for the active candidate Attempt. If retained history can no longer bridge the cursor, the response explicitly instructs the client to reload the full manifest.
+         * @description Returns acknowledged Workspace mutations after the supplied workspace_cursor in strict order for the active candidate Attempt. If retained history can no longer bridge the cursor, the response explicitly instructs the client to reload the full manifest.
          */
         get: operations["listCandidateExamWorkspaceChanges"];
         put?: never;
@@ -5312,7 +5312,11 @@ export interface components {
             operation: "affiliation.add" | "affiliation.end" | "academic_unit_member.add" | "academic_unit_member.end" | "class.enroll" | "class.end" | "class.transfer" | "role_binding.create" | "role_binding.end" | "user.enable" | "user.disable" | "user_sessions.revoke";
             succeeded: number;
         };
-        AcademicPeriodListResponse: components["schemas"]["AcademicPeriodResponse"][];
+        /** @description One page of the collection in its stable order. */
+        AcademicPeriodListResponse: {
+            items: components["schemas"]["AcademicPeriodResponse"][];
+            next_cursor?: components["schemas"]["NextCursor"];
+        };
         AcademicPeriodResponse: {
             /** Format: date-time */
             archived_at?: string;
@@ -5343,8 +5347,16 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
-        AcademicUnitListResponse: components["schemas"]["AcademicUnitResponse"][];
-        AcademicUnitMemberListResponse: components["schemas"]["AcademicUnitMemberResponse"][];
+        /** @description One page of the collection in its stable order. */
+        AcademicUnitListResponse: {
+            items: components["schemas"]["AcademicUnitResponse"][];
+            next_cursor?: components["schemas"]["NextCursor"];
+        };
+        /** @description One page of the collection in its stable order. */
+        AcademicUnitMemberListResponse: {
+            items: components["schemas"]["AcademicUnitMemberResponse"][];
+            next_cursor?: components["schemas"]["NextCursor"];
+        };
         AcademicUnitMemberResponse: {
             academic_unit_id: components["schemas"]["ID"];
             /** Format: date-time */
@@ -5487,7 +5499,7 @@ export interface components {
         };
         AddExamManagerRequest: {
             /** Format: int64 */
-            expected_exam_revision: number;
+            expected_revision: number;
             user_id: components["schemas"]["ID"];
         };
         AdmittedSecurity: {
@@ -5509,7 +5521,11 @@ export interface components {
         };
         /** @enum {string} */
         AffiliationKind: "student" | "teacher" | "staff" | "external";
-        AffiliationListResponse: components["schemas"]["AffiliationResponse"][];
+        /** @description One page of the collection in its stable order. */
+        AffiliationListResponse: {
+            items: components["schemas"]["AffiliationResponse"][];
+            next_cursor?: components["schemas"]["NextCursor"];
+        };
         AffiliationResponse: {
             /** Format: date-time */
             archived_at?: string;
@@ -5535,7 +5551,7 @@ export interface components {
             candidate_summary: string;
             expected_current_revision_id: components["schemas"]["ID"];
             /** Format: int64 */
-            expected_sitting_revision: number;
+            expected_revision: number;
             /** @description Omitted preserves current instructions. A present empty string clears them; null is invalid. Authored Markdown is limited to 65536 UTF-8 bytes. */
             instructions_markdown?: string;
             /** @description Required already-trimmed private manager rationale; valid UTF-8, at most 1000 Unicode scalar values and 4000 bytes. */
@@ -5543,9 +5559,16 @@ export interface components {
             /** @description Required complete desired resource manifest. Omitted base resources are removed and array order becomes resource position. Resource and non-empty stage identities must each be unique. */
             resources: components["schemas"]["ExamSittingCorrectionResourceRequest"][];
         };
+        ArchiveAcademicRequest: {
+            /**
+             * Format: int64
+             * @description Revision from the last resource response.
+             */
+            expected_revision?: number;
+        };
         ArchiveExamRequest: {
             /** Format: int64 */
-            expected_exam_revision: number;
+            expected_revision: number;
         };
         /** @description Complete proposed configuration, bounded at 16 KiB canonical bytes. Initial admission checks the acknowledged User Settings revision, exact admitted build and target, packaged registry and manifest, and Candidate-safe catalog membership. Out-of-range values are rejected without clamping. The digest of a frozen configuration covers this entire candidate, including its original provenance. */
         AttemptConfigurationCandidate: {
@@ -5633,7 +5656,7 @@ export interface components {
         };
         /** @description One bounded page of authorized audit Events. */
         AuditListResponse: {
-            events: components["schemas"]["AuditEventResponse"][];
+            items: components["schemas"]["AuditEventResponse"][];
             /** @description Opaque continuation for the next page, omitted after the final page. */
             next_cursor?: string;
         };
@@ -5870,10 +5893,12 @@ export interface components {
             rule_id: string;
             source_session_id: components["schemas"]["BrowserSourceSessionID"];
         };
-        /** @description Frozen Browser rule group with server-received overflow times. Counts exclude unretained client summaries. */
+        /** @description Frozen Browser rule group with server-received overflow times, omitted while the group has no overflow. Counts exclude unretained client summaries. */
         BrowserIntegrityGroup: {
-            overflow_first_received_at: string | null;
-            overflow_last_received_at: string | null;
+            /** Format: date-time */
+            overflow_first_received_at?: string;
+            /** Format: date-time */
+            overflow_last_received_at?: string;
             participation_id: components["schemas"]["ID"];
             policy_revision_id: components["schemas"]["ID"];
             rule_id: string;
@@ -5944,12 +5969,12 @@ export interface components {
             rule_id: string;
         };
         BrowserReceiptPage: {
-            /** Format: int64 */
-            next_sequence: number | null;
-            receipts: components["schemas"]["BrowserEventReceipt"][];
+            items: components["schemas"]["BrowserEventReceipt"][];
+            next_cursor?: components["schemas"]["NextCursor"];
         };
         BrowserSourceList: {
-            sources: components["schemas"]["BrowserSourceStatus"][];
+            items: components["schemas"]["BrowserSourceStatus"][];
+            next_cursor?: components["schemas"]["NextCursor"];
         };
         /** Format: uuid */
         BrowserSourceSessionID: string;
@@ -5997,9 +6022,9 @@ export interface components {
             summary: {
                 count_complete: boolean;
                 /** Format: date-time */
-                first_unretained_at: string | null;
+                first_unretained_at?: string;
                 /** Format: date-time */
-                last_unretained_at: string | null;
+                last_unretained_at?: string;
                 /** Format: int64 */
                 summary_sequence: number;
                 /** Format: int64 */
@@ -6280,8 +6305,8 @@ export interface components {
         CandidateWorkspaceJournalResponse: {
             /** Format: int64 */
             current_cursor: number;
-            entries: components["schemas"]["CandidateWorkspaceJournalEntryResponse"][];
-            has_more: boolean;
+            items: components["schemas"]["CandidateWorkspaceJournalEntryResponse"][];
+            next_cursor?: components["schemas"]["NextCursor"];
             refresh_required: boolean;
             workspace_id: components["schemas"]["ID"];
         };
@@ -6310,8 +6335,16 @@ export interface components {
             membership: components["schemas"]["ClassMemberResponse"];
             previous?: components["schemas"]["ClassMemberResponse"];
         };
-        ClassListResponse: components["schemas"]["ClassResponse"][];
-        ClassMemberListResponse: components["schemas"]["ClassMemberResponse"][];
+        /** @description One page of the collection in its stable order. */
+        ClassListResponse: {
+            items: components["schemas"]["ClassResponse"][];
+            next_cursor?: components["schemas"]["NextCursor"];
+        };
+        /** @description One page of the collection in its stable order. */
+        ClassMemberListResponse: {
+            items: components["schemas"]["ClassMemberResponse"][];
+            next_cursor?: components["schemas"]["NextCursor"];
+        };
         ClassMemberResponse: {
             academic_period_id: components["schemas"]["ID"];
             /** Format: date-time */
@@ -6356,12 +6389,12 @@ export interface components {
         ConfigureExamDraftBrowserPolicyRequest: {
             browser_policy: components["schemas"]["BrowserPolicy"];
             /** Format: int64 */
-            expected_draft_revision: number;
+            expected_revision: number;
         };
         ConfigureExamDraftFocusLossRequest: {
             enabled: boolean;
             /** Format: int64 */
-            expected_draft_revision: number;
+            expected_revision: number;
             incident_count: number;
             /** Format: int64 */
             minimum_duration_milliseconds: number;
@@ -6375,7 +6408,7 @@ export interface components {
         };
         ConfigureExamDraftNativePolicyRequest: {
             /** Format: int64 */
-            expected_draft_revision: number;
+            expected_revision: number;
             native: components["schemas"]["NativeSecurityPolicy"];
         };
         ConnectionLossPolicy: {
@@ -6444,7 +6477,7 @@ export interface components {
         };
         CreateExamStarterWorkspaceDirectoryRequest: {
             /** Format: int64 */
-            expected_draft_revision: number;
+            expected_revision: number;
             path: components["schemas"]["StarterWorkspacePath"];
         };
         CreatePersonalAccessTokenRequest: {
@@ -6540,7 +6573,7 @@ export interface components {
             allocated_through_sequence: number;
             declaration_id: string;
             /** Format: int64 */
-            expected_declaration_revision: number;
+            expected_revision: number;
             ranges: components["schemas"]["SequenceRange"][];
             /** @enum {string} */
             reason: "spool_corrupt" | "spool_lost" | "local_capacity_exhausted";
@@ -6582,21 +6615,22 @@ export interface components {
             /** Format: date-time */
             server_time: string;
         };
+        /** @description Delivery closure. An open delivery carries only unknown_tail false; a closed one carries closed_at, close_reason, known_at_close and upload_expires_at, plus the final sequence, declaration and boundary origin when they are known. Absent members are omitted, never null. */
         DeliveryClosure: {
-            /** @enum {string|null} */
-            close_reason: "submission" | "suspension" | "manager_end" | "sitting_closed" | "participation_ended" | "security_session_lost" | "policy_correction" | "runtime_reset" | "browser_disabled" | null;
+            /** @enum {string} */
+            close_reason?: "submission" | "suspension" | "manager_end" | "sitting_closed" | "participation_ended" | "security_session_lost" | "policy_correction" | "runtime_reset" | "browser_disabled";
             /** Format: date-time */
-            closed_at: string | null;
-            /** @enum {string|null} */
-            final_boundary_origin: "client_declared" | "server_known" | null;
-            final_declaration_id: string | null;
+            closed_at?: string;
+            /** @enum {string} */
+            final_boundary_origin?: "client_declared" | "server_known";
+            final_declaration_id?: string;
             /** Format: int64 */
-            final_sequence: number | null;
+            final_sequence?: number;
             /** Format: int64 */
-            known_at_close: number | null;
+            known_at_close?: number;
             unknown_tail: boolean;
             /** Format: date-time */
-            upload_expires_at: string | null;
+            upload_expires_at?: string;
         };
         DeliveryFamilyBudget: {
             attempt: components["schemas"]["DeliveryQuotaUsage"];
@@ -6744,8 +6778,11 @@ export interface components {
             expected_revision: number;
             /** @description Empty for no Institution minimum, otherwise a canonical semantic release without a leading v. */
             minimum_desktop_release: string;
-            /** @description Optional retry time; it must be null while availability is ready. */
-            retry_at: string | null;
+            /**
+             * Format: date-time
+             * @description Optional retry time; omit it for none, and always while availability is ready. Null is invalid.
+             */
+            retry_at?: string;
             revoked_desktop_build_ids: string[];
         };
         DesktopCompatibilityPolicyResponse: {
@@ -6774,7 +6811,11 @@ export interface components {
             x: string;
             y: string;
         };
-        DesktopRegistrationListResponse: components["schemas"]["DesktopRegistrationResponse"][];
+        /** @description One page of the collection in its stable order. */
+        DesktopRegistrationListResponse: {
+            items: components["schemas"]["DesktopRegistrationResponse"][];
+            next_cursor?: components["schemas"]["NextCursor"];
+        };
         DesktopRegistrationResponse: {
             /** @enum {string} */
             architecture: "arm64" | "x64";
@@ -6795,7 +6836,7 @@ export interface components {
         };
         EditExamDraftTextRequest: {
             /** Format: int64 */
-            expected_draft_revision: number;
+            expected_revision: number;
             /** @description Omitted or null leaves the authored Markdown unchanged; an empty string clears it. Present UTF-8 content is limited to 65536 bytes. */
             instructions_markdown?: string | null;
             /** @description Omitted or null leaves the title unchanged; a present value is trimmed and must remain non-empty. */
@@ -6811,7 +6852,7 @@ export interface components {
             /** @description Omitted or null leaves the name unchanged; a present value is trimmed UTF-8 with at most 255 Unicode scalar values. */
             display_name?: string | null;
             /** Format: int64 */
-            expected_draft_revision: number;
+            expected_revision: number;
         } | {
             display_name: string;
         } | {
@@ -6905,7 +6946,7 @@ export interface components {
         };
         EndExamAttemptByManagerRequest: {
             /** Format: int64 */
-            expected_attempt_revision: number;
+            expected_revision: number;
             /** @description Trimmed private manager reason; never exposed to the candidate. */
             reason: string;
         };
@@ -7004,16 +7045,16 @@ export interface components {
             /** @constant */
             suspension_state: "active";
         };
-        /** @description One suspension episode. A policy episode links its Integrity Flag in flag_id; a manual episode (an Exam Manager's kick) links no Flag and names its manager in suspended_by_user_id. */
+        /** @description One suspension episode. A policy episode links its Integrity Flag in integrity_flag_id; a manual episode (an Exam Manager's kick) links no Flag and names its manager in suspended_by_user_id. */
         ExamAttemptSuspensionResponse: {
             /** @enum {string} */
             candidate_reason: "secure_connectivity_lost" | "focus_policy_review_required" | "manager_suspended";
             /** Format: date-time */
             ended_at?: string;
-            flag_id?: components["schemas"]["ID"];
             /** Format: int64 */
             generation: number;
             id: components["schemas"]["ID"];
+            integrity_flag_id?: components["schemas"]["ID"];
             participation_id: components["schemas"]["ID"];
             reallowed_by_user_id?: components["schemas"]["ID"];
             /** @enum {string} */
@@ -7316,7 +7357,7 @@ export interface components {
         };
         ExamResourceContentReplacementMetadata: {
             /** Format: int64 */
-            expected_draft_revision: number;
+            expected_revision: number;
             media_type: components["schemas"]["ExamResourceMediaType"];
             sha256: components["schemas"]["SHA256"];
             /** Format: int64 */
@@ -7330,6 +7371,7 @@ export interface components {
         };
         ExamResourceListResponse: {
             items: components["schemas"]["ExamResourceResponse"][];
+            next_cursor?: components["schemas"]["NextCursor"];
         };
         /** @enum {string} */
         ExamResourceMediaType: "application/pdf" | "image/png" | "image/jpeg" | "image/webp" | "text/plain" | "text/markdown" | "text/csv" | "application/json";
@@ -7355,7 +7397,7 @@ export interface components {
             /** @description Trimmed UTF-8 with at most 255 Unicode scalar values. */
             display_name: string;
             /** Format: int64 */
-            expected_draft_revision: number;
+            expected_revision: number;
             media_type: components["schemas"]["ExamResourceMediaType"];
             sha256: components["schemas"]["SHA256"];
             /** Format: int64 */
@@ -7573,7 +7615,7 @@ export interface components {
              * Format: int64
              * @description Last observed mutable Draft revision, used to reject replacement against newer authoring state.
              */
-            expected_draft_revision: number;
+            expected_revision: number;
             media_type: string;
             sha256: components["schemas"]["SHA256"];
             /**
@@ -7590,7 +7632,7 @@ export interface components {
         };
         ExamStarterWorkspaceFileUploadMetadata: {
             /** Format: int64 */
-            expected_draft_revision: number;
+            expected_revision: number;
             media_type: string;
             path: components["schemas"]["StarterWorkspacePath"];
             sha256: components["schemas"]["SHA256"];
@@ -7629,6 +7671,7 @@ export interface components {
         });
         ExamStarterWorkspaceListResponse: {
             items: components["schemas"]["ExamStarterWorkspaceListItemResponse"][];
+            next_cursor?: components["schemas"]["NextCursor"];
         };
         /** @description Manager-safe Submission header without Workspace bytes or integrity evidence. Retired integrity has an explicit retirement time and omits the former signal counters; retained work remains accessible. */
         ExamSubmissionManagerResponse: {
@@ -7807,7 +7850,11 @@ export interface components {
              */
             scheduled_end_at: string;
         };
-        ExternalAuthenticationProviderListResponse: components["schemas"]["ExternalAuthenticationProviderResponse"][];
+        /** @description One page of the collection in its stable order. */
+        ExternalAuthenticationProviderListResponse: {
+            items: components["schemas"]["ExternalAuthenticationProviderResponse"][];
+            next_cursor?: components["schemas"]["NextCursor"];
+        };
         ExternalAuthenticationProviderResponse: {
             display_name: string;
             id: string;
@@ -7830,7 +7877,7 @@ export interface components {
         FinalDeliveryDeclaration: {
             declaration_id: string;
             /** Format: int64 */
-            expected_declaration_revision: number;
+            expected_revision: number;
             /** Format: int64 */
             final_sequence: number;
         };
@@ -8447,7 +8494,7 @@ export interface components {
         };
         MoveExamStarterWorkspaceEntryRequest: {
             /** Format: int64 */
-            expected_draft_revision: number;
+            expected_revision: number;
             path: components["schemas"]["StarterWorkspacePath"];
         };
         NativeBaselineReport: {
@@ -8648,9 +8695,9 @@ export interface components {
             summary: {
                 count_complete: boolean;
                 /** Format: date-time */
-                first_unretained_at: string | null;
+                first_unretained_at?: string;
                 /** Format: date-time */
-                last_unretained_at: string | null;
+                last_unretained_at?: string;
                 /** Format: int64 */
                 summary_sequence: number;
                 /** Format: int64 */
@@ -8736,6 +8783,8 @@ export interface components {
             /** @enum {string} */
             source_id: "display-topology" | "candidate-window" | "capture-session" | "process-application" | "interactive-session" | "clipboard" | "print-spooler" | "removable-storage" | "virtualization" | "network-configuration" | "media-device";
         };
+        /** @description Opaque continuation for the next page, omitted on the last page. Clients return it unchanged as cursor. */
+        NextCursor: string;
         OnboardingImportCommitRequest: {
             /** Format: int64 */
             expected_revision: number;
@@ -8811,7 +8860,11 @@ export interface components {
             credential: string;
             token: components["schemas"]["PersonalAccessTokenResponse"];
         };
-        PersonalAccessTokenListResponse: components["schemas"]["PersonalAccessTokenResponse"][];
+        /** @description One page of the collection in its stable order. */
+        PersonalAccessTokenListResponse: {
+            items: components["schemas"]["PersonalAccessTokenResponse"][];
+            next_cursor?: components["schemas"]["NextCursor"];
+        };
         PersonalAccessTokenResponse: {
             academic_unit_id?: components["schemas"]["ID"];
             /** Format: date-time */
@@ -8874,7 +8927,11 @@ export interface components {
             /** Format: uri-reference */
             type: string;
         };
-        ProgrammeLevelListResponse: components["schemas"]["ProgrammeLevelResponse"][];
+        /** @description One page of the collection in its stable order. */
+        ProgrammeLevelListResponse: {
+            items: components["schemas"]["ProgrammeLevelResponse"][];
+            next_cursor?: components["schemas"]["NextCursor"];
+        };
         ProgrammeLevelResponse: {
             /** Format: date-time */
             archived_at?: string;
@@ -8893,7 +8950,11 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
-        ProgrammeListResponse: components["schemas"]["ProgrammeResponse"][];
+        /** @description One page of the collection in its stable order. */
+        ProgrammeListResponse: {
+            items: components["schemas"]["ProgrammeResponse"][];
+            next_cursor?: components["schemas"]["NextCursor"];
+        };
         ProgrammeResponse: {
             academic_unit_id: components["schemas"]["ID"];
             /** Format: date-time */
@@ -8971,11 +9032,11 @@ export interface components {
              * Format: int64
              * @description The exact current Draft revision to validate and publish.
              */
-            expected_draft_revision: number;
+            expected_revision: number;
         };
         ReallowExamAttemptRequest: {
             /** Format: int64 */
-            expected_attempt_revision: number;
+            expected_revision: number;
             /** @description Trimmed private manager reason retained only in suspension provenance. */
             reason: string;
             suspension_id: components["schemas"]["ID"];
@@ -8996,15 +9057,15 @@ export interface components {
         };
         RemoveExamManagerRequest: {
             /** Format: int64 */
-            expected_exam_revision: number;
+            expected_revision: number;
         };
         RemoveExamResourceRequest: {
             /** Format: int64 */
-            expected_draft_revision: number;
+            expected_revision: number;
         };
         RemoveExamStarterWorkspaceEntryRequest: {
             /** Format: int64 */
-            expected_draft_revision: number;
+            expected_revision: number;
             /**
              * @description Remove this directory and every descendant atomically under the expected Draft revision. Omit for a file or ordinary empty-directory removal.
              * @default false
@@ -9013,7 +9074,7 @@ export interface components {
         };
         ReorderExamResourcesRequest: {
             /** Format: int64 */
-            expected_draft_revision: number;
+            expected_revision: number;
             resource_ids: components["schemas"]["ID"][];
         };
         ReplaceCandidateWorkspaceFileMetadata: {
@@ -9260,7 +9321,7 @@ export interface components {
         };
         RetentionPreviewRequest: {
             /** Format: int64 */
-            expected_policy_revision: number;
+            expected_revision: number;
         };
         RetentionPreviewResponse: {
             audit: components["schemas"]["RetentionExpiryCounts"];
@@ -9335,7 +9396,10 @@ export interface components {
             session_id: components["schemas"]["ID"];
         };
         /** @description Authorized current and historical Role Bindings. */
-        RoleBindingListResponse: components["schemas"]["RoleBindingResponse"][];
+        RoleBindingListResponse: {
+            items: components["schemas"]["RoleBindingResponse"][];
+            next_cursor?: components["schemas"]["NextCursor"];
+        };
         /** @description Effective-dated grant of one Role to one User in one exact scope. */
         RoleBindingResponse: {
             /** Format: date-time */
@@ -9362,7 +9426,10 @@ export interface components {
             user_id: components["schemas"]["ID"];
         };
         /** @description Roles visible to the authorized caller. */
-        RoleListResponse: components["schemas"]["RoleResponse"][];
+        RoleListResponse: {
+            items: components["schemas"]["RoleResponse"][];
+            next_cursor?: components["schemas"]["NextCursor"];
+        };
         /** @description Reusable Role definition; effective access still requires a scoped Role Binding. */
         RoleResponse: {
             /**
@@ -9397,14 +9464,14 @@ export interface components {
         SaveExamIntegrityDecisionRequest: {
             /**
              * Format: int64
-             * @description Zero for the first decision on this Flag; otherwise the exact current decision revision.
-             */
-            expected_decision_revision: number;
-            /**
-             * Format: int64
              * @description Zero when creating the first Review through this command; otherwise the exact current Review revision.
              */
             expected_review_revision: number;
+            /**
+             * Format: int64
+             * @description Zero for the first decision on this Flag; otherwise the exact current decision revision.
+             */
+            expected_revision: number;
             /**
              * @description A non-academic integrity disposition, never a grade or guilt verdict.
              * @enum {string}
@@ -9557,7 +9624,11 @@ export interface components {
             updated_at: string;
             user_id: components["schemas"]["ID"];
         };
-        SessionListResponse: components["schemas"]["SessionResponse"][];
+        /** @description One page of the collection in its stable order. */
+        SessionListResponse: {
+            items: components["schemas"]["SessionResponse"][];
+            next_cursor?: components["schemas"]["NextCursor"];
+        };
         SessionResponse: {
             /** Format: date-time */
             archived_at?: string;
@@ -9752,7 +9823,7 @@ export interface components {
         };
         SuspendExamAttemptRequest: {
             /** Format: int64 */
-            expected_attempt_revision: number;
+            expected_revision: number;
             /** @description Trimmed private manager reason retained only in suspension provenance. */
             reason: string;
         };
@@ -9794,20 +9865,20 @@ export interface components {
         /** @description Existing Review identity and exact revision for a terminal transition. */
         TerminalExamIntegrityReviewRequest: {
             /** Format: int64 */
-            expected_review_revision: number;
+            expected_revision: number;
             submission_review_id: components["schemas"]["ID"];
         };
         TransferExamOwnershipRequest: {
             /** Format: int64 */
-            expected_exam_revision: number;
+            expected_revision: number;
             user_id: components["schemas"]["ID"];
         };
         UnretainedDeliverySummary: {
             count_complete: boolean;
             /** Format: date-time */
-            first_unretained_at: string | null;
+            first_unretained_at?: string;
             /** Format: date-time */
-            last_unretained_at: string | null;
+            last_unretained_at?: string;
             /** Format: int64 */
             summary_sequence: number;
             /** Format: int64 */
@@ -9821,9 +9892,9 @@ export interface components {
             display_name?: string | null;
             /**
              * Format: date-time
-             * @description Omitted or null leaves the exclusive end unchanged.
+             * @description Omitted leaves the exclusive end unchanged; null is invalid.
              */
-            end_at?: string | null;
+            end_at?: string;
             /**
              * Format: int64
              * @description Optional positive revision from the last resource response. A stale value returns the resource conflict error without applying the edit. Omission preserves v1 compatibility; null is invalid.
@@ -9833,9 +9904,9 @@ export interface components {
             name?: string | null;
             /**
              * Format: date-time
-             * @description Omitted or null leaves the inclusive start unchanged.
+             * @description Omitted leaves the inclusive start unchanged; null is invalid.
              */
-            start_at?: string | null;
+            start_at?: string;
         };
         /** @description Mutable Academic Unit fields, including an optional hierarchy move. */
         UpdateAcademicUnitRequest: {
@@ -9873,7 +9944,7 @@ export interface components {
         /** @description Conditional complete replacement of the Review's mutable text fields. */
         UpdateExamIntegrityReviewRequest: {
             /** Format: int64 */
-            expected_review_revision: number;
+            expected_revision: number;
             /** @description Already-trimmed private manager UTF-8 notes, at most 3000 Unicode scalar values and 12000 bytes. */
             manager_notes: string;
             /** @description Optional approved student-facing Markdown, at most 8192 Unicode scalar values and 32768 UTF-8 bytes; sanitized again on candidate projection. */
@@ -9974,7 +10045,10 @@ export interface components {
             id: components["schemas"]["ID"];
         };
         /** @description Visible User profiles ordered by canonical username and identity. */
-        UserProfileListResponse: components["schemas"]["UserProfileResponse"][];
+        UserProfileListResponse: {
+            items: components["schemas"]["UserProfileResponse"][];
+            next_cursor?: components["schemas"]["NextCursor"];
+        };
         /** @description User directory projection. Email, verification, locale, timezone, activity, and disabled state are present only for self or institution-wide user.view authority. */
         UserProfileResponse: {
             /** Format: date-time */
@@ -10092,7 +10166,11 @@ export interface components {
                 [name: string]: unknown;
             };
             content: {
-                /** @example [] */
+                /**
+                 * @example {
+                 *       "items": []
+                 *     }
+                 */
                 "application/json": components["schemas"]["AcademicPeriodListResponse"];
             };
         };
@@ -10153,8 +10231,6 @@ export interface components {
         /** @description Academic Unit Member collection */
         AcademicUnitMemberListOK: {
             headers: {
-                /** @description Present only when a bounded page has more rows. Follow the relative URL with rel="next"; its cursor and effective/history filter identify the continuation. */
-                Link?: string;
                 [name: string]: unknown;
             };
             content: {
@@ -10232,7 +10308,11 @@ export interface components {
                 [name: string]: unknown;
             };
             content: {
-                /** @example [] */
+                /**
+                 * @example {
+                 *       "items": []
+                 *     }
+                 */
                 "application/json": components["schemas"]["AffiliationListResponse"];
             };
         };
@@ -10244,7 +10324,7 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "events": []
+                 *       "items": []
                  *     }
                  */
                 "application/json": components["schemas"]["AuditListResponse"];
@@ -10534,8 +10614,6 @@ export interface components {
         /** @description Class Member collection */
         ClassMemberListOK: {
             headers: {
-                /** @description Present only when a bounded page has more rows. Follow the relative URL with rel="next"; its cursor and effective/history filter identify the continuation. */
-                Link?: string;
                 [name: string]: unknown;
             };
             content: {
@@ -11286,7 +11364,11 @@ export interface components {
                 [name: string]: unknown;
             };
             content: {
-                /** @example [] */
+                /**
+                 * @example {
+                 *       "items": []
+                 *     }
+                 */
                 "application/json": components["schemas"]["ExternalAuthenticationProviderListResponse"];
             };
         };
@@ -12394,7 +12476,11 @@ export interface components {
                 [name: string]: unknown;
             };
             content: {
-                /** @example [] */
+                /**
+                 * @example {
+                 *       "items": []
+                 *     }
+                 */
                 "application/json": components["schemas"]["UserProfileListResponse"];
             };
         };
@@ -12429,8 +12515,6 @@ export interface components {
         };
     };
     parameters: {
-        /** @description Optional revision from the last resource response. A stale value returns the resource conflict error without archiving; omission preserves v1 compatibility. */
-        AcademicExpectedRevision: number;
         /** @description The Academic Period identifier. */
         AcademicPeriodID: components["schemas"]["ID"];
         /** @description The Academic Unit identifier. */
@@ -12491,6 +12575,10 @@ export interface components {
         OnboardingImportID: components["schemas"]["ID"];
         /** @description Opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
         OptionalIdempotencyKey: string;
+        /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+        PageCursor: string;
+        /** @description Maximum number of items in the page. */
+        PageLimit: number;
         /** @description The Personal Access Token record identifier; this is not the token secret. */
         PersonalAccessTokenID: components["schemas"]["ID"];
         /** @description The Programme identifier. */
@@ -12541,7 +12629,7 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "expected_exam_revision": 3,
+                 *       "expected_revision": 3,
                  *       "user_id": "ybndrfg8ejkmcpqxot1uwisza3"
                  *     }
                  */
@@ -12560,7 +12648,7 @@ export interface components {
                  *       ],
                  *       "candidate_summary": "The formula sheet for Question 3 was corrected.",
                  *       "expected_current_revision_id": "ybndrfg8ejkmcpqxot1uwisza3",
-                 *       "expected_sitting_revision": 8,
+                 *       "expected_revision": 8,
                  *       "instructions_markdown": "Read the corrected resource before continuing.",
                  *       "reason": "Question 3 contained an incorrect constant.",
                  *       "resources": [
@@ -12576,12 +12664,23 @@ export interface components {
                 "application/json": components["schemas"]["ApplyExamSittingCorrectionRequest"];
             };
         };
+        /** @description Optional revision fence. A stale `expected_revision` returns the resource conflict error without archiving; a request without a body archives unconditionally. */
+        ArchiveAcademic: {
+            content: {
+                /**
+                 * @example {
+                 *       "expected_revision": 3
+                 *     }
+                 */
+                "application/json": components["schemas"]["ArchiveAcademicRequest"];
+            };
+        };
         /** @description Supplies the last observed Exam aggregate revision required for the concurrency-safe archive transition. */
         ArchiveExam: {
             content: {
                 /**
                  * @example {
-                 *       "expected_exam_revision": 3
+                 *       "expected_revision": 3
                  *     }
                  */
                 "application/json": components["schemas"]["ArchiveExamRequest"];
@@ -12797,7 +12896,7 @@ export interface components {
                  *       "browser_policy": {
                  *         "enabled": false
                  *       },
-                 *       "expected_draft_revision": 4
+                 *       "expected_revision": 4
                  *     }
                  */
                 "application/json": components["schemas"]["ConfigureExamDraftBrowserPolicyRequest"];
@@ -12809,7 +12908,7 @@ export interface components {
                 /**
                  * @example {
                  *       "enabled": true,
-                 *       "expected_draft_revision": 4,
+                 *       "expected_revision": 4,
                  *       "incident_count": 3,
                  *       "minimum_duration_milliseconds": 1500,
                  *       "outcome": "flag_and_warn",
@@ -12824,7 +12923,7 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "expected_draft_revision": 4,
+                 *       "expected_revision": 4,
                  *       "native": {
                  *         "baseline_id": "desktop_candidate",
                  *         "families": [
@@ -13004,7 +13103,7 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "expected_draft_revision": 2,
+                 *       "expected_revision": 2,
                  *       "path": "starter/tests"
                  *     }
                  */
@@ -13070,7 +13169,7 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "expected_policy_revision": 1
+                 *       "expected_revision": 1
                  *     }
                  */
                 "application/json": components["schemas"]["RetentionPreviewRequest"];
@@ -13114,7 +13213,7 @@ export interface components {
                  * @example {
                  *       "allocated_through_sequence": 4,
                  *       "declaration_id": "loss-0001",
-                 *       "expected_declaration_revision": 0,
+                 *       "expected_revision": 0,
                  *       "ranges": [
                  *         {
                  *           "first": 2,
@@ -13248,7 +13347,7 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "expected_draft_revision": 2,
+                 *       "expected_revision": 2,
                  *       "instructions_markdown": "Read every question carefully. Save your work before submitting.",
                  *       "title": "Distributed Systems Final"
                  *     }
@@ -13262,7 +13361,7 @@ export interface components {
                 /**
                  * @example {
                  *       "display_name": "Formula sheet, revision 2",
-                 *       "expected_draft_revision": 4
+                 *       "expected_revision": 4
                  *     }
                  */
                 "application/json": components["schemas"]["EditExamResourceMetadataRequest"];
@@ -13273,7 +13372,7 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "expected_attempt_revision": 7,
+                 *       "expected_revision": 7,
                  *       "reason": "Candidate requested an early end after completing the exam."
                  *     }
                  */
@@ -13333,7 +13432,7 @@ export interface components {
                 /**
                  * @example {
                  *       "declaration_id": "final-0001",
-                 *       "expected_declaration_revision": 1,
+                 *       "expected_revision": 1,
                  *       "final_sequence": 4
                  *     }
                  */
@@ -13385,7 +13484,7 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "expected_draft_revision": 5,
+                 *       "expected_revision": 5,
                  *       "path": "starter/src/main.go"
                  *     }
                  */
@@ -13485,7 +13584,7 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "expected_draft_revision": 12
+                 *       "expected_revision": 12
                  *     }
                  */
                 "application/json": components["schemas"]["PublishExamRevisionRequest"];
@@ -13496,7 +13595,7 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "expected_attempt_revision": 4,
+                 *       "expected_revision": 4,
                  *       "reason": "Candidate identity was reverified by the invigilator.",
                  *       "suspension_id": "ybndrfg8ejkmcpqxot1uwisza3"
                  *     }
@@ -13522,7 +13621,7 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "expected_exam_revision": 4
+                 *       "expected_revision": 4
                  *     }
                  */
                 "application/json": components["schemas"]["RemoveExamManagerRequest"];
@@ -13533,7 +13632,7 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "expected_draft_revision": 6
+                 *       "expected_revision": 6
                  *     }
                  */
                 "application/json": components["schemas"]["RemoveExamResourceRequest"];
@@ -13544,7 +13643,7 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "expected_draft_revision": 6
+                 *       "expected_revision": 6
                  *     }
                  */
                 "application/json": components["schemas"]["RemoveExamStarterWorkspaceEntryRequest"];
@@ -13555,7 +13654,7 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "expected_draft_revision": 5,
+                 *       "expected_revision": 5,
                  *       "resource_ids": [
                  *         "ybndrfg8ejkmcpqxot1uwisza3",
                  *         "ybndrfg8ejkmcpqxot1uwisza4"
@@ -13739,8 +13838,8 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "expected_decision_revision": 0,
                  *       "expected_review_revision": 0,
+                 *       "expected_revision": 0,
                  *       "outcome": "inconclusive",
                  *       "private_rationale": "The retained evidence does not establish a reliable conclusion."
                  *     }
@@ -13831,7 +13930,7 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "expected_attempt_revision": 3,
+                 *       "expected_revision": 3,
                  *       "reason": "Candidate left the examination room without permission."
                  *     }
                  */
@@ -13843,7 +13942,7 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "expected_review_revision": 7,
+                 *       "expected_revision": 7,
                  *       "submission_review_id": "ybndrfg8ejkmcpqxot1uwisza3"
                  *     }
                  */
@@ -13855,7 +13954,7 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "expected_exam_revision": 5,
+                 *       "expected_revision": 5,
                  *       "user_id": "ybndrfg8ejkmcpqxot1uwisza3"
                  *     }
                  */
@@ -13918,7 +14017,7 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "expected_review_revision": 0,
+                 *       "expected_revision": 0,
                  *       "manager_notes": "Review opened; evidence assessment is pending.",
                  *       "student_remarks_markdown": ""
                  *     }
@@ -14061,8 +14160,10 @@ export interface operations {
             query?: {
                 /** @description Literal case-insensitive substring matched against name and display name. */
                 q?: string;
-                /** @description Maximum number of visible Academic Periods to return. */
-                limit?: number;
+                /** @description Maximum number of items in the page. */
+                limit?: components["parameters"]["PageLimit"];
+                /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+                cursor?: components["parameters"]["PageCursor"];
             };
             header?: never;
             path?: never;
@@ -14124,10 +14225,7 @@ export interface operations {
     };
     archiveAcademicPeriod: {
         parameters: {
-            query?: {
-                /** @description Optional revision from the last resource response. A stale value returns the resource conflict error without archiving; omission preserves v1 compatibility. */
-                expected_revision?: components["parameters"]["AcademicExpectedRevision"];
-            };
+            query?: never;
             header?: never;
             path: {
                 /** @description The Academic Period identifier. */
@@ -14135,7 +14233,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: components["requestBodies"]["ArchiveAcademic"];
         responses: {
             204: components["responses"]["AcademicPeriodArchived"];
             400: components["responses"]["BadRequest"];
@@ -14196,8 +14294,10 @@ export interface operations {
             query?: {
                 /** @description Literal case-insensitive substring matched against name and display name. */
                 q?: string;
-                /** @description Maximum number of Academic Units to return, from 1 through 200. */
-                limit?: number;
+                /** @description Maximum number of items in the page. */
+                limit?: components["parameters"]["PageLimit"];
+                /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+                cursor?: components["parameters"]["PageCursor"];
             };
             header?: never;
             path?: never;
@@ -14257,10 +14357,7 @@ export interface operations {
     };
     archiveAcademicUnit: {
         parameters: {
-            query?: {
-                /** @description Optional revision from the last resource response. A stale value returns the resource conflict error without archiving; omission preserves v1 compatibility. */
-                expected_revision?: components["parameters"]["AcademicExpectedRevision"];
-            };
+            query?: never;
             header?: never;
             path: {
                 /** @description The Academic Unit identifier. */
@@ -14268,7 +14365,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: components["requestBodies"]["ArchiveAcademic"];
         responses: {
             204: components["responses"]["AcademicUnitArchived"];
             400: components["responses"]["BadRequest"];
@@ -14304,7 +14401,12 @@ export interface operations {
     };
     listAcademicUnitChildren: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum number of items in the page. */
+                limit?: components["parameters"]["PageLimit"];
+                /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+                cursor?: components["parameters"]["PageCursor"];
+            };
             header?: never;
             path: {
                 /** @description The Academic Unit identifier. */
@@ -14350,8 +14452,10 @@ export interface operations {
             query?: {
                 /** @description Literal case-insensitive substring matched against name and display name. */
                 q?: string;
-                /** @description Maximum number of Classes to return. */
-                limit?: number;
+                /** @description Maximum number of items in the page. */
+                limit?: components["parameters"]["PageLimit"];
+                /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+                cursor?: components["parameters"]["PageCursor"];
             };
             header?: never;
             path: {
@@ -14460,14 +14564,14 @@ export interface operations {
     listAcademicUnitMembers: {
         parameters: {
             query?: {
-                /** @description Opt into bounded paging while preserving the bare-array response. Defaults to 50 when cursor is supplied; pages contain at most 200 rows. Without limit or cursor the legacy full-list response remains available. */
-                limit?: number;
-                /** @description Opaque continuation from the previous Link header. It binds the resource and effective/history filter. Every page requires fresh authorization; do not edit or reuse it for another resource or filter. */
-                cursor?: string;
                 /** @description RFC 3339 instant at which membership must be effective; ignored when history is true in legacy full-list mode. For paging, omit it with history=true and inherit the first page instant when following a cursor. */
                 active_at?: string;
                 /** @description When true, return membership history. Legacy full-list mode ignores active_at; paged requests must omit active_at with history=true. */
                 history?: boolean;
+                /** @description Maximum number of items in the page. */
+                limit?: components["parameters"]["PageLimit"];
+                /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+                cursor?: components["parameters"]["PageCursor"];
             };
             header?: never;
             path: {
@@ -14514,8 +14618,10 @@ export interface operations {
             query?: {
                 /** @description Literal case-insensitive substring matched against name and display name. */
                 q?: string;
-                /** @description Maximum number of Programmes to return. */
-                limit?: number;
+                /** @description Maximum number of items in the page. */
+                limit?: components["parameters"]["PageLimit"];
+                /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+                cursor?: components["parameters"]["PageCursor"];
             };
             header?: never;
             path: {
@@ -14998,7 +15104,12 @@ export interface operations {
     };
     listAuthenticationProviders: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum number of items in the page. */
+                limit?: components["parameters"]["PageLimit"];
+                /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+                cursor?: components["parameters"]["PageCursor"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -15333,10 +15444,7 @@ export interface operations {
     };
     archiveClass: {
         parameters: {
-            query?: {
-                /** @description Optional revision from the last resource response. A stale value returns the resource conflict error without archiving; omission preserves v1 compatibility. */
-                expected_revision?: components["parameters"]["AcademicExpectedRevision"];
-            };
+            query?: never;
             header?: never;
             path: {
                 /** @description The Class identifier. */
@@ -15344,7 +15452,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: components["requestBodies"]["ArchiveAcademic"];
         responses: {
             204: components["responses"]["ClassArchived"];
             400: components["responses"]["BadRequest"];
@@ -15425,14 +15533,14 @@ export interface operations {
     listClassMembers: {
         parameters: {
             query?: {
-                /** @description Opt into bounded paging while preserving the bare-array response. Defaults to 50 when cursor is supplied; pages contain at most 200 rows. Without limit or cursor the legacy full-list response remains available. */
-                limit?: number;
-                /** @description Opaque continuation from the previous Link header. It binds the resource and effective/history filter. Every page requires fresh authorization; do not edit or reuse it for another resource or filter. */
-                cursor?: string;
                 /** @description RFC 3339 instant at which enrollment must be effective; ignored when history is true in legacy full-list mode. For paging, omit it with history=true and inherit the first page instant when following a cursor. */
                 active_at?: string;
                 /** @description When true, return enrollment history. Legacy full-list mode ignores active_at; paged requests must omit active_at with history=true. */
                 history?: boolean;
+                /** @description Maximum number of items in the page. */
+                limit?: components["parameters"]["PageLimit"];
+                /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+                cursor?: components["parameters"]["PageCursor"];
             };
             header?: never;
             path: {
@@ -15530,6 +15638,10 @@ export interface operations {
             query: {
                 /** @description Owned Participation whose bounded source inventory is requested. */
                 participation_id: components["schemas"]["ID"];
+                /** @description Maximum number of items in the page. */
+                limit?: components["parameters"]["PageLimit"];
+                /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+                cursor?: components["parameters"]["PageCursor"];
             };
             header?: {
                 /** @description Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
@@ -15652,11 +15764,11 @@ export interface operations {
     };
     browserDeliveryReceipts: {
         parameters: {
-            query: {
-                /** @description First sequence to examine, inclusive. */
-                first_sequence: number;
-                /** @description Maximum number of retained receipts. */
-                limit: number;
+            query?: {
+                /** @description Maximum number of retained receipts in the page. */
+                limit?: number;
+                /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+                cursor?: components["parameters"]["PageCursor"];
             };
             header?: {
                 /** @description Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
@@ -16204,10 +16316,12 @@ export interface operations {
     listCandidateExamWorkspaceChanges: {
         parameters: {
             query?: {
-                /** @description Return acknowledged changes strictly after this Workspace journal cursor; zero starts at the retained beginning. */
-                after_cursor?: number;
-                /** @description Maximum number of ordered Workspace journal entries to return in this page. */
-                limit?: number;
+                /** @description Start the listing with changes strictly after this Workspace Cursor; zero or omission starts at the retained beginning. Omit it when continuing with cursor. */
+                workspace_cursor?: number;
+                /** @description Maximum number of items in the page. */
+                limit?: components["parameters"]["PageLimit"];
+                /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+                cursor?: components["parameters"]["PageCursor"];
             };
             header: {
                 /** @description Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL. */
@@ -16655,7 +16769,12 @@ export interface operations {
     };
     listExamDraftResources: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum number of items in the page. */
+                limit?: components["parameters"]["PageLimit"];
+                /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+                cursor?: components["parameters"]["PageCursor"];
+            };
             header?: never;
             path: {
                 /** @description The Exam identifier. */
@@ -16844,7 +16963,12 @@ export interface operations {
     };
     listExamDraftStarterWorkspace: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum number of items in the page. */
+                limit?: components["parameters"]["PageLimit"];
+                /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+                cursor?: components["parameters"]["PageCursor"];
+            };
             header?: never;
             path: {
                 /** @description The Exam identifier. */
@@ -19004,10 +19128,7 @@ export interface operations {
     };
     archiveProgrammeLevel: {
         parameters: {
-            query?: {
-                /** @description Optional revision from the last resource response. A stale value returns the resource conflict error without archiving; omission preserves v1 compatibility. */
-                expected_revision?: components["parameters"]["AcademicExpectedRevision"];
-            };
+            query?: never;
             header?: never;
             path: {
                 /** @description The Programme Level identifier. */
@@ -19015,7 +19136,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: components["requestBodies"]["ArchiveAcademic"];
         responses: {
             204: components["responses"]["ProgrammeLevelArchived"];
             400: components["responses"]["BadRequest"];
@@ -19051,7 +19172,12 @@ export interface operations {
     };
     listClasses: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum number of items in the page. */
+                limit?: components["parameters"]["PageLimit"];
+                /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+                cursor?: components["parameters"]["PageCursor"];
+            };
             header?: never;
             path: {
                 /** @description The Programme Level identifier. */
@@ -19115,10 +19241,7 @@ export interface operations {
     };
     archiveProgramme: {
         parameters: {
-            query?: {
-                /** @description Optional revision from the last resource response. A stale value returns the resource conflict error without archiving; omission preserves v1 compatibility. */
-                expected_revision?: components["parameters"]["AcademicExpectedRevision"];
-            };
+            query?: never;
             header?: never;
             path: {
                 /** @description The Programme identifier. */
@@ -19126,7 +19249,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: components["requestBodies"]["ArchiveAcademic"];
         responses: {
             204: components["responses"]["ProgrammeArchived"];
             400: components["responses"]["BadRequest"];
@@ -19165,8 +19288,10 @@ export interface operations {
             query?: {
                 /** @description Literal case-insensitive substring matched against name and display name. */
                 q?: string;
-                /** @description Maximum number of Programme Levels to return. */
-                limit?: number;
+                /** @description Maximum number of items in the page. */
+                limit?: components["parameters"]["PageLimit"];
+                /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+                cursor?: components["parameters"]["PageCursor"];
             };
             header?: never;
             path: {
@@ -19361,6 +19486,10 @@ export interface operations {
                 scope_type?: string;
                 /** @description Return only Bindings for this exact scope identity. */
                 scope_id?: components["schemas"]["ID"];
+                /** @description Maximum number of items in the page. */
+                limit?: components["parameters"]["PageLimit"];
+                /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+                cursor?: components["parameters"]["PageCursor"];
             };
             header?: never;
             path?: never;
@@ -19419,7 +19548,12 @@ export interface operations {
     };
     listRoles: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum number of items in the page. */
+                limit?: components["parameters"]["PageLimit"];
+                /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+                cursor?: components["parameters"]["PageCursor"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -19923,14 +20057,12 @@ export interface operations {
             query?: {
                 /** @description Literal case-insensitive substring matched against visible User directory fields. */
                 q?: string;
-                /** @description Canonical username from the preceding page; supply together with after_id. */
-                after_username?: string;
-                /** @description Stable User identity from the preceding page; supply together with after_username. */
-                after_id?: string;
-                /** @description Maximum number of visible User profiles to return. */
-                limit?: number;
                 /** @description Honored only for institution-wide user.view; scoped visibility always excludes disabled Users. */
                 include_disabled?: boolean;
+                /** @description Maximum number of items in the page. */
+                limit?: components["parameters"]["PageLimit"];
+                /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+                cursor?: components["parameters"]["PageCursor"];
             };
             header?: never;
             path?: never;
@@ -19982,7 +20114,12 @@ export interface operations {
     };
     listDesktopRegistrations: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum number of items in the page. */
+                limit?: components["parameters"]["PageLimit"];
+                /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+                cursor?: components["parameters"]["PageCursor"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -20180,7 +20317,12 @@ export interface operations {
     };
     listCurrentUserSessions: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum number of items in the page. */
+                limit?: components["parameters"]["PageLimit"];
+                /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+                cursor?: components["parameters"]["PageCursor"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -20268,7 +20410,12 @@ export interface operations {
     };
     listPersonalAccessTokens: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum number of items in the page. */
+                limit?: components["parameters"]["PageLimit"];
+                /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+                cursor?: components["parameters"]["PageCursor"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -20410,7 +20557,12 @@ export interface operations {
     };
     listAffiliations: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum number of items in the page. */
+                limit?: components["parameters"]["PageLimit"];
+                /** @description Opaque next_cursor from the previous page, returned unchanged; omit it for the first page. */
+                cursor?: components["parameters"]["PageCursor"];
+            };
             header?: never;
             path: {
                 /** @description The User identifier. */

@@ -117,23 +117,25 @@ func (m classResourceModule) search(request operationRequest) (operationResult, 
 	if err != nil {
 		return operationResult{}, err
 	}
-	limit, err := request.queryLimit()
+	pageQuery, err := request.academicNamePageQuery()
 	if err != nil {
 		return operationResult{}, err
 	}
-	classes, err := m.classes.SearchClasses(
+	page, err := m.classes.SearchClasses(
 		request.context,
 		request.invocation(),
 		app.SearchClassesQuery{
 			AcademicUnitID: academicUnitID,
 			Query:          request.request.URL.Query().Get("q"),
-			Limit:          limit,
+			NamePageQuery:  pageQuery,
 		},
 	)
 	if err != nil {
 		return operationResult{}, err
 	}
-	return jsonResult(http.StatusOK, classResponses(classes)), nil
+	return academicNameListResult(page, classResponseFromModel, func(class *model.Class) (string, string) {
+		return class.Name, class.ID.String()
+	})
 }
 
 func (m classResourceModule) list(request operationRequest) (operationResult, error) {
@@ -141,15 +143,21 @@ func (m classResourceModule) list(request operationRequest) (operationResult, er
 	if err != nil {
 		return operationResult{}, err
 	}
-	classes, err := m.classes.ListClasses(
+	pageQuery, err := request.academicNamePageQuery()
+	if err != nil {
+		return operationResult{}, err
+	}
+	page, err := m.classes.ListClasses(
 		request.context,
 		request.invocation(),
-		app.ListClassesQuery{ProgrammeLevelID: programmeLevelID},
+		app.ListClassesQuery{ProgrammeLevelID: programmeLevelID, NamePageQuery: pageQuery},
 	)
 	if err != nil {
 		return operationResult{}, err
 	}
-	return jsonResult(http.StatusOK, classResponses(classes)), nil
+	return academicNameListResult(page, classResponseFromModel, func(class *model.Class) (string, string) {
+		return class.Name, class.ID.String()
+	})
 }
 
 func (m classResourceModule) create(request operationRequest) (operationResult, error) {
@@ -258,11 +266,4 @@ func classResponseFromModel(class *model.Class) classResponse {
 		DisplayName:      class.DisplayName,
 		Description:      class.Description,
 	}
-}
-func classResponses(classes []*model.Class) []classResponse {
-	result := make([]classResponse, 0, len(classes))
-	for _, class := range classes {
-		result = append(result, classResponseFromModel(class))
-	}
-	return result
 }

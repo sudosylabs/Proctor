@@ -43,15 +43,8 @@ paths:
           description: Literal case-insensitive substring matched against name and display name.
           schema:
             type: string
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 200
-            default: 100
-          description: Maximum number of Programme Levels to return.
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
       responses:
         "200":
           $ref: '#/components/responses/ProgrammeLevelListOK'
@@ -146,9 +139,18 @@ components:
             $ref: '#/components/schemas/ProgrammeLevelListResponse'
   schemas:
     ProgrammeLevelListResponse:
-      type: array
-      items:
-        $ref: '#/components/schemas/ProgrammeLevelResponse'
+      description: One page of the collection in its stable order.
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProgrammeLevelResponse'
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'
     CreateProgrammeLevelRequest:
       description: Canonical and human-facing fields for a new Programme Level.
       type: object

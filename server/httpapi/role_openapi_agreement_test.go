@@ -69,6 +69,5 @@ func TestRoleOpenAPIAgreesWithRuntime(t *testing.T) {
 	// list contract remains a legacy bare array.
 	document := readOpenAPIDocument(t)
 	list := document.Components.Schemas["RoleListResponse"]
-	require.Equal(t, "array", list.Type)
-	require.Equal(t, "#/components/schemas/RoleResponse", list.Items.Ref)
+	requireOpenAPIListEnvelope(t, list, "#/components/schemas/RoleResponse")
 }

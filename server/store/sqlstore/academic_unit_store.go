@@ -218,14 +218,16 @@ func (s SQLAcademicUnitStore) ListAncestors(ctx context.Context, id model.Academ
 
 // ListChildren returns the unarchived Academic Units of the Institution whose
 // parent is parentID, ordered by name; an empty parentID lists the root units.
-func (s SQLAcademicUnitStore) ListChildren(ctx context.Context, institutionID model.InstitutionID, parentID model.AcademicUnitID) ([]*model.AcademicUnit, error) {
-	query := s.academicUnitsQuery.
+func (s SQLAcademicUnitStore) ListChildren(ctx context.Context, institutionID model.InstitutionID, parentID model.AcademicUnitID, options store.AcademicNameListOptions) ([]*model.AcademicUnit, error) {
+	query, valid := academicNamePage(s.academicUnitsQuery.
 		Where(sq.Eq{
 			"academic_units.institution_id": institutionID,
 			"academic_units.archived_at":    nil,
 		}).
-		Where(sq.Expr("academic_units.parent_id IS NOT DISTINCT FROM NULLIF(?, '')", parentID)).
-		OrderBy("academic_units.name", "academic_units.id")
+		Where(sq.Expr("academic_units.parent_id IS NOT DISTINCT FROM NULLIF(?, '')", parentID)), "academic_units", options)
+	if !valid {
+		return nil, store.NewErrInvalidInput("academic_unit", "list_options", options)
+	}
 
 	rows := []academicUnitRow{}
 	if err := s.GetMaster().SelectBuilder(ctx, &rows, query); err != nil {
@@ -242,22 +244,17 @@ func (s SQLAcademicUnitStore) ListChildren(ctx context.Context, institutionID mo
 	return units, nil
 }
 
-// Search returns up to limit unarchived Academic Units of the Institution whose
-// name or display name contains term, case-insensitively. A limit outside
-// 1..200 is invalid input.
-func (s SQLAcademicUnitStore) Search(ctx context.Context, institutionID model.InstitutionID, term string, limit int) ([]*model.AcademicUnit, error) {
-	if limit < 1 || limit > 200 {
-		return nil, store.NewErrInvalidInput("academic_unit", "limit", limit)
-	}
-	query := s.academicUnitsQuery.
+// Search returns one page of unarchived Academic Units of the Institution
+// selected and ordered by options.
+func (s SQLAcademicUnitStore) Search(ctx context.Context, institutionID model.InstitutionID, options store.AcademicNameListOptions) ([]*model.AcademicUnit, error) {
+	query, valid := academicNamePage(s.academicUnitsQuery.
 		Where(sq.Eq{
 			"academic_units.institution_id": institutionID,
 			"academic_units.archived_at":    nil,
-		}).
-		Where("(academic_units.name ILIKE ? ESCAPE '!' OR academic_units.display_name ILIKE ? ESCAPE '!')",
-			directorySearchPattern(term), directorySearchPattern(term)).
-		OrderBy("academic_units.name", "academic_units.id").
-		Limit(uint64(limit))
+		}), "academic_units", options)
+	if !valid {
+		return nil, store.NewErrInvalidInput("academic_unit", "list_options", options)
+	}
 	rows := []academicUnitRow{}
 	if err := s.GetMaster().SelectBuilder(ctx, &rows, query); err != nil {
 		return nil, fmt.Errorf("search academic units: %w", err)

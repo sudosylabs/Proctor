@@ -72,21 +72,21 @@ func examIntegrityReviewCursorSpec(kind string) opaqueCursorSpec[examIntegrityRe
 type saveExamIntegrityDecisionRequest struct {
 	ReviewID                 string `json:"submission_review_id,omitempty"`
 	ExpectedReviewRevision   int64  `json:"expected_review_revision"`
-	ExpectedDecisionRevision int64  `json:"expected_decision_revision"`
+	ExpectedDecisionRevision int64  `json:"expected_revision"`
 	Outcome                  string `json:"outcome"`
 	PrivateRationale         string `json:"private_rationale"`
 }
 
 type updateExamIntegrityReviewRequest struct {
 	ReviewID               string `json:"submission_review_id,omitempty"`
-	ExpectedReviewRevision int64  `json:"expected_review_revision"`
+	ExpectedReviewRevision int64  `json:"expected_revision"`
 	ManagerNotes           string `json:"manager_notes"`
 	StudentRemarksMarkdown string `json:"student_remarks_markdown"`
 }
 
 type terminalExamIntegrityReviewRequest struct {
 	ReviewID               string `json:"submission_review_id"`
-	ExpectedReviewRevision int64  `json:"expected_review_revision"`
+	ExpectedReviewRevision int64  `json:"expected_revision"`
 }
 
 func (b *saveExamIntegrityDecisionRequest) UnmarshalJSON(encoded []byte) error {
@@ -220,8 +220,8 @@ type browserIntegrityGroupResponse struct {
 	ParticipationID         model.AttemptParticipationID `json:"participation_id"`
 	PolicyRevisionID        model.ExamRevisionID         `json:"policy_revision_id"`
 	RuleID                  string                       `json:"rule_id"`
-	OverflowFirstReceivedAt *time.Time                   `json:"overflow_first_received_at"`
-	OverflowLastReceivedAt  *time.Time                   `json:"overflow_last_received_at"`
+	OverflowFirstReceivedAt *time.Time                   `json:"overflow_first_received_at,omitempty"`
+	OverflowLastReceivedAt  *time.Time                   `json:"overflow_last_received_at,omitempty"`
 }
 
 func browserIntegrityGroupFrom(value *model.BrowserIntegrityGroup) *browserIntegrityGroupResponse {

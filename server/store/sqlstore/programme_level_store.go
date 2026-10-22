@@ -159,19 +159,16 @@ func (s SQLProgrammeLevelStore) ListByProgramme(ctx context.Context, programmeID
 	return levels, nil
 }
 
-// SearchByProgramme returns up to limit unarchived Programme Levels of the
-// Programme whose name or display name contains term, case-insensitively. A
-// limit outside 1..200 is invalid input.
-func (s SQLProgrammeLevelStore) SearchByProgramme(ctx context.Context, programmeID model.ProgrammeID, term string, limit int) ([]*model.ProgrammeLevel, error) {
-	if limit < 1 || limit > 200 {
-		return nil, store.NewErrInvalidInput("programme_level", "limit", limit)
-	}
-	query := s.programmeLevelsQuery.Where(sq.Eq{
+// SearchByProgramme returns one page of unarchived Programme Levels of the
+// Programme selected and ordered by options.
+func (s SQLProgrammeLevelStore) SearchByProgramme(ctx context.Context, programmeID model.ProgrammeID, options store.AcademicNameListOptions) ([]*model.ProgrammeLevel, error) {
+	query, valid := academicNamePage(s.programmeLevelsQuery.Where(sq.Eq{
 		"programme_levels.programme_id": programmeID,
 		"programme_levels.archived_at":  nil,
-	}).Where("(programme_levels.name ILIKE ? ESCAPE '!' OR programme_levels.display_name ILIKE ? ESCAPE '!')",
-		directorySearchPattern(term), directorySearchPattern(term)).
-		OrderBy("programme_levels.name", "programme_levels.id").Limit(uint64(limit))
+	}), "programme_levels", options)
+	if !valid {
+		return nil, store.NewErrInvalidInput("programme_level", "list_options", options)
+	}
 	rows := []programmeLevelRow{}
 	if err := s.GetMaster().SelectBuilder(ctx, &rows, query); err != nil {
 		return nil, fmt.Errorf("search programme levels: %w", err)

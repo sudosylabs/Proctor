@@ -147,10 +147,17 @@ func (m externalAuthenticationResourceModule) listProviders(request operationReq
 	if err != nil {
 		return operationResult{}, err
 	}
-	return jsonResult(
-		http.StatusOK,
-		externalAuthenticationProviderResponses(providers),
-	), nil
+	response, err := boundedListResult(request, "authentication provider", providers,
+		func(provider model.ExternalAuthenticationProvider) boundedPageKey {
+			return boundedPageKey{Name: provider.ID, ID: provider.ID}
+		},
+		func(provider model.ExternalAuthenticationProvider) externalAuthenticationProviderResponse {
+			return externalAuthenticationProviderResponse{ID: provider.ID, DisplayName: provider.DisplayName, Type: provider.Type}
+		})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, response), nil
 }
 
 func (m externalAuthenticationResourceModule) begin(

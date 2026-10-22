@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -28,12 +29,13 @@ func TestAcademicPeriodOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Key: "POST /api/v1/academic-periods", Auth: AuthPrincipalRequired, Idempotency: IdempotencyOptional, RequestBodyRef: "#/components/requestBodies/CreateAcademicPeriod", RequestSchema: "CreateAcademicPeriodRequest", SuccessStatus: "201", SuccessRef: "#/components/responses/AcademicPeriodCreated", SuccessSchema: "AcademicPeriodResponse", PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "academic_period.invalid", "academic_period.conflict", "administration.unavailable", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")},
 			{Key: "GET /api/v1/academic-periods/{academic_period_id}", Auth: AuthPrincipalRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/AcademicPeriodOK", SuccessSchema: "AcademicPeriodResponse", PublicErrorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
 			{Key: "PATCH /api/v1/academic-periods/{academic_period_id}", Auth: AuthPrincipalRequired, RequestBodyRef: "#/components/requestBodies/UpdateAcademicPeriod", RequestSchema: "UpdateAcademicPeriodRequest", SuccessStatus: "200", SuccessRef: "#/components/responses/AcademicPeriodOK", SuccessSchema: "AcademicPeriodResponse", PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "academic_period.invalid", "academic_period.conflict", "administration.unavailable")},
-			{Key: "DELETE /api/v1/academic-periods/{academic_period_id}", Auth: AuthPrincipalRequired, SuccessStatus: "204", SuccessRef: "#/components/responses/AcademicPeriodArchived", PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "academic_period.conflict", "administration.unavailable")},
+			{Key: "DELETE /api/v1/academic-periods/{academic_period_id}", Auth: AuthPrincipalRequired, RequestBodyRef: "#/components/requestBodies/ArchiveAcademic", RequestSchema: "ArchiveAcademicRequest", SuccessStatus: "204", SuccessRef: "#/components/responses/AcademicPeriodArchived", PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "academic_period.conflict", "administration.unavailable")},
 		},
 		Schemas: []openAPIAgreementSchema{
+			{Name: "ArchiveAcademicRequest", DTO: reflect.TypeOf(archiveAcademicRequest{}), NonNullable: []string{"expected_revision"}},
 			{Name: "AcademicPeriodResponse", DTO: reflect.TypeOf(academicPeriodResponse{}), Required: []string{"revision", "id", "created_at", "updated_at", "owner_type", "owner_id", "name", "display_name", "description", "start_at", "end_at"}},
 			{Name: "CreateAcademicPeriodRequest", DTO: reflect.TypeOf(createAcademicPeriodRequest{}), Required: []string{"owner_type", "owner_id", "name", "display_name", "start_at", "end_at"}},
-			{Name: "UpdateAcademicPeriodRequest", DTO: reflect.TypeOf(updateAcademicPeriodRequest{}), NonNullable: []string{"expected_revision"}},
+			{Name: "UpdateAcademicPeriodRequest", DTO: reflect.TypeOf(updateAcademicPeriodRequest{}), NonNullable: []string{"expected_revision", "start_at", "end_at"}},
 		},
 	}
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
@@ -41,18 +43,22 @@ func TestAcademicPeriodOpenAPIAgreesWithRuntime(t *testing.T) {
 	document := readOpenAPIDocument(t)
 	var listOperation openAPIOperation
 	require.NoError(t, json.Unmarshal(document.Paths[model.APIURLSuffix+"/academic-periods"]["get"], &listOperation))
-	require.Equal(t, []string{"limit", "q"}, academicStructureQueryParameterNames(listOperation.Parameters), "Academic Period list query parameters")
+	require.Equal(t, []string{"cursor", "limit", "q"}, academicStructureQueryParameterNames(listOperation.Parameters), "Academic Period list query parameters")
 	list := document.Components.Schemas["AcademicPeriodListResponse"]
-	require.Equal(t, "array", list.Type)
-	require.Equal(t, "#/components/schemas/AcademicPeriodResponse", list.Items.Ref)
+	requireOpenAPIListEnvelope(t, list, "#/components/schemas/AcademicPeriodResponse")
 	require.Equal(t, "#/components/headers/NoStore", document.Components.Responses["AcademicPeriodArchived"].Headers["Cache-Control"].Ref)
 }
 
 func academicStructureQueryParameterNames(parameters []openAPIParameter) []string {
 	names := make([]string, 0, len(parameters))
 	for _, parameter := range parameters {
-		if parameter.In == "query" {
+		switch {
+		case parameter.In == "query":
 			names = append(names, parameter.Name)
+		case strings.HasSuffix(parameter.Ref, "/PageLimit"):
+			names = append(names, "limit")
+		case strings.HasSuffix(parameter.Ref, "/PageCursor"):
+			names = append(names, "cursor")
 		}
 	}
 	sort.Strings(names)

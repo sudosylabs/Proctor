@@ -7,15 +7,6 @@
 
 components:
   parameters:
-    AcademicExpectedRevision:
-      name: expected_revision
-      in: query
-      required: false
-      description: Optional revision from the last resource response. A stale value returns the resource conflict error without archiving; omission preserves v1 compatibility.
-      schema:
-        type: integer
-        format: int64
-        minimum: 1
     OptionalIdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -42,6 +33,16 @@ components:
         $ref: '#/components/schemas/ID'
       description: The Programme Level identifier.
   requestBodies:
+    ArchiveAcademic:
+      required: false
+      description: >-
+        Optional revision fence. A stale `expected_revision` returns the resource conflict error without archiving; a request without a body archives unconditionally.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ArchiveAcademicRequest'
+          example:
+            expected_revision: 3
     CreateAcademicUnit:
       required: true
       content:
@@ -74,6 +75,15 @@ components:
           schema:
             $ref: '#/components/schemas/ClassListResponse'
   schemas:
+    ArchiveAcademicRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        expected_revision:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Revision from the last resource response.
     AcademicUnitResponse:
       type: object
       additionalProperties: false
@@ -114,9 +124,18 @@ components:
         description:
           type: string
     AcademicUnitListResponse:
-      type: array
-      items:
-        $ref: '#/components/schemas/AcademicUnitResponse'
+      description: One page of the collection in its stable order.
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AcademicUnitResponse'
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'
     CreateAcademicUnitRequest:
       type: object
       additionalProperties: false
@@ -248,6 +267,15 @@ components:
         description:
           type: string
     ClassListResponse:
-      type: array
-      items:
-        $ref: '#/components/schemas/ClassResponse'
+      description: One page of the collection in its stable order.
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClassResponse'
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'

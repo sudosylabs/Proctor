@@ -74,7 +74,7 @@ type RetentionReconciliation struct {
 
 type RetentionReconciliationResult struct {
 	Scheduled int
-	Cancelled int
+	Canceled  int
 	Retired   int
 }
 

@@ -264,7 +264,7 @@ components:
           schema:
             $ref: '#/components/schemas/EndExamAttemptByManagerRequest'
           example:
-            expected_attempt_revision: 7
+            expected_revision: 7
             reason: Candidate requested an early end after completing the exam.
   responses:
     ExamSubmissionReceiptOK:
@@ -337,10 +337,10 @@ components:
       type: object
       additionalProperties: false
       required:
-        - expected_attempt_revision
+        - expected_revision
         - reason
       properties:
-        expected_attempt_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1

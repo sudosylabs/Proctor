@@ -33,7 +33,7 @@ func TestExamStarterWorkspaceHTTPFileUploadUsesMetadataFirstStreaming(t *testing
 	api := newFocusedResourceAPI(t, logger, fake, examStarterWorkspaceHTTPResource(fake))
 	raw := []byte("package main\n")
 	checksum := fmt.Sprintf("%x", sha256.Sum256(raw))
-	body, contentType := examResourceMultipart(t, `{"expected_draft_revision":1,"path":"cmd/main.go","media_type":"text/x-go","size":13,"sha256":"`+checksum+`"}`, raw, false)
+	body, contentType := examResourceMultipart(t, `{"expected_revision":1,"path":"cmd/main.go","media_type":"text/x-go","size":13,"sha256":"`+checksum+`"}`, raw, false)
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/exams/"+fake.examID.String()+"/draft/starter-workspace/files", body)
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", contentType)
@@ -57,7 +57,7 @@ func TestExamStarterWorkspaceHTTPFileUploadRequiresSizeButAcceptsExplicitZero(t 
 	api := newFocusedResourceAPI(t, logger, fake, examStarterWorkspaceHTTPResource(fake))
 	path := "/api/v1/exams/" + fake.examID.String() + "/draft/starter-workspace/files"
 
-	omittedBody, omittedType := examResourceMultipart(t, `{"expected_draft_revision":1,"path":"empty.txt","media_type":"text/plain","sha256":"`+fmt.Sprintf("%x", sha256.Sum256(nil))+`"}`, nil, false)
+	omittedBody, omittedType := examResourceMultipart(t, `{"expected_revision":1,"path":"empty.txt","media_type":"text/plain","sha256":"`+fmt.Sprintf("%x", sha256.Sum256(nil))+`"}`, nil, false)
 	omitted := httptest.NewRequest(http.MethodPost, path, omittedBody)
 	omitted.Header.Set("Authorization", "Bearer credential")
 	omitted.Header.Set("Content-Type", omittedType)
@@ -67,7 +67,7 @@ func TestExamStarterWorkspaceHTTPFileUploadRequiresSizeButAcceptsExplicitZero(t 
 	require.Equal(t, http.StatusBadRequest, omittedResponse.Code, "omitted size status=%d command=%#v body=%s", omittedResponse.Code, fake.createFile, omittedResponse.Body.String())
 	require.False(t, fake.createFile.ExamID.IsValid(), "omitted size status=%d command=%#v body=%s", omittedResponse.Code, fake.createFile, omittedResponse.Body.String())
 
-	explicitBody, explicitType := examResourceMultipart(t, `{"expected_draft_revision":1,"path":"empty.txt","media_type":"text/plain","size":0,"sha256":"`+fmt.Sprintf("%x", sha256.Sum256(nil))+`"}`, nil, false)
+	explicitBody, explicitType := examResourceMultipart(t, `{"expected_revision":1,"path":"empty.txt","media_type":"text/plain","size":0,"sha256":"`+fmt.Sprintf("%x", sha256.Sum256(nil))+`"}`, nil, false)
 	explicit := httptest.NewRequest(http.MethodPost, path, explicitBody)
 	explicit.Header.Set("Authorization", "Bearer credential")
 	explicit.Header.Set("Content-Type", explicitType)
@@ -84,7 +84,7 @@ func TestExamStarterWorkspaceHTTPFileReplacementRequiresSize(t *testing.T) {
 	fake := newExamStarterWorkspaceHTTPFake(testExamHTTPPrincipal())
 	api := newFocusedResourceAPI(t, logger, fake, examStarterWorkspaceHTTPResource(fake))
 	path := "/api/v1/exams/" + fake.examID.String() + "/draft/starter-workspace/files/" + fake.entry.ID.String() + "/content"
-	body, contentType := examResourceMultipart(t, `{"expected_draft_revision":1,"expected_content_version":"`+fake.object.ContentVersion.String()+`","media_type":"text/plain","sha256":"`+fmt.Sprintf("%x", sha256.Sum256(nil))+`"}`, nil, false)
+	body, contentType := examResourceMultipart(t, `{"expected_revision":1,"expected_content_version":"`+fake.object.ContentVersion.String()+`","media_type":"text/plain","sha256":"`+fmt.Sprintf("%x", sha256.Sum256(nil))+`"}`, nil, false)
 	request := httptest.NewRequest(http.MethodPut, path, body)
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", contentType)
@@ -103,7 +103,7 @@ func TestExamStarterWorkspaceHTTPFileReplacementRequiresAndCarriesExpectedConten
 	path := "/api/v1/exams/" + fake.examID.String() + "/draft/starter-workspace/files/" + fake.entry.ID.String() + "/content"
 	checksum := fmt.Sprintf("%x", sha256.Sum256(nil))
 
-	omittedBody, omittedType := examResourceMultipart(t, `{"expected_draft_revision":1,"media_type":"text/plain","size":0,"sha256":"`+checksum+`"}`, nil, false)
+	omittedBody, omittedType := examResourceMultipart(t, `{"expected_revision":1,"media_type":"text/plain","size":0,"sha256":"`+checksum+`"}`, nil, false)
 	omitted := httptest.NewRequest(http.MethodPut, path, omittedBody)
 	omitted.Header.Set("Authorization", "Bearer credential")
 	omitted.Header.Set("Content-Type", omittedType)
@@ -113,7 +113,7 @@ func TestExamStarterWorkspaceHTTPFileReplacementRequiresAndCarriesExpectedConten
 	require.Equal(t, http.StatusBadRequest, omittedResponse.Code, "omitted status=%d command=%#v body=%s", omittedResponse.Code, fake.replaceFile, omittedResponse.Body.String())
 	require.False(t, fake.replaceFile.EntryID.IsValid(), "omitted status=%d command=%#v body=%s", omittedResponse.Code, fake.replaceFile, omittedResponse.Body.String())
 
-	explicitBody, explicitType := examResourceMultipart(t, `{"expected_draft_revision":1,"expected_content_version":"`+fake.object.ContentVersion.String()+`","media_type":"text/plain","size":0,"sha256":"`+checksum+`"}`, nil, false)
+	explicitBody, explicitType := examResourceMultipart(t, `{"expected_revision":1,"expected_content_version":"`+fake.object.ContentVersion.String()+`","media_type":"text/plain","size":0,"sha256":"`+checksum+`"}`, nil, false)
 	explicit := httptest.NewRequest(http.MethodPut, path, explicitBody)
 	explicit.Header.Set("Authorization", "Bearer credential")
 	explicit.Header.Set("Content-Type", explicitType)
@@ -130,7 +130,7 @@ func TestExamStarterWorkspaceHTTPDirectoryAndMoveUseStrictJSON(t *testing.T) {
 	fake := newExamStarterWorkspaceHTTPFake(testExamHTTPPrincipal())
 	api := newFocusedResourceAPI(t, logger, fake, examStarterWorkspaceHTTPResource(fake))
 	base := "/api/v1/exams/" + fake.examID.String() + "/draft/starter-workspace"
-	create := httptest.NewRequest(http.MethodPost, base+"/directories", strings.NewReader(`{"expected_draft_revision":1,"path":"cmd"}`))
+	create := httptest.NewRequestWithContext(t.Context(), http.MethodPost, base+"/directories", strings.NewReader(`{"expected_revision":1,"path":"cmd"}`))
 	create.Header.Set("Authorization", "Bearer credential")
 	create.Header.Set("Content-Type", "application/json")
 	create.Header.Set("Idempotency-Key", "workspace-directory")
@@ -138,7 +138,7 @@ func TestExamStarterWorkspaceHTTPDirectoryAndMoveUseStrictJSON(t *testing.T) {
 	api.ServeHTTP(created, create)
 	require.Equal(t, http.StatusCreated, created.Code, "create=%d command=%#v body=%s", created.Code, fake.createDirectory, created.Body.String())
 	require.Equal(t, "cmd", fake.createDirectory.Path, "create=%d command=%#v body=%s", created.Code, fake.createDirectory, created.Body.String())
-	move := httptest.NewRequest(http.MethodPatch, base+"/entries/"+fake.entry.ID.String(), strings.NewReader(`{"expected_draft_revision":2,"path":"src/main.go","unexpected":true}`))
+	move := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, base+"/entries/"+fake.entry.ID.String(), strings.NewReader(`{"expected_revision":2,"path":"src/main.go","unexpected":true}`))
 	move.Header.Set("Authorization", "Bearer credential")
 	move.Header.Set("Content-Type", "application/json")
 	move.Header.Set("Idempotency-Key", "workspace-move")
@@ -182,7 +182,7 @@ func TestExamStarterWorkspaceHTTPRemoveReturnsNoContent(t *testing.T) {
 	fake := newExamStarterWorkspaceHTTPFake(testExamHTTPPrincipal())
 	api := newFocusedResourceAPI(t, logger, fake, examStarterWorkspaceHTTPResource(fake))
 	path := "/api/v1/exams/" + fake.examID.String() + "/draft/starter-workspace/entries/" + fake.entry.ID.String()
-	request := httptest.NewRequest(http.MethodDelete, path, strings.NewReader(`{"expected_draft_revision":1}`))
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodDelete, path, strings.NewReader(`{"expected_revision":1}`))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Idempotency-Key", "workspace-remove")
@@ -191,7 +191,7 @@ func TestExamStarterWorkspaceHTTPRemoveReturnsNoContent(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, response.Code, "status=%d command=%#v body=%q", response.Code, fake.removeEntry, response.Body.String())
 	require.Equal(t, 0, response.Body.Len(), "status=%d command=%#v body=%q", response.Code, fake.removeEntry, response.Body.String())
 	require.Equal(t, fake.entry.ID, fake.removeEntry.EntryID, "status=%d command=%#v body=%q", response.Code, fake.removeEntry, response.Body.String())
-	request = httptest.NewRequest(http.MethodDelete, path, strings.NewReader(`{"expected_draft_revision":1,"recursive":true}`))
+	request = httptest.NewRequestWithContext(t.Context(), http.MethodDelete, path, strings.NewReader(`{"expected_revision":1,"recursive":true}`))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Idempotency-Key", "workspace-recursive-remove")

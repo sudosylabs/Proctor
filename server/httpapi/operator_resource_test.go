@@ -143,7 +143,7 @@ func TestAuditResourcePreservesOpaqueCursorAndSafeErrors(t *testing.T) {
 	response := serveOperatorRequest(httpAPI, http.MethodGet, "/api/v1/audits?limit=1", "", true)
 	require.Equal(t, http.StatusOK, response.Code, "list status/query = %d/%#v: %s", response.Code, audits.query, response.Body.String())
 	require.Equal(t, 1, audits.query.Limit, "list status/query = %d/%#v: %s", response.Code, audits.query, response.Body.String())
-	var page auditListResponse
+	var page listResponse[auditEventResponse]
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &page))
 	require.NotEmpty(t, page.NextCursor, "full audit page did not return an opaque cursor")
 	audits.events = nil

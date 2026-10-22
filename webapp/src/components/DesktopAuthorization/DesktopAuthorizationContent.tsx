@@ -25,7 +25,7 @@ export function DesktopAuthorizationContent({ journey }: DesktopAuthorizationCon
   const { view, pending, focusHeading } = journey.snapshot;
   const feedback = journey.snapshot.feedback === "unavailable"
     ? message("webapp.desktop_authorization.error.unavailable") : undefined;
-  const effectiveTerminal = view.kind === "approved" || view.kind === "cancelled" ||
+  const effectiveTerminal = view.kind === "approved" || view.kind === "canceled" ||
     view.kind === "invalid" || view.kind === "locked" ? view.kind : undefined;
   if (effectiveTerminal !== undefined) {
     const heading = terminalCopy(effectiveTerminal).heading;
@@ -140,7 +140,7 @@ export function DesktopAuthorizationContent({ journey }: DesktopAuthorizationCon
           <Button
             disabled={pending === "approve" || pending === "reset"}
             isLoading={pending === "cancel"}
-            loadingLabel={message("webapp.desktop_authorization.cancelling")}
+            loadingLabel={message("webapp.desktop_authorization.canceling")}
             variant="text"
             onClick={journey.cancel}
           >
@@ -215,7 +215,7 @@ function AuthenticationContent({
         <Button
           disabled={pending !== undefined && pending !== "cancel"}
           isLoading={pending === "cancel"}
-          loadingLabel={message("webapp.desktop_authorization.cancelling")}
+          loadingLabel={message("webapp.desktop_authorization.canceling")}
           variant="text"
           onClick={cancel}
         >
@@ -423,11 +423,11 @@ function terminalCopy(state: DesktopTerminalState) {
         heading: message("webapp.desktop_authorization.approved.heading"),
         body: message("webapp.desktop_authorization.approved.body"),
       };
-    case "cancelled":
+    case "canceled":
       return {
-        label: message("webapp.desktop_authorization.cancelled.label"),
-        heading: message("webapp.desktop_authorization.cancelled.heading"),
-        body: message("webapp.desktop_authorization.cancelled.body"),
+        label: message("webapp.desktop_authorization.canceled.label"),
+        heading: message("webapp.desktop_authorization.canceled.heading"),
+        body: message("webapp.desktop_authorization.canceled.body"),
       };
     case "locked":
       return {

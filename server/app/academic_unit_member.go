@@ -19,11 +19,6 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type ListAcademicUnitMembersQuery struct {
-	AcademicUnitID model.AcademicUnitID
-	ActiveAt       int64
-}
-
 type CreateAcademicUnitMemberCommand struct {
 	AcademicUnitID            model.AcademicUnitID
 	UserID                    string
@@ -51,7 +46,6 @@ type EndAcademicUnitMemberCommand struct {
 
 type academicUnitMemberStore interface {
 	Get(context.Context, model.AcademicUnitMemberID) (*model.AcademicUnitMember, error)
-	ListByAcademicUnit(context.Context, model.AcademicUnitID, int64) ([]*model.AcademicUnitMember, error)
 	ListPageByAcademicUnit(context.Context, store.AcademicUnitMemberPageOptions) (*store.AcademicUnitMemberPage, error)
 	Create(context.Context, *store.AcademicUnitMemberCreation) (*model.AcademicUnitMember, error)
 	End(context.Context, *store.AcademicUnitMemberEnd) (*model.AcademicUnitMember, error)
@@ -86,21 +80,6 @@ func newAcademicUnitMemberService(persistence academicUnitMemberStore, users aca
 ) *academicUnitMemberService {
 	return &academicUnitMemberService{store: persistence, users: users, authorization: authorization, audit: audit,
 		mail: mail, effects: effects, now: now, newID: newID}
-}
-
-func (s *academicUnitMemberService) ListAcademicUnitMembers(ctx context.Context, invocation Invocation, query ListAcademicUnitMembersQuery) ([]*model.AcademicUnitMember, error) {
-	resource, err := s.authorizeUnit(ctx, invocation, query.AcademicUnitID, model.ActionAcademicUnitMembersView)
-	if err != nil {
-		return nil, err
-	}
-	members, err := s.store.ListByAcademicUnit(ctx, model.AcademicUnitID(resource.ID), query.ActiveAt)
-	if err != nil {
-		return nil, academicUnitMemberStoreErrors.Translate(err)
-	}
-	if members == nil {
-		members = []*model.AcademicUnitMember{}
-	}
-	return members, nil
 }
 
 func (s *academicUnitMemberService) CreateAcademicUnitMember(ctx context.Context, invocation Invocation, command CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {

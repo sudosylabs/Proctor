@@ -49,6 +49,8 @@ paths:
           schema:
             $ref: '#/components/schemas/ID'
           description: Return only Bindings for this exact scope identity.
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
       responses:
         "200":
           $ref: '#/components/responses/RoleBindingListOK'
@@ -222,9 +224,17 @@ components:
   schemas:
     RoleBindingListResponse:
       description: Authorized current and historical Role Bindings.
-      type: array
-      items:
-        $ref: '#/components/schemas/RoleBindingResponse'
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoleBindingResponse'
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'
     CreateRoleBindingRequest:
       description: Exact effective-dated permission grant to create.
       type: object

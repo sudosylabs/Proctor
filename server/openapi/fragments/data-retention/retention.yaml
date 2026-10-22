@@ -320,7 +320,7 @@ components:
           schema:
             $ref: '#/components/schemas/RetentionPreviewRequest'
           example:
-            expected_policy_revision: 1
+            expected_revision: 1
   responses:
     RetentionControlOK:
       description: Current revision-bound cleanup control.
@@ -451,9 +451,9 @@ components:
       type: object
       additionalProperties: false
       required:
-        - expected_policy_revision
+        - expected_revision
       properties:
-        expected_policy_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1

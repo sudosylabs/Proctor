@@ -8,6 +8,9 @@
 paths:
   /api/v1/users/me/desktop-registrations:
     get:
+      parameters:
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
       operationId: listDesktopRegistrations
       summary: List the current User's Desktop Registrations
       description: Returns only bounded registration presentation and compatibility metadata; public keys, thumbprints, proofs, and Session identities are never exposed.
@@ -76,8 +79,18 @@ components:
           schema: {$ref: '#/components/schemas/DesktopRegistrationListResponse'}
   schemas:
     DesktopRegistrationListResponse:
-      type: array
-      items: {$ref: '#/components/schemas/DesktopRegistrationResponse'}
+      description: One page of the collection in its stable order.
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DesktopRegistrationResponse'
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'
     DesktopRegistrationResponse:
       type: object
       additionalProperties: false

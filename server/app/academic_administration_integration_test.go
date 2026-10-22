@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -711,7 +712,7 @@ func decodeIntegrationResponse(t *testing.T, response *httptest.ResponseRecorder
 	switch typed := target.(type) {
 	case *[]*model.User:
 		var wire []*wireUserProfileResponse
-		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &wire))
+		require.NoError(t, json.Unmarshal(integrationListItems(t, response.Body.Bytes()), &wire))
 		*typed = make([]*model.User, 0, len(wire))
 		for _, item := range wire {
 			*typed = append(*typed, item.model())
@@ -739,7 +740,7 @@ func decodeIntegrationResponse(t *testing.T, response *httptest.ResponseRecorder
 			StartAt        time.Time `json:"start_at"`
 			EndAt          time.Time `json:"end_at"`
 		}
-		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &wire))
+		require.NoError(t, json.Unmarshal(integrationListItems(t, response.Body.Bytes()), &wire))
 		*typed = make([]*model.AcademicUnitMember, 0, len(wire))
 		for _, item := range wire {
 			*typed = append(*typed, &model.AcademicUnitMember{
@@ -751,5 +752,22 @@ func decodeIntegrationResponse(t *testing.T, response *httptest.ResponseRecorder
 		}
 		return
 	}
+	if reflect.TypeOf(target).Elem().Kind() == reflect.Slice {
+		require.NoError(t, json.Unmarshal(integrationListItems(t, response.Body.Bytes()), target))
+		return
+	}
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), target))
+}
+
+// integrationListItems returns the items of one collection envelope page and
+// requires that it is the last page.
+func integrationListItems(t *testing.T, body []byte) []byte {
+	t.Helper()
+	var page struct {
+		Items      json.RawMessage `json:"items"`
+		NextCursor string          `json:"next_cursor"`
+	}
+	require.NoError(t, json.Unmarshal(body, &page), "collection envelope: %s", body)
+	require.NotNil(t, page.Items, "collection envelope: %s", body)
+	return page.Items
 }

@@ -15,6 +15,42 @@ module when a change is not server-only. No module has been released yet.
 
 ### Changed
 
+- Server: every collection answers `{"items": [...], "next_cursor": "..."}`
+  and pages with `limit` (default 50, at most 200) and `cursor`. Academic
+  Units, children, Programmes, Programme Levels, Academic Periods, Classes,
+  Users, Roles, Role Bindings, Affiliations, Sessions, personal access tokens,
+  Desktop Registrations, authentication providers, Browser sources, and Draft
+  Resources and Starter Workspace entries no longer answer bare arrays or
+  unbounded lists; the User directory drops `after_username`/`after_id`;
+  Academic Unit and Class Members drop the `Link` header and always page;
+  audit listing renames `events` to `items`; Browser receipts replace
+  `first_sequence`/`next_sequence` with `cursor`/`next_cursor`; and the
+  Workspace change journal replaces `after_cursor`, `entries` and `has_more`
+  with `workspace_cursor`, `cursor`, `items` and `next_cursor`. Programme
+  Level Classes are ordered by name (**breaking**).
+- Server: optional instants are omitted instead of `null` everywhere. The
+  delivery closure (`closed_at`, `upload_expires_at` and its other optional
+  members), unretained-delivery summaries (`first_unretained_at`,
+  `last_unretained_at`), and Browser integrity groups
+  (`overflow_first_received_at`, `overflow_last_received_at`) leave absent
+  members out; requests reject `null` for Desktop Compatibility Policy
+  `retry_at` (omit it for none) and Academic Period `start_at`/`end_at`. The
+  HTTP suspension object's `flag_id` becomes `integrity_flag_id`, matching
+  the realtime event (**breaking**).
+- Server: the remaining `cancelled` spellings become `canceled`. The Desktop
+  authorization transaction `state` value and `cancelled_at` column, the
+  Sitting mail `change_kind` value, the `exam.sitting_cancelled` mail template
+  key, and its localization IDs are renamed in the pre-release SQL baseline;
+  development databases must be reset (**breaking**).
+- Server: every revision fence is the body member `expected_revision`.
+  `expected_draft_revision`, `expected_exam_revision`,
+  `expected_attempt_revision`, `expected_declaration_revision`,
+  `expected_sitting_revision`, and the single-fence uses of
+  `expected_review_revision` and `expected_policy_revision` become
+  `expected_revision`; the Integrity decision's `expected_decision_revision`
+  becomes `expected_revision` beside `expected_review_revision`. Academic
+  archive `DELETE` takes `expected_revision` in a JSON body instead of the
+  query string (**breaking**).
 - Server: pagination cursors are unversioned. Every cursor rejects a
   `version` member, the audit, Job, Job attempt, mail delivery, and Exam
   catalog cursors no longer accept versionless or version-0 tokens, and every

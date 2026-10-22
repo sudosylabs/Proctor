@@ -10,6 +10,9 @@ paths:
     parameters:
       - $ref: '#/components/parameters/ExamID'
     get:
+      parameters:
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
       operationId: listExamDraftResources
       summary: List the ordered protected resources in an Exam Draft
       description: >-
@@ -65,7 +68,7 @@ paths:
             curl --request POST \
               --header "Authorization: Bearer $PROCTOR_TOKEN" \
               --header "Idempotency-Key: exam-resource-create-001" \
-              --form 'metadata={"expected_draft_revision":3,"display_name":"Formula sheet","description_markdown":"Reference formulas for this examination.","media_type":"application/pdf","size":2048,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"};type=application/json' \
+              --form 'metadata={"expected_revision":3,"display_name":"Formula sheet","description_markdown":"Reference formulas for this examination.","media_type":"application/pdf","size":2048,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"};type=application/json' \
               --form 'content=@./formula-sheet.pdf;type=application/octet-stream' \
               https://proctor.example.edu/api/v1/exams/ybndrfg8ejkmcpqxot1uwisza3/draft/resources
       tags:
@@ -399,7 +402,7 @@ paths:
             curl --request PUT \
               --header "Authorization: Bearer $PROCTOR_TOKEN" \
               --header "Idempotency-Key: exam-resource-replace-002" \
-              --form 'metadata={"expected_draft_revision":4,"media_type":"application/pdf","size":3072,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"};type=application/json' \
+              --form 'metadata={"expected_revision":4,"media_type":"application/pdf","size":3072,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"};type=application/json' \
               --form 'content=@./formula-sheet-v2.pdf;type=application/octet-stream' \
               https://proctor.example.edu/api/v1/exams/ybndrfg8ejkmcpqxot1uwisza3/draft/resources/ybndrfg8ejkmcpqxot1uwisza4/content
       tags:
@@ -481,7 +484,7 @@ components:
           schema:
             $ref: '#/components/schemas/EditExamResourceMetadataRequest'
           example:
-            expected_draft_revision: 4
+            expected_revision: 4
             display_name: Formula sheet, revision 2
     ReorderExamResources:
       required: true
@@ -491,7 +494,7 @@ components:
           schema:
             $ref: '#/components/schemas/ReorderExamResourcesRequest'
           example:
-            expected_draft_revision: 5
+            expected_revision: 5
             resource_ids:
               - ybndrfg8ejkmcpqxot1uwisza3
               - ybndrfg8ejkmcpqxot1uwisza4
@@ -503,7 +506,7 @@ components:
           schema:
             $ref: '#/components/schemas/RemoveExamResourceRequest'
           example:
-            expected_draft_revision: 6
+            expected_revision: 6
   responses:
     ExamResourceOK:
       description: Exam Draft resource changed
@@ -575,13 +578,13 @@ components:
       type: object
       additionalProperties: false
       required:
-        - expected_draft_revision
+        - expected_revision
         - display_name
         - media_type
         - size
         - sha256
       properties:
-        expected_draft_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1
@@ -607,12 +610,12 @@ components:
       type: object
       additionalProperties: false
       required:
-        - expected_draft_revision
+        - expected_revision
         - media_type
         - size
         - sha256
       properties:
-        expected_draft_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1
@@ -655,7 +658,7 @@ components:
       type: object
       additionalProperties: false
       required:
-        - expected_draft_revision
+        - expected_revision
       anyOf:
         - required:
             - display_name
@@ -668,7 +671,7 @@ components:
             description_markdown:
               type: string
       properties:
-        expected_draft_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1
@@ -690,10 +693,10 @@ components:
       type: object
       additionalProperties: false
       required:
-        - expected_draft_revision
+        - expected_revision
         - resource_ids
       properties:
-        expected_draft_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1
@@ -707,9 +710,9 @@ components:
       type: object
       additionalProperties: false
       required:
-        - expected_draft_revision
+        - expected_revision
       properties:
-        expected_draft_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1
@@ -771,3 +774,5 @@ components:
           maxItems: 100
           items:
             $ref: '#/components/schemas/ExamResourceResponse'
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'

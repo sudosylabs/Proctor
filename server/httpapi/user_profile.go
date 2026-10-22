@@ -428,7 +428,11 @@ func etagMatches(header, current string) bool {
 }
 
 func (m userProfileResourceModule) search(request operationRequest) (operationResult, error) {
-	limit, err := request.queryLimit()
+	paging, err := request.pageRequest()
+	if err != nil {
+		return operationResult{}, err
+	}
+	cursor, present, err := decodePageCursor(paging, userDirectoryCursorSpec())
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -436,11 +440,41 @@ func (m userProfileResourceModule) search(request operationRequest) (operationRe
 	if err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	users, err := m.profiles.SearchUsers(request.context, request.invocation(), app.SearchUsersQuery{Query: request.request.URL.Query().Get("q"), AfterUsername: request.request.URL.Query().Get("after_username"), AfterID: request.request.URL.Query().Get("after_id"), Limit: limit, IncludeDisabled: includeDisabled})
+	query := app.SearchUsersQuery{Query: request.request.URL.Query().Get("q"), Limit: paging.Limit, IncludeDisabled: includeDisabled}
+	if present {
+		query.AfterUsername, query.AfterID = cursor.Username, cursor.ID
+	}
+	page, err := m.profiles.SearchUsers(request.context, request.invocation(), query)
 	if err != nil {
 		return operationResult{}, err
 	}
-	return jsonResult(http.StatusOK, userProfileResponses(users)), nil
+	response, err := newListResponse(page.Items, page.HasMore, userProfileResponseFromModel, func(last *model.User) (string, error) {
+		return encodeOpaqueCursor(userDirectoryCursor{Username: last.Username, ID: last.ID.String()}, userDirectoryCursorSpec())
+	})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, response), nil
+}
+
+// userDirectoryCursor continues the User directory ordered by username then
+// identity.
+type userDirectoryCursor struct {
+	Username string `json:"username"`
+	ID       string `json:"id"`
+}
+
+func userDirectoryCursorSpec() opaqueCursorSpec[userDirectoryCursor] {
+	return opaqueCursorSpec[userDirectoryCursor]{
+		label: "User directory", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength,
+		members: []string{"username", "id"},
+		validate: func(cursor userDirectoryCursor) error {
+			if cursor.Username == "" || len(cursor.Username) > 64 || !model.UserID(cursor.ID).IsValid() {
+				return errors.New("invalid User directory keyset")
+			}
+			return nil
+		},
+	}
 }
 
 func (m userProfileResourceModule) current(request operationRequest) (operationResult, error) {
@@ -509,12 +543,4 @@ func userProfileResponseFromModel(user *model.User) userProfileResponse {
 		response.Timezone = &user.Timezone
 	}
 	return response
-}
-
-func userProfileResponses(users []*model.User) []userProfileResponse {
-	result := make([]userProfileResponse, 0, len(users))
-	for _, user := range users {
-		result = append(result, userProfileResponseFromModel(user))
-	}
-	return result
 }

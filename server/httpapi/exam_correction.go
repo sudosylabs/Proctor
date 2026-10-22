@@ -50,7 +50,7 @@ type examSittingCorrectionStageResponse struct {
 }
 
 type applyExamSittingCorrectionRequest struct {
-	ExpectedSittingRevision   int64                                  `json:"expected_sitting_revision"`
+	ExpectedSittingRevision   int64                                  `json:"expected_revision"`
 	ExpectedCurrentRevisionID string                                 `json:"expected_current_revision_id"`
 	InstructionsMarkdown      Optional[string]                       `json:"instructions_markdown"`
 	BrowserPolicy             Optional[browserPolicyDocument]        `json:"browser_policy"`

@@ -26,18 +26,18 @@ type createExamRequest struct {
 }
 
 type editExamDraftTextRequest struct {
-	ExpectedDraftRevision int64            `json:"expected_draft_revision"`
+	ExpectedDraftRevision int64            `json:"expected_revision"`
 	Title                 Optional[string] `json:"title"`
 	InstructionsMarkdown  Optional[string] `json:"instructions_markdown"`
 }
 
 type configureExamDraftNativePolicyRequest struct {
-	ExpectedDraftRevision int64                      `json:"expected_draft_revision"`
+	ExpectedDraftRevision int64                      `json:"expected_revision"`
 	Native                model.NativeSecurityPolicy `json:"native"`
 }
 
 type configureExamDraftFocusLossRequest struct {
-	ExpectedDraftRevision       int64  `json:"expected_draft_revision"`
+	ExpectedDraftRevision       int64  `json:"expected_revision"`
 	Enabled                     bool   `json:"enabled"`
 	MinimumDurationMilliseconds int64  `json:"minimum_duration_milliseconds"`
 	IncidentCount               int    `json:"incident_count"`
@@ -46,7 +46,7 @@ type configureExamDraftFocusLossRequest struct {
 }
 
 type configureExamDraftBrowserPolicyRequest struct {
-	ExpectedDraftRevision int64                 `json:"expected_draft_revision"`
+	ExpectedDraftRevision int64                 `json:"expected_revision"`
 	BrowserPolicy         browserPolicyDocument `json:"browser_policy"`
 }
 
@@ -156,16 +156,16 @@ func browserPolicyDocumentFromModel(policy model.BrowserPolicy) browserPolicyDoc
 }
 
 type archiveExamRequest struct {
-	ExpectedExamRevision int64 `json:"expected_exam_revision"`
+	ExpectedExamRevision int64 `json:"expected_revision"`
 }
 
 type addExamManagerRequest struct {
 	UserID               string `json:"user_id"`
-	ExpectedExamRevision int64  `json:"expected_exam_revision"`
+	ExpectedExamRevision int64  `json:"expected_revision"`
 }
 
 type removeExamManagerRequest struct {
-	ExpectedExamRevision int64 `json:"expected_exam_revision"`
+	ExpectedExamRevision int64 `json:"expected_revision"`
 }
 
 type transferExamOwnershipRequest = addExamManagerRequest
@@ -917,9 +917,9 @@ func (r *configureExamDraftNativePolicyRequest) UnmarshalJSON(data []byte) error
 		return err
 	}
 	if len(members) != 2 {
-		return errors.New("native policy request requires exactly expected_draft_revision and native")
+		return errors.New("native policy request requires exactly expected_revision and native")
 	}
-	for _, name := range []string{"expected_draft_revision", "native"} {
+	for _, name := range []string{"expected_revision", "native"} {
 		value, exists := members[name]
 		if !exists || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
 			return errors.New("native policy request member is missing or null")

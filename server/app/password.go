@@ -178,7 +178,7 @@ func (h *passwordHasher) VerifyDummy(ctx context.Context, password string) error
 
 // admit bounds all runtime password work without creating a waiting queue.
 // Argon2 cannot be interrupted: the synchronous caller retains its permit
-// until computation returns, even after the request context is cancelled.
+// until computation returns, even after the request context is canceled.
 func (h *passwordHasher) admit(ctx context.Context) (func(), error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err

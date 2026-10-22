@@ -23,7 +23,12 @@ import (
 type GetAcademicPeriodQuery struct{ ID model.AcademicPeriodID }
 type ListAcademicPeriodsQuery struct {
 	Query string
-	Limit int
+	// AfterStartAt, AfterName, and AfterID are the last Academic Period of the
+	// previous page in (start, name, identity) order, all set or all empty.
+	AfterStartAt time.Time
+	AfterName    string
+	AfterID      model.AcademicPeriodID
+	Limit        int
 }
 type CreateAcademicPeriodCommand struct {
 	OwnerType                      string
@@ -45,7 +50,7 @@ type ArchiveAcademicPeriodCommand struct {
 
 type academicPeriodStore interface {
 	Get(context.Context, model.AcademicPeriodID) (*model.AcademicPeriod, error)
-	ListVisible(context.Context, store.AcademicPeriodVisibilityScope, string, int) ([]*model.AcademicPeriod, error)
+	ListVisible(context.Context, store.AcademicPeriodVisibilityScope, store.AcademicPeriodListOptions) ([]*model.AcademicPeriod, error)
 	Create(context.Context, *store.AcademicPeriodCreation) (*model.AcademicPeriod, error)
 	Update(context.Context, *store.AcademicPeriodUpdate) (*model.AcademicPeriod, error)
 	Archive(context.Context, *store.AcademicPeriodArchive) (*model.AcademicPeriod, error)
@@ -84,21 +89,23 @@ func (s *academicPeriodService) GetAcademicPeriod(ctx context.Context, invocatio
 	return period, nil
 }
 
-func (s *academicPeriodService) ListAcademicPeriods(ctx context.Context, invocation Invocation, query ListAcademicPeriodsQuery) ([]*model.AcademicPeriod, error) {
+func (s *academicPeriodService) ListAcademicPeriods(ctx context.Context, invocation Invocation, query ListAcademicPeriodsQuery) (Page[*model.AcademicPeriod], error) {
+	limit, probe, err := resolvePageLimit(query.Limit, "limit")
+	if err != nil {
+		return Page[*model.AcademicPeriod]{}, err
+	}
 	visibility, err := s.authorization.AuthorizeAcademicPeriodList(ctx, invocation)
 	if err != nil {
-		return nil, err
+		return Page[*model.AcademicPeriod]{}, err
 	}
-	periods, err := s.store.ListVisible(
-		ctx, visibility, strings.TrimSpace(query.Query), normalizeAdministrationLimit(query.Limit),
-	)
+	periods, err := s.store.ListVisible(ctx, visibility, store.AcademicPeriodListOptions{
+		Term: strings.TrimSpace(query.Query), AfterStartAt: query.AfterStartAt, AfterName: query.AfterName,
+		AfterID: query.AfterID, Limit: probe,
+	})
 	if err != nil {
-		return nil, academicPeriodStoreErrors.Translate(err)
+		return Page[*model.AcademicPeriod]{}, academicPeriodStoreErrors.Translate(err)
 	}
-	if periods == nil {
-		periods = []*model.AcademicPeriod{}
-	}
-	return periods, nil
+	return newPage(periods, limit), nil
 }
 
 func (s *academicPeriodService) CreateAcademicPeriod(ctx context.Context, invocation Invocation, command CreateAcademicPeriodCommand) (*model.AcademicPeriod, error) {

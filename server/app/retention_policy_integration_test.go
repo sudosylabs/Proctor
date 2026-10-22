@@ -147,7 +147,7 @@ func TestRetentionPolicyHTTPAcrossNodesPreservesAuthorizationAndRetry(t *testing
 		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result))
 		return result
 	}
-	preview := commandRequest(primary.Handler(), http.MethodPost, "/api/v1/retention/previews", "review-retention", login.Tokens.AccessToken, map[string]any{"expected_policy_revision": 2})
+	preview := commandRequest(primary.Handler(), http.MethodPost, "/api/v1/retention/previews", "review-retention", login.Tokens.AccessToken, map[string]any{"expected_revision": 2})
 	require.Equal(t, http.StatusCreated, preview.Code, "preview: %d %s", preview.Code, preview.Body.String())
 	var previewBody struct {
 		ID             string `json:"id"`
@@ -184,7 +184,7 @@ func TestRetentionPolicyHTTPAcrossNodesPreservesAuthorizationAndRetry(t *testing
 	pausedPolicy := request(primary.Handler(), http.MethodGet, "", login.Tokens.AccessToken)
 	require.Equal(t, 200, pausedPolicy.Code, "peer retained cleanup approval after pause")
 	require.True(t, bytes.Contains(pausedPolicy.Body.Bytes(), []byte(`"automatic_deletion_enabled":false`)), "peer retained cleanup approval after pause")
-	forbiddenPreview := commandRequest(secondary.Handler(), http.MethodPost, "/api/v1/retention/previews", "ordinary-review", ordinaryLogin.Tokens.AccessToken, map[string]any{"expected_policy_revision": 2})
+	forbiddenPreview := commandRequest(secondary.Handler(), http.MethodPost, "/api/v1/retention/previews", "ordinary-review", ordinaryLogin.Tokens.AccessToken, map[string]any{"expected_revision": 2})
 	require.Equal(t, 403, forbiddenPreview.Code, "ordinary account could preview institution records")
 	ownNotices := commandRequest(primary.Handler(), http.MethodGet, "/api/v1/users/me/retention-notices", "", ordinaryLogin.Tokens.AccessToken, nil)
 	require.Equal(t, 200, ownNotices.Code, "own notices depend on administrator authority: %d %s", ownNotices.Code, ownNotices.Body.String())

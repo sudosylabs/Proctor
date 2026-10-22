@@ -158,7 +158,6 @@ components:
         - revoked_desktop_build_ids
         - administrator_message
         - availability
-        - retry_at
       properties:
         expected_revision:
           type: integer
@@ -187,11 +186,9 @@ components:
             - ready
             - maintenance
         retry_at:
-          description: Optional retry time; it must be null while availability is ready.
-          oneOf:
-            - type: string
-              format: date-time
-            - type: 'null'
+          type: string
+          format: date-time
+          description: Optional retry time; omit it for none, and always while availability is ready. Null is invalid.
     DesktopCompatibilityPolicyResponse:
       type: object
       additionalProperties: false

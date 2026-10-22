@@ -65,6 +65,5 @@ func TestRoleBindingOpenAPIAgreesWithRuntime(t *testing.T) {
 	// legacy bare array rather than a new collection-envelope precedent.
 	document := readOpenAPIDocument(t)
 	list := document.Components.Schemas["RoleBindingListResponse"]
-	require.Equal(t, "array", list.Type)
-	require.Equal(t, "#/components/schemas/RoleBindingResponse", list.Items.Ref)
+	requireOpenAPIListEnvelope(t, list, "#/components/schemas/RoleBindingResponse")
 }

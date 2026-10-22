@@ -65,6 +65,9 @@ func wireTimeMillis(field, raw string) (int64, error) {
 // optionalWireTimeMillis is wireTimeMillis for a PATCH field: absent or null
 // yields nil.
 func optionalWireTimeMillis(field string, value Optional[string]) (*int64, error) {
+	if value.IsNull() {
+		return nil, apperror.New("request.invalid").WithField("field", field)
+	}
 	raw := value.ValuePointer()
 	if raw == nil {
 		return nil, nil

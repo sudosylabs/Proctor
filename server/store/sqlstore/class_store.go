@@ -146,16 +146,17 @@ func (s SQLClassStore) GetByName(ctx context.Context, programmeLevelID model.Pro
 	return row.model()
 }
 
-// ListByProgrammeLevel returns the unarchived Classes of the Programme Level,
-// ordered by Academic Period start and then name.
-func (s SQLClassStore) ListByProgrammeLevel(ctx context.Context, programmeLevelID model.ProgrammeLevelID) ([]*model.Class, error) {
-	query := s.classesQuery.
-		Join("academic_periods ON academic_periods.id = classes.academic_period_id").
+// ListByProgrammeLevel returns one page of the Programme Level's unarchived
+// Classes ordered by name then identity.
+func (s SQLClassStore) ListByProgrammeLevel(ctx context.Context, programmeLevelID model.ProgrammeLevelID, options store.AcademicNameListOptions) ([]*model.Class, error) {
+	query, valid := academicNamePage(s.classesQuery.
 		Where(sq.Eq{
 			"classes.programme_level_id": programmeLevelID,
 			"classes.archived_at":        nil,
-		}).
-		OrderBy("academic_periods.start_at", "classes.name", "classes.id")
+		}), "classes", options)
+	if !valid {
+		return nil, store.NewErrInvalidInput("class", "list_options", options)
+	}
 	return s.selectClasses(ctx, query, "list classes by programme level")
 }
 
@@ -171,14 +172,10 @@ func (s SQLClassStore) ListByAcademicPeriod(ctx context.Context, academicPeriodI
 	return s.selectClasses(ctx, query, "list classes by academic period")
 }
 
-// SearchByAcademicUnit returns up to limit unarchived Classes under the
-// Academic Unit's unarchived Programmes whose name or display name contains
-// term, case-insensitively. A limit outside 1..200 is invalid input.
-func (s SQLClassStore) SearchByAcademicUnit(ctx context.Context, academicUnitID model.AcademicUnitID, term string, limit int) ([]*model.Class, error) {
-	if limit < 1 || limit > 200 {
-		return nil, store.NewErrInvalidInput("class", "limit", limit)
-	}
-	query := s.classesQuery.
+// SearchByAcademicUnit returns one page of unarchived Classes under the
+// Academic Unit's unarchived Programmes selected and ordered by options.
+func (s SQLClassStore) SearchByAcademicUnit(ctx context.Context, academicUnitID model.AcademicUnitID, options store.AcademicNameListOptions) ([]*model.Class, error) {
+	query, valid := academicNamePage(s.classesQuery.
 		Join("programme_levels ON programme_levels.id = classes.programme_level_id").
 		Join("programmes ON programmes.id = programme_levels.programme_id").
 		Where(sq.Eq{
@@ -186,11 +183,10 @@ func (s SQLClassStore) SearchByAcademicUnit(ctx context.Context, academicUnitID 
 			"programmes.archived_at":       nil,
 			"programme_levels.archived_at": nil,
 			"classes.archived_at":          nil,
-		}).
-		Where("(classes.name ILIKE ? ESCAPE '!' OR classes.display_name ILIKE ? ESCAPE '!')",
-			directorySearchPattern(term), directorySearchPattern(term)).
-		OrderBy("classes.name", "classes.id").
-		Limit(uint64(limit))
+		}), "classes", options)
+	if !valid {
+		return nil, store.NewErrInvalidInput("class", "list_options", options)
+	}
 	return s.selectClasses(ctx, query, "search classes by academic unit")
 }
 

@@ -103,8 +103,8 @@ paths:
         "503":
           $ref: '#/components/responses/ServiceUnavailable'
     delete:
-      parameters:
-        - $ref: '#/components/parameters/AcademicExpectedRevision'
+      requestBody:
+        $ref: '#/components/requestBodies/ArchiveAcademic'
       operationId: archiveClass
       summary: Archive a Class with no active members or role bindings
       tags:

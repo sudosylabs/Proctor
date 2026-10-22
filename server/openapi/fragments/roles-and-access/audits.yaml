@@ -90,7 +90,7 @@ components:
           schema:
             $ref: '#/components/schemas/AuditListResponse'
           example:
-            events: []
+            items: []
   schemas:
     AuditEventResponse:
       description: Safe durable audit fact visible to the authorized caller.
@@ -165,9 +165,9 @@ components:
       type: object
       additionalProperties: false
       required:
-        - events
+        - items
       properties:
-        events:
+        items:
           type: array
           items:
             $ref: '#/components/schemas/AuditEventResponse'

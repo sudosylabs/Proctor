@@ -13,7 +13,7 @@ paths:
       operationId: listCandidateExamWorkspaceChanges
       summary: List ordered acknowledged Workspace changes
       description: >-
-        Returns acknowledged Workspace mutations after the supplied journal cursor in strict order for the active candidate Attempt. If retained history can no longer bridge the cursor, the response explicitly instructs the client to reload the full manifest.
+        Returns acknowledged Workspace mutations after the supplied workspace_cursor in strict order for the active candidate Attempt. If retained history can no longer bridge the cursor, the response explicitly instructs the client to reload the full manifest.
       tags:
         - Attempts and workspaces
       x-proctor-auth: session_required
@@ -39,24 +39,17 @@ paths:
       parameters:
         - $ref: '#/components/parameters/CandidateAttemptCredential'
         - $ref: '#/components/parameters/CandidateAttemptConnectionID'
-        - name: after_cursor
+        - name: workspace_cursor
           in: query
           required: false
-          description: Return acknowledged changes strictly after this Workspace journal cursor; zero starts at the retained beginning.
+          description: Start the listing with changes strictly after this Workspace Cursor; zero or omission starts at the retained beginning. Omit it when continuing with cursor.
           schema:
             type: integer
             format: int64
             minimum: 0
             default: 0
-        - name: limit
-          in: query
-          required: false
-          description: Maximum number of ordered Workspace journal entries to return in this page.
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 200
-            default: 50
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
       responses:
         "200":
           $ref: '#/components/responses/CandidateWorkspaceJournalOK'
@@ -131,8 +124,7 @@ components:
       required:
         - workspace_id
         - current_cursor
-        - entries
-        - has_more
+        - items
         - refresh_required
       properties:
         workspace_id:
@@ -141,12 +133,12 @@ components:
           type: integer
           format: int64
           minimum: 0
-        entries:
+        items:
           type: array
           maxItems: 200
           items:
             $ref: '#/components/schemas/CandidateWorkspaceJournalEntryResponse'
-        has_more:
-          type: boolean
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'
         refresh_required:
           type: boolean

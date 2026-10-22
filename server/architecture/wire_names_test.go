@@ -113,6 +113,7 @@ type examResponse struct {
 	ReleasedAt  time.Time         ` + "`json:\"released_at\"`" + `
 	StartAt     Optional[string]  ` + "`json:\"start_at\"`" + `
 	CursorAt    int64             ` + "`json:\"cursor_at\"`" + `
+	ClosedAt    *string           ` + "`json:\"closed_at\"`" + `
 	Secret      string            ` + "`json:\"-\"`" + `
 	internal    string
 }
@@ -132,6 +133,7 @@ type examResponse struct {
 		`dto.go:14: fixture/httpapi.examResponse.PublishAt json member "publish_at" names an instant; use a <verb>ed_at lifecycle name or a scheduled noun form`,
 		`dto.go:15: fixture/httpapi.examResponse.Untagged has no json tag; name the wire member explicitly or tag it "-"`,
 		`dto.go:16: fixture/httpapi.examResponse.Unnamed has no json member name; name the wire member explicitly`,
+		`dto.go:20: fixture/httpapi.examResponse.ClosedAt json member "closed_at" is an optional instant encoded as null when absent; tag it omitempty`,
 	}
 	require.Equal(t, expected, violations)
 }
@@ -240,10 +242,27 @@ func checkWireMember(member wireMember, exemptions map[string]string) []string {
 		violations = append(violations, fmt.Sprintf("%s json member %q names an instant but has Go type %s; carry an RFC 3339 string",
 			location, member.name, types.TypeString(wireTimestampValue(goType), types.RelativeTo(member.pkg.Types))))
 	}
+	if goType := member.pkg.TypesInfo.TypeOf(field.Type); goType != nil && isPointerType(goType) && !hasJSONOption(member.options, "omitempty") {
+		violations = append(violations, fmt.Sprintf("%s json member %q is an optional instant encoded as null when absent; tag it omitempty", location, member.name))
+	}
 	if _, retired := retiredWireTimestampNames[member.name]; !retired && strings.HasSuffix(member.name, "_at") && !conformingInstantName(member.name) {
 		violations = append(violations, fmt.Sprintf("%s json member %q names an instant; use a <verb>ed_at lifecycle name or a scheduled noun form", location, member.name))
 	}
 	return violations
+}
+
+func isPointerType(goType types.Type) bool {
+	_, pointer := types.Unalias(goType).(*types.Pointer)
+	return pointer
+}
+
+func hasJSONOption(options, want string) bool {
+	for _, option := range strings.Split(options, ",") {
+		if option == want {
+			return true
+		}
+	}
+	return false
 }
 
 // isWireInstantName reports whether a member names an instant. It follows the

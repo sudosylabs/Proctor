@@ -183,7 +183,7 @@ paths:
     post:
       operationId: cancelDesktopAuthorization
       summary: Terminally cancel the browser-bound Desktop transaction
-      description: Validates the binding cookie and exact pinned state before terminally cancelling the transaction and destroying every remaining browser and code proof.
+      description: Validates the binding cookie and exact pinned state before terminally canceling the transaction and destroying every remaining browser and code proof.
       tags: [Authentication]
       x-proctor-auth: public
       x-proctor-error-codes: *desktopBrowserErrors

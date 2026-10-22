@@ -31,17 +31,6 @@
       }
     },
     "parameters": {
-      "AcademicExpectedRevision": {
-        "description": "Optional revision from the last resource response. A stale value returns the resource conflict error without archiving; omission preserves v1 compatibility.",
-        "in": "query",
-        "name": "expected_revision",
-        "required": false,
-        "schema": {
-          "format": "int64",
-          "minimum": 1,
-          "type": "integer"
-        }
-      },
       "AcademicPeriodID": {
         "description": "The Academic Period identifier.",
         "in": "path",
@@ -332,6 +321,29 @@
           "type": "string"
         }
       },
+      "PageCursor": {
+        "description": "Opaque next_cursor from the previous page, returned unchanged; omit it for the first page.",
+        "in": "query",
+        "name": "cursor",
+        "required": false,
+        "schema": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "PageLimit": {
+        "description": "Maximum number of items in the page.",
+        "in": "query",
+        "name": "limit",
+        "required": false,
+        "schema": {
+          "default": 50,
+          "maximum": 200,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
       "PersonalAccessTokenID": {
         "description": "The Personal Access Token record identifier; this is not the token secret.",
         "in": "path",
@@ -497,7 +509,7 @@
         "content": {
           "application/json": {
             "example": {
-              "expected_exam_revision": 3,
+              "expected_revision": 3,
               "user_id": "ybndrfg8ejkmcpqxot1uwisza3"
             },
             "schema": {
@@ -519,7 +531,7 @@
               ],
               "candidate_summary": "The formula sheet for Question 3 was corrected.",
               "expected_current_revision_id": "ybndrfg8ejkmcpqxot1uwisza3",
-              "expected_sitting_revision": 8,
+              "expected_revision": 8,
               "instructions_markdown": "Read the corrected resource before continuing.",
               "reason": "Question 3 contained an incorrect constant.",
               "resources": [
@@ -539,11 +551,25 @@
         "description": "Complete desired ordered resource manifest, optional instructions replacement, and exact Sitting and base Revision fences.",
         "required": true
       },
+      "ArchiveAcademic": {
+        "content": {
+          "application/json": {
+            "example": {
+              "expected_revision": 3
+            },
+            "schema": {
+              "$ref": "#/components/schemas/ArchiveAcademicRequest"
+            }
+          }
+        },
+        "description": "Optional revision fence. A stale `expected_revision` returns the resource conflict error without archiving; a request without a body archives unconditionally.",
+        "required": false
+      },
       "ArchiveExam": {
         "content": {
           "application/json": {
             "example": {
-              "expected_exam_revision": 3
+              "expected_revision": 3
             },
             "schema": {
               "$ref": "#/components/schemas/ArchiveExamRequest"
@@ -812,7 +838,7 @@
               "browser_policy": {
                 "enabled": false
               },
-              "expected_draft_revision": 4
+              "expected_revision": 4
             },
             "schema": {
               "$ref": "#/components/schemas/ConfigureExamDraftBrowserPolicyRequest"
@@ -827,7 +853,7 @@
           "application/json": {
             "example": {
               "enabled": true,
-              "expected_draft_revision": 4,
+              "expected_revision": 4,
               "incident_count": 3,
               "minimum_duration_milliseconds": 1500,
               "outcome": "flag_and_warn",
@@ -845,7 +871,7 @@
         "content": {
           "application/json": {
             "example": {
-              "expected_draft_revision": 4,
+              "expected_revision": 4,
               "native": {
                 "baseline_id": "desktop_candidate",
                 "families": [
@@ -1052,7 +1078,7 @@
         "content": {
           "application/json": {
             "example": {
-              "expected_draft_revision": 2,
+              "expected_revision": 2,
               "path": "starter/tests"
             },
             "schema": {
@@ -1133,7 +1159,7 @@
         "content": {
           "application/json": {
             "example": {
-              "expected_policy_revision": 1
+              "expected_revision": 1
             },
             "schema": {
               "$ref": "#/components/schemas/RetentionPreviewRequest"
@@ -1186,7 +1212,7 @@
             "example": {
               "allocated_through_sequence": 4,
               "declaration_id": "loss-0001",
-              "expected_declaration_revision": 0,
+              "expected_revision": 0,
               "ranges": [
                 {
                   "first": 2,
@@ -1344,7 +1370,7 @@
         "content": {
           "application/json": {
             "example": {
-              "expected_draft_revision": 2,
+              "expected_revision": 2,
               "instructions_markdown": "Read every question carefully. Save your work before submitting.",
               "title": "Distributed Systems Final"
             },
@@ -1361,7 +1387,7 @@
           "application/json": {
             "example": {
               "display_name": "Formula sheet, revision 2",
-              "expected_draft_revision": 4
+              "expected_revision": 4
             },
             "schema": {
               "$ref": "#/components/schemas/EditExamResourceMetadataRequest"
@@ -1375,7 +1401,7 @@
         "content": {
           "application/json": {
             "example": {
-              "expected_attempt_revision": 7,
+              "expected_revision": 7,
               "reason": "Candidate requested an early end after completing the exam."
             },
             "schema": {
@@ -1450,7 +1476,7 @@
           "application/json": {
             "example": {
               "declaration_id": "final-0001",
-              "expected_declaration_revision": 1,
+              "expected_revision": 1,
               "final_sequence": 4
             },
             "schema": {
@@ -1514,7 +1540,7 @@
         "content": {
           "application/json": {
             "example": {
-              "expected_draft_revision": 5,
+              "expected_revision": 5,
               "path": "starter/src/main.go"
             },
             "schema": {
@@ -1640,7 +1666,7 @@
         "content": {
           "application/json": {
             "example": {
-              "expected_draft_revision": 12
+              "expected_revision": 12
             },
             "schema": {
               "$ref": "#/components/schemas/PublishExamRevisionRequest"
@@ -1654,7 +1680,7 @@
         "content": {
           "application/json": {
             "example": {
-              "expected_attempt_revision": 4,
+              "expected_revision": 4,
               "reason": "Candidate identity was reverified by the invigilator.",
               "suspension_id": "ybndrfg8ejkmcpqxot1uwisza3"
             },
@@ -1686,7 +1712,7 @@
         "content": {
           "application/json": {
             "example": {
-              "expected_exam_revision": 4
+              "expected_revision": 4
             },
             "schema": {
               "$ref": "#/components/schemas/RemoveExamManagerRequest"
@@ -1700,7 +1726,7 @@
         "content": {
           "application/json": {
             "example": {
-              "expected_draft_revision": 6
+              "expected_revision": 6
             },
             "schema": {
               "$ref": "#/components/schemas/RemoveExamResourceRequest"
@@ -1714,7 +1740,7 @@
         "content": {
           "application/json": {
             "example": {
-              "expected_draft_revision": 6
+              "expected_revision": 6
             },
             "schema": {
               "$ref": "#/components/schemas/RemoveExamStarterWorkspaceEntryRequest"
@@ -1728,7 +1754,7 @@
         "content": {
           "application/json": {
             "example": {
-              "expected_draft_revision": 5,
+              "expected_revision": 5,
               "resource_ids": [
                 "ybndrfg8ejkmcpqxot1uwisza3",
                 "ybndrfg8ejkmcpqxot1uwisza4"
@@ -1948,8 +1974,8 @@
         "content": {
           "application/json": {
             "example": {
-              "expected_decision_revision": 0,
               "expected_review_revision": 0,
+              "expected_revision": 0,
               "outcome": "inconclusive",
               "private_rationale": "The retained evidence does not establish a reliable conclusion."
             },
@@ -2058,7 +2084,7 @@
         "content": {
           "application/json": {
             "example": {
-              "expected_attempt_revision": 3,
+              "expected_revision": 3,
               "reason": "Candidate left the examination room without permission."
             },
             "schema": {
@@ -2073,7 +2099,7 @@
         "content": {
           "application/json": {
             "example": {
-              "expected_review_revision": 7,
+              "expected_revision": 7,
               "submission_review_id": "ybndrfg8ejkmcpqxot1uwisza3"
             },
             "schema": {
@@ -2088,7 +2114,7 @@
         "content": {
           "application/json": {
             "example": {
-              "expected_exam_revision": 5,
+              "expected_revision": 5,
               "user_id": "ybndrfg8ejkmcpqxot1uwisza3"
             },
             "schema": {
@@ -2166,7 +2192,7 @@
         "content": {
           "application/json": {
             "example": {
-              "expected_review_revision": 0,
+              "expected_revision": 0,
               "manager_notes": "Review opened; evidence assessment is pending.",
               "student_remarks_markdown": ""
             },
@@ -2331,7 +2357,9 @@
       "AcademicPeriodListOK": {
         "content": {
           "application/json": {
-            "example": [],
+            "example": {
+              "items": []
+            },
             "schema": {
               "$ref": "#/components/schemas/AcademicPeriodListResponse"
             }
@@ -2410,15 +2438,7 @@
             }
           }
         },
-        "description": "Academic Unit Member collection",
-        "headers": {
-          "Link": {
-            "description": "Present only when a bounded page has more rows. Follow the relative URL with rel=\"next\"; its cursor and effective/history filter identify the continuation.",
-            "schema": {
-              "type": "string"
-            }
-          }
-        }
+        "description": "Academic Unit Member collection"
       },
       "AcademicUnitOK": {
         "content": {
@@ -2503,7 +2523,9 @@
       "AffiliationListOK": {
         "content": {
           "application/json": {
-            "example": [],
+            "example": {
+              "items": []
+            },
             "schema": {
               "$ref": "#/components/schemas/AffiliationListResponse"
             }
@@ -2515,7 +2537,7 @@
         "content": {
           "application/json": {
             "example": {
-              "events": []
+              "items": []
             },
             "schema": {
               "$ref": "#/components/schemas/AuditListResponse"
@@ -2949,15 +2971,7 @@
             }
           }
         },
-        "description": "Class Member collection",
-        "headers": {
-          "Link": {
-            "description": "Present only when a bounded page has more rows. Follow the relative URL with rel=\"next\"; its cursor and effective/history filter identify the continuation.",
-            "schema": {
-              "type": "string"
-            }
-          }
-        }
+        "description": "Class Member collection"
       },
       "ClassOK": {
         "content": {
@@ -4051,7 +4065,9 @@
       "ExternalAuthenticationProviderListOK": {
         "content": {
           "application/json": {
-            "example": [],
+            "example": {
+              "items": []
+            },
             "schema": {
               "$ref": "#/components/schemas/ExternalAuthenticationProviderListResponse"
             }
@@ -5455,7 +5471,9 @@
       "UserProfileListOK": {
         "content": {
           "application/json": {
-            "example": [],
+            "example": {
+              "items": []
+            },
             "schema": {
               "$ref": "#/components/schemas/UserProfileListResponse"
             }
@@ -5706,10 +5724,23 @@
         "type": "object"
       },
       "AcademicPeriodListResponse": {
-        "items": {
-          "$ref": "#/components/schemas/AcademicPeriodResponse"
+        "additionalProperties": false,
+        "description": "One page of the collection in its stable order.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AcademicPeriodResponse"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "$ref": "#/components/schemas/NextCursor"
+          }
         },
-        "type": "array"
+        "required": [
+          "items"
+        ],
+        "type": "object"
       },
       "AcademicPeriodResponse": {
         "additionalProperties": false,
@@ -5781,16 +5812,42 @@
         "type": "object"
       },
       "AcademicUnitListResponse": {
-        "items": {
-          "$ref": "#/components/schemas/AcademicUnitResponse"
+        "additionalProperties": false,
+        "description": "One page of the collection in its stable order.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AcademicUnitResponse"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "$ref": "#/components/schemas/NextCursor"
+          }
         },
-        "type": "array"
+        "required": [
+          "items"
+        ],
+        "type": "object"
       },
       "AcademicUnitMemberListResponse": {
-        "items": {
-          "$ref": "#/components/schemas/AcademicUnitMemberResponse"
+        "additionalProperties": false,
+        "description": "One page of the collection in its stable order.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AcademicUnitMemberResponse"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "$ref": "#/components/schemas/NextCursor"
+          }
         },
-        "type": "array"
+        "required": [
+          "items"
+        ],
+        "type": "object"
       },
       "AcademicUnitMemberResponse": {
         "additionalProperties": false,
@@ -6237,7 +6294,7 @@
       "AddExamManagerRequest": {
         "additionalProperties": false,
         "properties": {
-          "expected_exam_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -6248,7 +6305,7 @@
         },
         "required": [
           "user_id",
-          "expected_exam_revision"
+          "expected_revision"
         ],
         "type": "object"
       },
@@ -6328,10 +6385,23 @@
         "type": "string"
       },
       "AffiliationListResponse": {
-        "items": {
-          "$ref": "#/components/schemas/AffiliationResponse"
+        "additionalProperties": false,
+        "description": "One page of the collection in its stable order.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AffiliationResponse"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "$ref": "#/components/schemas/NextCursor"
+          }
         },
-        "type": "array"
+        "required": [
+          "items"
+        ],
+        "type": "object"
       },
       "AffiliationResponse": {
         "additionalProperties": false,
@@ -6399,7 +6469,7 @@
           "expected_current_revision_id": {
             "$ref": "#/components/schemas/ID"
           },
-          "expected_sitting_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -6425,7 +6495,7 @@
           }
         },
         "required": [
-          "expected_sitting_revision",
+          "expected_revision",
           "expected_current_revision_id",
           "candidate_summary",
           "affected_capabilities",
@@ -6435,17 +6505,29 @@
         ],
         "type": "object"
       },
+      "ArchiveAcademicRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "description": "Revision from the last resource response.",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "ArchiveExamRequest": {
         "additionalProperties": false,
         "properties": {
-          "expected_exam_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
           }
         },
         "required": [
-          "expected_exam_revision"
+          "expected_revision"
         ],
         "type": "object"
       },
@@ -6725,7 +6807,7 @@
         "additionalProperties": false,
         "description": "One bounded page of authorized audit Events.",
         "properties": {
-          "events": {
+          "items": {
             "items": {
               "$ref": "#/components/schemas/AuditEventResponse"
             },
@@ -6737,7 +6819,7 @@
           }
         },
         "required": [
-          "events"
+          "items"
         ],
         "type": "object"
       },
@@ -7612,29 +7694,15 @@
       },
       "BrowserIntegrityGroup": {
         "additionalProperties": false,
-        "description": "Frozen Browser rule group with server-received overflow times. Counts exclude unretained client summaries.",
+        "description": "Frozen Browser rule group with server-received overflow times, omitted while the group has no overflow. Counts exclude unretained client summaries.",
         "properties": {
           "overflow_first_received_at": {
-            "oneOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "format": "date-time",
+            "type": "string"
           },
           "overflow_last_received_at": {
-            "oneOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "format": "date-time",
+            "type": "string"
           },
           "participation_id": {
             "$ref": "#/components/schemas/ID"
@@ -7651,9 +7719,7 @@
         "required": [
           "participation_id",
           "policy_revision_id",
-          "rule_id",
-          "overflow_first_received_at",
-          "overflow_last_received_at"
+          "rule_id"
         ],
         "type": "object"
       },
@@ -7907,42 +7973,38 @@
       "BrowserReceiptPage": {
         "additionalProperties": false,
         "properties": {
-          "next_sequence": {
-            "format": "int64",
-            "maximum": 50000,
-            "minimum": 1,
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "receipts": {
+          "items": {
             "items": {
               "$ref": "#/components/schemas/BrowserEventReceipt"
             },
             "maxItems": 64,
             "type": "array"
+          },
+          "next_cursor": {
+            "$ref": "#/components/schemas/NextCursor"
           }
         },
         "required": [
-          "receipts",
-          "next_sequence"
+          "items"
         ],
         "type": "object"
       },
       "BrowserSourceList": {
         "additionalProperties": false,
         "properties": {
-          "sources": {
+          "items": {
             "items": {
               "$ref": "#/components/schemas/BrowserSourceStatus"
             },
-            "maxItems": 49,
+            "maxItems": 200,
             "type": "array"
+          },
+          "next_cursor": {
+            "$ref": "#/components/schemas/NextCursor"
           }
         },
         "required": [
-          "sources"
+          "items"
         ],
         "type": "object"
       },
@@ -8096,17 +8158,11 @@
               },
               "first_unretained_at": {
                 "format": "date-time",
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": "string"
               },
               "last_unretained_at": {
                 "format": "date-time",
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": "string"
               },
               "summary_sequence": {
                 "format": "int64",
@@ -8124,9 +8180,7 @@
             "required": [
               "summary_sequence",
               "unretained_record_count",
-              "count_complete",
-              "first_unretained_at",
-              "last_unretained_at"
+              "count_complete"
             ],
             "type": [
               "object",
@@ -9256,15 +9310,15 @@
             "minimum": 0,
             "type": "integer"
           },
-          "entries": {
+          "items": {
             "items": {
               "$ref": "#/components/schemas/CandidateWorkspaceJournalEntryResponse"
             },
             "maxItems": 200,
             "type": "array"
           },
-          "has_more": {
-            "type": "boolean"
+          "next_cursor": {
+            "$ref": "#/components/schemas/NextCursor"
           },
           "refresh_required": {
             "type": "boolean"
@@ -9276,8 +9330,7 @@
         "required": [
           "workspace_id",
           "current_cursor",
-          "entries",
-          "has_more",
+          "items",
           "refresh_required"
         ],
         "type": "object"
@@ -9363,16 +9416,42 @@
         "type": "object"
       },
       "ClassListResponse": {
-        "items": {
-          "$ref": "#/components/schemas/ClassResponse"
+        "additionalProperties": false,
+        "description": "One page of the collection in its stable order.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ClassResponse"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "$ref": "#/components/schemas/NextCursor"
+          }
         },
-        "type": "array"
+        "required": [
+          "items"
+        ],
+        "type": "object"
       },
       "ClassMemberListResponse": {
-        "items": {
-          "$ref": "#/components/schemas/ClassMemberResponse"
+        "additionalProperties": false,
+        "description": "One page of the collection in its stable order.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ClassMemberResponse"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "$ref": "#/components/schemas/NextCursor"
+          }
         },
-        "type": "array"
+        "required": [
+          "items"
+        ],
+        "type": "object"
       },
       "ClassMemberResponse": {
         "additionalProperties": false,
@@ -9500,14 +9579,14 @@
           "browser_policy": {
             "$ref": "#/components/schemas/BrowserPolicy"
           },
-          "expected_draft_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
           }
         },
         "required": [
-          "expected_draft_revision",
+          "expected_revision",
           "browser_policy"
         ],
         "type": "object"
@@ -9518,7 +9597,7 @@
           "enabled": {
             "type": "boolean"
           },
-          "expected_draft_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -9551,7 +9630,7 @@
           }
         },
         "required": [
-          "expected_draft_revision",
+          "expected_revision",
           "enabled",
           "minimum_duration_milliseconds",
           "incident_count",
@@ -9563,7 +9642,7 @@
       "ConfigureExamDraftNativePolicyRequest": {
         "additionalProperties": false,
         "properties": {
-          "expected_draft_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -9573,7 +9652,7 @@
           }
         },
         "required": [
-          "expected_draft_revision",
+          "expected_revision",
           "native"
         ],
         "type": "object"
@@ -9798,7 +9877,7 @@
       "CreateExamStarterWorkspaceDirectoryRequest": {
         "additionalProperties": false,
         "properties": {
-          "expected_draft_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -9808,7 +9887,7 @@
           }
         },
         "required": [
-          "expected_draft_revision",
+          "expected_revision",
           "path"
         ],
         "type": "object"
@@ -10135,7 +10214,7 @@
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
             "type": "string"
           },
-          "expected_declaration_revision": {
+          "expected_revision": {
             "format": "int64",
             "maximum": 9007199254740991,
             "minimum": 0,
@@ -10160,7 +10239,7 @@
         },
         "required": [
           "declaration_id",
-          "expected_declaration_revision",
+          "expected_revision",
           "allocated_through_sequence",
           "ranges",
           "reason"
@@ -10305,6 +10384,7 @@
       },
       "DeliveryClosure": {
         "additionalProperties": false,
+        "description": "Delivery closure. An open delivery carries only unknown_tail false; a closed one carries closed_at, close_reason, known_at_close and upload_expires_at, plus the final sequence, declaration and boundary origin when they are known. Absent members are omitted, never null.",
         "properties": {
           "close_reason": {
             "enum": [
@@ -10316,79 +10396,49 @@
               "security_session_lost",
               "policy_correction",
               "runtime_reset",
-              "browser_disabled",
-              null
+              "browser_disabled"
             ],
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           },
           "closed_at": {
             "format": "date-time",
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           },
           "final_boundary_origin": {
             "enum": [
               "client_declared",
-              "server_known",
-              null
+              "server_known"
             ],
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           },
           "final_declaration_id": {
             "maxLength": 128,
             "minLength": 1,
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           },
           "final_sequence": {
             "format": "int64",
             "maximum": 9007199254740991,
             "minimum": 0,
-            "type": [
-              "integer",
-              "null"
-            ]
+            "type": "integer"
           },
           "known_at_close": {
             "format": "int64",
             "maximum": 9007199254740991,
             "minimum": 0,
-            "type": [
-              "integer",
-              "null"
-            ]
+            "type": "integer"
           },
           "unknown_tail": {
             "type": "boolean"
           },
           "upload_expires_at": {
             "format": "date-time",
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           }
         },
         "required": [
-          "closed_at",
-          "close_reason",
-          "known_at_close",
-          "final_sequence",
-          "final_declaration_id",
-          "final_boundary_origin",
-          "unknown_tail",
-          "upload_expires_at"
+          "unknown_tail"
         ],
         "type": "object"
       },
@@ -10950,16 +11000,9 @@
             "type": "string"
           },
           "retry_at": {
-            "description": "Optional retry time; it must be null while availability is ready.",
-            "oneOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "description": "Optional retry time; omit it for none, and always while availability is ready. Null is invalid.",
+            "format": "date-time",
+            "type": "string"
           },
           "revoked_desktop_build_ids": {
             "items": {
@@ -10978,8 +11021,7 @@
           "minimum_desktop_release",
           "revoked_desktop_build_ids",
           "administrator_message",
-          "availability",
-          "retry_at"
+          "availability"
         ],
         "type": "object"
       },
@@ -11070,10 +11112,23 @@
         "type": "object"
       },
       "DesktopRegistrationListResponse": {
-        "items": {
-          "$ref": "#/components/schemas/DesktopRegistrationResponse"
+        "additionalProperties": false,
+        "description": "One page of the collection in its stable order.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DesktopRegistrationResponse"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "$ref": "#/components/schemas/NextCursor"
+          }
         },
-        "type": "array"
+        "required": [
+          "items"
+        ],
+        "type": "object"
       },
       "DesktopRegistrationResponse": {
         "additionalProperties": false,
@@ -11171,7 +11226,7 @@
           }
         ],
         "properties": {
-          "expected_draft_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -11194,7 +11249,7 @@
           }
         },
         "required": [
-          "expected_draft_revision"
+          "expected_revision"
         ],
         "type": "object"
       },
@@ -11240,14 +11295,14 @@
               "null"
             ]
           },
-          "expected_draft_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
           }
         },
         "required": [
-          "expected_draft_revision"
+          "expected_revision"
         ],
         "type": "object"
       },
@@ -12300,7 +12355,7 @@
       "EndExamAttemptByManagerRequest": {
         "additionalProperties": false,
         "properties": {
-          "expected_attempt_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -12313,7 +12368,7 @@
           }
         },
         "required": [
-          "expected_attempt_revision",
+          "expected_revision",
           "reason"
         ],
         "type": "object"
@@ -12628,7 +12683,7 @@
       },
       "ExamAttemptSuspensionResponse": {
         "additionalProperties": false,
-        "description": "One suspension episode. A policy episode links its Integrity Flag in flag_id; a manual episode (an Exam Manager's kick) links no Flag and names its manager in suspended_by_user_id.",
+        "description": "One suspension episode. A policy episode links its Integrity Flag in integrity_flag_id; a manual episode (an Exam Manager's kick) links no Flag and names its manager in suspended_by_user_id.",
         "properties": {
           "candidate_reason": {
             "enum": [
@@ -12642,15 +12697,15 @@
             "format": "date-time",
             "type": "string"
           },
-          "flag_id": {
-            "$ref": "#/components/schemas/ID"
-          },
           "generation": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
           },
           "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "integrity_flag_id": {
             "$ref": "#/components/schemas/ID"
           },
           "participation_id": {
@@ -13632,7 +13687,7 @@
       "ExamResourceContentReplacementMetadata": {
         "additionalProperties": false,
         "properties": {
-          "expected_draft_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -13651,7 +13706,7 @@
           }
         },
         "required": [
-          "expected_draft_revision",
+          "expected_revision",
           "media_type",
           "size",
           "sha256"
@@ -13685,6 +13740,9 @@
             },
             "maxItems": 100,
             "type": "array"
+          },
+          "next_cursor": {
+            "$ref": "#/components/schemas/NextCursor"
           }
         },
         "required": [
@@ -13779,7 +13837,7 @@
             "minLength": 1,
             "type": "string"
           },
-          "expected_draft_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -13798,7 +13856,7 @@
           }
         },
         "required": [
-          "expected_draft_revision",
+          "expected_revision",
           "display_name",
           "media_type",
           "size",
@@ -14470,7 +14528,7 @@
             "$ref": "#/components/schemas/WorkspaceContentVersion",
             "description": "Last acknowledged file content version, used to prevent lost updates to the same path entry."
           },
-          "expected_draft_revision": {
+          "expected_revision": {
             "description": "Last observed mutable Draft revision, used to reject replacement against newer authoring state.",
             "format": "int64",
             "minimum": 1,
@@ -14493,7 +14551,7 @@
           }
         },
         "required": [
-          "expected_draft_revision",
+          "expected_revision",
           "expected_content_version",
           "media_type",
           "size",
@@ -14522,7 +14580,7 @@
       "ExamStarterWorkspaceFileUploadMetadata": {
         "additionalProperties": false,
         "properties": {
-          "expected_draft_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -14547,7 +14605,7 @@
           }
         },
         "required": [
-          "expected_draft_revision",
+          "expected_revision",
           "path",
           "media_type",
           "size",
@@ -14679,6 +14737,9 @@
             },
             "maxItems": 500,
             "type": "array"
+          },
+          "next_cursor": {
+            "$ref": "#/components/schemas/NextCursor"
           }
         },
         "required": [
@@ -15211,10 +15272,23 @@
         "type": "object"
       },
       "ExternalAuthenticationProviderListResponse": {
-        "items": {
-          "$ref": "#/components/schemas/ExternalAuthenticationProviderResponse"
+        "additionalProperties": false,
+        "description": "One page of the collection in its stable order.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExternalAuthenticationProviderResponse"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "$ref": "#/components/schemas/NextCursor"
+          }
         },
-        "type": "array"
+        "required": [
+          "items"
+        ],
+        "type": "object"
       },
       "ExternalAuthenticationProviderResponse": {
         "additionalProperties": false,
@@ -15297,7 +15371,7 @@
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
             "type": "string"
           },
-          "expected_declaration_revision": {
+          "expected_revision": {
             "format": "int64",
             "maximum": 9007199254740991,
             "minimum": 0,
@@ -15312,7 +15386,7 @@
         },
         "required": [
           "declaration_id",
-          "expected_declaration_revision",
+          "expected_revision",
           "final_sequence"
         ],
         "type": "object"
@@ -17092,7 +17166,7 @@
       "MoveExamStarterWorkspaceEntryRequest": {
         "additionalProperties": false,
         "properties": {
-          "expected_draft_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -17102,7 +17176,7 @@
           }
         },
         "required": [
-          "expected_draft_revision",
+          "expected_revision",
           "path"
         ],
         "type": "object"
@@ -18598,17 +18672,11 @@
               },
               "first_unretained_at": {
                 "format": "date-time",
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": "string"
               },
               "last_unretained_at": {
                 "format": "date-time",
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": "string"
               },
               "summary_sequence": {
                 "format": "int64",
@@ -18626,9 +18694,7 @@
             "required": [
               "summary_sequence",
               "unretained_record_count",
-              "count_complete",
-              "first_unretained_at",
-              "last_unretained_at"
+              "count_complete"
             ],
             "type": [
               "object",
@@ -19011,6 +19077,12 @@
         ],
         "type": "object"
       },
+      "NextCursor": {
+        "description": "Opaque continuation for the next page, omitted on the last page. Clients return it unchanged as cursor.",
+        "maxLength": 2048,
+        "minLength": 1,
+        "type": "string"
+      },
       "OnboardingImportCommitRequest": {
         "additionalProperties": false,
         "properties": {
@@ -19335,10 +19407,23 @@
         "type": "object"
       },
       "PersonalAccessTokenListResponse": {
-        "items": {
-          "$ref": "#/components/schemas/PersonalAccessTokenResponse"
+        "additionalProperties": false,
+        "description": "One page of the collection in its stable order.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PersonalAccessTokenResponse"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "$ref": "#/components/schemas/NextCursor"
+          }
         },
-        "type": "array"
+        "required": [
+          "items"
+        ],
+        "type": "object"
       },
       "PersonalAccessTokenResponse": {
         "additionalProperties": false,
@@ -19505,10 +19590,23 @@
         "type": "object"
       },
       "ProgrammeLevelListResponse": {
-        "items": {
-          "$ref": "#/components/schemas/ProgrammeLevelResponse"
+        "additionalProperties": false,
+        "description": "One page of the collection in its stable order.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProgrammeLevelResponse"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "$ref": "#/components/schemas/NextCursor"
+          }
         },
-        "type": "array"
+        "required": [
+          "items"
+        ],
+        "type": "object"
       },
       "ProgrammeLevelResponse": {
         "additionalProperties": false,
@@ -19560,10 +19658,23 @@
         "type": "object"
       },
       "ProgrammeListResponse": {
-        "items": {
-          "$ref": "#/components/schemas/ProgrammeResponse"
+        "additionalProperties": false,
+        "description": "One page of the collection in its stable order.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProgrammeResponse"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "$ref": "#/components/schemas/NextCursor"
+          }
         },
-        "type": "array"
+        "required": [
+          "items"
+        ],
+        "type": "object"
       },
       "ProgrammeResponse": {
         "additionalProperties": false,
@@ -19779,7 +19890,7 @@
       "PublishExamRevisionRequest": {
         "additionalProperties": false,
         "properties": {
-          "expected_draft_revision": {
+          "expected_revision": {
             "description": "The exact current Draft revision to validate and publish.",
             "format": "int64",
             "minimum": 1,
@@ -19787,14 +19898,14 @@
           }
         },
         "required": [
-          "expected_draft_revision"
+          "expected_revision"
         ],
         "type": "object"
       },
       "ReallowExamAttemptRequest": {
         "additionalProperties": false,
         "properties": {
-          "expected_attempt_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -19811,7 +19922,7 @@
         },
         "required": [
           "suspension_id",
-          "expected_attempt_revision",
+          "expected_revision",
           "reason"
         ],
         "type": "object"
@@ -19861,35 +19972,35 @@
       "RemoveExamManagerRequest": {
         "additionalProperties": false,
         "properties": {
-          "expected_exam_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
           }
         },
         "required": [
-          "expected_exam_revision"
+          "expected_revision"
         ],
         "type": "object"
       },
       "RemoveExamResourceRequest": {
         "additionalProperties": false,
         "properties": {
-          "expected_draft_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
           }
         },
         "required": [
-          "expected_draft_revision"
+          "expected_revision"
         ],
         "type": "object"
       },
       "RemoveExamStarterWorkspaceEntryRequest": {
         "additionalProperties": false,
         "properties": {
-          "expected_draft_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -19901,14 +20012,14 @@
           }
         },
         "required": [
-          "expected_draft_revision"
+          "expected_revision"
         ],
         "type": "object"
       },
       "ReorderExamResourcesRequest": {
         "additionalProperties": false,
         "properties": {
-          "expected_draft_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -19923,7 +20034,7 @@
           }
         },
         "required": [
-          "expected_draft_revision",
+          "expected_revision",
           "resource_ids"
         ],
         "type": "object"
@@ -20658,14 +20769,14 @@
       "RetentionPreviewRequest": {
         "additionalProperties": false,
         "properties": {
-          "expected_policy_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
           }
         },
         "required": [
-          "expected_policy_revision"
+          "expected_revision"
         ],
         "type": "object"
       },
@@ -20917,11 +21028,23 @@
         "type": "object"
       },
       "RoleBindingListResponse": {
+        "additionalProperties": false,
         "description": "Authorized current and historical Role Bindings.",
-        "items": {
-          "$ref": "#/components/schemas/RoleBindingResponse"
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RoleBindingResponse"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "$ref": "#/components/schemas/NextCursor"
+          }
         },
-        "type": "array"
+        "required": [
+          "items"
+        ],
+        "type": "object"
       },
       "RoleBindingResponse": {
         "additionalProperties": false,
@@ -20979,11 +21102,23 @@
         "type": "object"
       },
       "RoleListResponse": {
+        "additionalProperties": false,
         "description": "Roles visible to the authorized caller.",
-        "items": {
-          "$ref": "#/components/schemas/RoleResponse"
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RoleResponse"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "$ref": "#/components/schemas/NextCursor"
+          }
         },
-        "type": "array"
+        "required": [
+          "items"
+        ],
+        "type": "object"
       },
       "RoleResponse": {
         "additionalProperties": false,
@@ -21051,14 +21186,14 @@
         "additionalProperties": false,
         "description": "Conditional create or replacement of the current decision for one integrity Flag.",
         "properties": {
-          "expected_decision_revision": {
-            "description": "Zero for the first decision on this Flag; otherwise the exact current decision revision.",
+          "expected_review_revision": {
+            "description": "Zero when creating the first Review through this command; otherwise the exact current Review revision.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
           },
-          "expected_review_revision": {
-            "description": "Zero when creating the first Review through this command; otherwise the exact current Review revision.",
+          "expected_revision": {
+            "description": "Zero for the first decision on this Flag; otherwise the exact current decision revision.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -21084,8 +21219,8 @@
           }
         },
         "required": [
+          "expected_revision",
           "expected_review_revision",
-          "expected_decision_revision",
           "outcome",
           "private_rationale"
         ],
@@ -21692,10 +21827,23 @@
         "type": "object"
       },
       "SessionListResponse": {
-        "items": {
-          "$ref": "#/components/schemas/SessionResponse"
+        "additionalProperties": false,
+        "description": "One page of the collection in its stable order.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SessionResponse"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "$ref": "#/components/schemas/NextCursor"
+          }
         },
-        "type": "array"
+        "required": [
+          "items"
+        ],
+        "type": "object"
       },
       "SessionResponse": {
         "additionalProperties": false,
@@ -22338,7 +22486,7 @@
       "SuspendExamAttemptRequest": {
         "additionalProperties": false,
         "properties": {
-          "expected_attempt_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -22351,7 +22499,7 @@
           }
         },
         "required": [
-          "expected_attempt_revision",
+          "expected_revision",
           "reason"
         ],
         "type": "object"
@@ -22451,7 +22599,7 @@
         "additionalProperties": false,
         "description": "Existing Review identity and exact revision for a terminal transition.",
         "properties": {
-          "expected_review_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -22462,14 +22610,14 @@
         },
         "required": [
           "submission_review_id",
-          "expected_review_revision"
+          "expected_revision"
         ],
         "type": "object"
       },
       "TransferExamOwnershipRequest": {
         "additionalProperties": false,
         "properties": {
-          "expected_exam_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -22480,7 +22628,7 @@
         },
         "required": [
           "user_id",
-          "expected_exam_revision"
+          "expected_revision"
         ],
         "type": "object"
       },
@@ -22492,17 +22640,11 @@
           },
           "first_unretained_at": {
             "format": "date-time",
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           },
           "last_unretained_at": {
             "format": "date-time",
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           },
           "summary_sequence": {
             "format": "int64",
@@ -22520,9 +22662,7 @@
         "required": [
           "summary_sequence",
           "unretained_record_count",
-          "count_complete",
-          "first_unretained_at",
-          "last_unretained_at"
+          "count_complete"
         ],
         "type": "object"
       },
@@ -22545,12 +22685,9 @@
             ]
           },
           "end_at": {
-            "description": "Omitted or null leaves the exclusive end unchanged.",
+            "description": "Omitted leaves the exclusive end unchanged; null is invalid.",
             "format": "date-time",
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           },
           "expected_revision": {
             "description": "Optional positive revision from the last resource response. A stale value returns the resource conflict error without applying the edit. Omission preserves v1 compatibility; null is invalid.",
@@ -22566,12 +22703,9 @@
             ]
           },
           "start_at": {
-            "description": "Omitted or null leaves the inclusive start unchanged.",
+            "description": "Omitted leaves the inclusive start unchanged; null is invalid.",
             "format": "date-time",
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           }
         },
         "type": "object"
@@ -22669,7 +22803,7 @@
         "additionalProperties": false,
         "description": "Conditional complete replacement of the Review's mutable text fields.",
         "properties": {
-          "expected_review_revision": {
+          "expected_revision": {
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -22690,7 +22824,7 @@
           }
         },
         "required": [
-          "expected_review_revision",
+          "expected_revision",
           "manager_notes",
           "student_remarks_markdown"
         ],
@@ -22988,11 +23122,23 @@
         "type": "object"
       },
       "UserProfileListResponse": {
+        "additionalProperties": false,
         "description": "Visible User profiles ordered by canonical username and identity.",
-        "items": {
-          "$ref": "#/components/schemas/UserProfileResponse"
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UserProfileResponse"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "$ref": "#/components/schemas/NextCursor"
+          }
         },
-        "type": "array"
+        "required": [
+          "items"
+        ],
+        "type": "object"
       },
       "UserProfileResponse": {
         "additionalProperties": false,
@@ -23360,16 +23506,10 @@
             }
           },
           {
-            "description": "Maximum number of visible Academic Periods to return.",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 100,
-              "maximum": 200,
-              "minimum": 1,
-              "type": "integer"
-            }
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
           }
         ],
         "responses": {
@@ -23511,11 +23651,9 @@
       "delete": {
         "description": "Archives one Academic Period only after proving that no active Class or enrollment still depends on it. History is retained, and the operation never cascades into Class deletion, membership termination, or student progression.",
         "operationId": "archiveAcademicPeriod",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/AcademicExpectedRevision"
-          }
-        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/ArchiveAcademic"
+        },
         "responses": {
           "204": {
             "$ref": "#/components/responses/AcademicPeriodArchived"
@@ -23814,16 +23952,10 @@
             }
           },
           {
-            "description": "Maximum number of Academic Units to return, from 1 through 200.",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 100,
-              "maximum": 200,
-              "minimum": 1,
-              "type": "integer"
-            }
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
           }
         ],
         "responses": {
@@ -23969,11 +24101,9 @@
       "delete": {
         "description": "Archives one empty eligible Academic Unit while retaining hierarchy and audit history. Active descendants, Programmes, memberships, or authorization dependencies block the transition rather than being cascaded.",
         "operationId": "archiveAcademicUnit",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/AcademicExpectedRevision"
-          }
-        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/ArchiveAcademic"
+        },
         "responses": {
           "204": {
             "$ref": "#/components/responses/AcademicUnitArchived"
@@ -24181,6 +24311,14 @@
       "get": {
         "description": "Lists only the immediate active child Units beneath one authorized Academic Unit. The operation does not recursively flatten the hierarchy or broaden the caller's visibility to concealed descendants.",
         "operationId": "listAcademicUnitChildren",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
+          }
+        ],
         "responses": {
           "200": {
             "$ref": "#/components/responses/AcademicUnitListOK"
@@ -24327,16 +24465,10 @@
             }
           },
           {
-            "description": "Maximum number of Classes to return.",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 100,
-              "maximum": 200,
-              "minimum": 1,
-              "type": "integer"
-            }
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
           }
         ],
         "responses": {
@@ -24605,31 +24737,9 @@
     },
     "/api/v1/academic-units/{academic_unit_id}/members": {
       "get": {
-        "description": "Lists authorized current or historical organizational memberships for one Academic Unit at the requested effective instant. Membership describes a relationship only and is never presented as an unrestricted permission grant. Bounded pages use immutable (user_id, id) ordering. The next Link freezes the effective instant or history filter, but pages are a live view: later membership edits and insertions can change later results; no database snapshot is retained across requests.",
+        "description": "Lists authorized current or historical organizational memberships for one Academic Unit at the requested effective instant. Membership describes a relationship only and is never presented as an unrestricted permission grant. Bounded pages use immutable (user_id, id) ordering. The next_cursor freezes the effective instant or history filter, but pages are a live view: later membership edits and insertions can change later results; no database snapshot is retained across requests.",
         "operationId": "listAcademicUnitMembers",
         "parameters": [
-          {
-            "description": "Opt into bounded paging while preserving the bare-array response. Defaults to 50 when cursor is supplied; pages contain at most 200 rows. Without limit or cursor the legacy full-list response remains available.",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "maximum": 200,
-              "minimum": 1,
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Opaque continuation from the previous Link header. It binds the resource and effective/history filter. Every page requires fresh authorization; do not edit or reuse it for another resource or filter.",
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "maxLength": 1024,
-              "minLength": 1,
-              "type": "string"
-            }
-          },
           {
             "description": "RFC 3339 instant at which membership must be effective; ignored when history is true in legacy full-list mode. For paging, omit it with history=true and inherit the first page instant when following a cursor.",
             "in": "query",
@@ -24649,6 +24759,12 @@
               "default": false,
               "type": "boolean"
             }
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
           }
         ],
         "responses": {
@@ -24798,16 +24914,10 @@
             }
           },
           {
-            "description": "Maximum number of Programmes to return.",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 100,
-              "maximum": 200,
-              "minimum": 1,
-              "type": "integer"
-            }
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
           }
         ],
         "responses": {
@@ -25859,7 +25969,7 @@
     },
     "/api/v1/auth/desktop/authorizations/cancel": {
       "post": {
-        "description": "Validates the binding cookie and exact pinned state before terminally cancelling the transaction and destroying every remaining browser and code proof.",
+        "description": "Validates the binding cookie and exact pinned state before terminally canceling the transaction and destroying every remaining browser and code proof.",
         "operationId": "cancelDesktopAuthorization",
         "requestBody": {
           "$ref": "#/components/requestBodies/DesktopAuthorizationState"
@@ -26303,6 +26413,14 @@
       "get": {
         "description": "Returns the public presentation of external providers currently permitted by Access Policy. Provider secrets, discovery internals, and disabled providers are omitted; clients should treat this list as dynamic.",
         "operationId": "listAuthenticationProviders",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
+          }
+        ],
         "responses": {
           "200": {
             "$ref": "#/components/responses/ExternalAuthenticationProviderListOK"
@@ -27280,11 +27398,9 @@
       "delete": {
         "description": "Archives one Class only after proving it has no active members or Role Bindings. The operation retains historical enrollment and audit records and never ends relationships implicitly.",
         "operationId": "archiveClass",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/AcademicExpectedRevision"
-          }
-        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/ArchiveAcademic"
+        },
         "responses": {
           "204": {
             "$ref": "#/components/responses/ClassArchived"
@@ -27593,31 +27709,9 @@
     },
     "/api/v1/classes/{class_id}/members": {
       "get": {
-        "description": "Lists authorized student enrollments for one Class at the requested effective instant or across retained history. The roster projection contains relationship state and does not expand student credentials, answers, or unrestricted profile data. Bounded pages use immutable (user_id, id) ordering. The next Link freezes the effective instant or history filter, but pages are a live view: later membership edits and insertions can change later results; no database snapshot is retained across requests.",
+        "description": "Lists authorized student enrollments for one Class at the requested effective instant or across retained history. The roster projection contains relationship state and does not expand student credentials, answers, or unrestricted profile data. Bounded pages use immutable (user_id, id) ordering. The next_cursor freezes the effective instant or history filter, but pages are a live view: later membership edits and insertions can change later results; no database snapshot is retained across requests.",
         "operationId": "listClassMembers",
         "parameters": [
-          {
-            "description": "Opt into bounded paging while preserving the bare-array response. Defaults to 50 when cursor is supplied; pages contain at most 200 rows. Without limit or cursor the legacy full-list response remains available.",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "maximum": 200,
-              "minimum": 1,
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Opaque continuation from the previous Link header. It binds the resource and effective/history filter. Every page requires fresh authorization; do not edit or reuse it for another resource or filter.",
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "maxLength": 1024,
-              "minLength": 1,
-              "type": "string"
-            }
-          },
           {
             "description": "RFC 3339 instant at which enrollment must be effective; ignored when history is true in legacy full-list mode. For paging, omit it with history=true and inherit the first page instant when following a cursor.",
             "in": "query",
@@ -27637,6 +27731,12 @@
               "default": false,
               "type": "boolean"
             }
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
           }
         ],
         "responses": {
@@ -27961,6 +28061,12 @@
             "schema": {
               "$ref": "#/components/schemas/ID"
             }
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
           }
         ],
         "responses": {
@@ -28392,7 +28498,7 @@
     },
     "/api/v1/exam-attempts/{exam_attempt_id}/browser-activity/sources/{source_session_id}/receipts": {
       "get": {
-        "description": "Return up to 64 retained receipts in ascending sequence order, omitting missing positions. next_sequence is the first retained sequence on the next page or null. Response is bounded at 16 KiB; current registered-key ownership and live Connection rules apply.",
+        "description": "Return up to 64 retained receipts in ascending sequence order, omitting missing positions. next_cursor continues at the next retained receipt and is omitted on the last page. Response is bounded at 16 KiB; current registered-key ownership and live Connection rules apply.",
         "operationId": "browserDeliveryReceipts",
         "parameters": [
           {
@@ -28402,27 +28508,19 @@
             "$ref": "#/components/parameters/NativeDeliveryConnectionID"
           },
           {
-            "description": "First sequence to examine, inclusive.",
+            "description": "Maximum number of retained receipts in the page.",
             "in": "query",
-            "name": "first_sequence",
-            "required": true,
+            "name": "limit",
+            "required": false,
             "schema": {
-              "format": "int64",
-              "maximum": 50000,
+              "default": 64,
+              "maximum": 64,
               "minimum": 1,
               "type": "integer"
             }
           },
           {
-            "description": "Maximum number of retained receipts.",
-            "in": "query",
-            "name": "limit",
-            "required": true,
-            "schema": {
-              "maximum": 64,
-              "minimum": 1,
-              "type": "integer"
-            }
+            "$ref": "#/components/parameters/PageCursor"
           }
         ],
         "responses": {
@@ -30260,7 +30358,7 @@
     },
     "/api/v1/exam-attempts/{exam_attempt_id}/workspace/changes": {
       "get": {
-        "description": "Returns acknowledged Workspace mutations after the supplied journal cursor in strict order for the active candidate Attempt. If retained history can no longer bridge the cursor, the response explicitly instructs the client to reload the full manifest.",
+        "description": "Returns acknowledged Workspace mutations after the supplied workspace_cursor in strict order for the active candidate Attempt. If retained history can no longer bridge the cursor, the response explicitly instructs the client to reload the full manifest.",
         "operationId": "listCandidateExamWorkspaceChanges",
         "parameters": [
           {
@@ -30270,9 +30368,9 @@
             "$ref": "#/components/parameters/CandidateAttemptConnectionID"
           },
           {
-            "description": "Return acknowledged changes strictly after this Workspace journal cursor; zero starts at the retained beginning.",
+            "description": "Start the listing with changes strictly after this Workspace Cursor; zero or omission starts at the retained beginning. Omit it when continuing with cursor.",
             "in": "query",
-            "name": "after_cursor",
+            "name": "workspace_cursor",
             "required": false,
             "schema": {
               "default": 0,
@@ -30282,16 +30380,10 @@
             }
           },
           {
-            "description": "Maximum number of ordered Workspace journal entries to return in this page.",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "maximum": 200,
-              "minimum": 1,
-              "type": "integer"
-            }
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
           }
         ],
         "responses": {
@@ -31831,6 +31923,14 @@
       "get": {
         "description": "Returns the complete ordered resource manifest for the mutable Draft, including authored presentation metadata, content revision, media type, size, and digest. Protected bytes remain available only through the separately authorized inline content route.",
         "operationId": "listExamDraftResources",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
+          }
+        ],
         "responses": {
           "200": {
             "$ref": "#/components/responses/ExamResourceListOK"
@@ -31967,7 +32067,7 @@
           {
             "label": "Append a protected PDF resource",
             "lang": "Shell",
-            "source": "curl --request POST \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  --header \"Idempotency-Key: exam-resource-create-001\" \\\n  --form 'metadata={\"expected_draft_revision\":3,\"display_name\":\"Formula sheet\",\"description_markdown\":\"Reference formulas for this examination.\",\"media_type\":\"application/pdf\",\"size\":2048,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"};type=application/json' \\\n  --form 'content=@./formula-sheet.pdf;type=application/octet-stream' \\\n  https://proctor.example.edu/api/v1/exams/ybndrfg8ejkmcpqxot1uwisza3/draft/resources"
+            "source": "curl --request POST \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  --header \"Idempotency-Key: exam-resource-create-001\" \\\n  --form 'metadata={\"expected_revision\":3,\"display_name\":\"Formula sheet\",\"description_markdown\":\"Reference formulas for this examination.\",\"media_type\":\"application/pdf\",\"size\":2048,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"};type=application/json' \\\n  --form 'content=@./formula-sheet.pdf;type=application/octet-stream' \\\n  https://proctor.example.edu/api/v1/exams/ybndrfg8ejkmcpqxot1uwisza3/draft/resources"
           }
         ],
         "x-proctor-auth": "principal_required",
@@ -32430,7 +32530,7 @@
           {
             "label": "Replace protected resource content",
             "lang": "Shell",
-            "source": "curl --request PUT \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  --header \"Idempotency-Key: exam-resource-replace-002\" \\\n  --form 'metadata={\"expected_draft_revision\":4,\"media_type\":\"application/pdf\",\"size\":3072,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"};type=application/json' \\\n  --form 'content=@./formula-sheet-v2.pdf;type=application/octet-stream' \\\n  https://proctor.example.edu/api/v1/exams/ybndrfg8ejkmcpqxot1uwisza3/draft/resources/ybndrfg8ejkmcpqxot1uwisza4/content"
+            "source": "curl --request PUT \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  --header \"Idempotency-Key: exam-resource-replace-002\" \\\n  --form 'metadata={\"expected_revision\":4,\"media_type\":\"application/pdf\",\"size\":3072,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"};type=application/json' \\\n  --form 'content=@./formula-sheet-v2.pdf;type=application/octet-stream' \\\n  https://proctor.example.edu/api/v1/exams/ybndrfg8ejkmcpqxot1uwisza3/draft/resources/ybndrfg8ejkmcpqxot1uwisza4/content"
           }
         ],
         "x-proctor-auth": "principal_required",
@@ -32471,6 +32571,14 @@
       "get": {
         "description": "Returns the complete canonical manifest of files and directories that will seed each candidate Workspace from a published Revision. File metadata includes content versions and digests, while protected bytes remain behind the inline content route.",
         "operationId": "listExamDraftStarterWorkspace",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
+          }
+        ],
         "responses": {
           "200": {
             "$ref": "#/components/responses/ExamStarterWorkspaceListOK"
@@ -32888,7 +32996,7 @@
           {
             "label": "Add a Starter Workspace file",
             "lang": "Shell",
-            "source": "curl --request POST \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  --header \"Idempotency-Key: starter-file-create-001\" \\\n  --form 'metadata={\"expected_draft_revision\":3,\"path\":\"starter/main.go\",\"media_type\":\"text/plain\",\"size\":128,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"};type=application/json' \\\n  --form 'content=@./main.go;type=application/octet-stream' \\\n  https://proctor.example.edu/api/v1/exams/ybndrfg8ejkmcpqxot1uwisza3/draft/starter-workspace/files"
+            "source": "curl --request POST \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  --header \"Idempotency-Key: starter-file-create-001\" \\\n  --form 'metadata={\"expected_revision\":3,\"path\":\"starter/main.go\",\"media_type\":\"text/plain\",\"size\":128,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"};type=application/json' \\\n  --form 'content=@./main.go;type=application/octet-stream' \\\n  https://proctor.example.edu/api/v1/exams/ybndrfg8ejkmcpqxot1uwisza3/draft/starter-workspace/files"
           }
         ],
         "x-proctor-auth": "principal_required",
@@ -33087,7 +33195,7 @@
           {
             "label": "Replace a Starter Workspace file",
             "lang": "Shell",
-            "source": "curl --request PUT \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  --header \"Idempotency-Key: starter-file-replace-002\" \\\n  --form 'metadata={\"expected_draft_revision\":4,\"expected_content_version\":\"ybndrfg8ejkmcpqxot1uwisza4\",\"media_type\":\"text/plain\",\"size\":192,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"};type=application/json' \\\n  --form 'content=@./main.go;type=application/octet-stream' \\\n  https://proctor.example.edu/api/v1/exams/ybndrfg8ejkmcpqxot1uwisza3/draft/starter-workspace/files/ybndrfg8ejkmcpqxot1uwisza5/content"
+            "source": "curl --request PUT \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  --header \"Idempotency-Key: starter-file-replace-002\" \\\n  --form 'metadata={\"expected_revision\":4,\"expected_content_version\":\"ybndrfg8ejkmcpqxot1uwisza4\",\"media_type\":\"text/plain\",\"size\":192,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"};type=application/json' \\\n  --form 'content=@./main.go;type=application/octet-stream' \\\n  https://proctor.example.edu/api/v1/exams/ybndrfg8ejkmcpqxot1uwisza3/draft/starter-workspace/files/ybndrfg8ejkmcpqxot1uwisza5/content"
           }
         ],
         "x-proctor-auth": "principal_required",
@@ -33917,7 +34025,7 @@
         "x-codeSamples": [
           {
             "lang": "Shell",
-            "source": "curl --fail-with-body \\\n  --request POST \\\n  --url 'https://proctor.example.edu/api/v1/exams/\u003cexam-id\u003e/revisions' \\\n  --header 'Authorization: Bearer \u003caccess-token\u003e' \\\n  --header 'Content-Type: application/json' \\\n  --header 'Idempotency-Key: docs-exam-publish-012' \\\n  --data '{\"expected_draft_revision\":12}'"
+            "source": "curl --fail-with-body \\\n  --request POST \\\n  --url 'https://proctor.example.edu/api/v1/exams/\u003cexam-id\u003e/revisions' \\\n  --header 'Authorization: Bearer \u003caccess-token\u003e' \\\n  --header 'Content-Type: application/json' \\\n  --header 'Idempotency-Key: docs-exam-publish-012' \\\n  --data '{\"expected_revision\":12}'"
           }
         ],
         "x-proctor-auth": "principal_required",
@@ -39592,11 +39700,9 @@
       "delete": {
         "description": "Archives one Programme Level only when it has no active Classes. The transition retains history and never cascades into Class archival, enrollment termination, or Role Binding removal.",
         "operationId": "archiveProgrammeLevel",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/AcademicExpectedRevision"
-          }
-        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/ArchiveAcademic"
+        },
         "responses": {
           "204": {
             "$ref": "#/components/responses/ProgrammeLevelArchived"
@@ -39805,6 +39911,14 @@
       "get": {
         "description": "Lists active Classes directly assigned to one authorized Programme Level. The collection returns structural Class metadata and excludes rosters, candidate Attempts, and permission grants.",
         "operationId": "listClasses",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
+          }
+        ],
         "responses": {
           "200": {
             "$ref": "#/components/responses/ClassListOK"
@@ -39941,11 +40055,9 @@
       "delete": {
         "description": "Archives one Programme only after proving it has no active Programme Levels. The operation retains history and never cascades into Level, Class, enrollment, or authorization changes.",
         "operationId": "archiveProgramme",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/AcademicExpectedRevision"
-          }
-        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/ArchiveAcademic"
+        },
         "responses": {
           "204": {
             "$ref": "#/components/responses/ProgrammeArchived"
@@ -40165,16 +40277,10 @@
             }
           },
           {
-            "description": "Maximum number of Programme Levels to return.",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 100,
-              "maximum": 200,
-              "minimum": 1,
-              "type": "integer"
-            }
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
           }
         ],
         "responses": {
@@ -40864,6 +40970,12 @@
             "schema": {
               "$ref": "#/components/schemas/ID"
             }
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
           }
         ],
         "responses": {
@@ -41078,6 +41190,14 @@
       "get": {
         "description": "Lists built-in and custom Roles visible to the authorized caller. Role definitions name permissions only; effective access also requires a current scoped Role Binding and terminal authorization against current durable state.",
         "operationId": "listRoles",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
+          }
+        ],
         "responses": {
           "200": {
             "$ref": "#/components/responses/RoleListOK"
@@ -42807,36 +42927,6 @@
             }
           },
           {
-            "description": "Canonical username from the preceding page; supply together with after_id.",
-            "in": "query",
-            "name": "after_username",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Stable User identity from the preceding page; supply together with after_username.",
-            "in": "query",
-            "name": "after_id",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Maximum number of visible User profiles to return.",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 100,
-              "maximum": 200,
-              "minimum": 1,
-              "type": "integer"
-            }
-          },
-          {
             "description": "Honored only for institution-wide user.view; scoped visibility always excludes disabled Users.",
             "in": "query",
             "name": "include_disabled",
@@ -42845,6 +42935,12 @@
               "default": false,
               "type": "boolean"
             }
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
           }
         ],
         "responses": {
@@ -43015,6 +43111,14 @@
       "get": {
         "description": "Returns only bounded registration presentation and compatibility metadata; public keys, thumbprints, proofs, and Session identities are never exposed.",
         "operationId": "listDesktopRegistrations",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
+          }
+        ],
         "responses": {
           "200": {
             "$ref": "#/components/responses/DesktopRegistrationListOK"
@@ -43734,6 +43838,14 @@
       "get": {
         "description": "Returns safe device, authentication, activity, and expiry metadata for the current User's active Sessions. Access tokens, refresh tokens, provider subjects, and other credential material are omitted.",
         "operationId": "listCurrentUserSessions",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
+          }
+        ],
         "responses": {
           "200": {
             "$ref": "#/components/responses/SessionListOK"
@@ -44033,6 +44145,14 @@
       "get": {
         "description": "Returns safe metadata for the current User's Personal Access Tokens, including scope, expiry, and lifecycle state. The token credential is returned only once at creation and never appears in this list.",
         "operationId": "listPersonalAccessTokens",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
+          }
+        ],
         "responses": {
           "200": {
             "$ref": "#/components/responses/PersonalAccessTokenListOK"
@@ -44511,6 +44631,14 @@
       "get": {
         "description": "Lists the authorized current and historical relationship kinds attached to one User. Affiliations are non-exclusive descriptive relationships and never substitute for Role Bindings in permission checks.",
         "operationId": "listAffiliations",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
+          }
+        ],
         "responses": {
           "200": {
             "$ref": "#/components/responses/AffiliationListOK"

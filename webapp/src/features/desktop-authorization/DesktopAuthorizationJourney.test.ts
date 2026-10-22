@@ -19,7 +19,7 @@ function setup(currentSession = true) {
     authenticateSession: vi.fn<typeof desktopJourneyAPI.authenticateSession>().mockResolvedValue(currentSession
       ? { kind: "authenticated", context: authenticated } : { kind: "no_session" }),
     bind: vi.fn<typeof desktopJourneyAPI.bind>().mockResolvedValue({ kind: "bound" }),
-    cancel: vi.fn<typeof desktopJourneyAPI.cancel>().mockResolvedValue({ kind: "cancelled" }),
+    cancel: vi.fn<typeof desktopJourneyAPI.cancel>().mockResolvedValue({ kind: "canceled" }),
     context: vi.fn<typeof desktopJourneyAPI.context>().mockResolvedValue({ kind: "ready", context: bound }),
     providerURL: vi.fn<typeof desktopJourneyAPI.providerURL>().mockReturnValue("/api/v1/auth/desktop/authorizations/authenticate/providers/campus/login?state=state"),
     reset: vi.fn<typeof desktopJourneyAPI.reset>().mockResolvedValue({ kind: "reset" }),
@@ -135,7 +135,7 @@ describe("Desktop Authorization journey", () => {
     expect(journey.getSnapshot().feedback).toBe("unavailable");
     expect(journey.getSnapshot().pending).toBeUndefined();
     await journey.cancel();
-    expect(journey.getSnapshot().view.kind).toBe("cancelled");
+    expect(journey.getSnapshot().view.kind).toBe("canceled");
     expect(journey.getSnapshot().focusHeading).toBe(true);
   });
 

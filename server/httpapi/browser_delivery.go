@@ -8,8 +8,8 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app"
@@ -95,11 +95,16 @@ func (m examAttemptHTTPModule) browserSourceList(request operationRequest) (oper
 			return operationResult{}, errUnpresentableResult
 		}
 	}
-	return jsonResult(http.StatusOK, browserSourceListResponse{Sources: values}).withHeaders(noStoreHeaders()), nil
-}
-
-type browserSourceListResponse struct {
-	Sources []model.BrowserSourceStatus `json:"sources"`
+	// A Participation holds at most BrowserSourceMaximumPerParticipation
+	// sources, so the complete set is paged by source identity.
+	response, err := boundedListResult(request, "Browser source", values,
+		func(value model.BrowserSourceStatus) boundedPageKey {
+			return boundedPageKey{Name: string(value.SourceSessionID), ID: string(value.SourceSessionID)}
+		}, func(value model.BrowserSourceStatus) model.BrowserSourceStatus { return value })
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
 func (m examAttemptHTTPModule) browserDeliveryReceipts(request operationRequest) (operationResult, error) {
@@ -107,26 +112,61 @@ func (m examAttemptHTTPModule) browserDeliveryReceipts(request operationRequest)
 	if err != nil {
 		return operationResult{}, err
 	}
-	values := request.request.URL.Query()
-	if len(values["first_sequence"]) != 1 || len(values["limit"]) != 1 {
-		return operationResult{}, invalidRequestError(nil)
+	page, err := request.pageRequest()
+	if err != nil {
+		return operationResult{}, err
 	}
-	first, err := strconv.ParseInt(values.Get("first_sequence"), 10, 64)
-	if err != nil || strconv.FormatInt(first, 10) != values.Get("first_sequence") {
-		return operationResult{}, invalidRequestError(err)
+	if !request.request.URL.Query().Has("limit") {
+		page.Limit = browserReceiptPageLimit
 	}
-	limit, err := strconv.Atoi(values.Get("limit"))
-	if err != nil || strconv.Itoa(limit) != values.Get("limit") {
-		return operationResult{}, invalidRequestError(err)
+	if page.Limit > browserReceiptPageLimit {
+		return operationResult{}, invalidRequestError(errors.New("limit must be between 1 and 64"))
 	}
-	value, err := m.application.BrowserDeliveryReceipts(request.context, request.invocation(), query, first, limit)
+	cursor, continued, err := decodePageCursor(page, browserReceiptCursorSpec())
+	if err != nil {
+		return operationResult{}, err
+	}
+	first := int64(1)
+	if continued {
+		first = cursor.Sequence
+	}
+	value, err := m.application.BrowserDeliveryReceipts(request.context, request.invocation(), query, first, page.Limit)
 	if err != nil {
 		return operationResult{}, err
 	}
 	if value == nil {
 		return operationResult{}, errUnpresentableResult
 	}
-	return jsonResult(http.StatusOK, value).withHeaders(noStoreHeaders()), nil
+	response := listResponse[model.BrowserEventReceipt]{Items: value.Receipts}
+	if value.NextSequence != nil {
+		if response.NextCursor, err = encodeOpaqueCursor(browserReceiptCursor{Sequence: *value.NextSequence}, browserReceiptCursorSpec()); err != nil {
+			return operationResult{}, unpresentableResult(err)
+		}
+	}
+	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
+}
+
+// browserReceiptPageLimit is the largest and default receipt page; the
+// receipts of one page fit the 16 KiB response bound.
+const browserReceiptPageLimit = 64
+
+// browserReceiptCursor continues the receipt listing at the first retained
+// sequence of the next page.
+type browserReceiptCursor struct {
+	Sequence int64 `json:"sequence"`
+}
+
+func browserReceiptCursorSpec() opaqueCursorSpec[browserReceiptCursor] {
+	return opaqueCursorSpec[browserReceiptCursor]{
+		label: "Browser receipt", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength,
+		members: []string{"sequence"},
+		validate: func(cursor browserReceiptCursor) error {
+			if cursor.Sequence < 1 || cursor.Sequence > model.BrowserParticipationPositionLimit {
+				return errors.New("invalid Browser receipt keyset")
+			}
+			return nil
+		},
+	}
 }
 func (m examAttemptHTTPModule) declareBrowserDeliveryGaps(request operationRequest) (operationResult, error) {
 	query, err := browserSourceQuery(request, false)

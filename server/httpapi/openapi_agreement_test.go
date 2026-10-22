@@ -100,9 +100,7 @@ func TestIdentityAndSystemOpenAPIOperationDTOsAgreeWithRuntime(t *testing.T) {
 		"PersonalAccessTokenListResponse":            "#/components/schemas/PersonalAccessTokenResponse",
 		"ExternalAuthenticationProviderListResponse": "#/components/schemas/ExternalAuthenticationProviderResponse",
 	} {
-		schema := document.Components.Schemas[name]
-		assert.Equal(t, "array", schema.Type, "%s = %#v, want array of", name, schema)
-		assert.Equal(t, item, schema.Items.Ref, "%s = %#v, want array of", name, schema)
+		requireOpenAPIListEnvelope(t, document.Components.Schemas[name], item)
 	}
 }
 
@@ -290,11 +288,12 @@ func TestAcademicUnitOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Key: "POST /api/v1/academic-units", Auth: AuthPrincipalRequired, Idempotency: IdempotencyOptional, RequestBodyRef: "#/components/requestBodies/CreateAcademicUnit", RequestSchema: "CreateAcademicUnitRequest", SuccessStatus: "201", SuccessRef: "#/components/responses/AcademicUnitCreated", SuccessSchema: "AcademicUnitResponse", PublicErrorCodes: principalMutationContractCodes("request.invalid", "administration.unavailable", "academic_unit.invalid", "academic_unit.conflict", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")},
 			{Key: "GET /api/v1/academic-units/{academic_unit_id}", Auth: AuthPrincipalRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/AcademicUnitOK", SuccessSchema: "AcademicUnitResponse", PublicErrorCodes: principalContractCodes("resource.not_found", "administration.unavailable")},
 			{Key: "PATCH /api/v1/academic-units/{academic_unit_id}", Auth: AuthPrincipalRequired, RequestBodyRef: "#/components/requestBodies/UpdateAcademicUnit", RequestSchema: "UpdateAcademicUnitRequest", SuccessStatus: "200", SuccessRef: "#/components/responses/AcademicUnitOK", SuccessSchema: "AcademicUnitResponse", PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "academic_unit.invalid", "academic_unit.conflict", "administration.unavailable")},
-			{Key: "DELETE /api/v1/academic-units/{academic_unit_id}", Auth: AuthPrincipalRequired, SuccessStatus: "204", SuccessRef: "#/components/responses/AcademicUnitArchived", PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "academic_unit.conflict", "administration.unavailable")},
+			{Key: "DELETE /api/v1/academic-units/{academic_unit_id}", Auth: AuthPrincipalRequired, RequestBodyRef: "#/components/requestBodies/ArchiveAcademic", RequestSchema: "ArchiveAcademicRequest", SuccessStatus: "204", SuccessRef: "#/components/responses/AcademicUnitArchived", PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "academic_unit.conflict", "administration.unavailable")},
 			{Key: "GET /api/v1/academic-units/{academic_unit_id}/children", Auth: AuthPrincipalRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/AcademicUnitListOK", SuccessSchema: "AcademicUnitListResponse", PublicErrorCodes: principalContractCodes("resource.not_found", "administration.unavailable")},
 			{Key: "POST /api/v1/academic-units/{academic_unit_id}/children", Auth: AuthPrincipalRequired, RequestBodyRef: "#/components/requestBodies/CreateAcademicUnit", RequestSchema: "CreateAcademicUnitRequest", SuccessStatus: "201", SuccessRef: "#/components/responses/AcademicUnitCreated", SuccessSchema: "AcademicUnitResponse", PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "academic_unit.invalid", "academic_unit.conflict", "administration.unavailable")},
 		},
 		Schemas: []openAPIAgreementSchema{
+			{Name: "ArchiveAcademicRequest", DTO: reflect.TypeOf(archiveAcademicRequest{}), NonNullable: []string{"expected_revision"}},
 			{Name: "AcademicUnitResponse", DTO: reflect.TypeOf(academicUnitResponse{}), Required: []string{"revision", "id", "created_at", "updated_at", "institution_id", "name", "display_name", "description"}},
 			{Name: "CreateAcademicUnitRequest", DTO: reflect.TypeOf(createAcademicUnitRequest{}), Required: []string{"name", "display_name"}},
 			{Name: "UpdateAcademicUnitRequest", DTO: reflect.TypeOf(updateAcademicUnitRequest{}), NonNullable: []string{"expected_revision"}},
@@ -305,8 +304,7 @@ func TestAcademicUnitOpenAPIAgreesWithRuntime(t *testing.T) {
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 
 	listSchema := document.Components.Schemas["AcademicUnitListResponse"]
-	require.Equal(t, "array", listSchema.Type)
-	require.Equal(t, "#/components/schemas/AcademicUnitResponse", listSchema.Items.Ref)
+	requireOpenAPIListEnvelope(t, listSchema, "#/components/schemas/AcademicUnitResponse")
 	archivedResponse := document.Components.Responses["AcademicUnitArchived"]
 	require.Equal(t, "#/components/headers/NoStore", archivedResponse.Headers["Cache-Control"].Ref)
 }

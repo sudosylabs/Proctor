@@ -100,7 +100,7 @@ func (s *SQLRetentionStore) ReconcileSubmission(ctx context.Context, input *stor
 			return nil, err
 		}
 		at = model.TimeUTC(at)
-		expiredCancelled, err := settleRetiringDeliveries(ctx, tx, input.SubmissionID, at)
+		expiredCanceled, err := settleRetiringDeliveries(ctx, tx, input.SubmissionID, at)
 		if err != nil {
 			return nil, err
 		}
@@ -109,7 +109,7 @@ func (s *SQLRetentionStore) ReconcileSubmission(ctx context.Context, input *stor
 		if err = tx.Get(ctx, &facts, retentionFactsQuery+` AND sub.id=?`, policy.InstitutionID.String(), input.SubmissionID.String()); err != nil {
 			return nil, err
 		}
-		result := &store.RetentionReconciliationResult{Cancelled: expiredCancelled}
+		result := &store.RetentionReconciliationResult{Canceled: expiredCanceled}
 		records := facts.records()
 		// Integrity retires first. Work may never disappear while its retained
 		// integrity still depends on it, even when both grace periods have ended.
@@ -132,7 +132,7 @@ func (s *SQLRetentionStore) ReconcileSubmission(ctx context.Context, input *stor
 				if err := cancelOneRetirement(ctx, tx, retirement.ID, at, "eligibility_changed"); err != nil {
 					return nil, err
 				}
-				result.Cancelled++
+				result.Canceled++
 				retirement = nil
 			}
 			if !control.Permits(policy) || eligibility.Blocker != model.RetentionBlockerNone {
@@ -172,7 +172,7 @@ func (s *SQLRetentionStore) ReconcileSubmission(ctx context.Context, input *stor
 			result.Retired++
 		}
 		encoded, err := model.EncodeAuditData(map[string]any{"submission_id": input.SubmissionID.String(), "policy_revision": policy.Revision,
-			"control_revision": control.Revision, "scheduled": result.Scheduled, "canceled": result.Cancelled, "retired": result.Retired})
+			"control_revision": control.Revision, "scheduled": result.Scheduled, "canceled": result.Canceled, "retired": result.Retired})
 		if err != nil {
 			return nil, err
 		}

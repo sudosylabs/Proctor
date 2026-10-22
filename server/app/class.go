@@ -23,12 +23,13 @@ type GetClassQuery struct {
 
 type ListClassesQuery struct {
 	ProgrammeLevelID model.ProgrammeLevelID
+	NamePageQuery
 }
 
 type SearchClassesQuery struct {
 	AcademicUnitID model.AcademicUnitID
 	Query          string
-	Limit          int
+	NamePageQuery
 }
 
 type CreateClassCommand struct {
@@ -56,8 +57,8 @@ type ArchiveClassCommand struct {
 
 type classStore interface {
 	Get(context.Context, model.ClassID) (*model.Class, error)
-	ListByProgrammeLevel(context.Context, model.ProgrammeLevelID) ([]*model.Class, error)
-	SearchByAcademicUnit(context.Context, model.AcademicUnitID, string, int) ([]*model.Class, error)
+	ListByProgrammeLevel(context.Context, model.ProgrammeLevelID, store.AcademicNameListOptions) ([]*model.Class, error)
+	SearchByAcademicUnit(context.Context, model.AcademicUnitID, store.AcademicNameListOptions) ([]*model.Class, error)
 	GetAcademicUnitID(context.Context, model.ClassID) (model.AcademicUnitID, error)
 	Create(context.Context, *store.ClassCreation) (*model.Class, error)
 	Update(context.Context, *store.ClassUpdate) (*model.Class, error)
@@ -91,42 +92,48 @@ func (s *classService) GetClass(ctx context.Context, invocation Invocation, quer
 	return class, nil
 }
 
-func (s *classService) ListClasses(ctx context.Context, invocation Invocation, query ListClassesQuery) ([]*model.Class, error) {
+func (s *classService) ListClasses(ctx context.Context, invocation Invocation, query ListClassesQuery) (Page[*model.Class], error) {
 	levelID := query.ProgrammeLevelID
 	if !levelID.IsValid() {
-		return nil, apperror.New("request.invalid").WithField("field", "programme_level_id")
+		return Page[*model.Class]{}, apperror.New("request.invalid").WithField("field", "programme_level_id")
+	}
+	limit, probe, err := resolvePageLimit(query.Limit, "limit")
+	if err != nil {
+		return Page[*model.Class]{}, err
 	}
 	resource := model.Resource{Type: model.ResourceProgrammeLevel, ID: levelID.String()}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionClassView, resource); err != nil {
-		return nil, err
+		return Page[*model.Class]{}, err
 	}
-	classes, err := s.store.ListByProgrammeLevel(ctx, levelID)
+	classes, err := s.store.ListByProgrammeLevel(ctx, levelID, store.AcademicNameListOptions{
+		AfterName: query.AfterName, AfterID: query.AfterID, Limit: probe,
+	})
 	if err != nil {
-		return nil, classStoreErrors.Translate(err)
+		return Page[*model.Class]{}, classStoreErrors.Translate(err)
 	}
-	if classes == nil {
-		classes = []*model.Class{}
-	}
-	return classes, nil
+	return newPage(classes, limit), nil
 }
 
-func (s *classService) SearchClasses(ctx context.Context, invocation Invocation, query SearchClassesQuery) ([]*model.Class, error) {
+func (s *classService) SearchClasses(ctx context.Context, invocation Invocation, query SearchClassesQuery) (Page[*model.Class], error) {
 	unitID := query.AcademicUnitID
 	if !unitID.IsValid() {
-		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id")
+		return Page[*model.Class]{}, apperror.New("request.invalid").WithField("field", "academic_unit_id")
+	}
+	limit, probe, err := resolvePageLimit(query.Limit, "limit")
+	if err != nil {
+		return Page[*model.Class]{}, err
 	}
 	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID.String()}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionClassView, resource); err != nil {
-		return nil, err
+		return Page[*model.Class]{}, err
 	}
-	classes, err := s.store.SearchByAcademicUnit(ctx, unitID, strings.TrimSpace(query.Query), normalizeAdministrationLimit(query.Limit))
+	classes, err := s.store.SearchByAcademicUnit(ctx, unitID, store.AcademicNameListOptions{
+		Term: strings.TrimSpace(query.Query), AfterName: query.AfterName, AfterID: query.AfterID, Limit: probe,
+	})
 	if err != nil {
-		return nil, classStoreErrors.Translate(err)
+		return Page[*model.Class]{}, classStoreErrors.Translate(err)
 	}
-	if classes == nil {
-		classes = []*model.Class{}
-	}
-	return classes, nil
+	return newPage(classes, limit), nil
 }
 
 func (s *classService) CreateClass(ctx context.Context, invocation Invocation, command CreateClassCommand) (*model.Class, error) {

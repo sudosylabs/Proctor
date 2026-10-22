@@ -15,6 +15,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 type academicUnitAuthorizerFunc func(
@@ -99,7 +100,7 @@ func (s *academicUnitReadStore) Get(context.Context, model.AcademicUnitID) (*mod
 	s.getCalls++
 	return s.unit, s.err
 }
-func (s *academicUnitReadStore) ListChildren(_ context.Context, _ model.InstitutionID, parentID model.AcademicUnitID) ([]*model.AcademicUnit, error) {
+func (s *academicUnitReadStore) ListChildren(_ context.Context, _ model.InstitutionID, parentID model.AcademicUnitID, _ store.AcademicNameListOptions) ([]*model.AcademicUnit, error) {
 	s.listCalls++
 	s.lastParentID = parentID.String()
 	return s.children, s.err
@@ -109,9 +110,9 @@ func (s *academicUnitReadStore) ListAncestors(
 ) ([]*model.AcademicUnit, error) {
 	panic("unexpected ListAncestors")
 }
-func (s *academicUnitReadStore) Search(_ context.Context, _ model.InstitutionID, query string, limit int) ([]*model.AcademicUnit, error) {
+func (s *academicUnitReadStore) Search(_ context.Context, _ model.InstitutionID, options store.AcademicNameListOptions) ([]*model.AcademicUnit, error) {
 	s.searchCalls++
-	s.lastQuery, s.lastLimit = query, limit
+	s.lastQuery, s.lastLimit = options.Term, options.Limit
 	return s.searchResults, s.err
 }
 func (s *academicUnitReadStore) Update(
@@ -192,8 +193,8 @@ func TestAcademicUnitRootListUsesInstitutionScopedAcademicUnitViewAndReturnsEmpt
 	})
 	got, err := service.ListAcademicUnits(context.Background(), Invocation{}, ListAcademicUnitsQuery{})
 	require.NoError(t, err)
-	require.NotNil(t, got, "List()")
-	require.Empty(t, got, "List()")
+	require.NotNil(t, got.Items, "List()")
+	require.Empty(t, got.Items, "List()")
 	require.Equal(t, model.ActionAcademicUnitView, gotAction, "authorization")
 	require.Equal(t, model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, gotResource, "authorization")
 }
@@ -215,12 +216,12 @@ func TestAcademicUnitSearchNormalizesInput(t *testing.T) {
 	})
 	got, err := service.SearchAcademicUnits(
 		context.Background(), Invocation{},
-		SearchAcademicUnitsQuery{Query: "  computing  ", Limit: 0},
+		SearchAcademicUnitsQuery{Query: "  computing  "},
 	)
 	require.NoError(t, err)
 	require.NotNil(t, got, "Search()")
 	require.Equal(t, "computing", units.lastQuery, "Search()")
-	require.Equal(t, defaultAdministrationListLimit, units.lastLimit, "Search()")
+	require.Equal(t, DefaultPageLimit+1, units.lastLimit, "Search() probes one row past the default page")
 }
 
 func TestAcademicUnitRootListDenialDoesNotReadQueryStore(t *testing.T) {

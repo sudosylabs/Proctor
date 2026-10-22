@@ -211,11 +211,11 @@ func newFocusedResourceAPI(
 func (a *classHTTPApplication) GetClass(context.Context, app.Invocation, app.GetClassQuery) (*model.Class, error) {
 	return a.result, nil
 }
-func (a *classHTTPApplication) ListClasses(context.Context, app.Invocation, app.ListClassesQuery) ([]*model.Class, error) {
-	return a.list, nil
+func (a *classHTTPApplication) ListClasses(context.Context, app.Invocation, app.ListClassesQuery) (app.Page[*model.Class], error) {
+	return app.Page[*model.Class]{Items: a.list}, nil
 }
-func (a *classHTTPApplication) SearchClasses(context.Context, app.Invocation, app.SearchClassesQuery) ([]*model.Class, error) {
-	return a.list, a.searchErr
+func (a *classHTTPApplication) SearchClasses(context.Context, app.Invocation, app.SearchClassesQuery) (app.Page[*model.Class], error) {
+	return app.Page[*model.Class]{Items: a.list}, a.searchErr
 }
 
 func TestClassSearchMapsMissingAcademicUnit(t *testing.T) {

@@ -200,10 +200,10 @@ func (s SQLAcademicPeriodStore) GetByOwnerName(
 func (s SQLAcademicPeriodStore) ListVisible(
 	ctx context.Context,
 	visibility store.AcademicPeriodVisibilityScope,
-	term string,
-	limit int,
+	options store.AcademicPeriodListOptions,
 ) ([]*model.AcademicPeriod, error) {
-	if !visibility.InstitutionID.IsValid() || limit < 1 || limit > 200 ||
+	if !visibility.InstitutionID.IsValid() || options.Limit < 1 || options.Limit > maximumAcademicPageProbe ||
+		options.AfterID.IsZero() != options.AfterStartAt.IsZero() || (!options.AfterID.IsZero() && !options.AfterID.IsValid()) ||
 		len(visibility.AcademicUnitRootIDs) > 256 || !validVisibilityIDs(visibility.AcademicUnitRootIDs) {
 		return nil, store.NewErrInvalidInput("academic_period", "visibility", visibility)
 	}
@@ -231,11 +231,15 @@ func (s SQLAcademicPeriodStore) ListVisible(
 	} else {
 		query = query.Where("FALSE")
 	}
-	if term = strings.TrimSpace(term); term != "" {
+	if term := strings.TrimSpace(options.Term); term != "" {
 		pattern := directorySearchPattern(term)
 		query = query.Where("(academic_periods.name ILIKE ? ESCAPE '!' OR academic_periods.display_name ILIKE ? ESCAPE '!')", pattern, pattern)
 	}
-	query = query.OrderBy("academic_periods.start_at", "academic_periods.name", "academic_periods.id").Limit(uint64(limit))
+	if !options.AfterID.IsZero() {
+		query = query.Where("(academic_periods.start_at, academic_periods.name, academic_periods.id) > (?, ?, ?)",
+			model.TimeUTC(options.AfterStartAt), options.AfterName, options.AfterID)
+	}
+	query = query.OrderBy("academic_periods.start_at", "academic_periods.name", "academic_periods.id").Limit(uint64(options.Limit))
 	rows := []academicPeriodRow{}
 	if err := s.GetMaster().SelectBuilder(ctx, &rows, query); err != nil {
 		return nil, fmt.Errorf("list visible academic periods: %w", err)

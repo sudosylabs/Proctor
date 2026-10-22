@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -35,7 +36,7 @@ type ExamResourceApplication interface {
 
 type examResourceHTTPModule struct{ application ExamResourceApplication }
 type examResourceUploadMetadata struct {
-	ExpectedDraftRevision int64  `json:"expected_draft_revision"`
+	ExpectedDraftRevision int64  `json:"expected_revision"`
 	DisplayName           string `json:"display_name"`
 	DescriptionMarkdown   string `json:"description_markdown"`
 	MediaType             string `json:"media_type"`
@@ -43,22 +44,22 @@ type examResourceUploadMetadata struct {
 	SHA256                string `json:"sha256"`
 }
 type examResourceContentReplacementMetadata struct {
-	ExpectedDraftRevision int64  `json:"expected_draft_revision"`
+	ExpectedDraftRevision int64  `json:"expected_revision"`
 	MediaType             string `json:"media_type"`
 	Size                  *int64 `json:"size"`
 	SHA256                string `json:"sha256"`
 }
 type editExamResourceMetadataRequest struct {
-	ExpectedDraftRevision int64   `json:"expected_draft_revision"`
+	ExpectedDraftRevision int64   `json:"expected_revision"`
 	DisplayName           *string `json:"display_name"`
 	DescriptionMarkdown   *string `json:"description_markdown"`
 }
 type reorderExamResourcesRequest struct {
-	ExpectedDraftRevision int64    `json:"expected_draft_revision"`
+	ExpectedDraftRevision int64    `json:"expected_revision"`
 	ResourceIDs           []string `json:"resource_ids"`
 }
 type removeExamResourceRequest struct {
-	ExpectedDraftRevision int64 `json:"expected_draft_revision"`
+	ExpectedDraftRevision int64 `json:"expected_revision"`
 }
 type examResourceResponse struct {
 	ID                  string `json:"id"`
@@ -71,9 +72,6 @@ type examResourceResponse struct {
 	SHA256              string `json:"sha256"`
 	UpdatedAt           string `json:"updated_at"`
 	DraftRevision       int64  `json:"draft_revision"`
-}
-type examResourceListResponse struct {
-	Items []examResourceResponse `json:"items"`
 }
 
 func examResourceHTTPResource(application ExamResourceApplication) resource {
@@ -107,9 +105,14 @@ func (m examResourceHTTPModule) list(request operationRequest) (operationResult,
 	if err != nil {
 		return operationResult{}, err
 	}
-	response := examResourceListResponse{Items: make([]examResourceResponse, 0, len(items))}
-	for i := range items {
-		response.Items = append(response.Items, examResourceResponseFromRecord(items[i]))
+	// The Exam Capacity Policy bounds the Draft's Resources, so the complete
+	// ordered set is paged by position.
+	response, err := boundedListResult(request, "Exam Resource", items,
+		func(item app.ExamResourceRecord) boundedPageKey {
+			return boundedPageKey{Name: fmt.Sprintf("%08d", item.Resource.Position), ID: item.Resource.ID.String()}
+		}, examResourceResponseFromRecord)
+	if err != nil {
+		return operationResult{}, err
 	}
 	return jsonResult(http.StatusOK, response), nil
 }
@@ -190,9 +193,11 @@ func (m examResourceHTTPModule) reorder(request operationRequest) (operationResu
 	if err != nil {
 		return operationResult{}, err
 	}
-	response := examResourceListResponse{Items: make([]examResourceResponse, 0, len(items))}
-	for i := range items {
-		response.Items = append(response.Items, examResourceResponseFromRecord(items[i]))
+	// The new order is the complete Resource set, presented in the
+	// collection envelope without a continuation.
+	response, err := newListResponse(items, false, examResourceResponseFromRecord, nil)
+	if err != nil {
+		return operationResult{}, err
 	}
 	return jsonResult(http.StatusOK, response), nil
 }

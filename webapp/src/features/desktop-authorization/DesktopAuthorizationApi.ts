@@ -57,7 +57,7 @@ export type DesktopApprovalResult =
   | { kind: "unavailable" };
 
 export type DesktopCancellationResult =
-  | { kind: "cancelled" }
+  | { kind: "canceled" }
   | { kind: "invalid" }
   | { kind: "locked" }
   | { kind: "unavailable" };
@@ -223,7 +223,7 @@ export async function cancelDesktopAuthorization(
       { body: { state } },
     );
     return response.status === 204
-      ? { kind: "cancelled" }
+      ? { kind: "canceled" }
       : desktopFailure(error);
   } catch {
     return { kind: "unavailable" };

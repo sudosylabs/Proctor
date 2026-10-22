@@ -81,8 +81,8 @@ func TestNativeDeliverySummaryStrictBodyAndRetryDelay(t *testing.T) {
 	api := newFocusedResourceAPI(t, logger, f, nativeDeliveryResource(f))
 	path := "/api/v1/exam-attempts/" + f.attempt.ID.String() + "/security-streams/" + model.NewID() + "/summary"
 	for _, body := range []string{
-		`{"summary_sequence":1,"unretained_record_count":0,"count_complete":false,"first_unretained_at":null,"last_unretained_at":null,"raw_content":"forbidden"}`,
-		`{"summary_sequence":1,"unretained_record_count":0,"count_complete":false}`,
+		`{"summary_sequence":1,"unretained_record_count":0,"count_complete":false,"raw_content":"forbidden"}`,
+		`{"summary_sequence":1,"unretained_record_count":0,"count_complete":false,"first_unretained_at":null}`,
 	} {
 		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
 		request.Header.Set("Authorization", "Bearer credential")
@@ -93,7 +93,7 @@ func TestNativeDeliverySummaryStrictBodyAndRetryDelay(t *testing.T) {
 		require.Equal(t, 400, response.Code, "invalid body reached application: %d %s", response.Code, response.Body.String())
 		require.Equal(t, 0, f.calls, "invalid body reached application: %d %s", response.Code, response.Body.String())
 	}
-	request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"summary_sequence":1,"unretained_record_count":0,"count_complete":false,"first_unretained_at":null,"last_unretained_at":null}`))
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, strings.NewReader(`{"summary_sequence":1,"unretained_record_count":0,"count_complete":false}`))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Idempotency-Key", "summary-once")

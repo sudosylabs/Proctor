@@ -33,29 +33,29 @@ type examStarterWorkspaceHTTPModule struct {
 }
 
 type createExamStarterWorkspaceDirectoryRequest struct {
-	ExpectedDraftRevision int64  `json:"expected_draft_revision"`
+	ExpectedDraftRevision int64  `json:"expected_revision"`
 	Path                  string `json:"path"`
 }
 type examStarterWorkspaceFileUploadMetadata struct {
-	ExpectedDraftRevision int64  `json:"expected_draft_revision"`
+	ExpectedDraftRevision int64  `json:"expected_revision"`
 	Path                  string `json:"path"`
 	MediaType             string `json:"media_type"`
 	Size                  *int64 `json:"size"`
 	SHA256                string `json:"sha256"`
 }
 type examStarterWorkspaceFileReplacementMetadata struct {
-	ExpectedDraftRevision  int64  `json:"expected_draft_revision"`
+	ExpectedDraftRevision  int64  `json:"expected_revision"`
 	ExpectedContentVersion string `json:"expected_content_version"`
 	MediaType              string `json:"media_type"`
 	Size                   *int64 `json:"size"`
 	SHA256                 string `json:"sha256"`
 }
 type moveExamStarterWorkspaceEntryRequest struct {
-	ExpectedDraftRevision int64  `json:"expected_draft_revision"`
+	ExpectedDraftRevision int64  `json:"expected_revision"`
 	Path                  string `json:"path"`
 }
 type removeExamStarterWorkspaceEntryRequest struct {
-	ExpectedDraftRevision int64 `json:"expected_draft_revision"`
+	ExpectedDraftRevision int64 `json:"expected_revision"`
 	Recursive             bool  `json:"recursive,omitempty"`
 }
 type examStarterWorkspaceEntryResponse struct {
@@ -80,9 +80,6 @@ type examStarterWorkspaceListItemResponse struct {
 	SHA256         string `json:"sha256,omitempty"`
 	CreatedAt      string `json:"created_at"`
 	UpdatedAt      string `json:"updated_at"`
-}
-type examStarterWorkspaceListResponse struct {
-	Items []examStarterWorkspaceListItemResponse `json:"items"`
 }
 
 func examStarterWorkspaceHTTPResource(application ExamStarterWorkspaceApplication) resource {
@@ -130,9 +127,14 @@ func (m examStarterWorkspaceHTTPModule) list(request operationRequest) (operatio
 	if err != nil {
 		return operationResult{}, err
 	}
-	response := examStarterWorkspaceListResponse{Items: make([]examStarterWorkspaceListItemResponse, 0, len(items))}
-	for index := range items {
-		response.Items = append(response.Items, examStarterWorkspaceListItem(items[index]))
+	// The Exam Capacity Policy bounds the Starter Workspace, so the complete
+	// set is paged in canonical path order.
+	response, err := boundedListResult(request, "Starter Workspace", items,
+		func(item app.ExamStarterWorkspaceItem) boundedPageKey {
+			return boundedPageKey{Name: item.Entry.Path, ID: item.Entry.ID.String()}
+		}, examStarterWorkspaceListItem)
+	if err != nil {
+		return operationResult{}, err
 	}
 	return jsonResult(http.StatusOK, response), nil
 }

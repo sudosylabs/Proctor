@@ -71,36 +71,17 @@ func (m classMemberResourceModule) list(request operationRequest) (operationResu
 	if err != nil {
 		return operationResult{}, err
 	}
-	if usesMembershipPaging(request.request) {
-		scope := model.Resource{Type: model.ResourceClass, ID: classID.String()}
-		query, after, err := membershipPageQuery(request.request, scope)
-		if err != nil {
-			return operationResult{}, err
-		}
-		page, err := m.members.ListClassMembersPage(request.context, request.invocation(), app.ListClassMembersPageQuery{ClassID: classID, MembershipPageQuery: query, AfterUserID: model.UserID(after.AfterUserID), AfterID: model.ClassMemberID(after.AfterID)})
-		if err != nil {
-			return operationResult{}, err
-		}
-		var next *membershipPageCursor
-		if page.HasMore && len(page.Members) > 0 {
-			last := page.Members[len(page.Members)-1]
-			next = &membershipPageCursor{ScopeType: scope.Type, ScopeID: scope.ID, ActiveAt: &page.ActiveAt, AfterUserID: last.UserID.String(), AfterID: last.ID.String()}
-		}
-		headers, err := membershipPageHeaders(request.request, query.Limit, next)
-		if err != nil {
-			return operationResult{}, err
-		}
-		return jsonResult(http.StatusOK, classMemberResponses(page.Members)).withHeaders(headers), nil
-	}
-	activeAt, err := parseActiveAt(request.request)
+	scope := model.Resource{Type: model.ResourceClass, ID: classID.String()}
+	query, after, err := membershipPageQuery(request.request, scope)
 	if err != nil {
 		return operationResult{}, err
 	}
-	members, err := m.members.ListClassMembers(request.context, request.invocation(), app.ListClassMembersQuery{ClassID: classID, ActiveAt: activeAt})
+	page, err := m.members.ListClassMembersPage(request.context, request.invocation(), app.ListClassMembersPageQuery{ClassID: classID, MembershipPageQuery: query, AfterUserID: model.UserID(after.AfterUserID), AfterID: model.ClassMemberID(after.AfterID)})
 	if err != nil {
 		return operationResult{}, err
 	}
-	return jsonResult(http.StatusOK, classMemberResponses(members)), nil
+	return membershipListResult(scope, page.ActiveAt, page.Members, page.HasMore, classMemberResponseFromModel,
+		func(member *model.ClassMember) (string, string) { return member.UserID.String(), member.ID.String() })
 }
 
 func (m classMemberResourceModule) enroll(request operationRequest) (operationResult, error) {
@@ -154,14 +135,6 @@ func classMemberResponseFromModel(member *model.ClassMember) classMemberResponse
 		StartAt:          model.FormatRFC3339(member.StartsAt),
 		EndAt:            member.EndsAt.FormatRFC3339(),
 	}
-}
-
-func classMemberResponses(members []*model.ClassMember) []classMemberResponse {
-	result := make([]classMemberResponse, 0, len(members))
-	for _, member := range members {
-		result = append(result, classMemberResponseFromModel(member))
-	}
-	return result
 }
 
 func classEnrollmentResponseFromModel(enrollment *model.ClassEnrollment) classEnrollmentResponse {

@@ -33,7 +33,7 @@ func TestDeliveryBudgetOpenAPIAgreesWithRuntime(t *testing.T) {
 }
 
 func deliveryStatusNullablePaths(prefix string, browser bool) []string {
-	fields := []string{"budget_scope", "summary_only_reason", "summary", "summary.first_unretained_at", "summary.last_unretained_at", "closure.closed_at", "closure.close_reason", "closure.known_at_close", "closure.final_sequence", "closure.final_declaration_id", "closure.final_boundary_origin", "closure.upload_expires_at"}
+	fields := []string{"budget_scope", "summary_only_reason", "summary"}
 	if browser {
 		fields = append(fields, "predecessor_source_session_id", "runtime_reset_reason")
 	}

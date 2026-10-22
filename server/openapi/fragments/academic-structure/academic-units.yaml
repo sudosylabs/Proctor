@@ -49,15 +49,8 @@ paths:
           description: Literal case-insensitive substring matched against name and display name.
           schema:
             type: string
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 200
-            default: 100
-          description: Maximum number of Academic Units to return, from 1 through 200.
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
       responses:
         "200":
           $ref: '#/components/responses/AcademicUnitListOK'
@@ -230,8 +223,8 @@ paths:
         "503":
           $ref: '#/components/responses/ServiceUnavailable'
     delete:
-      parameters:
-        - $ref: '#/components/parameters/AcademicExpectedRevision'
+      requestBody:
+        $ref: '#/components/requestBodies/ArchiveAcademic'
       operationId: archiveAcademicUnit
       summary: Archive an Academic Unit
       tags:

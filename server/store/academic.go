@@ -9,6 +9,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -63,6 +64,29 @@ type AcademicUnitArchive struct {
 	AuditAt          int64
 }
 
+// AcademicNameListOptions selects one page of an academic listing ordered by
+// name then identity. Term matches the name or display name as a literal,
+// case-insensitive substring; empty matches every row. AfterName and AfterID
+// are the exclusive continuation, both set or both empty. Limit is 1..201 so
+// the caller can probe one row past a full page.
+type AcademicNameListOptions struct {
+	Term      string
+	AfterName string
+	AfterID   string
+	Limit     int
+}
+
+// AcademicPeriodListOptions selects one page of Academic Periods ordered by
+// start, name, then identity, with the same Term, continuation, and Limit
+// rules as AcademicNameListOptions.
+type AcademicPeriodListOptions struct {
+	Term         string
+	AfterStartAt time.Time
+	AfterName    string
+	AfterID      model.AcademicPeriodID
+	Limit        int
+}
+
 // AcademicUnitStore persists nodes in the institution's academic-unit tree.
 type AcademicUnitStore interface {
 	Create(context.Context, *AcademicUnitCreation) (*model.AcademicUnit, error)
@@ -71,9 +95,9 @@ type AcademicUnitStore interface {
 	Archive(context.Context, *AcademicUnitArchive) (*model.AcademicUnit, error)
 	Get(context.Context, model.AcademicUnitID) (*model.AcademicUnit, error)
 	GetByName(context.Context, model.InstitutionID, string) (*model.AcademicUnit, error)
-	ListChildren(context.Context, model.InstitutionID, model.AcademicUnitID) ([]*model.AcademicUnit, error)
+	ListChildren(context.Context, model.InstitutionID, model.AcademicUnitID, AcademicNameListOptions) ([]*model.AcademicUnit, error)
 	ListAncestors(context.Context, model.AcademicUnitID) ([]*model.AcademicUnit, error)
-	Search(context.Context, model.InstitutionID, string, int) ([]*model.AcademicUnit, error)
+	Search(context.Context, model.InstitutionID, AcademicNameListOptions) ([]*model.AcademicUnit, error)
 }
 
 // ProgrammeStore persists courses of study owned by academic units.
@@ -105,7 +129,7 @@ type ProgrammeStore interface {
 	Get(context.Context, model.ProgrammeID) (*model.Programme, error)
 	GetByName(context.Context, model.AcademicUnitID, string) (*model.Programme, error)
 	ListByAcademicUnit(context.Context, model.AcademicUnitID) ([]*model.Programme, error)
-	SearchByAcademicUnit(context.Context, model.AcademicUnitID, string, int) ([]*model.Programme, error)
+	SearchByAcademicUnit(context.Context, model.AcademicUnitID, AcademicNameListOptions) ([]*model.Programme, error)
 	// SeedUpdate is an unaudited fixture write; production code never calls it.
 	SeedUpdate(context.Context, *model.Programme) (*model.Programme, error)
 }
@@ -139,7 +163,7 @@ type ProgrammeLevelStore interface {
 	Get(context.Context, model.ProgrammeLevelID) (*model.ProgrammeLevel, error)
 	GetByName(context.Context, model.ProgrammeID, string) (*model.ProgrammeLevel, error)
 	ListByProgramme(context.Context, model.ProgrammeID) ([]*model.ProgrammeLevel, error)
-	SearchByProgramme(context.Context, model.ProgrammeID, string, int) ([]*model.ProgrammeLevel, error)
+	SearchByProgramme(context.Context, model.ProgrammeID, AcademicNameListOptions) ([]*model.ProgrammeLevel, error)
 	// SeedUpdate is an unaudited fixture write; production code never calls it.
 	SeedUpdate(context.Context, *model.ProgrammeLevel) (*model.ProgrammeLevel, error)
 }
@@ -182,7 +206,7 @@ type AcademicPeriodStore interface {
 	Archive(context.Context, *AcademicPeriodArchive) (*model.AcademicPeriod, error)
 	Get(context.Context, model.AcademicPeriodID) (*model.AcademicPeriod, error)
 	GetByOwnerName(context.Context, model.Resource, string) (*model.AcademicPeriod, error)
-	ListVisible(context.Context, AcademicPeriodVisibilityScope, string, int) ([]*model.AcademicPeriod, error)
+	ListVisible(context.Context, AcademicPeriodVisibilityScope, AcademicPeriodListOptions) ([]*model.AcademicPeriod, error)
 }
 
 // ClassStore persists concrete programme-level rosters for academic periods.
@@ -215,8 +239,8 @@ type ClassStore interface {
 	Archive(context.Context, *ClassArchive) (*model.Class, error)
 	Get(context.Context, model.ClassID) (*model.Class, error)
 	GetByName(context.Context, model.ProgrammeLevelID, model.AcademicPeriodID, string) (*model.Class, error)
-	ListByProgrammeLevel(context.Context, model.ProgrammeLevelID) ([]*model.Class, error)
+	ListByProgrammeLevel(context.Context, model.ProgrammeLevelID, AcademicNameListOptions) ([]*model.Class, error)
 	ListByAcademicPeriod(context.Context, model.AcademicPeriodID) ([]*model.Class, error)
-	SearchByAcademicUnit(context.Context, model.AcademicUnitID, string, int) ([]*model.Class, error)
+	SearchByAcademicUnit(context.Context, model.AcademicUnitID, AcademicNameListOptions) ([]*model.Class, error)
 	GetAcademicUnitID(context.Context, model.ClassID) (model.AcademicUnitID, error)
 }

@@ -30,7 +30,7 @@ func TestExamRevisionHTTPPublishUsesStrictIdempotentCommandAndSafeSummary(t *tes
 	fake := newExamRevisionHTTPFake()
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examRevisionResource(fake))
 
-	request := newJSONRequest(http.MethodPost, "/api/v1/exams/"+fake.summary.ExamID.String()+"/revisions", bytes.NewReader([]byte(`{"expected_draft_revision":4}`)))
+	request := newJSONRequest(http.MethodPost, "/api/v1/exams/"+fake.summary.ExamID.String()+"/revisions", bytes.NewReader([]byte(`{"expected_revision":4}`)))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Idempotency-Key", "publish-once")
 	response := httptest.NewRecorder()
@@ -129,9 +129,9 @@ func TestExamRevisionHTTPCursorAndPublishBodyAreStrict(t *testing.T) {
 	fake := newExamRevisionHTTPFake()
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examRevisionResource(fake))
 	for name, body := range map[string]string{
-		"unknown field":    `{"expected_draft_revision":4,"unexpected":true}`,
+		"unknown field":    `{"expected_revision":4,"unexpected":true}`,
 		"missing revision": `{}`,
-		"trailing JSON":    `{"expected_draft_revision":4}{}`,
+		"trailing JSON":    `{"expected_revision":4}{}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			request := newJSONRequest(http.MethodPost, "/api/v1/exams/"+fake.summary.ExamID.String()+"/revisions", bytes.NewBufferString(body))

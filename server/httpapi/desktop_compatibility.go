@@ -170,7 +170,7 @@ func requiredDesktopCompatibilityPolicySettings(
 			"request.invalid",
 		).WithField("field", "availability")
 	}
-	if !body.RetryAt.IsSet() {
+	if body.RetryAt.IsNull() {
 		return model.DesktopCompatibilityPolicySettings{}, apperror.New(
 			"request.invalid",
 		).WithField("field", "retry_at")

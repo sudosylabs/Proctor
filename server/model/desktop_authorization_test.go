@@ -142,13 +142,13 @@ func TestBrowserAuthenticationTransactionTerminalStates(t *testing.T) {
 	require.Empty(t, transaction.CodeHash)
 	require.True(t, transaction.ExchangedAt.Valid)
 
-	cancelled := pendingDesktopAuthorizationTransaction(at)
-	prepareCancelledTransactionFixture(cancelled, at)
-	require.NoError(t, cancelled.Validate())
-	require.Empty(t, cancelled.HandleHash)
-	require.Empty(t, cancelled.BrowserProofHash)
-	require.Empty(t, cancelled.StateHash)
-	require.True(t, cancelled.CancelledAt.Valid)
+	canceled := pendingDesktopAuthorizationTransaction(at)
+	prepareCanceledTransactionFixture(canceled, at)
+	require.NoError(t, canceled.Validate())
+	require.Empty(t, canceled.HandleHash)
+	require.Empty(t, canceled.BrowserProofHash)
+	require.Empty(t, canceled.StateHash)
+	require.True(t, canceled.CanceledAt.Valid)
 
 	denied := pendingDesktopAuthorizationTransaction(at)
 	prepareDeniedTransactionFixture(denied, at)
@@ -319,13 +319,13 @@ func prepareExchangedTransactionFixture(transaction *BrowserAuthenticationTransa
 	transaction.ExchangedAt = OptionalTimeFrom(at)
 }
 
-func prepareCancelledTransactionFixture(transaction *BrowserAuthenticationTransaction, at time.Time) {
+func prepareCanceledTransactionFixture(transaction *BrowserAuthenticationTransaction, at time.Time) {
 	transaction.UpdatedAt = at
-	transaction.State = BrowserAuthenticationStateCancelled
+	transaction.State = BrowserAuthenticationStateCanceled
 	transaction.HandleHash, transaction.BrowserProofHash, transaction.StateHash = "", "", ""
 	transaction.CallbackURL, transaction.CodeChallenge = "", ""
 	clearDesktopAuthorizationKeyFixture(transaction)
-	transaction.CancelledAt = OptionalTimeFrom(at)
+	transaction.CanceledAt = OptionalTimeFrom(at)
 }
 
 func prepareDeniedTransactionFixture(transaction *BrowserAuthenticationTransaction, at time.Time) {

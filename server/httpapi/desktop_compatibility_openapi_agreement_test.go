@@ -71,8 +71,9 @@ func TestDesktopCompatibilityOpenAPIAgreesWithRuntime(t *testing.T) {
 			{
 				Name:     "DesktopCompatibilityPolicyRequest",
 				DTO:      reflect.TypeOf(desktopCompatibilityPolicyRequest{}),
-				Required: []string{"expected_revision", "minimum_desktop_release", "revoked_desktop_build_ids", "administrator_message", "availability", "retry_at"},
+				Required: []string{"expected_revision", "minimum_desktop_release", "revoked_desktop_build_ids", "administrator_message", "availability"},
 				NonNullable: []string{
+					"retry_at",
 					"minimum_desktop_release",
 					"revoked_desktop_build_ids",
 					"administrator_message",

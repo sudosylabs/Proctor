@@ -41,13 +41,13 @@ func (s *academicUnitMutationStore) Get(context.Context, model.AcademicUnitID) (
 	*s.events = append(*s.events, "get")
 	return s.current, nil
 }
-func (*academicUnitMutationStore) ListChildren(context.Context, model.InstitutionID, model.AcademicUnitID) ([]*model.AcademicUnit, error) {
+func (*academicUnitMutationStore) ListChildren(context.Context, model.InstitutionID, model.AcademicUnitID, store.AcademicNameListOptions) ([]*model.AcademicUnit, error) {
 	panic("unexpected ListChildren")
 }
 func (*academicUnitMutationStore) ListAncestors(context.Context, string) ([]*model.AcademicUnit, error) {
 	panic("unexpected ListAncestors")
 }
-func (*academicUnitMutationStore) Search(context.Context, model.InstitutionID, string, int) ([]*model.AcademicUnit, error) {
+func (*academicUnitMutationStore) Search(context.Context, model.InstitutionID, store.AcademicNameListOptions) ([]*model.AcademicUnit, error) {
 	panic("unexpected Search")
 }
 func (s *academicUnitMutationStore) Update(

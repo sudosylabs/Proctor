@@ -86,7 +86,7 @@ components:
           schema:
             $ref: '#/components/schemas/ApplyExamSittingCorrectionRequest'
           example:
-            expected_sitting_revision: 8
+            expected_revision: 8
             expected_current_revision_id: ybndrfg8ejkmcpqxot1uwisza3
             instructions_markdown: Read the corrected resource before continuing.
             candidate_summary: The formula sheet for Question 3 was corrected.
@@ -137,7 +137,7 @@ components:
       type: object
       additionalProperties: false
       required:
-        - expected_sitting_revision
+        - expected_revision
         - expected_current_revision_id
         - candidate_summary
         - affected_capabilities
@@ -145,7 +145,7 @@ components:
         - reason
         - resources
       properties:
-        expected_sitting_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1

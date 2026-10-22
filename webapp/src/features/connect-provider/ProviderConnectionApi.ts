@@ -22,33 +22,59 @@ export type BeginProviderConnectionResult =
 
 export async function requestProviderConnectionContext(): Promise<ProviderConnectionContextResult> {
   try {
-    const [userResult, providerResult] = await Promise.all([
+    const [userResult, providers] = await Promise.all([
       apiClient.GET("/api/v1/users/me"),
-      apiClient.GET("/api/v1/auth/providers"),
+      requestAllProviders(),
     ]);
     if (userResult.response.status === 401) {
       return { kind: "no_session" };
     }
     if (
       userResult.response.status !== 200 ||
-      providerResult.response.status !== 200 ||
+      providers === undefined ||
       !isRecord(userResult.data) ||
-      typeof userResult.data.username !== "string" ||
-      !Array.isArray(providerResult.data) ||
-      !providerResult.data.every(isProvider)
+      typeof userResult.data.username !== "string"
     ) {
       return { kind: "unavailable" };
     }
     return {
       kind: "ready",
       context: {
-        providers: providerResult.data,
+        providers,
         username: userResult.data.username,
       },
     };
   } catch {
     return { kind: "unavailable" };
   }
+}
+
+// The provider collection is paged like every collection; the configured set
+// is small, so the connection page reads every page up to a fixed bound.
+const maximumProviderPages = 10;
+
+async function requestAllProviders(): Promise<Provider[] | undefined> {
+  const providers: Provider[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < maximumProviderPages; page += 1) {
+    const result = await apiClient.GET("/api/v1/auth/providers", {
+      params: { query: cursor === undefined ? {} : { cursor } },
+    });
+    if (
+      result.response.status !== 200 ||
+      !isRecord(result.data) ||
+      !Array.isArray(result.data.items) ||
+      !result.data.items.every(isProvider)
+    ) {
+      return undefined;
+    }
+    providers.push(...result.data.items);
+    if (typeof result.data.next_cursor !== "string") {
+      return providers;
+    }
+    cursor = result.data.next_cursor;
+  }
+  return undefined;
 }
 
 export async function beginProviderConnection(

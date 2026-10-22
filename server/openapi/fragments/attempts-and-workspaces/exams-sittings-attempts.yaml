@@ -364,7 +364,7 @@ components:
           schema:
             $ref: '#/components/schemas/SuspendExamAttemptRequest'
           example:
-            expected_attempt_revision: 3
+            expected_revision: 3
             reason: Candidate left the examination room without permission.
     ReallowExamAttempt:
       required: true
@@ -377,7 +377,7 @@ components:
             $ref: '#/components/schemas/ReallowExamAttemptRequest'
           example:
             suspension_id: ybndrfg8ejkmcpqxot1uwisza3
-            expected_attempt_revision: 4
+            expected_revision: 4
             reason: Candidate identity was reverified by the invigilator.
   responses:
     ExamAttemptSuspended:
@@ -651,7 +651,7 @@ components:
       type: object
       additionalProperties: false
       description: >-
-        One suspension episode. A policy episode links its Integrity Flag in flag_id; a manual episode (an
+        One suspension episode. A policy episode links its Integrity Flag in integrity_flag_id; a manual episode (an
         Exam Manager's kick) links no Flag and names its manager in suspended_by_user_id.
       required:
         - id
@@ -666,7 +666,7 @@ components:
           $ref: '#/components/schemas/ID'
         participation_id:
           $ref: '#/components/schemas/ID'
-        flag_id:
+        integrity_flag_id:
           $ref: '#/components/schemas/ID'
         generation:
           type: integer
@@ -751,12 +751,12 @@ components:
       additionalProperties: false
       required:
         - suspension_id
-        - expected_attempt_revision
+        - expected_revision
         - reason
       properties:
         suspension_id:
           $ref: '#/components/schemas/ID'
-        expected_attempt_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1
@@ -806,10 +806,10 @@ components:
       type: object
       additionalProperties: false
       required:
-        - expected_attempt_revision
+        - expected_revision
         - reason
       properties:
-        expected_attempt_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1

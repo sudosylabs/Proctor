@@ -24,7 +24,7 @@ type ExamRevisionApplication interface {
 }
 
 type publishExamRevisionRequest struct {
-	ExpectedDraftRevision int64 `json:"expected_draft_revision"`
+	ExpectedDraftRevision int64 `json:"expected_revision"`
 }
 
 type examRevisionResponse struct {

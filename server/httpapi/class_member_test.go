@@ -28,14 +28,8 @@ type classMemberHTTPApplication struct {
 	result        *model.ClassEnrollment
 	ended         *model.ClassMember
 	values        []*model.ClassMember
-	listQuery     app.ListClassMembersQuery
 	enrollCommand app.EnrollClassMemberCommand
 	endCommand    app.EndClassMemberCommand
-}
-
-func (a *classMemberHTTPApplication) ListClassMembers(_ context.Context, _ app.Invocation, query app.ListClassMembersQuery) ([]*model.ClassMember, error) {
-	a.listQuery = query
-	return a.values, nil
 }
 
 func (a *classMemberHTTPApplication) EnrollClassMember(_ context.Context, _ app.Invocation, command app.EnrollClassMemberCommand) (*model.ClassEnrollment, error) {
@@ -88,9 +82,11 @@ func TestClassMemberResourceForwardsHistoryAndEndsMembership(t *testing.T) {
 	list.Header.Set("Authorization", "Bearer credential")
 	listed := httptest.NewRecorder()
 	httpAPI.ServeHTTP(listed, list)
-	require.Equal(t, http.StatusOK, listed.Code, "list status/query = %d/%#v: %s", listed.Code, members.listQuery, listed.Body.String())
-	require.Equal(t, model.ClassID(classID), members.listQuery.ClassID, "list status/query = %d/%#v: %s", listed.Code, members.listQuery, listed.Body.String())
-	require.Equal(t, int64(0), members.listQuery.ActiveAt, "list status/query = %d/%#v: %s", listed.Code, members.listQuery, listed.Body.String())
+	require.Equal(t, http.StatusOK, listed.Code, "list status/query = %d/%#v: %s", listed.Code, members.pageQuery, listed.Body.String())
+	require.Equal(t, model.ClassID(classID), members.pageQuery.ClassID)
+	require.NotNil(t, members.pageQuery.History)
+	require.True(t, *members.pageQuery.History, "history listing")
+	require.JSONEq(t, `{"items":[]}`, listed.Body.String(), "empty collection envelope")
 
 	end := httptest.NewRequest(http.MethodDelete, "/api/v1/class-members/"+member.ID.String(), nil)
 	end.Header.Set("Authorization", "Bearer credential")
@@ -104,10 +100,10 @@ func TestClassMemberResourceForwardsHistoryAndEndsMembership(t *testing.T) {
 func TestClassMemberHistoryQueryIsForwarded(t *testing.T) {
 	t.Parallel()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/classes/class/members?history=true", nil)
-	recorder := httptest.NewRecorder()
-	activeAt, ok := queryActiveAt(recorder, request)
-	require.True(t, ok, "active at")
-	require.Equal(t, int64(0), activeAt, "active at")
+	query, _, err := membershipPageQuery(request, model.Resource{Type: model.ResourceClass, ID: model.NewID()})
+	require.NoError(t, err)
+	require.NotNil(t, query.History)
+	require.True(t, *query.History, "history")
 }
 
 func (a *classMemberHTTPApplication) ListClassMembersPage(_ context.Context, _ app.Invocation, query app.ListClassMembersPageQuery) (*app.ClassMemberPage, error) {

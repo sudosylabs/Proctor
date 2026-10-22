@@ -376,8 +376,8 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 	require.NoError(t, getErr)
 	require.Equal(t, model.AuditStatusAttempt, disabledExchangeAuditAfter.Status)
 
-	cancelled, cancelHandle, cancelProof, cancelState, _ := newDesktopAuthorizationTransaction(model.NowUTC(), institution.ID)
-	_, err = ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, cancelled)
+	canceled, cancelHandle, cancelProof, cancelState, _ := newDesktopAuthorizationTransaction(model.NowUTC(), institution.ID)
+	_, err = ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, canceled)
 	require.NoError(t, err)
 	cancelBinding := bindDesktopAuthorization(t, ctx, ss.BrowserAuthentication(), cancelHandle, cancelProof, cancelState)
 	err = ss.BrowserAuthentication().Cancel(ctx, &store.DesktopAuthorizationCancellation{BindingHash: model.HashToken(cancelBinding), StateHash: model.HashToken(cancelState)})

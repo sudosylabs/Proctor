@@ -207,7 +207,7 @@ components:
             $ref: '#/components/schemas/AddExamManagerRequest'
           example:
             user_id: ybndrfg8ejkmcpqxot1uwisza3
-            expected_exam_revision: 3
+            expected_revision: 3
     RemoveExamManager:
       required: true
       description: Supplies the last observed Exam aggregate revision required to revoke the path User's manager relationship.
@@ -216,7 +216,7 @@ components:
           schema:
             $ref: '#/components/schemas/RemoveExamManagerRequest'
           example:
-            expected_exam_revision: 4
+            expected_revision: 4
   responses:
     ExamManagerListOK:
       description: Bounded Exam Manager relationship collection
@@ -233,11 +233,11 @@ components:
       additionalProperties: false
       required:
         - user_id
-        - expected_exam_revision
+        - expected_revision
       properties:
         user_id:
           $ref: '#/components/schemas/ID'
-        expected_exam_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1
@@ -245,9 +245,9 @@ components:
       type: object
       additionalProperties: false
       required:
-        - expected_exam_revision
+        - expected_revision
       properties:
-        expected_exam_revision:
+        expected_revision:
           type: integer
           format: int64
           minimum: 1

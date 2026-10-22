@@ -61,11 +61,15 @@ func (m desktopRegistrationResourceModule) list(request operationRequest) (opera
 		return operationResult{}, err
 	}
 	principal, _ := Principal(request.context)
-	response := make([]desktopRegistrationResponse, 0, len(registrations))
-	for _, registration := range registrations {
-		response = append(response, desktopRegistrationResponseFromModel(
-			registration, principal.DesktopRegistrationID == registration.ID,
-		))
+	response, err := boundedListResult(request, "Desktop Registration", registrations,
+		func(registration *model.DesktopRegistration) boundedPageKey {
+			return boundedPageKey{At: registration.CreatedAt, ID: registration.ID.String()}
+		},
+		func(registration *model.DesktopRegistration) desktopRegistrationResponse {
+			return desktopRegistrationResponseFromModel(registration, principal.DesktopRegistrationID == registration.ID)
+		})
+	if err != nil {
+		return operationResult{}, err
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(privateNoStoreHeaders()), nil
 }

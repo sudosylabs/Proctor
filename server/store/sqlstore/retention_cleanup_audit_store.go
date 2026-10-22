@@ -117,7 +117,7 @@ func (s *SQLRetentionStore) ReconcileCleanupAuditExpiry(ctx context.Context, inp
 				if _, err = tx.Exec(ctx, `DELETE FROM retention_expiry_schedules WHERE record_kind='audit' AND record_id=?`, change.id); err != nil {
 					return nil, err
 				}
-				result.Cancelled++
+				result.Canceled++
 			}
 			if change.schedule {
 				if _, err = tx.Exec(ctx, `INSERT INTO retention_expiry_schedules(record_kind,record_id,policy_revision,control_revision,scheduled_at,expires_after) VALUES('audit',?,?,?,?,?)`, change.id, policy.Revision, control.Revision, at, at.Add(time.Duration(policy.DeletionGraceDays)*24*time.Hour)); err != nil {
@@ -132,7 +132,7 @@ func (s *SQLRetentionStore) ReconcileCleanupAuditExpiry(ctx context.Context, inp
 				result.Expired++
 			}
 		}
-		encoded, err := model.EncodeAuditData(map[string]any{"operation": "retention.expire_cleanup_history", "policy_revision": policy.Revision, "control_revision": control.Revision, "examined": result.Examined, "scheduled": result.Scheduled, "canceled": result.Cancelled, "expired": result.Expired})
+		encoded, err := model.EncodeAuditData(map[string]any{"operation": "retention.expire_cleanup_history", "policy_revision": policy.Revision, "control_revision": control.Revision, "examined": result.Examined, "scheduled": result.Scheduled, "canceled": result.Canceled, "expired": result.Expired})
 		if err != nil {
 			return nil, err
 		}

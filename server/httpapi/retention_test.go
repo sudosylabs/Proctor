@@ -113,7 +113,7 @@ func TestRetentionHTTPRejectsUnknownFieldsAndCrossPurposeCursors(t *testing.T) {
 	logger, _ := newTestLogger(t)
 	application := &retentionHTTPFake{}
 	api := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: retentionHTTPPrincipal()}, retentionResource(application))
-	r := serveRetentionHTTP(api, "POST", "/api/v1/retention/previews", `{"expected_policy_revision":1,"delete_now":true}`, "preview")
+	r := serveRetentionHTTP(api, "POST", "/api/v1/retention/previews", `{"expected_revision":1,"delete_now":true}`, "preview")
 	require.Equal(t, 400, r.Code, "unknown destructive parameter reached application")
 	require.Equal(t, 0, application.calls, "unknown destructive parameter reached application")
 	cursor, err := encodeOpaqueCursor(retentionCursor{After: model.NewSubmissionID().String()}, retentionCursorSpec())

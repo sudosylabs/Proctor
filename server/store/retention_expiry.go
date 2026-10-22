@@ -39,7 +39,7 @@ type RetentionExpiryReconciliation struct {
 
 type RetentionExpiryResult struct {
 	Scheduled bool
-	Cancelled bool
+	Canceled  bool
 	Expired   bool
 }
 
@@ -60,6 +60,6 @@ type RetentionCleanupAuditResult struct {
 	Examined  int
 	Changed   int
 	Scheduled int
-	Cancelled int
+	Canceled  int
 	Expired   int
 }

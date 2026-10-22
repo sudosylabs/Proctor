@@ -572,8 +572,8 @@ func TestDesktopAuthorizationRetentionTerminalizesEveryLiveStateAndPurgesSafeMet
 		saveDesktopAuthorizationAuditForSQLTest(t, ctx, persistence, institution.ID, user.ID, "expired-exchange")))
 	require.True(t, store.IsNotFound(err), "Exchange(expired) error")
 
-	cancelled, handle, proof, cancelState, _ := desktopAuthorizationTransactionForSQLTest(model.NowUTC(), institution.ID)
-	_, err = persistence.BrowserAuthentication().CreateDesktopAuthorization(ctx, cancelled)
+	canceled, handle, proof, cancelState, _ := desktopAuthorizationTransactionForSQLTest(model.NowUTC(), institution.ID)
+	_, err = persistence.BrowserAuthentication().CreateDesktopAuthorization(ctx, canceled)
 	require.NoError(t, err)
 	cancelBinding, err := bindDesktopAuthorizationForSQLTest(ctx, persistence, handle, proof, cancelState)
 	require.NoError(t, err)
@@ -595,10 +595,10 @@ func TestDesktopAuthorizationRetentionTerminalizesEveryLiveStateAndPurgesSafeMet
 		user.ID.String(), passwordProof.ID.String(), passwordProof.Revision, exchanged.ID.String())
 	require.NoError(t, err)
 
-	for _, terminal := range []struct{ id string }{{issued.ID.String()}, {cancelled.ID.String()}, {exchanged.ID.String()}} {
+	for _, terminal := range []struct{ id string }{{issued.ID.String()}, {canceled.ID.String()}, {exchanged.ID.String()}} {
 		_, err = persistence.GetMaster().Exec(ctx, `UPDATE browser_authentication_transactions SET
 			created_at=aged.now-interval '24 hours 6 minutes', expires_at=aged.now-interval '24 hours 1 minute',
-			cancelled_at=CASE WHEN state='cancelled' THEN aged.now-interval '24 hours 2 minutes' ELSE NULL END,
+			canceled_at=CASE WHEN state='canceled' THEN aged.now-interval '24 hours 2 minutes' ELSE NULL END,
 			exchanged_at=CASE WHEN state='exchanged' THEN aged.now-interval '24 hours 2 minutes' ELSE NULL END,
 			expired_at=CASE WHEN state='expired' THEN aged.now-interval '24 hours 1 minute' ELSE NULL END,
 			updated_at=CASE WHEN state='expired' THEN aged.now-interval '24 hours 1 minute' ELSE aged.now-interval '24 hours 2 minutes' END,
@@ -611,7 +611,7 @@ func TestDesktopAuthorizationRetentionTerminalizesEveryLiveStateAndPurgesSafeMet
 	require.Equal(t, 3, maintained.Purged, "Maintain(terminal retention) = %#v", maintained)
 	var retained int
 	err = persistence.GetMaster().Get(ctx, &retained, `SELECT COUNT(*) FROM browser_authentication_transactions WHERE id IN (?,?,?)`,
-		issued.ID.String(), cancelled.ID.String(), exchanged.ID.String())
+		issued.ID.String(), canceled.ID.String(), exchanged.ID.String())
 	require.NoError(t, err)
 	require.Equal(t, 0, retained, "terminal rows past retention")
 }

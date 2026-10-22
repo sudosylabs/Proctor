@@ -9,48 +9,12 @@ package httpapi
 
 import (
 	"net/http"
-	"net/url"
 	"strconv"
 
 	"github.com/sudosylabs/proctor/server/app"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
-
-func queryActiveAt(w http.ResponseWriter, r *http.Request) (int64, bool) {
-	activeAt, err := parseActiveAt(r)
-	if err != nil {
-		WriteError(w, r, err)
-		return 0, false
-	}
-	return activeAt, true
-}
-
-func parseActiveAt(r *http.Request) (int64, error) {
-	history := r.URL.Query().Get("history")
-	if history != "" {
-		if history != "true" && history != "false" {
-			return 0, invalidRequestError(nil)
-		}
-		if history == "true" {
-			return 0, nil
-		}
-	}
-	value := r.URL.Query().Get("active_at")
-	if value == "" {
-		return model.GetMillis(), nil
-	}
-	activeAt, err := model.ParseRFC3339(value)
-	if err != nil || activeAt.IsZero() {
-		return 0, invalidRequestError(err)
-	}
-	return model.MillisFromTime(activeAt), nil
-}
-
-func usesMembershipPaging(request *http.Request) bool {
-	values := request.URL.Query()
-	return values.Has("limit") || values.Has("cursor")
-}
 
 func membershipPageQuery(request *http.Request, scope model.Resource) (app.MembershipPageQuery, membershipPageCursor, error) {
 	values := request.URL.Query()
@@ -107,22 +71,15 @@ func membershipPageQuery(request *http.Request, scope model.Resource) (app.Membe
 	return query, cursor, nil
 }
 
-func membershipPageHeaders(request *http.Request, limit int, cursor *membershipPageCursor) (http.Header, error) {
-	headers := http.Header{}
-	if cursor == nil {
-		return headers, nil
-	}
-	encoded, err := encodeOpaqueCursor(*cursor, membershipPageCursorSpec())
+// membershipListResult presents one membership page; its continuation fixes
+// the scope and effective time of the first page.
+func membershipListResult[I, T any](scope model.Resource, activeAt int64, members []I, hasMore bool, present func(I) T, key func(I) (string, string)) (operationResult, error) {
+	response, err := newListResponse(members, hasMore, present, func(last I) (string, error) {
+		userID, id := key(last)
+		return encodeOpaqueCursor(membershipPageCursor{ScopeType: scope.Type, ScopeID: scope.ID, ActiveAt: &activeAt, AfterUserID: userID, AfterID: id}, membershipPageCursorSpec())
+	})
 	if err != nil {
-		return nil, err
+		return operationResult{}, err
 	}
-	values := url.Values{"limit": {strconv.Itoa(limit)}, "cursor": {encoded}}
-	if *cursor.ActiveAt == 0 {
-		values.Set("history", "true")
-	} else {
-		values.Set("active_at", wireTimeFromMillis(*cursor.ActiveAt))
-	}
-	next := url.URL{Path: request.URL.Path, RawQuery: values.Encode()}
-	headers.Set("Link", "<"+next.String()+">; rel=\"next\"")
-	return headers, nil
+	return jsonResult(http.StatusOK, response), nil
 }

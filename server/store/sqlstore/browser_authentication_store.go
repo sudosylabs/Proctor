@@ -62,7 +62,7 @@ type browserAuthenticationRow struct {
 	MFACompletedAt               sql.NullTime   `db:"mfa_completed_at"`
 	CodeHash                     sql.NullString `db:"code_hash"`
 	CodeExpiresAt                sql.NullTime   `db:"code_expires_at"`
-	CancelledAt                  sql.NullTime   `db:"cancelled_at"`
+	CanceledAt                   sql.NullTime   `db:"canceled_at"`
 	DeniedAt                     sql.NullTime   `db:"denied_at"`
 	DenialReason                 sql.NullString `db:"denial_reason"`
 	ExchangedAt                  sql.NullTime   `db:"exchanged_at"`
@@ -75,7 +75,7 @@ handle_hash, browser_proof_hash, invitation_claim_hash, state_hash, callback_url
 expected_authentication_method, expected_provider_id, client_type, device_id, device_name, expires_at,
 proposed_public_jwk, proposed_key_thumbprint, desktop_release, desktop_build_id, desktop_platform, desktop_architecture, desktop_realtime_protocol,
 user_id, authentication_method, authentication_provider_id, external_identity_id, password_credential_id, password_credential_revision, authentication_strength, authenticated_at,
-mfa_completed_at, code_hash, code_expires_at, cancelled_at, denied_at, denial_reason, exchanged_at, completed_at, expired_at`
+mfa_completed_at, code_hash, code_expires_at, canceled_at, denied_at, denial_reason, exchanged_at, completed_at, expired_at`
 
 func newSQLBrowserAuthenticationStore(sqlStore *SQLStore) store.BrowserAuthenticationStore {
 	return &SQLBrowserAuthenticationStore{SQLStore: sqlStore}
@@ -610,12 +610,12 @@ func (s SQLBrowserAuthenticationStore) Cancel(ctx context.Context, input *store.
 	}
 	_, err := runSQLTransaction(ctx, s.GetMaster().Begin, "cancel desktop authorization", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
 		result, err := tx.Exec(ctx, `UPDATE browser_authentication_transactions
-	   SET updated_at = terminal.at, state = 'cancelled', handle_hash = NULL, browser_proof_hash = NULL,
+	   SET updated_at = terminal.at, state = 'canceled', handle_hash = NULL, browser_proof_hash = NULL,
 	       state_hash = NULL, callback_url = NULL, code_challenge = NULL,
 	       proposed_public_jwk=NULL,proposed_key_thumbprint=NULL,desktop_release=NULL,desktop_build_id=NULL,
 	       desktop_platform=NULL,desktop_architecture=NULL,desktop_realtime_protocol=NULL,
 	       user_id=NULL,authentication_method=NULL,authentication_provider_id=NULL,external_identity_id=NULL,password_credential_id=NULL,password_credential_revision=NULL,
-	       authentication_strength=NULL,authenticated_at=NULL,mfa_completed_at=NULL,cancelled_at = terminal.at
+	       authentication_strength=NULL,authenticated_at=NULL,mfa_completed_at=NULL,canceled_at = terminal.at
 	  FROM (SELECT clock_timestamp() AS at) AS terminal
 	 WHERE browser_proof_hash = ? AND state_hash = ? AND state IN ('bound','authenticated')
 	   AND created_at <= terminal.at AND expires_at > terminal.at`, input.BindingHash, input.StateHash)
@@ -1030,7 +1030,7 @@ func (row browserAuthenticationRow) model() (*model.BrowserAuthenticationTransac
 		PasswordCredentialRevision: row.PasswordCredentialRevision.Int64,
 		AuthenticationStrength:     model.AuthenticationStrength(row.AuthenticationStrength.String),
 		AuthenticatedAt:            OptionalTimeFromNullTime(row.AuthenticatedAt), MFACompletedAt: OptionalTimeFromNullTime(row.MFACompletedAt), CodeHash: row.CodeHash.String,
-		CodeExpiresAt: OptionalTimeFromNullTime(row.CodeExpiresAt), CancelledAt: OptionalTimeFromNullTime(row.CancelledAt),
+		CodeExpiresAt: OptionalTimeFromNullTime(row.CodeExpiresAt), CanceledAt: OptionalTimeFromNullTime(row.CanceledAt),
 		DeniedAt: OptionalTimeFromNullTime(row.DeniedAt), DenialReason: model.DesktopAuthorizationDenialReason(row.DenialReason.String),
 		ExchangedAt: OptionalTimeFromNullTime(row.ExchangedAt),
 		CompletedAt: OptionalTimeFromNullTime(row.CompletedAt), ExpiredAt: OptionalTimeFromNullTime(row.ExpiredAt),
@@ -1086,7 +1086,7 @@ func (s SQLBrowserAuthenticationStore) Maintain(ctx context.Context, limit int) 
 		var purged int
 		if err := tx.Get(ctx, &purged, `WITH candidates AS (
 			SELECT id FROM browser_authentication_transactions
-			 WHERE state IN ('cancelled', 'denied', 'exchanged', 'completed', 'expired')
+			 WHERE state IN ('canceled', 'denied', 'exchanged', 'completed', 'expired')
 			   AND updated_at <= clock_timestamp() - (? * interval '1 millisecond')
 			 ORDER BY updated_at, id LIMIT ? FOR UPDATE SKIP LOCKED
 		), removed AS (
@@ -1101,7 +1101,7 @@ func (s SQLBrowserAuthenticationStore) Maintain(ctx context.Context, limit int) 
 			 WHERE (state IN ('pending','bound','authenticated') AND expires_at <= clock_timestamp())
 			    OR (state = 'code_issued' AND LEAST(expires_at, code_expires_at) <= clock_timestamp()))
 			OR EXISTS (SELECT 1 FROM browser_authentication_transactions
-			 WHERE state IN ('cancelled', 'denied', 'exchanged', 'completed', 'expired')
+			 WHERE state IN ('canceled', 'denied', 'exchanged', 'completed', 'expired')
 			   AND updated_at <= clock_timestamp() - (? * interval '1 millisecond'))`,
 			model.BrowserAuthenticationRetention.Milliseconds()); err != nil {
 			return nil, fmt.Errorf("inspect remaining browser authentication maintenance: %w", err)

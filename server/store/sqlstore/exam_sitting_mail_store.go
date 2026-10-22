@@ -180,10 +180,10 @@ func sittingMailRecipientTemplate(fanout *store.ExamSittingMailFanoutSnapshot, s
 		mailEligibilityRevision <= disabledEligibilityRevision.Int64 {
 		return ""
 	}
-	if fanout.ChangeKind == store.ExamSittingMailCancelled {
+	if fanout.ChangeKind == store.ExamSittingMailCanceled {
 		if sittingState == string(model.ExamSittingCanceled) && communicatedRevision.Valid &&
 			(communicatedKey == model.MailTemplateExamSittingScheduled || communicatedKey == model.MailTemplateExamSittingRescheduled) {
-			return model.MailTemplateExamSittingCancelled
+			return model.MailTemplateExamSittingCanceled
 		}
 		return ""
 	}
@@ -192,7 +192,7 @@ func sittingMailRecipientTemplate(fanout *store.ExamSittingMailFanoutSnapshot, s
 	}
 	if eligible {
 		if !communicatedRevision.Valid || communicatedKey == model.MailTemplateExamSittingAssignmentRemoved ||
-			communicatedKey == model.MailTemplateExamSittingCancelled {
+			communicatedKey == model.MailTemplateExamSittingCanceled {
 			return model.MailTemplateExamSittingScheduled
 		}
 		if communicatedRevision.Int64 < sittingRevision {
@@ -528,7 +528,7 @@ func (f *sittingMailDeliveryFence) relevant(ctx context.Context, tx *sqlxTxWrapp
 		return f.Sitting.State == model.ExamSittingScheduled && audience.Eligible, nil
 	case model.MailTemplateExamSittingAssignmentRemoved:
 		return f.Sitting.State == model.ExamSittingScheduled && f.User.IsActive() && f.User.EmailVerified && !audience.Eligible, nil
-	case model.MailTemplateExamSittingCancelled:
+	case model.MailTemplateExamSittingCanceled:
 		communicated := model.MailTemplateKey(f.Projection.CommunicatedTemplateKey.String)
 		return f.Sitting.State == model.ExamSittingCanceled && f.User.IsActive() && f.User.EmailVerified &&
 			f.Projection.CommunicatedTemplateKey.Valid &&
@@ -556,7 +556,7 @@ func markSittingMailCommunicated(ctx context.Context, tx *sqlxTxWrapper, fence *
 func isSittingScheduleMailTemplate(key model.MailTemplateKey) bool {
 	switch key {
 	case model.MailTemplateExamSittingScheduled, model.MailTemplateExamSittingRescheduled,
-		model.MailTemplateExamSittingCancelled, model.MailTemplateExamSittingAssignmentRemoved:
+		model.MailTemplateExamSittingCanceled, model.MailTemplateExamSittingAssignmentRemoved:
 		return true
 	default:
 		return false
@@ -1010,7 +1010,7 @@ func sittingMailReconciliationDueSQL(alias string) string {
 			OR EXISTS (SELECT 1 FROM exam_sitting_mail_fanouts stale
 				WHERE stale.occurrence_id=p.desired_occurrence_id AND stale.terminal_reason IN ('expired','failed','orphaned')))
 		AND (p.communicated_sitting_revision IS NULL OR p.communicated_sitting_revision<` + alias + `.revision
-			OR p.communicated_template_key IN ('exam.sitting_assignment_removed','exam.sitting_cancelled')))
+			OR p.communicated_template_key IN ('exam.sitting_assignment_removed','exam.sitting_canceled')))
 	OR EXISTS (SELECT 1 FROM exam_sitting_mail_recipients p JOIN users changed_user ON changed_user.id=p.user_id
 		WHERE p.exam_sitting_id=` + alias + `.id AND p.communicated_template_key IN ('exam.sitting_scheduled','exam.sitting_rescheduled')
 		AND (` + alias + `.mail_disabled_suppressed_revision IS DISTINCT FROM ` + alias + `.revision OR EXISTS (

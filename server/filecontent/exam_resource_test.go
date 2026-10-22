@@ -243,11 +243,11 @@ func TestExamResourceValidationObservesCancellationBetweenBoundedReads(t *testin
 		t.Run(test.name, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			body := &cancelledValidationReader{ReadSeeker: strings.NewReader(test.body), cancel: cancel, cancelPass: test.cancelPass, pass: 1}
+			body := &canceledValidationReader{ReadSeeker: strings.NewReader(test.body), cancel: cancel, cancelPass: test.cancelPass, pass: 1}
 			err := validateExamResource(ctx, body, test.media, int64(len(test.body)))
 			require.ErrorIs(t, err, context.Canceled)
-			require.Equal(t, 1, body.cancelledReads, "cancellation boundary: reads")
-			require.LessOrEqual(t, body.cancelledBytes, examResourceCopyBuffer, "cancellation boundary: reads")
+			require.Equal(t, 1, body.canceledReads, "cancellation boundary: reads")
+			require.LessOrEqual(t, body.canceledBytes, examResourceCopyBuffer, "cancellation boundary: reads")
 			require.Equal(t, 0, body.afterCancelReads, "cancellation boundary: reads")
 			require.Equal(t, 0, body.afterCancelSeeks, "cancellation boundary: reads")
 		})
@@ -285,19 +285,19 @@ func TestExamResourceContentCancellationReturnsNoRenditionAndReleasesResources(t
 			t.Setenv("TMPDIR", privateTemp)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			filesystem := &cancelledExamResourceVFS{FileSystem: memoryvfs.New(), cancel: cancel, outcome: outcome}
+			filesystem := &canceledExamResourceVFS{FileSystem: memoryvfs.New(), cancel: cancel, outcome: outcome}
 			recorder := &contentWorkRecorder{}
 			content, err := New(filesystem, Policy{MaximumConcurrentOperations: 1}, recorder)
 			require.NoError(t, err)
 			var body io.Reader = strings.NewReader("[0]")
 			if outcome == "upload completed" {
-				body = &cancelledExamResourceBody{ReadCloser: io.NopCloser(body), cancel: cancel}
+				body = &canceledExamResourceBody{ReadCloser: io.NopCloser(body), cancel: cancel}
 			}
 			rendition, err := content.StoreExamResource(ctx, model.NewFileRevisionID(), model.ExamResourceMediaJSON, body, 3, time.Unix(1, 0))
-			require.ErrorIs(t, err, context.Canceled, "cancelled rendition")
-			require.Equal(t, model.FileRendition{}, rendition, "cancelled rendition")
-			require.Equal(t, int64(0), recorder.active.Load(), "cancelled operation retained its processing permit")
-			require.Equal(t, int64(1), recorder.finished.Load(), "cancelled operation retained its processing permit")
+			require.ErrorIs(t, err, context.Canceled, "canceled rendition")
+			require.Equal(t, model.FileRendition{}, rendition, "canceled rendition")
+			require.Equal(t, int64(0), recorder.active.Load(), "canceled operation retained its processing permit")
+			require.Equal(t, int64(1), recorder.finished.Load(), "canceled operation retained its processing permit")
 			assertExamResourceSpoolRemoved(t, privateTemp)
 			filesystem.cancel = nil
 			filesystem.outcome = "write succeeded"
@@ -314,36 +314,36 @@ func assertExamResourceSpoolRemoved(t *testing.T, directory string) {
 	require.Empty(t, entries, "private spool remains: entries")
 }
 
-type cancelledValidationReader struct {
+type canceledValidationReader struct {
 	io.ReadSeeker
 	cancel           context.CancelFunc
 	cancelPass       int
 	pass             int
 	readInPass       bool
-	cancelled        bool
-	cancelledReads   int
-	cancelledBytes   int
+	canceled         bool
+	canceledReads    int
+	canceledBytes    int
 	afterCancelReads int
 	afterCancelSeeks int
 }
 
-func (r *cancelledValidationReader) Read(body []byte) (int, error) {
-	if r.cancelled {
+func (r *canceledValidationReader) Read(body []byte) (int, error) {
+	if r.canceled {
 		r.afterCancelReads++
 	}
 	r.readInPass = true
 	n, err := r.ReadSeeker.Read(body)
 	if r.pass == r.cancelPass {
-		r.cancelledReads++
-		r.cancelledBytes += n
-		r.cancelled = true
+		r.canceledReads++
+		r.canceledBytes += n
+		r.canceled = true
 		r.cancel()
 	}
 	return n, err
 }
 
-func (r *cancelledValidationReader) Seek(offset int64, whence int) (int64, error) {
-	if r.cancelled {
+func (r *canceledValidationReader) Seek(offset int64, whence int) (int64, error) {
+	if r.canceled {
 		r.afterCancelSeeks++
 	}
 	if offset == 0 && whence == io.SeekStart && r.readInPass {
@@ -353,13 +353,13 @@ func (r *cancelledValidationReader) Seek(offset int64, whence int) (int64, error
 	return r.ReadSeeker.Seek(offset, whence)
 }
 
-type cancelledExamResourceVFS struct {
+type canceledExamResourceVFS struct {
 	vfspkg.FileSystem
 	cancel  context.CancelFunc
 	outcome string
 }
 
-func (f *cancelledExamResourceVFS) Write(ctx context.Context, path string, body io.Reader, options vfspkg.WriteOptions) (vfspkg.Info, error) {
+func (f *canceledExamResourceVFS) Write(ctx context.Context, path string, body io.Reader, options vfspkg.WriteOptions) (vfspkg.Info, error) {
 	info, err := f.FileSystem.Write(ctx, path, body, options)
 	if err != nil {
 		return info, err
@@ -373,10 +373,10 @@ func (f *cancelledExamResourceVFS) Write(ctx context.Context, path string, body 
 	return info, nil
 }
 
-func (f *cancelledExamResourceVFS) Open(ctx context.Context, path string, options vfspkg.OpenOptions) (*vfspkg.File, error) {
+func (f *canceledExamResourceVFS) Open(ctx context.Context, path string, options vfspkg.OpenOptions) (*vfspkg.File, error) {
 	file, err := f.FileSystem.Open(ctx, path, options)
 	if err == nil && f.outcome == "matching replay read" {
-		file.Body = &cancelledExamResourceBody{ReadCloser: file.Body, cancel: f.cancel}
+		file.Body = &canceledExamResourceBody{ReadCloser: file.Body, cancel: f.cancel}
 	}
 	if err == nil && f.outcome == "mismatched replay metadata" {
 		file.Info.Size++
@@ -385,12 +385,12 @@ func (f *cancelledExamResourceVFS) Open(ctx context.Context, path string, option
 	return file, err
 }
 
-type cancelledExamResourceBody struct {
+type canceledExamResourceBody struct {
 	io.ReadCloser
 	cancel context.CancelFunc
 }
 
-func (b *cancelledExamResourceBody) Read(body []byte) (int, error) {
+func (b *canceledExamResourceBody) Read(body []byte) (int, error) {
 	n, err := b.ReadCloser.Read(body)
 	b.cancel()
 	return n, err

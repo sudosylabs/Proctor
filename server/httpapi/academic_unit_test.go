@@ -66,16 +66,16 @@ func (a *academicUnitHTTPApplication) ListAcademicUnits(
 	context.Context,
 	app.Invocation,
 	app.ListAcademicUnitsQuery,
-) ([]*model.AcademicUnit, error) {
-	return nil, nil
+) (app.Page[*model.AcademicUnit], error) {
+	return app.Page[*model.AcademicUnit]{Items: []*model.AcademicUnit{}}, nil
 }
 
 func (a *academicUnitHTTPApplication) SearchAcademicUnits(
 	context.Context,
 	app.Invocation,
 	app.SearchAcademicUnitsQuery,
-) ([]*model.AcademicUnit, error) {
-	return nil, nil
+) (app.Page[*model.AcademicUnit], error) {
+	return app.Page[*model.AcademicUnit]{Items: []*model.AcademicUnit{}}, nil
 }
 
 func (a *academicUnitHTTPApplication) CreateAcademicUnit(
@@ -143,12 +143,14 @@ func TestAcademicUnitResponsePreservesExistingWireShape(t *testing.T) {
 	require.Equal(t, string(want), string(got), "response")
 }
 
-func TestAcademicUnitCollectionMappingReturnsJSONArrayForNoResults(t *testing.T) {
+func TestAcademicUnitCollectionEnvelopeHasNonNullItemsForNoResults(t *testing.T) {
 	t.Parallel()
 
-	encoded, err := json.Marshal(academicUnitResponsesFromModels(nil))
+	response, err := newListResponse([]*model.AcademicUnit(nil), false, academicUnitResponseFromModel, nil)
 	require.NoError(t, err)
-	require.Equal(t, "[]", string(encoded), "empty collection")
+	encoded, err := json.Marshal(response)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"items":[]}`, string(encoded), "empty collection")
 }
 
 func TestAcademicUnitHTTPReadMapsDTOWithoutPermissionPreflight(t *testing.T) {

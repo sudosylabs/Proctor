@@ -41,15 +41,8 @@ paths:
           description: Literal case-insensitive substring matched against name and display name.
           schema:
             type: string
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 200
-            default: 100
-          description: Maximum number of visible Academic Periods to return.
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
       responses:
         "200":
           $ref: '#/components/responses/AcademicPeriodListOK'
@@ -218,8 +211,8 @@ paths:
         "503":
           $ref: '#/components/responses/ServiceUnavailable'
     delete:
-      parameters:
-        - $ref: '#/components/parameters/AcademicExpectedRevision'
+      requestBody:
+        $ref: '#/components/requestBodies/ArchiveAcademic'
       operationId: archiveAcademicPeriod
       summary: Archive an Academic Period with no active Classes or enrollments
       tags:
@@ -327,7 +320,8 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/AcademicPeriodListResponse'
-          example: []
+          example:
+            items: []
     AcademicPeriodArchived:
       description: Academic Period archived
       headers:
@@ -388,9 +382,18 @@ components:
           format: date-time
           description: Exclusive end time; must be after start_at.
     AcademicPeriodListResponse:
-      type: array
-      items:
-        $ref: '#/components/schemas/AcademicPeriodResponse'
+      description: One page of the collection in its stable order.
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AcademicPeriodResponse'
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'
     CreateAcademicPeriodRequest:
       description: Complete owner, presentation, and time window for a new Academic Period.
       type: object
@@ -448,14 +451,10 @@ components:
             - "null"
           description: Omitted or null leaves the value unchanged. An empty string is present and subject to validation.
         start_at:
-          type:
-            - string
-            - 'null'
+          type: string
           format: date-time
-          description: Omitted or null leaves the inclusive start unchanged.
+          description: Omitted leaves the inclusive start unchanged; null is invalid.
         end_at:
-          type:
-            - string
-            - 'null'
+          type: string
           format: date-time
-          description: Omitted or null leaves the exclusive end unchanged.
+          description: Omitted leaves the exclusive end unchanged; null is invalid.

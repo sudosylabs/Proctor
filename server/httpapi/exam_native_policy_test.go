@@ -25,7 +25,7 @@ func TestExamNativePolicyHTTPStrictBoundary(t *testing.T) {
 	view := testExamHTTPView(t, principal.UserID)
 	valid, err := json.Marshal(configureExamDraftNativePolicyRequest{ExpectedDraftRevision: 1, Native: model.DefaultNativeSecurityPolicy()})
 	require.NoError(t, err)
-	for name, body := range map[string]string{"valid": string(valid), "missing native": `{"expected_draft_revision":1}`, "null native": `{"expected_draft_revision":1,"native":null}`, "case alias": strings.Replace(string(valid), `"native":`, `"NATIVE":`, 1), "extra": strings.Replace(string(valid), `"native":`, `"extra":1,"native":`, 1), "missing boolean": strings.Replace(string(valid), `"observe_os_clipboard_changes":false,`, "", 1), "external capture enabled": strings.Replace(string(valid), `"id":"external_capture","mode":"disabled"`, `"id":"external_capture","mode":"enforce"`, 1)} {
+	for name, body := range map[string]string{"valid": string(valid), "missing native": `{"expected_revision":1}`, "null native": `{"expected_revision":1,"native":null}`, "case alias": strings.Replace(string(valid), `"native":`, `"NATIVE":`, 1), "extra": strings.Replace(string(valid), `"native":`, `"extra":1,"native":`, 1), "missing boolean": strings.Replace(string(valid), `"observe_os_clipboard_changes":false,`, "", 1), "external capture enabled": strings.Replace(string(valid), `"id":"external_capture","mode":"disabled"`, `"id":"external_capture","mode":"enforce"`, 1)} {
 		t.Run(name, func(t *testing.T) {
 			logger, _ := newTestLogger(t)
 			fake := &examHTTPApplication{principal: principal, view: view}

@@ -10,12 +10,3 @@
 // stores, and surround every durable mutation with an authoritative audit.
 
 package app
-
-const defaultAdministrationListLimit = 100
-
-func normalizeAdministrationLimit(limit int) int {
-	if limit == 0 {
-		return defaultAdministrationListLimit
-	}
-	return limit
-}

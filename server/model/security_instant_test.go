@@ -55,7 +55,7 @@ func TestSecurityDocumentsPreserveTimestampSpelling(t *testing.T) {
 }
 
 func TestSecurityTimestampMutationAndExactReplay(t *testing.T) {
-	raw := []byte(`{"count_complete":false,"first_unretained_at":"2026-09-09T12:00:00.100Z","last_unretained_at":null,"summary_sequence":1,"unretained_record_count":1}`)
+	raw := []byte(`{"count_complete":false,"first_unretained_at":"2026-09-09T12:00:00.100Z","summary_sequence":1,"unretained_record_count":1}`)
 	var original UnretainedDeliverySummary
 	require.NoError(t, json.Unmarshal(raw, &original))
 	var equivalent UnretainedDeliverySummary

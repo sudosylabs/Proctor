@@ -33,8 +33,8 @@ type academicPeriodHTTPApplication struct {
 func (a *academicPeriodHTTPApplication) GetAcademicPeriod(context.Context, app.Invocation, app.GetAcademicPeriodQuery) (*model.AcademicPeriod, error) {
 	return a.result, nil
 }
-func (a *academicPeriodHTTPApplication) ListAcademicPeriods(context.Context, app.Invocation, app.ListAcademicPeriodsQuery) ([]*model.AcademicPeriod, error) {
-	return a.list, nil
+func (a *academicPeriodHTTPApplication) ListAcademicPeriods(context.Context, app.Invocation, app.ListAcademicPeriodsQuery) (app.Page[*model.AcademicPeriod], error) {
+	return app.Page[*model.AcademicPeriod]{Items: a.list}, nil
 }
 func (a *academicPeriodHTTPApplication) CreateAcademicPeriod(_ context.Context, _ app.Invocation, command app.CreateAcademicPeriodCommand) (*model.AcademicPeriod, error) {
 	a.createCommand = command

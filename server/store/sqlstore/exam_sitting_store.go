@@ -699,8 +699,8 @@ func insertExamSittingMailFanout(ctx context.Context, tx *sqlxTxWrapper, input *
 		if sitting.State != model.ExamSittingScheduled || !priorClassID.IsValid() {
 			return store.NewErrInvalidInput("exam_sitting", "mail_fanout", nil)
 		}
-	case store.ExamSittingMailCancelled:
-		wantKey = model.MailTemplateExamSittingCancelled
+	case store.ExamSittingMailCanceled:
+		wantKey = model.MailTemplateExamSittingCanceled
 		if sitting.State != model.ExamSittingCanceled || !priorClassID.IsValid() {
 			return store.NewErrInvalidInput("exam_sitting", "mail_fanout", nil)
 		}
@@ -1214,7 +1214,7 @@ func examSittingStructureStatus(ctx context.Context, tx *sqlxTxWrapper, sitting 
 }
 
 // AdvanceDue applies whichever system lifecycle transition is due for the
-// Sitting at database time: opening or cancelling a scheduled Sitting, entering
+// Sitting at database time: opening or canceling a scheduled Sitting, entering
 // Closing at the scheduled end, or scheduling finalization. A Sitting with
 // nothing due is returned unchanged.
 func (s SQLExamSittingStore) AdvanceDue(ctx context.Context, input *store.ExamSittingDueAdvance) (*store.ExamSittingLifecycleResult, error) {

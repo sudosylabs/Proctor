@@ -39,7 +39,7 @@ func (s *academicPeriodStoreFake) Get(context.Context, model.AcademicPeriodID) (
 	*s.events = append(*s.events, "get-period")
 	return s.current, nil
 }
-func (*academicPeriodStoreFake) ListVisible(context.Context, store.AcademicPeriodVisibilityScope, string, int) ([]*model.AcademicPeriod, error) {
+func (*academicPeriodStoreFake) ListVisible(context.Context, store.AcademicPeriodVisibilityScope, store.AcademicPeriodListOptions) ([]*model.AcademicPeriod, error) {
 	return nil, nil
 }
 func (s *academicPeriodStoreFake) Create(_ context.Context, input *store.AcademicPeriodCreation) (*model.AcademicPeriod, error) {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 // GetAcademicUnitQuery identifies one academic unit to retrieve.
@@ -24,13 +25,14 @@ type GetAcademicUnitQuery struct {
 // ParentID lists root units of the installation institution.
 type ListAcademicUnitsQuery struct {
 	ParentID model.AcademicUnitID
+	NamePageQuery
 }
 
 // SearchAcademicUnitsQuery searches academic units by name within the
 // installation institution.
 type SearchAcademicUnitsQuery struct {
 	Query string
-	Limit int
+	NamePageQuery
 }
 
 type academicUnitAuthorizer interface {
@@ -53,8 +55,8 @@ type academicUnitQueryService struct {
 
 type academicUnitReader interface {
 	Get(context.Context, model.AcademicUnitID) (*model.AcademicUnit, error)
-	ListChildren(context.Context, model.InstitutionID, model.AcademicUnitID) ([]*model.AcademicUnit, error)
-	Search(context.Context, model.InstitutionID, string, int) ([]*model.AcademicUnit, error)
+	ListChildren(context.Context, model.InstitutionID, model.AcademicUnitID, store.AcademicNameListOptions) ([]*model.AcademicUnit, error)
+	Search(context.Context, model.InstitutionID, store.AcademicNameListOptions) ([]*model.AcademicUnit, error)
 }
 
 func newAcademicUnitQueryService(
@@ -96,41 +98,42 @@ func (s *academicUnitQueryService) ListAcademicUnits(
 	ctx context.Context,
 	invocation Invocation,
 	query ListAcademicUnitsQuery,
-) ([]*model.AcademicUnit, error) {
+) (Page[*model.AcademicUnit], error) {
 	parentID := query.ParentID
 	if parentID != "" && !parentID.IsValid() {
-		return nil, apperror.New("request.invalid").WithField("field", "parent_id")
+		return Page[*model.AcademicUnit]{}, apperror.New("request.invalid").WithField("field", "parent_id")
+	}
+	limit, probe, err := resolvePageLimit(query.Limit, "limit")
+	if err != nil {
+		return Page[*model.AcademicUnit]{}, err
 	}
 	if parentID != "" {
 		resource := model.Resource{Type: model.ResourceAcademicUnit, ID: parentID.String()}
 		if err := s.authorization.Authorize(
 			ctx, invocation, model.ActionAcademicUnitView, resource,
 		); err != nil {
-			return nil, err
+			return Page[*model.AcademicUnit]{}, err
 		}
 	}
 
 	var institution model.Resource
 	if parentID == "" {
-		var err error
 		institution, err = s.authorization.AuthorizeInstitution(
 			ctx, invocation, model.ActionAcademicUnitView,
 		)
-		if err != nil {
-			return nil, err
-		}
 	} else {
-		var err error
 		institution, err = s.authorization.InstitutionResource(ctx)
-		if err != nil {
-			return nil, err
-		}
 	}
-	units, err := s.academicUnits.ListChildren(ctx, model.InstitutionID(institution.ID), parentID)
 	if err != nil {
-		return nil, academicUnitStoreErrors.Translate(err)
+		return Page[*model.AcademicUnit]{}, err
 	}
-	return nonNilAcademicUnits(units), nil
+	units, err := s.academicUnits.ListChildren(ctx, model.InstitutionID(institution.ID), parentID, store.AcademicNameListOptions{
+		AfterName: query.AfterName, AfterID: query.AfterID, Limit: probe,
+	})
+	if err != nil {
+		return Page[*model.AcademicUnit]{}, academicUnitStoreErrors.Translate(err)
+	}
+	return newPage(units, limit), nil
 }
 
 // SearchAcademicUnits searches units by name through institution-scoped
@@ -139,30 +142,24 @@ func (s *academicUnitQueryService) SearchAcademicUnits(
 	ctx context.Context,
 	invocation Invocation,
 	query SearchAcademicUnitsQuery,
-) ([]*model.AcademicUnit, error) {
+) (Page[*model.AcademicUnit], error) {
+	limit, probe, err := resolvePageLimit(query.Limit, "limit")
+	if err != nil {
+		return Page[*model.AcademicUnit]{}, err
+	}
 	institution, err := s.authorization.AuthorizeInstitution(
 		ctx, invocation, model.ActionAcademicUnitView,
 	)
 	if err != nil {
-		return nil, err
+		return Page[*model.AcademicUnit]{}, err
 	}
-	units, err := s.academicUnits.Search(
-		ctx,
-		model.InstitutionID(institution.ID),
-		strings.TrimSpace(query.Query),
-		normalizeAdministrationLimit(query.Limit),
-	)
+	units, err := s.academicUnits.Search(ctx, model.InstitutionID(institution.ID), store.AcademicNameListOptions{
+		Term: strings.TrimSpace(query.Query), AfterName: query.AfterName, AfterID: query.AfterID, Limit: probe,
+	})
 	if err != nil {
-		return nil, academicUnitStoreErrors.Translate(err)
+		return Page[*model.AcademicUnit]{}, academicUnitStoreErrors.Translate(err)
 	}
-	return nonNilAcademicUnits(units), nil
-}
-
-func nonNilAcademicUnits(units []*model.AcademicUnit) []*model.AcademicUnit {
-	if units == nil {
-		return []*model.AcademicUnit{}
-	}
-	return units
+	return newPage(units, limit), nil
 }
 
 var academicUnitStoreErrors = apperror.AdministrationStoreTable("academic_unit", "academic_unit.conflict", "academic_unit.invalid", nil)
