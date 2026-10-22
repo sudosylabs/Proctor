@@ -41,9 +41,9 @@ func testExamAuthoringCreateGetAndReplay(t *testing.T, ss store.Store) {
 	creation := newExamAuthoringCreation(t, ctx, ss, unit.ID, creator.ID, at)
 	command := &store.CommandIdempotency{
 		UserID: creator.ID, Operation: "exam.create.v1",
-		KeyDigest: sha256.Sum256([]byte("key")), FingerprintVersion: 1,
-		Fingerprint: sha256.Sum256([]byte("command")), OutcomeVersion: 1,
-		Retention: time.Hour, Wait: time.Second,
+		KeyDigest:   sha256.Sum256([]byte("key")),
+		Fingerprint: sha256.Sum256([]byte("command")),
+		Retention:   time.Hour, Wait: time.Second,
 	}
 
 	first, err := ss.ExamAuthoring().Create(ctx, creation, command)
@@ -105,8 +105,7 @@ func testExamAuthoringAuditAtomicity(t *testing.T, ss store.Store) {
 	creation := newExamAuthoringCreation(t, ctx, ss, unit.ID, creator.ID, model.NowUTC())
 	creation.AuditEventID = model.NewAuditEventID()
 	command := &store.CommandIdempotency{
-		UserID: creator.ID, Operation: "exam.create.v1", KeyDigest: sha256.Sum256([]byte("rollback-key")),
-		FingerprintVersion: 1, Fingerprint: sha256.Sum256([]byte("rollback-command")), OutcomeVersion: 1,
+		UserID: creator.ID, Operation: "exam.create.v1", KeyDigest: sha256.Sum256([]byte("rollback-key")), Fingerprint: sha256.Sum256([]byte("rollback-command")),
 		Retention: time.Hour, Wait: time.Second,
 	}
 	_, err := ss.ExamAuthoring().Create(ctx, creation, command)
@@ -237,8 +236,7 @@ func newExamDraftTextUpdate(t *testing.T, ctx context.Context, ss store.Store, e
 
 func examCommand(userID model.UserID, operation, key, fingerprint string) *store.CommandIdempotency {
 	return &store.CommandIdempotency{
-		UserID: userID, Operation: operation, KeyDigest: sha256.Sum256([]byte(key)),
-		FingerprintVersion: 1, Fingerprint: sha256.Sum256([]byte(fingerprint)), OutcomeVersion: 1,
+		UserID: userID, Operation: operation, KeyDigest: sha256.Sum256([]byte(key)), Fingerprint: sha256.Sum256([]byte(fingerprint)),
 		Retention: time.Hour, Wait: time.Second,
 	}
 }

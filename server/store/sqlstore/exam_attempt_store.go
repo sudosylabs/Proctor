@@ -95,11 +95,8 @@ func (s *SQLExamAttemptStore) Connect(ctx context.Context, input *store.ExamAtte
 			}
 			return encoded, encodeErr
 		},
-		decode: func(version int, encoded []byte) (examAttemptConnectOutcomeV1, error) {
+		decode: func(encoded []byte) (examAttemptConnectOutcomeV1, error) {
 			var outcome examAttemptConnectOutcomeV1
-			if version != 1 {
-				return outcome, fmt.Errorf("unsupported Exam Attempt connect outcome version %d", version)
-			}
 			if err := decodeCommandOutcome(encoded, &outcome); err != nil {
 				return outcome, err
 			}
@@ -148,8 +145,7 @@ func (s *SQLExamAttemptStore) Connect(ctx context.Context, input *store.ExamAtte
 
 func validateExamAttemptConnect(input *store.ExamAttemptConnect, command *store.CommandIdempotency) error {
 	if input == nil || command == nil ||
-		command.Operation != store.ExamAttemptConnectOperation || command.OutcomeVersion != 1 ||
-		!input.SittingID.IsValid() || !input.CandidateUserID.IsValid() || !input.SessionID.IsValid() ||
+		command.Operation != store.ExamAttemptConnectOperation || !input.SittingID.IsValid() || !input.CandidateUserID.IsValid() || !input.SessionID.IsValid() ||
 		!input.DesktopRegistrationID.IsValid() || !model.IsValidDPoPKeyThumbprint(input.DPoPKeyThumbprint) ||
 		command.UserID != input.CandidateUserID || !input.AttemptID.IsValid() || !input.WorkspaceID.IsValid() || !input.ParticipationID.IsValid() || !input.ConnectionID.IsValid() ||
 		!model.IsValidTokenHash(input.ContinuityCredentialHash) || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
@@ -769,8 +765,7 @@ type examAttemptReallowOutcomeV1 struct {
 func (s *SQLExamAttemptStore) ReallowAttempt(ctx context.Context, input *store.ExamAttemptReallow,
 	command *store.CommandIdempotency,
 ) (*store.ExamAttemptReallowResult, error) {
-	if input == nil || command == nil || command.Operation != store.ExamAttemptReallowOperation || command.OutcomeVersion != 1 ||
-		command.UserID != input.ActorUserID || !input.ExamID.IsValid() || !input.SittingID.IsValid() || !input.AttemptID.IsValid() ||
+	if input == nil || command == nil || command.Operation != store.ExamAttemptReallowOperation || command.UserID != input.ActorUserID || !input.ExamID.IsValid() || !input.SittingID.IsValid() || !input.AttemptID.IsValid() ||
 		!input.SuspensionID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedAttemptRevision < 1 ||
 		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_attempt", "reallow", nil)
@@ -781,11 +776,8 @@ func (s *SQLExamAttemptStore) ReallowAttempt(ctx context.Context, input *store.E
 			return reallowExamAttempt(ctx, tx, input)
 		},
 		encode: func(value examAttemptReallowOutcomeV1) ([]byte, error) { return encodeCommandOutcome(value) },
-		decode: func(version int, encoded []byte) (examAttemptReallowOutcomeV1, error) {
+		decode: func(encoded []byte) (examAttemptReallowOutcomeV1, error) {
 			var value examAttemptReallowOutcomeV1
-			if version != 1 {
-				return value, fmt.Errorf("unsupported Exam Attempt re-allow outcome version %d", version)
-			}
 			return value, decodeCommandOutcome(encoded, &value)
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value examAttemptReallowOutcomeV1, originalAuditID string) error {

@@ -180,10 +180,7 @@ func (s SQLExamStarterWorkspaceStore) runMutation(ctx context.Context, label str
 		encode: func(value *store.ExamStarterWorkspaceMutationResult) ([]byte, error) {
 			return encodeCommandOutcome(value)
 		},
-		decode: func(version int, data []byte) (*store.ExamStarterWorkspaceMutationResult, error) {
-			if version != 1 {
-				return nil, fmt.Errorf("unsupported Starter Workspace outcome version %d", version)
-			}
+		decode: func(data []byte) (*store.ExamStarterWorkspaceMutationResult, error) {
 			var value store.ExamStarterWorkspaceMutationResult
 			if err := decodeCommandOutcome(data, &value); err != nil {
 				return nil, err

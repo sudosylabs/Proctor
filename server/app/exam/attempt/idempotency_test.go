@@ -26,14 +26,12 @@ import (
 func assertPreparedIdempotency(t *testing.T, got *store.CommandIdempotency, userID model.UserID, operation, key, document string) {
 	t.Helper()
 	wantKey := sha256.Sum256([]byte(key))
-	wantFingerprint := sha256.Sum256([]byte(operation + "\x00v1\x00" + document))
+	wantFingerprint := sha256.Sum256([]byte(operation + "\x00" + document))
 	require.NotNil(t, got, "prepared idempotency")
 	require.Equal(t, userID, got.UserID, "prepared idempotency")
 	require.Equal(t, operation, got.Operation, "prepared idempotency")
 	require.Equal(t, wantKey, got.KeyDigest, "prepared idempotency")
-	require.Equal(t, 1, got.FingerprintVersion, "prepared idempotency")
 	require.Equal(t, wantFingerprint, got.Fingerprint, "prepared idempotency")
-	require.Equal(t, 1, got.OutcomeVersion, "prepared idempotency")
 	require.Equal(t, 24*time.Hour, got.Retention, "prepared idempotency")
 	require.Equal(t, 2*time.Second, got.Wait, "prepared idempotency")
 }

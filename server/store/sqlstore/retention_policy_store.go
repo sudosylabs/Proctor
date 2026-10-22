@@ -244,24 +244,13 @@ func validateRetentionPolicyReplacement(
 ) error {
 	if input == nil || !validRetentionMutation(input.RetentionMutation, command, "retention_policy.replace.v1") ||
 		input.ExpectedRevision < 1 || input.Settings.Validate() != nil || input.RecentAuthenticationTTL <= 0 ||
-		command.FingerprintVersion != 1 || command.OutcomeVersion != 1 ||
 		command.Retention <= 0 || command.Wait <= 0 {
 		return store.NewErrInvalidInput("retention_policy", "replacement", nil)
 	}
 	return nil
 }
 
-func decodeRetentionPolicyReplacementOutcome(
-	version int,
-	encoded []byte,
-) (retentionPolicyReplacementOutcome, error) {
-	if version != 1 {
-		return retentionPolicyReplacementOutcome{}, invalidPersistedState(
-			"command_outcome",
-			"outcome_version",
-			errors.New("unsupported retention policy outcome version"),
-		)
-	}
+func decodeRetentionPolicyReplacementOutcome(encoded []byte) (retentionPolicyReplacementOutcome, error) {
 	var outcome retentionPolicyReplacementOutcome
 	if err := json.Unmarshal(encoded, &outcome); err != nil ||
 		outcome.Policy == nil || outcome.Policy.Validate() != nil {

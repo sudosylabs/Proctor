@@ -93,8 +93,7 @@ func (s *SQLExamSubmissionStore) EndByManager(ctx context.Context, input *store.
 		input.Target.ExamID != input.Request.ExamID || input.Target.SittingID != input.Request.SittingID ||
 		input.Target.AttemptID != input.Request.AttemptID || !input.SubmissionID.IsValid() ||
 		!input.AuditEventID.IsValid() || input.AuditAt <= 0 || command == nil ||
-		command.Operation != store.ExamSubmissionManagerEndOperation || command.OutcomeVersion != 1 ||
-		command.UserID != input.Request.ActorUserID {
+		command.Operation != store.ExamSubmissionManagerEndOperation || command.UserID != input.Request.ActorUserID {
 		return nil, store.NewErrInvalidInput("exam_submission", "manager_end", nil)
 	}
 	prepared := *input
@@ -104,11 +103,8 @@ func (s *SQLExamSubmissionStore) EndByManager(ctx context.Context, input *store.
 			return endExamAttemptByManager(ctx, tx, &prepared)
 		},
 		encode: func(outcome examSubmissionSealOutcomeV1) ([]byte, error) { return encodeCommandOutcome(outcome) },
-		decode: func(version int, data []byte) (examSubmissionSealOutcomeV1, error) {
+		decode: func(data []byte) (examSubmissionSealOutcomeV1, error) {
 			var outcome examSubmissionSealOutcomeV1
-			if version != 1 {
-				return outcome, fmt.Errorf("unsupported manager-ended Exam Submission outcome version %d", version)
-			}
 			if err := decodeCommandOutcome(data, &outcome); err != nil {
 				return outcome, err
 			}

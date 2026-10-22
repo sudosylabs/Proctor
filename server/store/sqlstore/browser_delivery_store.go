@@ -290,11 +290,8 @@ func (s *SQLExamAttemptStore) declareBrowserDelivery(ctx context.Context, access
 			return &browserDeclarationOutcome{Receipt: record.Receipt, Status: status}, nil
 		},
 		encode: func(value *browserDeclarationOutcome) ([]byte, error) { return canonicalPreflightValue(value) },
-		decode: func(version int, raw []byte) (*browserDeclarationOutcome, error) {
+		decode: func(raw []byte) (*browserDeclarationOutcome, error) {
 			var result browserDeclarationOutcome
-			if version != 1 {
-				return nil, invalidPersistedState("browser_delivery", "value", model.ErrDeliveryInvalid)
-			}
 			if err := decodeCommandOutcome(raw, &result); err != nil {
 				return nil, err
 			}
@@ -495,11 +492,8 @@ func (s *SQLExamAttemptStore) UpdateBrowserDeliverySummary(ctx context.Context, 
 			}
 			return hydrate(ctx, tx, nil)
 		}, encode: func(value *model.BrowserDeliverySummaryResult) ([]byte, error) { return canonicalPreflightValue(value) },
-		decode: func(version int, raw []byte) (*model.BrowserDeliverySummaryResult, error) {
+		decode: func(raw []byte) (*model.BrowserDeliverySummaryResult, error) {
 			var v model.BrowserDeliverySummaryResult
-			if version != 1 {
-				return nil, invalidPersistedState("browser_delivery", "value", model.ErrDeliveryInvalid)
-			}
 			if err := decodeCommandOutcome(raw, &v); err != nil {
 				return nil, err
 			}

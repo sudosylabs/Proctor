@@ -231,11 +231,8 @@ func (s *SQLExamAttemptStore) StopDeliveryDetails(ctx context.Context, input *st
 				return nil, err
 			}
 			return canonicalPreflightValue(v)
-		}, decode: func(version int, raw []byte) (*model.StopDeliveryDetailsResult, error) {
+		}, decode: func(raw []byte) (*model.StopDeliveryDetailsResult, error) {
 			var v model.StopDeliveryDetailsResult
-			if version != 1 {
-				return nil, invalidPersistedState("delivery_budget", "value", model.ErrDeliveryInvalid)
-			}
 			if err := decodeCommandOutcome(raw, &v); err != nil {
 				return nil, err
 			}

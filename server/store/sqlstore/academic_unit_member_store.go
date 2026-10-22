@@ -358,10 +358,7 @@ func encodeAcademicUnitMemberMutationOutcome(value *academicUnitMemberMutationRe
 	}
 	return encodeCommandOutcome(academicUnitMemberCommandOutcome{ID: value.Value.ID.String(), NoOp: value.NoOp})
 }
-func decodeAcademicUnitMemberMutationOutcome(version int, data []byte) (*academicUnitMemberMutationResult, error) {
-	if version != 1 {
-		return nil, fmt.Errorf("unsupported academic unit member outcome version %d", version)
-	}
+func decodeAcademicUnitMemberMutationOutcome(data []byte) (*academicUnitMemberMutationResult, error) {
 	var outcome academicUnitMemberCommandOutcome
 	if err := decodeCommandOutcome(data, &outcome); err != nil {
 		return nil, err

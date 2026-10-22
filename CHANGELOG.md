@@ -60,7 +60,10 @@ module when a change is not server-only. No module has been released yet.
   `checkpoint_version`, and `result_version`; the pre-release SQL baseline
   drops those columns and development databases must be reset. Frozen mail
   payloads and Sitting fan-out bundles lose their `version` member and the
-  version-one bundle and relative-logo readers.
+  version-one bundle and relative-logo readers. Command outcomes drop
+  `fingerprint_version` and `outcome_version`, and the request fingerprint
+  no longer mixes in a version tag, so earlier retained outcomes cannot
+  replay.
 - Server: wire timestamps are RFC 3339 strings. `create_at`, `update_at`, and
   `delete_at` become `created_at`, `updated_at`, and `archived_at` (omitted
   while active), Job `complete_at` and `start_at` become `completed_at` and

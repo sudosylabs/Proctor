@@ -296,9 +296,9 @@ func (s *SQLExamAttemptStore) AppendNativeDelivery(ctx context.Context, input *s
 			return finish(&nativeAppendOutcome{Receipt: &receipt}, false)
 		},
 		encode: func(value *nativeAppendOutcome) ([]byte, error) { return canonicalPreflightValue(value) },
-		decode: func(version int, raw []byte) (*nativeAppendOutcome, error) {
+		decode: func(raw []byte) (*nativeAppendOutcome, error) {
 			var value nativeAppendOutcome
-			if version != 1 || decodeCommandOutcome(raw, &value) != nil {
+			if decodeCommandOutcome(raw, &value) != nil {
 				return nil, model.ErrNativeDeliveryInvalid
 			}
 			return &value, nil

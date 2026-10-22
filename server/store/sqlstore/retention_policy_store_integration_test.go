@@ -53,8 +53,7 @@ func TestRetentionPolicyCurrentCredentialAndAssurancePreserveGrace(t *testing.T)
 			}
 			command := func(operation, key string) *store.CommandIdempotency {
 				return &store.CommandIdempotency{UserID: f.principal.UserID, Operation: operation,
-					KeyDigest: sha256.Sum256([]byte(key)), FingerprintVersion: 1, Fingerprint: sha256.Sum256([]byte(key)),
-					OutcomeVersion: 1, Retention: time.Hour, Wait: time.Second}
+					KeyDigest: sha256.Sum256([]byte(key)), Fingerprint: sha256.Sum256([]byte(key)), Retention: time.Hour, Wait: time.Second}
 			}
 			original := &store.RetentionPolicyReplacement{RetentionMutation: mutation(model.ActionRetentionPolicyManage), ExpectedRevision: 1,
 				Settings: model.RetentionPolicySettings{AuditRetentionDays: 1, ExportRetentionDays: 1, DeletionGraceDays: 1}}
@@ -210,8 +209,8 @@ func TestRetentionPolicyReplacementKeepsMonotonicMetadata(t *testing.T) {
 				ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "store-test"})
 			require.NoError(t, saveErr)
 			command := &store.CommandIdempotency{UserID: actor.ID, Operation: "retention_policy.replace.v1",
-				KeyDigest: sha256.Sum256([]byte(test.name)), FingerprintVersion: 1,
-				Fingerprint: sha256.Sum256([]byte("retention-clock:" + test.name)), OutcomeVersion: 1, Retention: time.Hour, Wait: time.Second}
+				KeyDigest:   sha256.Sum256([]byte(test.name)),
+				Fingerprint: sha256.Sum256([]byte("retention-clock:" + test.name)), Retention: time.Hour, Wait: time.Second}
 			result, replaceErr := persistence.RetentionPolicy().Replace(ctx, &store.RetentionPolicyReplacement{RetentionMutation: store.RetentionMutation{Principal: principal, RecentAuthenticationTTL: time.Hour, AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt)}, ExpectedRevision: 1, Settings: test.settings}, command)
 			require.NoError(t, replaceErr, "policy metadata ahead of database clock rejected")
 			require.False(t, result.Replayed, "non-monotonic policy transition: %#v, previous=%#v", result, initial)
@@ -293,8 +292,8 @@ func TestPolicyReplacementRechecksAdministratorAfterBindingEnd(t *testing.T) {
 				ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "store-test"})
 			require.NoError(t, err)
 			command := &store.CommandIdempotency{UserID: actor.ID, Operation: test.operation,
-				KeyDigest: sha256.Sum256([]byte("serialized-policy-edit")), FingerprintVersion: 1,
-				Fingerprint: sha256.Sum256([]byte("serialized-policy-content")), OutcomeVersion: 1, Retention: time.Hour, Wait: time.Second}
+				KeyDigest:   sha256.Sum256([]byte("serialized-policy-edit")),
+				Fingerprint: sha256.Sum256([]byte("serialized-policy-content")), Retention: time.Hour, Wait: time.Second}
 
 			// Hold the real End transaction before the competing Replace starts.
 			// The SQL fixture controls only the lock timing; endRoleBinding is the

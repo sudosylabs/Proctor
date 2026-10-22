@@ -21,13 +21,11 @@ import (
 )
 
 type commandOutcomeRow struct {
-	FingerprintVersion int            `db:"fingerprint_version"`
-	Fingerprint        []byte         `db:"fingerprint"`
-	OutcomeVersion     int            `db:"outcome_version"`
-	Outcome            jsonValue      `db:"outcome"`
-	OriginalAuditID    sql.NullString `db:"original_audit_event_id"`
-	BatchGroupDigest   []byte         `db:"batch_group_digest"`
-	DuplicateOfDigest  []byte         `db:"duplicate_of_key_digest"`
+	Fingerprint       []byte         `db:"fingerprint"`
+	Outcome           jsonValue      `db:"outcome"`
+	OriginalAuditID   sql.NullString `db:"original_audit_event_id"`
+	BatchGroupDigest  []byte         `db:"batch_group_digest"`
+	DuplicateOfDigest []byte         `db:"duplicate_of_key_digest"`
 }
 
 type SQLCommandOutcomeStore struct{ *SQLStore }
@@ -86,7 +84,7 @@ type idempotentMutation[T any] struct {
 	auditEventID      model.AuditEventID
 	execute           func(context.Context, *sqlxTxWrapper) (T, error)
 	encode            func(T) ([]byte, error)
-	decode            func(int, []byte) (T, error)
+	decode            func([]byte) (T, error)
 	hydrateReplay     func(context.Context, *sqlxTxWrapper, T) (T, error)
 	completeReplay    func(context.Context, *sqlxTxWrapper, T, string) error
 	completeDuplicate func(context.Context, *sqlxTxWrapper, T, string) error
@@ -102,7 +100,6 @@ type idempotentResult[T any] struct {
 func runIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, operation string, mutation idempotentMutation[T]) (*idempotentResult[T], error) {
 	command := mutation.command
 	if command == nil || !command.UserID.IsValid() || command.Operation == "" ||
-		command.FingerprintVersion <= 0 || command.OutcomeVersion <= 0 ||
 		command.Retention <= 0 || command.Wait <= 0 || mutation.execute == nil ||
 		mutation.encode == nil || mutation.decode == nil ||
 		(command.OnboardingImportID.IsValid() != (command.OnboardingImportRowNumber > 0)) ||
@@ -128,20 +125,20 @@ func runIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, opera
 		}
 
 		var row commandOutcomeRow
-		err := tx.Get(ctx, &row, `SELECT fingerprint_version, fingerprint, outcome_version, outcome, original_audit_event_id,
+		err := tx.Get(ctx, &row, `SELECT fingerprint, outcome, original_audit_event_id,
 			batch_group_digest, duplicate_of_key_digest
 			FROM command_outcomes WHERE user_id = ? AND operation = ? AND key_digest = ?`,
 			command.UserID.String(), command.Operation, command.KeyDigest[:])
 		switch {
 		case err == nil:
-			if row.FingerprintVersion != command.FingerprintVersion || !bytes.Equal(row.Fingerprint, command.Fingerprint[:]) {
+			if !bytes.Equal(row.Fingerprint, command.Fingerprint[:]) {
 				return nil, &store.ErrIdempotencyConflict{}
 			}
 			if command.Batch != nil && !bytes.Equal(row.BatchGroupDigest, command.Batch.GroupDigest[:]) ||
 				command.Batch == nil && len(row.BatchGroupDigest) != 0 {
 				return nil, &store.ErrIdempotencyConflict{}
 			}
-			value, decodeErr := mutation.decode(row.OutcomeVersion, []byte(row.Outcome))
+			value, decodeErr := mutation.decode([]byte(row.Outcome))
 			if decodeErr != nil {
 				return nil, invalidPersistedState("command_outcome", "outcome", decodeErr)
 			}
@@ -181,7 +178,7 @@ func runIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, opera
 
 		if command.Batch != nil && command.Batch.DuplicateOfKeyDigest != ([sha256.Size]byte{}) {
 			var canonical commandOutcomeRow
-			if err = tx.Get(ctx, &canonical, `SELECT fingerprint_version, fingerprint, outcome_version, outcome, original_audit_event_id,
+			if err = tx.Get(ctx, &canonical, `SELECT fingerprint, outcome, original_audit_event_id,
 				batch_group_digest, duplicate_of_key_digest FROM command_outcomes
 				WHERE user_id=? AND operation=? AND key_digest=?`, command.UserID.String(), command.Operation,
 				command.Batch.DuplicateOfKeyDigest[:]); err != nil {
@@ -193,7 +190,7 @@ func runIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, opera
 			if len(canonical.DuplicateOfDigest) != 0 || !bytes.Equal(canonical.BatchGroupDigest, command.Batch.GroupDigest[:]) {
 				return nil, &store.ErrIdempotencyConflict{}
 			}
-			value, decodeErr := mutation.decode(canonical.OutcomeVersion, []byte(canonical.Outcome))
+			value, decodeErr := mutation.decode([]byte(canonical.Outcome))
 			if decodeErr != nil {
 				return nil, invalidPersistedState("command_outcome", "canonical_outcome", decodeErr)
 			}
@@ -212,11 +209,11 @@ func runIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, opera
 				return nil, err
 			}
 			if _, err = tx.Exec(ctx, `INSERT INTO command_outcomes (
-				user_id, operation, key_digest, fingerprint_version, fingerprint, outcome_version, outcome,
+				user_id, operation, key_digest, fingerprint, outcome,
 				batch_group_digest, duplicate_of_key_digest, original_audit_event_id, created_at, expires_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + (? * interval '1 millisecond'))`,
-				command.UserID.String(), command.Operation, command.KeyDigest[:], command.FingerprintVersion, command.Fingerprint[:],
-				canonical.OutcomeVersion, canonical.Outcome, command.Batch.GroupDigest[:], command.Batch.DuplicateOfKeyDigest[:],
+			) VALUES (?, ?, ?, ?, ?::jsonb, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + (? * interval '1 millisecond'))`,
+				command.UserID.String(), command.Operation, command.KeyDigest[:], command.Fingerprint[:],
+				canonical.Outcome, command.Batch.GroupDigest[:], command.Batch.DuplicateOfKeyDigest[:],
 				mutation.auditEventID, command.Retention.Milliseconds()); err != nil {
 				return nil, fmt.Errorf("persist duplicate batch outcome: %w", err)
 			}
@@ -255,11 +252,11 @@ func runIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, opera
 			batchGroup = command.Batch.GroupDigest[:]
 		}
 		if _, err = tx.Exec(ctx, `INSERT INTO command_outcomes (
-			user_id, operation, key_digest, fingerprint_version, fingerprint,
-			outcome_version, outcome, batch_group_digest, original_audit_event_id, created_at, expires_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + (? * interval '1 millisecond'))`,
-			command.UserID.String(), command.Operation, command.KeyDigest[:], command.FingerprintVersion,
-			command.Fingerprint[:], command.OutcomeVersion, encoded, batchGroup, persistedAuditID,
+			user_id, operation, key_digest, fingerprint,
+			outcome, batch_group_digest, original_audit_event_id, created_at, expires_at
+		) VALUES (?, ?, ?, ?, ?::jsonb, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + (? * interval '1 millisecond'))`,
+			command.UserID.String(), command.Operation, command.KeyDigest[:],
+			command.Fingerprint[:], encoded, batchGroup, persistedAuditID,
 			command.Retention.Milliseconds()); err != nil {
 			return nil, fmt.Errorf("persist idempotent command outcome: %w", err)
 		}

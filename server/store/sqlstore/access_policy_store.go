@@ -204,10 +204,7 @@ func (s SQLAccessPolicyStore) Replace(ctx context.Context, input *store.AccessPo
 	return result, nil
 }
 
-func decodeAccessPolicyReplacementOutcome(version int, encoded []byte) (accessPolicyReplacementOutcome, error) {
-	if version != 1 {
-		return accessPolicyReplacementOutcome{}, invalidPersistedState("command_outcome", "outcome_version", errors.New("unsupported access policy outcome version"))
-	}
+func decodeAccessPolicyReplacementOutcome(encoded []byte) (accessPolicyReplacementOutcome, error) {
 	var outcome accessPolicyReplacementOutcome
 	if err := json.Unmarshal(encoded, &outcome); err != nil || outcome.Result == nil || outcome.Result.Snapshot == nil || outcome.Result.Snapshot.Policy == nil || outcome.Result.Snapshot.Policy.Validate() != nil ||
 		outcome.RevokedSessionCount < 0 || len(outcome.ChangedFields) > 7 {
@@ -457,7 +454,7 @@ func validateAccessPolicyPreflight(input *store.AccessPolicyPreflight) error {
 func validateAccessPolicyReplacement(input *store.AccessPolicyReplacement, command *store.CommandIdempotency) error {
 	if input == nil || !input.ActorID.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
 		command == nil || command.UserID != input.ActorID || command.Operation != "access_policy.replace.v1" ||
-		command.FingerprintVersion != 1 || command.OutcomeVersion != 1 || command.Retention <= 0 || command.Wait <= 0 {
+		command.Retention <= 0 || command.Wait <= 0 {
 		return store.NewErrInvalidInput("access_policy", "replacement", nil)
 	}
 	return validateAccessPolicyPreflight(&input.Preflight)

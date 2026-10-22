@@ -472,7 +472,7 @@ func listAttemptWorkspaceJournalSnapshot(ctx context.Context, tx *sqlxTxWrapper,
 }
 
 // attemptWorkspaceJournalOutcomeV1 is the persisted spelling of the
-// acknowledged journal change inside a version-1 mutation outcome. Field names
+// acknowledged journal change inside a mutation outcome. Field names
 // are the JSON keys; Recursive is omitted when false.
 type attemptWorkspaceJournalOutcomeV1 struct {
 	WorkspaceID    model.ExamAttemptWorkspaceID
@@ -518,11 +518,8 @@ func (s *SQLExamAttemptWorkspaceStore) ApplyMutation(ctx context.Context, input 
 		encode: func(outcome attemptWorkspaceMutationOutcomeV1) ([]byte, error) {
 			return encodeCommandOutcome(outcome)
 		},
-		decode: func(version int, encoded []byte) (attemptWorkspaceMutationOutcomeV1, error) {
+		decode: func(encoded []byte) (attemptWorkspaceMutationOutcomeV1, error) {
 			var outcome attemptWorkspaceMutationOutcomeV1
-			if version != 1 {
-				return outcome, fmt.Errorf("unsupported Attempt Workspace mutation outcome version %d", version)
-			}
 			if err := decodeCommandOutcome(encoded, &outcome); err != nil {
 				return outcome, err
 			}
@@ -556,7 +553,7 @@ func (s *SQLExamAttemptWorkspaceStore) ApplyMutation(ctx context.Context, input 
 
 func prepareAttemptWorkspaceMutation(input *store.ExamAttemptWorkspaceMutation, command *store.CommandIdempotency) (*store.ExamAttemptWorkspaceMutation, error) {
 	if input == nil || command == nil || command.Operation != store.ExamAttemptWorkspaceMutationOperation ||
-		command.OutcomeVersion != 1 || command.UserID != input.Access.CandidateUserID || !validAttemptWorkspaceMutationAccess(input.Access) ||
+		command.UserID != input.Access.CandidateUserID || !validAttemptWorkspaceMutationAccess(input.Access) ||
 		!input.EntryID.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("attempt_workspace", "mutation", nil)
 	}

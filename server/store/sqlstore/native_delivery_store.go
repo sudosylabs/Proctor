@@ -558,11 +558,8 @@ func (s *SQLExamAttemptStore) declareNativeDelivery(ctx context.Context, access 
 			return &nativeDeclarationOutcome{Receipt: record.Receipt, Status: status}, nil
 		},
 		encode: func(value *nativeDeclarationOutcome) ([]byte, error) { return canonicalPreflightValue(value) },
-		decode: func(version int, raw []byte) (*nativeDeclarationOutcome, error) {
+		decode: func(raw []byte) (*nativeDeclarationOutcome, error) {
 			var result nativeDeclarationOutcome
-			if version != 1 {
-				return nil, invalidPersistedState("native_delivery", "value", model.ErrDeliveryInvalid)
-			}
 			if err := decodeCommandOutcome(raw, &result); err != nil {
 				return nil, err
 			}
@@ -675,11 +672,8 @@ func (s *SQLExamAttemptStore) UpdateNativeDeliverySummary(ctx context.Context, i
 			}
 			return nativeDeliveryStatus(ctx, tx, owner, input.Access.StreamID)
 		}, encode: func(v *model.NativeSecurityStreamStatus) ([]byte, error) { return canonicalPreflightValue(v) },
-		decode: func(version int, raw []byte) (*model.NativeSecurityStreamStatus, error) {
+		decode: func(raw []byte) (*model.NativeSecurityStreamStatus, error) {
 			var v model.NativeSecurityStreamStatus
-			if version != 1 {
-				return nil, invalidPersistedState("native_delivery", "value", model.ErrDeliveryInvalid)
-			}
 			if err := decodeCommandOutcome(raw, &v); err != nil {
 				return nil, err
 			}

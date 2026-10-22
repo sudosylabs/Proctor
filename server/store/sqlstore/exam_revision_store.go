@@ -117,10 +117,7 @@ func (s SQLExamRevisionStore) Publish(ctx context.Context, input *store.ExamRevi
 			return publishExamRevision(ctx, tx, prepared)
 		},
 		encode: func(outcome examRevisionPublicationOutcomeRow) ([]byte, error) { return encodeCommandOutcome(outcome) },
-		decode: func(version int, data []byte) (examRevisionPublicationOutcomeRow, error) {
-			if version != 1 {
-				return examRevisionPublicationOutcomeRow{}, fmt.Errorf("unsupported Exam Revision publication outcome version %d", version)
-			}
+		decode: func(data []byte) (examRevisionPublicationOutcomeRow, error) {
 			var outcome examRevisionPublicationOutcomeRow
 			if err := decodeCommandOutcome(data, &outcome); err != nil {
 				return examRevisionPublicationOutcomeRow{}, err

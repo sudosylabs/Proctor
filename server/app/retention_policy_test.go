@@ -156,8 +156,6 @@ func TestRetentionPolicyReplacementPassesAtomicAuditAndIdempotency(t *testing.T)
 	require.NotNil(t, idempotency, "atomic input")
 	require.Equal(t, input.Principal.UserID, idempotency.UserID, "atomic input")
 	require.Equal(t, "retention_policy.replace.v1", idempotency.Operation, "atomic input")
-	require.Equal(t, 1, idempotency.FingerprintVersion, "atomic input")
-	require.Equal(t, 1, idempotency.OutcomeVersion, "atomic input")
 	result.AuditRetentionDays = 1
 	require.Equal(t, command.Settings.AuditRetentionDays, next.AuditRetentionDays, "replacement result shares mutable Store policy")
 }

@@ -112,10 +112,7 @@ func (s SQLAcademicPeriodStore) CreateIdempotently(ctx context.Context, input *s
 		encode: func(period *model.AcademicPeriod) ([]byte, error) {
 			return encodeCommandOutcome(newAcademicPeriodRow(period))
 		},
-		decode: func(version int, data []byte) (*model.AcademicPeriod, error) {
-			if version != 1 {
-				return nil, fmt.Errorf("unsupported academic period outcome version %d", version)
-			}
+		decode: func(data []byte) (*model.AcademicPeriod, error) {
 			var row academicPeriodRow
 			if err := decodeCommandOutcome(data, &row); err != nil {
 				return nil, err

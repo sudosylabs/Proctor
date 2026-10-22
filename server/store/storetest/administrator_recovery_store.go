@@ -187,9 +187,9 @@ func TestAdministratorRecoveryStore(t *testing.T, ss store.Store, probes ...Admi
 	prepareAccessPolicyAttempt(t, ctx, ss, installed, replacement)
 	_, err = ss.AccessPolicy().Replace(ctx, replacement, &store.CommandIdempotency{
 		UserID: installed.Administrator.ID, Operation: "access_policy.replace.v1",
-		KeyDigest: sha256.Sum256([]byte("administrator-recovery-disable-local")), FingerprintVersion: 1,
-		Fingerprint: sha256.Sum256([]byte("administrator-recovery-disable-local-command")), OutcomeVersion: 1,
-		Retention: time.Hour, Wait: time.Second,
+		KeyDigest:   sha256.Sum256([]byte("administrator-recovery-disable-local")),
+		Fingerprint: sha256.Sum256([]byte("administrator-recovery-disable-local-command")),
+		Retention:   time.Hour, Wait: time.Second,
 	})
 	require.NoError(t, err)
 	beforeRejectedRotation, err := ss.PasswordCredential().GetByUser(ctx, installed.Administrator.ID)

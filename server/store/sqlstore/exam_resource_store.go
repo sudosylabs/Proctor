@@ -326,10 +326,7 @@ func examResourceRecordRow(value *store.ExamResourceRecord) (examResourceRow, er
 	r, x := value.Resource, value.Rendition
 	return examResourceRow{ID: r.ID.String(), ExamID: r.ExamID.String(), FileEntryID: r.FileEntryID.String(), SelectedRevisionID: r.SelectedFileRevisionID.String(), DisplayName: r.DisplayName, DescriptionMarkdown: r.DescriptionMarkdown, Position: r.Position, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, ArchivedAt: NullTimeFromOptional(r.ArchivedAt), DraftRevision: value.DraftRevision, RenditionID: x.ID.String(), RenditionRevisionID: x.RevisionID.String(), RenditionCreatedAt: x.CreatedAt, RenditionName: x.Name, MediaType: x.MediaType, Size: x.Size, Width: x.Width, Height: x.Height, SHA256: x.SHA256}, nil
 }
-func decodeExamResourceOutcome(version int, data []byte) (*store.ExamResourceRecord, error) {
-	if version != 1 {
-		return nil, fmt.Errorf("unsupported exam resource outcome version %d", version)
-	}
+func decodeExamResourceOutcome(data []byte) (*store.ExamResourceRecord, error) {
 	var row examResourceRow
 	if err := decodeCommandOutcome(data, &row); err != nil {
 		return nil, err
@@ -475,11 +472,8 @@ func (s SQLExamResourceStore) Reorder(ctx context.Context, input *store.ExamReso
 				rows = append(rows, row)
 			}
 			return reorderOutcome{Rows: rows, DraftRevision: input.ExpectedDraftRevision + 1}, nil
-		}, encode: func(v reorderOutcome) ([]byte, error) { return encodeCommandOutcome(v) }, decode: func(version int, data []byte) (reorderOutcome, error) {
+		}, encode: func(v reorderOutcome) ([]byte, error) { return encodeCommandOutcome(v) }, decode: func(data []byte) (reorderOutcome, error) {
 			var v reorderOutcome
-			if version != 1 {
-				return v, fmt.Errorf("unsupported reorder outcome version %d", version)
-			}
 			return v, decodeCommandOutcome(data, &v)
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, v reorderOutcome, original string) error {

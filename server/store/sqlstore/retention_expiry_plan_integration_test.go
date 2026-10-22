@@ -157,8 +157,8 @@ func TestRetentionExpiryAuditCountPlanIsBounded(t *testing.T) {
   'institution',institution.id,CASE WHEN i%97=0 THEN 'attempt' ELSE 'success' END,'retention-plan-test'
  FROM generate_series(1,$1::integer) i CROSS JOIN total CROSS JOIN institution JOIN resources r ON r.n=i%total.c`, auditEvents)
 	require.NoError(t, err)
-	_, err = db.ExecContext(ctx, `INSERT INTO command_outcomes(user_id,operation,key_digest,fingerprint_version,fingerprint,outcome_version,outcome,original_audit_event_id,created_at,expires_at)
- SELECT (SELECT id FROM users ORDER BY id LIMIT 1),'retention.plan.reference',sha256(i::text::bytea),1,sha256(i::text::bytea),1,'{}',
+	_, err = db.ExecContext(ctx, `INSERT INTO command_outcomes(user_id,operation,key_digest,fingerprint,outcome,original_audit_event_id,created_at,expires_at)
+ SELECT (SELECT id FROM users ORDER BY id LIMIT 1),'retention.plan.reference',sha256(i::text::bytea),sha256(i::text::bytea),'{}',
   'zz'||translate(lpad((i*10)::text,24,'0'),'0123456789','ybndrfg8ej'),clock_timestamp(),clock_timestamp()+interval '1 day'
  FROM generate_series(1,$1::integer/10) i`, auditEvents)
 	require.NoError(t, err)

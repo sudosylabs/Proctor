@@ -654,9 +654,9 @@ func replaceExternalAdmissionPolicy(
 	nonce := model.NewID()
 	command := &store.CommandIdempotency{
 		UserID: actorID, Operation: "access_policy.replace.v1",
-		KeyDigest: sha256.Sum256([]byte("external-admission-key:" + nonce)), FingerprintVersion: 1,
-		Fingerprint: sha256.Sum256([]byte("external-admission-command:" + nonce)), OutcomeVersion: 1,
-		Retention: time.Hour, Wait: time.Second,
+		KeyDigest:   sha256.Sum256([]byte("external-admission-key:" + nonce)),
+		Fingerprint: sha256.Sum256([]byte("external-admission-command:" + nonce)),
+		Retention:   time.Hour, Wait: time.Second,
 	}
 	result, err := ss.AccessPolicy().Replace(ctx, &store.AccessPolicyReplacement{
 		Preflight: store.AccessPolicyPreflight{

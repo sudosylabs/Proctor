@@ -318,8 +318,7 @@ type examSubmissionSealOutcomeV1 struct {
 func (s *SQLExamSubmissionStore) Seal(ctx context.Context, input *store.ExamSubmissionSeal,
 	command *store.CommandIdempotency,
 ) (*store.ExamSubmissionSealResult, error) {
-	if input == nil || command == nil || command.Operation != store.ExamSubmissionSealOperation || command.OutcomeVersion != 1 ||
-		command.UserID != input.Access.CandidateUserID || !input.SubmissionID.IsValid() ||
+	if input == nil || command == nil || command.Operation != store.ExamSubmissionSealOperation || command.UserID != input.Access.CandidateUserID || !input.SubmissionID.IsValid() ||
 		!validExamSubmissionSealAccess(input.Access) || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_submission", "seal", nil)
 	}
@@ -330,11 +329,8 @@ func (s *SQLExamSubmissionStore) Seal(ctx context.Context, input *store.ExamSubm
 			return sealExamSubmission(ctx, tx, &prepared)
 		},
 		encode: func(outcome examSubmissionSealOutcomeV1) ([]byte, error) { return encodeCommandOutcome(outcome) },
-		decode: func(version int, data []byte) (examSubmissionSealOutcomeV1, error) {
+		decode: func(data []byte) (examSubmissionSealOutcomeV1, error) {
 			var outcome examSubmissionSealOutcomeV1
-			if version != 1 {
-				return outcome, fmt.Errorf("unsupported Exam Submission seal outcome version %d", version)
-			}
 			if err := decodeCommandOutcome(data, &outcome); err != nil {
 				return outcome, err
 			}

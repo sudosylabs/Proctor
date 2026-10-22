@@ -449,10 +449,7 @@ func encodeInvitationCommandOutcome(result *store.InvitationCommandResult) ([]by
 	return encodeCommandOutcome(invitationCommandOutcome{Kind: invitationOutcomeKindInvitation, InvitationID: result.Invitation.ID.String()})
 }
 
-func decodeInvitationCommandOutcome(version int, data []byte) (*store.InvitationCommandResult, error) {
-	if version != 1 {
-		return nil, fmt.Errorf("unsupported Invitation outcome version %d", version)
-	}
+func decodeInvitationCommandOutcome(data []byte) (*store.InvitationCommandResult, error) {
 	var outcome invitationCommandOutcome
 	if err := decodeCommandOutcome(data, &outcome); err != nil {
 		return nil, err
@@ -594,10 +591,7 @@ func (s SQLInvitationStore) RecordBatchDuplicate(ctx context.Context, input *sto
 			}
 			return encodeCommandOutcome(invitationCommandOutcome{Kind: invitationOutcomeKindDuplicate})
 		},
-		decode: func(version int, data []byte) (*store.InvitationBatchCommandResult, error) {
-			if version != 1 {
-				return nil, fmt.Errorf("unsupported Invitation batch outcome version %d", version)
-			}
+		decode: func(data []byte) (*store.InvitationBatchCommandResult, error) {
 			var outcome invitationCommandOutcome
 			if err := decodeCommandOutcome(data, &outcome); err != nil {
 				return nil, err
@@ -701,7 +695,7 @@ func validateInvitationBatchDuplicateAuthority(ctx context.Context, tx *sqlxTxWr
 	}
 	var canonicalCommitted bool
 	if err = tx.Get(ctx, &canonicalCommitted, `SELECT EXISTS(SELECT 1 FROM command_outcomes
-		WHERE user_id=? AND operation=? AND key_digest=? AND fingerprint_version=1 AND fingerprint=?
+		WHERE user_id=? AND operation=? AND key_digest=? AND fingerprint=?
 		AND outcome->>'kind'='invitation' AND outcome->>'invitation_id'=?)`,
 		command.UserID.String(), input.CanonicalOperation, input.CanonicalKeyDigest[:], input.CanonicalFingerprint[:], input.LifecycleID.String()); err != nil {
 		return fmt.Errorf("find canonical Invitation batch outcome: %w", err)
@@ -1317,10 +1311,7 @@ func encodeInvitationAdministrationOutcome(result *store.InvitationAdministratio
 		InvitationID: result.Record.Invitation.ID.String(), Delivery: result.Record.Delivery})
 }
 
-func decodeInvitationAdministrationOutcome(version int, data []byte) (*store.InvitationAdministrationCommandResult, error) {
-	if version != 1 {
-		return nil, fmt.Errorf("unsupported Invitation administration outcome version %d", version)
-	}
+func decodeInvitationAdministrationOutcome(data []byte) (*store.InvitationAdministrationCommandResult, error) {
 	var outcome invitationCommandOutcome
 	if err := decodeCommandOutcome(data, &outcome); err != nil {
 		return nil, err

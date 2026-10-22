@@ -307,11 +307,8 @@ func runExamRecordsMutation[T any](ctx context.Context, s *SQLStore, input store
 			return value, nil
 		},
 		encode: func(v T) ([]byte, error) { return json.Marshal(v) },
-		decode: func(version int, data []byte) (T, error) {
+		decode: func(data []byte) (T, error) {
 			var v T
-			if version != 1 {
-				return v, errors.New("unsupported records outcome version")
-			}
 			if err := json.Unmarshal(data, &v); err != nil {
 				return v, err
 			}

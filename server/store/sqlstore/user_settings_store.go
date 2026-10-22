@@ -180,12 +180,7 @@ func encodeUserSettingsReplacementOutcome(outcome userSettingsReplacementOutcome
 	return json.Marshal(outcome.Result)
 }
 
-func decodeUserSettingsReplacementOutcome(version int, encoded []byte) (userSettingsReplacementOutcome, error) {
-	if version != 1 {
-		return userSettingsReplacementOutcome{}, invalidPersistedState(
-			"command_outcome", "outcome_version", errors.New("unsupported user settings outcome version"),
-		)
-	}
+func decodeUserSettingsReplacementOutcome(encoded []byte) (userSettingsReplacementOutcome, error) {
 	var result store.UserSettingsReplacementResult
 	if err := json.Unmarshal(encoded, &result); err != nil || !result.Revision.IsValid() ||
 		result.FormatVersion <= 0 || result.UpdatedAt.IsZero() {
@@ -201,7 +196,6 @@ func validateUserSettingsReplacement(input *store.UserSettingsReplacement, comma
 		!input.ExpectedRevision.IsValid() || !input.NextRevision.IsValid() ||
 		input.ExpectedRevision == input.NextRevision || input.UpdatedAt.IsZero() ||
 		command == nil || command.UserID != input.UserID || command.Operation != "user_settings.replace" ||
-		command.FingerprintVersion <= 0 || command.OutcomeVersion != 1 ||
 		command.Retention <= 0 || command.Wait <= 0 {
 		return store.NewErrInvalidInput("user_settings_document", "replacement", nil)
 	}

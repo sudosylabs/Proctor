@@ -79,10 +79,7 @@ func (s SQLExamCorrectionStore) ReserveResourceStage(ctx context.Context, input 
 			return examCorrectionStageOutcome{StageID: input.StageID.String()}, nil
 		},
 		encode: func(value examCorrectionStageOutcome) ([]byte, error) { return encodeCommandOutcome(value) },
-		decode: func(version int, data []byte) (examCorrectionStageOutcome, error) {
-			if version != 1 {
-				return examCorrectionStageOutcome{}, fmt.Errorf("unsupported correction resource stage outcome version %d", version)
-			}
+		decode: func(data []byte) (examCorrectionStageOutcome, error) {
 			var value examCorrectionStageOutcome
 			if err := decodeCommandOutcome(data, &value); err != nil {
 				return value, err
@@ -388,10 +385,7 @@ func (s SQLExamCorrectionStore) Apply(ctx context.Context, input *store.ExamCorr
 			return applyExamCorrection(ctx, tx, input)
 		},
 		encode: func(value *store.ExamCorrectionResult) ([]byte, error) { return encodeCommandOutcome(value) },
-		decode: func(version int, data []byte) (*store.ExamCorrectionResult, error) {
-			if version != 1 {
-				return nil, fmt.Errorf("unsupported Exam correction outcome version %d", version)
-			}
+		decode: func(data []byte) (*store.ExamCorrectionResult, error) {
 			var value store.ExamCorrectionResult
 			if err := decodeCommandOutcome(data, &value); err != nil {
 				return nil, err

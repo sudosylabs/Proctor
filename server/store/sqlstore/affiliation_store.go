@@ -308,10 +308,7 @@ func encodeAffiliationMutationOutcome(value *affiliationMutationResult) ([]byte,
 	return encodeCommandOutcome(affiliationCommandOutcome{ID: value.Value.ID.String(), NoOp: value.NoOp})
 }
 
-func decodeAffiliationMutationOutcome(version int, data []byte) (*affiliationMutationResult, error) {
-	if version != 1 {
-		return nil, fmt.Errorf("unsupported affiliation outcome version %d", version)
-	}
+func decodeAffiliationMutationOutcome(data []byte) (*affiliationMutationResult, error) {
 	var outcome affiliationCommandOutcome
 	if err := decodeCommandOutcome(data, &outcome); err != nil {
 		return nil, err

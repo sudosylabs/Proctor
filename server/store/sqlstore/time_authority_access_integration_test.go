@@ -74,8 +74,8 @@ func TestTimeAuthorityAccessPolicyReplacementAfterLeadingPolicyClock(t *testing.
 		Settings: settings, Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}}, CheckedAt: model.NowUTC()},
 		ActorID: f.actor.ID, AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt)}
 	command := &store.CommandIdempotency{UserID: f.actor.ID, Operation: "access_policy.replace.v1",
-		KeyDigest: sha256.Sum256([]byte("time-authority-access-policy")), FingerprintVersion: 1,
-		Fingerprint: sha256.Sum256([]byte("time-authority-access-policy-command")), OutcomeVersion: 1, Retention: time.Hour, Wait: time.Second}
+		KeyDigest:   sha256.Sum256([]byte("time-authority-access-policy")),
+		Fingerprint: sha256.Sum256([]byte("time-authority-access-policy-command")), Retention: time.Hour, Wait: time.Second}
 	result, err := s.AccessPolicy().Replace(ctx, replacement, command)
 	require.NoError(t, err)
 	policy := result.Snapshot.Policy

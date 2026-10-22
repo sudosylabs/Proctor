@@ -54,11 +54,8 @@ func (s *SQLExamAttemptStore) PrepareSecurityPreflight(ctx context.Context, inpu
 			return s.prepareSecurityPreflight(ctx, tx, input)
 		},
 		encode: func(value *store.SecurityPreflightPrepared) ([]byte, error) { return canonicalPreflightValue(value) },
-		decode: func(version int, raw []byte) (*store.SecurityPreflightPrepared, error) {
+		decode: func(raw []byte) (*store.SecurityPreflightPrepared, error) {
 			var value store.SecurityPreflightPrepared
-			if version != 1 {
-				return nil, preflightConflict("preflight_superseded")
-			}
 			decoded, err := decodePreparedSecurityPreflight(raw, input.Access.DesktopBuild.NativeAgreement)
 			if err != nil {
 				return nil, err
@@ -315,11 +312,8 @@ func (s *SQLExamAttemptStore) ReportSecurityPreflight(ctx context.Context, input
 			}
 			return &result, nil
 		}, encode: func(value *model.SecurityPreflightResult) ([]byte, error) { return canonicalPreflightValue(value) },
-		decode: func(version int, raw []byte) (*model.SecurityPreflightResult, error) {
+		decode: func(raw []byte) (*model.SecurityPreflightResult, error) {
 			var value model.SecurityPreflightResult
-			if version != 1 {
-				return nil, preflightConflict("preflight_superseded")
-			}
 			if err := decodeCommandOutcome(raw, &value); err != nil {
 				return nil, err
 			}

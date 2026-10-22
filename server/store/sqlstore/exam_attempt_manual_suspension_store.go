@@ -33,8 +33,7 @@ type examAttemptManualSuspensionOutcomeV1 struct {
 func (s *SQLExamAttemptStore) SuspendAttempt(ctx context.Context, input *store.ExamAttemptManualSuspension,
 	command *store.CommandIdempotency,
 ) (*store.ExamAttemptManualSuspensionResult, error) {
-	if input == nil || command == nil || command.Operation != store.ExamAttemptSuspendOperation || command.OutcomeVersion != 1 ||
-		command.UserID != input.ActorUserID || !input.ExamID.IsValid() || !input.SittingID.IsValid() || !input.AttemptID.IsValid() ||
+	if input == nil || command == nil || command.Operation != store.ExamAttemptSuspendOperation || command.UserID != input.ActorUserID || !input.ExamID.IsValid() || !input.SittingID.IsValid() || !input.AttemptID.IsValid() ||
 		!input.SuspensionID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedAttemptRevision < 1 ||
 		!model.IsValidAttemptSuspensionPrivateReason(input.PrivateReason) || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_attempt", "manual_suspension", nil)
@@ -50,11 +49,8 @@ func (s *SQLExamAttemptStore) SuspendAttempt(ctx context.Context, input *store.E
 			return suspendExamAttemptByManager(ctx, tx, input)
 		},
 		encode: func(value examAttemptManualSuspensionOutcomeV1) ([]byte, error) { return encodeCommandOutcome(value) },
-		decode: func(version int, encoded []byte) (examAttemptManualSuspensionOutcomeV1, error) {
+		decode: func(encoded []byte) (examAttemptManualSuspensionOutcomeV1, error) {
 			var value examAttemptManualSuspensionOutcomeV1
-			if version != 1 {
-				return value, fmt.Errorf("unsupported Exam Attempt manual suspension outcome version %d", version)
-			}
 			return value, decodeCommandOutcome(encoded, &value)
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value examAttemptManualSuspensionOutcomeV1, originalAuditID string) error {

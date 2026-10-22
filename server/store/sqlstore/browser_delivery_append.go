@@ -310,11 +310,8 @@ func (s *SQLExamAttemptStore) appendBrowserActivity(ctx context.Context, input *
 	} else {
 		outcome, mutationErr := runIdempotentMutation(ctx, s.SQLStore, "historical browser append", idempotentMutation[browserAppendResult]{command: command, auditEventID: input.AuditEventID, execute: execute,
 			encode: func(value browserAppendResult) ([]byte, error) { return canonicalPreflightValue(value) },
-			decode: func(version int, raw []byte) (browserAppendResult, error) {
+			decode: func(raw []byte) (browserAppendResult, error) {
 				var value browserAppendResult
-				if version != 1 {
-					return value, model.ErrDeliveryInvalid
-				}
 				err := decodeCommandOutcome(raw, &value)
 				return value, err
 			},

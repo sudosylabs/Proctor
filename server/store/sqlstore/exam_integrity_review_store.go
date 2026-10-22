@@ -669,11 +669,8 @@ func (s *SQLExamIntegrityReviewStore) runReviewMutation(ctx context.Context, nam
 ) (*store.ExamIntegrityReviewMutationResult, error) {
 	result, err := runIdempotentMutation(ctx, s.SQLStore, name, idempotentMutation[examIntegrityReviewOutcome]{command: command, auditEventID: auditID, execute: execute,
 		encode: func(value examIntegrityReviewOutcome) ([]byte, error) { return encodeCommandOutcome(value) },
-		decode: func(version int, data []byte) (examIntegrityReviewOutcome, error) {
+		decode: func(data []byte) (examIntegrityReviewOutcome, error) {
 			var value examIntegrityReviewOutcome
-			if version != 1 {
-				return value, fmt.Errorf("unsupported Integrity Review outcome version %d", version)
-			}
 			if err := decodeCommandOutcome(data, &value); err != nil {
 				return value, err
 			}

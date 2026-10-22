@@ -63,11 +63,11 @@ func Prepare(call invocation.Invocation, operation, key string, semantic any) (*
 
 func identity(userID model.UserID, operation, key string, canonical []byte) *store.CommandIdempotency {
 	keyDigest := sha256.Sum256([]byte(key))
-	fingerprintInput := append([]byte(operation+"\x00v1\x00"), canonical...)
+	fingerprintInput := append([]byte(operation+"\x00"), canonical...)
 	fingerprint := sha256.Sum256(fingerprintInput)
 	return &store.CommandIdempotency{
 		UserID: userID, Operation: operation, KeyDigest: keyDigest,
-		FingerprintVersion: 1, Fingerprint: fingerprint, OutcomeVersion: 1,
-		Retention: Retention, Wait: Wait,
+		Fingerprint: fingerprint,
+		Retention:   Retention, Wait: Wait,
 	}
 }

@@ -667,10 +667,7 @@ func (s SQLSessionStore) RevokeAllForUser(
 		encode: func(value *userSessionsMutationResult) ([]byte, error) {
 			return encodeCommandOutcome(userSessionsCommandOutcome{UserID: input.UserID.String(), NoOp: value.NoOp})
 		},
-		decode: func(version int, data []byte) (*userSessionsMutationResult, error) {
-			if version != 1 {
-				return nil, fmt.Errorf("unsupported user sessions outcome version %d", version)
-			}
+		decode: func(data []byte) (*userSessionsMutationResult, error) {
 			var outcome userSessionsCommandOutcome
 			if decodeErr := decodeCommandOutcome(data, &outcome); decodeErr != nil {
 				return nil, decodeErr

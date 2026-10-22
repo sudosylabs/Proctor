@@ -88,7 +88,7 @@ func (s *SQLExamExportStore) ListScope(ctx context.Context, scope model.Retentio
 
 func (s *SQLExamExportStore) ListCreationScope(ctx context.Context, scope model.RetentionHoldScope, command *store.CommandIdempotency) ([]store.ExamSubmissionAuthorization, error) {
 	if scope.Validate() != nil || !scope.SittingID.IsValid() || command == nil || !command.UserID.IsValid() || command.Operation != store.ExamExportCreateOperation ||
-		command.KeyDigest == ([sha256.Size]byte{}) || command.FingerprintVersion < 1 || command.OutcomeVersion != 1 || command.Wait <= 0 || command.Retention <= 0 || command.Batch != nil {
+		command.KeyDigest == ([sha256.Size]byte{}) || command.Wait <= 0 || command.Retention <= 0 || command.Batch != nil {
 		return nil, store.NewErrInvalidInput("exam_export", "creation_scope", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "resolve Exam export creation scope", func(ctx context.Context, tx *sqlxTxWrapper) ([]store.ExamSubmissionAuthorization, error) {
@@ -98,18 +98,18 @@ func (s *SQLExamExportStore) ListCreationScope(ctx context.Context, scope model.
 			return nil, err
 		}
 		var outcome commandOutcomeRow
-		err := tx.Get(ctx, &outcome, `SELECT fingerprint_version,fingerprint,outcome_version,outcome FROM command_outcomes WHERE user_id=? AND operation=? AND key_digest=? FOR SHARE`, command.UserID.String(), command.Operation, command.KeyDigest[:])
+		err := tx.Get(ctx, &outcome, `SELECT fingerprint,outcome FROM command_outcomes WHERE user_id=? AND operation=? AND key_digest=? FOR SHARE`, command.UserID.String(), command.Operation, command.KeyDigest[:])
 		if errors.Is(err, sql.ErrNoRows) {
 			return listExamExportScope(ctx, tx, scope, "", false)
 		}
 		if err != nil {
 			return nil, err
 		}
-		if outcome.FingerprintVersion != command.FingerprintVersion || !bytes.Equal(outcome.Fingerprint, command.Fingerprint[:]) {
+		if !bytes.Equal(outcome.Fingerprint, command.Fingerprint[:]) {
 			return nil, &store.ErrIdempotencyConflict{}
 		}
 		var id model.ExamExportID
-		if outcome.OutcomeVersion != 1 || json.Unmarshal(outcome.Outcome, &id) != nil || !id.IsValid() {
+		if json.Unmarshal(outcome.Outcome, &id) != nil || !id.IsValid() {
 			return nil, invalidPersistedState("exam_export", "outcome", errors.New("invalid export outcome"))
 		}
 		row, err := getExamExport(ctx, tx, id, false)
@@ -241,9 +241,9 @@ func (s *SQLExamExportStore) Create(ctx context.Context, input *store.ExamExport
 			return createExamExport(ctx, tx, input)
 		},
 		encode: func(e *model.ExamExport) ([]byte, error) { return json.Marshal(e.ID) },
-		decode: func(version int, b []byte) (*model.ExamExport, error) {
+		decode: func(b []byte) (*model.ExamExport, error) {
 			var id model.ExamExportID
-			if version != 1 || json.Unmarshal(b, &id) != nil || !id.IsValid() {
+			if json.Unmarshal(b, &id) != nil || !id.IsValid() {
 				return nil, errors.New("invalid export outcome")
 			}
 			return &model.ExamExport{ID: id}, nil

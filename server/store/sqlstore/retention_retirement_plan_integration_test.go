@@ -44,8 +44,8 @@ func TestRetentionRetirementOutcomeDeletesUseIndexes(t *testing.T) {
    'stream_id','stream-'||(i%20000),'source_session_id',md5((i%20000)::text)::uuid::text,'family','native')
  FROM generate_series(1,$2::integer) i`, user.ID.String(), auditEvents)
 	require.NoError(t, err)
-	_, err = db.ExecContext(ctx, `INSERT INTO command_outcomes(user_id,operation,key_digest,fingerprint_version,fingerprint,outcome_version,outcome,original_audit_event_id,created_at,expires_at)
- SELECT $1,(ARRAY[$2,$3,$4,$5])[1+i%4],sha256(i::text::bytea),1,sha256(i::text::bytea),1,'{}',
+	_, err = db.ExecContext(ctx, `INSERT INTO command_outcomes(user_id,operation,key_digest,fingerprint,outcome,original_audit_event_id,created_at,expires_at)
+ SELECT $1,(ARRAY[$2,$3,$4,$5])[1+i%4],sha256(i::text::bytea),sha256(i::text::bytea),'{}',
   'zz'||translate(lpad((i*10)::text,24,'0'),'0123456789','ybndrfg8ej'),clock_timestamp(),clock_timestamp()+interval '1 day'
  FROM generate_series(1,$6::integer/10) i`, user.ID.String(), store.ExamAttemptConnectOperation, store.SecurityPreflightPrepareOperation,
 		store.NativeDeliveryAppendOperation, store.DeliveryStopDetailsOperation, auditEvents)

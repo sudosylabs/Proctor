@@ -71,8 +71,8 @@ func retentionExpirySQLProbe(s *SQLStore) storetest.RetentionExpirySQLProbe {
 		},
 		PinAudit: func(t *testing.T, ctx context.Context, id string, user model.UserID) func() {
 			t.Helper()
-			_, err := s.GetMaster().Exec(ctx, `INSERT INTO command_outcomes(user_id,operation,key_digest,fingerprint_version,fingerprint,outcome_version,outcome,original_audit_event_id,created_at,expires_at)
-    VALUES(?,'retention.expiry.reference',decode(repeat('01',32),'hex'),1,decode(repeat('02',32),'hex'),1,'{}',?,clock_timestamp(),clock_timestamp()+interval '1 day')`, user.String(), id)
+			_, err := s.GetMaster().Exec(ctx, `INSERT INTO command_outcomes(user_id,operation,key_digest,fingerprint,outcome,original_audit_event_id,created_at,expires_at)
+    VALUES(?,'retention.expiry.reference',decode(repeat('01',32),'hex'),decode(repeat('02',32),'hex'),'{}',?,clock_timestamp(),clock_timestamp()+interval '1 day')`, user.String(), id)
 			require.NoError(t, err)
 			return func() {
 				_, err := s.GetMaster().Exec(ctx, `DELETE FROM command_outcomes WHERE operation='retention.expiry.reference' AND original_audit_event_id=?`, id)

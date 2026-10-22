@@ -757,8 +757,7 @@ func testInvitationBatchDuplicateRechecksCurrentInviterAuthority(t *testing.T, s
 }
 
 func invitationTestCommand(userID model.UserID, operation, key, fingerprint string) *store.CommandIdempotency {
-	return &store.CommandIdempotency{UserID: userID, Operation: operation, KeyDigest: sha256.Sum256([]byte(key)),
-		FingerprintVersion: 1, Fingerprint: sha256.Sum256([]byte(fingerprint)), OutcomeVersion: 1,
+	return &store.CommandIdempotency{UserID: userID, Operation: operation, KeyDigest: sha256.Sum256([]byte(key)), Fingerprint: sha256.Sum256([]byte(fingerprint)),
 		Retention: 24 * time.Hour, Wait: 2 * time.Second}
 }
 

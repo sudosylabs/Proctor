@@ -1075,10 +1075,7 @@ func encodeUserDisabledMutationOutcome(value *userDisabledMutationResult) ([]byt
 	}
 	return encodeCommandOutcome(userDisabledCommandOutcome{UserID: value.Value.User.ID.String(), NoOp: value.NoOp})
 }
-func decodeUserDisabledMutationOutcome(version int, data []byte) (*userDisabledMutationResult, error) {
-	if version != 1 {
-		return nil, fmt.Errorf("unsupported user disabled outcome version %d", version)
-	}
+func decodeUserDisabledMutationOutcome(data []byte) (*userDisabledMutationResult, error) {
 	var outcome userDisabledCommandOutcome
 	if err := decodeCommandOutcome(data, &outcome); err != nil {
 		return nil, err

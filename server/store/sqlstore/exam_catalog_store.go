@@ -186,10 +186,7 @@ func (s SQLExamAuthoringStore) Archive(ctx context.Context, input *store.ExamArc
 			return archiveExam(ctx, tx, prepared)
 		},
 		encode: func(exam *model.Exam) ([]byte, error) { return encodeCommandOutcome(examAccessRowFromModel(exam)) },
-		decode: func(version int, data []byte) (*model.Exam, error) {
-			if version != 1 {
-				return nil, fmt.Errorf("unsupported exam archive outcome version %d", version)
-			}
+		decode: func(data []byte) (*model.Exam, error) {
 			var row examAccessRow
 			if err := decodeCommandOutcome(data, &row); err != nil {
 				return nil, err

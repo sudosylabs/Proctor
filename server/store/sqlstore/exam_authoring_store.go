@@ -85,10 +85,7 @@ func (s SQLExamAuthoringStore) Create(ctx context.Context, input *store.ExamAuth
 			}
 			return encodeCommandOutcome(row)
 		},
-		decode: func(version int, data []byte) (*store.ExamAuthoringSnapshot, error) {
-			if version != 1 {
-				return nil, fmt.Errorf("unsupported exam creation outcome version %d", version)
-			}
+		decode: func(data []byte) (*store.ExamAuthoringSnapshot, error) {
 			var row examAuthoringRow
 			if err := decodeCommandOutcome(data, &row); err != nil {
 				return nil, err
@@ -133,10 +130,7 @@ func (s SQLExamAuthoringStore) UpdateDraftText(ctx context.Context, input *store
 			}
 			return encodeCommandOutcome(row)
 		},
-		decode: func(version int, data []byte) (*store.ExamAuthoringSnapshot, error) {
-			if version != 1 {
-				return nil, fmt.Errorf("unsupported exam Draft text outcome version %d", version)
-			}
+		decode: func(data []byte) (*store.ExamAuthoringSnapshot, error) {
 			var row examAuthoringRow
 			if err := decodeCommandOutcome(data, &row); err != nil {
 				return nil, err
@@ -181,10 +175,7 @@ func (s SQLExamAuthoringStore) UpdateDraftFocusLoss(ctx context.Context, input *
 			}
 			return encodeCommandOutcome(row)
 		},
-		decode: func(version int, data []byte) (*store.ExamAuthoringSnapshot, error) {
-			if version != 1 {
-				return nil, fmt.Errorf("unsupported exam Draft Focus Loss outcome version %d", version)
-			}
+		decode: func(data []byte) (*store.ExamAuthoringSnapshot, error) {
 			var row examAuthoringRow
 			if decodeErr := decodeCommandOutcome(data, &row); decodeErr != nil {
 				return nil, decodeErr
@@ -229,10 +220,7 @@ func (s SQLExamAuthoringStore) UpdateDraftBrowserPolicy(ctx context.Context, inp
 			}
 			return encodeCommandOutcome(row)
 		},
-		decode: func(version int, data []byte) (*store.ExamAuthoringSnapshot, error) {
-			if version != 1 {
-				return nil, fmt.Errorf("unsupported exam Draft Browser Policy outcome version %d", version)
-			}
+		decode: func(data []byte) (*store.ExamAuthoringSnapshot, error) {
 			var row examAuthoringRow
 			if decodeErr := decodeCommandOutcome(data, &row); decodeErr != nil {
 				return nil, decodeErr
@@ -743,10 +731,7 @@ func (s SQLExamAuthoringStore) UpdateDraftNativePolicy(ctx context.Context, inpu
 			}
 			return encodeCommandOutcome(row)
 		},
-		decode: func(version int, data []byte) (*store.ExamAuthoringSnapshot, error) {
-			if version != 1 {
-				return nil, fmt.Errorf("unsupported exam Draft native policy outcome version %d", version)
-			}
+		decode: func(data []byte) (*store.ExamAuthoringSnapshot, error) {
 			var row examAuthoringRow
 			if decodeErr := decodeCommandOutcome(data, &row); decodeErr != nil {
 				return nil, decodeErr

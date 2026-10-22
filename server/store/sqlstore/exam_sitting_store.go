@@ -499,10 +499,7 @@ func (s SQLExamSittingStore) runExamSittingMutation(ctx context.Context, label s
 	result, err := runIdempotentMutation(ctx, s.SQLStore, label, idempotentMutation[*model.ExamSitting]{
 		command: command, auditEventID: auditID, execute: execute,
 		encode: func(sitting *model.ExamSitting) ([]byte, error) { return encodeCommandOutcome(sitting) },
-		decode: func(version int, data []byte) (*model.ExamSitting, error) {
-			if version != 1 {
-				return nil, fmt.Errorf("unsupported Exam Sitting outcome version %d", version)
-			}
+		decode: func(data []byte) (*model.ExamSitting, error) {
 			var sitting model.ExamSitting
 			if err := decodeCommandOutcome(data, &sitting); err != nil {
 				return nil, err
@@ -1017,10 +1014,7 @@ func (s SQLExamSittingStore) runManagerLifecycleMutation(ctx context.Context, la
 			return current, nil
 		},
 		encode: func(sitting *model.ExamSitting) ([]byte, error) { return encodeCommandOutcome(sitting) },
-		decode: func(version int, data []byte) (*model.ExamSitting, error) {
-			if version != 1 {
-				return nil, fmt.Errorf("unsupported Exam Sitting lifecycle outcome version %d", version)
-			}
+		decode: func(data []byte) (*model.ExamSitting, error) {
 			var sitting model.ExamSitting
 			if err := decodeCommandOutcome(data, &sitting); err != nil {
 				return nil, err
@@ -1141,10 +1135,7 @@ func (s SQLExamSittingStore) Extend(ctx context.Context, input *store.ExamSittin
 		Transition: store.ExamSittingTransitionManagerExtended, Changed: true, Replayed: result.Replayed}, nil
 }
 
-func decodeExamSittingLifecycleOutcome(version int, data []byte) (*model.ExamSitting, error) {
-	if version != 1 {
-		return nil, fmt.Errorf("unsupported Exam Sitting lifecycle outcome version %d", version)
-	}
+func decodeExamSittingLifecycleOutcome(data []byte) (*model.ExamSitting, error) {
 	var sitting model.ExamSitting
 	if err := decodeCommandOutcome(data, &sitting); err != nil {
 		return nil, err

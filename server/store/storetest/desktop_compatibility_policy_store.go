@@ -143,14 +143,12 @@ func TestDesktopCompatibilityPolicyStore(t *testing.T, stores store.Store) {
 
 func desktopCompatibilityPolicyCommand(userID model.UserID, identity string) *store.CommandIdempotency {
 	return &store.CommandIdempotency{
-		UserID:             userID,
-		Operation:          "desktop_compatibility_policy.replace.v1",
-		KeyDigest:          sha256.Sum256([]byte("desktop-policy-key:" + identity)),
-		FingerprintVersion: 1,
-		Fingerprint:        sha256.Sum256([]byte("desktop-policy-command:" + identity)),
-		OutcomeVersion:     1,
-		Retention:          time.Hour,
-		Wait:               time.Second,
+		UserID:      userID,
+		Operation:   "desktop_compatibility_policy.replace.v1",
+		KeyDigest:   sha256.Sum256([]byte("desktop-policy-key:" + identity)),
+		Fingerprint: sha256.Sum256([]byte("desktop-policy-command:" + identity)),
+		Retention:   time.Hour,
+		Wait:        time.Second,
 	}
 }
 

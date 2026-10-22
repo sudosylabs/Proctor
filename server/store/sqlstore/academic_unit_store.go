@@ -104,10 +104,7 @@ func (s SQLAcademicUnitStore) CreateIdempotently(ctx context.Context, input *sto
 			return createAcademicUnit(ctx, tx, &candidate, &academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt})
 		},
 		encode: func(unit *model.AcademicUnit) ([]byte, error) { return encodeCommandOutcome(newAcademicUnitRow(unit)) },
-		decode: func(version int, data []byte) (*model.AcademicUnit, error) {
-			if version != 1 {
-				return nil, fmt.Errorf("unsupported academic unit outcome version %d", version)
-			}
+		decode: func(data []byte) (*model.AcademicUnit, error) {
 			var row academicUnitRow
 			if err := decodeCommandOutcome(data, &row); err != nil {
 				return nil, err

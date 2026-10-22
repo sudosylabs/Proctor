@@ -92,10 +92,7 @@ func (s SQLExamAuthoringStore) runManagerMutation(ctx context.Context, label str
 		encode: func(result *store.ExamManagerCommandResult) ([]byte, error) {
 			return encodeCommandOutcome(examManagerOutcome{Exam: *result.Exam, Manager: *result.Manager})
 		},
-		decode: func(version int, data []byte) (*store.ExamManagerCommandResult, error) {
-			if version != 1 {
-				return nil, fmt.Errorf("unsupported Exam Manager outcome version %d", version)
-			}
+		decode: func(data []byte) (*store.ExamManagerCommandResult, error) {
 			var outcome examManagerOutcome
 			if err := decodeCommandOutcome(data, &outcome); err != nil {
 				return nil, err

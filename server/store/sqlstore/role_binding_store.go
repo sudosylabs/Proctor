@@ -598,10 +598,7 @@ func encodeRoleBindingMutationOutcome(value *roleBindingMutationResult) ([]byte,
 	}
 	return encodeCommandOutcome(roleBindingCommandOutcome{ID: value.Value.ID.String(), NoOp: value.NoOp})
 }
-func decodeRoleBindingMutationOutcome(version int, data []byte) (*roleBindingMutationResult, error) {
-	if version != 1 {
-		return nil, fmt.Errorf("unsupported role binding outcome version %d", version)
-	}
+func decodeRoleBindingMutationOutcome(data []byte) (*roleBindingMutationResult, error) {
 	var outcome roleBindingCommandOutcome
 	if err := decodeCommandOutcome(data, &outcome); err != nil {
 		return nil, err

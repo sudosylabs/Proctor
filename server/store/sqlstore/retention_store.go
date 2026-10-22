@@ -222,11 +222,8 @@ func (s *SQLRetentionStore) CreatePreview(ctx context.Context, input *store.Rete
 			return p, nil
 		},
 		encode: func(p *model.RetentionPreview) ([]byte, error) { return json.Marshal(p) },
-		decode: func(version int, data []byte) (*model.RetentionPreview, error) {
+		decode: func(data []byte) (*model.RetentionPreview, error) {
 			var p model.RetentionPreview
-			if version != 1 {
-				return nil, errors.New("unsupported retention preview outcome")
-			}
 			if err := json.Unmarshal(data, &p); err != nil {
 				return nil, err
 			}
@@ -317,11 +314,8 @@ func (s *SQLRetentionStore) ChangeControl(ctx context.Context, input *store.Rete
 			return current, nil
 		},
 		encode: func(c *model.RetentionControl) ([]byte, error) { return json.Marshal(c) },
-		decode: func(version int, data []byte) (*model.RetentionControl, error) {
+		decode: func(data []byte) (*model.RetentionControl, error) {
 			var c model.RetentionControl
-			if version != 1 {
-				return nil, errors.New("unsupported retention control outcome")
-			}
 			if err := json.Unmarshal(data, &c); err != nil {
 				return nil, err
 			}

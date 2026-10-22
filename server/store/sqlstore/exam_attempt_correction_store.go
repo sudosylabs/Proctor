@@ -73,10 +73,7 @@ func (s *SQLExamAttemptStore) AcknowledgeCorrection(ctx context.Context, input *
 		encode: func(value *store.ExamAttemptCorrectionAcknowledgementResult) ([]byte, error) {
 			return encodeCommandOutcome(value)
 		},
-		decode: func(version int, data []byte) (*store.ExamAttemptCorrectionAcknowledgementResult, error) {
-			if version != 1 {
-				return nil, fmt.Errorf("unsupported Exam correction acknowledgement outcome version %d", version)
-			}
+		decode: func(data []byte) (*store.ExamAttemptCorrectionAcknowledgementResult, error) {
 			var value store.ExamAttemptCorrectionAcknowledgementResult
 			if err := decodeCommandOutcome(data, &value); err != nil {
 				return nil, err

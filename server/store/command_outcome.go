@@ -23,14 +23,12 @@ const (
 // retryable application command. Raw client keys and commands never cross the
 // Store boundary.
 type CommandIdempotency struct {
-	UserID             model.UserID
-	Operation          string
-	KeyDigest          [sha256.Size]byte
-	FingerprintVersion int
-	Fingerprint        [sha256.Size]byte
-	OutcomeVersion     int
-	Retention          time.Duration
-	Wait               time.Duration
+	UserID      model.UserID
+	Operation   string
+	KeyDigest   [sha256.Size]byte
+	Fingerprint [sha256.Size]byte
+	Retention   time.Duration
+	Wait        time.Duration
 	// OnboardingImportID and OnboardingImportRowNumber bind an administrative
 	// import or progression command to the parent/row fence that must commit
 	// with its ordinary mutation. They are absent for other commands.

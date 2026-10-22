@@ -286,24 +286,13 @@ func validateDesktopCompatibilityPolicyReplacement(
 		input.Settings.Validate() != nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
 		command == nil || command.UserID != input.ActorID ||
 		command.Operation != "desktop_compatibility_policy.replace.v1" ||
-		command.FingerprintVersion != 1 || command.OutcomeVersion != 1 ||
 		command.Retention <= 0 || command.Wait <= 0 {
 		return store.NewErrInvalidInput("desktop_compatibility_policy", "replacement", nil)
 	}
 	return nil
 }
 
-func decodeDesktopCompatibilityPolicyReplacementOutcome(
-	version int,
-	encoded []byte,
-) (desktopCompatibilityPolicyReplacementOutcome, error) {
-	if version != 1 {
-		return desktopCompatibilityPolicyReplacementOutcome{}, invalidPersistedState(
-			"command_outcome",
-			"outcome_version",
-			errors.New("unsupported desktop compatibility policy outcome version"),
-		)
-	}
+func decodeDesktopCompatibilityPolicyReplacementOutcome(encoded []byte) (desktopCompatibilityPolicyReplacementOutcome, error) {
 	var outcome desktopCompatibilityPolicyReplacementOutcome
 	if err := json.Unmarshal(encoded, &outcome); err != nil ||
 		outcome.Policy == nil || outcome.Policy.Validate() != nil {

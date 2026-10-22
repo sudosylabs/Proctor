@@ -225,10 +225,7 @@ func encodeClassMemberMutationOutcome(value *classMemberMutationResult) ([]byte,
 	return encodeCommandOutcome(outcome)
 }
 
-func decodeClassMemberMutationOutcome(version int, data []byte) (*classMemberMutationResult, error) {
-	if version != 1 {
-		return nil, fmt.Errorf("unsupported class member outcome version %d", version)
-	}
+func decodeClassMemberMutationOutcome(data []byte) (*classMemberMutationResult, error) {
 	var outcome classMemberCommandOutcome
 	if err := decodeCommandOutcome(data, &outcome); err != nil {
 		return nil, err

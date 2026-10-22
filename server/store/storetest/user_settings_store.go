@@ -193,8 +193,7 @@ func userSettingsCommand(userID model.UserID, key, semantic string) *store.Comma
 	fingerprint := sha256.Sum256([]byte(semantic))
 	return &store.CommandIdempotency{
 		UserID: userID, Operation: "user_settings.replace",
-		KeyDigest: keyDigest, FingerprintVersion: 1, Fingerprint: fingerprint,
-		OutcomeVersion: 1, Retention: 24 * time.Hour, Wait: 2 * time.Second,
+		KeyDigest: keyDigest, Fingerprint: fingerprint, Retention: 24 * time.Hour, Wait: 2 * time.Second,
 	}
 }
 
