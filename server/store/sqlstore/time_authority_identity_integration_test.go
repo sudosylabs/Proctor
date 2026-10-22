@@ -67,3 +67,8 @@ func TestTimeAuthorityUserDisableFollowsLeadingUser(t *testing.T) {
 	persistence := openTimeAuthorityIdentityStore(t)
 	storetest.RunTimeAuthorityUserDisable(t, persistence, timeAuthorityIdentityProbe(persistence))
 }
+
+func TestTimeAuthorityUserLoginFollowsLeadingUser(t *testing.T) {
+	persistence := openTimeAuthorityIdentityStore(t)
+	storetest.RunTimeAuthorityUserLogin(t, persistence, timeAuthorityIdentityProbe(persistence))
+}

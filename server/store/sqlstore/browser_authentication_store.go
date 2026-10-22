@@ -778,7 +778,7 @@ func (s SQLBrowserAuthenticationStore) Exchange(ctx context.Context, input *stor
 			}
 		}
 		userUpdate, err := tx.Exec(ctx, `UPDATE users SET updated_at = GREATEST(updated_at, ?),
-			last_login_at = GREATEST(last_login_at, ?), last_activity_at = GREATEST(last_activity_at, ?)
+			last_login_at = GREATEST(last_login_at, created_at, ?), last_activity_at = GREATEST(last_activity_at, created_at, ?)
 			WHERE id = ? AND archived_at IS NULL AND disabled_at IS NULL`, now, now, now, candidate.UserID.String())
 		if err != nil {
 			return nil, fmt.Errorf("update desktop user login time: %w", err)

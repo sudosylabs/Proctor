@@ -206,8 +206,8 @@ func (s SQLSessionStore) Save(
 		userResult, err := tx.Exec(ctx, `
 		UPDATE users
 		   SET updated_at = GREATEST(updated_at, ?),
-		       last_login_at = GREATEST(last_login_at, ?),
-		       last_activity_at = GREATEST(last_activity_at, ?)
+		       last_login_at = GREATEST(last_login_at, created_at, ?),
+		       last_activity_at = GREATEST(last_activity_at, created_at, ?)
 		 WHERE id = ? AND archived_at IS NULL AND disabled_at IS NULL`,
 			candidate.CreatedAt,
 			candidate.CreatedAt,

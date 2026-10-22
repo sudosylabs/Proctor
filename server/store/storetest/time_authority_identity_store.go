@@ -208,3 +208,22 @@ func RunTimeAuthorityUserDisable(t *testing.T, ss store.Store, probe TimeAuthori
 	require.True(t, persisted.DisabledAt.Time.Equal(disabled.DisabledAt.Time), "persisted disabled User = %#v; returned %#v", persisted, disabled)
 	require.Equal(t, disabled.Revision, persisted.Revision, "persisted disabled User = %#v; returned %#v", persisted, disabled)
 }
+
+// RunTimeAuthorityUserLogin proves a login never records a last login or
+// activity instant before the User's own creation, even when the node that
+// created the User ran ahead of the database clock.
+func RunTimeAuthorityUserLogin(t *testing.T, ss store.Store, probe TimeAuthorityIdentitySQLProbe) {
+	ctx := context.Background()
+	user := saveUser(t, ctx, ss)
+	probe.LeadUser(t, ctx, user.ID)
+	led, err := ss.User().Get(ctx, user.ID)
+	require.NoError(t, err)
+	session, credentials, _ := newSession(user.ID.String())
+	_, _, err = SaveSession(ctx, ss, testSessionCreation(t, ctx, ss, session, credentials, 10))
+	require.NoError(t, err)
+	persisted, err := ss.User().Get(ctx, user.ID)
+	require.NoError(t, err, "a login after a leading creation must leave a readable User")
+	require.True(t, persisted.LastLoginAt.Valid)
+	require.False(t, persisted.LastLoginAt.Time.Before(led.CreatedAt), "last login %s precedes creation %s", persisted.LastLoginAt.Time, led.CreatedAt)
+	require.False(t, persisted.LastActivityAt.Time.Before(led.CreatedAt), "last activity %s precedes creation %s", persisted.LastActivityAt.Time, led.CreatedAt)
+}
