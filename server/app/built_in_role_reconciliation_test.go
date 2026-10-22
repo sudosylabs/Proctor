@@ -15,6 +15,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -43,7 +44,7 @@ func TestBootstrapServiceReconcilesSystemAdministratorRoleFromRegistry(t *testin
 	}
 	service := newBootstrapService(bootstrapServiceDependencies{Installations: persistence, Hasher: &passwordHasherFake{events: &events}, Attempts: bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{}), RateLimit: LoginRateLimitPolicy{Window: time.Minute, MaximumSourceAttempts: 3}, Protection: bootstrapProtection(), NodeID: "node-reconcile", Now: func() time.Time { return at }, RecoveryPolicy: administratorRecoveryPolicy{}})
 
-	require.NoError(t, service.ReconcileSystemAdministratorRole(context.Background()))
+	require.NoError(t, service.ReconcileSystemAdministratorRole(context.Background(), invocation.Task("startup-reconciliation-test")))
 	require.NotNil(t, persistence.input, "reconciliation input was not persisted")
 	require.Equal(t, model.AllActions(), persistence.input.RequiredPermissions, "required permissions")
 	require.Equal(t, at.UnixMilli(), persistence.input.ReconciledAt, "reconciled at")
@@ -63,6 +64,6 @@ func TestBootstrapServiceFailsStartupWhenSystemAdministratorRoleCannotReconcile(
 	persistence := &builtInRoleReconciliationStoreFake{err: persistenceErr}
 	service := newBootstrapService(bootstrapServiceDependencies{Installations: persistence, Hasher: &passwordHasherFake{events: &events}, Attempts: bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{}), RateLimit: LoginRateLimitPolicy{Window: time.Minute, MaximumSourceAttempts: 3}, Protection: bootstrapProtection(), NodeID: "node-reconcile", Now: model.NowUTC, RecoveryPolicy: administratorRecoveryPolicy{}})
 
-	err := service.ReconcileSystemAdministratorRole(context.Background())
+	err := service.ReconcileSystemAdministratorRole(context.Background(), invocation.Task("startup-reconciliation-test"))
 	require.ErrorIs(t, err, persistenceErr)
 }

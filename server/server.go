@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/logging"
 )
@@ -119,18 +120,21 @@ type runtimeMetrics interface {
 	SetReady(bool)
 }
 
+// startupReconciliation names the actorless startup convergence work.
+var startupReconciliation = invocation.Task("startup-reconciliation")
+
 // runtimeReconciler owns bounded durable startup convergence that must complete
 // after infrastructure is ready and before any worker or transport can serve.
 type runtimeReconciler interface {
-	ReconcileSystemAdministratorRole(context.Context) error
-	ReconcileAdministratorRecovery(context.Context) error
+	ReconcileSystemAdministratorRole(context.Context, invocation.System) error
+	ReconcileAdministratorRecovery(context.Context, invocation.System) error
 }
 
 // runtimeAdministratorRecovery is borrowed only by the inert Server facade;
 // it is never projected into HTTP or another transport.
 type runtimeAdministratorRecovery interface {
-	RecoverAdministratorAccess(context.Context, app.AdministratorRecoveryCommand) (*app.AdministratorRecoveryResult, error)
-	ResetAdministratorMFA(context.Context, app.AdministratorMFAResetCommand) (*app.AdministratorMFAResetResult, error)
+	RecoverAdministratorAccess(context.Context, invocation.System, app.AdministratorRecoveryCommand) (*app.AdministratorRecoveryResult, error)
+	ResetAdministratorMFA(context.Context, invocation.System, app.AdministratorMFAResetCommand) (*app.AdministratorMFAResetResult, error)
 }
 
 type runtimeReadiness interface {
@@ -346,7 +350,7 @@ func (s *Server) RecoverAdministratorAccess(ctx context.Context, command Adminis
 	if recovery == nil {
 		return nil, errors.New("administrator recovery is unavailable")
 	}
-	result, err := recovery.RecoverAdministratorAccess(ctx, app.AdministratorRecoveryCommand{
+	result, err := recovery.RecoverAdministratorAccess(ctx, invocation.Task("administrator-recovery"), app.AdministratorRecoveryCommand{
 		InstitutionID: command.InstitutionID, UserID: command.UserID,
 		EnableLocalLogin: command.EnableLocalLogin, Password: command.Password,
 	})
@@ -456,7 +460,7 @@ func (s *Server) Run(ctx context.Context) (resultErr error) {
 		s.components.logger.InfoContext(runCtx, "serving node lease started")
 	}
 	if s.components.reconciler != nil {
-		if err := s.components.reconciler.ReconcileSystemAdministratorRole(runCtx); err != nil {
+		if err := s.components.reconciler.ReconcileSystemAdministratorRole(runCtx, startupReconciliation); err != nil {
 			if gracefulCancellation(err, runCtx.Err()) {
 				return nil
 			}
@@ -465,7 +469,7 @@ func (s *Server) Run(ctx context.Context) (resultErr error) {
 		if runCtx.Err() != nil {
 			return nil
 		}
-		if err := s.components.reconciler.ReconcileAdministratorRecovery(runCtx); err != nil {
+		if err := s.components.reconciler.ReconcileAdministratorRecovery(runCtx, startupReconciliation); err != nil {
 			if gracefulCancellation(err, runCtx.Err()) {
 				return nil
 			}

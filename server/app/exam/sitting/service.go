@@ -898,8 +898,11 @@ func (s *Service) runSystemLifecycle(ctx context.Context, system invocation.Syst
 
 // ListLifecycleDue returns up to Limit Sittings whose next lifecycle
 // transition is due, ordered by due time and Sitting ID after the optional
-// cursor.
-func (s *Service) ListLifecycleDue(ctx context.Context, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
+// cursor, for the lifecycle recovery Job that system names.
+func (s *Service) ListLifecycleDue(ctx context.Context, system invocation.System, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
+	if !system.Valid() {
+		return nil, apperror.Invalid("exam.sitting.invalid", "system")
+	}
 	invalidCursor := options.AfterDueAt.IsZero() != options.AfterSittingID.IsZero() ||
 		!options.AfterSittingID.IsZero() && !options.AfterSittingID.IsValid()
 	if invalidCursor || options.Limit < 1 || options.Limit > 200 {

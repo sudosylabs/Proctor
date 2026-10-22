@@ -322,7 +322,7 @@ func TestExamExportBuildKeepsUnverifiedRemoteWriterReservation(t *testing.T) {
 	content.err = &exportUncertainWriteError{}
 	input := store.ExamExportBuild{ExamExportArtifact: store.ExamExportArtifact{ExportID: s.value.ID, AttemptID: model.NewJobAttemptID()}, JobID: model.NewJobID()}
 	input.ClaimToken, _ = model.NewJobClaimToken()
-	require.Error(t, service.BuildFromJob(context.Background(), input), "unverified remote write lost its uncertain cleanup reservation")
+	require.Error(t, service.BuildFromJob(context.Background(), invocation.Job(input.JobID, input.AttemptID), input), "unverified remote write lost its uncertain cleanup reservation")
 	require.Equal(t, 0, s.finished, "unverified remote write lost its uncertain cleanup reservation")
 	require.Equal(t, 0, s.published, "unverified remote write lost its uncertain cleanup reservation")
 	require.Equal(t, 0, content.purges, "unverified remote write lost its uncertain cleanup reservation")
@@ -342,7 +342,7 @@ func TestExamExportBuildKeepsUnknownPublicationAndFinishesWriterOutsideCancellat
 			}
 			input := store.ExamExportBuild{ExamExportArtifact: store.ExamExportArtifact{ExportID: s.value.ID, AttemptID: model.NewJobAttemptID()}, JobID: model.NewJobID()}
 			input.ClaimToken, _ = model.NewJobClaimToken()
-			require.Error(t, service.BuildFromJob(ctx, input), "uncertain construction reported success")
+			require.Error(t, service.BuildFromJob(ctx, invocation.Job(input.JobID, input.AttemptID), input), "uncertain construction reported success")
 			require.Equal(t, 1, s.finished, "cleanup/expiry: finished=%d canceled=%v purges=%d deadline=%v", s.finished, s.finishCanceled, content.purges, content.deadline)
 			require.False(t, s.finishCanceled, "cleanup/expiry: finished=%d canceled=%v purges=%d deadline=%v", s.finished, s.finishCanceled, content.purges, content.deadline)
 			require.Equal(t, 0, content.purges, "cleanup/expiry: finished=%d canceled=%v purges=%d deadline=%v", s.finished, s.finishCanceled, content.purges, content.deadline)
@@ -373,4 +373,23 @@ func TestExamExportReplayUsesCapturedScopeAfterSittingGrowsPastBound(t *testing.
 	_, err = service.CreateExamExport(context.Background(), f.invocation, command)
 	require.Error(t, err, "replay-aware scope skipped current ordinary read authority")
 	require.Nil(t, s.create, "replay-aware scope skipped current ordinary read authority")
+}
+
+func TestExamExportBuildRequiresTheClaimingJobIdentity(t *testing.T) {
+	_, service, s, _, content := newExportFixture(t)
+	input := store.ExamExportBuild{ExamExportArtifact: store.ExamExportArtifact{ExportID: s.value.ID, AttemptID: model.NewJobAttemptID()}, JobID: model.NewJobID()}
+	input.ClaimToken, _ = model.NewJobClaimToken()
+	for name, system := range map[string]invocation.System{
+		"missing":       {},
+		"other Job":     invocation.Job(model.NewJobID(), input.AttemptID),
+		"other attempt": invocation.Job(input.JobID, model.NewJobAttemptID()),
+		"runtime task":  invocation.Task("exam-export"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := service.BuildFromJob(context.Background(), system, input)
+			require.Equal(t, "exam.export.unavailable", apperror.CodeOf(err, ""))
+			require.Equal(t, 0, s.published)
+			require.Equal(t, 0, content.purges)
+		})
+	}
 }

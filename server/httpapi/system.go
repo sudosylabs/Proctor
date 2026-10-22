@@ -107,6 +107,7 @@ func (m systemResourceModule) ping(request operationRequest) (operationResult, e
 	}
 	result, evaluationErr := m.desktopCompatibility.EvaluateDesktopCompatibility(
 		request.context,
+		request.invocation(),
 		query,
 	)
 	if apperror.Is(evaluationErr, "request.invalid") {

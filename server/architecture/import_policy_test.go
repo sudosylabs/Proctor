@@ -265,6 +265,7 @@ var dependencyRules = []dependencyRule{
 			exact(serverModule+"/model"),
 			exact(serverModule+"/store"),
 			exact(serverModule+"/secretseal"),
+			exact(serverModule+"/app/invocation"),
 			exact(serverModule+"/app/job"),
 			exact(serverModule+"/app/mail"),
 			exact(serverModule+"/app/exam/attempt"),

@@ -653,8 +653,8 @@ func validClosedSuspension(view *store.ExamAttemptSuspensionView, attemptID mode
 // ScanExpiredParticipations performs one bounded runtime maintenance pass.
 // Every listed candidate is rechecked by the named conditional Store
 // operation; PostgreSQL, never this loop or its clock, decides expiry.
-func (s *Service) ScanExpiredParticipations(ctx context.Context, limit int) (ExpiryScanResult, error) {
-	if limit < 1 || limit > 200 {
+func (s *Service) ScanExpiredParticipations(ctx context.Context, system invocation.System, limit int) (ExpiryScanResult, error) {
+	if !system.Valid() || limit < 1 || limit > 200 {
 		return ExpiryScanResult{}, apperror.Invalid("exam.attempt.invalid", "expiry_limit")
 	}
 	due, err := s.deps.Persistence.ListExpiredParticipations(ctx, limit)

@@ -162,7 +162,7 @@ type bootstrapHTTPApplication struct {
 	result *model.InstallationBootstrapResult
 }
 
-func (a *bootstrapHTTPApplication) GetInstallationStatus(context.Context, app.GetInstallationStatusQuery) (*model.InstallationStatus, error) {
+func (a *bootstrapHTTPApplication) GetInstallationStatus(context.Context, invocation.Invocation, app.GetInstallationStatusQuery) (*model.InstallationStatus, error) {
 	if a.status != nil {
 		return a.status, nil
 	}

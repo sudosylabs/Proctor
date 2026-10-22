@@ -121,6 +121,6 @@ func (f *examSittingLifecycleFake) AdvanceDue(_ context.Context, call invocation
 	return f.advance, f.err
 }
 
-func (f *examSittingLifecycleFake) ListLifecycleDue(context.Context, store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
+func (f *examSittingLifecycleFake) ListLifecycleDue(context.Context, invocation.System, store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
 	return nil, f.err
 }

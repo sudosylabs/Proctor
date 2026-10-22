@@ -16,6 +16,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -158,7 +159,7 @@ type examSittingLifecycleRecoveryFake struct {
 	err         error
 }
 
-func (f *examSittingLifecycleRecoveryFake) ListExamSittingLifecycleDueFromJob(_ context.Context, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
+func (f *examSittingLifecycleRecoveryFake) ListExamSittingLifecycleDueFromJob(_ context.Context, _ invocation.System, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
 	f.listOptions = append(f.listOptions, options)
 	if f.err != nil {
 		return nil, f.err

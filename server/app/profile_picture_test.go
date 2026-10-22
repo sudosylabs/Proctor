@@ -627,7 +627,7 @@ func TestProfilePictureCapacityRefusalDoesNotPublishOrProposeMoreWork(t *testing
 				record, jobErr := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, command, user.ID.String(), time.Now(), time.Now(), 8)
 				require.NoError(t, jobErr)
 				handler := jobhandler.NewDefaultProfilePictureDescriptor(jobDefaultProfilePictureGenerator{service: service}).Handler
-				outcome := handler.Run(context.Background(), job.Execution{Job: record})
+				outcome := handler.Run(context.Background(), job.Execution{Job: record, Attempt: &model.JobAttempt{ID: model.NewJobAttemptID(), JobID: record.ID}})
 				require.Equal(t, job.OutcomeRetryableFailure, outcome.Kind)
 				require.Equal(t, "dependency.unavailable", outcome.PublicErrorCode)
 				err = outcome.Err
@@ -655,7 +655,7 @@ func TestDefaultProfilePictureHandlerAttachesGeneratedRenditionsIdempotently(t *
 	require.NoError(t, err)
 	generator := newProfilePictureServiceForTest(persistence, persistence, &pictureContentFake{}, nil, nil, nil, nil, nil, func() time.Time { return at })
 	handler := jobhandler.NewDefaultProfilePictureDescriptor(jobDefaultProfilePictureGenerator{service: generator}).Handler
-	outcome := handler.Run(context.Background(), job.Execution{Job: record})
+	outcome := handler.Run(context.Background(), job.Execution{Job: record, Attempt: &model.JobAttempt{ID: model.NewJobAttemptID(), JobID: record.ID}})
 	require.Equal(t, job.OutcomeSucceeded, outcome.Kind, "handler outcome/store = %#v / %#v", outcome, persistence)
 	require.NoError(t, outcome.Err, "handler outcome/store = %#v / %#v", outcome, persistence)
 	require.NotNil(t, persistence.defaultPublication, "handler outcome/store = %#v / %#v", outcome, persistence)
@@ -666,7 +666,7 @@ func TestDefaultProfilePictureHandlerAttachesGeneratedRenditionsIdempotently(t *
 	attached := *user
 	attached.DefaultProfilePictureFileID = persistence.defaultPublication.EntryID
 	persistence.user = &attached
-	second := handler.Run(context.Background(), job.Execution{Job: record})
+	second := handler.Run(context.Background(), job.Execution{Job: record, Attempt: &model.JobAttempt{ID: model.NewJobAttemptID(), JobID: record.ID}})
 	require.Equal(t, job.OutcomeSucceeded, second.Kind)
 	require.Equal(t, attached.DefaultProfilePictureFileID, persistence.defaultPublication.EntryID)
 	require.Equal(t, 1, persistence.defaultPublications)

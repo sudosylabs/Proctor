@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/logging"
 )
@@ -144,12 +145,18 @@ type lifecycleReconciler struct {
 	events      *lifecycleEvents
 }
 
-func (r *lifecycleReconciler) ReconcileAdministratorRecovery(context.Context) error {
+func (r *lifecycleReconciler) ReconcileAdministratorRecovery(_ context.Context, system invocation.System) error {
+	if !system.Valid() {
+		return errors.New("startup reconciliation without its system identity")
+	}
 	r.events.record("administrator-recovery-reconcile")
 	return r.recoveryErr
 }
 
-func (r *lifecycleReconciler) ReconcileSystemAdministratorRole(context.Context) error {
+func (r *lifecycleReconciler) ReconcileSystemAdministratorRole(_ context.Context, system invocation.System) error {
+	if !system.Valid() {
+		return errors.New("startup reconciliation without its system identity")
+	}
 	r.events.record("role-reconcile")
 	return r.err
 }

@@ -241,7 +241,7 @@ func TestDesktopCompatibilityServiceEvaluatesAuthoritativePolicy(t *testing.T) {
 		Availability:           model.DesktopAvailabilityReady,
 	}, time.UnixMilli(11_000)))
 
-	result, err := service.EvaluateDesktopCompatibility(context.Background(), DesktopCompatibilityQuery{
+	result, err := service.EvaluateDesktopCompatibility(context.Background(), invocation.Invocation{}, DesktopCompatibilityQuery{
 		DesktopRelease:   "1.2.3",
 		DesktopBuildID:   "darwin-current",
 		Platform:         "darwin",
@@ -443,7 +443,7 @@ func TestDevelopmentCompatibilitySkipsBuildChecksButKeepsAvailabilityAndValidati
 		{DesktopRelease: "0.0.0-private", DesktopBuildID: "dev-build", Platform: "darwin", Architecture: "arm64", RealtimeProtocol: 1},
 		{DesktopRelease: "100.0.0", DesktopBuildID: "next-build", Platform: "linux", Architecture: "x64", RealtimeProtocol: 99},
 	} {
-		result, evaluateErr := development.EvaluateDesktopCompatibility(t.Context(), query)
+		result, evaluateErr := development.EvaluateDesktopCompatibility(t.Context(), invocation.Invocation{}, query)
 		require.NoError(t, evaluateErr, "dev build rejected: %#v", result)
 		require.Equal(t, DesktopCompatibilityCompatible, result.Compatibility, "dev build rejected: %#v", result)
 		require.Equal(t, persistence.policy.Revision, result.PolicyRevision, "dev build rejected: %#v", result)
@@ -451,23 +451,23 @@ func TestDevelopmentCompatibilitySkipsBuildChecksButKeepsAvailabilityAndValidati
 		require.Empty(t, result.MaximumDesktopRelease, "bypass invented supported bounds")
 		require.Equal(t, 0, result.MinimumRealtimeProtocol, "bypass invented supported bounds")
 		require.Equal(t, 0, result.MaximumRealtimeProtocol, "bypass invented supported bounds")
-		enforced, evaluateErr := strict.EvaluateDesktopCompatibility(t.Context(), query)
+		enforced, evaluateErr := strict.EvaluateDesktopCompatibility(t.Context(), invocation.Invocation{}, query)
 		require.NoError(t, evaluateErr, "strict environment admitted build: %#v", enforced)
 		require.NotEqual(t, DesktopCompatibilityCompatible, enforced.Compatibility, "strict environment admitted build: %#v", enforced)
 	}
 	query := DesktopCompatibilityQuery{DesktopRelease: "0.0.0-private", DesktopBuildID: "dev-build", Platform: "darwin", Architecture: "arm64", RealtimeProtocol: 1}
 	persistence.policy.Availability = model.DesktopAvailabilityMaintenance
-	result, err := development.EvaluateDesktopCompatibility(t.Context(), query)
+	result, err := development.EvaluateDesktopCompatibility(t.Context(), invocation.Invocation{}, query)
 	require.NoError(t, err, "maintenance ignored: %#v", result)
 	require.Equal(t, model.DesktopAvailabilityMaintenance, result.Availability, "maintenance ignored: %#v", result)
-	_, err = development.EvaluateDesktopCompatibility(t.Context(), DesktopCompatibilityQuery{})
+	_, err = development.EvaluateDesktopCompatibility(t.Context(), invocation.Invocation{}, DesktopCompatibilityQuery{})
 	require.True(t, apperror.Is(err, "request.invalid"), "malformed selectors accepted: %v", err)
 	persistence.getErr = errors.New("store offline")
-	_, err = development.EvaluateDesktopCompatibility(t.Context(), query)
+	_, err = development.EvaluateDesktopCompatibility(t.Context(), invocation.Invocation{}, query)
 	require.True(t, apperror.Is(err, "desktop_compatibility_policy.unavailable"), "policy outage ignored: %v", err)
 	persistence.getErr = nil
 	persistence.policy.Revision = 0
-	_, err = development.EvaluateDesktopCompatibility(t.Context(), query)
+	_, err = development.EvaluateDesktopCompatibility(t.Context(), invocation.Invocation{}, query)
 	require.True(t, apperror.Is(err, "desktop_compatibility_policy.unavailable"), "corrupt policy ignored: %v", err)
 }
 

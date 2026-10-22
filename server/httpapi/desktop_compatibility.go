@@ -23,6 +23,7 @@ type unavailableDesktopCompatibilityApplication struct{}
 
 func (unavailableDesktopCompatibilityApplication) EvaluateDesktopCompatibility(
 	context.Context,
+	invocation.Invocation,
 	app.DesktopCompatibilityQuery,
 ) (app.DesktopCompatibilityResult, error) {
 	return app.DesktopCompatibilityResult{}, errUnpresentableResult

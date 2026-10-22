@@ -23,7 +23,7 @@ import (
 // drives; its tests substitute a fake.
 type examSittingLifecycle interface {
 	AdvanceDue(context.Context, invocation.System, model.ExamSittingID) (store.ExamSittingLifecycleResult, error)
-	ListLifecycleDue(context.Context, store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error)
+	ListLifecycleDue(context.Context, invocation.System, store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error)
 }
 
 type examSittingLifecycleJobUseCases struct{ sittings examSittingLifecycle }
@@ -39,8 +39,8 @@ func (uc examSittingLifecycleJobUseCases) ReconcileExamSittingLifecycleFromJob(c
 	return &result, nil
 }
 
-func (uc examSittingLifecycleJobUseCases) ListExamSittingLifecycleDueFromJob(ctx context.Context, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
-	return uc.sittings.ListLifecycleDue(ctx, options)
+func (uc examSittingLifecycleJobUseCases) ListExamSittingLifecycleDueFromJob(ctx context.Context, system invocation.System, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
+	return uc.sittings.ListLifecycleDue(ctx, system, options)
 }
 
 type examSittingSystemAuditAdapter struct{ audit *auditService }

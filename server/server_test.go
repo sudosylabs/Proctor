@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 )
 
 type administratorRecoveryRuntimeFake struct {
@@ -22,15 +23,16 @@ type administratorRecoveryRuntimeFake struct {
 	err        error
 	mfaCommand app.AdministratorMFAResetCommand
 	mfaResult  *app.AdministratorMFAResetResult
+	system     invocation.System
 }
 
-func (f *administratorRecoveryRuntimeFake) ResetAdministratorMFA(_ context.Context, command app.AdministratorMFAResetCommand) (*app.AdministratorMFAResetResult, error) {
-	f.mfaCommand = command
+func (f *administratorRecoveryRuntimeFake) ResetAdministratorMFA(_ context.Context, system invocation.System, command app.AdministratorMFAResetCommand) (*app.AdministratorMFAResetResult, error) {
+	f.mfaCommand, f.system = command, system
 	return f.mfaResult, f.err
 }
 
-func (f *administratorRecoveryRuntimeFake) RecoverAdministratorAccess(_ context.Context, command app.AdministratorRecoveryCommand) (*app.AdministratorRecoveryResult, error) {
-	f.command = command
+func (f *administratorRecoveryRuntimeFake) RecoverAdministratorAccess(_ context.Context, system invocation.System, command app.AdministratorRecoveryCommand) (*app.AdministratorRecoveryResult, error) {
+	f.command, f.system = command, system
 	return f.result, f.err
 }
 
@@ -47,6 +49,7 @@ func TestInertServerExposesOnlyExplicitAdministratorRecoveryCapability(t *testin
 	require.True(t, result.PasswordRotated, "result/forwarded = %#v / %#v", result, fake.command)
 	require.Equal(t, "private", fake.command.Password, "result/forwarded = %#v / %#v", result, fake.command)
 	require.Equal(t, command.InstitutionID, fake.command.InstitutionID, "result/forwarded = %#v / %#v", result, fake.command)
+	require.Equal(t, invocation.Task("administrator-recovery"), fake.system, "host recovery names its actorless task")
 	require.Equal(t, command.UserID, fake.command.UserID, "result/forwarded = %#v / %#v", result, fake.command)
 	node.state = nodeRunning
 	_, err = node.RecoverAdministratorAccess(context.Background(), command)

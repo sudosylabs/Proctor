@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -41,7 +42,7 @@ type ExamSittingSealingResult struct {
 }
 
 type ExamSittingSealingService interface {
-	ListExamSittingSealTargetsFromJob(context.Context, model.ExamSittingID, model.ExamAttemptID, int) ([]store.ExamSubmissionAutomaticSealTarget, error)
+	ListExamSittingSealTargetsFromJob(context.Context, invocation.System, model.ExamSittingID, model.ExamAttemptID, int) ([]store.ExamSubmissionAutomaticSealTarget, error)
 	SealExamAttemptForSittingCloseFromJob(context.Context, store.ExamSubmissionAutomaticSealTarget, model.JobID, model.JobAttemptID) (attempt.AutomaticSubmissionResult, error)
 	FinishExamSittingSealingFromJob(context.Context, model.ExamSittingID, model.JobID, model.JobAttemptID) (*store.ExamSittingLifecycleResult, error)
 	EnqueueExamSittingSealingContinuationFromJob(context.Context, model.ExamSittingID, model.JobID) error
@@ -83,7 +84,7 @@ func (h examSittingSealingHandler) Run(ctx context.Context, execution job.Execut
 	remaining := examSittingSealingMaximumWork - execution.Job.WorkReserved
 	for remaining > 0 {
 		limit := min(remaining, examSittingSealingPageSize)
-		page, listErr := h.service.ListExamSittingSealTargetsFromJob(ctx, command.ExamSittingID,
+		page, listErr := h.service.ListExamSittingSealTargetsFromJob(ctx, invocation.Job(execution.Job.ID, execution.Attempt.ID), command.ExamSittingID,
 			checkpoint.AfterAttemptID, limit)
 		if listErr != nil {
 			return examSittingSealingFailure(listErr)

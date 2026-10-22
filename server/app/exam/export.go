@@ -315,8 +315,12 @@ func requireReadyExport(result *store.ExamExportDownload) error {
 
 // BuildFromJob builds and publishes the archive for one queued Examination
 // Export on behalf of its build Job. An export that is already ready is a
-// no-op, and the build is bounded by the source expiry.
-func (s *Exports) BuildFromJob(ctx context.Context, input store.ExamExportBuild) (err error) {
+// no-op, and the build is bounded by the source expiry. system names that
+// Job execution and must match the claimed build.
+func (s *Exports) BuildFromJob(ctx context.Context, system invocation.System, input store.ExamExportBuild) (err error) {
+	if !system.Valid() || system.Task != "" || system.JobID != input.JobID || system.AttemptID != input.AttemptID {
+		return apperror.New("exam.export.unavailable").Wrap(errors.New("Exam export build Job identity is invalid"))
+	}
 	snapshot, err := s.deps.Persistence.BeginBuild(ctx, &input)
 	if err != nil {
 		return examExportStoreErrors.Translate(err)

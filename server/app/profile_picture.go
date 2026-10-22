@@ -487,8 +487,12 @@ func (s *profilePictureReadService) Get(ctx context.Context, invocation invocati
 
 // EnsureDefaultProfilePicture is the system-owned application use case used by
 // the durable handler. It is idempotent across retries and publishes the
-// complete default relationship in one named persistence operation.
-func (s *profilePictureService) EnsureDefaultProfilePicture(ctx context.Context, userID model.UserID) (model.FileEntryID, error) {
+// complete default relationship in one named persistence operation. system
+// names the durable Job execution.
+func (s *profilePictureService) EnsureDefaultProfilePicture(ctx context.Context, system invocation.System, userID model.UserID) (model.FileEntryID, error) {
+	if !system.Valid() || system.Task != "" {
+		return "", fmt.Errorf("%w: default profile picture requires its Job identity", errDefaultProfilePictureInvariant)
+	}
 	return s.defaults.Ensure(ctx, userID)
 }
 

@@ -44,7 +44,7 @@ func externalAuthenticationProviderResponses(
 }
 
 type externalAuthenticationEntryApplication interface {
-	ExternalAuthenticationProviders(context.Context) ([]model.ExternalAuthenticationProvider, error)
+	ExternalAuthenticationProviders(context.Context, invocation.Invocation) ([]model.ExternalAuthenticationProvider, error)
 	BeginExternalAuthentication(context.Context, invocation.Invocation, app.BeginExternalAuthenticationCommand) (*model.ExternalAuthenticationStart, error)
 	CompleteExternalAuthentication(context.Context, invocation.Invocation, app.CompleteExternalAuthenticationCommand) (*model.ExternalAuthenticationCompletion, error)
 }
@@ -144,7 +144,7 @@ func (m externalAuthenticationResourceModule) beginFromBody(request operationReq
 }
 
 func (m externalAuthenticationResourceModule) listProviders(request operationRequest) (operationResult, error) {
-	providers, err := m.authentication.ExternalAuthenticationProviders(request.context)
+	providers, err := m.authentication.ExternalAuthenticationProviders(request.context, request.invocation())
 	if err != nil {
 		return operationResult{}, err
 	}

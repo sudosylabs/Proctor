@@ -128,9 +128,9 @@ func TestAccessPolicyTwoNodePostgreSQLFenceAndSafeRevisionFanout(t *testing.T) {
 	require.Equal(t, 1, successes, "outcomes success/conflict")
 	require.Equal(t, 1, conflicts, "outcomes success/conflict")
 
-	primaryDiscovery, err := primary.App.DiscoverAccess(context.Background())
+	primaryDiscovery, err := primary.App.DiscoverAccess(context.Background(), invocation)
 	require.NoError(t, err)
-	secondaryDiscovery, err := secondary.App.DiscoverAccess(context.Background())
+	secondaryDiscovery, err := secondary.App.DiscoverAccess(context.Background(), invocation)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), primaryDiscovery.PolicyRevision, "discovery diverged: primary=%#v secondary=%#v", primaryDiscovery, secondaryDiscovery)
 	require.Equal(t, int64(2), secondaryDiscovery.PolicyRevision, "discovery diverged: primary=%#v secondary=%#v", primaryDiscovery, secondaryDiscovery)

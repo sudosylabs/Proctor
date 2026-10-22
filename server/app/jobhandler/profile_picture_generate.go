@@ -13,6 +13,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -93,14 +94,14 @@ type defaultProfilePictureHandler struct {
 }
 
 func (h defaultProfilePictureHandler) Run(ctx context.Context, execution job.Execution) job.Outcome {
-	if execution.Job == nil {
+	if execution.Job == nil || execution.Attempt == nil {
 		return job.PermanentFailure("job.command.invalid", errors.New("job is missing"))
 	}
 	command, err := model.DecodeDefaultProfilePictureCommand(execution.Job.Command)
 	if err != nil {
 		return job.PermanentFailure("job.command.invalid", err)
 	}
-	entryID, err := h.generator.EnsureDefaultProfilePicture(ctx, command.UserID)
+	entryID, err := h.generator.EnsureDefaultProfilePicture(ctx, invocation.Job(execution.Job.ID, execution.Attempt.ID), command.UserID)
 	if err != nil {
 		switch h.generator.ClassifyDefaultProfilePictureError(err) {
 		case "user.not_found":

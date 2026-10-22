@@ -629,7 +629,7 @@ func TestScanExpiredParticipationsCommitsAuditedAggregateBeforeSafeEffect(t *tes
 	due := expiryDueFixture(f)
 	f.persistence.expiryDue = []store.ExamAttemptParticipationExpiryDue{due}
 	f.persistence.expireResult = expiryResultFixture(t, f, due, false)
-	result, err := f.service.ScanExpiredParticipations(context.Background(), 200)
+	result, err := f.service.ScanExpiredParticipations(context.Background(), expiryScanSystem, 200)
 	require.NoError(t, err)
 	input := f.persistence.expireInput
 	require.Equal(t, 1, result.Due, "scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
@@ -665,7 +665,7 @@ func TestScanExpiredParticipationPublishesSuspensionAfterTransportAlreadyClosed(
 	f.persistence.expireResult.ConnectionClosed = false
 	f.persistence.expireResult.Connection.CloseReason = model.AttemptConnectionCloseTransport
 
-	result, err := f.service.ScanExpiredParticipations(context.Background(), 1)
+	result, err := f.service.ScanExpiredParticipations(context.Background(), expiryScanSystem, 1)
 	require.NoError(t, err, "scan=%#v error=%v effects=%#v", result, err, f.effects)
 	require.Equal(t, 1, result.Completed, "scan=%#v error=%v effects=%#v", result, err, f.effects)
 	require.Equal(t, 1, f.effects.expired, "scan=%#v error=%v effects=%#v", result, err, f.effects)
@@ -677,13 +677,13 @@ func TestScanExpiredParticipationsSuppressesReplayEffectsAndRejectsUnboundedLimi
 	due := expiryDueFixture(f)
 	f.persistence.expiryDue = []store.ExamAttemptParticipationExpiryDue{due}
 	f.persistence.expireResult = expiryResultFixture(t, f, due, true)
-	result, err := f.service.ScanExpiredParticipations(context.Background(), 1)
+	result, err := f.service.ScanExpiredParticipations(context.Background(), expiryScanSystem, 1)
 	require.NoError(t, err, "scan=%#v error=%v effects=%#v", result, err, f.effects)
 	require.Equal(t, 1, result.Replayed, "scan=%#v error=%v effects=%#v", result, err, f.effects)
 	require.Equal(t, 0, f.effects.expired, "scan=%#v error=%v effects=%#v", result, err, f.effects)
 	for _, limit := range []int{0, 201} {
 		other := newFixture(t)
-		_, err = other.service.ScanExpiredParticipations(context.Background(), limit)
+		_, err = other.service.ScanExpiredParticipations(context.Background(), expiryScanSystem, limit)
 		require.Error(t, err, "limit=%d error=%v order", limit, err)
 		require.Empty(t, other.order, "limit=%d error=%v order", limit, err)
 	}
@@ -694,7 +694,7 @@ func TestScanExpiredParticipationsFailsAuditAndPublishesNothingOnCommitFailure(t
 	f := newFixture(t)
 	f.persistence.expiryDue = []store.ExamAttemptParticipationExpiryDue{expiryDueFixture(f)}
 	f.persistence.expireErr = store.NewErrConflict("attempt_participation", "attempt_participation_generation", nil)
-	_, err := f.service.ScanExpiredParticipations(context.Background(), 10)
+	_, err := f.service.ScanExpiredParticipations(context.Background(), expiryScanSystem, 10)
 	var fault *apperror.Error
 	require.ErrorAs(t, err, &fault, "error=%v audit=%#v effects=%#v order=%v", err, f.systemAudit, f.effects, f.order)
 	require.Equal(t, "exam.attempt.connection_closed", fault.Code(), "error=%v audit=%#v effects=%#v order=%v", err, f.systemAudit, f.effects, f.order)

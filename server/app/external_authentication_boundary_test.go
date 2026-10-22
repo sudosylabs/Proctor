@@ -390,7 +390,7 @@ func TestExternalAuthenticationProviderListIncludesOnlyCurrentPolicySelections(t
 		{ID: "campus-b", DisplayName: "Campus B", Type: "cas"},
 	}
 	service := &externalAuthenticationService{deps: externalAuthenticationServiceDependencies{Registry: externalProviderSourceSet{descriptors: configured}, AccessPolicy: authenticationAccessPolicyFake{providers: map[string]bool{"campus-b": true}}}}
-	providers, err := service.ExternalAuthenticationProviders(context.Background())
+	providers, err := service.ExternalAuthenticationProviders(context.Background(), invocation.Invocation{})
 	require.NoError(t, err)
 	require.Equal(t, configured[1:], providers, "available providers")
 }

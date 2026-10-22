@@ -19,8 +19,16 @@ child module share it without a parent import, and transports import it
 directly. Every use case and consumer-owned port takes
 `invocation invocation.Invocation`, and no module declares a local call type,
 alias, or conversion between call types.
-Actorless durable Job work carries `invocation.System`, which names the Job
-and Job Attempt and cannot impersonate a User.
+Actorless work carries `invocation.System` in the same position, which names
+either the durable Job execution (`invocation.Job`) or a non-durable runtime
+task (`invocation.Task`) such as the Attempt expiry scan, startup
+reconciliation, or an offline host-operator command, and cannot impersonate a
+User. An anonymous transport use case (installation status, access discovery,
+external provider list, Desktop compatibility) still takes an Invocation: a
+zero Principal with its request metadata. `TestUseCasesTakeAnInvocationFirst`
+checks every exported App method; the few that are not use cases (credential
+resolution, realtime propagation, composition attachment, child-module ports)
+are listed there with their reasons.
 
 Each actor-sensitive use case authorizes immediately before expensive work or mutation. HTTP and WebSocket establish credential and assurance requirements but do not preflight resource permissions or issue decision receipts.
 

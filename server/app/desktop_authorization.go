@@ -138,7 +138,7 @@ type desktopAuthorizationService struct {
 }
 
 type desktopAuthorizationCompatibility interface {
-	EvaluateDesktopCompatibility(context.Context, DesktopCompatibilityQuery) (DesktopCompatibilityResult, error)
+	EvaluateDesktopCompatibility(context.Context, invocation.Invocation, DesktopCompatibilityQuery) (DesktopCompatibilityResult, error)
 }
 
 type desktopAuthorizationIdentityDependencies struct {
@@ -542,7 +542,7 @@ func (s *desktopAuthorizationService) ExchangeDesktopAuthorization(ctx context.C
 	if _, err = s.dpop.Verify(ctx, command.DPoPProof, "POST", target, "", &command.PublicJWK, binding); err != nil {
 		return nil, err
 	}
-	compatibility, err := s.compatibility.EvaluateDesktopCompatibility(ctx, desktopCompatibilityQueryFromAuthorization(command))
+	compatibility, err := s.compatibility.EvaluateDesktopCompatibility(ctx, invocation, desktopCompatibilityQueryFromAuthorization(command))
 	if err != nil {
 		return nil, apperror.New("authentication.desktop_authorization.unavailable").Wrap(err)
 	}
@@ -763,7 +763,7 @@ func (a desktopAuthorizationAuditAdapter) Fail(ctx context.Context, auditID mode
 	return appErr
 }
 
-func (s *desktopAuthorizationService) StartDesktopAuthorization(ctx context.Context, _ invocation.Invocation, command StartDesktopAuthorizationCommand) (*DesktopAuthorizationStart, error) {
+func (s *desktopAuthorizationService) StartDesktopAuthorization(ctx context.Context, invocation invocation.Invocation, command StartDesktopAuthorizationCommand) (*DesktopAuthorizationStart, error) {
 	if err := s.deps.Attempts.Check(ctx, desktopAuthorizationAttemptStart, model.HashToken(command.State), command.Source); err != nil {
 		return nil, err
 	}
@@ -777,7 +777,7 @@ func (s *desktopAuthorizationService) StartDesktopAuthorization(ctx context.Cont
 	if s.dpop == nil || s.compatibility == nil {
 		return nil, apperror.New("authentication.desktop_authorization.unavailable")
 	}
-	compatibility, err := s.compatibility.EvaluateDesktopCompatibility(ctx, desktopCompatibilityQueryFromStart(command))
+	compatibility, err := s.compatibility.EvaluateDesktopCompatibility(ctx, invocation, desktopCompatibilityQueryFromStart(command))
 	if err != nil {
 		return nil, apperror.New("authentication.desktop_authorization.unavailable").Wrap(err)
 	}

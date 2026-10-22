@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -185,7 +186,7 @@ type examSittingSealingFake struct {
 	continuationParentID  model.JobID
 }
 
-func (f *examSittingSealingFake) ListExamSittingSealTargetsFromJob(_ context.Context, _ model.ExamSittingID,
+func (f *examSittingSealingFake) ListExamSittingSealTargetsFromJob(_ context.Context, _ invocation.System, _ model.ExamSittingID,
 	after model.ExamAttemptID, limit int,
 ) ([]store.ExamSubmissionAutomaticSealTarget, error) {
 	start := 0

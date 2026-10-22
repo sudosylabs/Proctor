@@ -13,6 +13,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -38,7 +40,7 @@ func TestDeliveryExpiryScanAuditsBeforeCommitAndRejectsUnboundedWork(t *testing.
 	due := expiryDueFixture(f)
 	persistence := &expiryDeliveryStoreFake{ExamAttemptStore: f.persistence, due: []store.DeliveryExpiryDue{{Family: "native", SourceID: model.NewID(), AttemptID: due.AttemptID, ParticipationID: due.ParticipationID, SittingID: due.SittingID, ClassID: due.ClassID}}}
 	f.service.deps.Persistence = persistence
-	result, err := f.service.ScanExpiredDeliveries(context.Background(), 1)
+	result, err := f.service.ScanExpiredDeliveries(context.Background(), expiryScanSystem, 1)
 	require.NoError(t, err, "scan=%#v calls=%d order=%v", result, persistence.calls, f.order)
 	require.Equal(t, 1, result.Completed, "scan=%#v calls=%d order=%v", result, persistence.calls, f.order)
 	require.Equal(t, 1, persistence.calls, "scan=%#v calls=%d order=%v", result, persistence.calls, f.order)
@@ -47,15 +49,26 @@ func TestDeliveryExpiryScanAuditsBeforeCommitAndRejectsUnboundedWork(t *testing.
 	require.NotNil(t, f.systemAudit.values, "the expiry was not audited")
 	require.Empty(t, f.systemAudit.failedCode)
 	for _, limit := range []int{0, 201} {
-		_, err = f.service.ScanExpiredDeliveries(context.Background(), limit)
+		_, err = f.service.ScanExpiredDeliveries(context.Background(), expiryScanSystem, limit)
 		require.Error(t, err, "unbounded scan accepted")
 	}
 	persistence.due = append(persistence.due, persistence.due[0])
-	_, err = f.service.ScanExpiredDeliveries(context.Background(), 1)
+	_, err = f.service.ScanExpiredDeliveries(context.Background(), expiryScanSystem, 1)
 	require.Error(t, err, "oversized persisted page mutated state")
 	require.Equal(t, 1, persistence.calls, "oversized persisted page mutated state")
 	persistence.due = persistence.due[:1]
 	persistence.err = errors.New("database failure")
-	_, err = f.service.ScanExpiredDeliveries(context.Background(), 1)
+	_, err = f.service.ScanExpiredDeliveries(context.Background(), expiryScanSystem, 1)
 	require.Error(t, err, "lost expiry commit reported success")
+}
+
+var expiryScanSystem = invocation.Task("exam-attempt-expiry-test")
+
+func TestExpiryScansRequireTheirSystemIdentity(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	_, err := f.service.ScanExpiredParticipations(context.Background(), invocation.System{}, 1)
+	require.Equal(t, "exam.attempt.invalid", apperror.CodeOf(err, ""), "Participation scan without its runtime task")
+	_, err = f.service.ScanExpiredDeliveries(context.Background(), invocation.System{}, 1)
+	require.Equal(t, "exam.attempt.invalid", apperror.CodeOf(err, ""), "delivery scan without its runtime task")
 }

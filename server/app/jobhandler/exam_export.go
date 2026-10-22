@@ -13,13 +13,14 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
 type ExamExportBuilder interface {
-	BuildFromJob(context.Context, store.ExamExportBuild) error
+	BuildFromJob(context.Context, invocation.System, store.ExamExportBuild) error
 }
 type ExamExportMaintenanceStore interface {
 	Reconcile(context.Context, int) (int, error)
@@ -49,7 +50,7 @@ func (h examExportBuildHandler) Run(ctx context.Context, e job.Execution) job.Ou
 		return job.PermanentFailure("exam.export.unavailable", errors.New("Exam export construction budget exhausted"))
 	}
 	input := store.ExamExportBuild{ExamExportArtifact: store.ExamExportArtifact{ExportID: command.ExportID, AttemptID: e.Attempt.ID}, JobID: e.Job.ID, ClaimToken: e.Attempt.ClaimToken}
-	if err = h.service.BuildFromJob(ctx, input); err != nil {
+	if err = h.service.BuildFromJob(ctx, invocation.Job(e.Job.ID, e.Attempt.ID), input); err != nil {
 		// SQL/provider details and archive content never enter ordinary Job logs.
 		return job.RetryableFailure("exam.export.unavailable", errors.New("Exam export construction failed"))
 	}

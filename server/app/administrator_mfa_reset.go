@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -37,7 +38,10 @@ type administratorRecoveryPolicy struct {
 // ResetAdministratorMFA is absent from every network application capability.
 // The module root borrows it only while its Server is inert, and the Store
 // serializes it against all serving nodes and unreconciled host recovery.
-func (s *bootstrapService) ResetAdministratorMFA(ctx context.Context, command AdministratorMFAResetCommand) (*AdministratorMFAResetResult, error) {
+func (s *bootstrapService) ResetAdministratorMFA(ctx context.Context, system invocation.System, command AdministratorMFAResetCommand) (*AdministratorMFAResetResult, error) {
+	if !system.Valid() {
+		return nil, apperror.New("administrator_recovery.invalid")
+	}
 	institutionID, institutionErr := model.ParseInstitutionID(strings.TrimSpace(command.InstitutionID))
 	userID, userErr := model.ParseUserID(strings.TrimSpace(command.UserID))
 	if institutionErr != nil || userErr != nil {

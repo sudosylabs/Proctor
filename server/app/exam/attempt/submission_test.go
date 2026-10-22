@@ -139,7 +139,9 @@ func TestAutomaticSealUsesBoundedSystemAuditAndPublishesOnlyFreshResult(t *testi
 		ExamID: target.ExamID, SittingID: target.SittingID, ClassID: target.ClassID, CandidateUserID: target.CandidateUserID,
 		ParticipationID: target.ParticipationID, Generation: target.Generation, ConnectionID: target.ConnectionID},
 		ConnectionClosed: true}
-	items, err := f.service.ListAutomaticSealTargets(context.Background(), target.SittingID, model.ExamAttemptID(""), 20)
+	_, err := f.service.ListAutomaticSealTargets(context.Background(), invocation.System{}, target.SittingID, model.ExamAttemptID(""), 20)
+	require.Equal(t, "exam.attempt.invalid", apperror.CodeOf(err, ""), "a seal-target page without its Job identity")
+	items, err := f.service.ListAutomaticSealTargets(context.Background(), invocation.Job(model.NewJobID(), model.NewJobAttemptID()), target.SittingID, model.ExamAttemptID(""), 20)
 	require.NoError(t, err, "targets=%#v options=%#v err", items, f.submissions.automaticOptions)
 	require.Len(t, items, 1, "targets=%#v options=%#v err", items, f.submissions.automaticOptions)
 	require.Equal(t, target, items[0], "targets=%#v options=%#v err", items, f.submissions.automaticOptions)

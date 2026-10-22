@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -38,7 +39,7 @@ func TestAdministratorMFAResetRequiresEnabledServiceAndExactTargetBeforeMutation
 			service := &bootstrapService{deps: bootstrapServiceDependencies{Installations: persistence, RecoveryPolicy: administratorRecoveryPolicy{
 				capabilities: &accessPolicyCapabilitiesFake{}, mfaEnabled: test.enabled,
 			}}}
-			result, err := service.ResetAdministratorMFA(context.Background(), AdministratorMFAResetCommand{InstitutionID: test.institution, UserID: test.user})
+			result, err := service.ResetAdministratorMFA(context.Background(), invocation.Task("host-operator-test"), AdministratorMFAResetCommand{InstitutionID: test.institution, UserID: test.user})
 			require.Nil(t, result, "result=%#v error=%v events", result, err)
 			require.True(t, apperror.Is(err, test.code), "result=%#v error=%v events", result, err)
 			require.Empty(t, events, "result=%#v error=%v events", result, err)
@@ -71,7 +72,7 @@ func TestAdministratorMFAResetPassesCurrentDeploymentAndRequiresDurableEvidence(
 			events := []string{}
 			persistence := &installationStoreFake{events: &events, mfaResetResult: test.result, mfaResetErr: test.err}
 			service := newBootstrapService(bootstrapServiceDependencies{Installations: persistence, Hasher: &passwordHasherFake{events: &events}, Attempts: nil, RateLimit: LoginRateLimitPolicy{}, Protection: BootstrapProtectionPolicy{}, NodeID: "offline", Now: time.Now, RecoveryPolicy: administratorRecoveryPolicy{capabilities: capabilities, mfaEnabled: true}})
-			result, err := service.ResetAdministratorMFA(context.Background(), AdministratorMFAResetCommand{InstitutionID: " " + institutionID.String() + " ", UserID: userID.String()})
+			result, err := service.ResetAdministratorMFA(context.Background(), invocation.Task("host-operator-test"), AdministratorMFAResetCommand{InstitutionID: " " + institutionID.String() + " ", UserID: userID.String()})
 			require.Equal(t, test.wantOK, err == nil, "result=%#v error=%v events", result, err)
 			require.Equal(t, []string{"reset-administrator-mfa"}, events, "result=%#v error=%v events", result, err)
 			input := persistence.mfaResetInput

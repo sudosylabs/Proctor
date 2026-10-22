@@ -15,6 +15,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -135,7 +136,7 @@ func decodeStrictUniqueJobDocument(document json.RawMessage, target any) error {
 
 type ExamSittingLifecycleRecoveryUseCases interface {
 	ExamSittingLifecycleReconciler
-	ListExamSittingLifecycleDueFromJob(context.Context, store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error)
+	ListExamSittingLifecycleDueFromJob(context.Context, invocation.System, store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error)
 }
 
 type examSittingLifecycleRecoveryHandler struct {
@@ -165,7 +166,7 @@ func (h examSittingLifecycleRecoveryHandler) Run(ctx context.Context, execution 
 	remaining := command.WorkLimit - execution.Job.WorkReserved
 	for remaining > 0 {
 		limit := min(remaining, examSittingLifecycleRecoveryPageSize)
-		page, listErr := h.service.ListExamSittingLifecycleDueFromJob(ctx, store.ExamSittingLifecycleDueOptions{
+		page, listErr := h.service.ListExamSittingLifecycleDueFromJob(ctx, invocation.Job(execution.Job.ID, execution.Attempt.ID), store.ExamSittingLifecycleDueOptions{
 			AfterDueAt: checkpoint.AfterDueAt, AfterSittingID: checkpoint.AfterSittingID, Limit: limit,
 		})
 		if listErr != nil {

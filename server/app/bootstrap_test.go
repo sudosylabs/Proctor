@@ -148,7 +148,7 @@ func TestBootstrapStatusUninitializedOnNotFound(t *testing.T) {
 	t.Parallel()
 	events := []string{}
 	service := newBootstrapService(bootstrapServiceDependencies{Installations: &installationStoreFake{events: &events, getErr: store.NewErrNotFound("installation", "")}, Hasher: &passwordHasherFake{events: &events}, Attempts: bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}), RateLimit: bootstrapRateLimitPolicy(10), Protection: bootstrapProtection(), NodeID: "node-a", Now: time.Now, RecoveryPolicy: administratorRecoveryPolicy{}})
-	status, err := service.GetInstallationStatus(context.Background(), GetInstallationStatusQuery{})
+	status, err := service.GetInstallationStatus(context.Background(), invocation.Invocation{}, GetInstallationStatusQuery{})
 	require.NoError(t, err, "status=%#v err", status)
 	require.False(t, status.Initialized, "status=%#v err", status)
 }

@@ -25,11 +25,12 @@ type AutomaticSubmissionResult struct {
 // ListAutomaticSealTargets returns up to limit Attempts in the Sitting that
 // still need an automatic Submission at Sitting close, ordered by Attempt ID
 // strictly after the after cursor (zero starts from the beginning). It
-// returns an empty, non-nil slice when nothing remains.
-func (s *Service) ListAutomaticSealTargets(ctx context.Context, sittingID model.ExamSittingID,
+// returns an empty, non-nil slice when nothing remains. system names the
+// sealing Job.
+func (s *Service) ListAutomaticSealTargets(ctx context.Context, system invocation.System, sittingID model.ExamSittingID,
 	after model.ExamAttemptID, limit int,
 ) ([]store.ExamSubmissionAutomaticSealTarget, error) {
-	if !sittingID.IsValid() || (!after.IsZero() && !after.IsValid()) || limit < 1 || limit > 200 {
+	if !system.Valid() || !sittingID.IsValid() || (!after.IsZero() && !after.IsValid()) || limit < 1 || limit > 200 {
 		return nil, apperror.Invalid("exam.attempt.invalid", "automatic_seal_list")
 	}
 	items, err := s.deps.Submissions.ListAutomaticSealTargets(ctx, store.ExamSubmissionAutomaticSealListOptions{

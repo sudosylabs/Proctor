@@ -144,6 +144,7 @@ func newDesktopCompatibilityService(deps desktopCompatibilityServiceDependencies
 // the current authoritative Institution policy and immutable server catalog.
 func (s *desktopCompatibilityService) EvaluateDesktopCompatibility(
 	ctx context.Context,
+	_ invocation.Invocation,
 	query DesktopCompatibilityQuery,
 ) (DesktopCompatibilityResult, error) {
 	return s.evaluate(ctx, query, s.deps.SkipBuildChecks)

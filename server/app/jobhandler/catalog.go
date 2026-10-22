@@ -16,6 +16,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
@@ -24,7 +25,7 @@ import (
 )
 
 type DefaultProfilePictureGenerator interface {
-	EnsureDefaultProfilePicture(context.Context, model.UserID) (model.FileEntryID, error)
+	EnsureDefaultProfilePicture(context.Context, invocation.System, model.UserID) (model.FileEntryID, error)
 	ClassifyDefaultProfilePictureError(error) string
 }
 

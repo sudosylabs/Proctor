@@ -162,13 +162,14 @@ type AuditListingApplication interface {
 }
 
 type BootstrapApplication interface {
-	GetInstallationStatus(context.Context, app.GetInstallationStatusQuery) (*model.InstallationStatus, error)
+	GetInstallationStatus(context.Context, invocation.Invocation, app.GetInstallationStatusQuery) (*model.InstallationStatus, error)
 	BootstrapInstallation(context.Context, invocation.Invocation, app.BootstrapInstallationCommand) (*model.InstallationBootstrapResult, error)
 }
 
 type DesktopCompatibilityApplication interface {
 	EvaluateDesktopCompatibility(
 		context.Context,
+		invocation.Invocation,
 		app.DesktopCompatibilityQuery,
 	) (app.DesktopCompatibilityResult, error)
 	GetDesktopCompatibilityPolicy(

@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 )
 
 func TestExamAttemptExpiryPeriodicRunnerUsesBoundedBatchAndPreservesFailure(t *testing.T) {
@@ -25,6 +26,7 @@ func TestExamAttemptExpiryPeriodicRunnerUsesBoundedBatchAndPreservesFailure(t *t
 	err := (examAttemptExpiryPeriodicRunner{attempts: fake}).Run(context.Background())
 	require.ErrorIs(t, err, wantErr, "Run() error")
 	require.Equal(t, examAttemptExpiryBatchLimit, fake.limit, "Run() error")
+	require.Equal(t, invocation.Task(examAttemptExpiryPeriodicTaskName), fake.system, "Run() names its runtime task")
 	require.Equal(t, 2*time.Second, examAttemptExpiryScanInterval, "Run() error")
 	require.NotEmpty(t, examAttemptExpiryPeriodicTaskName, "Run() error")
 }
@@ -32,15 +34,16 @@ func TestExamAttemptExpiryPeriodicRunnerUsesBoundedBatchAndPreservesFailure(t *t
 type recordingExamAttemptExpiryUseCases struct {
 	limit         int
 	deliveryLimit int
+	system        invocation.System
 	err           error
 }
 
-func (f *recordingExamAttemptExpiryUseCases) ScanExpiredParticipations(_ context.Context, limit int) (attempt.ExpiryScanResult, error) {
-	f.limit = limit
+func (f *recordingExamAttemptExpiryUseCases) ScanExpiredParticipations(_ context.Context, system invocation.System, limit int) (attempt.ExpiryScanResult, error) {
+	f.limit, f.system = limit, system
 	return attempt.ExpiryScanResult{}, f.err
 }
 
-func (f *recordingExamAttemptExpiryUseCases) ScanExpiredDeliveries(_ context.Context, limit int) (attempt.ExpiryScanResult, error) {
+func (f *recordingExamAttemptExpiryUseCases) ScanExpiredDeliveries(_ context.Context, _ invocation.System, limit int) (attempt.ExpiryScanResult, error) {
 	f.deliveryLimit = limit
 	return attempt.ExpiryScanResult{}, nil
 }

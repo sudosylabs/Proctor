@@ -16,6 +16,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -27,7 +28,7 @@ type exportBuilderFake struct {
 	err   error
 }
 
-func (f *exportBuilderFake) BuildFromJob(_ context.Context, input store.ExamExportBuild) error {
+func (f *exportBuilderFake) BuildFromJob(_ context.Context, _ invocation.System, input store.ExamExportBuild) error {
 	f.calls++
 	f.input = input
 	return f.err

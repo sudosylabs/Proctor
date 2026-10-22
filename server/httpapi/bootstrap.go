@@ -157,7 +157,7 @@ func bootstrapResource(bootstrap BootstrapApplication) apiResource {
 }
 
 func (m bootstrapResourceModule) status(request operationRequest) (operationResult, error) {
-	status, err := m.bootstrap.GetInstallationStatus(request.context, app.GetInstallationStatusQuery{})
+	status, err := m.bootstrap.GetInstallationStatus(request.context, request.invocation(), app.GetInstallationStatusQuery{})
 	if err != nil {
 		return operationResult{}, err
 	}

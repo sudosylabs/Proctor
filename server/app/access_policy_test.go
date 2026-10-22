@@ -414,13 +414,13 @@ func TestPublicAccessDiscoveryFiltersUnavailableProvidersAndRestoresByStableID(t
 	persistence.snapshot.Policy = policy
 
 	capabilities.snapshot.Providers = nil
-	discovery, err := service.DiscoverAccess(context.Background())
+	discovery, err := service.DiscoverAccess(context.Background(), invocation.Invocation{})
 	require.NoError(t, err)
 	require.Equal(t, "https://proctor.example.edu", discovery.CanonicalOrigin)
 	require.Empty(t, discovery.Providers)
 	require.True(t, discovery.Initialized)
 	capabilities.snapshot.Providers = []AccessPolicyProviderCapability{{Descriptor: model.ExternalAuthenticationProvider{ID: "campus-oidc", DisplayName: "Campus", Type: "oidc"}}}
-	discovery, err = service.DiscoverAccess(context.Background())
+	discovery, err = service.DiscoverAccess(context.Background(), invocation.Invocation{})
 	require.NoError(t, err, "restored-provider discovery = %#v", discovery)
 	require.Len(t, discovery.Providers, 1, "restored-provider discovery = %#v", discovery)
 	require.Equal(t, "campus-oidc", discovery.Providers[0].ID, "restored-provider discovery = %#v", discovery)

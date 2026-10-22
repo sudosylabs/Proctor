@@ -79,7 +79,7 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 	})
 	require.NoError(t, err, "save institution")
 	require.NotNil(t, institution, "save institution")
-	compatibility, err := primary.App.EvaluateDesktopCompatibility(t.Context(), app.DesktopCompatibilityQuery{
+	compatibility, err := primary.App.EvaluateDesktopCompatibility(t.Context(), invocation.Invocation{}, app.DesktopCompatibilityQuery{
 		DesktopRelease: build.DesktopRelease, DesktopBuildID: build.DesktopBuildID, Platform: string(build.Platform), Architecture: string(build.Architecture), RealtimeProtocol: build.RealtimeProtocol,
 	})
 	require.NoError(t, err, "configured build unavailable: %#v", compatibility)
@@ -89,7 +89,7 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 		// The test graph must ignore the host environment and default to strict
 		// compatibility even when the test binary itself was built without production.
 		strict := testlib.Setup(t, testlib.WithConfig(publicOrigin), testlib.WithStore(openAdditionalUserSettingsStore(t, dataSource)))
-		result, err := strict.App.EvaluateDesktopCompatibility(t.Context(), app.DesktopCompatibilityQuery{
+		result, err := strict.App.EvaluateDesktopCompatibility(t.Context(), invocation.Invocation{}, app.DesktopCompatibilityQuery{
 			DesktopRelease: build.DesktopRelease, DesktopBuildID: build.DesktopBuildID, Platform: string(build.Platform), Architecture: string(build.Architecture), RealtimeProtocol: build.RealtimeProtocol,
 		})
 		require.NoError(t, err, "default test graph bypassed compatibility: %#v", result)

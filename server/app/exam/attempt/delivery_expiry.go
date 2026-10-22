@@ -11,6 +11,7 @@ import (
 	"errors"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -18,8 +19,8 @@ import (
 // ScanExpiredDeliveries expires up to limit (1 to 200) overdue delivery
 // sources under system audit. The result counts sources found, completed, and
 // already expired (Replayed); it may be partial when an error is returned.
-func (s *Service) ScanExpiredDeliveries(ctx context.Context, limit int) (ExpiryScanResult, error) {
-	if limit < 1 || limit > 200 {
+func (s *Service) ScanExpiredDeliveries(ctx context.Context, system invocation.System, limit int) (ExpiryScanResult, error) {
+	if !system.Valid() || limit < 1 || limit > 200 {
 		return ExpiryScanResult{}, apperror.Invalid("exam.attempt.invalid", "delivery_expiry_limit")
 	}
 	due, err := s.deps.Persistence.ListExpiredDeliveries(ctx, limit)

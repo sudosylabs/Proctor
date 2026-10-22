@@ -626,7 +626,7 @@ type desktopAuthorizationCompatibilityFake struct {
 	err    error
 }
 
-func (f desktopAuthorizationCompatibilityFake) EvaluateDesktopCompatibility(context.Context, DesktopCompatibilityQuery) (DesktopCompatibilityResult, error) {
+func (f desktopAuthorizationCompatibilityFake) EvaluateDesktopCompatibility(context.Context, invocation.Invocation, DesktopCompatibilityQuery) (DesktopCompatibilityResult, error) {
 	if f.err != nil {
 		return DesktopCompatibilityResult{}, f.err
 	}

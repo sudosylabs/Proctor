@@ -36,7 +36,7 @@ func (a *replayingAccessPolicyHTTPApplication) GetAccessPolicy(context.Context, 
 func (a *replayingAccessPolicyHTTPApplication) PreflightAccessPolicy(context.Context, invocation.Invocation, app.PreflightAccessPolicyCommand) (app.AccessPolicyPreflightResult, error) {
 	return app.AccessPolicyPreflightResult{}, nil
 }
-func (a *replayingAccessPolicyHTTPApplication) DiscoverAccess(context.Context) (app.PublicAccessDiscovery, error) {
+func (a *replayingAccessPolicyHTTPApplication) DiscoverAccess(context.Context, invocation.Invocation) (app.PublicAccessDiscovery, error) {
 	a.discoveries++
 	return app.PublicAccessDiscovery{}, nil
 }

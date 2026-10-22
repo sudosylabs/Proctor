@@ -405,7 +405,7 @@ func TestOnboardingImportExecutionJobResumesSafeTerminalCheckpointAcrossWorkers(
 	}
 
 	record.Checkpoint = json.RawMessage(`{"after_row":-1,"processed":37}`)
-	outcome := handler.Run(context.Background(), job.Execution{Job: record})
+	outcome := handler.Run(context.Background(), job.Execution{Job: record, Attempt: &model.JobAttempt{ID: model.NewJobAttemptID(), JobID: record.ID}})
 	require.Equal(t, job.OutcomePermanentFailure, outcome.Kind)
 	require.Equal(t, "job.checkpoint.invalid", outcome.PublicErrorCode)
 }

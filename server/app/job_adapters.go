@@ -31,8 +31,8 @@ func prepareUserDefaultProfilePictureJob(user *model.User, at time.Time) (*model
 
 type jobDefaultProfilePictureGenerator struct{ service *profilePictureService }
 
-func (a jobDefaultProfilePictureGenerator) EnsureDefaultProfilePicture(ctx context.Context, id model.UserID) (model.FileEntryID, error) {
-	return a.service.EnsureDefaultProfilePicture(ctx, id)
+func (a jobDefaultProfilePictureGenerator) EnsureDefaultProfilePicture(ctx context.Context, system invocation.System, id model.UserID) (model.FileEntryID, error) {
+	return a.service.EnsureDefaultProfilePicture(ctx, system, id)
 }
 
 func (jobDefaultProfilePictureGenerator) ClassifyDefaultProfilePictureError(err error) string {
@@ -135,10 +135,10 @@ type examSittingSealingJobUseCases struct {
 	newID    func() model.JobID
 }
 
-func (uc examSittingSealingJobUseCases) ListExamSittingSealTargetsFromJob(ctx context.Context,
+func (uc examSittingSealingJobUseCases) ListExamSittingSealTargetsFromJob(ctx context.Context, system invocation.System,
 	sittingID model.ExamSittingID, after model.ExamAttemptID, limit int,
 ) ([]store.ExamSubmissionAutomaticSealTarget, error) {
-	return uc.attempts.ListAutomaticSealTargets(ctx, sittingID, after, limit)
+	return uc.attempts.ListAutomaticSealTargets(ctx, system, sittingID, after, limit)
 }
 
 func (uc examSittingSealingJobUseCases) SealExamAttemptForSittingCloseFromJob(ctx context.Context,

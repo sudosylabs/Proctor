@@ -22,7 +22,7 @@ type AccessPolicyApplication interface {
 	GetAccessPolicy(context.Context, invocation.Invocation) (app.AccessPolicyView, error)
 	PreflightAccessPolicy(context.Context, invocation.Invocation, app.PreflightAccessPolicyCommand) (app.AccessPolicyPreflightResult, error)
 	ReplaceAccessPolicy(context.Context, invocation.Invocation, app.ReplaceAccessPolicyCommand) (app.AccessPolicyView, error)
-	DiscoverAccess(context.Context) (app.PublicAccessDiscovery, error)
+	DiscoverAccess(context.Context, invocation.Invocation) (app.PublicAccessDiscovery, error)
 }
 
 type unavailableAccessPolicyApplication struct{}
@@ -36,7 +36,7 @@ func (unavailableAccessPolicyApplication) PreflightAccessPolicy(context.Context,
 func (unavailableAccessPolicyApplication) ReplaceAccessPolicy(context.Context, invocation.Invocation, app.ReplaceAccessPolicyCommand) (app.AccessPolicyView, error) {
 	return app.AccessPolicyView{}, errUnpresentableResult
 }
-func (unavailableAccessPolicyApplication) DiscoverAccess(context.Context) (app.PublicAccessDiscovery, error) {
+func (unavailableAccessPolicyApplication) DiscoverAccess(context.Context, invocation.Invocation) (app.PublicAccessDiscovery, error) {
 	return app.PublicAccessDiscovery{}, errUnpresentableResult
 }
 
@@ -224,7 +224,7 @@ func requiredAccessPolicySettings(body accessPolicySettingsRequest) (model.Acces
 }
 
 func (m accessPolicyResourceModule) discover(request operationRequest) (operationResult, error) {
-	discovery, err := m.application.DiscoverAccess(request.context)
+	discovery, err := m.application.DiscoverAccess(request.context, request.invocation())
 	if err != nil {
 		return operationResult{}, err
 	}

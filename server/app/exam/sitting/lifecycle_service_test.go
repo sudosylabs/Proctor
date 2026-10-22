@@ -15,6 +15,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -282,7 +283,9 @@ func TestSystemCloseAndDueListingUseBoundedSystemSeam(t *testing.T) {
 
 	dueAt := testNow.Add(-time.Minute)
 	fixture.persistence.due = []store.ExamSittingLifecycleDue{{Value: &store.ExamSittingSnapshot{Sitting: closing}, DueAt: dueAt}}
-	items, err := fixture.service.ListLifecycleDue(context.Background(), store.ExamSittingLifecycleDueOptions{Limit: 50})
+	_, err = fixture.service.ListLifecycleDue(context.Background(), invocation.System{}, store.ExamSittingLifecycleDueOptions{Limit: 50})
+	require.Equal(t, "exam.sitting.invalid", apperror.CodeOf(err, ""), "a lifecycle page without its Job identity")
+	items, err := fixture.service.ListLifecycleDue(context.Background(), system, store.ExamSittingLifecycleDueOptions{Limit: 50})
 	require.NoError(t, err, "ListLifecycleDue()")
 	require.Len(t, items, 1, "ListLifecycleDue()")
 	require.True(t, items[0].DueAt.Equal(dueAt), "ListLifecycleDue()")

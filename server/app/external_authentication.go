@@ -173,7 +173,7 @@ func newExternalAuthenticationService(deps externalAuthenticationServiceDependen
 	return &externalAuthenticationService{deps: deps}, nil
 }
 
-func (s *externalAuthenticationService) ExternalAuthenticationProviders(ctx context.Context) ([]model.ExternalAuthenticationProvider, error) {
+func (s *externalAuthenticationService) ExternalAuthenticationProviders(ctx context.Context, _ invocation.Invocation) ([]model.ExternalAuthenticationProvider, error) {
 	providers, err := s.deps.AccessPolicy.AvailableExternalProviders(ctx, s.deps.Registry.Descriptors())
 	if err != nil {
 		return nil, authenticationUnavailable(err)

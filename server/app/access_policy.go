@@ -336,7 +336,7 @@ type PublicAccessDiscovery struct {
 	DesktopAuthorization DesktopAuthorizationCompatibility
 }
 
-func (s *accessPolicyService) DiscoverAccess(ctx context.Context) (PublicAccessDiscovery, error) {
+func (s *accessPolicyService) DiscoverAccess(ctx context.Context, _ invocation.Invocation) (PublicAccessDiscovery, error) {
 	result := PublicAccessDiscovery{DiscoveryVersion: accessDiscoveryVersion, CanonicalOrigin: s.deps.CanonicalOrigin,
 		DesktopAuthorization: DesktopAuthorizationCompatibility{Protocol: "proctor-desktop-authorization", MinimumVersion: desktopAuthorizationProtocolMin, MaximumVersion: desktopAuthorizationProtocolMax}}
 	institution, err := s.deps.Institutions.GetSingleton(ctx)

@@ -7,7 +7,7 @@
 
 // Package invocation owns the one immutable call context that every
 // application module, parent or child, receives for an actor-sensitive use
-// case, plus the System identity of actorless durable Job work. It sits below
+// case, plus the System identity of actorless work. It sits below
 // the parent app package so Exam child modules share the same type without
 // importing their parent. It owns no authorization, audit, or transport
 // policy and may depend only on model and the standard library.
@@ -41,13 +41,30 @@ func (i Invocation) Principal() model.Principal {
 // RequestMetadata returns the safe audit metadata carried by the invocation.
 func (i Invocation) RequestMetadata() model.RequestMetadata { return i.metadata }
 
-// System identifies one durable Job execution responsible for actorless work
-// without manufacturing a user Principal. Both IDs enter only bounded system
-// audit metadata.
+// System identifies the actorless caller of a use case without manufacturing
+// a user Principal: either one durable Job execution (JobID and AttemptID) or
+// one named non-durable runtime task (Task), such as a periodic maintenance
+// scan, startup reconciliation, or an offline host-operator command. Its
+// identities enter only bounded system audit metadata.
 type System struct {
 	JobID     model.JobID
 	AttemptID model.JobAttemptID
+	Task      string
 }
 
-// Valid reports whether both Job identities are present and well formed.
-func (s System) Valid() bool { return s.JobID.IsValid() && s.AttemptID.IsValid() }
+// Job names the actorless work of one durable Job execution.
+func Job(jobID model.JobID, attemptID model.JobAttemptID) System {
+	return System{JobID: jobID, AttemptID: attemptID}
+}
+
+// Task names actorless work that no durable Job carries.
+func Task(name string) System { return System{Task: name} }
+
+// Valid reports whether the System names exactly one well-formed Job
+// execution or one runtime task.
+func (s System) Valid() bool {
+	if s.Task != "" {
+		return s.JobID.IsZero() && s.AttemptID.IsZero()
+	}
+	return s.JobID.IsValid() && s.AttemptID.IsValid()
+}

@@ -86,7 +86,7 @@ func (af *externalAuthenticationEntryHTTPApplication) CompleteExternalAuthentica
 	return af.completion, nil
 }
 
-func (af *externalAuthenticationEntryHTTPApplication) ExternalAuthenticationProviders(context.Context) ([]model.ExternalAuthenticationProvider, error) {
+func (af *externalAuthenticationEntryHTTPApplication) ExternalAuthenticationProviders(context.Context, invocation.Invocation) ([]model.ExternalAuthenticationProvider, error) {
 	return af.providers, af.providersError
 }
 

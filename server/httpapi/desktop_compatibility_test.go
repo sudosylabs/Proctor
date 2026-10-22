@@ -35,6 +35,7 @@ type desktopCompatibilityHTTPApplication struct {
 
 func (a *desktopCompatibilityHTTPApplication) EvaluateDesktopCompatibility(
 	_ context.Context,
+	_ invocation.Invocation,
 	query app.DesktopCompatibilityQuery,
 ) (app.DesktopCompatibilityResult, error) {
 	a.query = query

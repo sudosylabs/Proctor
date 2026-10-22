@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 )
 
 const (
@@ -21,8 +22,8 @@ const (
 )
 
 type examAttemptExpiryUseCases interface {
-	ScanExpiredParticipations(context.Context, int) (attempt.ExpiryScanResult, error)
-	ScanExpiredDeliveries(context.Context, int) (attempt.ExpiryScanResult, error)
+	ScanExpiredParticipations(context.Context, invocation.System, int) (attempt.ExpiryScanResult, error)
+	ScanExpiredDeliveries(context.Context, invocation.System, int) (attempt.ExpiryScanResult, error)
 }
 
 // examAttemptExpiryPeriodicRunner adapts the bounded application scan to the
@@ -31,10 +32,11 @@ type examAttemptExpiryUseCases interface {
 type examAttemptExpiryPeriodicRunner struct{ attempts examAttemptExpiryUseCases }
 
 func (r examAttemptExpiryPeriodicRunner) Run(ctx context.Context) error {
-	_, err := r.attempts.ScanExpiredParticipations(ctx, examAttemptExpiryBatchLimit)
+	system := invocation.Task(examAttemptExpiryPeriodicTaskName)
+	_, err := r.attempts.ScanExpiredParticipations(ctx, system, examAttemptExpiryBatchLimit)
 	if err != nil {
 		return err
 	}
-	_, err = r.attempts.ScanExpiredDeliveries(ctx, examAttemptExpiryBatchLimit)
+	_, err = r.attempts.ScanExpiredDeliveries(ctx, system, examAttemptExpiryBatchLimit)
 	return err
 }
