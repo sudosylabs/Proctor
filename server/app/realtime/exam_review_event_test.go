@@ -42,7 +42,7 @@ func TestIntegrityReviewEventsExposeOnlySafeLifecycleFacts(t *testing.T) {
 	require.Equal(t, "exam_student_result_released", candidate.Name, "review events = changed %#v finalized %#v released %#v candidate %#v", changed, finalized, released, candidate)
 	require.Equal(t, model.ActionSubmissionView, changed.Action, "review events = changed %#v finalized %#v released %#v candidate %#v", changed, finalized, released, candidate)
 	require.Equal(t, model.Resource{Type: model.ResourceSubmission, ID: submissionID.String()}, changed.Resource, "review events = changed %#v finalized %#v released %#v candidate %#v", changed, finalized, released, candidate)
-	require.Equal(t, candidateID.String(), candidate.UserID, "review events = changed %#v finalized %#v released %#v candidate %#v", changed, finalized, released, candidate)
+	require.Equal(t, candidateID, candidate.UserID, "review events = changed %#v finalized %#v released %#v candidate %#v", changed, finalized, released, candidate)
 	require.Empty(t, candidate.Action, "review events = changed %#v finalized %#v released %#v candidate %#v", changed, finalized, released, candidate)
 	require.Equal(t, model.Resource{}, candidate.Resource, "review events = changed %#v finalized %#v released %#v candidate %#v", changed, finalized, released, candidate)
 	for _, event := range []RealtimeEvent{changed, finalized, released, candidate} {

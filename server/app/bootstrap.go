@@ -50,8 +50,8 @@ type BootstrapInstallationCommand struct {
 // capability. Password is private input and is replaced with an encoded hash
 // before the named Store aggregate is invoked.
 type AdministratorRecoveryCommand struct {
-	InstitutionID    string
-	UserID           string
+	InstitutionID    model.InstitutionID
+	UserID           model.UserID
 	EnableLocalLogin bool
 	Password         string
 }
@@ -74,8 +74,8 @@ func (s *bootstrapService) RecoverAdministratorAccess(ctx context.Context, syste
 	if !system.Valid() {
 		return nil, apperror.New("administrator_recovery.invalid")
 	}
-	institutionID, institutionErr := model.ParseInstitutionID(strings.TrimSpace(command.InstitutionID))
-	userID, userErr := model.ParseUserID(strings.TrimSpace(command.UserID))
+	institutionID, institutionErr := model.ParseInstitutionID(strings.TrimSpace(command.InstitutionID.String()))
+	userID, userErr := model.ParseUserID(strings.TrimSpace(command.UserID.String()))
 	if institutionErr != nil || userErr != nil || (!command.EnableLocalLogin && command.Password == "") {
 		return nil, apperror.New("administrator_recovery.invalid")
 	}

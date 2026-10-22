@@ -63,14 +63,14 @@ func (s *mfaApplicationService) ResetUserMFA(ctx context.Context, invocation inv
 	if result == nil || result.Recovery == nil {
 		return authenticationUnavailable(errors.New("MFA reset returned no recovery state"))
 	}
-	s.deps.Effects.SessionsRevoked(ctx, userID.String(), mfaResetSessionIDs(result.Sessions), result.AccessTokenHashes)
+	s.deps.Effects.SessionsRevoked(ctx, userID, mfaResetSessionIDs(result.Sessions), result.AccessTokenHashes)
 	return nil
 }
 
-func mfaResetSessionIDs(sessions []*model.Session) []string {
-	ids := make([]string, 0, len(sessions))
+func mfaResetSessionIDs(sessions []*model.Session) []model.SessionID {
+	ids := make([]model.SessionID, 0, len(sessions))
 	for _, session := range sessions {
-		ids = append(ids, session.ID.String())
+		ids = append(ids, session.ID)
 	}
 	return ids
 }

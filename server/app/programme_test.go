@@ -77,10 +77,10 @@ func (a *programmeAuthorizerFake) Authorize(_ context.Context, _ invocation.Invo
 	return a.err
 }
 
-func (a *programmeAuthorizerFake) AuthorizeUserRead(_ context.Context, _ invocation.Invocation, userID string) error {
+func (a *programmeAuthorizerFake) AuthorizeUserRead(_ context.Context, _ invocation.Invocation, userID model.UserID) error {
 	*a.events = append(*a.events, "authorize")
 	a.action = model.ActionUserView
-	a.resource = model.Resource{Type: model.ResourceUser, ID: userID}
+	a.resource = model.Resource{Type: model.ResourceUser, ID: userID.String()}
 	return a.err
 }
 

@@ -22,7 +22,7 @@ import (
 type ListDesktopRegistrationsQuery struct{}
 
 type RevokeDesktopRegistrationCommand struct {
-	RegistrationID string
+	RegistrationID model.DesktopRegistrationID
 }
 
 // desktopRegistrationServiceDependencies are the collaborators of desktopRegistrationService;
@@ -72,7 +72,7 @@ func (s *desktopRegistrationService) RevokeDesktopRegistration(
 	if err := requireInteractiveSession(principal, true, at, s.deps.RecentAuthenticationTTL); err != nil {
 		return err
 	}
-	registrationID, err := model.ParseDesktopRegistrationID(strings.TrimSpace(command.RegistrationID))
+	registrationID, err := model.ParseDesktopRegistrationID(strings.TrimSpace(command.RegistrationID.String()))
 	if err != nil {
 		return apperror.New("request.invalid").WithField("field", "desktop_registration_id")
 	}
@@ -97,7 +97,7 @@ func (s *desktopRegistrationService) RevokeDesktopRegistration(
 	}
 	if !result.AlreadyRevoked && len(result.Sessions) > 0 {
 		s.deps.Effects.SessionsRevoked(
-			ctx, principal.UserID.String(), sessionIDs(result.Sessions), result.TokenHashes,
+			ctx, principal.UserID, sessionIDs(result.Sessions), result.TokenHashes,
 		)
 	}
 	return nil

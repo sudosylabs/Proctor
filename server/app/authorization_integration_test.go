@@ -685,7 +685,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	historicalRead := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/users/"+historicalUser.ID.String(), nil, login.Tokens.AccessToken)
 	require.Equal(t, http.StatusForbidden, historicalRead.Code, "historical user read status = %d: %s", historicalRead.Code, historicalRead.Body.String())
 
-	bindings, listErr := helper.App.ListRoleBindings(ctx, invocation, app.ListRoleBindingsQuery{UserID: bindingUser.ID.String()})
+	bindings, listErr := helper.App.ListRoleBindings(ctx, invocation, app.ListRoleBindingsQuery{UserID: bindingUser.ID})
 	require.NoError(t, listErr)
 	seenBindings := map[string]bool{}
 	for _, binding := range bindings {

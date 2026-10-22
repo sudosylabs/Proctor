@@ -119,7 +119,7 @@ func (s *accountTokenService) RequestEmailVerification(
 	event := s.deps.Audit.Success(
 		model.ActionAuthenticationEmailVerificationRequest,
 		model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
-		institution.ID.String(),
+		institution.ID,
 		invocation,
 		&principal,
 		"session",
@@ -210,7 +210,7 @@ func (s *accountTokenService) RequestPasswordReset(
 	event := s.deps.Audit.Success(
 		model.ActionAuthenticationPasswordResetRequest,
 		model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
-		institution.ID.String(),
+		institution.ID,
 		invocation,
 		nil,
 		"anonymous",
@@ -261,7 +261,7 @@ func (s *accountTokenService) CompleteEmailVerification(
 	event := s.deps.Audit.Success(
 		model.ActionAuthenticationEmailVerificationComplete,
 		model.Resource{Type: model.ResourceUser},
-		institution.ID.String(),
+		institution.ID,
 		invocation,
 		nil,
 		"email_verification_token",
@@ -311,7 +311,7 @@ func (s *accountTokenService) CompletePasswordReset(
 	event := s.deps.Audit.Success(
 		model.ActionAuthenticationPasswordResetComplete,
 		model.Resource{Type: model.ResourceUser},
-		institution.ID.String(),
+		institution.ID,
 		invocation,
 		nil,
 		"password_reset_token",
@@ -357,7 +357,7 @@ func (s *accountTokenService) CompletePasswordReset(
 	}
 	s.deps.Effects.SessionsRevoked(
 		ctx,
-		result.User.ID.String(),
+		result.User.ID,
 		sessionIDs(result.RevokedSessions),
 		result.RevokedAccessHashes,
 	)

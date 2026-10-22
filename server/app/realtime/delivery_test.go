@@ -36,16 +36,16 @@ func TestRealtimeEventValidateForPublish(t *testing.T) {
 		},
 	}
 	require.NoError(t, valid.ValidateForPublish())
-	require.NoError(t, (RealtimeEvent{Name: "user.notification", UserID: model.NewID()}).ValidateForPublish())
+	require.NoError(t, (RealtimeEvent{Name: "user.notification", UserID: model.UserID(model.NewID())}).ValidateForPublish())
 
 	tests := []struct {
 		name  string
 		event RealtimeEvent
 	}{
-		{name: "empty name", event: RealtimeEvent{UserID: model.NewID()}},
+		{name: "empty name", event: RealtimeEvent{UserID: model.UserID(model.NewID())}},
 		{name: "missing target", event: RealtimeEvent{Name: "orphan.event"}},
 		{name: "invalid data", event: RealtimeEvent{
-			Name: "x", UserID: model.NewID(), Data: json.RawMessage(`{`),
+			Name: "x", UserID: model.UserID(model.NewID()), Data: json.RawMessage(`{`),
 		}},
 	}
 	for _, test := range tests {
@@ -171,7 +171,7 @@ func TestPublishClonesGeneratesIDAndDeliversLocalFirst(t *testing.T) {
 	require.NoError(t, service.SetClusterFanout(fanout))
 
 	data := json.RawMessage(`{"ok":true}`)
-	event := RealtimeEvent{Name: "user.notification", UserID: model.NewID(), Data: data}
+	event := RealtimeEvent{Name: "user.notification", UserID: model.UserID(model.NewID()), Data: data}
 	require.NoError(t, service.Publish(context.Background(), event))
 	require.Empty(t, event.ID)
 	require.Equal(t, `{"ok":true}`, string(data), "caller data was mutated")
@@ -363,7 +363,7 @@ func TestServiceHasNoBackgroundLifecycle(t *testing.T) {
 }
 
 func validUserEvent() RealtimeEvent {
-	return RealtimeEvent{Name: "user.notification", UserID: model.NewID()}
+	return RealtimeEvent{Name: "user.notification", UserID: model.UserID(model.NewID())}
 }
 
 func newOrdinaryTestService(t *testing.T) *Service {

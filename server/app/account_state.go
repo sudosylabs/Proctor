@@ -37,11 +37,11 @@ type accountStateStore interface {
 }
 
 type accountStateAuthorizer interface {
-	AuthorizeAccountStateManage(context.Context, invocation.Invocation, string) error
+	AuthorizeAccountStateManage(context.Context, invocation.Invocation, model.UserID) error
 }
 
 type accountStateEffects interface {
-	SessionsRevoked(context.Context, string, []*model.Session, []string)
+	SessionsRevoked(context.Context, model.UserID, []*model.Session, []string)
 }
 
 // accountStateServiceDependencies are the collaborators of accountStateService;
@@ -69,7 +69,7 @@ func (s *accountStateService) SetUserEnabled(ctx context.Context, invocation inv
 	if !userID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
-	if err := s.deps.Authorization.AuthorizeAccountStateManage(ctx, invocation, userID.String()); err != nil {
+	if err := s.deps.Authorization.AuthorizeAccountStateManage(ctx, invocation, userID); err != nil {
 		return nil, err
 	}
 	if invocation.Principal().UserID == userID && !command.Enabled {
@@ -139,7 +139,7 @@ func (s *accountStateService) SetUserEnabled(ctx context.Context, invocation inv
 		return nil, err
 	}
 	if disabled && result != nil && len(result.RevokedSessions) > 0 {
-		s.deps.Effects.SessionsRevoked(ctx, userID.String(), result.RevokedSessions, result.RevokedTokenHashes)
+		s.deps.Effects.SessionsRevoked(ctx, userID, result.RevokedSessions, result.RevokedTokenHashes)
 	}
 	return result.User, nil
 }
@@ -148,7 +148,7 @@ type accountStateRealtimeEffects struct {
 	effects authenticationSecurityEffects
 }
 
-func (e accountStateRealtimeEffects) SessionsRevoked(ctx context.Context, userID string, sessions []*model.Session, hashes []string) {
+func (e accountStateRealtimeEffects) SessionsRevoked(ctx context.Context, userID model.UserID, sessions []*model.Session, hashes []string) {
 	e.effects.SessionsRevoked(ctx, userID, sessionIDs(sessions), hashes)
 }
 

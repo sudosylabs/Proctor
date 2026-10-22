@@ -138,7 +138,7 @@ func (m academicUnitResourceModule) patch(request operationRequest) (operationRe
 		request.context,
 		request.invocation(),
 		app.UpdateAcademicUnitCommand{ExpectedRevision: body.ExpectedRevision.ValuePointer(),
-			ID: id, ParentID: body.ParentID, Name: body.Name,
+			ID: id, ParentID: optionalIdentifier[model.AcademicUnitID](body.ParentID), Name: body.Name,
 			DisplayName: body.DisplayName, Description: body.Description,
 		},
 	)

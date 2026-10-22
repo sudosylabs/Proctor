@@ -131,7 +131,7 @@ func TestRealtimeClusterAdapterPreservesSingleNodeLocalFirstPublication(t *testi
 
 	require.NoError(t, service.Publish(context.Background(), realtime.RealtimeEvent{
 		Name:   "user.notification",
-		UserID: model.NewID(),
+		UserID: model.UserID(model.NewID()),
 	}))
 	require.Equal(t, 1, sink.publishCount(), "local publications")
 }
@@ -164,8 +164,8 @@ func (silentClusterLogger) ErrorContext(context.Context, string, error) {}
 
 type noopRealtimeInvalidator struct{}
 
-func (noopRealtimeInvalidator) InvalidateAccessCredentials(context.Context, []string) {}
-func (noopRealtimeInvalidator) InvalidateSessionActivity(context.Context, []string)   {}
+func (noopRealtimeInvalidator) InvalidateAccessCredentials(context.Context, []string)        {}
+func (noopRealtimeInvalidator) InvalidateSessionActivity(context.Context, []model.SessionID) {}
 
 var _ realtime.ClusterFanout = (*realtimeClusterAdapter)(nil)
 var _ realtime.Sink = (*countingRealtimeSink)(nil)

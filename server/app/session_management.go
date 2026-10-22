@@ -31,7 +31,7 @@ type ListSessionsQuery struct{}
 
 // RevokeSessionCommand revokes one of the caller's sessions by ID.
 type RevokeSessionCommand struct {
-	SessionID string
+	SessionID model.SessionID
 }
 
 // RevokeAllSessionsCommand revokes every active session for the caller.
@@ -113,7 +113,7 @@ func (s *selfSessionService) RevokeSession(
 	if principal.Validate() != nil {
 		return invalidTokenAppError()
 	}
-	sessionID := strings.TrimSpace(command.SessionID)
+	sessionID := strings.TrimSpace(command.SessionID.String())
 	if !model.SessionID(sessionID).IsValid() {
 		return apperror.New("session.id.invalid").WithField("field", "session_id")
 	}

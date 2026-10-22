@@ -84,7 +84,7 @@ func TestExamSittingLifecycleEffectPublishesOnlySafeBoundedMetadata(t *testing.T
 	require.Equal(t, model.ActionExamSittingView, events[2].Action)
 	require.Equal(t, `{"schema_version":1,"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`"}`, string(events[2].Data))
 	require.Equal(t, "candidate.exam_activity.changed", events[3].Name)
-	require.Equal(t, candidateID.String(), events[3].UserID)
+	require.Equal(t, candidateID, events[3].UserID)
 }
 
 type examCollectionInvalidationStoreFake struct {

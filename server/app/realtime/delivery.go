@@ -52,7 +52,7 @@ type ClusterFanout interface {
 // cache effects that accompany session and credential invalidation.
 type AuthenticationInvalidator interface {
 	InvalidateAccessCredentials(context.Context, []string)
-	InvalidateSessionActivity(context.Context, []string)
+	InvalidateSessionActivity(context.Context, []model.SessionID)
 }
 
 // Diagnostics records bounded, non-fatal security propagation failures.
@@ -304,7 +304,7 @@ func realtimeEventMessageFromModel(event RealtimeEvent) realtimeEventMessage {
 	return realtimeEventMessage{
 		ID:       event.ID,
 		Name:     event.Name,
-		UserID:   event.UserID,
+		UserID:   event.UserID.String(),
 		Action:   event.Action,
 		Resource: realtimeResourceMessage{Type: event.Resource.Type, ID: event.Resource.ID},
 		Data:     append(json.RawMessage(nil), event.Data...),
@@ -315,7 +315,7 @@ func (m realtimeEventMessage) toModel() RealtimeEvent {
 	return RealtimeEvent{
 		ID:       m.ID,
 		Name:     m.Name,
-		UserID:   m.UserID,
+		UserID:   model.UserID(m.UserID),
 		Action:   m.Action,
 		Resource: model.Resource{Type: m.Resource.Type, ID: m.Resource.ID},
 		Data:     append(json.RawMessage(nil), m.Data...),

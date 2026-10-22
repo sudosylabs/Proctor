@@ -977,8 +977,8 @@ func (s *authenticationService) RefreshSession(
 	if rotation.ReplayDetected || rotation.Expired {
 		s.sessionsRevoked(
 			ctx,
-			rotation.Session.UserID.String(),
-			[]string{rotation.Session.ID.String()},
+			rotation.Session.UserID,
+			[]model.SessionID{rotation.Session.ID},
 			rotation.RevokedAccessHashes,
 		)
 	} else {
@@ -1005,8 +1005,8 @@ func (s *authenticationService) RefreshSession(
 			if err == nil {
 				s.sessionsRevoked(
 					ctx,
-					rotation.Session.UserID.String(),
-					[]string{rotation.Session.ID.String()},
+					rotation.Session.UserID,
+					[]model.SessionID{rotation.Session.ID},
 					revokedAccessHashes,
 				)
 			}
@@ -1055,13 +1055,13 @@ func (s *authenticationService) authenticationCacheInvalidated(
 	userID string,
 	hashes []string,
 ) {
-	s.deps.SecurityEffects.AuthenticationCacheInvalidated(ctx, userID, hashes)
+	s.deps.SecurityEffects.AuthenticationCacheInvalidated(ctx, model.UserID(userID), hashes)
 }
 
 func (s *authenticationService) sessionsRevoked(
 	ctx context.Context,
-	userID string,
-	sessionIDs []string,
+	userID model.UserID,
+	sessionIDs []model.SessionID,
 	hashes []string,
 ) {
 	s.deps.SecurityEffects.SessionsRevoked(ctx, userID, sessionIDs, hashes)
@@ -1099,8 +1099,8 @@ func (s *authenticationService) enforceSessionExpiry(
 	}
 	s.sessionsRevoked(
 		ctx,
-		result.Session.UserID.String(),
-		[]string{result.Session.ID.String()},
+		result.Session.UserID,
+		[]model.SessionID{result.Session.ID},
 		result.TokenHashes,
 	)
 	return nil, invalidTokenAppError()

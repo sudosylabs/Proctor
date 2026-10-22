@@ -68,8 +68,8 @@ func (m studentProgressionModule) dryRun(request operationRequest) (operationRes
 		return operationResult{}, invalidRequestError(err)
 	}
 	view, err := m.progressions.DryRunStudentProgression(request.context, request.invocation(), app.DryRunStudentProgressionCommand{
-		SourcePeriodID: body.SourcePeriodID, SourceClassID: body.SourceClassID, DestinationPeriodID: body.DestinationPeriodID,
-		DestinationClassID: body.DestinationClassID, EffectiveAt: model.MillisFromTime(effectiveAt),
+		SourcePeriodID: model.AcademicPeriodID(body.SourcePeriodID), SourceClassID: model.ClassID(body.SourceClassID), DestinationPeriodID: model.AcademicPeriodID(body.DestinationPeriodID),
+		DestinationClassID: model.ClassID(body.DestinationClassID), EffectiveAt: model.MillisFromTime(effectiveAt),
 	})
 	if err != nil {
 		return operationResult{}, err

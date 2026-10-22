@@ -45,5 +45,5 @@ func TestAuditCursorKeepsMicrosecondsSoSameMillisecondRowsAreNotSkipped(t *testi
 	query, err := auditQueryFromRequest(httptest.NewRequestWithContext(t.Context(), "GET", "/api/v1/audit?cursor="+cursor, nil))
 	require.NoError(t, err)
 	require.True(t, createdAt.Equal(query.BeforeCreatedAt), "cursor instant = %v", query.BeforeCreatedAt)
-	require.Equal(t, id.String(), query.BeforeID)
+	require.Equal(t, id, query.BeforeID)
 }

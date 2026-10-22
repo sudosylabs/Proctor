@@ -21,8 +21,8 @@ import (
 // AdministratorMFAResetCommand is host authority, never a User impersonation
 // or network credential. It deliberately has no password or factor input.
 type AdministratorMFAResetCommand struct {
-	InstitutionID string
-	UserID        string
+	InstitutionID model.InstitutionID
+	UserID        model.UserID
 }
 
 type AdministratorMFAResetResult struct {
@@ -42,8 +42,8 @@ func (s *bootstrapService) ResetAdministratorMFA(ctx context.Context, system inv
 	if !system.Valid() {
 		return nil, apperror.New("administrator_recovery.invalid")
 	}
-	institutionID, institutionErr := model.ParseInstitutionID(strings.TrimSpace(command.InstitutionID))
-	userID, userErr := model.ParseUserID(strings.TrimSpace(command.UserID))
+	institutionID, institutionErr := model.ParseInstitutionID(strings.TrimSpace(command.InstitutionID.String()))
+	userID, userErr := model.ParseUserID(strings.TrimSpace(command.UserID.String()))
 	if institutionErr != nil || userErr != nil {
 		return nil, apperror.New("administrator_recovery.invalid")
 	}

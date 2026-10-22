@@ -86,7 +86,7 @@ func (m sessionResourceModule) revoke(request operationRequest) (operationResult
 	if err := m.sessions.RevokeSession(
 		request.context,
 		request.invocation(),
-		app.RevokeSessionCommand{SessionID: input.SessionID},
+		app.RevokeSessionCommand{SessionID: model.SessionID(input.SessionID)},
 	); err != nil {
 		return operationResult{}, err
 	}

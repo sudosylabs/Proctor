@@ -46,7 +46,7 @@ func TestExamArchiveInvalidatesEveryAffectedCollection(t *testing.T) {
 	for index := range want {
 		require.Equal(t, want[index], events[index], "archive invalidations = %#v, want %#v", events, want)
 	}
-	require.Equal(t, candidateID.String(), userID, "candidate target = %q, want %q", userID, candidateID)
+	require.Equal(t, candidateID, userID, "candidate target = %q, want %q", userID, candidateID)
 }
 
 func sinkEventNames(events []realtime.RealtimeEvent) []string {

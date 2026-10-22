@@ -130,12 +130,12 @@ func newAuditService(deps auditServiceDependencies) (*auditService, error) {
 
 func (s *auditService) BeginAuthentication(
 	ctx context.Context,
-	userID string,
+	userID model.UserID,
 	method string,
 	providerID string,
 	clientType model.SessionClientType,
 	metadata model.RequestMetadata,
-	institutionID string,
+	institutionID model.InstitutionID,
 ) (*model.AuditEvent, error) {
 	if !model.UserID(userID).IsValid() || !model.InstitutionID(institutionID).IsValid() ||
 		!clientType.IsValid() || method == "" {
@@ -155,10 +155,10 @@ func (s *auditService) BeginAuthentication(
 		Action:  string(model.ActionAuthenticationExternalLogin),
 		Resource: model.Resource{
 			Type: model.ResourceUser,
-			ID:   userID,
+			ID:   userID.String(),
 		},
 		ScopeType:  model.RoleScopeInstitution,
-		ScopeID:    institutionID,
+		ScopeID:    institutionID.String(),
 		Status:     model.AuditStatusAttempt,
 		RequestID:  metadata.RequestID,
 		NodeID:     s.deps.NodeID,
@@ -256,7 +256,7 @@ func (s *auditService) RecordExternalAuthenticationFailure(
 	providerID string,
 	method string,
 	metadata model.RequestMetadata,
-	institutionID string,
+	institutionID model.InstitutionID,
 	errorCode string,
 ) error {
 	if method == "" {
@@ -275,10 +275,10 @@ func (s *auditService) RecordExternalAuthenticationFailure(
 		Action: string(model.ActionAuthenticationExternalLogin),
 		Resource: model.Resource{
 			Type: model.ResourceInstitution,
-			ID:   institutionID,
+			ID:   institutionID.String(),
 		},
 		ScopeType:  model.RoleScopeInstitution,
-		ScopeID:    institutionID,
+		ScopeID:    institutionID.String(),
 		Status:     model.AuditStatusFail,
 		RequestID:  metadata.RequestID,
 		NodeID:     s.deps.NodeID,

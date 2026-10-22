@@ -59,7 +59,7 @@ func TestPersonalAccessTokenCreationCannotExceedCurrentRoleAuthority(t *testing.
 		context.Background(),
 		invocation.New(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}),
 		CreatePersonalAccessTokenCommand{
-			Scopes: []string{string(model.ActionClassManage)}, AcademicUnitID: unitID.String(),
+			Scopes: []string{string(model.ActionClassManage)}, AcademicUnitID: unitID,
 			ExpiresAt: now.Add(time.Hour).UnixMilli(),
 		},
 	)
@@ -94,7 +94,7 @@ func TestPersonalAccessTokenAdministrationCreatesThroughFocusedContracts(t *test
 		invocation.New(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{RequestID: "request-a"}),
 		CreatePersonalAccessTokenCommand{
 			Description: "automation", Scopes: []string{string(model.ActionClassView)},
-			AcademicUnitID: unitID.String(), ExpiresAt: now.Add(time.Hour).UnixMilli(),
+			AcademicUnitID: unitID, ExpiresAt: now.Add(time.Hour).UnixMilli(),
 		},
 	)
 	require.NoError(t, err)

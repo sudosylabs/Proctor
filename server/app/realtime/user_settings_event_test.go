@@ -28,7 +28,7 @@ func TestUserSettingsChangedEventIsAContentFreeUserTargetedHint(t *testing.T) {
 	event, err := NewUserSettingsChangedEvent(userID, revision, 1, changedAt)
 	require.NoError(t, err)
 	require.Equal(t, "user_settings_changed", event.Name)
-	require.Equal(t, userID.String(), event.UserID)
+	require.Equal(t, userID, event.UserID)
 	require.Empty(t, event.Action)
 	require.Equal(t, model.Resource{}, event.Resource)
 	require.Equal(t, `{"revision":"`+revision.String()+`","format_version":1,"changed_at":"2026-08-15T14:30:00.123Z"}`, string(event.Data))

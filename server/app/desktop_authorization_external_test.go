@@ -220,7 +220,7 @@ func (s *externalHandoffSessionIssuer) createSession(context.Context, sessionIss
 
 type externalHandoffAudit struct{ externalAuditFake }
 
-func (externalHandoffAudit) BeginAuthentication(context.Context, string, string, string, model.SessionClientType, model.RequestMetadata, string) (*model.AuditEvent, error) {
+func (externalHandoffAudit) BeginAuthentication(context.Context, model.UserID, string, string, model.SessionClientType, model.RequestMetadata, model.InstitutionID) (*model.AuditEvent, error) {
 	return &model.AuditEvent{ID: model.NewAuditEventID()}, nil
 }
 

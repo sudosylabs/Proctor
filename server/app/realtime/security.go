@@ -44,13 +44,13 @@ type authorizationInvalidationMessage struct {
 // best-effort peer propagation. Invalid input is rejected without effects.
 func (s *Service) SessionsRevoked(
 	ctx context.Context,
-	userID string,
-	sessionIDs []string,
+	userID model.UserID,
+	sessionIDs []model.SessionID,
 	accessTokenHashes []string,
 ) {
 	message := sessionRevocationMessage{
-		UserID:            userID,
-		SessionIDs:        append([]string(nil), sessionIDs...),
+		UserID:            userID.String(),
+		SessionIDs:        sessionIDStrings(sessionIDs),
 		AccessTokenHashes: append([]string(nil), accessTokenHashes...),
 		CloseConnections:  true,
 	}
@@ -68,11 +68,11 @@ func (s *Service) SessionsRevoked(
 // cache entries before best-effort peer propagation without closing sockets.
 func (s *Service) AuthenticationCacheInvalidated(
 	ctx context.Context,
-	userID string,
+	userID model.UserID,
 	accessTokenHashes []string,
 ) {
 	message := sessionRevocationMessage{
-		UserID:            userID,
+		UserID:            userID.String(),
 		AccessTokenHashes: append([]string(nil), accessTokenHashes...),
 	}
 	if err := validateSessionRevocation(message); err != nil {
@@ -87,17 +87,17 @@ func (s *Service) AuthenticationCacheInvalidated(
 
 // InvalidateAuthorization closes the affected local connections before
 // best-effort peer propagation. An empty user ID targets every connection.
-func (s *Service) InvalidateAuthorization(ctx context.Context, userID string) {
+func (s *Service) InvalidateAuthorization(ctx context.Context, userID model.UserID) {
 	if userID != "" && !model.UserID(userID).IsValid() {
 		s.reportSecurityFailure(ctx, "refusing invalid authorization invalidation", "invalid security propagation")
 		return
 	}
-	s.applyAuthorizationInvalidation(userID)
+	s.applyAuthorizationInvalidation(userID.String())
 	s.broadcastSecurityInvalidation(
 		ctx,
 		securityOperationAuthorization,
 		clusterEventAuthorizationInvalidated,
-		authorizationInvalidationMessage{UserID: userID},
+		authorizationInvalidationMessage{UserID: userID.String()},
 	)
 }
 
@@ -112,7 +112,7 @@ func (s *Service) applySessionRevocation(
 
 	if invalidator != nil {
 		invalidator.InvalidateAccessCredentials(ctx, revocation.AccessTokenHashes)
-		invalidator.InvalidateSessionActivity(ctx, revocation.SessionIDs)
+		invalidator.InvalidateSessionActivity(ctx, sessionIDsFrom(revocation.SessionIDs))
 	}
 	if !revocation.CloseConnections || sink == nil {
 		return
@@ -215,4 +215,28 @@ func validateSessionRevocation(message sessionRevocationMessage) error {
 		}
 	}
 	return nil
+}
+
+// sessionIDsFrom types the Session IDs of a validated peer message.
+func sessionIDsFrom(spelled []string) []model.SessionID {
+	if len(spelled) == 0 {
+		return nil
+	}
+	ids := make([]model.SessionID, len(spelled))
+	for index, id := range spelled {
+		ids[index] = model.SessionID(id)
+	}
+	return ids
+}
+
+// sessionIDStrings spells Session IDs for the cluster peer message.
+func sessionIDStrings(ids []model.SessionID) []string {
+	if len(ids) == 0 {
+		return nil
+	}
+	spelled := make([]string, len(ids))
+	for index, id := range ids {
+		spelled[index] = id.String()
+	}
+	return spelled
 }

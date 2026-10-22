@@ -34,7 +34,7 @@ const (
 type CreatePersonalAccessTokenCommand struct {
 	Description    string
 	Scopes         []string
-	AcademicUnitID string
+	AcademicUnitID model.AcademicUnitID
 	ExpiresAt      int64
 }
 
@@ -142,7 +142,7 @@ func (s *personalAccessTokenAdministrationService) CreatePersonalAccessToken(
 		if !model.AcademicUnitID(command.AcademicUnitID).IsValid() {
 			return nil, invalidPersonalAccessTokenRequest("academic_unit_id")
 		}
-		if _, err = s.deps.AcademicUnits.Get(ctx, model.AcademicUnitID(command.AcademicUnitID)); err != nil {
+		if _, err = s.deps.AcademicUnits.Get(ctx, command.AcademicUnitID); err != nil {
 			return nil, personalAccessTokenFailure("academic_unit", err)
 		}
 	}
@@ -150,7 +150,7 @@ func (s *personalAccessTokenAdministrationService) CreatePersonalAccessToken(
 	targetScopeID := ""
 	if command.AcademicUnitID != "" {
 		targetScopeType = model.RoleScopeAcademicUnit
-		targetScopeID = command.AcademicUnitID
+		targetScopeID = command.AcademicUnitID.String()
 	} else {
 		institution, lookupErr := s.deps.Institutions.GetSingleton(ctx)
 		if lookupErr != nil {

@@ -24,10 +24,10 @@ import (
 
 type EnrollClassMemberCommand struct {
 	ClassID                       model.ClassID
-	UserID                        string
+	UserID                        model.UserID
 	StartAt                       int64
 	EndAt                         int64
-	ExpectedPreviousID            string
+	ExpectedPreviousID            model.ClassMemberID
 	RequireTransfer               bool
 	IdempotencyKey                string
 	batchReplayed                 *bool
@@ -157,7 +157,7 @@ func (e classMemberRealtimeEffects) Report(ctx context.Context, operation string
 	e.realtime.reportTransientFailure(ctx, operation, err)
 }
 
-func (e classMemberRealtimeEffects) InvalidateAuthorization(ctx context.Context, userID string) {
+func (e classMemberRealtimeEffects) InvalidateAuthorization(ctx context.Context, userID model.UserID) {
 	e.realtime.InvalidateAuthorization(ctx, userID)
 }
 
@@ -181,7 +181,7 @@ func (s *classMemberService) EnrollClassMember(ctx context.Context, invocation i
 		return nil, err
 	}
 	parsedClassID := classID
-	userID, err := model.ParseUserID(strings.TrimSpace(command.UserID))
+	userID, err := model.ParseUserID(strings.TrimSpace(command.UserID.String()))
 	if err != nil {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id").Wrap(err)
 	}
@@ -192,7 +192,7 @@ func (s *classMemberService) EnrollClassMember(ctx context.Context, invocation i
 	at := model.TimeUTC(s.deps.Now())
 	var retainedPrevious *model.ClassMember
 	if command.batchRetainedOutcome && command.RequireTransfer {
-		previousID, parseErr := model.ParseClassMemberID(strings.TrimSpace(command.ExpectedPreviousID))
+		previousID, parseErr := model.ParseClassMemberID(strings.TrimSpace(command.ExpectedPreviousID.String()))
 		if parseErr != nil {
 			return nil, apperror.New("request.invalid").WithField("field", "expected_previous_id").Wrap(parseErr)
 		}
@@ -221,7 +221,7 @@ func (s *classMemberService) EnrollClassMember(ctx context.Context, invocation i
 			ExpectedPreviousID string `json:"expected_previous_id,omitempty"`
 			Transfer           bool   `json:"transfer"`
 			Progression        bool   `json:"progression"`
-		}{candidate.ClassID.String(), candidate.UserID.String(), command.StartAt, command.EndAt, strings.TrimSpace(command.ExpectedPreviousID), command.RequireTransfer, command.studentProgression})
+		}{candidate.ClassID.String(), candidate.UserID.String(), command.StartAt, command.EndAt, strings.TrimSpace(command.ExpectedPreviousID.String()), command.RequireTransfer, command.studentProgression})
 		if commandErr != nil {
 			return nil, commandErr
 		}
@@ -296,7 +296,7 @@ func (s *classMemberService) EnrollClassMember(ctx context.Context, invocation i
 			}
 		}
 		if command.IdempotencyKey != "" {
-			expectedPreviousID := strings.TrimSpace(command.ExpectedPreviousID)
+			expectedPreviousID := strings.TrimSpace(command.ExpectedPreviousID.String())
 			switch {
 			case command.RequireTransfer && (previous == nil || (previous.ID.String() != expectedPreviousID && previous.ClassID != candidate.ClassID)):
 				return nil, apperror.New("class.enrollment_conflict").WithField("resource", "class_member")
@@ -330,7 +330,7 @@ func (s *classMemberService) EnrollClassMember(ctx context.Context, invocation i
 		ExpectedPreviousID string `json:"expected_previous_id,omitempty"`
 		Transfer           bool   `json:"transfer"`
 		Progression        bool   `json:"progression"`
-	}{candidate.ClassID.String(), candidate.UserID.String(), command.StartAt, command.EndAt, strings.TrimSpace(command.ExpectedPreviousID), command.RequireTransfer, command.studentProgression})
+	}{candidate.ClassID.String(), candidate.UserID.String(), command.StartAt, command.EndAt, strings.TrimSpace(command.ExpectedPreviousID.String()), command.RequireTransfer, command.studentProgression})
 	if err != nil {
 		return nil, err
 	}

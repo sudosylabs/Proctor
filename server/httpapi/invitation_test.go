@@ -359,7 +359,7 @@ func TestInvitationHTTPKeepsClaimOutOfIssueResponseAndAcceptsPublicly(t *testing
 	require.Equal(t, http.StatusCreated, issueResponse.Code, "issue response=%d %s command=%#v", issueResponse.Code, issueResponse.Body.String(), applicationFake.issue)
 	require.NotContains(t, issueResponse.Body.String(), "student@example.edu", "issue response=%d %s command=%#v", issueResponse.Code, issueResponse.Body.String(), applicationFake.issue)
 	require.NotContains(t, issueResponse.Body.String(), "claim", "issue response=%d %s command=%#v", issueResponse.Code, issueResponse.Body.String(), applicationFake.issue)
-	require.Equal(t, classID, applicationFake.issue.ClassID, "issue response=%d %s command=%#v", issueResponse.Code, issueResponse.Body.String(), applicationFake.issue)
+	require.Equal(t, model.ClassID(classID), applicationFake.issue.ClassID, "issue response=%d %s command=%#v", issueResponse.Code, issueResponse.Body.String(), applicationFake.issue)
 	require.Equal(t, int64(1_800_000_000_000), applicationFake.issue.IntendedStartsAt, "issue response=%d %s command=%#v", issueResponse.Code, issueResponse.Body.String(), applicationFake.issue)
 	require.Equal(t, int64(1_810_000_000_500), applicationFake.issue.IntendedEndsAt, "issue response=%d %s command=%#v", issueResponse.Code, issueResponse.Body.String(), applicationFake.issue)
 	raw := model.NewCredentialToken()
@@ -386,8 +386,8 @@ func TestTeacherInvitationHTTPFreezesRoleAndReturnsRelationshipIDs(t *testing.T)
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
 	require.Equal(t, http.StatusCreated, response.Code, "teacher issue response=%d %s command=%#v", response.Code, response.Body.String(), applicationFake.teacherIssue)
-	require.Equal(t, unitID, applicationFake.teacherIssue.AcademicUnitID, "teacher issue response=%d %s command=%#v", response.Code, response.Body.String(), applicationFake.teacherIssue)
-	require.Equal(t, roleID, applicationFake.teacherIssue.RoleID, "teacher issue response=%d %s command=%#v", response.Code, response.Body.String(), applicationFake.teacherIssue)
+	require.Equal(t, model.AcademicUnitID(unitID), applicationFake.teacherIssue.AcademicUnitID, "teacher issue response=%d %s command=%#v", response.Code, response.Body.String(), applicationFake.teacherIssue)
+	require.Equal(t, model.RoleID(roleID), applicationFake.teacherIssue.RoleID, "teacher issue response=%d %s command=%#v", response.Code, response.Body.String(), applicationFake.teacherIssue)
 	require.NotContains(t, response.Body.String(), "teacher@example.edu", "teacher issue response=%d %s command=%#v", response.Code, response.Body.String(), applicationFake.teacherIssue)
 	require.NotContains(t, response.Body.String(), "claim", "teacher issue response=%d %s command=%#v", response.Code, response.Body.String(), applicationFake.teacherIssue)
 	raw := model.NewCredentialToken()
@@ -415,10 +415,10 @@ func TestScopedRoleInvitationHTTPRequiresAuthenticatedExistingUserAndInstitution
 		command func() (string, string)
 	}{
 		{path: "/api/v1/academic-units/" + unitID + "/invitations/role", command: func() (string, string) {
-			return applicationFake.unitRoleIssue.AcademicUnitID, applicationFake.unitRoleIssue.RoleID
+			return applicationFake.unitRoleIssue.AcademicUnitID.String(), applicationFake.unitRoleIssue.RoleID.String()
 		}},
 		{path: "/api/v1/institutions/" + institutionID + "/invitations/role", command: func() (string, string) {
-			return applicationFake.institutionRoleIssue.InstitutionID, applicationFake.institutionRoleIssue.RoleID
+			return applicationFake.institutionRoleIssue.InstitutionID.String(), applicationFake.institutionRoleIssue.RoleID.String()
 		}},
 	} {
 		t.Run(target.path, func(t *testing.T) {

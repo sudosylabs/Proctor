@@ -516,7 +516,7 @@ func TestProfilePictureRealtimeEffectContainsOnlySafeChangeMetadata(t *testing.T
 	require.NoError(t, (profilePictureRealtimeEffects{realtime: realtime}).Changed(context.Background(), change))
 	require.Len(t, sink.events, 1)
 	require.Equal(t, "user_profile_picture_changed", sink.events[0].Name)
-	require.Equal(t, change.UserID.String(), sink.events[0].UserID)
+	require.Equal(t, change.UserID, sink.events[0].UserID)
 	var data map[string]any
 	require.NoError(t, json.Unmarshal(sink.events[0].Data, &data))
 	require.Len(t, data, 3)

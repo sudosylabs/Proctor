@@ -42,7 +42,7 @@ func (s *accountStateStoreFake) SetDisabled(_ context.Context, input *store.User
 
 type accountStateEffectsFake struct{ events *[]string }
 
-func (e *accountStateEffectsFake) SessionsRevoked(context.Context, string, []*model.Session, []string) {
+func (e *accountStateEffectsFake) SessionsRevoked(context.Context, model.UserID, []*model.Session, []string) {
 	*e.events = append(*e.events, "publish-revocation")
 }
 

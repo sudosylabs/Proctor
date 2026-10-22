@@ -30,7 +30,7 @@ func TestAdministratorRecoveryHashesPrivatePasswordBeforeNamedAggregate(t *testi
 	institutionID, userID := model.NewInstitutionID(), model.NewUserID()
 
 	result, err := service.RecoverAdministratorAccess(context.Background(), invocation.Task("host-operator-test"), AdministratorRecoveryCommand{
-		InstitutionID: institutionID.String(), UserID: userID.String(), Password: "private-password",
+		InstitutionID: institutionID, UserID: userID, Password: "private-password",
 	})
 	require.NoError(t, err)
 	require.NotNil(t, result, "result/input")
@@ -51,7 +51,7 @@ func TestAdministratorRecoveryPasswordWorkFailuresStopBeforeAggregate(t *testing
 		persistence := &installationStoreFake{events: &events}
 		service := newBootstrapService(bootstrapServiceDependencies{Installations: persistence, Hasher: hasher, Attempts: bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{}), RateLimit: bootstrapRateLimitPolicy(10), Protection: bootstrapProtection(), NodeID: "node-recovery", Now: time.Now, RecoveryPolicy: administratorRecoveryPolicy{}})
 		result, err := service.RecoverAdministratorAccess(ctx, invocation.Task("host-operator-test"), AdministratorRecoveryCommand{
-			InstitutionID: model.NewInstitutionID().String(), UserID: model.NewUserID().String(),
+			InstitutionID: model.NewInstitutionID(), UserID: model.NewUserID(),
 			Password: "correct horse battery staple",
 		})
 		require.Nil(t, result, "failed password work reached offline administrator recovery")
@@ -67,9 +67,9 @@ func TestAdministratorRecoveryRejectsInvalidCommandBeforeHashing(t *testing.T) {
 	service := newBootstrapService(bootstrapServiceDependencies{Installations: &installationStoreFake{events: &events}, Hasher: &passwordHasherFake{events: &events}, Attempts: bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{}), RateLimit: bootstrapRateLimitPolicy(10), Protection: bootstrapProtection(), NodeID: "node-recovery", Now: time.Now, RecoveryPolicy: administratorRecoveryPolicy{}})
 
 	for name, command := range map[string]AdministratorRecoveryCommand{
-		"missing action":      {InstitutionID: model.NewInstitutionID().String(), UserID: model.NewUserID().String()},
-		"invalid institution": {InstitutionID: "wrong", UserID: model.NewUserID().String(), EnableLocalLogin: true},
-		"invalid user":        {InstitutionID: model.NewInstitutionID().String(), UserID: "wrong", EnableLocalLogin: true},
+		"missing action":      {InstitutionID: model.NewInstitutionID(), UserID: model.NewUserID()},
+		"invalid institution": {InstitutionID: "wrong", UserID: model.NewUserID(), EnableLocalLogin: true},
+		"invalid user":        {InstitutionID: model.NewInstitutionID(), UserID: "wrong", EnableLocalLogin: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := service.RecoverAdministratorAccess(context.Background(), invocation.Task("host-operator-test"), command)
@@ -97,7 +97,7 @@ func TestHostOperatorUseCasesRequireTheirSystemIdentity(t *testing.T) {
 	events := []string{}
 	persistence := &installationStoreFake{events: &events}
 	service := newBootstrapService(bootstrapServiceDependencies{Installations: persistence, Hasher: &passwordHasherFake{events: &events}, Attempts: bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{}), RateLimit: bootstrapRateLimitPolicy(10), Protection: bootstrapProtection(), NodeID: "node-recovery", Now: time.Now, RecoveryPolicy: administratorRecoveryPolicy{}})
-	command := AdministratorRecoveryCommand{InstitutionID: model.NewInstitutionID().String(), UserID: model.NewUserID().String(), Password: "private-password"}
+	command := AdministratorRecoveryCommand{InstitutionID: model.NewInstitutionID(), UserID: model.NewUserID(), Password: "private-password"}
 
 	_, err := service.RecoverAdministratorAccess(context.Background(), invocation.System{}, command)
 	require.Equal(t, "administrator_recovery.invalid", apperror.CodeOf(err, ""), "recovery without its host-operator task")

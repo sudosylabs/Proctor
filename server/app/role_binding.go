@@ -21,14 +21,14 @@ import (
 )
 
 type ListRoleBindingsQuery struct {
-	UserID    string
+	UserID    model.UserID
 	ScopeType model.RoleScopeType
 	ScopeID   string
 }
 
 type CreateRoleBindingCommand struct {
-	UserID                    string
-	RoleID                    string
+	UserID                    model.UserID
+	RoleID                    model.RoleID
 	ScopeType                 model.RoleScopeType
 	ScopeID                   string
 	StartAt                   int64
@@ -80,7 +80,7 @@ type roleBindingAuthorizer interface {
 }
 
 type roleBindingEffects interface {
-	AuthorizationChangedForUser(context.Context, string)
+	AuthorizationChangedForUser(context.Context, model.UserID)
 }
 
 // roleBindingServiceDependencies are the collaborators of roleBindingService;
@@ -106,7 +106,7 @@ func newRoleBindingService(deps roleBindingServiceDependencies) *roleBindingServ
 }
 
 func (s *roleBindingService) ListRoleBindings(ctx context.Context, invocation invocation.Invocation, query ListRoleBindingsQuery) ([]*model.RoleBinding, error) {
-	userID := strings.TrimSpace(query.UserID)
+	userID := strings.TrimSpace(query.UserID.String())
 	scopeID := strings.TrimSpace(query.ScopeID)
 	switch {
 	case userID != "" && query.ScopeType == "" && scopeID == "":
@@ -143,11 +143,11 @@ func (s *roleBindingService) ListRoleBindings(ctx context.Context, invocation in
 }
 
 func (s *roleBindingService) CreateRoleBinding(ctx context.Context, invocation invocation.Invocation, command CreateRoleBindingCommand) (*model.RoleBinding, error) {
-	userID, err := model.ParseUserID(strings.TrimSpace(command.UserID))
+	userID, err := model.ParseUserID(strings.TrimSpace(command.UserID.String()))
 	if err != nil {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
-	roleID, err := model.ParseRoleID(strings.TrimSpace(command.RoleID))
+	roleID, err := model.ParseRoleID(strings.TrimSpace(command.RoleID.String()))
 	if err != nil {
 		return nil, apperror.New("request.invalid").WithField("field", "role_id")
 	}
@@ -267,7 +267,7 @@ func (s *roleBindingService) CreateRoleBinding(ctx context.Context, invocation i
 	if err != nil {
 		return nil, err
 	}
-	s.deps.Effects.AuthorizationChangedForUser(ctx, saved.UserID.String())
+	s.deps.Effects.AuthorizationChangedForUser(ctx, saved.UserID)
 	return saved, nil
 }
 
@@ -352,7 +352,7 @@ func (s *roleBindingService) EndRoleBinding(ctx context.Context, invocation invo
 	if err != nil {
 		return nil, err
 	}
-	s.deps.Effects.AuthorizationChangedForUser(ctx, ended.UserID.String())
+	s.deps.Effects.AuthorizationChangedForUser(ctx, ended.UserID)
 	return ended, nil
 }
 
@@ -360,7 +360,7 @@ type roleBindingRealtimeEffects struct {
 	effects authorizationInvalidationEffects
 }
 
-func (e roleBindingRealtimeEffects) AuthorizationChangedForUser(ctx context.Context, userID string) {
+func (e roleBindingRealtimeEffects) AuthorizationChangedForUser(ctx context.Context, userID model.UserID) {
 	e.effects.InvalidateAuthorization(ctx, userID)
 }
 

@@ -93,7 +93,7 @@ func (s *authenticationService) ReauthenticatePassword(ctx context.Context, invo
 	if result == nil || result.Session == nil {
 		return nil, authenticationUnavailable(errors.New("reauthentication returned no Session"))
 	}
-	s.deps.SecurityEffects.AuthenticationCacheInvalidated(ctx, principal.UserID.String(), result.AccessTokenHashes)
+	s.deps.SecurityEffects.AuthenticationCacheInvalidated(ctx, principal.UserID, result.AccessTokenHashes)
 	if err := s.deps.Attempts.reset(ctx, receipt, authenticationAttemptDimensionIdentitySource); err != nil {
 		s.warn(ctx, "reauthentication rate-limit reset failed", err)
 	}

@@ -74,7 +74,7 @@ func TestAcademicUnitUpdateReparentAuthorizesBothScopesBeforeCommit(t *testing.T
 	events := []string{}
 	unitID := model.NewID()
 	oldParentID := model.NewID()
-	newParentID := model.NewID()
+	newParentID := model.NewAcademicUnitID()
 	institutionID := model.NewID()
 	current := &model.AcademicUnit{
 		ID: model.AcademicUnitID(unitID), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
@@ -105,13 +105,13 @@ func TestAcademicUnitUpdateReparentAuthorizesBothScopesBeforeCommit(t *testing.T
 	require.NoError(t, err, "Update()")
 	require.Same(t, &updated, got, "Update()")
 	require.NotNil(t, persistence.updateInput)
-	require.Equal(t, newParentID, persistence.updateInput.Unit.ParentID.String())
+	require.Equal(t, newParentID.String(), persistence.updateInput.Unit.ParentID.String())
 	require.Equal(t, "Applied Computing", persistence.updateInput.Unit.DisplayName)
 	require.True(t, persistence.updateInput.Unit.UpdatedAt.Equal(time.UnixMilli(500).UTC()))
 	require.Equal(t, model.AuditEventID(auditor.beginID), persistence.updateInput.AuditEventID)
 	assertAcademicUnitCreateEvents(
 		t, events,
-		"authorize-"+unitID, "get", "authorize-"+newParentID,
+		"authorize-"+unitID, "get", "authorize-"+newParentID.String(),
 		"audit-begin", "store-update", "effect-update",
 	)
 }
@@ -136,7 +136,7 @@ func TestAcademicUnitUpdateReparentToRootRequiresInstitutionAuthority(t *testing
 		}
 		return nil
 	}}, Audit: &academicUnitCommandAuditor{events: &events}, Effects: &academicUnitCommandEffectsFake{events: &events}, EffectFailures: &academicUnitEffectFailureReporterFake{events: &events}, Now: time.Now, NewID: model.NewID})
-	emptyParent := ""
+	emptyParent := model.AcademicUnitID("")
 	_, err := service.UpdateAcademicUnit(context.Background(), invocation.Invocation{}, UpdateAcademicUnitCommand{ID: model.AcademicUnitID(unitID), ParentID: &emptyParent})
 	require.True(t, apperror.Is(err, "authorization.denied"), "Update() error = %v, want authorization.denied", err)
 	assertAcademicUnitCreateEvents(t, events,
@@ -167,8 +167,9 @@ func TestAcademicUnitUpdateCycleFailureIsAuditedWithoutPublication(t *testing.T)
 		events = append(events, "authorize")
 		return nil
 	}), Audit: auditor, Effects: &academicUnitCommandEffectsFake{events: &events}, EffectFailures: &academicUnitEffectFailureReporterFake{events: &events}, Now: time.Now, NewID: model.NewID})
+	missingParentID := model.NewAcademicUnitID()
 	_, err := service.UpdateAcademicUnit(context.Background(), invocation.Invocation{}, UpdateAcademicUnitCommand{
-		ID: model.AcademicUnitID(unitID), ParentID: stringPointer(model.NewID()),
+		ID: model.AcademicUnitID(unitID), ParentID: &missingParentID,
 	})
 	require.True(t, apperror.Is(err, "academic_unit.conflict"), "Update() error = %v, failure audit", err)
 	require.Equal(t, "academic_unit.conflict", auditor.failCode, "Update() error = %v, failure audit", err)

@@ -23,7 +23,7 @@ type accountTokenPasswordHasher interface {
 }
 
 type accountTokenEffects interface {
-	SessionsRevoked(context.Context, string, []string, []string)
+	SessionsRevoked(context.Context, model.UserID, []model.SessionID, []string)
 }
 
 type accountTokenMailPreparer interface {
@@ -97,13 +97,13 @@ type accountTokenAuditRecorder struct{ nodeID string }
 func (r accountTokenAuditRecorder) Success(
 	action model.Action,
 	resource model.Resource,
-	institutionID string,
+	institutionID model.InstitutionID,
 	invocation invocation.Invocation,
 	principal *model.Principal,
 	authenticationMethod string,
 ) *model.AuditEvent {
 	return recoveryAuditEvent(
-		action, resource, institutionID, invocation.RequestMetadata(), r.nodeID,
+		action, resource, institutionID.String(), invocation.RequestMetadata(), r.nodeID,
 		principal, authenticationMethod,
 	)
 }

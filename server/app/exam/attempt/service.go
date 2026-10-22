@@ -470,7 +470,7 @@ type ConnectionResult struct {
 	LiveCorrections           []model.CandidateLiveCorrection
 	FirstAdmission            bool
 	ConnectionOpened          bool
-	RevokedSessionIDs         []string
+	RevokedSessionIDs         []model.SessionID
 	RevokedAccessTokenDigests []string
 	Replayed                  bool
 }
@@ -1289,10 +1289,7 @@ func projectConnection(stored *store.ExamAttemptConnectResult, classID model.Cla
 		!validCandidateLiveCorrections(stored.RuntimeCapabilities, stored.LiveCorrections) {
 		return ConnectionResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Exam Attempt configuration outcome"))
 	}
-	var revokedSessionIDs []string
-	for _, id := range stored.RevokedSessionIDs {
-		revokedSessionIDs = append(revokedSessionIDs, id.String())
-	}
+	revokedSessionIDs := append([]model.SessionID(nil), stored.RevokedSessionIDs...)
 	return ConnectionResult{Security: stored.Security, Attempt: *stored.Attempt, Workspace: *stored.Workspace, Participation: *stored.Participation,
 		Connection: *stored.Connection, ClassID: classID, FirstAdmission: stored.FirstAdmission,
 		Configuration: stored.Configuration.Clone(), RuntimeCapabilities: stored.RuntimeCapabilities,

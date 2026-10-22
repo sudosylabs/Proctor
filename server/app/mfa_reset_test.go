@@ -86,7 +86,7 @@ func TestMFAAssistedResetRequiresIndependentVerifiedAdministrator(t *testing.T) 
 			require.Equal(t, command.UserID, persistence.input.UserID, "assisted reset lost its exact actor, target, attestation, notice or post-commit effects")
 			require.True(t, persistence.input.IdentityVerified, "assisted reset lost its exact actor, target, attestation, notice or post-commit effects")
 			require.Equal(t, model.MailTemplateIdentityMFAReset, persistence.input.Notice.Occurrence.TemplateKey, "assisted reset lost its exact actor, target, attestation, notice or post-commit effects")
-			require.Equal(t, command.UserID.String(), effects.userID, "assisted reset lost its exact actor, target, attestation, notice or post-commit effects")
+			require.Equal(t, command.UserID, effects.userID, "assisted reset lost its exact actor, target, attestation, notice or post-commit effects")
 		})
 	}
 }

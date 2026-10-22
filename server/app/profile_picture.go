@@ -100,8 +100,8 @@ type profilePictureFileStore interface {
 }
 
 type profilePictureAuthorizer interface {
-	AuthorizeProfileRead(context.Context, invocation.Invocation, string) (profileReadAuthorization, error)
-	AuthorizeProfilePictureWrite(context.Context, invocation.Invocation, string) error
+	AuthorizeProfileRead(context.Context, invocation.Invocation, model.UserID) (profileReadAuthorization, error)
+	AuthorizeProfilePictureWrite(context.Context, invocation.Invocation, model.UserID) error
 }
 
 type profilePictureChanged struct {
@@ -201,7 +201,7 @@ func (s *profilePictureUploadService) Upload(ctx context.Context, invocation inv
 	if !userID.IsValid() || command.ExpectedRevision < 0 || command.Body == nil || command.Size == 0 || command.Size < -1 || command.Size > maximumProfilePictureBytes {
 		return nil, apperror.New("request.invalid").WithField("field", "profile_picture")
 	}
-	if err := s.authorization.AuthorizeProfilePictureWrite(ctx, invocation, userID.String()); err != nil {
+	if err := s.authorization.AuthorizeProfilePictureWrite(ctx, invocation, userID); err != nil {
 		return nil, err
 	}
 	current, err := s.users.Get(ctx, userID)
@@ -331,7 +331,7 @@ func (e profilePictureRealtimeEffects) Changed(ctx context.Context, change profi
 	if err != nil {
 		return err
 	}
-	return e.realtime.PublishRealtimeEvent(ctx, realtime.RealtimeEvent{Name: "user_profile_picture_changed", UserID: change.UserID.String(), Data: data})
+	return e.realtime.PublishRealtimeEvent(ctx, realtime.RealtimeEvent{Name: "user_profile_picture_changed", UserID: change.UserID, Data: data})
 }
 
 type profilePictureEffectReporter struct{ realtime *realtimeService }
@@ -385,7 +385,7 @@ func (s *profilePictureRemovalService) Remove(ctx context.Context, invocation in
 	if !userID.IsValid() || expectedSHA256 == "" {
 		return nil, apperror.New("request.invalid").WithField("field", "if_match")
 	}
-	if err := s.authorization.AuthorizeProfilePictureWrite(ctx, invocation, userID.String()); err != nil {
+	if err := s.authorization.AuthorizeProfilePictureWrite(ctx, invocation, userID); err != nil {
 		return nil, err
 	}
 	current, err := s.users.Get(ctx, userID)
@@ -451,7 +451,7 @@ func (s *profilePictureReadService) Get(ctx context.Context, invocation invocati
 	if !id.IsValid() || (query.Size != 128 && query.Size != 256 && query.Size != 512) {
 		return nil, apperror.New("request.invalid")
 	}
-	if _, err := s.authorization.AuthorizeProfileRead(ctx, invocation, id.String()); err != nil {
+	if _, err := s.authorization.AuthorizeProfileRead(ctx, invocation, id); err != nil {
 		return nil, err
 	}
 	user, err := s.users.Get(ctx, id)

@@ -46,7 +46,7 @@ func TestEventFromRealtimePreservesWireFieldsAndClonesData(t *testing.T) {
 	source := realtime.RealtimeEvent{
 		ID:     model.NewID(),
 		Name:   "academic_unit.updated",
-		UserID: model.NewID(),
+		UserID: model.UserID(model.NewID()),
 		Action: model.ActionAcademicUnitView,
 		Resource: model.Resource{
 			Type: model.ResourceAcademicUnit,
@@ -58,7 +58,7 @@ func TestEventFromRealtimePreservesWireFieldsAndClonesData(t *testing.T) {
 	event := eventFromRealtime(source)
 	require.Equal(t, source.ID, event.ID, "wire event fields = %#v, source = %#v", event, source)
 	require.Equal(t, source.Name, event.Event, "wire event fields = %#v, source = %#v", event, source)
-	require.Equal(t, source.UserID, event.UserID, "wire event fields = %#v, source = %#v", event, source)
+	require.Equal(t, source.UserID.String(), event.UserID, "wire event fields = %#v, source = %#v", event, source)
 	require.Equal(t, source.Action, event.Action, "wire event fields = %#v, source = %#v", event, source)
 	require.Equal(t, resourceFromModel(source.Resource), event.Resource, "wire resource")
 	require.True(t, bytes.Equal(event.Data, source.Data), "wire data = %s, want %s", event.Data, source.Data)
@@ -78,7 +78,7 @@ func TestHubMetricsObserveBroadcastFanoutAndResumeOutcome(t *testing.T) {
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID()}
 	connection, _ := hub.register(newRuntimeTestSocket(), principal, model.RequestMetadata{}, "missing-resume", 0, "")
 	require.NotNil(t, connection, "register returned nil")
-	event := realtime.RealtimeEvent{ID: model.NewID(), Name: "academic_unit.updated", UserID: principal.UserID.String(), Data: json.RawMessage(`{"updated":true}`)}
+	event := realtime.RealtimeEvent{ID: model.NewID(), Name: "academic_unit.updated", UserID: principal.UserID, Data: json.RawMessage(`{"updated":true}`)}
 	hub.PublishLocal(context.Background(), event)
 	require.Equal(t, "event", recorder.broadcastEvent, "broadcast metrics")
 	require.Equal(t, "published", recorder.broadcastOutcome, "broadcast metrics")

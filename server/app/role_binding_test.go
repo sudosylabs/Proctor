@@ -87,7 +87,7 @@ func (s *roleBindingRoleStoreFake) GetIncludingArchived(context.Context, model.R
 
 type roleBindingEffectsFake struct{ events *[]string }
 
-func (e *roleBindingEffectsFake) AuthorizationChangedForUser(context.Context, string) {
+func (e *roleBindingEffectsFake) AuthorizationChangedForUser(context.Context, model.UserID) {
 	*e.events = append(*e.events, "invalidate-authorization")
 }
 
@@ -99,7 +99,7 @@ func TestRoleBindingCreateCommitsBeforeInvalidation(t *testing.T) {
 	mail := &relationshipMailPreparerTestFake{}
 	service := newRoleBindingService(roleBindingServiceDependencies{Bindings: &roleBindingStoreFake{events: &events, createResult: created}, Roles: &roleBindingRoleStoreFake{events: &events, role: &model.Role{ID: created.RoleID, Name: "teacher"}}, Users: relationshipUserStoreTestFake{}, Authorization: &roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}}, Capabilities: &accessPolicyCapabilitiesFake{}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Mail: mail, Effects: &roleBindingEffectsFake{events: &events}, Now: func() time.Time { return time.UnixMilli(500) }})
 	got, err := service.CreateRoleBinding(context.Background(), invocation.Invocation{}, CreateRoleBindingCommand{
-		UserID: userID, RoleID: created.RoleID.String(), ScopeType: model.RoleScopeInstitution,
+		UserID: model.UserID(userID), RoleID: created.RoleID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: model.NewID(), StartAt: 100,
 	})
 	require.NoError(t, err)
@@ -118,7 +118,7 @@ func TestRoleBindingCreateRejectsSystemAdminOutsideInstitution(t *testing.T) {
 	roleID := model.NewID()
 	service := newRoleBindingService(roleBindingServiceDependencies{Bindings: &roleBindingStoreFake{events: &events}, Roles: &roleBindingRoleStoreFake{events: &events, role: &model.Role{ID: model.RoleID(roleID), Name: model.SystemAdministratorRoleName}}, Users: relationshipUserStoreTestFake{}, Authorization: &roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}}, Capabilities: &accessPolicyCapabilitiesFake{}, Audit: &institutionAuditorFake{events: &events}, Mail: &relationshipMailPreparerTestFake{}, Effects: &roleBindingEffectsFake{events: &events}, Now: time.Now})
 	_, err := service.CreateRoleBinding(context.Background(), invocation.Invocation{}, CreateRoleBindingCommand{
-		UserID: model.NewID(), RoleID: roleID, ScopeType: model.RoleScopeClass,
+		UserID: model.UserID(model.NewID()), RoleID: model.RoleID(roleID), ScopeType: model.RoleScopeClass,
 		ScopeID: model.NewID(), StartAt: 100,
 	})
 	require.True(t, apperror.Is(err, "role_binding.system_admin_scope_invalid"), "error = %v", err)
@@ -135,7 +135,7 @@ func TestRoleBindingRetainedCreateUsesArchivedRoleForCurrentDelegation(t *testin
 		UpdatedAt: model.TimeFromMillis(300), ArchivedAt: model.OptionalTimeFromMillis(300)}
 	service := newRoleBindingService(roleBindingServiceDependencies{Bindings: persistence, Roles: &roleBindingRoleStoreFake{events: &events, role: archivedRole}, Users: relationshipUserStoreTestFake{}, Authorization: &roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: scopeID}}, Capabilities: &accessPolicyCapabilitiesFake{}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Mail: &relationshipMailPreparerTestFake{}, Effects: &roleBindingEffectsFake{events: &events}, Now: func() time.Time { return time.UnixMilli(500) }})
 	result, err := service.CreateRoleBinding(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
-		CreateRoleBindingCommand{UserID: userID.String(), RoleID: roleID.String(), ScopeType: model.RoleScopeInstitution,
+		CreateRoleBindingCommand{UserID: userID, RoleID: roleID, ScopeType: model.RoleScopeInstitution,
 			ScopeID: scopeID, StartAt: 100, IdempotencyKey: "row", batchRetainedOutcome: true})
 	require.NoError(t, err, "retained create")
 	require.NotNil(t, result, "retained create")
@@ -174,7 +174,7 @@ func TestRoleBindingListByUserAuthorizesThenReads(t *testing.T) {
 	events := []string{}
 	userID := model.NewID()
 	service := newRoleBindingService(roleBindingServiceDependencies{Bindings: &roleBindingStoreFake{events: &events, list: []*model.RoleBinding{{ID: model.NewRoleBindingID(), UserID: model.UserID(userID)}}}, Roles: &roleBindingRoleStoreFake{events: &events}, Users: relationshipUserStoreTestFake{}, Authorization: &roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}}, Capabilities: &accessPolicyCapabilitiesFake{}, Audit: &institutionAuditorFake{events: &events}, Mail: &relationshipMailPreparerTestFake{}, Effects: &roleBindingEffectsFake{events: &events}, Now: time.Now})
-	got, err := service.ListRoleBindings(context.Background(), invocation.Invocation{}, ListRoleBindingsQuery{UserID: userID})
+	got, err := service.ListRoleBindings(context.Background(), invocation.Invocation{}, ListRoleBindingsQuery{UserID: model.UserID(userID)})
 	require.NoError(t, err, "list")
 	require.Len(t, got, 1, "list")
 	// Contract: authorization precedes the read.
@@ -187,7 +187,7 @@ func TestRoleBindingListByUserPassesAcademicScopeToPersistence(t *testing.T) {
 	rootID := model.NewAcademicUnitID().String()
 	persistence := &roleBindingStoreFake{events: &events}
 	service := newRoleBindingService(roleBindingServiceDependencies{Bindings: persistence, Roles: &roleBindingRoleStoreFake{events: &events}, Users: relationshipUserStoreTestFake{}, Authorization: &roleAuthorizerFake{events: &events, bindingScope: store.UserVisibilityScope{AcademicUnitRootIDs: []model.AcademicUnitID{model.AcademicUnitID(rootID)}}}, Capabilities: &accessPolicyCapabilitiesFake{}, Audit: &institutionAuditorFake{events: &events}, Mail: &relationshipMailPreparerTestFake{}, Effects: &roleBindingEffectsFake{events: &events}, Now: time.Now})
-	_, err := service.ListRoleBindings(context.Background(), invocation.Invocation{}, ListRoleBindingsQuery{UserID: model.NewUserID().String()})
+	_, err := service.ListRoleBindings(context.Background(), invocation.Invocation{}, ListRoleBindingsQuery{UserID: model.NewUserID()})
 	require.NoError(t, err)
 	require.Equal(t, []model.AcademicUnitID{model.AcademicUnitID(rootID)}, persistence.visibility.AcademicUnitRootIDs)
 	require.False(t, persistence.visibility.InstitutionWide)

@@ -628,8 +628,8 @@ func (s *desktopAuthorizationService) ExchangeDesktopAuthorization(ctx context.C
 		if revokeErr != nil {
 			return nil, apperror.New("authentication.desktop_authorization.unavailable").Wrap(errors.Join(nonceErr, revokeErr, auditErr))
 		}
-		s.authentication.deps.SecurityEffects.SessionsRevoked(revokeCtx, result.Session.UserID.String(),
-			[]string{result.Session.ID.String()}, hashes)
+		s.authentication.deps.SecurityEffects.SessionsRevoked(revokeCtx, result.Session.UserID,
+			[]model.SessionID{result.Session.ID}, hashes)
 		if auditErr != nil {
 			return nil, apperror.New("audit.unavailable").Wrap(errors.Join(nonceErr, auditErr))
 		}

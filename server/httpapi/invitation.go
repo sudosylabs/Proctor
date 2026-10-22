@@ -306,8 +306,8 @@ func (m invitationResourceModule) batch(request operationRequest) (operationResu
 		if err != nil {
 			return operationResult{}, err
 		}
-		items = append(items, app.InvitationBatchItemCommand{IdempotencyKey: item.Key, InvitationID: item.InvitationID,
-			ExpectedRevision: item.ExpectedRevision, TargetEmail: item.Email, RoleID: item.RoleID,
+		items = append(items, app.InvitationBatchItemCommand{IdempotencyKey: item.Key, InvitationID: model.InvitationID(item.InvitationID),
+			ExpectedRevision: item.ExpectedRevision, TargetEmail: item.Email, RoleID: model.RoleID(item.RoleID),
 			IntendedStartsAt: startAt, IntendedEndsAt: endAt, SuggestedUsername: item.SuggestedUsername,
 			SuggestedDisplayName: item.SuggestedDisplayName, SuggestedFirstName: item.SuggestedFirstName,
 			SuggestedLastName: item.SuggestedLastName, SuggestedLocale: item.SuggestedLocale, SuggestedTimezone: item.SuggestedTimezone})
@@ -416,7 +416,7 @@ func (m invitationResourceModule) replace(request operationRequest) (operationRe
 	}
 	view, err := m.invitations.ReplaceInvitation(request.context, request.invocation(), app.ReplaceInvitationCommand{
 		ID: id, ExpectedRevision: body.ExpectedRevision, Purpose: body.Purpose, TargetEmail: body.Email,
-		ClassID: body.ClassID, AcademicUnitID: body.AcademicUnitID, InstitutionID: body.InstitutionID, RoleID: body.RoleID,
+		ClassID: model.ClassID(body.ClassID), AcademicUnitID: model.AcademicUnitID(body.AcademicUnitID), InstitutionID: model.InstitutionID(body.InstitutionID), RoleID: model.RoleID(body.RoleID),
 		IntendedStartsAt: startAt, IntendedEndsAt: endAt, SuggestedUsername: body.SuggestedUsername,
 		SuggestedDisplayName: body.SuggestedDisplayName, SuggestedFirstName: body.SuggestedFirstName,
 		SuggestedLastName: body.SuggestedLastName, SuggestedLocale: body.SuggestedLocale, SuggestedTimezone: body.SuggestedTimezone,
@@ -520,7 +520,7 @@ func (m invitationResourceModule) issueAcademicUnitRole(request operationRequest
 		return operationResult{}, err
 	}
 	created, err := m.invitations.IssueAcademicUnitRoleInvitation(request.context, request.invocation(), app.IssueAcademicUnitRoleInvitationCommand{
-		TargetEmail: body.Email, AcademicUnitID: unitID.String(), RoleID: body.RoleID, IntendedStartsAt: startAt, IntendedEndsAt: endAt,
+		TargetEmail: body.Email, AcademicUnitID: unitID, RoleID: model.RoleID(body.RoleID), IntendedStartsAt: startAt, IntendedEndsAt: endAt,
 	})
 	if err != nil {
 		return operationResult{}, err
@@ -542,7 +542,7 @@ func (m invitationResourceModule) issueInstitutionRole(request operationRequest)
 		return operationResult{}, err
 	}
 	created, err := m.invitations.IssueInstitutionRoleInvitation(request.context, request.invocation(), app.IssueInstitutionRoleInvitationCommand{
-		TargetEmail: body.Email, InstitutionID: institutionID.String(), RoleID: body.RoleID, IntendedStartsAt: startAt, IntendedEndsAt: endAt,
+		TargetEmail: body.Email, InstitutionID: institutionID, RoleID: model.RoleID(body.RoleID), IntendedStartsAt: startAt, IntendedEndsAt: endAt,
 	})
 	if err != nil {
 		return operationResult{}, err
@@ -592,7 +592,7 @@ func (m invitationResourceModule) issueTeacherAcademicUnit(request operationRequ
 		return operationResult{}, err
 	}
 	created, err := m.invitations.IssueTeacherAcademicUnitInvitation(request.context, request.invocation(), app.IssueTeacherAcademicUnitInvitationCommand{
-		TargetEmail: body.Email, AcademicUnitID: unitID.String(), RoleID: body.RoleID, IntendedStartsAt: startAt, IntendedEndsAt: endAt,
+		TargetEmail: body.Email, AcademicUnitID: unitID, RoleID: model.RoleID(body.RoleID), IntendedStartsAt: startAt, IntendedEndsAt: endAt,
 		SuggestedUsername: body.SuggestedUsername, SuggestedDisplayName: body.SuggestedDisplayName,
 		SuggestedFirstName: body.SuggestedFirstName, SuggestedLastName: body.SuggestedLastName, SuggestedLocale: body.SuggestedLocale, SuggestedTimezone: body.SuggestedTimezone,
 	})
@@ -631,7 +631,7 @@ func (m invitationResourceModule) issueStudentClass(request operationRequest) (o
 		return operationResult{}, err
 	}
 	created, err := m.invitations.IssueStudentClassInvitation(request.context, request.invocation(), app.IssueStudentClassInvitationCommand{
-		TargetEmail: body.Email, ClassID: classID.String(), IntendedStartsAt: startAt, IntendedEndsAt: endAt,
+		TargetEmail: body.Email, ClassID: classID, IntendedStartsAt: startAt, IntendedEndsAt: endAt,
 		SuggestedUsername: body.SuggestedUsername, SuggestedDisplayName: body.SuggestedDisplayName,
 		SuggestedFirstName: body.SuggestedFirstName, SuggestedLastName: body.SuggestedLastName, SuggestedLocale: body.SuggestedLocale, SuggestedTimezone: body.SuggestedTimezone,
 	})

@@ -63,8 +63,8 @@ func TestMFAChallengeRejectsReplayedRecoveryCodeAndPreservesEffectOrdering(t *te
 	// the audit outcome follows the write, and the write commits before its
 	// effect.
 	require.Equal(t, []string{"institution", "audit_begin", "credential_get", "consume", "upgrade", "audit_success", "effects", "institution", "audit_begin", "credential_get", "consume", "audit_fail"}, events)
-	require.Equal(t, principal.UserID.String(), effects.userID)
-	require.Equal(t, []string{principal.SessionID.String()}, effects.sessionIDs)
+	require.Equal(t, principal.UserID, effects.userID)
+	require.Equal(t, []model.SessionID{principal.SessionID}, effects.sessionIDs)
 	require.Equal(t, []string{"access-hash"}, effects.hashes)
 }
 
@@ -474,17 +474,17 @@ func (a *mfaApplicationAuditFake) Complete(_ context.Context, _ model.AuditEvent
 
 type mfaApplicationEffectsFake struct {
 	events     *[]string
-	userID     string
-	sessionIDs []string
+	userID     model.UserID
+	sessionIDs []model.SessionID
 	hashes     []string
 }
 
-func (e *mfaApplicationEffectsFake) SessionsRevoked(_ context.Context, userID string, sessionIDs, hashes []string) {
+func (e *mfaApplicationEffectsFake) SessionsRevoked(_ context.Context, userID model.UserID, sessionIDs []model.SessionID, hashes []string) {
 	if e.events != nil {
 		*e.events = append(*e.events, "effects")
 	}
 	e.userID = userID
-	e.sessionIDs = append([]string(nil), sessionIDs...)
+	e.sessionIDs = append([]model.SessionID(nil), sessionIDs...)
 	e.hashes = append([]string(nil), hashes...)
 }
 

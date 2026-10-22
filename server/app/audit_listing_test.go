@@ -114,7 +114,7 @@ func TestAuditListingAuthorizesOnceThenReads(t *testing.T) {
 	service := newAuditListingService(auditListingServiceDependencies{Audits: persistence, Authorization: &auditListingAuthorizerFake{
 		events: &events, scope: store.AuditVisibilityScope{InstitutionWide: true},
 	}})
-	got, err := service.ListAuditEvents(context.Background(), invocation.Invocation{}, ListAuditEventsQuery{Limit: 10, ActorID: model.NewUserID().String()})
+	got, err := service.ListAuditEvents(context.Background(), invocation.Invocation{}, ListAuditEventsQuery{Limit: 10, ActorID: model.NewUserID()})
 	require.NoError(t, err)
 	require.Len(t, got, 1, "result/input = %#v / %#v", got, persistence.input)
 	require.Equal(t, 10, persistence.input.Limit, "result/input = %#v / %#v", got, persistence.input)

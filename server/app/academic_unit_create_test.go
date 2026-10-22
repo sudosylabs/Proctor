@@ -111,7 +111,7 @@ func (a *academicUnitCommandAuditor) Fail(_ context.Context, auditID model.Audit
 type academicUnitCommandEffectsFake struct {
 	events *[]string
 	err    error
-	unitID string
+	unitID model.AcademicUnitID
 }
 
 type academicUnitEffectFailureReporterFake struct {
@@ -132,7 +132,7 @@ func (r *academicUnitEffectFailureReporterFake) Report(
 
 func (e *academicUnitCommandEffectsFake) Created(
 	_ context.Context,
-	unitID string,
+	unitID model.AcademicUnitID,
 ) error {
 	*e.events = append(*e.events, "effect")
 	e.unitID = unitID
@@ -141,7 +141,7 @@ func (e *academicUnitCommandEffectsFake) Created(
 
 func (e *academicUnitCommandEffectsFake) Updated(
 	_ context.Context,
-	unitID string,
+	unitID model.AcademicUnitID,
 ) error {
 	*e.events = append(*e.events, "effect-update")
 	e.unitID = unitID
@@ -150,7 +150,7 @@ func (e *academicUnitCommandEffectsFake) Updated(
 
 func (e *academicUnitCommandEffectsFake) Archived(
 	_ context.Context,
-	unitID string,
+	unitID model.AcademicUnitID,
 ) error {
 	*e.events = append(*e.events, "effect-archive")
 	e.unitID = unitID
@@ -194,7 +194,7 @@ func TestAcademicUnitCreateRootCommitsAuditBeforePublishing(t *testing.T) {
 	require.Equal(t, "engineering", creator.input.Unit.Name)
 	require.Equal(t, model.AuditEventID(auditor.beginID), creator.input.AuditEventID)
 	require.True(t, time.UnixMilli(500).UTC().Equal(creator.input.AuditAt))
-	require.Equal(t, saved.ID.String(), effects.unitID, "published unit = %q, want %q", effects.unitID, saved.ID)
+	require.Equal(t, saved.ID, effects.unitID, "published unit = %q, want %q", effects.unitID, saved.ID)
 	assertAcademicUnitCreateEvents(t, events, "authorize", "audit-begin", "store", "effect")
 }
 

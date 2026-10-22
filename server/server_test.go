@@ -15,6 +15,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/invocation"
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 type administratorRecoveryRuntimeFake struct {
@@ -48,9 +49,9 @@ func TestInertServerExposesOnlyExplicitAdministratorRecoveryCapability(t *testin
 	require.NotNil(t, result, "result/forwarded = %#v / %#v", result, fake.command)
 	require.True(t, result.PasswordRotated, "result/forwarded = %#v / %#v", result, fake.command)
 	require.Equal(t, "private", fake.command.Password, "result/forwarded = %#v / %#v", result, fake.command)
-	require.Equal(t, command.InstitutionID, fake.command.InstitutionID, "result/forwarded = %#v / %#v", result, fake.command)
+	require.Equal(t, model.InstitutionID(command.InstitutionID), fake.command.InstitutionID, "result/forwarded = %#v / %#v", result, fake.command)
 	require.Equal(t, invocation.Task("administrator-recovery"), fake.system, "host recovery names its actorless task")
-	require.Equal(t, command.UserID, fake.command.UserID, "result/forwarded = %#v / %#v", result, fake.command)
+	require.Equal(t, model.UserID(command.UserID), fake.command.UserID, "result/forwarded = %#v / %#v", result, fake.command)
 	node.state = nodeRunning
 	_, err = node.RecoverAdministratorAccess(context.Background(), command)
 	require.Error(t, err, "RecoverAdministratorAccess() succeeded on a running server")

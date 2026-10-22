@@ -37,7 +37,7 @@ func TestSessionRevocationAppliesAllLocalEffectsBeforeStablePeerFanout(t *testin
 	const userID = "bbbbbbbbbbbbbbbbbbbbbbbbbb"
 	const sessionID = "cccccccccccccccccccccccccc"
 	const hash = "345bf502d577508c91103476c743217fa304f9a15e92c6bdc5810f891677891f"
-	service.SessionsRevoked(context.Background(), userID, []string{sessionID}, []string{hash})
+	service.SessionsRevoked(context.Background(), userID, []model.SessionID{sessionID}, []string{hash})
 
 	// Contract: every local effect applies before the peer fan-out; the local
 	// effects may apply in any order.
@@ -108,7 +108,7 @@ func TestSecurityPropagationRejectsInvalidPeerAndLocalInputWithoutLeaks(t *testi
 	require.NoError(t, service.SetClusterFanout(fanout))
 
 	const sensitive = "raw-session-or-user-value"
-	service.SessionsRevoked(context.Background(), sensitive, []string{sensitive}, []string{sensitive})
+	service.SessionsRevoked(context.Background(), sensitive, []model.SessionID{sensitive}, []string{sensitive})
 	service.AuthenticationCacheInvalidated(context.Background(), sensitive, []string{sensitive})
 	service.InvalidateAuthorization(context.Background(), sensitive)
 	require.Empty(t, fanout.broadcasts, "invalid local input produced effects: broadcasts")
@@ -134,7 +134,7 @@ func TestSecurityPropagationMissingAndFailingFanoutIsDiagnosticOnly(t *testing.T
 	diagnostics := &recordingDiagnostics{}
 	service := mustNewService(t, invalidator, diagnostics)
 	require.NoError(t, service.SetSink(sink))
-	service.SessionsRevoked(context.Background(), userID, []string{sessionID}, nil)
+	service.SessionsRevoked(context.Background(), userID, []model.SessionID{sessionID}, nil)
 	service.AuthenticationCacheInvalidated(context.Background(), userID, nil)
 	require.Equal(t, 2, invalidator.accessCalls(), "missing fanout effects: access")
 	require.Equal(t, 1, sink.sessionCloseCount(), "missing fanout effects: access")
@@ -167,7 +167,7 @@ func TestSecurityPropagationWithoutSinkStillInvalidatesAndFansOut(t *testing.T) 
 	service := mustNewService(t, invalidator, &recordingDiagnostics{})
 	require.NoError(t, service.SetClusterFanout(fanout))
 
-	service.SessionsRevoked(context.Background(), userID, []string{sessionID}, nil)
+	service.SessionsRevoked(context.Background(), userID, []model.SessionID{sessionID}, nil)
 	service.InvalidateAuthorization(context.Background(), userID)
 	require.Equal(t, 1, invalidator.accessCalls(), "authentication effects: access")
 	require.Equal(t, 1, invalidator.activityCalls(), "authentication effects: access")
@@ -214,7 +214,7 @@ func TestConcurrentSecurityPropagation(t *testing.T) {
 		group.Add(1)
 		go func() {
 			defer group.Done()
-			service.SessionsRevoked(context.Background(), userID, []string{sessionID}, nil)
+			service.SessionsRevoked(context.Background(), userID, []model.SessionID{sessionID}, nil)
 		}()
 	}
 	group.Wait()
@@ -246,7 +246,7 @@ func mustNewService(
 type recordingInvalidator struct {
 	mu       sync.Mutex
 	access   [][]string
-	activity [][]string
+	activity [][]model.SessionID
 	order    *orderedCalls
 }
 
@@ -259,9 +259,9 @@ func (i *recordingInvalidator) InvalidateAccessCredentials(_ context.Context, va
 	}
 }
 
-func (i *recordingInvalidator) InvalidateSessionActivity(_ context.Context, values []string) {
+func (i *recordingInvalidator) InvalidateSessionActivity(_ context.Context, values []model.SessionID) {
 	i.mu.Lock()
-	i.activity = append(i.activity, append([]string(nil), values...))
+	i.activity = append(i.activity, append([]model.SessionID(nil), values...))
 	i.mu.Unlock()
 	if i.order != nil {
 		i.order.add("invalidate-activity")

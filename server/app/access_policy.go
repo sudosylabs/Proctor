@@ -240,21 +240,13 @@ type accessPolicyRealtimeEffects struct{ realtime *realtimeService }
 
 func (e accessPolicyRealtimeEffects) Changed(ctx context.Context, change accessPolicyChanged) error {
 	for _, revocation := range change.SessionRevocations {
-		e.realtime.SessionsRevoked(ctx, revocation.UserID.String(), sessionIDStrings(revocation.SessionIDs), revocation.AccessTokenHashes)
+		e.realtime.SessionsRevoked(ctx, revocation.UserID, revocation.SessionIDs, revocation.AccessTokenHashes)
 	}
 	event, err := realtime.NewAccessPolicyChangedEvent(change.InstitutionID, change.Revision)
 	if err != nil {
 		return err
 	}
 	return e.realtime.PublishRealtimeEvent(ctx, event)
-}
-
-func sessionIDStrings(ids []model.SessionID) []string {
-	result := make([]string, 0, len(ids))
-	for _, id := range ids {
-		result = append(result, id.String())
-	}
-	return result
 }
 
 type accessPolicyEffectReporter struct{ realtime *realtimeService }

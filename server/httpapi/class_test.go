@@ -94,7 +94,7 @@ func TestClassResourceRunsThroughRoutingKernelWithNarrowDependencies(t *testing.
 	httpAPI.ServeHTTP(response, request)
 	require.Equal(t, http.StatusCreated, response.Code, "status = %d: %s", response.Code, response.Body.String())
 	require.Equal(t, class.ProgrammeLevelID, classes.createCommand.ProgrammeLevelID)
-	require.Equal(t, class.AcademicPeriodID.String(), classes.createCommand.AcademicPeriodID)
+	require.Equal(t, class.AcademicPeriodID, classes.createCommand.AcademicPeriodID)
 	var body classResponse
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 	require.Equal(t, class.ID.String(), body.ID)
@@ -285,7 +285,7 @@ func TestClassHTTPMapsBothParentsFromRouteAndBody(t *testing.T) {
 	httpAPI.ServeHTTP(response, request)
 	require.Equal(t, http.StatusCreated, response.Code, "status = %d: %s", response.Code, response.Body.String())
 	require.Equal(t, class.ProgrammeLevelID, classes.createCommand.ProgrammeLevelID)
-	require.Equal(t, class.AcademicPeriodID.String(), classes.createCommand.AcademicPeriodID)
+	require.Equal(t, class.AcademicPeriodID, classes.createCommand.AcademicPeriodID)
 	var body classResponse
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 	require.Equal(t, class.ID.String(), body.ID)

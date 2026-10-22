@@ -159,9 +159,5 @@ func (s *authenticationMethodService) publishRevocations(ctx context.Context, us
 	if result == nil {
 		return
 	}
-	ids := make([]string, 0, len(result.RevokedSessions))
-	for _, session := range result.RevokedSessions {
-		ids = append(ids, session.ID.String())
-	}
-	s.deps.Effects.SessionsRevoked(ctx, userID.String(), ids, result.RevokedTokenHashes)
+	s.deps.Effects.SessionsRevoked(ctx, userID, sessionIDs(result.RevokedSessions), result.RevokedTokenHashes)
 }

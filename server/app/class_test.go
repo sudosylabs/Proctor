@@ -74,7 +74,7 @@ func TestClassGetAuthorizesExactScopeBeforeReading(t *testing.T) {
 func TestClassUpdateMoveAuthorizesCurrentAndDestinationOwners(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	oldUnitID, newLevelID := model.NewID(), model.NewID()
+	oldUnitID, newLevelID := model.NewID(), model.NewProgrammeLevelID()
 	current := &model.Class{
 		ID:               model.ClassID(model.NewID()),
 		CreatedAt:        model.TimeFromMillis(100),
@@ -89,7 +89,7 @@ func TestClassUpdateMoveAuthorizesCurrentAndDestinationOwners(t *testing.T) {
 	service := newClassService(classServiceDependencies{Store: persistence, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Now: func() time.Time { return time.UnixMilli(500) }, NewID: model.NewID})
 	updated, err := service.UpdateClass(context.Background(), invocation.Invocation{}, UpdateClassCommand{ID: current.ID, ProgrammeLevelID: &newLevelID})
 	require.NoError(t, err)
-	require.Equal(t, newLevelID, updated.ProgrammeLevelID.String())
+	require.Equal(t, newLevelID, updated.ProgrammeLevelID)
 	require.Equal(t, current.AcademicPeriodID, persistence.updateInput.Class.AcademicPeriodID)
 	require.Equal(t, model.AcademicUnitID(oldUnitID), persistence.updateInput.ExpectedAcademicUnitID)
 	require.Equal(t, current.Revision, persistence.updateInput.ExpectedRevision)
@@ -131,7 +131,7 @@ func TestClassCreateConflictCompletesFailedAttempt(t *testing.T) {
 	levelID := model.NewID()
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewID()}
 	service := newClassService(classServiceDependencies{Store: &classStoreFake{events: &events, createErr: store.NewErrConflict("class", "classes_programme_level_id_academic_period_id_name_key", nil)}, Authorization: &programmeAuthorizerFake{events: &events}, Audit: auditor, Now: time.Now, NewID: model.NewID})
-	_, err := service.CreateClass(context.Background(), invocation.Invocation{}, CreateClassCommand{ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: model.NewID(), Name: "class-a", DisplayName: "Class A"})
+	_, err := service.CreateClass(context.Background(), invocation.Invocation{}, CreateClassCommand{ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: model.AcademicPeriodID(model.NewID()), Name: "class-a", DisplayName: "Class A"})
 	require.True(t, apperror.Is(err, "class.conflict"), "Create() error = %v, audit", err)
 	require.Equal(t, "class.conflict", auditor.failCode, "Create() error = %v, audit", err)
 }
@@ -143,7 +143,7 @@ func TestClassCreatePreservesBothParentsAndAtomicAudit(t *testing.T) {
 	created := &model.Class{ID: model.ClassID(classID), ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: model.AcademicPeriodID(periodID)}
 	persistence := &classStoreFake{events: &events, created: created}
 	service := newClassService(classServiceDependencies{Store: persistence, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events, beginID: auditID}, Now: func() time.Time { return time.UnixMilli(500) }, NewID: func() string { return classID }})
-	got, err := service.CreateClass(context.Background(), invocation.Invocation{}, CreateClassCommand{ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: periodID, Name: "class-a", DisplayName: "Class A"})
+	got, err := service.CreateClass(context.Background(), invocation.Invocation{}, CreateClassCommand{ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: model.AcademicPeriodID(periodID), Name: "class-a", DisplayName: "Class A"})
 	require.NoError(t, err, "Create()")
 	require.Same(t, created, got, "Create()")
 	require.NotNil(t, persistence.createInput)

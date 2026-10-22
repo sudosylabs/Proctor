@@ -22,7 +22,7 @@ func TestCandidateExamActivityChangedEventHasOnlySchemaVersion(t *testing.T) {
 	event, err := NewCandidateExamActivityChangedEvent(candidateID)
 	require.NoError(t, err)
 	require.Equal(t, "candidate.exam_activity.changed", event.Name)
-	require.Equal(t, candidateID.String(), event.UserID)
+	require.Equal(t, candidateID, event.UserID)
 	require.Empty(t, event.Action)
 	require.Equal(t, model.Resource{}, event.Resource)
 	var payload map[string]any
@@ -39,7 +39,7 @@ func TestCurrentUserContextChangedEventHasOnlySchemaVersion(t *testing.T) {
 	event, err := NewCurrentUserContextChangedEvent(userID)
 	require.NoError(t, err)
 	require.Equal(t, "current_user.context.changed", event.Name)
-	require.Equal(t, userID.String(), event.UserID)
+	require.Equal(t, userID, event.UserID)
 	require.Empty(t, event.Action)
 	require.Equal(t, model.Resource{}, event.Resource)
 	var payload map[string]any

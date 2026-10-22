@@ -401,3 +401,13 @@ func (p Params) RequireExamExportID() (model.ExamExportID, error) {
 func (p Params) RequireSecurityPreflightID() (string, error) {
 	return opaquePathID(p.SecurityPreflightID)
 }
+
+// optionalIdentifier types an optional identifier member of a request body.
+// The application validates it; absence stays nil.
+func optionalIdentifier[T ~string](value *string) *T {
+	if value == nil {
+		return nil
+	}
+	typed := T(*value)
+	return &typed
+}

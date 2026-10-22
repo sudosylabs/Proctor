@@ -785,11 +785,11 @@ func TestAuthenticationRefreshUsesControlledRuntimeAndPreservesReplayEffects(t *
 
 type authenticationEffectsRecorder struct{ last string }
 
-func (e *authenticationEffectsRecorder) AuthenticationCacheInvalidated(context.Context, string, []string) {
+func (e *authenticationEffectsRecorder) AuthenticationCacheInvalidated(context.Context, model.UserID, []string) {
 	e.last = "cache"
 }
 
-func (e *authenticationEffectsRecorder) SessionsRevoked(context.Context, string, []string, []string) {
+func (e *authenticationEffectsRecorder) SessionsRevoked(context.Context, model.UserID, []model.SessionID, []string) {
 	e.last = "sessions"
 }
 

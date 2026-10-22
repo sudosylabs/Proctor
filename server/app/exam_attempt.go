@@ -126,7 +126,7 @@ func (e examAttemptRealtimeEffects) publishOperationalInvalidations(ctx context.
 
 func (e examAttemptRealtimeEffects) ConnectionOpened(ctx context.Context, result attempt.ConnectionResult) error {
 	if len(result.RevokedSessionIDs) > 0 || len(result.RevokedAccessTokenDigests) > 0 {
-		e.realtime.SessionsRevoked(ctx, result.Attempt.CandidateUserID.String(), result.RevokedSessionIDs, result.RevokedAccessTokenDigests)
+		e.realtime.SessionsRevoked(ctx, result.Attempt.CandidateUserID, result.RevokedSessionIDs, result.RevokedAccessTokenDigests)
 	}
 	event, err := realtime.NewExamAttemptConnectionOpenedEvent(result.Attempt.SittingID,
 		result.Attempt.ID, result.Attempt.CandidateUserID, result.Connection.ID, result.Connection.OpenedAt)

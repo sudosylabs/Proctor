@@ -28,7 +28,7 @@ import (
 type RealtimeEvent struct {
 	ID       string
 	Name     string
-	UserID   string
+	UserID   model.UserID
 	Action   model.Action
 	Resource model.Resource
 	Data     json.RawMessage
@@ -67,7 +67,7 @@ func NewCandidateExamActivityChangedEvent(candidateID model.UserID) (RealtimeEve
 	if err != nil {
 		return RealtimeEvent{}, fmt.Errorf("encode candidate Exam activity invalidation: %w", err)
 	}
-	return RealtimeEvent{Name: "candidate.exam_activity.changed", UserID: candidateID.String(), Data: data}, nil
+	return RealtimeEvent{Name: "candidate.exam_activity.changed", UserID: candidateID, Data: data}, nil
 }
 
 // NewCurrentUserContextChangedEvent constructs a content-free refetch signal
@@ -80,7 +80,7 @@ func NewCurrentUserContextChangedEvent(userID model.UserID) (RealtimeEvent, erro
 	if err != nil {
 		return RealtimeEvent{}, fmt.Errorf("encode current User context invalidation: %w", err)
 	}
-	return RealtimeEvent{Name: "current_user.context.changed", UserID: userID.String(), Data: data}, nil
+	return RealtimeEvent{Name: "current_user.context.changed", UserID: userID, Data: data}, nil
 }
 
 // NewManagerSittingBoardChangedEvent constructs a selector-only invalidation
@@ -120,7 +120,7 @@ func NewUserSettingsChangedEvent(
 		return RealtimeEvent{}, fmt.Errorf("encode User Settings change event: %w", err)
 	}
 	return RealtimeEvent{
-		Name: "user_settings_changed", UserID: userID.String(), Data: data,
+		Name: "user_settings_changed", UserID: userID, Data: data,
 	}, nil
 }
 
@@ -376,7 +376,7 @@ func NewCandidateStudentResultReleasedEvent(fact ExamIntegrityReviewEventFact) (
 	if err != nil {
 		return RealtimeEvent{}, fmt.Errorf("encode candidate Student Result event: %w", err)
 	}
-	return RealtimeEvent{Name: "exam_student_result_released", UserID: fact.CandidateID.String(), Data: data}, nil
+	return RealtimeEvent{Name: "exam_student_result_released", UserID: fact.CandidateID, Data: data}, nil
 }
 
 func newManagerExamIntegrityReviewEvent(name string, fact ExamIntegrityReviewEventFact) (RealtimeEvent, error) {
@@ -432,7 +432,7 @@ func NewCandidateExamAttemptSubmittedEvent(sittingID model.ExamSittingID, attemp
 	if err != nil {
 		return RealtimeEvent{}, err
 	}
-	return RealtimeEvent{Name: "exam_attempt_submitted", UserID: candidateID.String(), Action: model.ActionExamSittingParticipate,
+	return RealtimeEvent{Name: "exam_attempt_submitted", UserID: candidateID, Action: model.ActionExamSittingParticipate,
 		Resource: model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, Data: data}, nil
 }
 
@@ -456,7 +456,7 @@ func NewCandidateExamAttemptFocusLossWarningEvent(sittingID model.ExamSittingID,
 	if err != nil {
 		return RealtimeEvent{}, err
 	}
-	return RealtimeEvent{Name: "exam_attempt_focus_warning", UserID: candidateID.String(),
+	return RealtimeEvent{Name: "exam_attempt_focus_warning", UserID: candidateID,
 		Action:   model.ActionExamSittingParticipate,
 		Resource: model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, Data: data}, nil
 }
@@ -504,7 +504,7 @@ func NewCandidateExamAttemptWorkspaceChangedEvent(sittingID model.ExamSittingID,
 	if err != nil {
 		return RealtimeEvent{}, err
 	}
-	return RealtimeEvent{Name: "exam_attempt_workspace_changed", UserID: candidateID.String(),
+	return RealtimeEvent{Name: "exam_attempt_workspace_changed", UserID: candidateID,
 		Action: model.ActionExamSittingParticipate, Resource: model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()},
 		Data: data}, nil
 }
@@ -545,7 +545,7 @@ func newCandidateExamAttemptAccessEvent(name string, sittingID model.ExamSitting
 	if err != nil {
 		return RealtimeEvent{}, err
 	}
-	return RealtimeEvent{Name: name, UserID: candidateID.String(), Action: model.ActionExamSittingParticipate,
+	return RealtimeEvent{Name: name, UserID: candidateID, Action: model.ActionExamSittingParticipate,
 		Resource: model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, Data: data}, nil
 }
 

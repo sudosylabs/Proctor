@@ -41,7 +41,7 @@ func TestSelfSessionServiceUsesCallerOwnershipAndPostCommitEffects(t *testing.T)
 	err = service.RevokeSession(
 		context.Background(),
 		invocation,
-		RevokeSessionCommand{SessionID: session.ID.String()},
+		RevokeSessionCommand{SessionID: session.ID},
 	)
 	require.NoError(t, err)
 	// Contract (guardrails 8 and 14): the audit begins before the durable write,
@@ -49,8 +49,8 @@ func TestSelfSessionServiceUsesCallerOwnershipAndPostCommitEffects(t *testing.T)
 	require.Equal(t, []string{"get", "begin", "revoke", "effects"}, events)
 	require.Equal(t, principal.UserID.String(), persistence.revokedUserID, "revocation = user")
 	require.True(t, now.Equal(persistence.revokedAt), "revocation = user")
-	require.Equal(t, principal.UserID.String(), effects.userID)
-	require.Equal(t, []string{session.ID.String()}, effects.sessionIDs)
+	require.Equal(t, principal.UserID, effects.userID)
+	require.Equal(t, []model.SessionID{session.ID}, effects.sessionIDs)
 	require.Equal(t, []string{"access-hash"}, effects.hashes)
 }
 
@@ -69,7 +69,7 @@ func TestSelfSessionServiceHidesAnotherUsersSession(t *testing.T) {
 	err = service.RevokeSession(
 		context.Background(),
 		invocation.New(principal, model.RequestMetadata{}),
-		RevokeSessionCommand{SessionID: persistence.session.ID.String()},
+		RevokeSessionCommand{SessionID: persistence.session.ID},
 	)
 	require.True(t, apperror.Is(err, "session.not_found"), "error = %v, want session.not_found", err)
 	require.Equal(t, 0, persistence.revokeCalls, "revoke calls")
@@ -124,7 +124,7 @@ func TestSelfSessionRevocationsRequireAuditBeforeMutationAndEffects(t *testing.T
 				invocation := invocation.New(principal, model.RequestMetadata{})
 				switch operation {
 				case "revoke_own_session":
-					err = self.RevokeSession(context.Background(), invocation, RevokeSessionCommand{SessionID: principal.SessionID.String()})
+					err = self.RevokeSession(context.Background(), invocation, RevokeSessionCommand{SessionID: principal.SessionID})
 				case "revoke_own_sessions":
 					err = self.RevokeAllSessions(context.Background(), invocation, RevokeAllSessionsCommand{})
 				case "logout":
@@ -145,7 +145,7 @@ func TestSelfSessionRevocationsRequireAuditBeforeMutationAndEffects(t *testing.T
 				}
 				require.NoError(t, err)
 				require.True(t, persistence.session.RevokedAt.Valid, "revocation/effects = %#v / %#v", persistence.session, effects)
-				require.Equal(t, principal.UserID.String(), effects.userID, "revocation/effects = %#v / %#v", persistence.session, effects)
+				require.Equal(t, principal.UserID, effects.userID, "revocation/effects = %#v / %#v", persistence.session, effects)
 				// Contract (guardrails 8 and 14): the audit begins before the durable
 				// revocation, which commits before its effects. Revoking one Session
 				// first reads it to confirm the caller owns it.
@@ -194,7 +194,7 @@ func TestSelfSessionRevocationRepeatOutcomes(t *testing.T) {
 			invocation := invocation.New(principal, model.RequestMetadata{})
 			switch operation {
 			case "revoke_own_session":
-				err = self.RevokeSession(context.Background(), invocation, RevokeSessionCommand{SessionID: principal.SessionID.String()})
+				err = self.RevokeSession(context.Background(), invocation, RevokeSessionCommand{SessionID: principal.SessionID})
 				require.True(t, apperror.Is(err, "session.not_found"), "repeat = %v audit=%#v", err, audit)
 				require.Equal(t, "session.not_found", audit.failCode, "repeat = %v audit=%#v", err, audit)
 			case "revoke_own_sessions":
@@ -284,18 +284,19 @@ func (s *selfSessionStoreFake) RevokeAllForUser(_ context.Context, input *store.
 
 type selfSessionEffectsFake struct {
 	events     *[]string
-	userID     string
-	sessionIDs []string
+	userID     model.UserID
+	sessionIDs []model.SessionID
 	hashes     []string
 }
 
-func (e *selfSessionEffectsFake) AuthenticationCacheInvalidated(context.Context, string, []string) {}
+func (e *selfSessionEffectsFake) AuthenticationCacheInvalidated(context.Context, model.UserID, []string) {
+}
 
-func (e *selfSessionEffectsFake) SessionsRevoked(_ context.Context, userID string, sessionIDs, hashes []string) {
+func (e *selfSessionEffectsFake) SessionsRevoked(_ context.Context, userID model.UserID, sessionIDs []model.SessionID, hashes []string) {
 	if e.events != nil {
 		*e.events = append(*e.events, "effects")
 	}
 	e.userID = userID
-	e.sessionIDs = append([]string(nil), sessionIDs...)
+	e.sessionIDs = append([]model.SessionID(nil), sessionIDs...)
 	e.hashes = append([]string(nil), hashes...)
 }

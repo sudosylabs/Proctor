@@ -444,7 +444,7 @@ func (m userProfileResourceModule) search(request operationRequest) (operationRe
 	}
 	query := app.SearchUsersQuery{Query: request.request.URL.Query().Get("q"), Limit: paging.Limit, IncludeDisabled: includeDisabled}
 	if present {
-		query.AfterUsername, query.AfterID = cursor.Username, cursor.ID
+		query.AfterUsername, query.AfterID = cursor.Username, model.UserID(cursor.ID)
 	}
 	page, err := m.profiles.SearchUsers(request.context, request.invocation(), query)
 	if err != nil {

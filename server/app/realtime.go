@@ -102,22 +102,22 @@ func (s *realtimeService) reportTransientFailure(
 
 func (s *realtimeService) SessionsRevoked(
 	ctx context.Context,
-	userID string,
-	sessionIDs []string,
+	userID model.UserID,
+	sessionIDs []model.SessionID,
 	accessTokenHashes []string,
 ) {
 	s.deps.Delivery.SessionsRevoked(ctx, userID, sessionIDs, accessTokenHashes)
 	if s.attempts == nil || len(sessionIDs) == 0 {
 		return
 	}
-	candidateID, err := model.ParseUserID(userID)
+	candidateID, err := model.ParseUserID(userID.String())
 	if err != nil {
 		s.reportTransientFailure(ctx, "session_revocation.attempt_invalidations", err)
 		return
 	}
 	parsedSessionIDs := make([]model.SessionID, len(sessionIDs))
 	for index, sessionID := range sessionIDs {
-		parsedSessionIDs[index], err = model.ParseSessionID(sessionID)
+		parsedSessionIDs[index], err = model.ParseSessionID(sessionID.String())
 		if err != nil {
 			s.reportTransientFailure(ctx, "session_revocation.attempt_invalidations", err)
 			return
@@ -147,18 +147,18 @@ func (s *realtimeService) SessionsRevoked(
 
 func (s *realtimeService) AuthenticationCacheInvalidated(
 	ctx context.Context,
-	userID string,
+	userID model.UserID,
 	accessTokenHashes []string,
 ) {
 	s.deps.Delivery.AuthenticationCacheInvalidated(ctx, userID, accessTokenHashes)
 }
 
-func (s *realtimeService) InvalidateAuthorization(ctx context.Context, userID string) {
+func (s *realtimeService) InvalidateAuthorization(ctx context.Context, userID model.UserID) {
 	s.deps.Delivery.InvalidateAuthorization(ctx, userID)
 	if userID == "" {
 		return
 	}
-	parsed, err := model.ParseUserID(userID)
+	parsed, err := model.ParseUserID(userID.String())
 	if err == nil {
 		candidateEvent, candidateErr := realtime.NewCandidateExamActivityChangedEvent(parsed)
 		err = errors.Join(candidateErr, s.InvalidateCurrentUserContext(ctx, parsed))
@@ -181,11 +181,11 @@ func (s *realtimeService) InvalidateCurrentUserContext(ctx context.Context, user
 
 var _ authenticationSecurityEffects = (*realtimeService)(nil)
 
-func sessionIDs(sessions []*model.Session) []string {
-	ids := make([]string, 0, len(sessions))
+func sessionIDs(sessions []*model.Session) []model.SessionID {
+	ids := make([]model.SessionID, 0, len(sessions))
 	for _, session := range sessions {
 		if session != nil {
-			ids = append(ids, session.ID.String())
+			ids = append(ids, session.ID)
 		}
 	}
 	return ids

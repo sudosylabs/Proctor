@@ -74,7 +74,7 @@ func (m roleBindingResourceModule) list(request operationRequest) (operationResu
 		request.context,
 		request.invocation(),
 		app.ListRoleBindingsQuery{
-			UserID: values.Get("user_id"), ScopeType: model.RoleScopeType(values.Get("scope_type")),
+			UserID: model.UserID(values.Get("user_id")), ScopeType: model.RoleScopeType(values.Get("scope_type")),
 			ScopeID: values.Get("scope_id"),
 		},
 	)
@@ -104,7 +104,7 @@ func (m roleBindingResourceModule) create(request operationRequest) (operationRe
 		request.context,
 		request.invocation(),
 		app.CreateRoleBindingCommand{
-			UserID: input.UserID, RoleID: input.RoleID, ScopeType: input.ScopeType,
+			UserID: model.UserID(input.UserID), RoleID: model.RoleID(input.RoleID), ScopeType: input.ScopeType,
 			ScopeID: input.ScopeID, StartAt: startAt, EndAt: endAt,
 		},
 	)

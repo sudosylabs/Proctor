@@ -24,6 +24,7 @@ import (
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/logging"
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 type options struct {
@@ -351,7 +352,7 @@ func (s *Server) RecoverAdministratorAccess(ctx context.Context, command Adminis
 		return nil, errors.New("administrator recovery is unavailable")
 	}
 	result, err := recovery.RecoverAdministratorAccess(ctx, invocation.Task("administrator-recovery"), app.AdministratorRecoveryCommand{
-		InstitutionID: command.InstitutionID, UserID: command.UserID,
+		InstitutionID: model.InstitutionID(command.InstitutionID), UserID: model.UserID(command.UserID),
 		EnableLocalLogin: command.EnableLocalLogin, Password: command.Password,
 	})
 	if err != nil {

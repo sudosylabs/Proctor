@@ -100,8 +100,8 @@ type ExternalAuthenticationPolicy struct {
 }
 
 type externalAuthenticationAudit interface {
-	BeginAuthentication(context.Context, string, string, string, model.SessionClientType, model.RequestMetadata, string) (*model.AuditEvent, error)
-	RecordExternalAuthenticationFailure(context.Context, string, string, model.RequestMetadata, string, string) error
+	BeginAuthentication(context.Context, model.UserID, string, string, model.SessionClientType, model.RequestMetadata, model.InstitutionID) (*model.AuditEvent, error)
+	RecordExternalAuthenticationFailure(context.Context, string, string, model.RequestMetadata, model.InstitutionID, string) error
 	CompleteCriticalAction(context.Context, model.AuditEventID, model.AuditStatus, string, any) (*model.AuditEvent, error)
 }
 
@@ -516,7 +516,7 @@ func (s *externalAuthenticationService) complete(
 			providerID,
 			method,
 			metadata,
-			institution.ID.String(),
+			institution.ID,
 			string(errorCode),
 		); appErr != nil {
 			return nil, s.failConsumedProviderConnection(ctx, state, appErr)
@@ -529,7 +529,7 @@ func (s *externalAuthenticationService) complete(
 			providerID,
 			method,
 			metadata,
-			institution.ID.String(),
+			institution.ID,
 			"authentication.external.invalid_assertion",
 		); auditErr != nil {
 			return nil, s.failConsumedProviderConnection(ctx, state, auditErr)
@@ -545,7 +545,7 @@ func (s *externalAuthenticationService) complete(
 	if state.Purpose == model.ExternalAuthenticationPurposeInvitationAdmission {
 		if admission.Mode != model.ProviderAdmissionInvitationRequired || !admission.InvitationAdmissionEnabled {
 			if auditErr := s.deps.Audit.RecordExternalAuthenticationFailure(ctx, providerID, method, metadata,
-				institution.ID.String(), "authentication.external.invalid"); auditErr != nil {
+				institution.ID, "authentication.external.invalid"); auditErr != nil {
 				return nil, auditErr
 			}
 			return nil, invalidExternalAuthenticationError()
@@ -556,7 +556,7 @@ func (s *externalAuthenticationService) complete(
 		providerEmail := strings.ToLower(strings.TrimSpace(model.SanitizeUnicode(assertion.Email)))
 		if !assertion.EmailVerified || !model.IsValidEmail(providerEmail) {
 			if auditErr := s.deps.Audit.RecordExternalAuthenticationFailure(ctx, providerID, method, metadata,
-				institution.ID.String(), "authentication.external.account_not_linked"); auditErr != nil {
+				institution.ID, "authentication.external.account_not_linked"); auditErr != nil {
 				return nil, auditErr
 			}
 			return nil, apperror.New("authentication.external.account_not_linked")
@@ -566,7 +566,7 @@ func (s *externalAuthenticationService) complete(
 		if acceptErr != nil {
 			if errors.Is(acceptErr, store.ErrAuthenticationMethodDisabled) {
 				if auditErr := s.deps.Audit.RecordExternalAuthenticationFailure(ctx, providerID, method, metadata,
-					institution.ID.String(), "authentication.external.invalid"); auditErr != nil {
+					institution.ID, "authentication.external.invalid"); auditErr != nil {
 					return nil, auditErr
 				}
 				return nil, invalidExternalAuthenticationError()
@@ -643,7 +643,7 @@ func (s *externalAuthenticationService) complete(
 			providerID,
 			method,
 			metadata,
-			institution.ID.String(),
+			institution.ID,
 			errorCode,
 		); auditErr != nil {
 			return nil, auditErr
@@ -663,7 +663,7 @@ func (s *externalAuthenticationService) complete(
 		!resolution.Identity.ID.IsValid() || resolution.Identity.UserID != resolution.User.ID ||
 		resolution.Identity.Provider != providerID {
 		if auditErr := s.deps.Audit.RecordExternalAuthenticationFailure(ctx, providerID, method, metadata,
-			institution.ID.String(), "authentication.external.internal"); auditErr != nil {
+			institution.ID, "authentication.external.internal"); auditErr != nil {
 			return nil, auditErr
 		}
 		return nil, authenticationUnavailable(errors.New("external identity resolution returned invalid provenance"))
@@ -674,7 +674,7 @@ func (s *externalAuthenticationService) complete(
 			providerID,
 			method,
 			metadata,
-			institution.ID.String(),
+			institution.ID,
 			"authentication.external.inactive_account",
 		); appErr != nil {
 			return nil, appErr
@@ -712,12 +712,12 @@ func (s *externalAuthenticationService) complete(
 
 	auditEvent, appErr := s.deps.Audit.BeginAuthentication(
 		ctx,
-		resolution.User.ID.String(),
+		resolution.User.ID,
 		method,
 		providerID,
 		state.ClientType,
 		metadata,
-		institution.ID.String(),
+		institution.ID,
 	)
 	if appErr != nil {
 		return nil, appErr

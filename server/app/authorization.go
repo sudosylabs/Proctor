@@ -310,8 +310,8 @@ func (s *accessControlService) AuthorizeInstitution(
 
 // AuthorizeUserRead authorizes reading another User through the caller's
 // current visibility scope.
-func (s *accessControlService) AuthorizeUserRead(ctx context.Context, invocation invocation.Invocation, userID string) error {
-	_, err := s.authorizeUserRead(ctx, invocation, userID)
+func (s *accessControlService) AuthorizeUserRead(ctx context.Context, invocation invocation.Invocation, userID model.UserID) error {
+	_, err := s.authorizeUserRead(ctx, invocation, userID.String())
 	return err
 }
 

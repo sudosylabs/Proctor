@@ -34,7 +34,7 @@ type CreateAcademicUnitCommand struct {
 type UpdateAcademicUnitCommand struct {
 	ExpectedRevision *int64
 	ID               model.AcademicUnitID
-	ParentID         *string
+	ParentID         *model.AcademicUnitID
 	Name             *string
 	DisplayName      *string
 	Description      *string
@@ -53,9 +53,9 @@ type academicUnitCommandStore interface {
 }
 
 type academicUnitCommandEffects interface {
-	Created(context.Context, string) error
-	Updated(context.Context, string) error
-	Archived(context.Context, string) error
+	Created(context.Context, model.AcademicUnitID) error
+	Updated(context.Context, model.AcademicUnitID) error
+	Archived(context.Context, model.AcademicUnitID) error
 }
 
 type academicUnitEffectFailures interface {
@@ -66,23 +66,23 @@ type academicUnitRealtimeEffects struct{ realtime *realtimeService }
 
 func (e academicUnitRealtimeEffects) Created(
 	ctx context.Context,
-	unitID string,
+	unitID model.AcademicUnitID,
 ) error {
-	return e.publish(ctx, "academic_unit_created", unitID)
+	return e.publish(ctx, "academic_unit_created", unitID.String())
 }
 
 func (e academicUnitRealtimeEffects) Updated(
 	ctx context.Context,
-	unitID string,
+	unitID model.AcademicUnitID,
 ) error {
-	return e.publish(ctx, "academic_unit_updated", unitID)
+	return e.publish(ctx, "academic_unit_updated", unitID.String())
 }
 
 func (e academicUnitRealtimeEffects) Archived(
 	ctx context.Context,
-	unitID string,
+	unitID model.AcademicUnitID,
 ) error {
-	return e.publish(ctx, "academic_unit_archived", unitID)
+	return e.publish(ctx, "academic_unit_archived", unitID.String())
 }
 
 func (e academicUnitRealtimeEffects) publish(
@@ -226,7 +226,7 @@ func (s *academicUnitCommandService) CreateAcademicUnit(
 	// The unit and success audit are committed before transient fan-out.
 	// Publication remains best effort so callers do not retry committed work.
 	if !saved.Replayed {
-		if err := s.deps.Effects.Created(ctx, saved.Value.ID.String()); err != nil {
+		if err := s.deps.Effects.Created(ctx, saved.Value.ID); err != nil {
 			s.deps.EffectFailures.Report(ctx, "academic_unit_created", err)
 		}
 	}
@@ -256,7 +256,7 @@ func (s *academicUnitCommandService) UpdateAcademicUnit(
 	}
 	candidate := *current
 	if command.ParentID != nil {
-		parentID := strings.TrimSpace(*command.ParentID)
+		parentID := strings.TrimSpace(command.ParentID.String())
 		if parentID == "" {
 			candidate.ParentID = ""
 		} else {
@@ -313,7 +313,7 @@ func (s *academicUnitCommandService) UpdateAcademicUnit(
 	if err != nil {
 		return nil, err
 	}
-	if err := s.deps.Effects.Updated(ctx, updated.ID.String()); err != nil {
+	if err := s.deps.Effects.Updated(ctx, updated.ID); err != nil {
 		s.deps.EffectFailures.Report(ctx, "academic_unit_updated", err)
 	}
 	return updated, nil
@@ -364,7 +364,7 @@ func (s *academicUnitCommandService) ArchiveAcademicUnit(
 	if err != nil {
 		return err
 	}
-	if err := s.deps.Effects.Archived(ctx, archived.ID.String()); err != nil {
+	if err := s.deps.Effects.Archived(ctx, archived.ID); err != nil {
 		s.deps.EffectFailures.Report(ctx, "academic_unit_archived", err)
 	}
 	return nil

@@ -82,7 +82,7 @@ func (m desktopRegistrationResourceModule) revoke(request operationRequest) (ope
 	}
 	if err = m.application.RevokeDesktopRegistration(
 		request.context, request.invocation(),
-		app.RevokeDesktopRegistrationCommand{RegistrationID: registrationID.String()},
+		app.RevokeDesktopRegistrationCommand{RegistrationID: registrationID},
 	); err != nil {
 		return operationResult{}, err
 	}

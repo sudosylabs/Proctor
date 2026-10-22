@@ -107,7 +107,7 @@ func (e *classMemberEffectsFake) MembershipChanged(_ context.Context, candidate 
 
 func (e *classMemberEffectsFake) Report(context.Context, string, error) { e.reports++ }
 
-func (e *classMemberEffectsFake) InvalidateAuthorization(context.Context, string) {}
+func (e *classMemberEffectsFake) InvalidateAuthorization(context.Context, model.UserID) {}
 
 func (m *classMemberMailFake) PrepareClassTransition(request ClassTransitionMailPreparation) (*store.PreparedMail, error) {
 	*m.events = append(*m.events, "prepare-mail")
@@ -132,7 +132,7 @@ func TestClassMemberEnrollUsesDestinationPeriodAndAtomicStore(t *testing.T) {
 		clockCalls++
 		return time.UnixMilli(500)
 	}, NewID: model.NewID})
-	enrollment, err := service.EnrollClassMember(context.Background(), invocation.New(principal, model.RequestMetadata{}), EnrollClassMemberCommand{ClassID: model.ClassID(classID), UserID: userID, StartAt: 100})
+	enrollment, err := service.EnrollClassMember(context.Background(), invocation.New(principal, model.RequestMetadata{}), EnrollClassMemberCommand{ClassID: model.ClassID(classID), UserID: model.UserID(userID), StartAt: 100})
 	require.NoError(t, err)
 	require.Equal(t, periodID, enrollment.Membership.AcademicPeriodID.String(), "enrollment/input = %#v / %#v", enrollment, persistence.enrollInput)
 	require.Equal(t, userID, persistence.enrollInput.Member.UserID.String(), "enrollment/input = %#v / %#v", enrollment, persistence.enrollInput)
@@ -165,7 +165,7 @@ func TestClassMemberEnrollReplayDoesNotPublishMembershipChange(t *testing.T) {
 		context.Background(),
 		invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		EnrollClassMemberCommand{
-			ClassID: classID, UserID: userID.String(), StartAt: 100, IdempotencyKey: "replay",
+			ClassID: classID, UserID: userID, StartAt: 100, IdempotencyKey: "replay",
 		},
 	)
 	require.NoError(t, err, "Enroll()")
@@ -181,7 +181,7 @@ func TestClassMemberRetainedEnrollmentBypassesChangedMembershipAndMail(t *testin
 	service := newClassMemberService(classMemberServiceDependencies{Store: persistence, Classes: &classMemberClassStoreFake{events: &events}, Users: &classMemberUserStoreFake{events: &events}, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Mail: mailer, Effects: &classMemberEffectsFake{}, Now: func() time.Time { return time.UnixMilli(500) }, NewID: func() string { return model.NewClassMemberID().String() }})
 	invocation := invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 	result, err := service.EnrollClassMember(context.Background(), invocation, EnrollClassMemberCommand{ClassID: model.NewClassID(),
-		UserID: model.NewUserID().String(), StartAt: 100, IdempotencyKey: "row", batchRetainedOutcome: true})
+		UserID: model.NewUserID(), StartAt: 100, IdempotencyKey: "row", batchRetainedOutcome: true})
 	require.NoError(t, err, "retained enrollment")
 	require.NotNil(t, result, "retained enrollment")
 	require.Empty(t, mailer.requests, "retained enrollment")
@@ -200,7 +200,7 @@ func TestClassMemberAlreadySatisfiedEnrollmentPreparesNoticeForAuthoritativeRace
 	mailer := &classMemberMailFake{events: &events}
 	service := newClassMemberService(classMemberServiceDependencies{Store: persistence, Classes: &classMemberClassStoreFake{events: &events, value: class}, Users: &classMemberUserStoreFake{events: &events, value: mailTestUser(model.Principal{UserID: userID}, time.UnixMilli(500))}, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Mail: mailer, Effects: &classMemberEffectsFake{}, Now: func() time.Time { return time.UnixMilli(500) }, NewID: func() string { return model.NewClassMemberID().String() }})
 	result, err := service.EnrollClassMember(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
-		EnrollClassMemberCommand{ClassID: classID, UserID: userID.String(), StartAt: 100, IdempotencyKey: "row"})
+		EnrollClassMemberCommand{ClassID: classID, UserID: userID, StartAt: 100, IdempotencyKey: "row"})
 	require.NoError(t, err, "already-satisfied enrollment")
 	require.NotNil(t, result, "already-satisfied enrollment")
 	require.NotNil(t, persistence.enrollInput, "already-satisfied enrollment")
@@ -223,7 +223,7 @@ func TestClassMemberEnrollCommitsTerminalNoticeForInactiveRecipient(t *testing.T
 	require.NoError(t, err)
 	service := newClassMemberService(classMemberServiceDependencies{Store: persistence, Classes: classes, Users: users, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Mail: preparer, Effects: &classMemberEffectsFake{}, Now: func() time.Time { return time.UnixMilli(500) }, NewID: model.NewID})
 	_, err = service.EnrollClassMember(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
-		EnrollClassMemberCommand{ClassID: classID, UserID: userID.String(), StartAt: 100})
+		EnrollClassMemberCommand{ClassID: classID, UserID: userID, StartAt: 100})
 	require.NoError(t, err)
 	require.NotNil(t, persistence.enrollInput)
 	require.NotNil(t, persistence.enrollInput.Notice)
@@ -252,8 +252,8 @@ func TestClassMemberTransferAuthorizesSourceAndCreatesOneTransferNotice(t *testi
 	authority := &store.CommandAuthorization{Principal: principal, ScopeType: model.RoleScopeClass, ScopeID: destination.ID.String(),
 		Actions: []model.Action{model.ActionOnboardingBatchManage, model.ActionClassMembersManage}}
 	_, err := service.EnrollClassMember(context.Background(), invocation.New(principal, model.RequestMetadata{}),
-		EnrollClassMemberCommand{ClassID: destination.ID, UserID: userID.String(), StartAt: 200,
-			ExpectedPreviousID: previous.ID.String(), RequireTransfer: true, IdempotencyKey: "row", batchAuthorization: authority,
+		EnrollClassMemberCommand{ClassID: destination.ID, UserID: userID, StartAt: 200,
+			ExpectedPreviousID: previous.ID, RequireTransfer: true, IdempotencyKey: "row", batchAuthorization: authority,
 			batchMetadata: &store.CommandBatch{GroupDigest: [32]byte{1}}})
 	require.NoError(t, err)
 	require.Len(t, mailer.requests, 1, "transfer mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)

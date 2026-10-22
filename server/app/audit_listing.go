@@ -19,12 +19,12 @@ import (
 )
 
 type ListAuditEventsQuery struct {
-	ActorID  string
+	ActorID  model.UserID
 	Action   string
 	Resource *model.Resource
 	// BeforeCreatedAt and BeforeID continue a page at microsecond precision.
 	BeforeCreatedAt time.Time
-	BeforeID        string
+	BeforeID        model.AuditEventID
 	Limit           int
 }
 
@@ -72,7 +72,7 @@ func (s *auditListingService) ListAuditEvents(ctx context.Context, invocation in
 		return nil, apperror.New("audit.query.invalid")
 	}
 	events, err := s.deps.Audits.List(ctx, store.AuditListOptions{
-		ActorID: model.UserID(strings.TrimSpace(query.ActorID)), Action: strings.TrimSpace(query.Action),
+		ActorID: model.UserID(strings.TrimSpace(query.ActorID.String())), Action: strings.TrimSpace(query.Action),
 		Resource: query.Resource, BeforeCreatedAt: query.BeforeCreatedAt, BeforeID: model.AuditEventID(query.BeforeID), Limit: query.Limit,
 		Visibility: visibility,
 	})

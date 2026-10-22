@@ -12,6 +12,7 @@ import (
 	"errors"
 
 	"github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 // Access-key deletion retains the peer invalidation contract and clears
@@ -20,12 +21,12 @@ import (
 const authenticationCachePrefix = "authentication/access/"
 
 type authenticationSecurityEffects interface {
-	AuthenticationCacheInvalidated(context.Context, string, []string)
-	SessionsRevoked(context.Context, string, []string, []string)
+	AuthenticationCacheInvalidated(context.Context, model.UserID, []string)
+	SessionsRevoked(context.Context, model.UserID, []model.SessionID, []string)
 }
 
 type authorizationInvalidationEffects interface {
-	InvalidateAuthorization(context.Context, string)
+	InvalidateAuthorization(context.Context, model.UserID)
 }
 
 // authenticationCacheInvalidatorDependencies are the collaborators of authenticationCacheInvalidator;
@@ -66,10 +67,10 @@ func (i *authenticationCacheInvalidator) InvalidateAccessCredentials(
 
 func (i *authenticationCacheInvalidator) InvalidateSessionActivity(
 	ctx context.Context,
-	sessionIDs []string,
+	sessionIDs []model.SessionID,
 ) {
 	for _, sessionID := range sessionIDs {
-		if err := i.deps.Cache.Delete(ctx, activityCachePrefix+sessionID); err != nil {
+		if err := i.deps.Cache.Delete(ctx, activityCachePrefix+sessionID.String()); err != nil {
 			i.deps.Diagnostics.WarnContext(
 				ctx,
 				"session activity cache delete failed",

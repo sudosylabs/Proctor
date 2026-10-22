@@ -79,7 +79,7 @@ func TestExamAttemptSuspensionAndReallowEventsSeparateCandidateAndManagerPayload
 	managerReallowed, err := NewExamAttemptReallowedEvent(sittingID, attemptID, candidateID, suspensionID, 3, at.Add(time.Minute))
 	require.NoError(t, err)
 	for _, event := range []RealtimeEvent{candidateSuspended, candidateReallowed} {
-		require.Equal(t, candidateID.String(), event.UserID)
+		require.Equal(t, candidateID, event.UserID)
 		require.Equal(t, model.ActionExamSittingParticipate, event.Action)
 		for _, forbidden := range []string{"integrity_flag_id", "suspension_id", "attempt_connection_id", "generation", "private_reason", "credential", "hash"} {
 			require.NotContains(t, string(event.Data), forbidden, "candidate payload contains")
@@ -128,7 +128,7 @@ func TestCandidateExamAttemptWorkspaceChangedEventIsOnlyASafeRefetchHint(t *test
 		model.AttemptWorkspaceMutationReplaceFile, 17, at)
 	require.NoError(t, err)
 	require.Equal(t, "exam_attempt_workspace_changed", event.Name)
-	require.Equal(t, candidateID.String(), event.UserID)
+	require.Equal(t, candidateID, event.UserID)
 	require.Equal(t, model.ActionExamSittingParticipate, event.Action)
 	require.Equal(t, sittingID.String(), event.Resource.ID)
 	data := string(event.Data)
@@ -155,7 +155,7 @@ func TestExamAttemptSubmittedEventsSeparateManagerAndCandidateTargetsWithSafeRec
 	require.Equal(t, model.ActionExamSittingView, manager.Action)
 	require.Equal(t, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, manager.Resource)
 	require.Equal(t, "exam_attempt_submitted", candidate.Name)
-	require.Equal(t, candidateID.String(), candidate.UserID)
+	require.Equal(t, candidateID, candidate.UserID)
 	require.Equal(t, model.ActionExamSittingParticipate, candidate.Action)
 	require.Equal(t, sittingID.String(), candidate.Resource.ID)
 	var managerData, candidateData map[string]any
@@ -188,7 +188,7 @@ func TestFocusLossEventsSeparateNeutralCandidateWarningFromBoundedManagerFlag(t 
 		model.IntegrityOutcomeFlagAndWarn, 100, 17, at)
 	require.NoError(t, err)
 	require.Equal(t, "exam_attempt_focus_warning", warning.Name)
-	require.Equal(t, candidateID.String(), warning.UserID)
+	require.Equal(t, candidateID, warning.UserID)
 	require.Equal(t, model.ActionExamSittingParticipate, warning.Action)
 	require.Equal(t, sittingID.String(), warning.Resource.ID)
 	var warningData map[string]any

@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestAdministratorMFAResetOnlyAvailableOnInertServer(t *testing.T) {
@@ -28,8 +29,8 @@ func TestAdministratorMFAResetOnlyAvailableOnInertServer(t *testing.T) {
 			require.NotNil(t, result, "inert result=%#v error=%v command=%#v", result, err, fake.mfaCommand)
 			require.True(t, result.ReenrollmentRequired, "inert result=%#v error=%v command=%#v", result, err, fake.mfaCommand)
 			require.Equal(t, int64(3), result.RecoveryGeneration, "inert result=%#v error=%v command=%#v", result, err, fake.mfaCommand)
-			require.Equal(t, command.InstitutionID, fake.mfaCommand.InstitutionID, "inert result=%#v error=%v command=%#v", result, err, fake.mfaCommand)
-			require.Equal(t, command.UserID, fake.mfaCommand.UserID, "inert result=%#v error=%v command=%#v", result, err, fake.mfaCommand)
+			require.Equal(t, model.InstitutionID(command.InstitutionID), fake.mfaCommand.InstitutionID, "inert result=%#v error=%v command=%#v", result, err, fake.mfaCommand)
+			require.Equal(t, model.UserID(command.UserID), fake.mfaCommand.UserID, "inert result=%#v error=%v command=%#v", result, err, fake.mfaCommand)
 		} else {
 			require.Error(t, err, "state=%v accepted offline reset", state)
 			require.Nil(t, result, "state=%v accepted offline reset", state)

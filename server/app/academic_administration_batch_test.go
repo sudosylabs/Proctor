@@ -91,7 +91,7 @@ func TestAcademicAdministrationBatchRetainsStableSemanticDuplicateDisposition(t 
 	result, err := service.RunAcademicAdministrationBatch(context.Background(), invocation, RunAcademicAdministrationBatchCommand{
 		Operation: AcademicAdministrationClassEnroll, ScopeType: model.RoleScopeClass, ScopeID: classID,
 		IdempotencyKey: "batch", Items: []AcademicAdministrationBatchItemCommand{
-			{IdempotencyKey: "b", UserID: userID}, {IdempotencyKey: "a", UserID: userID},
+			{IdempotencyKey: "b", UserID: model.UserID(userID)}, {IdempotencyKey: "a", UserID: model.UserID(userID)},
 		},
 	})
 	require.NoError(t, err)
@@ -114,7 +114,7 @@ func TestAcademicAdministrationBatchLooksUpRetainedOutcomeBeforeDispatch(t *test
 		ClientType: model.SessionClientWeb, AuthenticatedAt: now}, model.RequestMetadata{})
 	result, err := service.RunAcademicAdministrationBatch(context.Background(), invocation, RunAcademicAdministrationBatchCommand{Operation: AcademicAdministrationClassEnroll,
 		ScopeType: model.RoleScopeClass, ScopeID: model.NewClassID().String(), IdempotencyKey: "batch",
-		Items: []AcademicAdministrationBatchItemCommand{{IdempotencyKey: "row", UserID: model.NewUserID().String()}}})
+		Items: []AcademicAdministrationBatchItemCommand{{IdempotencyKey: "row", UserID: model.NewUserID()}}})
 	require.NoError(t, err, "retained lookup result=%#v command=%#v enrollments=%#v error", result, lookup.command, commands.enrollments)
 	require.Equal(t, 1, result.Succeeded, "retained lookup result=%#v command=%#v enrollments=%#v error", result, lookup.command, commands.enrollments)
 	require.NotNil(t, lookup.command, "retained lookup result=%#v command=%#v enrollments=%#v error", result, lookup.command, commands.enrollments)
@@ -135,8 +135,8 @@ func TestAcademicAdministrationBatchPreservesDistinctEffectiveHistories(t *testi
 	result, err := service.RunAcademicAdministrationBatch(context.Background(), invocation, RunAcademicAdministrationBatchCommand{Operation: AcademicAdministrationAffiliationAdd,
 		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewInstitutionID().String(), IdempotencyKey: "batch",
 		Items: []AcademicAdministrationBatchItemCommand{
-			{IdempotencyKey: "a", UserID: userID, AffiliationKind: model.AffiliationStaff, StartAt: 100, EndAt: 200},
-			{IdempotencyKey: "b", UserID: userID, AffiliationKind: model.AffiliationStaff, StartAt: 300, EndAt: 400},
+			{IdempotencyKey: "a", UserID: model.UserID(userID), AffiliationKind: model.AffiliationStaff, StartAt: 100, EndAt: 200},
+			{IdempotencyKey: "b", UserID: model.UserID(userID), AffiliationKind: model.AffiliationStaff, StartAt: 300, EndAt: 400},
 		}})
 	require.NoError(t, err, "distinct histories result=%#v operations=%#v error", result, commands.operations)
 	require.Equal(t, 2, result.Succeeded, "distinct histories result=%#v operations=%#v error", result, commands.operations)
@@ -185,9 +185,9 @@ func TestAcademicAdministrationBatchRunsClosedRowsThroughOrdinaryCommands(t *tes
 	result, err := service.RunAcademicAdministrationBatch(context.Background(), invocation, RunAcademicAdministrationBatchCommand{
 		Operation: AcademicAdministrationClassTransfer, ScopeType: model.RoleScopeClass, ScopeID: classID,
 		IdempotencyKey: "batch-key", Items: []AcademicAdministrationBatchItemCommand{
-			{IdempotencyKey: "row-1", UserID: userID, RelationshipID: previousID},
-			{IdempotencyKey: "repeated", UserID: model.NewUserID().String(), RelationshipID: model.NewClassMemberID().String()},
-			{IdempotencyKey: "repeated", UserID: model.NewUserID().String(), RelationshipID: model.NewClassMemberID().String()},
+			{IdempotencyKey: "row-1", UserID: model.UserID(userID), RelationshipID: previousID},
+			{IdempotencyKey: "repeated", UserID: model.NewUserID(), RelationshipID: model.NewClassMemberID().String()},
+			{IdempotencyKey: "repeated", UserID: model.NewUserID(), RelationshipID: model.NewClassMemberID().String()},
 		},
 	})
 	require.NoError(t, err)
@@ -198,8 +198,8 @@ func TestAcademicAdministrationBatchRunsClosedRowsThroughOrdinaryCommands(t *tes
 	require.Len(t, commands.enrollments, 1, "Run() = %#v commands", result)
 	command := commands.enrollments[0]
 	require.Equal(t, model.ClassID(classID), command.ClassID)
-	require.Equal(t, userID, command.UserID)
-	require.Equal(t, previousID, command.ExpectedPreviousID)
+	require.Equal(t, model.UserID(userID), command.UserID)
+	require.Equal(t, model.ClassMemberID(previousID), command.ExpectedPreviousID)
 	require.True(t, command.RequireTransfer)
 	require.Equal(t, "9:batch-key:row-1", command.IdempotencyKey)
 }
@@ -216,18 +216,18 @@ func TestAcademicAdministrationBatchDispatchesEveryClosedOperation(t *testing.T)
 		scopeType model.RoleScopeType
 		item      AcademicAdministrationBatchItemCommand
 	}{
-		{AcademicAdministrationAffiliationAdd, model.RoleScopeInstitution, AcademicAdministrationBatchItemCommand{UserID: userID, AffiliationKind: model.AffiliationStaff}},
+		{AcademicAdministrationAffiliationAdd, model.RoleScopeInstitution, AcademicAdministrationBatchItemCommand{UserID: model.UserID(userID), AffiliationKind: model.AffiliationStaff}},
 		{AcademicAdministrationAffiliationEnd, model.RoleScopeInstitution, AcademicAdministrationBatchItemCommand{RelationshipID: relationshipID}},
-		{AcademicAdministrationAcademicUnitMemberAdd, model.RoleScopeAcademicUnit, AcademicAdministrationBatchItemCommand{UserID: userID}},
+		{AcademicAdministrationAcademicUnitMemberAdd, model.RoleScopeAcademicUnit, AcademicAdministrationBatchItemCommand{UserID: model.UserID(userID)}},
 		{AcademicAdministrationAcademicUnitMemberEnd, model.RoleScopeAcademicUnit, AcademicAdministrationBatchItemCommand{RelationshipID: relationshipID}},
-		{AcademicAdministrationClassEnroll, model.RoleScopeClass, AcademicAdministrationBatchItemCommand{UserID: userID}},
+		{AcademicAdministrationClassEnroll, model.RoleScopeClass, AcademicAdministrationBatchItemCommand{UserID: model.UserID(userID)}},
 		{AcademicAdministrationClassEnd, model.RoleScopeClass, AcademicAdministrationBatchItemCommand{RelationshipID: relationshipID}},
-		{AcademicAdministrationClassTransfer, model.RoleScopeClass, AcademicAdministrationBatchItemCommand{UserID: userID, RelationshipID: relationshipID}},
-		{AcademicAdministrationRoleBindingCreate, model.RoleScopeClass, AcademicAdministrationBatchItemCommand{UserID: userID, RoleID: roleID}},
+		{AcademicAdministrationClassTransfer, model.RoleScopeClass, AcademicAdministrationBatchItemCommand{UserID: model.UserID(userID), RelationshipID: relationshipID}},
+		{AcademicAdministrationRoleBindingCreate, model.RoleScopeClass, AcademicAdministrationBatchItemCommand{UserID: model.UserID(userID), RoleID: model.RoleID(roleID)}},
 		{AcademicAdministrationRoleBindingEnd, model.RoleScopeClass, AcademicAdministrationBatchItemCommand{RelationshipID: relationshipID}},
-		{AcademicAdministrationUserEnable, model.RoleScopeInstitution, AcademicAdministrationBatchItemCommand{UserID: userID}},
-		{AcademicAdministrationUserDisable, model.RoleScopeInstitution, AcademicAdministrationBatchItemCommand{UserID: userID}},
-		{AcademicAdministrationUserSessionsRevoke, model.RoleScopeInstitution, AcademicAdministrationBatchItemCommand{UserID: userID}},
+		{AcademicAdministrationUserEnable, model.RoleScopeInstitution, AcademicAdministrationBatchItemCommand{UserID: model.UserID(userID)}},
+		{AcademicAdministrationUserDisable, model.RoleScopeInstitution, AcademicAdministrationBatchItemCommand{UserID: model.UserID(userID)}},
+		{AcademicAdministrationUserSessionsRevoke, model.RoleScopeInstitution, AcademicAdministrationBatchItemCommand{UserID: model.UserID(userID)}},
 	}
 	for _, testCase := range cases {
 		t.Run(string(testCase.operation), func(t *testing.T) {
@@ -254,7 +254,7 @@ func TestAcademicAdministrationSensitiveBatchRequiresStrongRecentInteractiveSess
 	_, err := service.RunAcademicAdministrationBatch(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID(),
 		CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialPersonalAccessToken}, model.RequestMetadata{}),
 		RunAcademicAdministrationBatchCommand{Operation: AcademicAdministrationUserDisable, ScopeType: model.RoleScopeInstitution,
-			ScopeID: institutionID, IdempotencyKey: "batch", Items: []AcademicAdministrationBatchItemCommand{{IdempotencyKey: "row", UserID: userID}}})
+			ScopeID: institutionID, IdempotencyKey: "batch", Items: []AcademicAdministrationBatchItemCommand{{IdempotencyKey: "row", UserID: model.UserID(userID)}}})
 	require.True(t, apperror.Is(err, "authentication.token_invalid"), "PAT sensitive batch error = %v", err)
 	require.Empty(t, commands.disabled)
 }

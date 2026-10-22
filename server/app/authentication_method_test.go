@@ -46,13 +46,14 @@ func (s *authenticationMethodIdentityStoreFake) Unlink(_ context.Context, input 
 }
 
 type authenticationMethodEffectsFake struct {
-	userID             string
-	sessionIDs, hashes []string
+	userID     model.UserID
+	sessionIDs []model.SessionID
+	hashes     []string
 }
 
-func (e *authenticationMethodEffectsFake) AuthenticationCacheInvalidated(context.Context, string, []string) {
+func (e *authenticationMethodEffectsFake) AuthenticationCacheInvalidated(context.Context, model.UserID, []string) {
 }
-func (e *authenticationMethodEffectsFake) SessionsRevoked(_ context.Context, userID string, sessionIDs, hashes []string) {
+func (e *authenticationMethodEffectsFake) SessionsRevoked(_ context.Context, userID model.UserID, sessionIDs []model.SessionID, hashes []string) {
 	e.userID, e.sessionIDs, e.hashes = userID, sessionIDs, hashes
 }
 

@@ -21,7 +21,7 @@ type sessionRevocationStore interface {
 }
 
 type sessionRevocationEffects interface {
-	SessionsRevoked(context.Context, string, []string, []string)
+	SessionsRevoked(context.Context, model.UserID, []model.SessionID, []string)
 }
 
 // sessionRevocationCoordinator commits an already-authorized revocation and
@@ -93,6 +93,6 @@ func (c sessionRevocationCoordinator) publish(
 	hashes []string,
 ) {
 	if len(sessions) != 0 {
-		c.effects.SessionsRevoked(ctx, userID, sessionIDs(sessions), hashes)
+		c.effects.SessionsRevoked(ctx, model.UserID(userID), sessionIDs(sessions), hashes)
 	}
 }

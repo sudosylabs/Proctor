@@ -24,7 +24,8 @@ import (
 )
 
 type IssueStudentClassInvitationCommand struct {
-	TargetEmail, ClassID                                                      string
+	TargetEmail                                                               string
+	ClassID                                                                   model.ClassID
 	IntendedStartsAt, IntendedEndsAt                                          int64
 	SuggestedUsername, SuggestedDisplayName                                   string
 	SuggestedFirstName, SuggestedLastName, SuggestedLocale, SuggestedTimezone string
@@ -41,7 +42,9 @@ type AcceptStudentClassInvitationCommand struct {
 }
 
 type IssueTeacherAcademicUnitInvitationCommand struct {
-	TargetEmail, AcademicUnitID, RoleID                                       string
+	TargetEmail                                                               string
+	AcademicUnitID                                                            model.AcademicUnitID
+	RoleID                                                                    model.RoleID
 	IntendedStartsAt, IntendedEndsAt                                          int64
 	SuggestedUsername, SuggestedDisplayName                                   string
 	SuggestedFirstName, SuggestedLastName, SuggestedLocale, SuggestedTimezone string
@@ -53,23 +56,27 @@ type IssueTeacherAcademicUnitInvitationCommand struct {
 }
 
 type IssueAcademicUnitRoleInvitationCommand struct {
-	TargetEmail, AcademicUnitID, RoleID string
-	IntendedStartsAt, IntendedEndsAt    int64
-	IdempotencyKey                      string
-	batchDuplicate                      bool
-	batchCanonicalKey                   string
-	onboardingImportID                  model.OnboardingImportID
-	onboardingImportRowNumber           int
+	TargetEmail                      string
+	AcademicUnitID                   model.AcademicUnitID
+	RoleID                           model.RoleID
+	IntendedStartsAt, IntendedEndsAt int64
+	IdempotencyKey                   string
+	batchDuplicate                   bool
+	batchCanonicalKey                string
+	onboardingImportID               model.OnboardingImportID
+	onboardingImportRowNumber        int
 }
 
 type IssueInstitutionRoleInvitationCommand struct {
-	TargetEmail, InstitutionID, RoleID string
-	IntendedStartsAt, IntendedEndsAt   int64
-	IdempotencyKey                     string
-	batchDuplicate                     bool
-	batchCanonicalKey                  string
-	onboardingImportID                 model.OnboardingImportID
-	onboardingImportRowNumber          int
+	TargetEmail                      string
+	InstitutionID                    model.InstitutionID
+	RoleID                           model.RoleID
+	IntendedStartsAt, IntendedEndsAt int64
+	IdempotencyKey                   string
+	batchDuplicate                   bool
+	batchCanonicalKey                string
+	onboardingImportID               model.OnboardingImportID
+	onboardingImportRowNumber        int
 }
 
 // authorizedScopedRoleInvitationIssue is the scope-specific result of the
@@ -203,7 +210,11 @@ type invitationLifecycleIdempotencySemantic struct {
 
 type ReplaceInvitationCommand struct {
 	ID                                                                        model.InvitationID
-	Purpose, TargetEmail, ClassID, AcademicUnitID, InstitutionID, RoleID      string
+	Purpose, TargetEmail                                                      string
+	ClassID                                                                   model.ClassID
+	AcademicUnitID                                                            model.AcademicUnitID
+	InstitutionID                                                             model.InstitutionID
+	RoleID                                                                    model.RoleID
 	ExpectedRevision, IntendedStartsAt, IntendedEndsAt                        int64
 	SuggestedUsername, SuggestedDisplayName                                   string
 	SuggestedFirstName, SuggestedLastName, SuggestedLocale, SuggestedTimezone string
@@ -237,7 +248,9 @@ func (o InvitationBatchOperation) IsValid() bool {
 // InvitationBatchItemCommand is a closed union interpreted only according to
 // its batch's single operation. Non-applicable fields make that row invalid.
 type InvitationBatchItemCommand struct {
-	InvitationID, TargetEmail, RoleID                                         string
+	InvitationID                                                              model.InvitationID
+	TargetEmail                                                               string
+	RoleID                                                                    model.RoleID
 	IdempotencyKey                                                            string
 	ExpectedRevision, IntendedStartsAt, IntendedEndsAt                        int64
 	SuggestedUsername, SuggestedDisplayName                                   string
@@ -453,7 +466,7 @@ func (s *invitationService) RunInvitationBatch(ctx context.Context, invocation i
 		if duplicate && (command.Operation == InvitationBatchResend || command.Operation == InvitationBatchRevoke) {
 			canonicalItem := itemsByKey[winner]
 			canonical, canonicalErr := idempotency.Prepare(invocation, invitationBatchLifecycleOperation(command.Operation), canonicalKey,
-				invitationLifecycleIdempotencySemantic{ID: strings.TrimSpace(canonicalItem.InvitationID), Revision: canonicalItem.ExpectedRevision})
+				invitationLifecycleIdempotencySemantic{ID: strings.TrimSpace(canonicalItem.InvitationID.String()), Revision: canonicalItem.ExpectedRevision})
 			if canonicalErr != nil || canonical == nil {
 				outcome.Status, outcome.ErrorCode = InvitationBatchItemFailed, "request.invalid"
 				result.append(outcome)
@@ -642,15 +655,15 @@ func validateInvitationBatchItem(operation InvitationBatchOperation, item Invita
 			return errors.New("invalid student Invitation batch item")
 		}
 	case InvitationBatchTeacherAcademicUnitCreate:
-		if item.InvitationID != "" || item.ExpectedRevision != 0 || strings.TrimSpace(item.TargetEmail) == "" || strings.TrimSpace(item.RoleID) == "" {
+		if item.InvitationID != "" || item.ExpectedRevision != 0 || strings.TrimSpace(item.TargetEmail) == "" || strings.TrimSpace(item.RoleID.String()) == "" {
 			return errors.New("invalid teacher Invitation batch item")
 		}
 	case InvitationBatchAcademicUnitRoleCreate, InvitationBatchInstitutionRoleCreate:
-		if item.InvitationID != "" || item.ExpectedRevision != 0 || strings.TrimSpace(item.TargetEmail) == "" || strings.TrimSpace(item.RoleID) == "" || hasSuggestions {
+		if item.InvitationID != "" || item.ExpectedRevision != 0 || strings.TrimSpace(item.TargetEmail) == "" || strings.TrimSpace(item.RoleID.String()) == "" || hasSuggestions {
 			return errors.New("invalid Role Invitation batch item")
 		}
 	case InvitationBatchResend, InvitationBatchRevoke:
-		if strings.TrimSpace(item.InvitationID) == "" || item.ExpectedRevision < 1 || item.TargetEmail != "" || item.RoleID != "" ||
+		if strings.TrimSpace(item.InvitationID.String()) == "" || item.ExpectedRevision < 1 || item.TargetEmail != "" || item.RoleID != "" ||
 			item.IntendedStartsAt != 0 || item.IntendedEndsAt != 0 || hasSuggestions {
 			return errors.New("invalid Invitation lifecycle batch item")
 		}
@@ -680,9 +693,9 @@ func invitationBatchDuplicateKey(operation InvitationBatchOperation, item Invita
 	case InvitationBatchStudentClassCreate:
 		return mailbox
 	case InvitationBatchTeacherAcademicUnitCreate, InvitationBatchAcademicUnitRoleCreate, InvitationBatchInstitutionRoleCreate:
-		return mailbox + "\x00" + strings.TrimSpace(item.RoleID)
+		return mailbox + "\x00" + strings.TrimSpace(item.RoleID.String())
 	case InvitationBatchResend, InvitationBatchRevoke:
-		return strings.TrimSpace(item.InvitationID)
+		return strings.TrimSpace(item.InvitationID.String())
 	default:
 		return ""
 	}
@@ -691,7 +704,7 @@ func invitationBatchDuplicateKey(operation InvitationBatchOperation, item Invita
 func (s *invitationService) runInvitationBatchItem(ctx context.Context, invocation invocation.Invocation, batch RunInvitationBatchCommand, item InvitationBatchItemCommand, itemKey string, duplicate bool, canonicalKey string, canonicalFingerprint [sha256.Size]byte) (model.InvitationID, InvitationBatchItemStatus, error) {
 	switch batch.Operation {
 	case InvitationBatchStudentClassCreate:
-		view, err := s.IssueStudentClassInvitation(ctx, invocation, IssueStudentClassInvitationCommand{TargetEmail: item.TargetEmail, ClassID: batch.ScopeID,
+		view, err := s.IssueStudentClassInvitation(ctx, invocation, IssueStudentClassInvitationCommand{TargetEmail: item.TargetEmail, ClassID: model.ClassID(batch.ScopeID),
 			IntendedStartsAt: item.IntendedStartsAt, IntendedEndsAt: item.IntendedEndsAt, SuggestedUsername: item.SuggestedUsername,
 			SuggestedDisplayName: item.SuggestedDisplayName, SuggestedFirstName: item.SuggestedFirstName,
 			SuggestedLastName: item.SuggestedLastName, SuggestedLocale: item.SuggestedLocale, SuggestedTimezone: item.SuggestedTimezone, IdempotencyKey: itemKey,
@@ -700,7 +713,7 @@ func (s *invitationService) runInvitationBatchItem(ctx context.Context, invocati
 		return invitationBatchViewOutcome(view, err)
 	case InvitationBatchTeacherAcademicUnitCreate:
 		view, err := s.IssueTeacherAcademicUnitInvitation(ctx, invocation, IssueTeacherAcademicUnitInvitationCommand{TargetEmail: item.TargetEmail,
-			AcademicUnitID: batch.ScopeID, RoleID: item.RoleID, IntendedStartsAt: item.IntendedStartsAt, IntendedEndsAt: item.IntendedEndsAt,
+			AcademicUnitID: model.AcademicUnitID(batch.ScopeID), RoleID: item.RoleID, IntendedStartsAt: item.IntendedStartsAt, IntendedEndsAt: item.IntendedEndsAt,
 			SuggestedUsername: item.SuggestedUsername, SuggestedDisplayName: item.SuggestedDisplayName,
 			SuggestedFirstName: item.SuggestedFirstName, SuggestedLastName: item.SuggestedLastName,
 			SuggestedLocale: item.SuggestedLocale, SuggestedTimezone: item.SuggestedTimezone, IdempotencyKey: itemKey, batchDuplicate: duplicate, batchCanonicalKey: canonicalKey,
@@ -708,23 +721,23 @@ func (s *invitationService) runInvitationBatchItem(ctx context.Context, invocati
 		return invitationBatchViewOutcome(view, err)
 	case InvitationBatchAcademicUnitRoleCreate:
 		view, err := s.IssueAcademicUnitRoleInvitation(ctx, invocation, IssueAcademicUnitRoleInvitationCommand{TargetEmail: item.TargetEmail,
-			AcademicUnitID: batch.ScopeID, RoleID: item.RoleID, IntendedStartsAt: item.IntendedStartsAt,
+			AcademicUnitID: model.AcademicUnitID(batch.ScopeID), RoleID: item.RoleID, IntendedStartsAt: item.IntendedStartsAt,
 			IntendedEndsAt: item.IntendedEndsAt, IdempotencyKey: itemKey, batchDuplicate: duplicate, batchCanonicalKey: canonicalKey,
 			onboardingImportID: batch.onboardingImportID, onboardingImportRowNumber: batch.onboardingImportRowNumber})
 		return invitationBatchViewOutcome(view, err)
 	case InvitationBatchInstitutionRoleCreate:
 		view, err := s.IssueInstitutionRoleInvitation(ctx, invocation, IssueInstitutionRoleInvitationCommand{TargetEmail: item.TargetEmail,
-			InstitutionID: batch.ScopeID, RoleID: item.RoleID, IntendedStartsAt: item.IntendedStartsAt,
+			InstitutionID: model.InstitutionID(batch.ScopeID), RoleID: item.RoleID, IntendedStartsAt: item.IntendedStartsAt,
 			IntendedEndsAt: item.IntendedEndsAt, IdempotencyKey: itemKey, batchDuplicate: duplicate, batchCanonicalKey: canonicalKey,
 			onboardingImportID: batch.onboardingImportID, onboardingImportRowNumber: batch.onboardingImportRowNumber})
 		return invitationBatchViewOutcome(view, err)
 	case InvitationBatchResend:
-		view, err := s.ResendInvitation(ctx, invocation, ResendInvitationCommand{ID: model.InvitationID(strings.TrimSpace(item.InvitationID)), ExpectedRevision: item.ExpectedRevision,
+		view, err := s.ResendInvitation(ctx, invocation, ResendInvitationCommand{ID: model.InvitationID(strings.TrimSpace(item.InvitationID.String())), ExpectedRevision: item.ExpectedRevision,
 			IdempotencyKey: itemKey, BatchScopeType: batch.ScopeType, BatchScopeID: batch.ScopeID,
 			batchDuplicate: duplicate, batchCanonicalKey: canonicalKey, batchCanonicalFingerprint: canonicalFingerprint})
 		return invitationBatchAdministrationOutcome(view, err)
 	case InvitationBatchRevoke:
-		view, err := s.RevokeInvitation(ctx, invocation, RevokeInvitationCommand{ID: model.InvitationID(strings.TrimSpace(item.InvitationID)), ExpectedRevision: item.ExpectedRevision,
+		view, err := s.RevokeInvitation(ctx, invocation, RevokeInvitationCommand{ID: model.InvitationID(strings.TrimSpace(item.InvitationID.String())), ExpectedRevision: item.ExpectedRevision,
 			IdempotencyKey: itemKey, BatchScopeType: batch.ScopeType, BatchScopeID: batch.ScopeID,
 			batchDuplicate: duplicate, batchCanonicalKey: canonicalKey, batchCanonicalFingerprint: canonicalFingerprint})
 		return invitationBatchAdministrationOutcome(view, err)
@@ -1052,7 +1065,7 @@ func (s *invitationService) prepareReplacement(ctx context.Context, invocation i
 	actor := invocation.Principal().UserID
 	switch purpose {
 	case model.InvitationPurposeStudentClass:
-		classID, err := model.ParseClassID(strings.TrimSpace(command.ClassID))
+		classID, err := model.ParseClassID(strings.TrimSpace(command.ClassID.String()))
 		if err != nil {
 			return nil, "", apperror.New("request.invalid").WithField("field", "class_id").Wrap(err)
 		}
@@ -1085,11 +1098,11 @@ func (s *invitationService) prepareReplacement(ctx context.Context, invocation i
 		}
 		return value, rawClaim, nil
 	case model.InvitationPurposeTeacherAcademicUnit, model.InvitationPurposeAcademicUnitRole:
-		unitID, err := model.ParseAcademicUnitID(strings.TrimSpace(command.AcademicUnitID))
+		unitID, err := model.ParseAcademicUnitID(strings.TrimSpace(command.AcademicUnitID.String()))
 		if err != nil {
 			return nil, "", apperror.New("request.invalid").WithField("field", "academic_unit_id").Wrap(err)
 		}
-		roleID, err := model.ParseRoleID(strings.TrimSpace(command.RoleID))
+		roleID, err := model.ParseRoleID(strings.TrimSpace(command.RoleID.String()))
 		if err != nil {
 			return nil, "", apperror.New("request.invalid").WithField("field", "role_id").Wrap(err)
 		}
@@ -1145,11 +1158,11 @@ func (s *invitationService) prepareReplacement(ctx context.Context, invocation i
 		if err := requireStrongRecentSession(invocation.Principal(), s.deps.Now(), s.deps.RecentAuthenticationTTL); err != nil {
 			return nil, "", err
 		}
-		institutionID, err := model.ParseInstitutionID(strings.TrimSpace(command.InstitutionID))
+		institutionID, err := model.ParseInstitutionID(strings.TrimSpace(command.InstitutionID.String()))
 		if err != nil {
 			return nil, "", apperror.New("request.invalid").WithField("field", "institution_id").Wrap(err)
 		}
-		roleID, err := model.ParseRoleID(strings.TrimSpace(command.RoleID))
+		roleID, err := model.ParseRoleID(strings.TrimSpace(command.RoleID.String()))
 		if err != nil {
 			return nil, "", apperror.New("request.invalid").WithField("field", "role_id").Wrap(err)
 		}
@@ -1212,7 +1225,7 @@ func invitationAdministrationView(record *store.InvitationAdministrationRecord) 
 }
 
 func (s *invitationService) IssueStudentClassInvitation(ctx context.Context, invocation invocation.Invocation, command IssueStudentClassInvitationCommand) (InvitationView, error) {
-	classID := strings.TrimSpace(command.ClassID)
+	classID := strings.TrimSpace(command.ClassID.String())
 	parsedClassID, err := model.ParseClassID(classID)
 	if err != nil {
 		return InvitationView{}, apperror.New("request.invalid").WithField("field", "class_id").Wrap(err)
@@ -1340,11 +1353,11 @@ func (s *invitationService) IssueStudentClassInvitation(ctx context.Context, inv
 }
 
 func (s *invitationService) IssueTeacherAcademicUnitInvitation(ctx context.Context, invocation invocation.Invocation, command IssueTeacherAcademicUnitInvitationCommand) (InvitationView, error) {
-	unitID, err := model.ParseAcademicUnitID(strings.TrimSpace(command.AcademicUnitID))
+	unitID, err := model.ParseAcademicUnitID(strings.TrimSpace(command.AcademicUnitID.String()))
 	if err != nil {
 		return InvitationView{}, apperror.New("request.invalid").WithField("field", "academic_unit_id").Wrap(err)
 	}
-	roleID, err := model.ParseRoleID(strings.TrimSpace(command.RoleID))
+	roleID, err := model.ParseRoleID(strings.TrimSpace(command.RoleID.String()))
 	if err != nil {
 		return InvitationView{}, apperror.New("request.invalid").WithField("field", "role_id").Wrap(err)
 	}
@@ -1476,11 +1489,11 @@ func (s *invitationService) IssueTeacherAcademicUnitInvitation(ctx context.Conte
 }
 
 func (s *invitationService) IssueAcademicUnitRoleInvitation(ctx context.Context, invocation invocation.Invocation, command IssueAcademicUnitRoleInvitationCommand) (InvitationView, error) {
-	unitID, err := model.ParseAcademicUnitID(strings.TrimSpace(command.AcademicUnitID))
+	unitID, err := model.ParseAcademicUnitID(strings.TrimSpace(command.AcademicUnitID.String()))
 	if err != nil {
 		return InvitationView{}, apperror.New("request.invalid").WithField("field", "academic_unit_id").Wrap(err)
 	}
-	roleID, err := model.ParseRoleID(strings.TrimSpace(command.RoleID))
+	roleID, err := model.ParseRoleID(strings.TrimSpace(command.RoleID.String()))
 	if err != nil {
 		return InvitationView{}, apperror.New("request.invalid").WithField("field", "role_id").Wrap(err)
 	}
@@ -1524,11 +1537,11 @@ func (s *invitationService) IssueInstitutionRoleInvitation(ctx context.Context, 
 	if err := requireStrongRecentSession(invocation.Principal(), s.deps.Now(), s.deps.RecentAuthenticationTTL); err != nil {
 		return InvitationView{}, err
 	}
-	institutionID, err := model.ParseInstitutionID(strings.TrimSpace(command.InstitutionID))
+	institutionID, err := model.ParseInstitutionID(strings.TrimSpace(command.InstitutionID.String()))
 	if err != nil {
 		return InvitationView{}, apperror.New("request.invalid").WithField("field", "institution_id").Wrap(err)
 	}
-	roleID, err := model.ParseRoleID(strings.TrimSpace(command.RoleID))
+	roleID, err := model.ParseRoleID(strings.TrimSpace(command.RoleID.String()))
 	if err != nil {
 		return InvitationView{}, apperror.New("request.invalid").WithField("field", "role_id").Wrap(err)
 	}
@@ -1846,7 +1859,7 @@ func (s *invitationService) acceptTeacherAcademicUnitByClaimHash(ctx context.Con
 		return nil, invalidInvitationError(err)
 	}
 	if !result.Replayed && result.User != nil {
-		s.deps.MembershipEffects.InvalidateAuthorization(ctx, result.User.ID.String())
+		s.deps.MembershipEffects.InvalidateAuthorization(ctx, result.User.ID)
 	}
 	return &InvitationAcceptanceView{Invitation: invitationView(result.Invitation), User: result.User, Affiliation: result.Affiliation,
 		AcademicUnitMember: result.AcademicUnitMember, RoleBinding: result.RoleBinding, Replayed: result.Replayed}, nil
@@ -1948,7 +1961,7 @@ func (s *invitationService) acceptExternalIdentity(ctx context.Context, state *m
 		return nil, err
 	}
 	if result.User != nil && (result.AcademicUnitMember != nil || result.RoleBinding != nil) {
-		s.deps.MembershipEffects.InvalidateAuthorization(ctx, result.User.ID.String())
+		s.deps.MembershipEffects.InvalidateAuthorization(ctx, result.User.ID)
 	}
 	if result.ClassMember != nil {
 		if effectErr := s.deps.MembershipEffects.MembershipChanged(ctx, result.ClassMember.UserID,
@@ -2015,7 +2028,7 @@ func (s *invitationService) acceptScopedRoleByClaimHash(
 		return nil, err
 	}
 	if !result.Replayed && result.User != nil {
-		s.deps.MembershipEffects.InvalidateAuthorization(ctx, result.User.ID.String())
+		s.deps.MembershipEffects.InvalidateAuthorization(ctx, result.User.ID)
 	}
 	return &InvitationAcceptanceView{Invitation: invitationView(result.Invitation), User: result.User,
 		RoleBinding: result.RoleBinding, Replayed: result.Replayed}, nil

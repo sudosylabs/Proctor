@@ -128,9 +128,9 @@ func auditQueryFromRequest(request *http.Request) (app.ListAuditEventsQuery, err
 		}
 		createdAt, _ := model.ParseRFC3339(cursor.CreatedAt)
 		query.BeforeCreatedAt = createdAt
-		query.BeforeID = cursor.ID
+		query.BeforeID = model.AuditEventID(cursor.ID)
 	}
-	query.ActorID = values.Get("actor_id")
+	query.ActorID = model.UserID(values.Get("actor_id"))
 	query.Action = values.Get("action")
 	resourceType, resourceID := values.Get("resource_type"), values.Get("resource_id")
 	if (resourceType == "") != (resourceID == "") {

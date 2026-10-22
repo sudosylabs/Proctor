@@ -35,7 +35,7 @@ type SearchClassesQuery struct {
 
 type CreateClassCommand struct {
 	ProgrammeLevelID model.ProgrammeLevelID
-	AcademicPeriodID string
+	AcademicPeriodID model.AcademicPeriodID
 	Name             string
 	DisplayName      string
 	Description      string
@@ -44,8 +44,8 @@ type CreateClassCommand struct {
 type UpdateClassCommand struct {
 	ExpectedRevision *int64
 	ID               model.ClassID
-	ProgrammeLevelID *string
-	AcademicPeriodID *string
+	ProgrammeLevelID *model.ProgrammeLevelID
+	AcademicPeriodID *model.AcademicPeriodID
 	Name             *string
 	DisplayName      *string
 	Description      *string
@@ -159,7 +159,7 @@ func (s *classService) CreateClass(ctx context.Context, invocation invocation.In
 		return nil, apperror.New("request.invalid").WithField("field", "class_id").Wrap(err)
 	}
 	programmeLevelID := levelID
-	academicPeriodID, err := model.ParseAcademicPeriodID(strings.TrimSpace(command.AcademicPeriodID))
+	academicPeriodID, err := model.ParseAcademicPeriodID(strings.TrimSpace(command.AcademicPeriodID.String()))
 	if err != nil {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_period_id").Wrap(err)
 	}
@@ -218,14 +218,14 @@ func (s *classService) UpdateClass(ctx context.Context, invocation invocation.In
 	}
 	candidate := *current
 	if command.ProgrammeLevelID != nil {
-		levelID, err := model.ParseProgrammeLevelID(strings.TrimSpace(*command.ProgrammeLevelID))
+		levelID, err := model.ParseProgrammeLevelID(strings.TrimSpace(command.ProgrammeLevelID.String()))
 		if err != nil {
 			return nil, apperror.New("request.invalid").WithField("field", "programme_level_id").Wrap(err)
 		}
 		candidate.ProgrammeLevelID = levelID
 	}
 	if command.AcademicPeriodID != nil {
-		periodID, err := model.ParseAcademicPeriodID(strings.TrimSpace(*command.AcademicPeriodID))
+		periodID, err := model.ParseAcademicPeriodID(strings.TrimSpace(command.AcademicPeriodID.String()))
 		if err != nil {
 			return nil, apperror.New("request.invalid").WithField("field", "academic_period_id").Wrap(err)
 		}

@@ -97,7 +97,7 @@ func onboardingImportResource(imports OnboardingImportApplication) apiResource {
 func (m onboardingImportModule) upload(request operationRequest) (protocolResult, error) {
 	query := request.request.URL.Query()
 	view, err := m.imports.UploadOnboardingImport(request.context, request.invocation(), app.UploadOnboardingImportCommand{
-		Mode: model.OnboardingImportMode(query.Get("mode")), ScopeType: model.RoleScopeType(query.Get("scope_type")), ScopeID: query.Get("scope_id"), RoleID: query.Get("role_id"), Body: request.request.Body,
+		Mode: model.OnboardingImportMode(query.Get("mode")), ScopeType: model.RoleScopeType(query.Get("scope_type")), ScopeID: query.Get("scope_id"), RoleID: model.RoleID(query.Get("role_id")), Body: request.request.Body,
 	})
 	if err != nil {
 		return protocolResult{}, err

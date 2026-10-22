@@ -76,12 +76,12 @@ func (a *sessionAdministrationAuthorizerFake) Authorize(_ context.Context, _ inv
 
 type sessionAdministrationEffectsFake struct {
 	events     *[]string
-	userID     string
-	sessionIDs []string
+	userID     model.UserID
+	sessionIDs []model.SessionID
 	hashes     []string
 }
 
-func (e *sessionAdministrationEffectsFake) SessionsRevoked(_ context.Context, userID string, sessionIDs, hashes []string) {
+func (e *sessionAdministrationEffectsFake) SessionsRevoked(_ context.Context, userID model.UserID, sessionIDs []model.SessionID, hashes []string) {
 	*e.events = append(*e.events, "publish-revocation")
 	e.userID, e.sessionIDs, e.hashes = userID, sessionIDs, hashes
 }
@@ -328,7 +328,7 @@ func TestAdminSessionRevocationOutcomesPreserveAuditAndBatchResult(t *testing.T)
 			}
 			if outcome == "changed" {
 				want = append(want, "publish-revocation")
-				require.Equal(t, userID, effects.userID)
+				require.Equal(t, model.UserID(userID), effects.userID)
 				require.True(t, slices.Equal(effects.sessionIDs, sessionIDs(persistence.revokeAllResult.Sessions)))
 				require.True(t, slices.Equal(effects.hashes, persistence.revokeAllResult.TokenHashes))
 			}

@@ -85,7 +85,7 @@ func TestAcademicUnitMemberResourceRunsThroughRoutingKernel(t *testing.T) {
 	httpAPI.ServeHTTP(created, create)
 	require.Equal(t, http.StatusCreated, created.Code, "create status = %d: %s", created.Code, created.Body.String())
 	require.Equal(t, model.AcademicUnitID(unitID), members.createCommand.AcademicUnitID)
-	require.Equal(t, userID, members.createCommand.UserID)
+	require.Equal(t, model.UserID(userID), members.createCommand.UserID)
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(created.Body.Bytes(), &body))
 	_, exposed := body["revision"]

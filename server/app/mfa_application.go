@@ -35,7 +35,7 @@ type mfaSecurityDependencies struct {
 }
 
 type mfaEffects interface {
-	SessionsRevoked(context.Context, string, []string, []string)
+	SessionsRevoked(context.Context, model.UserID, []model.SessionID, []string)
 }
 
 // mfaApplicationServiceDependencies are the collaborators of mfaApplicationService;
@@ -242,7 +242,7 @@ func (s *mfaApplicationService) ActivateMFA(
 		return nil, s.failMutation(ctx, auditID, err)
 	}
 	s.deps.Effects.SessionsRevoked(
-		ctx, principal.UserID.String(), []string{principal.SessionID.String()},
+		ctx, principal.UserID, []model.SessionID{principal.SessionID},
 		activated.AccessTokenHashes,
 	)
 	return &MFAActivation{RecoveryCodes: rawCodes}, nil
@@ -296,7 +296,7 @@ func (s *mfaApplicationService) ChallengeMFA(
 	if result == nil || result.Session == nil {
 		return nil, authenticationUnavailable(errors.New("MFA challenge returned no Session"))
 	}
-	s.deps.Effects.SessionsRevoked(ctx, principal.UserID.String(), []string{principal.SessionID.String()}, result.AccessTokenHashes)
+	s.deps.Effects.SessionsRevoked(ctx, principal.UserID, []model.SessionID{principal.SessionID}, result.AccessTokenHashes)
 	return result.Session, nil
 }
 
@@ -383,7 +383,7 @@ func (s *mfaApplicationService) DisableMFA(
 		return s.failMutation(ctx, auditID, err)
 	}
 	s.deps.Effects.SessionsRevoked(
-		ctx, principal.UserID.String(), nil, result.AccessTokenHashes,
+		ctx, principal.UserID, nil, result.AccessTokenHashes,
 	)
 	return nil
 }

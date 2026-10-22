@@ -554,7 +554,7 @@ func eventFromRealtime(event realtime.RealtimeEvent) *Event {
 	return &Event{
 		ID:       event.ID,
 		Event:    event.Name,
-		UserID:   event.UserID,
+		UserID:   event.UserID.String(),
 		Action:   event.Action,
 		Resource: resourceFromModel(event.Resource),
 		Data:     append(json.RawMessage(nil), event.Data...),

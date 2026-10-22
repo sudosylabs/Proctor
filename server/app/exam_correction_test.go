@@ -49,6 +49,6 @@ func TestCorrectionEffectPublishesManagerAndCandidateRefetchFacts(t *testing.T) 
 	require.Equal(t, string(events[0].Data), string(events[1].Data))
 	require.Equal(t, "manager.sitting_board.changed", events[2].Name)
 	require.Equal(t, "candidate.exam_activity.changed", events[3].Name)
-	require.Equal(t, candidateID.String(), events[3].UserID)
+	require.Equal(t, candidateID, events[3].UserID)
 
 }

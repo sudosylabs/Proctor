@@ -90,7 +90,7 @@ func (e examRealtimeEffects) ManagerChanged(ctx context.Context, examID model.Ex
 	if err != nil {
 		return err
 	}
-	e.realtime.InvalidateAuthorization(ctx, userID.String())
+	e.realtime.InvalidateAuthorization(ctx, userID)
 	return e.realtime.PublishRealtimeEvent(ctx, event)
 }
 func (e examRealtimeEffects) OwnerTransferred(ctx context.Context, examID model.ExamID, ownerID model.UserID, revision int64, changedAt time.Time) error {

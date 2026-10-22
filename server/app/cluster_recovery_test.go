@@ -88,8 +88,8 @@ func TestDuplicateSessionRevocationPropagationIsIdempotent(t *testing.T) {
 	// Seed a cache entry that both propagations must delete.
 	require.NoError(t, cache.SetAlways(ctx, authenticationCachePrefix+hash, []byte(`{}`), time.Hour))
 
-	realtime.SessionsRevoked(ctx, userID, []string{sessionID}, []string{hash})
-	realtime.SessionsRevoked(ctx, userID, []string{sessionID}, []string{hash})
+	realtime.SessionsRevoked(ctx, model.UserID(userID), []model.SessionID{model.SessionID(sessionID)}, []string{hash})
+	realtime.SessionsRevoked(ctx, model.UserID(userID), []model.SessionID{model.SessionID(sessionID)}, []string{hash})
 
 	require.GreaterOrEqual(t, len(sink.sessionCloses), 2, "session closes")
 	require.GreaterOrEqual(t, len(cluster.broadcasts), 2, "cluster broadcasts")

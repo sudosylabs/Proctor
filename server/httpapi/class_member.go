@@ -101,7 +101,7 @@ func (m classMemberResourceModule) enroll(request operationRequest) (operationRe
 	if err != nil {
 		return operationResult{}, err
 	}
-	enrollment, err := m.members.EnrollClassMember(request.context, request.invocation(), app.EnrollClassMemberCommand{ClassID: classID, UserID: body.UserID, StartAt: startAt, EndAt: endAt})
+	enrollment, err := m.members.EnrollClassMember(request.context, request.invocation(), app.EnrollClassMemberCommand{ClassID: classID, UserID: model.UserID(body.UserID), StartAt: startAt, EndAt: endAt})
 	if err != nil {
 		return operationResult{}, err
 	}

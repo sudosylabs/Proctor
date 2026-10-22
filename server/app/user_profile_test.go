@@ -140,7 +140,7 @@ func (a *userProfileAuthorizerFake) AuthorizeSearch(context.Context, invocation.
 	}
 	return store.UserVisibilityScope{ClassIDs: []model.ClassID{"class-a"}, ActiveAt: model.TimeFromMillis(100)}, nil
 }
-func (a *userProfileAuthorizerFake) AuthorizeProfileRead(context.Context, invocation.Invocation, string) (profileReadAuthorization, error) {
+func (a *userProfileAuthorizerFake) AuthorizeProfileRead(context.Context, invocation.Invocation, model.UserID) (profileReadAuthorization, error) {
 	*a.events = append(*a.events, "authorize-read")
 	return profileReadAuthorization{FullProfile: a.fullRead}, a.readErr
 }
@@ -149,11 +149,11 @@ func (a *userProfileAuthorizerFake) Authorize(context.Context, invocation.Invoca
 	return nil
 }
 
-func (a *userProfileAuthorizerFake) AuthorizeAccountStateManage(context.Context, invocation.Invocation, string) error {
+func (a *userProfileAuthorizerFake) AuthorizeAccountStateManage(context.Context, invocation.Invocation, model.UserID) error {
 	*a.events = append(*a.events, "authorize-manage")
 	return nil
 }
-func (a *userProfileAuthorizerFake) AuthorizeProfilePictureWrite(context.Context, invocation.Invocation, string) error {
+func (a *userProfileAuthorizerFake) AuthorizeProfilePictureWrite(context.Context, invocation.Invocation, model.UserID) error {
 	*a.events = append(*a.events, "authorize-profile-picture-write")
 	return a.writeErr
 }

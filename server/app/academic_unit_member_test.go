@@ -30,10 +30,10 @@ type academicUnitMemberStoreFake struct {
 }
 
 type academicUnitMemberEffectsFake struct {
-	users []string
+	users []model.UserID
 }
 
-func (f *academicUnitMemberEffectsFake) InvalidateAuthorization(_ context.Context, userID string) {
+func (f *academicUnitMemberEffectsFake) InvalidateAuthorization(_ context.Context, userID model.UserID) {
 	f.users = append(f.users, userID)
 }
 
@@ -71,7 +71,7 @@ func TestAcademicUnitMemberCreateUsesAuthorizationWithoutGrantingPermission(t *t
 		clockCalls++
 		return time.UnixMilli(500)
 	}, NewID: model.NewID})
-	created, err := service.CreateAcademicUnitMember(context.Background(), invocation.Invocation{}, CreateAcademicUnitMemberCommand{AcademicUnitID: model.AcademicUnitID(unitID), UserID: userID, StartAt: 100})
+	created, err := service.CreateAcademicUnitMember(context.Background(), invocation.Invocation{}, CreateAcademicUnitMemberCommand{AcademicUnitID: model.AcademicUnitID(unitID), UserID: model.UserID(userID), StartAt: 100})
 	require.NoError(t, err)
 	require.Equal(t, unitID, created.AcademicUnitID.String())
 	require.Equal(t, userID, created.UserID.String())
@@ -79,7 +79,7 @@ func TestAcademicUnitMemberCreateUsesAuthorizationWithoutGrantingPermission(t *t
 	require.False(t, persistence.createInput.Member.EndsAt.Valid)
 	require.Equal(t, 1, clockCalls, "clock calls/creation/audit time")
 	require.True(t, model.TimeUTC(created.CreatedAt).Equal(persistence.createInput.AuditAt), "clock calls/creation/audit time")
-	require.Equal(t, []string{userID}, effects.users)
+	require.Equal(t, []model.UserID{model.UserID(userID)}, effects.users)
 	require.NotNil(t, persistence.createInput.Notice, "creation mail = %#v", persistence.createInput)
 	require.Equal(t, int64(1), persistence.createInput.ExpectedRecipientRevision, "creation mail = %#v", persistence.createInput)
 	require.Len(t, mail.requests, 1, "creation mail = %#v", persistence.createInput)
@@ -105,7 +105,7 @@ func TestAcademicUnitMemberEndCarriesRevision(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, current.Revision, persistence.endInput.ExpectedRevision, "end input/result = %#v / %#v", persistence.endInput, ended)
 	require.Equal(t, current.Revision+1, ended.Revision, "end input/result = %#v / %#v", persistence.endInput, ended)
-	require.Equal(t, []string{current.UserID.String()}, effects.users)
+	require.Equal(t, []model.UserID{current.UserID}, effects.users)
 	require.NotNil(t, persistence.endInput.Notice, "end mail = %#v", persistence.endInput)
 	require.Equal(t, int64(1), persistence.endInput.ExpectedRecipientRevision, "end mail = %#v", persistence.endInput)
 	require.Len(t, mail.requests, 1, "end mail = %#v", persistence.endInput)

@@ -29,7 +29,7 @@ func TestRealtimePublishRequiresClusterFanout(t *testing.T) {
 	_ = service.AttachRealtimeSink(&recordingRealtimeSink{})
 	err := service.PublishRealtimeEvent(context.Background(), realtime.RealtimeEvent{
 		Name:   "user.notification",
-		UserID: model.NewID(),
+		UserID: model.UserID(model.NewID()),
 	})
 	require.Error(t, err, "Publish() error")
 	require.True(t, apperror.Is(err, "websocket.internal"), "Publish() error")
@@ -61,18 +61,18 @@ func TestSessionRevocationPublishesAttemptProjectionInvalidations(t *testing.T) 
 	require.NoError(t, service.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
 
 	service.SessionsRevoked(
-		context.Background(), candidateID.String(), []string{sessionID.String()}, nil,
+		context.Background(), candidateID, []model.SessionID{sessionID}, nil,
 	)
 	require.Equal(t, candidateID, attempts.candidateID, "attempt invalidation query = candidate")
 	require.Len(t, attempts.sessionIDs, 1, "attempt invalidation query = candidate")
 	require.Equal(t, sessionID, attempts.sessionIDs[0], "attempt invalidation query = candidate")
 	require.Len(t, sink.events, 3)
 	require.Equal(t, "candidate.exam_activity.changed", sink.events[0].Name)
-	require.Equal(t, candidateID.String(), sink.events[0].UserID)
+	require.Equal(t, candidateID, sink.events[0].UserID)
 	require.Equal(t, "manager.sitting_board.changed", sink.events[1].Name)
 	require.Equal(t, target.SittingID.String(), sink.events[1].Resource.ID)
 	require.Equal(t, "current_user.context.changed", sink.events[2].Name)
-	require.Equal(t, candidateID.String(), sink.events[2].UserID)
+	require.Equal(t, candidateID, sink.events[2].UserID)
 }
 
 type sessionRevocationAttemptProjectionFake struct {

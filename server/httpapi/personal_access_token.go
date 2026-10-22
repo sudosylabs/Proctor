@@ -143,7 +143,7 @@ func (m personalAccessTokenResourceModule) create(request operationRequest) (ope
 		request.invocation(),
 		app.CreatePersonalAccessTokenCommand{
 			Description: input.Description, Scopes: input.Scopes,
-			AcademicUnitID: input.AcademicUnitID, ExpiresAt: expiresAt,
+			AcademicUnitID: model.AcademicUnitID(input.AcademicUnitID), ExpiresAt: expiresAt,
 		},
 	)
 	if err != nil {

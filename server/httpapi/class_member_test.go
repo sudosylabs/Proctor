@@ -62,7 +62,7 @@ func TestClassMemberHTTPUsesDTOAndRouteOwnedClass(t *testing.T) {
 	httpAPI.ServeHTTP(response, request)
 	require.Equal(t, http.StatusCreated, response.Code, "status = %d: %s", response.Code, response.Body.String())
 	require.Equal(t, model.ClassID(classID), classMembers.enrollCommand.ClassID)
-	require.Equal(t, userID, classMembers.enrollCommand.UserID)
+	require.Equal(t, model.UserID(userID), classMembers.enrollCommand.UserID)
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 	membership := body["membership"].(map[string]any)

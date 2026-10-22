@@ -23,10 +23,10 @@ import (
 )
 
 type DryRunStudentProgressionCommand struct {
-	SourcePeriodID      string
-	SourceClassID       string
-	DestinationPeriodID string
-	DestinationClassID  string
+	SourcePeriodID      model.AcademicPeriodID
+	SourceClassID       model.ClassID
+	DestinationPeriodID model.AcademicPeriodID
+	DestinationClassID  model.ClassID
 	EffectiveAt         int64
 }
 
@@ -61,8 +61,8 @@ func (s *onboardingImportService) StudentProgressionReport(ctx context.Context, 
 }
 
 func (s *onboardingImportService) DryRunStudentProgression(ctx context.Context, invocation invocation.Invocation, command DryRunStudentProgressionCommand) (OnboardingImportView, error) {
-	sourcePeriodID, sourceClassID := model.AcademicPeriodID(strings.TrimSpace(command.SourcePeriodID)), model.ClassID(strings.TrimSpace(command.SourceClassID))
-	destinationPeriodID, destinationClassID := model.AcademicPeriodID(strings.TrimSpace(command.DestinationPeriodID)), model.ClassID(strings.TrimSpace(command.DestinationClassID))
+	sourcePeriodID, sourceClassID := model.AcademicPeriodID(strings.TrimSpace(command.SourcePeriodID.String())), model.ClassID(strings.TrimSpace(command.SourceClassID.String()))
+	destinationPeriodID, destinationClassID := model.AcademicPeriodID(strings.TrimSpace(command.DestinationPeriodID.String())), model.ClassID(strings.TrimSpace(command.DestinationClassID.String()))
 	if !sourcePeriodID.IsValid() || !sourceClassID.IsValid() || !destinationPeriodID.IsValid() || !destinationClassID.IsValid() ||
 		sourceClassID == destinationClassID || command.EffectiveAt <= 0 {
 		return OnboardingImportView{}, apperror.New("request.invalid")

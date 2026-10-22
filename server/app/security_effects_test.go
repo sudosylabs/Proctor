@@ -167,7 +167,7 @@ func TestAuthenticationCacheInvalidatorOwnsKeysAndSafeDiagnostics(t *testing.T) 
 	)
 	invalidator.InvalidateSessionActivity(
 		context.Background(),
-		[]string{"session-one", "session-two"},
+		[]model.SessionID{"session-one", "session-two"},
 	)
 
 	wantDeletes := []string{
@@ -228,15 +228,15 @@ type discardAuthenticationSecurityEffects struct{}
 
 func (discardAuthenticationSecurityEffects) AuthenticationCacheInvalidated(
 	context.Context,
-	string,
+	model.UserID,
 	[]string,
 ) {
 }
 
 func (discardAuthenticationSecurityEffects) SessionsRevoked(
 	context.Context,
-	string,
-	[]string,
+	model.UserID,
+	[]model.SessionID,
 	[]string,
 ) {
 }

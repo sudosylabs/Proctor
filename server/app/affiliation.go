@@ -63,7 +63,7 @@ type affiliationEnrollmentReader interface {
 
 type affiliationAuthorizer interface {
 	Authorize(context.Context, invocation.Invocation, model.Action, model.Resource) error
-	AuthorizeUserRead(context.Context, invocation.Invocation, string) error
+	AuthorizeUserRead(context.Context, invocation.Invocation, model.UserID) error
 }
 
 type affiliationEffects interface {
@@ -106,7 +106,7 @@ func (s *affiliationService) ListAffiliations(ctx context.Context, invocation in
 	if !userID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
-	if err := s.deps.Authorization.AuthorizeUserRead(ctx, invocation, userID.String()); err != nil {
+	if err := s.deps.Authorization.AuthorizeUserRead(ctx, invocation, userID); err != nil {
 		return nil, err
 	}
 	affiliations, err := s.deps.Store.ListByUser(ctx, userID)

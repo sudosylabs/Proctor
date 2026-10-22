@@ -86,8 +86,8 @@ func (m academicAdministrationBatchResourceModule) run(request operationRequest)
 		if err != nil {
 			return operationResult{}, err
 		}
-		items = append(items, app.AcademicAdministrationBatchItemCommand{IdempotencyKey: item.Key, UserID: item.UserID,
-			RelationshipID: item.RelationshipID, RoleID: item.RoleID, AffiliationKind: model.AffiliationKind(item.AffiliationKind),
+		items = append(items, app.AcademicAdministrationBatchItemCommand{IdempotencyKey: item.Key, UserID: model.UserID(item.UserID),
+			RelationshipID: item.RelationshipID, RoleID: model.RoleID(item.RoleID), AffiliationKind: model.AffiliationKind(item.AffiliationKind),
 			StartAt: startAt, EndAt: endAt})
 	}
 	result, err := m.batches.RunAcademicAdministrationBatch(request.context, request.invocation(), app.RunAcademicAdministrationBatchCommand{

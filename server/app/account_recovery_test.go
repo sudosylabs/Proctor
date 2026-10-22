@@ -313,10 +313,10 @@ func TestCompletePasswordResetCommitsBeforeEffects(t *testing.T) {
 			}, nil
 		},
 	}
-	effects := &accountTokenEffectsFake{called: func(userID string, sessionIDs, hashes []string) {
+	effects := &accountTokenEffectsFake{called: func(userID model.UserID, sessionIDs []model.SessionID, hashes []string) {
 		order = append(order, "effects")
-		require.Equal(t, user.ID.String(), userID, "effects = user")
-		require.Equal(t, []string{session.ID.String()}, sessionIDs, "effects = user")
+		require.Equal(t, user.ID, userID, "effects = user")
+		require.Equal(t, []model.SessionID{session.ID}, sessionIDs, "effects = user")
 		require.Equal(t, []string{"access-hash"}, hashes, "effects = user")
 	}}
 	app := newAccountTokenTestApp(t, accountTokenTestDependencies{
@@ -618,13 +618,13 @@ type accountTokenHasherFake struct {
 func (f accountTokenHasherFake) Hash(context.Context, string) (string, error) { return f.hash, f.err }
 
 type accountTokenEffectsFake struct {
-	called func(string, []string, []string)
+	called func(model.UserID, []model.SessionID, []string)
 }
 
 func (f *accountTokenEffectsFake) SessionsRevoked(
 	_ context.Context,
-	userID string,
-	sessionIDs []string,
+	userID model.UserID,
+	sessionIDs []model.SessionID,
 	hashes []string,
 ) {
 	if f.called != nil {

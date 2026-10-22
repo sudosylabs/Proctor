@@ -108,7 +108,7 @@ func TestOnboardingInvitationNoOpDoesNotRequireMail(t *testing.T) {
 	service.deps.Classes = invitationClassStoreFake{class: &model.Class{ID: classID, AcademicPeriodID: periodID}}
 	service.deps.Periods = invitationPeriodStoreFake{period: &model.AcademicPeriod{ID: periodID, StartsAt: now.Add(time.Hour), EndsAt: now.Add(24 * time.Hour)}}
 	view, err := service.IssueStudentClassInvitation(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
-		IssueStudentClassInvitationCommand{TargetEmail: "existing@example.edu", ClassID: classID.String(), IdempotencyKey: "import-row",
+		IssueStudentClassInvitationCommand{TargetEmail: "existing@example.edu", ClassID: classID, IdempotencyKey: "import-row",
 			onboardingImportID: model.NewOnboardingImportID(), onboardingImportRowNumber: 1})
 	require.NoError(t, err, "mail-disabled no-op = %#v / %#v", view, persistence.issued)
 	require.True(t, view.NoOp, "mail-disabled no-op = %#v / %#v", view, persistence.issued)
@@ -339,8 +339,8 @@ func TestInvitationServiceIssuesTeacherPackageThroughDelegationCeiling(t *testin
 		invitationRoleStoreFake{role: role}, authorizer, mail, now)
 	view, err := service.IssueTeacherAcademicUnitInvitation(context.Background(),
 		invocation.New(model.Principal{UserID: inviterID}, model.RequestMetadata{}),
-		IssueTeacherAcademicUnitInvitationCommand{TargetEmail: "teacher@example.edu", AcademicUnitID: unitID.String(),
-			RoleID: roleID.String(), IntendedStartsAt: model.MillisFromTime(now.Add(time.Hour))})
+		IssueTeacherAcademicUnitInvitationCommand{TargetEmail: "teacher@example.edu", AcademicUnitID: unitID,
+			RoleID: roleID, IntendedStartsAt: model.MillisFromTime(now.Add(time.Hour))})
 	require.NoError(t, err)
 	require.Equal(t, unitID, view.AcademicUnitID, "teacher issue view/input = %#v", view)
 	require.Equal(t, roleID, view.RoleID, "teacher issue view/input = %#v", view)
@@ -367,7 +367,7 @@ func TestInvitationBatchRunsIndependentRowsAndRecoversCommittedItems(t *testing.
 	command := RunInvitationBatchCommand{Operation: InvitationBatchStudentClassCreate, ScopeType: model.RoleScopeClass,
 		ScopeID: classID.String(), IdempotencyKey: "batch-once", Items: []InvitationBatchItemCommand{
 			{IdempotencyKey: "row-1", TargetEmail: "first@example.edu"},
-			{IdempotencyKey: "row-2", TargetEmail: "invalid@example.edu", RoleID: model.NewRoleID().String()},
+			{IdempotencyKey: "row-2", TargetEmail: "invalid@example.edu", RoleID: model.NewRoleID()},
 			{IdempotencyKey: "row-3", TargetEmail: " FIRST@example.edu "},
 		}}
 	invocation := invocation.New(model.Principal{UserID: actorID}, model.RequestMetadata{RequestID: "request-1"})
@@ -415,7 +415,7 @@ func TestInvitationBatchAuthorizesBeforeRowsAndRestrictsRoleWorkToInteractiveSes
 	authorizer.err = nil
 	authorizer.actions = nil
 	command.Operation = InvitationBatchAcademicUnitRoleCreate
-	command.Items = []InvitationBatchItemCommand{{IdempotencyKey: "row-1", TargetEmail: "existing@example.edu", RoleID: model.NewRoleID().String()}}
+	command.Items = []InvitationBatchItemCommand{{IdempotencyKey: "row-1", TargetEmail: "existing@example.edu", RoleID: model.NewRoleID()}}
 	_, err = service.RunInvitationBatch(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
 	require.True(t, apperror.Is(err, "authentication.token_invalid"), "Role batch assurance error/actions = %v / %v", err, authorizer.actions)
 	require.True(t, slices.Equal(authorizer.actions, []model.Action{model.ActionOnboardingBatchManage}), "Role batch assurance error/actions = %v / %v", err, authorizer.actions)
@@ -462,9 +462,9 @@ func TestInvitationBatchDuplicatesRetainPerItemAuthorization(t *testing.T) {
 func TestInvitationBatchDuplicateIdentityIncludesRole(t *testing.T) {
 	t.Parallel()
 	firstRole, secondRole := model.NewRoleID(), model.NewRoleID()
-	first := InvitationBatchItemCommand{TargetEmail: "teacher@example.edu", RoleID: firstRole.String()}
-	caseVariant := InvitationBatchItemCommand{TargetEmail: " TEACHER@example.edu ", RoleID: firstRole.String()}
-	second := InvitationBatchItemCommand{TargetEmail: "teacher@example.edu", RoleID: secondRole.String()}
+	first := InvitationBatchItemCommand{TargetEmail: "teacher@example.edu", RoleID: firstRole}
+	caseVariant := InvitationBatchItemCommand{TargetEmail: " TEACHER@example.edu ", RoleID: firstRole}
+	second := InvitationBatchItemCommand{TargetEmail: "teacher@example.edu", RoleID: secondRole}
 	require.Equal(t, invitationBatchDuplicateKey(InvitationBatchTeacherAcademicUnitCreate, caseVariant), invitationBatchDuplicateKey(InvitationBatchTeacherAcademicUnitCreate, first), "same teacher package produced distinct duplicate keys")
 	require.NotEqual(t, invitationBatchDuplicateKey(InvitationBatchTeacherAcademicUnitCreate, second), invitationBatchDuplicateKey(InvitationBatchTeacherAcademicUnitCreate, first))
 	plain := InvitationBatchItemCommand{TargetEmail: "same@example.edu"}
@@ -557,8 +557,8 @@ func TestInvitationServiceIssuesAcademicUnitRoleForExistingUser(t *testing.T) {
 		invitationRoleStoreFake{role: role}, authorizer, &invitationMailPreparerFake{}, now)
 	view, err := service.IssueAcademicUnitRoleInvitation(context.Background(),
 		invocation.New(model.Principal{UserID: inviterID}, model.RequestMetadata{}),
-		IssueAcademicUnitRoleInvitationCommand{TargetEmail: "existing@example.edu", AcademicUnitID: unitID.String(),
-			RoleID: roleID.String(), IntendedStartsAt: model.MillisFromTime(now.Add(time.Hour))})
+		IssueAcademicUnitRoleInvitationCommand{TargetEmail: "existing@example.edu", AcademicUnitID: unitID,
+			RoleID: roleID, IntendedStartsAt: model.MillisFromTime(now.Add(time.Hour))})
 	require.NoError(t, err)
 	require.Equal(t, model.InvitationPurposeAcademicUnitRole, view.Purpose, "academic-unit Role issue view/input = %#v", view)
 	require.Equal(t, unitID, view.AcademicUnitID, "academic-unit Role issue view/input = %#v", view)
@@ -663,7 +663,7 @@ func TestInvitationServiceInstitutionRoleRequiresStrongRecentInteractiveSession(
 	principal := model.Principal{UserID: inviterID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: now}
-	command := IssueInstitutionRoleInvitationCommand{TargetEmail: "existing@example.edu", InstitutionID: institutionID.String(), RoleID: roleID.String()}
+	command := IssueInstitutionRoleInvitationCommand{TargetEmail: "existing@example.edu", InstitutionID: institutionID, RoleID: roleID}
 	_, err := service.IssueInstitutionRoleInvitation(context.Background(), invocation.New(principal, model.RequestMetadata{}), command)
 	require.True(t, apperror.Is(err, "authentication.strong_required"), "weak IssueInstitutionRole() error = %v", err)
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
@@ -689,7 +689,7 @@ func TestInvitationServiceRejectsInertTeacherRoleAction(t *testing.T) {
 		invitationRoleStoreFake{role: &model.Role{ID: roleID, Name: "inert", DisplayName: "Inert", Permissions: []string{string(model.ActionRoleManage)}}},
 		&invitationAuthorizerFake{}, &invitationMailPreparerFake{}, now)
 	_, err := service.IssueTeacherAcademicUnitInvitation(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
-		IssueTeacherAcademicUnitInvitationCommand{TargetEmail: "teacher@example.edu", AcademicUnitID: unitID.String(), RoleID: roleID.String()})
+		IssueTeacherAcademicUnitInvitationCommand{TargetEmail: "teacher@example.edu", AcademicUnitID: unitID, RoleID: roleID})
 	require.True(t, apperror.Is(err, "invitation.role_not_delegable"), "IssueTeacherAcademicUnit() = %v", err)
 	require.Nil(t, persistence.teacherIssued, "IssueTeacherAcademicUnit() = %v", err)
 }
@@ -847,7 +847,7 @@ func TestInvitationReplacementReauthorizesAndBuildsANewImmutablePackage(t *testi
 	actor := model.NewUserID()
 	result, err := service.ReplaceInvitation(context.Background(), invocation.New(model.Principal{UserID: actor}, model.RequestMetadata{}),
 		ReplaceInvitationCommand{ID: invitation.ID, ExpectedRevision: invitation.Revision,
-			Purpose: string(model.InvitationPurposeStudentClass), TargetEmail: "new@example.edu", ClassID: class.ID.String(),
+			Purpose: string(model.InvitationPurposeStudentClass), TargetEmail: "new@example.edu", ClassID: class.ID,
 			SuggestedUsername: "new-student"})
 	require.NoError(t, err)
 	require.NotNil(t, persistence.replaced, "Invitation replacement = %#v / %#v", result, persistence.replaced)
@@ -878,7 +878,7 @@ func TestInvitationIssueAuthorizesBeforeInspectingMailCapability(t *testing.T) {
 	service, err := newInvitationService(invitationServiceDependencies{Store: &invitationStoreFake{}, Classes: invitationClassStoreFake{&model.Class{ID: classID, AcademicPeriodID: periodID}}, Periods: invitationPeriodStoreFake{&model.AcademicPeriod{ID: periodID, StartsAt: now, EndsAt: now.Add(24 * time.Hour)}}, AcademicUnits: invitationAcademicUnitStoreFake{}, Roles: invitationRoleStoreFake{}, Authorization: authorizer, Mail: mail, Hasher: invitationHasherFake{}, Audit: &mutationAttemptAuditorFake{}, Attempts: invitationAttemptLimiterFake{}, MembershipEffects: &classMemberEffectsFake{}, NodeID: "node-1", PublicURL: "https://proctor.example.edu", RecentAuthenticationTTL: 15 * time.Minute, NewClaim: model.NewCredentialToken, Now: func() time.Time { return now }})
 	require.NoError(t, err)
 	_, appErr := service.IssueStudentClassInvitation(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
-		IssueStudentClassInvitationCommand{ClassID: classID.String(), TargetEmail: "student@example.edu"})
+		IssueStudentClassInvitationCommand{ClassID: classID, TargetEmail: "student@example.edu"})
 	require.True(t, apperror.Is(appErr, "authorization.denied"), "IssueStudentClass() error/actions = %v", appErr)
 	require.Len(t, authorizer.actions, 1, "IssueStudentClass() error/actions = %v", appErr)
 	require.Equal(t, model.ActionInvitationCreate, authorizer.actions[0], "IssueStudentClass() error/actions = %v", appErr)
@@ -963,7 +963,7 @@ func TestInvitationServiceIssuesAndAcceptsWithoutPersistingRawClaim(t *testing.T
 	require.NoError(t, err)
 	call := invocation.New(model.Principal{UserID: inviterID}, model.RequestMetadata{})
 	view, err := service.IssueStudentClassInvitation(context.Background(), call, IssueStudentClassInvitationCommand{
-		TargetEmail: " Student@Example.edu ", ClassID: classID.String(), IntendedStartsAt: model.MillisFromTime(period.StartsAt),
+		TargetEmail: " Student@Example.edu ", ClassID: classID, IntendedStartsAt: model.MillisFromTime(period.StartsAt),
 		IntendedEndsAt: model.MillisFromTime(period.EndsAt), SuggestedUsername: "student-one", SuggestedDisplayName: "Student One", SuggestedLocale: "en",
 	})
 	require.NoError(t, err)

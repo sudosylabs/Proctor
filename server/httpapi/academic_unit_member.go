@@ -92,7 +92,7 @@ func (m academicUnitMemberResourceModule) create(request operationRequest) (oper
 	if err != nil {
 		return operationResult{}, err
 	}
-	saved, err := m.members.CreateAcademicUnitMember(request.context, request.invocation(), app.CreateAcademicUnitMemberCommand{AcademicUnitID: unitID, UserID: body.UserID, StartAt: startAt})
+	saved, err := m.members.CreateAcademicUnitMember(request.context, request.invocation(), app.CreateAcademicUnitMemberCommand{AcademicUnitID: unitID, UserID: model.UserID(body.UserID), StartAt: startAt})
 	if err != nil {
 		return operationResult{}, err
 	}

@@ -61,7 +61,7 @@ func TestAcademicAdministrationBatchHTTPIsStrictBoundedAndSafe(t *testing.T) {
 	require.Equal(t, classID, applicationFake.command.ScopeID, "academic administration batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.command)
 	require.Equal(t, "batch-key", applicationFake.command.IdempotencyKey, "academic administration batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.command)
 	require.Len(t, applicationFake.command.Items, 1, "academic administration batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.command)
-	require.Equal(t, userID, applicationFake.command.Items[0].UserID, "academic administration batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.command)
+	require.Equal(t, model.UserID(userID), applicationFake.command.Items[0].UserID, "academic administration batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.command)
 	require.Equal(t, previousID, applicationFake.command.Items[0].RelationshipID, "academic administration batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.command)
 	require.Contains(t, response.Body.String(), `"succeeded":1`, "academic administration batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.command)
 	require.Contains(t, response.Body.String(), `"no_op":1`, "academic administration batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.command)

@@ -330,7 +330,7 @@ func TestAcademicUnitHTTPMutationsMapCommandsWithoutPermissionPreflight(t *testi
 	require.Equal(t, http.StatusOK, patchResponse.Code, "patch status = %d: %s", patchResponse.Code, patchResponse.Body.String())
 	require.Equal(t, unit.ID, fakeApplication.updateCommand.ID)
 	require.NotNil(t, fakeApplication.updateCommand.ParentID)
-	require.Equal(t, parentID, *fakeApplication.updateCommand.ParentID)
+	require.Equal(t, model.AcademicUnitID(parentID), *fakeApplication.updateCommand.ParentID)
 	require.NotNil(t, fakeApplication.updateCommand.Name)
 	require.Equal(t, name, *fakeApplication.updateCommand.Name)
 

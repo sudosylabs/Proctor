@@ -22,7 +22,7 @@ import (
 
 type CreateAcademicUnitMemberCommand struct {
 	AcademicUnitID            model.AcademicUnitID
-	UserID                    string
+	UserID                    model.UserID
 	StartAt                   int64
 	IdempotencyKey            string
 	batchReplayed             *bool
@@ -94,7 +94,7 @@ func (s *academicUnitMemberService) CreateAcademicUnitMember(ctx context.Context
 	if err != nil {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id").Wrap(err)
 	}
-	userID, err := model.ParseUserID(strings.TrimSpace(command.UserID))
+	userID, err := model.ParseUserID(strings.TrimSpace(command.UserID.String()))
 	if err != nil {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id").Wrap(err)
 	}
@@ -163,7 +163,7 @@ func (s *academicUnitMemberService) CreateAcademicUnitMember(ctx context.Context
 		academicUnitMemberStoreErrors.Translate,
 	)
 	if err == nil && changed {
-		s.deps.Effects.InvalidateAuthorization(ctx, userID.String())
+		s.deps.Effects.InvalidateAuthorization(ctx, userID)
 	}
 	return result, err
 }
@@ -243,7 +243,7 @@ func (s *academicUnitMemberService) EndAcademicUnitMember(ctx context.Context, i
 		academicUnitMemberStoreErrors.Translate,
 	)
 	if err == nil && changed {
-		s.deps.Effects.InvalidateAuthorization(ctx, current.UserID.String())
+		s.deps.Effects.InvalidateAuthorization(ctx, current.UserID)
 	}
 	return result, err
 }

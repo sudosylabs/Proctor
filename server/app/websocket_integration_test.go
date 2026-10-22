@@ -203,7 +203,7 @@ func TestWebSocketIntegration(t *testing.T) {
 	require.NoError(t, helper.App.RevokeSession(
 		context.Background(),
 		invocation.New(*principal, model.RequestMetadata{}),
-		app.RevokeSessionCommand{SessionID: login.Session.ID.String()},
+		app.RevokeSessionCommand{SessionID: login.Session.ID},
 	))
 	_ = connection.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, _, err = connection.ReadMessage()
@@ -378,7 +378,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	require.NoError(t, nodeA.App.RevokeSession(
 		context.Background(),
 		invocation.New(*principal, model.RequestMetadata{}),
-		app.RevokeSessionCommand{SessionID: login.Session.ID.String()},
+		app.RevokeSessionCommand{SessionID: login.Session.ID},
 	))
 	_ = connection.SetReadDeadline(time.Now().Add(5 * time.Second))
 	_, _, err = connection.ReadMessage()

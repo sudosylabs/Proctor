@@ -765,15 +765,15 @@ func (p providerConnectionProvider) Complete(context.Context, ExternalProviderCo
 
 type externalInvalidatorFake struct{}
 
-func (externalInvalidatorFake) InvalidateAccessCredentials(context.Context, []string) {}
-func (externalInvalidatorFake) InvalidateSessionActivity(context.Context, []string)   {}
+func (externalInvalidatorFake) InvalidateAccessCredentials(context.Context, []string)        {}
+func (externalInvalidatorFake) InvalidateSessionActivity(context.Context, []model.SessionID) {}
 
 type externalAuditFake struct{ failureCodes *[]string }
 
-func (externalAuditFake) BeginAuthentication(context.Context, string, string, string, model.SessionClientType, model.RequestMetadata, string) (*model.AuditEvent, error) {
+func (externalAuditFake) BeginAuthentication(context.Context, model.UserID, string, string, model.SessionClientType, model.RequestMetadata, model.InstitutionID) (*model.AuditEvent, error) {
 	return nil, nil
 }
-func (f externalAuditFake) RecordExternalAuthenticationFailure(_ context.Context, _, _ string, _ model.RequestMetadata, _, code string) error {
+func (f externalAuditFake) RecordExternalAuthenticationFailure(_ context.Context, _, _ string, _ model.RequestMetadata, _ model.InstitutionID, code string) error {
 	if f.failureCodes != nil {
 		*f.failureCodes = append(*f.failureCodes, code)
 	}

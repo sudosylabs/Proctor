@@ -13,6 +13,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/invocation"
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 // AdministratorMFAResetCommand identifies the exact existing administrator
@@ -58,7 +59,7 @@ func (s *Server) ResetAdministratorMFA(ctx context.Context, command Administrato
 		return nil, errors.New("administrator MFA reset is unavailable")
 	}
 	result, err := s.components.administratorRecovery.ResetAdministratorMFA(ctx, invocation.Task("administrator-mfa-reset"), app.AdministratorMFAResetCommand{
-		InstitutionID: command.InstitutionID, UserID: command.UserID,
+		InstitutionID: model.InstitutionID(command.InstitutionID), UserID: model.UserID(command.UserID),
 	})
 	if err != nil {
 		return nil, err
