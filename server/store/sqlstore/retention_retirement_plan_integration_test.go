@@ -25,6 +25,8 @@ import (
 func TestRetentionRetirementOutcomeDeletesUseIndexes(t *testing.T) {
 	s := openTestStore(t)
 	resetTestStore(t, s)
+	// The synthetic audit table is large; release it for the tests that follow.
+	t.Cleanup(func() { resetPristineTestStore(t, s) })
 	ctx := context.Background()
 	user := saveIntegrationUser(t, ctx, s, &model.User{Username: "retirement-plan", Email: "retirement-plan@example.edu", DisplayName: "Retirement Plan"})
 	const auditEvents = 200000

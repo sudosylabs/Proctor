@@ -134,6 +134,8 @@ func TestRetentionExpiryAuditCountMatchesFacts(t *testing.T) {
 func TestRetentionExpiryAuditCountPlanIsBounded(t *testing.T) {
 	s := openTestStore(t)
 	resetTestStore(t, s)
+	// The synthetic audit table is large; release it for the tests that follow.
+	t.Cleanup(func() { resetPristineTestStore(t, s) })
 	// The receipt scenario leaves Exams, Sittings, Submissions, holds,
 	// receipts and command outcomes behind for the synthetic events to cite.
 	storetest.TestRetentionReceiptExpiryStore(t, s, retentionSQLProbe(s), retentionExpirySQLProbe(s))
