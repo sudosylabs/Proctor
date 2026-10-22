@@ -29,8 +29,8 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
 	github.com/sudosylabs/proctor/packages/cache v0.0.0-20261021095416-f4665b8e782b
-	github.com/sudosylabs/proctor/packages/mail v0.0.0-20261022022827-057d046682b5
-	github.com/sudosylabs/proctor/packages/vfs v0.0.0-20261022023049-2704f1a3db49
+	github.com/sudosylabs/proctor/packages/mail v0.0.0-20261022033035-a106025c0be4
+	github.com/sudosylabs/proctor/packages/vfs v0.0.0-20261022053940-b441636c4aff
 	golang.org/x/crypto v0.55.0
 	golang.org/x/image v0.45.0
 	golang.org/x/net v0.58.0

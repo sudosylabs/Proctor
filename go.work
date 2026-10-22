@@ -9,6 +9,6 @@ use (
 
 replace (
 	github.com/sudosylabs/proctor/packages/cache v0.0.0-20261021095416-f4665b8e782b => ./packages/cache
-	github.com/sudosylabs/proctor/packages/mail v0.0.0-20261022022827-057d046682b5 => ./packages/mail
-	github.com/sudosylabs/proctor/packages/vfs v0.0.0-20261022023049-2704f1a3db49 => ./packages/vfs
+	github.com/sudosylabs/proctor/packages/mail v0.0.0-20261022033035-a106025c0be4 => ./packages/mail
+	github.com/sudosylabs/proctor/packages/vfs v0.0.0-20261022053940-b441636c4aff => ./packages/vfs
 )

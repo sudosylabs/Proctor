@@ -315,10 +315,10 @@ github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO
 github.com/stretchr/testify v1.8.4/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXlSw2iwfAo=
 github.com/sudosylabs/proctor/packages/cache v0.0.0-20261021095416-f4665b8e782b h1:at3AUr7KAbWhh4UiSiH446GOikZN0A2MP7+YrAq8sj8=
 github.com/sudosylabs/proctor/packages/cache v0.0.0-20261021095416-f4665b8e782b/go.mod h1:/nfYgE//fpc03DchHGSVd8bpB/yHC7189mDOV8SpwfA=
-github.com/sudosylabs/proctor/packages/mail v0.0.0-20261022022827-057d046682b5 h1:YAJi11isqahpTejgxXd/w9Q8T8xq3gSbbmoDpTtQbCE=
-github.com/sudosylabs/proctor/packages/mail v0.0.0-20261022022827-057d046682b5/go.mod h1:xIvMV1XI6xazERtTWgIeRt0zKffbe+GBPb08VAuOFRY=
-github.com/sudosylabs/proctor/packages/vfs v0.0.0-20261022023049-2704f1a3db49 h1:9iKbQrJooxrHrscXajGPKf0ePH+CE9Ec7vr0WKVYtkU=
-github.com/sudosylabs/proctor/packages/vfs v0.0.0-20261022023049-2704f1a3db49/go.mod h1:QEbiyEjgHvR16/cmh98zc4j0h8DwU2O1XvUDJlzC5a4=
+github.com/sudosylabs/proctor/packages/mail v0.0.0-20261022033035-a106025c0be4 h1:Hb+49tgMR+Kktm9Ugpx4pK46lW6cipLc/Nfb6xCgxag=
+github.com/sudosylabs/proctor/packages/mail v0.0.0-20261022033035-a106025c0be4/go.mod h1:xIvMV1XI6xazERtTWgIeRt0zKffbe+GBPb08VAuOFRY=
+github.com/sudosylabs/proctor/packages/vfs v0.0.0-20261022053940-b441636c4aff h1:EXQO4vrcOqF3UqWWbuJju5GBRoWtV0yuz9gsUUZ6FXE=
+github.com/sudosylabs/proctor/packages/vfs v0.0.0-20261022053940-b441636c4aff/go.mod h1:QEbiyEjgHvR16/cmh98zc4j0h8DwU2O1XvUDJlzC5a4=
 github.com/tarm/serial v0.0.0-20180830185346-98f6abe2eb07/go.mod h1:kDXzergiv9cbyO7IOYJZWg1U88JhDg3PB6klq9Hg2pA=
 github.com/tinylib/msgp v1.6.4 h1:mOwYbyYDLPj35mkA2BjjYejgJk9BuHxDdvRnb6v2ZcQ=
 github.com/tinylib/msgp v1.6.4/go.mod h1:RSp0LW9oSxFut3KzESt5Voq4GVWyS+PSulT77roAqEA=
