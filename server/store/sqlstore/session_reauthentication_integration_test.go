@@ -56,8 +56,9 @@ func TestPasswordReauthenticationCommitsOnlyCurrentProofAndAudit(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, session.ID, result.Session.ID)
 			require.True(t, current.ReauthenticatedAt.Valid)
-			require.False(t, current.ReauthenticatedAt.Time.Before(before))
-			require.False(t, current.ReauthenticatedAt.Time.After(model.NowUTC()))
+			// The proof is stamped with PostgreSQL time, which may trail or
+			// lead the host clock by a few milliseconds.
+			require.WithinRange(t, current.ReauthenticatedAt.Time, before.Add(-time.Second), model.NowUTC().Add(time.Second))
 			require.True(t, current.AuthenticatedAt.Equal(session.AuthenticatedAt))
 			require.Equal(t, session.MFACompletedAt, current.MFACompletedAt)
 			require.Equal(t, session.ExpiresAt, current.ExpiresAt)
