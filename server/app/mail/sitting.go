@@ -38,17 +38,10 @@ type SittingRenderer interface {
 	SittingLocales() (string, []string)
 }
 
-type FrozenSittingBundleV1 struct {
-	Version  int                                     `json:"version"`
-	From     Address                                 `json:"from"`
-	Messages map[model.MailTemplateKey]FrozenContent `json:"messages"`
-}
-
-// FrozenSittingBundleV2 freezes every supported locale for one template
+// FrozenSittingBundle freezes every supported locale for one template
 // release. Expansion selects a recipient locale without consulting mutable
 // runtime assets.
-type FrozenSittingBundleV2 struct {
-	Version       int                                                `json:"version"`
+type FrozenSittingBundle struct {
 	From          Address                                            `json:"from"`
 	DefaultLocale string                                             `json:"default_locale"`
 	Messages      map[string]map[model.MailTemplateKey]FrozenContent `json:"messages"`
@@ -128,7 +121,7 @@ func (p *SittingComposer) Prepare(actorID model.UserID, sitting *model.ExamSitti
 	if len(locales) == 0 || len(locales) > 64 {
 		return nil, errors.New("sitting mail locales are invalid")
 	}
-	bundle := FrozenSittingBundleV2{Version: 2, From: from, DefaultLocale: normalizeSittingLocale(defaultLocale),
+	bundle := FrozenSittingBundle{From: from, DefaultLocale: normalizeSittingLocale(defaultLocale),
 		Messages: make(map[string]map[model.MailTemplateKey]FrozenContent, len(locales))}
 	for _, locale := range locales {
 		messages := make(map[model.MailTemplateKey]FrozenContent, 4)
@@ -164,8 +157,9 @@ func (p *SittingComposer) Prepare(actorID model.UserID, sitting *model.ExamSitti
 	return prepared, nil
 }
 
-func (p *SittingComposer) OpenBundle(bundle *model.MailFanoutBundle) (FrozenSittingBundleV2, error) {
-	var result FrozenSittingBundleV2
+// OpenBundle opens and validates one sealed Sitting fan-out bundle.
+func (p *SittingComposer) OpenBundle(bundle *model.MailFanoutBundle) (FrozenSittingBundle, error) {
+	var result FrozenSittingBundle
 	if p == nil || p.sealer == nil || bundle == nil || bundle.Validate() != nil {
 		return result, errors.New("sitting mail bundle is unavailable")
 	}
@@ -177,22 +171,8 @@ func (p *SittingComposer) OpenBundle(bundle *model.MailFanoutBundle) (FrozenSitt
 	if err != nil {
 		return result, err
 	}
-	var header struct {
-		Version int `json:"version"`
-	}
-	if err = json.Unmarshal(plaintext, &header); err != nil {
-		return FrozenSittingBundleV2{}, errors.New("sitting mail bundle is invalid")
-	}
-	if header.Version == 1 {
-		var legacy FrozenSittingBundleV1
-		if err = json.Unmarshal(plaintext, &legacy); err != nil || len(legacy.Messages) != 4 || ValidateAddress(legacy.From) != nil {
-			return FrozenSittingBundleV2{}, errors.New("sitting mail bundle is invalid")
-		}
-		return FrozenSittingBundleV2{Version: 2, From: legacy.From, DefaultLocale: model.DefaultLocale,
-			Messages: map[string]map[model.MailTemplateKey]FrozenContent{model.DefaultLocale: legacy.Messages}}, nil
-	}
 	if err = json.Unmarshal(plaintext, &result); err != nil || !validFrozenSittingBundle(result) {
-		return FrozenSittingBundleV2{}, errors.New("sitting mail bundle is invalid")
+		return FrozenSittingBundle{}, errors.New("sitting mail bundle is invalid")
 	}
 	return result, nil
 }
@@ -203,7 +183,7 @@ func (p *SittingComposer) OpenBundle(bundle *model.MailFanoutBundle) (FrozenSitt
 var ErrSittingMailRecipientInvalid = errors.New("sitting mail recipient is invalid")
 
 func (p *SittingComposer) PrepareRecipient(fanout *store.ExamSittingMailFanoutSnapshot, recipient *model.User,
-	key model.MailTemplateKey, bundle FrozenSittingBundleV2,
+	key model.MailTemplateKey, bundle FrozenSittingBundle,
 ) (*model.MailDelivery, *model.Job, error) {
 	if recipient == nil || recipient.Validate() != nil || ValidateAddress(Address{Name: recipient.DisplayName, Address: recipient.Email}) != nil {
 		return nil, nil, ErrSittingMailRecipientInvalid
@@ -269,8 +249,8 @@ func normalizedSittingLocales(defaultLocale string, locales []string) []string {
 	return result
 }
 
-func validFrozenSittingBundle(bundle FrozenSittingBundleV2) bool {
-	if bundle.Version != 2 || ValidateAddress(bundle.From) != nil || bundle.DefaultLocale == "" ||
+func validFrozenSittingBundle(bundle FrozenSittingBundle) bool {
+	if ValidateAddress(bundle.From) != nil || bundle.DefaultLocale == "" ||
 		len(bundle.Messages) == 0 || len(bundle.Messages) > 64 {
 		return false
 	}
@@ -291,7 +271,7 @@ func validFrozenSittingBundle(bundle FrozenSittingBundleV2) bool {
 	return true
 }
 
-func (b FrozenSittingBundleV2) contentFor(requestedLocale string, key model.MailTemplateKey) (FrozenContent, bool) {
+func (b FrozenSittingBundle) contentFor(requestedLocale string, key model.MailTemplateKey) (FrozenContent, bool) {
 	requested := normalizeSittingLocale(requestedLocale)
 	locales := make([]string, 0, 4)
 	if requested != "" {

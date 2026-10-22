@@ -156,9 +156,8 @@ func TestAccountMailerAdapterRejectsUnknownImageBeforeSending(t *testing.T) {
 	require.Equal(t, appmail.TransportPermanent, outcome, "unknown image reached transport")
 	require.Empty(t, transport.messages, "unknown image reached transport")
 	_, err = adapter.Send(context.Background(), appmail.Outbound{HTML: `<img src="proctor-lockup.png">`})
-	require.NoError(t, err)
-	require.Len(t, transport.messages, 1)
-	require.Empty(t, transport.messages[0].Attachments)
+	require.Error(t, err, "relative image reached transport")
+	require.Empty(t, transport.messages, "relative image reached transport")
 }
 
 type inlineRecordingMailer struct{ messages []mailpkg.Message }

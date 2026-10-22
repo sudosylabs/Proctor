@@ -127,8 +127,8 @@ The mail-owned catalog retains every released image version unchanged; startup
 validates its bytes and production template references. The root transport
 adapter attaches the exact referenced version, so retries and frozen fan-out
 never switch to a mutable current logo. Browser previews materialize the same
-images locally. Legacy frozen relative-image HTML is preserved without
-substituting new artwork.
+images locally. Any other image source, including a relative path, fails
+closed.
 
 External images, remote fonts, tracking pixels, ordinary attachments, read
 receipts, and unsubscribe headers are forbidden. Generated mail includes
@@ -164,7 +164,7 @@ payload and required Job for every catalog family. The Mail module owns the
 private frozen payload format, address and content validation, bounded
 serialization and reopening, sealing, digest, and stable Message-ID construction
 for both direct and fan-out child deliveries. Reopening validates the persisted
-version and message meaning and produces the complete outbound message from
+message meaning and produces the complete outbound message from
 frozen content and original delivery metadata. It rejects malformed documents,
 unknown fields, and any extra trailing JSON without exposing frozen content in
 errors. Jobs owns delivery transitions and retries and passes that message to
@@ -292,12 +292,11 @@ delivery metadata.
 
 A fan-out occurrence freezes a bounded encrypted render bundle containing the
 rendered text and HTML alternatives for every supported locale, the
-installation default locale, schema version, and sender. Recipient expansion
+installation default locale, and sender. Recipient expansion
 selects exact locale, language base, installation default, then English from
 that immutable bundle; it never consults live localization or template assets.
 Every child therefore uses one release without losing recipient-localized
-copy. Version-one English-only bundles remain readable during an upgrade. The
-bundle is destroyed when expansion terminates. Later roster reconciliation
+copy. The bundle is destroyed when expansion terminates. Later roster reconciliation
 creates a new occurrence using the then-current template release.
 
 ## Security and privacy

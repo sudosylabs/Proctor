@@ -95,8 +95,6 @@ func TestOpenDeliveryRejectsInvalidPayloadVersionAndMeaning(t *testing.T) {
 		edit       func(map[string]any)
 		invalidMsg bool
 	}{
-		{"unsupported version", func(p map[string]any) { p["version"] = 2 }, false},
-		{"missing version", func(p map[string]any) { delete(p, "version") }, false},
 		{"missing recipient", func(p map[string]any) { delete(p, "recipient_address") }, false},
 		{"missing sender", func(p map[string]any) { delete(p, "from_address") }, false},
 		{"missing subject", func(p map[string]any) { delete(p, "subject") }, false},

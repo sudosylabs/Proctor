@@ -58,7 +58,9 @@ module when a change is not server-only. No module has been released yet.
 - Server: internal persisted documents carry no version field. Job
   commands, checkpoints, and results lose `command_version`,
   `checkpoint_version`, and `result_version`; the pre-release SQL baseline
-  drops those columns and development databases must be reset.
+  drops those columns and development databases must be reset. Frozen mail
+  payloads and Sitting fan-out bundles lose their `version` member and the
+  version-one bundle and relative-logo readers.
 - Server: wire timestamps are RFC 3339 strings. `create_at`, `update_at`, and
   `delete_at` become `created_at`, `updated_at`, and `archived_at` (omitted
   while active), Job `complete_at` and `start_at` become `completed_at` and

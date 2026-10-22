@@ -70,9 +70,7 @@ func NewInlineAssets(files fs.FS) (*InlineAssets, error) {
 }
 
 // ForHTML resolves each referenced image once, in document order. Unknown
-// images fail closed without exposing their source in errors. The old relative
-// logo remains tolerated only for already-frozen messages; it is not rewritten
-// or substituted with new artwork.
+// images fail closed without exposing their source in errors.
 func (a *InlineAssets) ForHTML(body string) ([]InlineAsset, error) {
 	if a == nil {
 		return nil, errors.New("mail inline assets are unavailable")
@@ -105,9 +103,6 @@ func (a *InlineAssets) ForHTML(body string) ([]InlineAsset, error) {
 			}
 			if count != 1 {
 				return nil, errors.New("mail image source is invalid")
-			}
-			if source == "proctor-lockup.png" {
-				continue
 			}
 			id, ok := strings.CutPrefix(source, "cid:")
 			asset, exists := a.byID[id]

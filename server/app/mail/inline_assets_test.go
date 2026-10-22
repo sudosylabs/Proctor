@@ -50,7 +50,7 @@ func TestInlineAssetsResolveOnlyReleasedImages(t *testing.T) {
 		{name: "released", html: `<img alt="Proctor" src="cid:` + testLockupCID + `">`, want: 1},
 		{name: "duplicate reference", html: `<img src="cid:` + testLockupCID + `"><img src='cid:` + testLockupCID + `'>`, want: 1},
 		{name: "escaped text is not an image", html: `&lt;img src="https://private.example/image"&gt;`},
-		{name: "legacy frozen image", html: `<img src="proctor-lockup.png">`},
+		{name: "relative image", html: `<img src="proctor-lockup.png">`, fail: true},
 		{name: "no image", html: `<p>Plain message</p>`},
 		{name: "unknown cid", html: `<img src="cid:unknown">`, fail: true},
 		{name: "external image", html: `<img src="https://private.example/image">`, fail: true},

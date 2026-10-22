@@ -31,8 +31,8 @@ requires no remote image request.
 Released PNG filenames, digests, and bytes are immutable. A later artwork
 release adds a new version and Content-ID while retaining earlier versions:
 queued deliveries and frozen fan-out bundles must resolve their original
-artwork across upgrades and retries. Legacy frozen HTML using the old relative
-image path is left unchanged; it does not acquire a different logo on retry.
+artwork across upgrades and retries. Any other image source, including a relative
+path, fails closed.
 
 The generator includes released PNGs in template source digests. After
 changing the shared header or adding an image version, regenerate the HTML.

@@ -23,10 +23,9 @@ import (
 // or unsupported payload. Neither error class includes frozen content.
 var ErrInvalidMessage = errors.New("mail message is invalid")
 
-// frozenPayloadV1 is the private persisted representation shared by direct
+// frozenPayload is the private persisted representation shared by direct
 // composition, fan-out composition, and delivery reopening.
-type frozenPayloadV1 struct {
-	Version              int    `json:"version"`
+type frozenPayload struct {
 	RecipientName        string `json:"recipient_name"`
 	RecipientAddress     string `json:"recipient_address"`
 	FromName             string `json:"from_name"`
@@ -50,7 +49,7 @@ func freezeDeliveryPayload(sealer *secretseal.Sealer, deliveryID model.MailDeliv
 	if sealer == nil || !deliveryID.IsValid() {
 		return frozenDeliveryPayload{}, errors.New("mail delivery payload input is invalid")
 	}
-	payload := frozenPayloadV1{Version: 1, RecipientName: recipient.Name, RecipientAddress: recipient.Address,
+	payload := frozenPayload{RecipientName: recipient.Name, RecipientAddress: recipient.Address,
 		FromName: from.Name, FromAddress: from.Address, Subject: content.Subject, Text: content.Text, HTML: content.HTML,
 		AutoSubmitted: "auto-generated", AutoResponseSuppress: "All"}
 	if err := payload.validate(); err != nil {
@@ -90,7 +89,7 @@ func OpenDelivery(sealer *secretseal.Sealer, delivery *model.MailDelivery) (Outb
 	if len(plaintext) > model.MailRenderedPayloadMaximumBytes {
 		return Outbound{}, errors.New("rendered mail payload is invalid")
 	}
-	var payload frozenPayloadV1
+	var payload frozenPayload
 	decoder := json.NewDecoder(bytes.NewReader(plaintext))
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&payload) != nil || decoder.Decode(&struct{}{}) != io.EOF {
@@ -112,8 +111,8 @@ func OpenDelivery(sealer *secretseal.Sealer, delivery *model.MailDelivery) (Outb
 	}, nil
 }
 
-func (p frozenPayloadV1) validate() error {
-	if p.Version != 1 || p.RecipientAddress == "" || p.FromAddress == "" || p.Subject == "" ||
+func (p frozenPayload) validate() error {
+	if p.RecipientAddress == "" || p.FromAddress == "" || p.Subject == "" ||
 		(p.Text == "" && p.HTML == "") || p.AutoSubmitted != "auto-generated" || p.AutoResponseSuppress != "All" {
 		return errors.New("frozen mail payload is invalid")
 	}
