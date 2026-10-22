@@ -6,7 +6,9 @@
 # commit whose module tree differs from the working tree. go.work hides such
 # drift: workspace builds use the local module while GOWORK=off builds and
 # downstream consumers get the pinned, older code. The go.work replace
-# directives must name the same versions.
+# directives must name the same versions, and the pinned commit must be an
+# ancestor of HEAD: a pin to a commit that history rewriting dropped would
+# leave downstream consumers fetching a revision the branch no longer has.
 #
 # The check needs the pinned commits in local history (a full clone). A commit
 # cannot pin itself, so a change to packages/<module> is followed by a commit
@@ -80,6 +82,11 @@ printf '%s\n' "$pins" | {
 		commit=$(git -C "$root" rev-parse --verify --quiet "$revision^{commit}" || true)
 		if [ -z "$commit" ]; then
 			fail "$module $version: commit $revision is not in local history (fetch full history)"
+			continue
+		fi
+		if ! git -C "$root" merge-base --is-ancestor "$commit" HEAD; then
+			fail "$module $version: commit $revision is not an ancestor of HEAD (was history rewritten?)"
+			suggest "$directory" "$module"
 			continue
 		fi
 		if [ -n "$stamp" ]; then

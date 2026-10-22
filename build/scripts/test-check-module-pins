@@ -79,5 +79,16 @@ wrong_stamp=$(pin | sed 's/-2026[0-9]*-/-20250101000000-/')
 write_pins "$wrong_stamp" "$wrong_stamp"
 expect fail 'the pseudo-version timestamp does not match the commit'
 
+rewritten=$(pin)
+GIT_COMMITTER_DATE='2026-01-04T03:04:05Z' git -C "$repo" commit --quiet --amend -m 'change (rewritten)'
+write_pins "$rewritten" "$rewritten"
+expect fail 'the pinned commit is not an ancestor of HEAD'
+if ! grep -Fq 'not an ancestor of HEAD' "$fixture/output"; then
+	printf 'check-module-pins: a rewritten pin did not report its ancestry\n' >&2
+	exit 1
+fi
+write_pins "$(pin)" "$(pin)"
+expect pass 'the pin moves to the rewritten commit'
+
 write_pins v0.0.0-20260101000000-000000000000 v0.0.0-20260101000000-000000000000
 expect fail 'the pinned commit is missing'
