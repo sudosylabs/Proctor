@@ -72,7 +72,7 @@ func TestPasswordReauthenticationCommitsOnlyCurrentProofAndAudit(t *testing.T) {
 }
 
 func TestExternalReauthenticationRechecksExactIdentityAndLiveBoundSession(t *testing.T) {
-	for _, name := range []string{"success", "wrong subject", "unlinked identity", "revoked credential", "old proof", "disabled provider", "terminal audit"} {
+	for _, name := range []string{"success", "leading proof", "wrong subject", "unlinked identity", "revoked credential", "old proof", "future proof", "disabled provider", "terminal audit"} {
 		t.Run(name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
@@ -102,6 +102,11 @@ func TestExternalReauthenticationRechecksExactIdentityAndLiveBoundSession(t *tes
 				_, err = s.GetMaster().Exec(ctx, `UPDATE session_credentials SET revoked_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id=?`, savedCredentials[0].ID.String())
 			case "old proof":
 				input.AuthenticatedAt = state.CreatedAt.Add(-time.Minute)
+			case "leading proof":
+				// A provider clock a little ahead of PostgreSQL is tolerated.
+				input.AuthenticatedAt = model.NowUTC().Add(20 * time.Second)
+			case "future proof":
+				input.AuthenticatedAt = model.NowUTC().Add(2 * time.Minute)
 			case "disabled provider":
 				_, err = s.GetMaster().Exec(ctx, `UPDATE access_policies SET provider_admissions='{}'::jsonb`)
 			case "terminal audit":
@@ -111,6 +116,14 @@ func TestExternalReauthenticationRechecksExactIdentityAndLiveBoundSession(t *tes
 			result, err := s.Session().ReauthenticateExternal(ctx, input)
 			current, getErr := s.Session().Get(ctx, session.ID)
 			require.NoError(t, getErr)
+			if name == "leading proof" {
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.True(t, current.ReauthenticatedAt.Valid)
+				require.True(t, current.ReauthenticatedAt.Time.Before(input.AuthenticatedAt),
+					"a leading proof is recorded at database time, not %s", input.AuthenticatedAt)
+				return
+			}
 			if name != "success" {
 				require.Error(t, err, "invalid provider proof changed Session: %#v", current)
 				require.Nil(t, result, "invalid provider proof changed Session: %#v", current)
@@ -118,7 +131,10 @@ func TestExternalReauthenticationRechecksExactIdentityAndLiveBoundSession(t *tes
 				return
 			}
 			require.NoError(t, err)
-			require.True(t, current.ReauthenticatedAt.Time.Equal(input.AuthenticatedAt))
+			// The proof time is recorded as given unless it ran ahead of
+			// PostgreSQL time, in which case database time is recorded.
+			require.False(t, current.ReauthenticatedAt.Time.After(input.AuthenticatedAt))
+			require.WithinDuration(t, input.AuthenticatedAt, current.ReauthenticatedAt.Time, time.Second)
 			require.True(t, current.AuthenticatedAt.Equal(session.AuthenticatedAt))
 			require.Equal(t, session.MFACompletedAt, current.MFACompletedAt)
 			require.Equal(t, session.AuthenticationMethod, current.AuthenticationMethod)

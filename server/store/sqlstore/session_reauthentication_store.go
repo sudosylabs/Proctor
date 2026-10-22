@@ -98,6 +98,10 @@ func commitSessionReauthentication(ctx context.Context, tx *sqlxTxWrapper, sessi
 	return &store.SessionReauthenticationResult{Session: session, AccessTokenHashes: hashes}, nil
 }
 
+// externalReauthenticationClockSkew bounds how far an external proof time may
+// run ahead of PostgreSQL time, matching the DPoP proof allowance.
+const externalReauthenticationClockSkew = time.Minute
+
 // ReauthenticateExternal records a fresh external identity provider proof on
 // the Session named by the consumed reauthentication login state. A state that
 // predates the User's last MFA reset yields
@@ -142,8 +146,13 @@ func (s SQLSessionStore) ReauthenticateExternal(ctx context.Context, input *stor
 			return nil, store.ErrAuthenticationGenerationChanged
 		}
 		proofAt := model.TimeUTC(input.AuthenticatedAt)
-		if !at.Before(state.ExpiresAt) || proofAt.Before(state.CreatedAt.Truncate(time.Second)) || proofAt.After(at) {
+		if !at.Before(state.ExpiresAt) || proofAt.Before(state.CreatedAt.Truncate(time.Second)) || proofAt.After(at.Add(externalReauthenticationClockSkew)) {
 			return nil, store.NewErrConflict("session", "reauthentication_time", nil)
+		}
+		// A provider or node clock slightly ahead of PostgreSQL is tolerated,
+		// but the proof is never recorded later than database time.
+		if proofAt.After(at) {
+			proofAt = at
 		}
 		var exact bool
 		if err := tx.Get(ctx, &exact, `SELECT true FROM external_identities WHERE id=? AND user_id=? AND provider=? AND subject=? AND archived_at IS NULL FOR SHARE`, state.ExternalIdentityID.String(), state.TargetUserID.String(), input.ProviderID, input.Subject); err != nil {
