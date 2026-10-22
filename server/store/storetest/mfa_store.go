@@ -98,12 +98,15 @@ func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
 	count, err := ss.MFA().CountRecoveryCodes(ctx, user.ID)
 	require.NoError(t, err)
 	require.Equal(t, 2, count, "CountRecoveryCodes()")
+	// One time step for both calls: recomputing it could cross a 30-second
+	// boundary between them and turn the replay into a fresh step.
+	step := time.Now().Unix()/30 + 1
 	require.NoError(t, ss.MFA().ConsumeSecondFactor(
-		ctx, user.ID, time.Now().Unix()/30+1, "", now+1,
+		ctx, user.ID, step, "", now+1,
 	))
 
 	require.True(t, store.IsNotFound(ss.MFA().ConsumeSecondFactor(
-		ctx, user.ID, time.Now().Unix()/30+1, "", now+2,
+		ctx, user.ID, step, "", now+2,
 	)), "replayed TOTP time step error")
 	require.NoError(t, ss.MFA().ConsumeSecondFactor(
 		ctx, user.ID, 0, firstHash, now+3,
