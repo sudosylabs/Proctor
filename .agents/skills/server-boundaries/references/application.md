@@ -205,7 +205,13 @@ consumer calls or must pass on.
 An adapter translates one concrete service, Store, or infrastructure value at
 one seam. It never holds, embeds, or delegates to another adapter: when two
 ports need the same translation, one adapter satisfies both, and port method
-names converge so that it can. Authorization ports share the single
+names converge so that it can. A type is an adapter by shape, not by name:
+a struct that implements a port and whose methods mostly forward, in a few
+statements, to one field it holds. Holding a port counts as holding an
+adapter when every other production implementation of that port is one, so a
+decorator over an adapter is a chain too. Supply a backend's lifecycle as
+values to the one adapter (as `platform.CacheBackend` does) rather than as a
+second adapter beneath it. Authorization ports share the single
 `Authorize(ctx, Invocation, Action, Resource)` shape that the Access Control
 service satisfies directly.
 

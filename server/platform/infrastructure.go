@@ -59,28 +59,29 @@ type ByteCache interface {
 	Delete(context.Context, string) error
 }
 
-// CachePinger optionally reports cache backend health.
-type CachePinger interface {
-	Ping(context.Context) error
+// CacheBackend is a reusable cache store together with the lifecycle of the
+// client it runs on. Ping and Close are optional: a nil Ping reports only
+// context cancellation and a nil Close releases nothing. The store answers
+// Add when it implements the package Counter capability.
+type CacheBackend struct {
+	Store ByteCache
+	Ping  func(context.Context) error
+	Close func() error
 }
 
-// CacheCloser optionally releases cache backend resources.
-type CacheCloser interface {
-	Close() error
-}
-
-// NewCacheAdapter wraps a reusable cache store as the platform Cache port.
-// Concrete backend construction belongs to the module-root composition package.
-func NewCacheAdapter(store ByteCache) Cache {
-	return &cacheAdapter{store: store}
+// NewCacheAdapter translates a reusable cache backend into the platform Cache
+// port. Concrete backend construction belongs to the module-root composition
+// package.
+func NewCacheAdapter(backend CacheBackend) Cache {
+	return &cacheAdapter{backend: backend}
 }
 
 type cacheAdapter struct {
-	store ByteCache
+	backend CacheBackend
 }
 
 func (c *cacheAdapter) Get(ctx context.Context, key string) ([]byte, error) {
-	value, err := c.store.Get(ctx, key)
+	value, err := c.backend.Store.Get(ctx, key)
 	if errors.Is(err, cachepkg.ErrNotFound) {
 		return nil, fmt.Errorf("%w: %v", ErrCacheMiss, err)
 	}
@@ -105,7 +106,7 @@ func (c *cacheAdapter) Set(
 	default:
 		return fmt.Errorf("platform cache: unknown set condition %d", condition)
 	}
-	err := c.store.Set(ctx, key, value, cachepkg.SetOptions{
+	err := c.backend.Store.Set(ctx, key, value, cachepkg.SetOptions{
 		TTL:       ttl,
 		Condition: packageCondition,
 	})
@@ -116,7 +117,7 @@ func (c *cacheAdapter) Set(
 }
 
 func (c *cacheAdapter) Delete(ctx context.Context, key string) error {
-	return c.store.Delete(ctx, key)
+	return c.backend.Store.Delete(ctx, key)
 }
 
 func (c *cacheAdapter) Add(
@@ -125,7 +126,7 @@ func (c *cacheAdapter) Add(
 	delta int64,
 	ttl time.Duration,
 ) (int64, error) {
-	counter, ok := c.store.(cachepkg.Counter)
+	counter, ok := c.backend.Store.(cachepkg.Counter)
 	if !ok {
 		return 0, cachepkg.ErrUnsupported
 	}
@@ -133,15 +134,15 @@ func (c *cacheAdapter) Add(
 }
 
 func (c *cacheAdapter) Ping(ctx context.Context) error {
-	if pinger, ok := c.store.(CachePinger); ok {
-		return pinger.Ping(ctx)
+	if c.backend.Ping != nil {
+		return c.backend.Ping(ctx)
 	}
 	return ctx.Err()
 }
 
 func (c *cacheAdapter) Close() error {
-	if closer, ok := c.store.(CacheCloser); ok {
-		return closer.Close()
+	if c.backend.Close != nil {
+		return c.backend.Close()
 	}
 	return nil
 }

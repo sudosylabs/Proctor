@@ -514,7 +514,7 @@ func newCache(settings config.Cache) (platform.Cache, error) {
 		if err != nil {
 			return nil, err
 		}
-		return platform.NewCacheAdapter(memoryCacheBackend{store: store}), nil
+		return platform.NewCacheAdapter(platform.CacheBackend{Store: store}), nil
 	case "redis":
 		clientOption := rueidis.ClientOption{
 			InitAddress: append([]string(nil), settings.Redis.Addresses...),
@@ -543,60 +543,17 @@ func newCache(settings config.Cache) (platform.Cache, error) {
 			client.Close()
 			return nil, err
 		}
-		return platform.NewCacheAdapter(redisCacheBackend{store: store, client: client}), nil
+		return platform.NewCacheAdapter(platform.CacheBackend{
+			Store: store,
+			Ping:  func(ctx context.Context) error { return client.Do(ctx, client.B().Ping().Build()).Error() },
+			Close: func() error {
+				client.Close()
+				return nil
+			},
+		}), nil
 	default:
 		return nil, fmt.Errorf("unsupported cache backend %q", settings.Backend)
 	}
-}
-
-type memoryCacheBackend struct {
-	store *memorycache.Store[[]byte]
-}
-
-func (b memoryCacheBackend) Get(ctx context.Context, key string) ([]byte, error) {
-	return b.store.Get(ctx, key)
-}
-
-func (b memoryCacheBackend) Set(ctx context.Context, key string, value []byte, options cachepkg.SetOptions) error {
-	return b.store.Set(ctx, key, value, options)
-}
-
-func (b memoryCacheBackend) Delete(ctx context.Context, key string) error {
-	return b.store.Delete(ctx, key)
-}
-
-func (b memoryCacheBackend) Add(ctx context.Context, key string, delta int64, options cachepkg.CounterOptions) (int64, error) {
-	return b.store.Add(ctx, key, delta, options)
-}
-
-type redisCacheBackend struct {
-	store  *rediscache.Store[[]byte]
-	client rueidis.Client
-}
-
-func (b redisCacheBackend) Get(ctx context.Context, key string) ([]byte, error) {
-	return b.store.Get(ctx, key)
-}
-
-func (b redisCacheBackend) Set(ctx context.Context, key string, value []byte, options cachepkg.SetOptions) error {
-	return b.store.Set(ctx, key, value, options)
-}
-
-func (b redisCacheBackend) Delete(ctx context.Context, key string) error {
-	return b.store.Delete(ctx, key)
-}
-
-func (b redisCacheBackend) Add(ctx context.Context, key string, delta int64, options cachepkg.CounterOptions) (int64, error) {
-	return b.store.Add(ctx, key, delta, options)
-}
-
-func (b redisCacheBackend) Ping(ctx context.Context) error {
-	return b.client.Do(ctx, b.client.B().Ping().Build()).Error()
-}
-
-func (b redisCacheBackend) Close() error {
-	b.client.Close()
-	return nil
 }
 
 func newMailer(settings config.Mail) (platform.Mailer, error) {

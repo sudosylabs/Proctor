@@ -26,32 +26,12 @@ import (
 	"github.com/sudosylabs/proctor/server/config"
 )
 
-type memoryByteCache struct {
-	store *memorycache.Store[[]byte]
-}
-
-func (c memoryByteCache) Get(ctx context.Context, key string) ([]byte, error) {
-	return c.store.Get(ctx, key)
-}
-
-func (c memoryByteCache) Set(ctx context.Context, key string, value []byte, options cachepkg.SetOptions) error {
-	return c.store.Set(ctx, key, value, options)
-}
-
-func (c memoryByteCache) Delete(ctx context.Context, key string) error {
-	return c.store.Delete(ctx, key)
-}
-
-func (c memoryByteCache) Add(ctx context.Context, key string, delta int64, options cachepkg.CounterOptions) (int64, error) {
-	return c.store.Add(ctx, key, delta, options)
-}
-
 func TestMemoryCacheAdapterPortableSemantics(t *testing.T) {
 	t.Parallel()
 
 	store, err := memorycache.New(cachepkg.BytesCodec())
 	require.NoError(t, err)
-	cache := NewCacheAdapter(memoryByteCache{store: store})
+	cache := NewCacheAdapter(CacheBackend{Store: store})
 	t.Cleanup(func() {
 		assert.NoError(t, cache.Close())
 	})
