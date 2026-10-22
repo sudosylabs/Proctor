@@ -387,7 +387,10 @@ func (s SQLSessionStore) ListActiveByUser(ctx context.Context, userID model.User
 // UpdateActivity records activity on a live Session and moves its idle expiry
 // to idleExpiresAt, capped at the absolute expiry. An absent, revoked, or
 // already expired Session yields a not-found error.
-func (s SQLSessionStore) UpdateActivity(ctx context.Context, id model.SessionID, lastActivityAt, idleExpiresAt time.Time) error {
+func (s SQLSessionStore) UpdateActivity(ctx context.Context, input *store.SessionActivityUpdate) error {
+	id := input.ID
+	lastActivityAt := input.LastActivityAt
+	idleExpiresAt := input.IdleExpiresAt
 	activityAt := model.TimeUTC(lastActivityAt)
 	idleAt := model.TimeUTC(idleExpiresAt)
 	result, err := s.GetMaster().Exec(ctx, `
@@ -415,7 +418,11 @@ func (s SQLSessionStore) UpdateActivity(ctx context.Context, id model.SessionID,
 
 // Withdraw revokes one Session of the User for a system withdrawal reason and
 // returns the hashes of its revoked credentials.
-func (s SQLSessionStore) Withdraw(ctx context.Context, id model.SessionID, userID model.UserID, revokedAt time.Time, reason model.SessionRevocationReason) ([]string, error) {
+func (s SQLSessionStore) Withdraw(ctx context.Context, input *store.SessionWithdrawal) ([]string, error) {
+	id := input.ID
+	userID := input.UserID
+	revokedAt := input.RevokedAt
+	reason := input.Reason
 	if !reason.IsSystemWithdrawal() {
 		return nil, store.NewErrInvalidInput("session", "revocation_reason", nil)
 	}
@@ -430,7 +437,10 @@ func (s SQLSessionStore) Withdraw(ctx context.Context, id model.SessionID, userI
 // EnforceExpiry revokes the User's unrevoked Session as expired when it has
 // expired at at, returning its revoked credential hashes with Expired set. An
 // unexpired Session is returned unchanged.
-func (s SQLSessionStore) EnforceExpiry(ctx context.Context, id model.SessionID, userID model.UserID, at time.Time) (*store.SessionExpiryEnforcementResult, error) {
+func (s SQLSessionStore) EnforceExpiry(ctx context.Context, input *store.SessionExpiryEnforcement) (*store.SessionExpiryEnforcementResult, error) {
+	id := input.ID
+	userID := input.UserID
+	at := input.At
 	at = model.TimeUTC(at)
 	if !id.IsValid() || !userID.IsValid() || !at.After(time.Unix(0, 0)) {
 		return nil, store.NewErrInvalidInput("session", "expiry", nil)

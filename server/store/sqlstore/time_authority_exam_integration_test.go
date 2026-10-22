@@ -189,7 +189,10 @@ type timeAuthorityReviewStore struct {
 	moved map[model.SubmissionReviewID]bool
 }
 
-func (s *timeAuthorityReviewStore) PrepareRelease(ctx context.Context, submissionID model.SubmissionID, reviewID model.SubmissionReviewID, expectedRevision int64) (*store.ExamIntegrityReviewReleasePreparation, error) {
+func (s *timeAuthorityReviewStore) PrepareRelease(ctx context.Context, input *store.ExamIntegrityReviewReleasePrepare) (*store.ExamIntegrityReviewReleasePreparation, error) {
+	submissionID := input.SubmissionID
+	reviewID := input.ReviewID
+	expectedRevision := input.ExpectedRevision
 	s.mu.Lock()
 	first := !s.moved[reviewID]
 	s.moved[reviewID] = true
@@ -197,7 +200,7 @@ func (s *timeAuthorityReviewStore) PrepareRelease(ctx context.Context, submissio
 	if first {
 		s.leadFinalizedReview(ctx, reviewID)
 	}
-	return s.ExamIntegrityReviewStore.PrepareRelease(ctx, submissionID, reviewID, expectedRevision)
+	return s.ExamIntegrityReviewStore.PrepareRelease(ctx, &store.ExamIntegrityReviewReleasePrepare{SubmissionID: submissionID, ReviewID: reviewID, ExpectedRevision: expectedRevision})
 }
 
 // leadFinalizedReview moves a finalized Review's immutable lifecycle ahead of

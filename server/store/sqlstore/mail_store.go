@@ -243,7 +243,11 @@ func (s SQLMailStore) ListDeliveries(ctx context.Context, options store.MailDeli
 	return result, nil
 }
 
-func (s SQLMailStore) StartDelivery(ctx context.Context, id model.MailDeliveryID, expectedRevision int64, at time.Time) (*model.MailDelivery, error) {
+// StartDelivery moves a queued delivery at the expected revision to sending at the input instant.
+func (s SQLMailStore) StartDelivery(ctx context.Context, input *store.MailDeliveryStart) (*model.MailDelivery, error) {
+	id := input.ID
+	expectedRevision := input.ExpectedRevision
+	at := input.At
 	if !id.IsValid() || expectedRevision <= 0 || at.IsZero() {
 		return nil, store.NewErrInvalidInput("mail_delivery", "start", nil)
 	}

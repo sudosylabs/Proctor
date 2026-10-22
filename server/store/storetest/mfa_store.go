@@ -102,18 +102,18 @@ func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
 	// boundary between them and turn the replay into a fresh step.
 	step := time.Now().Unix()/30 + 1
 	require.NoError(t, ss.MFA().ConsumeSecondFactor(
-		ctx, user.ID, step, "", now.Add(1*time.Millisecond),
+		ctx, &store.MFASecondFactorConsumption{UserID: user.ID, TimeStep: step, RecoveryCodeHash: "", Now: now.Add(1 * time.Millisecond)},
 	))
 
 	require.True(t, store.IsNotFound(ss.MFA().ConsumeSecondFactor(
-		ctx, user.ID, step, "", now.Add(2*time.Millisecond),
+		ctx, &store.MFASecondFactorConsumption{UserID: user.ID, TimeStep: step, RecoveryCodeHash: "", Now: now.Add(2 * time.Millisecond)},
 	)), "replayed TOTP time step error")
 	require.NoError(t, ss.MFA().ConsumeSecondFactor(
-		ctx, user.ID, 0, firstHash, now.Add(3*time.Millisecond),
+		ctx, &store.MFASecondFactorConsumption{UserID: user.ID, TimeStep: 0, RecoveryCodeHash: firstHash, Now: now.Add(3 * time.Millisecond)},
 	))
 
 	require.True(t, store.IsNotFound(ss.MFA().ConsumeSecondFactor(
-		ctx, user.ID, 0, firstHash, now.Add(4*time.Millisecond),
+		ctx, &store.MFASecondFactorConsumption{UserID: user.ID, TimeStep: 0, RecoveryCodeHash: firstHash, Now: now.Add(4 * time.Millisecond)},
 	)), "replayed recovery code error")
 	count, err = ss.MFA().CountRecoveryCodes(ctx, user.ID)
 	require.NoError(t, err)
@@ -131,7 +131,7 @@ func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
 	require.NoError(t, err)
 	require.Equal(t, 1, count, "replacement recovery codes")
 	require.True(t, store.IsNotFound(ss.MFA().ConsumeSecondFactor(
-		ctx, user.ID, 0, secondHash, now.Add(6*time.Millisecond),
+		ctx, &store.MFASecondFactorConsumption{UserID: user.ID, TimeStep: 0, RecoveryCodeHash: secondHash, Now: now.Add(6 * time.Millisecond)},
 	)), "superseded recovery code error")
 	disableAudit, disableNotice := mfaSecurityNoticeFixture(t, ctx, ss, user, model.MailTemplateIdentityMFADisabled, now.Add(7*time.Millisecond))
 	disableNotice = suppressedMFASecurityNotice(t, disableNotice, model.TimeUTC(now.Add(7*time.Millisecond)))
@@ -228,10 +228,7 @@ func testMFARecoveryCodeConsumptionIsSerialized(t *testing.T, ss store.Store) {
 			<-start
 			results <- ss.MFA().ConsumeSecondFactor(
 				ctx,
-				user.ID,
-				0,
-				codeHash,
-				base.Add(time.Duration(2+offset)*time.Millisecond),
+				&store.MFASecondFactorConsumption{UserID: user.ID, TimeStep: 0, RecoveryCodeHash: codeHash, Now: base.Add(time.Duration(2+offset) * time.Millisecond)},
 			)
 		}(index)
 	}

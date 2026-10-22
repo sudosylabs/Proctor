@@ -59,7 +59,7 @@ func testSessionListByUserPages(t *testing.T, ss store.Store) {
 		session, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
 		saved = append(saved, session)
 	}
-	_, err := ss.Session().Withdraw(ctx, saved[1].ID, user.ID, model.NowUTC().Add(1*time.Millisecond), model.SessionRevocationInactiveUser)
+	_, err := ss.Session().Withdraw(ctx, &store.SessionWithdrawal{ID: saved[1].ID, UserID: user.ID, RevokedAt: model.NowUTC().Add(1 * time.Millisecond), Reason: model.SessionRevocationInactiveUser})
 	require.NoError(t, err)
 
 	var paged []model.SessionID
@@ -128,7 +128,7 @@ func testSessionPurgeRetired(t *testing.T, ss store.Store) {
 	user := saveUser(t, ctx, ss)
 	retired, _, retiredRaw := saveSession(t, ctx, ss, user.ID.String(), 10)
 	live, _, liveRaw := saveSession(t, ctx, ss, user.ID.String(), 10)
-	_, err = ss.Session().Withdraw(ctx, retired.ID, user.ID, model.NowUTC(), model.SessionRevocationInactiveUser)
+	_, err = ss.Session().Withdraw(ctx, &store.SessionWithdrawal{ID: retired.ID, UserID: user.ID, RevokedAt: model.NowUTC(), Reason: model.SessionRevocationInactiveUser})
 	require.NoError(t, err)
 
 	// Within the grace nothing is deleted.
@@ -142,10 +142,7 @@ func testSessionPurgeRetired(t *testing.T, ss store.Store) {
 	// A rotation revokes the live Session's first access credential and
 	// marks its refresh credential used.
 	now := live.CreatedAt.Add(time.Millisecond)
-	_, err = ss.SessionCredential().RotateRefresh(ctx, model.HashToken(liveRaw.refresh),
-		&model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: now.Add(15 * time.Minute)},
-		&model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: live.ExpiresAt},
-		now, now.Add(time.Hour))
+	_, err = ss.SessionCredential().RotateRefresh(ctx, &store.SessionRefreshRotation{TokenHash: model.HashToken(liveRaw.refresh), Access: &model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: now.Add(15 * time.Minute)}, Refresh: &model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: live.ExpiresAt}, Now: now, IdleExpiresAt: now.Add(time.Hour)})
 	require.NoError(t, err)
 
 	time.Sleep(20 * time.Millisecond)
@@ -162,10 +159,7 @@ func testSessionPurgeRetired(t *testing.T, ss store.Store) {
 
 	// The used refresh credential is unexpired, so replay is still detected.
 	replayAt := now.Add(time.Second)
-	replay, err := ss.SessionCredential().RotateRefresh(ctx, model.HashToken(liveRaw.refresh),
-		&model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: replayAt.Add(15 * time.Minute)},
-		&model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: live.ExpiresAt},
-		replayAt, replayAt.Add(time.Hour))
+	replay, err := ss.SessionCredential().RotateRefresh(ctx, &store.SessionRefreshRotation{TokenHash: model.HashToken(liveRaw.refresh), Access: &model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: replayAt.Add(15 * time.Minute)}, Refresh: &model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: live.ExpiresAt}, Now: replayAt, IdleExpiresAt: replayAt.Add(time.Hour)})
 	require.NoError(t, err)
 	require.True(t, replay.ReplayDetected)
 }
@@ -179,10 +173,7 @@ func testSessionPurgeRetiredCredentialLineage(t *testing.T, ss store.Store) {
 	require.NoError(t, err)
 	now := saved.CreatedAt.Add(time.Millisecond)
 	nextRefresh := model.NewCredentialToken()
-	rotation, err := ss.SessionCredential().RotateRefresh(ctx, model.HashToken(raw.refresh),
-		&model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: now.Add(15 * time.Minute)},
-		&model.SessionCredential{TokenHash: model.HashToken(nextRefresh), ExpiresAt: saved.ExpiresAt},
-		now, now.Add(time.Hour))
+	rotation, err := ss.SessionCredential().RotateRefresh(ctx, &store.SessionRefreshRotation{TokenHash: model.HashToken(raw.refresh), Access: &model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: now.Add(15 * time.Minute)}, Refresh: &model.SessionCredential{TokenHash: model.HashToken(nextRefresh), ExpiresAt: saved.ExpiresAt}, Now: now, IdleExpiresAt: now.Add(time.Hour)})
 	require.NoError(t, err)
 	require.False(t, rotation.RefreshCredential.ParentID.IsZero())
 
@@ -309,15 +300,13 @@ func testSessionEnforceExpiry(t *testing.T, ss store.Store) {
 	user := saveUser(t, ctx, ss)
 	active, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
 	for _, invalidAt := range []time.Time{{}, time.Unix(0, 0), time.Unix(-1, 0)} {
-		_, err := ss.Session().EnforceExpiry(ctx, active.ID, user.ID, invalidAt)
+		_, err := ss.Session().EnforceExpiry(ctx, &store.SessionExpiryEnforcement{ID: active.ID, UserID: user.ID, At: invalidAt})
 		var invalid *store.ErrInvalidInput
 		require.ErrorAs(t, err, &invalid, "EnforceExpiry(%v) error", invalidAt)
 	}
 	beforeExpiry, err := ss.Session().EnforceExpiry(
 		ctx,
-		active.ID,
-		user.ID,
-		active.IdleExpiresAt.Add(-time.Millisecond),
+		&store.SessionExpiryEnforcement{ID: active.ID, UserID: user.ID, At: active.IdleExpiresAt.Add(-time.Millisecond)},
 	)
 	require.NoError(t, err)
 	require.False(t, beforeExpiry.Expired)
@@ -330,9 +319,7 @@ func testSessionEnforceExpiry(t *testing.T, ss store.Store) {
 	at := expired.IdleExpiresAt.Add(time.Second)
 	result, err := ss.Session().EnforceExpiry(
 		ctx,
-		expired.ID,
-		user.ID,
-		at,
+		&store.SessionExpiryEnforcement{ID: expired.ID, UserID: user.ID, At: at},
 	)
 	require.NoError(t, err)
 	require.True(t, result.Expired)
@@ -351,7 +338,7 @@ func testSessionEnforceExpiry(t *testing.T, ss store.Store) {
 		require.True(t, credential.RevokedAt.Time.Equal(at), "expired credential/session = %#v / %#v", credential, resolved)
 		require.True(t, resolved.RevokedAt.Time.Equal(at), "expired credential/session = %#v / %#v", credential, resolved)
 	}
-	_, err = ss.Session().EnforceExpiry(ctx, expired.ID, user.ID, at.Add(time.Microsecond))
+	_, err = ss.Session().EnforceExpiry(ctx, &store.SessionExpiryEnforcement{ID: expired.ID, UserID: user.ID, At: at.Add(time.Microsecond)})
 	require.True(t, store.IsNotFound(err), "repeated EnforceExpiry() error")
 }
 
@@ -399,7 +386,7 @@ func testSessionUpdateActivity(t *testing.T, ss store.Store) {
 	session, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
 	at := session.LastActivityAt.Add(time.Second)
 	idle := at.Add(time.Hour)
-	require.NoError(t, ss.Session().UpdateActivity(ctx, session.ID, at, idle))
+	require.NoError(t, ss.Session().UpdateActivity(ctx, &store.SessionActivityUpdate{ID: session.ID, LastActivityAt: at, IdleExpiresAt: idle}))
 	got, err := ss.Session().Get(ctx, session.ID)
 	require.NoError(t, err)
 	require.True(t, got.LastActivityAt.Equal(at))
@@ -414,14 +401,14 @@ func testSessionRevoke(t *testing.T, ss store.Store) {
 	session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
 	at := model.NowUTC().Add(100 * time.Millisecond)
 	other := saveUser(t, ctx, ss)
-	_, err = ss.Session().Withdraw(ctx, session.ID, user.ID, at, model.SessionRevocationUserLogout)
+	_, err = ss.Session().Withdraw(ctx, &store.SessionWithdrawal{ID: session.ID, UserID: user.ID, RevokedAt: at, Reason: model.SessionRevocationUserLogout})
 	require.ErrorAs(t, err, new(*store.ErrInvalidInput))
-	_, err = ss.Session().Withdraw(ctx, session.ID, other.ID, at, model.SessionRevocationInactiveUser)
+	_, err = ss.Session().Withdraw(ctx, &store.SessionWithdrawal{ID: session.ID, UserID: other.ID, RevokedAt: at, Reason: model.SessionRevocationInactiveUser})
 	require.True(t, store.IsNotFound(err), "cross-user Revoke() error")
 	unrevoked, err := ss.Session().Get(ctx, session.ID)
 	require.NoError(t, err)
 	require.False(t, unrevoked.RevokedAt.Valid)
-	hashes, err := ss.Session().Withdraw(ctx, session.ID, user.ID, at, model.SessionRevocationInactiveUser)
+	hashes, err := ss.Session().Withdraw(ctx, &store.SessionWithdrawal{ID: session.ID, UserID: user.ID, RevokedAt: at, Reason: model.SessionRevocationInactiveUser})
 	require.NoError(t, err)
 	require.Len(t, hashes, 2)
 	credential, got, err := ss.SessionCredential().GetSessionByTokenHash(
@@ -600,17 +587,13 @@ func testSessionRotateAndDetectReplay(t *testing.T, ss store.Store) {
 	newRefreshRaw := model.NewCredentialToken()
 	rotation, err := ss.SessionCredential().RotateRefresh(
 		ctx,
-		model.HashToken(raw.refresh),
-		&model.SessionCredential{
+		&store.SessionRefreshRotation{TokenHash: model.HashToken(raw.refresh), Access: &model.SessionCredential{
 			TokenHash: model.HashToken(newAccessRaw),
 			ExpiresAt: now.Add(15 * time.Minute),
-		},
-		&model.SessionCredential{
+		}, Refresh: &model.SessionCredential{
 			TokenHash: model.HashToken(newRefreshRaw),
 			ExpiresAt: session.ExpiresAt,
-		},
-		now,
-		now.Add(24*time.Hour),
+		}, Now: now, IdleExpiresAt: now.Add(24 * time.Hour)},
 	)
 	require.NoError(t, err)
 	require.False(t, rotation.ReplayDetected)
@@ -628,17 +611,13 @@ func testSessionRotateAndDetectReplay(t *testing.T, ss store.Store) {
 	replayAt := now.Add(100 * time.Millisecond)
 	replay, err := ss.SessionCredential().RotateRefresh(
 		ctx,
-		model.HashToken(raw.refresh),
-		&model.SessionCredential{
+		&store.SessionRefreshRotation{TokenHash: model.HashToken(raw.refresh), Access: &model.SessionCredential{
 			TokenHash: model.HashToken(model.NewCredentialToken()),
 			ExpiresAt: replayAt.Add(15 * time.Minute),
-		},
-		&model.SessionCredential{
+		}, Refresh: &model.SessionCredential{
 			TokenHash: model.HashToken(model.NewCredentialToken()),
 			ExpiresAt: session.ExpiresAt,
-		},
-		replayAt,
-		session.ExpiresAt,
+		}, Now: replayAt, IdleExpiresAt: session.ExpiresAt},
 	)
 	require.NoError(t, err)
 	require.True(t, replay.ReplayDetected)
@@ -660,17 +639,13 @@ func testSessionRotateEnforcesSessionExpiry(t *testing.T, ss store.Store) {
 	at := session.IdleExpiresAt.Add(time.Second)
 	rotation, err := ss.SessionCredential().RotateRefresh(
 		ctx,
-		model.HashToken(raw.refresh),
-		&model.SessionCredential{
+		&store.SessionRefreshRotation{TokenHash: model.HashToken(raw.refresh), Access: &model.SessionCredential{
 			TokenHash: model.HashToken(model.NewCredentialToken()),
 			ExpiresAt: at.Add(15 * time.Minute),
-		},
-		&model.SessionCredential{
+		}, Refresh: &model.SessionCredential{
 			TokenHash: model.HashToken(model.NewCredentialToken()),
 			ExpiresAt: session.ExpiresAt,
-		},
-		at,
-		session.ExpiresAt,
+		}, Now: at, IdleExpiresAt: session.ExpiresAt},
 	)
 	require.NoError(t, err)
 	require.True(t, rotation.Expired)
@@ -700,17 +675,13 @@ func testSessionConcurrentRefreshReplay(t *testing.T, ss store.Store) {
 			<-start
 			rotation, err := ss.SessionCredential().RotateRefresh(
 				ctx,
-				model.HashToken(raw.refresh),
-				&model.SessionCredential{
+				&store.SessionRefreshRotation{TokenHash: model.HashToken(raw.refresh), Access: &model.SessionCredential{
 					TokenHash: model.HashToken(model.NewCredentialToken()),
 					ExpiresAt: now.Add(15 * time.Minute),
-				},
-				&model.SessionCredential{
+				}, Refresh: &model.SessionCredential{
 					TokenHash: model.HashToken(model.NewCredentialToken()),
 					ExpiresAt: session.ExpiresAt,
-				},
-				now,
-				now.Add(24*time.Hour),
+				}, Now: now, IdleExpiresAt: now.Add(24 * time.Hour)},
 			)
 			results <- result{rotation: rotation, err: err}
 		}()
@@ -751,17 +722,13 @@ func testSessionConcurrentRefreshAndRevokeAll(t *testing.T, ss store.Store) {
 		<-start
 		_, err := ss.SessionCredential().RotateRefresh(
 			ctx,
-			model.HashToken(raw.refresh),
-			&model.SessionCredential{
+			&store.SessionRefreshRotation{TokenHash: model.HashToken(raw.refresh), Access: &model.SessionCredential{
 				TokenHash: model.HashToken(newAccessRaw),
 				ExpiresAt: rotateAt.Add(15 * time.Minute),
-			},
-			&model.SessionCredential{
+			}, Refresh: &model.SessionCredential{
 				TokenHash: model.HashToken(model.NewCredentialToken()),
 				ExpiresAt: session.ExpiresAt,
-			},
-			rotateAt,
-			rotateAt.Add(24*time.Hour),
+			}, Now: rotateAt, IdleExpiresAt: rotateAt.Add(24 * time.Hour)},
 		)
 		rotationResult <- err
 	}()

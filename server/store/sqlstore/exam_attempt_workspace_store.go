@@ -1126,7 +1126,10 @@ func (s *SQLExamAttemptWorkspaceStore) MarkObjectReclaimable(ctx context.Context
 	return nil
 }
 
-func (s *SQLExamAttemptWorkspaceStore) ClaimObjectsForCleanup(ctx context.Context, limit int, claimToken string) ([]model.AttemptWorkspaceObject, error) {
+// ClaimObjectsForCleanup claims up to the input limit of due Attempt Workspace objects for physical cleanup under the input claim token.
+func (s *SQLExamAttemptWorkspaceStore) ClaimObjectsForCleanup(ctx context.Context, input *store.AttemptWorkspaceCleanupClaim) ([]model.AttemptWorkspaceObject, error) {
+	limit := input.Limit
+	claimToken := input.ClaimToken
 	if limit < 1 || limit > 200 || strings.TrimSpace(claimToken) == "" || strings.TrimSpace(claimToken) != claimToken || len(claimToken) > model.AttemptWorkspaceClaimTokenMaxBytes {
 		return nil, store.NewErrInvalidInput("attempt_workspace_object", "cleanup_claim", nil)
 	}
@@ -1172,7 +1175,10 @@ func (s *SQLExamAttemptWorkspaceStore) ClaimObjectsForCleanup(ctx context.Contex
 	return objects, nil
 }
 
-func (s *SQLExamAttemptWorkspaceStore) CompleteObjectCleanup(ctx context.Context, objectID model.AttemptWorkspaceObjectID, claimToken string) error {
+// CompleteObjectCleanup records that the claimed Attempt Workspace object was removed from storage; repeating it with the same claim token is a no-op.
+func (s *SQLExamAttemptWorkspaceStore) CompleteObjectCleanup(ctx context.Context, input *store.AttemptWorkspaceCleanupCompletion) error {
+	objectID := input.ObjectID
+	claimToken := input.ClaimToken
 	if !validAttemptWorkspaceCleanupSelector(objectID, claimToken) {
 		return store.NewErrInvalidInput("attempt_workspace_object", "cleanup_completion", nil)
 	}
@@ -1205,7 +1211,10 @@ func (s *SQLExamAttemptWorkspaceStore) CompleteObjectCleanup(ctx context.Context
 	return nil
 }
 
-func (s *SQLExamAttemptWorkspaceStore) ReleaseObjectCleanup(ctx context.Context, objectID model.AttemptWorkspaceObjectID, claimToken string) error {
+// ReleaseObjectCleanup returns a claimed Attempt Workspace object to the cleanup queue without removing it.
+func (s *SQLExamAttemptWorkspaceStore) ReleaseObjectCleanup(ctx context.Context, input *store.AttemptWorkspaceCleanupRelease) error {
+	objectID := input.ObjectID
+	claimToken := input.ClaimToken
 	if !validAttemptWorkspaceCleanupSelector(objectID, claimToken) {
 		return store.NewErrInvalidInput("attempt_workspace_object", "cleanup_release", nil)
 	}

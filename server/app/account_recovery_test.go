@@ -539,7 +539,7 @@ func (s *accountTokenStoreFake) GetByHash(context.Context, string, model.UserTok
 	return s.byHash, nil
 }
 
-func (s *accountTokenStoreFake) ConsumeEmailVerification(context.Context, string, time.Time, *model.AuditEvent) (*store.EmailVerificationResult, error) {
+func (s *accountTokenStoreFake) ConsumeEmailVerification(ctx context.Context, input *store.EmailVerificationConsumption) (*store.EmailVerificationResult, error) {
 	if s.consumeVerificationErr != nil {
 		return nil, s.consumeVerificationErr
 	}

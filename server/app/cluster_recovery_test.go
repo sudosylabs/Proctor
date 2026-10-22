@@ -59,7 +59,7 @@ func TestSessionRevocationWithoutClusterFanoutRejectsWithWarmPeerCache(t *testin
 		}
 	}
 	require.NotEmpty(t, sessionID, "session not found")
-	hashes, err := storeFake.Session().Withdraw(ctx, model.SessionID(sessionID), user.ID, time.Now(), model.SessionRevocationInactiveUser)
+	hashes, err := storeFake.Session().Withdraw(ctx, &store.SessionWithdrawal{ID: model.SessionID(sessionID), UserID: user.ID, RevokedAt: time.Now(), Reason: model.SessionRevocationInactiveUser})
 	require.NoError(t, err)
 	invalidator, err := newAuthenticationCacheInvalidator(authenticationCacheInvalidatorDependencies{Cache: cacheA, Diagnostics: &securityEffectsDiagnosticsFake{}})
 	require.NoError(t, err)
@@ -335,7 +335,7 @@ func (recoveryInstitutionStore) GetSingleton(context.Context) (*model.Institutio
 func (recoveryInstitutionStore) Update(context.Context, *store.InstitutionUpdate) (*model.Institution, error) {
 	return nil, errors.New("unused")
 }
-func (recoveryInstitutionStore) Archive(context.Context, model.InstitutionID, time.Time) error {
+func (recoveryInstitutionStore) Archive(ctx context.Context, input *store.InstitutionArchive) error {
 	return errors.New("unused")
 }
 

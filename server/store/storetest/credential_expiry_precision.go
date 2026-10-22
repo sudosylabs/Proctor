@@ -71,7 +71,7 @@ func testMFANativeExpiry(t *testing.T, ss store.Store) {
 			require.ErrorAs(t, err, &invalid, "Activate(%s)", at)
 			require.Equal(t, "mfa_credential", invalid.Entity, "Activate(%s)", at)
 			require.Equal(t, "activate", invalid.Field, "Activate(%s)", at)
-			_, err = ss.MFA().UpgradeSession(ctx, sessionID, userID, at)
+			_, err = ss.MFA().UpgradeSession(ctx, &store.MFASessionUpgrade{SessionID: sessionID, UserID: userID, Now: at})
 			require.ErrorAs(t, err, &invalid, "UpgradeSession(%s)", at)
 			require.Equal(t, "session", invalid.Entity, "UpgradeSession(%s)", at)
 			require.Equal(t, "upgrade_mfa", invalid.Field, "UpgradeSession(%s)", at)
@@ -100,7 +100,7 @@ func testMFANativeExpiry(t *testing.T, ss store.Store) {
 				require.NoError(t, err)
 				at := deadline.Add(point.offset).In(time.FixedZone("test", 2*60*60))
 				if operation == "Session upgrade" {
-					_, err = ss.MFA().UpgradeSession(ctx, session.ID, user.ID, at)
+					_, err = ss.MFA().UpgradeSession(ctx, &store.MFASessionUpgrade{SessionID: session.ID, UserID: user.ID, Now: at})
 				} else {
 					pending, saveErr := ss.MFA().SeedPending(ctx, &model.MFACredential{
 						UserID: user.ID, State: model.MFAStatePending,

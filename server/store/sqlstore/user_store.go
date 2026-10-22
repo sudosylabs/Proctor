@@ -1133,7 +1133,9 @@ func setUserDisabled(
 
 // UpdateLastLogin advances the User's last login and activity times to at
 // without moving them backwards.
-func (s SQLUserStore) UpdateLastLogin(ctx context.Context, id model.UserID, at time.Time) error {
+func (s SQLUserStore) UpdateLastLogin(ctx context.Context, input *store.UserLastLoginUpdate) error {
+	id := input.ID
+	at := input.At
 	loginAt := model.TimeUTC(at)
 	result, err := s.GetMaster().Exec(ctx, `
 		UPDATE users

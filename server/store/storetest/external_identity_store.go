@@ -442,13 +442,13 @@ func TestExternalIdentityAdmissionMode(t *testing.T, ss store.Store, mode model.
 		require.Nil(t, admitted, "ordinary resolution admitted an Invitation candidate")
 		require.True(t, store.IsNotFound(admissionErr), "ordinary resolution admitted an Invitation candidate")
 		stateToken, bindingToken := model.NewCredentialToken(), model.NewCredentialToken()
-		state, stateErr := ss.ExternalLoginState().SaveInvitationAdmission(ctx, &model.ExternalLoginState{
+		state, stateErr := ss.ExternalLoginState().SaveInvitationAdmission(ctx, &store.ExternalLoginStateInvitationAdmission{State: &model.ExternalLoginState{
 			Provider: "campus-cas", Purpose: model.ExternalAuthenticationPurposeInvitationAdmission,
 			StateHash: model.HashToken(stateToken), BindingHash: model.HashToken(bindingToken), ReturnTo: "/join",
 			ClientType: model.SessionClientWeb,
-		}, time.Minute, invitation.ClaimHash)
+		}, Lifetime: time.Minute, ClaimHash: invitation.ClaimHash})
 		require.NoError(t, stateErr)
-		state, stateErr = ss.ExternalLoginState().Consume(ctx, state.Provider, state.StateHash, state.BindingHash)
+		state, stateErr = ss.ExternalLoginState().Consume(ctx, &store.ExternalLoginStateConsumption{Provider: state.Provider, StateHash: state.StateHash, BindingHash: state.BindingHash})
 		require.NoError(t, stateErr)
 		acceptance := studentClassInvitationAcceptanceFixture(t, invitation, model.NowUTC())
 		acceptance.AuditEvent.ClientType, acceptance.AuditEvent.AuthMethod = string(model.SessionClientWeb), "cas"
@@ -467,13 +467,13 @@ func TestExternalIdentityAdmissionMode(t *testing.T, ss store.Store, mode model.
 		}
 		if probe.BackdateState != nil {
 			expiredToken, expiredBinding := model.NewCredentialToken(), model.NewCredentialToken()
-			expiredState, expiredErr := ss.ExternalLoginState().SaveInvitationAdmission(ctx, &model.ExternalLoginState{
+			expiredState, expiredErr := ss.ExternalLoginState().SaveInvitationAdmission(ctx, &store.ExternalLoginStateInvitationAdmission{State: &model.ExternalLoginState{
 				Provider: "campus-cas", Purpose: model.ExternalAuthenticationPurposeInvitationAdmission,
 				StateHash: model.HashToken(expiredToken), BindingHash: model.HashToken(expiredBinding), ReturnTo: "/join",
 				ClientType: model.SessionClientWeb,
-			}, time.Minute, invitation.ClaimHash)
+			}, Lifetime: time.Minute, ClaimHash: invitation.ClaimHash})
 			require.NoError(t, expiredErr)
-			expiredState, expiredErr = ss.ExternalLoginState().Consume(ctx, expiredState.Provider, expiredState.StateHash, expiredState.BindingHash)
+			expiredState, expiredErr = ss.ExternalLoginState().Consume(ctx, &store.ExternalLoginStateConsumption{Provider: expiredState.Provider, StateHash: expiredState.StateHash, BindingHash: expiredState.BindingHash})
 			require.NoError(t, expiredErr)
 			probe.BackdateState(t, expiredState.ID, model.NowUTC().Add(-time.Minute))
 			expiredInput := *external
@@ -558,13 +558,13 @@ func TestExternalIdentityAdmissionMode(t *testing.T, ss store.Store, mode model.
 		existingInvitation, issueErr := ss.Invitation().IssueStudentClass(ctx, existingIssue)
 		require.NoError(t, issueErr)
 		existingStateToken, existingBindingToken := model.NewCredentialToken(), model.NewCredentialToken()
-		existingState, stateErr := ss.ExternalLoginState().SaveInvitationAdmission(ctx, &model.ExternalLoginState{
+		existingState, stateErr := ss.ExternalLoginState().SaveInvitationAdmission(ctx, &store.ExternalLoginStateInvitationAdmission{State: &model.ExternalLoginState{
 			Provider: "campus-cas", Purpose: model.ExternalAuthenticationPurposeInvitationAdmission,
 			StateHash: model.HashToken(existingStateToken), BindingHash: model.HashToken(existingBindingToken), ReturnTo: "/join",
 			ClientType: model.SessionClientWeb,
-		}, time.Minute, existingInvitation.ClaimHash)
+		}, Lifetime: time.Minute, ClaimHash: existingInvitation.ClaimHash})
 		require.NoError(t, stateErr)
-		existingState, stateErr = ss.ExternalLoginState().Consume(ctx, existingState.Provider, existingState.StateHash, existingState.BindingHash)
+		existingState, stateErr = ss.ExternalLoginState().Consume(ctx, &store.ExternalLoginStateConsumption{Provider: existingState.Provider, StateHash: existingState.StateHash, BindingHash: existingState.BindingHash})
 		require.NoError(t, stateErr)
 		existingAcceptance := studentClassInvitationAcceptanceFixture(t, existingInvitation, model.NowUTC())
 		existingAcceptance.AuditEvent.ClientType, existingAcceptance.AuditEvent.AuthMethod = string(model.SessionClientWeb), "cas"

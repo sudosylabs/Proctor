@@ -161,7 +161,25 @@ type ExamAttemptWorkspaceStore interface {
 	MarkObjectReady(context.Context, *ExamAttemptWorkspaceObjectReady) (*model.AttemptWorkspaceObject, error)
 	ApplyMutation(context.Context, *ExamAttemptWorkspaceMutation, *CommandIdempotency) (*ExamAttemptWorkspaceMutationResult, error)
 	MarkObjectReclaimable(context.Context, model.AttemptWorkspaceObjectID) error
-	ClaimObjectsForCleanup(context.Context, int, string) ([]model.AttemptWorkspaceObject, error)
-	CompleteObjectCleanup(context.Context, model.AttemptWorkspaceObjectID, string) error
-	ReleaseObjectCleanup(context.Context, model.AttemptWorkspaceObjectID, string) error
+	ClaimObjectsForCleanup(context.Context, *AttemptWorkspaceCleanupClaim) ([]model.AttemptWorkspaceObject, error)
+	CompleteObjectCleanup(context.Context, *AttemptWorkspaceCleanupCompletion) error
+	ReleaseObjectCleanup(context.Context, *AttemptWorkspaceCleanupRelease) error
+}
+
+// AttemptWorkspaceCleanupClaim is the input to ExamAttemptWorkspaceStore.ClaimObjectsForCleanup.
+type AttemptWorkspaceCleanupClaim struct {
+	Limit      int
+	ClaimToken string
+}
+
+// AttemptWorkspaceCleanupCompletion is the input to ExamAttemptWorkspaceStore.CompleteObjectCleanup.
+type AttemptWorkspaceCleanupCompletion struct {
+	ObjectID   model.AttemptWorkspaceObjectID
+	ClaimToken string
+}
+
+// AttemptWorkspaceCleanupRelease is the input to ExamAttemptWorkspaceStore.ReleaseObjectCleanup.
+type AttemptWorkspaceCleanupRelease struct {
+	ObjectID   model.AttemptWorkspaceObjectID
+	ClaimToken string
 }

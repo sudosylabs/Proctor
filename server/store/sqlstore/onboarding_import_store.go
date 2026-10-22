@@ -482,7 +482,10 @@ func (s SQLInvitationStore) CompleteOnboardingImportRow(ctx context.Context, inp
 	})
 }
 
-func (s SQLInvitationStore) FinishOnboardingImport(ctx context.Context, id model.OnboardingImportID, at time.Time) (*store.OnboardingImport, error) {
+// FinishOnboardingImport marks an executing onboarding import finished at the input instant.
+func (s SQLInvitationStore) FinishOnboardingImport(ctx context.Context, input *store.OnboardingImportFinish) (*store.OnboardingImport, error) {
+	id := input.ID
+	at := input.At
 	if !id.IsValid() || at.IsZero() {
 		return nil, store.NewErrInvalidInput("onboarding_import", "finish", nil)
 	}
@@ -1044,7 +1047,11 @@ func (s SQLInvitationStore) CancelOnboardingImport(ctx context.Context, input *s
 	})
 }
 
-func (s SQLInvitationStore) FailOnboardingImport(ctx context.Context, id model.OnboardingImportID, code string, at time.Time) (*store.OnboardingImport, error) {
+// FailOnboardingImport marks an onboarding import failed with the input public code at the input instant.
+func (s SQLInvitationStore) FailOnboardingImport(ctx context.Context, input *store.OnboardingImportFailure) (*store.OnboardingImport, error) {
+	id := input.ID
+	code := input.Code
+	at := input.At
 	if !id.IsValid() || !onboardingImportPublicCode.MatchString(code) || at.IsZero() {
 		return nil, store.NewErrInvalidInput("onboarding_import", "failure", nil)
 	}
@@ -1070,7 +1077,10 @@ func (s SQLInvitationStore) ListExpiredOnboardingImports(ctx context.Context, li
 	return result, nil
 }
 
-func (s SQLInvitationStore) PurgeOnboardingImport(ctx context.Context, id model.OnboardingImportID, at time.Time) (bool, error) {
+// PurgeOnboardingImport removes an expired onboarding import and its rows at the input instant.
+func (s SQLInvitationStore) PurgeOnboardingImport(ctx context.Context, input *store.OnboardingImportPurge) (bool, error) {
+	id := input.ID
+	at := input.At
 	if !id.IsValid() || at.IsZero() {
 		return false, store.NewErrInvalidInput("onboarding_import", "retention", nil)
 	}

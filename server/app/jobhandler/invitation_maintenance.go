@@ -41,7 +41,7 @@ type InvitationMaintenanceStore interface {
 type OnboardingImportMaintenanceStore interface {
 	GetOnboardingImport(context.Context, model.OnboardingImportID) (*store.OnboardingImport, error)
 	ListExpiredOnboardingImports(context.Context, int, time.Time) ([]model.OnboardingImportID, error)
-	PurgeOnboardingImport(context.Context, model.OnboardingImportID, time.Time) (bool, error)
+	PurgeOnboardingImport(context.Context, *store.OnboardingImportPurge) (bool, error)
 }
 type OnboardingImportMaintenanceFiles interface {
 	RemoveOnboardingImport(context.Context, model.OnboardingImportID) error
@@ -80,7 +80,7 @@ func (h invitationMaintenanceHandler) Run(ctx context.Context, execution job.Exe
 			if err = h.content.RemoveOnboardingImport(ctx, id); err != nil {
 				return job.RetryableFailure("dependency.unavailable", err)
 			}
-			purged, purgeErr := h.imports.PurgeOnboardingImport(ctx, id, at)
+			purged, purgeErr := h.imports.PurgeOnboardingImport(ctx, &store.OnboardingImportPurge{ID: id, At: at})
 			if purgeErr != nil {
 				return job.RetryableFailure("dependency.unavailable", purgeErr)
 			}

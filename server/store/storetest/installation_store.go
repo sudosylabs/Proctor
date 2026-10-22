@@ -125,7 +125,7 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	require.Equal(t, winner.State.AdministratorUserID, replayed.State.AdministratorUserID, "Bootstrap(exact replay) = %#v, want identities from %#v", replayed, winner)
 	require.Equal(t, winner.AccessPolicy.ID, replayed.AccessPolicy.ID, "Bootstrap(exact replay) = %#v, want identities from %#v", replayed, winner)
 	require.Equal(t, winner.DesktopCompatibilityPolicy.InstitutionID, replayed.DesktopCompatibilityPolicy.InstitutionID, "Bootstrap(exact replay) = %#v, want identities from %#v", replayed, winner)
-	err = ss.User().UpdateLastLogin(ctx, winner.Administrator.ID, winner.Administrator.CreatedAt.Add(time.Minute))
+	err = ss.User().UpdateLastLogin(ctx, &store.UserLastLoginUpdate{ID: winner.Administrator.ID, At: winner.Administrator.CreatedAt.Add(time.Minute)})
 	require.NoError(t, err)
 	replayed, err = ss.Installation().Bootstrap(ctx, winnerInput)
 	require.NoError(t, err)

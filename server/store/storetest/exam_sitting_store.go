@@ -97,7 +97,7 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 	require.True(t, committed.Inserted)
 	require.NotNil(t, committed.Delivery)
 	require.Equal(t, delivery.ID, committed.Delivery.ID)
-	sending, err := ss.Mail().StartDelivery(ctx, delivery.ID, delivery.Revision, model.NowUTC())
+	sending, err := ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: delivery.ID, ExpectedRevision: delivery.Revision, At: model.NowUTC()})
 	require.NoError(t, err)
 	accepted, err := ss.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: delivery.ID,
 		ExpectedRevision: sending.Revision, Kind: store.MailDeliveryCompletionAccepted, At: model.NowUTC()})
@@ -317,7 +317,7 @@ func TestExamSittingMailReconciliationAfterObsoleteSuppression(t *testing.T, ss 
 		Notice:       classMemberPreparedMail(t, enrolled.Membership, model.MailTemplateAcademicClassEnrollmentEnded, changeAt),
 		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID, AuditAt: model.NowUTC()})
 	require.NoError(t, err)
-	suppressed, err := ss.Mail().StartDelivery(ctx, delivery.ID, delivery.Revision, model.NowUTC())
+	suppressed, err := ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: delivery.ID, ExpectedRevision: delivery.Revision, At: model.NowUTC()})
 	require.NoError(t, err)
 	require.Equal(t, model.MailDeliverySuppressed, suppressed.State)
 	require.Equal(t, model.MailDeliveryObsoleteCode, suppressed.PublicFailureCode)
@@ -626,7 +626,7 @@ func TestExamSittingDisabledMailReconciliationConverges(t *testing.T, ss store.S
 			OccurrenceID: eligibilityFanout.Occurrence.ID, SittingRevision: eligibilityFanout.SittingRevision,
 			Recipient: recipient.User, Delivery: delivery, DeliveryJob: job})
 		require.NoError(t, err)
-		sending, startErr := ss.Mail().StartDelivery(ctx, delivery.ID, delivery.Revision, model.NowUTC())
+		sending, startErr := ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: delivery.ID, ExpectedRevision: delivery.Revision, At: model.NowUTC()})
 		require.NoError(t, startErr)
 		_, err = ss.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: delivery.ID,
 			ExpectedRevision: sending.Revision, Kind: store.MailDeliveryCompletionAccepted, At: model.NowUTC()})
@@ -708,7 +708,7 @@ func TestExamSittingDisabledMailReconciliationConverges(t *testing.T, ss store.S
 		OccurrenceID: enrollmentFanout.Occurrence.ID, SittingRevision: enrollmentFanout.SittingRevision,
 		Recipient: newRecipient.User, Delivery: delivery, DeliveryJob: deliveryJob})
 	require.NoError(t, err)
-	sending, err := ss.Mail().StartDelivery(ctx, delivery.ID, delivery.Revision, model.NowUTC())
+	sending, err := ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: delivery.ID, ExpectedRevision: delivery.Revision, At: model.NowUTC()})
 	require.NoError(t, err)
 	_, err = ss.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: sending.ID,
 		ExpectedRevision: sending.Revision, Kind: store.MailDeliveryCompletionAccepted, At: model.NowUTC()})
@@ -757,7 +757,7 @@ func TestExamSittingDisabledMailReconciliationConverges(t *testing.T, ss store.S
 		OccurrenceID: removalFanout.Occurrence.ID, SittingRevision: removalFanout.SittingRevision,
 		Recipient: removedRecipient.User, Delivery: removedDelivery, DeliveryJob: removedJob})
 	require.NoError(t, err)
-	startedRemoval, err := ss.Mail().StartDelivery(ctx, removedDelivery.ID, removedDelivery.Revision, model.NowUTC())
+	startedRemoval, err := ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: removedDelivery.ID, ExpectedRevision: removedDelivery.Revision, At: model.NowUTC()})
 	require.NoError(t, err)
 	require.Equal(t, model.MailDeliverySending, startedRemoval.State)
 }
@@ -821,7 +821,7 @@ func TestExamSittingClassTransferMailReconciliation(t *testing.T, ss store.Store
 		OccurrenceID: sourceFanout.Occurrence.ID, SittingRevision: 1, Recipient: candidate,
 		Delivery: delivery, DeliveryJob: deliveryJob})
 	require.NoError(t, err)
-	sending, err := ss.Mail().StartDelivery(ctx, delivery.ID, delivery.Revision, model.NowUTC())
+	sending, err := ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: delivery.ID, ExpectedRevision: delivery.Revision, At: model.NowUTC()})
 	require.NoError(t, err)
 	_, err = ss.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: delivery.ID,
 		ExpectedRevision: sending.Revision, Kind: store.MailDeliveryCompletionAccepted, At: model.NowUTC()})
@@ -872,7 +872,7 @@ func TestExamSittingClassTransferMailReconciliation(t *testing.T, ss store.Store
 			OccurrenceID: fanout.Occurrence.ID, SittingRevision: fanout.SittingRevision,
 			Recipient: page.Recipients[0].User, Delivery: delivery, DeliveryJob: deliveryJob})
 		require.NoError(t, commitErr)
-		sending, startErr := ss.Mail().StartDelivery(ctx, delivery.ID, delivery.Revision, model.NowUTC())
+		sending, startErr := ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: delivery.ID, ExpectedRevision: delivery.Revision, At: model.NowUTC()})
 		require.NoError(t, startErr)
 		_, acceptErr := ss.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: delivery.ID,
 			ExpectedRevision: sending.Revision, Kind: store.MailDeliveryCompletionAccepted, At: model.NowUTC()})
@@ -1092,7 +1092,7 @@ func TestExamSittingMailRetentionCleanup(t *testing.T, ss store.Store, probe Exa
 			OccurrenceID: fanout.Occurrence.ID, SittingRevision: fanout.SittingRevision, Recipient: recipient.User,
 			Delivery: delivery, DeliveryJob: job})
 		require.NoError(t, err)
-		sending, startErr := ss.Mail().StartDelivery(ctx, delivery.ID, delivery.Revision, model.NowUTC())
+		sending, startErr := ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: delivery.ID, ExpectedRevision: delivery.Revision, At: model.NowUTC()})
 		require.NoError(t, startErr)
 		deliveries[recipient.User.ID] = sending
 	}

@@ -107,8 +107,8 @@ func TestBrowserIntegrityStore(t *testing.T, ss store.Store) {
 	finalized, err := reviews.Finalize(ctx, finalize, examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "browser-finalize", "browser-finalize"))
 	require.NoError(t, err)
 	release := func(revision int64, key string) {
-		prepared, err := reviews.PrepareRelease(ctx, sub, reviewID, revision)
-		require.NoError(t, err)
+		prepared, prepareErr := reviews.PrepareRelease(ctx, &store.ExamIntegrityReviewReleasePrepare{SubmissionID: sub, ReviewID: reviewID, ExpectedRevision: revision})
+		require.NoError(t, prepareErr)
 		input := &store.ExamIntegrityReviewRelease{SubmissionID: sub, ReviewID: reviewID, ActorUserID: f.manager.ID, ExpectedRevision: revision, ChangedAt: prepared.ReleaseAt, AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, sub, model.ActionSubmissionRelease).ID, AuditAt: prepared.ReleaseAt}
 		attachResultReleaseMail(t, f.candidate, input)
 		_, err = reviews.Release(ctx, input, examCommand(f.manager.ID, store.ExamIntegrityReviewReleaseOperation, key, key))

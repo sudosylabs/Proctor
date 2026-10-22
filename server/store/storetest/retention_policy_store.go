@@ -160,7 +160,7 @@ func testRetentionPolicyCurrentCredentialAndAssurance(t *testing.T, ctx context.
 			stale := principal
 			stale.SessionID, stale.CredentialID = saved.ID, model.PrincipalCredentialID(credentials[0].ID)
 			if state == "revoked Session" {
-				_, revokeErr := stores.Session().Withdraw(ctx, saved.ID, principal.UserID, model.NowUTC(), model.SessionRevocationInactiveUser)
+				_, revokeErr := stores.Session().Withdraw(ctx, &store.SessionWithdrawal{ID: saved.ID, UserID: principal.UserID, RevokedAt: model.NowUTC(), Reason: model.SessionRevocationInactiveUser})
 				require.NoError(t, revokeErr)
 			}
 			for _, operation := range []string{"change", "no-op", "replay"} {
@@ -196,7 +196,7 @@ func testRetentionPolicyReplacementInstitution(t *testing.T, ctx context.Context
 	bootstrap *model.InstallationBootstrapResult,
 ) {
 	t.Helper()
-	require.NoError(t, stores.Institution().Archive(ctx, bootstrap.Institution.ID, model.NowUTC()))
+	require.NoError(t, stores.Institution().Archive(ctx, &store.InstitutionArchive{ID: bootstrap.Institution.ID, ArchiveAt: model.NowUTC()}))
 	policy, err := stores.RetentionPolicy().Get(ctx)
 	require.True(t, store.IsNotFound(err), "Get without an active Institution")
 	require.Nil(t, policy, "Get without an active Institution")

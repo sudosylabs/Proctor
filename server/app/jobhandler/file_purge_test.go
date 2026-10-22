@@ -120,7 +120,9 @@ type starterWorkspaceCleanupStoreFake struct {
 	drain       bool
 }
 
-func (f *starterWorkspaceCleanupStoreFake) ClaimObjectsForCleanup(_ context.Context, limit int, token string) ([]model.StarterWorkspaceObject, error) {
+func (f *starterWorkspaceCleanupStoreFake) ClaimObjectsForCleanup(_ context.Context, input *store.StarterWorkspaceCleanupClaim) ([]model.StarterWorkspaceObject, error) {
+	limit := input.Limit
+	token := input.ClaimToken
 	f.claimLimits = append(f.claimLimits, limit)
 	f.claimTokens = append(f.claimTokens, token)
 	if len(f.objects) < limit {
@@ -128,7 +130,8 @@ func (f *starterWorkspaceCleanupStoreFake) ClaimObjectsForCleanup(_ context.Cont
 	}
 	return append([]model.StarterWorkspaceObject(nil), f.objects[:limit]...), nil
 }
-func (f *starterWorkspaceCleanupStoreFake) CompleteObjectCleanup(_ context.Context, objectID model.StarterWorkspaceObjectID, _ string) error {
+func (f *starterWorkspaceCleanupStoreFake) CompleteObjectCleanup(_ context.Context, input *store.StarterWorkspaceCleanupCompletion) error {
+	objectID := input.ObjectID
 	f.completed = append(f.completed, objectID)
 	if f.order != nil {
 		*f.order = append(*f.order, "workspace-complete")
@@ -138,7 +141,8 @@ func (f *starterWorkspaceCleanupStoreFake) CompleteObjectCleanup(_ context.Conte
 	}
 	return f.completeErr
 }
-func (f *starterWorkspaceCleanupStoreFake) ReleaseObjectCleanup(_ context.Context, objectID model.StarterWorkspaceObjectID, _ string) error {
+func (f *starterWorkspaceCleanupStoreFake) ReleaseObjectCleanup(_ context.Context, input *store.StarterWorkspaceCleanupRelease) error {
+	objectID := input.ObjectID
 	f.released = append(f.released, objectID)
 	return f.releaseErr
 }
@@ -159,7 +163,9 @@ type attemptWorkspaceCleanupStoreFake struct {
 	drain       bool
 }
 
-func (f *attemptWorkspaceCleanupStoreFake) ClaimObjectsForCleanup(_ context.Context, limit int, token string) ([]model.AttemptWorkspaceObject, error) {
+func (f *attemptWorkspaceCleanupStoreFake) ClaimObjectsForCleanup(_ context.Context, input *store.AttemptWorkspaceCleanupClaim) ([]model.AttemptWorkspaceObject, error) {
+	limit := input.Limit
+	token := input.ClaimToken
 	f.claimLimits = append(f.claimLimits, limit)
 	f.claimTokens = append(f.claimTokens, token)
 	if len(f.objects) < limit {
@@ -168,7 +174,8 @@ func (f *attemptWorkspaceCleanupStoreFake) ClaimObjectsForCleanup(_ context.Cont
 	return append([]model.AttemptWorkspaceObject(nil), f.objects[:limit]...), nil
 }
 
-func (f *attemptWorkspaceCleanupStoreFake) CompleteObjectCleanup(_ context.Context, objectID model.AttemptWorkspaceObjectID, _ string) error {
+func (f *attemptWorkspaceCleanupStoreFake) CompleteObjectCleanup(_ context.Context, input *store.AttemptWorkspaceCleanupCompletion) error {
+	objectID := input.ObjectID
 	f.completed = append(f.completed, objectID)
 	if f.order != nil {
 		*f.order = append(*f.order, "attempt-workspace-complete")
@@ -179,7 +186,8 @@ func (f *attemptWorkspaceCleanupStoreFake) CompleteObjectCleanup(_ context.Conte
 	return nil
 }
 
-func (f *attemptWorkspaceCleanupStoreFake) ReleaseObjectCleanup(_ context.Context, objectID model.AttemptWorkspaceObjectID, _ string) error {
+func (f *attemptWorkspaceCleanupStoreFake) ReleaseObjectCleanup(_ context.Context, input *store.AttemptWorkspaceCleanupRelease) error {
+	objectID := input.ObjectID
 	f.released = append(f.released, objectID)
 	return nil
 }

@@ -61,7 +61,9 @@ func useFastServingNodeLeaseTiming(t *testing.T, runtime *servingNodeLeaseRuntim
 	require.LessOrEqual(t, runtime.renewalInterval+runtime.operationLimit+runtime.stopMargin, runtime.claim.Lifetime, "test lease has no fail-closed expiry margin")
 }
 
-func (f *servingNodeLeasePersistenceFake) Delete(_ context.Context, nodeID, leaseID string) error {
+func (f *servingNodeLeasePersistenceFake) Delete(_ context.Context, input *store.ServingNodeLeaseDeletion) error {
+	nodeID := input.NodeID
+	leaseID := input.LeaseID
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.deletes++

@@ -235,14 +235,12 @@ func TestExamIntegrityReviewStore(t *testing.T, ss store.Store, reviews store.Ex
 		store.ExamIntegrityReviewDecisionOperation, "review-late-decision", "review-late-decision"))
 	require.Error(t, err, "SaveDecision(after finalization) succeeded")
 
-	releasePreparation, err := reviews.PrepareRelease(ctx, sealed.Receipt.SubmissionID, reviewID,
-		finalized.Review.Revision)
+	releasePreparation, err := reviews.PrepareRelease(ctx, &store.ExamIntegrityReviewReleasePrepare{SubmissionID: sealed.Receipt.SubmissionID, ReviewID: reviewID, ExpectedRevision: finalized.Review.Revision})
 	require.NoError(t, err)
 	require.NotNil(t, releasePreparation)
 	require.False(t, releasePreparation.Replayed)
 	require.False(t, releasePreparation.ReleaseAt.IsZero())
-	retriedReleasePreparation, err := reviews.PrepareRelease(ctx, sealed.Receipt.SubmissionID, reviewID,
-		finalized.Review.Revision)
+	retriedReleasePreparation, err := reviews.PrepareRelease(ctx, &store.ExamIntegrityReviewReleasePrepare{SubmissionID: sealed.Receipt.SubmissionID, ReviewID: reviewID, ExpectedRevision: finalized.Review.Revision})
 	require.NoError(t, err)
 	require.NotNil(t, retriedReleasePreparation, "PrepareRelease(fresh retry)")
 	require.False(t, retriedReleasePreparation.Replayed, "PrepareRelease(fresh retry)")
@@ -308,8 +306,7 @@ func TestExamIntegrityReviewStore(t *testing.T, ss store.Store, reviews store.Ex
 	require.Equal(t, releaseInput.Notice.Occurrence.ID, releaseDelivery.OccurrenceID)
 	require.Equal(t, fixture.candidate.ID, releaseDelivery.TargetUserID)
 	require.Equal(t, model.MailTemplateExamResultReleased, releaseDelivery.TemplateKey)
-	replayPreparation, err := reviews.PrepareRelease(ctx, sealed.Receipt.SubmissionID, reviewID,
-		finalized.Review.Revision)
+	replayPreparation, err := reviews.PrepareRelease(ctx, &store.ExamIntegrityReviewReleasePrepare{SubmissionID: sealed.Receipt.SubmissionID, ReviewID: reviewID, ExpectedRevision: finalized.Review.Revision})
 	require.NoError(t, err)
 	require.NotNil(t, replayPreparation)
 	require.True(t, replayPreparation.Replayed)

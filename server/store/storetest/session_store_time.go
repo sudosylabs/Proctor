@@ -38,7 +38,7 @@ func testSessionNativeTimeBoundaries(t *testing.T, ss store.Store) {
 			for _, test := range sessionDecisionCases(deadline) {
 				t.Run("EnforceExpiry/"+test.name, func(t *testing.T) {
 					user, session, raw := saveSessionTimeFixture(t, ss, expiry, deadline)
-					result, err := ss.Session().EnforceExpiry(context.Background(), session.ID, user.ID, test.at)
+					result, err := ss.Session().EnforceExpiry(context.Background(), &store.SessionExpiryEnforcement{ID: session.ID, UserID: user.ID, At: test.at})
 					require.NoError(t, err)
 					require.NotNil(t, result, "EnforceExpiry(%v)", test.at)
 					require.NotNil(t, result.Session, "EnforceExpiry(%v)", test.at)
@@ -61,7 +61,7 @@ func testSessionNativeTimeBoundaries(t *testing.T, ss store.Store) {
 				t.Run("UpdateActivity/"+test.name, func(t *testing.T) {
 					_, session, _ := saveSessionTimeFixture(t, ss, expiry, deadline)
 					idle := test.at.Add(time.Hour + 500*time.Microsecond)
-					err := ss.Session().UpdateActivity(context.Background(), session.ID, test.at, idle)
+					err := ss.Session().UpdateActivity(context.Background(), &store.SessionActivityUpdate{ID: session.ID, LastActivityAt: test.at, IdleExpiresAt: idle})
 					if test.expired {
 						require.True(t, store.IsNotFound(err), "UpdateActivity(expired)")
 					} else {
@@ -89,10 +89,7 @@ func testSessionNativeTimeBoundaries(t *testing.T, ss store.Store) {
 			for _, test := range sessionDecisionCases(deadline) {
 				t.Run(test.name, func(t *testing.T) {
 					_, session, raw := saveSessionTimeFixture(t, ss, expiry, deadline)
-					result, err := ss.SessionCredential().RotateRefresh(context.Background(), model.HashToken(raw.refresh),
-						&model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: test.at.Add(15 * time.Minute)},
-						&model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: test.at.Add(time.Hour)},
-						test.at, test.at.Add(time.Hour+500*time.Microsecond))
+					result, err := ss.SessionCredential().RotateRefresh(context.Background(), &store.SessionRefreshRotation{TokenHash: model.HashToken(raw.refresh), Access: &model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: test.at.Add(15 * time.Minute)}, Refresh: &model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: test.at.Add(time.Hour)}, Now: test.at, IdleExpiresAt: test.at.Add(time.Hour + 500*time.Microsecond)})
 					if test.expired && expiry == "refresh" {
 						var conflict *store.ErrConflict
 						require.ErrorAs(t, err, &conflict, "RotateRefresh(expired credential)")

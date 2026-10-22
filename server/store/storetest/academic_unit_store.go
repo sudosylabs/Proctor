@@ -374,7 +374,7 @@ func testAcademicUnitStoreRejectCrossInstitutionParent(t *testing.T, ss store.St
 	ctx := context.Background()
 	first := saveInstitution(t, ctx, ss)
 	parent := saveAcademicUnit(t, ctx, ss, first.ID.String(), "", "engineering")
-	require.NoError(t, ss.Institution().Archive(ctx, first.ID, model.NowUTC()))
+	require.NoError(t, ss.Institution().Archive(ctx, &store.InstitutionArchive{ID: first.ID, ArchiveAt: model.NowUTC()}))
 
 	second, err := ss.Institution().Save(ctx, &model.Institution{
 		Name:        "second-" + model.NewID(),

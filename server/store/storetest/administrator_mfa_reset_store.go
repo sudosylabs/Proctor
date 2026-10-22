@@ -87,7 +87,7 @@ func TestAdministratorMFAResetStore(t *testing.T, ss store.Store, probes ...Admi
 	_, err = ss.Installation().ResetAdministratorMFA(ctx, input)
 	require.True(t, store.IsConflict(err), "live-node reset error")
 	assertUnchanged(t)
-	require.NoError(t, ss.ServingNodeLease().Delete(ctx, "mfa-reset-serving", leaseID))
+	require.NoError(t, ss.ServingNodeLease().Delete(ctx, &store.ServingNodeLeaseDeletion{NodeID: "mfa-reset-serving", LeaseID: leaseID}))
 	if len(probes) > 0 && probes[0].ServingFence.HoldServingNodeLeaseFence != nil {
 		fence := probes[0].ServingFence
 		fenceCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -106,7 +106,7 @@ func TestAdministratorMFAResetStore(t *testing.T, ss store.Store, probes ...Admi
 		require.NoError(t, <-leaseDone)
 		require.True(t, store.IsConflict((<-resetDone)), "reset racing startup error")
 		assertUnchanged(t)
-		require.NoError(t, ss.ServingNodeLease().Delete(ctx, "mfa-reset-starting", leaseID))
+		require.NoError(t, ss.ServingNodeLease().Delete(ctx, &store.ServingNodeLeaseDeletion{NodeID: "mfa-reset-starting", LeaseID: leaseID}))
 	}
 	if len(probes) > 0 && probes[0].RejectRecoveryEvidence != nil {
 		release := probes[0].RejectRecoveryEvidence(t, ctx)

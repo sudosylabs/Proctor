@@ -163,7 +163,7 @@ func TestRetentionStore(t *testing.T, ss store.Store, probe RetentionSQLProbe) {
 	hold, err := ss.ExamRecords().CreateHold(ctx, &store.ExamRecordsHoldCreation{ExamRecordsMutation: recordsMutation(t, ctx, ss, f.unitID, scope, principal, model.ActionExamRecordsHold), HoldID: model.NewRetentionHoldID(), ReasonCode: "records_review", PrivateReason: "Preserve while checking."}, examCommand(f.manager.ID, store.ExamRecordsCreateHoldOperation, "hold-during-grace", "hold-during-grace"))
 	require.NoError(t, err)
 
-	staleDelivery, err := ss.Mail().StartDelivery(ctx, delivery.ID, delivery.Revision, model.NowUTC())
+	staleDelivery, err := ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: delivery.ID, ExpectedRevision: delivery.Revision, At: model.NowUTC()})
 	require.NoError(t, err)
 	require.Equal(t, model.MailDeliverySuppressed, staleDelivery.State, "held retirement sent a stale notice")
 	require.Equal(t, model.MailDeliveryObsoleteCode, staleDelivery.PublicFailureCode, "held retirement sent a stale notice")
@@ -201,7 +201,7 @@ func TestRetentionStore(t *testing.T, ss store.Store, probe RetentionSQLProbe) {
 	bulkOccurrence, bulkDelivery, bulkJob := userTokenMailFixture(t, principal.UserID, model.NewMailOccurrenceID(), model.MailOccurrenceExamManagement, model.MailTemplateExamRetentionScheduled, model.JobTypeMailDeliver, model.NowUTC(), pendingNotice.RetireAfter)
 	require.NoError(t, ss.Retention().CompleteNotice(ctx, &store.RetentionNoticeMail{RetirementID: pendingNotice.RetirementID, RecipientUserID: principal.UserID,
 		Mail: &store.PreparedMail{Occurrence: bulkOccurrence, Delivery: bulkDelivery, Job: bulkJob}}))
-	_, err = ss.Mail().SuppressOutstanding(ctx, model.MailDeliveryDisabledCode, 500)
+	_, err = ss.Mail().SuppressOutstanding(ctx, &store.MailOutstandingSuppression{Code: model.MailDeliveryDisabledCode, Limit: 500})
 	require.NoError(t, err)
 	notices, err = ss.Retention().ListNotices(ctx, principal.UserID, "", 100)
 	require.NoError(t, err)

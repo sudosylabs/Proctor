@@ -52,5 +52,11 @@ type ServingNodeLeaseClaim struct {
 // serialize with offline administrator recovery.
 type ServingNodeLeaseStore interface {
 	Upsert(context.Context, *ServingNodeLeaseClaim) (*ServingNodeLease, error)
-	Delete(context.Context, string, string) error
+	Delete(context.Context, *ServingNodeLeaseDeletion) error
+}
+
+// ServingNodeLeaseDeletion is the input to ServingNodeLeaseStore.Delete.
+type ServingNodeLeaseDeletion struct {
+	NodeID  string
+	LeaseID string
 }

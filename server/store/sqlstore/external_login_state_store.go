@@ -86,23 +86,21 @@ func newSQLExternalLoginStateStore(sqlStore *SQLStore) store.ExternalLoginStateS
 	return s
 }
 
-func (s SQLExternalLoginStateStore) Save(
-	ctx context.Context,
-	state *model.ExternalLoginState,
-	lifetime time.Duration,
-) (*model.ExternalLoginState, error) {
+// Save stores a new external login state that expires after the input lifetime.
+func (s SQLExternalLoginStateStore) Save(ctx context.Context, input *store.ExternalLoginStateCreation) (*model.ExternalLoginState, error) {
+	state := input.State
+	lifetime := input.Lifetime
 	if state != nil && state.Purpose == model.ExternalAuthenticationPurposeInvitationAdmission {
 		return nil, store.NewErrInvalidInput("external_login_state", "purpose", nil)
 	}
 	return s.save(ctx, state, lifetime, "external login state save", nil)
 }
 
-func (s SQLExternalLoginStateStore) SaveInvitationAdmission(
-	ctx context.Context,
-	state *model.ExternalLoginState,
-	lifetime time.Duration,
-	claimHash string,
-) (*model.ExternalLoginState, error) {
+// SaveInvitationAdmission stores a new external login state bound to the Invitation claim digest in the input.
+func (s SQLExternalLoginStateStore) SaveInvitationAdmission(ctx context.Context, input *store.ExternalLoginStateInvitationAdmission) (*model.ExternalLoginState, error) {
+	state := input.State
+	lifetime := input.Lifetime
+	claimHash := input.ClaimHash
 	if state == nil || state.Purpose != model.ExternalAuthenticationPurposeInvitationAdmission ||
 		!state.InvitationID.IsZero() || !model.IsValidTokenHash(claimHash) {
 		return nil, store.NewErrInvalidInput("external_login_state", "invitation_admission", nil)
@@ -192,12 +190,11 @@ func (s SQLExternalLoginStateStore) GetByStateHash(
 	return row.model()
 }
 
-func (s SQLExternalLoginStateStore) Consume(
-	ctx context.Context,
-	provider string,
-	stateHash string,
-	bindingHash string,
-) (*model.ExternalLoginState, error) {
+// Consume consumes the external login state named by the input provider, state hash and browser binding hash exactly once.
+func (s SQLExternalLoginStateStore) Consume(ctx context.Context, input *store.ExternalLoginStateConsumption) (*model.ExternalLoginState, error) {
+	provider := input.Provider
+	stateHash := input.StateHash
+	bindingHash := input.BindingHash
 	var row externalLoginStateRow
 	err := s.GetMaster().Get(ctx, &row, `
 		UPDATE external_login_states

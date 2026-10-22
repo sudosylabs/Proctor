@@ -1829,13 +1829,13 @@ func (f *attemptWorkspaceStoreFake) MarkObjectReclaimable(_ context.Context, id 
 	f.reclaimable = append(f.reclaimable, id)
 	return nil
 }
-func (*attemptWorkspaceStoreFake) ClaimObjectsForCleanup(context.Context, int, string) ([]model.AttemptWorkspaceObject, error) {
+func (*attemptWorkspaceStoreFake) ClaimObjectsForCleanup(ctx context.Context, input *store.AttemptWorkspaceCleanupClaim) ([]model.AttemptWorkspaceObject, error) {
 	return nil, nil
 }
-func (*attemptWorkspaceStoreFake) CompleteObjectCleanup(context.Context, model.AttemptWorkspaceObjectID, string) error {
+func (*attemptWorkspaceStoreFake) CompleteObjectCleanup(ctx context.Context, input *store.AttemptWorkspaceCleanupCompletion) error {
 	return nil
 }
-func (*attemptWorkspaceStoreFake) ReleaseObjectCleanup(context.Context, model.AttemptWorkspaceObjectID, string) error {
+func (*attemptWorkspaceStoreFake) ReleaseObjectCleanup(ctx context.Context, input *store.AttemptWorkspaceCleanupRelease) error {
 	return nil
 }
 

@@ -371,9 +371,7 @@ func testUserTokenIssueReplacesPriorToken(t *testing.T, ss store.Store) {
 	require.NotEmpty(t, secondDelivery.EncryptedPayload)
 	_, err = ss.UserToken().ConsumeEmailVerification(
 		ctx,
-		first.TokenHash,
-		second.CreatedAt.Add(1*time.Millisecond),
-		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
+		&store.EmailVerificationConsumption{TokenHash: first.TokenHash, Now: second.CreatedAt.Add(1 * time.Millisecond), AuditEvent: userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String())},
 	)
 	require.True(t, store.IsNotFound(err), "superseded token consumption error")
 }
@@ -392,9 +390,7 @@ func testUserTokenCallerClockCannotBackdateEmailVerification(t *testing.T, ss st
 	behindNodeTime := model.TimeUTC(token.CreatedAt.Add(-time.Minute))
 	result, err := ss.UserToken().ConsumeEmailVerification(
 		ctx,
-		token.TokenHash,
-		behindNodeTime,
-		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
+		&store.EmailVerificationConsumption{TokenHash: token.TokenHash, Now: behindNodeTime, AuditEvent: userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String())},
 	)
 	require.NoError(t, err)
 	// The node clock is a minute behind; PostgreSQL time decides, and a
@@ -481,9 +477,7 @@ func testEmailVerificationIsTargetBoundAndSingleUse(t *testing.T, ss store.Store
 	now := model.TimeUTC(token.CreatedAt).Add(100 * time.Millisecond)
 	result, err := ss.UserToken().ConsumeEmailVerification(
 		ctx,
-		token.TokenHash,
-		now,
-		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
+		&store.EmailVerificationConsumption{TokenHash: token.TokenHash, Now: now, AuditEvent: userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String())},
 	)
 	require.NoError(t, err)
 	transitionAt := result.Token.ConsumedAt.Time
@@ -492,16 +486,14 @@ func testEmailVerificationIsTargetBoundAndSingleUse(t *testing.T, ss store.Store
 	require.True(t, result.Token.ConsumedAt.Valid)
 	require.True(t, result.User.UpdatedAt.Equal(transitionAt))
 	delivery := findUserTokenDelivery(t, ctx, ss, token.ID, model.MailTemplateIdentityVerifyEmail)
-	suppressed, err := ss.Mail().StartDelivery(ctx, delivery.ID, delivery.Revision, transitionAt.Add(time.Millisecond))
+	suppressed, err := ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: delivery.ID, ExpectedRevision: delivery.Revision, At: transitionAt.Add(time.Millisecond)})
 	require.NoError(t, err)
 	require.Equal(t, model.MailDeliverySuppressed, suppressed.State)
 	require.Equal(t, model.MailDeliveryObsoleteCode, suppressed.PublicFailureCode)
 	require.Empty(t, suppressed.EncryptedPayload)
 	_, err = ss.UserToken().ConsumeEmailVerification(
 		ctx,
-		token.TokenHash,
-		now.Add(1*time.Millisecond),
-		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
+		&store.EmailVerificationConsumption{TokenHash: token.TokenHash, Now: now.Add(1 * time.Millisecond), AuditEvent: userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String())},
 	)
 	require.True(t, store.IsNotFound(err), "second consumption error")
 
@@ -520,9 +512,7 @@ func testEmailVerificationIsTargetBoundAndSingleUse(t *testing.T, ss store.Store
 	changeUserEmailForTest(t, ctx, ss, changedUser, model.NewID()+"@changed.example.edu")
 	_, err = ss.UserToken().ConsumeEmailVerification(
 		ctx,
-		changedToken.TokenHash,
-		now.Add(2*time.Millisecond),
-		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
+		&store.EmailVerificationConsumption{TokenHash: changedToken.TokenHash, Now: now.Add(2 * time.Millisecond), AuditEvent: userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String())},
 	)
 	require.True(t, store.IsNotFound(err), "changed-target consumption error")
 }
@@ -594,7 +584,7 @@ func testPasswordResetRevokesSessionsAndAudits(t *testing.T, ss store.Store) {
 	require.Len(t, result.RevokedAccessHashes, 2)
 	require.True(t, result.RevokedSessions[0].RevokedAt.Time.Equal(transitionAt))
 	resetDelivery := findUserTokenDelivery(t, ctx, ss, token.ID, model.MailTemplateIdentityPasswordReset)
-	suppressed, err := ss.Mail().StartDelivery(ctx, resetDelivery.ID, resetDelivery.Revision, transitionAt.Add(time.Millisecond))
+	suppressed, err := ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: resetDelivery.ID, ExpectedRevision: resetDelivery.Revision, At: transitionAt.Add(time.Millisecond)})
 	require.NoError(t, err)
 	require.Equal(t, model.MailDeliverySuppressed, suppressed.State)
 	require.Equal(t, model.MailDeliveryObsoleteCode, suppressed.PublicFailureCode)
@@ -713,12 +703,10 @@ func testUserTokenConcurrentConsumption(t *testing.T, ss store.Store) {
 			<-start
 			_, consumeErr := ss.UserToken().ConsumeEmailVerification(
 				ctx,
-				token.TokenHash,
-				now,
-				userTokenCompletionAudit(
+				&store.EmailVerificationConsumption{TokenHash: token.TokenHash, Now: now, AuditEvent: userTokenCompletionAudit(
 					"authentication.email_verification.complete",
 					institution.ID.String(),
-				),
+				)},
 			)
 			errorsByAttempt <- consumeErr
 		}()
@@ -768,16 +756,12 @@ func testUserTokenAuditFailureRollsBack(t *testing.T, ss store.Store) {
 	now := model.TimeUTC(token.CreatedAt).Add(100 * time.Millisecond)
 	_, err = ss.UserToken().ConsumeEmailVerification(
 		ctx,
-		token.TokenHash,
-		now,
-		&model.AuditEvent{},
+		&store.EmailVerificationConsumption{TokenHash: token.TokenHash, Now: now, AuditEvent: &model.AuditEvent{}},
 	)
 	require.Error(t, err, "token consumption accepted an invalid terminal audit")
 	_, err = ss.UserToken().ConsumeEmailVerification(
 		ctx,
-		token.TokenHash,
-		now.Add(1*time.Millisecond),
-		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
+		&store.EmailVerificationConsumption{TokenHash: token.TokenHash, Now: now.Add(1 * time.Millisecond), AuditEvent: userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String())},
 	)
 	require.NoError(t, err)
 }

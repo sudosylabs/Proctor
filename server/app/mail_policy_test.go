@@ -43,7 +43,7 @@ func (f *sittingMailMaintenanceFake) MaintainMailExpansions(context.Context, int
 	return value, nil
 }
 
-func (f *mailMaintenanceFake) SuppressOutstanding(context.Context, string, int) (*store.MailMaintenanceResult, error) {
+func (f *mailMaintenanceFake) SuppressOutstanding(ctx context.Context, input *store.MailOutstandingSuppression) (*store.MailMaintenanceResult, error) {
 	f.suppressed++
 	if f.outstanding != nil {
 		return f.outstanding, nil

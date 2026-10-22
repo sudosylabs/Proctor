@@ -39,10 +39,10 @@ func TestFileStore(t *testing.T, ss store.Store) {
 	require.Equal(t, entry.ID, created.Entry.ID)
 	require.Equal(t, revision.ID, created.Lease.FileRevisionID)
 	renewedUntil := model.NowUTC().Add(30 * time.Minute)
-	renewed, err := ss.File().RenewUploadLease(ctx, lease.ID, user.ID, lease.Revision, 1, renewedUntil)
+	renewed, err := ss.File().RenewUploadLease(ctx, &store.UploadLeaseRenewal{ID: lease.ID, ActorID: user.ID, ExpectedRevision: lease.Revision, BytesReceived: 1, ExpiresAt: renewedUntil})
 	require.NoError(t, err, "RenewUploadLease() error")
 	require.True(t, renewed.ExpiresAt.Equal(renewedUntil))
-	_, err = ss.File().RenewUploadLease(ctx, lease.ID, user.ID, renewed.Revision, 1, renewedUntil)
+	_, err = ss.File().RenewUploadLease(ctx, &store.UploadLeaseRenewal{ID: lease.ID, ActorID: user.ID, ExpectedRevision: renewed.Revision, BytesReceived: 1, ExpiresAt: renewedUntil})
 	require.True(t, store.IsConflict(err), "RenewUploadLease(without progress) error")
 	// Creation timestamps arrive from an application node, while renewal leases
 	// are fenced by the primary database clock. Small forward node skew must not
@@ -56,7 +56,7 @@ func TestFileStore(t *testing.T, ss store.Store) {
 	require.NoError(t, err)
 	_, err = ss.File().CreateUpload(ctx, &store.FileUploadCreation{Entry: futureEntry, Revision: futureRevision, Lease: futureLease})
 	require.NoError(t, err)
-	_, err = ss.File().RenewUploadLease(ctx, futureLease.ID, user.ID, futureLease.Revision, 1, futureAt.Add(30*time.Minute))
+	_, err = ss.File().RenewUploadLease(ctx, &store.UploadLeaseRenewal{ID: futureLease.ID, ActorID: user.ID, ExpectedRevision: futureLease.Revision, BytesReceived: 1, ExpiresAt: futureAt.Add(30 * time.Minute)})
 	require.NoError(t, err)
 	renditions := make([]model.FileRendition, 0, 3)
 	for _, size := range []int{128, 256, 512} {
@@ -203,7 +203,7 @@ func TestFileStore(t *testing.T, ss store.Store) {
 	require.NoError(t, err)
 	require.NotEmpty(t, claim.ID)
 	require.Equal(t, expiredCandidate.RevisionID, claim.Candidate.RevisionID)
-	_, err = ss.File().RenewUploadLease(ctx, expiredLease.ID, user.ID, expiredLease.Revision, 1, model.NowUTC().Add(time.Hour))
+	_, err = ss.File().RenewUploadLease(ctx, &store.UploadLeaseRenewal{ID: expiredLease.ID, ActorID: user.ID, ExpectedRevision: expiredLease.Revision, BytesReceived: 1, ExpiresAt: model.NowUTC().Add(time.Hour)})
 	if !store.IsConflict(err) {
 		require.True(t, store.IsNotFound(err), "RenewUploadLease(claimed) error")
 	}

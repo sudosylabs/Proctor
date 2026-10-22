@@ -75,7 +75,7 @@ func TestRetentionPolicyCurrentCredentialAndAssurancePreserveGrace(t *testing.T)
 			// Rejected writes must neither cancel grace nor pause live approval.
 			target := mutation(model.ActionAuditView)
 			scheduledID := target.AuditEventID
-			_, err = s.Audit().Complete(ctx, scheduledID, model.AuditStatusSuccess, "", nil, model.NowUTC())
+			_, err = s.Audit().Complete(ctx, &store.AuditCompletion{ID: scheduledID, Status: model.AuditStatusSuccess, ErrorCode: "", Result: nil, UpdateAt: model.NowUTC()})
 			require.NoError(t, err)
 			_, err = s.GetMaster().Exec(ctx, `UPDATE audit_events SET created_at=clock_timestamp()-INTERVAL '3 days',
 				updated_at=clock_timestamp()-INTERVAL '2 days' WHERE id=?`, scheduledID)

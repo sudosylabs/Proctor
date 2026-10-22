@@ -76,19 +76,14 @@ type ExternalIdentityStore interface {
 type ExternalLoginStateStore interface {
 	// Save applies lifetime to one authoritative database timestamp. Callers
 	// provide no absolute creation or expiry deadline.
-	Save(context.Context, *model.ExternalLoginState, time.Duration) (*model.ExternalLoginState, error)
+	Save(context.Context, *ExternalLoginStateCreation) (*model.ExternalLoginState, error)
 	// SaveInvitationAdmission resolves a raw-claim digest against one currently
 	// pending Invitation and atomically binds its identity to the new browser
 	// transaction. The digest is used only for the lookup and is not copied into
 	// the external-login state.
-	SaveInvitationAdmission(context.Context, *model.ExternalLoginState, time.Duration, string) (*model.ExternalLoginState, error)
+	SaveInvitationAdmission(context.Context, *ExternalLoginStateInvitationAdmission) (*model.ExternalLoginState, error)
 	GetByStateHash(context.Context, string) (*model.ExternalLoginState, error)
-	Consume(
-		context.Context,
-		string,
-		string,
-		string,
-	) (*model.ExternalLoginState, error)
+	Consume(context.Context, *ExternalLoginStateConsumption) (*model.ExternalLoginState, error)
 	Maintain(context.Context, int) (*ExternalLoginStateMaintenanceResult, error)
 }
 
@@ -99,4 +94,24 @@ type ExternalLoginStateMaintenanceResult struct {
 	Terminalized int
 	Purged       int
 	More         bool
+}
+
+// ExternalLoginStateConsumption is the input to ExternalLoginStateStore.Consume.
+type ExternalLoginStateConsumption struct {
+	Provider    string
+	StateHash   string
+	BindingHash string
+}
+
+// ExternalLoginStateCreation is the input to ExternalLoginStateStore.Save.
+type ExternalLoginStateCreation struct {
+	State    *model.ExternalLoginState
+	Lifetime time.Duration
+}
+
+// ExternalLoginStateInvitationAdmission is the input to ExternalLoginStateStore.SaveInvitationAdmission.
+type ExternalLoginStateInvitationAdmission struct {
+	State     *model.ExternalLoginState
+	Lifetime  time.Duration
+	ClaimHash string
 }

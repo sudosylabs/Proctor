@@ -67,10 +67,10 @@ func TestClassMemberStore(t *testing.T, ss store.Store) {
 	history, err := ss.ClassMember().ListByUser(ctx, user.ID)
 	require.NoError(t, err)
 	require.Len(t, history, 2)
-	ended, err := ss.ClassMember().SeedEnd(ctx, transfer.Membership.ID, transfer.Membership.Revision, start.Add(20*time.Millisecond))
+	ended, err := ss.ClassMember().SeedEnd(ctx, &store.ClassMemberSeedEnd{ID: transfer.Membership.ID, ExpectedRevision: transfer.Membership.Revision, EndAt: start.Add(20 * time.Millisecond)})
 	require.NoError(t, err)
 	require.True(t, start.Add(20*time.Millisecond).Equal(ended.EndsAt.Time))
-	_, err = ss.ClassMember().SeedEnd(ctx, transfer.Membership.ID, transfer.Membership.Revision, start.Add(21*time.Millisecond))
+	_, err = ss.ClassMember().SeedEnd(ctx, &store.ClassMemberSeedEnd{ID: transfer.Membership.ID, ExpectedRevision: transfer.Membership.Revision, EndAt: start.Add(21 * time.Millisecond)})
 	require.True(t, store.IsConflict(err), "stale End() error")
 	_, err = ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{
 		ClassID: firstClass.ID, UserID: user.ID, StartsAt: model.TimeUTC(start.Add(5 * time.Millisecond)),
@@ -112,7 +112,7 @@ func testClassMemberEndBeforeModification(t *testing.T, ss store.Store) {
 	})
 	require.NoError(t, err)
 	endAt := now.Add(-1_000_000 * time.Millisecond)
-	ended, err := ss.ClassMember().SeedEnd(ctx, enrolled.Membership.ID, enrolled.Membership.Revision, endAt)
+	ended, err := ss.ClassMember().SeedEnd(ctx, &store.ClassMemberSeedEnd{ID: enrolled.Membership.ID, ExpectedRevision: enrolled.Membership.Revision, EndAt: endAt})
 	require.NoError(t, err)
 	require.True(t, endAt.Equal(ended.EndsAt.Time), "End(before creation) = %#v, created %#v", ended, enrolled.Membership)
 	require.True(t, ended.UpdatedAt.Equal(enrolled.Membership.UpdatedAt), "End(before creation) = %#v, created %#v", ended, enrolled.Membership)

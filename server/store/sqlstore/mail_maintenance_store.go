@@ -72,7 +72,10 @@ func (s SQLMailStore) AcquireSendPermit(ctx context.Context, class store.MailSen
 	})
 }
 
-func (s SQLMailStore) SuppressOutstanding(ctx context.Context, code string, limit int) (*store.MailMaintenanceResult, error) {
+// SuppressOutstanding suppresses up to the input limit of outstanding deliveries with the input public code through the delivery transition.
+func (s SQLMailStore) SuppressOutstanding(ctx context.Context, input *store.MailOutstandingSuppression) (*store.MailMaintenanceResult, error) {
+	code := input.Code
+	limit := input.Limit
 	if code != model.MailDeliveryDisabledCode || !validMailMaintenanceLimit(limit) {
 		return nil, store.NewErrInvalidInput("mail_delivery", "suppress_outstanding", nil)
 	}

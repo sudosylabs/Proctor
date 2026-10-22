@@ -385,7 +385,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	require.NoError(t, err)
 
 	endedAt := model.NowUTC()
-	endedMembership, err := ss.ClassMember().SeedEnd(ctx, fixture.membership.ID, fixture.membership.Revision, endedAt)
+	endedMembership, err := ss.ClassMember().SeedEnd(ctx, &store.ClassMemberSeedEnd{ID: fixture.membership.ID, ExpectedRevision: fixture.membership.Revision, EndAt: endedAt})
 	require.NoError(t, err)
 	// Membership timestamps have millisecond precision while PostgreSQL decides
 	// current eligibility with a higher-precision clock. Cross the millisecond
@@ -564,8 +564,7 @@ func TestSessionRevocationAttemptFence(t *testing.T, ss store.Store) {
 	connected, err := ss.ExamAttempt().Connect(ctx, input,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "session-fence-connect", "session-fence-connect"))
 	require.NoError(t, err)
-	_, err = ss.Session().Withdraw(ctx, fixture.session.ID, fixture.candidate.ID,
-		model.NowUTC(), model.SessionRevocationInactiveUser)
+	_, err = ss.Session().Withdraw(ctx, &store.SessionWithdrawal{ID: fixture.session.ID, UserID: fixture.candidate.ID, RevokedAt: model.NowUTC(), Reason: model.SessionRevocationInactiveUser})
 	require.NoError(t, err)
 	statuses, err := ss.ExamAttempt().ListSittingCandidateStatuses(ctx, store.SittingCandidateStatusListOptions{
 		ExamID: fixture.examID, SittingID: fixture.sitting.ID, ExcludeCandidateUserID: fixture.manager.ID,
@@ -618,9 +617,7 @@ func TestSessionExpiryAttemptFence(t *testing.T, ss store.Store) {
 	require.NoError(t, err)
 	expired, err := ss.Session().EnforceExpiry(
 		ctx,
-		fixture.session.ID,
-		fixture.candidate.ID,
-		fixture.session.IdleExpiresAt.Add(time.Second),
+		&store.SessionExpiryEnforcement{ID: fixture.session.ID, UserID: fixture.candidate.ID, At: fixture.session.IdleExpiresAt.Add(time.Second)},
 	)
 	require.NoError(t, err)
 	require.NotNil(t, expired)

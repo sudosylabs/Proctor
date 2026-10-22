@@ -542,7 +542,7 @@ func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
 		PreviewDigest: emptyPreview.PreviewDigest, Policy: model.OnboardingImportValidRowsOnly, IdempotencyKey: sha256.Sum256([]byte("empty-commit")), ExecutionJob: emptyExecutionJob,
 		At: at.Add(2 * time.Second), AuditEventID: emptyCommitAudit.ID, AuditAt: at.Add(2 * time.Second)})
 	require.NoError(t, err)
-	emptyFinished, err := ss.OnboardingImport().FinishOnboardingImport(ctx, emptyID, at.Add(3*time.Second))
+	emptyFinished, err := ss.OnboardingImport().FinishOnboardingImport(ctx, &store.OnboardingImportFinish{ID: emptyID, At: at.Add(3 * time.Second)})
 	require.NoError(t, err)
 	require.Equal(t, model.OnboardingImportExecuting, emptyExecuting.State, "all-invalid import = %#v / %#v", emptyExecuting, emptyFinished)
 	require.Equal(t, model.OnboardingImportCompleted, emptyFinished.State, "all-invalid import = %#v / %#v", emptyExecuting, emptyFinished)
@@ -579,7 +579,7 @@ func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
 	expired, err := ss.OnboardingImport().ListExpiredOnboardingImports(ctx, 100, at)
 	require.NoError(t, err)
 	require.Contains(t, expired, expiredID)
-	purged, err := ss.OnboardingImport().PurgeOnboardingImport(ctx, expiredID, at)
+	purged, err := ss.OnboardingImport().PurgeOnboardingImport(ctx, &store.OnboardingImportPurge{ID: expiredID, At: at})
 	require.NoError(t, err)
 	require.True(t, purged, "expired onboarding import was not purged")
 }
@@ -980,7 +980,7 @@ func testInvitationAdministrationLifecycle(t *testing.T, ss store.Store) {
 	require.Empty(t, obsolete.EncryptedPayload)
 	require.Equal(t, model.MailDeliveryObsoleteCode, obsolete.PublicFailureCode)
 
-	sending, err := ss.Mail().StartDelivery(ctx, delivery.ID, 1, model.NowUTC())
+	sending, err := ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: delivery.ID, ExpectedRevision: 1, At: model.NowUTC()})
 	require.NoError(t, err)
 	accepted, err := ss.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: sending.ID,
 		ExpectedRevision: sending.Revision, Kind: store.MailDeliveryCompletionAccepted, At: model.NowUTC()})
@@ -1516,7 +1516,7 @@ func testInvitationIssueStudentClassTerminalizesElapsedPendingInvitation(
 		claimed = claim.Job.ID == first.DeliveryJob.ID
 	}
 	require.True(t, claimed, "failed to claim elapsed Invitation delivery Job")
-	_, err = ss.Mail().StartDelivery(ctx, first.Delivery.ID, first.Delivery.Revision, model.NowUTC())
+	_, err = ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: first.Delivery.ID, ExpectedRevision: first.Delivery.Revision, At: model.NowUTC()})
 	require.NoError(t, err)
 	time.Sleep(time.Until(first.Invitation.IntendedEndsAt.Time) + 20*time.Millisecond)
 	second := studentClassInvitationIssueFixture(t, ss, inviter, class, period, model.NowUTC())
@@ -1976,7 +1976,7 @@ func testInvitationAcceptStudentClassAtomicAndReplaySafe(t *testing.T, ss store.
 	require.Equal(t, model.MailDeliveryObsoleteCode, obsolete.PublicFailureCode)
 	require.Empty(t, obsolete.EncryptedPayload)
 	progressedAt := accepted.ClassMember.StartsAt.Add(24 * time.Hour)
-	ended, err := ss.ClassMember().SeedEnd(ctx, accepted.ClassMember.ID, accepted.ClassMember.Revision, progressedAt)
+	ended, err := ss.ClassMember().SeedEnd(ctx, &store.ClassMemberSeedEnd{ID: accepted.ClassMember.ID, ExpectedRevision: accepted.ClassMember.Revision, EndAt: progressedAt})
 	require.NoError(t, err)
 	newMembership := &model.ClassMember{ClassID: class.ID, AcademicPeriodID: fixture.period.ID, UserID: accepted.User.ID,
 		StartsAt: progressedAt, EndsAt: accepted.ClassMember.EndsAt}

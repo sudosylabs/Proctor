@@ -202,7 +202,11 @@ func (s SQLMFAStore) Activate(
 // credential: exactly one of a TOTP timeStep later than the last one used or an
 // unconsumed recovery-code hash. A replayed time step or unknown code yields a
 // not-found error.
-func (s SQLMFAStore) ConsumeSecondFactor(ctx context.Context, userID model.UserID, timeStep int64, recoveryCodeHash string, now time.Time) error {
+func (s SQLMFAStore) ConsumeSecondFactor(ctx context.Context, input *store.MFASecondFactorConsumption) error {
+	userID := input.UserID
+	timeStep := input.TimeStep
+	recoveryCodeHash := input.RecoveryCodeHash
+	now := input.Now
 	if !userID.IsValid() || now.IsZero() ||
 		((timeStep <= 0) == (recoveryCodeHash == "")) ||
 		(recoveryCodeHash != "" && !model.IsValidTokenHash(recoveryCodeHash)) {
@@ -256,7 +260,10 @@ func (s SQLMFAStore) ConsumeSecondFactor(ctx context.Context, userID model.UserI
 
 // UpgradeSession marks the unexpired Session as multi-factor authenticated at
 // now and returns the hashes of its active access tokens.
-func (s SQLMFAStore) UpgradeSession(ctx context.Context, sessionID model.SessionID, userID model.UserID, now time.Time) ([]string, error) {
+func (s SQLMFAStore) UpgradeSession(ctx context.Context, input *store.MFASessionUpgrade) ([]string, error) {
+	sessionID := input.SessionID
+	userID := input.UserID
+	now := input.Now
 	now = model.TimeUTC(now)
 	if !sessionID.IsValid() || !userID.IsValid() || !now.After(time.Unix(0, 0)) {
 		return nil, store.NewErrInvalidInput("session", "upgrade_mfa", nil)

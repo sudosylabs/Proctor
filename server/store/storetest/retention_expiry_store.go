@@ -110,7 +110,7 @@ func TestRetentionExpiryStore(t *testing.T, ss store.Store, probe RetentionExpir
 		a, saveErr := ss.Audit().Save(ctx, &model.AuditEvent{Action: "audit.view", Resource: model.Resource{Type: model.ResourceInstitution, ID: installed.Institution.ID.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: installed.Institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "retention-expiry-test"})
 		require.NoError(t, saveErr)
 		if status != model.AuditStatusAttempt {
-			a, err = ss.Audit().Complete(ctx, a.ID, status, "", nil, model.NowUTC())
+			a, err = ss.Audit().Complete(ctx, &store.AuditCompletion{ID: a.ID, Status: status, ErrorCode: "", Result: nil, UpdateAt: model.NowUTC()})
 			require.NoError(t, err)
 		}
 		probe.AgeAudit(t, ctx, a.ID.String())

@@ -131,14 +131,13 @@ func (s SQLSessionCredentialStore) GetSessionByTokenHash(
 	return credential, session, nil
 }
 
-func (s SQLSessionCredentialStore) RotateRefresh(
-	ctx context.Context,
-	tokenHash string,
-	access *model.SessionCredential,
-	refresh *model.SessionCredential,
-	now time.Time,
-	idleExpiresAt time.Time,
-) (*store.SessionRotation, error) {
+// RotateRefresh replaces the refresh credential named by the input token hash with the input access and refresh credentials, detecting replay of a used refresh token.
+func (s SQLSessionCredentialStore) RotateRefresh(ctx context.Context, input *store.SessionRefreshRotation) (*store.SessionRotation, error) {
+	tokenHash := input.TokenHash
+	access := input.Access
+	refresh := input.Refresh
+	now := input.Now
+	idleExpiresAt := input.IdleExpiresAt
 	now = model.TimeUTC(now)
 	idleExpiresAt = model.TimeUTC(idleExpiresAt)
 	if access == nil || refresh == nil {

@@ -37,7 +37,7 @@ func (f *invitationMaintenanceStoreFake) GetOnboardingImport(context.Context, mo
 	}
 	return &store.OnboardingImport{State: state}, nil
 }
-func (f *invitationMaintenanceStoreFake) PurgeOnboardingImport(context.Context, model.OnboardingImportID, time.Time) (bool, error) {
+func (f *invitationMaintenanceStoreFake) PurgeOnboardingImport(ctx context.Context, input *store.OnboardingImportPurge) (bool, error) {
 	return true, nil
 }
 

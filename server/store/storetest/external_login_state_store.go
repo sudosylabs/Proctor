@@ -32,7 +32,7 @@ func TestExternalLoginStateStore(t *testing.T, ss store.Store, probe ExternalLog
 		ClientType: model.SessionClientDesktop, DeviceID: "desktop-1",
 		DeviceName: "Desktop",
 	}
-	saved, err := ss.ExternalLoginState().Save(ctx, input, time.Minute)
+	saved, err := ss.ExternalLoginState().Save(ctx, &store.ExternalLoginStateCreation{State: input, Lifetime: time.Minute})
 	require.NoError(t, err)
 	require.True(t, saved.ID.IsValid(), "Save() saved=%#v input=%#v", saved, input)
 	require.True(t, input.ID.IsZero(), "Save() saved=%#v input=%#v", saved, input)
@@ -45,16 +45,12 @@ func TestExternalLoginStateStore(t *testing.T, ss store.Store, probe ExternalLog
 	require.Equal(t, saved.BindingHash, got.BindingHash)
 	_, err = ss.ExternalLoginState().Consume(
 		ctx,
-		saved.Provider,
-		saved.StateHash,
-		model.HashToken(model.NewCredentialToken()),
+		&store.ExternalLoginStateConsumption{Provider: saved.Provider, StateHash: saved.StateHash, BindingHash: model.HashToken(model.NewCredentialToken())},
 	)
 	require.True(t, store.IsNotFound(err), "Consume(wrong binding) error")
 	consumed, err := ss.ExternalLoginState().Consume(
 		ctx,
-		saved.Provider,
-		saved.StateHash,
-		saved.BindingHash,
+		&store.ExternalLoginStateConsumption{Provider: saved.Provider, StateHash: saved.StateHash, BindingHash: saved.BindingHash},
 	)
 	require.NoError(t, err)
 	require.True(t, consumed.ConsumedAt.Valid)
@@ -62,9 +58,7 @@ func TestExternalLoginStateStore(t *testing.T, ss store.Store, probe ExternalLog
 	require.True(t, consumed.ConsumedAt.Time.Before(saved.ExpiresAt))
 	_, err = ss.ExternalLoginState().Consume(
 		ctx,
-		saved.Provider,
-		saved.StateHash,
-		saved.BindingHash,
+		&store.ExternalLoginStateConsumption{Provider: saved.Provider, StateHash: saved.StateHash, BindingHash: saved.BindingHash},
 	)
 	require.True(t, store.IsNotFound(err), "Consume(replay) error")
 
@@ -77,15 +71,15 @@ func TestExternalLoginStateStore(t *testing.T, ss store.Store, probe ExternalLog
 		StateHash: model.HashToken(model.NewCredentialToken()), BindingHash: model.HashToken(model.NewCredentialToken()),
 		ReturnTo: "/join", ClientType: model.SessionClientWeb,
 	}
-	admission, err := ss.ExternalLoginState().SaveInvitationAdmission(ctx, admissionInput, time.Minute, invitation.ClaimHash)
+	admission, err := ss.ExternalLoginState().SaveInvitationAdmission(ctx, &store.ExternalLoginStateInvitationAdmission{State: admissionInput, Lifetime: time.Minute, ClaimHash: invitation.ClaimHash})
 	require.NoError(t, err)
 	require.Equal(t, invitation.ID, admission.InvitationID, "SaveInvitationAdmission() = %#v input=%#v", admission, admissionInput)
 	require.True(t, admissionInput.InvitationID.IsZero(), "SaveInvitationAdmission() = %#v input=%#v", admission, admissionInput)
-	_, err = ss.ExternalLoginState().SaveInvitationAdmission(ctx, &model.ExternalLoginState{
+	_, err = ss.ExternalLoginState().SaveInvitationAdmission(ctx, &store.ExternalLoginStateInvitationAdmission{State: &model.ExternalLoginState{
 		Provider: "campus-cas", Purpose: model.ExternalAuthenticationPurposeInvitationAdmission,
 		StateHash: model.HashToken(model.NewCredentialToken()), BindingHash: model.HashToken(model.NewCredentialToken()),
 		ReturnTo: "/join", ClientType: model.SessionClientWeb,
-	}, time.Minute, model.HashInvitationClaim(model.NewCredentialToken()))
+	}, Lifetime: time.Minute, ClaimHash: model.HashInvitationClaim(model.NewCredentialToken())})
 	require.True(t, store.IsNotFound(err), "SaveInvitationAdmission(unknown claim) error")
 
 	expired := &model.ExternalLoginState{
@@ -94,15 +88,13 @@ func TestExternalLoginStateStore(t *testing.T, ss store.Store, probe ExternalLog
 		BindingHash: model.HashToken(model.NewCredentialToken()),
 		ReturnTo:    "/", ClientType: model.SessionClientWeb,
 	}
-	expired, err = ss.ExternalLoginState().Save(ctx, expired, 2*time.Minute)
+	expired, err = ss.ExternalLoginState().Save(ctx, &store.ExternalLoginStateCreation{State: expired, Lifetime: 2 * time.Minute})
 	require.NoError(t, err)
 	pastExpiry := model.NowUTC().Add(-time.Minute)
 	probe.Backdate(t, expired.ID, pastExpiry.Add(-2*time.Minute), pastExpiry)
 	_, err = ss.ExternalLoginState().Consume(
 		ctx,
-		expired.Provider,
-		expired.StateHash,
-		expired.BindingHash,
+		&store.ExternalLoginStateConsumption{Provider: expired.Provider, StateHash: expired.StateHash, BindingHash: expired.BindingHash},
 	)
 	require.True(t, store.IsNotFound(err), "Consume(expired) error")
 
@@ -113,10 +105,10 @@ func TestExternalLoginStateStore(t *testing.T, ss store.Store, probe ExternalLog
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt,
 		NodeID: "external-login-maintenance-test"})
 	require.NoError(t, err)
-	abandoned, err := ss.ExternalLoginState().Save(ctx, &model.ExternalLoginState{Provider: "campus-cas",
+	abandoned, err := ss.ExternalLoginState().Save(ctx, &store.ExternalLoginStateCreation{State: &model.ExternalLoginState{Provider: "campus-cas",
 		Purpose: model.ExternalAuthenticationPurposeConnect, TargetUserID: user.ID, AuditEventID: audit.ID.String(),
 		StateHash: model.HashToken(model.NewCredentialToken()), BindingHash: model.HashToken(model.NewCredentialToken()),
-		ReturnTo: "/account/security", ClientType: model.SessionClientWeb}, time.Minute)
+		ReturnTo: "/account/security", ClientType: model.SessionClientWeb}, Lifetime: time.Minute})
 	require.NoError(t, err)
 	pastExpiry = model.NowUTC().Add(-time.Minute)
 	probe.Backdate(t, abandoned.ID, pastExpiry.Add(-time.Minute), pastExpiry)
@@ -142,10 +134,10 @@ func TestExternalLoginStateStore(t *testing.T, ss store.Store, probe ExternalLog
 		require.Error(t, err, "Maintain(%d) accepted invalid limit", invalidLimit)
 	}
 	for _, invalidLifetime := range []time.Duration{0, time.Minute - time.Millisecond, 30*time.Minute + time.Millisecond} {
-		_, err = ss.ExternalLoginState().Save(ctx, &model.ExternalLoginState{
+		_, err = ss.ExternalLoginState().Save(ctx, &store.ExternalLoginStateCreation{State: &model.ExternalLoginState{
 			Provider: "campus-cas", StateHash: model.HashToken(model.NewCredentialToken()),
 			BindingHash: model.HashToken(model.NewCredentialToken()), ReturnTo: "/", ClientType: model.SessionClientWeb,
-		}, invalidLifetime)
+		}, Lifetime: invalidLifetime})
 		require.Error(t, err, "Save(lifetime=%v) accepted invalid lifetime", invalidLifetime)
 	}
 }

@@ -154,10 +154,10 @@ func testInstitutionStoreArchive(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
 
-	require.NoError(t, ss.Institution().Archive(ctx, institution.ID, model.NowUTC()))
+	require.NoError(t, ss.Institution().Archive(ctx, &store.InstitutionArchive{ID: institution.ID, ArchiveAt: model.NowUTC()}))
 	_, err := ss.Institution().Get(ctx, institution.ID)
 	require.True(t, store.IsNotFound(err), "Get(archived) error")
-	require.True(t, store.IsNotFound(ss.Institution().Archive(ctx, institution.ID, model.NowUTC())), "second Archive() error")
+	require.True(t, store.IsNotFound(ss.Institution().Archive(ctx, &store.InstitutionArchive{ID: institution.ID, ArchiveAt: model.NowUTC()})), "second Archive() error")
 	_, err = ss.Institution().Save(ctx, &model.Institution{
 		Name:        "replacement",
 		DisplayName: "Replacement University",
@@ -184,5 +184,5 @@ func cleanupInstitution(t *testing.T, ctx context.Context, ss store.Store) {
 		return
 	}
 	require.NoError(t, err)
-	require.NoError(t, ss.Institution().Archive(ctx, institution.ID, model.NowUTC()))
+	require.NoError(t, ss.Institution().Archive(ctx, &store.InstitutionArchive{ID: institution.ID, ArchiveAt: model.NowUTC()}))
 }

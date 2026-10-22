@@ -371,7 +371,9 @@ func (noopServingNodeLeaseStore) Upsert(_ context.Context, claim *store.ServingN
 	at := time.Now().UTC()
 	return &store.ServingNodeLease{NodeID: claim.NodeID, LeaseID: claim.LeaseID, UpdatedAt: at, ExpiresAt: at.Add(claim.Lifetime)}, nil
 }
-func (noopServingNodeLeaseStore) Delete(context.Context, string, string) error { return nil }
+func (noopServingNodeLeaseStore) Delete(ctx context.Context, input *store.ServingNodeLeaseDeletion) error {
+	return nil
+}
 
 func (noopClusterDiscovery) Upsert(context.Context, *store.ClusterDiscoveryNode) error {
 	return nil

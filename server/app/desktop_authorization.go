@@ -614,8 +614,7 @@ func (s *desktopAuthorizationService) ExchangeDesktopAuthorization(ctx context.C
 		revokeCtx := context.WithoutCancel(ctx)
 		withdrawal, auditErr := s.deps.Audit.PrepareWithdrawal(revokeCtx, invocation, result.Session.UserID,
 			institution.ID, result.Session.ID)
-		hashes, revokeErr := s.authentication.deps.Sessions.Withdraw(revokeCtx, result.Session.ID,
-			result.Session.UserID, s.deps.Now(), model.SessionRevocationDesktopAuthorizationFailed)
+		hashes, revokeErr := s.authentication.deps.Sessions.Withdraw(revokeCtx, &store.SessionWithdrawal{ID: result.Session.ID, UserID: result.Session.UserID, RevokedAt: s.deps.Now(), Reason: model.SessionRevocationDesktopAuthorizationFailed})
 		if auditErr == nil && withdrawal != nil {
 			if revokeErr != nil {
 				auditErr = s.deps.Audit.Fail(revokeCtx, withdrawal.ID, "authentication.desktop_authorization.unavailable")

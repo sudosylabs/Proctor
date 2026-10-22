@@ -901,9 +901,7 @@ func (s *authenticationService) updateActivity(
 	idleExpiresAt := sessionDeadline(now, settings.IdleTTL, resolved.Session.ExpiresAt)
 	if err := s.deps.Sessions.UpdateActivity(
 		ctx,
-		resolved.Session.ID,
-		now,
-		idleExpiresAt,
+		&store.SessionActivityUpdate{ID: resolved.Session.ID, LastActivityAt: now, IdleExpiresAt: idleExpiresAt},
 	); err != nil {
 		if store.IsNotFound(err) {
 			return invalidTokenAppError()
@@ -955,17 +953,13 @@ func (s *authenticationService) RefreshSession(
 	refreshToken := s.deps.NewCredential()
 	rotation, err := s.deps.SessionCredentials.RotateRefresh(
 		ctx,
-		model.HashToken(rawRefreshToken),
-		&model.SessionCredential{
+		&store.SessionRefreshRotation{TokenHash: model.HashToken(rawRefreshToken), Access: &model.SessionCredential{
 			TokenHash: model.HashToken(accessToken),
 			ExpiresAt: model.TimeUTC(now.Add(settings.AccessTTL)),
-		},
-		&model.SessionCredential{
+		}, Refresh: &model.SessionCredential{
 			TokenHash: model.HashToken(refreshToken),
 			ExpiresAt: model.TimeUTC(now.Add(settings.RefreshTTL)),
-		},
-		now,
-		model.TimeUTC(now.Add(settings.IdleTTL)),
+		}, Now: now, IdleExpiresAt: model.TimeUTC(now.Add(settings.IdleTTL))},
 	)
 	if err != nil {
 		var conflict *store.ErrConflict
@@ -997,10 +991,7 @@ func (s *authenticationService) RefreshSession(
 			var revokedAccessHashes []string
 			revokedAccessHashes, err = s.deps.Sessions.Withdraw(
 				ctx,
-				rotation.Session.ID,
-				rotation.Session.UserID,
-				now,
-				model.SessionRevocationInactiveUser,
+				&store.SessionWithdrawal{ID: rotation.Session.ID, UserID: rotation.Session.UserID, RevokedAt: now, Reason: model.SessionRevocationInactiveUser},
 			)
 			if err == nil {
 				s.sessionsRevoked(
@@ -1081,9 +1072,7 @@ func (s *authenticationService) enforceSessionExpiry(
 	}
 	result, err := s.deps.Sessions.EnforceExpiry(
 		ctx,
-		session.ID,
-		session.UserID,
-		now,
+		&store.SessionExpiryEnforcement{ID: session.ID, UserID: session.UserID, At: now},
 	)
 	if err != nil {
 		if store.IsNotFound(err) {

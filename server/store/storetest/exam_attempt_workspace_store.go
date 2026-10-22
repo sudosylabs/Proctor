@@ -461,14 +461,14 @@ writesComplete:
 	})
 	require.NoError(t, err)
 	require.NoError(t, workspace.MarkObjectReclaimable(ctx, abandoned.ID))
-	claimed, err := workspace.ClaimObjectsForCleanup(ctx, 10, "attempt-workspace-cleanup")
+	claimed, err := workspace.ClaimObjectsForCleanup(ctx, &store.AttemptWorkspaceCleanupClaim{Limit: 10, ClaimToken: "attempt-workspace-cleanup"})
 	require.NoError(t, err)
 	require.Empty(t, claimed)
 	renew()
 	if len(probes) > 0 && probes[0].MakeObjectCleanupDue != nil {
 		probes[0].MakeObjectCleanupDue(t, ctx, ready.ID)
 		probes[0].MakeObjectCleanupDue(t, ctx, abandoned.ID)
-		claimed, err = workspace.ClaimObjectsForCleanup(ctx, 10, "attempt-workspace-cleanup")
+		claimed, err = workspace.ClaimObjectsForCleanup(ctx, &store.AttemptWorkspaceCleanupClaim{Limit: 10, ClaimToken: "attempt-workspace-cleanup"})
 		require.NoError(t, err)
 		require.Len(t, claimed, 1)
 		require.Equal(t, abandoned.ID, claimed[0].ID)
@@ -476,21 +476,21 @@ writesComplete:
 		require.Equal(t, "attempt-workspace-cleanup", claimed[0].ClaimToken)
 		if probes[0].MakeCleanupClaimStale != nil {
 			probes[0].MakeCleanupClaimStale(t, ctx, abandoned.ID)
-			claimed, err = workspace.ClaimObjectsForCleanup(ctx, 10, "attempt-workspace-cleanup-stale-retry")
+			claimed, err = workspace.ClaimObjectsForCleanup(ctx, &store.AttemptWorkspaceCleanupClaim{Limit: 10, ClaimToken: "attempt-workspace-cleanup-stale-retry"})
 			require.NoError(t, err)
 			require.Len(t, claimed, 1)
 			require.Equal(t, abandoned.ID, claimed[0].ID)
 			require.Equal(t, "attempt-workspace-cleanup-stale-retry", claimed[0].ClaimToken)
 		}
-		err = workspace.ReleaseObjectCleanup(ctx, abandoned.ID, "attempt-workspace-cleanup")
+		err = workspace.ReleaseObjectCleanup(ctx, &store.AttemptWorkspaceCleanupRelease{ObjectID: abandoned.ID, ClaimToken: "attempt-workspace-cleanup"})
 		require.True(t, store.IsConflict(err), "ReleaseObjectCleanup(old token) error")
-		require.NoError(t, workspace.ReleaseObjectCleanup(ctx, abandoned.ID, "attempt-workspace-cleanup-stale-retry"))
-		claimed, err = workspace.ClaimObjectsForCleanup(ctx, 10, "attempt-workspace-cleanup-retry")
+		require.NoError(t, workspace.ReleaseObjectCleanup(ctx, &store.AttemptWorkspaceCleanupRelease{ObjectID: abandoned.ID, ClaimToken: "attempt-workspace-cleanup-stale-retry"}))
+		claimed, err = workspace.ClaimObjectsForCleanup(ctx, &store.AttemptWorkspaceCleanupClaim{Limit: 10, ClaimToken: "attempt-workspace-cleanup-retry"})
 		require.NoError(t, err)
 		require.Len(t, claimed, 1)
 		require.Equal(t, abandoned.ID, claimed[0].ID)
-		require.NoError(t, workspace.CompleteObjectCleanup(ctx, abandoned.ID, "attempt-workspace-cleanup-retry"))
-		require.NoError(t, workspace.CompleteObjectCleanup(ctx, abandoned.ID, "attempt-workspace-cleanup-retry"))
+		require.NoError(t, workspace.CompleteObjectCleanup(ctx, &store.AttemptWorkspaceCleanupCompletion{ObjectID: abandoned.ID, ClaimToken: "attempt-workspace-cleanup-retry"}))
+		require.NoError(t, workspace.CompleteObjectCleanup(ctx, &store.AttemptWorkspaceCleanupCompletion{ObjectID: abandoned.ID, ClaimToken: "attempt-workspace-cleanup-retry"}))
 	}
 	renew()
 	if len(probes) > 0 && probes[0].FillWorkspaceEntryQuota != nil {
@@ -510,7 +510,7 @@ writesComplete:
 	}
 
 	endedAt := model.NowUTC()
-	ended, err := ss.ClassMember().SeedEnd(ctx, fixture.membership.ID, fixture.membership.Revision, endedAt)
+	ended, err := ss.ClassMember().SeedEnd(ctx, &store.ClassMemberSeedEnd{ID: fixture.membership.ID, ExpectedRevision: fixture.membership.Revision, EndAt: endedAt})
 	require.NoError(t, err)
 	// Membership timestamps have millisecond precision while PostgreSQL decides
 	// current eligibility with a higher-precision clock. Cross the millisecond

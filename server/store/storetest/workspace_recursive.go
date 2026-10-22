@@ -111,18 +111,18 @@ func testStarterWorkspaceRecursiveRemoval(t *testing.T, ss store.Store, probes .
 	for _, object := range []*model.StarterWorkspaceObject{pinned.Object, unpinned.Object} {
 		probes[0].MakeObjectCleanupDue(t, ctx, object.ID)
 	}
-	claimed, err := workspace.ClaimObjectsForCleanup(ctx, 100, "recursive-starter-retained")
+	claimed, err := workspace.ClaimObjectsForCleanup(ctx, &store.StarterWorkspaceCleanupClaim{Limit: 100, ClaimToken: "recursive-starter-retained"})
 	require.NoError(t, err)
 	require.Empty(t, claimed)
 	time.Sleep(2 * time.Millisecond)
 	_, err = ss.CommandOutcome().DeleteExpired(ctx, 500)
 	require.NoError(t, err)
-	claimed, err = workspace.ClaimObjectsForCleanup(ctx, 100, "recursive-starter-reclaim")
+	claimed, err = workspace.ClaimObjectsForCleanup(ctx, &store.StarterWorkspaceCleanupClaim{Limit: 100, ClaimToken: "recursive-starter-reclaim"})
 	require.NoError(t, err)
 	require.Len(t, claimed, 1)
 	require.Equal(t, unpinned.Object.ID, claimed[0].ID)
-	require.NoError(t, workspace.CompleteObjectCleanup(ctx, unpinned.Object.ID, "recursive-starter-reclaim"))
-	require.NoError(t, workspace.CompleteObjectCleanup(ctx, unpinned.Object.ID, "recursive-starter-reclaim"))
+	require.NoError(t, workspace.CompleteObjectCleanup(ctx, &store.StarterWorkspaceCleanupCompletion{ObjectID: unpinned.Object.ID, ClaimToken: "recursive-starter-reclaim"}))
+	require.NoError(t, workspace.CompleteObjectCleanup(ctx, &store.StarterWorkspaceCleanupCompletion{ObjectID: unpinned.Object.ID, ClaimToken: "recursive-starter-reclaim"}))
 }
 
 func testAttemptWorkspaceRecursiveDeletion(t *testing.T, ss store.Store, workspace store.ExamAttemptWorkspaceStore, probes ...ExamAttemptWorkspaceSQLProbe) {
@@ -262,16 +262,16 @@ func testAttemptWorkspaceRecursiveDeletion(t *testing.T, ss store.Store, workspa
 		return
 	}
 	probes[0].MakeObjectCleanupDue(t, ctx, object.ID)
-	claimed, err := workspace.ClaimObjectsForCleanup(ctx, 200, "recursive-attempt-retained")
+	claimed, err := workspace.ClaimObjectsForCleanup(ctx, &store.AttemptWorkspaceCleanupClaim{Limit: 200, ClaimToken: "recursive-attempt-retained"}) //nolint:gosec // a cleanup claim token, not a credential
 	require.NoError(t, err)
 	require.Empty(t, claimed)
 	time.Sleep(2 * time.Millisecond)
 	_, err = ss.CommandOutcome().DeleteExpired(ctx, 500)
 	require.NoError(t, err)
-	claimed, err = workspace.ClaimObjectsForCleanup(ctx, 200, "recursive-attempt-reclaim")
+	claimed, err = workspace.ClaimObjectsForCleanup(ctx, &store.AttemptWorkspaceCleanupClaim{Limit: 200, ClaimToken: "recursive-attempt-reclaim"}) //nolint:gosec // a cleanup claim token, not a credential
 	require.NoError(t, err)
 	require.Len(t, claimed, 1)
 	require.Equal(t, object.ID, claimed[0].ID)
-	require.NoError(t, workspace.CompleteObjectCleanup(ctx, object.ID, "recursive-attempt-reclaim"))
-	require.NoError(t, workspace.CompleteObjectCleanup(ctx, object.ID, "recursive-attempt-reclaim"))
+	require.NoError(t, workspace.CompleteObjectCleanup(ctx, &store.AttemptWorkspaceCleanupCompletion{ObjectID: object.ID, ClaimToken: "recursive-attempt-reclaim"})) //nolint:gosec // a cleanup claim token, not a credential
+	require.NoError(t, workspace.CompleteObjectCleanup(ctx, &store.AttemptWorkspaceCleanupCompletion{ObjectID: object.ID, ClaimToken: "recursive-attempt-reclaim"})) //nolint:gosec // a cleanup claim token, not a credential
 }

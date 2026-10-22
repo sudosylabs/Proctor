@@ -156,7 +156,12 @@ func (s SQLAuditStore) Get(ctx context.Context, id model.AuditEventID) (*model.A
 // Complete moves the attempted audit event id to its final success or fail
 // status with errorCode and result. An event that is absent or already
 // completed yields a not-found error.
-func (s SQLAuditStore) Complete(ctx context.Context, id model.AuditEventID, status model.AuditStatus, errorCode string, result []byte, updateAt time.Time) (*model.AuditEvent, error) {
+func (s SQLAuditStore) Complete(ctx context.Context, input *store.AuditCompletion) (*model.AuditEvent, error) {
+	id := input.ID
+	status := input.Status
+	errorCode := input.ErrorCode
+	result := input.Result
+	updateAt := input.UpdateAt
 	return completeAuditEvent(
 		ctx, s.GetMaster(), id, status, errorCode, result, updateAt,
 	)

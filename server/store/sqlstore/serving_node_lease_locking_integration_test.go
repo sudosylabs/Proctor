@@ -62,7 +62,7 @@ func TestServingNodeLeaseWritesSerializeOnlyTheSameNode(t *testing.T) {
 		}
 		release()
 		require.NoError(t, (<-sameDone))
-		require.NoError(t, sqlStore.ServingNodeLease().Delete(ctx, "node-a", sameLeaseID))
-		require.NoError(t, sqlStore.ServingNodeLease().Delete(ctx, "node-b", otherLeaseID))
+		require.NoError(t, sqlStore.ServingNodeLease().Delete(ctx, &store.ServingNodeLeaseDeletion{NodeID: "node-a", LeaseID: sameLeaseID}))
+		require.NoError(t, sqlStore.ServingNodeLease().Delete(ctx, &store.ServingNodeLeaseDeletion{NodeID: "node-b", LeaseID: otherLeaseID}))
 	})
 }

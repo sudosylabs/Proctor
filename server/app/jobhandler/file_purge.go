@@ -135,9 +135,9 @@ type FileRevisionContentPurger interface {
 }
 
 type StarterWorkspaceCleanupStore interface {
-	ClaimObjectsForCleanup(context.Context, int, string) ([]model.StarterWorkspaceObject, error)
-	CompleteObjectCleanup(context.Context, model.StarterWorkspaceObjectID, string) error
-	ReleaseObjectCleanup(context.Context, model.StarterWorkspaceObjectID, string) error
+	ClaimObjectsForCleanup(context.Context, *store.StarterWorkspaceCleanupClaim) ([]model.StarterWorkspaceObject, error)
+	CompleteObjectCleanup(context.Context, *store.StarterWorkspaceCleanupCompletion) error
+	ReleaseObjectCleanup(context.Context, *store.StarterWorkspaceCleanupRelease) error
 }
 
 type StarterWorkspaceObjectPurger interface {
@@ -145,9 +145,9 @@ type StarterWorkspaceObjectPurger interface {
 }
 
 type AttemptWorkspaceCleanupStore interface {
-	ClaimObjectsForCleanup(context.Context, int, string) ([]model.AttemptWorkspaceObject, error)
-	CompleteObjectCleanup(context.Context, model.AttemptWorkspaceObjectID, string) error
-	ReleaseObjectCleanup(context.Context, model.AttemptWorkspaceObjectID, string) error
+	ClaimObjectsForCleanup(context.Context, *store.AttemptWorkspaceCleanupClaim) ([]model.AttemptWorkspaceObject, error)
+	CompleteObjectCleanup(context.Context, *store.AttemptWorkspaceCleanupCompletion) error
+	ReleaseObjectCleanup(context.Context, *store.AttemptWorkspaceCleanupRelease) error
 }
 
 type AttemptWorkspaceObjectPurger interface {
@@ -359,7 +359,7 @@ func (h filePurgeExpiredContentHandler) purgeStarterWorkspaceObjects(ctx context
 		return checkpoint, nil
 	}
 	claimToken := string(execution.Attempt.ClaimToken)
-	objects, err := h.starterWorkspace.ClaimObjectsForCleanup(ctx, remaining, claimToken)
+	objects, err := h.starterWorkspace.ClaimObjectsForCleanup(ctx, &store.StarterWorkspaceCleanupClaim{Limit: remaining, ClaimToken: claimToken})
 	if err != nil {
 		failure := job.RetryableFailure("database.unavailable", err)
 		return checkpoint, &failure
@@ -393,7 +393,7 @@ func (h filePurgeExpiredContentHandler) purgeStarterWorkspaceObjects(ctx context
 			failure := job.RetryableFailure("file.backend_unavailable", err)
 			return checkpoint, &failure
 		}
-		if err = h.starterWorkspace.CompleteObjectCleanup(ctx, object.ID, claimToken); err != nil {
+		if err = h.starterWorkspace.CompleteObjectCleanup(ctx, &store.StarterWorkspaceCleanupCompletion{ObjectID: object.ID, ClaimToken: claimToken}); err != nil {
 			// Physical removal is idempotent. Leave the current claim fenced so a
 			// stale-claim retry can safely repeat it and complete metadata cleanup.
 			if releaseErr := h.releaseStarterWorkspaceClaims(ctx, objects[index+1:], claimToken); releaseErr != nil {
@@ -429,7 +429,7 @@ func (h filePurgeExpiredContentHandler) purgeAttemptWorkspaceObjects(ctx context
 		return checkpoint, nil
 	}
 	claimToken := string(execution.Attempt.ClaimToken)
-	objects, err := h.attemptWorkspace.ClaimObjectsForCleanup(ctx, remaining, claimToken)
+	objects, err := h.attemptWorkspace.ClaimObjectsForCleanup(ctx, &store.AttemptWorkspaceCleanupClaim{Limit: remaining, ClaimToken: claimToken})
 	if err != nil {
 		failure := job.RetryableFailure("database.unavailable", err)
 		return checkpoint, &failure
@@ -463,7 +463,7 @@ func (h filePurgeExpiredContentHandler) purgeAttemptWorkspaceObjects(ctx context
 			failure := job.RetryableFailure("file.backend_unavailable", err)
 			return checkpoint, &failure
 		}
-		if err = h.attemptWorkspace.CompleteObjectCleanup(ctx, object.ID, claimToken); err != nil {
+		if err = h.attemptWorkspace.CompleteObjectCleanup(ctx, &store.AttemptWorkspaceCleanupCompletion{ObjectID: object.ID, ClaimToken: claimToken}); err != nil {
 			if releaseErr := h.releaseAttemptWorkspaceClaims(ctx, objects[index+1:], claimToken); releaseErr != nil {
 				failure := job.RetryableFailure("database.unavailable", releaseErr)
 				return checkpoint, &failure
@@ -488,7 +488,7 @@ func (h filePurgeExpiredContentHandler) purgeAttemptWorkspaceObjects(ctx context
 
 func (h filePurgeExpiredContentHandler) releaseStarterWorkspaceClaims(ctx context.Context, objects []model.StarterWorkspaceObject, claimToken string) error {
 	for index := range objects {
-		if err := h.starterWorkspace.ReleaseObjectCleanup(ctx, objects[index].ID, claimToken); err != nil {
+		if err := h.starterWorkspace.ReleaseObjectCleanup(ctx, &store.StarterWorkspaceCleanupRelease{ObjectID: objects[index].ID, ClaimToken: claimToken}); err != nil {
 			return err
 		}
 	}
@@ -499,7 +499,7 @@ func (h filePurgeExpiredContentHandler) releaseAttemptWorkspaceClaims(ctx contex
 	objects []model.AttemptWorkspaceObject, claimToken string,
 ) error {
 	for index := range objects {
-		if err := h.attemptWorkspace.ReleaseObjectCleanup(ctx, objects[index].ID, claimToken); err != nil {
+		if err := h.attemptWorkspace.ReleaseObjectCleanup(ctx, &store.AttemptWorkspaceCleanupRelease{ObjectID: objects[index].ID, ClaimToken: claimToken}); err != nil {
 			return err
 		}
 	}

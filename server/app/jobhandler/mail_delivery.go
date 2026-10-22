@@ -22,7 +22,7 @@ import (
 
 type MailDeliveryLifecycleStore interface {
 	GetDelivery(context.Context, model.MailDeliveryID) (*model.MailDelivery, error)
-	StartDelivery(context.Context, model.MailDeliveryID, int64, time.Time) (*model.MailDelivery, error)
+	StartDelivery(context.Context, *store.MailDeliveryStart) (*model.MailDelivery, error)
 	CompleteDelivery(context.Context, *store.MailDeliveryCompletion) (*model.MailDelivery, error)
 	AcquireSendPermit(context.Context, store.MailSendClass) (*store.MailSendPermit, error)
 }
@@ -136,7 +136,7 @@ func (h mailDeliveryHandler) Run(ctx context.Context, execution job.Execution) j
 		// operator instead of waiting Sending for its deadline.
 		return h.failAt(ctx, delivery, "mail.transport.acceptance_uncertain", errors.New("mail delivery attempts are exhausted"), now)
 	}
-	sending, err := h.deliveries.StartDelivery(ctx, delivery.ID, delivery.Revision, now)
+	sending, err := h.deliveries.StartDelivery(ctx, &store.MailDeliveryStart{ID: delivery.ID, ExpectedRevision: delivery.Revision, At: now})
 	if err != nil {
 		return mailDeliveryDependencyOutcome(err)
 	}

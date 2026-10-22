@@ -78,7 +78,10 @@ func (s SQLServingNodeLeaseStore) Upsert(ctx context.Context, claim *store.Servi
 	})
 }
 
-func (s SQLServingNodeLeaseStore) Delete(ctx context.Context, nodeID, leaseID string) error {
+// Delete releases the input node's serving lease when it still holds the input lease ID.
+func (s SQLServingNodeLeaseStore) Delete(ctx context.Context, input *store.ServingNodeLeaseDeletion) error {
+	nodeID := input.NodeID
+	leaseID := input.LeaseID
 	nodeID, leaseID = strings.TrimSpace(nodeID), strings.TrimSpace(leaseID)
 	if !validServingNodeLeaseIdentity(nodeID, leaseID) {
 		return store.NewErrInvalidInput("serving_node_lease", "node_id", nil)

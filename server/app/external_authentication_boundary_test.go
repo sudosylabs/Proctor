@@ -783,7 +783,9 @@ func (externalAuditFake) CompleteCriticalAction(context.Context, model.AuditEven
 	return nil, nil
 }
 
-func (s *externalLoginStateStoreFake) Save(_ context.Context, state *model.ExternalLoginState, lifetime time.Duration) (*model.ExternalLoginState, error) {
+func (s *externalLoginStateStoreFake) Save(_ context.Context, input *store.ExternalLoginStateCreation) (*model.ExternalLoginState, error) {
+	state := input.State
+	lifetime := input.Lifetime
 	s.saved = state
 	s.saveLifetime = lifetime
 	result := *state
@@ -796,14 +798,17 @@ func (s *externalLoginStateStoreFake) Save(_ context.Context, state *model.Exter
 	return &result, nil
 }
 
-func (s *externalLoginStateStoreFake) SaveInvitationAdmission(_ context.Context, state *model.ExternalLoginState, lifetime time.Duration, claimHash string) (*model.ExternalLoginState, error) {
+func (s *externalLoginStateStoreFake) SaveInvitationAdmission(_ context.Context, input *store.ExternalLoginStateInvitationAdmission) (*model.ExternalLoginState, error) {
+	state := input.State
+	lifetime := input.Lifetime
+	claimHash := input.ClaimHash
 	s.admissionClaimHash = claimHash
 	if s.admissionErr != nil {
 		return nil, s.admissionErr
 	}
 	state = cloneExternalLoginStateForTest(state)
 	state.InvitationID = model.NewInvitationID()
-	return s.Save(context.Background(), state, lifetime)
+	return s.Save(context.Background(), &store.ExternalLoginStateCreation{State: state, Lifetime: lifetime})
 }
 
 func cloneExternalLoginStateForTest(state *model.ExternalLoginState) *model.ExternalLoginState {
@@ -818,7 +823,7 @@ func (s *externalLoginStateStoreFake) GetByStateHash(context.Context, string) (*
 	return s.get, nil
 }
 
-func (s *externalLoginStateStoreFake) Consume(context.Context, string, string, string) (*model.ExternalLoginState, error) {
+func (s *externalLoginStateStoreFake) Consume(ctx context.Context, input *store.ExternalLoginStateConsumption) (*model.ExternalLoginState, error) {
 	s.consumeCalls++
 	if s.consumeResult != nil {
 		result := *s.consumeResult

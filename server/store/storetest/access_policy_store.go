@@ -137,7 +137,7 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 	_, err = ss.AccessPolicy().Replace(ctx, conflictReplacement, &conflictingCommand)
 	var conflict *store.ErrIdempotencyConflict
 	require.ErrorAs(t, err, &conflict)
-	_, err = ss.Audit().Complete(ctx, conflictReplacement.AuditEventID, model.AuditStatusFail, "idempotency.conflict", nil, conflictReplacement.AuditAt)
+	_, err = ss.Audit().Complete(ctx, &store.AuditCompletion{ID: conflictReplacement.AuditEventID, Status: model.AuditStatusFail, ErrorCode: "idempotency.conflict", Result: nil, UpdateAt: conflictReplacement.AuditAt})
 	require.NoError(t, err)
 	for _, id := range []model.SessionID{passwordSession.ID} {
 		preserved, getErr := ss.Session().Get(ctx, id)

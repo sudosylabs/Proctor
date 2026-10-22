@@ -211,7 +211,7 @@ func TestTimeAuthorityPlatformMailWorkerTransitionsAfterLeadingTransition(t *tes
 		resetTestStore(t, persistence)
 		delivery := enqueuePlatformMail(t, ctx, persistence, "mail-start-leads")
 		leadPlatformRow(t, ctx, persistence, "mail_deliveries", "updated_at", delivery.ID.String())
-		sending, err := persistence.Mail().StartDelivery(ctx, delivery.ID, delivery.Revision, model.NowUTC())
+		sending, err := persistence.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: delivery.ID, ExpectedRevision: delivery.Revision, At: model.NowUTC()})
 		require.NoError(t, err)
 		require.Equal(t, model.MailDeliverySending, sending.State)
 		require.True(t, sending.UpdatedAt.Equal(delivery.UpdatedAt.Add(time.Minute)))
@@ -221,7 +221,7 @@ func TestTimeAuthorityPlatformMailWorkerTransitionsAfterLeadingTransition(t *tes
 	t.Run("accept", func(t *testing.T) {
 		resetTestStore(t, persistence)
 		delivery := enqueuePlatformMail(t, ctx, persistence, "mail-accept-leads")
-		sending, err := persistence.Mail().StartDelivery(ctx, delivery.ID, delivery.Revision, model.NowUTC())
+		sending, err := persistence.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: delivery.ID, ExpectedRevision: delivery.Revision, At: model.NowUTC()})
 		require.NoError(t, err)
 		leadPlatformRow(t, ctx, persistence, "mail_deliveries", "updated_at", delivery.ID.String())
 		accepted, err := persistence.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{

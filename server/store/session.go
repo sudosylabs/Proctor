@@ -86,15 +86,15 @@ type SessionStore interface {
 	Get(context.Context, model.SessionID) (*model.Session, error)
 	ListByUser(context.Context, *SessionPageQuery) ([]*model.Session, error)
 	ListActiveByUser(context.Context, model.UserID, time.Time) ([]*model.Session, error)
-	UpdateActivity(context.Context, model.SessionID, time.Time, time.Time) error
-	EnforceExpiry(context.Context, model.SessionID, model.UserID, time.Time) (*SessionExpiryEnforcementResult, error)
+	UpdateActivity(context.Context, *SessionActivityUpdate) error
+	EnforceExpiry(context.Context, *SessionExpiryEnforcement) (*SessionExpiryEnforcementResult, error)
 	// Withdraw revokes one Session the system itself just issued or refreshed
 	// and must take back: the Desktop nonce could not be stored after the
 	// audited exchange committed, or the User became inactive at refresh. It
 	// has no actor and is a compensation rather than a decision, so the
 	// Session's closed revocation reason is its durable record. Any other
 	// reason is rejected.
-	Withdraw(ctx context.Context, id model.SessionID, userID model.UserID, revokedAt time.Time, reason model.SessionRevocationReason) ([]string, error)
+	Withdraw(context.Context, *SessionWithdrawal) ([]string, error)
 	Revoke(context.Context, *SessionRevocation) (*SessionRevocationResult, error)
 	RevokeAllForUser(context.Context, *UserSessionsRevocation) (*UserSessionsRevocationResult, error)
 	// PurgeRetired deletes retired Sessions and their credentials once their
@@ -190,15 +190,39 @@ type SessionCredentialStore interface {
 		string,
 		model.SessionCredentialKind,
 	) (*model.SessionCredential, *model.Session, error)
-	RotateRefresh(
-		context.Context,
-		string,
-		*model.SessionCredential,
-		*model.SessionCredential,
-		time.Time,
-		time.Time,
-	) (*SessionRotation, error)
+	RotateRefresh(context.Context, *SessionRefreshRotation) (*SessionRotation, error)
 	// PurgeRetired deletes retired credentials, including superseded
 	// credentials of live Sessions, once their grace has passed.
 	PurgeRetired(context.Context, *SessionCredentialPurge) (int64, error)
+}
+
+// SessionRefreshRotation is the input to SessionCredentialStore.RotateRefresh.
+type SessionRefreshRotation struct {
+	TokenHash     string
+	Access        *model.SessionCredential
+	Refresh       *model.SessionCredential
+	Now           time.Time
+	IdleExpiresAt time.Time
+}
+
+// SessionExpiryEnforcement is the input to SessionStore.EnforceExpiry.
+type SessionExpiryEnforcement struct {
+	ID     model.SessionID
+	UserID model.UserID
+	At     time.Time
+}
+
+// SessionActivityUpdate is the input to SessionStore.UpdateActivity.
+type SessionActivityUpdate struct {
+	ID             model.SessionID
+	LastActivityAt time.Time
+	IdleExpiresAt  time.Time
+}
+
+// SessionWithdrawal is the input to SessionStore.Withdraw.
+type SessionWithdrawal struct {
+	ID        model.SessionID
+	UserID    model.UserID
+	RevokedAt time.Time
+	Reason    model.SessionRevocationReason
 }

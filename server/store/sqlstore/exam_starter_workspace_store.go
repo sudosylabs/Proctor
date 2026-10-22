@@ -210,7 +210,10 @@ func (s SQLExamStarterWorkspaceStore) runMutation(ctx context.Context, label str
 	return result.Value, nil
 }
 
-func (s SQLExamStarterWorkspaceStore) MarkObjectReclaimable(ctx context.Context, objectID model.StarterWorkspaceObjectID, at time.Time) error {
+// MarkObjectReclaimable marks an unreferenced Starter Workspace object reclaimable from the input instant.
+func (s SQLExamStarterWorkspaceStore) MarkObjectReclaimable(ctx context.Context, input *store.StarterWorkspaceObjectReclaim) error {
+	objectID := input.ObjectID
+	at := input.At
 	if !objectID.IsValid() || at.IsZero() {
 		return store.NewErrInvalidInput("exam_starter_workspace_object", "reclaim", nil)
 	}
@@ -229,7 +232,10 @@ func (s SQLExamStarterWorkspaceStore) MarkObjectReclaimable(ctx context.Context,
 	return nil
 }
 
-func (s SQLExamStarterWorkspaceStore) ClaimObjectsForCleanup(ctx context.Context, limit int, claimToken string) ([]model.StarterWorkspaceObject, error) {
+// ClaimObjectsForCleanup claims up to the input limit of reclaimable Starter Workspace objects for physical cleanup under the input claim token.
+func (s SQLExamStarterWorkspaceStore) ClaimObjectsForCleanup(ctx context.Context, input *store.StarterWorkspaceCleanupClaim) ([]model.StarterWorkspaceObject, error) {
+	limit := input.Limit
+	claimToken := input.ClaimToken
 	if limit < 1 || limit > 100 || strings.TrimSpace(claimToken) == "" || len(claimToken) > 128 {
 		return nil, store.NewErrInvalidInput("exam_starter_workspace_object", "cleanup_claim", nil)
 	}
@@ -273,7 +279,10 @@ func (s SQLExamStarterWorkspaceStore) ClaimObjectsForCleanup(ctx context.Context
 	return objects, nil
 }
 
-func (s SQLExamStarterWorkspaceStore) CompleteObjectCleanup(ctx context.Context, objectID model.StarterWorkspaceObjectID, claimToken string) error {
+// CompleteObjectCleanup records that the claimed Starter Workspace object was removed from storage; repeating it with the same claim token is a no-op.
+func (s SQLExamStarterWorkspaceStore) CompleteObjectCleanup(ctx context.Context, input *store.StarterWorkspaceCleanupCompletion) error {
+	objectID := input.ObjectID
+	claimToken := input.ClaimToken
 	if !objectID.IsValid() || strings.TrimSpace(claimToken) == "" || len(claimToken) > 128 {
 		return store.NewErrInvalidInput("exam_starter_workspace_object", "cleanup_completion", nil)
 	}
@@ -315,7 +324,10 @@ func (s SQLExamStarterWorkspaceStore) CompleteObjectCleanup(ctx context.Context,
 	return err
 }
 
-func (s SQLExamStarterWorkspaceStore) ReleaseObjectCleanup(ctx context.Context, objectID model.StarterWorkspaceObjectID, claimToken string) error {
+// ReleaseObjectCleanup returns a claimed Starter Workspace object to the cleanup queue without removing it.
+func (s SQLExamStarterWorkspaceStore) ReleaseObjectCleanup(ctx context.Context, input *store.StarterWorkspaceCleanupRelease) error {
+	objectID := input.ObjectID
+	claimToken := input.ClaimToken
 	if !objectID.IsValid() || strings.TrimSpace(claimToken) == "" || len(claimToken) > 128 {
 		return store.NewErrInvalidInput("exam_starter_workspace_object", "cleanup_release", nil)
 	}

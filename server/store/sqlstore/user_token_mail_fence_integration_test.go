@@ -322,8 +322,7 @@ func TestEmailVerificationConsumptionUsesPostgreSQLTime(t *testing.T) {
 		authenticationPolicyTestAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()))
 	require.NoError(t, err)
 	behindNodeAt := expireTokenAfterObservedNodeTime(t, ctx, persistence, token.ID)
-	_, err = persistence.UserToken().ConsumeEmailVerification(ctx, token.TokenHash, behindNodeAt,
-		authenticationPolicyTestAudit("authentication.email_verification.complete", "", institution.ID.String()))
+	_, err = persistence.UserToken().ConsumeEmailVerification(ctx, &store.EmailVerificationConsumption{TokenHash: token.TokenHash, Now: behindNodeAt, AuditEvent: authenticationPolicyTestAudit("authentication.email_verification.complete", "", institution.ID.String())})
 	require.True(t, store.IsNotFound(err), "expired verification with behind-node time error")
 	current, err := persistence.User().Get(ctx, user.ID)
 	require.NoError(t, err, "expired verification changed User = %#v", current)
@@ -429,8 +428,7 @@ func TestUserTokenConsumptionPreservesLifecycleWhenNodeClockLeads(t *testing.T) 
 		persistence := openTestStore(t)
 		resetTestStore(t, persistence)
 		institution, user, token := setup(t, ctx, persistence, model.UserTokenEmailVerification, "verification-node-leads")
-		result, err := persistence.UserToken().ConsumeEmailVerification(ctx, token.TokenHash, model.NowUTC(),
-			authenticationPolicyTestAudit("authentication.email_verification.complete", "", institution.ID.String()))
+		result, err := persistence.UserToken().ConsumeEmailVerification(ctx, &store.EmailVerificationConsumption{TokenHash: token.TokenHash, Now: model.NowUTC(), AuditEvent: authenticationPolicyTestAudit("authentication.email_verification.complete", "", institution.ID.String())})
 		require.NoError(t, err)
 		at := result.Token.ConsumedAt.Time
 		require.False(t, at.Before(token.UpdatedAt), "verification result = %#v / %#v", result.Token, result.User)
@@ -570,7 +568,7 @@ func TestUserTokenReissueFencesConcurrentDeliveryStart(t *testing.T) {
 	reissuePID := waitForBlockedMailQuery(t, ctx, persistence, controllerPID, "INSERT INTO user_tokens")
 	started := make(chan error, 1)
 	go func() {
-		_, startErr := persistence.Mail().StartDelivery(ctx, oldDelivery.ID, oldDelivery.Revision, model.NowUTC())
+		_, startErr := persistence.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: oldDelivery.ID, ExpectedRevision: oldDelivery.Revision, At: model.NowUTC()})
 		started <- startErr
 	}()
 	_ = waitForBlockedMailQuery(t, ctx, persistence, reissuePID, "pg_advisory_xact_lock")
@@ -643,8 +641,7 @@ func TestUserTokenConsumptionFencesConcurrentDeliveryStart(t *testing.T) {
 	consumed := make(chan error, 1)
 	consumeAt := model.TimeUTC(token.CreatedAt).Add(1 * time.Millisecond)
 	go func() {
-		_, consumeErr := persistence.UserToken().ConsumeEmailVerification(ctx, token.TokenHash, consumeAt,
-			authenticationPolicyTestAudit("authentication.email_verification.complete", "", institution.ID.String()))
+		_, consumeErr := persistence.UserToken().ConsumeEmailVerification(ctx, &store.EmailVerificationConsumption{TokenHash: token.TokenHash, Now: consumeAt, AuditEvent: authenticationPolicyTestAudit("authentication.email_verification.complete", "", institution.ID.String())})
 		consumed <- consumeErr
 	}()
 	consumePID := waitForBlockedMailQuery(t, ctx, persistence, controllerPID, "UPDATE user_tokens")
@@ -653,7 +650,7 @@ func TestUserTokenConsumptionFencesConcurrentDeliveryStart(t *testing.T) {
 		err      error
 	}, 1)
 	go func() {
-		result, startErr := persistence.Mail().StartDelivery(ctx, delivery.ID, delivery.Revision, model.NowUTC())
+		result, startErr := persistence.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: delivery.ID, ExpectedRevision: delivery.Revision, At: model.NowUTC()})
 		started <- struct {
 			delivery *model.MailDelivery
 			err      error
@@ -700,7 +697,7 @@ func TestRecoveryDeliveryRelevanceUsesPostgreSQLTime(t *testing.T) {
 	require.Len(t, deliveries, 1, "delivery")
 	// The supplied node time deliberately predates expiry. PostgreSQL time is
 	// authoritative and must still suppress the expired token.
-	result, err := persistence.Mail().StartDelivery(ctx, deliveries[0].ID, deliveries[0].Revision, token.CreatedAt)
+	result, err := persistence.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: deliveries[0].ID, ExpectedRevision: deliveries[0].Revision, At: token.CreatedAt})
 	require.NoError(t, err, "StartDelivery with stale node clock = %#v", result)
 	require.Equal(t, model.MailDeliverySuppressed, result.State, "StartDelivery with stale node clock = %#v", result)
 	require.Equal(t, model.MailDeliveryObsoleteCode, result.PublicFailureCode, "StartDelivery with stale node clock = %#v", result)

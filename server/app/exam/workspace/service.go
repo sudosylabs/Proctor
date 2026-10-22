@@ -416,14 +416,14 @@ func (s *Service) stageAndFinalize(ctx context.Context, invocation invocation.In
 	}
 	staged, err := s.deps.Content.StageStarterWorkspaceObject(ctx, objectID, body, size, mediaType)
 	if err != nil {
-		_ = s.deps.Persistence.MarkObjectReclaimable(ctx, objectID, at)
+		_ = s.deps.Persistence.MarkObjectReclaimable(ctx, &store.StarterWorkspaceObjectReclaim{ObjectID: objectID, At: at})
 		if isInvalidContentError(err) {
 			return Result{}, apperror.Invalid("exam.starter_workspace.invalid", "content").Wrap(err)
 		}
 		return Result{}, apperror.New("exam.starter_workspace.unavailable").Wrap(err)
 	}
 	if !validSHA256(expectedSHA256) || staged.SHA256 != expectedSHA256 {
-		_ = s.deps.Persistence.MarkObjectReclaimable(ctx, objectID, at)
+		_ = s.deps.Persistence.MarkObjectReclaimable(ctx, &store.StarterWorkspaceObjectReclaim{ObjectID: objectID, At: at})
 		return Result{}, apperror.Invalid("exam.starter_workspace.invalid", "sha256")
 	}
 	mutation := &store.ExamStarterWorkspaceMutation{ExamID: examID, ActorUserID: invocation.Principal().UserID, ManagerOverride: authorization.override,
@@ -432,12 +432,12 @@ func (s *Service) stageAndFinalize(ctx context.Context, invocation invocation.In
 	result, err := s.runMutation(ctx, invocation, authorization, auditOperation, effectOperation, mutation, idempotency, run)
 	if err != nil {
 		if !apperror.Is(err, "exam.starter_workspace.unavailable") {
-			_ = s.deps.Persistence.MarkObjectReclaimable(ctx, objectID, at)
+			_ = s.deps.Persistence.MarkObjectReclaimable(ctx, &store.StarterWorkspaceObjectReclaim{ObjectID: objectID, At: at})
 		}
 		return Result{}, err
 	}
 	if result.Replayed {
-		_ = s.deps.Persistence.MarkObjectReclaimable(ctx, objectID, at)
+		_ = s.deps.Persistence.MarkObjectReclaimable(ctx, &store.StarterWorkspaceObjectReclaim{ObjectID: objectID, At: at})
 	}
 	return result, nil
 }

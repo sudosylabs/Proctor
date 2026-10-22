@@ -623,7 +623,7 @@ func examSubmissionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamS
 				return struct{}{}, nil
 			})
 			require.NoError(t, err)
-			claimed, err := workspaceStore.ClaimObjectsForCleanup(ctx, 200, "submission-retention")
+			claimed, err := workspaceStore.ClaimObjectsForCleanup(ctx, &store.AttemptWorkspaceCleanupClaim{Limit: 200, ClaimToken: "submission-retention"})
 			require.NoError(t, err)
 			for _, object := range claimed {
 				require.NotEqual(t, attemptObjectID, object.ID)
@@ -643,7 +643,7 @@ func examSubmissionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamS
 				return struct{}{}, nil
 			})
 			require.NoError(t, err)
-			err = workspaceStore.CompleteObjectCleanup(ctx, attemptObjectID, "submission-retention")
+			err = workspaceStore.CompleteObjectCleanup(ctx, &store.AttemptWorkspaceCleanupCompletion{ObjectID: attemptObjectID, ClaimToken: "submission-retention"})
 			require.True(t, store.IsConflict(err), "CompleteObjectCleanup(Submission pinned) error")
 		},
 		CorruptManifest: func(t *testing.T, ctx context.Context, submissionID model.SubmissionID) {
@@ -1083,7 +1083,7 @@ func TestExamRevisionPublishedBytesSurviveDraftReplacementAndCleanup(t *testing.
 		_, advanceErr := persistence.GetMaster().Exec(ctx, `UPDATE exam_starter_workspace_objects SET reclaim_after=created_at WHERE id=?`, fixture.OldWorkspaceObjectID.String())
 		require.NoError(t, advanceErr)
 
-		claimed, claimErr := ss.ExamStarterWorkspace().ClaimObjectsForCleanup(ctx, 100, "revision-vfs-retention")
+		claimed, claimErr := ss.ExamStarterWorkspace().ClaimObjectsForCleanup(ctx, &store.StarterWorkspaceCleanupClaim{Limit: 100, ClaimToken: "revision-vfs-retention"})
 		require.NoError(t, claimErr)
 		foundNeighbor := false
 		for _, object := range claimed {
@@ -1093,7 +1093,7 @@ func TestExamRevisionPublishedBytesSurviveDraftReplacementAndCleanup(t *testing.
 			}
 			foundNeighbor = true
 			require.NoError(t, content.RemoveStarterWorkspaceObject(ctx, object.ID))
-			require.NoError(t, ss.ExamStarterWorkspace().CompleteObjectCleanup(ctx, object.ID, "revision-vfs-retention"))
+			require.NoError(t, ss.ExamStarterWorkspace().CompleteObjectCleanup(ctx, &store.StarterWorkspaceCleanupCompletion{ObjectID: object.ID, ClaimToken: "revision-vfs-retention"}))
 		}
 		require.True(t, foundNeighbor, "cleanup did not claim unpinned neighbor")
 		if opened, openErr := content.OpenStarterWorkspaceObject(ctx, neighbor.ID); openErr == nil {

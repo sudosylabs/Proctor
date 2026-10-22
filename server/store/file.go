@@ -137,7 +137,7 @@ type FileStore interface {
 	// If the upload created a distinct pristine entry, that entry is removed too;
 	// the operation never changes the visible picture.
 	DiscardProfilePictureUpload(context.Context, *ProfilePictureUploadDiscard) error
-	RenewUploadLease(context.Context, model.UploadLeaseID, model.UserID, int64, int64, time.Time) (*model.UploadLease, error)
+	RenewUploadLease(context.Context, *UploadLeaseRenewal) (*model.UploadLease, error)
 	// PublishProfilePicture atomically consumes the actor-owned, unexpired lease,
 	// persists the complete rendition set, makes the revision current, updates the
 	// user's active custom entry under optimistic concurrency, and completes the
@@ -165,4 +165,13 @@ type FileStore interface {
 	// CompletePurge deletes metadata only after the caller has idempotently
 	// removed the claimed physical content.
 	CompletePurge(context.Context, *FilePurgeClaim) error
+}
+
+// UploadLeaseRenewal is the input to FileStore.RenewUploadLease.
+type UploadLeaseRenewal struct {
+	ID               model.UploadLeaseID
+	ActorID          model.UserID
+	ExpectedRevision int64
+	BytesReceived    int64
+	ExpiresAt        time.Time
 }

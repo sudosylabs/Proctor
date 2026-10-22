@@ -114,12 +114,12 @@ type MailStore interface {
 	EnqueueTest(context.Context, *MailTestEnqueue) (*model.MailDelivery, error)
 	GetDelivery(context.Context, model.MailDeliveryID) (*model.MailDelivery, error)
 	ListDeliveries(context.Context, MailDeliveryListOptions) ([]*model.MailDelivery, error)
-	StartDelivery(context.Context, model.MailDeliveryID, int64, time.Time) (*model.MailDelivery, error)
+	StartDelivery(context.Context, *MailDeliveryStart) (*model.MailDelivery, error)
 	CompleteDelivery(context.Context, *MailDeliveryCompletion) (*model.MailDelivery, error)
 	CancelDelivery(context.Context, *MailDeliveryMutation) (*model.MailDelivery, error)
 	RetryDelivery(context.Context, *MailDeliveryMutation) (*model.MailDelivery, error)
 	AcquireSendPermit(context.Context, MailSendClass) (*MailSendPermit, error)
-	SuppressOutstanding(context.Context, string, int) (*MailMaintenanceResult, error)
+	SuppressOutstanding(context.Context, *MailOutstandingSuppression) (*MailMaintenanceResult, error)
 	SuppressExpired(context.Context, int) (*MailMaintenanceResult, error)
 	CleanupTerminal(context.Context, int) (*MailMaintenanceResult, error)
 	QueueSnapshot(context.Context) (*MailQueueSnapshot, error)
@@ -137,4 +137,17 @@ type PreparedMail struct {
 	Occurrence *model.MailOccurrence
 	Delivery   *model.MailDelivery
 	Job        *model.Job
+}
+
+// MailDeliveryStart is the input to MailStore.StartDelivery.
+type MailDeliveryStart struct {
+	ID               model.MailDeliveryID
+	ExpectedRevision int64
+	At               time.Time
+}
+
+// MailOutstandingSuppression is the input to MailStore.SuppressOutstanding.
+type MailOutstandingSuppression struct {
+	Code  string
+	Limit int
 }

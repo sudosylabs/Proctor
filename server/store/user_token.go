@@ -106,14 +106,16 @@ type UserTokenStore interface {
 		string,
 		model.UserTokenPurpose,
 	) (*model.UserToken, error)
-	ConsumeEmailVerification(
-		ctx context.Context,
-		tokenHash string,
-		consumedAt time.Time,
-		auditEvent *model.AuditEvent,
-	) (*EmailVerificationResult, error)
+	ConsumeEmailVerification(context.Context, *EmailVerificationConsumption) (*EmailVerificationResult, error)
 	ConsumePasswordReset(
 		context.Context,
 		*PasswordResetCompletion,
 	) (*PasswordResetResult, error)
+}
+
+// EmailVerificationConsumption is the input to UserTokenStore.ConsumeEmailVerification.
+type EmailVerificationConsumption struct {
+	TokenHash  string
+	Now        time.Time
+	AuditEvent *model.AuditEvent
 }

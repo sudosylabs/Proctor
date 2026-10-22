@@ -62,7 +62,7 @@ func TestAdministratorRecoveryStore(t *testing.T, ss store.Store, probes ...Admi
 	require.NoError(t, err)
 	require.NotNil(t, noPendingAfterLiveNode)
 	require.Equal(t, 0, noPendingAfterLiveNode.Reconciled)
-	require.NoError(t, ss.ServingNodeLease().Delete(ctx, "serving-node-a", liveLeaseID))
+	require.NoError(t, ss.ServingNodeLease().Delete(ctx, &store.ServingNodeLeaseDeletion{NodeID: "serving-node-a", LeaseID: liveLeaseID}))
 	staleLeaseID := model.NewID()
 	_, err = ss.ServingNodeLease().Upsert(ctx, &store.ServingNodeLeaseClaim{
 		NodeID: "stale-serving-node", LeaseID: staleLeaseID, Lifetime: store.ServingNodeLeaseMinimumLifetime,
@@ -78,7 +78,7 @@ func TestAdministratorRecoveryStore(t *testing.T, ss store.Store, probes ...Admi
 		NodeID: "stale-serving-node", LeaseID: restartedLeaseID, Lifetime: 30 * time.Second,
 	})
 	require.NoError(t, err)
-	require.NoError(t, ss.ServingNodeLease().Delete(ctx, "stale-serving-node", restartedLeaseID))
+	require.NoError(t, ss.ServingNodeLease().Delete(ctx, &store.ServingNodeLeaseDeletion{NodeID: "stale-serving-node", LeaseID: restartedLeaseID}))
 	preservedSession, _, raw := saveSession(t, ctx, ss, installed.Administrator.ID.String(), 10)
 	pendingMFA := savePendingMFA(t, ctx, ss, installed.Administrator.ID)
 	mfaAt := model.TimeUTC(pendingMFA.CreatedAt).Add(1 * time.Millisecond)
@@ -249,7 +249,7 @@ func TestAdministratorRecoveryStore(t *testing.T, ss store.Store, probes ...Admi
 		release()
 		require.NoError(t, <-leaseDone)
 		require.True(t, store.IsConflict((<-recoveryDone)), "recovery queued after serving lease error")
-		require.NoError(t, ss.ServingNodeLease().Delete(ctx, "queued-serving-node", leaseID))
+		require.NoError(t, ss.ServingNodeLease().Delete(ctx, &store.ServingNodeLeaseDeletion{NodeID: "queued-serving-node", LeaseID: leaseID}))
 	}
 	if len(probes) != 0 && probes[0].HoldAuthenticationPathFence != nil && probes[0].WaitForBlockedTransactions != nil {
 		blockerPID, release := probes[0].HoldAuthenticationPathFence(t, ctx)

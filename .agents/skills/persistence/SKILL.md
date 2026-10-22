@@ -42,7 +42,8 @@ draft; optimistic concurrency on the entity the operation acts on is
 `ExpectedRevision`, and a fence on a different resource (the recipient User,
 the Exam draft, the Sitting) is `Expected<Resource>Revision`; the architecture
 test `TestStoreRevisionFencesNameTheirResource` rejects a qualifier that
-repeats the input's own entity or says `Current`; and a
+repeats the input's own entity or says `Current`; `TestStoreMutationsTakeOneInput`
+rejects a mutation that takes more than one positional input; and a
 retryable operation takes a trailing `*CommandIdempotency` parameter. The older
 identity and membership operations that still carry `Command` and replay flags
 inside their input follow the same rule when next changed.

@@ -544,12 +544,11 @@ func (s SQLUserTokenStore) GetByHash(
 	return row.model()
 }
 
-func (s SQLUserTokenStore) ConsumeEmailVerification(
-	ctx context.Context,
-	tokenHash string,
-	now time.Time,
-	auditEvent *model.AuditEvent,
-) (*store.EmailVerificationResult, error) {
+// ConsumeEmailVerification consumes the email verification token named by the input hash at the input instant and records the supplied audit event.
+func (s SQLUserTokenStore) ConsumeEmailVerification(ctx context.Context, input *store.EmailVerificationConsumption) (*store.EmailVerificationResult, error) {
+	tokenHash := input.TokenHash
+	now := input.Now
+	auditEvent := input.AuditEvent
 	if !model.IsValidTokenHash(tokenHash) || now.IsZero() || auditEvent == nil {
 		return nil, store.NewErrInvalidInput("user_token", "consume", nil)
 	}

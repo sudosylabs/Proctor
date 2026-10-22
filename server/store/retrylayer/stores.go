@@ -480,16 +480,22 @@ func (s *examAttemptWorkspaceStore) MarkObjectReclaimable(ctx context.Context, o
 	return s.ExamAttemptWorkspaceStore.MarkObjectReclaimable(ctx, objectID)
 }
 
-func (s *examAttemptWorkspaceStore) ClaimObjectsForCleanup(ctx context.Context, limit int, token string) ([]model.AttemptWorkspaceObject, error) {
-	return s.ExamAttemptWorkspaceStore.ClaimObjectsForCleanup(ctx, limit, token)
+func (s *examAttemptWorkspaceStore) ClaimObjectsForCleanup(ctx context.Context, input *store.AttemptWorkspaceCleanupClaim) ([]model.AttemptWorkspaceObject, error) {
+	limit := input.Limit
+	token := input.ClaimToken
+	return s.ExamAttemptWorkspaceStore.ClaimObjectsForCleanup(ctx, &store.AttemptWorkspaceCleanupClaim{Limit: limit, ClaimToken: token})
 }
 
-func (s *examAttemptWorkspaceStore) CompleteObjectCleanup(ctx context.Context, objectID model.AttemptWorkspaceObjectID, token string) error {
-	return s.ExamAttemptWorkspaceStore.CompleteObjectCleanup(ctx, objectID, token)
+func (s *examAttemptWorkspaceStore) CompleteObjectCleanup(ctx context.Context, input *store.AttemptWorkspaceCleanupCompletion) error {
+	objectID := input.ObjectID
+	token := input.ClaimToken
+	return s.ExamAttemptWorkspaceStore.CompleteObjectCleanup(ctx, &store.AttemptWorkspaceCleanupCompletion{ObjectID: objectID, ClaimToken: token})
 }
 
-func (s *examAttemptWorkspaceStore) ReleaseObjectCleanup(ctx context.Context, objectID model.AttemptWorkspaceObjectID, token string) error {
-	return s.ExamAttemptWorkspaceStore.ReleaseObjectCleanup(ctx, objectID, token)
+func (s *examAttemptWorkspaceStore) ReleaseObjectCleanup(ctx context.Context, input *store.AttemptWorkspaceCleanupRelease) error {
+	objectID := input.ObjectID
+	token := input.ClaimToken
+	return s.ExamAttemptWorkspaceStore.ReleaseObjectCleanup(ctx, &store.AttemptWorkspaceCleanupRelease{ObjectID: objectID, ClaimToken: token})
 }
 
 func (s *examResourceStore) List(ctx context.Context, examID model.ExamID) ([]store.ExamResourceRecord, error) {
@@ -852,6 +858,10 @@ func (s *servingNodeLeaseStore) Upsert(ctx context.Context, claim *store.Serving
 }
 
 // Delete withdraws only the exact incarnation, so replay is idempotent.
-func (s *servingNodeLeaseStore) Delete(ctx context.Context, nodeID, leaseID string) error {
-	return retryCall0(ctx, s.layer, func() error { return s.ServingNodeLeaseStore.Delete(ctx, nodeID, leaseID) })
+func (s *servingNodeLeaseStore) Delete(ctx context.Context, input *store.ServingNodeLeaseDeletion) error {
+	nodeID := input.NodeID
+	leaseID := input.LeaseID
+	return retryCall0(ctx, s.layer, func() error {
+		return s.ServingNodeLeaseStore.Delete(ctx, &store.ServingNodeLeaseDeletion{NodeID: nodeID, LeaseID: leaseID})
+	})
 }

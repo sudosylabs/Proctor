@@ -116,7 +116,7 @@ func TestTimeAuthorityAccessMFAUpgradeAfterLeadingSessionClock(t *testing.T) {
 	resetTestStore(t, s)
 	user, session, _ := timeAuthorityAccessSession(t, ctx, s, "time-authority-mfa-upgrade")
 	leadSessionDatabaseClock(t, ctx, s, session.ID)
-	_, err := s.MFA().UpgradeSession(ctx, session.ID, user.ID, model.NowUTC())
+	_, err := s.MFA().UpgradeSession(ctx, &store.MFASessionUpgrade{SessionID: session.ID, UserID: user.ID, Now: model.NowUTC()})
 	require.NoError(t, err)
 	stored, err := s.Session().Get(ctx, session.ID)
 	require.NoError(t, err, "upgraded Session = %#v", stored)
@@ -138,7 +138,7 @@ func TestTimeAuthorityAccessRecoveryCodeConsumptionAfterLeadingCodeClock(t *test
 	timeAuthorityAccessLead(t, ctx, s, `INSERT INTO mfa_recovery_codes(id,created_at,updated_at,user_id,code_hash)
 		VALUES(?,clock_timestamp()+INTERVAL '1 minute',clock_timestamp()+INTERVAL '1 minute',?,?)`,
 		model.NewMFARecoveryCodeID().String(), user.ID.String(), codeHash)
-	require.NoError(t, s.MFA().ConsumeSecondFactor(ctx, user.ID, 0, codeHash, model.NowUTC()))
+	require.NoError(t, s.MFA().ConsumeSecondFactor(ctx, &store.MFASecondFactorConsumption{UserID: user.ID, TimeStep: 0, RecoveryCodeHash: codeHash, Now: model.NowUTC()}))
 	timeAuthorityAccessCheck(t, ctx, s, `SELECT consumed_at >= created_at FROM mfa_recovery_codes WHERE code_hash=?`, codeHash)
 }
 
@@ -230,10 +230,7 @@ func TestTimeAuthorityAccessRefreshReplayAfterLeadingSessionClock(t *testing.T) 
 	}
 	rotate := func() (*store.SessionRotation, error) {
 		now := model.NowUTC()
-		return s.SessionCredential().RotateRefresh(ctx, refreshHash,
-			&model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: now.Add(10 * time.Minute)},
-			&model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: now.Add(time.Hour)},
-			now, now.Add(30*time.Minute))
+		return s.SessionCredential().RotateRefresh(ctx, &store.SessionRefreshRotation{TokenHash: refreshHash, Access: &model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: now.Add(10 * time.Minute)}, Refresh: &model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: now.Add(time.Hour)}, Now: now, IdleExpiresAt: now.Add(30 * time.Minute)})
 	}
 	_, err := rotate()
 	require.NoError(t, err)

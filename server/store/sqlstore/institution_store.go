@@ -220,7 +220,9 @@ func (s SQLInstitutionStore) updateInstitution(
 
 // Archive archives the Institution at archiveAt, or returns
 // a not-found error when it is absent or already archived.
-func (s SQLInstitutionStore) Archive(ctx context.Context, id model.InstitutionID, archiveAt time.Time) error {
+func (s SQLInstitutionStore) Archive(ctx context.Context, input *store.InstitutionArchive) error {
+	id := input.ID
+	archiveAt := input.ArchiveAt
 	if archiveAt.IsZero() {
 		return store.NewErrInvalidInput("institution", "archived_at", archiveAt)
 	}

@@ -78,8 +78,32 @@ type ExamStarterWorkspaceStore interface {
 	MoveEntry(context.Context, *ExamStarterWorkspaceMutation, *CommandIdempotency) (*ExamStarterWorkspaceMutationResult, error)
 	ReplaceFile(context.Context, *ExamStarterWorkspaceMutation, *CommandIdempotency) (*ExamStarterWorkspaceMutationResult, error)
 	RemoveEntry(context.Context, *ExamStarterWorkspaceMutation, *CommandIdempotency) (*ExamStarterWorkspaceMutationResult, error)
-	MarkObjectReclaimable(context.Context, model.StarterWorkspaceObjectID, time.Time) error
-	ClaimObjectsForCleanup(context.Context, int, string) ([]model.StarterWorkspaceObject, error)
-	CompleteObjectCleanup(context.Context, model.StarterWorkspaceObjectID, string) error
-	ReleaseObjectCleanup(context.Context, model.StarterWorkspaceObjectID, string) error
+	MarkObjectReclaimable(context.Context, *StarterWorkspaceObjectReclaim) error
+	ClaimObjectsForCleanup(context.Context, *StarterWorkspaceCleanupClaim) ([]model.StarterWorkspaceObject, error)
+	CompleteObjectCleanup(context.Context, *StarterWorkspaceCleanupCompletion) error
+	ReleaseObjectCleanup(context.Context, *StarterWorkspaceCleanupRelease) error
+}
+
+// StarterWorkspaceCleanupClaim is the input to ExamStarterWorkspaceStore.ClaimObjectsForCleanup.
+type StarterWorkspaceCleanupClaim struct {
+	Limit      int
+	ClaimToken string
+}
+
+// StarterWorkspaceCleanupCompletion is the input to ExamStarterWorkspaceStore.CompleteObjectCleanup.
+type StarterWorkspaceCleanupCompletion struct {
+	ObjectID   model.StarterWorkspaceObjectID
+	ClaimToken string
+}
+
+// StarterWorkspaceObjectReclaim is the input to ExamStarterWorkspaceStore.MarkObjectReclaimable.
+type StarterWorkspaceObjectReclaim struct {
+	ObjectID model.StarterWorkspaceObjectID
+	At       time.Time
+}
+
+// StarterWorkspaceCleanupRelease is the input to ExamStarterWorkspaceStore.ReleaseObjectCleanup.
+type StarterWorkspaceCleanupRelease struct {
+	ObjectID   model.StarterWorkspaceObjectID
+	ClaimToken string
 }

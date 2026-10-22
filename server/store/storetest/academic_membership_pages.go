@@ -109,7 +109,7 @@ func testClassMemberPaging(t *testing.T, ss store.Store) {
 		require.NoError(t, err)
 		member := enrolled.Membership
 		if i == 0 {
-			_, err := ss.ClassMember().SeedEnd(ctx, member.ID, member.Revision, at.Add(10*time.Millisecond))
+			_, err := ss.ClassMember().SeedEnd(ctx, &store.ClassMemberSeedEnd{ID: member.ID, ExpectedRevision: member.Revision, EndAt: at.Add(10 * time.Millisecond)})
 			require.NoError(t, err)
 			next := &model.ClassMember{ClassID: scope.ID, UserID: user.ID, StartsAt: model.TimeUTC(at.Add(10 * time.Millisecond))}
 			_, err = ss.ClassMember().SeedEnroll(ctx, next)

@@ -89,9 +89,9 @@ func TestExternalReauthenticationRechecksExactIdentityAndLiveBoundSession(t *tes
 			audit, _ := mfaSQLSecurityNoticeFixture(t, ctx, s, user, model.MailTemplateIdentityMFAEnabled, model.NowUTC())
 			auditID := audit.ID.String()
 			stateHash, bindingHash := model.HashToken(model.NewCredentialToken()), model.HashToken(model.NewCredentialToken())
-			state, err := s.ExternalLoginState().Save(ctx, &model.ExternalLoginState{Provider: "campus", Purpose: model.ExternalAuthenticationPurposeReauthenticate, TargetUserID: user.ID, SessionID: session.ID, SessionCredentialID: savedCredentials[0].ID, ExternalIdentityID: identity.ID, AuditEventID: auditID, StateHash: stateHash, BindingHash: bindingHash, ReturnTo: "/account/security", ClientType: model.SessionClientWeb}, time.Minute)
+			state, err := s.ExternalLoginState().Save(ctx, &store.ExternalLoginStateCreation{State: &model.ExternalLoginState{Provider: "campus", Purpose: model.ExternalAuthenticationPurposeReauthenticate, TargetUserID: user.ID, SessionID: session.ID, SessionCredentialID: savedCredentials[0].ID, ExternalIdentityID: identity.ID, AuditEventID: auditID, StateHash: stateHash, BindingHash: bindingHash, ReturnTo: "/account/security", ClientType: model.SessionClientWeb}, Lifetime: time.Minute})
 			require.NoError(t, err)
-			state, err = s.ExternalLoginState().Consume(ctx, "campus", stateHash, bindingHash)
+			state, err = s.ExternalLoginState().Consume(ctx, &store.ExternalLoginStateConsumption{Provider: "campus", StateHash: stateHash, BindingHash: bindingHash})
 			require.NoError(t, err)
 			input := &store.SessionExternalReauthentication{StateID: state.ID, ProviderID: "campus", Subject: identity.Subject, AuthenticatedAt: model.NowUTC()}
 			switch name {
@@ -111,7 +111,7 @@ func TestExternalReauthenticationRechecksExactIdentityAndLiveBoundSession(t *tes
 			case "disabled provider":
 				_, err = s.GetMaster().Exec(ctx, `UPDATE access_policies SET provider_admissions='{}'::jsonb`)
 			case "terminal audit":
-				_, err = s.Audit().Complete(ctx, audit.ID, model.AuditStatusFail, "authentication.token_invalid", nil, model.NowUTC())
+				_, err = s.Audit().Complete(ctx, &store.AuditCompletion{ID: audit.ID, Status: model.AuditStatusFail, ErrorCode: "authentication.token_invalid", Result: nil, UpdateAt: model.NowUTC()})
 			}
 			require.NoError(t, err)
 			result, err := s.Session().ReauthenticateExternal(ctx, input)

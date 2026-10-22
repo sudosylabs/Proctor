@@ -446,7 +446,7 @@ func TestDesktopAuthorizationRevalidatesSourceWebSessionProof(t *testing.T) {
 					    idle_expires_at=idle_expires_at+interval '1 hour',expires_at=expires_at+interval '1 hour'
 					WHERE id=?`, source.ID.String())
 			case "revoked session":
-				_, err = persistence.Session().Withdraw(ctx, source.ID, user.ID, model.NowUTC(), model.SessionRevocationInactiveUser)
+				_, err = persistence.Session().Withdraw(ctx, &store.SessionWithdrawal{ID: source.ID, UserID: user.ID, RevokedAt: model.NowUTC(), Reason: model.SessionRevocationInactiveUser})
 			case "expired session":
 				_, err = persistence.GetMaster().Exec(ctx, `UPDATE sessions SET expires_at=statement_timestamp(),idle_expires_at=statement_timestamp() WHERE id=?`, source.ID.String())
 			case "idle expired session":
@@ -457,10 +457,7 @@ func TestDesktopAuthorizationRevalidatesSourceWebSessionProof(t *testing.T) {
 				_, err = persistence.GetMaster().Exec(ctx, `UPDATE session_credentials SET expires_at=clock_timestamp() WHERE id=?`, access.ID.String())
 			case "rotated credential":
 				now := model.TimeUTC(time.Now())
-				_, err = persistence.SessionCredential().RotateRefresh(ctx, refresh.TokenHash,
-					&model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: now.Add(time.Minute)},
-					&model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: source.ExpiresAt},
-					now, now.Add(time.Hour))
+				_, err = persistence.SessionCredential().RotateRefresh(ctx, &store.SessionRefreshRotation{TokenHash: refresh.TokenHash, Access: &model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: now.Add(time.Minute)}, Refresh: &model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: source.ExpiresAt}, Now: now, IdleExpiresAt: now.Add(time.Hour)})
 			case "other Session credential":
 				otherSession, otherCredentials := authenticationPolicyTestSession(user.ID, "password", "", "")
 				_, otherSavedCredentials, saveErr := storetest.SaveSession(ctx, persistence, sessionCreationForSQLTest(t, ctx, persistence, otherSession, otherCredentials, 10))

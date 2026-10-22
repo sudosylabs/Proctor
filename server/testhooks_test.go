@@ -162,7 +162,9 @@ func (hookServingNodeLeaseStore) Upsert(_ context.Context, claim *store.ServingN
 	at := time.Now().UTC()
 	return &store.ServingNodeLease{NodeID: claim.NodeID, LeaseID: claim.LeaseID, UpdatedAt: at, ExpiresAt: at.Add(claim.Lifetime)}, nil
 }
-func (hookServingNodeLeaseStore) Delete(context.Context, string, string) error { return nil }
+func (hookServingNodeLeaseStore) Delete(ctx context.Context, input *store.ServingNodeLeaseDeletion) error {
+	return nil
+}
 
 func (s *hookStore) Ping(context.Context) error {
 	attempt := s.pingAttempts.Add(1)

@@ -148,7 +148,7 @@ type UserStore interface {
 	MatchVisibility(context.Context, model.UserID, UserVisibilityScope) (UserVisibilityMatch, error)
 	UpdateProfile(context.Context, *UserProfileUpdate) (*model.User, error)
 	SetDisabled(context.Context, *UserDisabledStateChange) (*UserDisabledStateResult, error)
-	UpdateLastLogin(ctx context.Context, userID model.UserID, at time.Time) error
+	UpdateLastLogin(context.Context, *UserLastLoginUpdate) error
 }
 
 type CurrentUserProductArea string
@@ -186,4 +186,10 @@ type CurrentUserContext struct {
 	ManagementScopes        []CurrentUserManagementScope
 	ManagementScopesHasMore bool
 	UnresolvedAttempt       *CurrentUserAttemptSelector
+}
+
+// UserLastLoginUpdate is the input to UserStore.UpdateLastLogin.
+type UserLastLoginUpdate struct {
+	ID model.UserID
+	At time.Time
 }

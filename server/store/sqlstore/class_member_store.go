@@ -923,7 +923,10 @@ func (s SQLClassMemberStore) SeedEnroll(
 
 // SeedEnd is an unaudited fixture write for conformance and integration tests.
 // Production code never calls it; an architecture test enforces that.
-func (s SQLClassMemberStore) SeedEnd(ctx context.Context, id model.ClassMemberID, expectedRevision int64, endAt time.Time) (*model.ClassMember, error) {
+func (s SQLClassMemberStore) SeedEnd(ctx context.Context, input *store.ClassMemberSeedEnd) (*model.ClassMember, error) {
+	id := input.ID
+	expectedRevision := input.ExpectedRevision
+	endAt := input.EndAt
 	if !id.IsValid() || expectedRevision <= 0 || endAt.IsZero() {
 		return nil, store.NewErrInvalidInput("class_member", "end", nil)
 	}

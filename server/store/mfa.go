@@ -86,8 +86,8 @@ type MFAStore interface {
 	Reset(context.Context, *MFAAssistedReset) (*MFAResetResult, error)
 	GetByUser(context.Context, model.UserID) (*model.MFACredential, error)
 	Activate(context.Context, *MFAActivationMutation) (*MFAActivationResult, error)
-	ConsumeSecondFactor(ctx context.Context, userID model.UserID, timeStep int64, recoveryCodeHash string, consumedAt time.Time) error
-	UpgradeSession(context.Context, model.SessionID, model.UserID, time.Time) ([]string, error)
+	ConsumeSecondFactor(context.Context, *MFASecondFactorConsumption) error
+	UpgradeSession(context.Context, *MFASessionUpgrade) ([]string, error)
 	ReplaceRecoveryCodes(context.Context, *MFARecoveryCodesRegeneration) error
 	CountRecoveryCodes(context.Context, model.UserID) (int, error)
 	// ListSecretKeyUsage reports, per sealing key, how many unarchived
@@ -97,4 +97,19 @@ type MFAStore interface {
 	Disable(context.Context, *MFADisablement) (*MFADisableResult, error)
 	// SeedPending is an unaudited fixture write; production code never calls it.
 	SeedPending(context.Context, *model.MFACredential) (*model.MFACredential, error)
+}
+
+// MFASecondFactorConsumption is the input to MFAStore.ConsumeSecondFactor.
+type MFASecondFactorConsumption struct {
+	UserID           model.UserID
+	TimeStep         int64
+	RecoveryCodeHash string
+	Now              time.Time
+}
+
+// MFASessionUpgrade is the input to MFAStore.UpgradeSession.
+type MFASessionUpgrade struct {
+	SessionID model.SessionID
+	UserID    model.UserID
+	Now       time.Time
 }

@@ -381,9 +381,9 @@ func (s *externalAuthenticationService) beginForPurpose(
 	}
 	var saved *model.ExternalLoginState
 	if invitationClaimHash != "" {
-		saved, err = s.deps.LoginStates.SaveInvitationAdmission(ctx, state, s.deps.Policy.LoginStateTTL, invitationClaimHash)
+		saved, err = s.deps.LoginStates.SaveInvitationAdmission(ctx, &store.ExternalLoginStateInvitationAdmission{State: state, Lifetime: s.deps.Policy.LoginStateTTL, ClaimHash: invitationClaimHash})
 	} else {
-		saved, err = s.deps.LoginStates.Save(ctx, state, s.deps.Policy.LoginStateTTL)
+		saved, err = s.deps.LoginStates.Save(ctx, &store.ExternalLoginStateCreation{State: state, Lifetime: s.deps.Policy.LoginStateTTL})
 	}
 	if err != nil {
 		if invitationClaimHash != "" && store.IsNotFound(err) {
@@ -462,9 +462,7 @@ func (s *externalAuthenticationService) complete(
 	}
 	state, err = s.deps.LoginStates.Consume(
 		ctx,
-		providerID,
-		stateHash,
-		model.HashToken(bindingToken),
+		&store.ExternalLoginStateConsumption{Provider: providerID, StateHash: stateHash, BindingHash: model.HashToken(bindingToken)},
 	)
 	if err != nil {
 		if store.IsNotFound(err) {

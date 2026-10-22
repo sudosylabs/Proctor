@@ -563,7 +563,7 @@ func (s *onboardingImportService) parse(ctx context.Context, id model.Onboarding
 		if onboardingImportRetryableError(err) {
 			return err
 		}
-		if _, failErr := s.deps.Imports.FailOnboardingImport(ctx, id, "authentication.token_invalid", model.TimeUTC(s.deps.Now())); failErr != nil {
+		if _, failErr := s.deps.Imports.FailOnboardingImport(ctx, &store.OnboardingImportFailure{ID: id, Code: "authentication.token_invalid", At: model.TimeUTC(s.deps.Now())}); failErr != nil {
 			return failErr
 		}
 		if removeErr := s.deps.Content.RemoveOnboardingImport(context.WithoutCancel(ctx), id); removeErr != nil {
@@ -575,7 +575,7 @@ func (s *onboardingImportService) parse(ctx context.Context, id model.Onboarding
 		if onboardingImportRetryableError(err) {
 			return err
 		}
-		if _, failErr := s.deps.Imports.FailOnboardingImport(ctx, id, invitationBatchPublicErrorCode(err), model.TimeUTC(s.deps.Now())); failErr != nil {
+		if _, failErr := s.deps.Imports.FailOnboardingImport(ctx, &store.OnboardingImportFailure{ID: id, Code: invitationBatchPublicErrorCode(err), At: model.TimeUTC(s.deps.Now())}); failErr != nil {
 			return failErr
 		}
 		if removeErr := s.deps.Content.RemoveOnboardingImport(context.WithoutCancel(ctx), id); removeErr != nil {
@@ -588,7 +588,7 @@ func (s *onboardingImportService) parse(ctx context.Context, id model.Onboarding
 			if onboardingImportRetryableError(err) {
 				return err
 			}
-			if _, failErr := s.deps.Imports.FailOnboardingImport(ctx, id, invitationBatchPublicErrorCode(err), model.TimeUTC(s.deps.Now())); failErr != nil {
+			if _, failErr := s.deps.Imports.FailOnboardingImport(ctx, &store.OnboardingImportFailure{ID: id, Code: invitationBatchPublicErrorCode(err), At: model.TimeUTC(s.deps.Now())}); failErr != nil {
 				return failErr
 			}
 			if removeErr := s.deps.Content.RemoveOnboardingImport(context.WithoutCancel(ctx), id); removeErr != nil {
@@ -607,7 +607,7 @@ func (s *onboardingImportService) parse(ctx context.Context, id model.Onboarding
 		if !errors.Is(err, errOnboardingImportInvalidFile) {
 			return err
 		}
-		if _, failErr := s.deps.Imports.FailOnboardingImport(ctx, id, "onboarding_import.file_invalid", model.TimeUTC(s.deps.Now())); failErr != nil {
+		if _, failErr := s.deps.Imports.FailOnboardingImport(ctx, &store.OnboardingImportFailure{ID: id, Code: "onboarding_import.file_invalid", At: model.TimeUTC(s.deps.Now())}); failErr != nil {
 			return failErr
 		}
 		if removeErr := s.deps.Content.RemoveOnboardingImport(context.WithoutCancel(ctx), id); removeErr != nil {
@@ -1242,7 +1242,7 @@ func (s *onboardingImportService) execute(ctx context.Context, id model.Onboardi
 			}
 		}
 		if !page.More {
-			_, err = s.deps.Imports.FinishOnboardingImport(ctx, id, model.TimeUTC(s.deps.Now()))
+			_, err = s.deps.Imports.FinishOnboardingImport(ctx, &store.OnboardingImportFinish{ID: id, At: model.TimeUTC(s.deps.Now())})
 			return err
 		}
 	}

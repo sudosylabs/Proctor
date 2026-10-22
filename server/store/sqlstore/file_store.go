@@ -172,7 +172,13 @@ func (s SQLFileStore) DiscardProfilePictureUpload(ctx context.Context, input *st
 	return err
 }
 
-func (s SQLFileStore) RenewUploadLease(ctx context.Context, id model.UploadLeaseID, actorID model.UserID, expectedRevision, bytesReceived int64, expiresAt time.Time) (*model.UploadLease, error) {
+// RenewUploadLease extends the actor's upload lease at the expected revision and records the bytes received so far.
+func (s SQLFileStore) RenewUploadLease(ctx context.Context, input *store.UploadLeaseRenewal) (*model.UploadLease, error) {
+	id := input.ID
+	actorID := input.ActorID
+	expectedRevision := input.ExpectedRevision
+	bytesReceived := input.BytesReceived
+	expiresAt := input.ExpiresAt
 	if !id.IsValid() || !actorID.IsValid() || expectedRevision <= 0 || bytesReceived <= 0 {
 		return nil, store.NewErrInvalidInput("upload_lease", "renewal", nil)
 	}

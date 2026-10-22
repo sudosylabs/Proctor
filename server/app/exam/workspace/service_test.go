@@ -374,18 +374,19 @@ func (f *fakeWorkspaceStore) RemoveEntry(_ context.Context, input *store.ExamSta
 	entry, _ := model.NewStarterWorkspaceDirectory(input.EntryID, input.ExamID, "removed", input.ChangedAt)
 	return &store.ExamStarterWorkspaceMutationResult{Entry: entry, DraftRevision: input.ExpectedDraftRevision + 1}, nil
 }
-func (f *fakeWorkspaceStore) MarkObjectReclaimable(_ context.Context, id model.StarterWorkspaceObjectID, _ time.Time) error {
+func (f *fakeWorkspaceStore) MarkObjectReclaimable(_ context.Context, input *store.StarterWorkspaceObjectReclaim) error {
+	id := input.ObjectID
 	f.reclaimed = true
 	f.reclaimedIDs = append(f.reclaimedIDs, id)
 	return nil
 }
-func (f *fakeWorkspaceStore) ClaimObjectsForCleanup(context.Context, int, string) ([]model.StarterWorkspaceObject, error) {
+func (f *fakeWorkspaceStore) ClaimObjectsForCleanup(ctx context.Context, input *store.StarterWorkspaceCleanupClaim) ([]model.StarterWorkspaceObject, error) {
 	return nil, nil
 }
-func (f *fakeWorkspaceStore) CompleteObjectCleanup(context.Context, model.StarterWorkspaceObjectID, string) error {
+func (f *fakeWorkspaceStore) CompleteObjectCleanup(ctx context.Context, input *store.StarterWorkspaceCleanupCompletion) error {
 	return nil
 }
-func (f *fakeWorkspaceStore) ReleaseObjectCleanup(context.Context, model.StarterWorkspaceObjectID, string) error {
+func (f *fakeWorkspaceStore) ReleaseObjectCleanup(ctx context.Context, input *store.StarterWorkspaceCleanupRelease) error {
 	return nil
 }
 

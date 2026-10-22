@@ -32,7 +32,7 @@ type InstitutionStore interface {
 	Get(context.Context, model.InstitutionID) (*model.Institution, error)
 	GetSingleton(context.Context) (*model.Institution, error)
 	Update(context.Context, *InstitutionUpdate) (*model.Institution, error)
-	Archive(ctx context.Context, id model.InstitutionID, archiveAt time.Time) error
+	Archive(context.Context, *InstitutionArchive) error
 }
 
 type InstitutionUpdate struct {
@@ -243,4 +243,10 @@ type ClassStore interface {
 	ListByAcademicPeriod(context.Context, model.AcademicPeriodID) ([]*model.Class, error)
 	SearchByAcademicUnit(context.Context, model.AcademicUnitID, AcademicNameListOptions) ([]*model.Class, error)
 	GetAcademicUnitID(context.Context, model.ClassID) (model.AcademicUnitID, error)
+}
+
+// InstitutionArchive is the input to InstitutionStore.Archive.
+type InstitutionArchive struct {
+	ID        model.InstitutionID
+	ArchiveAt time.Time
 }

@@ -908,9 +908,9 @@ func (s *timedInstitutionStore) Update(arg0 context.Context, arg1 *store.Institu
 	})
 }
 
-func (s *timedInstitutionStore) Archive(ctx context.Context, id model.InstitutionID, archiveAt time.Time) error {
+func (s *timedInstitutionStore) Archive(arg0 context.Context, arg1 *store.InstitutionArchive) error {
 	return timeStoreCall0(s.layer, storeOperation(aggregateInstitution, methodArchive), func() error {
-		return s.next.Archive(ctx, id, archiveAt)
+		return s.next.Archive(arg0, arg1)
 	})
 }
 
@@ -1700,21 +1700,21 @@ func (s *timedExamAttemptWorkspaceStore) MarkObjectReclaimable(arg0 context.Cont
 	})
 }
 
-func (s *timedExamAttemptWorkspaceStore) ClaimObjectsForCleanup(arg0 context.Context, arg1 int, arg2 string) ([]model.AttemptWorkspaceObject, error) {
+func (s *timedExamAttemptWorkspaceStore) ClaimObjectsForCleanup(arg0 context.Context, arg1 *store.AttemptWorkspaceCleanupClaim) ([]model.AttemptWorkspaceObject, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodClaimObjectsForCleanup), func() ([]model.AttemptWorkspaceObject, error) {
-		return s.next.ClaimObjectsForCleanup(arg0, arg1, arg2)
+		return s.next.ClaimObjectsForCleanup(arg0, arg1)
 	})
 }
 
-func (s *timedExamAttemptWorkspaceStore) CompleteObjectCleanup(arg0 context.Context, arg1 model.AttemptWorkspaceObjectID, arg2 string) error {
+func (s *timedExamAttemptWorkspaceStore) CompleteObjectCleanup(arg0 context.Context, arg1 *store.AttemptWorkspaceCleanupCompletion) error {
 	return timeStoreCall0(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodCompleteObjectCleanup), func() error {
-		return s.next.CompleteObjectCleanup(arg0, arg1, arg2)
+		return s.next.CompleteObjectCleanup(arg0, arg1)
 	})
 }
 
-func (s *timedExamAttemptWorkspaceStore) ReleaseObjectCleanup(arg0 context.Context, arg1 model.AttemptWorkspaceObjectID, arg2 string) error {
+func (s *timedExamAttemptWorkspaceStore) ReleaseObjectCleanup(arg0 context.Context, arg1 *store.AttemptWorkspaceCleanupRelease) error {
 	return timeStoreCall0(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodReleaseObjectCleanup), func() error {
-		return s.next.ReleaseObjectCleanup(arg0, arg1, arg2)
+		return s.next.ReleaseObjectCleanup(arg0, arg1)
 	})
 }
 
@@ -1838,9 +1838,9 @@ func (s *timedExamIntegrityReviewStore) Finalize(arg0 context.Context, arg1 *sto
 	})
 }
 
-func (s *timedExamIntegrityReviewStore) PrepareRelease(arg0 context.Context, arg1 model.SubmissionID, arg2 model.SubmissionReviewID, arg3 int64) (*store.ExamIntegrityReviewReleasePreparation, error) {
+func (s *timedExamIntegrityReviewStore) PrepareRelease(arg0 context.Context, arg1 *store.ExamIntegrityReviewReleasePrepare) (*store.ExamIntegrityReviewReleasePreparation, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodPrepareRelease), func() (*store.ExamIntegrityReviewReleasePreparation, error) {
-		return s.next.PrepareRelease(arg0, arg1, arg2, arg3)
+		return s.next.PrepareRelease(arg0, arg1)
 	})
 }
 
@@ -2072,27 +2072,27 @@ func (s *timedExamStarterWorkspaceStore) RemoveEntry(arg0 context.Context, arg1 
 	})
 }
 
-func (s *timedExamStarterWorkspaceStore) MarkObjectReclaimable(arg0 context.Context, arg1 model.StarterWorkspaceObjectID, arg2 time.Time) error {
+func (s *timedExamStarterWorkspaceStore) MarkObjectReclaimable(arg0 context.Context, arg1 *store.StarterWorkspaceObjectReclaim) error {
 	return timeStoreCall0(s.layer, storeOperation(aggregateExamStarterWorkspace, methodMarkObjectReclaimable), func() error {
-		return s.next.MarkObjectReclaimable(arg0, arg1, arg2)
+		return s.next.MarkObjectReclaimable(arg0, arg1)
 	})
 }
 
-func (s *timedExamStarterWorkspaceStore) ClaimObjectsForCleanup(arg0 context.Context, arg1 int, arg2 string) ([]model.StarterWorkspaceObject, error) {
+func (s *timedExamStarterWorkspaceStore) ClaimObjectsForCleanup(arg0 context.Context, arg1 *store.StarterWorkspaceCleanupClaim) ([]model.StarterWorkspaceObject, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamStarterWorkspace, methodClaimObjectsForCleanup), func() ([]model.StarterWorkspaceObject, error) {
-		return s.next.ClaimObjectsForCleanup(arg0, arg1, arg2)
+		return s.next.ClaimObjectsForCleanup(arg0, arg1)
 	})
 }
 
-func (s *timedExamStarterWorkspaceStore) CompleteObjectCleanup(arg0 context.Context, arg1 model.StarterWorkspaceObjectID, arg2 string) error {
+func (s *timedExamStarterWorkspaceStore) CompleteObjectCleanup(arg0 context.Context, arg1 *store.StarterWorkspaceCleanupCompletion) error {
 	return timeStoreCall0(s.layer, storeOperation(aggregateExamStarterWorkspace, methodCompleteObjectCleanup), func() error {
-		return s.next.CompleteObjectCleanup(arg0, arg1, arg2)
+		return s.next.CompleteObjectCleanup(arg0, arg1)
 	})
 }
 
-func (s *timedExamStarterWorkspaceStore) ReleaseObjectCleanup(arg0 context.Context, arg1 model.StarterWorkspaceObjectID, arg2 string) error {
+func (s *timedExamStarterWorkspaceStore) ReleaseObjectCleanup(arg0 context.Context, arg1 *store.StarterWorkspaceCleanupRelease) error {
 	return timeStoreCall0(s.layer, storeOperation(aggregateExamStarterWorkspace, methodReleaseObjectCleanup), func() error {
-		return s.next.ReleaseObjectCleanup(arg0, arg1, arg2)
+		return s.next.ReleaseObjectCleanup(arg0, arg1)
 	})
 }
 
@@ -2210,9 +2210,9 @@ func (s *timedUserStore) SetDisabled(arg0 context.Context, arg1 *store.UserDisab
 	})
 }
 
-func (s *timedUserStore) UpdateLastLogin(ctx context.Context, userID model.UserID, at time.Time) error {
+func (s *timedUserStore) UpdateLastLogin(arg0 context.Context, arg1 *store.UserLastLoginUpdate) error {
 	return timeStoreCall0(s.layer, storeOperation(aggregateUser, methodUpdateLastLogin), func() error {
-		return s.next.UpdateLastLogin(ctx, userID, at)
+		return s.next.UpdateLastLogin(arg0, arg1)
 	})
 }
 
@@ -2246,9 +2246,9 @@ func (s *timedFileStore) DiscardProfilePictureUpload(arg0 context.Context, arg1 
 	})
 }
 
-func (s *timedFileStore) RenewUploadLease(arg0 context.Context, arg1 model.UploadLeaseID, arg2 model.UserID, arg3 int64, arg4 int64, arg5 time.Time) (*model.UploadLease, error) {
+func (s *timedFileStore) RenewUploadLease(arg0 context.Context, arg1 *store.UploadLeaseRenewal) (*model.UploadLease, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodRenewUploadLease), func() (*model.UploadLease, error) {
-		return s.next.RenewUploadLease(arg0, arg1, arg2, arg3, arg4, arg5)
+		return s.next.RenewUploadLease(arg0, arg1)
 	})
 }
 
@@ -2402,9 +2402,9 @@ func (s *timedMailStore) ListDeliveries(arg0 context.Context, arg1 store.MailDel
 	})
 }
 
-func (s *timedMailStore) StartDelivery(arg0 context.Context, arg1 model.MailDeliveryID, arg2 int64, arg3 time.Time) (*model.MailDelivery, error) {
+func (s *timedMailStore) StartDelivery(arg0 context.Context, arg1 *store.MailDeliveryStart) (*model.MailDelivery, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodStartDelivery), func() (*model.MailDelivery, error) {
-		return s.next.StartDelivery(arg0, arg1, arg2, arg3)
+		return s.next.StartDelivery(arg0, arg1)
 	})
 }
 
@@ -2432,9 +2432,9 @@ func (s *timedMailStore) AcquireSendPermit(arg0 context.Context, arg1 store.Mail
 	})
 }
 
-func (s *timedMailStore) SuppressOutstanding(arg0 context.Context, arg1 string, arg2 int) (*store.MailMaintenanceResult, error) {
+func (s *timedMailStore) SuppressOutstanding(arg0 context.Context, arg1 *store.MailOutstandingSuppression) (*store.MailMaintenanceResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodSuppressOutstanding), func() (*store.MailMaintenanceResult, error) {
-		return s.next.SuppressOutstanding(arg0, arg1, arg2)
+		return s.next.SuppressOutstanding(arg0, arg1)
 	})
 }
 
@@ -2534,15 +2534,15 @@ func (s *timedExternalIdentityStore) Unlink(arg0 context.Context, arg1 *store.Ex
 	})
 }
 
-func (s *timedExternalLoginStateStore) Save(arg0 context.Context, arg1 *model.ExternalLoginState, arg2 time.Duration) (*model.ExternalLoginState, error) {
+func (s *timedExternalLoginStateStore) Save(arg0 context.Context, arg1 *store.ExternalLoginStateCreation) (*model.ExternalLoginState, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExternalLoginState, methodSave), func() (*model.ExternalLoginState, error) {
-		return s.next.Save(arg0, arg1, arg2)
+		return s.next.Save(arg0, arg1)
 	})
 }
 
-func (s *timedExternalLoginStateStore) SaveInvitationAdmission(arg0 context.Context, arg1 *model.ExternalLoginState, arg2 time.Duration, arg3 string) (*model.ExternalLoginState, error) {
+func (s *timedExternalLoginStateStore) SaveInvitationAdmission(arg0 context.Context, arg1 *store.ExternalLoginStateInvitationAdmission) (*model.ExternalLoginState, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExternalLoginState, methodSaveInvitationAdmission), func() (*model.ExternalLoginState, error) {
-		return s.next.SaveInvitationAdmission(arg0, arg1, arg2, arg3)
+		return s.next.SaveInvitationAdmission(arg0, arg1)
 	})
 }
 
@@ -2552,9 +2552,9 @@ func (s *timedExternalLoginStateStore) GetByStateHash(arg0 context.Context, arg1
 	})
 }
 
-func (s *timedExternalLoginStateStore) Consume(arg0 context.Context, arg1 string, arg2 string, arg3 string) (*model.ExternalLoginState, error) {
+func (s *timedExternalLoginStateStore) Consume(arg0 context.Context, arg1 *store.ExternalLoginStateConsumption) (*model.ExternalLoginState, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExternalLoginState, methodConsume), func() (*model.ExternalLoginState, error) {
-		return s.next.Consume(arg0, arg1, arg2, arg3)
+		return s.next.Consume(arg0, arg1)
 	})
 }
 
@@ -2684,9 +2684,9 @@ func (s *timedUserTokenStore) GetByHash(arg0 context.Context, arg1 string, arg2 
 	})
 }
 
-func (s *timedUserTokenStore) ConsumeEmailVerification(ctx context.Context, tokenHash string, consumedAt time.Time, auditEvent *model.AuditEvent) (*store.EmailVerificationResult, error) {
+func (s *timedUserTokenStore) ConsumeEmailVerification(arg0 context.Context, arg1 *store.EmailVerificationConsumption) (*store.EmailVerificationResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateUserToken, methodConsumeEmailVerification), func() (*store.EmailVerificationResult, error) {
-		return s.next.ConsumeEmailVerification(ctx, tokenHash, consumedAt, auditEvent)
+		return s.next.ConsumeEmailVerification(arg0, arg1)
 	})
 }
 
@@ -2888,9 +2888,9 @@ func (s *timedOnboardingImportStore) CompleteOnboardingImportRow(arg0 context.Co
 	})
 }
 
-func (s *timedOnboardingImportStore) FinishOnboardingImport(arg0 context.Context, arg1 model.OnboardingImportID, arg2 time.Time) (*store.OnboardingImport, error) {
+func (s *timedOnboardingImportStore) FinishOnboardingImport(arg0 context.Context, arg1 *store.OnboardingImportFinish) (*store.OnboardingImport, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodFinishOnboardingImport), func() (*store.OnboardingImport, error) {
-		return s.next.FinishOnboardingImport(arg0, arg1, arg2)
+		return s.next.FinishOnboardingImport(arg0, arg1)
 	})
 }
 
@@ -2900,9 +2900,9 @@ func (s *timedOnboardingImportStore) CancelOnboardingImport(arg0 context.Context
 	})
 }
 
-func (s *timedOnboardingImportStore) FailOnboardingImport(arg0 context.Context, arg1 model.OnboardingImportID, arg2 string, arg3 time.Time) (*store.OnboardingImport, error) {
+func (s *timedOnboardingImportStore) FailOnboardingImport(arg0 context.Context, arg1 *store.OnboardingImportFailure) (*store.OnboardingImport, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodFailOnboardingImport), func() (*store.OnboardingImport, error) {
-		return s.next.FailOnboardingImport(arg0, arg1, arg2, arg3)
+		return s.next.FailOnboardingImport(arg0, arg1)
 	})
 }
 
@@ -2912,9 +2912,9 @@ func (s *timedOnboardingImportStore) ListExpiredOnboardingImports(arg0 context.C
 	})
 }
 
-func (s *timedOnboardingImportStore) PurgeOnboardingImport(arg0 context.Context, arg1 model.OnboardingImportID, arg2 time.Time) (bool, error) {
+func (s *timedOnboardingImportStore) PurgeOnboardingImport(arg0 context.Context, arg1 *store.OnboardingImportPurge) (bool, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodPurgeOnboardingImport), func() (bool, error) {
-		return s.next.PurgeOnboardingImport(arg0, arg1, arg2)
+		return s.next.PurgeOnboardingImport(arg0, arg1)
 	})
 }
 
@@ -3008,15 +3008,15 @@ func (s *timedMFAStore) Activate(arg0 context.Context, arg1 *store.MFAActivation
 	})
 }
 
-func (s *timedMFAStore) ConsumeSecondFactor(ctx context.Context, userID model.UserID, timeStep int64, recoveryCodeHash string, consumedAt time.Time) error {
+func (s *timedMFAStore) ConsumeSecondFactor(arg0 context.Context, arg1 *store.MFASecondFactorConsumption) error {
 	return timeStoreCall0(s.layer, storeOperation(aggregateMFA, methodConsumeSecondFactor), func() error {
-		return s.next.ConsumeSecondFactor(ctx, userID, timeStep, recoveryCodeHash, consumedAt)
+		return s.next.ConsumeSecondFactor(arg0, arg1)
 	})
 }
 
-func (s *timedMFAStore) UpgradeSession(arg0 context.Context, arg1 model.SessionID, arg2 model.UserID, arg3 time.Time) ([]string, error) {
+func (s *timedMFAStore) UpgradeSession(arg0 context.Context, arg1 *store.MFASessionUpgrade) ([]string, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodUpgradeSession), func() ([]string, error) {
-		return s.next.UpgradeSession(arg0, arg1, arg2, arg3)
+		return s.next.UpgradeSession(arg0, arg1)
 	})
 }
 
@@ -3182,9 +3182,9 @@ func (s *timedClassMemberStore) SeedEnroll(arg0 context.Context, arg1 *model.Cla
 	})
 }
 
-func (s *timedClassMemberStore) SeedEnd(ctx context.Context, id model.ClassMemberID, expectedRevision int64, endAt time.Time) (*model.ClassMember, error) {
+func (s *timedClassMemberStore) SeedEnd(arg0 context.Context, arg1 *store.ClassMemberSeedEnd) (*model.ClassMember, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodSeedEnd), func() (*model.ClassMember, error) {
-		return s.next.SeedEnd(ctx, id, expectedRevision, endAt)
+		return s.next.SeedEnd(arg0, arg1)
 	})
 }
 
@@ -3254,21 +3254,21 @@ func (s *timedSessionStore) ListActiveByUser(arg0 context.Context, arg1 model.Us
 	})
 }
 
-func (s *timedSessionStore) UpdateActivity(arg0 context.Context, arg1 model.SessionID, arg2 time.Time, arg3 time.Time) error {
+func (s *timedSessionStore) UpdateActivity(arg0 context.Context, arg1 *store.SessionActivityUpdate) error {
 	return timeStoreCall0(s.layer, storeOperation(aggregateSession, methodUpdateActivity), func() error {
-		return s.next.UpdateActivity(arg0, arg1, arg2, arg3)
+		return s.next.UpdateActivity(arg0, arg1)
 	})
 }
 
-func (s *timedSessionStore) EnforceExpiry(arg0 context.Context, arg1 model.SessionID, arg2 model.UserID, arg3 time.Time) (*store.SessionExpiryEnforcementResult, error) {
+func (s *timedSessionStore) EnforceExpiry(arg0 context.Context, arg1 *store.SessionExpiryEnforcement) (*store.SessionExpiryEnforcementResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodEnforceExpiry), func() (*store.SessionExpiryEnforcementResult, error) {
-		return s.next.EnforceExpiry(arg0, arg1, arg2, arg3)
+		return s.next.EnforceExpiry(arg0, arg1)
 	})
 }
 
-func (s *timedSessionStore) Withdraw(ctx context.Context, id model.SessionID, userID model.UserID, revokedAt time.Time, reason model.SessionRevocationReason) ([]string, error) {
+func (s *timedSessionStore) Withdraw(arg0 context.Context, arg1 *store.SessionWithdrawal) ([]string, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodWithdraw), func() ([]string, error) {
-		return s.next.Withdraw(ctx, id, userID, revokedAt, reason)
+		return s.next.Withdraw(arg0, arg1)
 	})
 }
 
@@ -3296,9 +3296,9 @@ func (s *timedSessionCredentialStore) GetSessionByTokenHash(arg0 context.Context
 	})
 }
 
-func (s *timedSessionCredentialStore) RotateRefresh(arg0 context.Context, arg1 string, arg2 *model.SessionCredential, arg3 *model.SessionCredential, arg4 time.Time, arg5 time.Time) (*store.SessionRotation, error) {
+func (s *timedSessionCredentialStore) RotateRefresh(arg0 context.Context, arg1 *store.SessionRefreshRotation) (*store.SessionRotation, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateSessionCredential, methodRotateRefresh), func() (*store.SessionRotation, error) {
-		return s.next.RotateRefresh(arg0, arg1, arg2, arg3, arg4, arg5)
+		return s.next.RotateRefresh(arg0, arg1)
 	})
 }
 
@@ -3422,9 +3422,9 @@ func (s *timedAuditStore) Get(arg0 context.Context, arg1 model.AuditEventID) (*m
 	})
 }
 
-func (s *timedAuditStore) Complete(ctx context.Context, id model.AuditEventID, status model.AuditStatus, errorCode string, result []byte, updateAt time.Time) (*model.AuditEvent, error) {
+func (s *timedAuditStore) Complete(arg0 context.Context, arg1 *store.AuditCompletion) (*model.AuditEvent, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAudit, methodComplete), func() (*model.AuditEvent, error) {
-		return s.next.Complete(ctx, id, status, errorCode, result, updateAt)
+		return s.next.Complete(arg0, arg1)
 	})
 }
 
@@ -3632,9 +3632,9 @@ func (s *timedServingNodeLeaseStore) Upsert(arg0 context.Context, arg1 *store.Se
 	})
 }
 
-func (s *timedServingNodeLeaseStore) Delete(arg0 context.Context, arg1 string, arg2 string) error {
+func (s *timedServingNodeLeaseStore) Delete(arg0 context.Context, arg1 *store.ServingNodeLeaseDeletion) error {
 	return timeStoreCall0(s.layer, storeOperation(aggregateServingNodeLease, methodDelete), func() error {
-		return s.next.Delete(arg0, arg1, arg2)
+		return s.next.Delete(arg0, arg1)
 	})
 }
 

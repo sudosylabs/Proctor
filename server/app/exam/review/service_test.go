@@ -212,9 +212,7 @@ type reviewStoreFake struct {
 	prepareErr  error
 }
 
-func (f *reviewStoreFake) PrepareRelease(context.Context, model.SubmissionID, model.SubmissionReviewID,
-	int64,
-) (*store.ExamIntegrityReviewReleasePreparation, error) {
+func (f *reviewStoreFake) PrepareRelease(ctx context.Context, input *store.ExamIntegrityReviewReleasePrepare) (*store.ExamIntegrityReviewReleasePreparation, error) {
 	if f.prepareErr != nil {
 		return nil, f.prepareErr
 	}

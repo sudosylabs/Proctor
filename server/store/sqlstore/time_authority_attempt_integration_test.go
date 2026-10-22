@@ -13,6 +13,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/sudosylabs/proctor/server/store"
+
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -44,7 +46,7 @@ func TestTimeAuthorityAttemptWorkspaceCleanupClaimFollowsLaterModification(t *te
 		})
 	require.NoError(t, err)
 
-	claimed, err := NewSQLExamAttemptWorkspaceStore(persistence).ClaimObjectsForCleanup(ctx, 10, "time-authority-claim")
+	claimed, err := NewSQLExamAttemptWorkspaceStore(persistence).ClaimObjectsForCleanup(ctx, &store.AttemptWorkspaceCleanupClaim{Limit: 10, ClaimToken: "time-authority-claim"})
 	require.NoError(t, err)
 	require.Len(t, claimed, 1)
 	require.Equal(t, objectID, claimed[0].ID)

@@ -197,7 +197,7 @@ type ExamIntegrityReviewStore interface {
 	SaveDecision(context.Context, *ExamIntegrityReviewDecisionMutation, *CommandIdempotency) (*ExamIntegrityReviewMutationResult, error)
 	UpdateDraft(context.Context, *ExamIntegrityReviewDraftMutation, *CommandIdempotency) (*ExamIntegrityReviewMutationResult, error)
 	Finalize(context.Context, *ExamIntegrityReviewFinalize, *CommandIdempotency) (*ExamIntegrityReviewMutationResult, error)
-	PrepareRelease(context.Context, model.SubmissionID, model.SubmissionReviewID, int64) (*ExamIntegrityReviewReleasePreparation, error)
+	PrepareRelease(context.Context, *ExamIntegrityReviewReleasePrepare) (*ExamIntegrityReviewReleasePreparation, error)
 	Release(context.Context, *ExamIntegrityReviewRelease, *CommandIdempotency) (*ExamIntegrityReviewMutationResult, error)
 	GetReleasedStudentResult(context.Context, model.ExamAttemptID, model.UserID) (*model.StudentResult, error)
 }
@@ -211,4 +211,11 @@ type NativeConditionListOptions struct {
 type NativeConditionPage struct {
 	Items   []model.NativeConditionEvidence
 	HasMore bool
+}
+
+// ExamIntegrityReviewReleasePrepare is the input to ExamIntegrityReviewStore.PrepareRelease.
+type ExamIntegrityReviewReleasePrepare struct {
+	SubmissionID     model.SubmissionID
+	ReviewID         model.SubmissionReviewID
+	ExpectedRevision int64
 }

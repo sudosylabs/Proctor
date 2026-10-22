@@ -268,9 +268,7 @@ func (s *accountTokenService) CompleteEmailVerification(
 	)
 	result, err := s.deps.Tokens.ConsumeEmailVerification(
 		ctx,
-		model.HashToken(command.Token),
-		s.deps.Now(),
-		event,
+		&store.EmailVerificationConsumption{TokenHash: model.HashToken(command.Token), Now: s.deps.Now(), AuditEvent: event},
 	)
 	if err != nil {
 		if store.IsNotFound(err) {

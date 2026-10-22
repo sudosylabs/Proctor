@@ -321,7 +321,7 @@ func (s *Service) terminalMutation(ctx context.Context, invocation invocation.In
 	if kind == terminalRelease {
 		// The release-time reservation is durable, so it follows the audit
 		// attempt like every other examination write.
-		releasePreparation, err = s.deps.Persistence.PrepareRelease(ctx, submissionID, reviewID, expectedRevision)
+		releasePreparation, err = s.deps.Persistence.PrepareRelease(ctx, &store.ExamIntegrityReviewReleasePrepare{SubmissionID: submissionID, ReviewID: reviewID, ExpectedRevision: expectedRevision})
 		if err != nil {
 			return Result{}, s.failAudit(ctx, auditID, err)
 		}

@@ -689,9 +689,11 @@ func (s *SQLExamIntegrityReviewStore) Release(ctx context.Context, input *store.
 		})
 }
 
-func (s *SQLExamIntegrityReviewStore) PrepareRelease(ctx context.Context, submissionID model.SubmissionID,
-	reviewID model.SubmissionReviewID, expectedRevision int64,
-) (*store.ExamIntegrityReviewReleasePreparation, error) {
+// PrepareRelease fences the finalized Review at the input revision and records the PostgreSQL release instant the following Release must use.
+func (s *SQLExamIntegrityReviewStore) PrepareRelease(ctx context.Context, input *store.ExamIntegrityReviewReleasePrepare) (*store.ExamIntegrityReviewReleasePreparation, error) {
+	submissionID := input.SubmissionID
+	reviewID := input.ReviewID
+	expectedRevision := input.ExpectedRevision
 	if !submissionID.IsValid() || !reviewID.IsValid() || expectedRevision < 1 {
 		return nil, store.NewErrInvalidInput("submission_review", "release_preparation", nil)
 	}

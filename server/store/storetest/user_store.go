@@ -388,7 +388,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		ClassID: visibleClass.ID, UserID: first.ID, StartsAt: model.TimeUTC(activeAt.Add(-10 * time.Millisecond)),
 	})
 	require.NoError(t, err)
-	_, err = ss.ClassMember().SeedEnd(ctx, firstMembership.Membership.ID, firstMembership.Membership.Revision, activeAt.Add(100*time.Millisecond))
+	_, err = ss.ClassMember().SeedEnd(ctx, &store.ClassMemberSeedEnd{ID: firstMembership.Membership.ID, ExpectedRevision: firstMembership.Membership.Revision, EndAt: activeAt.Add(100 * time.Millisecond)})
 	require.NoError(t, err)
 	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{
 		UserID: second.ID, Kind: model.AffiliationStudent,
@@ -886,7 +886,7 @@ func testUserStoreUpdate(t *testing.T, ss store.Store) {
 	require.NoError(t, err)
 
 	activityAt := model.NowUTC().Add(100 * time.Millisecond)
-	require.NoError(t, ss.User().UpdateLastLogin(ctx, updated.ID, activityAt))
+	require.NoError(t, ss.User().UpdateLastLogin(ctx, &store.UserLastLoginUpdate{ID: updated.ID, At: activityAt}))
 	displayName := "Audited User"
 	auditAttempt := saveUserProfileAuditAttempt(t, ctx, ss, updated.ID.String())
 	audited, err := ss.User().UpdateProfile(ctx, &store.UserProfileUpdate{
@@ -948,7 +948,7 @@ func testUserStoreUpdateLastLogin(t *testing.T, ss store.Store) {
 	user := saveUser(t, ctx, ss)
 	revision := user.Revision
 	at := model.NowUTC().Add(100 * time.Millisecond)
-	require.NoError(t, ss.User().UpdateLastLogin(ctx, user.ID, at))
+	require.NoError(t, ss.User().UpdateLastLogin(ctx, &store.UserLastLoginUpdate{ID: user.ID, At: at}))
 	got, err := ss.User().Get(ctx, user.ID)
 	require.NoError(t, err)
 	require.True(t, at.Equal(got.LastLoginAt.Time))

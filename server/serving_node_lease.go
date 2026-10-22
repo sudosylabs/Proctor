@@ -136,7 +136,7 @@ func (r *servingNodeLeaseRuntime) Close() error {
 	}
 	ctx, cancelDelete := context.WithTimeout(context.Background(), r.operationLimit)
 	defer cancelDelete()
-	if err := r.store.Delete(ctx, r.claim.NodeID, r.claim.LeaseID); err != nil {
+	if err := r.store.Delete(ctx, &store.ServingNodeLeaseDeletion{NodeID: r.claim.NodeID, LeaseID: r.claim.LeaseID}); err != nil {
 		return fmt.Errorf("withdraw serving node lease: %w", err)
 	}
 	return nil

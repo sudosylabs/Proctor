@@ -190,7 +190,7 @@ func (h *MailHealth) set(code string) bool {
 }
 
 type mailMaintenanceStore interface {
-	SuppressOutstanding(context.Context, string, int) (*store.MailMaintenanceResult, error)
+	SuppressOutstanding(context.Context, *store.MailOutstandingSuppression) (*store.MailMaintenanceResult, error)
 	QueueSnapshot(context.Context) (*store.MailQueueSnapshot, error)
 }
 
@@ -211,7 +211,7 @@ func (m mailMaintenanceMonitor) Run(ctx context.Context) error {
 	enabled := m.sender.Enabled()
 	healthCode := MailHealthDisabled
 	if !enabled {
-		suppressed, err := m.mail.SuppressOutstanding(ctx, model.MailDeliveryDisabledCode, 500)
+		suppressed, err := m.mail.SuppressOutstanding(ctx, &store.MailOutstandingSuppression{Code: model.MailDeliveryDisabledCode, Limit: 500})
 		if err != nil {
 			return err
 		}

@@ -163,5 +163,12 @@ type ClassMemberStore interface {
 	// SeedEnroll and SeedEnd are unaudited fixture writes for conformance and
 	// integration tests; production code never calls a Seed operation.
 	SeedEnroll(context.Context, *model.ClassMember) (*ClassEnrollmentResult, error)
-	SeedEnd(ctx context.Context, id model.ClassMemberID, expectedRevision int64, endAt time.Time) (*model.ClassMember, error)
+	SeedEnd(context.Context, *ClassMemberSeedEnd) (*model.ClassMember, error)
+}
+
+// ClassMemberSeedEnd is the input to ClassMemberStore.SeedEnd.
+type ClassMemberSeedEnd struct {
+	ID               model.ClassMemberID
+	ExpectedRevision int64
+	EndAt            time.Time
 }

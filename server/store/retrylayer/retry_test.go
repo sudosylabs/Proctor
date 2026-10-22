@@ -204,17 +204,17 @@ func (s *examAttemptWorkspaceRetryStub) MarkObjectReclaimable(context.Context, m
 	return s.err
 }
 
-func (s *examAttemptWorkspaceRetryStub) ClaimObjectsForCleanup(context.Context, int, string) ([]model.AttemptWorkspaceObject, error) {
+func (s *examAttemptWorkspaceRetryStub) ClaimObjectsForCleanup(ctx context.Context, input *store.AttemptWorkspaceCleanupClaim) ([]model.AttemptWorkspaceObject, error) {
 	s.claimAttempts++
 	return nil, s.err
 }
 
-func (s *examAttemptWorkspaceRetryStub) CompleteObjectCleanup(context.Context, model.AttemptWorkspaceObjectID, string) error {
+func (s *examAttemptWorkspaceRetryStub) CompleteObjectCleanup(ctx context.Context, input *store.AttemptWorkspaceCleanupCompletion) error {
 	s.completeAttempts++
 	return s.err
 }
 
-func (s *examAttemptWorkspaceRetryStub) ReleaseObjectCleanup(context.Context, model.AttemptWorkspaceObjectID, string) error {
+func (s *examAttemptWorkspaceRetryStub) ReleaseObjectCleanup(ctx context.Context, input *store.AttemptWorkspaceCleanupRelease) error {
 	s.releaseAttempts++
 	return s.err
 }
@@ -466,9 +466,9 @@ func TestRetryForwardsExamAttemptWorkspaceCleanupMutationsOnce(t *testing.T) {
 	ctx := context.Background()
 	objectID := model.NewAttemptWorkspaceObjectID()
 	_ = layer.ExamAttemptWorkspace().MarkObjectReclaimable(ctx, objectID)
-	_, _ = layer.ExamAttemptWorkspace().ClaimObjectsForCleanup(ctx, 1, "claim")
-	_ = layer.ExamAttemptWorkspace().CompleteObjectCleanup(ctx, objectID, "claim")
-	_ = layer.ExamAttemptWorkspace().ReleaseObjectCleanup(ctx, objectID, "claim")
+	_, _ = layer.ExamAttemptWorkspace().ClaimObjectsForCleanup(ctx, &store.AttemptWorkspaceCleanupClaim{Limit: 1, ClaimToken: "claim"})
+	_ = layer.ExamAttemptWorkspace().CompleteObjectCleanup(ctx, &store.AttemptWorkspaceCleanupCompletion{ObjectID: objectID, ClaimToken: "claim"})
+	_ = layer.ExamAttemptWorkspace().ReleaseObjectCleanup(ctx, &store.AttemptWorkspaceCleanupRelease{ObjectID: objectID, ClaimToken: "claim"})
 	require.Equal(t, 1, stub.markAttempts, "cleanup attempts = mark")
 	require.Equal(t, 1, stub.claimAttempts, "cleanup attempts = mark")
 	require.Equal(t, 1, stub.completeAttempts, "cleanup attempts = mark")
@@ -730,7 +730,7 @@ func (s *servingNodeLeaseRetryStub) Upsert(_ context.Context, claim *store.Servi
 	return &store.ServingNodeLease{NodeID: claim.NodeID, LeaseID: claim.LeaseID}, nil
 }
 
-func (s *servingNodeLeaseRetryStub) Delete(context.Context, string, string) error {
+func (s *servingNodeLeaseRetryStub) Delete(ctx context.Context, input *store.ServingNodeLeaseDeletion) error {
 	s.deleteAttempts++
 	if s.deleteAttempts <= s.failures {
 		return s.err
@@ -763,6 +763,6 @@ func TestRetryServingNodeLeaseIncarnationWritesAreIdempotent(t *testing.T) {
 	require.NotNil(t, lease, "Upsert()")
 	require.Equal(t, leaseID, lease.LeaseID, "Upsert()")
 	require.Equal(t, 3, stub.upsertAttempts, "Upsert()")
-	require.NoError(t, layer.ServingNodeLease().Delete(context.Background(), "node-a", leaseID), "Delete()")
+	require.NoError(t, layer.ServingNodeLease().Delete(context.Background(), &store.ServingNodeLeaseDeletion{NodeID: "node-a", LeaseID: leaseID}), "Delete()")
 	require.Equal(t, 3, stub.deleteAttempts, "Delete()")
 }

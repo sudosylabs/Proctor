@@ -167,9 +167,28 @@ type OnboardingImportStore interface {
 	CommitOnboardingImport(context.Context, *OnboardingImportCommit) (*OnboardingImport, error)
 	ListOnboardingImportRows(context.Context, model.OnboardingImportID, int, int) (*OnboardingImportPage, error)
 	CompleteOnboardingImportRow(context.Context, *OnboardingImportRowCompletion) (*OnboardingImport, error)
-	FinishOnboardingImport(context.Context, model.OnboardingImportID, time.Time) (*OnboardingImport, error)
+	FinishOnboardingImport(context.Context, *OnboardingImportFinish) (*OnboardingImport, error)
 	CancelOnboardingImport(context.Context, *OnboardingImportCancellation) (*OnboardingImport, error)
-	FailOnboardingImport(context.Context, model.OnboardingImportID, string, time.Time) (*OnboardingImport, error)
+	FailOnboardingImport(context.Context, *OnboardingImportFailure) (*OnboardingImport, error)
 	ListExpiredOnboardingImports(context.Context, int, time.Time) ([]model.OnboardingImportID, error)
-	PurgeOnboardingImport(context.Context, model.OnboardingImportID, time.Time) (bool, error)
+	PurgeOnboardingImport(context.Context, *OnboardingImportPurge) (bool, error)
+}
+
+// OnboardingImportFailure is the input to OnboardingImportStore.FailOnboardingImport.
+type OnboardingImportFailure struct {
+	ID   model.OnboardingImportID
+	Code string
+	At   time.Time
+}
+
+// OnboardingImportFinish is the input to OnboardingImportStore.FinishOnboardingImport.
+type OnboardingImportFinish struct {
+	ID model.OnboardingImportID
+	At time.Time
+}
+
+// OnboardingImportPurge is the input to OnboardingImportStore.PurgeOnboardingImport.
+type OnboardingImportPurge struct {
+	ID model.OnboardingImportID
+	At time.Time
 }

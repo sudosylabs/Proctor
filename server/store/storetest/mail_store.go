@@ -46,17 +46,17 @@ func TestMailStore(t *testing.T, ss store.Store) {
 	require.Equal(t, model.ResourceMailDelivery, audits[0].Resource.Type)
 	require.Equal(t, created.ID.String(), audits[0].Resource.ID)
 
-	sending, err := ss.Mail().StartDelivery(ctx, created.ID, created.Revision, at.Add(time.Second))
+	sending, err := ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: created.ID, ExpectedRevision: created.Revision, At: at.Add(time.Second)})
 	require.NoError(t, err)
 	require.Equal(t, model.MailDeliverySending, sending.State)
 	require.Equal(t, 1, sending.AttemptCount)
-	_, err = ss.Mail().StartDelivery(ctx, created.ID, created.Revision, at.Add(2*time.Second))
+	_, err = ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: created.ID, ExpectedRevision: created.Revision, At: at.Add(2 * time.Second)})
 	require.True(t, store.IsConflict(err), "StartDelivery(stale) error")
 	retrying, err := ss.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: created.ID, ExpectedRevision: sending.Revision, Kind: store.MailDeliveryCompletionRetry, PublicFailureCode: "mail.transport.temporary", At: at.Add(2 * time.Second)})
 	require.NoError(t, err)
 	require.Equal(t, model.MailDeliveryQueued, retrying.State)
 	require.NotEmpty(t, retrying.EncryptedPayload)
-	second, err := ss.Mail().StartDelivery(ctx, created.ID, retrying.Revision, at.Add(3*time.Second))
+	second, err := ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: created.ID, ExpectedRevision: retrying.Revision, At: at.Add(3 * time.Second)})
 	require.NoError(t, err)
 	accepted, err := ss.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: created.ID, ExpectedRevision: second.Revision, Kind: store.MailDeliveryCompletionAccepted, At: at.Add(4 * time.Second)})
 	require.NoError(t, err)
@@ -78,7 +78,7 @@ func TestMailStore(t *testing.T, ss store.Store) {
 	expirySendingInput := mailTestEnqueueFixture(t, user, institution, at.Add(6*time.Second))
 	expirySending, err := ss.Mail().EnqueueTest(ctx, expirySendingInput)
 	require.NoError(t, err)
-	expirySending, err = ss.Mail().StartDelivery(ctx, expirySending.ID, expirySending.Revision, expirySending.CreatedAt.Add(time.Second))
+	expirySending, err = ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: expirySending.ID, ExpectedRevision: expirySending.Revision, At: expirySending.CreatedAt.Add(time.Second)})
 	require.NoError(t, err)
 	expired, err = ss.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{
 		DeliveryID: expirySending.ID, ExpectedRevision: expirySending.Revision,
@@ -124,7 +124,7 @@ func TestMailStore(t *testing.T, ss store.Store) {
 	outstandingInput := mailTestEnqueueFixture(t, user, institution, model.NowUTC().Add(-time.Minute))
 	outstanding, err := ss.Mail().EnqueueTest(ctx, outstandingInput)
 	require.NoError(t, err)
-	maintenance, err := ss.Mail().SuppressOutstanding(ctx, model.MailDeliveryDisabledCode, 1)
+	maintenance, err := ss.Mail().SuppressOutstanding(ctx, &store.MailOutstandingSuppression{Code: model.MailDeliveryDisabledCode, Limit: 1})
 	require.NoError(t, err)
 	require.Equal(t, 1, maintenance.Affected)
 	require.Len(t, maintenance.Deliveries, 1)
@@ -142,14 +142,14 @@ func TestMailStore(t *testing.T, ss store.Store) {
 	failedInput := mailTestEnqueueFixture(t, user, institution, model.NowUTC().Add(-30*time.Second))
 	failed, err := ss.Mail().EnqueueTest(ctx, failedInput)
 	require.NoError(t, err)
-	failed, err = ss.Mail().StartDelivery(ctx, failed.ID, failed.Revision, failed.CreatedAt.Add(time.Second))
+	failed, err = ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: failed.ID, ExpectedRevision: failed.Revision, At: failed.CreatedAt.Add(time.Second)})
 	require.NoError(t, err)
 	failed, err = ss.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{
 		DeliveryID: failed.ID, ExpectedRevision: failed.Revision, Kind: store.MailDeliveryCompletionFailed,
 		PublicFailureCode: "mail.transport.permanent", At: failed.CreatedAt.Add(2 * time.Second),
 	})
 	require.NoError(t, err)
-	maintenance, err = ss.Mail().SuppressOutstanding(ctx, model.MailDeliveryDisabledCode, 500)
+	_, err = ss.Mail().SuppressOutstanding(ctx, &store.MailOutstandingSuppression{Code: model.MailDeliveryDisabledCode, Limit: 500})
 	require.NoError(t, err)
 	failed, err = ss.Mail().GetDelivery(ctx, failed.ID)
 	require.NoError(t, err)
@@ -181,7 +181,7 @@ func TestMailStore(t *testing.T, ss store.Store) {
 	sendingClaim, err := ss.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{model.JobTypeMailDeliver}, NodeID: "mail-snapshot-test", ClaimToken: sendingToken, LeaseDuration: time.Minute})
 	require.NoError(t, err)
 	require.Equal(t, sendingFixture.JobID, sendingClaim.Job.ID, "claimed Job")
-	_, err = ss.Mail().StartDelivery(ctx, sendingFixture.ID, sendingFixture.Revision, model.NowUTC())
+	_, err = ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: sendingFixture.ID, ExpectedRevision: sendingFixture.Revision, At: model.NowUTC()})
 	require.NoError(t, err)
 	queueInput := mailTestEnqueueFixture(t, user, institution, model.NowUTC().Add(-time.Second))
 	_, err = ss.Mail().EnqueueTest(ctx, queueInput)
@@ -197,7 +197,7 @@ func TestMailStore(t *testing.T, ss store.Store) {
 	}
 	require.False(t, states[model.MailDeliveryQueued].IsZero())
 	require.False(t, states[model.MailDeliverySending].IsZero())
-	_, err = ss.Mail().SuppressOutstanding(ctx, model.MailDeliveryDisabledCode, 500)
+	_, err = ss.Mail().SuppressOutstanding(ctx, &store.MailOutstandingSuppression{Code: model.MailDeliveryDisabledCode, Limit: 500})
 	require.NoError(t, err)
 	backoffInput := mailTestEnqueueFixture(t, user, institution, model.NowUTC().Add(-time.Minute))
 	backoff, err := ss.Mail().EnqueueTest(ctx, backoffInput)
@@ -206,7 +206,7 @@ func TestMailStore(t *testing.T, ss store.Store) {
 	backoffClaim, err := ss.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{model.JobTypeMailDeliver}, NodeID: "mail-backoff-test", ClaimToken: backoffToken, LeaseDuration: time.Minute})
 	require.NoError(t, err)
 	require.Equal(t, backoff.JobID, backoffClaim.Job.ID, "claimed Job")
-	backoff, err = ss.Mail().StartDelivery(ctx, backoff.ID, backoff.Revision, model.NowUTC())
+	backoff, err = ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: backoff.ID, ExpectedRevision: backoff.Revision, At: model.NowUTC()})
 	require.NoError(t, err)
 	_, err = ss.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: backoff.ID, ExpectedRevision: backoff.Revision, Kind: store.MailDeliveryCompletionRetry, PublicFailureCode: "mail.transport.temporary", At: model.NowUTC()})
 	require.NoError(t, err)
@@ -288,7 +288,7 @@ func testMailOperatorStore(t *testing.T, ctx context.Context, ss store.Store, us
 			require.NoError(t, claimErr)
 			continue
 		}
-		failed, err = ss.Mail().StartDelivery(ctx, retryTarget.ID, retryTarget.Revision, model.NowUTC())
+		failed, err = ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: retryTarget.ID, ExpectedRevision: retryTarget.Revision, At: model.NowUTC()})
 		require.NoError(t, err)
 		// The reporting node's clock leads the database; the later operator
 		// retry at PostgreSQL time must not move the delivery backwards.
@@ -324,7 +324,7 @@ func testMailOperatorStore(t *testing.T, ctx context.Context, ss store.Store, us
 			require.NoError(t, claimErr)
 			continue
 		}
-		orphan, err = ss.Mail().StartDelivery(ctx, orphanTarget.ID, orphanTarget.Revision, model.NowUTC())
+		orphan, err = ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: orphanTarget.ID, ExpectedRevision: orphanTarget.Revision, At: model.NowUTC()})
 		require.NoError(t, err)
 		_, err = ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: claim.Attempt.ID, ClaimToken: token, Kind: store.JobCompletionPermanentFailure, PublicErrorCode: "job.lease_expired"})
 		require.NoError(t, err)

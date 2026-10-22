@@ -123,7 +123,7 @@ func (a onboardingImportJobs) Execute(ctx context.Context, id model.OnboardingIm
 }
 
 func (a onboardingImportJobs) Fail(ctx context.Context, id model.OnboardingImportID, code string) error {
-	_, err := a.service.deps.Imports.FailOnboardingImport(ctx, id, code, model.TimeUTC(a.service.deps.Now()))
+	_, err := a.service.deps.Imports.FailOnboardingImport(ctx, &store.OnboardingImportFailure{ID: id, Code: code, At: model.TimeUTC(a.service.deps.Now())})
 	return err
 }
 

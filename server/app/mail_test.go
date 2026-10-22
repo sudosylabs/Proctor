@@ -103,7 +103,10 @@ func TestCredentialMailDescriptorUsesDedicatedPoolAndReserve(t *testing.T) {
 	require.Len(t, persistence.classes, 1, "outcome=%#v permit classes", outcome)
 	require.Equal(t, store.MailSendCredential, persistence.classes[0], "outcome=%#v permit classes", outcome)
 }
-func (s *mailStoreFake) StartDelivery(_ context.Context, id model.MailDeliveryID, revision int64, at time.Time) (*model.MailDelivery, error) {
+func (s *mailStoreFake) StartDelivery(_ context.Context, input *store.MailDeliveryStart) (*model.MailDelivery, error) {
+	id := input.ID
+	revision := input.ExpectedRevision
+	at := input.At
 	if s.delivery == nil || s.delivery.ID != id || s.delivery.Revision != revision {
 		return nil, store.NewErrConflict("mail_delivery", "stale", nil)
 	}
@@ -773,10 +776,11 @@ type mailInvalidMessageMetadataStoreFake struct {
 	*mailStoreFake
 }
 
-func (s *mailInvalidMessageMetadataStoreFake) StartDelivery(ctx context.Context, id model.MailDeliveryID,
-	revision int64, at time.Time,
-) (*model.MailDelivery, error) {
-	delivery, err := s.mailStoreFake.StartDelivery(ctx, id, revision, at)
+func (s *mailInvalidMessageMetadataStoreFake) StartDelivery(ctx context.Context, input *store.MailDeliveryStart) (*model.MailDelivery, error) {
+	id := input.ID
+	revision := input.ExpectedRevision
+	at := input.At
+	delivery, err := s.mailStoreFake.StartDelivery(ctx, &store.MailDeliveryStart{ID: id, ExpectedRevision: revision, At: at})
 	if err != nil {
 		return nil, err
 	}

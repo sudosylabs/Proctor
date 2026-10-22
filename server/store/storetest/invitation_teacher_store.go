@@ -124,7 +124,7 @@ func testTeacherInvitationMailSerializesWithUnitArchive(t *testing.T, ss store.S
 	t.Helper()
 	ctx, unit, _, issue := teacherInvitationMailFixture(t, ss, "unit-race")
 	err := archive(t, ctx, unit, func() error {
-		_, startErr := ss.Mail().StartDelivery(ctx, issue.Delivery.ID, issue.Delivery.Revision, model.NowUTC())
+		_, startErr := ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: issue.Delivery.ID, ExpectedRevision: issue.Delivery.Revision, At: model.NowUTC()})
 		return startErr
 	})
 	require.NoError(t, err)
@@ -135,7 +135,7 @@ func testTeacherInvitationMailSerializesWithRoleMutation(t *testing.T, ss store.
 	t.Helper()
 	ctx, _, role, issue := teacherInvitationMailFixture(t, ss, "role-race")
 	err := mutate(t, ctx, role, func() error {
-		_, startErr := ss.Mail().StartDelivery(ctx, issue.Delivery.ID, issue.Delivery.Revision, model.NowUTC())
+		_, startErr := ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: issue.Delivery.ID, ExpectedRevision: issue.Delivery.Revision, At: model.NowUTC()})
 		return startErr
 	})
 	require.NoError(t, err)
@@ -280,7 +280,7 @@ func testTeacherAcademicUnitInvitationAcceptance(t *testing.T, ss store.Store) {
 	issue := teacherAcademicUnitInvitationIssueFixture(t, ss, inviter, unit, packageRole, issuedAt)
 	invitation, err := ss.Invitation().IssueTeacherAcademicUnit(ctx, issue)
 	require.NoError(t, err)
-	startedCredential, err := ss.Mail().StartDelivery(ctx, issue.Delivery.ID, issue.Delivery.Revision, issuedAt.Add(20*time.Second))
+	startedCredential, err := ss.Mail().StartDelivery(ctx, &store.MailDeliveryStart{ID: issue.Delivery.ID, ExpectedRevision: issue.Delivery.Revision, At: issuedAt.Add(20 * time.Second)})
 	require.NoError(t, err)
 	require.Equal(t, model.MailDeliverySending, startedCredential.State)
 	input := teacherAcademicUnitInvitationAcceptanceFixture(t, invitation, issuedAt.Add(30*time.Second))

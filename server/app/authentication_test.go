@@ -243,7 +243,7 @@ func (authenticationUserStore) SetDisabled(context.Context, *store.UserDisabledS
 func (authenticationUserStore) UpdateProfile(context.Context, *store.UserProfileUpdate) (*model.User, error) {
 	return nil, errors.New("unused")
 }
-func (authenticationUserStore) UpdateLastLogin(context.Context, model.UserID, time.Time) error {
+func (authenticationUserStore) UpdateLastLogin(ctx context.Context, input *store.UserLastLoginUpdate) error {
 	return errors.New("unused")
 }
 
@@ -344,7 +344,10 @@ func (s authenticationSessionStore) Save(
 	return &cloned, savedCredentials, nil
 }
 
-func (s authenticationSessionStore) UpdateActivity(_ context.Context, sessionID model.SessionID, lastActivityAt, idleExpiresAt time.Time) error {
+func (s authenticationSessionStore) UpdateActivity(_ context.Context, input *store.SessionActivityUpdate) error {
+	sessionID := input.ID
+	lastActivityAt := input.LastActivityAt
+	idleExpiresAt := input.IdleExpiresAt
 	session, ok := s.root.sessions[sessionID.String()]
 	if !ok {
 		return store.NewErrNotFound("session", sessionID.String())
@@ -356,7 +359,10 @@ func (s authenticationSessionStore) UpdateActivity(_ context.Context, sessionID 
 	return nil
 }
 
-func (s authenticationSessionStore) Withdraw(_ context.Context, sessionID model.SessionID, _ model.UserID, revokedAt time.Time, reason model.SessionRevocationReason) ([]string, error) {
+func (s authenticationSessionStore) Withdraw(_ context.Context, input *store.SessionWithdrawal) ([]string, error) {
+	sessionID := input.ID
+	revokedAt := input.RevokedAt
+	reason := input.Reason
 	return s.revoke(sessionID.String(), model.TimeUTC(revokedAt), reason)
 }
 
@@ -381,7 +387,10 @@ func (s authenticationSessionStore) revoke(sessionID string, at time.Time, reaso
 	return hashes, nil
 }
 
-func (s authenticationSessionStore) EnforceExpiry(_ context.Context, sessionID model.SessionID, userID model.UserID, at time.Time) (*store.SessionExpiryEnforcementResult, error) {
+func (s authenticationSessionStore) EnforceExpiry(_ context.Context, input *store.SessionExpiryEnforcement) (*store.SessionExpiryEnforcementResult, error) {
+	sessionID := input.ID
+	userID := input.UserID
+	at := input.At
 	session, ok := s.root.sessions[sessionID.String()]
 	if !ok || session.UserID != userID || session.RevokedAt.Valid {
 		return nil, store.NewErrNotFound("session", sessionID.String())
@@ -468,14 +477,11 @@ func (authenticationSessionCredentialStore) PurgeRetired(context.Context, *store
 	return 0, errors.New("unused")
 }
 
-func (s authenticationSessionCredentialStore) RotateRefresh(
-	_ context.Context,
-	_ string,
-	access *model.SessionCredential,
-	refresh *model.SessionCredential,
-	at time.Time,
-	idleExpiry time.Time,
-) (*store.SessionRotation, error) {
+func (s authenticationSessionCredentialStore) RotateRefresh(_ context.Context, input *store.SessionRefreshRotation) (*store.SessionRotation, error) {
+	access := input.Access
+	refresh := input.Refresh
+	at := input.Now
+	idleExpiry := input.IdleExpiresAt
 	s.root.rotatedAccess = access
 	s.root.rotatedRefresh = refresh
 	s.root.rotatedAt = at
