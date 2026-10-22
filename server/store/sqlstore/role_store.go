@@ -31,7 +31,7 @@ type SQLRoleStore struct {
 	rolesQuery sq.SelectBuilder
 }
 
-// roleRow is the legacy integer-millisecond column layout. Domain Role uses
+// roleRow is the persisted Role column layout. Domain Role uses
 // time.Time / OptionalTime; conversion is at this boundary.
 type roleRow struct {
 	ID          string         `db:"id"`

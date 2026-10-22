@@ -55,8 +55,8 @@ func NowUTC() time.Time {
 	return TimeUTC(time.Now())
 }
 
-// MillisFromTime converts a time to Unix milliseconds for legacy wire fields.
-// A zero time maps to 0 at that boundary.
+// MillisFromTime converts a time to Unix milliseconds for a command or Store
+// field that still carries milliseconds. A zero time maps to 0.
 func MillisFromTime(value time.Time) int64 {
 	if value.IsZero() {
 		return 0
@@ -64,8 +64,8 @@ func MillisFromTime(value time.Time) int64 {
 	return value.UTC().UnixMilli()
 }
 
-// TimeFromMillis converts a legacy wire millisecond value to UTC. A
-// non-positive boundary value maps to the zero time.
+// TimeFromMillis converts a Unix-millisecond command or Store value to UTC.
+// A non-positive value maps to the zero time.
 func TimeFromMillis(millis int64) time.Time {
 	if millis <= 0 {
 		return time.Time{}
@@ -92,8 +92,8 @@ func OptionalTimeFrom(value time.Time) OptionalTime {
 	return OptionalTime{Time: TimeUTC(value), Valid: true}
 }
 
-// OptionalTimeFromMillis maps a legacy wire value. Non-positive milliseconds
-// become the absent optional value.
+// OptionalTimeFromMillis maps a Unix-millisecond command or Store value.
+// Non-positive milliseconds become the absent optional value.
 func OptionalTimeFromMillis(millis int64) OptionalTime {
 	if millis <= 0 {
 		return OptionalTime{}
@@ -101,8 +101,8 @@ func OptionalTimeFromMillis(millis int64) OptionalTime {
 	return OptionalTime{Time: time.UnixMilli(millis).UTC(), Valid: true}
 }
 
-// Millis returns the Unix-millisecond form used by legacy wire contracts.
-// Absent values return 0 at that boundary.
+// Millis returns the Unix-millisecond form a command or Store field still
+// carries. Absent values return 0.
 func (o OptionalTime) Millis() int64 {
 	if !o.Valid {
 		return 0
