@@ -16,17 +16,16 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-// This is a versioned persistence projection, not a dump of tables. Each
+// This is a deliberate persistence projection, not a dump of tables. Each
 // collection names its columns deliberately so a future credential/internal
 // column can never silently enter the portable records format.
-type examExportRecordsV1 struct {
-	SchemaVersion int                       `json:"schema_version"`
-	ExportID      model.ExamExportID        `json:"export_id"`
-	CapturedAt    string                    `json:"captured_at"`
-	ExamID        model.ExamID              `json:"exam_id"`
-	SittingID     model.ExamSittingID       `json:"exam_sitting_id"`
-	Categories    []model.RetentionCategory `json:"categories"`
-	Submissions   []map[string]any          `json:"submissions"`
+type examExportRecords struct {
+	ExportID    model.ExamExportID        `json:"export_id"`
+	CapturedAt  string                    `json:"captured_at"`
+	ExamID      model.ExamID              `json:"exam_id"`
+	SittingID   model.ExamSittingID       `json:"exam_sitting_id"`
+	Categories  []model.RetentionCategory `json:"categories"`
+	Submissions []map[string]any          `json:"submissions"`
 }
 
 type examExportSnapshotBudget struct{ rows, bytes int }
@@ -59,7 +58,7 @@ func (b *examExportSnapshotBudget) collect(ctx context.Context, tx *sqlxTxWrappe
 }
 
 func captureExamExportSnapshot(ctx context.Context, tx *sqlxTxWrapper, e *model.ExamExport, selected []store.ExamSubmissionAuthorization) ([]byte, error) {
-	document := examExportRecordsV1{SchemaVersion: 1, ExportID: e.ID, CapturedAt: e.CreatedAt.Format("2006-01-02T15:04:05.999999999Z07:00"), ExamID: e.Scope.ExamID, SittingID: e.Scope.SittingID, Categories: slices.Clone(e.Categories), Submissions: make([]map[string]any, 0, len(selected))}
+	document := examExportRecords{ExportID: e.ID, CapturedAt: e.CreatedAt.Format("2006-01-02T15:04:05.999999999Z07:00"), ExamID: e.Scope.ExamID, SittingID: e.Scope.SittingID, Categories: slices.Clone(e.Categories), Submissions: make([]map[string]any, 0, len(selected))}
 	budget := examExportSnapshotBudget{}
 	entryCount := 0
 	for _, a := range selected {
@@ -121,7 +120,7 @@ func captureExamExportSnapshot(ctx context.Context, tx *sqlxTxWrapper, e *model.
 				{"flags", `SELECT id,generation,policy_kind,state,created_at FROM integrity_flags WHERE exam_attempt_id=? ORDER BY id`, a.AttemptID.String()},
 				{"native_conditions", `SELECT id,convert_from(canonical,'UTF8')::jsonb AS condition FROM native_condition_evidence WHERE exam_attempt_id=? ORDER BY id`, a.AttemptID.String()},
 				{"evidence", `SELECT id,integrity_flag_id,participation_id,generation,policy_kind,focus_loss_signal_id,sequence,duration_milliseconds,source,missing_before,observed_at,recorded_at,CASE WHEN browser_detail_canonical IS NULL THEN NULL ELSE convert_from(browser_detail_canonical,'UTF8')::jsonb END AS browser FROM integrity_evidence WHERE exam_attempt_id=? ORDER BY id`, a.AttemptID.String()},
-				{"discrepancies", `SELECT id,generation,kind,schema_version,focus_loss_signal_id,sequence,duration_milliseconds,source,missing_before,correction_revision_id,browser_activity_source_session_id,final_sequence,gap_reason,unresolved_count,received_at FROM integrity_discrepancies WHERE submission_id=? ORDER BY id`, a.SubmissionID.String()},
+				{"discrepancies", `SELECT id,generation,kind,focus_loss_signal_id,sequence,duration_milliseconds,source,missing_before,correction_revision_id,browser_activity_source_session_id,final_sequence,gap_reason,unresolved_count,received_at FROM integrity_discrepancies WHERE submission_id=? ORDER BY id`, a.SubmissionID.String()},
 				{"review_finalizations", `SELECT finalization_revision,convert_from(snapshot_canonical,'UTF8')::jsonb AS snapshot FROM submission_review_finalizations WHERE exam_attempt_id=? ORDER BY submission_review_id,finalization_revision`, a.AttemptID.String()},
 				{"reviews", `SELECT id,state,release_state,revision,created_by_user_id,manager_notes,student_remarks_markdown,flag_count,evidence_count,discrepancy_count,evidence_inventory_digest,created_at,updated_at,finalized_at,finalized_by_user_id,released_at,released_by_user_id FROM submission_reviews WHERE submission_id=? ORDER BY id`, a.SubmissionID.String()},
 				{"decisions", `SELECT id,submission_review_id,integrity_flag_id,outcome,revision,actor_user_id,private_rationale,decided_at,inventory_stale FROM integrity_review_decisions WHERE exam_attempt_id=? ORDER BY id`, a.AttemptID.String()},

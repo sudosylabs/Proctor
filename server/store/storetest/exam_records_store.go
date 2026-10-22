@@ -124,7 +124,7 @@ func TestExamRecordsStore(t *testing.T, ss store.Store, probes ...ExamRecordsSQL
 	require.NoError(t, err)
 	require.True(t, renewed.Completion.IsCurrent())
 	require.True(t, renewed.Completion.CompletedAt.Time.After(first.CompletedAt.Time))
-	late := &store.ExamAttemptFocusLossDiscrepancy{Access: focusAccess, SchemaVersion: model.FocusLossSignalSchemaVersion, DiscrepancyID: model.NewIntegrityDiscrepancyID(), SignalID: model.NewFocusLossSignalID(), Sequence: 2, DurationMilliseconds: 900, Source: model.FocusLossSourceFullscreenExited, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}
+	late := &store.ExamAttemptFocusLossDiscrepancy{Access: focusAccess, DiscrepancyID: model.NewIntegrityDiscrepancyID(), SignalID: model.NewFocusLossSignalID(), Sequence: 2, DurationMilliseconds: 900, Source: model.FocusLossSourceFullscreenExited, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}
 	accepted, err := ss.ExamAttempt().RecordEndedFocusLoss(ctx, late)
 	require.NoError(t, err)
 	require.False(t, accepted.Duplicate, "fresh late data treated as duplicate")

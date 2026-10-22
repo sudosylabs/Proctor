@@ -25,7 +25,7 @@ func TestFocusLossSignalContractIsHashOnlySequencedAndEffectSafe(t *testing.T) {
 		ContinuityCredentialHash: model.HashToken(model.NewCredentialToken())}
 	target := ExamAttemptFocusLossTarget{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), ClassID: model.NewClassID(),
 		CandidateUserID: access.CandidateUserID, AttemptID: access.AttemptID, ParticipationID: access.ParticipationID, Generation: access.Generation}
-	input := ExamAttemptFocusLossSignal{Access: access, SchemaVersion: model.FocusLossSignalSchemaVersion,
+	input := ExamAttemptFocusLossSignal{Access: access,
 		SignalID: model.NewFocusLossSignalID(), EvidenceID: model.NewIntegrityEvidenceID(), FlagID: model.NewIntegrityFlagID(),
 		SuspensionID: model.NewAttemptSuspensionID(), Sequence: 7, DurationMilliseconds: 500,
 		Source: model.FocusLossSourceDocumentHidden, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}

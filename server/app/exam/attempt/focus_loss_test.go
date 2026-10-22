@@ -75,7 +75,6 @@ func TestEvaluateFocusLossHashesCredentialAuditsSafeScopeAndPublishesCommittedWa
 	require.Equal(t, model.HashToken(credential), access.ContinuityCredentialHash, "access")
 	require.NotNil(t, f.persistence.focusSignal, "access")
 	require.Equal(t, access, f.persistence.focusSignal.Access, "access")
-	require.Equal(t, model.FocusLossSignalSchemaVersion, f.persistence.focusSignal.SchemaVersion, "access")
 	require.Equal(t, signalID, f.persistence.focusSignal.SignalID, "access")
 	require.True(t, f.persistence.focusSignal.EvidenceID.IsValid(), "access")
 	require.Equal(t, flagID, f.persistence.focusSignal.FlagID, "access")
@@ -105,7 +104,7 @@ func TestEvaluateFocusLossRetainsExplicitLateDiscrepancyAfterSubmission(t *testi
 		AttemptID: f.attemptID, ParticipationID: participationID, Generation: 3}, SubmissionID: submissionID}
 	discrepancy, err := model.NewIntegrityDiscrepancy(model.IntegrityDiscrepancySpecification{
 		ID: discrepancyID, SubmissionID: submissionID, AttemptID: f.attemptID, ParticipationID: participationID,
-		Generation: 3, Kind: model.IntegrityDiscrepancyLateFocusLoss, SchemaVersion: model.FocusLossSignalSchemaVersion,
+		Generation: 3, Kind: model.IntegrityDiscrepancyLateFocusLoss,
 		SignalID: signalID, Sequence: 12, DurationMilliseconds: 2100, Source: model.FocusLossSourceDocumentHidden,
 		MissingBefore: 1, ReceivedAt: receivedAt})
 	require.NoError(t, err)

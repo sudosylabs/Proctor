@@ -193,9 +193,6 @@ func NewExamRevision(spec ExamRevisionSpecification) (*ExamRevision, error) {
 		return strings.Compare(left.EntryID.String(), right.EntryID.String())
 	})
 	var err error
-	if revision.BrowserPolicy.SchemaVersion == 0 {
-		revision.BrowserPolicy = DisabledBrowserPolicy()
-	}
 	revision.BrowserPolicyDigest, err = BrowserPolicyDigest(revision.BrowserPolicy)
 	if err != nil {
 		return nil, err
@@ -217,11 +214,12 @@ func NewExamRevision(spec ExamRevisionSpecification) (*ExamRevision, error) {
 // complete ordered resource manifest may change; policy and Starter Workspace
 // remain pinned byte-for-byte to the base Revision.
 type LiveCorrectionExamRevisionSpecification struct {
-	ID                      ExamRevisionID
-	Number                  int64
-	InstructionsMarkdown    string
-	Resources               []ExamRevisionResource
-	BrowserPolicy           BrowserPolicy
+	ID                   ExamRevisionID
+	Number               int64
+	InstructionsMarkdown string
+	Resources            []ExamRevisionResource
+	// BrowserPolicy replaces the base Revision's policy; nil keeps it.
+	BrowserPolicy           *BrowserPolicy
 	CandidateSummary        string
 	AffectedCapabilities    []CandidateCapability
 	AcknowledgementRequired bool
@@ -236,9 +234,9 @@ func NewLiveCorrectionExamRevision(base *ExamRevision, spec LiveCorrectionExamRe
 	if err := base.Validate(); err != nil || spec.Number <= base.Number {
 		return nil, invalidModelError("NewLiveCorrectionExamRevision", "exam_revision", "", "invalid live correction base or number", "")
 	}
-	browserPolicy := spec.BrowserPolicy.Clone()
-	if browserPolicy.SchemaVersion == 0 {
-		browserPolicy = base.BrowserPolicy.Clone()
+	browserPolicy := base.BrowserPolicy.Clone()
+	if spec.BrowserPolicy != nil {
+		browserPolicy = spec.BrowserPolicy.Clone()
 	}
 	changedAreas, err := CandidateCorrectionChangedAreas(base, spec.InstructionsMarkdown, spec.Resources, browserPolicy)
 	if err != nil {

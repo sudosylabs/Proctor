@@ -25,7 +25,7 @@ paths:
         zero leaves exports unconfigured and must be changed explicitly before creation. Expiry starts at
         request creation, with at most 24 hours for construction. Audit, finite Job and exact category source
         protections commit together. Retries return the same export and never extend its expiry. The archive
-        contains original workspace files, structured records, a versioned manifest and SHA-256 hashes.
+        contains original workspace files, structured records, a manifest and SHA-256 hashes.
         Re-import is not supported.
       x-proctor-auth: session_required
       x-proctor-idempotency: required
@@ -239,7 +239,7 @@ paths:
         zero leaves exports unconfigured and must be changed explicitly before creation. Expiry starts at
         request creation, with at most 24 hours for construction. Audit, finite Job and exact category source
         protections commit together. Retries return the same export and never extend its expiry. The archive
-        contains original workspace files, structured records, a versioned manifest and SHA-256 hashes.
+        contains original workspace files, structured records, a manifest and SHA-256 hashes.
         Re-import is not supported.
       x-proctor-auth: session_required
       x-proctor-idempotency: required

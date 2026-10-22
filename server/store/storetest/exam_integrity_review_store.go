@@ -62,8 +62,8 @@ func TestExamIntegrityReviewStore(t *testing.T, ss store.Store, reviews store.Ex
 	fixture, connected, flagged, sealed, focusAccess := newIntegrityReviewFixture(t, ctx, ss, "review-main")
 
 	lateInput := &store.ExamAttemptFocusLossDiscrepancy{Access: focusAccess,
-		SchemaVersion: model.FocusLossSignalSchemaVersion, DiscrepancyID: model.NewIntegrityDiscrepancyID(),
-		SignalID: model.NewFocusLossSignalID(), Sequence: 3, DurationMilliseconds: 900,
+		DiscrepancyID: model.NewIntegrityDiscrepancyID(),
+		SignalID:      model.NewFocusLossSignalID(), Sequence: 3, DurationMilliseconds: 900,
 		Source:       model.FocusLossSourceFullscreenExited,
 		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	lateTarget, err := ss.ExamAttempt().ResolveEndedFocusLossTarget(ctx, focusAccess)
@@ -485,8 +485,8 @@ func testEndedFocusLossAfterAutomaticSeal(t *testing.T, ctx context.Context, ss 
 		target, err := ss.ExamAttempt().ResolveEndedFocusLossTarget(ctx, access)
 		require.NoError(t, err)
 		input := &store.ExamAttemptFocusLossDiscrepancy{Access: access,
-			SchemaVersion: model.FocusLossSignalSchemaVersion, DiscrepancyID: model.NewIntegrityDiscrepancyID(),
-			SignalID: model.NewFocusLossSignalID(), Sequence: 2, DurationMilliseconds: 700,
+			DiscrepancyID: model.NewIntegrityDiscrepancyID(),
+			SignalID:      model.NewFocusLossSignalID(), Sequence: 2, DurationMilliseconds: 700,
 			Source:       model.FocusLossSourceFullscreenExited,
 			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		recorded, err := ss.ExamAttempt().RecordEndedFocusLoss(ctx, input)

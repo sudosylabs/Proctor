@@ -73,7 +73,7 @@ func insertTerminalIntegrityDiscrepancies(ctx context.Context, tx *sqlxTxWrapper
 		discrepancy, createErr := model.NewIntegrityDiscrepancy(model.IntegrityDiscrepancySpecification{
 			ID: model.NewIntegrityDiscrepancyID(), SubmissionID: submission.ID, AttemptID: target.AttemptID,
 			ParticipationID: target.ParticipationID, Generation: target.Generation,
-			Kind: model.IntegrityDiscrepancyFocusLossGap, SchemaVersion: 1,
+			Kind:      model.IntegrityDiscrepancyFocusLossGap,
 			GapReason: string(value.FocusReason), UnresolvedCount: value.FocusUnresolved, ReceivedAt: submission.SubmittedAt,
 		})
 		if createErr != nil {
@@ -88,7 +88,7 @@ func insertTerminalIntegrityDiscrepancies(ctx context.Context, tx *sqlxTxWrapper
 		discrepancy, createErr := model.NewIntegrityDiscrepancy(model.IntegrityDiscrepancySpecification{
 			ID: model.NewIntegrityDiscrepancyID(), SubmissionID: submission.ID, AttemptID: target.AttemptID,
 			ParticipationID: target.ParticipationID, Generation: target.Generation,
-			Kind: model.IntegrityDiscrepancyCorrectionAcknowledgementMissing, SchemaVersion: 1,
+			Kind:                 model.IntegrityDiscrepancyCorrectionAcknowledgementMissing,
 			CorrectionRevisionID: revisionID, UnresolvedCount: 1, ReceivedAt: submission.SubmittedAt,
 		})
 		if createErr != nil {
@@ -105,10 +105,10 @@ func insertTerminalIntegrityDiscrepancy(ctx context.Context, tx *sqlxTxWrapper, 
 	target integrityDiscrepancyTarget,
 ) error {
 	_, err := tx.Exec(ctx, `INSERT INTO integrity_discrepancies
-		(id,submission_id,exam_attempt_id,participation_id,connection_id,generation,kind,schema_version,
+		(id,submission_id,exam_attempt_id,participation_id,connection_id,generation,kind,
 		 correction_revision_id,browser_activity_source_session_id,final_sequence,gap_reason,unresolved_count,received_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?::uuid,?,?,?,?)`, value.ID.String(), value.SubmissionID.String(), value.AttemptID.String(),
-		value.ParticipationID.String(), target.ConnectionID.String(), value.Generation, string(value.Kind), value.SchemaVersion,
+		VALUES(?,?,?,?,?,?,?,?,?::uuid,?,?,?,?)`, value.ID.String(), value.SubmissionID.String(), value.AttemptID.String(),
+		value.ParticipationID.String(), target.ConnectionID.String(), value.Generation, string(value.Kind),
 		nullableString(value.CorrectionRevisionID.String()), nullableString(string(value.BrowserSourceSessionID)),
 		nullableInt64Pointer(value.FinalSequence), nullableString(value.GapReason), nullableInt64(value.UnresolvedCount > 0, value.UnresolvedCount),
 		value.ReceivedAt)

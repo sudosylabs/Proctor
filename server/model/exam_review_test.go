@@ -114,8 +114,7 @@ func TestIntegrityDiscrepancyValidatesBoundedLateFocusLossRecord(t *testing.T) {
 	at := time.Date(2026, 8, 16, 9, 0, 0, 0, time.UTC)
 	discrepancy, err := NewIntegrityDiscrepancy(IntegrityDiscrepancySpecification{
 		ID: NewIntegrityDiscrepancyID(), SubmissionID: NewSubmissionID(), AttemptID: NewExamAttemptID(),
-		ParticipationID: NewAttemptParticipationID(), Generation: 2, Kind: IntegrityDiscrepancyLateFocusLoss,
-		SchemaVersion: FocusLossSignalSchemaVersion, SignalID: NewFocusLossSignalID(), Sequence: 14,
+		ParticipationID: NewAttemptParticipationID(), Generation: 2, Kind: IntegrityDiscrepancyLateFocusLoss, SignalID: NewFocusLossSignalID(), Sequence: 14,
 		DurationMilliseconds: 2300, Source: FocusLossSourceFullscreenExited, MissingBefore: 2, ReceivedAt: at,
 	})
 	require.NoError(t, err, "NewIntegrityDiscrepancy() = %#v", discrepancy)
@@ -134,8 +133,7 @@ func TestIntegrityDiscrepancyValidatesTerminalUncertaintyKinds(t *testing.T) {
 
 	at := time.Date(2026, 8, 29, 9, 0, 0, 0, time.UTC)
 	base := IntegrityDiscrepancySpecification{ID: NewIntegrityDiscrepancyID(), SubmissionID: NewSubmissionID(),
-		AttemptID: NewExamAttemptID(), ParticipationID: NewAttemptParticipationID(), Generation: 3,
-		SchemaVersion: 1, ReceivedAt: at}
+		AttemptID: NewExamAttemptID(), ParticipationID: NewAttemptParticipationID(), Generation: 3, ReceivedAt: at}
 	finalSequence := int64(9)
 	tests := []IntegrityDiscrepancySpecification{
 		func() IntegrityDiscrepancySpecification {

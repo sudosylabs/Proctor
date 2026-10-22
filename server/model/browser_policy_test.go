@@ -77,7 +77,6 @@ func TestBrowserPolicyDocumentParserPreservesSchemaAndCanonicalSize(t *testing.T
 	parsed, err := ParseBrowserPolicyDocument([]byte(`{ "enabled": false }`))
 	require.NoError(t, err, "ParseBrowserPolicyDocument(reordered disabled) = %#v", parsed)
 	require.False(t, parsed.Enabled, "ParseBrowserPolicyDocument(reordered disabled) = %#v", parsed)
-	require.Equal(t, BrowserPolicySchemaVersion, parsed.SchemaVersion, "ParseBrowserPolicyDocument(reordered disabled) = %#v", parsed)
 	for _, document := range []string{
 		`null`, `{}`, `{"enabled":null}`, `{"schema_version":1}`,
 		`{"schema_version":0,"enabled":false}`,

@@ -64,6 +64,11 @@ module when a change is not server-only. No module has been released yet.
   `fingerprint_version` and `outcome_version`, and the request fingerprint
   no longer mixes in a version tag, so earlier retained outcomes cannot
   replay.
+- Server: Integrity Discrepancy responses drop the constant `schema_version`
+  member, and Examination Export archives drop `schema_version` from
+  `records.json` and `manifest.json`. Browser Policies no longer carry an
+  internal schema version, so a zero policy is the disabled policy
+  (**breaking**).
 - Server: wire timestamps are RFC 3339 strings. `create_at`, `update_at`, and
   `delete_at` become `created_at`, `updated_at`, and `archived_at` (omitted
   while active), Job `complete_at` and `start_at` become `completed_at` and

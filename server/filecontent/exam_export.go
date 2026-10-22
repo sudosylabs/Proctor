@@ -24,10 +24,9 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-type examExportManifestV1 struct {
-	SchemaVersion int                         `json:"schema_version"`
-	ExportID      model.ExamExportID          `json:"export_id"`
-	Entries       []examExportManifestEntryV1 `json:"entries"`
+type examExportManifest struct {
+	ExportID model.ExamExportID        `json:"export_id"`
+	Entries  []examExportManifestEntry `json:"entries"`
 }
 
 type uncertainExamExportWrite struct{ cause error }
@@ -36,7 +35,7 @@ func (e *uncertainExamExportWrite) Error() string           { return "Exam expor
 func (e *uncertainExamExportWrite) Unwrap() error           { return e.cause }
 func (*uncertainExamExportWrite) ExamExportWriteUncertain() {}
 
-type examExportManifestEntryV1 struct {
+type examExportManifestEntry struct {
 	ArchivePath  string                        `json:"archive_path"`
 	SizeBytes    int64                         `json:"size_bytes"`
 	SHA256       string                        `json:"sha256"`
@@ -46,7 +45,7 @@ type examExportManifestEntryV1 struct {
 	MediaType    string                        `json:"media_type,omitempty"`
 }
 
-const examExportReadme = `Proctor examination export, format version 1
+const examExportReadme = `Proctor examination export
 
 records.json contains the selected structured records as captured when requested.
 manifest.json lists every data member with its exact byte size and SHA-256 hash.
@@ -71,11 +70,10 @@ func (c *Content) BuildExamExport(ctx context.Context, input app.ExamExportArchi
 		return nil, errors.New("invalid Exam export input")
 	}
 	var envelope struct {
-		SchemaVersion int                `json:"schema_version"`
-		ExportID      model.ExamExportID `json:"export_id"`
+		ExportID model.ExamExportID `json:"export_id"`
 	}
-	if json.Unmarshal(input.Records, &envelope) != nil || envelope.SchemaVersion != 1 || envelope.ExportID != input.ExportID {
-		return nil, errors.New("invalid Exam export records version or owner")
+	if json.Unmarshal(input.Records, &envelope) != nil || envelope.ExportID != input.ExportID {
+		return nil, errors.New("invalid Exam export records owner")
 	}
 	seen := make(map[string]struct{}, len(input.Files))
 	var total int64
@@ -105,7 +103,7 @@ func (c *Content) BuildExamExport(ctx context.Context, input app.ExamExportArchi
 	defer releaseSpool()
 	bounded := &examExportBoundedWriter{writer: spool, remaining: model.ExamExportMaximumArchiveBytes}
 	archive := zip.NewWriter(bounded)
-	manifest := examExportManifestV1{SchemaVersion: 1, ExportID: input.ExportID, Entries: make([]examExportManifestEntryV1, 0, len(input.Files)+2)}
+	manifest := examExportManifest{ExportID: input.ExportID, Entries: make([]examExportManifestEntry, 0, len(input.Files)+2)}
 	for _, item := range []struct {
 		name string
 		body []byte
@@ -114,7 +112,7 @@ func (c *Content) BuildExamExport(ctx context.Context, input app.ExamExportArchi
 		if err != nil {
 			return nil, sanitize("write Exam export records", err)
 		}
-		manifest.Entries = append(manifest.Entries, examExportManifestEntryV1{ArchivePath: item.name, SizeBytes: size, SHA256: digest})
+		manifest.Entries = append(manifest.Entries, examExportManifestEntry{ArchivePath: item.name, SizeBytes: size, SHA256: digest})
 	}
 	for _, f := range input.Files {
 		var body io.ReadCloser
@@ -137,7 +135,7 @@ func (c *Content) BuildExamExport(ctx context.Context, input app.ExamExportArchi
 		if size != f.Entry.SizeBytes || digest != f.Entry.SHA256 {
 			return nil, errors.New("Exam export source verification failed")
 		}
-		manifest.Entries = append(manifest.Entries, examExportManifestEntryV1{ArchivePath: examExportFileMember(f), SizeBytes: size, SHA256: digest, SubmissionID: f.SubmissionID, EntryID: f.Entry.EntryID, OriginalPath: f.Entry.Path, MediaType: f.Entry.MediaType})
+		manifest.Entries = append(manifest.Entries, examExportManifestEntry{ArchivePath: examExportFileMember(f), SizeBytes: size, SHA256: digest, SubmissionID: f.SubmissionID, EntryID: f.Entry.EntryID, OriginalPath: f.Entry.Path, MediaType: f.Entry.MediaType})
 	}
 	encoded, err := json.Marshal(manifest)
 	if err != nil {

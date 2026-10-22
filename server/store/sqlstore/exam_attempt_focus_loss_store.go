@@ -110,7 +110,7 @@ func validateFocusLossAccess(access store.ExamAttemptFocusLossAccess) error {
 }
 
 func validateFocusLossSignal(input *store.ExamAttemptFocusLossSignal) error {
-	if input == nil || validateFocusLossAccess(input.Access) != nil || input.SchemaVersion != model.FocusLossSignalSchemaVersion ||
+	if input == nil || validateFocusLossAccess(input.Access) != nil ||
 		!input.SignalID.IsValid() || !input.EvidenceID.IsValid() || !input.FlagID.IsValid() || !input.SuspensionID.IsValid() ||
 		input.Sequence < 1 || input.DurationMilliseconds < 1 ||
 		input.DurationMilliseconds > model.FocusLossMaximumDurationMilliseconds || !input.Source.IsValid() ||

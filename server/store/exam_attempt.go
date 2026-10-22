@@ -172,13 +172,12 @@ type ExamAttemptFocusLossTarget struct {
 }
 
 // ExamAttemptFocusLossSignal carries one bounded claim plus server-proposed
-// append identities. The client supplies only schema version, sequence,
+// append identities. The client supplies only sequence,
 // duration, and optional closed source classification; it cannot select an
 // outcome, severity, receipt time, flag state, or guilt finding. Unused
 // proposed identities are harmless. Sequence is the natural idempotency key.
 type ExamAttemptFocusLossSignal struct {
 	Access               ExamAttemptFocusLossAccess
-	SchemaVersion        int
 	SignalID             model.FocusLossSignalID
 	EvidenceID           model.IntegrityEvidenceID
 	FlagID               model.IntegrityFlagID
@@ -250,7 +249,6 @@ type ExamAttemptFocusLossDiscrepancyTarget struct {
 // audit attempt. Sequence is the natural idempotency fence.
 type ExamAttemptFocusLossDiscrepancy struct {
 	Access               ExamAttemptFocusLossAccess
-	SchemaVersion        int
 	DiscrepancyID        model.IntegrityDiscrepancyID
 	SignalID             model.FocusLossSignalID
 	Sequence             int64

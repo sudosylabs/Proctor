@@ -76,7 +76,6 @@ type IntegrityDiscrepancySpecification struct {
 	ParticipationID        AttemptParticipationID
 	Generation             int64
 	Kind                   IntegrityDiscrepancyKind
-	SchemaVersion          int
 	SignalID               FocusLossSignalID
 	Sequence               int64
 	DurationMilliseconds   int64
@@ -111,7 +110,7 @@ func NewIntegrityDiscrepancy(specification IntegrityDiscrepancySpecification) (*
 
 func (v *IntegrityDiscrepancy) Validate() error {
 	if v == nil || !v.ID.IsValid() || !v.SubmissionID.IsValid() || !v.AttemptID.IsValid() ||
-		!v.ParticipationID.IsValid() || v.Generation < 1 || v.SchemaVersion != 1 || v.ReceivedAt.IsZero() {
+		!v.ParticipationID.IsValid() || v.Generation < 1 || v.ReceivedAt.IsZero() {
 		return invalidModelError("IntegrityDiscrepancy.Validate", "integrity_discrepancy", "", "invalid Integrity Discrepancy", "")
 	}
 	switch v.Kind {

@@ -84,7 +84,7 @@ func (s *SQLExamAttemptStore) ResolveEndedFocusLossTarget(ctx context.Context,
 
 func validateEndedFocusLoss(input *store.ExamAttemptFocusLossDiscrepancy) error {
 	if input == nil || validateFocusLossAccess(input.Access) != nil ||
-		input.SchemaVersion != model.FocusLossSignalSchemaVersion || !input.DiscrepancyID.IsValid() ||
+		!input.DiscrepancyID.IsValid() ||
 		!input.SignalID.IsValid() || input.Sequence < 1 || input.DurationMilliseconds < 1 ||
 		input.DurationMilliseconds > model.FocusLossMaximumDurationMilliseconds || !input.Source.IsValid() ||
 		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
@@ -121,7 +121,7 @@ func (s *SQLExamAttemptStore) RecordEndedFocusLoss(ctx context.Context,
 				if valueErr != nil {
 					return nil, valueErr
 				}
-				if value.SchemaVersion != input.SchemaVersion || value.DurationMilliseconds != input.DurationMilliseconds ||
+				if value.DurationMilliseconds != input.DurationMilliseconds ||
 					value.Source != input.Source {
 					return nil, store.NewErrConflict("focus_loss", "focus_loss_sequence", nil)
 				}
@@ -155,7 +155,7 @@ func (s *SQLExamAttemptStore) RecordEndedFocusLoss(ctx context.Context,
 			value, err := model.NewIntegrityDiscrepancy(model.IntegrityDiscrepancySpecification{
 				ID: input.DiscrepancyID, SubmissionID: target.SubmissionID, AttemptID: input.Access.AttemptID,
 				ParticipationID: input.Access.ParticipationID, Generation: input.Access.Generation,
-				Kind: model.IntegrityDiscrepancyLateFocusLoss, SchemaVersion: input.SchemaVersion,
+				Kind:     model.IntegrityDiscrepancyLateFocusLoss,
 				SignalID: input.SignalID, Sequence: input.Sequence, DurationMilliseconds: input.DurationMilliseconds,
 				Source: input.Source, MissingBefore: input.Sequence - previous - 1, ReceivedAt: access.DatabaseNow,
 			})
@@ -163,11 +163,11 @@ func (s *SQLExamAttemptStore) RecordEndedFocusLoss(ctx context.Context,
 				return nil, store.NewErrInvalidInput("integrity_discrepancy", "signal", err)
 			}
 			_, err = tx.Exec(ctx, `INSERT INTO integrity_discrepancies
-				(id,submission_id,exam_attempt_id,participation_id,connection_id,generation,kind,schema_version,
+				(id,submission_id,exam_attempt_id,participation_id,connection_id,generation,kind,
 				 focus_loss_signal_id,sequence,duration_milliseconds,source,missing_before,received_at)
-				VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, value.ID.String(), value.SubmissionID.String(), value.AttemptID.String(),
+				VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, value.ID.String(), value.SubmissionID.String(), value.AttemptID.String(),
 				value.ParticipationID.String(), input.Access.ConnectionID.String(), value.Generation, string(value.Kind),
-				value.SchemaVersion, value.SignalID.String(), value.Sequence, value.DurationMilliseconds,
+				value.SignalID.String(), value.Sequence, value.DurationMilliseconds,
 				nullableFocusLossSource(value.Source), value.MissingBefore, value.ReceivedAt)
 			if err != nil {
 				return nil, fmt.Errorf("insert Integrity Discrepancy: %w", translateError("integrity_discrepancy", value.ID.String(), err))

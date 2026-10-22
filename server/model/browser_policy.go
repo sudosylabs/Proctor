@@ -18,9 +18,8 @@ import (
 )
 
 const (
-	BrowserPolicySchemaVersion = 1
-	BrowserPolicyMaximumRules  = 128
-	BrowserPolicyMaximumBytes  = 32 * 1024
+	BrowserPolicyMaximumRules = 128
+	BrowserPolicyMaximumBytes = 32 * 1024
 	// browserPolicyMaximumDocumentBytes bounds a semantically equivalent
 	// database/jsonb representation. PostgreSQL inserts insignificant spacing
 	// when rendering jsonb, while BrowserPolicyMaximumBytes applies to the
@@ -57,10 +56,9 @@ type BrowserPolicyRule struct {
 }
 
 type BrowserPolicy struct {
-	SchemaVersion int
-	Enabled       bool
-	StartRuleID   string
-	Rules         []BrowserPolicyRule
+	Enabled     bool
+	StartRuleID string
+	Rules       []BrowserPolicyRule
 }
 
 type BrowserLocation struct {
@@ -71,14 +69,14 @@ type BrowserLocation struct {
 }
 
 func DisabledBrowserPolicy() BrowserPolicy {
-	return BrowserPolicy{SchemaVersion: BrowserPolicySchemaVersion}
+	return BrowserPolicy{}
 }
 
 func NewBrowserPolicy(enabled bool, startRuleID string, rules []BrowserPolicyRule) (BrowserPolicy, error) {
 	if len(rules) > BrowserPolicyMaximumRules || !enabled && (startRuleID != "" || len(rules) != 0) {
 		return BrowserPolicy{}, invalidModelError("NewBrowserPolicy", "browser_policy", "", "invalid Browser Policy fields or rule count", "")
 	}
-	policy := BrowserPolicy{SchemaVersion: BrowserPolicySchemaVersion, Enabled: enabled, StartRuleID: startRuleID,
+	policy := BrowserPolicy{Enabled: enabled, StartRuleID: startRuleID,
 		Rules: append([]BrowserPolicyRule(nil), rules...)}
 	if !enabled {
 		policy.StartRuleID = ""
@@ -104,9 +102,6 @@ func NewBrowserPolicy(enabled bool, startRuleID string, rules []BrowserPolicyRul
 }
 
 func (p BrowserPolicy) Validate() error {
-	if p.SchemaVersion != BrowserPolicySchemaVersion {
-		return invalidModelError("BrowserPolicy.Validate", "browser_policy", "", "unsupported Browser Policy schema version", "")
-	}
 	if !p.Enabled {
 		if p.StartRuleID != "" || len(p.Rules) != 0 {
 			return invalidModelError("BrowserPolicy.Validate", "browser_policy", "", "disabled Browser Policy contains enabled fields", "")
@@ -259,9 +254,6 @@ type browserPolicyRuleWire struct {
 }
 
 func EncodeBrowserPolicy(policy BrowserPolicy) ([]byte, error) {
-	if policy.SchemaVersion != BrowserPolicySchemaVersion {
-		return nil, invalidModelError("EncodeBrowserPolicy", "browser_policy", "", "unsupported Browser Policy schema version", "")
-	}
 	var encoded []byte
 	var err error
 	if !policy.Enabled {
@@ -336,7 +328,7 @@ func decodeBrowserPolicy(data []byte, requireCanonical bool) (BrowserPolicy, err
 	for i, rule := range wire.Rules {
 		rules[i] = BrowserPolicyRule(rule)
 	}
-	policy := BrowserPolicy{SchemaVersion: BrowserPolicySchemaVersion, Enabled: wire.Enabled, StartRuleID: wire.StartRuleID, Rules: rules}
+	policy := BrowserPolicy{Enabled: wire.Enabled, StartRuleID: wire.StartRuleID, Rules: rules}
 	if err := policy.Validate(); err != nil {
 		return BrowserPolicy{}, err
 	}

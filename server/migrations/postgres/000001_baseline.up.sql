@@ -2697,7 +2697,6 @@ CREATE TABLE integrity_discrepancies (
     kind varchar(48) NOT NULL CHECK (kind IN (
         'late_focus_loss', 'focus_loss_gap', 'browser_activity_gap', 'correction_acknowledgement_missing'
     )),
-    schema_version integer NOT NULL CHECK (schema_version = 1),
     focus_loss_signal_id varchar(26) UNIQUE,
     sequence bigint CHECK (sequence > 0),
     duration_milliseconds bigint CHECK (duration_milliseconds BETWEEN 1 AND 86400000),

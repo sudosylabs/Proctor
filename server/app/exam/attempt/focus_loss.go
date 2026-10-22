@@ -99,7 +99,7 @@ func (s *Service) EvaluateExamAttemptFocusLoss(ctx context.Context, invocation i
 		return FocusLossEvaluation{}, err
 	}
 	stored, err := s.deps.Persistence.RecordFocusLoss(ctx, &store.ExamAttemptFocusLossSignal{
-		Access: selector, SchemaVersion: command.SchemaVersion, SignalID: s.deps.NewFocusLossSignal(),
+		Access: selector, SignalID: s.deps.NewFocusLossSignal(),
 		EvidenceID: s.deps.NewEvidence(), FlagID: s.deps.NewFlag(), SuspensionID: s.deps.NewSuspension(),
 		Sequence: command.Sequence, DurationMilliseconds: command.DurationMilliseconds, Source: command.Source,
 		AuditEventID: auditID, AuditAt: model.MillisFromTime(model.TimeUTC(s.deps.Now())),
@@ -154,7 +154,7 @@ func (s *Service) evaluateEndedFocusLoss(ctx context.Context, invocation invocat
 	discrepancyID := s.deps.NewDiscrepancy()
 	signalID := s.deps.NewFocusLossSignal()
 	stored, err := s.deps.Persistence.RecordEndedFocusLoss(ctx, &store.ExamAttemptFocusLossDiscrepancy{
-		Access: selector, SchemaVersion: command.SchemaVersion, DiscrepancyID: discrepancyID, SignalID: signalID,
+		Access: selector, DiscrepancyID: discrepancyID, SignalID: signalID,
 		Sequence: command.Sequence, DurationMilliseconds: command.DurationMilliseconds, Source: command.Source,
 		AuditEventID: auditID, AuditAt: model.MillisFromTime(model.TimeUTC(s.deps.Now())),
 	})
@@ -164,7 +164,7 @@ func (s *Service) evaluateEndedFocusLoss(ctx context.Context, invocation invocat
 	if stored == nil || stored.Discrepancy == nil || stored.Discrepancy.Validate() != nil ||
 		stored.Target != *target || stored.Discrepancy.SubmissionID != target.SubmissionID ||
 		stored.Discrepancy.AttemptID != selector.AttemptID || stored.Discrepancy.ParticipationID != selector.ParticipationID ||
-		stored.Discrepancy.Generation != selector.Generation || stored.Discrepancy.SchemaVersion != command.SchemaVersion ||
+		stored.Discrepancy.Generation != selector.Generation ||
 		stored.Discrepancy.Sequence != command.Sequence || stored.Discrepancy.DurationMilliseconds != command.DurationMilliseconds ||
 		stored.Discrepancy.Source != command.Source || (!stored.Duplicate &&
 		(stored.Discrepancy.ID != discrepancyID || stored.Discrepancy.SignalID != signalID)) {

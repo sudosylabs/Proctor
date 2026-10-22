@@ -481,8 +481,7 @@ func newFocusLossInput(t *testing.T, ctx context.Context, ss store.Store, fixtur
 	access store.ExamAttemptFocusLossAccess, sequence, duration int64, source model.FocusLossSource,
 ) *store.ExamAttemptFocusLossSignal {
 	t.Helper()
-	return &store.ExamAttemptFocusLossSignal{Access: access, SchemaVersion: model.FocusLossSignalSchemaVersion,
-		SignalID: model.NewFocusLossSignalID(), EvidenceID: model.NewIntegrityEvidenceID(), FlagID: model.NewIntegrityFlagID(),
+	return &store.ExamAttemptFocusLossSignal{Access: access, SignalID: model.NewFocusLossSignalID(), EvidenceID: model.NewIntegrityEvidenceID(), FlagID: model.NewIntegrityFlagID(),
 		SuspensionID: model.NewAttemptSuspensionID(), Sequence: sequence, DurationMilliseconds: duration, Source: source,
 		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 }

@@ -294,7 +294,6 @@ type examIntegrityDiscrepancyResponse struct {
 	ParticipationID        string `json:"participation_id"`
 	Generation             int64  `json:"generation"`
 	Kind                   string `json:"kind"`
-	SchemaVersion          int    `json:"schema_version"`
 	SignalID               string `json:"focus_loss_signal_id,omitempty"`
 	Sequence               *int64 `json:"sequence,omitempty"`
 	DurationMilliseconds   *int64 `json:"duration_milliseconds,omitempty"`
@@ -469,7 +468,7 @@ func (m examIntegrityReviewHTTPModule) listDiscrepancies(request operationReques
 	for _, item := range page.Items {
 		projected := examIntegrityDiscrepancyResponse{ID: item.ID.String(),
 			ExamAttemptID: item.AttemptID.String(), ParticipationID: item.ParticipationID.String(),
-			Generation: item.Generation, Kind: string(item.Kind), SchemaVersion: item.SchemaVersion,
+			Generation: item.Generation, Kind: string(item.Kind),
 			SignalID: item.SignalID.String(), Source: string(item.Source),
 			CorrectionRevisionID:   item.CorrectionRevisionID.String(),
 			BrowserSourceSessionID: string(item.BrowserSourceSessionID), FinalSequence: item.FinalSequence,

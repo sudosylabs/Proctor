@@ -37,7 +37,7 @@ func exportContentFixture(t *testing.T, filesystem vfspkg.FileSystem) (*Content,
 	staged, err := content.StageAttemptWorkspaceObject(context.Background(), objectID, bytes.NewReader(original), int64(len(original)), "application/octet-stream")
 	require.NoError(t, err)
 	input := app.ExamExportArchiveInput{ExportID: model.NewExamExportID(), AttemptID: model.NewJobAttemptID()}
-	input.Records = []byte(`{"schema_version":1,"export_id":"` + input.ExportID.String() + `","categories":["work"],"submissions":[]}`)
+	input.Records = []byte(`{"export_id":"` + input.ExportID.String() + `","categories":["work"],"submissions":[]}`)
 	input.Files = []app.ExamExportArchiveFile{{SubmissionID: model.NewSubmissionID(), Entry: model.ExamSubmissionManifestEntry{EntryID: model.NewAttemptWorkspaceEntryID(), Kind: model.StarterWorkspaceEntryFile, Path: "answers/answer.txt", ContentVersion: model.NewWorkspaceContentVersion(), MediaType: staged.MediaType, SizeBytes: staged.SizeBytes, SHA256: staged.SHA256, StorageOrigin: model.AttemptWorkspaceStorageAttempt, AttemptObjectID: objectID}}}
 	return content, input
 }
@@ -69,10 +69,9 @@ func TestExamExportArchiveIsStandaloneAndVerifiable(t *testing.T) {
 				require.False(t, exists, "duplicate ZIP member")
 				members[f.Name] = b
 			}
-			var manifest examExportManifestV1
+			var manifest examExportManifest
 			err = json.Unmarshal(members["manifest.json"], &manifest)
 			require.NoError(t, err)
-			require.Equal(t, 1, manifest.SchemaVersion, "incomplete standalone manifest")
 			require.Equal(t, input.ExportID, manifest.ExportID, "incomplete standalone manifest")
 			require.Len(t, manifest.Entries, 3, "incomplete standalone manifest")
 			require.Len(t, members, 4, "incomplete standalone manifest")

@@ -221,7 +221,7 @@ func newExamIntegrityReviewHTTPFake(t *testing.T) *examIntegrityReviewHTTPFake {
 	discrepancy, err := model.NewIntegrityDiscrepancy(model.IntegrityDiscrepancySpecification{
 		ID: model.NewIntegrityDiscrepancyID(), SubmissionID: submissionID, AttemptID: attemptID,
 		ParticipationID: model.NewAttemptParticipationID(), Generation: 1,
-		Kind: model.IntegrityDiscrepancyLateFocusLoss, SchemaVersion: model.FocusLossSignalSchemaVersion,
+		Kind:     model.IntegrityDiscrepancyLateFocusLoss,
 		SignalID: model.NewFocusLossSignalID(), Sequence: 2, DurationMilliseconds: 900,
 		Source: model.FocusLossSourceWindowBlur, ReceivedAt: at.Add(time.Second)})
 	require.NoError(t, err)

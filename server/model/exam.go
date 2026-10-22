@@ -176,9 +176,6 @@ func (d *ExamDraft) Validate() error {
 		return invalidModelError(where, "exam_draft", "", fmt.Sprintf("%s: policy", where), "").wrap(err)
 	}
 	browserPolicy := d.BrowserPolicy
-	if browserPolicy.SchemaVersion == 0 {
-		browserPolicy = DisabledBrowserPolicy()
-	}
 	if err := browserPolicy.Validate(); err != nil {
 		return invalidModelError(where, "exam_draft", "", fmt.Sprintf("%s: browser policy", where), "").wrap(err)
 	}
@@ -197,9 +194,6 @@ func (d *ExamDraft) ApplyBrowserPolicy(policy BrowserPolicy, at time.Time) (bool
 		return false, err
 	}
 	currentPolicy := d.BrowserPolicy
-	if currentPolicy.SchemaVersion == 0 {
-		currentPolicy = DisabledBrowserPolicy()
-	}
 	current, err := EncodeBrowserPolicy(currentPolicy)
 	if err != nil {
 		return false, err

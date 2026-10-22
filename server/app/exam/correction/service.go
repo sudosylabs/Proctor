@@ -359,7 +359,7 @@ func validateApply(c ApplyCommand) error {
 	if c.Instructions.Present && (!utf8.ValidString(c.Instructions.Markdown) || len(c.Instructions.Markdown) > model.ExamInstructionsMarkdownMaxBytes) {
 		return apperror.Invalid("exam.sitting.correction.invalid", "instructions_markdown")
 	}
-	if !c.BrowserPolicy.Present && c.BrowserPolicy.Policy.SchemaVersion != 0 || c.BrowserPolicy.Present && c.BrowserPolicy.Policy.Validate() != nil {
+	if !c.BrowserPolicy.Present && (c.BrowserPolicy.Policy.Enabled || c.BrowserPolicy.Policy.StartRuleID != "" || len(c.BrowserPolicy.Policy.Rules) != 0) || c.BrowserPolicy.Present && c.BrowserPolicy.Policy.Validate() != nil {
 		return apperror.Invalid("exam.sitting.correction.invalid", "browser_policy")
 	}
 	if err := model.ValidateCandidateCorrectionSelection(c.CandidateSummary, c.AffectedCapabilities); err != nil {

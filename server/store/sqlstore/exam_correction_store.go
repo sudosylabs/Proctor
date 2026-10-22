@@ -582,7 +582,7 @@ func applyExamCorrection(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 		return nil, err
 	}
 	revision, err := model.NewLiveCorrectionExamRevision(base, model.LiveCorrectionExamRevisionSpecification{ID: input.RevisionID,
-		Number: number, InstructionsMarkdown: instructions, Resources: resources, BrowserPolicy: browserPolicy,
+		Number: number, InstructionsMarkdown: instructions, Resources: resources, BrowserPolicy: &browserPolicy,
 		CandidateSummary: input.CandidateSummary, AcknowledgementRequired: input.AcknowledgementRequired, AffectedCapabilities: input.AffectedCapabilities,
 		PublishedByUserID: input.ActorUserID, PublishedAt: databaseNow})
 	if err != nil {

@@ -13115,10 +13115,6 @@
             "format": "date-time",
             "type": "string"
           },
-          "schema_version": {
-            "const": 1,
-            "type": "integer"
-          },
           "sequence": {
             "format": "int64",
             "minimum": 1,
@@ -13146,7 +13142,6 @@
           "participation_id",
           "generation",
           "kind",
-          "schema_version",
           "received_at"
         ],
         "type": "object"
@@ -35842,7 +35837,7 @@
     },
     "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/exports": {
       "post": {
-        "description": "Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports additionally require current exact Exam Manager membership and the dedicated Browser Activity view permission on creation, replay, metadata read and download. The general export override cannot bypass these history checks. Candidate self-access is excluded. Personal Access Tokens are forbidden. Select work, integrity, or both explicitly. The entire selected scope is frozen atomically; no partial Sitting archive is returned. Initial limits are 200 Submissions, 50,000 workspace entries, 50,000 structured records, 8 GiB original bytes and 64 MiB structured JSON. Exceeding a limit rejects the request. A configured export period from 1 through 7 days is required; zero leaves exports unconfigured and must be changed explicitly before creation. Expiry starts at request creation, with at most 24 hours for construction. Audit, finite Job and exact category source protections commit together. Retries return the same export and never extend its expiry. The archive contains original workspace files, structured records, a versioned manifest and SHA-256 hashes. Re-import is not supported.",
+        "description": "Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports additionally require current exact Exam Manager membership and the dedicated Browser Activity view permission on creation, replay, metadata read and download. The general export override cannot bypass these history checks. Candidate self-access is excluded. Personal Access Tokens are forbidden. Select work, integrity, or both explicitly. The entire selected scope is frozen atomically; no partial Sitting archive is returned. Initial limits are 200 Submissions, 50,000 workspace entries, 50,000 structured records, 8 GiB original bytes and 64 MiB structured JSON. Exceeding a limit rejects the request. A configured export period from 1 through 7 days is required; zero leaves exports unconfigured and must be changed explicitly before creation. Expiry starts at request creation, with at most 24 hours for construction. Audit, finite Job and exact category source protections commit together. Retries return the same export and never extend its expiry. The archive contains original workspace files, structured records, a manifest and SHA-256 hashes. Re-import is not supported.",
         "operationId": "createSittingExport",
         "parameters": [
           {
@@ -36638,7 +36633,7 @@
     },
     "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/submissions/{submission_id}/exports": {
       "post": {
-        "description": "Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports additionally require current exact Exam Manager membership and the dedicated Browser Activity view permission on creation, replay, metadata read and download. The general export override cannot bypass these history checks. Candidate self-access is excluded. Personal Access Tokens are forbidden. Select work, integrity, or both explicitly. The entire selected scope is frozen atomically; no partial Sitting archive is returned. Initial limits are 200 Submissions, 50,000 workspace entries, 50,000 structured records, 8 GiB original bytes and 64 MiB structured JSON. Exceeding a limit rejects the request. A configured export period from 1 through 7 days is required; zero leaves exports unconfigured and must be changed explicitly before creation. Expiry starts at request creation, with at most 24 hours for construction. Audit, finite Job and exact category source protections commit together. Retries return the same export and never extend its expiry. The archive contains original workspace files, structured records, a versioned manifest and SHA-256 hashes. Re-import is not supported.",
+        "description": "Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports additionally require current exact Exam Manager membership and the dedicated Browser Activity view permission on creation, replay, metadata read and download. The general export override cannot bypass these history checks. Candidate self-access is excluded. Personal Access Tokens are forbidden. Select work, integrity, or both explicitly. The entire selected scope is frozen atomically; no partial Sitting archive is returned. Initial limits are 200 Submissions, 50,000 workspace entries, 50,000 structured records, 8 GiB original bytes and 64 MiB structured JSON. Exceeding a limit rejects the request. A configured export period from 1 through 7 days is required; zero leaves exports unconfigured and must be changed explicitly before creation. Expiry starts at request creation, with at most 24 hours for construction. Audit, finite Job and exact category source protections commit together. Retries return the same export and never extend its expiry. The archive contains original workspace files, structured records, a manifest and SHA-256 hashes. Re-import is not supported.",
         "operationId": "createSubmissionExport",
         "parameters": [
           {

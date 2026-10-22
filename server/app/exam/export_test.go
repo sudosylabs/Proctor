@@ -133,7 +133,7 @@ func (s *exportStoreFake) Get(context.Context, *store.ExamExportAccess) (*store.
 	return &store.ExamExportDownload{Export: &value, Artifact: artifact, Submissions: s.selected}, nil
 }
 func (s *exportStoreFake) BeginBuild(context.Context, *store.ExamExportBuild) (*store.ExamExportSnapshot, error) {
-	b, _ := json.Marshal(map[string]any{"schema_version": 1, "export_id": s.value.ID})
+	b, _ := json.Marshal(map[string]any{"export_id": s.value.ID})
 	return &store.ExamExportSnapshot{Export: s.value, Records: b}, nil
 }
 func (s *exportStoreFake) Publish(context.Context, *store.ExamExportPublication) error {

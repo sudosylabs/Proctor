@@ -95,7 +95,6 @@ components:
         - participation_id
         - generation
         - kind
-        - schema_version
         - received_at
       properties:
         id:
@@ -115,9 +114,6 @@ components:
             - focus_loss_gap
             - browser_activity_gap
             - correction_acknowledgement_missing
-        schema_version:
-          type: integer
-          const: 1
         focus_loss_signal_id:
           $ref: '#/components/schemas/ID'
         sequence:

@@ -884,9 +884,6 @@ func examResponseFromView(view app.ExamView) examResponse {
 	policy := view.Draft.Policy
 	identity := examIdentityResponseFromModel(view.Exam)
 	browserPolicy := view.Draft.BrowserPolicy
-	if browserPolicy.SchemaVersion == 0 {
-		browserPolicy = model.DisabledBrowserPolicy()
-	}
 	return examResponse{
 		Exam: identity,
 		Draft: examDraftResponse{

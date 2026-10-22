@@ -427,7 +427,6 @@ type integrityDiscrepancyRow struct {
 	ParticipationID      string         `db:"participation_id"`
 	Kind                 string         `db:"kind"`
 	Generation           int64          `db:"generation"`
-	SchemaVersion        int            `db:"schema_version"`
 	SignalID             sql.NullString `db:"focus_loss_signal_id"`
 	Sequence             sql.NullInt64  `db:"sequence"`
 	DurationMilliseconds sql.NullInt64  `db:"duration_milliseconds"`
@@ -442,7 +441,7 @@ type integrityDiscrepancyRow struct {
 }
 
 const integrityDiscrepancySelect = `SELECT id,submission_id,exam_attempt_id,participation_id,kind,generation,
-	schema_version,focus_loss_signal_id,sequence,duration_milliseconds,source,missing_before,correction_revision_id,
+	focus_loss_signal_id,sequence,duration_milliseconds,source,missing_before,correction_revision_id,
 	browser_activity_source_session_id::text,final_sequence,gap_reason,unresolved_count,received_at
 	FROM integrity_discrepancies`
 
@@ -491,7 +490,7 @@ func (row integrityDiscrepancyRow) value() (*model.IntegrityDiscrepancy, error) 
 	}
 	value, err := model.NewIntegrityDiscrepancy(model.IntegrityDiscrepancySpecification{ID: id,
 		SubmissionID: submissionID, AttemptID: attemptID, ParticipationID: participationID, Generation: row.Generation,
-		Kind: model.IntegrityDiscrepancyKind(row.Kind), SchemaVersion: row.SchemaVersion, SignalID: signalID,
+		Kind: model.IntegrityDiscrepancyKind(row.Kind), SignalID: signalID,
 		Sequence: row.Sequence.Int64, DurationMilliseconds: row.DurationMilliseconds.Int64, Source: model.FocusLossSource(row.Source.String),
 		MissingBefore: row.MissingBefore.Int64, CorrectionRevisionID: correctionRevisionID, BrowserSourceSessionID: browserSourceID,
 		FinalSequence: finalSequence, GapReason: row.GapReason.String, UnresolvedCount: row.UnresolvedCount.Int64,

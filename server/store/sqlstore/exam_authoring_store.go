@@ -565,9 +565,6 @@ func createExamAuthoring(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 	}
 	row.Policy = jsonValue(policy)
 	browserPolicy := input.Draft.BrowserPolicy
-	if browserPolicy.SchemaVersion == 0 {
-		browserPolicy = model.DisabledBrowserPolicy()
-	}
 	browserPolicyBytes, err := model.EncodeBrowserPolicy(browserPolicy)
 	if err != nil {
 		return nil, err
@@ -605,9 +602,6 @@ func newExamAuthoringRow(snapshot *store.ExamAuthoringSnapshot, actorIsManager b
 		return examAuthoringRow{}, err
 	}
 	browserPolicy := snapshot.Draft.BrowserPolicy
-	if browserPolicy.SchemaVersion == 0 {
-		browserPolicy = model.DisabledBrowserPolicy()
-	}
 	browserPolicyBytes, err := model.EncodeBrowserPolicy(browserPolicy)
 	if err != nil {
 		return examAuthoringRow{}, err
