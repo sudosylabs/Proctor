@@ -827,9 +827,10 @@ and their formatted forms) are not used.
 
 In the server, cache, and VFS modules the architecture gate rejects the testing
 failure methods, failure-only conditionals, splittable compound assertions,
-forwarding helpers, and partial assertions over a recorded call log, and
-`make quality` runs `testifylint`. The mail module keeps no third-party Go
-dependencies, so its tests use the standard `testing` package.
+forwarding helpers, partial assertions over a recorded call log, and loops
+over named case tables that do not call `t.Run`; `make quality` runs
+`testifylint`. The mail module keeps no third-party Go dependencies, so its
+tests use the standard `testing` package.
 
 ## Verify
 

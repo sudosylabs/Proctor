@@ -272,6 +272,176 @@ func recordedCallLogName(expression ast.Expr) string {
 	return types.ExprString(expression)
 }
 
+// TestNamedCaseTablesRunAsSubtests keeps a table of named cases running each
+// case as its own subtest, so a failure names its case and one case can run
+// alone. A named case table is a slice or map literal (ranged directly or
+// through a local variable) of struct cases with a name, desc, description,
+// title, label, or scenario field, or a map from a string to a struct or a
+// function. The loop body must call Run.
+func TestNamedCaseTablesRunAsSubtests(t *testing.T) {
+	t.Parallel()
+
+	inspectRepositoryTestCode(t, func(fset *token.FileSet, path string, file *ast.File) {
+		for _, violation := range namedCaseTableViolations(fset, path, file) {
+			assert.Fail(t, violation)
+		}
+	})
+}
+
+func TestNamedCaseTableRuleRejectsPlantedViolations(t *testing.T) {
+	t.Parallel()
+
+	const source = `package fixture
+
+import "testing"
+
+func TestFixture(t *testing.T) {
+	tests := []struct {
+		name string
+		in   int
+	}{{name: "one", in: 1}}
+	for _, test := range tests {
+		_ = test.in
+	}
+	for name, run := range map[string]func() error{"run": nil} {
+		_, _ = name, run
+	}
+	for _, test := range map[string]struct{ in int }{"one": {in: 1}} {
+		_ = test
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) { _ = test.in })
+	}
+	for _, value := range []struct{ in, out int }{{1, 2}} {
+		_ = value
+	}
+	for key, value := range map[string]string{"a": "b"} {
+		_, _ = key, value
+	}
+}
+`
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "fixture_test.go", source, parser.SkipObjectResolution)
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"fixture_test.go:10 ranges over named cases (field name) without t.Run; run each case as a named subtest",
+		"fixture_test.go:13 ranges over named cases (map key) without t.Run; run each case as a named subtest",
+		"fixture_test.go:16 ranges over named cases (map key) without t.Run; run each case as a named subtest",
+	}, namedCaseTableViolations(fset, "fixture_test.go", file))
+}
+
+// caseNameFields are the struct fields that name a table case.
+var caseNameFields = map[string]bool{
+	"name": true, "desc": true, "description": true, "title": true, "label": true, "scenario": true,
+}
+
+func namedCaseTableViolations(fset *token.FileSet, path string, file *ast.File) []string {
+	var violations []string
+	for _, declaration := range file.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if !ok || function.Body == nil {
+			continue
+		}
+		tables := make(map[string]*ast.CompositeLit)
+		ast.Inspect(function.Body, func(node ast.Node) bool {
+			switch statement := node.(type) {
+			case *ast.AssignStmt:
+				for index, left := range statement.Lhs {
+					identifier, isIdent := left.(*ast.Ident)
+					if !isIdent || index >= len(statement.Rhs) {
+						continue
+					}
+					if literal, isLiteral := statement.Rhs[index].(*ast.CompositeLit); isLiteral {
+						tables[identifier.Name] = literal
+					}
+				}
+			case *ast.ValueSpec:
+				for index, identifier := range statement.Names {
+					if index >= len(statement.Values) {
+						continue
+					}
+					if literal, isLiteral := statement.Values[index].(*ast.CompositeLit); isLiteral {
+						tables[identifier.Name] = literal
+					}
+				}
+			case *ast.RangeStmt:
+				var table *ast.CompositeLit
+				switch ranged := unparen(statement.X).(type) {
+				case *ast.CompositeLit:
+					table = ranged
+				case *ast.Ident:
+					table = tables[ranged.Name]
+				}
+				if table == nil {
+					return true
+				}
+				naming := caseTableNaming(table)
+				if naming == "" || callsRun(statement.Body) {
+					return true
+				}
+				violations = append(violations, fmt.Sprintf("%s ranges over named cases (%s) without t.Run; run each case as a named subtest",
+					position(fset, path, statement), naming))
+			}
+			return true
+		})
+	}
+	return violations
+}
+
+// caseTableNaming describes how a table literal names its cases, or returns
+// "" when it is not a table of named cases.
+func caseTableNaming(table *ast.CompositeLit) string {
+	var element ast.Expr
+	stringKeys := false
+	switch typed := table.Type.(type) {
+	case *ast.ArrayType:
+		element = typed.Elt
+	case *ast.MapType:
+		element = typed.Value
+		key, isIdent := typed.Key.(*ast.Ident)
+		stringKeys = isIdent && key.Name == "string"
+	default:
+		return ""
+	}
+	if star, isStar := element.(*ast.StarExpr); isStar {
+		element = star.X
+	}
+	switch typed := element.(type) {
+	case *ast.StructType:
+		for _, field := range typed.Fields.List {
+			for _, name := range field.Names {
+				if caseNameFields[strings.ToLower(name.Name)] {
+					return "field " + name.Name
+				}
+			}
+		}
+		if stringKeys {
+			return "map key"
+		}
+	case *ast.FuncType:
+		if stringKeys {
+			return "map key"
+		}
+	}
+	return ""
+}
+
+// callsRun reports whether a loop body starts a subtest or sub-benchmark.
+func callsRun(body *ast.BlockStmt) bool {
+	found := false
+	ast.Inspect(body, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return !found
+		}
+		if selector, isSelector := call.Fun.(*ast.SelectorExpr); isSelector && selector.Sel.Name == "Run" && len(call.Args) == 2 {
+			found = true
+		}
+		return !found
+	})
+	return found
+}
+
 // testifyModules are the product modules whose tests use testify.
 // packages/mail is excluded on purpose: it keeps no third-party Go
 // dependencies at all, so its tests use the testing package alone.

@@ -273,10 +273,12 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 		},
 		"issuer": func(candidate *store.DesktopAuthorizationExchange) { candidate.Issuer = "https://other.example.edu" },
 	} {
-		candidate := *exchange
-		mutate(&candidate)
-		_, mismatchErr := ss.BrowserAuthentication().Exchange(ctx, &candidate)
-		require.True(t, store.IsNotFound(mismatchErr), "Exchange(%s mix-up) error", name)
+		t.Run(name+" mix-up", func(t *testing.T) {
+			candidate := *exchange
+			mutate(&candidate)
+			_, mismatchErr := ss.BrowserAuthentication().Exchange(ctx, &candidate)
+			require.True(t, store.IsNotFound(mismatchErr), "Exchange() error")
+		})
 	}
 	peers := []store.BrowserAuthenticationStore{ss.BrowserAuthentication(), ss.BrowserAuthentication()}
 	if len(concurrentPeers) > 0 && concurrentPeers[0] != nil {

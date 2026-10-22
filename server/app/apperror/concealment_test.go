@@ -28,10 +28,13 @@ func TestConcealmentPresentsUnexpectedFailuresAsUnavailable(t *testing.T) {
 	for name, present := range map[string]func(error) error{
 		"present": testConcealment.Present, "conceal": testConcealment.Conceal,
 	} {
-		require.NoError(t, present(nil), "%s(nil)", name)
-		err := present(cause)
-		require.True(t, apperror.Is(err, "widget.unavailable"), "%s(cause)", name)
-		require.ErrorIs(t, err, cause, "%s(cause)", name)
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			require.NoError(t, present(nil))
+			err := present(cause)
+			require.True(t, apperror.Is(err, "widget.unavailable"))
+			require.ErrorIs(t, err, cause)
+		})
 	}
 }
 

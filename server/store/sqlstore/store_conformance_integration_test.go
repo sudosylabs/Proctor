@@ -1135,8 +1135,10 @@ func assertExamRevisionDatabaseImmutability(t *testing.T, ctx context.Context, p
 		}},
 	}
 	for _, test := range queries {
-		_, err := persistence.GetMaster().Exec(ctx, test.query, test.args...)
-		assertPostgresCode(t, test.name, err, "55000")
+		t.Run(test.name, func(t *testing.T) {
+			_, err := persistence.GetMaster().Exec(ctx, test.query, test.args...)
+			assertPostgresCode(t, test.name, err, "55000")
+		})
 	}
 	_, err = persistence.ExamRevision().GetSnapshot(ctx, fixture.ExamID, fixture.RevisionID)
 	require.NoError(t, err)
@@ -1172,20 +1174,22 @@ func assertExamRevisionSealCompleteness(t *testing.T, ctx context.Context, persi
 		{name: "unsealed snapshot", number: 2000, sealed: false, count: 0},
 		{name: "incomplete sealed snapshot", number: 3000, sealed: true, count: 1},
 	} {
-		tx, err := persistence.GetMaster().DB().BeginTxx(ctx, nil)
-		require.NoError(t, err)
-		revisionID := model.NewExamRevisionID()
-		_, err = tx.ExecContext(ctx, `INSERT INTO exam_revisions (id,exam_id,number,snapshot_schema_version,source_draft_revision,title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,browser_policy_document,browser_policy_canonical,browser_policy_digest,starter_workspace_digest,content_digest,resource_count,starter_entry_count,starter_total_bytes,published_by_user_id,published_at,base_revision_id,publication_kind,sealed)
-			SELECT $1,exam_id,number+$2,snapshot_schema_version,source_draft_revision,title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,browser_policy_document,browser_policy_canonical,browser_policy_digest,starter_workspace_digest,content_digest,$3,0,0,published_by_user_id,published_at,NULL,publication_kind,$4 FROM exam_revisions WHERE id=$5`, revisionID.String(), test.number, test.count, test.sealed, fixture.RevisionID.String())
-		if err != nil {
-			_ = tx.Rollback()
+		t.Run(test.name, func(t *testing.T) {
+			tx, err := persistence.GetMaster().DB().BeginTxx(ctx, nil)
 			require.NoError(t, err)
-		}
-		err = tx.Commit()
-		assertPostgresCode(t, test.name, err, "23514")
-		var exists bool
-		require.NoError(t, persistence.GetMaster().Get(ctx, &exists, `SELECT EXISTS (SELECT 1 FROM exam_revisions WHERE id=?)`, revisionID.String()), "%s persisted after rejected commit: exists=%v err", test.name, exists)
-		require.False(t, exists, "%s persisted after rejected commit: exists=%v err", test.name, exists)
+			revisionID := model.NewExamRevisionID()
+			_, err = tx.ExecContext(ctx, `INSERT INTO exam_revisions (id,exam_id,number,snapshot_schema_version,source_draft_revision,title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,browser_policy_document,browser_policy_canonical,browser_policy_digest,starter_workspace_digest,content_digest,resource_count,starter_entry_count,starter_total_bytes,published_by_user_id,published_at,base_revision_id,publication_kind,sealed)
+				SELECT $1,exam_id,number+$2,snapshot_schema_version,source_draft_revision,title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,browser_policy_document,browser_policy_canonical,browser_policy_digest,starter_workspace_digest,content_digest,$3,0,0,published_by_user_id,published_at,NULL,publication_kind,$4 FROM exam_revisions WHERE id=$5`, revisionID.String(), test.number, test.count, test.sealed, fixture.RevisionID.String())
+			if err != nil {
+				_ = tx.Rollback()
+				require.NoError(t, err)
+			}
+			err = tx.Commit()
+			assertPostgresCode(t, test.name, err, "23514")
+			var exists bool
+			require.NoError(t, persistence.GetMaster().Get(ctx, &exists, `SELECT EXISTS (SELECT 1 FROM exam_revisions WHERE id=?)`, revisionID.String()), "%s persisted after rejected commit: exists=%v err", test.name, exists)
+			require.False(t, exists, "%s persisted after rejected commit: exists=%v err", test.name, exists)
+		})
 	}
 }
 

@@ -102,11 +102,13 @@ func TestSecurityPreflightStore(t *testing.T, ss store.Store, probes ...Security
 		"key":          func(a *store.SecurityPreflightAccess) { a.DPoPKeyThumbprint = strings.Repeat("B", 42) + "A" },
 		"build":        func(a *store.SecurityPreflightAccess) { a.DesktopBuild.DesktopBuildID = "another-build" },
 	} {
-		foreign := *report
-		mutate(&foreign.Access)
-		foreign.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
-		_, err = ss.ExamAttempt().ReportSecurityPreflight(ctx, &foreign, examCommand(fixture.candidate.ID, store.SecurityPreflightReportOperation, "foreign-"+name, "foreign-"+name))
-		require.Error(t, err, "%s selector accepted a foreign preflight report", name)
+		t.Run("foreign "+name, func(t *testing.T) {
+			foreign := *report
+			mutate(&foreign.Access)
+			foreign.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
+			_, reportErr := ss.ExamAttempt().ReportSecurityPreflight(ctx, &foreign, examCommand(fixture.candidate.ID, store.SecurityPreflightReportOperation, "foreign-"+name, "foreign-"+name))
+			require.Error(t, reportErr, "selector accepted a foreign preflight report")
+		})
 	}
 	if len(probes) > 0 {
 		// Completing a nonexistent audit must roll back the preceding report write.

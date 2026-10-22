@@ -217,10 +217,12 @@ func TestLifecycleCommandsValidatePrivateReasonBounds(t *testing.T) {
 		}},
 	}
 	for _, command := range commands {
-		for _, reason := range []string{"", " padded ", strings.Repeat("x", 1001), strings.Repeat("é", 2001)} {
-			err := command.run(reason)
-			assertFaultCode(t, err, "exam.sitting.invalid")
-		}
+		t.Run(command.name, func(t *testing.T) {
+			for _, reason := range []string{"", " padded ", strings.Repeat("x", 1001), strings.Repeat("é", 2001)} {
+				err := command.run(reason)
+				assertFaultCode(t, err, "exam.sitting.invalid")
+			}
+		})
 	}
 }
 

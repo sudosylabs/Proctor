@@ -133,7 +133,9 @@ func TestStagingIsInvisibleThroughFilesystem(t *testing.T) {
 			require.NoError(t, err)
 		}
 		for _, operation := range operations {
-			assert.ErrorIs(t, operation.run(alias), vfs.ErrNotFound, "staging %s through case alias", operation.name)
+			t.Run(operation.name, func(t *testing.T) {
+				require.ErrorIs(t, operation.run(alias), vfs.ErrNotFound, "staging through case alias")
+			})
 		}
 	})
 	for _, list := range []struct {

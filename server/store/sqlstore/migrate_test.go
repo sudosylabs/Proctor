@@ -249,15 +249,15 @@ func assertBaselineSchema(t *testing.T, ctx context.Context, migrator *Migrator)
 		{table: "users", name: "profile_picture_changed_at"},
 		{table: "upload_leases", name: "consumed_at"},
 	} {
-		var nullable string
-		if !assert.NoError(t, migrator.store.GetMaster().Get(ctx, &nullable, `
-			SELECT is_nullable
-			  FROM information_schema.columns
-			 WHERE table_schema = 'public' AND table_name = ? AND column_name = ?
-		`, column.table, column.name), "inspect %s.%s nullability", column.table, column.name) {
-			continue
-		}
-		assert.Equal(t, "YES", nullable, "%s.%s is_nullable = %q; want YES", column.table, column.name, nullable)
+		t.Run(column.table+"."+column.name, func(t *testing.T) {
+			var nullable string
+			require.NoError(t, migrator.store.GetMaster().Get(ctx, &nullable, `
+				SELECT is_nullable
+				  FROM information_schema.columns
+				 WHERE table_schema = 'public' AND table_name = ? AND column_name = ?
+			`, column.table, column.name), "inspect nullability")
+			assert.Equal(t, "YES", nullable)
+		})
 	}
 }
 
