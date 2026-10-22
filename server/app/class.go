@@ -149,7 +149,8 @@ func (s *classService) CreateClass(ctx context.Context, invocation invocation.In
 		return nil, apperror.New("request.invalid").WithField("field", "programme_level_id")
 	}
 	resource := model.Resource{Type: model.ResourceProgrammeLevel, ID: levelID.String()}
-	scopeType, scopeID, err := s.deps.Authorization.AuthorizeWithScope(ctx, invocation, model.ActionClassManage, resource)
+	scope, err := s.deps.Authorization.AuthorizeWithScope(ctx, invocation, model.ActionClassManage, resource)
+	scopeType, scopeID := scope.Type, scope.ID
 	if err != nil {
 		return nil, err
 	}

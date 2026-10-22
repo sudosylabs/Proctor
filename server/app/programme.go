@@ -112,7 +112,8 @@ func (s *programmeService) CreateProgramme(ctx context.Context, invocation invoc
 		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id")
 	}
 	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID.String()}
-	scopeType, scopeID, err := s.deps.Authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeManage, resource)
+	scope, err := s.deps.Authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeManage, resource)
+	scopeType, scopeID := scope.Type, scope.ID
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +238,8 @@ func (s *programmeService) getForMutation(ctx context.Context, invocation invoca
 	if !id.IsValid() {
 		return nil, "", "", apperror.New("request.invalid").WithField("field", "programme_id")
 	}
-	scopeType, scopeID, err := s.deps.Authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeManage, model.Resource{Type: model.ResourceProgramme, ID: id.String()})
+	scope, err := s.deps.Authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeManage, model.Resource{Type: model.ResourceProgramme, ID: id.String()})
+	scopeType, scopeID := scope.Type, scope.ID
 	if err != nil {
 		return nil, "", "", err
 	}

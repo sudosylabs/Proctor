@@ -260,6 +260,12 @@ func (s *accessControlService) Authorize(
 	return s.authorizeCurrentState(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata())
 }
 
+// authorizationScope reports the role-binding scope that granted a decision.
+type authorizationScope struct {
+	Type model.RoleScopeType
+	ID   string
+}
+
 // AuthorizeWithScope is Authorize that also reports the role-binding scope
 // which granted the decision, for use cases that audit at that scope.
 func (s *accessControlService) AuthorizeWithScope(
@@ -267,8 +273,12 @@ func (s *accessControlService) AuthorizeWithScope(
 	invocation invocation.Invocation,
 	action model.Action,
 	resource model.Resource,
-) (model.RoleScopeType, string, error) {
-	return s.authorizeCurrentStateWithScope(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata())
+) (authorizationScope, error) {
+	scopeType, scopeID, err := s.authorizeCurrentStateWithScope(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata())
+	if err != nil {
+		return authorizationScope{}, err
+	}
+	return authorizationScope{Type: scopeType, ID: scopeID}, nil
 }
 
 // InstitutionResource returns the installation's singleton Institution as an

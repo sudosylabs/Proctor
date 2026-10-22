@@ -30,11 +30,24 @@ type Sittings interface {
 	Resolve(context.Context, model.ExamSittingID) (*store.ExamSittingSnapshot, error)
 }
 
+// ManagerAuthorization reports a granted current Exam Manager decision:
+// Override is true when the decision rested on the explicit override Action
+// rather than the ordinary Manager relationship.
+type ManagerAuthorization struct {
+	Override bool
+}
+
+// BrowserActivityAuthorization reports the Academic Unit of the Exam whose
+// browser activity the caller may read.
+type BrowserActivityAuthorization struct {
+	AcademicUnitID model.AcademicUnitID
+}
+
 type ManagerAuthorizer interface {
 	AuthorizeSittingView(context.Context, invocation.Invocation, model.ExamSittingID) error
-	AuthorizeSittingManage(context.Context, invocation.Invocation, model.ExamSittingID) (override bool, err error)
+	AuthorizeSittingManage(context.Context, invocation.Invocation, model.ExamSittingID) (ManagerAuthorization, error)
 	AuthorizeSubmissionView(context.Context, invocation.Invocation, model.SubmissionID) error
-	AuthorizeBrowserActivityView(context.Context, invocation.Invocation, model.ExamSittingID) (model.AcademicUnitID, error)
+	AuthorizeBrowserActivityView(context.Context, invocation.Invocation, model.ExamSittingID) (BrowserActivityAuthorization, error)
 }
 
 type Auditor interface {
@@ -551,7 +564,8 @@ func (s *Service) ReallowExamAttempt(ctx context.Context, invocation invocation.
 	}
 	// Authorize the exact Sitting before reading the Attempt so existence is
 	// not probeable; later exits complete the audit attempt as failed.
-	override, err := s.deps.Managers.AuthorizeSittingManage(ctx, invocation, command.SittingID)
+	management, err := s.deps.Managers.AuthorizeSittingManage(ctx, invocation, command.SittingID)
+	override := management.Override
 	if err != nil {
 		return ReallowResult{}, err
 	}

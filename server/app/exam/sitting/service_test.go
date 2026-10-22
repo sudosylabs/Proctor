@@ -89,13 +89,13 @@ func TestAuthorizeViewRechecksCurrentSittingRelationship(t *testing.T) {
 	fixture := newFixture(t)
 	fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: fixture.sitting(t)}
 
-	require.NoError(t, fixture.service.AuthorizeView(context.Background(), fixture.invocation, fixture.sittingID))
+	require.NoError(t, fixture.service.AuthorizeSittingView(context.Background(), fixture.invocation, fixture.sittingID))
 	require.Equal(t, fixture.sittingID, fixture.persistence.resolveID, "subscription authorization = resolve")
 	require.Equal(t, model.ActionExamSittingView, fixture.authorizer.action, "subscription authorization = resolve")
 	require.Equal(t, model.Resource{Type: model.ResourceExamSitting, ID: fixture.sittingID.String()}, fixture.authorizer.resource, "subscription authorization = resolve")
 
 	fixture.memberships.items = nil
-	require.NoError(t, fixture.service.AuthorizeView(context.Background(), fixture.invocation, fixture.sittingID))
+	require.NoError(t, fixture.service.AuthorizeSittingView(context.Background(), fixture.invocation, fixture.sittingID))
 	require.Equal(t, model.ActionExamSittingViewOverride, fixture.authorizer.action)
 }
 
@@ -125,10 +125,10 @@ func TestBrowserActivityRequiresCurrentExactManagerAndDedicatedPermission(t *tes
 			wantAllowed := !test.removeManager && !test.denyPermission
 			require.Equal(t, wantAllowed, err == nil, "AuthorizeBrowserActivityView() = %s, %v", unit, err)
 			if wantAllowed {
-				require.Equal(t, f.unitID, unit, "wrong authorized unit")
+				require.Equal(t, f.unitID, unit.AcademicUnitID, "wrong authorized unit")
 			}
 			if !wantAllowed {
-				require.Empty(t, unit, "denial returned a scope")
+				require.Empty(t, unit.AcademicUnitID, "denial returned a scope")
 			}
 			require.Equal(t, model.ActionExamAttemptBrowserActivityView, f.authorizer.action, "used an unrelated action or resource")
 			require.Equal(t, f.sittingID.String(), f.authorizer.resource.ID, "used an unrelated action or resource")
@@ -156,14 +156,14 @@ func TestAuthorizeManageReportsOrdinaryAndOverrideDecision(t *testing.T) {
 	t.Parallel()
 	fixture := newFixture(t)
 	fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: fixture.sitting(t)}
-	override, err := fixture.service.AuthorizeManage(context.Background(), fixture.invocation, fixture.sittingID)
+	override, err := fixture.service.AuthorizeSittingManage(context.Background(), fixture.invocation, fixture.sittingID)
 	require.NoError(t, err, "ordinary manage override")
-	require.False(t, override, "ordinary manage override")
+	require.False(t, override.Override, "ordinary manage override")
 	require.Equal(t, model.ActionExamSittingManage, fixture.authorizer.action, "ordinary manage override")
 	fixture.memberships.items = nil
-	override, err = fixture.service.AuthorizeManage(context.Background(), fixture.invocation, fixture.sittingID)
+	override, err = fixture.service.AuthorizeSittingManage(context.Background(), fixture.invocation, fixture.sittingID)
 	require.NoError(t, err, "override manage override")
-	require.True(t, override, "override manage override")
+	require.True(t, override.Override, "override manage override")
 	require.Equal(t, model.ActionExamSittingManageOverride, fixture.authorizer.action, "override manage override")
 }
 
@@ -188,21 +188,21 @@ func TestAuthorizeSubmissionReviewAndReleaseUseDistinctCurrentPermissions(t *tes
 
 	override, err := fixture.service.AuthorizeSubmissionReview(context.Background(), fixture.invocation, fixture.examID, submissionID)
 	require.NoError(t, err, "ordinary Review authorization override")
-	require.False(t, override, "ordinary Review authorization override")
+	require.False(t, override.Override, "ordinary Review authorization override")
 	require.Equal(t, model.ActionSubmissionReview, fixture.authorizer.action, "ordinary Review authorization override")
 	override, err = fixture.service.AuthorizeSubmissionRelease(context.Background(), fixture.invocation, fixture.examID, submissionID)
 	require.NoError(t, err, "ordinary release authorization override")
-	require.False(t, override, "ordinary release authorization override")
+	require.False(t, override.Override, "ordinary release authorization override")
 	require.Equal(t, model.ActionSubmissionRelease, fixture.authorizer.action, "ordinary release authorization override")
 
 	fixture.memberships.items = nil
 	override, err = fixture.service.AuthorizeSubmissionReview(context.Background(), fixture.invocation, fixture.examID, submissionID)
 	require.NoError(t, err, "Review override authorization override")
-	require.True(t, override, "Review override authorization override")
+	require.True(t, override.Override, "Review override authorization override")
 	require.Equal(t, model.ActionSubmissionReviewOverride, fixture.authorizer.action, "Review override authorization override")
 	override, err = fixture.service.AuthorizeSubmissionRelease(context.Background(), fixture.invocation, fixture.examID, submissionID)
 	require.NoError(t, err, "release override authorization override")
-	require.True(t, override, "release override authorization override")
+	require.True(t, override.Override, "release override authorization override")
 	require.Equal(t, model.ActionSubmissionReleaseOverride, fixture.authorizer.action, "release override authorization override")
 }
 

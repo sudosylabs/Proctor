@@ -24,7 +24,7 @@ type nativeReviewAuthorizer struct {
 	calls int
 }
 
-func (a *nativeReviewAuthorizer) AuthorizeView(context.Context, invocation.Invocation, model.SubmissionID) error {
+func (a *nativeReviewAuthorizer) AuthorizeSubmissionView(context.Context, invocation.Invocation, model.SubmissionID) error {
 	a.calls++
 	return a.err
 }

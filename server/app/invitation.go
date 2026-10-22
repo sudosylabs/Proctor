@@ -295,7 +295,7 @@ type invitationRoleReader interface {
 }
 type invitationAuthorizer interface {
 	Authorize(context.Context, invocation.Invocation, model.Action, model.Resource) error
-	CanDelegateActionsAtScope(context.Context, invocation.Invocation, []string, model.RoleScopeType, string) error
+	AuthorizeActionDelegation(context.Context, invocation.Invocation, []string, model.RoleScopeType, string) error
 	Visibility(context.Context, invocation.Invocation, model.Action) (store.InvitationVisibilityScope, error)
 }
 type invitationPasswordHasher interface {
@@ -351,7 +351,7 @@ func (a invitationAuthorizationAdapter) Authorize(ctx context.Context, invocatio
 	return a.authorization.Authorize(ctx, invocation, action, resource)
 }
 
-func (a invitationAuthorizationAdapter) CanDelegateActionsAtScope(ctx context.Context, invocation invocation.Invocation, actions []string, scopeType model.RoleScopeType, scopeID string) error {
+func (a invitationAuthorizationAdapter) AuthorizeActionDelegation(ctx context.Context, invocation invocation.Invocation, actions []string, scopeType model.RoleScopeType, scopeID string) error {
 	if a.authorization == nil {
 		return apperror.New("invitation.unavailable")
 	}
@@ -1114,7 +1114,7 @@ func (s *invitationService) prepareReplacement(ctx context.Context, invocation i
 		if err = validateInvitationDelegableRole(role, model.RoleScopeAcademicUnit); err != nil {
 			return nil, "", err
 		}
-		if err = s.deps.Authorization.CanDelegateActionsAtScope(ctx, invocation, role.Permissions, model.RoleScopeAcademicUnit, unitID.String()); err != nil {
+		if err = s.deps.Authorization.AuthorizeActionDelegation(ctx, invocation, role.Permissions, model.RoleScopeAcademicUnit, unitID.String()); err != nil {
 			return nil, "", err
 		}
 		if startsAt.IsZero() {
@@ -1166,7 +1166,7 @@ func (s *invitationService) prepareReplacement(ctx context.Context, invocation i
 		if err = validateInvitationDelegableRole(role, model.RoleScopeInstitution); err != nil {
 			return nil, "", err
 		}
-		if err = s.deps.Authorization.CanDelegateActionsAtScope(ctx, invocation, role.Permissions, model.RoleScopeInstitution, institutionID.String()); err != nil {
+		if err = s.deps.Authorization.AuthorizeActionDelegation(ctx, invocation, role.Permissions, model.RoleScopeInstitution, institutionID.String()); err != nil {
 			return nil, "", err
 		}
 		if startsAt.IsZero() {
@@ -1366,7 +1366,7 @@ func (s *invitationService) IssueTeacherAcademicUnitInvitation(ctx context.Conte
 	if err = validateInvitationDelegableRole(role, model.RoleScopeAcademicUnit); err != nil {
 		return InvitationView{}, err
 	}
-	if err = s.deps.Authorization.CanDelegateActionsAtScope(ctx, invocation, role.Permissions, model.RoleScopeAcademicUnit, unitID.String()); err != nil {
+	if err = s.deps.Authorization.AuthorizeActionDelegation(ctx, invocation, role.Permissions, model.RoleScopeAcademicUnit, unitID.String()); err != nil {
 		return InvitationView{}, err
 	}
 	semantic := command
@@ -1501,7 +1501,7 @@ func (s *invitationService) IssueAcademicUnitRoleInvitation(ctx context.Context,
 	if err = validateInvitationDelegableRole(role, model.RoleScopeAcademicUnit); err != nil {
 		return InvitationView{}, err
 	}
-	if err = s.deps.Authorization.CanDelegateActionsAtScope(ctx, invocation, role.Permissions, model.RoleScopeAcademicUnit, unitID.String()); err != nil {
+	if err = s.deps.Authorization.AuthorizeActionDelegation(ctx, invocation, role.Permissions, model.RoleScopeAcademicUnit, unitID.String()); err != nil {
 		return InvitationView{}, err
 	}
 	semantic := command
@@ -1545,7 +1545,7 @@ func (s *invitationService) IssueInstitutionRoleInvitation(ctx context.Context, 
 	if err = validateInvitationDelegableRole(role, model.RoleScopeInstitution); err != nil {
 		return InvitationView{}, err
 	}
-	if err = s.deps.Authorization.CanDelegateActionsAtScope(ctx, invocation, role.Permissions, model.RoleScopeInstitution, institutionID.String()); err != nil {
+	if err = s.deps.Authorization.AuthorizeActionDelegation(ctx, invocation, role.Permissions, model.RoleScopeInstitution, institutionID.String()); err != nil {
 		return InvitationView{}, err
 	}
 	semantic := command

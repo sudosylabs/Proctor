@@ -268,10 +268,10 @@ func (a *Authoring) GetExam(ctx context.Context, invocation invocation.Invocatio
 	return project(snapshot), nil
 }
 
-// AuthorizeView performs the same current relationship and role decision used
+// AuthorizeExamView performs the same current relationship and role decision used
 // by Get without loading authored Draft content. Realtime subscriptions use it
 // so a scoped role alone cannot reveal Exam events to a non-manager.
-func (a *Authoring) AuthorizeView(ctx context.Context, invocation invocation.Invocation, examID model.ExamID) error {
+func (a *Authoring) AuthorizeExamView(ctx context.Context, invocation invocation.Invocation, examID model.ExamID) error {
 	principal := invocation.Principal()
 	if principal.Validate() != nil || !examID.IsValid() {
 		return apperror.Invalid("exam.invalid", "exam_id")

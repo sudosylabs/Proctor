@@ -368,7 +368,7 @@ func TestAuthorizeViewSelectsCurrentManagerOrExplicitOverride(t *testing.T) {
 				fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 			}
 			fixture.authorizer.err = test.authorize
-			err := fixture.service.AuthorizeView(context.Background(), fixture.invocation, fixture.examID)
+			err := fixture.service.AuthorizeExamView(context.Background(), fixture.invocation, fixture.examID)
 			require.ErrorIs(t, err, test.authorize)
 			require.Equal(t, test.want, fixture.authorizer.action, "authorization")
 			require.Equal(t, model.Resource{Type: model.ResourceExam, ID: fixture.examID.String()}, fixture.authorizer.resource, "authorization")

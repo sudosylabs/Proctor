@@ -140,13 +140,9 @@ func (a *userProfileAuthorizerFake) AuthorizeSearch(context.Context, invocation.
 	}
 	return store.UserVisibilityScope{ClassIDs: []model.ClassID{"class-a"}, ActiveAt: model.TimeFromMillis(100)}, nil
 }
-func (a *userProfileAuthorizerFake) AuthorizeProfileRead(context.Context, invocation.Invocation, string) (bool, error) {
+func (a *userProfileAuthorizerFake) AuthorizeProfileRead(context.Context, invocation.Invocation, string) (profileReadAuthorization, error) {
 	*a.events = append(*a.events, "authorize-read")
-	return a.fullRead, a.readErr
-}
-func (a *userProfileAuthorizerFake) AuthorizeRead(context.Context, invocation.Invocation, string) error {
-	*a.events = append(*a.events, "authorize-read")
-	return a.readErr
+	return profileReadAuthorization{FullProfile: a.fullRead}, a.readErr
 }
 func (a *userProfileAuthorizerFake) Authorize(context.Context, invocation.Invocation, model.Action, model.Resource) error {
 	*a.events = append(*a.events, "authorize-manage")

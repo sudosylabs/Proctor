@@ -65,7 +65,8 @@ func (s *Service) SuspendExamAttempt(ctx context.Context, invocation invocation.
 	if err != nil {
 		return ManualSuspensionResult{}, err
 	}
-	override, err := s.deps.Managers.AuthorizeSittingManage(ctx, invocation, command.SittingID)
+	management, err := s.deps.Managers.AuthorizeSittingManage(ctx, invocation, command.SittingID)
+	override := management.Override
 	if err != nil {
 		return ManualSuspensionResult{}, err
 	}

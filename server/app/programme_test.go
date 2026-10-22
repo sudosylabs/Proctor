@@ -96,17 +96,17 @@ func (a *programmeAuthorizerFake) AuthorizeWithScope(
 	invocation invocation.Invocation,
 	action model.Action,
 	resource model.Resource,
-) (model.RoleScopeType, string, error) {
+) (authorizationScope, error) {
 	if err := a.Authorize(ctx, invocation, action, resource); err != nil {
-		return "", "", err
+		return authorizationScope{}, err
 	}
 	if resource.Type == model.ResourceClass {
-		return model.RoleScopeClass, resource.ID, nil
+		return authorizationScope{Type: model.RoleScopeClass, ID: resource.ID}, nil
 	}
 	if a.scopeType.IsValid() && model.IsValidOpaqueID(a.scopeID) {
-		return a.scopeType, a.scopeID, nil
+		return authorizationScope{Type: a.scopeType, ID: a.scopeID}, nil
 	}
-	return model.RoleScopeAcademicUnit, resource.ID, nil
+	return authorizationScope{Type: model.RoleScopeAcademicUnit, ID: resource.ID}, nil
 }
 
 func TestProgrammeCreateAuthorizationDenialStopsBeforeAuditAndStore(t *testing.T) {

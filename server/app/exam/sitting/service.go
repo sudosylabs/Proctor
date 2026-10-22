@@ -288,10 +288,23 @@ func (s *Service) GetExamSitting(ctx context.Context, invocation invocation.Invo
 	return value, nil
 }
 
-// AuthorizeView rechecks the current relationship and permission used by an
+// ManagerAuthorization reports a granted current Exam Manager decision:
+// Override is true when the decision rested on the explicit override Action
+// rather than the ordinary Manager relationship.
+type ManagerAuthorization struct {
+	Override bool
+}
+
+// BrowserActivityAuthorization reports the Academic Unit of the Exam whose
+// browser activity the caller may read.
+type BrowserActivityAuthorization struct {
+	AcademicUnitID model.AcademicUnitID
+}
+
+// AuthorizeSittingView rechecks the current relationship and permission used by an
 // exact read without returning Sitting state. Realtime subscriptions use this
 // gate before accepting or retaining a resource-scoped subscription.
-func (s *Service) AuthorizeView(ctx context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) error {
+func (s *Service) AuthorizeSittingView(ctx context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) error {
 	if !sittingID.IsValid() {
 		return apperror.Invalid("exam.sitting.invalid", "exam_sitting_id")
 	}
@@ -318,7 +331,12 @@ func (s *Service) AuthorizeView(ctx context.Context, invocation invocation.Invoc
 // AuthorizeBrowserActivityView requires exact current Exam Manager membership
 // plus the dedicated permission on every read, including later pages.
 // Browser history has no administrator or general examination override.
-func (s *Service) AuthorizeBrowserActivityView(ctx context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) (model.AcademicUnitID, error) {
+func (s *Service) AuthorizeBrowserActivityView(ctx context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) (BrowserActivityAuthorization, error) {
+	unitID, err := s.authorizeBrowserActivityView(ctx, invocation, sittingID)
+	return BrowserActivityAuthorization{AcademicUnitID: unitID}, err
+}
+
+func (s *Service) authorizeBrowserActivityView(ctx context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) (model.AcademicUnitID, error) {
 	if !sittingID.IsValid() || invocation.Principal().Validate() != nil {
 		return "", apperror.Invalid("exam.sitting.invalid", "exam_sitting_id")
 	}
@@ -370,18 +388,20 @@ func (s *Service) AuthorizeSubmissionView(ctx context.Context, invocation invoca
 // exact-unit membership decision for draft decisions and finalization.
 func (s *Service) AuthorizeSubmissionReview(ctx context.Context, invocation invocation.Invocation, examID model.ExamID,
 	submissionID model.SubmissionID,
-) (bool, error) {
-	return s.authorizeSubmission(ctx, invocation, examID, submissionID,
+) (ManagerAuthorization, error) {
+	override, err := s.authorizeSubmission(ctx, invocation, examID, submissionID,
 		model.ActionSubmissionReview, model.ActionSubmissionReviewOverride)
+	return ManagerAuthorization{Override: override}, err
 }
 
 // AuthorizeSubmissionRelease keeps result release as a distinct, explicit
 // permission from evidence review and finalization.
 func (s *Service) AuthorizeSubmissionRelease(ctx context.Context, invocation invocation.Invocation, examID model.ExamID,
 	submissionID model.SubmissionID,
-) (bool, error) {
-	return s.authorizeSubmission(ctx, invocation, examID, submissionID,
+) (ManagerAuthorization, error) {
+	override, err := s.authorizeSubmission(ctx, invocation, examID, submissionID,
 		model.ActionSubmissionRelease, model.ActionSubmissionReleaseOverride)
+	return ManagerAuthorization{Override: override}, err
 }
 
 func (s *Service) authorizeSubmission(ctx context.Context, invocation invocation.Invocation, examID model.ExamID,
@@ -402,10 +422,15 @@ func (s *Service) authorizeSubmission(ctx context.Context, invocation invocation
 	return decision.override, nil
 }
 
-// AuthorizeManage rechecks the current manager relationship for a Sitting and
+// AuthorizeSittingManage rechecks the current manager relationship for a Sitting and
 // reports whether the caller used the explicit management override action.
 // It returns no mutable Sitting state and performs no mutation.
-func (s *Service) AuthorizeManage(ctx context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) (bool, error) {
+func (s *Service) AuthorizeSittingManage(ctx context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) (ManagerAuthorization, error) {
+	override, err := s.authorizeSittingManage(ctx, invocation, sittingID)
+	return ManagerAuthorization{Override: override}, err
+}
+
+func (s *Service) authorizeSittingManage(ctx context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) (bool, error) {
 	if !sittingID.IsValid() {
 		return false, apperror.Invalid("exam.sitting.invalid", "exam_sitting_id")
 	}

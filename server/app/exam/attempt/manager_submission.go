@@ -48,7 +48,8 @@ func (s *Service) EndExamAttemptByManager(ctx context.Context, invocation invoca
 	}
 	// Authorize the exact Sitting before reading the Attempt so existence is
 	// not probeable; later exits complete the audit attempt as failed.
-	override, err := s.deps.Managers.AuthorizeSittingManage(ctx, invocation, command.SittingID)
+	management, err := s.deps.Managers.AuthorizeSittingManage(ctx, invocation, command.SittingID)
+	override := management.Override
 	if err != nil {
 		return store.ExamSubmissionReceipt{}, err
 	}

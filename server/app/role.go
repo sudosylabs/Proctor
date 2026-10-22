@@ -51,7 +51,7 @@ type roleStore interface {
 
 type roleAuthorizer interface {
 	AuthorizeInstitution(context.Context, invocation.Invocation, model.Action) (model.Resource, error)
-	CanDelegateActionsAtScope(context.Context, invocation.Invocation, []string, model.RoleScopeType, string) error
+	AuthorizeActionDelegation(context.Context, invocation.Invocation, []string, model.RoleScopeType, string) error
 }
 
 type roleEffects interface {
@@ -118,7 +118,7 @@ func (s *roleService) CreateRole(ctx context.Context, invocation invocation.Invo
 	if err := validateKnownPermissions(candidate.Permissions); err != nil {
 		return nil, err
 	}
-	if err := s.deps.Authorization.CanDelegateActionsAtScope(
+	if err := s.deps.Authorization.AuthorizeActionDelegation(
 		ctx, invocation, candidate.Permissions, model.RoleScopeInstitution, resource.ID,
 	); err != nil {
 		return nil, err
@@ -173,7 +173,7 @@ func (s *roleService) UpdateRole(ctx context.Context, invocation invocation.Invo
 		return nil, err
 	}
 	if added := addedRolePermissions(current.Permissions, candidate.Permissions); len(added) > 0 {
-		if err = s.deps.Authorization.CanDelegateActionsAtScope(
+		if err = s.deps.Authorization.AuthorizeActionDelegation(
 			ctx, invocation, added, model.RoleScopeInstitution, resource.ID,
 		); err != nil {
 			return nil, err
@@ -313,7 +313,7 @@ func (a roleAuthorization) AuthorizeRoleBindingScope(
 	return a.authorization.authorizeRoleBindingScope(ctx, invocation, action, scopeType, scopeID)
 }
 
-func (a roleAuthorization) CanDelegateActionsAtScope(
+func (a roleAuthorization) AuthorizeActionDelegation(
 	ctx context.Context,
 	invocation invocation.Invocation,
 	actions []string,

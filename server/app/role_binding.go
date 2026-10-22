@@ -76,7 +76,7 @@ type roleBindingAuthorizer interface {
 	AuthorizeRoleBindingList(context.Context, invocation.Invocation, model.Action) (store.UserVisibilityScope, error)
 	AuthorizeRoleBindingPreflight(context.Context, invocation.Invocation, model.Action) error
 	AuthorizeRoleBindingScope(context.Context, invocation.Invocation, model.Action, model.RoleScopeType, string) (model.Resource, error)
-	CanDelegateActionsAtScope(context.Context, invocation.Invocation, []string, model.RoleScopeType, string) error
+	AuthorizeActionDelegation(context.Context, invocation.Invocation, []string, model.RoleScopeType, string) error
 }
 
 type roleBindingEffects interface {
@@ -194,7 +194,7 @@ func (s *roleBindingService) CreateRoleBinding(ctx context.Context, invocation i
 		// action recognized by this binary is still checked.
 		delegatedPermissions = model.AllActions()
 	}
-	if err = s.deps.Authorization.CanDelegateActionsAtScope(
+	if err = s.deps.Authorization.AuthorizeActionDelegation(
 		ctx, invocation, delegatedPermissions, candidate.ScopeType, candidate.ScopeID,
 	); err != nil {
 		return nil, err

@@ -26,7 +26,7 @@ type examIntegrityReviewAuthorizationAdapter struct {
 	audit    authorizationDecisionAudit
 }
 
-func (a examIntegrityReviewAuthorizationAdapter) AuthorizeView(ctx context.Context, invocation invocation.Invocation,
+func (a examIntegrityReviewAuthorizationAdapter) AuthorizeSubmissionView(ctx context.Context, invocation invocation.Invocation,
 	submissionID model.SubmissionID,
 ) error {
 	authorization, err := a.resolve(ctx, submissionID)
@@ -40,32 +40,40 @@ func (a examIntegrityReviewAuthorizationAdapter) AuthorizeView(ctx context.Conte
 		invocation, authorization.ExamID, submissionID)
 }
 
-func (a examIntegrityReviewAuthorizationAdapter) AuthorizeReview(ctx context.Context, invocation invocation.Invocation,
+func (a examIntegrityReviewAuthorizationAdapter) AuthorizeSubmissionReview(ctx context.Context, invocation invocation.Invocation,
 	submissionID model.SubmissionID,
-) (bool, error) {
+) (review.ManagerAuthorization, error) {
 	authorization, err := a.resolve(ctx, submissionID)
 	if err != nil {
-		return false, err
+		return review.ManagerAuthorization{}, err
 	}
 	if authorization.CandidateUserID == invocation.Principal().UserID {
-		return false, a.denySelf(ctx, invocation, authorization, model.ActionSubmissionReview)
+		return review.ManagerAuthorization{}, a.denySelf(ctx, invocation, authorization, model.ActionSubmissionReview)
 	}
-	return a.sittings.AuthorizeSubmissionReview(ctx,
+	management, err := a.sittings.AuthorizeSubmissionReview(ctx,
 		invocation, authorization.ExamID, submissionID)
+	if err != nil {
+		return review.ManagerAuthorization{}, err
+	}
+	return review.ManagerAuthorization{Override: management.Override}, nil
 }
 
-func (a examIntegrityReviewAuthorizationAdapter) AuthorizeRelease(ctx context.Context, invocation invocation.Invocation,
+func (a examIntegrityReviewAuthorizationAdapter) AuthorizeSubmissionRelease(ctx context.Context, invocation invocation.Invocation,
 	submissionID model.SubmissionID,
-) (bool, error) {
+) (review.ManagerAuthorization, error) {
 	authorization, err := a.resolve(ctx, submissionID)
 	if err != nil {
-		return false, err
+		return review.ManagerAuthorization{}, err
 	}
 	if authorization.CandidateUserID == invocation.Principal().UserID {
-		return false, a.denySelf(ctx, invocation, authorization, model.ActionSubmissionRelease)
+		return review.ManagerAuthorization{}, a.denySelf(ctx, invocation, authorization, model.ActionSubmissionRelease)
 	}
-	return a.sittings.AuthorizeSubmissionRelease(ctx,
+	management, err := a.sittings.AuthorizeSubmissionRelease(ctx,
 		invocation, authorization.ExamID, submissionID)
+	if err != nil {
+		return review.ManagerAuthorization{}, err
+	}
+	return review.ManagerAuthorization{Override: management.Override}, nil
 }
 
 func (a examIntegrityReviewAuthorizationAdapter) resolve(ctx context.Context,

@@ -316,7 +316,7 @@ func (f *invitationAuthorizerFake) Authorize(_ context.Context, _ invocation.Inv
 	}
 	return f.err
 }
-func (f *invitationAuthorizerFake) CanDelegateActionsAtScope(_ context.Context, _ invocation.Invocation, actions []string, scopeType model.RoleScopeType, scopeID string) error {
+func (f *invitationAuthorizerFake) AuthorizeActionDelegation(_ context.Context, _ invocation.Invocation, actions []string, scopeType model.RoleScopeType, scopeID string) error {
 	f.delegatedActions = append([]string(nil), actions...)
 	f.delegatedScopeType = scopeType
 	f.delegatedScopeID = scopeID

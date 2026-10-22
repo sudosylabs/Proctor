@@ -46,7 +46,7 @@ type academicUnitAuthorizer interface {
 
 type scopedAcademicResourceAuthorizer interface {
 	Authorize(context.Context, invocation.Invocation, model.Action, model.Resource) error
-	AuthorizeWithScope(context.Context, invocation.Invocation, model.Action, model.Resource) (model.RoleScopeType, string, error)
+	AuthorizeWithScope(context.Context, invocation.Invocation, model.Action, model.Resource) (authorizationScope, error)
 }
 
 // academicUnitQueryServiceDependencies are the collaborators of academicUnitQueryService;

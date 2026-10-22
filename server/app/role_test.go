@@ -101,7 +101,7 @@ func (a *roleAuthorizerFake) AuthorizeRoleBindingScope(context.Context, invocati
 	return a.resource, a.err
 }
 
-func (a *roleAuthorizerFake) CanDelegateActionsAtScope(context.Context, invocation.Invocation, []string, model.RoleScopeType, string) error {
+func (a *roleAuthorizerFake) AuthorizeActionDelegation(context.Context, invocation.Invocation, []string, model.RoleScopeType, string) error {
 	*a.events = append(*a.events, "authorize-delegation")
 	return a.delegationErr
 }

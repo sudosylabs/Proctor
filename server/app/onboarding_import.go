@@ -515,7 +515,7 @@ func (s *onboardingImportService) validateExternalTarget(ctx context.Context, in
 					return err
 				}
 			}
-			return s.deps.Authorization.CanDelegateActionsAtScope(ctx, invocation, role.Permissions, model.RoleScopeAcademicUnit, scopeID)
+			return s.deps.Authorization.AuthorizeActionDelegation(ctx, invocation, role.Permissions, model.RoleScopeAcademicUnit, scopeID)
 		}
 	default:
 		return nil
@@ -959,7 +959,7 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 		if err = s.deps.Authorization.Authorize(ctx, invocation, model.ActionRoleBindingManage, resource); err != nil {
 			return err
 		}
-		return s.deps.Authorization.CanDelegateActionsAtScope(ctx, invocation, role.Permissions, current.ScopeType, current.ScopeID)
+		return s.deps.Authorization.AuthorizeActionDelegation(ctx, invocation, role.Permissions, current.ScopeType, current.ScopeID)
 	case AcademicAdministrationRoleBindingEnd:
 		value, getErr := s.deps.RoleBindings.Get(ctx, model.RoleBindingID(item.RelationshipID))
 		if getErr != nil {
@@ -1050,7 +1050,7 @@ func (s *onboardingImportService) resolveInstitutionImportRow(ctx context.Contex
 					return err
 				}
 			}
-			if err = s.deps.Authorization.CanDelegateActionsAtScope(ctx, invocation, role.Permissions, model.RoleScopeAcademicUnit, unit.ID.String()); err != nil {
+			if err = s.deps.Authorization.AuthorizeActionDelegation(ctx, invocation, role.Permissions, model.RoleScopeAcademicUnit, unit.ID.String()); err != nil {
 				return err
 			}
 			row.Operation = string(InvitationBatchTeacherAcademicUnitCreate)
@@ -1127,7 +1127,7 @@ func (s *onboardingImportService) previewRoleAuthorization(ctx context.Context, 
 			return err
 		}
 	}
-	return s.deps.Authorization.CanDelegateActionsAtScope(ctx, invocation, role.Permissions, scopeType, scopeID)
+	return s.deps.Authorization.AuthorizeActionDelegation(ctx, invocation, role.Permissions, scopeType, scopeID)
 }
 
 func validateImportStudentCandidate(actor model.UserID, class *model.Class, period *model.AcademicPeriod, row *store.OnboardingImportRow) error {

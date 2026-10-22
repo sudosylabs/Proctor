@@ -111,7 +111,8 @@ func (s *programmeLevelService) CreateProgrammeLevel(ctx context.Context, invoca
 		return nil, apperror.New("request.invalid").WithField("field", "programme_id")
 	}
 	resource := model.Resource{Type: model.ResourceProgramme, ID: programmeID.String()}
-	scopeType, scopeID, err := s.deps.Authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeLevelManage, resource)
+	scope, err := s.deps.Authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeLevelManage, resource)
+	scopeType, scopeID := scope.Type, scope.ID
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +237,8 @@ func (s *programmeLevelService) levelForMutation(ctx context.Context, invocation
 	if !id.IsValid() {
 		return nil, "", "", apperror.New("request.invalid").WithField("field", "programme_level_id")
 	}
-	scopeType, scopeID, err := s.deps.Authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeLevelManage, model.Resource{Type: model.ResourceProgrammeLevel, ID: id.String()})
+	scope, err := s.deps.Authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeLevelManage, model.Resource{Type: model.ResourceProgrammeLevel, ID: id.String()})
+	scopeType, scopeID := scope.Type, scope.ID
 	if err != nil {
 		return nil, "", "", err
 	}

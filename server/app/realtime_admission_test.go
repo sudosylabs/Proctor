@@ -75,7 +75,7 @@ type realtimeExamViewFake struct {
 	err        error
 }
 
-func (f *realtimeExamViewFake) AuthorizeView(_ context.Context, invocation invocation.Invocation, examID model.ExamID) error {
+func (f *realtimeExamViewFake) AuthorizeExamView(_ context.Context, invocation invocation.Invocation, examID model.ExamID) error {
 	f.invocation, f.examID = invocation, examID
 	return f.err
 }
@@ -86,7 +86,7 @@ type realtimeSittingViewFake struct {
 	err        error
 }
 
-func (f *realtimeSittingViewFake) AuthorizeView(_ context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) error {
+func (f *realtimeSittingViewFake) AuthorizeSittingView(_ context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) error {
 	f.invocation, f.sittingID = invocation, sittingID
 	return f.err
 }

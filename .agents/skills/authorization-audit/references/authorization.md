@@ -104,9 +104,19 @@ credential intervention require a strong recent interactive Session.
   service satisfies it directly. Named helpers such as `AuthorizeInstitution`,
   `AuthorizeWithScope`, `AuthorizePreflight`, `RecordDenial`, and
   list-visibility helpers resolve or report around that one decision; no port
-  takes a raw Principal and request metadata. A helper result that is not the
-  decision itself is named for what it reports, such as `override` or
-  `fullProfile`.
+  takes a raw Principal and request metadata. Every `Authorize<Concept>`
+  helper takes `(ctx, Invocation, ...)` and returns `error`, or `(R, error)`
+  where `R` is a named struct that says what the helper reports beyond the
+  decision (`ManagerAuthorization{Override}`, `authorizationScope{Type, ID}`,
+  `profileReadAuthorization{FullProfile}`, a `store` visibility scope); never
+  a bare `bool`, ID, or several values. A non-audited predicate is
+  `Can<Concept>` and returns `(bool, error)`; an error-returning check is an
+  `Authorize<Concept>` (`AuthorizeActionDelegation`). One concept has one
+  name across ports and adapters: an adapter that forwards to another helper
+  keeps that helper's name (`AuthorizeSittingView`, `AuthorizeExamView`,
+  `AuthorizeSubmissionReview`), which also keeps two embedded services from
+  exporting the same ambiguous name. `TestAuthorizationHelpersShareOneShape`
+  enforces the shape and the naming.
 - List/search queries constrain results by authorized scope in persistence;
   they do not fetch everything and filter in memory.
 - WebSocket commands/subscriptions and background jobs use the same application

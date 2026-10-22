@@ -100,7 +100,7 @@ type profilePictureFileStore interface {
 }
 
 type profilePictureAuthorizer interface {
-	AuthorizeRead(context.Context, invocation.Invocation, string) error
+	AuthorizeProfileRead(context.Context, invocation.Invocation, string) (profileReadAuthorization, error)
 	AuthorizeProfilePictureWrite(context.Context, invocation.Invocation, string) error
 }
 
@@ -451,7 +451,7 @@ func (s *profilePictureReadService) Get(ctx context.Context, invocation invocati
 	if !id.IsValid() || (query.Size != 128 && query.Size != 256 && query.Size != 512) {
 		return nil, apperror.New("request.invalid")
 	}
-	if err := s.authorization.AuthorizeRead(ctx, invocation, id.String()); err != nil {
+	if _, err := s.authorization.AuthorizeProfileRead(ctx, invocation, id.String()); err != nil {
 		return nil, err
 	}
 	user, err := s.users.Get(ctx, id)

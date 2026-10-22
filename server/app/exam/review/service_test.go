@@ -284,16 +284,16 @@ type reviewAuthorizerFake struct {
 	releaseCalls     int
 }
 
-func (*reviewAuthorizerFake) AuthorizeView(context.Context, invocation.Invocation, model.SubmissionID) error {
+func (*reviewAuthorizerFake) AuthorizeSubmissionView(context.Context, invocation.Invocation, model.SubmissionID) error {
 	return nil
 }
-func (f *reviewAuthorizerFake) AuthorizeReview(_ context.Context, _ invocation.Invocation, id model.SubmissionID) (bool, error) {
+func (f *reviewAuthorizerFake) AuthorizeSubmissionReview(_ context.Context, _ invocation.Invocation, id model.SubmissionID) (ManagerAuthorization, error) {
 	f.reviewSubmission, f.reviewCalls = id, f.reviewCalls+1
-	return false, nil
+	return ManagerAuthorization{}, nil
 }
-func (f *reviewAuthorizerFake) AuthorizeRelease(_ context.Context, _ invocation.Invocation, _ model.SubmissionID) (bool, error) {
+func (f *reviewAuthorizerFake) AuthorizeSubmissionRelease(_ context.Context, _ invocation.Invocation, _ model.SubmissionID) (ManagerAuthorization, error) {
 	f.releaseCalls++
-	return false, nil
+	return ManagerAuthorization{}, nil
 }
 
 type reviewAuditorFake struct {

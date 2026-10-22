@@ -30,13 +30,13 @@ type realtimeAdmissionService struct {
 // realtimeExamViewAuthorizer is the Exam relationship gate a subscription
 // uses; its tests substitute a fake.
 type realtimeExamViewAuthorizer interface {
-	AuthorizeView(context.Context, invocation.Invocation, model.ExamID) error
+	AuthorizeExamView(context.Context, invocation.Invocation, model.ExamID) error
 }
 
 // realtimeSittingViewAuthorizer is the Sitting relationship gate a
 // subscription uses; its tests substitute a fake.
 type realtimeSittingViewAuthorizer interface {
-	AuthorizeView(context.Context, invocation.Invocation, model.ExamSittingID) error
+	AuthorizeSittingView(context.Context, invocation.Invocation, model.ExamSittingID) error
 }
 
 var (
@@ -69,14 +69,14 @@ func (s *realtimeAdmissionService) AuthorizeWebSocketSubscription(
 		if err != nil {
 			return invalidRealtimeRequest("subscription")
 		}
-		return realtimeExamFailures.Conceal(s.exams.AuthorizeView(ctx, invocation, examID))
+		return realtimeExamFailures.Conceal(s.exams.AuthorizeExamView(ctx, invocation, examID))
 	}
 	if action == model.ActionExamSittingView && resource.Type == model.ResourceExamSitting {
 		sittingID, err := model.ParseExamSittingID(resource.ID)
 		if err != nil {
 			return invalidRealtimeRequest("subscription")
 		}
-		return realtimeSittingFailures.Conceal(s.sittings.AuthorizeView(ctx, invocation, sittingID))
+		return realtimeSittingFailures.Conceal(s.sittings.AuthorizeSittingView(ctx, invocation, sittingID))
 	}
 	err := s.authorization.Authorize(ctx, invocation, action, resource)
 	recordOperational(s.operational, "authorization", "decision", err)

@@ -184,7 +184,8 @@ func (s *Service) ListExamAttemptBrowserActivity(ctx context.Context, invocation
 	}
 	// Authorize the exact Sitting before reading the Attempt so existence is
 	// not probeable; later exits complete the audit attempt as failed.
-	unitID, err := s.deps.Managers.AuthorizeBrowserActivityView(ctx, invocation, query.SittingID)
+	browserActivity, err := s.deps.Managers.AuthorizeBrowserActivityView(ctx, invocation, query.SittingID)
+	unitID := browserActivity.AcademicUnitID
 	if err != nil {
 		return BrowserActivityPage{}, err
 	}

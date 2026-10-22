@@ -96,7 +96,7 @@ type userProfileAuthorizer interface {
 	// AuthorizeProfileRead reports fullProfile when the caller reads its own
 	// profile or holds institution-wide User visibility; a scoped grant reads
 	// the limited profile.
-	AuthorizeProfileRead(context.Context, invocation.Invocation, string) (fullProfile bool, err error)
+	AuthorizeProfileRead(context.Context, invocation.Invocation, string) (profileReadAuthorization, error)
 	Authorize(context.Context, invocation.Invocation, model.Action, model.Resource) error
 }
 
@@ -143,10 +143,11 @@ func (s *userProfileService) GetUserProfile(ctx context.Context, invocation invo
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
-	fullProfile, err := s.deps.Authorization.AuthorizeProfileRead(ctx, invocation, id.String())
+	read, err := s.deps.Authorization.AuthorizeProfileRead(ctx, invocation, id.String())
 	if err != nil {
 		return nil, err
 	}
+	fullProfile := read.FullProfile
 	user, err := s.deps.Users.Get(ctx, id)
 	if err != nil {
 		return nil, userStoreErrors.Translate(err)
@@ -241,20 +242,26 @@ func (a userProfileAuthorization) AuthorizeSearch(ctx context.Context, invocatio
 	return a.authorization.authorizeUserSearch(ctx, invocation)
 }
 
-func (a userProfileAuthorization) AuthorizeProfileRead(ctx context.Context, invocation invocation.Invocation, userID string) (fullProfile bool, err error) {
-	principal := invocation.Principal()
-	if principal.Validate() != nil {
-		return false, invalidTokenAppError()
-	}
-	if principal.UserID.String() == userID {
-		return true, nil
-	}
-	return a.authorization.authorizeUserRead(ctx, invocation, userID)
+// profileReadAuthorization reports how much of a User profile the caller
+// may read: FullProfile for its own profile or institution-wide User
+// visibility, the limited profile otherwise.
+type profileReadAuthorization struct {
+	FullProfile bool
 }
 
-func (a userProfileAuthorization) AuthorizeRead(ctx context.Context, invocation invocation.Invocation, userID string) error {
-	_, err := a.AuthorizeProfileRead(ctx, invocation, userID)
-	return err
+func (a userProfileAuthorization) AuthorizeProfileRead(ctx context.Context, invocation invocation.Invocation, userID string) (profileReadAuthorization, error) {
+	principal := invocation.Principal()
+	if principal.Validate() != nil {
+		return profileReadAuthorization{}, invalidTokenAppError()
+	}
+	if principal.UserID.String() == userID {
+		return profileReadAuthorization{FullProfile: true}, nil
+	}
+	fullProfile, err := a.authorization.authorizeUserRead(ctx, invocation, userID)
+	if err != nil {
+		return profileReadAuthorization{}, err
+	}
+	return profileReadAuthorization{FullProfile: fullProfile}, nil
 }
 
 func (a userProfileAuthorization) Authorize(ctx context.Context, invocation invocation.Invocation, action model.Action, resource model.Resource) error {

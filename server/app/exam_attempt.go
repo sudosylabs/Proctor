@@ -13,6 +13,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/exam/sitting"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
@@ -22,9 +23,9 @@ import (
 // examAttemptSittingAuthorizer is the Sitting authorization the Attempt
 // manager adapter composes; its tests substitute a fake.
 type examAttemptSittingAuthorizer interface {
-	AuthorizeView(context.Context, invocation.Invocation, model.ExamSittingID) error
-	AuthorizeManage(context.Context, invocation.Invocation, model.ExamSittingID) (override bool, err error)
-	AuthorizeBrowserActivityView(context.Context, invocation.Invocation, model.ExamSittingID) (model.AcademicUnitID, error)
+	AuthorizeSittingView(context.Context, invocation.Invocation, model.ExamSittingID) error
+	AuthorizeSittingManage(context.Context, invocation.Invocation, model.ExamSittingID) (sitting.ManagerAuthorization, error)
+	AuthorizeBrowserActivityView(context.Context, invocation.Invocation, model.ExamSittingID) (sitting.BrowserActivityAuthorization, error)
 	AuthorizeSubmissionView(context.Context, invocation.Invocation, model.ExamID, model.SubmissionID) error
 }
 
@@ -40,23 +41,23 @@ type examAttemptAuthorizationDecisionAudit interface {
 }
 
 func (a examAttemptManagerAuthorizationAdapter) AuthorizeSittingView(ctx context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) error {
-	return a.sittings.AuthorizeView(ctx, invocation, sittingID)
+	return a.sittings.AuthorizeSittingView(ctx, invocation, sittingID)
 }
 
-func (a examAttemptManagerAuthorizationAdapter) AuthorizeSittingManage(ctx context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) (bool, error) {
-	override, err := a.sittings.AuthorizeManage(ctx, invocation, sittingID)
-	if err == nil {
-		return override, nil
+func (a examAttemptManagerAuthorizationAdapter) AuthorizeSittingManage(ctx context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) (attempt.ManagerAuthorization, error) {
+	management, err := a.sittings.AuthorizeSittingManage(ctx, invocation, sittingID)
+	if err != nil {
+		return attempt.ManagerAuthorization{}, err
 	}
-	return false, err
+	return attempt.ManagerAuthorization{Override: management.Override}, nil
 }
 
-func (a examAttemptManagerAuthorizationAdapter) AuthorizeBrowserActivityView(ctx context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) (model.AcademicUnitID, error) {
-	unitID, err := a.sittings.AuthorizeBrowserActivityView(ctx, invocation, sittingID)
-	if err == nil {
-		return unitID, nil
+func (a examAttemptManagerAuthorizationAdapter) AuthorizeBrowserActivityView(ctx context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) (attempt.BrowserActivityAuthorization, error) {
+	browserActivity, err := a.sittings.AuthorizeBrowserActivityView(ctx, invocation, sittingID)
+	if err != nil {
+		return attempt.BrowserActivityAuthorization{}, err
 	}
-	return "", err
+	return attempt.BrowserActivityAuthorization{AcademicUnitID: browserActivity.AcademicUnitID}, nil
 }
 
 func (a examAttemptManagerAuthorizationAdapter) AuthorizeSubmissionView(ctx context.Context, invocation invocation.Invocation,

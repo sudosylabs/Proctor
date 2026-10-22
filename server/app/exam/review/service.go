@@ -19,10 +19,17 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// ManagerAuthorization reports a granted current Exam Manager decision:
+// Override is true when the decision rested on the explicit override Action
+// rather than the ordinary Manager relationship.
+type ManagerAuthorization struct {
+	Override bool
+}
+
 type Authorizer interface {
-	AuthorizeView(context.Context, invocation.Invocation, model.SubmissionID) error
-	AuthorizeReview(context.Context, invocation.Invocation, model.SubmissionID) (override bool, err error)
-	AuthorizeRelease(context.Context, invocation.Invocation, model.SubmissionID) (override bool, err error)
+	AuthorizeSubmissionView(context.Context, invocation.Invocation, model.SubmissionID) error
+	AuthorizeSubmissionReview(context.Context, invocation.Invocation, model.SubmissionID) (ManagerAuthorization, error)
+	AuthorizeSubmissionRelease(context.Context, invocation.Invocation, model.SubmissionID) (ManagerAuthorization, error)
 }
 
 type Auditor interface {
@@ -376,7 +383,7 @@ func (s *Service) GetExamIntegrityReview(ctx context.Context, invocation invocat
 	if !submissionID.IsValid() {
 		return nil, apperror.Invalid("exam.integrity_review.invalid", "submission_id")
 	}
-	if err := s.deps.Authorizer.AuthorizeView(ctx, invocation, submissionID); err != nil {
+	if err := s.deps.Authorizer.AuthorizeSubmissionView(ctx, invocation, submissionID); err != nil {
 		return nil, err
 	}
 	snapshot, err := s.deps.Persistence.Get(ctx, submissionID)
@@ -402,7 +409,7 @@ func (s *Service) ListExamIntegrityFlags(ctx context.Context, invocation invocat
 	if !query.SubmissionID.IsValid() || query.Limit < 1 || query.Limit > store.ExamIntegrityReviewFlagReadMaximum {
 		return nil, apperror.Invalid("exam.integrity_review.invalid", "flag_list")
 	}
-	if err := s.deps.Authorizer.AuthorizeView(ctx, invocation, query.SubmissionID); err != nil {
+	if err := s.deps.Authorizer.AuthorizeSubmissionView(ctx, invocation, query.SubmissionID); err != nil {
 		return nil, err
 	}
 	page, err := s.deps.Persistence.ListFlags(ctx, store.ExamIntegrityFlagListOptions(query))
@@ -440,7 +447,7 @@ func (s *Service) ListExamIntegrityEvidence(ctx context.Context, invocation invo
 	if !query.SubmissionID.IsValid() || !query.FlagID.IsValid() || query.Limit < 1 || query.Limit > store.ExamIntegrityReviewEvidenceReadMaximum {
 		return nil, apperror.Invalid("exam.integrity_review.invalid", "evidence_list")
 	}
-	if err := s.deps.Authorizer.AuthorizeView(ctx, invocation, query.SubmissionID); err != nil {
+	if err := s.deps.Authorizer.AuthorizeSubmissionView(ctx, invocation, query.SubmissionID); err != nil {
 		return nil, err
 	}
 	page, err := s.deps.Persistence.ListEvidence(ctx, store.ExamIntegrityEvidenceListOptions(query))
@@ -478,7 +485,7 @@ func (s *Service) ListExamIntegrityDiscrepancies(ctx context.Context, invocation
 	if !query.SubmissionID.IsValid() || query.Limit < 1 || query.Limit > store.ExamIntegrityReviewDiscrepancyReadMaximum {
 		return nil, apperror.Invalid("exam.integrity_review.invalid", "discrepancy_list")
 	}
-	if err := s.deps.Authorizer.AuthorizeView(ctx, invocation, query.SubmissionID); err != nil {
+	if err := s.deps.Authorizer.AuthorizeSubmissionView(ctx, invocation, query.SubmissionID); err != nil {
 		return nil, err
 	}
 	page, err := s.deps.Persistence.ListDiscrepancies(ctx, store.ExamIntegrityDiscrepancyListOptions(query))
@@ -517,21 +524,21 @@ func (s *Service) GetStudentExamResult(ctx context.Context, invocation invocatio
 func (s *Service) authorizeReviewMutation(ctx context.Context, invocation invocation.Invocation,
 	submissionID model.SubmissionID,
 ) (bool, *store.ExamIntegrityReviewAuthorization, error) {
-	override, err := s.deps.Authorizer.AuthorizeReview(ctx, invocation, submissionID)
+	management, err := s.deps.Authorizer.AuthorizeSubmissionReview(ctx, invocation, submissionID)
 	if err != nil {
 		return false, nil, err
 	}
-	return s.resolveMutationAuthorization(ctx, submissionID, override)
+	return s.resolveMutationAuthorization(ctx, submissionID, management.Override)
 }
 
 func (s *Service) authorizeReleaseMutation(ctx context.Context, invocation invocation.Invocation,
 	submissionID model.SubmissionID,
 ) (bool, *store.ExamIntegrityReviewAuthorization, error) {
-	override, err := s.deps.Authorizer.AuthorizeRelease(ctx, invocation, submissionID)
+	management, err := s.deps.Authorizer.AuthorizeSubmissionRelease(ctx, invocation, submissionID)
 	if err != nil {
 		return false, nil, err
 	}
-	return s.resolveMutationAuthorization(ctx, submissionID, override)
+	return s.resolveMutationAuthorization(ctx, submissionID, management.Override)
 }
 
 func (s *Service) resolveMutationAuthorization(ctx context.Context, submissionID model.SubmissionID,
