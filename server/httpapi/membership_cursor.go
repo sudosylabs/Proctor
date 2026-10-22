@@ -16,7 +16,6 @@ import (
 // Membership continuation is a transport envelope. The application receives
 // typed keyset selectors and authorizes the resource independently on every page.
 type membershipPageCursor struct {
-	Version     int                `json:"version"`
 	ScopeType   model.ResourceType `json:"scope_type"`
 	ScopeID     string             `json:"scope_id"`
 	ActiveAt    *int64             `json:"active_at"`
@@ -26,11 +25,8 @@ type membershipPageCursor struct {
 
 func membershipPageCursorSpec() opaqueCursorSpec[membershipPageCursor] {
 	return opaqueCursorSpec[membershipPageCursor]{
-		label: "membership", maximumEncodedLength: 1024, currentVersion: 1,
-		members:        []string{"version", "scope_type", "scope_id", "active_at", "after_user_id", "after_id"},
-		version:        func(cursor membershipPageCursor) int { return cursor.Version },
-		setVersion:     func(cursor *membershipPageCursor, version int) { cursor.Version = version },
-		acceptsVersion: func(version int) bool { return version == 1 },
+		label: "membership", maximumEncodedLength: 1024,
+		members: []string{"scope_type", "scope_id", "active_at", "after_user_id", "after_id"},
 		validate: func(cursor membershipPageCursor) error {
 			if (cursor.ScopeType != model.ResourceAcademicUnit && cursor.ScopeType != model.ResourceClass) ||
 				!model.IsValidOpaqueID(cursor.ScopeID) || cursor.ActiveAt == nil || *cursor.ActiveAt < 0 ||

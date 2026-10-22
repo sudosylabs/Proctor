@@ -49,7 +49,7 @@ func TestV1HTTPContractCharacterization(t *testing.T) {
 	require.NoError(t, err)
 	digest := sha256.Sum256(canonical)
 	gotDigest := hex.EncodeToString(digest[:])
-	const wantDigest = "3c2a08afdd9029c99e1d3661bd73774c4abf4a8b62ebb05556ab9be04744344a"
+	const wantDigest = "a3ea207c5d51b72f00271730fb48865021afccbdc35cf7f80092ee888d202414"
 	require.Equal(t, wantDigest, gotDigest, "v1 HTTP contract digest")
 
 	var parsed struct {

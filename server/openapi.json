@@ -8974,7 +8974,7 @@
             "type": "array"
           },
           "next_cursor": {
-            "description": "Opaque versioned cursor containing only the pinned Workspace cursor and last Entry identity; no Workspace path enters the URL.",
+            "description": "Opaque cursor containing only the pinned Workspace cursor and last Entry identity; no Workspace path enters the URL.",
             "type": "string"
           },
           "refresh_required": {
@@ -12389,7 +12389,7 @@
             "type": "array"
           },
           "next_cursor": {
-            "description": "Opaque versioned cursor over descending creation time and Attempt identity; clients return it unchanged.",
+            "description": "Opaque cursor over descending creation time and Attempt identity; clients return it unchanged.",
             "type": "string"
           }
         },
@@ -13860,7 +13860,7 @@
             "type": "array"
           },
           "next_cursor": {
-            "description": "Opaque versioned cursor over descending Revision number and identity; clients return it unchanged.",
+            "description": "Opaque cursor over descending Revision number and identity; clients return it unchanged.",
             "type": "string"
           }
         },
@@ -14190,7 +14190,7 @@
             "type": "array"
           },
           "next_cursor": {
-            "description": "Opaque versioned cursor over descending scheduled start and Sitting identity; clients return it unchanged.",
+            "description": "Opaque cursor over descending scheduled start and Sitting identity; clients return it unchanged.",
             "type": "string"
           }
         },
@@ -14234,7 +14234,7 @@
             "type": "array"
           },
           "next_cursor": {
-            "description": "Opaque versioned candidate-identity cursor; clients return it unchanged.",
+            "description": "Opaque candidate-identity cursor; clients return it unchanged.",
             "type": "string"
           }
         },
@@ -14891,7 +14891,7 @@
             "$ref": "#/components/schemas/SHA256"
           },
           "next_cursor": {
-            "description": "Opaque versioned keyset cursor containing only the last stable Entry identity; no path or storage selector enters the URL.",
+            "description": "Opaque keyset cursor containing only the last stable Entry identity; no path or storage selector enters the URL.",
             "type": "string"
           },
           "submission_id": {
@@ -30187,7 +30187,7 @@
             }
           },
           {
-            "description": "Opaque versioned cursor over ascending canonical path and Workspace entry identity; clients return it unchanged.",
+            "description": "Opaque cursor over ascending canonical path and Workspace entry identity; clients return it unchanged.",
             "in": "query",
             "name": "cursor",
             "required": false,
@@ -33789,7 +33789,7 @@
             }
           },
           {
-            "description": "Opaque versioned cursor over descending Revision number and identity; clients return it unchanged.",
+            "description": "Opaque cursor over descending Revision number and identity; clients return it unchanged.",
             "in": "query",
             "name": "cursor",
             "required": false,
@@ -34085,7 +34085,7 @@
             }
           },
           {
-            "description": "Opaque versioned cursor over descending scheduled start and Sitting identity; clients return it unchanged.",
+            "description": "Opaque cursor over descending scheduled start and Sitting identity; clients return it unchanged.",
             "in": "query",
             "name": "cursor",
             "required": false,
@@ -34434,7 +34434,7 @@
             }
           },
           {
-            "description": "Opaque versioned cursor over descending creation time and Attempt identity; clients return it unchanged.",
+            "description": "Opaque cursor over descending creation time and Attempt identity; clients return it unchanged.",
             "in": "query",
             "name": "cursor",
             "required": false,
@@ -34602,7 +34602,7 @@
             }
           },
           {
-            "description": "Opaque versioned keyset cursor; return it unchanged and do not infer Browser location data from it.",
+            "description": "Opaque keyset cursor; return it unchanged and do not infer Browser location data from it.",
             "in": "query",
             "name": "cursor",
             "required": false,
@@ -35064,7 +35064,7 @@
             }
           },
           {
-            "description": "Opaque versioned keyset cursor containing only the last stable Entry identity.",
+            "description": "Opaque keyset cursor containing only the last stable Entry identity.",
             "in": "query",
             "name": "cursor",
             "required": false,
@@ -36105,7 +36105,7 @@
             }
           },
           {
-            "description": "Opaque versioned cursor over candidate identity; return unchanged.",
+            "description": "Opaque cursor over candidate identity; return unchanged.",
             "in": "query",
             "name": "cursor",
             "schema": {
@@ -41923,7 +41923,7 @@
             "in": "query",
             "name": "cursor",
             "schema": {
-              "description": "Opaque versioned Discrepancy identity cursor.",
+              "description": "Opaque Discrepancy identity cursor.",
               "type": "string"
             }
           }
@@ -42013,7 +42013,7 @@
             "in": "query",
             "name": "cursor",
             "schema": {
-              "description": "Opaque versioned Flag identity cursor.",
+              "description": "Opaque Flag identity cursor.",
               "type": "string"
             }
           }
@@ -42103,7 +42103,7 @@
             "in": "query",
             "name": "cursor",
             "schema": {
-              "description": "Opaque versioned Evidence identity cursor.",
+              "description": "Opaque Evidence identity cursor.",
               "type": "string"
             }
           }
@@ -42196,7 +42196,7 @@
             "in": "query",
             "name": "cursor",
             "schema": {
-              "description": "Opaque versioned native condition identity cursor.",
+              "description": "Opaque native condition identity cursor.",
               "type": "string"
             }
           }
@@ -45379,7 +45379,7 @@
             "name": "cursor",
             "required": false,
             "schema": {
-              "description": "Opaque versioned Session creation-order cursor.",
+              "description": "Opaque Session creation-order cursor.",
               "type": "string"
             }
           }

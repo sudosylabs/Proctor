@@ -17,8 +17,6 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-const examRevisionCursorVersion = 1
-
 type ExamRevisionApplication interface {
 	PublishExamRevision(context.Context, app.Invocation, app.PublishExamRevisionCommand) (app.ExamRevisionSummary, error)
 	GetExamRevision(context.Context, app.Invocation, app.GetExamRevisionQuery) (app.ExamRevisionSummary, error)
@@ -55,7 +53,6 @@ type examRevisionListResponse struct {
 }
 
 type examRevisionCursor struct {
-	Version    int    `json:"version"`
 	Number     int64  `json:"number"`
 	RevisionID string `json:"revision_id"`
 }
@@ -202,11 +199,8 @@ func decodeExamRevisionCursor(raw string) (examRevisionCursor, error) {
 
 func examRevisionCursorSpec() opaqueCursorSpec[examRevisionCursor] {
 	return opaqueCursorSpec[examRevisionCursor]{
-		label: "Exam Revision", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: examRevisionCursorVersion,
-		members:        []string{"version", "number", "revision_id"},
-		version:        func(cursor examRevisionCursor) int { return cursor.Version },
-		setVersion:     func(cursor *examRevisionCursor, version int) { cursor.Version = version },
-		acceptsVersion: func(version int) bool { return version == examRevisionCursorVersion },
+		label: "Exam Revision", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength,
+		members: []string{"number", "revision_id"},
 		validate: func(cursor examRevisionCursor) error {
 			if cursor.Number < 1 || !model.ExamRevisionID(cursor.RevisionID).IsValid() {
 				return errors.New("invalid Exam Revision keyset")

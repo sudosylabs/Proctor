@@ -154,7 +154,6 @@ type sessionAdministrationListResponse struct {
 }
 
 type sessionCursor struct {
-	Version   int    `json:"version,omitempty"`
 	CreatedAt string `json:"created_at"`
 	ID        string `json:"id"`
 }
@@ -165,11 +164,8 @@ func decodeSessionCursor(raw string) (sessionCursor, error) {
 
 func sessionCursorSpec() opaqueCursorSpec[sessionCursor] {
 	return opaqueCursorSpec[sessionCursor]{
-		label: "session", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: 1,
-		members:        []string{"version", "created_at", "id"},
-		version:        func(cursor sessionCursor) int { return cursor.Version },
-		setVersion:     func(cursor *sessionCursor, version int) { cursor.Version = version },
-		acceptsVersion: func(version int) bool { return version == 1 },
+		label: "session", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength,
+		members: []string{"created_at", "id"},
 		validate: func(cursor sessionCursor) error {
 			createdAt, err := model.ParseRFC3339(cursor.CreatedAt)
 			if err != nil || createdAt.IsZero() || !model.SessionID(cursor.ID).IsValid() {

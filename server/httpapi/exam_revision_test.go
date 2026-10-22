@@ -93,7 +93,6 @@ func TestExamRevisionHTTPGetAndListUseExactIdentityAndVersionedTupleCursor(t *te
 	require.NotEmpty(t, page.NextCursor)
 	next, err := decodeExamRevisionCursor(page.NextCursor)
 	require.NoError(t, err, "next cursor = %#v, err", next)
-	require.Equal(t, examRevisionCursorVersion, next.Version, "next cursor = %#v, err", next)
 	require.Equal(t, older.Number, next.Number, "next cursor = %#v, err", next)
 	require.Equal(t, older.ID.String(), next.RevisionID, "next cursor = %#v, err", next)
 
@@ -112,12 +111,13 @@ func TestExamRevisionHTTPGetAndListUseExactIdentityAndVersionedTupleCursor(t *te
 
 func TestExamRevisionHTTPCursorAndPublishBodyAreStrict(t *testing.T) {
 	t.Parallel()
-	unsupported, _ := json.Marshal(examRevisionCursor{Version: 2, Number: 2, RevisionID: model.NewExamRevisionID().String()})
-	valid, _ := json.Marshal(examRevisionCursor{Version: 1, Number: 2, RevisionID: model.NewExamRevisionID().String()})
+	revisionID := model.NewExamRevisionID().String()
+	unsupported := []byte(`{"version":1,"number":2,"revision_id":"` + revisionID + `"}`)
+	valid, _ := json.Marshal(examRevisionCursor{Number: 2, RevisionID: revisionID})
 	for name, raw := range map[string]string{
-		"malformed":           "not-a-cursor",
-		"unsupported version": base64.RawURLEncoding.EncodeToString(unsupported),
-		"trailing payload":    base64.RawURLEncoding.EncodeToString(append(valid, []byte(`{}`)...)),
+		"malformed":        "not-a-cursor",
+		"versioned":        base64.RawURLEncoding.EncodeToString(unsupported),
+		"trailing payload": base64.RawURLEncoding.EncodeToString(append(valid, []byte(`{}`)...)),
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := decodeExamRevisionCursor(raw)

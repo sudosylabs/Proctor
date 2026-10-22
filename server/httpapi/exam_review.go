@@ -22,8 +22,6 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-const examIntegrityReviewCursorVersion = 1
-
 type ExamIntegrityReviewApplication interface {
 	ListNativeConditions(context.Context, app.Invocation, app.NativeConditionListQuery) (*app.NativeConditionPage, error)
 	GetExamIntegrityReview(context.Context, app.Invocation, model.SubmissionID) (*app.ExamSubmissionReviewSnapshot, error)
@@ -42,9 +40,8 @@ type examIntegrityReviewHTTPModule struct {
 }
 
 type examIntegrityReviewIDCursor struct {
-	Version int    `json:"version"`
-	Kind    string `json:"kind"`
-	ID      string `json:"id"`
+	Kind string `json:"kind"`
+	ID   string `json:"id"`
 }
 
 func encodeExamIntegrityReviewCursor(kind, id string) (string, error) {
@@ -61,11 +58,8 @@ func decodeExamIntegrityReviewCursor(raw, kind string) (string, error) {
 
 func examIntegrityReviewCursorSpec(kind string) opaqueCursorSpec[examIntegrityReviewIDCursor] {
 	return opaqueCursorSpec[examIntegrityReviewIDCursor]{
-		label: "Integrity Review", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: examIntegrityReviewCursorVersion,
-		members:        []string{"version", "kind", "id"},
-		version:        func(cursor examIntegrityReviewIDCursor) int { return cursor.Version },
-		setVersion:     func(cursor *examIntegrityReviewIDCursor, version int) { cursor.Version = version },
-		acceptsVersion: func(version int) bool { return version == examIntegrityReviewCursorVersion },
+		label: "Integrity Review", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength,
+		members: []string{"kind", "id"},
 		validate: func(cursor examIntegrityReviewIDCursor) error {
 			if cursor.Kind != kind || !model.IsValidOpaqueID(cursor.ID) {
 				return errors.New("invalid Integrity Review keyset")

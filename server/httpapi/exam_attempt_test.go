@@ -196,7 +196,7 @@ func TestCandidateAcknowledgesExactCorrectionWithBoundSessionFences(t *testing.T
 	require.False(t, invalidFake.correctionAcknowledgement.CorrectionRevisionID.IsValid())
 }
 
-func TestSubmissionManifestCursorIsVersionedStrictAndPathFree(t *testing.T) {
+func TestSubmissionManifestCursorIsUnversionedStrictAndPathFree(t *testing.T) {
 	t.Parallel()
 
 	entryID := model.NewAttemptWorkspaceEntryID()
@@ -207,10 +207,10 @@ func TestSubmissionManifestCursorIsVersionedStrictAndPathFree(t *testing.T) {
 	require.Equal(t, entryID, decoded.EntryID, "decoded cursor = %#v", decoded)
 	require.NotContains(t, raw, "src")
 	require.NotContains(t, raw, "main.go")
-	unsupported, _ := json.Marshal(submissionManifestCursorWire{Version: 2, EntryID: entryID.String()})
-	_, err = decodeSubmissionManifestCursor(base64.RawURLEncoding.EncodeToString(unsupported))
-	require.Error(t, err, "unsupported cursor version was accepted")
-	unknown := base64.RawURLEncoding.EncodeToString([]byte(`{"version":1,"entry_id":"` + entryID.String() + `","path":"src/main.go"}`))
+	versioned := base64.RawURLEncoding.EncodeToString([]byte(`{"version":1,"after_entry_id":"` + entryID.String() + `"}`))
+	_, err = decodeSubmissionManifestCursor(versioned)
+	require.Error(t, err, "versioned cursor was accepted")
+	unknown := base64.RawURLEncoding.EncodeToString([]byte(`{"after_entry_id":"` + entryID.String() + `","path":"src/main.go"}`))
 	_, err = decodeSubmissionManifestCursor(unknown)
 	require.Error(t, err, "cursor containing a path field was accepted")
 }

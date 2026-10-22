@@ -56,7 +56,7 @@ paths:
           in: query
           schema:
             type: string
-            description: Opaque versioned native condition identity cursor.
+            description: Opaque native condition identity cursor.
           description: Opaque continuation from the preceding native condition page.
       responses:
         '200':

@@ -124,7 +124,6 @@ type mailMetricsResponse struct {
 }
 
 type mailDeliveryCursor struct {
-	Version   int    `json:"version,omitempty"`
 	CreatedAt string `json:"created_at"`
 	ID        string `json:"id"`
 }
@@ -418,11 +417,8 @@ func decodeMailDeliveryCursor(raw string) (mailDeliveryCursor, error) {
 
 func mailDeliveryCursorSpec() opaqueCursorSpec[mailDeliveryCursor] {
 	return opaqueCursorSpec[mailDeliveryCursor]{
-		label: "mail delivery", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: 1,
-		members:        []string{"version", "created_at", "id"},
-		version:        func(cursor mailDeliveryCursor) int { return cursor.Version },
-		setVersion:     func(cursor *mailDeliveryCursor, version int) { cursor.Version = version },
-		acceptsVersion: func(version int) bool { return version == 0 || version == 1 },
+		label: "mail delivery", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength,
+		members: []string{"created_at", "id"},
 		validate: func(cursor mailDeliveryCursor) error {
 			parsed, err := model.ParseRFC3339(cursor.CreatedAt)
 			if err != nil || parsed.IsZero() || !model.MailDeliveryID(cursor.ID).IsValid() {

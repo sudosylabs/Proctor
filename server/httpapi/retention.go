@@ -221,13 +221,11 @@ func (m retentionHTTPModule) records(request operationRequest) (operationResult,
 }
 
 type retentionCursor struct {
-	Version int    `json:"version"`
-	After   string `json:"after_submission_id"`
+	After string `json:"after_submission_id"`
 }
 
 func retentionCursorSpec() opaqueCursorSpec[retentionCursor] {
-	return opaqueCursorSpec[retentionCursor]{label: "retention", currentVersion: 1, maximumEncodedLength: 256, members: []string{"version", "after_submission_id"},
-		version: func(c retentionCursor) int { return c.Version }, setVersion: func(c *retentionCursor, v int) { c.Version = v }, acceptsVersion: func(v int) bool { return v == 1 },
+	return opaqueCursorSpec[retentionCursor]{label: "retention", maximumEncodedLength: 256, members: []string{"after_submission_id"},
 		validate: func(c retentionCursor) error {
 			if !model.SubmissionID(c.After).IsValid() {
 				return errors.New("invalid retention cursor")

@@ -24,7 +24,6 @@ import (
 const defaultAuditPageSize = 50
 
 type auditCursor struct {
-	Version   int    `json:"version,omitempty"`
 	CreatedAt string `json:"created_at"`
 	ID        string `json:"id"`
 }
@@ -170,11 +169,8 @@ func decodeAuditCursor(raw string) (auditCursor, error) {
 
 func auditCursorSpec() opaqueCursorSpec[auditCursor] {
 	return opaqueCursorSpec[auditCursor]{
-		label: "audit", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: 1,
-		members:        []string{"version", "created_at", "id"},
-		version:        func(cursor auditCursor) int { return cursor.Version },
-		setVersion:     func(cursor *auditCursor, version int) { cursor.Version = version },
-		acceptsVersion: func(version int) bool { return version == 0 || version == 1 },
+		label: "audit", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength,
+		members: []string{"created_at", "id"},
 		validate: func(cursor auditCursor) error {
 			createdAt, err := model.ParseRFC3339(cursor.CreatedAt)
 			if err != nil || createdAt.IsZero() || !model.AuditEventID(cursor.ID).IsValid() {

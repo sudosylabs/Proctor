@@ -173,7 +173,7 @@ paths:
         - name: cursor
           in: query
           required: false
-          description: Opaque versioned keyset cursor containing only the last stable Entry identity.
+          description: Opaque keyset cursor containing only the last stable Entry identity.
           schema:
             type: string
       responses:
@@ -519,5 +519,5 @@ components:
         next_cursor:
           type: string
           description: >-
-            Opaque versioned keyset cursor containing only the last stable Entry identity; no path or storage
+            Opaque keyset cursor containing only the last stable Entry identity; no path or storage
             selector enters the URL.

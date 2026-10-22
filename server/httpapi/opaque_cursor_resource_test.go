@@ -56,101 +56,95 @@ func TestResourceCursorContracts(t *testing.T) {
 		want             any
 		plainKeyset      string
 		malformed        string
-		legacyDocuments  []string
 		maximumRawLength int
 	}{
 		{
 			name: "audit", encode: func() (string, error) {
 				return encodeAuditCursor(auditCursor{CreatedAt: at.Format(time.RFC3339Nano), ID: auditID})
 			}, decode: func(raw string) (any, error) { return decodeAuditCursor(raw) },
-			want: auditCursor{Version: 1, CreatedAt: at.Format(time.RFC3339Nano), ID: auditID}, plainKeyset: auditID,
-			malformed:       fmt.Sprintf(`{"version":1,"created_at":"invalid","id":%q}`, auditID),
-			legacyDocuments: []string{fmt.Sprintf(`{"created_at":%q,"id":%q}`, at.Format(time.RFC3339Nano), auditID)},
+			want: auditCursor{CreatedAt: at.Format(time.RFC3339Nano), ID: auditID}, plainKeyset: auditID,
+			malformed: fmt.Sprintf(`{"created_at":"invalid","id":%q}`, auditID),
 		},
 		{
 			name: "mail", encode: func() (string, error) {
 				return encodeMailDeliveryCursor(mailDeliveryCursor{CreatedAt: at.Format(time.RFC3339Nano), ID: mailID})
 			}, decode: func(raw string) (any, error) { return decodeMailDeliveryCursor(raw) },
-			want: mailDeliveryCursor{Version: 1, CreatedAt: at.Format(time.RFC3339Nano), ID: mailID}, plainKeyset: mailID,
-			malformed:       fmt.Sprintf(`{"version":1,"created_at":"invalid","id":%q}`, mailID),
-			legacyDocuments: []string{fmt.Sprintf(`{"created_at":%q,"id":%q}`, at.Format(time.RFC3339Nano), mailID)},
+			want: mailDeliveryCursor{CreatedAt: at.Format(time.RFC3339Nano), ID: mailID}, plainKeyset: mailID,
+			malformed: fmt.Sprintf(`{"created_at":"invalid","id":%q}`, mailID),
 		},
 		{
 			name: "job", encode: func() (string, error) {
 				return encodeJobCursor(jobCursor{CreatedAt: at.Format(time.RFC3339Nano), ID: jobID})
 			}, decode: func(raw string) (any, error) { return decodeJobCursor(raw) },
-			want: jobCursor{Version: 1, CreatedAt: at.Format(time.RFC3339Nano), ID: jobID}, plainKeyset: jobID,
-			malformed:       fmt.Sprintf(`{"version":1,"created_at":"invalid","id":%q}`, jobID),
-			legacyDocuments: []string{fmt.Sprintf(`{"created_at":%q,"id":%q}`, at.Format(time.RFC3339Nano), jobID)},
+			want: jobCursor{CreatedAt: at.Format(time.RFC3339Nano), ID: jobID}, plainKeyset: jobID,
+			malformed: fmt.Sprintf(`{"created_at":"invalid","id":%q}`, jobID),
 		},
 		{
 			name: "job attempt", encode: func() (string, error) { return encodeJobAttemptCursor(987654321) },
 			decode: func(raw string) (any, error) { return decodeJobAttemptCursor(raw) },
-			want:   987654321, plainKeyset: "987654321", malformed: `{"version":1,"number":0}`,
-			legacyDocuments: []string{`{"number":987654321}`},
+			want:   987654321, plainKeyset: "987654321", malformed: `{"number":0}`,
 		},
 		{
 			name: "Exam catalog", encode: func() (string, error) {
 				return encodeExamCatalogCursor(examCatalogCursor{UpdatedAt: at.Format(time.RFC3339Nano), ExamID: examID})
 			}, decode: func(raw string) (any, error) { return decodeExamCatalogCursor(raw) },
-			want: examCatalogCursor{Version: 1, UpdatedAt: at.Format(time.RFC3339Nano), ExamID: examID}, plainKeyset: examID,
-			malformed:       fmt.Sprintf(`{"version":1,"updated_at":"invalid","exam_id":%q}`, examID),
-			legacyDocuments: []string{fmt.Sprintf(`{"version":0,"updated_at":%q,"exam_id":%q}`, at.Format(time.RFC3339Nano), examID)},
+			want: examCatalogCursor{UpdatedAt: at.Format(time.RFC3339Nano), ExamID: examID}, plainKeyset: examID,
+			malformed: fmt.Sprintf(`{"updated_at":"invalid","exam_id":%q}`, examID),
 		},
 		{
 			name: "Exam Manager", encode: func() (string, error) {
 				return encodeExamManagerCursor(examManagerCursor{GrantedAt: at.Format(time.RFC3339Nano), UserID: managerID})
 			}, decode: func(raw string) (any, error) { return decodeExamManagerCursor(raw) },
-			want: examManagerCursor{Version: 1, GrantedAt: at.Format(time.RFC3339Nano), UserID: managerID}, plainKeyset: managerID,
-			malformed: fmt.Sprintf(`{"version":1,"granted_at":"invalid","user_id":%q}`, managerID),
+			want: examManagerCursor{GrantedAt: at.Format(time.RFC3339Nano), UserID: managerID}, plainKeyset: managerID,
+			malformed: fmt.Sprintf(`{"granted_at":"invalid","user_id":%q}`, managerID),
 		},
 		{
 			name: "Invitation", encode: func() (string, error) {
 				return encodeInvitationCursor(invitationCursor{CreatedAt: at.Format(time.RFC3339Nano), ID: invitationID})
 			}, decode: func(raw string) (any, error) { return decodeInvitationCursor(raw) },
-			want: invitationCursor{Version: 1, CreatedAt: at.Format(time.RFC3339Nano), ID: invitationID}, plainKeyset: invitationID,
-			malformed: fmt.Sprintf(`{"version":1,"created_at":"invalid","id":%q}`, invitationID),
+			want: invitationCursor{CreatedAt: at.Format(time.RFC3339Nano), ID: invitationID}, plainKeyset: invitationID,
+			malformed: fmt.Sprintf(`{"created_at":"invalid","id":%q}`, invitationID),
 		},
 		{
 			name: "Exam Revision", encode: func() (string, error) {
 				return encodeExamRevisionCursor(examRevisionCursor{Number: 7, RevisionID: revisionID})
 			}, decode: func(raw string) (any, error) { return decodeExamRevisionCursor(raw) },
-			want: examRevisionCursor{Version: 1, Number: 7, RevisionID: revisionID}, plainKeyset: revisionID,
-			malformed: fmt.Sprintf(`{"version":1,"number":0,"revision_id":%q}`, revisionID),
+			want: examRevisionCursor{Number: 7, RevisionID: revisionID}, plainKeyset: revisionID,
+			malformed: fmt.Sprintf(`{"number":0,"revision_id":%q}`, revisionID),
 		},
 		{
 			name: "Exam Sitting", encode: func() (string, error) {
 				return encodeExamSittingCursor(examSittingCursor{StartAt: at, ID: sittingID})
 			}, decode: func(raw string) (any, error) { return decodeExamSittingCursor(raw) },
 			want: examSittingCursor{StartAt: domainAt, ID: sittingID}, plainKeyset: sittingID.String(),
-			malformed: fmt.Sprintf(`{"version":1,"start_at":"invalid","id":%q}`, sittingID),
+			malformed: fmt.Sprintf(`{"start_at":"invalid","id":%q}`, sittingID),
 		},
 		{
 			name: "no-show", encode: func() (string, error) { return encodeExamSittingNoShowCursor(noShowID) },
 			decode: func(raw string) (any, error) { return decodeExamSittingNoShowCursor(raw) },
 			want:   noShowID, plainKeyset: noShowID.String(),
-			malformed: `{"version":1,"candidate_user_id":"invalid"}`, maximumRawLength: 342,
+			malformed: `{"candidate_user_id":"invalid"}`, maximumRawLength: 342,
 		},
 		{
 			name: "Submission manifest", encode: func() (string, error) {
 				return encodeSubmissionManifestCursor(submissionManifestCursor{EntryID: entryID})
 			}, decode: func(raw string) (any, error) { return decodeSubmissionManifestCursor(raw) },
 			want: submissionManifestCursor{EntryID: entryID}, plainKeyset: entryID.String(),
-			malformed: `{"version":1,"after_entry_id":"invalid"}`,
+			malformed: `{"after_entry_id":"invalid"}`,
 		},
 		{
 			name: "Exam Attempt", encode: func() (string, error) {
 				return encodeExamAttemptManagerCursor(examAttemptManagerCursor{CreatedAt: at, ID: attemptID})
 			}, decode: func(raw string) (any, error) { return decodeExamAttemptManagerCursor(raw) },
 			want: examAttemptManagerCursor{CreatedAt: domainAt, ID: attemptID}, plainKeyset: attemptID.String(),
-			malformed: fmt.Sprintf(`{"version":1,"created_at":"invalid","id":%q}`, attemptID),
+			malformed: fmt.Sprintf(`{"created_at":"invalid","id":%q}`, attemptID),
 		},
 		{
 			name: "candidate Workspace", encode: func() (string, error) {
 				return encodeCandidateWorkspaceCursor(candidateWorkspaceCursor{ExpectedCursor: 9, ID: entryID})
 			}, decode: func(raw string) (any, error) { return decodeCandidateWorkspaceCursor(raw) },
 			want: candidateWorkspaceCursor{ExpectedCursor: 9, ID: entryID}, plainKeyset: entryID.String(),
-			malformed: fmt.Sprintf(`{"version":1,"workspace_cursor":-1,"after_entry_id":%q}`, entryID),
+			malformed: fmt.Sprintf(`{"workspace_cursor":-1,"after_entry_id":%q}`, entryID),
 		},
 		{
 			name: "Integrity Review", encode: func() (string, error) {
@@ -159,7 +153,7 @@ func TestResourceCursorContracts(t *testing.T) {
 				return decodeExamIntegrityReviewCursor(raw, "evidence")
 			},
 			want: reviewID, plainKeyset: reviewID,
-			malformed: fmt.Sprintf(`{"version":1,"kind":"wrong","id":%q}`, reviewID),
+			malformed: fmt.Sprintf(`{"kind":"wrong","id":%q}`, reviewID),
 		},
 	}
 
@@ -180,12 +174,12 @@ func TestResourceCursorContracts(t *testing.T) {
 			var envelope map[string]any
 			err = json.Unmarshal(documentBytes, &envelope)
 			require.NoError(t, err)
-			require.Equal(t, float64(1), envelope["version"], "new cursor version")
+			require.NotContains(t, envelope, "version", "cursors are unversioned")
 
 			document := string(documentBytes)
 			invalidDocuments := []string{
-				strings.Replace(document, `"version":1`, `"version":2`, 1),
-				strings.Replace(document, `"version":1`, `"version":1,"version":1`, 1),
+				strings.Replace(document, "{", `{"version":1,`, 1),
+				strings.Replace(document, "{", `{"version":0,`, 1),
 				strings.Replace(document, "{", `{"unknown":true,`, 1),
 				document + `{}`,
 				test.malformed,
@@ -202,11 +196,6 @@ func TestResourceCursorContracts(t *testing.T) {
 			}
 			_, err = test.decode(strings.Repeat("A", maximum+1))
 			assert.Error(t, err, "decode accepted overlong cursor")
-			for _, legacyDocument := range test.legacyDocuments {
-				legacy := base64.RawURLEncoding.EncodeToString([]byte(legacyDocument))
-				_, err = test.decode(legacy)
-				assert.NoError(t, err, "decode legacy document %s", legacyDocument)
-			}
 		})
 	}
 }

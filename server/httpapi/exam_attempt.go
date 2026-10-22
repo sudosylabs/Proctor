@@ -24,14 +24,9 @@ import (
 )
 
 const (
-	candidateAttemptCredentialHeader    = "X-Proctor-Attempt-Credential"
-	candidateAttemptConnectionHeader    = "X-Proctor-Attempt-Connection-ID"
-	examAttemptManagerCursorVersion     = 1
-	browserActivityCursorVersion        = 1
-	candidateWorkspaceCursorVersion     = 1
-	submissionManifestCursorVersion     = 1
-	sittingCandidateStatusCursorVersion = 1
-	sittingCandidateStatusCursorKind    = "sitting_candidate_status"
+	candidateAttemptCredentialHeader = "X-Proctor-Attempt-Credential"
+	candidateAttemptConnectionHeader = "X-Proctor-Attempt-Connection-ID"
+	sittingCandidateStatusCursorKind = "sitting_candidate_status"
 )
 
 type browserActivityCursor struct {
@@ -41,7 +36,6 @@ type browserActivityCursor struct {
 }
 
 type browserActivityCursorWire struct {
-	Version         int    `json:"version"`
 	ReceivedAt      string `json:"received_at"`
 	SourceSessionID string `json:"source_session_id"`
 	Sequence        int64  `json:"sequence"`
@@ -64,11 +58,8 @@ func decodeBrowserActivityCursor(raw string) (browserActivityCursor, error) {
 
 func browserActivityCursorSpec() opaqueCursorSpec[browserActivityCursorWire] {
 	return opaqueCursorSpec[browserActivityCursorWire]{
-		label: "Browser Activity", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: browserActivityCursorVersion,
-		members:        []string{"version", "received_at", "source_session_id", "sequence"},
-		version:        func(cursor browserActivityCursorWire) int { return cursor.Version },
-		setVersion:     func(cursor *browserActivityCursorWire, version int) { cursor.Version = version },
-		acceptsVersion: func(version int) bool { return version == browserActivityCursorVersion },
+		label: "Browser Activity", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength,
+		members: []string{"received_at", "source_session_id", "sequence"},
 		validate: func(cursor browserActivityCursorWire) error {
 			receivedAt, err := model.ParseRFC3339(cursor.ReceivedAt)
 			if err != nil || receivedAt.IsZero() || !model.BrowserSourceSessionID(cursor.SourceSessionID).IsValid() || cursor.Sequence < 1 {
@@ -89,7 +80,6 @@ type submissionManifestCursor struct {
 }
 
 type submissionManifestCursorWire struct {
-	Version int    `json:"version"`
 	EntryID string `json:"after_entry_id"`
 }
 
@@ -109,11 +99,8 @@ func decodeSubmissionManifestCursor(raw string) (submissionManifestCursor, error
 
 func submissionManifestCursorSpec() opaqueCursorSpec[submissionManifestCursorWire] {
 	return opaqueCursorSpec[submissionManifestCursorWire]{
-		label: "Submission manifest", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: submissionManifestCursorVersion,
-		members:        []string{"version", "after_entry_id"},
-		version:        func(cursor submissionManifestCursorWire) int { return cursor.Version },
-		setVersion:     func(cursor *submissionManifestCursorWire, version int) { cursor.Version = version },
-		acceptsVersion: func(version int) bool { return version == submissionManifestCursorVersion },
+		label: "Submission manifest", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength,
+		members: []string{"after_entry_id"},
 		validate: func(cursor submissionManifestCursorWire) error {
 			if !model.AttemptWorkspaceEntryID(cursor.EntryID).IsValid() {
 				return errors.New("invalid Submission manifest keyset")
@@ -145,7 +132,6 @@ type examAttemptManagerCursor struct {
 }
 
 type examAttemptManagerCursorWire struct {
-	Version   int    `json:"version"`
 	CreatedAt string `json:"created_at"`
 	ID        string `json:"id"`
 }
@@ -168,11 +154,8 @@ func decodeExamAttemptManagerCursor(raw string) (examAttemptManagerCursor, error
 
 func examAttemptManagerCursorSpec() opaqueCursorSpec[examAttemptManagerCursorWire] {
 	return opaqueCursorSpec[examAttemptManagerCursorWire]{
-		label: "Exam Attempt", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: examAttemptManagerCursorVersion,
-		members:        []string{"version", "created_at", "id"},
-		version:        func(cursor examAttemptManagerCursorWire) int { return cursor.Version },
-		setVersion:     func(cursor *examAttemptManagerCursorWire, version int) { cursor.Version = version },
-		acceptsVersion: func(version int) bool { return version == examAttemptManagerCursorVersion },
+		label: "Exam Attempt", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength,
+		members: []string{"created_at", "id"},
 		validate: func(cursor examAttemptManagerCursorWire) error {
 			createdAt, err := model.ParseRFC3339(cursor.CreatedAt)
 			if err != nil || createdAt.IsZero() || !model.ExamAttemptID(cursor.ID).IsValid() {
@@ -189,7 +172,6 @@ type candidateWorkspaceCursor struct {
 }
 
 type candidateWorkspaceCursorWire struct {
-	Version        int    `json:"version"`
 	ExpectedCursor int64  `json:"workspace_cursor"`
 	ID             string `json:"after_entry_id,omitempty"`
 }
@@ -214,11 +196,8 @@ func decodeCandidateWorkspaceCursor(raw string) (candidateWorkspaceCursor, error
 
 func candidateWorkspaceCursorSpec() opaqueCursorSpec[candidateWorkspaceCursorWire] {
 	return opaqueCursorSpec[candidateWorkspaceCursorWire]{
-		label: "candidate Workspace", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: candidateWorkspaceCursorVersion,
-		members:        []string{"version", "workspace_cursor", "after_entry_id"},
-		version:        func(cursor candidateWorkspaceCursorWire) int { return cursor.Version },
-		setVersion:     func(cursor *candidateWorkspaceCursorWire, version int) { cursor.Version = version },
-		acceptsVersion: func(version int) bool { return version == candidateWorkspaceCursorVersion },
+		label: "candidate Workspace", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength,
+		members: []string{"workspace_cursor", "after_entry_id"},
 		validate: func(cursor candidateWorkspaceCursorWire) error {
 			if cursor.ExpectedCursor < 0 || cursor.ID != "" && !model.AttemptWorkspaceEntryID(cursor.ID).IsValid() {
 				return errors.New("invalid candidate Workspace keyset")
@@ -273,7 +252,6 @@ type ExamAttemptApplication interface {
 }
 
 type sittingCandidateStatusCursor struct {
-	Version         int    `json:"version"`
 	Kind            string `json:"kind"`
 	CandidateUserID string `json:"candidate_user_id"`
 }
@@ -964,11 +942,8 @@ func (m examAttemptHTTPModule) listCandidateStatuses(request operationRequest) (
 
 func sittingCandidateStatusCursorSpec() opaqueCursorSpec[sittingCandidateStatusCursor] {
 	return opaqueCursorSpec[sittingCandidateStatusCursor]{label: "Sitting candidate status",
-		maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: sittingCandidateStatusCursorVersion,
-		members:        []string{"version", "kind", "candidate_user_id"},
-		version:        func(cursor sittingCandidateStatusCursor) int { return cursor.Version },
-		setVersion:     func(cursor *sittingCandidateStatusCursor, version int) { cursor.Version = version },
-		acceptsVersion: func(version int) bool { return version == sittingCandidateStatusCursorVersion },
+		maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength,
+		members:              []string{"kind", "candidate_user_id"},
 		validate: func(cursor sittingCandidateStatusCursor) error {
 			if cursor.Kind != sittingCandidateStatusCursorKind || !model.UserID(cursor.CandidateUserID).IsValid() {
 				return errors.New("invalid Sitting candidate-status keyset")

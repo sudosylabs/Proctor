@@ -79,7 +79,7 @@ func TestIntegrityReviewHTTPUsesBoundedOpaqueEvidenceCursor(t *testing.T) {
 	id, err := decodeExamIntegrityReviewCursor(page.NextCursor, "evidence")
 	require.NoError(t, err, "cursor=%q id=%q error", page.NextCursor, id)
 	require.Equal(t, fake.evidence.ID.String(), id, "cursor=%q id=%q error", page.NextCursor, id)
-	unknown := base64.RawURLEncoding.EncodeToString([]byte(`{"version":1,"kind":"evidence","id":"` + fake.evidence.ID.String() + `","path":"private"}`))
+	unknown := base64.RawURLEncoding.EncodeToString([]byte(`{"kind":"evidence","id":"` + fake.evidence.ID.String() + `","path":"private"}`))
 	_, err = decodeExamIntegrityReviewCursor(unknown, "evidence")
 	require.Error(t, err, "cursor accepted an unknown private field")
 }

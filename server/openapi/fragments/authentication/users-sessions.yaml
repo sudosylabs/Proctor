@@ -59,7 +59,7 @@ paths:
           required: false
           schema:
             type: string
-            description: Opaque versioned Session creation-order cursor.
+            description: Opaque Session creation-order cursor.
           description: Opaque continuation emitted by the preceding Session page.
       responses:
         "200":

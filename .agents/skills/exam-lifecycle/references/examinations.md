@@ -148,8 +148,8 @@ manufactures either relationship. The query drives from archive-filtered Exam
 rows in descending update-time and Exam-ID index order, applies the complete
 keyset cursor and visibility predicates, and stops at the requested limit; its
 Draft title and manager count projections do not cause follow-up queries. The
-opaque HTTP cursor carries a private version and unsupported versions fail as
-invalid requests. Archiving is revision-fenced, audited, and idempotent: one
+opaque HTTP cursor is unversioned and strict; unknown members fail as invalid
+requests. Archiving is revision-fenced, audited, and idempotent: one
 transaction locks and rechecks the Exam and relationship, records its immutable
 archive time and next revision without deleting state, completes audit and the
 command outcome, and commits before transient effects. Concurrent new commands

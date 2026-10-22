@@ -207,7 +207,6 @@ type invitationListResponse struct {
 }
 
 type invitationCursor struct {
-	Version   int    `json:"version"`
 	CreatedAt string `json:"created_at"`
 	ID        string `json:"id"`
 }
@@ -494,11 +493,8 @@ func decodeInvitationCursor(raw string) (invitationCursor, error) {
 
 func invitationCursorSpec() opaqueCursorSpec[invitationCursor] {
 	return opaqueCursorSpec[invitationCursor]{
-		label: "Invitation", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: 1,
-		members:        []string{"version", "created_at", "id"},
-		version:        func(cursor invitationCursor) int { return cursor.Version },
-		setVersion:     func(cursor *invitationCursor, version int) { cursor.Version = version },
-		acceptsVersion: func(version int) bool { return version == 1 },
+		label: "Invitation", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength,
+		members: []string{"created_at", "id"},
 		validate: func(cursor invitationCursor) error {
 			createdAt, err := model.ParseRFC3339(cursor.CreatedAt)
 			if err != nil || createdAt.IsZero() || !model.InvitationID(cursor.ID).IsValid() {

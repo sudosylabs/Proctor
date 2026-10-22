@@ -6192,7 +6192,7 @@ export interface components {
         });
         CandidateExamWorkspaceListResponse: {
             items: components["schemas"]["CandidateExamWorkspaceItemResponse"][];
-            /** @description Opaque versioned cursor containing only the pinned Workspace cursor and last Entry identity; no Workspace path enters the URL. */
+            /** @description Opaque cursor containing only the pinned Workspace cursor and last Entry identity; no Workspace path enters the URL. */
             next_cursor?: string;
             /** @description True with an empty page when the pinned manifest cursor advanced; restart from the first page. */
             refresh_required: boolean;
@@ -6930,7 +6930,7 @@ export interface components {
         };
         ExamAttemptManagerListResponse: {
             items: components["schemas"]["ExamAttemptManagerResponse"][];
-            /** @description Opaque versioned cursor over descending creation time and Attempt identity; clients return it unchanged. */
+            /** @description Opaque cursor over descending creation time and Attempt identity; clients return it unchanged. */
             next_cursor?: string;
         };
         ExamAttemptManagerResponse: {
@@ -7375,7 +7375,7 @@ export interface components {
         };
         ExamRevisionListResponse: {
             items: components["schemas"]["ExamRevisionResponse"][];
-            /** @description Opaque versioned cursor over descending Revision number and identity; clients return it unchanged. */
+            /** @description Opaque cursor over descending Revision number and identity; clients return it unchanged. */
             next_cursor?: string;
         };
         ExamRevisionResponse: {
@@ -7472,7 +7472,7 @@ export interface components {
         /** @description One bounded page of authorized Exam Sittings. */
         ExamSittingListResponse: {
             items: components["schemas"]["ExamSittingResponse"][];
-            /** @description Opaque versioned cursor over descending scheduled start and Sitting identity; clients return it unchanged. */
+            /** @description Opaque cursor over descending scheduled start and Sitting identity; clients return it unchanged. */
             next_cursor?: string;
         };
         /** @description Revision fence and private manager rationale for a Sitting lifecycle transition. */
@@ -7488,7 +7488,7 @@ export interface components {
         /** @description One bounded page of derived no-show candidate identities. */
         ExamSittingNoShowListResponse: {
             items: components["schemas"]["ExamSittingNoShowResponse"][];
-            /** @description Opaque versioned candidate-identity cursor; clients return it unchanged. */
+            /** @description Opaque candidate-identity cursor; clients return it unchanged. */
             next_cursor?: string;
         };
         /** @description Candidate who belonged to the target Class at actual opening and has no Attempt. */
@@ -7703,7 +7703,7 @@ export interface components {
         ExamSubmissionManifestResponse: {
             items: components["schemas"]["ExamSubmissionManifestItemResponse"][];
             manifest_digest: components["schemas"]["SHA256"];
-            /** @description Opaque versioned keyset cursor containing only the last stable Entry identity; no path or storage selector enters the URL. */
+            /** @description Opaque keyset cursor containing only the last stable Entry identity; no path or storage selector enters the URL. */
             next_cursor?: string;
             submission_id: components["schemas"]["ID"];
             /** Format: int64 */
@@ -16175,7 +16175,7 @@ export interface operations {
             query?: {
                 /** @description Maximum number of Workspace entries to return from the cursor-pinned manifest page. */
                 limit?: number;
-                /** @description Opaque versioned cursor over ascending canonical path and Workspace entry identity; clients return it unchanged. */
+                /** @description Opaque cursor over ascending canonical path and Workspace entry identity; clients return it unchanged. */
                 cursor?: string;
             };
             header: {
@@ -17225,7 +17225,7 @@ export interface operations {
             query?: {
                 /** @description Maximum number of immutable Exam Revision metadata records to return in this page. */
                 limit?: number;
-                /** @description Opaque versioned cursor over descending Revision number and identity; clients return it unchanged. */
+                /** @description Opaque cursor over descending Revision number and identity; clients return it unchanged. */
                 cursor?: string;
             };
             header?: never;
@@ -17307,7 +17307,7 @@ export interface operations {
                 starts_before?: string;
                 /** @description Maximum number of Sittings to return. */
                 limit?: number;
-                /** @description Opaque versioned cursor over descending scheduled start and Sitting identity; clients return it unchanged. */
+                /** @description Opaque cursor over descending scheduled start and Sitting identity; clients return it unchanged. */
                 cursor?: string;
             };
             header?: never;
@@ -17410,7 +17410,7 @@ export interface operations {
                 state?: components["schemas"]["ExamAttemptState"][];
                 /** @description Maximum number of manager-safe Exam Attempt projections to return in this page. */
                 limit?: number;
-                /** @description Opaque versioned cursor over descending creation time and Attempt identity; clients return it unchanged. */
+                /** @description Opaque cursor over descending creation time and Attempt identity; clients return it unchanged. */
                 cursor?: string;
             };
             header?: never;
@@ -17463,7 +17463,7 @@ export interface operations {
             query?: {
                 /** @description Maximum number of minimized Browser Activity records to return in this keyset page. */
                 limit?: number;
-                /** @description Opaque versioned keyset cursor; return it unchanged and do not infer Browser location data from it. */
+                /** @description Opaque keyset cursor; return it unchanged and do not infer Browser location data from it. */
                 cursor?: string;
             };
             header?: never;
@@ -17611,7 +17611,7 @@ export interface operations {
             query?: {
                 /** @description Maximum number of immutable manifest entries to return. */
                 limit?: number;
-                /** @description Opaque versioned keyset cursor containing only the last stable Entry identity. */
+                /** @description Opaque keyset cursor containing only the last stable Entry identity. */
                 cursor?: string;
             };
             header?: never;
@@ -17920,7 +17920,7 @@ export interface operations {
             query?: {
                 /** @description Maximum number of no-show candidate identities to return. */
                 limit?: number;
-                /** @description Opaque versioned cursor over candidate identity; return unchanged. */
+                /** @description Opaque cursor over candidate identity; return unchanged. */
                 cursor?: string;
             };
             header?: never;

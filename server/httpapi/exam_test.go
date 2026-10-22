@@ -97,7 +97,7 @@ func TestExamHTTPListUsesBoundedCatalogQueryAndSummary(t *testing.T) {
 
 func TestExamCatalogCursorRoundTripsAndRejectsInvalidInput(t *testing.T) {
 	t.Parallel()
-	cursor := examCatalogCursor{Version: 1, UpdatedAt: "2026-08-14T08:00:00.123456789Z", ExamID: model.NewExamID().String()}
+	cursor := examCatalogCursor{UpdatedAt: "2026-08-14T08:00:00.123456789Z", ExamID: model.NewExamID().String()}
 	encodedCursor, err := encodeExamCatalogCursor(cursor)
 	require.NoError(t, err)
 	got, err := decodeExamCatalogCursor(encodedCursor)
@@ -105,13 +105,11 @@ func TestExamCatalogCursorRoundTripsAndRejectsInvalidInput(t *testing.T) {
 	require.Equal(t, cursor, got, "cursor")
 	_, err = decodeExamCatalogCursor("not-a-cursor")
 	require.Error(t, err, "invalid cursor accepted")
-	unsupported := []byte(`{"version":2,"updated_at":"2026-08-14T08:00:00Z","exam_id":"` + cursor.ExamID + `"}`)
-	_, err = decodeExamCatalogCursor(base64.RawURLEncoding.EncodeToString(unsupported))
-	require.Error(t, err, "unsupported cursor version accepted")
-	legacy := []byte(`{"updated_at":"2026-08-14T08:00:00Z","exam_id":"` + cursor.ExamID + `"}`)
-	decoded, err := decodeExamCatalogCursor(base64.RawURLEncoding.EncodeToString(legacy))
-	require.NoError(t, err, "legacy versionless cursor = %#v", decoded)
-	require.Equal(t, 0, decoded.Version, "legacy versionless cursor = %#v", decoded)
+	for _, version := range []string{"0", "1"} {
+		versioned := []byte(`{"version":` + version + `,"updated_at":"2026-08-14T08:00:00Z","exam_id":"` + cursor.ExamID + `"}`)
+		_, err = decodeExamCatalogCursor(base64.RawURLEncoding.EncodeToString(versioned))
+		require.Error(t, err, "versioned cursor accepted")
+	}
 	encoded, _ := json.Marshal(cursor)
 	_, err = decodeExamCatalogCursor(base64.RawURLEncoding.EncodeToString(append(encoded, []byte(`{}`)...)))
 	require.Error(t, err, "cursor with trailing JSON accepted")
@@ -177,17 +175,17 @@ func TestExamManagerHTTPListAndMutationsUseStrictBoundedContracts(t *testing.T) 
 	require.Equal(t, http.StatusBadRequest, invalid.Code, "strict DELETE = %d: %s", invalid.Code, invalid.Body.String())
 }
 
-func TestExamManagerCursorIsVersionedAndStrict(t *testing.T) {
+func TestExamManagerCursorIsUnversionedAndStrict(t *testing.T) {
 	t.Parallel()
-	cursor := examManagerCursor{Version: 1, GrantedAt: "2026-08-14T10:00:00Z", UserID: model.NewUserID().String()}
+	cursor := examManagerCursor{GrantedAt: "2026-08-14T10:00:00Z", UserID: model.NewUserID().String()}
 	encodedCursor, err := encodeExamManagerCursor(cursor)
 	require.NoError(t, err)
 	decoded, err := decodeExamManagerCursor(encodedCursor)
 	require.NoError(t, err, "cursor")
 	require.Equal(t, cursor, decoded, "cursor")
-	unsupported := []byte(`{"version":2,"granted_at":"2026-08-14T10:00:00Z","user_id":"` + cursor.UserID + `"}`)
-	_, err = decodeExamManagerCursor(base64.RawURLEncoding.EncodeToString(unsupported))
-	require.Error(t, err, "unsupported Manager cursor accepted")
+	versioned := []byte(`{"version":1,"granted_at":"2026-08-14T10:00:00Z","user_id":"` + cursor.UserID + `"}`)
+	_, err = decodeExamManagerCursor(base64.RawURLEncoding.EncodeToString(versioned))
+	require.Error(t, err, "versioned Manager cursor accepted")
 }
 
 func TestExamHTTPArchiveUsesRequiredIdempotentApplicationCommand(t *testing.T) {

@@ -32,13 +32,11 @@ type retentionNoticesResponse struct {
 	NextCursor string                    `json:"next_cursor,omitempty"`
 }
 type retentionNoticeCursor struct {
-	Version int    `json:"version"`
-	After   string `json:"after_retirement_id"`
+	After string `json:"after_retirement_id"`
 }
 
 func retentionNoticeCursorSpec() opaqueCursorSpec[retentionNoticeCursor] {
-	return opaqueCursorSpec[retentionNoticeCursor]{label: "retention-notices", currentVersion: 1, maximumEncodedLength: 256, members: []string{"version", "after_retirement_id"},
-		version: func(c retentionNoticeCursor) int { return c.Version }, setVersion: func(c *retentionNoticeCursor, v int) { c.Version = v }, acceptsVersion: func(v int) bool { return v == 1 },
+	return opaqueCursorSpec[retentionNoticeCursor]{label: "retention-notices", maximumEncodedLength: 256, members: []string{"after_retirement_id"},
 		validate: func(c retentionNoticeCursor) error {
 			if !model.RetentionRetirementID(c.After).IsValid() {
 				return errors.New("invalid retention notice cursor")

@@ -15,6 +15,10 @@ module when a change is not server-only. No module has been released yet.
 
 ### Changed
 
+- Server: pagination cursors are unversioned. Every cursor rejects a
+  `version` member, the audit, Job, Job attempt, mail delivery, and Exam
+  catalog cursors no longer accept versionless or version-0 tokens, and every
+  cursor issued by an earlier build is invalid (**breaking**).
 - Server: wire timestamps are RFC 3339 strings. `create_at`, `update_at`, and
   `delete_at` become `created_at`, `updated_at`, and `archived_at` (omitted
   while active), Job `complete_at` and `start_at` become `completed_at` and

@@ -53,7 +53,7 @@ paths:
           in: query
           schema:
             type: string
-            description: Opaque versioned Flag identity cursor.
+            description: Opaque Flag identity cursor.
           description: Opaque continuation emitted by the preceding Flag page.
       responses:
         '200':
@@ -118,7 +118,7 @@ paths:
           in: query
           schema:
             type: string
-            description: Opaque versioned Evidence identity cursor.
+            description: Opaque Evidence identity cursor.
           description: Opaque continuation emitted by the preceding Evidence page.
       responses:
         '200':

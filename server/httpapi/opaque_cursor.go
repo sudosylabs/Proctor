@@ -14,19 +14,21 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
+	"strings"
 	"unicode/utf8"
 )
 
 const defaultOpaqueCursorMaximumEncodedLength = 512
 
+// opaqueCursorSpec describes one resource's keyset cursor. Cursors are
+// unversioned: members must be exactly the json members of T, and a "version"
+// member is rejected so no cursor can grow a version that only ever holds one
+// value. A keyset change simply invalidates outstanding tokens.
 type opaqueCursorSpec[T any] struct {
 	label                string
 	maximumEncodedLength int
-	currentVersion       int
 	members              []string
-	version              func(T) int
-	setVersion           func(*T, int)
-	acceptsVersion       func(int) bool
 	validate             func(T) error
 }
 
@@ -34,7 +36,6 @@ func encodeOpaqueCursor[T any](value T, spec opaqueCursorSpec[T]) (string, error
 	if err := validateOpaqueCursorSpec(spec); err != nil {
 		return "", err
 	}
-	spec.setVersion(&value, spec.currentVersion)
 	if err := spec.validate(value); err != nil {
 		return "", invalidOpaqueCursorError(spec.label, err)
 	}
@@ -89,9 +90,6 @@ func decodeOpaqueCursor[T any](raw string, spec opaqueCursorSpec[T]) (T, error) 
 		}
 		return zero, invalidOpaqueCursorError(spec.label, err)
 	}
-	if !spec.acceptsVersion(spec.version(value)) {
-		return zero, invalidOpaqueCursorError(spec.label, errors.New("unsupported version"))
-	}
 	if err = spec.validate(value); err != nil {
 		return zero, invalidOpaqueCursorError(spec.label, err)
 	}
@@ -100,14 +98,13 @@ func decodeOpaqueCursor[T any](raw string, spec opaqueCursorSpec[T]) (T, error) 
 
 func validateOpaqueCursorSpec[T any](spec opaqueCursorSpec[T]) error {
 	if spec.label == "" || len(spec.label) > 64 || !utf8.ValidString(spec.label) ||
-		spec.maximumEncodedLength <= 0 || spec.maximumEncodedLength > 4096 || spec.currentVersion <= 0 ||
-		len(spec.members) == 0 ||
-		spec.version == nil || spec.setVersion == nil || spec.acceptsVersion == nil || spec.validate == nil {
+		spec.maximumEncodedLength <= 0 || spec.maximumEncodedLength > 4096 ||
+		len(spec.members) == 0 || spec.validate == nil {
 		return errors.New("invalid opaque cursor specification")
 	}
 	seen := make(map[string]struct{}, len(spec.members))
 	for _, member := range spec.members {
-		if member == "" || !utf8.ValidString(member) {
+		if member == "" || member == "version" || !utf8.ValidString(member) {
 			return errors.New("invalid opaque cursor specification")
 		}
 		if _, duplicate := seen[member]; duplicate {
@@ -115,7 +112,36 @@ func validateOpaqueCursorSpec[T any](spec opaqueCursorSpec[T]) error {
 		}
 		seen[member] = struct{}{}
 	}
+	declared := opaqueCursorJSONMembers(reflect.TypeFor[T]())
+	if len(declared) != len(seen) {
+		return errors.New("invalid opaque cursor specification")
+	}
+	for _, member := range declared {
+		if _, listed := seen[member]; !listed {
+			return errors.New("invalid opaque cursor specification")
+		}
+	}
 	return nil
+}
+
+// opaqueCursorJSONMembers returns the json member names of a cursor struct.
+func opaqueCursorJSONMembers(cursorType reflect.Type) []string {
+	if cursorType.Kind() != reflect.Struct {
+		return nil
+	}
+	members := make([]string, 0, cursorType.NumField())
+	for index := range cursorType.NumField() {
+		field := cursorType.Field(index)
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		if !field.IsExported() || name == "-" {
+			continue
+		}
+		if name == "" {
+			name = field.Name
+		}
+		members = append(members, name)
+	}
+	return members
 }
 
 func invalidOpaqueCursorError(label string, err error) error {

@@ -53,7 +53,7 @@ paths:
           in: query
           schema:
             type: string
-          description: Opaque versioned cursor over candidate identity; return unchanged.
+          description: Opaque cursor over candidate identity; return unchanged.
       responses:
         "200":
           $ref: '#/components/responses/ExamSittingNoShowListOK'
@@ -106,4 +106,4 @@ components:
             $ref: '#/components/schemas/ExamSittingNoShowResponse'
         next_cursor:
           type: string
-          description: Opaque versioned candidate-identity cursor; clients return it unchanged.
+          description: Opaque candidate-identity cursor; clients return it unchanged.

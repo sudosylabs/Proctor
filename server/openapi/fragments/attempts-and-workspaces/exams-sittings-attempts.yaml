@@ -67,7 +67,7 @@ paths:
           in: query
           required: false
           description: >-
-            Opaque versioned cursor over descending creation time and Attempt identity; clients return it
+            Opaque cursor over descending creation time and Attempt identity; clients return it
             unchanged.
           schema:
             type: string
@@ -189,7 +189,7 @@ paths:
           in: query
           required: false
           description: >-
-            Opaque versioned keyset cursor; return it unchanged and do not infer Browser location data from
+            Opaque keyset cursor; return it unchanged and do not infer Browser location data from
             it.
           schema:
             type: string
@@ -874,5 +874,5 @@ components:
         next_cursor:
           type: string
           description: >-
-            Opaque versioned cursor over descending creation time and Attempt identity; clients return it
+            Opaque cursor over descending creation time and Attempt identity; clients return it
             unchanged.

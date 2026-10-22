@@ -936,10 +936,11 @@ All keyset cursors use the shared bounded opaque envelope. Encoding is
 deterministic canonical unpadded raw URL-safe Base64 of one strict JSON object.
 Decoding rejects padded or non-canonical Base64, invalid UTF-8, non-object JSON,
 duplicate, case-aliased, or unknown members, trailing values, missing required
-resource/version data, overlong tokens, and versions outside the owning
-resource's explicit admission set. The owning resource defines the private
-keyset fields, ordering, validation, and legacy-version policy; clients return
-the token unchanged. Candidate Workspace retains its established optional
+resource data, overlong tokens, and any `version` member: cursors are
+unversioned, and changing a keyset simply invalidates outstanding tokens. The
+codec rejects a specification whose members differ from the cursor type's JSON
+members. The owning resource defines the private keyset fields, ordering, and
+validation; clients return the token unchanged. Candidate Workspace retains its established optional
 `after_entry_id`: a snapshot-only cursor restarts that pinned snapshot safely,
 while every server-emitted continuation includes the final entry identity.
 
@@ -960,22 +961,20 @@ no special meaning, and the current authorization constraint is applied in
 PostgreSQL before results are returned.
 
 The Exam catalog's `next_cursor` is an opaque URL-safe token whose private
-payload includes a cursor version, exact update time, and Exam identity.
-Clients must return it unchanged. Malformed cursors, trailing payload, and
-unsupported versions are invalid requests; versionless tokens emitted before
-the cursor version was added remain accepted during v1. Clients never
-construct or inspect the payload.
+payload carries the exact update time and Exam identity. Clients must return
+it unchanged. Malformed cursors, trailing payload, and unknown members are
+invalid requests. Clients never construct or inspect the payload.
 
 The Exam Manager catalog follows the same opaque-cursor rule with its own
-versioned grant-time and User-identity payload. It is ordered by grant time and
+grant-time and User-identity payload. It is ordered by grant time and
 User identity, returns relationship provenance and creator/owner indicators,
 and never expands User profiles.
 
 
 The Exam Revision catalog is ordered by immutable Revision number and identity,
-both descending. Its `next_cursor` is a versioned opaque URL-safe token carrying
-that tuple; clients return it unchanged, and malformed, trailing, versionless,
-or unsupported payloads are invalid requests. Publication uses
+both descending. Its `next_cursor` is an opaque URL-safe token carrying
+that tuple; clients return it unchanged, and malformed, trailing, or
+unknown-member payloads are invalid requests. Publication uses
 `POST /api/v1/exams/{exam_id}/revisions`, requires `Idempotency-Key`, and accepts
 only the positive `expected_draft_revision` fence. Collection and exact reads
 return bounded publication metadata: identity, number, source Draft revision,
@@ -1025,13 +1024,13 @@ derived from Class membership active at the Sitting's authoritative
 `opened_at`, excludes every candidate who created an Attempt, and never creates
 an Attempt or Submission. Results contain only `candidate_user_id`, default to
 50, accept at most 200, are ordered by that stable identity, and use an opaque
-versioned cursor. The response is `no-store`.
+cursor. The response is `no-store`.
 
 The list defaults to 50 items and accepts at most 200. It can filter by one
 `class_id`, repeated deduplicated `state` values (at most the six defined
 states), and a paired `ends_after`/`starts_before` overlap interval. Results are
 ordered by scheduled start then Sitting identity, both descending. Its opaque
-Raw URL-safe cursor is versioned and carries that exact tuple; clients return
+raw URL-safe cursor carries that exact tuple; clients return
 it unchanged.
 
 Responses expose only the Sitting identity, Exam/Revision/Class identities,
@@ -1306,14 +1305,14 @@ content capability; it is never represented by a signed or public URL.
 Manager results are ordered by Attempt creation time and identity descending.
 Candidate Workspace results are ordered by canonical path and entry identity
 ascending. Both catalogs default to 50 and accept at most 200 items, using
-distinct opaque versioned keyset cursors. JSON is `no-store`. Candidate binary
+distinct opaque keyset cursors. JSON is `no-store`. Candidate binary
 content is inline, `private, no-store`, `nosniff`, and conditionally readable
 with a strong ETag; Workspace files follow the sandboxed passive-media rule
 above. It has no `Content-Disposition`, public URL, object key, or
 download/export contract.
 
 Candidate Exam Activity and manager candidate-status collections likewise
-default to 50, accept at most 200, and use opaque versioned keyset cursors.
+default to 50, accept at most 200, and use opaque keyset cursors.
 Exam Activity is self-scoped and exposes only safe lifecycle/access state,
 allowed navigation action, and candidate-safe Submission provenance. The
 candidate-status board returns one common `server_time` and derives presence
@@ -1331,7 +1330,7 @@ Manager Submission JSON is `no-store`. Submission file content has the same
 `private, no-store`, `nosniff`, strong-ETag, no-`Content-Disposition` contract.
 
 Integrity Review JSON is `no-store`. Manager list cursors are opaque,
-versioned, identity-only tokens and each page is limited to 200 items. Evidence
+identity-only tokens and each page is limited to 200 items. Evidence
 and discrepancy records expose only their purpose-specific bounded fields;
 they do not expose a credential hash, Session identity, Connection identity,
 Workspace selector, or arbitrary client payload. Decision private rationale

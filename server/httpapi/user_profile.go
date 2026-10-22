@@ -89,12 +89,10 @@ type currentUserContextUserResponse struct {
 }
 
 const (
-	candidateExamActivityCursorVersion = 1
-	candidateExamActivityCursorKind    = "candidate_exam_activity"
+	candidateExamActivityCursorKind = "candidate_exam_activity"
 )
 
 type candidateExamActivityCursor struct {
-	Version          int    `json:"version"`
 	Kind             string `json:"kind"`
 	ScheduledStartAt string `json:"scheduled_start_at"`
 	ExamSittingID    string `json:"exam_sitting_id"`
@@ -242,11 +240,8 @@ func (m userProfileResourceModule) examActivity(request operationRequest) (opera
 
 func candidateExamActivityCursorSpec() opaqueCursorSpec[candidateExamActivityCursor] {
 	return opaqueCursorSpec[candidateExamActivityCursor]{label: "candidate Exam activity",
-		maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: candidateExamActivityCursorVersion,
-		members:        []string{"version", "kind", "scheduled_start_at", "exam_sitting_id"},
-		version:        func(cursor candidateExamActivityCursor) int { return cursor.Version },
-		setVersion:     func(cursor *candidateExamActivityCursor, version int) { cursor.Version = version },
-		acceptsVersion: func(version int) bool { return version == candidateExamActivityCursorVersion },
+		maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength,
+		members:              []string{"kind", "scheduled_start_at", "exam_sitting_id"},
 		validate: func(cursor candidateExamActivityCursor) error {
 			at, err := model.ParseRFC3339(cursor.ScheduledStartAt)
 			if cursor.Kind != candidateExamActivityCursorKind || err != nil || at.IsZero() ||

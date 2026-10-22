@@ -346,10 +346,10 @@ func TestExamSittingHTTPListsNoShowsWithOpaqueUserCursor(t *testing.T) {
 	require.Equal(t, http.StatusInternalServerError, noProgress.Code, "no-progress status=%d body=%s", noProgress.Code, noProgress.Body.String())
 	invalid := []string{
 		"not-base64",
-		base64.RawURLEncoding.EncodeToString([]byte(`{"version":2,"candidate_user_id":"` + second.String() + `"}`)),
-		base64.RawURLEncoding.EncodeToString([]byte(`{"version":1,"version":1,"candidate_user_id":"` + second.String() + `"}`)),
-		base64.RawURLEncoding.EncodeToString([]byte(`{"version":1,"candidate_user_id":"` + second.String() + `","extra":true}`)),
-		base64.RawURLEncoding.EncodeToString([]byte(`{"version":1,"candidate_user_id":"` + second.String() + `"}{}`)),
+		base64.RawURLEncoding.EncodeToString([]byte(`{"version":1,"candidate_user_id":"` + second.String() + `"}`)),
+		base64.RawURLEncoding.EncodeToString([]byte(`{"candidate_user_id":"` + second.String() + `","candidate_user_id":"` + second.String() + `"}`)),
+		base64.RawURLEncoding.EncodeToString([]byte(`{"candidate_user_id":"` + second.String() + `","extra":true}`)),
+		base64.RawURLEncoding.EncodeToString([]byte(`{"candidate_user_id":"` + second.String() + `"}{}`)),
 	}
 	for _, raw := range invalid {
 		_, decodeErr := decodeExamSittingNoShowCursor(raw)

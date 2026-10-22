@@ -50,7 +50,7 @@ paths:
           in: query
           schema:
             type: string
-            description: Opaque versioned Discrepancy identity cursor.
+            description: Opaque Discrepancy identity cursor.
           description: Opaque continuation emitted by the preceding Discrepancy page.
       responses:
         "200":

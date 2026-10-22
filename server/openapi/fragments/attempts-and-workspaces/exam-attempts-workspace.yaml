@@ -52,7 +52,7 @@ paths:
           in: query
           required: false
           description: >-
-            Opaque versioned cursor over ascending canonical path and Workspace entry identity; clients return it unchanged.
+            Opaque cursor over ascending canonical path and Workspace entry identity; clients return it unchanged.
           schema:
             type: string
       responses:
@@ -105,7 +105,7 @@ components:
         next_cursor:
           type: string
           description: >-
-            Opaque versioned cursor containing only the pinned Workspace cursor and last Entry identity; no Workspace path enters the URL.
+            Opaque cursor containing only the pinned Workspace cursor and last Entry identity; no Workspace path enters the URL.
         refresh_required:
           type: boolean
           description: True with an empty page when the pinned manifest cursor advanced; restart from the first page.

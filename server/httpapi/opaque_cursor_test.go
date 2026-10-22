@@ -18,17 +18,13 @@ import (
 )
 
 type opaqueCursorFixture struct {
-	Version int    `json:"version,omitempty"`
-	Key     string `json:"key"`
+	Key string `json:"key"`
 }
 
 func opaqueCursorFixtureSpec() opaqueCursorSpec[opaqueCursorFixture] {
 	return opaqueCursorSpec[opaqueCursorFixture]{
-		label: "fixture", maximumEncodedLength: 256, currentVersion: 1,
-		members:        []string{"version", "key"},
-		version:        func(cursor opaqueCursorFixture) int { return cursor.Version },
-		setVersion:     func(cursor *opaqueCursorFixture, version int) { cursor.Version = version },
-		acceptsVersion: func(version int) bool { return version == 1 },
+		label: "fixture", maximumEncodedLength: 256,
+		members: []string{"key"},
 		validate: func(cursor opaqueCursorFixture) error {
 			if cursor.Key == "" {
 				return errors.New("key is required")
@@ -50,10 +46,10 @@ func TestOpaqueCursorCanonicalRoundTrip(t *testing.T) {
 	require.False(t, strings.ContainsAny(first, "+/="), "non-deterministic or non-raw-URL encoding")
 	decoded, err := decodeOpaqueCursor(first, spec)
 	require.NoError(t, err, "round trip")
-	require.Equal(t, opaqueCursorFixture{Version: 1, Key: want.Key}, decoded, "round trip")
+	require.Equal(t, want, decoded, "round trip")
 	document, err := base64.RawURLEncoding.Strict().DecodeString(first)
 	require.NoError(t, err, "encoded document")
-	require.Contains(t, string(document), `"version":1`, "encoded document")
+	require.JSONEq(t, `{"key":"keyset"}`, string(document), "encoded document carries no version")
 }
 
 func TestOpaqueCursorRejectsMalformedDocuments(t *testing.T) {
@@ -62,7 +58,7 @@ func TestOpaqueCursorRejectsMalformedDocuments(t *testing.T) {
 	encodeDocument := func(document string) string {
 		return base64.RawURLEncoding.EncodeToString([]byte(document))
 	}
-	valid := `{"version":1,"key":"keyset"}`
+	valid := `{"key":"keyset"}`
 	tests := map[string]string{
 		"empty":              "",
 		"over bound":         strings.Repeat("a", spec.maximumEncodedLength+1),
@@ -74,16 +70,14 @@ func TestOpaqueCursorRejectsMalformedDocuments(t *testing.T) {
 		"array":              encodeDocument(`[]`),
 		"scalar":             encodeDocument(`1`),
 		"null":               encodeDocument(`null`),
-		"duplicate version":  encodeDocument(`{"version":1,"version":1,"key":"keyset"}`),
-		"case alias version": encodeDocument(`{"version":2,"Version":1,"key":"keyset"}`),
-		"case alias key":     encodeDocument(`{"version":1,"Key":"keyset"}`),
-		"duplicate key":      encodeDocument(`{"version":1,"key":"a","key":"b"}`),
-		"unknown member":     encodeDocument(`{"version":1,"key":"keyset","unknown":true}`),
-		"missing key":        encodeDocument(`{"version":1}`),
+		"case alias key":     encodeDocument(`{"Key":"keyset"}`),
+		"duplicate key":      encodeDocument(`{"key":"a","key":"b"}`),
+		"unknown member":     encodeDocument(`{"key":"keyset","unknown":true}`),
+		"version member":     encodeDocument(`{"version":1,"key":"keyset"}`),
+		"missing key":        encodeDocument(`{}`),
 		"concatenated":       encodeDocument(valid + `{}`),
 		"trailing token":     encodeDocument(valid + ` true`),
 		"trailing garbage":   encodeDocument(valid + ` garbage`),
-		"unsupported":        encodeDocument(`{"version":2,"key":"keyset"}`),
 	}
 	for name, raw := range tests {
 		name, raw := name, raw
@@ -103,16 +97,12 @@ func TestOpaqueCursorRejectsEncoderAndSpecFailures(t *testing.T) {
 	require.Error(t, err, "resource-invalid cursor encoded")
 
 	type marshalFailureCursor struct {
-		Version int `json:"version"`
-		Value   any `json:"value"`
+		Value any `json:"value"`
 	}
 	marshalSpec := opaqueCursorSpec[marshalFailureCursor]{
-		label: "marshal fixture", maximumEncodedLength: 256, currentVersion: 1,
-		members:        []string{"version", "value"},
-		version:        func(cursor marshalFailureCursor) int { return cursor.Version },
-		setVersion:     func(cursor *marshalFailureCursor, version int) { cursor.Version = version },
-		acceptsVersion: func(version int) bool { return version == 1 },
-		validate:       func(marshalFailureCursor) error { return nil },
+		label: "marshal fixture", maximumEncodedLength: 256,
+		members:  []string{"value"},
+		validate: func(marshalFailureCursor) error { return nil },
 	}
 	_, err = encodeOpaqueCursor(marshalFailureCursor{Value: make(chan struct{})}, marshalSpec)
 	require.Error(t, err, "JSON marshal failure was ignored")
@@ -124,9 +114,32 @@ func TestOpaqueCursorRejectsEncoderAndSpecFailures(t *testing.T) {
 	_, err = decodeOpaqueCursor("anything", invalidSpec)
 	require.Error(t, err, "invalid decoder specification accepted")
 	duplicateMembers := spec
-	duplicateMembers.members = []string{"version", "version"}
+	duplicateMembers.members = []string{"key", "key"}
 	_, err = encodeOpaqueCursor(opaqueCursorFixture{Key: "keyset"}, duplicateMembers)
 	require.Error(t, err, "duplicate specification members accepted")
+	undeclaredMember := spec
+	undeclaredMember.members = []string{"key", "extra"}
+	_, err = encodeOpaqueCursor(opaqueCursorFixture{Key: "keyset"}, undeclaredMember)
+	require.Error(t, err, "specification member absent from the cursor type accepted")
+}
+
+// TestOpaqueCursorSpecRejectsVersionMember plants a versioned cursor: cursors
+// are unversioned, so a "version" member fails every encode and decode.
+func TestOpaqueCursorSpecRejectsVersionMember(t *testing.T) {
+	t.Parallel()
+	type versionedCursor struct {
+		Version int    `json:"version"`
+		Key     string `json:"key"`
+	}
+	spec := opaqueCursorSpec[versionedCursor]{
+		label: "versioned fixture", maximumEncodedLength: 256,
+		members:  []string{"version", "key"},
+		validate: func(versionedCursor) error { return nil },
+	}
+	_, err := encodeOpaqueCursor(versionedCursor{Version: 1, Key: "keyset"}, spec)
+	require.Error(t, err, "versioned cursor specification accepted")
+	_, err = decodeOpaqueCursor(base64.RawURLEncoding.EncodeToString([]byte(`{"version":1,"key":"keyset"}`)), spec)
+	require.Error(t, err, "versioned cursor specification accepted")
 }
 
 func FuzzOpaqueCursorDecode(f *testing.F) {

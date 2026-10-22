@@ -170,10 +170,7 @@ type removeExamManagerRequest struct {
 
 type transferExamOwnershipRequest = addExamManagerRequest
 
-const examCatalogCursorVersion = 1
-
 type examCatalogCursor struct {
-	Version   int    `json:"version"`
 	UpdatedAt string `json:"updated_at"`
 	ExamID    string `json:"exam_id"`
 }
@@ -229,7 +226,6 @@ type examManagerChangeResponse struct {
 }
 
 type examManagerCursor struct {
-	Version   int    `json:"version"`
 	GrantedAt string `json:"granted_at"`
 	UserID    string `json:"user_id"`
 }
@@ -733,11 +729,8 @@ func decodeExamManagerCursor(raw string) (examManagerCursor, error) {
 
 func examManagerCursorSpec() opaqueCursorSpec[examManagerCursor] {
 	return opaqueCursorSpec[examManagerCursor]{
-		label: "Exam Manager", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: 1,
-		members:        []string{"version", "granted_at", "user_id"},
-		version:        func(cursor examManagerCursor) int { return cursor.Version },
-		setVersion:     func(cursor *examManagerCursor, version int) { cursor.Version = version },
-		acceptsVersion: func(version int) bool { return version == 1 },
+		label: "Exam Manager", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength,
+		members: []string{"granted_at", "user_id"},
 		validate: func(cursor examManagerCursor) error {
 			grantedAt, err := model.ParseRFC3339(cursor.GrantedAt)
 			if err != nil || grantedAt.IsZero() || !model.UserID(cursor.UserID).IsValid() {
@@ -840,11 +833,8 @@ func decodeExamCatalogCursor(raw string) (examCatalogCursor, error) {
 
 func examCatalogCursorSpec() opaqueCursorSpec[examCatalogCursor] {
 	return opaqueCursorSpec[examCatalogCursor]{
-		label: "Exam catalog", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: examCatalogCursorVersion,
-		members:        []string{"version", "updated_at", "exam_id"},
-		version:        func(cursor examCatalogCursor) int { return cursor.Version },
-		setVersion:     func(cursor *examCatalogCursor, version int) { cursor.Version = version },
-		acceptsVersion: func(version int) bool { return version == 0 || version == examCatalogCursorVersion },
+		label: "Exam catalog", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength,
+		members: []string{"updated_at", "exam_id"},
 		validate: func(cursor examCatalogCursor) error {
 			updatedAt, err := model.ParseRFC3339(cursor.UpdatedAt)
 			if err != nil || updatedAt.IsZero() || !model.ExamID(cursor.ExamID).IsValid() {

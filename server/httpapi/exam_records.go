@@ -446,7 +446,6 @@ func recordsHoldResponse(value model.RetentionHold) retentionHoldResponse {
 }
 
 type recordsHoldCursor struct {
-	Version         int    `json:"version"`
 	ExamID          string `json:"exam_id"`
 	SittingID       string `json:"exam_sitting_id"`
 	SubmissionID    string `json:"submission_id"`
@@ -455,8 +454,8 @@ type recordsHoldCursor struct {
 }
 
 func recordsHoldCursorSpec(scope model.RetentionHoldScope, includeReleased bool) opaqueCursorSpec[recordsHoldCursor] {
-	return opaqueCursorSpec[recordsHoldCursor]{label: "retention holds", maximumEncodedLength: 512, currentVersion: 1, members: []string{"version", "exam_id", "exam_sitting_id", "submission_id", "include_released", "after_id"},
-		version: func(c recordsHoldCursor) int { return c.Version }, setVersion: func(c *recordsHoldCursor, v int) { c.Version = v }, acceptsVersion: func(v int) bool { return v == 1 }, validate: func(c recordsHoldCursor) error {
+	return opaqueCursorSpec[recordsHoldCursor]{label: "retention holds", maximumEncodedLength: 512, members: []string{"exam_id", "exam_sitting_id", "submission_id", "include_released", "after_id"},
+		validate: func(c recordsHoldCursor) error {
 			if scope.Validate() != nil || c.ExamID != scope.ExamID.String() || c.SittingID != scope.SittingID.String() || c.SubmissionID != scope.SubmissionID.String() || c.IncludeReleased != includeReleased || !model.RetentionHoldID(c.AfterID).IsValid() {
 				return errors.New("retention hold cursor scope changed")
 			}

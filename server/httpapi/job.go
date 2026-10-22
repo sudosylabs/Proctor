@@ -67,13 +67,11 @@ type jobAttemptListResponse struct {
 	NextCursor string               `json:"next_cursor,omitempty"`
 }
 type jobCursor struct {
-	Version   int    `json:"version,omitempty"`
 	CreatedAt string `json:"created_at"`
 	ID        string `json:"id"`
 }
 type jobAttemptCursor struct {
-	Version int `json:"version,omitempty"`
-	Number  int `json:"number"`
+	Number int `json:"number"`
 }
 
 type jobResourceModule struct {
@@ -233,11 +231,8 @@ func decodeJobCursor(raw string) (jobCursor, error) {
 }
 func jobCursorSpec() opaqueCursorSpec[jobCursor] {
 	return opaqueCursorSpec[jobCursor]{
-		label: "job", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: 1,
-		members:        []string{"version", "created_at", "id"},
-		version:        func(cursor jobCursor) int { return cursor.Version },
-		setVersion:     func(cursor *jobCursor, version int) { cursor.Version = version },
-		acceptsVersion: func(version int) bool { return version == 0 || version == 1 },
+		label: "job", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength,
+		members: []string{"created_at", "id"},
 		validate: func(cursor jobCursor) error {
 			createdAt, err := model.ParseRFC3339(cursor.CreatedAt)
 			if err != nil || createdAt.IsZero() || !model.JobID(cursor.ID).IsValid() {
@@ -249,11 +244,8 @@ func jobCursorSpec() opaqueCursorSpec[jobCursor] {
 }
 func jobAttemptCursorSpec() opaqueCursorSpec[jobAttemptCursor] {
 	return opaqueCursorSpec[jobAttemptCursor]{
-		label: "job attempt", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: 1,
-		members:        []string{"version", "number"},
-		version:        func(cursor jobAttemptCursor) int { return cursor.Version },
-		setVersion:     func(cursor *jobAttemptCursor, version int) { cursor.Version = version },
-		acceptsVersion: func(version int) bool { return version == 0 || version == 1 },
+		label: "job attempt", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength,
+		members: []string{"number"},
 		validate: func(cursor jobAttemptCursor) error {
 			if cursor.Number <= 0 {
 				return errors.New("invalid job attempt keyset")

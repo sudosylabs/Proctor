@@ -23,8 +23,6 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-const examSittingCursorVersion = 1
-
 type ExamSittingApplication interface {
 	ScheduleExamSitting(context.Context, app.Invocation, app.ScheduleExamSittingCommand) (app.ExamSittingView, error)
 	GetExamSitting(context.Context, app.Invocation, app.GetExamSittingQuery) (app.ExamSittingView, error)
@@ -192,7 +190,6 @@ type examSittingNoShowListResponse struct {
 }
 
 type examSittingNoShowCursorWire struct {
-	Version         int    `json:"version"`
 	CandidateUserID string `json:"candidate_user_id"`
 }
 
@@ -202,7 +199,6 @@ type examSittingCursor struct {
 }
 
 type examSittingCursorWire struct {
-	Version int    `json:"version"`
 	StartAt string `json:"start_at"`
 	ID      string `json:"id"`
 }
@@ -293,11 +289,8 @@ func decodeExamSittingNoShowCursor(raw string) (model.UserID, error) {
 
 func examSittingNoShowCursorSpec() opaqueCursorSpec[examSittingNoShowCursorWire] {
 	return opaqueCursorSpec[examSittingNoShowCursorWire]{
-		label: "no-show", maximumEncodedLength: 342, currentVersion: 1,
-		members:        []string{"version", "candidate_user_id"},
-		version:        func(cursor examSittingNoShowCursorWire) int { return cursor.Version },
-		setVersion:     func(cursor *examSittingNoShowCursorWire, version int) { cursor.Version = version },
-		acceptsVersion: func(version int) bool { return version == 1 },
+		label: "no-show", maximumEncodedLength: 342,
+		members: []string{"candidate_user_id"},
 		validate: func(cursor examSittingNoShowCursorWire) error {
 			if !model.UserID(cursor.CandidateUserID).IsValid() {
 				return errors.New("invalid no-show keyset")
@@ -696,7 +689,7 @@ func examSittingResponseFromView(view app.ExamSittingView) examSittingResponse {
 }
 
 func encodeExamSittingCursor(cursor examSittingCursor) (string, error) {
-	wire := examSittingCursorWire{Version: examSittingCursorVersion, StartAt: model.FormatRFC3339(cursor.StartAt), ID: cursor.ID.String()}
+	wire := examSittingCursorWire{StartAt: model.FormatRFC3339(cursor.StartAt), ID: cursor.ID.String()}
 	return encodeOpaqueCursor(wire, examSittingCursorSpec())
 }
 
@@ -712,11 +705,8 @@ func decodeExamSittingCursor(raw string) (examSittingCursor, error) {
 
 func examSittingCursorSpec() opaqueCursorSpec[examSittingCursorWire] {
 	return opaqueCursorSpec[examSittingCursorWire]{
-		label: "Exam Sitting", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: examSittingCursorVersion,
-		members:        []string{"version", "start_at", "id"},
-		version:        func(cursor examSittingCursorWire) int { return cursor.Version },
-		setVersion:     func(cursor *examSittingCursorWire, version int) { cursor.Version = version },
-		acceptsVersion: func(version int) bool { return version == examSittingCursorVersion },
+		label: "Exam Sitting", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength,
+		members: []string{"start_at", "id"},
 		validate: func(cursor examSittingCursorWire) error {
 			startAt, err := model.ParseRFC3339(cursor.StartAt)
 			if err != nil || startAt.IsZero() || !model.ExamSittingID(cursor.ID).IsValid() {

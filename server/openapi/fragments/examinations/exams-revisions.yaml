@@ -51,7 +51,7 @@ paths:
         - name: cursor
           in: query
           required: false
-          description: Opaque versioned cursor over descending Revision number and identity; clients return it unchanged.
+          description: Opaque cursor over descending Revision number and identity; clients return it unchanged.
           schema:
             type: string
       responses:
@@ -335,4 +335,4 @@ components:
             $ref: '#/components/schemas/ExamRevisionResponse'
         next_cursor:
           type: string
-          description: Opaque versioned cursor over descending Revision number and identity; clients return it unchanged.
+          description: Opaque cursor over descending Revision number and identity; clients return it unchanged.
