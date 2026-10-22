@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -145,12 +145,12 @@ func TestIdempotencyOperationCompatibility(t *testing.T) {
 func TestPrepareIdempotencyFaultMapping(t *testing.T) {
 	t.Parallel()
 	valid := invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
-	_, err := applicationidempotency.Require(valid, "operation", "", struct{}{})
+	_, err := idempotency.Require(valid, "operation", "", struct{}{})
 	require.Equal(t, "idempotency.key_required", faultCode(err), "missing key error")
 	invalid := invocation.New(model.Principal{}, model.RequestMetadata{})
-	_, err = applicationidempotency.Require(invalid, "operation", "key", struct{}{})
+	_, err = idempotency.Require(invalid, "operation", "key", struct{}{})
 	require.Equal(t, "idempotency.key_invalid", faultCode(err), "invalid principal error")
-	_, err = applicationidempotency.Require(valid, "operation", "key", make(chan struct{}))
+	_, err = idempotency.Require(valid, "operation", "key", make(chan struct{}))
 	require.Equal(t, "request.invalid", faultCode(err), "encoding error")
 }
 

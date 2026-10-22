@@ -8,10 +8,10 @@
 package app
 
 import (
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
 type relationshipTransitionMailPreparer interface {
-	PrepareRelationshipTransition(appmail.RelationshipTransitionPreparation) (*store.PreparedMail, error)
+	PrepareRelationshipTransition(mail.RelationshipTransitionPreparation) (*store.PreparedMail, error)
 }

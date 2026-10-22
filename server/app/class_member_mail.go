@@ -8,10 +8,10 @@
 package app
 
 import (
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
 type classTransitionMailPreparer interface {
-	PrepareClassTransition(appmail.ClassTransitionPreparation) (*store.PreparedMail, error)
+	PrepareClassTransition(mail.ClassTransitionPreparation) (*store.PreparedMail, error)
 }

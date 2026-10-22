@@ -16,10 +16,10 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -48,7 +48,7 @@ type accessPolicyCapabilitySource interface {
 // from the live registry and mail transport. Secrets never enter policy code.
 type deploymentAccessPolicyCapabilities struct {
 	providers externalProviderSource
-	mail      appmail.Sender
+	mail      mail.Sender
 	health    interface{ Code() string }
 }
 
@@ -189,7 +189,7 @@ func (s *accessPolicyService) ReplaceAccessPolicy(ctx context.Context, invocatio
 	if err != nil {
 		return AccessPolicyView{}, err
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "access_policy.replace", command.IdempotencyKey,
+	idempotency, err := idempotency.Prepare(invocation, "access_policy.replace", command.IdempotencyKey,
 		struct {
 			ExpectedRevision       int64                      `json:"expected_revision"`
 			Settings               model.AccessPolicySettings `json:"settings"`
@@ -242,7 +242,7 @@ func (e accessPolicyRealtimeEffects) Changed(ctx context.Context, change accessP
 	for _, revocation := range change.SessionRevocations {
 		e.realtime.SessionsRevoked(ctx, revocation.UserID.String(), sessionIDStrings(revocation.SessionIDs), revocation.AccessTokenHashes)
 	}
-	event, err := apprealtime.NewAccessPolicyChangedEvent(change.InstitutionID, change.Revision)
+	event, err := realtime.NewAccessPolicyChangedEvent(change.InstitutionID, change.Revision)
 	if err != nil {
 		return err
 	}

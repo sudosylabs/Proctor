@@ -8,18 +8,18 @@
 package app
 
 import (
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
 type accountStateMailPreparer interface {
-	PrepareAccountStateChanged(appmail.NoticePreparation, bool) (*store.PreparedMail, error)
+	PrepareAccountStateChanged(mail.NoticePreparation, bool) (*store.PreparedMail, error)
 }
 
 type sessionAdministrationMailPreparer interface {
-	PrepareSessionsRevokedByAdministrator(appmail.NoticePreparation) (*store.PreparedMail, error)
+	PrepareSessionsRevokedByAdministrator(mail.NoticePreparation) (*store.PreparedMail, error)
 }
 
 type mfaNoticeMailPreparer interface {
-	PrepareMFANotice(appmail.NoticePreparation, appmail.MFANoticeKind) (*store.PreparedMail, error)
+	PrepareMFANotice(mail.NoticePreparation, mail.MFANoticeKind) (*store.PreparedMail, error)
 }

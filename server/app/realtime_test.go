@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -27,7 +27,7 @@ func TestRealtimePublishRequiresClusterFanout(t *testing.T) {
 
 	service := newTestRealtimeService(t, noopAuthenticationCache{})
 	_ = service.AttachRealtimeSink(&recordingRealtimeSink{})
-	err := service.PublishRealtimeEvent(context.Background(), apprealtime.RealtimeEvent{
+	err := service.PublishRealtimeEvent(context.Background(), realtime.RealtimeEvent{
 		Name:   "user.notification",
 		UserID: model.NewID(),
 	})
@@ -39,7 +39,7 @@ func TestRealtimePublishMapsInvalidPublication(t *testing.T) {
 	t.Parallel()
 
 	service := newTestRealtimeService(t, noopAuthenticationCache{})
-	err := service.PublishRealtimeEvent(context.Background(), apprealtime.RealtimeEvent{Name: "missing.target"})
+	err := service.PublishRealtimeEvent(context.Background(), realtime.RealtimeEvent{Name: "missing.target"})
 	require.Error(t, err, "Publish() error")
 	require.True(t, apperror.Is(err, "websocket.request.invalid"), "Publish() error")
 }
@@ -121,10 +121,10 @@ func newTestRealtimeService(t *testing.T, cache authenticationCache) *realtimeSe
 
 type recordingRealtimeSink struct {
 	mu             sync.Mutex
-	events         []apprealtime.RealtimeEvent
+	events         []realtime.RealtimeEvent
 	sessionCloses  []closeRecord
 	userCloses     []closeRecord
-	allCloses      []apprealtime.ConnectionCloseReason
+	allCloses      []realtime.ConnectionCloseReason
 	attemptUnbinds []model.AttemptConnectionID
 }
 
@@ -136,28 +136,28 @@ func (s *recordingRealtimeSink) UnbindExamAttemptConnection(connectionID model.A
 
 type closeRecord struct {
 	id     string
-	reason apprealtime.ConnectionCloseReason
+	reason realtime.ConnectionCloseReason
 }
 
-func (s *recordingRealtimeSink) PublishLocal(_ context.Context, event apprealtime.RealtimeEvent) {
+func (s *recordingRealtimeSink) PublishLocal(_ context.Context, event realtime.RealtimeEvent) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.events = append(s.events, event.Clone())
 }
 
-func (s *recordingRealtimeSink) CloseSession(sessionID string, reason apprealtime.ConnectionCloseReason) {
+func (s *recordingRealtimeSink) CloseSession(sessionID string, reason realtime.ConnectionCloseReason) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sessionCloses = append(s.sessionCloses, closeRecord{id: sessionID, reason: reason})
 }
 
-func (s *recordingRealtimeSink) CloseUser(userID string, reason apprealtime.ConnectionCloseReason) {
+func (s *recordingRealtimeSink) CloseUser(userID string, reason realtime.ConnectionCloseReason) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.userCloses = append(s.userCloses, closeRecord{id: userID, reason: reason})
 }
 
-func (s *recordingRealtimeSink) CloseAll(reason apprealtime.ConnectionCloseReason) {
+func (s *recordingRealtimeSink) CloseAll(reason realtime.ConnectionCloseReason) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.allCloses = append(s.allCloses, reason)

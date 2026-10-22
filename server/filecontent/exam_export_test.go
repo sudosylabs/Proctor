@@ -22,13 +22,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
-	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
+	"github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/app/exam"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-func exportContentFixture(t *testing.T, filesystem vfspkg.FileSystem) (*Content, exam.ExportArchiveInput) {
+func exportContentFixture(t *testing.T, filesystem vfs.FileSystem) (*Content, exam.ExportArchiveInput) {
 	t.Helper()
 	content, err := New(filesystem, Policy{MaximumConcurrentOperations: 1}, nil)
 	require.NoError(t, err)
@@ -109,7 +109,7 @@ func TestExamExportRejectsBadSourcesAndCleansSpool(t *testing.T) {
 		{"foreign envelope", func(i *exam.ExportArchiveInput) { i.ExportID = model.NewExamExportID() }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			fs := memoryvfs.New()
+			fs := memory.New()
 			content, input := exportContentFixture(t, fs)
 			test.change(&input)
 			_, err := content.BuildExamExport(context.Background(), input)
@@ -118,22 +118,22 @@ func TestExamExportRejectsBadSourcesAndCleansSpool(t *testing.T) {
 			require.NoError(t, err, "private spool remains")
 			require.Empty(t, entries, "private spool remains")
 			_, err = fs.Stat(context.Background(), examExportKey(input.ExportID, input.AttemptID))
-			require.ErrorIs(t, err, vfspkg.ErrNotFound)
+			require.ErrorIs(t, err, vfs.ErrNotFound)
 		})
 	}
 }
 
 type exportWriteOutcomeVFS struct {
-	vfspkg.FileSystem
+	vfs.FileSystem
 	corrupt   bool
 	uncertain bool
 }
 
-func (v *exportWriteOutcomeVFS) Write(ctx context.Context, key string, body io.Reader, options vfspkg.WriteOptions) (vfspkg.Info, error) {
+func (v *exportWriteOutcomeVFS) Write(ctx context.Context, key string, body io.Reader, options vfs.WriteOptions) (vfs.Info, error) {
 	if v.corrupt {
 		b, err := io.ReadAll(body)
 		if err != nil {
-			return vfspkg.Info{}, err
+			return vfs.Info{}, err
 		}
 		b[len(b)/2] ^= 1
 		body = bytes.NewReader(b)
@@ -154,7 +154,7 @@ func TestExamExportVerifiesStorageAfterEveryWriteOutcome(t *testing.T) {
 		{name: "successful acknowledgement corrupt", corrupt: true, wantError: true}, {name: "unknown acknowledgement corrupt", uncertain: true, corrupt: true, wantError: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			fs := memoryvfs.New()
+			fs := memory.New()
 			content, input := exportContentFixture(t, fs)
 			content.filesystem = &exportWriteOutcomeVFS{FileSystem: fs, uncertain: test.uncertain, corrupt: test.corrupt}
 			result, err := content.BuildExamExport(context.Background(), input)
@@ -166,14 +166,14 @@ func TestExamExportVerifiesStorageAfterEveryWriteOutcome(t *testing.T) {
 	}
 }
 
-type exportAcknowledgedRemoveVFS struct{ vfspkg.FileSystem }
+type exportAcknowledgedRemoveVFS struct{ vfs.FileSystem }
 
-func (v exportAcknowledgedRemoveVFS) Remove(context.Context, string, vfspkg.RemoveOptions) error {
+func (v exportAcknowledgedRemoveVFS) Remove(context.Context, string, vfs.RemoveOptions) error {
 	return nil
 }
 
 func TestExamExportPurgeRequiresObservedAbsence(t *testing.T) {
-	fs := memoryvfs.New()
+	fs := memory.New()
 	content, input := exportContentFixture(t, fs)
 	_, err := content.BuildExamExport(context.Background(), input)
 	require.NoError(t, err)
@@ -182,7 +182,7 @@ func TestExamExportPurgeRequiresObservedAbsence(t *testing.T) {
 }
 
 func TestExamExportCancellationAndCapacityDoNotConsumeInput(t *testing.T) {
-	content, input := exportContentFixture(t, memoryvfs.New())
+	content, input := exportContentFixture(t, memory.New())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := content.BuildExamExport(ctx, input)

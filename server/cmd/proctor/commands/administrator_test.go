@@ -14,7 +14,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	server "github.com/sudosylabs/proctor/server"
+	"github.com/sudosylabs/proctor/server"
 )
 
 func TestAdministratorRecoveryReadsPasswordOnlyFromPrivateInput(t *testing.T) {

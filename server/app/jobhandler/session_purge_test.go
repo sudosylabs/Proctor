@@ -15,7 +15,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -65,8 +65,8 @@ func TestSessionPurgeWalksRetiredSessionsInOrder(t *testing.T) {
 	record, err := model.NewJob(model.NewJobID(), model.JobTypeSessionPurgeRetired, command, "purge", at, at, 3)
 	require.NoError(t, err)
 	handler := sessionPurgeHandler{sessions: sessions, credentials: credentials, retention: 720 * time.Hour}
-	outcome := handler.Run(context.Background(), jobengine.NewExecution(record, nil, nil, nil))
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome = %#v", outcome)
+	outcome := handler.Run(context.Background(), job.NewExecution(record, nil, nil, nil))
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind, "outcome = %#v", outcome)
 
 	require.Equal(t, []store.SessionCredentialPurge{{Grace: 720 * time.Hour, Limit: 2}, {Grace: 720 * time.Hour, Limit: 2}}, credentials.inputs)
 	require.Len(t, sessions.inputs, 2)

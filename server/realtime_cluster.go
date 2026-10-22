@@ -11,7 +11,7 @@ import (
 	"context"
 	"fmt"
 
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/cluster"
 )
 
@@ -60,4 +60,4 @@ func (a *realtimeClusterAdapter) Broadcast(
 	})
 }
 
-var _ apprealtime.ClusterFanout = (*realtimeClusterAdapter)(nil)
+var _ realtime.ClusterFanout = (*realtimeClusterAdapter)(nil)

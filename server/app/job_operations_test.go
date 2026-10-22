@@ -17,46 +17,46 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type jobOperatorEngineFake struct {
 	events     *[]string
-	view       jobengine.View
+	view       job.View
 	prepareErr error
 	applyErr   error
-	listQuery  jobengine.ListQuery
+	listQuery  job.ListQuery
 	applyCalls int
 }
 
-func (f *jobOperatorEngineFake) List(_ context.Context, query jobengine.ListQuery) (jobengine.Page, error) {
+func (f *jobOperatorEngineFake) List(_ context.Context, query job.ListQuery) (job.Page, error) {
 	*f.events = append(*f.events, "list")
 	f.listQuery = query
-	return jobengine.Page{Items: []jobengine.View{f.view}}, nil
+	return job.Page{Items: []job.View{f.view}}, nil
 }
-func (f *jobOperatorEngineFake) Get(context.Context, model.JobID) (jobengine.View, error) {
+func (f *jobOperatorEngineFake) Get(context.Context, model.JobID) (job.View, error) {
 	*f.events = append(*f.events, "get")
 	return f.view, nil
 }
-func (f *jobOperatorEngineFake) Attempts(context.Context, jobengine.AttemptListQuery) (jobengine.AttemptPage, error) {
+func (f *jobOperatorEngineFake) Attempts(context.Context, job.AttemptListQuery) (job.AttemptPage, error) {
 	*f.events = append(*f.events, "attempts")
-	return jobengine.AttemptPage{Items: make([]jobengine.AttemptView, 0)}, nil
+	return job.AttemptPage{Items: make([]job.AttemptView, 0)}, nil
 }
-func (f *jobOperatorEngineFake) PrepareCancellation(context.Context, model.JobID) (jobengine.ControlTarget, error) {
+func (f *jobOperatorEngineFake) PrepareCancellation(context.Context, model.JobID) (job.ControlTarget, error) {
 	*f.events = append(*f.events, "prepare-cancel")
-	return jobengine.ControlTarget{Projection: f.view}, f.prepareErr
+	return job.ControlTarget{Projection: f.view}, f.prepareErr
 }
-func (f *jobOperatorEngineFake) PrepareRetry(context.Context, model.JobID) (jobengine.ControlTarget, error) {
+func (f *jobOperatorEngineFake) PrepareRetry(context.Context, model.JobID) (job.ControlTarget, error) {
 	*f.events = append(*f.events, "prepare-retry")
-	return jobengine.ControlTarget{Projection: f.view}, f.prepareErr
+	return job.ControlTarget{Projection: f.view}, f.prepareErr
 }
-func (f *jobOperatorEngineFake) Cancel(context.Context, jobengine.ControlTarget, jobengine.AuditReference) (jobengine.View, error) {
+func (f *jobOperatorEngineFake) Cancel(context.Context, job.ControlTarget, job.AuditReference) (job.View, error) {
 	*f.events = append(*f.events, "cancel")
 	f.applyCalls++
 	return f.view, f.applyErr
 }
-func (f *jobOperatorEngineFake) Retry(context.Context, jobengine.ControlTarget, jobengine.AuditReference) (jobengine.View, error) {
+func (f *jobOperatorEngineFake) Retry(context.Context, job.ControlTarget, job.AuditReference) (job.View, error) {
 	*f.events = append(*f.events, "retry")
 	f.applyCalls++
 	return f.view, f.applyErr
@@ -98,7 +98,7 @@ func (f *jobOperationsAuditorFake) Fail(context.Context, model.AuditEventID, str
 func TestJobOperationsAuthorizeBeforeEngineInspection(t *testing.T) {
 	t.Parallel()
 	events := make([]string, 0, 2)
-	view := jobengine.View{ID: model.NewJobID(), Type: model.JobTypeProfilePictureGenerateDefault, Status: model.JobStatusQueued}
+	view := job.View{ID: model.NewJobID(), Type: model.JobTypeProfilePictureGenerateDefault, Status: model.JobStatusQueued}
 	engine := &jobOperatorEngineFake{events: &events, view: view}
 	authorizer := &jobOperationsAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}}
 	service, err := newJobOperationsService(engine, authorizer, &jobOperationsAuditorFake{events: &events}, time.Now)
@@ -123,7 +123,7 @@ func TestJobOperationsAuthorizeBeforeEngineInspection(t *testing.T) {
 func TestJobOperationsAuditAfterPreparationAndBeforeTransition(t *testing.T) {
 	t.Parallel()
 	events := make([]string, 0, 4)
-	view := jobengine.View{ID: model.NewJobID(), Type: model.JobTypeProfilePictureGenerateDefault, Status: model.JobStatusQueued}
+	view := job.View{ID: model.NewJobID(), Type: model.JobTypeProfilePictureGenerateDefault, Status: model.JobStatusQueued}
 	engine := &jobOperatorEngineFake{events: &events, view: view}
 	authorizer := &jobOperationsAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}}
 	auditor := &jobOperationsAuditorFake{events: &events}
@@ -164,7 +164,7 @@ func TestJobOperationsAuditAfterPreparationAndBeforeTransition(t *testing.T) {
 func TestJobOperationsTranslateEnginePolicyErrors(t *testing.T) {
 	t.Parallel()
 	events := make([]string, 0, 2)
-	engine := &jobOperatorEngineFake{events: &events, prepareErr: jobengine.ErrCancelUnsupported}
+	engine := &jobOperatorEngineFake{events: &events, prepareErr: job.ErrCancelUnsupported}
 	service, err := newJobOperationsService(engine, &jobOperationsAuthorizerFake{events: &events}, &jobOperationsAuditorFake{events: &events}, time.Now)
 	require.NoError(t, err)
 	_, appErr := service.CancelJob(context.Background(), invocation.Invocation{}, CancelJobCommand{ID: model.NewJobID()})

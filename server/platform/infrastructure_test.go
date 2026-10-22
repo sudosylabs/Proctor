@@ -18,18 +18,18 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	cachepkg "github.com/sudosylabs/proctor/packages/cache"
-	memorycache "github.com/sudosylabs/proctor/packages/cache/memory"
-	mailpkg "github.com/sudosylabs/proctor/packages/mail"
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
-	localvfs "github.com/sudosylabs/proctor/packages/vfs/local"
+	"github.com/sudosylabs/proctor/packages/cache"
+	"github.com/sudosylabs/proctor/packages/cache/memory"
+	"github.com/sudosylabs/proctor/packages/mail"
+	"github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/vfs/local"
 	"github.com/sudosylabs/proctor/server/config"
 )
 
 func TestMemoryCacheAdapterPortableSemantics(t *testing.T) {
 	t.Parallel()
 
-	store, err := memorycache.New(cachepkg.BytesCodec())
+	store, err := memory.New(cache.BytesCodec())
 	require.NoError(t, err)
 	cache := NewCacheAdapter(CacheBackend{Store: store})
 	t.Cleanup(func() {
@@ -61,13 +61,13 @@ func TestDisabledMailerIsExplicitlyUnavailable(t *testing.T) {
 
 	settings := config.Default().Mail
 	settings.Enabled = false
-	mailer := NewDisabledMailer(mailpkg.Address{
+	mailer := NewDisabledMailer(mail.Address{
 		Name:    settings.FromName,
 		Address: settings.FromAddress,
 	})
 	require.False(t, mailer.Enabled(), "disabled mailer reported itself enabled")
 	require.Equal(t, settings.FromAddress, mailer.From().Address)
-	_, err := mailer.Send(context.Background(), mailpkg.Message{})
+	_, err := mailer.Send(context.Background(), mail.Message{})
 	require.ErrorIs(t, err, ErrMailDisabled)
 	require.NoError(t, mailer.Test(context.Background()))
 }
@@ -78,7 +78,7 @@ func TestLocalVFSAdapterIsUsableAndHealthy(t *testing.T) {
 	settings := config.Default().VFS
 	settings.Backend = "local"
 	settings.Local.Root = t.TempDir()
-	filesystem, err := localvfs.New(settings.Local.Root)
+	filesystem, err := local.New(settings.Local.Root)
 	require.NoError(t, err)
 	ctx := context.Background()
 	require.NoError(t, checkVFS(ctx, filesystem))
@@ -86,7 +86,7 @@ func TestLocalVFSAdapterIsUsableAndHealthy(t *testing.T) {
 		ctx,
 		"health/probe.txt",
 		bytes.NewBufferString("ok"),
-		vfspkg.WriteOptions{},
+		vfs.WriteOptions{},
 	)
 	require.NoError(t, err)
 	info, err := filesystem.Stat(ctx, "health/probe.txt")
@@ -100,17 +100,17 @@ func TestVFSHealthChecksTheRootWithoutListing(t *testing.T) {
 	t.Parallel()
 
 	root := filepath.Join(t.TempDir(), "vfs")
-	filesystem, err := localvfs.New(root)
+	filesystem, err := local.New(root)
 	require.NoError(t, err)
 	probe := &listForbiddenVFS{FileSystem: filesystem}
 	require.NoError(t, checkVFS(t.Context(), probe))
 
 	require.NoError(t, os.Remove(root))
-	require.ErrorIs(t, checkVFS(t.Context(), probe), vfspkg.ErrNotFound)
+	require.ErrorIs(t, checkVFS(t.Context(), probe), vfs.ErrNotFound)
 }
 
-type listForbiddenVFS struct{ vfspkg.FileSystem }
+type listForbiddenVFS struct{ vfs.FileSystem }
 
-func (*listForbiddenVFS) List(context.Context, vfspkg.ListOptions) (vfspkg.Page, error) {
+func (*listForbiddenVFS) List(context.Context, vfs.ListOptions) (vfs.Page, error) {
 	panic("the VFS health check listed files")
 }

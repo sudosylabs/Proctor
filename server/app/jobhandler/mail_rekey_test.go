@@ -15,8 +15,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
@@ -60,7 +60,7 @@ func TestMailRekeyHandlerReencryptsBoundPayloadAndCheckpoints(t *testing.T) {
 	sealer, err := secretseal.New(secretseal.Settings{EncryptionKey: newKey, DecryptionKeys: []string{oldKey}, MaximumPlaintext: 1024})
 	require.NoError(t, err)
 	deliveryID := model.NewMailDeliveryID()
-	envelope, err := oldSealer.Seal(secretseal.Binding{Purpose: appmail.DeliverySealingPurpose, Owner: deliveryID.String()}, []byte(`{"version":1,"secret":"payload"}`))
+	envelope, err := oldSealer.Seal(secretseal.Binding{Purpose: mail.DeliverySealingPurpose, Owner: deliveryID.String()}, []byte(`{"version":1,"secret":"payload"}`))
 	require.NoError(t, err)
 	encrypted, _ := json.Marshal(envelope)
 	persistence := &mailRekeyStoreFake{
@@ -74,16 +74,16 @@ func TestMailRekeyHandlerReencryptsBoundPayloadAndCheckpoints(t *testing.T) {
 		},
 	}
 	command, _ := json.Marshal(MailRekeyCommand{PrimaryKeyID: sealer.PrimaryKeyID(), RetiringKeyID: envelope.KeyID})
-	job := &model.Job{ID: model.NewJobID(), Type: model.JobType("mail.rekey"), Command: command}
+	record := &model.Job{ID: model.NewJobID(), Type: model.JobType("mail.rekey"), Command: command}
 	attempt := &model.JobAttempt{ID: model.NewJobAttemptID()}
-	var checkpoints []jobengine.CheckpointValue
-	execution := jobengine.NewExecution(job, attempt, func(_ context.Context, value jobengine.CheckpointValue) error {
+	var checkpoints []job.CheckpointValue
+	execution := job.NewExecution(record, attempt, func(_ context.Context, value job.CheckpointValue) error {
 		checkpoints = append(checkpoints, value)
 		return nil
 	}, nil)
 
 	outcome := (mailRekeyHandler{mail: persistence, sealer: sealer}).Run(context.Background(), execution)
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind)
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind)
 	require.Len(t, persistence.replacements, 1, "replacements")
 	require.Len(t, checkpoints, 1, "replacements")
 	require.NotNil(t, checkpoints[0].Progress)
@@ -91,7 +91,7 @@ func TestMailRekeyHandlerReencryptsBoundPayloadAndCheckpoints(t *testing.T) {
 	require.Equal(t, int64(1), checkpoints[0].Progress.Total)
 	require.Equal(t, "reencrypting", checkpoints[0].Progress.Stage)
 	replacement := persistence.replacements[0]
-	require.Equal(t, job.ID, replacement.JobID)
+	require.Equal(t, record.ID, replacement.JobID)
 	require.Equal(t, store.MailRekeyTargetDelivery, replacement.Kind)
 	require.Equal(t, deliveryID.String(), replacement.ID)
 	require.Equal(t, envelope.KeyID, replacement.ExpectedKeyID)
@@ -100,7 +100,7 @@ func TestMailRekeyHandlerReencryptsBoundPayloadAndCheckpoints(t *testing.T) {
 	err = json.Unmarshal(replacement.EncryptedPayload, &rotated)
 	require.NoError(t, err, "rotated envelope = %#v, error", rotated)
 	require.Equal(t, sealer.PrimaryKeyID(), rotated.KeyID, "rotated envelope = %#v, error", rotated)
-	plaintext, err := sealer.Open(secretseal.Binding{Purpose: appmail.DeliverySealingPurpose, Owner: deliveryID.String()}, rotated)
+	plaintext, err := sealer.Open(secretseal.Binding{Purpose: mail.DeliverySealingPurpose, Owner: deliveryID.String()}, rotated)
 	require.NoError(t, err, "rotated plaintext")
 	require.Equal(t, `{"version":1,"secret":"payload"}`, string(plaintext), "rotated plaintext")
 	var checkpoint MailRekeyCheckpoint
@@ -126,18 +126,18 @@ func TestMailRekeyHandlerFailsClosedForUnavailableActiveKey(t *testing.T) {
 	sealer, err := secretseal.New(secretseal.Settings{EncryptionKey: newKey, DecryptionKeys: []string{oldKey}, MaximumPlaintext: 1024})
 	require.NoError(t, err)
 	deliveryID := model.NewMailDeliveryID()
-	envelope, err := unavailableSealer.Seal(secretseal.Binding{Purpose: appmail.DeliverySealingPurpose, Owner: deliveryID.String()}, []byte(`{"version":1}`))
+	envelope, err := unavailableSealer.Seal(secretseal.Binding{Purpose: mail.DeliverySealingPurpose, Owner: deliveryID.String()}, []byte(`{"version":1}`))
 	require.NoError(t, err)
 	encrypted, _ := json.Marshal(envelope)
 	persistence := &mailRekeyStoreFake{pages: []*store.MailRekeyTargetPage{{Targets: []store.MailRekeyTarget{{
 		Kind: store.MailRekeyTargetDelivery, ID: deliveryID.String(), KeyID: envelope.KeyID, EncryptedPayload: encrypted,
 	}}}}}
 	command, _ := json.Marshal(MailRekeyCommand{PrimaryKeyID: sealer.PrimaryKeyID(), RetiringKeyID: oldSealerKeyID(t, oldKey)})
-	execution := jobengine.NewExecution(&model.Job{ID: model.NewJobID(), Type: model.JobTypeMailRekey,
+	execution := job.NewExecution(&model.Job{ID: model.NewJobID(), Type: model.JobTypeMailRekey,
 		Command: command}, &model.JobAttempt{ID: model.NewJobAttemptID()}, nil, nil)
 
 	outcome := (mailRekeyHandler{mail: persistence, sealer: sealer}).Run(context.Background(), execution)
-	require.Equal(t, jobengine.OutcomePermanentFailure, outcome.Kind, "Run() outcome = %#v, replacements", outcome)
+	require.Equal(t, job.OutcomePermanentFailure, outcome.Kind, "Run() outcome = %#v, replacements", outcome)
 	require.Equal(t, "mail.rekey.invariant_failed", outcome.PublicErrorCode, "Run() outcome = %#v, replacements", outcome)
 	require.Empty(t, persistence.replacements, "Run() outcome = %#v, replacements", outcome)
 }
@@ -153,11 +153,11 @@ func TestMailRekeyHandlerRefusesRetirementUntilEveryActiveReferenceIsPrimary(t *
 		NonPrimaryReferences: 2, RetiringReferences: 2, RetirementSafe: false,
 	}}
 	command, _ := json.Marshal(MailRekeyCommand{PrimaryKeyID: sealer.PrimaryKeyID(), RetiringKeyID: retiringKeyID})
-	execution := jobengine.NewExecution(&model.Job{ID: model.NewJobID(), Type: model.JobTypeMailRekey,
+	execution := job.NewExecution(&model.Job{ID: model.NewJobID(), Type: model.JobTypeMailRekey,
 		Command: command}, &model.JobAttempt{ID: model.NewJobAttemptID()}, nil, nil)
 
 	outcome := (mailRekeyHandler{mail: persistence, sealer: sealer}).Run(context.Background(), execution)
-	require.Equal(t, jobengine.OutcomeRetryableFailure, outcome.Kind)
+	require.Equal(t, job.OutcomeRetryableFailure, outcome.Kind)
 	require.Equal(t, "mail.rekey.incomplete", outcome.PublicErrorCode)
 }
 
@@ -169,13 +169,13 @@ func TestMailRekeyHandlerRelinquishesToANodeWithTheFencedPrimary(t *testing.T) {
 	newNodeSealer, err := secretseal.New(secretseal.Settings{EncryptionKey: newKey, DecryptionKeys: []string{oldKey}, MaximumPlaintext: 1024})
 	require.NoError(t, err)
 	command, _ := json.Marshal(MailRekeyCommand{PrimaryKeyID: newNodeSealer.PrimaryKeyID(), RetiringKeyID: oldNodeSealer.PrimaryKeyID()})
-	execution := jobengine.NewExecution(&model.Job{ID: model.NewJobID(), Type: model.JobTypeMailRekey,
+	execution := job.NewExecution(&model.Job{ID: model.NewJobID(), Type: model.JobTypeMailRekey,
 		Command: command}, &model.JobAttempt{ID: model.NewJobAttemptID()}, nil, nil)
 	persistence := &mailRekeyStoreFake{}
 
 	outcome := (mailRekeyHandler{mail: persistence, sealer: oldNodeSealer}).Run(context.Background(), execution)
 
-	require.Equal(t, jobengine.OutcomeRelinquished, outcome.Kind, "Run() outcome = %#v, pages", outcome)
+	require.Equal(t, job.OutcomeRelinquished, outcome.Kind, "Run() outcome = %#v, pages", outcome)
 	require.Equal(t, "mail.rekey.primary_mismatch", outcome.PublicErrorCode, "Run() outcome = %#v, pages", outcome)
 	require.Empty(t, persistence.pages, "Run() outcome = %#v, pages", outcome)
 	require.Empty(t, persistence.replacements, "Run() outcome = %#v, pages", outcome)

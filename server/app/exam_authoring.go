@@ -12,9 +12,9 @@ import (
 	"errors"
 	"time"
 
-	examengine "github.com/sudosylabs/proctor/server/app/exam"
+	"github.com/sudosylabs/proctor/server/app/exam"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -65,28 +65,28 @@ type examRealtimeEffects struct {
 }
 
 func (e examRealtimeEffects) Created(ctx context.Context, examID model.ExamID) error {
-	event, err := apprealtime.NewExamCreatedEvent(examID)
+	event, err := realtime.NewExamCreatedEvent(examID)
 	if err != nil {
 		return err
 	}
 	return e.realtime.PublishRealtimeEvent(ctx, event)
 }
 func (e examRealtimeEffects) DraftUpdated(ctx context.Context, examID model.ExamID, revision int64) error {
-	event, err := apprealtime.NewExamDraftUpdatedEvent(examID, revision)
+	event, err := realtime.NewExamDraftUpdatedEvent(examID, revision)
 	if err != nil {
 		return err
 	}
 	return e.realtime.PublishRealtimeEvent(ctx, event)
 }
 func (e examRealtimeEffects) Archived(ctx context.Context, examID model.ExamID, revision int64, archivedAt time.Time) error {
-	event, err := apprealtime.NewExamArchivedEvent(examID, revision, archivedAt)
+	event, err := realtime.NewExamArchivedEvent(examID, revision, archivedAt)
 	if err != nil {
 		return err
 	}
 	return errors.Join(e.realtime.PublishRealtimeEvent(ctx, event), e.collections.ExamArchived(ctx, examID))
 }
 func (e examRealtimeEffects) ManagerChanged(ctx context.Context, examID model.ExamID, userID model.UserID, present bool, revision int64, changedAt time.Time) error {
-	event, err := apprealtime.NewExamManagerChangedEvent(examID, userID, present, revision, changedAt)
+	event, err := realtime.NewExamManagerChangedEvent(examID, userID, present, revision, changedAt)
 	if err != nil {
 		return err
 	}
@@ -94,7 +94,7 @@ func (e examRealtimeEffects) ManagerChanged(ctx context.Context, examID model.Ex
 	return e.realtime.PublishRealtimeEvent(ctx, event)
 }
 func (e examRealtimeEffects) OwnerTransferred(ctx context.Context, examID model.ExamID, ownerID model.UserID, revision int64, changedAt time.Time) error {
-	event, err := apprealtime.NewExamOwnerTransferredEvent(examID, ownerID, revision, changedAt)
+	event, err := realtime.NewExamOwnerTransferredEvent(examID, ownerID, revision, changedAt)
 	if err != nil {
 		return err
 	}
@@ -104,7 +104,7 @@ func (e examRealtimeEffects) Report(ctx context.Context, operation string, err e
 	e.realtime.reportTransientFailure(ctx, operation, err)
 }
 
-var _ examengine.Authorizer = examAuthorizationAdapter{}
-var _ examengine.Auditor = mutationAuditAdapter{}
-var _ examengine.Effects = examRealtimeEffects{}
-var _ examengine.EffectFailures = examRealtimeEffects{}
+var _ exam.Authorizer = examAuthorizationAdapter{}
+var _ exam.Auditor = mutationAuditAdapter{}
+var _ exam.Effects = examRealtimeEffects{}
+var _ exam.EffectFailures = examRealtimeEffects{}

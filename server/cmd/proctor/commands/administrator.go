@@ -16,7 +16,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	server "github.com/sudosylabs/proctor/server"
+	"github.com/sudosylabs/proctor/server"
 )
 
 type administratorRecoveryExecutor func(context.Context, string, server.AdministratorRecoveryCommand) (*server.AdministratorRecoveryResult, error)

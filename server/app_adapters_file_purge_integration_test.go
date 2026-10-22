@@ -26,10 +26,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
-	localvfs "github.com/sudosylabs/proctor/packages/vfs/local"
-	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
-	s3vfs "github.com/sudosylabs/proctor/packages/vfs/s3"
+	"github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/vfs/local"
+	"github.com/sudosylabs/proctor/packages/vfs/memory"
+	"github.com/sudosylabs/proctor/packages/vfs/s3"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/filecontent"
 	"github.com/sudosylabs/proctor/server/model"
@@ -38,7 +38,7 @@ import (
 )
 
 func TestFilePurgeStorageIntegrationOnLocalVFS(t *testing.T) {
-	filesystem, err := localvfs.New(filepath.Join(t.TempDir(), "vfs"))
+	filesystem, err := local.New(filepath.Join(t.TempDir(), "vfs"))
 	require.NoError(t, err)
 	provePostgreSQLReferencedRenditionsSurvivePurge(t, filesystem)
 }
@@ -50,7 +50,7 @@ func TestFilePurgeStorageIntegrationOnS3(t *testing.T) {
 	}
 	secure, err := strconv.ParseBool(environmentDefault(os.Getenv("VFS_S3_SECURE"), "true"))
 	require.NoError(t, err)
-	filesystem, err := s3vfs.New(s3vfs.Config{
+	filesystem, err := s3.New(s3.Config{
 		Endpoint: endpoint, AccessKey: os.Getenv("VFS_S3_ACCESS_KEY"), SecretKey: os.Getenv("VFS_S3_SECRET_KEY"),
 		SessionToken: os.Getenv("VFS_S3_SESSION_TOKEN"), Bucket: bucket, Region: os.Getenv("VFS_S3_REGION"),
 		Secure: secure, Prefix: fmt.Sprintf("proctor-file-purge/%d", time.Now().UnixNano()),
@@ -59,7 +59,7 @@ func TestFilePurgeStorageIntegrationOnS3(t *testing.T) {
 	provePostgreSQLReferencedRenditionsSurvivePurge(t, filesystem)
 }
 
-func provePostgreSQLReferencedRenditionsSurvivePurge(t *testing.T, filesystem vfspkg.FileSystem) {
+func provePostgreSQLReferencedRenditionsSurvivePurge(t *testing.T, filesystem vfs.FileSystem) {
 	t.Helper()
 	ctx := context.Background()
 	persistence := openFilePurgeStorageIntegrationStore(t)
@@ -141,7 +141,7 @@ func provePostgreSQLReferencedRenditionsSurvivePurge(t *testing.T, filesystem vf
 		if body != nil {
 			_ = body.Close()
 		}
-		require.ErrorIs(t, openErr, vfspkg.ErrNotFound, "purged rendition %s still exists", rendition.ID)
+		require.ErrorIs(t, openErr, vfs.ErrNotFound, "purged rendition %s still exists", rendition.ID)
 	}
 	var remainingMetadata int
 	err = persistence.GetMaster().Get(ctx, &remainingMetadata, `SELECT count(*) FROM file_revisions WHERE id = $1`, purgeRevision.ID.String())
@@ -159,7 +159,7 @@ func proveCustomProfilePicturePipelineMatchesMemory(t *testing.T, actual *fileco
 	}
 	var input bytes.Buffer
 	require.NoError(t, png.Encode(&input, source))
-	reference, err := filecontent.New(memoryvfs.New(), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
+	reference, err := filecontent.New(memory.New(), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
 	require.NoError(t, err)
 	createdAt := time.Date(2026, time.August, 11, 0, 0, 0, 0, time.UTC)
 	referenceRevisionID, actualRevisionID := model.NewFileRevisionID(), model.NewFileRevisionID()

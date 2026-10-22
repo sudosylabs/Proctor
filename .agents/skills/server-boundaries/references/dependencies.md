@@ -116,6 +116,12 @@ a Store contract, function, or variable, so persistence stays out of reach
 (`TestApplicationDeclaresNoForwardingNames`,
 `TestTransportsNameOnlyStoreResultTypes`).
 
+Each package is imported under the name it declares (`job`, not
+`jobengine`). An import alias exists only where the same file imports two
+packages that declare one name, such as `packages/mail` beside `app/mail`;
+a local variable that would shadow a package name is renamed instead
+(`TestInternalImportsUseTheirPackageName`).
+
 The shared Exam Manager eligibility leaf is consumed only by `app/exam`,
 `app/exam/resource`, `app/exam/workspace`, `app/exam/correction`, and
 `app/exam/sitting`. It selects between caller-owned ordinary and override

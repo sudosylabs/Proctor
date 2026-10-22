@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -35,12 +35,12 @@ func (c *Content) StageOnboardingImport(ctx context.Context, id model.Onboarding
 	}
 	hash := sha256.New()
 	limited := &io.LimitedReader{R: io.TeeReader(body, hash), N: maximum + 1}
-	info, err := c.filesystem.Write(ctx, onboardingImportKey(id), limited, vfspkg.WriteOptions{NoOverwrite: c.filesystem.Capabilities().ConditionalWrite})
+	info, err := c.filesystem.Write(ctx, onboardingImportKey(id), limited, vfs.WriteOptions{NoOverwrite: c.filesystem.Capabilities().ConditionalWrite})
 	if err != nil {
 		return "", 0, sanitize("stage onboarding import", err)
 	}
 	if info.Size > maximum {
-		_ = c.filesystem.Remove(ctx, onboardingImportKey(id), vfspkg.RemoveOptions{})
+		_ = c.filesystem.Remove(ctx, onboardingImportKey(id), vfs.RemoveOptions{})
 		return "", info.Size, ErrOnboardingImportTooLarge
 	}
 	return hex.EncodeToString(hash.Sum(nil)), info.Size, nil
@@ -50,7 +50,7 @@ func (c *Content) OpenOnboardingImport(ctx context.Context, id model.OnboardingI
 	if c == nil || c.filesystem == nil || !id.IsValid() {
 		return nil, errors.New("invalid onboarding import identity")
 	}
-	file, err := c.filesystem.Open(ctx, onboardingImportKey(id), vfspkg.OpenOptions{})
+	file, err := c.filesystem.Open(ctx, onboardingImportKey(id), vfs.OpenOptions{})
 	if err != nil {
 		return nil, sanitize("open onboarding import", err)
 	}
@@ -61,8 +61,8 @@ func (c *Content) RemoveOnboardingImport(ctx context.Context, id model.Onboardin
 	if c == nil || c.filesystem == nil || !id.IsValid() {
 		return errors.New("invalid onboarding import identity")
 	}
-	err := c.filesystem.Remove(ctx, onboardingImportKey(id), vfspkg.RemoveOptions{})
-	if errors.Is(err, vfspkg.ErrNotFound) {
+	err := c.filesystem.Remove(ctx, onboardingImportKey(id), vfs.RemoveOptions{})
+	if errors.Is(err, vfs.ErrNotFound) {
 		return nil
 	}
 	return sanitize("remove onboarding import", err)
@@ -72,10 +72,10 @@ func (c *Content) RemoveOnboardingImport(ctx context.Context, id model.Onboardin
 // orphan reconciliation. The caller checks PostgreSQL ownership before any
 // removal, so ordinary active uploads remain untouched.
 func (c *Content) ListOnboardingImportFiles(ctx context.Context, cursor string, limit int, before time.Time) ([]model.OnboardingImportID, string, error) {
-	if c == nil || c.filesystem == nil || limit < 1 || limit > vfspkg.MaximumListLimit || before.IsZero() {
+	if c == nil || c.filesystem == nil || limit < 1 || limit > vfs.MaximumListLimit || before.IsZero() {
 		return nil, "", errors.New("invalid onboarding import listing")
 	}
-	page, err := c.filesystem.List(ctx, vfspkg.ListOptions{Prefix: "onboarding/imports/", Cursor: cursor, Limit: limit})
+	page, err := c.filesystem.List(ctx, vfs.ListOptions{Prefix: "onboarding/imports/", Cursor: cursor, Limit: limit})
 	if err != nil {
 		return nil, "", sanitize("list onboarding imports", err)
 	}

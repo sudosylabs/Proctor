@@ -9,7 +9,7 @@ package correction
 
 import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -18,7 +18,7 @@ import (
 const idempotencyOperationApplyCorrection = "exam.sitting.correction.apply"
 
 func prepareStageIdempotency(invocation invocation.Invocation, command StageResourceContentCommand) (*store.CommandIdempotency, error) {
-	return applicationidempotency.Require(invocation, store.ExamCorrectionResourceStageOperation, command.IdempotencyKey, struct {
+	return idempotency.Require(invocation, store.ExamCorrectionResourceStageOperation, command.IdempotencyKey, struct {
 		ExamID         string `json:"exam_id"`
 		SittingID      string `json:"exam_sitting_id"`
 		BaseRevisionID string `json:"base_revision_id"`
@@ -51,7 +51,7 @@ func prepareApplyIdempotency(invocation invocation.Invocation, command ApplyComm
 		resources[index].DescriptionMarkdown = item.DescriptionMarkdown
 		resources[index].StageID = item.StageID.String()
 	}
-	return applicationidempotency.Require(invocation, idempotencyOperationApplyCorrection, command.IdempotencyKey, struct {
+	return idempotency.Require(invocation, idempotencyOperationApplyCorrection, command.IdempotencyKey, struct {
 		ExamID                    string                      `json:"exam_id"`
 		SittingID                 string                      `json:"exam_sitting_id"`
 		ExpectedSittingRevision   int64                       `json:"expected_sitting_revision"`

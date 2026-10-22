@@ -13,7 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	examengine "github.com/sudosylabs/proctor/server/app/exam"
+	"github.com/sudosylabs/proctor/server/app/exam"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -25,9 +25,9 @@ func TestExamManagerMailPreparerCreatesOneOrdinaryBoundedNotice(t *testing.T) {
 	renderer := &examManagerRendererFake{}
 	preparer, err := newDirectMailPreparer(renderer, &mailSenderFake{enabled: true, from: MailAddress{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t))
 	require.NoError(t, err)
-	prepared, err := preparer.PrepareManagerMail(examengine.ManagerMailPreparation{
+	prepared, err := preparer.PrepareManagerMail(exam.ManagerMailPreparation{
 		Recipient: user, OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: model.MailTemplateExamManagerAdded,
-		ExamTitle: `Algorithms & <Systems>`, Relationship: examengine.ManagerMailRelationshipManager, ActionAt: at,
+		ExamTitle: `Algorithms & <Systems>`, Relationship: exam.ManagerMailRelationshipManager, ActionAt: at,
 	})
 	require.NoError(t, err)
 	require.Equal(t, model.MailOccurrenceExamManagement, prepared.Occurrence.Kind)
@@ -37,7 +37,7 @@ func TestExamManagerMailPreparerCreatesOneOrdinaryBoundedNotice(t *testing.T) {
 	require.Equal(t, 72*time.Hour, prepared.Delivery.Deadline.Sub(prepared.Delivery.CreatedAt))
 	require.Equal(t, model.JobTypeMailDeliver, prepared.Job.Type)
 	require.Equal(t, `Algorithms & <Systems>`, renderer.details.Title)
-	require.Equal(t, string(examengine.ManagerMailRelationshipManager), renderer.details.Relationship)
+	require.Equal(t, string(exam.ManagerMailRelationshipManager), renderer.details.Relationship)
 	require.True(t, renderer.details.ActionAt.Equal(at))
 }
 

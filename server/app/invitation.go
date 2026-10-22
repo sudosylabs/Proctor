@@ -16,9 +16,9 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -309,7 +309,7 @@ type invitationMailPreparer interface {
 	PrepareInvitation(*model.Invitation, string) (*store.PreparedMail, error)
 	PrepareInvitationResend(*model.Invitation, string, model.UserID, time.Time) (*store.PreparedMail, error)
 	PrepareInvitationRevocation(*model.Invitation, model.UserID, time.Time) (*store.PreparedMail, error)
-	PrepareInvitationAccepted(appmail.NoticePreparation) (*store.PreparedMail, error)
+	PrepareInvitationAccepted(mail.NoticePreparation) (*store.PreparedMail, error)
 }
 
 type invitationMembershipEffects interface {
@@ -453,7 +453,7 @@ func (s *invitationService) RunInvitationBatch(ctx context.Context, invocation i
 		var canonicalFingerprint [sha256.Size]byte
 		if duplicate && (command.Operation == InvitationBatchResend || command.Operation == InvitationBatchRevoke) {
 			canonicalItem := itemsByKey[winner]
-			canonical, canonicalErr := applicationidempotency.Prepare(invocation, invitationBatchLifecycleOperation(command.Operation), canonicalKey,
+			canonical, canonicalErr := idempotency.Prepare(invocation, invitationBatchLifecycleOperation(command.Operation), canonicalKey,
 				invitationLifecycleIdempotencySemantic{ID: strings.TrimSpace(canonicalItem.InvitationID), Revision: canonicalItem.ExpectedRevision})
 			if canonicalErr != nil || canonical == nil {
 				outcome.Status, outcome.ErrorCode = InvitationBatchItemFailed, "request.invalid"
@@ -834,7 +834,7 @@ func (s *invitationService) ResendInvitation(ctx context.Context, invocation inv
 			}
 		}
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.resend", command.IdempotencyKey,
+	idempotency, err := idempotency.Prepare(invocation, "invitation.resend", command.IdempotencyKey,
 		invitationLifecycleIdempotencySemantic{ID: id.String(), Revision: command.ExpectedRevision})
 	if err != nil {
 		return InvitationAdministrationView{}, err
@@ -929,7 +929,7 @@ func (s *invitationService) RevokeInvitation(ctx context.Context, invocation inv
 			}
 		}
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.revoke", command.IdempotencyKey,
+	idempotency, err := idempotency.Prepare(invocation, "invitation.revoke", command.IdempotencyKey,
 		invitationLifecycleIdempotencySemantic{ID: id.String(), Revision: command.ExpectedRevision})
 	if err != nil {
 		return InvitationAdministrationView{}, err
@@ -1238,7 +1238,7 @@ func (s *invitationService) IssueStudentClassInvitation(ctx context.Context, inv
 	}
 	semantic := command
 	semantic.IdempotencyKey = ""
-	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.student_class.issue", command.IdempotencyKey, semantic)
+	idempotency, err := idempotency.Prepare(invocation, "invitation.student_class.issue", command.IdempotencyKey, semantic)
 	if err != nil {
 		return InvitationView{}, err
 	}
@@ -1372,7 +1372,7 @@ func (s *invitationService) IssueTeacherAcademicUnitInvitation(ctx context.Conte
 	}
 	semantic := command
 	semantic.IdempotencyKey = ""
-	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.teacher_academic_unit.issue", command.IdempotencyKey, semantic)
+	idempotency, err := idempotency.Prepare(invocation, "invitation.teacher_academic_unit.issue", command.IdempotencyKey, semantic)
 	if err != nil {
 		return InvitationView{}, err
 	}
@@ -1507,7 +1507,7 @@ func (s *invitationService) IssueAcademicUnitRoleInvitation(ctx context.Context,
 	}
 	semantic := command
 	semantic.IdempotencyKey = ""
-	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.academic_unit_role.issue", command.IdempotencyKey, semantic)
+	idempotency, err := idempotency.Prepare(invocation, "invitation.academic_unit_role.issue", command.IdempotencyKey, semantic)
 	if err != nil {
 		return InvitationView{}, err
 	}
@@ -1551,7 +1551,7 @@ func (s *invitationService) IssueInstitutionRoleInvitation(ctx context.Context, 
 	}
 	semantic := command
 	semantic.IdempotencyKey = ""
-	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.institution_role.issue", command.IdempotencyKey, semantic)
+	idempotency, err := idempotency.Prepare(invocation, "invitation.institution_role.issue", command.IdempotencyKey, semantic)
 	if err != nil {
 		return InvitationView{}, err
 	}
@@ -1751,7 +1751,7 @@ func (s *invitationService) acceptStudentClassByClaimHash(ctx context.Context, i
 	member := &model.ClassMember{ClassID: invitation.ClassID, AcademicPeriodID: invitation.AcademicPeriodID,
 		UserID: user.ID, StartsAt: effectiveStart, EndsAt: invitation.IntendedEndsAt}
 	member.PrepareCreate(model.NewClassMemberID(), at)
-	prepared, err := s.mail.PrepareInvitationAccepted(appmail.NoticePreparation{Recipient: user, At: at})
+	prepared, err := s.mail.PrepareInvitationAccepted(mail.NoticePreparation{Recipient: user, At: at})
 	if err != nil {
 		return nil, apperror.New("invitation.mail_unavailable").Wrap(err)
 	}
@@ -1828,7 +1828,7 @@ func (s *invitationService) acceptTeacherAcademicUnitByClaimHash(ctx context.Con
 		OriginAcademicUnitMemberID: member.ID,
 		ScopeType:                  model.RoleScopeAcademicUnit, ScopeID: invitation.AcademicUnitID.String(), StartsAt: effectiveStart, EndsAt: invitation.IntendedEndsAt}
 	binding.PrepareCreate(model.NewRoleBindingID(), at)
-	prepared, err := s.mail.PrepareInvitationAccepted(appmail.NoticePreparation{Recipient: user, At: at})
+	prepared, err := s.mail.PrepareInvitationAccepted(mail.NoticePreparation{Recipient: user, At: at})
 	if err != nil {
 		return nil, apperror.New("invitation.mail_unavailable").Wrap(err)
 	}
@@ -1931,7 +1931,7 @@ func (s *invitationService) acceptExternalIdentity(ctx context.Context, state *m
 		return nil, store.NewErrInvalidInput("invitation", "purpose", nil)
 	}
 	if invitation.Purpose == model.InvitationPurposeStudentClass || invitation.Purpose == model.InvitationPurposeTeacherAcademicUnit {
-		prepared, prepareErr := s.mail.PrepareInvitationAccepted(appmail.NoticePreparation{Recipient: user, At: at})
+		prepared, prepareErr := s.mail.PrepareInvitationAccepted(mail.NoticePreparation{Recipient: user, At: at})
 		if prepareErr == nil {
 			input.Notice = &store.PreparedMail{Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job}
 		}

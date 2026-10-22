@@ -11,32 +11,32 @@ import (
 	"context"
 	"errors"
 
-	examengine "github.com/sudosylabs/proctor/server/app/exam"
-	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
-	examcorrection "github.com/sudosylabs/proctor/server/app/exam/correction"
-	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
-	examreview "github.com/sudosylabs/proctor/server/app/exam/review"
-	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
-	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
+	"github.com/sudosylabs/proctor/server/app/exam"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/exam/correction"
+	"github.com/sudosylabs/proctor/server/app/exam/resource"
+	"github.com/sudosylabs/proctor/server/app/exam/review"
+	"github.com/sudosylabs/proctor/server/app/exam/sitting"
+	"github.com/sudosylabs/proctor/server/app/exam/workspace"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 )
 
 type examinationConstruction struct {
-	authoring              *examengine.Authoring
-	revisions              *examengine.Publication
-	sittings               *examsitting.Service
-	sittingMail            *appmail.SittingComposer
+	authoring              *exam.Authoring
+	revisions              *exam.Publication
+	sittings               *sitting.Service
+	sittingMail            *mail.SittingComposer
 	sittingMailPreparation sittingScheduleMailPreparationAdapter
-	attempts               *examattempt.Service
-	reviews                *examreview.Service
-	records                *examengine.Records
-	exports                *examengine.Exports
-	resources              *examresource.Service
-	corrections            *examcorrection.Service
-	starterWorkspace       *examworkspace.Service
+	attempts               *attempt.Service
+	reviews                *review.Service
+	records                *exam.Records
+	exports                *exam.Exports
+	resources              *resource.Service
+	corrections            *correction.Service
+	starterWorkspace       *workspace.Service
 }
 
 // applicationFoundation holds the shared mechanics constructed before any
@@ -49,12 +49,12 @@ type applicationFoundation struct {
 	invalidator *authenticationCacheInvalidator
 	realtime    *realtimeService
 	audit       *auditService
-	mail        *appmail.Composer
+	mail        *mail.Composer
 	mailHealth  *MailHealth
 }
 
 type identityConstruction struct {
-	mail                              *appmail.Composer
+	mail                              *mail.Composer
 	authentication                    *authenticationService
 	desktopAuthorization              *desktopAuthorizationService
 	desktopRegistrations              *desktopRegistrationService
@@ -95,7 +95,7 @@ type profileFileConstruction struct {
 }
 
 type jobConstruction struct {
-	runtime    *jobengine.Engine
+	runtime    *job.Engine
 	operations *jobOperationsService
 	mail       *mailService
 }
@@ -169,7 +169,7 @@ func constructApplicationFoundation(deps Dependencies) (applicationFoundation, e
 	if err != nil {
 		return applicationFoundation{}, err
 	}
-	realtimeDelivery, err := apprealtime.New(
+	realtimeDelivery, err := realtime.New(
 		invalidator,
 		deps.RealtimeDiagnostics,
 	)

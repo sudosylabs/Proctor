@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/image/webp"
 
-	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
+	"github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/filecontent"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -45,7 +45,7 @@ func TestDefaultProfilePictureVisualPropertiesAndConsistentRenditions(t *testing
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			content, err := filecontent.New(memoryvfs.New(), filecontent.Policy{MaximumConcurrentOperations: 1}, nil)
+			content, err := filecontent.New(memory.New(), filecontent.Policy{MaximumConcurrentOperations: 1}, nil)
 			require.NoError(t, err)
 			revisionID := model.NewFileRevisionID()
 			renditions, err := content.GenerateAndStoreDefaultProfilePicture(
@@ -85,7 +85,7 @@ func TestDefaultProfilePictureVisualPropertiesAndConsistentRenditions(t *testing
 func TestDefaultProfilePictureRejectsInvalidInput(t *testing.T) {
 	t.Parallel()
 
-	content, err := filecontent.New(memoryvfs.New(), filecontent.Policy{MaximumConcurrentOperations: 1}, nil)
+	content, err := filecontent.New(memory.New(), filecontent.Policy{MaximumConcurrentOperations: 1}, nil)
 	require.NoError(t, err)
 	for _, tc := range []struct{ name, seed string }{
 		{name: "empty"},
@@ -119,7 +119,7 @@ func TestDefaultProfilePictureRejectsInvalidInput(t *testing.T) {
 func TestDefaultProfilePictureSeedHexCaseDoesNotChangeImage(t *testing.T) {
 	t.Parallel()
 
-	content, err := filecontent.New(memoryvfs.New(), filecontent.Policy{MaximumConcurrentOperations: 1}, nil)
+	content, err := filecontent.New(memory.New(), filecontent.Policy{MaximumConcurrentOperations: 1}, nil)
 	require.NoError(t, err)
 	picture, err := content.RenderDefaultProfilePicture(
 		context.Background(), strings.ToUpper(defaultProfilePictureSeed), 128,

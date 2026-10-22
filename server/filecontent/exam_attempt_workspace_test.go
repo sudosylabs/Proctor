@@ -17,14 +17,14 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
-	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
+	"github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestAttemptWorkspaceContentNonConditionalStageReplaysExactBytesAndRejectsMismatch(t *testing.T) {
 	t.Parallel()
-	filesystem := &examResourceNonConditionalVFS{FileSystem: memoryvfs.New()}
+	filesystem := &examResourceNonConditionalVFS{FileSystem: memory.New()}
 	content, err := New(filesystem, Policy{MaximumConcurrentOperations: 2}, nil)
 	require.NoError(t, err)
 	objectID := model.NewAttemptWorkspaceObjectID()
@@ -52,9 +52,9 @@ func TestAttemptWorkspaceContentStreamsBoundedReadsAndLeavesNoSpool(t *testing.T
 		declared   int64
 		wantError  bool
 	}{
-		{name: "write acknowledgement unknown with matching bytes", filesystem: &examResourceWriteFailureVFS{FileSystem: memoryvfs.New()}, declared: 1 << 20},
-		{name: "write acknowledgement unknown with mismatched bytes", filesystem: &examResourceWriteFailureVFS{FileSystem: memoryvfs.New(), mismatch: true}, declared: 1 << 20, wantError: true},
-		{name: "invalid declared size", filesystem: &examResourceWriteFailureVFS{FileSystem: memoryvfs.New()}, declared: (1 << 20) - 1, wantError: true},
+		{name: "write acknowledgement unknown with matching bytes", filesystem: &examResourceWriteFailureVFS{FileSystem: memory.New()}, declared: 1 << 20},
+		{name: "write acknowledgement unknown with mismatched bytes", filesystem: &examResourceWriteFailureVFS{FileSystem: memory.New(), mismatch: true}, declared: 1 << 20, wantError: true},
+		{name: "invalid declared size", filesystem: &examResourceWriteFailureVFS{FileSystem: memory.New()}, declared: (1 << 20) - 1, wantError: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			content, err := New(test.filesystem, Policy{MaximumConcurrentOperations: 2}, nil)
@@ -159,15 +159,15 @@ func TestAttemptWorkspaceContentRejectsSizeMismatchAndRemovesExactly(t *testing.
 // tempDirectoryObserverVFS records the named entries of a temporary
 // directory while a backend write is in progress.
 type tempDirectoryObserverVFS struct {
-	vfspkg.FileSystem
+	vfs.FileSystem
 	directory string
 	observed  []string
 }
 
-func (f *tempDirectoryObserverVFS) Write(ctx context.Context, path string, body io.Reader, options vfspkg.WriteOptions) (vfspkg.Info, error) {
+func (f *tempDirectoryObserverVFS) Write(ctx context.Context, path string, body io.Reader, options vfs.WriteOptions) (vfs.Info, error) {
 	entries, err := os.ReadDir(f.directory)
 	if err != nil {
-		return vfspkg.Info{}, err
+		return vfs.Info{}, err
 	}
 	for _, entry := range entries {
 		f.observed = append(f.observed, entry.Name())
@@ -179,7 +179,7 @@ func TestAttemptWorkspaceContentNeverSpoolsCandidateBytesToLocalDisk(t *testing.
 	temp := t.TempDir()
 	t.Setenv("TMPDIR", temp)
 	for _, conditional := range []bool{true, false} {
-		var filesystem vfspkg.FileSystem = memoryvfs.New()
+		var filesystem vfs.FileSystem = memory.New()
 		if !conditional {
 			filesystem = &examResourceNonConditionalVFS{FileSystem: filesystem}
 		}

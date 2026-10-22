@@ -16,7 +16,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -92,8 +92,8 @@ func retentionJobFixture(t *testing.T, kind model.JobType, batch int) (*model.Jo
 	scope := model.RetentionHoldScope{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), SubmissionID: model.NewSubmissionID()}
 	return record, &retentionJobStoreFake{control: &model.RetentionControl{InstitutionID: model.NewInstitutionID(), Revision: 1, State: model.RetentionControlEnabled, ApprovedPolicyRevision: 1, ApprovedPreviewID: model.NewRetentionPreviewID(), ChangedByUserID: model.NewUserID(), UpdatedAt: at}, page: &store.RetentionRecordPage{Items: []store.RetentionRecordItem{{Record: model.RetentionRecord{Scope: scope, Category: model.RetentionCategoryWork}}, {Record: model.RetentionRecord{Scope: scope, Category: model.RetentionCategoryIntegrity}}, {Record: model.RetentionRecord{Scope: scope, Category: model.RetentionCategoryBrowserActivity}}, {Record: model.RetentionRecord{Scope: scope, Category: model.RetentionCategorySecurityOperational}}}}, purges: []store.RetentionPurgeObject{{RetirementID: model.NewRetentionRetirementID(), ObjectID: model.NewAttemptWorkspaceObjectID()}}}, &jobHistoryCleanerFake{}
 }
-func keepRetentionCheckpoint(record *model.Job) func(context.Context, jobengine.CheckpointValue) error {
-	return func(_ context.Context, cp jobengine.CheckpointValue) error {
+func keepRetentionCheckpoint(record *model.Job) func(context.Context, job.CheckpointValue) error {
+	return func(_ context.Context, cp job.CheckpointValue) error {
 		record.Checkpoint = append(json.RawMessage(nil), cp.Document...)
 		return nil
 	}
@@ -111,7 +111,7 @@ func TestRetentionMaintenanceReservesBeforeAuditOrDeletion(t *testing.T) {
 				return false, errors.New("lost lease with private payload")
 			}
 			result := handler.Run(context.Background(), testJobExecution(record, reserve, keepRetentionCheckpoint(record)))
-			require.Equal(t, jobengine.OutcomeRetryableFailure, result.Kind)
+			require.Equal(t, job.OutcomeRetryableFailure, result.Kind)
 			require.Equal(t, 0, s.reconciled)
 			require.Equal(t, 0, s.completed)
 			require.Equal(t, 0, audit.begun)
@@ -129,28 +129,28 @@ func TestRetentionRequiresAuditAndIndependentStorageObservation(t *testing.T) {
 	audit := &retentionJobAuditFake{err: errors.New("audit unavailable")}
 	handler := retentionHandler{records: s, audit: audit, jobs: jobs, now: model.NowUTC}
 	result := handler.Run(context.Background(), testJobExecution(record, allowJobWorkReservation(), keepRetentionCheckpoint(record)))
-	require.Equal(t, jobengine.OutcomeRetryableFailure, result.Kind, "retired without audit")
+	require.Equal(t, job.OutcomeRetryableFailure, result.Kind, "retired without audit")
 	require.Equal(t, 0, s.reconciled, "retired without audit")
 	audit.err = nil
 	s.fail = errors.New("store failed")
 	result = handler.Run(context.Background(), testJobExecution(record, allowJobWorkReservation(), keepRetentionCheckpoint(record)))
-	require.Equal(t, jobengine.OutcomeRetryableFailure, result.Kind, "failed mutation audit not closed")
+	require.Equal(t, job.OutcomeRetryableFailure, result.Kind, "failed mutation audit not closed")
 	require.Equal(t, 1, audit.failed, "failed mutation audit not closed")
 	record, s, jobs = retentionJobFixture(t, model.JobTypeRetentionPurge, 2)
 	content := &retentionJobPurgerFake{err: errors.New("acknowledged but still present")}
 	handler = retentionHandler{records: s, content: content, jobs: jobs, now: model.NowUTC, purge: true}
 	result = handler.Run(context.Background(), testJobExecution(record, reserveRetentionWork(record), keepRetentionCheckpoint(record)))
-	require.Equal(t, jobengine.OutcomeRetryableFailure, result.Kind, "uncertain storage marked complete")
+	require.Equal(t, job.OutcomeRetryableFailure, result.Kind, "uncertain storage marked complete")
 	require.Equal(t, 0, s.completed, "uncertain storage marked complete")
 	result = handler.Run(context.Background(), testJobExecution(record, reserveRetentionWork(record), keepRetentionCheckpoint(record)))
-	require.Equal(t, jobengine.OutcomePermanentFailure, result.Kind, "failed purge lost visibility or created an immediate successor")
+	require.Equal(t, job.OutcomePermanentFailure, result.Kind, "failed purge lost visibility or created an immediate successor")
 	require.Equal(t, 0, s.completed, "failed purge lost visibility or created an immediate successor")
 	require.Empty(t, jobs.enqueued, "failed purge lost visibility or created an immediate successor")
 	// The exact key remains eligible for a later recurring Job after backoff.
 	record, _, _ = retentionJobFixture(t, model.JobTypeRetentionPurge, 2)
 	content.err = nil
 	result = handler.Run(context.Background(), testJobExecution(record, reserveRetentionWork(record), keepRetentionCheckpoint(record)))
-	require.Equal(t, jobengine.OutcomeSucceeded, result.Kind)
+	require.Equal(t, job.OutcomeSucceeded, result.Kind)
 	require.Equal(t, 1, s.completed)
 }
 func TestRetentionCrashConsumesBudgetAndEnqueuesOnlyOneSuccessor(t *testing.T) {
@@ -162,13 +162,13 @@ func TestRetentionCrashConsumesBudgetAndEnqueuesOnlyOneSuccessor(t *testing.T) {
 		record.WorkReserved += units
 		return true, nil
 	}
-	result := handler.Run(context.Background(), testJobExecution(record, reserve, func(context.Context, jobengine.CheckpointValue) error { return errors.New("crash after commit") }))
-	require.Equal(t, jobengine.OutcomeRetryableFailure, result.Kind, "did not model committed but uncheckpointed unit")
+	result := handler.Run(context.Background(), testJobExecution(record, reserve, func(context.Context, job.CheckpointValue) error { return errors.New("crash after commit") }))
+	require.Equal(t, job.OutcomeRetryableFailure, result.Kind, "did not model committed but uncheckpointed unit")
 	require.Equal(t, 1, s.reconciled, "did not model committed but uncheckpointed unit")
 	require.Equal(t, 1, record.WorkReserved, "did not model committed but uncheckpointed unit")
 	for range 2 {
 		result = handler.Run(context.Background(), testJobExecution(record, reserve, keepRetentionCheckpoint(record)))
-		require.Equal(t, jobengine.OutcomeSucceeded, result.Kind)
+		require.Equal(t, job.OutcomeSucceeded, result.Kind)
 	}
 	require.Equal(t, 1, s.reconciled, "retry exceeded reserved budget or duplicated successor")
 	require.Len(t, jobs.enqueued, 1, "retry exceeded reserved budget or duplicated successor")
@@ -182,7 +182,7 @@ func TestRetentionDisabledControlStopsBeforeInventory(t *testing.T) {
 	record, s, jobs := retentionJobFixture(t, model.JobTypeRetentionReconcile, 2)
 	s.control.State = model.RetentionControlPaused
 	result := (retentionHandler{records: s, audit: &retentionJobAuditFake{}, jobs: jobs, now: model.NowUTC}).Run(context.Background(), testJobExecution(record, allowJobWorkReservation(), keepRetentionCheckpoint(record)))
-	require.Equal(t, jobengine.OutcomeSucceeded, result.Kind)
+	require.Equal(t, job.OutcomeSucceeded, result.Kind)
 	require.Equal(t, 0, s.listed)
 	require.Empty(t, jobs.enqueued)
 }
@@ -241,7 +241,7 @@ func TestRetentionPurgeFailureDoesNotStarveFollowingObject(t *testing.T) {
 			}
 			handler := retentionHandler{records: persistence, content: content, jobs: enqueuer, now: model.NowUTC, purge: true}
 			outcome := handler.Run(context.Background(), testJobExecution(record, reserveRetentionWork(record), keepRetentionCheckpoint(record)))
-			require.Equal(t, jobengine.OutcomeRetryableFailure, outcome.Kind)
+			require.Equal(t, job.OutcomeRetryableFailure, outcome.Kind)
 			require.NotContains(t, outcome.Err.Error(), "private")
 			require.Len(t, content.seen, 2, "healthy object starved: calls")
 			require.Len(t, persistence.completedObjects, 1, "healthy object starved: calls")
@@ -253,7 +253,7 @@ func TestRetentionPurgeFailureDoesNotStarveFollowingObject(t *testing.T) {
 			require.Equal(t, 2, cp.Examined, "failure claimed completion: %#v (%v)", cp, err)
 			require.Equal(t, 1, cp.Changed, "failure claimed completion: %#v (%v)", cp, err)
 			outcome = handler.Run(context.Background(), testJobExecution(record, reserveRetentionWork(record), keepRetentionCheckpoint(record)))
-			require.Equal(t, jobengine.OutcomePermanentFailure, outcome.Kind, "exhausted failed batch returned success or amplified retries")
+			require.Equal(t, job.OutcomePermanentFailure, outcome.Kind, "exhausted failed batch returned success or amplified retries")
 			require.Empty(t, enqueuer.enqueued, "exhausted failed batch returned success or amplified retries")
 			require.Len(t, content.seen, 2, "exhausted failed batch returned success or amplified retries")
 		})
@@ -271,7 +271,7 @@ func TestRetentionPurgeUncertaintyCannotRestartBudgetOrEmptySuccessorChain(t *te
 					return nil, errors.New("commit acknowledgement lost")
 				}
 			} else {
-				checkpoint = func(context.Context, jobengine.CheckpointValue) error {
+				checkpoint = func(context.Context, job.CheckpointValue) error {
 					return errors.New("checkpoint acknowledgement lost")
 				}
 				if failure == "empty_checkpoint" {
@@ -280,12 +280,12 @@ func TestRetentionPurgeUncertaintyCannotRestartBudgetOrEmptySuccessorChain(t *te
 			}
 			handler := retentionHandler{records: persistence, content: content, jobs: enqueuer, now: model.NowUTC, purge: true}
 			outcome := handler.Run(context.Background(), testJobExecution(record, reserveRetentionWork(record), checkpoint))
-			require.Equal(t, jobengine.OutcomeRetryableFailure, outcome.Kind)
+			require.Equal(t, job.OutcomeRetryableFailure, outcome.Kind)
 			require.Equal(t, 2, record.WorkReserved)
 			require.Equal(t, 1, persistence.listed)
 			for range 3 {
 				outcome = handler.Run(context.Background(), testJobExecution(record, reserveRetentionWork(record), checkpoint))
-				require.Equal(t, jobengine.OutcomePermanentFailure, outcome.Kind)
+				require.Equal(t, job.OutcomePermanentFailure, outcome.Kind)
 			}
 			require.Equal(t, 1, persistence.listed, "uncertainty amplified inventory or created successor Jobs")
 			require.Equal(t, 2, record.WorkReserved, "uncertainty amplified inventory or created successor Jobs")
@@ -300,13 +300,13 @@ func TestRetentionPurgeCompletedFullBatchHasOneFiniteSuccessor(t *testing.T) {
 	handler := retentionHandler{records: persistence, content: content, jobs: enqueuer, now: model.NowUTC, purge: true}
 	for range 2 {
 		outcome := handler.Run(context.Background(), testJobExecution(record, reserveRetentionWork(record), keepRetentionCheckpoint(record)))
-		require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind)
+		require.Equal(t, job.OutcomeSucceeded, outcome.Kind)
 	}
 	require.Len(t, enqueuer.enqueued, 1, "completed batch duplicated work or its successor")
 	require.Equal(t, 1, content.calls, "completed batch duplicated work or its successor")
 	next := enqueuer.enqueued[0]
 	persistence.purges = nil
 	outcome := handler.Run(context.Background(), testJobExecution(next, reserveRetentionWork(next), keepRetentionCheckpoint(next)))
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "empty completed inventory continued spawning successors")
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind, "empty completed inventory continued spawning successors")
 	require.Len(t, enqueuer.enqueued, 1, "empty completed inventory continued spawning successors")
 }

@@ -14,14 +14,14 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
 const (
-	mailDeliverySealingPurpose = appmail.DeliverySealingPurpose
+	mailDeliverySealingPurpose = mail.DeliverySealingPurpose
 	mailTestRateLimitWindow    = time.Hour
 	mailTestRateLimitMaximum   = 3
 )
@@ -105,8 +105,8 @@ type mailService struct {
 	authorization           institutionAuthorizer
 	audit                   mailAuditPreparer
 	attempts                *authenticationAttemptAccounting
-	composer                *appmail.Composer
-	sender                  appmail.Sender
+	composer                *mail.Composer
+	sender                  mail.Sender
 	metrics                 MailMetricsReader
 	sealer                  *secretseal.Sealer
 	recentAuthenticationTTL time.Duration
@@ -114,11 +114,11 @@ type mailService struct {
 	wake                    func()
 }
 
-func newDirectMailPreparer(renderer appmail.Renderer, sender appmail.Sender, sealer *secretseal.Sealer) (*appmail.Composer, error) {
-	return appmail.NewComposer(renderer, sender, sealer)
+func newDirectMailPreparer(renderer mail.Renderer, sender mail.Sender, sealer *secretseal.Sealer) (*mail.Composer, error) {
+	return mail.NewComposer(renderer, sender, sealer)
 }
 
-func newMailService(mailStore mailStore, users mailUserStore, authorization institutionAuthorizer, audit mailAuditPreparer, attempts *authenticationAttemptAccounting, renderer appmail.Renderer, sender appmail.Sender, metrics MailMetricsReader, sealer *secretseal.Sealer, recentTTL time.Duration, now func() time.Time) (*mailService, error) {
+func newMailService(mailStore mailStore, users mailUserStore, authorization institutionAuthorizer, audit mailAuditPreparer, attempts *authenticationAttemptAccounting, renderer mail.Renderer, sender mail.Sender, metrics MailMetricsReader, sealer *secretseal.Sealer, recentTTL time.Duration, now func() time.Time) (*mailService, error) {
 	if mailStore == nil || users == nil || authorization == nil || audit == nil || attempts == nil || renderer == nil || sender == nil || metrics == nil || now == nil || recentTTL <= 0 {
 		return nil, errors.New("mail service dependencies are invalid")
 	}
@@ -181,7 +181,7 @@ func (s *mailService) SendTestMail(ctx context.Context, invocation invocation.In
 		return MailDeliveryView{}, apperror.New("mail.recipient_ineligible")
 	}
 	now := model.TimeUTC(s.now())
-	prepared, err := s.composer.PrepareOperatorTest(appmail.NoticePreparation{Recipient: user, At: now})
+	prepared, err := s.composer.PrepareOperatorTest(mail.NoticePreparation{Recipient: user, At: now})
 	if err != nil {
 		return MailDeliveryView{}, apperror.New("mail.unavailable").Wrap(err)
 	}

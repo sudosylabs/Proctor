@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -201,9 +201,9 @@ func (s *desktopCompatibilityService) evaluate(
 func (s *desktopCompatibilityService) ResolveAttemptDesktopBuild(
 	ctx context.Context,
 	principal model.Principal,
-) (examattempt.DesktopBuildResolution, error) {
+) (attempt.DesktopBuildResolution, error) {
 	if principal.Validate() != nil || !principal.HasRegisteredDesktopKey() {
-		return examattempt.DesktopBuildResolution{}, errors.New("Desktop principal is invalid")
+		return attempt.DesktopBuildResolution{}, errors.New("Desktop principal is invalid")
 	}
 	query := DesktopCompatibilityQuery{
 		DesktopRelease: principal.DesktopRelease, DesktopBuildID: principal.DesktopBuildID,
@@ -213,16 +213,16 @@ func (s *desktopCompatibilityService) ResolveAttemptDesktopBuild(
 	result, err := s.evaluate(ctx, query, false)
 	if err != nil || result.Availability != model.DesktopAvailabilityReady ||
 		result.Compatibility != DesktopCompatibilityCompatible {
-		return examattempt.DesktopBuildResolution{}, errors.New("Desktop build is not compatible")
+		return attempt.DesktopBuildResolution{}, errors.New("Desktop build is not compatible")
 	}
 	for _, entry := range s.catalog.entries {
 		if entry.DesktopRelease == query.DesktopRelease && entry.DesktopBuildID == query.DesktopBuildID &&
 			entry.Platform == principal.DesktopPlatform && entry.Architecture == principal.DesktopArchitecture &&
 			entry.RealtimeProtocol == query.RealtimeProtocol {
-			return examattempt.DesktopBuildResolution{Build: entry, CompatibilityPolicyRevision: result.PolicyRevision}, nil
+			return attempt.DesktopBuildResolution{Build: entry, CompatibilityPolicyRevision: result.PolicyRevision}, nil
 		}
 	}
-	return examattempt.DesktopBuildResolution{}, errors.New("Desktop build is missing from the verified catalog")
+	return attempt.DesktopBuildResolution{}, errors.New("Desktop build is missing from the verified catalog")
 }
 
 // GetDesktopCompatibilityPolicy returns the current administrative policy.
@@ -267,7 +267,7 @@ func (s *desktopCompatibilityService) ReplaceDesktopCompatibilityPolicy(
 	if command.IdempotencyKey == "" {
 		return nil, apperror.New("idempotency.key_required")
 	}
-	idempotency, err := applicationidempotency.Prepare(
+	idempotency, err := idempotency.Prepare(
 		invocation,
 		"desktop_compatibility_policy.replace",
 		command.IdempotencyKey,
@@ -480,7 +480,7 @@ func desktopCompatibilityBounds(
 // a retained stream even after its owning key authenticates a newer Desktop.
 // It grants no live admission; source ownership is checked by the use case and
 // atomically again by the delivery Store.
-func (s *desktopCompatibilityService) ResolveNativeDeliveryBuild(_ context.Context, identity examattempt.NativeDeliveryBuildIdentity) (model.DesktopBuildTuple, error) {
+func (s *desktopCompatibilityService) ResolveNativeDeliveryBuild(_ context.Context, identity attempt.NativeDeliveryBuildIdentity) (model.DesktopBuildTuple, error) {
 	for _, entry := range s.catalog.entries {
 		agreement := entry.NativeAgreement
 		if agreement == nil {

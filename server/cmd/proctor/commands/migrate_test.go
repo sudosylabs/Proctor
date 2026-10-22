@@ -13,7 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	server "github.com/sudosylabs/proctor/server"
+	"github.com/sudosylabs/proctor/server"
 )
 
 func TestMigrateCommandsUseNarrowServerOperations(t *testing.T) {

@@ -15,7 +15,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/logging"
@@ -107,7 +107,7 @@ func (c releaseCluster) Stop(context.Context) error {
 }
 
 type releaseVFS struct {
-	vfspkg.FileSystem
+	vfs.FileSystem
 	events *[]string
 }
 
@@ -220,7 +220,7 @@ func TestRootSelectsLocalDevelopmentInfrastructure(t *testing.T) {
 
 	filesystem, err := newVFS(settings.VFS)
 	require.NoError(t, err)
-	_, err = filesystem.List(context.Background(), vfspkg.ListOptions{Limit: 1})
+	_, err = filesystem.List(context.Background(), vfs.ListOptions{Limit: 1})
 	require.NoError(t, err)
 
 	cluster, err := newCluster(settings.Cluster, logger, nil, "test", nil)

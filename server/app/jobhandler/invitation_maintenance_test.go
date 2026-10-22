@@ -16,7 +16,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -70,11 +70,11 @@ func (f *invitationMaintenanceStoreFake) Maintain(context.Context, int) (*store.
 func TestInvitationMaintenanceJobConsumesBoundedPages(t *testing.T) {
 	at := model.TimeFromMillis(1_800_000_000_000)
 	command, _ := json.Marshal(InvitationMaintenanceCommand{PageSize: 25, MaxPages: 3})
-	job, _ := model.NewJob(model.NewJobID(), model.JobTypeInvitationMaintenance, command, "maintenance", at, at, 5)
+	record, _ := model.NewJob(model.NewJobID(), model.JobTypeInvitationMaintenance, command, "maintenance", at, at, 5)
 	persistence := &invitationMaintenanceStoreFake{results: []*store.InvitationMaintenanceResult{{Expired: 25, More: true}, {Expired: 2, Purged: 3}}}
 	handler := invitationMaintenanceHandler{invitations: persistence, imports: persistence, content: &onboardingImportFilesMaintenanceFake{}, now: func() time.Time { return at }}
-	outcome := handler.Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome/calls = %#v", outcome)
+	outcome := handler.Run(context.Background(), job.NewExecution(record, nil, nil, nil))
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind, "outcome/calls = %#v", outcome)
 	require.Equal(t, 2, persistence.calls, "outcome/calls = %#v", outcome)
 	require.True(t, json.Valid(outcome.Result), "outcome/calls = %#v", outcome)
 	var result InvitationMaintenanceResult
@@ -92,12 +92,12 @@ func TestInvitationMaintenanceRemovesSourceForTerminalImport(t *testing.T) {
 	at := model.TimeFromMillis(1_800_000_000_000)
 	id := model.NewOnboardingImportID()
 	command, _ := json.Marshal(InvitationMaintenanceCommand{PageSize: 25, MaxPages: 1})
-	job, _ := model.NewJob(model.NewJobID(), model.JobTypeInvitationMaintenance, command, "maintenance", at, at, 5)
+	record, _ := model.NewJob(model.NewJobID(), model.JobTypeInvitationMaintenance, command, "maintenance", at, at, 5)
 	persistence := &invitationMaintenanceStoreFake{results: []*store.InvitationMaintenanceResult{{}}, state: model.OnboardingImportPreviewReady}
 	files := &onboardingImportFilesMaintenanceFake{staged: []model.OnboardingImportID{id}}
 	outcome := (invitationMaintenanceHandler{invitations: persistence, imports: persistence, content: files, now: func() time.Time { return at }}).
-		Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "terminal source cleanup = %#v", outcome)
+		Run(context.Background(), job.NewExecution(record, nil, nil, nil))
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind, "terminal source cleanup = %#v", outcome)
 	require.Len(t, files.removed, 1, "terminal source cleanup = %#v", outcome)
 	require.Equal(t, id, files.removed[0], "terminal source cleanup = %#v", outcome)
 }

@@ -17,7 +17,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -74,28 +74,28 @@ func expiryWorkerFixture(t *testing.T) (retentionExpiryHandler, *expiryWorkerFak
 
 func TestRetentionExpiryWorkerBudgetContinuationAndUnknownCheckpoint(t *testing.T) {
 	t.Parallel()
-	h, f, queue, job := expiryWorkerFixture(t)
+	h, f, queue, record := expiryWorkerFixture(t)
 	checkpointCount := 0
-	e := testJobExecution(job, func(_ context.Context, n, limit int) (bool, error) {
-		if job.WorkReserved+n > limit {
+	e := testJobExecution(record, func(_ context.Context, n, limit int) (bool, error) {
+		if record.WorkReserved+n > limit {
 			return false, nil
 		}
-		job.WorkReserved += n
+		record.WorkReserved += n
 		return true, nil
-	}, func(_ context.Context, cp jobengine.CheckpointValue) error {
+	}, func(_ context.Context, cp job.CheckpointValue) error {
 		checkpointCount++
 		if checkpointCount == 3 {
 			return errors.New("checkpoint outcome unknown")
 		}
-		job.Checkpoint = cp.Document
+		record.Checkpoint = cp.Document
 		return nil
 	})
 	first := h.Run(context.Background(), e)
-	require.Equal(t, jobengine.OutcomeRetryableFailure, first.Kind, "first=%#v calls=%d budget", first, len(f.reconciliations))
+	require.Equal(t, job.OutcomeRetryableFailure, first.Kind, "first=%#v calls=%d budget", first, len(f.reconciliations))
 	require.Len(t, f.reconciliations, 2, "first=%#v calls=%d budget", first, len(f.reconciliations))
-	require.Equal(t, 2, job.WorkReserved, "first=%#v calls=%d budget", first, len(f.reconciliations))
+	require.Equal(t, 2, record.WorkReserved, "first=%#v calls=%d budget", first, len(f.reconciliations))
 	retry := h.Run(context.Background(), e)
-	require.Equal(t, jobengine.OutcomeSucceeded, retry.Kind, "retry=%#v calls=%d continuations", retry, len(f.reconciliations))
+	require.Equal(t, job.OutcomeSucceeded, retry.Kind, "retry=%#v calls=%d continuations", retry, len(f.reconciliations))
 	require.Len(t, f.reconciliations, 2, "retry=%#v calls=%d continuations", retry, len(f.reconciliations))
 	require.Len(t, queue.enqueued, 1, "retry=%#v calls=%d continuations", retry, len(f.reconciliations))
 	var command RetentionExpiryCommand
@@ -107,33 +107,33 @@ func TestRetentionExpiryWorkerBudgetContinuationAndUnknownCheckpoint(t *testing.
 	// Another node receiving the same unknown enqueue result cannot create a
 	// second continuation or spend a fresh budget in the exhausted parent.
 	retry = h.Run(context.Background(), e)
-	require.Equal(t, jobengine.OutcomeSucceeded, retry.Kind, "unknown continuation repeated effects")
+	require.Equal(t, job.OutcomeSucceeded, retry.Kind, "unknown continuation repeated effects")
 	require.Len(t, queue.enqueued, 1, "unknown continuation repeated effects")
 	require.Len(t, f.reconciliations, 2, "unknown continuation repeated effects")
 }
 
 func TestRetentionExpiryWorkerLeaseLossStopsBeforeAudit(t *testing.T) {
 	t.Parallel()
-	h, f, queue, job := expiryWorkerFixture(t)
-	o := h.Run(context.Background(), testJobExecution(job, func(context.Context, int, int) (bool, error) { return false, errors.New("lease lost") }, nil))
-	require.Equal(t, jobengine.OutcomeRetryableFailure, o.Kind)
+	h, f, queue, record := expiryWorkerFixture(t)
+	o := h.Run(context.Background(), testJobExecution(record, func(context.Context, int, int) (bool, error) { return false, errors.New("lease lost") }, nil))
+	require.Equal(t, job.OutcomeRetryableFailure, o.Kind)
 	require.Empty(t, f.reconciliations)
 	require.Empty(t, queue.enqueued)
 }
 
 func TestRetentionExpiryWorkerPausedAndFailure(t *testing.T) {
 	t.Parallel()
-	h, f, queue, job := expiryWorkerFixture(t)
+	h, f, queue, record := expiryWorkerFixture(t)
 	f.control.State = model.RetentionControlPaused
-	o := h.Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), nil))
-	require.Equal(t, jobengine.OutcomeSucceeded, o.Kind, "paused workflow did work")
+	o := h.Run(context.Background(), testJobExecution(record, allowJobWorkReservation(), nil))
+	require.Equal(t, job.OutcomeSucceeded, o.Kind, "paused workflow did work")
 	require.Empty(t, f.options, "paused workflow did work")
 	require.Empty(t, f.reconciliations, "paused workflow did work")
 	require.Empty(t, queue.enqueued, "paused workflow did work")
 	f.control.State = model.RetentionControlEnabled
 	f.fail = true
-	o = h.Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), func(context.Context, jobengine.CheckpointValue) error { return nil }))
-	require.Equal(t, jobengine.OutcomeRetryableFailure, o.Kind, "failed mutation lost audit or continued")
+	o = h.Run(context.Background(), testJobExecution(record, allowJobWorkReservation(), func(context.Context, job.CheckpointValue) error { return nil }))
+	require.Equal(t, job.OutcomeRetryableFailure, o.Kind, "failed mutation lost audit or continued")
 	require.Equal(t, 1, f.failedAudits, "failed mutation lost audit or continued")
 	require.Empty(t, queue.enqueued, "failed mutation lost audit or continued")
 }
@@ -168,25 +168,25 @@ func (f *expiryWorkerFake) ReconcileCleanupAuditExpiry(_ context.Context, input 
 
 func TestRetentionExpiryCleanupBatchUnknownOutcomeKeepsBudgetAndSnapshot(t *testing.T) {
 	t.Parallel()
-	h, f, queue, job := expiryWorkerFixture(t)
-	job.Command, _ = json.Marshal(RetentionExpiryCommand{Kind: model.RetentionExpiryAudit, CleanupAudit: true, BatchSize: 2})
+	h, f, queue, record := expiryWorkerFixture(t)
+	record.Command, _ = json.Marshal(RetentionExpiryCommand{Kind: model.RetentionExpiryAudit, CleanupAudit: true, BatchSize: 2})
 	f.cleanupErr = errors.New("commit outcome unknown")
 	units := 0
-	e := testJobExecution(job, func(_ context.Context, n, limit int) (bool, error) {
+	e := testJobExecution(record, func(_ context.Context, n, limit int) (bool, error) {
 		units += n
-		job.WorkReserved += n
+		record.WorkReserved += n
 		return true, nil
-	}, func(_ context.Context, cp jobengine.CheckpointValue) error {
-		job.Checkpoint = cp.Document
+	}, func(_ context.Context, cp job.CheckpointValue) error {
+		record.Checkpoint = cp.Document
 		return nil
 	})
 	o := h.Run(context.Background(), e)
-	require.Equal(t, jobengine.OutcomeRetryableFailure, o.Kind, "batch outcome=%#v calls=%d reserved", o, f.cleanupCalls)
+	require.Equal(t, job.OutcomeRetryableFailure, o.Kind, "batch outcome=%#v calls=%d reserved", o, f.cleanupCalls)
 	require.Equal(t, 1, f.cleanupCalls, "batch outcome=%#v calls=%d reserved", o, f.cleanupCalls)
 	require.Equal(t, 2, units, "batch outcome=%#v calls=%d reserved", o, f.cleanupCalls)
 	require.Empty(t, f.reconciliations, "batch outcome=%#v calls=%d reserved", o, f.cleanupCalls)
 	o = h.Run(context.Background(), e)
-	require.Equal(t, jobengine.OutcomeSucceeded, o.Kind, "uncertain batch reset its budget")
+	require.Equal(t, job.OutcomeSucceeded, o.Kind, "uncertain batch reset its budget")
 	require.Equal(t, 1, f.cleanupCalls, "uncertain batch reset its budget")
 	require.Len(t, queue.enqueued, 1, "uncertain batch reset its budget")
 	var next RetentionExpiryCommand
@@ -198,14 +198,14 @@ func TestRetentionExpiryCleanupBatchUnknownOutcomeKeepsBudgetAndSnapshot(t *test
 
 func TestRetentionExpiryFutureGraceDoesNotCreateAnAudit(t *testing.T) {
 	t.Parallel()
-	h, f, queue, job := expiryWorkerFixture(t)
+	h, f, queue, record := expiryWorkerFixture(t)
 	for i := range f.page.Items {
 		f.page.Items[i].ScheduledAt = model.OptionalTimeFrom(f.page.Before)
 		f.page.Items[i].ExpiresAfter = model.OptionalTimeFrom(f.page.Before.Add(24 * time.Hour))
 	}
 	f.page.HasMore = false
-	o := h.Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), func(context.Context, jobengine.CheckpointValue) error { return nil }))
-	require.Equal(t, jobengine.OutcomeSucceeded, o.Kind, "future grace created repeated no-op audit")
+	o := h.Run(context.Background(), testJobExecution(record, allowJobWorkReservation(), func(context.Context, job.CheckpointValue) error { return nil }))
+	require.Equal(t, job.OutcomeSucceeded, o.Kind, "future grace created repeated no-op audit")
 	require.Empty(t, f.reconciliations, "future grace created repeated no-op audit")
 	require.Empty(t, queue.enqueued, "future grace created repeated no-op audit")
 }

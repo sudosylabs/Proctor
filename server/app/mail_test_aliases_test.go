@@ -13,11 +13,11 @@ package app
 import (
 	"time"
 
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-type FrozenMailContent = appmail.FrozenContent
+type FrozenMailContent = mail.FrozenContent
 type DirectMailPreparation struct {
 	Recipient    *model.User
 	OccurrenceID model.MailOccurrenceID
@@ -28,34 +28,34 @@ type DirectMailPreparation struct {
 	Deadline     time.Time
 	JobType      model.JobType
 }
-type AccountTokenMailPreparation = appmail.AccountTokenPreparation
-type NoticeMailPreparation = appmail.NoticePreparation
-type MFAMailNoticeKind = appmail.MFANoticeKind
-type MailAddress = appmail.Address
-type OutboundMail = appmail.Outbound
-type MailTransportOutcome = appmail.TransportOutcome
-type PersonalAccessTokenMailDetails = appmail.PersonalAccessTokenDetails
-type ExamManagerMailDetails = appmail.ExamManagerDetails
-type ClassTransitionMailDetails = appmail.ClassTransitionDetails
-type SubmissionReceiptMailDetails = appmail.SubmissionReceiptDetails
-type ResultReleaseMailDetails = appmail.ResultReleaseDetails
-type MailRenderRequest = appmail.RenderRequest
-type DirectMailTemplateRenderer = appmail.Renderer
-type MailDeliverySender = appmail.Sender
-type ClassTransitionMailPreparation = appmail.ClassTransitionPreparation
-type ResultReleaseDirectMailPreparation = appmail.ResultReleasePreparation
-type SubmissionReceiptMailPreparation = appmail.SubmissionReceiptPreparation
-type personalAccessTokenSecurityNoticePreparation = appmail.PersonalAccessTokenPreparation
-type relationshipTransitionMailPreparation = appmail.RelationshipTransitionPreparation
-type SittingScheduleMailDetails = appmail.SittingScheduleDetails
-type SittingMailTemplateRenderer = appmail.SittingRenderer
+type AccountTokenMailPreparation = mail.AccountTokenPreparation
+type NoticeMailPreparation = mail.NoticePreparation
+type MFAMailNoticeKind = mail.MFANoticeKind
+type MailAddress = mail.Address
+type OutboundMail = mail.Outbound
+type MailTransportOutcome = mail.TransportOutcome
+type PersonalAccessTokenMailDetails = mail.PersonalAccessTokenDetails
+type ExamManagerMailDetails = mail.ExamManagerDetails
+type ClassTransitionMailDetails = mail.ClassTransitionDetails
+type SubmissionReceiptMailDetails = mail.SubmissionReceiptDetails
+type ResultReleaseMailDetails = mail.ResultReleaseDetails
+type MailRenderRequest = mail.RenderRequest
+type DirectMailTemplateRenderer = mail.Renderer
+type MailDeliverySender = mail.Sender
+type ClassTransitionMailPreparation = mail.ClassTransitionPreparation
+type ResultReleaseDirectMailPreparation = mail.ResultReleasePreparation
+type SubmissionReceiptMailPreparation = mail.SubmissionReceiptPreparation
+type personalAccessTokenSecurityNoticePreparation = mail.PersonalAccessTokenPreparation
+type relationshipTransitionMailPreparation = mail.RelationshipTransitionPreparation
+type SittingScheduleMailDetails = mail.SittingScheduleDetails
+type SittingMailTemplateRenderer = mail.SittingRenderer
 
 const (
-	MailTransportUnknown                  = appmail.TransportUnknown
-	MailTransportTemporary                = appmail.TransportTemporary
-	MailTransportPermanent                = appmail.TransportPermanent
-	MailTransportAcceptanceUncertain      = appmail.TransportAcceptanceUncertain
-	MFAMailNoticeEnabled                  = appmail.MFANoticeEnabled
-	MFAMailNoticeDisabled                 = appmail.MFANoticeDisabled
-	MFAMailNoticeRecoveryCodesRegenerated = appmail.MFANoticeRecoveryCodesRegenerated
+	MailTransportUnknown                  = mail.TransportUnknown
+	MailTransportTemporary                = mail.TransportTemporary
+	MailTransportPermanent                = mail.TransportPermanent
+	MailTransportAcceptanceUncertain      = mail.TransportAcceptanceUncertain
+	MFAMailNoticeEnabled                  = mail.MFANoticeEnabled
+	MFAMailNoticeDisabled                 = mail.MFANoticeDisabled
+	MFAMailNoticeRecoveryCodesRegenerated = mail.MFANoticeRecoveryCodesRegenerated
 )

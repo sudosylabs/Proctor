@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -133,7 +133,7 @@ func (s *academicPeriodService) CreateAcademicPeriod(ctx context.Context, invoca
 	if err := s.authorization.AuthorizeAcademicPeriodOwner(ctx, invocation, model.ActionAcademicPeriodManage, candidate); err != nil {
 		return nil, err
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "academic_period.create", command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Prepare(invocation, "academic_period.create", command.IdempotencyKey, struct {
 		OwnerType, OwnerID             string
 		Name, DisplayName, Description string
 		StartAt, EndAt                 int64

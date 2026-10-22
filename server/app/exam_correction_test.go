@@ -14,32 +14,32 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	examcorrection "github.com/sudosylabs/proctor/server/app/exam/correction"
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/exam/correction"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestCorrectionEffectPublishesManagerAndCandidateRefetchFacts(t *testing.T) {
 	t.Parallel()
-	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
+	service := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	require.NoError(t, realtime.AttachRealtimeSink(sink))
-	require.NoError(t, realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
+	require.NoError(t, service.AttachRealtimeSink(sink))
+	require.NoError(t, service.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
 	examID, sittingID := model.NewExamID(), model.NewExamSittingID()
 	candidateID := model.NewUserID()
 	collections := examCollectionInvalidationEffects{
 		sittings: &examCollectionInvalidationStoreFake{candidateIDs: []model.UserID{candidateID}},
-		realtime: realtime,
+		realtime: service,
 	}
 	previousRevisionID, revisionID := model.NewExamRevisionID(), model.NewExamRevisionID()
 	at := time.Date(2026, time.August, 17, 12, 0, 0, 0, time.UTC)
-	err := (examCorrectionRealtimeEffects{realtime: realtime, collections: collections}).Corrected(context.Background(), examcorrection.Result{
+	err := (examCorrectionRealtimeEffects{realtime: service, collections: collections}).Corrected(context.Background(), correction.Result{
 		ExamID: examID, SittingID: sittingID, PreviousRevisionID: previousRevisionID,
 		RevisionID: revisionID, SittingRevision: 7, EffectiveAt: at,
 	})
 	require.NoError(t, err)
 	sink.mu.Lock()
-	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
+	events := append([]realtime.RealtimeEvent(nil), sink.events...)
 	sink.mu.Unlock()
 	require.Len(t, events, 4)
 	require.Equal(t, model.ActionExamSittingView, events[0].Action)

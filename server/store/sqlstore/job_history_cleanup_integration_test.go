@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -33,8 +33,8 @@ func TestJobHistoryCleanupContinuesAcrossNodesPastOneDailyBatch(t *testing.T) {
 		insertTerminalJobHistoryFixture(t, ss, model.JobTypeProfilePictureGenerateDefault, model.JobStatusSucceeded, 31*24*time.Hour, true)
 	}
 	catalog := jobhandler.NewCatalog(jobhandler.CatalogDependencies{JobStore: ss.Job(), Now: time.Now})
-	var descriptor jobengine.Descriptor
-	var proposer jobengine.OccurrenceProposer
+	var descriptor job.Descriptor
+	var proposer job.OccurrenceProposer
 	for _, value := range catalog.Descriptors {
 		if value.Type == model.JobTypeCleanup {
 			descriptor = value
@@ -52,8 +52,8 @@ func TestJobHistoryCleanupContinuesAcrossNodesPastOneDailyBatch(t *testing.T) {
 		require.NoError(t, proposer.Propose(ctx, occurrence))
 	}
 	for _, nodeID := range []string{"cleanup-node-a", "cleanup-node-b"} {
-		engine, err := jobengine.New(jobengine.Config{Store: ss.Job(), Descriptors: []jobengine.Descriptor{descriptor}, NodeID: nodeID,
-			Diagnostics: historyCleanupDiagnostics{t: t}, Policy: jobengine.Policy{PollInterval: 5 * time.Millisecond, ShutdownTimeout: time.Second}})
+		engine, err := job.New(job.Config{Store: ss.Job(), Descriptors: []job.Descriptor{descriptor}, NodeID: nodeID,
+			Diagnostics: historyCleanupDiagnostics{t: t}, Policy: job.Policy{PollInterval: 5 * time.Millisecond, ShutdownTimeout: time.Second}})
 		require.NoError(t, err)
 		err = engine.Start(ctx)
 		require.NoError(t, err)

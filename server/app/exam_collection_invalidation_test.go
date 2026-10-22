@@ -14,7 +14,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -49,7 +49,7 @@ func TestExamArchiveInvalidatesEveryAffectedCollection(t *testing.T) {
 	require.Equal(t, candidateID.String(), userID, "candidate target = %q, want %q", userID, candidateID)
 }
 
-func sinkEventNames(events []apprealtime.RealtimeEvent) []string {
+func sinkEventNames(events []realtime.RealtimeEvent) []string {
 	names := make([]string, len(events))
 	for index := range events {
 		names[index] = events[index].Name

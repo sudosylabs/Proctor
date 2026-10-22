@@ -14,8 +14,8 @@ import (
 	"math"
 	"time"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
@@ -23,7 +23,7 @@ import (
 
 const (
 	mailRekeyPageSize           = 100
-	mailFanoutBundleSealPurpose = appmail.FanoutBundleSealingPurpose
+	mailFanoutBundleSealPurpose = mail.FanoutBundleSealingPurpose
 )
 
 // MailRekeyCommand is the immutable command of the mail rekey Job.
@@ -81,22 +81,22 @@ type mailRekeyHandler struct {
 	sealer *secretseal.Sealer
 }
 
-func (h mailRekeyHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
+func (h mailRekeyHandler) Run(ctx context.Context, execution job.Execution) job.Outcome {
 	if execution.Job == nil || execution.Attempt == nil || !execution.Job.ID.IsValid() || !execution.Attempt.ID.IsValid() ||
 		h.mail == nil || h.sealer == nil {
-		return jobengine.PermanentFailure("job.command.invalid", errors.New("mail rekey execution is incomplete"))
+		return job.PermanentFailure("job.command.invalid", errors.New("mail rekey execution is incomplete"))
 	}
 	var command MailRekeyCommand
 	if decodeStrictJobDocument(execution.Job.Command, &command) != nil || command.PrimaryKeyID == "" ||
 		command.RetiringKeyID == "" || command.RetiringKeyID == command.PrimaryKeyID || !h.sealer.HasKey(command.RetiringKeyID) {
-		return jobengine.PermanentFailure("job.command.invalid", errors.New("mail rekey command is invalid for this key ring"))
+		return job.PermanentFailure("job.command.invalid", errors.New("mail rekey command is invalid for this key ring"))
 	}
 	if command.PrimaryKeyID != h.sealer.PrimaryKeyID() {
-		return jobengine.Relinquished("mail.rekey.primary_mismatch", errors.New("mail rekey command requires a different configured primary key"))
+		return job.Relinquished("mail.rekey.primary_mismatch", errors.New("mail rekey command requires a different configured primary key"))
 	}
 	checkpoint, err := decodeMailRekeyCheckpoint(execution.Job.Checkpoint)
 	if err != nil {
-		return jobengine.PermanentFailure("job.checkpoint.invalid", err)
+		return job.PermanentFailure("job.checkpoint.invalid", err)
 	}
 	initialProof, err := h.mail.ProveRekey(ctx, &store.MailRekeyProofRequest{JobID: execution.Job.ID,
 		PrimaryKeyID: command.PrimaryKeyID, RetiringKeyID: command.RetiringKeyID})
@@ -104,10 +104,10 @@ func (h mailRekeyHandler) Run(ctx context.Context, execution jobengine.Execution
 		return mailRekeyOutcome(err)
 	}
 	if err = validateMailRekeyProof(initialProof, command); err != nil {
-		return jobengine.PermanentFailure("mail.rekey.invariant_failed", err)
+		return job.PermanentFailure("mail.rekey.invariant_failed", err)
 	}
 	if initialProof.NonPrimaryReferences > math.MaxInt64-checkpoint.Processed {
-		return jobengine.PermanentFailure("mail.rekey.invariant_failed", errors.New("mail rekey progress exceeds its bound"))
+		return job.PermanentFailure("mail.rekey.invariant_failed", errors.New("mail rekey progress exceeds its bound"))
 	}
 	progressTotal := checkpoint.Processed + initialProof.NonPrimaryReferences
 	for {
@@ -119,15 +119,15 @@ func (h mailRekeyHandler) Run(ctx context.Context, execution jobengine.Execution
 			return mailRekeyOutcome(listErr)
 		}
 		if page == nil || len(page.Targets) > mailRekeyPageSize || (page.More && len(page.Targets) == 0) {
-			return jobengine.PermanentFailure("mail.rekey.invariant_failed", errors.New("mail rekey page is invalid"))
+			return job.PermanentFailure("mail.rekey.invariant_failed", errors.New("mail rekey page is invalid"))
 		}
 		for _, target := range page.Targets {
 			if !mailRekeyTargetAfter(target, checkpoint) || target.KeyID == command.PrimaryKeyID || !h.sealer.HasKey(target.KeyID) {
-				return jobengine.PermanentFailure("mail.rekey.invariant_failed", errors.New("mail rekey target is invalid"))
+				return job.PermanentFailure("mail.rekey.invariant_failed", errors.New("mail rekey target is invalid"))
 			}
 			replacement, rekeyErr := h.reencryptTarget(target, execution.Job.ID, command.PrimaryKeyID)
 			if rekeyErr != nil {
-				return jobengine.PermanentFailure("mail.rekey.payload_unavailable", rekeyErr)
+				return job.PermanentFailure("mail.rekey.payload_unavailable", rekeyErr)
 			}
 			applied, replaceErr := h.mail.ReplaceRekeyTarget(ctx, replacement)
 			if replaceErr != nil {
@@ -139,7 +139,7 @@ func (h mailRekeyHandler) Run(ctx context.Context, execution jobengine.Execution
 				checkpoint.Reencrypted++
 			}
 			if checkpointErr := checkpointMailRekey(ctx, execution, checkpoint, progressTotal); checkpointErr != nil {
-				return jobengine.RetryableFailure("dependency.unavailable", checkpointErr)
+				return job.RetryableFailure("dependency.unavailable", checkpointErr)
 			}
 		}
 		if page.More {
@@ -153,16 +153,16 @@ func (h mailRekeyHandler) Run(ctx context.Context, execution jobengine.Execution
 		return mailRekeyOutcome(err)
 	}
 	if err = validateMailRekeyProof(proof, command); err != nil {
-		return jobengine.PermanentFailure("mail.rekey.invariant_failed", err)
+		return job.PermanentFailure("mail.rekey.invariant_failed", err)
 	}
 	if proof.NonPrimaryReferences != 0 || !proof.RetirementSafe {
-		return jobengine.RetryableFailure("mail.rekey.incomplete", errors.New("active mail payloads still use a non-primary key"))
+		return job.RetryableFailure("mail.rekey.incomplete", errors.New("active mail payloads still use a non-primary key"))
 	}
 	result, err := json.Marshal(MailRekeyResult{PrimaryKeyID: proof.PrimaryKeyID,
 		RetiringKeyID: proof.RetiringKeyID, Processed: checkpoint.Processed, Reencrypted: checkpoint.Reencrypted,
 		NonPrimaryReferences: proof.NonPrimaryReferences, RetiringReferences: proof.RetiringReferences,
 		RetirementSafe: proof.RetirementSafe})
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: result, Err: err}
+	return job.Outcome{Kind: job.OutcomeSucceeded, Result: result, Err: err}
 }
 
 func (h mailRekeyHandler) reencryptTarget(target store.MailRekeyTarget, jobID model.JobID, primaryKeyID string) (*store.MailRekeyReplacement, error) {
@@ -205,7 +205,7 @@ func decodeMailRekeyCheckpoint(document json.RawMessage) (MailRekeyCheckpoint, e
 	return checkpoint, nil
 }
 
-func checkpointMailRekey(ctx context.Context, execution jobengine.Execution, checkpoint MailRekeyCheckpoint, total int64) error {
+func checkpointMailRekey(ctx context.Context, execution job.Execution, checkpoint MailRekeyCheckpoint, total int64) error {
 	document, err := json.Marshal(checkpoint)
 	if err != nil {
 		return err
@@ -213,7 +213,7 @@ func checkpointMailRekey(ctx context.Context, execution jobengine.Execution, che
 	if total <= 0 || checkpoint.Processed > total {
 		return errors.New("mail rekey progress is invalid")
 	}
-	return execution.Checkpoint(ctx, jobengine.CheckpointValue{Document: document,
+	return execution.Checkpoint(ctx, job.CheckpointValue{Document: document,
 		Progress: &model.JobProgress{Current: checkpoint.Processed, Total: total, Stage: "reencrypting"}})
 }
 
@@ -243,7 +243,7 @@ func validMailRekeyTargetKind(kind store.MailRekeyTargetKind) bool {
 func mailRekeyTargetPurpose(kind store.MailRekeyTargetKind) (string, bool) {
 	switch kind {
 	case store.MailRekeyTargetDelivery:
-		return appmail.DeliverySealingPurpose, true
+		return mail.DeliverySealingPurpose, true
 	case store.MailRekeyTargetFanoutBundle:
 		return mailFanoutBundleSealPurpose, true
 	default:
@@ -251,18 +251,18 @@ func mailRekeyTargetPurpose(kind store.MailRekeyTargetKind) (string, bool) {
 	}
 }
 
-func mailRekeyOutcome(err error) jobengine.Outcome {
+func mailRekeyOutcome(err error) job.Outcome {
 	if store.IsConflict(err) {
-		return jobengine.PermanentFailure("mail.rekey.fenced", err)
+		return job.PermanentFailure("mail.rekey.fenced", err)
 	}
-	return jobengine.RetryableFailure("dependency.unavailable", err)
+	return job.RetryableFailure("dependency.unavailable", err)
 }
 
-func mailRekeyDescriptor(handler jobengine.Handler) jobengine.Descriptor {
-	return jobengine.Descriptor{Type: model.JobTypeMailRekey, Checkpoints: true,
+func mailRekeyDescriptor(handler job.Handler) job.Descriptor {
+	return job.Descriptor{Type: model.JobTypeMailRekey, Checkpoints: true,
 		ProgressStages: []string{"reencrypting"}, PublicErrorCodes: []string{"dependency.unavailable", "job.checkpoint.invalid", "mail.rekey.fenced", "mail.rekey.incomplete", "mail.rekey.invariant_failed", "mail.rekey.payload_unavailable", "mail.rekey.primary_mismatch"},
 		Timeout: 5 * time.Minute, Concurrency: 1, MaximumAttempts: 10, LeaseDuration: time.Minute,
 		HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Minute, MaximumRetryDelay: 30 * time.Minute,
-		Visibility: jobengine.VisibilityOperator, SuccessRetention: 90 * 24 * time.Hour,
+		Visibility: job.VisibilityOperator, SuccessRetention: 90 * 24 * time.Hour,
 		FailureRetention: 180 * 24 * time.Hour, Handler: handler}
 }

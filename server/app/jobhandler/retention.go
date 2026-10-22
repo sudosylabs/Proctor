@@ -13,7 +13,7 @@ import (
 	"errors"
 	"time"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -60,23 +60,23 @@ type retentionHandler struct {
 	purge   bool
 }
 
-func (h retentionHandler) Run(ctx context.Context, e jobengine.Execution) jobengine.Outcome {
+func (h retentionHandler) Run(ctx context.Context, e job.Execution) job.Outcome {
 	if e.Job == nil || h.records == nil || h.jobs == nil || h.now == nil || (!h.purge && h.audit == nil) || (h.purge && h.content == nil) {
-		return jobengine.PermanentFailure("job.command.invalid", errors.New("retention dependencies are unavailable"))
+		return job.PermanentFailure("job.command.invalid", errors.New("retention dependencies are unavailable"))
 	}
 	var command RetentionCommand
 	if decodeStrictJobDocument(e.Job.Command, &command) != nil || command.BatchSize < 1 || command.BatchSize > retentionJobMaximumBatch ||
 		(!command.AfterSubmissionID.IsZero() && !command.AfterSubmissionID.IsValid()) || (h.purge && !command.AfterSubmissionID.IsZero()) {
-		return jobengine.PermanentFailure("job.command.invalid", errors.New("invalid retention command"))
+		return job.PermanentFailure("job.command.invalid", errors.New("invalid retention command"))
 	}
 	cp := RetentionCheckpoint{AfterSubmissionID: command.AfterSubmissionID}
 	if len(e.Job.Checkpoint) > 0 && (decodeStrictJobDocument(e.Job.Checkpoint, &cp) != nil) {
-		return jobengine.PermanentFailure("job.checkpoint.invalid", errors.New("invalid retention checkpoint"))
+		return job.PermanentFailure("job.checkpoint.invalid", errors.New("invalid retention checkpoint"))
 	}
 	if cp.Examined < 0 || cp.Examined > command.BatchSize || cp.Changed < 0 || cp.Changed > cp.Examined ||
 		(!cp.AfterSubmissionID.IsZero() && !cp.AfterSubmissionID.IsValid()) || cp.AfterSubmissionID < command.AfterSubmissionID ||
 		e.Job.WorkReserved < cp.Examined || e.Job.WorkReserved > command.BatchSize || (h.purge && !cp.AfterSubmissionID.IsZero()) {
-		return jobengine.PermanentFailure("job.checkpoint.invalid", errors.New("retention work or cursor is invalid"))
+		return job.PermanentFailure("job.checkpoint.invalid", errors.New("retention work or cursor is invalid"))
 	}
 	remaining := command.BatchSize - e.Job.WorkReserved
 	if cp.Done || remaining == 0 {
@@ -89,12 +89,12 @@ func (h retentionHandler) Run(ctx context.Context, e jobengine.Execution) jobeng
 		err = h.reconcilePage(ctx, e, command, &cp, remaining)
 	}
 	if err != nil {
-		return jobengine.RetryableFailure("retention.unavailable", errors.New("retention maintenance did not complete"))
+		return job.RetryableFailure("retention.unavailable", errors.New("retention maintenance did not complete"))
 	}
 	return h.finish(ctx, e.Job, command, cp)
 }
 
-func (h retentionHandler) reconcilePage(ctx context.Context, e jobengine.Execution, command RetentionCommand, cp *RetentionCheckpoint, limit int) error {
+func (h retentionHandler) reconcilePage(ctx context.Context, e job.Execution, command RetentionCommand, cp *RetentionCheckpoint, limit int) error {
 	control, err := h.records.GetControl(ctx)
 	if store.IsNotFound(err) {
 		cp.Done = true
@@ -160,7 +160,7 @@ func (h retentionHandler) reconcilePage(ctx context.Context, e jobengine.Executi
 	return saveRetentionCheckpoint(ctx, e, *cp)
 }
 
-func (h retentionHandler) purgePage(ctx context.Context, e jobengine.Execution, command RetentionCommand, cp *RetentionCheckpoint, limit int) error {
+func (h retentionHandler) purgePage(ctx context.Context, e job.Execution, command RetentionCommand, cp *RetentionCheckpoint, limit int) error {
 	// Beginning a batch is itself a durable mutation. Reserve its complete
 	// bounded cost first; an unknown result cannot reset this Job's budget.
 	reserved, err := e.ReserveWork(ctx, limit, command.BatchSize)
@@ -214,42 +214,42 @@ func (h retentionHandler) purgePage(ctx context.Context, e jobengine.Execution, 
 	return nil
 }
 
-func saveRetentionCheckpoint(ctx context.Context, e jobengine.Execution, cp RetentionCheckpoint) error {
+func saveRetentionCheckpoint(ctx context.Context, e job.Execution, cp RetentionCheckpoint) error {
 	document, err := json.Marshal(cp)
 	if err != nil {
 		return err
 	}
-	return e.Checkpoint(ctx, jobengine.CheckpointValue{Document: document})
+	return e.Checkpoint(ctx, job.CheckpointValue{Document: document})
 }
 
-func (h retentionHandler) finish(ctx context.Context, parent *model.Job, command RetentionCommand, cp RetentionCheckpoint) jobengine.Outcome {
+func (h retentionHandler) finish(ctx context.Context, parent *model.Job, command RetentionCommand, cp RetentionCheckpoint) job.Outcome {
 	// A failed or uncheckpointed purge batch must remain visibly failed. Its
 	// exact keys are already deferred and will be revisited by hourly work.
 	// Only a fully completed, nonempty batch can create an immediate successor;
 	// otherwise repeated failures saving an empty checkpoint could spawn an
 	// unbounded chain of fresh Jobs with fresh work budgets.
 	if h.purge && (cp.Changed != cp.Examined || (!cp.Done && cp.Examined != command.BatchSize)) {
-		return jobengine.PermanentFailure("retention.unavailable", errors.New("retention purge batch did not complete"))
+		return job.PermanentFailure("retention.unavailable", errors.New("retention purge batch did not complete"))
 	}
 	if !cp.Done {
 		command.AfterSubmissionID = cp.AfterSubmissionID
 		document, err := json.Marshal(command)
 		if err != nil {
-			return jobengine.PermanentFailure("job.invariant_failed", err)
+			return job.PermanentFailure("job.invariant_failed", err)
 		}
 		at := model.TimeUTC(h.now())
 		// A short delay avoids an unbounded tight retry chain after repeated
 		// uncertainty, while each permanent dedupe key has one successor.
 		successor, err := model.NewJobWithDedupePolicy(model.NewJobID(), parent.Type, document, string(parent.Type)+":after:"+parent.ID.String(), model.JobDedupePermanent, at, at.Add(time.Second), 5)
 		if err != nil {
-			return jobengine.PermanentFailure("job.invariant_failed", err)
+			return job.PermanentFailure("job.invariant_failed", err)
 		}
 		if _, _, err = h.jobs.Enqueue(ctx, &store.JobEnqueue{Job: successor}); err != nil {
-			return jobengine.RetryableFailure("retention.unavailable", errors.New("retention maintenance did not complete"))
+			return job.RetryableFailure("retention.unavailable", errors.New("retention maintenance did not complete"))
 		}
 	}
 	document, err := json.Marshal(cp)
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: document, Err: err}
+	return job.Outcome{Kind: job.OutcomeSucceeded, Result: document, Err: err}
 }
 
 type retentionProposer struct {
@@ -276,6 +276,6 @@ func (p retentionProposer) Propose(ctx context.Context, occurrence time.Time) er
 	return err
 }
 
-func retentionDescriptor(jobType model.JobType, handler jobengine.Handler) jobengine.Descriptor {
-	return jobengine.Descriptor{Type: jobType, Checkpoints: true, PublicErrorCodes: []string{"retention.unavailable", "job.command.invalid", "job.checkpoint.invalid", "job.invariant_failed"}, Timeout: 10 * time.Minute, Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: time.Minute, Visibility: jobengine.VisibilityOperator, SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
+func retentionDescriptor(jobType model.JobType, handler job.Handler) job.Descriptor {
+	return job.Descriptor{Type: jobType, Checkpoints: true, PublicErrorCodes: []string{"retention.unavailable", "job.command.invalid", "job.checkpoint.invalid", "job.invariant_failed"}, Timeout: 10 * time.Minute, Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: time.Minute, Visibility: job.VisibilityOperator, SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
 }

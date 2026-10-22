@@ -12,7 +12,7 @@ import (
 	"errors"
 	"time"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -29,17 +29,17 @@ type retentionNoticeHandler struct {
 	now        func() time.Time
 }
 
-func (h retentionNoticeHandler) Run(ctx context.Context, e jobengine.Execution) jobengine.Outcome {
+func (h retentionNoticeHandler) Run(ctx context.Context, e job.Execution) job.Outcome {
 	var command RetentionCommand
 	if e.Job == nil || h.notices == nil || h.dispatcher == nil || h.jobs == nil || h.now == nil || decodeStrictJobDocument(e.Job.Command, &command) != nil || command.BatchSize < 1 || command.BatchSize > retentionJobMaximumBatch || !command.AfterSubmissionID.IsZero() {
-		return jobengine.PermanentFailure("job.command.invalid", errors.New("invalid retention notice command"))
+		return job.PermanentFailure("job.command.invalid", errors.New("invalid retention notice command"))
 	}
 	var cp RetentionCheckpoint
 	if len(e.Job.Checkpoint) > 0 && (decodeStrictJobDocument(e.Job.Checkpoint, &cp) != nil) {
-		return jobengine.PermanentFailure("job.checkpoint.invalid", errors.New("invalid retention notice checkpoint"))
+		return job.PermanentFailure("job.checkpoint.invalid", errors.New("invalid retention notice checkpoint"))
 	}
 	if cp.Examined < 0 || cp.Examined > e.Job.WorkReserved || e.Job.WorkReserved > command.BatchSize || !cp.AfterSubmissionID.IsZero() || cp.Changed != cp.Examined {
-		return jobengine.PermanentFailure("job.checkpoint.invalid", errors.New("invalid retention notice work"))
+		return job.PermanentFailure("job.checkpoint.invalid", errors.New("invalid retention notice work"))
 	}
 	finish := retentionHandler{jobs: h.jobs, now: h.now}
 	remaining := command.BatchSize - e.Job.WorkReserved
@@ -48,31 +48,31 @@ func (h retentionNoticeHandler) Run(ctx context.Context, e jobengine.Execution) 
 	}
 	items, err := h.notices.ListPendingNotices(ctx, remaining)
 	if err != nil {
-		return jobengine.RetryableFailure("retention.unavailable", errors.New("retention maintenance did not complete"))
+		return job.RetryableFailure("retention.unavailable", errors.New("retention maintenance did not complete"))
 	}
 	if len(items) > remaining {
-		return jobengine.PermanentFailure("job.invariant_failed", errors.New("invalid retention notice page"))
+		return job.PermanentFailure("job.invariant_failed", errors.New("invalid retention notice page"))
 	}
 	for _, item := range items {
 		reserved, err := e.ReserveWork(ctx, 1, command.BatchSize)
 		if err != nil {
-			return jobengine.RetryableFailure("retention.unavailable", errors.New("retention maintenance did not complete"))
+			return job.RetryableFailure("retention.unavailable", errors.New("retention maintenance did not complete"))
 		}
 		if !reserved {
 			return finish.finish(ctx, e.Job, command, cp)
 		}
 		if err = h.dispatcher.DispatchRetentionNotice(ctx, item); err != nil {
-			return jobengine.RetryableFailure("retention.unavailable", errors.New("retention maintenance did not complete"))
+			return job.RetryableFailure("retention.unavailable", errors.New("retention maintenance did not complete"))
 		}
 		cp.Examined++
 		cp.Changed++
 		if err = saveRetentionCheckpoint(ctx, e, cp); err != nil {
-			return jobengine.RetryableFailure("retention.unavailable", errors.New("retention maintenance did not complete"))
+			return job.RetryableFailure("retention.unavailable", errors.New("retention maintenance did not complete"))
 		}
 	}
 	cp.Done = len(items) < remaining
 	if err = saveRetentionCheckpoint(ctx, e, cp); err != nil {
-		return jobengine.RetryableFailure("retention.unavailable", errors.New("retention maintenance did not complete"))
+		return job.RetryableFailure("retention.unavailable", errors.New("retention maintenance did not complete"))
 	}
 	return finish.finish(ctx, e.Job, command, cp)
 }

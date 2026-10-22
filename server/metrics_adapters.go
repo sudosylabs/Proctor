@@ -14,25 +14,25 @@ import (
 	"sync"
 	"time"
 
-	mailpkg "github.com/sudosylabs/proctor/packages/mail"
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/mail"
+	"github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/app"
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/filecontent"
-	metricspkg "github.com/sudosylabs/proctor/server/metrics"
+	"github.com/sudosylabs/proctor/server/metrics"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform"
 )
 
-type jobMetricsRecorder struct{ metrics *metricspkg.Module }
+type jobMetricsRecorder struct{ metrics *metrics.Module }
 
-type applicationMetricsRecorder struct{ metrics *metricspkg.Module }
+type applicationMetricsRecorder struct{ metrics *metrics.Module }
 
 // workMetricsRecorder adapts either consumer-owned work recorder. Pool names
 // are selected by composition, never derived from requests or errors.
 type workMetricsRecorder struct {
-	metrics *metricspkg.Module
+	metrics *metrics.Module
 	pool    string
 }
 
@@ -50,12 +50,12 @@ func (r applicationMetricsRecorder) RecordOperationalEvent(event app.Operational
 }
 
 type prometheusMailRecorder struct {
-	metrics *metricspkg.Module
+	metrics *metrics.Module
 	mu      sync.Mutex
 	queues  map[mailQueueMetricIdentity]struct{}
 }
 
-func newPrometheusMailRecorder(metrics *metricspkg.Module) *prometheusMailRecorder {
+func newPrometheusMailRecorder(metrics *metrics.Module) *prometheusMailRecorder {
 	return &prometheusMailRecorder{metrics: metrics, queues: make(map[mailQueueMetricIdentity]struct{})}
 }
 
@@ -145,18 +145,18 @@ func (r jobMetricsRecorder) Started(jobType model.JobType) {
 	r.metrics.JobStarted(string(jobType))
 }
 
-func (r jobMetricsRecorder) Finished(jobType model.JobType, result jobengine.ExecutionOutcome, duration time.Duration) {
+func (r jobMetricsRecorder) Finished(jobType model.JobType, result job.ExecutionOutcome, duration time.Duration) {
 	r.metrics.JobFinished(string(jobType), string(result), duration)
 }
 
-func (r jobMetricsRecorder) Record(activity jobengine.Activity) {
+func (r jobMetricsRecorder) Record(activity job.Activity) {
 	r.metrics.ObserveJobActivity(activity.Kind, activity.Name, activity.Operation, activity.Outcome, activity.Duration, activity.QueueLatency)
 }
 
 type measuredCache struct {
 	next    platform.Cache
 	backend string
-	metrics *metricspkg.Module
+	metrics *metrics.Module
 }
 
 func (m *measuredCache) Get(ctx context.Context, key string) ([]byte, error) {
@@ -214,16 +214,16 @@ func cacheOutcome(err error) string {
 
 type measuredMailer struct {
 	next    platform.Mailer
-	metrics *metricspkg.Module
+	metrics *metrics.Module
 }
 
-func (m *measuredMailer) Enabled() bool         { return m.next.Enabled() }
-func (m *measuredMailer) From() mailpkg.Address { return m.next.From() }
-func (m *measuredMailer) Send(ctx context.Context, message mailpkg.Message) (mailpkg.Receipt, error) {
+func (m *measuredMailer) Enabled() bool      { return m.next.Enabled() }
+func (m *measuredMailer) From() mail.Address { return m.next.From() }
+func (m *measuredMailer) Send(ctx context.Context, message mail.Message) (mail.Receipt, error) {
 	started := time.Now()
 	receipt, err := m.next.Send(ctx, message)
 	operation := "send"
-	var operationError *mailpkg.OpError
+	var operationError *mail.OpError
 	if errors.As(err, &operationError) {
 		operation = boundedSMTPOperation(operationError.Op)
 	}
@@ -252,14 +252,14 @@ func smtpOutcome(err error) string {
 	if err == nil {
 		return "accepted"
 	}
-	return string(mailpkg.Classify(err))
+	return string(mail.Classify(err))
 }
 
-func mailRecipientCount(message mailpkg.Message) int {
+func mailRecipientCount(message mail.Message) int {
 	return len(message.To) + len(message.CC) + len(message.BCC)
 }
 
-func mailPayloadBytes(message mailpkg.Message) int {
+func mailPayloadBytes(message mail.Message) int {
 	total := len(message.Subject) + len(message.Text) + len(message.HTML)
 	for _, attachment := range message.Attachments {
 		total += len(attachment.Data)
@@ -268,19 +268,19 @@ func mailPayloadBytes(message mailpkg.Message) int {
 }
 
 type measuredVFS struct {
-	next    vfspkg.FileSystem
+	next    vfs.FileSystem
 	backend string
-	metrics *metricspkg.Module
+	metrics *metrics.Module
 }
 
-func (m *measuredVFS) Capabilities() vfspkg.Capabilities { return m.next.Capabilities() }
+func (m *measuredVFS) Capabilities() vfs.Capabilities { return m.next.Capabilities() }
 func (m *measuredVFS) CheckRoot(ctx context.Context) error {
 	started := time.Now()
 	err := m.next.CheckRoot(ctx)
 	m.metrics.ObserveVFSResult(m.backend, "check_root", vfsOutcome(err), time.Since(started))
 	return err
 }
-func (m *measuredVFS) Open(ctx context.Context, path string, options vfspkg.OpenOptions) (*vfspkg.File, error) {
+func (m *measuredVFS) Open(ctx context.Context, path string, options vfs.OpenOptions) (*vfs.File, error) {
 	started := time.Now()
 	value, err := m.next.Open(ctx, path, options)
 	m.metrics.ObserveVFSResult(m.backend, "open", vfsOutcome(err), time.Since(started))
@@ -294,7 +294,7 @@ func (m *measuredVFS) Open(ctx context.Context, path string, options vfspkg.Open
 	}
 	return value, err
 }
-func (m *measuredVFS) Write(ctx context.Context, path string, body io.Reader, options vfspkg.WriteOptions) (vfspkg.Info, error) {
+func (m *measuredVFS) Write(ctx context.Context, path string, body io.Reader, options vfs.WriteOptions) (vfs.Info, error) {
 	started := time.Now()
 	if body == nil {
 		value, err := m.next.Write(ctx, path, nil, options)
@@ -310,7 +310,7 @@ func (m *measuredVFS) Write(ctx context.Context, path string, body io.Reader, op
 	}
 	return value, err
 }
-func (m *measuredVFS) Stat(ctx context.Context, path string) (vfspkg.Info, error) {
+func (m *measuredVFS) Stat(ctx context.Context, path string) (vfs.Info, error) {
 	started := time.Now()
 	value, err := m.next.Stat(ctx, path)
 	m.metrics.ObserveVFSResult(m.backend, "stat", vfsOutcome(err), time.Since(started))
@@ -319,13 +319,13 @@ func (m *measuredVFS) Stat(ctx context.Context, path string) (vfspkg.Info, error
 	}
 	return value, err
 }
-func (m *measuredVFS) Remove(ctx context.Context, path string, options vfspkg.RemoveOptions) error {
+func (m *measuredVFS) Remove(ctx context.Context, path string, options vfs.RemoveOptions) error {
 	started := time.Now()
 	err := m.next.Remove(ctx, path, options)
 	m.metrics.ObserveVFSResult(m.backend, "remove", vfsOutcome(err), time.Since(started))
 	return err
 }
-func (m *measuredVFS) List(ctx context.Context, options vfspkg.ListOptions) (vfspkg.Page, error) {
+func (m *measuredVFS) List(ctx context.Context, options vfs.ListOptions) (vfs.Page, error) {
 	started := time.Now()
 	value, err := m.next.List(ctx, options)
 	m.metrics.ObserveVFSResult(m.backend, "list", vfsOutcome(err), time.Since(started))
@@ -334,7 +334,7 @@ func (m *measuredVFS) List(ctx context.Context, options vfspkg.ListOptions) (vfs
 	}
 	return value, err
 }
-func (m *measuredVFS) Copy(ctx context.Context, source, destination string, options vfspkg.TransferOptions) (vfspkg.Info, error) {
+func (m *measuredVFS) Copy(ctx context.Context, source, destination string, options vfs.TransferOptions) (vfs.Info, error) {
 	started := time.Now()
 	value, err := m.next.Copy(ctx, source, destination, options)
 	m.metrics.ObserveVFSResult(m.backend, "copy", vfsOutcome(err), time.Since(started))
@@ -343,7 +343,7 @@ func (m *measuredVFS) Copy(ctx context.Context, source, destination string, opti
 	}
 	return value, err
 }
-func (m *measuredVFS) Move(ctx context.Context, source, destination string, options vfspkg.TransferOptions) (vfspkg.Info, error) {
+func (m *measuredVFS) Move(ctx context.Context, source, destination string, options vfs.TransferOptions) (vfs.Info, error) {
 	started := time.Now()
 	value, err := m.next.Move(ctx, source, destination, options)
 	m.metrics.ObserveVFSResult(m.backend, "move", vfsOutcome(err), time.Since(started))
@@ -357,17 +357,17 @@ func vfsOutcome(err error) string {
 	switch {
 	case err == nil:
 		return "success"
-	case errors.Is(err, vfspkg.ErrNotFound):
+	case errors.Is(err, vfs.ErrNotFound):
 		return "not_found"
-	case errors.Is(err, vfspkg.ErrAlreadyExists):
+	case errors.Is(err, vfs.ErrAlreadyExists):
 		return "already_exists"
-	case errors.Is(err, vfspkg.ErrConflict):
+	case errors.Is(err, vfs.ErrConflict):
 		return "conflict"
-	case errors.Is(err, vfspkg.ErrUnsupported):
+	case errors.Is(err, vfs.ErrUnsupported):
 		return "unsupported"
-	case errors.Is(err, vfspkg.ErrInvalidPath), errors.Is(err, vfspkg.ErrInvalidRange):
+	case errors.Is(err, vfs.ErrInvalidPath), errors.Is(err, vfs.ErrInvalidRange):
 		return "invalid"
-	case errors.Is(err, vfspkg.ErrIsDirectory):
+	case errors.Is(err, vfs.ErrIsDirectory):
 		return "is_directory"
 	case errors.Is(err, context.Canceled):
 		return "canceled"
@@ -444,7 +444,7 @@ func (m *measuredVFS) Close() error {
 
 type measuredCluster struct {
 	next    cluster.Transport
-	metrics *metricspkg.Module
+	metrics *metrics.Module
 	eventMu sync.RWMutex
 	events  map[cluster.Event]struct{}
 }
@@ -534,9 +534,9 @@ func (m *measuredCluster) metricEvent(event cluster.Event) string {
 }
 
 var (
-	_ platform.Cache     = (*measuredCache)(nil)
-	_ platform.Mailer    = (*measuredMailer)(nil)
-	_ vfspkg.FileSystem  = (*measuredVFS)(nil)
-	_ cluster.Transport  = (*measuredCluster)(nil)
-	_ jobengine.Recorder = jobMetricsRecorder{}
+	_ platform.Cache    = (*measuredCache)(nil)
+	_ platform.Mailer   = (*measuredMailer)(nil)
+	_ vfs.FileSystem    = (*measuredVFS)(nil)
+	_ cluster.Transport = (*measuredCluster)(nil)
+	_ job.Recorder      = jobMetricsRecorder{}
 )

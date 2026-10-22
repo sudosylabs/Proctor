@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	examengine "github.com/sudosylabs/proctor/server/app/exam"
+	"github.com/sudosylabs/proctor/server/app/exam"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
@@ -451,7 +451,9 @@ func isRelationshipTemplate(key model.MailTemplateKey) bool {
 	}
 }
 
-func (p *Composer) PrepareManagerMail(request examengine.ManagerMailPreparation) (*store.ExamManagerMail, error) {
+// PrepareManagerMail freezes the notice to one Exam Manager about a manager
+// relationship change.
+func (p *Composer) PrepareManagerMail(request exam.ManagerMailPreparation) (*store.ExamManagerMail, error) {
 	if request.Recipient == nil || request.Recipient.Validate() != nil || !request.OccurrenceID.IsValid() ||
 		!validManagerMeaning(request.TemplateKey, request.Relationship) || request.ActionAt.IsZero() {
 		return nil, errors.New("exam manager mail input is invalid")
@@ -470,16 +472,16 @@ func (p *Composer) PrepareManagerMail(request examengine.ManagerMailPreparation)
 	return &store.ExamManagerMail{Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job}, nil
 }
 
-func validManagerMeaning(key model.MailTemplateKey, relationship examengine.ManagerMailRelationship) bool {
+func validManagerMeaning(key model.MailTemplateKey, relationship exam.ManagerMailRelationship) bool {
 	switch key {
 	case model.MailTemplateExamManagerAdded:
-		return relationship == examengine.ManagerMailRelationshipManager
+		return relationship == exam.ManagerMailRelationshipManager
 	case model.MailTemplateExamManagerRemoved:
-		return relationship == examengine.ManagerMailRelationshipNoLongerManager
+		return relationship == exam.ManagerMailRelationshipNoLongerManager
 	case model.MailTemplateExamOwnershipTransferredToYou:
-		return relationship == examengine.ManagerMailRelationshipOwner
+		return relationship == exam.ManagerMailRelationshipOwner
 	case model.MailTemplateExamOwnershipTransferredFromYou:
-		return relationship == examengine.ManagerMailRelationshipManager
+		return relationship == exam.ManagerMailRelationshipManager
 	default:
 		return false
 	}

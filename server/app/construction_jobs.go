@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"time"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -48,11 +48,11 @@ func constructJobs(
 		mailHealth = newMailHealth(deps.MailDeliverySender != nil && deps.MailDeliverySender.Enabled())
 	}
 	definitions := buildApplicationJobDefinitions(deps, foundation, identity, examinations, profiles, defaultJobs, mailHealth)
-	runtime, err := jobengine.New(jobengine.Config{
+	runtime, err := job.New(job.Config{
 		Store: deps.Store.Job(), Descriptors: definitions.descriptors, NodeID: deps.NodeID,
 		Diagnostics:   deps.RecoveryDiagnostics,
 		Recorder:      deps.JobRecorder,
-		Policy:        jobengine.Policy{PollInterval: 500 * time.Millisecond},
+		Policy:        job.Policy{PollInterval: 500 * time.Millisecond},
 		Recurrences:   definitions.recurrences,
 		PeriodicTasks: definitions.periodicTasks,
 	})
@@ -136,9 +136,9 @@ func validateActiveMailPayloadKeys(ctx context.Context, persistence activeMailPa
 }
 
 type applicationJobDefinitions struct {
-	descriptors   []jobengine.Descriptor
-	recurrences   []jobengine.Recurrence
-	periodicTasks []jobengine.PeriodicTask
+	descriptors   []job.Descriptor
+	recurrences   []job.Recurrence
+	periodicTasks []job.PeriodicTask
 }
 
 // buildApplicationJobDefinitions keeps the complete durable-work recipe
@@ -182,7 +182,7 @@ func buildApplicationJobDefinitions(
 		Invitations: deps.Store.Invitation(), OnboardingImports: deps.Store.OnboardingImport(), OnboardingFiles: deps.FileContent,
 		ExamSittingLifecycle: lifecycleUseCases, ExamSittingSealing: sealingUseCases, Onboarding: onboarding, Now: time.Now,
 	})
-	periodicTasks := []jobengine.PeriodicTask{
+	periodicTasks := []job.PeriodicTask{
 		{Name: examAttemptExpiryPeriodicTaskName, Interval: examAttemptExpiryScanInterval, Runner: examAttemptExpiryPeriodicRunner{attempts: examinations.attempts}},
 		{Name: "browser-authentication-maintenance", Interval: browserAuthenticationMaintenanceInterval,
 			Runner: browserAuthenticationMaintenancePeriodicRunner{transactions: deps.Store.BrowserAuthentication()}},
@@ -194,7 +194,7 @@ func buildApplicationJobDefinitions(
 			Runner: sittingMailReconciliationPeriodicRunner{sittings: deps.Store.ExamSitting(), mail: examinations.sittingMailPreparation}},
 	}
 	if deps.Store.Mail() != nil && deps.MailDeliverySender != nil {
-		periodicTasks = append(periodicTasks, jobengine.PeriodicTask{Name: "mail-maintenance-monitor", Interval: time.Minute, Runner: mailMaintenanceMonitor{mail: deps.Store.Mail(), sender: deps.MailDeliverySender, health: mailHealth, recorder: deps.MailDeliveryRecorder, now: time.Now}})
+		periodicTasks = append(periodicTasks, job.PeriodicTask{Name: "mail-maintenance-monitor", Interval: time.Minute, Runner: mailMaintenanceMonitor{mail: deps.Store.Mail(), sender: deps.MailDeliverySender, health: mailHealth, recorder: deps.MailDeliveryRecorder, now: time.Now}})
 	}
 	return applicationJobDefinitions{descriptors: catalog.Descriptors, recurrences: catalog.Recurrences, periodicTasks: periodicTasks}
 }

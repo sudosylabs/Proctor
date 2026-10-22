@@ -12,7 +12,7 @@ import (
 	"errors"
 	"time"
 
-	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
+	"github.com/sudosylabs/proctor/server/app/exam/sitting"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -29,7 +29,7 @@ type sittingMailReconciliationStore interface {
 
 type sittingMailReconciliationPeriodicRunner struct {
 	sittings sittingMailReconciliationStore
-	mail     examsitting.ScheduleMailPreparer
+	mail     sitting.ScheduleMailPreparer
 }
 
 func (r sittingMailReconciliationPeriodicRunner) Run(ctx context.Context) error {
@@ -47,7 +47,7 @@ func (r sittingMailReconciliationPeriodicRunner) Run(ctx context.Context) error 
 			if candidate.Sitting == nil {
 				return errors.New("Sitting mail reconciliation returned an invalid candidate")
 			}
-			prepared, prepareErr := r.mail.Prepare(ctx, examsitting.ScheduleMailRequest{
+			prepared, prepareErr := r.mail.Prepare(ctx, sitting.ScheduleMailRequest{
 				ActorUserID: candidate.ActorUserID, ExamID: candidate.Sitting.ExamID,
 				ExamRevisionID: candidate.Sitting.ExamRevisionID, SittingID: candidate.Sitting.ID,
 				SittingRevision: candidate.Sitting.Revision, ClassID: candidate.Sitting.ClassID,

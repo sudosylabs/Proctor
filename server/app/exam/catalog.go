@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -103,7 +103,7 @@ func (a *Authoring) ArchiveExam(ctx context.Context, invocation invocation.Invoc
 	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedExamRevision < 1 {
 		return model.Exam{}, apperror.Invalid("exam.invalid", "exam_revision")
 	}
-	idempotency, err := applicationidempotency.Require(invocation, idempotencyOperationArchive, command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Require(invocation, idempotencyOperationArchive, command.IdempotencyKey, struct {
 		ExamID               string `json:"exam_id"`
 		ExpectedExamRevision int64  `json:"expected_exam_revision"`
 	}{ExamID: command.ExamID.String(), ExpectedExamRevision: command.ExpectedExamRevision})

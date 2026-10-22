@@ -19,8 +19,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
-	proctorcommands "github.com/sudosylabs/proctor/server/cmd/proctor/commands"
+	"github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/cmd/proctor/commands"
 	"github.com/sudosylabs/proctor/server/httpapi"
 	"github.com/sudosylabs/proctor/server/localization"
 	"github.com/sudosylabs/proctor/server/websocket"
@@ -56,8 +56,8 @@ func localizationDefinitions() ([]localization.Definition, error) {
 	// by their owning package; irregular messages are declared beside their
 	// consumer. Adding a new consumer requires one visible registration here.
 	return localization.MergeDefinitions(
-		appmail.LocalizationDefinitions(),
-		proctorcommands.LocalizationDefinitions(),
+		mail.LocalizationDefinitions(),
+		commands.LocalizationDefinitions(),
 		httpapi.LocalizationDefinitions(),
 		websocket.LocalizationDefinitions(),
 	)

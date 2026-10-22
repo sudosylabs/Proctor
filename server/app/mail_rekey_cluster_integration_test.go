@@ -18,7 +18,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
@@ -62,8 +62,8 @@ func TestMailRekeyOldPrimaryRelinquishesOnceAndNewPrimaryCompletes(t *testing.T)
 	}), model.JobTypeMailRekey)
 	oldDescriptor.BaseRetryDelay, oldDescriptor.MaximumRetryDelay = 10*time.Millisecond, 10*time.Millisecond
 	oldDescriptor.LeaseDuration, oldDescriptor.HeartbeatInterval = mailRekeyClusterLease, mailRekeyClusterHeartbeat
-	oldNode, err := jobengine.New(jobengine.Config{Store: persistence.Job(), Descriptors: []jobengine.Descriptor{oldDescriptor},
-		NodeID: "old-primary-node", Diagnostics: &integrationJobDiagnostics{}, Policy: jobengine.Policy{PollInterval: 5 * time.Millisecond}})
+	oldNode, err := job.New(job.Config{Store: persistence.Job(), Descriptors: []job.Descriptor{oldDescriptor},
+		NodeID: "old-primary-node", Diagnostics: &integrationJobDiagnostics{}, Policy: job.Policy{PollInterval: 5 * time.Millisecond}})
 	require.NoError(t, err)
 	err = oldNode.Start(ctx)
 	require.NoError(t, err)
@@ -86,8 +86,8 @@ func TestMailRekeyOldPrimaryRelinquishesOnceAndNewPrimaryCompletes(t *testing.T)
 	}), model.JobTypeMailRekey)
 	newDescriptor.BaseRetryDelay, newDescriptor.MaximumRetryDelay = 10*time.Millisecond, 10*time.Millisecond
 	newDescriptor.LeaseDuration, newDescriptor.HeartbeatInterval = mailRekeyClusterLease, mailRekeyClusterHeartbeat
-	newNode, err := jobengine.New(jobengine.Config{Store: persistence.Job(), Descriptors: []jobengine.Descriptor{newDescriptor},
-		NodeID: "new-primary-node", Diagnostics: &integrationJobDiagnostics{}, Policy: jobengine.Policy{PollInterval: 5 * time.Millisecond}})
+	newNode, err := job.New(job.Config{Store: persistence.Job(), Descriptors: []job.Descriptor{newDescriptor},
+		NodeID: "new-primary-node", Diagnostics: &integrationJobDiagnostics{}, Policy: job.Policy{PollInterval: 5 * time.Millisecond}})
 	require.NoError(t, err)
 	err = newNode.Start(ctx)
 	require.NoError(t, err)

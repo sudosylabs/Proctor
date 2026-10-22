@@ -15,7 +15,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -57,16 +57,16 @@ func TestDefaultProfilePictureReconciliationUsesBoundedPagesAndSafeCheckpoints(t
 	handler := defaultProfilePictureReconciliationHandler{users: lister, defaults: defaults, now: func() time.Time { return at }}
 	command, err := EncodeDefaultProfilePictureReconciliationCommand(DefaultProfilePictureReconciliationCommand{BatchSize: 2})
 	require.NoError(t, err)
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureReconcile, command, "reconcile:2026-08-10", at, at, 5)
+	record, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureReconcile, command, "reconcile:2026-08-10", at, at, 5)
 	require.NoError(t, err)
-	var checkpoints []jobengine.CheckpointValue
-	execution := testJobExecution(job, allowJobWorkReservation(), func(_ context.Context, value jobengine.CheckpointValue) error {
+	var checkpoints []job.CheckpointValue
+	execution := testJobExecution(record, allowJobWorkReservation(), func(_ context.Context, value job.CheckpointValue) error {
 		checkpoints = append(checkpoints, value)
 		return nil
 	})
 
 	outcome := handler.Run(context.Background(), execution)
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v proposed=%v checkpoints", outcome, defaults.users)
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind, "outcome=%#v proposed=%v checkpoints", outcome, defaults.users)
 	require.NoError(t, outcome.Err, "outcome=%#v proposed=%v checkpoints", outcome, defaults.users)
 	require.Len(t, defaults.users, 2, "outcome=%#v proposed=%v checkpoints", outcome, defaults.users)
 	require.Len(t, checkpoints, 1, "outcome=%#v proposed=%v checkpoints", outcome, defaults.users)
@@ -96,15 +96,15 @@ func TestDefaultProfilePictureReconciliationDoesNotExceedCommittedBatchOnRetry(t
 	require.NoError(t, err)
 	checkpoint, err := EncodeDefaultProfilePictureReconciliationCheckpoint(DefaultProfilePictureReconciliationCheckpoint{AfterUsername: users[1].Username, AfterUserID: users[1].ID, Processed: 2})
 	require.NoError(t, err)
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureReconcile, command, "reconcile:2026-08-10", at, at, 5)
+	record, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureReconcile, command, "reconcile:2026-08-10", at, at, 5)
 	require.NoError(t, err)
-	job.Checkpoint = checkpoint
-	err = job.Validate()
+	record.Checkpoint = checkpoint
+	err = record.Validate()
 	require.NoError(t, err)
-	execution := testJobExecution(job, allowJobWorkReservation(), func(context.Context, jobengine.CheckpointValue) error { return nil })
+	execution := testJobExecution(record, allowJobWorkReservation(), func(context.Context, job.CheckpointValue) error { return nil })
 
 	outcome := handler.Run(context.Background(), execution)
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v proposed=%v calls", outcome, defaults.users)
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind, "outcome=%#v proposed=%v calls", outcome, defaults.users)
 	require.Empty(t, defaults.users, "outcome=%#v proposed=%v calls", outcome, defaults.users)
 	require.Empty(t, lister.calls, "outcome=%#v proposed=%v calls", outcome, defaults.users)
 }
@@ -114,11 +114,11 @@ func TestDefaultProfilePictureReconciliationDoesNotRepeatReservedWorkAfterCrash(
 	at := time.Date(2026, time.August, 10, 8, 0, 0, 0, time.UTC)
 	lister := &reconciliationUserListerFake{users: []*model.User{reconciliationUser(t, "alpha", at)}}
 	defaults := &reconciliationDefaultJobsFake{}
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureReconcile, json.RawMessage(`{"batch_size":1}`), "daily", at, at, 5)
+	record, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureReconcile, json.RawMessage(`{"batch_size":1}`), "daily", at, at, 5)
 	require.NoError(t, err)
-	job.WorkReserved = 1
-	outcome := (defaultProfilePictureReconciliationHandler{users: lister, defaults: defaults, now: func() time.Time { return at }}).Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), nil))
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v calls=%#v proposed", outcome, lister.calls)
+	record.WorkReserved = 1
+	outcome := (defaultProfilePictureReconciliationHandler{users: lister, defaults: defaults, now: func() time.Time { return at }}).Run(context.Background(), testJobExecution(record, allowJobWorkReservation(), nil))
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind, "outcome=%#v calls=%#v proposed", outcome, lister.calls)
 	require.Empty(t, lister.calls, "outcome=%#v calls=%#v proposed", outcome, lister.calls)
 	require.Empty(t, defaults.users, "outcome=%#v calls=%#v proposed", outcome, lister.calls)
 }

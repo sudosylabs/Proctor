@@ -25,7 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -847,84 +847,84 @@ type examAttemptHTTPFake struct {
 	connection                *store.ExamAttemptManagerConnection
 	credential                string
 	resourceID                model.ExamResourceID
-	presentation              examattempt.Presentation
-	workspacePage             examattempt.WorkspacePage
-	managerPage               examattempt.ManagedAttemptPage
-	browserActivityPage       examattempt.BrowserActivityPage
-	browserActivityQuery      examattempt.BrowserActivityPageQuery
-	correctionAcknowledgement examattempt.AcknowledgeCorrectionCommand
-	managerEnd                examattempt.ManagerEndCommand
-	content                   examattempt.OpenedContent
+	presentation              attempt.Presentation
+	workspacePage             attempt.WorkspacePage
+	managerPage               attempt.ManagedAttemptPage
+	browserActivityPage       attempt.BrowserActivityPage
+	browserActivityQuery      attempt.BrowserActivityPageQuery
+	correctionAcknowledgement attempt.AcknowledgeCorrectionCommand
+	managerEnd                attempt.ManagerEndCommand
+	content                   attempt.OpenedContent
 	workspaceContentVersion   model.WorkspaceContentVersion
-	presentationAccess        examattempt.CandidateAccess
+	presentationAccess        attempt.CandidateAccess
 	presentationCalls         int
-	workspaceQuery            examattempt.WorkspaceQuery
-	managerList               examattempt.ListManagedAttemptsQuery
-	managerGet                examattempt.GetManagedAttemptQuery
-	workspaceOpen             examattempt.OpenWorkspaceFileQuery
-	reallow                   examattempt.ReallowCommand
-	suspend                   examattempt.ManualSuspensionCommand
-	journalQuery              examattempt.WorkspaceJournalQuery
-	journalPage               examattempt.WorkspaceJournalPage
-	workspaceDirectory        examattempt.CreateWorkspaceDirectoryCommand
-	workspaceFile             examattempt.CreateWorkspaceFileCommand
-	workspaceReplace          examattempt.ReplaceWorkspaceFileCommand
-	workspaceMove             examattempt.MoveWorkspaceEntryCommand
-	workspaceDelete           examattempt.DeleteWorkspaceEntryCommand
-	workspaceMutation         examattempt.WorkspaceMutationResult
-	submit                    examattempt.SubmitCommand
+	workspaceQuery            attempt.WorkspaceQuery
+	managerList               attempt.ListManagedAttemptsQuery
+	managerGet                attempt.GetManagedAttemptQuery
+	workspaceOpen             attempt.OpenWorkspaceFileQuery
+	reallow                   attempt.ReallowCommand
+	suspend                   attempt.ManualSuspensionCommand
+	journalQuery              attempt.WorkspaceJournalQuery
+	journalPage               attempt.WorkspaceJournalPage
+	workspaceDirectory        attempt.CreateWorkspaceDirectoryCommand
+	workspaceFile             attempt.CreateWorkspaceFileCommand
+	workspaceReplace          attempt.ReplaceWorkspaceFileCommand
+	workspaceMove             attempt.MoveWorkspaceEntryCommand
+	workspaceDelete           attempt.DeleteWorkspaceEntryCommand
+	workspaceMutation         attempt.WorkspaceMutationResult
+	submit                    attempt.SubmitCommand
 	submissionReceipt         store.ExamSubmissionReceipt
-	submissionView            examattempt.ManagedSubmission
-	submissionManifest        examattempt.SubmissionManifestPage
-	submissionGet             examattempt.GetSubmissionQuery
-	submissionManifestQuery   examattempt.ListSubmissionManifestQuery
-	submissionOpen            examattempt.OpenSubmissionFileQuery
+	submissionView            attempt.ManagedSubmission
+	submissionManifest        attempt.SubmissionManifestPage
+	submissionGet             attempt.GetSubmissionQuery
+	submissionManifestQuery   attempt.ListSubmissionManifestQuery
+	submissionOpen            attempt.OpenSubmissionFileQuery
 	uploaded                  []byte
 }
 
 func newExamAttemptHTTPFake(t *testing.T) *examAttemptHTTPFake {
 	t.Helper()
 	at := time.Date(2026, time.August, 17, 9, 0, 0, 123000000, time.UTC)
-	attempt, err := model.NewExamAttempt(model.NewExamAttemptID(), model.NewExamID(), model.NewExamSittingID(), model.NewUserID(), model.NewExamRevisionID(), at)
+	examAttempt, err := model.NewExamAttempt(model.NewExamAttemptID(), model.NewExamID(), model.NewExamSittingID(), model.NewUserID(), model.NewExamRevisionID(), at)
 	require.NoError(t, err)
-	workspace, err := model.NewExamAttemptWorkspace(model.NewExamAttemptWorkspaceID(), attempt.ID, at)
+	workspace, err := model.NewExamAttemptWorkspace(model.NewExamAttemptWorkspaceID(), examAttempt.ID, at)
 	require.NoError(t, err)
 	connectionID := model.NewAttemptConnectionID()
 	resourceID := model.NewExamResourceID()
 	workspaceItem := store.CandidateAttemptWorkspaceItem{EntryID: model.NewAttemptWorkspaceEntryID(), Kind: model.StarterWorkspaceEntryFile,
 		Path: "cmd/main.go", ContentVersion: model.NewWorkspaceContentVersion(), MediaType: "text/x-go", SizeBytes: 9, SHA256: strings.Repeat("a", 64)}
 	principal := testExamHTTPPrincipal()
-	fake := &examAttemptHTTPFake{principal: principal, attempt: attempt, workspace: workspace,
-		participation: &store.ExamAttemptParticipationView{ID: model.NewAttemptParticipationID(), AttemptID: attempt.ID, State: model.AttemptParticipationActive,
+	fake := &examAttemptHTTPFake{principal: principal, attempt: examAttempt, workspace: workspace,
+		participation: &store.ExamAttemptParticipationView{ID: model.NewAttemptParticipationID(), AttemptID: examAttempt.ID, State: model.AttemptParticipationActive,
 			Generation: 1, StartedAt: at, UpdatedAt: at, LeaseExpiresAt: at.Add(20 * time.Second)},
 		connection: &store.ExamAttemptManagerConnection{ID: connectionID, State: model.AttemptConnectionOpen, OpenedAt: at},
 		credential: model.NewCredentialToken(), resourceID: resourceID,
-		presentation: examattempt.Presentation{AttemptID: attempt.ID, SittingID: attempt.SittingID,
+		presentation: attempt.Presentation{AttemptID: examAttempt.ID, SittingID: examAttempt.SittingID,
 			Capacity:            model.ExamCapacityPolicy{ResourceMaximumCount: 7, ResourceMaximumBytes: 4096, WorkspaceMaximumEntries: 42, WorkspaceMaximumFileBytes: 1024, WorkspaceMaximumTotalBytes: 8192},
-			RuntimeCapabilities: candidateTestRuntimeCapabilities(t, at, attempt), Title: "Algorithms",
-			InstructionsMarkdown: "Solve safely.", Resources: []examattempt.Resource{{ResourceID: resourceID, DisplayName: "Input",
+			RuntimeCapabilities: candidateTestRuntimeCapabilities(t, at, examAttempt), Title: "Algorithms",
+			InstructionsMarkdown: "Solve safely.", Resources: []attempt.Resource{{ResourceID: resourceID, DisplayName: "Input",
 				DescriptionMarkdown: "Read this.", Position: 0, MediaType: model.ExamResourceMediaText, SizeBytes: 9, SHA256: strings.Repeat("b", 64)}}},
-		workspacePage: examattempt.WorkspacePage{WorkspaceID: workspace.ID, Cursor: 4,
+		workspacePage: attempt.WorkspacePage{WorkspaceID: workspace.ID, Cursor: 4,
 			Items: []store.CandidateAttemptWorkspaceItem{workspaceItem}},
-		managerPage: examattempt.ManagedAttemptPage{Items: []store.ExamAttemptManagerSnapshot{{Attempt: attempt, Workspace: workspace,
-			LatestParticipation: &store.ExamAttemptParticipationView{ID: model.NewAttemptParticipationID(), AttemptID: attempt.ID, State: model.AttemptParticipationActive,
+		managerPage: attempt.ManagedAttemptPage{Items: []store.ExamAttemptManagerSnapshot{{Attempt: examAttempt, Workspace: workspace,
+			LatestParticipation: &store.ExamAttemptParticipationView{ID: model.NewAttemptParticipationID(), AttemptID: examAttempt.ID, State: model.AttemptParticipationActive,
 				Generation: 1, StartedAt: at, UpdatedAt: at, LeaseExpiresAt: at.Add(20 * time.Second)}, CurrentConnection: &store.ExamAttemptManagerConnection{ID: connectionID, State: model.AttemptConnectionOpen, OpenedAt: at}}}},
-		content:                 examattempt.OpenedContent{Body: io.NopCloser(strings.NewReader("protected")), MediaType: "text/plain", SizeBytes: 9, SHA256: strings.Repeat("c", 64)},
+		content:                 attempt.OpenedContent{Body: io.NopCloser(strings.NewReader("protected")), MediaType: "text/plain", SizeBytes: 9, SHA256: strings.Repeat("c", 64)},
 		workspaceContentVersion: model.NewWorkspaceContentVersion()}
 	change := model.AttemptWorkspaceJournalEntry{WorkspaceID: workspace.ID, Cursor: 5, EntryID: workspaceItem.EntryID,
 		EntryKind: workspaceItem.Kind, Operation: model.AttemptWorkspaceMutationReplaceFile, OldPath: workspaceItem.Path,
 		NewPath: workspaceItem.Path, ContentVersion: workspaceItem.ContentVersion, ChangedAt: at}
-	fake.workspaceMutation = examattempt.WorkspaceMutationResult{AttemptID: attempt.ID, SittingID: attempt.SittingID,
-		CandidateUserID: attempt.CandidateUserID, WorkspaceID: workspace.ID, Entry: &workspaceItem, Change: change}
-	fake.journalPage = examattempt.WorkspaceJournalPage{WorkspaceID: workspace.ID, CurrentCursor: 5,
+	fake.workspaceMutation = attempt.WorkspaceMutationResult{AttemptID: examAttempt.ID, SittingID: examAttempt.SittingID,
+		CandidateUserID: examAttempt.CandidateUserID, WorkspaceID: workspace.ID, Entry: &workspaceItem, Change: change}
+	fake.journalPage = attempt.WorkspaceJournalPage{WorkspaceID: workspace.ID, CurrentCursor: 5,
 		Entries: []model.AttemptWorkspaceJournalEntry{change}}
 	sourceID := model.BrowserSourceSessionID("01912ed5-d4f7-4f02-9b97-928b5e8d3f21")
-	fake.browserActivityPage = examattempt.BrowserActivityPage{Items: []store.BrowserActivityRecord{{AttemptID: attempt.ID,
+	fake.browserActivityPage = attempt.BrowserActivityPage{Items: []store.BrowserActivityRecord{{AttemptID: examAttempt.ID,
 		ParticipationID: fake.participation.ID, Generation: 1, SourceSessionID: sourceID,
 		Event: model.BrowserActivityEvent{Sequence: 1, Kind: model.BrowserActivityOpened, PolicyRevisionID: model.NewExamRevisionID(),
 			ClientOccurredAt: at, ReceivedAt: at.Add(time.Second)}}}}
-	fake.submissionReceipt = store.ExamSubmissionReceipt{BrowserActivity: model.BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1}, SubmissionID: model.NewSubmissionID(), AttemptID: attempt.ID,
-		ExamRevisionID: attempt.AdmissionRevisionID, State: model.ExamAttemptSubmitted, WorkspaceCursor: 4,
+	fake.submissionReceipt = store.ExamSubmissionReceipt{BrowserActivity: model.BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1}, SubmissionID: model.NewSubmissionID(), AttemptID: examAttempt.ID,
+		ExamRevisionID: examAttempt.AdmissionRevisionID, State: model.ExamAttemptSubmitted, WorkspaceCursor: 4,
 		ManifestDigest: strings.Repeat("d", 64), SubmittedAt: at.Add(time.Minute)}
 	submissionManifest, err := model.NewExamSubmissionManifest(4, []model.ExamSubmissionManifestEntry{{
 		EntryID: workspaceItem.EntryID, Kind: model.StarterWorkspaceEntryFile, Path: workspaceItem.Path,
@@ -934,14 +934,14 @@ func newExamAttemptHTTPFake(t *testing.T) *examAttemptHTTPFake {
 	}})
 	require.NoError(t, err)
 	submission, err := model.NewExamSubmission(model.ExamSubmissionSpecification{ID: fake.submissionReceipt.SubmissionID,
-		AttemptID: attempt.ID, ExamRevisionID: attempt.AdmissionRevisionID, WorkspaceID: workspace.ID, Manifest: submissionManifest,
+		AttemptID: examAttempt.ID, ExamRevisionID: examAttempt.AdmissionRevisionID, WorkspaceID: workspace.ID, Manifest: submissionManifest,
 		BrowserActivity: model.BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1},
 		Provenance:      model.ExamSubmissionCandidateSubmitted, SubmittedAt: at.Add(time.Minute)})
 	require.NoError(t, err)
-	fake.submissionView = examattempt.ManagedSubmission{Authorization: store.ExamSubmissionAuthorization{
-		SubmissionID: submission.ID, ExamID: attempt.ExamID, SittingID: attempt.SittingID, AttemptID: attempt.ID,
-		CandidateUserID: attempt.CandidateUserID, AcademicUnitID: model.NewAcademicUnitID()}, Submission: *submission}
-	fake.submissionManifest = examattempt.SubmissionManifestPage{SubmissionID: submission.ID,
+	fake.submissionView = attempt.ManagedSubmission{Authorization: store.ExamSubmissionAuthorization{
+		SubmissionID: submission.ID, ExamID: examAttempt.ExamID, SittingID: examAttempt.SittingID, AttemptID: examAttempt.ID,
+		CandidateUserID: examAttempt.CandidateUserID, AcademicUnitID: model.NewAcademicUnitID()}, Submission: *submission}
+	fake.submissionManifest = attempt.SubmissionManifestPage{SubmissionID: submission.ID,
 		WorkspaceCursor: submission.WorkspaceCursor, ManifestDigest: submission.ManifestDigest,
 		Items: []store.ExamSubmissionManifestItem{{EntryID: workspaceItem.EntryID, Kind: workspaceItem.Kind,
 			Path: workspaceItem.Path, ContentVersion: workspaceItem.ContentVersion, MediaType: workspaceItem.MediaType,
@@ -989,109 +989,109 @@ func (f *examAttemptHTTPFake) AuthenticateBearer(context.Context, string) (*mode
 	return &principal, nil
 }
 
-func (f *examAttemptHTTPFake) GetExamAttempt(_ context.Context, _ invocation.Invocation, query examattempt.GetManagedAttemptQuery) (store.ExamAttemptManagerSnapshot, error) {
+func (f *examAttemptHTTPFake) GetExamAttempt(_ context.Context, _ invocation.Invocation, query attempt.GetManagedAttemptQuery) (store.ExamAttemptManagerSnapshot, error) {
 	f.managerGet = query
 	return f.managerPage.Items[0], nil
 }
 
-func (f *examAttemptHTTPFake) ListExamAttempts(_ context.Context, _ invocation.Invocation, query examattempt.ListManagedAttemptsQuery) (examattempt.ManagedAttemptPage, error) {
+func (f *examAttemptHTTPFake) ListExamAttempts(_ context.Context, _ invocation.Invocation, query attempt.ListManagedAttemptsQuery) (attempt.ManagedAttemptPage, error) {
 	f.managerList = query
 	return f.managerPage, nil
 }
 
 func (f *examAttemptHTTPFake) ListSittingCandidateStatuses(context.Context, invocation.Invocation,
-	examattempt.SittingCandidateStatusesQuery,
-) (examattempt.SittingCandidateStatusesPage, error) {
-	return examattempt.SittingCandidateStatusesPage{}, nil
+	attempt.SittingCandidateStatusesQuery,
+) (attempt.SittingCandidateStatusesPage, error) {
+	return attempt.SittingCandidateStatusesPage{}, nil
 }
 
 func (f *examAttemptHTTPFake) EndExamAttemptByManager(_ context.Context, _ invocation.Invocation,
-	command examattempt.ManagerEndCommand,
+	command attempt.ManagerEndCommand,
 ) (store.ExamSubmissionReceipt, error) {
 	f.managerEnd = command
 	return f.submissionReceipt, nil
 }
 
 func (f *examAttemptHTTPFake) ListExamAttemptBrowserActivity(_ context.Context, _ invocation.Invocation,
-	query examattempt.BrowserActivityPageQuery,
-) (examattempt.BrowserActivityPage, error) {
+	query attempt.BrowserActivityPageQuery,
+) (attempt.BrowserActivityPage, error) {
 	f.browserActivityQuery = query
 	return f.browserActivityPage, nil
 }
 
 func (f *examAttemptHTTPFake) AcknowledgeExamAttemptCorrection(_ context.Context, _ invocation.Invocation,
-	command examattempt.AcknowledgeCorrectionCommand,
-) (examattempt.CorrectionAcknowledgementResult, error) {
+	command attempt.AcknowledgeCorrectionCommand,
+) (attempt.CorrectionAcknowledgementResult, error) {
 	f.correctionAcknowledgement = command
 	capabilities := f.presentation.RuntimeCapabilities
 	capabilities.ExamRevision.CurrentRevisionID = command.ExpectedCurrentRevisionID
-	return examattempt.CorrectionAcknowledgementResult{CorrectionRevisionID: command.CorrectionRevisionID,
+	return attempt.CorrectionAcknowledgementResult{CorrectionRevisionID: command.CorrectionRevisionID,
 		CurrentRevisionID: command.ExpectedCurrentRevisionID, RuntimeCapabilities: capabilities, AcknowledgedAt: model.OptionalTimeFrom(f.attempt.UpdatedAt.Add(time.Minute))}, nil
 }
 
-func (f *examAttemptHTTPFake) ReallowExamAttempt(_ context.Context, invocation invocation.Invocation, command examattempt.ReallowCommand) (examattempt.ReallowResult, error) {
+func (f *examAttemptHTTPFake) ReallowExamAttempt(_ context.Context, invocation invocation.Invocation, command attempt.ReallowCommand) (attempt.ReallowResult, error) {
 	f.reallow = command
-	attempt := *f.attempt
-	attempt.State, attempt.UpdatedAt, attempt.Revision = model.ExamAttemptActive, attempt.UpdatedAt.Add(time.Minute), command.ExpectedAttemptRevision+1
-	return examattempt.ReallowResult{ExamID: attempt.ExamID, SittingID: attempt.SittingID,
-		ClassID: model.NewClassID(), CandidateUserID: attempt.CandidateUserID, Attempt: attempt,
-		Suspension: store.ExamAttemptSuspensionView{ID: command.SuspensionID, AttemptID: attempt.ID,
+	examAttempt := *f.attempt
+	examAttempt.State, examAttempt.UpdatedAt, examAttempt.Revision = model.ExamAttemptActive, examAttempt.UpdatedAt.Add(time.Minute), command.ExpectedAttemptRevision+1
+	return attempt.ReallowResult{ExamID: examAttempt.ExamID, SittingID: examAttempt.SittingID,
+		ClassID: model.NewClassID(), CandidateUserID: examAttempt.CandidateUserID, Attempt: examAttempt,
+		Suspension: store.ExamAttemptSuspensionView{ID: command.SuspensionID, AttemptID: examAttempt.ID,
 			ParticipationID: model.NewAttemptParticipationID(), FlagID: model.NewIntegrityFlagID(), Generation: 1,
 			State: model.AttemptSuspensionClosed, Source: model.AttemptSuspensionSourcePolicy,
-			CandidateReason: model.AttemptSuspensionCandidateReasonSecureContinuityLost, StartedAt: attempt.CreatedAt,
-			EndedAt: model.OptionalTimeFrom(attempt.UpdatedAt), ReallowedByUserID: invocation.Principal().UserID}}, nil
+			CandidateReason: model.AttemptSuspensionCandidateReasonSecureContinuityLost, StartedAt: examAttempt.CreatedAt,
+			EndedAt: model.OptionalTimeFrom(examAttempt.UpdatedAt), ReallowedByUserID: invocation.Principal().UserID}}, nil
 }
 
-func (f *examAttemptHTTPFake) SuspendExamAttempt(_ context.Context, invocation invocation.Invocation, command examattempt.ManualSuspensionCommand) (examattempt.ManualSuspensionResult, error) {
+func (f *examAttemptHTTPFake) SuspendExamAttempt(_ context.Context, invocation invocation.Invocation, command attempt.ManualSuspensionCommand) (attempt.ManualSuspensionResult, error) {
 	f.suspend = command
-	attempt := *f.attempt
-	attempt.State, attempt.UpdatedAt, attempt.Revision = model.ExamAttemptSuspended, attempt.UpdatedAt.Add(time.Minute), command.ExpectedAttemptRevision+1
-	return examattempt.ManualSuspensionResult{ExamID: attempt.ExamID, SittingID: attempt.SittingID,
-		ClassID: model.NewClassID(), CandidateUserID: attempt.CandidateUserID, Attempt: attempt, ConnectionClosed: true,
-		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(), AttemptID: attempt.ID,
+	examAttempt := *f.attempt
+	examAttempt.State, examAttempt.UpdatedAt, examAttempt.Revision = model.ExamAttemptSuspended, examAttempt.UpdatedAt.Add(time.Minute), command.ExpectedAttemptRevision+1
+	return attempt.ManualSuspensionResult{ExamID: examAttempt.ExamID, SittingID: examAttempt.SittingID,
+		ClassID: model.NewClassID(), CandidateUserID: examAttempt.CandidateUserID, Attempt: examAttempt, ConnectionClosed: true,
+		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(), AttemptID: examAttempt.ID,
 			ParticipationID: model.NewAttemptParticipationID(), Generation: 1, State: model.AttemptSuspensionActive,
 			Source: model.AttemptSuspensionSourceManual, CandidateReason: model.AttemptSuspensionCandidateReasonManagerSuspended,
-			StartedAt: attempt.UpdatedAt, SuspendedByUserID: invocation.Principal().UserID}}, nil
+			StartedAt: examAttempt.UpdatedAt, SuspendedByUserID: invocation.Principal().UserID}}, nil
 }
 
-func (f *examAttemptHTTPFake) GetCandidateExamPresentation(_ context.Context, _ invocation.Invocation, access examattempt.CandidateAccess) (examattempt.Presentation, error) {
+func (f *examAttemptHTTPFake) GetCandidateExamPresentation(_ context.Context, _ invocation.Invocation, access attempt.CandidateAccess) (attempt.Presentation, error) {
 	f.presentationAccess, f.presentationCalls = access, f.presentationCalls+1
 	return f.presentation, nil
 }
 
-func (f *examAttemptHTTPFake) ListCandidateExamWorkspace(_ context.Context, _ invocation.Invocation, query examattempt.WorkspaceQuery) (examattempt.WorkspacePage, error) {
+func (f *examAttemptHTTPFake) ListCandidateExamWorkspace(_ context.Context, _ invocation.Invocation, query attempt.WorkspaceQuery) (attempt.WorkspacePage, error) {
 	f.workspaceQuery = query
 	return f.workspacePage, nil
 }
 
-func (f *examAttemptHTTPFake) ListCandidateExamWorkspaceJournal(_ context.Context, _ invocation.Invocation, query examattempt.WorkspaceJournalQuery) (examattempt.WorkspaceJournalPage, error) {
+func (f *examAttemptHTTPFake) ListCandidateExamWorkspaceJournal(_ context.Context, _ invocation.Invocation, query attempt.WorkspaceJournalQuery) (attempt.WorkspaceJournalPage, error) {
 	f.journalQuery = query
 	return f.journalPage, nil
 }
 
-func (f *examAttemptHTTPFake) CreateCandidateExamWorkspaceDirectory(_ context.Context, _ invocation.Invocation, command examattempt.CreateWorkspaceDirectoryCommand) (examattempt.WorkspaceMutationResult, error) {
+func (f *examAttemptHTTPFake) CreateCandidateExamWorkspaceDirectory(_ context.Context, _ invocation.Invocation, command attempt.CreateWorkspaceDirectoryCommand) (attempt.WorkspaceMutationResult, error) {
 	f.workspaceDirectory = command
 	return f.workspaceMutation, nil
 }
 
-func (f *examAttemptHTTPFake) CreateCandidateExamWorkspaceFile(_ context.Context, _ invocation.Invocation, command examattempt.CreateWorkspaceFileCommand) (examattempt.WorkspaceMutationResult, error) {
+func (f *examAttemptHTTPFake) CreateCandidateExamWorkspaceFile(_ context.Context, _ invocation.Invocation, command attempt.CreateWorkspaceFileCommand) (attempt.WorkspaceMutationResult, error) {
 	f.workspaceFile = command
 	f.uploaded, _ = io.ReadAll(command.Body)
 	return f.workspaceMutation, nil
 }
 
-func (f *examAttemptHTTPFake) ReplaceCandidateExamWorkspaceFile(_ context.Context, _ invocation.Invocation, command examattempt.ReplaceWorkspaceFileCommand) (examattempt.WorkspaceMutationResult, error) {
+func (f *examAttemptHTTPFake) ReplaceCandidateExamWorkspaceFile(_ context.Context, _ invocation.Invocation, command attempt.ReplaceWorkspaceFileCommand) (attempt.WorkspaceMutationResult, error) {
 	f.workspaceReplace = command
 	f.uploaded, _ = io.ReadAll(command.Body)
 	return f.workspaceMutation, nil
 }
 
-func (f *examAttemptHTTPFake) MoveCandidateExamWorkspaceEntry(_ context.Context, _ invocation.Invocation, command examattempt.MoveWorkspaceEntryCommand) (examattempt.WorkspaceMutationResult, error) {
+func (f *examAttemptHTTPFake) MoveCandidateExamWorkspaceEntry(_ context.Context, _ invocation.Invocation, command attempt.MoveWorkspaceEntryCommand) (attempt.WorkspaceMutationResult, error) {
 	f.workspaceMove = command
 	return f.workspaceMutation, nil
 }
 
-func (f *examAttemptHTTPFake) DeleteCandidateExamWorkspaceEntry(_ context.Context, _ invocation.Invocation, command examattempt.DeleteWorkspaceEntryCommand) (examattempt.WorkspaceMutationResult, error) {
+func (f *examAttemptHTTPFake) DeleteCandidateExamWorkspaceEntry(_ context.Context, _ invocation.Invocation, command attempt.DeleteWorkspaceEntryCommand) (attempt.WorkspaceMutationResult, error) {
 	f.workspaceDelete = command
 	result := f.workspaceMutation
 	result.Entry = nil
@@ -1101,29 +1101,29 @@ func (f *examAttemptHTTPFake) DeleteCandidateExamWorkspaceEntry(_ context.Contex
 }
 
 func (f *examAttemptHTTPFake) SubmitExamAttempt(_ context.Context, _ invocation.Invocation,
-	command examattempt.SubmitCommand,
+	command attempt.SubmitCommand,
 ) (store.ExamSubmissionReceipt, error) {
 	f.submit = command
 	return f.submissionReceipt, nil
 }
 
 func (f *examAttemptHTTPFake) GetExamSubmission(_ context.Context, _ invocation.Invocation,
-	query examattempt.GetSubmissionQuery,
-) (examattempt.ManagedSubmission, error) {
+	query attempt.GetSubmissionQuery,
+) (attempt.ManagedSubmission, error) {
 	f.submissionGet = query
 	return f.submissionView, nil
 }
 
 func (f *examAttemptHTTPFake) ListExamSubmissionManifest(_ context.Context, _ invocation.Invocation,
-	query examattempt.ListSubmissionManifestQuery,
-) (examattempt.SubmissionManifestPage, error) {
+	query attempt.ListSubmissionManifestQuery,
+) (attempt.SubmissionManifestPage, error) {
 	f.submissionManifestQuery = query
 	return f.submissionManifest, nil
 }
 
 func (f *examAttemptHTTPFake) OpenExamSubmissionFile(_ context.Context, _ invocation.Invocation,
-	query examattempt.OpenSubmissionFileQuery,
-) (examattempt.OpenedContent, error) {
+	query attempt.OpenSubmissionFileQuery,
+) (attempt.OpenedContent, error) {
 	f.submissionOpen = query
 	f.content.Body = io.NopCloser(strings.NewReader("protected"))
 	f.content.ContentVersion = f.submissionManifest.Items[0].ContentVersion
@@ -1133,22 +1133,22 @@ func (f *examAttemptHTTPFake) OpenExamSubmissionFile(_ context.Context, _ invoca
 	return f.content, nil
 }
 
-func (f *examAttemptHTTPFake) OpenCandidateExamResource(context.Context, invocation.Invocation, examattempt.OpenResourceQuery) (examattempt.OpenedContent, error) {
+func (f *examAttemptHTTPFake) OpenCandidateExamResource(context.Context, invocation.Invocation, attempt.OpenResourceQuery) (attempt.OpenedContent, error) {
 	f.content.Body = io.NopCloser(strings.NewReader("protected"))
 	return f.content, nil
 }
 
-func (f *examAttemptHTTPFake) OpenCandidateExamWorkspaceFile(_ context.Context, _ invocation.Invocation, query examattempt.OpenWorkspaceFileQuery) (examattempt.OpenedContent, error) {
+func (f *examAttemptHTTPFake) OpenCandidateExamWorkspaceFile(_ context.Context, _ invocation.Invocation, query attempt.OpenWorkspaceFileQuery) (attempt.OpenedContent, error) {
 	f.workspaceOpen = query
 	f.content.Body = io.NopCloser(strings.NewReader("protected"))
 	f.content.ContentVersion = f.workspaceContentVersion
 	return f.content, nil
 }
 
-func (f *examAttemptHTTPFake) PrepareExamSecurityPreflight(context.Context, invocation.Invocation, examattempt.PrepareSecurityPreflightCommand) (*store.SecurityPreflightPrepared, error) {
+func (f *examAttemptHTTPFake) PrepareExamSecurityPreflight(context.Context, invocation.Invocation, attempt.PrepareSecurityPreflightCommand) (*store.SecurityPreflightPrepared, error) {
 	return nil, errors.New("unexpected preflight prepare")
 }
-func (f *examAttemptHTTPFake) ReportExamSecurityPreflight(context.Context, invocation.Invocation, examattempt.ReportSecurityPreflightCommand) (*model.SecurityPreflightResult, error) {
+func (f *examAttemptHTTPFake) ReportExamSecurityPreflight(context.Context, invocation.Invocation, attempt.ReportSecurityPreflightCommand) (*model.SecurityPreflightResult, error) {
 	return nil, errors.New("unexpected preflight report")
 }
 
@@ -1156,57 +1156,57 @@ func (f *examAttemptHTTPFake) RecoverExamSecurityPolicy(context.Context, invocat
 	return nil, errors.New("unexpected security recovery")
 }
 
-func (f *examAttemptHTTPFake) NativeDeliveryStatus(context.Context, invocation.Invocation, examattempt.NativeDeliveryQuery) (*model.NativeSecurityStreamStatus, error) {
+func (f *examAttemptHTTPFake) NativeDeliveryStatus(context.Context, invocation.Invocation, attempt.NativeDeliveryQuery) (*model.NativeSecurityStreamStatus, error) {
 	return nil, errors.New("unexpected NativeDeliveryStatus")
 }
 
-func (f *examAttemptHTTPFake) NativeDeliveryReceipt(context.Context, invocation.Invocation, examattempt.NativeDeliveryQuery, int64) (*model.NativeBatchReceipt, error) {
+func (f *examAttemptHTTPFake) NativeDeliveryReceipt(context.Context, invocation.Invocation, attempt.NativeDeliveryQuery, int64) (*model.NativeBatchReceipt, error) {
 	return nil, errors.New("unexpected NativeDeliveryReceipt")
 }
 
-func (f *examAttemptHTTPFake) DeclareNativeDeliveryGaps(context.Context, invocation.Invocation, examattempt.NativeDeliveryGapsCommand) (*model.DeliveryGapReceipt, error) {
+func (f *examAttemptHTTPFake) DeclareNativeDeliveryGaps(context.Context, invocation.Invocation, attempt.NativeDeliveryGapsCommand) (*model.DeliveryGapReceipt, error) {
 	return nil, errors.New("unexpected DeclareNativeDeliveryGaps")
 }
 
-func (f *examAttemptHTTPFake) SealNativeDelivery(context.Context, invocation.Invocation, examattempt.NativeDeliveryFinalCommand) (*model.NativeSecurityStreamStatus, error) {
+func (f *examAttemptHTTPFake) SealNativeDelivery(context.Context, invocation.Invocation, attempt.NativeDeliveryFinalCommand) (*model.NativeSecurityStreamStatus, error) {
 	return nil, errors.New("unexpected SealNativeDelivery")
 }
 
-func (f *examAttemptHTTPFake) UpdateNativeDeliverySummary(context.Context, invocation.Invocation, examattempt.NativeDeliverySummaryCommand) (*model.NativeSecurityStreamStatus, error) {
+func (f *examAttemptHTTPFake) UpdateNativeDeliverySummary(context.Context, invocation.Invocation, attempt.NativeDeliverySummaryCommand) (*model.NativeSecurityStreamStatus, error) {
 	return nil, errors.New("unexpected UpdateNativeDeliverySummary")
 }
 
-func (f *examAttemptHTTPFake) AppendNativeDelivery(context.Context, invocation.Invocation, examattempt.NativeDeliveryAppendCommand) (*model.NativeSecurityAcknowledgement, error) {
+func (f *examAttemptHTTPFake) AppendNativeDelivery(context.Context, invocation.Invocation, attempt.NativeDeliveryAppendCommand) (*model.NativeSecurityAcknowledgement, error) {
 	return nil, errors.New("unexpected AppendNativeDelivery")
 }
 
-func (f *examAttemptHTTPFake) BrowserSourceStatus(context.Context, invocation.Invocation, examattempt.BrowserSourceQuery) (*model.BrowserSourceStatus, error) {
+func (f *examAttemptHTTPFake) BrowserSourceStatus(context.Context, invocation.Invocation, attempt.BrowserSourceQuery) (*model.BrowserSourceStatus, error) {
 	return nil, apperror.New("exam.attempt.unavailable")
 }
-func (f *examAttemptHTTPFake) BrowserSourceList(context.Context, invocation.Invocation, examattempt.BrowserSourceQuery) ([]model.BrowserSourceStatus, error) {
+func (f *examAttemptHTTPFake) BrowserSourceList(context.Context, invocation.Invocation, attempt.BrowserSourceQuery) ([]model.BrowserSourceStatus, error) {
 	return nil, apperror.New("exam.attempt.unavailable")
 }
 
-func (f *examAttemptHTTPFake) BrowserDeliveryReceipts(context.Context, invocation.Invocation, examattempt.BrowserSourceQuery, int64, int) (*model.BrowserReceiptPage, error) {
+func (f *examAttemptHTTPFake) BrowserDeliveryReceipts(context.Context, invocation.Invocation, attempt.BrowserSourceQuery, int64, int) (*model.BrowserReceiptPage, error) {
 	return nil, errors.New("unexpected BrowserDeliveryReceipts")
 }
-func (f *examAttemptHTTPFake) DeclareBrowserDeliveryGaps(context.Context, invocation.Invocation, examattempt.BrowserDeliveryGapsCommand) (*model.BrowserDeliveryGapResult, error) {
+func (f *examAttemptHTTPFake) DeclareBrowserDeliveryGaps(context.Context, invocation.Invocation, attempt.BrowserDeliveryGapsCommand) (*model.BrowserDeliveryGapResult, error) {
 	return nil, errors.New("unexpected DeclareBrowserDeliveryGaps")
 }
-func (f *examAttemptHTTPFake) SealBrowserDelivery(context.Context, invocation.Invocation, examattempt.BrowserDeliveryFinalCommand) (*model.BrowserSourceStatus, error) {
+func (f *examAttemptHTTPFake) SealBrowserDelivery(context.Context, invocation.Invocation, attempt.BrowserDeliveryFinalCommand) (*model.BrowserSourceStatus, error) {
 	return nil, errors.New("unexpected SealBrowserDelivery")
 }
-func (f *examAttemptHTTPFake) UpdateBrowserDeliverySummary(context.Context, invocation.Invocation, examattempt.BrowserDeliverySummaryCommand) (*model.BrowserDeliverySummaryResult, error) {
+func (f *examAttemptHTTPFake) UpdateBrowserDeliverySummary(context.Context, invocation.Invocation, attempt.BrowserDeliverySummaryCommand) (*model.BrowserDeliverySummaryResult, error) {
 	return nil, errors.New("unexpected UpdateBrowserDeliverySummary")
 }
-func (f *examAttemptHTTPFake) AppendHistoricalBrowserDelivery(context.Context, invocation.Invocation, examattempt.BrowserDeliveryAppendCommand) (*model.BrowserActivityAcknowledgement, error) {
+func (f *examAttemptHTTPFake) AppendHistoricalBrowserDelivery(context.Context, invocation.Invocation, attempt.BrowserDeliveryAppendCommand) (*model.BrowserActivityAcknowledgement, error) {
 	return nil, errors.New("unexpected AppendHistoricalBrowserDelivery")
 }
 
-func (f *examAttemptHTTPFake) DeliveryBudget(context.Context, invocation.Invocation, examattempt.DeliveryBudgetQuery) (*model.DeliveryBudgetSnapshot, error) {
+func (f *examAttemptHTTPFake) DeliveryBudget(context.Context, invocation.Invocation, attempt.DeliveryBudgetQuery) (*model.DeliveryBudgetSnapshot, error) {
 	return nil, errors.New("unexpected DeliveryBudget")
 }
-func (f *examAttemptHTTPFake) StopDeliveryDetails(context.Context, invocation.Invocation, examattempt.StopDeliveryDetailsCommand) (*model.StopDeliveryDetailsResult, error) {
+func (f *examAttemptHTTPFake) StopDeliveryDetails(context.Context, invocation.Invocation, attempt.StopDeliveryDetailsCommand) (*model.StopDeliveryDetailsResult, error) {
 	return nil, errors.New("unexpected StopDeliveryDetails")
 }
 

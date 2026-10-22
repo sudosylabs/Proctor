@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -187,7 +187,7 @@ func (s *sessionAdministrationService) RevokeUserSessions(
 		return sessionAdministrationStoreErrors.Translate(err)
 	}
 	now := model.TimeFromMillis(s.now().UnixMilli())
-	idempotency, err := applicationidempotency.Prepare(invocation, "user_sessions.revoke", command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Prepare(invocation, "user_sessions.revoke", command.IdempotencyKey, struct {
 		UserID string `json:"user_id"`
 	}{userID.String()})
 	if err != nil {
@@ -226,7 +226,7 @@ func (s *sessionAdministrationService) RevokeUserSessions(
 }
 
 func (s *sessionAdministrationService) prepareRevocationNotice(user *model.User, at time.Time) (*store.PreparedMail, error) {
-	return s.mail.PrepareSessionsRevokedByAdministrator(appmail.NoticePreparation{Recipient: user, At: at})
+	return s.mail.PrepareSessionsRevokedByAdministrator(mail.NoticePreparation{Recipient: user, At: at})
 }
 
 var sessionAdministrationStoreErrors = apperror.StoreTable{

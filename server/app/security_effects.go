@@ -11,7 +11,7 @@ import (
 	"context"
 	"errors"
 
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 )
 
 // Access-key deletion retains the peer invalidation contract and clears
@@ -76,4 +76,4 @@ func (i *authenticationCacheInvalidator) InvalidateSessionActivity(
 	}
 }
 
-var _ apprealtime.AuthenticationInvalidator = (*authenticationCacheInvalidator)(nil)
+var _ realtime.AuthenticationInvalidator = (*authenticationCacheInvalidator)(nil)

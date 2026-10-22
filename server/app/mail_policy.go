@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -198,7 +198,7 @@ type mailDeliveryProber interface{ Probe(context.Context) error }
 
 type mailMaintenanceMonitor struct {
 	mail     mailMaintenanceStore
-	sender   appmail.Sender
+	sender   mail.Sender
 	health   *MailHealth
 	recorder MailDeliveryRecorder
 	now      func() time.Time

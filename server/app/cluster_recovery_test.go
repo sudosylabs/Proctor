@@ -17,7 +17,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -224,7 +224,7 @@ func TestDuplicateRealtimePeerPublicationDoesNotRebroadcast(t *testing.T) {
 	require.NoError(t, service.AttachRealtimeSink(sink))
 
 	unitID := model.NewID()
-	event := apprealtime.RealtimeEvent{
+	event := realtime.RealtimeEvent{
 		Name:   "academic_unit_created",
 		Action: model.ActionAcademicUnitView,
 		Resource: model.Resource{

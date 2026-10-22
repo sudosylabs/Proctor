@@ -20,10 +20,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
-	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/exam/sitting"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -250,7 +250,7 @@ func TestJobRecipeConnectsRuntimeOperationsAndProfileWake(t *testing.T) {
 		applicationFoundation{},
 		accessAcademicConstruction{},
 		identityConstruction{},
-		examinationConstruction{sittings: &examsitting.Service{}, attempts: &examattempt.Service{}},
+		examinationConstruction{sittings: &sitting.Service{}, attempts: &attempt.Service{}},
 		profiles,
 	)
 	require.NoError(t, err)
@@ -281,13 +281,13 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 		},
 		applicationFoundation{},
 		identityConstruction{onboardingImports: &onboardingImportService{}},
-		examinationConstruction{sittings: &examsitting.Service{}, attempts: &examattempt.Service{}}, profiles,
+		examinationConstruction{sittings: &sitting.Service{}, attempts: &attempt.Service{}}, profiles,
 		jobhandler.NewDefaultProfilePictureJobs(constructionJobStoreStub{}),
 		newMailHealth(false),
 	)
-	_, err := jobengine.NewRegistry(definitions.descriptors)
+	_, err := job.NewRegistry(definitions.descriptors)
 	require.NoError(t, err)
-	descriptors := make(map[model.JobType]jobengine.Descriptor, len(definitions.descriptors))
+	descriptors := make(map[model.JobType]job.Descriptor, len(definitions.descriptors))
 	for _, descriptor := range definitions.descriptors {
 		descriptors[descriptor.Type] = descriptor
 	}
@@ -329,7 +329,7 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 	}
 	require.Equal(t, 1, recurrenceCount, "lifecycle recovery recurrence count")
 	require.Equal(t, 1, invitationMaintenanceRecurrenceCount, "Invitation maintenance recurrence count")
-	periodicByName := make(map[string]jobengine.PeriodicTask, len(definitions.periodicTasks))
+	periodicByName := make(map[string]job.PeriodicTask, len(definitions.periodicTasks))
 	for _, task := range definitions.periodicTasks {
 		periodicByName[task.Name] = task
 	}

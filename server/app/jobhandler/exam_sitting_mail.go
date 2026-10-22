@@ -12,8 +12,8 @@ import (
 	"errors"
 	"time"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -27,25 +27,25 @@ type SittingMailExpansionStore interface {
 
 type sittingMailExpansionHandler struct {
 	sittings SittingMailExpansionStore
-	mail     *appmail.SittingComposer
+	mail     *mail.SittingComposer
 }
 
-func (h sittingMailExpansionHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
+func (h sittingMailExpansionHandler) Run(ctx context.Context, execution job.Execution) job.Outcome {
 	if execution.Job == nil {
-		return jobengine.PermanentFailure("job.command.invalid", errors.New("Sitting mail expansion Job is missing"))
+		return job.PermanentFailure("job.command.invalid", errors.New("Sitting mail expansion Job is missing"))
 	}
 	command, err := model.DecodeSittingMailExpansionCommand(execution.Job.Command)
 	if err != nil {
-		return jobengine.PermanentFailure("job.command.invalid", err)
+		return job.PermanentFailure("job.command.invalid", err)
 	}
 	if h.sittings == nil || h.mail == nil {
-		return jobengine.RetryableFailure("mail.sitting.unavailable", errors.New("Sitting mail expansion dependencies are unavailable"))
+		return job.RetryableFailure("mail.sitting.unavailable", errors.New("Sitting mail expansion dependencies are unavailable"))
 	}
 	checkpoint := model.SittingMailExpansionCheckpoint{}
 	if len(execution.Job.Checkpoint) != 0 {
 		checkpoint, err = model.DecodeSittingMailExpansionCheckpoint(execution.Job.Checkpoint)
 		if err != nil {
-			return jobengine.PermanentFailure("job.checkpoint.invalid", err)
+			return job.PermanentFailure("job.checkpoint.invalid", err)
 		}
 	}
 	fanout, err := h.sittings.GetMailFanout(ctx, command.OccurrenceID)
@@ -57,7 +57,7 @@ func (h sittingMailExpansionHandler) Run(ctx context.Context, execution jobengin
 	}
 	bundle, err := h.mail.OpenBundle(fanout.Bundle)
 	if err != nil {
-		return jobengine.RetryableFailure("mail.sitting.bundle_unavailable", err)
+		return job.RetryableFailure("mail.sitting.bundle_unavailable", err)
 	}
 	for {
 		page, pageErr := h.sittings.ListMailRecipients(ctx, store.ExamSittingMailRecipientPageRequest{
@@ -72,14 +72,14 @@ func (h sittingMailExpansionHandler) Run(ctx context.Context, execution jobengin
 				SittingRevision: fanout.SittingRevision, Recipient: recipient.User}
 			if recipient.TemplateKey.IsValid() {
 				commit.Delivery, commit.DeliveryJob, err = h.mail.PrepareRecipient(fanout, recipient.User, recipient.TemplateKey, bundle)
-				if errors.Is(err, appmail.ErrSittingMailRecipientInvalid) {
+				if errors.Is(err, mail.ErrSittingMailRecipientInvalid) {
 					// One unaddressable account must not stop mail to every
 					// later recipient; it is counted in the Job result.
 					checkpoint.Undeliverable++
 					continue
 				}
 				if err != nil {
-					return jobengine.RetryableFailure("mail.sitting.recipient_unavailable", err)
+					return job.RetryableFailure("mail.sitting.recipient_unavailable", err)
 				}
 			}
 			result, commitErr := h.sittings.CommitMailRecipient(ctx, commit)
@@ -100,11 +100,11 @@ func (h sittingMailExpansionHandler) Run(ctx context.Context, execution jobengin
 			checkpoint.AfterUserID = page.Recipients[len(page.Recipients)-1].User.ID
 			document, encodeErr := model.EncodeSittingMailExpansionCheckpoint(checkpoint)
 			if encodeErr != nil {
-				return jobengine.PermanentFailure("job.checkpoint.invalid", encodeErr)
+				return job.PermanentFailure("job.checkpoint.invalid", encodeErr)
 			}
-			if checkpointErr := execution.Checkpoint(ctx, jobengine.CheckpointValue{Progress: &model.JobProgress{Current: checkpoint.Expanded + checkpoint.Suppressed + checkpoint.Undeliverable,
+			if checkpointErr := execution.Checkpoint(ctx, job.CheckpointValue{Progress: &model.JobProgress{Current: checkpoint.Expanded + checkpoint.Suppressed + checkpoint.Undeliverable,
 				Total: checkpoint.Expanded + checkpoint.Suppressed + checkpoint.Undeliverable, Stage: "expanding"}, Document: document}); checkpointErr != nil {
-				return jobengine.RetryableFailure("mail.sitting.unavailable", checkpointErr)
+				return job.RetryableFailure("mail.sitting.unavailable", checkpointErr)
 			}
 		}
 		if !page.More {
@@ -117,22 +117,22 @@ func (h sittingMailExpansionHandler) Run(ctx context.Context, execution jobengin
 	return sittingMailExpansionSucceeded(checkpoint)
 }
 
-func sittingMailExpansionSucceeded(checkpoint model.SittingMailExpansionCheckpoint) jobengine.Outcome {
+func sittingMailExpansionSucceeded(checkpoint model.SittingMailExpansionCheckpoint) job.Outcome {
 	document, err := model.EncodeSittingMailExpansionResult(model.SittingMailExpansionResult{
 		Expanded: checkpoint.Expanded, Suppressed: checkpoint.Suppressed, Undeliverable: checkpoint.Undeliverable})
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: document, Err: err}
+	return job.Outcome{Kind: job.OutcomeSucceeded, Result: document, Err: err}
 }
 
-func sittingMailExpansionDependencyOutcome(err error) jobengine.Outcome {
-	return jobengine.RetryableFailure("mail.sitting.unavailable", err)
+func sittingMailExpansionDependencyOutcome(err error) job.Outcome {
+	return job.RetryableFailure("mail.sitting.unavailable", err)
 }
 
-func sittingMailExpansionDescriptor(handler sittingMailExpansionHandler) jobengine.Descriptor {
-	return jobengine.Descriptor{Type: model.JobTypeMailExpandSitting, Checkpoints: true,
+func sittingMailExpansionDescriptor(handler sittingMailExpansionHandler) job.Descriptor {
+	return job.Descriptor{Type: model.JobTypeMailExpandSitting, Checkpoints: true,
 		ProgressStages:   []string{"expanding"},
 		PublicErrorCodes: []string{"mail.sitting.bundle_unavailable", "mail.sitting.invalid", "mail.sitting.recipient_unavailable", "mail.sitting.unavailable"},
 		Timeout:          30 * time.Minute, Concurrency: 2, MaximumAttempts: model.MailMaximumAttempts,
 		LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: 30 * time.Second,
-		MaximumRetryDelay: 30 * time.Minute, Visibility: jobengine.VisibilityOperator,
+		MaximumRetryDelay: 30 * time.Minute, Visibility: job.VisibilityOperator,
 		SuccessRetention: 90 * 24 * time.Hour, FailureRetention: 180 * 24 * time.Hour, Handler: handler}
 }

@@ -14,7 +14,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	server "github.com/sudosylabs/proctor/server"
+	"github.com/sudosylabs/proctor/server"
 )
 
 type administratorMFAResetExecutor func(context.Context, string, server.AdministratorMFAResetCommand) (*server.AdministratorMFAResetResult, error)

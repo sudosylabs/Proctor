@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/httpapi"
@@ -55,11 +55,11 @@ func (w compositionWebSocket) Close() error                { return w.closer.clo
 func (compositionWebSocket) Accept(http.ResponseWriter, *http.Request, model.Principal, model.RequestMetadata, string, int64, bool) error {
 	return nil
 }
-func (compositionWebSocket) PublishLocal(context.Context, apprealtime.RealtimeEvent) {}
-func (compositionWebSocket) CloseSession(string, apprealtime.ConnectionCloseReason)  {}
-func (compositionWebSocket) CloseUser(string, apprealtime.ConnectionCloseReason)     {}
-func (compositionWebSocket) CloseAll(apprealtime.ConnectionCloseReason)              {}
-func (compositionWebSocket) UnbindExamAttemptConnection(model.AttemptConnectionID)   {}
+func (compositionWebSocket) PublishLocal(context.Context, realtime.RealtimeEvent)  {}
+func (compositionWebSocket) CloseSession(string, realtime.ConnectionCloseReason)   {}
+func (compositionWebSocket) CloseUser(string, realtime.ConnectionCloseReason)      {}
+func (compositionWebSocket) CloseAll(realtime.ConnectionCloseReason)               {}
+func (compositionWebSocket) UnbindExamAttemptConnection(model.AttemptConnectionID) {}
 
 type compositionFanout struct{}
 
@@ -99,12 +99,12 @@ func TestConsumerConstructionFailuresUnwindExactlyOnce(t *testing.T) {
 					return app.Dependencies{}, nil
 				},
 				application:    func(app.Dependencies) (*app.App, error) { return nil, nil },
-				realtime:       func(borrowedCluster) (apprealtime.ClusterFanout, error) { return compositionFanout{}, nil },
-				attachRealtime: func(*app.App, apprealtime.ClusterFanout) error { return nil },
+				realtime:       func(borrowedCluster) (realtime.ClusterFanout, error) { return compositionFanout{}, nil },
+				attachRealtime: func(*app.App, realtime.ClusterFanout) error { return nil },
 				websocket: func(*app.App, runtimeLogger, string, string) (composedWebSocket, error) {
 					return compositionWebSocket{closer: websocketCloser}, nil
 				},
-				attachSink: func(*app.App, apprealtime.Sink) error { return nil },
+				attachSink: func(*app.App, realtime.Sink) error { return nil },
 				http: func(httpapi.Options) (runtimeTransport, http.Handler, error) {
 					transport := compositionTransport{closer: transportCloser}
 					return transport, transport, nil
@@ -122,13 +122,13 @@ func TestConsumerConstructionFailuresUnwindExactlyOnce(t *testing.T) {
 			case "application":
 				constructors.application = func(app.Dependencies) (*app.App, error) { return nil, primaryErr }
 			case "realtime":
-				constructors.realtime = func(borrowedCluster) (apprealtime.ClusterFanout, error) { return nil, primaryErr }
+				constructors.realtime = func(borrowedCluster) (realtime.ClusterFanout, error) { return nil, primaryErr }
 			case "attach-realtime":
-				constructors.attachRealtime = func(*app.App, apprealtime.ClusterFanout) error { return primaryErr }
+				constructors.attachRealtime = func(*app.App, realtime.ClusterFanout) error { return primaryErr }
 			case "websocket":
 				constructors.websocket = func(*app.App, runtimeLogger, string, string) (composedWebSocket, error) { return nil, primaryErr }
 			case "attach-sink":
-				constructors.attachSink = func(*app.App, apprealtime.Sink) error { return primaryErr }
+				constructors.attachSink = func(*app.App, realtime.Sink) error { return primaryErr }
 			case "http":
 				constructors.http = func(httpapi.Options) (runtimeTransport, http.Handler, error) { return nil, nil, primaryErr }
 			case "webapp":
@@ -183,11 +183,11 @@ func TestRealtimeHandlerRegistrationFailureUnwindsComposition(t *testing.T) {
 			return app.Dependencies{}, nil
 		},
 		application: func(app.Dependencies) (*app.App, error) { return nil, nil },
-		realtime: func(cluster borrowedCluster) (apprealtime.ClusterFanout, error) {
+		realtime: func(cluster borrowedCluster) (realtime.ClusterFanout, error) {
 			return newRealtimeClusterAdapter(cluster)
 		},
-		attachRealtime: func(_ *app.App, fanout apprealtime.ClusterFanout) error {
-			service, err := apprealtime.New(noopRealtimeInvalidator{}, silentClusterLogger{})
+		attachRealtime: func(_ *app.App, fanout realtime.ClusterFanout) error {
+			service, err := realtime.New(noopRealtimeInvalidator{}, silentClusterLogger{})
 			if err != nil {
 				return err
 			}

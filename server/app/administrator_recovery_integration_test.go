@@ -19,7 +19,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	server "github.com/sudosylabs/proctor/server"
+	"github.com/sudosylabs/proctor/server"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"

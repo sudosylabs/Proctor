@@ -10,7 +10,7 @@ package sitting
 import (
 	"time"
 
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -27,7 +27,7 @@ const (
 )
 
 func prepareScheduleIdempotency(invocation invocation.Invocation, command ScheduleCommand) (*store.CommandIdempotency, error) {
-	return applicationidempotency.Require(invocation, idempotencyOperationSchedule, command.IdempotencyKey, struct {
+	return idempotency.Require(invocation, idempotencyOperationSchedule, command.IdempotencyKey, struct {
 		ExamID           model.ExamID         `json:"exam_id"`
 		ExamRevisionID   model.ExamRevisionID `json:"exam_revision_id"`
 		ClassID          model.ClassID        `json:"class_id"`
@@ -37,7 +37,7 @@ func prepareScheduleIdempotency(invocation invocation.Invocation, command Schedu
 }
 
 func prepareScheduleUpdateIdempotency(invocation invocation.Invocation, command UpdateScheduleCommand) (*store.CommandIdempotency, error) {
-	return applicationidempotency.Require(invocation, idempotencyOperationUpdateSchedule, command.IdempotencyKey, struct {
+	return idempotency.Require(invocation, idempotencyOperationUpdateSchedule, command.IdempotencyKey, struct {
 		ExamID           model.ExamID          `json:"exam_id"`
 		SittingID        model.ExamSittingID   `json:"exam_sitting_id"`
 		ExpectedRevision int64                 `json:"expected_revision"`
@@ -49,7 +49,7 @@ func prepareScheduleUpdateIdempotency(invocation invocation.Invocation, command 
 }
 
 func prepareTransitionIdempotency(invocation invocation.Invocation, operation string, command PauseCommand) (*store.CommandIdempotency, error) {
-	return applicationidempotency.Require(invocation, operation, command.IdempotencyKey, struct {
+	return idempotency.Require(invocation, operation, command.IdempotencyKey, struct {
 		ExamID           model.ExamID        `json:"exam_id"`
 		SittingID        model.ExamSittingID `json:"exam_sitting_id"`
 		ExpectedRevision int64               `json:"expected_revision"`
@@ -58,7 +58,7 @@ func prepareTransitionIdempotency(invocation invocation.Invocation, operation st
 }
 
 func prepareExtensionIdempotency(invocation invocation.Invocation, command ExtendCommand) (*store.CommandIdempotency, error) {
-	return applicationidempotency.Require(invocation, idempotencyOperationExtend, command.IdempotencyKey, struct {
+	return idempotency.Require(invocation, idempotencyOperationExtend, command.IdempotencyKey, struct {
 		ExamID           model.ExamID        `json:"exam_id"`
 		SittingID        model.ExamSittingID `json:"exam_sitting_id"`
 		ExpectedRevision int64               `json:"expected_revision"`

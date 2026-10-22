@@ -12,7 +12,7 @@ import (
 	"errors"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -20,14 +20,14 @@ import (
 // realtimeDiagnostics extends the child module's bounded diagnostics only for
 // application-owned reporting of failed post-commit effects.
 type realtimeDiagnostics interface {
-	apprealtime.Diagnostics
+	realtime.Diagnostics
 	ErrorContextWithEvent(ctx context.Context, message, event string, err error)
 }
 
 // realtimeService translates the child module's publication failures into
 // parent application errors and retains parent-owned effect adapters.
 type realtimeService struct {
-	delivery    *apprealtime.Service
+	delivery    *realtime.Service
 	diagnostics realtimeDiagnostics
 	attempts    interface {
 		ListSessionRevocationInvalidationTargets(context.Context, model.UserID, []model.SessionID) ([]store.ExamAttemptInvalidationTarget, error)
@@ -35,7 +35,7 @@ type realtimeService struct {
 }
 
 func newRealtimeServiceWithDelivery(
-	delivery *apprealtime.Service,
+	delivery *realtime.Service,
 	diagnostics realtimeDiagnostics,
 ) (*realtimeService, error) {
 	if delivery == nil {
@@ -53,23 +53,23 @@ func newRealtimeServiceWithDelivery(
 // AttachRealtimeClusterFanout wires the composition-owned cluster adapter and
 // registers peer handlers. It must be called once before the node becomes
 // ready. Peer handlers apply only local effects so Broadcast never loops.
-func (s *realtimeService) AttachRealtimeClusterFanout(fanout apprealtime.ClusterFanout) error {
+func (s *realtimeService) AttachRealtimeClusterFanout(fanout realtime.ClusterFanout) error {
 	return s.delivery.SetClusterFanout(fanout)
 }
 
-func (s *realtimeService) AttachRealtimeSink(sink apprealtime.Sink) error {
+func (s *realtimeService) AttachRealtimeSink(sink realtime.Sink) error {
 	return s.delivery.SetSink(sink)
 }
 
 // PublishRealtimeEvent delivers a transport-neutral event locally first, then
 // fans it out to peers best-effort. Callers must invoke this only after
 // durable commit.
-func (s *realtimeService) PublishRealtimeEvent(ctx context.Context, event apprealtime.RealtimeEvent) error {
+func (s *realtimeService) PublishRealtimeEvent(ctx context.Context, event realtime.RealtimeEvent) error {
 	err := s.delivery.Publish(ctx, event)
 	if err == nil {
 		return nil
 	}
-	var invalid *apprealtime.InvalidPublicationError
+	var invalid *realtime.InvalidPublicationError
 	if errors.As(err, &invalid) {
 		return invalidRealtimeRequest(invalid.Error())
 	}
@@ -81,7 +81,7 @@ func (s *realtimeService) UnbindExamAttemptConnection(ctx context.Context, conne
 	if err == nil {
 		return nil
 	}
-	var invalid *apprealtime.InvalidPublicationError
+	var invalid *realtime.InvalidPublicationError
 	if errors.As(err, &invalid) {
 		return invalidRealtimeRequest(invalid.Error())
 	}
@@ -128,8 +128,8 @@ func (s *realtimeService) SessionsRevoked(
 		return
 	}
 	for _, target := range targets {
-		candidateEvent, candidateErr := apprealtime.NewCandidateExamActivityChangedEvent(target.CandidateUserID)
-		managerEvent, managerErr := apprealtime.NewManagerSittingBoardChangedEvent(target.ExamID, target.SittingID)
+		candidateEvent, candidateErr := realtime.NewCandidateExamActivityChangedEvent(target.CandidateUserID)
+		managerEvent, managerErr := realtime.NewManagerSittingBoardChangedEvent(target.ExamID, target.SittingID)
 		publishErr := errors.Join(candidateErr, managerErr)
 		if candidateErr == nil {
 			publishErr = errors.Join(publishErr, s.PublishRealtimeEvent(ctx, candidateEvent))
@@ -159,7 +159,7 @@ func (s *realtimeService) InvalidateAuthorization(ctx context.Context, userID st
 	}
 	parsed, err := model.ParseUserID(userID)
 	if err == nil {
-		candidateEvent, candidateErr := apprealtime.NewCandidateExamActivityChangedEvent(parsed)
+		candidateEvent, candidateErr := realtime.NewCandidateExamActivityChangedEvent(parsed)
 		err = errors.Join(candidateErr, s.InvalidateCurrentUserContext(ctx, parsed))
 		if candidateErr == nil {
 			err = errors.Join(err, s.PublishRealtimeEvent(ctx, candidateEvent))
@@ -171,7 +171,7 @@ func (s *realtimeService) InvalidateAuthorization(ctx context.Context, userID st
 }
 
 func (s *realtimeService) InvalidateCurrentUserContext(ctx context.Context, userID model.UserID) error {
-	event, err := apprealtime.NewCurrentUserContextChangedEvent(userID)
+	event, err := realtime.NewCurrentUserContextChangedEvent(userID)
 	if err != nil {
 		return err
 	}

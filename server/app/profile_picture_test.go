@@ -24,7 +24,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -631,11 +631,11 @@ func TestProfilePictureCapacityRefusalDoesNotPublishOrProposeMoreWork(t *testing
 			case "default generation":
 				command, encodeErr := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommand{UserID: user.ID})
 				require.NoError(t, encodeErr)
-				job, jobErr := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, command, user.ID.String(), time.Now(), time.Now(), 8)
+				record, jobErr := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, command, user.ID.String(), time.Now(), time.Now(), 8)
 				require.NoError(t, jobErr)
 				handler := jobhandler.NewDefaultProfilePictureDescriptor(jobDefaultProfilePictureGenerator{service: service}).Handler
-				outcome := handler.Run(context.Background(), jobengine.Execution{Job: job})
-				require.Equal(t, jobengine.OutcomeRetryableFailure, outcome.Kind)
+				outcome := handler.Run(context.Background(), job.Execution{Job: record})
+				require.Equal(t, job.OutcomeRetryableFailure, outcome.Kind)
 				require.Equal(t, "dependency.unavailable", outcome.PublicErrorCode)
 				err = outcome.Err
 			}
@@ -658,12 +658,12 @@ func TestDefaultProfilePictureHandlerAttachesGeneratedRenditionsIdempotently(t *
 	persistence := &pictureStoreFake{user: user}
 	command, err := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommand{UserID: user.ID})
 	require.NoError(t, err)
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, command, user.ID.String(), at, at, 8)
+	record, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, command, user.ID.String(), at, at, 8)
 	require.NoError(t, err)
 	generator := newProfilePictureServiceForTest(persistence, persistence, &pictureContentFake{}, nil, nil, nil, nil, nil, func() time.Time { return at })
 	handler := jobhandler.NewDefaultProfilePictureDescriptor(jobDefaultProfilePictureGenerator{service: generator}).Handler
-	outcome := handler.Run(context.Background(), jobengine.Execution{Job: job})
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "handler outcome/store = %#v / %#v", outcome, persistence)
+	outcome := handler.Run(context.Background(), job.Execution{Job: record})
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind, "handler outcome/store = %#v / %#v", outcome, persistence)
 	require.NoError(t, outcome.Err, "handler outcome/store = %#v / %#v", outcome, persistence)
 	require.NotNil(t, persistence.defaultPublication, "handler outcome/store = %#v / %#v", outcome, persistence)
 	require.Len(t, persistence.defaultPublication.Renditions, 3, "handler outcome/store = %#v / %#v", outcome, persistence)
@@ -673,8 +673,8 @@ func TestDefaultProfilePictureHandlerAttachesGeneratedRenditionsIdempotently(t *
 	attached := *user
 	attached.DefaultProfilePictureFileID = persistence.defaultPublication.EntryID
 	persistence.user = &attached
-	second := handler.Run(context.Background(), jobengine.Execution{Job: job})
-	require.Equal(t, jobengine.OutcomeSucceeded, second.Kind)
+	second := handler.Run(context.Background(), job.Execution{Job: record})
+	require.Equal(t, job.OutcomeSucceeded, second.Kind)
 	require.Equal(t, attached.DefaultProfilePictureFileID, persistence.defaultPublication.EntryID)
 	require.Equal(t, 1, persistence.defaultPublications)
 }

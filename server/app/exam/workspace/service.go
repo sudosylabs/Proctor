@@ -16,7 +16,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -307,7 +307,7 @@ func (s *Service) RemoveExamStarterWorkspaceEntry(ctx context.Context, invocatio
 	if err := validateMutationBase(command.ExamID, command.EntryID, command.ExpectedDraftRevision); err != nil {
 		return Result{}, err
 	}
-	idempotency, err := applicationidempotency.Require(invocation, idempotencyOperationRemoveEntry, command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Require(invocation, idempotencyOperationRemoveEntry, command.IdempotencyKey, struct {
 		ExamID                string `json:"exam_id"`
 		ExpectedDraftRevision int64  `json:"expected_draft_revision"`
 		EntryID               string `json:"entry_id,omitempty"`

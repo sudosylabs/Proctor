@@ -19,7 +19,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -392,23 +392,23 @@ func TestOnboardingImportExecutionJobResumesSafeTerminalCheckpointAcrossWorkers(
 	t.Parallel()
 	at := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
 	id := model.NewOnboardingImportID()
-	job, err := newOnboardingImportJob(model.JobTypeOnboardingImportExecute, id, at)
+	record, err := newOnboardingImportJob(model.JobTypeOnboardingImportExecute, id, at)
 	require.NoError(t, err)
-	job.Checkpoint = json.RawMessage(`{"after_row":41,"processed":37}`)
+	record.Checkpoint = json.RawMessage(`{"after_row":41,"processed":37}`)
 	service := &onboardingImportService{imports: onboardingImportPersistenceFake{value: &store.OnboardingImport{ID: id, State: model.OnboardingImportCompleted, ValidRows: 37}}}
 	handler := jobhandler.NewOnboardingImportExecuteDescriptor(onboardingImportJobs{service: service}).Handler
 	for worker := 0; worker < 2; worker++ {
-		outcome := handler.Run(context.Background(), jobengine.NewExecution(job, &model.JobAttempt{ID: model.NewJobAttemptID()}, func(context.Context, jobengine.CheckpointValue) error {
+		outcome := handler.Run(context.Background(), job.NewExecution(record, &model.JobAttempt{ID: model.NewJobAttemptID()}, func(context.Context, job.CheckpointValue) error {
 			require.FailNow(t, "terminal recovery must not write another checkpoint")
 			return nil
 		}, nil))
-		require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "worker %d outcome = %#v", worker, outcome)
+		require.Equal(t, job.OutcomeSucceeded, outcome.Kind, "worker %d outcome = %#v", worker, outcome)
 		require.Equal(t, `{"after_row":41,"processed":37}`, string(outcome.Result), "worker %d outcome = %#v", worker, outcome)
 	}
 
-	job.Checkpoint = json.RawMessage(`{"after_row":-1,"processed":37}`)
-	outcome := handler.Run(context.Background(), jobengine.Execution{Job: job})
-	require.Equal(t, jobengine.OutcomePermanentFailure, outcome.Kind)
+	record.Checkpoint = json.RawMessage(`{"after_row":-1,"processed":37}`)
+	outcome := handler.Run(context.Background(), job.Execution{Job: record})
+	require.Equal(t, job.OutcomePermanentFailure, outcome.Kind)
 	require.Equal(t, "job.checkpoint.invalid", outcome.PublicErrorCode)
 }
 

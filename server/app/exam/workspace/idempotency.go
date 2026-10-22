@@ -8,7 +8,7 @@
 package workspace
 
 import (
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -25,7 +25,7 @@ const (
 func prepareWorkspaceIdempotency(invocation invocation.Invocation, operation, key string, examID model.ExamID, revision int64,
 	expectedContentVersion model.WorkspaceContentVersion, entryID, path, mediaType string, size int64, sha256 string,
 ) (*store.CommandIdempotency, error) {
-	return applicationidempotency.Require(invocation, operation, key, struct {
+	return idempotency.Require(invocation, operation, key, struct {
 		ExamID                 string `json:"exam_id"`
 		ExpectedDraftRevision  int64  `json:"expected_draft_revision"`
 		ExpectedContentVersion string `json:"expected_content_version,omitempty"`

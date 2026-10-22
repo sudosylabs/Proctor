@@ -10,15 +10,15 @@ package app
 import (
 	"context"
 
-	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/exam/resource"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type examResourceRealtimeEffects struct{ realtime *realtimeService }
 
 func (e examResourceRealtimeEffects) Changed(ctx context.Context, examID model.ExamID, _ model.ExamResourceID, draftRevision int64, _ string) error {
-	event, err := apprealtime.NewExamDraftUpdatedEvent(examID, draftRevision)
+	event, err := realtime.NewExamDraftUpdatedEvent(examID, draftRevision)
 	if err != nil {
 		return err
 	}
@@ -28,7 +28,7 @@ func (e examResourceRealtimeEffects) Report(ctx context.Context, operation strin
 	e.realtime.reportTransientFailure(ctx, operation, err)
 }
 
-var _ examresource.Authorizer = (*accessControlService)(nil)
-var _ examresource.Auditor = mutationAuditAdapter{}
-var _ examresource.Effects = examResourceRealtimeEffects{}
-var _ examresource.EffectFailures = examResourceRealtimeEffects{}
+var _ resource.Authorizer = (*accessControlService)(nil)
+var _ resource.Auditor = mutationAuditAdapter{}
+var _ resource.Effects = examResourceRealtimeEffects{}
+var _ resource.EffectFailures = examResourceRealtimeEffects{}

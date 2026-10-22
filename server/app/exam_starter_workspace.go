@@ -11,15 +11,15 @@ import (
 	"context"
 	"time"
 
-	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/exam/workspace"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type examStarterWorkspaceRealtimeEffects struct{ realtime *realtimeService }
 
-func (e examStarterWorkspaceRealtimeEffects) Changed(ctx context.Context, examID model.ExamID, entryID model.StarterWorkspaceEntryID, draftRevision int64, operation examworkspace.ChangeOperation, changedAt time.Time) error {
-	event, err := apprealtime.NewExamStarterWorkspaceChangedEvent(examID, entryID, draftRevision, string(operation), changedAt)
+func (e examStarterWorkspaceRealtimeEffects) Changed(ctx context.Context, examID model.ExamID, entryID model.StarterWorkspaceEntryID, draftRevision int64, operation workspace.ChangeOperation, changedAt time.Time) error {
+	event, err := realtime.NewExamStarterWorkspaceChangedEvent(examID, entryID, draftRevision, string(operation), changedAt)
 	if err != nil {
 		return err
 	}
@@ -29,7 +29,7 @@ func (e examStarterWorkspaceRealtimeEffects) Report(ctx context.Context, operati
 	e.realtime.reportTransientFailure(ctx, operation, err)
 }
 
-var _ examworkspace.Authorizer = (*accessControlService)(nil)
-var _ examworkspace.Auditor = mutationAuditAdapter{}
-var _ examworkspace.Effects = examStarterWorkspaceRealtimeEffects{}
-var _ examworkspace.EffectFailures = examStarterWorkspaceRealtimeEffects{}
+var _ workspace.Authorizer = (*accessControlService)(nil)
+var _ workspace.Auditor = mutationAuditAdapter{}
+var _ workspace.Effects = examStarterWorkspaceRealtimeEffects{}
+var _ workspace.EffectFailures = examStarterWorkspaceRealtimeEffects{}

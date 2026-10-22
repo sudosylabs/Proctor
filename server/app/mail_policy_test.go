@@ -16,7 +16,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -165,12 +165,12 @@ func TestMailCleanupJobBoundsPagesAndReportsSafeCounts(t *testing.T) {
 		{FanoutsTerminalized: 1, DeliveriesSuppressed: 1},
 	}}
 	command, _ := json.Marshal(jobhandler.MailCleanupCommand{PageSize: 10, MaxPages: 2})
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailCleanup, command, "cleanup", time.Now(), time.Now(), 5)
+	record, err := model.NewJob(model.NewJobID(), model.JobTypeMailCleanup, command, "cleanup", time.Now(), time.Now(), 5)
 	require.NoError(t, err)
 	metrics := &recordingMailMetrics{}
 	descriptor := jobhandler.NewMailCleanupDescriptor(mail, sittings, jobMailDeliveryRecorder{recorder: metrics})
-	outcome := descriptor.Handler.Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind)
+	outcome := descriptor.Handler.Run(context.Background(), job.NewExecution(record, nil, nil, nil))
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind)
 	require.Equal(t, `{"fanouts_terminalized":5,"fanout_deliveries_suppressed":3,"expired":3,"deleted":3}`, string(outcome.Result))
 	require.Equal(t, 2, sittings.calls, "Sitting fan-out maintenance calls")
 	require.Equal(t, []string{"cleanup_terminal", "suppress_expired", "suppress_expired"}, mail.calls, "one terminal cleanup and two bounded expiry pages")

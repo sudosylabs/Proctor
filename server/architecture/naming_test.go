@@ -13,6 +13,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -160,18 +161,104 @@ func TestFilesAreNamedForTheSingularConcept(t *testing.T) {
 	})
 }
 
-// TestApplicationPackageIsImportedUnderItsName keeps one spelling for the
-// application package: callers import it as app and never shadow that name.
-func TestApplicationPackageIsImportedUnderItsName(t *testing.T) {
+// TestInternalImportsUseTheirPackageName keeps one spelling for every
+// repository package: an import of a github.com/sudosylabs/proctor package
+// carries no alias unless the same file imports another package that declares
+// the same name. A local that would shadow the package name is renamed
+// instead.
+func TestInternalImportsUseTheirPackageName(t *testing.T) {
 	t.Parallel()
 
+	names := repositoryPackageNames{}
 	inspectServerGoFiles(t, func(path string, file *ast.File) {
-		for _, spec := range file.Imports {
-			if spec.Path.Value == `"github.com/sudosylabs/proctor/server/app"` && spec.Name != nil {
-				assert.Equal(t, "app", spec.Name.Name, "%s imports the application package as %s; import it as app", path, spec.Name.Name)
-			}
+		for _, violation := range importAliasViolations(path, file, names.name) {
+			assert.Fail(t, violation)
 		}
 	})
+}
+
+func TestImportAliasRuleRejectsPlantedViolations(t *testing.T) {
+	t.Parallel()
+
+	declared := map[string]string{
+		"github.com/sudosylabs/proctor/server/app":       "app",
+		"github.com/sudosylabs/proctor/server/app/job":   "job",
+		"github.com/sudosylabs/proctor/server/app/mail":  "mail",
+		"github.com/sudosylabs/proctor/packages/mail":    "mail",
+		"github.com/sudosylabs/proctor/packages/vfs":     "vfs",
+		"github.com/sudosylabs/proctor/server/app/exam":  "exam",
+		"github.com/sudosylabs/proctor/server/app/realm": "realm",
+	}
+	file, err := parser.ParseFile(token.NewFileSet(), "fixture.go", `package fixture
+
+import (
+	_ "github.com/sudosylabs/proctor/server/app/realm"
+	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	app "github.com/sudosylabs/proctor/server/app"
+	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	mailpkg "github.com/sudosylabs/proctor/packages/mail"
+	"github.com/sudosylabs/proctor/server/app/exam"
+	yaml "gopkg.in/yaml.v3"
+)
+`, parser.ImportsOnly)
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		`fixture.go imports github.com/sudosylabs/proctor/server/app/job as jobengine; import it as job and rename locals that would shadow it`,
+		`fixture.go imports github.com/sudosylabs/proctor/server/app as app; import it as app and rename locals that would shadow it`,
+		`fixture.go imports github.com/sudosylabs/proctor/packages/vfs as vfspkg; import it as vfs and rename locals that would shadow it`,
+	}, importAliasViolations("fixture.go", file, func(path string) string { return declared[path] }))
+}
+
+// importAliasViolations reports each aliased repository import in file that no
+// same-name import in the file forces. packageName answers an import path's
+// declared package name.
+func importAliasViolations(path string, file *ast.File, packageName func(string) string) []string {
+	var violations []string
+	imported := map[string]int{}
+	for _, spec := range file.Imports {
+		imported[packageName(strings.Trim(spec.Path.Value, `"`))]++
+	}
+	for _, spec := range file.Imports {
+		importPath := strings.Trim(spec.Path.Value, `"`)
+		if spec.Name == nil || spec.Name.Name == "_" || !strings.HasPrefix(importPath, repositoryModule+"/") {
+			continue
+		}
+		name := packageName(importPath)
+		if name != "" && imported[name] > 1 {
+			continue
+		}
+		violations = append(violations, fmt.Sprintf("%s imports %s as %s; import it as %s and rename locals that would shadow it",
+			path, importPath, spec.Name.Name, name))
+	}
+	return violations
+}
+
+// repositoryPackageNames reads a repository package's declared name from the
+// package clause of its first non-test file.
+type repositoryPackageNames map[string]string
+
+func (r repositoryPackageNames) name(importPath string) string {
+	if name, ok := r[importPath]; ok {
+		return name
+	}
+	directory := filepath.Join("..", "..", filepath.FromSlash(strings.TrimPrefix(importPath, repositoryModule+"/")))
+	entries, err := os.ReadDir(directory)
+	name := ""
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+				continue
+			}
+			file, parseErr := parser.ParseFile(token.NewFileSet(), filepath.Join(directory, entry.Name()), nil, parser.PackageClauseOnly)
+			if parseErr == nil {
+				name = file.Name.Name
+				break
+			}
+		}
+	}
+	r[importPath] = name
+	return name
 }
 
 func receiverTypeName(expression ast.Expr) string {

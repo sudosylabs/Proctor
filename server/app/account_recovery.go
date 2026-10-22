@@ -22,7 +22,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -132,7 +132,7 @@ func (s *accountTokenService) RequestEmailVerification(
 	if err != nil {
 		return accountRecoveryUnavailable(err)
 	}
-	prepared, err := s.mail.PrepareEmailVerification(appmail.AccountTokenPreparation{
+	prepared, err := s.mail.PrepareEmailVerification(mail.AccountTokenPreparation{
 		Recipient: user, OccurrenceID: model.MailOccurrenceID(token.ID.String()), ActionURL: link, At: now, Deadline: token.ExpiresAt,
 	})
 	if err != nil {
@@ -224,7 +224,7 @@ func (s *accountTokenService) RequestPasswordReset(
 		s.logHiddenRecoveryFailure(ctx, "password reset link generation failed", err)
 		return nil
 	}
-	prepared, err := s.mail.PreparePasswordReset(appmail.AccountTokenPreparation{
+	prepared, err := s.mail.PreparePasswordReset(mail.AccountTokenPreparation{
 		Recipient: user, OccurrenceID: model.MailOccurrenceID(token.ID.String()), ActionURL: link, At: now, Deadline: token.ExpiresAt,
 	})
 	if err != nil {
@@ -337,7 +337,7 @@ func (s *accountTokenService) CompletePasswordReset(
 	if err != nil {
 		return nil, passwordHashError(err, "authentication.account_recovery.unavailable")
 	}
-	prepared, err := s.mail.PreparePasswordChanged(appmail.NoticePreparation{Recipient: user, At: now})
+	prepared, err := s.mail.PreparePasswordChanged(mail.NoticePreparation{Recipient: user, At: now})
 	if err != nil {
 		return nil, accountRecoveryUnavailable(err)
 	}

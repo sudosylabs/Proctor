@@ -14,7 +14,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -86,7 +86,7 @@ func (p *Publication) PublishExamRevision(ctx context.Context, invocation invoca
 	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 {
 		return store.ExamRevisionSummary{}, apperror.Invalid("exam.invalid", "publication")
 	}
-	idempotency, err := applicationidempotency.Require(invocation, idempotencyOperationPublishRevision, command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Require(invocation, idempotencyOperationPublishRevision, command.IdempotencyKey, struct {
 		ExamID                string `json:"exam_id"`
 		ExpectedDraftRevision int64  `json:"expected_draft_revision"`
 	}{command.ExamID.String(), command.ExpectedDraftRevision})

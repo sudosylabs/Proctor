@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -218,14 +218,14 @@ func (s *roleBindingService) CreateRoleBinding(ctx context.Context, invocation i
 		if candidate.ScopeType == model.RoleScopeInstitution {
 			key = model.MailTemplateAuthorizationInstitutionRoleAssigned
 		}
-		notice, err = s.mail.PrepareRelationshipTransition(appmail.RelationshipTransitionPreparation{
+		notice, err = s.mail.PrepareRelationshipTransition(mail.RelationshipTransitionPreparation{
 			Recipient: recipient, OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: key, ActionAt: mailAt,
 		})
 		if err != nil {
 			return nil, apperror.New("mail.unavailable").Wrap(err)
 		}
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "role_binding.create", command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Prepare(invocation, "role_binding.create", command.IdempotencyKey, struct {
 		UserID    string              `json:"user_id"`
 		RoleID    string              `json:"role_id"`
 		ScopeType model.RoleScopeType `json:"scope_type"`
@@ -299,7 +299,7 @@ func (s *roleBindingService) EndRoleBinding(ctx context.Context, invocation invo
 	if command.BatchScopeID != "" && (command.BatchScopeType != current.ScopeType || strings.TrimSpace(command.BatchScopeID) != current.ScopeID) {
 		return nil, apperror.New("resource.not_found").WithField("resource", "role_binding")
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "role_binding.end", command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Prepare(invocation, "role_binding.end", command.IdempotencyKey, struct {
 		ID        string              `json:"id"`
 		ScopeType model.RoleScopeType `json:"scope_type,omitempty"`
 		ScopeID   string              `json:"scope_id,omitempty"`
@@ -322,7 +322,7 @@ func (s *roleBindingService) EndRoleBinding(ctx context.Context, invocation invo
 		if current.ScopeType == model.RoleScopeInstitution {
 			key = model.MailTemplateAuthorizationInstitutionRoleEnded
 		}
-		notice, err = s.mail.PrepareRelationshipTransition(appmail.RelationshipTransitionPreparation{
+		notice, err = s.mail.PrepareRelationshipTransition(mail.RelationshipTransitionPreparation{
 			Recipient: recipient, OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: key, ActionAt: mailAt,
 		})
 		if err != nil {

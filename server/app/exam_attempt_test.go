@@ -17,9 +17,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -126,12 +126,12 @@ func (f *submissionAuthorizationSittingFake) AuthorizeSubmissionView(_ context.C
 
 func TestParticipationExpiryEffectPublishesCloseManagerSuspensionAndCandidateSuspension(t *testing.T) {
 	t.Parallel()
-	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
+	service := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	require.NoError(t, realtime.AttachRealtimeSink(sink))
-	require.NoError(t, realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
+	require.NoError(t, service.AttachRealtimeSink(sink))
+	require.NoError(t, service.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
 	at := time.Date(2026, time.August, 18, 10, 0, 0, 0, time.UTC)
-	result := examattempt.ParticipationExpiry{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(), DatabaseTime: at,
+	result := attempt.ParticipationExpiry{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(), DatabaseTime: at,
 		Attempt: model.ExamAttempt{ID: model.NewExamAttemptID(), Revision: 2},
 		Connection: store.ExamAttemptManagerConnection{ID: model.NewAttemptConnectionID(), State: model.AttemptConnectionClosed,
 			OpenedAt: at.Add(-time.Minute), ClosedAt: model.OptionalTimeFrom(at), CloseReason: model.AttemptConnectionCloseLeaseExpired},
@@ -139,9 +139,9 @@ func TestParticipationExpiryEffectPublishesCloseManagerSuspensionAndCandidateSus
 		Flag:             model.IntegrityFlag{ID: model.NewIntegrityFlagID()},
 		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(), Source: model.AttemptSuspensionSourcePolicy,
 			CandidateReason: model.AttemptSuspensionCandidateReasonSecureContinuityLost}}
-	require.NoError(t, (examAttemptRealtimeEffects{realtime: realtime}).ParticipationExpired(context.Background(), result))
+	require.NoError(t, (examAttemptRealtimeEffects{realtime: service}).ParticipationExpired(context.Background(), result))
 	sink.mu.Lock()
-	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
+	events := append([]realtime.RealtimeEvent(nil), sink.events...)
 	sink.mu.Unlock()
 	require.Len(t, events, 6)
 	require.Equal(t, "exam_attempt_connection_closed", events[0].Name)
@@ -164,21 +164,21 @@ func TestParticipationExpiryEffectPublishesCloseManagerSuspensionAndCandidateSus
 
 func TestManualSuspensionEffectPublishesKickedCloseAndSafeCandidateReason(t *testing.T) {
 	t.Parallel()
-	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
+	service := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	require.NoError(t, realtime.AttachRealtimeSink(sink))
-	require.NoError(t, realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
+	require.NoError(t, service.AttachRealtimeSink(sink))
+	require.NoError(t, service.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
 	at := time.Date(2026, time.August, 18, 10, 0, 0, 0, time.UTC)
-	result := examattempt.ManualSuspensionResult{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(),
+	result := attempt.ManualSuspensionResult{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(),
 		CandidateUserID: model.NewUserID(), Attempt: model.ExamAttempt{ID: model.NewExamAttemptID(), Revision: 3},
 		Connection: &store.ExamAttemptManagerConnection{ID: model.NewAttemptConnectionID(), State: model.AttemptConnectionClosed,
 			OpenedAt: at.Add(-time.Minute), ClosedAt: model.OptionalTimeFrom(at), CloseReason: model.AttemptConnectionCloseKicked},
 		ConnectionClosed: true,
 		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(), Source: model.AttemptSuspensionSourceManual,
 			CandidateReason: model.AttemptSuspensionCandidateReasonManagerSuspended, StartedAt: at, SuspendedByUserID: model.NewUserID()}}
-	require.NoError(t, (examAttemptRealtimeEffects{realtime: realtime}).AttemptSuspendedByManager(context.Background(), result))
+	require.NoError(t, (examAttemptRealtimeEffects{realtime: service}).AttemptSuspendedByManager(context.Background(), result))
 	sink.mu.Lock()
-	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
+	events := append([]realtime.RealtimeEvent(nil), sink.events...)
 	sink.mu.Unlock()
 	require.Len(t, events, 6)
 	require.Equal(t, "exam_attempt_connection_closed", events[0].Name)
@@ -192,20 +192,20 @@ func TestManualSuspensionEffectPublishesKickedCloseAndSafeCandidateReason(t *tes
 
 func TestSubmissionEffectPublishesSafeManagerAndCandidateFactsThenUnbindsExactConnection(t *testing.T) {
 	t.Parallel()
-	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
+	service := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	require.NoError(t, realtime.AttachRealtimeSink(sink))
-	require.NoError(t, realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
-	result := examattempt.SubmissionResult{Receipt: store.ExamSubmissionReceipt{BrowserActivity: model.BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1},
+	require.NoError(t, service.AttachRealtimeSink(sink))
+	require.NoError(t, service.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
+	result := attempt.SubmissionResult{Receipt: store.ExamSubmissionReceipt{BrowserActivity: model.BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1},
 		SubmissionID: model.NewSubmissionID(), AttemptID: model.NewExamAttemptID(), State: model.ExamAttemptSubmitted,
 		WorkspaceCursor: 13, ManifestDigest: strings.Repeat("d", 64),
 		SubmittedAt: time.Date(2026, time.August, 21, 11, 0, 0, 0, time.UTC),
 	}, Provenance: model.ExamSubmissionCandidateSubmitted, ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(),
 		ConnectionID: model.NewAttemptConnectionID()}
 
-	require.NoError(t, (examAttemptRealtimeEffects{realtime: realtime}).AttemptSubmitted(context.Background(), result))
+	require.NoError(t, (examAttemptRealtimeEffects{realtime: service}).AttemptSubmitted(context.Background(), result))
 	sink.mu.Lock()
-	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
+	events := append([]realtime.RealtimeEvent(nil), sink.events...)
 	unbound := append([]model.AttemptConnectionID(nil), sink.attemptUnbinds...)
 	sink.mu.Unlock()
 	require.Len(t, events, 5, "events")
@@ -228,20 +228,20 @@ func TestSubmissionEffectPublishesSafeManagerAndCandidateFactsThenUnbindsExactCo
 
 func TestAutomaticSubmissionEffectPublishesSittingClosedFactsAndUnbindsExactConnection(t *testing.T) {
 	t.Parallel()
-	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
+	service := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	require.NoError(t, realtime.AttachRealtimeSink(sink))
-	require.NoError(t, realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
-	result := examattempt.AutomaticSubmissionResult{SubmissionResult: examattempt.SubmissionResult{
+	require.NoError(t, service.AttachRealtimeSink(sink))
+	require.NoError(t, service.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
+	result := attempt.AutomaticSubmissionResult{SubmissionResult: attempt.SubmissionResult{
 		Receipt: store.ExamSubmissionReceipt{BrowserActivity: model.BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1}, SubmissionID: model.NewSubmissionID(), AttemptID: model.NewExamAttemptID(),
 			State: model.ExamAttemptSubmitted, WorkspaceCursor: 21, ManifestDigest: strings.Repeat("e", 64),
 			SubmittedAt: time.Date(2026, time.August, 22, 11, 0, 0, 0, time.UTC)},
 		Provenance: model.ExamSubmissionSittingClosed, ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(),
 		CandidateUserID: model.NewUserID(), ConnectionID: model.NewAttemptConnectionID()},
 		ConnectionClosed: true}
-	require.NoError(t, (examAttemptRealtimeEffects{realtime: realtime}).AttemptSealedForSittingClose(context.Background(), result))
+	require.NoError(t, (examAttemptRealtimeEffects{realtime: service}).AttemptSealedForSittingClose(context.Background(), result))
 	sink.mu.Lock()
-	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
+	events := append([]realtime.RealtimeEvent(nil), sink.events...)
 	unbound := append([]model.AttemptConnectionID(nil), sink.attemptUnbinds...)
 	sink.mu.Unlock()
 	require.Len(t, events, 6, "events")
@@ -266,18 +266,18 @@ func TestAutomaticSubmissionEffectPublishesSittingClosedFactsAndUnbindsExactConn
 
 func TestFocusLossWarningEffectPublishesBoundedManagerFlagAndNeutralCandidateWarning(t *testing.T) {
 	t.Parallel()
-	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
+	service := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	require.NoError(t, realtime.AttachRealtimeSink(sink))
-	require.NoError(t, realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
+	require.NoError(t, service.AttachRealtimeSink(sink))
+	require.NoError(t, service.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
 	at := time.Date(2026, time.August, 20, 10, 0, 0, 0, time.UTC)
-	result := examattempt.FocusLossEvaluation{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(),
+	result := attempt.FocusLossEvaluation{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(),
 		AttemptID: model.NewExamAttemptID(), ReceivedAt: at, PolicyOutcome: model.IntegrityOutcomeFlagAndWarn,
 		Flag: model.IntegrityFlag{ID: model.NewIntegrityFlagID()}, RetainedEvidenceCount: 3,
 		FlagCreated: true, ManagerNotificationRequired: true, CandidateWarningCreated: true}
-	require.NoError(t, (examAttemptRealtimeEffects{realtime: realtime}).FocusLossEvaluated(context.Background(), result))
+	require.NoError(t, (examAttemptRealtimeEffects{realtime: service}).FocusLossEvaluated(context.Background(), result))
 	sink.mu.Lock()
-	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
+	events := append([]realtime.RealtimeEvent(nil), sink.events...)
 	sink.mu.Unlock()
 	require.Len(t, events, 3)
 	require.Equal(t, "exam_attempt_integrity_flagged", events[0].Name)
@@ -293,13 +293,13 @@ func TestFocusLossWarningEffectPublishesBoundedManagerFlagAndNeutralCandidateWar
 
 func TestFocusLossSuspensionEffectPublishesCloseFlagAndSeparatedSuspensions(t *testing.T) {
 	t.Parallel()
-	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
+	service := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	require.NoError(t, realtime.AttachRealtimeSink(sink))
-	require.NoError(t, realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
+	require.NoError(t, service.AttachRealtimeSink(sink))
+	require.NoError(t, service.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
 	at := time.Date(2026, time.August, 20, 10, 5, 0, 0, time.UTC)
 	flagID := model.NewIntegrityFlagID()
-	result := examattempt.FocusLossEvaluation{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(),
+	result := attempt.FocusLossEvaluation{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(),
 		AttemptID: model.NewExamAttemptID(), ReceivedAt: at, PolicyOutcome: model.IntegrityOutcomeFlagAndSuspend,
 		Flag: model.IntegrityFlag{ID: flagID}, RetainedEvidenceCount: 3, FlagCreated: true,
 		ManagerNotificationRequired: true, ConnectionClosed: true,
@@ -308,9 +308,9 @@ func TestFocusLossSuspensionEffectPublishesCloseFlagAndSeparatedSuspensions(t *t
 		Attempt: model.ExamAttempt{Revision: 2}, SuspensionCreated: true,
 		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(), Source: model.AttemptSuspensionSourcePolicy, FlagID: flagID,
 			CandidateReason: model.AttemptSuspensionCandidateReasonFocusLossPolicy}}
-	require.NoError(t, (examAttemptRealtimeEffects{realtime: realtime}).FocusLossEvaluated(context.Background(), result))
+	require.NoError(t, (examAttemptRealtimeEffects{realtime: service}).FocusLossEvaluated(context.Background(), result))
 	sink.mu.Lock()
-	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
+	events := append([]realtime.RealtimeEvent(nil), sink.events...)
 	unbound := append([]model.AttemptConnectionID(nil), sink.attemptUnbinds...)
 	sink.mu.Unlock()
 	require.Len(t, events, 6, "events")
@@ -333,21 +333,21 @@ func TestFocusLossSuspensionEffectPublishesCloseFlagAndSeparatedSuspensions(t *t
 
 func TestParticipationExpiryEffectOmitsDuplicateCloseAfterTransportTeardown(t *testing.T) {
 	t.Parallel()
-	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
+	service := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	require.NoError(t, realtime.AttachRealtimeSink(sink))
-	require.NoError(t, realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
+	require.NoError(t, service.AttachRealtimeSink(sink))
+	require.NoError(t, service.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
 	at := time.Date(2026, time.August, 18, 10, 0, 0, 0, time.UTC)
-	result := examattempt.ParticipationExpiry{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(), DatabaseTime: at,
+	result := attempt.ParticipationExpiry{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(), DatabaseTime: at,
 		Attempt: model.ExamAttempt{ID: model.NewExamAttemptID(), Revision: 2},
 		Connection: store.ExamAttemptManagerConnection{ID: model.NewAttemptConnectionID(), State: model.AttemptConnectionClosed,
 			OpenedAt: at.Add(-time.Minute), ClosedAt: model.OptionalTimeFrom(at.Add(-time.Second)), CloseReason: model.AttemptConnectionCloseTransport},
 		Flag: model.IntegrityFlag{ID: model.NewIntegrityFlagID()},
 		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(), Source: model.AttemptSuspensionSourcePolicy,
 			CandidateReason: model.AttemptSuspensionCandidateReasonSecureContinuityLost}}
-	require.NoError(t, (examAttemptRealtimeEffects{realtime: realtime}).ParticipationExpired(context.Background(), result))
+	require.NoError(t, (examAttemptRealtimeEffects{realtime: service}).ParticipationExpired(context.Background(), result))
 	sink.mu.Lock()
-	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
+	events := append([]realtime.RealtimeEvent(nil), sink.events...)
 	sink.mu.Unlock()
 	require.Len(t, events, 5)
 	require.Equal(t, "exam_attempt_suspended", events[0].Name)

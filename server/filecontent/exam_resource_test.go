@@ -27,8 +27,8 @@ import (
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 	"github.com/stretchr/testify/require"
 
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
-	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
+	"github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -75,7 +75,7 @@ func TestExamResourceContentStoresAndOpensExactVerifiedBytes(t *testing.T) {
 func TestExamResourceContentStoresAtPreallocatedRenditionIdentity(t *testing.T) {
 	t.Parallel()
 
-	for _, filesystem := range []vfspkg.FileSystem{memoryvfs.New(), &examResourceNonConditionalVFS{FileSystem: memoryvfs.New()}} {
+	for _, filesystem := range []vfs.FileSystem{memory.New(), &examResourceNonConditionalVFS{FileSystem: memory.New()}} {
 		content, err := New(filesystem, Policy{MaximumConcurrentOperations: 2}, nil)
 		require.NoError(t, err)
 		revisionID, renditionID := model.NewFileRevisionID(), model.NewFileRenditionID()
@@ -103,7 +103,7 @@ func TestExamResourceContentStoresAtPreallocatedRenditionIdentity(t *testing.T) 
 
 func TestExamResourceContentRejectsUnverifiedOrUnboundedInputBeforeStorage(t *testing.T) {
 	t.Parallel()
-	filesystem := memoryvfs.New()
+	filesystem := memory.New()
 	content, _ := New(filesystem, Policy{MaximumConcurrentOperations: 2}, nil)
 	pseudoPDF := []byte("%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF\n")
 	compressedActivePDF := testExamResourcePDF(t, func(xRefTable *pdfmodel.XRefTable, root types.Dict) {
@@ -144,7 +144,7 @@ func TestExamResourceContentRejectsUnverifiedOrUnboundedInputBeforeStorage(t *te
 			require.ErrorIs(t, err, ErrInvalidExamResourceContent)
 		})
 	}
-	page, err := filesystem.List(context.Background(), vfspkg.ListOptions{Prefix: "files/", Limit: 10})
+	page, err := filesystem.List(context.Background(), vfs.ListOptions{Prefix: "files/", Limit: 10})
 	require.NoError(t, err, "rejected content was stored: page=%#v error", page)
 	require.Empty(t, page.Entries, "rejected content was stored: page=%#v error", page)
 }
@@ -152,7 +152,7 @@ func TestExamResourceContentRejectsUnverifiedOrUnboundedInputBeforeStorage(t *te
 func TestExamResourceContentReadsAndWritesThroughBoundedBuffers(t *testing.T) {
 	privateTemp := t.TempDir()
 	t.Setenv("TMPDIR", privateTemp)
-	content, err := New(memoryvfs.New(), Policy{MaximumConcurrentOperations: 2}, nil)
+	content, err := New(memory.New(), Policy{MaximumConcurrentOperations: 2}, nil)
 	require.NoError(t, err)
 	const size = int64(2 << 20)
 	reader := &boundedExamResourceReader{remaining: size, maximumRequest: 64 << 10}
@@ -167,13 +167,13 @@ func TestExamResourceContentReadsAndWritesThroughBoundedBuffers(t *testing.T) {
 func TestExamResourceContentRemovesPrivateSpoolAfterEveryOutcome(t *testing.T) {
 	for _, test := range []struct {
 		name       string
-		filesystem vfspkg.FileSystem
+		filesystem vfs.FileSystem
 		body       string
 		want       func(error) bool
 	}{
-		{name: "validation rejection", filesystem: memoryvfs.New(), body: "\x00", want: func(err error) bool { return errors.Is(err, ErrInvalidExamResourceContent) }},
-		{name: "uncertain exact VFS write", filesystem: &examResourceWriteFailureVFS{FileSystem: memoryvfs.New()}, body: "notes", want: func(err error) bool { return err == nil }},
-		{name: "uncertain mismatched VFS write", filesystem: &examResourceWriteFailureVFS{FileSystem: memoryvfs.New(), mismatch: true}, body: "notes", want: IsUnavailable},
+		{name: "validation rejection", filesystem: memory.New(), body: "\x00", want: func(err error) bool { return errors.Is(err, ErrInvalidExamResourceContent) }},
+		{name: "uncertain exact VFS write", filesystem: &examResourceWriteFailureVFS{FileSystem: memory.New()}, body: "notes", want: func(err error) bool { return err == nil }},
+		{name: "uncertain mismatched VFS write", filesystem: &examResourceWriteFailureVFS{FileSystem: memory.New(), mismatch: true}, body: "notes", want: IsUnavailable},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			privateTemp := t.TempDir()
@@ -191,7 +191,7 @@ func TestExamResourceContentRemovesPrivateSpoolAfterEveryOutcome(t *testing.T) {
 
 func TestExamResourceContentRejectsDeclaredOversizeWithoutReading(t *testing.T) {
 	t.Parallel()
-	content, _ := New(memoryvfs.New(), Policy{MaximumConcurrentOperations: 2}, nil)
+	content, _ := New(memory.New(), Policy{MaximumConcurrentOperations: 2}, nil)
 	reader := &panicReader{}
 	_, err := content.StoreExamResource(context.Background(), model.NewFileRevisionID(), model.ExamResourceMediaText, reader, model.ExamResourceMaximumBytes+1, time.Now().UTC())
 	require.ErrorIs(t, err, ErrInvalidExamResourceContent)
@@ -200,7 +200,7 @@ func TestExamResourceContentRejectsDeclaredOversizeWithoutReading(t *testing.T) 
 func TestExamResourceContentStopsAtFirstByteBeyondDeclaredSize(t *testing.T) {
 	privateTemp := t.TempDir()
 	t.Setenv("TMPDIR", privateTemp)
-	filesystem := &contentWorkVFS{FileSystem: memoryvfs.New()}
+	filesystem := &contentWorkVFS{FileSystem: memory.New()}
 	content, err := New(filesystem, Policy{MaximumConcurrentOperations: 1}, nil)
 	require.NoError(t, err)
 	const inputSize = 64 << 10
@@ -285,7 +285,7 @@ func TestExamResourceContentCancellationReturnsNoRenditionAndReleasesResources(t
 			t.Setenv("TMPDIR", privateTemp)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			filesystem := &canceledExamResourceVFS{FileSystem: memoryvfs.New(), cancel: cancel, outcome: outcome}
+			filesystem := &canceledExamResourceVFS{FileSystem: memory.New(), cancel: cancel, outcome: outcome}
 			recorder := &contentWorkRecorder{}
 			content, err := New(filesystem, Policy{MaximumConcurrentOperations: 1}, recorder)
 			require.NoError(t, err)
@@ -354,12 +354,12 @@ func (r *canceledValidationReader) Seek(offset int64, whence int) (int64, error)
 }
 
 type canceledExamResourceVFS struct {
-	vfspkg.FileSystem
+	vfs.FileSystem
 	cancel  context.CancelFunc
 	outcome string
 }
 
-func (f *canceledExamResourceVFS) Write(ctx context.Context, path string, body io.Reader, options vfspkg.WriteOptions) (vfspkg.Info, error) {
+func (f *canceledExamResourceVFS) Write(ctx context.Context, path string, body io.Reader, options vfs.WriteOptions) (vfs.Info, error) {
 	info, err := f.FileSystem.Write(ctx, path, body, options)
 	if err != nil {
 		return info, err
@@ -373,7 +373,7 @@ func (f *canceledExamResourceVFS) Write(ctx context.Context, path string, body i
 	return info, nil
 }
 
-func (f *canceledExamResourceVFS) Open(ctx context.Context, path string, options vfspkg.OpenOptions) (*vfspkg.File, error) {
+func (f *canceledExamResourceVFS) Open(ctx context.Context, path string, options vfs.OpenOptions) (*vfs.File, error) {
 	file, err := f.FileSystem.Open(ctx, path, options)
 	if err == nil && f.outcome == "matching replay read" {
 		file.Body = &canceledExamResourceBody{ReadCloser: file.Body, cancel: f.cancel}
@@ -407,22 +407,22 @@ type boundedExamResourceReader struct {
 }
 
 type examResourceWriteFailureVFS struct {
-	vfspkg.FileSystem
+	vfs.FileSystem
 	mismatch bool
 }
 
-type examResourceNonConditionalVFS struct{ vfspkg.FileSystem }
+type examResourceNonConditionalVFS struct{ vfs.FileSystem }
 
-func (f *examResourceNonConditionalVFS) Capabilities() vfspkg.Capabilities {
+func (f *examResourceNonConditionalVFS) Capabilities() vfs.Capabilities {
 	capabilities := f.FileSystem.Capabilities()
 	capabilities.ConditionalWrite = false
 	return capabilities
 }
 
-func (f *examResourceWriteFailureVFS) Write(ctx context.Context, path string, body io.Reader, options vfspkg.WriteOptions) (vfspkg.Info, error) {
+func (f *examResourceWriteFailureVFS) Write(ctx context.Context, path string, body io.Reader, options vfs.WriteOptions) (vfs.Info, error) {
 	if f.mismatch {
 		wrongSize := int64(len("wrong"))
-		info, err := f.FileSystem.Write(ctx, path, strings.NewReader("wrong"), vfspkg.WriteOptions{Size: &wrongSize, NoOverwrite: options.NoOverwrite})
+		info, err := f.FileSystem.Write(ctx, path, strings.NewReader("wrong"), vfs.WriteOptions{Size: &wrongSize, NoOverwrite: options.NoOverwrite})
 		if err != nil {
 			return info, err
 		}
@@ -494,7 +494,7 @@ func testExamResourceAttachmentPDF(t *testing.T) []byte {
 func TestExamResourceContentSpoolHasNoNameDuringProcessing(t *testing.T) {
 	privateTemp := t.TempDir()
 	t.Setenv("TMPDIR", privateTemp)
-	observer := &tempDirectoryObserverVFS{FileSystem: memoryvfs.New(), directory: privateTemp}
+	observer := &tempDirectoryObserverVFS{FileSystem: memory.New(), directory: privateTemp}
 	content, err := New(observer, Policy{MaximumConcurrentOperations: 2}, nil)
 	require.NoError(t, err)
 	_, err = content.StoreExamResource(context.Background(), model.NewFileRevisionID(), model.ExamResourceMediaText,

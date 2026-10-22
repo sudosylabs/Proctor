@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -27,7 +27,7 @@ var ErrPurgeLimit = errors.New("file content: abandoned revision exceeds purge l
 
 // Content stores and opens immutable File Revision renditions over VFS.
 type Content struct {
-	filesystem vfspkg.FileSystem
+	filesystem vfs.FileSystem
 	work       chan struct{}
 	recorder   WorkRecorder
 }
@@ -48,7 +48,7 @@ type WorkRecorder interface {
 
 // New constructs File Content over a root-owned VFS with an independent,
 // non-queueing processing limit shared by its expensive content pipelines.
-func New(filesystem vfspkg.FileSystem, policy Policy, recorder WorkRecorder) (*Content, error) {
+func New(filesystem vfs.FileSystem, policy Policy, recorder WorkRecorder) (*Content, error) {
 	if filesystem == nil {
 		return nil, errors.New("file content VFS is required")
 	}
@@ -62,7 +62,7 @@ func (c *Content) storeRendition(ctx context.Context, revisionID model.FileRevis
 	if c == nil || c.filesystem == nil || !revisionID.IsValid() || !renditionID.IsValid() || body == nil || size < 0 {
 		return errors.New("invalid profile-picture rendition")
 	}
-	_, err := c.filesystem.Write(ctx, renditionKey(revisionID, renditionID), body, vfspkg.WriteOptions{
+	_, err := c.filesystem.Write(ctx, renditionKey(revisionID, renditionID), body, vfs.WriteOptions{
 		Size:        &size,
 		NoOverwrite: c.filesystem.Capabilities().ConditionalWrite,
 	})
@@ -75,7 +75,7 @@ func (c *Content) OpenProfilePictureRendition(ctx context.Context, revisionID mo
 	if c == nil || c.filesystem == nil || !revisionID.IsValid() || !renditionID.IsValid() {
 		return nil, errors.New("invalid file rendition identity")
 	}
-	file, err := c.filesystem.Open(ctx, renditionKey(revisionID, renditionID), vfspkg.OpenOptions{})
+	file, err := c.filesystem.Open(ctx, renditionKey(revisionID, renditionID), vfs.OpenOptions{})
 	if err != nil {
 		return nil, sanitize("open rendition", err)
 	}
@@ -93,8 +93,8 @@ func (c *Content) removeRenditions(ctx context.Context, revisionID model.FileRev
 	}
 	var joined error
 	for _, renditionID := range renditionIDs {
-		err := c.filesystem.Remove(ctx, renditionKey(revisionID, renditionID), vfspkg.RemoveOptions{})
-		if errors.Is(err, vfspkg.ErrNotFound) {
+		err := c.filesystem.Remove(ctx, renditionKey(revisionID, renditionID), vfs.RemoveOptions{})
+		if errors.Is(err, vfs.ErrNotFound) {
 			continue
 		}
 		joined = errors.Join(joined, sanitize("remove rendition", err))
@@ -119,7 +119,7 @@ func (c *Content) purgeAbandonedRevision(ctx context.Context, revisionID model.F
 		return errors.New("invalid file revision identity")
 	}
 	prefix := revisionPrefix(revisionID)
-	page, err := c.filesystem.List(ctx, vfspkg.ListOptions{Prefix: prefix, Limit: maximumRevisionObjects})
+	page, err := c.filesystem.List(ctx, vfs.ListOptions{Prefix: prefix, Limit: maximumRevisionObjects})
 	if err != nil {
 		return sanitize("list abandoned revision", err)
 	}
@@ -133,8 +133,8 @@ func (c *Content) purgeAbandonedRevision(ctx context.Context, revisionID model.F
 		if !strings.HasPrefix(entry.Path, prefix) {
 			return errors.New("file content: backend returned object outside revision prefix")
 		}
-		err = c.filesystem.Remove(ctx, entry.Path, vfspkg.RemoveOptions{})
-		if errors.Is(err, vfspkg.ErrNotFound) {
+		err = c.filesystem.Remove(ctx, entry.Path, vfs.RemoveOptions{})
+		if errors.Is(err, vfs.ErrNotFound) {
 			continue
 		}
 		if err != nil {
@@ -175,9 +175,9 @@ func sanitize(operation string, err error) error {
 		return nil
 	}
 	kind := errorUnavailable
-	if errors.Is(err, vfspkg.ErrNotFound) {
+	if errors.Is(err, vfs.ErrNotFound) {
 		kind = errorNotFound
-	} else if errors.Is(err, vfspkg.ErrAlreadyExists) || errors.Is(err, vfspkg.ErrConflict) {
+	} else if errors.Is(err, vfs.ErrAlreadyExists) || errors.Is(err, vfs.ErrConflict) {
 		kind = errorConflict
 	}
 	return &operationError{operation: operation, kind: kind, cause: err}

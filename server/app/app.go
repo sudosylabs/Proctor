@@ -10,30 +10,30 @@ package app
 import (
 	"errors"
 
-	examengine "github.com/sudosylabs/proctor/server/app/exam"
-	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
-	examcorrection "github.com/sudosylabs/proctor/server/app/exam/correction"
-	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
-	examreview "github.com/sudosylabs/proctor/server/app/exam/review"
-	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
-	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
+	"github.com/sudosylabs/proctor/server/app/exam"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/exam/correction"
+	"github.com/sudosylabs/proctor/server/app/exam/resource"
+	"github.com/sudosylabs/proctor/server/app/exam/review"
+	"github.com/sudosylabs/proctor/server/app/exam/sitting"
+	"github.com/sudosylabs/proctor/server/app/exam/workspace"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 )
 
 // Exam services live in child modules whose types share names such as
 // Service; these aliases give each embedded field a distinct name.
 type (
-	examAuthoringService        = examengine.Authoring
-	examPublicationService      = examengine.Publication
-	examRecordsService          = examengine.Records
-	examExportsService          = examengine.Exports
-	examSittingService          = examsitting.Service
-	examAttemptService          = examattempt.Service
-	examReviewService           = examreview.Service
-	examResourceService         = examresource.Service
-	examCorrectionService       = examcorrection.Service
-	examStarterWorkspaceService = examworkspace.Service
+	examAuthoringService        = exam.Authoring
+	examPublicationService      = exam.Publication
+	examRecordsService          = exam.Records
+	examExportsService          = exam.Exports
+	examSittingService          = sitting.Service
+	examAttemptService          = attempt.Service
+	examReviewService           = review.Service
+	examResourceService         = resource.Service
+	examCorrectionService       = correction.Service
+	examStarterWorkspaceService = workspace.Service
 )
 
 // App is the long-lived application surface. It embeds each focused service
@@ -90,14 +90,14 @@ type App struct {
 	*academicAdministrationBatchService
 	*realtimeService
 	*realtimeAdmissionService
-	jobs *jobengine.Engine
+	jobs *job.Engine
 	*jobOperationsService
 	*mailService
 }
 
 // Jobs returns the root-owned durable Job runtime, or nil for lifecycle-only
 // test graphs that intentionally provide no Job store.
-func (a *App) Jobs() *jobengine.Engine {
+func (a *App) Jobs() *job.Engine {
 	if a == nil {
 		return nil
 	}

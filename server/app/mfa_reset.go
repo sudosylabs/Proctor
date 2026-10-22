@@ -15,7 +15,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -48,7 +48,7 @@ func (s *mfaApplicationService) ResetUserMFA(ctx context.Context, invocation inv
 		return err
 	}
 	at := model.TimeFromMillis(s.now().UnixMilli())
-	prepared, err := s.prepareSecurityNotice(ctx, userID, appmail.MFANoticeReset, at)
+	prepared, err := s.prepareSecurityNotice(ctx, userID, mail.MFANoticeReset, at)
 	if err != nil {
 		return err
 	}

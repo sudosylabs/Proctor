@@ -11,7 +11,7 @@ import (
 	"encoding/json"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -20,7 +20,7 @@ import (
 func prepareWorkspaceMutationIdempotency(invocation invocation.Invocation, key string, attemptID model.ExamAttemptID,
 	operation model.AttemptWorkspaceMutationKind, semantic any,
 ) (*store.CommandIdempotency, error) {
-	return applicationidempotency.Require(invocation, store.ExamAttemptWorkspaceMutationOperation, key, struct {
+	return idempotency.Require(invocation, store.ExamAttemptWorkspaceMutationOperation, key, struct {
 		AttemptID string `json:"exam_attempt_id"`
 		Operation string `json:"operation"`
 		Command   any    `json:"command"`
@@ -37,7 +37,7 @@ func prepareConnectIdempotency(invocation invocation.Invocation, command Connect
 		}
 		proposal = canonical
 	}
-	return applicationidempotency.Require(invocation, store.ExamAttemptConnectOperation, command.IdempotencyKey, struct {
+	return idempotency.Require(invocation, store.ExamAttemptConnectOperation, command.IdempotencyKey, struct {
 		SittingID                string                `json:"exam_sitting_id"`
 		SessionID                string                `json:"session_id"`
 		ContinuityCredentialHash string                `json:"continuity_credential_hash"`
@@ -49,7 +49,7 @@ func prepareConnectIdempotency(invocation invocation.Invocation, command Connect
 }
 
 func prepareReallowIdempotency(invocation invocation.Invocation, command ReallowCommand) (*store.CommandIdempotency, error) {
-	return applicationidempotency.Require(invocation, store.ExamAttemptReallowOperation, command.IdempotencyKey, struct {
+	return idempotency.Require(invocation, store.ExamAttemptReallowOperation, command.IdempotencyKey, struct {
 		ExamID                  string `json:"exam_id"`
 		SittingID               string `json:"exam_sitting_id"`
 		AttemptID               string `json:"exam_attempt_id"`
@@ -60,7 +60,7 @@ func prepareReallowIdempotency(invocation invocation.Invocation, command Reallow
 }
 
 func prepareManualSuspensionIdempotency(invocation invocation.Invocation, command ManualSuspensionCommand) (*store.CommandIdempotency, error) {
-	return applicationidempotency.Require(invocation, store.ExamAttemptSuspendOperation, command.IdempotencyKey, struct {
+	return idempotency.Require(invocation, store.ExamAttemptSuspendOperation, command.IdempotencyKey, struct {
 		ExamID                  string `json:"exam_id"`
 		SittingID               string `json:"exam_sitting_id"`
 		AttemptID               string `json:"exam_attempt_id"`
@@ -71,7 +71,7 @@ func prepareManualSuspensionIdempotency(invocation invocation.Invocation, comman
 }
 
 func prepareManagerEndIdempotency(invocation invocation.Invocation, command ManagerEndCommand) (*store.CommandIdempotency, error) {
-	return applicationidempotency.Require(invocation, store.ExamSubmissionManagerEndOperation, command.IdempotencyKey, struct {
+	return idempotency.Require(invocation, store.ExamSubmissionManagerEndOperation, command.IdempotencyKey, struct {
 		ExamID                  string `json:"exam_id"`
 		SittingID               string `json:"exam_sitting_id"`
 		AttemptID               string `json:"exam_attempt_id"`
@@ -82,7 +82,7 @@ func prepareManagerEndIdempotency(invocation invocation.Invocation, command Mana
 }
 
 func prepareSubmissionIdempotency(invocation invocation.Invocation, key string, attemptID model.ExamAttemptID, expectedCurrentRevisionID model.ExamRevisionID, expectedWorkspaceCursor, finalFocusLossSequence int64) (*store.CommandIdempotency, error) {
-	return applicationidempotency.Require(invocation, store.ExamSubmissionSealOperation, key, struct {
+	return idempotency.Require(invocation, store.ExamSubmissionSealOperation, key, struct {
 		AttemptID                 string `json:"exam_attempt_id"`
 		ExpectedCurrentRevisionID string `json:"expected_current_revision_id"`
 		WorkspaceCursor           int64  `json:"expected_workspace_cursor"`

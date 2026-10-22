@@ -12,14 +12,14 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestCatalogDeclaresTheCompleteCoreDurableWorkGraph(t *testing.T) {
 	t.Parallel()
 	catalog := NewCatalog(CatalogDependencies{})
-	_, err := jobengine.NewRegistry(catalog.Descriptors)
+	_, err := job.NewRegistry(catalog.Descriptors)
 	require.NoError(t, err)
 	wantTypes := map[model.JobType]bool{
 		model.JobTypeProfilePictureGenerateDefault: true,

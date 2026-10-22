@@ -8,7 +8,7 @@
 package resource
 
 import (
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -23,7 +23,7 @@ const (
 )
 
 func prepareResourceIdempotency(invocation invocation.Invocation, operation, key string, examID model.ExamID, revision int64, resourceID, name, description string, media model.ExamResourceMediaType, size int64, sha string, ids []string) (*store.CommandIdempotency, error) {
-	return applicationidempotency.Require(invocation, operation, key, struct {
+	return idempotency.Require(invocation, operation, key, struct {
 		ExamID                string   `json:"exam_id"`
 		ExpectedDraftRevision int64    `json:"expected_draft_revision"`
 		ResourceID            string   `json:"resource_id,omitempty"`
@@ -37,7 +37,7 @@ func prepareResourceIdempotency(invocation invocation.Invocation, operation, key
 }
 
 func prepareMetadataIdempotency(invocation invocation.Invocation, command EditMetadataCommand) (*store.CommandIdempotency, error) {
-	return applicationidempotency.Require(invocation, idempotencyOperationEditResourceMetadata, command.IdempotencyKey, struct {
+	return idempotency.Require(invocation, idempotencyOperationEditResourceMetadata, command.IdempotencyKey, struct {
 		ExamID                string  `json:"exam_id"`
 		ExpectedDraftRevision int64   `json:"expected_draft_revision"`
 		ResourceID            string  `json:"resource_id"`

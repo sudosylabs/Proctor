@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -28,12 +28,12 @@ type accountTokenEffects interface {
 
 type accountTokenMailPreparer interface {
 	Enabled() bool
-	PrepareEmailVerification(appmail.AccountTokenPreparation) (*store.PreparedMail, error)
-	PreparePasswordReset(appmail.AccountTokenPreparation) (*store.PreparedMail, error)
-	PreparePasswordChanged(appmail.NoticePreparation) (*store.PreparedMail, error)
-	PrepareEmailChangeWarning(appmail.NoticePreparation) (*store.PreparedMail, error)
-	PrepareEmailChangeVerification(appmail.AccountTokenPreparation) (*store.PreparedMail, error)
-	PrepareEmailVerifiedByAdministrator(appmail.NoticePreparation) (*store.PreparedMail, error)
+	PrepareEmailVerification(mail.AccountTokenPreparation) (*store.PreparedMail, error)
+	PreparePasswordReset(mail.AccountTokenPreparation) (*store.PreparedMail, error)
+	PreparePasswordChanged(mail.NoticePreparation) (*store.PreparedMail, error)
+	PrepareEmailChangeWarning(mail.NoticePreparation) (*store.PreparedMail, error)
+	PrepareEmailChangeVerification(mail.AccountTokenPreparation) (*store.PreparedMail, error)
+	PrepareEmailVerifiedByAdministrator(mail.NoticePreparation) (*store.PreparedMail, error)
 }
 
 // accountTokenService owns purpose-specific verification and recovery tokens.

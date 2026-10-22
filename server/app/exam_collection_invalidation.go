@@ -11,7 +11,7 @@ import (
 	"context"
 	"errors"
 
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -45,7 +45,7 @@ func (e examCollectionInvalidationEffects) CandidateActivityChangedForSitting(
 			return errors.Join(append(errs, err)...)
 		}
 		for _, candidateID := range candidateIDs {
-			event, eventErr := apprealtime.NewCandidateExamActivityChangedEvent(candidateID)
+			event, eventErr := realtime.NewCandidateExamActivityChangedEvent(candidateID)
 			if eventErr != nil {
 				errs = append(errs, eventErr)
 				continue
@@ -67,7 +67,7 @@ func (e examCollectionInvalidationEffects) SittingBoardChanged(
 	if e.realtime == nil {
 		return errors.New("Exam collection invalidation dependencies are invalid")
 	}
-	event, err := apprealtime.NewManagerSittingBoardChangedEvent(examID, sittingID)
+	event, err := realtime.NewManagerSittingBoardChangedEvent(examID, sittingID)
 	if err != nil {
 		return err
 	}

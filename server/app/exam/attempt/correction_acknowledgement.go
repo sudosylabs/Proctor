@@ -12,7 +12,7 @@ import (
 	"errors"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -43,7 +43,7 @@ func (s *Service) AcknowledgeExamAttemptCorrection(ctx context.Context, invocati
 		!command.CorrectionRevisionID.IsValid() || !command.ExpectedCurrentRevisionID.IsValid() {
 		return CorrectionAcknowledgementResult{}, apperror.Invalid("exam.attempt.invalid", "correction_acknowledgement")
 	}
-	idempotency, err := applicationidempotency.Require(invocation, store.ExamAttemptCorrectionAcknowledgementOperation, command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Require(invocation, store.ExamAttemptCorrectionAcknowledgementOperation, command.IdempotencyKey, struct {
 		AttemptID                 string `json:"exam_attempt_id"`
 		ParticipationID           string `json:"participation_id"`
 		Generation                int64  `json:"generation"`

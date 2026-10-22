@@ -15,8 +15,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	vfs "github.com/sudosylabs/proctor/packages/vfs"
-	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
+	"github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -59,7 +59,7 @@ func TestRetentionPurgeRequiresIndependentExactKeyAbsence(t *testing.T) {
 		{name: "canceled observation", statErr: context.Canceled, wantError: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			fs := &retentionObservationVFS{FileSystem: memoryvfs.New()}
+			fs := &retentionObservationVFS{FileSystem: memory.New()}
 			content, err := New(fs, Policy{MaximumConcurrentOperations: 2}, nil)
 			require.NoError(t, err)
 			id, other := model.NewAttemptWorkspaceObjectID(), model.NewAttemptWorkspaceObjectID()

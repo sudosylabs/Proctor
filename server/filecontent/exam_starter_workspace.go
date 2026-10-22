@@ -15,7 +15,7 @@ import (
 	"io"
 	"strings"
 
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -51,13 +51,13 @@ func (c *Content) StageStarterWorkspaceObject(ctx context.Context, objectID mode
 	hash := sha256.New()
 	limited := &io.LimitedReader{R: body, N: model.StarterWorkspaceMaximumFileBytes + 1}
 	reader := io.TeeReader(limited, hash)
-	options := vfspkg.WriteOptions{NoOverwrite: c.filesystem.Capabilities().ConditionalWrite}
+	options := vfs.WriteOptions{NoOverwrite: c.filesystem.Capabilities().ConditionalWrite}
 	info, err := c.filesystem.Write(ctx, starterWorkspaceObjectKey(objectID), reader, options)
 	if err != nil {
 		return nil, sanitize("stage Starter Workspace object", err)
 	}
 	if info.Size > model.StarterWorkspaceMaximumFileBytes || limited.N == 0 || declaredSize >= 0 && info.Size != declaredSize {
-		_ = c.filesystem.Remove(ctx, starterWorkspaceObjectKey(objectID), vfspkg.RemoveOptions{})
+		_ = c.filesystem.Remove(ctx, starterWorkspaceObjectKey(objectID), vfs.RemoveOptions{})
 		return nil, invalidStarterWorkspaceContent(errors.New("content size mismatch"))
 	}
 	return &model.StarterWorkspaceContent{MediaType: mediaType, SizeBytes: info.Size, SHA256: fmt.Sprintf("%x", hash.Sum(nil))}, nil
@@ -69,7 +69,7 @@ func (c *Content) OpenStarterWorkspaceObject(ctx context.Context, objectID model
 	if c == nil || c.filesystem == nil || !objectID.IsValid() {
 		return nil, fmt.Errorf("invalid Starter Workspace object identity")
 	}
-	file, err := c.filesystem.Open(ctx, starterWorkspaceObjectKey(objectID), vfspkg.OpenOptions{})
+	file, err := c.filesystem.Open(ctx, starterWorkspaceObjectKey(objectID), vfs.OpenOptions{})
 	if err != nil {
 		return nil, sanitize("open Starter Workspace object", err)
 	}
@@ -82,8 +82,8 @@ func (c *Content) RemoveStarterWorkspaceObject(ctx context.Context, objectID mod
 	if c == nil || c.filesystem == nil || !objectID.IsValid() {
 		return fmt.Errorf("invalid Starter Workspace object identity")
 	}
-	err := c.filesystem.Remove(ctx, starterWorkspaceObjectKey(objectID), vfspkg.RemoveOptions{})
-	if errors.Is(err, vfspkg.ErrNotFound) {
+	err := c.filesystem.Remove(ctx, starterWorkspaceObjectKey(objectID), vfs.RemoveOptions{})
+	if errors.Is(err, vfs.ErrNotFound) {
 		return nil
 	}
 	return sanitize("remove Starter Workspace object", err)

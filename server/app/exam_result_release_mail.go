@@ -11,22 +11,22 @@ import (
 	"context"
 	"errors"
 
-	examreview "github.com/sudosylabs/proctor/server/app/exam/review"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/exam/review"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
 type examResultReleaseMailPreparationAdapter struct {
-	preparer  *appmail.Composer
+	preparer  *mail.Composer
 	users     store.UserStore
 	sittings  store.ExamSittingStore
 	revisions store.ExamRevisionStore
 }
 
 func (a examResultReleaseMailPreparationAdapter) PrepareResultRelease(ctx context.Context,
-	request examreview.ResultReleaseMailPreparation,
-) (*examreview.PreparedResultReleaseMail, error) {
+	request review.ResultReleaseMailPreparation,
+) (*review.PreparedResultReleaseMail, error) {
 	if a.preparer == nil || a.users == nil || a.sittings == nil || a.revisions == nil ||
 		!request.CandidateUserID.IsValid() || !request.ExamID.IsValid() || !request.SittingID.IsValid() ||
 		!request.ReviewID.IsValid() || request.ReleasedAt.IsZero() {
@@ -56,14 +56,14 @@ func (a examResultReleaseMailPreparationAdapter) PrepareResultRelease(ctx contex
 	if err != nil {
 		return nil, err
 	}
-	prepared, err := a.preparer.PrepareResultReleaseMail(appmail.ResultReleasePreparation{
+	prepared, err := a.preparer.PrepareResultReleaseMail(mail.ResultReleasePreparation{
 		Recipient: recipient, OccurrenceID: occurrence,
-		Details:    appmail.ResultReleaseDetails{ExamTitle: revision.Title, ReleasedAt: request.ReleasedAt},
+		Details:    mail.ResultReleaseDetails{ExamTitle: revision.Title, ReleasedAt: request.ReleasedAt},
 		ReleasedAt: request.ReleasedAt,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &examreview.PreparedResultReleaseMail{Notice: &store.PreparedMail{Occurrence: prepared.Occurrence,
+	return &review.PreparedResultReleaseMail{Notice: &store.PreparedMail{Occurrence: prepared.Occurrence,
 		Delivery: prepared.Delivery, Job: prepared.Job}, ExpectedRecipientRevision: recipient.Revision}, nil
 }

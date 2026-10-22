@@ -13,14 +13,14 @@ import (
 	"fmt"
 	"time"
 
-	cachepkg "github.com/sudosylabs/proctor/packages/cache"
+	"github.com/sudosylabs/proctor/packages/cache"
 )
 
 // ByteCache is the reusable cache contract required by CacheAdapter. Concrete
 // backend selection remains in the module-root composition package.
 type ByteCache interface {
 	Get(context.Context, string) ([]byte, error)
-	Set(context.Context, string, []byte, cachepkg.SetOptions) error
+	Set(context.Context, string, []byte, cache.SetOptions) error
 	Delete(context.Context, string) error
 }
 
@@ -39,7 +39,7 @@ type cacheAdapter struct {
 
 func (c *cacheAdapter) Get(ctx context.Context, key string) ([]byte, bool, error) {
 	value, err := c.store.Get(ctx, key)
-	if errors.Is(err, cachepkg.ErrNotFound) {
+	if errors.Is(err, cache.ErrNotFound) {
 		return nil, false, nil
 	}
 	return value, err == nil, err
@@ -49,7 +49,7 @@ func (c *cacheAdapter) Set(ctx context.Context, key string, value []byte, ttl ti
 	if ttl <= 0 || ttl > maxAllowedTTL {
 		return fmt.Errorf("local store cache TTL must be between 1ns and %s", maxAllowedTTL)
 	}
-	return c.store.Set(ctx, key, value, cachepkg.SetOptions{TTL: ttl})
+	return c.store.Set(ctx, key, value, cache.SetOptions{TTL: ttl})
 }
 
 func (c *cacheAdapter) Delete(ctx context.Context, key string) error {

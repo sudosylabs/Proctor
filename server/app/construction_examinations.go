@@ -12,15 +12,15 @@ import (
 	"errors"
 	"time"
 
-	examengine "github.com/sudosylabs/proctor/server/app/exam"
-	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
-	examcorrection "github.com/sudosylabs/proctor/server/app/exam/correction"
-	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
-	examreview "github.com/sudosylabs/proctor/server/app/exam/review"
-	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
-	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
+	"github.com/sudosylabs/proctor/server/app/exam"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/exam/correction"
+	"github.com/sudosylabs/proctor/server/app/exam/resource"
+	"github.com/sudosylabs/proctor/server/app/exam/review"
+	"github.com/sudosylabs/proctor/server/app/exam/sitting"
+	"github.com/sudosylabs/proctor/server/app/exam/workspace"
 	"github.com/sudosylabs/proctor/server/app/jobhandler"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -30,7 +30,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		realtime: foundation.realtime,
 	}
 	effects := examRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects}
-	authoring, err := examengine.NewAuthoring(examengine.AuthoringDependencies{
+	authoring, err := exam.NewAuthoring(exam.AuthoringDependencies{
 		Persistence:       deps.Store.ExamAuthoring(),
 		Memberships:       deps.Store.AcademicUnitMember(),
 		Users:             deps.Store.User(),
@@ -48,7 +48,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	sittingRenderer, ok := deps.MailTemplateRenderer.(appmail.SittingRenderer)
+	sittingRenderer, ok := deps.MailTemplateRenderer.(mail.SittingRenderer)
 	if !ok {
 		return examinationConstruction{}, errors.New("Sitting mail template renderer is unavailable")
 	}
@@ -56,7 +56,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	revisions, err := examengine.NewPublication(examengine.PublicationDependencies{
+	revisions, err := exam.NewPublication(exam.PublicationDependencies{
 		Persistence:       deps.Store.ExamRevision(),
 		Access:            deps.Store.ExamAuthoring(),
 		Memberships:       deps.Store.AcademicUnitMember(),
@@ -74,7 +74,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	}
 	sittingMailPreparation := sittingScheduleMailPreparationAdapter{preparer: sittingMail,
 		revisions: deps.Store.ExamRevision(), classes: deps.Store.Class()}
-	sittings, err := examsitting.New(examsitting.Dependencies{
+	sittings, err := sitting.New(sitting.Dependencies{
 		Persistence:    deps.Store.ExamSitting(),
 		Access:         deps.Store.ExamAuthoring(),
 		Memberships:    deps.Store.AcademicUnitMember(),
@@ -95,7 +95,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	attemptEffects := examAttemptRealtimeEffects{realtime: foundation.realtime}
 	submissionMail := examSubmissionMailPreparationAdapter{preparer: foundation.mail, users: deps.Store.User(),
 		sittings: deps.Store.ExamSitting(), revisions: deps.Store.ExamRevision()}
-	attempts, err := examattempt.New(examattempt.Dependencies{
+	attempts, err := attempt.New(attempt.Dependencies{
 		Persistence: deps.Store.ExamAttempt(), Workspace: deps.Store.ExamAttemptWorkspace(),
 		Submissions: deps.Store.ExamSubmission(), Sittings: deps.Store.ExamSitting(),
 		Managers:      examAttemptManagerAuthorizationAdapter{sittings: sittings, submissions: deps.Store.ExamSubmission(), audit: foundation.audit},
@@ -119,7 +119,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	reviewEffects := examIntegrityReviewRealtimeEffects{realtime: foundation.realtime}
 	resultReleaseMail := examResultReleaseMailPreparationAdapter{preparer: foundation.mail, users: deps.Store.User(),
 		sittings: deps.Store.ExamSitting(), revisions: deps.Store.ExamRevision()}
-	reviews, err := examreview.New(examreview.Dependencies{Persistence: deps.Store.ExamIntegrityReview(),
+	reviews, err := review.New(review.Dependencies{Persistence: deps.Store.ExamIntegrityReview(),
 		Authorizer: examIntegrityReviewAuthorizationAdapter{reviews: deps.Store.ExamIntegrityReview(), sittings: sittings,
 			audit: foundation.audit},
 		Auditor: mutationAuditAdapter{audit: foundation.audit},
@@ -128,7 +128,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	resources, err := examresource.New(examresource.Dependencies{
+	resources, err := resource.New(resource.Dependencies{
 		Persistence:    deps.Store.ExamResource(),
 		Access:         deps.Store.ExamAuthoring(),
 		Memberships:    deps.Store.AcademicUnitMember(),
@@ -146,7 +146,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	corrections, err := examcorrection.New(examcorrection.Dependencies{
+	corrections, err := correction.New(correction.Dependencies{
 		Persistence:       deps.Store.ExamCorrection(),
 		Revisions:         deps.Store.ExamRevision(),
 		Access:            deps.Store.ExamAuthoring(),
@@ -169,7 +169,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	starterWorkspace, err := examworkspace.New(examworkspace.Dependencies{
+	starterWorkspace, err := workspace.New(workspace.Dependencies{
 		Persistence:    deps.Store.ExamStarterWorkspace(),
 		Access:         deps.Store.ExamAuthoring(),
 		Memberships:    deps.Store.AcademicUnitMember(),
@@ -186,7 +186,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	records, err := examengine.NewRecords(examengine.RecordsDependencies{
+	records, err := exam.NewRecords(exam.RecordsDependencies{
 		Persistence: deps.Store.ExamRecords(),
 		Access:      deps.Store.ExamAuthoring(),
 		Memberships: deps.Store.AcademicUnitMember(),
@@ -199,7 +199,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	exports, err := examengine.NewExports(examengine.ExportsDependencies{
+	exports, err := exam.NewExports(exam.ExportsDependencies{
 		Persistence: deps.Store.ExamExport(),
 		Access:      deps.Store.ExamAuthoring(),
 		Memberships: deps.Store.AcademicUnitMember(),

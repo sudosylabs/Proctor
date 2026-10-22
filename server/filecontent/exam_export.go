@@ -19,7 +19,7 @@ import (
 	"io"
 	"time"
 
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/app/exam"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -169,14 +169,14 @@ func (c *Content) BuildExamExport(ctx context.Context, input exam.ExportArchiveI
 			}
 			return nil, errors.New("Exam export object conflict")
 		}
-		if !errors.Is(verifyErr, vfspkg.ErrNotFound) {
+		if !errors.Is(verifyErr, vfs.ErrNotFound) {
 			return nil, sanitize("inspect Exam export object", verifyErr)
 		}
 	}
 	if _, err = spool.Seek(0, io.SeekStart); err != nil {
 		return nil, sanitize("rewind Exam export spool", err)
 	}
-	_, writeErr := c.filesystem.Write(ctx, key, workReader{ctx: ctx, reader: spool}, vfspkg.WriteOptions{Size: &size, NoOverwrite: conditional})
+	_, writeErr := c.filesystem.Write(ctx, key, workReader{ctx: ctx, reader: spool}, vfs.WriteOptions{Size: &size, NoOverwrite: conditional})
 	// An error acknowledgement can still mean the exact immutable write
 	// committed. Never publish until an independent read proves all bytes.
 	matching, verifyErr := c.verifyExamExport(ctx, key, result)
@@ -229,7 +229,7 @@ func (w *examExportBoundedWriter) Write(p []byte) (int, error) {
 }
 
 func (c *Content) verifyExamExport(ctx context.Context, key string, expected *exam.ExportArchiveContent) (bool, error) {
-	file, err := c.filesystem.Open(ctx, key, vfspkg.OpenOptions{})
+	file, err := c.filesystem.Open(ctx, key, vfs.OpenOptions{})
 	if err != nil {
 		return false, err
 	}
@@ -246,7 +246,7 @@ func (c *Content) OpenExamExport(ctx context.Context, id model.ExamExportID, att
 	if c == nil || c.filesystem == nil || !id.IsValid() || !attempt.IsValid() {
 		return nil, errors.New("invalid Exam export identity")
 	}
-	file, err := c.filesystem.Open(ctx, examExportKey(id, attempt), vfspkg.OpenOptions{})
+	file, err := c.filesystem.Open(ctx, examExportKey(id, attempt), vfs.OpenOptions{})
 	if err != nil {
 		return nil, sanitize("open Exam export archive", err)
 	}
@@ -258,11 +258,11 @@ func (c *Content) PurgeExamExport(ctx context.Context, id model.ExamExportID, at
 		return errors.New("invalid Exam export identity")
 	}
 	key := examExportKey(id, attempt)
-	if err := c.filesystem.Remove(ctx, key, vfspkg.RemoveOptions{}); err != nil && !errors.Is(err, vfspkg.ErrNotFound) {
+	if err := c.filesystem.Remove(ctx, key, vfs.RemoveOptions{}); err != nil && !errors.Is(err, vfs.ErrNotFound) {
 		return sanitize("remove Exam export archive", err)
 	}
 	_, err := c.filesystem.Stat(ctx, key)
-	if errors.Is(err, vfspkg.ErrNotFound) {
+	if errors.Is(err, vfs.ErrNotFound) {
 		return nil
 	}
 	if err != nil {

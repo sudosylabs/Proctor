@@ -10,7 +10,7 @@ import (
 	"context"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -70,7 +70,7 @@ func (s *Service) StopDeliveryDetails(ctx context.Context, invocation invocation
 	if command.Request.Validate() != nil {
 		return nil, apperror.Invalid("exam.attempt.invalid", "stop_delivery_details")
 	}
-	idempotency, err := applicationidempotency.Require(invocation, store.DeliveryStopDetailsOperation, command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Require(invocation, store.DeliveryStopDetailsOperation, command.IdempotencyKey, struct {
 		Attempt model.ExamAttemptID
 		Request model.StopDeliveryDetails
 	}{access.AttemptID, command.Request})

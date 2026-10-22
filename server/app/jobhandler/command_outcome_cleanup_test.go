@@ -15,7 +15,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -36,8 +36,8 @@ func TestCommandOutcomeCleanupDeletesOneBoundedPage(t *testing.T) {
 	at := time.Now().UTC()
 	record, err := model.NewJob(model.NewJobID(), model.JobTypeCommandOutcomeCleanup, command, "cleanup", at, at, 3)
 	require.NoError(t, err)
-	outcome := (commandOutcomeCleanupHandler{outcomes: cleaner}).Run(context.Background(), jobengine.NewExecution(record, nil, nil, nil))
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome = %#v, limit", outcome)
+	outcome := (commandOutcomeCleanupHandler{outcomes: cleaner}).Run(context.Background(), job.NewExecution(record, nil, nil, nil))
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind, "outcome = %#v, limit", outcome)
 	require.Equal(t, 500, cleaner.limit, "outcome = %#v, limit", outcome)
 	var result CommandOutcomeCleanupResult
 	err = json.Unmarshal(outcome.Result, &result)

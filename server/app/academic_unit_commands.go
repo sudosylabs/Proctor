@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -90,7 +90,7 @@ func (e academicUnitRealtimeEffects) publish(
 	event string,
 	unitID string,
 ) error {
-	return e.realtime.PublishRealtimeEvent(ctx, apprealtime.RealtimeEvent{
+	return e.realtime.PublishRealtimeEvent(ctx, realtime.RealtimeEvent{
 		Name:   event,
 		Action: model.ActionAcademicUnitView,
 		Resource: model.Resource{
@@ -190,7 +190,7 @@ func (s *academicUnitCommandService) CreateAcademicUnit(
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("academic_unit.invalid", err)
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "academic_unit.create", command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Prepare(invocation, "academic_unit.create", command.IdempotencyKey, struct {
 		ParentID, Name, DisplayName, Description string
 	}{command.ParentID.String(), command.Name, command.DisplayName, command.Description})
 	if err != nil {

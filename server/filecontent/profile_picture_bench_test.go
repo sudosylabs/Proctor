@@ -18,13 +18,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
+	"github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 func BenchmarkNormalizeAndStoreProfilePicture512(b *testing.B) {
 	input := benchmarkContentPNG512(b)
-	content, err := New(memoryvfs.New(), Policy{MaximumConcurrentOperations: 2}, nil)
+	content, err := New(memory.New(), Policy{MaximumConcurrentOperations: 2}, nil)
 	require.NoError(b, err)
 	ctx := context.Background()
 	b.ReportAllocs()
@@ -40,7 +40,7 @@ func BenchmarkNormalizeAndStoreProfilePicture512(b *testing.B) {
 }
 
 func BenchmarkRenderDefaultProfilePicture512(b *testing.B) {
-	content, err := New(memoryvfs.New(), Policy{MaximumConcurrentOperations: 2}, nil)
+	content, err := New(memory.New(), Policy{MaximumConcurrentOperations: 2}, nil)
 	require.NoError(b, err)
 	ctx := context.Background()
 	b.ReportAllocs()

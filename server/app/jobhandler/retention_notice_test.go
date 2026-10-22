@@ -14,7 +14,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -40,12 +40,12 @@ func TestRetentionNoticesKeepCommittedBudgetAcrossFailedCheckpoint(t *testing.T)
 		record.WorkReserved += units
 		return true, nil
 	}
-	result := handler.Run(context.Background(), testJobExecution(record, reserve, func(context.Context, jobengine.CheckpointValue) error { return errors.New("crash") }))
-	require.Equal(t, jobengine.OutcomeRetryableFailure, result.Kind, "checkpoint crash not observed")
+	result := handler.Run(context.Background(), testJobExecution(record, reserve, func(context.Context, job.CheckpointValue) error { return errors.New("crash") }))
+	require.Equal(t, job.OutcomeRetryableFailure, result.Kind, "checkpoint crash not observed")
 	require.Equal(t, 1, notices.called, "checkpoint crash not observed")
 	for range 2 {
 		result = handler.Run(context.Background(), testJobExecution(record, reserve, keepRetentionCheckpoint(record)))
-		require.Equal(t, jobengine.OutcomeSucceeded, result.Kind)
+		require.Equal(t, job.OutcomeSucceeded, result.Kind)
 	}
 	require.Equal(t, 1, notices.called, "crash reused budget or duplicated continuation")
 	require.Len(t, jobs.enqueued, 1, "crash reused budget or duplicated continuation")
@@ -55,6 +55,6 @@ func TestRetentionNoticesLeaseLossDoesNotDispatch(t *testing.T) {
 	record, _, jobs := retentionJobFixture(t, model.JobTypeRetentionNotices, 1)
 	notices := &retentionNoticesFake{items: []model.RetentionNotice{{RetirementID: model.NewRetentionRetirementID(), RecipientUserID: model.NewUserID()}}}
 	result := (retentionNoticeHandler{notices: notices, dispatcher: notices, jobs: jobs, now: model.NowUTC}).Run(context.Background(), testJobExecution(record, func(context.Context, int, int) (bool, error) { return false, errors.New("lost lease") }, keepRetentionCheckpoint(record)))
-	require.Equal(t, jobengine.OutcomeRetryableFailure, result.Kind, "lost claim dispatched notice")
+	require.Equal(t, job.OutcomeRetryableFailure, result.Kind, "lost claim dispatched notice")
 	require.Equal(t, 0, notices.called, "lost claim dispatched notice")
 }

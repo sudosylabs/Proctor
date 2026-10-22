@@ -11,22 +11,22 @@ import (
 	"context"
 	"errors"
 
-	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
 type examSubmissionMailPreparationAdapter struct {
-	preparer  *appmail.Composer
+	preparer  *mail.Composer
 	users     store.UserStore
 	sittings  store.ExamSittingStore
 	revisions store.ExamRevisionStore
 }
 
 func (a examSubmissionMailPreparationAdapter) PrepareSubmissionReceipt(ctx context.Context,
-	request examattempt.SubmissionMailPreparation,
-) (*examattempt.PreparedSubmissionMail, error) {
+	request attempt.SubmissionMailPreparation,
+) (*attempt.PreparedSubmissionMail, error) {
 	if a.preparer == nil || a.users == nil || a.sittings == nil || a.revisions == nil ||
 		!request.CandidateUserID.IsValid() || !request.ExamID.IsValid() || !request.SittingID.IsValid() ||
 		!request.SubmissionID.IsValid() || request.SealedAt.IsZero() {
@@ -61,14 +61,14 @@ func (a examSubmissionMailPreparationAdapter) PrepareSubmissionReceipt(ctx conte
 	default:
 		return nil, errors.New("Submission receipt provenance is invalid")
 	}
-	prepared, err := a.preparer.PrepareSubmissionReceiptMail(appmail.SubmissionReceiptPreparation{
+	prepared, err := a.preparer.PrepareSubmissionReceiptMail(mail.SubmissionReceiptPreparation{
 		Recipient: recipient, OccurrenceID: model.MailOccurrenceID(request.SubmissionID.String()), TemplateKey: key,
-		Details: appmail.SubmissionReceiptDetails{ExamTitle: revision.Title, SittingID: request.SittingID,
+		Details: mail.SubmissionReceiptDetails{ExamTitle: revision.Title, SittingID: request.SittingID,
 			SubmissionID: request.SubmissionID, SealedAt: request.SealedAt}, ActionAt: request.SealedAt,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &examattempt.PreparedSubmissionMail{Notice: &store.PreparedMail{Occurrence: prepared.Occurrence,
+	return &attempt.PreparedSubmissionMail{Notice: &store.PreparedMail{Occurrence: prepared.Occurrence,
 		Delivery: prepared.Delivery, Job: prepared.Job}, ExpectedRecipientRevision: recipient.Revision}, nil
 }

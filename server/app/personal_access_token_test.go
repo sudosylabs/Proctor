@@ -19,7 +19,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -404,12 +404,12 @@ func TestPersonalAccessTokenAdministrationRendersPostgreSQLPreparedActionTime(t 
 	token := personalAccessTokenForTest(userID, nodeAt)
 	tokens := &personalAccessTokenStoreFake{current: token, preparedAt: databaseAt}
 	sealer := mailTestSealer(t)
-	mail, err := newDirectMailPreparer(personalAccessTokenActionTimeRenderer{}, &mailSenderFake{enabled: true, from: MailAddress{Name: "Proctor", Address: "no-reply@example.test"}}, sealer)
+	composer, err := newDirectMailPreparer(personalAccessTokenActionTimeRenderer{}, &mailSenderFake{enabled: true, from: MailAddress{Name: "Proctor", Address: "no-reply@example.test"}}, sealer)
 	require.NoError(t, err)
 	service, err := newPersonalAccessTokenAdministrationService(
 		tokens, &personalAccessTokenUserStoreFake{}, &personalAccessTokenAcademicUnitStoreFake{},
 		&personalAccessTokenInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
-		&personalAccessTokenAuditorFake{}, &personalAccessTokenScopeAuthorizerFake{allowed: true}, mail,
+		&personalAccessTokenAuditorFake{}, &personalAccessTokenScopeAuthorizerFake{allowed: true}, composer,
 		PersonalAccessTokenPolicy{MinimumLifetime: time.Minute, MaximumLifetime: 24 * time.Hour, MaximumPerUser: 3},
 		15*time.Minute, func() string { return "credential" }, func() time.Time { return nodeAt },
 	)
@@ -418,7 +418,7 @@ func TestPersonalAccessTokenAdministrationRendersPostgreSQLPreparedActionTime(t 
 	require.NoError(t, appErr)
 	require.NotNil(t, tokens.notice.Delivery)
 	require.NotEmpty(t, tokens.notice.Delivery.EncryptedPayload)
-	payload, err := appmail.OpenDelivery(sealer, tokens.notice.Delivery)
+	payload, err := mail.OpenDelivery(sealer, tokens.notice.Delivery)
 	require.NoError(t, err)
 	require.Contains(t, payload.Text, databaseAt.Format(time.RFC3339Nano), "rendered text %q does not contain PostgreSQL action time %s", payload.Text, databaseAt)
 }

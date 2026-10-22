@@ -8,8 +8,8 @@
 package filecontent_test
 
 import (
-	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
+	"github.com/sudosylabs/proctor/server/app/exam/workspace"
 	"github.com/sudosylabs/proctor/server/filecontent"
 )
 
-var _ examworkspace.Content = (*filecontent.Content)(nil)
+var _ workspace.Content = (*filecontent.Content)(nil)

@@ -12,14 +12,14 @@ import (
 	"io"
 	"time"
 
-	examengine "github.com/sudosylabs/proctor/server/app/exam"
-	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
-	examcorrection "github.com/sudosylabs/proctor/server/app/exam/correction"
-	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
-	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/exam"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/exam/correction"
+	"github.com/sudosylabs/proctor/server/app/exam/resource"
+	"github.com/sudosylabs/proctor/server/app/exam/workspace"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/app/jobhandler"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
@@ -37,11 +37,11 @@ type FileContent interface {
 	jobhandler.StarterWorkspaceObjectPurger
 	jobhandler.AttemptWorkspaceObjectPurger
 	jobhandler.RetentionContentPurger
-	examengine.ExportContent
-	examattempt.Content
-	examresource.FileContent
-	examcorrection.Content
-	examworkspace.Content
+	exam.ExportContent
+	attempt.Content
+	resource.FileContent
+	correction.Content
+	workspace.Content
 	OnboardingImportFiles
 }
 
@@ -59,11 +59,11 @@ type OnboardingImportFiles interface {
 type Dependencies struct {
 	Store                store.Catalog
 	Cache                authenticationCache
-	MailDeliverySender   appmail.Sender
-	MailTemplateRenderer appmail.Renderer
+	MailDeliverySender   mail.Sender
+	MailTemplateRenderer mail.Renderer
 	MailDeliveryRecorder MailDeliveryRecorder
 	MailMetricsReader    MailMetricsReader
-	JobRecorder          jobengine.Recorder
+	JobRecorder          job.Recorder
 	OperationalRecorder  OperationalRecorder
 	// MFASecretSealer is the concrete in-process cryptographic module for TOTP
 	// secrets. It is nil until the independent MFA ring is configured.

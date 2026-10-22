@@ -15,7 +15,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	server "github.com/sudosylabs/proctor/server"
+	"github.com/sudosylabs/proctor/server"
 )
 
 func TestFacadePublicContractExcludesLegacyImplementations(t *testing.T) {

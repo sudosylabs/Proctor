@@ -13,9 +13,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	cachepkg "github.com/sudosylabs/proctor/packages/cache"
+	"github.com/sudosylabs/proctor/packages/cache"
 	memorycache "github.com/sudosylabs/proctor/packages/cache/memory"
-	mailpkg "github.com/sudosylabs/proctor/packages/mail"
+	"github.com/sudosylabs/proctor/packages/mail"
 	memorymail "github.com/sudosylabs/proctor/packages/mail/memory"
 	"github.com/sudosylabs/proctor/server/platform"
 )
@@ -26,7 +26,7 @@ type Cache struct {
 }
 
 func newCache() (*Cache, error) {
-	store, err := memorycache.New(cachepkg.BytesCodec())
+	store, err := memorycache.New(cache.BytesCodec())
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +35,7 @@ func newCache() (*Cache, error) {
 
 func (c *Cache) Get(ctx context.Context, key string) ([]byte, error) {
 	value, err := c.store.Get(ctx, key)
-	if errors.Is(err, cachepkg.ErrNotFound) {
+	if errors.Is(err, cache.ErrNotFound) {
 		return nil, platform.ErrCacheMiss
 	}
 	return value, err
@@ -48,22 +48,22 @@ func (c *Cache) Set(
 	ttl time.Duration,
 	condition platform.CacheCondition,
 ) error {
-	var packageCondition cachepkg.Condition
+	var packageCondition cache.Condition
 	switch condition {
 	case platform.CacheSetAlways:
-		packageCondition = cachepkg.SetAlways
+		packageCondition = cache.SetAlways
 	case platform.CacheSetIfAbsent:
-		packageCondition = cachepkg.SetIfAbsent
+		packageCondition = cache.SetIfAbsent
 	case platform.CacheSetIfPresent:
-		packageCondition = cachepkg.SetIfPresent
+		packageCondition = cache.SetIfPresent
 	default:
 		return errors.New("unknown cache condition")
 	}
-	err := c.store.Set(ctx, key, value, cachepkg.SetOptions{
+	err := c.store.Set(ctx, key, value, cache.SetOptions{
 		TTL:       ttl,
 		Condition: packageCondition,
 	})
-	if errors.Is(err, cachepkg.ErrNotStored) {
+	if errors.Is(err, cache.ErrNotStored) {
 		return platform.ErrCacheNotStored
 	}
 	return err
@@ -74,7 +74,7 @@ func (c *Cache) Delete(ctx context.Context, key string) error {
 }
 
 func (c *Cache) Add(ctx context.Context, key string, delta int64, ttl time.Duration) (int64, error) {
-	return c.store.Add(ctx, key, delta, cachepkg.CounterOptions{TTL: ttl})
+	return c.store.Add(ctx, key, delta, cache.CounterOptions{TTL: ttl})
 }
 
 func (c *Cache) Ping(ctx context.Context) error {
@@ -92,12 +92,12 @@ func (c *Cache) Closed() bool {
 
 type Mailer struct {
 	sender *memorymail.Sender
-	from   mailpkg.Address
+	from   mail.Address
 	closed atomic.Bool
 }
 
 func newMailer() (*Mailer, error) {
-	sender, err := memorymail.New(mailpkg.ComposerConfig{
+	sender, err := memorymail.New(mail.ComposerConfig{
 		MessageIDDomain: "test.proctor.invalid",
 	})
 	if err != nil {
@@ -105,7 +105,7 @@ func newMailer() (*Mailer, error) {
 	}
 	return &Mailer{
 		sender: sender,
-		from: mailpkg.Address{
+		from: mail.Address{
 			Name:    "Proctor Test",
 			Address: "no-reply@test.proctor.invalid",
 		},
@@ -116,11 +116,11 @@ func (m *Mailer) Enabled() bool {
 	return true
 }
 
-func (m *Mailer) From() mailpkg.Address {
+func (m *Mailer) From() mail.Address {
 	return m.from
 }
 
-func (m *Mailer) Send(ctx context.Context, message mailpkg.Message) (mailpkg.Receipt, error) {
+func (m *Mailer) Send(ctx context.Context, message mail.Message) (mail.Receipt, error) {
 	if message.From.Address == "" {
 		message.From = m.from
 	}
@@ -139,7 +139,7 @@ func (m *Mailer) Close() error {
 	return nil
 }
 
-func (m *Mailer) Deliveries() []mailpkg.Delivery {
+func (m *Mailer) Deliveries() []mail.Delivery {
 	return m.sender.Deliveries()
 }
 

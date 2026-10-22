@@ -16,7 +16,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -51,16 +51,16 @@ func TestExamSittingLifecycleHandlerReconcilesAndTreatsStaleWorkAsSuccess(t *tes
 	t.Parallel()
 	at := time.Date(2026, time.August, 16, 9, 0, 0, 0, time.UTC)
 	sittingID := model.NewExamSittingID()
-	job := mustExamSittingLifecycleJob(t, sittingID, at)
+	record := mustExamSittingLifecycleJob(t, sittingID, at)
 	attemptID := model.NewJobAttemptID()
 	reconciler := &examSittingLifecycleReconcilerFake{result: lifecycleJobResult(t, sittingID, false)}
 	handler := examSittingLifecycleHandler{reconciler: reconciler}
 
-	outcome := handler.Run(context.Background(), jobengine.NewExecution(job, &model.JobAttempt{ID: attemptID}, nil, nil))
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind)
+	outcome := handler.Run(context.Background(), job.NewExecution(record, &model.JobAttempt{ID: attemptID}, nil, nil))
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind)
 	require.NoError(t, outcome.Err)
 	require.Equal(t, sittingID, reconciler.sittingID, "reconcile identity")
-	require.Equal(t, job.ID, reconciler.jobID, "reconcile identity")
+	require.Equal(t, record.ID, reconciler.jobID, "reconcile identity")
 	require.Equal(t, attemptID, reconciler.attemptID, "reconcile identity")
 	var result ExamSittingLifecycleJobResult
 	require.NoError(t, json.Unmarshal(outcome.Result, &result), "result = %#v", result)
@@ -80,23 +80,23 @@ func TestExamSittingLifecycleHandlerClassifiesFailures(t *testing.T) {
 		name string
 		job  *model.Job
 		err  error
-		kind jobengine.OutcomeKind
+		kind job.OutcomeKind
 		code string
 	}{
 		{name: "invalid command", job: func() *model.Job {
 			copy := *valid
 			copy.Command = json.RawMessage(`{"exam_sitting_id":null}`)
 			return &copy
-		}(), kind: jobengine.OutcomePermanentFailure, code: "job.command.invalid"},
-		{name: "invalid durable request", job: valid, err: store.NewErrInvalidInput("exam_sitting", "advance_due", nil), kind: jobengine.OutcomePermanentFailure, code: "job.invariant_failed"},
-		{name: "database constraint rejection", job: valid, err: store.NewErrConstraintViolation("exam_sitting", "exam_sittings_lifecycle_check"), kind: jobengine.OutcomeRetryableFailure, code: "dependency.unavailable"},
-		{name: "missing durable target", job: valid, err: store.NewErrNotFound("exam_sitting", sittingID.String()), kind: jobengine.OutcomePermanentFailure, code: "job.invariant_failed"},
-		{name: "dependency failure", job: valid, err: errors.New("database unavailable"), kind: jobengine.OutcomeRetryableFailure, code: "dependency.unavailable"},
+		}(), kind: job.OutcomePermanentFailure, code: "job.command.invalid"},
+		{name: "invalid durable request", job: valid, err: store.NewErrInvalidInput("exam_sitting", "advance_due", nil), kind: job.OutcomePermanentFailure, code: "job.invariant_failed"},
+		{name: "database constraint rejection", job: valid, err: store.NewErrConstraintViolation("exam_sitting", "exam_sittings_lifecycle_check"), kind: job.OutcomeRetryableFailure, code: "dependency.unavailable"},
+		{name: "missing durable target", job: valid, err: store.NewErrNotFound("exam_sitting", sittingID.String()), kind: job.OutcomePermanentFailure, code: "job.invariant_failed"},
+		{name: "dependency failure", job: valid, err: errors.New("database unavailable"), kind: job.OutcomeRetryableFailure, code: "dependency.unavailable"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reconciler := &examSittingLifecycleReconcilerFake{err: tt.err}
-			outcome := (examSittingLifecycleHandler{reconciler: reconciler}).Run(context.Background(), jobengine.NewExecution(tt.job, attempt, nil, nil))
+			outcome := (examSittingLifecycleHandler{reconciler: reconciler}).Run(context.Background(), job.NewExecution(tt.job, attempt, nil, nil))
 			require.Equal(t, tt.kind, outcome.Kind)
 			require.Equal(t, tt.code, outcome.PublicErrorCode)
 		})
@@ -108,7 +108,7 @@ func TestExamSittingLifecycleDescriptorIsBoundedAndNonCancelable(t *testing.T) {
 	descriptor := examSittingLifecycleDescriptor(examSittingLifecycleHandler{reconciler: &examSittingLifecycleReconcilerFake{}})
 	require.Equal(t, model.JobTypeExamSittingLifecycle, descriptor.Type)
 	require.False(t, descriptor.Cancelable)
-	require.Equal(t, jobengine.VisibilityOperator, descriptor.Visibility)
+	require.Equal(t, job.VisibilityOperator, descriptor.Visibility)
 	require.Equal(t, 8, descriptor.MaximumAttempts)
 	require.GreaterOrEqual(t, descriptor.Concurrency, 1)
 }

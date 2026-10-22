@@ -16,7 +16,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -40,14 +40,14 @@ func (f *auditAttemptSweeperFake) FailAbandonedAttempts(_ context.Context, input
 	return changed, nil
 }
 
-func runAuditAttemptSweep(t *testing.T, sweeper *auditAttemptSweeperFake, batch int) jobengine.Outcome {
+func runAuditAttemptSweep(t *testing.T, sweeper *auditAttemptSweeperFake, batch int) job.Outcome {
 	t.Helper()
 	command, err := json.Marshal(AuditAttemptSweepCommand{BatchSize: batch})
 	require.NoError(t, err)
 	at := time.Now().UTC()
 	record, err := model.NewJob(model.NewJobID(), model.JobTypeAuditAttemptSweep, command, "sweep", at, at, 3)
 	require.NoError(t, err)
-	return (auditAttemptSweepHandler{audits: sweeper}).Run(context.Background(), jobengine.NewExecution(record, nil, nil, nil))
+	return (auditAttemptSweepHandler{audits: sweeper}).Run(context.Background(), job.NewExecution(record, nil, nil, nil))
 }
 
 func TestAuditAttemptSweepContinuesWhileBatchesAreFull(t *testing.T) {
@@ -55,7 +55,7 @@ func TestAuditAttemptSweepContinuesWhileBatchesAreFull(t *testing.T) {
 
 	sweeper := &auditAttemptSweeperFake{results: []int64{10, 10, 3}}
 	outcome := runAuditAttemptSweep(t, sweeper, 10)
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome = %#v", outcome)
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind, "outcome = %#v", outcome)
 	require.Len(t, sweeper.inputs, 3)
 	require.Equal(t, store.AuditAttemptAbandonment{Age: 24 * time.Hour, Limit: 10}, sweeper.inputs[0])
 	var result AuditAttemptSweepResult
@@ -72,7 +72,7 @@ func TestAuditAttemptSweepBoundsOneRun(t *testing.T) {
 	}
 	sweeper := &auditAttemptSweeperFake{results: results}
 	outcome := runAuditAttemptSweep(t, sweeper, 5)
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind)
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind)
 	require.Len(t, sweeper.inputs, maximumAuditAttemptSweepBatches)
 }
 
@@ -80,5 +80,5 @@ func TestAuditAttemptSweepRetriesAStoreFailure(t *testing.T) {
 	t.Parallel()
 
 	outcome := runAuditAttemptSweep(t, &auditAttemptSweeperFake{err: errors.New("down")}, 5)
-	require.Equal(t, jobengine.OutcomeRetryableFailure, outcome.Kind)
+	require.Equal(t, job.OutcomeRetryableFailure, outcome.Kind)
 }

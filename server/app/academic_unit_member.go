@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -117,7 +117,7 @@ func (s *academicUnitMemberService) CreateAcademicUnitMember(ctx context.Context
 		if err != nil {
 			return nil, academicUnitMemberStoreErrors.Translate(err)
 		}
-		notice, err = s.mail.PrepareRelationshipTransition(appmail.RelationshipTransitionPreparation{
+		notice, err = s.mail.PrepareRelationshipTransition(mail.RelationshipTransitionPreparation{
 			Recipient: recipient, OccurrenceID: model.NewMailOccurrenceID(),
 			TemplateKey: model.MailTemplateAcademicUnitAssigned, ActionAt: at,
 		})
@@ -125,7 +125,7 @@ func (s *academicUnitMemberService) CreateAcademicUnitMember(ctx context.Context
 			return nil, apperror.New("mail.unavailable").Wrap(err)
 		}
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "academic_unit_member.add", command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Prepare(invocation, "academic_unit_member.add", command.IdempotencyKey, struct {
 		AcademicUnitID string `json:"academic_unit_id"`
 		UserID         string `json:"user_id"`
 		StartAt        int64  `json:"start_at"`
@@ -187,7 +187,7 @@ func (s *academicUnitMemberService) EndAcademicUnitMember(ctx context.Context, i
 	if command.BatchScopeID != "" && strings.TrimSpace(command.BatchScopeID) != current.AcademicUnitID.String() {
 		return nil, apperror.New("resource.not_found").WithField("resource", "academic_unit_member")
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "academic_unit_member.end", command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Prepare(invocation, "academic_unit_member.end", command.IdempotencyKey, struct {
 		ID      string `json:"id"`
 		ScopeID string `json:"scope_id,omitempty"`
 	}{id.String(), strings.TrimSpace(command.BatchScopeID)})
@@ -205,7 +205,7 @@ func (s *academicUnitMemberService) EndAcademicUnitMember(ctx context.Context, i
 		if err != nil {
 			return nil, academicUnitMemberStoreErrors.Translate(err)
 		}
-		notice, err = s.mail.PrepareRelationshipTransition(appmail.RelationshipTransitionPreparation{
+		notice, err = s.mail.PrepareRelationshipTransition(mail.RelationshipTransitionPreparation{
 			Recipient: recipient, OccurrenceID: model.NewMailOccurrenceID(),
 			TemplateKey: model.MailTemplateAcademicUnitAssignmentEnded, ActionAt: at,
 		})

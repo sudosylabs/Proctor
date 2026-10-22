@@ -16,8 +16,8 @@ import (
 	"context"
 	"time"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
@@ -64,13 +64,13 @@ type CatalogDependencies struct {
 	RetentionNoticeDispatcher RetentionNoticeDispatcher
 
 	MailDeliveries         MailDeliveryLifecycleStore
-	MailSender             appmail.Sender
+	MailSender             mail.Sender
 	MailSealer             *secretseal.Sealer
 	MailRecorder           MailDeliveryRecorder
 	MailHealth             MailHealth
 	MailRelevance          MailDeliveryRelevance
 	SittingMailStore       SittingMailExpansionStore
-	SittingMail            *appmail.SittingComposer
+	SittingMail            *mail.SittingComposer
 	MailCleanup            MailCleanupStore
 	SittingMailMaintenance SittingMailMaintenanceStore
 	MailRekey              MailRekeyJobStore
@@ -87,8 +87,8 @@ type CatalogDependencies struct {
 }
 
 type Catalog struct {
-	Descriptors []jobengine.Descriptor
-	Recurrences []jobengine.Recurrence
+	Descriptors []job.Descriptor
+	Recurrences []job.Recurrence
 }
 
 func NewCatalog(deps CatalogDependencies) Catalog {
@@ -102,7 +102,7 @@ func NewCatalog(deps CatalogDependencies) Catalog {
 		attemptWorkspace: deps.AttemptWorkspaces, attemptWorkspaceContent: deps.AttemptWorkspaceContent,
 		continuations: deps.JobStore, now: now,
 	}
-	descriptors := []jobengine.Descriptor{
+	descriptors := []job.Descriptor{
 		defaultProfilePictureDescriptor(defaultProfilePictureHandler{generator: deps.DefaultProfilePictureGenerator}),
 		defaultProfilePictureReconciliationDescriptor(defaultProfilePictureReconciliationHandler{users: deps.Users, defaults: deps.DefaultProfilePictureJobs, now: now}),
 		filePurgeExpiredContentDescriptor(purgeHandler),
@@ -139,7 +139,7 @@ func NewCatalog(deps CatalogDependencies) Catalog {
 		}),
 	}))
 
-	recurrences := []jobengine.Recurrence{
+	recurrences := []job.Recurrence{
 		{Name: "profile-picture-default-reconciliation", Proposer: defaultProfilePictureReconciliationJobProposer{jobs: deps.JobStore, now: now}},
 		{Name: "file-purge-expired-content", Proposer: filePurgeExpiredContentProposer{jobs: deps.JobStore, now: now}},
 		{Name: "job-history-cleanup", Proposer: jobHistoryCleanupProposer{jobs: deps.JobStore, now: now}},
@@ -158,7 +158,7 @@ func NewCatalog(deps CatalogDependencies) Catalog {
 	return Catalog{Descriptors: descriptors, Recurrences: recurrences}
 }
 
-func retentionPolicies(descriptors []jobengine.Descriptor) []store.JobRetentionPolicy {
+func retentionPolicies(descriptors []job.Descriptor) []store.JobRetentionPolicy {
 	policies := make([]store.JobRetentionPolicy, 0, len(descriptors))
 	for _, descriptor := range descriptors {
 		policies = append(policies, store.JobRetentionPolicy{

@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/logging"
 	"github.com/sudosylabs/proctor/server/platform/externalauth"
@@ -38,7 +38,7 @@ type OwnedResources struct {
 	Cache                  Cache
 	Cluster                Cluster
 	Mailer                 Mailer
-	VFS                    vfspkg.FileSystem
+	VFS                    vfs.FileSystem
 	ExternalAuthentication *externalauth.Registry
 }
 
@@ -49,7 +49,7 @@ type Service struct {
 	cache                  Cache
 	cluster                Cluster
 	mailer                 Mailer
-	vfs                    vfspkg.FileSystem
+	vfs                    vfs.FileSystem
 	externalAuthentication *externalauth.Registry
 	clusterBackend         string
 	mailBackend            string

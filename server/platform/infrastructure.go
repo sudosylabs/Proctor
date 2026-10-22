@@ -13,9 +13,9 @@ import (
 	"fmt"
 	"time"
 
-	cachepkg "github.com/sudosylabs/proctor/packages/cache"
-	mailpkg "github.com/sudosylabs/proctor/packages/mail"
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/cache"
+	"github.com/sudosylabs/proctor/packages/mail"
+	"github.com/sudosylabs/proctor/packages/vfs"
 )
 
 var (
@@ -46,8 +46,8 @@ type Cache interface {
 // Mailer owns the configured sender identity in addition to the transport.
 type Mailer interface {
 	Enabled() bool
-	From() mailpkg.Address
-	Send(context.Context, mailpkg.Message) (mailpkg.Receipt, error)
+	From() mail.Address
+	Send(context.Context, mail.Message) (mail.Receipt, error)
 	Test(context.Context) error
 	Close() error
 }
@@ -55,7 +55,7 @@ type Mailer interface {
 // ByteCache is the package-cache contract required by NewCacheAdapter.
 type ByteCache interface {
 	Get(context.Context, string) ([]byte, error)
-	Set(context.Context, string, []byte, cachepkg.SetOptions) error
+	Set(context.Context, string, []byte, cache.SetOptions) error
 	Delete(context.Context, string) error
 }
 
@@ -82,7 +82,7 @@ type cacheAdapter struct {
 
 func (c *cacheAdapter) Get(ctx context.Context, key string) ([]byte, error) {
 	value, err := c.backend.Store.Get(ctx, key)
-	if errors.Is(err, cachepkg.ErrNotFound) {
+	if errors.Is(err, cache.ErrNotFound) {
 		return nil, fmt.Errorf("%w: %v", ErrCacheMiss, err)
 	}
 	return value, err
@@ -95,22 +95,22 @@ func (c *cacheAdapter) Set(
 	ttl time.Duration,
 	condition CacheCondition,
 ) error {
-	var packageCondition cachepkg.Condition
+	var packageCondition cache.Condition
 	switch condition {
 	case CacheSetAlways:
-		packageCondition = cachepkg.SetAlways
+		packageCondition = cache.SetAlways
 	case CacheSetIfAbsent:
-		packageCondition = cachepkg.SetIfAbsent
+		packageCondition = cache.SetIfAbsent
 	case CacheSetIfPresent:
-		packageCondition = cachepkg.SetIfPresent
+		packageCondition = cache.SetIfPresent
 	default:
 		return fmt.Errorf("platform cache: unknown set condition %d", condition)
 	}
-	err := c.backend.Store.Set(ctx, key, value, cachepkg.SetOptions{
+	err := c.backend.Store.Set(ctx, key, value, cache.SetOptions{
 		TTL:       ttl,
 		Condition: packageCondition,
 	})
-	if errors.Is(err, cachepkg.ErrNotStored) {
+	if errors.Is(err, cache.ErrNotStored) {
 		return fmt.Errorf("%w: %v", ErrCacheNotStored, err)
 	}
 	return err
@@ -126,11 +126,11 @@ func (c *cacheAdapter) Add(
 	delta int64,
 	ttl time.Duration,
 ) (int64, error) {
-	counter, ok := c.backend.Store.(cachepkg.Counter)
+	counter, ok := c.backend.Store.(cache.Counter)
 	if !ok {
-		return 0, cachepkg.ErrUnsupported
+		return 0, cache.ErrUnsupported
 	}
-	return counter.Add(ctx, key, delta, cachepkg.CounterOptions{TTL: ttl})
+	return counter.Add(ctx, key, delta, cache.CounterOptions{TTL: ttl})
 }
 
 func (c *cacheAdapter) Ping(ctx context.Context) error {
@@ -149,32 +149,32 @@ func (c *cacheAdapter) Close() error {
 
 // NewMailAdapter wraps a reusable mail sender as the platform Mailer port.
 // Concrete backend construction belongs to the module-root composition package.
-func NewMailAdapter(enabled bool, from mailpkg.Address, sender mailpkg.Sender) Mailer {
+func NewMailAdapter(enabled bool, from mail.Address, sender mail.Sender) Mailer {
 	return &mailAdapter{enabled: enabled, from: from, sender: sender}
 }
 
 // NewDisabledMailer constructs an explicitly disabled mail capability.
-func NewDisabledMailer(from mailpkg.Address) Mailer {
+func NewDisabledMailer(from mail.Address) Mailer {
 	return &mailAdapter{from: from}
 }
 
 type mailAdapter struct {
 	enabled bool
-	from    mailpkg.Address
-	sender  mailpkg.Sender
+	from    mail.Address
+	sender  mail.Sender
 }
 
 func (m *mailAdapter) Enabled() bool {
 	return m.enabled
 }
 
-func (m *mailAdapter) From() mailpkg.Address {
+func (m *mailAdapter) From() mail.Address {
 	return m.from
 }
 
-func (m *mailAdapter) Send(ctx context.Context, message mailpkg.Message) (mailpkg.Receipt, error) {
+func (m *mailAdapter) Send(ctx context.Context, message mail.Message) (mail.Receipt, error) {
 	if !m.enabled || m.sender == nil {
-		return mailpkg.Receipt{}, ErrMailDisabled
+		return mail.Receipt{}, ErrMailDisabled
 	}
 	if message.From.Address == "" {
 		message.From = m.from
@@ -189,7 +189,7 @@ func (m *mailAdapter) Test(ctx context.Context) error {
 	if !m.enabled || m.sender == nil {
 		return ctx.Err()
 	}
-	tester, ok := m.sender.(mailpkg.Tester)
+	tester, ok := m.sender.(mail.Tester)
 	if !ok {
 		return nil
 	}
@@ -202,7 +202,7 @@ func (m *mailAdapter) Close() error {
 
 // checkVFS runs on every readiness probe, so it checks only that the backend
 // root is reachable; its cost must not grow with the number of stored files.
-func checkVFS(ctx context.Context, filesystem vfspkg.FileSystem) error {
+func checkVFS(ctx context.Context, filesystem vfs.FileSystem) error {
 	return filesystem.CheckRoot(ctx)
 }
 

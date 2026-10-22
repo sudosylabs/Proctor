@@ -15,7 +15,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -230,7 +230,7 @@ func (s *mfaApplicationService) ActivateMFA(
 	// The frozen notice retains its existing millisecond timestamp contract;
 	// the credential and Session expiry decision uses the native instant.
 	prepared, appErr := s.prepareSecurityNotice(
-		ctx, principal.UserID, appmail.MFANoticeEnabled, model.TimeFromMillis(now.UnixMilli()),
+		ctx, principal.UserID, mail.MFANoticeEnabled, model.TimeFromMillis(now.UnixMilli()),
 	)
 	if appErr != nil {
 		return nil, appErr
@@ -333,7 +333,7 @@ func (s *mfaApplicationService) RegenerateMFARecoveryCodes(
 	}
 	now := model.TimeFromMillis(s.now().UnixMilli())
 	prepared, appErr := s.prepareSecurityNotice(
-		ctx, principal.UserID, appmail.MFANoticeRecoveryCodesRegenerated, now,
+		ctx, principal.UserID, mail.MFANoticeRecoveryCodesRegenerated, now,
 	)
 	if appErr != nil {
 		return nil, appErr
@@ -374,7 +374,7 @@ func (s *mfaApplicationService) DisableMFA(
 	}
 	now := model.TimeFromMillis(s.now().UnixMilli())
 	prepared, appErr := s.prepareSecurityNotice(
-		ctx, principal.UserID, appmail.MFANoticeDisabled, now,
+		ctx, principal.UserID, mail.MFANoticeDisabled, now,
 	)
 	if appErr != nil {
 		return appErr
@@ -404,14 +404,14 @@ func (s *mfaApplicationService) DisableMFA(
 func (s *mfaApplicationService) prepareSecurityNotice(
 	ctx context.Context,
 	userID model.UserID,
-	kind appmail.MFANoticeKind,
+	kind mail.MFANoticeKind,
 	at time.Time,
 ) (*store.PreparedMail, error) {
 	user, err := s.users.Get(ctx, userID)
 	if err != nil {
 		return nil, mfaStoreErrors.Translate(err)
 	}
-	prepared, err := s.mail.PrepareMFANotice(appmail.NoticePreparation{Recipient: user, At: at}, kind)
+	prepared, err := s.mail.PrepareMFANotice(mail.NoticePreparation{Recipient: user, At: at}, kind)
 	if err != nil {
 		return nil, authenticationUnavailable(err)
 	}

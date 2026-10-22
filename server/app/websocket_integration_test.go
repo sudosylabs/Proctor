@@ -29,7 +29,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
@@ -147,7 +147,7 @@ func TestWebSocketIntegration(t *testing.T) {
 	eventData := json.RawMessage(`{"version":1}`)
 	require.NoError(t, helper.App.PublishRealtimeEvent(
 		context.Background(),
-		apprealtime.RealtimeEvent{
+		realtime.RealtimeEvent{
 			Name:   "institution.updated",
 			Action: subscription.Action,
 			Resource: model.Resource{
@@ -327,7 +327,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 
 	require.NoError(t, nodeA.App.PublishRealtimeEvent(
 		context.Background(),
-		apprealtime.RealtimeEvent{
+		realtime.RealtimeEvent{
 			Name:   "institution.cluster_updated",
 			Action: subscription.Action,
 			Resource: model.Resource{

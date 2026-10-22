@@ -22,15 +22,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
-	localvfs "github.com/sudosylabs/proctor/packages/vfs/local"
-	s3vfs "github.com/sudosylabs/proctor/packages/vfs/s3"
+	"github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/vfs/local"
+	"github.com/sudosylabs/proctor/packages/vfs/s3"
 	"github.com/sudosylabs/proctor/server/filecontent"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestAttemptWorkspaceContentIntegrationOnLocalVFS(t *testing.T) {
-	filesystem, err := localvfs.New(filepath.Join(t.TempDir(), "vfs"))
+	filesystem, err := local.New(filepath.Join(t.TempDir(), "vfs"))
 	require.NoError(t, err)
 	proveAttemptWorkspaceContentConformance(t, filesystem)
 }
@@ -42,7 +42,7 @@ func TestAttemptWorkspaceContentIntegrationOnS3(t *testing.T) {
 	}
 	secure, err := strconv.ParseBool(environmentDefault(os.Getenv("VFS_S3_SECURE"), "true"))
 	require.NoError(t, err)
-	filesystem, err := s3vfs.New(s3vfs.Config{
+	filesystem, err := s3.New(s3.Config{
 		Endpoint: endpoint, AccessKey: os.Getenv("VFS_S3_ACCESS_KEY"), SecretKey: os.Getenv("VFS_S3_SECRET_KEY"),
 		SessionToken: os.Getenv("VFS_S3_SESSION_TOKEN"), Bucket: bucket, Region: os.Getenv("VFS_S3_REGION"),
 		Secure: secure, Prefix: fmt.Sprintf("proctor-attempt-workspace/%d", time.Now().UnixNano()),
@@ -51,7 +51,7 @@ func TestAttemptWorkspaceContentIntegrationOnS3(t *testing.T) {
 	proveAttemptWorkspaceContentConformance(t, filesystem)
 }
 
-func proveAttemptWorkspaceContentConformance(t *testing.T, filesystem vfspkg.FileSystem) {
+func proveAttemptWorkspaceContentConformance(t *testing.T, filesystem vfs.FileSystem) {
 	t.Helper()
 	ctx := context.Background()
 	content, err := filecontent.New(filesystem, filecontent.Policy{MaximumConcurrentOperations: 2}, nil)

@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -111,7 +111,7 @@ func (e classMemberRealtimeEffects) MembershipChanged(
 	if e.sittings == nil || e.realtime == nil {
 		return errors.New("Class Membership realtime dependencies are invalid")
 	}
-	candidateEvent, err := apprealtime.NewCandidateExamActivityChangedEvent(candidateID)
+	candidateEvent, err := realtime.NewCandidateExamActivityChangedEvent(candidateID)
 	if err != nil {
 		return err
 	}
@@ -135,7 +135,7 @@ func (e classMemberRealtimeEffects) MembershipChanged(
 				break
 			}
 			for _, target := range targets {
-				event, eventErr := apprealtime.NewManagerSittingBoardChangedEvent(target.ExamID, target.SittingID)
+				event, eventErr := realtime.NewManagerSittingBoardChangedEvent(target.ExamID, target.SittingID)
 				if eventErr != nil {
 					errs = append(errs, eventErr)
 					continue
@@ -211,7 +211,7 @@ func (s *classMemberService) EnrollClassMember(ctx context.Context, invocation i
 	if command.batchRetainedOutcome {
 		candidate := &model.ClassMember{ClassID: parsedClassID, UserID: userID, StartsAt: model.TimeFromMillis(command.StartAt), EndsAt: model.OptionalTimeFromMillis(command.EndAt)}
 		candidate.PrepareCreate(memberID, at)
-		idempotency, commandErr := applicationidempotency.Prepare(invocation, "class_member.enroll", command.IdempotencyKey, struct {
+		idempotency, commandErr := idempotency.Prepare(invocation, "class_member.enroll", command.IdempotencyKey, struct {
 			ClassID            string `json:"class_id"`
 			UserID             string `json:"user_id"`
 			StartAt            int64  `json:"start_at"`
@@ -320,7 +320,7 @@ func (s *classMemberService) EnrollClassMember(ctx context.Context, invocation i
 			return nil, classMemberStoreErrors.Translate(err)
 		}
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "class_member.enroll", command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Prepare(invocation, "class_member.enroll", command.IdempotencyKey, struct {
 		ClassID            string `json:"class_id"`
 		UserID             string `json:"user_id"`
 		StartAt            int64  `json:"start_at"`
@@ -345,7 +345,7 @@ func (s *classMemberService) EnrollClassMember(ctx context.Context, invocation i
 			return nil, classMemberStoreErrors.Translate(err)
 		}
 	}
-	details := appmail.ClassTransitionDetails{ClassDisplayName: class.DisplayName, StartsAt: candidate.StartsAt}
+	details := mail.ClassTransitionDetails{ClassDisplayName: class.DisplayName, StartsAt: candidate.StartsAt}
 	if candidate.EndsAt.Valid {
 		details.EndsAt = candidate.EndsAt.Time
 	}
@@ -356,7 +356,7 @@ func (s *classMemberService) EnrollClassMember(ctx context.Context, invocation i
 	}
 	var prepared *store.PreparedMail
 	if !command.batchRetainedOutcome {
-		prepared, err = s.mail.PrepareClassTransition(appmail.ClassTransitionPreparation{Recipient: recipient,
+		prepared, err = s.mail.PrepareClassTransition(mail.ClassTransitionPreparation{Recipient: recipient,
 			OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: key,
 			Details: details, ActionAt: at})
 		if err != nil {
@@ -438,7 +438,7 @@ func (s *classMemberService) EndClassMember(ctx context.Context, invocation invo
 		return nil, err
 	}
 	if command.batchRetainedOutcome {
-		idempotency, err := applicationidempotency.Prepare(invocation, "class_member.end", command.IdempotencyKey, struct {
+		idempotency, err := idempotency.Prepare(invocation, "class_member.end", command.IdempotencyKey, struct {
 			ID      string `json:"id"`
 			ScopeID string `json:"scope_id,omitempty"`
 		}{id.String(), strings.TrimSpace(command.BatchScopeID)})
@@ -485,7 +485,7 @@ func (s *classMemberService) EndClassMember(ctx context.Context, invocation invo
 	if err != nil {
 		return nil, classMemberStoreErrors.Translate(err)
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "class_member.end", command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Prepare(invocation, "class_member.end", command.IdempotencyKey, struct {
 		ID      string `json:"id"`
 		ScopeID string `json:"scope_id,omitempty"`
 	}{id.String(), strings.TrimSpace(command.BatchScopeID)})
@@ -502,10 +502,10 @@ func (s *classMemberService) EndClassMember(ctx context.Context, invocation invo
 	at := model.TimeFromMillis(model.MillisFromTime(s.now()))
 	prepared := &store.PreparedMail{}
 	if !command.batchRetainedOutcome {
-		prepared, err = s.mail.PrepareClassTransition(appmail.ClassTransitionPreparation{Recipient: recipient,
+		prepared, err = s.mail.PrepareClassTransition(mail.ClassTransitionPreparation{Recipient: recipient,
 			OccurrenceID: model.NewMailOccurrenceID(),
 			TemplateKey:  model.MailTemplateAcademicClassEnrollmentEnded,
-			Details:      appmail.ClassTransitionDetails{ClassDisplayName: class.DisplayName, StartsAt: current.StartsAt, EndsAt: at}, ActionAt: at})
+			Details:      mail.ClassTransitionDetails{ClassDisplayName: class.DisplayName, StartsAt: current.StartsAt, EndsAt: at}, ActionAt: at})
 		if err != nil {
 			return nil, apperror.New("mail.unavailable").Wrap(err)
 		}

@@ -19,8 +19,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	cachepkg "github.com/sudosylabs/proctor/packages/cache"
-	memorycache "github.com/sudosylabs/proctor/packages/cache/memory"
+	"github.com/sudosylabs/proctor/packages/cache"
+	"github.com/sudosylabs/proctor/packages/cache/memory"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/localcachelayer"
@@ -530,7 +530,7 @@ func validAcademicPeriod() *model.AcademicPeriod {
 }
 
 func newMemoryCache(maxEntries int) (localcachelayer.Cache, error) {
-	store, err := memorycache.New(cachepkg.BytesCodec(), memorycache.Config{
+	store, err := memory.New(cache.BytesCodec(), memory.Config{
 		MaxEntries: maxEntries,
 		MaxBytes:   64 << 20,
 	})

@@ -17,8 +17,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -29,15 +29,15 @@ func TestExamSittingSealingJobCheckpointsEachAttemptThenCloses(t *testing.T) {
 	sitting := closingSittingForSealingTest(t, at)
 	targets := automaticTargetsForSealingTest(sitting, 2)
 	service := &examSittingSealingFake{targets: targets, finish: sealingLifecycleResult(sitting, true)}
-	job := mustExamSittingSealingJob(t, sitting.ID, at)
-	var checkpoints []jobengine.CheckpointValue
-	execution := jobengine.NewExecution(job, &model.JobAttempt{ID: model.NewJobAttemptID()},
-		func(_ context.Context, value jobengine.CheckpointValue) error {
+	record := mustExamSittingSealingJob(t, sitting.ID, at)
+	var checkpoints []job.CheckpointValue
+	execution := job.NewExecution(record, &model.JobAttempt{ID: model.NewJobAttemptID()},
+		func(_ context.Context, value job.CheckpointValue) error {
 			checkpoints = append(checkpoints, value)
 			return nil
 		}, allowJobWorkReservation())
 	outcome := (examSittingSealingHandler{service: service}).Run(context.Background(), execution)
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v sealed=%d checkpoints=%d finish=%d continuations", outcome, len(service.sealed), len(checkpoints), service.finishCalls)
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind, "outcome=%#v sealed=%d checkpoints=%d finish=%d continuations", outcome, len(service.sealed), len(checkpoints), service.finishCalls)
 	require.NoError(t, outcome.Err, "outcome=%#v sealed=%d checkpoints=%d finish=%d continuations", outcome, len(service.sealed), len(checkpoints), service.finishCalls)
 	require.Len(t, service.sealed, 2, "outcome=%#v sealed=%d checkpoints=%d finish=%d continuations", outcome, len(service.sealed), len(checkpoints), service.finishCalls)
 	require.Len(t, checkpoints, 2, "outcome=%#v sealed=%d checkpoints=%d finish=%d continuations", outcome, len(service.sealed), len(checkpoints), service.finishCalls)
@@ -63,16 +63,16 @@ func TestExamSittingSealingJobBoundsPassAndDurablyContinues(t *testing.T) {
 	sitting := closingSittingForSealingTest(t, at)
 	service := &examSittingSealingFake{targets: automaticTargetsForSealingTest(sitting, examSittingSealingMaximumWork+1),
 		finish: sealingLifecycleResult(sitting, false)}
-	job := mustExamSittingSealingJob(t, sitting.ID, at)
+	record := mustExamSittingSealingJob(t, sitting.ID, at)
 	outcome := (examSittingSealingHandler{service: service}).Run(
-		context.Background(), jobengine.NewExecution(job, &model.JobAttempt{ID: model.NewJobAttemptID()},
-			func(context.Context, jobengine.CheckpointValue) error { return nil }, allowJobWorkReservation()))
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v sealed=%d finish=%d continuations", outcome, len(service.sealed), service.finishCalls)
+		context.Background(), job.NewExecution(record, &model.JobAttempt{ID: model.NewJobAttemptID()},
+			func(context.Context, job.CheckpointValue) error { return nil }, allowJobWorkReservation()))
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind, "outcome=%#v sealed=%d finish=%d continuations", outcome, len(service.sealed), service.finishCalls)
 	require.Len(t, service.sealed, examSittingSealingMaximumWork, "outcome=%#v sealed=%d finish=%d continuations", outcome, len(service.sealed), service.finishCalls)
 	require.Equal(t, 1, service.finishCalls, "outcome=%#v sealed=%d finish=%d continuations", outcome, len(service.sealed), service.finishCalls)
 	require.Equal(t, 1, service.continuationCalls, "outcome=%#v sealed=%d finish=%d continuations", outcome, len(service.sealed), service.finishCalls)
 	require.Equal(t, sitting.ID, service.continuationSittingID, "outcome=%#v sealed=%d finish=%d continuations", outcome, len(service.sealed), service.finishCalls)
-	require.Equal(t, job.ID, service.continuationParentID, "outcome=%#v sealed=%d finish=%d continuations", outcome, len(service.sealed), service.finishCalls)
+	require.Equal(t, record.ID, service.continuationParentID, "outcome=%#v sealed=%d finish=%d continuations", outcome, len(service.sealed), service.finishCalls)
 	var result ExamSittingSealingResult
 	err := json.Unmarshal(outcome.Result, &result)
 	require.NoError(t, err, "result=%#v err", result)
@@ -88,7 +88,7 @@ func TestExamSittingSealingDescriptorIsBoundedCheckpointedAndNonCancelable(t *te
 	descriptor := examSittingSealingDescriptor(examSittingSealingHandler{})
 	require.Equal(t, model.JobTypeExamSittingSealing, descriptor.Type)
 	require.False(t, descriptor.Cancelable)
-	require.Equal(t, jobengine.VisibilityOperator, descriptor.Visibility)
+	require.Equal(t, job.VisibilityOperator, descriptor.Visibility)
 	require.True(t, descriptor.Checkpoints)
 	require.Len(t, descriptor.ProgressStages, 1)
 	require.Equal(t, "sealing", descriptor.ProgressStages[0])
@@ -100,10 +100,10 @@ func TestExamSittingSealingJobLeavesUnfinishedClosingStateRetryable(t *testing.T
 	at := time.Date(2026, time.August, 18, 9, 0, 0, 0, time.UTC)
 	sitting := closingSittingForSealingTest(t, at)
 	service := &examSittingSealingFake{finish: sealingLifecycleResult(sitting, false)}
-	job := mustExamSittingSealingJob(t, sitting.ID, at)
+	record := mustExamSittingSealingJob(t, sitting.ID, at)
 	outcome := (examSittingSealingHandler{service: service}).Run(context.Background(),
-		jobengine.NewExecution(job, &model.JobAttempt{ID: model.NewJobAttemptID()}, nil, allowJobWorkReservation()))
-	require.Equal(t, jobengine.OutcomeRetryableFailure, outcome.Kind, "outcome=%#v finish", outcome)
+		job.NewExecution(record, &model.JobAttempt{ID: model.NewJobAttemptID()}, nil, allowJobWorkReservation()))
+	require.Equal(t, job.OutcomeRetryableFailure, outcome.Kind, "outcome=%#v finish", outcome)
 	require.Equal(t, "dependency.unavailable", outcome.PublicErrorCode, "outcome=%#v finish", outcome)
 	require.Equal(t, 1, service.finishCalls, "outcome=%#v finish", outcome)
 }
@@ -112,21 +112,21 @@ func TestExamSittingSealingJobRetriesDatabaseConstraintRejection(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, time.August, 18, 9, 0, 0, 0, time.UTC)
 	sitting := closingSittingForSealingTest(t, at)
-	job := mustExamSittingSealingJob(t, sitting.ID, at)
+	record := mustExamSittingSealingJob(t, sitting.ID, at)
 	for _, test := range []struct {
 		name string
 		err  error
-		kind jobengine.OutcomeKind
+		kind job.OutcomeKind
 		code string
 	}{
-		{"database constraint rejection", store.NewErrConstraintViolation("exam_sitting", "exam_sittings_lifecycle_check"), jobengine.OutcomeRetryableFailure, "dependency.unavailable"},
-		{"refused input", store.NewErrInvalidInput("exam_sitting", "finish", nil), jobengine.OutcomePermanentFailure, "job.invariant_failed"},
+		{"database constraint rejection", store.NewErrConstraintViolation("exam_sitting", "exam_sittings_lifecycle_check"), job.OutcomeRetryableFailure, "dependency.unavailable"},
+		{"refused input", store.NewErrInvalidInput("exam_sitting", "finish", nil), job.OutcomePermanentFailure, "job.invariant_failed"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			service := &examSittingSealingFake{finishErr: test.err}
 			outcome := (examSittingSealingHandler{service: service}).Run(context.Background(),
-				jobengine.NewExecution(job, &model.JobAttempt{ID: model.NewJobAttemptID()}, nil, allowJobWorkReservation()))
+				job.NewExecution(record, &model.JobAttempt{ID: model.NewJobAttemptID()}, nil, allowJobWorkReservation()))
 			require.Equal(t, test.kind, outcome.Kind, "outcome=%#v", outcome)
 			require.Equal(t, test.code, outcome.PublicErrorCode, "outcome=%#v", outcome)
 		})
@@ -139,12 +139,12 @@ func TestExamSittingSealingJobRecoversReservationAheadOfCheckpoint(t *testing.T)
 	sitting := closingSittingForSealingTest(t, at)
 	targets := automaticTargetsForSealingTest(sitting, 1)
 	service := &examSittingSealingFake{targets: targets, finish: sealingLifecycleResult(sitting, true)}
-	job := mustExamSittingSealingJob(t, sitting.ID, at)
-	job.WorkReserved = 1
+	record := mustExamSittingSealingJob(t, sitting.ID, at)
+	record.WorkReserved = 1
 	var checkpoints []ExamSittingSealingCheckpoint
 	reserved := 0
-	execution := jobengine.NewExecution(job, &model.JobAttempt{ID: model.NewJobAttemptID()},
-		func(_ context.Context, value jobengine.CheckpointValue) error {
+	execution := job.NewExecution(record, &model.JobAttempt{ID: model.NewJobAttemptID()},
+		func(_ context.Context, value job.CheckpointValue) error {
 			checkpoint, err := decodeExamSittingSealingCheckpoint(value.Document)
 			require.NoError(t, err)
 			checkpoints = append(checkpoints, checkpoint)
@@ -156,7 +156,7 @@ func TestExamSittingSealingJobRecoversReservationAheadOfCheckpoint(t *testing.T)
 			return true, nil
 		})
 	outcome := (examSittingSealingHandler{service: service}).Run(context.Background(), execution)
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v reserved=%d sealed=%d checkpoints", outcome, reserved, len(service.sealed))
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind, "outcome=%#v reserved=%d sealed=%d checkpoints", outcome, reserved, len(service.sealed))
 	require.Equal(t, 1, reserved, "outcome=%#v reserved=%d sealed=%d checkpoints", outcome, reserved, len(service.sealed))
 	require.Len(t, service.sealed, 1, "outcome=%#v reserved=%d sealed=%d checkpoints", outcome, reserved, len(service.sealed))
 	require.Len(t, checkpoints, 2, "outcome=%#v reserved=%d sealed=%d checkpoints", outcome, reserved, len(service.sealed))
@@ -203,9 +203,9 @@ func (f *examSittingSealingFake) ListExamSittingSealTargetsFromJob(_ context.Con
 
 func (f *examSittingSealingFake) SealExamAttemptForSittingCloseFromJob(_ context.Context,
 	target store.ExamSubmissionAutomaticSealTarget, _ model.JobID, _ model.JobAttemptID,
-) (examattempt.AutomaticSubmissionResult, error) {
+) (attempt.AutomaticSubmissionResult, error) {
 	f.sealed = append(f.sealed, target.AttemptID)
-	return examattempt.AutomaticSubmissionResult{}, nil
+	return attempt.AutomaticSubmissionResult{}, nil
 }
 
 func (f *examSittingSealingFake) FinishExamSittingSealingFromJob(context.Context, model.ExamSittingID,

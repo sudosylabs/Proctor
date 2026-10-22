@@ -14,7 +14,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -35,13 +35,13 @@ type CancelJobCommand struct{ ID model.JobID }
 type RetryJobCommand struct{ ID model.JobID }
 
 type jobOperatorEngine interface {
-	List(context.Context, jobengine.ListQuery) (jobengine.Page, error)
-	Get(context.Context, model.JobID) (jobengine.View, error)
-	Attempts(context.Context, jobengine.AttemptListQuery) (jobengine.AttemptPage, error)
-	PrepareCancellation(context.Context, model.JobID) (jobengine.ControlTarget, error)
-	PrepareRetry(context.Context, model.JobID) (jobengine.ControlTarget, error)
-	Cancel(context.Context, jobengine.ControlTarget, jobengine.AuditReference) (jobengine.View, error)
-	Retry(context.Context, jobengine.ControlTarget, jobengine.AuditReference) (jobengine.View, error)
+	List(context.Context, job.ListQuery) (job.Page, error)
+	Get(context.Context, model.JobID) (job.View, error)
+	Attempts(context.Context, job.AttemptListQuery) (job.AttemptPage, error)
+	PrepareCancellation(context.Context, model.JobID) (job.ControlTarget, error)
+	PrepareRetry(context.Context, model.JobID) (job.ControlTarget, error)
+	Cancel(context.Context, job.ControlTarget, job.AuditReference) (job.View, error)
+	Retry(context.Context, job.ControlTarget, job.AuditReference) (job.View, error)
 }
 
 type jobOperationsService struct {
@@ -84,94 +84,94 @@ func newJobOperationsService(jobs jobOperatorEngine, authorization institutionAu
 	return &jobOperationsService{jobs: jobs, authorization: authorization, audit: audit, now: now}, nil
 }
 
-func (s *jobOperationsService) ListJobs(ctx context.Context, invocation invocation.Invocation, query ListJobsQuery) (jobengine.Page, error) {
+func (s *jobOperationsService) ListJobs(ctx context.Context, invocation invocation.Invocation, query ListJobsQuery) (job.Page, error) {
 	if s == nil {
-		return jobengine.Page{}, apperror.New("job.unavailable")
+		return job.Page{}, apperror.New("job.unavailable")
 	}
 	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobView); err != nil {
-		return jobengine.Page{}, err
+		return job.Page{}, err
 	}
-	page, err := s.jobs.List(ctx, jobengine.ListQuery{
+	page, err := s.jobs.List(ctx, job.ListQuery{
 		Statuses: query.Statuses, BeforeCreatedAt: query.BeforeCreatedAt,
 		BeforeID: query.BeforeID, Limit: query.Limit,
 	})
 	if err != nil {
-		return jobengine.Page{}, jobOperationsStoreErrors.Translate(err)
+		return job.Page{}, jobOperationsStoreErrors.Translate(err)
 	}
 	return page, nil
 }
 
-func (s *jobOperationsService) GetJob(ctx context.Context, invocation invocation.Invocation, query GetJobQuery) (jobengine.View, error) {
+func (s *jobOperationsService) GetJob(ctx context.Context, invocation invocation.Invocation, query GetJobQuery) (job.View, error) {
 	if s == nil {
-		return jobengine.View{}, apperror.New("job.unavailable")
+		return job.View{}, apperror.New("job.unavailable")
 	}
 	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobView); err != nil {
-		return jobengine.View{}, err
+		return job.View{}, err
 	}
 	view, err := s.jobs.Get(ctx, query.ID)
 	if err != nil {
-		return jobengine.View{}, jobOperationsStoreErrors.Translate(err)
+		return job.View{}, jobOperationsStoreErrors.Translate(err)
 	}
 	return view, nil
 }
 
-func (s *jobOperationsService) ListJobAttempts(ctx context.Context, invocation invocation.Invocation, query ListJobAttemptsQuery) (jobengine.AttemptPage, error) {
+func (s *jobOperationsService) ListJobAttempts(ctx context.Context, invocation invocation.Invocation, query ListJobAttemptsQuery) (job.AttemptPage, error) {
 	if s == nil {
-		return jobengine.AttemptPage{}, apperror.New("job.unavailable")
+		return job.AttemptPage{}, apperror.New("job.unavailable")
 	}
 	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobView); err != nil {
-		return jobengine.AttemptPage{}, err
+		return job.AttemptPage{}, err
 	}
-	page, err := s.jobs.Attempts(ctx, jobengine.AttemptListQuery{
+	page, err := s.jobs.Attempts(ctx, job.AttemptListQuery{
 		JobID: query.JobID, BeforeNumber: query.BeforeNumber, Limit: query.Limit,
 	})
 	if err != nil {
-		return jobengine.AttemptPage{}, jobOperationsStoreErrors.Translate(err)
+		return job.AttemptPage{}, jobOperationsStoreErrors.Translate(err)
 	}
 	return page, nil
 }
 
-func (s *jobOperationsService) CancelJob(ctx context.Context, invocation invocation.Invocation, command CancelJobCommand) (jobengine.View, error) {
+func (s *jobOperationsService) CancelJob(ctx context.Context, invocation invocation.Invocation, command CancelJobCommand) (job.View, error) {
 	if s == nil {
-		return jobengine.View{}, apperror.New("job.unavailable")
+		return job.View{}, apperror.New("job.unavailable")
 	}
 	return s.mutate(ctx, invocation, "cancel", command.ID, s.jobs.PrepareCancellation, s.jobs.Cancel)
 }
 
-func (s *jobOperationsService) RetryJob(ctx context.Context, invocation invocation.Invocation, command RetryJobCommand) (jobengine.View, error) {
+func (s *jobOperationsService) RetryJob(ctx context.Context, invocation invocation.Invocation, command RetryJobCommand) (job.View, error) {
 	if s == nil {
-		return jobengine.View{}, apperror.New("job.unavailable")
+		return job.View{}, apperror.New("job.unavailable")
 	}
 	return s.mutate(ctx, invocation, "retry", command.ID, s.jobs.PrepareRetry, s.jobs.Retry)
 }
 
-func (s *jobOperationsService) mutate(ctx context.Context, invocation invocation.Invocation, operation string, id model.JobID, prepare func(context.Context, model.JobID) (jobengine.ControlTarget, error), apply func(context.Context, jobengine.ControlTarget, jobengine.AuditReference) (jobengine.View, error)) (jobengine.View, error) {
+func (s *jobOperationsService) mutate(ctx context.Context, invocation invocation.Invocation, operation string, id model.JobID, prepare func(context.Context, model.JobID) (job.ControlTarget, error), apply func(context.Context, job.ControlTarget, job.AuditReference) (job.View, error)) (job.View, error) {
 	resource, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobManage)
 	if err != nil {
-		return jobengine.View{}, err
+		return job.View{}, err
 	}
 	target, err := prepare(ctx, id)
 	if err != nil {
-		return jobengine.View{}, jobOperationsStoreErrors.Translate(err)
+		return job.View{}, jobOperationsStoreErrors.Translate(err)
 	}
 	view := target.View()
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionJobManage, resource, operation, map[string]any{"job_id": view.ID.String(), "type": string(view.Type), "status": string(view.Status)}, nil)
 	if err != nil {
-		return jobengine.View{}, err
+		return job.View{}, err
 	}
-	updated, err := apply(ctx, target, jobengine.AuditReference{EventID: auditID, At: s.now().UnixMilli()})
+	updated, err := apply(ctx, target, job.AuditReference{EventID: auditID, At: s.now().UnixMilli()})
 	if err != nil {
 		_ = s.audit.Fail(ctx, auditID, "job.conflict")
-		return jobengine.View{}, jobOperationsStoreErrors.Translate(err)
+		return job.View{}, jobOperationsStoreErrors.Translate(err)
 	}
 	return updated, nil
 }
 
 var jobOperationsStoreErrors = apperror.StoreTable{
 	Rules: []apperror.StoreRule{
-		{Kind: apperror.StoreSentinel, Sentinel: jobengine.ErrQueryInvalid, Code: "job.query.invalid"},
-		{Kind: apperror.StoreSentinel, Sentinel: jobengine.ErrCancelUnsupported, Code: "job.cancel.unsupported"},
-		{Kind: apperror.StoreSentinel, Sentinel: jobengine.ErrRetryUnsupported, Code: "job.retry.unsupported"},
+		{Kind: apperror.StoreSentinel, Sentinel: job.ErrQueryInvalid, Code: "job.query.invalid"},
+		{Kind: apperror.StoreSentinel, Sentinel: job.ErrCancelUnsupported, Code: "job.cancel.unsupported"},
+		{Kind: apperror.StoreSentinel, Sentinel: job.ErrRetryUnsupported, Code: "job.retry.unsupported"},
 	},
 	NotFound:    "resource.not_found",
 	Conflict:    "job.conflict",

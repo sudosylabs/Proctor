@@ -14,7 +14,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
+	"github.com/sudosylabs/proctor/server/app/exam/sitting"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -57,12 +57,12 @@ func (f *sittingMailReconciliationStoreFake) ReconcileMail(_ context.Context,
 }
 
 type sittingMailReconciliationPreparerFake struct {
-	request  examsitting.ScheduleMailRequest
+	request  sitting.ScheduleMailRequest
 	prepared *store.ExamSittingMailFanout
 }
 
 func (f *sittingMailReconciliationPreparerFake) Prepare(_ context.Context,
-	request examsitting.ScheduleMailRequest,
+	request sitting.ScheduleMailRequest,
 ) (*store.ExamSittingMailFanout, error) {
 	f.request = request
 	return f.prepared, nil

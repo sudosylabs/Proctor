@@ -13,7 +13,7 @@ import (
 	"errors"
 	"time"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -55,19 +55,19 @@ type mailCleanupHandler struct {
 	recorder MailDeliveryRecorder
 }
 
-func (h mailCleanupHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
+func (h mailCleanupHandler) Run(ctx context.Context, execution job.Execution) job.Outcome {
 	if execution.Job == nil {
-		return jobengine.PermanentFailure("job.command.invalid", errors.New("mail cleanup job is invalid"))
+		return job.PermanentFailure("job.command.invalid", errors.New("mail cleanup job is invalid"))
 	}
 	var command MailCleanupCommand
 	if decodeStrictJobDocument(execution.Job.Command, &command) != nil || command.PageSize < 1 || command.PageSize > mailCleanupPageSize || command.MaxPages < 1 || command.MaxPages > mailCleanupMaximumPages || h.mail == nil || h.sittings == nil {
-		return jobengine.PermanentFailure("job.command.invalid", errors.New("mail cleanup command is invalid"))
+		return job.PermanentFailure("job.command.invalid", errors.New("mail cleanup command is invalid"))
 	}
 	result := MailCleanupResult{}
 	for page := 0; page < command.MaxPages; page++ {
 		terminalized, err := h.sittings.MaintainMailExpansions(ctx, command.PageSize)
 		if err != nil {
-			return jobengine.RetryableFailure("dependency.unavailable", err)
+			return job.RetryableFailure("dependency.unavailable", err)
 		}
 		result.FanoutsTerminalized += terminalized.FanoutsTerminalized
 		result.FanoutDeliveriesSuppressed += terminalized.DeliveriesSuppressed
@@ -78,7 +78,7 @@ func (h mailCleanupHandler) Run(ctx context.Context, execution jobengine.Executi
 	for page := 0; page < command.MaxPages; page++ {
 		deleted, err := h.mail.CleanupTerminal(ctx, command.PageSize)
 		if err != nil {
-			return jobengine.RetryableFailure("dependency.unavailable", err)
+			return job.RetryableFailure("dependency.unavailable", err)
 		}
 		result.Deleted += deleted.Affected
 		if !deleted.More {
@@ -88,7 +88,7 @@ func (h mailCleanupHandler) Run(ctx context.Context, execution jobengine.Executi
 	for page := 0; page < command.MaxPages; page++ {
 		expired, err := h.mail.SuppressExpired(ctx, command.PageSize)
 		if err != nil {
-			return jobengine.RetryableFailure("dependency.unavailable", err)
+			return job.RetryableFailure("dependency.unavailable", err)
 		}
 		result.Expired += expired.Affected
 		recordMailMaintenanceDeliveries(ctx, h.recorder, expired)
@@ -97,7 +97,7 @@ func (h mailCleanupHandler) Run(ctx context.Context, execution jobengine.Executi
 		}
 	}
 	document, err := json.Marshal(result)
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: document, Err: err}
+	return job.Outcome{Kind: job.OutcomeSucceeded, Result: document, Err: err}
 }
 
 func recordMailMaintenanceDeliveries(ctx context.Context, recorder MailDeliveryRecorder, result *store.MailMaintenanceResult) {
@@ -135,13 +135,15 @@ func (p mailCleanupProposer) Propose(ctx context.Context, occurrence time.Time) 
 	return err
 }
 
-func mailCleanupDescriptor(handler jobengine.Handler) jobengine.Descriptor {
-	return jobengine.Descriptor{Type: model.JobTypeMailCleanup, PublicErrorCodes: []string{"dependency.unavailable", "job.command.invalid"}, Timeout: 5 * time.Minute,
+func mailCleanupDescriptor(handler job.Handler) job.Descriptor {
+	return job.Descriptor{Type: model.JobTypeMailCleanup, PublicErrorCodes: []string{"dependency.unavailable", "job.command.invalid"}, Timeout: 5 * time.Minute,
 		Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second,
-		BaseRetryDelay: time.Minute, MaximumRetryDelay: 30 * time.Minute, Visibility: jobengine.VisibilityOperator,
+		BaseRetryDelay: time.Minute, MaximumRetryDelay: 30 * time.Minute, Visibility: job.VisibilityOperator,
 		SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
 }
 
-func NewMailCleanupDescriptor(mail MailCleanupStore, sittings SittingMailMaintenanceStore, recorder MailDeliveryRecorder) jobengine.Descriptor {
+// NewMailCleanupDescriptor registers the bounded cleanup of terminal mail
+// deliveries and Sitting mail maintenance.
+func NewMailCleanupDescriptor(mail MailCleanupStore, sittings SittingMailMaintenanceStore, recorder MailDeliveryRecorder) job.Descriptor {
 	return mailCleanupDescriptor(mailCleanupHandler{mail: mail, sittings: sittings, recorder: recorder})
 }

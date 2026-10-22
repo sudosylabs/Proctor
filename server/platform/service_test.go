@@ -20,14 +20,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	mailpkg "github.com/sudosylabs/proctor/packages/mail"
-	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
+	"github.com/sudosylabs/proctor/packages/mail"
+	"github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/logging"
 	"github.com/sudosylabs/proctor/server/platform/externalauth"
-	externalauthcas "github.com/sudosylabs/proctor/server/platform/externalauth/cas"
-	externalauthoidc "github.com/sudosylabs/proctor/server/platform/externalauth/oidc"
+	"github.com/sudosylabs/proctor/server/platform/externalauth/cas"
+	"github.com/sudosylabs/proctor/server/platform/externalauth/oidc"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -91,8 +91,8 @@ func completeOwnedResources(t *testing.T, configuration *config.Store) OwnedReso
 	logger, err := logging.New()
 	require.NoError(t, err)
 	providers, err := externalauth.NewRegistry(
-		externalauthcas.NewFactory(),
-		externalauthoidc.NewFactory(),
+		cas.NewFactory(),
+		oidc.NewFactory(),
 	)
 	if err != nil {
 		_ = logger.Shutdown()
@@ -105,7 +105,7 @@ func completeOwnedResources(t *testing.T, configuration *config.Store) OwnedReso
 		Cache:                  testCache{},
 		Cluster:                &trackedCluster{},
 		Mailer:                 testMailer{},
-		VFS:                    memoryvfs.New(),
+		VFS:                    memory.New(),
 		ExternalAuthentication: providers,
 	}
 }
@@ -168,7 +168,7 @@ func TestServiceRequiresConstructedCapabilities(t *testing.T) {
 				Cache:                  testCache{},
 				Cluster:                &trackedCluster{},
 				Mailer:                 testMailer{},
-				VFS:                    memoryvfs.New(),
+				VFS:                    memory.New(),
 				ExternalAuthentication: newProviders(t),
 			}
 			tt.remove(&settings)
@@ -253,7 +253,7 @@ func TestAcceptOwnsResourcesBeforeRequiredValidation(t *testing.T) {
 		Cache:         cache,
 		Cluster:       clusterTransport,
 		Mailer:        mailer,
-		VFS:           memoryvfs.New(),
+		VFS:           memory.New(),
 		// Missing ExternalAuthentication deliberately fails required validation.
 	})
 	require.Nil(t, service, "Accept()")
@@ -432,10 +432,10 @@ func (testCache) Add(context.Context, string, int64, time.Duration) (int64, erro
 func (testCache) Ping(context.Context) error { return nil }
 func (testCache) Close() error               { return nil }
 
-func (testMailer) Enabled() bool         { return false }
-func (testMailer) From() mailpkg.Address { return mailpkg.Address{} }
-func (testMailer) Send(context.Context, mailpkg.Message) (mailpkg.Receipt, error) {
-	return mailpkg.Receipt{}, ErrMailDisabled
+func (testMailer) Enabled() bool      { return false }
+func (testMailer) From() mail.Address { return mail.Address{} }
+func (testMailer) Send(context.Context, mail.Message) (mail.Receipt, error) {
+	return mail.Receipt{}, ErrMailDisabled
 }
 func (testMailer) Test(context.Context) error { return nil }
 func (testMailer) Close() error               { return nil }
@@ -626,7 +626,7 @@ func TestServiceConstructionFailureClosesOwnedInfrastructure(t *testing.T) {
 		Cache:                  cache,
 		Cluster:                cluster,
 		Mailer:                 mailer,
-		VFS:                    memoryvfs.New(),
+		VFS:                    memory.New(),
 		ExternalAuthentication: providers,
 	})
 	require.Error(t, err)
@@ -658,7 +658,7 @@ func TestServiceConstructionFailurePreservesCleanupError(t *testing.T) {
 		Cache:                  cache,
 		Cluster:                &trackedCluster{},
 		Mailer:                 testMailer{},
-		VFS:                    memoryvfs.New(),
+		VFS:                    memory.New(),
 		ExternalAuthentication: providers,
 	})
 	require.ErrorIs(t, err, context.DeadlineExceeded, "New() error")

@@ -17,8 +17,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	mailpkg "github.com/sudosylabs/proctor/packages/mail"
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/mail"
+	"github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/model"
@@ -40,13 +40,13 @@ func TestMetricAdapterOutcomesStayBounded(t *testing.T) {
 	vfsCases := []struct {
 		err  error
 		want string
-	}{{nil, "success"}, {vfspkg.ErrNotFound, "not_found"}, {vfspkg.ErrConflict, "conflict"}, {vfspkg.ErrUnsupported, "unsupported"}, {errors.New("private"), "error"}}
+	}{{nil, "success"}, {vfs.ErrNotFound, "not_found"}, {vfs.ErrConflict, "conflict"}, {vfs.ErrUnsupported, "unsupported"}, {errors.New("private"), "error"}}
 	for _, test := range vfsCases {
 		t.Run(test.want, func(t *testing.T) {
 			require.Equal(t, test.want, vfsOutcome(test.err), "vfsOutcome(%v)", test.err)
 		})
 	}
-	require.Equal(t, "acceptance_uncertain", smtpOutcome(mailpkg.WithOutcome(mailpkg.OutcomeAcceptanceUncertain, errors.New("private"))))
+	require.Equal(t, "acceptance_uncertain", smtpOutcome(mail.WithOutcome(mail.OutcomeAcceptanceUncertain, errors.New("private"))))
 }
 
 func TestMeasuredClusterLabelsOnlyRegisteredEvents(t *testing.T) {

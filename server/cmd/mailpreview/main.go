@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/localization"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -47,11 +47,11 @@ func run(args []string, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("construct localizer: %w", err)
 	}
-	renderer, err := appmail.NewRenderer(os.DirFS(*templates), localizer)
+	renderer, err := mail.NewRenderer(os.DirFS(*templates), localizer)
 	if err != nil {
 		return fmt.Errorf("construct mail renderer: %w", err)
 	}
-	assets, err := appmail.NewInlineAssets(os.DirFS(*templates))
+	assets, err := mail.NewInlineAssets(os.DirFS(*templates))
 	if err != nil {
 		return fmt.Errorf("construct mail inline assets: %w", err)
 	}
@@ -63,14 +63,14 @@ func run(args []string, stderr io.Writer) error {
 	index.WriteString("<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><title>Proctor mail previews</title></head><body>\n")
 	index.WriteString("<h1>Proctor transactional-mail previews</h1>\n<ul>\n")
 	for _, key := range model.AllMailTemplateKeys() {
-		request := appmail.RenderRequest{Key: key, Locale: "en",
+		request := mail.RenderRequest{Key: key, Locale: "en",
 			ActionURL: "https://proctor.example.test/representative#token=not-a-credential"}
 		switch key {
 		case model.MailTemplateIdentityPersonalAccessTokenCreated,
 			model.MailTemplateIdentityPersonalAccessTokenEnabled,
 			model.MailTemplateIdentityPersonalAccessTokenDisabled,
 			model.MailTemplateIdentityPersonalAccessTokenRevoked:
-			request.Presentation = appmail.PersonalAccessTokenDetails{
+			request.Presentation = mail.PersonalAccessTokenDetails{
 				Description: "Representative automation", ExpiresAt: time.Date(2026, 9, 20, 9, 30, 0, 0, time.UTC),
 				ActionAt: time.Date(2026, 8, 20, 8, 15, 0, 0, time.UTC), ActionCount: 2,
 			}
@@ -85,7 +85,7 @@ func run(args []string, stderr io.Writer) error {
 			} else if key == model.MailTemplateExamOwnershipTransferredToYou {
 				relationship = "owner"
 			}
-			request.Presentation = appmail.ExamManagerDetails{
+			request.Presentation = mail.ExamManagerDetails{
 				Title: "Representative programming exam", Relationship: relationship,
 				ActionAt: time.Date(2026, 8, 20, 8, 15, 0, 0, time.UTC),
 			}
@@ -94,7 +94,7 @@ func run(args []string, stderr io.Writer) error {
 			model.MailTemplateExamSittingRescheduled,
 			model.MailTemplateExamSittingCanceled,
 			model.MailTemplateExamSittingAssignmentRemoved:
-			request.Presentation = appmail.SittingScheduleDetails{
+			request.Presentation = mail.SittingScheduleDetails{
 				ExamTitle: "Representative programming exam", ClassDisplayName: "Year 2 · Class A",
 				StartsAt: time.Date(2026, 9, 20, 9, 30, 0, 0, time.UTC),
 				EndsAt:   time.Date(2026, 9, 20, 11, 30, 0, 0, time.UTC),
@@ -103,7 +103,7 @@ func run(args []string, stderr io.Writer) error {
 		case model.MailTemplateAcademicClassEnrolled,
 			model.MailTemplateAcademicClassEnrollmentEnded,
 			model.MailTemplateAcademicClassTransferred:
-			details := appmail.ClassTransitionDetails{
+			details := mail.ClassTransitionDetails{
 				ClassDisplayName: "Year 2 · Class B",
 				StartsAt:         time.Date(2026, 9, 1, 8, 0, 0, 0, time.UTC),
 			}
@@ -116,13 +116,13 @@ func run(args []string, stderr io.Writer) error {
 			request.ActionURL = ""
 		case model.MailTemplateExamSubmissionReceived, model.MailTemplateExamSubmissionManagerEnded,
 			model.MailTemplateExamSubmissionAutomaticallySealed:
-			request.Presentation = appmail.SubmissionReceiptDetails{
+			request.Presentation = mail.SubmissionReceiptDetails{
 				ExamTitle: "Representative programming exam", SittingID: model.ExamSittingID(strings.Repeat("y", model.IDLength)),
 				SubmissionID: model.SubmissionID(strings.Repeat("b", model.IDLength)),
 				SealedAt:     time.Date(2026, 8, 21, 9, 30, 0, 0, time.UTC)}
 			request.ActionURL = ""
 		case model.MailTemplateExamResultReleased:
-			request.Presentation = appmail.ResultReleaseDetails{ExamTitle: "Representative programming exam",
+			request.Presentation = mail.ResultReleaseDetails{ExamTitle: "Representative programming exam",
 				ReleasedAt: time.Date(2026, 8, 21, 10, 30, 0, 0, time.UTC)}
 			request.ActionURL = ""
 		}

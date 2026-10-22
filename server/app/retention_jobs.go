@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -22,7 +22,7 @@ type retentionJobAudit struct{ audit *auditService }
 type retentionNoticeDispatcher struct {
 	records store.RetentionStore
 	users   store.UserStore
-	mail    *appmail.Composer
+	mail    *mail.Composer
 	now     func() time.Time
 }
 
@@ -44,7 +44,7 @@ func (d retentionNoticeDispatcher) DispatchRetentionNotice(ctx context.Context, 
 		input.FailureCode = "mail.preparation_unavailable"
 		return d.records.CompleteNotice(ctx, input)
 	}
-	input.Mail, err = d.mail.PrepareRetentionScheduled(appmail.NoticePreparation{Recipient: user, At: model.TimeUTC(d.now())}, notice.RetireAfter)
+	input.Mail, err = d.mail.PrepareRetentionScheduled(mail.NoticePreparation{Recipient: user, At: model.TimeUTC(d.now())}, notice.RetireAfter)
 	if err != nil {
 		input.Mail = nil
 		input.FailureCode = "mail.preparation_unavailable"

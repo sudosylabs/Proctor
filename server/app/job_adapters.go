@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
-	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
-	appinvocation "github.com/sudosylabs/proctor/server/app/invocation"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/exam/sitting"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -128,8 +128,8 @@ func (a onboardingImportJobs) Fail(ctx context.Context, id model.OnboardingImpor
 }
 
 type examSittingSealingJobUseCases struct {
-	sittings *examsitting.Service
-	attempts *examattempt.Service
+	sittings *sitting.Service
+	attempts *attempt.Service
 	jobs     store.JobStore
 	now      func() time.Time
 	newID    func() model.JobID
@@ -143,14 +143,14 @@ func (uc examSittingSealingJobUseCases) ListExamSittingSealTargetsFromJob(ctx co
 
 func (uc examSittingSealingJobUseCases) SealExamAttemptForSittingCloseFromJob(ctx context.Context,
 	target store.ExamSubmissionAutomaticSealTarget, jobID model.JobID, attemptID model.JobAttemptID,
-) (examattempt.AutomaticSubmissionResult, error) {
-	return uc.attempts.SealForSittingClose(ctx, appinvocation.System{JobID: jobID, AttemptID: attemptID}, target)
+) (attempt.AutomaticSubmissionResult, error) {
+	return uc.attempts.SealForSittingClose(ctx, invocation.System{JobID: jobID, AttemptID: attemptID}, target)
 }
 
 func (uc examSittingSealingJobUseCases) FinishExamSittingSealingFromJob(ctx context.Context,
 	sittingID model.ExamSittingID, jobID model.JobID, attemptID model.JobAttemptID,
 ) (*store.ExamSittingLifecycleResult, error) {
-	result, err := uc.sittings.FinishSealing(ctx, appinvocation.System{JobID: jobID, AttemptID: attemptID}, sittingID)
+	result, err := uc.sittings.FinishSealing(ctx, invocation.System{JobID: jobID, AttemptID: attemptID}, sittingID)
 	return &result, err
 }
 

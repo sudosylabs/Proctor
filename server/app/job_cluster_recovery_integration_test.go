@@ -21,7 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
@@ -38,14 +38,14 @@ func TestJobRunnerRecoversNodeLossAroundADurableDomainCommit(t *testing.T) {
 		t.Run(phase, func(t *testing.T) {
 			persistence := openClusteredJobIntegrationStore(t)
 			at := model.NowUTC().Add(-time.Second)
-			user, job, err := prepareUserDefaultProfilePictureJob(&model.User{
+			user, record, err := prepareUserDefaultProfilePictureJob(&model.User{
 				Username: "recovery-" + phase,
 				Email:    "recovery-" + phase + "@example.test",
 			}, at)
 			require.NoError(t, err)
 			settings, settingsErr := prepareInitialUserSettingsDocument(user)
 			require.NoError(t, settingsErr)
-			_, err = persistence.User().Create(context.Background(), &store.UserCreation{User: user, Settings: settings, DefaultProfilePictureJob: job})
+			_, err = persistence.User().Create(context.Background(), &store.UserCreation{User: user, Settings: settings, DefaultProfilePictureJob: record})
 			require.NoError(t, err)
 
 			publishEntered := make(chan struct{})
@@ -71,9 +71,9 @@ func TestJobRunnerRecoversNodeLossAroundADurableDomainCommit(t *testing.T) {
 				phase: phase, next: realHandler, entered: entered, canceled: canceled,
 			}
 			descriptor := clusteredRecoveryJobDescriptor(handler)
-			nodeA, err := jobengine.New(jobengine.Config{
-				Store: persistence.Job(), Descriptors: []jobengine.Descriptor{descriptor}, NodeID: "node-a",
-				Diagnostics: &integrationJobDiagnostics{}, Policy: jobengine.Policy{PollInterval: 5 * time.Millisecond},
+			nodeA, err := job.New(job.Config{
+				Store: persistence.Job(), Descriptors: []job.Descriptor{descriptor}, NodeID: "node-a",
+				Diagnostics: &integrationJobDiagnostics{}, Policy: job.Policy{PollInterval: 5 * time.Millisecond},
 			})
 			require.NoError(t, err)
 			err = nodeA.Start(context.Background())
@@ -103,21 +103,21 @@ func TestJobRunnerRecoversNodeLossAroundADurableDomainCommit(t *testing.T) {
 			}
 			err = <-closedA
 			require.NoError(t, err)
-			afterShutdown, err := persistence.Job().Get(context.Background(), job.ID)
+			afterShutdown, err := persistence.Job().Get(context.Background(), record.ID)
 			require.NoError(t, err)
 			require.Equal(t, model.JobStatusRunning, afterShutdown.Status)
 
 			time.Sleep(3 * descriptor.LeaseDuration)
-			nodeB, err := jobengine.New(jobengine.Config{
-				Store: persistence.Job(), Descriptors: []jobengine.Descriptor{descriptor}, NodeID: "node-b",
-				Diagnostics: &integrationJobDiagnostics{}, Policy: jobengine.Policy{PollInterval: 5 * time.Millisecond},
+			nodeB, err := job.New(job.Config{
+				Store: persistence.Job(), Descriptors: []job.Descriptor{descriptor}, NodeID: "node-b",
+				Diagnostics: &integrationJobDiagnostics{}, Policy: job.Policy{PollInterval: 5 * time.Millisecond},
 			})
 			require.NoError(t, err)
 			err = nodeB.Start(context.Background())
 			require.NoError(t, err)
 			deadline := time.Now().Add(2 * time.Second)
 			for {
-				current, getErr := persistence.Job().Get(context.Background(), job.ID)
+				current, getErr := persistence.Job().Get(context.Background(), record.ID)
 				require.NoError(t, getErr)
 				if current.Status == model.JobStatusSucceeded {
 					break
@@ -142,7 +142,7 @@ func TestJobRunnerRecoversNodeLossAroundADurableDomainCommit(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, 1, availableDefaults, "available default publications")
 			require.Equal(t, int64(2), handler.calls.Load(), "handler calls")
-			attempts, err := persistence.Job().ListAttempts(context.Background(), job.ID)
+			attempts, err := persistence.Job().ListAttempts(context.Background(), record.ID)
 			require.NoError(t, err)
 			require.Len(t, attempts, 2)
 			require.Equal(t, model.JobAttemptStatusLeaseExpired, attempts[0].Status)
@@ -177,13 +177,13 @@ func (s *recoveryFileStore) PublishDefaultProfilePicture(ctx context.Context, in
 
 type recoveryCommitHandler struct {
 	phase    string
-	next     jobengine.Handler
+	next     job.Handler
 	entered  chan struct{}
 	canceled chan struct{}
 	calls    atomic.Int64
 }
 
-func (h *recoveryCommitHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
+func (h *recoveryCommitHandler) Run(ctx context.Context, execution job.Execution) job.Outcome {
 	call := h.calls.Add(1)
 	if call != 1 {
 		return h.next.Run(ctx, execution)
@@ -193,7 +193,7 @@ func (h *recoveryCommitHandler) Run(ctx context.Context, execution jobengine.Exe
 		close(h.entered)
 		<-ctx.Done()
 		close(h.canceled)
-		return jobengine.RetryableFailure("dependency.unavailable", ctx.Err())
+		return job.RetryableFailure("dependency.unavailable", ctx.Err())
 	case "during_commit":
 		go func() {
 			<-ctx.Done()
@@ -211,12 +211,12 @@ func (h *recoveryCommitHandler) Run(ctx context.Context, execution jobengine.Exe
 	}
 }
 
-func clusteredRecoveryJobDescriptor(handler jobengine.Handler) jobengine.Descriptor {
-	return jobengine.Descriptor{
+func clusteredRecoveryJobDescriptor(handler job.Handler) job.Descriptor {
+	return job.Descriptor{
 		Type: model.JobTypeProfilePictureGenerateDefault, PublicErrorCodes: []string{"dependency.unavailable"}, Timeout: 2 * time.Second, Concurrency: 1,
 		MaximumAttempts: 3, LeaseDuration: 250 * time.Millisecond, HeartbeatInterval: 50 * time.Millisecond,
 		BaseRetryDelay: time.Millisecond, MaximumRetryDelay: 10 * time.Millisecond,
-		Visibility: jobengine.VisibilityOperator, SuccessRetention: 24 * time.Hour, FailureRetention: 48 * time.Hour,
+		Visibility: job.VisibilityOperator, SuccessRetention: 24 * time.Hour, FailureRetention: 48 * time.Hour,
 		Handler: handler,
 	}
 }

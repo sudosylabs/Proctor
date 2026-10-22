@@ -12,9 +12,9 @@ import (
 	"errors"
 	"time"
 
-	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
-	appinvocation "github.com/sudosylabs/proctor/server/app/invocation"
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/exam/sitting"
+	"github.com/sudosylabs/proctor/server/app/invocation"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -22,7 +22,7 @@ import (
 // examSittingLifecycle is the Sitting lifecycle work the lifecycle Job
 // drives; its tests substitute a fake.
 type examSittingLifecycle interface {
-	AdvanceDue(context.Context, appinvocation.System, model.ExamSittingID) (store.ExamSittingLifecycleResult, error)
+	AdvanceDue(context.Context, invocation.System, model.ExamSittingID) (store.ExamSittingLifecycleResult, error)
 	ListLifecycleDue(context.Context, store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error)
 }
 
@@ -31,7 +31,7 @@ type examSittingLifecycleJobUseCases struct{ sittings examSittingLifecycle }
 func (uc examSittingLifecycleJobUseCases) ReconcileExamSittingLifecycleFromJob(ctx context.Context, sittingID model.ExamSittingID, jobID model.JobID,
 	attemptID model.JobAttemptID,
 ) (*store.ExamSittingLifecycleResult, error) {
-	call := appinvocation.System{JobID: jobID, AttemptID: attemptID}
+	call := invocation.System{JobID: jobID, AttemptID: attemptID}
 	result, err := uc.sittings.AdvanceDue(ctx, call, sittingID)
 	if err != nil {
 		return nil, err
@@ -45,7 +45,7 @@ func (uc examSittingLifecycleJobUseCases) ListExamSittingLifecycleDueFromJob(ctx
 
 type examSittingSystemAuditAdapter struct{ audit *auditService }
 
-func (a examSittingSystemAuditAdapter) Begin(ctx context.Context, call appinvocation.System, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
+func (a examSittingSystemAuditAdapter) Begin(ctx context.Context, call invocation.System, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
 	auditValue := make(map[string]any, len(value)+2)
 	for key, item := range value {
 		auditValue[key] = item
@@ -79,7 +79,7 @@ func (e examSittingRealtimeEffects) publishBoardInvalidation(ctx context.Context
 func (e examSittingRealtimeEffects) Scheduled(ctx context.Context, examID model.ExamID, sittingID model.ExamSittingID,
 	state model.ExamSittingState, revision int64, at time.Time,
 ) error {
-	event, err := apprealtime.NewExamSittingScheduledEvent(examID, sittingID, state, revision, at)
+	event, err := realtime.NewExamSittingScheduledEvent(examID, sittingID, state, revision, at)
 	if err != nil {
 		return err
 	}
@@ -93,7 +93,7 @@ func (e examSittingRealtimeEffects) Scheduled(ctx context.Context, examID model.
 func (e examSittingRealtimeEffects) ScheduleUpdated(ctx context.Context, examID model.ExamID, sittingID model.ExamSittingID,
 	state model.ExamSittingState, revision int64, at time.Time,
 ) error {
-	event, err := apprealtime.NewExamSittingScheduleUpdatedEvent(examID, sittingID, state, revision, at)
+	event, err := realtime.NewExamSittingScheduleUpdatedEvent(examID, sittingID, state, revision, at)
 	if err != nil {
 		return err
 	}
@@ -107,7 +107,7 @@ func (e examSittingRealtimeEffects) ScheduleUpdated(ctx context.Context, examID 
 func (e examSittingRealtimeEffects) Canceled(ctx context.Context, examID model.ExamID, sittingID model.ExamSittingID,
 	state model.ExamSittingState, revision int64, at time.Time,
 ) error {
-	event, err := apprealtime.NewExamSittingCanceledEvent(examID, sittingID, state, revision, at)
+	event, err := realtime.NewExamSittingCanceledEvent(examID, sittingID, state, revision, at)
 	if err != nil {
 		return err
 	}
@@ -122,11 +122,11 @@ func (e examSittingRealtimeEffects) LifecycleChanged(ctx context.Context, examID
 	state model.ExamSittingState, revision int64, transition store.ExamSittingLifecycleTransitionCode,
 	scheduledEndAt, changedAt time.Time,
 ) error {
-	managerEvent, err := apprealtime.NewExamSittingLifecycleChangedEvent(examID, sittingID, state, revision, string(transition), scheduledEndAt, changedAt)
+	managerEvent, err := realtime.NewExamSittingLifecycleChangedEvent(examID, sittingID, state, revision, string(transition), scheduledEndAt, changedAt)
 	if err != nil {
 		return err
 	}
-	candidateEvent, err := apprealtime.NewCandidateExamSittingLifecycleChangedEvent(examID, sittingID, state, revision, string(transition), scheduledEndAt, changedAt)
+	candidateEvent, err := realtime.NewCandidateExamSittingLifecycleChangedEvent(examID, sittingID, state, revision, string(transition), scheduledEndAt, changedAt)
 	if err != nil {
 		return err
 	}
@@ -142,8 +142,8 @@ func (e examSittingRealtimeEffects) Report(ctx context.Context, operation string
 	e.realtime.reportTransientFailure(ctx, operation, err)
 }
 
-var _ examsitting.Authorizer = (*accessControlService)(nil)
-var _ examsitting.Auditor = mutationAuditAdapter{}
-var _ examsitting.SystemAuditor = examSittingSystemAuditAdapter{}
-var _ examsitting.Effects = examSittingRealtimeEffects{}
-var _ examsitting.EffectFailures = examSittingRealtimeEffects{}
+var _ sitting.Authorizer = (*accessControlService)(nil)
+var _ sitting.Auditor = mutationAuditAdapter{}
+var _ sitting.SystemAuditor = examSittingSystemAuditAdapter{}
+var _ sitting.Effects = examSittingRealtimeEffects{}
+var _ sitting.EffectFailures = examSittingRealtimeEffects{}

@@ -15,7 +15,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
+	"github.com/sudosylabs/proctor/server/app/exam/workspace"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -28,7 +28,7 @@ func TestExamStarterWorkspaceRealtimeEffectContainsOnlySafeChangeMetadata(t *tes
 	require.NoError(t, realtime.AttachRealtimeClusterFanout(cluster))
 	examID, entryID := model.NewExamID(), model.NewStarterWorkspaceEntryID()
 	changedAt := time.Date(2026, 8, 15, 8, 30, 0, 123456789, time.UTC)
-	require.NoError(t, (examStarterWorkspaceRealtimeEffects{realtime: realtime}).Changed(context.Background(), examID, entryID, 4, examworkspace.ChangeFileReplaced, changedAt))
+	require.NoError(t, (examStarterWorkspaceRealtimeEffects{realtime: realtime}).Changed(context.Background(), examID, entryID, 4, workspace.ChangeFileReplaced, changedAt))
 	require.Len(t, sink.events, 1)
 	require.Equal(t, "exam_starter_workspace_changed", sink.events[0].Name)
 	require.Equal(t, model.Resource{Type: model.ResourceExam, ID: examID.String()}, sink.events[0].Resource)

@@ -13,7 +13,7 @@ import (
 	"errors"
 	"time"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -49,23 +49,23 @@ type sessionPurgeHandler struct {
 	retention   time.Duration
 }
 
-func (h sessionPurgeHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
+func (h sessionPurgeHandler) Run(ctx context.Context, execution job.Execution) job.Outcome {
 	if execution.Job == nil {
-		return jobengine.PermanentFailure("job.command.invalid", errors.New("job is missing"))
+		return job.PermanentFailure("job.command.invalid", errors.New("job is missing"))
 	}
 	var command SessionPurgeCommand
 	if err := decodeStrictJobDocument(execution.Job.Command, &command); err != nil ||
 		command.BatchSize < 1 || command.BatchSize > store.MaximumSessionPurgeBatch {
-		return jobengine.PermanentFailure("job.command.invalid", errors.New("session purge command is invalid"))
+		return job.PermanentFailure("job.command.invalid", errors.New("session purge command is invalid"))
 	}
 	if h.retention <= 0 {
-		return jobengine.PermanentFailure("job.command.invalid", errors.New("session retention is not configured"))
+		return job.PermanentFailure("job.command.invalid", errors.New("session retention is not configured"))
 	}
 	var result SessionPurgeResult
 	for range maximumSessionPurgeBatches {
 		deleted, err := h.credentials.PurgeRetired(ctx, &store.SessionCredentialPurge{Grace: h.retention, Limit: command.BatchSize})
 		if err != nil {
-			return jobengine.RetryableFailure("dependency.unavailable", err)
+			return job.RetryableFailure("dependency.unavailable", err)
 		}
 		result.Credentials += deleted
 		if deleted < int64(command.BatchSize) {
@@ -76,7 +76,7 @@ func (h sessionPurgeHandler) Run(ctx context.Context, execution jobengine.Execut
 	for range maximumSessionPurgeBatches {
 		pass, err := h.sessions.PurgeRetired(ctx, &store.SessionPurge{Grace: h.retention, Limit: command.BatchSize, After: after})
 		if err != nil {
-			return jobengine.RetryableFailure("dependency.unavailable", err)
+			return job.RetryableFailure("dependency.unavailable", err)
 		}
 		result.Sessions += pass.Sessions
 		result.Credentials += pass.Credentials
@@ -86,7 +86,7 @@ func (h sessionPurgeHandler) Run(ctx context.Context, execution jobengine.Execut
 		after = pass.Next
 	}
 	document, err := json.Marshal(result)
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: document, Err: err}
+	return job.Outcome{Kind: job.OutcomeSucceeded, Result: document, Err: err}
 }
 
 type sessionPurgeProposer struct {
@@ -109,6 +109,6 @@ func (p sessionPurgeProposer) Propose(ctx context.Context, occurrence time.Time)
 	return err
 }
 
-func sessionPurgeDescriptor(handler jobengine.Handler) jobengine.Descriptor {
-	return jobengine.Descriptor{Type: model.JobTypeSessionPurgeRetired, PublicErrorCodes: []string{"dependency.unavailable", "job.command.invalid"}, Timeout: 10 * time.Minute, Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: time.Minute, Visibility: jobengine.VisibilityOperator, SuccessRetention: 7 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
+func sessionPurgeDescriptor(handler job.Handler) job.Descriptor {
+	return job.Descriptor{Type: model.JobTypeSessionPurgeRetired, PublicErrorCodes: []string{"dependency.unavailable", "job.command.invalid"}, Timeout: 10 * time.Minute, Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: time.Minute, Visibility: job.VisibilityOperator, SuccessRetention: 7 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
 }

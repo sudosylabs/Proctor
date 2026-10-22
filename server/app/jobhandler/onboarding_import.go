@@ -13,7 +13,7 @@ import (
 	"errors"
 	"time"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -39,61 +39,61 @@ type onboardingImportParseHandler struct{ service OnboardingImportService }
 
 type studentProgressionPreviewHandler struct{ service OnboardingImportService }
 
-func (h studentProgressionPreviewHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
+func (h studentProgressionPreviewHandler) Run(ctx context.Context, execution job.Execution) job.Outcome {
 	command, err := decodeOnboardingImportJob(execution, model.JobTypeStudentProgressionPreview)
 	if err != nil || h.service == nil {
-		return jobengine.PermanentFailure("job.command.invalid", errors.New("student progression preview command is invalid"))
+		return job.PermanentFailure("job.command.invalid", errors.New("student progression preview command is invalid"))
 	}
 	terminalCode, err := h.service.PreviewProgression(ctx, model.OnboardingImportID(command.ImportID))
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			return jobengine.Canceled("job.canceled")
+			return job.Canceled("job.canceled")
 		}
 		if terminalCode != "" {
 			if failErr := h.service.Fail(ctx, model.OnboardingImportID(command.ImportID), terminalCode); failErr != nil {
-				return jobengine.RetryableFailure("dependency.unavailable", failErr)
+				return job.RetryableFailure("dependency.unavailable", failErr)
 			}
-			return jobengine.PermanentFailure(terminalCode, err)
+			return job.PermanentFailure(terminalCode, err)
 		}
-		return jobengine.RetryableFailure("dependency.unavailable", err)
+		return job.RetryableFailure("dependency.unavailable", err)
 	}
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: json.RawMessage(`{"preview_ready":true}`)}
+	return job.Outcome{Kind: job.OutcomeSucceeded, Result: json.RawMessage(`{"preview_ready":true}`)}
 }
 
-func (h onboardingImportParseHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
+func (h onboardingImportParseHandler) Run(ctx context.Context, execution job.Execution) job.Outcome {
 	command, err := decodeOnboardingImportJob(execution, model.JobTypeOnboardingImportParse)
 	if err != nil || h.service == nil {
-		return jobengine.PermanentFailure("job.command.invalid", errors.New("onboarding import parse command is invalid"))
+		return job.PermanentFailure("job.command.invalid", errors.New("onboarding import parse command is invalid"))
 	}
 	terminalCode, err := h.service.Parse(ctx, model.OnboardingImportID(command.ImportID))
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			return jobengine.Canceled("job.canceled")
+			return job.Canceled("job.canceled")
 		}
 		if terminalCode != "" {
-			return jobengine.PermanentFailure(terminalCode, err)
+			return job.PermanentFailure(terminalCode, err)
 		}
-		return jobengine.RetryableFailure("dependency.unavailable", err)
+		return job.RetryableFailure("dependency.unavailable", err)
 	}
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: json.RawMessage(`{"preview_ready":true}`)}
+	return job.Outcome{Kind: job.OutcomeSucceeded, Result: json.RawMessage(`{"preview_ready":true}`)}
 }
 
 type onboardingImportExecuteHandler struct{ service OnboardingImportService }
 
-func (h onboardingImportExecuteHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
+func (h onboardingImportExecuteHandler) Run(ctx context.Context, execution job.Execution) job.Outcome {
 	command, err := decodeOnboardingImportJob(execution, model.JobTypeOnboardingImportExecute)
 	if err != nil || h.service == nil {
-		return jobengine.PermanentFailure("job.command.invalid", errors.New("onboarding import execution command is invalid"))
+		return job.PermanentFailure("job.command.invalid", errors.New("onboarding import execution command is invalid"))
 	}
 	checkpoint := onboardingImportCheckpoint{}
 	if len(execution.Job.Checkpoint) != 0 {
 		if decodeStrictJobDocument(execution.Job.Checkpoint, &checkpoint) != nil || checkpoint.AfterRow < 0 || checkpoint.Processed < 0 {
-			return jobengine.PermanentFailure("job.checkpoint.invalid", errors.New("onboarding import checkpoint is invalid"))
+			return job.PermanentFailure("job.checkpoint.invalid", errors.New("onboarding import checkpoint is invalid"))
 		}
 	}
 	current, err := h.service.Get(ctx, model.OnboardingImportID(command.ImportID))
 	if err != nil {
-		return jobengine.RetryableFailure("dependency.unavailable", err)
+		return job.RetryableFailure("dependency.unavailable", err)
 	}
 	total := max(current.ValidRows, 1)
 	lastAfter, lastProcessed := checkpoint.AfterRow, checkpoint.Processed
@@ -103,20 +103,20 @@ func (h onboardingImportExecuteHandler) Run(ctx context.Context, execution joben
 		if marshalErr != nil {
 			return marshalErr
 		}
-		return execution.Checkpoint(ctx, jobengine.CheckpointValue{Document: document,
+		return execution.Checkpoint(ctx, job.CheckpointValue{Document: document,
 			Progress: &model.JobProgress{Current: int64(lastProcessed), Total: int64(total), Stage: "executing"}})
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			return jobengine.Canceled("job.canceled")
+			return job.Canceled("job.canceled")
 		}
-		return jobengine.RetryableFailure("dependency.unavailable", err)
+		return job.RetryableFailure("dependency.unavailable", err)
 	}
 	result, _ := json.Marshal(onboardingImportCheckpoint{AfterRow: lastAfter, Processed: lastProcessed})
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: result}
+	return job.Outcome{Kind: job.OutcomeSucceeded, Result: result}
 }
 
-func decodeOnboardingImportJob(execution jobengine.Execution, expected model.JobType) (onboardingImportJobCommand, error) {
+func decodeOnboardingImportJob(execution job.Execution, expected model.JobType) (onboardingImportJobCommand, error) {
 	var command onboardingImportJobCommand
 	if execution.Job == nil || execution.Job.Type != expected || decodeStrictJobDocument(execution.Job.Command, &command) != nil || !model.OnboardingImportID(command.ImportID).IsValid() {
 		return command, errors.New("invalid onboarding import job")
@@ -124,18 +124,18 @@ func decodeOnboardingImportJob(execution jobengine.Execution, expected model.Job
 	return command, nil
 }
 
-func onboardingImportParseDescriptor(handler jobengine.Handler) jobengine.Descriptor {
+func onboardingImportParseDescriptor(handler job.Handler) job.Descriptor {
 	return onboardingImportDescriptor(model.JobTypeOnboardingImportParse, handler, true)
 }
 
-func studentProgressionPreviewDescriptor(handler jobengine.Handler) jobengine.Descriptor {
+func studentProgressionPreviewDescriptor(handler job.Handler) job.Descriptor {
 	descriptor := onboardingImportDescriptor(model.JobTypeStudentProgressionPreview, handler, true)
 	descriptor.PublicErrorCodes = append(descriptor.PublicErrorCodes, "student_progression.authorization_lost", "student_progression.target_conflict",
 		"student_progression.lineage_conflict", "student_progression.effective_date_conflict", "student_progression.roster_too_large")
 	return descriptor
 }
 
-func onboardingImportExecuteDescriptor(handler jobengine.Handler) jobengine.Descriptor {
+func onboardingImportExecuteDescriptor(handler job.Handler) job.Descriptor {
 	descriptor := onboardingImportDescriptor(model.JobTypeOnboardingImportExecute, handler, true)
 	descriptor.Checkpoints = true
 	descriptor.ProgressStages = []string{"executing"}
@@ -143,13 +143,15 @@ func onboardingImportExecuteDescriptor(handler jobengine.Handler) jobengine.Desc
 	return descriptor
 }
 
-func NewOnboardingImportExecuteDescriptor(service OnboardingImportService) jobengine.Descriptor {
+// NewOnboardingImportExecuteDescriptor registers execution of a confirmed
+// onboarding import through its application use case.
+func NewOnboardingImportExecuteDescriptor(service OnboardingImportService) job.Descriptor {
 	return onboardingImportExecuteDescriptor(onboardingImportExecuteHandler{service: service})
 }
 
-func onboardingImportDescriptor(kind model.JobType, handler jobengine.Handler, cancelable bool) jobengine.Descriptor {
-	return jobengine.Descriptor{Type: kind, PublicErrorCodes: []string{"dependency.unavailable", "job.canceled", "job.checkpoint.invalid", "job.command.invalid", "onboarding_import.authorization_lost", "onboarding_import.file_invalid"},
+func onboardingImportDescriptor(kind model.JobType, handler job.Handler, cancelable bool) job.Descriptor {
+	return job.Descriptor{Type: kind, PublicErrorCodes: []string{"dependency.unavailable", "job.canceled", "job.checkpoint.invalid", "job.command.invalid", "onboarding_import.authorization_lost", "onboarding_import.file_invalid"},
 		Timeout: 10 * time.Minute, Concurrency: 2, MaximumAttempts: 8, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second,
-		BaseRetryDelay: 10 * time.Second, MaximumRetryDelay: 5 * time.Minute, Cancelable: cancelable, Visibility: jobengine.VisibilityDomain,
+		BaseRetryDelay: 10 * time.Second, MaximumRetryDelay: 5 * time.Minute, Cancelable: cancelable, Visibility: job.VisibilityDomain,
 		SuccessRetention: 7 * 24 * time.Hour, FailureRetention: 7 * 24 * time.Hour, Handler: handler}
 }

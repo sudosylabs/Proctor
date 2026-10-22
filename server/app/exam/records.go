@@ -14,7 +14,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -212,7 +212,7 @@ func (r *Records) CompleteExamSittingRecords(ctx context.Context, invocation inv
 	}
 	key := command.IdempotencyKey
 	command.IdempotencyKey = ""
-	idempotency, err := applicationidempotency.Require(invocation, store.ExamRecordsCompleteOperation, key, command)
+	idempotency, err := idempotency.Require(invocation, store.ExamRecordsCompleteOperation, key, command)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +247,7 @@ func (r *Records) WaiveSubmissionReview(ctx context.Context, invocation invocati
 	}
 	key := command.IdempotencyKey
 	command.IdempotencyKey = ""
-	idempotency, err := applicationidempotency.Require(invocation, store.ExamRecordsWaiveReviewOperation, key, command)
+	idempotency, err := idempotency.Require(invocation, store.ExamRecordsWaiveReviewOperation, key, command)
 	if err != nil {
 		return nil, err
 	}
@@ -305,7 +305,7 @@ func (r *Records) CreateRetentionHold(ctx context.Context, invocation invocation
 	}
 	key := command.IdempotencyKey
 	command.IdempotencyKey = ""
-	idempotency, err := applicationidempotency.Require(invocation, store.ExamRecordsCreateHoldOperation, key, command)
+	idempotency, err := idempotency.Require(invocation, store.ExamRecordsCreateHoldOperation, key, command)
 	if err != nil {
 		return nil, err
 	}
@@ -342,7 +342,7 @@ func (r *Records) ReleaseRetentionHold(ctx context.Context, invocation invocatio
 	}
 	key := command.IdempotencyKey
 	command.IdempotencyKey = ""
-	idempotency, err := applicationidempotency.Require(invocation, store.ExamRecordsReleaseHoldOperation, key, command)
+	idempotency, err := idempotency.Require(invocation, store.ExamRecordsReleaseHoldOperation, key, command)
 	if err != nil {
 		return nil, err
 	}

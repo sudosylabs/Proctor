@@ -14,7 +14,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	appinvocation "github.com/sudosylabs/proctor/server/app/invocation"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -44,7 +44,7 @@ func TestExamSittingSystemAuditAdapterRetainsJobIdentityAtAcademicUnitScope(t *t
 	service, err := newAuditService(audits, securityInstitutionStore{}, "node-system")
 	require.NoError(t, err)
 	sittingID, unitID := model.NewExamSittingID(), model.NewAcademicUnitID()
-	call := appinvocation.System{JobID: model.NewJobID(), AttemptID: model.NewJobAttemptID()}
+	call := invocation.System{JobID: model.NewJobID(), AttemptID: model.NewJobAttemptID()}
 	id, err := (examSittingSystemAuditAdapter{audit: service}).Begin(context.Background(), call,
 		model.ActionExamSittingManage, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()},
 		model.RoleScopeAcademicUnit, unitID.String(), "advance_due", map[string]any{

@@ -12,9 +12,9 @@ import (
 	"errors"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -96,7 +96,7 @@ type examAttemptRealtimeEffects struct {
 func (e examAttemptRealtimeEffects) publishCandidateActivityInvalidation(ctx context.Context,
 	candidateID model.UserID,
 ) error {
-	event, err := apprealtime.NewCandidateExamActivityChangedEvent(candidateID)
+	event, err := realtime.NewCandidateExamActivityChangedEvent(candidateID)
 	if err != nil {
 		return err
 	}
@@ -106,7 +106,7 @@ func (e examAttemptRealtimeEffects) publishCandidateActivityInvalidation(ctx con
 func (e examAttemptRealtimeEffects) publishSittingBoardInvalidation(ctx context.Context,
 	examID model.ExamID, sittingID model.ExamSittingID,
 ) error {
-	event, err := apprealtime.NewManagerSittingBoardChangedEvent(examID, sittingID)
+	event, err := realtime.NewManagerSittingBoardChangedEvent(examID, sittingID)
 	if err != nil {
 		return err
 	}
@@ -123,11 +123,11 @@ func (e examAttemptRealtimeEffects) publishOperationalInvalidations(ctx context.
 	)
 }
 
-func (e examAttemptRealtimeEffects) ConnectionOpened(ctx context.Context, result examattempt.ConnectionResult) error {
+func (e examAttemptRealtimeEffects) ConnectionOpened(ctx context.Context, result attempt.ConnectionResult) error {
 	if len(result.RevokedSessionIDs) > 0 || len(result.RevokedAccessTokenDigests) > 0 {
 		e.realtime.SessionsRevoked(ctx, result.Attempt.CandidateUserID.String(), result.RevokedSessionIDs, result.RevokedAccessTokenDigests)
 	}
-	event, err := apprealtime.NewExamAttemptConnectionOpenedEvent(result.Attempt.SittingID,
+	event, err := realtime.NewExamAttemptConnectionOpenedEvent(result.Attempt.SittingID,
 		result.Attempt.ID, result.Attempt.CandidateUserID, result.Connection.ID, result.Connection.OpenedAt)
 	if err != nil {
 		return err
@@ -136,8 +136,8 @@ func (e examAttemptRealtimeEffects) ConnectionOpened(ctx context.Context, result
 		result.Attempt.ExamID, result.Attempt.SittingID, result.Attempt.CandidateUserID))
 }
 
-func (e examAttemptRealtimeEffects) ConnectionClosed(ctx context.Context, result examattempt.ConnectionClosedResult) error {
-	event, err := apprealtime.NewExamAttemptConnectionClosedEvent(result.SittingID, result.AttemptID,
+func (e examAttemptRealtimeEffects) ConnectionClosed(ctx context.Context, result attempt.ConnectionClosedResult) error {
+	event, err := realtime.NewExamAttemptConnectionClosedEvent(result.SittingID, result.AttemptID,
 		result.CandidateUserID, result.Connection.ID, result.Connection.CloseReason, result.Connection.ClosedAt.Time)
 	if err != nil {
 		return err
@@ -146,7 +146,7 @@ func (e examAttemptRealtimeEffects) ConnectionClosed(ctx context.Context, result
 		e.publishSittingBoardInvalidation(ctx, result.ExamID, result.SittingID))
 }
 
-func (e examAttemptRealtimeEffects) ParticipationRenewed(ctx context.Context, result examattempt.ParticipationRenewal) error {
+func (e examAttemptRealtimeEffects) ParticipationRenewed(ctx context.Context, result attempt.ParticipationRenewal) error {
 	return e.publishSittingBoardInvalidation(ctx, result.ExamID, result.SittingID)
 }
 
@@ -156,13 +156,13 @@ func (e examAttemptRealtimeEffects) BrowserActivityGapChanged(ctx context.Contex
 	return e.publishSittingBoardInvalidation(ctx, examID, sittingID)
 }
 
-func (e examAttemptRealtimeEffects) ParticipationExpired(ctx context.Context, result examattempt.ParticipationExpiry) error {
-	managerEvent, err := apprealtime.NewExamAttemptPolicySuspendedEvent(result.SittingID, result.Attempt.ID, result.CandidateUserID,
+func (e examAttemptRealtimeEffects) ParticipationExpired(ctx context.Context, result attempt.ParticipationExpiry) error {
+	managerEvent, err := realtime.NewExamAttemptPolicySuspendedEvent(result.SittingID, result.Attempt.ID, result.CandidateUserID,
 		result.Connection.ID, result.Flag.ID, result.Suspension.ID, result.Attempt.Revision, result.DatabaseTime)
 	if err != nil {
 		return err
 	}
-	candidateEvent, err := apprealtime.NewCandidateExamAttemptSuspendedEvent(result.SittingID, result.Attempt.ID,
+	candidateEvent, err := realtime.NewCandidateExamAttemptSuspendedEvent(result.SittingID, result.Attempt.ID,
 		result.CandidateUserID, result.Suspension.Source, result.Suspension.CandidateReason, result.DatabaseTime)
 	if err != nil {
 		return err
@@ -171,7 +171,7 @@ func (e examAttemptRealtimeEffects) ParticipationExpired(ctx context.Context, re
 		return errors.Join(e.realtime.PublishRealtimeEvent(ctx, managerEvent), e.realtime.PublishRealtimeEvent(ctx, candidateEvent),
 			e.publishOperationalInvalidations(ctx, result.ExamID, result.SittingID, result.CandidateUserID))
 	}
-	connectionEvent, err := apprealtime.NewExamAttemptConnectionClosedEvent(result.SittingID, result.Attempt.ID,
+	connectionEvent, err := realtime.NewExamAttemptConnectionClosedEvent(result.SittingID, result.Attempt.ID,
 		result.CandidateUserID, result.Connection.ID, result.Connection.CloseReason, result.Connection.ClosedAt.Time)
 	if err != nil {
 		return err
@@ -181,13 +181,13 @@ func (e examAttemptRealtimeEffects) ParticipationExpired(ctx context.Context, re
 			result.SittingID, result.CandidateUserID), e.realtime.UnbindExamAttemptConnection(ctx, result.Connection.ID))
 }
 
-func (e examAttemptRealtimeEffects) AttemptReallowed(ctx context.Context, result examattempt.ReallowResult) error {
-	managerEvent, err := apprealtime.NewExamAttemptReallowedEvent(result.SittingID, result.Attempt.ID, result.CandidateUserID,
+func (e examAttemptRealtimeEffects) AttemptReallowed(ctx context.Context, result attempt.ReallowResult) error {
+	managerEvent, err := realtime.NewExamAttemptReallowedEvent(result.SittingID, result.Attempt.ID, result.CandidateUserID,
 		result.Suspension.ID, result.Attempt.Revision, result.Attempt.UpdatedAt)
 	if err != nil {
 		return err
 	}
-	candidateEvent, err := apprealtime.NewCandidateExamAttemptReallowedEvent(result.SittingID, result.Attempt.ID,
+	candidateEvent, err := realtime.NewCandidateExamAttemptReallowedEvent(result.SittingID, result.Attempt.ID,
 		result.CandidateUserID, result.Attempt.UpdatedAt)
 	if err != nil {
 		return err
@@ -199,17 +199,17 @@ func (e examAttemptRealtimeEffects) AttemptReallowed(ctx context.Context, result
 // AttemptSuspendedByManager publishes a committed kick: the closed live
 // Connection, if any, the manager and candidate suspension facts, operational
 // invalidations, and removal of the exact live Connection binding.
-func (e examAttemptRealtimeEffects) AttemptSuspendedByManager(ctx context.Context, result examattempt.ManualSuspensionResult) error {
+func (e examAttemptRealtimeEffects) AttemptSuspendedByManager(ctx context.Context, result attempt.ManualSuspensionResult) error {
 	var connectionID model.AttemptConnectionID
 	if result.Connection != nil {
 		connectionID = result.Connection.ID
 	}
-	managerEvent, err := apprealtime.NewExamAttemptKickedEvent(result.SittingID, result.Attempt.ID, result.CandidateUserID,
+	managerEvent, err := realtime.NewExamAttemptKickedEvent(result.SittingID, result.Attempt.ID, result.CandidateUserID,
 		connectionID, result.Suspension.ID, result.Attempt.Revision, result.Suspension.StartedAt)
 	if err != nil {
 		return err
 	}
-	candidateEvent, err := apprealtime.NewCandidateExamAttemptSuspendedEvent(result.SittingID, result.Attempt.ID,
+	candidateEvent, err := realtime.NewCandidateExamAttemptSuspendedEvent(result.SittingID, result.Attempt.ID,
 		result.CandidateUserID, result.Suspension.Source, result.Suspension.CandidateReason, result.Suspension.StartedAt)
 	if err != nil {
 		return err
@@ -218,7 +218,7 @@ func (e examAttemptRealtimeEffects) AttemptSuspendedByManager(ctx context.Contex
 		return errors.Join(e.realtime.PublishRealtimeEvent(ctx, managerEvent), e.realtime.PublishRealtimeEvent(ctx, candidateEvent),
 			e.publishOperationalInvalidations(ctx, result.ExamID, result.SittingID, result.CandidateUserID))
 	}
-	connectionEvent, err := apprealtime.NewExamAttemptConnectionClosedEvent(result.SittingID, result.Attempt.ID,
+	connectionEvent, err := realtime.NewExamAttemptConnectionClosedEvent(result.SittingID, result.Attempt.ID,
 		result.CandidateUserID, result.Connection.ID, result.Connection.CloseReason, result.Connection.ClosedAt.Time)
 	if err != nil {
 		return err
@@ -228,8 +228,8 @@ func (e examAttemptRealtimeEffects) AttemptSuspendedByManager(ctx context.Contex
 			result.SittingID, result.CandidateUserID), e.realtime.UnbindExamAttemptConnection(ctx, result.Connection.ID))
 }
 
-func (e examAttemptRealtimeEffects) WorkspaceChanged(ctx context.Context, result examattempt.WorkspaceMutationResult) error {
-	event, err := apprealtime.NewCandidateExamAttemptWorkspaceChangedEvent(result.SittingID, result.AttemptID,
+func (e examAttemptRealtimeEffects) WorkspaceChanged(ctx context.Context, result attempt.WorkspaceMutationResult) error {
+	event, err := realtime.NewCandidateExamAttemptWorkspaceChangedEvent(result.SittingID, result.AttemptID,
 		result.CandidateUserID, result.Change.EntryID, result.Change.Operation, result.Change.Cursor, result.Change.ChangedAt)
 	if err != nil {
 		return err
@@ -237,9 +237,9 @@ func (e examAttemptRealtimeEffects) WorkspaceChanged(ctx context.Context, result
 	return errors.Join(e.realtime.PublishRealtimeEvent(ctx, event))
 }
 
-func (e examAttemptRealtimeEffects) FocusLossEvaluated(ctx context.Context, result examattempt.FocusLossEvaluation) error {
+func (e examAttemptRealtimeEffects) FocusLossEvaluated(ctx context.Context, result attempt.FocusLossEvaluation) error {
 	if result.DiscrepancyRecorded {
-		event, err := apprealtime.NewExamIntegrityDiscrepancyRecordedEvent(result.SubmissionID, result.SittingID,
+		event, err := realtime.NewExamIntegrityDiscrepancyRecordedEvent(result.SubmissionID, result.SittingID,
 			result.AttemptID, result.CandidateUserID, result.DiscrepancyID, result.ReceivedAt)
 		if err != nil {
 			return err
@@ -247,9 +247,9 @@ func (e examAttemptRealtimeEffects) FocusLossEvaluated(ctx context.Context, resu
 		return errors.Join(e.realtime.PublishRealtimeEvent(ctx, event),
 			e.publishSittingBoardInvalidation(ctx, result.ExamID, result.SittingID))
 	}
-	events := make([]apprealtime.RealtimeEvent, 0, 5)
+	events := make([]realtime.RealtimeEvent, 0, 5)
 	if result.ConnectionClosed {
-		event, err := apprealtime.NewExamAttemptConnectionClosedEvent(result.SittingID, result.AttemptID,
+		event, err := realtime.NewExamAttemptConnectionClosedEvent(result.SittingID, result.AttemptID,
 			result.CandidateUserID, result.Connection.ID, result.Connection.CloseReason, result.Connection.ClosedAt.Time)
 		if err != nil {
 			return err
@@ -257,7 +257,7 @@ func (e examAttemptRealtimeEffects) FocusLossEvaluated(ctx context.Context, resu
 		events = append(events, event)
 	}
 	if result.ManagerNotificationRequired {
-		event, err := apprealtime.NewExamAttemptIntegrityFlaggedEvent(result.SittingID, result.AttemptID,
+		event, err := realtime.NewExamAttemptIntegrityFlaggedEvent(result.SittingID, result.AttemptID,
 			result.CandidateUserID, result.Flag.ID, result.PolicyOutcome, result.RetainedEvidenceCount,
 			result.EvidenceOverflowCount, result.ReceivedAt)
 		if err != nil {
@@ -266,13 +266,13 @@ func (e examAttemptRealtimeEffects) FocusLossEvaluated(ctx context.Context, resu
 		events = append(events, event)
 	}
 	if result.SuspensionCreated {
-		managerEvent, err := apprealtime.NewExamAttemptPolicySuspendedEvent(result.SittingID, result.AttemptID,
+		managerEvent, err := realtime.NewExamAttemptPolicySuspendedEvent(result.SittingID, result.AttemptID,
 			result.CandidateUserID, result.Connection.ID, result.Flag.ID, result.Suspension.ID,
 			result.Attempt.Revision, result.ReceivedAt)
 		if err != nil {
 			return err
 		}
-		candidateEvent, err := apprealtime.NewCandidateExamAttemptSuspendedEvent(result.SittingID, result.AttemptID,
+		candidateEvent, err := realtime.NewCandidateExamAttemptSuspendedEvent(result.SittingID, result.AttemptID,
 			result.CandidateUserID, result.Suspension.Source, result.Suspension.CandidateReason, result.ReceivedAt)
 		if err != nil {
 			return err
@@ -280,7 +280,7 @@ func (e examAttemptRealtimeEffects) FocusLossEvaluated(ctx context.Context, resu
 		events = append(events, managerEvent, candidateEvent)
 	}
 	if result.CandidateWarningCreated {
-		event, err := apprealtime.NewCandidateExamAttemptFocusLossWarningEvent(result.SittingID, result.AttemptID,
+		event, err := realtime.NewCandidateExamAttemptFocusLossWarningEvent(result.SittingID, result.AttemptID,
 			result.CandidateUserID, result.ReceivedAt)
 		if err != nil {
 			return err
@@ -303,7 +303,7 @@ func (e examAttemptRealtimeEffects) FocusLossEvaluated(ctx context.Context, resu
 	return joined
 }
 
-func (e examAttemptRealtimeEffects) AttemptSubmitted(ctx context.Context, result examattempt.SubmissionResult) error {
+func (e examAttemptRealtimeEffects) AttemptSubmitted(ctx context.Context, result attempt.SubmissionResult) error {
 	publishErr, constructionErr := e.publishExamAttemptSubmittedFacts(ctx, result)
 	if constructionErr != nil {
 		return constructionErr
@@ -313,15 +313,15 @@ func (e examAttemptRealtimeEffects) AttemptSubmitted(ctx context.Context, result
 }
 
 func (e examAttemptRealtimeEffects) publishExamAttemptSubmittedFacts(ctx context.Context,
-	result examattempt.SubmissionResult,
+	result attempt.SubmissionResult,
 ) (publishErr, constructionErr error) {
-	managerEvent, err := apprealtime.NewExamAttemptSubmittedEvent(result.SittingID, result.Receipt.AttemptID,
+	managerEvent, err := realtime.NewExamAttemptSubmittedEvent(result.SittingID, result.Receipt.AttemptID,
 		result.CandidateUserID, result.Receipt.SubmissionID, result.Receipt.WorkspaceCursor,
 		result.Receipt.ManifestDigest, result.Provenance, result.Receipt.SubmittedAt)
 	if err != nil {
 		return nil, err
 	}
-	candidateEvent, err := apprealtime.NewCandidateExamAttemptSubmittedEvent(result.SittingID, result.Receipt.AttemptID,
+	candidateEvent, err := realtime.NewCandidateExamAttemptSubmittedEvent(result.SittingID, result.Receipt.AttemptID,
 		result.CandidateUserID, result.Receipt.SubmissionID, result.Receipt.WorkspaceCursor,
 		result.Receipt.ManifestDigest, result.Provenance, result.Receipt.SubmittedAt)
 	if err != nil {
@@ -330,13 +330,13 @@ func (e examAttemptRealtimeEffects) publishExamAttemptSubmittedFacts(ctx context
 	return errors.Join(e.realtime.PublishRealtimeEvent(ctx, managerEvent), e.realtime.PublishRealtimeEvent(ctx, candidateEvent)), nil
 }
 
-func (e examAttemptRealtimeEffects) AttemptSealedForSittingClose(ctx context.Context, result examattempt.AutomaticSubmissionResult) error {
+func (e examAttemptRealtimeEffects) AttemptSealedForSittingClose(ctx context.Context, result attempt.AutomaticSubmissionResult) error {
 	publishErr, constructionErr := e.publishExamAttemptSubmittedFacts(ctx, result.SubmissionResult)
 	if constructionErr != nil {
 		return constructionErr
 	}
 	if result.ConnectionClosed {
-		connectionEvent, eventErr := apprealtime.NewExamAttemptConnectionClosedEvent(result.SittingID,
+		connectionEvent, eventErr := realtime.NewExamAttemptConnectionClosedEvent(result.SittingID,
 			result.Receipt.AttemptID, result.CandidateUserID, result.ConnectionID,
 			model.AttemptConnectionCloseSittingClosed, result.Receipt.SubmittedAt)
 		if eventErr != nil {
@@ -352,10 +352,10 @@ func (e examAttemptRealtimeEffects) Report(ctx context.Context, operation string
 	e.realtime.reportTransientFailure(ctx, operation, err)
 }
 
-var _ examattempt.ManagerAuthorizer = examAttemptManagerAuthorizationAdapter{}
-var _ examattempt.Auditor = mutationAuditAdapter{}
-var _ examattempt.Effects = examAttemptRealtimeEffects{}
-var _ examattempt.EffectFailures = examAttemptRealtimeEffects{}
+var _ attempt.ManagerAuthorizer = examAttemptManagerAuthorizationAdapter{}
+var _ attempt.Auditor = mutationAuditAdapter{}
+var _ attempt.Effects = examAttemptRealtimeEffects{}
+var _ attempt.EffectFailures = examAttemptRealtimeEffects{}
 
 // SupportsDeliveryRecovery reports whether a failure can carry delivery repair context.
-func SupportsDeliveryRecovery(code string) bool { return examattempt.SupportsDeliveryRecovery(code) }
+func SupportsDeliveryRecovery(code string) bool { return attempt.SupportsDeliveryRecovery(code) }

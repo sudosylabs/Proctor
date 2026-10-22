@@ -13,8 +13,8 @@ import (
 	"errors"
 	"time"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
@@ -52,7 +52,7 @@ type MailDeliveryRelevance func(context.Context, *model.MailDelivery) (bool, err
 
 type mailDeliveryHandler struct {
 	deliveries MailDeliveryLifecycleStore
-	sender     appmail.Sender
+	sender     mail.Sender
 	sealer     *secretseal.Sealer
 	recorder   MailDeliveryRecorder
 	health     MailHealth
@@ -61,16 +61,16 @@ type mailDeliveryHandler struct {
 	now        func() time.Time
 }
 
-func (h mailDeliveryHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
+func (h mailDeliveryHandler) Run(ctx context.Context, execution job.Execution) job.Outcome {
 	if execution.Job == nil {
-		return jobengine.PermanentFailure("job.command.invalid", errors.New("mail delivery job is missing"))
+		return job.PermanentFailure("job.command.invalid", errors.New("mail delivery job is missing"))
 	}
 	command, err := model.DecodeMailDeliveryCommand(execution.Job.Command)
 	if err != nil {
-		return jobengine.PermanentFailure("job.command.invalid", err)
+		return job.PermanentFailure("job.command.invalid", err)
 	}
 	if h.deliveries == nil || h.sender == nil || h.now == nil {
-		return jobengine.RetryableFailure("mail.delivery.unavailable", errors.New("mail delivery dependencies are unavailable"))
+		return job.RetryableFailure("mail.delivery.unavailable", errors.New("mail delivery dependencies are unavailable"))
 	}
 	delivery, err := h.deliveries.GetDelivery(ctx, command.DeliveryID)
 	if err != nil {
@@ -82,7 +82,7 @@ func (h mailDeliveryHandler) Run(ctx context.Context, execution jobengine.Execut
 	case model.MailDeliverySuppressed, model.MailDeliveryCanceled:
 		return mailDeliverySucceeded(delivery)
 	case model.MailDeliveryFailed:
-		return jobengine.PermanentFailure(nonemptyMailCode(delivery.PublicFailureCode, "mail.delivery.failed"), errors.New("mail delivery is failed"))
+		return job.PermanentFailure(nonemptyMailCode(delivery.PublicFailureCode, "mail.delivery.failed"), errors.New("mail delivery is failed"))
 	}
 	now := model.TimeUTC(h.now())
 	if !now.Before(delivery.Deadline) {
@@ -93,16 +93,16 @@ func (h mailDeliveryHandler) Run(ctx context.Context, execution jobengine.Execut
 	}
 	relevant, relevanceErr := h.isRelevant(ctx, delivery)
 	if relevanceErr != nil {
-		return jobengine.RetryableFailure("mail.delivery.unavailable", relevanceErr)
+		return job.RetryableFailure("mail.delivery.unavailable", relevanceErr)
 	}
 	if !relevant {
 		return h.suppress(ctx, delivery, model.MailDeliveryObsoleteCode, now)
 	}
 	if h.sealer == nil {
-		return jobengine.RetryableFailure("mail.delivery.unavailable", errors.New("mail payload sealing is unavailable"))
+		return job.RetryableFailure("mail.delivery.unavailable", errors.New("mail payload sealing is unavailable"))
 	}
 	if err = h.waitForPermit(ctx); err != nil {
-		return jobengine.RetryableFailure("mail.delivery.unavailable", err)
+		return job.RetryableFailure("mail.delivery.unavailable", err)
 	}
 	// Rate waiting may span a concurrent operator or maintenance transition.
 	// Re-read and repeat deadline/relevance fencing immediately before Start.
@@ -114,7 +114,7 @@ func (h mailDeliveryHandler) Run(ctx context.Context, execution jobengine.Execut
 		return mailDeliverySucceeded(delivery)
 	}
 	if delivery.State == model.MailDeliveryFailed {
-		return jobengine.PermanentFailure(nonemptyMailCode(delivery.PublicFailureCode, "mail.delivery.failed"), errors.New("mail delivery is failed"))
+		return job.PermanentFailure(nonemptyMailCode(delivery.PublicFailureCode, "mail.delivery.failed"), errors.New("mail delivery is failed"))
 	}
 	now = model.TimeUTC(h.now())
 	if !now.Before(delivery.Deadline) {
@@ -125,7 +125,7 @@ func (h mailDeliveryHandler) Run(ctx context.Context, execution jobengine.Execut
 	}
 	relevant, relevanceErr = h.isRelevant(ctx, delivery)
 	if relevanceErr != nil {
-		return jobengine.RetryableFailure("mail.delivery.unavailable", relevanceErr)
+		return job.RetryableFailure("mail.delivery.unavailable", relevanceErr)
 	}
 	if !relevant {
 		return h.suppress(ctx, delivery, model.MailDeliveryObsoleteCode, now)
@@ -144,9 +144,9 @@ func (h mailDeliveryHandler) Run(ctx context.Context, execution jobengine.Execut
 		return mailDeliverySucceeded(sending)
 	}
 	h.recordAttempt(ctx, sending)
-	message, err := appmail.OpenDelivery(h.sealer, sending)
+	message, err := mail.OpenDelivery(h.sealer, sending)
 	if err != nil {
-		if errors.Is(err, appmail.ErrInvalidMessage) {
+		if errors.Is(err, mail.ErrInvalidMessage) {
 			return h.fail(ctx, sending, "mail.message.invalid", err)
 		}
 		return h.fail(ctx, sending, "mail.payload.unavailable", err)
@@ -158,21 +158,21 @@ func (h mailDeliveryHandler) Run(ctx context.Context, execution jobengine.Execut
 			return h.expire(ctx, sending, completedAt)
 		}
 		code := mailTransportFailureCode(classification)
-		if h.health != nil && classification != appmail.TransportPermanent {
+		if h.health != nil && classification != mail.TransportPermanent {
 			h.health.SetJobMailHealth("mail.smtp_outage")
 		}
 		// The delivery and its Job count attempts separately. On the Job's last
 		// attempt a requeued delivery would be left Queued with no Job, so it
 		// fails now and stays available to an operator retry.
 		lastJobAttempt := execution.Job.AttemptCount >= execution.Job.MaximumAttempts
-		if classification == appmail.TransportPermanent || sending.AttemptCount >= model.MailMaximumAttempts || lastJobAttempt {
+		if classification == mail.TransportPermanent || sending.AttemptCount >= model.MailMaximumAttempts || lastJobAttempt {
 			return h.failAt(ctx, sending, code, err, completedAt)
 		}
 		if _, transitionErr := h.deliveries.CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: sending.ID, ExpectedRevision: sending.Revision, Kind: store.MailDeliveryCompletionRetry, PublicFailureCode: code, At: completedAt}); transitionErr != nil {
 			return mailDeliveryDependencyOutcome(transitionErr)
 		}
 		h.record(ctx, sending, model.MailDeliveryQueued, code, completedAt)
-		return jobengine.RetryableFailure(code, err)
+		return job.RetryableFailure(code, err)
 	}
 	accepted, err := h.deliveries.CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: sending.ID, ExpectedRevision: sending.Revision, Kind: store.MailDeliveryCompletionAccepted, At: model.TimeUTC(h.now())})
 	if err != nil {
@@ -223,7 +223,7 @@ func (h mailDeliveryHandler) waitForPermit(ctx context.Context) error {
 	}
 }
 
-func (h mailDeliveryHandler) fail(ctx context.Context, delivery *model.MailDelivery, code string, cause error) jobengine.Outcome {
+func (h mailDeliveryHandler) fail(ctx context.Context, delivery *model.MailDelivery, code string, cause error) job.Outcome {
 	at := model.TimeUTC(h.now())
 	if !at.Before(delivery.Deadline) {
 		return h.expire(ctx, delivery, at)
@@ -231,16 +231,16 @@ func (h mailDeliveryHandler) fail(ctx context.Context, delivery *model.MailDeliv
 	return h.failAt(ctx, delivery, code, cause, at)
 }
 
-func (h mailDeliveryHandler) failAt(ctx context.Context, delivery *model.MailDelivery, code string, cause error, at time.Time) jobengine.Outcome {
+func (h mailDeliveryHandler) failAt(ctx context.Context, delivery *model.MailDelivery, code string, cause error, at time.Time) job.Outcome {
 	failed, transitionErr := h.deliveries.CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: delivery.ID, ExpectedRevision: delivery.Revision, Kind: store.MailDeliveryCompletionFailed, PublicFailureCode: code, At: at})
 	if transitionErr != nil {
 		return mailDeliveryDependencyOutcome(transitionErr)
 	}
 	h.record(ctx, failed, failed.State, code, at)
-	return jobengine.PermanentFailure(code, cause)
+	return job.PermanentFailure(code, cause)
 }
 
-func (h mailDeliveryHandler) expire(ctx context.Context, delivery *model.MailDelivery, at time.Time) jobengine.Outcome {
+func (h mailDeliveryHandler) expire(ctx context.Context, delivery *model.MailDelivery, at time.Time) job.Outcome {
 	expired, err := h.deliveries.CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: delivery.ID, ExpectedRevision: delivery.Revision, Kind: store.MailDeliveryCompletionExpired, At: at})
 	if err != nil {
 		return mailDeliveryDependencyOutcome(err)
@@ -249,7 +249,7 @@ func (h mailDeliveryHandler) expire(ctx context.Context, delivery *model.MailDel
 	return mailDeliverySucceeded(expired)
 }
 
-func (h mailDeliveryHandler) suppress(ctx context.Context, delivery *model.MailDelivery, code string, at time.Time) jobengine.Outcome {
+func (h mailDeliveryHandler) suppress(ctx context.Context, delivery *model.MailDelivery, code string, at time.Time) job.Outcome {
 	suppressed, err := h.deliveries.CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: delivery.ID, ExpectedRevision: delivery.Revision, Kind: store.MailDeliveryCompletionSuppress, PublicFailureCode: code, At: at})
 	if err != nil {
 		return mailDeliveryDependencyOutcome(err)
@@ -276,27 +276,27 @@ func (h mailDeliveryHandler) recordAttempt(ctx context.Context, delivery *model.
 	h.recorder.RecordJobMailAttempt(ctx, MailAttemptMetric{TemplateKey: delivery.TemplateKey, State: delivery.State})
 }
 
-func mailTransportFailureCode(outcome appmail.TransportOutcome) string {
+func mailTransportFailureCode(outcome mail.TransportOutcome) string {
 	switch outcome {
-	case appmail.TransportPermanent:
+	case mail.TransportPermanent:
 		return "mail.transport.permanent"
-	case appmail.TransportAcceptanceUncertain:
+	case mail.TransportAcceptanceUncertain:
 		return "mail.transport.acceptance_uncertain"
-	case appmail.TransportTemporary:
+	case mail.TransportTemporary:
 		return "mail.transport.temporary"
 	default:
 		return "mail.transport.unknown"
 	}
 }
 
-func mailDeliveryDependencyOutcome(err error) jobengine.Outcome {
+func mailDeliveryDependencyOutcome(err error) job.Outcome {
 	if store.IsNotFound(err) {
-		return jobengine.PermanentFailure("mail.delivery.not_found", err)
+		return job.PermanentFailure("mail.delivery.not_found", err)
 	}
 	if store.IsConflict(err) {
-		return jobengine.RetryableFailure("mail.delivery.conflict", err)
+		return job.RetryableFailure("mail.delivery.conflict", err)
 	}
-	return jobengine.RetryableFailure("mail.delivery.unavailable", err)
+	return job.RetryableFailure("mail.delivery.unavailable", err)
 }
 
 func nonemptyMailCode(code, fallback string) string {
@@ -306,35 +306,37 @@ func nonemptyMailCode(code, fallback string) string {
 	return fallback
 }
 
-func mailDeliverySucceeded(delivery *model.MailDelivery) jobengine.Outcome {
+func mailDeliverySucceeded(delivery *model.MailDelivery) job.Outcome {
 	if delivery == nil || !delivery.ID.IsValid() {
-		return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Err: errors.New("mail delivery result is invalid")}
+		return job.Outcome{Kind: job.OutcomeSucceeded, Err: errors.New("mail delivery result is invalid")}
 	}
 	document, err := json.Marshal(struct {
 		DeliveryID model.MailDeliveryID    `json:"delivery_id"`
 		State      model.MailDeliveryState `json:"state"`
 		MessageID  string                  `json:"message_id"`
 	}{delivery.ID, delivery.State, delivery.MessageID})
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: document, Err: err}
+	return job.Outcome{Kind: job.OutcomeSucceeded, Result: document, Err: err}
 }
 
-func mailDeliveryDescriptor(handler mailDeliveryHandler) jobengine.Descriptor {
+func mailDeliveryDescriptor(handler mailDeliveryHandler) job.Descriptor {
 	handler.class = store.MailSendOrdinary
 	return newMailDeliveryDescriptor(model.JobTypeMailDeliver, 8, handler)
 }
 
-func mailCredentialDeliveryDescriptor(handler mailDeliveryHandler) jobengine.Descriptor {
+func mailCredentialDeliveryDescriptor(handler mailDeliveryHandler) job.Descriptor {
 	handler.class = store.MailSendCredential
 	return newMailDeliveryDescriptor(model.JobTypeMailDeliverCredential, 4, handler)
 }
 
-func newMailDeliveryDescriptor(jobType model.JobType, concurrency int, handler jobengine.Handler) jobengine.Descriptor {
-	return jobengine.Descriptor{Type: jobType, PublicErrorCodes: []string{"mail.delivery.conflict", "mail.delivery.failed", "mail.delivery.not_found", "mail.delivery.unavailable", "mail.message.invalid", "mail.payload.unavailable", "mail.transport.acceptance_uncertain", "mail.transport.permanent", "mail.transport.temporary", "mail.transport.unknown"}, Timeout: time.Minute, Concurrency: concurrency, MaximumAttempts: model.MailMaximumAttempts, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: 30 * time.Second, MaximumRetryDelay: 30 * time.Minute, Visibility: jobengine.VisibilityOperator, SuccessRetention: 90 * 24 * time.Hour, FailureRetention: 180 * 24 * time.Hour, Handler: handler}
+func newMailDeliveryDescriptor(jobType model.JobType, concurrency int, handler job.Handler) job.Descriptor {
+	return job.Descriptor{Type: jobType, PublicErrorCodes: []string{"mail.delivery.conflict", "mail.delivery.failed", "mail.delivery.not_found", "mail.delivery.unavailable", "mail.message.invalid", "mail.payload.unavailable", "mail.transport.acceptance_uncertain", "mail.transport.permanent", "mail.transport.temporary", "mail.transport.unknown"}, Timeout: time.Minute, Concurrency: concurrency, MaximumAttempts: model.MailMaximumAttempts, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: 30 * time.Second, MaximumRetryDelay: 30 * time.Minute, Visibility: job.VisibilityOperator, SuccessRetention: 90 * 24 * time.Hour, FailureRetention: 180 * 24 * time.Hour, Handler: handler}
 }
 
-func NewMailDeliveryDescriptor(deliveries MailDeliveryLifecycleStore, sender appmail.Sender, sealer *secretseal.Sealer,
+// NewMailDeliveryDescriptor registers durable delivery of one frozen mail
+// message; credential selects the dedicated credential-mail pool.
+func NewMailDeliveryDescriptor(deliveries MailDeliveryLifecycleStore, sender mail.Sender, sealer *secretseal.Sealer,
 	recorder MailDeliveryRecorder, health MailHealth, relevance MailDeliveryRelevance, now func() time.Time, credential bool,
-) jobengine.Descriptor {
+) job.Descriptor {
 	handler := mailDeliveryHandler{deliveries: deliveries, sender: sender, sealer: sealer, recorder: recorder,
 		health: health, relevance: relevance, now: now}
 	if credential {

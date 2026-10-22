@@ -19,8 +19,8 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/filecontent"
 	"github.com/sudosylabs/proctor/server/httpapi"
@@ -47,7 +47,7 @@ var errDurableJobRuntimeUnavailable = errors.New("application Job runtime is una
 type composedWebSocket interface {
 	runtimeComponent
 	httpapi.WebSocketTransport
-	apprealtime.Sink
+	realtime.Sink
 }
 
 var (
@@ -85,10 +85,10 @@ type consumerConstructors struct {
 	fileContent    func(constructionCapabilities) (app.FileContent, error)
 	dependencies   func(constructionCapabilities, app.FileContent) (app.Dependencies, error)
 	application    func(app.Dependencies) (*app.App, error)
-	realtime       func(borrowedCluster) (apprealtime.ClusterFanout, error)
-	attachRealtime func(*app.App, apprealtime.ClusterFanout) error
+	realtime       func(borrowedCluster) (realtime.ClusterFanout, error)
+	attachRealtime func(*app.App, realtime.ClusterFanout) error
 	websocket      func(*app.App, runtimeLogger, string, string) (composedWebSocket, error)
-	attachSink     func(*app.App, apprealtime.Sink) error
+	attachSink     func(*app.App, realtime.Sink) error
 	http           func(httpapi.Options) (runtimeTransport, http.Handler, error)
 	webapp         func(webui.Options) (http.Handler, error)
 	jobs           func(*app.App) runtimeComponent
@@ -112,7 +112,7 @@ func defaultConsumerConstructors(
 	if err != nil {
 		return consumerConstructors{}, fmt.Errorf("open mail templates: %w", err)
 	}
-	mailRenderer, err := appmail.NewRendererWithPolicy(templateFiles, localizer, appmail.RendererPolicy{
+	mailRenderer, err := mail.NewRendererWithPolicy(templateFiles, localizer, mail.RendererPolicy{
 		AllowLoopbackHTTPDevelopment: explicitLoopbackHTTPDevelopment(snapshot.Server.PublicURL),
 	})
 	if err != nil {
@@ -140,16 +140,16 @@ func defaultConsumerConstructors(
 			return dependencies, err
 		},
 		application: app.New,
-		realtime: func(cluster borrowedCluster) (apprealtime.ClusterFanout, error) {
+		realtime: func(cluster borrowedCluster) (realtime.ClusterFanout, error) {
 			return newRealtimeClusterAdapter(cluster)
 		},
-		attachRealtime: func(application *app.App, fanout apprealtime.ClusterFanout) error {
+		attachRealtime: func(application *app.App, fanout realtime.ClusterFanout) error {
 			return application.AttachRealtimeClusterFanout(fanout)
 		},
 		websocket: func(application *app.App, logger runtimeLogger, publicURL, nodeID string) (composedWebSocket, error) {
 			return websocket.NewHub(application, websocketLogger{log: logger}, publicURL, nodeID, localizer, snapshot.Server.ShutdownTimeout.Duration)
 		},
-		attachSink: func(application *app.App, sink apprealtime.Sink) error {
+		attachSink: func(application *app.App, sink realtime.Sink) error {
 			return application.AttachRealtimeSink(sink)
 		},
 		http: func(options httpapi.Options) (runtimeTransport, http.Handler, error) {

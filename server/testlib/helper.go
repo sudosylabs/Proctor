@@ -19,8 +19,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
-	server "github.com/sudosylabs/proctor/server"
+	"github.com/sudosylabs/proctor/packages/vfs/memory"
+	"github.com/sudosylabs/proctor/server"
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/cluster/local"
 	"github.com/sudosylabs/proctor/server/config"
@@ -120,7 +120,7 @@ type Helper struct {
 	// Mailer is the captured in-memory sender when testlib supplied it. It is
 	// nil when WithConfiguredMailer selects the production-configured adapter.
 	Mailer  *Mailer
-	VFS     *memoryvfs.FS
+	VFS     *memory.FS
 	handler http.Handler
 }
 
@@ -183,7 +183,7 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 		require.NoError(tb, err)
 		mailerOverride = mailer
 	}
-	filesystem := memoryvfs.New()
+	filesystem := memory.New()
 	if settings.cluster == nil && store.Get().Cluster.Backend == "local" {
 		settings.cluster, err = local.New(store.Get().Cluster.NodeID, testClusterLogger{})
 		require.NoError(tb, err)

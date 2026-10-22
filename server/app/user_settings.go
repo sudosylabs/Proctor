@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -160,7 +160,7 @@ func (s *userSettingsService) ReplaceOwnUserSettings(
 	if !updatedAt.After(current.UpdatedAt) {
 		updatedAt = current.UpdatedAt.Add(time.Millisecond)
 	}
-	idempotency, err := applicationidempotency.Prepare(
+	idempotency, err := idempotency.Prepare(
 		invocation,
 		"user_settings.replace",
 		command.IdempotencyKey,
@@ -214,7 +214,7 @@ func (s *userSettingsService) ReplaceOwnUserSettings(
 type userSettingsRealtimeEffects struct{ realtime *realtimeService }
 
 func (e userSettingsRealtimeEffects) Changed(ctx context.Context, change userSettingsChanged) error {
-	event, err := apprealtime.NewUserSettingsChangedEvent(
+	event, err := realtime.NewUserSettingsChangedEvent(
 		change.UserID, change.Revision, change.FormatVersion, change.ChangedAt,
 	)
 	if err != nil {

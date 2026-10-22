@@ -12,7 +12,7 @@ import (
 	"errors"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -67,7 +67,7 @@ func (s *Service) DeclareBrowserDeliveryGaps(ctx context.Context, invocation inv
 	if command.Declaration.Validate() != nil {
 		return nil, apperror.Invalid("exam.attempt.invalid", "delivery_gaps")
 	}
-	idempotency, err := applicationidempotency.Require(invocation, store.BrowserDeliveryGapsOperation, command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Require(invocation, store.BrowserDeliveryGapsOperation, command.IdempotencyKey, struct {
 		AttemptID   model.ExamAttemptID
 		StreamID    string
 		Declaration model.DeclareDeliveryGaps
@@ -114,7 +114,7 @@ func (s *Service) SealBrowserDelivery(ctx context.Context, invocation invocation
 	if command.Declaration.Validate() != nil {
 		return nil, apperror.Invalid("exam.attempt.invalid", "delivery_final")
 	}
-	idempotency, err := applicationidempotency.Require(invocation, store.BrowserDeliveryFinalOperation, command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Require(invocation, store.BrowserDeliveryFinalOperation, command.IdempotencyKey, struct {
 		AttemptID   model.ExamAttemptID
 		StreamID    string
 		Declaration model.FinalDeliveryDeclaration
@@ -160,7 +160,7 @@ func (s *Service) UpdateBrowserDeliverySummary(ctx context.Context, invocation i
 	if command.Summary.Validate() != nil {
 		return nil, apperror.Invalid("exam.attempt.invalid", "delivery_summary")
 	}
-	idem, err := applicationidempotency.Require(invocation, store.BrowserDeliverySummaryOperation, command.IdempotencyKey, struct {
+	idem, err := idempotency.Require(invocation, store.BrowserDeliverySummaryOperation, command.IdempotencyKey, struct {
 		Attempt model.ExamAttemptID
 		Source  model.BrowserSourceSessionID
 		Summary model.UnretainedDeliverySummary
@@ -233,7 +233,7 @@ func (s *Service) AppendHistoricalBrowserDelivery(ctx context.Context, invocatio
 		return nil, apperror.Invalid("exam.attempt.invalid", "historical_browser_append")
 	}
 	access.ParticipationID = command.Batch.ParticipationID
-	idem, err := applicationidempotency.Require(invocation, store.BrowserDeliveryAppendOperation, command.IdempotencyKey, struct {
+	idem, err := idempotency.Require(invocation, store.BrowserDeliveryAppendOperation, command.IdempotencyKey, struct {
 		Attempt model.ExamAttemptID
 		Batch   model.BrowserActivityBatch
 	}{access.Access.AttemptID, command.Batch})

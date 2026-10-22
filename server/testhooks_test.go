@@ -21,10 +21,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	mailpkg "github.com/sudosylabs/proctor/packages/mail"
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
-	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
-	server "github.com/sudosylabs/proctor/server"
+	"github.com/sudosylabs/proctor/packages/mail"
+	"github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/vfs/memory"
+	"github.com/sudosylabs/proctor/server"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/httpapi"
@@ -269,11 +269,11 @@ type hookMailer struct {
 // the injected transport's capability state aligned with that configuration;
 // an enabled transport must also provide the configured payload-key ring.
 func (m *hookMailer) Enabled() bool { return false }
-func (m *hookMailer) From() mailpkg.Address {
-	return mailpkg.Address{Name: "Proctor Test", Address: "no-reply@test.proctor.invalid"}
+func (m *hookMailer) From() mail.Address {
+	return mail.Address{Name: "Proctor Test", Address: "no-reply@test.proctor.invalid"}
 }
-func (m *hookMailer) Send(context.Context, mailpkg.Message) (mailpkg.Receipt, error) {
-	return mailpkg.Receipt{}, nil
+func (m *hookMailer) Send(context.Context, mail.Message) (mail.Receipt, error) {
+	return mail.Receipt{}, nil
 }
 func (m *hookMailer) Test(context.Context) error { return nil }
 func (m *hookMailer) Close() error {
@@ -331,7 +331,7 @@ func (c *hookCluster) Stop(context.Context) error {
 }
 
 type hookFilesystem struct {
-	vfspkg.FileSystem
+	vfs.FileSystem
 	closedCount atomic.Int64
 	closeEvents *hookCloseEvents
 }
@@ -386,7 +386,7 @@ func newHookOverrides(t *testing.T) (server.TestingOverrides, *hookStore, *hookC
 		Persistence:      persistence,
 		Cache:            cache,
 		Mailer:           mailer,
-		Filesystem:       memoryvfs.New(),
+		Filesystem:       memory.New(),
 		AllowMissingJobs: true,
 	}, persistence, cache, mailer
 }
@@ -510,7 +510,7 @@ func TestCanceledAcquisitionReleasesOverridesOnceInReverseOrder(t *testing.T) {
 	mailer.closeEvents = events
 	clusterTransport := &hookCluster{closeEvents: events}
 	filesystem := &hookFilesystem{
-		FileSystem:  memoryvfs.New(),
+		FileSystem:  memory.New(),
 		closeEvents: events,
 	}
 	overrides.Cluster = clusterTransport
@@ -552,7 +552,7 @@ func TestCancellationBetweenAcquisitionPhasesUnwindsCurrentOwner(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	clusterTransport := &hookCluster{cancel: cancel, closeEvents: events}
 	filesystem := &hookFilesystem{
-		FileSystem:  memoryvfs.New(),
+		FileSystem:  memory.New(),
 		closeEvents: events,
 	}
 	overrides.Cluster = clusterTransport
@@ -581,7 +581,7 @@ func TestPlatformAcceptanceFailureReleasesTransferredResourcesOnce(t *testing.T)
 	mailer := &hookMailer{closeEvents: events}
 	clusterTransport := &hookCluster{closeEvents: events}
 	filesystem := &hookFilesystem{
-		FileSystem:  memoryvfs.New(),
+		FileSystem:  memory.New(),
 		closeEvents: events,
 	}
 

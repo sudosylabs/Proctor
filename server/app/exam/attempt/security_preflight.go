@@ -12,7 +12,7 @@ import (
 	"errors"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -75,7 +75,7 @@ func (s *Service) PrepareExamSecurityPreflight(ctx context.Context, invocation i
 	if err != nil {
 		return nil, err
 	}
-	idempotency, err := applicationidempotency.Require(invocation, store.SecurityPreflightPrepareOperation, command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Require(invocation, store.SecurityPreflightPrepareOperation, command.IdempotencyKey, struct {
 		SittingID     model.ExamSittingID `json:"sitting_id"`
 		AttemptID     model.ExamAttemptID `json:"attempt_id,omitempty"`
 		Registry      string              `json:"native_registry_digest"`
@@ -123,7 +123,7 @@ func (s *Service) ReportExamSecurityPreflight(ctx context.Context, invocation in
 		return nil, storeError(securityPreflightStoreErrors, err)
 	}
 	access.SittingID = sittingID
-	idempotency, err := applicationidempotency.Require(invocation, store.SecurityPreflightReportOperation, command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Require(invocation, store.SecurityPreflightReportOperation, command.IdempotencyKey, struct {
 		PreflightID string                        `json:"preflight_id"`
 		Report      model.SecurityPreflightReport `json:"report"`
 	}{command.PreflightID, command.Report})

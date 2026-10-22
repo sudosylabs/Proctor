@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -115,7 +115,7 @@ func TestAcknowledgeCorrectionUsesExactParticipationFenceAndSemanticIdempotency(
 	require.Equal(t, correctionRevisionID, result.CorrectionRevisionID)
 	require.Equal(t, currentRevisionID, result.CurrentRevisionID)
 	require.Equal(t, f.at, result.AcknowledgedAt.Time)
-	wantIdempotency, prepareErr := applicationidempotency.Require(f.invocation, store.ExamAttemptCorrectionAcknowledgementOperation,
+	wantIdempotency, prepareErr := idempotency.Require(f.invocation, store.ExamAttemptCorrectionAcknowledgementOperation,
 		command.IdempotencyKey, struct {
 			AttemptID                 string `json:"exam_attempt_id"`
 			ParticipationID           string `json:"participation_id"`

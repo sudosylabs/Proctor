@@ -15,7 +15,7 @@ import (
 	"io"
 	"strings"
 
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -84,22 +84,22 @@ func (c *Content) StageAttemptWorkspaceObject(ctx context.Context, objectID mode
 			case openErr != nil:
 				return nil, sanitize("stage Attempt Workspace object", openErr)
 			case !matching:
-				return nil, sanitize("stage Attempt Workspace object", vfspkg.ErrConflict)
+				return nil, sanitize("stage Attempt Workspace object", vfs.ErrConflict)
 			}
 			return staged, nil
-		case !errors.Is(statErr, vfspkg.ErrNotFound):
+		case !errors.Is(statErr, vfs.ErrNotFound):
 			return nil, sanitize("stage Attempt Workspace object", statErr)
 		}
 	}
 	size := declaredSize
-	info, writeErr := c.filesystem.Write(ctx, key, stream, vfspkg.WriteOptions{Size: &size, NoOverwrite: conditional})
+	info, writeErr := c.filesystem.Write(ctx, key, stream, vfs.WriteOptions{Size: &size, NoOverwrite: conditional})
 	staged, contentErr := content()
 	if contentErr != nil {
 		// An object already present under a conditional write belongs to an
 		// earlier stage and is left untouched.
-		occupied := errors.Is(writeErr, vfspkg.ErrAlreadyExists) || errors.Is(writeErr, vfspkg.ErrConflict)
+		occupied := errors.Is(writeErr, vfs.ErrAlreadyExists) || errors.Is(writeErr, vfs.ErrConflict)
 		if !occupied {
-			if removeErr := c.filesystem.Remove(ctx, key, vfspkg.RemoveOptions{}); removeErr != nil && !errors.Is(removeErr, vfspkg.ErrNotFound) {
+			if removeErr := c.filesystem.Remove(ctx, key, vfs.RemoveOptions{}); removeErr != nil && !errors.Is(removeErr, vfs.ErrNotFound) {
 				return nil, errors.Join(contentErr, sanitize("remove invalid Attempt Workspace object", removeErr))
 			}
 		}
@@ -120,7 +120,7 @@ func (c *Content) StageAttemptWorkspaceObject(ctx context.Context, objectID mode
 func (c *Content) openMatchingAttemptWorkspaceObject(ctx context.Context, objectID model.AttemptWorkspaceObjectID,
 	size int64, checksum string,
 ) (bool, error) {
-	file, err := c.filesystem.Open(ctx, attemptWorkspaceObjectKey(objectID), vfspkg.OpenOptions{})
+	file, err := c.filesystem.Open(ctx, attemptWorkspaceObjectKey(objectID), vfs.OpenOptions{})
 	if err != nil {
 		return false, err
 	}
@@ -144,7 +144,7 @@ func (c *Content) OpenAttemptWorkspaceObject(ctx context.Context,
 	if c == nil || c.filesystem == nil || !objectID.IsValid() {
 		return nil, errors.New("invalid Attempt Workspace object identity")
 	}
-	file, err := c.filesystem.Open(ctx, attemptWorkspaceObjectKey(objectID), vfspkg.OpenOptions{})
+	file, err := c.filesystem.Open(ctx, attemptWorkspaceObjectKey(objectID), vfs.OpenOptions{})
 	if err != nil {
 		return nil, sanitize("open Attempt Workspace object", err)
 	}
@@ -159,8 +159,8 @@ func (c *Content) RemoveAttemptWorkspaceObject(ctx context.Context,
 	if c == nil || c.filesystem == nil || !objectID.IsValid() {
 		return errors.New("invalid Attempt Workspace object identity")
 	}
-	err := c.filesystem.Remove(ctx, attemptWorkspaceObjectKey(objectID), vfspkg.RemoveOptions{})
-	if errors.Is(err, vfspkg.ErrNotFound) {
+	err := c.filesystem.Remove(ctx, attemptWorkspaceObjectKey(objectID), vfs.RemoveOptions{})
+	if errors.Is(err, vfs.ErrNotFound) {
 		return nil
 	}
 	return sanitize("remove Attempt Workspace object", err)
@@ -175,7 +175,7 @@ func (c *Content) PurgeRetiredAttemptWorkspaceObject(ctx context.Context, object
 		return err
 	}
 	_, err := c.filesystem.Stat(ctx, attemptWorkspaceObjectKey(objectID))
-	if errors.Is(err, vfspkg.ErrNotFound) {
+	if errors.Is(err, vfs.ErrNotFound) {
 		return nil
 	}
 	if err != nil {

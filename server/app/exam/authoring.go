@@ -16,7 +16,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -169,7 +169,7 @@ func (a *Authoring) CreateExam(ctx context.Context, invocation invocation.Invoca
 	if !command.AcademicUnitID.IsValid() {
 		return View{}, apperror.Invalid("exam.invalid", "academic_unit_id")
 	}
-	idempotency, err := applicationidempotency.Require(invocation, idempotencyOperationCreate, command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Require(invocation, idempotencyOperationCreate, command.IdempotencyKey, struct {
 		AcademicUnitID       string `json:"academic_unit_id"`
 		Title                string `json:"title"`
 		InstructionsMarkdown string `json:"instructions_markdown"`
@@ -307,7 +307,7 @@ func (a *Authoring) EditExamDraftText(ctx context.Context, invocation invocation
 		*title = strings.TrimSpace(*title)
 	}
 	instructions := cloneStringPointer(command.InstructionsMarkdown)
-	idempotency, err := applicationidempotency.Require(invocation, idempotencyOperationEditDraftText, command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Require(invocation, idempotencyOperationEditDraftText, command.IdempotencyKey, struct {
 		ExamID                string  `json:"exam_id"`
 		ExpectedDraftRevision int64   `json:"expected_draft_revision"`
 		Title                 *string `json:"title"`
@@ -403,7 +403,7 @@ func (a *Authoring) ConfigureExamDraftFocusLoss(ctx context.Context, invocation 
 	if err := policy.Validate(); err != nil {
 		return View{}, apperror.Invalid("exam.invalid", "focus_loss").Wrap(err)
 	}
-	idempotency, err := applicationidempotency.Require(invocation, idempotencyOperationConfigureDraftFocusLoss, command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Require(invocation, idempotencyOperationConfigureDraftFocusLoss, command.IdempotencyKey, struct {
 		ExamID                      string                          `json:"exam_id"`
 		ExpectedDraftRevision       int64                           `json:"expected_draft_revision"`
 		Enabled                     bool                            `json:"enabled"`
@@ -500,7 +500,7 @@ func (a *Authoring) ConfigureExamDraftBrowserPolicy(ctx context.Context, invocat
 	if err != nil {
 		return View{}, apperror.Invalid("exam.invalid", "browser_policy").Wrap(err)
 	}
-	idempotency, err := applicationidempotency.Require(invocation, idempotencyOperationConfigureBrowserPolicy, command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Require(invocation, idempotencyOperationConfigureBrowserPolicy, command.IdempotencyKey, struct {
 		ExamID                string          `json:"exam_id"`
 		ExpectedDraftRevision int64           `json:"expected_draft_revision"`
 		Policy                json.RawMessage `json:"browser_policy"`
@@ -641,7 +641,7 @@ func (a *Authoring) ConfigureExamDraftNativePolicy(ctx context.Context, invocati
 	if err := policy.Validate(); err != nil {
 		return View{}, apperror.Invalid("exam.invalid", "native_policy").Wrap(err)
 	}
-	idempotency, err := applicationidempotency.Require(invocation, idempotencyOperationConfigureDraftNativePolicy, command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Require(invocation, idempotencyOperationConfigureDraftNativePolicy, command.IdempotencyKey, struct {
 		ExamID                string                     `json:"exam_id"`
 		ExpectedDraftRevision int64                      `json:"expected_draft_revision"`
 		Native                model.NativeSecurityPolicy `json:"native"`

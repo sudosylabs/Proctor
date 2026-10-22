@@ -17,7 +17,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
+	"github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -51,7 +51,7 @@ func TestJPEGScanBombIsRejectedBeforeDecoding(t *testing.T) {
 	// this 4096x4096 image, so these 5,000 scans would take minutes.
 	bomb := progressiveJPEGWithScans(4096, 4096, 5000)
 	require.Less(t, len(bomb), 256<<10)
-	content, err := New(memoryvfs.New(), Policy{MaximumConcurrentOperations: 2}, nil)
+	content, err := New(memory.New(), Policy{MaximumConcurrentOperations: 2}, nil)
 	require.NoError(t, err)
 
 	t.Run("profile picture", func(t *testing.T) {

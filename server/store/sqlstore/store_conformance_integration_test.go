@@ -22,9 +22,9 @@ import (
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 
-	cachepkg "github.com/sudosylabs/proctor/packages/cache"
+	"github.com/sudosylabs/proctor/packages/cache"
 	memorycache "github.com/sudosylabs/proctor/packages/cache/memory"
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/vfs"
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/filecontent"
 	"github.com/sudosylabs/proctor/server/model"
@@ -42,7 +42,7 @@ func TestLocalCacheLayerConformance(t *testing.T) {
 
 func newLocalCacheConformanceStore(t *testing.T, sqlStore *SQLStore) store.Store {
 	t.Helper()
-	storeCache, err := memorycache.New(cachepkg.BytesCodec(), memorycache.Config{
+	storeCache, err := memorycache.New(cache.BytesCodec(), memorycache.Config{
 		MaxEntries: 128,
 		MaxBytes:   64 << 20,
 	})
@@ -1067,7 +1067,7 @@ func TestExamRevisionPublishedBytesSurviveDraftReplacementAndCleanup(t *testing.
 	storetest.TestExamRevisionStoreWithRetention(t, persistence, storetest.ExamRevisionRetentionProbe{StageOriginal: func(t *testing.T, ctx context.Context, _ store.Store, fixture storetest.ExamRevisionRetentionFixture) {
 		resourceSize := int64(len(resourceBytes))
 		resourceKey := examRevisionResourceObjectKey(fixture.OldResourceRevisionID, fixture.OldResourceRenditionID)
-		_, writeErr := filesystem.Write(ctx, resourceKey, bytes.NewReader(resourceBytes), vfspkg.WriteOptions{Size: &resourceSize, NoOverwrite: true})
+		_, writeErr := filesystem.Write(ctx, resourceKey, bytes.NewReader(resourceBytes), vfs.WriteOptions{Size: &resourceSize, NoOverwrite: true})
 		require.NoError(t, writeErr)
 		_, stageErr := content.StageStarterWorkspaceObject(ctx, fixture.OldWorkspaceObjectID, bytes.NewReader(workspaceBytes), int64(len(workspaceBytes)), "text/plain")
 		require.NoError(t, stageErr)

@@ -13,7 +13,7 @@ import (
 	"errors"
 	"time"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -83,23 +83,23 @@ type defaultProfilePictureHandler struct {
 	generator DefaultProfilePictureGenerator
 }
 
-func (h defaultProfilePictureHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
+func (h defaultProfilePictureHandler) Run(ctx context.Context, execution job.Execution) job.Outcome {
 	if execution.Job == nil {
-		return jobengine.PermanentFailure("job.command.invalid", errors.New("job is missing"))
+		return job.PermanentFailure("job.command.invalid", errors.New("job is missing"))
 	}
 	command, err := model.DecodeDefaultProfilePictureCommand(execution.Job.Command)
 	if err != nil {
-		return jobengine.PermanentFailure("job.command.invalid", err)
+		return job.PermanentFailure("job.command.invalid", err)
 	}
 	entryID, err := h.generator.EnsureDefaultProfilePicture(ctx, command.UserID)
 	if err != nil {
 		switch h.generator.ClassifyDefaultProfilePictureError(err) {
 		case "user.not_found":
-			return jobengine.PermanentFailure("user.not_found", err)
+			return job.PermanentFailure("user.not_found", err)
 		case "job.invariant_failed":
-			return jobengine.PermanentFailure("job.invariant_failed", err)
+			return job.PermanentFailure("job.invariant_failed", err)
 		}
-		return jobengine.RetryableFailure("dependency.unavailable", err)
+		return job.RetryableFailure("dependency.unavailable", err)
 	}
 	return defaultProfilePictureJobSucceeded(entryID)
 }
@@ -108,18 +108,20 @@ type defaultProfilePictureResult struct {
 	FileEntryID model.FileEntryID `json:"file_entry_id"`
 }
 
-func defaultProfilePictureJobSucceeded(fileEntryID model.FileEntryID) jobengine.Outcome {
+func defaultProfilePictureJobSucceeded(fileEntryID model.FileEntryID) job.Outcome {
 	if !fileEntryID.IsValid() {
-		return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Err: errors.New("default profile-picture result has invalid file entry ID")}
+		return job.Outcome{Kind: job.OutcomeSucceeded, Err: errors.New("default profile-picture result has invalid file entry ID")}
 	}
 	document, err := json.Marshal(defaultProfilePictureResult{FileEntryID: fileEntryID})
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: document, Err: err}
+	return job.Outcome{Kind: job.OutcomeSucceeded, Result: document, Err: err}
 }
 
-func defaultProfilePictureDescriptor(handler jobengine.Handler) jobengine.Descriptor {
-	return jobengine.Descriptor{Type: model.JobTypeProfilePictureGenerateDefault, PublicErrorCodes: []string{"dependency.unavailable", "job.command.invalid", "job.invariant_failed", "user.not_found"}, Timeout: time.Minute, Concurrency: 1, MaximumAttempts: 8, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: 30 * time.Second, Cancelable: true, ExplicitRetryStatuses: []model.JobStatus{model.JobStatusFailed}, Visibility: jobengine.VisibilityOperator, SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
+func defaultProfilePictureDescriptor(handler job.Handler) job.Descriptor {
+	return job.Descriptor{Type: model.JobTypeProfilePictureGenerateDefault, PublicErrorCodes: []string{"dependency.unavailable", "job.command.invalid", "job.invariant_failed", "user.not_found"}, Timeout: time.Minute, Concurrency: 1, MaximumAttempts: 8, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: 30 * time.Second, Cancelable: true, ExplicitRetryStatuses: []model.JobStatus{model.JobStatusFailed}, Visibility: job.VisibilityOperator, SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
 }
 
-func NewDefaultProfilePictureDescriptor(generator DefaultProfilePictureGenerator) jobengine.Descriptor {
+// NewDefaultProfilePictureDescriptor registers generation of a User's default
+// profile picture.
+func NewDefaultProfilePictureDescriptor(generator DefaultProfilePictureGenerator) job.Descriptor {
 	return defaultProfilePictureDescriptor(defaultProfilePictureHandler{generator: generator})
 }

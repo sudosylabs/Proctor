@@ -15,7 +15,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
 )
 
 func TestExamAttemptExpiryPeriodicRunnerUsesBoundedBatchAndPreservesFailure(t *testing.T) {
@@ -35,14 +35,14 @@ type recordingExamAttemptExpiryUseCases struct {
 	err           error
 }
 
-func (f *recordingExamAttemptExpiryUseCases) ScanExpiredParticipations(_ context.Context, limit int) (examattempt.ExpiryScanResult, error) {
+func (f *recordingExamAttemptExpiryUseCases) ScanExpiredParticipations(_ context.Context, limit int) (attempt.ExpiryScanResult, error) {
 	f.limit = limit
-	return examattempt.ExpiryScanResult{}, f.err
+	return attempt.ExpiryScanResult{}, f.err
 }
 
-func (f *recordingExamAttemptExpiryUseCases) ScanExpiredDeliveries(_ context.Context, limit int) (examattempt.ExpiryScanResult, error) {
+func (f *recordingExamAttemptExpiryUseCases) ScanExpiredDeliveries(_ context.Context, limit int) (attempt.ExpiryScanResult, error) {
 	f.deliveryLimit = limit
-	return examattempt.ExpiryScanResult{}, nil
+	return attempt.ExpiryScanResult{}, nil
 }
 
 func TestExpiryRunnerAlsoSettlesAbandonedDeliveries(t *testing.T) {

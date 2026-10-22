@@ -19,25 +19,25 @@ import (
 
 	"github.com/redis/rueidis"
 
-	cachepkg "github.com/sudosylabs/proctor/packages/cache"
-	memorycache "github.com/sudosylabs/proctor/packages/cache/memory"
-	rediscache "github.com/sudosylabs/proctor/packages/cache/redis"
-	mailpkg "github.com/sudosylabs/proctor/packages/mail"
-	smtpmail "github.com/sudosylabs/proctor/packages/mail/smtp"
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/cache"
+	"github.com/sudosylabs/proctor/packages/cache/memory"
+	"github.com/sudosylabs/proctor/packages/cache/redis"
+	"github.com/sudosylabs/proctor/packages/mail"
+	"github.com/sudosylabs/proctor/packages/mail/smtp"
+	"github.com/sudosylabs/proctor/packages/vfs"
 	localvfs "github.com/sudosylabs/proctor/packages/vfs/local"
-	s3vfs "github.com/sudosylabs/proctor/packages/vfs/s3"
+	"github.com/sudosylabs/proctor/packages/vfs/s3"
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/cluster/local"
-	clustermemberlist "github.com/sudosylabs/proctor/server/cluster/memberlist"
+	"github.com/sudosylabs/proctor/server/cluster/memberlist"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/logging"
-	metricspkg "github.com/sudosylabs/proctor/server/metrics"
+	"github.com/sudosylabs/proctor/server/metrics"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/platform/externalauth"
-	externalauthcas "github.com/sudosylabs/proctor/server/platform/externalauth/cas"
-	externalauthoidc "github.com/sudosylabs/proctor/server/platform/externalauth/oidc"
+	"github.com/sudosylabs/proctor/server/platform/externalauth/cas"
+	"github.com/sudosylabs/proctor/server/platform/externalauth/oidc"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/localcachelayer"
 	"github.com/sudosylabs/proctor/server/store/retrylayer"
@@ -99,10 +99,10 @@ type ownedInfrastructure struct {
 	cache                  platform.Cache
 	cluster                platform.Cluster
 	mailer                 platform.Mailer
-	filesystem             vfspkg.FileSystem
+	filesystem             vfs.FileSystem
 	externalAuthentication *externalauth.Registry
 	migration              *sqlstore.MigrationResult
-	metrics                *metricspkg.Module
+	metrics                *metrics.Module
 }
 
 // constructionCapabilities is a short-lived, non-owning projection used only
@@ -115,11 +115,11 @@ type constructionCapabilities struct {
 	cache                  borrowedCache
 	cluster                borrowedCluster
 	mailer                 borrowedMailer
-	filesystem             vfspkg.FileSystem
+	filesystem             vfs.FileSystem
 	externalAuthentication *externalauth.Registry
 	nodeID                 string
 	migration              *sqlstore.MigrationResult
-	metrics                *metricspkg.Module
+	metrics                *metrics.Module
 }
 
 type borrowedCache interface {
@@ -131,8 +131,8 @@ type borrowedCache interface {
 
 type borrowedMailer interface {
 	Enabled() bool
-	From() mailpkg.Address
-	Send(context.Context, mailpkg.Message) (mailpkg.Receipt, error)
+	From() mail.Address
+	Send(context.Context, mail.Message) (mail.Receipt, error)
 	Test(context.Context) error
 }
 
@@ -208,14 +208,14 @@ func openRuntimeInfrastructure(
 		databaseStats = source.Stats
 	}
 	currentBuild := app.CurrentBuildInfo()
-	metricsModule, err := metricspkg.New(cfg.Metrics, metricspkg.BuildInfo{
+	metricsModule, err := metrics.New(cfg.Metrics, metrics.BuildInfo{
 		Version: currentBuild.Version, Commit: currentBuild.Commit, GoVersion: currentBuild.GoVersion,
-	}, metricspkg.Sources{
+	}, metrics.Sources{
 		Database: databaseStats,
 		ErrorLog: result.logger.StdLogger(slog.LevelError),
-		Logging: func() metricspkg.LogStats {
+		Logging: func() metrics.LogStats {
 			stats := result.logger.Stats()
-			return metricspkg.LogStats{Dropped: stats.Dropped, InternalErrors: stats.InternalErrors}
+			return metrics.LogStats{Dropped: stats.Dropped, InternalErrors: stats.InternalErrors}
 		},
 	})
 	if err != nil {
@@ -366,7 +366,7 @@ func openRuntimeInfrastructure(
 }
 
 func newStoreLocalMemoryCache(maxEntries int) (localcachelayer.Cache, error) {
-	store, err := memorycache.New(cachepkg.BytesCodec(), memorycache.Config{
+	store, err := memory.New(cache.BytesCodec(), memory.Config{
 		MaxEntries: maxEntries,
 		MaxBytes:   storeLocalCacheMaxBytes,
 	})
@@ -507,7 +507,7 @@ func (i *ownedInfrastructure) release() error {
 func newCache(settings config.Cache) (platform.Cache, error) {
 	switch settings.Backend {
 	case "memory":
-		store, err := memorycache.New(cachepkg.BytesCodec(), memorycache.Config{
+		store, err := memory.New(cache.BytesCodec(), memory.Config{
 			MaxEntries: settings.Memory.MaxEntries,
 			MaxBytes:   settings.Memory.MaxBytes,
 		})
@@ -534,10 +534,10 @@ func newCache(settings config.Cache) (platform.Cache, error) {
 		if err != nil {
 			return nil, fmt.Errorf("create Redis client: %w", err)
 		}
-		store, err := rediscache.New(
+		store, err := redis.New(
 			client,
-			cachepkg.BytesCodec(),
-			rediscache.Config{Namespace: settings.Namespace},
+			cache.BytesCodec(),
+			redis.Config{Namespace: settings.Namespace},
 		)
 		if err != nil {
 			client.Close()
@@ -557,21 +557,21 @@ func newCache(settings config.Cache) (platform.Cache, error) {
 }
 
 func newMailer(settings config.Mail) (platform.Mailer, error) {
-	from := mailpkg.Address{Name: settings.FromName, Address: settings.FromAddress}
+	from := mail.Address{Name: settings.FromName, Address: settings.FromAddress}
 	if !settings.Enabled {
 		return platform.NewDisabledMailer(from), nil
 	}
 	if settings.Backend != "smtp" {
 		return nil, fmt.Errorf("unsupported mail backend %q", settings.Backend)
 	}
-	sender, err := smtpmail.New(smtpmail.Config{
+	sender, err := smtp.New(smtp.Config{
 		Address:         settings.SMTP.Address,
 		ServerName:      settings.SMTP.ServerName,
 		LocalName:       settings.SMTP.LocalName,
-		Security:        smtpmail.Security(settings.SMTP.Security),
+		Security:        smtp.Security(settings.SMTP.Security),
 		Username:        settings.SMTP.Username,
 		Password:        settings.SMTP.Password,
-		Authentication:  smtpmail.Authentication(settings.SMTP.Authentication),
+		Authentication:  smtp.Authentication(settings.SMTP.Authentication),
 		Timeout:         settings.SMTP.Timeout.Duration,
 		MessageIDDomain: settings.SMTP.MessageIDDomain,
 		MaxMessageBytes: settings.SMTP.MaxMessageBytes,
@@ -583,12 +583,12 @@ func newMailer(settings config.Mail) (platform.Mailer, error) {
 	return platform.NewMailAdapter(true, from, sender), nil
 }
 
-func newVFS(settings config.VFS) (vfspkg.FileSystem, error) {
+func newVFS(settings config.VFS) (vfs.FileSystem, error) {
 	switch settings.Backend {
 	case "local":
 		return localvfs.New(settings.Local.Root)
 	case "s3":
-		return s3vfs.New(s3vfs.Config{
+		return s3.New(s3.Config{
 			Endpoint:     settings.S3.Endpoint,
 			AccessKey:    settings.S3.AccessKey,
 			SecretKey:    settings.S3.SecretKey,
@@ -620,7 +620,7 @@ func newCluster(
 		if discovery == nil {
 			return nil, fmt.Errorf("cluster discovery store is required for memberlist")
 		}
-		key, decryptionKeys, err := clustermemberlist.DecodeEncryptionKeyring(
+		key, decryptionKeys, err := memberlist.DecodeEncryptionKeyring(
 			settings.Memberlist.EncryptionKey,
 			settings.Memberlist.DecryptionKeys,
 		)
@@ -630,7 +630,7 @@ func newCluster(
 		if serverVersion == "" {
 			serverVersion = app.Version
 		}
-		return clustermemberlist.New(clustermemberlist.Config{
+		return memberlist.New(memberlist.Config{
 			NodeID:             settings.NodeID,
 			BindAddress:        settings.Memberlist.BindAddress,
 			AdvertiseAddress:   settings.Memberlist.AdvertiseAddress,
@@ -720,7 +720,7 @@ func (l loggingClusterLogger) ErrorContext(ctx context.Context, message string, 
 
 func newExternalAuthenticationRegistry() (*externalauth.Registry, error) {
 	return externalauth.NewRegistry(
-		externalauthcas.NewFactory(),
-		externalauthoidc.NewFactory(),
+		cas.NewFactory(),
+		oidc.NewFactory(),
 	)
 }

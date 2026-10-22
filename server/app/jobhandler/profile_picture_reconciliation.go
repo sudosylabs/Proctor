@@ -16,7 +16,7 @@ import (
 	"io"
 	"time"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -116,19 +116,19 @@ type defaultProfilePictureReconciliationHandler struct {
 	now      func() time.Time
 }
 
-func (h defaultProfilePictureReconciliationHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
+func (h defaultProfilePictureReconciliationHandler) Run(ctx context.Context, execution job.Execution) job.Outcome {
 	if execution.Job == nil {
-		return jobengine.PermanentFailure("job.command.invalid", errors.New("job is missing"))
+		return job.PermanentFailure("job.command.invalid", errors.New("job is missing"))
 	}
 	command, err := DecodeDefaultProfilePictureReconciliationCommand(execution.Job.Command)
 	if err != nil {
-		return jobengine.PermanentFailure("job.command.invalid", err)
+		return job.PermanentFailure("job.command.invalid", err)
 	}
 	checkpoint := DefaultProfilePictureReconciliationCheckpoint{}
 	if len(execution.Job.Checkpoint) != 0 {
 		checkpoint, err = DecodeDefaultProfilePictureReconciliationCheckpoint(execution.Job.Checkpoint)
 		if err != nil {
-			return jobengine.PermanentFailure("job.checkpoint.invalid", err)
+			return job.PermanentFailure("job.checkpoint.invalid", err)
 		}
 		return defaultProfilePictureReconciliationSucceeded(checkpoint)
 	}
@@ -138,18 +138,18 @@ func (h defaultProfilePictureReconciliationHandler) Run(ctx context.Context, exe
 	}
 	users, listErr := h.users.List(ctx, store.UserListOptions{Limit: remaining, IncludeDisabled: true, MissingDefaultProfilePicture: true, Visibility: store.UserVisibilityScope{InstitutionWide: true}})
 	if listErr != nil {
-		return jobengine.RetryableFailure("dependency.unavailable", listErr)
+		return job.RetryableFailure("dependency.unavailable", listErr)
 	}
 	for _, user := range users {
 		if user == nil || !user.ID.IsValid() {
-			return jobengine.PermanentFailure("job.invariant_failed", errors.New("reconciliation returned an invalid user"))
+			return job.PermanentFailure("job.invariant_failed", errors.New("reconciliation returned an invalid user"))
 		}
 		if !user.DefaultProfilePictureFileID.IsZero() {
 			continue
 		}
 		reserved, reserveErr := execution.ReserveWork(ctx, 1, command.BatchSize)
 		if reserveErr != nil {
-			return jobengine.RetryableFailure("dependency.unavailable", reserveErr)
+			return job.RetryableFailure("dependency.unavailable", reserveErr)
 		}
 		if !reserved {
 			break
@@ -158,25 +158,25 @@ func (h defaultProfilePictureReconciliationHandler) Run(ctx context.Context, exe
 		checkpoint.AfterUsername = user.Username
 		checkpoint.AfterUserID = user.ID
 		if proposeErr := h.defaults.ProposeDefaultProfilePicture(ctx, user.ID, model.TimeUTC(h.now())); proposeErr != nil {
-			return jobengine.RetryableFailure("dependency.unavailable", proposeErr)
+			return job.RetryableFailure("dependency.unavailable", proposeErr)
 		}
 		checkpoint.Proposed++
 	}
 	if len(users) > 0 {
 		document, encodeErr := EncodeDefaultProfilePictureReconciliationCheckpoint(checkpoint)
 		if encodeErr != nil {
-			return jobengine.PermanentFailure("job.invariant_failed", encodeErr)
+			return job.PermanentFailure("job.invariant_failed", encodeErr)
 		}
-		if checkpointErr := execution.Checkpoint(ctx, jobengine.CheckpointValue{Progress: &model.JobProgress{Current: checkpoint.Processed, Total: checkpoint.Processed, Stage: "completed"}, Document: document}); checkpointErr != nil {
-			return jobengine.RetryableFailure("dependency.unavailable", checkpointErr)
+		if checkpointErr := execution.Checkpoint(ctx, job.CheckpointValue{Progress: &model.JobProgress{Current: checkpoint.Processed, Total: checkpoint.Processed, Stage: "completed"}, Document: document}); checkpointErr != nil {
+			return job.RetryableFailure("dependency.unavailable", checkpointErr)
 		}
 	}
 	return defaultProfilePictureReconciliationSucceeded(checkpoint)
 }
 
-func defaultProfilePictureReconciliationSucceeded(checkpoint DefaultProfilePictureReconciliationCheckpoint) jobengine.Outcome {
+func defaultProfilePictureReconciliationSucceeded(checkpoint DefaultProfilePictureReconciliationCheckpoint) job.Outcome {
 	document, err := json.Marshal(DefaultProfilePictureReconciliationResult{Processed: checkpoint.Processed, Proposed: checkpoint.Proposed})
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: document, Err: err}
+	return job.Outcome{Kind: job.OutcomeSucceeded, Result: document, Err: err}
 }
 
 type defaultProfilePictureReconciliationJobProposer struct {
@@ -199,6 +199,6 @@ func (p defaultProfilePictureReconciliationJobProposer) Propose(ctx context.Cont
 	return err
 }
 
-func defaultProfilePictureReconciliationDescriptor(handler jobengine.Handler) jobengine.Descriptor {
-	return jobengine.Descriptor{Type: model.JobTypeProfilePictureReconcile, Checkpoints: true, ProgressStages: []string{"completed"}, PublicErrorCodes: []string{"dependency.unavailable", "job.checkpoint.invalid", "job.command.invalid", "job.invariant_failed"}, Timeout: 10 * time.Minute, Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: time.Minute, Visibility: jobengine.VisibilityOperator, SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
+func defaultProfilePictureReconciliationDescriptor(handler job.Handler) job.Descriptor {
+	return job.Descriptor{Type: model.JobTypeProfilePictureReconcile, Checkpoints: true, ProgressStages: []string{"completed"}, PublicErrorCodes: []string{"dependency.unavailable", "job.checkpoint.invalid", "job.command.invalid", "job.invariant_failed"}, Timeout: 10 * time.Minute, Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: time.Minute, Visibility: job.VisibilityOperator, SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
 }

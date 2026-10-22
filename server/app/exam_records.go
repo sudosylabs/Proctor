@@ -8,7 +8,7 @@
 package app
 
 import (
-	examengine "github.com/sudosylabs/proctor/server/app/exam"
+	"github.com/sudosylabs/proctor/server/app/exam"
 )
 
-var _ examengine.RecordsAuthorizer = (*accessControlService)(nil)
+var _ exam.RecordsAuthorizer = (*accessControlService)(nil)

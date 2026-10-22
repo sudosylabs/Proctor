@@ -11,7 +11,7 @@ import (
 	"context"
 	"time"
 
-	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
 )
 
 const (
@@ -21,8 +21,8 @@ const (
 )
 
 type examAttemptExpiryUseCases interface {
-	ScanExpiredParticipations(context.Context, int) (examattempt.ExpiryScanResult, error)
-	ScanExpiredDeliveries(context.Context, int) (examattempt.ExpiryScanResult, error)
+	ScanExpiredParticipations(context.Context, int) (attempt.ExpiryScanResult, error)
+	ScanExpiredDeliveries(context.Context, int) (attempt.ExpiryScanResult, error)
 }
 
 // examAttemptExpiryPeriodicRunner adapts the bounded application scan to the

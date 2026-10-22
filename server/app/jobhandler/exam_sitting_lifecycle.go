@@ -13,7 +13,7 @@ import (
 	"errors"
 	"time"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -36,14 +36,14 @@ type examSittingLifecycleHandler struct {
 	reconciler ExamSittingLifecycleReconciler
 }
 
-func (h examSittingLifecycleHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
+func (h examSittingLifecycleHandler) Run(ctx context.Context, execution job.Execution) job.Outcome {
 	if h.reconciler == nil || execution.Job == nil || execution.Attempt == nil ||
 		!execution.Job.ID.IsValid() || !execution.Attempt.ID.IsValid() {
-		return jobengine.PermanentFailure("job.command.invalid", errors.New("Exam Sitting lifecycle Job execution is incomplete"))
+		return job.PermanentFailure("job.command.invalid", errors.New("Exam Sitting lifecycle Job execution is incomplete"))
 	}
 	command, err := model.DecodeExamSittingLifecycleCommand(execution.Job.Command)
 	if err != nil {
-		return jobengine.PermanentFailure("job.command.invalid", err)
+		return job.PermanentFailure("job.command.invalid", err)
 	}
 	result, err := h.reconciler.ReconcileExamSittingLifecycleFromJob(
 		ctx, command.ExamSittingID, execution.Job.ID, execution.Attempt.ID,
@@ -52,13 +52,13 @@ func (h examSittingLifecycleHandler) Run(ctx context.Context, execution jobengin
 		return examSittingLifecycleFailure(err)
 	}
 	if err = validateExamSittingLifecycleJobResult(command.ExamSittingID, result); err != nil {
-		return jobengine.PermanentFailure("job.invariant_failed", err)
+		return job.PermanentFailure("job.invariant_failed", err)
 	}
 	document, err := json.Marshal(ExamSittingLifecycleJobResult{
 		Changed: result.Changed, Transition: result.Transition,
 		State: result.Value.Sitting.State, Revision: result.Value.Sitting.Revision,
 	})
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: document, Err: err}
+	return job.Outcome{Kind: job.OutcomeSucceeded, Result: document, Err: err}
 }
 
 func validateExamSittingLifecycleJobResult(sittingID model.ExamSittingID, result *store.ExamSittingLifecycleResult) error {
@@ -95,23 +95,23 @@ func validExamSittingLifecycleTransition(value store.ExamSittingLifecycleTransit
 // examSittingLifecycleFailure fails permanently only for input the Store refused. A
 // database constraint rejection can come from a concurrent transition or clock
 // skew, so it stays retryable within the attempt budget.
-func examSittingLifecycleFailure(err error) jobengine.Outcome {
+func examSittingLifecycleFailure(err error) job.Outcome {
 	var invalid *store.ErrInvalidInput
 	if (errors.As(err, &invalid) && !store.IsConstraintViolation(err)) || store.IsNotFound(err) {
-		return jobengine.PermanentFailure("job.invariant_failed", err)
+		return job.PermanentFailure("job.invariant_failed", err)
 	}
-	return jobengine.RetryableFailure("dependency.unavailable", err)
+	return job.RetryableFailure("dependency.unavailable", err)
 }
 
-func examSittingLifecycleDescriptor(handler jobengine.Handler) jobengine.Descriptor {
-	return jobengine.Descriptor{
+func examSittingLifecycleDescriptor(handler job.Handler) job.Descriptor {
+	return job.Descriptor{
 		Type:             model.JobTypeExamSittingLifecycle,
 		PublicErrorCodes: []string{"dependency.unavailable", "job.command.invalid", "job.invariant_failed"},
 		Timeout:          time.Minute, Concurrency: 4, MaximumAttempts: 8,
 		LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second,
 		BaseRetryDelay: time.Second, MaximumRetryDelay: 30 * time.Second,
 		ExplicitRetryStatuses: []model.JobStatus{model.JobStatusFailed},
-		Visibility:            jobengine.VisibilityOperator,
+		Visibility:            job.VisibilityOperator,
 		SuccessRetention:      30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour,
 		Handler: handler,
 	}

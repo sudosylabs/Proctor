@@ -16,7 +16,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -190,7 +190,7 @@ func (s *Exports) CreateExamExport(ctx context.Context, invocation invocation.In
 	}
 	key := command.IdempotencyKey
 	command.IdempotencyKey = ""
-	idempotency, err := applicationidempotency.Require(invocation, store.ExamExportCreateOperation, key, command)
+	idempotency, err := idempotency.Require(invocation, store.ExamExportCreateOperation, key, command)
 	if err != nil {
 		return nil, err
 	}

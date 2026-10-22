@@ -8,14 +8,14 @@
 package review
 
 import (
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
 func prepareDecisionIdempotency(invocation invocation.Invocation, command SaveDecisionCommand) (*store.CommandIdempotency, error) {
-	return applicationidempotency.Require(invocation, store.ExamIntegrityReviewDecisionOperation, command.IdempotencyKey, struct {
+	return idempotency.Require(invocation, store.ExamIntegrityReviewDecisionOperation, command.IdempotencyKey, struct {
 		SubmissionID             string `json:"submission_id"`
 		ReviewID                 string `json:"submission_review_id,omitempty"`
 		FlagID                   string `json:"integrity_flag_id"`
@@ -27,7 +27,7 @@ func prepareDecisionIdempotency(invocation invocation.Invocation, command SaveDe
 }
 
 func prepareDraftIdempotency(invocation invocation.Invocation, command UpdateDraftCommand) (*store.CommandIdempotency, error) {
-	return applicationidempotency.Require(invocation, store.ExamIntegrityReviewDraftOperation, command.IdempotencyKey, struct {
+	return idempotency.Require(invocation, store.ExamIntegrityReviewDraftOperation, command.IdempotencyKey, struct {
 		SubmissionID           string `json:"submission_id"`
 		ReviewID               string `json:"submission_review_id,omitempty"`
 		ExpectedReviewRevision int64  `json:"expected_review_revision"`
@@ -39,7 +39,7 @@ func prepareDraftIdempotency(invocation invocation.Invocation, command UpdateDra
 func prepareTerminalIdempotency(invocation invocation.Invocation, operation, key string, submissionID model.SubmissionID,
 	reviewID model.SubmissionReviewID, expectedRevision int64,
 ) (*store.CommandIdempotency, error) {
-	return applicationidempotency.Require(invocation, operation, key, struct {
+	return idempotency.Require(invocation, operation, key, struct {
 		SubmissionID     string `json:"submission_id"`
 		ReviewID         string `json:"submission_review_id"`
 		ExpectedRevision int64  `json:"expected_review_revision"`

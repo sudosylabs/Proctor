@@ -12,21 +12,21 @@ import (
 	"errors"
 	"time"
 
-	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/exam/sitting"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
 type sittingScheduleMailPreparationAdapter struct {
-	preparer  *appmail.SittingComposer
+	preparer  *mail.SittingComposer
 	revisions store.ExamRevisionStore
 	classes   store.ClassStore
 }
 
 func (a sittingScheduleMailPreparationAdapter) Prepare(ctx context.Context,
-	request examsitting.ScheduleMailRequest,
+	request sitting.ScheduleMailRequest,
 ) (*store.ExamSittingMailFanout, error) {
 	if a.preparer == nil || a.revisions == nil || a.classes == nil {
 		return nil, errors.New("sitting schedule mail preparation is unavailable")
@@ -54,14 +54,14 @@ func (a sittingScheduleMailPreparationAdapter) Prepare(ctx context.Context,
 		sitting.State = model.ExamSittingCanceled
 		sitting.ReasonCode = model.ExamSittingReasonManagerCanceled
 	}
-	return a.preparer.Prepare(request.ActorUserID, sitting, request.ChangeKind, appmail.SittingScheduleDetails{
+	return a.preparer.Prepare(request.ActorUserID, sitting, request.ChangeKind, mail.SittingScheduleDetails{
 		ExamTitle: revision.Title, ClassDisplayName: class.DisplayName, PriorClassDisplayName: priorClassName,
 		StartsAt: request.StartsAt, EndsAt: request.EndsAt,
 	})
 }
 
-func newSittingMailPreparer(renderer appmail.SittingRenderer, sender appmail.Sender, sealer *secretseal.Sealer,
+func newSittingMailPreparer(renderer mail.SittingRenderer, sender mail.Sender, sealer *secretseal.Sealer,
 	now func() time.Time,
-) (*appmail.SittingComposer, error) {
-	return appmail.NewSittingComposer(renderer, sender, sealer, now)
+) (*mail.SittingComposer, error) {
+	return mail.NewSittingComposer(renderer, sender, sealer, now)
 }

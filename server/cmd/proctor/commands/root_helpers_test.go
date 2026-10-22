@@ -11,7 +11,7 @@ import (
 	"context"
 	"io"
 
-	server "github.com/sudosylabs/proctor/server"
+	"github.com/sudosylabs/proctor/server"
 	"github.com/sudosylabs/proctor/server/localization"
 )
 

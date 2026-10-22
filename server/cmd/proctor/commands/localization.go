@@ -13,7 +13,7 @@ import (
 	"strings"
 	"text/template"
 
-	server "github.com/sudosylabs/proctor/server"
+	"github.com/sudosylabs/proctor/server"
 	"github.com/sudosylabs/proctor/server/localization"
 )
 

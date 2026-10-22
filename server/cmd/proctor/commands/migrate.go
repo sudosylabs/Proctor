@@ -13,7 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	server "github.com/sudosylabs/proctor/server"
+	"github.com/sudosylabs/proctor/server"
 )
 
 type migrateUpExecutor func(context.Context, string) (int, error)

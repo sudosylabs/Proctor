@@ -11,8 +11,8 @@ import (
 	"context"
 	"errors"
 
-	examcorrection "github.com/sudosylabs/proctor/server/app/exam/correction"
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/exam/correction"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 )
 
 type examCorrectionRealtimeEffects struct {
@@ -20,12 +20,12 @@ type examCorrectionRealtimeEffects struct {
 	collections examCollectionInvalidationEffects
 }
 
-func (e examCorrectionRealtimeEffects) Corrected(ctx context.Context, result examcorrection.Result) error {
-	managerEvent, err := apprealtime.NewExamSittingContentCorrectedEvent(result.ExamID, result.SittingID, result.PreviousRevisionID, result.RevisionID, result.SittingRevision, result.EffectiveAt)
+func (e examCorrectionRealtimeEffects) Corrected(ctx context.Context, result correction.Result) error {
+	managerEvent, err := realtime.NewExamSittingContentCorrectedEvent(result.ExamID, result.SittingID, result.PreviousRevisionID, result.RevisionID, result.SittingRevision, result.EffectiveAt)
 	if err != nil {
 		return err
 	}
-	candidateEvent, err := apprealtime.NewCandidateExamSittingContentCorrectedEvent(result.ExamID, result.SittingID, result.PreviousRevisionID, result.RevisionID, result.SittingRevision, result.EffectiveAt)
+	candidateEvent, err := realtime.NewCandidateExamSittingContentCorrectedEvent(result.ExamID, result.SittingID, result.PreviousRevisionID, result.RevisionID, result.SittingRevision, result.EffectiveAt)
 	if err != nil {
 		return err
 	}
@@ -40,7 +40,7 @@ func (e examCorrectionRealtimeEffects) Report(ctx context.Context, operation str
 	e.realtime.reportTransientFailure(ctx, operation, err)
 }
 
-var _ examcorrection.Authorizer = (*accessControlService)(nil)
-var _ examcorrection.Auditor = mutationAuditAdapter{}
-var _ examcorrection.Effects = examCorrectionRealtimeEffects{}
-var _ examcorrection.EffectFailures = examCorrectionRealtimeEffects{}
+var _ correction.Authorizer = (*accessControlService)(nil)
+var _ correction.Auditor = mutationAuditAdapter{}
+var _ correction.Effects = examCorrectionRealtimeEffects{}
+var _ correction.EffectFailures = examCorrectionRealtimeEffects{}

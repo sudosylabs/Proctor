@@ -16,7 +16,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -59,7 +59,7 @@ func TestJobHistoryCleanupDeletesBoundedPagesAndCheckpointsSafely(t *testing.T) 
 	t.Parallel()
 
 	at := time.Date(2026, time.August, 10, 8, 0, 0, 0, time.UTC)
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeCleanup, json.RawMessage(`{"batch_size":2}`), "cleanup:2026-08-10", at, at, 5)
+	record, err := model.NewJob(model.NewJobID(), model.JobTypeCleanup, json.RawMessage(`{"batch_size":2}`), "cleanup:2026-08-10", at, at, 5)
 	require.NoError(t, err)
 	firstCursorTime := at.Add(-100 * 24 * time.Hour)
 	firstCursorID := model.NewJobID()
@@ -68,18 +68,18 @@ func TestJobHistoryCleanupDeletesBoundedPagesAndCheckpointsSafely(t *testing.T) 
 	}}
 	policies := []store.JobRetentionPolicy{{Type: model.JobTypeProfilePictureGenerateDefault, SucceededCanceledAge: 30 * 24 * time.Hour, FailedAge: 90 * 24 * time.Hour}}
 	handler := historyCleanupHandlerForTest(cleaner, policies, at)
-	var checkpoints []jobengine.CheckpointValue
-	execution := testJobExecution(job, allowJobWorkReservation(), func(_ context.Context, value jobengine.CheckpointValue) error {
+	var checkpoints []job.CheckpointValue
+	execution := testJobExecution(record, allowJobWorkReservation(), func(_ context.Context, value job.CheckpointValue) error {
 		checkpoints = append(checkpoints, value)
 		return nil
 	})
 
 	outcome := handler.Run(context.Background(), execution)
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v requests=%#v checkpoints", outcome, cleaner.requests)
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind, "outcome=%#v requests=%#v checkpoints", outcome, cleaner.requests)
 	require.NoError(t, outcome.Err, "outcome=%#v requests=%#v checkpoints", outcome, cleaner.requests)
 	require.Len(t, cleaner.requests, 1, "outcome=%#v requests=%#v checkpoints", outcome, cleaner.requests)
 	require.Len(t, checkpoints, 1, "outcome=%#v requests=%#v checkpoints", outcome, cleaner.requests)
-	require.Equal(t, job.ID, cleaner.requests[0].ExcludeJobID)
+	require.Equal(t, record.ID, cleaner.requests[0].ExcludeJobID)
 	require.Equal(t, 2, cleaner.requests[0].Limit)
 	var final JobHistoryCleanupCheckpoint
 	err = json.Unmarshal(checkpoints[0].Document, &final)
@@ -97,29 +97,29 @@ func TestJobHistoryCleanupDoesNotDeleteAnotherBatchAfterCommittedCheckpoint(t *t
 	at := time.Date(2026, time.August, 10, 8, 0, 0, 0, time.UTC)
 	command, err := EncodeJobHistoryCleanupCommand(JobHistoryCleanupCommand{BatchSize: 10})
 	require.NoError(t, err)
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeCleanup, command, "cleanup:2026-08-10", at, at, 5)
+	record, err := model.NewJob(model.NewJobID(), model.JobTypeCleanup, command, "cleanup:2026-08-10", at, at, 5)
 	require.NoError(t, err)
 	cursorTime := at.Add(-100 * 24 * time.Hour)
 	cursorID := model.NewJobID()
 	checkpoint, err := json.Marshal(JobHistoryCleanupCheckpoint{AfterCompletedAt: cursorTime, AfterJobID: cursorID, Deleted: 20})
 	require.NoError(t, err)
-	job.Checkpoint = checkpoint
+	record.Checkpoint = checkpoint
 	cleaner := &jobHistoryCleanerFake{results: []*store.JobHistoryCleanupResult{{Done: true}}}
 	handler := historyCleanupHandlerForTest(cleaner, []store.JobRetentionPolicy{{Type: model.JobTypeCleanup, SucceededCanceledAge: 30 * 24 * time.Hour, FailedAge: 90 * 24 * time.Hour}}, at)
-	outcome := handler.Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), func(context.Context, jobengine.CheckpointValue) error { return nil }))
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v requests", outcome)
+	outcome := handler.Run(context.Background(), testJobExecution(record, allowJobWorkReservation(), func(context.Context, job.CheckpointValue) error { return nil }))
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind, "outcome=%#v requests", outcome)
 	require.Empty(t, cleaner.requests, "outcome=%#v requests", outcome)
 }
 
 func TestJobHistoryCleanupDoesNotRepeatReservedDeletionAfterCrash(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, time.August, 10, 8, 0, 0, 0, time.UTC)
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeCleanup, json.RawMessage(`{"batch_size":2}`), "daily", at, at, 5)
+	record, err := model.NewJob(model.NewJobID(), model.JobTypeCleanup, json.RawMessage(`{"batch_size":2}`), "daily", at, at, 5)
 	require.NoError(t, err)
-	job.WorkReserved = 2
+	record.WorkReserved = 2
 	cleaner := &jobHistoryCleanerFake{}
-	outcome := historyCleanupHandlerForTest(cleaner, nil, at).Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), nil))
-	require.Equal(t, jobengine.OutcomePermanentFailure, outcome.Kind, "outcome=%#v requests", outcome)
+	outcome := historyCleanupHandlerForTest(cleaner, nil, at).Run(context.Background(), testJobExecution(record, allowJobWorkReservation(), nil))
+	require.Equal(t, job.OutcomePermanentFailure, outcome.Kind, "outcome=%#v requests", outcome)
 	require.Empty(t, cleaner.requests, "outcome=%#v requests", outcome)
 	// An immediate successor would let a deletion that keeps failing spawn an
 	// unbounded chain of fresh Jobs; the next daily occurrence resumes.
@@ -132,8 +132,8 @@ func TestJobHistoryCleanupEmptyIncompleteBatchDoesNotEnqueueContinuation(t *test
 	current, err := model.NewJob(model.NewJobID(), model.JobTypeCleanup, json.RawMessage(`{"batch_size":2}`), "daily", at, at, 5)
 	require.NoError(t, err)
 	cleaner := &jobHistoryCleanerFake{results: []*store.JobHistoryCleanupResult{{Deleted: 0, LastCompletedAt: at.Add(-100 * 24 * time.Hour), LastJobID: model.NewJobID()}}}
-	outcome := historyCleanupHandlerForTest(cleaner, nil, at).Run(context.Background(), testJobExecution(current, allowJobWorkReservation(), func(context.Context, jobengine.CheckpointValue) error { return nil }))
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v", outcome)
+	outcome := historyCleanupHandlerForTest(cleaner, nil, at).Run(context.Background(), testJobExecution(current, allowJobWorkReservation(), func(context.Context, job.CheckpointValue) error { return nil }))
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind, "outcome=%#v", outcome)
 	require.Empty(t, cleaner.enqueued, "empty batch created an immediate successor")
 }
 
@@ -152,11 +152,11 @@ func TestJobHistoryCleanupContinuesBeyondDailyBatchUntilExhausted(t *testing.T) 
 	for index := 0; index < len(cleaner.enqueued); index++ {
 		require.Less(t, index, 3, "exhausted history continued creating work")
 		current := cleaner.enqueued[index]
-		outcome := handler.Run(context.Background(), testJobExecution(current, allowJobWorkReservation(), func(_ context.Context, value jobengine.CheckpointValue) error {
+		outcome := handler.Run(context.Background(), testJobExecution(current, allowJobWorkReservation(), func(_ context.Context, value job.CheckpointValue) error {
 			current.Checkpoint = value.Document
 			return nil
 		}))
-		require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "pass %d outcome = %#v", index, outcome)
+		require.Equal(t, job.OutcomeSucceeded, outcome.Kind, "pass %d outcome = %#v", index, outcome)
 		require.NoError(t, outcome.Err, "pass %d outcome = %#v", index, outcome)
 		var result JobHistoryCleanupResult
 		require.NoError(t, json.Unmarshal(outcome.Result, &result))
@@ -178,13 +178,13 @@ func TestJobHistoryCleanupRetriesUnknownContinuationOutcomeWithoutRepeatingDelet
 	require.NoError(t, err)
 	cleaner := &jobHistoryCleanerFake{results: []*store.JobHistoryCleanupResult{{Deleted: 2, LastCompletedAt: at.Add(-100 * 24 * time.Hour), LastJobID: model.NewJobID()}}, enqueueErr: errors.New("unknown commit outcome")}
 	handler := historyCleanupHandlerForTest(cleaner, nil, at)
-	execution := testJobExecution(current, allowJobWorkReservation(), func(_ context.Context, value jobengine.CheckpointValue) error {
+	execution := testJobExecution(current, allowJobWorkReservation(), func(_ context.Context, value job.CheckpointValue) error {
 		current.Checkpoint = value.Document
 		return nil
 	})
-	require.Equal(t, jobengine.OutcomeRetryableFailure, handler.Run(context.Background(), execution).Kind)
+	require.Equal(t, job.OutcomeRetryableFailure, handler.Run(context.Background(), execution).Kind)
 	cleaner.enqueueErr = nil
-	require.Equal(t, jobengine.OutcomeSucceeded, handler.Run(context.Background(), execution).Kind)
+	require.Equal(t, job.OutcomeSucceeded, handler.Run(context.Background(), execution).Kind)
 	require.Len(t, cleaner.requests, 1, "retry repeated work: deletions")
 	require.Len(t, cleaner.enqueued, 1, "retry repeated work: deletions")
 }
@@ -197,7 +197,7 @@ func TestJobHistoryCleanupExhaustedCheckpointDoesNotEnqueueContinuation(t *testi
 	current.Checkpoint = json.RawMessage(`{"deleted":0,"done":true}`)
 	cleaner := &jobHistoryCleanerFake{}
 	outcome := historyCleanupHandlerForTest(cleaner, nil, at).Run(context.Background(), testJobExecution(current, allowJobWorkReservation(), nil))
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "exhausted retry outcome=%#v requests=%d continuations", outcome, len(cleaner.requests))
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind, "exhausted retry outcome=%#v requests=%d continuations", outcome, len(cleaner.requests))
 	require.Empty(t, cleaner.requests, "exhausted retry outcome=%#v requests=%d continuations", outcome, len(cleaner.requests))
 	require.Empty(t, cleaner.enqueued, "exhausted retry outcome=%#v requests=%d continuations", outcome, len(cleaner.requests))
 }

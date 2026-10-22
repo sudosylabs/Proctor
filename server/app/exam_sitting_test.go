@@ -14,8 +14,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	appinvocation "github.com/sudosylabs/proctor/server/app/invocation"
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/invocation"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -40,7 +40,7 @@ func TestExamSittingLifecycleJobReconcileLeavesClosingToDedicatedSealingJob(t *t
 	require.NoError(t, err)
 	require.NotNil(t, result, "result/call")
 	require.Equal(t, model.ExamSittingClosing, result.Value.Sitting.State, "result/call")
-	require.Equal(t, appinvocation.System{JobID: jobID, AttemptID: attemptID}, fake.advanceCall, "result/call")
+	require.Equal(t, invocation.System{JobID: jobID, AttemptID: attemptID}, fake.advanceCall, "result/call")
 
 	// Another node may close before the lifecycle read. The dedicated sealing
 	// handler still owns any closure work, so this adapter returns AdvanceDue's
@@ -56,22 +56,22 @@ func TestExamSittingLifecycleJobReconcileLeavesClosingToDedicatedSealingJob(t *t
 
 func TestExamSittingLifecycleEffectPublishesOnlySafeBoundedMetadata(t *testing.T) {
 	t.Parallel()
-	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
+	service := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	require.NoError(t, realtime.AttachRealtimeSink(sink))
-	require.NoError(t, realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
+	require.NoError(t, service.AttachRealtimeSink(sink))
+	require.NoError(t, service.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
 	examID, sittingID := model.NewExamID(), model.NewExamSittingID()
 	candidateID := model.NewUserID()
 	collections := examCollectionInvalidationEffects{
 		sittings: &examCollectionInvalidationStoreFake{candidateIDs: []model.UserID{candidateID}},
-		realtime: realtime,
+		realtime: service,
 	}
 	at := time.Date(2026, time.August, 16, 9, 0, 0, 0, time.UTC)
-	err := (examSittingRealtimeEffects{realtime: realtime, collections: collections}).LifecycleChanged(context.Background(), examID, sittingID,
+	err := (examSittingRealtimeEffects{realtime: service, collections: collections}).LifecycleChanged(context.Background(), examID, sittingID,
 		model.ExamSittingPaused, 4, store.ExamSittingTransitionManagerPaused, at.Add(2*time.Hour), at)
 	require.NoError(t, err)
 	sink.mu.Lock()
-	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
+	events := append([]realtime.RealtimeEvent(nil), sink.events...)
 	sink.mu.Unlock()
 	require.Len(t, events, 4)
 	require.Equal(t, "exam_sitting_lifecycle_changed", events[0].Name)
@@ -112,11 +112,11 @@ func (f *examCollectionInvalidationStoreFake) ListCandidateInvalidationTargetsBy
 
 type examSittingLifecycleFake struct {
 	advance     store.ExamSittingLifecycleResult
-	advanceCall appinvocation.System
+	advanceCall invocation.System
 	err         error
 }
 
-func (f *examSittingLifecycleFake) AdvanceDue(_ context.Context, call appinvocation.System, _ model.ExamSittingID) (store.ExamSittingLifecycleResult, error) {
+func (f *examSittingLifecycleFake) AdvanceDue(_ context.Context, call invocation.System, _ model.ExamSittingID) (store.ExamSittingLifecycleResult, error) {
 	f.advanceCall = call
 	return f.advance, f.err
 }

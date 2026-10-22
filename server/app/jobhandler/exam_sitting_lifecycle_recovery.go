@@ -15,7 +15,7 @@ import (
 	"io"
 	"time"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -142,24 +142,24 @@ type examSittingLifecycleRecoveryHandler struct {
 	service ExamSittingLifecycleRecoveryUseCases
 }
 
-func (h examSittingLifecycleRecoveryHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
+func (h examSittingLifecycleRecoveryHandler) Run(ctx context.Context, execution job.Execution) job.Outcome {
 	if h.service == nil || execution.Job == nil || execution.Attempt == nil ||
 		!execution.Job.ID.IsValid() || !execution.Attempt.ID.IsValid() {
-		return jobengine.PermanentFailure("job.command.invalid", errors.New("Exam Sitting lifecycle recovery execution is incomplete"))
+		return job.PermanentFailure("job.command.invalid", errors.New("Exam Sitting lifecycle recovery execution is incomplete"))
 	}
 	command, err := DecodeExamSittingLifecycleRecoveryCommand(execution.Job.Command)
 	if err != nil {
-		return jobengine.PermanentFailure("job.command.invalid", err)
+		return job.PermanentFailure("job.command.invalid", err)
 	}
 	checkpoint := ExamSittingLifecycleRecoveryCheckpoint{}
 	if len(execution.Job.Checkpoint) != 0 {
 		checkpoint, err = DecodeExamSittingLifecycleRecoveryCheckpoint(execution.Job.Checkpoint)
 		if err != nil {
-			return jobengine.PermanentFailure("job.checkpoint.invalid", err)
+			return job.PermanentFailure("job.checkpoint.invalid", err)
 		}
 	}
 	if checkpoint.Processed > int64(command.WorkLimit) || execution.Job.WorkReserved < int(checkpoint.Processed) || execution.Job.WorkReserved > command.WorkLimit {
-		return jobengine.PermanentFailure("job.checkpoint.invalid", errors.New("Exam Sitting lifecycle recovery reservation and checkpoint disagree"))
+		return job.PermanentFailure("job.checkpoint.invalid", errors.New("Exam Sitting lifecycle recovery reservation and checkpoint disagree"))
 	}
 
 	remaining := command.WorkLimit - execution.Job.WorkReserved
@@ -172,18 +172,18 @@ func (h examSittingLifecycleRecoveryHandler) Run(ctx context.Context, execution 
 			return examSittingLifecycleFailure(listErr)
 		}
 		if len(page) > limit {
-			return jobengine.PermanentFailure("job.invariant_failed", errors.New("Exam Sitting lifecycle recovery returned an oversized page"))
+			return job.PermanentFailure("job.invariant_failed", errors.New("Exam Sitting lifecycle recovery returned an oversized page"))
 		}
 		if len(page) == 0 {
 			break
 		}
 		for _, due := range page {
 			if err = validateExamSittingLifecycleDue(checkpoint, due); err != nil {
-				return jobengine.PermanentFailure("job.invariant_failed", err)
+				return job.PermanentFailure("job.invariant_failed", err)
 			}
 			reserved, reserveErr := execution.ReserveWork(ctx, 1, command.WorkLimit)
 			if reserveErr != nil {
-				return jobengine.RetryableFailure("dependency.unavailable", reserveErr)
+				return job.RetryableFailure("dependency.unavailable", reserveErr)
 			}
 			if !reserved {
 				return examSittingLifecycleRecoverySucceeded(checkpoint)
@@ -195,7 +195,7 @@ func (h examSittingLifecycleRecoveryHandler) Run(ctx context.Context, execution 
 				return examSittingLifecycleFailure(reconcileErr)
 			}
 			if err = validateExamSittingLifecycleJobResult(due.Value.Sitting.ID, result); err != nil {
-				return jobengine.PermanentFailure("job.invariant_failed", err)
+				return job.PermanentFailure("job.invariant_failed", err)
 			}
 			checkpoint.AfterDueAt, checkpoint.AfterSittingID = due.DueAt, due.Value.Sitting.ID
 			checkpoint.Processed++
@@ -204,13 +204,13 @@ func (h examSittingLifecycleRecoveryHandler) Run(ctx context.Context, execution 
 			}
 			document, encodeErr := EncodeExamSittingLifecycleRecoveryCheckpoint(checkpoint)
 			if encodeErr != nil {
-				return jobengine.PermanentFailure("job.invariant_failed", encodeErr)
+				return job.PermanentFailure("job.invariant_failed", encodeErr)
 			}
-			if checkpointErr := execution.Checkpoint(ctx, jobengine.CheckpointValue{
+			if checkpointErr := execution.Checkpoint(ctx, job.CheckpointValue{
 				Progress: &model.JobProgress{Current: checkpoint.Processed, Total: int64(command.WorkLimit), Stage: "reconciling"},
 				Document: document,
 			}); checkpointErr != nil {
-				return jobengine.RetryableFailure("dependency.unavailable", checkpointErr)
+				return job.RetryableFailure("dependency.unavailable", checkpointErr)
 			}
 			remaining--
 			if remaining == 0 {
@@ -236,9 +236,9 @@ func validateExamSittingLifecycleDue(after ExamSittingLifecycleRecoveryCheckpoin
 	return nil
 }
 
-func examSittingLifecycleRecoverySucceeded(checkpoint ExamSittingLifecycleRecoveryCheckpoint) jobengine.Outcome {
+func examSittingLifecycleRecoverySucceeded(checkpoint ExamSittingLifecycleRecoveryCheckpoint) job.Outcome {
 	document, err := json.Marshal(ExamSittingLifecycleRecoveryResult{Processed: checkpoint.Processed, Changed: checkpoint.Changed})
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: document, Err: err}
+	return job.Outcome{Kind: job.OutcomeSucceeded, Result: document, Err: err}
 }
 
 type examSittingLifecycleRecoveryProposer struct {
@@ -267,8 +267,8 @@ func (p examSittingLifecycleRecoveryProposer) Propose(ctx context.Context, occur
 	return err
 }
 
-func examSittingLifecycleRecoveryDescriptor(handler jobengine.Handler) jobengine.Descriptor {
-	return jobengine.Descriptor{
+func examSittingLifecycleRecoveryDescriptor(handler job.Handler) job.Descriptor {
+	return job.Descriptor{
 		Type:        model.JobTypeExamSittingLifecycleRecovery,
 		Checkpoints: true, ProgressStages: []string{"reconciling"},
 		PublicErrorCodes: []string{"dependency.unavailable", "job.checkpoint.invalid", "job.command.invalid", "job.invariant_failed"},
@@ -276,7 +276,7 @@ func examSittingLifecycleRecoveryDescriptor(handler jobengine.Handler) jobengine
 		LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second,
 		BaseRetryDelay: time.Second, MaximumRetryDelay: time.Minute,
 		ExplicitRetryStatuses: []model.JobStatus{model.JobStatusFailed},
-		Visibility:            jobengine.VisibilityOperator,
+		Visibility:            job.VisibilityOperator,
 		SuccessRetention:      30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour,
 		Handler: handler,
 	}

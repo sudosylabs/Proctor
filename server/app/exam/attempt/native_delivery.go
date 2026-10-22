@@ -13,7 +13,7 @@ import (
 	"slices"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -133,7 +133,7 @@ func (s *Service) DeclareNativeDeliveryGaps(ctx context.Context, invocation invo
 	if command.Declaration.Validate() != nil {
 		return nil, apperror.Invalid("exam.attempt.invalid", "delivery_gaps")
 	}
-	idempotency, err := applicationidempotency.Require(invocation, store.NativeDeliveryGapsOperation, command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Require(invocation, store.NativeDeliveryGapsOperation, command.IdempotencyKey, struct {
 		AttemptID   model.ExamAttemptID
 		StreamID    string
 		Declaration model.DeclareDeliveryGaps
@@ -180,7 +180,7 @@ func (s *Service) SealNativeDelivery(ctx context.Context, invocation invocation.
 	if command.Declaration.Validate() != nil {
 		return nil, apperror.Invalid("exam.attempt.invalid", "delivery_final")
 	}
-	idempotency, err := applicationidempotency.Require(invocation, store.NativeDeliveryFinalOperation, command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Require(invocation, store.NativeDeliveryFinalOperation, command.IdempotencyKey, struct {
 		AttemptID   model.ExamAttemptID
 		StreamID    string
 		Declaration model.FinalDeliveryDeclaration
@@ -226,7 +226,7 @@ func (s *Service) UpdateNativeDeliverySummary(ctx context.Context, invocation in
 	if command.Summary.Validate() != nil {
 		return nil, apperror.Invalid("exam.attempt.invalid", "delivery_summary")
 	}
-	idempotency, err := applicationidempotency.Require(invocation, store.NativeDeliverySummaryOperation, command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Require(invocation, store.NativeDeliverySummaryOperation, command.IdempotencyKey, struct {
 		AttemptID model.ExamAttemptID
 		StreamID  string
 		Summary   model.UnretainedDeliverySummary
@@ -297,7 +297,7 @@ func (s *Service) AppendNativeDelivery(ctx context.Context, invocation invocatio
 	if err != nil {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(err)
 	}
-	idempotency, err := applicationidempotency.Require(invocation, store.NativeDeliveryAppendOperation, command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Require(invocation, store.NativeDeliveryAppendOperation, command.IdempotencyKey, struct {
 		AttemptID model.ExamAttemptID
 		Batch     model.NativeSecurityBatch
 	}{access.Access.AttemptID, command.Batch})

@@ -27,9 +27,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/image/webp"
 
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
-	localvfs "github.com/sudosylabs/proctor/packages/vfs/local"
-	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
+	"github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/vfs/local"
+	"github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/filecontent"
 	"github.com/sudosylabs/proctor/server/model"
@@ -78,15 +78,15 @@ func TestContentStoresCanonicalProfilePictureRenditionsWithoutUpscaling(t *testi
 
 func profileContentBackends() []struct {
 	name string
-	open func(*testing.T) vfspkg.FileSystem
+	open func(*testing.T) vfs.FileSystem
 } {
 	return []struct {
 		name string
-		open func(*testing.T) vfspkg.FileSystem
+		open func(*testing.T) vfs.FileSystem
 	}{
-		{name: "memory", open: func(*testing.T) vfspkg.FileSystem { return memoryvfs.New() }},
-		{name: "local", open: func(t *testing.T) vfspkg.FileSystem {
-			filesystem, err := localvfs.New(filepath.Join(t.TempDir(), "vfs"))
+		{name: "memory", open: func(*testing.T) vfs.FileSystem { return memory.New() }},
+		{name: "local", open: func(t *testing.T) vfs.FileSystem {
+			filesystem, err := local.New(filepath.Join(t.TempDir(), "vfs"))
 			require.NoError(t, err)
 			return filesystem
 		}},
@@ -96,7 +96,7 @@ func profileContentBackends() []struct {
 func TestContentLeavesAnUncertainProfilePictureWriteForBoundedRecovery(t *testing.T) {
 	t.Parallel()
 
-	backend := &uncertainWriteVFS{FileSystem: memoryvfs.New(), failOnCall: 2}
+	backend := &uncertainWriteVFS{FileSystem: memory.New(), failOnCall: 2}
 	content, err := filecontent.New(backend, filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
 	require.NoError(t, err)
 	source := image.NewNRGBA(image.Rect(0, 0, 20, 20))
@@ -106,23 +106,23 @@ func TestContentLeavesAnUncertainProfilePictureWriteForBoundedRecovery(t *testin
 	revisionID := model.NewFileRevisionID()
 	_, err = content.NormalizeAndStoreProfilePicture(context.Background(), revisionID, bytes.NewReader(input.Bytes()), int64(input.Len()), time.Unix(1, 0))
 	require.True(t, filecontent.IsUnavailable(err), "uncertain write error")
-	page, err := backend.FileSystem.List(context.Background(), vfspkg.ListOptions{Prefix: "files/", Limit: 10})
+	page, err := backend.FileSystem.List(context.Background(), vfs.ListOptions{Prefix: "files/", Limit: 10})
 	require.NoError(t, err)
 	require.Len(t, page.Entries, 1, "uncertain invisible objects")
 	err = content.PurgeAbandonedFileRevision(context.Background(), revisionID)
 	require.NoError(t, err)
-	page, err = backend.FileSystem.List(context.Background(), vfspkg.ListOptions{Prefix: "files/", Limit: 10})
+	page, err = backend.FileSystem.List(context.Background(), vfs.ListOptions{Prefix: "files/", Limit: 10})
 	require.NoError(t, err)
 	require.Empty(t, page.Entries, "uncertain objects after purge")
 }
 
 type uncertainWriteVFS struct {
-	vfspkg.FileSystem
+	vfs.FileSystem
 	failOnCall int
 	writes     int
 }
 
-func (f *uncertainWriteVFS) Write(ctx context.Context, path string, body io.Reader, options vfspkg.WriteOptions) (vfspkg.Info, error) {
+func (f *uncertainWriteVFS) Write(ctx context.Context, path string, body io.Reader, options vfs.WriteOptions) (vfs.Info, error) {
 	f.writes++
 	info, err := f.FileSystem.Write(ctx, path, body, options)
 	if err == nil && f.writes == f.failOnCall {
@@ -146,7 +146,7 @@ func TestContentAcceptsSupportedProfilePictureFormatsAndRejectsOversizedDimensio
 		t.Run(test.name, func(t *testing.T) {
 			var input bytes.Buffer
 			require.NoError(t, test.encode(&input))
-			content, err := filecontent.New(memoryvfs.New(), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
+			content, err := filecontent.New(memory.New(), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
 			require.NoError(t, err)
 			_, err = content.NormalizeAndStoreProfilePicture(context.Background(), model.NewFileRevisionID(), bytes.NewReader(input.Bytes()), int64(input.Len()), time.Unix(1, 0))
 			require.NoError(t, err)
@@ -156,7 +156,7 @@ func TestContentAcceptsSupportedProfilePictureFormatsAndRejectsOversizedDimensio
 	oversized := image.NewNRGBA(image.Rect(0, 0, 4097, 1))
 	var input bytes.Buffer
 	require.NoError(t, png.Encode(&input, oversized))
-	content, err := filecontent.New(memoryvfs.New(), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
+	content, err := filecontent.New(memory.New(), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
 	require.NoError(t, err)
 	_, err = content.NormalizeAndStoreProfilePicture(context.Background(), model.NewFileRevisionID(), bytes.NewReader(input.Bytes()), int64(input.Len()), time.Unix(1, 0))
 	require.ErrorIs(t, err, app.ErrInvalidProfilePicture)
@@ -183,7 +183,7 @@ func TestContentAppliesEXIFOrientationBeforeProfilePictureCropping(t *testing.T)
 	var encoded bytes.Buffer
 	require.NoError(t, jpeg.Encode(&encoded, source, &jpeg.Options{Quality: 100}))
 	oriented := jpegWithEXIFOrientation(t, encoded.Bytes(), 6)
-	content, err := filecontent.New(memoryvfs.New(), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
+	content, err := filecontent.New(memory.New(), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
 	require.NoError(t, err)
 	revisionID := model.NewFileRevisionID()
 	renditions, err := content.NormalizeAndStoreProfilePicture(context.Background(), revisionID, bytes.NewReader(oriented), int64(len(oriented)), time.Unix(1, 0))
@@ -223,7 +223,7 @@ func jpegWithEXIFOrientation(t *testing.T, jpegBytes []byte, orientation uint16)
 func TestDefaultProfilePictureMatchesGoldenAndStoredBytes(t *testing.T) {
 	t.Parallel()
 
-	content, err := filecontent.New(memoryvfs.New(), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
+	content, err := filecontent.New(memory.New(), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
 	require.NoError(t, err)
 	revisionID := model.NewFileRevisionID()
 	renditions, err := content.GenerateAndStoreDefaultProfilePicture(context.Background(), revisionID, defaultProfilePictureSeed, time.Unix(1, 0))

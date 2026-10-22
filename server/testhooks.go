@@ -15,7 +15,7 @@ import (
 	"net/http"
 	"testing/fstest"
 
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/httpapi"
@@ -55,7 +55,7 @@ type TestingOverrides struct {
 	Cache       platform.Cache
 	Cluster     platform.Cluster
 	Mailer      platform.Mailer
-	Filesystem  vfspkg.FileSystem
+	Filesystem  vfs.FileSystem
 	// DesktopBuildCatalog replaces the immutable compiled catalog only for the
 	// test graph. Production never accepts catalog entries from configuration.
 	DesktopBuildCatalog []model.DesktopBuildTuple

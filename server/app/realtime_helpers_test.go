@@ -7,13 +7,13 @@
 
 package app
 
-import apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+import "github.com/sudosylabs/proctor/server/app/realtime"
 
 func newRealtimeService(
-	invalidator apprealtime.AuthenticationInvalidator,
+	invalidator realtime.AuthenticationInvalidator,
 	diagnostics realtimeDiagnostics,
 ) (*realtimeService, error) {
-	delivery, err := apprealtime.New(invalidator, diagnostics)
+	delivery, err := realtime.New(invalidator, diagnostics)
 	if err != nil {
 		return nil, err
 	}

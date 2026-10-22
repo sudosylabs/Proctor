@@ -17,8 +17,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
@@ -26,14 +26,14 @@ import (
 
 func TestSittingMailExpansionPagesLargeRosterCheckpointsAndIsolatesOneRecipientConflict(t *testing.T) {
 	at := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
-	preparer, err := appmail.NewSittingComposer(sittingMailRendererFake{}, &mailSenderFake{enabled: true,
-		from: appmail.Address{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t), func() time.Time { return at })
+	preparer, err := mail.NewSittingComposer(sittingMailRendererFake{}, &mailSenderFake{enabled: true,
+		from: mail.Address{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t), func() time.Time { return at })
 	require.NoError(t, err)
 	sitting, err := model.NewExamSitting(model.NewExamSittingID(), model.NewExamID(), model.NewExamRevisionID(), model.NewClassID(),
 		at.Add(24*time.Hour), at.Add(26*time.Hour), at)
 	require.NoError(t, err)
 	prepared, err := preparer.Prepare(model.NewUserID(), sitting, store.ExamSittingMailScheduled,
-		appmail.SittingScheduleDetails{ExamTitle: "Algorithms", ClassDisplayName: "Class A"})
+		mail.SittingScheduleDetails{ExamTitle: "Algorithms", ClassDisplayName: "Class A"})
 	require.NoError(t, err)
 	users := make([]*model.User, model.SittingMailExpansionPageSize+1)
 	for index := range users {
@@ -42,13 +42,13 @@ func TestSittingMailExpansionPagesLargeRosterCheckpointsAndIsolatesOneRecipientC
 	storeFake := &sittingMailExpansionStoreFake{fanout: &store.ExamSittingMailFanoutSnapshot{Occurrence: prepared.Occurrence,
 		Bundle: prepared.Bundle, SittingID: sitting.ID, SittingRevision: sitting.Revision, ChangeKind: store.ExamSittingMailScheduled,
 		Deadline: at.Add(72 * time.Hour)}, users: users, conflictID: users[100].ID}
-	var checkpoints []jobengine.CheckpointValue
-	execution := jobengine.NewExecution(prepared.ExpansionJob, nil, func(_ context.Context, value jobengine.CheckpointValue) error {
+	var checkpoints []job.CheckpointValue
+	execution := job.NewExecution(prepared.ExpansionJob, nil, func(_ context.Context, value job.CheckpointValue) error {
 		checkpoints = append(checkpoints, value)
 		return nil
 	}, nil)
 	outcome := (sittingMailExpansionHandler{sittings: storeFake, mail: preparer}).Run(context.Background(), execution)
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v completed=%s commits=%d checkpoints", outcome, storeFake.completed, len(storeFake.commits))
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind, "outcome=%#v completed=%s commits=%d checkpoints", outcome, storeFake.completed, len(storeFake.commits))
 	require.Equal(t, prepared.Occurrence.ID, storeFake.completed, "outcome=%#v completed=%s commits=%d checkpoints", outcome, storeFake.completed, len(storeFake.commits))
 	require.Len(t, storeFake.commits, len(users), "outcome=%#v completed=%s commits=%d checkpoints", outcome, storeFake.completed, len(storeFake.commits))
 	require.Len(t, checkpoints, 2, "outcome=%#v completed=%s commits=%d checkpoints", outcome, storeFake.completed, len(storeFake.commits))
@@ -65,14 +65,14 @@ func TestSittingMailExpansionPagesLargeRosterCheckpointsAndIsolatesOneRecipientC
 
 func TestSittingMailExpansionLeaseLossReplaysRecipientCommitsWithoutDuplicates(t *testing.T) {
 	at := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
-	preparer, err := appmail.NewSittingComposer(sittingMailRendererFake{}, &mailSenderFake{enabled: true,
-		from: appmail.Address{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t), func() time.Time { return at })
+	preparer, err := mail.NewSittingComposer(sittingMailRendererFake{}, &mailSenderFake{enabled: true,
+		from: mail.Address{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t), func() time.Time { return at })
 	require.NoError(t, err)
 	sitting, err := model.NewExamSitting(model.NewExamSittingID(), model.NewExamID(), model.NewExamRevisionID(), model.NewClassID(),
 		at.Add(24*time.Hour), at.Add(26*time.Hour), at)
 	require.NoError(t, err)
 	prepared, err := preparer.Prepare(model.NewUserID(), sitting, store.ExamSittingMailScheduled,
-		appmail.SittingScheduleDetails{ExamTitle: "Algorithms", ClassDisplayName: "Class A"})
+		mail.SittingScheduleDetails{ExamTitle: "Algorithms", ClassDisplayName: "Class A"})
 	require.NoError(t, err)
 	users := []*model.User{mailTestUser(mailTestPrincipal(at), at), mailTestUser(mailTestPrincipal(at), at)}
 	persistence := &sittingMailExpansionStoreFake{fanout: &store.ExamSittingMailFanoutSnapshot{Occurrence: prepared.Occurrence,
@@ -80,14 +80,14 @@ func TestSittingMailExpansionLeaseLossReplaysRecipientCommitsWithoutDuplicates(t
 		ChangeKind: store.ExamSittingMailScheduled, Deadline: at.Add(72 * time.Hour)}, users: users}
 	handler := sittingMailExpansionHandler{sittings: persistence, mail: preparer}
 	leaseLost := errors.New("lease lost before checkpoint commit")
-	first := handler.Run(context.Background(), jobengine.NewExecution(prepared.ExpansionJob, nil,
-		func(context.Context, jobengine.CheckpointValue) error { return leaseLost }, nil))
-	require.Equal(t, jobengine.OutcomeRetryableFailure, first.Kind, "first outcome=%#v completed=%s", first, persistence.completed)
+	first := handler.Run(context.Background(), job.NewExecution(prepared.ExpansionJob, nil,
+		func(context.Context, job.CheckpointValue) error { return leaseLost }, nil))
+	require.Equal(t, job.OutcomeRetryableFailure, first.Kind, "first outcome=%#v completed=%s", first, persistence.completed)
 	require.ErrorIs(t, first.Err, leaseLost, "first outcome=%#v completed=%s", first, persistence.completed)
 	require.False(t, persistence.completed.IsValid(), "first outcome=%#v completed=%s", first, persistence.completed)
-	second := handler.Run(context.Background(), jobengine.NewExecution(prepared.ExpansionJob, nil,
-		func(context.Context, jobengine.CheckpointValue) error { return nil }, nil))
-	require.Equal(t, jobengine.OutcomeSucceeded, second.Kind, "second outcome=%#v completed=%s inserted=%d commits", second, persistence.completed, len(persistence.inserted))
+	second := handler.Run(context.Background(), job.NewExecution(prepared.ExpansionJob, nil,
+		func(context.Context, job.CheckpointValue) error { return nil }, nil))
+	require.Equal(t, job.OutcomeSucceeded, second.Kind, "second outcome=%#v completed=%s inserted=%d commits", second, persistence.completed, len(persistence.inserted))
 	require.Equal(t, prepared.Occurrence.ID, persistence.completed, "second outcome=%#v completed=%s inserted=%d commits", second, persistence.completed, len(persistence.inserted))
 	require.Len(t, persistence.inserted, len(users), "second outcome=%#v completed=%s inserted=%d commits", second, persistence.completed, len(persistence.inserted))
 	require.Len(t, persistence.commits, len(users)*2, "second outcome=%#v completed=%s inserted=%d commits", second, persistence.completed, len(persistence.inserted))
@@ -97,25 +97,25 @@ type sittingMailRendererFake struct{}
 
 func (sittingMailRendererFake) SittingLocales() (string, []string) { return "en", []string{"en"} }
 
-func (sittingMailRendererFake) Render(request appmail.RenderRequest) (appmail.FrozenContent, error) {
-	details, ok := request.Presentation.(appmail.SittingScheduleDetails)
+func (sittingMailRendererFake) Render(request mail.RenderRequest) (mail.FrozenContent, error) {
+	details, ok := request.Presentation.(mail.SittingScheduleDetails)
 	if !ok {
-		return appmail.FrozenContent{}, nil
+		return mail.FrozenContent{}, nil
 	}
 	key := request.Key
-	return appmail.FrozenContent{Subject: string(key), Text: details.ExamTitle + " " + details.ClassDisplayName,
+	return mail.FrozenContent{Subject: string(key), Text: details.ExamTitle + " " + details.ClassDisplayName,
 		HTML: "<p>" + details.ExamTitle + " " + details.ClassDisplayName + "</p>"}, nil
 }
 
 type mailSenderFake struct {
 	enabled bool
-	from    appmail.Address
+	from    mail.Address
 }
 
-func (s *mailSenderFake) Enabled() bool         { return s.enabled }
-func (s *mailSenderFake) From() appmail.Address { return s.from }
-func (s *mailSenderFake) Send(context.Context, appmail.Outbound) (appmail.TransportOutcome, error) {
-	return appmail.TransportUnknown, nil
+func (s *mailSenderFake) Enabled() bool      { return s.enabled }
+func (s *mailSenderFake) From() mail.Address { return s.from }
+func (s *mailSenderFake) Send(context.Context, mail.Outbound) (mail.TransportOutcome, error) {
+	return mail.TransportUnknown, nil
 }
 
 func mailTestSealer(t *testing.T) *secretseal.Sealer {
@@ -198,14 +198,14 @@ func (f *sittingMailExpansionStoreFake) CompleteMailExpansion(_ context.Context,
 
 func TestSittingMailExpansionSkipsAnUnaddressableRecipientAndReachesLaterOnes(t *testing.T) {
 	at := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
-	preparer, err := appmail.NewSittingComposer(sittingMailRendererFake{}, &mailSenderFake{enabled: true,
-		from: appmail.Address{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t), func() time.Time { return at })
+	preparer, err := mail.NewSittingComposer(sittingMailRendererFake{}, &mailSenderFake{enabled: true,
+		from: mail.Address{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t), func() time.Time { return at })
 	require.NoError(t, err)
 	sitting, err := model.NewExamSitting(model.NewExamSittingID(), model.NewExamID(), model.NewExamRevisionID(), model.NewClassID(),
 		at.Add(24*time.Hour), at.Add(26*time.Hour), at)
 	require.NoError(t, err)
 	prepared, err := preparer.Prepare(model.NewUserID(), sitting, store.ExamSittingMailScheduled,
-		appmail.SittingScheduleDetails{ExamTitle: "Algorithms", ClassDisplayName: "Class A"})
+		mail.SittingScheduleDetails{ExamTitle: "Algorithms", ClassDisplayName: "Class A"})
 	require.NoError(t, err)
 	users := []*model.User{mailTestUser(mailTestPrincipal(at), at), mailTestUser(mailTestPrincipal(at), at), mailTestUser(mailTestPrincipal(at), at)}
 	users[0].DisplayName = "Operator\r\nBcc: other@example.test"
@@ -213,8 +213,8 @@ func TestSittingMailExpansionSkipsAnUnaddressableRecipientAndReachesLaterOnes(t 
 		Bundle: prepared.Bundle, SittingID: sitting.ID, SittingRevision: sitting.Revision,
 		ChangeKind: store.ExamSittingMailScheduled, Deadline: at.Add(72 * time.Hour)}, users: users}
 	outcome := (sittingMailExpansionHandler{sittings: persistence, mail: preparer}).Run(context.Background(),
-		jobengine.NewExecution(prepared.ExpansionJob, nil, func(context.Context, jobengine.CheckpointValue) error { return nil }, nil))
-	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v", outcome)
+		job.NewExecution(prepared.ExpansionJob, nil, func(context.Context, job.CheckpointValue) error { return nil }, nil))
+	require.Equal(t, job.OutcomeSucceeded, outcome.Kind, "outcome=%#v", outcome)
 	require.Equal(t, prepared.Occurrence.ID, persistence.completed)
 	require.False(t, persistence.inserted[users[0].ID])
 	require.True(t, persistence.inserted[users[1].ID])

@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -101,7 +101,7 @@ func (s *retentionPolicyService) ReplaceRetentionPolicy(
 	if command.IdempotencyKey == "" {
 		return nil, apperror.New("idempotency.key_required")
 	}
-	idempotency, err := applicationidempotency.Prepare(
+	idempotency, err := idempotency.Prepare(
 		invocation,
 		"retention_policy.replace",
 		command.IdempotencyKey,

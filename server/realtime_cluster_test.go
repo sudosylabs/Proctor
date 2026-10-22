@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/cluster/local"
 	"github.com/sudosylabs/proctor/server/model"
@@ -96,7 +96,7 @@ func TestRealtimeClusterAdapterRegistersStableChildEventsAndPropagatesFailure(t 
 	}}
 	adapter, err := newRealtimeClusterAdapter(transport)
 	require.NoError(t, err)
-	service, err := apprealtime.New(noopRealtimeInvalidator{}, silentClusterLogger{})
+	service, err := realtime.New(noopRealtimeInvalidator{}, silentClusterLogger{})
 	require.NoError(t, err)
 	err = service.SetClusterFanout(adapter)
 	require.ErrorIs(t, err, registrationErr, "SetClusterFanout() error")
@@ -119,7 +119,7 @@ func TestRealtimeClusterAdapterPreservesSingleNodeLocalFirstPublication(t *testi
 	require.NoError(t, err)
 	adapter, err := newRealtimeClusterAdapter(transport)
 	require.NoError(t, err)
-	service, err := apprealtime.New(noopRealtimeInvalidator{}, silentClusterLogger{})
+	service, err := realtime.New(noopRealtimeInvalidator{}, silentClusterLogger{})
 	require.NoError(t, err)
 	sink := &countingRealtimeSink{}
 	require.NoError(t, service.SetSink(sink))
@@ -129,7 +129,7 @@ func TestRealtimeClusterAdapterPreservesSingleNodeLocalFirstPublication(t *testi
 		assert.NoError(t, transport.Stop(context.Background()))
 	})
 
-	require.NoError(t, service.Publish(context.Background(), apprealtime.RealtimeEvent{
+	require.NoError(t, service.Publish(context.Background(), realtime.RealtimeEvent{
 		Name:   "user.notification",
 		UserID: model.NewID(),
 	}))
@@ -141,16 +141,16 @@ type countingRealtimeSink struct {
 	published int
 }
 
-func (s *countingRealtimeSink) PublishLocal(context.Context, apprealtime.RealtimeEvent) {
+func (s *countingRealtimeSink) PublishLocal(context.Context, realtime.RealtimeEvent) {
 	s.mu.Lock()
 	s.published++
 	s.mu.Unlock()
 }
 
-func (*countingRealtimeSink) CloseSession(string, apprealtime.ConnectionCloseReason) {}
-func (*countingRealtimeSink) CloseUser(string, apprealtime.ConnectionCloseReason)    {}
-func (*countingRealtimeSink) CloseAll(apprealtime.ConnectionCloseReason)             {}
-func (*countingRealtimeSink) UnbindExamAttemptConnection(model.AttemptConnectionID)  {}
+func (*countingRealtimeSink) CloseSession(string, realtime.ConnectionCloseReason)   {}
+func (*countingRealtimeSink) CloseUser(string, realtime.ConnectionCloseReason)      {}
+func (*countingRealtimeSink) CloseAll(realtime.ConnectionCloseReason)               {}
+func (*countingRealtimeSink) UnbindExamAttemptConnection(model.AttemptConnectionID) {}
 
 func (s *countingRealtimeSink) publishCount() int {
 	s.mu.Lock()
@@ -167,5 +167,5 @@ type noopRealtimeInvalidator struct{}
 func (noopRealtimeInvalidator) InvalidateAccessCredentials(context.Context, []string) {}
 func (noopRealtimeInvalidator) InvalidateSessionActivity(context.Context, []string)   {}
 
-var _ apprealtime.ClusterFanout = (*realtimeClusterAdapter)(nil)
-var _ apprealtime.Sink = (*countingRealtimeSink)(nil)
+var _ realtime.ClusterFanout = (*realtimeClusterAdapter)(nil)
+var _ realtime.Sink = (*countingRealtimeSink)(nil)

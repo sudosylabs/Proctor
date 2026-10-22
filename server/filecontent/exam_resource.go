@@ -26,7 +26,7 @@ import (
 	pdfapi "github.com/pdfcpu/pdfcpu/pkg/api"
 	pdfmodel "github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -117,12 +117,12 @@ func (c *Content) StoreExamResourceRendition(ctx context.Context, revisionID mod
 		case openErr == nil && matching:
 			return *rendition, nil
 		case openErr == nil:
-			return model.FileRendition{}, sanitize("stage exam resource", vfspkg.ErrConflict)
-		case !errors.Is(openErr, vfspkg.ErrNotFound):
+			return model.FileRendition{}, sanitize("stage exam resource", vfs.ErrConflict)
+		case !errors.Is(openErr, vfs.ErrNotFound):
 			return model.FileRendition{}, sanitize("stage exam resource", openErr)
 		}
 	}
-	_, err = c.filesystem.Write(ctx, examResourceRenditionKey(revisionID, renditionID), spoolReader, vfspkg.WriteOptions{Size: &size, NoOverwrite: conditionalWrite})
+	_, err = c.filesystem.Write(ctx, examResourceRenditionKey(revisionID, renditionID), spoolReader, vfs.WriteOptions{Size: &size, NoOverwrite: conditionalWrite})
 	if cancellation := ctx.Err(); cancellation != nil {
 		return model.FileRendition{}, cancellation
 	}
@@ -140,7 +140,7 @@ func (c *Content) StoreExamResourceRendition(ctx context.Context, revisionID mod
 }
 
 func (c *Content) openMatchingExamResource(ctx context.Context, revisionID model.FileRevisionID, renditionID model.FileRenditionID, size int64, checksum string) (bool, error) {
-	file, err := c.filesystem.Open(ctx, examResourceRenditionKey(revisionID, renditionID), vfspkg.OpenOptions{})
+	file, err := c.filesystem.Open(ctx, examResourceRenditionKey(revisionID, renditionID), vfs.OpenOptions{})
 	if err != nil {
 		return false, err
 	}
@@ -165,7 +165,7 @@ func (c *Content) OpenExamResource(ctx context.Context, revisionID model.FileRev
 	if c == nil || c.filesystem == nil || !revisionID.IsValid() || !renditionID.IsValid() {
 		return nil, ErrInvalidExamResourceContent
 	}
-	file, err := c.filesystem.Open(ctx, examResourceRenditionKey(revisionID, renditionID), vfspkg.OpenOptions{})
+	file, err := c.filesystem.Open(ctx, examResourceRenditionKey(revisionID, renditionID), vfs.OpenOptions{})
 	if err != nil {
 		return nil, sanitize("open exam resource", err)
 	}
@@ -176,8 +176,8 @@ func (c *Content) RemoveExamResource(ctx context.Context, revisionID model.FileR
 	if c == nil || c.filesystem == nil || !revisionID.IsValid() || !renditionID.IsValid() {
 		return ErrInvalidExamResourceContent
 	}
-	err := c.filesystem.Remove(ctx, examResourceRenditionKey(revisionID, renditionID), vfspkg.RemoveOptions{})
-	if errors.Is(err, vfspkg.ErrNotFound) {
+	err := c.filesystem.Remove(ctx, examResourceRenditionKey(revisionID, renditionID), vfs.RemoveOptions{})
+	if errors.Is(err, vfs.ErrNotFound) {
 		return nil
 	}
 	return sanitize("remove exam resource", err)

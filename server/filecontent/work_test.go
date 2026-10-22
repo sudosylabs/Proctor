@@ -23,8 +23,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
-	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
+	"github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -70,7 +70,7 @@ func contentWorkCases(t *testing.T) []contentWorkCase {
 func TestContentWorkRequiresPositiveCapacity(t *testing.T) {
 	t.Parallel()
 	for _, maximum := range []int{-1, 0} {
-		_, err := New(memoryvfs.New(), Policy{MaximumConcurrentOperations: maximum}, nil)
+		_, err := New(memory.New(), Policy{MaximumConcurrentOperations: maximum}, nil)
 		require.Error(t, err, "maximum=%d was accepted", maximum)
 	}
 }
@@ -85,7 +85,7 @@ func TestContentWorkPipelinesShareCapacityAndRefuseBeforeInputOrStorage(t *testi
 				entered, release := make(chan struct{}), make(chan struct{})
 				var releaseOnce sync.Once
 				recorder := &contentWorkRecorder{onStart: func() { close(entered); <-release }}
-				filesystem := &contentWorkVFS{FileSystem: memoryvfs.New()}
+				filesystem := &contentWorkVFS{FileSystem: memory.New()}
 				content, err := New(filesystem, Policy{MaximumConcurrentOperations: 1}, recorder)
 				require.NoError(t, err)
 				done, outcome := make(chan struct{}), make(chan error, 1)
@@ -127,7 +127,7 @@ func TestContentWorkCanceledBeforeAdmissionDoesNoWork(t *testing.T) {
 	for _, test := range contentWorkCases(t) {
 		t.Run(test.name, func(t *testing.T) {
 			recorder := &contentWorkRecorder{}
-			filesystem := &contentWorkVFS{FileSystem: memoryvfs.New()}
+			filesystem := &contentWorkVFS{FileSystem: memory.New()}
 			content, err := New(filesystem, Policy{MaximumConcurrentOperations: 1}, recorder)
 			require.NoError(t, err)
 			ctx, cancel := context.WithCancel(context.Background())
@@ -148,7 +148,7 @@ func TestContentWorkCancellationDoesNotReleaseRunningReader(t *testing.T) {
 	var releaseOnce sync.Once
 	body := &blockedContentWorkBody{entered: entered, release: release}
 	recorder := &contentWorkRecorder{}
-	filesystem := &contentWorkVFS{FileSystem: memoryvfs.New()}
+	filesystem := &contentWorkVFS{FileSystem: memory.New()}
 	content, err := New(filesystem, Policy{MaximumConcurrentOperations: 1}, recorder)
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -184,7 +184,7 @@ func TestContentWorkCancellationAfterAdmissionStopsBeforeProcessing(t *testing.T
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			recorder := &contentWorkRecorder{onStart: cancel}
-			filesystem := &contentWorkVFS{FileSystem: memoryvfs.New()}
+			filesystem := &contentWorkVFS{FileSystem: memory.New()}
 			content, err := New(filesystem, Policy{MaximumConcurrentOperations: 1}, recorder)
 			require.NoError(t, err)
 			body := &unreadContentWorkBody{}
@@ -199,7 +199,7 @@ func TestContentWorkCancellationAfterAdmissionStopsBeforeProcessing(t *testing.T
 }
 
 func TestContentWorkFailureReleasesCapacityAndDoesNotGateExactReadsOrRemoval(t *testing.T) {
-	content, err := New(memoryvfs.New(), Policy{MaximumConcurrentOperations: 1}, nil)
+	content, err := New(memory.New(), Policy{MaximumConcurrentOperations: 1}, nil)
 	require.NoError(t, err)
 	_, storeErr := content.StoreExamResource(t.Context(), model.NewFileRevisionID(), model.ExamResourceMediaText, strings.NewReader("\x00"), 1, time.Unix(1, 0))
 	require.ErrorIs(t, storeErr, ErrInvalidExamResourceContent)
@@ -270,11 +270,11 @@ func (r *contentWorkRecorder) Finished(duration time.Duration) {
 func (r *contentWorkRecorder) Rejected() { r.rejected.Add(1) }
 
 type contentWorkVFS struct {
-	vfspkg.FileSystem
+	vfs.FileSystem
 	writes atomic.Int64
 }
 
-func (f *contentWorkVFS) Write(ctx context.Context, path string, body io.Reader, options vfspkg.WriteOptions) (vfspkg.Info, error) {
+func (f *contentWorkVFS) Write(ctx context.Context, path string, body io.Reader, options vfs.WriteOptions) (vfs.Info, error) {
 	f.writes.Add(1)
 	return f.FileSystem.Write(ctx, path, body, options)
 }

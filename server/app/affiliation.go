@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -140,7 +140,7 @@ func (s *affiliationService) CreateAffiliation(ctx context.Context, invocation i
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("affiliation.invalid", err)
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "affiliation.add", command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Prepare(invocation, "affiliation.add", command.IdempotencyKey, struct {
 		UserID  string                `json:"user_id"`
 		Kind    model.AffiliationKind `json:"kind"`
 		StartAt int64                 `json:"start_at"`
@@ -212,7 +212,7 @@ func (s *affiliationService) EndAffiliation(ctx context.Context, invocation invo
 			}
 		}
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "affiliation.end", command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Prepare(invocation, "affiliation.end", command.IdempotencyKey, struct {
 		ID        string              `json:"id"`
 		ScopeType model.RoleScopeType `json:"scope_type,omitempty"`
 		ScopeID   string              `json:"scope_id,omitempty"`

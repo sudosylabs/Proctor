@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -76,7 +76,7 @@ func (s *accountStateService) SetUserEnabled(ctx context.Context, invocation inv
 		return nil, accountStateStoreErrors.Translate(err)
 	}
 	disabled := !command.Enabled
-	idempotency, err := applicationidempotency.Prepare(invocation, "user.enabled_state", command.IdempotencyKey, struct {
+	idempotency, err := idempotency.Prepare(invocation, "user.enabled_state", command.IdempotencyKey, struct {
 		UserID  string `json:"user_id"`
 		Enabled bool   `json:"enabled"`
 	}{userID.String(), command.Enabled})
@@ -98,7 +98,7 @@ func (s *accountStateService) SetUserEnabled(ctx context.Context, invocation inv
 	recipient.DisabledAt = model.OptionalTime{}
 	prepared := &store.PreparedMail{}
 	if !command.batchRetainedOutcome {
-		prepared, err = s.mail.PrepareAccountStateChanged(appmail.NoticePreparation{Recipient: &recipient, At: now}, command.Enabled)
+		prepared, err = s.mail.PrepareAccountStateChanged(mail.NoticePreparation{Recipient: &recipient, At: now}, command.Enabled)
 		if err != nil {
 			return nil, accountStateStoreErrors.Translate(err)
 		}

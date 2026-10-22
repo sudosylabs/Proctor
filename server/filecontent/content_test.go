@@ -17,9 +17,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
-	localvfs "github.com/sudosylabs/proctor/packages/vfs/local"
-	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
+	"github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/packages/vfs/local"
+	"github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -52,7 +52,7 @@ func TestContentStoresAndOpensAnExactRenditionAtTheCompatiblePrivateKey(t *testi
 func TestContentClassifiesStorageConflictsWithoutExposingPrivateKeys(t *testing.T) {
 	t.Parallel()
 
-	content, err := New(memoryvfs.New(), Policy{MaximumConcurrentOperations: 2}, nil)
+	content, err := New(memory.New(), Policy{MaximumConcurrentOperations: 2}, nil)
 	require.NoError(t, err)
 	revisionID, renditionID := model.NewFileRevisionID(), model.NewFileRenditionID()
 	err = content.storeRendition(context.Background(), revisionID, renditionID, bytes.NewReader([]byte("first")), 5)
@@ -168,12 +168,12 @@ func TestContentRetriesAKnownManifestAfterAPartialBackendFailure(t *testing.T) {
 }
 
 type removeFailureVFS struct {
-	vfspkg.FileSystem
+	vfs.FileSystem
 	failOnCall int
 	removeCall int
 }
 
-func (f *removeFailureVFS) Remove(ctx context.Context, path string, options vfspkg.RemoveOptions) error {
+func (f *removeFailureVFS) Remove(ctx context.Context, path string, options vfs.RemoveOptions) error {
 	f.removeCall++
 	if f.failOnCall > 0 && f.removeCall == f.failOnCall {
 		return errors.New("backend unavailable")
@@ -183,15 +183,15 @@ func (f *removeFailureVFS) Remove(ctx context.Context, path string, options vfsp
 
 func contentTestBackends() []struct {
 	name string
-	open func(*testing.T) vfspkg.FileSystem
+	open func(*testing.T) vfs.FileSystem
 } {
 	return []struct {
 		name string
-		open func(*testing.T) vfspkg.FileSystem
+		open func(*testing.T) vfs.FileSystem
 	}{
-		{name: "memory", open: func(*testing.T) vfspkg.FileSystem { return memoryvfs.New() }},
-		{name: "local", open: func(t *testing.T) vfspkg.FileSystem {
-			filesystem, err := localvfs.New(filepath.Join(t.TempDir(), "vfs"))
+		{name: "memory", open: func(*testing.T) vfs.FileSystem { return memory.New() }},
+		{name: "local", open: func(t *testing.T) vfs.FileSystem {
+			filesystem, err := local.New(filepath.Join(t.TempDir(), "vfs"))
 			require.NoError(t, err)
 			return filesystem
 		}},
