@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	RetentionPreviewOperation = "retention.preview.v1"
-	RetentionControlOperation = "retention.control.v1"
+	RetentionPreviewOperation = "retention.preview"
+	RetentionControlOperation = "retention.control"
 )
 
 type RetentionMutation struct {

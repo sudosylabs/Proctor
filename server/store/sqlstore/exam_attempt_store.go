@@ -33,7 +33,7 @@ func newSQLExamAttemptStore(sqlStore *SQLStore) store.ExamAttemptStore {
 	return &SQLExamAttemptStore{SQLStore: sqlStore}
 }
 
-type examAttemptConnectOutcomeV1 struct {
+type examAttemptConnectOutcome struct {
 	AttemptID          string    `json:"a"`
 	WorkspaceID        string    `json:"w"`
 	ParticipationID    string    `json:"p"`
@@ -83,26 +83,26 @@ func (s *SQLExamAttemptStore) Connect(ctx context.Context, input *store.ExamAtte
 	if err := validateExamAttemptConnect(input, command); err != nil {
 		return nil, err
 	}
-	result, err := runIdempotentMutation(ctx, s.SQLStore, "connect Exam Attempt", idempotentMutation[examAttemptConnectOutcomeV1]{
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "connect Exam Attempt", idempotentMutation[examAttemptConnectOutcome]{
 		command: command, auditEventID: input.AuditEventID,
-		execute: func(ctx context.Context, tx *sqlxTxWrapper) (examAttemptConnectOutcomeV1, error) {
+		execute: func(ctx context.Context, tx *sqlxTxWrapper) (examAttemptConnectOutcome, error) {
 			return s.connect(ctx, tx, input)
 		},
-		encode: func(outcome examAttemptConnectOutcomeV1) ([]byte, error) {
+		encode: func(outcome examAttemptConnectOutcome) ([]byte, error) {
 			encoded, encodeErr := encodeCommandOutcome(outcome)
 			if encodeErr == nil && len(encoded) > examAttemptConnectOutcomeMaximumBytes {
 				return nil, store.NewErrInvalidInput("exam_attempt", "connect_outcome", len(encoded))
 			}
 			return encoded, encodeErr
 		},
-		decode: func(encoded []byte) (examAttemptConnectOutcomeV1, error) {
-			var outcome examAttemptConnectOutcomeV1
+		decode: func(encoded []byte) (examAttemptConnectOutcome, error) {
+			var outcome examAttemptConnectOutcome
 			if err := decodeCommandOutcome(encoded, &outcome); err != nil {
 				return outcome, err
 			}
 			return outcome, nil
 		},
-		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, outcome examAttemptConnectOutcomeV1, originalAuditID string) error {
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, outcome examAttemptConnectOutcome, originalAuditID string) error {
 			if err := requireDesktopCompatibilityPolicyRevision(ctx, tx, input.DesktopCompatibilityPolicyRevision); err != nil {
 				return err
 			}
@@ -753,7 +753,7 @@ func completeParticipationExpiryAudit(ctx context.Context, tx *sqlxTxWrapper, re
 	return nil
 }
 
-type examAttemptReallowOutcomeV1 struct {
+type examAttemptReallowOutcome struct {
 	ExamID, SittingID, ClassID, CandidateID, AttemptID, SuspensionID string
 	FocusLossWindowReset                                             bool
 }
@@ -770,17 +770,17 @@ func (s *SQLExamAttemptStore) ReallowAttempt(ctx context.Context, input *store.E
 		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_attempt", "reallow", nil)
 	}
-	result, err := runIdempotentMutation(ctx, s.SQLStore, "re-allow Exam Attempt", idempotentMutation[examAttemptReallowOutcomeV1]{
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "re-allow Exam Attempt", idempotentMutation[examAttemptReallowOutcome]{
 		command: command, auditEventID: input.AuditEventID,
-		execute: func(ctx context.Context, tx *sqlxTxWrapper) (examAttemptReallowOutcomeV1, error) {
+		execute: func(ctx context.Context, tx *sqlxTxWrapper) (examAttemptReallowOutcome, error) {
 			return reallowExamAttempt(ctx, tx, input)
 		},
-		encode: func(value examAttemptReallowOutcomeV1) ([]byte, error) { return encodeCommandOutcome(value) },
-		decode: func(encoded []byte) (examAttemptReallowOutcomeV1, error) {
-			var value examAttemptReallowOutcomeV1
+		encode: func(value examAttemptReallowOutcome) ([]byte, error) { return encodeCommandOutcome(value) },
+		decode: func(encoded []byte) (examAttemptReallowOutcome, error) {
+			var value examAttemptReallowOutcome
 			return value, decodeCommandOutcome(encoded, &value)
 		},
-		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value examAttemptReallowOutcomeV1, originalAuditID string) error {
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value examAttemptReallowOutcome, originalAuditID string) error {
 			if err := guardExamAttemptReallowAuthority(ctx, tx, input, false); err != nil {
 				return err
 			}
@@ -837,8 +837,8 @@ func guardExamAttemptReallowAuthority(ctx context.Context, tx *sqlxTxWrapper, in
 	return nil
 }
 
-func reallowExamAttempt(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptReallow) (examAttemptReallowOutcomeV1, error) {
-	var zero examAttemptReallowOutcomeV1
+func reallowExamAttempt(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptReallow) (examAttemptReallowOutcome, error) {
+	var zero examAttemptReallowOutcome
 	if err := guardExamAttemptReallowAuthority(ctx, tx, input, true); err != nil {
 		return zero, err
 	}
@@ -953,7 +953,7 @@ func reallowExamAttempt(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 			return zero, fmt.Errorf("reset causal Focus Loss window: %w", err)
 		}
 	}
-	value := examAttemptReallowOutcomeV1{ExamID: input.ExamID.String(), SittingID: input.SittingID.String(), ClassID: row.ClassID,
+	value := examAttemptReallowOutcome{ExamID: input.ExamID.String(), SittingID: input.SittingID.String(), ClassID: row.ClassID,
 		CandidateID: row.CandidateID, AttemptID: input.AttemptID.String(), SuspensionID: input.SuspensionID.String(),
 		FocusLossWindowReset: focusLossWindowReset}
 	if err = completeExamAttemptReallowAudit(ctx, tx, value, false, "", input.AuditEventID, input.AuditAt); err != nil {
@@ -962,7 +962,7 @@ func reallowExamAttempt(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 	return value, nil
 }
 
-func completeExamAttemptReallowAudit(ctx context.Context, tx *sqlxTxWrapper, value examAttemptReallowOutcomeV1,
+func completeExamAttemptReallowAudit(ctx context.Context, tx *sqlxTxWrapper, value examAttemptReallowOutcome,
 	replayed bool, originalAuditID string, auditID model.AuditEventID, auditAt int64,
 ) error {
 	data := map[string]any{"exam_id": value.ExamID, "exam_sitting_id": value.SittingID, "exam_attempt_id": value.AttemptID,
@@ -980,7 +980,7 @@ func completeExamAttemptReallowAudit(ctx context.Context, tx *sqlxTxWrapper, val
 	return nil
 }
 
-func (s *SQLExamAttemptStore) loadExamAttemptReallowResult(ctx context.Context, value examAttemptReallowOutcomeV1) (*store.ExamAttemptReallowResult, error) {
+func (s *SQLExamAttemptStore) loadExamAttemptReallowResult(ctx context.Context, value examAttemptReallowOutcome) (*store.ExamAttemptReallowResult, error) {
 	var row struct {
 		ExamID              string       `db:"exam_id"`
 		SittingID           string       `db:"exam_sitting_id"`
@@ -1082,8 +1082,8 @@ func (s *SQLExamAttemptStore) loadExamAttemptReallowResult(ctx context.Context, 
 			SuspendedByUserID: domainSuspension.SuspendedByUserID}}, nil
 }
 
-func (s *SQLExamAttemptStore) connect(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptConnect) (examAttemptConnectOutcomeV1, error) {
-	var zero examAttemptConnectOutcomeV1
+func (s *SQLExamAttemptStore) connect(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptConnect) (examAttemptConnectOutcome, error) {
+	var zero examAttemptConnectOutcome
 	// Serialize activation with every Session issuance for this User. If the
 	// Session commits first it may be used for admission; once admission commits,
 	// later Session creation observes the active Attempt and fails closed.
@@ -1300,8 +1300,8 @@ func hasEffectiveExamManagementAuthority(ctx context.Context, tx *sqlxTxWrapper,
 	return authoritative, nil
 }
 
-func (s *SQLExamAttemptStore) firstAdmission(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptConnect, guard examAttemptAdmissionGuard) (examAttemptConnectOutcomeV1, error) {
-	var zero examAttemptConnectOutcomeV1
+func (s *SQLExamAttemptStore) firstAdmission(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptConnect, guard examAttemptAdmissionGuard) (examAttemptConnectOutcome, error) {
+	var zero examAttemptConnectOutcome
 	security, securityErr := s.prepareConnectSecurity(ctx, tx, input, guard, input.AttemptID, 1, true)
 	if securityErr != nil {
 		return zero, securityErr
@@ -1389,7 +1389,7 @@ func (s *SQLExamAttemptStore) firstAdmission(ctx context.Context, tx *sqlxTxWrap
 		return zero, err
 	}
 
-	outcome := examAttemptConnectOutcomeV1{AttemptID: input.AttemptID.String(), WorkspaceID: input.WorkspaceID.String(),
+	outcome := examAttemptConnectOutcome{AttemptID: input.AttemptID.String(), WorkspaceID: input.WorkspaceID.String(),
 		ParticipationID: input.ParticipationID.String(), ConnectionID: input.ConnectionID.String(), ExamID: guard.ExamID,
 		SittingID: input.SittingID.String(), CandidateID: input.CandidateUserID.String(), RevisionID: guard.RevisionID,
 		SessionID: input.SessionID.String(), ClassID: guard.ClassID, StartedAt: model.TimeUTC(guard.DatabaseNow), LeaseExpiresAt: model.TimeUTC(leaseExpires),
@@ -1403,8 +1403,8 @@ func (s *SQLExamAttemptStore) firstAdmission(ctx context.Context, tx *sqlxTxWrap
 
 func (s *SQLExamAttemptStore) reconnect(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptConnect, guard examAttemptAdmissionGuard,
 	attemptID, workspaceID, admissionRevisionID, attemptState string, attemptCreatedAt time.Time, workspaceEntryCount int,
-) (examAttemptConnectOutcomeV1, error) {
-	var zero examAttemptConnectOutcomeV1
+) (examAttemptConnectOutcome, error) {
+	var zero examAttemptConnectOutcome
 	if attemptState != string(model.ExamAttemptActive) && attemptState != string(model.ExamAttemptReady) {
 		return zero, store.NewErrConflict("exam_attempt", "exam_attempt_state", nil)
 	}
@@ -1513,7 +1513,7 @@ func (s *SQLExamAttemptStore) reconnect(ctx context.Context, tx *sqlxTxWrapper, 
 		}
 	}
 
-	outcome := examAttemptConnectOutcomeV1{AttemptID: attemptID, WorkspaceID: workspaceID, ParticipationID: participation.ID,
+	outcome := examAttemptConnectOutcome{AttemptID: attemptID, WorkspaceID: workspaceID, ParticipationID: participation.ID,
 		ConnectionID: connectionID, ExamID: guard.ExamID, SittingID: input.SittingID.String(), CandidateID: input.CandidateUserID.String(),
 		RevisionID: admissionRevisionID, SessionID: input.SessionID.String(), ClassID: guard.ClassID, StartedAt: model.TimeUTC(attemptCreatedAt),
 		LeaseExpiresAt: model.TimeUTC(participation.LeaseExpiresAt), EntryCount: workspaceEntryCount,
@@ -1565,7 +1565,7 @@ func nullableAttemptWorkspaceObjectID(id model.AttemptWorkspaceObjectID) any {
 	return id.String()
 }
 
-func (s *SQLExamAttemptStore) examAttemptConnectResult(ctx context.Context, outcome examAttemptConnectOutcomeV1) (*store.ExamAttemptConnectResult, error) {
+func (s *SQLExamAttemptStore) examAttemptConnectResult(ctx context.Context, outcome examAttemptConnectOutcome) (*store.ExamAttemptConnectResult, error) {
 	attemptID, err := model.ParseExamAttemptID(outcome.AttemptID)
 	if err != nil {
 		return nil, invalidPersistedState("exam_attempt", "id", err)
@@ -1661,7 +1661,7 @@ func (s *SQLExamAttemptStore) examAttemptConnectResult(ctx context.Context, outc
 		RuntimeCapabilities: capabilities, BrowserPolicy: browserPolicy, LiveCorrections: liveCorrections, FirstAdmission: outcome.FirstAdmission}, nil
 }
 
-func (s *SQLExamAttemptStore) loadConnectRuntimeCapabilities(ctx context.Context, outcome examAttemptConnectOutcomeV1) (model.AttemptConfiguration, store.CandidateRuntimeCapabilities, *store.CandidateBrowserPolicy, []model.CandidateLiveCorrection, error) {
+func (s *SQLExamAttemptStore) loadConnectRuntimeCapabilities(ctx context.Context, outcome examAttemptConnectOutcome) (model.AttemptConfiguration, store.CandidateRuntimeCapabilities, *store.CandidateBrowserPolicy, []model.CandidateLiveCorrection, error) {
 	var row struct {
 		Configuration        []byte    `db:"attempt_configuration_canonical"`
 		ConfigurationDigest  string    `db:"attempt_configuration_digest"`
@@ -1788,7 +1788,7 @@ func candidateRuntimeCapabilities(configuration model.AttemptConfiguration, admi
 	}, browserProjection, nil
 }
 
-func completeExamAttemptConnectAudit(ctx context.Context, tx *sqlxTxWrapper, outcome examAttemptConnectOutcomeV1,
+func completeExamAttemptConnectAudit(ctx context.Context, tx *sqlxTxWrapper, outcome examAttemptConnectOutcome,
 	replayed bool, originalAuditID string, auditID model.AuditEventID, auditAt int64,
 ) error {
 	data := map[string]any{"exam_id": outcome.ExamID, "exam_sitting_id": outcome.SittingID,

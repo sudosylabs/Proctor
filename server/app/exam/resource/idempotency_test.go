@@ -65,8 +65,8 @@ func TestResourceIdempotencyOperationAndDocumentCompatibility(t *testing.T) {
 			document: fmt.Sprintf(`{"exam_id":%q,"expected_draft_revision":2,"resource_id":%q}`, examID, resourceID)},
 	}
 	wantOperations := map[string]string{
-		"add": "exam.resource.add.v1", "replace": "exam.resource.content.replace.v1",
-		"reorder": "exam.resource.reorder.v1", "remove": "exam.resource.remove.v1",
+		"add": "exam.resource.add", "replace": "exam.resource.content.replace",
+		"reorder": "exam.resource.reorder", "remove": "exam.resource.remove",
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -76,7 +76,7 @@ func TestResourceIdempotencyOperationAndDocumentCompatibility(t *testing.T) {
 			assertPreparedIdempotency(t, prepared, userID, wantOperations[test.name], "key", test.document)
 		})
 	}
-	require.Equal(t, "exam.resource.metadata.edit.v1", idempotencyOperationEditResourceMetadata)
+	require.Equal(t, "exam.resource.metadata.edit", idempotencyOperationEditResourceMetadata)
 }
 
 func TestMetadataIdempotencyPreservesFieldPresence(t *testing.T) {

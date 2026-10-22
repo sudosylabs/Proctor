@@ -243,7 +243,7 @@ func (s *academicAdministrationBatchService) RunAcademicAdministrationBatch(ctx 
 		}
 		duplicateKey := academicAdministrationBatchDuplicateKey(command, item)
 		winner := winners[duplicateKey]
-		metadata := &store.CommandBatch{GroupDigest: sha256.Sum256([]byte("academic-administration-batch.v1\x00" + duplicateKey))}
+		metadata := &store.CommandBatch{GroupDigest: sha256.Sum256([]byte("proctor.academic_administration_batch\x00" + duplicateKey))}
 		if winner != item.IdempotencyKey {
 			canonicalKey := invitationBatchItemIdempotencyKey(command.IdempotencyKey, winner)
 			metadata.DuplicateOfKeyDigest = sha256.Sum256([]byte(canonicalKey))
@@ -270,25 +270,25 @@ func (s *academicAdministrationBatchService) RunAcademicAdministrationBatch(ctx 
 func academicAdministrationCommandOperation(operation AcademicAdministrationBatchOperation) string {
 	switch operation {
 	case AcademicAdministrationAffiliationAdd:
-		return "affiliation.add.v1"
+		return "affiliation.add"
 	case AcademicAdministrationAffiliationEnd:
-		return "affiliation.end.v1"
+		return "affiliation.end"
 	case AcademicAdministrationAcademicUnitMemberAdd:
-		return "academic_unit_member.add.v1"
+		return "academic_unit_member.add"
 	case AcademicAdministrationAcademicUnitMemberEnd:
-		return "academic_unit_member.end.v1"
+		return "academic_unit_member.end"
 	case AcademicAdministrationClassEnroll, AcademicAdministrationClassTransfer:
-		return "class_member.enroll.v1"
+		return "class_member.enroll"
 	case AcademicAdministrationClassEnd:
-		return "class_member.end.v1"
+		return "class_member.end"
 	case AcademicAdministrationRoleBindingCreate:
-		return "role_binding.create.v1"
+		return "role_binding.create"
 	case AcademicAdministrationRoleBindingEnd:
-		return "role_binding.end.v1"
+		return "role_binding.end"
 	case AcademicAdministrationUserEnable, AcademicAdministrationUserDisable:
-		return "user.enabled_state.v1"
+		return "user.enabled_state"
 	case AcademicAdministrationUserSessionsRevoke:
-		return "user_sessions.revoke.v1"
+		return "user_sessions.revoke"
 	default:
 		return ""
 	}

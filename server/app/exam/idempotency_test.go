@@ -45,14 +45,14 @@ func TestIdempotencyOperationCompatibility(t *testing.T) {
 		"publish Revision":           idempotencyOperationPublishRevision,
 	}
 	want := map[string]string{
-		"create":                     "exam.create.v1",
-		"edit Draft text":            "exam.draft.text.edit.v1",
-		"configure Draft Focus Loss": "exam.draft.focus_loss.configure.v1",
-		"archive":                    "exam.archive.v1",
-		"add manager":                "exam.manager.add.v1",
-		"remove manager":             "exam.manager.remove.v1",
-		"transfer owner":             "exam.owner.transfer.v1",
-		"publish Revision":           "exam.revision.publish.v1",
+		"create":                     "exam.create",
+		"edit Draft text":            "exam.draft.text.edit",
+		"configure Draft Focus Loss": "exam.draft.focus_loss.configure",
+		"archive":                    "exam.archive",
+		"add manager":                "exam.manager.add",
+		"remove manager":             "exam.manager.remove",
+		"transfer owner":             "exam.owner.transfer",
+		"publish Revision":           "exam.revision.publish",
 	}
 	for name, operation := range tests {
 		assert.Equal(t, want[name], operation, "%s operation", name)

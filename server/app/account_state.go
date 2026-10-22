@@ -75,7 +75,7 @@ func (s *accountStateService) SetUserEnabled(ctx context.Context, invocation Inv
 		return nil, accountStateStoreErrors.Translate(err)
 	}
 	disabled := !command.Enabled
-	idempotency, err := applicationidempotency.Prepare(invocation, "user.enabled_state.v1", command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Prepare(invocation, "user.enabled_state", command.IdempotencyKey, struct {
 		UserID  string `json:"user_id"`
 		Enabled bool   `json:"enabled"`
 	}{userID.String(), command.Enabled})

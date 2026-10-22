@@ -18,10 +18,10 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-// examAttemptManualSuspensionOutcomeV1 retains only stable identities. The
+// examAttemptManualSuspensionOutcome retains only stable identities. The
 // committed episode, ended Participation, and closed Connection are immutable,
 // so replay rehydrates the original result from them.
-type examAttemptManualSuspensionOutcomeV1 struct {
+type examAttemptManualSuspensionOutcome struct {
 	ExamID, SittingID, ClassID, CandidateID, AttemptID, ParticipationID, SuspensionID string
 	ConnectionID                                                                      string
 	ConnectionClosed                                                                  bool
@@ -40,20 +40,20 @@ func (s *SQLExamAttemptStore) SuspendAttempt(ctx context.Context, input *store.E
 	}
 	guard := &store.ExamAttemptReallow{ExamID: input.ExamID, SittingID: input.SittingID, AttemptID: input.AttemptID,
 		ActorUserID: input.ActorUserID, ManagerOverride: input.ManagerOverride}
-	result, err := runIdempotentMutation(ctx, s.SQLStore, "suspend Exam Attempt", idempotentMutation[examAttemptManualSuspensionOutcomeV1]{
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "suspend Exam Attempt", idempotentMutation[examAttemptManualSuspensionOutcome]{
 		command: command, auditEventID: input.AuditEventID,
-		execute: func(ctx context.Context, tx *sqlxTxWrapper) (examAttemptManualSuspensionOutcomeV1, error) {
+		execute: func(ctx context.Context, tx *sqlxTxWrapper) (examAttemptManualSuspensionOutcome, error) {
 			if err := guardExamAttemptReallowAuthority(ctx, tx, guard, true); err != nil {
-				return examAttemptManualSuspensionOutcomeV1{}, err
+				return examAttemptManualSuspensionOutcome{}, err
 			}
 			return suspendExamAttemptByManager(ctx, tx, input)
 		},
-		encode: func(value examAttemptManualSuspensionOutcomeV1) ([]byte, error) { return encodeCommandOutcome(value) },
-		decode: func(encoded []byte) (examAttemptManualSuspensionOutcomeV1, error) {
-			var value examAttemptManualSuspensionOutcomeV1
+		encode: func(value examAttemptManualSuspensionOutcome) ([]byte, error) { return encodeCommandOutcome(value) },
+		decode: func(encoded []byte) (examAttemptManualSuspensionOutcome, error) {
+			var value examAttemptManualSuspensionOutcome
 			return value, decodeCommandOutcome(encoded, &value)
 		},
-		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value examAttemptManualSuspensionOutcomeV1, originalAuditID string) error {
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value examAttemptManualSuspensionOutcome, originalAuditID string) error {
 			if err := guardExamAttemptReallowAuthority(ctx, tx, guard, false); err != nil {
 				return err
 			}
@@ -164,8 +164,8 @@ func participationView(participation *model.AttemptParticipation) *store.ExamAtt
 // Participation, then Connection.
 func suspendExamAttemptByManager(ctx context.Context, tx *sqlxTxWrapper,
 	input *store.ExamAttemptManualSuspension,
-) (examAttemptManualSuspensionOutcomeV1, error) {
-	var zero examAttemptManualSuspensionOutcomeV1
+) (examAttemptManualSuspensionOutcome, error) {
+	var zero examAttemptManualSuspensionOutcome
 	var attemptRow manualSuspensionAttemptRow
 	if err := tx.Get(ctx, &attemptRow, manualSuspensionAttemptSelect, input.AttemptID.String()); err != nil {
 		return zero, translateError("exam_attempt", input.AttemptID.String(), err)
@@ -241,7 +241,7 @@ func suspendExamAttemptByManager(ctx context.Context, tx *sqlxTxWrapper,
 	if err = closeNativeDelivery(ctx, tx, participation.ID, model.DeliveryClosedSuspension, at); err != nil {
 		return zero, err
 	}
-	outcome := examAttemptManualSuspensionOutcomeV1{ExamID: attempt.ExamID.String(), SittingID: attempt.SittingID.String(),
+	outcome := examAttemptManualSuspensionOutcome{ExamID: attempt.ExamID.String(), SittingID: attempt.SittingID.String(),
 		ClassID: attemptRow.ClassID, CandidateID: attempt.CandidateUserID.String(), AttemptID: attempt.ID.String(),
 		ParticipationID: participation.ID.String(), SuspensionID: suspension.ID.String()}
 	if connection != nil {
@@ -266,7 +266,7 @@ func suspendExamAttemptByManager(ctx context.Context, tx *sqlxTxWrapper,
 	return outcome, nil
 }
 
-func completeExamAttemptManualSuspensionAudit(ctx context.Context, tx *sqlxTxWrapper, value examAttemptManualSuspensionOutcomeV1,
+func completeExamAttemptManualSuspensionAudit(ctx context.Context, tx *sqlxTxWrapper, value examAttemptManualSuspensionOutcome,
 	replayed bool, originalAuditID string, auditID model.AuditEventID, auditAt int64,
 ) error {
 	data := map[string]any{"exam_id": value.ExamID, "exam_sitting_id": value.SittingID, "exam_attempt_id": value.AttemptID,
@@ -289,7 +289,7 @@ func completeExamAttemptManualSuspensionAudit(ctx context.Context, tx *sqlxTxWra
 // its immutable episode start, ended generation, and closed Connection, so an
 // exact replay returns the original result even after a later re-allow.
 func (s *SQLExamAttemptStore) loadExamAttemptManualSuspensionResult(ctx context.Context,
-	value examAttemptManualSuspensionOutcomeV1,
+	value examAttemptManualSuspensionOutcome,
 ) (*store.ExamAttemptManualSuspensionResult, error) {
 	attemptID, err := model.ParseExamAttemptID(value.AttemptID)
 	if err != nil {

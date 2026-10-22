@@ -333,7 +333,7 @@ func testRetentionPolicyActiveAdministratorGuard(t *testing.T, ctx context.Conte
 }
 
 func retentionPolicyCommand(actorID model.UserID, identity string) *store.CommandIdempotency {
-	return &store.CommandIdempotency{UserID: actorID, Operation: "retention_policy.replace.v1",
+	return &store.CommandIdempotency{UserID: actorID, Operation: "retention_policy.replace",
 		KeyDigest:   sha256.Sum256([]byte("retention-policy-key:" + identity)),
 		Fingerprint: sha256.Sum256([]byte("retention-policy-command:" + identity)),
 		Retention:   time.Hour, Wait: time.Second}

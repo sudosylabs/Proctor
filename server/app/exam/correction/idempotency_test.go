@@ -65,8 +65,8 @@ func TestIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) {
 
 func TestIdempotencyOperationCompatibility(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "exam.sitting.correction.resource.stage.v1", store.ExamCorrectionResourceStageOperation)
-	assert.Equal(t, "exam.sitting.correction.apply.v1", idempotencyOperationApplyCorrection)
+	assert.Equal(t, "exam.sitting.correction.resource.stage", store.ExamCorrectionResourceStageOperation)
+	assert.Equal(t, "exam.sitting.correction.apply", idempotencyOperationApplyCorrection)
 }
 
 func TestPrepareIdempotencyRequiresKey(t *testing.T) {

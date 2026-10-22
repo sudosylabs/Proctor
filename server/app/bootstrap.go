@@ -262,7 +262,7 @@ func (s *bootstrapService) BootstrapInstallation(ctx context.Context, invocation
 }
 
 func digestBootstrapSecret(secret string) [sha256.Size]byte {
-	return sha256.Sum256(append([]byte("proctor:installation-bootstrap-secret:v1\x00"), []byte(secret)...))
+	return sha256.Sum256(append([]byte("proctor.installation_bootstrap_secret\x00"), []byte(secret)...))
 }
 
 func fingerprintBootstrapCommand(command BootstrapInstallationCommand) ([sha256.Size]byte, error) {
@@ -285,7 +285,7 @@ func fingerprintBootstrapCommand(command BootstrapInstallationCommand) ([sha256.
 	// The raw deployment secret keys the fingerprint so the durable value does
 	// not become a fast offline password verifier if the database is exposed.
 	mac := hmac.New(sha256.New, []byte(command.BootstrapSecret))
-	_, _ = mac.Write([]byte("proctor:installation-bootstrap-command:v1\x00"))
+	_, _ = mac.Write([]byte("proctor.installation_bootstrap_command\x00"))
 	_, _ = mac.Write(payload)
 	var fingerprint [sha256.Size]byte
 	copy(fingerprint[:], mac.Sum(nil))

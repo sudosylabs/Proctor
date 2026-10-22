@@ -28,7 +28,7 @@ func TestExamResourceStore(t *testing.T, ss store.Store) {
 	created := createCatalogExam(t, ctx, ss, unit.ID, creator.ID, at, "resource-exam")
 	examID := created.Value.Exam.ID
 	first := reserveExamResource(t, ctx, ss, examID, creator.ID, model.NewExamResourceID(), "Reference", 0, 1, at.Add(time.Second), model.ExamResourceMediaPDF, nil)
-	command := examCommand(creator.ID, "exam.resource.add.v1", "resource-add", "resource-add-command")
+	command := examCommand(creator.ID, "exam.resource.add", "resource-add", "resource-add-command")
 	finalized, err := ss.ExamResource().FinalizeUpload(ctx, first.finalization, command)
 	require.NoError(t, err)
 	require.False(t, finalized.Replayed)
@@ -58,7 +58,7 @@ func TestExamResourceStore(t *testing.T, ss store.Store) {
 	require.Equal(t, first.finalization.Rendition.SHA256, got.Rendition.SHA256)
 
 	replacement := reserveExamResource(t, ctx, ss, examID, creator.ID, first.finalization.Resource.ID, "Reference", 0, 2, at.Add(3*time.Second), model.ExamResourceMediaText, got)
-	replacementCommand := examCommand(creator.ID, "exam.resource.replace.v1", "resource-replace", "resource-replace-command")
+	replacementCommand := examCommand(creator.ID, "exam.resource.replace", "resource-replace", "resource-replace-command")
 	replaced, err := ss.ExamResource().FinalizeUpload(ctx, replacement.finalization, replacementCommand)
 	require.NoError(t, err)
 	require.Equal(t, got.Resource.FileEntryID, replaced.Value.Resource.FileEntryID, "replaced=%#v old=%#v", replaced, got)
@@ -71,16 +71,16 @@ func TestExamResourceStore(t *testing.T, ss store.Store) {
 	require.Equal(t, replaced.Value.Resource.SelectedFileRevisionID, retriedReplacement.Value.Resource.SelectedFileRevisionID, "post-success replacement retry=%#v first=%#v", retriedReplacement, replaced)
 	require.Equal(t, int64(3), retriedReplacement.Value.DraftRevision, "post-success replacement retry=%#v first=%#v", retriedReplacement, replaced)
 	metadata := &store.ExamResourceMetadataUpdate{ExamID: examID, ActorUserID: creator.ID, ExpectedDraftRevision: 3, ResourceID: got.Resource.ID, DisplayName: "Updated", DescriptionMarkdown: "New **description**", ChangedAt: at.Add(3 * time.Second), AuditEventID: saveExamResourceAudit(t, ctx, ss, examID, creator.ID, unit.ID).ID, AuditAt: model.MillisFromTime(at.Add(3 * time.Second))}
-	updated, err := ss.ExamResource().UpdateMetadata(ctx, metadata, examCommand(creator.ID, "exam.resource.metadata.v1", "resource-metadata", "resource-metadata-command"))
+	updated, err := ss.ExamResource().UpdateMetadata(ctx, metadata, examCommand(creator.ID, "exam.resource.metadata", "resource-metadata", "resource-metadata-command"))
 	require.NoError(t, err)
 	require.Equal(t, "Updated", updated.Value.Resource.DisplayName)
 	require.Equal(t, int64(4), updated.Value.DraftRevision)
 
 	second := reserveExamResource(t, ctx, ss, examID, creator.ID, model.NewExamResourceID(), "Second", 1, 4, at.Add(4*time.Second), model.ExamResourceMediaText, nil)
-	secondResult, err := ss.ExamResource().FinalizeUpload(ctx, second.finalization, examCommand(creator.ID, "exam.resource.add.v1", "resource-second", "resource-second-command"))
+	secondResult, err := ss.ExamResource().FinalizeUpload(ctx, second.finalization, examCommand(creator.ID, "exam.resource.add", "resource-second", "resource-second-command"))
 	require.NoError(t, err)
 	reorder := &store.ExamResourceReorder{ExamID: examID, ActorUserID: creator.ID, ExpectedDraftRevision: 5, ResourceIDs: []model.ExamResourceID{secondResult.Value.Resource.ID, updated.Value.Resource.ID}, ChangedAt: at.Add(5 * time.Second), AuditEventID: saveExamResourceAudit(t, ctx, ss, examID, creator.ID, unit.ID).ID, AuditAt: model.MillisFromTime(at.Add(5 * time.Second))}
-	ordered, err := ss.ExamResource().Reorder(ctx, reorder, examCommand(creator.ID, "exam.resource.reorder.v1", "resource-order", "resource-order-command"))
+	ordered, err := ss.ExamResource().Reorder(ctx, reorder, examCommand(creator.ID, "exam.resource.reorder", "resource-order", "resource-order-command"))
 	require.NoError(t, err)
 	require.Len(t, ordered.Items, 2)
 	require.Equal(t, secondResult.Value.Resource.ID, ordered.Items[0].Resource.ID)
@@ -93,7 +93,7 @@ func TestExamResourceStore(t *testing.T, ss store.Store) {
 	overCountReplacement := reserveExamResource(t, ctx, ss, examID, creator.ID, updated.Value.Resource.ID,
 		"Updated", 1, 6, at.Add(5500*time.Millisecond), model.ExamResourceMediaText, &ordered.Items[1])
 	_, err = ss.ExamResource().FinalizeUpload(ctx, overCountReplacement.finalization,
-		examCommand(creator.ID, "exam.resource.replace.v1", "resource-over-count-replacement", "resource-over-count-replacement-command"))
+		examCommand(creator.ID, "exam.resource.replace", "resource-over-count-replacement", "resource-over-count-replacement-command"))
 	var capacityConflict *store.ErrConflict
 	require.ErrorAs(t, err, &capacityConflict)
 	require.Equal(t, "exam_resource_limit", capacityConflict.Constraint)
@@ -101,7 +101,7 @@ func TestExamResourceStore(t *testing.T, ss store.Store) {
 	institution, err = UpdateInstitution(ctx, ss, institution)
 	require.NoError(t, err)
 	removal := &store.ExamResourceRemoval{ExamID: examID, ActorUserID: creator.ID, ExpectedDraftRevision: 6, ResourceID: secondResult.Value.Resource.ID, ChangedAt: at.Add(6 * time.Second), AuditEventID: saveExamResourceAudit(t, ctx, ss, examID, creator.ID, unit.ID).ID, AuditAt: model.MillisFromTime(at.Add(6 * time.Second))}
-	removed, err := ss.ExamResource().Remove(ctx, removal, examCommand(creator.ID, "exam.resource.remove.v1", "resource-remove", "resource-remove-command"))
+	removed, err := ss.ExamResource().Remove(ctx, removal, examCommand(creator.ID, "exam.resource.remove", "resource-remove", "resource-remove-command"))
 	require.NoError(t, err)
 	require.True(t, removed.Value.Resource.IsArchived())
 	require.Equal(t, int64(7), removed.Value.DraftRevision)
@@ -118,7 +118,7 @@ func TestExamResourceStore(t *testing.T, ss store.Store) {
 	require.NoError(t, err)
 	oversized := reserveExamResource(t, ctx, ss, examID, creator.ID, model.NewExamResourceID(), "Oversized", 1, 7, at.Add(7*time.Second), model.ExamResourceMediaText, nil)
 	_, err = ss.ExamResource().FinalizeUpload(ctx, oversized.finalization,
-		examCommand(creator.ID, "exam.resource.add.v1", "resource-oversized", "resource-oversized-command"))
+		examCommand(creator.ID, "exam.resource.add", "resource-oversized", "resource-oversized-command"))
 	require.ErrorAs(t, err, &capacityConflict)
 	require.Equal(t, "exam_resource_limit", capacityConflict.Constraint)
 
@@ -129,7 +129,7 @@ func TestExamResourceStore(t *testing.T, ss store.Store) {
 	require.NoError(t, err)
 	overCount := reserveExamResource(t, ctx, ss, examID, creator.ID, model.NewExamResourceID(), "Over count", 1, 7, at.Add(8*time.Second), model.ExamResourceMediaText, nil)
 	_, err = ss.ExamResource().FinalizeUpload(ctx, overCount.finalization,
-		examCommand(creator.ID, "exam.resource.add.v1", "resource-over-count", "resource-over-count-command"))
+		examCommand(creator.ID, "exam.resource.add", "resource-over-count", "resource-over-count-command"))
 	require.ErrorAs(t, err, &capacityConflict)
 	require.Equal(t, "exam_resource_limit", capacityConflict.Constraint)
 	institution.ExamCapacity = model.DefaultExamCapacityPolicy()

@@ -104,7 +104,7 @@ func TestIntegrityReviewInventoryDigestIsOrderIndependentAndPinned(t *testing.T)
 		[]IntegrityReviewInventoryDiscrepancy{discrepancies[1], discrepancies[0]})
 	require.NoError(t, err, "reversed digest")
 	require.Equal(t, digest, reversed, "reversed digest")
-	const want = "49c4e99013eaf6ba074a8fa307e3f310d58c1ecad274a9ed3fc76718d1e111c5"
+	const want = "589fd26678d772b26eba2f83258241fecc46ebd753d795e39430ea4eaf3dc4ba"
 	require.Equal(t, want, digest, "digest")
 }
 

@@ -541,10 +541,10 @@ func bindOnboardingImportCommand(idempotency *store.CommandIdempotency, id model
 
 func invitationBatchLifecycleOperation(operation InvitationBatchOperation) string {
 	if operation == InvitationBatchResend {
-		return "invitation.resend.v1"
+		return "invitation.resend"
 	}
 	if operation == InvitationBatchRevoke {
-		return "invitation.revoke.v1"
+		return "invitation.revoke"
 	}
 	return ""
 }
@@ -833,7 +833,7 @@ func (s *invitationService) ResendInvitation(ctx context.Context, invocation Inv
 			}
 		}
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.resend.v1", command.IdempotencyKey,
+	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.resend", command.IdempotencyKey,
 		invitationLifecycleIdempotencySemantic{ID: id.String(), Revision: command.ExpectedRevision})
 	if err != nil {
 		return InvitationAdministrationView{}, err
@@ -928,7 +928,7 @@ func (s *invitationService) RevokeInvitation(ctx context.Context, invocation Inv
 			}
 		}
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.revoke.v1", command.IdempotencyKey,
+	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.revoke", command.IdempotencyKey,
 		invitationLifecycleIdempotencySemantic{ID: id.String(), Revision: command.ExpectedRevision})
 	if err != nil {
 		return InvitationAdministrationView{}, err
@@ -1237,7 +1237,7 @@ func (s *invitationService) IssueStudentClassInvitation(ctx context.Context, inv
 	}
 	semantic := command
 	semantic.IdempotencyKey = ""
-	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.student_class.issue.v1", command.IdempotencyKey, semantic)
+	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.student_class.issue", command.IdempotencyKey, semantic)
 	if err != nil {
 		return InvitationView{}, err
 	}
@@ -1371,7 +1371,7 @@ func (s *invitationService) IssueTeacherAcademicUnitInvitation(ctx context.Conte
 	}
 	semantic := command
 	semantic.IdempotencyKey = ""
-	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.teacher_academic_unit.issue.v1", command.IdempotencyKey, semantic)
+	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.teacher_academic_unit.issue", command.IdempotencyKey, semantic)
 	if err != nil {
 		return InvitationView{}, err
 	}
@@ -1506,7 +1506,7 @@ func (s *invitationService) IssueAcademicUnitRoleInvitation(ctx context.Context,
 	}
 	semantic := command
 	semantic.IdempotencyKey = ""
-	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.academic_unit_role.issue.v1", command.IdempotencyKey, semantic)
+	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.academic_unit_role.issue", command.IdempotencyKey, semantic)
 	if err != nil {
 		return InvitationView{}, err
 	}
@@ -1550,7 +1550,7 @@ func (s *invitationService) IssueInstitutionRoleInvitation(ctx context.Context, 
 	}
 	semantic := command
 	semantic.IdempotencyKey = ""
-	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.institution_role.issue.v1", command.IdempotencyKey, semantic)
+	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.institution_role.issue", command.IdempotencyKey, semantic)
 	if err != nil {
 		return InvitationView{}, err
 	}

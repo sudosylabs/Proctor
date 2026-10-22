@@ -242,7 +242,7 @@ func validateRetentionPolicyReplacement(
 	input *store.RetentionPolicyReplacement,
 	command *store.CommandIdempotency,
 ) error {
-	if input == nil || !validRetentionMutation(input.RetentionMutation, command, "retention_policy.replace.v1") ||
+	if input == nil || !validRetentionMutation(input.RetentionMutation, command, "retention_policy.replace") ||
 		input.ExpectedRevision < 1 || input.Settings.Validate() != nil || input.RecentAuthenticationTTL <= 0 ||
 		command.Retention <= 0 || command.Wait <= 0 {
 		return store.NewErrInvalidInput("retention_policy", "replacement", nil)

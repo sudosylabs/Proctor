@@ -59,7 +59,7 @@ func TestConfigureDraftNativePolicyOrderAndFailures(t *testing.T) {
 			require.Equal(t, model.NativeModeObserve, view.Draft.Policy.Native.Families[1].Mode(), "native selection was not authorized and saved")
 			require.Equal(t, int64(2), view.Draft.Revision, "native selection was not authorized and saved")
 			require.Equal(t, model.ActionExamManage, fixture.authorizer.action, "native selection was not authorized and saved")
-			require.Equal(t, "exam.draft.native_policy.configure.v1", fixture.persistence.idempotency.Operation, "wrong idempotency or unsafe audit")
+			require.Equal(t, "exam.draft.native_policy.configure", fixture.persistence.idempotency.Operation, "wrong idempotency or unsafe audit")
 			require.Len(t, fixture.auditor.value, 3, "wrong idempotency or unsafe audit")
 			// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
 			// begins before the durable write, and the write commits before its effect.

@@ -69,10 +69,10 @@ func TestIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) {
 func TestIdempotencyOperationCompatibility(t *testing.T) {
 	t.Parallel()
 	tests := map[string]string{
-		store.ExamIntegrityReviewDecisionOperation: "exam.integrity_review.decision.v1",
-		store.ExamIntegrityReviewDraftOperation:    "exam.integrity_review.draft.v1",
-		store.ExamIntegrityReviewFinalizeOperation: "exam.integrity_review.finalize.v1",
-		store.ExamIntegrityReviewReleaseOperation:  "exam.integrity_review.release.v1",
+		store.ExamIntegrityReviewDecisionOperation: "exam.integrity_review.decision",
+		store.ExamIntegrityReviewDraftOperation:    "exam.integrity_review.draft",
+		store.ExamIntegrityReviewFinalizeOperation: "exam.integrity_review.finalize",
+		store.ExamIntegrityReviewReleaseOperation:  "exam.integrity_review.release",
 	}
 	require.Len(t, tests, 4)
 	for operation, want := range tests {

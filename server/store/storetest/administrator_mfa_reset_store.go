@@ -225,7 +225,7 @@ func TestAdministratorMFAResetExternalStore(t *testing.T, ss store.Store) {
 	capabilities := store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"recovery-provider": {}}}
 	replacement := &store.AccessPolicyReplacement{Preflight: store.AccessPolicyPreflight{ExpectedRevision: snapshot.Policy.Revision, Settings: settings, Capabilities: capabilities, CheckedAt: model.NowUTC()}, ActorID: installed.Administrator.ID}
 	prepareAccessPolicyAttempt(t, ctx, ss, installed, replacement)
-	_, err = ss.AccessPolicy().Replace(ctx, replacement, &store.CommandIdempotency{UserID: installed.Administrator.ID, Operation: "access_policy.replace.v1",
+	_, err = ss.AccessPolicy().Replace(ctx, replacement, &store.CommandIdempotency{UserID: installed.Administrator.ID, Operation: "access_policy.replace",
 		KeyDigest: sha256.Sum256([]byte("offline-mfa-external")), Fingerprint: sha256.Sum256([]byte("offline-mfa-external-command")), Retention: time.Hour, Wait: time.Second})
 	require.NoError(t, err)
 	removeAudit := saveAuthenticationMethodAuditAttempt(t, ctx, ss, installed.Administrator.ID.String(), "remove_password")

@@ -15,11 +15,11 @@ import (
 )
 
 const (
-	idempotencyOperationAddResource            = "exam.resource.add.v1"
-	idempotencyOperationReplaceResourceContent = "exam.resource.content.replace.v1"
-	idempotencyOperationEditResourceMetadata   = "exam.resource.metadata.edit.v1"
-	idempotencyOperationReorderResources       = "exam.resource.reorder.v1"
-	idempotencyOperationRemoveResource         = "exam.resource.remove.v1"
+	idempotencyOperationAddResource            = "exam.resource.add"
+	idempotencyOperationReplaceResourceContent = "exam.resource.content.replace"
+	idempotencyOperationEditResourceMetadata   = "exam.resource.metadata.edit"
+	idempotencyOperationReorderResources       = "exam.resource.reorder"
+	idempotencyOperationRemoveResource         = "exam.resource.remove"
 )
 
 func prepareResourceIdempotency(invocation invocation.Invocation, operation, key string, examID model.ExamID, revision int64, resourceID, name, description string, media model.ExamResourceMediaType, size int64, sha string, ids []string) (*store.CommandIdempotency, error) {

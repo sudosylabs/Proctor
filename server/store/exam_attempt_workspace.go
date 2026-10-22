@@ -13,7 +13,7 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-const ExamAttemptWorkspaceMutationOperation = "exam.attempt.workspace.mutate.v1"
+const ExamAttemptWorkspaceMutationOperation = "exam.attempt.workspace.mutate"
 
 // ExamAttemptWorkspaceMutationAccess is the complete hash-only selector for a
 // candidate write. Persistence rechecks the current Class membership, Open

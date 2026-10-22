@@ -13,7 +13,6 @@
 
 package model
 
-const (
-	APIURLSuffixV1 = "/api/v1"
-	APIURLSuffix   = APIURLSuffixV1
-)
+// APIURLSuffix is the path prefix of the public HTTP API. Its v1 segment is
+// the client-facing API generation, not an internal version.
+const APIURLSuffix = "/api/v1"

@@ -453,7 +453,7 @@ func IntegrityReviewInventoryDigest(flags []IntegrityReviewInventoryFlag,
 		return discrepancyCopy[i].DiscrepancyID.String() < discrepancyCopy[j].DiscrepancyID.String()
 	})
 	hash := sha256.New()
-	hash.Write([]byte("proctor.integrity-review.inventory.v1\x00"))
+	hash.Write([]byte("proctor.integrity_review.inventory\x00"))
 	writeReviewInventoryCount(hash, len(flagCopy))
 	for _, item := range flagCopy {
 		hash.Write([]byte(item.FlagID.String()))
@@ -489,7 +489,7 @@ func IntegrityReviewDeliveryDigest(base string, browser BrowserSubmissionSettlem
 		return "", ErrDeliveryInvalid
 	}
 	h := sha256.New()
-	h.Write([]byte("proctor.integrity-review.delivery.v1\x00"))
+	h.Write([]byte("proctor.integrity_review.delivery\x00"))
 	h.Write([]byte(base))
 	h.Write([]byte(browser.State))
 	h.Write([]byte{0})

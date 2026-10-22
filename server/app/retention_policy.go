@@ -102,7 +102,7 @@ func (s *retentionPolicyService) ReplaceRetentionPolicy(
 	}
 	idempotency, err := applicationidempotency.Prepare(
 		invocation,
-		"retention_policy.replace.v1",
+		"retention_policy.replace",
 		command.IdempotencyKey,
 		struct {
 			InstitutionID    model.InstitutionID           `json:"institution_id"`

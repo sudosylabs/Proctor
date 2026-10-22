@@ -38,7 +38,7 @@ const (
 	BrowserCSRFHeader                     = "X-Proctor-CSRF-Token"
 )
 
-const csrfMessage = "proctor-browser-csrf-v1"
+const csrfMessage = "proctor.browser_csrf"
 
 type browserCookies struct {
 	secure                   bool

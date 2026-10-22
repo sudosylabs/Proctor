@@ -141,9 +141,19 @@ query text never enters ordinary telemetry.
 `Archive` is reversible removal from active use, `Disable` is reversible prevention from operating, and `Purge` is explicit irreversible removal. A soft archive is not named `Delete`.
 
 Idempotent command outcomes are persisted atomically: explicitly retryable
-client commands store the authenticated User, stable versioned operation,
+client commands store the authenticated User, stable operation name,
 digests of the bounded key and semantic request fingerprint, a bounded
 application outcome, the original audit identity, and expiry.
+An operation name is `<domain>[.<subject>].<verb>` in lowercase
+dot-separated snake_case (`exam.attempt.reallow`); a digest or HMAC
+domain-separation tag is `proctor.<topic>` in the same grammar, NUL-terminated
+where it prefixes data. Neither carries a version, and neither does any
+persisted document, outcome, or identifier: until the first supported release
+a format changes outright and development databases are recreated. Only
+contracts an external party negotiates keep a version (the `/api/v1` HTTP
+generation, the Desktop and cluster peer protocol ranges, and Desktop native
+agreement keys). The architecture test `TestNamesCarryNoVersionSuffix`
+enforces both rules.
 PostgreSQL transaction-scoped coordination serializes the complete namespace;
 the named aggregate mutation, successful audit completion, and outcome insert
 commit together. Replaying identical input returns the recorded outcome after

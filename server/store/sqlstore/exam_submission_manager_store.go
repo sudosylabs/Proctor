@@ -97,14 +97,14 @@ func (s *SQLExamSubmissionStore) EndByManager(ctx context.Context, input *store.
 		return nil, store.NewErrInvalidInput("exam_submission", "manager_end", nil)
 	}
 	prepared := *input
-	result, err := runIdempotentMutation(ctx, s.SQLStore, "manager-end Exam Attempt", idempotentMutation[examSubmissionSealOutcomeV1]{
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "manager-end Exam Attempt", idempotentMutation[examSubmissionSealOutcome]{
 		command: command, auditEventID: prepared.AuditEventID,
-		execute: func(ctx context.Context, tx *sqlxTxWrapper) (examSubmissionSealOutcomeV1, error) {
+		execute: func(ctx context.Context, tx *sqlxTxWrapper) (examSubmissionSealOutcome, error) {
 			return endExamAttemptByManager(ctx, tx, &prepared)
 		},
-		encode: func(outcome examSubmissionSealOutcomeV1) ([]byte, error) { return encodeCommandOutcome(outcome) },
-		decode: func(data []byte) (examSubmissionSealOutcomeV1, error) {
-			var outcome examSubmissionSealOutcomeV1
+		encode: func(outcome examSubmissionSealOutcome) ([]byte, error) { return encodeCommandOutcome(outcome) },
+		decode: func(data []byte) (examSubmissionSealOutcome, error) {
+			var outcome examSubmissionSealOutcome
 			if err := decodeCommandOutcome(data, &outcome); err != nil {
 				return outcome, err
 			}
@@ -113,7 +113,7 @@ func (s *SQLExamSubmissionStore) EndByManager(ctx context.Context, input *store.
 			}
 			return outcome, nil
 		},
-		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, outcome examSubmissionSealOutcomeV1, originalAuditID string) error {
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, outcome examSubmissionSealOutcome, originalAuditID string) error {
 			if err := guardExamSittingManagerExam(ctx, tx, prepared.Request.ExamID, prepared.Request.ActorUserID,
 				prepared.Request.ManagerOverride, false); err != nil {
 				return err
@@ -159,8 +159,8 @@ func (s *SQLExamSubmissionStore) EndByManager(ctx context.Context, input *store.
 
 func endExamAttemptByManager(ctx context.Context, tx *sqlxTxWrapper,
 	input *store.ExamSubmissionManagerEnd,
-) (examSubmissionSealOutcomeV1, error) {
-	var zero examSubmissionSealOutcomeV1
+) (examSubmissionSealOutcome, error) {
+	var zero examSubmissionSealOutcome
 	recipient, err := lockMailRecipientUser(ctx, tx, input.Target.CandidateUserID)
 	if err != nil {
 		return zero, err

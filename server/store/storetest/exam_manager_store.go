@@ -36,14 +36,14 @@ func testExamManagersAndOwnership(t *testing.T, ss store.Store) {
 
 	add := newExamManagerMutation(t, ctx, ss, examID, creator.ID, target.ID, 1, at.Add(time.Minute), false)
 	add.Notices = examManagerMailNotices(t, at.Add(time.Minute), examManagerMailRecipient{target.ID, model.MailTemplateExamManagerAdded})
-	added, err := ss.ExamAuthoring().AddManager(ctx, add, examCommand(creator.ID, "exam.manager.add.v1", "manager-add", "manager-add-command"))
+	added, err := ss.ExamAuthoring().AddManager(ctx, add, examCommand(creator.ID, "exam.manager.add", "manager-add", "manager-add-command"))
 	require.NoError(t, err)
 	require.False(t, added.Replayed)
 	require.Equal(t, int64(2), added.Exam.Revision)
 	require.Equal(t, target.ID, added.Manager.UserID)
 	require.Equal(t, creator.ID, added.Exam.OwnerUserID)
 	replay := newExamManagerMutation(t, ctx, ss, examID, creator.ID, target.ID, 1, at.Add(2*time.Minute), false)
-	replayed, err := ss.ExamAuthoring().AddManager(ctx, replay, examCommand(creator.ID, "exam.manager.add.v1", "manager-add", "manager-add-command"))
+	replayed, err := ss.ExamAuthoring().AddManager(ctx, replay, examCommand(creator.ID, "exam.manager.add", "manager-add", "manager-add-command"))
 	require.NoError(t, err)
 	require.True(t, replayed.Replayed)
 	require.Equal(t, int64(2), replayed.Exam.Revision)
@@ -51,7 +51,7 @@ func testExamManagersAndOwnership(t *testing.T, ss store.Store) {
 	require.NoError(t, err)
 	require.Len(t, deliveries, 1)
 	require.Equal(t, target.ID, deliveries[0].TargetUserID)
-	_, err = ss.ExamAuthoring().AddManager(ctx, newExamManagerMutation(t, ctx, ss, examID, creator.ID, target.ID, 2, at.Add(3*time.Minute), false), examCommand(creator.ID, "exam.manager.add.v1", "manager-duplicate", "manager-duplicate-command"))
+	_, err = ss.ExamAuthoring().AddManager(ctx, newExamManagerMutation(t, ctx, ss, examID, creator.ID, target.ID, 2, at.Add(3*time.Minute), false), examCommand(creator.ID, "exam.manager.add", "manager-duplicate", "manager-duplicate-command"))
 	requireConflictConstraint(t, err, "exam_manager_exists")
 
 	page, err := ss.ExamAuthoring().ListManagers(ctx, store.ExamManagerListOptions{ExamID: examID, Limit: 1})
@@ -72,30 +72,30 @@ func testExamManagersAndOwnership(t *testing.T, ss store.Store) {
 	transfer.Notices = examManagerMailNotices(t, at.Add(4*time.Minute),
 		examManagerMailRecipient{creator.ID, model.MailTemplateExamOwnershipTransferredFromYou},
 		examManagerMailRecipient{target.ID, model.MailTemplateExamOwnershipTransferredToYou})
-	transferred, err := ss.ExamAuthoring().TransferOwner(ctx, transfer, examCommand(creator.ID, "exam.owner.transfer.v1", "owner-transfer", "owner-transfer-command"))
+	transferred, err := ss.ExamAuthoring().TransferOwner(ctx, transfer, examCommand(creator.ID, "exam.owner.transfer", "owner-transfer", "owner-transfer-command"))
 	require.NoError(t, err)
 	require.Equal(t, target.ID, transferred.Exam.OwnerUserID)
 	require.Equal(t, int64(3), transferred.Exam.Revision)
-	_, err = ss.ExamAuthoring().TransferOwner(ctx, newExamManagerMutation(t, ctx, ss, examID, target.ID, target.ID, 3, at.Add(5*time.Minute), false), examCommand(target.ID, "exam.owner.transfer.v1", "owner-transfer-noop", "owner-transfer-noop-command"))
+	_, err = ss.ExamAuthoring().TransferOwner(ctx, newExamManagerMutation(t, ctx, ss, examID, target.ID, target.ID, 3, at.Add(5*time.Minute), false), examCommand(target.ID, "exam.owner.transfer", "owner-transfer-noop", "owner-transfer-noop-command"))
 	requireConflictConstraint(t, err, "exam_owner_no_changes")
-	_, err = ss.ExamAuthoring().RemoveManager(ctx, newExamManagerMutation(t, ctx, ss, examID, target.ID, target.ID, 3, at.Add(5*time.Minute), false), examCommand(target.ID, "exam.manager.remove.v1", "remove-owner", "remove-owner-command"))
+	_, err = ss.ExamAuthoring().RemoveManager(ctx, newExamManagerMutation(t, ctx, ss, examID, target.ID, target.ID, 3, at.Add(5*time.Minute), false), examCommand(target.ID, "exam.manager.remove", "remove-owner", "remove-owner-command"))
 	requireConflictConstraint(t, err, "exam_owner_manager")
 
 	removeCreator := newExamManagerMutation(t, ctx, ss, examID, target.ID, creator.ID, 3, at.Add(6*time.Minute), false)
 	removeCreator.Notices = examManagerMailNotices(t, at.Add(6*time.Minute), examManagerMailRecipient{creator.ID, model.MailTemplateExamManagerRemoved})
-	removedCreator, err := ss.ExamAuthoring().RemoveManager(ctx, removeCreator, examCommand(target.ID, "exam.manager.remove.v1", "remove-creator", "remove-creator-command"))
+	removedCreator, err := ss.ExamAuthoring().RemoveManager(ctx, removeCreator, examCommand(target.ID, "exam.manager.remove", "remove-creator", "remove-creator-command"))
 	require.NoError(t, err)
 	require.Equal(t, int64(4), removedCreator.Exam.Revision)
 	require.Equal(t, creator.ID, removedCreator.Manager.UserID)
 	require.Equal(t, creator.ID, removedCreator.Exam.CreatorUserID)
-	_, err = ss.ExamAuthoring().RemoveManager(ctx, newExamManagerMutation(t, ctx, ss, examID, target.ID, creator.ID, 4, at.Add(7*time.Minute), false), examCommand(target.ID, "exam.manager.remove.v1", "remove-missing", "remove-missing-command"))
+	_, err = ss.ExamAuthoring().RemoveManager(ctx, newExamManagerMutation(t, ctx, ss, examID, target.ID, creator.ID, 4, at.Add(7*time.Minute), false), examCommand(target.ID, "exam.manager.remove", "remove-missing", "remove-missing-command"))
 	requireConflictConstraint(t, err, "exam_manager_missing")
-	_, err = ss.ExamAuthoring().AddManager(ctx, newExamManagerMutation(t, ctx, ss, examID, target.ID, later.ID, 3, at.Add(7*time.Minute), false), examCommand(target.ID, "exam.manager.add.v1", "manager-add-stale", "manager-add-stale-command"))
+	_, err = ss.ExamAuthoring().AddManager(ctx, newExamManagerMutation(t, ctx, ss, examID, target.ID, later.ID, 3, at.Add(7*time.Minute), false), examCommand(target.ID, "exam.manager.add", "manager-add-stale", "manager-add-stale-command"))
 	requireConflictConstraint(t, err, "exam_revision")
 
 	addLater := newExamManagerMutation(t, ctx, ss, examID, target.ID, later.ID, 4, at.Add(7*time.Minute), false)
 	addLater.Notices = examManagerMailNotices(t, at.Add(7*time.Minute), examManagerMailRecipient{later.ID, model.MailTemplateExamManagerAdded})
-	addedLater, err := ss.ExamAuthoring().AddManager(ctx, addLater, examCommand(target.ID, "exam.manager.add.v1", "manager-add-later", "manager-add-later-command"))
+	addedLater, err := ss.ExamAuthoring().AddManager(ctx, addLater, examCommand(target.ID, "exam.manager.add", "manager-add-later", "manager-add-later-command"))
 	require.NoError(t, err)
 	require.Equal(t, int64(5), addedLater.Exam.Revision)
 	memberships, err := ss.AcademicUnitMember().ListActiveByUser(ctx, later.ID, at.Add(8*time.Minute))
@@ -103,7 +103,7 @@ func testExamManagersAndOwnership(t *testing.T, ss store.Store) {
 	require.Len(t, memberships, 1)
 	_, err = EndAcademicUnitMember(ctx, ss, memberships[0].ID, memberships[0].Revision, model.MillisFromTime(memberships[0].CreatedAt.Add(time.Millisecond)))
 	require.NoError(t, err)
-	_, err = ss.ExamAuthoring().TransferOwner(ctx, newExamManagerMutation(t, ctx, ss, examID, target.ID, later.ID, 5, at.Add(9*time.Minute), false), examCommand(target.ID, "exam.owner.transfer.v1", "ineligible-transfer", "ineligible-transfer-command"))
+	_, err = ss.ExamAuthoring().TransferOwner(ctx, newExamManagerMutation(t, ctx, ss, examID, target.ID, later.ID, 5, at.Add(9*time.Minute), false), examCommand(target.ID, "exam.owner.transfer", "ineligible-transfer", "ineligible-transfer-command"))
 	requireConflictConstraint(t, err, "exam_manager_ineligible")
 
 	current, err := ss.ExamAuthoring().Access(ctx, examID, later.ID)
@@ -118,7 +118,7 @@ func testExamManagersAndOwnership(t *testing.T, ss store.Store) {
 	rollbackExam := createCatalogExam(t, ctx, ss, unit.ID, creator.ID, at.Add(10*time.Minute), "manager-mail-rollback")
 	_, err = ss.ExamAuthoring().AddManager(ctx,
 		newExamManagerMutation(t, ctx, ss, rollbackExam.Value.Exam.ID, creator.ID, rollbackTarget.ID, 1, at.Add(11*time.Minute), false),
-		examCommand(creator.ID, "exam.manager.add.v1", "manager-mail-rollback", "manager-mail-rollback-command"))
+		examCommand(creator.ID, "exam.manager.add", "manager-mail-rollback", "manager-mail-rollback-command"))
 	var invalid *store.ErrInvalidInput
 	require.ErrorAs(t, err, &invalid)
 	rollbackState, err := ss.ExamAuthoring().Access(ctx, rollbackExam.Value.Exam.ID, rollbackTarget.ID)
@@ -145,8 +145,8 @@ func testConcurrentExamManagerAdditions(t *testing.T, ctx context.Context, ss st
 	mutations[0].Notices = examManagerMailNotices(t, at.Add(time.Minute), examManagerMailRecipient{firstTarget.ID, model.MailTemplateExamManagerAdded})
 	mutations[1].Notices = examManagerMailNotices(t, at.Add(time.Minute), examManagerMailRecipient{secondTarget.ID, model.MailTemplateExamManagerAdded})
 	commands := []*store.CommandIdempotency{
-		examCommand(creatorID, "exam.manager.add.v1", "manager-race-first", "manager-race-first-command"),
-		examCommand(creatorID, "exam.manager.add.v1", "manager-race-second", "manager-race-second-command"),
+		examCommand(creatorID, "exam.manager.add", "manager-race-first", "manager-race-first-command"),
+		examCommand(creatorID, "exam.manager.add", "manager-race-second", "manager-race-second-command"),
 	}
 
 	errs := make([]error, len(mutations))

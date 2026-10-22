@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	ExamSubmissionSealOperation          = "exam.attempt.submit.v1"
-	ExamSubmissionManagerEndOperation    = "exam.attempt.manager_end.v1"
-	ExamSubmissionAutomaticSealOperation = "exam.attempt.seal_for_sitting_close.v1"
+	ExamSubmissionSealOperation          = "exam.attempt.submit"
+	ExamSubmissionManagerEndOperation    = "exam.attempt.manager_end"
+	ExamSubmissionAutomaticSealOperation = "exam.attempt.seal_for_sitting_close"
 )
 
 // ExamSubmissionSealAccess is the complete hash-only causal selector for a

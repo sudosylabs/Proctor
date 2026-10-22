@@ -50,7 +50,7 @@ func testAcademicPeriodStoreIdempotentCreate(t *testing.T, ss store.Store) {
 	user := saveUser(t, ctx, ss)
 	candidate := &model.AcademicPeriod{Owner: model.NewInstitutionAcademicPeriodOwner(institution.ID), Name: "idempotent-period", DisplayName: "Idempotent Period", StartsAt: model.TimeFromMillis(1000), EndsAt: model.TimeFromMillis(2000)}
 	candidate.PrepareCreate(model.NewAcademicPeriodID(), model.NowUTC())
-	command := &store.CommandIdempotency{UserID: user.ID, Operation: "academic_period.create.v1", KeyDigest: sha256.Sum256([]byte("key")), Fingerprint: sha256.Sum256([]byte("command")), Retention: time.Hour, Wait: time.Second}
+	command := &store.CommandIdempotency{UserID: user.ID, Operation: "academic_period.create", KeyDigest: sha256.Sum256([]byte("key")), Fingerprint: sha256.Sum256([]byte("command")), Retention: time.Hour, Wait: time.Second}
 	firstAudit := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
 	first, err := ss.AcademicPeriod().CreateIdempotently(ctx, &store.AcademicPeriodCreation{Period: candidate, AuditEventID: firstAudit.ID, AuditAt: model.GetMillis()}, command)
 	require.NoError(t, err)

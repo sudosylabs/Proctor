@@ -15,11 +15,11 @@ import (
 )
 
 const (
-	idempotencyOperationCreateDirectory = "exam.starter_workspace.directory.create.v1"
-	idempotencyOperationCreateFile      = "exam.starter_workspace.file.create.v1"
-	idempotencyOperationMoveEntry       = "exam.starter_workspace.entry.move.v1"
-	idempotencyOperationReplaceFile     = "exam.starter_workspace.file.replace.v1"
-	idempotencyOperationRemoveEntry     = "exam.starter_workspace.entry.remove.v1"
+	idempotencyOperationCreateDirectory = "exam.starter_workspace.directory.create"
+	idempotencyOperationCreateFile      = "exam.starter_workspace.file.create"
+	idempotencyOperationMoveEntry       = "exam.starter_workspace.entry.move"
+	idempotencyOperationReplaceFile     = "exam.starter_workspace.file.replace"
+	idempotencyOperationRemoveEntry     = "exam.starter_workspace.entry.remove"
 )
 
 func prepareWorkspaceIdempotency(invocation invocation.Invocation, operation, key string, examID model.ExamID, revision int64,

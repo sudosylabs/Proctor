@@ -33,18 +33,18 @@ func TestExamStarterWorkspaceStore(t *testing.T, ss store.Store, probes ...Start
 
 	directoryID := model.NewStarterWorkspaceEntryID()
 	directory := starterWorkspaceMutation(t, ctx, ss, examID, creator.ID, unit.ID, 1, directoryID, "cmd", at.Add(time.Second))
-	directoryResult, err := ss.ExamStarterWorkspace().CreateDirectory(ctx, directory, examCommand(creator.ID, "exam.starter_workspace.directory.create.v1", "workspace-dir", "workspace-dir-command"))
+	directoryResult, err := ss.ExamStarterWorkspace().CreateDirectory(ctx, directory, examCommand(creator.ID, "exam.starter_workspace.directory.create", "workspace-dir", "workspace-dir-command"))
 	require.NoError(t, err)
 	require.Equal(t, int64(2), directoryResult.DraftRevision)
 	require.Equal(t, "cmd", directoryResult.Entry.Path)
 	subdirectoryID := model.NewStarterWorkspaceEntryID()
 	subdirectory := starterWorkspaceMutation(t, ctx, ss, examID, creator.ID, unit.ID, 2, subdirectoryID, "cmd/app", at.Add(2*time.Second))
-	_, err = ss.ExamStarterWorkspace().CreateDirectory(ctx, subdirectory, examCommand(creator.ID, "exam.starter_workspace.directory.create.v1", "workspace-subdir", "workspace-subdir-command"))
+	_, err = ss.ExamStarterWorkspace().CreateDirectory(ctx, subdirectory, examCommand(creator.ID, "exam.starter_workspace.directory.create", "workspace-subdir", "workspace-subdir-command"))
 	require.NoError(t, err)
 
 	fileID := model.NewStarterWorkspaceEntryID()
 	fileMutation := reserveStarterWorkspaceObject(t, ctx, ss, examID, creator.ID, unit.ID, 3, fileID, "cmd/app/main.go", at.Add(3*time.Second), 13)
-	fileCommand := examCommand(creator.ID, "exam.starter_workspace.file.create.v1", "workspace-file", "workspace-file-command")
+	fileCommand := examCommand(creator.ID, "exam.starter_workspace.file.create", "workspace-file", "workspace-file-command")
 	fileResult, err := ss.ExamStarterWorkspace().CreateFile(ctx, fileMutation, fileCommand)
 	require.NoError(t, err)
 	require.Equal(t, int64(4), fileResult.DraftRevision)
@@ -68,7 +68,7 @@ func TestExamStarterWorkspaceStore(t *testing.T, ss store.Store, probes ...Start
 	require.Equal(t, "cmd/app/main.go", items[2].Entry.Path)
 
 	move := starterWorkspaceMutation(t, ctx, ss, examID, creator.ID, unit.ID, 4, directoryID, "src", at.Add(4*time.Second))
-	moved, err := ss.ExamStarterWorkspace().MoveEntry(ctx, move, examCommand(creator.ID, "exam.starter_workspace.entry.move.v1", "workspace-move", "workspace-move-command"))
+	moved, err := ss.ExamStarterWorkspace().MoveEntry(ctx, move, examCommand(creator.ID, "exam.starter_workspace.entry.move", "workspace-move", "workspace-move-command"))
 	require.NoError(t, err)
 	require.Equal(t, int64(5), moved.DraftRevision)
 	require.Equal(t, "src", moved.Entry.Path)
@@ -80,7 +80,7 @@ func TestExamStarterWorkspaceStore(t *testing.T, ss store.Store, probes ...Start
 	require.Equal(t, "src/app/main.go", items[2].Entry.Path)
 
 	nonempty := starterWorkspaceMutation(t, ctx, ss, examID, creator.ID, unit.ID, 5, directoryID, "", at.Add(5*time.Second))
-	_, err = ss.ExamStarterWorkspace().RemoveEntry(ctx, nonempty, examCommand(creator.ID, "exam.starter_workspace.entry.remove.v1", "workspace-nonempty", "workspace-nonempty-command"))
+	_, err = ss.ExamStarterWorkspace().RemoveEntry(ctx, nonempty, examCommand(creator.ID, "exam.starter_workspace.entry.remove", "workspace-nonempty", "workspace-nonempty-command"))
 	var conflict *store.ErrConflict
 	require.ErrorAs(t, err, &conflict)
 	require.Equal(t, "workspace_directory_not_empty", conflict.Constraint)
@@ -88,12 +88,12 @@ func TestExamStarterWorkspaceStore(t *testing.T, ss store.Store, probes ...Start
 	oldObjectID := fileResult.Object.ID
 	staleReplacement := reserveStarterWorkspaceObject(t, ctx, ss, examID, creator.ID, unit.ID, 5, fileID, "", at.Add(5*time.Second+time.Millisecond), 5)
 	staleReplacement.ExpectedContentVersion = model.NewWorkspaceContentVersion()
-	_, err = ss.ExamStarterWorkspace().ReplaceFile(ctx, staleReplacement, examCommand(creator.ID, "exam.starter_workspace.file.replace.v1", "workspace-replace-stale", "workspace-replace-stale-command"))
+	_, err = ss.ExamStarterWorkspace().ReplaceFile(ctx, staleReplacement, examCommand(creator.ID, "exam.starter_workspace.file.replace", "workspace-replace-stale", "workspace-replace-stale-command"))
 	require.ErrorAs(t, err, &conflict)
 	require.Equal(t, "workspace_content_version", conflict.Constraint)
 	replacement := reserveStarterWorkspaceObject(t, ctx, ss, examID, creator.ID, unit.ID, 5, fileID, "", at.Add(6*time.Second), 5)
 	replacement.ExpectedContentVersion = fileResult.Object.ContentVersion
-	replaced, err := ss.ExamStarterWorkspace().ReplaceFile(ctx, replacement, examCommand(creator.ID, "exam.starter_workspace.file.replace.v1", "workspace-replace", "workspace-replace-command"))
+	replaced, err := ss.ExamStarterWorkspace().ReplaceFile(ctx, replacement, examCommand(creator.ID, "exam.starter_workspace.file.replace", "workspace-replace", "workspace-replace-command"))
 	require.NoError(t, err)
 	require.Equal(t, int64(6), replaced.DraftRevision)
 	require.NotNil(t, replaced.Object)
@@ -101,7 +101,7 @@ func TestExamStarterWorkspaceStore(t *testing.T, ss store.Store, probes ...Start
 	require.Equal(t, oldObjectID, replaced.ReclaimableObject)
 	replacementReplay := reserveStarterWorkspaceObject(t, ctx, ss, examID, creator.ID, unit.ID, 5, fileID, "", at.Add(6*time.Second+time.Millisecond), 5)
 	replacementReplay.ExpectedContentVersion = fileResult.Object.ContentVersion
-	replayedReplacement, err := ss.ExamStarterWorkspace().ReplaceFile(ctx, replacementReplay, examCommand(creator.ID, "exam.starter_workspace.file.replace.v1", "workspace-replace", "workspace-replace-command"))
+	replayedReplacement, err := ss.ExamStarterWorkspace().ReplaceFile(ctx, replacementReplay, examCommand(creator.ID, "exam.starter_workspace.file.replace", "workspace-replace", "workspace-replace-command"))
 	require.NoError(t, err)
 	require.True(t, replayedReplacement.Replayed)
 	require.Equal(t, int64(6), replayedReplacement.DraftRevision)
@@ -125,11 +125,11 @@ func TestExamStarterWorkspaceStore(t *testing.T, ss store.Store, probes ...Start
 	}
 	raceResults := make(chan raceOutcome, 2)
 	go func() {
-		result, replaceErr := ss.ExamStarterWorkspace().ReplaceFile(ctx, raceFirst, examCommand(creator.ID, "exam.starter_workspace.file.replace.v1", "workspace-race-first", "workspace-race-first-command"))
+		result, replaceErr := ss.ExamStarterWorkspace().ReplaceFile(ctx, raceFirst, examCommand(creator.ID, "exam.starter_workspace.file.replace", "workspace-race-first", "workspace-race-first-command"))
 		raceResults <- raceOutcome{result: result, err: replaceErr}
 	}()
 	go func() {
-		result, replaceErr := ss.ExamStarterWorkspace().ReplaceFile(ctx, raceSecond, examCommand(creator.ID, "exam.starter_workspace.file.replace.v1", "workspace-race-second", "workspace-race-second-command"))
+		result, replaceErr := ss.ExamStarterWorkspace().ReplaceFile(ctx, raceSecond, examCommand(creator.ID, "exam.starter_workspace.file.replace", "workspace-race-second", "workspace-race-second-command"))
 		raceResults <- raceOutcome{result: result, err: replaceErr}
 	}()
 	var raceWinner *store.ExamStarterWorkspaceMutationResult
@@ -150,7 +150,7 @@ func TestExamStarterWorkspaceStore(t *testing.T, ss store.Store, probes ...Start
 	require.Equal(t, 1, losers, "concurrent replacement winner")
 
 	removeFile := starterWorkspaceMutation(t, ctx, ss, examID, creator.ID, unit.ID, 7, fileID, "", at.Add(7*time.Second))
-	removed, err := ss.ExamStarterWorkspace().RemoveEntry(ctx, removeFile, examCommand(creator.ID, "exam.starter_workspace.entry.remove.v1", "workspace-remove-file", "workspace-remove-file-command"))
+	removed, err := ss.ExamStarterWorkspace().RemoveEntry(ctx, removeFile, examCommand(creator.ID, "exam.starter_workspace.entry.remove", "workspace-remove-file", "workspace-remove-file-command"))
 	require.NoError(t, err)
 	require.Equal(t, int64(8), removed.DraftRevision)
 	require.True(t, removed.Entry.ArchivedAt.Valid)
@@ -158,7 +158,7 @@ func TestExamStarterWorkspaceStore(t *testing.T, ss store.Store, probes ...Start
 	for index, entryID := range []model.StarterWorkspaceEntryID{subdirectoryID, directoryID} {
 		revision := int64(8 + index)
 		remove := starterWorkspaceMutation(t, ctx, ss, examID, creator.ID, unit.ID, revision, entryID, "", at.Add(time.Duration(revision+1)*time.Second))
-		_, err = ss.ExamStarterWorkspace().RemoveEntry(ctx, remove, examCommand(creator.ID, "exam.starter_workspace.entry.remove.v1", "workspace-remove-"+entryID.String(), "workspace-remove-command-"+entryID.String()))
+		_, err = ss.ExamStarterWorkspace().RemoveEntry(ctx, remove, examCommand(creator.ID, "exam.starter_workspace.entry.remove", "workspace-remove-"+entryID.String(), "workspace-remove-command-"+entryID.String()))
 		require.NoError(t, err)
 	}
 	items, err = ss.ExamStarterWorkspace().List(ctx, examID)
@@ -175,18 +175,18 @@ func TestExamStarterWorkspaceStore(t *testing.T, ss store.Store, probes ...Start
 	oversized := reserveStarterWorkspaceObject(t, ctx, ss, examID, creator.ID, unit.ID, 10,
 		model.NewStarterWorkspaceEntryID(), "oversized.txt", at.Add(11*time.Second), 9)
 	_, err = ss.ExamStarterWorkspace().CreateFile(ctx, oversized,
-		examCommand(creator.ID, "exam.starter_workspace.file.create.v1", "workspace-oversized", "workspace-oversized-command"))
+		examCommand(creator.ID, "exam.starter_workspace.file.create", "workspace-oversized", "workspace-oversized-command"))
 	require.ErrorAs(t, err, &conflict)
 	require.Equal(t, "workspace_total_size", conflict.Constraint)
 	bounded := starterWorkspaceMutation(t, ctx, ss, examID, creator.ID, unit.ID, 10,
 		model.NewStarterWorkspaceEntryID(), "bounded", at.Add(12*time.Second))
 	_, err = ss.ExamStarterWorkspace().CreateDirectory(ctx, bounded,
-		examCommand(creator.ID, "exam.starter_workspace.directory.create.v1", "workspace-bounded", "workspace-bounded-command"))
+		examCommand(creator.ID, "exam.starter_workspace.directory.create", "workspace-bounded", "workspace-bounded-command"))
 	require.NoError(t, err)
 	overflow := starterWorkspaceMutation(t, ctx, ss, examID, creator.ID, unit.ID, 11,
 		model.NewStarterWorkspaceEntryID(), "overflow", at.Add(13*time.Second))
 	_, err = ss.ExamStarterWorkspace().CreateDirectory(ctx, overflow,
-		examCommand(creator.ID, "exam.starter_workspace.directory.create.v1", "workspace-overflow", "workspace-overflow-command"))
+		examCommand(creator.ID, "exam.starter_workspace.directory.create", "workspace-overflow", "workspace-overflow-command"))
 	require.ErrorAs(t, err, &conflict)
 	require.Equal(t, "workspace_entry_limit", conflict.Constraint)
 	institution.ExamCapacity = model.DefaultExamCapacityPolicy()

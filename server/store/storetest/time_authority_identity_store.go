@@ -164,7 +164,7 @@ func RunTimeAuthorityOnboardingImportRowOutcome(t *testing.T, ss store.Store) {
 	issue := studentClassInvitationIssueFixture(t, ss, actor, class, fixture.period, issuedAt)
 	issue.Invitation.TargetEmail = email
 	require.NoError(t, issue.Invitation.Validate())
-	command := invitationTestCommand(actor.ID, "invitation.student_class.issue.v1", "time-authority-"+importID.String(), "time-authority-"+importID.String())
+	command := invitationTestCommand(actor.ID, "invitation.student_class.issue", "time-authority-"+importID.String(), "time-authority-"+importID.String())
 	command.OnboardingImportID, command.OnboardingImportRowNumber = importID, 1
 	_, err = ss.Invitation().IssueStudentClassIdempotently(ctx, issue, command)
 	require.NoError(t, err)

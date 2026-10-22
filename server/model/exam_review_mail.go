@@ -18,7 +18,7 @@ func ResultReleaseOccurrenceID(review SubmissionReviewID, revision int64) (MailO
 		return "", invalidModelError("ResultReleaseOccurrenceID", "exam_review_mail", "", "invalid result release identity", "")
 	}
 	h := sha256.New()
-	h.Write([]byte("proctor.result-release.v1\x00"))
+	h.Write([]byte("proctor.result_release\x00"))
 	h.Write([]byte(review.String()))
 	var raw [8]byte
 	binary.BigEndian.PutUint64(raw[:], uint64(revision))

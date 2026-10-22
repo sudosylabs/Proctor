@@ -76,13 +76,13 @@ func TestIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) {
 func TestIdempotencyOperationCompatibility(t *testing.T) {
 	t.Parallel()
 	tests := map[string]string{
-		idempotencyOperationSchedule:       "exam.sitting.schedule.v1",
-		idempotencyOperationUpdateSchedule: "exam.sitting.schedule.update.v1",
-		idempotencyOperationCancel:         "exam.sitting.cancel.v1",
-		idempotencyOperationPause:          "exam.sitting.pause.v1",
-		idempotencyOperationResume:         "exam.sitting.resume.v1",
-		idempotencyOperationExtend:         "exam.sitting.extend.v1",
-		idempotencyOperationClose:          "exam.sitting.close.v1",
+		idempotencyOperationSchedule:       "exam.sitting.schedule",
+		idempotencyOperationUpdateSchedule: "exam.sitting.schedule.update",
+		idempotencyOperationCancel:         "exam.sitting.cancel",
+		idempotencyOperationPause:          "exam.sitting.pause",
+		idempotencyOperationResume:         "exam.sitting.resume",
+		idempotencyOperationExtend:         "exam.sitting.extend",
+		idempotencyOperationClose:          "exam.sitting.close",
 	}
 	require.Len(t, tests, 7)
 	for operation, want := range tests {

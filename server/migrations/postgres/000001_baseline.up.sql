@@ -4899,7 +4899,7 @@ CREATE INDEX exam_security_preflights_expiry_idx ON exam_security_preflights(exp
 -- Reserved owner capacity is never refunded, including on detail retirement.
 CREATE TABLE exam_attempt_delivery_budgets (
  native_condition_records bigint NOT NULL DEFAULT 0 CHECK(native_condition_records BETWEEN 0 AND 200000),
- native_condition_digest varchar(71) NOT NULL DEFAULT 'sha256:6f22f09d08927773d88bb692689f5ebbc45d44edc9df90ff2053b7704f8c85cb' CHECK(native_condition_digest ~ '^sha256:[0-9a-f]{64}$'),
+ native_condition_digest varchar(71) NOT NULL DEFAULT 'sha256:b29f78624e0ba2ee6710a9b4e892d0ed2b66077bcc9ba397eb22d3302cfdcbb5' CHECK(native_condition_digest ~ '^sha256:[0-9a-f]{64}$'),
  browser_flag_groups bigint NOT NULL DEFAULT 0 CHECK(browser_flag_groups BETWEEN 0 AND 256),
  browser_evidence_records bigint NOT NULL DEFAULT 0 CHECK(browser_evidence_records BETWEEN 0 AND 10000),
  browser_evidence_bytes bigint NOT NULL DEFAULT 0 CHECK(browser_evidence_bytes BETWEEN 0 AND 8388608),

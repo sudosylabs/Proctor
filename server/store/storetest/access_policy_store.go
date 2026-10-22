@@ -68,7 +68,7 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 	require.Empty(t, blocked)
 	passwordSession, _, _ := saveSession(t, ctx, ss, bootstrap.Administrator.ID.String(), 10)
 
-	command := &store.CommandIdempotency{UserID: bootstrap.Administrator.ID, Operation: "access_policy.replace.v1",
+	command := &store.CommandIdempotency{UserID: bootstrap.Administrator.ID, Operation: "access_policy.replace",
 		KeyDigest:   sha256.Sum256([]byte("access-policy-key")),
 		Fingerprint: sha256.Sum256([]byte("access-policy-command")), Retention: time.Hour, Wait: time.Second}
 	replacement := &store.AccessPolicyReplacement{Preflight: store.AccessPolicyPreflight{ExpectedRevision: 1, Settings: settings,
@@ -160,7 +160,7 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 	reenabled := settings
 	reenabled.LocalLoginEnabled = true
 	reenabled.InvitationLocalCredentialEnabled = true
-	reenableCommand := &store.CommandIdempotency{UserID: bootstrap.Administrator.ID, Operation: "access_policy.replace.v1",
+	reenableCommand := &store.CommandIdempotency{UserID: bootstrap.Administrator.ID, Operation: "access_policy.replace",
 		KeyDigest:   sha256.Sum256([]byte("access-policy-reenable-key")),
 		Fingerprint: sha256.Sum256([]byte("access-policy-reenable-command")), Retention: time.Hour, Wait: time.Second}
 	reenableReplacement := &store.AccessPolicyReplacement{Preflight: store.AccessPolicyPreflight{
@@ -169,7 +169,7 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 	prepareAccessPolicyAttempt(t, ctx, ss, bootstrap, reenableReplacement)
 	reenabledResult, err := ss.AccessPolicy().Replace(ctx, reenableReplacement, reenableCommand)
 	require.NoError(t, err)
-	revokeCommand := &store.CommandIdempotency{UserID: bootstrap.Administrator.ID, Operation: "access_policy.replace.v1",
+	revokeCommand := &store.CommandIdempotency{UserID: bootstrap.Administrator.ID, Operation: "access_policy.replace",
 		KeyDigest:   sha256.Sum256([]byte("access-policy-revoke-key")),
 		Fingerprint: sha256.Sum256([]byte("access-policy-revoke-command")), Retention: time.Hour, Wait: time.Second}
 	revokeReplacement := &store.AccessPolicyReplacement{Preflight: store.AccessPolicyPreflight{
@@ -228,7 +228,7 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 		boundedSettings.DesktopAuthorizationEnabled = !boundedSettings.DesktopAuthorizationEnabled
 		key := sha256.Sum256([]byte(fmt.Sprintf("access-policy-history-key-%d", i)))
 		fingerprint := sha256.Sum256([]byte(fmt.Sprintf("access-policy-history-command-%d", i)))
-		boundedCommand := &store.CommandIdempotency{UserID: bootstrap.Administrator.ID, Operation: "access_policy.replace.v1",
+		boundedCommand := &store.CommandIdempotency{UserID: bootstrap.Administrator.ID, Operation: "access_policy.replace",
 			KeyDigest: key, Fingerprint: fingerprint,
 			Retention: time.Hour, Wait: time.Second}
 		boundedReplacement := &store.AccessPolicyReplacement{Preflight: store.AccessPolicyPreflight{
@@ -285,7 +285,7 @@ func testConcurrentAccessPolicyAndAdministratorDisable(t *testing.T, ctx context
 		ExpectedRevision: current.Revision, Settings: candidate, Capabilities: capabilities, CheckedAt: model.NowUTC(),
 	}, ActorID: bootstrap.Administrator.ID}
 	prepareAccessPolicyAttempt(t, ctx, ss, bootstrap, replacement)
-	command := &store.CommandIdempotency{UserID: bootstrap.Administrator.ID, Operation: "access_policy.replace.v1",
+	command := &store.CommandIdempotency{UserID: bootstrap.Administrator.ID, Operation: "access_policy.replace",
 		KeyDigest:   sha256.Sum256([]byte("access-policy-concurrent-key")),
 		Fingerprint: sha256.Sum256([]byte("access-policy-concurrent-command")),
 		Retention:   time.Hour, Wait: time.Second}

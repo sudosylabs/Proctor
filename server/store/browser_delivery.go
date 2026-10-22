@@ -29,8 +29,8 @@ type BrowserDeliverySummaryUpdate struct {
 }
 
 const (
-	BrowserDeliveryGapsOperation    = "exam.browser_delivery.gaps.v1"
-	BrowserDeliveryFinalOperation   = "exam.browser_delivery.final.v1"
-	BrowserDeliverySummaryOperation = "exam.browser_delivery.summary.v1"
-	BrowserDeliveryAppendOperation  = "exam.browser_delivery.append.v1"
+	BrowserDeliveryGapsOperation    = "exam.browser_delivery.gaps"
+	BrowserDeliveryFinalOperation   = "exam.browser_delivery.final"
+	BrowserDeliverySummaryOperation = "exam.browser_delivery.summary"
+	BrowserDeliveryAppendOperation  = "exam.browser_delivery.append"
 )

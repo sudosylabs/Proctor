@@ -303,7 +303,7 @@ func examSubmissionSealTarget(row examSubmissionSealAccessRow) (*store.ExamSubmi
 		CandidateUserID: candidateID, WorkspaceID: workspaceID, CurrentRevisionID: currentRevisionID}, nil
 }
 
-type examSubmissionSealOutcomeV1 struct {
+type examSubmissionSealOutcome struct {
 	Receipt          store.ExamSubmissionReceipt `json:"r"`
 	ExamID           string                      `json:"e"`
 	SittingID        string                      `json:"s"`
@@ -323,14 +323,14 @@ func (s *SQLExamSubmissionStore) Seal(ctx context.Context, input *store.ExamSubm
 		return nil, store.NewErrInvalidInput("exam_submission", "seal", nil)
 	}
 	prepared := *input
-	result, err := runIdempotentMutation(ctx, s.SQLStore, "seal voluntary Exam Submission", idempotentMutation[examSubmissionSealOutcomeV1]{
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "seal voluntary Exam Submission", idempotentMutation[examSubmissionSealOutcome]{
 		command: command, auditEventID: prepared.AuditEventID,
-		execute: func(ctx context.Context, tx *sqlxTxWrapper) (examSubmissionSealOutcomeV1, error) {
+		execute: func(ctx context.Context, tx *sqlxTxWrapper) (examSubmissionSealOutcome, error) {
 			return sealExamSubmission(ctx, tx, &prepared)
 		},
-		encode: func(outcome examSubmissionSealOutcomeV1) ([]byte, error) { return encodeCommandOutcome(outcome) },
-		decode: func(data []byte) (examSubmissionSealOutcomeV1, error) {
-			var outcome examSubmissionSealOutcomeV1
+		encode: func(outcome examSubmissionSealOutcome) ([]byte, error) { return encodeCommandOutcome(outcome) },
+		decode: func(data []byte) (examSubmissionSealOutcome, error) {
+			var outcome examSubmissionSealOutcome
 			if err := decodeCommandOutcome(data, &outcome); err != nil {
 				return outcome, err
 			}
@@ -339,7 +339,7 @@ func (s *SQLExamSubmissionStore) Seal(ctx context.Context, input *store.ExamSubm
 			}
 			return outcome, nil
 		},
-		hydrateReplay: func(ctx context.Context, tx *sqlxTxWrapper, outcome examSubmissionSealOutcomeV1) (examSubmissionSealOutcomeV1, error) {
+		hydrateReplay: func(ctx context.Context, tx *sqlxTxWrapper, outcome examSubmissionSealOutcome) (examSubmissionSealOutcome, error) {
 			if _, _, _, err := lockExamSubmissionSealAccess(ctx, tx, prepared.Access, true); err != nil {
 				return outcome, err
 			}
@@ -350,7 +350,7 @@ func (s *SQLExamSubmissionStore) Seal(ctx context.Context, input *store.ExamSubm
 			outcome.Receipt.BrowserActivity = value
 			return outcome, nil
 		},
-		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, outcome examSubmissionSealOutcomeV1, originalAuditID string) error {
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, outcome examSubmissionSealOutcome, originalAuditID string) error {
 			row, _, _, lockErr := lockExamSubmissionSealAccess(ctx, tx, prepared.Access, true)
 			if lockErr != nil {
 				return lockErr
@@ -393,8 +393,8 @@ type examSubmissionManifestPersistenceRow struct {
 	AttemptObjectID   sql.NullString `db:"attempt_object_id"`
 }
 
-func sealExamSubmission(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamSubmissionSeal) (examSubmissionSealOutcomeV1, error) {
-	var zero examSubmissionSealOutcomeV1
+func sealExamSubmission(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamSubmissionSeal) (examSubmissionSealOutcome, error) {
+	var zero examSubmissionSealOutcome
 	recipient, err := lockMailRecipientUser(ctx, tx, input.Access.CandidateUserID)
 	if err != nil {
 		return zero, err
@@ -524,7 +524,7 @@ func sealExamSubmission(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 	if err != nil {
 		return zero, err
 	}
-	outcome := examSubmissionSealOutcomeV1{Receipt: store.ExamSubmissionReceipt{BrowserActivity: submission.BrowserActivity, SubmissionID: submission.ID,
+	outcome := examSubmissionSealOutcome{Receipt: store.ExamSubmissionReceipt{BrowserActivity: submission.BrowserActivity, SubmissionID: submission.ID,
 		AttemptID: submission.AttemptID, ExamRevisionID: submission.ExamRevisionID, State: attempt.State, WorkspaceCursor: submission.WorkspaceCursor,
 		ManifestDigest: submission.ManifestDigest, SubmittedAt: submission.SubmittedAt}, ExamID: target.ExamID.String(),
 		SittingID: target.SittingID.String(), ClassID: target.ClassID.String(), CandidateID: target.CandidateUserID.String(),
@@ -720,7 +720,7 @@ func persistSubmittedExamAttempt(ctx context.Context, tx *sqlxTxWrapper, attempt
 	return nil
 }
 
-func completeExamSubmissionAudit(ctx context.Context, tx *sqlxTxWrapper, outcome examSubmissionSealOutcomeV1,
+func completeExamSubmissionAudit(ctx context.Context, tx *sqlxTxWrapper, outcome examSubmissionSealOutcome,
 	auditID model.AuditEventID, auditAt int64, replayed bool, originalAuditID string,
 ) error {
 	data := map[string]any{"exam_submission_id": outcome.Receipt.SubmissionID.String(), "exam_attempt_id": outcome.Receipt.AttemptID.String(),
@@ -746,7 +746,7 @@ func completeExamSubmissionAudit(ctx context.Context, tx *sqlxTxWrapper, outcome
 	return nil
 }
 
-func examSubmissionSealResult(outcome examSubmissionSealOutcomeV1) (*store.ExamSubmissionSealResult, error) {
+func examSubmissionSealResult(outcome examSubmissionSealOutcome) (*store.ExamSubmissionSealResult, error) {
 	if !outcome.Receipt.SubmissionID.IsValid() || !outcome.Receipt.AttemptID.IsValid() || !outcome.Receipt.ExamRevisionID.IsValid() ||
 		outcome.Receipt.State != model.ExamAttemptSubmitted || outcome.Receipt.WorkspaceCursor < 0 ||
 		len(outcome.Receipt.ManifestDigest) != 64 || outcome.Receipt.SubmittedAt.IsZero() || outcome.Generation < 1 {

@@ -131,10 +131,10 @@ func TestCommandIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) 
 func TestIdempotencyOperationCompatibility(t *testing.T) {
 	t.Parallel()
 	tests := map[string]string{
-		store.ExamAttemptConnectOperation:           "exam.attempt.connect.v1",
-		store.ExamAttemptReallowOperation:           "exam.attempt.reallow.v1",
-		store.ExamAttemptWorkspaceMutationOperation: "exam.attempt.workspace.mutate.v1",
-		store.ExamSubmissionSealOperation:           "exam.attempt.submit.v1",
+		store.ExamAttemptConnectOperation:           "exam.attempt.connect",
+		store.ExamAttemptReallowOperation:           "exam.attempt.reallow",
+		store.ExamAttemptWorkspaceMutationOperation: "exam.attempt.workspace.mutate",
+		store.ExamSubmissionSealOperation:           "exam.attempt.submit",
 	}
 	require.Len(t, tests, 4)
 	for operation, want := range tests {

@@ -302,7 +302,7 @@ func TestDesktopCompatibilityPolicyReplacementRequiresStrongRecentSystemAdminist
 	require.Equal(t, invocation.Principal().UserID, persistence.replaceInput.ActorID, "result=%#v input=%#v command=%#v audit=%#v", result, persistence.replaceInput, persistence.command, audit.attempt)
 	require.Equal(t, model.AuditEventID(audit.beginID), persistence.replaceInput.AuditEventID, "result=%#v input=%#v command=%#v audit=%#v", result, persistence.replaceInput, persistence.command, audit.attempt)
 	require.NotNil(t, persistence.command, "result=%#v input=%#v command=%#v audit=%#v", result, persistence.replaceInput, persistence.command, audit.attempt)
-	require.Equal(t, "desktop_compatibility_policy.replace.v1", persistence.command.Operation, "result=%#v input=%#v command=%#v audit=%#v", result, persistence.replaceInput, persistence.command, audit.attempt)
+	require.Equal(t, "desktop_compatibility_policy.replace", persistence.command.Operation, "result=%#v input=%#v command=%#v audit=%#v", result, persistence.replaceInput, persistence.command, audit.attempt)
 	require.Equal(t, model.ActionDesktopCompatibilityPolicyManage, audit.attempt.Action, "result=%#v input=%#v command=%#v audit=%#v", result, persistence.replaceInput, persistence.command, audit.attempt)
 	require.Equal(t, model.RoleScopeInstitution, audit.attempt.ScopeType, "result=%#v input=%#v command=%#v audit=%#v", result, persistence.replaceInput, persistence.command, audit.attempt)
 	encodedAudit := ""

@@ -27,4 +27,4 @@ type DeliveryDetailsStop struct {
 	AuditAt      int64
 }
 
-const DeliveryStopDetailsOperation = "exam.delivery.stop_details.v1"
+const DeliveryStopDetailsOperation = "exam.delivery.stop_details"

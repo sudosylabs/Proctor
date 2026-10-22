@@ -85,7 +85,7 @@ func TestCreateReplayDoesNotRepublish(t *testing.T) {
 	_, err := fixture.service.CreateExam(context.Background(), fixture.invocation, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks", IdempotencyKey: command})
 	require.NoError(t, err)
 	require.NotNil(t, fixture.persistence.idempotency, "idempotency/effects")
-	require.Equal(t, "exam.create.v1", fixture.persistence.idempotency.Operation, "idempotency/effects")
+	require.Equal(t, "exam.create", fixture.persistence.idempotency.Operation, "idempotency/effects")
 	require.Equal(t, 0, fixture.effects.calls, "idempotency/effects")
 }
 
@@ -134,7 +134,7 @@ func TestEditDraftTextOwnsAuthorizationAuditPersistenceAndSafeEffect(t *testing.
 	require.Equal(t, model.ActionExamManage, fixture.authorizer.action, "authorization/update")
 	require.NotNil(t, fixture.persistence.textUpdate, "authorization/update")
 	require.NotNil(t, fixture.persistence.idempotency, "authorization/update")
-	require.Equal(t, "exam.draft.text.edit.v1", fixture.persistence.idempotency.Operation, "authorization/update")
+	require.Equal(t, "exam.draft.text.edit", fixture.persistence.idempotency.Operation, "authorization/update")
 	require.Nil(t, fixture.auditor.value["title"], "unsafe audit/scope/effect = %#v / %s:%s", fixture.auditor.value, fixture.auditor.scopeType, fixture.auditor.scopeID)
 	require.Nil(t, fixture.auditor.value["instructions_markdown"], "unsafe audit/scope/effect = %#v / %s:%s", fixture.auditor.value, fixture.auditor.scopeType, fixture.auditor.scopeID)
 	require.Equal(t, model.RoleScopeAcademicUnit, fixture.auditor.scopeType, "unsafe audit/scope/effect = %#v / %s:%s", fixture.auditor.value, fixture.auditor.scopeType, fixture.auditor.scopeID)
@@ -270,7 +270,7 @@ func TestConfigureDraftFocusLossOwnsAuthorizationAuditPersistenceAndSafeEffect(t
 	require.NotNil(t, fixture.persistence.focusLossUpdate, "authorization/update")
 	require.Equal(t, focus, fixture.persistence.focusLossUpdate.FocusLoss, "authorization/update")
 	require.NotNil(t, fixture.persistence.idempotency, "authorization/update")
-	require.Equal(t, "exam.draft.focus_loss.configure.v1", fixture.persistence.idempotency.Operation, "authorization/update")
+	require.Equal(t, "exam.draft.focus_loss.configure", fixture.persistence.idempotency.Operation, "authorization/update")
 	require.Len(t, fixture.auditor.value, 3, "unsafe audit/effect")
 	require.Equal(t, fixture.examID.String(), fixture.auditor.value["exam_id"], "unsafe audit/effect")
 	require.Equal(t, int64(1), fixture.auditor.value["expected_draft_revision"], "unsafe audit/effect")

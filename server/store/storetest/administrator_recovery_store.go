@@ -186,7 +186,7 @@ func TestAdministratorRecoveryStore(t *testing.T, ss store.Store, probes ...Admi
 	}, ActorID: installed.Administrator.ID}
 	prepareAccessPolicyAttempt(t, ctx, ss, installed, replacement)
 	_, err = ss.AccessPolicy().Replace(ctx, replacement, &store.CommandIdempotency{
-		UserID: installed.Administrator.ID, Operation: "access_policy.replace.v1",
+		UserID: installed.Administrator.ID, Operation: "access_policy.replace",
 		KeyDigest:   sha256.Sum256([]byte("administrator-recovery-disable-local")),
 		Fingerprint: sha256.Sum256([]byte("administrator-recovery-disable-local-command")),
 		Retention:   time.Hour, Wait: time.Second,

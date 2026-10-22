@@ -74,7 +74,7 @@ func TestExamManagerAddCandidateLockOrder(t *testing.T, ss store.Store, probe Ca
 	var added *store.ExamManagerCommandResult
 	err := probe(t, ctx, target.ID, CandidateFence{Kind: CandidateFenceAttemptAdmission}, func() error {
 		var addErr error
-		added, addErr = ss.ExamAuthoring().AddManager(ctx, add, examCommand(creator.ID, "exam.manager.add.v1", "manager-lock-order", "manager-lock-order"))
+		added, addErr = ss.ExamAuthoring().AddManager(ctx, add, examCommand(creator.ID, "exam.manager.add", "manager-lock-order", "manager-lock-order"))
 		return addErr
 	})
 	require.NoError(t, err)

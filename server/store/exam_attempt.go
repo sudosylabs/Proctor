@@ -17,13 +17,13 @@ import (
 )
 
 const (
-	ExamAttemptConnectOperation                   = "exam.attempt.connect.v1"
-	ExamAttemptExpireParticipationOperation       = "exam.attempt.expire_participation.v1"
-	ExamAttemptReallowOperation                   = "exam.attempt.reallow.v1"
-	ExamAttemptSuspendOperation                   = "exam.attempt.suspend.v1"
-	ExamAttemptFocusLossOperation                 = "exam.attempt.focus_loss.record.v1"
-	ExamAttemptFocusLossDiscrepancyOperation      = "exam.attempt.focus_loss.discrepancy.v1"
-	ExamAttemptCorrectionAcknowledgementOperation = "exam.attempt.correction.acknowledge.v1"
+	ExamAttemptConnectOperation                   = "exam.attempt.connect"
+	ExamAttemptExpireParticipationOperation       = "exam.attempt.expire_participation"
+	ExamAttemptReallowOperation                   = "exam.attempt.reallow"
+	ExamAttemptSuspendOperation                   = "exam.attempt.suspend"
+	ExamAttemptFocusLossOperation                 = "exam.attempt.focus_loss.record"
+	ExamAttemptFocusLossDiscrepancyOperation      = "exam.attempt.focus_loss.discrepancy"
+	ExamAttemptCorrectionAcknowledgementOperation = "exam.attempt.correction.acknowledge"
 )
 
 // ExamAttemptConnect carries proposed identities for an atomic first

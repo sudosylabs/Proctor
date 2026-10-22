@@ -15,10 +15,10 @@ import (
 )
 
 const (
-	ExamIntegrityReviewDecisionOperation      = "exam.integrity_review.decision.v1"
-	ExamIntegrityReviewDraftOperation         = "exam.integrity_review.draft.v1"
-	ExamIntegrityReviewFinalizeOperation      = "exam.integrity_review.finalize.v1"
-	ExamIntegrityReviewReleaseOperation       = "exam.integrity_review.release.v1"
+	ExamIntegrityReviewDecisionOperation      = "exam.integrity_review.decision"
+	ExamIntegrityReviewDraftOperation         = "exam.integrity_review.draft"
+	ExamIntegrityReviewFinalizeOperation      = "exam.integrity_review.finalize"
+	ExamIntegrityReviewReleaseOperation       = "exam.integrity_review.release"
 	ExamIntegrityReviewEvidenceReadMaximum    = 100
 	ExamIntegrityReviewDiscrepancyReadMaximum = 100
 	ExamIntegrityReviewFlagReadMaximum        = 200

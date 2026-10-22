@@ -268,7 +268,7 @@ func (s *desktopCompatibilityService) ReplaceDesktopCompatibilityPolicy(
 	}
 	idempotency, err := applicationidempotency.Prepare(
 		invocation,
-		"desktop_compatibility_policy.replace.v1",
+		"desktop_compatibility_policy.replace",
 		command.IdempotencyKey,
 		struct {
 			ExpectedRevision int64                                    `json:"expected_revision"`

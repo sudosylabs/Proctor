@@ -19,7 +19,7 @@ import (
 
 const InvitationLifetime = 7 * 24 * time.Hour
 
-const invitationClaimHashDomain = "proctor/invitation-claim/v1\x00"
+const invitationClaimHashDomain = "proctor.invitation_claim\x00"
 
 // InvitationPurpose identifies the immutable relationship package carried by
 // an Invitation. Each purpose is implemented as its own application command;

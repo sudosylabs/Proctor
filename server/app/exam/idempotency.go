@@ -7,15 +7,17 @@
 
 package exam
 
+import "github.com/sudosylabs/proctor/server/model"
+
 const (
-	idempotencyOperationConfigureDraftNativePolicy = "exam.draft.native_policy.configure.v1"
-	idempotencyOperationCreate                     = "exam.create.v1"
-	idempotencyOperationEditDraftText              = "exam.draft.text.edit.v1"
-	idempotencyOperationConfigureDraftFocusLoss    = "exam.draft.focus_loss.configure.v1"
-	idempotencyOperationConfigureBrowserPolicy     = "exam.draft.browser_policy.configure.v1"
-	idempotencyOperationArchive                    = "exam.archive.v1"
-	idempotencyOperationAddManager                 = "exam.manager.add.v1"
-	idempotencyOperationRemoveManager              = "exam.manager.remove.v1"
-	idempotencyOperationTransferOwner              = "exam.owner.transfer.v1"
-	idempotencyOperationPublishRevision            = "exam.revision.publish.v1"
+	idempotencyOperationConfigureDraftNativePolicy = "exam.draft.native_policy.configure"
+	idempotencyOperationCreate                     = string(model.ActionExamCreate)
+	idempotencyOperationEditDraftText              = "exam.draft.text.edit"
+	idempotencyOperationConfigureDraftFocusLoss    = "exam.draft.focus_loss.configure"
+	idempotencyOperationConfigureBrowserPolicy     = "exam.draft.browser_policy.configure"
+	idempotencyOperationArchive                    = "exam.archive"
+	idempotencyOperationAddManager                 = "exam.manager.add"
+	idempotencyOperationRemoveManager              = "exam.manager.remove"
+	idempotencyOperationTransferOwner              = "exam.owner.transfer"
+	idempotencyOperationPublishRevision            = "exam.revision.publish"
 )

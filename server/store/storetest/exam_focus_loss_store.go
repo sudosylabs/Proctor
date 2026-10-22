@@ -336,7 +336,7 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 			FinalizeJob:   newExamSittingFinalizeJob(t, fixture.sitting.ID, fixture.sitting.Revision+1, closeAt),
 			PrivateReason: "verify terminal Focus Loss fence", ChangedAt: closeAt,
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
-			examCommand(fixture.manager.ID, "exam.sitting.close.v1", "focus-close", "focus-close"))
+			examCommand(fixture.manager.ID, "exam.sitting.close", "focus-close", "focus-close"))
 		require.NoError(t, err)
 		terminalInput := newFocusLossInput(t, ctx, ss, fixture, access, 2, 500, "")
 		_, err = ss.ExamAttempt().RecordFocusLoss(ctx, terminalInput)

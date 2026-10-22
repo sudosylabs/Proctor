@@ -69,6 +69,13 @@ module when a change is not server-only. No module has been released yet.
   `records.json` and `manifest.json`. Browser Policies no longer carry an
   internal schema version, so a zero policy is the disabled policy
   (**breaking**).
+- Server: command operation names and digest, HMAC, and nonce
+  domain-separation tags lose their version suffix and use one dot-separated
+  snake_case spelling (`exam.attempt.reallow.v1` becomes
+  `exam.attempt.reallow`, `proctor/invitation-claim/v1` becomes
+  `proctor.invitation_claim`). Retained command outcomes, issued CSRF tokens,
+  in-flight OIDC logins, and pinned review digests from earlier builds no
+  longer match (**breaking**).
 - Server: wire timestamps are RFC 3339 strings. `create_at`, `update_at`, and
   `delete_at` become `created_at`, `updated_at`, and `archived_at` (omitted
   while active), Job `complete_at` and `start_at` become `completed_at` and

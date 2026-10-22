@@ -69,7 +69,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 	_, err = ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting, OpenJob: openJob, DeadlineJob: deadlineJob,
 		ActorUserID: fixture.actor.ID, AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis(),
 		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled, model.MailTemplateExamSittingScheduled)},
-		examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "correction-sitting", "correction-sitting-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.schedule", "correction-sitting", "correction-sitting-command"))
 	require.NoError(t, err)
 	scheduledOnly, err := model.NewExamSitting(model.NewExamSittingID(), fixture.examID, fixture.revisionID, fixture.class.ID,
 		startAt.Add(4*time.Hour), endAt.Add(4*time.Hour), model.NowUTC())
@@ -78,7 +78,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 	_, err = ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: scheduledOnly, OpenJob: scheduledOpen, DeadlineJob: scheduledDeadline,
 		ActorUserID: fixture.actor.ID, AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis(),
 		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled, model.MailTemplateExamSittingScheduled)},
-		examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "correction-scheduled-control", "correction-scheduled-control-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.schedule", "correction-scheduled-control", "correction-scheduled-control-command"))
 	require.NoError(t, err)
 	forbiddenInstructions := "Cannot correct before opening"
 	scheduledAudit := saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID)
@@ -87,7 +87,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 		InstructionsMarkdown: &forbiddenInstructions, AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "Scheduled correction control.", AcknowledgementRequired: true,
 		PrivateReason: "Scheduled correction must fail", AppliedAt: model.NowUTC(),
 		AuditEventID: scheduledAudit.ID, AuditAt: model.GetMillis()},
-		examCommand(fixture.actor.ID, "exam.correction.apply.v1", "correction-scheduled", "correction-scheduled-command"))
+		examCommand(fixture.actor.ID, "exam.correction.apply", "correction-scheduled", "correction-scheduled-command"))
 	requireConflictConstraint(t, err, "exam_sitting_state")
 	probe.OpenSitting(t, ctx, sitting.ID)
 	live, err := ss.ExamSitting().Get(ctx, fixture.examID, sitting.ID)
@@ -148,7 +148,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 			DisplayName: "Clarification", DescriptionMarkdown: "Read this **note**.", StageID: stage.ID}},
 		AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "Instructions and supporting material were corrected.", AcknowledgementRequired: true,
 		PrivateReason: "Correct misleading supporting material", AppliedAt: at.Add(3 * time.Second), AuditEventID: applyAudit.ID, AuditAt: model.GetMillis()}
-	applyCommand := examCommand(fixture.actor.ID, "exam.correction.apply.v1", "correction-apply", "correction-apply-command")
+	applyCommand := examCommand(fixture.actor.ID, "exam.correction.apply", "correction-apply", "correction-apply-command")
 	result, err := ss.ExamCorrection().Apply(ctx, application, applyCommand)
 	require.NoError(t, err)
 	require.False(t, result.Replayed)
@@ -186,7 +186,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 		AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "Supporting material was checked.", AcknowledgementRequired: true,
 		PrivateReason: "Verify no-op replacement", AppliedAt: model.NowUTC(), AuditEventID: noChangeAudit.ID, AuditAt: model.GetMillis()}
 	_, err = ss.ExamCorrection().Apply(ctx, noChange,
-		examCommand(fixture.actor.ID, "exam.correction.apply.v1", "correction-no-change", "correction-no-change-command"))
+		examCommand(fixture.actor.ID, "exam.correction.apply", "correction-no-change", "correction-no-change-command"))
 	requireConflictConstraint(t, err, "exam_correction_no_changes")
 	readyAfterNoChange, err := ss.ExamCorrection().ReserveResourceStage(ctx, correctionReservationReplay(t, ctx, ss, fixture, replacementStage, result.Revision.ID), replacementCommand)
 	require.NoError(t, err)
@@ -200,7 +200,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 	wrongActor.PrivateReason = "Attempt to use another manager stage"
 	wrongActor.AuditEventID = saveExamSittingAudit(t, ctx, ss, otherActor.ID, fixture.examID, fixture.unitID).ID
 	_, err = ss.ExamCorrection().Apply(ctx, &wrongActor,
-		examCommand(otherActor.ID, "exam.correction.apply.v1", "correction-wrong-actor", "correction-wrong-actor-command"))
+		examCommand(otherActor.ID, "exam.correction.apply", "correction-wrong-actor", "correction-wrong-actor-command"))
 	requireConflictConstraint(t, err, "exam_correction_resource_stage")
 	afterFailed, err := ss.ExamSitting().Get(ctx, fixture.examID, sitting.ID)
 	require.NoError(t, err)
@@ -220,7 +220,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 		}, AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "Supporting materials were corrected and reordered.", AcknowledgementRequired: true,
 		PrivateReason: "Correct and reorder resources", AppliedAt: model.NowUTC(), AuditEventID: secondAudit.ID, AuditAt: model.GetMillis()}
 	secondResult, err := ss.ExamCorrection().Apply(ctx, secondApply,
-		examCommand(fixture.actor.ID, "exam.correction.apply.v1", "correction-second", "correction-second-command"))
+		examCommand(fixture.actor.ID, "exam.correction.apply", "correction-second", "correction-second-command"))
 	require.NoError(t, err)
 	secondSnapshot, err := ss.ExamRevision().GetSnapshot(ctx, fixture.examID, secondResult.Revision.ID)
 	require.NoError(t, err)
@@ -243,7 +243,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 		PrivateReason: "Reject oversized corrected resource", AppliedAt: model.NowUTC(),
 		AuditEventID: oversizedAudit.ID, AuditAt: model.GetMillis()}
 	_, err = ss.ExamCorrection().Apply(ctx, oversizedApply,
-		examCommand(fixture.actor.ID, "exam.correction.apply.v1", "correction-oversized-apply", "correction-oversized-apply-command"))
+		examCommand(fixture.actor.ID, "exam.correction.apply", "correction-oversized-apply", "correction-oversized-apply-command"))
 	requireConflictConstraint(t, err, "exam_correction_resource_limit")
 
 	overCountStage, _ := reserveReadyCorrectionStage(t, ctx, ss, probe, fixture, sitting.ID, secondResult.Revision.ID,
@@ -261,7 +261,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 		PrivateReason: "Reject excessive corrected resources", AppliedAt: model.NowUTC(),
 		AuditEventID: overCountAudit.ID, AuditAt: model.GetMillis()}
 	_, err = ss.ExamCorrection().Apply(ctx, overCountApply,
-		examCommand(fixture.actor.ID, "exam.correction.apply.v1", "correction-over-count-apply", "correction-over-count-apply-command"))
+		examCommand(fixture.actor.ID, "exam.correction.apply", "correction-over-count-apply", "correction-over-count-apply-command"))
 	requireConflictConstraint(t, err, "exam_correction_resource_limit")
 
 	// Omission from the next complete manifest removes only the new Revision's
@@ -274,7 +274,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 		AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "An unnecessary clarification was removed.", AcknowledgementRequired: true,
 		PrivateReason: "Remove unnecessary clarification", AppliedAt: model.NowUTC(), AuditEventID: removeAudit.ID, AuditAt: model.GetMillis()}
 	removed, err := ss.ExamCorrection().Apply(ctx, removeApply,
-		examCommand(fixture.actor.ID, "exam.correction.apply.v1", "correction-remove", "correction-remove-command"))
+		examCommand(fixture.actor.ID, "exam.correction.apply", "correction-remove", "correction-remove-command"))
 	require.NoError(t, err)
 	removedSnapshot, err := ss.ExamRevision().GetSnapshot(ctx, fixture.examID, removed.Revision.ID)
 	require.NoError(t, err)
@@ -306,7 +306,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 	stale.RevisionID = model.NewExamRevisionID()
 	stale.AuditEventID = saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID
 	_, err = ss.ExamCorrection().Apply(ctx, &stale,
-		examCommand(fixture.actor.ID, "exam.correction.apply.v1", "correction-stale", "correction-stale-command"))
+		examCommand(fixture.actor.ID, "exam.correction.apply", "correction-stale", "correction-stale-command"))
 	requireConflictConstraint(t, err, "exam_sitting_revision")
 
 	// A database uniqueness failure after all guards but before retarget rolls
@@ -320,7 +320,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 		AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "A correction rollback was tested.", AcknowledgementRequired: true,
 		PrivateReason: "Exercise atomic rollback", AppliedAt: model.NowUTC(), AuditEventID: rollbackAudit.ID, AuditAt: model.GetMillis()}
 	_, rollbackErr := ss.ExamCorrection().Apply(ctx, rollback,
-		examCommand(fixture.actor.ID, "exam.correction.apply.v1", "correction-rollback", "correction-rollback-command"))
+		examCommand(fixture.actor.ID, "exam.correction.apply", "correction-rollback", "correction-rollback-command"))
 	require.Error(t, rollbackErr, "duplicate Revision rollback injection unexpectedly succeeded")
 	afterRollback, err := ss.ExamSitting().Get(ctx, fixture.examID, sitting.ID)
 	require.NoError(t, err)
@@ -347,7 +347,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 				DisplayName: racedSnapshot.Resources[0].DisplayName, DescriptionMarkdown: racedSnapshot.Resources[0].DescriptionMarkdown}},
 			AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "Concurrent correction notice.", AcknowledgementRequired: true,
 			PrivateReason: "Concurrent correction race", AppliedAt: model.NowUTC(), AuditEventID: auditAttempt.ID, AuditAt: model.GetMillis()}
-		commands[index] = examCommand(fixture.actor.ID, "exam.correction.apply.v1", fmt.Sprintf("correction-race-%d", index), fmt.Sprintf("correction-race-command-%d", index))
+		commands[index] = examCommand(fixture.actor.ID, "exam.correction.apply", fmt.Sprintf("correction-race-%d", index), fmt.Sprintf("correction-race-command-%d", index))
 	}
 	var wait sync.WaitGroup
 	wait.Add(2)
@@ -388,7 +388,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 		AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "An additional supporting material was prepared.", AcknowledgementRequired: true,
 		PrivateReason: "Expired upload must not publish", AppliedAt: model.NowUTC(), AuditEventID: expiredAudit.ID, AuditAt: model.GetMillis()}
 	_, err = ss.ExamCorrection().Apply(ctx, expiredApply,
-		examCommand(fixture.actor.ID, "exam.correction.apply.v1", "correction-expired", "correction-expired-command"))
+		examCommand(fixture.actor.ID, "exam.correction.apply", "correction-expired", "correction-expired-command"))
 	requireConflictConstraint(t, err, "exam_correction_resource_stage")
 	page, err := ss.File().ListPurgeCandidates(ctx, &store.FilePurgeCandidateRequest{Limit: 100})
 	require.NoError(t, err)

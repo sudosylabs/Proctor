@@ -57,7 +57,7 @@ func TestRetentionPolicyCurrentCredentialAndAssurancePreserveGrace(t *testing.T)
 			}
 			original := &store.RetentionPolicyReplacement{RetentionMutation: mutation(model.ActionRetentionPolicyManage), ExpectedRevision: 1,
 				Settings: model.RetentionPolicySettings{AuditRetentionDays: 1, ExportRetentionDays: 1, DeletionGraceDays: 1}}
-			originalCommand := command("retention_policy.replace.v1", "original")
+			originalCommand := command("retention_policy.replace", "original")
 			first, err := s.RetentionPolicy().Replace(ctx, original, originalCommand)
 			require.NoError(t, err)
 			preview, err := s.Retention().CreatePreview(ctx, &store.RetentionPreviewCreation{RetentionMutation: mutation(model.ActionRetentionPolicyView),
@@ -105,7 +105,7 @@ func TestRetentionPolicyCurrentCredentialAndAssurancePreserveGrace(t *testing.T)
 					input := *original
 					input.RetentionMutation = mutation(model.ActionRetentionPolicyManage)
 					input.ExpectedRevision, input.Settings = before.Revision, before.RetentionPolicySettings
-					key := command("retention_policy.replace.v1", operation)
+					key := command("retention_policy.replace", operation)
 					if operation == "change" {
 						input.Settings.DeletionGraceDays++
 					} else if operation == "replay" {
@@ -208,7 +208,7 @@ func TestRetentionPolicyReplacementKeepsMonotonicMetadata(t *testing.T) {
 				Resource: model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, ScopeType: model.RoleScopeInstitution,
 				ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "store-test"})
 			require.NoError(t, saveErr)
-			command := &store.CommandIdempotency{UserID: actor.ID, Operation: "retention_policy.replace.v1",
+			command := &store.CommandIdempotency{UserID: actor.ID, Operation: "retention_policy.replace",
 				KeyDigest:   sha256.Sum256([]byte(test.name)),
 				Fingerprint: sha256.Sum256([]byte("retention-clock:" + test.name)), Retention: time.Hour, Wait: time.Second}
 			result, replaceErr := persistence.RetentionPolicy().Replace(ctx, &store.RetentionPolicyReplacement{RetentionMutation: store.RetentionMutation{Principal: principal, RecentAuthenticationTTL: time.Hour, AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt)}, ExpectedRevision: 1, Settings: test.settings}, command)
@@ -235,7 +235,7 @@ func TestPolicyReplacementRechecksAdministratorAfterBindingEnd(t *testing.T) {
 		revision  func(context.Context, *SQLStore) (int64, error)
 	}{
 		{
-			name: "retention", action: model.ActionRetentionPolicyManage, operation: "retention_policy.replace.v1",
+			name: "retention", action: model.ActionRetentionPolicyManage, operation: "retention_policy.replace",
 			replace: func(ctx context.Context, persistence *SQLStore, principal model.Principal, audit *model.AuditEvent, command *store.CommandIdempotency) error {
 				_, err := persistence.RetentionPolicy().Replace(ctx, &store.RetentionPolicyReplacement{RetentionMutation: store.RetentionMutation{Principal: principal, RecentAuthenticationTTL: time.Hour, AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt)}, ExpectedRevision: 1, Settings: model.RetentionPolicySettings{SubmissionRetentionDays: 365}}, command)
 				return err
@@ -249,7 +249,7 @@ func TestPolicyReplacementRechecksAdministratorAfterBindingEnd(t *testing.T) {
 			},
 		},
 		{
-			name: "desktop compatibility", action: model.ActionDesktopCompatibilityPolicyManage, operation: "desktop_compatibility_policy.replace.v1",
+			name: "desktop compatibility", action: model.ActionDesktopCompatibilityPolicyManage, operation: "desktop_compatibility_policy.replace",
 			replace: func(ctx context.Context, persistence *SQLStore, principal model.Principal, audit *model.AuditEvent, command *store.CommandIdempotency) error {
 				_, err := persistence.DesktopCompatibilityPolicy().Replace(ctx, &store.DesktopCompatibilityPolicyReplacement{ActorID: principal.UserID, ExpectedRevision: 1,
 					Settings:     model.DesktopCompatibilityPolicySettings{MinimumDesktopRelease: "2.0.0", RevokedDesktopBuildIDs: []string{}, Availability: model.DesktopAvailabilityReady},

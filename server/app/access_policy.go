@@ -188,7 +188,7 @@ func (s *accessPolicyService) ReplaceAccessPolicy(ctx context.Context, invocatio
 	if err != nil {
 		return AccessPolicyView{}, err
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "access_policy.replace.v1", command.IdempotencyKey,
+	idempotency, err := applicationidempotency.Prepare(invocation, "access_policy.replace", command.IdempotencyKey,
 		struct {
 			ExpectedRevision       int64                      `json:"expected_revision"`
 			Settings               model.AccessPolicySettings `json:"settings"`

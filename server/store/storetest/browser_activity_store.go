@@ -113,7 +113,7 @@ func testBrowserActivityLifecycle(t *testing.T, ss store.Store) {
 		SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: fixture.sitting.Revision,
 		PrivateReason: "prove Browser Activity is fenced while paused", ChangedAt: model.NowUTC(),
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
-		examCommand(fixture.manager.ID, "exam.sitting.pause.v1", "browser-activity-pause", "browser-activity-pause"))
+		examCommand(fixture.manager.ID, "exam.sitting.pause", "browser-activity-pause", "browser-activity-pause"))
 	require.NoError(t, err)
 	schemeBlockedReason := model.BrowserBlockSchemeNotAllowed
 	invalidURLReason := model.BrowserBlockInvalidURL
@@ -145,7 +145,7 @@ func testBrowserActivityLifecycle(t *testing.T, ss store.Store) {
 		SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: paused.Value.Sitting.Revision,
 		PrivateReason: "finish Browser Activity conformance", ChangedAt: model.NowUTC(),
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
-		examCommand(fixture.manager.ID, "exam.sitting.resume.v1", "browser-activity-resume", "browser-activity-resume"))
+		examCommand(fixture.manager.ID, "exam.sitting.resume", "browser-activity-resume", "browser-activity-resume"))
 	require.NoError(t, err)
 	require.Equal(t, model.ExamSittingOpen, resumed.Value.Sitting.State)
 	acknowledgement, err = appendBrowserActivityFixture(t, ctx, ss, &store.BrowserActivityAppend{
@@ -338,7 +338,7 @@ func testBrowserActivitySourceLimit(t *testing.T, ss store.Store) {
 		policy, err := model.NewBrowserPolicy(true, "start", []model.BrowserPolicyRule{{RuleID: "start", Origin: "https://example.edu", PathPrefix: fmt.Sprintf("/revision-%d", index), HostMatch: model.BrowserPolicyHostExact, AllowRedirects: true, BlockedNavigationOutcome: model.BrowserPolicyBlockedNavigationRecord}})
 		require.NoError(t, err)
 		key := fmt.Sprintf("source-capacity-correction-%d", index)
-		corrected, err := ss.ExamCorrection().Apply(ctx, &store.ExamCorrectionApplication{RevisionID: model.NewExamRevisionID(), ExamID: f.examID, SittingID: f.sitting.ID, CurrentRevisionID: f.revisionID, ExpectedSittingRevision: f.sitting.Revision, ActorUserID: f.manager.ID, Resources: []store.ExamCorrectionResourceManifestItem{}, BrowserPolicy: &policy, CandidateSummary: "Updated browser references", AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser}, PrivateReason: "Verify independent Browser source budgets", AppliedAt: model.NowUTC(), AuditEventID: saveExamSittingAudit(t, ctx, ss, f.manager.ID, f.examID, f.unitID).ID, AuditAt: model.GetMillis()}, examCommand(f.manager.ID, "exam.sitting.correction.apply.v1", key, key))
+		corrected, err := ss.ExamCorrection().Apply(ctx, &store.ExamCorrectionApplication{RevisionID: model.NewExamRevisionID(), ExamID: f.examID, SittingID: f.sitting.ID, CurrentRevisionID: f.revisionID, ExpectedSittingRevision: f.sitting.Revision, ActorUserID: f.manager.ID, Resources: []store.ExamCorrectionResourceManifestItem{}, BrowserPolicy: &policy, CandidateSummary: "Updated browser references", AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser}, PrivateReason: "Verify independent Browser source budgets", AppliedAt: model.NowUTC(), AuditEventID: saveExamSittingAudit(t, ctx, ss, f.manager.ID, f.examID, f.unitID).ID, AuditAt: model.GetMillis()}, examCommand(f.manager.ID, "exam.sitting.correction.apply", key, key))
 		require.NoError(t, err)
 		f.revisionID, f.sitting = corrected.Revision.ID, corrected.Sitting.Sitting
 		next := browserSourceID(200 + index)

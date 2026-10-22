@@ -183,7 +183,7 @@ func testStudentProgressionCrossPeriod(t *testing.T, ss store.Store) {
 	candidate := &model.ClassMember{ClassID: destinationClass.ID, AcademicPeriodID: destinationPeriod.ID, UserID: student.ID, StartsAt: effectiveAt}
 	candidate.PrepareCreate(model.NewClassMemberID(), at.Add(3*time.Second))
 	notice := classMemberPreparedMail(t, candidate, model.MailTemplateAcademicClassEnrolled, candidate.CreatedAt)
-	command := invitationTestCommand(actor.ID, "class_member.enroll.v1", "progression-row", "progression-row")
+	command := invitationTestCommand(actor.ID, "class_member.enroll", "progression-row", "progression-row")
 	command.OnboardingImportID, command.OnboardingImportRowNumber = importID, 1
 	audit := saveClassMemberAuditAttempt(t, ctx, ss, destinationClass.ID.String())
 	progressionDestinationAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, destinationClass.ID.String(), "student_progression.execute_row")
@@ -218,7 +218,7 @@ func testStudentProgressionCrossPeriod(t *testing.T, ss store.Store) {
 	noOpCandidate := &model.ClassMember{ClassID: destinationClass.ID, AcademicPeriodID: destinationPeriod.ID, UserID: student.ID,
 		StartsAt: effectiveAt.Add(time.Minute)}
 	noOpCandidate.PrepareCreate(model.NewClassMemberID(), at.Add(5*time.Second))
-	noOpCommand := invitationTestCommand(actor.ID, "class_member.enroll.v1", "progression-destination-no-op", "progression-destination-no-op")
+	noOpCommand := invitationTestCommand(actor.ID, "class_member.enroll", "progression-destination-no-op", "progression-destination-no-op")
 	noOpAudit := saveClassMemberAuditAttempt(t, ctx, ss, destinationClass.ID.String())
 	noOpDestinationAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, destinationClass.ID.String(), "student_progression.execute_row")
 	noOpSourceAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, sourceClass.ID.String(), "student_progression.execute_row")
@@ -256,7 +256,7 @@ func testOnboardingImportAcademicAdministration(t *testing.T, ss store.Store) {
 	candidate := &model.Affiliation{UserID: target.ID, Kind: model.AffiliationStaff, StartsAt: at}
 	candidate.PrepareCreate(model.NewAffiliationID(), at)
 	audit := saveAffiliationAuditAttempt(t, ctx, ss, institution.ID.String(), target.ID.String())
-	command := invitationTestCommand(actor.ID, "affiliation.add.v1", "administration-import-row", "administration-import-row")
+	command := invitationTestCommand(actor.ID, "affiliation.add", "administration-import-row", "administration-import-row")
 	command.OnboardingImportID, command.OnboardingImportRowNumber = importID, 1
 	created, err := ss.Affiliation().Create(ctx, &store.AffiliationCreation{Affiliation: candidate, AuditEventID: audit.ID,
 		AuditAt: model.MillisFromTime(at), Command: command})
@@ -278,7 +278,7 @@ func testOnboardingImportAcademicAdministration(t *testing.T, ss store.Store) {
 	authority := &store.CommandAuthorization{Principal: principal, ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 		Actions: []model.Action{model.ActionOnboardingBatchManage, model.ActionUserManage}}
 	canonicalAudit := saveAffiliationAuditAttempt(t, ctx, ss, institution.ID.String(), duplicateTarget.ID.String())
-	canonicalCommand := invitationTestCommand(actor.ID, "affiliation.add.v1", "administration-json-a", "administration-json-duplicate")
+	canonicalCommand := invitationTestCommand(actor.ID, "affiliation.add", "administration-json-a", "administration-json-duplicate")
 	canonicalCommand.Authorization, canonicalCommand.Batch = authority, &store.CommandBatch{GroupDigest: group}
 	canonical, err := ss.Affiliation().Create(ctx, &store.AffiliationCreation{Affiliation: duplicateCandidate,
 		AuditEventID: canonicalAudit.ID, AuditAt: model.MillisFromTime(at), Command: canonicalCommand})
@@ -287,7 +287,7 @@ func testOnboardingImportAcademicAdministration(t *testing.T, ss store.Store) {
 	loserCandidate := *duplicateCandidate
 	loserCandidate.ID = model.NewAffiliationID()
 	loserAudit := saveAffiliationAuditAttempt(t, ctx, ss, institution.ID.String(), duplicateTarget.ID.String())
-	loserCommand := invitationTestCommand(actor.ID, "affiliation.add.v1", "administration-json-b", "administration-json-duplicate")
+	loserCommand := invitationTestCommand(actor.ID, "affiliation.add", "administration-json-b", "administration-json-duplicate")
 	loserCommand.Authorization, loserCommand.Batch = authority, &store.CommandBatch{GroupDigest: group, DuplicateOfKeyDigest: canonicalCommand.KeyDigest}
 	duplicate, err := ss.Affiliation().Create(ctx, &store.AffiliationCreation{Affiliation: &loserCandidate,
 		AuditEventID: loserAudit.ID, AuditAt: model.MillisFromTime(at), Command: loserCommand})
@@ -313,7 +313,7 @@ func testOnboardingImportAcademicAdministration(t *testing.T, ss store.Store) {
 	secondCandidate := &model.Affiliation{UserID: secondTarget.ID, Kind: model.AffiliationStaff, StartsAt: at}
 	secondCandidate.PrepareCreate(model.NewAffiliationID(), at)
 	secondAudit := saveAffiliationAuditAttempt(t, ctx, ss, institution.ID.String(), secondTarget.ID.String())
-	secondCommand := invitationTestCommand(actor.ID, "affiliation.add.v1", "administration-import-authority-row", "administration-import-authority-row")
+	secondCommand := invitationTestCommand(actor.ID, "affiliation.add", "administration-import-authority-row", "administration-import-authority-row")
 	secondCommand.OnboardingImportID, secondCommand.OnboardingImportRowNumber = secondImportID, 1
 	_, err = ss.Affiliation().Create(ctx, &store.AffiliationCreation{Affiliation: secondCandidate, AuditEventID: secondAudit.ID,
 		AuditAt: model.MillisFromTime(at), Command: secondCommand})
@@ -324,7 +324,7 @@ func testOnboardingImportAcademicAdministration(t *testing.T, ss store.Store) {
 	jsonCandidate := &model.Affiliation{UserID: jsonTarget.ID, Kind: model.AffiliationStaff, StartsAt: at}
 	jsonCandidate.PrepareCreate(model.NewAffiliationID(), at)
 	jsonAudit := saveAffiliationAuditAttempt(t, ctx, ss, institution.ID.String(), jsonTarget.ID.String())
-	jsonCommand := invitationTestCommand(actor.ID, "affiliation.add.v1", "administration-json-revoked", "administration-json-revoked")
+	jsonCommand := invitationTestCommand(actor.ID, "affiliation.add", "administration-json-revoked", "administration-json-revoked")
 	jsonCommand.Authorization = &store.CommandAuthorization{Principal: principal, ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 		Actions: []model.Action{model.ActionOnboardingBatchManage, model.ActionUserManage}}
 	jsonCommand.Batch = &store.CommandBatch{GroupDigest: sha256.Sum256([]byte("administration-json-revoked"))}
@@ -369,7 +369,7 @@ func testOnboardingImportTeacherAndRoleNoOps(t *testing.T, ss store.Store) {
 	teacherNoMail.Invitation.TargetEmail, teacherNoMail.Invitation.IntendedStartsAt = teacher.TargetEmail, teacher.IntendedStartsAt
 	require.NoError(t, teacherNoMail.Invitation.Validate())
 	teacherNoMail.Occurrence, teacherNoMail.Delivery, teacherNoMail.DeliveryJob = nil, nil, nil
-	teacherCommand := invitationTestCommand(actor.ID, "invitation.teacher_academic_unit.issue.v1", "onboarding-teacher-row", "onboarding-teacher-row")
+	teacherCommand := invitationTestCommand(actor.ID, "invitation.teacher_academic_unit.issue", "onboarding-teacher-row", "onboarding-teacher-row")
 	teacherCommand.OnboardingImportID, teacherCommand.OnboardingImportRowNumber = teacherImportID, 1
 	teacherResult, err := ss.Invitation().IssueTeacherAcademicUnitIdempotently(ctx, teacherNoMail, teacherCommand)
 	require.NoError(t, err)
@@ -393,7 +393,7 @@ func testOnboardingImportTeacherAndRoleNoOps(t *testing.T, ss store.Store) {
 	roleNoMail.Invitation.ClaimHash = model.HashInvitationClaim(model.NewCredentialToken())
 	require.NoError(t, roleNoMail.Invitation.Validate())
 	roleNoMail.Occurrence, roleNoMail.Delivery, roleNoMail.DeliveryJob = nil, nil, nil
-	roleCommand := invitationTestCommand(actor.ID, "invitation.academic_unit_role.issue.v1", "onboarding-role-row", "onboarding-role-row")
+	roleCommand := invitationTestCommand(actor.ID, "invitation.academic_unit_role.issue", "onboarding-role-row", "onboarding-role-row")
 	roleCommand.OnboardingImportID, roleCommand.OnboardingImportRowNumber = roleImportID, 1
 	roleResult, err := ss.Invitation().IssueScopedRoleIdempotently(ctx, roleNoMail, roleCommand)
 	require.NoError(t, err)
@@ -455,7 +455,7 @@ func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
 	_, err = ss.OnboardingImport().CommitOnboardingImport(ctx, &changed)
 	require.True(t, store.IsConflict(err), "changed key error")
 	issue := studentClassInvitationIssueFixture(t, ss, actor, class, fixture.period, at)
-	command := invitationTestCommand(actor.ID, "invitation.student_class.issue.v1", "onboarding-row-1", "onboarding-row-1")
+	command := invitationTestCommand(actor.ID, "invitation.student_class.issue", "onboarding-row-1", "onboarding-row-1")
 	command.OnboardingImportID, command.OnboardingImportRowNumber = importID, 1
 	issued, err := ss.Invitation().IssueStudentClassIdempotently(ctx, issue, command)
 	require.NoError(t, err)
@@ -493,7 +493,7 @@ func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
 	require.Equal(t, invitationID, resolved.ID, "pending-effect preflight")
 	unusedDeliveryID := noOpIssue.Delivery.ID
 	noOpIssue.Occurrence, noOpIssue.Delivery, noOpIssue.DeliveryJob = nil, nil, nil
-	noOpCommand := invitationTestCommand(actor.ID, "invitation.student_class.issue.v1", "onboarding-row-no-op", "onboarding-row-no-op")
+	noOpCommand := invitationTestCommand(actor.ID, "invitation.student_class.issue", "onboarding-row-no-op", "onboarding-row-no-op")
 	noOpCommand.OnboardingImportID, noOpCommand.OnboardingImportRowNumber = noOpID, 1
 	noOpResult, err := ss.Invitation().IssueStudentClassIdempotently(ctx, noOpIssue, noOpCommand)
 	require.NoError(t, err)
@@ -515,7 +515,7 @@ func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
 	canceledIssue := studentClassInvitationIssueFixture(t, ss, actor, class, fixture.period, at)
 	canceledIssue.Invitation.TargetEmail = "canceled-row@example.edu"
 	require.NoError(t, canceledIssue.Invitation.Validate())
-	canceledCommand := invitationTestCommand(actor.ID, "invitation.student_class.issue.v1", "onboarding-row-canceled", "onboarding-row-canceled")
+	canceledCommand := invitationTestCommand(actor.ID, "invitation.student_class.issue", "onboarding-row-canceled", "onboarding-row-canceled")
 	canceledCommand.OnboardingImportID, canceledCommand.OnboardingImportRowNumber = cancelRaceID, 1
 	_, err = ss.Invitation().IssueStudentClassIdempotently(ctx, canceledIssue, canceledCommand)
 	require.True(t, store.IsConflict(err), "canceled row issue error")
@@ -658,7 +658,7 @@ func testInvitationBatchCommandIdempotency(t *testing.T, ss store.Store) {
 	issue := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt)
 	issue.Invitation.TargetEmail = "batch-" + model.NewID() + "@example.edu"
 	require.NoError(t, issue.Invitation.Validate())
-	issueCommand := invitationTestCommand(inviter.ID, "invitation.student_class.issue.v1", "batch-row-0", "same-issue")
+	issueCommand := invitationTestCommand(inviter.ID, "invitation.student_class.issue", "batch-row-0", "same-issue")
 	created, err := ss.Invitation().IssueStudentClassIdempotently(ctx, issue, issueCommand)
 	require.NoError(t, err)
 	require.False(t, created.Replayed)
@@ -693,7 +693,7 @@ func testInvitationBatchCommandIdempotency(t *testing.T, ss store.Store) {
 	resend := &store.InvitationResend{ID: created.Invitation.ID, ExpectedRevision: created.Invitation.Revision,
 		ClaimHash: newHash, Occurrence: occurrence, Delivery: delivery, DeliveryJob: job, ActorUserID: inviter.ID,
 		AuditEventID: resendAudit.ID, AuditAt: model.MillisFromTime(model.NowUTC())}
-	resendCommand := invitationTestCommand(inviter.ID, "invitation.resend.v1", "batch-row-1", "same-resend")
+	resendCommand := invitationTestCommand(inviter.ID, "invitation.resend", "batch-row-1", "same-resend")
 	resent, err := ss.Invitation().ResendIdempotently(ctx, resend, resendCommand)
 	require.NoError(t, err)
 	require.False(t, resent.Replayed)
@@ -744,7 +744,7 @@ func testInvitationBatchDuplicateRechecksCurrentInviterAuthority(t *testing.T, s
 	_, err := EndRoleBinding(ctx, ss, binding.ID, endedAt)
 	require.NoError(t, err)
 	attempt := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "onboarding_batch.duplicate")
-	command := invitationTestCommand(inviter.ID, "invitation.student_class.issue.v1", "duplicate-row", "duplicate-package")
+	command := invitationTestCommand(inviter.ID, "invitation.student_class.issue", "duplicate-row", "duplicate-package")
 	_, err = ss.Invitation().RecordBatchDuplicate(ctx, &store.InvitationBatchDuplicate{
 		Candidate: candidate, ActorUserID: inviter.ID,
 		CanonicalOperation: command.Operation, CanonicalKeyDigest: sha256.Sum256([]byte("canonical-row")),

@@ -471,10 +471,10 @@ func listAttemptWorkspaceJournalSnapshot(ctx context.Context, tx *sqlxTxWrapper,
 	return page, nil
 }
 
-// attemptWorkspaceJournalOutcomeV1 is the persisted spelling of the
+// attemptWorkspaceJournalOutcome is the persisted spelling of the
 // acknowledged journal change inside a mutation outcome. Field names
 // are the JSON keys; Recursive is omitted when false.
-type attemptWorkspaceJournalOutcomeV1 struct {
+type attemptWorkspaceJournalOutcome struct {
 	WorkspaceID    model.ExamAttemptWorkspaceID
 	Cursor         int64
 	EntryID        model.AttemptWorkspaceEntryID
@@ -487,21 +487,21 @@ type attemptWorkspaceJournalOutcomeV1 struct {
 	Recursive      bool `json:",omitempty"`
 }
 
-func attemptWorkspaceJournalOutcomeFrom(entry model.AttemptWorkspaceJournalEntry) attemptWorkspaceJournalOutcomeV1 {
-	return attemptWorkspaceJournalOutcomeV1(entry)
+func attemptWorkspaceJournalOutcomeFrom(entry model.AttemptWorkspaceJournalEntry) attemptWorkspaceJournalOutcome {
+	return attemptWorkspaceJournalOutcome(entry)
 }
 
-func (o attemptWorkspaceJournalOutcomeV1) entry() model.AttemptWorkspaceJournalEntry {
+func (o attemptWorkspaceJournalOutcome) entry() model.AttemptWorkspaceJournalEntry {
 	return model.AttemptWorkspaceJournalEntry(o)
 }
 
-type attemptWorkspaceMutationOutcomeV1 struct {
+type attemptWorkspaceMutationOutcome struct {
 	SittingID          string                               `json:"s"`
 	ClassID            string                               `json:"c"`
 	CandidateID        string                               `json:"u"`
 	WorkspaceID        string                               `json:"w"`
 	Entry              *store.CandidateAttemptWorkspaceItem `json:"e,omitempty"`
-	Change             attemptWorkspaceJournalOutcomeV1     `json:"j"`
+	Change             attemptWorkspaceJournalOutcome       `json:"j"`
 	ProtectedObjectIDs []string                             `json:"o,omitempty"`
 }
 
@@ -510,16 +510,16 @@ func (s *SQLExamAttemptWorkspaceStore) ApplyMutation(ctx context.Context, input 
 	if err != nil {
 		return nil, err
 	}
-	result, err := runIdempotentMutation(ctx, s.SQLStore, "apply Attempt Workspace mutation", idempotentMutation[attemptWorkspaceMutationOutcomeV1]{
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "apply Attempt Workspace mutation", idempotentMutation[attemptWorkspaceMutationOutcome]{
 		command: command, auditEventID: prepared.AuditEventID,
-		execute: func(ctx context.Context, tx *sqlxTxWrapper) (attemptWorkspaceMutationOutcomeV1, error) {
+		execute: func(ctx context.Context, tx *sqlxTxWrapper) (attemptWorkspaceMutationOutcome, error) {
 			return applyAttemptWorkspaceMutation(ctx, tx, prepared, command)
 		},
-		encode: func(outcome attemptWorkspaceMutationOutcomeV1) ([]byte, error) {
+		encode: func(outcome attemptWorkspaceMutationOutcome) ([]byte, error) {
 			return encodeCommandOutcome(outcome)
 		},
-		decode: func(encoded []byte) (attemptWorkspaceMutationOutcomeV1, error) {
-			var outcome attemptWorkspaceMutationOutcomeV1
+		decode: func(encoded []byte) (attemptWorkspaceMutationOutcome, error) {
+			var outcome attemptWorkspaceMutationOutcome
 			if err := decodeCommandOutcome(encoded, &outcome); err != nil {
 				return outcome, err
 			}
@@ -528,7 +528,7 @@ func (s *SQLExamAttemptWorkspaceStore) ApplyMutation(ctx context.Context, input 
 			}
 			return outcome, nil
 		},
-		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, outcome attemptWorkspaceMutationOutcomeV1, originalAuditID string) error {
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, outcome attemptWorkspaceMutationOutcome, originalAuditID string) error {
 			target, _, lockErr := lockAttemptWorkspaceMutationTarget(ctx, tx, prepared.Access)
 			if lockErr != nil {
 				return lockErr
@@ -632,8 +632,8 @@ const attemptWorkspaceEntryMutationSelect = `SELECT e.id,e.workspace_id,e.admiss
 	o.storage_origin AS object_origin FROM exam_attempt_workspace_entries e
 	LEFT JOIN exam_attempt_workspace_objects o ON o.id=e.current_object_id AND o.workspace_id=e.workspace_id`
 
-func applyAttemptWorkspaceMutation(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptWorkspaceMutation, command *store.CommandIdempotency) (attemptWorkspaceMutationOutcomeV1, error) {
-	var zero attemptWorkspaceMutationOutcomeV1
+func applyAttemptWorkspaceMutation(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptWorkspaceMutation, command *store.CommandIdempotency) (attemptWorkspaceMutationOutcome, error) {
+	var zero attemptWorkspaceMutationOutcome
 	target, databaseNow, err := lockAttemptWorkspaceMutationTarget(ctx, tx, input.Access)
 	if err != nil {
 		return zero, err
@@ -807,7 +807,7 @@ func applyAttemptWorkspaceMutation(ctx context.Context, tx *sqlxTxWrapper, input
 	if err != nil {
 		return zero, err
 	}
-	outcome := attemptWorkspaceMutationOutcomeV1{SittingID: target.SittingID.String(), ClassID: target.ClassID.String(),
+	outcome := attemptWorkspaceMutationOutcome{SittingID: target.SittingID.String(), ClassID: target.ClassID.String(),
 		CandidateID: target.CandidateUserID.String(), WorkspaceID: target.WorkspaceID.String(), Entry: entry,
 		Change: attemptWorkspaceJournalOutcomeFrom(*change), ProtectedObjectIDs: protected}
 	if err = completeAttemptWorkspaceMutationAudit(ctx, tx, outcome, input.AuditEventID, input.AuditAt, false, ""); err != nil {
@@ -1015,7 +1015,7 @@ func appendAttemptWorkspaceJournal(ctx context.Context, tx *sqlxTxWrapper, works
 	return change, nil
 }
 
-func completeAttemptWorkspaceMutationAudit(ctx context.Context, tx *sqlxTxWrapper, outcome attemptWorkspaceMutationOutcomeV1,
+func completeAttemptWorkspaceMutationAudit(ctx context.Context, tx *sqlxTxWrapper, outcome attemptWorkspaceMutationOutcome,
 	auditID model.AuditEventID, auditAt int64, replayed bool, originalAuditID string,
 ) error {
 	data := map[string]any{"exam_sitting_id": outcome.SittingID, "candidate_user_id": outcome.CandidateID,
@@ -1035,7 +1035,7 @@ func completeAttemptWorkspaceMutationAudit(ctx context.Context, tx *sqlxTxWrappe
 	return nil
 }
 
-func validateAttemptWorkspaceMutationOutcome(outcome attemptWorkspaceMutationOutcomeV1) error {
+func validateAttemptWorkspaceMutationOutcome(outcome attemptWorkspaceMutationOutcome) error {
 	if _, err := attemptWorkspaceMutationResult(outcome); err != nil {
 		return fmt.Errorf("invalid Attempt Workspace mutation outcome: %w", err)
 	}
@@ -1047,7 +1047,7 @@ func validateAttemptWorkspaceMutationOutcome(outcome attemptWorkspaceMutationOut
 	return nil
 }
 
-func attemptWorkspaceMutationResult(outcome attemptWorkspaceMutationOutcomeV1) (*store.ExamAttemptWorkspaceMutationResult, error) {
+func attemptWorkspaceMutationResult(outcome attemptWorkspaceMutationOutcome) (*store.ExamAttemptWorkspaceMutationResult, error) {
 	sittingID, err := model.ParseExamSittingID(outcome.SittingID)
 	if err != nil {
 		return nil, err

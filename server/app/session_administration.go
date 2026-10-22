@@ -186,7 +186,7 @@ func (s *sessionAdministrationService) RevokeUserSessions(
 		return sessionAdministrationStoreErrors.Translate(err)
 	}
 	now := model.TimeFromMillis(s.now().UnixMilli())
-	idempotency, err := applicationidempotency.Prepare(invocation, "user_sessions.revoke.v1", command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Prepare(invocation, "user_sessions.revoke", command.IdempotencyKey, struct {
 		UserID string `json:"user_id"`
 	}{userID.String()})
 	if err != nil {

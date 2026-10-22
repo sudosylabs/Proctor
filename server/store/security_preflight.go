@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	SecurityPreflightPrepareOperation = "exam.security_preflight.prepare.v1"
-	SecurityPreflightReportOperation  = "exam.security_preflight.report.v1"
+	SecurityPreflightPrepareOperation = "exam.security_preflight.prepare"
+	SecurityPreflightReportOperation  = "exam.security_preflight.report"
 )
 
 // SecurityPreflightAccess is an authenticated selector, never a wire DTO.

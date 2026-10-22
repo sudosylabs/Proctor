@@ -400,7 +400,7 @@ func revokeIntegrityReviewManager(t *testing.T, ctx context.Context, ss store.St
 	add.Notices = examManagerMailNotices(t, at,
 		examManagerMailRecipient{replacement.ID, model.MailTemplateExamManagerAdded})
 	added, err := ss.ExamAuthoring().AddManager(ctx, add,
-		examCommand(fixture.manager.ID, "exam.manager.add.v1", "review-release-authority-add", "review-release-authority-add"))
+		examCommand(fixture.manager.ID, "exam.manager.add", "review-release-authority-add", "review-release-authority-add"))
 	require.NoError(t, err)
 	transferAt := at.Add(time.Millisecond)
 	transfer := newExamManagerMutation(t, ctx, ss, fixture.examID, fixture.manager.ID, replacement.ID,
@@ -409,7 +409,7 @@ func revokeIntegrityReviewManager(t *testing.T, ctx context.Context, ss store.St
 		examManagerMailRecipient{fixture.manager.ID, model.MailTemplateExamOwnershipTransferredFromYou},
 		examManagerMailRecipient{replacement.ID, model.MailTemplateExamOwnershipTransferredToYou})
 	transferred, err := ss.ExamAuthoring().TransferOwner(ctx, transfer,
-		examCommand(fixture.manager.ID, "exam.owner.transfer.v1", "review-release-authority-transfer", "review-release-authority-transfer"))
+		examCommand(fixture.manager.ID, "exam.owner.transfer", "review-release-authority-transfer", "review-release-authority-transfer"))
 	require.NoError(t, err)
 	removeAt := transferAt.Add(time.Millisecond)
 	remove := newExamManagerMutation(t, ctx, ss, fixture.examID, replacement.ID, fixture.manager.ID,
@@ -417,7 +417,7 @@ func revokeIntegrityReviewManager(t *testing.T, ctx context.Context, ss store.St
 	remove.Notices = examManagerMailNotices(t, removeAt,
 		examManagerMailRecipient{fixture.manager.ID, model.MailTemplateExamManagerRemoved})
 	_, err = ss.ExamAuthoring().RemoveManager(ctx, remove,
-		examCommand(replacement.ID, "exam.manager.remove.v1", "review-release-authority-remove", "review-release-authority-remove"))
+		examCommand(replacement.ID, "exam.manager.remove", "review-release-authority-remove", "review-release-authority-remove"))
 	require.NoError(t, err)
 	revoked, err := ss.ExamAuthoring().Access(ctx, fixture.examID, fixture.manager.ID)
 	require.NoError(t, err)
@@ -455,7 +455,7 @@ func testEndedFocusLossAfterAutomaticSeal(t *testing.T, ctx context.Context, ss 
 			PrivateReason:    "seal retained late Focus Loss fixture", ChangedAt: at,
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID,
 			AuditAt:      model.GetMillis(),
-		}, examCommand(fixture.manager.ID, "exam.sitting.close.v1", prefix+"-close", prefix+"-close"))
+		}, examCommand(fixture.manager.ID, "exam.sitting.close", prefix+"-close", prefix+"-close"))
 		require.NoError(t, err)
 		require.NotNil(t, closing)
 		require.True(t, closing.Changed)

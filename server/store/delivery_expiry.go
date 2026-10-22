@@ -8,7 +8,7 @@ package store
 
 import "github.com/sudosylabs/proctor/server/model"
 
-const DeliveryExpireOperation = "exam.delivery.expire.v1"
+const DeliveryExpireOperation = "exam.delivery.expire"
 
 // DeliveryExpiryDue is a bounded maintenance selector, not candidate authority.
 // The named mutation rechecks the owner and its database-time deadline.

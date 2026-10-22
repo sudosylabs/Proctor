@@ -117,7 +117,7 @@ func TestAcademicAdministrationBatchLooksUpRetainedOutcomeBeforeDispatch(t *test
 	require.NoError(t, err, "retained lookup result=%#v command=%#v enrollments=%#v error", result, lookup.command, commands.enrollments)
 	require.Equal(t, 1, result.Succeeded, "retained lookup result=%#v command=%#v enrollments=%#v error", result, lookup.command, commands.enrollments)
 	require.NotNil(t, lookup.command, "retained lookup result=%#v command=%#v enrollments=%#v error", result, lookup.command, commands.enrollments)
-	require.Equal(t, "class_member.enroll.v1", lookup.command.Operation, "retained lookup result=%#v command=%#v enrollments=%#v error", result, lookup.command, commands.enrollments)
+	require.Equal(t, "class_member.enroll", lookup.command.Operation, "retained lookup result=%#v command=%#v enrollments=%#v error", result, lookup.command, commands.enrollments)
 	require.Len(t, commands.enrollments, 1, "retained lookup result=%#v command=%#v enrollments=%#v error", result, lookup.command, commands.enrollments)
 	require.True(t, commands.enrollments[0].batchRetainedOutcome, "retained lookup result=%#v command=%#v enrollments=%#v error", result, lookup.command, commands.enrollments)
 }

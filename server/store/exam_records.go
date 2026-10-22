@@ -15,10 +15,10 @@ import (
 )
 
 const (
-	ExamRecordsCompleteOperation    = "exam.records.complete.v1"
-	ExamRecordsWaiveReviewOperation = "exam.records.waive_review.v1"
-	ExamRecordsCreateHoldOperation  = "exam.records.hold.create.v1"
-	ExamRecordsReleaseHoldOperation = "exam.records.hold.release.v1"
+	ExamRecordsCompleteOperation    = string(model.ActionExamRecordsComplete)
+	ExamRecordsWaiveReviewOperation = "exam.records.waive_review"
+	ExamRecordsCreateHoldOperation  = "exam.records.hold.create"
+	ExamRecordsReleaseHoldOperation = "exam.records.hold.release"
 )
 
 type ExamRecordsScope struct {

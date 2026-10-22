@@ -60,7 +60,7 @@ type NativeConditionInventory struct {
 }
 
 func NewNativeConditionInventory() NativeConditionInventory {
-	return NativeConditionInventory{Digest: SHA256Fingerprint([]byte("proctor.native-conditions.v1"))}
+	return NativeConditionInventory{Digest: SHA256Fingerprint([]byte("proctor.native_conditions"))}
 }
 func (v NativeConditionInventory) Validate() error {
 	if v.Records < 0 || v.Records > DeliveryAttemptRecordLimit || !IsValidSHA256Fingerprint(v.Digest) || (v.Records == 0 && v.Digest != NewNativeConditionInventory().Digest) {
@@ -72,7 +72,7 @@ func (v NativeConditionInventory) Append(record []byte) (NativeConditionInventor
 	if v.Validate() != nil || v.Records == DeliveryAttemptRecordLimit || len(record) == 0 || len(record) > NativeConditionEvidenceMaxBytes {
 		return v, ErrNativeDeliveryInvalid
 	}
-	raw := append([]byte("proctor.native-conditions.append.v1\x00"), []byte(v.Digest)...)
+	raw := append([]byte("proctor.native_conditions.append\x00"), []byte(v.Digest)...)
 	raw = binary.BigEndian.AppendUint64(raw, uint64(v.Records+1))
 	raw = append(raw, record...)
 	return NativeConditionInventory{Records: v.Records + 1, Digest: SHA256Fingerprint(raw)}, nil
@@ -84,7 +84,7 @@ func IntegrityReviewNativeDigest(base string, inventory NativeConditionInventory
 	if inventory.Records == 0 {
 		return base, nil
 	}
-	raw := append([]byte("proctor.review.native-conditions.v1\x00"), []byte(base)...)
+	raw := append([]byte("proctor.review.native_conditions\x00"), []byte(base)...)
 	raw = append(raw, []byte(inventory.Digest)...)
 	raw = binary.BigEndian.AppendUint64(raw, uint64(inventory.Records))
 	return strings.TrimPrefix(SHA256Fingerprint(raw), "sha256:"), nil

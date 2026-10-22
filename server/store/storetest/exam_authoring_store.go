@@ -40,7 +40,7 @@ func testExamAuthoringCreateGetAndReplay(t *testing.T, ss store.Store) {
 	at := model.NowUTC()
 	creation := newExamAuthoringCreation(t, ctx, ss, unit.ID, creator.ID, at)
 	command := &store.CommandIdempotency{
-		UserID: creator.ID, Operation: "exam.create.v1",
+		UserID: creator.ID, Operation: "exam.create",
 		KeyDigest:   sha256.Sum256([]byte("key")),
 		Fingerprint: sha256.Sum256([]byte("command")),
 		Retention:   time.Hour, Wait: time.Second,
@@ -105,7 +105,7 @@ func testExamAuthoringAuditAtomicity(t *testing.T, ss store.Store) {
 	creation := newExamAuthoringCreation(t, ctx, ss, unit.ID, creator.ID, model.NowUTC())
 	creation.AuditEventID = model.NewAuditEventID()
 	command := &store.CommandIdempotency{
-		UserID: creator.ID, Operation: "exam.create.v1", KeyDigest: sha256.Sum256([]byte("rollback-key")), Fingerprint: sha256.Sum256([]byte("rollback-command")),
+		UserID: creator.ID, Operation: "exam.create", KeyDigest: sha256.Sum256([]byte("rollback-key")), Fingerprint: sha256.Sum256([]byte("rollback-command")),
 		Retention: time.Hour, Wait: time.Second,
 	}
 	_, err := ss.ExamAuthoring().Create(ctx, creation, command)
@@ -121,7 +121,7 @@ func testExamAuthoringUpdateDraftTextAndConflict(t *testing.T, ss store.Store) {
 	creator := saveUser(t, ctx, ss)
 	createdAt := model.NowUTC()
 	creation := newExamAuthoringCreation(t, ctx, ss, unit.ID, creator.ID, createdAt)
-	createCommand := examCommand(creator.ID, "exam.create.v1", "edit-create", "edit-create-command")
+	createCommand := examCommand(creator.ID, "exam.create", "edit-create", "edit-create-command")
 	created, err := ss.ExamAuthoring().Create(ctx, creation, createCommand)
 	require.NoError(t, err)
 
@@ -129,7 +129,7 @@ func testExamAuthoringUpdateDraftTextAndConflict(t *testing.T, ss store.Store) {
 	clearInstructions := ""
 	updatedAt := createdAt.Add(time.Minute)
 	update := newExamDraftTextUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, &title, &clearInstructions, updatedAt)
-	updateCommand := examCommand(creator.ID, "exam.draft.text.edit.v1", "edit-key", "edit-command")
+	updateCommand := examCommand(creator.ID, "exam.draft.text.edit", "edit-key", "edit-command")
 	updated, err := ss.ExamAuthoring().UpdateDraftText(ctx, update, updateCommand)
 	require.NoError(t, err)
 	require.False(t, updated.Replayed)
@@ -150,7 +150,7 @@ func testExamAuthoringUpdateDraftTextAndConflict(t *testing.T, ss store.Store) {
 
 	staleTitle := "Operating Systems"
 	stale := newExamDraftTextUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, &staleTitle, nil, updatedAt.Add(2*time.Second))
-	_, err = ss.ExamAuthoring().UpdateDraftText(ctx, stale, examCommand(creator.ID, "exam.draft.text.edit.v1", "stale-key", "stale-command"))
+	_, err = ss.ExamAuthoring().UpdateDraftText(ctx, stale, examCommand(creator.ID, "exam.draft.text.edit", "stale-key", "stale-command"))
 	var conflict *store.ErrConflict
 	require.ErrorAs(t, err, &conflict, "stale update error")
 	require.Equal(t, "exam_draft_revision", conflict.Constraint, "stale update error")
@@ -167,7 +167,7 @@ func testExamAuthoringUpdateDraftFocusLossAndConflict(t *testing.T, ss store.Sto
 	creator := saveUser(t, ctx, ss)
 	createdAt := model.NowUTC()
 	creation := newExamAuthoringCreation(t, ctx, ss, unit.ID, creator.ID, createdAt)
-	created, err := ss.ExamAuthoring().Create(ctx, creation, examCommand(creator.ID, "exam.create.v1", "focus-create", "focus-create-command"))
+	created, err := ss.ExamAuthoring().Create(ctx, creation, examCommand(creator.ID, "exam.create", "focus-create", "focus-create-command"))
 	require.NoError(t, err)
 
 	focus := model.FocusLossPolicy{
@@ -176,7 +176,7 @@ func testExamAuthoringUpdateDraftFocusLossAndConflict(t *testing.T, ss store.Sto
 	}
 	updatedAt := createdAt.Add(time.Minute)
 	update := newExamDraftFocusLossUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, focus, updatedAt)
-	command := examCommand(creator.ID, "exam.draft.focus_loss.configure.v1", "focus-key", "focus-command")
+	command := examCommand(creator.ID, "exam.draft.focus_loss.configure", "focus-key", "focus-command")
 	updated, err := ss.ExamAuthoring().UpdateDraftFocusLoss(ctx, update, command)
 	require.NoError(t, err)
 	require.False(t, updated.Replayed)
@@ -195,7 +195,7 @@ func testExamAuthoringUpdateDraftFocusLossAndConflict(t *testing.T, ss store.Sto
 
 	staleFocus := model.DefaultExamPolicySet().FocusLoss
 	stale := newExamDraftFocusLossUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, staleFocus, updatedAt.Add(2*time.Second))
-	_, err = ss.ExamAuthoring().UpdateDraftFocusLoss(ctx, stale, examCommand(creator.ID, "exam.draft.focus_loss.configure.v1", "focus-stale", "focus-stale-command"))
+	_, err = ss.ExamAuthoring().UpdateDraftFocusLoss(ctx, stale, examCommand(creator.ID, "exam.draft.focus_loss.configure", "focus-stale", "focus-stale-command"))
 	var conflict *store.ErrConflict
 	require.ErrorAs(t, err, &conflict, "stale update error")
 	require.Equal(t, "exam_draft_revision", conflict.Constraint, "stale update error")
@@ -269,14 +269,14 @@ func testExamAuthoringUpdateDraftNativePolicyAndConflict(t *testing.T, ss store.
 	creator := saveUser(t, ctx, ss)
 	createdAt := model.NowUTC()
 	creation := newExamAuthoringCreation(t, ctx, ss, unit.ID, creator.ID, createdAt)
-	created, err := ss.ExamAuthoring().Create(ctx, creation, examCommand(creator.ID, "exam.create.v1", "native-create", "native-create-command"))
+	created, err := ss.ExamAuthoring().Create(ctx, creation, examCommand(creator.ID, "exam.create", "native-create", "native-create-command"))
 	require.NoError(t, err)
 
 	native := model.DefaultNativeSecurityPolicy()
 	require.NoError(t, json.Unmarshal([]byte(`{"id":"interactive_session","mode":"observe"}`), &native.Families[1]))
 	updatedAt := createdAt.Add(time.Minute)
 	update := newExamDraftNativePolicyUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, native, updatedAt)
-	command := examCommand(creator.ID, "exam.draft.native_policy.configure.v1", "native-key", "native-command")
+	command := examCommand(creator.ID, "exam.draft.native_policy.configure", "native-key", "native-command")
 	updated, err := ss.ExamAuthoring().UpdateDraftNativePolicy(ctx, update, command)
 	require.NoError(t, err)
 	require.False(t, updated.Replayed)
@@ -295,7 +295,7 @@ func testExamAuthoringUpdateDraftNativePolicyAndConflict(t *testing.T, ss store.
 
 	staleFocus := model.DefaultNativeSecurityPolicy()
 	stale := newExamDraftNativePolicyUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, staleFocus, updatedAt.Add(2*time.Second))
-	_, err = ss.ExamAuthoring().UpdateDraftNativePolicy(ctx, stale, examCommand(creator.ID, "exam.draft.native_policy.configure.v1", "native-stale", "native-stale-command"))
+	_, err = ss.ExamAuthoring().UpdateDraftNativePolicy(ctx, stale, examCommand(creator.ID, "exam.draft.native_policy.configure", "native-stale", "native-stale-command"))
 	var conflict *store.ErrConflict
 	require.ErrorAs(t, err, &conflict, "stale update error")
 	require.Equal(t, "exam_draft_revision", conflict.Constraint, "stale update error")
@@ -323,13 +323,13 @@ func testBrowserPolicyInstitutionPin(t *testing.T, ss store.Store) {
 	creator := saveUser(t, ctx, ss)
 	at := model.NowUTC()
 	creation := newExamAuthoringCreation(t, ctx, ss, unit.ID, creator.ID, at)
-	created, err := ss.ExamAuthoring().Create(ctx, creation, examCommand(creator.ID, "exam.create.v1", "pin-create", "pin-create"))
+	created, err := ss.ExamAuthoring().Create(ctx, creation, examCommand(creator.ID, "exam.create", "pin-create", "pin-create"))
 	require.NoError(t, err)
 	policy, err := model.NewBrowserPolicy(true, "start", []model.BrowserPolicyRule{{RuleID: "start", Origin: "http://institution.example:8080", PathPrefix: "/exam", HostMatch: model.BrowserPolicyHostExact, BlockedNavigationOutcome: model.BrowserPolicyBlockedNavigationIntegrityEvidence, InstitutionHTTPException: true}})
 	require.NoError(t, err)
 	base := newExamDraftTextUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, nil, nil, at.Add(time.Second))
 	input := &store.ExamDraftBrowserPolicyUpdate{ExamID: base.ExamID, ActorUserID: creator.ID, ExpectedRevision: 1, Policy: policy, InstitutionOrigin: "https://unrelated.example:8080", UpdatedAt: base.UpdatedAt, AuditEventID: base.AuditEventID, AuditAt: base.AuditAt}
-	command := examCommand(creator.ID, "exam.draft.browser_policy.configure.v1", "pin-update", "pin-update")
+	command := examCommand(creator.ID, "exam.draft.browser_policy.configure", "pin-update", "pin-update")
 	_, err = ss.ExamAuthoring().UpdateDraftBrowserPolicy(ctx, input, command)
 	var invalid *store.ErrInvalidInput
 	require.ErrorAs(t, err, &invalid)

@@ -201,7 +201,7 @@ func closeRecordsSitting(t *testing.T, ctx context.Context, ss store.Store, f *e
 	t.Helper()
 	at := model.NowUTC()
 	_, err := ss.ExamSitting().EarlyClose(ctx, &store.ExamSittingManagerTransition{ExamID: f.examID, SittingID: f.sitting.ID, ActorUserID: f.manager.ID, ExpectedRevision: f.sitting.Revision,
-		FinalizeJob: newExamSittingFinalizeJob(t, f.sitting.ID, f.sitting.Revision+1, at), PrivateReason: "Delivery is finished.", ChangedAt: at, AuditEventID: saveExamSittingAudit(t, ctx, ss, f.manager.ID, f.examID, f.unitID).ID, AuditAt: model.GetMillis()}, examCommand(f.manager.ID, "exam.sitting.close.v1", "records-close", "records-close"))
+		FinalizeJob: newExamSittingFinalizeJob(t, f.sitting.ID, f.sitting.Revision+1, at), PrivateReason: "Delivery is finished.", ChangedAt: at, AuditEventID: saveExamSittingAudit(t, ctx, ss, f.manager.ID, f.examID, f.unitID).ID, AuditAt: model.GetMillis()}, examCommand(f.manager.ID, "exam.sitting.close", "records-close", "records-close"))
 	require.NoError(t, err)
 	closed, err := ss.ExamSitting().FinishSealing(ctx, &store.ExamSittingFinishSealing{SittingID: f.sitting.ID, AuditEventID: saveExamSittingSystemAudit(t, ctx, ss, f.sitting.ID, f.unitID).ID, AuditAt: model.GetMillis()})
 	require.NoError(t, err)

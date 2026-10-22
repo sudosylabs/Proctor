@@ -32,7 +32,7 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 	openJob, deadlineJob := newExamSittingLifecycleJobs(t, sitting.ID, 1, start, end)
 	scheduleMail := newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled, model.MailTemplateExamSittingScheduled)
 	scheduleAudit := saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID)
-	command := examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-schedule", "sitting-schedule-command")
+	command := examCommand(fixture.actor.ID, "exam.sitting.schedule", "sitting-schedule", "sitting-schedule-command")
 	created, err := ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting, OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: fixture.actor.ID,
 		AuditEventID: scheduleAudit.ID, AuditAt: model.GetMillis(), Mail: scheduleMail}, command)
 	require.NoError(t, err)
@@ -177,7 +177,7 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 	foreignExam := createCatalogExam(t, ctx, ss, fixture.unitID, fixture.actor.ID, model.NowUTC(), "sitting-foreign-exam")
 	foreignPublication := examRevisionPublication(t, ctx, ss, foreignExam.Value.Exam.ID, fixture.actor.ID, fixture.unitID, 1, model.NowUTC())
 	foreignRevision, err := ss.ExamRevision().Publish(ctx, foreignPublication,
-		examCommand(fixture.actor.ID, "exam.revision.publish.v1", "sitting-foreign-revision", "sitting-foreign-revision-command"))
+		examCommand(fixture.actor.ID, "exam.revision.publish", "sitting-foreign-revision", "sitting-foreign-revision-command"))
 	require.NoError(t, err)
 	foreignSelection, err := model.NewExamSitting(model.NewExamSittingID(), fixture.examID, foreignRevision.Revision.ID,
 		fixture.class.ID, start, end, model.NowUTC())
@@ -186,7 +186,7 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 	_, err = ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: foreignSelection, OpenJob: foreignOpen, DeadlineJob: foreignDeadline, ActorUserID: fixture.actor.ID,
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis(),
 		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled, model.MailTemplateExamSittingScheduled)},
-		examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-foreign-selection", "sitting-foreign-selection-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.schedule", "sitting-foreign-selection", "sitting-foreign-selection-command"))
 	requireConflictConstraint(t, err, "exam_sitting_revision_lineage")
 
 	newStart, newEnd := start.Add(time.Hour), end.Add(time.Hour)
@@ -197,14 +197,14 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 		ScheduledStartAt: newStart, ScheduledEndAt: newEnd, OpenJob: updatedOpen, DeadlineJob: updatedDeadline,
 		AuditEventID: updateAudit.ID, AuditAt: model.GetMillis(),
 		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailRescheduled, model.MailTemplateExamSittingRescheduled)},
-		examCommand(fixture.actor.ID, "exam.sitting.schedule.update.v1", "sitting-update", "sitting-update-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.schedule.update", "sitting-update", "sitting-update-command"))
 	require.NoError(t, err)
 	require.Equal(t, int64(2), updated.Value.Sitting.Revision)
 	require.Equal(t, newStart, updated.Value.Sitting.ScheduledStartAt)
 	require.Equal(t, newEnd, updated.Value.Sitting.ScheduledEndAt)
 
 	cancelAudit := saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID)
-	cancelCommand := examCommand(fixture.actor.ID, "exam.sitting.cancel.v1", "sitting-cancel", "sitting-cancel-command")
+	cancelCommand := examCommand(fixture.actor.ID, "exam.sitting.cancel", "sitting-cancel", "sitting-cancel-command")
 	canceled, err := ss.ExamSitting().Cancel(ctx, &store.ExamSittingCancellation{ExamID: fixture.examID, SittingID: sitting.ID,
 		ActorUserID: fixture.actor.ID, ExpectedRevision: 2, PrivateReason: "Room unavailable",
 		AuditEventID: cancelAudit.ID, AuditAt: model.GetMillis(),
@@ -231,7 +231,7 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 	_, err = ss.ExamSitting().Cancel(ctx, &store.ExamSittingCancellation{ExamID: fixture.examID, SittingID: sitting.ID, ActorUserID: fixture.actor.ID,
 		ExpectedRevision: 2, PrivateReason: "stale", AuditEventID: staleAudit.ID, AuditAt: model.GetMillis(),
 		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailCanceled, model.MailTemplateExamSittingCanceled)},
-		examCommand(fixture.actor.ID, "exam.sitting.cancel.v1", "sitting-cancel-stale", "sitting-cancel-stale-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.cancel", "sitting-cancel-stale", "sitting-cancel-stale-command"))
 	requireConflictConstraint(t, err, "exam_sitting_revision")
 
 	// A second Sitting makes list filtering and tuple pagination observable.
@@ -242,7 +242,7 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 	secondResult, err := ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: second, OpenJob: secondOpen, DeadlineJob: secondDeadline, ActorUserID: fixture.actor.ID,
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis(),
 		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled, model.MailTemplateExamSittingScheduled)},
-		examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-second", "sitting-second-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.schedule", "sitting-second", "sitting-second-command"))
 	require.NoError(t, err)
 	page, err := ss.ExamSitting().List(ctx, store.ExamSittingListOptions{ExamID: fixture.examID, ClassID: fixture.class.ID,
 		States: []model.ExamSittingState{model.ExamSittingScheduled}, OverlapStartAt: secondStart.Add(-time.Minute), OverlapEndAt: secondStart.Add(30 * time.Minute), Limit: 1})
@@ -275,7 +275,7 @@ func TestExamSittingMailReconciliationAfterObsoleteSuppression(t *testing.T, ss 
 		OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: fixture.actor.ID,
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID,
 		AuditAt:      model.GetMillis(), Mail: prepared},
-		examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-membership-reconcile", "sitting-membership-reconcile-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.schedule", "sitting-membership-reconcile", "sitting-membership-reconcile-command"))
 	require.NoError(t, err)
 
 	candidateInput := newUser()
@@ -390,7 +390,7 @@ func PrepareExamSittingInvitationLockOrderFixture(t *testing.T, ss store.Store) 
 		DeadlineJob: deadlineJob, ActorUserID: fixture.actor.ID,
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID,
 		AuditAt:      model.GetMillis(), Mail: initialMail},
-		examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-invitation-lock-order", "sitting-invitation-lock-order-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.schedule", "sitting-invitation-lock-order", "sitting-invitation-lock-order-command"))
 	require.NoError(t, err)
 	_, err = ss.ExamSitting().CompleteMailExpansion(ctx,
 		&store.ExamSittingMailExpansionCompletion{OccurrenceID: initialMail.Occurrence.ID})
@@ -454,7 +454,7 @@ func PrepareExamSittingDisabledEligibilityRaceFixture(t *testing.T, ss store.Sto
 			ActorUserID:  fixture.actor.ID,
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID,
 			AuditAt:      model.GetMillis(), Mail: mail},
-		Command: examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", key, key+"-command"),
+		Command: examCommand(fixture.actor.ID, "exam.sitting.schedule", key, key+"-command"),
 		Verification: &store.PrivilegedEmailVerification{UserID: candidate.ID, ExpectedRevision: candidate.Revision,
 			Occurrence: occurrence, Delivery: delivery, Job: job,
 			AuditEventID: saveUserProfileAuditAttempt(t, ctx, ss, candidate.ID.String()).ID,
@@ -519,7 +519,7 @@ func TestExamSittingDisabledMailReconciliationConverges(t *testing.T, ss store.S
 		OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: fixture.actor.ID,
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID,
 		AuditAt:      model.GetMillis(), Mail: disabledMail},
-		examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-disabled-mail", "sitting-disabled-mail-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.schedule", "sitting-disabled-mail", "sitting-disabled-mail-command"))
 	require.NoError(t, err)
 	terminal, err := ss.ExamSitting().GetMailFanout(ctx, disabledMail.Occurrence.ID)
 	require.NoError(t, err)
@@ -801,7 +801,7 @@ func TestExamSittingClassTransferMailReconciliation(t *testing.T, ss store.Store
 			OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: fixture.actor.ID,
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID,
 			AuditAt:      model.GetMillis(), Mail: fanout},
-			examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-transfer-"+suffix, "sitting-transfer-command-"+suffix))
+			examCommand(fixture.actor.ID, "exam.sitting.schedule", "sitting-transfer-"+suffix, "sitting-transfer-command-"+suffix))
 		require.NoError(t, scheduleErr)
 		snapshot, getErr := ss.ExamSitting().GetMailFanout(ctx, fanout.Occurrence.ID)
 		require.NoError(t, getErr)
@@ -923,7 +923,7 @@ func TestExamSittingMailExpansionMaintenance(t *testing.T, ss store.Store) {
 		OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: fixture.actor.ID,
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID,
 		AuditAt:      model.GetMillis(), Mail: prepared},
-		examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-mail-maintenance", "sitting-mail-maintenance-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.schedule", "sitting-mail-maintenance", "sitting-mail-maintenance-command"))
 	require.NoError(t, err)
 
 	candidateInput := newUser()
@@ -1028,7 +1028,7 @@ func PrepareExamSittingMailRecoveryFixture(t *testing.T, ss store.Store) ExamSit
 			OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: fixture.actor.ID,
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID,
 			AuditAt:      model.GetMillis(), Mail: mail},
-			examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", key, key+"-command"))
+			examCommand(fixture.actor.ID, "exam.sitting.schedule", key, key+"-command"))
 		require.NoError(t, err)
 		return mail, result
 	}
@@ -1058,7 +1058,7 @@ func TestExamSittingMailRetentionCleanup(t *testing.T, ss store.Store, probe Exa
 		OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: fixture.actor.ID,
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID,
 		AuditAt:      model.GetMillis(), Mail: prepared},
-		examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-mail-retention", "sitting-mail-retention-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.schedule", "sitting-mail-retention", "sitting-mail-retention-command"))
 	require.NoError(t, err)
 
 	users := make([]*model.User, 3)
@@ -1158,7 +1158,7 @@ func TestExamSittingLifecycleStore(t *testing.T, ss store.Store, probe ExamSitti
 		result, err := ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting, OpenJob: openJob, DeadlineJob: deadlineJob,
 			ActorUserID: fixture.actor.ID, AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID,
 			AuditAt: model.GetMillis(), Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled,
-				model.MailTemplateExamSittingScheduled)}, examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", key, key+"-command"))
+				model.MailTemplateExamSittingScheduled)}, examCommand(fixture.actor.ID, "exam.sitting.schedule", key, key+"-command"))
 		require.NoError(t, err)
 		return result
 	}
@@ -1177,7 +1177,7 @@ func TestExamSittingLifecycleStore(t *testing.T, ss store.Store, probe ExamSitti
 	_, err = ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: rollbackSitting, OpenJob: conflictOpen, DeadlineJob: conflictDeadline,
 		ActorUserID: fixture.actor.ID, AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID,
 		AuditAt: model.GetMillis(), Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled,
-			model.MailTemplateExamSittingScheduled)}, examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-job-rollback", "sitting-job-rollback-command"))
+			model.MailTemplateExamSittingScheduled)}, examCommand(fixture.actor.ID, "exam.sitting.schedule", "sitting-job-rollback", "sitting-job-rollback-command"))
 	requireConflictConstraint(t, err, "exam_sitting_job_mismatch")
 	_, err = ss.ExamSitting().Get(ctx, fixture.examID, rollbackSitting.ID)
 	require.True(t, store.IsNotFound(err), "Sitting survived prepared-Job rollback")
@@ -1220,7 +1220,7 @@ func TestExamSittingLifecycleStore(t *testing.T, ss store.Store, probe ExamSitti
 		OpenJob: replayOpenJob, DeadlineJob: replayDeadlineJob, ActorUserID: fixture.actor.ID,
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis(),
 		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled, model.MailTemplateExamSittingScheduled)},
-		examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-lifecycle", "sitting-lifecycle-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.schedule", "sitting-lifecycle", "sitting-lifecycle-command"))
 	require.NoError(t, err)
 	require.True(t, scheduleReplay.Replayed)
 	require.Equal(t, model.ExamSittingScheduled, scheduleReplay.Value.Sitting.State)
@@ -1231,7 +1231,7 @@ func TestExamSittingLifecycleStore(t *testing.T, ss store.Store, probe ExamSitti
 	pauseInput := &store.ExamSittingManagerTransition{ExamID: fixture.examID, SittingID: active.Value.Sitting.ID,
 		ActorUserID: fixture.actor.ID, ExpectedRevision: 2, PrivateReason: "investigate candidate report", ChangedAt: pauseAt,
 		AuditEventID: pauseAudit.ID, AuditAt: model.GetMillis()}
-	pauseCommand := examCommand(fixture.actor.ID, "exam.sitting.pause.v1", "sitting-pause", "sitting-pause-command")
+	pauseCommand := examCommand(fixture.actor.ID, "exam.sitting.pause", "sitting-pause", "sitting-pause-command")
 	paused, err := ss.ExamSitting().Pause(ctx, pauseInput, pauseCommand)
 	require.NoError(t, err)
 	require.Equal(t, store.ExamSittingTransitionManagerPaused, paused.Transition)
@@ -1248,7 +1248,7 @@ func TestExamSittingLifecycleStore(t *testing.T, ss store.Store, probe ExamSitti
 	resumed, err := ss.ExamSitting().Resume(ctx, &store.ExamSittingManagerTransition{ExamID: fixture.examID, SittingID: active.Value.Sitting.ID,
 		ActorUserID: fixture.actor.ID, ExpectedRevision: 3, PrivateReason: "candidate may continue", ChangedAt: model.NowUTC(),
 		AuditEventID: resumeAudit.ID, AuditAt: model.GetMillis()},
-		examCommand(fixture.actor.ID, "exam.sitting.resume.v1", "sitting-resume", "sitting-resume-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.resume", "sitting-resume", "sitting-resume-command"))
 	require.NoError(t, err)
 	require.Equal(t, model.ExamSittingOpen, resumed.Value.Sitting.State)
 	require.Equal(t, int64(4), resumed.Value.Sitting.Revision)
@@ -1259,7 +1259,7 @@ func TestExamSittingLifecycleStore(t *testing.T, ss store.Store, probe ExamSitti
 	extended, err := ss.ExamSitting().Extend(ctx, &store.ExamSittingExtension{ExamID: fixture.examID, SittingID: active.Value.Sitting.ID,
 		ActorUserID: fixture.actor.ID, ExpectedRevision: 4, ScheduledEndAt: extendedEnd, DeadlineJob: extendedDeadline,
 		PrivateReason: "grant additional coding time", ChangedAt: model.NowUTC(), AuditEventID: extendAudit.ID, AuditAt: model.GetMillis()},
-		examCommand(fixture.actor.ID, "exam.sitting.extend.v1", "sitting-extend", "sitting-extend-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.extend", "sitting-extend", "sitting-extend-command"))
 	require.NoError(t, err)
 	require.Equal(t, extendedEnd, extended.Value.Sitting.ScheduledEndAt)
 	require.Equal(t, int64(5), extended.Value.Sitting.Revision)
@@ -1268,7 +1268,7 @@ func TestExamSittingLifecycleStore(t *testing.T, ss store.Store, probe ExamSitti
 		ActorUserID: fixture.actor.ID, ExpectedRevision: 5, ScheduledEndAt: extendedEnd, DeadlineJob: equalDeadline,
 		PrivateReason: "no actual extension", ChangedAt: model.NowUTC(),
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
-		examCommand(fixture.actor.ID, "exam.sitting.extend.v1", "sitting-extend-equal", "sitting-extend-equal-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.extend", "sitting-extend-equal", "sitting-extend-equal-command"))
 	requireConflictConstraint(t, err, "exam_sitting_extension_not_later")
 	beyondPeriod := fixture.period.EndsAt.Add(time.Second)
 	_, beyondDeadline := newExamSittingLifecycleJobs(t, active.Value.Sitting.ID, 6, dueStart, beyondPeriod)
@@ -1276,7 +1276,7 @@ func TestExamSittingLifecycleStore(t *testing.T, ss store.Store, probe ExamSitti
 		ActorUserID: fixture.actor.ID, ExpectedRevision: 5, ScheduledEndAt: beyondPeriod, DeadlineJob: beyondDeadline,
 		PrivateReason: "invalid extension", ChangedAt: model.NowUTC(),
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
-		examCommand(fixture.actor.ID, "exam.sitting.extend.v1", "sitting-extend-period", "sitting-extend-period-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.extend", "sitting-extend-period", "sitting-extend-period-command"))
 	requireConflictConstraint(t, err, "exam_sitting_schedule_outside_period")
 	laterReplayInput := *pauseInput
 	laterReplayInput.AuditEventID = saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID
@@ -1296,7 +1296,7 @@ func TestExamSittingLifecycleStore(t *testing.T, ss store.Store, probe ExamSitti
 		SittingID: active.Value.Sitting.ID, ActorUserID: fixture.actor.ID, ExpectedRevision: 5,
 		FinalizeJob: newExamSittingFinalizeJob(t, active.Value.Sitting.ID, 6, closeAt), PrivateReason: "end session early",
 		ChangedAt: closeAt, AuditEventID: closeAudit.ID, AuditAt: model.GetMillis()},
-		examCommand(fixture.actor.ID, "exam.sitting.close.v1", "sitting-early-close", "sitting-early-close-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.close", "sitting-early-close", "sitting-early-close-command"))
 	require.NoError(t, err)
 	require.Equal(t, model.ExamSittingClosing, closing.Value.Sitting.State)
 	require.Equal(t, model.ExamSittingReasonManagerClosed, closing.Value.Sitting.ReasonCode)
@@ -1367,7 +1367,7 @@ func TestExamSittingLifecycleStore(t *testing.T, ss store.Store, probe ExamSitti
 	deadlinePaused, err := ss.ExamSitting().Pause(ctx, &store.ExamSittingManagerTransition{ExamID: fixture.examID,
 		SittingID: deadline.Value.Sitting.ID, ActorUserID: fixture.actor.ID, ExpectedRevision: deadlineOpen.Value.Sitting.Revision,
 		PrivateReason: "pause through deadline", ChangedAt: model.NowUTC(), AuditEventID: deadlinePauseAudit.ID, AuditAt: model.GetMillis()},
-		examCommand(fixture.actor.ID, "exam.sitting.pause.v1", "sitting-deadline-pause", "sitting-deadline-pause-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.pause", "sitting-deadline-pause", "sitting-deadline-pause-command"))
 	require.NoError(t, err)
 	pastDeadline := model.NowUTC().Add(-time.Second)
 	probe.SetSchedule(t, ctx, deadline.Value.Sitting.ID, deadlineStart, pastDeadline)
@@ -1375,13 +1375,13 @@ func TestExamSittingLifecycleStore(t *testing.T, ss store.Store, probe ExamSitti
 		SittingID: deadline.Value.Sitting.ID, ActorUserID: fixture.actor.ID, ExpectedRevision: deadlinePaused.Value.Sitting.Revision,
 		PrivateReason: "too late", ChangedAt: model.NowUTC(),
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
-		examCommand(fixture.actor.ID, "exam.sitting.resume.v1", "sitting-resume-after-deadline", "sitting-resume-after-deadline-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.resume", "sitting-resume-after-deadline", "sitting-resume-after-deadline-command"))
 	requireConflictConstraint(t, err, "exam_sitting_deadline_reached")
 	_, err = ss.ExamSitting().Pause(ctx, &store.ExamSittingManagerTransition{ExamID: fixture.examID,
 		SittingID: deadline.Value.Sitting.ID, ActorUserID: fixture.actor.ID, ExpectedRevision: deadlinePaused.Value.Sitting.Revision,
 		PrivateReason: "wrong state", ChangedAt: model.NowUTC(),
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
-		examCommand(fixture.actor.ID, "exam.sitting.pause.v1", "sitting-pause-after-deadline", "sitting-pause-after-deadline-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.pause", "sitting-pause-after-deadline", "sitting-pause-after-deadline-command"))
 	requireConflictConstraint(t, err, "exam_sitting_state")
 	staleFinalizeAudit := saveExamSittingSystemAudit(t, ctx, ss, deadline.Value.Sitting.ID, fixture.unitID)
 	_, err = ss.ExamSitting().AdvanceDue(ctx, &store.ExamSittingDueAdvance{SittingID: deadline.Value.Sitting.ID,
@@ -1427,12 +1427,12 @@ func TestExamSittingLifecycleStore(t *testing.T, ss store.Store, probe ExamSitti
 	raceResults := make(chan lifecycleRaceResult, 2)
 	go func() {
 		value, raceErr := ss.ExamSitting().Pause(ctx, pauseRaceInput,
-			examCommand(fixture.actor.ID, "exam.sitting.pause.v1", "sitting-manager-race-pause", "sitting-manager-race-pause-command"))
+			examCommand(fixture.actor.ID, "exam.sitting.pause", "sitting-manager-race-pause", "sitting-manager-race-pause-command"))
 		raceResults <- lifecycleRaceResult{value: value, err: raceErr}
 	}()
 	go func() {
 		value, raceErr := ss.ExamSitting().EarlyClose(ctx, closeRaceInput,
-			examCommand(fixture.actor.ID, "exam.sitting.close.v1", "sitting-manager-race-close", "sitting-manager-race-close-command"))
+			examCommand(fixture.actor.ID, "exam.sitting.close", "sitting-manager-race-close", "sitting-manager-race-close-command"))
 		raceResults <- lifecycleRaceResult{value: value, err: raceErr}
 	}()
 	firstRace, secondRace := <-raceResults, <-raceResults
@@ -1461,19 +1461,19 @@ func TestExamSittingLifecycleStore(t *testing.T, ss store.Store, probe ExamSitti
 	archiveAt := model.NowUTC()
 	_, err = ss.ExamAuthoring().Archive(ctx,
 		newExamArchive(t, ctx, ss, fixture.examID, fixture.actor.ID, examBeforeArchive.Revision, archiveAt),
-		examCommand(fixture.actor.ID, "exam.archive.v1", "sitting-live-archive", "sitting-live-archive-command"))
+		examCommand(fixture.actor.ID, "exam.archive", "sitting-live-archive", "sitting-live-archive-command"))
 	require.NoError(t, err)
 	archivedPaused, err := ss.ExamSitting().Pause(ctx, &store.ExamSittingManagerTransition{ExamID: fixture.examID,
 		SittingID: archivedLive.Value.Sitting.ID, ActorUserID: fixture.actor.ID, ExpectedRevision: archivedOpen.Value.Sitting.Revision,
 		PrivateReason: "pause archived live Sitting", ChangedAt: model.NowUTC(),
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
-		examCommand(fixture.actor.ID, "exam.sitting.pause.v1", "sitting-archived-pause", "sitting-archived-pause-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.pause", "sitting-archived-pause", "sitting-archived-pause-command"))
 	require.NoError(t, err)
 	_, err = ss.ExamSitting().Resume(ctx, &store.ExamSittingManagerTransition{ExamID: fixture.examID,
 		SittingID: archivedLive.Value.Sitting.ID, ActorUserID: fixture.actor.ID, ExpectedRevision: archivedPaused.Value.Sitting.Revision,
 		PrivateReason: "resume archived Sitting", ChangedAt: model.NowUTC(),
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
-		examCommand(fixture.actor.ID, "exam.sitting.resume.v1", "sitting-archived-resume", "sitting-archived-resume-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.resume", "sitting-archived-resume", "sitting-archived-resume-command"))
 	requireConflictConstraint(t, err, "exam_archived")
 	archivedCloseAt := model.NowUTC()
 	archivedClosing, err := ss.ExamSitting().EarlyClose(ctx, &store.ExamSittingManagerTransition{ExamID: fixture.examID,
@@ -1481,7 +1481,7 @@ func TestExamSittingLifecycleStore(t *testing.T, ss store.Store, probe ExamSitti
 		FinalizeJob:   newExamSittingFinalizeJob(t, archivedLive.Value.Sitting.ID, archivedPaused.Value.Sitting.Revision+1, archivedCloseAt),
 		PrivateReason: "close archived live Sitting", ChangedAt: archivedCloseAt,
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
-		examCommand(fixture.actor.ID, "exam.sitting.close.v1", "sitting-archived-close", "sitting-archived-close-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.close", "sitting-archived-close", "sitting-archived-close-command"))
 	require.NoError(t, err)
 	require.Equal(t, model.ExamSittingClosing, archivedClosing.Value.Sitting.State)
 	require.Equal(t, model.ExamSittingReasonManagerClosed, archivedClosing.Value.Sitting.ReasonCode)
@@ -1500,7 +1500,7 @@ func TestExamSittingStoreSQLGuards(t *testing.T, ss store.Store, probe ExamSitti
 		return ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting, OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: actor,
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, actor, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis(),
 			Mail: newExamSittingMailFanout(t, actor, store.ExamSittingMailScheduled, model.MailTemplateExamSittingScheduled)},
-			examCommand(actor, "exam.sitting.schedule.v1", key, key+"-command"))
+			examCommand(actor, "exam.sitting.schedule", key, key+"-command"))
 	}
 	requireScheduleConflict := func(key, constraint string, revisionID model.ExamRevisionID, classID model.ClassID, start, end time.Time) {
 		t.Helper()
@@ -1567,13 +1567,13 @@ func TestExamSittingStoreSQLGuards(t *testing.T, ss store.Store, probe ExamSitti
 	addManager.Notices = examManagerMailNotices(t, model.TimeFromMillis(addManager.ChangedAt),
 		examManagerMailRecipient{userID: removedManager.ID, key: model.MailTemplateExamManagerAdded})
 	added, err := ss.ExamAuthoring().AddManager(ctx, addManager,
-		examCommand(fixture.actor.ID, "exam.manager.add.v1", "sitting-manager-add", "sitting-manager-add-command"))
+		examCommand(fixture.actor.ID, "exam.manager.add", "sitting-manager-add", "sitting-manager-add-command"))
 	require.NoError(t, err)
 	removeManager := newExamManagerMutation(t, ctx, ss, fixture.examID, fixture.actor.ID, removedManager.ID, added.Exam.Revision, model.NowUTC(), false)
 	removeManager.Notices = examManagerMailNotices(t, model.TimeFromMillis(removeManager.ChangedAt),
 		examManagerMailRecipient{userID: removedManager.ID, key: model.MailTemplateExamManagerRemoved})
 	_, err = ss.ExamAuthoring().RemoveManager(ctx, removeManager,
-		examCommand(fixture.actor.ID, "exam.manager.remove.v1", "sitting-manager-remove", "sitting-manager-remove-command"))
+		examCommand(fixture.actor.ID, "exam.manager.remove", "sitting-manager-remove", "sitting-manager-remove-command"))
 	require.NoError(t, err)
 	_, err = schedule("sitting-removed-manager", removedManager.ID, fixture.revisionID, fixture.class.ID,
 		fixture.period.StartsAt.Add(7*time.Hour), fixture.period.StartsAt.Add(8*time.Hour))
@@ -1588,7 +1588,7 @@ func TestExamSittingStoreSQLGuards(t *testing.T, ss store.Store, probe ExamSitti
 		ActorUserID: fixture.actor.ID, ExpectedRevision: 1, PrivateReason: "precedence",
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis(),
 		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailCanceled, model.MailTemplateExamSittingCanceled)},
-		examCommand(fixture.actor.ID, "exam.sitting.cancel.v1", "sitting-precedence-cancel", "sitting-precedence-cancel-command"))
+		examCommand(fixture.actor.ID, "exam.sitting.cancel", "sitting-precedence-cancel", "sitting-precedence-cancel-command"))
 	require.NoError(t, err)
 	invalidUpdate := func(expected int64, key string) error {
 		openJob, deadlineJob := newExamSittingLifecycleJobs(t, precedence.Value.Sitting.ID, expected+1,
@@ -1599,7 +1599,7 @@ func TestExamSittingStoreSQLGuards(t *testing.T, ss store.Store, probe ExamSitti
 			ScheduledEndAt: fixture.period.StartsAt.Add(12 * time.Hour), OpenJob: openJob, DeadlineJob: deadlineJob,
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis(),
 			Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailRescheduled, model.MailTemplateExamSittingRescheduled)},
-			examCommand(fixture.actor.ID, "exam.sitting.schedule.update.v1", key, key+"-command"))
+			examCommand(fixture.actor.ID, "exam.sitting.schedule.update", key, key+"-command"))
 		return updateErr
 	}
 	requireConflictConstraint(t, invalidUpdate(1, "sitting-precedence-stale"), "exam_sitting_revision")
@@ -1627,7 +1627,7 @@ func TestExamSittingStoreSQLGuards(t *testing.T, ss store.Store, probe ExamSitti
 			ScheduledEndAt: fixture.period.StartsAt.Add(16 * time.Hour), OpenJob: raceOpenJob, DeadlineJob: raceDeadlineJob,
 			AuditEventID: updateAudit.ID, AuditAt: model.GetMillis(),
 			Mail: rescheduledMail},
-			examCommand(fixture.actor.ID, "exam.sitting.schedule.update.v1", "sitting-race-update", "sitting-race-update-command"))
+			examCommand(fixture.actor.ID, "exam.sitting.schedule.update", "sitting-race-update", "sitting-race-update-command"))
 	}()
 	go func() {
 		defer wait.Done()
@@ -1635,7 +1635,7 @@ func TestExamSittingStoreSQLGuards(t *testing.T, ss store.Store, probe ExamSitti
 			SittingID: race.Value.Sitting.ID, ActorUserID: fixture.actor.ID, ExpectedRevision: 1,
 			PrivateReason: "race", AuditEventID: cancelAudit.ID, AuditAt: model.GetMillis(),
 			Mail: canceledMail},
-			examCommand(fixture.actor.ID, "exam.sitting.cancel.v1", "sitting-race-cancel", "sitting-race-cancel-command"))
+			examCommand(fixture.actor.ID, "exam.sitting.cancel", "sitting-race-cancel", "sitting-race-cancel-command"))
 	}()
 	wait.Wait()
 	require.NotEqual(t, cancelErr == nil, updateErr == nil, "race update error=%v cancel error=%v; want exactly one winner", updateErr, cancelErr)
@@ -1677,7 +1677,7 @@ func newExamSittingFixtureWithCapacity(t *testing.T, ctx context.Context, ss sto
 	actor := saveUser(t, ctx, ss)
 	created := createCatalogExam(t, ctx, ss, classFixture.programme.AcademicUnitID, actor.ID, model.NowUTC(), "sitting-exam")
 	publication := examRevisionPublication(t, ctx, ss, created.Value.Exam.ID, actor.ID, classFixture.programme.AcademicUnitID, 1, model.NowUTC())
-	published, err := ss.ExamRevision().Publish(ctx, publication, examCommand(actor.ID, "exam.revision.publish.v1", "sitting-revision", "sitting-revision-command"))
+	published, err := ss.ExamRevision().Publish(ctx, publication, examCommand(actor.ID, "exam.revision.publish", "sitting-revision", "sitting-revision-command"))
 	require.NoError(t, err)
 	return examSittingFixture{actor: actor, institutionID: classFixture.institution.ID, unitID: classFixture.programme.AcademicUnitID,
 		levelID: classFixture.level.ID, examID: created.Value.Exam.ID,

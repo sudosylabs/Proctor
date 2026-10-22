@@ -653,7 +653,7 @@ func replaceExternalAdmissionPolicy(
 	require.NoError(t, err)
 	nonce := model.NewID()
 	command := &store.CommandIdempotency{
-		UserID: actorID, Operation: "access_policy.replace.v1",
+		UserID: actorID, Operation: "access_policy.replace",
 		KeyDigest:   sha256.Sum256([]byte("external-admission-key:" + nonce)),
 		Fingerprint: sha256.Sum256([]byte("external-admission-command:" + nonce)),
 		Retention:   time.Hour, Wait: time.Second,

@@ -95,7 +95,7 @@ func testExamCatalogListAndArchive(t *testing.T, ss store.Store) {
 
 	archiveAt := firstAt.Add(2 * time.Hour)
 	archive := newExamArchive(t, ctx, ss, first.Value.Exam.ID, creator.ID, 1, archiveAt)
-	command := examCommand(creator.ID, "exam.archive.v1", "archive-key", "archive-command")
+	command := examCommand(creator.ID, "exam.archive", "archive-key", "archive-command")
 	archived, err := ss.ExamAuthoring().Archive(ctx, archive, command)
 	require.NoError(t, err)
 	require.False(t, archived.Replayed)
@@ -111,7 +111,7 @@ func testExamCatalogListAndArchive(t *testing.T, ss store.Store) {
 	require.NoError(t, err)
 	require.Len(t, archivedPage, 1)
 	require.Equal(t, first.Value.Exam.ID, archivedPage[0].ID)
-	_, err = ss.ExamAuthoring().Archive(ctx, newExamArchive(t, ctx, ss, first.Value.Exam.ID, creator.ID, 2, archiveAt.Add(time.Minute)), examCommand(creator.ID, "exam.archive.v1", "archive-again", "archive-again-command"))
+	_, err = ss.ExamAuthoring().Archive(ctx, newExamArchive(t, ctx, ss, first.Value.Exam.ID, creator.ID, 2, archiveAt.Add(time.Minute)), examCommand(creator.ID, "exam.archive", "archive-again", "archive-again-command"))
 	var conflict *store.ErrConflict
 	require.ErrorAs(t, err, &conflict)
 	require.Equal(t, "exam_archived", conflict.Constraint)
@@ -120,8 +120,8 @@ func testExamCatalogListAndArchive(t *testing.T, ss store.Store) {
 	left := newExamArchive(t, ctx, ss, concurrent.Value.Exam.ID, creator.ID, 1, archiveAt.Add(2*time.Minute))
 	right := newExamArchive(t, ctx, ss, concurrent.Value.Exam.ID, creator.ID, 1, archiveAt.Add(3*time.Minute))
 	commands := []*store.CommandIdempotency{
-		examCommand(creator.ID, "exam.archive.v1", "archive-concurrent-left", "archive-concurrent-left-command"),
-		examCommand(creator.ID, "exam.archive.v1", "archive-concurrent-right", "archive-concurrent-right-command"),
+		examCommand(creator.ID, "exam.archive", "archive-concurrent-left", "archive-concurrent-left-command"),
+		examCommand(creator.ID, "exam.archive", "archive-concurrent-right", "archive-concurrent-right-command"),
 	}
 	inputs := []*store.ExamArchive{left, right}
 	type archiveResult struct {
@@ -161,7 +161,7 @@ func createCatalogExam(t *testing.T, ctx context.Context, ss store.Store, unitID
 	t.Helper()
 	creation := newExamAuthoringCreation(t, ctx, ss, unitID, creatorID, at)
 	creation.Draft.Title = key
-	created, err := ss.ExamAuthoring().Create(ctx, creation, examCommand(creatorID, "exam.create.v1", key, key+"-command"))
+	created, err := ss.ExamAuthoring().Create(ctx, creation, examCommand(creatorID, "exam.create", key, key+"-command"))
 	require.NoError(t, err)
 	return created
 }

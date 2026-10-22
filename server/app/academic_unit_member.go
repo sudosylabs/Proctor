@@ -124,7 +124,7 @@ func (s *academicUnitMemberService) CreateAcademicUnitMember(ctx context.Context
 			return nil, apperror.New("mail.unavailable").Wrap(err)
 		}
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "academic_unit_member.add.v1", command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Prepare(invocation, "academic_unit_member.add", command.IdempotencyKey, struct {
 		AcademicUnitID string `json:"academic_unit_id"`
 		UserID         string `json:"user_id"`
 		StartAt        int64  `json:"start_at"`
@@ -186,7 +186,7 @@ func (s *academicUnitMemberService) EndAcademicUnitMember(ctx context.Context, i
 	if command.BatchScopeID != "" && strings.TrimSpace(command.BatchScopeID) != current.AcademicUnitID.String() {
 		return nil, apperror.New("resource.not_found").WithField("resource", "academic_unit_member")
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "academic_unit_member.end.v1", command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Prepare(invocation, "academic_unit_member.end", command.IdempotencyKey, struct {
 		ID      string `json:"id"`
 		ScopeID string `json:"scope_id,omitempty"`
 	}{id.String(), strings.TrimSpace(command.BatchScopeID)})

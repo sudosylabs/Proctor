@@ -515,8 +515,8 @@ func persistAutomaticSubmittedExamAttempt(ctx context.Context, tx *sqlxTxWrapper
 	return nil
 }
 
-func automaticExamSubmissionOutcome(submission *model.ExamSubmission, target store.ExamSubmissionAutomaticSealTarget) examSubmissionSealOutcomeV1 {
-	return examSubmissionSealOutcomeV1{Receipt: store.ExamSubmissionReceipt{BrowserActivity: submission.BrowserActivity, SubmissionID: submission.ID,
+func automaticExamSubmissionOutcome(submission *model.ExamSubmission, target store.ExamSubmissionAutomaticSealTarget) examSubmissionSealOutcome {
+	return examSubmissionSealOutcome{Receipt: store.ExamSubmissionReceipt{BrowserActivity: submission.BrowserActivity, SubmissionID: submission.ID,
 		AttemptID: submission.AttemptID, ExamRevisionID: submission.ExamRevisionID, State: model.ExamAttemptSubmitted, WorkspaceCursor: submission.WorkspaceCursor,
 		ManifestDigest: submission.ManifestDigest, SubmittedAt: submission.SubmittedAt}, ExamID: target.ExamID.String(),
 		SittingID: target.SittingID.String(), ClassID: target.ClassID.String(), CandidateID: target.CandidateUserID.String(),

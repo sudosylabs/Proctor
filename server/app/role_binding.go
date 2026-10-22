@@ -224,7 +224,7 @@ func (s *roleBindingService) CreateRoleBinding(ctx context.Context, invocation I
 			return nil, apperror.New("mail.unavailable").Wrap(err)
 		}
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "role_binding.create.v1", command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Prepare(invocation, "role_binding.create", command.IdempotencyKey, struct {
 		UserID    string              `json:"user_id"`
 		RoleID    string              `json:"role_id"`
 		ScopeType model.RoleScopeType `json:"scope_type"`
@@ -298,7 +298,7 @@ func (s *roleBindingService) EndRoleBinding(ctx context.Context, invocation Invo
 	if command.BatchScopeID != "" && (command.BatchScopeType != current.ScopeType || strings.TrimSpace(command.BatchScopeID) != current.ScopeID) {
 		return nil, apperror.New("resource.not_found").WithField("resource", "role_binding")
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "role_binding.end.v1", command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Prepare(invocation, "role_binding.end", command.IdempotencyKey, struct {
 		ID        string              `json:"id"`
 		ScopeType model.RoleScopeType `json:"scope_type,omitempty"`
 		ScopeID   string              `json:"scope_id,omitempty"`

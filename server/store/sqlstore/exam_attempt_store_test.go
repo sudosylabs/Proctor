@@ -19,7 +19,7 @@ import (
 )
 
 func TestExamAttemptConnectOutcomeIsBoundedAndCredentialFree(t *testing.T) {
-	outcome := examAttemptConnectOutcomeV1{
+	outcome := examAttemptConnectOutcome{
 		AttemptID: "01J00000000000000000000001", WorkspaceID: "01J00000000000000000000002",
 		ParticipationID: "01J00000000000000000000003", ConnectionID: "01J00000000000000000000004",
 		ExamID: "01J00000000000000000000005", SittingID: "01J00000000000000000000006",

@@ -365,7 +365,7 @@ func (p *Provider) oauthConfig(
 
 func transactionNonce(providerID string, proof string) string {
 	digest := sha256.Sum256(
-		[]byte("proctor-oidc-nonce-v1\x00" + providerID + "\x00" + proof),
+		[]byte("proctor.oidc_nonce\x00" + providerID + "\x00" + proof),
 	)
 	return base64.RawURLEncoding.EncodeToString(digest[:])
 }

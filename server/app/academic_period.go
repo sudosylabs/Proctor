@@ -132,7 +132,7 @@ func (s *academicPeriodService) CreateAcademicPeriod(ctx context.Context, invoca
 	if err := s.authorization.AuthorizeAcademicPeriodOwner(ctx, invocation, model.ActionAcademicPeriodManage, candidate); err != nil {
 		return nil, err
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "academic_period.create.v1", command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Prepare(invocation, "academic_period.create", command.IdempotencyKey, struct {
 		OwnerType, OwnerID             string
 		Name, DisplayName, Description string
 		StartAt, EndAt                 int64

@@ -15,7 +15,7 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-const idempotencyOperationApplyCorrection = "exam.sitting.correction.apply.v1"
+const idempotencyOperationApplyCorrection = "exam.sitting.correction.apply"
 
 func prepareStageIdempotency(invocation invocation.Invocation, command StageResourceContentCommand) (*store.CommandIdempotency, error) {
 	return applicationidempotency.Require(invocation, store.ExamCorrectionResourceStageOperation, command.IdempotencyKey, struct {

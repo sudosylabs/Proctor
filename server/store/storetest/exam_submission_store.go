@@ -359,7 +359,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 			AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "The first correction changes the instructions.", AcknowledgementRequired: true,
 			PrivateReason: "exercise ordered acknowledgement", AppliedAt: model.NowUTC(),
 			AuditEventID: firstAudit.ID, AuditAt: model.GetMillis(),
-		}, examCommand(fixture.manager.ID, "exam.correction.apply.v1", "correction-acknowledgement-first", "correction-acknowledgement-first"))
+		}, examCommand(fixture.manager.ID, "exam.correction.apply", "correction-acknowledgement-first", "correction-acknowledgement-first"))
 		require.NoError(t, err)
 		secondInstructions := "Second corrected instructions"
 		secondAudit := saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID)
@@ -370,7 +370,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 			AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "The second correction changes the instructions again.", AcknowledgementRequired: true,
 			PrivateReason: "exercise ordered acknowledgement", AppliedAt: model.NowUTC(),
 			AuditEventID: secondAudit.ID, AuditAt: model.GetMillis(),
-		}, examCommand(fixture.manager.ID, "exam.correction.apply.v1", "correction-acknowledgement-second", "correction-acknowledgement-second"))
+		}, examCommand(fixture.manager.ID, "exam.correction.apply", "correction-acknowledgement-second", "correction-acknowledgement-second"))
 		require.NoError(t, err)
 
 		candidateAccess := store.CandidateAttemptAccess{
@@ -415,7 +415,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 			SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: second.Sitting.Sitting.Revision,
 			PrivateReason: "prove acknowledgement remains allowed while paused", ChangedAt: model.NowUTC(),
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
-			examCommand(fixture.manager.ID, "exam.sitting.pause.v1", "correction-acknowledgement-pause", "correction-acknowledgement-pause"))
+			examCommand(fixture.manager.ID, "exam.sitting.pause", "correction-acknowledgement-pause", "correction-acknowledgement-pause"))
 		require.NoError(t, err)
 		firstInputs := [2]*store.ExamAttemptCorrectionAcknowledgement{
 			newAcknowledgement(first.Revision.ID, second.Revision.ID),
@@ -527,7 +527,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 			SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: paused.Value.Sitting.Revision,
 			PrivateReason: "finish correction acknowledgement conformance", ChangedAt: model.NowUTC(),
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
-			examCommand(fixture.manager.ID, "exam.sitting.resume.v1", "correction-acknowledgement-resume", "correction-acknowledgement-resume"))
+			examCommand(fixture.manager.ID, "exam.sitting.resume", "correction-acknowledgement-resume", "correction-acknowledgement-resume"))
 		require.NoError(t, err)
 		require.Equal(t, model.ExamSittingOpen, resumed.Value.Sitting.State)
 		thirdInstructions := "Third corrected instructions"
@@ -539,7 +539,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 			PrivateReason: "prove retained acknowledgement replay after a later correction", AppliedAt: model.NowUTC(),
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID,
 			AuditAt:      model.GetMillis(),
-		}, examCommand(fixture.manager.ID, "exam.correction.apply.v1",
+		}, examCommand(fixture.manager.ID, "exam.correction.apply",
 			"correction-acknowledgement-third", "correction-acknowledgement-third"))
 		require.NoError(t, err)
 		afterCorrectionReplay := newAcknowledgement(first.Revision.ID, second.Revision.ID)
@@ -701,7 +701,7 @@ func testAutomaticExamSubmissionSealing(t *testing.T, ctx context.Context, ss st
 			PrivateReason: "finish every acknowledged Attempt", ChangedAt: closeAt,
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID,
 			AuditAt:      model.GetMillis()},
-			examCommand(fixture.manager.ID, "exam.sitting.close.v1", "automatic-close", "automatic-close"))
+			examCommand(fixture.manager.ID, "exam.sitting.close", "automatic-close", "automatic-close"))
 		require.NoError(t, err)
 		require.True(t, closing.Changed)
 		require.Equal(t, model.ExamSittingClosing, closing.Value.Sitting.State)
@@ -1106,7 +1106,7 @@ func testExamSubmissionAccessFences(t *testing.T, ctx context.Context, ss store.
 			SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: fixture.sitting.Revision,
 			PrivateReason: "verify voluntary Submission rejects Paused Sitting", ChangedAt: model.NowUTC(),
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
-			examCommand(fixture.manager.ID, "exam.sitting.pause.v1", "submission-pause", "submission-pause"))
+			examCommand(fixture.manager.ID, "exam.sitting.pause", "submission-pause", "submission-pause"))
 		require.NoError(t, err)
 		access := submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 0)
 		input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
@@ -1125,7 +1125,7 @@ func testExamSubmissionAccessFences(t *testing.T, ctx context.Context, ss store.
 			FinalizeJob:   newExamSittingFinalizeJob(t, fixture.sitting.ID, fixture.sitting.Revision+1, closeAt),
 			PrivateReason: "verify voluntary Submission rejects Closing Sitting", ChangedAt: closeAt,
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
-			examCommand(fixture.manager.ID, "exam.sitting.close.v1", "submission-close", "submission-close"))
+			examCommand(fixture.manager.ID, "exam.sitting.close", "submission-close", "submission-close"))
 		require.NoError(t, err)
 		access := submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 0)
 		input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,

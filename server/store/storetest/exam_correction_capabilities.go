@@ -50,7 +50,7 @@ func testCorrectionCapabilityGates(t *testing.T, ss store.Store) {
 				require.NoError(t, err)
 				command.BrowserPolicy = &policy
 			}
-			corrected, err := ss.ExamCorrection().Apply(ctx, command, examCommand(fixture.manager.ID, "exam.sitting.correction.apply.v1", "correction-capabilities", "correction-capabilities"))
+			corrected, err := ss.ExamCorrection().Apply(ctx, command, examCommand(fixture.manager.ID, "exam.sitting.correction.apply", "correction-capabilities", "correction-capabilities"))
 			require.NoError(t, err)
 			snapshot, err := ss.ExamRevision().GetSnapshot(ctx, fixture.examID, corrected.Revision.ID)
 			require.NoError(t, err)
@@ -137,7 +137,7 @@ func testCorrectionPublicationWorkspaceRace(t *testing.T, ss store.Store) {
 		DPoPKeyThumbprint: access.DPoPKeyThumbprint, ConnectionID: access.ConnectionID, ContinuityCredentialHash: access.ContinuityCredentialHash},
 		Operation: model.AttemptWorkspaceMutationCreateDirectory, EntryID: model.NewAttemptWorkspaceEntryID(), DestinationPath: "racing-correction",
 		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
-	correctionKey := examCommand(fixture.manager.ID, "exam.sitting.correction.apply.v1", "publication-race", "publication-race")
+	correctionKey := examCommand(fixture.manager.ID, "exam.sitting.correction.apply", "publication-race", "publication-race")
 	writeKey := examCommand(fixture.candidate.ID, store.ExamAttemptWorkspaceMutationOperation, "write-race", "write-race")
 	type writeOutcome struct {
 		value *store.ExamAttemptWorkspaceMutationResult

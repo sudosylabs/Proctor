@@ -285,7 +285,7 @@ func validateDesktopCompatibilityPolicyReplacement(
 	if input == nil || !input.ActorID.IsValid() || input.ExpectedRevision < 1 ||
 		input.Settings.Validate() != nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
 		command == nil || command.UserID != input.ActorID ||
-		command.Operation != "desktop_compatibility_policy.replace.v1" ||
+		command.Operation != "desktop_compatibility_policy.replace" ||
 		command.Retention <= 0 || command.Wait <= 0 {
 		return store.NewErrInvalidInput("desktop_compatibility_policy", "replacement", nil)
 	}

@@ -139,7 +139,7 @@ func (s *affiliationService) CreateAffiliation(ctx context.Context, invocation I
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("affiliation.invalid", err)
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "affiliation.add.v1", command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Prepare(invocation, "affiliation.add", command.IdempotencyKey, struct {
 		UserID  string                `json:"user_id"`
 		Kind    model.AffiliationKind `json:"kind"`
 		StartAt int64                 `json:"start_at"`
@@ -211,7 +211,7 @@ func (s *affiliationService) EndAffiliation(ctx context.Context, invocation Invo
 			}
 		}
 	}
-	idempotency, err := applicationidempotency.Prepare(invocation, "affiliation.end.v1", command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Prepare(invocation, "affiliation.end", command.IdempotencyKey, struct {
 		ID        string              `json:"id"`
 		ScopeType model.RoleScopeType `json:"scope_type,omitempty"`
 		ScopeID   string              `json:"scope_id,omitempty"`

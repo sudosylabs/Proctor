@@ -112,7 +112,7 @@ func runIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, opera
 		if err := lockCommandIdempotency(ctx, tx, command); err != nil {
 			return nil, err
 		}
-		if command.Operation == "user.enabled_state.v1" || command.Operation == "role_binding.end.v1" {
+		if command.Operation == "user.enabled_state" || command.Operation == "role_binding.end" {
 			if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
 				return nil, err
 			}

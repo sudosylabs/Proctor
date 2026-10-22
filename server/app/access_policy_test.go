@@ -300,7 +300,7 @@ func TestAccessPolicyReplacementIsIdempotentAndPublishesOnlyCommittedRevision(t 
 	require.NoError(t, err)
 	require.Equal(t, int64(2), result.Policy.Revision, "result=%#v command=%#v replacement=%#v effects", result, persistence.command, persistence.replaceInput)
 	require.NotNil(t, persistence.command, "result=%#v command=%#v replacement=%#v effects", result, persistence.command, persistence.replaceInput)
-	require.Equal(t, "access_policy.replace.v1", persistence.command.Operation, "result=%#v command=%#v replacement=%#v effects", result, persistence.command, persistence.replaceInput)
+	require.Equal(t, "access_policy.replace", persistence.command.Operation, "result=%#v command=%#v replacement=%#v effects", result, persistence.command, persistence.replaceInput)
 	require.NotNil(t, persistence.replaceInput, "result=%#v command=%#v replacement=%#v effects", result, persistence.command, persistence.replaceInput)
 	require.Equal(t, model.AuditEventID(audit.beginID), persistence.replaceInput.AuditEventID, "result=%#v command=%#v replacement=%#v effects", result, persistence.command, persistence.replaceInput)
 	require.Equal(t, "replace", audit.attempt.Operation, "result=%#v command=%#v replacement=%#v effects", result, persistence.command, persistence.replaceInput)

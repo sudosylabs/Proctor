@@ -40,9 +40,9 @@ type NativeDeliverySummaryUpdate struct {
 }
 
 const (
-	NativeDeliveryGapsOperation    = "exam.native_delivery.gaps.v1"
-	NativeDeliverySummaryOperation = "exam.native_delivery.summary.v1"
-	NativeDeliveryFinalOperation   = "exam.native_delivery.final.v1"
+	NativeDeliveryGapsOperation    = "exam.native_delivery.gaps"
+	NativeDeliverySummaryOperation = "exam.native_delivery.summary"
+	NativeDeliveryFinalOperation   = "exam.native_delivery.final"
 )
 
 type NativeDeliveryTarget struct {
@@ -60,7 +60,7 @@ type NativeDeliveryAppend struct {
 	AuditAt      int64
 }
 
-const NativeDeliveryAppendOperation = "exam.native_delivery.append.v1"
+const NativeDeliveryAppendOperation = "exam.native_delivery.append"
 
 // NativeDeliveryRefusal is returned after a quota latch and its audit commit.
 // Callers must not attempt to fail that already completed audit.

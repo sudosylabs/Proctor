@@ -217,7 +217,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 		SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: fixture.sitting.Revision,
 		PrivateReason: "verify established candidate read access while paused", ChangedAt: model.NowUTC(),
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
-		examCommand(fixture.manager.ID, "exam.sitting.pause.v1", "attempt-pause", "attempt-pause"))
+		examCommand(fixture.manager.ID, "exam.sitting.pause", "attempt-pause", "attempt-pause"))
 	require.NoError(t, err)
 	_, err = ss.ExamAttempt().GetCandidatePresentation(ctx, access)
 	require.NoError(t, err)
@@ -252,7 +252,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 		SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: paused.Value.Sitting.Revision,
 		PrivateReason: "continue Attempt persistence conformance", ChangedAt: model.NowUTC(),
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
-		examCommand(fixture.manager.ID, "exam.sitting.resume.v1", "attempt-resume", "attempt-resume"))
+		examCommand(fixture.manager.ID, "exam.sitting.resume", "attempt-resume", "attempt-resume"))
 	require.NoError(t, err)
 	require.Equal(t, model.ExamSittingOpen, resumed.Value.Sitting.State)
 	openConnectionInput := *input
@@ -458,7 +458,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 		FinalizeJob:   newExamSittingFinalizeJob(t, fixture.sitting.ID, currentSitting.Sitting.Revision+1, closeAt),
 		PrivateReason: "finish Attempt persistence conformance", ChangedAt: closeAt,
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
-		examCommand(fixture.manager.ID, "exam.sitting.close.v1", "attempt-close-sitting", "attempt-close-sitting"))
+		examCommand(fixture.manager.ID, "exam.sitting.close", "attempt-close-sitting", "attempt-close-sitting"))
 	require.NoError(t, err)
 	closingReplayInput := *input
 	closingReplayInput.AuditEventID, closingReplayInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
@@ -1065,7 +1065,7 @@ func newExamAttemptFixtureWithCapacity(t *testing.T, ctx context.Context, ss sto
 	if focus != nil {
 		updated, updateErr := ss.ExamAuthoring().UpdateDraftFocusLoss(ctx,
 			newExamDraftFocusLossUpdate(t, ctx, ss, created.Value.Exam.ID, manager.ID, draftRevision, *focus, now.Add(time.Millisecond)),
-			examCommand(manager.ID, "exam.draft.focus_loss.configure.v1", "attempt-focus-policy", "attempt-focus-policy"))
+			examCommand(manager.ID, "exam.draft.focus_loss.configure", "attempt-focus-policy", "attempt-focus-policy"))
 		require.NoError(t, updateErr)
 		draftRevision = updated.Value.Draft.Revision
 	}
@@ -1079,24 +1079,24 @@ func newExamAttemptFixtureWithCapacity(t *testing.T, ctx context.Context, ss sto
 			ExamID: created.Value.Exam.ID, ActorUserID: manager.ID, ExpectedRevision: draftRevision,
 			Policy: browser.Clone(), UpdatedAt: model.MillisFromTime(now.Add(time.Millisecond)),
 			AuditEventID: audit.ID, AuditAt: model.GetMillis(),
-		}, examCommand(manager.ID, "exam.draft.browser_policy.configure.v1", "attempt-browser-policy", "attempt-browser-policy"))
+		}, examCommand(manager.ID, "exam.draft.browser_policy.configure", "attempt-browser-policy", "attempt-browser-policy"))
 		require.NoError(t, updateErr)
 		draftRevision = updated.Value.Draft.Revision
 	}
 	directory := starterWorkspaceMutation(t, ctx, ss, created.Value.Exam.ID, manager.ID, programme.AcademicUnitID, draftRevision,
 		model.NewStarterWorkspaceEntryID(), "cmd", now.Add(time.Millisecond))
 	_, err := ss.ExamStarterWorkspace().CreateDirectory(ctx, directory,
-		examCommand(manager.ID, "exam.starter_workspace.directory.create.v1", "attempt-dir", "attempt-dir"))
+		examCommand(manager.ID, "exam.starter_workspace.directory.create", "attempt-dir", "attempt-dir"))
 	require.NoError(t, err)
 	draftRevision++
 	file := reserveStarterWorkspaceObject(t, ctx, ss, created.Value.Exam.ID, manager.ID, programme.AcademicUnitID, draftRevision,
 		model.NewStarterWorkspaceEntryID(), "cmd/main.go", now.Add(2*time.Millisecond), 13)
 	_, err = ss.ExamStarterWorkspace().CreateFile(ctx, file,
-		examCommand(manager.ID, "exam.starter_workspace.file.create.v1", "attempt-file", "attempt-file"))
+		examCommand(manager.ID, "exam.starter_workspace.file.create", "attempt-file", "attempt-file"))
 	require.NoError(t, err)
 	draftRevision++
 	publication := examRevisionPublication(t, ctx, ss, created.Value.Exam.ID, manager.ID, programme.AcademicUnitID, draftRevision, now.Add(3*time.Millisecond))
-	published, err := ss.ExamRevision().Publish(ctx, publication, examCommand(manager.ID, "exam.revision.publish.v1", "attempt-revision", "attempt-revision"))
+	published, err := ss.ExamRevision().Publish(ctx, publication, examCommand(manager.ID, "exam.revision.publish", "attempt-revision", "attempt-revision"))
 	require.NoError(t, err)
 	// PostgreSQL decides that a new start is strictly future. A loaded host
 	// can spend the one-second lead before the statement runs, so a refused
@@ -1113,7 +1113,7 @@ func newExamAttemptFixtureWithCapacity(t *testing.T, ctx context.Context, ss sto
 		_, err = ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting, OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: manager.ID,
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, manager.ID, created.Value.Exam.ID, programme.AcademicUnitID).ID, AuditAt: model.GetMillis(),
 			Mail: newExamSittingMailFanout(t, manager.ID, store.ExamSittingMailScheduled, model.MailTemplateExamSittingScheduled)},
-			examCommand(manager.ID, "exam.sitting.schedule.v1", key, key))
+			examCommand(manager.ID, "exam.sitting.schedule", key, key))
 		var conflict *store.ErrConflict
 		if scheduleAttempt < 5 && errors.As(err, &conflict) && conflict.Constraint == "exam_sitting_not_future" {
 			continue

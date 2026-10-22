@@ -171,7 +171,7 @@ func testAuditedClassMemberLifecycle(
 	transferAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
 	previousTransferAttempt := saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String())
 	transferNotice := classMemberPreparedMail(t, second, model.MailTemplateAcademicClassTransferred, second.CreatedAt)
-	transferCommand := &store.CommandIdempotency{UserID: user.ID, Operation: "class_member.enroll.v1",
+	transferCommand := &store.CommandIdempotency{UserID: user.ID, Operation: "class_member.enroll",
 		KeyDigest:   sha256.Sum256([]byte("class-transfer-replay")),
 		Fingerprint: sha256.Sum256([]byte("class-transfer-package")),
 		Retention:   time.Hour, Wait: time.Second, Batch: &store.CommandBatch{GroupDigest: sha256.Sum256([]byte("class-transfer-group"))}}

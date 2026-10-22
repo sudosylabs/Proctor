@@ -38,7 +38,7 @@ func testStarterWorkspaceRecursiveRemoval(t *testing.T, ss store.Store, probes .
 		return starterWorkspaceMutation(t, ctx, ss, examID, user.ID, unit.ID, revision, id, path, model.NowUTC())
 	}
 	command := func(operation, label string) *store.CommandIdempotency {
-		value := examCommand(user.ID, "exam.starter_workspace."+operation+".v1", label, label)
+		value := examCommand(user.ID, "exam.starter_workspace."+operation, label, label)
 		value.Retention = time.Millisecond
 		return value
 	}
@@ -63,7 +63,7 @@ func testStarterWorkspaceRecursiveRemoval(t *testing.T, ss store.Store, probes .
 	directory("src%_!-sibling")
 	pinned := file("src%_!/nested/published.txt")
 	publication, err := ss.ExamRevision().Publish(ctx, examRevisionPublication(t, ctx, ss, examID, user.ID, unit.ID, revision, model.NowUTC()),
-		examCommand(user.ID, "exam.revision.publish.v1", "recursive-publish", "recursive-publish"))
+		examCommand(user.ID, "exam.revision.publish", "recursive-publish", "recursive-publish"))
 	require.NoError(t, err)
 	revision = publication.DraftRevision
 	stale := mutate(root, "")

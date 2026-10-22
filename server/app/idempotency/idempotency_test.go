@@ -30,12 +30,12 @@ func TestPreparePinsCommandIdentity(t *testing.T) {
 		Title  string `json:"title"`
 	}
 	userID := model.NewUserID()
-	got, err := Prepare(caller(userID), "exam.create.v1", "retry-key", semantics{ExamID: "exam-1", Title: "Networks"})
+	got, err := Prepare(caller(userID), "exam.create", "retry-key", semantics{ExamID: "exam-1", Title: "Networks"})
 	require.NoError(t, err)
 	wantKey := sha256.Sum256([]byte("retry-key"))
-	wantFingerprint := sha256.Sum256([]byte("exam.create.v1\x00{\"exam_id\":\"exam-1\",\"title\":\"Networks\"}"))
+	wantFingerprint := sha256.Sum256([]byte("exam.create\x00{\"exam_id\":\"exam-1\",\"title\":\"Networks\"}"))
 	require.Equal(t, userID, got.UserID)
-	require.Equal(t, "exam.create.v1", got.Operation)
+	require.Equal(t, "exam.create", got.Operation)
 	require.Equal(t, wantKey, got.KeyDigest)
 	require.Equal(t, wantFingerprint, got.Fingerprint)
 	require.Equal(t, 24*time.Hour, got.Retention)

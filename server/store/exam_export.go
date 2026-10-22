@@ -14,7 +14,7 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-const ExamExportCreateOperation = "exam.export.create.v1"
+const ExamExportCreateOperation = "exam.export.create"
 
 type ExamExportAccess struct {
 	ExamRecordsMutation

@@ -14,7 +14,7 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-const ExamCorrectionResourceStageOperation = "exam.sitting.correction.resource.stage.v1"
+const ExamCorrectionResourceStageOperation = "exam.sitting.correction.resource.stage"
 
 // ExamCorrectionResourceStageTarget says whether a purpose-bound stage
 // allocates a new stable resource identity or replaces the content behind an
