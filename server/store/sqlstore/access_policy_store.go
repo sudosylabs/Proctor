@@ -84,10 +84,73 @@ func (s SQLAccessPolicyStore) Preflight(ctx context.Context, input *store.Access
 	})
 }
 
+// accessPolicyReplacementOutcome is the committed result of an Access Policy
+// replacement. It persists as accessPolicyReplacementDocument.
 type accessPolicyReplacementOutcome struct {
-	Result              *store.AccessPolicyReplacementResult `json:"result"`
-	ChangedFields       []string                             `json:"changed_fields"`
-	RevokedSessionCount int                                  `json:"revoked_session_count"`
+	Result              *store.AccessPolicyReplacementResult
+	ChangedFields       []string
+	RevokedSessionCount int
+}
+
+// accessPolicyReplacementDocument is the persisted outcome of an Access
+// Policy replacement. Revocation identifiers and token hashes are post-commit
+// effects, not part of the retained response, so replays never emit them.
+type accessPolicyReplacementDocument struct {
+	Policy              accessPolicyDocument             `json:"policy"`
+	History             []accessPolicyTransitionDocument `json:"history"`
+	Changed             bool                             `json:"changed"`
+	ChangedFields       []string                         `json:"changed_fields"`
+	RevokedSessionCount int                              `json:"revoked_session_count"`
+}
+
+func (accessPolicyReplacementDocument) outcomeDocument() {}
+
+// accessPolicyDocument spells model.AccessPolicy inside a persisted outcome;
+// the two convert directly.
+type accessPolicyDocument struct {
+	ID                               model.AccessPolicyID                   `json:"id"`
+	Revision                         int64                                  `json:"revision"`
+	CreatedAt                        time.Time                              `json:"created_at"`
+	UpdatedAt                        time.Time                              `json:"updated_at"`
+	LocalLoginEnabled                bool                                   `json:"local_login_enabled"`
+	PublicRegistrationEnabled        bool                                   `json:"public_registration_enabled"`
+	InvitationAdmissionEnabled       bool                                   `json:"invitation_admission_enabled"`
+	InvitationLocalCredentialEnabled bool                                   `json:"invitation_local_credential_enabled"`
+	DesktopAuthorizationEnabled      bool                                   `json:"desktop_authorization_enabled"`
+	ProviderAdmissions               map[string]model.ProviderAdmissionMode `json:"provider_admissions"`
+}
+
+// accessPolicyTransitionDocument spells model.AccessPolicyTransition inside a
+// persisted outcome; the two convert directly.
+type accessPolicyTransitionDocument struct {
+	PolicyID      model.AccessPolicyID                `json:"policy_id"`
+	FromRevision  int64                               `json:"from_revision"`
+	ToRevision    int64                               `json:"to_revision"`
+	ActorID       model.UserID                        `json:"actor_id"`
+	ChangedFields []string                            `json:"changed_fields"`
+	ChangedAt     time.Time                           `json:"changed_at"`
+	Outcome       model.AccessPolicyTransitionOutcome `json:"outcome"`
+}
+
+func encodeAccessPolicyReplacementOutcome(outcome accessPolicyReplacementOutcome) ([]byte, error) {
+	if outcome.Result == nil || outcome.Result.Snapshot == nil || outcome.Result.Snapshot.Policy == nil {
+		return nil, store.NewErrInvalidInput("access_policy", "outcome", nil)
+	}
+	snapshot := outcome.Result.Snapshot
+	document := accessPolicyReplacementDocument{
+		Policy: accessPolicyDocument(*snapshot.Policy), Changed: outcome.Result.Changed,
+		ChangedFields: outcome.ChangedFields, RevokedSessionCount: outcome.RevokedSessionCount,
+	}
+	if snapshot.History != nil {
+		document.History = make([]accessPolicyTransitionDocument, 0, len(snapshot.History))
+	}
+	for _, transition := range snapshot.History {
+		if transition == nil {
+			return nil, store.NewErrInvalidInput("access_policy", "outcome_history", nil)
+		}
+		document.History = append(document.History, accessPolicyTransitionDocument(*transition))
+	}
+	return encodeOutcome(document)
 }
 
 func (s SQLAccessPolicyStore) Replace(ctx context.Context, input *store.AccessPolicyReplacement, command *store.CommandIdempotency) (*store.AccessPolicyReplacementResult, error) {
@@ -182,15 +245,7 @@ func (s SQLAccessPolicyStore) Replace(ctx context.Context, input *store.AccessPo
 			}
 			return outcome, nil
 		},
-		encode: func(outcome accessPolicyReplacementOutcome) ([]byte, error) {
-			retained := outcome
-			result := *outcome.Result
-			// Revocation identifiers and token hashes are post-commit effects, not
-			// part of the public retained response. Replays must never emit them.
-			result.SessionRevocations = []store.AccessPolicySessionRevocation{}
-			retained.Result = &result
-			return json.Marshal(&retained)
-		},
+		encode: encodeAccessPolicyReplacementOutcome,
 		decode: decodeAccessPolicyReplacementOutcome,
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, outcome accessPolicyReplacementOutcome, originalAuditID string) error {
 			return completeAccessPolicyReplacementAudit(ctx, tx, outcome, input, true, originalAuditID)
@@ -205,24 +260,31 @@ func (s SQLAccessPolicyStore) Replace(ctx context.Context, input *store.AccessPo
 }
 
 func decodeAccessPolicyReplacementOutcome(encoded []byte) (accessPolicyReplacementOutcome, error) {
-	var outcome accessPolicyReplacementOutcome
-	if err := json.Unmarshal(encoded, &outcome); err != nil || outcome.Result == nil || outcome.Result.Snapshot == nil || outcome.Result.Snapshot.Policy == nil || outcome.Result.Snapshot.Policy.Validate() != nil ||
-		outcome.RevokedSessionCount < 0 || len(outcome.ChangedFields) > 7 {
+	var document accessPolicyReplacementDocument
+	if err := decodeOutcome(encoded, &document); err != nil {
+		return accessPolicyReplacementOutcome{}, invalidPersistedState("command_outcome", "outcome", err)
+	}
+	policy := model.AccessPolicy(document.Policy)
+	snapshot := &store.AccessPolicySnapshot{Policy: &policy}
+	if document.History != nil {
+		snapshot.History = make([]*model.AccessPolicyTransition, 0, len(document.History))
+	}
+	for _, transition := range document.History {
+		value := model.AccessPolicyTransition(transition)
+		snapshot.History = append(snapshot.History, &value)
+	}
+	outcome := accessPolicyReplacementOutcome{
+		Result: &store.AccessPolicyReplacementResult{
+			Snapshot: snapshot, Changed: document.Changed, SessionRevocations: []store.AccessPolicySessionRevocation{},
+		},
+		ChangedFields: document.ChangedFields, RevokedSessionCount: document.RevokedSessionCount,
+	}
+	if outcome.Result.Snapshot.Policy.Validate() != nil || outcome.RevokedSessionCount < 0 || len(outcome.ChangedFields) > 7 {
 		return accessPolicyReplacementOutcome{}, invalidPersistedState("command_outcome", "outcome", errors.New("invalid access policy outcome"))
 	}
 	for _, transition := range outcome.Result.Snapshot.History {
 		if transition == nil || transition.Validate() != nil {
 			return accessPolicyReplacementOutcome{}, invalidPersistedState("command_outcome", "outcome", errors.New("invalid access policy history outcome"))
-		}
-	}
-	for _, revocation := range outcome.Result.SessionRevocations {
-		if !revocation.UserID.IsValid() || len(revocation.SessionIDs) == 0 {
-			return accessPolicyReplacementOutcome{}, invalidPersistedState("command_outcome", "outcome", errors.New("invalid access policy session revocation outcome"))
-		}
-		for _, id := range revocation.SessionIDs {
-			if !id.IsValid() {
-				return accessPolicyReplacementOutcome{}, invalidPersistedState("command_outcome", "outcome", errors.New("invalid access policy revoked session"))
-			}
 		}
 	}
 	return outcome, nil

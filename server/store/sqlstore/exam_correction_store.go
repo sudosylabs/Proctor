@@ -66,6 +66,8 @@ type examCorrectionStageOutcome struct {
 	StageID string `json:"stage_id"`
 }
 
+func (examCorrectionStageOutcome) outcomeDocument() {}
+
 func (s SQLExamCorrectionStore) ReserveResourceStage(ctx context.Context, input *store.ExamCorrectionResourceStageReservation, command *store.CommandIdempotency) (*store.ExamCorrectionResourceStage, error) {
 	if err := validateExamCorrectionStageReservation(input, command); err != nil {
 		return nil, err
@@ -78,10 +80,10 @@ func (s SQLExamCorrectionStore) ReserveResourceStage(ctx context.Context, input 
 			}
 			return examCorrectionStageOutcome{StageID: input.StageID.String()}, nil
 		},
-		encode: func(value examCorrectionStageOutcome) ([]byte, error) { return encodeCommandOutcome(value) },
+		encode: func(value examCorrectionStageOutcome) ([]byte, error) { return encodeOutcome(value) },
 		decode: func(data []byte) (examCorrectionStageOutcome, error) {
 			var value examCorrectionStageOutcome
-			if err := decodeCommandOutcome(data, &value); err != nil {
+			if err := decodeOutcome(data, &value); err != nil {
 				return value, err
 			}
 			if _, err := model.ParseExamCorrectionResourceStageID(value.StageID); err != nil {
@@ -384,16 +386,22 @@ func (s SQLExamCorrectionStore) Apply(ctx context.Context, input *store.ExamCorr
 		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamCorrectionResult, error) {
 			return applyExamCorrection(ctx, tx, input)
 		},
-		encode: func(value *store.ExamCorrectionResult) ([]byte, error) { return encodeCommandOutcome(value) },
+		encode: func(value *store.ExamCorrectionResult) ([]byte, error) {
+			return encodeOutcome(newExamCorrectionOutcome(value))
+		},
 		decode: func(data []byte) (*store.ExamCorrectionResult, error) {
-			var value store.ExamCorrectionResult
-			if err := decodeCommandOutcome(data, &value); err != nil {
+			var outcome examCorrectionOutcome
+			if err := decodeOutcome(data, &outcome); err != nil {
 				return nil, err
 			}
-			if err := validateExamCorrectionOutcome(&value); err != nil {
+			value, err := outcome.result()
+			if err != nil {
+				return nil, invalidPersistedState("exam_correction", "outcome_sitting", err)
+			}
+			if err := validateExamCorrectionOutcome(value); err != nil {
 				return nil, err
 			}
-			return &value, nil
+			return value, nil
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *store.ExamCorrectionResult, originalAuditID string) error {
 			data, err := encodeExamCorrectionAudit(value, true, originalAuditID)
@@ -666,6 +674,79 @@ func examCorrectionRevisionSummary(revision *model.ExamRevision) *store.ExamRevi
 		StarterWorkspaceDigest: revision.StarterWorkspaceDigest, ContentDigest: revision.ContentDigest,
 		ResourceCount: len(revision.Resources), StarterWorkspaceEntries: len(revision.StarterWorkspace), StarterWorkspaceBytes: starterBytes,
 		PublishedByUserID: revision.PublishedByUserID, PublishedAt: revision.PublishedAt, BaseRevisionID: revision.BaseRevisionID, Kind: revision.Kind}
+}
+
+// examCorrectionOutcome is the persisted outcome of a live correction: the
+// sealed Revision summary and the retargeted Sitting.
+type examCorrectionOutcome struct {
+	Revision           examRevisionSummaryDocument `json:"revision"`
+	Sitting            examSittingDocument         `json:"sitting"`
+	AcademicUnitID     model.AcademicUnitID        `json:"academic_unit_id"`
+	PreviousRevisionID model.ExamRevisionID        `json:"previous_revision_id"`
+	EffectiveAt        time.Time                   `json:"effective_at"`
+}
+
+func (examCorrectionOutcome) outcomeDocument() {}
+
+// examRevisionSummaryDocument spells store.ExamRevisionSummary inside a
+// persisted outcome.
+type examRevisionSummaryDocument struct {
+	ID                      model.ExamRevisionID              `json:"id"`
+	ExamID                  model.ExamID                      `json:"exam_id"`
+	Number                  int64                             `json:"number"`
+	SourceDraftRevision     int64                             `json:"source_draft_revision"`
+	Title                   string                            `json:"title"`
+	PolicySchemaVersion     int                               `json:"policy_schema_version"`
+	PolicyDigest            string                            `json:"policy_digest"`
+	BrowserPolicyDigest     string                            `json:"browser_policy_digest"`
+	Capacity                model.ExamCapacityPolicy          `json:"capacity"`
+	StarterWorkspaceDigest  string                            `json:"starter_workspace_digest"`
+	ContentDigest           string                            `json:"content_digest"`
+	ResourceCount           int                               `json:"resource_count"`
+	StarterWorkspaceEntries int                               `json:"starter_workspace_entries"`
+	StarterWorkspaceBytes   int64                             `json:"starter_workspace_bytes"`
+	PublishedByUserID       model.UserID                      `json:"published_by_user_id"`
+	PublishedAt             time.Time                         `json:"published_at"`
+	BaseRevisionID          model.ExamRevisionID              `json:"base_revision_id,omitempty"`
+	Kind                    model.ExamRevisionPublicationKind `json:"kind"`
+}
+
+func newExamCorrectionOutcome(value *store.ExamCorrectionResult) examCorrectionOutcome {
+	revision := value.Revision
+	return examCorrectionOutcome{
+		Revision: examRevisionSummaryDocument{
+			ID: revision.ID, ExamID: revision.ExamID, Number: revision.Number, SourceDraftRevision: revision.SourceDraftRevision,
+			Title: revision.Title, PolicySchemaVersion: revision.PolicySchemaVersion, PolicyDigest: revision.PolicyDigest,
+			BrowserPolicyDigest: revision.BrowserPolicyDigest, Capacity: revision.Capacity,
+			StarterWorkspaceDigest: revision.StarterWorkspaceDigest, ContentDigest: revision.ContentDigest,
+			ResourceCount: revision.ResourceCount, StarterWorkspaceEntries: revision.StarterWorkspaceEntries,
+			StarterWorkspaceBytes: revision.StarterWorkspaceBytes, PublishedByUserID: revision.PublishedByUserID,
+			PublishedAt: revision.PublishedAt, BaseRevisionID: revision.BaseRevisionID, Kind: revision.Kind,
+		},
+		Sitting: newExamSittingDocument(value.Sitting.Sitting), AcademicUnitID: value.Sitting.AcademicUnitID,
+		PreviousRevisionID: value.PreviousRevisionID, EffectiveAt: value.EffectiveAt,
+	}
+}
+
+func (o examCorrectionOutcome) result() (*store.ExamCorrectionResult, error) {
+	sitting, err := o.Sitting.model()
+	if err != nil {
+		return nil, err
+	}
+	revision := o.Revision
+	return &store.ExamCorrectionResult{
+		Revision: &store.ExamRevisionSummary{
+			ID: revision.ID, ExamID: revision.ExamID, Number: revision.Number, SourceDraftRevision: revision.SourceDraftRevision,
+			Title: revision.Title, PolicySchemaVersion: revision.PolicySchemaVersion, PolicyDigest: revision.PolicyDigest,
+			BrowserPolicyDigest: revision.BrowserPolicyDigest, Capacity: revision.Capacity,
+			StarterWorkspaceDigest: revision.StarterWorkspaceDigest, ContentDigest: revision.ContentDigest,
+			ResourceCount: revision.ResourceCount, StarterWorkspaceEntries: revision.StarterWorkspaceEntries,
+			StarterWorkspaceBytes: revision.StarterWorkspaceBytes, PublishedByUserID: revision.PublishedByUserID,
+			PublishedAt: revision.PublishedAt, BaseRevisionID: revision.BaseRevisionID, Kind: revision.Kind,
+		},
+		Sitting:            &store.ExamSittingSnapshot{Sitting: sitting, AcademicUnitID: o.AcademicUnitID},
+		PreviousRevisionID: o.PreviousRevisionID, EffectiveAt: o.EffectiveAt,
+	}, nil
 }
 
 func validateExamCorrectionOutcome(value *store.ExamCorrectionResult) error {

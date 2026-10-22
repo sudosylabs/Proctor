@@ -1069,15 +1069,17 @@ type userDisabledCommandOutcome struct {
 	NoOp   bool   `json:"no_op,omitempty"`
 }
 
+func (userDisabledCommandOutcome) outcomeDocument() {}
+
 func encodeUserDisabledMutationOutcome(value *userDisabledMutationResult) ([]byte, error) {
 	if value == nil || value.Value == nil || value.Value.User == nil || !value.Value.User.ID.IsValid() {
 		return nil, store.NewErrInvalidInput("user", "command_outcome", nil)
 	}
-	return encodeCommandOutcome(userDisabledCommandOutcome{UserID: value.Value.User.ID.String(), NoOp: value.NoOp})
+	return encodeOutcome(userDisabledCommandOutcome{UserID: value.Value.User.ID.String(), NoOp: value.NoOp})
 }
 func decodeUserDisabledMutationOutcome(data []byte) (*userDisabledMutationResult, error) {
 	var outcome userDisabledCommandOutcome
-	if err := decodeCommandOutcome(data, &outcome); err != nil {
+	if err := decodeOutcome(data, &outcome); err != nil {
 		return nil, err
 	}
 	id, err := model.ParseUserID(outcome.UserID)

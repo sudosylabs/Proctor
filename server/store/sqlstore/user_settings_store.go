@@ -10,7 +10,6 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -171,18 +170,38 @@ func (s SQLUserSettingsStore) Replace(
 	return &result, nil
 }
 
+// userSettingsReplacementOutcome is the committed result of a User Settings
+// replacement; only its Result persists, as userSettingsReplacementDocument.
 type userSettingsReplacementOutcome struct {
 	Result       store.UserSettingsReplacementResult
 	AuditEventID string
 }
 
+// userSettingsReplacementDocument is the persisted outcome of a User Settings
+// replacement.
+type userSettingsReplacementDocument struct {
+	Revision      model.UserSettingsRevision `json:"revision"`
+	FormatVersion int                        `json:"format_version"`
+	UpdatedAt     time.Time                  `json:"updated_at"`
+	Changed       bool                       `json:"changed"`
+}
+
+func (userSettingsReplacementDocument) outcomeDocument() {}
+
 func encodeUserSettingsReplacementOutcome(outcome userSettingsReplacementOutcome) ([]byte, error) {
-	return json.Marshal(outcome.Result)
+	return encodeOutcome(userSettingsReplacementDocument{
+		Revision: outcome.Result.Revision, FormatVersion: outcome.Result.FormatVersion,
+		UpdatedAt: outcome.Result.UpdatedAt, Changed: outcome.Result.Changed,
+	})
 }
 
 func decodeUserSettingsReplacementOutcome(encoded []byte) (userSettingsReplacementOutcome, error) {
-	var result store.UserSettingsReplacementResult
-	if err := json.Unmarshal(encoded, &result); err != nil || !result.Revision.IsValid() ||
+	var document userSettingsReplacementDocument
+	err := decodeOutcome(encoded, &document)
+	result := store.UserSettingsReplacementResult{
+		Revision: document.Revision, FormatVersion: document.FormatVersion, UpdatedAt: document.UpdatedAt, Changed: document.Changed,
+	}
+	if err != nil || !result.Revision.IsValid() ||
 		result.FormatVersion <= 0 || result.UpdatedAt.IsZero() {
 		return userSettingsReplacementOutcome{}, invalidPersistedState(
 			"command_outcome", "outcome", errors.New("invalid user settings outcome"),

@@ -33,9 +33,9 @@ type UserSettingsReplacement struct {
 }
 
 type UserSettingsReplacementResult struct {
-	Revision      model.UserSettingsRevision `json:"revision"`
-	FormatVersion int                        `json:"format_version"`
-	UpdatedAt     time.Time                  `json:"updated_at"`
-	Changed       bool                       `json:"changed"`
-	Replayed      bool                       `json:"-"`
+	Revision      model.UserSettingsRevision
+	FormatVersion int
+	UpdatedAt     time.Time
+	Changed       bool
+	Replayed      bool
 }

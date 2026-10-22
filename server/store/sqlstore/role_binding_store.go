@@ -42,6 +42,8 @@ type roleBindingCommandOutcome struct {
 	NoOp bool   `json:"no_op,omitempty"`
 }
 
+func (roleBindingCommandOutcome) outcomeDocument() {}
+
 // roleBindingRow maps the native PostgreSQL timestamps and nullable lifecycle
 // fields onto a validated domain Role Binding.
 type roleBindingRow struct {
@@ -596,11 +598,11 @@ func encodeRoleBindingMutationOutcome(value *roleBindingMutationResult) ([]byte,
 	if value == nil || value.Value == nil || !value.Value.ID.IsValid() {
 		return nil, store.NewErrInvalidInput("role_binding", "command_outcome", nil)
 	}
-	return encodeCommandOutcome(roleBindingCommandOutcome{ID: value.Value.ID.String(), NoOp: value.NoOp})
+	return encodeOutcome(roleBindingCommandOutcome{ID: value.Value.ID.String(), NoOp: value.NoOp})
 }
 func decodeRoleBindingMutationOutcome(data []byte) (*roleBindingMutationResult, error) {
 	var outcome roleBindingCommandOutcome
-	if err := decodeCommandOutcome(data, &outcome); err != nil {
+	if err := decodeOutcome(data, &outcome); err != nil {
 		return nil, err
 	}
 	id, err := model.ParseRoleBindingID(outcome.ID)

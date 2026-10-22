@@ -64,6 +64,14 @@ module when a change is not server-only. No module has been released yet.
   `fingerprint_version` and `outcome_version`, and the request fingerprint
   no longer mixes in a version tag, so earlier retained outcomes cannot
   replay.
+- Server: every retained command outcome is a dedicated persisted document
+  with explicit member names, decoded strictly. Outcomes that stored model
+  values under Go field names (Exam Sittings, Exams and Exam Managers, Review
+  and Records results, Retention Previews and Controls, live corrections,
+  Starter Workspace, Exam Resources, Academic Units and Periods, security
+  preflights, delivery summaries, and the policy replacements) change format,
+  as does the prepared security preflight document. Earlier retained outcomes
+  no longer replay; reset development databases (**breaking**).
 - Server: Integrity Discrepancy responses drop the constant `schema_version`
   member, and Examination Export archives drop `schema_version` from
   `records.json` and `manifest.json`. Browser Policies no longer carry an

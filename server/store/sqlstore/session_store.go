@@ -660,11 +660,11 @@ func (s SQLSessionStore) RevokeAllForUser(
 	result, err := runIdempotentMutation(ctx, s.SQLStore, "idempotent user session revocation", idempotentMutation[*userSessionsMutationResult]{
 		command: input.Command, auditEventID: input.AuditEventID, execute: execute,
 		encode: func(value *userSessionsMutationResult) ([]byte, error) {
-			return encodeCommandOutcome(userSessionsCommandOutcome{UserID: input.UserID.String(), NoOp: value.NoOp})
+			return encodeOutcome(userSessionsCommandOutcome{UserID: input.UserID.String(), NoOp: value.NoOp})
 		},
 		decode: func(data []byte) (*userSessionsMutationResult, error) {
 			var outcome userSessionsCommandOutcome
-			if decodeErr := decodeCommandOutcome(data, &outcome); decodeErr != nil {
+			if decodeErr := decodeOutcome(data, &outcome); decodeErr != nil {
 				return nil, decodeErr
 			}
 			if !model.UserID(outcome.UserID).IsValid() {
@@ -696,6 +696,8 @@ type userSessionsCommandOutcome struct {
 	UserID string `json:"user_id"`
 	NoOp   bool   `json:"no_op,omitempty"`
 }
+
+func (userSessionsCommandOutcome) outcomeDocument() {}
 
 func revokeOneUserSession(
 	ctx context.Context,

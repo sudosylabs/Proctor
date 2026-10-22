@@ -53,14 +53,14 @@ func (s *SQLExamAttemptStore) PrepareSecurityPreflight(ctx context.Context, inpu
 		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*store.SecurityPreflightPrepared, error) {
 			return s.prepareSecurityPreflight(ctx, tx, input)
 		},
-		encode: func(value *store.SecurityPreflightPrepared) ([]byte, error) { return canonicalPreflightValue(value) },
+		encode: func(value *store.SecurityPreflightPrepared) ([]byte, error) {
+			return encodePreparedSecurityPreflight(value)
+		},
 		decode: func(raw []byte) (*store.SecurityPreflightPrepared, error) {
-			var value store.SecurityPreflightPrepared
-			decoded, err := decodePreparedSecurityPreflight(raw, input.Access.DesktopBuild.NativeAgreement)
+			value, err := decodePreparedSecurityPreflight(raw, input.Access.DesktopBuild.NativeAgreement)
 			if err != nil {
 				return nil, err
 			}
-			value = decoded
 			return &value, nil
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *store.SecurityPreflightPrepared, original string) error {
@@ -190,7 +190,7 @@ func (s *SQLExamAttemptStore) prepareSecurityPreflight(ctx context.Context, tx *
 	if prepared.Challenge.Validate() != nil {
 		return nil, store.NewErrInvalidInput("security_preflight", "challenge", nil)
 	}
-	document, err := canonicalPreflightValue(prepared)
+	document, err := encodePreparedSecurityPreflight(prepared)
 	if err != nil {
 		return nil, err
 	}
@@ -210,10 +210,102 @@ func (s *SQLExamAttemptStore) prepareSecurityPreflight(ctx context.Context, tx *
 	return prepared, nil
 }
 
+// securityPreflightResultOutcome is the persisted outcome of a preflight
+// report: the model-owned result document returned verbatim on replay.
+type securityPreflightResultOutcome struct {
+	Result model.SecurityPreflightResult `json:"result"`
+}
+
+func (securityPreflightResultOutcome) outcomeDocument() {}
+
+// securityPreflightPreparedDocument is the persisted spelling of a prepared
+// security preflight: the exam_security_preflights.prepared_canonical column
+// and the outcome a prepare replay returns.
+type securityPreflightPreparedDocument struct {
+	ServerTime                 time.Time                        `json:"server_time"`
+	BrowserActivityDisclosure  model.BrowserActivityDisclosure  `json:"browser_activity_disclosure"`
+	Challenge                  model.SecurityPreflightChallenge `json:"challenge"`
+	Resolved                   resolvedNativePolicyDocument     `json:"resolved"`
+	FrozenAttemptConfiguration *model.AttemptConfiguration      `json:"frozen_attempt_configuration,omitempty"`
+}
+
+func (securityPreflightPreparedDocument) outcomeDocument() {}
+
+// resolvedNativePolicyDocument spells model.ResolvedNativePolicy inside a
+// prepared preflight.
+type resolvedNativePolicyDocument struct {
+	Policy                 model.EffectiveExamSecurityPolicy   `json:"policy"`
+	PolicyContentDigest    string                              `json:"policy_content_digest"`
+	CapabilityMatrixDigest string                              `json:"capability_matrix_digest"`
+	CatalogBindings        []model.SecurityCatalogBinding      `json:"catalog_bindings"`
+	Sources                []model.NativeSourceID              `json:"sources"`
+	Categories             []model.NativeSourceCategory        `json:"categories"`
+	Requirements           []nativeCoverageRequirementDocument `json:"requirements"`
+}
+
+type nativeCoverageRequirementDocument struct {
+	CoverageKey   string                            `json:"coverage_key"`
+	CapabilityID  string                            `json:"capability_id"`
+	SourceID      model.NativeSourceID              `json:"source_id"`
+	RequiredClaim model.NativeCapabilityClaim       `json:"required_claim"`
+	Entry         model.NativeCapabilityMatrixEntry `json:"entry"`
+	Baseline      bool                              `json:"baseline"`
+}
+
+func newResolvedNativePolicyDocument(resolved model.ResolvedNativePolicy) resolvedNativePolicyDocument {
+	document := resolvedNativePolicyDocument{
+		Policy: resolved.Policy, PolicyContentDigest: resolved.PolicyContentDigest,
+		CapabilityMatrixDigest: resolved.CapabilityMatrixDigest, CatalogBindings: resolved.CatalogBindings,
+		Sources: resolved.Sources, Categories: resolved.Categories,
+	}
+	if resolved.Requirements != nil {
+		// Keep an empty list distinct from an absent one: connection compares
+		// the canonical spelling of the stored and current resolution.
+		document.Requirements = make([]nativeCoverageRequirementDocument, 0, len(resolved.Requirements))
+	}
+	for _, requirement := range resolved.Requirements {
+		document.Requirements = append(document.Requirements, nativeCoverageRequirementDocument{
+			CoverageKey: requirement.CoverageKey, CapabilityID: requirement.CapabilityID, SourceID: requirement.SourceID,
+			RequiredClaim: requirement.RequiredClaim, Entry: requirement.Entry, Baseline: requirement.Baseline,
+		})
+	}
+	return document
+}
+
+func (d resolvedNativePolicyDocument) model() model.ResolvedNativePolicy {
+	resolved := model.ResolvedNativePolicy{
+		Policy: d.Policy, PolicyContentDigest: d.PolicyContentDigest, CapabilityMatrixDigest: d.CapabilityMatrixDigest,
+		CatalogBindings: d.CatalogBindings, Sources: d.Sources, Categories: d.Categories,
+	}
+	if d.Requirements != nil {
+		resolved.Requirements = make([]model.NativeCoverageRequirement, 0, len(d.Requirements))
+	}
+	for _, requirement := range d.Requirements {
+		resolved.Requirements = append(resolved.Requirements, model.NativeCoverageRequirement{
+			CoverageKey: requirement.CoverageKey, CapabilityID: requirement.CapabilityID, SourceID: requirement.SourceID,
+			RequiredClaim: requirement.RequiredClaim, Entry: requirement.Entry, Baseline: requirement.Baseline,
+		})
+	}
+	return resolved
+}
+
+func encodePreparedSecurityPreflight(prepared *store.SecurityPreflightPrepared) ([]byte, error) {
+	return encodeOutcome(securityPreflightPreparedDocument{
+		ServerTime: prepared.ServerTime, BrowserActivityDisclosure: prepared.BrowserActivityDisclosure,
+		Challenge: prepared.Challenge, Resolved: newResolvedNativePolicyDocument(prepared.Resolved),
+		FrozenAttemptConfiguration: prepared.FrozenAttemptConfiguration,
+	})
+}
+
 func decodePreparedSecurityPreflight(raw []byte, agreement *model.DesktopNativeAgreement) (store.SecurityPreflightPrepared, error) {
-	var prepared store.SecurityPreflightPrepared
-	if err := json.Unmarshal(raw, &prepared); err != nil {
-		return prepared, invalidPersistedState("security_preflight", "prepared", err)
+	var document securityPreflightPreparedDocument
+	if err := decodeOutcome(raw, &document); err != nil {
+		return store.SecurityPreflightPrepared{}, invalidPersistedState("security_preflight", "prepared", err)
+	}
+	prepared := store.SecurityPreflightPrepared{
+		ServerTime: document.ServerTime, BrowserActivityDisclosure: document.BrowserActivityDisclosure,
+		Challenge: document.Challenge, Resolved: document.Resolved.model(),
+		FrozenAttemptConfiguration: document.FrozenAttemptConfiguration,
 	}
 	if prepared.Challenge.Validate() != nil || !prepared.ServerTime.Equal(prepared.Challenge.IssuedAt) || prepared.Resolved.Validate(agreement, prepared.ServerTime) != nil || prepared.BrowserActivityDisclosure.Validate() != nil || (prepared.FrozenAttemptConfiguration != nil && prepared.FrozenAttemptConfiguration.Validate() != nil) {
 		return prepared, invalidPersistedState("security_preflight", "prepared", model.ErrSecurityPreflightInvalid)
@@ -311,16 +403,18 @@ func (s *SQLExamAttemptStore) ReportSecurityPreflight(ctx context.Context, input
 				return nil, err
 			}
 			return &result, nil
-		}, encode: func(value *model.SecurityPreflightResult) ([]byte, error) { return canonicalPreflightValue(value) },
+		}, encode: func(value *model.SecurityPreflightResult) ([]byte, error) {
+			return encodeOutcome(securityPreflightResultOutcome{Result: *value})
+		},
 		decode: func(raw []byte) (*model.SecurityPreflightResult, error) {
-			var value model.SecurityPreflightResult
-			if err := decodeCommandOutcome(raw, &value); err != nil {
+			var outcome securityPreflightResultOutcome
+			if err := decodeOutcome(raw, &outcome); err != nil {
 				return nil, err
 			}
-			if err := value.Validate(); err != nil {
+			if err := outcome.Result.Validate(); err != nil {
 				return nil, invalidPersistedState("security_preflight", "result", err)
 			}
-			return &value, nil
+			return &outcome.Result, nil
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *model.SecurityPreflightResult, original string) error {
 			guard, err := s.lockPreflightEligibility(ctx, tx, input.Access)

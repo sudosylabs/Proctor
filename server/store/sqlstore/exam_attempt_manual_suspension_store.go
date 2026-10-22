@@ -22,10 +22,18 @@ import (
 // committed episode, ended Participation, and closed Connection are immutable,
 // so replay rehydrates the original result from them.
 type examAttemptManualSuspensionOutcome struct {
-	ExamID, SittingID, ClassID, CandidateID, AttemptID, ParticipationID, SuspensionID string
-	ConnectionID                                                                      string
-	ConnectionClosed                                                                  bool
+	ExamID           string `json:"exam_id"`
+	SittingID        string `json:"sitting_id"`
+	ClassID          string `json:"class_id"`
+	CandidateID      string `json:"candidate_id"`
+	AttemptID        string `json:"attempt_id"`
+	ParticipationID  string `json:"participation_id"`
+	SuspensionID     string `json:"suspension_id"`
+	ConnectionID     string `json:"connection_id"`
+	ConnectionClosed bool   `json:"connection_closed"`
 }
+
+func (examAttemptManualSuspensionOutcome) outcomeDocument() {}
 
 // SuspendAttempt implements store.ExamAttemptStore: it applies an Exam
 // Manager's kick to the Attempt under an ExamAttemptSuspendOperation command,
@@ -48,10 +56,10 @@ func (s *SQLExamAttemptStore) SuspendAttempt(ctx context.Context, input *store.E
 			}
 			return suspendExamAttemptByManager(ctx, tx, input)
 		},
-		encode: func(value examAttemptManualSuspensionOutcome) ([]byte, error) { return encodeCommandOutcome(value) },
+		encode: func(value examAttemptManualSuspensionOutcome) ([]byte, error) { return encodeOutcome(value) },
 		decode: func(encoded []byte) (examAttemptManualSuspensionOutcome, error) {
 			var value examAttemptManualSuspensionOutcome
-			return value, decodeCommandOutcome(encoded, &value)
+			return value, decodeOutcome(encoded, &value)
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value examAttemptManualSuspensionOutcome, originalAuditID string) error {
 			if err := guardExamAttemptReallowAuthority(ctx, tx, guard, false); err != nil {

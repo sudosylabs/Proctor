@@ -76,12 +76,22 @@ func browserDeclarationReplay(ctx context.Context, tx *sqlxTxWrapper, owner brow
 	return &record, nil
 }
 
+// browserDeliverySummaryOutcome is the persisted outcome of a browser delivery
+// summary: the model-owned summary document as answered.
+type browserDeliverySummaryOutcome struct {
+	Result model.BrowserDeliverySummaryResult `json:"result"`
+}
+
+func (browserDeliverySummaryOutcome) outcomeDocument() {}
+
 type browserDeclarationOutcome struct {
 	Refusal  string                          `json:"refusal"`
 	Receipt  model.DeliveryGapReceipt        `json:"receipt"`
 	Status   *model.BrowserSourceStatus      `json:"status"`
 	Capacity *model.DeliveryMetadataCapacity `json:"capacity"`
 }
+
+func (browserDeclarationOutcome) outcomeDocument() {}
 
 // DeclareBrowserDeliveryGaps records the source's declared delivery gaps. A
 // refused declaration returns *store.BrowserDeliveryRefusal and exhausted
@@ -289,10 +299,10 @@ func (s *SQLExamAttemptStore) declareBrowserDelivery(ctx context.Context, access
 			}
 			return &browserDeclarationOutcome{Receipt: record.Receipt, Status: status}, nil
 		},
-		encode: func(value *browserDeclarationOutcome) ([]byte, error) { return canonicalPreflightValue(value) },
+		encode: func(value *browserDeclarationOutcome) ([]byte, error) { return encodeOutcome(value) },
 		decode: func(raw []byte) (*browserDeclarationOutcome, error) {
 			var result browserDeclarationOutcome
-			if err := decodeCommandOutcome(raw, &result); err != nil {
+			if err := decodeOutcome(raw, &result); err != nil {
 				return nil, err
 			}
 			if err := validateDeliveryDeclarationOutcome(result.Refusal, result.Receipt, result.Capacity); err != nil {
@@ -491,13 +501,15 @@ func (s *SQLExamAttemptStore) UpdateBrowserDeliverySummary(ctx context.Context, 
 				return nil, err
 			}
 			return hydrate(ctx, tx, nil)
-		}, encode: func(value *model.BrowserDeliverySummaryResult) ([]byte, error) { return canonicalPreflightValue(value) },
+		}, encode: func(value *model.BrowserDeliverySummaryResult) ([]byte, error) {
+			return encodeOutcome(browserDeliverySummaryOutcome{Result: *value})
+		},
 		decode: func(raw []byte) (*model.BrowserDeliverySummaryResult, error) {
-			var v model.BrowserDeliverySummaryResult
-			if err := decodeCommandOutcome(raw, &v); err != nil {
+			var outcome browserDeliverySummaryOutcome
+			if err := decodeOutcome(raw, &outcome); err != nil {
 				return nil, err
 			}
-			return &v, nil
+			return &outcome.Result, nil
 		}, hydrateReplay: hydrate,
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *model.BrowserDeliverySummaryResult, original string) error {
 			return completeBrowserDeliveryAudit(ctx, tx, input.AuditEventID, input.AuditAt, input.Access.SourceSessionID, true)

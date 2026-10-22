@@ -185,13 +185,15 @@ func (s SQLExamAuthoringStore) Archive(ctx context.Context, input *store.ExamArc
 		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*model.Exam, error) {
 			return archiveExam(ctx, tx, prepared)
 		},
-		encode: func(exam *model.Exam) ([]byte, error) { return encodeCommandOutcome(examAccessRowFromModel(exam)) },
+		encode: func(exam *model.Exam) ([]byte, error) {
+			return encodeOutcome(examArchiveOutcome{Exam: newExamDocument(exam)})
+		},
 		decode: func(data []byte) (*model.Exam, error) {
-			var row examAccessRow
-			if err := decodeCommandOutcome(data, &row); err != nil {
-				return nil, err
+			var outcome examArchiveOutcome
+			if decodeErr := decodeOutcome(data, &outcome); decodeErr != nil {
+				return nil, decodeErr
 			}
-			return row.model()
+			return outcome.Exam.model()
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, exam *model.Exam, originalAuditID string) error {
 			encoded, encodeErr := model.EncodeAuditData(map[string]any{
@@ -353,14 +355,42 @@ func (r examSummaryRow) model() (store.ExamSummary, error) {
 	return result, nil
 }
 
-func examAccessRowFromModel(exam *model.Exam) examAccessRow {
-	row := examAccessRow{ID: exam.ID.String(), AcademicUnitID: exam.AcademicUnitID.String(), CreatorUserID: exam.CreatorUserID.String(),
-		OwnerUserID: exam.OwnerUserID.String(), CreatedAt: exam.CreatedAt, UpdatedAt: exam.UpdatedAt, Revision: exam.Revision}
-	if !exam.DefaultRevisionID.IsZero() {
-		row.DefaultRevisionID = sql.NullString{String: exam.DefaultRevisionID.String(), Valid: true}
-	}
-	if exam.ArchivedAt.Valid {
-		row.ArchivedAt = sql.NullTime{Time: exam.ArchivedAt.Time, Valid: true}
-	}
-	return row
+// examDocument spells model.Exam inside persisted command outcomes.
+type examDocument struct {
+	ID                model.ExamID         `json:"id"`
+	AcademicUnitID    model.AcademicUnitID `json:"academic_unit_id"`
+	CreatorUserID     model.UserID         `json:"creator_user_id"`
+	OwnerUserID       model.UserID         `json:"owner_user_id"`
+	DefaultRevisionID model.ExamRevisionID `json:"default_revision_id,omitempty"`
+	CreatedAt         time.Time            `json:"created_at"`
+	UpdatedAt         time.Time            `json:"updated_at"`
+	ArchivedAt        model.OptionalTime   `json:"archived_at"`
+	Revision          int64                `json:"revision"`
 }
+
+func newExamDocument(exam *model.Exam) examDocument {
+	return examDocument{
+		ID: exam.ID, AcademicUnitID: exam.AcademicUnitID, CreatorUserID: exam.CreatorUserID, OwnerUserID: exam.OwnerUserID,
+		DefaultRevisionID: exam.DefaultRevisionID, CreatedAt: exam.CreatedAt, UpdatedAt: exam.UpdatedAt,
+		ArchivedAt: exam.ArchivedAt, Revision: exam.Revision,
+	}
+}
+
+func (d examDocument) model() (*model.Exam, error) {
+	exam := &model.Exam{
+		ID: d.ID, AcademicUnitID: d.AcademicUnitID, CreatorUserID: d.CreatorUserID, OwnerUserID: d.OwnerUserID,
+		DefaultRevisionID: d.DefaultRevisionID, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
+		ArchivedAt: d.ArchivedAt, Revision: d.Revision,
+	}
+	if err := validatePersistedModel("exam", exam); err != nil {
+		return nil, err
+	}
+	return exam, nil
+}
+
+// examArchiveOutcome is the persisted outcome of an Exam archive.
+type examArchiveOutcome struct {
+	Exam examDocument `json:"exam"`
+}
+
+func (examArchiveOutcome) outcomeDocument() {}

@@ -304,15 +304,30 @@ func examSubmissionSealTarget(row examSubmissionSealAccessRow) (*store.ExamSubmi
 }
 
 type examSubmissionSealOutcome struct {
-	Receipt          store.ExamSubmissionReceipt `json:"r"`
-	ExamID           string                      `json:"e"`
-	SittingID        string                      `json:"s"`
-	ClassID          string                      `json:"c"`
-	CandidateID      string                      `json:"u"`
-	ParticipationID  string                      `json:"p"`
-	Generation       int64                       `json:"g"`
-	ConnectionID     string                      `json:"n"`
-	ConnectionClosed bool                        `json:"x,omitempty"`
+	Receipt          submissionReceiptDocument `json:"r"`
+	ExamID           string                    `json:"e"`
+	SittingID        string                    `json:"s"`
+	ClassID          string                    `json:"c"`
+	CandidateID      string                    `json:"u"`
+	ParticipationID  string                    `json:"p"`
+	Generation       int64                     `json:"g"`
+	ConnectionID     string                    `json:"n"`
+	ConnectionClosed bool                      `json:"x,omitempty"`
+}
+
+func (examSubmissionSealOutcome) outcomeDocument() {}
+
+// submissionReceiptDocument spells store.ExamSubmissionReceipt inside a
+// persisted outcome; the two convert directly.
+type submissionReceiptDocument struct {
+	BrowserActivity model.BrowserSubmissionSettlement `json:"browser_activity"`
+	SubmissionID    model.SubmissionID                `json:"submission_id"`
+	AttemptID       model.ExamAttemptID               `json:"attempt_id"`
+	ExamRevisionID  model.ExamRevisionID              `json:"exam_revision_id"`
+	State           model.ExamAttemptState            `json:"state"`
+	WorkspaceCursor int64                             `json:"workspace_cursor"`
+	ManifestDigest  string                            `json:"manifest_digest"`
+	SubmittedAt     time.Time                         `json:"submitted_at"`
 }
 
 func (s *SQLExamSubmissionStore) Seal(ctx context.Context, input *store.ExamSubmissionSeal,
@@ -328,10 +343,10 @@ func (s *SQLExamSubmissionStore) Seal(ctx context.Context, input *store.ExamSubm
 		execute: func(ctx context.Context, tx *sqlxTxWrapper) (examSubmissionSealOutcome, error) {
 			return sealExamSubmission(ctx, tx, &prepared)
 		},
-		encode: func(outcome examSubmissionSealOutcome) ([]byte, error) { return encodeCommandOutcome(outcome) },
+		encode: func(outcome examSubmissionSealOutcome) ([]byte, error) { return encodeOutcome(outcome) },
 		decode: func(data []byte) (examSubmissionSealOutcome, error) {
 			var outcome examSubmissionSealOutcome
-			if err := decodeCommandOutcome(data, &outcome); err != nil {
+			if err := decodeOutcome(data, &outcome); err != nil {
 				return outcome, err
 			}
 			if _, err := examSubmissionSealResult(outcome); err != nil {
@@ -524,7 +539,7 @@ func sealExamSubmission(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 	if err != nil {
 		return zero, err
 	}
-	outcome := examSubmissionSealOutcome{Receipt: store.ExamSubmissionReceipt{BrowserActivity: submission.BrowserActivity, SubmissionID: submission.ID,
+	outcome := examSubmissionSealOutcome{Receipt: submissionReceiptDocument{BrowserActivity: submission.BrowserActivity, SubmissionID: submission.ID,
 		AttemptID: submission.AttemptID, ExamRevisionID: submission.ExamRevisionID, State: attempt.State, WorkspaceCursor: submission.WorkspaceCursor,
 		ManifestDigest: submission.ManifestDigest, SubmittedAt: submission.SubmittedAt}, ExamID: target.ExamID.String(),
 		SittingID: target.SittingID.String(), ClassID: target.ClassID.String(), CandidateID: target.CandidateUserID.String(),
@@ -776,7 +791,7 @@ func examSubmissionSealResult(outcome examSubmissionSealOutcome) (*store.ExamSub
 	if err != nil {
 		return nil, err
 	}
-	return &store.ExamSubmissionSealResult{Receipt: outcome.Receipt, ExamID: examID, SittingID: sittingID, ClassID: classID,
+	return &store.ExamSubmissionSealResult{Receipt: store.ExamSubmissionReceipt(outcome.Receipt), ExamID: examID, SittingID: sittingID, ClassID: classID,
 		CandidateUserID: candidateID, ParticipationID: participationID, Generation: outcome.Generation, ConnectionID: connectionID}, nil
 }
 

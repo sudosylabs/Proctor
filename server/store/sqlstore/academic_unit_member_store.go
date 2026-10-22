@@ -53,6 +53,8 @@ type academicUnitMemberCommandOutcome struct {
 	NoOp bool   `json:"no_op,omitempty"`
 }
 
+func (academicUnitMemberCommandOutcome) outcomeDocument() {}
+
 func academicUnitMemberColumns() []string {
 	return []string{
 		"academic_unit_members.id", "academic_unit_members.created_at",
@@ -356,11 +358,11 @@ func encodeAcademicUnitMemberMutationOutcome(value *academicUnitMemberMutationRe
 	if value == nil || value.Value == nil || !value.Value.ID.IsValid() {
 		return nil, store.NewErrInvalidInput("academic_unit_member", "command_outcome", nil)
 	}
-	return encodeCommandOutcome(academicUnitMemberCommandOutcome{ID: value.Value.ID.String(), NoOp: value.NoOp})
+	return encodeOutcome(academicUnitMemberCommandOutcome{ID: value.Value.ID.String(), NoOp: value.NoOp})
 }
 func decodeAcademicUnitMemberMutationOutcome(data []byte) (*academicUnitMemberMutationResult, error) {
 	var outcome academicUnitMemberCommandOutcome
-	if err := decodeCommandOutcome(data, &outcome); err != nil {
+	if err := decodeOutcome(data, &outcome); err != nil {
 		return nil, err
 	}
 	id, err := model.ParseAcademicUnitMemberID(outcome.ID)

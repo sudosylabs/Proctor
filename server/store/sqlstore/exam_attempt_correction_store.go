@@ -55,6 +55,19 @@ func (s *SQLExamAttemptStore) ResolveCorrectionAcknowledgementTarget(ctx context
 	})
 }
 
+// correctionAcknowledgementOutcome is the persisted outcome of a correction
+// acknowledgement.
+type correctionAcknowledgementOutcome struct {
+	AttemptID            model.ExamAttemptID  `json:"attempt_id"`
+	CorrectionRevisionID model.ExamRevisionID `json:"correction_revision_id"`
+	CurrentRevisionID    model.ExamRevisionID `json:"current_revision_id"`
+	AcknowledgedAt       time.Time            `json:"acknowledged_at"`
+	MutationAuditEventID model.AuditEventID   `json:"mutation_audit_event_id"`
+	Duplicate            bool                 `json:"duplicate"`
+}
+
+func (correctionAcknowledgementOutcome) outcomeDocument() {}
+
 // AcknowledgeCorrection records the Candidate's acknowledgement of an Exam
 // correction under command. Replays recheck the target and return the retained
 // result with Replayed set.
@@ -71,12 +84,21 @@ func (s *SQLExamAttemptStore) AcknowledgeCorrection(ctx context.Context, input *
 			return s.acknowledgeCorrection(ctx, tx, input)
 		},
 		encode: func(value *store.ExamAttemptCorrectionAcknowledgementResult) ([]byte, error) {
-			return encodeCommandOutcome(value)
+			return encodeOutcome(correctionAcknowledgementOutcome{
+				AttemptID: value.AttemptID, CorrectionRevisionID: value.CorrectionRevisionID,
+				CurrentRevisionID: value.CurrentRevisionID, AcknowledgedAt: value.AcknowledgedAt,
+				MutationAuditEventID: value.MutationAuditEventID, Duplicate: value.Duplicate,
+			})
 		},
 		decode: func(data []byte) (*store.ExamAttemptCorrectionAcknowledgementResult, error) {
-			var value store.ExamAttemptCorrectionAcknowledgementResult
-			if err := decodeCommandOutcome(data, &value); err != nil {
+			var outcome correctionAcknowledgementOutcome
+			if err := decodeOutcome(data, &outcome); err != nil {
 				return nil, err
+			}
+			value := store.ExamAttemptCorrectionAcknowledgementResult{
+				AttemptID: outcome.AttemptID, CorrectionRevisionID: outcome.CorrectionRevisionID,
+				CurrentRevisionID: outcome.CurrentRevisionID, AcknowledgedAt: outcome.AcknowledgedAt,
+				MutationAuditEventID: outcome.MutationAuditEventID, Duplicate: outcome.Duplicate,
 			}
 			if err := validateCorrectionAcknowledgementResult(&value, input); err != nil {
 				return nil, err

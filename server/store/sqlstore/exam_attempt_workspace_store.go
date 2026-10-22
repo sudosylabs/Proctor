@@ -475,16 +475,16 @@ func listAttemptWorkspaceJournalSnapshot(ctx context.Context, tx *sqlxTxWrapper,
 // acknowledged journal change inside a mutation outcome. Field names
 // are the JSON keys; Recursive is omitted when false.
 type attemptWorkspaceJournalOutcome struct {
-	WorkspaceID    model.ExamAttemptWorkspaceID
-	Cursor         int64
-	EntryID        model.AttemptWorkspaceEntryID
-	EntryKind      model.StarterWorkspaceEntryKind
-	Operation      model.AttemptWorkspaceMutationKind
-	OldPath        string
-	NewPath        string
-	ContentVersion model.WorkspaceContentVersion
-	ChangedAt      time.Time
-	Recursive      bool `json:",omitempty"`
+	WorkspaceID    model.ExamAttemptWorkspaceID       `json:"workspace_id"`
+	Cursor         int64                              `json:"cursor"`
+	EntryID        model.AttemptWorkspaceEntryID      `json:"entry_id"`
+	EntryKind      model.StarterWorkspaceEntryKind    `json:"entry_kind"`
+	Operation      model.AttemptWorkspaceMutationKind `json:"operation"`
+	OldPath        string                             `json:"old_path"`
+	NewPath        string                             `json:"new_path"`
+	ContentVersion model.WorkspaceContentVersion      `json:"content_version"`
+	ChangedAt      time.Time                          `json:"changed_at"`
+	Recursive      bool                               `json:"recursive,omitempty"`
 }
 
 func attemptWorkspaceJournalOutcomeFrom(entry model.AttemptWorkspaceJournalEntry) attemptWorkspaceJournalOutcome {
@@ -496,13 +496,27 @@ func (o attemptWorkspaceJournalOutcome) entry() model.AttemptWorkspaceJournalEnt
 }
 
 type attemptWorkspaceMutationOutcome struct {
-	SittingID          string                               `json:"s"`
-	ClassID            string                               `json:"c"`
-	CandidateID        string                               `json:"u"`
-	WorkspaceID        string                               `json:"w"`
-	Entry              *store.CandidateAttemptWorkspaceItem `json:"e,omitempty"`
-	Change             attemptWorkspaceJournalOutcome       `json:"j"`
-	ProtectedObjectIDs []string                             `json:"o,omitempty"`
+	SittingID          string                         `json:"s"`
+	ClassID            string                         `json:"c"`
+	CandidateID        string                         `json:"u"`
+	WorkspaceID        string                         `json:"w"`
+	Entry              *attemptWorkspaceItemDocument  `json:"e,omitempty"`
+	Change             attemptWorkspaceJournalOutcome `json:"j"`
+	ProtectedObjectIDs []string                       `json:"o,omitempty"`
+}
+
+func (attemptWorkspaceMutationOutcome) outcomeDocument() {}
+
+// attemptWorkspaceItemDocument spells store.CandidateAttemptWorkspaceItem
+// inside a persisted outcome; the two convert directly.
+type attemptWorkspaceItemDocument struct {
+	EntryID        model.AttemptWorkspaceEntryID   `json:"entry_id"`
+	Kind           model.StarterWorkspaceEntryKind `json:"kind"`
+	Path           string                          `json:"path"`
+	ContentVersion model.WorkspaceContentVersion   `json:"content_version"`
+	MediaType      string                          `json:"media_type"`
+	SizeBytes      int64                           `json:"size_bytes"`
+	SHA256         string                          `json:"sha256"`
 }
 
 func (s *SQLExamAttemptWorkspaceStore) ApplyMutation(ctx context.Context, input *store.ExamAttemptWorkspaceMutation, command *store.CommandIdempotency) (*store.ExamAttemptWorkspaceMutationResult, error) {
@@ -516,12 +530,12 @@ func (s *SQLExamAttemptWorkspaceStore) ApplyMutation(ctx context.Context, input 
 			return applyAttemptWorkspaceMutation(ctx, tx, prepared, command)
 		},
 		encode: func(outcome attemptWorkspaceMutationOutcome) ([]byte, error) {
-			return encodeCommandOutcome(outcome)
+			return encodeOutcome(outcome)
 		},
 		decode: func(encoded []byte) (attemptWorkspaceMutationOutcome, error) {
 			var outcome attemptWorkspaceMutationOutcome
-			if err := decodeCommandOutcome(encoded, &outcome); err != nil {
-				return outcome, err
+			if decodeErr := decodeOutcome(encoded, &outcome); decodeErr != nil {
+				return outcome, decodeErr
 			}
 			if err := validateAttemptWorkspaceMutationOutcome(outcome); err != nil {
 				return outcome, err
@@ -808,7 +822,7 @@ func applyAttemptWorkspaceMutation(ctx context.Context, tx *sqlxTxWrapper, input
 		return zero, err
 	}
 	outcome := attemptWorkspaceMutationOutcome{SittingID: target.SittingID.String(), ClassID: target.ClassID.String(),
-		CandidateID: target.CandidateUserID.String(), WorkspaceID: target.WorkspaceID.String(), Entry: entry,
+		CandidateID: target.CandidateUserID.String(), WorkspaceID: target.WorkspaceID.String(), Entry: (*attemptWorkspaceItemDocument)(entry),
 		Change: attemptWorkspaceJournalOutcomeFrom(*change), ProtectedObjectIDs: protected}
 	if err = completeAttemptWorkspaceMutationAudit(ctx, tx, outcome, input.AuditEventID, input.AuditAt, false, ""); err != nil {
 		return zero, err
@@ -1074,7 +1088,7 @@ func attemptWorkspaceMutationResult(outcome attemptWorkspaceMutationOutcome) (*s
 		}
 	}
 	return &store.ExamAttemptWorkspaceMutationResult{SittingID: sittingID, ClassID: classID, CandidateUserID: candidateID,
-		WorkspaceID: workspaceID, Entry: outcome.Entry, Change: change}, nil
+		WorkspaceID: workspaceID, Entry: (*store.CandidateAttemptWorkspaceItem)(outcome.Entry), Change: change}, nil
 }
 
 func translateAttemptWorkspaceMutationError(operation string, err error) error {

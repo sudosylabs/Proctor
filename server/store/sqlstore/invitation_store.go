@@ -430,9 +430,24 @@ const (
 )
 
 type invitationCommandOutcome struct {
-	Kind         string                           `json:"kind"`
-	InvitationID string                           `json:"invitation_id,omitempty"`
-	Delivery     *store.InvitationDeliverySummary `json:"delivery,omitempty"`
+	Kind         string                      `json:"kind"`
+	InvitationID string                      `json:"invitation_id,omitempty"`
+	Delivery     *invitationDeliveryDocument `json:"delivery,omitempty"`
+}
+
+func (invitationCommandOutcome) outcomeDocument() {}
+
+// invitationDeliveryDocument spells store.InvitationDeliverySummary inside a
+// persisted outcome; the two convert directly.
+type invitationDeliveryDocument struct {
+	TemplateKey       model.MailTemplateKey   `json:"template_key"`
+	State             model.MailDeliveryState `json:"state"`
+	MaskedRecipient   string                  `json:"masked_recipient"`
+	CreatedAt         time.Time               `json:"created_at"`
+	UpdatedAt         time.Time               `json:"updated_at"`
+	Deadline          time.Time               `json:"deadline"`
+	AcceptedAt        model.OptionalTime      `json:"accepted_at"`
+	PublicFailureCode string                  `json:"public_failure_code,omitempty"`
 }
 
 func encodeInvitationCommandOutcome(result *store.InvitationCommandResult) ([]byte, error) {
@@ -441,17 +456,17 @@ func encodeInvitationCommandOutcome(result *store.InvitationCommandResult) ([]by
 		if result.Invitation != nil {
 			outcome.InvitationID = result.Invitation.ID.String()
 		}
-		return encodeCommandOutcome(outcome)
+		return encodeOutcome(outcome)
 	}
 	if result == nil || result.Invitation == nil || !result.Invitation.ID.IsValid() {
 		return nil, store.NewErrInvalidInput("invitation", "command_outcome", nil)
 	}
-	return encodeCommandOutcome(invitationCommandOutcome{Kind: invitationOutcomeKindInvitation, InvitationID: result.Invitation.ID.String()})
+	return encodeOutcome(invitationCommandOutcome{Kind: invitationOutcomeKindInvitation, InvitationID: result.Invitation.ID.String()})
 }
 
 func decodeInvitationCommandOutcome(data []byte) (*store.InvitationCommandResult, error) {
 	var outcome invitationCommandOutcome
-	if err := decodeCommandOutcome(data, &outcome); err != nil {
+	if err := decodeOutcome(data, &outcome); err != nil {
 		return nil, err
 	}
 	if outcome.Kind == invitationOutcomeKindDuplicate {
@@ -589,11 +604,11 @@ func (s SQLInvitationStore) RecordBatchDuplicate(ctx context.Context, input *sto
 			if value == nil || !value.Duplicate {
 				return nil, store.NewErrInvalidInput("invitation", "batch_duplicate_outcome", nil)
 			}
-			return encodeCommandOutcome(invitationCommandOutcome{Kind: invitationOutcomeKindDuplicate})
+			return encodeOutcome(invitationCommandOutcome{Kind: invitationOutcomeKindDuplicate})
 		},
 		decode: func(data []byte) (*store.InvitationBatchCommandResult, error) {
 			var outcome invitationCommandOutcome
-			if err := decodeCommandOutcome(data, &outcome); err != nil {
+			if err := decodeOutcome(data, &outcome); err != nil {
 				return nil, err
 			}
 			switch outcome.Kind {
@@ -1307,13 +1322,13 @@ func encodeInvitationAdministrationOutcome(result *store.InvitationAdministratio
 	if result == nil || result.Record == nil || result.Record.Invitation == nil || !result.Record.Invitation.ID.IsValid() {
 		return nil, store.NewErrInvalidInput("invitation", "command_outcome", nil)
 	}
-	return encodeCommandOutcome(invitationCommandOutcome{Kind: invitationOutcomeKindInvitation,
-		InvitationID: result.Record.Invitation.ID.String(), Delivery: result.Record.Delivery})
+	return encodeOutcome(invitationCommandOutcome{Kind: invitationOutcomeKindInvitation,
+		InvitationID: result.Record.Invitation.ID.String(), Delivery: (*invitationDeliveryDocument)(result.Record.Delivery)})
 }
 
 func decodeInvitationAdministrationOutcome(data []byte) (*store.InvitationAdministrationCommandResult, error) {
 	var outcome invitationCommandOutcome
-	if err := decodeCommandOutcome(data, &outcome); err != nil {
+	if err := decodeOutcome(data, &outcome); err != nil {
 		return nil, err
 	}
 	if outcome.Kind == invitationOutcomeKindDuplicate {
@@ -1324,7 +1339,7 @@ func decodeInvitationAdministrationOutcome(data []byte) (*store.InvitationAdmini
 		return nil, invalidPersistedState("command_outcome", "invitation_administration", err)
 	}
 	return &store.InvitationAdministrationCommandResult{Record: &store.InvitationAdministrationRecord{
-		Invitation: &model.Invitation{ID: id}, Delivery: outcome.Delivery}}, nil
+		Invitation: &model.Invitation{ID: id}, Delivery: (*store.InvitationDeliverySummary)(outcome.Delivery)}}, nil
 }
 
 func hydrateInvitationAdministrationOutcome(ctx context.Context, tx *sqlxTxWrapper, result *store.InvitationAdministrationCommandResult) (*store.InvitationAdministrationCommandResult, error) {

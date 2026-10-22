@@ -16,6 +16,14 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// stopDeliveryDetailsOutcome is the persisted outcome of a stop-delivery-details
+// command: the model-owned result document as answered.
+type stopDeliveryDetailsOutcome struct {
+	Result model.StopDeliveryDetailsResult `json:"result"`
+}
+
+func (stopDeliveryDetailsOutcome) outcomeDocument() {}
+
 func lockDeliveryParticipationOwner(ctx context.Context, tx *sqlxTxWrapper, access store.DeliveryBudgetAccess) error {
 	a := access.Access
 	if !a.AttemptID.IsValid() || !a.CandidateUserID.IsValid() || !a.SessionID.IsValid() || !a.DesktopRegistrationID.IsValid() || !model.IsValidDPoPKeyThumbprint(a.DPoPKeyThumbprint) || !access.ParticipationID.IsValid() {
@@ -230,13 +238,13 @@ func (s *SQLExamAttemptStore) StopDeliveryDetails(ctx context.Context, input *st
 			if err := v.Validate(input.Request.Family); err != nil {
 				return nil, err
 			}
-			return canonicalPreflightValue(v)
+			return encodeOutcome(stopDeliveryDetailsOutcome{Result: *v})
 		}, decode: func(raw []byte) (*model.StopDeliveryDetailsResult, error) {
-			var v model.StopDeliveryDetailsResult
-			if err := decodeCommandOutcome(raw, &v); err != nil {
+			var outcome stopDeliveryDetailsOutcome
+			if err := decodeOutcome(raw, &outcome); err != nil {
 				return nil, err
 			}
-			return &v, nil
+			return &outcome.Result, nil
 		}, hydrateReplay: project, completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, _ *model.StopDeliveryDetailsResult, _ string) error {
 			return audit(ctx, tx, true)
 		}})

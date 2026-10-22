@@ -51,6 +51,45 @@ type academicPeriodRow struct {
 	EndAt          time.Time      `db:"end_at"`
 }
 
+// academicPeriodOutcome is the persisted outcome of an idempotent Academic
+// Period creation: the period as created.
+type academicPeriodOutcome struct {
+	ID             string             `json:"id"`
+	CreatedAt      time.Time          `json:"created_at"`
+	UpdatedAt      time.Time          `json:"updated_at"`
+	ArchivedAt     model.OptionalTime `json:"archived_at"`
+	Revision       int64              `json:"revision"`
+	OwnerType      string             `json:"owner_type"`
+	InstitutionID  string             `json:"institution_id,omitempty"`
+	AcademicUnitID string             `json:"academic_unit_id,omitempty"`
+	Name           string             `json:"name"`
+	DisplayName    string             `json:"display_name"`
+	Description    string             `json:"description"`
+	StartAt        time.Time          `json:"start_at"`
+	EndAt          time.Time          `json:"end_at"`
+}
+
+func (academicPeriodOutcome) outcomeDocument() {}
+
+func newAcademicPeriodOutcome(period *model.AcademicPeriod) academicPeriodOutcome {
+	row := newAcademicPeriodRow(period)
+	return academicPeriodOutcome{
+		ID: row.ID, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, ArchivedAt: OptionalTimeFromNullTime(row.ArchivedAt),
+		Revision: row.Revision, OwnerType: row.OwnerType, InstitutionID: outcomeString(row.InstitutionID),
+		AcademicUnitID: outcomeString(row.AcademicUnitID), Name: row.Name, DisplayName: row.DisplayName,
+		Description: row.Description, StartAt: row.StartAt, EndAt: row.EndAt,
+	}
+}
+
+func (o academicPeriodOutcome) model() (*model.AcademicPeriod, error) {
+	return academicPeriodRow{
+		ID: o.ID, CreatedAt: o.CreatedAt, UpdatedAt: o.UpdatedAt, ArchivedAt: NullTimeFromOptional(o.ArchivedAt),
+		Revision: o.Revision, OwnerType: o.OwnerType, InstitutionID: outcomeNullString(o.InstitutionID),
+		AcademicUnitID: outcomeNullString(o.AcademicUnitID), Name: o.Name, DisplayName: o.DisplayName,
+		Description: o.Description, StartAt: o.StartAt, EndAt: o.EndAt,
+	}.model()
+}
+
 func academicPeriodSliceColumns() []string {
 	return []string{
 		"academic_periods.id",
@@ -110,14 +149,14 @@ func (s SQLAcademicPeriodStore) CreateIdempotently(ctx context.Context, input *s
 			return createAcademicPeriod(ctx, tx, &candidate, &academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt})
 		},
 		encode: func(period *model.AcademicPeriod) ([]byte, error) {
-			return encodeCommandOutcome(newAcademicPeriodRow(period))
+			return encodeOutcome(newAcademicPeriodOutcome(period))
 		},
 		decode: func(data []byte) (*model.AcademicPeriod, error) {
-			var row academicPeriodRow
-			if err := decodeCommandOutcome(data, &row); err != nil {
+			var outcome academicPeriodOutcome
+			if err := decodeOutcome(data, &outcome); err != nil {
 				return nil, err
 			}
-			return row.model()
+			return outcome.model()
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, period *model.AcademicPeriod, originalAuditID string) error {
 			data := period.Auditable()

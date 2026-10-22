@@ -54,6 +54,8 @@ type examAttemptConnectOutcome struct {
 	RevokedTokenHashes []string  `json:"h,omitempty"`
 }
 
+func (examAttemptConnectOutcome) outcomeDocument() {}
+
 type examAttemptAdmissionGuard struct {
 	ExamID         string    `db:"exam_id"`
 	AcademicUnitID string    `db:"academic_unit_id"`
@@ -89,7 +91,7 @@ func (s *SQLExamAttemptStore) Connect(ctx context.Context, input *store.ExamAtte
 			return s.connect(ctx, tx, input)
 		},
 		encode: func(outcome examAttemptConnectOutcome) ([]byte, error) {
-			encoded, encodeErr := encodeCommandOutcome(outcome)
+			encoded, encodeErr := encodeOutcome(outcome)
 			if encodeErr == nil && len(encoded) > examAttemptConnectOutcomeMaximumBytes {
 				return nil, store.NewErrInvalidInput("exam_attempt", "connect_outcome", len(encoded))
 			}
@@ -97,7 +99,7 @@ func (s *SQLExamAttemptStore) Connect(ctx context.Context, input *store.ExamAtte
 		},
 		decode: func(encoded []byte) (examAttemptConnectOutcome, error) {
 			var outcome examAttemptConnectOutcome
-			if err := decodeCommandOutcome(encoded, &outcome); err != nil {
+			if err := decodeOutcome(encoded, &outcome); err != nil {
 				return outcome, err
 			}
 			return outcome, nil
@@ -754,9 +756,16 @@ func completeParticipationExpiryAudit(ctx context.Context, tx *sqlxTxWrapper, re
 }
 
 type examAttemptReallowOutcome struct {
-	ExamID, SittingID, ClassID, CandidateID, AttemptID, SuspensionID string
-	FocusLossWindowReset                                             bool
+	ExamID               string `json:"exam_id"`
+	SittingID            string `json:"sitting_id"`
+	ClassID              string `json:"class_id"`
+	CandidateID          string `json:"candidate_id"`
+	AttemptID            string `json:"attempt_id"`
+	SuspensionID         string `json:"suspension_id"`
+	FocusLossWindowReset bool   `json:"focus_loss_window_reset"`
 }
+
+func (examAttemptReallowOutcome) outcomeDocument() {}
 
 // ReallowAttempt implements store.ExamAttemptStore: it closes the Attempt's
 // active Suspension and returns the Attempt to active under an
@@ -775,10 +784,10 @@ func (s *SQLExamAttemptStore) ReallowAttempt(ctx context.Context, input *store.E
 		execute: func(ctx context.Context, tx *sqlxTxWrapper) (examAttemptReallowOutcome, error) {
 			return reallowExamAttempt(ctx, tx, input)
 		},
-		encode: func(value examAttemptReallowOutcome) ([]byte, error) { return encodeCommandOutcome(value) },
+		encode: func(value examAttemptReallowOutcome) ([]byte, error) { return encodeOutcome(value) },
 		decode: func(encoded []byte) (examAttemptReallowOutcome, error) {
 			var value examAttemptReallowOutcome
-			return value, decodeCommandOutcome(encoded, &value)
+			return value, decodeOutcome(encoded, &value)
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value examAttemptReallowOutcome, originalAuditID string) error {
 			if err := guardExamAttemptReallowAuthority(ctx, tx, input, false); err != nil {

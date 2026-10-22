@@ -1603,7 +1603,7 @@ func TestSecureConnectStore(t *testing.T) {
 		CorruptPrepared: func(id, field string) func() {
 			var original []byte
 			require.NoError(t, sqlStore.GetMaster().Get(context.Background(), &original, `SELECT prepared_canonical FROM exam_security_preflights WHERE preflight_id=?`, id))
-			var prepared store.SecurityPreflightPrepared
+			var prepared securityPreflightPreparedDocument
 			require.NoError(t, json.Unmarshal(original, &prepared))
 			switch field {
 			case "challenge":

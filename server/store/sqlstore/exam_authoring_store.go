@@ -24,28 +24,94 @@ type SQLExamAuthoringStore struct {
 }
 
 type examAuthoringRow struct {
-	ID                   string         `db:"id" json:"id"`
-	AcademicUnitID       string         `db:"academic_unit_id" json:"academic_unit_id"`
-	CreatorUserID        string         `db:"creator_user_id" json:"creator_user_id"`
-	OwnerUserID          string         `db:"owner_user_id" json:"owner_user_id"`
-	DefaultRevisionID    sql.NullString `db:"default_revision_id" json:"default_revision_id"`
-	CreatedAt            time.Time      `db:"created_at" json:"created_at"`
-	UpdatedAt            time.Time      `db:"updated_at" json:"updated_at"`
-	ArchivedAt           sql.NullTime   `db:"archived_at" json:"archived_at"`
-	ExamRevision         int64          `db:"exam_revision" json:"exam_revision"`
-	DraftTitle           string         `db:"draft_title" json:"draft_title"`
-	InstructionsMarkdown string         `db:"instructions_markdown" json:"instructions_markdown"`
-	Policy               jsonValue      `db:"policy" json:"policy"`
-	BrowserPolicy        jsonValue      `db:"browser_policy" json:"browser_policy"`
-	BaseRevisionID       sql.NullString `db:"base_revision_id" json:"base_revision_id"`
-	DraftUpdatedAt       time.Time      `db:"draft_updated_at" json:"draft_updated_at"`
-	DraftRevision        int64          `db:"draft_revision" json:"draft_revision"`
-	ManagerCount         int            `db:"manager_count" json:"manager_count"`
-	ActorIsManager       bool           `db:"actor_is_manager" json:"actor_is_manager"`
-	OwnerIsManager       bool           `db:"owner_is_manager" json:"owner_is_manager"`
+	ID                   string         `db:"id"`
+	AcademicUnitID       string         `db:"academic_unit_id"`
+	CreatorUserID        string         `db:"creator_user_id"`
+	OwnerUserID          string         `db:"owner_user_id"`
+	DefaultRevisionID    sql.NullString `db:"default_revision_id"`
+	CreatedAt            time.Time      `db:"created_at"`
+	UpdatedAt            time.Time      `db:"updated_at"`
+	ArchivedAt           sql.NullTime   `db:"archived_at"`
+	ExamRevision         int64          `db:"exam_revision"`
+	DraftTitle           string         `db:"draft_title"`
+	InstructionsMarkdown string         `db:"instructions_markdown"`
+	Policy               jsonValue      `db:"policy"`
+	BrowserPolicy        jsonValue      `db:"browser_policy"`
+	BaseRevisionID       sql.NullString `db:"base_revision_id"`
+	DraftUpdatedAt       time.Time      `db:"draft_updated_at"`
+	DraftRevision        int64          `db:"draft_revision"`
+	ManagerCount         int            `db:"manager_count"`
+	ActorIsManager       bool           `db:"actor_is_manager"`
+	OwnerIsManager       bool           `db:"owner_is_manager"`
 	examCapacityPolicyRow
-	ResourceCount       int  `db:"resource_count" json:"resource_count"`
-	HasStarterWorkspace bool `db:"has_starter_workspace" json:"has_starter_workspace"`
+	ResourceCount       int  `db:"resource_count"`
+	HasStarterWorkspace bool `db:"has_starter_workspace"`
+}
+
+// examAuthoringOutcome is the persisted outcome of an idempotent Exam
+// authoring command: the authoring snapshot as committed.
+type examAuthoringOutcome struct {
+	ID                   string             `json:"id"`
+	AcademicUnitID       string             `json:"academic_unit_id"`
+	CreatorUserID        string             `json:"creator_user_id"`
+	OwnerUserID          string             `json:"owner_user_id"`
+	DefaultRevisionID    string             `json:"default_revision_id,omitempty"`
+	CreatedAt            time.Time          `json:"created_at"`
+	UpdatedAt            time.Time          `json:"updated_at"`
+	ArchivedAt           model.OptionalTime `json:"archived_at"`
+	ExamRevision         int64              `json:"exam_revision"`
+	DraftTitle           string             `json:"draft_title"`
+	InstructionsMarkdown string             `json:"instructions_markdown"`
+	Policy               json.RawMessage    `json:"policy"`
+	BrowserPolicy        json.RawMessage    `json:"browser_policy,omitempty"`
+	BaseRevisionID       string             `json:"base_revision_id,omitempty"`
+	DraftUpdatedAt       time.Time          `json:"draft_updated_at"`
+	DraftRevision        int64              `json:"draft_revision"`
+	ManagerCount         int                `json:"manager_count"`
+	ActorIsManager       bool               `json:"actor_is_manager"`
+	OwnerIsManager       bool               `json:"owner_is_manager"`
+	examCapacityPolicyRow
+	ResourceCount       int  `json:"resource_count"`
+	HasStarterWorkspace bool `json:"has_starter_workspace"`
+}
+
+func (examAuthoringOutcome) outcomeDocument() {}
+
+func encodeExamAuthoringOutcome(snapshot *store.ExamAuthoringSnapshot) ([]byte, error) {
+	outcome, err := newExamAuthoringOutcome(snapshot)
+	if err != nil {
+		return nil, err
+	}
+	return encodeOutcome(outcome)
+}
+
+func newExamAuthoringOutcome(snapshot *store.ExamAuthoringSnapshot) (examAuthoringOutcome, error) {
+	row, err := newExamAuthoringRow(snapshot, true)
+	if err != nil {
+		return examAuthoringOutcome{}, err
+	}
+	return examAuthoringOutcome{
+		ID: row.ID, AcademicUnitID: row.AcademicUnitID, CreatorUserID: row.CreatorUserID, OwnerUserID: row.OwnerUserID,
+		DefaultRevisionID: outcomeString(row.DefaultRevisionID), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		ArchivedAt: OptionalTimeFromNullTime(row.ArchivedAt), ExamRevision: row.ExamRevision, DraftTitle: row.DraftTitle,
+		InstructionsMarkdown: row.InstructionsMarkdown, Policy: json.RawMessage(row.Policy),
+		BrowserPolicy: json.RawMessage(row.BrowserPolicy), BaseRevisionID: outcomeString(row.BaseRevisionID),
+		DraftUpdatedAt: row.DraftUpdatedAt, DraftRevision: row.DraftRevision, ManagerCount: row.ManagerCount,
+		ActorIsManager: row.ActorIsManager, OwnerIsManager: row.OwnerIsManager, examCapacityPolicyRow: row.examCapacityPolicyRow,
+		ResourceCount: row.ResourceCount, HasStarterWorkspace: row.HasStarterWorkspace,
+	}, nil
+}
+
+func (o examAuthoringOutcome) model() (*store.ExamAuthoringSnapshot, error) {
+	return examAuthoringRow{
+		ID: o.ID, AcademicUnitID: o.AcademicUnitID, CreatorUserID: o.CreatorUserID, OwnerUserID: o.OwnerUserID,
+		DefaultRevisionID: outcomeNullString(o.DefaultRevisionID), CreatedAt: o.CreatedAt, UpdatedAt: o.UpdatedAt,
+		ArchivedAt: NullTimeFromOptional(o.ArchivedAt), ExamRevision: o.ExamRevision, DraftTitle: o.DraftTitle,
+		InstructionsMarkdown: o.InstructionsMarkdown, Policy: jsonValue(o.Policy), BrowserPolicy: jsonValue(o.BrowserPolicy),
+		BaseRevisionID: outcomeNullString(o.BaseRevisionID), DraftUpdatedAt: o.DraftUpdatedAt, DraftRevision: o.DraftRevision,
+		ManagerCount: o.ManagerCount, ActorIsManager: o.ActorIsManager, OwnerIsManager: o.OwnerIsManager,
+		examCapacityPolicyRow: o.examCapacityPolicyRow, ResourceCount: o.ResourceCount, HasStarterWorkspace: o.HasStarterWorkspace,
+	}.model()
 }
 
 type examAccessRow struct {
@@ -78,19 +144,13 @@ func (s SQLExamAuthoringStore) Create(ctx context.Context, input *store.ExamAuth
 		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamAuthoringSnapshot, error) {
 			return createExamAuthoring(ctx, tx, prepared, auditData)
 		},
-		encode: func(snapshot *store.ExamAuthoringSnapshot) ([]byte, error) {
-			row, err := newExamAuthoringRow(snapshot, true)
-			if err != nil {
-				return nil, err
-			}
-			return encodeCommandOutcome(row)
-		},
+		encode: encodeExamAuthoringOutcome,
 		decode: func(data []byte) (*store.ExamAuthoringSnapshot, error) {
-			var row examAuthoringRow
-			if err := decodeCommandOutcome(data, &row); err != nil {
-				return nil, err
+			var outcome examAuthoringOutcome
+			if decodeErr := decodeOutcome(data, &outcome); decodeErr != nil {
+				return nil, decodeErr
 			}
-			return row.model()
+			return outcome.model()
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, snapshot *store.ExamAuthoringSnapshot, originalAuditID string) error {
 			data := snapshot.Exam.Auditable()
@@ -123,19 +183,13 @@ func (s SQLExamAuthoringStore) UpdateDraftText(ctx context.Context, input *store
 		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamAuthoringSnapshot, error) {
 			return updateExamDraftText(ctx, tx, prepared)
 		},
-		encode: func(snapshot *store.ExamAuthoringSnapshot) ([]byte, error) {
-			row, err := newExamAuthoringRow(snapshot, true)
-			if err != nil {
-				return nil, err
-			}
-			return encodeCommandOutcome(row)
-		},
+		encode: encodeExamAuthoringOutcome,
 		decode: func(data []byte) (*store.ExamAuthoringSnapshot, error) {
-			var row examAuthoringRow
-			if err := decodeCommandOutcome(data, &row); err != nil {
-				return nil, err
+			var outcome examAuthoringOutcome
+			if decodeErr := decodeOutcome(data, &outcome); decodeErr != nil {
+				return nil, decodeErr
 			}
-			return row.model()
+			return outcome.model()
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, snapshot *store.ExamAuthoringSnapshot, originalAuditID string) error {
 			encoded, err := model.EncodeAuditData(map[string]any{
@@ -168,19 +222,13 @@ func (s SQLExamAuthoringStore) UpdateDraftFocusLoss(ctx context.Context, input *
 		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamAuthoringSnapshot, error) {
 			return updateExamDraftFocusLoss(ctx, tx, prepared)
 		},
-		encode: func(snapshot *store.ExamAuthoringSnapshot) ([]byte, error) {
-			row, rowErr := newExamAuthoringRow(snapshot, true)
-			if rowErr != nil {
-				return nil, rowErr
-			}
-			return encodeCommandOutcome(row)
-		},
+		encode: encodeExamAuthoringOutcome,
 		decode: func(data []byte) (*store.ExamAuthoringSnapshot, error) {
-			var row examAuthoringRow
-			if decodeErr := decodeCommandOutcome(data, &row); decodeErr != nil {
+			var outcome examAuthoringOutcome
+			if decodeErr := decodeOutcome(data, &outcome); decodeErr != nil {
 				return nil, decodeErr
 			}
-			return row.model()
+			return outcome.model()
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, snapshot *store.ExamAuthoringSnapshot, originalAuditID string) error {
 			encoded, encodeErr := model.EncodeAuditData(map[string]any{
@@ -213,19 +261,13 @@ func (s SQLExamAuthoringStore) UpdateDraftBrowserPolicy(ctx context.Context, inp
 		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamAuthoringSnapshot, error) {
 			return updateExamDraftBrowserPolicy(ctx, tx, prepared)
 		},
-		encode: func(snapshot *store.ExamAuthoringSnapshot) ([]byte, error) {
-			row, rowErr := newExamAuthoringRow(snapshot, true)
-			if rowErr != nil {
-				return nil, rowErr
-			}
-			return encodeCommandOutcome(row)
-		},
+		encode: encodeExamAuthoringOutcome,
 		decode: func(data []byte) (*store.ExamAuthoringSnapshot, error) {
-			var row examAuthoringRow
-			if decodeErr := decodeCommandOutcome(data, &row); decodeErr != nil {
+			var outcome examAuthoringOutcome
+			if decodeErr := decodeOutcome(data, &outcome); decodeErr != nil {
 				return nil, decodeErr
 			}
-			return row.model()
+			return outcome.model()
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, snapshot *store.ExamAuthoringSnapshot, originalAuditID string) error {
 			encoded, encodeErr := model.EncodeAuditData(map[string]any{
@@ -718,19 +760,13 @@ func (s SQLExamAuthoringStore) UpdateDraftNativePolicy(ctx context.Context, inpu
 		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamAuthoringSnapshot, error) {
 			return updateExamDraftNativePolicy(ctx, tx, prepared)
 		},
-		encode: func(snapshot *store.ExamAuthoringSnapshot) ([]byte, error) {
-			row, rowErr := newExamAuthoringRow(snapshot, true)
-			if rowErr != nil {
-				return nil, rowErr
-			}
-			return encodeCommandOutcome(row)
-		},
+		encode: encodeExamAuthoringOutcome,
 		decode: func(data []byte) (*store.ExamAuthoringSnapshot, error) {
-			var row examAuthoringRow
-			if decodeErr := decodeCommandOutcome(data, &row); decodeErr != nil {
+			var outcome examAuthoringOutcome
+			if decodeErr := decodeOutcome(data, &outcome); decodeErr != nil {
 				return nil, decodeErr
 			}
-			return row.model()
+			return outcome.model()
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, snapshot *store.ExamAuthoringSnapshot, originalAuditID string) error {
 			encoded, encodeErr := model.EncodeAuditData(map[string]any{

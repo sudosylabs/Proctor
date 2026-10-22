@@ -10,7 +10,6 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -39,9 +38,63 @@ type retentionPolicyRow struct {
 	UpdatedAt                        time.Time `db:"updated_at"`
 }
 
+// retentionPolicyReplacementOutcome is the committed result of a Retention
+// Policy replacement.
 type retentionPolicyReplacementOutcome struct {
-	Policy  *model.RetentionPolicy `json:"policy"`
-	Changed bool                   `json:"changed"`
+	Policy  *model.RetentionPolicy
+	Changed bool
+}
+
+// retentionPolicyReplacementDocument is its persisted outcome.
+type retentionPolicyReplacementDocument struct {
+	Policy  retentionPolicyDocument `json:"policy"`
+	Changed bool                    `json:"changed"`
+}
+
+func (retentionPolicyReplacementDocument) outcomeDocument() {}
+
+// retentionPolicyDocument spells model.RetentionPolicy inside a persisted
+// outcome.
+type retentionPolicyDocument struct {
+	InstitutionID                    model.InstitutionID `json:"institution_id"`
+	Revision                         int64               `json:"revision"`
+	SubmissionRetentionDays          int                 `json:"submission_retention_days"`
+	IntegrityRetentionDays           int                 `json:"integrity_retention_days"`
+	BrowserActivityRetentionDays     int                 `json:"browser_activity_retention_days"`
+	SecurityOperationalRetentionDays int                 `json:"security_operational_retention_days"`
+	AuditRetentionDays               int                 `json:"audit_retention_days"`
+	ExportRetentionDays              int                 `json:"export_retention_days"`
+	DeletionGraceDays                int                 `json:"deletion_grace_days"`
+	CandidateNotices                 bool                `json:"candidate_notices"`
+	AutomaticDeletionEnabled         bool                `json:"automatic_deletion_enabled"`
+	CreatedAt                        time.Time           `json:"created_at"`
+	UpdatedAt                        time.Time           `json:"updated_at"`
+}
+
+func newRetentionPolicyDocument(policy *model.RetentionPolicy) retentionPolicyDocument {
+	settings := policy.RetentionPolicySettings
+	return retentionPolicyDocument{
+		InstitutionID: policy.InstitutionID, Revision: policy.Revision,
+		SubmissionRetentionDays: settings.SubmissionRetentionDays, IntegrityRetentionDays: settings.IntegrityRetentionDays,
+		BrowserActivityRetentionDays:     settings.BrowserActivityRetentionDays,
+		SecurityOperationalRetentionDays: settings.SecurityOperationalRetentionDays,
+		AuditRetentionDays:               settings.AuditRetentionDays, ExportRetentionDays: settings.ExportRetentionDays,
+		DeletionGraceDays: settings.DeletionGraceDays, CandidateNotices: settings.CandidateNotices,
+		AutomaticDeletionEnabled: policy.AutomaticDeletionEnabled, CreatedAt: policy.CreatedAt, UpdatedAt: policy.UpdatedAt,
+	}
+}
+
+func (d retentionPolicyDocument) model() *model.RetentionPolicy {
+	return &model.RetentionPolicy{
+		InstitutionID: d.InstitutionID, Revision: d.Revision,
+		RetentionPolicySettings: model.RetentionPolicySettings{
+			SubmissionRetentionDays: d.SubmissionRetentionDays, IntegrityRetentionDays: d.IntegrityRetentionDays,
+			BrowserActivityRetentionDays: d.BrowserActivityRetentionDays, SecurityOperationalRetentionDays: d.SecurityOperationalRetentionDays,
+			AuditRetentionDays: d.AuditRetentionDays, ExportRetentionDays: d.ExportRetentionDays,
+			DeletionGraceDays: d.DeletionGraceDays, CandidateNotices: d.CandidateNotices,
+		},
+		AutomaticDeletionEnabled: d.AutomaticDeletionEnabled, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
+	}
 }
 
 func newSQLRetentionPolicyStore(sqlStore *SQLStore) store.RetentionPolicyStore {
@@ -147,7 +200,12 @@ func (s SQLRetentionPolicyStore) Replace(
 				return outcome, nil
 			},
 			encode: func(outcome retentionPolicyReplacementOutcome) ([]byte, error) {
-				return json.Marshal(outcome)
+				if outcome.Policy == nil {
+					return nil, store.NewErrInvalidInput("retention_policy", "outcome", nil)
+				}
+				return encodeOutcome(retentionPolicyReplacementDocument{
+					Policy: newRetentionPolicyDocument(outcome.Policy), Changed: outcome.Changed,
+				})
 			},
 			decode: decodeRetentionPolicyReplacementOutcome,
 			hydrateReplay: func(ctx context.Context, tx *sqlxTxWrapper, outcome retentionPolicyReplacementOutcome) (retentionPolicyReplacementOutcome, error) {
@@ -251,9 +309,10 @@ func validateRetentionPolicyReplacement(
 }
 
 func decodeRetentionPolicyReplacementOutcome(encoded []byte) (retentionPolicyReplacementOutcome, error) {
-	var outcome retentionPolicyReplacementOutcome
-	if err := json.Unmarshal(encoded, &outcome); err != nil ||
-		outcome.Policy == nil || outcome.Policy.Validate() != nil {
+	var document retentionPolicyReplacementDocument
+	err := decodeOutcome(encoded, &document)
+	outcome := retentionPolicyReplacementOutcome{Policy: document.Policy.model(), Changed: document.Changed}
+	if err != nil || outcome.Policy.Validate() != nil {
 		return retentionPolicyReplacementOutcome{}, invalidPersistedState(
 			"command_outcome",
 			"outcome",

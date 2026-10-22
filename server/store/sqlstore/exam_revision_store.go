@@ -95,6 +95,8 @@ type examRevisionPublicationOutcomeRow struct {
 	PolicyDigest  string `json:"policy_digest"`
 }
 
+func (examRevisionPublicationOutcomeRow) outcomeDocument() {}
+
 const examRevisionHeaderSelect = `SELECT id,exam_id,number,snapshot_schema_version,source_draft_revision,
 	title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,
 	browser_policy_document,browser_policy_canonical,browser_policy_digest,
@@ -116,11 +118,11 @@ func (s SQLExamRevisionStore) Publish(ctx context.Context, input *store.ExamRevi
 		execute: func(ctx context.Context, tx *sqlxTxWrapper) (examRevisionPublicationOutcomeRow, error) {
 			return publishExamRevision(ctx, tx, prepared)
 		},
-		encode: func(outcome examRevisionPublicationOutcomeRow) ([]byte, error) { return encodeCommandOutcome(outcome) },
+		encode: func(outcome examRevisionPublicationOutcomeRow) ([]byte, error) { return encodeOutcome(outcome) },
 		decode: func(data []byte) (examRevisionPublicationOutcomeRow, error) {
 			var outcome examRevisionPublicationOutcomeRow
-			if err := decodeCommandOutcome(data, &outcome); err != nil {
-				return examRevisionPublicationOutcomeRow{}, err
+			if decodeErr := decodeOutcome(data, &outcome); decodeErr != nil {
+				return examRevisionPublicationOutcomeRow{}, decodeErr
 			}
 			return outcome, nil
 		},

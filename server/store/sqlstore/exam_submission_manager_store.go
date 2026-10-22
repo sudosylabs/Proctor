@@ -102,10 +102,10 @@ func (s *SQLExamSubmissionStore) EndByManager(ctx context.Context, input *store.
 		execute: func(ctx context.Context, tx *sqlxTxWrapper) (examSubmissionSealOutcome, error) {
 			return endExamAttemptByManager(ctx, tx, &prepared)
 		},
-		encode: func(outcome examSubmissionSealOutcome) ([]byte, error) { return encodeCommandOutcome(outcome) },
+		encode: func(outcome examSubmissionSealOutcome) ([]byte, error) { return encodeOutcome(outcome) },
 		decode: func(data []byte) (examSubmissionSealOutcome, error) {
 			var outcome examSubmissionSealOutcome
-			if err := decodeCommandOutcome(data, &outcome); err != nil {
+			if err := decodeOutcome(data, &outcome); err != nil {
 				return outcome, err
 			}
 			if _, err := examSubmissionSealResult(outcome); err != nil {

@@ -29,7 +29,7 @@ func TestExamAttemptConnectOutcomeIsBoundedAndCredentialFree(t *testing.T) {
 		LeaseExpiresAt: time.Date(2026, time.August, 15, 12, 0, 20, 0, time.UTC), EntryCount: 1000,
 		Generation: 1, FirstAdmission: true, ConnectionOpened: true,
 	}
-	encoded, err := encodeCommandOutcome(outcome)
+	encoded, err := encodeOutcome(outcome)
 	require.NoError(t, err)
 	require.LessOrEqual(t, len(encoded), examAttemptConnectOutcomeMaximumBytes, "connect outcome size")
 	credentialHash := []byte("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")

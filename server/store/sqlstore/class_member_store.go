@@ -59,6 +59,8 @@ type classMemberCommandOutcome struct {
 	NoOp                 bool   `json:"no_op,omitempty"`
 }
 
+func (classMemberCommandOutcome) outcomeDocument() {}
+
 func classMemberColumns() []string {
 	return []string{
 		"class_members.id", "class_members.created_at", "class_members.updated_at",
@@ -222,12 +224,12 @@ func encodeClassMemberMutationOutcome(value *classMemberMutationResult) ([]byte,
 	if value.Enrollment.Previous != nil {
 		outcome.PreviousID = value.Enrollment.Previous.ID.String()
 	}
-	return encodeCommandOutcome(outcome)
+	return encodeOutcome(outcome)
 }
 
 func decodeClassMemberMutationOutcome(data []byte) (*classMemberMutationResult, error) {
 	var outcome classMemberCommandOutcome
-	if err := decodeCommandOutcome(data, &outcome); err != nil {
+	if err := decodeOutcome(data, &outcome); err != nil {
 		return nil, err
 	}
 	id, err := model.ParseClassMemberID(outcome.MembershipID)

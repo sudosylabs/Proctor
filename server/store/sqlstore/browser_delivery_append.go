@@ -33,6 +33,84 @@ type browserAppendResult struct {
 	Refusal         string
 }
 
+// browserAppendOutcome is the persisted outcome of a historical browser
+// append.
+type browserAppendOutcome struct {
+	Acknowledgement *browserAcknowledgementDocument `json:"acknowledgement,omitempty"`
+	Refusal         string                          `json:"refusal,omitempty"`
+}
+
+func (browserAppendOutcome) outcomeDocument() {}
+
+// browserAcknowledgementDocument spells model.BrowserActivityAcknowledgement
+// inside a persisted outcome.
+type browserAcknowledgementDocument struct {
+	Receipts               []model.BrowserEventReceipt   `json:"receipts"`
+	SettledThrough         int64                         `json:"settled_through"`
+	AllocatedThrough       int64                         `json:"allocated_through"`
+	TerminalMissingThrough int64                         `json:"terminal_missing_through"`
+	SourceSessionID        model.BrowserSourceSessionID  `json:"source_session_id"`
+	HighestContiguous      int64                         `json:"highest_contiguous"`
+	HighestSeen            int64                         `json:"highest_seen"`
+	MissingRanges          []browserMissingRangeDocument `json:"missing_ranges"`
+	MissingRangesTruncated bool                          `json:"missing_ranges_truncated"`
+	ServerTime             time.Time                     `json:"server_time"`
+	ExamID                 model.ExamID                  `json:"exam_id"`
+	SittingID              model.ExamSittingID           `json:"sitting_id"`
+	GapAttentionChanged    bool                          `json:"gap_attention_changed"`
+}
+
+type browserMissingRangeDocument struct {
+	First int64 `json:"first"`
+	Last  int64 `json:"last"`
+}
+
+func encodeBrowserAppendOutcome(value browserAppendResult) ([]byte, error) {
+	outcome := browserAppendOutcome{Refusal: value.Refusal}
+	if ack := value.Acknowledgement; ack != nil {
+		document := &browserAcknowledgementDocument{
+			Receipts: ack.Receipts, SettledThrough: ack.SettledThrough, AllocatedThrough: ack.AllocatedThrough,
+			TerminalMissingThrough: ack.TerminalMissingThrough, SourceSessionID: ack.SourceSessionID,
+			HighestContiguous: ack.HighestContiguous, HighestSeen: ack.HighestSeen,
+			MissingRangesTruncated: ack.MissingRangesTruncated, ServerTime: ack.ServerTime, ExamID: ack.ExamID,
+			SittingID: ack.SittingID, GapAttentionChanged: ack.GapAttentionChanged,
+		}
+		if ack.MissingRanges != nil {
+			document.MissingRanges = make([]browserMissingRangeDocument, 0, len(ack.MissingRanges))
+		}
+		for _, missing := range ack.MissingRanges {
+			document.MissingRanges = append(document.MissingRanges, browserMissingRangeDocument(missing))
+		}
+		outcome.Acknowledgement = document
+	}
+	return encodeOutcome(outcome)
+}
+
+func decodeBrowserAppendOutcome(raw []byte) (browserAppendResult, error) {
+	var outcome browserAppendOutcome
+	if err := decodeOutcome(raw, &outcome); err != nil {
+		return browserAppendResult{}, err
+	}
+	value := browserAppendResult{Refusal: outcome.Refusal}
+	if document := outcome.Acknowledgement; document != nil {
+		ack := &model.BrowserActivityAcknowledgement{
+			Receipts: document.Receipts, SettledThrough: document.SettledThrough, AllocatedThrough: document.AllocatedThrough,
+			TerminalMissingThrough: document.TerminalMissingThrough, SourceSessionID: document.SourceSessionID,
+			HighestContiguous: document.HighestContiguous, HighestSeen: document.HighestSeen,
+			MissingRangesTruncated: document.MissingRangesTruncated, ServerTime: document.ServerTime, ExamID: document.ExamID,
+			SittingID: document.SittingID, GapAttentionChanged: document.GapAttentionChanged,
+		}
+		if document.MissingRanges != nil {
+			ack.MissingRanges = make([]model.BrowserActivityMissingRange, 0, len(document.MissingRanges))
+		}
+		for _, missing := range document.MissingRanges {
+			ack.MissingRanges = append(ack.MissingRanges, model.BrowserActivityMissingRange(missing))
+		}
+		value.Acknowledgement = ack
+	}
+	return value, nil
+}
+
 func (s *SQLExamAttemptStore) debitBrowserAppend(ctx context.Context, access store.BrowserDeliveryAccess) error {
 	allowed, err := runSQLTransaction(ctx, s.GetMaster().Begin, "browser append allowance", func(ctx context.Context, tx *sqlxTxWrapper) (bool, error) {
 		if err := s.lockBrowserDelivery(ctx, tx, access); err != nil {
@@ -309,12 +387,8 @@ func (s *SQLExamAttemptStore) appendBrowserActivity(ctx context.Context, input *
 		result, err = runSQLTransaction(ctx, s.GetMaster().Begin, "append Browser Activity", execute)
 	} else {
 		outcome, mutationErr := runIdempotentMutation(ctx, s.SQLStore, "historical browser append", idempotentMutation[browserAppendResult]{command: command, auditEventID: input.AuditEventID, execute: execute,
-			encode: func(value browserAppendResult) ([]byte, error) { return canonicalPreflightValue(value) },
-			decode: func(raw []byte) (browserAppendResult, error) {
-				var value browserAppendResult
-				err := decodeCommandOutcome(raw, &value)
-				return value, err
-			},
+			encode: encodeBrowserAppendOutcome,
+			decode: decodeBrowserAppendOutcome,
 			hydrateReplay: func(ctx context.Context, tx *sqlxTxWrapper, value browserAppendResult) (browserAppendResult, error) {
 				owner, err := s.lockBrowserDeclaration(ctx, tx, access)
 				if err != nil {

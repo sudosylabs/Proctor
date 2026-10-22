@@ -10,7 +10,6 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -288,7 +287,7 @@ func validExamRecordsMutation(input store.ExamRecordsMutation, command *store.Co
 }
 
 func runExamRecordsMutation[T any](ctx context.Context, s *SQLStore, input store.ExamRecordsMutation, command *store.CommandIdempotency,
-	ttl time.Duration, execute func(context.Context, *sqlxTxWrapper, *store.ExamRecordsScope, time.Time) (T, error), validate func(T) error, projection func(T) map[string]any,
+	ttl time.Duration, execute func(context.Context, *sqlxTxWrapper, *store.ExamRecordsScope, time.Time) (T, error), codec examRecordsOutcomeCodec[T], projection func(T) map[string]any,
 ) (*idempotentResult[T], error) {
 	return runIdempotentMutation(ctx, s, command.Operation, idempotentMutation[T]{command: command, auditEventID: input.AuditEventID,
 		execute: func(ctx context.Context, tx *sqlxTxWrapper) (T, error) {
@@ -306,14 +305,8 @@ func runExamRecordsMutation[T any](ctx context.Context, s *SQLStore, input store
 			}
 			return value, nil
 		},
-		encode: func(v T) ([]byte, error) { return json.Marshal(v) },
-		decode: func(data []byte) (T, error) {
-			var v T
-			if err := json.Unmarshal(data, &v); err != nil {
-				return v, err
-			}
-			return v, validate(v)
-		},
+		encode: codec.encode,
+		decode: codec.decode,
 		hydrateReplay: func(ctx context.Context, tx *sqlxTxWrapper, v T) (T, error) {
 			_, _, err := lockExamRecordsAuthority(ctx, tx, input, ttl)
 			return v, err
@@ -322,6 +315,134 @@ func runExamRecordsMutation[T any](ctx context.Context, s *SQLStore, input store
 			return completeExamRecordsAudit(ctx, tx, input, projection(v), original)
 		},
 	})
+}
+
+// examRecordsOutcomeCodec persists one Exam records mutation result as its
+// outcome document; decode validates the rehydrated value.
+type examRecordsOutcomeCodec[T any] struct {
+	encode func(T) ([]byte, error)
+	decode func([]byte) (T, error)
+}
+
+var (
+	recordsCompletionOutcomeCodec = examRecordsOutcomeCodec[*model.ExamSittingRecordsCompletion]{
+		encode: encodeRecordsCompletionOutcome, decode: decodeRecordsCompletionOutcome,
+	}
+	reviewWaiverOutcomeCodec = examRecordsOutcomeCodec[*model.SubmissionReviewWaiver]{
+		encode: encodeReviewWaiverOutcome, decode: decodeReviewWaiverOutcome,
+	}
+	retentionHoldOutcomeCodec = examRecordsOutcomeCodec[*model.RetentionHold]{
+		encode: encodeRetentionHoldOutcome, decode: decodeRetentionHoldOutcome,
+	}
+)
+
+// recordsCompletionOutcome is the persisted outcome of a Sitting records
+// completion; it converts directly to model.ExamSittingRecordsCompletion.
+type recordsCompletionOutcome struct {
+	SittingID                 model.ExamSittingID `json:"sitting_id"`
+	Revision                  int64               `json:"revision"`
+	EvidenceRevision          int64               `json:"evidence_revision"`
+	CompletedEvidenceRevision int64               `json:"completed_evidence_revision"`
+	CompletedAt               model.OptionalTime  `json:"completed_at"`
+	CompletedByUserID         model.UserID        `json:"completed_by_user_id,omitempty"`
+	StaleAt                   model.OptionalTime  `json:"stale_at"`
+}
+
+func (recordsCompletionOutcome) outcomeDocument() {}
+
+func encodeRecordsCompletionOutcome(value *model.ExamSittingRecordsCompletion) ([]byte, error) {
+	return encodeOutcome(recordsCompletionOutcome(*value))
+}
+
+func decodeRecordsCompletionOutcome(data []byte) (*model.ExamSittingRecordsCompletion, error) {
+	var outcome recordsCompletionOutcome
+	if err := decodeOutcome(data, &outcome); err != nil {
+		return nil, err
+	}
+	value := model.ExamSittingRecordsCompletion(outcome)
+	return &value, value.Validate()
+}
+
+// reviewWaiverOutcome is the persisted outcome of a Review waiver; it converts
+// directly to model.SubmissionReviewWaiver.
+type reviewWaiverOutcome struct {
+	DeliveryInventoryRevision int64              `json:"delivery_inventory_revision"`
+	InventoryInvalidated      bool               `json:"inventory_invalidated"`
+	SubmissionID              model.SubmissionID `json:"submission_id"`
+	Revision                  int64              `json:"revision"`
+	ReviewRevision            int64              `json:"review_revision"`
+	DiscrepancyCount          int64              `json:"discrepancy_count"`
+	ActorUserID               model.UserID       `json:"actor_user_id"`
+	RecordedAt                time.Time          `json:"recorded_at"`
+	ReasonCode                string             `json:"reason_code"`
+	PrivateReason             string             `json:"private_reason"`
+}
+
+func (reviewWaiverOutcome) outcomeDocument() {}
+
+func encodeReviewWaiverOutcome(value *model.SubmissionReviewWaiver) ([]byte, error) {
+	return encodeOutcome(reviewWaiverOutcome(*value))
+}
+
+func decodeReviewWaiverOutcome(data []byte) (*model.SubmissionReviewWaiver, error) {
+	var outcome reviewWaiverOutcome
+	if err := decodeOutcome(data, &outcome); err != nil {
+		return nil, err
+	}
+	value := model.SubmissionReviewWaiver(outcome)
+	return &value, value.Validate()
+}
+
+// retentionHoldOutcome is the persisted outcome of a Retention Hold placement
+// or release.
+type retentionHoldOutcome struct {
+	ID                              model.RetentionHoldID      `json:"id"`
+	Scope                           retentionHoldScopeDocument `json:"scope"`
+	Revision                        int64                      `json:"revision"`
+	CreatedAt                       time.Time                  `json:"created_at"`
+	CreatedByUserID                 model.UserID               `json:"created_by_user_id"`
+	ReasonCode                      string                     `json:"reason_code"`
+	PrivateReason                   string                     `json:"private_reason"`
+	ReleasedAt                      model.OptionalTime         `json:"released_at"`
+	ReleasedByUserID                model.UserID               `json:"released_by_user_id,omitempty"`
+	ReleaseReasonCode               string                     `json:"release_reason_code"`
+	ReleasePrivateReason            string                     `json:"release_private_reason"`
+	WorkRetiredSubmissionCount      int64                      `json:"work_retired_submission_count"`
+	IntegrityRetiredSubmissionCount int64                      `json:"integrity_retired_submission_count"`
+}
+
+func (retentionHoldOutcome) outcomeDocument() {}
+
+// retentionHoldScopeDocument converts directly to model.RetentionHoldScope.
+type retentionHoldScopeDocument struct {
+	ExamID       model.ExamID        `json:"exam_id"`
+	SittingID    model.ExamSittingID `json:"sitting_id,omitempty"`
+	SubmissionID model.SubmissionID  `json:"submission_id,omitempty"`
+}
+
+func encodeRetentionHoldOutcome(value *model.RetentionHold) ([]byte, error) {
+	return encodeOutcome(retentionHoldOutcome{
+		ID: value.ID, Scope: retentionHoldScopeDocument(value.Scope), Revision: value.Revision, CreatedAt: value.CreatedAt,
+		CreatedByUserID: value.CreatedByUserID, ReasonCode: value.ReasonCode, PrivateReason: value.PrivateReason,
+		ReleasedAt: value.ReleasedAt, ReleasedByUserID: value.ReleasedByUserID, ReleaseReasonCode: value.ReleaseReasonCode,
+		ReleasePrivateReason: value.ReleasePrivateReason, WorkRetiredSubmissionCount: value.WorkRetiredSubmissionCount,
+		IntegrityRetiredSubmissionCount: value.IntegrityRetiredSubmissionCount,
+	})
+}
+
+func decodeRetentionHoldOutcome(data []byte) (*model.RetentionHold, error) {
+	var outcome retentionHoldOutcome
+	if err := decodeOutcome(data, &outcome); err != nil {
+		return nil, err
+	}
+	value := &model.RetentionHold{
+		ID: outcome.ID, Scope: model.RetentionHoldScope(outcome.Scope), Revision: outcome.Revision, CreatedAt: outcome.CreatedAt,
+		CreatedByUserID: outcome.CreatedByUserID, ReasonCode: outcome.ReasonCode, PrivateReason: outcome.PrivateReason,
+		ReleasedAt: outcome.ReleasedAt, ReleasedByUserID: outcome.ReleasedByUserID, ReleaseReasonCode: outcome.ReleaseReasonCode,
+		ReleasePrivateReason: outcome.ReleasePrivateReason, WorkRetiredSubmissionCount: outcome.WorkRetiredSubmissionCount,
+		IntegrityRetiredSubmissionCount: outcome.IntegrityRetiredSubmissionCount,
+	}
+	return value, value.Validate()
 }
 
 func completeExamRecordsAudit(ctx context.Context, tx *sqlxTxWrapper, input store.ExamRecordsMutation, data map[string]any, original string) error {
@@ -392,7 +513,7 @@ func (s *SQLExamRecordsStore) CompleteRecords(ctx context.Context, input *store.
 				err = saveRecordsCompletion(ctx, tx, c)
 			}
 			return c, err
-		}, func(c *model.ExamSittingRecordsCompletion) error { return c.Validate() }, func(c *model.ExamSittingRecordsCompletion) map[string]any {
+		}, recordsCompletionOutcomeCodec, func(c *model.ExamSittingRecordsCompletion) map[string]any {
 			return map[string]any{"records_revision": c.Revision, "evidence_revision": c.EvidenceRevision}
 		})
 	if err != nil {
@@ -462,7 +583,7 @@ func (s *SQLExamRecordsStore) WaiveReview(ctx context.Context, input *store.Exam
 				ON CONFLICT (submission_id) DO UPDATE SET inventory_invalidated=false,delivery_inventory_revision=EXCLUDED.delivery_inventory_revision,revision=EXCLUDED.revision,review_revision=EXCLUDED.review_revision,discrepancy_count=EXCLUDED.discrepancy_count,
 				actor_user_id=EXCLUDED.actor_user_id,recorded_at=EXCLUDED.recorded_at,reason_code=EXCLUDED.reason_code,private_reason=EXCLUDED.private_reason,audit_event_id=EXCLUDED.audit_event_id`, w.SubmissionID.String(), w.Revision, w.ReviewRevision, w.DiscrepancyCount, w.ActorUserID.String(), w.RecordedAt, w.ReasonCode, w.PrivateReason, input.AuditEventID, w.DeliveryInventoryRevision)
 			return w, err
-		}, func(w *model.SubmissionReviewWaiver) error { return w.Validate() }, func(w *model.SubmissionReviewWaiver) map[string]any {
+		}, reviewWaiverOutcomeCodec, func(w *model.SubmissionReviewWaiver) map[string]any {
 			return map[string]any{"waiver_revision": w.Revision, "review_revision": w.ReviewRevision, "reason_code": w.ReasonCode}
 		})
 	if err != nil {
@@ -619,7 +740,7 @@ func (s *SQLExamRecordsStore) CreateHold(ctx context.Context, input *store.ExamR
 			return nil, err
 		}
 		return h, nil
-	}, func(h *model.RetentionHold) error { return h.Validate() }, retentionHoldAudit)
+	}, retentionHoldOutcomeCodec, retentionHoldAudit)
 	if err != nil {
 		return nil, err
 	}
@@ -647,7 +768,7 @@ func (s *SQLExamRecordsStore) ReleaseHold(ctx context.Context, input *store.Exam
 		}
 		_, err = tx.Exec(ctx, `UPDATE retention_holds SET revision=?,released_at=?,released_by_user_id=?,release_reason_code=?,release_private_reason=?,release_audit_event_id=? WHERE id=?`, h.Revision, at, h.ReleasedByUserID.String(), h.ReleaseReasonCode, h.ReleasePrivateReason, input.AuditEventID, h.ID.String())
 		return h, err
-	}, func(h *model.RetentionHold) error { return h.Validate() }, retentionHoldAudit)
+	}, retentionHoldOutcomeCodec, retentionHoldAudit)
 	if err != nil {
 		return nil, err
 	}

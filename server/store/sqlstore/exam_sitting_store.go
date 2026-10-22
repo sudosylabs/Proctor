@@ -498,17 +498,8 @@ func (s SQLExamSittingStore) runExamSittingMutation(ctx context.Context, label s
 	}
 	result, err := runIdempotentMutation(ctx, s.SQLStore, label, idempotentMutation[*model.ExamSitting]{
 		command: command, auditEventID: auditID, execute: execute,
-		encode: func(sitting *model.ExamSitting) ([]byte, error) { return encodeCommandOutcome(sitting) },
-		decode: func(data []byte) (*model.ExamSitting, error) {
-			var sitting model.ExamSitting
-			if err := decodeCommandOutcome(data, &sitting); err != nil {
-				return nil, err
-			}
-			if err := sitting.Validate(); err != nil {
-				return nil, fmt.Errorf("decode Exam Sitting outcome: %w", err)
-			}
-			return &sitting, nil
-		},
+		encode: encodeExamSittingOutcome,
+		decode: decodeExamSittingOutcome,
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, sitting *model.ExamSitting, originalAuditID string) error {
 			encoded, err := encodeExamSittingAudit(sitting, true, originalAuditID)
 			if err != nil {
@@ -1013,17 +1004,8 @@ func (s SQLExamSittingStore) runManagerLifecycleMutation(ctx context.Context, la
 			}
 			return current, nil
 		},
-		encode: func(sitting *model.ExamSitting) ([]byte, error) { return encodeCommandOutcome(sitting) },
-		decode: func(data []byte) (*model.ExamSitting, error) {
-			var sitting model.ExamSitting
-			if err := decodeCommandOutcome(data, &sitting); err != nil {
-				return nil, err
-			}
-			if err := sitting.Validate(); err != nil {
-				return nil, err
-			}
-			return &sitting, nil
-		},
+		encode: encodeExamSittingOutcome,
+		decode: decodeExamSittingOutcome,
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, sitting *model.ExamSitting, originalAuditID string) error {
 			return completeExamSittingLifecycleAudit(ctx, tx, sitting, transition, true, true, originalAuditID, input.AuditEventID, input.AuditAt)
 		},
@@ -1117,8 +1099,8 @@ func (s SQLExamSittingStore) Extend(ctx context.Context, input *store.ExamSittin
 			}
 			return current, nil
 		},
-		encode: func(sitting *model.ExamSitting) ([]byte, error) { return encodeCommandOutcome(sitting) },
-		decode: decodeExamSittingLifecycleOutcome,
+		encode: encodeExamSittingOutcome,
+		decode: decodeExamSittingOutcome,
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, sitting *model.ExamSitting, originalAuditID string) error {
 			return completeExamSittingLifecycleAudit(ctx, tx, sitting, store.ExamSittingTransitionManagerExtended, true, true,
 				originalAuditID, input.AuditEventID, input.AuditAt)
@@ -1135,15 +1117,70 @@ func (s SQLExamSittingStore) Extend(ctx context.Context, input *store.ExamSittin
 		Transition: store.ExamSittingTransitionManagerExtended, Changed: true, Replayed: result.Replayed}, nil
 }
 
-func decodeExamSittingLifecycleOutcome(data []byte) (*model.ExamSitting, error) {
-	var sitting model.ExamSitting
-	if err := decodeCommandOutcome(data, &sitting); err != nil {
-		return nil, err
+// examSittingDocument spells model.ExamSitting inside persisted command
+// outcomes.
+type examSittingDocument struct {
+	ID               model.ExamSittingID         `json:"id"`
+	ExamID           model.ExamID                `json:"exam_id"`
+	ExamRevisionID   model.ExamRevisionID        `json:"exam_revision_id"`
+	ClassID          model.ClassID               `json:"class_id"`
+	ScheduledStartAt time.Time                   `json:"scheduled_start_at"`
+	ScheduledEndAt   time.Time                   `json:"scheduled_end_at"`
+	State            model.ExamSittingState      `json:"state"`
+	CreatedAt        time.Time                   `json:"created_at"`
+	UpdatedAt        time.Time                   `json:"updated_at"`
+	OpenedAt         model.OptionalTime          `json:"opened_at"`
+	PausedAt         model.OptionalTime          `json:"paused_at"`
+	ClosingAt        model.OptionalTime          `json:"closing_at"`
+	ClosedAt         model.OptionalTime          `json:"closed_at"`
+	CanceledAt       model.OptionalTime          `json:"canceled_at"`
+	ReasonCode       model.ExamSittingReasonCode `json:"reason_code,omitempty"`
+	Revision         int64                       `json:"revision"`
+}
+
+func newExamSittingDocument(sitting *model.ExamSitting) examSittingDocument {
+	return examSittingDocument{
+		ID: sitting.ID, ExamID: sitting.ExamID, ExamRevisionID: sitting.ExamRevisionID, ClassID: sitting.ClassID,
+		ScheduledStartAt: sitting.ScheduledStartAt, ScheduledEndAt: sitting.ScheduledEndAt, State: sitting.State,
+		CreatedAt: sitting.CreatedAt, UpdatedAt: sitting.UpdatedAt, OpenedAt: sitting.OpenedAt, PausedAt: sitting.PausedAt,
+		ClosingAt: sitting.ClosingAt, ClosedAt: sitting.ClosedAt, CanceledAt: sitting.CanceledAt,
+		ReasonCode: sitting.ReasonCode, Revision: sitting.Revision,
+	}
+}
+
+// model returns the validated Sitting the document spells.
+func (d examSittingDocument) model() (*model.ExamSitting, error) {
+	sitting := &model.ExamSitting{
+		ID: d.ID, ExamID: d.ExamID, ExamRevisionID: d.ExamRevisionID, ClassID: d.ClassID,
+		ScheduledStartAt: d.ScheduledStartAt, ScheduledEndAt: d.ScheduledEndAt, State: d.State,
+		CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt, OpenedAt: d.OpenedAt, PausedAt: d.PausedAt,
+		ClosingAt: d.ClosingAt, ClosedAt: d.ClosedAt, CanceledAt: d.CanceledAt,
+		ReasonCode: d.ReasonCode, Revision: d.Revision,
 	}
 	if err := sitting.Validate(); err != nil {
+		return nil, fmt.Errorf("decode Exam Sitting outcome: %w", err)
+	}
+	return sitting, nil
+}
+
+// examSittingOutcome is the persisted outcome of an idempotent Sitting
+// schedule or lifecycle command: the Sitting as committed.
+type examSittingOutcome struct {
+	Sitting examSittingDocument `json:"sitting"`
+}
+
+func (examSittingOutcome) outcomeDocument() {}
+
+func encodeExamSittingOutcome(sitting *model.ExamSitting) ([]byte, error) {
+	return encodeOutcome(examSittingOutcome{Sitting: newExamSittingDocument(sitting)})
+}
+
+func decodeExamSittingOutcome(data []byte) (*model.ExamSitting, error) {
+	var outcome examSittingOutcome
+	if err := decodeOutcome(data, &outcome); err != nil {
 		return nil, err
 	}
-	return &sitting, nil
+	return outcome.Sitting.model()
 }
 
 func persistExamSittingLifecycle(ctx context.Context, tx *sqlxTxWrapper, sitting *model.ExamSitting, expectedRevision int64) error {

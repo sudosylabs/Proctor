@@ -28,9 +28,19 @@ type examManagerRow struct {
 }
 
 type examManagerOutcome struct {
-	Exam    model.Exam        `json:"exam"`
-	Manager model.ExamManager `json:"manager"`
+	Exam    examDocument        `json:"exam"`
+	Manager examManagerDocument `json:"manager"`
 }
+
+// examManagerDocument spells model.ExamManager inside a persisted outcome.
+type examManagerDocument struct {
+	ExamID          model.ExamID `json:"exam_id"`
+	UserID          model.UserID `json:"user_id"`
+	GrantedByUserID model.UserID `json:"granted_by_user_id"`
+	GrantedAt       time.Time    `json:"granted_at"`
+}
+
+func (examManagerOutcome) outcomeDocument() {}
 
 func (s SQLExamAuthoringStore) ListManagers(ctx context.Context, options store.ExamManagerListOptions) ([]store.ExamManagerSummary, error) {
 	if !options.ExamID.IsValid() || options.Limit < 1 || options.Limit > 200 ||
@@ -90,20 +100,28 @@ func (s SQLExamAuthoringStore) runManagerMutation(ctx context.Context, label str
 			return execute(ctx, tx, prepared)
 		},
 		encode: func(result *store.ExamManagerCommandResult) ([]byte, error) {
-			return encodeCommandOutcome(examManagerOutcome{Exam: *result.Exam, Manager: *result.Manager})
+			return encodeOutcome(examManagerOutcome{Exam: newExamDocument(result.Exam), Manager: examManagerDocument{
+				ExamID: result.Manager.ExamID, UserID: result.Manager.UserID,
+				GrantedByUserID: result.Manager.GrantedByUserID, GrantedAt: result.Manager.GrantedAt,
+			}})
 		},
 		decode: func(data []byte) (*store.ExamManagerCommandResult, error) {
 			var outcome examManagerOutcome
-			if err := decodeCommandOutcome(data, &outcome); err != nil {
-				return nil, err
+			if decodeErr := decodeOutcome(data, &outcome); decodeErr != nil {
+				return nil, decodeErr
 			}
-			if err := outcome.Exam.Validate(); err != nil {
-				return nil, fmt.Errorf("decode Exam Manager outcome Exam: %w", err)
+			exam, examErr := outcome.Exam.model()
+			if examErr != nil {
+				return nil, fmt.Errorf("decode Exam Manager outcome Exam: %w", examErr)
 			}
-			if err := outcome.Manager.Validate(); err != nil {
-				return nil, fmt.Errorf("decode Exam Manager outcome relationship: %w", err)
+			manager := &model.ExamManager{
+				ExamID: outcome.Manager.ExamID, UserID: outcome.Manager.UserID,
+				GrantedByUserID: outcome.Manager.GrantedByUserID, GrantedAt: outcome.Manager.GrantedAt,
 			}
-			return &store.ExamManagerCommandResult{Exam: &outcome.Exam, Manager: &outcome.Manager}, nil
+			if validateErr := manager.Validate(); validateErr != nil {
+				return nil, fmt.Errorf("decode Exam Manager outcome relationship: %w", validateErr)
+			}
+			return &store.ExamManagerCommandResult{Exam: exam, Manager: manager}, nil
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, result *store.ExamManagerCommandResult, originalAuditID string) error {
 			encoded, err := model.EncodeAuditData(map[string]any{

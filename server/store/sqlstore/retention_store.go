@@ -221,14 +221,8 @@ func (s *SQLRetentionStore) CreatePreview(ctx context.Context, input *store.Rete
 			}
 			return p, nil
 		},
-		encode: func(p *model.RetentionPreview) ([]byte, error) { return json.Marshal(p) },
-		decode: func(data []byte) (*model.RetentionPreview, error) {
-			var p model.RetentionPreview
-			if err := json.Unmarshal(data, &p); err != nil {
-				return nil, err
-			}
-			return &p, p.Validate()
-		},
+		encode: encodeRetentionPreviewOutcome,
+		decode: decodeRetentionPreviewOutcome,
 		hydrateReplay: func(ctx context.Context, tx *sqlxTxWrapper, p *model.RetentionPreview) (*model.RetentionPreview, error) {
 			policy, _, err := lockRetentionAuthority(ctx, tx, input.RetentionMutation, model.ActionRetentionPolicyView)
 			if err != nil {
@@ -313,12 +307,13 @@ func (s *SQLRetentionStore) ChangeControl(ctx context.Context, input *store.Rete
 			}
 			return current, nil
 		},
-		encode: func(c *model.RetentionControl) ([]byte, error) { return json.Marshal(c) },
+		encode: func(c *model.RetentionControl) ([]byte, error) { return encodeOutcome(retentionControlOutcome(*c)) },
 		decode: func(data []byte) (*model.RetentionControl, error) {
-			var c model.RetentionControl
-			if err := json.Unmarshal(data, &c); err != nil {
+			var outcome retentionControlOutcome
+			if err := decodeOutcome(data, &outcome); err != nil {
 				return nil, err
 			}
+			c := model.RetentionControl(outcome)
 			return &c, c.Validate()
 		},
 		hydrateReplay: func(ctx context.Context, tx *sqlxTxWrapper, c *model.RetentionControl) (*model.RetentionControl, error) {
@@ -530,3 +525,90 @@ func (s *SQLRetentionStore) ListRecords(ctx context.Context, options store.Reten
 		return page, nil
 	})
 }
+
+// retentionPreviewOutcome is the persisted outcome of a Retention Preview
+// creation.
+type retentionPreviewOutcome struct {
+	ID                  model.RetentionPreviewID       `json:"id"`
+	InstitutionID       model.InstitutionID            `json:"institution_id"`
+	PolicyRevision      int64                          `json:"policy_revision"`
+	CreatedByUserID     model.UserID                   `json:"created_by_user_id"`
+	CreatedAt           time.Time                      `json:"created_at"`
+	ExpiresAt           time.Time                      `json:"expires_at"`
+	Work                retentionPreviewCountsDocument `json:"work"`
+	Integrity           retentionPreviewCountsDocument `json:"integrity"`
+	BrowserActivity     retentionPreviewCountsDocument `json:"browser_activity"`
+	SecurityOperational retentionPreviewCountsDocument `json:"security_operational"`
+	Audit               retentionExpiryCountsDocument  `json:"audit"`
+	Receipts            retentionExpiryCountsDocument  `json:"receipts"`
+}
+
+func (retentionPreviewOutcome) outcomeDocument() {}
+
+// retentionPreviewCountsDocument converts directly to
+// model.RetentionPreviewCounts.
+type retentionPreviewCountsDocument struct {
+	Total            int64 `json:"total"`
+	Eligible         int64 `json:"eligible"`
+	AwaitingDeadline int64 `json:"awaiting_deadline"`
+	Incomplete       int64 `json:"incomplete"`
+	Held             int64 `json:"held"`
+	Unconfigured     int64 `json:"unconfigured"`
+	SupportingWork   int64 `json:"supporting_work"`
+	ExportProtected  int64 `json:"export_protected"`
+	Retired          int64 `json:"retired"`
+}
+
+// retentionExpiryCountsDocument converts directly to
+// model.RetentionExpiryCounts.
+type retentionExpiryCountsDocument struct {
+	Total            int64 `json:"total"`
+	Eligible         int64 `json:"eligible"`
+	AwaitingDeadline int64 `json:"awaiting_deadline"`
+	Unconfigured     int64 `json:"unconfigured"`
+	Unfinished       int64 `json:"unfinished"`
+	Referenced       int64 `json:"referenced"`
+	Held             int64 `json:"held"`
+	PurgePending     int64 `json:"purge_pending"`
+	SourceProtected  int64 `json:"source_protected"`
+}
+
+func encodeRetentionPreviewOutcome(p *model.RetentionPreview) ([]byte, error) {
+	return encodeOutcome(retentionPreviewOutcome{
+		ID: p.ID, InstitutionID: p.InstitutionID, PolicyRevision: p.PolicyRevision, CreatedByUserID: p.CreatedByUserID,
+		CreatedAt: p.CreatedAt, ExpiresAt: p.ExpiresAt, Work: retentionPreviewCountsDocument(p.Work),
+		Integrity: retentionPreviewCountsDocument(p.Integrity), BrowserActivity: retentionPreviewCountsDocument(p.BrowserActivity),
+		SecurityOperational: retentionPreviewCountsDocument(p.SecurityOperational),
+		Audit:               retentionExpiryCountsDocument(p.Audit), Receipts: retentionExpiryCountsDocument(p.Receipts),
+	})
+}
+
+func decodeRetentionPreviewOutcome(data []byte) (*model.RetentionPreview, error) {
+	var outcome retentionPreviewOutcome
+	if err := decodeOutcome(data, &outcome); err != nil {
+		return nil, err
+	}
+	p := &model.RetentionPreview{
+		ID: outcome.ID, InstitutionID: outcome.InstitutionID, PolicyRevision: outcome.PolicyRevision,
+		CreatedByUserID: outcome.CreatedByUserID, CreatedAt: outcome.CreatedAt, ExpiresAt: outcome.ExpiresAt,
+		Work: model.RetentionPreviewCounts(outcome.Work), Integrity: model.RetentionPreviewCounts(outcome.Integrity),
+		BrowserActivity:     model.RetentionPreviewCounts(outcome.BrowserActivity),
+		SecurityOperational: model.RetentionPreviewCounts(outcome.SecurityOperational),
+		Audit:               model.RetentionExpiryCounts(outcome.Audit), Receipts: model.RetentionExpiryCounts(outcome.Receipts),
+	}
+	return p, p.Validate()
+}
+
+// retentionControlOutcome is the persisted outcome of a Retention Control
+// change; it converts directly to model.RetentionControl.
+type retentionControlOutcome struct {
+	InstitutionID          model.InstitutionID         `json:"institution_id"`
+	Revision               int64                       `json:"revision"`
+	State                  model.RetentionControlState `json:"state"`
+	ApprovedPolicyRevision int64                       `json:"approved_policy_revision"`
+	ApprovedPreviewID      model.RetentionPreviewID    `json:"approved_preview_id,omitempty"`
+	ChangedByUserID        model.UserID                `json:"changed_by_user_id,omitempty"`
+	UpdatedAt              time.Time                   `json:"updated_at"`
+}
+
+func (retentionControlOutcome) outcomeDocument() {}

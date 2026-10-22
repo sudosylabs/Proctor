@@ -536,10 +536,89 @@ func (s *SQLExamIntegrityReviewStore) ListDiscrepancies(ctx context.Context,
 	return page, nil
 }
 
+// examIntegrityReviewOutcome is the committed result of one Review mutation.
+// It persists as examIntegrityReviewOutcomeDocument.
 type examIntegrityReviewOutcome struct {
-	Authorization store.ExamIntegrityReviewAuthorization `json:"authorization"`
-	Review        model.SubmissionReview                 `json:"review"`
-	Decision      *model.IntegrityReviewDecision         `json:"decision,omitempty"`
+	Authorization store.ExamIntegrityReviewAuthorization
+	Review        model.SubmissionReview
+	Decision      *model.IntegrityReviewDecision
+}
+
+// examIntegrityReviewOutcomeDocument is the persisted outcome of a Review
+// mutation. Its nested documents convert directly to and from their store
+// and model types.
+type examIntegrityReviewOutcomeDocument struct {
+	Authorization reviewAuthorizationDocument      `json:"authorization"`
+	Review        submissionReviewDocument         `json:"review"`
+	Decision      *integrityReviewDecisionDocument `json:"decision,omitempty"`
+}
+
+func (examIntegrityReviewOutcomeDocument) outcomeDocument() {}
+
+type reviewAuthorizationDocument struct {
+	SubmissionID    model.SubmissionID   `json:"submission_id"`
+	ExamID          model.ExamID         `json:"exam_id"`
+	SittingID       model.ExamSittingID  `json:"sitting_id"`
+	AttemptID       model.ExamAttemptID  `json:"attempt_id"`
+	CandidateUserID model.UserID         `json:"candidate_user_id"`
+	AcademicUnitID  model.AcademicUnitID `json:"academic_unit_id"`
+}
+
+type submissionReviewDocument struct {
+	ID                      model.SubmissionReviewID           `json:"id"`
+	SubmissionID            model.SubmissionID                 `json:"submission_id"`
+	State                   model.SubmissionReviewState        `json:"state"`
+	ReleaseState            model.SubmissionReviewReleaseState `json:"release_state"`
+	Revision                int64                              `json:"revision"`
+	CreatedByUserID         model.UserID                       `json:"created_by_user_id"`
+	ManagerNotes            string                             `json:"manager_notes"`
+	StudentRemarksMarkdown  string                             `json:"student_remarks_markdown"`
+	FlagCount               int                                `json:"flag_count"`
+	EvidenceCount           int                                `json:"evidence_count"`
+	DiscrepancyCount        int                                `json:"discrepancy_count"`
+	EvidenceInventoryDigest string                             `json:"evidence_inventory_digest"`
+	CreatedAt               time.Time                          `json:"created_at"`
+	UpdatedAt               time.Time                          `json:"updated_at"`
+	FinalizedAt             model.OptionalTime                 `json:"finalized_at"`
+	FinalizedByUserID       model.UserID                       `json:"finalized_by_user_id,omitempty"`
+	ReleasedAt              model.OptionalTime                 `json:"released_at"`
+	ReleasedByUserID        model.UserID                       `json:"released_by_user_id,omitempty"`
+}
+
+type integrityReviewDecisionDocument struct {
+	InventoryStale   bool                            `json:"inventory_stale"`
+	ID               model.IntegrityReviewDecisionID `json:"id"`
+	ReviewID         model.SubmissionReviewID        `json:"review_id"`
+	FlagID           model.IntegrityFlagID           `json:"flag_id"`
+	Outcome          model.IntegrityReviewOutcome    `json:"outcome"`
+	Revision         int64                           `json:"revision"`
+	ActorUserID      model.UserID                    `json:"actor_user_id"`
+	PrivateRationale string                          `json:"private_rationale"`
+	DecidedAt        time.Time                       `json:"decided_at"`
+}
+
+func encodeExamIntegrityReviewOutcome(value examIntegrityReviewOutcome) ([]byte, error) {
+	return encodeOutcome(examIntegrityReviewOutcomeDocument{
+		Authorization: reviewAuthorizationDocument(value.Authorization),
+		Review:        submissionReviewDocument(value.Review),
+		Decision:      (*integrityReviewDecisionDocument)(value.Decision),
+	})
+}
+
+func decodeExamIntegrityReviewOutcome(data []byte) (examIntegrityReviewOutcome, error) {
+	var document examIntegrityReviewOutcomeDocument
+	if err := decodeOutcome(data, &document); err != nil {
+		return examIntegrityReviewOutcome{}, err
+	}
+	value := examIntegrityReviewOutcome{
+		Authorization: store.ExamIntegrityReviewAuthorization(document.Authorization),
+		Review:        model.SubmissionReview(document.Review),
+		Decision:      (*model.IntegrityReviewDecision)(document.Decision),
+	}
+	if err := validateReviewOutcome(value); err != nil {
+		return examIntegrityReviewOutcome{}, err
+	}
+	return value, nil
 }
 
 func (s *SQLExamIntegrityReviewStore) SaveDecision(ctx context.Context, input *store.ExamIntegrityReviewDecisionMutation, command *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
@@ -667,17 +746,8 @@ func (s *SQLExamIntegrityReviewStore) runReviewMutation(ctx context.Context, nam
 	execute func(context.Context, *sqlxTxWrapper) (examIntegrityReviewOutcome, error), replay func(context.Context, *sqlxTxWrapper, examIntegrityReviewOutcome, string) error,
 ) (*store.ExamIntegrityReviewMutationResult, error) {
 	result, err := runIdempotentMutation(ctx, s.SQLStore, name, idempotentMutation[examIntegrityReviewOutcome]{command: command, auditEventID: auditID, execute: execute,
-		encode: func(value examIntegrityReviewOutcome) ([]byte, error) { return encodeCommandOutcome(value) },
-		decode: func(data []byte) (examIntegrityReviewOutcome, error) {
-			var value examIntegrityReviewOutcome
-			if err := decodeCommandOutcome(data, &value); err != nil {
-				return value, err
-			}
-			if err := validateReviewOutcome(value); err != nil {
-				return value, err
-			}
-			return value, nil
-		}, hydrateReplay: func(ctx context.Context, tx *sqlxTxWrapper, value examIntegrityReviewOutcome) (examIntegrityReviewOutcome, error) {
+		encode: encodeExamIntegrityReviewOutcome,
+		decode: decodeExamIntegrityReviewOutcome, hydrateReplay: func(ctx context.Context, tx *sqlxTxWrapper, value examIntegrityReviewOutcome) (examIntegrityReviewOutcome, error) {
 			// Replay still checks authoritative retirement when the original audit
 			// is reused; completeReplay alone is skipped in that retry path.
 			_, err := lockReviewScope(ctx, tx, value.Authorization.SubmissionID, actorID, override)

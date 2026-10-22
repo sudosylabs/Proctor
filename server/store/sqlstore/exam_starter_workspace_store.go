@@ -178,17 +178,18 @@ func (s SQLExamStarterWorkspaceStore) runMutation(ctx context.Context, label str
 			return execute(ctx, tx, prepared)
 		},
 		encode: func(value *store.ExamStarterWorkspaceMutationResult) ([]byte, error) {
-			return encodeCommandOutcome(value)
+			return encodeOutcome(newStarterWorkspaceMutationOutcome(value))
 		},
 		decode: func(data []byte) (*store.ExamStarterWorkspaceMutationResult, error) {
-			var value store.ExamStarterWorkspaceMutationResult
-			if err := decodeCommandOutcome(data, &value); err != nil {
-				return nil, err
+			var outcome starterWorkspaceMutationOutcome
+			if decodeErr := decodeOutcome(data, &outcome); decodeErr != nil {
+				return nil, decodeErr
 			}
+			value := outcome.result()
 			if value.DraftRevision < 1 || value.Entry == nil || value.Entry.Validate() != nil || value.Object != nil && value.Object.Validate() != nil {
 				return nil, fmt.Errorf("invalid Starter Workspace command outcome")
 			}
-			return &value, nil
+			return value, nil
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *store.ExamStarterWorkspaceMutationResult, originalAuditID string) error {
 			encoded, err := model.EncodeAuditData(map[string]any{
@@ -846,3 +847,80 @@ func optionalTime(value sql.NullTime) model.OptionalTime {
 }
 
 var _ store.ExamStarterWorkspaceStore = (*SQLExamStarterWorkspaceStore)(nil)
+
+// starterWorkspaceMutationOutcome is the persisted outcome of a Starter
+// Workspace mutation.
+type starterWorkspaceMutationOutcome struct {
+	Entry             *starterWorkspaceEntryDocument  `json:"entry"`
+	Object            *starterWorkspaceObjectDocument `json:"object,omitempty"`
+	DraftRevision     int64                           `json:"draft_revision"`
+	ReclaimableObject model.StarterWorkspaceObjectID  `json:"reclaimable_object,omitempty"`
+}
+
+func (starterWorkspaceMutationOutcome) outcomeDocument() {}
+
+type starterWorkspaceEntryDocument struct {
+	ID              model.StarterWorkspaceEntryID   `json:"id"`
+	ExamID          model.ExamID                    `json:"exam_id"`
+	Kind            model.StarterWorkspaceEntryKind `json:"kind"`
+	Path            string                          `json:"path"`
+	CurrentObjectID model.StarterWorkspaceObjectID  `json:"current_object_id,omitempty"`
+	CreatedAt       time.Time                       `json:"created_at"`
+	UpdatedAt       time.Time                       `json:"updated_at"`
+	ArchivedAt      model.OptionalTime              `json:"archived_at"`
+}
+
+type starterWorkspaceObjectDocument struct {
+	ID              model.StarterWorkspaceObjectID    `json:"id"`
+	ExamID          model.ExamID                      `json:"exam_id"`
+	CreatedByUserID model.UserID                      `json:"created_by_user_id"`
+	CreatedAt       time.Time                         `json:"created_at"`
+	UpdatedAt       time.Time                         `json:"updated_at"`
+	ExpiresAt       time.Time                         `json:"expires_at"`
+	State           model.StarterWorkspaceObjectState `json:"state"`
+	ContentVersion  model.WorkspaceContentVersion     `json:"content_version"`
+	MediaType       string                            `json:"media_type"`
+	SizeBytes       int64                             `json:"size_bytes"`
+	SHA256          string                            `json:"sha256"`
+	ReclaimAfter    model.OptionalTime                `json:"reclaim_after"`
+	ClaimToken      string                            `json:"claim_token"`
+	ClaimedAt       model.OptionalTime                `json:"claimed_at"`
+}
+
+func newStarterWorkspaceMutationOutcome(value *store.ExamStarterWorkspaceMutationResult) starterWorkspaceMutationOutcome {
+	outcome := starterWorkspaceMutationOutcome{DraftRevision: value.DraftRevision, ReclaimableObject: value.ReclaimableObject}
+	if entry := value.Entry; entry != nil {
+		outcome.Entry = &starterWorkspaceEntryDocument{
+			ID: entry.ID, ExamID: entry.ExamID, Kind: entry.Kind, Path: entry.Path, CurrentObjectID: entry.CurrentObjectID,
+			CreatedAt: entry.CreatedAt, UpdatedAt: entry.UpdatedAt, ArchivedAt: entry.ArchivedAt,
+		}
+	}
+	if object := value.Object; object != nil {
+		outcome.Object = &starterWorkspaceObjectDocument{
+			ID: object.ID, ExamID: object.ExamID, CreatedByUserID: object.CreatedByUserID, CreatedAt: object.CreatedAt,
+			UpdatedAt: object.UpdatedAt, ExpiresAt: object.ExpiresAt, State: object.State, ContentVersion: object.ContentVersion,
+			MediaType: object.MediaType, SizeBytes: object.SizeBytes, SHA256: object.SHA256, ReclaimAfter: object.ReclaimAfter,
+			ClaimToken: object.ClaimToken, ClaimedAt: object.ClaimedAt,
+		}
+	}
+	return outcome
+}
+
+func (o starterWorkspaceMutationOutcome) result() *store.ExamStarterWorkspaceMutationResult {
+	value := &store.ExamStarterWorkspaceMutationResult{DraftRevision: o.DraftRevision, ReclaimableObject: o.ReclaimableObject}
+	if entry := o.Entry; entry != nil {
+		value.Entry = &model.StarterWorkspaceEntry{
+			ID: entry.ID, ExamID: entry.ExamID, Kind: entry.Kind, Path: entry.Path, CurrentObjectID: entry.CurrentObjectID,
+			CreatedAt: entry.CreatedAt, UpdatedAt: entry.UpdatedAt, ArchivedAt: entry.ArchivedAt,
+		}
+	}
+	if object := o.Object; object != nil {
+		value.Object = &model.StarterWorkspaceObject{
+			ID: object.ID, ExamID: object.ExamID, CreatedByUserID: object.CreatedByUserID, CreatedAt: object.CreatedAt,
+			UpdatedAt: object.UpdatedAt, ExpiresAt: object.ExpiresAt, State: object.State, ContentVersion: object.ContentVersion,
+			MediaType: object.MediaType, SizeBytes: object.SizeBytes, SHA256: object.SHA256, ReclaimAfter: object.ReclaimAfter,
+			ClaimToken: object.ClaimToken, ClaimedAt: object.ClaimedAt,
+		}
+	}
+	return value
+}

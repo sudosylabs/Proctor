@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -276,9 +277,47 @@ func replayIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, op
 	return runIdempotentMutation(ctx, sqlStore, operation, mutation)
 }
 
-func encodeCommandOutcome(value any) ([]byte, error) { return json.Marshal(value) }
+// outcomeDocument marks a persisted command outcome: the document an
+// idempotent replay decodes from command_outcomes.outcome. Only sqlstore types
+// can implement it, and every field of one carries an explicit json name, so
+// renaming a Go field cannot silently change what a stored replay means
+// (architecture TestPersistedOutcomesAreTaggedDocuments).
+type outcomeDocument interface{ outcomeDocument() }
 
-func decodeCommandOutcome(data []byte, target any) error { return json.Unmarshal(data, target) }
+// encodeOutcome is the one encoder of persisted command outcomes. The column
+// is jsonb, which normalizes key order and spacing itself.
+func encodeOutcome(value outcomeDocument) ([]byte, error) { return json.Marshal(value) }
+
+// decodeOutcome is the one decoder of persisted command outcomes. It is
+// strict: an unknown member or trailing data means the stored document is not
+// this build's format, and the caller reports invalid persisted state rather
+// than replaying a partly decoded outcome.
+func decodeOutcome(data []byte, target outcomeDocument) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
+		return errors.New("trailing data after command outcome")
+	}
+	return nil
+}
+
+// outcomeString spells a nullable text column in an outcome document, where
+// absence is the empty string.
+func outcomeString(value sql.NullString) string {
+	if !value.Valid {
+		return ""
+	}
+	return value.String
+}
+
+// outcomeNullString reads an outcome document's optional text back into its
+// nullable column form.
+func outcomeNullString(value string) sql.NullString {
+	return sql.NullString{String: value, Valid: value != ""}
+}
 
 func validCommandBatch(batch *store.CommandBatch, keyDigest [sha256.Size]byte) bool {
 	if batch == nil {

@@ -39,6 +39,40 @@ type academicUnitRow struct {
 	Description   string         `db:"description"`
 }
 
+// academicUnitOutcome is the persisted outcome of an idempotent Academic Unit
+// creation: the unit as created.
+type academicUnitOutcome struct {
+	ID            string             `json:"id"`
+	CreatedAt     time.Time          `json:"created_at"`
+	UpdatedAt     time.Time          `json:"updated_at"`
+	ArchivedAt    model.OptionalTime `json:"archived_at"`
+	Revision      int64              `json:"revision"`
+	InstitutionID string             `json:"institution_id"`
+	ParentID      string             `json:"parent_id,omitempty"`
+	Name          string             `json:"name"`
+	DisplayName   string             `json:"display_name"`
+	Description   string             `json:"description"`
+}
+
+func (academicUnitOutcome) outcomeDocument() {}
+
+func newAcademicUnitOutcome(unit *model.AcademicUnit) academicUnitOutcome {
+	row := newAcademicUnitRow(unit)
+	return academicUnitOutcome{
+		ID: row.ID, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, ArchivedAt: OptionalTimeFromNullTime(row.ArchivedAt),
+		Revision: row.Revision, InstitutionID: row.InstitutionID, ParentID: outcomeString(row.ParentID),
+		Name: row.Name, DisplayName: row.DisplayName, Description: row.Description,
+	}
+}
+
+func (o academicUnitOutcome) model() (*model.AcademicUnit, error) {
+	return academicUnitRow{
+		ID: o.ID, CreatedAt: o.CreatedAt, UpdatedAt: o.UpdatedAt, ArchivedAt: NullTimeFromOptional(o.ArchivedAt),
+		Revision: o.Revision, InstitutionID: o.InstitutionID, ParentID: outcomeNullString(o.ParentID),
+		Name: o.Name, DisplayName: o.DisplayName, Description: o.Description,
+	}.model()
+}
+
 func academicUnitSliceColumns() []string {
 	return []string{
 		"academic_units.id",
@@ -103,13 +137,13 @@ func (s SQLAcademicUnitStore) CreateIdempotently(ctx context.Context, input *sto
 		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicUnit, error) {
 			return createAcademicUnit(ctx, tx, &candidate, &academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt})
 		},
-		encode: func(unit *model.AcademicUnit) ([]byte, error) { return encodeCommandOutcome(newAcademicUnitRow(unit)) },
+		encode: func(unit *model.AcademicUnit) ([]byte, error) { return encodeOutcome(newAcademicUnitOutcome(unit)) },
 		decode: func(data []byte) (*model.AcademicUnit, error) {
-			var row academicUnitRow
-			if err := decodeCommandOutcome(data, &row); err != nil {
+			var outcome academicUnitOutcome
+			if err := decodeOutcome(data, &outcome); err != nil {
 				return nil, err
 			}
-			return row.model()
+			return outcome.model()
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, unit *model.AcademicUnit, originalAuditID string) error {
 			data := unit.Auditable()

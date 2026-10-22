@@ -144,6 +144,18 @@ Idempotent command outcomes are persisted atomically: explicitly retryable
 client commands store the authenticated User, stable operation name,
 digests of the bounded key and semantic request fingerprint, a bounded
 application outcome, the original audit identity, and expiry.
+The outcome is a dedicated `sqlstore` document type, never a `model` or
+`store` type persisted as is: it implements the unexported `outcomeDocument`
+marker, every field carries an explicit json name, and it nests only other
+such documents or `model` documents that tag every field themselves (delivery
+agreements and results returned verbatim). It is written by `encodeOutcome`
+and read by `decodeOutcome`, which rejects unknown members and trailing data,
+so a renamed field or an older format fails closed as invalid persisted state
+rather than replaying a partly decoded outcome. Convert to and from the domain
+value at the adapter boundary; a document whose fields mirror a model type
+exactly converts with a Go type conversion, so a new model field breaks the
+build until the document spells it. The architecture test
+`TestPersistedOutcomesAreTaggedDocuments` enforces this.
 An operation name is `<domain>[.<subject>].<verb>` in lowercase
 dot-separated snake_case (`exam.attempt.reallow`); a digest or HMAC
 domain-separation tag is `proctor.<topic>` in the same grammar, NUL-terminated

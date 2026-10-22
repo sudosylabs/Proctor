@@ -35,9 +35,33 @@ type desktopCompatibilityPolicyRow struct {
 	UpdatedAt              time.Time  `db:"updated_at"`
 }
 
+// desktopCompatibilityPolicyReplacementOutcome is the committed result of a
+// Desktop compatibility policy replacement.
 type desktopCompatibilityPolicyReplacementOutcome struct {
-	Policy  *model.DesktopCompatibilityPolicy `json:"policy"`
-	Changed bool                              `json:"changed"`
+	Policy  *model.DesktopCompatibilityPolicy
+	Changed bool
+}
+
+// desktopCompatibilityPolicyReplacementDocument is its persisted outcome.
+type desktopCompatibilityPolicyReplacementDocument struct {
+	Policy  desktopCompatibilityPolicyDocument `json:"policy"`
+	Changed bool                               `json:"changed"`
+}
+
+func (desktopCompatibilityPolicyReplacementDocument) outcomeDocument() {}
+
+// desktopCompatibilityPolicyDocument spells model.DesktopCompatibilityPolicy
+// inside a persisted outcome; the two convert directly.
+type desktopCompatibilityPolicyDocument struct {
+	InstitutionID          model.InstitutionID       `json:"institution_id"`
+	Revision               int64                     `json:"revision"`
+	MinimumDesktopRelease  string                    `json:"minimum_desktop_release"`
+	RevokedDesktopBuildIDs []string                  `json:"revoked_desktop_build_ids"`
+	AdministratorMessage   string                    `json:"administrator_message"`
+	Availability           model.DesktopAvailability `json:"availability"`
+	RetryAt                model.OptionalTime        `json:"retry_at"`
+	CreatedAt              time.Time                 `json:"created_at"`
+	UpdatedAt              time.Time                 `json:"updated_at"`
 }
 
 func newSQLDesktopCompatibilityPolicyStore(sqlStore *SQLStore) store.DesktopCompatibilityPolicyStore {
@@ -171,7 +195,12 @@ func (s SQLDesktopCompatibilityPolicyStore) Replace(
 				return outcome, nil
 			},
 			encode: func(outcome desktopCompatibilityPolicyReplacementOutcome) ([]byte, error) {
-				return json.Marshal(outcome)
+				if outcome.Policy == nil {
+					return nil, store.NewErrInvalidInput("desktop_compatibility_policy", "outcome", nil)
+				}
+				return encodeOutcome(desktopCompatibilityPolicyReplacementDocument{
+					Policy: desktopCompatibilityPolicyDocument(*outcome.Policy), Changed: outcome.Changed,
+				})
 			},
 			decode: decodeDesktopCompatibilityPolicyReplacementOutcome,
 			completeReplay: func(
@@ -293,9 +322,11 @@ func validateDesktopCompatibilityPolicyReplacement(
 }
 
 func decodeDesktopCompatibilityPolicyReplacementOutcome(encoded []byte) (desktopCompatibilityPolicyReplacementOutcome, error) {
-	var outcome desktopCompatibilityPolicyReplacementOutcome
-	if err := json.Unmarshal(encoded, &outcome); err != nil ||
-		outcome.Policy == nil || outcome.Policy.Validate() != nil {
+	var document desktopCompatibilityPolicyReplacementDocument
+	err := decodeOutcome(encoded, &document)
+	policy := model.DesktopCompatibilityPolicy(document.Policy)
+	outcome := desktopCompatibilityPolicyReplacementOutcome{Policy: &policy, Changed: document.Changed}
+	if err != nil || outcome.Policy.Validate() != nil {
 		return desktopCompatibilityPolicyReplacementOutcome{}, invalidPersistedState(
 			"command_outcome",
 			"outcome",

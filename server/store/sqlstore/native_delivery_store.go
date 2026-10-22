@@ -355,12 +355,22 @@ func nativeDeclarationReplay(ctx context.Context, tx *sqlxTxWrapper, owner nativ
 	return &record, nil
 }
 
+// nativeDeliverySummaryOutcome is the persisted outcome of a native delivery
+// summary: the model-owned stream status as answered.
+type nativeDeliverySummaryOutcome struct {
+	Status model.NativeSecurityStreamStatus `json:"status"`
+}
+
+func (nativeDeliverySummaryOutcome) outcomeDocument() {}
+
 type nativeDeclarationOutcome struct {
 	Refusal  string                            `json:"refusal"`
 	Receipt  model.DeliveryGapReceipt          `json:"receipt"`
 	Status   *model.NativeSecurityStreamStatus `json:"status"`
 	Capacity *model.DeliveryMetadataCapacity   `json:"capacity"`
 }
+
+func (nativeDeclarationOutcome) outcomeDocument() {}
 
 // DeclareNativeDeliveryGaps records the stream's declared delivery gaps. A
 // refused declaration returns *store.NativeDeliveryRefusal and exhausted
@@ -557,10 +567,10 @@ func (s *SQLExamAttemptStore) declareNativeDelivery(ctx context.Context, access 
 			}
 			return &nativeDeclarationOutcome{Receipt: record.Receipt, Status: status}, nil
 		},
-		encode: func(value *nativeDeclarationOutcome) ([]byte, error) { return canonicalPreflightValue(value) },
+		encode: func(value *nativeDeclarationOutcome) ([]byte, error) { return encodeOutcome(value) },
 		decode: func(raw []byte) (*nativeDeclarationOutcome, error) {
 			var result nativeDeclarationOutcome
-			if err := decodeCommandOutcome(raw, &result); err != nil {
+			if err := decodeOutcome(raw, &result); err != nil {
 				return nil, err
 			}
 			if err := validateDeliveryDeclarationOutcome(result.Refusal, result.Receipt, result.Capacity); err != nil {
@@ -671,13 +681,15 @@ func (s *SQLExamAttemptStore) UpdateNativeDeliverySummary(ctx context.Context, i
 				return nil, err
 			}
 			return nativeDeliveryStatus(ctx, tx, owner, input.Access.StreamID)
-		}, encode: func(v *model.NativeSecurityStreamStatus) ([]byte, error) { return canonicalPreflightValue(v) },
+		}, encode: func(v *model.NativeSecurityStreamStatus) ([]byte, error) {
+			return encodeOutcome(nativeDeliverySummaryOutcome{Status: *v})
+		},
 		decode: func(raw []byte) (*model.NativeSecurityStreamStatus, error) {
-			var v model.NativeSecurityStreamStatus
-			if err := decodeCommandOutcome(raw, &v); err != nil {
+			var outcome nativeDeliverySummaryOutcome
+			if err := decodeOutcome(raw, &outcome); err != nil {
 				return nil, err
 			}
-			return &v, nil
+			return &outcome.Status, nil
 		},
 		hydrateReplay: hydrate,
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, v *model.NativeSecurityStreamStatus, original string) error {

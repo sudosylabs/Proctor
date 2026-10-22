@@ -53,12 +53,23 @@ func (s *SQLExamAttemptStore) debitNativeAppend(ctx context.Context, access stor
 	return nil
 }
 
+// nativeAppendOutcome is the committed result of a native append; its
+// progress is recomputed on replay and never persisted.
 type nativeAppendOutcome struct {
+	Capacity *model.DeliveryMetadataCapacity
+	Receipt  *model.NativeBatchReceipt
+	Refusal  string
+	Progress model.NativeDeliveryProgress
+}
+
+// nativeAppendOutcomeDocument is the persisted outcome of a native append.
+type nativeAppendOutcomeDocument struct {
 	Capacity *model.DeliveryMetadataCapacity `json:"capacity"`
 	Receipt  *model.NativeBatchReceipt       `json:"receipt"`
 	Refusal  string                          `json:"refusal"`
-	Progress model.NativeDeliveryProgress    `json:"-"`
 }
+
+func (nativeAppendOutcomeDocument) outcomeDocument() {}
 
 // AppendNativeDelivery appends one native security batch to the Participation's
 // delivery stream under a NativeDeliveryAppendOperation command owned by the
@@ -295,13 +306,15 @@ func (s *SQLExamAttemptStore) AppendNativeDelivery(ctx context.Context, input *s
 			}
 			return finish(&nativeAppendOutcome{Receipt: &receipt}, false)
 		},
-		encode: func(value *nativeAppendOutcome) ([]byte, error) { return canonicalPreflightValue(value) },
+		encode: func(value *nativeAppendOutcome) ([]byte, error) {
+			return encodeOutcome(nativeAppendOutcomeDocument{Capacity: value.Capacity, Receipt: value.Receipt, Refusal: value.Refusal})
+		},
 		decode: func(raw []byte) (*nativeAppendOutcome, error) {
-			var value nativeAppendOutcome
-			if decodeCommandOutcome(raw, &value) != nil {
+			var document nativeAppendOutcomeDocument
+			if decodeOutcome(raw, &document) != nil {
 				return nil, model.ErrNativeDeliveryInvalid
 			}
-			return &value, nil
+			return &nativeAppendOutcome{Capacity: document.Capacity, Receipt: document.Receipt, Refusal: document.Refusal}, nil
 		},
 		hydrateReplay: hydrate,
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, _ *nativeAppendOutcome, _ string) error {

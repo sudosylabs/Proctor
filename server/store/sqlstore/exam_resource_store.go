@@ -25,26 +25,102 @@ func newSQLExamResourceStore(sqlStore *SQLStore) store.ExamResourceStore {
 }
 
 type examResourceRow struct {
-	ID                  string       `db:"id" json:"id"`
-	ExamID              string       `db:"exam_id" json:"exam_id"`
-	FileEntryID         string       `db:"file_entry_id" json:"file_entry_id"`
-	SelectedRevisionID  string       `db:"selected_file_revision_id" json:"selected_file_revision_id"`
-	DisplayName         string       `db:"display_name" json:"display_name"`
-	DescriptionMarkdown string       `db:"description_markdown" json:"description_markdown"`
-	Position            int          `db:"position" json:"position"`
-	CreatedAt           time.Time    `db:"created_at" json:"created_at"`
-	UpdatedAt           time.Time    `db:"updated_at" json:"updated_at"`
-	ArchivedAt          sql.NullTime `db:"archived_at" json:"archived_at"`
-	DraftRevision       int64        `db:"draft_revision" json:"draft_revision"`
-	RenditionID         string       `db:"rendition_id" json:"rendition_id"`
-	RenditionRevisionID string       `db:"rendition_revision_id" json:"rendition_revision_id"`
-	RenditionCreatedAt  time.Time    `db:"rendition_created_at" json:"rendition_created_at"`
-	RenditionName       string       `db:"rendition_name" json:"rendition_name"`
-	MediaType           string       `db:"media_type" json:"media_type"`
-	Size                int64        `db:"size_bytes" json:"size_bytes"`
-	Width               int          `db:"width" json:"width"`
-	Height              int          `db:"height" json:"height"`
-	SHA256              string       `db:"sha256" json:"sha256"`
+	ID                  string       `db:"id"`
+	ExamID              string       `db:"exam_id"`
+	FileEntryID         string       `db:"file_entry_id"`
+	SelectedRevisionID  string       `db:"selected_file_revision_id"`
+	DisplayName         string       `db:"display_name"`
+	DescriptionMarkdown string       `db:"description_markdown"`
+	Position            int          `db:"position"`
+	CreatedAt           time.Time    `db:"created_at"`
+	UpdatedAt           time.Time    `db:"updated_at"`
+	ArchivedAt          sql.NullTime `db:"archived_at"`
+	DraftRevision       int64        `db:"draft_revision"`
+	RenditionID         string       `db:"rendition_id"`
+	RenditionRevisionID string       `db:"rendition_revision_id"`
+	RenditionCreatedAt  time.Time    `db:"rendition_created_at"`
+	RenditionName       string       `db:"rendition_name"`
+	MediaType           string       `db:"media_type"`
+	Size                int64        `db:"size_bytes"`
+	Width               int          `db:"width"`
+	Height              int          `db:"height"`
+	SHA256              string       `db:"sha256"`
+}
+
+// examResourceDocument spells one Exam Resource record inside persisted
+// command outcomes.
+type examResourceDocument struct {
+	ID                  string             `json:"id"`
+	ExamID              string             `json:"exam_id"`
+	FileEntryID         string             `json:"file_entry_id"`
+	SelectedRevisionID  string             `json:"selected_file_revision_id"`
+	DisplayName         string             `json:"display_name"`
+	DescriptionMarkdown string             `json:"description_markdown"`
+	Position            int                `json:"position"`
+	CreatedAt           time.Time          `json:"created_at"`
+	UpdatedAt           time.Time          `json:"updated_at"`
+	ArchivedAt          model.OptionalTime `json:"archived_at"`
+	DraftRevision       int64              `json:"draft_revision"`
+	RenditionID         string             `json:"rendition_id"`
+	RenditionRevisionID string             `json:"rendition_revision_id"`
+	RenditionCreatedAt  time.Time          `json:"rendition_created_at"`
+	RenditionName       string             `json:"rendition_name"`
+	MediaType           string             `json:"media_type"`
+	Size                int64              `json:"size_bytes"`
+	Width               int                `json:"width"`
+	Height              int                `json:"height"`
+	SHA256              string             `json:"sha256"`
+}
+
+func newExamResourceDocument(value *store.ExamResourceRecord) (examResourceDocument, error) {
+	row, err := examResourceRecordRow(value)
+	if err != nil {
+		return examResourceDocument{}, err
+	}
+	return examResourceDocument{
+		ID: row.ID, ExamID: row.ExamID, FileEntryID: row.FileEntryID, SelectedRevisionID: row.SelectedRevisionID,
+		DisplayName: row.DisplayName, DescriptionMarkdown: row.DescriptionMarkdown, Position: row.Position,
+		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, ArchivedAt: OptionalTimeFromNullTime(row.ArchivedAt),
+		DraftRevision: row.DraftRevision, RenditionID: row.RenditionID, RenditionRevisionID: row.RenditionRevisionID,
+		RenditionCreatedAt: row.RenditionCreatedAt, RenditionName: row.RenditionName, MediaType: row.MediaType,
+		Size: row.Size, Width: row.Width, Height: row.Height, SHA256: row.SHA256,
+	}, nil
+}
+
+func (d examResourceDocument) record() (*store.ExamResourceRecord, error) {
+	return examResourceRow{
+		ID: d.ID, ExamID: d.ExamID, FileEntryID: d.FileEntryID, SelectedRevisionID: d.SelectedRevisionID,
+		DisplayName: d.DisplayName, DescriptionMarkdown: d.DescriptionMarkdown, Position: d.Position,
+		CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt, ArchivedAt: NullTimeFromOptional(d.ArchivedAt),
+		DraftRevision: d.DraftRevision, RenditionID: d.RenditionID, RenditionRevisionID: d.RenditionRevisionID,
+		RenditionCreatedAt: d.RenditionCreatedAt, RenditionName: d.RenditionName, MediaType: d.MediaType,
+		Size: d.Size, Width: d.Width, Height: d.Height, SHA256: d.SHA256,
+	}.record()
+}
+
+// examResourceOutcome is the persisted outcome of an Exam Resource upload
+// finalization, metadata update, or removal.
+type examResourceOutcome struct {
+	Resource examResourceDocument `json:"resource"`
+}
+
+func (examResourceOutcome) outcomeDocument() {}
+
+// examResourceReorderOutcome is the persisted outcome of an Exam Resource
+// reorder: every active resource in its new order.
+type examResourceReorderOutcome struct {
+	Resources     []examResourceDocument `json:"resources"`
+	DraftRevision int64                  `json:"draft_revision"`
+}
+
+func (examResourceReorderOutcome) outcomeDocument() {}
+
+func encodeExamResourceOutcome(value *store.ExamResourceRecord) ([]byte, error) {
+	document, err := newExamResourceDocument(value)
+	if err != nil {
+		return nil, err
+	}
+	return encodeOutcome(examResourceOutcome{Resource: document})
 }
 
 const examResourceSelect = `SELECT r.id, r.exam_id, r.file_entry_id, r.selected_file_revision_id,
@@ -191,13 +267,7 @@ func (s SQLExamResourceStore) FinalizeUpload(ctx context.Context, input *store.E
 		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamResourceRecord, error) {
 			return finalizeExamResourceUpload(ctx, tx, input)
 		},
-		encode: func(value *store.ExamResourceRecord) ([]byte, error) {
-			row, err := examResourceRecordRow(value)
-			if err != nil {
-				return nil, err
-			}
-			return encodeCommandOutcome(row)
-		},
+		encode: encodeExamResourceOutcome,
 		decode: decodeExamResourceOutcome,
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *store.ExamResourceRecord, original string) error {
 			return completeExamResourceReplay(ctx, tx, input.AuditEventID, input.AuditAt, value, original)
@@ -327,11 +397,11 @@ func examResourceRecordRow(value *store.ExamResourceRecord) (examResourceRow, er
 	return examResourceRow{ID: r.ID.String(), ExamID: r.ExamID.String(), FileEntryID: r.FileEntryID.String(), SelectedRevisionID: r.SelectedFileRevisionID.String(), DisplayName: r.DisplayName, DescriptionMarkdown: r.DescriptionMarkdown, Position: r.Position, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, ArchivedAt: NullTimeFromOptional(r.ArchivedAt), DraftRevision: value.DraftRevision, RenditionID: x.ID.String(), RenditionRevisionID: x.RevisionID.String(), RenditionCreatedAt: x.CreatedAt, RenditionName: x.Name, MediaType: x.MediaType, Size: x.Size, Width: x.Width, Height: x.Height, SHA256: x.SHA256}, nil
 }
 func decodeExamResourceOutcome(data []byte) (*store.ExamResourceRecord, error) {
-	var row examResourceRow
-	if err := decodeCommandOutcome(data, &row); err != nil {
+	var outcome examResourceOutcome
+	if err := decodeOutcome(data, &outcome); err != nil {
 		return nil, err
 	}
-	return row.record()
+	return outcome.Resource.record()
 }
 func completeExamResourceReplay(ctx context.Context, tx *sqlxTxWrapper, auditID model.AuditEventID, auditAt int64, value *store.ExamResourceRecord, original string) error {
 	data, err := model.EncodeAuditData(map[string]any{"exam_id": value.Resource.ExamID.String(), "exam_resource_id": value.Resource.ID.String(), "draft_revision": value.DraftRevision, "idempotency_replayed": true, "original_audit_event_id": original})
@@ -378,13 +448,7 @@ func (s SQLExamResourceStore) UpdateMetadata(ctx context.Context, input *store.E
 				return nil, err
 			}
 			return getExamResourceRecord(ctx, tx, input.ExamID, input.ResourceID)
-		}, encode: func(value *store.ExamResourceRecord) ([]byte, error) {
-			row, err := examResourceRecordRow(value)
-			if err != nil {
-				return nil, err
-			}
-			return encodeCommandOutcome(row)
-		}, decode: decodeExamResourceOutcome,
+		}, encode: encodeExamResourceOutcome, decode: decodeExamResourceOutcome,
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *store.ExamResourceRecord, original string) error {
 			return completeExamResourceReplay(ctx, tx, input.AuditEventID, input.AuditAt, value, original)
 		}})
@@ -405,88 +469,84 @@ func (s SQLExamResourceStore) Reorder(ctx context.Context, input *store.ExamReso
 		}
 		seen[id] = true
 	}
-	type reorderOutcome struct {
-		Rows          []examResourceRow `json:"rows"`
-		DraftRevision int64             `json:"draft_revision"`
-	}
-	result, err := runIdempotentMutation(ctx, s.SQLStore, "exam resource reorder", idempotentMutation[reorderOutcome]{command: command, auditEventID: input.AuditEventID,
-		execute: func(ctx context.Context, tx *sqlxTxWrapper) (reorderOutcome, error) {
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "exam resource reorder", idempotentMutation[examResourceReorderOutcome]{command: command, auditEventID: input.AuditEventID,
+		execute: func(ctx context.Context, tx *sqlxTxWrapper) (examResourceReorderOutcome, error) {
 			if err := lockExamResourceDraft(ctx, tx, input.ExamID, input.ActorUserID, input.ManagerOverride, input.ExpectedDraftRevision); err != nil {
-				return reorderOutcome{}, err
+				return examResourceReorderOutcome{}, err
 			}
 			var current []struct {
 				ID       string `db:"id"`
 				Position int    `db:"position"`
 			}
 			if err := tx.Select(ctx, &current, `SELECT id,position FROM exam_resources WHERE exam_id=? AND archived_at IS NULL ORDER BY position FOR UPDATE`, input.ExamID.String()); err != nil {
-				return reorderOutcome{}, err
+				return examResourceReorderOutcome{}, err
 			}
 			if len(current) != len(input.ResourceIDs) {
-				return reorderOutcome{}, store.NewErrConflict("exam_resource", "exam_resource_order", nil)
+				return examResourceReorderOutcome{}, store.NewErrConflict("exam_resource", "exam_resource_order", nil)
 			}
 			changed := false
 			for i, row := range current {
 				if !seen[model.ExamResourceID(row.ID)] {
-					return reorderOutcome{}, store.NewErrConflict("exam_resource", "exam_resource_order", nil)
+					return examResourceReorderOutcome{}, store.NewErrConflict("exam_resource", "exam_resource_order", nil)
 				}
 				if row.ID != input.ResourceIDs[i].String() {
 					changed = true
 				}
 			}
 			if !changed {
-				return reorderOutcome{}, store.NewErrConflict("exam_resource", "exam_resource_no_changes", nil)
+				return examResourceReorderOutcome{}, store.NewErrConflict("exam_resource", "exam_resource_no_changes", nil)
 			}
 			result, err := tx.Exec(ctx, `UPDATE exam_resources SET position=position+100 WHERE exam_id=? AND archived_at IS NULL`, input.ExamID.String())
 			if err != nil {
-				return reorderOutcome{}, err
+				return examResourceReorderOutcome{}, err
 			}
 			if err = requireExamResourceAffected(result, int64(len(current)), "exam_resource_order"); err != nil {
-				return reorderOutcome{}, err
+				return examResourceReorderOutcome{}, err
 			}
 			for position, id := range input.ResourceIDs {
 				result, err = tx.Exec(ctx, `UPDATE exam_resources SET position=?,updated_at=GREATEST(updated_at,?) WHERE exam_id=? AND id=? AND archived_at IS NULL`, position, input.ChangedAt, input.ExamID.String(), id.String())
 				if err != nil {
-					return reorderOutcome{}, err
+					return examResourceReorderOutcome{}, err
 				}
 				if err = requireExamResourceAffected(result, 1, "exam_resource_order"); err != nil {
-					return reorderOutcome{}, err
+					return examResourceReorderOutcome{}, err
 				}
 			}
 			if err := advanceExamResourceDraft(ctx, tx, input.ExamID, input.ExpectedDraftRevision, input.ChangedAt); err != nil {
-				return reorderOutcome{}, err
+				return examResourceReorderOutcome{}, err
 			}
 			data, _ := model.EncodeAuditData(map[string]any{"exam_id": input.ExamID.String(), "resource_count": len(input.ResourceIDs), "draft_revision": input.ExpectedDraftRevision + 1})
 			if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", data, input.AuditAt); err != nil {
-				return reorderOutcome{}, err
+				return examResourceReorderOutcome{}, err
 			}
 			items, err := listExamResourceRecords(ctx, tx, input.ExamID)
 			if err != nil {
-				return reorderOutcome{}, err
+				return examResourceReorderOutcome{}, err
 			}
-			rows := make([]examResourceRow, 0, len(items))
+			documents := make([]examResourceDocument, 0, len(items))
 			for i := range items {
-				row, rowErr := examResourceRecordRow(&items[i])
-				if rowErr != nil {
-					return reorderOutcome{}, rowErr
+				document, documentErr := newExamResourceDocument(&items[i])
+				if documentErr != nil {
+					return examResourceReorderOutcome{}, documentErr
 				}
-				rows = append(rows, row)
+				documents = append(documents, document)
 			}
-			return reorderOutcome{Rows: rows, DraftRevision: input.ExpectedDraftRevision + 1}, nil
-		}, encode: func(v reorderOutcome) ([]byte, error) { return encodeCommandOutcome(v) }, decode: func(data []byte) (reorderOutcome, error) {
-			var v reorderOutcome
-			return v, decodeCommandOutcome(data, &v)
+			return examResourceReorderOutcome{Resources: documents, DraftRevision: input.ExpectedDraftRevision + 1}, nil
+		}, encode: func(v examResourceReorderOutcome) ([]byte, error) { return encodeOutcome(v) }, decode: func(data []byte) (examResourceReorderOutcome, error) {
+			var v examResourceReorderOutcome
+			return v, decodeOutcome(data, &v)
 		},
-		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, v reorderOutcome, original string) error {
-			data, _ := model.EncodeAuditData(map[string]any{"exam_id": input.ExamID.String(), "resource_count": len(v.Rows), "idempotency_replayed": true, "original_audit_event_id": original})
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, v examResourceReorderOutcome, original string) error {
+			data, _ := model.EncodeAuditData(map[string]any{"exam_id": input.ExamID.String(), "resource_count": len(v.Resources), "idempotency_replayed": true, "original_audit_event_id": original})
 			_, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", data, input.AuditAt)
 			return err
 		}})
 	if err != nil {
 		return nil, err
 	}
-	items := make([]store.ExamResourceRecord, 0, len(result.Value.Rows))
-	for _, row := range result.Value.Rows {
-		record, recordErr := row.record()
+	items := make([]store.ExamResourceRecord, 0, len(result.Value.Resources))
+	for _, document := range result.Value.Resources {
+		record, recordErr := document.record()
 		if recordErr != nil {
 			return nil, recordErr
 		}
@@ -542,13 +602,7 @@ func (s SQLExamResourceStore) Remove(ctx context.Context, input *store.ExamResou
 				return nil, err
 			}
 			return &store.ExamResourceRecord{Resource: &removed, Rendition: current.Rendition, DraftRevision: input.ExpectedDraftRevision + 1}, nil
-		}, encode: func(value *store.ExamResourceRecord) ([]byte, error) {
-			row, err := examResourceRecordRow(value)
-			if err != nil {
-				return nil, err
-			}
-			return encodeCommandOutcome(row)
-		}, decode: decodeExamResourceOutcome,
+		}, encode: encodeExamResourceOutcome, decode: decodeExamResourceOutcome,
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *store.ExamResourceRecord, original string) error {
 			return completeExamResourceReplay(ctx, tx, input.AuditEventID, input.AuditAt, value, original)
 		}})

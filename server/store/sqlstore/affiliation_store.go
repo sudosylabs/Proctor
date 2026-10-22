@@ -53,6 +53,8 @@ type affiliationCommandOutcome struct {
 	NoOp bool   `json:"no_op,omitempty"`
 }
 
+func (affiliationCommandOutcome) outcomeDocument() {}
+
 func affiliationColumns() []string {
 	return []string{
 		"affiliations.id", "affiliations.created_at", "affiliations.updated_at",
@@ -305,12 +307,12 @@ func encodeAffiliationMutationOutcome(value *affiliationMutationResult) ([]byte,
 	if value == nil || value.Value == nil || !value.Value.ID.IsValid() {
 		return nil, store.NewErrInvalidInput("affiliation", "command_outcome", nil)
 	}
-	return encodeCommandOutcome(affiliationCommandOutcome{ID: value.Value.ID.String(), NoOp: value.NoOp})
+	return encodeOutcome(affiliationCommandOutcome{ID: value.Value.ID.String(), NoOp: value.NoOp})
 }
 
 func decodeAffiliationMutationOutcome(data []byte) (*affiliationMutationResult, error) {
 	var outcome affiliationCommandOutcome
-	if err := decodeCommandOutcome(data, &outcome); err != nil {
+	if err := decodeOutcome(data, &outcome); err != nil {
 		return nil, err
 	}
 	id, err := model.ParseAffiliationID(outcome.ID)

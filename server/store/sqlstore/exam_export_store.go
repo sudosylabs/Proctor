@@ -24,6 +24,25 @@ import (
 
 type SQLExamExportStore struct{ *SQLStore }
 
+// examExportOutcome is the persisted outcome of an Exam export creation: the
+// export a replay rehydrates.
+type examExportOutcome struct {
+	ExportID model.ExamExportID `json:"export_id"`
+}
+
+func (examExportOutcome) outcomeDocument() {}
+
+func decodeExamExportOutcome(data []byte) (model.ExamExportID, error) {
+	var outcome examExportOutcome
+	if err := decodeOutcome(data, &outcome); err != nil {
+		return "", err
+	}
+	if !outcome.ExportID.IsValid() {
+		return "", errors.New("invalid export outcome")
+	}
+	return outcome.ExportID, nil
+}
+
 func NewSQLExamExportStore(s *SQLStore) store.ExamExportStore { return &SQLExamExportStore{s} }
 
 const examExportColumns = `id,exam_id,exam_sitting_id,submission_id,requester_user_id,categories,state,policy_revision,created_at,expires_at,source_expires_at,submission_count,file_count,source_bytes,job_id,archive_attempt_id,archive_size_bytes,archive_sha256,ready_at`
@@ -108,9 +127,9 @@ func (s *SQLExamExportStore) ListCreationScope(ctx context.Context, scope model.
 		if !bytes.Equal(outcome.Fingerprint, command.Fingerprint[:]) {
 			return nil, &store.ErrIdempotencyConflict{}
 		}
-		var id model.ExamExportID
-		if json.Unmarshal(outcome.Outcome, &id) != nil || !id.IsValid() {
-			return nil, invalidPersistedState("exam_export", "outcome", errors.New("invalid export outcome"))
+		id, err := decodeExamExportOutcome(outcome.Outcome)
+		if err != nil {
+			return nil, invalidPersistedState("exam_export", "outcome", err)
 		}
 		row, err := getExamExport(ctx, tx, id, false)
 		if err != nil {
@@ -240,11 +259,11 @@ func (s *SQLExamExportStore) Create(ctx context.Context, input *store.ExamExport
 		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*model.ExamExport, error) {
 			return createExamExport(ctx, tx, input)
 		},
-		encode: func(e *model.ExamExport) ([]byte, error) { return json.Marshal(e.ID) },
+		encode: func(e *model.ExamExport) ([]byte, error) { return encodeOutcome(examExportOutcome{ExportID: e.ID}) },
 		decode: func(b []byte) (*model.ExamExport, error) {
-			var id model.ExamExportID
-			if json.Unmarshal(b, &id) != nil || !id.IsValid() {
-				return nil, errors.New("invalid export outcome")
+			id, err := decodeExamExportOutcome(b)
+			if err != nil {
+				return nil, err
 			}
 			return &model.ExamExport{ID: id}, nil
 		},
