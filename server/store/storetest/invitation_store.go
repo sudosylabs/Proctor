@@ -148,7 +148,7 @@ func testStudentProgressionCrossPeriod(t *testing.T, ss store.Store) {
 		ClientType: session.ClientType, AuthenticatedAt: session.AuthenticatedAt}
 	at := model.NowUTC()
 	importID := model.NewOnboardingImportID()
-	previewJob, err := model.NewJob(model.NewJobID(), model.JobTypeStudentProgressionPreview, 1, json.RawMessage(`{"import_id":"`+importID.String()+`"}`), "progression-preview:"+importID.String(), at, at, 3)
+	previewJob, err := model.NewJob(model.NewJobID(), model.JobTypeStudentProgressionPreview, json.RawMessage(`{"import_id":"`+importID.String()+`"}`), "progression-preview:"+importID.String(), at, at, 3)
 	require.NoError(t, err)
 	creationAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, destinationClass.ID.String(), "student_progression.dry_run")
 	creationSourceAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, sourceClass.ID.String(), "student_progression.dry_run")
@@ -167,7 +167,7 @@ func testStudentProgressionCrossPeriod(t *testing.T, ss store.Store) {
 			UserID: student.ID, RelationshipID: source.Membership.ID.String(), RelationshipRevision: source.Membership.Revision,
 			StartsAt: model.MillisFromTime(effectiveAt), PreviewStatus: model.OnboardingImportRowValid, Status: model.OnboardingImportRowValid}}})
 	require.NoError(t, err)
-	executionJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportExecute, 1, json.RawMessage(`{"import_id":"`+importID.String()+`"}`), "progression-execute:"+importID.String(), at, at, 3)
+	executionJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportExecute, json.RawMessage(`{"import_id":"`+importID.String()+`"}`), "progression-execute:"+importID.String(), at, at, 3)
 	require.NoError(t, err)
 	commitSession, commitCredentials, _ := saveSession(t, ctx, ss, actor.ID.String(), 10)
 	commitPrincipal := model.Principal{UserID: actor.ID, SessionID: commitSession.ID, CredentialID: model.PrincipalCredentialID(commitCredentials[0].ID),
@@ -413,7 +413,7 @@ func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
 		ClientType: session.ClientType, AuthenticatedAt: session.AuthenticatedAt}
 	importID := model.NewOnboardingImportID()
 	scopeID := class.ID.String()
-	parseJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportParse, 1, json.RawMessage(`{"import_id":"`+importID.String()+`"}`), "parse:"+importID.String(), at, at, 3)
+	parseJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportParse, json.RawMessage(`{"import_id":"`+importID.String()+`"}`), "parse:"+importID.String(), at, at, 3)
 	require.NoError(t, err)
 	creationAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, scopeID, "onboarding_import.upload")
 	created, err := ss.OnboardingImport().CreateOnboardingImport(ctx, &store.OnboardingImportCreation{Import: &store.OnboardingImport{ID: importID,
@@ -430,7 +430,7 @@ func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
 	require.Equal(t, model.OnboardingImportPreviewReady, preview.State)
 	require.Equal(t, 1, preview.ValidRows)
 	require.Equal(t, 0, preview.InvalidRows)
-	executionJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportExecute, 1, json.RawMessage(`{"import_id":"`+importID.String()+`"}`), "execute:"+importID.String(), at, at, 3)
+	executionJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportExecute, json.RawMessage(`{"import_id":"`+importID.String()+`"}`), "execute:"+importID.String(), at, at, 3)
 	require.NoError(t, err)
 	key := sha256.Sum256([]byte("commit-key"))
 	commit := &store.OnboardingImportCommit{ID: importID, ActorUserID: actor.ID, Principal: principal, ExpectedRevision: preview.Revision, PreviewDigest: digest,
@@ -441,7 +441,7 @@ func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
 	require.NoError(t, err)
 	require.Equal(t, model.OnboardingImportExecuting, executing.State)
 	require.Equal(t, executionJob.ID, executing.ExecutionJobID)
-	retryJob, _ := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportExecute, 1, json.RawMessage(`{"import_id":"`+importID.String()+`"}`), "retry:"+importID.String(), at, at, 3)
+	retryJob, _ := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportExecute, json.RawMessage(`{"import_id":"`+importID.String()+`"}`), "retry:"+importID.String(), at, at, 3)
 	commit.ExecutionJob = retryJob
 	replayAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, created.ScopeID, "onboarding_import.commit")
 	commit.AuditEventID, commit.AuditAt = replayAudit.ID, model.MillisFromTime(at.Add(2*time.Second))
@@ -523,7 +523,7 @@ func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
 	require.True(t, store.IsNotFound(err), "canceled row Invitation error")
 
 	emptyID := model.NewOnboardingImportID()
-	emptyParseJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportParse, 1, json.RawMessage(`{"import_id":"`+emptyID.String()+`"}`), "parse:"+emptyID.String(), at, at, 3)
+	emptyParseJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportParse, json.RawMessage(`{"import_id":"`+emptyID.String()+`"}`), "parse:"+emptyID.String(), at, at, 3)
 	require.NoError(t, err)
 	emptyCreationAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, scopeID, "onboarding_import.upload")
 	emptyCreated, err := ss.OnboardingImport().CreateOnboardingImport(ctx, &store.OnboardingImportCreation{Import: &store.OnboardingImport{ID: emptyID,
@@ -535,7 +535,7 @@ func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
 		Digest: strings.Repeat("b", sha256.Size*2), At: at.Add(time.Second), Rows: []store.OnboardingImportRow{{ImportID: emptyID, RowNumber: 1,
 			Reference: "invalid-row", ScopeType: model.RoleScopeClass, ScopeID: scopeID, PreviewStatus: model.OnboardingImportRowInvalid, PreviewCode: "request.invalid", Status: model.OnboardingImportRowInvalid}}})
 	require.NoError(t, err)
-	emptyExecutionJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportExecute, 1, json.RawMessage(`{"import_id":"`+emptyID.String()+`"}`), "execute:"+emptyID.String(), at, at, 3)
+	emptyExecutionJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportExecute, json.RawMessage(`{"import_id":"`+emptyID.String()+`"}`), "execute:"+emptyID.String(), at, at, 3)
 	require.NoError(t, err)
 	emptyCommitAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, scopeID, "onboarding_import.commit")
 	emptyExecuting, err := ss.OnboardingImport().CommitOnboardingImport(ctx, &store.OnboardingImportCommit{ID: emptyID, ActorUserID: actor.ID, Principal: principal, ExpectedRevision: emptyPreview.Revision,
@@ -549,7 +549,7 @@ func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
 	require.Equal(t, 1, emptyFinished.SkippedRows, "all-invalid import = %#v / %#v", emptyExecuting, emptyFinished)
 
 	cancelID := model.NewOnboardingImportID()
-	cancelJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportParse, 1, json.RawMessage(`{"import_id":"`+cancelID.String()+`"}`), "parse:"+cancelID.String(), at, at, 3)
+	cancelJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportParse, json.RawMessage(`{"import_id":"`+cancelID.String()+`"}`), "parse:"+cancelID.String(), at, at, 3)
 	require.NoError(t, err)
 	cancelCreationAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, scopeID, "onboarding_import.upload")
 	_, err = ss.OnboardingImport().CreateOnboardingImport(ctx, &store.OnboardingImportCreation{Import: &store.OnboardingImport{ID: cancelID,
@@ -568,7 +568,7 @@ func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
 
 	oldAt := at.Add(-8 * 24 * time.Hour)
 	expiredID := model.NewOnboardingImportID()
-	expiredJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportParse, 1, json.RawMessage(`{"import_id":"`+expiredID.String()+`"}`), "parse:"+expiredID.String(), oldAt, oldAt, 3)
+	expiredJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportParse, json.RawMessage(`{"import_id":"`+expiredID.String()+`"}`), "parse:"+expiredID.String(), oldAt, oldAt, 3)
 	require.NoError(t, err)
 	expiredAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, scopeID, "onboarding_import.upload")
 	_, err = ss.OnboardingImport().CreateOnboardingImport(ctx, &store.OnboardingImportCreation{Import: &store.OnboardingImport{ID: expiredID,
@@ -589,7 +589,7 @@ func createExecutingStudentOnboardingImport(t *testing.T, ctx context.Context, s
 ) model.OnboardingImportID {
 	t.Helper()
 	id := model.NewOnboardingImportID()
-	parseJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportParse, 1, json.RawMessage(`{"import_id":"`+id.String()+`"}`), "parse:"+id.String(), at, at, 3)
+	parseJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportParse, json.RawMessage(`{"import_id":"`+id.String()+`"}`), "parse:"+id.String(), at, at, 3)
 	require.NoError(t, err)
 	creationAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, class.ID.String(), "onboarding_import.upload")
 	created, err := ss.OnboardingImport().CreateOnboardingImport(ctx, &store.OnboardingImportCreation{Import: &store.OnboardingImport{ID: id,
@@ -601,7 +601,7 @@ func createExecutingStudentOnboardingImport(t *testing.T, ctx context.Context, s
 			Operation: "student_class.create", ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(), TargetRevision: class.Revision, Email: email,
 			PreviewStatus: model.OnboardingImportRowValid, Status: model.OnboardingImportRowValid}}})
 	require.NoError(t, err)
-	executionJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportExecute, 1, json.RawMessage(`{"import_id":"`+id.String()+`"}`), "execute:"+id.String(), at, at, 3)
+	executionJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportExecute, json.RawMessage(`{"import_id":"`+id.String()+`"}`), "execute:"+id.String(), at, at, 3)
 	require.NoError(t, err)
 	commitAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, class.ID.String(), "onboarding_import.commit")
 	_, err = ss.OnboardingImport().CommitOnboardingImport(ctx, &store.OnboardingImportCommit{ID: id, ActorUserID: actor.ID, Principal: principal, ExpectedRevision: preview.Revision,
@@ -616,7 +616,7 @@ func createExecutingOnboardingImport(t *testing.T, ctx context.Context, ss store
 ) model.OnboardingImportID {
 	t.Helper()
 	id := model.NewOnboardingImportID()
-	parseJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportParse, 1, json.RawMessage(`{"import_id":"`+id.String()+`"}`), "parse:"+id.String(), at, at, 3)
+	parseJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportParse, json.RawMessage(`{"import_id":"`+id.String()+`"}`), "parse:"+id.String(), at, at, 3)
 	require.NoError(t, err)
 	creationAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, scopeType, scopeID, "onboarding_import.upload")
 	created, err := ss.OnboardingImport().CreateOnboardingImport(ctx, &store.OnboardingImportCreation{Import: &store.OnboardingImport{ID: id,
@@ -628,7 +628,7 @@ func createExecutingOnboardingImport(t *testing.T, ctx context.Context, ss store
 	preview, err := ss.OnboardingImport().CompleteOnboardingImportPreview(ctx, &store.OnboardingImportPreviewCompletion{ID: id, ExpectedRevision: created.Revision,
 		Digest: strings.Repeat("e", sha256.Size*2), At: at.Add(time.Second), Rows: []store.OnboardingImportRow{row}})
 	require.NoError(t, err)
-	executionJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportExecute, 1, json.RawMessage(`{"import_id":"`+id.String()+`"}`), "execute:"+id.String(), at, at, 3)
+	executionJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportExecute, json.RawMessage(`{"import_id":"`+id.String()+`"}`), "execute:"+id.String(), at, at, 3)
 	require.NoError(t, err)
 	commitAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, scopeType, scopeID, "onboarding_import.commit")
 	_, err = ss.OnboardingImport().CommitOnboardingImport(ctx, &store.OnboardingImportCommit{ID: id, ActorUserID: actor.ID, Principal: principal, ExpectedRevision: preview.Revision,
@@ -1114,9 +1114,9 @@ func invitationLifecycleMailFixture(t *testing.T, invitationID model.InvitationI
 ) (*model.MailOccurrence, *model.MailDelivery, *model.Job) {
 	t.Helper()
 	occurrenceID, deliveryID := model.NewMailOccurrenceID(), model.NewMailDeliveryID()
-	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommand{DeliveryID: deliveryID})
 	require.NoError(t, err)
-	job, err := model.NewJob(model.NewJobID(), jobType, 1, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
+	job, err := model.NewJob(model.NewJobID(), jobType, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
 	require.NoError(t, err)
 	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceInvitation, TemplateKey: key, ActorUserID: actor, CreatedAt: at}
 	delivery := &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: job.ID, TargetInvitationID: invitationID,
@@ -1340,9 +1340,9 @@ func scopedRoleInvitationIssueFixture(t *testing.T, ss store.Store, invitation *
 	}
 	at := invitation.CreatedAt
 	occurrenceID, deliveryID, jobID := model.NewMailOccurrenceID(), model.NewMailDeliveryID(), model.NewJobID()
-	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommand{DeliveryID: deliveryID})
 	require.NoError(t, err)
-	job, err := model.NewJob(jobID, model.JobTypeMailDeliverCredential, 1, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
+	job, err := model.NewJob(jobID, model.JobTypeMailDeliverCredential, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
 	require.NoError(t, err)
 	attempt, err := ss.Audit().Save(context.Background(), &model.AuditEvent{ActorID: invitation.InviterUserID,
 		Action: string(model.ActionInvitationCreate), Resource: model.Resource{Type: resourceTypeForScopedInvitation(invitation), ID: invitation.ScopeID},
@@ -1903,9 +1903,9 @@ func studentClassInvitationIssueFixture(t *testing.T, ss store.Store, inviter *m
 	})
 	require.NoError(t, err)
 	occurrenceID, deliveryID, jobID := model.NewMailOccurrenceID(), model.NewMailDeliveryID(), model.NewJobID()
-	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommand{DeliveryID: deliveryID})
 	require.NoError(t, err)
-	job, err := model.NewJob(jobID, model.JobTypeMailDeliverCredential, 1, command, deliveryID.String(), issuedAt, issuedAt, model.MailMaximumAttempts)
+	job, err := model.NewJob(jobID, model.JobTypeMailDeliverCredential, command, deliveryID.String(), issuedAt, issuedAt, model.MailMaximumAttempts)
 	require.NoError(t, err)
 	delivery := &model.MailDelivery{
 		ID: deliveryID, OccurrenceID: occurrenceID, JobID: jobID, TargetInvitationID: invitation.ID,
@@ -2011,9 +2011,9 @@ func studentClassInvitationAcceptanceFixture(t *testing.T, invitation *model.Inv
 	require.NoError(t, err)
 	credential := &model.PasswordCredential{UserID: user.ID, PasswordHash: "encoded-invitation-password"}
 	credential.PrepareCreate(model.NewPasswordCredentialID(), acceptedAt)
-	defaultCommand, err := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommandV1{UserID: user.ID})
+	defaultCommand, err := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommand{UserID: user.ID})
 	require.NoError(t, err)
-	defaultJob, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, defaultCommand, user.ID.String(), acceptedAt, acceptedAt, 8)
+	defaultJob, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, defaultCommand, user.ID.String(), acceptedAt, acceptedAt, 8)
 	require.NoError(t, err)
 	effectiveStart := invitation.EffectiveStartsAt(acceptedAt)
 	affiliation := &model.Affiliation{UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: effectiveStart}
@@ -2024,9 +2024,9 @@ func studentClassInvitationAcceptanceFixture(t *testing.T, invitation *model.Inv
 	}
 	member.PrepareCreate(model.NewClassMemberID(), acceptedAt)
 	occurrenceID, deliveryID, deliveryJobID := model.NewMailOccurrenceID(), model.NewMailDeliveryID(), model.NewJobID()
-	deliveryCommand, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	deliveryCommand, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommand{DeliveryID: deliveryID})
 	require.NoError(t, err)
-	deliveryJob, err := model.NewJob(deliveryJobID, model.JobTypeMailDeliver, 1, deliveryCommand, deliveryID.String(), acceptedAt, acceptedAt, model.MailMaximumAttempts)
+	deliveryJob, err := model.NewJob(deliveryJobID, model.JobTypeMailDeliver, deliveryCommand, deliveryID.String(), acceptedAt, acceptedAt, model.MailMaximumAttempts)
 	require.NoError(t, err)
 	delivery := &model.MailDelivery{
 		ID: deliveryID, OccurrenceID: occurrenceID, JobID: deliveryJobID, TargetUserID: user.ID,

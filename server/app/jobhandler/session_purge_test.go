@@ -59,10 +59,10 @@ func TestSessionPurgeWalksRetiredSessionsInOrder(t *testing.T) {
 		{Examined: 1, Sessions: 1, Credentials: 2},
 	}}
 	credentials := &sessionCredentialPurgeStoreFake{deleted: []int64{2, 1}}
-	command, err := json.Marshal(SessionPurgeCommandV1{BatchSize: 2})
+	command, err := json.Marshal(SessionPurgeCommand{BatchSize: 2})
 	require.NoError(t, err)
 	at := time.Now().UTC()
-	record, err := model.NewJob(model.NewJobID(), model.JobTypeSessionPurgeRetired, 1, command, "purge", at, at, 3)
+	record, err := model.NewJob(model.NewJobID(), model.JobTypeSessionPurgeRetired, command, "purge", at, at, 3)
 	require.NoError(t, err)
 	handler := sessionPurgeHandler{sessions: sessions, credentials: credentials, retention: 720 * time.Hour}
 	outcome := handler.Run(context.Background(), jobengine.NewExecution(record, nil, nil, nil))
@@ -72,7 +72,7 @@ func TestSessionPurgeWalksRetiredSessionsInOrder(t *testing.T) {
 	require.Len(t, sessions.inputs, 2)
 	require.Zero(t, sessions.inputs[0].After, "the first pass starts at the oldest retired Session")
 	require.Equal(t, first, sessions.inputs[1].After, "a full pass continues after the last examined Session")
-	var result SessionPurgeResultV1
+	var result SessionPurgeResult
 	require.NoError(t, json.Unmarshal(outcome.Result, &result))
-	require.Equal(t, SessionPurgeResultV1{Sessions: 2, Credentials: 9}, result)
+	require.Equal(t, SessionPurgeResult{Sessions: 2, Credentials: 9}, result)
 }

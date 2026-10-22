@@ -31,7 +31,8 @@ type RetentionExpirySystemAuditor interface {
 	PrepareRetentionCleanupAudit(context.Context, model.InstitutionID) (*model.AuditEvent, error)
 }
 
-type RetentionExpiryCommandV1 struct {
+// RetentionExpiryCommand is the immutable command of the retention expiry Job.
+type RetentionExpiryCommand struct {
 	CleanupAudit bool                      `json:"cleanup_audit,omitempty"`
 	Kind         model.RetentionExpiryKind `json:"kind"`
 	BatchSize    int                       `json:"batch_size"`
@@ -39,7 +40,8 @@ type RetentionExpiryCommandV1 struct {
 	Before       time.Time                 `json:"before,omitempty"`
 }
 
-type RetentionExpiryCheckpointV1 struct {
+// RetentionExpiryCheckpoint is the resumable checkpoint of the retention expiry Job.
+type RetentionExpiryCheckpoint struct {
 	AfterID  string    `json:"after_id,omitempty"`
 	Before   time.Time `json:"before,omitempty"`
 	Examined int       `json:"examined"`
@@ -58,13 +60,13 @@ func (h retentionExpiryHandler) Run(ctx context.Context, e jobengine.Execution) 
 	if e.Job == nil || h.records == nil || h.audit == nil || h.jobs == nil || h.now == nil {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("retention expiry dependencies unavailable"))
 	}
-	var command RetentionExpiryCommandV1
-	if e.Job.CommandVersion != 1 || decodeStrictJobDocument(e.Job.Command, &command) != nil || !command.Kind.IsValid() || (command.CleanupAudit && command.Kind != model.RetentionExpiryAudit) || command.BatchSize < 1 || command.BatchSize > retentionJobMaximumBatch ||
+	var command RetentionExpiryCommand
+	if decodeStrictJobDocument(e.Job.Command, &command) != nil || !command.Kind.IsValid() || (command.CleanupAudit && command.Kind != model.RetentionExpiryAudit) || command.BatchSize < 1 || command.BatchSize > retentionJobMaximumBatch ||
 		(command.AfterID != "" && !model.AuditEventID(command.AfterID).IsValid()) || (command.AfterID != "" && command.Before.IsZero()) {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("invalid retention expiry command"))
 	}
-	cp := RetentionExpiryCheckpointV1{AfterID: command.AfterID, Before: command.Before}
-	if len(e.Job.Checkpoint) > 0 && (e.Job.CheckpointVersion != 1 || decodeStrictJobDocument(e.Job.Checkpoint, &cp) != nil) {
+	cp := RetentionExpiryCheckpoint{AfterID: command.AfterID, Before: command.Before}
+	if len(e.Job.Checkpoint) > 0 && (decodeStrictJobDocument(e.Job.Checkpoint, &cp) != nil) {
 		return jobengine.PermanentFailure("job.checkpoint.invalid", errors.New("invalid retention expiry checkpoint"))
 	}
 	if cp.Examined < 0 || cp.Changed < 0 || cp.Changed > cp.Examined || cp.Examined > command.BatchSize || e.Job.WorkReserved < cp.Examined || e.Job.WorkReserved > command.BatchSize || cp.AfterID < command.AfterID ||
@@ -107,7 +109,7 @@ func (h retentionExpiryHandler) Run(ctx context.Context, e jobengine.Execution) 
 		if err != nil {
 			return jobengine.PermanentFailure("job.invariant_failed", err)
 		}
-		if err = e.Checkpoint(ctx, jobengine.CheckpointValue{Version: 1, Document: document}); err != nil {
+		if err = e.Checkpoint(ctx, jobengine.CheckpointValue{Document: document}); err != nil {
 			return jobengine.RetryableFailure("retention.unavailable", err)
 		}
 	}
@@ -149,7 +151,7 @@ func (h retentionExpiryHandler) Run(ctx context.Context, e jobengine.Execution) 
 		if err != nil {
 			return jobengine.PermanentFailure("job.invariant_failed", err)
 		}
-		if err = e.Checkpoint(ctx, jobengine.CheckpointValue{Version: 1, Document: document}); err != nil {
+		if err = e.Checkpoint(ctx, jobengine.CheckpointValue{Document: document}); err != nil {
 			return jobengine.RetryableFailure("retention.unavailable", err)
 		}
 	}
@@ -157,7 +159,7 @@ func (h retentionExpiryHandler) Run(ctx context.Context, e jobengine.Execution) 
 	return h.finish(ctx, e.Job, command, cp)
 }
 
-func (h retentionExpiryHandler) finish(ctx context.Context, parent *model.Job, command RetentionExpiryCommandV1, cp RetentionExpiryCheckpointV1) jobengine.Outcome {
+func (h retentionExpiryHandler) finish(ctx context.Context, parent *model.Job, command RetentionExpiryCommand, cp RetentionExpiryCheckpoint) jobengine.Outcome {
 	if !cp.Done {
 		command.AfterID = cp.AfterID
 		command.Before = cp.Before
@@ -166,7 +168,7 @@ func (h retentionExpiryHandler) finish(ctx context.Context, parent *model.Job, c
 			return jobengine.PermanentFailure("job.invariant_failed", err)
 		}
 		at := model.TimeUTC(h.now())
-		successor, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeRetentionExpire, 1, document, "retention.expire:after:"+parent.ID.String(), model.JobDedupePermanent, at, at.Add(time.Second), 5)
+		successor, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeRetentionExpire, document, "retention.expire:after:"+parent.ID.String(), model.JobDedupePermanent, at, at.Add(time.Second), 5)
 		if err != nil {
 			return jobengine.PermanentFailure("job.invariant_failed", err)
 		}
@@ -175,7 +177,7 @@ func (h retentionExpiryHandler) finish(ctx context.Context, parent *model.Job, c
 		}
 	}
 	document, err := json.Marshal(cp)
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: document, Err: err}
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: document, Err: err}
 }
 
 type retentionExpiryProposer struct {
@@ -190,11 +192,11 @@ func (p retentionExpiryProposer) Propose(ctx context.Context, occurrence time.Ti
 		cleanup bool
 		suffix  string
 	}{{model.RetentionExpiryAudit, false, "audit"}, {model.RetentionExpiryReceipt, false, "receipt"}, {model.RetentionExpiryAudit, true, "cleanup_audit"}} {
-		document, err := json.Marshal(RetentionExpiryCommandV1{Kind: kind.value, CleanupAudit: kind.cleanup, BatchSize: retentionJobMaximumBatch})
+		document, err := json.Marshal(RetentionExpiryCommand{Kind: kind.value, CleanupAudit: kind.cleanup, BatchSize: retentionJobMaximumBatch})
 		if err != nil {
 			return err
 		}
-		job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeRetentionExpire, 1, document, "retention.expire:"+kind.suffix+":"+model.TimeUTC(occurrence).Format("2006-01-02T15"), model.JobDedupePermanent, at, at, 5)
+		job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeRetentionExpire, document, "retention.expire:"+kind.suffix+":"+model.TimeUTC(occurrence).Format("2006-01-02T15"), model.JobDedupePermanent, at, at, 5)
 		if err != nil {
 			return err
 		}
@@ -205,7 +207,7 @@ func (p retentionExpiryProposer) Propose(ctx context.Context, occurrence time.Ti
 	return nil
 }
 
-func (h retentionExpiryHandler) cleanupAuditBatch(ctx context.Context, e jobengine.Execution, command RetentionExpiryCommandV1, cp RetentionExpiryCheckpointV1, institution model.InstitutionID, limit int) jobengine.Outcome {
+func (h retentionExpiryHandler) cleanupAuditBatch(ctx context.Context, e jobengine.Execution, command RetentionExpiryCommand, cp RetentionExpiryCheckpoint, institution model.InstitutionID, limit int) jobengine.Outcome {
 	reserved, err := e.ReserveWork(ctx, limit, command.BatchSize)
 	if err != nil {
 		return jobengine.RetryableFailure("retention.unavailable", err)
@@ -233,7 +235,7 @@ func (h retentionExpiryHandler) cleanupAuditBatch(ctx context.Context, e jobengi
 	if err != nil {
 		return jobengine.PermanentFailure("job.invariant_failed", err)
 	}
-	if err = e.Checkpoint(ctx, jobengine.CheckpointValue{Version: 1, Document: document}); err != nil {
+	if err = e.Checkpoint(ctx, jobengine.CheckpointValue{Document: document}); err != nil {
 		return jobengine.RetryableFailure("retention.unavailable", err)
 	}
 	return h.finish(ctx, e.Job, command, cp)

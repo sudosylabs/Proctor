@@ -26,36 +26,39 @@ const (
 	filePurgeMaximumBatchSize = 100
 )
 
-// FilePurgeExpiredContentCommandV1 bounds one purge Job. Cursor is set only on
+// FilePurgeExpiredContentCommand bounds one purge Job. Cursor is set only on
 // a continuation and resumes the FileRevision phase after its predecessor.
-type FilePurgeExpiredContentCommandV1 struct {
+type FilePurgeExpiredContentCommand struct {
 	BatchSize int    `json:"batch_size"`
 	Cursor    string `json:"cursor,omitempty"`
 }
 
-// FilePurgeExpiredContentCheckpointV1 counts examined objects for the whole
+// FilePurgeExpiredContentCheckpoint counts examined objects for the whole
 // batch and separately for each workspace phase; the FileRevision phase's
 // count is the remainder.
-type FilePurgeExpiredContentCheckpointV1 struct {
+type FilePurgeExpiredContentCheckpoint struct {
 	Cursor          string `json:"cursor,omitempty"`
 	Examined        int64  `json:"examined"`
 	Purged          int64  `json:"purged"`
 	StarterExamined int64  `json:"starter_examined,omitempty"`
 	AttemptExamined int64  `json:"attempt_examined,omitempty"`
 }
-type FilePurgeExpiredContentResultV1 struct {
+
+// FilePurgeExpiredContentResult is the safe result of the expired file-content purge Job.
+type FilePurgeExpiredContentResult struct {
 	Examined int64 `json:"examined"`
 	Purged   int64 `json:"purged"`
 }
 
-func EncodeFilePurgeExpiredContentCommand(value FilePurgeExpiredContentCommandV1) (json.RawMessage, error) {
+// EncodeFilePurgeExpiredContentCommand validates and encodes an expired file-content purge Job command.
+func EncodeFilePurgeExpiredContentCommand(value FilePurgeExpiredContentCommand) (json.RawMessage, error) {
 	if err := validateFilePurgeCommand(value); err != nil {
 		return nil, err
 	}
 	return json.Marshal(value)
 }
 
-func validateFilePurgeCommand(value FilePurgeExpiredContentCommandV1) error {
+func validateFilePurgeCommand(value FilePurgeExpiredContentCommand) error {
 	if value.BatchSize < 1 || value.BatchSize > filePurgeMaximumBatchSize {
 		return errors.New("file purge batch size is out of range")
 	}
@@ -64,11 +67,10 @@ func validateFilePurgeCommand(value FilePurgeExpiredContentCommandV1) error {
 	}
 	return nil
 }
-func DecodeFilePurgeExpiredContentCommand(version int, document json.RawMessage) (FilePurgeExpiredContentCommandV1, error) {
-	var value FilePurgeExpiredContentCommandV1
-	if version != 1 {
-		return value, fmt.Errorf("unsupported file purge command version %d", version)
-	}
+
+// DecodeFilePurgeExpiredContentCommand strictly decodes and validates an expired file-content purge Job command.
+func DecodeFilePurgeExpiredContentCommand(document json.RawMessage) (FilePurgeExpiredContentCommand, error) {
+	var value FilePurgeExpiredContentCommand
 	if err := decodeStrictFilePurgeDocument(document, &value); err != nil {
 		return value, fmt.Errorf("decode file purge command: %w", err)
 	}
@@ -77,7 +79,9 @@ func DecodeFilePurgeExpiredContentCommand(version int, document json.RawMessage)
 	}
 	return value, nil
 }
-func EncodeFilePurgeExpiredContentCheckpoint(value FilePurgeExpiredContentCheckpointV1) (json.RawMessage, error) {
+
+// EncodeFilePurgeExpiredContentCheckpoint validates and encodes an expired file-content purge Job checkpoint.
+func EncodeFilePurgeExpiredContentCheckpoint(value FilePurgeExpiredContentCheckpoint) (json.RawMessage, error) {
 	if (value.Cursor != "" && !validFilePurgeCursor(value.Cursor)) || value.Examined < 0 || value.Purged < 0 || value.Purged > value.Examined ||
 		value.StarterExamined < 0 || value.AttemptExamined < 0 || value.StarterExamined+value.AttemptExamined > value.Examined {
 		return nil, errors.New("invalid file purge checkpoint")
@@ -89,11 +93,10 @@ func validFilePurgeCursor(value string) bool {
 	prefix, id, ok := strings.Cut(value, ":")
 	return ok && (prefix == "lease" || prefix == "archived") && model.IsValidOpaqueID(id)
 }
-func DecodeFilePurgeExpiredContentCheckpoint(version int, document json.RawMessage) (FilePurgeExpiredContentCheckpointV1, error) {
-	var value FilePurgeExpiredContentCheckpointV1
-	if version != 1 {
-		return value, fmt.Errorf("unsupported file purge checkpoint version %d", version)
-	}
+
+// DecodeFilePurgeExpiredContentCheckpoint strictly decodes and validates an expired file-content purge Job checkpoint.
+func DecodeFilePurgeExpiredContentCheckpoint(document json.RawMessage) (FilePurgeExpiredContentCheckpoint, error) {
+	var value FilePurgeExpiredContentCheckpoint
 	if err := decodeStrictFilePurgeDocument(document, &value); err != nil {
 		return value, fmt.Errorf("decode file purge checkpoint: %w", err)
 	}
@@ -175,13 +178,13 @@ func (h filePurgeExpiredContentHandler) Run(ctx context.Context, execution joben
 			(execution.Attempt == nil || !execution.Attempt.ClaimToken.IsValid())) {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("invalid file purge dependencies"))
 	}
-	command, err := DecodeFilePurgeExpiredContentCommand(execution.Job.CommandVersion, execution.Job.Command)
+	command, err := DecodeFilePurgeExpiredContentCommand(execution.Job.Command)
 	if err != nil {
 		return jobengine.PermanentFailure("job.command.invalid", err)
 	}
-	checkpoint := FilePurgeExpiredContentCheckpointV1{Cursor: command.Cursor}
+	checkpoint := FilePurgeExpiredContentCheckpoint{Cursor: command.Cursor}
 	if len(execution.Job.Checkpoint) > 0 {
-		checkpoint, err = DecodeFilePurgeExpiredContentCheckpoint(execution.Job.CheckpointVersion, execution.Job.Checkpoint)
+		checkpoint, err = DecodeFilePurgeExpiredContentCheckpoint(execution.Job.Checkpoint)
 		if err != nil {
 			return jobengine.PermanentFailure("job.checkpoint.invalid", err)
 		}
@@ -220,7 +223,7 @@ type filePurgeAllowances struct {
 // and each may also spend what earlier phases left unused, so the
 // FileRevision phase takes the rest of the batch. Allowances derive from the
 // checkpoint counts alone, so a resumed attempt recomputes the same ones.
-func (h filePurgeExpiredContentHandler) phaseAllowances(batchSize int, checkpoint FilePurgeExpiredContentCheckpointV1) filePurgeAllowances {
+func (h filePurgeExpiredContentHandler) phaseAllowances(batchSize int, checkpoint FilePurgeExpiredContentCheckpoint) filePurgeAllowances {
 	phases := 1
 	if h.starterWorkspace != nil {
 		phases++
@@ -243,18 +246,18 @@ func (h filePurgeExpiredContentHandler) phaseAllowances(batchSize int, checkpoin
 	return allowances
 }
 
-func genericExamined(checkpoint FilePurgeExpiredContentCheckpointV1) int64 {
+func genericExamined(checkpoint FilePurgeExpiredContentCheckpoint) int64 {
 	return checkpoint.Examined - checkpoint.StarterExamined - checkpoint.AttemptExamined
 }
 
 // remainingFilePurgeWork bounds one phase by its allowance and by the Job's
 // durable work reservation.
-func remainingFilePurgeWork(execution jobengine.Execution, command FilePurgeExpiredContentCommandV1, allowance int, examined int64) int {
+func remainingFilePurgeWork(execution jobengine.Execution, command FilePurgeExpiredContentCommand, allowance int, examined int64) int {
 	return min(allowance-int(examined), command.BatchSize-execution.Job.WorkReserved)
 }
 
 func (h filePurgeExpiredContentHandler) purgeFileRevisions(ctx context.Context, execution jobengine.Execution,
-	command FilePurgeExpiredContentCommandV1, allowance int, checkpoint *FilePurgeExpiredContentCheckpointV1,
+	command FilePurgeExpiredContentCommand, allowance int, checkpoint *FilePurgeExpiredContentCheckpoint,
 ) *jobengine.Outcome {
 	remaining := remainingFilePurgeWork(execution, command, allowance, genericExamined(*checkpoint))
 	if remaining <= 0 {
@@ -318,15 +321,15 @@ func (h filePurgeExpiredContentHandler) purgeFileRevisions(ctx context.Context, 
 // examined work fills an allowance, so the chain ends once every phase drains;
 // a reservation lost to an uncertain checkpoint never extends it.
 func (h filePurgeExpiredContentHandler) finish(ctx context.Context, parent *model.Job,
-	command FilePurgeExpiredContentCommandV1, checkpoint FilePurgeExpiredContentCheckpointV1,
+	command FilePurgeExpiredContentCommand, checkpoint FilePurgeExpiredContentCheckpoint,
 ) jobengine.Outcome {
 	if h.mayHaveMoreWork(command, checkpoint) {
-		document, err := EncodeFilePurgeExpiredContentCommand(FilePurgeExpiredContentCommandV1{BatchSize: command.BatchSize, Cursor: checkpoint.Cursor})
+		document, err := EncodeFilePurgeExpiredContentCommand(FilePurgeExpiredContentCommand{BatchSize: command.BatchSize, Cursor: checkpoint.Cursor})
 		if err != nil {
 			return jobengine.PermanentFailure("job.command.invalid", err)
 		}
 		at := model.TimeUTC(h.now())
-		successor, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeFilePurgeExpiredContent, 1, document,
+		successor, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeFilePurgeExpiredContent, document,
 			"file-purge-expired-content:after:"+parent.ID.String(), model.JobDedupePermanent, at, at.Add(filePurgeContinuationDelay), 5)
 		if err != nil {
 			return jobengine.PermanentFailure("job.command.invalid", err)
@@ -335,12 +338,12 @@ func (h filePurgeExpiredContentHandler) finish(ctx context.Context, parent *mode
 			return jobengine.RetryableFailure("database.unavailable", err)
 		}
 	}
-	result, err := json.Marshal(FilePurgeExpiredContentResultV1{Examined: checkpoint.Examined, Purged: checkpoint.Purged})
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: result, Err: err}
+	result, err := json.Marshal(FilePurgeExpiredContentResult{Examined: checkpoint.Examined, Purged: checkpoint.Purged})
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: result, Err: err}
 }
 
 // mayHaveMoreWork reports whether some phase examined its whole allowance.
-func (h filePurgeExpiredContentHandler) mayHaveMoreWork(command FilePurgeExpiredContentCommandV1, checkpoint FilePurgeExpiredContentCheckpointV1) bool {
+func (h filePurgeExpiredContentHandler) mayHaveMoreWork(command FilePurgeExpiredContentCommand, checkpoint FilePurgeExpiredContentCheckpoint) bool {
 	allowances := h.phaseAllowances(command.BatchSize, checkpoint)
 	full := func(examined int64, allowance int) bool { return examined > 0 && examined >= int64(allowance) }
 	return full(checkpoint.StarterExamined, allowances.starter) ||
@@ -350,7 +353,7 @@ func (h filePurgeExpiredContentHandler) mayHaveMoreWork(command FilePurgeExpired
 
 // purgeStarterWorkspaceObjects is the first physical-content phase. On failure it returns the last durable checkpoint and a retryable outcome;
 // otherwise it returns the updated aggregate checkpoint.
-func (h filePurgeExpiredContentHandler) purgeStarterWorkspaceObjects(ctx context.Context, execution jobengine.Execution, command FilePurgeExpiredContentCommandV1, allowance int, checkpoint FilePurgeExpiredContentCheckpointV1) (FilePurgeExpiredContentCheckpointV1, *jobengine.Outcome) {
+func (h filePurgeExpiredContentHandler) purgeStarterWorkspaceObjects(ctx context.Context, execution jobengine.Execution, command FilePurgeExpiredContentCommand, allowance int, checkpoint FilePurgeExpiredContentCheckpoint) (FilePurgeExpiredContentCheckpoint, *jobengine.Outcome) {
 	remaining := remainingFilePurgeWork(execution, command, allowance, checkpoint.StarterExamined)
 	if remaining <= 0 {
 		return checkpoint, nil
@@ -419,8 +422,8 @@ func (h filePurgeExpiredContentHandler) purgeStarterWorkspaceObjects(ctx context
 // the Job's one bounded work reservation, checkpoint and claim token with the
 // Starter Workspace and FileRevision phases.
 func (h filePurgeExpiredContentHandler) purgeAttemptWorkspaceObjects(ctx context.Context, execution jobengine.Execution,
-	command FilePurgeExpiredContentCommandV1, allowance int, checkpoint FilePurgeExpiredContentCheckpointV1,
-) (FilePurgeExpiredContentCheckpointV1, *jobengine.Outcome) {
+	command FilePurgeExpiredContentCommand, allowance int, checkpoint FilePurgeExpiredContentCheckpoint,
+) (FilePurgeExpiredContentCheckpoint, *jobengine.Outcome) {
 	remaining := remainingFilePurgeWork(execution, command, allowance, checkpoint.AttemptExamined)
 	if remaining <= 0 {
 		return checkpoint, nil
@@ -503,7 +506,7 @@ func (h filePurgeExpiredContentHandler) releaseAttemptWorkspaceClaims(ctx contex
 	return nil
 }
 
-func checkpointFilePurge(ctx context.Context, execution jobengine.Execution, checkpoint FilePurgeExpiredContentCheckpointV1, total int64) error {
+func checkpointFilePurge(ctx context.Context, execution jobengine.Execution, checkpoint FilePurgeExpiredContentCheckpoint, total int64) error {
 	document, err := EncodeFilePurgeExpiredContentCheckpoint(checkpoint)
 	if err != nil {
 		return err
@@ -511,11 +514,11 @@ func checkpointFilePurge(ctx context.Context, execution jobengine.Execution, che
 	if total < 1 {
 		total = 1
 	}
-	return execution.Checkpoint(ctx, jobengine.CheckpointValue{Version: 1, Progress: &model.JobProgress{Current: checkpoint.Examined, Total: total, Stage: "purging"}, Document: document})
+	return execution.Checkpoint(ctx, jobengine.CheckpointValue{Progress: &model.JobProgress{Current: checkpoint.Examined, Total: total, Stage: "purging"}, Document: document})
 }
 
 func filePurgeExpiredContentDescriptor(handler jobengine.Handler) jobengine.Descriptor {
-	return jobengine.Descriptor{Type: model.JobTypeFilePurgeExpiredContent, CommandVersions: []int{1}, CheckpointVersions: []int{1}, ResultVersions: []int{1}, ProgressStages: []string{"purging"}, PublicErrorCodes: []string{"database.unavailable", "file.backend_unavailable", "job.checkpoint.invalid", "job.command.invalid"}, Timeout: time.Minute, Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: 30 * time.Second, Visibility: jobengine.VisibilityOperator, SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
+	return jobengine.Descriptor{Type: model.JobTypeFilePurgeExpiredContent, Checkpoints: true, ProgressStages: []string{"purging"}, PublicErrorCodes: []string{"database.unavailable", "file.backend_unavailable", "job.checkpoint.invalid", "job.command.invalid"}, Timeout: time.Minute, Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: 30 * time.Second, Visibility: jobengine.VisibilityOperator, SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
 }
 
 type filePurgeExpiredContentProposer struct {
@@ -527,13 +530,13 @@ func (p filePurgeExpiredContentProposer) Propose(ctx context.Context, occurrence
 	if p.jobs == nil || p.now == nil {
 		return errors.New("invalid file purge proposer dependencies")
 	}
-	command, err := EncodeFilePurgeExpiredContentCommand(FilePurgeExpiredContentCommandV1{BatchSize: 50})
+	command, err := EncodeFilePurgeExpiredContentCommand(FilePurgeExpiredContentCommand{BatchSize: 50})
 	if err != nil {
 		return err
 	}
 	at := model.TimeUTC(p.now())
 	key := "file-purge-expired-content:" + model.TimeUTC(occurrence).Format("2006-01-02")
-	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeFilePurgeExpiredContent, 1,
+	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeFilePurgeExpiredContent,
 		json.RawMessage(command), key, model.JobDedupePermanent, at, at, 5)
 	if err != nil {
 		return err

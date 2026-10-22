@@ -54,9 +54,9 @@ func securityNoticeFixture(t *testing.T, key model.MailTemplateKey) (model.UserI
 	userID := model.NewUserID()
 	occurrenceID := model.NewMailOccurrenceID()
 	deliveryID := model.NewMailDeliveryID()
-	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommand{DeliveryID: deliveryID})
 	require.NoError(t, err)
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailDeliver, 1, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailDeliver, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
 	require.NoError(t, err)
 	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceSecurityNotice, TemplateKey: key, ActorUserID: userID, CreatedAt: at}
 	delivery := &model.MailDelivery{

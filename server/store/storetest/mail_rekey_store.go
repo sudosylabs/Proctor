@@ -91,7 +91,7 @@ func testMailRekeyStore(t *testing.T, ctx context.Context, ss store.Store, user 
 	require.NoError(t, err)
 	require.Equal(t, operation.Job.ID, claim.Job.ID, "claimed rekey Job")
 	_, err = ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: claim.Attempt.ID, ClaimToken: claimToken,
-		Kind: store.JobCompletionSucceeded, ResultVersion: 1, Result: json.RawMessage(`{"primary_key_id":"22222222222222222222222222222222","retiring_key_id":"11111111111111111111111111111111","processed":1,"reencrypted":1,"non_primary_references":0,"retiring_references":0,"retirement_safe":true}`)})
+		Kind: store.JobCompletionSucceeded, Result: json.RawMessage(`{"primary_key_id":"22222222222222222222222222222222","retiring_key_id":"11111111111111111111111111111111","processed":1,"reencrypted":1,"non_primary_references":0,"retiring_references":0,"retirement_safe":true}`)})
 	require.NoError(t, err)
 	state, err = ss.Mail().InspectKeyState(ctx)
 	require.NoError(t, err)
@@ -207,7 +207,7 @@ func newMailRekeyStartFixture(t *testing.T, primaryKeyID, retiringKeyID string) 
 	at := model.NowUTC()
 	command, err := json.Marshal(map[string]string{"primary_key_id": primaryKeyID, "retiring_key_id": retiringKeyID})
 	require.NoError(t, err)
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailRekey, 1, command,
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailRekey, command,
 		"mail-rekey:"+primaryKeyID+":"+retiringKeyID, at, at, 10)
 	require.NoError(t, err)
 	return &store.MailRekeyStart{PrimaryKeyID: primaryKeyID, RetiringKeyID: retiringKeyID, Job: job}

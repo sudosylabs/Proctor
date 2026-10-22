@@ -25,17 +25,17 @@ import (
 // narrow capabilities consumed by concrete Jobs. They intentionally do not
 // expose App, Dependencies, store.Catalog, or platform.Service.
 
-// MailRekeyCommandV1 is version 1 of the mail rekey Job payload: re-encrypt
+// MailRekeyCommand is version 1 of the mail rekey Job payload: re-encrypt
 // stored mail from the retiring key to the primary key.
-type MailRekeyCommandV1 = jobhandler.MailRekeyCommandV1
+type MailRekeyCommand = jobhandler.MailRekeyCommand
 
-// MailRekeyCheckpointV1 is version 1 of the mail rekey Job checkpoint: the
+// MailRekeyCheckpoint is version 1 of the mail rekey Job checkpoint: the
 // resume cursor and running counts.
-type MailRekeyCheckpointV1 = jobhandler.MailRekeyCheckpointV1
+type MailRekeyCheckpoint = jobhandler.MailRekeyCheckpoint
 
-// MailRekeyResultV1 is version 1 of the mail rekey Job result, reporting the
+// MailRekeyResult is version 1 of the mail rekey Job result, reporting the
 // remaining references and whether retiring the key is now safe.
-type MailRekeyResultV1 = jobhandler.MailRekeyResultV1
+type MailRekeyResult = jobhandler.MailRekeyResult
 
 func prepareUserDefaultProfilePictureJob(user *model.User, at time.Time) (*model.User, *model.Job, error) {
 	return jobhandler.PrepareUserDefaultProfilePictureJob(user, at)
@@ -172,12 +172,12 @@ func (uc examSittingSealingJobUseCases) EnqueueExamSittingSealingContinuationFro
 	if uc.jobs == nil || uc.now == nil || uc.newID == nil || !sittingID.IsValid() || !parentJobID.IsValid() {
 		return store.NewErrInvalidInput("exam_sitting_sealing", "continuation", nil)
 	}
-	document, err := model.EncodeExamSittingLifecycleCommand(model.ExamSittingLifecycleCommandV1{ExamSittingID: sittingID})
+	document, err := model.EncodeExamSittingLifecycleCommand(model.ExamSittingLifecycleCommand{ExamSittingID: sittingID})
 	if err != nil {
 		return store.NewErrInvalidInput("exam_sitting_sealing", "continuation", err)
 	}
 	at := model.TimeUTC(uc.now())
-	job, err := model.NewJobWithDedupePolicy(uc.newID(), model.JobTypeExamSittingSealing, 1, document,
+	job, err := model.NewJobWithDedupePolicy(uc.newID(), model.JobTypeExamSittingSealing, document,
 		"exam-sitting-sealing-continuation:"+parentJobID.String(), model.JobDedupePermanent, at, at, 8)
 	if err != nil {
 		return store.NewErrInvalidInput("exam_sitting_sealing", "continuation", err)

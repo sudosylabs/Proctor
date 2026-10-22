@@ -11,7 +11,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"strconv"
 )
@@ -38,25 +37,22 @@ func ExamSittingLifecycleDedupeKey(id ExamSittingID, phase ExamSittingLifecycleJ
 	return "exam-sitting:" + id.String() + ":" + string(phase) + ":" + strconv.FormatInt(revision, 10), nil
 }
 
-// ExamSittingLifecycleCommandV1 identifies the authoritative Sitting that a
+// ExamSittingLifecycleCommand identifies the authoritative Sitting that a
 // delayed lifecycle Job must reread. Mutable state, revision, and schedule are
 // deliberately absent so stale work converges through PostgreSQL state.
-type ExamSittingLifecycleCommandV1 struct {
+type ExamSittingLifecycleCommand struct {
 	ExamSittingID ExamSittingID `json:"exam_sitting_id"`
 }
 
-func EncodeExamSittingLifecycleCommand(command ExamSittingLifecycleCommandV1) (json.RawMessage, error) {
+func EncodeExamSittingLifecycleCommand(command ExamSittingLifecycleCommand) (json.RawMessage, error) {
 	if !command.ExamSittingID.IsValid() {
 		return nil, invalidModelError("EncodeExamSittingLifecycleCommand", "exam_sitting_job", "", "Exam Sitting lifecycle command has invalid Sitting ID", "")
 	}
 	return json.Marshal(command)
 }
 
-func DecodeExamSittingLifecycleCommand(version int, document json.RawMessage) (ExamSittingLifecycleCommandV1, error) {
-	var command ExamSittingLifecycleCommandV1
-	if version != 1 {
-		return command, invalidModelError("DecodeExamSittingLifecycleCommand", "exam_sitting_job", "", fmt.Sprintf("unsupported Exam Sitting lifecycle command version %d", version), "")
-	}
+func DecodeExamSittingLifecycleCommand(document json.RawMessage) (ExamSittingLifecycleCommand, error) {
+	var command ExamSittingLifecycleCommand
 	if err := rejectDuplicateExamSittingLifecycleMembers(document); err != nil {
 		return command, err
 	}

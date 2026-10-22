@@ -11,30 +11,26 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 )
 
-// DefaultProfilePictureCommandV1 is the stable intent carried by a
+// DefaultProfilePictureCommand is the stable intent carried by a
 // profile_picture.generate_default Job. It lives beside Job so aggregate
 // persistence boundaries can verify that the immutable target agrees with the
 // User they are creating without depending on the application package.
-type DefaultProfilePictureCommandV1 struct {
+type DefaultProfilePictureCommand struct {
 	UserID UserID `json:"user_id"`
 }
 
-func EncodeDefaultProfilePictureCommand(command DefaultProfilePictureCommandV1) (json.RawMessage, error) {
+func EncodeDefaultProfilePictureCommand(command DefaultProfilePictureCommand) (json.RawMessage, error) {
 	if !command.UserID.IsValid() {
 		return nil, invalidModelError("EncodeDefaultProfilePictureCommand", "default_profile_picture_job", "", "default profile-picture command has invalid user ID", "")
 	}
 	return json.Marshal(command)
 }
 
-func DecodeDefaultProfilePictureCommand(version int, document json.RawMessage) (DefaultProfilePictureCommandV1, error) {
-	var command DefaultProfilePictureCommandV1
-	if version != 1 {
-		return command, invalidModelError("DecodeDefaultProfilePictureCommand", "default_profile_picture_job", "", fmt.Sprintf("unsupported default profile-picture command version %d", version), "")
-	}
+func DecodeDefaultProfilePictureCommand(document json.RawMessage) (DefaultProfilePictureCommand, error) {
+	var command DefaultProfilePictureCommand
 	decoder := json.NewDecoder(bytes.NewReader(document))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&command); err != nil {

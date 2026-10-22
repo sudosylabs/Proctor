@@ -38,7 +38,6 @@ func (e Execution) ReserveWork(ctx context.Context, units, limit int) (bool, err
 }
 
 type CheckpointValue struct {
-	Version  int
 	Progress *model.JobProgress
 	Document json.RawMessage
 }
@@ -64,7 +63,6 @@ const (
 
 type Outcome struct {
 	Kind            OutcomeKind
-	ResultVersion   int
 	Result          json.RawMessage
 	PublicErrorCode string
 	Err             error
@@ -101,10 +99,9 @@ const (
 )
 
 type Descriptor struct {
-	Type                  model.JobType
-	CommandVersions       []int
-	CheckpointVersions    []int
-	ResultVersions        []int
+	Type model.JobType
+	// Checkpoints reports whether the handler records resumable checkpoints.
+	Checkpoints           bool
 	ProgressStages        []string
 	PublicErrorCodes      []string
 	Timeout               time.Duration
@@ -133,62 +130,30 @@ func NewRegistry(values []Descriptor) (*Registry, error) {
 	}
 	registry := &Registry{descriptors: make(map[model.JobType]Descriptor, len(values)), types: make([]model.JobType, 0, len(values))}
 	for _, value := range values {
-		if value.Handler == nil || len(value.CommandVersions) == 0 || len(value.ResultVersions) == 0 || value.Timeout <= 0 || value.Concurrency <= 0 || value.MaximumAttempts <= 0 || value.LeaseDuration <= 0 || value.HeartbeatInterval <= 0 || value.HeartbeatInterval >= value.LeaseDuration || value.BaseRetryDelay <= 0 || value.MaximumRetryDelay < value.BaseRetryDelay || (value.Visibility != VisibilityOperator && value.Visibility != VisibilityDomain) || value.SuccessRetention <= 0 || value.FailureRetention < value.SuccessRetention {
+		if value.Handler == nil || value.Timeout <= 0 || value.Concurrency <= 0 || value.MaximumAttempts <= 0 || value.LeaseDuration <= 0 || value.HeartbeatInterval <= 0 || value.HeartbeatInterval >= value.LeaseDuration || value.BaseRetryDelay <= 0 || value.MaximumRetryDelay < value.BaseRetryDelay || (value.Visibility != VisibilityOperator && value.Visibility != VisibilityDomain) || value.SuccessRetention <= 0 || value.FailureRetention < value.SuccessRetention {
 			return nil, fmt.Errorf("invalid descriptor for job type %q", value.Type)
 		}
 		if _, exists := registry.descriptors[value.Type]; exists {
 			return nil, fmt.Errorf("duplicate job type %q", value.Type)
 		}
-		var versionsErr error
-		value.CommandVersions, versionsErr = normalizedVersions(value.CommandVersions, false)
-		if versionsErr != nil {
-			return nil, fmt.Errorf("invalid command versions for job type %q: %w", value.Type, versionsErr)
+		var normalizeErr error
+		value.ProgressStages, normalizeErr = normalizedCodes(value.ProgressStages)
+		if normalizeErr != nil {
+			return nil, fmt.Errorf("invalid progress stages for job type %q: %w", value.Type, normalizeErr)
 		}
-		value.CheckpointVersions, versionsErr = normalizedVersions(value.CheckpointVersions, true)
-		if versionsErr != nil {
-			return nil, fmt.Errorf("invalid checkpoint versions for job type %q: %w", value.Type, versionsErr)
+		value.PublicErrorCodes, normalizeErr = normalizedCodes(value.PublicErrorCodes)
+		if normalizeErr != nil {
+			return nil, fmt.Errorf("invalid public error codes for job type %q: %w", value.Type, normalizeErr)
 		}
-		value.ResultVersions, versionsErr = normalizedVersions(value.ResultVersions, false)
-		if versionsErr != nil {
-			return nil, fmt.Errorf("invalid result versions for job type %q: %w", value.Type, versionsErr)
-		}
-		value.ProgressStages, versionsErr = normalizedCodes(value.ProgressStages)
-		if versionsErr != nil {
-			return nil, fmt.Errorf("invalid progress stages for job type %q: %w", value.Type, versionsErr)
-		}
-		value.PublicErrorCodes, versionsErr = normalizedCodes(value.PublicErrorCodes)
-		if versionsErr != nil {
-			return nil, fmt.Errorf("invalid public error codes for job type %q: %w", value.Type, versionsErr)
-		}
-		value.ExplicitRetryStatuses, versionsErr = normalizedTerminalJobStatuses(value.ExplicitRetryStatuses)
-		if versionsErr != nil {
-			return nil, fmt.Errorf("invalid explicit retry statuses for job type %q: %w", value.Type, versionsErr)
+		value.ExplicitRetryStatuses, normalizeErr = normalizedTerminalJobStatuses(value.ExplicitRetryStatuses)
+		if normalizeErr != nil {
+			return nil, fmt.Errorf("invalid explicit retry statuses for job type %q: %w", value.Type, normalizeErr)
 		}
 		registry.descriptors[value.Type] = value
 		registry.types = append(registry.types, value.Type)
 	}
 	slices.Sort(registry.types)
 	return registry, nil
-}
-
-func (r *Registry) Resolve(jobType model.JobType, commandVersion int) (Descriptor, error) {
-	if r == nil {
-		return Descriptor{}, errors.New("job registry is nil")
-	}
-	descriptor, ok := r.descriptors[jobType]
-	if !ok {
-		return Descriptor{}, fmt.Errorf("job type %q is not registered", jobType)
-	}
-	if _, ok = slices.BinarySearch(descriptor.CommandVersions, commandVersion); !ok {
-		return Descriptor{}, fmt.Errorf("job type %q does not support command version %d", jobType, commandVersion)
-	}
-	descriptor.CommandVersions = append([]int(nil), descriptor.CommandVersions...)
-	descriptor.CheckpointVersions = append([]int(nil), descriptor.CheckpointVersions...)
-	descriptor.ResultVersions = append([]int(nil), descriptor.ResultVersions...)
-	descriptor.ProgressStages = append([]string(nil), descriptor.ProgressStages...)
-	descriptor.PublicErrorCodes = append([]string(nil), descriptor.PublicErrorCodes...)
-	descriptor.ExplicitRetryStatuses = append([]model.JobStatus(nil), descriptor.ExplicitRetryStatuses...)
-	return descriptor, nil
 }
 
 func (r *Registry) Descriptor(jobType model.JobType) (Descriptor, error) {
@@ -199,23 +164,10 @@ func (r *Registry) Descriptor(jobType model.JobType) (Descriptor, error) {
 	if !ok {
 		return Descriptor{}, fmt.Errorf("job type %q is not registered", jobType)
 	}
-	descriptor.CommandVersions = append([]int(nil), descriptor.CommandVersions...)
-	descriptor.CheckpointVersions = append([]int(nil), descriptor.CheckpointVersions...)
-	descriptor.ResultVersions = append([]int(nil), descriptor.ResultVersions...)
 	descriptor.ProgressStages = append([]string(nil), descriptor.ProgressStages...)
 	descriptor.PublicErrorCodes = append([]string(nil), descriptor.PublicErrorCodes...)
 	descriptor.ExplicitRetryStatuses = append([]model.JobStatus(nil), descriptor.ExplicitRetryStatuses...)
 	return descriptor, nil
-}
-
-func (d Descriptor) SupportsResultVersion(version int) bool {
-	_, ok := slices.BinarySearch(d.ResultVersions, version)
-	return ok
-}
-
-func (d Descriptor) SupportsCheckpointVersion(version int) bool {
-	_, ok := slices.BinarySearch(d.CheckpointVersions, version)
-	return ok
 }
 
 func (d Descriptor) SupportsProgressStage(stage string) bool {
@@ -248,23 +200,6 @@ func normalizedTerminalJobStatuses(values []model.JobStatus) ([]model.JobStatus,
 		}
 	}
 	return statuses, nil
-}
-
-func normalizedVersions(values []int, optional bool) ([]int, error) {
-	if len(values) == 0 {
-		if optional {
-			return nil, nil
-		}
-		return nil, errors.New("at least one version is required")
-	}
-	versions := append([]int(nil), values...)
-	slices.Sort(versions)
-	for index, version := range versions {
-		if version <= 0 || (index > 0 && versions[index-1] == version) {
-			return nil, errors.New("versions must be unique positive integers")
-		}
-	}
-	return versions, nil
 }
 
 func normalizedCodes(values []string) ([]string, error) {

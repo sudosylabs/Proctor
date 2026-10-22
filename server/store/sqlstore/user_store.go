@@ -234,7 +234,7 @@ func validateUserDefaultProfilePictureJob(user *model.User, job *model.Job) erro
 	if user == nil || job == nil {
 		return store.NewErrInvalidInput("user", "default_profile_picture_job", nil)
 	}
-	command, commandErr := model.DecodeDefaultProfilePictureCommand(job.CommandVersion, job.Command)
+	command, commandErr := model.DecodeDefaultProfilePictureCommand(job.Command)
 	if job.Validate() != nil ||
 		job.Type != model.JobTypeProfilePictureGenerateDefault ||
 		job.Status != model.JobStatusQueued || job.AttemptCount != 0 ||

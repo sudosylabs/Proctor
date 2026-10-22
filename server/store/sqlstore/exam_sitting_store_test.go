@@ -66,11 +66,11 @@ func TestExamSittingAuditExcludesPrivateContent(t *testing.T) {
 func TestValidateExamSittingLifecycleJob(t *testing.T) {
 	sittingID := model.NewExamSittingID()
 	availableAt := model.NowUTC().Add(time.Hour)
-	command, err := model.EncodeExamSittingLifecycleCommand(model.ExamSittingLifecycleCommandV1{ExamSittingID: sittingID})
+	command, err := model.EncodeExamSittingLifecycleCommand(model.ExamSittingLifecycleCommand{ExamSittingID: sittingID})
 	require.NoError(t, err)
 	key, err := model.ExamSittingLifecycleDedupeKey(sittingID, model.ExamSittingLifecycleJobOpen, 2)
 	require.NoError(t, err)
-	valid, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeExamSittingLifecycle, 1, command, key,
+	valid, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeExamSittingLifecycle, command, key,
 		model.JobDedupeActive, model.NowUTC(), availableAt, 8)
 	require.NoError(t, err)
 	err = validateExamSittingLifecycleJob(valid, sittingID, model.ExamSittingLifecycleJobOpen, 2, availableAt)
@@ -94,7 +94,7 @@ func TestValidateExamSittingLifecycleJob(t *testing.T) {
 	}
 	finalizeKey, err := model.ExamSittingLifecycleDedupeKey(sittingID, model.ExamSittingLifecycleJobFinalize, 3)
 	require.NoError(t, err)
-	finalize, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeExamSittingSealing, 1, command,
+	finalize, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeExamSittingSealing, command,
 		finalizeKey, model.JobDedupeActive, model.NowUTC(), availableAt, 8)
 	require.NoError(t, err)
 	err = validateExamSittingLifecycleJob(finalize, sittingID, model.ExamSittingLifecycleJobFinalize, 3, availableAt)
@@ -126,11 +126,11 @@ func TestStaleExamSittingFinalizeJobIsRevisionConflictCandidate(t *testing.T) {
 	require.NoError(t, err)
 	err = sitting.Pause(now.Add(-40 * time.Minute))
 	require.NoError(t, err)
-	command, err := model.EncodeExamSittingLifecycleCommand(model.ExamSittingLifecycleCommandV1{ExamSittingID: sitting.ID})
+	command, err := model.EncodeExamSittingLifecycleCommand(model.ExamSittingLifecycleCommand{ExamSittingID: sitting.ID})
 	require.NoError(t, err)
 	staleKey, err := model.ExamSittingLifecycleDedupeKey(sitting.ID, model.ExamSittingLifecycleJobFinalize, sitting.Revision)
 	require.NoError(t, err)
-	stale, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeExamSittingSealing, 1, command, staleKey,
+	stale, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeExamSittingSealing, command, staleKey,
 		model.JobDedupeActive, now, sitting.ScheduledEndAt, 8)
 	require.NoError(t, err)
 	require.True(t, isStaleExamSittingFinalizeJob(stale, sitting), "well-formed finalizer prepared for the prior Sitting revision was not recognized as stale")

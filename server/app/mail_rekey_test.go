@@ -204,18 +204,18 @@ func TestGetMailRekeyStatusProjectsOnlyTypedProgressAndRetirementProof(t *testin
 	now := time.Date(2026, 9, 4, 12, 0, 0, 123456789, time.UTC)
 	primaryKeyID := "22222222222222222222222222222222"
 	retiringKeyID := "11111111111111111111111111111111"
-	command, _ := json.Marshal(MailRekeyCommandV1{PrimaryKeyID: primaryKeyID, RetiringKeyID: retiringKeyID})
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailRekey, 1, command, "mail-rekey:test", now, now, 10)
+	command, _ := json.Marshal(MailRekeyCommand{PrimaryKeyID: primaryKeyID, RetiringKeyID: retiringKeyID})
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailRekey, command, "mail-rekey:test", now, now, 10)
 	require.NoError(t, err)
 	running, err := job.Start(now.Add(time.Second))
 	require.NoError(t, err)
-	checkpoint, _ := json.Marshal(MailRekeyCheckpointV1{AfterKind: store.MailRekeyTargetDelivery,
+	checkpoint, _ := json.Marshal(MailRekeyCheckpoint{AfterKind: store.MailRekeyTargetDelivery,
 		AfterID: model.NewMailDeliveryID().String(), Processed: 4, Reencrypted: 3})
-	running, err = running.UpdateProgress(&model.JobProgress{Current: 4, Total: 9, Stage: "reencrypting"}, 1, checkpoint, now.Add(2*time.Second))
+	running, err = running.UpdateProgress(&model.JobProgress{Current: 4, Total: 9, Stage: "reencrypting"}, checkpoint, now.Add(2*time.Second))
 	require.NoError(t, err)
-	result, _ := json.Marshal(MailRekeyResultV1{PrimaryKeyID: primaryKeyID, RetiringKeyID: retiringKeyID,
+	result, _ := json.Marshal(MailRekeyResult{PrimaryKeyID: primaryKeyID, RetiringKeyID: retiringKeyID,
 		Processed: 9, Reencrypted: 8, RetirementSafe: true})
-	succeeded, err := running.Succeed(1, result, now.Add(3*time.Second))
+	succeeded, err := running.Succeed(result, now.Add(3*time.Second))
 	require.NoError(t, err)
 	persistence := &mailRekeyStarterFake{job: succeeded}
 	authorizer := &mailAuthorizerFake{}
@@ -247,7 +247,7 @@ func TestGetMailRekeyStatusProjectsOnlyTypedProgressAndRetirementProof(t *testin
 
 func TestGetMailRekeyStatusConcealsJobsOwnedByOtherDomains(t *testing.T) {
 	now := time.Date(2026, 9, 4, 12, 0, 0, 123456789, time.UTC)
-	other, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1,
+	other, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault,
 		json.RawMessage(`{"user_id":"`+model.NewUserID().String()+`"}`), model.NewUserID().String(), now, now, 8)
 	require.NoError(t, err)
 	persistence := &mailRekeyStarterFake{job: other}
@@ -260,8 +260,8 @@ func TestGetMailRekeyStatusConcealsJobsOwnedByOtherDomains(t *testing.T) {
 	_, appErr := service.GetMailRekeyStatus(context.Background(), NewInvocation(principal, model.RequestMetadata{}), other.ID)
 	require.True(t, apperror.Is(appErr, "resource.not_found"), "RekeyStatus(other Job) error = %v", appErr)
 
-	corruptCommand, _ := json.Marshal(MailRekeyCommandV1{PrimaryKeyID: "not-a-key", RetiringKeyID: "also-not-a-key"})
-	corrupt, err := model.NewJob(model.NewJobID(), model.JobTypeMailRekey, 1, corruptCommand,
+	corruptCommand, _ := json.Marshal(MailRekeyCommand{PrimaryKeyID: "not-a-key", RetiringKeyID: "also-not-a-key"})
+	corrupt, err := model.NewJob(model.NewJobID(), model.JobTypeMailRekey, corruptCommand,
 		"mail-rekey:corrupt", now, now, 10)
 	require.NoError(t, err)
 	persistence.job = corrupt

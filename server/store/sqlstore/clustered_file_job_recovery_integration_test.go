@@ -91,7 +91,7 @@ func TestClusteredJobsDeduplicateOccurrencesAndClaimDistinctWork(t *testing.T) {
 		go func() {
 			defer enqueueGroup.Done()
 			candidate, err := model.NewJobWithDedupePolicy(
-				model.NewJobID(), model.JobTypeCleanup, 1, json.RawMessage(`{"batch_size":50}`),
+				model.NewJobID(), model.JobTypeCleanup, json.RawMessage(`{"batch_size":50}`),
 				"job-cleanup:2026-08-11", model.JobDedupePermanent, at, at, 5,
 			)
 			if err != nil {
@@ -123,7 +123,7 @@ func TestClusteredJobsDeduplicateOccurrencesAndClaimDistinctWork(t *testing.T) {
 	jobIDs := make(map[model.JobID]struct{}, workCount)
 	for index := range workCount {
 		job, err := model.NewJob(
-			model.NewJobID(), model.JobTypeFilePurgeExpiredContent, 1,
+			model.NewJobID(), model.JobTypeFilePurgeExpiredContent,
 			json.RawMessage(`{"batch_size":1}`), fmt.Sprintf("parallel:%02d", index), at, at, 3,
 		)
 		require.NoError(t, err)
@@ -167,7 +167,7 @@ func TestClusteredJobsDeduplicateOccurrencesAndClaimDistinctWork(t *testing.T) {
 				}
 				claimed[claim.Job.ID] = nodeID
 				claimedMu.Unlock()
-				if _, err = jobs.Complete(ctx, &store.JobCompletion{AttemptID: claim.Attempt.ID, ClaimToken: token, Kind: store.JobCompletionSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)}); err != nil {
+				if _, err = jobs.Complete(ctx, &store.JobCompletion{AttemptID: claim.Attempt.ID, ClaimToken: token, Kind: store.JobCompletionSucceeded, Result: json.RawMessage(`{}`)}); err != nil {
 					claimErrors <- err
 					return
 				}
@@ -194,7 +194,7 @@ func TestClusteredJobLeaseRecoveryFencesTheDeadNodeAndPreservesAttempts(t *testi
 	resetTestStore(t, nodeA)
 	nodeB := openPeerTestStore(t)
 	at := model.NowUTC().Add(-time.Second)
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeFilePurgeExpiredContent, 1, json.RawMessage(`{"batch_size":1}`), "recover-across-nodes", at, at, 3)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeFilePurgeExpiredContent, json.RawMessage(`{"batch_size":1}`), "recover-across-nodes", at, at, 3)
 	require.NoError(t, err)
 	_, inserted, err := nodeA.Job().Enqueue(ctx, &store.JobEnqueue{Job: job})
 	require.NoError(t, err, "Enqueue()")
@@ -211,9 +211,9 @@ func TestClusteredJobLeaseRecoveryFencesTheDeadNodeAndPreservesAttempts(t *testi
 	require.NoError(t, err)
 	require.Equal(t, dead.Job.ID, live.Job.ID)
 	require.Equal(t, 2, live.Attempt.Number)
-	_, err = nodeA.Job().Complete(ctx, &store.JobCompletion{AttemptID: dead.Attempt.ID, ClaimToken: deadToken, Kind: store.JobCompletionSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)})
+	_, err = nodeA.Job().Complete(ctx, &store.JobCompletion{AttemptID: dead.Attempt.ID, ClaimToken: deadToken, Kind: store.JobCompletionSucceeded, Result: json.RawMessage(`{}`)})
 	require.True(t, store.IsConflict(err), "dead-node completion error")
-	_, err = nodeB.Job().Complete(ctx, &store.JobCompletion{AttemptID: live.Attempt.ID, ClaimToken: liveToken, Kind: store.JobCompletionSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)})
+	_, err = nodeB.Job().Complete(ctx, &store.JobCompletion{AttemptID: live.Attempt.ID, ClaimToken: liveToken, Kind: store.JobCompletionSucceeded, Result: json.RawMessage(`{}`)})
 	require.NoError(t, err)
 	attempts, err := nodeA.Job().ListAttempts(ctx, job.ID)
 	require.NoError(t, err)

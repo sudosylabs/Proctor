@@ -26,9 +26,9 @@ func attachResultReleaseMail(t *testing.T, candidate *model.User, input *store.E
 	occurrenceID, err := model.ResultReleaseOccurrenceID(input.ReviewID, input.ExpectedReviewRevision)
 	require.NoError(t, err)
 	deliveryID, jobID := model.NewMailDeliveryID(), model.NewJobID()
-	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommand{DeliveryID: deliveryID})
 	require.NoError(t, err)
-	job, err := model.NewJob(jobID, model.JobTypeMailDeliver, 1, command, deliveryID.String(), at, at,
+	job, err := model.NewJob(jobID, model.JobTypeMailDeliver, command, deliveryID.String(), at, at,
 		model.MailMaximumAttempts)
 	require.NoError(t, err)
 	job, err = job.RequestCancellation(at)

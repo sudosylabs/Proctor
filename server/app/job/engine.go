@@ -273,7 +273,7 @@ func (r *Engine) worker(ctx context.Context, descriptor Descriptor) {
 			queueLatency = 0
 		}
 		r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "claim", Outcome: "success", Duration: claimDuration, QueueLatency: queueLatency})
-		resolved, err := r.registry.Resolve(claim.Job.Type, claim.Job.CommandVersion)
+		resolved, err := r.registry.Descriptor(claim.Job.Type)
 		if err != nil {
 			r.completeUnsupported(ctx, descriptor, claim, err)
 		} else {
@@ -382,14 +382,14 @@ func (r *Engine) execute(parent context.Context, descriptor Descriptor, claim *s
 		return result.Reserved, nil
 	}
 	execution.checkpoint = func(ctx context.Context, value CheckpointValue) error {
-		if !descriptor.SupportsCheckpointVersion(value.Version) || len(value.Document) == 0 || len(value.Document) > model.JobMaximumDocumentBytes || !json.Valid(value.Document) {
-			return errors.New("job checkpoint version is not declared")
+		if !descriptor.Checkpoints || len(value.Document) == 0 || len(value.Document) > model.JobMaximumDocumentBytes || !json.Valid(value.Document) {
+			return errors.New("job type does not declare checkpoints")
 		}
 		if value.Progress != nil && (value.Progress.Current < 0 || value.Progress.Total <= 0 || value.Progress.Current > value.Progress.Total || !descriptor.SupportsProgressStage(value.Progress.Stage)) {
 			return errors.New("job progress stage is not declared")
 		}
 		started := time.Now()
-		_, err := r.jobs.Checkpoint(ctx, &store.JobCheckpoint{AttemptID: claim.Attempt.ID, ClaimToken: claim.Attempt.ClaimToken, Progress: value.Progress, CheckpointVersion: value.Version, Checkpoint: value.Document})
+		_, err := r.jobs.Checkpoint(ctx, &store.JobCheckpoint{AttemptID: claim.Attempt.ID, ClaimToken: claim.Attempt.ClaimToken, Progress: value.Progress, Checkpoint: value.Document})
 		r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "checkpoint", Outcome: simpleJobOutcome(err), Duration: time.Since(started)})
 		return err
 	}
@@ -437,10 +437,10 @@ func (r *Engine) complete(ctx context.Context, descriptor Descriptor, claim *sto
 	if failureWithoutCode || !descriptor.SupportsPublicErrorCode(outcome.PublicErrorCode) {
 		outcome = PermanentFailure("job.outcome.invalid", errors.New("handler returned an undeclared public error code"))
 	}
-	completion := &store.JobCompletion{AttemptID: claim.Attempt.ID, ClaimToken: claim.Attempt.ClaimToken, ResultVersion: outcome.ResultVersion, Result: outcome.Result, PublicErrorCode: outcome.PublicErrorCode}
+	completion := &store.JobCompletion{AttemptID: claim.Attempt.ID, ClaimToken: claim.Attempt.ClaimToken, Result: outcome.Result, PublicErrorCode: outcome.PublicErrorCode}
 	switch outcome.Kind {
 	case OutcomeSucceeded:
-		if outcome.Err != nil || !descriptor.SupportsResultVersion(outcome.ResultVersion) || len(outcome.Result) == 0 {
+		if outcome.Err != nil || len(outcome.Result) == 0 {
 			completion.Kind = store.JobCompletionPermanentFailure
 			completion.PublicErrorCode = "job.result.invalid"
 		} else {

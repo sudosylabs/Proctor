@@ -114,9 +114,9 @@ func insertPreparedMailJob(ctx context.Context, executor sqlxExecutor, job *mode
 	if job.Status != model.JobStatusCanceled || !job.CompletedAt.Valid {
 		return store.NewErrInvalidInput("job", "prepared_mail", nil)
 	}
-	_, err := executor.Exec(ctx, `INSERT INTO jobs (`+jobColumns+`) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?)`,
+	_, err := executor.Exec(ctx, `INSERT INTO jobs (`+jobColumns+`) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?)`,
 		job.ID.String(), string(job.Type), string(job.Status), job.CreatedAt, job.UpdatedAt, job.AvailableAt,
-		job.CompletedAt.Time, job.CommandVersion, job.Command, job.PublicErrorCode, job.DedupeKey,
+		job.CompletedAt.Time, job.Command, job.PublicErrorCode, job.DedupeKey,
 		string(job.DedupePolicy), job.AttemptCount, job.MaximumAttempts, job.WorkReserved, job.Revision)
 	return err
 }
@@ -142,7 +142,7 @@ func validateMailTestEnqueue(input *store.MailTestEnqueue) error {
 		input.AuditEvent.ScopeType != model.RoleScopeInstitution || !model.InstitutionID(input.AuditEvent.ScopeID).IsValid() {
 		return store.NewErrInvalidInput("audit_event", "value", nil)
 	}
-	command, err := model.DecodeMailDeliveryCommand(input.Job.CommandVersion, input.Job.Command)
+	command, err := model.DecodeMailDeliveryCommand(input.Job.Command)
 	if err != nil || input.Occurrence.Kind != model.MailOccurrenceOperatorTest || input.Delivery.State != model.MailDeliveryQueued ||
 		input.Job.Type != model.JobTypeMailDeliver || input.Job.Status != model.JobStatusQueued || input.Job.AttemptCount != 0 ||
 		input.Job.Revision != 1 || input.Job.DedupePolicy != model.JobDedupeActive || input.Job.MaximumAttempts != model.MailMaximumAttempts ||

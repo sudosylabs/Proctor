@@ -448,7 +448,7 @@ func validateExamSittingLifecycleJob(job *model.Job, sittingID model.ExamSitting
 	if err != nil {
 		return store.NewErrInvalidInput("exam_sitting", "lifecycle_job", nil).Wrap(err)
 	}
-	command, decodeErr := model.DecodeExamSittingLifecycleCommand(job.CommandVersion, job.Command)
+	command, decodeErr := model.DecodeExamSittingLifecycleCommand(job.Command)
 	validateErr := job.Validate()
 	wantType := model.JobTypeExamSittingLifecycle
 	if phase == model.ExamSittingLifecycleJobFinalize {
@@ -458,7 +458,7 @@ func validateExamSittingLifecycleJob(job *model.Job, sittingID model.ExamSitting
 		job.Type != wantType || job.Status != model.JobStatusQueued ||
 		job.DedupePolicy != model.JobDedupeActive || job.DedupeKey != wantKey || job.AttemptCount != 0 ||
 		job.Revision != 1 || job.WorkReserved != 0 || job.StartedAt.Valid || job.CompletedAt.Valid || job.Progress != nil ||
-		job.CheckpointVersion != 0 || len(job.Checkpoint) != 0 || job.ResultVersion != 0 || len(job.Result) != 0 ||
+		len(job.Checkpoint) != 0 || len(job.Result) != 0 ||
 		job.PublicErrorCode != "" || !job.AvailableAt.Equal(model.TimeUTC(availableAt)) {
 		if validateErr != nil {
 			decodeErr = validateErr
@@ -717,7 +717,7 @@ func insertExamSittingMailFanout(ctx context.Context, tx *sqlxTxWrapper, input *
 		input.ExpansionJob.MaximumAttempts != model.MailMaximumAttempts {
 		return store.NewErrInvalidInput("exam_sitting", "mail_fanout", nil)
 	}
-	command, err := model.DecodeSittingMailExpansionCommand(input.ExpansionJob.CommandVersion, input.ExpansionJob.Command)
+	command, err := model.DecodeSittingMailExpansionCommand(input.ExpansionJob.Command)
 	wantDedupe, keyErr := model.SittingMailExpansionDedupeKey(input.Occurrence.ID)
 	if err != nil || keyErr != nil || command.OccurrenceID != input.Occurrence.ID || input.ExpansionJob.DedupeKey != wantDedupe {
 		return store.NewErrInvalidInput("exam_sitting", "mail_fanout", err)
@@ -1333,11 +1333,11 @@ func isStaleExamSittingFinalizeJob(job *model.Job, current *model.ExamSitting) b
 	if job == nil || current == nil || job.Validate() != nil || job.Type != model.JobTypeExamSittingSealing ||
 		job.Status != model.JobStatusQueued || job.DedupePolicy != model.JobDedupeActive || job.AttemptCount != 0 ||
 		job.Revision != 1 || job.WorkReserved != 0 || job.StartedAt.Valid || job.CompletedAt.Valid || job.Progress != nil ||
-		job.CheckpointVersion != 0 || len(job.Checkpoint) != 0 || job.ResultVersion != 0 || len(job.Result) != 0 ||
+		len(job.Checkpoint) != 0 || len(job.Result) != 0 ||
 		job.PublicErrorCode != "" || !job.AvailableAt.Equal(current.ScheduledEndAt) {
 		return false
 	}
-	command, err := model.DecodeExamSittingLifecycleCommand(job.CommandVersion, job.Command)
+	command, err := model.DecodeExamSittingLifecycleCommand(job.Command)
 	if err != nil || command.ExamSittingID != current.ID {
 		return false
 	}

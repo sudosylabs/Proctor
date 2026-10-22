@@ -1,6 +1,6 @@
 ---
 name: durable-jobs
-description: Add or change finite background Jobs, descriptors, payload versions, claiming, leases, checkpoints, retry, cancellation, progress, history, cleanup, recurring occurrence identity, or domain Job handlers.
+description: Add or change finite background Jobs, descriptors, typed payloads, claiming, leases, checkpoints, retry, cancellation, progress, history, cleanup, recurring occurrence identity, or domain Job handlers.
 ---
 
 # Change durable jobs
@@ -11,10 +11,10 @@ description: Add or change finite background Jobs, descriptors, payload versions
    outcomes. Completion: Job and Job Attempt remain distinct from Exam Attempt.
 2. Read the relevant section of the
    [durable-job reference](references/jobs.md). Completion: natural identity,
-   payload version, claim/lease fence, retry class, work budget, progress,
+   payload shape, claim/lease fence, retry class, work budget, progress,
    cancellation, retention, and visibility are explicit.
 3. Keep the generic engine in `app/job`; keep domain handlers beside their
-   owning use cases and enter them through typed versioned documents.
+   owning use cases and enter them through strict typed documents.
    Completion: the engine imports neither parent application nor concrete
    infrastructure.
 4. Commit domain state before completing the Job checkpoint/outcome according

@@ -58,12 +58,11 @@ func TestExamSittingLifecycleHandlerReconcilesAndTreatsStaleWorkAsSuccess(t *tes
 
 	outcome := handler.Run(context.Background(), jobengine.NewExecution(job, &model.JobAttempt{ID: attemptID}, nil, nil))
 	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind)
-	require.Equal(t, 1, outcome.ResultVersion)
 	require.NoError(t, outcome.Err)
 	require.Equal(t, sittingID, reconciler.sittingID, "reconcile identity")
 	require.Equal(t, job.ID, reconciler.jobID, "reconcile identity")
 	require.Equal(t, attemptID, reconciler.attemptID, "reconcile identity")
-	var result ExamSittingLifecycleJobResultV1
+	var result ExamSittingLifecycleJobResult
 	require.NoError(t, json.Unmarshal(outcome.Result, &result), "result = %#v", result)
 	require.False(t, result.Changed, "result = %#v", result)
 	require.Equal(t, model.ExamSittingScheduled, result.State, "result = %#v", result)
@@ -112,8 +111,6 @@ func TestExamSittingLifecycleDescriptorIsBoundedAndNonCancelable(t *testing.T) {
 	require.Equal(t, jobengine.VisibilityOperator, descriptor.Visibility)
 	require.Equal(t, 8, descriptor.MaximumAttempts)
 	require.GreaterOrEqual(t, descriptor.Concurrency, 1)
-	require.Len(t, descriptor.CommandVersions, 1)
-	require.Len(t, descriptor.ResultVersions, 1)
 }
 
 type examSittingLifecycleReconcilerFake struct {
@@ -131,9 +128,9 @@ func (f *examSittingLifecycleReconcilerFake) ReconcileExamSittingLifecycleFromJo
 
 func mustExamSittingLifecycleJob(t *testing.T, sittingID model.ExamSittingID, at time.Time) *model.Job {
 	t.Helper()
-	command, err := model.EncodeExamSittingLifecycleCommand(model.ExamSittingLifecycleCommandV1{ExamSittingID: sittingID})
+	command, err := model.EncodeExamSittingLifecycleCommand(model.ExamSittingLifecycleCommand{ExamSittingID: sittingID})
 	require.NoError(t, err)
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeExamSittingLifecycle, 1, command, "exam-sitting-test", at, at, 8)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeExamSittingLifecycle, command, "exam-sitting-test", at, at, 8)
 	require.NoError(t, err)
 	return job
 }
@@ -161,14 +158,13 @@ func assertExamSittingLifecycleJob(t *testing.T, job *model.Job, wantType model.
 	require.Equal(t, wantType, job.Type)
 	require.Equal(t, model.JobDedupeActive, job.DedupePolicy)
 	require.Equal(t, model.JobStatusQueued, job.Status)
-	require.Equal(t, 1, job.CommandVersion)
 	require.Equal(t, 8, job.MaximumAttempts)
 	require.Equal(t, createdAt, job.CreatedAt)
 	require.Equal(t, availableAt, job.AvailableAt)
 	wantKey, err := model.ExamSittingLifecycleDedupeKey(sittingID, phase, revision)
 	require.NoError(t, err)
 	require.Equal(t, wantKey, job.DedupeKey, "dedupe key")
-	command, err := model.DecodeExamSittingLifecycleCommand(job.CommandVersion, job.Command)
+	command, err := model.DecodeExamSittingLifecycleCommand(job.Command)
 	require.NoError(t, err, "command = %#v", command)
 	require.Equal(t, sittingID, command.ExamSittingID, "command = %#v", command)
 }

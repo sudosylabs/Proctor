@@ -51,7 +51,7 @@ func (f *operatorStoreFake) Retry(_ context.Context, mutation *store.JobMutation
 func TestEngineProjectsOnlySafeOperatorFields(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, time.August, 11, 8, 0, 0, 0, time.UTC)
-	record, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, json.RawMessage(`{"secret":"must-not-leak"}`), "private-dedupe", at, at, 8)
+	record, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, json.RawMessage(`{"secret":"must-not-leak"}`), "private-dedupe", at, at, 8)
 	require.NoError(t, err)
 	persistence := &operatorStoreFake{jobRunnerStoreFake: &jobRunnerStoreFake{}, job: record, list: []*model.Job{record}}
 	engine, err := New(Config{
@@ -76,7 +76,7 @@ func TestEngineProjectsOnlySafeOperatorFields(t *testing.T) {
 func TestEngineProjectsSafeAttemptsAndPreservesCursor(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, time.August, 11, 8, 0, 0, 0, time.UTC)
-	record, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, json.RawMessage(`{}`), "attempts", at, at, 8)
+	record, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, json.RawMessage(`{}`), "attempts", at, at, 8)
 	require.NoError(t, err)
 	attempt := model.JobAttempt{ID: model.NewJobAttemptID(), JobID: record.ID, Number: 3, Status: model.JobAttemptStatusRunning, NodeID: "private-node", ClaimToken: model.JobClaimToken(strings.Repeat("a", 64)), StartedAt: at, HeartbeatAt: at, LeaseExpiresAt: at.Add(time.Minute)}
 	persistence := &operatorStoreFake{jobRunnerStoreFake: &jobRunnerStoreFake{}, job: record, attempts: []model.JobAttempt{attempt}}
@@ -97,7 +97,7 @@ func TestEngineProjectsSafeAttemptsAndPreservesCursor(t *testing.T) {
 func TestEnginePreparesAndAppliesDescriptorGovernedControls(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, time.August, 11, 8, 0, 0, 0, time.UTC)
-	queued, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, json.RawMessage(`{}`), "control", at, at, 8)
+	queued, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, json.RawMessage(`{}`), "control", at, at, 8)
 	require.NoError(t, err)
 	persistence := &operatorStoreFake{jobRunnerStoreFake: &jobRunnerStoreFake{}, job: queued}
 	descriptor := testDescriptor(handlerFunc(func(context.Context, Execution) Outcome { return succeededOutcome() }))
@@ -137,7 +137,7 @@ func TestEnginePreparesAndAppliesDescriptorGovernedControls(t *testing.T) {
 func TestEngineRejectsInvalidQueriesAndUnsupportedControls(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, time.August, 11, 8, 0, 0, 0, time.UTC)
-	record, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, json.RawMessage(`{}`), "unsupported", at, at, 8)
+	record, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, json.RawMessage(`{}`), "unsupported", at, at, 8)
 	require.NoError(t, err)
 	persistence := &operatorStoreFake{jobRunnerStoreFake: &jobRunnerStoreFake{}, job: record}
 	engine, err := New(Config{Store: persistence, Descriptors: []Descriptor{testDescriptor(handlerFunc(func(context.Context, Execution) Outcome { return succeededOutcome() }))}, NodeID: "node-a", Diagnostics: &jobDiagnosticsFake{}, Policy: Policy{PollInterval: time.Second}})

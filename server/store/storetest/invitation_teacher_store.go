@@ -357,9 +357,9 @@ func teacherAcademicUnitInvitationIssueFixture(t *testing.T, ss store.Store, inv
 	})
 	require.NoError(t, err)
 	occurrenceID, deliveryID, jobID := model.NewMailOccurrenceID(), model.NewMailDeliveryID(), model.NewJobID()
-	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommand{DeliveryID: deliveryID})
 	require.NoError(t, err)
-	job, err := model.NewJob(jobID, model.JobTypeMailDeliverCredential, 1, command, deliveryID.String(), issuedAt, issuedAt, model.MailMaximumAttempts)
+	job, err := model.NewJob(jobID, model.JobTypeMailDeliverCredential, command, deliveryID.String(), issuedAt, issuedAt, model.MailMaximumAttempts)
 	require.NoError(t, err)
 	delivery := &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: jobID, TargetInvitationID: invitation.ID,
 		TemplateKey: model.MailTemplateAccessTeacherAcademicUnitInvitation, TemplateDigest: strings.Repeat("c", 64),

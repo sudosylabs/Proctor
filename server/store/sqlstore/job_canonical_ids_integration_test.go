@@ -26,7 +26,7 @@ func TestJobCanonicalIDConstraintsRejectNoncanonicalValues(t *testing.T) {
 	ctx := context.Background()
 	now := model.NowUTC()
 	jobID := model.NewJobID()
-	_, err := ss.GetMaster().Exec(ctx, `INSERT INTO jobs (id, type, status, created_at, updated_at, available_at, command_version, command, dedupe_key, maximum_attempts, revision) VALUES (?, ?, 'queued', ?, ?, ?, 1, '{}'::jsonb, ?, 3, 1)`, jobID.String(), string(model.JobTypeCleanup), now, now, now, jobID.String())
+	_, err := ss.GetMaster().Exec(ctx, `INSERT INTO jobs (id, type, status, created_at, updated_at, available_at, command, dedupe_key, maximum_attempts, revision) VALUES (?, ?, 'queued', ?, ?, ?, '{}'::jsonb, ?, 3, 1)`, jobID.String(), string(model.JobTypeCleanup), now, now, now, jobID.String())
 	require.NoError(t, err)
 	token, err := model.NewJobClaimToken()
 	require.NoError(t, err)

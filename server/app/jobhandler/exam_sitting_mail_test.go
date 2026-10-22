@@ -52,7 +52,7 @@ func TestSittingMailExpansionPagesLargeRosterCheckpointsAndIsolatesOneRecipientC
 	require.Equal(t, prepared.Occurrence.ID, storeFake.completed, "outcome=%#v completed=%s commits=%d checkpoints", outcome, storeFake.completed, len(storeFake.commits))
 	require.Len(t, storeFake.commits, len(users), "outcome=%#v completed=%s commits=%d checkpoints", outcome, storeFake.completed, len(storeFake.commits))
 	require.Len(t, checkpoints, 2, "outcome=%#v completed=%s commits=%d checkpoints", outcome, storeFake.completed, len(storeFake.commits))
-	result, err := model.DecodeSittingMailExpansionCheckpoint(1, checkpoints[len(checkpoints)-1].Document)
+	result, err := model.DecodeSittingMailExpansionCheckpoint(checkpoints[len(checkpoints)-1].Document)
 	require.NoError(t, err, "checkpoint=%#v err", result)
 	require.Equal(t, int64(model.SittingMailExpansionPageSize), result.Expanded, "checkpoint=%#v err", result)
 	require.Equal(t, int64(1), result.Suppressed, "checkpoint=%#v err", result)
@@ -60,7 +60,7 @@ func TestSittingMailExpansionPagesLargeRosterCheckpointsAndIsolatesOneRecipientC
 	descriptor := sittingMailExpansionDescriptor(sittingMailExpansionHandler{})
 	require.Equal(t, model.JobTypeMailExpandSitting, descriptor.Type)
 	require.Equal(t, 2, descriptor.Concurrency)
-	require.Equal(t, 1, descriptor.CheckpointVersions[0])
+	require.True(t, descriptor.Checkpoints)
 }
 
 func TestSittingMailExpansionLeaseLossReplaysRecipientCommitsWithoutDuplicates(t *testing.T) {
@@ -219,7 +219,7 @@ func TestSittingMailExpansionSkipsAnUnaddressableRecipientAndReachesLaterOnes(t 
 	require.False(t, persistence.inserted[users[0].ID])
 	require.True(t, persistence.inserted[users[1].ID])
 	require.True(t, persistence.inserted[users[2].ID])
-	var result model.SittingMailExpansionResultV1
+	var result model.SittingMailExpansionResult
 	require.NoError(t, json.Unmarshal(outcome.Result, &result))
-	require.Equal(t, model.SittingMailExpansionResultV1{Expanded: 2, Undeliverable: 1}, result)
+	require.Equal(t, model.SittingMailExpansionResult{Expanded: 2, Undeliverable: 1}, result)
 }

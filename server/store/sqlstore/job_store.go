@@ -80,30 +80,27 @@ func jobHistorySQLTransactionPolicy() sqlTransactionPolicy[*jobHistoryCleanupOut
 }
 
 type jobRow struct {
-	ID                string         `db:"id"`
-	Type              string         `db:"type"`
-	Status            string         `db:"status"`
-	CreatedAt         time.Time      `db:"created_at"`
-	UpdatedAt         time.Time      `db:"updated_at"`
-	AvailableAt       time.Time      `db:"available_at"`
-	StartedAt         sql.NullTime   `db:"started_at"`
-	CompletedAt       sql.NullTime   `db:"completed_at"`
-	CommandVersion    int            `db:"command_version"`
-	Command           jsonValue      `db:"command"`
-	CheckpointVersion sql.NullInt64  `db:"checkpoint_version"`
-	Checkpoint        jsonValue      `db:"checkpoint"`
-	ResultVersion     sql.NullInt64  `db:"result_version"`
-	Result            jsonValue      `db:"result"`
-	PublicErrorCode   string         `db:"public_error_code"`
-	DedupeKey         string         `db:"dedupe_key"`
-	DedupePolicy      string         `db:"dedupe_policy"`
-	AttemptCount      int            `db:"attempt_count"`
-	MaximumAttempts   int            `db:"maximum_attempts"`
-	WorkReserved      int            `db:"work_reserved"`
-	ProgressCurrent   sql.NullInt64  `db:"progress_current"`
-	ProgressTotal     sql.NullInt64  `db:"progress_total"`
-	ProgressStage     sql.NullString `db:"progress_stage"`
-	Revision          int64          `db:"revision"`
+	ID              string         `db:"id"`
+	Type            string         `db:"type"`
+	Status          string         `db:"status"`
+	CreatedAt       time.Time      `db:"created_at"`
+	UpdatedAt       time.Time      `db:"updated_at"`
+	AvailableAt     time.Time      `db:"available_at"`
+	StartedAt       sql.NullTime   `db:"started_at"`
+	CompletedAt     sql.NullTime   `db:"completed_at"`
+	Command         jsonValue      `db:"command"`
+	Checkpoint      jsonValue      `db:"checkpoint"`
+	Result          jsonValue      `db:"result"`
+	PublicErrorCode string         `db:"public_error_code"`
+	DedupeKey       string         `db:"dedupe_key"`
+	DedupePolicy    string         `db:"dedupe_policy"`
+	AttemptCount    int            `db:"attempt_count"`
+	MaximumAttempts int            `db:"maximum_attempts"`
+	WorkReserved    int            `db:"work_reserved"`
+	ProgressCurrent sql.NullInt64  `db:"progress_current"`
+	ProgressTotal   sql.NullInt64  `db:"progress_total"`
+	ProgressStage   sql.NullString `db:"progress_stage"`
+	Revision        int64          `db:"revision"`
 }
 
 type jobAttemptRow struct {
@@ -120,7 +117,7 @@ type jobAttemptRow struct {
 	PublicErrorCode string       `db:"public_error_code"`
 }
 
-const jobColumns = `id, type, status, created_at, updated_at, available_at, started_at, completed_at, command_version, command, checkpoint_version, checkpoint, result_version, result, public_error_code, dedupe_key, dedupe_policy, attempt_count, maximum_attempts, work_reserved, progress_current, progress_total, progress_stage, revision`
+const jobColumns = `id, type, status, created_at, updated_at, available_at, started_at, completed_at, command, checkpoint, result, public_error_code, dedupe_key, dedupe_policy, attempt_count, maximum_attempts, work_reserved, progress_current, progress_total, progress_stage, revision`
 const jobAttemptColumns = `id, job_id, number, status, node_id, claim_token, started_at, heartbeat_at, lease_expires_at, completed_at, public_error_code`
 
 func newSQLJobStore(sqlStore *SQLStore) store.JobStore { return &SQLJobStore{SQLStore: sqlStore} }
@@ -209,7 +206,7 @@ func insertQueuedJob(ctx context.Context, executor sqlxExecutor, job *model.Job,
 			conflict = " ON CONFLICT (type, dedupe_key) WHERE dedupe_policy = 'permanent' DO NOTHING"
 		}
 	}
-	return executor.Exec(ctx, `INSERT INTO jobs (`+jobColumns+`) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, NULL, NULL, NULL, NULL, '', ?, ?, 0, ?, 0, NULL, NULL, NULL, ?)`+conflict, job.ID.String(), string(job.Type), string(job.Status), job.CreatedAt, job.UpdatedAt, job.AvailableAt, job.CommandVersion, job.Command, job.DedupeKey, string(job.DedupePolicy), job.MaximumAttempts, job.Revision)
+	return executor.Exec(ctx, `INSERT INTO jobs (`+jobColumns+`) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, NULL, NULL, '', ?, ?, 0, ?, 0, NULL, NULL, NULL, ?)`+conflict, job.ID.String(), string(job.Type), string(job.Status), job.CreatedAt, job.UpdatedAt, job.AvailableAt, job.Command, job.DedupeKey, string(job.DedupePolicy), job.MaximumAttempts, job.Revision)
 }
 
 // leaseExpiryBackoff delays a Job whose attempt lost its lease, which usually
@@ -327,7 +324,7 @@ func (s SQLJobStore) Checkpoint(ctx context.Context, input *store.JobCheckpoint)
 		if err != nil {
 			return nil, err
 		}
-		updated, err := job.UpdateProgress(input.Progress, input.CheckpointVersion, input.Checkpoint, latestTime(job.UpdatedAt, databaseNow))
+		updated, err := job.UpdateProgress(input.Progress, input.Checkpoint, latestTime(job.UpdatedAt, databaseNow))
 		if err != nil {
 			return nil, store.NewErrInvalidInput("job", "checkpoint", err)
 		}
@@ -399,7 +396,7 @@ func (s SQLJobStore) Complete(ctx context.Context, input *store.JobCompletion) (
 		switch kind {
 		case store.JobCompletionSucceeded:
 			attemptStatus = model.JobAttemptStatusSucceeded
-			updated, err = job.Succeed(input.ResultVersion, input.Result, jobAt)
+			updated, err = job.Succeed(input.Result, jobAt)
 		case store.JobCompletionRetryableFailure:
 			attemptStatus = model.JobAttemptStatusFailed
 			if job.AttemptCount < job.MaximumAttempts {
@@ -721,19 +718,11 @@ func updateJob(ctx context.Context, tx *sqlxTxWrapper, job *model.Job) error {
 	if job.CompletedAt.Valid {
 		completedAt = job.CompletedAt.Time
 	}
-	var resultVersion any
-	if job.ResultVersion > 0 {
-		resultVersion = job.ResultVersion
-	}
-	var checkpointVersion any
-	if job.CheckpointVersion > 0 {
-		checkpointVersion = job.CheckpointVersion
-	}
 	var progressCurrent, progressTotal, progressStage any
 	if job.Progress != nil {
 		progressCurrent, progressTotal, progressStage = job.Progress.Current, job.Progress.Total, job.Progress.Stage
 	}
-	result, err := tx.Exec(ctx, `UPDATE jobs SET status = ?, updated_at = ?, available_at = ?, started_at = ?, completed_at = ?, checkpoint_version = ?, checkpoint = ?, result_version = ?, result = ?, public_error_code = ?, attempt_count = ?, maximum_attempts = ?, work_reserved = ?, progress_current = ?, progress_total = ?, progress_stage = ?, revision = ? WHERE id = ? AND revision = ?`, string(job.Status), job.UpdatedAt, job.AvailableAt, startedAt, completedAt, checkpointVersion, nullableJSON(job.Checkpoint), resultVersion, nullableJSON(job.Result), job.PublicErrorCode, job.AttemptCount, job.MaximumAttempts, job.WorkReserved, progressCurrent, progressTotal, progressStage, job.Revision, job.ID.String(), job.Revision-1)
+	result, err := tx.Exec(ctx, `UPDATE jobs SET status = ?, updated_at = ?, available_at = ?, started_at = ?, completed_at = ?, checkpoint = ?, result = ?, public_error_code = ?, attempt_count = ?, maximum_attempts = ?, work_reserved = ?, progress_current = ?, progress_total = ?, progress_stage = ?, revision = ? WHERE id = ? AND revision = ?`, string(job.Status), job.UpdatedAt, job.AvailableAt, startedAt, completedAt, nullableJSON(job.Checkpoint), nullableJSON(job.Result), job.PublicErrorCode, job.AttemptCount, job.MaximumAttempts, job.WorkReserved, progressCurrent, progressTotal, progressStage, job.Revision, job.ID.String(), job.Revision-1)
 	if err != nil {
 		return fmt.Errorf("update job: %w", translateError("job", job.ID.String(), err))
 	}
@@ -752,12 +741,8 @@ func (r jobRow) model() (*model.Job, error) {
 	if err != nil {
 		return nil, err
 	}
-	job := &model.Job{ID: id, Type: model.JobType(r.Type), Status: model.JobStatus(r.Status), CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC(), AvailableAt: r.AvailableAt.UTC(), StartedAt: OptionalTimeFromNullTime(r.StartedAt), CompletedAt: OptionalTimeFromNullTime(r.CompletedAt), CommandVersion: r.CommandVersion, Command: append(json.RawMessage(nil), r.Command...), Checkpoint: append(json.RawMessage(nil), r.Checkpoint...), PublicErrorCode: r.PublicErrorCode, DedupeKey: r.DedupeKey, DedupePolicy: model.JobDedupePolicy(r.DedupePolicy), AttemptCount: r.AttemptCount, MaximumAttempts: r.MaximumAttempts, WorkReserved: r.WorkReserved, Revision: r.Revision}
-	if r.CheckpointVersion.Valid {
-		job.CheckpointVersion = int(r.CheckpointVersion.Int64)
-	}
-	if r.ResultVersion.Valid {
-		job.ResultVersion = int(r.ResultVersion.Int64)
+	job := &model.Job{ID: id, Type: model.JobType(r.Type), Status: model.JobStatus(r.Status), CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC(), AvailableAt: r.AvailableAt.UTC(), StartedAt: OptionalTimeFromNullTime(r.StartedAt), CompletedAt: OptionalTimeFromNullTime(r.CompletedAt), Command: append(json.RawMessage(nil), r.Command...), Checkpoint: append(json.RawMessage(nil), r.Checkpoint...), PublicErrorCode: r.PublicErrorCode, DedupeKey: r.DedupeKey, DedupePolicy: model.JobDedupePolicy(r.DedupePolicy), AttemptCount: r.AttemptCount, MaximumAttempts: r.MaximumAttempts, WorkReserved: r.WorkReserved, Revision: r.Revision}
+	if len(r.Result) > 0 {
 		job.Result = append(json.RawMessage(nil), r.Result...)
 	}
 	if r.ProgressCurrent.Valid && r.ProgressTotal.Valid && r.ProgressStage.Valid {

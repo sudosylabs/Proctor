@@ -30,7 +30,7 @@ import (
 type recurrenceIntegrationHandler struct{}
 
 func (recurrenceIntegrationHandler) Run(context.Context, jobengine.Execution) jobengine.Outcome {
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)}
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: json.RawMessage(`{}`)}
 }
 
 type signalingCleanupProposer struct {

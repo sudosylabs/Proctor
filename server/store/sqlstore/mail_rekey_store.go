@@ -29,12 +29,10 @@ type mailRekeyTargetRow struct {
 }
 
 type mailRekeyCompletionRow struct {
-	Type           string        `db:"type"`
-	Status         string        `db:"status"`
-	CommandVersion int           `db:"command_version"`
-	Command        jsonValue     `db:"command"`
-	ResultVersion  sql.NullInt64 `db:"result_version"`
-	Result         jsonValue     `db:"result"`
+	Type    string    `db:"type"`
+	Status  string    `db:"status"`
+	Command jsonValue `db:"command"`
+	Result  jsonValue `db:"result"`
 }
 
 func (s SQLMailStore) InspectKeyState(ctx context.Context) (*store.MailKeyState, error) {
@@ -44,15 +42,12 @@ func (s SQLMailStore) InspectKeyState(ctx context.Context) (*store.MailKeyState,
 			ActiveJobID          sql.NullString `db:"active_rekey_job_id"`
 			JobType              string         `db:"job_type"`
 			JobStatus            string         `db:"job_status"`
-			JobCommandVersion    int            `db:"job_command_version"`
 			JobCommand           jsonValue      `db:"job_command"`
-			JobResultVersion     sql.NullInt64  `db:"job_result_version"`
 			JobResult            jsonValue      `db:"job_result"`
 		}
 		if err := tx.Get(ctx, &fence, `SELECT mail_key_state.required_primary_key_id, mail_key_state.active_rekey_job_id,
 			COALESCE(jobs.type, '') AS job_type, COALESCE(jobs.status, '') AS job_status,
-			COALESCE(jobs.command_version, 0) AS job_command_version, jobs.command AS job_command,
-			jobs.result_version AS job_result_version, jobs.result AS job_result
+			jobs.command AS job_command, jobs.result AS job_result
 			FROM mail_key_state LEFT JOIN jobs ON jobs.id = mail_key_state.active_rekey_job_id
 			WHERE mail_key_state.singleton = TRUE FOR SHARE OF mail_key_state`); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -81,8 +76,7 @@ func (s SQLMailStore) InspectKeyState(ctx context.Context) (*store.MailKeyState,
 			state.Active = append(state.Active, store.MailPayloadKeyUsage{KeyID: row.KeyID, ActiveReferences: row.ActiveReferences})
 		}
 		completion := mailRekeyCompletionRow{Type: fence.JobType, Status: fence.JobStatus,
-			CommandVersion: fence.JobCommandVersion, Command: fence.JobCommand,
-			ResultVersion: fence.JobResultVersion, Result: fence.JobResult}
+			Command: fence.JobCommand, Result: fence.JobResult}
 		if fence.ActiveJobID.Valid && state.RequiredPrimaryKeyID != "" && completedMailRekeyAllowsPromotion(completion, state.RequiredPrimaryKeyID) {
 			state.PrimaryPromotionAllowed = true
 			for _, usage := range state.Active {
@@ -118,7 +112,7 @@ func (s SQLMailStore) StartRekey(ctx context.Context, input *store.MailRekeyStar
 			var priorCompletion *mailRekeyCompletionRow
 			if state.ActiveJobID.Valid {
 				var completion mailRekeyCompletionRow
-				if err := tx.Get(ctx, &completion, `SELECT type, status, command_version, command, result_version, result FROM jobs WHERE id = ?`, state.ActiveJobID.String); err != nil && !errors.Is(err, sql.ErrNoRows) {
+				if err := tx.Get(ctx, &completion, `SELECT type, status, command, result FROM jobs WHERE id = ?`, state.ActiveJobID.String); err != nil && !errors.Is(err, sql.ErrNoRows) {
 					return nil, fmt.Errorf("read active mail rekey job: %w", err)
 				}
 				priorCompletion = &completion
@@ -168,8 +162,7 @@ func completeMailRekeyStartAudit(ctx context.Context, tx *sqlxTxWrapper, input *
 
 func completedMailRekeyAllowsPromotion(job mailRekeyCompletionRow, requiredPrimaryKeyID string) bool {
 	if !validMailPayloadKeyID(requiredPrimaryKeyID) || job.Type != string(model.JobTypeMailRekey) ||
-		job.Status != string(model.JobStatusSucceeded) || job.CommandVersion != 1 || !job.ResultVersion.Valid ||
-		job.ResultVersion.Int64 != 1 {
+		job.Status != string(model.JobStatusSucceeded) || len(job.Result) == 0 {
 		return false
 	}
 	var command struct {
@@ -199,7 +192,7 @@ func validateMailRekeyStart(input *store.MailRekeyStart) error {
 	if input == nil || input.Job == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 || !validMailPayloadKeyID(input.PrimaryKeyID) ||
 		!validMailPayloadKeyID(input.RetiringKeyID) || input.PrimaryKeyID == input.RetiringKeyID ||
 		input.Job.Validate() != nil || input.Job.Type != model.JobTypeMailRekey || input.Job.Status != model.JobStatusQueued ||
-		input.Job.CommandVersion != 1 || input.Job.MaximumAttempts != 10 || input.Job.AttemptCount != 0 ||
+		input.Job.MaximumAttempts != 10 || input.Job.AttemptCount != 0 ||
 		input.Job.DedupePolicy != model.JobDedupeActive || input.Job.Revision != 1 || input.Job.StartedAt.Valid ||
 		input.Job.CompletedAt.Valid || len(input.Job.Checkpoint) != 0 || len(input.Job.Result) != 0 || input.Job.Progress != nil ||
 		input.Job.WorkReserved != 0 {

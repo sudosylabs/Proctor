@@ -146,9 +146,9 @@ func mfaSQLSecurityNoticeFixture(t *testing.T, ctx context.Context, persistence 
 	require.NoError(t, err)
 	when := model.TimeFromMillis(at)
 	deliveryID, occurrenceID, jobID := model.NewMailDeliveryID(), model.NewMailOccurrenceID(), model.NewJobID()
-	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommand{DeliveryID: deliveryID})
 	require.NoError(t, err)
-	job, err := model.NewJob(jobID, model.JobTypeMailDeliver, 1, command, deliveryID.String(), when, when, model.MailMaximumAttempts)
+	job, err := model.NewJob(jobID, model.JobTypeMailDeliver, command, deliveryID.String(), when, when, model.MailMaximumAttempts)
 	require.NoError(t, err)
 	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceSecurityNotice, TemplateKey: key, ActorUserID: user.ID, CreatedAt: when}
 	delivery := &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: jobID, TargetUserID: user.ID, TemplateKey: key,

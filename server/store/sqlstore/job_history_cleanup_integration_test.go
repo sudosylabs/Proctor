@@ -161,7 +161,7 @@ func insertTerminalJobHistoryFixture(t *testing.T, ss *SQLStore, jobType model.J
 	id := model.NewJobID()
 	completedAt := model.NowUTC().Add(-age)
 	createdAt := completedAt.Add(-time.Minute)
-	_, err := ss.GetMaster().Exec(context.Background(), `INSERT INTO jobs (id, type, status, created_at, updated_at, available_at, started_at, completed_at, command_version, command, dedupe_key, attempt_count, maximum_attempts, revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, '{}'::jsonb, ?, ?, 3, 1)`, id.String(), string(jobType), string(status), createdAt, completedAt, createdAt, createdAt, completedAt, id.String(), boolInt(withAttempt))
+	_, err := ss.GetMaster().Exec(context.Background(), `INSERT INTO jobs (id, type, status, created_at, updated_at, available_at, started_at, completed_at, command, dedupe_key, attempt_count, maximum_attempts, revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}'::jsonb, ?, ?, 3, 1)`, id.String(), string(jobType), string(status), createdAt, completedAt, createdAt, createdAt, completedAt, id.String(), boolInt(withAttempt))
 	require.NoError(t, err)
 	if withAttempt {
 		attemptStatus := model.JobAttemptStatusFailed
@@ -178,7 +178,7 @@ func insertQueuedJobHistoryFixture(t *testing.T, ss *SQLStore, age time.Duration
 	t.Helper()
 	id := model.NewJobID()
 	at := model.NowUTC().Add(-age)
-	_, err := ss.GetMaster().Exec(context.Background(), `INSERT INTO jobs (id, type, status, created_at, updated_at, available_at, command_version, command, dedupe_key, maximum_attempts, revision) VALUES (?, ?, 'queued', ?, ?, ?, 1, '{}'::jsonb, ?, 3, 1)`, id.String(), string(model.JobTypeProfilePictureGenerateDefault), at, at, at, id.String())
+	_, err := ss.GetMaster().Exec(context.Background(), `INSERT INTO jobs (id, type, status, created_at, updated_at, available_at, command, dedupe_key, maximum_attempts, revision) VALUES (?, ?, 'queued', ?, ?, ?, '{}'::jsonb, ?, 3, 1)`, id.String(), string(model.JobTypeProfilePictureGenerateDefault), at, at, at, id.String())
 	require.NoError(t, err)
 	return id
 }

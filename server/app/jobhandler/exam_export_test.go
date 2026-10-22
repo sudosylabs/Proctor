@@ -36,7 +36,7 @@ func (f *exportBuilderFake) BuildFromJob(_ context.Context, input store.ExamExpo
 func exportJobExecution(t *testing.T, command []byte, reserve func(context.Context, int, int) (bool, error)) jobengine.Execution {
 	t.Helper()
 	now := model.NowUTC()
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeExamExportBuild, 1, command, "export-test", now, now, 3)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeExamExportBuild, command, "export-test", now, now, 3)
 	require.NoError(t, err)
 	token, err := model.NewJobClaimToken()
 	require.NoError(t, err)
@@ -46,7 +46,7 @@ func exportJobExecution(t *testing.T, command []byte, reserve func(context.Conte
 
 func TestExamExportBuildJobIsStrictClaimBoundedAndSafe(t *testing.T) {
 	id := model.NewExamExportID()
-	valid, _ := json.Marshal(examExportBuildCommandV1{ExportID: id})
+	valid, _ := json.Marshal(examExportBuildCommand{ExportID: id})
 	fake := &exportBuilderFake{}
 	handler := examExportBuildHandler{service: fake}
 	for _, data := range [][]byte{[]byte(`{}`), []byte(`{"export_id":"invalid"}`), []byte(`{"export_id":"` + id.String() + `","snapshot":"private"}`), []byte(`{"export_id":"` + id.String() + `","export_id":"` + id.String() + `"}`)} {
@@ -118,7 +118,7 @@ func TestExamExportCleanupCompletesOnlyVerifiedKeysAndDoesNotStarveOtherKeys(t *
 	second := store.ExamExportArtifact{ExportID: model.NewExamExportID(), AttemptID: model.NewJobAttemptID()}
 	fake := &exportMaintenanceFake{artifacts: []store.ExamExportArtifact{first, second}, fail: first.AttemptID}
 	now := model.NowUTC()
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeExamExportCleanup, 1, json.RawMessage(`{"batch_size":2}`), "cleanup", now, now, 3)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeExamExportCleanup, json.RawMessage(`{"batch_size":2}`), "cleanup", now, now, 3)
 	require.NoError(t, err)
 	handler := examExportCleanupHandler{exports: fake, content: fake}
 	outcome := handler.Run(context.Background(), jobengine.NewExecution(job, nil, nil, allowJobWorkReservation()))
@@ -144,7 +144,7 @@ func TestExamExportCleanupFailedFullBatchDoesNotStarveNextBatch(t *testing.T) {
 		fake.failures[key.AttemptID] = i < 100
 	}
 	now := model.NowUTC()
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeExamExportCleanup, 1, json.RawMessage(`{"batch_size":100}`), "cleanup-progress", now, now, 3)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeExamExportCleanup, json.RawMessage(`{"batch_size":100}`), "cleanup-progress", now, now, 3)
 	require.NoError(t, err)
 	handler := examExportCleanupHandler{exports: fake, content: fake}
 	reserve := reserveRetentionWork(job)
@@ -182,7 +182,7 @@ func TestExamExportCleanupProposerUsesFixedHourlyOccurrences(t *testing.T) {
 
 func TestExamExportPurgeSelectionUncertaintyConsumesFiniteBudget(t *testing.T) {
 	now := model.NowUTC()
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeExamExportCleanup, 1, json.RawMessage(`{"batch_size":100}`), "cleanup-uncertainty", now, now, 3)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeExamExportCleanup, json.RawMessage(`{"batch_size":100}`), "cleanup-uncertainty", now, now, 3)
 	require.NoError(t, err)
 	fake := &exportMaintenanceFake{beginError: errors.New("private commit acknowledgement lost")}
 	handler := examExportCleanupHandler{exports: fake, content: fake}

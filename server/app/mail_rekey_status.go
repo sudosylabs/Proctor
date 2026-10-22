@@ -91,7 +91,7 @@ func (s *mailService) GetMailRekeyStatus(ctx context.Context, invocation Invocat
 }
 
 func projectMailRekeyStatus(job *model.Job) (MailRekeyStatusView, error) {
-	if job == nil || job.Validate() != nil || job.Type != model.JobTypeMailRekey || job.CommandVersion != 1 {
+	if job == nil || job.Validate() != nil || job.Type != model.JobTypeMailRekey {
 		return MailRekeyStatusView{}, errors.New("mail rekey Job is invalid")
 	}
 	command, commandErr := jobhandler.DecodeMailRekeyCommand(job.Command)
@@ -104,7 +104,7 @@ func projectMailRekeyStatus(job *model.Job) (MailRekeyStatusView, error) {
 		CompletedAt: job.CompletedAt, PublicErrorCode: job.PublicErrorCode,
 		AttemptCount: job.AttemptCount, MaximumAttempts: job.MaximumAttempts}
 	if len(job.Checkpoint) > 0 {
-		checkpoint, err := jobhandler.DecodeMailRekeyCheckpoint(job.CheckpointVersion, job.Checkpoint)
+		checkpoint, err := jobhandler.DecodeMailRekeyCheckpoint(job.Checkpoint)
 		if err != nil || job.Progress == nil || job.Progress.Current != checkpoint.Processed ||
 			job.Progress.Total < checkpoint.Processed || job.Progress.Stage != "reencrypting" {
 			return MailRekeyStatusView{}, errors.New("mail rekey checkpoint projection is invalid")
@@ -115,7 +115,7 @@ func projectMailRekeyStatus(job *model.Job) (MailRekeyStatusView, error) {
 		return MailRekeyStatusView{}, errors.New("mail rekey progress has no checkpoint")
 	}
 	if len(job.Result) > 0 {
-		if job.Status != model.JobStatusSucceeded || job.ResultVersion != 1 {
+		if job.Status != model.JobStatusSucceeded {
 			return MailRekeyStatusView{}, errors.New("mail rekey result state is invalid")
 		}
 		result, resultErr := jobhandler.DecodeMailRekeyResult(job.Result)

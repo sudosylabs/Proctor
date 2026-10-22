@@ -2482,7 +2482,7 @@ func validateStudentClassInvitationAcceptance(input *store.StudentClassInvitatio
 	if !queued && !suppressedDisabled {
 		return store.NewErrInvalidInput("invitation", "acceptance_mail_lifecycle", nil)
 	}
-	command, err := model.DecodeMailDeliveryCommand(input.DeliveryJob.CommandVersion, input.DeliveryJob.Command)
+	command, err := model.DecodeMailDeliveryCommand(input.DeliveryJob.Command)
 	if err != nil || input.Delivery.OccurrenceID != input.Occurrence.ID || input.Delivery.JobID != input.DeliveryJob.ID ||
 		command.DeliveryID != input.Delivery.ID || input.DeliveryJob.DedupeKey != input.Delivery.ID.String() {
 		return store.NewErrInvalidInput("invitation", "acceptance_mail_relationship", err)
@@ -2840,7 +2840,7 @@ func validateStudentClassInvitationIssue(input *store.StudentClassInvitationIssu
 		input.DeliveryJob.MaximumAttempts != model.MailMaximumAttempts {
 		return store.NewErrInvalidInput("invitation", "mail", nil)
 	}
-	command, err := model.DecodeMailDeliveryCommand(input.DeliveryJob.CommandVersion, input.DeliveryJob.Command)
+	command, err := model.DecodeMailDeliveryCommand(input.DeliveryJob.Command)
 	if err != nil || input.Delivery.OccurrenceID != input.Occurrence.ID || input.Delivery.JobID != input.DeliveryJob.ID ||
 		!input.Occurrence.CreatedAt.Equal(input.Delivery.CreatedAt) || !input.Delivery.UpdatedAt.Equal(input.Delivery.CreatedAt) ||
 		!input.Delivery.MessageDate.Equal(input.Delivery.CreatedAt) || command.DeliveryID != input.Delivery.ID ||
@@ -2882,7 +2882,7 @@ func validateTeacherAcademicUnitInvitationIssue(input *store.TeacherAcademicUnit
 		input.DeliveryJob.Status != model.JobStatusQueued || input.DeliveryJob.AttemptCount != 0 || input.DeliveryJob.MaximumAttempts != model.MailMaximumAttempts {
 		return store.NewErrInvalidInput("invitation", "mail", nil)
 	}
-	command, err := model.DecodeMailDeliveryCommand(input.DeliveryJob.CommandVersion, input.DeliveryJob.Command)
+	command, err := model.DecodeMailDeliveryCommand(input.DeliveryJob.Command)
 	if err != nil || input.Delivery.OccurrenceID != input.Occurrence.ID || input.Delivery.JobID != input.DeliveryJob.ID ||
 		!input.Occurrence.CreatedAt.Equal(input.Delivery.CreatedAt) || !input.Delivery.UpdatedAt.Equal(input.Delivery.CreatedAt) ||
 		!input.Delivery.MessageDate.Equal(input.Delivery.CreatedAt) || command.DeliveryID != input.Delivery.ID ||
@@ -2930,7 +2930,7 @@ func validateScopedRoleInvitationIssue(input *store.ScopedRoleInvitationIssue) e
 		input.DeliveryJob.Status != model.JobStatusQueued || input.DeliveryJob.AttemptCount != 0 || input.DeliveryJob.MaximumAttempts != model.MailMaximumAttempts {
 		return store.NewErrInvalidInput("invitation", "mail", nil)
 	}
-	command, err := model.DecodeMailDeliveryCommand(input.DeliveryJob.CommandVersion, input.DeliveryJob.Command)
+	command, err := model.DecodeMailDeliveryCommand(input.DeliveryJob.Command)
 	if err != nil || input.Delivery.OccurrenceID != input.Occurrence.ID || input.Delivery.JobID != input.DeliveryJob.ID ||
 		!input.Occurrence.CreatedAt.Equal(input.Delivery.CreatedAt) || !input.Delivery.UpdatedAt.Equal(input.Delivery.CreatedAt) ||
 		!input.Delivery.MessageDate.Equal(input.Delivery.CreatedAt) || command.DeliveryID != input.Delivery.ID ||

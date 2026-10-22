@@ -358,9 +358,9 @@ func testAuditedClassMemberLifecycle(
 func classMemberPreparedMail(t *testing.T, member *model.ClassMember, key model.MailTemplateKey, at time.Time) *store.PreparedMail {
 	t.Helper()
 	occurrenceID, deliveryID := model.NewMailOccurrenceID(), model.NewMailDeliveryID()
-	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommand{DeliveryID: deliveryID})
 	require.NoError(t, err)
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailDeliver, 1, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailDeliver, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
 	require.NoError(t, err)
 	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceAcademicAdministration,
 		TemplateKey: key, ActorUserID: member.UserID, CreatedAt: at}

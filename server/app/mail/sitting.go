@@ -93,7 +93,7 @@ func (p *SittingComposer) Prepare(actorID model.UserID, sitting *model.ExamSitti
 	at, occurrenceID := model.TimeUTC(p.now()), model.NewMailOccurrenceID()
 	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceSittingSchedule, TemplateKey: primaryKey,
 		ActorUserID: actorID, CreatedAt: at}
-	command, err := model.EncodeSittingMailExpansionCommand(model.SittingMailExpansionCommandV1{OccurrenceID: occurrenceID})
+	command, err := model.EncodeSittingMailExpansionCommand(model.SittingMailExpansionCommand{OccurrenceID: occurrenceID})
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +101,7 @@ func (p *SittingComposer) Prepare(actorID model.UserID, sitting *model.ExamSitti
 	if err != nil {
 		return nil, err
 	}
-	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeMailExpandSitting, 1, command, dedupe,
+	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeMailExpandSitting, command, dedupe,
 		model.JobDedupePermanent, at, at, model.MailMaximumAttempts)
 	if err != nil {
 		return nil, err
@@ -216,11 +216,11 @@ func (p *SittingComposer) PrepareRecipient(fanout *store.ExamSittingMailFanoutSn
 		return nil, nil, errors.New("sitting mail fan-out is invalid")
 	}
 	deliveryID, jobID := model.NewMailDeliveryID(), model.NewJobID()
-	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommand{DeliveryID: deliveryID})
 	if err != nil {
 		return nil, nil, err
 	}
-	job, err := model.NewJob(jobID, definition.jobType, 1, command, deliveryID.String(),
+	job, err := model.NewJob(jobID, definition.jobType, command, deliveryID.String(),
 		fanout.Occurrence.CreatedAt, fanout.Occurrence.CreatedAt, model.MailMaximumAttempts)
 	if err != nil {
 		return nil, nil, err

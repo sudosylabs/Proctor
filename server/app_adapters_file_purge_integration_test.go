@@ -72,9 +72,9 @@ func provePostgreSQLReferencedRenditionsSurvivePurge(t *testing.T, filesystem vf
 		Email:    model.NewID() + "@example.test",
 	}
 	user.PrepareCreate(model.NewUserID(), now)
-	command, err := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommandV1{UserID: user.ID})
+	command, err := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommand{UserID: user.ID})
 	require.NoError(t, err)
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, command, user.ID.String(), now, now, 8)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, command, user.ID.String(), now, now, 8)
 	require.NoError(t, err)
 	settings, err := model.NewUserSettingsDocument(user.ID, model.NewUserSettingsRevision(), now)
 	require.NoError(t, err)

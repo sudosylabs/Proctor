@@ -309,7 +309,7 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 	descriptor, ok = descriptors[model.JobTypeOnboardingImportExecute]
 	require.True(t, ok)
 	require.True(t, descriptor.Cancelable)
-	require.Len(t, descriptor.CheckpointVersions, 1)
+	require.True(t, descriptor.Checkpoints)
 	descriptor, ok = descriptors[model.JobTypeStudentProgressionPreview]
 	require.True(t, ok)
 	require.True(t, descriptor.Cancelable)

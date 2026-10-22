@@ -202,11 +202,11 @@ func (s *onboardingImportService) UploadOnboardingImport(ctx context.Context, in
 }
 
 func newOnboardingImportJob(kind model.JobType, id model.OnboardingImportID, at time.Time) (*model.Job, error) {
-	command, err := json.Marshal(onboardingImportJobCommandV1{ImportID: id.String()})
+	command, err := json.Marshal(onboardingImportJobCommand{ImportID: id.String()})
 	if err != nil {
 		return nil, err
 	}
-	return model.NewJob(model.NewJobID(), kind, 1, command, string(kind)+":"+id.String(), at, at, 8)
+	return model.NewJob(model.NewJobID(), kind, command, string(kind)+":"+id.String(), at, at, 8)
 }
 
 func (s *onboardingImportService) GetOnboardingImport(ctx context.Context, invocation Invocation, id model.OnboardingImportID) (OnboardingImportView, []OnboardingImportRowView, error) {
@@ -550,7 +550,7 @@ func escapeSpreadsheetFormula(value string) string {
 	return value
 }
 
-type onboardingImportJobCommandV1 struct {
+type onboardingImportJobCommand struct {
 	ImportID string `json:"import_id"`
 }
 

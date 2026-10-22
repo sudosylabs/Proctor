@@ -18,12 +18,12 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type onboardingImportCheckpointV1 struct {
+type onboardingImportCheckpoint struct {
 	AfterRow  int `json:"after_row"`
 	Processed int `json:"processed"`
 }
 
-type onboardingImportJobCommandV1 struct {
+type onboardingImportJobCommand struct {
 	ImportID string `json:"import_id"`
 }
 
@@ -57,7 +57,7 @@ func (h studentProgressionPreviewHandler) Run(ctx context.Context, execution job
 		}
 		return jobengine.RetryableFailure("dependency.unavailable", err)
 	}
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: json.RawMessage(`{"preview_ready":true}`)}
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: json.RawMessage(`{"preview_ready":true}`)}
 }
 
 func (h onboardingImportParseHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
@@ -75,7 +75,7 @@ func (h onboardingImportParseHandler) Run(ctx context.Context, execution jobengi
 		}
 		return jobengine.RetryableFailure("dependency.unavailable", err)
 	}
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: json.RawMessage(`{"preview_ready":true}`)}
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: json.RawMessage(`{"preview_ready":true}`)}
 }
 
 type onboardingImportExecuteHandler struct{ service OnboardingImportService }
@@ -85,9 +85,9 @@ func (h onboardingImportExecuteHandler) Run(ctx context.Context, execution joben
 	if err != nil || h.service == nil {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("onboarding import execution command is invalid"))
 	}
-	checkpoint := onboardingImportCheckpointV1{}
-	if execution.Job.CheckpointVersion != 0 {
-		if execution.Job.CheckpointVersion != 1 || decodeStrictJobDocument(execution.Job.Checkpoint, &checkpoint) != nil || checkpoint.AfterRow < 0 || checkpoint.Processed < 0 {
+	checkpoint := onboardingImportCheckpoint{}
+	if len(execution.Job.Checkpoint) != 0 {
+		if decodeStrictJobDocument(execution.Job.Checkpoint, &checkpoint) != nil || checkpoint.AfterRow < 0 || checkpoint.Processed < 0 {
 			return jobengine.PermanentFailure("job.checkpoint.invalid", errors.New("onboarding import checkpoint is invalid"))
 		}
 	}
@@ -99,11 +99,11 @@ func (h onboardingImportExecuteHandler) Run(ctx context.Context, execution joben
 	lastAfter, lastProcessed := checkpoint.AfterRow, checkpoint.Processed
 	err = h.service.Execute(ctx, model.OnboardingImportID(command.ImportID), checkpoint.AfterRow, func(after, processed int) error {
 		lastAfter, lastProcessed = after, checkpoint.Processed+processed
-		document, marshalErr := json.Marshal(onboardingImportCheckpointV1{AfterRow: lastAfter, Processed: lastProcessed})
+		document, marshalErr := json.Marshal(onboardingImportCheckpoint{AfterRow: lastAfter, Processed: lastProcessed})
 		if marshalErr != nil {
 			return marshalErr
 		}
-		return execution.Checkpoint(ctx, jobengine.CheckpointValue{Version: 1, Document: document,
+		return execution.Checkpoint(ctx, jobengine.CheckpointValue{Document: document,
 			Progress: &model.JobProgress{Current: int64(lastProcessed), Total: int64(total), Stage: "executing"}})
 	})
 	if err != nil {
@@ -112,13 +112,13 @@ func (h onboardingImportExecuteHandler) Run(ctx context.Context, execution joben
 		}
 		return jobengine.RetryableFailure("dependency.unavailable", err)
 	}
-	result, _ := json.Marshal(onboardingImportCheckpointV1{AfterRow: lastAfter, Processed: lastProcessed})
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: result}
+	result, _ := json.Marshal(onboardingImportCheckpoint{AfterRow: lastAfter, Processed: lastProcessed})
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: result}
 }
 
-func decodeOnboardingImportJob(execution jobengine.Execution, expected model.JobType) (onboardingImportJobCommandV1, error) {
-	var command onboardingImportJobCommandV1
-	if execution.Job == nil || execution.Job.Type != expected || execution.Job.CommandVersion != 1 || decodeStrictJobDocument(execution.Job.Command, &command) != nil || !model.OnboardingImportID(command.ImportID).IsValid() {
+func decodeOnboardingImportJob(execution jobengine.Execution, expected model.JobType) (onboardingImportJobCommand, error) {
+	var command onboardingImportJobCommand
+	if execution.Job == nil || execution.Job.Type != expected || decodeStrictJobDocument(execution.Job.Command, &command) != nil || !model.OnboardingImportID(command.ImportID).IsValid() {
 		return command, errors.New("invalid onboarding import job")
 	}
 	return command, nil
@@ -137,7 +137,7 @@ func studentProgressionPreviewDescriptor(handler jobengine.Handler) jobengine.De
 
 func onboardingImportExecuteDescriptor(handler jobengine.Handler) jobengine.Descriptor {
 	descriptor := onboardingImportDescriptor(model.JobTypeOnboardingImportExecute, handler, true)
-	descriptor.CheckpointVersions = []int{1}
+	descriptor.Checkpoints = true
 	descriptor.ProgressStages = []string{"executing"}
 	descriptor.Timeout = 30 * time.Minute
 	return descriptor
@@ -148,9 +148,8 @@ func NewOnboardingImportExecuteDescriptor(service OnboardingImportService) joben
 }
 
 func onboardingImportDescriptor(kind model.JobType, handler jobengine.Handler, cancelable bool) jobengine.Descriptor {
-	return jobengine.Descriptor{Type: kind, CommandVersions: []int{1}, ResultVersions: []int{1},
-		PublicErrorCodes: []string{"dependency.unavailable", "job.canceled", "job.checkpoint.invalid", "job.command.invalid", "onboarding_import.authorization_lost", "onboarding_import.file_invalid"},
-		Timeout:          10 * time.Minute, Concurrency: 2, MaximumAttempts: 8, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second,
+	return jobengine.Descriptor{Type: kind, PublicErrorCodes: []string{"dependency.unavailable", "job.canceled", "job.checkpoint.invalid", "job.command.invalid", "onboarding_import.authorization_lost", "onboarding_import.file_invalid"},
+		Timeout: 10 * time.Minute, Concurrency: 2, MaximumAttempts: 8, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second,
 		BaseRetryDelay: 10 * time.Second, MaximumRetryDelay: 5 * time.Minute, Cancelable: cancelable, Visibility: jobengine.VisibilityDomain,
 		SuccessRetention: 7 * 24 * time.Hour, FailureRetention: 7 * 24 * time.Hour, Handler: handler}
 }

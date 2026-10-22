@@ -49,12 +49,12 @@ func PrepareUserDefaultProfilePictureJob(user *model.User, at time.Time) (*model
 	if err := candidate.Validate(); err != nil {
 		return nil, nil, err
 	}
-	command, err := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommandV1{UserID: candidate.ID})
+	command, err := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommand{UserID: candidate.ID})
 	if err != nil {
 		return nil, nil, err
 	}
 	job, err := model.NewJob(
-		model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1,
+		model.NewJobID(), model.JobTypeProfilePictureGenerateDefault,
 		command, candidate.ID.String(), candidate.CreatedAt, candidate.CreatedAt, 8,
 	)
 	if err != nil {
@@ -64,11 +64,11 @@ func PrepareUserDefaultProfilePictureJob(user *model.User, at time.Time) (*model
 }
 
 func (p DefaultProfilePictureJobs) ProposeDefaultProfilePicture(ctx context.Context, userID model.UserID, at time.Time) error {
-	command, err := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommandV1{UserID: userID})
+	command, err := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommand{UserID: userID})
 	if err != nil {
 		return err
 	}
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, command, userID.String(), at, at, 8)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, command, userID.String(), at, at, 8)
 	if err != nil {
 		return err
 	}
@@ -87,7 +87,7 @@ func (h defaultProfilePictureHandler) Run(ctx context.Context, execution jobengi
 	if execution.Job == nil {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("job is missing"))
 	}
-	command, err := model.DecodeDefaultProfilePictureCommand(execution.Job.CommandVersion, execution.Job.Command)
+	command, err := model.DecodeDefaultProfilePictureCommand(execution.Job.Command)
 	if err != nil {
 		return jobengine.PermanentFailure("job.command.invalid", err)
 	}
@@ -104,7 +104,7 @@ func (h defaultProfilePictureHandler) Run(ctx context.Context, execution jobengi
 	return defaultProfilePictureJobSucceeded(entryID)
 }
 
-type defaultProfilePictureResultV1 struct {
+type defaultProfilePictureResult struct {
 	FileEntryID model.FileEntryID `json:"file_entry_id"`
 }
 
@@ -112,12 +112,12 @@ func defaultProfilePictureJobSucceeded(fileEntryID model.FileEntryID) jobengine.
 	if !fileEntryID.IsValid() {
 		return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Err: errors.New("default profile-picture result has invalid file entry ID")}
 	}
-	document, err := json.Marshal(defaultProfilePictureResultV1{FileEntryID: fileEntryID})
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: document, Err: err}
+	document, err := json.Marshal(defaultProfilePictureResult{FileEntryID: fileEntryID})
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: document, Err: err}
 }
 
 func defaultProfilePictureDescriptor(handler jobengine.Handler) jobengine.Descriptor {
-	return jobengine.Descriptor{Type: model.JobTypeProfilePictureGenerateDefault, CommandVersions: []int{1}, ResultVersions: []int{1}, PublicErrorCodes: []string{"dependency.unavailable", "job.command.invalid", "job.invariant_failed", "user.not_found"}, Timeout: time.Minute, Concurrency: 1, MaximumAttempts: 8, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: 30 * time.Second, Cancelable: true, ExplicitRetryStatuses: []model.JobStatus{model.JobStatusFailed}, Visibility: jobengine.VisibilityOperator, SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
+	return jobengine.Descriptor{Type: model.JobTypeProfilePictureGenerateDefault, PublicErrorCodes: []string{"dependency.unavailable", "job.command.invalid", "job.invariant_failed", "user.not_found"}, Timeout: time.Minute, Concurrency: 1, MaximumAttempts: 8, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: 30 * time.Second, Cancelable: true, ExplicitRetryStatuses: []model.JobStatus{model.JobStatusFailed}, Visibility: jobengine.VisibilityOperator, SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
 }
 
 func NewDefaultProfilePictureDescriptor(generator DefaultProfilePictureGenerator) jobengine.Descriptor {

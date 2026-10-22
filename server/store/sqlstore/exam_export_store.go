@@ -341,7 +341,7 @@ func createExamExport(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamE
 	payload, _ := json.Marshal(struct {
 		ExportID model.ExamExportID `json:"export_id"`
 	}{e.ID})
-	job, err := model.NewJob(input.JobID, model.JobTypeExamExportBuild, 1, payload, e.ID.String(), at, at, model.ExamExportMaximumAttempts)
+	job, err := model.NewJob(input.JobID, model.JobTypeExamExportBuild, payload, e.ID.String(), at, at, model.ExamExportMaximumAttempts)
 	if err != nil {
 		return nil, err
 	}

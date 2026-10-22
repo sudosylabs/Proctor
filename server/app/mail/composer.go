@@ -551,11 +551,11 @@ func (p *Composer) prepareRecipient(recipientName, recipientAddress, locale stri
 			key, at, deadline, model.MailDeliveryDisabledCode)
 	}
 	deliveryID, jobID := model.NewMailDeliveryID(), model.NewJobID()
-	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommand{DeliveryID: deliveryID})
 	if err != nil {
 		return nil, err
 	}
-	job, err := model.NewJob(jobID, definition.jobType, 1, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
+	job, err := model.NewJob(jobID, definition.jobType, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
 	if err != nil {
 		return nil, err
 	}
@@ -597,11 +597,11 @@ func (p *Composer) prepareSuppressedRecipient(recipientAddress string, actorUser
 	}
 	at, deadline = model.TimeUTC(at), model.TimeUTC(deadline)
 	deliveryID, jobID := model.NewMailDeliveryID(), model.NewJobID()
-	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommand{DeliveryID: deliveryID})
 	if err != nil {
 		return nil, err
 	}
-	job, err := model.NewJob(jobID, definition.jobType, 1, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
+	job, err := model.NewJob(jobID, definition.jobType, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
 	if err != nil {
 		return nil, err
 	}

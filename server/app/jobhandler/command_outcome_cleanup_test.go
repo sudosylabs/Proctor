@@ -32,14 +32,14 @@ func (f *commandOutcomeCleanerFake) DeleteExpired(_ context.Context, limit int) 
 
 func TestCommandOutcomeCleanupDeletesOneBoundedPage(t *testing.T) {
 	cleaner := &commandOutcomeCleanerFake{deleted: 17}
-	command, _ := json.Marshal(CommandOutcomeCleanupCommandV1{BatchSize: 500})
+	command, _ := json.Marshal(CommandOutcomeCleanupCommand{BatchSize: 500})
 	at := time.Now().UTC()
-	record, err := model.NewJob(model.NewJobID(), model.JobTypeCommandOutcomeCleanup, 1, command, "cleanup", at, at, 3)
+	record, err := model.NewJob(model.NewJobID(), model.JobTypeCommandOutcomeCleanup, command, "cleanup", at, at, 3)
 	require.NoError(t, err)
 	outcome := (commandOutcomeCleanupHandler{outcomes: cleaner}).Run(context.Background(), jobengine.NewExecution(record, nil, nil, nil))
 	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome = %#v, limit", outcome)
 	require.Equal(t, 500, cleaner.limit, "outcome = %#v, limit", outcome)
-	var result CommandOutcomeCleanupResultV1
+	var result CommandOutcomeCleanupResult
 	err = json.Unmarshal(outcome.Result, &result)
 	require.NoError(t, err, "result = %#v, err", result)
 	require.Equal(t, int64(17), result.Deleted, "result = %#v, err", result)

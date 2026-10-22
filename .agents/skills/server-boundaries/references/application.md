@@ -44,7 +44,7 @@ The `app/job` child module owns the generic durable execution engine: immutable
 descriptor validation, claiming, leases, fenced transitions, checkpoints,
 work budgets, retry, cancellation observation, and bounded lifecycle. Domain
 Job handlers remain beside their owning use cases and cross that seam through
-typed, versioned documents and safe outcomes. The engine depends only on the
+strict typed documents and safe outcomes. The engine depends only on the
 domain Job records and `store.JobStore`; it never imports its parent package or
 selects infrastructure.
 

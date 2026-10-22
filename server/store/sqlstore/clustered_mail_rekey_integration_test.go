@@ -65,7 +65,7 @@ func TestClusteredMailRekeyRecoversCheckpointAndRotatesFanoutBundle(t *testing.T
 	require.NoError(t, err)
 	checkpoint := json.RawMessage(`{"after_kind":"delivery","after_id":"00000000000000000000000000","processed":1,"reencrypted":1}`)
 	_, err = nodeA.Job().Checkpoint(ctx, &store.JobCheckpoint{AttemptID: first.Attempt.ID, ClaimToken: firstToken,
-		CheckpointVersion: 1, Checkpoint: checkpoint})
+		Checkpoint: checkpoint})
 	require.NoError(t, err)
 	// Node A dies after its checkpoint. Expire its lease in PostgreSQL time
 	// rather than racing a short wall-clock lease against statement latency.
@@ -83,10 +83,9 @@ func TestClusteredMailRekeyRecoversCheckpointAndRotatesFanoutBundle(t *testing.T
 	err = json.Unmarshal(second.Job.Checkpoint, &gotCheckpoint)
 	require.NoError(t, err)
 	require.Equal(t, first.Job.ID, second.Job.ID)
-	require.Equal(t, 1, second.Job.CheckpointVersion)
 	require.Equal(t, wantCheckpoint, gotCheckpoint)
 	_, err = nodeA.Job().Checkpoint(ctx, &store.JobCheckpoint{AttemptID: first.Attempt.ID, ClaimToken: firstToken,
-		CheckpointVersion: 1, Checkpoint: checkpoint})
+		Checkpoint: checkpoint})
 	require.True(t, store.IsConflict(err), "stale rekey checkpoint error")
 	page, err := nodeB.Mail().ListRekeyTargets(ctx, &store.MailRekeyTargetPageRequest{JobID: second.Job.ID,
 		PrimaryKeyID: newSealer.PrimaryKeyID(), Limit: 100})
@@ -116,7 +115,7 @@ func TestClusteredMailRekeyRecoversCheckpointAndRotatesFanoutBundle(t *testing.T
 	require.Equal(t, int64(0), proof.RetiringReferences, "clustered retirement proof = %#v", proof)
 	result := json.RawMessage(`{"retirement_safe":true,"non_primary_references":0}`)
 	completed, err := nodeB.Job().Complete(ctx, &store.JobCompletion{AttemptID: second.Attempt.ID, ClaimToken: secondToken,
-		Kind: store.JobCompletionSucceeded, ResultVersion: 1, Result: result})
+		Kind: store.JobCompletionSucceeded, Result: result})
 	require.NoError(t, err, "complete rekey Job = %#v", completed)
 	require.Equal(t, model.JobStatusSucceeded, completed.Status, "complete rekey Job = %#v", completed)
 	require.Equal(t, string(result), string(completed.Result), "complete rekey Job = %#v", completed)
@@ -127,7 +126,7 @@ func clusteredMailRekeyStart(t *testing.T, ctx context.Context, persistence stor
 ) *store.MailRekeyStart {
 	t.Helper()
 	command, _ := json.Marshal(map[string]string{"primary_key_id": primaryKeyID, "retiring_key_id": retiringKeyID})
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailRekey, 1, command,
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailRekey, command,
 		"mail-rekey:"+primaryKeyID+":"+retiringKeyID, at, at, 10)
 	require.NoError(t, err)
 	attempt, err := persistence.Audit().Save(ctx, &model.AuditEvent{ActorID: user.ID, Action: string(model.ActionMailRekey),

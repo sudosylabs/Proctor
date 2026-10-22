@@ -255,7 +255,7 @@ func validateRecoveryMail(occurrence *model.MailOccurrence, delivery *model.Mail
 	if err := job.Validate(); err != nil {
 		return store.NewErrInvalidInput("job", "value", err)
 	}
-	command, err := model.DecodeMailDeliveryCommand(job.CommandVersion, job.Command)
+	command, err := model.DecodeMailDeliveryCommand(job.Command)
 	if err != nil || delivery.AttemptCount != 0 || delivery.Revision != 1 || delivery.AcceptedAt.Valid || delivery.FailedAt.Valid ||
 		delivery.OccurrenceID != occurrence.ID || delivery.JobID != job.ID || delivery.TemplateKey != occurrence.TemplateKey ||
 		delivery.TargetUserID != occurrence.ActorUserID || delivery.TargetInvitationID.IsValid() ||

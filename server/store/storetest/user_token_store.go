@@ -831,9 +831,9 @@ func passwordResetCompletion(t *testing.T, user *model.User, tokenHash, password
 func userTokenMailFixture(t *testing.T, userID model.UserID, occurrenceID model.MailOccurrenceID, kind model.MailOccurrenceKind, key model.MailTemplateKey, jobType model.JobType, at, deadline time.Time) (*model.MailOccurrence, *model.MailDelivery, *model.Job) {
 	t.Helper()
 	deliveryID := model.NewMailDeliveryID()
-	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommand{DeliveryID: deliveryID})
 	require.NoError(t, err)
-	job, err := model.NewJob(model.NewJobID(), jobType, 1, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
+	job, err := model.NewJob(model.NewJobID(), jobType, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
 	require.NoError(t, err)
 	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: kind, TemplateKey: key, ActorUserID: userID, CreatedAt: at}
 	delivery := &model.MailDelivery{

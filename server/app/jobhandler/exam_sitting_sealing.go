@@ -11,7 +11,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
@@ -25,13 +24,15 @@ const (
 	examSittingSealingMaximumWork = 1000
 )
 
-type ExamSittingSealingCheckpointV1 struct {
+// ExamSittingSealingCheckpoint is the resumable checkpoint of the Exam Sitting sealing Job.
+type ExamSittingSealingCheckpoint struct {
 	AfterAttemptID model.ExamAttemptID `json:"after_attempt_id,omitempty"`
 	Processed      int64               `json:"processed"`
 	Sealed         int64               `json:"sealed"`
 }
 
-type ExamSittingSealingResultV1 struct {
+// ExamSittingSealingResult is the safe result of the Exam Sitting sealing Job.
+type ExamSittingSealingResult struct {
 	Processed int64                  `json:"processed"`
 	Sealed    int64                  `json:"sealed"`
 	Continued bool                   `json:"continued"`
@@ -55,11 +56,11 @@ func (h examSittingSealingHandler) Run(ctx context.Context, execution jobengine.
 		!execution.Attempt.ID.IsValid() {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("Exam Sitting sealing execution is incomplete"))
 	}
-	command, err := model.DecodeExamSittingLifecycleCommand(execution.Job.CommandVersion, execution.Job.Command)
+	command, err := model.DecodeExamSittingLifecycleCommand(execution.Job.Command)
 	if err != nil {
 		return jobengine.PermanentFailure("job.command.invalid", err)
 	}
-	checkpoint, err := decodeExamSittingSealingCheckpoint(execution.Job.CheckpointVersion, execution.Job.Checkpoint)
+	checkpoint, err := decodeExamSittingSealingCheckpoint(execution.Job.Checkpoint)
 	if err != nil {
 		return jobengine.PermanentFailure("job.checkpoint.invalid", err)
 	}
@@ -131,13 +132,13 @@ func (h examSittingSealingHandler) Run(ctx context.Context, execution jobengine.
 }
 
 func (h examSittingSealingHandler) finishPass(ctx context.Context, execution jobengine.Execution,
-	command model.ExamSittingLifecycleCommandV1, checkpoint ExamSittingSealingCheckpointV1, continueIfClosing bool,
+	command model.ExamSittingLifecycleCommand, checkpoint ExamSittingSealingCheckpoint, continueIfClosing bool,
 ) jobengine.Outcome {
 	finished := h.finish(ctx, execution, command.ExamSittingID, checkpoint)
 	if finished.Kind != jobengine.OutcomeSucceeded || len(finished.Result) == 0 {
 		return finished
 	}
-	var result ExamSittingSealingResultV1
+	var result ExamSittingSealingResult
 	if err := json.Unmarshal(finished.Result, &result); err != nil {
 		return jobengine.PermanentFailure("job.invariant_failed", err)
 	}
@@ -154,16 +155,10 @@ func (h examSittingSealingHandler) finishPass(ctx context.Context, execution job
 	return h.continuePass(ctx, execution, command, result)
 }
 
-func decodeExamSittingSealingCheckpoint(version int, document json.RawMessage) (ExamSittingSealingCheckpointV1, error) {
-	var value ExamSittingSealingCheckpointV1
+func decodeExamSittingSealingCheckpoint(document json.RawMessage) (ExamSittingSealingCheckpoint, error) {
+	var value ExamSittingSealingCheckpoint
 	if len(document) == 0 {
-		if version != 0 {
-			return value, errors.New("Exam Sitting sealing checkpoint version is invalid")
-		}
 		return value, nil
-	}
-	if version != 1 {
-		return value, fmt.Errorf("unsupported Exam Sitting sealing checkpoint version %d", version)
 	}
 	if err := decodeStrictUniqueJobDocument(document, &value); err != nil {
 		return value, err
@@ -177,19 +172,18 @@ func decodeExamSittingSealingCheckpoint(version int, document json.RawMessage) (
 }
 
 func checkpointExamSittingSealing(ctx context.Context, execution jobengine.Execution,
-	checkpoint ExamSittingSealingCheckpointV1,
+	checkpoint ExamSittingSealingCheckpoint,
 ) error {
 	document, err := json.Marshal(checkpoint)
 	if err != nil {
 		return err
 	}
-	return execution.Checkpoint(ctx, jobengine.CheckpointValue{Version: 1,
-		Progress: &model.JobProgress{Current: checkpoint.Processed, Total: examSittingSealingMaximumWork, Stage: "sealing"},
+	return execution.Checkpoint(ctx, jobengine.CheckpointValue{Progress: &model.JobProgress{Current: checkpoint.Processed, Total: examSittingSealingMaximumWork, Stage: "sealing"},
 		Document: document})
 }
 
 func (h examSittingSealingHandler) finish(ctx context.Context, execution jobengine.Execution,
-	sittingID model.ExamSittingID, checkpoint ExamSittingSealingCheckpointV1,
+	sittingID model.ExamSittingID, checkpoint ExamSittingSealingCheckpoint,
 ) jobengine.Outcome {
 	result, err := h.service.FinishExamSittingSealingFromJob(ctx, sittingID, execution.Job.ID, execution.Attempt.ID)
 	if err != nil {
@@ -198,16 +192,16 @@ func (h examSittingSealingHandler) finish(ctx context.Context, execution jobengi
 	if err = validateExamSittingLifecycleJobResult(sittingID, result); err != nil {
 		return jobengine.PermanentFailure("job.invariant_failed", err)
 	}
-	document, err := json.Marshal(ExamSittingSealingResultV1{Processed: checkpoint.Processed, Sealed: checkpoint.Sealed,
+	document, err := json.Marshal(ExamSittingSealingResult{Processed: checkpoint.Processed, Sealed: checkpoint.Sealed,
 		State: result.Value.Sitting.State, Revision: result.Value.Sitting.Revision})
 	if err != nil {
 		return jobengine.PermanentFailure("job.invariant_failed", err)
 	}
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: document}
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: document}
 }
 
 func (h examSittingSealingHandler) continuePass(ctx context.Context, execution jobengine.Execution,
-	command model.ExamSittingLifecycleCommandV1, result ExamSittingSealingResultV1,
+	command model.ExamSittingLifecycleCommand, result ExamSittingSealingResult,
 ) jobengine.Outcome {
 	if err := h.service.EnqueueExamSittingSealingContinuationFromJob(ctx, command.ExamSittingID,
 		execution.Job.ID); err != nil {
@@ -218,7 +212,7 @@ func (h examSittingSealingHandler) continuePass(ctx context.Context, execution j
 	if err != nil {
 		return jobengine.PermanentFailure("job.invariant_failed", err)
 	}
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: resultDocument}
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: resultDocument}
 }
 
 // examSittingSealingFailure fails permanently only for input the Store refused. A
@@ -234,8 +228,7 @@ func examSittingSealingFailure(err error) jobengine.Outcome {
 
 func examSittingSealingDescriptor(handler jobengine.Handler) jobengine.Descriptor {
 	return jobengine.Descriptor{Type: model.JobTypeExamSittingSealing,
-		CommandVersions: []int{1}, CheckpointVersions: []int{1}, ResultVersions: []int{1},
-		ProgressStages:   []string{"sealing"},
+		Checkpoints: true, ProgressStages: []string{"sealing"},
 		PublicErrorCodes: []string{"dependency.unavailable", "job.checkpoint.invalid", "job.command.invalid", "job.invariant_failed"},
 		Timeout:          10 * time.Minute, Concurrency: 4, MaximumAttempts: 8,
 		LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second,

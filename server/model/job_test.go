@@ -21,26 +21,23 @@ import (
 func TestJobLifecyclePreservesTypedIntentAndBoundedProgress(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, time.August, 9, 10, 0, 0, 0, time.UTC)
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, json.RawMessage(`{"user_id":"abc"}`), "user:abc", at, at, 8)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, json.RawMessage(`{"user_id":"abc"}`), "user:abc", at, at, 8)
 	require.NoError(t, err)
 	require.Equal(t, model.JobStatusQueued, job.Status)
 	require.Equal(t, 0, job.AttemptCount)
-	require.Equal(t, 1, job.CommandVersion)
 	running, err := job.Start(at.Add(time.Second))
 	require.NoError(t, err)
-	progressed, err := running.UpdateProgress(&model.JobProgress{Current: 2, Total: 3, Stage: "rendering"}, 1, json.RawMessage(`{"completed":2}`), at.Add(2*time.Second))
+	progressed, err := running.UpdateProgress(&model.JobProgress{Current: 2, Total: 3, Stage: "rendering"}, json.RawMessage(`{"completed":2}`), at.Add(2*time.Second))
 	require.NoError(t, err)
 	require.Equal(t, int64(2), progressed.Progress.Current)
 	require.Equal(t, 1, progressed.AttemptCount)
-	require.Equal(t, 1, progressed.CheckpointVersion)
 	require.Equal(t, `{"completed":2}`, string(progressed.Checkpoint))
-	_, err = progressed.UpdateProgress(&model.JobProgress{Current: 4, Total: 3, Stage: "rendering"}, 0, nil, at)
+	_, err = progressed.UpdateProgress(&model.JobProgress{Current: 4, Total: 3, Stage: "rendering"}, nil, at)
 	require.Error(t, err, "UpdateProgress() accepted current greater than total")
-	finished, err := progressed.Succeed(1, json.RawMessage(`{"file_entry_id":"entry"}`), at.Add(3*time.Second))
+	finished, err := progressed.Succeed(json.RawMessage(`{"file_entry_id":"entry"}`), at.Add(3*time.Second))
 	require.NoError(t, err)
 	require.Equal(t, model.JobStatusSucceeded, finished.Status)
 	require.True(t, finished.CompletedAt.Valid)
-	require.Equal(t, 1, finished.ResultVersion)
 	_, err = finished.Start(at.Add(4 * time.Second))
 	require.Error(t, err, "Start() restarted a terminal job")
 }
@@ -48,11 +45,9 @@ func TestJobLifecyclePreservesTypedIntentAndBoundedProgress(t *testing.T) {
 func TestJobRejectsUnboundedOrUnsupportedIntent(t *testing.T) {
 	t.Parallel()
 	at := time.Now()
-	_, err := model.NewJob(model.NewJobID(), model.JobType("arbitrary"), 1, json.RawMessage(`{}`), "key", at, at, 1)
+	_, err := model.NewJob(model.NewJobID(), model.JobType("arbitrary"), json.RawMessage(`{}`), "key", at, at, 1)
 	require.Error(t, err, "NewJob() accepted an unknown type")
-	_, err = model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 0, json.RawMessage(`{}`), "key", at, at, 1)
-	require.Error(t, err, "NewJob() accepted an unversioned command")
-	_, err = model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, json.RawMessage(`{"secret":"`+strings.Repeat("x", model.JobMaximumDocumentBytes)+`"}`), "key", at, at, 1)
+	_, err = model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, json.RawMessage(`{"secret":"`+strings.Repeat("x", model.JobMaximumDocumentBytes)+`"}`), "key", at, at, 1)
 	require.Error(t, err, "NewJob() accepted an unbounded command")
 }
 
@@ -60,7 +55,7 @@ func TestCredentialMailUsesItsOwnKnownJobType(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, time.August, 18, 9, 0, 0, 0, time.UTC)
 	job, err := model.NewJob(
-		model.NewJobID(), model.JobTypeMailDeliverCredential, 1,
+		model.NewJobID(), model.JobTypeMailDeliverCredential,
 		json.RawMessage(`{"delivery_id":"01HZZZZZZZZZZZZZZZZZZZZZZZ"}`),
 		"credential-mail", at, at, model.MailMaximumAttempts,
 	)
@@ -71,10 +66,10 @@ func TestCredentialMailUsesItsOwnKnownJobType(t *testing.T) {
 func TestJobRequiresAnExplicitKnownDedupePolicy(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, time.August, 10, 12, 0, 0, 0, time.UTC)
-	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeCleanup, 1, json.RawMessage(`{}`), "cleanup:2026-08-10", model.JobDedupePermanent, at, at, 3)
+	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeCleanup, json.RawMessage(`{}`), "cleanup:2026-08-10", model.JobDedupePermanent, at, at, 3)
 	require.NoError(t, err)
 	require.Equal(t, model.JobDedupePermanent, job.DedupePolicy)
-	_, err = model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeCleanup, 1, json.RawMessage(`{}`), "cleanup:2026-08-10", model.JobDedupePolicy("unknown"), at, at, 3)
+	_, err = model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeCleanup, json.RawMessage(`{}`), "cleanup:2026-08-10", model.JobDedupePolicy("unknown"), at, at, 3)
 	require.Error(t, err, "NewJobWithDedupePolicy() accepted an unknown policy")
 }
 
@@ -99,7 +94,7 @@ func TestJobAttemptTracksFencedExecutionOutcome(t *testing.T) {
 func TestJobCancellationAndExplicitRetryLifecycle(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, time.August, 9, 10, 0, 0, 0, time.UTC)
-	queued, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, json.RawMessage(`{"user_id":"abc"}`), "cancel", at, at, 2)
+	queued, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, json.RawMessage(`{"user_id":"abc"}`), "cancel", at, at, 2)
 	require.NoError(t, err)
 	canceled, err := queued.RequestCancellation(at.Add(time.Second))
 	require.NoError(t, err, "queued cancellation = %#v", canceled)
@@ -127,7 +122,7 @@ func TestJobCancellationAndExplicitRetryLifecycle(t *testing.T) {
 
 func TestJobRelinquishPreservesTheFailureAttemptBudget(t *testing.T) {
 	at := time.Now().UTC()
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailRekey, 1, json.RawMessage(`{"primary_key_id":"22222222222222222222222222222222","retiring_key_id":"11111111111111111111111111111111"}`), "mail-rekey:test", at, at, 3)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailRekey, json.RawMessage(`{"primary_key_id":"22222222222222222222222222222222","retiring_key_id":"11111111111111111111111111111111"}`), "mail-rekey:test", at, at, 3)
 	require.NoError(t, err)
 	running, err := job.Start(at.Add(time.Second))
 	require.NoError(t, err)

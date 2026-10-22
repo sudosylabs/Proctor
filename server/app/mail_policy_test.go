@@ -164,8 +164,8 @@ func TestMailCleanupJobBoundsPagesAndReportsSafeCounts(t *testing.T) {
 		{FanoutsTerminalized: 4, DeliveriesSuppressed: 2, More: true},
 		{FanoutsTerminalized: 1, DeliveriesSuppressed: 1},
 	}}
-	command, _ := json.Marshal(jobhandler.MailCleanupCommandV1{PageSize: 10, MaxPages: 2})
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailCleanup, 1, command, "cleanup", time.Now(), time.Now(), 5)
+	command, _ := json.Marshal(jobhandler.MailCleanupCommand{PageSize: 10, MaxPages: 2})
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailCleanup, command, "cleanup", time.Now(), time.Now(), 5)
 	require.NoError(t, err)
 	metrics := &recordingMailMetrics{}
 	descriptor := jobhandler.NewMailCleanupDescriptor(mail, sittings, jobMailDeliveryRecorder{recorder: metrics})

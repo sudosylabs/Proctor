@@ -11,7 +11,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
@@ -23,13 +22,13 @@ import (
 // next hourly occurrence continues any remainder.
 const maximumSessionPurgeBatches = 40
 
-// SessionPurgeCommandV1 is the purge pass size.
-type SessionPurgeCommandV1 struct {
+// SessionPurgeCommand is the purge pass size.
+type SessionPurgeCommand struct {
 	BatchSize int `json:"batch_size"`
 }
 
-// SessionPurgeResultV1 counts what one run deleted.
-type SessionPurgeResultV1 struct {
+// SessionPurgeResult counts what one run deleted.
+type SessionPurgeResult struct {
 	Sessions    int64 `json:"sessions"`
 	Credentials int64 `json:"credentials"`
 }
@@ -54,10 +53,7 @@ func (h sessionPurgeHandler) Run(ctx context.Context, execution jobengine.Execut
 	if execution.Job == nil {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("job is missing"))
 	}
-	if execution.Job.CommandVersion != 1 {
-		return jobengine.PermanentFailure("job.command.invalid", fmt.Errorf("unsupported command version %d", execution.Job.CommandVersion))
-	}
-	var command SessionPurgeCommandV1
+	var command SessionPurgeCommand
 	if err := decodeStrictJobDocument(execution.Job.Command, &command); err != nil ||
 		command.BatchSize < 1 || command.BatchSize > store.MaximumSessionPurgeBatch {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("session purge command is invalid"))
@@ -65,7 +61,7 @@ func (h sessionPurgeHandler) Run(ctx context.Context, execution jobengine.Execut
 	if h.retention <= 0 {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("session retention is not configured"))
 	}
-	var result SessionPurgeResultV1
+	var result SessionPurgeResult
 	for range maximumSessionPurgeBatches {
 		deleted, err := h.credentials.PurgeRetired(ctx, &store.SessionCredentialPurge{Grace: h.retention, Limit: command.BatchSize})
 		if err != nil {
@@ -90,7 +86,7 @@ func (h sessionPurgeHandler) Run(ctx context.Context, execution jobengine.Execut
 		after = pass.Next
 	}
 	document, err := json.Marshal(result)
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: document, Err: err}
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: document, Err: err}
 }
 
 type sessionPurgeProposer struct {
@@ -99,13 +95,13 @@ type sessionPurgeProposer struct {
 }
 
 func (p sessionPurgeProposer) Propose(ctx context.Context, occurrence time.Time) error {
-	command, err := json.Marshal(SessionPurgeCommandV1{BatchSize: store.MaximumSessionPurgeBatch})
+	command, err := json.Marshal(SessionPurgeCommand{BatchSize: store.MaximumSessionPurgeBatch})
 	if err != nil {
 		return err
 	}
 	at := model.TimeUTC(p.now())
 	key := "session-purge-retired:" + model.TimeUTC(occurrence).Format("2006-01-02T15")
-	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeSessionPurgeRetired, 1, command, key, model.JobDedupePermanent, at, at, 5)
+	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeSessionPurgeRetired, command, key, model.JobDedupePermanent, at, at, 5)
 	if err != nil {
 		return err
 	}
@@ -114,5 +110,5 @@ func (p sessionPurgeProposer) Propose(ctx context.Context, occurrence time.Time)
 }
 
 func sessionPurgeDescriptor(handler jobengine.Handler) jobengine.Descriptor {
-	return jobengine.Descriptor{Type: model.JobTypeSessionPurgeRetired, CommandVersions: []int{1}, ResultVersions: []int{1}, PublicErrorCodes: []string{"dependency.unavailable", "job.command.invalid"}, Timeout: 10 * time.Minute, Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: time.Minute, Visibility: jobengine.VisibilityOperator, SuccessRetention: 7 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
+	return jobengine.Descriptor{Type: model.JobTypeSessionPurgeRetired, PublicErrorCodes: []string{"dependency.unavailable", "job.command.invalid"}, Timeout: 10 * time.Minute, Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: time.Minute, Visibility: jobengine.VisibilityOperator, SuccessRetention: 7 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
 }

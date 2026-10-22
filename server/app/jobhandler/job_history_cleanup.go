@@ -11,7 +11,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
@@ -21,39 +20,36 @@ import (
 
 const maximumJobHistoryCleanupBatch = 200
 
-type JobHistoryCleanupCommandV1 struct {
+// JobHistoryCleanupCommand is the immutable command of the Job history cleanup Job.
+type JobHistoryCleanupCommand struct {
 	BatchSize int `json:"batch_size"`
 }
 
-type JobHistoryCleanupCheckpointV1 struct {
+// JobHistoryCleanupCheckpoint records one bounded pass and whether it
+// exhausted the eligible history.
+type JobHistoryCleanupCheckpoint struct {
 	AfterCompletedAt time.Time   `json:"after_completed_at,omitempty"`
 	AfterJobID       model.JobID `json:"after_job_id,omitempty"`
 	Deleted          int64       `json:"deleted"`
+	Done             bool        `json:"done"`
 }
 
-// Version 2 records whether the bounded pass exhausted the eligible history.
-// Version 1 remains readable; its unknown remainder gets a conservative pass.
-type JobHistoryCleanupCheckpointV2 struct {
-	JobHistoryCleanupCheckpointV1
-	Done bool `json:"done"`
-}
-
-type JobHistoryCleanupResultV1 struct {
+// JobHistoryCleanupResult is the safe result of the Job history cleanup Job.
+type JobHistoryCleanupResult struct {
 	Deleted int64 `json:"deleted"`
 }
 
-func EncodeJobHistoryCleanupCommand(value JobHistoryCleanupCommandV1) (json.RawMessage, error) {
+// EncodeJobHistoryCleanupCommand validates and encodes a Job history cleanup Job command.
+func EncodeJobHistoryCleanupCommand(value JobHistoryCleanupCommand) (json.RawMessage, error) {
 	if value.BatchSize < 1 || value.BatchSize > maximumJobHistoryCleanupBatch {
 		return nil, errors.New("job history cleanup batch size is invalid")
 	}
 	return json.Marshal(value)
 }
 
-func DecodeJobHistoryCleanupCommand(version int, document json.RawMessage) (JobHistoryCleanupCommandV1, error) {
-	var value JobHistoryCleanupCommandV1
-	if version != 1 {
-		return value, fmt.Errorf("unsupported job history cleanup command version %d", version)
-	}
+// DecodeJobHistoryCleanupCommand strictly decodes and validates a Job history cleanup Job command.
+func DecodeJobHistoryCleanupCommand(document json.RawMessage) (JobHistoryCleanupCommand, error) {
+	var value JobHistoryCleanupCommand
 	if err := decodeStrictJobDocument(document, &value); err != nil {
 		return value, err
 	}
@@ -63,25 +59,15 @@ func DecodeJobHistoryCleanupCommand(version int, document json.RawMessage) (JobH
 	return value, nil
 }
 
-func EncodeJobHistoryCleanupCheckpoint(value JobHistoryCleanupCheckpointV1) (json.RawMessage, error) {
-	if err := validateJobHistoryCleanupCheckpoint(value); err != nil {
-		return nil, err
-	}
-	return json.Marshal(value)
-}
-
-func DecodeJobHistoryCleanupCheckpoint(version int, document json.RawMessage) (JobHistoryCleanupCheckpointV1, error) {
-	var value JobHistoryCleanupCheckpointV1
-	if version != 1 {
-		return value, fmt.Errorf("unsupported job history cleanup checkpoint version %d", version)
-	}
+func decodeJobHistoryCleanupCheckpoint(document json.RawMessage) (JobHistoryCleanupCheckpoint, error) {
+	var value JobHistoryCleanupCheckpoint
 	if err := decodeStrictJobDocument(document, &value); err != nil {
 		return value, err
 	}
 	return value, validateJobHistoryCleanupCheckpoint(value)
 }
 
-func validateJobHistoryCleanupCheckpoint(value JobHistoryCleanupCheckpointV1) error {
+func validateJobHistoryCleanupCheckpoint(value JobHistoryCleanupCheckpoint) error {
 	if value.Deleted < 0 || value.AfterCompletedAt.IsZero() != value.AfterJobID.IsZero() || (!value.AfterJobID.IsZero() && !value.AfterJobID.IsValid()) {
 		return errors.New("job history cleanup checkpoint is invalid")
 	}
@@ -103,16 +89,16 @@ func (h jobHistoryCleanupHandler) Run(ctx context.Context, execution jobengine.E
 	if execution.Job == nil || !execution.Job.ID.IsValid() || h.jobs == nil || h.continuations == nil || h.now == nil {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("job history cleanup dependencies or execution are missing"))
 	}
-	command, err := DecodeJobHistoryCleanupCommand(execution.Job.CommandVersion, execution.Job.Command)
+	command, err := DecodeJobHistoryCleanupCommand(execution.Job.Command)
 	if err != nil {
 		return jobengine.PermanentFailure("job.command.invalid", err)
 	}
 	if execution.Job.WorkReserved < 0 || execution.Job.WorkReserved > command.BatchSize {
 		return jobengine.PermanentFailure("job.invariant_failed", errors.New("job history cleanup reservation exceeds its work bound"))
 	}
-	checkpoint := JobHistoryCleanupCheckpointV2{}
+	checkpoint := JobHistoryCleanupCheckpoint{}
 	if len(execution.Job.Checkpoint) != 0 {
-		checkpoint, err = decodeHistoryCleanupCheckpoint(execution.Job.CheckpointVersion, execution.Job.Checkpoint)
+		checkpoint, err = decodeJobHistoryCleanupCheckpoint(execution.Job.Checkpoint)
 		if err != nil {
 			return jobengine.PermanentFailure("job.checkpoint.invalid", err)
 		}
@@ -145,7 +131,7 @@ func (h jobHistoryCleanupHandler) Run(ctx context.Context, execution jobengine.E
 	checkpoint.AfterCompletedAt = page.LastCompletedAt
 	checkpoint.AfterJobID = page.LastJobID
 	checkpoint.Done = page.Done
-	if err := validateJobHistoryCleanupCheckpoint(checkpoint.JobHistoryCleanupCheckpointV1); err != nil {
+	if err := validateJobHistoryCleanupCheckpoint(checkpoint); err != nil {
 		return jobengine.PermanentFailure("job.invariant_failed", err)
 	}
 	document, encodeErr := json.Marshal(checkpoint)
@@ -156,28 +142,13 @@ func (h jobHistoryCleanupHandler) Run(ctx context.Context, execution jobengine.E
 	if checkpoint.Deleted > 0 {
 		progress = &model.JobProgress{Current: checkpoint.Deleted, Total: checkpoint.Deleted, Stage: "completed"}
 	}
-	if checkpointErr := execution.Checkpoint(ctx, jobengine.CheckpointValue{Version: 2, Progress: progress, Document: document}); checkpointErr != nil {
+	if checkpointErr := execution.Checkpoint(ctx, jobengine.CheckpointValue{Progress: progress, Document: document}); checkpointErr != nil {
 		return jobengine.RetryableFailure("dependency.unavailable", checkpointErr)
 	}
 	return h.finish(ctx, execution.Job, command, checkpoint)
 }
 
-func decodeHistoryCleanupCheckpoint(version int, document json.RawMessage) (JobHistoryCleanupCheckpointV2, error) {
-	if version == 1 {
-		previous, err := DecodeJobHistoryCleanupCheckpoint(version, document)
-		return JobHistoryCleanupCheckpointV2{JobHistoryCleanupCheckpointV1: previous}, err
-	}
-	var value JobHistoryCleanupCheckpointV2
-	if version != 2 {
-		return value, fmt.Errorf("unsupported job history cleanup checkpoint version %d", version)
-	}
-	if err := decodeStrictJobDocument(document, &value); err != nil {
-		return value, err
-	}
-	return value, validateJobHistoryCleanupCheckpoint(value.JobHistoryCleanupCheckpointV1)
-}
-
-func (h jobHistoryCleanupHandler) finish(ctx context.Context, parent *model.Job, command JobHistoryCleanupCommandV1, checkpoint JobHistoryCleanupCheckpointV2) jobengine.Outcome {
+func (h jobHistoryCleanupHandler) finish(ctx context.Context, parent *model.Job, command JobHistoryCleanupCommand, checkpoint JobHistoryCleanupCheckpoint) jobengine.Outcome {
 	// Only a completed, nonempty batch creates an immediate successor.
 	if !checkpoint.Done && checkpoint.Deleted > 0 {
 		document, err := EncodeJobHistoryCleanupCommand(command)
@@ -185,7 +156,7 @@ func (h jobHistoryCleanupHandler) finish(ctx context.Context, parent *model.Job,
 			return jobengine.PermanentFailure("job.invariant_failed", err)
 		}
 		at := model.TimeUTC(h.now())
-		successor, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeCleanup, 1, document,
+		successor, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeCleanup, document,
 			"job-history-cleanup:after:"+parent.ID.String(), model.JobDedupePermanent, at, at, 5)
 		if err != nil {
 			return jobengine.PermanentFailure("job.invariant_failed", err)
@@ -194,8 +165,8 @@ func (h jobHistoryCleanupHandler) finish(ctx context.Context, parent *model.Job,
 			return jobengine.RetryableFailure("dependency.unavailable", err)
 		}
 	}
-	document, marshalErr := json.Marshal(JobHistoryCleanupResultV1{Deleted: checkpoint.Deleted})
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: document, Err: marshalErr}
+	document, marshalErr := json.Marshal(JobHistoryCleanupResult{Deleted: checkpoint.Deleted})
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: document, Err: marshalErr}
 }
 
 type jobHistoryCleanupProposer struct {
@@ -205,12 +176,12 @@ type jobHistoryCleanupProposer struct {
 
 func (p jobHistoryCleanupProposer) Propose(ctx context.Context, occurrence time.Time) error {
 	at := model.TimeUTC(p.now())
-	command, err := EncodeJobHistoryCleanupCommand(JobHistoryCleanupCommandV1{BatchSize: 100})
+	command, err := EncodeJobHistoryCleanupCommand(JobHistoryCleanupCommand{BatchSize: 100})
 	if err != nil {
 		return err
 	}
 	key := "job-history-cleanup:" + model.TimeUTC(occurrence).Format("2006-01-02")
-	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeCleanup, 1, command, key, model.JobDedupePermanent, at, at, 5)
+	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeCleanup, command, key, model.JobDedupePermanent, at, at, 5)
 	if err != nil {
 		return err
 	}
@@ -219,5 +190,5 @@ func (p jobHistoryCleanupProposer) Propose(ctx context.Context, occurrence time.
 }
 
 func jobHistoryCleanupDescriptor(handler jobengine.Handler) jobengine.Descriptor {
-	return jobengine.Descriptor{Type: model.JobTypeCleanup, CommandVersions: []int{1}, CheckpointVersions: []int{1, 2}, ResultVersions: []int{1}, ProgressStages: []string{"completed"}, PublicErrorCodes: []string{"dependency.unavailable", "job.checkpoint.invalid", "job.command.invalid", "job.invariant_failed"}, Timeout: 10 * time.Minute, Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: time.Minute, Visibility: jobengine.VisibilityOperator, SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
+	return jobengine.Descriptor{Type: model.JobTypeCleanup, Checkpoints: true, ProgressStages: []string{"completed"}, PublicErrorCodes: []string{"dependency.unavailable", "job.checkpoint.invalid", "job.command.invalid", "job.invariant_failed"}, Timeout: 10 * time.Minute, Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: time.Minute, Visibility: jobengine.VisibilityOperator, SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
 }

@@ -30,12 +30,12 @@ type retentionNoticeHandler struct {
 }
 
 func (h retentionNoticeHandler) Run(ctx context.Context, e jobengine.Execution) jobengine.Outcome {
-	var command RetentionCommandV1
-	if e.Job == nil || h.notices == nil || h.dispatcher == nil || h.jobs == nil || h.now == nil || e.Job.CommandVersion != 1 || decodeStrictJobDocument(e.Job.Command, &command) != nil || command.BatchSize < 1 || command.BatchSize > retentionJobMaximumBatch || !command.AfterSubmissionID.IsZero() {
+	var command RetentionCommand
+	if e.Job == nil || h.notices == nil || h.dispatcher == nil || h.jobs == nil || h.now == nil || decodeStrictJobDocument(e.Job.Command, &command) != nil || command.BatchSize < 1 || command.BatchSize > retentionJobMaximumBatch || !command.AfterSubmissionID.IsZero() {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("invalid retention notice command"))
 	}
-	var cp RetentionCheckpointV1
-	if len(e.Job.Checkpoint) > 0 && (e.Job.CheckpointVersion != 1 || decodeStrictJobDocument(e.Job.Checkpoint, &cp) != nil) {
+	var cp RetentionCheckpoint
+	if len(e.Job.Checkpoint) > 0 && (decodeStrictJobDocument(e.Job.Checkpoint, &cp) != nil) {
 		return jobengine.PermanentFailure("job.checkpoint.invalid", errors.New("invalid retention notice checkpoint"))
 	}
 	if cp.Examined < 0 || cp.Examined > e.Job.WorkReserved || e.Job.WorkReserved > command.BatchSize || !cp.AfterSubmissionID.IsZero() || cp.Changed != cp.Examined {

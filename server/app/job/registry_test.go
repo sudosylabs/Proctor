@@ -23,21 +23,18 @@ func (f handlerFunc) Run(ctx context.Context, execution Execution) Outcome {
 	return f(ctx, execution)
 }
 
-func TestRegistryIsClosedImmutableAndVersionAware(t *testing.T) {
+func TestRegistryIsClosedAndImmutable(t *testing.T) {
 	t.Parallel()
 	descriptor := testDescriptor(handlerFunc(func(context.Context, Execution) Outcome {
-		return Outcome{Kind: OutcomeSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)}
+		return Outcome{Kind: OutcomeSucceeded, Result: json.RawMessage(`{}`)}
 	}))
 	registry, err := NewRegistry([]Descriptor{descriptor})
 	require.NoError(t, err)
-	resolved, err := registry.Resolve(model.JobTypeProfilePictureGenerateDefault, 1)
-	require.NoError(t, err, "Resolve() = %#v", resolved)
-	require.Equal(t, descriptor.Type, resolved.Type, "Resolve() = %#v", resolved)
-	descriptor.CommandVersions[0] = 9
-	_, err = registry.Resolve(model.JobTypeProfilePictureGenerateDefault, 1)
-	require.NoError(t, err)
-	_, err = registry.Resolve(model.JobTypeProfilePictureGenerateDefault, 2)
-	require.Error(t, err, "Resolve() accepted unsupported payload version")
+	resolved, err := registry.Descriptor(model.JobTypeProfilePictureGenerateDefault)
+	require.NoError(t, err, "Descriptor() = %#v", resolved)
+	require.Equal(t, descriptor.Type, resolved.Type, "Descriptor() = %#v", resolved)
+	_, err = registry.Descriptor(model.JobTypeMailCleanup)
+	require.Error(t, err, "Descriptor() accepted an unregistered type")
 }
 
 func TestRegistryRejectsDuplicateTypesAndMissingHandlers(t *testing.T) {

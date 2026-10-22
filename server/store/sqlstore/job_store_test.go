@@ -103,7 +103,7 @@ func validJobRow(t *testing.T) jobRow {
 	return jobRow{
 		ID: model.NewJobID().String(), Type: string(model.JobTypeCleanup), Status: string(model.JobStatusQueued),
 		CreatedAt: now, UpdatedAt: now, AvailableAt: now,
-		CommandVersion: 1, Command: jsonValue(json.RawMessage(`{}`)),
+		Command:   jsonValue(json.RawMessage(`{}`)),
 		DedupeKey: model.NewID(), DedupePolicy: string(model.JobDedupeActive),
 		MaximumAttempts: 3, Revision: 1,
 	}

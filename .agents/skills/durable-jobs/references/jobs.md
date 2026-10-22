@@ -101,7 +101,7 @@ records a safe capability mismatch that does not consume the failure-attempt
 budget. A handler returns one of
 `Succeeded`, `RetryableFailure`, `Relinquished`, `PermanentFailure`, or
 `Canceled`. Transient dependency failures retry;
-invalid payload versions, rejected content, invariant failures, and unsupported
+invalid payloads, rejected content, invariant failures, and unsupported
 operations fail permanently. Input the Store refuses is permanent, but a
 database constraint rejection (`store.IsConstraintViolation`) can come from a
 concurrent transition or clock skew and retries within the attempt budget. Panics are contained and retry with a safe code
@@ -109,8 +109,10 @@ until the attempt limit is exhausted.
 
 ## Payloads and visibility
 
-Job Types form a closed registry. Each owns versioned, typed contracts for its
+Job Types form a closed registry. Each owns strict typed contracts for its
 immutable command, mutable checkpoint, safe result, and public error code.
+These documents carry no version field: until the first supported release a
+payload shape changes outright and development databases are recreated.
 Persistence may use bounded JSONB, but arbitrary maps are not an application
 contract. Payloads, checkpoints, raw errors, file content, credentials, and
 student work are never copied wholesale into logs, audit records, realtime
@@ -136,7 +138,7 @@ engine's validated transition and revision across that audit boundary without
 exposing persistence mechanics.
 
 `app/jobhandler.NewCatalog` constructs one immutable instance-scoped handler
-registry from capability-oriented dependencies. Every descriptor declares supported payload versions, timeout,
+registry from capability-oriented dependencies. Every descriptor declares whether it checkpoints, its timeout,
 per-node concurrency, retry/backoff, cancelability, retention, and handler.
 Startup rejects duplicate types and missing handlers; there is no process-global
 mutable registration.
@@ -228,9 +230,8 @@ consumed and fails that Job visibly; the next daily occurrence resumes from the
 oldest remaining history instead of repeating the uncertain deletion, so a
 deletion that keeps failing cannot spawn an unbounded chain. Terminal Jobs that
 an onboarding import or a mail delivery still references are skipped until
-that row is removed. Version-1 checkpoints remain readable and
-receive one conservative continuation; version 2 records the exhausted-page
-fact. Every pass rechecks retention eligibility against PostgreSQL time.
+that row is removed. The checkpoint records the exhausted-page fact. Every
+pass rechecks retention eligibility against PostgreSQL time.
 
 Entering Closing atomically queues the sealing Job with the Sitting mutation.
 Its command contains only the Sitting identity, its checkpoint contains a

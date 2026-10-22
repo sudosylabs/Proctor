@@ -57,9 +57,9 @@ func TestUserEmailChangePreservesLifecycleAcrossClockSkew(t *testing.T) {
 			if test.futureUpdated {
 				user.UpdatedAt = future.Add(time.Hour)
 			}
-			pictureCommand, err := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommandV1{UserID: user.ID})
+			pictureCommand, err := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommand{UserID: user.ID})
 			require.NoError(t, err)
-			pictureJob, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1,
+			pictureJob, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault,
 				pictureCommand, user.ID.String(), createdAt, createdAt, 8)
 			require.NoError(t, err)
 			settings, err := model.NewUserSettingsDocument(user.ID, model.NewUserSettingsRevision(), createdAt)

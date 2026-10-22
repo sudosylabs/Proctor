@@ -86,15 +86,14 @@ func (p *retentionJobPurgerFake) PurgeRetiredAttemptWorkspaceObject(context.Cont
 func retentionJobFixture(t *testing.T, kind model.JobType, batch int) (*model.Job, *retentionJobStoreFake, *jobHistoryCleanerFake) {
 	t.Helper()
 	at := model.NowUTC()
-	command, _ := json.Marshal(RetentionCommandV1{BatchSize: batch})
-	record, err := model.NewJob(model.NewJobID(), kind, 1, command, "test-retention", at, at, 5)
+	command, _ := json.Marshal(RetentionCommand{BatchSize: batch})
+	record, err := model.NewJob(model.NewJobID(), kind, command, "test-retention", at, at, 5)
 	require.NoError(t, err)
 	scope := model.RetentionHoldScope{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), SubmissionID: model.NewSubmissionID()}
 	return record, &retentionJobStoreFake{control: &model.RetentionControl{InstitutionID: model.NewInstitutionID(), Revision: 1, State: model.RetentionControlEnabled, ApprovedPolicyRevision: 1, ApprovedPreviewID: model.NewRetentionPreviewID(), ChangedByUserID: model.NewUserID(), UpdatedAt: at}, page: &store.RetentionRecordPage{Items: []store.RetentionRecordItem{{Record: model.RetentionRecord{Scope: scope, Category: model.RetentionCategoryWork}}, {Record: model.RetentionRecord{Scope: scope, Category: model.RetentionCategoryIntegrity}}, {Record: model.RetentionRecord{Scope: scope, Category: model.RetentionCategoryBrowserActivity}}, {Record: model.RetentionRecord{Scope: scope, Category: model.RetentionCategorySecurityOperational}}}}, purges: []store.RetentionPurgeObject{{RetirementID: model.NewRetentionRetirementID(), ObjectID: model.NewAttemptWorkspaceObjectID()}}}, &jobHistoryCleanerFake{}
 }
 func keepRetentionCheckpoint(record *model.Job) func(context.Context, jobengine.CheckpointValue) error {
 	return func(_ context.Context, cp jobengine.CheckpointValue) error {
-		record.CheckpointVersion = cp.Version
 		record.Checkpoint = append(json.RawMessage(nil), cp.Document...)
 		return nil
 	}
@@ -173,7 +172,7 @@ func TestRetentionCrashConsumesBudgetAndEnqueuesOnlyOneSuccessor(t *testing.T) {
 	}
 	require.Equal(t, 1, s.reconciled, "retry exceeded reserved budget or duplicated successor")
 	require.Len(t, jobs.enqueued, 1, "retry exceeded reserved budget or duplicated successor")
-	var command RetentionCommandV1
+	var command RetentionCommand
 	require.NoError(t, json.Unmarshal(jobs.enqueued[0].Command, &command))
 	require.True(t, command.AfterSubmissionID.IsZero(), "successor skipped uncertain unit")
 	require.Equal(t, model.JobDedupePermanent, jobs.enqueued[0].DedupePolicy, "successor skipped uncertain unit")
@@ -248,7 +247,7 @@ func TestRetentionPurgeFailureDoesNotStarveFollowingObject(t *testing.T) {
 			require.Len(t, persistence.completedObjects, 1, "healthy object starved: calls")
 			require.Equal(t, second.ObjectID, persistence.completedObjects[0], "healthy object starved: calls")
 			require.Equal(t, 2, record.WorkReserved, "healthy object starved: calls")
-			var cp RetentionCheckpointV1
+			var cp RetentionCheckpoint
 			err := json.Unmarshal(record.Checkpoint, &cp)
 			require.NoError(t, err, "failure claimed completion: %#v (%v)", cp, err)
 			require.Equal(t, 2, cp.Examined, "failure claimed completion: %#v (%v)", cp, err)

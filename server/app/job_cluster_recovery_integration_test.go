@@ -149,7 +149,7 @@ func TestJobRunnerRecoversNodeLossAroundADurableDomainCommit(t *testing.T) {
 			require.Equal(t, model.JobAttemptStatusSucceeded, attempts[1].Status)
 			_, err = persistence.Job().Complete(context.Background(), &store.JobCompletion{
 				AttemptID: attempts[0].ID, ClaimToken: attempts[0].ClaimToken,
-				Kind: store.JobCompletionSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`),
+				Kind: store.JobCompletionSucceeded, Result: json.RawMessage(`{}`),
 			})
 			require.True(t, store.IsConflict(err), "stale worker completion error")
 		})
@@ -213,8 +213,7 @@ func (h *recoveryCommitHandler) Run(ctx context.Context, execution jobengine.Exe
 
 func clusteredRecoveryJobDescriptor(handler jobengine.Handler) jobengine.Descriptor {
 	return jobengine.Descriptor{
-		Type: model.JobTypeProfilePictureGenerateDefault, CommandVersions: []int{1}, ResultVersions: []int{1},
-		PublicErrorCodes: []string{"dependency.unavailable"}, Timeout: 2 * time.Second, Concurrency: 1,
+		Type: model.JobTypeProfilePictureGenerateDefault, PublicErrorCodes: []string{"dependency.unavailable"}, Timeout: 2 * time.Second, Concurrency: 1,
 		MaximumAttempts: 3, LeaseDuration: 250 * time.Millisecond, HeartbeatInterval: 50 * time.Millisecond,
 		BaseRetryDelay: time.Millisecond, MaximumRetryDelay: 10 * time.Millisecond,
 		Visibility: jobengine.VisibilityOperator, SuccessRetention: 24 * time.Hour, FailureRetention: 48 * time.Hour,

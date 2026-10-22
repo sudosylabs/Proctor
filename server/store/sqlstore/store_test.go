@@ -32,7 +32,7 @@ func saveIntegrationUser(t *testing.T, ctx context.Context, persistence store.St
 	user.PrepareCreate(model.NewUserID(), model.NowUTC())
 	command, err := json.Marshal(map[string]string{"user_id": user.ID.String()})
 	require.NoError(t, err)
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, command, user.ID.String(), user.CreatedAt, user.CreatedAt, 8)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, command, user.ID.String(), user.CreatedAt, user.CreatedAt, 8)
 	require.NoError(t, err)
 	settings, err := model.NewUserSettingsDocument(user.ID, model.NewUserSettingsRevision(), user.CreatedAt)
 	require.NoError(t, err)

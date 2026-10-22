@@ -628,9 +628,9 @@ func TestProfilePictureCapacityRefusalDoesNotPublishOrProposeMoreWork(t *testing
 			case "fallback":
 				_, err = service.GetProfilePicture(context.Background(), invocation, GetProfilePictureQuery{UserID: user.ID, Size: 256})
 			case "default generation":
-				command, encodeErr := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommandV1{UserID: user.ID})
+				command, encodeErr := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommand{UserID: user.ID})
 				require.NoError(t, encodeErr)
-				job, jobErr := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, command, user.ID.String(), time.Now(), time.Now(), 8)
+				job, jobErr := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, command, user.ID.String(), time.Now(), time.Now(), 8)
 				require.NoError(t, jobErr)
 				handler := jobhandler.NewDefaultProfilePictureDescriptor(jobDefaultProfilePictureGenerator{service: service}).Handler
 				outcome := handler.Run(context.Background(), jobengine.Execution{Job: job})
@@ -655,9 +655,9 @@ func TestDefaultProfilePictureHandlerAttachesGeneratedRenditionsIdempotently(t *
 	user := &model.User{Username: "student", Email: "student@example.test"}
 	user.PrepareCreate(model.NewUserID(), at.Add(-time.Hour))
 	persistence := &pictureStoreFake{user: user}
-	command, err := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommandV1{UserID: user.ID})
+	command, err := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommand{UserID: user.ID})
 	require.NoError(t, err)
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, command, user.ID.String(), at, at, 8)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, command, user.ID.String(), at, at, 8)
 	require.NoError(t, err)
 	generator := newProfilePictureServiceForTest(persistence, persistence, &pictureContentFake{}, nil, nil, nil, nil, nil, func() time.Time { return at })
 	handler := jobhandler.NewDefaultProfilePictureDescriptor(jobDefaultProfilePictureGenerator{service: generator}).Handler

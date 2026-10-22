@@ -23,21 +23,21 @@ import (
 
 func TestExamSittingLifecycleRecoveryDocumentsAreStrictAndBounded(t *testing.T) {
 	t.Parallel()
-	command, err := EncodeExamSittingLifecycleRecoveryCommand(ExamSittingLifecycleRecoveryCommandV1{WorkLimit: 12})
+	command, err := EncodeExamSittingLifecycleRecoveryCommand(ExamSittingLifecycleRecoveryCommand{WorkLimit: 12})
 	require.NoError(t, err)
-	decoded, err := DecodeExamSittingLifecycleRecoveryCommand(1, command)
+	decoded, err := DecodeExamSittingLifecycleRecoveryCommand(command)
 	require.NoError(t, err, "command = %#v", decoded)
 	require.Equal(t, 12, decoded.WorkLimit, "command = %#v", decoded)
 	for _, malformed := range []json.RawMessage{json.RawMessage(`{}`), json.RawMessage(`{"work_limit":0}`), json.RawMessage(`{"work_limit":1001}`), json.RawMessage(`{"work_limit":1,"extra":true}`), json.RawMessage(`{"work_limit":1,"work_limit":2}`)} {
-		_, err = DecodeExamSittingLifecycleRecoveryCommand(1, malformed)
+		_, err = DecodeExamSittingLifecycleRecoveryCommand(malformed)
 		require.Error(t, err, "accepted %s", malformed)
 	}
 
 	at := time.Date(2026, time.August, 16, 8, 0, 0, 0, time.UTC)
-	checkpoint := ExamSittingLifecycleRecoveryCheckpointV1{AfterDueAt: at, AfterSittingID: model.NewExamSittingID(), Processed: 2, Changed: 1}
+	checkpoint := ExamSittingLifecycleRecoveryCheckpoint{AfterDueAt: at, AfterSittingID: model.NewExamSittingID(), Processed: 2, Changed: 1}
 	document, err := EncodeExamSittingLifecycleRecoveryCheckpoint(checkpoint)
 	require.NoError(t, err)
-	decodedCheckpoint, err := DecodeExamSittingLifecycleRecoveryCheckpoint(1, document)
+	decodedCheckpoint, err := DecodeExamSittingLifecycleRecoveryCheckpoint(document)
 	require.NoError(t, err, "checkpoint")
 	require.Equal(t, checkpoint, decodedCheckpoint, "checkpoint")
 }
@@ -47,11 +47,11 @@ func TestExamSittingLifecycleRecoveryResumesCheckpointAndHonorsWorkLimit(t *test
 	at := time.Date(2026, time.August, 16, 8, 0, 0, 0, time.UTC)
 	firstID, secondID := model.NewExamSittingID(), model.NewExamSittingID()
 	priorID := model.NewExamSittingID()
-	checkpoint := ExamSittingLifecycleRecoveryCheckpointV1{AfterDueAt: at.Add(-time.Minute), AfterSittingID: priorID, Processed: 1}
+	checkpoint := ExamSittingLifecycleRecoveryCheckpoint{AfterDueAt: at.Add(-time.Minute), AfterSittingID: priorID, Processed: 1}
 	checkpointDocument, err := EncodeExamSittingLifecycleRecoveryCheckpoint(checkpoint)
 	require.NoError(t, err)
 	job := mustRecoveryJob(t, at, 3)
-	job.CheckpointVersion, job.Checkpoint, job.WorkReserved = 1, checkpointDocument, 1
+	job.Checkpoint, job.WorkReserved = checkpointDocument, 1
 	service := &examSittingLifecycleRecoveryFake{pages: [][]store.ExamSittingLifecycleDue{{
 		{Value: lifecycleJobResult(t, firstID, false).Value, DueAt: at},
 		{Value: lifecycleJobResult(t, secondID, false).Value, DueAt: at.Add(time.Second)},
@@ -80,12 +80,12 @@ func TestExamSittingLifecycleRecoveryResumesCheckpointAndHonorsWorkLimit(t *test
 	require.Equal(t, 2, service.listOptions[0].Limit)
 	require.Len(t, service.reconciled, 2, "reconciled/checkpoints")
 	require.Len(t, saved, 2, "reconciled/checkpoints")
-	var result ExamSittingLifecycleRecoveryResultV1
+	var result ExamSittingLifecycleRecoveryResult
 	err = json.Unmarshal(outcome.Result, &result)
 	require.NoError(t, err, "result = %#v", result)
 	require.Equal(t, int64(3), result.Processed, "result = %#v", result)
 	require.Equal(t, int64(1), result.Changed, "result = %#v", result)
-	last, err := DecodeExamSittingLifecycleRecoveryCheckpoint(saved[len(saved)-1].Version, saved[len(saved)-1].Document)
+	last, err := DecodeExamSittingLifecycleRecoveryCheckpoint(saved[len(saved)-1].Document)
 	require.NoError(t, err, "last checkpoint = %#v", last)
 	require.Equal(t, secondID, last.AfterSittingID, "last checkpoint = %#v", last)
 	require.Equal(t, int64(3), last.Processed, "last checkpoint = %#v", last)
@@ -145,7 +145,7 @@ func TestExamSittingLifecycleRecoveryDescriptorDeclaresCheckpointContract(t *tes
 	require.Equal(t, model.JobTypeExamSittingLifecycleRecovery, descriptor.Type)
 	require.False(t, descriptor.Cancelable)
 	require.Equal(t, jobengine.VisibilityOperator, descriptor.Visibility)
-	require.Len(t, descriptor.CheckpointVersions, 1)
+	require.True(t, descriptor.Checkpoints)
 	require.Len(t, descriptor.ProgressStages, 1)
 	require.Equal(t, "reconciling", descriptor.ProgressStages[0])
 }
@@ -181,9 +181,9 @@ func (f *examSittingLifecycleRecoveryFake) ReconcileExamSittingLifecycleFromJob(
 
 func mustRecoveryJob(t *testing.T, at time.Time, limit int) *model.Job {
 	t.Helper()
-	command, err := EncodeExamSittingLifecycleRecoveryCommand(ExamSittingLifecycleRecoveryCommandV1{WorkLimit: limit})
+	command, err := EncodeExamSittingLifecycleRecoveryCommand(ExamSittingLifecycleRecoveryCommand{WorkLimit: limit})
 	require.NoError(t, err)
-	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeExamSittingLifecycleRecovery, 1, command, "recovery-test", model.JobDedupePermanent, at, at, 5)
+	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeExamSittingLifecycleRecovery, command, "recovery-test", model.JobDedupePermanent, at, at, 5)
 	require.NoError(t, err)
 	return job
 }

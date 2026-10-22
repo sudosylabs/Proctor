@@ -42,10 +42,10 @@ func (f *auditAttemptSweeperFake) FailAbandonedAttempts(_ context.Context, input
 
 func runAuditAttemptSweep(t *testing.T, sweeper *auditAttemptSweeperFake, batch int) jobengine.Outcome {
 	t.Helper()
-	command, err := json.Marshal(AuditAttemptSweepCommandV1{BatchSize: batch})
+	command, err := json.Marshal(AuditAttemptSweepCommand{BatchSize: batch})
 	require.NoError(t, err)
 	at := time.Now().UTC()
-	record, err := model.NewJob(model.NewJobID(), model.JobTypeAuditAttemptSweep, 1, command, "sweep", at, at, 3)
+	record, err := model.NewJob(model.NewJobID(), model.JobTypeAuditAttemptSweep, command, "sweep", at, at, 3)
 	require.NoError(t, err)
 	return (auditAttemptSweepHandler{audits: sweeper}).Run(context.Background(), jobengine.NewExecution(record, nil, nil, nil))
 }
@@ -58,7 +58,7 @@ func TestAuditAttemptSweepContinuesWhileBatchesAreFull(t *testing.T) {
 	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome = %#v", outcome)
 	require.Len(t, sweeper.inputs, 3)
 	require.Equal(t, store.AuditAttemptAbandonment{Age: 24 * time.Hour, Limit: 10}, sweeper.inputs[0])
-	var result AuditAttemptSweepResultV1
+	var result AuditAttemptSweepResult
 	require.NoError(t, json.Unmarshal(outcome.Result, &result))
 	require.Equal(t, int64(23), result.Failed)
 }

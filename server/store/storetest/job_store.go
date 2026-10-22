@@ -22,7 +22,7 @@ import (
 func TestJobStore(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	at := model.NowUTC().Add(-time.Minute)
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, json.RawMessage(`{"user_id":"`+model.NewUserID().String()+`"}`), "user:first", at, at, 3)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, json.RawMessage(`{"user_id":"`+model.NewUserID().String()+`"}`), "user:first", at, at, 3)
 	require.NoError(t, err)
 	created, inserted, err := ss.Job().Enqueue(ctx, &store.JobEnqueue{Job: job})
 	require.NoError(t, err)
@@ -54,10 +54,9 @@ func TestJobStore(t *testing.T, ss store.Store) {
 	require.True(t, store.IsConflict(err), "Heartbeat(stale token) error")
 	_, err = ss.Job().Heartbeat(ctx, &store.JobHeartbeat{AttemptID: claim.Attempt.ID, ClaimToken: firstToken, LeaseDuration: time.Minute})
 	require.NoError(t, err)
-	checkpointed, err := ss.Job().Checkpoint(ctx, &store.JobCheckpoint{AttemptID: claim.Attempt.ID, ClaimToken: firstToken, Progress: &model.JobProgress{Current: 1, Total: 3, Stage: "rendering"}, CheckpointVersion: 1, Checkpoint: json.RawMessage(`{"completed":1}`)})
+	checkpointed, err := ss.Job().Checkpoint(ctx, &store.JobCheckpoint{AttemptID: claim.Attempt.ID, ClaimToken: firstToken, Progress: &model.JobProgress{Current: 1, Total: 3, Stage: "rendering"}, Checkpoint: json.RawMessage(`{"completed":1}`)})
 	require.NoError(t, err)
 	require.Equal(t, int64(1), checkpointed.Progress.Current)
-	require.Equal(t, 1, checkpointed.CheckpointVersion)
 	require.Equal(t, `{"completed":1}`, string(checkpointed.Checkpoint))
 	retried, err := ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: claim.Attempt.ID, ClaimToken: firstToken, Kind: store.JobCompletionRetryableFailure, RetryDelay: time.Millisecond, PublicErrorCode: "dependency.unavailable"})
 	require.NoError(t, err)
@@ -79,9 +78,9 @@ func TestJobStore(t *testing.T, ss store.Store) {
 	require.NoError(t, err)
 	require.False(t, reservation.Reserved)
 	require.Equal(t, 3, reservation.Consumed)
-	_, err = ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: claim.Attempt.ID, ClaimToken: firstToken, Kind: store.JobCompletionSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)})
+	_, err = ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: claim.Attempt.ID, ClaimToken: firstToken, Kind: store.JobCompletionSucceeded, Result: json.RawMessage(`{}`)})
 	require.True(t, store.IsConflict(err), "Complete(stale worker) error")
-	succeeded, err := ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: second.Attempt.ID, ClaimToken: secondToken, Kind: store.JobCompletionSucceeded, ResultVersion: 1, Result: json.RawMessage(`{"file_entry_id":"done"}`)})
+	succeeded, err := ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: second.Attempt.ID, ClaimToken: secondToken, Kind: store.JobCompletionSucceeded, Result: json.RawMessage(`{"file_entry_id":"done"}`)})
 	require.NoError(t, err)
 	require.Equal(t, model.JobStatusSucceeded, succeeded.Status)
 	require.True(t, succeeded.CompletedAt.Valid)
@@ -111,7 +110,7 @@ func TestJobStore(t *testing.T, ss store.Store) {
 	require.NoError(t, err)
 	require.Equal(t, relinquishable.ID, compatibleClaim.Job.ID, "compatible node claimed Job")
 	_, err = ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: compatibleClaim.Attempt.ID, ClaimToken: compatibleToken,
-		Kind: store.JobCompletionSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)})
+		Kind: store.JobCompletionSucceeded, Result: json.RawMessage(`{}`)})
 	require.NoError(t, err)
 	incompatibleAttempts, err := ss.Job().ListAttempts(ctx, relinquishable.ID)
 	require.NoError(t, err)
@@ -140,16 +139,16 @@ func TestJobStore(t *testing.T, ss store.Store) {
 	require.NoError(t, err)
 	require.Equal(t, crashed.ID, recovered.Job.ID)
 	require.Equal(t, 2, recovered.Attempt.Number)
-	_, err = ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: dead.Attempt.ID, ClaimToken: deadToken, Kind: store.JobCompletionSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)})
+	_, err = ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: dead.Attempt.ID, ClaimToken: deadToken, Kind: store.JobCompletionSucceeded, Result: json.RawMessage(`{}`)})
 	require.True(t, store.IsConflict(err), "expired worker completion error")
 	attempts, err = ss.Job().ListAttempts(ctx, crashed.ID)
 	require.NoError(t, err)
 	require.Equal(t, model.JobAttemptStatusLeaseExpired, attempts[0].Status)
-	_, err = ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: recovered.Attempt.ID, ClaimToken: recoveredToken, Kind: store.JobCompletionSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)})
+	_, err = ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: recovered.Attempt.ID, ClaimToken: recoveredToken, Kind: store.JobCompletionSucceeded, Result: json.RawMessage(`{}`)})
 	require.NoError(t, err)
 
 	exhaustedAt := model.NowUTC().Add(-time.Minute)
-	exhausted, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, json.RawMessage(`{"user_id":"`+model.NewUserID().String()+`"}`), "user:exhausted", exhaustedAt, exhaustedAt, 1)
+	exhausted, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, json.RawMessage(`{"user_id":"`+model.NewUserID().String()+`"}`), "user:exhausted", exhaustedAt, exhaustedAt, 1)
 	require.NoError(t, err)
 	_, _, err = ss.Job().Enqueue(ctx, &store.JobEnqueue{Job: exhausted})
 	require.NoError(t, err)
@@ -176,7 +175,7 @@ func TestJobStore(t *testing.T, ss store.Store) {
 	repairToken := mustClaimToken(t)
 	repairClaim, err := ss.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{repair.Type}, NodeID: "repair-node", ClaimToken: repairToken, LeaseDuration: time.Minute})
 	require.NoError(t, err)
-	_, err = ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: repairClaim.Attempt.ID, ClaimToken: repairToken, Kind: store.JobCompletionSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)})
+	_, err = ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: repairClaim.Attempt.ID, ClaimToken: repairToken, Kind: store.JobCompletionSucceeded, Result: json.RawMessage(`{}`)})
 	require.NoError(t, err)
 
 	permanentAt := model.NowUTC().Add(-time.Second)
@@ -187,7 +186,7 @@ func TestJobStore(t *testing.T, ss store.Store) {
 	permanentToken := mustClaimToken(t)
 	permanentClaim, err := ss.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{model.JobTypeCleanup}, NodeID: "cleanup-node", ClaimToken: permanentToken, LeaseDuration: time.Minute})
 	require.NoError(t, err)
-	terminalPermanent, err := ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: permanentClaim.Attempt.ID, ClaimToken: permanentToken, Kind: store.JobCompletionSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)})
+	terminalPermanent, err := ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: permanentClaim.Attempt.ID, ClaimToken: permanentToken, Kind: store.JobCompletionSucceeded, Result: json.RawMessage(`{}`)})
 	require.NoError(t, err)
 	duplicatePermanent, inserted, err := ss.Job().Enqueue(ctx, &store.JobEnqueue{Job: mustPermanentJob(t, "cleanup:2026-08-10", permanentAt)})
 	require.NoError(t, err)
@@ -266,14 +265,14 @@ func saveJobMutationAudit(t *testing.T, ctx context.Context, ss store.Store, job
 
 func mustJob(t *testing.T, dedupe string, at time.Time) *model.Job {
 	t.Helper()
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, json.RawMessage(`{"user_id":"`+model.NewUserID().String()+`"}`), dedupe, at, at, 3)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, json.RawMessage(`{"user_id":"`+model.NewUserID().String()+`"}`), dedupe, at, at, 3)
 	require.NoError(t, err)
 	return job
 }
 
 func mustPermanentJob(t *testing.T, dedupe string, at time.Time) *model.Job {
 	t.Helper()
-	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeCleanup, 1, json.RawMessage(`{}`), dedupe, model.JobDedupePermanent, at, at, 3)
+	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeCleanup, json.RawMessage(`{}`), dedupe, model.JobDedupePermanent, at, at, 3)
 	require.NoError(t, err)
 	return job
 }

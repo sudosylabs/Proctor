@@ -14,29 +14,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDefaultProfilePictureCommandIsVersionedTypedAndStrict(t *testing.T) {
+func TestDefaultProfilePictureCommandIsTypedAndStrict(t *testing.T) {
 	t.Parallel()
 	userID := NewUserID()
-	document, err := EncodeDefaultProfilePictureCommand(DefaultProfilePictureCommandV1{UserID: userID})
+	document, err := EncodeDefaultProfilePictureCommand(DefaultProfilePictureCommand{UserID: userID})
 	require.NoError(t, err)
-	decoded, err := DecodeDefaultProfilePictureCommand(1, document)
+	decoded, err := DecodeDefaultProfilePictureCommand(document)
 	require.NoError(t, err, "DecodeDefaultProfilePictureCommand() = %#v", decoded)
 	require.Equal(t, userID, decoded.UserID, "DecodeDefaultProfilePictureCommand() = %#v", decoded)
 
 	tests := []struct {
 		name     string
-		version  int
 		document json.RawMessage
 	}{
-		{name: "unsupported version", version: 2, document: document},
-		{name: "unknown field", version: 1, document: json.RawMessage(`{"user_id":"` + userID.String() + `","extra":true}`)},
-		{name: "invalid user ID", version: 1, document: json.RawMessage(`{"user_id":"bad"}`)},
-		{name: "trailing document", version: 1, document: append(append(json.RawMessage(nil), document...), []byte(` {}`)...)},
+		{name: "unknown field", document: json.RawMessage(`{"user_id":"` + userID.String() + `","extra":true}`)},
+		{name: "invalid user ID", document: json.RawMessage(`{"user_id":"bad"}`)},
+		{name: "trailing document", document: append(append(json.RawMessage(nil), document...), []byte(` {}`)...)},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := DecodeDefaultProfilePictureCommand(test.version, test.document)
+			_, err := DecodeDefaultProfilePictureCommand(test.document)
 			require.Error(t, err, "DecodeDefaultProfilePictureCommand() accepted invalid input")
 		})
 	}

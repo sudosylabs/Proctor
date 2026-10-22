@@ -393,7 +393,6 @@ func TestOnboardingImportExecutionJobResumesSafeTerminalCheckpointAcrossWorkers(
 	id := model.NewOnboardingImportID()
 	job, err := newOnboardingImportJob(model.JobTypeOnboardingImportExecute, id, at)
 	require.NoError(t, err)
-	job.CheckpointVersion = 1
 	job.Checkpoint = json.RawMessage(`{"after_row":41,"processed":37}`)
 	service := &onboardingImportService{imports: onboardingImportPersistenceFake{value: &store.OnboardingImport{ID: id, State: model.OnboardingImportCompleted, ValidRows: 37}}}
 	handler := jobhandler.NewOnboardingImportExecuteDescriptor(onboardingImportJobs{service: service}).Handler
@@ -403,7 +402,6 @@ func TestOnboardingImportExecutionJobResumesSafeTerminalCheckpointAcrossWorkers(
 			return nil
 		}, nil))
 		require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "worker %d outcome = %#v", worker, outcome)
-		require.Equal(t, 1, outcome.ResultVersion, "worker %d outcome = %#v", worker, outcome)
 		require.Equal(t, `{"after_row":41,"processed":37}`, string(outcome.Result), "worker %d outcome = %#v", worker, outcome)
 	}
 

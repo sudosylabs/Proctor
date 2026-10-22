@@ -66,8 +66,8 @@ func expiryWorkerFixture(t *testing.T) (retentionExpiryHandler, *expiryWorkerFak
 		f.page.Items = append(f.page.Items, model.RetentionExpiryRecord{Kind: model.RetentionExpiryAudit, ID: id, EventAt: at.Add(-48 * time.Hour), EligibleAt: model.OptionalTimeFrom(at.Add(-24 * time.Hour))})
 	}
 	queue := &jobHistoryCleanerFake{}
-	document, _ := json.Marshal(RetentionExpiryCommandV1{Kind: model.RetentionExpiryAudit, BatchSize: 2})
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeRetentionExpire, 1, document, "expiry-test", at, at, 5)
+	document, _ := json.Marshal(RetentionExpiryCommand{Kind: model.RetentionExpiryAudit, BatchSize: 2})
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeRetentionExpire, document, "expiry-test", at, at, 5)
 	require.NoError(t, err)
 	return retentionExpiryHandler{records: f, audit: f, jobs: queue, now: func() time.Time { return at }}, f, queue, job
 }
@@ -87,7 +87,6 @@ func TestRetentionExpiryWorkerBudgetContinuationAndUnknownCheckpoint(t *testing.
 		if checkpointCount == 3 {
 			return errors.New("checkpoint outcome unknown")
 		}
-		job.CheckpointVersion = cp.Version
 		job.Checkpoint = cp.Document
 		return nil
 	})
@@ -99,7 +98,7 @@ func TestRetentionExpiryWorkerBudgetContinuationAndUnknownCheckpoint(t *testing.
 	require.Equal(t, jobengine.OutcomeSucceeded, retry.Kind, "retry=%#v calls=%d continuations", retry, len(f.reconciliations))
 	require.Len(t, f.reconciliations, 2, "retry=%#v calls=%d continuations", retry, len(f.reconciliations))
 	require.Len(t, queue.enqueued, 1, "retry=%#v calls=%d continuations", retry, len(f.reconciliations))
-	var command RetentionExpiryCommandV1
+	var command RetentionExpiryCommand
 	require.NoError(t, json.Unmarshal(queue.enqueued[0].Command, &command))
 	require.Equal(t, f.page.Items[0].ID, command.AfterID)
 	require.True(t, command.Before.Equal(f.page.Before))
@@ -149,7 +148,7 @@ func TestRetentionExpiryProposerDeduplicatesEachKindAndHour(t *testing.T) {
 	}
 	require.Len(t, queue.enqueued, 3, "duplicate or missing kind occurrence")
 	for _, j := range queue.enqueued {
-		var c RetentionExpiryCommandV1
+		var c RetentionExpiryCommand
 		require.NoError(t, json.Unmarshal(j.Command, &c), "invalid occurrence")
 		require.True(t, c.Kind.IsValid(), "invalid occurrence")
 		require.Equal(t, retentionJobMaximumBatch, c.BatchSize, "invalid occurrence")
@@ -170,7 +169,7 @@ func (f *expiryWorkerFake) ReconcileCleanupAuditExpiry(_ context.Context, input 
 func TestRetentionExpiryCleanupBatchUnknownOutcomeKeepsBudgetAndSnapshot(t *testing.T) {
 	t.Parallel()
 	h, f, queue, job := expiryWorkerFixture(t)
-	job.Command, _ = json.Marshal(RetentionExpiryCommandV1{Kind: model.RetentionExpiryAudit, CleanupAudit: true, BatchSize: 2})
+	job.Command, _ = json.Marshal(RetentionExpiryCommand{Kind: model.RetentionExpiryAudit, CleanupAudit: true, BatchSize: 2})
 	f.cleanupErr = errors.New("commit outcome unknown")
 	units := 0
 	e := testJobExecution(job, func(_ context.Context, n, limit int) (bool, error) {
@@ -178,7 +177,6 @@ func TestRetentionExpiryCleanupBatchUnknownOutcomeKeepsBudgetAndSnapshot(t *test
 		job.WorkReserved += n
 		return true, nil
 	}, func(_ context.Context, cp jobengine.CheckpointValue) error {
-		job.CheckpointVersion = cp.Version
 		job.Checkpoint = cp.Document
 		return nil
 	})
@@ -191,7 +189,7 @@ func TestRetentionExpiryCleanupBatchUnknownOutcomeKeepsBudgetAndSnapshot(t *test
 	require.Equal(t, jobengine.OutcomeSucceeded, o.Kind, "uncertain batch reset its budget")
 	require.Equal(t, 1, f.cleanupCalls, "uncertain batch reset its budget")
 	require.Len(t, queue.enqueued, 1, "uncertain batch reset its budget")
-	var next RetentionExpiryCommandV1
+	var next RetentionExpiryCommand
 	require.NoError(t, json.Unmarshal(queue.enqueued[0].Command, &next), "batch continuation widened its snapshot or skipped uncertain records")
 	require.True(t, next.CleanupAudit, "batch continuation widened its snapshot or skipped uncertain records")
 	require.True(t, next.Before.Equal(f.page.Before), "batch continuation widened its snapshot or skipped uncertain records")

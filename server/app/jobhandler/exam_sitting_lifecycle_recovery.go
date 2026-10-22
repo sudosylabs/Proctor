@@ -12,7 +12,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"time"
 
@@ -26,34 +25,36 @@ const (
 	examSittingLifecycleRecoveryPageSize    = 100
 )
 
-type ExamSittingLifecycleRecoveryCommandV1 struct {
+// ExamSittingLifecycleRecoveryCommand is the immutable command of the Exam Sitting lifecycle recovery Job.
+type ExamSittingLifecycleRecoveryCommand struct {
 	WorkLimit int `json:"work_limit"`
 }
 
-type ExamSittingLifecycleRecoveryCheckpointV1 struct {
+// ExamSittingLifecycleRecoveryCheckpoint is the resumable checkpoint of the Exam Sitting lifecycle recovery Job.
+type ExamSittingLifecycleRecoveryCheckpoint struct {
 	AfterDueAt     time.Time           `json:"after_due_at,omitempty"`
 	AfterSittingID model.ExamSittingID `json:"after_sitting_id,omitempty"`
 	Processed      int64               `json:"processed"`
 	Changed        int64               `json:"changed"`
 }
 
-type ExamSittingLifecycleRecoveryResultV1 struct {
+// ExamSittingLifecycleRecoveryResult is the safe result of the Exam Sitting lifecycle recovery Job.
+type ExamSittingLifecycleRecoveryResult struct {
 	Processed int64 `json:"processed"`
 	Changed   int64 `json:"changed"`
 }
 
-func EncodeExamSittingLifecycleRecoveryCommand(value ExamSittingLifecycleRecoveryCommandV1) (json.RawMessage, error) {
+// EncodeExamSittingLifecycleRecoveryCommand validates and encodes an Exam Sitting lifecycle recovery Job command.
+func EncodeExamSittingLifecycleRecoveryCommand(value ExamSittingLifecycleRecoveryCommand) (json.RawMessage, error) {
 	if value.WorkLimit < 1 || value.WorkLimit > maximumExamSittingLifecycleRecoveryWork {
 		return nil, errors.New("Exam Sitting lifecycle recovery work limit is invalid")
 	}
 	return json.Marshal(value)
 }
 
-func DecodeExamSittingLifecycleRecoveryCommand(version int, document json.RawMessage) (ExamSittingLifecycleRecoveryCommandV1, error) {
-	var value ExamSittingLifecycleRecoveryCommandV1
-	if version != 1 {
-		return value, fmt.Errorf("unsupported Exam Sitting lifecycle recovery command version %d", version)
-	}
+// DecodeExamSittingLifecycleRecoveryCommand strictly decodes and validates an Exam Sitting lifecycle recovery Job command.
+func DecodeExamSittingLifecycleRecoveryCommand(document json.RawMessage) (ExamSittingLifecycleRecoveryCommand, error) {
+	var value ExamSittingLifecycleRecoveryCommand
 	if err := decodeStrictUniqueJobDocument(document, &value); err != nil {
 		return value, err
 	}
@@ -63,25 +64,24 @@ func DecodeExamSittingLifecycleRecoveryCommand(version int, document json.RawMes
 	return value, nil
 }
 
-func EncodeExamSittingLifecycleRecoveryCheckpoint(value ExamSittingLifecycleRecoveryCheckpointV1) (json.RawMessage, error) {
+// EncodeExamSittingLifecycleRecoveryCheckpoint validates and encodes an Exam Sitting lifecycle recovery Job checkpoint.
+func EncodeExamSittingLifecycleRecoveryCheckpoint(value ExamSittingLifecycleRecoveryCheckpoint) (json.RawMessage, error) {
 	if err := validateExamSittingLifecycleRecoveryCheckpoint(value); err != nil {
 		return nil, err
 	}
 	return json.Marshal(value)
 }
 
-func DecodeExamSittingLifecycleRecoveryCheckpoint(version int, document json.RawMessage) (ExamSittingLifecycleRecoveryCheckpointV1, error) {
-	var value ExamSittingLifecycleRecoveryCheckpointV1
-	if version != 1 {
-		return value, fmt.Errorf("unsupported Exam Sitting lifecycle recovery checkpoint version %d", version)
-	}
+// DecodeExamSittingLifecycleRecoveryCheckpoint strictly decodes and validates an Exam Sitting lifecycle recovery Job checkpoint.
+func DecodeExamSittingLifecycleRecoveryCheckpoint(document json.RawMessage) (ExamSittingLifecycleRecoveryCheckpoint, error) {
+	var value ExamSittingLifecycleRecoveryCheckpoint
 	if err := decodeStrictUniqueJobDocument(document, &value); err != nil {
 		return value, err
 	}
 	return value, validateExamSittingLifecycleRecoveryCheckpoint(value)
 }
 
-func validateExamSittingLifecycleRecoveryCheckpoint(value ExamSittingLifecycleRecoveryCheckpointV1) error {
+func validateExamSittingLifecycleRecoveryCheckpoint(value ExamSittingLifecycleRecoveryCheckpoint) error {
 	hasTime, hasID := !value.AfterDueAt.IsZero(), !value.AfterSittingID.IsZero()
 	if hasTime != hasID || (hasTime && (value.AfterDueAt.Location() != time.UTC || !value.AfterSittingID.IsValid())) ||
 		value.Processed < 0 || value.Changed < 0 || value.Changed > value.Processed {
@@ -147,13 +147,13 @@ func (h examSittingLifecycleRecoveryHandler) Run(ctx context.Context, execution 
 		!execution.Job.ID.IsValid() || !execution.Attempt.ID.IsValid() {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("Exam Sitting lifecycle recovery execution is incomplete"))
 	}
-	command, err := DecodeExamSittingLifecycleRecoveryCommand(execution.Job.CommandVersion, execution.Job.Command)
+	command, err := DecodeExamSittingLifecycleRecoveryCommand(execution.Job.Command)
 	if err != nil {
 		return jobengine.PermanentFailure("job.command.invalid", err)
 	}
-	checkpoint := ExamSittingLifecycleRecoveryCheckpointV1{}
+	checkpoint := ExamSittingLifecycleRecoveryCheckpoint{}
 	if len(execution.Job.Checkpoint) != 0 {
-		checkpoint, err = DecodeExamSittingLifecycleRecoveryCheckpoint(execution.Job.CheckpointVersion, execution.Job.Checkpoint)
+		checkpoint, err = DecodeExamSittingLifecycleRecoveryCheckpoint(execution.Job.Checkpoint)
 		if err != nil {
 			return jobengine.PermanentFailure("job.checkpoint.invalid", err)
 		}
@@ -207,7 +207,6 @@ func (h examSittingLifecycleRecoveryHandler) Run(ctx context.Context, execution 
 				return jobengine.PermanentFailure("job.invariant_failed", encodeErr)
 			}
 			if checkpointErr := execution.Checkpoint(ctx, jobengine.CheckpointValue{
-				Version:  1,
 				Progress: &model.JobProgress{Current: checkpoint.Processed, Total: int64(command.WorkLimit), Stage: "reconciling"},
 				Document: document,
 			}); checkpointErr != nil {
@@ -225,7 +224,7 @@ func (h examSittingLifecycleRecoveryHandler) Run(ctx context.Context, execution 
 	return examSittingLifecycleRecoverySucceeded(checkpoint)
 }
 
-func validateExamSittingLifecycleDue(after ExamSittingLifecycleRecoveryCheckpointV1, due store.ExamSittingLifecycleDue) error {
+func validateExamSittingLifecycleDue(after ExamSittingLifecycleRecoveryCheckpoint, due store.ExamSittingLifecycleDue) error {
 	if due.Value == nil || due.Value.Sitting == nil || due.DueAt.IsZero() || due.DueAt.Location() != time.UTC ||
 		due.Value.Sitting.Validate() != nil {
 		return errors.New("Exam Sitting lifecycle recovery returned an invalid due Sitting")
@@ -237,9 +236,9 @@ func validateExamSittingLifecycleDue(after ExamSittingLifecycleRecoveryCheckpoin
 	return nil
 }
 
-func examSittingLifecycleRecoverySucceeded(checkpoint ExamSittingLifecycleRecoveryCheckpointV1) jobengine.Outcome {
-	document, err := json.Marshal(ExamSittingLifecycleRecoveryResultV1{Processed: checkpoint.Processed, Changed: checkpoint.Changed})
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: document, Err: err}
+func examSittingLifecycleRecoverySucceeded(checkpoint ExamSittingLifecycleRecoveryCheckpoint) jobengine.Outcome {
+	document, err := json.Marshal(ExamSittingLifecycleRecoveryResult{Processed: checkpoint.Processed, Changed: checkpoint.Changed})
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: document, Err: err}
 }
 
 type examSittingLifecycleRecoveryProposer struct {
@@ -251,14 +250,14 @@ func (p examSittingLifecycleRecoveryProposer) Propose(ctx context.Context, occur
 	if p.jobs == nil || p.now == nil {
 		return errors.New("Exam Sitting lifecycle recovery proposer dependencies are required")
 	}
-	command, err := EncodeExamSittingLifecycleRecoveryCommand(ExamSittingLifecycleRecoveryCommandV1{WorkLimit: maximumExamSittingLifecycleRecoveryWork})
+	command, err := EncodeExamSittingLifecycleRecoveryCommand(ExamSittingLifecycleRecoveryCommand{WorkLimit: maximumExamSittingLifecycleRecoveryWork})
 	if err != nil {
 		return err
 	}
 	at := model.TimeUTC(p.now())
 	key := "exam-sitting-lifecycle-recovery:" + model.TimeUTC(occurrence).Format("2006-01-02")
 	record, err := model.NewJobWithDedupePolicy(
-		model.NewJobID(), model.JobTypeExamSittingLifecycleRecovery, 1, command, key,
+		model.NewJobID(), model.JobTypeExamSittingLifecycleRecovery, command, key,
 		model.JobDedupePermanent, at, at, 5,
 	)
 	if err != nil {
@@ -270,9 +269,8 @@ func (p examSittingLifecycleRecoveryProposer) Propose(ctx context.Context, occur
 
 func examSittingLifecycleRecoveryDescriptor(handler jobengine.Handler) jobengine.Descriptor {
 	return jobengine.Descriptor{
-		Type:            model.JobTypeExamSittingLifecycleRecovery,
-		CommandVersions: []int{1}, CheckpointVersions: []int{1}, ResultVersions: []int{1},
-		ProgressStages:   []string{"reconciling"},
+		Type:        model.JobTypeExamSittingLifecycleRecovery,
+		Checkpoints: true, ProgressStages: []string{"reconciling"},
 		PublicErrorCodes: []string{"dependency.unavailable", "job.checkpoint.invalid", "job.command.invalid", "job.invariant_failed"},
 		Timeout:          10 * time.Minute, Concurrency: 1, MaximumAttempts: 5,
 		LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second,

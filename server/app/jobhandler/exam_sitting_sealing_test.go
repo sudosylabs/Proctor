@@ -43,14 +43,14 @@ func TestExamSittingSealingJobCheckpointsEachAttemptThenCloses(t *testing.T) {
 	require.Len(t, checkpoints, 2, "outcome=%#v sealed=%d checkpoints=%d finish=%d continuations", outcome, len(service.sealed), len(checkpoints), service.finishCalls)
 	require.Equal(t, 1, service.finishCalls, "outcome=%#v sealed=%d checkpoints=%d finish=%d continuations", outcome, len(service.sealed), len(checkpoints), service.finishCalls)
 	require.Equal(t, 0, service.continuationCalls, "outcome=%#v sealed=%d checkpoints=%d finish=%d continuations", outcome, len(service.sealed), len(checkpoints), service.finishCalls)
-	var result ExamSittingSealingResultV1
+	var result ExamSittingSealingResult
 	err := json.Unmarshal(outcome.Result, &result)
 	require.NoError(t, err, "result=%#v err", result)
 	require.Equal(t, int64(2), result.Processed, "result=%#v err", result)
 	require.Equal(t, int64(2), result.Sealed, "result=%#v err", result)
 	require.False(t, result.Continued, "result=%#v err", result)
 	require.Equal(t, model.ExamSittingClosed, result.State, "result=%#v err", result)
-	checkpoint, err := decodeExamSittingSealingCheckpoint(checkpoints[1].Version, checkpoints[1].Document)
+	checkpoint, err := decodeExamSittingSealingCheckpoint(checkpoints[1].Document)
 	require.NoError(t, err, "checkpoint=%#v err", checkpoint)
 	require.Equal(t, targets[1].AttemptID, checkpoint.AfterAttemptID, "checkpoint=%#v err", checkpoint)
 	require.Equal(t, int64(2), checkpoint.Processed, "checkpoint=%#v err", checkpoint)
@@ -73,7 +73,7 @@ func TestExamSittingSealingJobBoundsPassAndDurablyContinues(t *testing.T) {
 	require.Equal(t, 1, service.continuationCalls, "outcome=%#v sealed=%d finish=%d continuations", outcome, len(service.sealed), service.finishCalls)
 	require.Equal(t, sitting.ID, service.continuationSittingID, "outcome=%#v sealed=%d finish=%d continuations", outcome, len(service.sealed), service.finishCalls)
 	require.Equal(t, job.ID, service.continuationParentID, "outcome=%#v sealed=%d finish=%d continuations", outcome, len(service.sealed), service.finishCalls)
-	var result ExamSittingSealingResultV1
+	var result ExamSittingSealingResult
 	err := json.Unmarshal(outcome.Result, &result)
 	require.NoError(t, err, "result=%#v err", result)
 	require.True(t, result.Continued, "result=%#v err", result)
@@ -89,7 +89,7 @@ func TestExamSittingSealingDescriptorIsBoundedCheckpointedAndNonCancelable(t *te
 	require.Equal(t, model.JobTypeExamSittingSealing, descriptor.Type)
 	require.False(t, descriptor.Cancelable)
 	require.Equal(t, jobengine.VisibilityOperator, descriptor.Visibility)
-	require.Len(t, descriptor.CheckpointVersions, 1)
+	require.True(t, descriptor.Checkpoints)
 	require.Len(t, descriptor.ProgressStages, 1)
 	require.Equal(t, "sealing", descriptor.ProgressStages[0])
 	require.Equal(t, 8, descriptor.MaximumAttempts)
@@ -141,11 +141,11 @@ func TestExamSittingSealingJobRecoversReservationAheadOfCheckpoint(t *testing.T)
 	service := &examSittingSealingFake{targets: targets, finish: sealingLifecycleResult(sitting, true)}
 	job := mustExamSittingSealingJob(t, sitting.ID, at)
 	job.WorkReserved = 1
-	var checkpoints []ExamSittingSealingCheckpointV1
+	var checkpoints []ExamSittingSealingCheckpoint
 	reserved := 0
 	execution := jobengine.NewExecution(job, &model.JobAttempt{ID: model.NewJobAttemptID()},
 		func(_ context.Context, value jobengine.CheckpointValue) error {
-			checkpoint, err := decodeExamSittingSealingCheckpoint(value.Version, value.Document)
+			checkpoint, err := decodeExamSittingSealingCheckpoint(value.Document)
 			require.NoError(t, err)
 			checkpoints = append(checkpoints, checkpoint)
 			return nil
@@ -166,7 +166,7 @@ func TestExamSittingSealingJobRecoversReservationAheadOfCheckpoint(t *testing.T)
 	require.Equal(t, int64(2), checkpoints[1].Processed)
 	require.Equal(t, int64(1), checkpoints[1].Sealed)
 	require.Equal(t, targets[0].AttemptID, checkpoints[1].AfterAttemptID)
-	var result ExamSittingSealingResultV1
+	var result ExamSittingSealingResult
 	err := json.Unmarshal(outcome.Result, &result)
 	require.NoError(t, err, "result=%#v err", result)
 	require.Equal(t, int64(2), result.Processed, "result=%#v err", result)
@@ -225,9 +225,9 @@ func (f *examSittingSealingFake) EnqueueExamSittingSealingContinuationFromJob(_ 
 
 func mustExamSittingSealingJob(t *testing.T, sittingID model.ExamSittingID, at time.Time) *model.Job {
 	t.Helper()
-	command, err := model.EncodeExamSittingLifecycleCommand(model.ExamSittingLifecycleCommandV1{ExamSittingID: sittingID})
+	command, err := model.EncodeExamSittingLifecycleCommand(model.ExamSittingLifecycleCommand{ExamSittingID: sittingID})
 	require.NoError(t, err)
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeExamSittingSealing, 1, command, "sealing-test", at, at, 8)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeExamSittingSealing, command, "sealing-test", at, at, 8)
 	require.NoError(t, err)
 	return job
 }

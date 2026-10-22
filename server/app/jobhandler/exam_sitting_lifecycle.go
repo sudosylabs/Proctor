@@ -22,10 +22,10 @@ type ExamSittingLifecycleReconciler interface {
 	ReconcileExamSittingLifecycleFromJob(context.Context, model.ExamSittingID, model.JobID, model.JobAttemptID) (*store.ExamSittingLifecycleResult, error)
 }
 
-// ExamSittingLifecycleJobResultV1 is deliberately limited to safe lifecycle
+// ExamSittingLifecycleJobResult is deliberately limited to safe lifecycle
 // state. The immutable command, audit documents, and private manager reasons
 // never enter the generic Job result.
-type ExamSittingLifecycleJobResultV1 struct {
+type ExamSittingLifecycleJobResult struct {
 	Changed    bool                                     `json:"changed"`
 	Transition store.ExamSittingLifecycleTransitionCode `json:"transition,omitempty"`
 	State      model.ExamSittingState                   `json:"state"`
@@ -41,7 +41,7 @@ func (h examSittingLifecycleHandler) Run(ctx context.Context, execution jobengin
 		!execution.Job.ID.IsValid() || !execution.Attempt.ID.IsValid() {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("Exam Sitting lifecycle Job execution is incomplete"))
 	}
-	command, err := model.DecodeExamSittingLifecycleCommand(execution.Job.CommandVersion, execution.Job.Command)
+	command, err := model.DecodeExamSittingLifecycleCommand(execution.Job.Command)
 	if err != nil {
 		return jobengine.PermanentFailure("job.command.invalid", err)
 	}
@@ -54,11 +54,11 @@ func (h examSittingLifecycleHandler) Run(ctx context.Context, execution jobengin
 	if err = validateExamSittingLifecycleJobResult(command.ExamSittingID, result); err != nil {
 		return jobengine.PermanentFailure("job.invariant_failed", err)
 	}
-	document, err := json.Marshal(ExamSittingLifecycleJobResultV1{
+	document, err := json.Marshal(ExamSittingLifecycleJobResult{
 		Changed: result.Changed, Transition: result.Transition,
 		State: result.Value.Sitting.State, Revision: result.Value.Sitting.Revision,
 	})
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: document, Err: err}
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: document, Err: err}
 }
 
 func validateExamSittingLifecycleJobResult(sittingID model.ExamSittingID, result *store.ExamSittingLifecycleResult) error {
@@ -105,8 +105,7 @@ func examSittingLifecycleFailure(err error) jobengine.Outcome {
 
 func examSittingLifecycleDescriptor(handler jobengine.Handler) jobengine.Descriptor {
 	return jobengine.Descriptor{
-		Type:            model.JobTypeExamSittingLifecycle,
-		CommandVersions: []int{1}, ResultVersions: []int{1},
+		Type:             model.JobTypeExamSittingLifecycle,
 		PublicErrorCodes: []string{"dependency.unavailable", "job.command.invalid", "job.invariant_failed"},
 		Timeout:          time.Minute, Concurrency: 4, MaximumAttempts: 8,
 		LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second,
@@ -165,7 +164,7 @@ func (f ExamSittingLifecycleJobFactory) jobOfType(sittingID model.ExamSittingID,
 	if f.now == nil || f.newID == nil {
 		return nil, errors.New("Exam Sitting lifecycle Job dependencies are required")
 	}
-	command, err := model.EncodeExamSittingLifecycleCommand(model.ExamSittingLifecycleCommandV1{ExamSittingID: sittingID})
+	command, err := model.EncodeExamSittingLifecycleCommand(model.ExamSittingLifecycleCommand{ExamSittingID: sittingID})
 	if err != nil {
 		return nil, err
 	}
@@ -174,5 +173,5 @@ func (f ExamSittingLifecycleJobFactory) jobOfType(sittingID model.ExamSittingID,
 		return nil, err
 	}
 	at := model.TimeUTC(f.now())
-	return model.NewJob(f.newID(), jobType, 1, command, dedupeKey, at, model.TimeUTC(availableAt), 8)
+	return model.NewJob(f.newID(), jobType, command, dedupeKey, at, model.TimeUTC(availableAt), 8)
 }

@@ -55,9 +55,9 @@ func TestDefaultProfilePictureReconciliationUsesBoundedPagesAndSafeCheckpoints(t
 	lister := &reconciliationUserListerFake{users: users}
 	defaults := &reconciliationDefaultJobsFake{}
 	handler := defaultProfilePictureReconciliationHandler{users: lister, defaults: defaults, now: func() time.Time { return at }}
-	command, err := EncodeDefaultProfilePictureReconciliationCommand(DefaultProfilePictureReconciliationCommandV1{BatchSize: 2})
+	command, err := EncodeDefaultProfilePictureReconciliationCommand(DefaultProfilePictureReconciliationCommand{BatchSize: 2})
 	require.NoError(t, err)
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureReconcile, 1, command, "reconcile:2026-08-10", at, at, 5)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureReconcile, command, "reconcile:2026-08-10", at, at, 5)
 	require.NoError(t, err)
 	var checkpoints []jobengine.CheckpointValue
 	execution := testJobExecution(job, allowJobWorkReservation(), func(_ context.Context, value jobengine.CheckpointValue) error {
@@ -74,7 +74,7 @@ func TestDefaultProfilePictureReconciliationUsesBoundedPagesAndSafeCheckpoints(t
 	require.Equal(t, 2, lister.calls[0].Limit)
 	require.True(t, lister.calls[0].MissingDefaultProfilePicture)
 	require.True(t, lister.calls[0].IncludeDisabled)
-	var final DefaultProfilePictureReconciliationCheckpointV1
+	var final DefaultProfilePictureReconciliationCheckpoint
 	err = json.Unmarshal(checkpoints[0].Document, &final)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), final.Processed, "final checkpoint")
@@ -92,13 +92,12 @@ func TestDefaultProfilePictureReconciliationDoesNotExceedCommittedBatchOnRetry(t
 	lister := &reconciliationUserListerFake{users: users}
 	defaults := &reconciliationDefaultJobsFake{}
 	handler := defaultProfilePictureReconciliationHandler{users: lister, defaults: defaults, now: func() time.Time { return at }}
-	command, err := EncodeDefaultProfilePictureReconciliationCommand(DefaultProfilePictureReconciliationCommandV1{BatchSize: 2})
+	command, err := EncodeDefaultProfilePictureReconciliationCommand(DefaultProfilePictureReconciliationCommand{BatchSize: 2})
 	require.NoError(t, err)
-	checkpoint, err := EncodeDefaultProfilePictureReconciliationCheckpoint(DefaultProfilePictureReconciliationCheckpointV1{AfterUsername: users[1].Username, AfterUserID: users[1].ID, Processed: 2})
+	checkpoint, err := EncodeDefaultProfilePictureReconciliationCheckpoint(DefaultProfilePictureReconciliationCheckpoint{AfterUsername: users[1].Username, AfterUserID: users[1].ID, Processed: 2})
 	require.NoError(t, err)
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureReconcile, 1, command, "reconcile:2026-08-10", at, at, 5)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureReconcile, command, "reconcile:2026-08-10", at, at, 5)
 	require.NoError(t, err)
-	job.CheckpointVersion = 1
 	job.Checkpoint = checkpoint
 	err = job.Validate()
 	require.NoError(t, err)
@@ -115,7 +114,7 @@ func TestDefaultProfilePictureReconciliationDoesNotRepeatReservedWorkAfterCrash(
 	at := time.Date(2026, time.August, 10, 8, 0, 0, 0, time.UTC)
 	lister := &reconciliationUserListerFake{users: []*model.User{reconciliationUser(t, "alpha", at)}}
 	defaults := &reconciliationDefaultJobsFake{}
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureReconcile, 1, json.RawMessage(`{"batch_size":1}`), "daily", at, at, 5)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureReconcile, json.RawMessage(`{"batch_size":1}`), "daily", at, at, 5)
 	require.NoError(t, err)
 	job.WorkReserved = 1
 	outcome := (defaultProfilePictureReconciliationHandler{users: lister, defaults: defaults, now: func() time.Time { return at }}).Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), nil))
@@ -127,11 +126,11 @@ func TestDefaultProfilePictureReconciliationDoesNotRepeatReservedWorkAfterCrash(
 func TestDefaultProfilePictureReconciliationCommandsAreBoundedAndStrict(t *testing.T) {
 	t.Parallel()
 
-	_, err := EncodeDefaultProfilePictureReconciliationCommand(DefaultProfilePictureReconciliationCommandV1{BatchSize: 0})
+	_, err := EncodeDefaultProfilePictureReconciliationCommand(DefaultProfilePictureReconciliationCommand{BatchSize: 0})
 	require.Error(t, err, "accepted zero batch size")
-	_, err = DecodeDefaultProfilePictureReconciliationCommand(1, json.RawMessage(`{"batch_size":10,"unknown":true}`))
+	_, err = DecodeDefaultProfilePictureReconciliationCommand(json.RawMessage(`{"batch_size":10,"unknown":true}`))
 	require.Error(t, err, "accepted unknown command field")
-	_, err = DecodeDefaultProfilePictureReconciliationCheckpoint(1, json.RawMessage(`{"processed":-1}`))
+	_, err = DecodeDefaultProfilePictureReconciliationCheckpoint(json.RawMessage(`{"processed":-1}`))
 	require.Error(t, err, "accepted invalid checkpoint")
 }
 

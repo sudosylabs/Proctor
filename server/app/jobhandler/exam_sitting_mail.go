@@ -34,16 +34,16 @@ func (h sittingMailExpansionHandler) Run(ctx context.Context, execution jobengin
 	if execution.Job == nil {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("Sitting mail expansion Job is missing"))
 	}
-	command, err := model.DecodeSittingMailExpansionCommand(execution.Job.CommandVersion, execution.Job.Command)
+	command, err := model.DecodeSittingMailExpansionCommand(execution.Job.Command)
 	if err != nil {
 		return jobengine.PermanentFailure("job.command.invalid", err)
 	}
 	if h.sittings == nil || h.mail == nil {
 		return jobengine.RetryableFailure("mail.sitting.unavailable", errors.New("Sitting mail expansion dependencies are unavailable"))
 	}
-	checkpoint := model.SittingMailExpansionCheckpointV1{}
+	checkpoint := model.SittingMailExpansionCheckpoint{}
 	if len(execution.Job.Checkpoint) != 0 {
-		checkpoint, err = model.DecodeSittingMailExpansionCheckpoint(execution.Job.CheckpointVersion, execution.Job.Checkpoint)
+		checkpoint, err = model.DecodeSittingMailExpansionCheckpoint(execution.Job.Checkpoint)
 		if err != nil {
 			return jobengine.PermanentFailure("job.checkpoint.invalid", err)
 		}
@@ -102,9 +102,8 @@ func (h sittingMailExpansionHandler) Run(ctx context.Context, execution jobengin
 			if encodeErr != nil {
 				return jobengine.PermanentFailure("job.checkpoint.invalid", encodeErr)
 			}
-			if checkpointErr := execution.Checkpoint(ctx, jobengine.CheckpointValue{Version: 1,
-				Progress: &model.JobProgress{Current: checkpoint.Expanded + checkpoint.Suppressed + checkpoint.Undeliverable,
-					Total: checkpoint.Expanded + checkpoint.Suppressed + checkpoint.Undeliverable, Stage: "expanding"}, Document: document}); checkpointErr != nil {
+			if checkpointErr := execution.Checkpoint(ctx, jobengine.CheckpointValue{Progress: &model.JobProgress{Current: checkpoint.Expanded + checkpoint.Suppressed + checkpoint.Undeliverable,
+				Total: checkpoint.Expanded + checkpoint.Suppressed + checkpoint.Undeliverable, Stage: "expanding"}, Document: document}); checkpointErr != nil {
 				return jobengine.RetryableFailure("mail.sitting.unavailable", checkpointErr)
 			}
 		}
@@ -118,10 +117,10 @@ func (h sittingMailExpansionHandler) Run(ctx context.Context, execution jobengin
 	return sittingMailExpansionSucceeded(checkpoint)
 }
 
-func sittingMailExpansionSucceeded(checkpoint model.SittingMailExpansionCheckpointV1) jobengine.Outcome {
-	document, err := model.EncodeSittingMailExpansionResult(model.SittingMailExpansionResultV1{
+func sittingMailExpansionSucceeded(checkpoint model.SittingMailExpansionCheckpoint) jobengine.Outcome {
+	document, err := model.EncodeSittingMailExpansionResult(model.SittingMailExpansionResult{
 		Expanded: checkpoint.Expanded, Suppressed: checkpoint.Suppressed, Undeliverable: checkpoint.Undeliverable})
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: document, Err: err}
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: document, Err: err}
 }
 
 func sittingMailExpansionDependencyOutcome(err error) jobengine.Outcome {
@@ -129,8 +128,8 @@ func sittingMailExpansionDependencyOutcome(err error) jobengine.Outcome {
 }
 
 func sittingMailExpansionDescriptor(handler sittingMailExpansionHandler) jobengine.Descriptor {
-	return jobengine.Descriptor{Type: model.JobTypeMailExpandSitting, CommandVersions: []int{1}, CheckpointVersions: []int{1},
-		ResultVersions: []int{1}, ProgressStages: []string{"expanding"},
+	return jobengine.Descriptor{Type: model.JobTypeMailExpandSitting, Checkpoints: true,
+		ProgressStages:   []string{"expanding"},
 		PublicErrorCodes: []string{"mail.sitting.bundle_unavailable", "mail.sitting.invalid", "mail.sitting.recipient_unavailable", "mail.sitting.unavailable"},
 		Timeout:          30 * time.Minute, Concurrency: 2, MaximumAttempts: model.MailMaximumAttempts,
 		LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: 30 * time.Second,

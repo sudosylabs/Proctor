@@ -1020,7 +1020,7 @@ func testUserCreation(input *model.User, credential *model.PasswordCredential) *
 	}
 	command := defaultProfilePictureCommand(user.ID)
 	job, _ := model.NewJob(
-		model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1,
+		model.NewJobID(), model.JobTypeProfilePictureGenerateDefault,
 		command, user.ID.String(), user.CreatedAt, user.CreatedAt, 8,
 	)
 	settings, _ := model.NewUserSettingsDocument(user.ID, model.NewUserSettingsRevision(), user.CreatedAt)

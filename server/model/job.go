@@ -79,28 +79,25 @@ type JobProgress struct {
 }
 
 type Job struct {
-	ID                JobID
-	Type              JobType
-	Status            JobStatus
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-	AvailableAt       time.Time
-	StartedAt         OptionalTime
-	CompletedAt       OptionalTime
-	CommandVersion    int
-	Command           json.RawMessage
-	CheckpointVersion int
-	Checkpoint        json.RawMessage
-	ResultVersion     int
-	Result            json.RawMessage
-	PublicErrorCode   string
-	DedupeKey         string
-	DedupePolicy      JobDedupePolicy
-	AttemptCount      int
-	MaximumAttempts   int
-	WorkReserved      int
-	Progress          *JobProgress
-	Revision          int64
+	ID              JobID
+	Type            JobType
+	Status          JobStatus
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	AvailableAt     time.Time
+	StartedAt       OptionalTime
+	CompletedAt     OptionalTime
+	Command         json.RawMessage
+	Checkpoint      json.RawMessage
+	Result          json.RawMessage
+	PublicErrorCode string
+	DedupeKey       string
+	DedupePolicy    JobDedupePolicy
+	AttemptCount    int
+	MaximumAttempts int
+	WorkReserved    int
+	Progress        *JobProgress
+	Revision        int64
 }
 
 type JobAttempt struct {
@@ -117,12 +114,12 @@ type JobAttempt struct {
 	PublicErrorCode string
 }
 
-func NewJob(id JobID, jobType JobType, commandVersion int, command json.RawMessage, dedupeKey string, createdAt, availableAt time.Time, maximumAttempts int) (*Job, error) {
-	return NewJobWithDedupePolicy(id, jobType, commandVersion, command, dedupeKey, JobDedupeActive, createdAt, availableAt, maximumAttempts)
+func NewJob(id JobID, jobType JobType, command json.RawMessage, dedupeKey string, createdAt, availableAt time.Time, maximumAttempts int) (*Job, error) {
+	return NewJobWithDedupePolicy(id, jobType, command, dedupeKey, JobDedupeActive, createdAt, availableAt, maximumAttempts)
 }
 
-func NewJobWithDedupePolicy(id JobID, jobType JobType, commandVersion int, command json.RawMessage, dedupeKey string, dedupePolicy JobDedupePolicy, createdAt, availableAt time.Time, maximumAttempts int) (*Job, error) {
-	job := &Job{ID: id, Type: jobType, Status: JobStatusQueued, CreatedAt: TimeUTC(createdAt), UpdatedAt: TimeUTC(createdAt), AvailableAt: TimeUTC(availableAt), CommandVersion: commandVersion, Command: cloneJSON(command), DedupeKey: strings.TrimSpace(dedupeKey), DedupePolicy: dedupePolicy, MaximumAttempts: maximumAttempts, Revision: 1}
+func NewJobWithDedupePolicy(id JobID, jobType JobType, command json.RawMessage, dedupeKey string, dedupePolicy JobDedupePolicy, createdAt, availableAt time.Time, maximumAttempts int) (*Job, error) {
+	job := &Job{ID: id, Type: jobType, Status: JobStatusQueued, CreatedAt: TimeUTC(createdAt), UpdatedAt: TimeUTC(createdAt), AvailableAt: TimeUTC(availableAt), Command: cloneJSON(command), DedupeKey: strings.TrimSpace(dedupeKey), DedupePolicy: dedupePolicy, MaximumAttempts: maximumAttempts, Revision: 1}
 	if err := job.Validate(); err != nil {
 		return nil, err
 	}
@@ -130,10 +127,10 @@ func NewJobWithDedupePolicy(id JobID, jobType JobType, commandVersion int, comma
 }
 
 func (j *Job) Validate() error {
-	if j == nil || !j.ID.IsValid() || !validJobType(j.Type) || !validJobStatus(j.Status) || j.CreatedAt.IsZero() || j.UpdatedAt.Before(j.CreatedAt) || j.AvailableAt.IsZero() || j.CommandVersion <= 0 || !validJobDocument(j.Command, false) || len(j.DedupeKey) == 0 || len(j.DedupeKey) > 255 || !validJobDedupePolicy(j.DedupePolicy) || j.AttemptCount < 0 || j.MaximumAttempts <= 0 || j.AttemptCount > j.MaximumAttempts || j.WorkReserved < 0 || j.Revision <= 0 {
+	if j == nil || !j.ID.IsValid() || !validJobType(j.Type) || !validJobStatus(j.Status) || j.CreatedAt.IsZero() || j.UpdatedAt.Before(j.CreatedAt) || j.AvailableAt.IsZero() || !validJobDocument(j.Command, false) || len(j.DedupeKey) == 0 || len(j.DedupeKey) > 255 || !validJobDedupePolicy(j.DedupePolicy) || j.AttemptCount < 0 || j.MaximumAttempts <= 0 || j.AttemptCount > j.MaximumAttempts || j.WorkReserved < 0 || j.Revision <= 0 {
 		return invalidModelError("Job.Validate", "job", "", "invalid job", "")
 	}
-	if !validJobDocument(j.Checkpoint, true) || (len(j.Checkpoint) > 0 && j.CheckpointVersion <= 0) || (len(j.Checkpoint) == 0 && j.CheckpointVersion != 0) || !validJobDocument(j.Result, true) || (len(j.Result) > 0 && j.ResultVersion <= 0) || (len(j.Result) == 0 && j.ResultVersion != 0) || !validPublicJobCode(j.PublicErrorCode) || !validJobProgress(j.Progress) {
+	if !validJobDocument(j.Checkpoint, true) || !validJobDocument(j.Result, true) || !validPublicJobCode(j.PublicErrorCode) || !validJobProgress(j.Progress) {
 		return invalidModelError("Job.Validate", "job", "", "invalid job result state", "")
 	}
 	terminal := j.Status == JobStatusSucceeded || j.Status == JobStatusFailed || j.Status == JobStatusCanceled
@@ -162,8 +159,8 @@ func (j *Job) Start(at time.Time) (*Job, error) {
 	return &result, result.Validate()
 }
 
-func (j *Job) UpdateProgress(progress *JobProgress, checkpointVersion int, checkpoint json.RawMessage, at time.Time) (*Job, error) {
-	if j == nil || (j.Status != JobStatusRunning && j.Status != JobStatusCancelRequested) || !validJobProgress(progress) || !validJobDocument(checkpoint, true) || (len(checkpoint) > 0) != (checkpointVersion > 0) || TimeUTC(at).Before(j.UpdatedAt) {
+func (j *Job) UpdateProgress(progress *JobProgress, checkpoint json.RawMessage, at time.Time) (*Job, error) {
+	if j == nil || (j.Status != JobStatusRunning && j.Status != JobStatusCancelRequested) || !validJobProgress(progress) || !validJobDocument(checkpoint, true) || TimeUTC(at).Before(j.UpdatedAt) {
 		return nil, invalidModelError("Job.UpdateProgress", "job", "", "job progress cannot be updated", "")
 	}
 	result := *j
@@ -174,19 +171,17 @@ func (j *Job) UpdateProgress(progress *JobProgress, checkpointVersion int, check
 		result.Progress = nil
 	}
 	result.Checkpoint = cloneJSON(checkpoint)
-	result.CheckpointVersion = checkpointVersion
 	result.UpdatedAt = TimeUTC(at)
 	result.Revision++
 	return &result, result.Validate()
 }
 
-func (j *Job) Succeed(resultVersion int, document json.RawMessage, at time.Time) (*Job, error) {
-	if j == nil || (j.Status != JobStatusRunning && j.Status != JobStatusCancelRequested) || resultVersion <= 0 || !validJobDocument(document, false) || TimeUTC(at).Before(j.UpdatedAt) {
+func (j *Job) Succeed(document json.RawMessage, at time.Time) (*Job, error) {
+	if j == nil || (j.Status != JobStatusRunning && j.Status != JobStatusCancelRequested) || !validJobDocument(document, false) || TimeUTC(at).Before(j.UpdatedAt) {
 		return nil, invalidModelError("Job.Succeed", "job", "", "job cannot succeed", "")
 	}
 	result := *j
 	result.Status = JobStatusSucceeded
-	result.ResultVersion = resultVersion
 	result.Result = cloneJSON(document)
 	result.PublicErrorCode = ""
 	result.CompletedAt = OptionalTimeFrom(at)

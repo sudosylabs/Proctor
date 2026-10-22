@@ -19,22 +19,22 @@ import (
 
 func TestSittingMailExpansionCommandAndCheckpointAreStrictAndBounded(t *testing.T) {
 	occurrenceID := NewMailOccurrenceID()
-	command, err := EncodeSittingMailExpansionCommand(SittingMailExpansionCommandV1{OccurrenceID: occurrenceID})
+	command, err := EncodeSittingMailExpansionCommand(SittingMailExpansionCommand{OccurrenceID: occurrenceID})
 	require.NoError(t, err)
-	decoded, err := DecodeSittingMailExpansionCommand(1, command)
+	decoded, err := DecodeSittingMailExpansionCommand(command)
 	require.NoError(t, err, "DecodeSittingMailExpansionCommand()=(%#v,%v)", decoded, err)
 	require.Equal(t, occurrenceID, decoded.OccurrenceID, "DecodeSittingMailExpansionCommand()=(%#v,%v)", decoded, err)
 	unknown := append(bytes.TrimSuffix(command, []byte("}")), []byte(`,"secret":"leak"}`)...)
-	_, err = DecodeSittingMailExpansionCommand(1, unknown)
+	_, err = DecodeSittingMailExpansionCommand(unknown)
 	require.Error(t, err, "unknown command field was accepted")
 
-	checkpoint, err := EncodeSittingMailExpansionCheckpoint(SittingMailExpansionCheckpointV1{
+	checkpoint, err := EncodeSittingMailExpansionCheckpoint(SittingMailExpansionCheckpoint{
 		AfterUserID: NewUserID(), Expanded: 200, Suppressed: 3,
 	})
 	require.NoError(t, err)
-	_, err = DecodeSittingMailExpansionCheckpoint(1, checkpoint)
+	_, err = DecodeSittingMailExpansionCheckpoint(checkpoint)
 	require.NoError(t, err)
-	_, err = EncodeSittingMailExpansionCheckpoint(SittingMailExpansionCheckpointV1{Expanded: -1})
+	_, err = EncodeSittingMailExpansionCheckpoint(SittingMailExpansionCheckpoint{Expanded: -1})
 	require.Error(t, err, "negative checkpoint count was accepted")
 }
 

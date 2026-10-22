@@ -65,7 +65,7 @@ func (h mailDeliveryHandler) Run(ctx context.Context, execution jobengine.Execut
 	if execution.Job == nil {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("mail delivery job is missing"))
 	}
-	command, err := model.DecodeMailDeliveryCommand(execution.Job.CommandVersion, execution.Job.Command)
+	command, err := model.DecodeMailDeliveryCommand(execution.Job.Command)
 	if err != nil {
 		return jobengine.PermanentFailure("job.command.invalid", err)
 	}
@@ -315,7 +315,7 @@ func mailDeliverySucceeded(delivery *model.MailDelivery) jobengine.Outcome {
 		State      model.MailDeliveryState `json:"state"`
 		MessageID  string                  `json:"message_id"`
 	}{delivery.ID, delivery.State, delivery.MessageID})
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: document, Err: err}
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: document, Err: err}
 }
 
 func mailDeliveryDescriptor(handler mailDeliveryHandler) jobengine.Descriptor {
@@ -329,7 +329,7 @@ func mailCredentialDeliveryDescriptor(handler mailDeliveryHandler) jobengine.Des
 }
 
 func newMailDeliveryDescriptor(jobType model.JobType, concurrency int, handler jobengine.Handler) jobengine.Descriptor {
-	return jobengine.Descriptor{Type: jobType, CommandVersions: []int{1}, ResultVersions: []int{1}, PublicErrorCodes: []string{"mail.delivery.conflict", "mail.delivery.failed", "mail.delivery.not_found", "mail.delivery.unavailable", "mail.message.invalid", "mail.payload.unavailable", "mail.transport.acceptance_uncertain", "mail.transport.permanent", "mail.transport.temporary", "mail.transport.unknown"}, Timeout: time.Minute, Concurrency: concurrency, MaximumAttempts: model.MailMaximumAttempts, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: 30 * time.Second, MaximumRetryDelay: 30 * time.Minute, Visibility: jobengine.VisibilityOperator, SuccessRetention: 90 * 24 * time.Hour, FailureRetention: 180 * 24 * time.Hour, Handler: handler}
+	return jobengine.Descriptor{Type: jobType, PublicErrorCodes: []string{"mail.delivery.conflict", "mail.delivery.failed", "mail.delivery.not_found", "mail.delivery.unavailable", "mail.message.invalid", "mail.payload.unavailable", "mail.transport.acceptance_uncertain", "mail.transport.permanent", "mail.transport.temporary", "mail.transport.unknown"}, Timeout: time.Minute, Concurrency: concurrency, MaximumAttempts: model.MailMaximumAttempts, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: 30 * time.Second, MaximumRetryDelay: 30 * time.Minute, Visibility: jobengine.VisibilityOperator, SuccessRetention: 90 * 24 * time.Hour, FailureRetention: 180 * 24 * time.Hour, Handler: handler}
 }
 
 func NewMailDeliveryDescriptor(deliveries MailDeliveryLifecycleStore, sender appmail.Sender, sealer *secretseal.Sealer,

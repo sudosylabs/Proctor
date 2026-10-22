@@ -90,12 +90,12 @@ func (s *mailService) StartMailRekey(ctx context.Context, invocation Invocation,
 	if retiringKeyID == "" || retiringKeyID == primaryKeyID || !s.sealer.HasKey(retiringKeyID) {
 		return MailRekeyView{}, apperror.New("mail.rekey.invalid")
 	}
-	command, err := json.Marshal(MailRekeyCommandV1{PrimaryKeyID: primaryKeyID, RetiringKeyID: retiringKeyID})
+	command, err := json.Marshal(MailRekeyCommand{PrimaryKeyID: primaryKeyID, RetiringKeyID: retiringKeyID})
 	if err != nil {
 		return MailRekeyView{}, apperror.New("mail.unavailable").Wrap(err)
 	}
 	now := model.TimeUTC(s.now())
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailRekey, 1, command,
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailRekey, command,
 		"mail-rekey:"+primaryKeyID+":"+retiringKeyID, now, now, 10)
 	if err != nil {
 		return MailRekeyView{}, apperror.New("mail.unavailable").Wrap(err)

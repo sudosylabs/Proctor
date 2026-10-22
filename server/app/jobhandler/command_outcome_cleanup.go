@@ -11,7 +11,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
@@ -21,10 +20,13 @@ import (
 
 const maximumCommandOutcomeCleanupBatch = 500
 
-type CommandOutcomeCleanupCommandV1 struct {
+// CommandOutcomeCleanupCommand is the immutable command of the command outcome cleanup Job.
+type CommandOutcomeCleanupCommand struct {
 	BatchSize int `json:"batch_size"`
 }
-type CommandOutcomeCleanupResultV1 struct {
+
+// CommandOutcomeCleanupResult is the safe result of the command outcome cleanup Job.
+type CommandOutcomeCleanupResult struct {
 	Deleted int64 `json:"deleted"`
 }
 
@@ -37,10 +39,7 @@ func (h commandOutcomeCleanupHandler) Run(ctx context.Context, execution jobengi
 	if execution.Job == nil {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("job is missing"))
 	}
-	if execution.Job.CommandVersion != 1 {
-		return jobengine.PermanentFailure("job.command.invalid", fmt.Errorf("unsupported command version %d", execution.Job.CommandVersion))
-	}
-	var command CommandOutcomeCleanupCommandV1
+	var command CommandOutcomeCleanupCommand
 	if err := decodeStrictJobDocument(execution.Job.Command, &command); err != nil || command.BatchSize < 1 || command.BatchSize > maximumCommandOutcomeCleanupBatch {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("command outcome cleanup command is invalid"))
 	}
@@ -48,8 +47,8 @@ func (h commandOutcomeCleanupHandler) Run(ctx context.Context, execution jobengi
 	if err != nil {
 		return jobengine.RetryableFailure("dependency.unavailable", err)
 	}
-	document, err := json.Marshal(CommandOutcomeCleanupResultV1{Deleted: deleted})
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: document, Err: err}
+	document, err := json.Marshal(CommandOutcomeCleanupResult{Deleted: deleted})
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: document, Err: err}
 }
 
 type commandOutcomeCleanupProposer struct {
@@ -58,13 +57,13 @@ type commandOutcomeCleanupProposer struct {
 }
 
 func (p commandOutcomeCleanupProposer) Propose(ctx context.Context, occurrence time.Time) error {
-	command, err := json.Marshal(CommandOutcomeCleanupCommandV1{BatchSize: maximumCommandOutcomeCleanupBatch})
+	command, err := json.Marshal(CommandOutcomeCleanupCommand{BatchSize: maximumCommandOutcomeCleanupBatch})
 	if err != nil {
 		return err
 	}
 	at := model.TimeUTC(p.now())
 	key := "command-outcome-cleanup:" + model.TimeUTC(occurrence).Format("2006-01-02")
-	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeCommandOutcomeCleanup, 1, command, key, model.JobDedupePermanent, at, at, 5)
+	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeCommandOutcomeCleanup, command, key, model.JobDedupePermanent, at, at, 5)
 	if err != nil {
 		return err
 	}
@@ -73,5 +72,5 @@ func (p commandOutcomeCleanupProposer) Propose(ctx context.Context, occurrence t
 }
 
 func commandOutcomeCleanupDescriptor(handler jobengine.Handler) jobengine.Descriptor {
-	return jobengine.Descriptor{Type: model.JobTypeCommandOutcomeCleanup, CommandVersions: []int{1}, ResultVersions: []int{1}, PublicErrorCodes: []string{"dependency.unavailable", "job.command.invalid"}, Timeout: 5 * time.Minute, Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: time.Minute, Visibility: jobengine.VisibilityOperator, SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
+	return jobengine.Descriptor{Type: model.JobTypeCommandOutcomeCleanup, PublicErrorCodes: []string{"dependency.unavailable", "job.command.invalid"}, Timeout: 5 * time.Minute, Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: time.Minute, Visibility: jobengine.VisibilityOperator, SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
 }

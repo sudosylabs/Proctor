@@ -41,7 +41,7 @@ func leadPlatformRow(t *testing.T, ctx context.Context, persistence *SQLStore, t
 func enqueuePlatformJob(t *testing.T, ctx context.Context, persistence *SQLStore, dedupe string) *model.Job {
 	t.Helper()
 	at := model.NowUTC()
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeCleanup, 1, json.RawMessage(`{"scope":"time-authority"}`), dedupe, at, at.Add(-time.Second), 3)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeCleanup, json.RawMessage(`{"scope":"time-authority"}`), dedupe, at, at.Add(-time.Second), 3)
 	require.NoError(t, err)
 	_, inserted, err := persistence.Job().Enqueue(ctx, &store.JobEnqueue{Job: job})
 	require.NoError(t, err, "Enqueue()")
@@ -122,7 +122,7 @@ func TestTimeAuthorityPlatformJobCheckpointAfterLeadingTransition(t *testing.T) 
 	leadPlatformRow(t, ctx, persistence, "jobs", "created_at,updated_at", claim.Job.ID.String())
 	updated, err := persistence.Job().Checkpoint(ctx, &store.JobCheckpoint{
 		AttemptID: claim.Attempt.ID, ClaimToken: claim.Attempt.ClaimToken,
-		Progress: &model.JobProgress{Current: 1, Total: 2, Stage: "copy"}, CheckpointVersion: 1, Checkpoint: json.RawMessage(`{"cursor":1}`),
+		Progress: &model.JobProgress{Current: 1, Total: 2, Stage: "copy"}, Checkpoint: json.RawMessage(`{"cursor":1}`),
 	})
 	require.NoError(t, err)
 	requireStoredPlatformJob(t, ctx, persistence, updated)
@@ -142,7 +142,7 @@ func TestTimeAuthorityPlatformJobCompletionAfterLeadingTransitions(t *testing.T)
 			leadPlatformRow(t, ctx, persistence, "job_attempts", "started_at,heartbeat_at,lease_expires_at", claim.Attempt.ID.String())
 			input := &store.JobCompletion{AttemptID: claim.Attempt.ID, ClaimToken: claim.Attempt.ClaimToken, Kind: kind}
 			if kind == store.JobCompletionSucceeded {
-				input.ResultVersion, input.Result = 1, json.RawMessage(`{"done":true}`)
+				input.Result = json.RawMessage(`{"done":true}`)
 			} else {
 				input.PublicErrorCode, input.RetryDelay = "job.temporary", time.Second
 			}

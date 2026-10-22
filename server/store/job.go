@@ -38,11 +38,10 @@ type JobHeartbeat struct {
 }
 
 type JobCheckpoint struct {
-	AttemptID         model.JobAttemptID
-	ClaimToken        model.JobClaimToken
-	Progress          *model.JobProgress
-	CheckpointVersion int
-	Checkpoint        json.RawMessage
+	AttemptID  model.JobAttemptID
+	ClaimToken model.JobClaimToken
+	Progress   *model.JobProgress
+	Checkpoint json.RawMessage
 }
 
 type JobWorkReservation struct {
@@ -72,7 +71,6 @@ type JobCompletion struct {
 	ClaimToken      model.JobClaimToken
 	Kind            JobCompletionKind
 	RetryDelay      time.Duration
-	ResultVersion   int
 	Result          json.RawMessage
 	PublicErrorCode string
 }

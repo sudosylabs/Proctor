@@ -172,11 +172,8 @@ CREATE TABLE jobs (
     available_at timestamptz NOT NULL,
     started_at timestamptz,
     completed_at timestamptz,
-    command_version integer NOT NULL CHECK (command_version > 0),
     command jsonb NOT NULL,
-    checkpoint_version integer,
     checkpoint jsonb,
-    result_version integer,
     result jsonb,
     public_error_code varchar(128) NOT NULL DEFAULT '',
     dedupe_key varchar(255) NOT NULL,
@@ -191,8 +188,6 @@ CREATE TABLE jobs (
     CONSTRAINT jobs_lifecycle_check CHECK (
         updated_at >= created_at AND attempt_count <= maximum_attempts AND
         ((status IN ('succeeded', 'failed', 'canceled')) = (completed_at IS NOT NULL)) AND
-        ((checkpoint IS NULL AND checkpoint_version IS NULL) OR (checkpoint IS NOT NULL AND checkpoint_version > 0)) AND
-        ((result IS NULL AND result_version IS NULL) OR (result IS NOT NULL AND result_version > 0)) AND
         ((progress_current IS NULL AND progress_total IS NULL AND progress_stage IS NULL) OR
          (progress_current >= 0 AND progress_total > 0 AND progress_current <= progress_total AND progress_stage <> '')) AND
         octet_length(command::text) <= 65536 AND

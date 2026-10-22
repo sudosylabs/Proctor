@@ -31,14 +31,14 @@ type ExamExportPurger interface {
 }
 
 type examExportBuildHandler struct{ service ExamExportBuilder }
-type examExportBuildCommandV1 struct {
+type examExportBuildCommand struct {
 	ExportID model.ExamExportID `json:"export_id"`
 }
 
 func (h examExportBuildHandler) Run(ctx context.Context, e jobengine.Execution) jobengine.Outcome {
-	var command examExportBuildCommandV1
+	var command examExportBuildCommand
 	if h.service == nil || e.Job == nil || e.Attempt == nil || !e.Job.ID.IsValid() || !e.Attempt.ID.IsValid() || !e.Attempt.ClaimToken.IsValid() || e.Attempt.JobID != e.Job.ID ||
-		e.Job.CommandVersion != 1 || decodeStrictUniqueJobDocument(e.Job.Command, &command) != nil || !command.ExportID.IsValid() || e.Job.WorkReserved < 0 || e.Job.WorkReserved > model.ExamExportMaximumAttempts {
+		decodeStrictUniqueJobDocument(e.Job.Command, &command) != nil || !command.ExportID.IsValid() || e.Job.WorkReserved < 0 || e.Job.WorkReserved > model.ExamExportMaximumAttempts {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("invalid Exam export build command"))
 	}
 	reserved, err := e.ReserveWork(ctx, 1, model.ExamExportMaximumAttempts)
@@ -53,11 +53,11 @@ func (h examExportBuildHandler) Run(ctx context.Context, e jobengine.Execution) 
 		// SQL/provider details and archive content never enter ordinary Job logs.
 		return jobengine.RetryableFailure("exam.export.unavailable", errors.New("Exam export construction failed"))
 	}
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: json.RawMessage(`{"ready":true}`)}
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: json.RawMessage(`{"ready":true}`)}
 }
 
 func examExportBuildDescriptor(handler jobengine.Handler) jobengine.Descriptor {
-	return jobengine.Descriptor{Type: model.JobTypeExamExportBuild, CommandVersions: []int{1}, ResultVersions: []int{1}, PublicErrorCodes: []string{"job.command.invalid", "exam.export.unavailable", "exam.export.expired"},
+	return jobengine.Descriptor{Type: model.JobTypeExamExportBuild, PublicErrorCodes: []string{"job.command.invalid", "exam.export.unavailable", "exam.export.expired"},
 		Timeout: 30 * time.Minute, Concurrency: 1, MaximumAttempts: model.ExamExportMaximumAttempts, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Minute, MaximumRetryDelay: 5 * time.Minute,
 		Visibility: jobengine.VisibilityOperator, SuccessRetention: 7 * 24 * time.Hour, FailureRetention: 7 * 24 * time.Hour, Handler: handler}
 }
@@ -66,13 +66,13 @@ type examExportCleanupHandler struct {
 	exports ExamExportMaintenanceStore
 	content ExamExportPurger
 }
-type examExportCleanupCommandV1 struct {
+type examExportCleanupCommand struct {
 	BatchSize int `json:"batch_size"`
 }
 
 func (h examExportCleanupHandler) Run(ctx context.Context, e jobengine.Execution) jobengine.Outcome {
-	var command examExportCleanupCommandV1
-	if h.exports == nil || h.content == nil || e.Job == nil || e.Job.CommandVersion != 1 || decodeStrictUniqueJobDocument(e.Job.Command, &command) != nil || command.BatchSize < 1 || command.BatchSize > 100 || e.Job.WorkReserved < 0 || e.Job.WorkReserved > 3 {
+	var command examExportCleanupCommand
+	if h.exports == nil || h.content == nil || e.Job == nil || decodeStrictUniqueJobDocument(e.Job.Command, &command) != nil || command.BatchSize < 1 || command.BatchSize > 100 || e.Job.WorkReserved < 0 || e.Job.WorkReserved > 3 {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("invalid Exam export cleanup command"))
 	}
 	reserved, err := e.ReserveWork(ctx, 1, 3)
@@ -116,11 +116,11 @@ func (h examExportCleanupHandler) Run(ctx context.Context, e jobengine.Execution
 		Reconciled     int `json:"reconciled"`
 		ObservedAbsent int `json:"observed_absent"`
 	}{reconciled, purged})
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: result}
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: result}
 }
 
 func examExportCleanupDescriptor(handler jobengine.Handler) jobengine.Descriptor {
-	return jobengine.Descriptor{Type: model.JobTypeExamExportCleanup, CommandVersions: []int{1}, ResultVersions: []int{1}, PublicErrorCodes: []string{"job.command.invalid", "exam.export.unavailable"},
+	return jobengine.Descriptor{Type: model.JobTypeExamExportCleanup, PublicErrorCodes: []string{"job.command.invalid", "exam.export.unavailable"},
 		Timeout: 10 * time.Minute, Concurrency: 1, MaximumAttempts: 3, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Minute, MaximumRetryDelay: 5 * time.Minute,
 		Visibility: jobengine.VisibilityOperator, SuccessRetention: 7 * 24 * time.Hour, FailureRetention: 7 * 24 * time.Hour, Handler: handler}
 }
@@ -132,8 +132,8 @@ type examExportCleanupProposer struct {
 
 func (p examExportCleanupProposer) Propose(ctx context.Context, occurrence time.Time) error {
 	at := model.TimeUTC(p.now())
-	command, _ := json.Marshal(examExportCleanupCommandV1{BatchSize: 100})
-	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeExamExportCleanup, 1, command, "exam-export-cleanup:"+model.TimeUTC(occurrence).Format("2006-01-02T15"), model.JobDedupePermanent, at, at, 3)
+	command, _ := json.Marshal(examExportCleanupCommand{BatchSize: 100})
+	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeExamExportCleanup, command, "exam-export-cleanup:"+model.TimeUTC(occurrence).Format("2006-01-02T15"), model.JobDedupePermanent, at, at, 3)
 	if err != nil {
 		return err
 	}

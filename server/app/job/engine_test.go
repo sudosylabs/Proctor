@@ -227,7 +227,7 @@ func TestEngineRecordsUnsupportedClaimAsAnExecution(t *testing.T) {
 	t.Parallel()
 
 	claim := jobRunnerClaim(t)
-	claim.Job.CommandVersion = 2
+	claim.Job.Type = model.JobTypeMailCleanup
 	descriptor := testDescriptor(handlerFunc(func(context.Context, Execution) Outcome { return succeededOutcome() }))
 	persistence := &jobRunnerStoreFake{claim: claim}
 	recorder := &jobMetricsFake{}
@@ -466,11 +466,11 @@ func TestEngineObservesDurableCancellationCooperatively(t *testing.T) {
 	require.Equal(t, store.JobCompletionCanceled, persistence.completion.Kind)
 }
 
-func TestEngineRejectsAnUnregisteredResultVersion(t *testing.T) {
+func TestEngineRejectsASucceededOutcomeWithoutResult(t *testing.T) {
 	t.Parallel()
 	claim := jobRunnerClaim(t)
 	descriptor := testDescriptor(handlerFunc(func(context.Context, Execution) Outcome {
-		return Outcome{Kind: OutcomeSucceeded, ResultVersion: 2, Result: json.RawMessage(`{}`)}
+		return Outcome{Kind: OutcomeSucceeded}
 	}))
 	registry, err := NewRegistry([]Descriptor{descriptor})
 	require.NoError(t, err)
@@ -516,10 +516,10 @@ func TestEngineEnforcesTypedCheckpointContract(t *testing.T) {
 	claim := jobRunnerClaim(t)
 	var checkpointErr error
 	descriptor := testDescriptor(handlerFunc(func(ctx context.Context, execution Execution) Outcome {
-		checkpointErr = execution.Checkpoint(ctx, CheckpointValue{Version: 1, Progress: &model.JobProgress{Current: 1, Total: 3, Stage: "rendering"}, Document: json.RawMessage(`{"cursor":1}`)})
+		checkpointErr = execution.Checkpoint(ctx, CheckpointValue{Progress: &model.JobProgress{Current: 1, Total: 3, Stage: "rendering"}, Document: json.RawMessage(`{"cursor":1}`)})
 		return succeededOutcome()
 	}))
-	descriptor.CheckpointVersions = []int{1}
+	descriptor.Checkpoints = true
 	descriptor.ProgressStages = []string{"rendering"}
 	registry, err := NewRegistry([]Descriptor{descriptor})
 	require.NoError(t, err)
@@ -530,12 +530,11 @@ func TestEngineEnforcesTypedCheckpointContract(t *testing.T) {
 	require.NoError(t, checkpointErr)
 	persistence.mu.Lock()
 	require.Equal(t, 1, persistence.checkpoints, "checkpoint = %#v count", persistence.checkpoint)
-	require.Equal(t, 1, persistence.checkpoint.CheckpointVersion, "checkpoint = %#v count", persistence.checkpoint)
 	require.Equal(t, "rendering", persistence.checkpoint.Progress.Stage, "checkpoint = %#v count", persistence.checkpoint)
 	persistence.mu.Unlock()
 
 	undeclared := testDescriptor(handlerFunc(func(ctx context.Context, execution Execution) Outcome {
-		checkpointErr = execution.Checkpoint(ctx, CheckpointValue{Version: 2, Progress: &model.JobProgress{Current: 1, Total: 1, Stage: "secret"}, Document: json.RawMessage(`{}`)})
+		checkpointErr = execution.Checkpoint(ctx, CheckpointValue{Progress: &model.JobProgress{Current: 1, Total: 1, Stage: "secret"}, Document: json.RawMessage(`{}`)})
 		return succeededOutcome()
 	}))
 	runner.execute(context.Background(), undeclared, jobRunnerClaim(t))
@@ -546,13 +545,13 @@ func TestEngineEnforcesTypedCheckpointContract(t *testing.T) {
 }
 
 func testDescriptor(handler Handler) Descriptor {
-	return Descriptor{Type: model.JobTypeProfilePictureGenerateDefault, CommandVersions: []int{1}, ResultVersions: []int{1}, PublicErrorCodes: []string{"dependency.unavailable", "job.command.invalid", "job.invariant_failed", "user.not_found"}, Timeout: 100 * time.Millisecond, Concurrency: 1, MaximumAttempts: 8, LeaseDuration: 50 * time.Millisecond, HeartbeatInterval: 5 * time.Millisecond, BaseRetryDelay: time.Millisecond, MaximumRetryDelay: time.Second, Visibility: VisibilityOperator, SuccessRetention: 24 * time.Hour, FailureRetention: 48 * time.Hour, Handler: handler}
+	return Descriptor{Type: model.JobTypeProfilePictureGenerateDefault, PublicErrorCodes: []string{"dependency.unavailable", "job.command.invalid", "job.invariant_failed", "user.not_found"}, Timeout: 100 * time.Millisecond, Concurrency: 1, MaximumAttempts: 8, LeaseDuration: 50 * time.Millisecond, HeartbeatInterval: 5 * time.Millisecond, BaseRetryDelay: time.Millisecond, MaximumRetryDelay: time.Second, Visibility: VisibilityOperator, SuccessRetention: 24 * time.Hour, FailureRetention: 48 * time.Hour, Handler: handler}
 }
 
 func jobRunnerClaim(t *testing.T) *store.JobClaim {
 	t.Helper()
 	at := time.Now()
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, []byte(`{}`), "test", at, at, 8)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, []byte(`{}`), "test", at, at, 8)
 	require.NoError(t, err)
 	running, err := job.Start(at)
 	require.NoError(t, err)
@@ -564,7 +563,7 @@ func jobRunnerClaim(t *testing.T) *store.JobClaim {
 }
 
 func succeededOutcome() Outcome {
-	return Outcome{Kind: OutcomeSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)}
+	return Outcome{Kind: OutcomeSucceeded, Result: json.RawMessage(`{}`)}
 }
 
 func newTestEngine(persistence store.JobStore, registry *Registry, nodeID string, diagnostics Diagnostics, poll time.Duration) (*Engine, error) {

@@ -17,9 +17,9 @@ import (
 func TestExamSittingLifecycleCommandCodecIsStrict(t *testing.T) {
 	t.Parallel()
 	sittingID := NewExamSittingID()
-	document, err := EncodeExamSittingLifecycleCommand(ExamSittingLifecycleCommandV1{ExamSittingID: sittingID})
+	document, err := EncodeExamSittingLifecycleCommand(ExamSittingLifecycleCommand{ExamSittingID: sittingID})
 	require.NoError(t, err)
-	decoded, err := DecodeExamSittingLifecycleCommand(1, document)
+	decoded, err := DecodeExamSittingLifecycleCommand(document)
 	require.NoError(t, err, "Decode() = %#v", decoded)
 	require.Equal(t, sittingID, decoded.ExamSittingID, "Decode() = %#v", decoded)
 	for name, malformed := range map[string]json.RawMessage{
@@ -28,11 +28,9 @@ func TestExamSittingLifecycleCommandCodecIsStrict(t *testing.T) {
 		"trailing":   append(append(json.RawMessage(nil), document...), []byte(` {}`)...),
 		"invalid id": json.RawMessage(`{"exam_sitting_id":"bad"}`),
 	} {
-		_, err = DecodeExamSittingLifecycleCommand(1, malformed)
+		_, err = DecodeExamSittingLifecycleCommand(malformed)
 		require.Error(t, err, "%s command was accepted", name)
 	}
-	_, err = DecodeExamSittingLifecycleCommand(2, document)
-	require.Error(t, err, "future command version was accepted")
 }
 
 func TestExamSittingLifecycleDedupeKeyIsRevisionFenced(t *testing.T) {

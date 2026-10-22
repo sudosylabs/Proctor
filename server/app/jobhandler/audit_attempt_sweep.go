@@ -11,7 +11,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
@@ -29,13 +28,13 @@ const (
 	maximumAuditAttemptSweepBatches = 20
 )
 
-// AuditAttemptSweepCommandV1 is the abandonment pass size.
-type AuditAttemptSweepCommandV1 struct {
+// AuditAttemptSweepCommand is the abandonment pass size.
+type AuditAttemptSweepCommand struct {
 	BatchSize int `json:"batch_size"`
 }
 
-// AuditAttemptSweepResultV1 counts the attempts the run terminalized.
-type AuditAttemptSweepResultV1 struct {
+// AuditAttemptSweepResult counts the attempts the run terminalized.
+type AuditAttemptSweepResult struct {
 	Failed int64 `json:"failed"`
 }
 
@@ -50,10 +49,7 @@ func (h auditAttemptSweepHandler) Run(ctx context.Context, execution jobengine.E
 	if execution.Job == nil {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("job is missing"))
 	}
-	if execution.Job.CommandVersion != 1 {
-		return jobengine.PermanentFailure("job.command.invalid", fmt.Errorf("unsupported command version %d", execution.Job.CommandVersion))
-	}
-	var command AuditAttemptSweepCommandV1
+	var command AuditAttemptSweepCommand
 	if err := decodeStrictJobDocument(execution.Job.Command, &command); err != nil ||
 		command.BatchSize < 1 || command.BatchSize > store.MaximumAuditAttemptAbandonmentBatch {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("audit attempt sweep command is invalid"))
@@ -71,8 +67,8 @@ func (h auditAttemptSweepHandler) Run(ctx context.Context, execution jobengine.E
 			break
 		}
 	}
-	document, err := json.Marshal(AuditAttemptSweepResultV1{Failed: failed})
-	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: document, Err: err}
+	document, err := json.Marshal(AuditAttemptSweepResult{Failed: failed})
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Result: document, Err: err}
 }
 
 type auditAttemptSweepProposer struct {
@@ -81,13 +77,13 @@ type auditAttemptSweepProposer struct {
 }
 
 func (p auditAttemptSweepProposer) Propose(ctx context.Context, occurrence time.Time) error {
-	command, err := json.Marshal(AuditAttemptSweepCommandV1{BatchSize: store.MaximumAuditAttemptAbandonmentBatch})
+	command, err := json.Marshal(AuditAttemptSweepCommand{BatchSize: store.MaximumAuditAttemptAbandonmentBatch})
 	if err != nil {
 		return err
 	}
 	at := model.TimeUTC(p.now())
 	key := "audit-attempt-sweep:" + model.TimeUTC(occurrence).Format("2006-01-02T15")
-	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeAuditAttemptSweep, 1, command, key, model.JobDedupePermanent, at, at, 5)
+	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeAuditAttemptSweep, command, key, model.JobDedupePermanent, at, at, 5)
 	if err != nil {
 		return err
 	}
@@ -96,5 +92,5 @@ func (p auditAttemptSweepProposer) Propose(ctx context.Context, occurrence time.
 }
 
 func auditAttemptSweepDescriptor(handler jobengine.Handler) jobengine.Descriptor {
-	return jobengine.Descriptor{Type: model.JobTypeAuditAttemptSweep, CommandVersions: []int{1}, ResultVersions: []int{1}, PublicErrorCodes: []string{"dependency.unavailable", "job.command.invalid"}, Timeout: 5 * time.Minute, Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: time.Minute, Visibility: jobengine.VisibilityOperator, SuccessRetention: 7 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
+	return jobengine.Descriptor{Type: model.JobTypeAuditAttemptSweep, PublicErrorCodes: []string{"dependency.unavailable", "job.command.invalid"}, Timeout: 5 * time.Minute, Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: time.Minute, Visibility: jobengine.VisibilityOperator, SuccessRetention: 7 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
 }

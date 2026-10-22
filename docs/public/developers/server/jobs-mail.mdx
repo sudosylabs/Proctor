@@ -39,7 +39,7 @@ explicitly.
 | `store.JobStore` | Enqueue, claim, lease fence, checkpoint, terminal transition, and retention guarantees |
 | `app/job` | Generic engine mechanics and safe projections |
 | Owning application capability | Why work exists, actor authorization, domain policy, and durable effects |
-| `app/jobhandler` | Typed handler catalog, versioned payloads, descriptors, recurrence definitions, and concrete handlers |
+| `app/jobhandler` | Typed handler catalog, strict payloads, descriptors, recurrence definitions, and concrete handlers |
 | Module-root server | Engine start, readiness participation, and close order |
 
 A worker receives only the capabilities its handler declares. It does not
@@ -49,7 +49,7 @@ receive `App`, a root Store, the platform, or a service catalog.
 
 Each closed Job Type declares:
 
-- supported command, checkpoint, and result versions;
+- whether it records resumable checkpoints;
 - timeout and per-node concurrency;
 - maximum failed attempts and bounded backoff;
 - whether cancellation is supported;
@@ -105,7 +105,7 @@ A handler returns one of a small set of meanings: succeeded, retryable failure,
 relinquished for an incompatible node, permanent failure, or canceled.
 
 - Retry transient dependency failures inside the descriptor’s bounded policy.
-- Fail unsupported payload versions and invariant violations permanently.
+- Fail invalid payloads and invariant violations permanently.
 - Relinquish immutable work when another node may possess a required
   deployment capability; do not consume the failure-attempt budget.
 - Contain a panic, record only a safe failure code, and apply the retry policy.

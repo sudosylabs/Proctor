@@ -1704,13 +1704,13 @@ func saveExamSittingSystemAudit(t *testing.T, ctx context.Context, ss store.Stor
 
 func newExamSittingLifecycleJobs(t *testing.T, sittingID model.ExamSittingID, revision int64, startAt, endAt time.Time) (*model.Job, *model.Job) {
 	t.Helper()
-	command, err := model.EncodeExamSittingLifecycleCommand(model.ExamSittingLifecycleCommandV1{ExamSittingID: sittingID})
+	command, err := model.EncodeExamSittingLifecycleCommand(model.ExamSittingLifecycleCommand{ExamSittingID: sittingID})
 	require.NoError(t, err)
 	createdAt := model.NowUTC()
 	newJob := func(phase model.ExamSittingLifecycleJobPhase, availableAt time.Time) *model.Job {
 		key, keyErr := model.ExamSittingLifecycleDedupeKey(sittingID, phase, revision)
 		require.NoError(t, keyErr)
-		job, jobErr := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeExamSittingLifecycle, 1, command,
+		job, jobErr := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeExamSittingLifecycle, command,
 			key, model.JobDedupeActive, createdAt, availableAt, 8)
 		require.NoError(t, jobErr)
 		return job
@@ -1729,11 +1729,11 @@ func newExamSittingMailFanout(t *testing.T, actorID model.UserID, change store.E
 	bundle := &model.MailFanoutBundle{ID: occurrenceID,
 		EncryptedPayload: []byte(`{"key_id":"11111111111111111111111111111111","version":1,"nonce":"n","ciphertext":"c"}`),
 		CreatedAt:        at, Revision: 1}
-	command, err := model.EncodeSittingMailExpansionCommand(model.SittingMailExpansionCommandV1{OccurrenceID: occurrenceID})
+	command, err := model.EncodeSittingMailExpansionCommand(model.SittingMailExpansionCommand{OccurrenceID: occurrenceID})
 	require.NoError(t, err)
 	dedupe, err := model.SittingMailExpansionDedupeKey(occurrenceID)
 	require.NoError(t, err)
-	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeMailExpandSitting, 1, command, dedupe,
+	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeMailExpandSitting, command, dedupe,
 		model.JobDedupePermanent, at, at, model.MailMaximumAttempts)
 	require.NoError(t, err)
 	return &store.ExamSittingMailFanout{Occurrence: occurrence, Bundle: bundle, ExpansionJob: job,
@@ -1757,9 +1757,9 @@ func newExamSittingMailDelivery(t *testing.T, fanout *store.ExamSittingMailFanou
 ) (*model.MailDelivery, *model.Job) {
 	t.Helper()
 	deliveryID, jobID := model.NewMailDeliveryID(), model.NewJobID()
-	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommand{DeliveryID: deliveryID})
 	require.NoError(t, err)
-	job, err := model.NewJob(jobID, model.JobTypeMailDeliver, 1, command, deliveryID.String(),
+	job, err := model.NewJob(jobID, model.JobTypeMailDeliver, command, deliveryID.String(),
 		fanout.Occurrence.CreatedAt, fanout.Occurrence.CreatedAt, model.MailMaximumAttempts)
 	require.NoError(t, err)
 	delivery := &model.MailDelivery{ID: deliveryID, OccurrenceID: fanout.Occurrence.ID, JobID: jobID,
@@ -1774,11 +1774,11 @@ func newExamSittingMailDelivery(t *testing.T, fanout *store.ExamSittingMailFanou
 
 func newExamSittingFinalizeJob(t *testing.T, sittingID model.ExamSittingID, revision int64, availableAt time.Time) *model.Job {
 	t.Helper()
-	command, err := model.EncodeExamSittingLifecycleCommand(model.ExamSittingLifecycleCommandV1{ExamSittingID: sittingID})
+	command, err := model.EncodeExamSittingLifecycleCommand(model.ExamSittingLifecycleCommand{ExamSittingID: sittingID})
 	require.NoError(t, err)
 	key, err := model.ExamSittingLifecycleDedupeKey(sittingID, model.ExamSittingLifecycleJobFinalize, revision)
 	require.NoError(t, err)
-	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeExamSittingSealing, 1, command, key,
+	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeExamSittingSealing, command, key,
 		model.JobDedupeActive, model.NowUTC(), availableAt, 8)
 	require.NoError(t, err)
 	return job

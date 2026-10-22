@@ -284,7 +284,7 @@ func testMailOperatorStore(t *testing.T, ctx context.Context, ss store.Store, us
 		claim, claimErr := ss.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{model.JobTypeMailDeliver}, NodeID: "mail-operator-test", ClaimToken: token, LeaseDuration: time.Minute})
 		require.NoError(t, claimErr)
 		if claim.Job.ID != retryTarget.JobID {
-			_, claimErr = ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: claim.Attempt.ID, ClaimToken: token, Kind: store.JobCompletionSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)})
+			_, claimErr = ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: claim.Attempt.ID, ClaimToken: token, Kind: store.JobCompletionSucceeded, Result: json.RawMessage(`{}`)})
 			require.NoError(t, claimErr)
 			continue
 		}
@@ -320,7 +320,7 @@ func testMailOperatorStore(t *testing.T, ctx context.Context, ss store.Store, us
 		claim, claimErr := ss.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{model.JobTypeMailDeliver}, NodeID: "mail-operator-test", ClaimToken: token, LeaseDuration: time.Minute})
 		require.NoError(t, claimErr)
 		if claim.Job.ID != orphanTarget.JobID {
-			_, claimErr = ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: claim.Attempt.ID, ClaimToken: token, Kind: store.JobCompletionSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)})
+			_, claimErr = ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: claim.Attempt.ID, ClaimToken: token, Kind: store.JobCompletionSucceeded, Result: json.RawMessage(`{}`)})
 			require.NoError(t, claimErr)
 			continue
 		}
@@ -353,9 +353,9 @@ func saveMailMutationAudit(t *testing.T, ctx context.Context, ss store.Store, in
 func mailTestEnqueueFixture(t *testing.T, user *model.User, institution *model.Institution, at time.Time) *store.MailTestEnqueue {
 	t.Helper()
 	occurrenceID, deliveryID, jobID := model.NewMailOccurrenceID(), model.NewMailDeliveryID(), model.NewJobID()
-	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommand{DeliveryID: deliveryID})
 	require.NoError(t, err)
-	job, err := model.NewJob(jobID, model.JobTypeMailDeliver, 1, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
+	job, err := model.NewJob(jobID, model.JobTypeMailDeliver, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
 	require.NoError(t, err)
 	parameters, err := model.EncodeAuditData(map[string]string{"delivery_id": deliveryID.String(), "template_key": string(model.MailTemplateSystemTest)})
 	require.NoError(t, err)
