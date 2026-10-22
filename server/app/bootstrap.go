@@ -79,12 +79,12 @@ func (s *bootstrapService) RecoverAdministratorAccess(ctx context.Context, comma
 	passwordHash := ""
 	if command.Password != "" {
 		var err error
-		passwordHash, err = s.hasher.Hash(ctx, command.Password)
+		passwordHash, err = s.deps.Hasher.Hash(ctx, command.Password)
 		if err != nil {
 			return nil, passwordHashError(err, "administrator_recovery.unavailable")
 		}
 	}
-	result, err := s.installations.RecoverAdministratorAccess(ctx, &store.AdministratorRecovery{
+	result, err := s.deps.Installations.RecoverAdministratorAccess(ctx, &store.AdministratorRecovery{
 		InstitutionID: institutionID, UserID: userID,
 		EnableLocalLogin: command.EnableLocalLogin, RotatePasswordHash: passwordHash,
 	})
@@ -103,7 +103,7 @@ func (s *bootstrapService) RecoverAdministratorAccess(ctx context.Context, comma
 // ReconcileAdministratorRecovery records every completed offline recovery in
 // ordinary audit before this node starts workers or network transports.
 func (s *bootstrapService) ReconcileAdministratorRecovery(ctx context.Context) error {
-	_, err := s.installations.ReconcileAdministratorRecovery(ctx, &store.AdministratorRecoveryReconciliation{NodeID: s.nodeID})
+	_, err := s.deps.Installations.ReconcileAdministratorRecovery(ctx, &store.AdministratorRecoveryReconciliation{NodeID: s.deps.NodeID})
 	if err != nil {
 		return fmt.Errorf("reconcile offline administrator recovery: %w", err)
 	}
@@ -114,48 +114,41 @@ type passwordHash interface {
 	Hash(context.Context, string) (string, error)
 }
 
+// bootstrapServiceDependencies are the collaborators of bootstrapService;
+// newBootstrapService validates them once and bootstrapService keeps them in deps.
+type bootstrapServiceDependencies struct {
+	Installations  store.InstallationStore
+	Hasher         passwordHash
+	Attempts       *authenticationAttemptAccounting
+	RateLimit      LoginRateLimitPolicy
+	Protection     BootstrapProtectionPolicy
+	NodeID         string
+	Now            func() time.Time
+	RecoveryPolicy administratorRecoveryPolicy
+}
+
 type bootstrapService struct {
-	installations         store.InstallationStore
-	hasher                passwordHash
-	attempts              *authenticationAttemptAccounting
+	deps bootstrapServiceDependencies
+
 	rateLimitWindow       time.Duration
 	maximumSourceAttempts int
 	bootstrapSecretDigest [sha256.Size]byte
 	bootstrapAvailable    bool
-	recoveryPolicy        administratorRecoveryPolicy
-	nodeID                string
-	now                   func() time.Time
 }
 
-func newBootstrapService(
-	installations store.InstallationStore,
-	hasher passwordHash,
-	attempts *authenticationAttemptAccounting,
-	rateLimit LoginRateLimitPolicy,
-	protection BootstrapProtectionPolicy,
-	nodeID string,
-	now func() time.Time,
-	recoveryPolicy administratorRecoveryPolicy,
-) *bootstrapService {
-	return &bootstrapService{
-		installations: installations, hasher: hasher, attempts: attempts,
-		rateLimitWindow: rateLimit.Window, maximumSourceAttempts: rateLimit.MaximumSourceAttempts,
-		bootstrapSecretDigest: digestBootstrapSecret(protection.Secret),
-		bootstrapAvailable:    protection.Secret != "",
-		recoveryPolicy:        recoveryPolicy,
-		nodeID:                nodeID, now: now,
-	}
+func newBootstrapService(deps bootstrapServiceDependencies) *bootstrapService {
+	return &bootstrapService{deps: deps, rateLimitWindow: deps.RateLimit.Window, maximumSourceAttempts: deps.RateLimit.MaximumSourceAttempts, bootstrapSecretDigest: digestBootstrapSecret(deps.Protection.Secret), bootstrapAvailable: deps.Protection.Secret != ""}
 }
 
 // ReconcileSystemAdministratorRole adds newly registered grantable actions to
 // the protected built-in Role before this node serves application traffic.
 func (s *bootstrapService) ReconcileSystemAdministratorRole(ctx context.Context) error {
-	_, err := s.installations.ReconcileSystemAdministratorRole(ctx, &store.SystemAdministratorRoleReconciliation{
+	_, err := s.deps.Installations.ReconcileSystemAdministratorRole(ctx, &store.SystemAdministratorRoleReconciliation{
 		RequiredPermissions: model.AllActions(),
-		ReconciledAt:        s.now().UnixMilli(),
+		ReconciledAt:        s.deps.Now().UnixMilli(),
 		AuditEvent: &model.AuditEvent{
 			Action: string(model.ActionRoleSystemAdminReconcile), Status: model.AuditStatusSuccess,
-			NodeID: s.nodeID, ClientType: "system",
+			NodeID: s.deps.NodeID, ClientType: "system",
 		},
 	})
 	if err != nil {
@@ -165,7 +158,7 @@ func (s *bootstrapService) ReconcileSystemAdministratorRole(ctx context.Context)
 }
 
 func (s *bootstrapService) GetInstallationStatus(ctx context.Context, _ GetInstallationStatusQuery) (*model.InstallationStatus, error) {
-	state, err := s.installations.Get(ctx)
+	state, err := s.deps.Installations.Get(ctx)
 	if err != nil {
 		if store.IsNotFound(err) {
 			return &model.InstallationStatus{Initialized: false}, nil
@@ -194,7 +187,7 @@ func (s *bootstrapService) BootstrapInstallation(ctx context.Context, invocation
 	if err != nil {
 		return nil, apperror.New("request.invalid").WithField("field", "bootstrap").Wrap(err)
 	}
-	hash, err := s.hasher.Hash(ctx, command.Password)
+	hash, err := s.deps.Hasher.Hash(ctx, command.Password)
 	if err != nil {
 		return nil, passwordHashError(err, "installation.unavailable")
 	}
@@ -204,7 +197,7 @@ func (s *bootstrapService) BootstrapInstallation(ctx context.Context, invocation
 		DisplayName: command.AdministratorDisplayName, FirstName: command.AdministratorFirstName,
 		LastName: command.AdministratorLastName, Locale: command.AdministratorLocale,
 		Timezone: command.AdministratorTimezone,
-	}, s.now())
+	}, s.deps.Now())
 	if err != nil {
 		return nil, apperror.New("request.invalid").WithField("field", "administrator").Wrap(err)
 	}
@@ -234,7 +227,7 @@ func (s *bootstrapService) BootstrapInstallation(ctx context.Context, invocation
 		AuditEvent: &model.AuditEvent{
 			Action:     string(model.ActionInstallationBootstrap),
 			RequestID:  metadata.RequestID,
-			NodeID:     s.nodeID,
+			NodeID:     s.deps.NodeID,
 			ClientType: "bootstrap",
 			AuthMethod: "bootstrap",
 			IPAddress:  metadata.IPAddress,
@@ -242,7 +235,7 @@ func (s *bootstrapService) BootstrapInstallation(ctx context.Context, invocation
 		},
 		DefaultProfilePictureJob: defaultPictureJob,
 	}
-	result, err := s.installations.Bootstrap(ctx, input)
+	result, err := s.deps.Installations.Bootstrap(ctx, input)
 	if err != nil {
 		if store.IsConflict(err) {
 			return nil, apperror.New("installation.already_initialized").Wrap(err)
@@ -250,9 +243,9 @@ func (s *bootstrapService) BootstrapInstallation(ctx context.Context, invocation
 		// The commit boundary may be ambiguous. Repeating the proof- and
 		// fingerprint-fenced named aggregate either returns the retained exact
 		// outcome or proves that this attempt did not win.
-		result, retryErr := s.installations.Bootstrap(ctx, input)
+		retried, retryErr := s.deps.Installations.Bootstrap(ctx, input)
 		if retryErr == nil {
-			return result, nil
+			return retried, nil
 		}
 		if store.IsConflict(retryErr) {
 			return nil, apperror.New("installation.already_initialized").Wrap(retryErr)
@@ -294,7 +287,7 @@ func fingerprintBootstrapCommand(command BootstrapInstallationCommand) ([sha256.
 }
 
 func (s *bootstrapService) checkRateLimit(ctx context.Context, source string) error {
-	_, limited, err := s.attempts.account(ctx, authenticationAttemptIntent{
+	_, limited, err := s.deps.Attempts.account(ctx, authenticationAttemptIntent{
 		purpose: authenticationAttemptPurposeInstallationBootstrap,
 		window:  s.rateLimitWindow,
 		limits: []authenticationAttemptLimit{{

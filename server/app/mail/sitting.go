@@ -47,18 +47,26 @@ type FrozenSittingBundle struct {
 	Messages      map[string]map[model.MailTemplateKey]FrozenContent `json:"messages"`
 }
 
-type SittingComposer struct {
-	renderer SittingRenderer
-	sender   Sender
-	sealer   *secretseal.Sealer
-	now      func() time.Time
+// SittingComposerDependencies are the collaborators of SittingComposer;
+// NewSittingComposer validates them once and SittingComposer keeps them in deps.
+type SittingComposerDependencies struct {
+	Renderer SittingRenderer
+	Sender   Sender
+	Sealer   *secretseal.Sealer
+	Now      func() time.Time
 }
 
-func NewSittingComposer(renderer SittingRenderer, sender Sender, sealer *secretseal.Sealer, now func() time.Time) (*SittingComposer, error) {
-	if renderer == nil || sender == nil || now == nil || sender.Enabled() && sealer == nil {
+type SittingComposer struct {
+	deps SittingComposerDependencies
+}
+
+// NewSittingComposer validates deps once and constructs the Sitting mail
+// fan-out composer.
+func NewSittingComposer(deps SittingComposerDependencies) (*SittingComposer, error) {
+	if deps.Renderer == nil || deps.Sender == nil || deps.Now == nil || deps.Sender.Enabled() && deps.Sealer == nil {
 		return nil, errors.New("sitting mail composer dependencies are invalid")
 	}
-	return &SittingComposer{renderer: renderer, sender: sender, sealer: sealer, now: now}, nil
+	return &SittingComposer{deps: deps}, nil
 }
 
 func (p *SittingComposer) Prepare(actorID model.UserID, sitting *model.ExamSitting, change store.ExamSittingMailChangeKind,
@@ -83,7 +91,7 @@ func (p *SittingComposer) Prepare(actorID model.UserID, sitting *model.ExamSitti
 	default:
 		return nil, errors.New("sitting mail change is invalid")
 	}
-	at, occurrenceID := model.TimeUTC(p.now()), model.NewMailOccurrenceID()
+	at, occurrenceID := model.TimeUTC(p.deps.Now()), model.NewMailOccurrenceID()
 	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceSittingSchedule, TemplateKey: primaryKey,
 		ActorUserID: actorID, CreatedAt: at}
 	command, err := model.EncodeSittingMailExpansionCommand(model.SittingMailExpansionCommand{OccurrenceID: occurrenceID})
@@ -104,7 +112,7 @@ func (p *SittingComposer) Prepare(actorID model.UserID, sitting *model.ExamSitti
 		return nil, errors.New("sitting mail definition is invalid")
 	}
 	prepared := &store.ExamSittingMailFanout{Occurrence: occurrence, ExpansionJob: job, ChangeKind: change, DeliveryLifetime: deliveryLifetime}
-	if !p.sender.Enabled() {
+	if !p.deps.Sender.Enabled() {
 		job, err = job.RequestCancellation(at)
 		if err != nil {
 			return nil, err
@@ -112,11 +120,11 @@ func (p *SittingComposer) Prepare(actorID model.UserID, sitting *model.ExamSitti
 		prepared.ExpansionJob = job
 		return prepared, nil
 	}
-	from := p.sender.From()
+	from := p.deps.Sender.From()
 	if err = ValidateAddress(from); err != nil {
 		return nil, err
 	}
-	defaultLocale, locales := p.renderer.SittingLocales()
+	defaultLocale, locales := p.deps.Renderer.SittingLocales()
 	locales = normalizedSittingLocales(defaultLocale, locales)
 	if len(locales) == 0 || len(locales) > 64 {
 		return nil, errors.New("sitting mail locales are invalid")
@@ -130,7 +138,7 @@ func (p *SittingComposer) Prepare(actorID model.UserID, sitting *model.ExamSitti
 			if key == model.MailTemplateExamSittingAssignmentRemoved && details.PriorClassDisplayName != "" {
 				variant.ClassDisplayName = details.PriorClassDisplayName
 			}
-			rendered, renderErr := p.renderer.Render(RenderRequest{Key: key, Locale: locale, Presentation: variant})
+			rendered, renderErr := p.deps.Renderer.Render(RenderRequest{Key: key, Locale: locale, Presentation: variant})
 			if renderErr != nil || rendered.Subject == "" || rendered.Text == "" || rendered.HTML == "" {
 				return nil, errors.New("render sitting mail bundle")
 			}
@@ -142,7 +150,7 @@ func (p *SittingComposer) Prepare(actorID model.UserID, sitting *model.ExamSitti
 	if err != nil || len(plaintext) > model.MailRenderedPayloadMaximumBytes*4 {
 		return nil, errors.New("sitting mail bundle is too large")
 	}
-	envelope, err := p.sealer.Seal(secretseal.Binding{Purpose: FanoutBundleSealingPurpose, Owner: occurrenceID.String()}, plaintext)
+	envelope, err := p.deps.Sealer.Seal(secretseal.Binding{Purpose: FanoutBundleSealingPurpose, Owner: occurrenceID.String()}, plaintext)
 	if err != nil {
 		return nil, err
 	}
@@ -160,14 +168,14 @@ func (p *SittingComposer) Prepare(actorID model.UserID, sitting *model.ExamSitti
 // OpenBundle opens and validates one sealed Sitting fan-out bundle.
 func (p *SittingComposer) OpenBundle(bundle *model.MailFanoutBundle) (FrozenSittingBundle, error) {
 	var result FrozenSittingBundle
-	if p == nil || p.sealer == nil || bundle == nil || bundle.Validate() != nil {
+	if p == nil || p.deps.Sealer == nil || bundle == nil || bundle.Validate() != nil {
 		return result, errors.New("sitting mail bundle is unavailable")
 	}
 	var envelope secretseal.Envelope
 	if err := json.Unmarshal(bundle.EncryptedPayload, &envelope); err != nil {
 		return result, err
 	}
-	plaintext, err := p.sealer.Open(secretseal.Binding{Purpose: FanoutBundleSealingPurpose, Owner: bundle.ID.String()}, envelope)
+	plaintext, err := p.deps.Sealer.Open(secretseal.Binding{Purpose: FanoutBundleSealingPurpose, Owner: bundle.ID.String()}, envelope)
 	if err != nil {
 		return result, err
 	}
@@ -190,7 +198,7 @@ func (p *SittingComposer) PrepareRecipient(fanout *store.ExamSittingMailFanoutSn
 	}
 	definition, defined := definitionFor(key)
 	content, ok := bundle.contentFor(recipient.Locale, key)
-	if p == nil || p.sealer == nil || fanout == nil || fanout.Occurrence == nil || !defined ||
+	if p == nil || p.deps.Sealer == nil || fanout == nil || fanout.Occurrence == nil || !defined ||
 		definition.presentation != presentationSittingSchedule || !ok ||
 		content.Subject == "" || content.Text == "" || content.HTML == "" {
 		return nil, nil, errors.New("sitting mail fan-out is invalid")
@@ -205,7 +213,7 @@ func (p *SittingComposer) PrepareRecipient(fanout *store.ExamSittingMailFanoutSn
 	if err != nil {
 		return nil, nil, err
 	}
-	frozen, err := freezeDeliveryPayload(p.sealer, deliveryID, bundle.From,
+	frozen, err := freezeDeliveryPayload(p.deps.Sealer, deliveryID, bundle.From,
 		Address{Name: recipient.DisplayName, Address: recipient.Email}, content)
 	if err != nil {
 		return nil, nil, err

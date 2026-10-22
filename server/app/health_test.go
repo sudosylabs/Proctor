@@ -37,7 +37,7 @@ func (c *readinessClock) Advance(d time.Duration) {
 
 func newProbedHealth(t *testing.T, probe DependencyProbe) (*Health, *readinessClock) {
 	t.Helper()
-	health, err := NewHealth(probe, time.Second, time.Second)
+	health, err := NewHealth(HealthDependencies{Probe: probe, Timeout: time.Second, Interval: time.Second})
 	require.NoError(t, err)
 	clock := &readinessClock{now: time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)}
 	health.now = clock.Now
@@ -106,6 +106,6 @@ func TestHealthWithoutProbeReportsLifecycleFlag(t *testing.T) {
 	require.False(t, health.Ready(), "zero health is ready")
 	health.SetReady(true)
 	require.True(t, health.Ready(), "flag-only health ignored SetReady")
-	_, err := NewHealth(func(context.Context) error { return nil }, 0, time.Second)
+	_, err := NewHealth(HealthDependencies{Probe: func(context.Context) error { return nil }, Timeout: 0, Interval: time.Second})
 	require.Error(t, err, "probe without a timeout was accepted")
 }

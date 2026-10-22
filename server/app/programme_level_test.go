@@ -65,11 +65,7 @@ func TestProgrammeLevelCreatePreservesMissingProgrammeErrorContract(t *testing.T
 	t.Parallel()
 	events := []string{}
 	programmeID := model.NewID()
-	service := newProgrammeLevelService(
-		&programmeLevelStoreFake{events: &events},
-		&programmeAuthorizerFake{events: &events, err: apperror.New("resource.not_found").WithField("resource", "programme")},
-		&institutionAuditorFake{events: &events}, time.Now, model.NewID,
-	)
+	service := newProgrammeLevelService(programmeLevelServiceDependencies{Store: &programmeLevelStoreFake{events: &events}, Authorization: &programmeAuthorizerFake{events: &events, err: apperror.New("resource.not_found").WithField("resource", "programme")}, Audit: &institutionAuditorFake{events: &events}, Now: time.Now, NewID: model.NewID})
 
 	_, err := service.CreateProgrammeLevel(context.Background(), invocation.Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: model.ProgrammeID(programmeID)})
 	failure, ok := apperror.As(err)
@@ -87,11 +83,7 @@ func TestProgrammeLevelCreatePreservesProgrammeOwnershipAndAtomicAudit(t *testin
 	persistence := &programmeLevelStoreFake{events: &events, created: created}
 	authorizer := &programmeAuthorizerFake{events: &events, scopeType: model.RoleScopeAcademicUnit, scopeID: unitID}
 	auditor := &institutionAuditorFake{events: &events, beginID: auditID}
-	service := newProgrammeLevelService(
-		persistence,
-		authorizer, auditor,
-		func() time.Time { return time.UnixMilli(500) }, func() string { return levelID },
-	)
+	service := newProgrammeLevelService(programmeLevelServiceDependencies{Store: persistence, Authorization: authorizer, Audit: auditor, Now: func() time.Time { return time.UnixMilli(500) }, NewID: func() string { return levelID }})
 	got, err := service.CreateProgrammeLevel(context.Background(), invocation.Invocation{}, CreateProgrammeLevelCommand{
 		ProgrammeID: model.ProgrammeID(programmeID), Name: "year-1", DisplayName: "Year 1",
 	})
@@ -123,11 +115,7 @@ func TestProgrammeLevelUpdateCannotMoveProgramme(t *testing.T) {
 		ProgrammeID: model.ProgrammeID(programmeID), Name: "year-1", DisplayName: "Year 1",
 	}
 	persistence := &programmeLevelStoreFake{events: &events, current: current}
-	service := newProgrammeLevelService(
-		persistence,
-		&programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()},
-		func() time.Time { return time.UnixMilli(500) }, model.NewID,
-	)
+	service := newProgrammeLevelService(programmeLevelServiceDependencies{Store: persistence, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Now: func() time.Time { return time.UnixMilli(500) }, NewID: model.NewID})
 	name := "foundation"
 	updated, err := service.UpdateProgrammeLevel(context.Background(), invocation.Invocation{}, UpdateProgrammeLevelCommand{ID: current.ID, Name: &name})
 	require.NoError(t, err)
@@ -142,11 +130,7 @@ func TestProgrammeLevelCreateAuthorizationDenialStopsBeforeAuditAndStore(t *test
 	t.Parallel()
 	events := []string{}
 	programme := &model.Programme{ID: model.ProgrammeID(model.NewID())}
-	service := newProgrammeLevelService(
-		&programmeLevelStoreFake{events: &events},
-		&programmeAuthorizerFake{events: &events, err: apperror.New("authorization.denied")},
-		&institutionAuditorFake{events: &events, beginID: model.NewID()}, time.Now, model.NewID,
-	)
+	service := newProgrammeLevelService(programmeLevelServiceDependencies{Store: &programmeLevelStoreFake{events: &events}, Authorization: &programmeAuthorizerFake{events: &events, err: apperror.New("authorization.denied")}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Now: time.Now, NewID: model.NewID})
 	_, err := service.CreateProgrammeLevel(context.Background(), invocation.Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1"})
 	require.True(t, apperror.Is(err, "authorization.denied"), "Create() error = %v", err)
 	require.Equal(t, []string{"authorize"}, events)
@@ -157,11 +141,7 @@ func TestProgrammeLevelCreateConflictCompletesFailedAttempt(t *testing.T) {
 	events := []string{}
 	programme := &model.Programme{ID: model.ProgrammeID(model.NewID())}
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewID()}
-	service := newProgrammeLevelService(
-		&programmeLevelStoreFake{events: &events, createErr: store.NewErrConflict("programme_level", "programme_levels_programme_id_name_key", nil)},
-		&programmeAuthorizerFake{events: &events},
-		auditor, time.Now, model.NewID,
-	)
+	service := newProgrammeLevelService(programmeLevelServiceDependencies{Store: &programmeLevelStoreFake{events: &events, createErr: store.NewErrConflict("programme_level", "programme_levels_programme_id_name_key", nil)}, Authorization: &programmeAuthorizerFake{events: &events}, Audit: auditor, Now: time.Now, NewID: model.NewID})
 	_, err := service.CreateProgrammeLevel(context.Background(), invocation.Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1"})
 	require.True(t, apperror.Is(err, "programme_level.conflict"), "Create() error = %v, audit code", err)
 	require.Equal(t, "programme_level.conflict", auditor.failCode, "Create() error = %v, audit code", err)
@@ -181,10 +161,7 @@ func TestProgrammeLevelListPreservesLimitWithoutSearch(t *testing.T) {
 				events: &events,
 				listed: []*model.ProgrammeLevel{first, {ID: model.NewProgrammeLevelID()}},
 			}
-			service := newProgrammeLevelService(
-				persistence, &programmeAuthorizerFake{events: &events},
-				&institutionAuditorFake{events: &events}, time.Now, model.NewID,
-			)
+			service := newProgrammeLevelService(programmeLevelServiceDependencies{Store: persistence, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events}, Now: time.Now, NewID: model.NewID})
 			got, err := service.ListProgrammeLevels(context.Background(), invocation.Invocation{}, ListProgrammeLevelsQuery{
 				ProgrammeID: model.NewProgrammeID(), Query: term, NamePageQuery: NamePageQuery{Limit: 1},
 			})

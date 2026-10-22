@@ -44,26 +44,26 @@ func (s *mfaApplicationService) ResetUserMFA(ctx context.Context, invocation inv
 		return apperror.New("authentication.mfa.reset_invalid")
 	}
 	resource := model.Resource{Type: model.ResourceUser, ID: userID.String()}
-	if err = s.security.authorization.Authorize(ctx, invocation, model.ActionUserMFAReset, resource); err != nil {
+	if err = s.deps.Security.authorization.Authorize(ctx, invocation, model.ActionUserMFAReset, resource); err != nil {
 		return err
 	}
-	at := model.TimeFromMillis(s.now().UnixMilli())
+	at := model.TimeFromMillis(s.deps.Now().UnixMilli())
 	prepared, err := s.prepareSecurityNotice(ctx, userID, mail.MFANoticeReset, at)
 	if err != nil {
 		return err
 	}
-	auditID, err := s.audit.Begin(ctx, invocation, model.ActionUserMFAReset, resource, map[string]any{"identity_verified": true, "reason": reason, "verification_reference": reference})
+	auditID, err := s.deps.Audit.Begin(ctx, invocation, model.ActionUserMFAReset, resource, map[string]any{"identity_verified": true, "reason": reason, "verification_reference": reference})
 	if err != nil {
 		return err
 	}
-	result, err := s.credentials.Reset(ctx, &store.MFAAssistedReset{Principal: principal, UserID: userID, IdentityVerified: true, Reason: reason, VerificationReference: reference, RecentAuthenticationTTL: s.recentAuthenticationTTL, AuditEventID: auditID, Capabilities: accessDeploymentCapabilities(s.security.capabilities.Snapshot()), Notice: mfaSecurityNotice(prepared), NoticeAt: at})
+	result, err := s.deps.Credentials.Reset(ctx, &store.MFAAssistedReset{Principal: principal, UserID: userID, IdentityVerified: true, Reason: reason, VerificationReference: reference, RecentAuthenticationTTL: s.deps.RecentAuthenticationTTL, AuditEventID: auditID, Capabilities: accessDeploymentCapabilities(s.deps.Security.capabilities.Snapshot()), Notice: mfaSecurityNotice(prepared), NoticeAt: at})
 	if err != nil {
 		return s.failMutation(ctx, auditID, err)
 	}
 	if result == nil || result.Recovery == nil {
 		return authenticationUnavailable(errors.New("MFA reset returned no recovery state"))
 	}
-	s.effects.SessionsRevoked(ctx, userID.String(), mfaResetSessionIDs(result.Sessions), result.AccessTokenHashes)
+	s.deps.Effects.SessionsRevoked(ctx, userID.String(), mfaResetSessionIDs(result.Sessions), result.AccessTokenHashes)
 	return nil
 }
 

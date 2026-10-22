@@ -62,24 +62,15 @@ func desktopCompatibilityServiceFixture(
 	persistence := &desktopCompatibilityPolicyStoreFake{policy: policy}
 	authorization := &accessPolicyAuthorizationFake{}
 	audit := &accessPolicyAuditFake{beginID: model.NewID()}
-	service, err := newDesktopCompatibilityService(
-		persistence,
-		&accessPolicyInstitutionFake{institution: institution},
-		authorization,
-		audit,
-		[]model.DesktopBuildTuple{
-			testDesktopBuildTuple(
-				"1.2.3",
-				"darwin-current",
-				model.DesktopPlatformDarwin,
-				model.DesktopArchitectureARM64,
-				1,
-			),
-		},
-		false,
-		time.Minute,
-		func() time.Time { return at.Add(30 * time.Second) },
-	)
+	service, err := newDesktopCompatibilityService(desktopCompatibilityServiceDependencies{Policies: persistence, Institutions: &accessPolicyInstitutionFake{institution: institution}, Authorization: authorization, Audit: audit, Builds: []model.DesktopBuildTuple{
+		testDesktopBuildTuple(
+			"1.2.3",
+			"darwin-current",
+			model.DesktopPlatformDarwin,
+			model.DesktopArchitectureARM64,
+			1,
+		),
+	}, SkipBuildChecks: false, RecentAuthenticationTTL: time.Minute, Now: func() time.Time { return at.Add(30 * time.Second) }})
 	require.NoError(t, err)
 	principal := model.Principal{
 		UserID:                 model.NewUserID(),
@@ -444,7 +435,7 @@ func testDesktopBuildTuple(
 func TestDevelopmentCompatibilitySkipsBuildChecksButKeepsAvailabilityAndValidation(t *testing.T) {
 	t.Parallel()
 	strict, persistence, _, _, _ := desktopCompatibilityServiceFixture(t)
-	development, err := newDesktopCompatibilityService(strict.policies, strict.institutions, strict.authorization, strict.audit, nil, true, time.Minute, strict.now)
+	development, err := newDesktopCompatibilityService(desktopCompatibilityServiceDependencies{Policies: strict.deps.Policies, Institutions: strict.deps.Institutions, Authorization: strict.deps.Authorization, Audit: strict.deps.Audit, Builds: nil, SkipBuildChecks: true, RecentAuthenticationTTL: time.Minute, Now: strict.deps.Now})
 	require.NoError(t, err)
 	persistence.policy.MinimumDesktopRelease = "9.0.0"
 	persistence.policy.RevokedDesktopBuildIDs = []string{"dev-build"}
@@ -483,7 +474,7 @@ func TestDevelopmentCompatibilitySkipsBuildChecksButKeepsAvailabilityAndValidati
 func TestDevelopmentLoginDoesNotBypassProtectedAttemptBuildChecks(t *testing.T) {
 	t.Parallel()
 	service, persistence, _, _, invocation := desktopCompatibilityServiceFixture(t)
-	service.skipBuildChecks = true
+	service.deps.SkipBuildChecks = true
 	principal := invocation.Principal()
 	principal.ClientType = model.SessionClientDesktop
 	principal.RegisteredDesktopKey = true

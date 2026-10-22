@@ -41,9 +41,9 @@ func TestMFAActivationUsesNativeExclusiveDeadline(t *testing.T) {
 			}
 			service := newTestMFAApplicationService(t, persistence, &mfaApplicationAuditFake{}, &mfaApplicationEffectsFake{}, now)
 			mailer := &mfaSecurityNoticeMailPreparerFake{}
-			service.mail = mailer
+			service.deps.Mail = mailer
 			const secret = "JBSWY3DPEHPK3PXP" // #nosec G101 -- Public synthetic TOTP seed for expiry-boundary tests.
-			sealed, err := service.mechanics.sealTOTPSecret(principal.UserID.String(), secret)
+			sealed, err := service.deps.Mechanics.sealTOTPSecret(principal.UserID.String(), secret)
 			require.NoError(t, err)
 			persistence.credential = &model.MFACredential{
 				ID: model.NewMFACredentialID(), UserID: principal.UserID,

@@ -193,27 +193,34 @@ type RelationshipTransitionPreparation struct {
 	ActionAt     time.Time
 }
 
-type Composer struct {
-	renderer Renderer
-	sender   Sender
-	sealer   *secretseal.Sealer
+// ComposerDependencies are the collaborators of Composer;
+// NewComposer validates them once and Composer keeps them in deps.
+type ComposerDependencies struct {
+	Renderer Renderer
+	Sender   Sender
+	Sealer   *secretseal.Sealer
 }
 
-func NewComposer(renderer Renderer, sender Sender, sealer *secretseal.Sealer) (*Composer, error) {
-	if renderer == nil || sender == nil || sender.Enabled() && sealer == nil {
+type Composer struct {
+	deps ComposerDependencies
+}
+
+// NewComposer validates deps once and constructs the direct mail composer.
+func NewComposer(deps ComposerDependencies) (*Composer, error) {
+	if deps.Renderer == nil || deps.Sender == nil || deps.Sender.Enabled() && deps.Sealer == nil {
 		return nil, errors.New("mail composer dependencies are invalid")
 	}
-	return &Composer{renderer: renderer, sender: sender, sealer: sealer}, nil
+	return &Composer{deps: deps}, nil
 }
 
 func (p *Composer) Enabled() bool {
-	return p != nil && p.sender != nil && p.sender.Enabled() && p.sealer != nil
+	return p != nil && p.deps.Sender != nil && p.deps.Sender.Enabled() && p.deps.Sealer != nil
 }
 
 func (p *Composer) prepareDirect(request directPreparation) (*store.PreparedMail, error) {
 	user := request.Recipient
 	definition, defined := definitionFor(request.TemplateKey)
-	if p == nil || p.sender == nil || user == nil || user.Validate() != nil || !user.IsActive() ||
+	if p == nil || p.deps.Sender == nil || user == nil || user.Validate() != nil || !user.IsActive() ||
 		!request.OccurrenceID.IsValid() || !defined ||
 		request.At.IsZero() || !request.Deadline.After(request.At) || definition.actionRequired != (strings.TrimSpace(request.ActionURL) != "") {
 		return nil, errors.New("direct mail input is invalid")
@@ -542,13 +549,13 @@ func (p *Composer) prepareRecipient(recipientName, recipientAddress, locale stri
 	actionURL string, at, deadline time.Time, detail Presentation,
 ) (*store.PreparedMail, error) {
 	definition, defined := definitionFor(key)
-	if p == nil || p.sender == nil || p.renderer == nil || !model.IsValidEmail(recipientAddress) || !actorUserID.IsValid() ||
+	if p == nil || p.deps.Sender == nil || p.deps.Renderer == nil || !model.IsValidEmail(recipientAddress) || !actorUserID.IsValid() ||
 		!occurrenceID.IsValid() || targetUserID.IsValid() == targetInvitationID.IsValid() || !defined ||
 		definition.actionRequired != (strings.TrimSpace(actionURL) != "") || at.IsZero() || !deadline.After(at) {
 		return nil, errors.New("direct mail recipient is invalid")
 	}
 	at, deadline = model.TimeUTC(at), model.TimeUTC(deadline)
-	if !p.sender.Enabled() {
+	if !p.deps.Sender.Enabled() {
 		return p.prepareSuppressedRecipient(recipientAddress, actorUserID, targetUserID, targetInvitationID, occurrenceID,
 			key, at, deadline, model.MailDeliveryDisabledCode)
 	}
@@ -562,15 +569,15 @@ func (p *Composer) prepareRecipient(recipientName, recipientAddress, locale stri
 		return nil, err
 	}
 	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: definition.kind, TemplateKey: key, ActorUserID: actorUserID, CreatedAt: at}
-	rendered, err := p.renderer.Render(RenderRequest{Key: key, Locale: locale, ActionURL: actionURL, Presentation: detail})
+	rendered, err := p.deps.Renderer.Render(RenderRequest{Key: key, Locale: locale, ActionURL: actionURL, Presentation: detail})
 	if err != nil {
 		return nil, err
 	}
-	from := p.sender.From()
+	from := p.deps.Sender.From()
 	if err = ValidateAddress(from); err != nil {
 		return nil, err
 	}
-	frozen, err := freezeDeliveryPayload(p.sealer, deliveryID, from, Address{Name: recipientName, Address: recipientAddress}, rendered)
+	frozen, err := freezeDeliveryPayload(p.deps.Sealer, deliveryID, from, Address{Name: recipientName, Address: recipientAddress}, rendered)
 	if err != nil {
 		return nil, err
 	}
@@ -592,7 +599,7 @@ func (p *Composer) prepareSuppressedRecipient(recipientAddress string, actorUser
 	at, deadline time.Time, publicCode string,
 ) (*store.PreparedMail, error) {
 	definition, defined := definitionFor(key)
-	if p == nil || p.sender == nil || !model.IsValidEmail(recipientAddress) || !actorUserID.IsValid() ||
+	if p == nil || p.deps.Sender == nil || !model.IsValidEmail(recipientAddress) || !actorUserID.IsValid() ||
 		targetUserID.IsValid() == targetInvitationID.IsValid() || !occurrenceID.IsValid() || !defined || at.IsZero() || !deadline.After(at) ||
 		publicCode != model.MailDeliveryDisabledCode && publicCode != model.MailDeliveryRecipientIneligibleCode {
 		return nil, errors.New("direct mail suppression input is invalid")

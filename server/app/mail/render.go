@@ -105,8 +105,17 @@ type renderedMessage struct {
 	HTML    string
 }
 
+// templateRendererDependencies are the collaborators of templateRenderer;
+// newRenderer validates them once and templateRenderer keeps them in deps.
+type templateRendererDependencies struct {
+	Files                   fs.FS
+	Localizer               *localization.Localizer
+	ValidateCompleteCatalog bool
+}
+
 type templateRenderer struct {
-	localizer                    *localization.Localizer
+	deps templateRendererDependencies
+
 	html                         map[model.MailTemplateKey]*htmltemplate.Template
 	text                         map[model.MailTemplateKey]*texttemplate.Template
 	allowLoopbackHTTPDevelopment bool
@@ -121,13 +130,13 @@ type RendererPolicy struct {
 // NewRenderer constructs the application-owned renderer from presentation
 // assets and the installation localizer.
 func NewRenderer(files fs.FS, localizer *localization.Localizer) (Renderer, error) {
-	return newRenderer(files, localizer, true)
+	return newRenderer(templateRendererDependencies{Files: files, Localizer: localizer, ValidateCompleteCatalog: true})
 }
 
 // NewRendererWithPolicy constructs a renderer with an explicit
 // composition-owned local-development policy.
 func NewRendererWithPolicy(files fs.FS, localizer *localization.Localizer, policy RendererPolicy) (Renderer, error) {
-	renderer, err := newRenderer(files, localizer, true)
+	renderer, err := newRenderer(templateRendererDependencies{Files: files, Localizer: localizer, ValidateCompleteCatalog: true})
 	if err != nil {
 		return nil, err
 	}
@@ -135,27 +144,23 @@ func NewRendererWithPolicy(files fs.FS, localizer *localization.Localizer, polic
 	return renderer, nil
 }
 
-func newRenderer(files fs.FS, localizer *localization.Localizer, validateCompleteCatalog bool) (*templateRenderer, error) {
-	if files == nil || localizer == nil {
+func newRenderer(deps templateRendererDependencies) (*templateRenderer, error) {
+	if deps.Files == nil || deps.Localizer == nil {
 		return nil, errors.New("mail renderer dependencies are invalid")
 	}
-	assets, err := NewInlineAssets(files)
+	assets, err := NewInlineAssets(deps.Files)
 	if err != nil {
 		return nil, fmt.Errorf("load mail inline assets: %w", err)
 	}
-	renderer := &templateRenderer{
-		localizer: localizer,
-		html:      make(map[model.MailTemplateKey]*htmltemplate.Template),
-		text:      make(map[model.MailTemplateKey]*texttemplate.Template),
-	}
+	renderer := &templateRenderer{deps: deps, html: make(map[model.MailTemplateKey]*htmltemplate.Template), text: make(map[model.MailTemplateKey]*texttemplate.Template)}
 	for _, key := range model.AllMailTemplateKeys() {
-		if validateCompleteCatalog {
-			if _, _, err := resolveCopy(localizer, key, localization.EnglishLocale); err != nil {
+		if deps.ValidateCompleteCatalog {
+			if _, _, err := resolveCopy(deps.Localizer, key, localization.EnglishLocale); err != nil {
 				return nil, fmt.Errorf("validate localized mail copy %q: %w", key, err)
 			}
 		}
 		name := string(key)
-		htmlSource, err := fs.ReadFile(files, name+".html")
+		htmlSource, err := fs.ReadFile(deps.Files, name+".html")
 		if err != nil {
 			return nil, fmt.Errorf("read HTML mail template %q: %w", key, err)
 		}
@@ -167,7 +172,7 @@ func newRenderer(files fs.FS, localizer *localization.Localizer, validateComplet
 		if err != nil {
 			return nil, fmt.Errorf("parse HTML mail template %q: %w", key, err)
 		}
-		textSource, err := fs.ReadFile(files, name+".txt")
+		textSource, err := fs.ReadFile(deps.Files, name+".txt")
 		if err != nil {
 			return nil, fmt.Errorf("read text mail template %q: %w", key, err)
 		}
@@ -182,10 +187,10 @@ func newRenderer(files fs.FS, localizer *localization.Localizer, validateComplet
 }
 
 func (r *templateRenderer) render(request renderRequest) (renderedMessage, error) {
-	if r == nil || r.localizer == nil {
+	if r == nil || r.deps.Localizer == nil {
 		return renderedMessage{}, errors.New("mail template renderer is nil")
 	}
-	copy, locale, err := resolveCopy(r.localizer, request.Key, request.RecipientLocale)
+	copy, locale, err := resolveCopy(r.deps.Localizer, request.Key, request.RecipientLocale)
 	if err != nil {
 		return renderedMessage{}, err
 	}
@@ -354,7 +359,7 @@ func (r *templateRenderer) Render(request RenderRequest) (FrozenContent, error) 
 }
 
 func (r *templateRenderer) SittingLocales() (string, []string) {
-	return r.localizer.DefaultLocale(), r.localizer.SupportedLocales()
+	return r.deps.Localizer.DefaultLocale(), r.deps.Localizer.SupportedLocales()
 }
 
 func (r *templateRenderer) renderContent(request renderRequest) (FrozenContent, error) {

@@ -24,8 +24,8 @@ func TestSittingComposerFreezesAndSelectsRecipientLocales(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, 8, 21, 9, 0, 0, 0, time.UTC)
 	sealer := sittingTestSealer(t)
-	composer, err := NewSittingComposer(localizedSittingRenderer{}, &sittingSenderFake{enabled: true,
-		from: Address{Name: "Proctor", Address: "no-reply@example.test"}}, sealer, func() time.Time { return at })
+	composer, err := NewSittingComposer(SittingComposerDependencies{Renderer: localizedSittingRenderer{}, Sender: &sittingSenderFake{enabled: true,
+		from: Address{Name: "Proctor", Address: "no-reply@example.test"}}, Sealer: sealer, Now: func() time.Time { return at }})
 	require.NoError(t, err)
 	sitting, err := model.NewExamSitting(model.NewExamSittingID(), model.NewExamID(), model.NewExamRevisionID(), model.NewClassID(),
 		at.Add(24*time.Hour), at.Add(26*time.Hour), at)

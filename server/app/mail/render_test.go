@@ -26,7 +26,7 @@ func testRenderer() (*templateRenderer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newRenderer(os.DirFS("../../templates"), localizer, true)
+	return newRenderer(templateRendererDependencies{Files: os.DirFS("../../templates"), Localizer: localizer, ValidateCompleteCatalog: true})
 }
 
 func TestRendererEscapesBoundedPersonalAccessTokenDetailsWithoutScopes(t *testing.T) {
@@ -182,7 +182,7 @@ func TestRendererContextuallyEscapesLocalizedCopyAndActionURL(t *testing.T) {
   {"id":"mail.identity.verify_email.subject","translation":"Verify <account>"}
 ]`)}}, localization.EnglishLocale)
 	require.NoError(t, err)
-	renderer, err := newRenderer(os.DirFS("../../templates"), localizer, false)
+	renderer, err := newRenderer(templateRendererDependencies{Files: os.DirFS("../../templates"), Localizer: localizer, ValidateCompleteCatalog: false})
 	require.NoError(t, err)
 
 	message, err := renderer.render(renderRequest{

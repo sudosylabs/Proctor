@@ -87,12 +87,12 @@ func (a retentionJobAudit) BeginRetentionExpiry(ctx context.Context, institution
 }
 
 func (a retentionJobAudit) PrepareRetentionCleanupAudit(_ context.Context, institutionID model.InstitutionID) (*model.AuditEvent, error) {
-	if a.audit == nil || a.audit.nodeID == "" || !institutionID.IsValid() {
+	if a.audit == nil || a.audit.deps.NodeID == "" || !institutionID.IsValid() {
 		return nil, apperror.New("audit.unavailable")
 	}
 	parameters, err := model.EncodeAuditData(map[string]string{"operation": "retention.expire_cleanup_history"})
 	if err != nil {
 		return nil, apperror.New("audit.unavailable")
 	}
-	return &model.AuditEvent{Action: string(model.ActionRetentionCleanupManage), Resource: model.Resource{Type: model.ResourceInstitution, ID: institutionID.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: institutionID.String(), Status: model.AuditStatusAttempt, NodeID: a.audit.nodeID, ClientType: "system", Parameters: parameters}, nil
+	return &model.AuditEvent{Action: string(model.ActionRetentionCleanupManage), Resource: model.Resource{Type: model.ResourceInstitution, ID: institutionID.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: institutionID.String(), Status: model.AuditStatusAttempt, NodeID: a.audit.deps.NodeID, ClientType: "system", Parameters: parameters}, nil
 }

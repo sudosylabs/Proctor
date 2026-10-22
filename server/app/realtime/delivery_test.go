@@ -368,7 +368,7 @@ func validUserEvent() RealtimeEvent {
 
 func newOrdinaryTestService(t *testing.T) *Service {
 	t.Helper()
-	service, err := New(&recordingInvalidator{}, &recordingDiagnostics{})
+	service, err := New(Dependencies{AuthenticationInvalidator: &recordingInvalidator{}, Diagnostics: &recordingDiagnostics{}})
 	require.NoError(t, err)
 	return service
 }

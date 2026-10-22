@@ -70,15 +70,23 @@ type desktopCompatibilityInstitutionStore interface {
 	GetSingleton(context.Context) (*model.Institution, error)
 }
 
+// desktopCompatibilityServiceDependencies are the collaborators of desktopCompatibilityService;
+// newDesktopCompatibilityService validates them once and desktopCompatibilityService keeps them in deps.
+type desktopCompatibilityServiceDependencies struct {
+	Policies                store.DesktopCompatibilityPolicyStore
+	Institutions            desktopCompatibilityInstitutionStore
+	Authorization           resourceAuthorizer
+	Audit                   mutationAuditor
+	Builds                  []model.DesktopBuildTuple
+	SkipBuildChecks         bool
+	RecentAuthenticationTTL time.Duration
+	Now                     func() time.Time
+}
+
 type desktopCompatibilityService struct {
-	policies                store.DesktopCompatibilityPolicyStore
-	institutions            desktopCompatibilityInstitutionStore
-	authorization           resourceAuthorizer
-	audit                   mutationAuditor
-	catalog                 *desktopBuildCatalog
-	skipBuildChecks         bool
-	recentAuthenticationTTL time.Duration
-	now                     func() time.Time
+	deps desktopCompatibilityServiceDependencies
+
+	catalog *desktopBuildCatalog
 }
 
 // ReplaceDesktopCompatibilityPolicyCommand completely replaces the
@@ -120,34 +128,16 @@ func newDesktopBuildCatalog(entries []model.DesktopBuildTuple) (*desktopBuildCat
 	return &desktopBuildCatalog{entries: cloned}, nil
 }
 
-func newDesktopCompatibilityService(
-	policies store.DesktopCompatibilityPolicyStore,
-	institutions desktopCompatibilityInstitutionStore,
-	authorization resourceAuthorizer,
-	audit mutationAuditor,
-	builds []model.DesktopBuildTuple,
-	skipBuildChecks bool,
-	recentAuthenticationTTL time.Duration,
-	now func() time.Time,
-) (*desktopCompatibilityService, error) {
-	if policies == nil || institutions == nil || authorization == nil || audit == nil ||
-		recentAuthenticationTTL <= 0 || now == nil {
+func newDesktopCompatibilityService(deps desktopCompatibilityServiceDependencies) (*desktopCompatibilityService, error) {
+	if deps.Policies == nil || deps.Institutions == nil || deps.Authorization == nil || deps.Audit == nil ||
+		deps.RecentAuthenticationTTL <= 0 || deps.Now == nil {
 		return nil, errors.New("desktop compatibility service dependencies are invalid")
 	}
-	catalog, err := newDesktopBuildCatalog(builds)
+	catalog, err := newDesktopBuildCatalog(deps.Builds)
 	if err != nil {
 		return nil, err
 	}
-	return &desktopCompatibilityService{
-		policies:                policies,
-		institutions:            institutions,
-		authorization:           authorization,
-		audit:                   audit,
-		catalog:                 catalog,
-		skipBuildChecks:         skipBuildChecks,
-		recentAuthenticationTTL: recentAuthenticationTTL,
-		now:                     now,
-	}, nil
+	return &desktopCompatibilityService{deps: deps, catalog: catalog}, nil
 }
 
 // EvaluateDesktopCompatibility checks untrusted build declarations against
@@ -156,7 +146,7 @@ func (s *desktopCompatibilityService) EvaluateDesktopCompatibility(
 	ctx context.Context,
 	query DesktopCompatibilityQuery,
 ) (DesktopCompatibilityResult, error) {
-	return s.evaluate(ctx, query, s.skipBuildChecks)
+	return s.evaluate(ctx, query, s.deps.SkipBuildChecks)
 }
 
 func (s *desktopCompatibilityService) evaluate(
@@ -167,7 +157,7 @@ func (s *desktopCompatibilityService) evaluate(
 	if err := validateDesktopCompatibilityQuery(query); err != nil {
 		return DesktopCompatibilityResult{}, err
 	}
-	policy, err := s.policies.Get(ctx)
+	policy, err := s.deps.Policies.Get(ctx)
 	if err != nil || policy == nil {
 		return DesktopCompatibilityResult{}, desktopCompatibilityPolicyError(err)
 	}
@@ -187,7 +177,7 @@ func (s *desktopCompatibilityService) evaluate(
 	if err != nil {
 		return DesktopCompatibilityResult{}, err
 	}
-	if result.RetryAt.Valid && !result.RetryAt.Time.After(model.TimeUTC(s.now())) {
+	if result.RetryAt.Valid && !result.RetryAt.Time.After(model.TimeUTC(s.deps.Now())) {
 		result.RetryAt = model.OptionalTime{}
 	}
 	result.PolicyRevision = policy.Revision
@@ -233,7 +223,7 @@ func (s *desktopCompatibilityService) GetDesktopCompatibilityPolicy(
 	if _, _, err := s.authorize(ctx, invocation, model.ActionAccessPolicyView); err != nil {
 		return nil, err
 	}
-	policy, err := s.policies.Get(ctx)
+	policy, err := s.deps.Policies.Get(ctx)
 	if err != nil || policy == nil {
 		return nil, desktopCompatibilityPolicyError(err)
 	}
@@ -248,8 +238,8 @@ func (s *desktopCompatibilityService) ReplaceDesktopCompatibilityPolicy(
 ) (*model.DesktopCompatibilityPolicy, error) {
 	if err := requireStrongRecentSession(
 		invocation.Principal(),
-		s.now(),
-		s.recentAuthenticationTTL,
+		s.deps.Now(),
+		s.deps.RecentAuthenticationTTL,
 	); err != nil {
 		return nil, err
 	}
@@ -284,7 +274,7 @@ func (s *desktopCompatibilityService) ReplaceDesktopCompatibilityPolicy(
 	}
 	stored, err := runAuditedMutation(
 		ctx,
-		s.audit,
+		s.deps.Audit,
 		mutationAttempt{
 			Invocation: invocation,
 			Action:     model.ActionDesktopCompatibilityPolicyManage,
@@ -301,12 +291,12 @@ func (s *desktopCompatibilityService) ReplaceDesktopCompatibilityPolicy(
 				"retry_at_set":              command.Settings.RetryAt.Valid,
 			},
 		},
-		s.now,
+		s.deps.Now,
 		func(
 			ctx context.Context,
 			reference mutationAttemptReference,
 		) (*store.DesktopCompatibilityPolicyReplacementResult, error) {
-			return s.policies.Replace(
+			return s.deps.Policies.Replace(
 				ctx,
 				&store.DesktopCompatibilityPolicyReplacement{
 					ActorID:          invocation.Principal().UserID,
@@ -334,12 +324,12 @@ func (s *desktopCompatibilityService) authorize(
 	invocation invocation.Invocation,
 	action model.Action,
 ) (*model.Institution, model.Resource, error) {
-	institution, err := s.institutions.GetSingleton(ctx)
+	institution, err := s.deps.Institutions.GetSingleton(ctx)
 	if err != nil || institution == nil || !institution.ID.IsValid() {
 		return nil, model.Resource{}, desktopCompatibilityPolicyError(err)
 	}
 	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
-	if err := s.authorization.Authorize(ctx, invocation, action, resource); err != nil {
+	if err := s.deps.Authorization.Authorize(ctx, invocation, action, resource); err != nil {
 		return nil, model.Resource{}, err
 	}
 	return institution, resource, nil

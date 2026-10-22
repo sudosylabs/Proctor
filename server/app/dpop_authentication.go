@@ -45,7 +45,7 @@ func (s *authenticationService) AuthenticateDPoP(
 	if _, err = s.verifyDesktopProof(ctx, resolved, rawToken, proof, method, path, true); err != nil {
 		return nil, err
 	}
-	now := model.TimeUTC(s.now())
+	now := model.TimeUTC(s.deps.Now())
 	if err = s.updateActivity(ctx, resolved, now); err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func (s *authenticationService) resolveDesktopCredential(
 	if s.registrations == nil || s.dpop == nil || !validRawCredential(rawToken) {
 		return nil, invalidTokenAppError()
 	}
-	credential, session, err := s.sessionCredentials.GetSessionByTokenHash(
+	credential, session, err := s.deps.SessionCredentials.GetSessionByTokenHash(
 		ctx, model.HashToken(rawToken), kind,
 	)
 	if err != nil {
@@ -88,7 +88,7 @@ func (s *authenticationService) resolveDesktopCredential(
 		}
 		return nil, authenticationUnavailable(err)
 	}
-	now := model.TimeUTC(s.now())
+	now := model.TimeUTC(s.deps.Now())
 	if session.ClientType != model.SessionClientDesktop || credential.IsExpiredAt(now) ||
 		!session.DesktopRegistrationID.IsValid() || !model.IsValidDPoPKeyThumbprint(session.DPoPKeyThumbprint) {
 		return nil, invalidTokenAppError()
@@ -97,7 +97,7 @@ func (s *authenticationService) resolveDesktopCredential(
 	if err != nil {
 		return nil, err
 	}
-	user, err := s.users.Get(ctx, session.UserID)
+	user, err := s.deps.Users.Get(ctx, session.UserID)
 	if err != nil || !user.IsActive() {
 		if store.IsNotFound(err) || err == nil {
 			return nil, invalidTokenAppError()
@@ -140,7 +140,7 @@ func (s *authenticationService) verifyDesktopProof(
 	_, err = s.dpop.Verify(ctx, proof, method, target, accessToken, &registration.PublicJWK, dpopBinding{
 		Kind: dpopBindingSession, SessionID: resolved.Session.ID,
 		DesktopRegistrationID: registration.ID, KeyThumbprint: registration.KeyThumbprint,
-		Origin: s.dpop.policy.Origin,
+		Origin: s.dpop.deps.Policy.Origin,
 	})
 	return registration, err
 }
@@ -150,7 +150,7 @@ func (s *authenticationService) dpopTarget(path string) (string, error) {
 		strings.ContainsAny(path, "?#") {
 		return "", errors.New("invalid DPoP request path")
 	}
-	return canonicalDPoPTarget(s.dpop.policy.Origin + path)
+	return canonicalDPoPTarget(s.dpop.deps.Policy.Origin + path)
 }
 
 func principalFromDesktopAuthentication(resolved *resolvedAuthentication) *model.Principal {

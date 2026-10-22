@@ -101,7 +101,7 @@ func TestJobOperationsAuthorizeBeforeEngineInspection(t *testing.T) {
 	view := job.View{ID: model.NewJobID(), Type: model.JobTypeProfilePictureGenerateDefault, Status: model.JobStatusQueued}
 	engine := &jobOperatorEngineFake{events: &events, view: view}
 	authorizer := &jobOperationsAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}}
-	service, err := newJobOperationsService(engine, authorizer, &jobOperationsAuditorFake{events: &events}, time.Now)
+	service, err := newJobOperationsService(jobOperationsServiceDependencies{Jobs: engine, Authorization: authorizer, Audit: &jobOperationsAuditorFake{events: &events}, Now: time.Now})
 	require.NoError(t, err)
 
 	page, appErr := service.ListJobs(context.Background(), invocation.Invocation{}, ListJobsQuery{Limit: 20})
@@ -127,7 +127,7 @@ func TestJobOperationsAuditAfterPreparationAndBeforeTransition(t *testing.T) {
 	engine := &jobOperatorEngineFake{events: &events, view: view}
 	authorizer := &jobOperationsAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}}
 	auditor := &jobOperationsAuditorFake{events: &events}
-	service, err := newJobOperationsService(engine, authorizer, auditor, time.Now)
+	service, err := newJobOperationsService(jobOperationsServiceDependencies{Jobs: engine, Authorization: authorizer, Audit: auditor, Now: time.Now})
 	require.NoError(t, err)
 
 	_, appErr := service.CancelJob(context.Background(), invocation.Invocation{}, CancelJobCommand{ID: view.ID})
@@ -165,7 +165,7 @@ func TestJobOperationsTranslateEnginePolicyErrors(t *testing.T) {
 	t.Parallel()
 	events := make([]string, 0, 2)
 	engine := &jobOperatorEngineFake{events: &events, prepareErr: job.ErrCancelUnsupported}
-	service, err := newJobOperationsService(engine, &jobOperationsAuthorizerFake{events: &events}, &jobOperationsAuditorFake{events: &events}, time.Now)
+	service, err := newJobOperationsService(jobOperationsServiceDependencies{Jobs: engine, Authorization: &jobOperationsAuthorizerFake{events: &events}, Audit: &jobOperationsAuditorFake{events: &events}, Now: time.Now})
 	require.NoError(t, err)
 	_, appErr := service.CancelJob(context.Background(), invocation.Invocation{}, CancelJobCommand{ID: model.NewJobID()})
 	require.True(t, apperror.Is(appErr, "job.cancel.unsupported"), "Cancel() error=%#v", appErr)
@@ -191,7 +191,7 @@ func TestJobOperationsRequireDependencies(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := newJobOperationsService(test.jobs, test.authorization, test.audit, test.now)
+			_, err := newJobOperationsService(jobOperationsServiceDependencies{Jobs: test.jobs, Authorization: test.authorization, Audit: test.audit, Now: test.now})
 			require.Error(t, err, "nil %s dependency was accepted", test.name)
 		})
 	}

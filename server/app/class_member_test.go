@@ -128,10 +128,10 @@ func TestClassMemberEnrollUsesDestinationPeriodAndAtomicStore(t *testing.T) {
 	mailer := &classMemberMailFake{events: &events}
 	effects := &classMemberEffectsFake{}
 	clockCalls := 0
-	service := newClassMemberService(persistence, classes, users, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, mailer, effects, func() time.Time {
+	service := newClassMemberService(classMemberServiceDependencies{Store: persistence, Classes: classes, Users: users, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Mail: mailer, Effects: effects, Now: func() time.Time {
 		clockCalls++
 		return time.UnixMilli(500)
-	}, model.NewID)
+	}, NewID: model.NewID})
 	enrollment, err := service.EnrollClassMember(context.Background(), invocation.New(principal, model.RequestMetadata{}), EnrollClassMemberCommand{ClassID: model.ClassID(classID), UserID: userID, StartAt: 100})
 	require.NoError(t, err)
 	require.Equal(t, periodID, enrollment.Membership.AcademicPeriodID.String(), "enrollment/input = %#v / %#v", enrollment, persistence.enrollInput)
@@ -158,19 +158,9 @@ func TestClassMemberEnrollReplayDoesNotPublishMembershipChange(t *testing.T) {
 	classID, periodID, userID := model.NewClassID(), model.NewAcademicPeriodID(), model.NewUserID()
 	persistence := &classMemberStoreFake{events: &events, replayed: true}
 	effects := &classMemberEffectsFake{}
-	service := newClassMemberService(
-		persistence,
-		&classMemberClassStoreFake{events: &events, value: &model.Class{
-			ID: classID, AcademicPeriodID: periodID, DisplayName: "Class A",
-		}},
-		&classMemberUserStoreFake{events: &events, value: mailTestUser(model.Principal{UserID: userID}, time.UnixMilli(500))},
-		&programmeAuthorizerFake{events: &events},
-		&institutionAuditorFake{events: &events, beginID: model.NewID()},
-		&classMemberMailFake{events: &events},
-		effects,
-		func() time.Time { return time.UnixMilli(500) },
-		model.NewID,
-	)
+	service := newClassMemberService(classMemberServiceDependencies{Store: persistence, Classes: &classMemberClassStoreFake{events: &events, value: &model.Class{
+		ID: classID, AcademicPeriodID: periodID, DisplayName: "Class A",
+	}}, Users: &classMemberUserStoreFake{events: &events, value: mailTestUser(model.Principal{UserID: userID}, time.UnixMilli(500))}, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Mail: &classMemberMailFake{events: &events}, Effects: effects, Now: func() time.Time { return time.UnixMilli(500) }, NewID: model.NewID})
 	result, err := service.EnrollClassMember(
 		context.Background(),
 		invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
@@ -188,9 +178,7 @@ func TestClassMemberRetainedEnrollmentBypassesChangedMembershipAndMail(t *testin
 	events := []string{}
 	persistence := &classMemberStoreFake{events: &events, active: []*model.ClassMember{{ID: model.NewClassMemberID(), ClassID: model.NewClassID()}}}
 	mailer := &classMemberMailFake{events: &events}
-	service := newClassMemberService(persistence, &classMemberClassStoreFake{events: &events}, &classMemberUserStoreFake{events: &events},
-		&programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, mailer, &classMemberEffectsFake{},
-		func() time.Time { return time.UnixMilli(500) }, func() string { return model.NewClassMemberID().String() })
+	service := newClassMemberService(classMemberServiceDependencies{Store: persistence, Classes: &classMemberClassStoreFake{events: &events}, Users: &classMemberUserStoreFake{events: &events}, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Mail: mailer, Effects: &classMemberEffectsFake{}, Now: func() time.Time { return time.UnixMilli(500) }, NewID: func() string { return model.NewClassMemberID().String() }})
 	invocation := invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 	result, err := service.EnrollClassMember(context.Background(), invocation, EnrollClassMemberCommand{ClassID: model.NewClassID(),
 		UserID: model.NewUserID().String(), StartAt: 100, IdempotencyKey: "row", batchRetainedOutcome: true})
@@ -210,10 +198,7 @@ func TestClassMemberAlreadySatisfiedEnrollmentPreparesNoticeForAuthoritativeRace
 	persistence := &classMemberStoreFake{events: &events, active: []*model.ClassMember{current}}
 	class := &model.Class{ID: classID, AcademicPeriodID: periodID, DisplayName: "Class", Revision: 1}
 	mailer := &classMemberMailFake{events: &events}
-	service := newClassMemberService(persistence, &classMemberClassStoreFake{events: &events, value: class},
-		&classMemberUserStoreFake{events: &events, value: mailTestUser(model.Principal{UserID: userID}, time.UnixMilli(500))},
-		&programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, mailer, &classMemberEffectsFake{},
-		func() time.Time { return time.UnixMilli(500) }, func() string { return model.NewClassMemberID().String() })
+	service := newClassMemberService(classMemberServiceDependencies{Store: persistence, Classes: &classMemberClassStoreFake{events: &events, value: class}, Users: &classMemberUserStoreFake{events: &events, value: mailTestUser(model.Principal{UserID: userID}, time.UnixMilli(500))}, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Mail: mailer, Effects: &classMemberEffectsFake{}, Now: func() time.Time { return time.UnixMilli(500) }, NewID: func() string { return model.NewClassMemberID().String() }})
 	result, err := service.EnrollClassMember(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		EnrollClassMemberCommand{ClassID: classID, UserID: userID.String(), StartAt: 100, IdempotencyKey: "row"})
 	require.NoError(t, err, "already-satisfied enrollment")
@@ -236,9 +221,7 @@ func TestClassMemberEnrollCommitsTerminalNoticeForInactiveRecipient(t *testing.T
 	preparer, err := newDirectMailPreparer(&classTransitionRendererFake{}, &mailSenderFake{enabled: true,
 		from: MailAddress{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t))
 	require.NoError(t, err)
-	service := newClassMemberService(persistence, classes, users, &programmeAuthorizerFake{events: &events},
-		&institutionAuditorFake{events: &events, beginID: model.NewID()}, preparer, &classMemberEffectsFake{},
-		func() time.Time { return time.UnixMilli(500) }, model.NewID)
+	service := newClassMemberService(classMemberServiceDependencies{Store: persistence, Classes: classes, Users: users, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Mail: preparer, Effects: &classMemberEffectsFake{}, Now: func() time.Time { return time.UnixMilli(500) }, NewID: model.NewID})
 	_, err = service.EnrollClassMember(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		EnrollClassMemberCommand{ClassID: classID, UserID: userID.String(), StartAt: 100})
 	require.NoError(t, err)
@@ -264,9 +247,7 @@ func TestClassMemberTransferAuthorizesSourceAndCreatesOneTransferNotice(t *testi
 	mailer := &classMemberMailFake{events: &events}
 	destinationAuditID, sourceAuditID := model.NewID(), model.NewID()
 	auditor := &institutionAuditorFake{events: &events, beginIDs: []string{destinationAuditID, sourceAuditID}}
-	service := newClassMemberService(persistence, classes, users, &programmeAuthorizerFake{events: &events},
-		auditor, mailer, &classMemberEffectsFake{},
-		func() time.Time { return time.UnixMilli(500) }, model.NewID)
+	service := newClassMemberService(classMemberServiceDependencies{Store: persistence, Classes: classes, Users: users, Authorization: &programmeAuthorizerFake{events: &events}, Audit: auditor, Mail: mailer, Effects: &classMemberEffectsFake{}, Now: func() time.Time { return time.UnixMilli(500) }, NewID: model.NewID})
 	principal := model.Principal{UserID: model.NewUserID()}
 	authority := &store.CommandAuthorization{Principal: principal, ScopeType: model.RoleScopeClass, ScopeID: destination.ID.String(),
 		Actions: []model.Action{model.ActionOnboardingBatchManage, model.ActionClassMembersManage}}
@@ -305,9 +286,7 @@ func TestClassMemberEndCarriesRevision(t *testing.T) {
 	class := &model.Class{ID: current.ClassID, AcademicPeriodID: current.AcademicPeriodID, DisplayName: "Ended Class"}
 	users := &classMemberUserStoreFake{events: &events, value: mailTestUser(model.Principal{UserID: current.UserID}, time.UnixMilli(500))}
 	mailer := &classMemberMailFake{events: &events}
-	service := newClassMemberService(persistence, &classMemberClassStoreFake{events: &events, value: class}, users,
-		&programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, mailer, &classMemberEffectsFake{},
-		func() time.Time { return time.UnixMilli(500) }, model.NewID)
+	service := newClassMemberService(classMemberServiceDependencies{Store: persistence, Classes: &classMemberClassStoreFake{events: &events, value: class}, Users: users, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Mail: mailer, Effects: &classMemberEffectsFake{}, Now: func() time.Time { return time.UnixMilli(500) }, NewID: model.NewID})
 	ended, err := service.EndClassMember(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), EndClassMemberCommand{ID: current.ID})
 	require.NoError(t, err)
 	require.Equal(t, int64(4), persistence.endInput.ExpectedRevision, "end input/result = %#v / %#v", persistence.endInput, ended)
@@ -324,12 +303,7 @@ func TestClassMemberEndCarriesRevision(t *testing.T) {
 func TestClassMemberEndDenialDoesNotInspectOpaqueMemberID(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	service := newClassMemberService(
-		&classMemberStoreFake{events: &events}, &classMemberClassStoreFake{events: &events},
-		&classMemberUserStoreFake{events: &events},
-		&programmeAuthorizerFake{events: &events, preflightErr: apperror.New("authorization.denied")},
-		&institutionAuditorFake{events: &events}, &classMemberMailFake{events: &events}, &classMemberEffectsFake{}, time.Now, model.NewID,
-	)
+	service := newClassMemberService(classMemberServiceDependencies{Store: &classMemberStoreFake{events: &events}, Classes: &classMemberClassStoreFake{events: &events}, Users: &classMemberUserStoreFake{events: &events}, Authorization: &programmeAuthorizerFake{events: &events, preflightErr: apperror.New("authorization.denied")}, Audit: &institutionAuditorFake{events: &events}, Mail: &classMemberMailFake{events: &events}, Effects: &classMemberEffectsFake{}, Now: time.Now, NewID: model.NewID})
 	_, err := service.EndClassMember(context.Background(), invocation.Invocation{}, EndClassMemberCommand{ID: model.NewClassMemberID()})
 	require.True(t, apperror.Is(err, "authorization.denied"), "End() error = %v, want authorization.denied", err)
 	require.Equal(t, []string{"authorize-preflight"}, events, "events")
@@ -342,12 +316,7 @@ func TestClassMemberEndConcealsCrossScopeTarget(t *testing.T) {
 		ID: model.NewClassMemberID(), ClassID: model.NewClassID(), AcademicPeriodID: model.NewAcademicPeriodID(), UserID: model.NewUserID(),
 		CreatedAt: model.NowUTC(), UpdatedAt: model.NowUTC(), StartsAt: model.NowUTC(), Revision: 1,
 	}
-	service := newClassMemberService(
-		&classMemberStoreFake{events: &events, current: current}, &classMemberClassStoreFake{events: &events},
-		&classMemberUserStoreFake{events: &events},
-		&programmeAuthorizerFake{events: &events, err: apperror.New("authorization.denied")},
-		&institutionAuditorFake{events: &events}, &classMemberMailFake{events: &events}, &classMemberEffectsFake{}, time.Now, model.NewID,
-	)
+	service := newClassMemberService(classMemberServiceDependencies{Store: &classMemberStoreFake{events: &events, current: current}, Classes: &classMemberClassStoreFake{events: &events}, Users: &classMemberUserStoreFake{events: &events}, Authorization: &programmeAuthorizerFake{events: &events, err: apperror.New("authorization.denied")}, Audit: &institutionAuditorFake{events: &events}, Mail: &classMemberMailFake{events: &events}, Effects: &classMemberEffectsFake{}, Now: time.Now, NewID: model.NewID})
 	_, err := service.EndClassMember(context.Background(), invocation.Invocation{}, EndClassMemberCommand{ID: current.ID})
 	require.True(t, apperror.Is(err, "resource.not_found"), "End() error = %v, want concealed resource.not_found", err)
 }

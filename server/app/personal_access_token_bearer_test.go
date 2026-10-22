@@ -31,11 +31,7 @@ func TestPersonalAccessTokenBearerResolverPreservesCredentialCeilings(t *testing
 	persistence := &personalAccessTokenResolutionStoreFake{
 		resolution: &store.PersonalAccessTokenResolution{Token: token, User: user},
 	}
-	resolver, err := newPersonalAccessTokenBearerResolver(
-		persistence,
-		PersonalAccessTokenPolicy{LastUsedUpdateInterval: 5 * time.Minute},
-		personalAccessTokenDiagnosticsFake{},
-	)
+	resolver, err := newPersonalAccessTokenBearerResolver(personalAccessTokenBearerResolverDependencies{Tokens: persistence, Policy: PersonalAccessTokenPolicy{LastUsedUpdateInterval: 5 * time.Minute}, Diagnostics: personalAccessTokenDiagnosticsFake{}})
 	require.NoError(t, err)
 
 	principal, err := resolver.ResolveBearer(context.Background(), raw, at)

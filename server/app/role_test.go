@@ -118,13 +118,7 @@ func TestRoleCreateCommitsWithoutSideEffects(t *testing.T) {
 	resource := model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}
 	created := &model.Role{ID: model.NewRoleID(), Name: "teacher", DisplayName: "Teacher", Permissions: []string{string(model.ActionClassView)}}
 	persistence := &roleStoreFake{events: &events, createResult: created}
-	service := newRoleService(
-		persistence,
-		&roleAuthorizerFake{events: &events, resource: resource},
-		&institutionAuditorFake{events: &events, beginID: model.NewID()},
-		&roleEffectsFake{events: &events},
-		func() time.Time { return time.UnixMilli(500) },
-	)
+	service := newRoleService(roleServiceDependencies{Roles: persistence, Authorization: &roleAuthorizerFake{events: &events, resource: resource}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Effects: &roleEffectsFake{events: &events}, Now: func() time.Time { return time.UnixMilli(500) }})
 	got, err := service.CreateRole(context.Background(), invocation.Invocation{}, CreateRoleCommand{
 		Name: "teacher", DisplayName: "Teacher", Permissions: []string{string(model.ActionClassView)},
 	})
@@ -142,11 +136,7 @@ func TestRoleCreateAndUpdateRejectUndelegablePermissionsBeforeAudit(t *testing.T
 
 	t.Run("create", func(t *testing.T) {
 		events := []string{}
-		service := newRoleService(
-			&roleStoreFake{events: &events},
-			&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}, delegationErr: denied},
-			&institutionAuditorFake{events: &events}, &roleEffectsFake{events: &events}, time.Now,
-		)
+		service := newRoleService(roleServiceDependencies{Roles: &roleStoreFake{events: &events}, Authorization: &roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}, delegationErr: denied}, Audit: &institutionAuditorFake{events: &events}, Effects: &roleEffectsFake{events: &events}, Now: time.Now})
 		_, err := service.CreateRole(context.Background(), invocation.Invocation{}, CreateRoleCommand{Name: "unsafe", DisplayName: "Unsafe", Permissions: []string{string(model.ActionUserManage)}})
 		require.True(t, apperror.Is(err, "authorization.denied"), "Create() error = %v", err)
 		require.Equal(t, []string{"authorize-manage", "authorize-delegation"}, events)
@@ -156,11 +146,7 @@ func TestRoleCreateAndUpdateRejectUndelegablePermissionsBeforeAudit(t *testing.T
 		events := []string{}
 		role := &model.Role{ID: model.NewRoleID(), Name: "teacher", DisplayName: "Teacher", Permissions: []string{string(model.ActionClassView)}}
 		permissions := []string{string(model.ActionClassView), string(model.ActionUserManage)}
-		service := newRoleService(
-			&roleStoreFake{events: &events, role: role},
-			&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}, delegationErr: denied},
-			&institutionAuditorFake{events: &events}, &roleEffectsFake{events: &events}, time.Now,
-		)
+		service := newRoleService(roleServiceDependencies{Roles: &roleStoreFake{events: &events, role: role}, Authorization: &roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}, delegationErr: denied}, Audit: &institutionAuditorFake{events: &events}, Effects: &roleEffectsFake{events: &events}, Now: time.Now})
 		_, err := service.UpdateRole(context.Background(), invocation.Invocation{}, UpdateRoleCommand{ID: role.ID, Permissions: &permissions})
 		require.True(t, apperror.Is(err, "authorization.denied"), "Update() error = %v", err)
 		require.Equal(t, []string{"authorize-manage", "get-role", "authorize-delegation"}, events)
@@ -170,13 +156,7 @@ func TestRoleCreateAndUpdateRejectUndelegablePermissionsBeforeAudit(t *testing.T
 func TestRoleCreateRejectsUnknownPermissions(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	service := newRoleService(
-		&roleStoreFake{events: &events},
-		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}},
-		&institutionAuditorFake{events: &events},
-		&roleEffectsFake{events: &events},
-		time.Now,
-	)
+	service := newRoleService(roleServiceDependencies{Roles: &roleStoreFake{events: &events}, Authorization: &roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}}, Audit: &institutionAuditorFake{events: &events}, Effects: &roleEffectsFake{events: &events}, Now: time.Now})
 	_, err := service.CreateRole(context.Background(), invocation.Invocation{}, CreateRoleCommand{
 		Name: "teacher", DisplayName: "Teacher", Permissions: []string{"not.a.real.permission"},
 	})
@@ -201,13 +181,7 @@ func TestRoleUpdateCommitsBeforeInvalidation(t *testing.T) {
 	updated.DisplayName = "Lead Teacher"
 	displayName := "Lead Teacher"
 	persistence := &roleStoreFake{events: &events, role: role, updateResult: updated}
-	service := newRoleService(
-		persistence,
-		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}},
-		&institutionAuditorFake{events: &events, beginID: model.NewID()},
-		&roleEffectsFake{events: &events},
-		func() time.Time { return time.UnixMilli(500) },
-	)
+	service := newRoleService(roleServiceDependencies{Roles: persistence, Authorization: &roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Effects: &roleEffectsFake{events: &events}, Now: func() time.Time { return time.UnixMilli(500) }})
 	got, err := service.UpdateRole(context.Background(), invocation.Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
 	require.NoError(t, err)
 	require.Equal(t, "Lead Teacher", got.DisplayName)
@@ -221,13 +195,7 @@ func TestRoleUpdateFailurePublishesNoInvalidation(t *testing.T) {
 	events := []string{}
 	role := &model.Role{ID: model.NewRoleID(), Name: "teacher", DisplayName: "Teacher", Permissions: []string{string(model.ActionClassView)}}
 	displayName := "Lead Teacher"
-	service := newRoleService(
-		&roleStoreFake{events: &events, role: role, updateErr: store.NewErrConflict("role", "roles_name_key", errors.New("dup"))},
-		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}},
-		&institutionAuditorFake{events: &events, beginID: model.NewID()},
-		&roleEffectsFake{events: &events},
-		time.Now,
-	)
+	service := newRoleService(roleServiceDependencies{Roles: &roleStoreFake{events: &events, role: role, updateErr: store.NewErrConflict("role", "roles_name_key", errors.New("dup"))}, Authorization: &roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Effects: &roleEffectsFake{events: &events}, Now: time.Now})
 	_, err := service.UpdateRole(context.Background(), invocation.Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
 	require.True(t, apperror.Is(err, "role.conflict"), "error = %v", err)
 	// Contract (guardrail 8): authorization precedes the audit, the audit begins
@@ -240,13 +208,7 @@ func TestRoleUpdateRejectsBuiltIn(t *testing.T) {
 	events := []string{}
 	role := &model.Role{ID: model.NewRoleID(), Name: model.SystemAdministratorRoleName, DisplayName: "Admin", BuiltIn: true}
 	displayName := "Nope"
-	service := newRoleService(
-		&roleStoreFake{events: &events, role: role},
-		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}},
-		&institutionAuditorFake{events: &events},
-		&roleEffectsFake{events: &events},
-		time.Now,
-	)
+	service := newRoleService(roleServiceDependencies{Roles: &roleStoreFake{events: &events, role: role}, Authorization: &roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}}, Audit: &institutionAuditorFake{events: &events}, Effects: &roleEffectsFake{events: &events}, Now: time.Now})
 	_, err := service.UpdateRole(context.Background(), invocation.Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
 	require.True(t, apperror.Is(err, "role.built_in.protected"), "error = %v", err)
 	require.Equal(t, []string{"authorize-manage", "get-role"}, events)
@@ -256,13 +218,7 @@ func TestRoleArchiveCommitsBeforeInvalidation(t *testing.T) {
 	t.Parallel()
 	events := []string{}
 	role := &model.Role{ID: model.NewRoleID(), Name: "teacher", DisplayName: "Teacher"}
-	service := newRoleService(
-		&roleStoreFake{events: &events, role: role, archiveResult: role},
-		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}},
-		&institutionAuditorFake{events: &events, beginID: model.NewID()},
-		&roleEffectsFake{events: &events},
-		func() time.Time { return time.UnixMilli(500) },
-	)
+	service := newRoleService(roleServiceDependencies{Roles: &roleStoreFake{events: &events, role: role, archiveResult: role}, Authorization: &roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Effects: &roleEffectsFake{events: &events}, Now: func() time.Time { return time.UnixMilli(500) }})
 	require.NoError(t, service.ArchiveRole(context.Background(), invocation.Invocation{}, ArchiveRoleCommand{ID: role.ID}))
 	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
 	// begins before the durable write, and the write commits before its effect.

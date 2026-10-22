@@ -55,32 +55,33 @@ type RefreshSessionCommand struct {
 // LogoutCommand ends the caller's current session.
 type LogoutCommand struct{}
 
-type selfSessionService struct {
-	sessions store.SessionStore
-	audit    mutationAuditor
-	effects  sessionRevocationEffects
-	now      func() time.Time
+// selfSessionServiceDependencies are the collaborators of selfSessionService;
+// newSelfSessionService validates them once and selfSessionService keeps them in deps.
+type selfSessionServiceDependencies struct {
+	Sessions store.SessionStore
+	Audit    mutationAuditor
+	Effects  sessionRevocationEffects
+	Now      func() time.Time
 }
 
-func newSelfSessionService(
-	sessions store.SessionStore,
-	audit mutationAuditor,
-	effects sessionRevocationEffects,
-	now func() time.Time,
-) (*selfSessionService, error) {
-	if sessions == nil {
+type selfSessionService struct {
+	deps selfSessionServiceDependencies
+}
+
+func newSelfSessionService(deps selfSessionServiceDependencies) (*selfSessionService, error) {
+	if deps.Sessions == nil {
 		return nil, errors.New("self-session store is required")
 	}
-	if audit == nil {
+	if deps.Audit == nil {
 		return nil, errors.New("self-session audit is required")
 	}
-	if effects == nil {
+	if deps.Effects == nil {
 		return nil, errors.New("self-session effects are required")
 	}
-	if now == nil {
+	if deps.Now == nil {
 		return nil, errors.New("self-session clock is required")
 	}
-	return &selfSessionService{sessions: sessions, audit: audit, effects: effects, now: now}, nil
+	return &selfSessionService{deps: deps}, nil
 }
 
 func (s *selfSessionService) ListSessions(
@@ -92,10 +93,10 @@ func (s *selfSessionService) ListSessions(
 	if principal.Validate() != nil {
 		return nil, invalidTokenAppError()
 	}
-	sessions, err := s.sessions.ListActiveByUser(
+	sessions, err := s.deps.Sessions.ListActiveByUser(
 		ctx,
 		principal.UserID,
-		model.TimeUTC(s.now()),
+		model.TimeUTC(s.deps.Now()),
 	)
 	if err != nil {
 		return nil, authenticationUnavailable(err)
@@ -116,7 +117,7 @@ func (s *selfSessionService) RevokeSession(
 	if !model.SessionID(sessionID).IsValid() {
 		return apperror.New("session.id.invalid").WithField("field", "session_id")
 	}
-	session, err := s.sessions.Get(ctx, model.SessionID(sessionID))
+	session, err := s.deps.Sessions.Get(ctx, model.SessionID(sessionID))
 	if err != nil {
 		if store.IsNotFound(err) {
 			return apperror.New("session.not_found")
@@ -127,7 +128,7 @@ func (s *selfSessionService) RevokeSession(
 		return apperror.New("session.not_found")
 	}
 
-	revocations := sessionRevocationCoordinator{sessions: s.sessions, audit: s.audit, effects: s.effects, now: s.now}
+	revocations := sessionRevocationCoordinator{sessions: s.deps.Sessions, audit: s.deps.Audit, effects: s.deps.Effects, now: s.deps.Now}
 	return revocations.revokeOne(ctx,
 		mutationAttempt{
 			Invocation: invocation, Action: model.ActionSessionManage,
@@ -152,7 +153,7 @@ func (s *selfSessionService) RevokeAllSessions(
 	if principal.Validate() != nil {
 		return invalidTokenAppError()
 	}
-	revocations := sessionRevocationCoordinator{sessions: s.sessions, audit: s.audit, effects: s.effects, now: s.now}
+	revocations := sessionRevocationCoordinator{sessions: s.deps.Sessions, audit: s.deps.Audit, effects: s.deps.Effects, now: s.deps.Now}
 	return revocations.revokeAll(ctx,
 		mutationAttempt{
 			Invocation: invocation, Action: model.ActionSessionManage,

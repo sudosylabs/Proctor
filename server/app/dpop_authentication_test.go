@@ -59,10 +59,10 @@ func TestDPoPAuthenticationAfterMFARecoverySupportsPrincipalRevalidation(t *test
 		discardAuthenticationPATResolver{}, model.NewCredentialToken, func() time.Time { return at })
 	service.registrations = dpopRegistrationLookup{registration: registration}
 	nonce, err := service.dpop.IssueNonce(ctx, dpopBinding{Kind: dpopBindingSession, SessionID: session.ID,
-		DesktopRegistrationID: registration.ID, KeyThumbprint: registration.KeyThumbprint, Origin: service.dpop.policy.Origin})
+		DesktopRegistrationID: registration.ID, KeyThumbprint: registration.KeyThumbprint, Origin: service.dpop.deps.Policy.Origin})
 	require.NoError(t, err)
 	proof := signDPoPProof(t, privateKey, jwk, map[string]any{
-		"jti": "recovered-session-proof", "htm": "GET", "htu": service.dpop.policy.Origin + "/api/v1/users/me",
+		"jti": "recovered-session-proof", "htm": "GET", "htu": service.dpop.deps.Policy.Origin + "/api/v1/users/me",
 		"iat": at.Unix(), "nonce": nonce, "ath": dpopAccessTokenHash(raw),
 	})
 	principal, err := service.AuthenticateDPoP(ctx, raw, proof, "GET", "/api/v1/users/me")

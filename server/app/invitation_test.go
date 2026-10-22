@@ -105,8 +105,8 @@ func TestOnboardingInvitationNoOpDoesNotRequireMail(t *testing.T) {
 	persistence := &invitationStoreFake{onboardingNoOp: true}
 	service := newInvitationServiceForTest(t, persistence,
 		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, &invitationAuthorizerFake{}, &invitationMailPreparerFake{disabled: true}, now)
-	service.classes = invitationClassStoreFake{class: &model.Class{ID: classID, AcademicPeriodID: periodID}}
-	service.periods = invitationPeriodStoreFake{period: &model.AcademicPeriod{ID: periodID, StartsAt: now.Add(time.Hour), EndsAt: now.Add(24 * time.Hour)}}
+	service.deps.Classes = invitationClassStoreFake{class: &model.Class{ID: classID, AcademicPeriodID: periodID}}
+	service.deps.Periods = invitationPeriodStoreFake{period: &model.AcademicPeriod{ID: periodID, StartsAt: now.Add(time.Hour), EndsAt: now.Add(24 * time.Hour)}}
 	view, err := service.IssueStudentClassInvitation(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		IssueStudentClassInvitationCommand{TargetEmail: "existing@example.edu", ClassID: classID.String(), IdempotencyKey: "import-row",
 			onboardingImportID: model.NewOnboardingImportID(), onboardingImportRowNumber: 1})
@@ -362,10 +362,7 @@ func TestInvitationBatchRunsIndependentRowsAndRecoversCommittedItems(t *testing.
 	authorizer := &invitationAuthorizerFake{}
 	mail := &invitationMailPreparerFake{}
 	auditEvents := []string{}
-	service, err := newInvitationService(persistence, invitationClassStoreFake{class: class}, invitationPeriodStoreFake{period: period},
-		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail, invitationHasherFake{},
-		&mutationAttemptAuditorFake{events: &auditEvents}, invitationAttemptLimiterFake{}, &classMemberEffectsFake{}, "node-a", "https://proctor.example.edu", time.Hour,
-		model.NewCredentialToken, func() time.Time { return now })
+	service, err := newInvitationService(invitationServiceDependencies{Store: persistence, Classes: invitationClassStoreFake{class: class}, Periods: invitationPeriodStoreFake{period: period}, AcademicUnits: invitationAcademicUnitStoreFake{}, Roles: invitationRoleStoreFake{}, Authorization: authorizer, Mail: mail, Hasher: invitationHasherFake{}, Audit: &mutationAttemptAuditorFake{events: &auditEvents}, Attempts: invitationAttemptLimiterFake{}, MembershipEffects: &classMemberEffectsFake{}, NodeID: "node-a", PublicURL: "https://proctor.example.edu", RecentAuthenticationTTL: time.Hour, NewClaim: model.NewCredentialToken, Now: func() time.Time { return now }})
 	require.NoError(t, err)
 	command := RunInvitationBatchCommand{Operation: InvitationBatchStudentClassCreate, ScopeType: model.RoleScopeClass,
 		ScopeID: classID.String(), IdempotencyKey: "batch-once", Items: []InvitationBatchItemCommand{
@@ -445,8 +442,8 @@ func TestInvitationBatchDuplicatesRetainPerItemAuthorization(t *testing.T) {
 	}}
 	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{},
 		authorizer, &invitationMailPreparerFake{}, now)
-	service.classes = invitationClassStoreFake{class: &model.Class{ID: classID, AcademicPeriodID: periodID}}
-	service.periods = invitationPeriodStoreFake{period: &model.AcademicPeriod{ID: periodID, StartsAt: now.Add(time.Hour)}}
+	service.deps.Classes = invitationClassStoreFake{class: &model.Class{ID: classID, AcademicPeriodID: periodID}}
+	service.deps.Periods = invitationPeriodStoreFake{period: &model.AcademicPeriod{ID: periodID, StartsAt: now.Add(time.Hour)}}
 	command := RunInvitationBatchCommand{Operation: InvitationBatchStudentClassCreate, ScopeType: model.RoleScopeClass,
 		ScopeID: classID.String(), IdempotencyKey: "row-authorization", Items: []InvitationBatchItemCommand{
 			{IdempotencyKey: "canonical", TargetEmail: "same@example.edu"},
@@ -482,8 +479,8 @@ func TestInvitationBatchDuplicateStillValidatesItsDomainPackage(t *testing.T) {
 	persistence := &invitationStoreFake{}
 	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{},
 		&invitationAuthorizerFake{}, &invitationMailPreparerFake{}, now)
-	service.classes = invitationClassStoreFake{class: &model.Class{ID: classID, AcademicPeriodID: periodID}}
-	service.periods = invitationPeriodStoreFake{period: period}
+	service.deps.Classes = invitationClassStoreFake{class: &model.Class{ID: classID, AcademicPeriodID: periodID}}
+	service.deps.Periods = invitationPeriodStoreFake{period: period}
 	command := RunInvitationBatchCommand{Operation: InvitationBatchStudentClassCreate, ScopeType: model.RoleScopeClass,
 		ScopeID: classID.String(), IdempotencyKey: "duplicate-validation", Items: []InvitationBatchItemCommand{
 			{IdempotencyKey: "canonical", TargetEmail: "same@example.edu"},
@@ -529,8 +526,8 @@ func TestInvitationBatchRejectsEveryRowWithARepeatedItemKey(t *testing.T) {
 	persistence := &invitationStoreFake{}
 	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{},
 		&invitationAuthorizerFake{}, &invitationMailPreparerFake{}, now)
-	service.classes = invitationClassStoreFake{class: &model.Class{ID: classID, AcademicPeriodID: periodID}}
-	service.periods = invitationPeriodStoreFake{period: &model.AcademicPeriod{ID: periodID, StartsAt: now.Add(time.Hour)}}
+	service.deps.Classes = invitationClassStoreFake{class: &model.Class{ID: classID, AcademicPeriodID: periodID}}
+	service.deps.Periods = invitationPeriodStoreFake{period: &model.AcademicPeriod{ID: periodID, StartsAt: now.Add(time.Hour)}}
 	command := RunInvitationBatchCommand{Operation: InvitationBatchStudentClassCreate, ScopeType: model.RoleScopeClass,
 		ScopeID: classID.String(), IdempotencyKey: "repeated-item-key", Items: []InvitationBatchItemCommand{
 			{IdempotencyKey: "same-key", TargetEmail: "first@example.edu"},
@@ -590,10 +587,7 @@ func TestInvitationServiceAcceptsAcademicUnitRoleForAuthenticatedExistingUserWit
 	auditor := &mutationAttemptAuditorFake{events: &events, beginID: auditID}
 	persistence := &invitationStoreFake{invitation: invitation, events: &events}
 	mail := &invitationMailPreparerFake{}
-	service, err := newInvitationService(persistence, invitationClassStoreFake{}, invitationPeriodStoreFake{},
-		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, &invitationAuthorizerFake{}, mail,
-		invitationHasherFake{}, auditor, invitationAttemptLimiterFake{}, &classMemberEffectsFake{}, "node-1", "https://proctor.example.edu",
-		15*time.Minute, model.NewCredentialToken, func() time.Time { return now.Add(time.Minute) })
+	service, err := newInvitationService(invitationServiceDependencies{Store: persistence, Classes: invitationClassStoreFake{}, Periods: invitationPeriodStoreFake{}, AcademicUnits: invitationAcademicUnitStoreFake{}, Roles: invitationRoleStoreFake{}, Authorization: &invitationAuthorizerFake{}, Mail: mail, Hasher: invitationHasherFake{}, Audit: auditor, Attempts: invitationAttemptLimiterFake{}, MembershipEffects: &classMemberEffectsFake{}, NodeID: "node-1", PublicURL: "https://proctor.example.edu", RecentAuthenticationTTL: 15 * time.Minute, NewClaim: model.NewCredentialToken, Now: func() time.Time { return now.Add(time.Minute) }})
 	require.NoError(t, err)
 	principal := model.Principal{UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
@@ -644,10 +638,7 @@ func TestInvitationServiceTerminalizesScopedRoleAcceptanceConflict(t *testing.T)
 	auditor := &mutationAttemptAuditorFake{events: &events, beginID: auditID}
 	persistence := &invitationStoreFake{invitation: invitation, events: &events,
 		scopedAcceptErr: store.NewErrConflict("invitation", "invitation_role_binding_conflict", nil)}
-	service, err := newInvitationService(persistence, invitationClassStoreFake{}, invitationPeriodStoreFake{},
-		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, &invitationAuthorizerFake{}, &invitationMailPreparerFake{},
-		invitationHasherFake{}, auditor, invitationAttemptLimiterFake{}, &classMemberEffectsFake{}, "node-1", "https://proctor.example.edu",
-		15*time.Minute, model.NewCredentialToken, func() time.Time { return now.Add(time.Minute) })
+	service, err := newInvitationService(invitationServiceDependencies{Store: persistence, Classes: invitationClassStoreFake{}, Periods: invitationPeriodStoreFake{}, AcademicUnits: invitationAcademicUnitStoreFake{}, Roles: invitationRoleStoreFake{}, Authorization: &invitationAuthorizerFake{}, Mail: &invitationMailPreparerFake{}, Hasher: invitationHasherFake{}, Audit: auditor, Attempts: invitationAttemptLimiterFake{}, MembershipEffects: &classMemberEffectsFake{}, NodeID: "node-1", PublicURL: "https://proctor.example.edu", RecentAuthenticationTTL: 15 * time.Minute, NewClaim: model.NewCredentialToken, Now: func() time.Time { return now.Add(time.Minute) }})
 	require.NoError(t, err)
 	principal := model.Principal{UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
@@ -793,9 +784,7 @@ func newInvitationServiceForTest(t *testing.T, persistence store.InvitationStore
 ) *invitationService {
 	t.Helper()
 	events := []string{}
-	service, err := newInvitationService(persistence, invitationClassStoreFake{}, invitationPeriodStoreFake{}, units, roles,
-		authorization, mail, invitationHasherFake{}, &mutationAttemptAuditorFake{events: &events, beginID: model.NewAuditEventID().String()}, invitationAttemptLimiterFake{}, &classMemberEffectsFake{},
-		"node-1", "https://proctor.example.edu", 15*time.Minute, model.NewCredentialToken, func() time.Time { return now })
+	service, err := newInvitationService(invitationServiceDependencies{Store: persistence, Classes: invitationClassStoreFake{}, Periods: invitationPeriodStoreFake{}, AcademicUnits: units, Roles: roles, Authorization: authorization, Mail: mail, Hasher: invitationHasherFake{}, Audit: &mutationAttemptAuditorFake{events: &events, beginID: model.NewAuditEventID().String()}, Attempts: invitationAttemptLimiterFake{}, MembershipEffects: &classMemberEffectsFake{}, NodeID: "node-1", PublicURL: "https://proctor.example.edu", RecentAuthenticationTTL: 15 * time.Minute, NewClaim: model.NewCredentialToken, Now: func() time.Time { return now }})
 	require.NoError(t, err)
 	return service
 }
@@ -853,10 +842,7 @@ func TestInvitationReplacementReauthorizesAndBuildsANewImmutablePackage(t *testi
 	events := []string{}
 	auditIDs := []string{model.NewAuditEventID().String(), model.NewAuditEventID().String()}
 	auditor := &mutationAttemptAuditorFake{events: &events, beginIDs: auditIDs}
-	service, err := newInvitationService(persistence, invitationClassStoreFake{class: class}, invitationPeriodStoreFake{period: period},
-		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail, invitationHasherFake{},
-		auditor, invitationAttemptLimiterFake{}, &classMemberEffectsFake{},
-		"node-1", "https://proctor.example.edu", 15*time.Minute, model.NewCredentialToken, func() time.Time { return now.Add(time.Hour) })
+	service, err := newInvitationService(invitationServiceDependencies{Store: persistence, Classes: invitationClassStoreFake{class: class}, Periods: invitationPeriodStoreFake{period: period}, AcademicUnits: invitationAcademicUnitStoreFake{}, Roles: invitationRoleStoreFake{}, Authorization: authorizer, Mail: mail, Hasher: invitationHasherFake{}, Audit: auditor, Attempts: invitationAttemptLimiterFake{}, MembershipEffects: &classMemberEffectsFake{}, NodeID: "node-1", PublicURL: "https://proctor.example.edu", RecentAuthenticationTTL: 15 * time.Minute, NewClaim: model.NewCredentialToken, Now: func() time.Time { return now.Add(time.Hour) }})
 	require.NoError(t, err)
 	actor := model.NewUserID()
 	result, err := service.ReplaceInvitation(context.Background(), invocation.New(model.Principal{UserID: actor}, model.RequestMetadata{}),
@@ -889,11 +875,7 @@ func TestInvitationIssueAuthorizesBeforeInspectingMailCapability(t *testing.T) {
 	periodID, classID := model.NewAcademicPeriodID(), model.NewClassID()
 	authorizer := &invitationAuthorizerFake{err: apperror.New("authorization.denied")}
 	mail := &invitationMailPreparerFake{disabled: true}
-	service, err := newInvitationService(&invitationStoreFake{}, invitationClassStoreFake{&model.Class{ID: classID, AcademicPeriodID: periodID}},
-		invitationPeriodStoreFake{&model.AcademicPeriod{ID: periodID, StartsAt: now, EndsAt: now.Add(24 * time.Hour)}},
-		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail,
-		invitationHasherFake{}, &mutationAttemptAuditorFake{}, invitationAttemptLimiterFake{}, &classMemberEffectsFake{}, "node-1", "https://proctor.example.edu",
-		15*time.Minute, model.NewCredentialToken, func() time.Time { return now })
+	service, err := newInvitationService(invitationServiceDependencies{Store: &invitationStoreFake{}, Classes: invitationClassStoreFake{&model.Class{ID: classID, AcademicPeriodID: periodID}}, Periods: invitationPeriodStoreFake{&model.AcademicPeriod{ID: periodID, StartsAt: now, EndsAt: now.Add(24 * time.Hour)}}, AcademicUnits: invitationAcademicUnitStoreFake{}, Roles: invitationRoleStoreFake{}, Authorization: authorizer, Mail: mail, Hasher: invitationHasherFake{}, Audit: &mutationAttemptAuditorFake{}, Attempts: invitationAttemptLimiterFake{}, MembershipEffects: &classMemberEffectsFake{}, NodeID: "node-1", PublicURL: "https://proctor.example.edu", RecentAuthenticationTTL: 15 * time.Minute, NewClaim: model.NewCredentialToken, Now: func() time.Time { return now }})
 	require.NoError(t, err)
 	_, appErr := service.IssueStudentClassInvitation(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		IssueStudentClassInvitationCommand{ClassID: classID.String(), TargetEmail: "student@example.edu"})
@@ -912,9 +894,7 @@ func TestInvitationAcceptanceCommitsWithTerminalNoticeWhenMailIsDisabled(t *test
 	require.NoError(t, err)
 	persistence := &invitationStoreFake{invitation: invitation}
 	mail := &invitationMailPreparerFake{disabled: true}
-	service, err := newInvitationService(persistence, invitationClassStoreFake{}, invitationPeriodStoreFake{}, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, &invitationAuthorizerFake{}, mail,
-		invitationHasherFake{}, &mutationAttemptAuditorFake{}, invitationAttemptLimiterFake{}, &classMemberEffectsFake{}, "node-1", "https://proctor.example.edu",
-		15*time.Minute, model.NewCredentialToken, func() time.Time { return now.Add(time.Minute) })
+	service, err := newInvitationService(invitationServiceDependencies{Store: persistence, Classes: invitationClassStoreFake{}, Periods: invitationPeriodStoreFake{}, AcademicUnits: invitationAcademicUnitStoreFake{}, Roles: invitationRoleStoreFake{}, Authorization: &invitationAuthorizerFake{}, Mail: mail, Hasher: invitationHasherFake{}, Audit: &mutationAttemptAuditorFake{}, Attempts: invitationAttemptLimiterFake{}, MembershipEffects: &classMemberEffectsFake{}, NodeID: "node-1", PublicURL: "https://proctor.example.edu", RecentAuthenticationTTL: 15 * time.Minute, NewClaim: model.NewCredentialToken, Now: func() time.Time { return now.Add(time.Minute) }})
 	require.NoError(t, err)
 	_, appErr := service.AcceptStudentClassInvitation(context.Background(), invocation.Invocation{}, AcceptStudentClassInvitationCommand{Claim: raw,
 		Password: "correct horse battery staple", Username: "student-one", Source: "127.0.0.1"})
@@ -936,7 +916,7 @@ func TestInvitationPasswordWorkFailuresStopBeforeAcceptance(t *testing.T) {
 				mail := &invitationMailPreparerFake{}
 				service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{},
 					&invitationAuthorizerFake{}, mail, time.Now())
-				service.hasher = hasher
+				service.deps.Hasher = hasher
 				var result *InvitationAcceptanceView
 				var err error
 				if purpose == model.InvitationPurposeStudentClass {
@@ -979,8 +959,7 @@ func TestInvitationServiceIssuesAndAcceptsWithoutPersistingRawClaim(t *testing.T
 	events := []string{}
 	auditor := &mutationAttemptAuditorFake{events: &events, beginID: model.NewAuditEventID().String()}
 	raw := model.NewCredentialToken()
-	service, err := newInvitationService(persistence, invitationClassStoreFake{class}, invitationPeriodStoreFake{period},
-		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail, invitationHasherFake{}, auditor, invitationAttemptLimiterFake{}, &classMemberEffectsFake{}, "node-1", "https://proctor.example.edu", 15*time.Minute, func() string { return raw }, func() time.Time { return now })
+	service, err := newInvitationService(invitationServiceDependencies{Store: persistence, Classes: invitationClassStoreFake{class}, Periods: invitationPeriodStoreFake{period}, AcademicUnits: invitationAcademicUnitStoreFake{}, Roles: invitationRoleStoreFake{}, Authorization: authorizer, Mail: mail, Hasher: invitationHasherFake{}, Audit: auditor, Attempts: invitationAttemptLimiterFake{}, MembershipEffects: &classMemberEffectsFake{}, NodeID: "node-1", PublicURL: "https://proctor.example.edu", RecentAuthenticationTTL: 15 * time.Minute, NewClaim: func() string { return raw }, Now: func() time.Time { return now }})
 	require.NoError(t, err)
 	call := invocation.New(model.Principal{UserID: inviterID}, model.RequestMetadata{})
 	view, err := service.IssueStudentClassInvitation(context.Background(), call, IssueStudentClassInvitationCommand{
@@ -1009,7 +988,7 @@ func TestInvitationServiceIssuesAndAcceptsWithoutPersistingRawClaim(t *testing.T
 
 func TestInvitationAttemptAccountingLimitsClaimAndSourceBeforeValidation(t *testing.T) {
 	now := time.Now()
-	accounting, err := newAuthenticationAttemptAccounting(newExpiringAuthenticationAttemptCache(func() time.Time { return now }))
+	accounting, err := newAuthenticationAttemptAccounting(authenticationAttemptAccountingDependencies{Cache: newExpiringAuthenticationAttemptCache(func() time.Time { return now })})
 	require.NoError(t, err)
 	limiter := invitationAttemptAccounting{attempts: accounting, policy: LoginRateLimitPolicy{
 		Window: time.Minute, MaximumAttempts: 1, MaximumSourceAttempts: 2,
@@ -1024,7 +1003,7 @@ func TestInvitationAttemptAccountingLimitsClaimAndSourceBeforeValidation(t *test
 	legacyIntent := intent
 	legacyIntent.qualifier = "student-class-accept"
 	legacyKey := "authentication/attempts/" + purpose + "/identity/" + digestAuthenticationAttempt(legacyIntent, identityLimit)
-	entries := accounting.cache.(*expiringAuthenticationAttemptCache).snapshot()
+	entries := accounting.deps.Cache.(*expiringAuthenticationAttemptCache).snapshot()
 	_, ok := entries[expectedKey]
 	require.True(t, ok, "purpose-neutral Invitation acceptance counter was not recorded: %#v", entries)
 	_, ok = entries[legacyKey]

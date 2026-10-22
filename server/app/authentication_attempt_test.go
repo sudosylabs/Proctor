@@ -163,7 +163,7 @@ func TestAuthenticationAttemptIntentRejectsInvalidClosedInputs(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			cache := newExpiringAuthenticationAttemptCache(time.Now)
-			accounting, err := newAuthenticationAttemptAccounting(cache)
+			accounting, err := newAuthenticationAttemptAccounting(authenticationAttemptAccountingDependencies{Cache: cache})
 			require.NoError(t, err)
 			_, _, err = accounting.account(context.Background(), test.intent)
 			require.Error(t, err, "invalid intent was accepted")
@@ -201,19 +201,10 @@ func TestAuthenticationAttemptAccountingIsolatesAllFourCallerFlowsAndProtectsInp
 	policy := LoginRateLimitPolicy{
 		Window: time.Minute, MaximumAttempts: 1, MaximumSourceAttempts: 1,
 	}
-	login := &authenticationService{attempts: accounting, loginRateLimit: policy}
-	recovery := &accountTokenService{
-		attempts: accounting,
-		policy:   AccountRecoveryPolicy{RateLimit: policy},
-	}
-	external := &externalAuthenticationService{
-		attempts: accounting,
-		policy:   ExternalAuthenticationPolicy{LoginRateLimit: policy},
-	}
-	bootstrap := &bootstrapService{
-		attempts: accounting, rateLimitWindow: policy.Window,
-		maximumSourceAttempts: policy.MaximumSourceAttempts,
-	}
+	login := &authenticationService{deps: authenticationServiceDependencies{Attempts: accounting, LoginRateLimit: policy}}
+	recovery := &accountTokenService{deps: accountTokenServiceDependencies{Attempts: accounting, Policy: AccountRecoveryPolicy{RateLimit: policy}}}
+	external := &externalAuthenticationService{deps: externalAuthenticationServiceDependencies{Attempts: accounting, Policy: ExternalAuthenticationPolicy{LoginRateLimit: policy}}}
+	bootstrap := &bootstrapService{deps: bootstrapServiceDependencies{Attempts: accounting}, rateLimitWindow: policy.Window, maximumSourceAttempts: policy.MaximumSourceAttempts}
 
 	sensitiveValues := []string{
 		"student@example.edu",
@@ -471,7 +462,7 @@ func TestSuccessfulLoginTreatsAttemptResetFailureAsDiagnosticOnly(t *testing.T) 
 	persistence := newAuthenticationStoreFake()
 	service := newTestAuthenticationServiceWithCache(t, persistence, cache)
 	diagnostics := &securityEffectsDiagnosticsFake{}
-	service.diagnostics = diagnostics
+	service.deps.Diagnostics = diagnostics
 	user, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 		User: &model.User{
 			Username: "reset-user", Email: "reset-user@example.edu",
@@ -517,7 +508,7 @@ func newAccountFailureLoginService(t *testing.T) (*authenticationService, *recor
 	t.Helper()
 	persistence := newAuthenticationStoreFake()
 	service := newTestAuthenticationService(t, persistence)
-	service.loginRateLimit = LoginRateLimitPolicy{
+	service.deps.LoginRateLimit = LoginRateLimitPolicy{
 		Window: time.Minute, MaximumAttempts: 2, MaximumSourceAttempts: 100,
 		AccountFailuresBeforeDelay: 2, MaximumAccountFailureDelay: time.Second,
 	}

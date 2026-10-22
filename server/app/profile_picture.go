@@ -123,7 +123,26 @@ type profilePictureDefaultJobs interface {
 	ProposeDefaultProfilePicture(context.Context, model.UserID, time.Time) error
 }
 
+// profilePictureServiceDependencies are the collaborators of profilePictureService;
+// newProfilePictureService validates them once and profilePictureService keeps them in deps.
+type profilePictureServiceDependencies struct {
+	Users          profilePictureUserStore
+	Files          profilePictureFileStore
+	Uploads        ProfilePictureUploadFiles
+	Reads          ProfilePictureReadFiles
+	Fallback       DefaultProfilePictureRenderFiles
+	Defaults       DefaultProfilePictureGenerationFiles
+	Authorization  profilePictureAuthorizer
+	Audit          mutationAuditor
+	Effects        profilePictureEffects
+	EffectFailures profilePictureEffectFailures
+	DefaultJobs    profilePictureDefaultJobs
+	Now            func() time.Time
+}
+
 type profilePictureService struct {
+	deps profilePictureServiceDependencies
+
 	uploads  *profilePictureUploadService
 	removals *profilePictureRemovalService
 	reads    *profilePictureReadService
@@ -169,13 +188,8 @@ type defaultProfilePictureService struct {
 	now     func() time.Time
 }
 
-func newProfilePictureService(users profilePictureUserStore, files profilePictureFileStore, uploads ProfilePictureUploadFiles, reads ProfilePictureReadFiles, fallback DefaultProfilePictureRenderFiles, defaults DefaultProfilePictureGenerationFiles, authorization profilePictureAuthorizer, audit mutationAuditor, effects profilePictureEffects, effectFailures profilePictureEffectFailures, defaultJobs profilePictureDefaultJobs, now func() time.Time) *profilePictureService {
-	return &profilePictureService{
-		uploads:  &profilePictureUploadService{users: users, files: files, content: uploads, authorization: authorization, audit: audit, effects: effects, effectFailures: effectFailures, now: now},
-		removals: &profilePictureRemovalService{users: users, files: files, authorization: authorization, audit: audit, effects: effects, effectFailures: effectFailures, now: now},
-		reads:    &profilePictureReadService{users: users, files: files, content: reads, fallback: fallback, authorization: authorization, effectFailures: effectFailures, defaultJobs: defaultJobs, now: now},
-		defaults: &defaultProfilePictureService{users: users, files: files, content: defaults, now: now},
-	}
+func newProfilePictureService(deps profilePictureServiceDependencies) *profilePictureService {
+	return &profilePictureService{deps: deps, uploads: &profilePictureUploadService{users: deps.Users, files: deps.Files, content: deps.Uploads, authorization: deps.Authorization, audit: deps.Audit, effects: deps.Effects, effectFailures: deps.EffectFailures, now: deps.Now}, removals: &profilePictureRemovalService{users: deps.Users, files: deps.Files, authorization: deps.Authorization, audit: deps.Audit, effects: deps.Effects, effectFailures: deps.EffectFailures, now: deps.Now}, reads: &profilePictureReadService{users: deps.Users, files: deps.Files, content: deps.Reads, fallback: deps.Fallback, authorization: deps.Authorization, effectFailures: deps.EffectFailures, defaultJobs: deps.DefaultJobs, now: deps.Now}, defaults: &defaultProfilePictureService{users: deps.Users, files: deps.Files, content: deps.Defaults, now: deps.Now}}
 }
 
 func (s *profilePictureService) UploadProfilePicture(ctx context.Context, invocation invocation.Invocation, command UploadProfilePictureCommand) (*model.User, error) {

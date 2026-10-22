@@ -282,7 +282,7 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 		applicationFoundation{},
 		identityConstruction{onboardingImports: &onboardingImportService{}},
 		examinationConstruction{sittings: &sitting.Service{}, attempts: &attempt.Service{}}, profiles,
-		jobhandler.NewDefaultProfilePictureJobs(constructionJobStoreStub{}),
+		jobhandler.NewDefaultProfilePictureJobs(jobhandler.DefaultProfilePictureJobsDependencies{Jobs: constructionJobStoreStub{}}),
 		newMailHealth(false),
 	)
 	_, err := job.NewRegistry(definitions.descriptors)

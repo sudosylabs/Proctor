@@ -80,40 +80,37 @@ type userSettingsEffectFailures interface {
 	Report(context.Context, string, error)
 }
 
-type userSettingsService struct {
-	settings       store.UserSettingsStore
-	audit          userSettingsAuditPreparer
-	effects        userSettingsEffects
-	effectFailures userSettingsEffectFailures
-	now            func() time.Time
+// userSettingsServiceDependencies are the collaborators of userSettingsService;
+// newUserSettingsService validates them once and userSettingsService keeps them in deps.
+type userSettingsServiceDependencies struct {
+	Settings       store.UserSettingsStore
+	Audit          userSettingsAuditPreparer
+	Effects        userSettingsEffects
+	EffectFailures userSettingsEffectFailures
+	Now            func() time.Time
 }
 
-func newUserSettingsService(
-	settings store.UserSettingsStore,
-	audit userSettingsAuditPreparer,
-	effects userSettingsEffects,
-	effectFailures userSettingsEffectFailures,
-	now func() time.Time,
-) (*userSettingsService, error) {
-	if settings == nil {
+type userSettingsService struct {
+	deps userSettingsServiceDependencies
+}
+
+func newUserSettingsService(deps userSettingsServiceDependencies) (*userSettingsService, error) {
+	if deps.Settings == nil {
 		return nil, errors.New("user settings store is required")
 	}
-	if audit == nil {
+	if deps.Audit == nil {
 		return nil, errors.New("user settings audit preparer is required")
 	}
-	if effects == nil {
+	if deps.Effects == nil {
 		return nil, errors.New("user settings effects are required")
 	}
-	if effectFailures == nil {
+	if deps.EffectFailures == nil {
 		return nil, errors.New("user settings effect failure reporter is required")
 	}
-	if now == nil {
+	if deps.Now == nil {
 		return nil, errors.New("user settings clock is required")
 	}
-	return &userSettingsService{
-		settings: settings, audit: audit, effects: effects,
-		effectFailures: effectFailures, now: now,
-	}, nil
+	return &userSettingsService{deps: deps}, nil
 }
 
 func (s *userSettingsService) ReplaceOwnUserSettings(
@@ -145,7 +142,7 @@ func (s *userSettingsService) ReplaceOwnUserSettings(
 		encoded, _ := json.Marshal(public)
 		return UserSettingsReplacementResult{}, apperror.New("user_settings.invalid").WithField("diagnostics", string(encoded))
 	}
-	current, err := s.settings.Get(ctx, principal.UserID)
+	current, err := s.deps.Settings.Get(ctx, principal.UserID)
 	if err != nil || current == nil || current.UserID != principal.UserID || current.Validate() != nil {
 		if err == nil {
 			err = errors.New("invalid persisted settings document")
@@ -156,7 +153,7 @@ func (s *userSettingsService) ReplaceOwnUserSettings(
 		return UserSettingsReplacementResult{}, apperror.New("user_settings.format_unsupported")
 	}
 	nextRevision := model.NewUserSettingsRevision()
-	updatedAt := model.TimeUTC(s.now())
+	updatedAt := model.TimeUTC(s.deps.Now())
 	if !updatedAt.After(current.UpdatedAt) {
 		updatedAt = current.UpdatedAt.Add(time.Millisecond)
 	}
@@ -176,7 +173,7 @@ func (s *userSettingsService) ReplaceOwnUserSettings(
 	var audit *model.AuditEvent
 	if current.Revision == command.ExpectedRevision &&
 		(current.Source != command.Source || current.FormatVersion != command.FormatVersion) {
-		audit, err = s.audit.PrepareReplacement(ctx, userSettingsAuditInput{
+		audit, err = s.deps.Audit.PrepareReplacement(ctx, userSettingsAuditInput{
 			Invocation: invocation, UserID: principal.UserID,
 			PreviousRevision: current.Revision, ResultingRevision: nextRevision,
 			FormatVersion: command.FormatVersion, SourceBytes: len(command.Source),
@@ -185,7 +182,7 @@ func (s *userSettingsService) ReplaceOwnUserSettings(
 			return UserSettingsReplacementResult{}, err
 		}
 	}
-	stored, err := s.settings.Replace(ctx, &store.UserSettingsReplacement{
+	stored, err := s.deps.Settings.Replace(ctx, &store.UserSettingsReplacement{
 		UserID: principal.UserID, Source: command.Source, FormatVersion: command.FormatVersion,
 		ExpectedRevision: command.ExpectedRevision, NextRevision: nextRevision,
 		UpdatedAt: updatedAt, AuditEvent: audit,
@@ -201,11 +198,11 @@ func (s *userSettingsService) ReplaceOwnUserSettings(
 		UpdatedAt: stored.UpdatedAt, Changed: stored.Changed, Replayed: stored.Replayed,
 	}
 	if result.Changed && !result.Replayed {
-		if effectErr := s.effects.Changed(ctx, userSettingsChanged{
+		if effectErr := s.deps.Effects.Changed(ctx, userSettingsChanged{
 			UserID: principal.UserID, Revision: result.Revision,
 			FormatVersion: result.FormatVersion, ChangedAt: result.UpdatedAt,
 		}); effectErr != nil {
-			s.effectFailures.Report(ctx, "user_settings_changed", effectErr)
+			s.deps.EffectFailures.Report(ctx, "user_settings_changed", effectErr)
 		}
 	}
 	return result, nil
@@ -249,7 +246,7 @@ func (s *userSettingsService) ReadOwnUserSettings(ctx context.Context, invocatio
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
 		return UserSettingsView{}, invalidTokenAppError()
 	}
-	document, err := s.settings.Get(ctx, principal.UserID)
+	document, err := s.deps.Settings.Get(ctx, principal.UserID)
 	if err != nil {
 		return UserSettingsView{}, userSettingsUnavailable(err)
 	}

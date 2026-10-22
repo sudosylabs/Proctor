@@ -65,7 +65,7 @@ func (s *classStoreFake) Archive(_ context.Context, input *store.ClassArchive) (
 func TestClassGetAuthorizesExactScopeBeforeReading(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	service := newClassService(&classStoreFake{events: &events}, &programmeAuthorizerFake{events: &events, err: apperror.New("authorization.denied")}, &institutionAuditorFake{events: &events}, time.Now, model.NewID)
+	service := newClassService(classServiceDependencies{Store: &classStoreFake{events: &events}, Authorization: &programmeAuthorizerFake{events: &events, err: apperror.New("authorization.denied")}, Audit: &institutionAuditorFake{events: &events}, Now: time.Now, NewID: model.NewID})
 	_, err := service.GetClass(context.Background(), invocation.Invocation{}, GetClassQuery{ID: model.NewClassID()})
 	require.True(t, apperror.Is(err, "authorization.denied"), "Get() error = %v", err)
 	require.Equal(t, []string{"authorize"}, events)
@@ -86,7 +86,7 @@ func TestClassUpdateMoveAuthorizesCurrentAndDestinationOwners(t *testing.T) {
 		DisplayName:      "Class A",
 	}
 	persistence := &classStoreFake{events: &events, current: current, unitID: oldUnitID}
-	service := newClassService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, func() time.Time { return time.UnixMilli(500) }, model.NewID)
+	service := newClassService(classServiceDependencies{Store: persistence, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Now: func() time.Time { return time.UnixMilli(500) }, NewID: model.NewID})
 	updated, err := service.UpdateClass(context.Background(), invocation.Invocation{}, UpdateClassCommand{ID: current.ID, ProgrammeLevelID: &newLevelID})
 	require.NoError(t, err)
 	require.Equal(t, newLevelID, updated.ProgrammeLevelID.String())
@@ -115,7 +115,7 @@ func TestClassMutationMissingClassUsesClassResource(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			events := []string{}
-			service := newClassService(&classStoreFake{events: &events, getUnitErr: store.NewErrNotFound("class", model.NewID())}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events}, time.Now, model.NewID)
+			service := newClassService(classServiceDependencies{Store: &classStoreFake{events: &events, getUnitErr: store.NewErrNotFound("class", model.NewID())}, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events}, Now: time.Now, NewID: model.NewID})
 			err := test.run(service)
 			appErr, ok := apperror.As(err)
 			require.True(t, ok)
@@ -130,7 +130,7 @@ func TestClassCreateConflictCompletesFailedAttempt(t *testing.T) {
 	events := []string{}
 	levelID := model.NewID()
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewID()}
-	service := newClassService(&classStoreFake{events: &events, createErr: store.NewErrConflict("class", "classes_programme_level_id_academic_period_id_name_key", nil)}, &programmeAuthorizerFake{events: &events}, auditor, time.Now, model.NewID)
+	service := newClassService(classServiceDependencies{Store: &classStoreFake{events: &events, createErr: store.NewErrConflict("class", "classes_programme_level_id_academic_period_id_name_key", nil)}, Authorization: &programmeAuthorizerFake{events: &events}, Audit: auditor, Now: time.Now, NewID: model.NewID})
 	_, err := service.CreateClass(context.Background(), invocation.Invocation{}, CreateClassCommand{ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: model.NewID(), Name: "class-a", DisplayName: "Class A"})
 	require.True(t, apperror.Is(err, "class.conflict"), "Create() error = %v, audit", err)
 	require.Equal(t, "class.conflict", auditor.failCode, "Create() error = %v, audit", err)
@@ -142,7 +142,7 @@ func TestClassCreatePreservesBothParentsAndAtomicAudit(t *testing.T) {
 	levelID, periodID, classID, auditID := model.NewID(), model.NewID(), model.NewID(), model.NewID()
 	created := &model.Class{ID: model.ClassID(classID), ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: model.AcademicPeriodID(periodID)}
 	persistence := &classStoreFake{events: &events, created: created}
-	service := newClassService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: auditID}, func() time.Time { return time.UnixMilli(500) }, func() string { return classID })
+	service := newClassService(classServiceDependencies{Store: persistence, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events, beginID: auditID}, Now: func() time.Time { return time.UnixMilli(500) }, NewID: func() string { return classID }})
 	got, err := service.CreateClass(context.Background(), invocation.Invocation{}, CreateClassCommand{ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: periodID, Name: "class-a", DisplayName: "Class A"})
 	require.NoError(t, err, "Create()")
 	require.Same(t, created, got, "Create()")

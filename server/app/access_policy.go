@@ -91,33 +91,33 @@ type accessPolicyEffectFailures interface {
 	Report(context.Context, string, error)
 }
 
-type accessPolicyService struct {
-	policies                store.AccessPolicyStore
-	institutions            accessPolicyInstitutionStore
-	authorization           resourceAuthorizer
-	capabilities            accessPolicyCapabilitySource
-	audit                   mutationAuditor
-	effects                 accessPolicyEffects
-	effectFailures          accessPolicyEffectFailures
-	canonicalOrigin         string
-	recentAuthenticationTTL time.Duration
-	now                     func() time.Time
+// accessPolicyServiceDependencies are the collaborators of accessPolicyService;
+// newAccessPolicyService validates them once and accessPolicyService keeps them in deps.
+type accessPolicyServiceDependencies struct {
+	Policies                store.AccessPolicyStore
+	Institutions            accessPolicyInstitutionStore
+	Authorization           resourceAuthorizer
+	Capabilities            accessPolicyCapabilitySource
+	Audit                   mutationAuditor
+	Effects                 accessPolicyEffects
+	EffectFailures          accessPolicyEffectFailures
+	CanonicalOrigin         string
+	RecentAuthenticationTTL time.Duration
+	Now                     func() time.Time
 }
 
-func newAccessPolicyService(policies store.AccessPolicyStore, institutions accessPolicyInstitutionStore,
-	authorization resourceAuthorizer, capabilities accessPolicyCapabilitySource,
-	audit mutationAuditor, effects accessPolicyEffects, failures accessPolicyEffectFailures,
-	canonicalOrigin string, recentTTL time.Duration, now func() time.Time,
-) (*accessPolicyService, error) {
-	parsed, err := url.Parse(canonicalOrigin)
-	if policies == nil || institutions == nil || authorization == nil || capabilities == nil || audit == nil ||
-		effects == nil || failures == nil || now == nil || recentTTL <= 0 || err != nil || parsed.Scheme == "" ||
+type accessPolicyService struct {
+	deps accessPolicyServiceDependencies
+}
+
+func newAccessPolicyService(deps accessPolicyServiceDependencies) (*accessPolicyService, error) {
+	parsed, err := url.Parse(deps.CanonicalOrigin)
+	if deps.Policies == nil || deps.Institutions == nil || deps.Authorization == nil || deps.Capabilities == nil || deps.Audit == nil ||
+		deps.Effects == nil || deps.EffectFailures == nil || deps.Now == nil || deps.RecentAuthenticationTTL <= 0 || err != nil || parsed.Scheme == "" ||
 		parsed.Host == "" || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return nil, errors.New("access policy service dependencies are invalid")
 	}
-	return &accessPolicyService{policies: policies, institutions: institutions, authorization: authorization,
-		capabilities: capabilities, audit: audit, effects: effects, effectFailures: failures,
-		canonicalOrigin: canonicalOrigin, recentAuthenticationTTL: recentTTL, now: now}, nil
+	return &accessPolicyService{deps: deps}, nil
 }
 
 type AccessPolicyView struct {
@@ -149,7 +149,7 @@ func (s *accessPolicyService) GetAccessPolicy(ctx context.Context, invocation in
 	if err != nil {
 		return AccessPolicyView{}, err
 	}
-	snapshot, err := s.policies.Get(ctx, model.AccessPolicyTransitionHistoryLimit)
+	snapshot, err := s.deps.Policies.Get(ctx, model.AccessPolicyTransitionHistoryLimit)
 	if err != nil || snapshot == nil || snapshot.Policy == nil {
 		return AccessPolicyView{}, accessPolicyError(err)
 	}
@@ -167,7 +167,7 @@ func (s *accessPolicyService) PreflightAccessPolicy(ctx context.Context, invocat
 	if err != nil {
 		return AccessPolicyPreflightResult{}, err
 	}
-	blockers, err := s.policies.Preflight(ctx, input)
+	blockers, err := s.deps.Policies.Preflight(ctx, input)
 	if err != nil {
 		return AccessPolicyPreflightResult{}, accessPolicyError(err)
 	}
@@ -198,13 +198,13 @@ func (s *accessPolicyService) ReplaceAccessPolicy(ctx context.Context, invocatio
 	if err != nil {
 		return AccessPolicyView{}, err
 	}
-	stored, err := runAuditedMutation(ctx, s.audit, mutationAttempt{
+	stored, err := runAuditedMutation(ctx, s.deps.Audit, mutationAttempt{
 		Invocation: invocation, Action: model.ActionAccessPolicyManage,
 		Resource:  model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()},
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Operation: "replace",
 		Value: accessPolicyReplacementAuditValue(command),
-	}, s.now, func(ctx context.Context, reference mutationAttemptReference) (*store.AccessPolicyReplacementResult, error) {
-		return s.policies.Replace(ctx, &store.AccessPolicyReplacement{Preflight: *input,
+	}, s.deps.Now, func(ctx context.Context, reference mutationAttemptReference) (*store.AccessPolicyReplacementResult, error) {
+		return s.deps.Policies.Replace(ctx, &store.AccessPolicyReplacement{Preflight: *input,
 			ActorID: invocation.Principal().UserID, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}, idempotency)
 	}, accessPolicyError)
 	if err != nil {
@@ -214,9 +214,9 @@ func (s *accessPolicyService) ReplaceAccessPolicy(ctx context.Context, invocatio
 		return AccessPolicyView{}, apperror.New("access_policy.unavailable")
 	}
 	if stored.Changed && !stored.Replayed {
-		if effectErr := s.effects.Changed(ctx, accessPolicyChanged{InstitutionID: institution.ID,
+		if effectErr := s.deps.Effects.Changed(ctx, accessPolicyChanged{InstitutionID: institution.ID,
 			Revision: stored.Snapshot.Policy.Revision, SessionRevocations: stored.SessionRevocations}); effectErr != nil {
-			s.effectFailures.Report(ctx, "access_policy_changed", effectErr)
+			s.deps.EffectFailures.Report(ctx, "access_policy_changed", effectErr)
 		}
 	}
 	return s.view(stored.Snapshot), nil
@@ -264,30 +264,30 @@ func (r accessPolicyEffectReporter) Report(ctx context.Context, operation string
 }
 
 func (s *accessPolicyService) authorize(ctx context.Context, invocation invocation.Invocation, action model.Action) (*model.Institution, model.Resource, error) {
-	institution, err := s.institutions.GetSingleton(ctx)
+	institution, err := s.deps.Institutions.GetSingleton(ctx)
 	if err != nil || institution == nil || !institution.ID.IsValid() {
 		return nil, model.Resource{}, accessPolicyError(err)
 	}
 	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
-	if err = s.authorization.Authorize(ctx, invocation, action, resource); err != nil {
+	if err = s.deps.Authorization.Authorize(ctx, invocation, action, resource); err != nil {
 		return nil, model.Resource{}, err
 	}
 	return institution, resource, nil
 }
 
 func (s *accessPolicyService) requireStrongRecent(invocation invocation.Invocation) error {
-	return requireStrongRecentSession(invocation.Principal(), s.now(), s.recentAuthenticationTTL)
+	return requireStrongRecentSession(invocation.Principal(), s.deps.Now(), s.deps.RecentAuthenticationTTL)
 }
 
 func (s *accessPolicyService) preflightInput(expected int64, settings model.AccessPolicySettings, revokeExistingSessions bool) (*store.AccessPolicyPreflight, error) {
 	if expected < 1 || settings.Validate() != nil {
 		return nil, apperror.New("access_policy.invalid")
 	}
-	capabilities := accessDeploymentCapabilities(s.capabilities.Snapshot())
+	capabilities := accessDeploymentCapabilities(s.deps.Capabilities.Snapshot())
 	return &store.AccessPolicyPreflight{ExpectedRevision: expected, Settings: settings,
 		RevokeExistingSessions: revokeExistingSessions,
 		Capabilities:           capabilities,
-		CheckedAt:              model.TimeUTC(s.now())}, nil
+		CheckedAt:              model.TimeUTC(s.deps.Now())}, nil
 }
 
 func accessDeploymentCapabilities(snapshot AccessPolicyCapabilitySnapshot) store.AccessDeploymentCapabilities {
@@ -304,7 +304,7 @@ func (s *accessPolicyService) view(snapshot *store.AccessPolicySnapshot) AccessP
 	if snapshot == nil || snapshot.Policy == nil {
 		return AccessPolicyView{}
 	}
-	capabilities := s.capabilities.Snapshot()
+	capabilities := s.deps.Capabilities.Snapshot()
 	providers := make([]model.ExternalAuthenticationProvider, 0, len(capabilities.Providers))
 	for _, provider := range capabilities.Providers {
 		providers = append(providers, provider.Descriptor)
@@ -337,16 +337,16 @@ type PublicAccessDiscovery struct {
 }
 
 func (s *accessPolicyService) DiscoverAccess(ctx context.Context) (PublicAccessDiscovery, error) {
-	result := PublicAccessDiscovery{DiscoveryVersion: accessDiscoveryVersion, CanonicalOrigin: s.canonicalOrigin,
+	result := PublicAccessDiscovery{DiscoveryVersion: accessDiscoveryVersion, CanonicalOrigin: s.deps.CanonicalOrigin,
 		DesktopAuthorization: DesktopAuthorizationCompatibility{Protocol: "proctor-desktop-authorization", MinimumVersion: desktopAuthorizationProtocolMin, MaximumVersion: desktopAuthorizationProtocolMax}}
-	institution, err := s.institutions.GetSingleton(ctx)
+	institution, err := s.deps.Institutions.GetSingleton(ctx)
 	if store.IsNotFound(err) {
 		return result, nil
 	}
 	if err != nil || institution == nil || !institution.ID.IsValid() {
 		return PublicAccessDiscovery{}, accessPolicyError(err)
 	}
-	snapshot, err := s.policies.Get(ctx, 0)
+	snapshot, err := s.deps.Policies.Get(ctx, 0)
 	if err != nil || snapshot == nil || snapshot.Policy == nil {
 		return PublicAccessDiscovery{}, accessPolicyError(err)
 	}
@@ -356,7 +356,7 @@ func (s *accessPolicyService) DiscoverAccess(ctx context.Context) (PublicAccessD
 	result.PolicyRevision = policy.Revision
 	result.Capabilities = PublicAccessCapabilities{LocalLogin: policy.LocalLoginEnabled, PublicRegistration: policy.PublicRegistrationEnabled,
 		InvitationAdmission: policy.InvitationAdmissionEnabled, DesktopAuthorization: policy.DesktopAuthorizationEnabled}
-	for _, provider := range s.capabilities.Snapshot().Providers {
+	for _, provider := range s.deps.Capabilities.Snapshot().Providers {
 		if _, enabled := policy.ProviderAdmissions[provider.Descriptor.ID]; enabled {
 			result.Providers = append(result.Providers, provider.Descriptor)
 		}

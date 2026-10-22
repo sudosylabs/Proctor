@@ -226,9 +226,9 @@ func TestConcurrentSecurityPropagation(t *testing.T) {
 func TestSecurityCollaboratorsAreRequiredAtConstruction(t *testing.T) {
 	t.Parallel()
 
-	_, err := New(nil, &recordingDiagnostics{})
+	_, err := New(Dependencies{AuthenticationInvalidator: nil, Diagnostics: &recordingDiagnostics{}})
 	require.Error(t, err, "nil invalidator was accepted")
-	_, err = New(&recordingInvalidator{}, nil)
+	_, err = New(Dependencies{AuthenticationInvalidator: &recordingInvalidator{}, Diagnostics: nil})
 	require.Error(t, err, "nil diagnostics were accepted")
 }
 
@@ -238,7 +238,7 @@ func mustNewService(
 	diagnostics Diagnostics,
 ) *Service {
 	t.Helper()
-	service, err := New(invalidator, diagnostics)
+	service, err := New(Dependencies{AuthenticationInvalidator: invalidator, Diagnostics: diagnostics})
 	require.NoError(t, err)
 	return service
 }

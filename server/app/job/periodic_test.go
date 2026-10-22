@@ -129,7 +129,7 @@ func TestEngineOwnsPeriodicTaskLifecycleAndCopiesDefinitions(t *testing.T) {
 	replacement := &periodicTestRunner{seen: make(chan struct{}, 1)}
 	tasks := []PeriodicTask{{Name: "scan", Interval: 2 * time.Second, Runner: original}}
 	descriptor := testDescriptor(handlerFunc(func(context.Context, Execution) Outcome { return succeededOutcome() }))
-	engine, err := New(Config{
+	engine, err := New(Dependencies{
 		Store: &jobRunnerStoreFake{}, Descriptors: []Descriptor{descriptor}, NodeID: "node-a",
 		Diagnostics: &jobDiagnosticsFake{}, Policy: Policy{PollInterval: time.Hour}, Clock: clock, PeriodicTasks: tasks,
 	})

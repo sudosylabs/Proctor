@@ -24,16 +24,7 @@ func newAuditedDesktopAuthorizationService(t *testing.T, persistence *desktopAut
 	auditor desktopAuthorizationAuditor, at time.Time,
 ) *desktopAuthorizationService {
 	t.Helper()
-	service, err := newDesktopAuthorizationService(
-		persistence,
-		desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
-		desktopAuthorizationAccessPolicyFake{enabled: true},
-		&accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{}}, auditor,
-		&desktopAuthorizationAttemptLimiterFake{},
-		testDesktopSessionPolicy(), DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"},
-		model.NewCredentialToken, func() time.Time { return at },
-		testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at }),
-	)
+	service, err := newDesktopAuthorizationService(desktopAuthorizationServiceDependencies{Transactions: persistence, Institutions: desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}}, AccessPolicy: desktopAuthorizationAccessPolicyFake{enabled: true}, Capabilities: &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{}}, Audit: auditor, Attempts: &desktopAuthorizationAttemptLimiterFake{}, SessionPolicy: testDesktopSessionPolicy(), Policy: DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, NewCredential: model.NewCredentialToken, Now: func() time.Time { return at }, Identity: testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at })})
 	require.NoError(t, err)
 	return service
 }
@@ -87,7 +78,7 @@ func TestDesktopAuthorizationApproveAndExchangeAuditTheApprovingAccount(t *testi
 func TestDesktopAuthorizationAuditAdapterRecordsActorSessionAndRequest(t *testing.T) {
 	t.Parallel()
 	audits := &systemAuditStoreFake{}
-	service, err := newAuditService(audits, loginAuditInstitutionStore{id: model.NewInstitutionID()}, "node-desktop")
+	service, err := newAuditService(auditServiceDependencies{Audits: audits, Institutions: loginAuditInstitutionStore{id: model.NewInstitutionID()}, NodeID: "node-desktop"})
 	require.NoError(t, err)
 	adapter := desktopAuthorizationAuditAdapter{audit: service}
 	account, sessionID, institutionID := model.NewUserID(), model.NewSessionID(), model.NewInstitutionID()

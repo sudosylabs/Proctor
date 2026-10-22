@@ -113,12 +113,7 @@ func TestProgrammeCreateAuthorizationDenialStopsBeforeAuditAndStore(t *testing.T
 	t.Parallel()
 	events := []string{}
 	denied := apperror.New("authorization.denied")
-	service := newProgrammeService(
-		&programmeStoreFake{events: &events},
-		&programmeAuthorizerFake{events: &events, err: denied},
-		&institutionAuditorFake{events: &events, beginID: model.NewID()},
-		time.Now, model.NewID,
-	)
+	service := newProgrammeService(programmeServiceDependencies{Store: &programmeStoreFake{events: &events}, Authorization: &programmeAuthorizerFake{events: &events, err: denied}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Now: time.Now, NewID: model.NewID})
 	_, err := service.CreateProgramme(context.Background(), invocation.Invocation{}, CreateProgrammeCommand{
 		AcademicUnitID: model.NewAcademicUnitID(), Name: "computer-science", DisplayName: "Computer Science",
 	})
@@ -130,11 +125,7 @@ func TestProgrammeCreateConflictCompletesFailedAttempt(t *testing.T) {
 	t.Parallel()
 	events := []string{}
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewID()}
-	service := newProgrammeService(
-		&programmeStoreFake{events: &events, createErr: store.NewErrConflict("programme", "programmes_academic_unit_id_name_key", nil)},
-		&programmeAuthorizerFake{events: &events}, auditor,
-		time.Now, model.NewID,
-	)
+	service := newProgrammeService(programmeServiceDependencies{Store: &programmeStoreFake{events: &events, createErr: store.NewErrConflict("programme", "programmes_academic_unit_id_name_key", nil)}, Authorization: &programmeAuthorizerFake{events: &events}, Audit: auditor, Now: time.Now, NewID: model.NewID})
 	_, err := service.CreateProgramme(context.Background(), invocation.Invocation{}, CreateProgrammeCommand{
 		AcademicUnitID: model.NewAcademicUnitID(), Name: "computer-science", DisplayName: "Computer Science",
 	})
@@ -159,7 +150,7 @@ func TestProgrammeCreatePreservesAcademicUnitOwnershipAndAtomicAudit(t *testing.
 	persistence := &programmeStoreFake{events: &events, created: created}
 	authorizer := &programmeAuthorizerFake{events: &events}
 	auditor := &institutionAuditorFake{events: &events, beginID: auditID}
-	service := newProgrammeService(persistence, authorizer, auditor, func() time.Time { return time.UnixMilli(500) }, func() string { return programmeID })
+	service := newProgrammeService(programmeServiceDependencies{Store: persistence, Authorization: authorizer, Audit: auditor, Now: func() time.Time { return time.UnixMilli(500) }, NewID: func() string { return programmeID }})
 	got, err := service.CreateProgramme(context.Background(), invocation.Invocation{}, CreateProgrammeCommand{
 		AcademicUnitID: model.AcademicUnitID(unitID), Name: "computer-science", DisplayName: "Computer Science",
 	})
@@ -186,7 +177,7 @@ func TestProgrammeUpdateCannotMoveOwnership(t *testing.T) {
 		Name:           "computer-science", DisplayName: "Computer Science",
 	}
 	persistence := &programmeStoreFake{events: &events, current: current}
-	service := newProgrammeService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, func() time.Time { return time.UnixMilli(500) }, model.NewID)
+	service := newProgrammeService(programmeServiceDependencies{Store: persistence, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Now: func() time.Time { return time.UnixMilli(500) }, NewID: model.NewID})
 	name := "computing"
 	updated, err := service.UpdateProgramme(context.Background(), invocation.Invocation{}, UpdateProgrammeCommand{ID: current.ID, Name: &name})
 	require.NoError(t, err)
@@ -203,7 +194,7 @@ func TestProgrammeArchiveUsesAtomicStoreSeam(t *testing.T) {
 	current := &model.Programme{ID: model.ProgrammeID(model.NewID()), AcademicUnitID: model.AcademicUnitID(model.NewID())}
 	persistence := &programmeStoreFake{events: &events, current: current}
 	auditID := model.NewID()
-	service := newProgrammeService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: auditID}, func() time.Time { return time.UnixMilli(500) }, model.NewID)
+	service := newProgrammeService(programmeServiceDependencies{Store: persistence, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events, beginID: auditID}, Now: func() time.Time { return time.UnixMilli(500) }, NewID: model.NewID})
 	require.NoError(t, service.ArchiveProgramme(context.Background(), invocation.Invocation{}, ArchiveProgrammeCommand{ID: current.ID}))
 	require.NotNil(t, persistence.archiveInput)
 	require.Equal(t, current.ID, persistence.archiveInput.ID)
@@ -221,10 +212,7 @@ func TestProgrammeListPreservesLimitWithoutSearch(t *testing.T) {
 				events: &events,
 				listed: []*model.Programme{first, {ID: model.NewProgrammeID()}},
 			}
-			service := newProgrammeService(
-				persistence, &programmeAuthorizerFake{events: &events},
-				&institutionAuditorFake{events: &events}, time.Now, model.NewID,
-			)
+			service := newProgrammeService(programmeServiceDependencies{Store: persistence, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events}, Now: time.Now, NewID: model.NewID})
 			got, err := service.ListProgrammes(context.Background(), invocation.Invocation{}, ListProgrammesQuery{
 				AcademicUnitID: model.NewAcademicUnitID(), Query: term, NamePageQuery: NamePageQuery{Limit: 1},
 			})

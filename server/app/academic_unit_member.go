@@ -64,23 +64,25 @@ type academicUnitMemberUserStore interface {
 	Get(context.Context, model.UserID) (*model.User, error)
 }
 
-type academicUnitMemberService struct {
-	store         academicUnitMemberStore
-	users         academicUnitMemberUserStore
-	authorization membershipAuthorizer
-	audit         mutationAuditor
-	mail          relationshipTransitionMailPreparer
-	effects       authorizationInvalidationEffects
-	now           func() time.Time
-	newID         func() string
+// academicUnitMemberServiceDependencies are the collaborators of academicUnitMemberService;
+// newAcademicUnitMemberService validates them once and academicUnitMemberService keeps them in deps.
+type academicUnitMemberServiceDependencies struct {
+	Store         academicUnitMemberStore
+	Users         academicUnitMemberUserStore
+	Authorization membershipAuthorizer
+	Audit         mutationAuditor
+	Mail          relationshipTransitionMailPreparer
+	Effects       authorizationInvalidationEffects
+	Now           func() time.Time
+	NewID         func() string
 }
 
-func newAcademicUnitMemberService(persistence academicUnitMemberStore, users academicUnitMemberUserStore,
-	authorization membershipAuthorizer, audit mutationAuditor, mail relationshipTransitionMailPreparer,
-	effects authorizationInvalidationEffects, now func() time.Time, newID func() string,
-) *academicUnitMemberService {
-	return &academicUnitMemberService{store: persistence, users: users, authorization: authorization, audit: audit,
-		mail: mail, effects: effects, now: now, newID: newID}
+type academicUnitMemberService struct {
+	deps academicUnitMemberServiceDependencies
+}
+
+func newAcademicUnitMemberService(deps academicUnitMemberServiceDependencies) *academicUnitMemberService {
+	return &academicUnitMemberService{deps: deps}
 }
 
 func (s *academicUnitMemberService) CreateAcademicUnitMember(ctx context.Context, invocation invocation.Invocation, command CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
@@ -96,7 +98,7 @@ func (s *academicUnitMemberService) CreateAcademicUnitMember(ctx context.Context
 	if err != nil {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id").Wrap(err)
 	}
-	memberID, err := model.ParseAcademicUnitMemberID(s.newID())
+	memberID, err := model.ParseAcademicUnitMemberID(s.deps.NewID())
 	if err != nil {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_member_id").Wrap(err)
 	}
@@ -105,7 +107,7 @@ func (s *academicUnitMemberService) CreateAcademicUnitMember(ctx context.Context
 		UserID:         userID,
 		StartsAt:       model.TimeFromMillis(command.StartAt),
 	}
-	at := model.TimeFromMillis(model.MillisFromTime(s.now()))
+	at := model.TimeFromMillis(model.MillisFromTime(s.deps.Now()))
 	candidate.PrepareCreate(memberID, at)
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("academic_unit_member.invalid", err)
@@ -113,11 +115,11 @@ func (s *academicUnitMemberService) CreateAcademicUnitMember(ctx context.Context
 	recipient := &model.User{ID: userID, Revision: 1}
 	var notice *store.PreparedMail
 	if !command.batchRetainedOutcome {
-		recipient, err = s.users.Get(ctx, userID)
+		recipient, err = s.deps.Users.Get(ctx, userID)
 		if err != nil {
 			return nil, academicUnitMemberStoreErrors.Translate(err)
 		}
-		notice, err = s.mail.PrepareRelationshipTransition(mail.RelationshipTransitionPreparation{
+		notice, err = s.deps.Mail.PrepareRelationshipTransition(mail.RelationshipTransitionPreparation{
 			Recipient: recipient, OccurrenceID: model.NewMailOccurrenceID(),
 			TemplateKey: model.MailTemplateAcademicUnitAssigned, ActionAt: at,
 		})
@@ -139,7 +141,7 @@ func (s *academicUnitMemberService) CreateAcademicUnitMember(ctx context.Context
 	changed := false
 	result, err := runAuditedMutation(
 		ctx,
-		s.audit,
+		s.deps.Audit,
 		mutationAttempt{
 			Invocation: invocation,
 			Action:     model.ActionAcademicUnitMembersManage,
@@ -151,7 +153,7 @@ func (s *academicUnitMemberService) CreateAcademicUnitMember(ctx context.Context
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnitMember, error) {
 			input := &store.AcademicUnitMemberCreation{Member: candidate, ExpectedRecipientRevision: recipient.Revision,
 				Notice: notice, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency}
-			value, storeErr := s.store.Create(ctx, input)
+			value, storeErr := s.deps.Store.Create(ctx, input)
 			changed = storeErr == nil && !input.Replayed && !input.NoOp
 			if command.batchReplayed != nil {
 				*command.batchReplayed = input.Replayed || input.NoOp
@@ -161,7 +163,7 @@ func (s *academicUnitMemberService) CreateAcademicUnitMember(ctx context.Context
 		academicUnitMemberStoreErrors.Translate,
 	)
 	if err == nil && changed {
-		s.effects.InvalidateAuthorization(ctx, userID.String())
+		s.deps.Effects.InvalidateAuthorization(ctx, userID.String())
 	}
 	return result, err
 }
@@ -171,12 +173,12 @@ func (s *academicUnitMemberService) EndAcademicUnitMember(ctx context.Context, i
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_member_id")
 	}
-	if err := s.authorization.AuthorizePreflight(
+	if err := s.deps.Authorization.AuthorizePreflight(
 		ctx, invocation, model.ActionAcademicUnitMembersManage, model.ResourceAcademicUnit,
 	); err != nil {
 		return nil, err
 	}
-	current, err := s.store.Get(ctx, id)
+	current, err := s.deps.Store.Get(ctx, id)
 	if err != nil {
 		return nil, academicUnitMemberStoreErrors.Translate(err)
 	}
@@ -199,13 +201,13 @@ func (s *academicUnitMemberService) EndAcademicUnitMember(ctx context.Context, i
 	bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
 	recipient := &model.User{ID: current.UserID, Revision: 1}
 	var notice *store.PreparedMail
-	at := model.TimeFromMillis(model.MillisFromTime(s.now()))
+	at := model.TimeFromMillis(model.MillisFromTime(s.deps.Now()))
 	if !command.batchRetainedOutcome {
-		recipient, err = s.users.Get(ctx, current.UserID)
+		recipient, err = s.deps.Users.Get(ctx, current.UserID)
 		if err != nil {
 			return nil, academicUnitMemberStoreErrors.Translate(err)
 		}
-		notice, err = s.mail.PrepareRelationshipTransition(mail.RelationshipTransitionPreparation{
+		notice, err = s.deps.Mail.PrepareRelationshipTransition(mail.RelationshipTransitionPreparation{
 			Recipient: recipient, OccurrenceID: model.NewMailOccurrenceID(),
 			TemplateKey: model.MailTemplateAcademicUnitAssignmentEnded, ActionAt: at,
 		})
@@ -216,7 +218,7 @@ func (s *academicUnitMemberService) EndAcademicUnitMember(ctx context.Context, i
 	changed := false
 	result, err := runAuditedMutation(
 		ctx,
-		s.audit,
+		s.deps.Audit,
 		mutationAttempt{
 			Invocation: invocation,
 			Action:     model.ActionAcademicUnitMembersManage,
@@ -231,7 +233,7 @@ func (s *academicUnitMemberService) EndAcademicUnitMember(ctx context.Context, i
 				ExpectedRecipientRevision: recipient.Revision, Notice: notice,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
 			}
-			value, storeErr := s.store.End(ctx, input)
+			value, storeErr := s.deps.Store.End(ctx, input)
 			changed = storeErr == nil && !input.Replayed && !input.NoOp
 			if command.batchReplayed != nil {
 				*command.batchReplayed = input.Replayed || input.NoOp
@@ -241,7 +243,7 @@ func (s *academicUnitMemberService) EndAcademicUnitMember(ctx context.Context, i
 		academicUnitMemberStoreErrors.Translate,
 	)
 	if err == nil && changed {
-		s.effects.InvalidateAuthorization(ctx, current.UserID.String())
+		s.deps.Effects.InvalidateAuthorization(ctx, current.UserID.String())
 	}
 	return result, err
 }
@@ -258,7 +260,7 @@ func (s *academicUnitMemberService) authorizeUnit(ctx context.Context, invocatio
 		return model.Resource{}, apperror.New("request.invalid").WithField("field", "academic_unit_id")
 	}
 	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID.String()}
-	if err := s.authorization.Authorize(ctx, invocation, action, resource); err != nil {
+	if err := s.deps.Authorization.Authorize(ctx, invocation, action, resource); err != nil {
 		return model.Resource{}, err
 	}
 	return resource, nil
@@ -288,7 +290,7 @@ func (s *academicUnitMemberService) ListAcademicUnitMembersPage(ctx context.Cont
 	if err != nil {
 		return nil, err
 	}
-	activeAt, limit, err := resolveMembershipPage(query.MembershipPageQuery, s.now())
+	activeAt, limit, err := resolveMembershipPage(query.MembershipPageQuery, s.deps.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -301,7 +303,7 @@ func (s *academicUnitMemberService) ListAcademicUnitMembersPage(ctx context.Cont
 	}
 	options := store.AcademicUnitMemberPageOptions{AcademicUnitID: scopeID, ActiveAt: activeAt, Limit: limit, AfterID: query.AfterID, AfterUserID: query.AfterUserID}
 
-	page, err := s.store.ListPageByAcademicUnit(ctx, options)
+	page, err := s.deps.Store.ListPageByAcademicUnit(ctx, options)
 	if err != nil {
 		return nil, academicUnitMemberStoreErrors.Translate(err)
 	}

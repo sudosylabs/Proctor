@@ -80,7 +80,7 @@ func TestEngineRetriesSameOccurrenceWakesLocallyAndStopsRecurrence(t *testing.T)
 	proposer := &occurrenceProposerFake{calls: make(chan time.Time, 3), fail: 1}
 	descriptor := testDescriptor(handlerFunc(func(context.Context, Execution) Outcome { return succeededOutcome() }))
 	persistence := &jobRunnerStoreFake{claimRequests: make(chan struct{}, 8)}
-	engine, err := New(Config{
+	engine, err := New(Dependencies{
 		Store: persistence, Descriptors: []Descriptor{descriptor}, NodeID: "node-a", Diagnostics: &jobDiagnosticsFake{},
 		Policy: Policy{PollInterval: time.Hour, ProposalRetryDelay: 10 * time.Second}, Clock: clock,
 		Recurrences: []Recurrence{{Name: "daily", Proposer: proposer}},
@@ -131,7 +131,7 @@ func TestEngineCopiesRecurrenceDefinitionsAtConstruction(t *testing.T) {
 	replacement := &occurrenceProposerFake{calls: make(chan time.Time, 1)}
 	recurrences := []Recurrence{{Name: "daily", Proposer: original}}
 	descriptor := testDescriptor(handlerFunc(func(context.Context, Execution) Outcome { return succeededOutcome() }))
-	engine, err := New(Config{
+	engine, err := New(Dependencies{
 		Store: &jobRunnerStoreFake{}, Descriptors: []Descriptor{descriptor}, NodeID: "node-a", Diagnostics: &jobDiagnosticsFake{},
 		Policy: Policy{PollInterval: time.Hour}, Clock: clock, Recurrences: recurrences,
 	})
@@ -160,7 +160,7 @@ func TestConcurrentEnginesAndRestartProposeTheSameOccurrence(t *testing.T) {
 	descriptor := testDescriptor(handlerFunc(func(context.Context, Execution) Outcome { return succeededOutcome() }))
 	newEngine := func(nodeID string) *Engine {
 		t.Helper()
-		engine, err := New(Config{
+		engine, err := New(Dependencies{
 			Store: &jobRunnerStoreFake{}, Descriptors: []Descriptor{descriptor}, NodeID: nodeID, Diagnostics: &jobDiagnosticsFake{},
 			Policy: Policy{PollInterval: time.Hour}, Clock: newManualClock(at),
 			Recurrences: []Recurrence{{Name: "daily", Proposer: proposer}},

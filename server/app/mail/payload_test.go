@@ -34,8 +34,7 @@ func TestComposerRejectsInvalidFrozenContent(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			composer, err := NewComposer(&payloadRendererFake{content: test.content},
-				&sittingSenderFake{enabled: true, from: Address{Address: "no-reply@example.test"}}, sittingTestSealer(t))
+			composer, err := NewComposer(ComposerDependencies{Renderer: &payloadRendererFake{content: test.content}, Sender: &sittingSenderFake{enabled: true, from: Address{Address: "no-reply@example.test"}}, Sealer: sittingTestSealer(t)})
 			require.NoError(t, err)
 			at := time.Date(2026, 8, 21, 9, 0, 0, 0, time.UTC)
 			prepared, err := composer.PrepareOperatorTest(NoticePreparation{Recipient: payloadTestUser(at), At: at})
@@ -48,8 +47,7 @@ func TestComposerRejectsInvalidFrozenContent(t *testing.T) {
 func TestComposerPreservesRendererFailure(t *testing.T) {
 	t.Parallel()
 	renderErr := errors.New("renderer unavailable")
-	composer, err := NewComposer(&payloadRendererFake{err: renderErr},
-		&sittingSenderFake{enabled: true, from: Address{Address: "no-reply@example.test"}}, sittingTestSealer(t))
+	composer, err := NewComposer(ComposerDependencies{Renderer: &payloadRendererFake{err: renderErr}, Sender: &sittingSenderFake{enabled: true, from: Address{Address: "no-reply@example.test"}}, Sealer: sittingTestSealer(t)})
 	require.NoError(t, err)
 	at := time.Date(2026, 8, 21, 9, 0, 0, 0, time.UTC)
 	prepared, err := composer.PrepareOperatorTest(NoticePreparation{Recipient: payloadTestUser(at), At: at})
@@ -65,7 +63,7 @@ func TestOpenDeliveryPreservesPreparedContent(t *testing.T) {
 	renderer := &payloadRendererFake{content: content}
 	sender := &sittingSenderFake{enabled: true, from: Address{Name: "Proctor", Address: "no-reply@example.test"}}
 	recipient := payloadTestUser(at)
-	composer, err := NewComposer(renderer, sender, sealer)
+	composer, err := NewComposer(ComposerDependencies{Renderer: renderer, Sender: sender, Sealer: sealer})
 	require.NoError(t, err)
 	prepared, err := composer.PrepareOperatorTest(NoticePreparation{Recipient: recipient, At: at})
 	require.NoError(t, err)
@@ -260,8 +258,7 @@ func preparedPayloadTestDelivery(t *testing.T) (*secretseal.Sealer, *model.MailD
 	t.Helper()
 	at := time.Date(2026, 8, 21, 9, 0, 0, 0, time.UTC)
 	sealer := sittingTestSealer(t)
-	composer, err := NewComposer(&payloadRendererFake{content: FrozenContent{Subject: "Subject", Text: "Text", HTML: "<p>HTML</p>"}},
-		&sittingSenderFake{enabled: true, from: Address{Name: "Proctor", Address: "no-reply@example.test"}}, sealer)
+	composer, err := NewComposer(ComposerDependencies{Renderer: &payloadRendererFake{content: FrozenContent{Subject: "Subject", Text: "Text", HTML: "<p>HTML</p>"}}, Sender: &sittingSenderFake{enabled: true, from: Address{Name: "Proctor", Address: "no-reply@example.test"}}, Sealer: sealer})
 	require.NoError(t, err)
 	prepared, err := composer.PrepareOperatorTest(NoticePreparation{Recipient: payloadTestUser(at), At: at})
 	require.NoError(t, err)

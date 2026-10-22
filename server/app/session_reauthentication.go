@@ -34,11 +34,11 @@ func (s *authenticationService) ReauthenticatePassword(ctx context.Context, invo
 	if principal.AuthenticationMethod != "password" || principal.AuthenticationProviderID != "" {
 		return nil, apperror.New("authentication.reauthentication_method_required")
 	}
-	receipt, limited, err := s.attempts.account(ctx, authenticationAttemptIntent{
-		purpose: authenticationAttemptPurposeReauthentication, window: s.loginRateLimit.Window,
+	receipt, limited, err := s.deps.Attempts.account(ctx, authenticationAttemptIntent{
+		purpose: authenticationAttemptPurposeReauthentication, window: s.deps.LoginRateLimit.Window,
 		limits: []authenticationAttemptLimit{
-			{dimension: authenticationAttemptDimensionIdentitySource, maximum: s.loginRateLimit.MaximumAttempts, identity: principal.UserID.String(), source: command.Source},
-			{dimension: authenticationAttemptDimensionSource, maximum: s.loginRateLimit.MaximumSourceAttempts, source: command.Source},
+			{dimension: authenticationAttemptDimensionIdentitySource, maximum: s.deps.LoginRateLimit.MaximumAttempts, identity: principal.UserID.String(), source: command.Source},
+			{dimension: authenticationAttemptDimensionSource, maximum: s.deps.LoginRateLimit.MaximumSourceAttempts, source: command.Source},
 		},
 	})
 	if err != nil {
@@ -47,41 +47,41 @@ func (s *authenticationService) ReauthenticatePassword(ctx context.Context, invo
 	if limited {
 		return nil, apperror.New("authentication.rate_limited")
 	}
-	allowed, err := s.accessPolicy.AllowsLocalLogin(ctx)
+	allowed, err := s.deps.AccessPolicy.AllowsLocalLogin(ctx)
 	if err != nil {
 		return nil, authenticationUnavailable(err)
 	}
-	if !allowed || command.Password == "" || len(command.Password) > s.hasher.maximumLength {
+	if !allowed || command.Password == "" || len(command.Password) > s.deps.Hasher.maximumLength {
 		return nil, invalidCredentialsAppError()
 	}
-	user, err := s.users.Get(ctx, principal.UserID)
+	user, err := s.deps.Users.Get(ctx, principal.UserID)
 	if err != nil {
 		return nil, reauthenticationStoreErrors.Translate(err)
 	}
 	if !user.IsActive() {
 		return nil, invalidCredentialsAppError()
 	}
-	credential, err := s.passwords.GetByUser(ctx, principal.UserID)
+	credential, err := s.deps.Passwords.GetByUser(ctx, principal.UserID)
 	if err != nil {
 		return nil, reauthenticationStoreErrors.Translate(err)
 	}
-	if err := s.hasher.Verify(ctx, credential.PasswordHash, command.Password); err != nil {
+	if err = s.deps.Hasher.Verify(ctx, credential.PasswordHash, command.Password); err != nil {
 		if errors.Is(err, ErrPasswordMismatch) {
 			return nil, invalidCredentialsAppError()
 		}
 		return nil, passwordWorkError(err, "authentication.internal")
 	}
-	result, err := runAuditedMutation(ctx, s.audit, mutationAttempt{
+	result, err := runAuditedMutation(ctx, s.deps.Audit, mutationAttempt{
 		Invocation: invocation, Action: model.ActionAuthenticationReauthenticate,
 		Resource:  model.Resource{Type: model.ResourceUser, ID: principal.UserID.String()},
 		Operation: "password", Value: map[string]any{"session_id": principal.SessionID.String()},
-	}, s.now, func(ctx context.Context, reference mutationAttemptReference) (*store.SessionReauthenticationResult, error) {
+	}, s.deps.Now, func(ctx context.Context, reference mutationAttemptReference) (*store.SessionReauthenticationResult, error) {
 		auditID := reference.ID
 		credentialID, err := model.ParseSessionCredentialID(principal.CredentialID.String())
 		if err != nil {
 			return nil, err
 		}
-		return s.sessions.ReauthenticatePassword(ctx, &store.SessionPasswordReauthentication{
+		return s.deps.Sessions.ReauthenticatePassword(ctx, &store.SessionPasswordReauthentication{
 			SessionID: principal.SessionID, UserID: principal.UserID, CredentialID: credentialID,
 			PasswordProof: store.PasswordCredentialProof{ID: credential.ID, Revision: credential.Revision},
 			AuditEventID:  auditID,
@@ -93,8 +93,8 @@ func (s *authenticationService) ReauthenticatePassword(ctx context.Context, invo
 	if result == nil || result.Session == nil {
 		return nil, authenticationUnavailable(errors.New("reauthentication returned no Session"))
 	}
-	s.securityEffects.AuthenticationCacheInvalidated(ctx, principal.UserID.String(), result.AccessTokenHashes)
-	if err := s.attempts.reset(ctx, receipt, authenticationAttemptDimensionIdentitySource); err != nil {
+	s.deps.SecurityEffects.AuthenticationCacheInvalidated(ctx, principal.UserID.String(), result.AccessTokenHashes)
+	if err := s.deps.Attempts.reset(ctx, receipt, authenticationAttemptDimensionIdentitySource); err != nil {
 		s.warn(ctx, "reauthentication rate-limit reset failed", err)
 	}
 	return result.Session, nil

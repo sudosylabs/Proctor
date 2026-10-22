@@ -32,7 +32,9 @@ func TestAuthenticationAttemptAccountingHasOneProductionOwner(t *testing.T) {
 		"external authentication": reflect.TypeOf(externalAuthenticationService{}),
 		"installation bootstrap":  reflect.TypeOf(bootstrapService{}),
 	} {
-		field, ok := service.FieldByName("attempts")
+		deps, ok := service.FieldByName("deps")
+		require.True(t, ok, "%s keeps no deps field", name)
+		field, ok := deps.Type.FieldByName("Attempts")
 		require.True(t, ok, "%s does not retain the shared private attempt accounting", name)
 		require.Equal(t, accountingType, field.Type, "%s does not retain the shared private attempt accounting", name)
 	}

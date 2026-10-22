@@ -24,7 +24,7 @@ func BenchmarkPasswordHasherDefault(b *testing.B) {
 		ArgonParallelism: settings.ArgonParallelism, ArgonSaltBytes: settings.ArgonSaltBytes,
 		ArgonKeyBytes: settings.ArgonKeyBytes, MaximumConcurrentOperations: settings.MaximumConcurrentOperations,
 	}
-	hasher, err := newPasswordHasher(policy, nil)
+	hasher, err := newPasswordHasher(passwordHasherDependencies{Settings: policy, Recorder: nil})
 	require.NoError(b, err)
 	ctx := context.Background()
 	password := "correct horse battery staple"

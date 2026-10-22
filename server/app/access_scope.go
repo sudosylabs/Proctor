@@ -47,12 +47,12 @@ func (s *accessControlService) AuthorizePreflight(
 	if constraint.InstitutionWide || len(constraint.AcademicUnitRootIDs) > 0 || len(constraint.ClassIDs) > 0 {
 		return nil
 	}
-	institution, err := s.resolver.institutions.GetSingleton(ctx)
+	institution, err := s.deps.Resolver.deps.Institutions.GetSingleton(ctx)
 	if err != nil {
 		return authorizationResourceError("institution", err)
 	}
 	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
-	if err := s.audit.RecordAuthorizationDecision(
+	if err := s.deps.Audit.RecordAuthorizationDecision(
 		ctx, invocation.Principal(), action, resource, model.RoleScopeInstitution,
 		institution.ID.String(), invocation.RequestMetadata(), false,
 	); err != nil {
@@ -77,7 +77,7 @@ func (s *accessControlService) authorizeAcademicPeriodPreflight(
 	if allowed {
 		return nil
 	}
-	if err := s.audit.RecordAuthorizationDecision(
+	if err := s.deps.Audit.RecordAuthorizationDecision(
 		ctx, invocation.Principal(), action, resource,
 		model.RoleScopeInstitution, resolved.institutionID.String(),
 		invocation.RequestMetadata(), false,
@@ -102,7 +102,7 @@ func (s *accessControlService) academicPeriodCoarseAuthority(
 	if constraint.InstitutionWide || len(constraint.AcademicUnitRootIDs) > 0 {
 		return true, resolved, nil
 	}
-	institution, err := s.resolver.institutions.GetSingleton(ctx)
+	institution, err := s.deps.Resolver.deps.Institutions.GetSingleton(ctx)
 	if err != nil {
 		return false, resolved, authorizationResourceError("institution", err)
 	}
@@ -121,7 +121,7 @@ func (s *accessControlService) AuthorizeAcademicPeriodList(
 	if err != nil {
 		return store.AcademicPeriodVisibilityScope{}, err
 	}
-	institution, err := s.resolver.institutions.GetSingleton(ctx)
+	institution, err := s.deps.Resolver.deps.Institutions.GetSingleton(ctx)
 	if err != nil {
 		return store.AcademicPeriodVisibilityScope{}, authorizationResourceError("institution", err)
 	}
@@ -132,7 +132,7 @@ func (s *accessControlService) AuthorizeAcademicPeriodList(
 	}
 	allowed := visibility.InstitutionWide || len(visibility.AcademicUnitRootIDs) > 0
 	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
-	if err := s.audit.RecordAuthorizationDecision(
+	if err := s.deps.Audit.RecordAuthorizationDecision(
 		ctx, principal, model.ActionAcademicPeriodView, resource,
 		model.RoleScopeInstitution, institution.ID.String(),
 		invocation.RequestMetadata(), allowed,
@@ -154,7 +154,7 @@ func (s *accessControlService) authorizeUserSearch(
 	if err != nil {
 		return store.UserVisibilityScope{}, err
 	}
-	institution, err := s.resolver.institutions.GetSingleton(ctx)
+	institution, err := s.deps.Resolver.deps.Institutions.GetSingleton(ctx)
 	if err != nil {
 		return store.UserVisibilityScope{}, authorizationResourceError("institution", err)
 	}
@@ -170,7 +170,7 @@ func (s *accessControlService) authorizeUserSearch(
 	} else if len(visibility.ClassIDs) > 0 {
 		scopeType, scopeID = model.RoleScopeClass, visibility.ClassIDs[0].String()
 	}
-	if err := s.audit.RecordUserSearchDecision(
+	if err := s.deps.Audit.RecordUserSearchDecision(
 		ctx, principal, resource, scopeType, scopeID, invocation.RequestMetadata(), allowed,
 	); err != nil {
 		return store.UserVisibilityScope{}, err
@@ -217,12 +217,12 @@ func (s *accessControlService) authorizeRoleBindingPreflight(
 	if constraint.InstitutionWide || len(constraint.AcademicUnitRootIDs) > 0 || len(constraint.ClassIDs) > 0 {
 		return nil
 	}
-	institution, err := s.resolver.institutions.GetSingleton(ctx)
+	institution, err := s.deps.Resolver.deps.Institutions.GetSingleton(ctx)
 	if err != nil {
 		return authorizationResourceError("institution", err)
 	}
 	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
-	if err := s.audit.RecordAuthorizationDecision(
+	if err := s.deps.Audit.RecordAuthorizationDecision(
 		ctx, invocation.Principal(), action, resource, model.RoleScopeInstitution,
 		institution.ID.String(), invocation.RequestMetadata(), false,
 	); err != nil {
@@ -277,7 +277,7 @@ func (s *accessControlService) canDelegateActionsAtScope(
 	if err != nil {
 		return false, err
 	}
-	resolvedTarget, err := s.resolver.resolve(ctx, target)
+	resolvedTarget, err := s.deps.Resolver.resolve(ctx, target)
 	if err != nil {
 		return false, err
 	}
@@ -377,7 +377,7 @@ func (s *accessControlService) authorizedScopesAt(
 			return constraint, nil
 		}
 	}
-	bindings, err := s.bindings.ListActiveByUser(ctx, principal.UserID, model.TimeUTC(at))
+	bindings, err := s.deps.Bindings.ListActiveByUser(ctx, principal.UserID, model.TimeUTC(at))
 	if err != nil {
 		return constraint, authorizationUnavailableError(err)
 	}
@@ -392,7 +392,7 @@ func (s *accessControlService) authorizedScopesAt(
 			roleIDs = append(roleIDs, binding.RoleID)
 		}
 	}
-	roles, err := s.roles.GetByIDs(ctx, roleIDs)
+	roles, err := s.deps.Roles.GetByIDs(ctx, roleIDs)
 	if err != nil {
 		return constraint, authorizationUnavailableError(err)
 	}
@@ -411,7 +411,7 @@ func (s *accessControlService) authorizedScopesAt(
 			if !definition.InheritInstitutionScope {
 				continue
 			}
-			resolved, resolveErr := s.resolver.resolve(ctx, model.Resource{Type: model.ResourceInstitution, ID: binding.ScopeID})
+			resolved, resolveErr := s.deps.Resolver.resolve(ctx, model.Resource{Type: model.ResourceInstitution, ID: binding.ScopeID})
 			if resolveErr != nil {
 				return constraint, resolveErr
 			}
@@ -425,7 +425,7 @@ func (s *accessControlService) authorizedScopesAt(
 			if !definition.InheritAcademicUnitScopes {
 				continue
 			}
-			resolved, resolveErr := s.resolver.resolve(ctx, model.Resource{Type: model.ResourceAcademicUnit, ID: binding.ScopeID})
+			resolved, resolveErr := s.deps.Resolver.resolve(ctx, model.Resource{Type: model.ResourceAcademicUnit, ID: binding.ScopeID})
 			if resolveErr != nil {
 				return constraint, resolveErr
 			}
@@ -440,7 +440,7 @@ func (s *accessControlService) authorizedScopesAt(
 			if !definition.AcceptsResource(model.ResourceClass) {
 				continue
 			}
-			resolved, resolveErr := s.resolver.resolve(ctx, model.Resource{Type: model.ResourceClass, ID: binding.ScopeID})
+			resolved, resolveErr := s.deps.Resolver.resolve(ctx, model.Resource{Type: model.ResourceClass, ID: binding.ScopeID})
 			if resolveErr != nil {
 				return constraint, resolveErr
 			}
@@ -464,16 +464,23 @@ func (s *accessControlService) authorizedScopesAt(
 	return constraint, nil
 }
 
+// accessScopeResolverDependencies are the collaborators of accessScopeResolver;
+// newAccessScopeResolver validates them once and accessScopeResolver keeps them in deps.
+type accessScopeResolverDependencies struct {
+	Institutions    store.InstitutionStore
+	AcademicUnits   store.AcademicUnitStore
+	Classes         store.ClassStore
+	Users           store.UserStore
+	ClassMembers    store.ClassMemberStore
+	Exams           store.ExamAuthoringStore
+	Sittings        store.ExamSittingStore
+	Submissions     store.ExamSubmissionStore
+	AcademicPeriods academicPeriodScopeReader
+}
+
 type accessScopeResolver struct {
-	institutions    store.InstitutionStore
-	academicUnits   store.AcademicUnitStore
-	classes         store.ClassStore
-	users           store.UserStore
-	classMembers    store.ClassMemberStore
-	exams           store.ExamAuthoringStore
-	sittings        store.ExamSittingStore
-	submissions     store.ExamSubmissionStore
-	academicPeriods academicPeriodScopeReader
+	deps accessScopeResolverDependencies
+
 	programmes      store.ProgrammeStore
 	programmeLevels store.ProgrammeLevelStore
 }
@@ -482,26 +489,12 @@ type academicPeriodScopeReader interface {
 	Get(context.Context, model.AcademicPeriodID) (*model.AcademicPeriod, error)
 }
 
-func newAccessScopeResolver(
-	institutions store.InstitutionStore,
-	academicUnits store.AcademicUnitStore,
-	classes store.ClassStore,
-	users store.UserStore,
-	classMembers store.ClassMemberStore,
-	exams store.ExamAuthoringStore,
-	sittings store.ExamSittingStore,
-	submissions store.ExamSubmissionStore,
-	academicPeriods academicPeriodScopeReader,
-) (*accessScopeResolver, error) {
-	if institutions == nil || academicUnits == nil || classes == nil || users == nil || classMembers == nil || exams == nil ||
-		sittings == nil || submissions == nil || academicPeriods == nil {
+func newAccessScopeResolver(deps accessScopeResolverDependencies) (*accessScopeResolver, error) {
+	if deps.Institutions == nil || deps.AcademicUnits == nil || deps.Classes == nil || deps.Users == nil || deps.ClassMembers == nil || deps.Exams == nil ||
+		deps.Sittings == nil || deps.Submissions == nil || deps.AcademicPeriods == nil {
 		return nil, errors.New("access scope resolver persistence is required")
 	}
-	resolver := &accessScopeResolver{
-		institutions: institutions, academicUnits: academicUnits,
-		classes: classes, users: users, classMembers: classMembers, exams: exams, sittings: sittings, submissions: submissions,
-		academicPeriods: academicPeriods,
-	}
+	resolver := &accessScopeResolver{deps: deps}
 	return resolver, nil
 }
 
@@ -512,7 +505,7 @@ func (r *accessScopeResolver) resolve(
 	resolved := resolvedAuthorizationResource{academicUnitID: make(map[model.AcademicUnitID]struct{})}
 	switch resource.Type {
 	case model.ResourceInstitution:
-		institution, err := r.institutions.Get(ctx, model.InstitutionID(resource.ID))
+		institution, err := r.deps.Institutions.Get(ctx, model.InstitutionID(resource.ID))
 		if err != nil {
 			return resolved, authorizationResourceError("institution", err)
 		}
@@ -521,7 +514,7 @@ func (r *accessScopeResolver) resolve(
 		}
 		resolved.institutionID = institution.ID
 	case model.ResourceAcademicUnit:
-		units, err := r.academicUnits.ListAncestors(ctx, model.AcademicUnitID(resource.ID))
+		units, err := r.deps.AcademicUnits.ListAncestors(ctx, model.AcademicUnitID(resource.ID))
 		if err != nil {
 			return resolved, authorizationResourceError("academic_unit", err)
 		}
@@ -537,7 +530,7 @@ func (r *accessScopeResolver) resolve(
 			resolved.academicUnitID[unit.ID] = struct{}{}
 		}
 	case model.ResourceAcademicPeriod:
-		period, err := r.academicPeriods.Get(ctx, model.AcademicPeriodID(resource.ID))
+		period, err := r.deps.AcademicPeriods.Get(ctx, model.AcademicPeriodID(resource.ID))
 		if err != nil {
 			return resolved, authorizationResourceError("academic_period", err)
 		}
@@ -545,7 +538,7 @@ func (r *accessScopeResolver) resolve(
 			return resolved, apperror.New("resource.not_found").WithField("resource", "academic_period")
 		}
 		if period.Owner.InstitutionID.IsValid() {
-			institution, institutionErr := r.institutions.Get(ctx, period.Owner.InstitutionID)
+			institution, institutionErr := r.deps.Institutions.Get(ctx, period.Owner.InstitutionID)
 			if institutionErr != nil {
 				return resolved, authorizationResourceError("academic_period_institution", institutionErr)
 			}
@@ -556,7 +549,7 @@ func (r *accessScopeResolver) resolve(
 			resolved.academicPeriodInstitutionOwned = true
 			break
 		}
-		units, err := r.academicUnits.ListAncestors(ctx, period.Owner.AcademicUnitID)
+		units, err := r.deps.AcademicUnits.ListAncestors(ctx, period.Owner.AcademicUnitID)
 		if err != nil {
 			return resolved, authorizationResourceError("academic_period_academic_unit", err)
 		}
@@ -582,7 +575,7 @@ func (r *accessScopeResolver) resolve(
 		if programme == nil || programme.IsArchived() {
 			return resolved, apperror.New("resource.not_found").WithField("resource", "programme")
 		}
-		units, err := r.academicUnits.ListAncestors(ctx, programme.AcademicUnitID)
+		units, err := r.deps.AcademicUnits.ListAncestors(ctx, programme.AcademicUnitID)
 		if err != nil {
 			return resolved, authorizationResourceError("programme_academic_unit", err)
 		}
@@ -615,7 +608,7 @@ func (r *accessScopeResolver) resolve(
 		if programme == nil || programme.IsArchived() {
 			return resolved, apperror.New("resource.not_found").WithField("resource", "programme_level")
 		}
-		units, err := r.academicUnits.ListAncestors(ctx, programme.AcademicUnitID)
+		units, err := r.deps.AcademicUnits.ListAncestors(ctx, programme.AcademicUnitID)
 		if err != nil {
 			return resolved, authorizationResourceError("programme_level_academic_unit", err)
 		}
@@ -631,18 +624,18 @@ func (r *accessScopeResolver) resolve(
 			resolved.academicUnitID[unit.ID] = struct{}{}
 		}
 	case model.ResourceClass:
-		class, err := r.classes.Get(ctx, model.ClassID(resource.ID))
+		class, err := r.deps.Classes.Get(ctx, model.ClassID(resource.ID))
 		if err != nil {
 			return resolved, authorizationResourceError("class", err)
 		}
 		if class.IsArchived() {
 			return resolved, apperror.New("resource.not_found").WithField("resource", "class")
 		}
-		academicUnitID, err := r.classes.GetAcademicUnitID(ctx, model.ClassID(resource.ID))
+		academicUnitID, err := r.deps.Classes.GetAcademicUnitID(ctx, model.ClassID(resource.ID))
 		if err != nil {
 			return resolved, authorizationResourceError("class", err)
 		}
-		units, err := r.academicUnits.ListAncestors(ctx, academicUnitID)
+		units, err := r.deps.AcademicUnits.ListAncestors(ctx, academicUnitID)
 		if err != nil {
 			return resolved, authorizationResourceError("class_academic_unit", err)
 		}
@@ -674,14 +667,14 @@ func (r *accessScopeResolver) resolve(
 			}
 		}
 	case model.ResourceExam:
-		if r.exams == nil {
+		if r.deps.Exams == nil {
 			return resolved, authorizationUnavailableError(errors.New("exam persistence is required"))
 		}
-		exam, err := r.exams.Resolve(ctx, model.ExamID(resource.ID))
+		exam, err := r.deps.Exams.Resolve(ctx, model.ExamID(resource.ID))
 		if err != nil {
 			return resolved, authorizationResourceError("exam", err)
 		}
-		units, err := r.academicUnits.ListAncestors(ctx, exam.AcademicUnitID)
+		units, err := r.deps.AcademicUnits.ListAncestors(ctx, exam.AcademicUnitID)
 		if err != nil {
 			return resolved, authorizationResourceError("exam_academic_unit", err)
 		}
@@ -697,18 +690,18 @@ func (r *accessScopeResolver) resolve(
 			resolved.academicUnitID[unit.ID] = struct{}{}
 		}
 	case model.ResourceExamSitting:
-		snapshot, err := r.sittings.Resolve(ctx, model.ExamSittingID(resource.ID))
+		snapshot, err := r.deps.Sittings.Resolve(ctx, model.ExamSittingID(resource.ID))
 		if err != nil {
 			return resolved, authorizationResourceError("exam_sitting", err)
 		}
 		if snapshot == nil || snapshot.Sitting == nil {
 			return resolved, authorizationUnavailableError(errors.New("Exam Sitting persistence returned no projection"))
 		}
-		exam, err := r.exams.Resolve(ctx, snapshot.Sitting.ExamID)
+		exam, err := r.deps.Exams.Resolve(ctx, snapshot.Sitting.ExamID)
 		if err != nil {
 			return resolved, authorizationResourceError("exam_sitting_exam", err)
 		}
-		units, err := r.academicUnits.ListAncestors(ctx, exam.AcademicUnitID)
+		units, err := r.deps.AcademicUnits.ListAncestors(ctx, exam.AcademicUnitID)
 		if err != nil {
 			return resolved, authorizationResourceError("exam_sitting_academic_unit", err)
 		}
@@ -728,7 +721,7 @@ func (r *accessScopeResolver) resolve(
 		if err != nil {
 			return resolved, apperror.New("authorization.request.invalid").Wrap(err)
 		}
-		ownership, err := r.submissions.Resolve(ctx, submissionID)
+		ownership, err := r.deps.Submissions.Resolve(ctx, submissionID)
 		if err != nil {
 			return resolved, authorizationResourceError("submission", err)
 		}
@@ -736,7 +729,7 @@ func (r *accessScopeResolver) resolve(
 			!ownership.SittingID.IsValid() || !ownership.AttemptID.IsValid() || !ownership.AcademicUnitID.IsValid() {
 			return resolved, authorizationUnavailableError(errors.New("Submission persistence returned no ownership projection"))
 		}
-		units, err := r.academicUnits.ListAncestors(ctx, ownership.AcademicUnitID)
+		units, err := r.deps.AcademicUnits.ListAncestors(ctx, ownership.AcademicUnitID)
 		if err != nil {
 			return resolved, authorizationResourceError("submission_academic_unit", err)
 		}
@@ -752,14 +745,14 @@ func (r *accessScopeResolver) resolve(
 			resolved.academicUnitID[unit.ID] = struct{}{}
 		}
 	case model.ResourceUser:
-		user, err := r.users.Get(ctx, model.UserID(resource.ID))
+		user, err := r.deps.Users.Get(ctx, model.UserID(resource.ID))
 		if err != nil {
 			return resolved, authorizationResourceError("user", err)
 		}
 		if !user.IsActive() {
 			return resolved, apperror.New("resource.not_found").WithField("resource", "user")
 		}
-		institution, err := r.institutions.GetSingleton(ctx)
+		institution, err := r.deps.Institutions.GetSingleton(ctx)
 		if err != nil {
 			return resolved, authorizationResourceError("institution", err)
 		}

@@ -38,7 +38,7 @@ func TestRetentionApprovalRequiresAuthorityAndCriticalAudit(t *testing.T) {
 		t.Run(gate, func(t *testing.T) {
 			fixture := newRetentionPolicyFixture(t)
 			lifecycle := &retentionLifecycleFake{}
-			fixture.service.lifecycle = lifecycle
+			fixture.service.deps.Lifecycle = lifecycle
 			command := ChangeRetentionControlCommand{ExpectedRevision: 1, ExpectedPolicyRevision: 1, PreviewID: model.NewRetentionPreviewID(), State: model.RetentionControlEnabled, IdempotencyKey: "approve-cleanup"}
 			call := fixture.invocation
 			switch gate {
@@ -70,9 +70,9 @@ func TestRetentionApprovalRequiresAuthorityAndCriticalAudit(t *testing.T) {
 func TestRetentionApprovalPassesExactReviewedPolicyAndCredential(t *testing.T) {
 	fixture := newRetentionPolicyFixture(t)
 	control := &model.RetentionControl{InstitutionID: fixture.institution.ID, Revision: 2, State: model.RetentionControlEnabled,
-		ApprovedPolicyRevision: 7, ApprovedPreviewID: model.NewRetentionPreviewID(), ChangedByUserID: fixture.invocation.Principal().UserID, UpdatedAt: fixture.service.now()}
+		ApprovedPolicyRevision: 7, ApprovedPreviewID: model.NewRetentionPreviewID(), ChangedByUserID: fixture.invocation.Principal().UserID, UpdatedAt: fixture.service.deps.Now()}
 	lifecycle := &retentionLifecycleFake{result: &store.RetentionControlResult{Control: control}}
-	fixture.service.lifecycle = lifecycle
+	fixture.service.deps.Lifecycle = lifecycle
 	application := &App{retentionPolicyService: fixture.service}
 	value, err := application.ChangeRetentionControl(t.Context(), fixture.invocation, ChangeRetentionControlCommand{
 		ExpectedRevision: 1, ExpectedPolicyRevision: 7, PreviewID: control.ApprovedPreviewID, State: model.RetentionControlEnabled, IdempotencyKey: "approve-cleanup"})

@@ -34,7 +34,7 @@ func constructJobs(
 		return jobConstruction{}, errors.New("Examination lifecycle use cases are required when Jobs are enabled")
 	}
 
-	defaultJobs := jobhandler.NewDefaultProfilePictureJobs(deps.Store.Job())
+	defaultJobs := jobhandler.NewDefaultProfilePictureJobs(jobhandler.DefaultProfilePictureJobsDependencies{Jobs: deps.Store.Job()})
 	// Enabled workers must be able to open every active payload before runtime
 	// construction. Disabled workers suppress payloads before decryption, so a
 	// deliberately absent or retired ring must not prevent that convergence.
@@ -48,7 +48,7 @@ func constructJobs(
 		mailHealth = newMailHealth(deps.MailDeliverySender != nil && deps.MailDeliverySender.Enabled())
 	}
 	definitions := buildApplicationJobDefinitions(deps, foundation, identity, examinations, profiles, defaultJobs, mailHealth)
-	runtime, err := job.New(job.Config{
+	runtime, err := job.New(job.Dependencies{
 		Store: deps.Store.Job(), Descriptors: definitions.descriptors, NodeID: deps.NodeID,
 		Diagnostics:   deps.RecoveryDiagnostics,
 		Recorder:      deps.JobRecorder,
@@ -66,13 +66,7 @@ func constructJobs(
 	profiles.profilePictures.reads.defaultJobs = defaultJobs
 	var mailService *mailService
 	if deps.Store.Mail() != nil {
-		mailService, err = newMailService(
-			deps.Store.Mail(), deps.Store.User(),
-			mailAuthorizationAdapter{authorization: access.authorization, institutions: deps.Store.Institution()},
-			mailAuditAdapter{audit: foundation.audit}, foundation.attempts,
-			deps.MailTemplateRenderer, deps.MailDeliverySender, deps.MailMetricsReader, deps.MailSecretSealer,
-			deps.RecentAuthenticationTTL, time.Now,
-		)
+		mailService, err = newMailService(mailServiceDependencies{Mail: deps.Store.Mail(), Users: deps.Store.User(), Authorization: mailAuthorizationAdapter{authorization: access.authorization, institutions: deps.Store.Institution()}, Audit: mailAuditAdapter{audit: foundation.audit}, Attempts: foundation.attempts, Renderer: deps.MailTemplateRenderer, Sender: deps.MailDeliverySender, Metrics: deps.MailMetricsReader, Sealer: deps.MailSecretSealer, RecentAuthenticationTTL: deps.RecentAuthenticationTTL, Now: time.Now})
 		if err != nil {
 			return jobConstruction{}, err
 		}
@@ -81,11 +75,7 @@ func constructJobs(
 		mailService.wake = runtime.Wake
 	}
 
-	operations, err := newJobOperationsService(
-		runtime,
-		jobOperationsAuthorization{authorization: access.authorization, institutions: deps.Store.Institution()},
-		mutationAuditAdapter{audit: foundation.audit}, time.Now,
-	)
+	operations, err := newJobOperationsService(jobOperationsServiceDependencies{Jobs: runtime, Authorization: jobOperationsAuthorization{authorization: access.authorization, institutions: deps.Store.Institution()}, Audit: mutationAuditAdapter{audit: foundation.audit}, Now: time.Now})
 	if err != nil {
 		return jobConstruction{}, err
 	}

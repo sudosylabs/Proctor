@@ -30,7 +30,7 @@ func (s *retentionPolicyService) ListRetentionNotices(ctx context.Context, invoc
 	if limit < 1 || limit > model.RetentionMaximumPageSize || (!after.IsZero() && !after.IsValid()) {
 		return nil, apperror.New("retention.invalid")
 	}
-	items, err := s.lifecycle.ListNotices(ctx, principal.UserID, after, limit+1)
+	items, err := s.deps.Lifecycle.ListNotices(ctx, principal.UserID, after, limit+1)
 	if err != nil {
 		return nil, retentionError(err)
 	}

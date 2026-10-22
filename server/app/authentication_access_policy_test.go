@@ -21,9 +21,9 @@ import (
 func TestCurrentAuthenticationAccessPolicyReturnsExactExternalProviderAdmission(t *testing.T) {
 	policy := model.NewInitialAccessPolicy(model.NewAccessPolicyID(), time.UnixMilli(1_000))
 	policy.ProviderAdmissions["campus"] = model.ProviderAdmissionInvitationRequired
-	reader, err := newCurrentAuthenticationAccessPolicy(&accessPolicyStoreFake{
+	reader, err := newCurrentAuthenticationAccessPolicy(currentAuthenticationAccessPolicyDependencies{Policies: &accessPolicyStoreFake{
 		snapshot: &store.AccessPolicySnapshot{Policy: policy},
-	})
+	}})
 	require.NoError(t, err)
 
 	admission, err := reader.ExternalProviderAdmission(context.Background(), " CAMPUS ")

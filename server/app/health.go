@@ -23,16 +23,23 @@ const (
 // DependencyProbe reports whether mandatory runtime dependencies are usable.
 type DependencyProbe func(context.Context) error
 
+// HealthDependencies are the collaborators of Health;
+// NewHealth validates them once and Health keeps them in deps.
+type HealthDependencies struct {
+	Probe    DependencyProbe
+	Timeout  time.Duration
+	Interval time.Duration
+}
+
 // Health combines the lifecycle readiness flag with a bounded, rate-limited
 // probe of mandatory dependencies. A node is ready only while the lifecycle
 // owner has published readiness and the most recent probe succeeded.
 type Health struct {
+	deps HealthDependencies
+
 	ready atomic.Bool
 
-	probe    DependencyProbe
-	timeout  time.Duration
-	interval time.Duration
-	now      func() time.Time
+	now func() time.Time
 
 	mu        sync.Mutex
 	probing   bool
@@ -42,11 +49,11 @@ type Health struct {
 
 // NewHealth constructs readiness that probes dependencies at most once per
 // interval, each probe bounded by timeout. A nil probe reports only the flag.
-func NewHealth(probe DependencyProbe, timeout, interval time.Duration) (*Health, error) {
-	if probe != nil && (timeout <= 0 || interval <= 0) {
+func NewHealth(deps HealthDependencies) (*Health, error) {
+	if deps.Probe != nil && (deps.Timeout <= 0 || deps.Interval <= 0) {
 		return nil, errors.New("readiness probe timing must be positive")
 	}
-	return &Health{probe: probe, timeout: timeout, interval: interval, now: time.Now}, nil
+	return &Health{deps: deps, now: time.Now}, nil
 }
 
 func (h *Health) Live() bool {
@@ -60,11 +67,11 @@ func (h *Health) Ready() bool {
 	if !h.ready.Load() {
 		return false
 	}
-	if h.probe == nil {
+	if h.deps.Probe == nil {
 		return true
 	}
 	h.mu.Lock()
-	if h.probing || h.clock().Sub(h.checkedAt) < h.interval {
+	if h.probing || h.clock().Sub(h.checkedAt) < h.deps.Interval {
 		healthy := h.healthy
 		h.mu.Unlock()
 		return healthy
@@ -72,8 +79,8 @@ func (h *Health) Ready() bool {
 	h.probing = true
 	h.mu.Unlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
-	err := h.probe(ctx)
+	ctx, cancel := context.WithTimeout(context.Background(), h.deps.Timeout)
+	err := h.deps.Probe(ctx)
 	cancel()
 
 	h.mu.Lock()

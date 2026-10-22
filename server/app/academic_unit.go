@@ -49,9 +49,15 @@ type scopedAcademicResourceAuthorizer interface {
 	AuthorizeWithScope(context.Context, invocation.Invocation, model.Action, model.Resource) (model.RoleScopeType, string, error)
 }
 
+// academicUnitQueryServiceDependencies are the collaborators of academicUnitQueryService;
+// newAcademicUnitQueryService validates them once and academicUnitQueryService keeps them in deps.
+type academicUnitQueryServiceDependencies struct {
+	AcademicUnits academicUnitReader
+	Authorization academicUnitAuthorizer
+}
+
 type academicUnitQueryService struct {
-	academicUnits academicUnitReader
-	authorization academicUnitAuthorizer
+	deps academicUnitQueryServiceDependencies
 }
 
 type academicUnitReader interface {
@@ -60,13 +66,8 @@ type academicUnitReader interface {
 	Search(context.Context, model.InstitutionID, store.AcademicNameListOptions) ([]*model.AcademicUnit, error)
 }
 
-func newAcademicUnitQueryService(
-	academicUnits academicUnitReader,
-	authorization academicUnitAuthorizer,
-) *academicUnitQueryService {
-	return &academicUnitQueryService{
-		academicUnits: academicUnits, authorization: authorization,
-	}
+func newAcademicUnitQueryService(deps academicUnitQueryServiceDependencies) *academicUnitQueryService {
+	return &academicUnitQueryService{deps: deps}
 }
 
 // GetAcademicUnit returns one academic unit after authorizing
@@ -81,12 +82,12 @@ func (s *academicUnitQueryService) GetAcademicUnit(
 		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id")
 	}
 	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: id.String()}
-	if err := s.authorization.Authorize(
+	if err := s.deps.Authorization.Authorize(
 		ctx, invocation, model.ActionAcademicUnitView, resource,
 	); err != nil {
 		return nil, err
 	}
-	unit, err := s.academicUnits.Get(ctx, id)
+	unit, err := s.deps.AcademicUnits.Get(ctx, id)
 	if err != nil {
 		return nil, academicUnitStoreErrors.Translate(err)
 	}
@@ -110,7 +111,7 @@ func (s *academicUnitQueryService) ListAcademicUnits(
 	}
 	if parentID != "" {
 		resource := model.Resource{Type: model.ResourceAcademicUnit, ID: parentID.String()}
-		if err := s.authorization.Authorize(
+		if err = s.deps.Authorization.Authorize(
 			ctx, invocation, model.ActionAcademicUnitView, resource,
 		); err != nil {
 			return Page[*model.AcademicUnit]{}, err
@@ -119,16 +120,16 @@ func (s *academicUnitQueryService) ListAcademicUnits(
 
 	var institution model.Resource
 	if parentID == "" {
-		institution, err = s.authorization.AuthorizeInstitution(
+		institution, err = s.deps.Authorization.AuthorizeInstitution(
 			ctx, invocation, model.ActionAcademicUnitView,
 		)
 	} else {
-		institution, err = s.authorization.InstitutionResource(ctx)
+		institution, err = s.deps.Authorization.InstitutionResource(ctx)
 	}
 	if err != nil {
 		return Page[*model.AcademicUnit]{}, err
 	}
-	units, err := s.academicUnits.ListChildren(ctx, model.InstitutionID(institution.ID), parentID, store.AcademicNameListOptions{
+	units, err := s.deps.AcademicUnits.ListChildren(ctx, model.InstitutionID(institution.ID), parentID, store.AcademicNameListOptions{
 		AfterName: query.AfterName, AfterID: query.AfterID, Limit: probe,
 	})
 	if err != nil {
@@ -148,13 +149,13 @@ func (s *academicUnitQueryService) SearchAcademicUnits(
 	if err != nil {
 		return Page[*model.AcademicUnit]{}, err
 	}
-	institution, err := s.authorization.AuthorizeInstitution(
+	institution, err := s.deps.Authorization.AuthorizeInstitution(
 		ctx, invocation, model.ActionAcademicUnitView,
 	)
 	if err != nil {
 		return Page[*model.AcademicUnit]{}, err
 	}
-	units, err := s.academicUnits.Search(ctx, model.InstitutionID(institution.ID), store.AcademicNameListOptions{
+	units, err := s.deps.AcademicUnits.Search(ctx, model.InstitutionID(institution.ID), store.AcademicNameListOptions{
 		Term: strings.TrimSpace(query.Query), AfterName: query.AfterName, AfterID: query.AfterID, Limit: probe,
 	})
 	if err != nil {

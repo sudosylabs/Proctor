@@ -44,11 +44,17 @@ type jobOperatorEngine interface {
 	Retry(context.Context, job.ControlTarget, job.AuditReference) (job.View, error)
 }
 
+// jobOperationsServiceDependencies are the collaborators of jobOperationsService;
+// newJobOperationsService validates them once and jobOperationsService keeps them in deps.
+type jobOperationsServiceDependencies struct {
+	Jobs          jobOperatorEngine
+	Authorization institutionAuthorizer
+	Audit         mutationAuditor
+	Now           func() time.Time
+}
+
 type jobOperationsService struct {
-	jobs          jobOperatorEngine
-	authorization institutionAuthorizer
-	audit         mutationAuditor
-	now           func() time.Time
+	deps jobOperationsServiceDependencies
 }
 
 type jobOperationsAuthorization struct {
@@ -68,30 +74,30 @@ func (a jobOperationsAuthorization) AuthorizeInstitution(ctx context.Context, in
 	return resource, nil
 }
 
-func newJobOperationsService(jobs jobOperatorEngine, authorization institutionAuthorizer, audit mutationAuditor, now func() time.Time) (*jobOperationsService, error) {
-	if jobs == nil {
+func newJobOperationsService(deps jobOperationsServiceDependencies) (*jobOperationsService, error) {
+	if deps.Jobs == nil {
 		return nil, errors.New("job operations engine is required")
 	}
-	if authorization == nil {
+	if deps.Authorization == nil {
 		return nil, errors.New("job operations authorization is required")
 	}
-	if audit == nil {
+	if deps.Audit == nil {
 		return nil, errors.New("job operations audit is required")
 	}
-	if now == nil {
+	if deps.Now == nil {
 		return nil, errors.New("job operations clock is required")
 	}
-	return &jobOperationsService{jobs: jobs, authorization: authorization, audit: audit, now: now}, nil
+	return &jobOperationsService{deps: deps}, nil
 }
 
 func (s *jobOperationsService) ListJobs(ctx context.Context, invocation invocation.Invocation, query ListJobsQuery) (job.Page, error) {
 	if s == nil {
 		return job.Page{}, apperror.New("job.unavailable")
 	}
-	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobView); err != nil {
+	if _, err := s.deps.Authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobView); err != nil {
 		return job.Page{}, err
 	}
-	page, err := s.jobs.List(ctx, job.ListQuery{
+	page, err := s.deps.Jobs.List(ctx, job.ListQuery{
 		Statuses: query.Statuses, BeforeCreatedAt: query.BeforeCreatedAt,
 		BeforeID: query.BeforeID, Limit: query.Limit,
 	})
@@ -105,10 +111,10 @@ func (s *jobOperationsService) GetJob(ctx context.Context, invocation invocation
 	if s == nil {
 		return job.View{}, apperror.New("job.unavailable")
 	}
-	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobView); err != nil {
+	if _, err := s.deps.Authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobView); err != nil {
 		return job.View{}, err
 	}
-	view, err := s.jobs.Get(ctx, query.ID)
+	view, err := s.deps.Jobs.Get(ctx, query.ID)
 	if err != nil {
 		return job.View{}, jobOperationsStoreErrors.Translate(err)
 	}
@@ -119,10 +125,10 @@ func (s *jobOperationsService) ListJobAttempts(ctx context.Context, invocation i
 	if s == nil {
 		return job.AttemptPage{}, apperror.New("job.unavailable")
 	}
-	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobView); err != nil {
+	if _, err := s.deps.Authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobView); err != nil {
 		return job.AttemptPage{}, err
 	}
-	page, err := s.jobs.Attempts(ctx, job.AttemptListQuery{
+	page, err := s.deps.Jobs.Attempts(ctx, job.AttemptListQuery{
 		JobID: query.JobID, BeforeNumber: query.BeforeNumber, Limit: query.Limit,
 	})
 	if err != nil {
@@ -135,18 +141,18 @@ func (s *jobOperationsService) CancelJob(ctx context.Context, invocation invocat
 	if s == nil {
 		return job.View{}, apperror.New("job.unavailable")
 	}
-	return s.mutate(ctx, invocation, "cancel", command.ID, s.jobs.PrepareCancellation, s.jobs.Cancel)
+	return s.mutate(ctx, invocation, "cancel", command.ID, s.deps.Jobs.PrepareCancellation, s.deps.Jobs.Cancel)
 }
 
 func (s *jobOperationsService) RetryJob(ctx context.Context, invocation invocation.Invocation, command RetryJobCommand) (job.View, error) {
 	if s == nil {
 		return job.View{}, apperror.New("job.unavailable")
 	}
-	return s.mutate(ctx, invocation, "retry", command.ID, s.jobs.PrepareRetry, s.jobs.Retry)
+	return s.mutate(ctx, invocation, "retry", command.ID, s.deps.Jobs.PrepareRetry, s.deps.Jobs.Retry)
 }
 
 func (s *jobOperationsService) mutate(ctx context.Context, invocation invocation.Invocation, operation string, id model.JobID, prepare func(context.Context, model.JobID) (job.ControlTarget, error), apply func(context.Context, job.ControlTarget, job.AuditReference) (job.View, error)) (job.View, error) {
-	resource, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobManage)
+	resource, err := s.deps.Authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobManage)
 	if err != nil {
 		return job.View{}, err
 	}
@@ -155,13 +161,13 @@ func (s *jobOperationsService) mutate(ctx context.Context, invocation invocation
 		return job.View{}, jobOperationsStoreErrors.Translate(err)
 	}
 	view := target.View()
-	auditID, err := s.audit.Begin(ctx, invocation, model.ActionJobManage, resource, operation, map[string]any{"job_id": view.ID.String(), "type": string(view.Type), "status": string(view.Status)}, nil)
+	auditID, err := s.deps.Audit.Begin(ctx, invocation, model.ActionJobManage, resource, operation, map[string]any{"job_id": view.ID.String(), "type": string(view.Type), "status": string(view.Status)}, nil)
 	if err != nil {
 		return job.View{}, err
 	}
-	updated, err := apply(ctx, target, job.AuditReference{EventID: auditID, At: s.now().UnixMilli()})
+	updated, err := apply(ctx, target, job.AuditReference{EventID: auditID, At: s.deps.Now().UnixMilli()})
 	if err != nil {
-		_ = s.audit.Fail(ctx, auditID, "job.conflict")
+		_ = s.deps.Audit.Fail(ctx, auditID, "job.conflict")
 		return job.View{}, jobOperationsStoreErrors.Translate(err)
 	}
 	return updated, nil

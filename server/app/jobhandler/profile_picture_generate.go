@@ -18,13 +18,22 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// DefaultProfilePictureJobsDependencies are the collaborators of DefaultProfilePictureJobs;
+// NewDefaultProfilePictureJobs validates them once and DefaultProfilePictureJobs keeps them in deps.
+type DefaultProfilePictureJobsDependencies struct {
+	Jobs store.JobStore
+}
+
 type DefaultProfilePictureJobs struct {
-	jobs store.JobStore
+	deps DefaultProfilePictureJobsDependencies
+
 	wake func()
 }
 
-func NewDefaultProfilePictureJobs(jobs store.JobStore) *DefaultProfilePictureJobs {
-	return &DefaultProfilePictureJobs{jobs: jobs}
+// NewDefaultProfilePictureJobs enqueues default profile picture generation
+// through the Job Store.
+func NewDefaultProfilePictureJobs(deps DefaultProfilePictureJobsDependencies) *DefaultProfilePictureJobs {
+	return &DefaultProfilePictureJobs{deps: deps}
 }
 
 func (p *DefaultProfilePictureJobs) SetWake(wake func()) { p.wake = wake }
@@ -72,7 +81,7 @@ func (p DefaultProfilePictureJobs) ProposeDefaultProfilePicture(ctx context.Cont
 	if err != nil {
 		return err
 	}
-	_, _, err = p.jobs.Enqueue(ctx, &store.JobEnqueue{Job: job})
+	_, _, err = p.deps.Jobs.Enqueue(ctx, &store.JobEnqueue{Job: job})
 	if err == nil && p.wake != nil {
 		p.wake()
 	}

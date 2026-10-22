@@ -131,7 +131,7 @@ func (c *bootstrapAttemptCacheFake) snapshot() map[string]int64 {
 
 func bootstrapAttemptAccounting(t *testing.T, cache authenticationAttemptCache) *authenticationAttemptAccounting {
 	t.Helper()
-	accounting, err := newAuthenticationAttemptAccounting(cache)
+	accounting, err := newAuthenticationAttemptAccounting(authenticationAttemptAccountingDependencies{Cache: cache})
 	require.NoError(t, err)
 	return accounting
 }
@@ -147,16 +147,7 @@ func bootstrapProtection() BootstrapProtectionPolicy {
 func TestBootstrapStatusUninitializedOnNotFound(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	service := newBootstrapService(
-		&installationStoreFake{events: &events, getErr: store.NewErrNotFound("installation", "")},
-		&passwordHasherFake{events: &events},
-		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}),
-		bootstrapRateLimitPolicy(10),
-		bootstrapProtection(),
-		"node-a",
-		time.Now,
-		administratorRecoveryPolicy{},
-	)
+	service := newBootstrapService(bootstrapServiceDependencies{Installations: &installationStoreFake{events: &events, getErr: store.NewErrNotFound("installation", "")}, Hasher: &passwordHasherFake{events: &events}, Attempts: bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}), RateLimit: bootstrapRateLimitPolicy(10), Protection: bootstrapProtection(), NodeID: "node-a", Now: time.Now, RecoveryPolicy: administratorRecoveryPolicy{}})
 	status, err := service.GetInstallationStatus(context.Background(), GetInstallationStatusQuery{})
 	require.NoError(t, err, "status=%#v err", status)
 	require.False(t, status.Initialized, "status=%#v err", status)
@@ -166,9 +157,7 @@ func TestBootstrapPasswordWorkFailuresStopBeforeAggregate(t *testing.T) {
 	testPasswordHashFailures(t, "installation.unavailable", func(t *testing.T, ctx context.Context, hasher passwordHash) error {
 		events := []string{}
 		persistence := &installationStoreFake{events: &events}
-		service := newBootstrapService(persistence, hasher,
-			bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{}), bootstrapRateLimitPolicy(10),
-			bootstrapProtection(), "node-bootstrap", time.Now, administratorRecoveryPolicy{})
+		service := newBootstrapService(bootstrapServiceDependencies{Installations: persistence, Hasher: hasher, Attempts: bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{}), RateLimit: bootstrapRateLimitPolicy(10), Protection: bootstrapProtection(), NodeID: "node-bootstrap", Now: time.Now, RecoveryPolicy: administratorRecoveryPolicy{}})
 		result, err := service.BootstrapInstallation(ctx, invocation.Invocation{}, BootstrapInstallationCommand{
 			InstitutionName: "test", AdministratorUsername: "administrator", AdministratorEmail: "administrator@example.edu",
 			Password: "correct horse battery staple", BootstrapSecret: bootstrapProtection().Secret, Source: "192.0.2.35",
@@ -189,16 +178,7 @@ func TestBootstrapCommitsAtomicAggregate(t *testing.T) {
 	persistence := &installationStoreFake{
 		events: &events, getErr: store.NewErrNotFound("installation", ""), result: result,
 	}
-	service := newBootstrapService(
-		persistence,
-		&passwordHasherFake{events: &events, hash: "encoded"},
-		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}),
-		bootstrapRateLimitPolicy(10),
-		bootstrapProtection(),
-		"node-a",
-		func() time.Time { return time.UnixMilli(500) },
-		administratorRecoveryPolicy{},
-	)
+	service := newBootstrapService(bootstrapServiceDependencies{Installations: persistence, Hasher: &passwordHasherFake{events: &events, hash: "encoded"}, Attempts: bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}), RateLimit: bootstrapRateLimitPolicy(10), Protection: bootstrapProtection(), NodeID: "node-a", Now: func() time.Time { return time.UnixMilli(500) }, RecoveryPolicy: administratorRecoveryPolicy{}})
 	got, err := service.BootstrapInstallation(context.Background(), invocation.New(model.Principal{}, model.RequestMetadata{RequestID: "req"}), BootstrapInstallationCommand{
 		InstitutionName: "northbridge", InstitutionDisplayName: "Northbridge",
 		AdministratorUsername: "admin", AdministratorEmail: "admin@example.com",
@@ -231,18 +211,9 @@ func TestBootstrapCommitsAtomicAggregate(t *testing.T) {
 func TestBootstrapAlreadyInitialized(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	service := newBootstrapService(
-		&installationStoreFake{events: &events, state: &model.InstallationState{
-			InitializedAt: model.TimeFromMillis(1), InstitutionID: model.NewInstitutionID(), AdministratorUserID: model.NewUserID(),
-		}, err: store.NewErrConflict("installation", "already", nil)},
-		&passwordHasherFake{events: &events},
-		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}),
-		bootstrapRateLimitPolicy(10),
-		bootstrapProtection(),
-		"node-a",
-		time.Now,
-		administratorRecoveryPolicy{},
-	)
+	service := newBootstrapService(bootstrapServiceDependencies{Installations: &installationStoreFake{events: &events, state: &model.InstallationState{
+		InitializedAt: model.TimeFromMillis(1), InstitutionID: model.NewInstitutionID(), AdministratorUserID: model.NewUserID(),
+	}, err: store.NewErrConflict("installation", "already", nil)}, Hasher: &passwordHasherFake{events: &events}, Attempts: bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}), RateLimit: bootstrapRateLimitPolicy(10), Protection: bootstrapProtection(), NodeID: "node-a", Now: time.Now, RecoveryPolicy: administratorRecoveryPolicy{}})
 	_, err := service.BootstrapInstallation(context.Background(), invocation.Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", InstitutionDisplayName: "Northbridge",
 		AdministratorUsername: "admin", AdministratorEmail: "admin@example.com", Password: "x",
@@ -257,19 +228,10 @@ func TestBootstrapAlreadyInitialized(t *testing.T) {
 func TestBootstrapConflictMapsToAlreadyInitialized(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	service := newBootstrapService(
-		&installationStoreFake{
-			events: &events, getErr: store.NewErrNotFound("installation", ""),
-			err: store.NewErrConflict("installation", "already", errors.New("race")),
-		},
-		&passwordHasherFake{events: &events, hash: "encoded"},
-		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}),
-		bootstrapRateLimitPolicy(10),
-		bootstrapProtection(),
-		"node-a",
-		time.Now,
-		administratorRecoveryPolicy{},
-	)
+	service := newBootstrapService(bootstrapServiceDependencies{Installations: &installationStoreFake{
+		events: &events, getErr: store.NewErrNotFound("installation", ""),
+		err: store.NewErrConflict("installation", "already", errors.New("race")),
+	}, Hasher: &passwordHasherFake{events: &events, hash: "encoded"}, Attempts: bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}), RateLimit: bootstrapRateLimitPolicy(10), Protection: bootstrapProtection(), NodeID: "node-a", Now: time.Now, RecoveryPolicy: administratorRecoveryPolicy{}})
 	_, err := service.BootstrapInstallation(context.Background(), invocation.Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", InstitutionDisplayName: "Northbridge",
 		AdministratorUsername: "admin", AdministratorEmail: "admin@example.com", Password: "x",
@@ -282,13 +244,7 @@ func TestBootstrapRejectsWrongSecretBeforePasswordHashingOrPersistence(t *testin
 	t.Parallel()
 
 	events := []string{}
-	service := newBootstrapService(
-		&installationStoreFake{events: &events},
-		&passwordHasherFake{events: &events, hash: "encoded"},
-		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}),
-		bootstrapRateLimitPolicy(10), bootstrapProtection(), "node-a", time.Now,
-		administratorRecoveryPolicy{},
-	)
+	service := newBootstrapService(bootstrapServiceDependencies{Installations: &installationStoreFake{events: &events}, Hasher: &passwordHasherFake{events: &events, hash: "encoded"}, Attempts: bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}), RateLimit: bootstrapRateLimitPolicy(10), Protection: bootstrapProtection(), NodeID: "node-a", Now: time.Now, RecoveryPolicy: administratorRecoveryPolicy{}})
 	_, err := service.BootstrapInstallation(context.Background(), invocation.Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", AdministratorUsername: "admin",
 		AdministratorEmail: "admin@example.com", Password: "password-value",
@@ -310,12 +266,7 @@ func TestBootstrapReconcilesUnknownCommitByRepeatingTheFencedAggregate(t *testin
 		events: &events, result: committed,
 		errors: []error{errors.New("commit outcome unknown"), nil},
 	}
-	service := newBootstrapService(
-		persistence, &passwordHasherFake{events: &events, hash: "encoded"},
-		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}),
-		bootstrapRateLimitPolicy(10), bootstrapProtection(), "node-a", time.Now,
-		administratorRecoveryPolicy{},
-	)
+	service := newBootstrapService(bootstrapServiceDependencies{Installations: persistence, Hasher: &passwordHasherFake{events: &events, hash: "encoded"}, Attempts: bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}), RateLimit: bootstrapRateLimitPolicy(10), Protection: bootstrapProtection(), NodeID: "node-a", Now: time.Now, RecoveryPolicy: administratorRecoveryPolicy{}})
 	result, err := service.BootstrapInstallation(context.Background(), invocation.Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", AdministratorUsername: "admin",
 		AdministratorEmail: "admin@example.com", Password: "password-value",
@@ -356,16 +307,7 @@ func TestBootstrapRateLimitUsesSourceOnlySharedAccounting(t *testing.T) {
 
 	events := []string{}
 	cache := &bootstrapAttemptCacheFake{events: &events}
-	service := newBootstrapService(
-		&installationStoreFake{events: &events, getErr: store.NewErrNotFound("installation", "")},
-		&passwordHasherFake{events: &events, hash: "encoded"},
-		bootstrapAttemptAccounting(t, cache),
-		bootstrapRateLimitPolicy(2),
-		bootstrapProtection(),
-		"node-a",
-		time.Now,
-		administratorRecoveryPolicy{},
-	)
+	service := newBootstrapService(bootstrapServiceDependencies{Installations: &installationStoreFake{events: &events, getErr: store.NewErrNotFound("installation", "")}, Hasher: &passwordHasherFake{events: &events, hash: "encoded"}, Attempts: bootstrapAttemptAccounting(t, cache), RateLimit: bootstrapRateLimitPolicy(2), Protection: bootstrapProtection(), NodeID: "node-a", Now: time.Now, RecoveryPolicy: administratorRecoveryPolicy{}})
 	command := BootstrapInstallationCommand{
 		InstitutionName: "northbridge", AdministratorUsername: "admin",
 		AdministratorEmail: "admin@example.com", Password: "password-value",
@@ -396,16 +338,7 @@ func TestBootstrapRateLimitFailureIsAdministrationUnavailableBeforeHashing(t *te
 
 	events := []string{}
 	cacheFailure := errors.New("cache unavailable")
-	service := newBootstrapService(
-		&installationStoreFake{events: &events, getErr: store.NewErrNotFound("installation", "")},
-		&passwordHasherFake{events: &events, hash: "encoded"},
-		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events, err: cacheFailure}),
-		bootstrapRateLimitPolicy(2),
-		bootstrapProtection(),
-		"node-a",
-		time.Now,
-		administratorRecoveryPolicy{},
-	)
+	service := newBootstrapService(bootstrapServiceDependencies{Installations: &installationStoreFake{events: &events, getErr: store.NewErrNotFound("installation", "")}, Hasher: &passwordHasherFake{events: &events, hash: "encoded"}, Attempts: bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events, err: cacheFailure}), RateLimit: bootstrapRateLimitPolicy(2), Protection: bootstrapProtection(), NodeID: "node-a", Now: time.Now, RecoveryPolicy: administratorRecoveryPolicy{}})
 	_, err := service.BootstrapInstallation(context.Background(), invocation.Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", AdministratorUsername: "admin",
 		AdministratorEmail: "admin@example.com", Password: "password-value",
@@ -422,16 +355,7 @@ func TestBootstrapInvalidRateLimitPolicyFailsClosed(t *testing.T) {
 	t.Parallel()
 
 	events := []string{}
-	service := newBootstrapService(
-		&installationStoreFake{events: &events, getErr: store.NewErrNotFound("installation", "")},
-		&passwordHasherFake{events: &events, hash: "encoded"},
-		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}),
-		LoginRateLimitPolicy{},
-		bootstrapProtection(),
-		"node-a",
-		time.Now,
-		administratorRecoveryPolicy{},
-	)
+	service := newBootstrapService(bootstrapServiceDependencies{Installations: &installationStoreFake{events: &events, getErr: store.NewErrNotFound("installation", "")}, Hasher: &passwordHasherFake{events: &events, hash: "encoded"}, Attempts: bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}), RateLimit: LoginRateLimitPolicy{}, Protection: bootstrapProtection(), NodeID: "node-a", Now: time.Now, RecoveryPolicy: administratorRecoveryPolicy{}})
 	_, err := service.BootstrapInstallation(context.Background(), invocation.Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", AdministratorUsername: "admin",
 		AdministratorEmail: "admin@example.com", Password: "password-value",

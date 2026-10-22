@@ -80,7 +80,7 @@ func TestMFASetupUsesControlledClockAndSecretGenerator(t *testing.T) {
 		t, persistence, audit, &mfaApplicationEffectsFake{}, now,
 	)
 	const secret = "JBSWY3DPEHPK3PXP"
-	service.mechanics.newSecret = func() (string, error) { return secret, nil }
+	service.deps.Mechanics.newSecret = func() (string, error) { return secret, nil }
 	application := &App{mfaApplicationService: service}
 
 	setup, err := application.SetupMFA(
@@ -129,9 +129,9 @@ func TestMFASecretSealingAuthenticatesUserAndKeyReference(t *testing.T) {
 func TestMFAMechanicsRequiresSealingOnlyWhenEnabled(t *testing.T) {
 	t.Parallel()
 
-	_, err := newMFAMechanics(MFAPolicy{}, nil)
+	_, err := newMFAMechanics(mfaMechanicsDependencies{Settings: MFAPolicy{}, Sealer: nil})
 	require.NoError(t, err)
-	_, err = newMFAMechanics(MFAPolicy{Enabled: true}, nil)
+	_, err = newMFAMechanics(mfaMechanicsDependencies{Settings: MFAPolicy{Enabled: true}, Sealer: nil})
 	require.Error(t, err, "newMFAMechanics(enabled without sealer) succeeded")
 }
 
@@ -193,11 +193,11 @@ func TestMFASecurityTransitionsPrepareOneOrdinaryNoticeWithoutSecrets(t *testing
 	}
 	mailer := &mfaSecurityNoticeMailPreparerFake{}
 	service := newTestMFAApplicationService(t, persistence, &mfaApplicationAuditFake{}, &mfaApplicationEffectsFake{}, now)
-	service.mail = mailer
+	service.deps.Mail = mailer
 	application := &App{mfaApplicationService: service}
 	invocation := invocation.New(principal, model.RequestMetadata{RequestID: "mfa-notices"})
 	const secret = "JBSWY3DPEHPK3PXP"
-	sealed, err := service.mechanics.sealTOTPSecret(principal.UserID.String(), secret)
+	sealed, err := service.deps.Mechanics.sealTOTPSecret(principal.UserID.String(), secret)
 	require.NoError(t, err)
 	persistence.credential = &model.MFACredential{
 		ID: model.NewMFACredentialID(), UserID: principal.UserID,
@@ -243,34 +243,34 @@ func TestMFAApplicationServiceRequiresFocusedDependencies(t *testing.T) {
 		build func() (*mfaApplicationService, error)
 	}{
 		{"user store", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(nil, persistence, sessions, institutions, audit, effects, mail, mechanics, testMFASecurity(), time.Minute, now)
+			return newMFAApplicationService(mfaApplicationServiceDependencies{Users: nil, Credentials: persistence, Sessions: sessions, Institutions: institutions, Audit: audit, Effects: effects, Mail: mail, Mechanics: mechanics, Security: testMFASecurity(), RecentAuthenticationTTL: time.Minute, Now: now})
 		}},
 		{"MFA store", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, nil, sessions, institutions, audit, effects, mail, mechanics, testMFASecurity(), time.Minute, now)
+			return newMFAApplicationService(mfaApplicationServiceDependencies{Users: users, Credentials: nil, Sessions: sessions, Institutions: institutions, Audit: audit, Effects: effects, Mail: mail, Mechanics: mechanics, Security: testMFASecurity(), RecentAuthenticationTTL: time.Minute, Now: now})
 		}},
 		{"session store", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, nil, institutions, audit, effects, mail, mechanics, testMFASecurity(), time.Minute, now)
+			return newMFAApplicationService(mfaApplicationServiceDependencies{Users: users, Credentials: persistence, Sessions: nil, Institutions: institutions, Audit: audit, Effects: effects, Mail: mail, Mechanics: mechanics, Security: testMFASecurity(), RecentAuthenticationTTL: time.Minute, Now: now})
 		}},
 		{"institution store", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, sessions, nil, audit, effects, mail, mechanics, testMFASecurity(), time.Minute, now)
+			return newMFAApplicationService(mfaApplicationServiceDependencies{Users: users, Credentials: persistence, Sessions: sessions, Institutions: nil, Audit: audit, Effects: effects, Mail: mail, Mechanics: mechanics, Security: testMFASecurity(), RecentAuthenticationTTL: time.Minute, Now: now})
 		}},
 		{"audit", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, sessions, institutions, nil, effects, mail, mechanics, testMFASecurity(), time.Minute, now)
+			return newMFAApplicationService(mfaApplicationServiceDependencies{Users: users, Credentials: persistence, Sessions: sessions, Institutions: institutions, Audit: nil, Effects: effects, Mail: mail, Mechanics: mechanics, Security: testMFASecurity(), RecentAuthenticationTTL: time.Minute, Now: now})
 		}},
 		{"effects", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, sessions, institutions, audit, nil, mail, mechanics, testMFASecurity(), time.Minute, now)
+			return newMFAApplicationService(mfaApplicationServiceDependencies{Users: users, Credentials: persistence, Sessions: sessions, Institutions: institutions, Audit: audit, Effects: nil, Mail: mail, Mechanics: mechanics, Security: testMFASecurity(), RecentAuthenticationTTL: time.Minute, Now: now})
 		}},
 		{"mail", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, sessions, institutions, audit, effects, nil, mechanics, testMFASecurity(), time.Minute, now)
+			return newMFAApplicationService(mfaApplicationServiceDependencies{Users: users, Credentials: persistence, Sessions: sessions, Institutions: institutions, Audit: audit, Effects: effects, Mail: nil, Mechanics: mechanics, Security: testMFASecurity(), RecentAuthenticationTTL: time.Minute, Now: now})
 		}},
 		{"mechanics", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, sessions, institutions, audit, effects, mail, nil, testMFASecurity(), time.Minute, now)
+			return newMFAApplicationService(mfaApplicationServiceDependencies{Users: users, Credentials: persistence, Sessions: sessions, Institutions: institutions, Audit: audit, Effects: effects, Mail: mail, Mechanics: nil, Security: testMFASecurity(), RecentAuthenticationTTL: time.Minute, Now: now})
 		}},
 		{"recent authentication TTL", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, sessions, institutions, audit, effects, mail, mechanics, testMFASecurity(), 0, now)
+			return newMFAApplicationService(mfaApplicationServiceDependencies{Users: users, Credentials: persistence, Sessions: sessions, Institutions: institutions, Audit: audit, Effects: effects, Mail: mail, Mechanics: mechanics, Security: testMFASecurity(), RecentAuthenticationTTL: 0, Now: now})
 		}},
 		{"clock", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, sessions, institutions, audit, effects, mail, mechanics, testMFASecurity(), time.Minute, nil)
+			return newMFAApplicationService(mfaApplicationServiceDependencies{Users: users, Credentials: persistence, Sessions: sessions, Institutions: institutions, Audit: audit, Effects: effects, Mail: mail, Mechanics: mechanics, Security: testMFASecurity(), RecentAuthenticationTTL: time.Minute, Now: nil})
 		}},
 	}
 	for _, test := range tests {
@@ -290,12 +290,7 @@ func newTestMFAApplicationService(
 	now time.Time,
 ) *mfaApplicationService {
 	t.Helper()
-	service, err := newMFAApplicationService(
-		mfaApplicationUserStoreFake{}, persistence,
-		mfaApplicationSessionStoreFake{persistence: persistence},
-		mfaApplicationInstitutionStoreFake{persistence: persistence}, audit, effects,
-		&mfaSecurityNoticeMailPreparerFake{}, mustTestMFAMechanics(t), testMFASecurity(), 15*time.Minute, func() time.Time { return now },
-	)
+	service, err := newMFAApplicationService(mfaApplicationServiceDependencies{Users: mfaApplicationUserStoreFake{}, Credentials: persistence, Sessions: mfaApplicationSessionStoreFake{persistence: persistence}, Institutions: mfaApplicationInstitutionStoreFake{persistence: persistence}, Audit: audit, Effects: effects, Mail: &mfaSecurityNoticeMailPreparerFake{}, Mechanics: mustTestMFAMechanics(t), Security: testMFASecurity(), RecentAuthenticationTTL: 15 * time.Minute, Now: func() time.Time { return now }})
 	require.NoError(t, err)
 	return service
 }
@@ -311,7 +306,7 @@ func mustTestMFAMechanics(t *testing.T) *mfaMechanics {
 		MaximumPlaintext: 128,
 	})
 	require.NoError(t, err)
-	mechanics, err := newMFAMechanics(policy, sealer)
+	mechanics, err := newMFAMechanics(mfaMechanicsDependencies{Settings: policy, Sealer: sealer})
 	require.NoError(t, err)
 	return mechanics
 }
@@ -499,7 +494,7 @@ func (a mfaResetAuthorizationFake) Authorize(context.Context, invocation.Invocat
 	return a.err
 }
 func testMFASecurity() mfaSecurityDependencies {
-	return mfaSecurityDependencies{authorization: mfaResetAuthorizationFake{}, capabilities: &accessPolicyCapabilitiesFake{}, attempts: &authenticationAttemptAccounting{cache: newAuthenticationCacheFake()}, rateLimit: LoginRateLimitPolicy{MaximumAttempts: 100, MaximumSourceAttempts: 1000, Window: time.Minute}}
+	return mfaSecurityDependencies{authorization: mfaResetAuthorizationFake{}, capabilities: &accessPolicyCapabilitiesFake{}, attempts: &authenticationAttemptAccounting{deps: authenticationAttemptAccountingDependencies{Cache: newAuthenticationCacheFake()}}, rateLimit: LoginRateLimitPolicy{MaximumAttempts: 100, MaximumSourceAttempts: 1000, Window: time.Minute}}
 }
 func (s *mfaApplicationStoreFake) GetRecoveryState(_ context.Context, userID model.UserID) (*model.UserMFARecovery, error) {
 	return &model.UserMFARecovery{UserID: userID}, nil

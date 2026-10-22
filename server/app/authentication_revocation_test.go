@@ -76,7 +76,7 @@ func TestSessionAuthenticationUsesCurrentStoreStateWithWarmCache(t *testing.T) {
 					cache := newAuthenticationCacheFake()
 					service := newTestAuthenticationServiceWithCache(t, persistence, cache)
 					at := time.Date(2026, time.August, 12, 12, 0, 0, 0, time.UTC)
-					service.now = func() time.Time { return at }
+					service.deps.Now = func() time.Time { return at }
 					user, rawAccess := seedAuthenticatedSession(t, service)
 					hash := model.HashToken(rawAccess)
 					credential := persistence.accessByHash[hash]
@@ -104,7 +104,7 @@ func TestSessionAuthenticationFailsClosedWhenCredentialStoreUnavailableWithWarmC
 	user, rawAccess := seedAuthenticatedSession(t, service)
 	hash := model.HashToken(rawAccess)
 	cacheLegacyAuthentication(t, cache, persistence.accessByHash[hash], persistence.sessionByCredential[hash], user)
-	service.sessionCredentials = unavailableAuthenticationCredentialStore{SessionCredentialStore: persistence.SessionCredential()}
+	service.deps.SessionCredentials = unavailableAuthenticationCredentialStore{SessionCredentialStore: persistence.SessionCredential()}
 	principal, err := service.authenticateAccess(context.Background(), rawAccess)
 	require.Nil(t, principal, "authentication with unavailable Store = %#v, %v", principal, err)
 	require.True(t, apperror.Is(err, "authentication.internal"), "authentication with unavailable Store = %#v, %v", principal, err)
@@ -124,7 +124,7 @@ func TestSessionRevocationRejectsAfterLocalCacheDeleteFailure(t *testing.T) {
 	persistence := newAuthenticationStoreFake()
 	cache := &failingAuthenticationCacheDelete{authenticationCacheFake: newAuthenticationCacheFake()}
 	service := newTestAuthenticationServiceWithCache(t, persistence, cache)
-	service.securityEffects = newTestRealtimeService(t, cache)
+	service.deps.SecurityEffects = newTestRealtimeService(t, cache)
 	user, rawAccess := seedAuthenticatedSession(t, service)
 	hash := model.HashToken(rawAccess)
 	cacheLegacyAuthentication(t, cache, persistence.accessByHash[hash], persistence.sessionByCredential[hash], user)
@@ -170,22 +170,22 @@ func TestSessionAuthenticationPreservesDebouncedActivityAndAbsoluteLimit(t *test
 			service := newTestAuthenticationServiceWithCache(t, persistence, cache)
 			at := time.Date(2026, time.August, 12, 12, 0, 0, 0, time.UTC)
 			now := at
-			service.now = func() time.Time { return now }
-			service.sessionPolicy.AbsoluteTTL = test.absoluteTTL
+			service.deps.Now = func() time.Time { return now }
+			service.deps.SessionPolicy.AbsoluteTTL = test.absoluteTTL
 			_, rawAccess := seedAuthenticatedSession(t, service)
 			session := persistence.sessionByCredential[model.HashToken(rawAccess)]
 			initialIdleExpiry := session.IdleExpiresAt
 
-			now = at.Add(service.sessionPolicy.ActivityUpdateInterval - time.Millisecond)
+			now = at.Add(service.deps.SessionPolicy.ActivityUpdateInterval - time.Millisecond)
 			_, err := service.authenticateAccess(context.Background(), rawAccess)
 			require.NoError(t, err)
 			require.True(t, session.LastActivityAt.Equal(at), "activity changed before the debounce interval")
 			require.True(t, session.IdleExpiresAt.Equal(initialIdleExpiry), "activity changed before the debounce interval")
 
-			now = at.Add(service.sessionPolicy.ActivityUpdateInterval)
+			now = at.Add(service.deps.SessionPolicy.ActivityUpdateInterval)
 			_, err = service.authenticateAccess(context.Background(), rawAccess)
 			require.NoError(t, err)
-			wantIdleExpiry := now.Add(service.sessionPolicy.IdleTTL)
+			wantIdleExpiry := now.Add(service.deps.SessionPolicy.IdleTTL)
 			if session.ExpiresAt.Before(wantIdleExpiry) {
 				wantIdleExpiry = session.ExpiresAt
 			}

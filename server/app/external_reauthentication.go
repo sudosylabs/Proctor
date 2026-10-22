@@ -43,13 +43,13 @@ func (s *externalAuthenticationService) BeginExternalReauthentication(ctx contex
 	default:
 		return nil, apperror.New("authentication.external.request.invalid")
 	}
-	auditID, err := s.mutationAudit.Begin(ctx, invocation, model.ActionAuthenticationReauthenticate, model.Resource{Type: model.ResourceUser, ID: principal.UserID.String()}, "external", map[string]any{"session_id": principal.SessionID.String(), "provider": principal.AuthenticationProviderID, "task": command.Task}, nil)
+	auditID, err := s.deps.MutationAudit.Begin(ctx, invocation, model.ActionAuthenticationReauthenticate, model.Resource{Type: model.ResourceUser, ID: principal.UserID.String()}, "external", map[string]any{"session_id": principal.SessionID.String(), "provider": principal.AuthenticationProviderID, "task": command.Task}, nil)
 	if err != nil {
 		return nil, err
 	}
 	start, err := s.beginForPurpose(ctx, principal.AuthenticationProviderID, returnTo, model.SessionClientWeb, "", "", command.Source, model.ExternalAuthenticationPurposeReauthenticate, principal.UserID, auditID, "", "", &principal)
 	if err != nil {
-		if auditErr := s.mutationAudit.Fail(ctx, auditID, appErrorCode(err)); auditErr != nil {
+		if auditErr := s.deps.MutationAudit.Fail(ctx, auditID, appErrorCode(err)); auditErr != nil {
 			return nil, auditErr
 		}
 	}
@@ -57,16 +57,16 @@ func (s *externalAuthenticationService) BeginExternalReauthentication(ctx contex
 }
 
 func (s *externalAuthenticationService) completeReauthentication(ctx context.Context, state *model.ExternalLoginState, assertion *model.ExternalAuthenticationAssertion) (*model.ExternalAuthenticationCompletion, error) {
-	if state == nil || state.Purpose != model.ExternalAuthenticationPurposeReauthenticate || state.Validate() != nil || !state.ConsumedAt.Valid || assertion == nil || assertion.ProviderID != state.Provider || assertion.AuthenticatedAt < state.CreatedAt.Truncate(time.Second).UnixMilli() || assertion.AuthenticatedAt > s.now().UnixMilli() {
+	if state == nil || state.Purpose != model.ExternalAuthenticationPurposeReauthenticate || state.Validate() != nil || !state.ConsumedAt.Valid || assertion == nil || assertion.ProviderID != state.Provider || assertion.AuthenticatedAt < state.CreatedAt.Truncate(time.Second).UnixMilli() || assertion.AuthenticatedAt > s.deps.Now().UnixMilli() {
 		return nil, s.failConsumedProviderConnection(ctx, state, apperror.New("authentication.external.rejected"))
 	}
-	result, err := s.sessions.ReauthenticateExternal(ctx, &store.SessionExternalReauthentication{StateID: state.ID, ProviderID: state.Provider, Subject: assertion.Subject, AuthenticatedAt: model.TimeFromMillis(assertion.AuthenticatedAt)})
+	result, err := s.deps.Sessions.ReauthenticateExternal(ctx, &store.SessionExternalReauthentication{StateID: state.ID, ProviderID: state.Provider, Subject: assertion.Subject, AuthenticatedAt: model.TimeFromMillis(assertion.AuthenticatedAt)})
 	if err != nil {
 		return nil, s.failConsumedProviderConnection(ctx, state, reauthenticationStoreErrors.Translate(err))
 	}
 	if result == nil || result.Session == nil {
 		return nil, s.failConsumedProviderConnection(ctx, state, authenticationUnavailable(errors.New("external reauthentication returned no Session")))
 	}
-	s.invalidator.InvalidateAccessCredentials(ctx, result.AccessTokenHashes)
+	s.deps.Invalidator.InvalidateAccessCredentials(ctx, result.AccessTokenHashes)
 	return &model.ExternalAuthenticationCompletion{Session: result.Session, ReturnTo: state.ReturnTo}, nil
 }

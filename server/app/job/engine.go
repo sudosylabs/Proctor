@@ -21,18 +21,9 @@ import (
 )
 
 type Engine struct {
-	jobs               store.JobStore
-	registry           *Registry
-	nodeID             string
-	diagnostics        Diagnostics
-	recorder           Recorder
-	poll               time.Duration
-	shutdownTimeout    time.Duration
-	wake               chan struct{}
-	recurrences        []Recurrence
-	periodicTasks      []PeriodicTask
-	proposalRetryDelay time.Duration
-	clock              Clock
+	deps     Dependencies
+	registry *Registry
+	wake     chan struct{}
 
 	mu      sync.Mutex
 	started bool
@@ -104,7 +95,10 @@ type Policy struct {
 	ProposalRetryDelay time.Duration
 }
 
-type Config struct {
+// Dependencies are the collaborators and policy of the Job engine; New
+// validates them once, fills policy defaults, and the Engine keeps them in
+// deps.
+type Dependencies struct {
 	Store         store.JobStore
 	Descriptors   []Descriptor
 	NodeID        string
@@ -116,32 +110,35 @@ type Config struct {
 	PeriodicTasks []PeriodicTask
 }
 
-func New(config Config) (*Engine, error) {
-	registry, err := NewRegistry(config.Descriptors)
+// New validates deps once and constructs an idle Job engine; Start begins
+// claiming work.
+func New(deps Dependencies) (*Engine, error) {
+	registry, err := NewRegistry(deps.Descriptors)
 	if err != nil {
 		return nil, err
 	}
-	if config.Store == nil || config.NodeID == "" || config.Diagnostics == nil || config.Policy.PollInterval <= 0 {
+	if deps.Store == nil || deps.NodeID == "" || deps.Diagnostics == nil || deps.Policy.PollInterval <= 0 {
 		return nil, errors.New("invalid job engine dependencies")
 	}
-	recurrences, err := cloneRecurrences(config.Recurrences)
+	recurrences, err := cloneRecurrences(deps.Recurrences)
 	if err != nil {
 		return nil, err
 	}
-	periodicTasks, err := clonePeriodicTasks(config.PeriodicTasks)
+	periodicTasks, err := clonePeriodicTasks(deps.PeriodicTasks)
 	if err != nil {
 		return nil, err
 	}
-	if config.Policy.ShutdownTimeout <= 0 {
-		config.Policy.ShutdownTimeout = registry.MaximumTimeout()
+	if deps.Policy.ShutdownTimeout <= 0 {
+		deps.Policy.ShutdownTimeout = registry.MaximumTimeout()
 	}
-	if config.Policy.ProposalRetryDelay <= 0 {
-		config.Policy.ProposalRetryDelay = time.Minute
+	if deps.Policy.ProposalRetryDelay <= 0 {
+		deps.Policy.ProposalRetryDelay = time.Minute
 	}
-	if config.Clock == nil {
-		config.Clock = systemClock{}
+	if deps.Clock == nil {
+		deps.Clock = systemClock{}
 	}
-	return &Engine{jobs: config.Store, registry: registry, nodeID: config.NodeID, diagnostics: config.Diagnostics, recorder: config.Recorder, poll: config.Policy.PollInterval, shutdownTimeout: config.Policy.ShutdownTimeout, recurrences: recurrences, periodicTasks: periodicTasks, proposalRetryDelay: config.Policy.ProposalRetryDelay, clock: config.Clock, wake: make(chan struct{}, 1)}, nil
+	deps.Recurrences, deps.PeriodicTasks = recurrences, periodicTasks
+	return &Engine{deps: deps, registry: registry, wake: make(chan struct{}, 1)}, nil
 }
 
 // Descriptor returns the immutable execution contract for a registered type.
@@ -185,18 +182,18 @@ func (r *Engine) Start(ctx context.Context) error {
 			go r.worker(runCtx, descriptor)
 		}
 	}
-	for _, recurrence := range r.recurrences {
+	for _, recurrence := range r.deps.Recurrences {
 		r.wg.Add(1)
 		go func(value Recurrence) {
 			defer r.wg.Done()
-			runRecurrenceProposal(runCtx, value, r.diagnostics, r.clock, r.proposalRetryDelay, r.Wake, r.recorder)
+			runRecurrenceProposal(runCtx, value, r.deps.Diagnostics, r.deps.Clock, r.deps.Policy.ProposalRetryDelay, r.Wake, r.deps.Recorder)
 		}(recurrence)
 	}
-	for _, task := range r.periodicTasks {
+	for _, task := range r.deps.PeriodicTasks {
 		r.wg.Add(1)
 		go func(value PeriodicTask) {
 			defer r.wg.Done()
-			runPeriodicTask(runCtx, value, r.diagnostics, r.clock, r.recorder)
+			runPeriodicTask(runCtx, value, r.deps.Diagnostics, r.deps.Clock, r.deps.Recorder)
 		}(task)
 	}
 	return nil
@@ -222,7 +219,7 @@ func (r *Engine) Close() error {
 	select {
 	case <-drained:
 		return nil
-	case <-time.After(r.shutdownTimeout):
+	case <-time.After(r.deps.Policy.ShutdownTimeout):
 		return errors.New("durable job engine shutdown deadline exceeded")
 	}
 }
@@ -247,12 +244,12 @@ func (r *Engine) worker(ctx context.Context, descriptor Descriptor) {
 		}
 		token, err := model.NewJobClaimToken()
 		if err != nil {
-			r.diagnostics.ErrorContext(ctx, "generate job claim token", err)
-			resetTimer(timer, r.poll)
+			r.deps.Diagnostics.ErrorContext(ctx, "generate job claim token", err)
+			resetTimer(timer, r.deps.Policy.PollInterval)
 			continue
 		}
 		startedClaim := time.Now()
-		claim, err := r.jobs.ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{descriptor.Type}, NodeID: r.nodeID, ClaimToken: token, LeaseDuration: descriptor.LeaseDuration})
+		claim, err := r.deps.Store.ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{descriptor.Type}, NodeID: r.deps.NodeID, ClaimToken: token, LeaseDuration: descriptor.LeaseDuration})
 		claimDuration := time.Since(startedClaim)
 		if err != nil {
 			result := "error"
@@ -263,9 +260,9 @@ func (r *Engine) worker(ctx context.Context, descriptor Descriptor) {
 			}
 			r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "claim", Outcome: result, Duration: claimDuration})
 			if !store.IsNotFound(err) && !errors.Is(err, context.Canceled) {
-				r.diagnostics.ErrorContext(ctx, "claim durable job", err)
+				r.deps.Diagnostics.ErrorContext(ctx, "claim durable job", err)
 			}
-			resetTimer(timer, r.poll)
+			resetTimer(timer, r.deps.Policy.PollInterval)
 			continue
 		}
 		queueLatency := time.Since(claim.Job.AvailableAt)
@@ -285,10 +282,10 @@ func (r *Engine) worker(ctx context.Context, descriptor Descriptor) {
 
 func (r *Engine) completeUnsupported(ctx context.Context, descriptor Descriptor, claim *store.JobClaim, resolutionErr error) {
 	startedAt := time.Now()
-	if r.recorder != nil {
-		r.recorder.Started(descriptor.Type)
+	if r.deps.Recorder != nil {
+		r.deps.Recorder.Started(descriptor.Type)
 		defer func() {
-			r.recorder.Finished(descriptor.Type, ExecutionPermanentFailure, time.Since(startedAt))
+			r.deps.Recorder.Finished(descriptor.Type, ExecutionPermanentFailure, time.Since(startedAt))
 		}()
 	}
 	r.complete(ctx, descriptor, claim, PermanentFailure("job.command.unsupported", resolutionErr))
@@ -297,10 +294,10 @@ func (r *Engine) completeUnsupported(ctx context.Context, descriptor Descriptor,
 func (r *Engine) execute(parent context.Context, descriptor Descriptor, claim *store.JobClaim) {
 	startedAt := time.Now()
 	metricOutcome := ExecutionAbandoned
-	if r.recorder != nil {
-		r.recorder.Started(descriptor.Type)
+	if r.deps.Recorder != nil {
+		r.deps.Recorder.Started(descriptor.Type)
 		defer func() {
-			r.recorder.Finished(descriptor.Type, metricOutcome, time.Since(startedAt))
+			r.deps.Recorder.Finished(descriptor.Type, metricOutcome, time.Since(startedAt))
 		}()
 	}
 	handlerCtx, cancelHandler := context.WithTimeout(parent, descriptor.Timeout)
@@ -324,9 +321,9 @@ func (r *Engine) execute(parent context.Context, descriptor Descriptor, claim *s
 				return
 			case <-ticker.C:
 				heartbeatStarted := time.Now()
-				if _, err := r.jobs.Heartbeat(handlerCtx, &store.JobHeartbeat{AttemptID: claim.Attempt.ID, ClaimToken: claim.Attempt.ClaimToken, LeaseDuration: descriptor.LeaseDuration}); err != nil {
+				if _, err := r.deps.Store.Heartbeat(handlerCtx, &store.JobHeartbeat{AttemptID: claim.Attempt.ID, ClaimToken: claim.Attempt.ClaimToken, LeaseDuration: descriptor.LeaseDuration}); err != nil {
 					r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "heartbeat", Outcome: "error", Duration: time.Since(heartbeatStarted)})
-					r.diagnostics.ErrorContext(parent, "heartbeat durable job", err)
+					r.deps.Diagnostics.ErrorContext(parent, "heartbeat durable job", err)
 					if !heartbeatClaimLost(err) && time.Since(renewedAt)+descriptor.HeartbeatInterval < descriptor.LeaseDuration {
 						continue
 					}
@@ -341,10 +338,10 @@ func (r *Engine) execute(parent context.Context, descriptor Descriptor, claim *s
 				r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "heartbeat", Outcome: "success", Duration: time.Since(heartbeatStarted)})
 				if descriptor.Cancelable {
 					cancellationStarted := time.Now()
-					requested, err := r.jobs.CancellationRequested(handlerCtx, claim.Attempt.ID, claim.Attempt.ClaimToken)
+					requested, err := r.deps.Store.CancellationRequested(handlerCtx, claim.Attempt.ID, claim.Attempt.ClaimToken)
 					if err != nil {
 						r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "cancellation_check", Outcome: "error", Duration: time.Since(cancellationStarted)})
-						r.diagnostics.ErrorContext(parent, "observe durable job cancellation", err)
+						r.deps.Diagnostics.ErrorContext(parent, "observe durable job cancellation", err)
 						if !heartbeatClaimLost(err) && time.Since(renewedAt)+descriptor.HeartbeatInterval < descriptor.LeaseDuration {
 							continue
 						}
@@ -368,7 +365,7 @@ func (r *Engine) execute(parent context.Context, descriptor Descriptor, claim *s
 	execution := NewExecution(claim.Job, claim.Attempt, nil, nil)
 	execution.reserveWork = func(ctx context.Context, units, limit int) (bool, error) {
 		started := time.Now()
-		result, err := r.jobs.ReserveWork(ctx, &store.JobWorkReservation{AttemptID: claim.Attempt.ID, ClaimToken: claim.Attempt.ClaimToken, Units: units, Limit: limit})
+		result, err := r.deps.Store.ReserveWork(ctx, &store.JobWorkReservation{AttemptID: claim.Attempt.ID, ClaimToken: claim.Attempt.ClaimToken, Units: units, Limit: limit})
 		activityOutcome := "error"
 		if err == nil && result.Reserved {
 			activityOutcome = "reserved"
@@ -389,7 +386,7 @@ func (r *Engine) execute(parent context.Context, descriptor Descriptor, claim *s
 			return errors.New("job progress stage is not declared")
 		}
 		started := time.Now()
-		_, err := r.jobs.Checkpoint(ctx, &store.JobCheckpoint{AttemptID: claim.Attempt.ID, ClaimToken: claim.Attempt.ClaimToken, Progress: value.Progress, Checkpoint: value.Document})
+		_, err := r.deps.Store.Checkpoint(ctx, &store.JobCheckpoint{AttemptID: claim.Attempt.ID, ClaimToken: claim.Attempt.ClaimToken, Progress: value.Progress, Checkpoint: value.Document})
 		r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "checkpoint", Outcome: simpleJobOutcome(err), Duration: time.Since(started)})
 		return err
 	}
@@ -461,16 +458,16 @@ func (r *Engine) complete(ctx context.Context, descriptor Descriptor, claim *sto
 		completion.PublicErrorCode = "job.outcome.invalid"
 	}
 	started := time.Now()
-	_, err := r.jobs.Complete(ctx, completion)
+	_, err := r.deps.Store.Complete(ctx, completion)
 	r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "complete", Outcome: simpleJobOutcome(err), Duration: time.Since(started)})
 	if err != nil && !errors.Is(err, context.Canceled) {
-		r.diagnostics.ErrorContext(ctx, "complete durable job", err)
+		r.deps.Diagnostics.ErrorContext(ctx, "complete durable job", err)
 	}
 }
 
 func (r *Engine) record(activity Activity) {
-	if r.recorder != nil {
-		r.recorder.Record(activity)
+	if r.deps.Recorder != nil {
+		r.deps.Recorder.Record(activity)
 	}
 }
 

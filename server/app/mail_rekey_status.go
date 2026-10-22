@@ -60,10 +60,10 @@ func (s *mailService) GetMailRekeyStatus(ctx context.Context, invocation invocat
 	if s == nil {
 		return MailRekeyStatusView{}, apperror.New("mail.unavailable")
 	}
-	if err := requireStrongRecentSession(invocation.Principal(), s.now(), s.recentAuthenticationTTL); err != nil {
+	if err := requireStrongRecentSession(invocation.Principal(), s.deps.Now(), s.deps.RecentAuthenticationTTL); err != nil {
 		return MailRekeyStatusView{}, err
 	}
-	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionMailRekey); err != nil {
+	if _, err := s.deps.Authorization.AuthorizeInstitution(ctx, invocation, model.ActionMailRekey); err != nil {
 		return MailRekeyStatusView{}, err
 	}
 	if s.rekeyJobs == nil || !jobID.IsValid() {

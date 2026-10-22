@@ -60,11 +60,9 @@ func TestAuthenticationMethodEnrollmentRequiresStrongRecentAndPreparesHashOnly(t
 	now := time.UnixMilli(10_000)
 	passwords := &authenticationMethodPasswordStoreFake{}
 	audit := &accessPolicyAuditFake{beginID: model.NewAuditEventID().String()}
-	hasher, err := newPasswordHasher(testPasswordPolicy(), nil)
+	hasher, err := newPasswordHasher(passwordHasherDependencies{Settings: testPasswordPolicy(), Recorder: nil})
 	require.NoError(t, err)
-	service, err := newAuthenticationMethodService(passwords,
-		&authenticationMethodIdentityStoreFake{}, externalProviderSourceSet{}, &accessPolicyCapabilitiesFake{},
-		hasher, audit, &authenticationMethodEffectsFake{}, 15*time.Minute, func() time.Time { return now })
+	service, err := newAuthenticationMethodService(authenticationMethodServiceDependencies{Passwords: passwords, Identities: &authenticationMethodIdentityStoreFake{}, Providers: externalProviderSourceSet{}, Capabilities: &accessPolicyCapabilitiesFake{}, Hasher: hasher, Audit: audit, Effects: &authenticationMethodEffectsFake{}, RecentTTL: 15 * time.Minute, Now: func() time.Time { return now }})
 	require.NoError(t, err)
 	principal := userSettingsSessionPrincipal(now)
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
@@ -89,11 +87,9 @@ func TestPasswordEnrollmentRejectsWorkBeforeAuditAndPersistence(t *testing.T) {
 	now := time.UnixMilli(10_000)
 	passwords := &authenticationMethodPasswordStoreFake{}
 	audit := &accessPolicyAuditFake{beginID: model.NewAuditEventID().String()}
-	hasher, err := newPasswordHasher(testPasswordPolicy(), nil)
+	hasher, err := newPasswordHasher(passwordHasherDependencies{Settings: testPasswordPolicy(), Recorder: nil})
 	require.NoError(t, err)
-	service, err := newAuthenticationMethodService(passwords,
-		&authenticationMethodIdentityStoreFake{}, externalProviderSourceSet{}, &accessPolicyCapabilitiesFake{},
-		hasher, audit, &authenticationMethodEffectsFake{}, 15*time.Minute, func() time.Time { return now })
+	service, err := newAuthenticationMethodService(authenticationMethodServiceDependencies{Passwords: passwords, Identities: &authenticationMethodIdentityStoreFake{}, Providers: externalProviderSourceSet{}, Capabilities: &accessPolicyCapabilitiesFake{}, Hasher: hasher, Audit: audit, Effects: &authenticationMethodEffectsFake{}, RecentTTL: 15 * time.Minute, Now: func() time.Time { return now }})
 	require.NoError(t, err)
 	principal := userSettingsSessionPrincipal(now)
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
@@ -115,10 +111,9 @@ func TestAuthenticationMethodRemovalPassesCapabilitiesAndExactIdentity(t *testin
 	now := time.UnixMilli(20_000)
 	identities := &authenticationMethodIdentityStoreFake{}
 	audit := &accessPolicyAuditFake{beginID: model.NewAuditEventID().String()}
-	hasher, _ := newPasswordHasher(testPasswordPolicy(), nil)
+	hasher, _ := newPasswordHasher(passwordHasherDependencies{Settings: testPasswordPolicy(), Recorder: nil})
 	capabilities := &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{{Descriptor: model.ExternalAuthenticationProvider{ID: "campus"}}}}}
-	service, err := newAuthenticationMethodService(&authenticationMethodPasswordStoreFake{}, identities,
-		externalProviderSourceSet{}, capabilities, hasher, audit, &authenticationMethodEffectsFake{}, 15*time.Minute, func() time.Time { return now })
+	service, err := newAuthenticationMethodService(authenticationMethodServiceDependencies{Passwords: &authenticationMethodPasswordStoreFake{}, Identities: identities, Providers: externalProviderSourceSet{}, Capabilities: capabilities, Hasher: hasher, Audit: audit, Effects: &authenticationMethodEffectsFake{}, RecentTTL: 15 * time.Minute, Now: func() time.Time { return now }})
 	require.NoError(t, err)
 	principal := userSettingsSessionPrincipal(now)
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor

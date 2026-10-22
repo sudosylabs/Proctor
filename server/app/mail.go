@@ -95,55 +95,63 @@ type mailAuditPreparer interface {
 	Fail(context.Context, model.AuditEventID, string) error
 }
 
+// mailServiceDependencies are the collaborators of mailService;
+// newMailService validates them once and mailService keeps them in deps.
+type mailServiceDependencies struct {
+	Mail                    mailStore
+	Users                   mailUserStore
+	Authorization           institutionAuthorizer
+	Audit                   mailAuditPreparer
+	Attempts                *authenticationAttemptAccounting
+	Renderer                mail.Renderer
+	Sender                  mail.Sender
+	Metrics                 MailMetricsReader
+	Sealer                  *secretseal.Sealer
+	RecentAuthenticationTTL time.Duration
+	Now                     func() time.Time
+}
+
 type mailService struct {
-	mail                    mailStore
-	rekey                   mailRekeyStarter
-	keyState                mailKeyInspector
-	rekeyJobs               mailRekeyJobReader
-	rekeyAudit              mutationAuditor
-	users                   mailUserStore
-	authorization           institutionAuthorizer
-	audit                   mailAuditPreparer
-	attempts                *authenticationAttemptAccounting
-	composer                *mail.Composer
-	sender                  mail.Sender
-	metrics                 MailMetricsReader
-	sealer                  *secretseal.Sealer
-	recentAuthenticationTTL time.Duration
-	now                     func() time.Time
-	wake                    func()
+	deps mailServiceDependencies
+
+	rekey      mailRekeyStarter
+	keyState   mailKeyInspector
+	rekeyJobs  mailRekeyJobReader
+	rekeyAudit mutationAuditor
+
+	composer *mail.Composer
+
+	wake func()
 }
 
 func newDirectMailPreparer(renderer mail.Renderer, sender mail.Sender, sealer *secretseal.Sealer) (*mail.Composer, error) {
-	return mail.NewComposer(renderer, sender, sealer)
+	return mail.NewComposer(mail.ComposerDependencies{Renderer: renderer, Sender: sender, Sealer: sealer})
 }
 
-func newMailService(mailStore mailStore, users mailUserStore, authorization institutionAuthorizer, audit mailAuditPreparer, attempts *authenticationAttemptAccounting, renderer mail.Renderer, sender mail.Sender, metrics MailMetricsReader, sealer *secretseal.Sealer, recentTTL time.Duration, now func() time.Time) (*mailService, error) {
-	if mailStore == nil || users == nil || authorization == nil || audit == nil || attempts == nil || renderer == nil || sender == nil || metrics == nil || now == nil || recentTTL <= 0 {
+func newMailService(deps mailServiceDependencies) (*mailService, error) {
+	if deps.Mail == nil || deps.Users == nil || deps.Authorization == nil || deps.Audit == nil || deps.Attempts == nil || deps.Renderer == nil || deps.Sender == nil || deps.Metrics == nil || deps.Now == nil || deps.RecentAuthenticationTTL <= 0 {
 		return nil, errors.New("mail service dependencies are invalid")
 	}
-	if sender.Enabled() && sealer == nil {
+	if deps.Sender.Enabled() && deps.Sealer == nil {
 		return nil, errors.New("enabled mail requires secret sealing")
 	}
-	composer, err := newDirectMailPreparer(renderer, sender, sealer)
+	composer, err := newDirectMailPreparer(deps.Renderer, deps.Sender, deps.Sealer)
 	if err != nil {
 		return nil, err
 	}
-	rekey, _ := mailStore.(mailRekeyStarter)
-	keyState, _ := mailStore.(mailKeyInspector)
-	return &mailService{mail: mailStore, rekey: rekey, keyState: keyState, users: users,
-		authorization: authorization, audit: audit, attempts: attempts, composer: composer,
-		sender: sender, metrics: metrics, sealer: sealer, recentAuthenticationTTL: recentTTL, now: now}, nil
+	rekey, _ := deps.Mail.(mailRekeyStarter)
+	keyState, _ := deps.Mail.(mailKeyInspector)
+	return &mailService{deps: deps, rekey: rekey, keyState: keyState, composer: composer}, nil
 }
 
 func (s *mailService) GetMailMetrics(ctx context.Context, invocation invocation.Invocation) (MailMetricsSnapshot, error) {
 	if s == nil {
 		return MailMetricsSnapshot{}, apperror.New("mail.unavailable")
 	}
-	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionMailView); err != nil {
+	if _, err := s.deps.Authorization.AuthorizeInstitution(ctx, invocation, model.ActionMailView); err != nil {
 		return MailMetricsSnapshot{}, err
 	}
-	return s.metrics.Snapshot(), nil
+	return s.deps.Metrics.Snapshot(), nil
 }
 
 func (s *mailService) SendTestMail(ctx context.Context, invocation invocation.Invocation) (MailDeliveryView, error) {
@@ -154,20 +162,20 @@ func (s *mailService) SendTestMail(ctx context.Context, invocation invocation.In
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
 		return MailDeliveryView{}, invalidTokenAppError()
 	}
-	if !principal.IsRecentlyAuthenticated(s.now(), s.recentAuthenticationTTL) {
+	if !principal.IsRecentlyAuthenticated(s.deps.Now(), s.deps.RecentAuthenticationTTL) {
 		return MailDeliveryView{}, apperror.New("authentication.reauthentication_required")
 	}
-	institutionResource, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionMailManage)
+	institutionResource, err := s.deps.Authorization.AuthorizeInstitution(ctx, invocation, model.ActionMailManage)
 	if err != nil {
 		return MailDeliveryView{}, err
 	}
 	if err = s.checkTestRateLimit(ctx, principal.UserID); err != nil {
 		return MailDeliveryView{}, err
 	}
-	if !s.sender.Enabled() || s.sealer == nil {
+	if !s.deps.Sender.Enabled() || s.deps.Sealer == nil {
 		return MailDeliveryView{}, apperror.New("mail.unavailable")
 	}
-	user, err := s.users.Get(ctx, principal.UserID)
+	user, err := s.deps.Users.Get(ctx, principal.UserID)
 	if err != nil {
 		return MailDeliveryView{}, mailStoreErrors.Translate(err)
 	}
@@ -180,16 +188,16 @@ func (s *mailService) SendTestMail(ctx context.Context, invocation invocation.In
 	if !user.IsActive() {
 		return MailDeliveryView{}, apperror.New("mail.recipient_ineligible")
 	}
-	now := model.TimeUTC(s.now())
+	now := model.TimeUTC(s.deps.Now())
 	prepared, err := s.composer.PrepareOperatorTest(mail.NoticePreparation{Recipient: user, At: now})
 	if err != nil {
 		return MailDeliveryView{}, apperror.New("mail.unavailable").Wrap(err)
 	}
-	audit, err := s.audit.PrepareTest(ctx, invocation, institutionResource, prepared.Delivery.ID)
+	audit, err := s.deps.Audit.PrepareTest(ctx, invocation, institutionResource, prepared.Delivery.ID)
 	if err != nil {
 		return MailDeliveryView{}, err
 	}
-	created, err := s.mail.EnqueueTest(ctx, &store.MailTestEnqueue{Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job, AuditEvent: audit})
+	created, err := s.deps.Mail.EnqueueTest(ctx, &store.MailTestEnqueue{Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job, AuditEvent: audit})
 	if err != nil {
 		return MailDeliveryView{}, mailStoreErrors.Translate(err)
 	}
@@ -207,13 +215,13 @@ func (s *mailService) GetMailDelivery(ctx context.Context, invocation invocation
 	if principal.Validate() != nil {
 		return MailDeliveryView{}, invalidTokenAppError()
 	}
-	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionMailView); err != nil {
+	if _, err := s.deps.Authorization.AuthorizeInstitution(ctx, invocation, model.ActionMailView); err != nil {
 		return MailDeliveryView{}, err
 	}
 	if !id.IsValid() {
 		return MailDeliveryView{}, apperror.New("request.invalid")
 	}
-	delivery, err := s.mail.GetDelivery(ctx, id)
+	delivery, err := s.deps.Mail.GetDelivery(ctx, id)
 	if err != nil {
 		return MailDeliveryView{}, mailStoreErrors.Translate(err)
 	}
@@ -227,10 +235,10 @@ func (s *mailService) ListMailDeliveries(ctx context.Context, invocation invocat
 	if invocation.Principal().Validate() != nil {
 		return MailDeliveryPage{}, invalidTokenAppError()
 	}
-	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionMailView); err != nil {
+	if _, err := s.deps.Authorization.AuthorizeInstitution(ctx, invocation, model.ActionMailView); err != nil {
 		return MailDeliveryPage{}, err
 	}
-	deliveries, err := s.mail.ListDeliveries(ctx, store.MailDeliveryListOptions{
+	deliveries, err := s.deps.Mail.ListDeliveries(ctx, store.MailDeliveryListOptions{
 		States: query.States, TemplateKeys: query.TemplateKeys,
 		CreatedAfter: query.CreatedAfter, CreatedBefore: query.CreatedBefore,
 		BeforeCreatedAt: query.BeforeCreatedAt, BeforeID: query.BeforeID, Limit: query.Limit,
@@ -253,14 +261,14 @@ func (s *mailService) CancelMailDelivery(ctx context.Context, invocation invocat
 	if s == nil {
 		return MailDeliveryView{}, apperror.New("mail.unavailable")
 	}
-	return s.mutate(ctx, invocation, "cancel", id, false, s.mail.CancelDelivery)
+	return s.mutate(ctx, invocation, "cancel", id, false, s.deps.Mail.CancelDelivery)
 }
 
 func (s *mailService) RetryMailDelivery(ctx context.Context, invocation invocation.Invocation, id model.MailDeliveryID) (MailDeliveryView, error) {
 	if s == nil {
 		return MailDeliveryView{}, apperror.New("mail.unavailable")
 	}
-	return s.mutate(ctx, invocation, "retry", id, true, s.mail.RetryDelivery)
+	return s.mutate(ctx, invocation, "retry", id, true, s.deps.Mail.RetryDelivery)
 }
 
 func (s *mailService) mutate(ctx context.Context, invocation invocation.Invocation, operation string, id model.MailDeliveryID, retry bool, apply func(context.Context, *store.MailDeliveryMutation) (*model.MailDelivery, error)) (MailDeliveryView, error) {
@@ -268,21 +276,21 @@ func (s *mailService) mutate(ctx context.Context, invocation invocation.Invocati
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
 		return MailDeliveryView{}, invalidTokenAppError()
 	}
-	if !principal.IsRecentlyAuthenticated(s.now(), s.recentAuthenticationTTL) {
+	if !principal.IsRecentlyAuthenticated(s.deps.Now(), s.deps.RecentAuthenticationTTL) {
 		return MailDeliveryView{}, apperror.New("authentication.reauthentication_required")
 	}
-	institutionResource, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionMailManage)
+	institutionResource, err := s.deps.Authorization.AuthorizeInstitution(ctx, invocation, model.ActionMailManage)
 	if err != nil {
 		return MailDeliveryView{}, err
 	}
 	if !id.IsValid() {
 		return MailDeliveryView{}, apperror.New("request.invalid")
 	}
-	delivery, err := s.mail.GetDelivery(ctx, id)
+	delivery, err := s.deps.Mail.GetDelivery(ctx, id)
 	if err != nil {
 		return MailDeliveryView{}, mailStoreErrors.Translate(err)
 	}
-	now := model.TimeUTC(s.now())
+	now := model.TimeUTC(s.deps.Now())
 	if retry {
 		relevance, relevanceErr := evaluateMailDeliveryRelevance(ctx, delivery)
 		if relevanceErr != nil || relevance != mailDeliveryRelevant {
@@ -292,13 +300,13 @@ func (s *mailService) mutate(ctx context.Context, invocation invocation.Invocati
 			return MailDeliveryView{}, apperror.New("mail.conflict").Wrap(transitionErr)
 		}
 	}
-	auditID, err := s.audit.PrepareControl(ctx, invocation, institutionResource, delivery, operation)
+	auditID, err := s.deps.Audit.PrepareControl(ctx, invocation, institutionResource, delivery, operation)
 	if err != nil {
 		return MailDeliveryView{}, err
 	}
 	updated, err := apply(ctx, &store.MailDeliveryMutation{ID: delivery.ID, ExpectedRevision: delivery.Revision, AuditEventID: auditID, AuditAt: now.UnixMilli()})
 	if err != nil {
-		_ = s.audit.Fail(ctx, auditID, "mail.conflict")
+		_ = s.deps.Audit.Fail(ctx, auditID, "mail.conflict")
 		return MailDeliveryView{}, mailStoreErrors.Translate(err)
 	}
 	if retry && s.wake != nil {
@@ -308,7 +316,7 @@ func (s *mailService) mutate(ctx context.Context, invocation invocation.Invocati
 }
 
 func (s *mailService) checkTestRateLimit(ctx context.Context, userID model.UserID) error {
-	_, limited, err := s.attempts.account(ctx, authenticationAttemptIntent{purpose: authenticationAttemptPurposeMailTest, window: mailTestRateLimitWindow, limits: []authenticationAttemptLimit{{dimension: authenticationAttemptDimensionIdentity, maximum: mailTestRateLimitMaximum, identity: userID.String()}}})
+	_, limited, err := s.deps.Attempts.account(ctx, authenticationAttemptIntent{purpose: authenticationAttemptPurposeMailTest, window: mailTestRateLimitWindow, limits: []authenticationAttemptLimit{{dimension: authenticationAttemptDimensionIdentity, maximum: mailTestRateLimitMaximum, identity: userID.String()}}})
 	if err != nil {
 		return apperror.New("mail.unavailable").Wrap(err)
 	}

@@ -44,7 +44,7 @@ func TestMFAAssistedResetRequiresIndependentVerifiedAdministrator(t *testing.T) 
 			persistence := &assistedResetStoreFake{mfaApplicationStoreFake: base}
 			effects := &mfaApplicationEffectsFake{}
 			service := newTestMFAApplicationService(t, base, &mfaApplicationAuditFake{}, effects, now)
-			service.credentials = persistence
+			service.deps.Credentials = persistence
 			command := ResetUserMFACommand{UserID: model.NewUserID(), IdentityVerified: true, Reason: "Authenticator lost", VerificationReference: "helpdesk-124"}
 			switch name {
 			case "self":
@@ -65,9 +65,9 @@ func TestMFAAssistedResetRequiresIndependentVerifiedAdministrator(t *testing.T) 
 				principal.AuthenticationGeneration = 1
 				principal.MFARecoveryRequired = true
 			case "denied":
-				service.security.authorization = mfaResetAuthorizationFake{err: apperror.New("authorization.denied")}
+				service.deps.Security.authorization = mfaResetAuthorizationFake{err: apperror.New("authorization.denied")}
 			case "disabled":
-				service.mechanics.settings.Enabled = false
+				service.deps.Mechanics.deps.Settings.Enabled = false
 			case "commit failure":
 				persistence.err = errors.New("atomic reset failed")
 			}
@@ -98,7 +98,7 @@ func TestMFARestrictedContextSurvivesDisabledService(t *testing.T) {
 	principal.MFARecoveryRequired = true
 	base := &mfaApplicationStoreFake{}
 	service := newTestMFAApplicationService(t, base, &mfaApplicationAuditFake{}, &mfaApplicationEffectsFake{}, now)
-	service.mechanics.settings.Enabled = false
+	service.deps.Mechanics.deps.Settings.Enabled = false
 	status, err := service.GetMFAStatus(context.Background(), invocation.New(principal, model.RequestMetadata{}), GetMFAStatusQuery{})
 	require.NoError(t, err)
 	require.False(t, status.ServiceEnabled, "disabled service concealed mandatory reenrollment")
@@ -115,7 +115,7 @@ func TestMFAFactorAttemptsAreBoundedBeforeVerification(t *testing.T) {
 	principal := mfaTestPrincipal(now, model.AuthenticationSingleFactor)
 	base := &mfaApplicationStoreFake{}
 	service := newTestMFAApplicationService(t, base, &mfaApplicationAuditFake{}, &mfaApplicationEffectsFake{}, now)
-	service.security.rateLimit.MaximumAttempts = 1
+	service.deps.Security.rateLimit.MaximumAttempts = 1
 	invocation := invocation.New(principal, model.RequestMetadata{IPAddress: "127.0.0.1"})
 	_, _ = service.ChallengeMFA(context.Background(), invocation, ChallengeMFACommand{Code: "000000"})
 	_, err := service.ChallengeMFA(context.Background(), invocation, ChallengeMFACommand{Code: "000001"})

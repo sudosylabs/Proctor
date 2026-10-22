@@ -31,15 +31,21 @@ type externalProviderAdmissionPolicy struct {
 	InvitationAdmissionEnabled bool
 }
 
-type currentAuthenticationAccessPolicy struct {
-	policies store.AccessPolicyStore
+// currentAuthenticationAccessPolicyDependencies are the collaborators of currentAuthenticationAccessPolicy;
+// newCurrentAuthenticationAccessPolicy validates them once and currentAuthenticationAccessPolicy keeps them in deps.
+type currentAuthenticationAccessPolicyDependencies struct {
+	Policies store.AccessPolicyStore
 }
 
-func newCurrentAuthenticationAccessPolicy(policies store.AccessPolicyStore) (*currentAuthenticationAccessPolicy, error) {
-	if policies == nil {
+type currentAuthenticationAccessPolicy struct {
+	deps currentAuthenticationAccessPolicyDependencies
+}
+
+func newCurrentAuthenticationAccessPolicy(deps currentAuthenticationAccessPolicyDependencies) (*currentAuthenticationAccessPolicy, error) {
+	if deps.Policies == nil {
 		return nil, errors.New("authentication access policy store is required")
 	}
-	return &currentAuthenticationAccessPolicy{policies: policies}, nil
+	return &currentAuthenticationAccessPolicy{deps: deps}, nil
 }
 
 func (p *currentAuthenticationAccessPolicy) AllowsLocalLogin(ctx context.Context) (bool, error) {
@@ -98,7 +104,7 @@ func (p *currentAuthenticationAccessPolicy) AvailableExternalProviders(
 }
 
 func (p *currentAuthenticationAccessPolicy) current(ctx context.Context) (*model.AccessPolicy, error) {
-	snapshot, err := p.policies.Get(ctx, 0)
+	snapshot, err := p.deps.Policies.Get(ctx, 0)
 	if err != nil {
 		return nil, err
 	}

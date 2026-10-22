@@ -291,7 +291,7 @@ func composeConsumers(
 	if checker, ok := applicationPlatform.(interface{ CheckDependencies(context.Context) error }); ok {
 		dependencyProbe = checker.CheckDependencies
 	}
-	readiness, err := app.NewHealth(dependencyProbe, app.DefaultReadinessProbeTimeout, time.Second)
+	readiness, err := app.NewHealth(app.HealthDependencies{Probe: dependencyProbe, Timeout: app.DefaultReadinessProbeTimeout, Interval: time.Second})
 	if err != nil {
 		return nil, release.fail(fmt.Errorf("construct readiness: %w", err))
 	}

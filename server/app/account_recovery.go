@@ -80,7 +80,7 @@ func (s *accountTokenService) RequestEmailVerification(
 	invocation invocation.Invocation,
 	command RequestEmailVerificationCommand,
 ) error {
-	if !s.mail.Enabled() {
+	if !s.deps.Mail.Enabled() {
 		return accountRecoveryUnavailable(fmt.Errorf("mail delivery is disabled"))
 	}
 	principal := invocation.Principal()
@@ -92,7 +92,7 @@ func (s *accountTokenService) RequestEmailVerification(
 	); err != nil {
 		return err
 	}
-	user, err := s.users.Get(ctx, principal.UserID)
+	user, err := s.deps.Users.Get(ctx, principal.UserID)
 	if err != nil {
 		return accountRecoveryStoreFailure(err)
 	}
@@ -106,17 +106,17 @@ func (s *accountTokenService) RequestEmailVerification(
 	if err != nil {
 		return err
 	}
-	rawToken := s.newToken()
-	now := s.now()
+	rawToken := s.deps.NewToken()
+	now := s.deps.Now()
 	token := &model.UserToken{
 		UserID:    user.ID,
 		Purpose:   model.UserTokenEmailVerification,
 		TokenHash: model.HashToken(rawToken),
 		Target:    user.Email,
-		ExpiresAt: now.Add(s.policy.EmailVerificationTTL),
+		ExpiresAt: now.Add(s.deps.Policy.EmailVerificationTTL),
 	}
 	token.PrepareCreate(model.NewUserTokenID(), now)
-	event := s.audit.Success(
+	event := s.deps.Audit.Success(
 		model.ActionAuthenticationEmailVerificationRequest,
 		model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
 		institution.ID.String(),
@@ -125,20 +125,20 @@ func (s *accountTokenService) RequestEmailVerification(
 		"session",
 	)
 	link, err := accountCredentialLink(
-		s.publicURL,
+		s.deps.PublicURL,
 		"/account/verify-email",
 		rawToken,
 	)
 	if err != nil {
 		return accountRecoveryUnavailable(err)
 	}
-	prepared, err := s.mail.PrepareEmailVerification(mail.AccountTokenPreparation{
+	prepared, err := s.deps.Mail.PrepareEmailVerification(mail.AccountTokenPreparation{
 		Recipient: user, OccurrenceID: model.MailOccurrenceID(token.ID.String()), ActionURL: link, At: now, Deadline: token.ExpiresAt,
 	})
 	if err != nil {
 		return accountRecoveryUnavailable(err)
 	}
-	if _, err = s.tokens.Issue(ctx, &store.UserTokenMailIssue{Token: token, Occurrence: prepared.Occurrence,
+	if _, err = s.deps.Tokens.Issue(ctx, &store.UserTokenMailIssue{Token: token, Occurrence: prepared.Occurrence,
 		Delivery: prepared.Delivery, Job: prepared.Job, AuditEvent: event}); err != nil {
 		return accountRecoveryStoreFailure(err)
 	}
@@ -153,7 +153,7 @@ func (s *accountTokenService) RequestPasswordReset(
 	invocation invocation.Invocation,
 	command RequestPasswordResetCommand,
 ) error {
-	localLoginAllowed, err := s.accessPolicy.AllowsLocalLogin(ctx)
+	localLoginAllowed, err := s.deps.AccessPolicy.AllowsLocalLogin(ctx)
 	if err != nil {
 		s.logHiddenRecoveryFailure(ctx, "password reset access policy lookup failed", err)
 		return nil
@@ -161,7 +161,7 @@ func (s *accountTokenService) RequestPasswordReset(
 	if !localLoginAllowed {
 		return nil
 	}
-	if !s.mail.Enabled() {
+	if !s.deps.Mail.Enabled() {
 		return accountRecoveryUnavailable(fmt.Errorf("mail delivery is disabled"))
 	}
 	normalizedEmail := strings.ToLower(strings.TrimSpace(model.SanitizeUnicode(command.Email)))
@@ -176,7 +176,7 @@ func (s *accountTokenService) RequestPasswordReset(
 	if !model.IsValidEmail(normalizedEmail) {
 		return nil
 	}
-	user, err := s.users.GetByEmail(ctx, normalizedEmail)
+	user, err := s.deps.Users.GetByEmail(ctx, normalizedEmail)
 	if err != nil {
 		if !store.IsNotFound(err) {
 			s.logHiddenRecoveryFailure(ctx, "password reset user lookup failed", err)
@@ -186,7 +186,7 @@ func (s *accountTokenService) RequestPasswordReset(
 	if !user.IsActive() {
 		return nil
 	}
-	if _, err = s.passwords.GetByUser(ctx, user.ID); err != nil {
+	if _, err = s.deps.Passwords.GetByUser(ctx, user.ID); err != nil {
 		if !store.IsNotFound(err) {
 			s.logHiddenRecoveryFailure(ctx, "password credential lookup failed", err)
 		}
@@ -197,17 +197,17 @@ func (s *accountTokenService) RequestPasswordReset(
 		s.logHiddenRecoveryFailure(ctx, "password reset institution lookup failed", err)
 		return nil
 	}
-	rawToken := s.newToken()
-	now := s.now()
+	rawToken := s.deps.NewToken()
+	now := s.deps.Now()
 	token := &model.UserToken{
 		UserID:    user.ID,
 		Purpose:   model.UserTokenPasswordReset,
 		TokenHash: model.HashToken(rawToken),
 		Target:    user.Email,
-		ExpiresAt: now.Add(s.policy.PasswordResetTTL),
+		ExpiresAt: now.Add(s.deps.Policy.PasswordResetTTL),
 	}
 	token.PrepareCreate(model.NewUserTokenID(), now)
-	event := s.audit.Success(
+	event := s.deps.Audit.Success(
 		model.ActionAuthenticationPasswordResetRequest,
 		model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
 		institution.ID.String(),
@@ -216,7 +216,7 @@ func (s *accountTokenService) RequestPasswordReset(
 		"anonymous",
 	)
 	link, err := accountCredentialLink(
-		s.publicURL,
+		s.deps.PublicURL,
 		"/account/reset-password",
 		rawToken,
 	)
@@ -224,14 +224,14 @@ func (s *accountTokenService) RequestPasswordReset(
 		s.logHiddenRecoveryFailure(ctx, "password reset link generation failed", err)
 		return nil
 	}
-	prepared, err := s.mail.PreparePasswordReset(mail.AccountTokenPreparation{
+	prepared, err := s.deps.Mail.PreparePasswordReset(mail.AccountTokenPreparation{
 		Recipient: user, OccurrenceID: model.MailOccurrenceID(token.ID.String()), ActionURL: link, At: now, Deadline: token.ExpiresAt,
 	})
 	if err != nil {
 		s.logHiddenRecoveryFailure(ctx, "password reset delivery preparation failed", err)
 		return nil
 	}
-	if _, err = s.tokens.Issue(ctx, &store.UserTokenMailIssue{Token: token, Occurrence: prepared.Occurrence,
+	if _, err = s.deps.Tokens.Issue(ctx, &store.UserTokenMailIssue{Token: token, Occurrence: prepared.Occurrence,
 		Delivery: prepared.Delivery, Job: prepared.Job, AuditEvent: event}); err != nil {
 		s.logHiddenRecoveryFailure(ctx, "password reset token and delivery issue failed", err)
 	}
@@ -258,7 +258,7 @@ func (s *accountTokenService) CompleteEmailVerification(
 	if err != nil {
 		return nil, err
 	}
-	event := s.audit.Success(
+	event := s.deps.Audit.Success(
 		model.ActionAuthenticationEmailVerificationComplete,
 		model.Resource{Type: model.ResourceUser},
 		institution.ID.String(),
@@ -266,10 +266,10 @@ func (s *accountTokenService) CompleteEmailVerification(
 		nil,
 		"email_verification_token",
 	)
-	result, err := s.tokens.ConsumeEmailVerification(
+	result, err := s.deps.Tokens.ConsumeEmailVerification(
 		ctx,
 		model.HashToken(command.Token),
-		s.now().UnixMilli(),
+		s.deps.Now().UnixMilli(),
 		event,
 	)
 	if err != nil {
@@ -294,7 +294,7 @@ func (s *accountTokenService) CompletePasswordReset(
 	); err != nil {
 		return nil, err
 	}
-	localLoginAllowed, err := s.accessPolicy.AllowsLocalLogin(ctx)
+	localLoginAllowed, err := s.deps.AccessPolicy.AllowsLocalLogin(ctx)
 	if err != nil {
 		return nil, accountRecoveryStoreFailure(err)
 	}
@@ -308,7 +308,7 @@ func (s *accountTokenService) CompletePasswordReset(
 	if err != nil {
 		return nil, err
 	}
-	event := s.audit.Success(
+	event := s.deps.Audit.Success(
 		model.ActionAuthenticationPasswordResetComplete,
 		model.Resource{Type: model.ResourceUser},
 		institution.ID.String(),
@@ -316,15 +316,15 @@ func (s *accountTokenService) CompletePasswordReset(
 		nil,
 		"password_reset_token",
 	)
-	now := model.TimeUTC(s.now())
-	token, err := s.tokens.GetByHash(ctx, model.HashToken(command.Token), model.UserTokenPasswordReset)
+	now := model.TimeUTC(s.deps.Now())
+	token, err := s.deps.Tokens.GetByHash(ctx, model.HashToken(command.Token), model.UserTokenPasswordReset)
 	if err != nil {
 		if store.IsNotFound(err) {
 			return nil, invalidAccountCredential()
 		}
 		return nil, accountRecoveryStoreFailure(err)
 	}
-	user, err := s.users.Get(ctx, token.UserID)
+	user, err := s.deps.Users.Get(ctx, token.UserID)
 	if err != nil {
 		if store.IsNotFound(err) {
 			return nil, invalidAccountCredential()
@@ -333,15 +333,15 @@ func (s *accountTokenService) CompletePasswordReset(
 	}
 	// Hash only for a live token's account. The hashing permit is shared with
 	// login, so guessed tokens must not be able to consume it.
-	passwordHash, err := s.hasher.Hash(ctx, command.Password)
+	passwordHash, err := s.deps.Hasher.Hash(ctx, command.Password)
 	if err != nil {
 		return nil, passwordHashError(err, "authentication.account_recovery.unavailable")
 	}
-	prepared, err := s.mail.PreparePasswordChanged(mail.NoticePreparation{Recipient: user, At: now})
+	prepared, err := s.deps.Mail.PreparePasswordChanged(mail.NoticePreparation{Recipient: user, At: now})
 	if err != nil {
 		return nil, accountRecoveryUnavailable(err)
 	}
-	result, err := s.tokens.ConsumePasswordReset(ctx, &store.PasswordResetCompletion{
+	result, err := s.deps.Tokens.ConsumePasswordReset(ctx, &store.PasswordResetCompletion{
 		TokenHash: model.HashToken(command.Token), PasswordHash: passwordHash, At: now.UnixMilli(),
 		RevocationReason: model.SessionRevocationPasswordReset, AuditEvent: event, Occurrence: prepared.Occurrence,
 		Delivery: prepared.Delivery, Job: prepared.Job,
@@ -355,7 +355,7 @@ func (s *accountTokenService) CompletePasswordReset(
 		}
 		return nil, accountRecoveryStoreFailure(err)
 	}
-	s.effects.SessionsRevoked(
+	s.deps.Effects.SessionsRevoked(
 		ctx,
 		result.User.ID.String(),
 		sessionIDs(result.RevokedSessions),
@@ -365,7 +365,7 @@ func (s *accountTokenService) CompletePasswordReset(
 }
 
 func (s *accountTokenService) accountRecoveryInstitution(ctx context.Context) (*model.Institution, error) {
-	institution, err := s.institutions.GetSingleton(ctx)
+	institution, err := s.deps.Institutions.GetSingleton(ctx)
 	if err != nil {
 		return nil, accountRecoveryStoreFailure(err)
 	}
@@ -382,8 +382,8 @@ func (s *accountTokenService) checkAccountRecoveryRateLimit(
 	if !valid {
 		return rateLimitUnavailableAppError(fmt.Errorf("account recovery attempt operation is invalid"))
 	}
-	settings := s.policy.RateLimit
-	_, limited, err := s.attempts.account(ctx, authenticationAttemptIntent{
+	settings := s.deps.Policy.RateLimit
+	_, limited, err := s.deps.Attempts.account(ctx, authenticationAttemptIntent{
 		purpose:   authenticationAttemptPurposeAccountRecovery,
 		qualifier: qualifier,
 		window:    settings.Window,
@@ -459,7 +459,7 @@ func (s *accountTokenService) logHiddenRecoveryFailure(
 	message string,
 	err error,
 ) {
-	s.diagnostics.ErrorContext(ctx, message, err)
+	s.deps.Diagnostics.ErrorContext(ctx, message, err)
 }
 
 func invalidAccountCredential() error {

@@ -51,22 +51,22 @@ type programmeLevelStore interface {
 	Archive(context.Context, *store.ProgrammeLevelArchive) (*model.ProgrammeLevel, error)
 }
 
-type programmeLevelService struct {
-	store         programmeLevelStore
-	authorization scopedAcademicResourceAuthorizer
-	audit         mutationAuditor
-	now           func() time.Time
-	newID         func() string
+// programmeLevelServiceDependencies are the collaborators of programmeLevelService;
+// newProgrammeLevelService validates them once and programmeLevelService keeps them in deps.
+type programmeLevelServiceDependencies struct {
+	Store         programmeLevelStore
+	Authorization scopedAcademicResourceAuthorizer
+	Audit         mutationAuditor
+	Now           func() time.Time
+	NewID         func() string
 }
 
-func newProgrammeLevelService(
-	persistence programmeLevelStore,
-	authorization scopedAcademicResourceAuthorizer,
-	audit mutationAuditor,
-	now func() time.Time,
-	newID func() string,
-) *programmeLevelService {
-	return &programmeLevelService{store: persistence, authorization: authorization, audit: audit, now: now, newID: newID}
+type programmeLevelService struct {
+	deps programmeLevelServiceDependencies
+}
+
+func newProgrammeLevelService(deps programmeLevelServiceDependencies) *programmeLevelService {
+	return &programmeLevelService{deps: deps}
 }
 
 func (s *programmeLevelService) GetProgrammeLevel(ctx context.Context, invocation invocation.Invocation, query GetProgrammeLevelQuery) (*model.ProgrammeLevel, error) {
@@ -74,10 +74,10 @@ func (s *programmeLevelService) GetProgrammeLevel(ctx context.Context, invocatio
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "programme_level_id")
 	}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionProgrammeLevelView, model.Resource{Type: model.ResourceProgrammeLevel, ID: id.String()}); err != nil {
+	if err := s.deps.Authorization.Authorize(ctx, invocation, model.ActionProgrammeLevelView, model.Resource{Type: model.ResourceProgrammeLevel, ID: id.String()}); err != nil {
 		return nil, err
 	}
-	level, err := s.store.Get(ctx, id)
+	level, err := s.deps.Store.Get(ctx, id)
 	if err != nil {
 		return nil, programmeLevelStoreErrors.Translate(err)
 	}
@@ -93,10 +93,10 @@ func (s *programmeLevelService) ListProgrammeLevels(ctx context.Context, invocat
 	if err != nil {
 		return Page[*model.ProgrammeLevel]{}, err
 	}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionProgrammeLevelView, model.Resource{Type: model.ResourceProgramme, ID: programmeID.String()}); err != nil {
+	if err = s.deps.Authorization.Authorize(ctx, invocation, model.ActionProgrammeLevelView, model.Resource{Type: model.ResourceProgramme, ID: programmeID.String()}); err != nil {
 		return Page[*model.ProgrammeLevel]{}, err
 	}
-	levels, err := s.store.SearchByProgramme(ctx, programmeID, store.AcademicNameListOptions{
+	levels, err := s.deps.Store.SearchByProgramme(ctx, programmeID, store.AcademicNameListOptions{
 		Term: strings.TrimSpace(query.Query), AfterName: query.AfterName, AfterID: query.AfterID, Limit: probe,
 	})
 	if err != nil {
@@ -111,11 +111,11 @@ func (s *programmeLevelService) CreateProgrammeLevel(ctx context.Context, invoca
 		return nil, apperror.New("request.invalid").WithField("field", "programme_id")
 	}
 	resource := model.Resource{Type: model.ResourceProgramme, ID: programmeID.String()}
-	scopeType, scopeID, err := s.authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeLevelManage, resource)
+	scopeType, scopeID, err := s.deps.Authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeLevelManage, resource)
 	if err != nil {
 		return nil, err
 	}
-	levelID, err := model.ParseProgrammeLevelID(s.newID())
+	levelID, err := model.ParseProgrammeLevelID(s.deps.NewID())
 	if err != nil {
 		return nil, apperror.New("request.invalid").WithField("field", "programme_level_id").Wrap(err)
 	}
@@ -126,13 +126,13 @@ func (s *programmeLevelService) CreateProgrammeLevel(ctx context.Context, invoca
 		DisplayName: command.DisplayName,
 		Description: command.Description,
 	}
-	candidate.PrepareCreate(levelID, s.now())
+	candidate.PrepareCreate(levelID, s.deps.Now())
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("programme_level.invalid", err)
 	}
 	return runAuditedMutation(
 		ctx,
-		s.audit,
+		s.deps.Audit,
 		mutationAttempt{
 			Invocation: invocation,
 			Action:     model.ActionProgrammeLevelManage,
@@ -142,9 +142,9 @@ func (s *programmeLevelService) CreateProgrammeLevel(ctx context.Context, invoca
 			Operation:  "create",
 			Value:      candidate.Auditable(),
 		},
-		s.now,
+		s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.ProgrammeLevel, error) {
-			return s.store.Create(ctx, &store.ProgrammeLevelCreation{
+			return s.deps.Store.Create(ctx, &store.ProgrammeLevelCreation{
 				Level: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
@@ -171,13 +171,13 @@ func (s *programmeLevelService) UpdateProgrammeLevel(ctx context.Context, invoca
 	if command.Description != nil {
 		candidate.Description = *command.Description
 	}
-	candidate.PrepareUpdate(s.now())
+	candidate.PrepareUpdate(s.deps.Now())
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("programme_level.invalid", err)
 	}
 	return runAuditedMutation(
 		ctx,
-		s.audit,
+		s.deps.Audit,
 		mutationAttempt{
 			Invocation: invocation,
 			Action:     model.ActionProgrammeLevelManage,
@@ -188,9 +188,9 @@ func (s *programmeLevelService) UpdateProgrammeLevel(ctx context.Context, invoca
 			Value:      candidate.Auditable(),
 			Prior:      current.Auditable(),
 		},
-		s.now,
+		s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.ProgrammeLevel, error) {
-			return s.store.Update(ctx, &store.ProgrammeLevelUpdate{
+			return s.deps.Store.Update(ctx, &store.ProgrammeLevelUpdate{
 				Level: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
@@ -209,7 +209,7 @@ func (s *programmeLevelService) ArchiveProgrammeLevel(ctx context.Context, invoc
 	resource := model.Resource{Type: model.ResourceProgrammeLevel, ID: current.ID.String()}
 	_, err = runAuditedMutation(
 		ctx,
-		s.audit,
+		s.deps.Audit,
 		mutationAttempt{
 			Invocation: invocation,
 			Action:     model.ActionProgrammeLevelManage,
@@ -219,9 +219,9 @@ func (s *programmeLevelService) ArchiveProgrammeLevel(ctx context.Context, invoc
 			Operation:  "archive",
 			Prior:      current.Auditable(),
 		},
-		s.now,
+		s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.ProgrammeLevel, error) {
-			return s.store.Archive(ctx, &store.ProgrammeLevelArchive{
+			return s.deps.Store.Archive(ctx, &store.ProgrammeLevelArchive{
 				ExpectedRevision: current.Revision,
 				ID:               current.ID, ArchiveAt: reference.MutationAtMillis,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
@@ -236,11 +236,11 @@ func (s *programmeLevelService) levelForMutation(ctx context.Context, invocation
 	if !id.IsValid() {
 		return nil, "", "", apperror.New("request.invalid").WithField("field", "programme_level_id")
 	}
-	scopeType, scopeID, err := s.authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeLevelManage, model.Resource{Type: model.ResourceProgrammeLevel, ID: id.String()})
+	scopeType, scopeID, err := s.deps.Authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeLevelManage, model.Resource{Type: model.ResourceProgrammeLevel, ID: id.String()})
 	if err != nil {
 		return nil, "", "", err
 	}
-	level, err := s.store.Get(ctx, id)
+	level, err := s.deps.Store.Get(ctx, id)
 	if err != nil {
 		return nil, "", "", programmeLevelStoreErrors.Translate(err)
 	}

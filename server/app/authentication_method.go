@@ -31,33 +31,34 @@ type AuthenticationProviderMethodView struct {
 	Type        string
 }
 
-type authenticationMethodService struct {
-	passwords    store.PasswordCredentialStore
-	identities   store.ExternalIdentityStore
-	providers    externalProviderSource
-	capabilities accessPolicyCapabilitySource
-	hasher       *passwordHasher
-	audit        mutationAuditor
-	effects      authenticationSecurityEffects
-	recentTTL    time.Duration
-	now          func() time.Time
+// authenticationMethodServiceDependencies are the collaborators of authenticationMethodService;
+// newAuthenticationMethodService validates them once and authenticationMethodService keeps them in deps.
+type authenticationMethodServiceDependencies struct {
+	Passwords    store.PasswordCredentialStore
+	Identities   store.ExternalIdentityStore
+	Providers    externalProviderSource
+	Capabilities accessPolicyCapabilitySource
+	Hasher       *passwordHasher
+	Audit        mutationAuditor
+	Effects      authenticationSecurityEffects
+	RecentTTL    time.Duration
+	Now          func() time.Time
 }
 
-func newAuthenticationMethodService(passwords store.PasswordCredentialStore,
-	identities store.ExternalIdentityStore, providers externalProviderSource, capabilities accessPolicyCapabilitySource,
-	hasher *passwordHasher, audit mutationAuditor, effects authenticationSecurityEffects,
-	recentTTL time.Duration, now func() time.Time) (*authenticationMethodService, error) {
-	if passwords == nil || identities == nil || providers == nil || capabilities == nil ||
-		hasher == nil || audit == nil || effects == nil || recentTTL <= 0 || now == nil {
+type authenticationMethodService struct {
+	deps authenticationMethodServiceDependencies
+}
+
+func newAuthenticationMethodService(deps authenticationMethodServiceDependencies) (*authenticationMethodService, error) {
+	if deps.Passwords == nil || deps.Identities == nil || deps.Providers == nil || deps.Capabilities == nil ||
+		deps.Hasher == nil || deps.Audit == nil || deps.Effects == nil || deps.RecentTTL <= 0 || deps.Now == nil {
 		return nil, errors.New("authentication method service dependencies are required")
 	}
-	return &authenticationMethodService{passwords: passwords, identities: identities,
-		providers: providers, capabilities: capabilities, hasher: hasher, audit: audit, effects: effects,
-		recentTTL: recentTTL, now: now}, nil
+	return &authenticationMethodService{deps: deps}, nil
 }
 
 func (s *authenticationMethodService) require(invocation invocation.Invocation) error {
-	return requireStrongRecentSession(invocation.Principal(), s.now(), s.recentTTL)
+	return requireStrongRecentSession(invocation.Principal(), s.deps.Now(), s.deps.RecentTTL)
 }
 
 func (s *authenticationMethodService) AuthenticationMethods(ctx context.Context, invocation invocation.Invocation) (AuthenticationMethodView, error) {
@@ -66,17 +67,17 @@ func (s *authenticationMethodService) AuthenticationMethods(ctx context.Context,
 	}
 	userID := invocation.Principal().UserID
 	view := AuthenticationMethodView{Providers: []AuthenticationProviderMethodView{}}
-	if _, err := s.passwords.GetByUser(ctx, userID); err == nil {
+	if _, err := s.deps.Passwords.GetByUser(ctx, userID); err == nil {
 		view.Password = true
 	} else if !store.IsNotFound(err) {
 		return view, authenticationUnavailable(err)
 	}
-	identities, err := s.identities.ListByUser(ctx, userID)
+	identities, err := s.deps.Identities.ListByUser(ctx, userID)
 	if err != nil {
 		return view, authenticationUnavailable(err)
 	}
 	descriptors := map[string]model.ExternalAuthenticationProvider{}
-	for _, descriptor := range s.providers.Descriptors() {
+	for _, descriptor := range s.deps.Providers.Descriptors() {
 		descriptors[descriptor.ID] = descriptor
 	}
 	for _, identity := range identities {
@@ -97,18 +98,18 @@ func (s *authenticationMethodService) EnrollPassword(ctx context.Context, invoca
 	if err := s.require(invocation); err != nil {
 		return err
 	}
-	hash, err := s.hasher.Hash(ctx, password)
+	hash, err := s.deps.Hasher.Hash(ctx, password)
 	if err != nil {
 		return passwordHashError(err, "authentication.internal")
 	}
 	userID := invocation.Principal().UserID
-	_, appErr := runAuditedMutation(ctx, s.audit, mutationAttempt{Invocation: invocation,
+	_, appErr := runAuditedMutation(ctx, s.deps.Audit, mutationAttempt{Invocation: invocation,
 		Action: model.ActionExternalIdentityManage, Resource: model.Resource{Type: model.ResourceUser, ID: userID.String()},
-		Operation: "enroll_password", Value: map[string]any{"method": "password"}}, s.now,
+		Operation: "enroll_password", Value: map[string]any{"method": "password"}}, s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.AuthenticationMethodMutationResult, error) {
-			return s.passwords.Enroll(ctx, &store.PasswordCredentialEnrollment{
+			return s.deps.Passwords.Enroll(ctx, &store.PasswordCredentialEnrollment{
 				Credential:   &model.PasswordCredential{UserID: userID, PasswordHash: hash},
-				Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()), AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
+				Capabilities: accessDeploymentCapabilities(s.deps.Capabilities.Snapshot()), AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
 		}, authenticationMethodStoreErrors.Translate)
 	return appErr
 }
@@ -118,12 +119,12 @@ func (s *authenticationMethodService) RemovePassword(ctx context.Context, invoca
 		return err
 	}
 	userID := invocation.Principal().UserID
-	result, appErr := runAuditedMutation(ctx, s.audit, mutationAttempt{Invocation: invocation,
+	result, appErr := runAuditedMutation(ctx, s.deps.Audit, mutationAttempt{Invocation: invocation,
 		Action: model.ActionExternalIdentityManage, Resource: model.Resource{Type: model.ResourceUser, ID: userID.String()},
-		Operation: "remove_password", Value: map[string]any{"method": "password"}}, s.now,
+		Operation: "remove_password", Value: map[string]any{"method": "password"}}, s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.AuthenticationMethodMutationResult, error) {
-			return s.passwords.Remove(ctx, &store.PasswordCredentialRemoval{UserID: userID,
-				Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()), ChangedAt: reference.MutationAtMillis,
+			return s.deps.Passwords.Remove(ctx, &store.PasswordCredentialRemoval{UserID: userID,
+				Capabilities: accessDeploymentCapabilities(s.deps.Capabilities.Snapshot()), ChangedAt: reference.MutationAtMillis,
 				RevocationReason: model.SessionRevocationPasswordRemoved, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
 		}, authenticationMethodStoreErrors.Translate)
 	if appErr == nil {
@@ -140,12 +141,12 @@ func (s *authenticationMethodService) UnlinkExternalIdentity(ctx context.Context
 		return apperror.New("request.invalid")
 	}
 	userID := invocation.Principal().UserID
-	result, appErr := runAuditedMutation(ctx, s.audit, mutationAttempt{Invocation: invocation,
+	result, appErr := runAuditedMutation(ctx, s.deps.Audit, mutationAttempt{Invocation: invocation,
 		Action: model.ActionExternalIdentityManage, Resource: model.Resource{Type: model.ResourceUser, ID: userID.String()},
-		Operation: "unlink_provider", Value: map[string]any{"identity_id": id.String()}}, s.now,
+		Operation: "unlink_provider", Value: map[string]any{"identity_id": id.String()}}, s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.AuthenticationMethodMutationResult, error) {
-			return s.identities.Unlink(ctx, &store.ExternalIdentityUnlink{ID: id, UserID: userID,
-				Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()), ChangedAt: reference.MutationAtMillis,
+			return s.deps.Identities.Unlink(ctx, &store.ExternalIdentityUnlink{ID: id, UserID: userID,
+				Capabilities: accessDeploymentCapabilities(s.deps.Capabilities.Snapshot()), ChangedAt: reference.MutationAtMillis,
 				RevocationReason: model.SessionRevocationExternalIdentityUnlinked, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
 		}, authenticationMethodStoreErrors.Translate)
 	if appErr == nil {
@@ -162,5 +163,5 @@ func (s *authenticationMethodService) publishRevocations(ctx context.Context, us
 	for _, session := range result.RevokedSessions {
 		ids = append(ids, session.ID.String())
 	}
-	s.effects.SessionsRevoked(ctx, userID.String(), ids, result.RevokedTokenHashes)
+	s.deps.Effects.SessionsRevoked(ctx, userID.String(), ids, result.RevokedTokenHashes)
 }

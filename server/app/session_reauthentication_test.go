@@ -72,10 +72,10 @@ func TestPasswordReauthenticationBindsCurrentIdentityAndRequiresCommit(t *testin
 			session := &model.Session{ID: principal.SessionID, UserID: user.ID, AuthenticatedAt: principal.AuthenticatedAt, ReauthenticatedAt: model.OptionalTimeFrom(now), MFACompletedAt: principal.MFACompletedAt}
 			events := []string{}
 			fake := &reauthenticationSessionStoreFake{events: &events, result: &store.SessionReauthenticationResult{Session: session}, err: test.storeErr}
-			service.sessions = fake
-			service.audit = &mutationAttemptAuditorFake{events: &events, beginID: model.NewID(), beginErr: test.auditErr}
+			service.deps.Sessions = fake
+			service.deps.Audit = &mutationAttemptAuditorFake{events: &events, beginID: model.NewID(), beginErr: test.auditErr}
 			mfa := &authenticationMFAVerifierFake{}
-			service.mfa = mfa
+			service.deps.MFA = mfa
 			actual, err := service.ReauthenticatePassword(ctx, invocation.New(principal, model.RequestMetadata{}), ReauthenticatePasswordCommand{Password: test.password, Source: "192.0.2.45"})
 			if test.code != "" {
 				require.True(t, apperror.Is(err, test.code), "result=%v err=%v", actual, err)

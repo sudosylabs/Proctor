@@ -85,7 +85,7 @@ func TestCurrentUserContextReturnsBoundedNavigationProjection(t *testing.T) {
 		UnresolvedAttempt: attempt,
 	}
 	persistence := &userProfileStoreFake{events: &[]string{}, currentContext: persisted}
-	application := &App{userProfileService: &userProfileService{users: persistence}}
+	application := &App{userProfileService: &userProfileService{deps: userProfileServiceDependencies{Users: persistence}}}
 	principal := userSettingsSessionPrincipal(time.Now())
 	principal.UserID = userID
 	principal.ClientType = model.SessionClientDesktop
@@ -120,7 +120,7 @@ func TestCurrentUserContextReturnsBoundedNavigationProjection(t *testing.T) {
 func TestCurrentUserContextRejectsPersonalAccessTokensWithoutReading(t *testing.T) {
 	t.Parallel()
 	persistence := &userProfileStoreFake{events: &[]string{}}
-	application := &App{userProfileService: &userProfileService{users: persistence}}
+	application := &App{userProfileService: &userProfileService{deps: userProfileServiceDependencies{Users: persistence}}}
 	principal := model.Principal{
 		UserID: model.NewUserID(), CredentialID: model.PrincipalCredentialID(model.NewPersonalAccessTokenID()),
 		CredentialType: model.CredentialPersonalAccessToken, AuthenticationMethod: "personal_access_token",
@@ -168,7 +168,7 @@ func TestUserProfileUpdateIsAuthorizedAndAuditAtomic(t *testing.T) {
 	current := &model.User{ID: model.NewUserID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100), Revision: 3, Username: "student", Email: "old@example.edu", EmailVerified: true, DisplayName: "Student", Locale: "en", Timezone: "UTC"}
 	persistence := &userProfileStoreFake{events: &events, current: current}
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewID()}
-	service := newUserProfileService(persistence, &userProfileAuthorizerFake{events: &events}, auditor, func() time.Time { return time.UnixMilli(500) })
+	service := newUserProfileService(userProfileServiceDependencies{Users: persistence, Authorization: &userProfileAuthorizerFake{events: &events}, Audit: auditor, Now: func() time.Time { return time.UnixMilli(500) }})
 	displayName := "Updated Student"
 	updated, err := service.UpdateUserProfile(context.Background(), invocation.Invocation{}, UpdateUserProfileCommand{ID: current.ID, DisplayName: &displayName})
 	require.NoError(t, err)
@@ -189,7 +189,7 @@ func TestUserProfileSearchReturnsEmptyCollection(t *testing.T) {
 	t.Parallel()
 	events := []string{}
 	persistence := &userProfileStoreFake{events: &events}
-	service := newUserProfileService(persistence, &userProfileAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events}, time.Now)
+	service := newUserProfileService(userProfileServiceDependencies{Users: persistence, Authorization: &userProfileAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events}, Now: time.Now})
 	users, err := service.SearchUsers(context.Background(), invocation.Invocation{}, SearchUsersQuery{})
 	require.NoError(t, err)
 	require.NotNil(t, users.Items, "users")
@@ -214,11 +214,7 @@ func TestScopedUserSearchCannotRequestDisabledUsers(t *testing.T) {
 			for _, includeDisabled := range []bool{false, true} {
 				events := []string{}
 				persistence := &userProfileStoreFake{events: &events}
-				service := newUserProfileService(
-					persistence,
-					&userProfileAuthorizerFake{events: &events, searchScope: test.scope},
-					&institutionAuditorFake{events: &events}, time.Now,
-				)
+				service := newUserProfileService(userProfileServiceDependencies{Users: persistence, Authorization: &userProfileAuthorizerFake{events: &events, searchScope: test.scope}, Audit: &institutionAuditorFake{events: &events}, Now: time.Now})
 				_, err := service.SearchUsers(context.Background(), invocation.Invocation{}, SearchUsersQuery{
 					Limit: 10, IncludeDisabled: includeDisabled,
 				})
@@ -230,11 +226,7 @@ func TestScopedUserSearchCannotRequestDisabledUsers(t *testing.T) {
 
 	events := []string{}
 	persistence := &userProfileStoreFake{events: &events}
-	service := newUserProfileService(
-		persistence,
-		&userProfileAuthorizerFake{events: &events, searchScope: store.UserVisibilityScope{InstitutionWide: true}},
-		&institutionAuditorFake{events: &events}, time.Now,
-	)
+	service := newUserProfileService(userProfileServiceDependencies{Users: persistence, Authorization: &userProfileAuthorizerFake{events: &events, searchScope: store.UserVisibilityScope{InstitutionWide: true}}, Audit: &institutionAuditorFake{events: &events}, Now: time.Now})
 	_, err := service.SearchUsers(context.Background(), invocation.Invocation{}, SearchUsersQuery{
 		Limit: 10, IncludeDisabled: true,
 	})
@@ -252,11 +244,7 @@ func TestScopedUserSearchReturnsOnlySafeDirectoryFields(t *testing.T) {
 		DisabledAt: model.OptionalTimeFromMillis(300),
 	}
 	persistence := &userProfileStoreFake{events: &events, current: user}
-	service := newUserProfileService(
-		&userProfileSearchStoreFake{userProfileStoreFake: persistence, values: []*model.User{user}},
-		&userProfileAuthorizerFake{events: &events, searchScope: store.UserVisibilityScope{AcademicUnitRootIDs: []model.AcademicUnitID{model.NewAcademicUnitID()}, ActiveAt: model.TimeFromMillis(100)}},
-		&institutionAuditorFake{events: &events}, time.Now,
-	)
+	service := newUserProfileService(userProfileServiceDependencies{Users: &userProfileSearchStoreFake{userProfileStoreFake: persistence, values: []*model.User{user}}, Authorization: &userProfileAuthorizerFake{events: &events, searchScope: store.UserVisibilityScope{AcademicUnitRootIDs: []model.AcademicUnitID{model.NewAcademicUnitID()}, ActiveAt: model.TimeFromMillis(100)}}, Audit: &institutionAuditorFake{events: &events}, Now: time.Now})
 	users, err := service.SearchUsers(context.Background(), invocation.Invocation{}, SearchUsersQuery{Limit: 10})
 	require.NoError(t, err)
 	require.Len(t, users.Items, 1)
@@ -293,7 +281,7 @@ func TestUserProfileUpdateRejectsControlCharacterNamesBeforeAudit(t *testing.T) 
 	current := &model.User{ID: model.NewUserID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100), Revision: 3, Username: "student", Email: "old@example.edu", EmailVerified: true, DisplayName: "Student", Locale: "en", Timezone: "UTC"}
 	persistence := &userProfileStoreFake{events: &events, current: current}
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewID()}
-	service := newUserProfileService(persistence, &userProfileAuthorizerFake{events: &events}, auditor, func() time.Time { return time.UnixMilli(500) })
+	service := newUserProfileService(userProfileServiceDependencies{Users: persistence, Authorization: &userProfileAuthorizerFake{events: &events}, Audit: auditor, Now: func() time.Time { return time.UnixMilli(500) }})
 	displayName := "Student\r\nBcc: other@example.test"
 	_, err := service.UpdateUserProfile(context.Background(), invocation.Invocation{}, UpdateUserProfileCommand{ID: current.ID, DisplayName: &displayName})
 	failure, ok := apperror.As(err)

@@ -153,7 +153,7 @@ func (noOpProposer) Propose(context.Context, time.Time) error { return nil }
 func TestEngineValidatesRecurrencesAtConstruction(t *testing.T) {
 	t.Parallel()
 	descriptor := testDescriptor(handlerFunc(func(context.Context, Execution) Outcome { return succeededOutcome() }))
-	config := Config{
+	config := Dependencies{
 		Store: &jobRunnerStoreFake{}, Descriptors: []Descriptor{descriptor}, NodeID: "node-a",
 		Diagnostics: &jobDiagnosticsFake{}, Policy: Policy{PollInterval: time.Second},
 		Recurrences: []Recurrence{{Name: "daily", Proposer: noOpProposer{}}, {Name: "daily", Proposer: noOpProposer{}}},
@@ -177,7 +177,7 @@ func TestEngineClaimsAndCompletesThroughItsPublicLifecycle(t *testing.T) {
 	descriptor := testDescriptor(handlerFunc(func(context.Context, Execution) Outcome { return succeededOutcome() }))
 	persistence := &jobRunnerStoreFake{claim: claim}
 	recorder := &jobMetricsFake{}
-	engine, err := New(Config{
+	engine, err := New(Dependencies{
 		Store: persistence, Descriptors: []Descriptor{descriptor}, NodeID: "node-a",
 		Diagnostics: &jobDiagnosticsFake{}, Recorder: recorder, Policy: Policy{PollInterval: time.Millisecond},
 	})
@@ -221,7 +221,7 @@ func TestEngineRecordsUnsupportedClaimAsAnExecution(t *testing.T) {
 	descriptor := testDescriptor(handlerFunc(func(context.Context, Execution) Outcome { return succeededOutcome() }))
 	persistence := &jobRunnerStoreFake{claim: claim}
 	recorder := &jobMetricsFake{}
-	engine, err := New(Config{
+	engine, err := New(Dependencies{
 		Store: persistence, Descriptors: []Descriptor{descriptor}, NodeID: "node-a",
 		Diagnostics: &jobDiagnosticsFake{}, Recorder: recorder, Policy: Policy{PollInterval: time.Millisecond},
 	})
@@ -561,5 +561,5 @@ func newTestEngine(persistence store.JobStore, registry *Registry, nodeID string
 	for _, jobType := range registry.types {
 		descriptors = append(descriptors, registry.descriptors[jobType])
 	}
-	return New(Config{Store: persistence, Descriptors: descriptors, NodeID: nodeID, Diagnostics: diagnostics, Policy: Policy{PollInterval: poll}})
+	return New(Dependencies{Store: persistence, Descriptors: descriptors, NodeID: nodeID, Diagnostics: diagnostics, Policy: Policy{PollInterval: poll}})
 }

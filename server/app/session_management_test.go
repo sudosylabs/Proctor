@@ -34,7 +34,7 @@ func TestSelfSessionServiceUsesCallerOwnershipAndPostCommitEffects(t *testing.T)
 		hashes:  []string{"access-hash"},
 	}
 	effects := &selfSessionEffectsFake{events: &events}
-	service, err := newSelfSessionService(persistence, &mutationAttemptAuditorFake{events: &events, beginID: model.NewID()}, effects, func() time.Time { return now })
+	service, err := newSelfSessionService(selfSessionServiceDependencies{Sessions: persistence, Audit: &mutationAttemptAuditorFake{events: &events, beginID: model.NewID()}, Effects: effects, Now: func() time.Time { return now }})
 	require.NoError(t, err)
 
 	invocation := invocation.New(principal, model.RequestMetadata{})
@@ -63,12 +63,7 @@ func TestSelfSessionServiceHidesAnotherUsersSession(t *testing.T) {
 		events:  &[]string{},
 		session: &model.Session{ID: model.NewSessionID(), UserID: model.NewUserID()},
 	}
-	service, err := newSelfSessionService(
-		persistence,
-		&mutationAttemptAuditorFake{events: &[]string{}, beginID: model.NewID()},
-		&selfSessionEffectsFake{},
-		func() time.Time { return now },
-	)
+	service, err := newSelfSessionService(selfSessionServiceDependencies{Sessions: persistence, Audit: &mutationAttemptAuditorFake{events: &[]string{}, beginID: model.NewID()}, Effects: &selfSessionEffectsFake{}, Now: func() time.Time { return now }})
 	require.NoError(t, err)
 
 	err = service.RevokeSession(
@@ -85,7 +80,7 @@ func TestSelfSessionListUsesNativeDecisionTime(t *testing.T) {
 	at := time.Date(2026, 8, 12, 9, 30, 0, 123_456_789, time.FixedZone("offset", 7200))
 	principal := selfSessionPrincipal(model.TimeUTC(at))
 	persistence := &selfSessionStoreFake{session: &model.Session{ID: principal.SessionID, UserID: principal.UserID}}
-	service, err := newSelfSessionService(persistence, &mutationAttemptAuditorFake{events: &[]string{}, beginID: model.NewID()}, &selfSessionEffectsFake{}, func() time.Time { return at })
+	service, err := newSelfSessionService(selfSessionServiceDependencies{Sessions: persistence, Audit: &mutationAttemptAuditorFake{events: &[]string{}, beginID: model.NewID()}, Effects: &selfSessionEffectsFake{}, Now: func() time.Time { return at }})
 	require.NoError(t, err)
 	_, err = service.ListSessions(context.Background(), invocation.New(principal, model.RequestMetadata{}), ListSessionsQuery{})
 	require.NoError(t, err)
@@ -96,13 +91,13 @@ func TestSelfSessionListUsesNativeDecisionTime(t *testing.T) {
 func TestSelfSessionServiceRequiresFocusedDependencies(t *testing.T) {
 	t.Parallel()
 
-	_, err := newSelfSessionService(&selfSessionStoreFake{}, nil, &selfSessionEffectsFake{}, time.Now)
+	_, err := newSelfSessionService(selfSessionServiceDependencies{Sessions: &selfSessionStoreFake{}, Audit: nil, Effects: &selfSessionEffectsFake{}, Now: time.Now})
 	require.Error(t, err, "nil self-session audit was accepted")
-	_, err = newSelfSessionService(nil, &mutationAttemptAuditorFake{}, &selfSessionEffectsFake{}, time.Now)
+	_, err = newSelfSessionService(selfSessionServiceDependencies{Sessions: nil, Audit: &mutationAttemptAuditorFake{}, Effects: &selfSessionEffectsFake{}, Now: time.Now})
 	require.Error(t, err, "nil self-session store was accepted")
-	_, err = newSelfSessionService(&selfSessionStoreFake{}, &mutationAttemptAuditorFake{}, nil, time.Now)
+	_, err = newSelfSessionService(selfSessionServiceDependencies{Sessions: &selfSessionStoreFake{}, Audit: &mutationAttemptAuditorFake{}, Effects: nil, Now: time.Now})
 	require.Error(t, err, "nil self-session effects were accepted")
-	_, err = newSelfSessionService(&selfSessionStoreFake{}, &mutationAttemptAuditorFake{}, &selfSessionEffectsFake{}, nil)
+	_, err = newSelfSessionService(selfSessionServiceDependencies{Sessions: &selfSessionStoreFake{}, Audit: &mutationAttemptAuditorFake{}, Effects: &selfSessionEffectsFake{}, Now: nil})
 	require.Error(t, err, "nil self-session clock was accepted")
 }
 
@@ -124,7 +119,7 @@ func TestSelfSessionRevocationsRequireAuditBeforeMutationAndEffects(t *testing.T
 				if outcome == "completion unavailable" {
 					persistence.revokeErr = errors.New("audit completion unavailable")
 				}
-				self, err := newSelfSessionService(persistence, audit, effects, func() time.Time { return now })
+				self, err := newSelfSessionService(selfSessionServiceDependencies{Sessions: persistence, Audit: audit, Effects: effects, Now: func() time.Time { return now }})
 				require.NoError(t, err)
 				invocation := invocation.New(principal, model.RequestMetadata{})
 				switch operation {
@@ -133,7 +128,7 @@ func TestSelfSessionRevocationsRequireAuditBeforeMutationAndEffects(t *testing.T
 				case "revoke_own_sessions":
 					err = self.RevokeAllSessions(context.Background(), invocation, RevokeAllSessionsCommand{})
 				case "logout":
-					authentication := &authenticationService{sessions: persistence, audit: audit, securityEffects: effects, now: self.now}
+					authentication := &authenticationService{deps: authenticationServiceDependencies{Sessions: persistence, Audit: audit, SecurityEffects: effects, Now: self.deps.Now}}
 					err = authentication.Logout(context.Background(), invocation, LogoutCommand{})
 				}
 				if outcome != "success" {
@@ -194,7 +189,7 @@ func TestSelfSessionRevocationRepeatOutcomes(t *testing.T) {
 			}}
 			audit := &mutationAttemptAuditorFake{events: &events, beginID: model.NewID()}
 			effects := &selfSessionEffectsFake{events: &events}
-			self, err := newSelfSessionService(persistence, audit, effects, func() time.Time { return now })
+			self, err := newSelfSessionService(selfSessionServiceDependencies{Sessions: persistence, Audit: audit, Effects: effects, Now: func() time.Time { return now }})
 			require.NoError(t, err)
 			invocation := invocation.New(principal, model.RequestMetadata{})
 			switch operation {
@@ -207,7 +202,7 @@ func TestSelfSessionRevocationRepeatOutcomes(t *testing.T) {
 				require.NoError(t, err)
 				require.True(t, persistence.allRevocation.NoOp)
 			case "logout":
-				authentication := &authenticationService{sessions: persistence, audit: audit, securityEffects: effects, now: self.now}
+				authentication := &authenticationService{deps: authenticationServiceDependencies{Sessions: persistence, Audit: audit, SecurityEffects: effects, Now: self.deps.Now}}
 				err = authentication.Logout(context.Background(), invocation, LogoutCommand{})
 				require.NoError(t, err)
 			}

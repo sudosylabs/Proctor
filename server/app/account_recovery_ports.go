@@ -36,75 +36,60 @@ type accountTokenMailPreparer interface {
 	PrepareEmailVerifiedByAdministrator(mail.NoticePreparation) (*store.PreparedMail, error)
 }
 
+// accountTokenServiceDependencies are the collaborators of accountTokenService;
+// newAccountTokenService validates them once and accountTokenService keeps them in deps.
+type accountTokenServiceDependencies struct {
+	Users        store.UserStore
+	Passwords    store.PasswordCredentialStore
+	Tokens       store.UserTokenStore
+	AccessPolicy authenticationAccessPolicy
+	Institutions store.InstitutionStore
+	Mail         accountTokenMailPreparer
+	Attempts     *authenticationAttemptAccounting
+	Hasher       accountTokenPasswordHasher
+	Audit        accountTokenAuditRecorder
+	Effects      accountTokenEffects
+	Diagnostics  recoveryDiagnostics
+	Policy       AccountRecoveryPolicy
+	PublicURL    string
+	NewToken     func() string
+	Now          func() time.Time
+}
+
 // accountTokenService owns purpose-specific verification and recovery tokens.
 // Terminal transitions and their success audits remain named atomic store
 // operations; only post-commit session effects happen outside persistence.
 type accountTokenService struct {
-	users        store.UserStore
-	passwords    store.PasswordCredentialStore
-	tokens       store.UserTokenStore
-	accessPolicy authenticationAccessPolicy
-	institutions store.InstitutionStore
-	mail         accountTokenMailPreparer
-	attempts     *authenticationAttemptAccounting
-	hasher       accountTokenPasswordHasher
-	audit        accountTokenAuditRecorder
-	effects      accountTokenEffects
-	diagnostics  recoveryDiagnostics
-	policy       AccountRecoveryPolicy
-	publicURL    string
-	newToken     func() string
-	now          func() time.Time
+	deps accountTokenServiceDependencies
 
 	administration userEmailAdministration
 }
 
-func newAccountTokenService(
-	users store.UserStore,
-	passwords store.PasswordCredentialStore,
-	tokens store.UserTokenStore,
-	accessPolicy authenticationAccessPolicy,
-	institutions store.InstitutionStore,
-	mail accountTokenMailPreparer,
-	attempts *authenticationAttemptAccounting,
-	hasher accountTokenPasswordHasher,
-	audit accountTokenAuditRecorder,
-	effects accountTokenEffects,
-	diagnostics recoveryDiagnostics,
-	policy AccountRecoveryPolicy,
-	publicURL string,
-	newToken func() string,
-	now func() time.Time,
-) (*accountTokenService, error) {
+func newAccountTokenService(deps accountTokenServiceDependencies) (*accountTokenService, error) {
 	required := []struct {
 		missing bool
 		name    string
 	}{
-		{users == nil, "user store"},
-		{passwords == nil, "password credential store"},
-		{tokens == nil, "user token store"},
-		{accessPolicy == nil, "authentication access policy"},
-		{institutions == nil, "institution store"},
-		{mail == nil, "account mail preparer"},
-		{attempts == nil, "authentication attempt accounting"},
-		{hasher == nil, "password hasher"},
-		{audit.nodeID == "", "account recovery audit"},
-		{effects == nil, "account recovery effects"},
-		{diagnostics == nil, "account recovery diagnostics"},
-		{newToken == nil, "account token generator"},
-		{now == nil, "account token clock"},
+		{deps.Users == nil, "user store"},
+		{deps.Passwords == nil, "password credential store"},
+		{deps.Tokens == nil, "user token store"},
+		{deps.AccessPolicy == nil, "authentication access policy"},
+		{deps.Institutions == nil, "institution store"},
+		{deps.Mail == nil, "account mail preparer"},
+		{deps.Attempts == nil, "authentication attempt accounting"},
+		{deps.Hasher == nil, "password hasher"},
+		{deps.Audit.nodeID == "", "account recovery audit"},
+		{deps.Effects == nil, "account recovery effects"},
+		{deps.Diagnostics == nil, "account recovery diagnostics"},
+		{deps.NewToken == nil, "account token generator"},
+		{deps.Now == nil, "account token clock"},
 	}
 	for _, dependency := range required {
 		if dependency.missing {
 			return nil, errors.New(dependency.name + " is required")
 		}
 	}
-	return &accountTokenService{
-		users: users, passwords: passwords, tokens: tokens, accessPolicy: accessPolicy,
-		institutions: institutions, mail: mail, attempts: attempts,
-		hasher: hasher, audit: audit, effects: effects, diagnostics: diagnostics,
-		policy: policy, publicURL: publicURL, newToken: newToken, now: now,
-	}, nil
+	return &accountTokenService{deps: deps}, nil
 }
 
 type accountTokenAuditRecorder struct{ nodeID string }

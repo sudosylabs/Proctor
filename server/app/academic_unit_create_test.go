@@ -170,25 +170,17 @@ func TestAcademicUnitCreateRootCommitsAuditBeforePublishing(t *testing.T) {
 	auditor := &academicUnitCommandAuditor{events: &events, beginID: model.NewID()}
 	effects := &academicUnitCommandEffectsFake{events: &events}
 	createdID := model.NewID()
-	service := newAcademicUnitCommandService(
-		creator,
-		academicUnitAuthorizerStub{
-			authorize: func(context.Context, invocation.Invocation, model.Action, model.Resource) error {
-				panic("unexpected Authorize")
-			},
-			authorizeInstallation: func(
-				context.Context, invocation.Invocation, model.Action,
-			) (model.Resource, error) {
-				events = append(events, "authorize")
-				return model.Resource{Type: model.ResourceInstitution, ID: institutionID}, nil
-			},
+	service := newAcademicUnitCommandService(academicUnitCommandServiceDependencies{Store: creator, Authorization: academicUnitAuthorizerStub{
+		authorize: func(context.Context, invocation.Invocation, model.Action, model.Resource) error {
+			panic("unexpected Authorize")
 		},
-		auditor,
-		effects,
-		&academicUnitEffectFailureReporterFake{events: &events},
-		func() time.Time { return time.UnixMilli(500) },
-		func() string { return createdID },
-	)
+		authorizeInstallation: func(
+			context.Context, invocation.Invocation, model.Action,
+		) (model.Resource, error) {
+			events = append(events, "authorize")
+			return model.Resource{Type: model.ResourceInstitution, ID: institutionID}, nil
+		},
+	}, Audit: auditor, Effects: effects, EffectFailures: &academicUnitEffectFailureReporterFake{events: &events}, Now: func() time.Time { return time.UnixMilli(500) }, NewID: func() string { return createdID }})
 
 	got, err := service.CreateAcademicUnit(context.Background(), invocation.Invocation{}, CreateAcademicUnitCommand{
 		Name: "engineering", DisplayName: "Engineering", Description: "Faculty",
@@ -211,16 +203,9 @@ func TestAcademicUnitCreateReplayDoesNotPublishAgain(t *testing.T) {
 	saved := &model.AcademicUnit{ID: model.NewAcademicUnitID(), InstitutionID: model.InstitutionID(institutionID), Name: "engineering", DisplayName: "Engineering"}
 	events := []string{}
 	creator := &academicUnitCreateStore{events: &events, idempotentResult: &store.AcademicUnitCommandResult{Value: saved, Replayed: true}}
-	service := newAcademicUnitCommandService(
-		creator,
-		academicUnitAuthorizerStub{authorizeInstallation: func(context.Context, invocation.Invocation, model.Action) (model.Resource, error) {
-			return model.Resource{Type: model.ResourceInstitution, ID: institutionID}, nil
-		}},
-		&academicUnitCommandAuditor{events: &events, beginID: model.NewID()},
-		&academicUnitCommandEffectsFake{events: &events},
-		&academicUnitEffectFailureReporterFake{events: &events},
-		func() time.Time { return time.UnixMilli(500) }, model.NewID,
-	)
+	service := newAcademicUnitCommandService(academicUnitCommandServiceDependencies{Store: creator, Authorization: academicUnitAuthorizerStub{authorizeInstallation: func(context.Context, invocation.Invocation, model.Action) (model.Resource, error) {
+		return model.Resource{Type: model.ResourceInstitution, ID: institutionID}, nil
+	}}, Audit: &academicUnitCommandAuditor{events: &events, beginID: model.NewID()}, Effects: &academicUnitCommandEffectsFake{events: &events}, EffectFailures: &academicUnitEffectFailureReporterFake{events: &events}, Now: func() time.Time { return time.UnixMilli(500) }, NewID: model.NewID})
 	invocation := invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 	got, err := service.CreateAcademicUnit(context.Background(), invocation, CreateAcademicUnitCommand{Name: "engineering", DisplayName: "Engineering", IdempotencyKey: "retry-key"})
 	require.NoError(t, err)
@@ -233,24 +218,16 @@ func TestAcademicUnitCreateDenialStopsBeforeDurableWork(t *testing.T) {
 
 	events := []string{}
 	creator := &academicUnitCreateStore{}
-	service := newAcademicUnitCommandService(
-		creator,
-		academicUnitAuthorizerStub{
-			authorize: func(context.Context, invocation.Invocation, model.Action, model.Resource) error {
-				panic("unexpected Authorize")
-			},
-			authorizeInstallation: func(
-				context.Context, invocation.Invocation, model.Action,
-			) (model.Resource, error) {
-				return model.Resource{}, apperror.New("authorization.denied")
-			},
+	service := newAcademicUnitCommandService(academicUnitCommandServiceDependencies{Store: creator, Authorization: academicUnitAuthorizerStub{
+		authorize: func(context.Context, invocation.Invocation, model.Action, model.Resource) error {
+			panic("unexpected Authorize")
 		},
-		&academicUnitCommandAuditor{events: &events},
-		&academicUnitCommandEffectsFake{events: &events},
-		&academicUnitEffectFailureReporterFake{events: &events},
-		time.Now,
-		model.NewID,
-	)
+		authorizeInstallation: func(
+			context.Context, invocation.Invocation, model.Action,
+		) (model.Resource, error) {
+			return model.Resource{}, apperror.New("authorization.denied")
+		},
+	}, Audit: &academicUnitCommandAuditor{events: &events}, Effects: &academicUnitCommandEffectsFake{events: &events}, EffectFailures: &academicUnitEffectFailureReporterFake{events: &events}, Now: time.Now, NewID: model.NewID})
 	_, err := service.CreateAcademicUnit(context.Background(), invocation.Invocation{}, CreateAcademicUnitCommand{Name: "engineering"})
 	require.True(t, apperror.Is(err, "authorization.denied"), "Create() error = %v, want authorization.denied", err)
 	require.Nil(t, creator.input, "work after denial: input")
@@ -268,27 +245,19 @@ func TestAcademicUnitCreateFailureAuditsAndDoesNotPublish(t *testing.T) {
 		err:    store.NewErrConflict("academic_unit", "name", errors.New("duplicate")),
 	}
 	auditor := &academicUnitCommandAuditor{events: &events, beginID: model.NewID()}
-	service := newAcademicUnitCommandService(
-		creator,
-		academicUnitAuthorizerStub{
-			authorize: func(
-				_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource,
-			) error {
-				events = append(events, "authorize")
-				require.Equal(t, model.ActionAcademicUnitManage, action, "authorization = %s %#v", action, resource)
-				require.Equal(t, model.ResourceAcademicUnit, resource.Type, "authorization = %s %#v", action, resource)
-				return nil
-			},
-			installation: func(context.Context) (model.Resource, error) {
-				return model.Resource{Type: model.ResourceInstitution, ID: institutionID}, nil
-			},
+	service := newAcademicUnitCommandService(academicUnitCommandServiceDependencies{Store: creator, Authorization: academicUnitAuthorizerStub{
+		authorize: func(
+			_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource,
+		) error {
+			events = append(events, "authorize")
+			require.Equal(t, model.ActionAcademicUnitManage, action, "authorization = %s %#v", action, resource)
+			require.Equal(t, model.ResourceAcademicUnit, resource.Type, "authorization = %s %#v", action, resource)
+			return nil
 		},
-		auditor,
-		&academicUnitCommandEffectsFake{events: &events},
-		&academicUnitEffectFailureReporterFake{events: &events},
-		time.Now,
-		model.NewID,
-	)
+		installation: func(context.Context) (model.Resource, error) {
+			return model.Resource{Type: model.ResourceInstitution, ID: institutionID}, nil
+		},
+	}, Audit: auditor, Effects: &academicUnitCommandEffectsFake{events: &events}, EffectFailures: &academicUnitEffectFailureReporterFake{events: &events}, Now: time.Now, NewID: model.NewID})
 	_, err := service.CreateAcademicUnit(context.Background(), invocation.Invocation{}, CreateAcademicUnitCommand{
 		ParentID: model.AcademicUnitID(parentID), Name: "computing", DisplayName: "Computing",
 	})
@@ -305,21 +274,13 @@ func TestAcademicUnitCreateIgnoresPostCommitEffectFailure(t *testing.T) {
 	creator := &academicUnitCreateStore{events: &events, result: saved}
 	reporter := &academicUnitEffectFailureReporterFake{events: &events}
 	effectErr := errors.New("cluster unavailable")
-	service := newAcademicUnitCommandService(
-		creator,
-		academicUnitAuthorizerStub{
-			authorizeInstallation: func(
-				context.Context, invocation.Invocation, model.Action,
-			) (model.Resource, error) {
-				return model.Resource{Type: model.ResourceInstitution, ID: saved.InstitutionID.String()}, nil
-			},
+	service := newAcademicUnitCommandService(academicUnitCommandServiceDependencies{Store: creator, Authorization: academicUnitAuthorizerStub{
+		authorizeInstallation: func(
+			context.Context, invocation.Invocation, model.Action,
+		) (model.Resource, error) {
+			return model.Resource{Type: model.ResourceInstitution, ID: saved.InstitutionID.String()}, nil
 		},
-		&academicUnitCommandAuditor{events: &events, beginID: model.NewID()},
-		&academicUnitCommandEffectsFake{events: &events, err: effectErr},
-		reporter,
-		time.Now,
-		model.NewID,
-	)
+	}, Audit: &academicUnitCommandAuditor{events: &events, beginID: model.NewID()}, Effects: &academicUnitCommandEffectsFake{events: &events, err: effectErr}, EffectFailures: reporter, Now: time.Now, NewID: model.NewID})
 	got, err := service.CreateAcademicUnit(context.Background(), invocation.Invocation{}, CreateAcademicUnitCommand{
 		Name: "engineering", DisplayName: "Engineering",
 	})

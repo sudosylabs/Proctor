@@ -71,21 +71,24 @@ type affiliationEffects interface {
 	Report(context.Context, string, error)
 }
 
-type affiliationService struct {
-	store         affiliationStore
-	enrollments   affiliationEnrollmentReader
-	authorization affiliationAuthorizer
-	audit         mutationAuditor
-	effects       affiliationEffects
-	now           func() time.Time
-	newID         func() string
+// affiliationServiceDependencies are the collaborators of affiliationService;
+// newAffiliationService validates them once and affiliationService keeps them in deps.
+type affiliationServiceDependencies struct {
+	Store         affiliationStore
+	Enrollments   affiliationEnrollmentReader
+	Authorization affiliationAuthorizer
+	Audit         mutationAuditor
+	Effects       affiliationEffects
+	Now           func() time.Time
+	NewID         func() string
 }
 
-func newAffiliationService(persistence affiliationStore, enrollments affiliationEnrollmentReader, authorization affiliationAuthorizer,
-	audit mutationAuditor, effects affiliationEffects, now func() time.Time, newID func() string,
-) *affiliationService {
-	return &affiliationService{store: persistence, enrollments: enrollments, authorization: authorization,
-		audit: audit, effects: effects, now: now, newID: newID}
+type affiliationService struct {
+	deps affiliationServiceDependencies
+}
+
+func newAffiliationService(deps affiliationServiceDependencies) *affiliationService {
+	return &affiliationService{deps: deps}
 }
 
 type affiliationRealtimeEffects struct{ realtime *realtimeService }
@@ -103,10 +106,10 @@ func (s *affiliationService) ListAffiliations(ctx context.Context, invocation in
 	if !userID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
-	if err := s.authorization.AuthorizeUserRead(ctx, invocation, userID.String()); err != nil {
+	if err := s.deps.Authorization.AuthorizeUserRead(ctx, invocation, userID.String()); err != nil {
 		return nil, err
 	}
-	affiliations, err := s.store.ListByUser(ctx, userID)
+	affiliations, err := s.deps.Store.ListByUser(ctx, userID)
 	if err != nil {
 		return nil, affiliationStoreErrors.Translate(err)
 	}
@@ -125,7 +128,7 @@ func (s *affiliationService) CreateAffiliation(ctx context.Context, invocation i
 	if err != nil {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id").Wrap(err)
 	}
-	affiliationID, err := model.ParseAffiliationID(s.newID())
+	affiliationID, err := model.ParseAffiliationID(s.deps.NewID())
 	if err != nil {
 		return nil, apperror.New("request.invalid").WithField("field", "affiliation_id").Wrap(err)
 	}
@@ -135,7 +138,7 @@ func (s *affiliationService) CreateAffiliation(ctx context.Context, invocation i
 		StartsAt: model.TimeFromMillis(command.StartAt),
 		EndsAt:   model.OptionalTimeFromMillis(command.EndAt),
 	}
-	at := s.now()
+	at := s.deps.Now()
 	candidate.PrepareCreate(affiliationID, at)
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("affiliation.invalid", err)
@@ -155,7 +158,7 @@ func (s *affiliationService) CreateAffiliation(ctx context.Context, invocation i
 	changed := false
 	result, err := runAuditedMutation(
 		ctx,
-		s.audit,
+		s.deps.Audit,
 		mutationAttempt{
 			Invocation: invocation,
 			Action:     model.ActionUserManage,
@@ -167,7 +170,7 @@ func (s *affiliationService) CreateAffiliation(ctx context.Context, invocation i
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Affiliation, error) {
 			input := &store.AffiliationCreation{Affiliation: candidate, AuditEventID: reference.ID,
 				AuditAt: reference.MutationAtMillis, Command: idempotency}
-			value, storeErr := s.store.Create(ctx, input)
+			value, storeErr := s.deps.Store.Create(ctx, input)
 			if command.batchReplayed != nil {
 				*command.batchReplayed = input.Replayed || input.NoOp
 			}
@@ -180,8 +183,8 @@ func (s *affiliationService) CreateAffiliation(ctx context.Context, invocation i
 		return nil, err
 	}
 	if changed {
-		if effectErr := s.effects.Changed(ctx, result.UserID); effectErr != nil {
-			s.effects.Report(ctx, "affiliation.changed", effectErr)
+		if effectErr := s.deps.Effects.Changed(ctx, result.UserID); effectErr != nil {
+			s.deps.Effects.Report(ctx, "affiliation.changed", effectErr)
 		}
 	}
 	return result, nil
@@ -192,7 +195,7 @@ func (s *affiliationService) EndAffiliation(ctx context.Context, invocation invo
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "affiliation_id")
 	}
-	current, err := s.store.Get(ctx, id)
+	current, err := s.deps.Store.Get(ctx, id)
 	if err != nil {
 		return nil, affiliationStoreErrors.Translate(err)
 	}
@@ -201,7 +204,7 @@ func (s *affiliationService) EndAffiliation(ctx context.Context, invocation invo
 		return nil, err
 	}
 	if current.Kind == model.AffiliationStudent && !command.batchRetainedOutcome {
-		enrollments, listErr := s.enrollments.ListByUser(ctx, current.UserID)
+		enrollments, listErr := s.deps.Enrollments.ListByUser(ctx, current.UserID)
 		if listErr != nil {
 			return nil, affiliationStoreErrors.Translate(listErr)
 		}
@@ -226,7 +229,7 @@ func (s *affiliationService) EndAffiliation(ctx context.Context, invocation invo
 	changed := false
 	result, err := runAuditedMutation(
 		ctx,
-		s.audit,
+		s.deps.Audit,
 		mutationAttempt{
 			Invocation: invocation,
 			Action:     model.ActionUserManage,
@@ -234,13 +237,13 @@ func (s *affiliationService) EndAffiliation(ctx context.Context, invocation invo
 			Operation:  "end",
 			Prior:      current.Auditable(),
 		},
-		s.now,
+		s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Affiliation, error) {
 			input := &store.AffiliationEnd{
 				ID: id, ExpectedRevision: current.Revision, EndAt: reference.MutationAtMillis,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
 			}
-			value, storeErr := s.store.End(ctx, input)
+			value, storeErr := s.deps.Store.End(ctx, input)
 			if command.batchReplayed != nil {
 				*command.batchReplayed = input.Replayed || input.NoOp
 			}
@@ -253,8 +256,8 @@ func (s *affiliationService) EndAffiliation(ctx context.Context, invocation invo
 		return nil, err
 	}
 	if changed {
-		if effectErr := s.effects.Changed(ctx, result.UserID); effectErr != nil {
-			s.effects.Report(ctx, "affiliation.changed", effectErr)
+		if effectErr := s.deps.Effects.Changed(ctx, result.UserID); effectErr != nil {
+			s.deps.Effects.Report(ctx, "affiliation.changed", effectErr)
 		}
 	}
 	return result, nil
@@ -265,7 +268,7 @@ func (s *affiliationService) authorizeUser(ctx context.Context, invocation invoc
 		return model.Resource{}, apperror.New("request.invalid").WithField("field", "user_id")
 	}
 	resource := model.Resource{Type: model.ResourceUser, ID: userID.String()}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionUserManage, resource); err != nil {
+	if err := s.deps.Authorization.Authorize(ctx, invocation, model.ActionUserManage, resource); err != nil {
 		return model.Resource{}, err
 	}
 	return resource, nil

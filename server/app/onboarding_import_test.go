@@ -112,7 +112,7 @@ func TestOnboardingImportCSVBuildsImmutableDuplicatePreview(t *testing.T) {
 	require.NoError(t, err)
 	class, err := model.NewClass(model.NewClassID(), model.NewProgrammeLevelID(), period.ID, "a", "A", "", at)
 	require.NoError(t, err)
-	service := &onboardingImportService{classes: onboardingImportClassStoreFake{value: class}, periods: onboardingImportPeriodStoreFake{value: period}, now: func() time.Time { return at }}
+	service := &onboardingImportService{deps: onboardingImportServiceDependencies{Classes: onboardingImportClassStoreFake{value: class}, Periods: onboardingImportPeriodStoreFake{value: period}, Now: func() time.Time { return at }}}
 	current := &store.OnboardingImport{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportStudentClass, ScopeType: model.RoleScopeClass,
 		ScopeID: class.ID.String(), ActorUserID: model.NewUserID()}
 	csv := "\ufeffemail,reference,display_name,misspelled\r\n" +
@@ -134,7 +134,7 @@ func TestOnboardingImportCSVBuildsImmutableDuplicatePreview(t *testing.T) {
 	require.Equal(t, model.MillisFromTime(period.StartsAt), rows[0].StartsAt)
 	require.Equal(t, "'=formula", escapeSpreadsheetFormula(rows[0].Reference))
 	current.ID = model.NewOnboardingImportID()
-	service.now = func() time.Time { return at.Add(time.Hour) }
+	service.deps.Now = func() time.Time { return at.Add(time.Hour) }
 	_, _, replayDigest, err := service.parseCSV(context.Background(), invocation.Invocation{}, current, strings.NewReader(csv))
 	require.NoError(t, err, "normalized preview digest")
 	require.Equal(t, digest, replayDigest, "normalized preview digest")
@@ -147,7 +147,7 @@ func TestOnboardingImportCSVBuildsExistingUserAcademicPreview(t *testing.T) {
 	require.NoError(t, err)
 	user := &model.User{ID: model.NewUserID(), Username: "existing", Email: "existing@example.edu"}
 	authorization := &invitationAuthorizerFake{actionErrors: map[model.Action]error{}}
-	service := &onboardingImportService{classes: onboardingImportClassStoreFake{value: class}, users: onboardingImportUserStoreFake{value: user}, authorization: authorization, now: func() time.Time { return at }}
+	service := &onboardingImportService{deps: onboardingImportServiceDependencies{Classes: onboardingImportClassStoreFake{value: class}, Users: onboardingImportUserStoreFake{value: user}, Authorization: authorization, Now: func() time.Time { return at }}}
 	current := &store.OnboardingImport{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportAcademicAdministration,
 		ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(), ActorUserID: model.NewUserID(), CreatedAt: at}
 	csv := "operation,user_id,reference\nclass.enroll," + user.ID.String() + ",first\nclass.enroll," + user.ID.String() + ",second\n"
@@ -163,7 +163,7 @@ func TestOnboardingImportCSVBuildsExistingUserAcademicPreview(t *testing.T) {
 	require.Equal(t, at.UnixMilli(), rows[0].StartsAt, "academic administration preview")
 	require.Equal(t, model.OnboardingImportRowDuplicate, rows[0].PreviewStatus, "academic administration preview")
 	require.Equal(t, model.OnboardingImportRowDuplicate, rows[1].PreviewStatus, "academic administration preview")
-	service.now = func() time.Time { return at.Add(time.Hour) }
+	service.deps.Now = func() time.Time { return at.Add(time.Hour) }
 	_, _, retryDigest, err := service.parseCSV(context.Background(), invocation.Invocation{}, current, strings.NewReader(csv))
 	require.NoError(t, err, "academic administration retry digest")
 	require.Equal(t, digest, retryDigest, "academic administration retry digest")
@@ -171,7 +171,7 @@ func TestOnboardingImportCSVBuildsExistingUserAcademicPreview(t *testing.T) {
 
 func TestOnboardingImportCSVRejectsInvitationFieldsForAcademicAdministration(t *testing.T) {
 	t.Parallel()
-	service := &onboardingImportService{now: time.Now}
+	service := &onboardingImportService{deps: onboardingImportServiceDependencies{Now: time.Now}}
 	current := &store.OnboardingImport{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportAcademicAdministration,
 		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewInstitutionID().String(), ActorUserID: model.NewUserID()}
 	for _, header := range []string{"email", "username", "display_name", "academic_unit", "class", "role"} {
@@ -186,8 +186,7 @@ func TestOnboardingImportCSVPreservesDistinctAffiliationHistories(t *testing.T) 
 	at := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
 	institution := &model.Institution{ID: model.NewInstitutionID(), Revision: 2}
 	user := &model.User{ID: model.NewUserID(), Username: "existing", Email: "existing@example.edu"}
-	service := &onboardingImportService{institutions: onboardingImportInstitutionStoreFake{value: institution},
-		users: onboardingImportUserStoreFake{value: user}, authorization: &invitationAuthorizerFake{actionErrors: map[model.Action]error{}}, now: func() time.Time { return at }}
+	service := &onboardingImportService{deps: onboardingImportServiceDependencies{Institutions: onboardingImportInstitutionStoreFake{value: institution}, Users: onboardingImportUserStoreFake{value: user}, Authorization: &invitationAuthorizerFake{actionErrors: map[model.Action]error{}}, Now: func() time.Time { return at }}}
 	current := &store.OnboardingImport{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportAcademicAdministration,
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), ActorUserID: model.NewUserID(), CreatedAt: at}
 	csv := "operation,user_id,affiliation_kind,start_at,reference\n" +
@@ -202,7 +201,7 @@ func TestOnboardingImportCSVPreservesDistinctAffiliationHistories(t *testing.T) 
 
 func TestOnboardingImportCSVRejectsUnsafeEncodingAndShape(t *testing.T) {
 	t.Parallel()
-	service := &onboardingImportService{now: time.Now}
+	service := &onboardingImportService{deps: onboardingImportServiceDependencies{Now: time.Now}}
 	current := &store.OnboardingImport{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportStudentClass, ActorUserID: model.NewUserID()}
 	for name, csv := range map[string]string{
 		"nul":              "email\nstudent@example.edu\x00\n",
@@ -225,9 +224,9 @@ func TestOnboardingImportRetriesAcademicAdministrationMailOutages(t *testing.T) 
 func TestStudentProgressionPreviewRecoversUnknownCommittedCompletion(t *testing.T) {
 	t.Parallel()
 	id := model.NewOnboardingImportID()
-	service := &onboardingImportService{imports: onboardingImportPersistenceFake{value: &store.OnboardingImport{
+	service := &onboardingImportService{deps: onboardingImportServiceDependencies{Imports: onboardingImportPersistenceFake{value: &store.OnboardingImport{
 		ID: id, Mode: model.OnboardingImportStudentProgression, State: model.OnboardingImportPreviewReady,
-	}}}
+	}}}}
 	require.NoError(t, service.previewProgression(context.Background(), id))
 }
 
@@ -269,7 +268,7 @@ func TestOnboardingImportInvalidBoundsRetainSafeTargetProjection(t *testing.T) {
 	require.NoError(t, err)
 	current := &store.OnboardingImport{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportStudentClass, ScopeType: model.RoleScopeClass,
 		ScopeID: class.ID.String(), ActorUserID: model.NewUserID()}
-	rows, _, _, err := (&onboardingImportService{classes: onboardingImportClassStoreFake{value: class}, periods: onboardingImportPeriodStoreFake{value: period}, now: func() time.Time { return at }}).parseCSV(context.Background(), invocation.Invocation{}, current,
+	rows, _, _, err := (&onboardingImportService{deps: onboardingImportServiceDependencies{Classes: onboardingImportClassStoreFake{value: class}, Periods: onboardingImportPeriodStoreFake{value: period}, Now: func() time.Time { return at }}}).parseCSV(context.Background(), invocation.Invocation{}, current,
 		strings.NewReader("email,start_at,end_at\nstudent@example.edu,200,100\n"))
 	require.NoError(t, err, "invalid row projection")
 	require.Len(t, rows, 1, "invalid row projection")
@@ -286,7 +285,7 @@ func TestOnboardingImportInvalidDuplicatePoisonsValidTwin(t *testing.T) {
 	require.NoError(t, err)
 	class, err := model.NewClass(model.NewClassID(), model.NewProgrammeLevelID(), period.ID, "a", "A", "", at)
 	require.NoError(t, err)
-	service := &onboardingImportService{classes: onboardingImportClassStoreFake{value: class}, periods: onboardingImportPeriodStoreFake{value: period}, now: func() time.Time { return at }}
+	service := &onboardingImportService{deps: onboardingImportServiceDependencies{Classes: onboardingImportClassStoreFake{value: class}, Periods: onboardingImportPeriodStoreFake{value: period}, Now: func() time.Time { return at }}}
 	current := &store.OnboardingImport{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportStudentClass, ScopeType: model.RoleScopeClass,
 		ScopeID: class.ID.String(), ActorUserID: model.NewUserID()}
 	rows, _, _, err := service.parseCSV(context.Background(), invocation.Invocation{}, current, strings.NewReader(
@@ -318,8 +317,7 @@ func TestOnboardingImportCSVValidatesTeacherAndInstitutionRolePackages(t *testin
 	role.PrepareCreate(model.NewRoleID(), at)
 	err = role.Validate()
 	require.NoError(t, err)
-	service := &onboardingImportService{units: onboardingImportUnitStoreFake{value: unit}, roles: onboardingImportRoleStoreFake{value: role},
-		institutions: onboardingImportInstitutionStoreFake{value: institution}, authorization: &invitationAuthorizerFake{actionErrors: map[model.Action]error{}}, now: func() time.Time { return at }}
+	service := &onboardingImportService{deps: onboardingImportServiceDependencies{Units: onboardingImportUnitStoreFake{value: unit}, Roles: onboardingImportRoleStoreFake{value: role}, Institutions: onboardingImportInstitutionStoreFake{value: institution}, Authorization: &invitationAuthorizerFake{actionErrors: map[model.Action]error{}}, Now: func() time.Time { return at }}}
 
 	teacher := &store.OnboardingImport{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportTeacherAcademicUnit, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: unit.ID.String(), RoleID: role.ID, ActorUserID: model.NewUserID()}
@@ -354,7 +352,7 @@ func TestOnboardingImportReportRequiresTerminalState(t *testing.T) {
 	t.Parallel()
 	current := &store.OnboardingImport{ID: model.NewOnboardingImportID(), State: model.OnboardingImportPreviewReady,
 		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewInstitutionID().String()}
-	service := &onboardingImportService{imports: onboardingImportPersistenceFake{value: current}, authorization: &invitationAuthorizerFake{}}
+	service := &onboardingImportService{deps: onboardingImportServiceDependencies{Imports: onboardingImportPersistenceFake{value: current}, Authorization: &invitationAuthorizerFake{}}}
 	err := service.OnboardingImportReport(context.Background(), invocation.Invocation{}, current.ID, &strings.Builder{})
 	require.True(t, apperror.Is(err, "onboarding_import.conflict"), "preview report error = %v", err)
 }
@@ -370,7 +368,7 @@ func TestOnboardingImportTransientRowCodesRemainRetryable(t *testing.T) {
 func TestOnboardingImportTargetReadFailuresRemainRetryable(t *testing.T) {
 	t.Parallel()
 	dependencyErr := errors.New("database unavailable")
-	service := &onboardingImportService{classes: onboardingImportClassStoreFake{err: dependencyErr}, now: time.Now}
+	service := &onboardingImportService{deps: onboardingImportServiceDependencies{Classes: onboardingImportClassStoreFake{err: dependencyErr}, Now: time.Now}}
 	current := &store.OnboardingImport{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportStudentClass, ScopeType: model.RoleScopeClass,
 		ScopeID: model.NewClassID().String(), ActorUserID: model.NewUserID()}
 	_, _, _, err := service.parseCSV(context.Background(), invocation.Invocation{}, current, strings.NewReader("email\nstudent@example.edu\n"))
@@ -395,7 +393,7 @@ func TestOnboardingImportExecutionJobResumesSafeTerminalCheckpointAcrossWorkers(
 	record, err := newOnboardingImportJob(model.JobTypeOnboardingImportExecute, id, at)
 	require.NoError(t, err)
 	record.Checkpoint = json.RawMessage(`{"after_row":41,"processed":37}`)
-	service := &onboardingImportService{imports: onboardingImportPersistenceFake{value: &store.OnboardingImport{ID: id, State: model.OnboardingImportCompleted, ValidRows: 37}}}
+	service := &onboardingImportService{deps: onboardingImportServiceDependencies{Imports: onboardingImportPersistenceFake{value: &store.OnboardingImport{ID: id, State: model.OnboardingImportCompleted, ValidRows: 37}}}}
 	handler := jobhandler.NewOnboardingImportExecuteDescriptor(onboardingImportJobs{service: service}).Handler
 	for worker := 0; worker < 2; worker++ {
 		outcome := handler.Run(context.Background(), job.NewExecution(record, &model.JobAttempt{ID: model.NewJobAttemptID()}, func(context.Context, job.CheckpointValue) error {
@@ -420,7 +418,7 @@ func TestOnboardingImportCSVMarksControlCharacterNamesInvalid(t *testing.T) {
 	require.NoError(t, err)
 	class, err := model.NewClass(model.NewClassID(), model.NewProgrammeLevelID(), period.ID, "a", "A", "", at)
 	require.NoError(t, err)
-	service := &onboardingImportService{classes: onboardingImportClassStoreFake{value: class}, periods: onboardingImportPeriodStoreFake{value: period}, now: func() time.Time { return at }}
+	service := &onboardingImportService{deps: onboardingImportServiceDependencies{Classes: onboardingImportClassStoreFake{value: class}, Periods: onboardingImportPeriodStoreFake{value: period}, Now: func() time.Time { return at }}}
 	current := &store.OnboardingImport{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportStudentClass, ScopeType: model.RoleScopeClass,
 		ScopeID: class.ID.String(), ActorUserID: model.NewUserID()}
 	csv := "email,display_name,first_name\r\n" +

@@ -52,7 +52,7 @@ func TestJobHistoryCleanupContinuesAcrossNodesPastOneDailyBatch(t *testing.T) {
 		require.NoError(t, proposer.Propose(ctx, occurrence))
 	}
 	for _, nodeID := range []string{"cleanup-node-a", "cleanup-node-b"} {
-		engine, err := job.New(job.Config{Store: ss.Job(), Descriptors: []job.Descriptor{descriptor}, NodeID: nodeID,
+		engine, err := job.New(job.Dependencies{Store: ss.Job(), Descriptors: []job.Descriptor{descriptor}, NodeID: nodeID,
 			Diagnostics: historyCleanupDiagnostics{t: t}, Policy: job.Policy{PollInterval: 5 * time.Millisecond, ShutdownTimeout: time.Second}})
 		require.NoError(t, err)
 		err = engine.Start(ctx)

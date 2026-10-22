@@ -57,28 +57,24 @@ type sessionAdministrationUserStore interface {
 	Get(context.Context, model.UserID) (*model.User, error)
 }
 
-type sessionAdministrationService struct {
-	sessions      sessionAdministrationStore
-	users         sessionAdministrationUserStore
-	authorization resourceAuthorizer
-	audit         mutationAuditor
-	mail          sessionAdministrationMailPreparer
-	effects       sessionRevocationEffects
-	now           func() time.Time
+// sessionAdministrationServiceDependencies are the collaborators of sessionAdministrationService;
+// newSessionAdministrationService validates them once and sessionAdministrationService keeps them in deps.
+type sessionAdministrationServiceDependencies struct {
+	Sessions      sessionAdministrationStore
+	Users         sessionAdministrationUserStore
+	Authorization resourceAuthorizer
+	Audit         mutationAuditor
+	Mail          sessionAdministrationMailPreparer
+	Effects       sessionRevocationEffects
+	Now           func() time.Time
 }
 
-func newSessionAdministrationService(
-	sessions sessionAdministrationStore,
-	users sessionAdministrationUserStore,
-	authorization resourceAuthorizer,
-	audit mutationAuditor,
-	mail sessionAdministrationMailPreparer,
-	effects sessionRevocationEffects,
-	now func() time.Time,
-) *sessionAdministrationService {
-	return &sessionAdministrationService{
-		sessions: sessions, users: users, authorization: authorization, audit: audit, mail: mail, effects: effects, now: now,
-	}
+type sessionAdministrationService struct {
+	deps sessionAdministrationServiceDependencies
+}
+
+func newSessionAdministrationService(deps sessionAdministrationServiceDependencies) *sessionAdministrationService {
+	return &sessionAdministrationService{deps: deps}
 }
 
 func (s *sessionAdministrationService) ListUserSessions(
@@ -97,7 +93,7 @@ func (s *sessionAdministrationService) ListUserSessions(
 		(!query.BeforeID.IsZero() && !query.BeforeID.IsValid()) {
 		return nil, apperror.Invalid("request.invalid", "cursor")
 	}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionSessionView, model.Resource{Type: model.ResourceUser, ID: userID.String()}); err != nil {
+	if err := s.deps.Authorization.Authorize(ctx, invocation, model.ActionSessionView, model.Resource{Type: model.ResourceUser, ID: userID.String()}); err != nil {
 		return nil, err
 	}
 	page := &store.SessionPageQuery{
@@ -105,9 +101,9 @@ func (s *sessionAdministrationService) ListUserSessions(
 		BeforeCreatedAt: query.BeforeCreatedAt, BeforeID: query.BeforeID,
 	}
 	if !query.IncludeRevoked {
-		page.ActiveAt = model.TimeUTC(s.now())
+		page.ActiveAt = model.TimeUTC(s.deps.Now())
 	}
-	sessions, err := s.sessions.ListByUser(ctx, page)
+	sessions, err := s.deps.Sessions.ListByUser(ctx, page)
 	if err != nil {
 		return nil, sessionAdministrationStoreErrors.Translate(err)
 	}
@@ -130,27 +126,27 @@ func (s *sessionAdministrationService) RevokeUserSession(
 	if !sessionID.IsValid() {
 		return apperror.New("request.invalid").WithField("field", "session_id")
 	}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionSessionManage, model.Resource{Type: model.ResourceUser, ID: userID.String()}); err != nil {
+	if err := s.deps.Authorization.Authorize(ctx, invocation, model.ActionSessionManage, model.Resource{Type: model.ResourceUser, ID: userID.String()}); err != nil {
 		return err
 	}
-	session, err := s.sessions.Get(ctx, sessionID)
+	session, err := s.deps.Sessions.Get(ctx, sessionID)
 	if err != nil || session.UserID != userID {
 		if err == nil {
 			err = store.NewErrNotFound("session", sessionID.String())
 		}
 		return sessionAdministrationStoreErrors.Translate(err)
 	}
-	user, err := s.users.Get(ctx, userID)
+	user, err := s.deps.Users.Get(ctx, userID)
 	if err != nil {
 		return sessionAdministrationStoreErrors.Translate(err)
 	}
-	now := model.TimeFromMillis(s.now().UnixMilli())
+	now := model.TimeFromMillis(s.deps.Now().UnixMilli())
 	prepared, err := s.prepareRevocationNotice(user, now)
 	if err != nil {
 		return sessionAdministrationStoreErrors.Translate(err)
 	}
 	revocations := sessionRevocationCoordinator{
-		sessions: s.sessions, audit: s.audit, effects: s.effects, now: func() time.Time { return now },
+		sessions: s.deps.Sessions, audit: s.deps.Audit, effects: s.deps.Effects, now: func() time.Time { return now },
 	}
 	return revocations.revokeOne(ctx,
 		mutationAttempt{
@@ -179,14 +175,14 @@ func (s *sessionAdministrationService) RevokeUserSessions(
 	if !userID.IsValid() {
 		return apperror.New("request.invalid").WithField("field", "user_id")
 	}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionSessionManage, model.Resource{Type: model.ResourceUser, ID: userID.String()}); err != nil {
+	if err := s.deps.Authorization.Authorize(ctx, invocation, model.ActionSessionManage, model.Resource{Type: model.ResourceUser, ID: userID.String()}); err != nil {
 		return err
 	}
-	user, err := s.users.Get(ctx, userID)
+	user, err := s.deps.Users.Get(ctx, userID)
 	if err != nil {
 		return sessionAdministrationStoreErrors.Translate(err)
 	}
-	now := model.TimeFromMillis(s.now().UnixMilli())
+	now := model.TimeFromMillis(s.deps.Now().UnixMilli())
 	idempotency, err := idempotency.Prepare(invocation, "user_sessions.revoke", command.IdempotencyKey, struct {
 		UserID string `json:"user_id"`
 	}{userID.String()})
@@ -206,7 +202,7 @@ func (s *sessionAdministrationService) RevokeUserSessions(
 		}
 	}
 	revocations := sessionRevocationCoordinator{
-		sessions: s.sessions, audit: s.audit, effects: s.effects, now: func() time.Time { return now },
+		sessions: s.deps.Sessions, audit: s.deps.Audit, effects: s.deps.Effects, now: func() time.Time { return now },
 	}
 	return revocations.revokeAll(ctx,
 		mutationAttempt{
@@ -226,7 +222,7 @@ func (s *sessionAdministrationService) RevokeUserSessions(
 }
 
 func (s *sessionAdministrationService) prepareRevocationNotice(user *model.User, at time.Time) (*store.PreparedMail, error) {
-	return s.mail.PrepareSessionsRevokedByAdministrator(mail.NoticePreparation{Recipient: user, At: at})
+	return s.deps.Mail.PrepareSessionsRevokedByAdministrator(mail.NoticePreparation{Recipient: user, At: at})
 }
 
 var sessionAdministrationStoreErrors = apperror.StoreTable{

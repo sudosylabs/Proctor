@@ -187,7 +187,7 @@ func TestRealtimeHandlerRegistrationFailureUnwindsComposition(t *testing.T) {
 			return newRealtimeClusterAdapter(cluster)
 		},
 		attachRealtime: func(_ *app.App, fanout realtime.ClusterFanout) error {
-			service, err := realtime.New(noopRealtimeInvalidator{}, silentClusterLogger{})
+			service, err := realtime.New(realtime.Dependencies{AuthenticationInvalidator: noopRealtimeInvalidator{}, Diagnostics: silentClusterLogger{}})
 			if err != nil {
 				return err
 			}

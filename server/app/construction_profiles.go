@@ -18,31 +18,13 @@ func constructProfilesAndFiles(
 		authorization: access.authorization,
 		institutions:  deps.Store.Institution(),
 	}
-	userSettings, err := newUserSettingsService(
-		deps.Store.UserSettings(),
-		userSettingsAuditAdapter{audit: foundation.audit},
-		userSettingsRealtimeEffects{realtime: foundation.realtime},
-		userSettingsEffectReporter{realtime: foundation.realtime},
-		time.Now,
-	)
+	userSettings, err := newUserSettingsService(userSettingsServiceDependencies{Settings: deps.Store.UserSettings(), Audit: userSettingsAuditAdapter{audit: foundation.audit}, Effects: userSettingsRealtimeEffects{realtime: foundation.realtime}, EffectFailures: userSettingsEffectReporter{realtime: foundation.realtime}, Now: time.Now})
 	if err != nil {
 		return profileFileConstruction{}, err
 	}
 	return profileFileConstruction{
-		userProfiles: newUserProfileService(
-			deps.Store.User(), authorization,
-			mutationAuditAdapter{audit: foundation.audit}, time.Now,
-		),
-		profilePictures: newProfilePictureService(
-			deps.Store.User(), deps.Store.File(),
-			deps.FileContent, deps.FileContent, deps.FileContent, deps.FileContent,
-			authorization,
-			mutationAuditAdapter{audit: foundation.audit},
-			profilePictureRealtimeEffects{realtime: foundation.realtime},
-			profilePictureEffectReporter{realtime: foundation.realtime},
-			nil,
-			time.Now,
-		),
-		userSettings: userSettings,
+		userProfiles:    newUserProfileService(userProfileServiceDependencies{Users: deps.Store.User(), Authorization: authorization, Audit: mutationAuditAdapter{audit: foundation.audit}, Now: time.Now}),
+		profilePictures: newProfilePictureService(profilePictureServiceDependencies{Users: deps.Store.User(), Files: deps.Store.File(), Uploads: deps.FileContent, Reads: deps.FileContent, Fallback: deps.FileContent, Defaults: deps.FileContent, Authorization: authorization, Audit: mutationAuditAdapter{audit: foundation.audit}, Effects: profilePictureRealtimeEffects{realtime: foundation.realtime}, EffectFailures: profilePictureEffectReporter{realtime: foundation.realtime}, DefaultJobs: nil, Now: time.Now}),
+		userSettings:    userSettings,
 	}, nil
 }

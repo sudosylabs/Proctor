@@ -45,24 +45,33 @@ type passwordParameters struct {
 	keyBytes    uint32
 }
 
+// passwordHasherDependencies are the collaborators of passwordHasher;
+// newPasswordHasher validates them once and passwordHasher keeps them in deps.
+type passwordHasherDependencies struct {
+	Settings PasswordPolicy
+	Recorder PasswordWorkRecorder
+}
+
 type passwordHasher struct {
+	deps passwordHasherDependencies
+
 	minimumLength int
 	maximumLength int
 	parameters    passwordParameters
 	dummyHash     string
 	work          chan struct{}
-	recorder      PasswordWorkRecorder
 }
 
-func newPasswordHasher(settings PasswordPolicy, recorder PasswordWorkRecorder) (*passwordHasher, error) {
+func newPasswordHasher(deps passwordHasherDependencies) (*passwordHasher, error) {
+	settings := deps.Settings
 	if settings.MaximumConcurrentOperations <= 0 {
 		return nil, errors.New("maximum concurrent password operations must be positive")
 	}
 	hasher := &passwordHasher{
+		deps:          deps,
 		minimumLength: settings.MinimumLength,
 		maximumLength: settings.MaximumLength,
 		work:          make(chan struct{}, settings.MaximumConcurrentOperations),
-		recorder:      recorder,
 		parameters: passwordParameters{
 			memoryKiB:   uint32(settings.ArgonMemoryKiB),
 			iterations:  uint32(settings.ArgonIterations),
@@ -190,12 +199,12 @@ func (h *passwordHasher) admit(ctx context.Context) (func(), error) {
 			return nil, err
 		}
 		startedAt := time.Now()
-		if h.recorder != nil {
-			h.recorder.Started()
+		if h.deps.Recorder != nil {
+			h.deps.Recorder.Started()
 		}
 		return func() {
-			if h.recorder != nil {
-				h.recorder.Finished(time.Since(startedAt))
+			if h.deps.Recorder != nil {
+				h.deps.Recorder.Finished(time.Since(startedAt))
 			}
 			<-h.work
 		}, nil
@@ -203,8 +212,8 @@ func (h *passwordHasher) admit(ctx context.Context) (func(), error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if h.recorder != nil {
-			h.recorder.Rejected()
+		if h.deps.Recorder != nil {
+			h.deps.Recorder.Rejected()
 		}
 		return nil, apperror.New("service.busy")
 	}

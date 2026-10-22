@@ -31,22 +31,21 @@ type institutionStore interface {
 	Update(context.Context, *store.InstitutionUpdate) (*model.Institution, error)
 }
 
-type institutionService struct {
-	store         institutionStore
-	authorization resourceAuthorizer
-	audit         mutationAuditor
-	now           func() time.Time
+// institutionServiceDependencies are the collaborators of institutionService;
+// newInstitutionService validates them once and institutionService keeps them in deps.
+type institutionServiceDependencies struct {
+	Store         institutionStore
+	Authorization resourceAuthorizer
+	Audit         mutationAuditor
+	Now           func() time.Time
 }
 
-func newInstitutionService(
-	persistence institutionStore,
-	authorization resourceAuthorizer,
-	audit mutationAuditor,
-	now func() time.Time,
-) *institutionService {
-	return &institutionService{
-		store: persistence, authorization: authorization, audit: audit, now: now,
-	}
+type institutionService struct {
+	deps institutionServiceDependencies
+}
+
+func newInstitutionService(deps institutionServiceDependencies) *institutionService {
+	return &institutionService{deps: deps}
 }
 
 func (s *institutionService) GetInstitution(
@@ -54,11 +53,11 @@ func (s *institutionService) GetInstitution(
 	invocation invocation.Invocation,
 	_ GetInstitutionQuery,
 ) (*model.Institution, error) {
-	institution, err := s.store.GetSingleton(ctx)
+	institution, err := s.deps.Store.GetSingleton(ctx)
 	if err != nil {
 		return nil, institutionStoreErrors.Translate(err)
 	}
-	if err := s.authorization.Authorize(
+	if err := s.deps.Authorization.Authorize(
 		ctx, invocation, model.ActionInstitutionManage,
 		model.Resource{Type: model.ResourceInstitution, ID: institution.ResourceID()},
 	); err != nil {
@@ -72,12 +71,12 @@ func (s *institutionService) UpdateInstitution(
 	invocation invocation.Invocation,
 	command UpdateInstitutionCommand,
 ) (*model.Institution, error) {
-	current, err := s.store.GetSingleton(ctx)
+	current, err := s.deps.Store.GetSingleton(ctx)
 	if err != nil {
 		return nil, institutionStoreErrors.Translate(err)
 	}
 	resource := model.Resource{Type: model.ResourceInstitution, ID: current.ResourceID()}
-	if err := s.authorization.Authorize(
+	if err := s.deps.Authorization.Authorize(
 		ctx, invocation, model.ActionInstitutionManage, resource,
 	); err != nil {
 		return nil, err
@@ -95,13 +94,13 @@ func (s *institutionService) UpdateInstitution(
 	if command.ExamCapacity != nil {
 		candidate.ExamCapacity = *command.ExamCapacity
 	}
-	candidate.PrepareUpdate(s.now())
+	candidate.PrepareUpdate(s.deps.Now())
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("institution.invalid", err)
 	}
 	return runAuditedMutation(
 		ctx,
-		s.audit,
+		s.deps.Audit,
 		mutationAttempt{
 			Invocation: invocation,
 			Action:     model.ActionInstitutionManage,
@@ -110,9 +109,9 @@ func (s *institutionService) UpdateInstitution(
 			Value:      candidate.Auditable(),
 			Prior:      current.Auditable(),
 		},
-		s.now,
+		s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Institution, error) {
-			return s.store.Update(ctx, &store.InstitutionUpdate{
+			return s.deps.Store.Update(ctx, &store.InstitutionUpdate{
 				Institution: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},

@@ -59,26 +59,26 @@ type authenticationSessionIssuer interface {
 	) (*model.Session, *model.AuthenticationTokens, error)
 }
 
-type personalAccessTokenBearerResolver struct {
-	tokens      store.PersonalAccessTokenStore
-	policy      PersonalAccessTokenPolicy
-	diagnostics authenticationDiagnostics
+// personalAccessTokenBearerResolverDependencies are the collaborators of personalAccessTokenBearerResolver;
+// newPersonalAccessTokenBearerResolver validates them once and personalAccessTokenBearerResolver keeps them in deps.
+type personalAccessTokenBearerResolverDependencies struct {
+	Tokens      store.PersonalAccessTokenStore
+	Policy      PersonalAccessTokenPolicy
+	Diagnostics authenticationDiagnostics
 }
 
-func newPersonalAccessTokenBearerResolver(
-	tokens store.PersonalAccessTokenStore,
-	policy PersonalAccessTokenPolicy,
-	diagnostics authenticationDiagnostics,
-) (*personalAccessTokenBearerResolver, error) {
-	if tokens == nil {
+type personalAccessTokenBearerResolver struct {
+	deps personalAccessTokenBearerResolverDependencies
+}
+
+func newPersonalAccessTokenBearerResolver(deps personalAccessTokenBearerResolverDependencies) (*personalAccessTokenBearerResolver, error) {
+	if deps.Tokens == nil {
 		return nil, errors.New("personal access token store is required")
 	}
-	if diagnostics == nil {
+	if deps.Diagnostics == nil {
 		return nil, errors.New("personal access token diagnostics are required")
 	}
-	return &personalAccessTokenBearerResolver{
-		tokens: tokens, policy: policy, diagnostics: diagnostics,
-	}, nil
+	return &personalAccessTokenBearerResolver{deps: deps}, nil
 }
 
 func (r *personalAccessTokenBearerResolver) ResolveBearer(
@@ -89,11 +89,11 @@ func (r *personalAccessTokenBearerResolver) ResolveBearer(
 	if !validRawCredential(rawToken) {
 		return nil, invalidTokenAppError()
 	}
-	resolved, err := r.tokens.Resolve(
+	resolved, err := r.deps.Tokens.Resolve(
 		ctx,
 		model.HashToken(rawToken),
 		model.TimeUTC(at),
-		r.policy.LastUsedUpdateInterval,
+		r.deps.Policy.LastUsedUpdateInterval,
 	)
 	if err != nil {
 		if store.IsNotFound(err) {
@@ -111,7 +111,7 @@ func (r *personalAccessTokenBearerResolver) ResolveBearer(
 		AcademicUnitID:       resolved.Token.AcademicUnitID,
 	}
 	if principal.Validate() != nil {
-		r.diagnostics.WarnContext(
+		r.deps.Diagnostics.WarnContext(
 			ctx,
 			"personal access token resolved to invalid principal",
 			fmt.Errorf("personal_access_token_id=%s", resolved.Token.ID.String()),

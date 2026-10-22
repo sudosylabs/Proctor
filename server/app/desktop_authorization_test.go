@@ -36,11 +36,7 @@ func TestDesktopLocalAuthenticationPreservesPasswordCapacityFailure(t *testing.T
 			transactions := &desktopAuthorizationStoreFake{}
 			identity := testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", time.Now)
 			identity.authentication = authentication
-			service, err := newDesktopAuthorizationService(transactions,
-				desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
-				desktopAuthorizationAccessPolicyFake{enabled: true}, &accessPolicyCapabilitiesFake{},
-				desktopAuthorizationAuditorFake{}, &desktopAuthorizationAttemptLimiterFake{}, testDesktopSessionPolicy(),
-				DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, model.NewCredentialToken, time.Now, identity)
+			service, err := newDesktopAuthorizationService(desktopAuthorizationServiceDependencies{Transactions: transactions, Institutions: desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}}, AccessPolicy: desktopAuthorizationAccessPolicyFake{enabled: true}, Capabilities: &accessPolicyCapabilitiesFake{}, Audit: desktopAuthorizationAuditorFake{}, Attempts: &desktopAuthorizationAttemptLimiterFake{}, SessionPolicy: testDesktopSessionPolicy(), Policy: DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, NewCredential: model.NewCredentialToken, Now: time.Now, Identity: identity})
 			require.NoError(t, err)
 			command := AuthenticateDesktopAuthorizationLocallyCommand{
 				Binding: model.NewCredentialToken(), LoginID: user.Email, Password: password, Source: "192.0.2.37",
@@ -48,7 +44,7 @@ func TestDesktopLocalAuthenticationPreservesPasswordCapacityFailure(t *testing.T
 			if account == "missing" {
 				command.LoginID = "missing@example.edu"
 			}
-			saturatePasswordWork(t, authentication.hasher)
+			saturatePasswordWork(t, authentication.deps.Hasher)
 			result, err := service.AuthenticateDesktopAuthorizationLocally(context.Background(), invocation.Invocation{}, command)
 			require.Nil(t, result, "saturated Desktop authentication = %#v/%v", result, err)
 			require.True(t, apperror.Is(err, "service.busy"), "saturated Desktop authentication = %#v/%v", result, err)
@@ -74,19 +70,7 @@ func TestDesktopAuthorizationStartPinsPublicClientRequest(t *testing.T) {
 	next := 0
 	persistence := &desktopAuthorizationStoreFake{createExpiresAt: at.Add(5 * time.Minute)}
 	institution := &model.Institution{ID: model.NewInstitutionID()}
-	service, err := newDesktopAuthorizationService(
-		persistence,
-		desktopAuthorizationInstitutionStoreFake{institution: institution},
-		desktopAuthorizationAccessPolicyFake{enabled: true},
-		&accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{}},
-		desktopAuthorizationAuditorFake{},
-		&desktopAuthorizationAttemptLimiterFake{},
-		testDesktopSessionPolicy(),
-		DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"},
-		func() string { value := generated[next]; next++; return value },
-		func() time.Time { return at },
-		testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at }),
-	)
+	service, err := newDesktopAuthorizationService(desktopAuthorizationServiceDependencies{Transactions: persistence, Institutions: desktopAuthorizationInstitutionStoreFake{institution: institution}, AccessPolicy: desktopAuthorizationAccessPolicyFake{enabled: true}, Capabilities: &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{}}, Audit: desktopAuthorizationAuditorFake{}, Attempts: &desktopAuthorizationAttemptLimiterFake{}, SessionPolicy: testDesktopSessionPolicy(), Policy: DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, NewCredential: func() string { value := generated[next]; next++; return value }, Now: func() time.Time { return at }, Identity: testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at })})
 	require.NoError(t, err)
 	state := model.NewCredentialToken()
 	challenge := model.NewCredentialToken()
@@ -132,19 +116,7 @@ func TestDesktopAuthorizationStartRejectsMaintenanceBeforePersistence(t *testing
 		Availability:  model.DesktopAvailabilityMaintenance,
 		Compatibility: DesktopCompatibilityCompatible,
 	}}
-	service, err := newDesktopAuthorizationService(
-		persistence,
-		desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
-		desktopAuthorizationAccessPolicyFake{enabled: true},
-		&accessPolicyCapabilitiesFake{},
-		desktopAuthorizationAuditorFake{},
-		&desktopAuthorizationAttemptLimiterFake{},
-		testDesktopSessionPolicy(),
-		DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"},
-		model.NewCredentialToken,
-		func() time.Time { return at },
-		identity,
-	)
+	service, err := newDesktopAuthorizationService(desktopAuthorizationServiceDependencies{Transactions: persistence, Institutions: desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}}, AccessPolicy: desktopAuthorizationAccessPolicyFake{enabled: true}, Capabilities: &accessPolicyCapabilitiesFake{}, Audit: desktopAuthorizationAuditorFake{}, Attempts: &desktopAuthorizationAttemptLimiterFake{}, SessionPolicy: testDesktopSessionPolicy(), Policy: DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, NewCredential: model.NewCredentialToken, Now: func() time.Time { return at }, Identity: identity})
 	require.NoError(t, err)
 	command := StartDesktopAuthorizationCommand{
 		CallbackURL:   "http://127.0.0.1:49152/" + model.NewCredentialToken(),
@@ -162,14 +134,7 @@ func TestDesktopAuthorizationStartRejectsEqualGeneratedProofsBeforeStore(t *test
 	t.Parallel()
 	persistence := &desktopAuthorizationStoreFake{}
 	credential := model.NewCredentialToken()
-	service, err := newDesktopAuthorizationService(
-		persistence,
-		desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
-		desktopAuthorizationAccessPolicyFake{enabled: true}, &accessPolicyCapabilitiesFake{},
-		desktopAuthorizationAuditorFake{}, &desktopAuthorizationAttemptLimiterFake{}, testDesktopSessionPolicy(),
-		DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, func() string { return credential }, time.Now,
-		testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", time.Now),
-	)
+	service, err := newDesktopAuthorizationService(desktopAuthorizationServiceDependencies{Transactions: persistence, Institutions: desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}}, AccessPolicy: desktopAuthorizationAccessPolicyFake{enabled: true}, Capabilities: &accessPolicyCapabilitiesFake{}, Audit: desktopAuthorizationAuditorFake{}, Attempts: &desktopAuthorizationAttemptLimiterFake{}, SessionPolicy: testDesktopSessionPolicy(), Policy: DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, NewCredential: func() string { return credential }, Now: time.Now, Identity: testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", time.Now)})
 	require.NoError(t, err)
 	command := StartDesktopAuthorizationCommand{
 		CallbackURL: "http://127.0.0.1:49152/" + model.NewCredentialToken(), State: model.NewCredentialToken(),
@@ -185,14 +150,7 @@ func TestDesktopAuthorizationLoopbackHTTPIssuerRequiresExplicitDevelopmentPolicy
 	t.Parallel()
 
 	dependencies := func(policy DesktopAuthorizationPolicy) error {
-		_, err := newDesktopAuthorizationService(
-			&desktopAuthorizationStoreFake{},
-			desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
-			desktopAuthorizationAccessPolicyFake{enabled: true}, &accessPolicyCapabilitiesFake{},
-			desktopAuthorizationAuditorFake{}, &desktopAuthorizationAttemptLimiterFake{}, testDesktopSessionPolicy(),
-			policy, model.NewCredentialToken, time.Now,
-			testDesktopAuthorizationIdentity(t, policy.Issuer, time.Now),
-		)
+		_, err := newDesktopAuthorizationService(desktopAuthorizationServiceDependencies{Transactions: &desktopAuthorizationStoreFake{}, Institutions: desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}}, AccessPolicy: desktopAuthorizationAccessPolicyFake{enabled: true}, Capabilities: &accessPolicyCapabilitiesFake{}, Audit: desktopAuthorizationAuditorFake{}, Attempts: &desktopAuthorizationAttemptLimiterFake{}, SessionPolicy: testDesktopSessionPolicy(), Policy: policy, NewCredential: model.NewCredentialToken, Now: time.Now, Identity: testDesktopAuthorizationIdentity(t, policy.Issuer, time.Now)})
 		return err
 	}
 	require.Error(t, dependencies(DesktopAuthorizationPolicy{Issuer: "http://localhost:8065"}), "loopback HTTP issuer accepted without explicit development policy")
@@ -208,15 +166,7 @@ func TestDesktopAuthorizationApprovalAndExchangeArePurposeBound(t *testing.T) {
 	generated := []string{code, access, refresh}
 	persistence := &desktopAuthorizationStoreFake{}
 	institution := &model.Institution{ID: model.NewInstitutionID()}
-	service, err := newDesktopAuthorizationService(
-		persistence, desktopAuthorizationInstitutionStoreFake{institution: institution},
-		desktopAuthorizationAccessPolicyFake{enabled: true},
-		&accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{{Descriptor: model.ExternalAuthenticationProvider{ID: "campus"}}}}},
-		desktopAuthorizationAuditorFake{}, &desktopAuthorizationAttemptLimiterFake{}, testDesktopSessionPolicy(),
-		DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"},
-		func() string { value := generated[0]; generated = generated[1:]; return value }, func() time.Time { return at },
-		testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at }),
-	)
+	service, err := newDesktopAuthorizationService(desktopAuthorizationServiceDependencies{Transactions: persistence, Institutions: desktopAuthorizationInstitutionStoreFake{institution: institution}, AccessPolicy: desktopAuthorizationAccessPolicyFake{enabled: true}, Capabilities: &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{{Descriptor: model.ExternalAuthenticationProvider{ID: "campus"}}}}}, Audit: desktopAuthorizationAuditorFake{}, Attempts: &desktopAuthorizationAttemptLimiterFake{}, SessionPolicy: testDesktopSessionPolicy(), Policy: DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, NewCredential: func() string { value := generated[0]; generated = generated[1:]; return value }, Now: func() time.Time { return at }, Identity: testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at })})
 	require.NoError(t, err)
 	binding, state := model.NewCredentialToken(), model.NewCredentialToken()
 	callback := "http://[::1]:49152/" + model.NewCredentialToken()
@@ -266,16 +216,7 @@ func TestDesktopAuthorizationTerminalStoreRejectionCompletesFailureAudit(t *test
 	at := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
 	auditor := &recordingDesktopAuthorizationAuditor{}
 	persistence := &desktopAuthorizationStoreFake{issueErr: store.NewErrNotFound("browser_authentication_transaction", "")}
-	service, err := newDesktopAuthorizationService(
-		persistence,
-		desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
-		desktopAuthorizationAccessPolicyFake{enabled: true},
-		&accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{}}, auditor,
-		&desktopAuthorizationAttemptLimiterFake{},
-		testDesktopSessionPolicy(), DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"},
-		model.NewCredentialToken, func() time.Time { return at },
-		testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at }),
-	)
+	service, err := newDesktopAuthorizationService(desktopAuthorizationServiceDependencies{Transactions: persistence, Institutions: desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}}, AccessPolicy: desktopAuthorizationAccessPolicyFake{enabled: true}, Capabilities: &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{}}, Audit: auditor, Attempts: &desktopAuthorizationAttemptLimiterFake{}, SessionPolicy: testDesktopSessionPolicy(), Policy: DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, NewCredential: model.NewCredentialToken, Now: func() time.Time { return at }, Identity: testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at })})
 	require.NoError(t, err)
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
 		CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess,
@@ -304,14 +245,7 @@ func TestDesktopAuthorizationExchangeFailsClosedWhenSessionNonceCannotBeStored(t
 	persistence := &desktopAuthorizationStoreFake{}
 	auditor := &recordingDesktopAuthorizationAuditor{}
 	identity := testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at })
-	service, err := newDesktopAuthorizationService(
-		persistence,
-		desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
-		desktopAuthorizationAccessPolicyFake{enabled: true}, &accessPolicyCapabilitiesFake{},
-		auditor, &desktopAuthorizationAttemptLimiterFake{}, testDesktopSessionPolicy(),
-		DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, model.NewCredentialToken,
-		func() time.Time { return at }, identity,
-	)
+	service, err := newDesktopAuthorizationService(desktopAuthorizationServiceDependencies{Transactions: persistence, Institutions: desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}}, AccessPolicy: desktopAuthorizationAccessPolicyFake{enabled: true}, Capabilities: &accessPolicyCapabilitiesFake{}, Audit: auditor, Attempts: &desktopAuthorizationAttemptLimiterFake{}, SessionPolicy: testDesktopSessionPolicy(), Policy: DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, NewCredential: model.NewCredentialToken, Now: func() time.Time { return at }, Identity: identity})
 	require.NoError(t, err)
 	command := testDesktopAuthorizationExchangeCommand(
 		t, service, at, model.NewCredentialToken(), model.NewCredentialToken(), model.NewCredentialToken(), "",
@@ -321,12 +255,12 @@ func TestDesktopAuthorizationExchangeFailsClosedWhenSessionNonceCannotBeStored(t
 		Session: session, Registration: registration,
 		AccessExpiresAt: at.Add(5 * time.Minute), RefreshExpiresAt: at.Add(time.Hour),
 	}
-	identity.dpop.cache.(*dpopCacheFake).setAlwaysErr = errors.New("shared nonce cache unavailable")
+	identity.dpop.deps.Cache.(*dpopCacheFake).setAlwaysErr = errors.New("shared nonce cache unavailable")
 
 	result, err := service.ExchangeDesktopAuthorization(context.Background(), invocation.Invocation{}, command)
 	require.Nil(t, result, "Exchange() = %#v, %v; want no credential response", result, err)
 	require.True(t, apperror.Is(err, "authentication.dpop.unavailable"), "Exchange() = %#v, %v; want no credential response", result, err)
-	sessions := identity.authentication.sessions.(*desktopAuthorizationSessionStoreStub)
+	sessions := identity.authentication.deps.Sessions.(*desktopAuthorizationSessionStoreStub)
 	require.Equal(t, session.ID.String(), sessions.revokedID)
 	require.Equal(t, session.UserID.String(), sessions.revokedUserID)
 	require.Equal(t, model.SessionRevocationDesktopAuthorizationFailed, sessions.reason)
@@ -340,16 +274,7 @@ func TestDesktopAuthorizationCrossAccountApprovalIsAudited(t *testing.T) {
 	at := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
 	auditor := &recordingDesktopAuthorizationAuditor{}
 	persistence := &desktopAuthorizationStoreFake{}
-	service, err := newDesktopAuthorizationService(
-		persistence,
-		desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
-		desktopAuthorizationAccessPolicyFake{enabled: true},
-		&accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{}}, auditor,
-		&desktopAuthorizationAttemptLimiterFake{},
-		testDesktopSessionPolicy(), DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"},
-		model.NewCredentialToken, func() time.Time { return at },
-		testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at }),
-	)
+	service, err := newDesktopAuthorizationService(desktopAuthorizationServiceDependencies{Transactions: persistence, Institutions: desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}}, AccessPolicy: desktopAuthorizationAccessPolicyFake{enabled: true}, Capabilities: &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{}}, Audit: auditor, Attempts: &desktopAuthorizationAttemptLimiterFake{}, SessionPolicy: testDesktopSessionPolicy(), Policy: DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, NewCredential: model.NewCredentialToken, Now: func() time.Time { return at }, Identity: testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at })})
 	require.NoError(t, err)
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
 		CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess,
@@ -372,13 +297,7 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 		"invalid Institution identity": {},
 	} {
 		t.Run(name, func(t *testing.T) {
-			service, err := newDesktopAuthorizationService(
-				&desktopAuthorizationStoreFake{}, desktopAuthorizationInstitutionStoreFake{institution: institution},
-				desktopAuthorizationAccessPolicyFake{enabled: true}, &accessPolicyCapabilitiesFake{},
-				desktopAuthorizationAuditorFake{}, &desktopAuthorizationAttemptLimiterFake{}, testDesktopSessionPolicy(),
-				DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, model.NewCredentialToken, func() time.Time { return at },
-				testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at }),
-			)
+			service, err := newDesktopAuthorizationService(desktopAuthorizationServiceDependencies{Transactions: &desktopAuthorizationStoreFake{}, Institutions: desktopAuthorizationInstitutionStoreFake{institution: institution}, AccessPolicy: desktopAuthorizationAccessPolicyFake{enabled: true}, Capabilities: &accessPolicyCapabilitiesFake{}, Audit: desktopAuthorizationAuditorFake{}, Attempts: &desktopAuthorizationAttemptLimiterFake{}, SessionPolicy: testDesktopSessionPolicy(), Policy: DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, NewCredential: model.NewCredentialToken, Now: func() time.Time { return at }, Identity: testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at })})
 			require.NoError(t, err)
 			command := StartDesktopAuthorizationCommand{
 				CallbackURL: "http://127.0.0.1:49152/" + model.NewCredentialToken(), State: model.NewCredentialToken(),
@@ -390,15 +309,7 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 		})
 	}
 	newService := func(persistence *desktopAuthorizationStoreFake, audit desktopAuthorizationAuditor) *desktopAuthorizationService {
-		service, err := newDesktopAuthorizationService(
-			persistence,
-			desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
-			desktopAuthorizationAccessPolicyFake{enabled: true}, &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{}},
-			audit, &desktopAuthorizationAttemptLimiterFake{}, testDesktopSessionPolicy(),
-			DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, model.NewCredentialToken,
-			func() time.Time { return at },
-			testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at }),
-		)
+		service, err := newDesktopAuthorizationService(desktopAuthorizationServiceDependencies{Transactions: persistence, Institutions: desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}}, AccessPolicy: desktopAuthorizationAccessPolicyFake{enabled: true}, Capabilities: &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{}}, Audit: audit, Attempts: &desktopAuthorizationAttemptLimiterFake{}, SessionPolicy: testDesktopSessionPolicy(), Policy: DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, NewCredential: model.NewCredentialToken, Now: func() time.Time { return at }, Identity: testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at })})
 		require.NoError(t, err)
 		return service
 	}
@@ -459,16 +370,7 @@ func TestDesktopAuthorizationPublicAttemptLimitsPrecedePersistenceAndAudit(t *te
 	persistence := &desktopAuthorizationStoreFake{}
 	auditor := &recordingDesktopAuthorizationAuditor{}
 	limiter := &desktopAuthorizationAttemptLimiterFake{err: apperror.New("authentication.rate_limited")}
-	service, err := newDesktopAuthorizationService(
-		persistence,
-		desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
-		desktopAuthorizationAccessPolicyFake{enabled: true},
-		&accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{}},
-		auditor, limiter, testDesktopSessionPolicy(),
-		DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"},
-		model.NewCredentialToken, func() time.Time { return at },
-		testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at }),
-	)
+	service, err := newDesktopAuthorizationService(desktopAuthorizationServiceDependencies{Transactions: persistence, Institutions: desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}}, AccessPolicy: desktopAuthorizationAccessPolicyFake{enabled: true}, Capabilities: &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{}}, Audit: auditor, Attempts: limiter, SessionPolicy: testDesktopSessionPolicy(), Policy: DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, NewCredential: model.NewCredentialToken, Now: func() time.Time { return at }, Identity: testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at })})
 	require.NoError(t, err)
 	state := model.NewCredentialToken()
 	command := StartDesktopAuthorizationCommand{
@@ -502,7 +404,7 @@ func TestDesktopAuthorizationAttemptAccountingSeparatesStartAndExchange(t *testi
 	t.Parallel()
 
 	now := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
-	accounting, err := newAuthenticationAttemptAccounting(newExpiringAuthenticationAttemptCache(func() time.Time { return now }))
+	accounting, err := newAuthenticationAttemptAccounting(authenticationAttemptAccountingDependencies{Cache: newExpiringAuthenticationAttemptCache(func() time.Time { return now })})
 	require.NoError(t, err)
 	limiter := desktopAuthorizationAttemptAccounting{attempts: accounting, policy: LoginRateLimitPolicy{
 		Window: time.Minute, MaximumAttempts: 1, MaximumSourceAttempts: 2,
@@ -757,15 +659,13 @@ func testDesktopAuthorizationIdentity(
 	if !strings.HasPrefix(origin, "https://") {
 		origin = "https://proctor.example.edu"
 	}
-	security, err := newDPoPSecurity(newDPoPCacheFake(), dpopPolicy{
+	security, err := newDPoPSecurity(dpopSecurityDependencies{Cache: newDPoPCacheFake(), Policy: dpopPolicy{
 		Origin: origin, NonceLifetime: 5 * time.Minute, ProofLifetime: 5 * time.Minute,
 		ClockSkew: time.Minute, NewNonce: model.NewCredentialToken, Now: now,
-	})
+	}})
 	require.NoError(t, err)
 	return desktopAuthorizationIdentityDependencies{
-		users: desktopAuthorizationUserStoreStub{}, authentication: &authenticationService{
-			sessions: &desktopAuthorizationSessionStoreStub{}, securityEffects: discardAuthenticationSecurityEffects{},
-		},
+		users: desktopAuthorizationUserStoreStub{}, authentication: &authenticationService{deps: authenticationServiceDependencies{Sessions: &desktopAuthorizationSessionStoreStub{}, SecurityEffects: discardAuthenticationSecurityEffects{}}},
 		compatibility: desktopAuthorizationCompatibilityFake{}, dpop: security,
 	}
 }
@@ -793,18 +693,18 @@ func testDesktopAuthorizationExchangeCommand(
 	privateKey, publicJWK := testDPoPKey(t)
 	thumbprint, err := publicJWK.Thumbprint()
 	require.NoError(t, err)
-	authorizationID, err := service.transactions.ResolveDesktopAuthorizationExchange(context.Background(),
+	authorizationID, err := service.deps.Transactions.ResolveDesktopAuthorizationExchange(context.Background(),
 		&store.DesktopAuthorizationExchangeProof{CodeHash: model.HashToken(code)})
 	require.NoError(t, err)
 	binding := dpopBinding{
 		Kind: dpopBindingAuthorization, AuthorizationID: authorizationID.ID,
-		KeyThumbprint: thumbprint, Origin: service.dpop.policy.Origin,
+		KeyThumbprint: thumbprint, Origin: service.dpop.deps.Policy.Origin,
 	}
 	nonce, err := service.dpop.IssueNonce(context.Background(), binding)
 	require.NoError(t, err)
 	proof := signDPoPProof(t, privateKey, publicJWK, map[string]any{
 		"jti": model.NewCredentialToken(), "htm": "POST",
-		"htu": service.dpop.policy.Origin + "/api/v1/auth/desktop/token",
+		"htu": service.dpop.deps.Policy.Origin + "/api/v1/auth/desktop/token",
 		"iat": at.Unix(), "nonce": nonce,
 	})
 	return ExchangeDesktopAuthorizationCommand{

@@ -61,7 +61,7 @@ func TestSessionRevocationWithoutClusterFanoutRejectsWithWarmPeerCache(t *testin
 	require.NotEmpty(t, sessionID, "session not found")
 	hashes, err := storeFake.Session().Withdraw(ctx, model.SessionID(sessionID), user.ID, time.Now().UnixMilli(), model.SessionRevocationInactiveUser)
 	require.NoError(t, err)
-	invalidator, err := newAuthenticationCacheInvalidator(cacheA, &securityEffectsDiagnosticsFake{})
+	invalidator, err := newAuthenticationCacheInvalidator(authenticationCacheInvalidatorDependencies{Cache: cacheA, Diagnostics: &securityEffectsDiagnosticsFake{}})
 	require.NoError(t, err)
 	invalidator.InvalidateAccessCredentials(ctx, hashes)
 
@@ -131,17 +131,11 @@ func TestMissedAuthorizationInvalidationStillUsesCurrentStoreState(t *testing.T)
 		roles:       map[string]*model.Role{roleID: role},
 		bindings:    map[string]*model.RoleBinding{bindingID: binding},
 	}
-	resolver, err := newAccessScopeResolver(
-		root.Institution(), recoveryAccessAcademicUnitStore{}, recoveryAccessClassStore{}, recoveryAccessUserStore{}, recoveryAccessClassMemberStore{},
-		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
-		&accessAcademicPeriodStoreFake{},
-	)
+	resolver, err := newAccessScopeResolver(accessScopeResolverDependencies{Institutions: root.Institution(), AcademicUnits: recoveryAccessAcademicUnitStore{}, Classes: recoveryAccessClassStore{}, Users: recoveryAccessUserStore{}, ClassMembers: recoveryAccessClassMemberStore{}, Exams: &accessExamAuthoringStoreFake{}, Sittings: &accessExamSittingStoreFake{}, Submissions: &accessExamSubmissionStoreFake{}, AcademicPeriods: &accessAcademicPeriodStoreFake{}})
 	require.NoError(t, err)
-	audit, err := newAuditService(root.Audit(), root.Institution(), "node-test")
+	audit, err := newAuditService(auditServiceDependencies{Audits: root.Audit(), Institutions: root.Institution(), NodeID: "node-test"})
 	require.NoError(t, err)
-	authz, err := newAccessControlService(
-		root.Role(), root.RoleBinding(), resolver, audit,
-	)
+	authz, err := newAccessControlService(accessControlServiceDependencies{Roles: root.Role(), Bindings: root.RoleBinding(), Resolver: resolver, Audit: audit})
 	require.NoError(t, err)
 	authz.now = func() time.Time { return now }
 
@@ -184,12 +178,12 @@ func TestSessionExpiryRejectsDespitePositiveCache(t *testing.T) {
 	storeFake := newAuthenticationStoreFake()
 	cache := newAuthenticationCacheFake()
 	service := newTestAuthenticationServiceWithCache(t, storeFake, cache)
-	service.sessionPolicy.AccessTTL = time.Hour
-	service.sessionPolicy.IdleTTL = time.Hour
-	service.sessionPolicy.AbsoluteTTL = time.Hour
+	service.deps.SessionPolicy.AccessTTL = time.Hour
+	service.deps.SessionPolicy.IdleTTL = time.Hour
+	service.deps.SessionPolicy.AbsoluteTTL = time.Hour
 
 	fixedNow := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
-	service.now = func() time.Time { return fixedNow }
+	service.deps.Now = func() time.Time { return fixedNow }
 
 	_, rawAccess := seedAuthenticatedSession(t, service)
 	ctx := context.Background()

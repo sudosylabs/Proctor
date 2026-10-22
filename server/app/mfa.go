@@ -41,21 +41,23 @@ const (
 	mfaSealingPurpose    = "mfa.totp"
 )
 
+// mfaMechanicsDependencies are the collaborators of mfaMechanics;
+// newMFAMechanics validates them once and mfaMechanics keeps them in deps.
+type mfaMechanicsDependencies struct {
+	Settings MFAPolicy
+	Sealer   *secretseal.Sealer
+}
+
 type mfaMechanics struct {
-	settings         MFAPolicy
-	sealer           *secretseal.Sealer
+	deps mfaMechanicsDependencies
+
 	newSecret        func() (string, error)
 	newRecoveryCodes func(string, int) ([]string, []*model.MFARecoveryCode, error)
 }
 
-func newMFAMechanics(settings MFAPolicy, sealer *secretseal.Sealer) (*mfaMechanics, error) {
-	mechanics := &mfaMechanics{
-		settings:         settings,
-		sealer:           sealer,
-		newSecret:        randomMFASecret,
-		newRecoveryCodes: generateMFARecoveryCodes,
-	}
-	if settings.Enabled && sealer == nil {
+func newMFAMechanics(deps mfaMechanicsDependencies) (*mfaMechanics, error) {
+	mechanics := &mfaMechanics{deps: deps, newSecret: randomMFASecret, newRecoveryCodes: generateMFARecoveryCodes}
+	if deps.Settings.Enabled && deps.Sealer == nil {
 		return nil, errors.New("enabled MFA requires secret sealing")
 	}
 	return mechanics, nil
@@ -177,10 +179,10 @@ type sealedMFASecret struct {
 }
 
 func (s *mfaMechanics) sealTOTPSecret(userID string, secret string) (sealedMFASecret, error) {
-	if s == nil || s.sealer == nil {
+	if s == nil || s.deps.Sealer == nil {
 		return sealedMFASecret{}, errors.New("MFA secret sealing is unavailable")
 	}
-	envelope, err := s.sealer.Seal(
+	envelope, err := s.deps.Sealer.Seal(
 		secretseal.Binding{Purpose: mfaSealingPurpose, Owner: userID},
 		[]byte(secret),
 	)
@@ -198,7 +200,7 @@ func (s *mfaMechanics) decrypt(
 	userID string,
 	credential *model.MFACredential,
 ) (string, error) {
-	if s == nil || s.sealer == nil || credential == nil {
+	if s == nil || s.deps.Sealer == nil || credential == nil {
 		return "", errors.New("MFA secret sealing is unavailable")
 	}
 	var envelope secretseal.Envelope
@@ -206,7 +208,7 @@ func (s *mfaMechanics) decrypt(
 		envelope.KeyID != credential.EncryptionKeyID {
 		return "", secretseal.ErrInvalidEnvelope
 	}
-	plaintext, err := s.sealer.Open(
+	plaintext, err := s.deps.Sealer.Open(
 		secretseal.Binding{Purpose: mfaSealingPurpose, Owner: userID},
 		envelope,
 	)

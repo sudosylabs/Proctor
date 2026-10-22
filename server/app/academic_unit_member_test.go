@@ -67,10 +67,10 @@ func TestAcademicUnitMemberCreateUsesAuthorizationWithoutGrantingPermission(t *t
 	effects := &academicUnitMemberEffectsFake{}
 	mail := &relationshipMailPreparerTestFake{}
 	clockCalls := 0
-	service := newAcademicUnitMemberService(persistence, relationshipUserStoreTestFake{}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, mail, effects, func() time.Time {
+	service := newAcademicUnitMemberService(academicUnitMemberServiceDependencies{Store: persistence, Users: relationshipUserStoreTestFake{}, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Mail: mail, Effects: effects, Now: func() time.Time {
 		clockCalls++
 		return time.UnixMilli(500)
-	}, model.NewID)
+	}, NewID: model.NewID})
 	created, err := service.CreateAcademicUnitMember(context.Background(), invocation.Invocation{}, CreateAcademicUnitMemberCommand{AcademicUnitID: model.AcademicUnitID(unitID), UserID: userID, StartAt: 100})
 	require.NoError(t, err)
 	require.Equal(t, unitID, created.AcademicUnitID.String())
@@ -100,7 +100,7 @@ func TestAcademicUnitMemberEndCarriesRevision(t *testing.T) {
 	persistence := &academicUnitMemberStoreFake{events: &events, current: current}
 	effects := &academicUnitMemberEffectsFake{}
 	mail := &relationshipMailPreparerTestFake{}
-	service := newAcademicUnitMemberService(persistence, relationshipUserStoreTestFake{}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, mail, effects, func() time.Time { return time.UnixMilli(500) }, model.NewID)
+	service := newAcademicUnitMemberService(academicUnitMemberServiceDependencies{Store: persistence, Users: relationshipUserStoreTestFake{}, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Mail: mail, Effects: effects, Now: func() time.Time { return time.UnixMilli(500) }, NewID: model.NewID})
 	ended, err := service.EndAcademicUnitMember(context.Background(), invocation.Invocation{}, EndAcademicUnitMemberCommand{ID: current.ID})
 	require.NoError(t, err)
 	require.Equal(t, current.Revision, persistence.endInput.ExpectedRevision, "end input/result = %#v / %#v", persistence.endInput, ended)
@@ -118,12 +118,7 @@ func TestAcademicUnitMemberEndCarriesRevision(t *testing.T) {
 func TestAcademicUnitMemberEndDenialDoesNotInspectOpaqueMemberID(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	service := newAcademicUnitMemberService(
-		&academicUnitMemberStoreFake{events: &events},
-		relationshipUserStoreTestFake{},
-		&programmeAuthorizerFake{events: &events, preflightErr: apperror.New("authorization.denied")},
-		&institutionAuditorFake{events: &events}, &relationshipMailPreparerTestFake{}, &academicUnitMemberEffectsFake{}, time.Now, model.NewID,
-	)
+	service := newAcademicUnitMemberService(academicUnitMemberServiceDependencies{Store: &academicUnitMemberStoreFake{events: &events}, Users: relationshipUserStoreTestFake{}, Authorization: &programmeAuthorizerFake{events: &events, preflightErr: apperror.New("authorization.denied")}, Audit: &institutionAuditorFake{events: &events}, Mail: &relationshipMailPreparerTestFake{}, Effects: &academicUnitMemberEffectsFake{}, Now: time.Now, NewID: model.NewID})
 	_, err := service.EndAcademicUnitMember(context.Background(), invocation.Invocation{}, EndAcademicUnitMemberCommand{ID: model.NewAcademicUnitMemberID()})
 	require.True(t, apperror.Is(err, "authorization.denied"), "End() error = %v, want authorization.denied", err)
 	require.Equal(t, []string{"authorize-preflight"}, events, "events")
@@ -136,12 +131,7 @@ func TestAcademicUnitMemberEndConcealsCrossScopeTarget(t *testing.T) {
 		ID: model.NewAcademicUnitMemberID(), AcademicUnitID: model.NewAcademicUnitID(), UserID: model.NewUserID(),
 		CreatedAt: model.NowUTC(), UpdatedAt: model.NowUTC(), StartsAt: model.NowUTC(), Revision: 1,
 	}
-	service := newAcademicUnitMemberService(
-		&academicUnitMemberStoreFake{events: &events, current: current},
-		relationshipUserStoreTestFake{},
-		&programmeAuthorizerFake{events: &events, err: apperror.New("authorization.denied")},
-		&institutionAuditorFake{events: &events}, &relationshipMailPreparerTestFake{}, &academicUnitMemberEffectsFake{}, time.Now, model.NewID,
-	)
+	service := newAcademicUnitMemberService(academicUnitMemberServiceDependencies{Store: &academicUnitMemberStoreFake{events: &events, current: current}, Users: relationshipUserStoreTestFake{}, Authorization: &programmeAuthorizerFake{events: &events, err: apperror.New("authorization.denied")}, Audit: &institutionAuditorFake{events: &events}, Mail: &relationshipMailPreparerTestFake{}, Effects: &academicUnitMemberEffectsFake{}, Now: time.Now, NewID: model.NewID})
 	_, err := service.EndAcademicUnitMember(context.Background(), invocation.Invocation{}, EndAcademicUnitMemberCommand{ID: current.ID})
 	require.True(t, apperror.Is(err, "resource.not_found"), "End() error = %v, want concealed resource.not_found", err)
 }

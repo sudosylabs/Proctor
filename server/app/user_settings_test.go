@@ -97,9 +97,7 @@ func newUserSettingsServiceForTest(
 	now func() time.Time,
 ) *userSettingsService {
 	t.Helper()
-	service, err := newUserSettingsService(
-		settings, audit, &userSettingsEffectsFake{}, &userSettingsEffectFailuresFake{}, now,
-	)
+	service, err := newUserSettingsService(userSettingsServiceDependencies{Settings: settings, Audit: audit, Effects: &userSettingsEffectsFake{}, EffectFailures: &userSettingsEffectFailuresFake{}, Now: now})
 	require.NoError(t, err)
 	return service
 }
@@ -393,10 +391,7 @@ func TestUserSettingsReplaceOwnPublishesOnePostCommitRefetchHint(t *testing.T) {
 	}}
 	effects := &userSettingsEffectsFake{events: &events}
 	failures := &userSettingsEffectFailuresFake{}
-	service, err := newUserSettingsService(
-		persistence, &userSettingsAuditFake{event: &model.AuditEvent{Action: "user.settings.replace"}},
-		effects, failures, func() time.Time { return at },
-	)
+	service, err := newUserSettingsService(userSettingsServiceDependencies{Settings: persistence, Audit: &userSettingsAuditFake{event: &model.AuditEvent{Action: "user.settings.replace"}}, Effects: effects, EffectFailures: failures, Now: func() time.Time { return at }})
 	require.NoError(t, err)
 
 	result, err := service.ReplaceOwnUserSettings(context.Background(), invocation.New(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
@@ -442,10 +437,7 @@ func TestUserSettingsReplaceOwnSuppressesNoOpReplayAndRejectedCommandEvents(t *t
 			effects := &userSettingsEffectsFake{}
 			persistence := &userSettingsStoreFake{document: current, replaceResult: test.result, replaceErr: test.storeErr}
 			audit := &userSettingsAuditFake{err: errors.New("audit unavailable")}
-			service, err := newUserSettingsService(
-				persistence, audit,
-				effects, &userSettingsEffectFailuresFake{}, func() time.Time { return at.Add(time.Second) },
-			)
+			service, err := newUserSettingsService(userSettingsServiceDependencies{Settings: persistence, Audit: audit, Effects: effects, EffectFailures: &userSettingsEffectFailuresFake{}, Now: func() time.Time { return at.Add(time.Second) }})
 			require.NoError(t, err)
 			source := "{}\n"
 			if test.source != "" {
@@ -467,9 +459,7 @@ func TestUserSettingsReplaceOwnRejectedPrincipalPublishesNothing(t *testing.T) {
 	t.Parallel()
 	effects := &userSettingsEffectsFake{}
 	persistence := &userSettingsStoreFake{}
-	service, err := newUserSettingsService(
-		persistence, &userSettingsAuditFake{}, effects, &userSettingsEffectFailuresFake{}, time.Now,
-	)
+	service, err := newUserSettingsService(userSettingsServiceDependencies{Settings: persistence, Audit: &userSettingsAuditFake{}, Effects: effects, EffectFailures: &userSettingsEffectFailuresFake{}, Now: time.Now})
 	require.NoError(t, err)
 	principal := model.Principal{
 		UserID: model.NewUserID(), CredentialID: model.PrincipalCredentialID(model.NewPersonalAccessTokenID()),
@@ -496,10 +486,7 @@ func TestUserSettingsRealtimeFailureDoesNotChangeCommittedResultAndReadReconcile
 		Revision: next, FormatVersion: 1, UpdatedAt: at, Changed: true,
 	}}
 	failures := &userSettingsEffectFailuresFake{}
-	service, err := newUserSettingsService(
-		persistence, &userSettingsAuditFake{event: &model.AuditEvent{Action: "user.settings.replace"}},
-		&userSettingsEffectsFake{err: errors.New("peer delivery unavailable")}, failures, func() time.Time { return at },
-	)
+	service, err := newUserSettingsService(userSettingsServiceDependencies{Settings: persistence, Audit: &userSettingsAuditFake{event: &model.AuditEvent{Action: "user.settings.replace"}}, Effects: &userSettingsEffectsFake{err: errors.New("peer delivery unavailable")}, EffectFailures: failures, Now: func() time.Time { return at }})
 	require.NoError(t, err)
 	const source = "{\"workbench.colorTheme\": \"Dark\"}\n"
 	result, err := service.ReplaceOwnUserSettings(context.Background(), invocation.New(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
@@ -558,9 +545,7 @@ func TestUserSettingsConcurrentWritersPublishOnlyTheCommittedWinner(t *testing.T
 		Revision: model.NewUserSettingsRevision(), FormatVersion: 1, UpdatedAt: at, Changed: true,
 	}}
 	effects := &userSettingsAtomicEffects{}
-	service, err := newUserSettingsService(
-		persistence, userSettingsConcurrentAudit{}, effects, &userSettingsEffectFailuresFake{}, func() time.Time { return at },
-	)
+	service, err := newUserSettingsService(userSettingsServiceDependencies{Settings: persistence, Audit: userSettingsConcurrentAudit{}, Effects: effects, EffectFailures: &userSettingsEffectFailuresFake{}, Now: func() time.Time { return at }})
 	require.NoError(t, err)
 	start := make(chan struct{})
 	errorsByWriter := make(chan error, 2)

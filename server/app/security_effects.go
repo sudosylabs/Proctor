@@ -28,22 +28,25 @@ type authorizationInvalidationEffects interface {
 	InvalidateAuthorization(context.Context, string)
 }
 
-type authenticationCacheInvalidator struct {
-	cache       authenticationCache
-	diagnostics authenticationDiagnostics
+// authenticationCacheInvalidatorDependencies are the collaborators of authenticationCacheInvalidator;
+// newAuthenticationCacheInvalidator validates them once and authenticationCacheInvalidator keeps them in deps.
+type authenticationCacheInvalidatorDependencies struct {
+	Cache       authenticationCache
+	Diagnostics authenticationDiagnostics
 }
 
-func newAuthenticationCacheInvalidator(
-	cache authenticationCache,
-	diagnostics authenticationDiagnostics,
-) (*authenticationCacheInvalidator, error) {
-	if cache == nil {
+type authenticationCacheInvalidator struct {
+	deps authenticationCacheInvalidatorDependencies
+}
+
+func newAuthenticationCacheInvalidator(deps authenticationCacheInvalidatorDependencies) (*authenticationCacheInvalidator, error) {
+	if deps.Cache == nil {
 		return nil, errors.New("authentication cache is required")
 	}
-	if diagnostics == nil {
+	if deps.Diagnostics == nil {
 		return nil, errors.New("authentication diagnostics are required")
 	}
-	return &authenticationCacheInvalidator{cache: cache, diagnostics: diagnostics}, nil
+	return &authenticationCacheInvalidator{deps: deps}, nil
 }
 
 func (i *authenticationCacheInvalidator) InvalidateAccessCredentials(
@@ -51,8 +54,8 @@ func (i *authenticationCacheInvalidator) InvalidateAccessCredentials(
 	hashes []string,
 ) {
 	for _, hash := range hashes {
-		if err := i.cache.Delete(ctx, authenticationCachePrefix+hash); err != nil {
-			i.diagnostics.WarnContext(
+		if err := i.deps.Cache.Delete(ctx, authenticationCachePrefix+hash); err != nil {
+			i.deps.Diagnostics.WarnContext(
 				ctx,
 				"authentication cache delete failed",
 				errors.New("cache operation failed"),
@@ -66,8 +69,8 @@ func (i *authenticationCacheInvalidator) InvalidateSessionActivity(
 	sessionIDs []string,
 ) {
 	for _, sessionID := range sessionIDs {
-		if err := i.cache.Delete(ctx, activityCachePrefix+sessionID); err != nil {
-			i.diagnostics.WarnContext(
+		if err := i.deps.Cache.Delete(ctx, activityCachePrefix+sessionID); err != nil {
+			i.deps.Diagnostics.WarnContext(
 				ctx,
 				"session activity cache delete failed",
 				errors.New("cache operation failed"),

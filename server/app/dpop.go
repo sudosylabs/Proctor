@@ -83,41 +83,47 @@ func (e *dpopChallengeError) Error() string { return "DPoP nonce is required" }
 func (e *dpopChallengeError) Unwrap() error { return e.cause }
 func (e *dpopChallengeError) Nonce() string { return e.nonce }
 
-type dpopSecurity struct {
-	cache  authenticationCache
-	policy dpopPolicy
+// dpopSecurityDependencies are the collaborators of dpopSecurity;
+// newDPoPSecurity validates them once and dpopSecurity keeps them in deps.
+type dpopSecurityDependencies struct {
+	Cache  authenticationCache
+	Policy dpopPolicy
 }
 
-func newDPoPSecurity(cache authenticationCache, policy dpopPolicy) (*dpopSecurity, error) {
-	if cache == nil {
+type dpopSecurity struct {
+	deps dpopSecurityDependencies
+}
+
+func newDPoPSecurity(deps dpopSecurityDependencies) (*dpopSecurity, error) {
+	if deps.Cache == nil {
 		return nil, errors.New("DPoP security cache is required")
 	}
-	canonicalOrigin, err := canonicalDPoPOrigin(policy.Origin)
+	canonicalOrigin, err := canonicalDPoPOrigin(deps.Policy.Origin)
 	if err != nil {
 		return nil, fmt.Errorf("DPoP origin: %w", err)
 	}
-	if policy.NonceLifetime <= 0 || policy.ProofLifetime < policy.NonceLifetime ||
-		policy.ClockSkew < 0 || policy.NewNonce == nil || policy.Now == nil {
+	if deps.Policy.NonceLifetime <= 0 || deps.Policy.ProofLifetime < deps.Policy.NonceLifetime ||
+		deps.Policy.ClockSkew < 0 || deps.Policy.NewNonce == nil || deps.Policy.Now == nil {
 		return nil, errors.New("DPoP policy is invalid")
 	}
-	policy.Origin = canonicalOrigin
-	return &dpopSecurity{cache: cache, policy: policy}, nil
+	deps.Policy.Origin = canonicalOrigin
+	return &dpopSecurity{deps: deps}, nil
 }
 
 func (s *dpopSecurity) IssueNonce(ctx context.Context, binding dpopBinding) (string, error) {
 	if err := s.validateBinding(binding); err != nil {
 		return "", err
 	}
-	nonce := s.policy.NewNonce()
+	nonce := s.deps.Policy.NewNonce()
 	if !model.IsValidCredentialToken(nonce) {
 		return "", errors.New("DPoP nonce generator returned an invalid value")
 	}
-	record := dpopNonceRecord{Binding: binding, IssuedAt: s.policy.Now().UTC().Unix()}
+	record := dpopNonceRecord{Binding: binding, IssuedAt: s.deps.Policy.Now().UTC().Unix()}
 	encoded, err := json.Marshal(record)
 	if err != nil {
 		return "", err
 	}
-	if err = s.cache.SetAlways(ctx, dpopNonceCachePrefix+model.HashToken(nonce), encoded, s.policy.NonceLifetime); err != nil {
+	if err = s.deps.Cache.SetAlways(ctx, dpopNonceCachePrefix+model.HashToken(nonce), encoded, s.deps.Policy.NonceLifetime); err != nil {
 		return "", apperror.New("authentication.dpop.unavailable").Wrap(err)
 	}
 	return nonce, nil
@@ -166,15 +172,15 @@ func (s *dpopSecurity) Verify(
 	if err != nil || record.Binding != binding {
 		return nil, s.challenge(ctx, binding, errors.New("DPoP nonce is unknown or expired"))
 	}
-	now := s.policy.Now().UTC()
+	now := s.deps.Policy.Now().UTC()
 	issuedAt := time.Unix(record.IssuedAt, 0).UTC()
 	proofAt := time.Unix(parsed.IAT, 0).UTC()
-	if proofAt.Before(issuedAt.Add(-s.policy.ClockSkew)) || proofAt.After(now.Add(s.policy.ClockSkew)) ||
-		now.Sub(issuedAt) > s.policy.NonceLifetime+s.policy.ClockSkew {
+	if proofAt.Before(issuedAt.Add(-s.deps.Policy.ClockSkew)) || proofAt.After(now.Add(s.deps.Policy.ClockSkew)) ||
+		now.Sub(issuedAt) > s.deps.Policy.NonceLifetime+s.deps.Policy.ClockSkew {
 		return nil, apperror.New("authentication.dpop.invalid")
 	}
 	replayKey := dpopReplayCachePrefix + model.HashToken(parsed.KeyThumbprint+"\x00"+parsed.JTI)
-	if err = s.cache.SetIfAbsent(ctx, replayKey, []byte{1}, s.policy.ProofLifetime); err != nil {
+	if err = s.deps.Cache.SetIfAbsent(ctx, replayKey, []byte{1}, s.deps.Policy.ProofLifetime); err != nil {
 		if errors.Is(err, ErrAuthenticationCacheNotStored) {
 			return nil, apperror.New("authentication.dpop.replayed")
 		}
@@ -199,7 +205,7 @@ func (s *dpopSecurity) nonceRecord(ctx context.Context, nonce string) (dpopNonce
 	if !model.IsValidCredentialToken(nonce) {
 		return dpopNonceRecord{}, errors.New("invalid DPoP nonce")
 	}
-	encoded, err := s.cache.Get(ctx, dpopNonceCachePrefix+model.HashToken(nonce))
+	encoded, err := s.deps.Cache.Get(ctx, dpopNonceCachePrefix+model.HashToken(nonce))
 	if err != nil {
 		return dpopNonceRecord{}, err
 	}
@@ -211,7 +217,7 @@ func (s *dpopSecurity) nonceRecord(ctx context.Context, nonce string) (dpopNonce
 }
 
 func (s *dpopSecurity) validateBinding(binding dpopBinding) error {
-	if !model.IsValidDPoPKeyThumbprint(binding.KeyThumbprint) || binding.Origin != s.policy.Origin {
+	if !model.IsValidDPoPKeyThumbprint(binding.KeyThumbprint) || binding.Origin != s.deps.Policy.Origin {
 		return errors.New("invalid DPoP binding")
 	}
 	switch binding.Kind {

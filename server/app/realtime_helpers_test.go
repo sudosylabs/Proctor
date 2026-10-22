@@ -13,9 +13,9 @@ func newRealtimeService(
 	invalidator realtime.AuthenticationInvalidator,
 	diagnostics realtimeDiagnostics,
 ) (*realtimeService, error) {
-	delivery, err := realtime.New(invalidator, diagnostics)
+	delivery, err := realtime.New(realtime.Dependencies{AuthenticationInvalidator: invalidator, Diagnostics: diagnostics})
 	if err != nil {
 		return nil, err
 	}
-	return newRealtimeServiceWithDelivery(delivery, diagnostics)
+	return newRealtimeServiceWithDelivery(realtimeServiceDependencies{Delivery: delivery, Diagnostics: diagnostics})
 }

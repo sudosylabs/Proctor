@@ -22,7 +22,7 @@ import (
 func TestSystemCriticalAuditHasNoFabricatedActor(t *testing.T) {
 	t.Parallel()
 	audits := &systemAuditStoreFake{}
-	service, err := newAuditService(audits, securityInstitutionStore{}, "node-system")
+	service, err := newAuditService(auditServiceDependencies{Audits: audits, Institutions: securityInstitutionStore{}, NodeID: "node-system"})
 	require.NoError(t, err)
 	sittingID, unitID := model.NewExamSittingID(), model.NewAcademicUnitID()
 	jobID, attemptID := model.NewJobID(), model.NewJobAttemptID()
@@ -41,7 +41,7 @@ func TestSystemCriticalAuditHasNoFabricatedActor(t *testing.T) {
 func TestExamSittingSystemAuditAdapterRetainsJobIdentityAtAcademicUnitScope(t *testing.T) {
 	t.Parallel()
 	audits := &systemAuditStoreFake{}
-	service, err := newAuditService(audits, securityInstitutionStore{}, "node-system")
+	service, err := newAuditService(auditServiceDependencies{Audits: audits, Institutions: securityInstitutionStore{}, NodeID: "node-system"})
 	require.NoError(t, err)
 	sittingID, unitID := model.NewExamSittingID(), model.NewAcademicUnitID()
 	call := invocation.System{JobID: model.NewJobID(), AttemptID: model.NewJobAttemptID()}
@@ -92,7 +92,7 @@ func TestCompleteCriticalActionSurvivesACanceledRequest(t *testing.T) {
 	t.Parallel()
 
 	audits := &completionContextAuditStore{}
-	service := &auditService{audits: audits, now: time.Now}
+	service := &auditService{deps: auditServiceDependencies{Audits: audits}, now: time.Now}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	auditID := model.NewAuditEventID()

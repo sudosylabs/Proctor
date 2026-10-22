@@ -43,15 +43,15 @@ func (s *bootstrapService) ResetAdministratorMFA(ctx context.Context, command Ad
 	if institutionErr != nil || userErr != nil {
 		return nil, apperror.New("administrator_recovery.invalid")
 	}
-	if !s.recoveryPolicy.mfaEnabled {
+	if !s.deps.RecoveryPolicy.mfaEnabled {
 		return nil, apperror.New("authentication.mfa.disabled")
 	}
-	if s.recoveryPolicy.capabilities == nil {
+	if s.deps.RecoveryPolicy.capabilities == nil {
 		return nil, apperror.New("administrator_recovery.unavailable").Wrap(errors.New("administrator recovery capabilities are unavailable"))
 	}
-	result, err := s.installations.ResetAdministratorMFA(ctx, &store.AdministratorMFAReset{
-		InstitutionID: institutionID, UserID: userID, MFAEnabled: s.recoveryPolicy.mfaEnabled,
-		Capabilities: accessDeploymentCapabilities(s.recoveryPolicy.capabilities.Snapshot()),
+	result, err := s.deps.Installations.ResetAdministratorMFA(ctx, &store.AdministratorMFAReset{
+		InstitutionID: institutionID, UserID: userID, MFAEnabled: s.deps.RecoveryPolicy.mfaEnabled,
+		Capabilities: accessDeploymentCapabilities(s.deps.RecoveryPolicy.capabilities.Snapshot()),
 	})
 	if err != nil {
 		return nil, apperror.New("administrator_recovery.unavailable").Wrap(err)

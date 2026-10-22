@@ -67,7 +67,7 @@ func (s *userProfileService) GetCurrentUserContext(ctx context.Context, invocati
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
 		return nil, apperror.New("authentication.token_invalid")
 	}
-	value, err := s.users.GetCurrentContext(ctx, principal.UserID, 21)
+	value, err := s.deps.Users.GetCurrentContext(ctx, principal.UserID, 21)
 	if err != nil {
 		return nil, userStoreErrors.Translate(err)
 	}
@@ -100,15 +100,21 @@ type userProfileAuthorizer interface {
 	Authorize(context.Context, invocation.Invocation, model.Action, model.Resource) error
 }
 
-type userProfileService struct {
-	users         userProfileStore
-	authorization userProfileAuthorizer
-	audit         mutationAuditor
-	now           func() time.Time
+// userProfileServiceDependencies are the collaborators of userProfileService;
+// newUserProfileService validates them once and userProfileService keeps them in deps.
+type userProfileServiceDependencies struct {
+	Users         userProfileStore
+	Authorization userProfileAuthorizer
+	Audit         mutationAuditor
+	Now           func() time.Time
 }
 
-func newUserProfileService(users userProfileStore, authorization userProfileAuthorizer, audit mutationAuditor, now func() time.Time) *userProfileService {
-	return &userProfileService{users: users, authorization: authorization, audit: audit, now: now}
+type userProfileService struct {
+	deps userProfileServiceDependencies
+}
+
+func newUserProfileService(deps userProfileServiceDependencies) *userProfileService {
+	return &userProfileService{deps: deps}
 }
 
 func (s *userProfileService) SearchUsers(ctx context.Context, invocation invocation.Invocation, query SearchUsersQuery) (Page[*model.User], error) {
@@ -116,12 +122,12 @@ func (s *userProfileService) SearchUsers(ctx context.Context, invocation invocat
 	if err != nil {
 		return Page[*model.User]{}, err
 	}
-	visibility, err := s.authorization.AuthorizeSearch(ctx, invocation)
+	visibility, err := s.deps.Authorization.AuthorizeSearch(ctx, invocation)
 	if err != nil {
 		return Page[*model.User]{}, err
 	}
 	includeDisabled := query.IncludeDisabled && visibility.InstitutionWide
-	users, err := s.users.List(ctx, store.UserListOptions{Query: query.Query, AfterUsername: query.AfterUsername, AfterID: model.UserID(query.AfterID), Limit: probe, IncludeDisabled: includeDisabled, Visibility: visibility})
+	users, err := s.deps.Users.List(ctx, store.UserListOptions{Query: query.Query, AfterUsername: query.AfterUsername, AfterID: model.UserID(query.AfterID), Limit: probe, IncludeDisabled: includeDisabled, Visibility: visibility})
 	if err != nil {
 		return Page[*model.User]{}, userStoreErrors.Translate(err)
 	}
@@ -137,11 +143,11 @@ func (s *userProfileService) GetUserProfile(ctx context.Context, invocation invo
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
-	fullProfile, err := s.authorization.AuthorizeProfileRead(ctx, invocation, id.String())
+	fullProfile, err := s.deps.Authorization.AuthorizeProfileRead(ctx, invocation, id.String())
 	if err != nil {
 		return nil, err
 	}
-	user, err := s.users.Get(ctx, id)
+	user, err := s.deps.Users.Get(ctx, id)
 	if err != nil {
 		return nil, userStoreErrors.Translate(err)
 	}
@@ -185,10 +191,10 @@ func (s *userProfileService) UpdateUserProfile(ctx context.Context, invocation i
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionUserManage, model.Resource{Type: model.ResourceUser, ID: id.String()}); err != nil {
+	if err := s.deps.Authorization.Authorize(ctx, invocation, model.ActionUserManage, model.Resource{Type: model.ResourceUser, ID: id.String()}); err != nil {
 		return nil, err
 	}
-	current, err := s.users.Get(ctx, id)
+	current, err := s.deps.Users.Get(ctx, id)
 	if err != nil {
 		return nil, userStoreErrors.Translate(err)
 	}
@@ -196,7 +202,7 @@ func (s *userProfileService) UpdateUserProfile(ctx context.Context, invocation i
 	candidate := *current
 	expectedRevision := current.Revision
 	candidate.ApplyProfileChanges(&changes)
-	at := s.now()
+	at := s.deps.Now()
 	candidate.PrepareUpdate(at)
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("user.invalid", err)
@@ -204,7 +210,7 @@ func (s *userProfileService) UpdateUserProfile(ctx context.Context, invocation i
 	resource := model.Resource{Type: model.ResourceUser, ID: id.String()}
 	return runAuditedMutation(
 		ctx,
-		s.audit,
+		s.deps.Audit,
 		mutationAttempt{
 			Invocation: invocation,
 			Action:     model.ActionUserManage,
@@ -215,7 +221,7 @@ func (s *userProfileService) UpdateUserProfile(ctx context.Context, invocation i
 		},
 		func() time.Time { return at },
 		func(ctx context.Context, reference mutationAttemptReference) (*model.User, error) {
-			return s.users.UpdateProfile(ctx, &store.UserProfileUpdate{
+			return s.deps.Users.UpdateProfile(ctx, &store.UserProfileUpdate{
 				UserID: current.ID, Changes: changes, ExpectedRevision: expectedRevision,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})

@@ -38,7 +38,7 @@ func (a examAuthorizationAdapter) AuthorizeList(ctx context.Context, invocation 
 	}
 	hasOrdinary := ordinary.InstitutionWide || len(ordinary.AcademicUnitRootIDs) > 0
 	hasOverride := override.InstitutionWide || len(override.AcademicUnitRootIDs) > 0
-	institution, err := a.authorization.resolver.institutions.GetSingleton(ctx)
+	institution, err := a.authorization.deps.Resolver.deps.Institutions.GetSingleton(ctx)
 	if err != nil {
 		return store.ExamListVisibility{}, authorizationResourceError("institution", err)
 	}
@@ -47,7 +47,7 @@ func (a examAuthorizationAdapter) AuthorizeList(ctx context.Context, invocation 
 		action = model.ActionExamViewOverride
 	}
 	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
-	if err := a.authorization.audit.RecordAuthorizationDecision(ctx, principal, action, resource, model.RoleScopeInstitution, institution.ID.String(), invocation.RequestMetadata(), hasOrdinary || hasOverride); err != nil {
+	if err := a.authorization.deps.Audit.RecordAuthorizationDecision(ctx, principal, action, resource, model.RoleScopeInstitution, institution.ID.String(), invocation.RequestMetadata(), hasOrdinary || hasOverride); err != nil {
 		return store.ExamListVisibility{}, err
 	}
 	if !hasOrdinary && !hasOverride {

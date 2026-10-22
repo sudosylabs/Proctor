@@ -297,14 +297,7 @@ func (f defaultPictureGenerationFilesFake) GenerateAndStoreDefaultProfilePicture
 }
 
 func newProfilePictureServiceForTest(users profilePictureUserStore, files profilePictureFileStore, content *pictureContentFake, authorization profilePictureAuthorizer, audit mutationAuditor, effects profilePictureEffects, effectFailures profilePictureEffectFailures, defaultJobs profilePictureDefaultJobs, now func() time.Time) *profilePictureService {
-	return newProfilePictureService(
-		users, files,
-		pictureUploadFilesFake{state: content},
-		pictureReadFilesFake{state: content},
-		defaultPictureRenderFilesFake{state: content},
-		defaultPictureGenerationFilesFake{state: content},
-		authorization, audit, effects, effectFailures, defaultJobs, now,
-	)
+	return newProfilePictureService(profilePictureServiceDependencies{Users: users, Files: files, Uploads: pictureUploadFilesFake{state: content}, Reads: pictureReadFilesFake{state: content}, Fallback: defaultPictureRenderFilesFake{state: content}, Defaults: defaultPictureGenerationFilesFake{state: content}, Authorization: authorization, Audit: audit, Effects: effects, EffectFailures: effectFailures, DefaultJobs: defaultJobs, Now: now})
 }
 
 func TestUploadProfilePictureNormalizesPrivateRenditionsBeforePublishing(t *testing.T) {

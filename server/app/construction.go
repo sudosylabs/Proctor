@@ -145,7 +145,7 @@ func validateApplicationDependencies(deps Dependencies) error {
 }
 
 func constructApplicationFoundation(deps Dependencies) (applicationFoundation, error) {
-	mfa, err := newMFAMechanics(deps.MFA, deps.MFASecretSealer)
+	mfa, err := newMFAMechanics(mfaMechanicsDependencies{Settings: deps.MFA, Sealer: deps.MFASecretSealer})
 	if err != nil {
 		return applicationFoundation{}, err
 	}
@@ -154,37 +154,28 @@ func constructApplicationFoundation(deps Dependencies) (applicationFoundation, e
 			return applicationFoundation{}, err
 		}
 	}
-	hasher, err := newPasswordHasher(deps.Password, deps.PasswordWorkRecorder)
+	hasher, err := newPasswordHasher(passwordHasherDependencies{Settings: deps.Password, Recorder: deps.PasswordWorkRecorder})
 	if err != nil {
 		return applicationFoundation{}, err
 	}
-	attempts, err := newAuthenticationAttemptAccounting(deps.Cache)
+	attempts, err := newAuthenticationAttemptAccounting(authenticationAttemptAccountingDependencies{Cache: deps.Cache})
 	if err != nil {
 		return applicationFoundation{}, err
 	}
-	invalidator, err := newAuthenticationCacheInvalidator(
-		deps.Cache,
-		deps.AuthenticationDiagnostics,
-	)
+	invalidator, err := newAuthenticationCacheInvalidator(authenticationCacheInvalidatorDependencies{Cache: deps.Cache, Diagnostics: deps.AuthenticationDiagnostics})
 	if err != nil {
 		return applicationFoundation{}, err
 	}
-	realtimeDelivery, err := realtime.New(
-		invalidator,
-		deps.RealtimeDiagnostics,
-	)
+	realtimeDelivery, err := realtime.New(realtime.Dependencies{AuthenticationInvalidator: invalidator, Diagnostics: deps.RealtimeDiagnostics})
 	if err != nil {
 		return applicationFoundation{}, err
 	}
-	realtime, err := newRealtimeServiceWithDelivery(
-		realtimeDelivery,
-		deps.RealtimeDiagnostics,
-	)
+	realtime, err := newRealtimeServiceWithDelivery(realtimeServiceDependencies{Delivery: realtimeDelivery, Diagnostics: deps.RealtimeDiagnostics})
 	if err != nil {
 		return applicationFoundation{}, err
 	}
 	realtime.attempts = deps.Store.ExamAttempt()
-	audit, err := newAuditService(deps.Store.Audit(), deps.Store.Institution(), deps.NodeID)
+	audit, err := newAuditService(auditServiceDependencies{Audits: deps.Store.Audit(), Institutions: deps.Store.Institution(), NodeID: deps.NodeID})
 	if err != nil {
 		return applicationFoundation{}, err
 	}

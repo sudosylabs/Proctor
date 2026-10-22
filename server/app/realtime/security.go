@@ -106,7 +106,7 @@ func (s *Service) applySessionRevocation(
 	revocation sessionRevocationMessage,
 ) {
 	s.mu.RLock()
-	invalidator := s.authenticationInvalidator
+	invalidator := s.deps.AuthenticationInvalidator
 	sink := s.sink
 	s.mu.RUnlock()
 
@@ -166,7 +166,7 @@ func (s *Service) broadcastSecurityInvalidation(
 
 func (s *Service) reportSecurityFailure(ctx context.Context, message, category string) {
 	s.mu.RLock()
-	diagnostics := s.diagnostics
+	diagnostics := s.deps.Diagnostics
 	s.mu.RUnlock()
 	if diagnostics != nil {
 		diagnostics.ErrorContext(ctx, message, errors.New(category))

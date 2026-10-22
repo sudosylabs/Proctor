@@ -32,11 +32,17 @@ const (
 	maxAuthenticationAttemptQualifierBytes = 256
 )
 
+// authenticationAttemptAccountingDependencies are the collaborators of authenticationAttemptAccounting;
+// newAuthenticationAttemptAccounting validates them once and authenticationAttemptAccounting keeps them in deps.
+type authenticationAttemptAccountingDependencies struct {
+	Cache authenticationAttemptCache
+}
+
 // authenticationAttemptAccounting owns the disposable mechanics shared by
 // authentication attempt policies. It is deliberately stateless: callers own
 // which dimensions and limits apply to each use case.
 type authenticationAttemptAccounting struct {
-	cache authenticationAttemptCache
+	deps authenticationAttemptAccountingDependencies
 }
 
 type authenticationAttemptPurpose uint8
@@ -130,13 +136,11 @@ type authenticationAttemptReceipt struct {
 	keys map[authenticationAttemptDimension]string
 }
 
-func newAuthenticationAttemptAccounting(
-	cache authenticationAttemptCache,
-) (*authenticationAttemptAccounting, error) {
-	if cache == nil {
+func newAuthenticationAttemptAccounting(deps authenticationAttemptAccountingDependencies) (*authenticationAttemptAccounting, error) {
+	if deps.Cache == nil {
 		return nil, errors.New("authentication attempt cache is required")
 	}
-	return &authenticationAttemptAccounting{cache: cache}, nil
+	return &authenticationAttemptAccounting{deps: deps}, nil
 }
 
 func (a *authenticationAttemptAccounting) account(
@@ -156,7 +160,7 @@ func (a *authenticationAttemptAccounting) account(
 		dimension, _ := limit.dimension.keySegment()
 		key := "authentication/attempts/" + purpose + "/" + dimension + "/" +
 			digestAuthenticationAttempt(intent, limit)
-		count, addErr := a.cache.Add(ctx, key, 1, intent.window)
+		count, addErr := a.deps.Cache.Add(ctx, key, 1, intent.window)
 		if addErr != nil {
 			return authenticationAttemptReceipt{}, false, addErr
 		}
@@ -177,14 +181,14 @@ func (a *authenticationAttemptAccounting) reset(
 	receipt authenticationAttemptReceipt,
 	dimension authenticationAttemptDimension,
 ) error {
-	if a == nil || a.cache == nil {
+	if a == nil || a.deps.Cache == nil {
 		return errors.New("authentication attempt accounting is unavailable")
 	}
 	key, ok := receipt.keys[dimension]
 	if !ok || key == "" {
 		return errors.New("authentication attempt receipt is invalid")
 	}
-	return a.cache.Delete(ctx, key)
+	return a.deps.Cache.Delete(ctx, key)
 }
 
 // authenticationFailureSubject names one failure counter without exposing its
@@ -221,7 +225,7 @@ func (a *authenticationAttemptAccounting) failures(
 	if subject.key == "" || window <= 0 {
 		return 0, errors.New("authentication failure subject is invalid")
 	}
-	return a.cache.Add(ctx, subject.key, 0, window)
+	return a.deps.Cache.Add(ctx, subject.key, 0, window)
 }
 
 // recordFailure counts one failed verification for subject.
@@ -233,7 +237,7 @@ func (a *authenticationAttemptAccounting) recordFailure(
 	if subject.key == "" || window <= 0 {
 		return errors.New("authentication failure subject is invalid")
 	}
-	_, err := a.cache.Add(ctx, subject.key, 1, window)
+	_, err := a.deps.Cache.Add(ctx, subject.key, 1, window)
 	return err
 }
 
@@ -245,7 +249,7 @@ func (a *authenticationAttemptAccounting) clearFailures(
 	if subject.key == "" {
 		return errors.New("authentication failure subject is invalid")
 	}
-	return a.cache.Delete(ctx, subject.key)
+	return a.deps.Cache.Delete(ctx, subject.key)
 }
 
 func validateAuthenticationAttemptIntent(

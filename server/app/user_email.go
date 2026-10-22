@@ -55,7 +55,7 @@ func (s *accountTokenService) ChangeUserEmail(ctx context.Context, invocation in
 	if s.administration.authorization == nil || s.administration.audit == nil {
 		return nil, apperror.New("administration.unavailable")
 	}
-	if err := requireStrongRecentSession(invocation.Principal(), s.now(), s.administration.recentAuthenticationTTL); err != nil {
+	if err := requireStrongRecentSession(invocation.Principal(), s.deps.Now(), s.administration.recentAuthenticationTTL); err != nil {
 		return nil, err
 	}
 	if err := s.administration.authorization.Authorize(ctx, invocation, model.ActionUserManage, model.Resource{Type: model.ResourceUser, ID: command.UserID.String()}); err != nil {
@@ -66,14 +66,14 @@ func (s *accountTokenService) ChangeUserEmail(ctx context.Context, invocation in
 	if !id.IsValid() || !model.IsValidEmail(newEmail) {
 		return nil, apperror.New("user.invalid").WithField("field", "email")
 	}
-	current, err := s.users.Get(ctx, id)
+	current, err := s.deps.Users.Get(ctx, id)
 	if err != nil || current == nil || !current.IsActive() {
 		return nil, userStoreErrors.Translate(err)
 	}
 	if current.Email == newEmail {
 		return userEmailState(current), nil
 	}
-	at := model.TimeUTC(s.now())
+	at := model.TimeUTC(s.deps.Now())
 	return runAuditedMutation(ctx, s.administration.audit, mutationAttempt{Invocation: invocation, Action: model.ActionUserManage,
 		Resource: model.Resource{Type: model.ResourceUser, ID: id.String()}, Operation: "change_email",
 		Value: map[string]any{"email_changed": true, "email_verified": false}, Prior: current.Auditable()}, func() time.Time { return at },
@@ -87,7 +87,7 @@ func (s *accountTokenService) VerifyUserEmailPrivileged(ctx context.Context, inv
 	if s.administration.authorization == nil || s.administration.audit == nil {
 		return nil, apperror.New("administration.unavailable")
 	}
-	if err := requireStrongRecentSession(invocation.Principal(), s.now(), s.administration.recentAuthenticationTTL); err != nil {
+	if err := requireStrongRecentSession(invocation.Principal(), s.deps.Now(), s.administration.recentAuthenticationTTL); err != nil {
 		return nil, err
 	}
 	if err := s.administration.authorization.Authorize(ctx, invocation, model.ActionUserManage, model.Resource{Type: model.ResourceUser, ID: command.UserID.String()}); err != nil {
@@ -97,14 +97,14 @@ func (s *accountTokenService) VerifyUserEmailPrivileged(ctx context.Context, inv
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
-	current, err := s.users.Get(ctx, id)
+	current, err := s.deps.Users.Get(ctx, id)
 	if err != nil || current == nil || !current.IsActive() {
 		return nil, userStoreErrors.Translate(err)
 	}
 	if current.EmailVerified {
 		return userEmailState(current), nil
 	}
-	at := model.TimeUTC(s.now())
+	at := model.TimeUTC(s.deps.Now())
 	return runAuditedMutation(ctx, s.administration.audit, mutationAttempt{Invocation: invocation, Action: model.ActionUserManage,
 		Resource: model.Resource{Type: model.ResourceUser, ID: id.String()}, Operation: "verify_email_privileged",
 		Value: map[string]any{"email_verified": true}, Prior: current.Auditable()}, func() time.Time { return at },
@@ -115,26 +115,26 @@ func (s *accountTokenService) VerifyUserEmailPrivileged(ctx context.Context, inv
 }
 
 func (s *accountTokenService) changeUserEmail(ctx context.Context, current *model.User, newEmail string, now time.Time, reference mutationAttemptReference) (*model.User, error) {
-	rawToken := s.newToken()
-	token := &model.UserToken{UserID: current.ID, Purpose: model.UserTokenEmailVerification, TokenHash: model.HashToken(rawToken), Target: newEmail, ExpiresAt: now.Add(s.policy.EmailVerificationTTL)}
+	rawToken := s.deps.NewToken()
+	token := &model.UserToken{UserID: current.ID, Purpose: model.UserTokenEmailVerification, TokenHash: model.HashToken(rawToken), Target: newEmail, ExpiresAt: now.Add(s.deps.Policy.EmailVerificationTTL)}
 	token.PrepareCreate(model.NewUserTokenID(), now)
-	link, err := accountCredentialLink(s.publicURL, "/account/verify-email", rawToken)
+	link, err := accountCredentialLink(s.deps.PublicURL, "/account/verify-email", rawToken)
 	if err != nil {
 		return nil, accountRecoveryUnavailable(err)
 	}
 	oldRecipient, newRecipient := *current, *current
 	newRecipient.Email, newRecipient.EmailVerified = newEmail, false
-	warning, err := s.mail.PrepareEmailChangeWarning(mail.NoticePreparation{Recipient: &oldRecipient, At: now})
+	warning, err := s.deps.Mail.PrepareEmailChangeWarning(mail.NoticePreparation{Recipient: &oldRecipient, At: now})
 	if err != nil {
 		return nil, accountRecoveryUnavailable(err)
 	}
-	verification, err := s.mail.PrepareEmailChangeVerification(mail.AccountTokenPreparation{Recipient: &newRecipient,
+	verification, err := s.deps.Mail.PrepareEmailChangeVerification(mail.AccountTokenPreparation{Recipient: &newRecipient,
 		OccurrenceID: model.MailOccurrenceID(token.ID.String()), ActionURL: link, At: now, Deadline: token.ExpiresAt})
 	if err != nil {
 		return nil, accountRecoveryUnavailable(err)
 	}
-	result, err := s.tokens.ChangeEmail(ctx, &store.UserEmailChange{UserID: current.ID, ExpectedRevision: current.Revision, NewEmail: newEmail, Token: token,
-		TokenLifetime: s.policy.EmailVerificationTTL, WarningLifetime: 24 * time.Hour,
+	result, err := s.deps.Tokens.ChangeEmail(ctx, &store.UserEmailChange{UserID: current.ID, ExpectedRevision: current.Revision, NewEmail: newEmail, Token: token,
+		TokenLifetime: s.deps.Policy.EmailVerificationTTL, WarningLifetime: 24 * time.Hour,
 		WarningOccurrence: warning.Occurrence, WarningDelivery: warning.Delivery, WarningJob: warning.Job,
 		VerificationOccurrence: verification.Occurrence, VerificationDelivery: verification.Delivery, VerificationJob: verification.Job,
 		AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
@@ -145,11 +145,11 @@ func (s *accountTokenService) changeUserEmail(ctx context.Context, current *mode
 }
 
 func (s *accountTokenService) verifyUserEmailPrivileged(ctx context.Context, current *model.User, now time.Time, reference mutationAttemptReference) (*model.User, error) {
-	prepared, err := s.mail.PrepareEmailVerifiedByAdministrator(mail.NoticePreparation{Recipient: current, At: now})
+	prepared, err := s.deps.Mail.PrepareEmailVerifiedByAdministrator(mail.NoticePreparation{Recipient: current, At: now})
 	if err != nil {
 		return nil, accountRecoveryUnavailable(err)
 	}
-	updated, err := s.tokens.VerifyEmailPrivileged(ctx, &store.PrivilegedEmailVerification{UserID: current.ID, ExpectedRevision: current.Revision, Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job,
+	updated, err := s.deps.Tokens.VerifyEmailPrivileged(ctx, &store.PrivilegedEmailVerification{UserID: current.ID, ExpectedRevision: current.Revision, Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job,
 		AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
 	if err != nil {
 		return nil, err

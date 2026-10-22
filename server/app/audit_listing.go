@@ -36,17 +36,23 @@ type auditListingAuthorizer interface {
 	AuthorizeList(context.Context, invocation.Invocation) (store.AuditVisibilityScope, error)
 }
 
-type auditListingService struct {
-	audits        auditListingStore
-	authorization auditListingAuthorizer
+// auditListingServiceDependencies are the collaborators of auditListingService;
+// newAuditListingService validates them once and auditListingService keeps them in deps.
+type auditListingServiceDependencies struct {
+	Audits        auditListingStore
+	Authorization auditListingAuthorizer
 }
 
-func newAuditListingService(audits auditListingStore, authorization auditListingAuthorizer) *auditListingService {
-	return &auditListingService{audits: audits, authorization: authorization}
+type auditListingService struct {
+	deps auditListingServiceDependencies
+}
+
+func newAuditListingService(deps auditListingServiceDependencies) *auditListingService {
+	return &auditListingService{deps: deps}
 }
 
 func (s *auditListingService) ListAuditEvents(ctx context.Context, invocation invocation.Invocation, query ListAuditEventsQuery) ([]*model.AuditEvent, error) {
-	visibility, err := s.authorization.AuthorizeList(ctx, invocation)
+	visibility, err := s.deps.Authorization.AuthorizeList(ctx, invocation)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +71,7 @@ func (s *auditListingService) ListAuditEvents(ctx context.Context, invocation in
 		(query.Resource != nil && query.Resource.Validate() != nil) {
 		return nil, apperror.New("audit.query.invalid")
 	}
-	events, err := s.audits.List(ctx, store.AuditListOptions{
+	events, err := s.deps.Audits.List(ctx, store.AuditListOptions{
 		ActorID: model.UserID(strings.TrimSpace(query.ActorID)), Action: strings.TrimSpace(query.Action),
 		Resource: query.Resource, BeforeCreatedAt: query.BeforeCreatedAt, BeforeID: model.AuditEventID(query.BeforeID), Limit: query.Limit,
 		Visibility: visibility,
@@ -121,7 +127,7 @@ func (a auditListingAuthorization) AuthorizeList(ctx context.Context, invocation
 	}
 	if global.InstitutionWide {
 		resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
-		if err := a.authorization.audit.RecordAuthorizationDecision(ctx, principal, model.ActionAuditView, resource, model.RoleScopeInstitution, institution.ID.String(), invocation.RequestMetadata(), true); err != nil {
+		if err = a.authorization.deps.Audit.RecordAuthorizationDecision(ctx, principal, model.ActionAuditView, resource, model.RoleScopeInstitution, institution.ID.String(), invocation.RequestMetadata(), true); err != nil {
 			return store.AuditVisibilityScope{}, err
 		}
 		return store.AuditVisibilityScope{InstitutionWide: true}, nil
@@ -137,7 +143,7 @@ func (a auditListingAuthorization) AuthorizeList(ctx context.Context, invocation
 		resource = model.Resource{Type: model.ResourceAcademicUnit, ID: academic.AcademicUnitRootIDs[0].String()}
 		scopeType, scopeID = model.RoleScopeAcademicUnit, resource.ID
 	}
-	if err := a.authorization.audit.RecordAuthorizationDecision(ctx, principal, model.ActionAcademicAuditView, resource, scopeType, scopeID, invocation.RequestMetadata(), allowed); err != nil {
+	if err := a.authorization.deps.Audit.RecordAuthorizationDecision(ctx, principal, model.ActionAcademicAuditView, resource, scopeType, scopeID, invocation.RequestMetadata(), allowed); err != nil {
 		return store.AuditVisibilityScope{}, err
 	}
 	if !allowed {

@@ -9,6 +9,7 @@ package app
 
 import (
 	"errors"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/app/exam"
 	"github.com/sudosylabs/proctor/server/app/exam/attempt"
@@ -136,8 +137,7 @@ func New(deps Dependencies) (*App, error) {
 		return nil, err
 	}
 	administration := constructAdministration(deps, foundation, access, identity)
-	identity.onboardingImports, err = newOnboardingImportService(deps, identity.invitations, administration.academicAdministrationBatches,
-		identity.authentication, invitationAuthorizationAdapter{authorization: access.authorization}, mutationAuditAdapter{audit: foundation.audit})
+	identity.onboardingImports, err = constructOnboardingImports(deps, identity, administration, access, foundation)
 	if err != nil {
 		return nil, err
 	}
@@ -156,3 +156,30 @@ var (
 	ErrAuthenticationCacheMiss      = errors.New("authentication cache: key not found")
 	ErrAuthenticationCacheNotStored = errors.New("authentication cache: conditional write not applied")
 )
+
+// constructOnboardingImports projects the onboarding import stores. A
+// deliberately reduced lifecycle test catalog omits whole capability
+// families and so constructs no onboarding imports; production catalogs
+// project every target store together.
+func constructOnboardingImports(deps Dependencies, identity identityConstruction, administration administrationConstruction,
+	access accessAcademicConstruction, foundation applicationFoundation,
+) (*onboardingImportService, error) {
+	if deps.Store == nil {
+		return nil, errors.New("onboarding import store catalog is required")
+	}
+	catalog := deps.Store
+	if catalog.OnboardingImport() == nil {
+		return nil, errors.New("onboarding import persistence is required")
+	}
+	if deps.FileContent == nil {
+		return nil, errors.New("onboarding import file content is required")
+	}
+	if catalog.PersonalAccessToken() == nil || catalog.User() == nil {
+		return nil, errors.New("onboarding import credential stores are required")
+	}
+	if catalog.Institution() == nil || catalog.AcademicUnit() == nil || catalog.Programme() == nil || catalog.ProgrammeLevel() == nil ||
+		catalog.AcademicPeriod() == nil || catalog.Class() == nil || catalog.Role() == nil {
+		return nil, nil
+	}
+	return newOnboardingImportService(onboardingImportServiceDependencies{Imports: catalog.OnboardingImport(), Content: deps.FileContent, Invitations: identity.invitations, AdministrationBatches: administration.academicAdministrationBatches, Authentication: identity.authentication, Authorization: invitationAuthorizationAdapter{authorization: access.authorization}, Audit: mutationAuditAdapter{audit: foundation.audit}, Tokens: catalog.PersonalAccessToken(), Users: catalog.User(), Institutions: catalog.Institution(), Units: catalog.AcademicUnit(), Programmes: catalog.Programme(), Levels: catalog.ProgrammeLevel(), Periods: catalog.AcademicPeriod(), Classes: catalog.Class(), Roles: catalog.Role(), Affiliations: catalog.Affiliation(), UnitMembers: catalog.AcademicUnitMember(), ClassMembers: catalog.ClassMember(), RoleBindings: catalog.RoleBinding(), Now: time.Now})
+}

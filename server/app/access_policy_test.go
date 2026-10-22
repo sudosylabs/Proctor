@@ -103,9 +103,7 @@ func accessPolicyFixture(t *testing.T) (*accessPolicyService, *accessPolicyStore
 	}}
 	effects := &accessPolicyEffectsFake{}
 	audit := &accessPolicyAuditFake{beginID: model.NewID()}
-	service, err := newAccessPolicyService(persistence, &accessPolicyInstitutionFake{institution}, &accessPolicyAuthorizationFake{}, capabilities,
-		audit, effects, accessPolicyEffectFailuresFake{}, "https://proctor.example.edu", time.Minute,
-		func() time.Time { return at.Add(time.Minute) })
+	service, err := newAccessPolicyService(accessPolicyServiceDependencies{Policies: persistence, Institutions: &accessPolicyInstitutionFake{institution}, Authorization: &accessPolicyAuthorizationFake{}, Capabilities: capabilities, Audit: audit, Effects: effects, EffectFailures: accessPolicyEffectFailuresFake{}, CanonicalOrigin: "https://proctor.example.edu", RecentAuthenticationTTL: time.Minute, Now: func() time.Time { return at.Add(time.Minute) }})
 	require.NoError(t, err)
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor,

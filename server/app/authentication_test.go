@@ -111,8 +111,8 @@ func (authenticationDesktopRegistrationLookupFake) Get(context.Context, model.De
 
 func testAuthenticationDesktopDependencies(t *testing.T, cache authenticationCache) authenticationDesktopDependencies {
 	t.Helper()
-	dpop, err := newDPoPSecurity(cache, dpopPolicy{Origin: "https://proctor.test", NonceLifetime: 5 * time.Minute,
-		ProofLifetime: 5 * time.Minute, ClockSkew: time.Minute, NewNonce: model.NewCredentialToken, Now: time.Now})
+	dpop, err := newDPoPSecurity(dpopSecurityDependencies{Cache: cache, Policy: dpopPolicy{Origin: "https://proctor.test", NonceLifetime: 5 * time.Minute,
+		ProofLifetime: 5 * time.Minute, ClockSkew: time.Minute, NewNonce: model.NewCredentialToken, Now: time.Now}})
 	require.NoError(t, err)
 	return authenticationDesktopDependencies{registrations: authenticationDesktopRegistrationLookupFake{}, dpop: dpop}
 }
@@ -550,42 +550,22 @@ func newTestAuthenticationServiceWithEffects(
 ) *authenticationService {
 	t.Helper()
 	settings := testPasswordPolicy()
-	hasher, err := newPasswordHasher(settings, nil)
+	hasher, err := newPasswordHasher(passwordHasherDependencies{Settings: settings, Recorder: nil})
 	require.NoError(t, err)
-	service, err := newAuthenticationService(
-		persistence.User(),
-		persistence.PasswordCredential(),
-		persistence.Session(),
-		persistence.SessionCredential(),
-		allowAllAuthenticationAccessPolicy(),
-		cache,
-		mustAuthenticationAttemptAccounting(t, cache),
-		effects,
-		&mutationAttemptAuditorFake{events: &[]string{}, beginID: model.NewID()},
-		&localLoginAuditorFake{},
-		hasher,
-		mfa,
-		personalTokens,
-		SessionPolicy{
-			AccessTTL:              time.Hour,
-			RefreshTTL:             24 * time.Hour,
-			IdleTTL:                2 * time.Hour,
-			AbsoluteTTL:            7 * 24 * time.Hour,
-			ActivityUpdateInterval: time.Minute,
-			MaximumPerUser:         10,
-		},
-		LoginRateLimitPolicy{
-			Window:                     time.Minute,
-			MaximumAttempts:            20,
-			MaximumSourceAttempts:      100,
-			AccountFailuresBeforeDelay: 50,
-			MaximumAccountFailureDelay: time.Second,
-		},
-		&securityEffectsDiagnosticsFake{},
-		newCredential,
-		now,
-		testAuthenticationDesktopDependencies(t, cache),
-	)
+	service, err := newAuthenticationService(authenticationServiceDependencies{Users: persistence.User(), Passwords: persistence.PasswordCredential(), Sessions: persistence.Session(), SessionCredentials: persistence.SessionCredential(), AccessPolicy: allowAllAuthenticationAccessPolicy(), Cache: cache, Attempts: mustAuthenticationAttemptAccounting(t, cache), SecurityEffects: effects, Audit: &mutationAttemptAuditorFake{events: &[]string{}, beginID: model.NewID()}, LoginAudit: &localLoginAuditorFake{}, Hasher: hasher, MFA: mfa, PersonalTokens: personalTokens, SessionPolicy: SessionPolicy{
+		AccessTTL:              time.Hour,
+		RefreshTTL:             24 * time.Hour,
+		IdleTTL:                2 * time.Hour,
+		AbsoluteTTL:            7 * 24 * time.Hour,
+		ActivityUpdateInterval: time.Minute,
+		MaximumPerUser:         10,
+	}, LoginRateLimit: LoginRateLimitPolicy{
+		Window:                     time.Minute,
+		MaximumAttempts:            20,
+		MaximumSourceAttempts:      100,
+		AccountFailuresBeforeDelay: 50,
+		MaximumAccountFailureDelay: time.Second,
+	}, Diagnostics: &securityEffectsDiagnosticsFake{}, NewCredential: newCredential, Now: now, Desktop: testAuthenticationDesktopDependencies(t, cache)})
 	require.NoError(t, err)
 	return service
 }
@@ -595,7 +575,7 @@ func mustAuthenticationAttemptAccounting(
 	cache authenticationAttemptCache,
 ) *authenticationAttemptAccounting {
 	t.Helper()
-	accounting, err := newAuthenticationAttemptAccounting(cache)
+	accounting, err := newAuthenticationAttemptAccounting(authenticationAttemptAccountingDependencies{Cache: cache})
 	require.NoError(t, err)
 	return accounting
 }
@@ -1008,7 +988,7 @@ func TestLoginRejectsExistingLocalCredentialWhenCurrentPolicyDisablesLocalLogin(
 		User: &model.User{Username: "policy-user", Email: "policy-user@example.edu"}, Password: "CorrectHorseBatteryStaple1!",
 	})
 	require.NoError(t, err)
-	service.accessPolicy = authenticationAccessPolicyFake{local: false}
+	service.deps.AccessPolicy = authenticationAccessPolicyFake{local: false}
 	result, err := service.Login(context.Background(), invocation.Invocation{}, LoginCommand{
 		LoginID: user.Email, Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientWeb, Source: "192.0.2.5",
 	})
@@ -1033,7 +1013,7 @@ func TestLoginRejectsDisabledUserBeforeMFARecoveryRead(t *testing.T) {
 			require.NoError(t, err)
 			persistence.usersByEmail[user.Email].DisabledAt = model.OptionalTimeFrom(time.Now())
 			mfa := &authenticationMFAVerifierFake{recoveryErr: errors.New("disabled User has no active MFA recovery state")}
-			service.mfa = mfa
+			service.deps.MFA = mfa
 			result, err := service.Login(context.Background(), invocation.Invocation{}, LoginCommand{
 				LoginID: user.Email, Password: password, ClientType: model.SessionClientCLI, Source: "192.0.2.7",
 			})
@@ -1068,13 +1048,13 @@ func TestLoginPasswordCapacityPreservesAccountParity(t *testing.T) {
 			case "missing credential":
 				delete(persistence.passwords, user.ID.String())
 			case "local login disabled":
-				service.accessPolicy = authenticationAccessPolicyFake{local: false}
+				service.deps.AccessPolicy = authenticationAccessPolicyFake{local: false}
 			case "invalid login":
 				command.LoginID = ""
 			case "oversized password":
-				command.Password = strings.Repeat("x", service.hasher.maximumLength+1)
+				command.Password = strings.Repeat("x", service.deps.Hasher.maximumLength+1)
 			}
-			saturatePasswordWork(t, service.hasher)
+			saturatePasswordWork(t, service.deps.Hasher)
 			result, err := service.Login(context.Background(), invocation.Invocation{}, command)
 			require.Nil(t, result, "saturated login = %#v/%v, want service.busy", result, err)
 			require.True(t, apperror.Is(err, "service.busy"), "saturated login = %#v/%v, want service.busy", result, err)
@@ -1097,7 +1077,7 @@ func TestLoginPasswordCapacityPreservesAccountParity(t *testing.T) {
 func TestLocalUserCreationRejectsPasswordWorkBeforePersistence(t *testing.T) {
 	persistence := newAuthenticationStoreFake()
 	service := newTestAuthenticationService(t, persistence)
-	saturatePasswordWork(t, service.hasher)
+	saturatePasswordWork(t, service.deps.Hasher)
 	command := CreateLocalUserCommand{User: &model.User{Username: "new-user", Email: "new-user@example.edu"}, Password: "CorrectHorseBatteryStaple1!"}
 	user, err := service.CreateLocalUser(context.Background(), command)
 	require.Nil(t, user, "saturated creation = %#v/%v", user, err)
@@ -1122,18 +1102,18 @@ func TestLocalAuthenticationRejectsRehashCapacityBeforeProofAndMutation(t *testi
 	})
 	require.NoError(t, err)
 	credential := *persistence.passwords[user.ID.String()]
-	service.hasher.parameters.iterations++
+	service.deps.Hasher.parameters.iterations++
 	recorder := &passwordWorkRecorderFake{}
-	service.hasher.recorder = recorder
+	service.deps.Hasher.deps.Recorder = recorder
 	mfa := &authenticationMFAVerifierFake{strength: model.AuthenticationSingleFactor}
-	service.mfa = mfa
+	service.deps.MFA = mfa
 	// Admit competing work at the next context check after verification has
 	// returned its permit. This selects the rehash admission boundary without
 	// sleeps, cryptographic substitutes, or a production-only test hook.
 	var competed sync.Once
 	ctx := passwordWorkBoundaryContext{Context: context.Background(), check: func() {
-		if recorder.finished.Load() == 1 && len(service.hasher.work) == 0 {
-			competed.Do(func() { saturatePasswordWork(t, service.hasher) })
+		if recorder.finished.Load() == 1 && len(service.deps.Hasher.work) == 0 {
+			competed.Do(func() { saturatePasswordWork(t, service.deps.Hasher) })
 		}
 	}}
 	proof, err := service.authenticateLocal(ctx, LoginCommand{
@@ -1201,17 +1181,17 @@ func TestLoginRejectsPasswordChangedAfterVerification(t *testing.T) {
 			})
 			require.NoError(t, err)
 			if rehash {
-				service.hasher.parameters.iterations++
+				service.deps.Hasher.parameters.iterations++
 			}
 			replacement := *persistence.passwords[user.ID.String()]
-			replacement.PasswordHash, err = service.hasher.Hash(context.Background(), "ReplacementPasswordForReset1!")
+			replacement.PasswordHash, err = service.deps.Hasher.Hash(context.Background(), "ReplacementPasswordForReset1!")
 			require.NoError(t, err)
 			replacement.Revision++
 			replacement.PasswordChangedAt = replacement.PasswordChangedAt.Add(time.Microsecond)
 			replacement.UpdatedAt = replacement.PasswordChangedAt
 			// MFA is the existing seam immediately after password verification.
 			// Commit reset here to force the otherwise nondeterministic ordering.
-			service.mfa = &authenticationMFAVerifierFake{
+			service.deps.MFA = &authenticationMFAVerifierFake{
 				strength:    model.AuthenticationSingleFactor,
 				afterVerify: func() { persistence.passwords[user.ID.String()] = &replacement },
 			}
@@ -1237,8 +1217,8 @@ func TestLocalAuthenticationRejectsRehashConflictBeforeReturningProof(t *testing
 		User: &model.User{Username: "removed-password", Email: "removed-password@example.edu"}, Password: password,
 	})
 	require.NoError(t, err)
-	service.hasher.parameters.iterations++
-	service.mfa = &authenticationMFAVerifierFake{
+	service.deps.Hasher.parameters.iterations++
+	service.deps.MFA = &authenticationMFAVerifierFake{
 		strength:    model.AuthenticationSingleFactor,
 		afterVerify: func() { delete(persistence.passwords, user.ID.String()) },
 	}
@@ -1261,14 +1241,14 @@ func TestLocalAuthenticationRehashPreservesPasswordProof(t *testing.T) {
 	})
 	require.NoError(t, err)
 	before := *persistence.passwords[user.ID.String()]
-	service.hasher.parameters.iterations++
+	service.deps.Hasher.parameters.iterations++
 	recorder := &passwordWorkRecorderFake{}
-	service.hasher.recorder = recorder
+	service.deps.Hasher.deps.Recorder = recorder
 	base := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
-	service.now = func() time.Time { return base.Add(time.Duration(recorder.finished.Load()) * time.Second) }
-	service.mfa = &authenticationMFAVerifierFake{strength: model.AuthenticationSingleFactor, afterVerify: func() {
+	service.deps.Now = func() time.Time { return base.Add(time.Duration(recorder.finished.Load()) * time.Second) }
+	service.deps.MFA = &authenticationMFAVerifierFake{strength: model.AuthenticationSingleFactor, afterVerify: func() {
 		require.Equal(t, int64(2), recorder.finished.Load(), "MFA ran before password work completed and released its permits")
-		require.Empty(t, service.hasher.work, "MFA ran before password work completed and released its permits")
+		require.Empty(t, service.deps.Hasher.work, "MFA ran before password work completed and released its permits")
 	}}
 	proof, err := service.authenticateLocal(ctx, LoginCommand{
 		LoginID: user.Email, Password: password, ClientType: model.SessionClientWeb, Source: "192.0.2.12",
@@ -1281,8 +1261,8 @@ func TestLocalAuthenticationRehashPreservesPasswordProof(t *testing.T) {
 	require.Equal(t, before.Revision, after.Revision, "rehash changed the proved password identity or revision")
 	require.Equal(t, before.PasswordChangedAt, after.PasswordChangedAt, "rehash changed the proved password identity or revision")
 	require.NotEqual(t, before.PasswordHash, after.PasswordHash, "rehash did not preserve password verification under the new parameters")
-	require.False(t, service.hasher.NeedsRehash(after.PasswordHash), "rehash did not preserve password verification under the new parameters")
-	require.NoError(t, service.hasher.Verify(context.Background(), after.PasswordHash, password), "rehash did not preserve password verification under the new parameters")
+	require.False(t, service.deps.Hasher.NeedsRehash(after.PasswordHash), "rehash did not preserve password verification under the new parameters")
+	require.NoError(t, service.deps.Hasher.Verify(context.Background(), after.PasswordHash, password), "rehash did not preserve password verification under the new parameters")
 }
 
 func TestLoginAndAuthenticateAccessConstructPrincipal(t *testing.T) {
@@ -1361,8 +1341,8 @@ func TestLoginRateLimitsRepeatedFailures(t *testing.T) {
 
 	persistence := newAuthenticationStoreFake()
 	service := newTestAuthenticationService(t, persistence)
-	service.loginRateLimit.MaximumAttempts = 2
-	service.loginRateLimit.MaximumSourceAttempts = 100
+	service.deps.LoginRateLimit.MaximumAttempts = 2
+	service.deps.LoginRateLimit.MaximumSourceAttempts = 100
 
 	_, _ = service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 		User:     &model.User{Username: "rate-user", Email: "rate-user@example.edu"},

@@ -80,33 +80,34 @@ type DeliveryError struct {
 func (e *DeliveryError) Error() string { return e.err.Error() }
 func (e *DeliveryError) Unwrap() error { return e.err }
 
+// Dependencies are the collaborators of Service;
+// New validates them once and Service keeps them in deps.
+type Dependencies struct {
+	AuthenticationInvalidator AuthenticationInvalidator
+	Diagnostics               Diagnostics
+}
+
 // Service owns ordinary realtime event delivery. It is inert after
 // construction and borrows its attached collaborators.
 type Service struct {
-	mu                        sync.RWMutex
-	sink                      Sink
-	fanout                    ClusterFanout
-	authenticationInvalidator AuthenticationInvalidator
-	diagnostics               Diagnostics
+	deps Dependencies
+
+	mu     sync.RWMutex
+	sink   Sink
+	fanout ClusterFanout
 }
 
 // New constructs an inert Realtime module with its required security
 // collaborators. Sink and peer fanout remain staged because composition builds
 // those adapters after the application graph.
-func New(
-	invalidator AuthenticationInvalidator,
-	diagnostics Diagnostics,
-) (*Service, error) {
-	if invalidator == nil {
+func New(deps Dependencies) (*Service, error) {
+	if deps.AuthenticationInvalidator == nil {
 		return nil, errors.New("realtime authentication invalidator is nil")
 	}
-	if diagnostics == nil {
+	if deps.Diagnostics == nil {
 		return nil, errors.New("realtime diagnostics is nil")
 	}
-	return &Service{
-		authenticationInvalidator: invalidator,
-		diagnostics:               diagnostics,
-	}, nil
+	return &Service{deps: deps}, nil
 }
 
 // SetSink attaches the local sink exactly once.

@@ -39,7 +39,7 @@ func testPasswordPolicy() PasswordPolicy {
 
 func TestPasswordHasherRoundTripAndRehash(t *testing.T) {
 	settings := testPasswordPolicy()
-	hasher, err := newPasswordHasher(settings, nil)
+	hasher, err := newPasswordHasher(passwordHasherDependencies{Settings: settings, Recorder: nil})
 	require.NoError(t, err)
 	encoded, err := hasher.Hash(context.Background(), "correct horse battery staple")
 	require.NoError(t, err)
@@ -50,14 +50,14 @@ func TestPasswordHasherRoundTripAndRehash(t *testing.T) {
 
 	stronger := settings
 	stronger.ArgonIterations = 2
-	strongerHasher, err := newPasswordHasher(stronger, nil)
+	strongerHasher, err := newPasswordHasher(passwordHasherDependencies{Settings: stronger, Recorder: nil})
 	require.NoError(t, err)
 	require.True(t, strongerHasher.NeedsRehash(encoded), "changed parameters did not require rehash")
 }
 
 func TestPasswordHasherRejectsUnsafeInputsAndParameters(t *testing.T) {
 	settings := testPasswordPolicy()
-	hasher, err := newPasswordHasher(settings, nil)
+	hasher, err := newPasswordHasher(passwordHasherDependencies{Settings: settings, Recorder: nil})
 	require.NoError(t, err)
 	_, err = hasher.Hash(context.Background(), "short")
 	require.Error(t, err, "Hash(short) succeeded")
@@ -72,7 +72,7 @@ func TestPasswordHasherRequiresPositiveWorkCapacity(t *testing.T) {
 	for _, maximum := range []int{0, -1} {
 		policy := testPasswordPolicy()
 		policy.MaximumConcurrentOperations = maximum
-		_, err := newPasswordHasher(policy, nil)
+		_, err := newPasswordHasher(passwordHasherDependencies{Settings: policy, Recorder: nil})
 		require.Error(t, err, "capacity %d was accepted", maximum)
 	}
 }
@@ -80,7 +80,7 @@ func TestPasswordHasherRequiresPositiveWorkCapacity(t *testing.T) {
 func TestPasswordHasherReleasesCapacityAfterMismatch(t *testing.T) {
 	policy := testPasswordPolicy()
 	policy.MaximumConcurrentOperations = 1
-	hasher, err := newPasswordHasher(policy, nil)
+	hasher, err := newPasswordHasher(passwordHasherDependencies{Settings: policy, Recorder: nil})
 	require.NoError(t, err)
 	for range 2 {
 		require.ErrorIs(t, hasher.Verify(context.Background(), hasher.dummyHash, "incorrect password"), ErrPasswordMismatch)
@@ -98,7 +98,7 @@ func TestPasswordHasherSharesCapacityAndRetainsCanceledWorkUntilReturn(t *testin
 			recorder := &passwordWorkRecorderFake{onStart: func() { announce(); <-proceed }}
 			policy := testPasswordPolicy()
 			policy.MaximumConcurrentOperations = 1
-			hasher, err := newPasswordHasher(policy, recorder)
+			hasher, err := newPasswordHasher(passwordHasherDependencies{Settings: policy, Recorder: recorder})
 			require.NoError(t, err)
 			require.Equal(t, int64(0), recorder.started.Load(), "startup timing hash was counted as runtime work")
 			ctx, cancel := context.WithCancel(context.Background())

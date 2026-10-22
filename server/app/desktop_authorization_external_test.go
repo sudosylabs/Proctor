@@ -37,7 +37,7 @@ func TestDesktopExternalAuthenticationStartUsesBoundTransactionOwner(t *testing.
 	})
 	require.NoError(t, err, "begin Desktop external authentication")
 	require.NotNil(t, result, "begin Desktop external authentication")
-	saved := service.loginStates.(*externalLoginStateStoreFake).saved
+	saved := service.deps.LoginStates.(*externalLoginStateStoreFake).saved
 	require.NotNil(t, saved)
 	require.Equal(t, model.ExternalAuthenticationPurposeDesktopAuthorization, saved.Purpose)
 	require.Equal(t, transactionID, saved.BrowserAuthenticationTransactionID)
@@ -77,7 +77,7 @@ func TestDesktopExternalAuthenticationRejectsUnboundProofBeforeProvider(t *testi
 		t.Run(test.name, func(t *testing.T) {
 			service := newDesktopExternalAuthenticationFixture(t, &test.transactions)
 			provider := &recordingExternalProvider{}
-			service.registry = externalProviderSourceFake{provider: provider}
+			service.deps.Registry = externalProviderSourceFake{provider: provider}
 			application := &App{externalAuthenticationService: service}
 			result, err := application.BeginDesktopExternalAuthentication(t.Context(), invocation.Invocation{}, BeginDesktopExternalAuthenticationCommand{
 				ProviderID: "campus", Binding: test.binding, State: test.state, Source: "192.0.2.10",
@@ -86,7 +86,7 @@ func TestDesktopExternalAuthenticationRejectsUnboundProofBeforeProvider(t *testi
 			require.True(t, apperror.Is(err, test.code), "begin = %#v, %v; want %s", result, err, test.code)
 			require.Equal(t, test.lookups, test.transactions.contextCalls, "invalid Desktop proof reached provider or login-state persistence")
 			require.Equal(t, 0, provider.beginCalls, "invalid Desktop proof reached provider or login-state persistence")
-			require.Nil(t, service.loginStates.(*externalLoginStateStoreFake).saved, "invalid Desktop proof reached provider or login-state persistence")
+			require.Nil(t, service.deps.LoginStates.(*externalLoginStateStoreFake).saved, "invalid Desktop proof reached provider or login-state persistence")
 		})
 	}
 }
@@ -120,12 +120,12 @@ func TestExternalAuthenticationCompletionIsolatesDesktopPurpose(t *testing.T) {
 			}
 			assertion := &model.ExternalAuthenticationAssertion{ProviderID: "campus", Subject: identity.Subject, Email: user.Email,
 				EmailVerified: true, AuthenticationStrength: model.AuthenticationMultiFactor, AuthenticatedAt: at.UnixMilli()}
-			service.registry = externalProviderSourceFake{provider: providerConnectionProvider{state: stateToken, assertion: assertion}}
-			service.loginStates = &externalLoginStateStoreFake{get: state, consumeResult: state, storeNow: at}
-			service.identities, service.authentication, service.invitationAcceptor = identities, issuer, acceptor
-			service.accessPolicy = authenticationAccessPolicyFake{providers: map[string]bool{"campus": true},
+			service.deps.Registry = externalProviderSourceFake{provider: providerConnectionProvider{state: stateToken, assertion: assertion}}
+			service.deps.LoginStates = &externalLoginStateStoreFake{get: state, consumeResult: state, storeNow: at}
+			service.deps.Identities, service.deps.Authentication, service.deps.InvitationAcceptor = identities, issuer, acceptor
+			service.deps.AccessPolicy = authenticationAccessPolicyFake{providers: map[string]bool{"campus": true},
 				providerModes: map[string]model.ProviderAdmissionMode{"campus": model.ProviderAdmissionInvitationRequired}}
-			service.audit, service.now = externalHandoffAudit{}, func() time.Time { return at }
+			service.deps.Audit, service.deps.Now = externalHandoffAudit{}, func() time.Time { return at }
 			application := &App{externalAuthenticationService: service}
 			result, err := application.CompleteExternalAuthentication(t.Context(), invocation.Invocation{}, CompleteExternalAuthenticationCommand{
 				ProviderID: "campus", Binding: binding,
@@ -163,12 +163,7 @@ func TestExternalAuthenticationCompletionIsolatesDesktopPurpose(t *testing.T) {
 
 func newDesktopExternalAuthenticationFixture(t *testing.T, transactions *desktopAuthorizationStoreFake) *externalAuthenticationService {
 	t.Helper()
-	desktop, err := newDesktopAuthorizationService(transactions,
-		desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
-		desktopAuthorizationAccessPolicyFake{enabled: true}, &accessPolicyCapabilitiesFake{},
-		desktopAuthorizationAuditorFake{}, &desktopAuthorizationAttemptLimiterFake{}, testDesktopSessionPolicy(),
-		DesktopAuthorizationPolicy{Issuer: "https://proctor.example.test"}, model.NewCredentialToken, time.Now,
-		testDesktopAuthorizationIdentity(t, "https://proctor.example.test", time.Now))
+	desktop, err := newDesktopAuthorizationService(desktopAuthorizationServiceDependencies{Transactions: transactions, Institutions: desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}}, AccessPolicy: desktopAuthorizationAccessPolicyFake{enabled: true}, Capabilities: &accessPolicyCapabilitiesFake{}, Audit: desktopAuthorizationAuditorFake{}, Attempts: &desktopAuthorizationAttemptLimiterFake{}, SessionPolicy: testDesktopSessionPolicy(), Policy: DesktopAuthorizationPolicy{Issuer: "https://proctor.example.test"}, NewCredential: model.NewCredentialToken, Now: time.Now, Identity: testDesktopAuthorizationIdentity(t, "https://proctor.example.test", time.Now)})
 	require.NoError(t, err)
 	service, err := (externalAuthenticationConstructorArgs{
 		registry: externalProviderSourceFake{provider: externalProviderFake{}}, loginStates: &externalLoginStateStoreFake{},
@@ -179,7 +174,7 @@ func newDesktopExternalAuthenticationFixture(t *testing.T, transactions *desktop
 		acceptor: &externalInvitationAcceptorFake{}, desktop: desktop, newCredential: model.NewCredentialToken, now: time.Now,
 	}).build()
 	require.NoError(t, err)
-	service.policy = ExternalAuthenticationPolicy{PublicURL: "https://proctor.example.test", LoginStateTTL: 5 * time.Minute,
+	service.deps.Policy = ExternalAuthenticationPolicy{PublicURL: "https://proctor.example.test", LoginStateTTL: 5 * time.Minute,
 		LoginRateLimit: LoginRateLimitPolicy{Window: time.Minute, MaximumSourceAttempts: 10}}
 	return service
 }

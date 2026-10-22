@@ -90,11 +90,16 @@ Workspace aggregate and narrow audit, content, and realtime ports. None imports
 the parent application package or selects SQL, VFS, WebSocket, Jobs, or other
 infrastructure.
 
-Every Exam service is constructed the same way: `New(Dependencies)
-(*Service, error)` in a child package, or `NewX(XDependencies) (*X, error)`
-for each service of the root `app/exam` package. The constructor validates
-every collaborator once and the service keeps them in a single `deps` field;
-no Exam service takes positional collaborators. `app.App` embeds each Exam
+Every application service, parent or child, is constructed the same way:
+`New(Dependencies) (*Service, error)` in a child package, `NewX(XDependencies)
+(*X, error)` for each service of the root `app/exam` package, and
+`newX(xDependencies)` for the parent's unexported services. The constructor
+validates every collaborator once and the service keeps them in a single
+`deps` field, beside any state it derives; no service takes positional
+collaborators. A type is a service when it holds a collaborator: an
+interface, a function, or a pointer to a type with methods.
+`TestServicesTakeOneDependencies` enforces the shape; only `app.New`, which
+distributes its Dependencies to the services it embeds, keeps no `deps`. `app.App` embeds each Exam
 service by its concrete type, through a parent alias such as
 `examSittingService` that gives the embedded field a distinct name. A parent
 adapter or Job runner names a narrow port only where its test substitutes a

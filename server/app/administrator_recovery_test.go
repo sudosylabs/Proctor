@@ -24,9 +24,7 @@ func TestAdministratorRecoveryHashesPrivatePasswordBeforeNamedAggregate(t *testi
 	events := []string{}
 	persistence := &installationStoreFake{events: &events, recoveryResult: &store.AdministratorRecoveryResult{RecordID: model.NewAdministratorRecoveryRecordID(), PasswordRotated: true}}
 	hasher := &passwordHasherFake{events: &events, hash: "encoded-private-password"}
-	service := newBootstrapService(persistence, hasher,
-		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{}), bootstrapRateLimitPolicy(10),
-		bootstrapProtection(), "node-recovery", time.Now, administratorRecoveryPolicy{})
+	service := newBootstrapService(bootstrapServiceDependencies{Installations: persistence, Hasher: hasher, Attempts: bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{}), RateLimit: bootstrapRateLimitPolicy(10), Protection: bootstrapProtection(), NodeID: "node-recovery", Now: time.Now, RecoveryPolicy: administratorRecoveryPolicy{}})
 	institutionID, userID := model.NewInstitutionID(), model.NewUserID()
 
 	result, err := service.RecoverAdministratorAccess(context.Background(), AdministratorRecoveryCommand{
@@ -49,9 +47,7 @@ func TestAdministratorRecoveryPasswordWorkFailuresStopBeforeAggregate(t *testing
 	testPasswordHashFailures(t, "administrator_recovery.unavailable", func(t *testing.T, ctx context.Context, hasher passwordHash) error {
 		events := []string{}
 		persistence := &installationStoreFake{events: &events}
-		service := newBootstrapService(persistence, hasher,
-			bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{}), bootstrapRateLimitPolicy(10),
-			bootstrapProtection(), "node-recovery", time.Now, administratorRecoveryPolicy{})
+		service := newBootstrapService(bootstrapServiceDependencies{Installations: persistence, Hasher: hasher, Attempts: bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{}), RateLimit: bootstrapRateLimitPolicy(10), Protection: bootstrapProtection(), NodeID: "node-recovery", Now: time.Now, RecoveryPolicy: administratorRecoveryPolicy{}})
 		result, err := service.RecoverAdministratorAccess(ctx, AdministratorRecoveryCommand{
 			InstitutionID: model.NewInstitutionID().String(), UserID: model.NewUserID().String(),
 			Password: "correct horse battery staple",
@@ -66,9 +62,7 @@ func TestAdministratorRecoveryPasswordWorkFailuresStopBeforeAggregate(t *testing
 func TestAdministratorRecoveryRejectsInvalidCommandBeforeHashing(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	service := newBootstrapService(&installationStoreFake{events: &events}, &passwordHasherFake{events: &events},
-		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{}), bootstrapRateLimitPolicy(10),
-		bootstrapProtection(), "node-recovery", time.Now, administratorRecoveryPolicy{})
+	service := newBootstrapService(bootstrapServiceDependencies{Installations: &installationStoreFake{events: &events}, Hasher: &passwordHasherFake{events: &events}, Attempts: bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{}), RateLimit: bootstrapRateLimitPolicy(10), Protection: bootstrapProtection(), NodeID: "node-recovery", Now: time.Now, RecoveryPolicy: administratorRecoveryPolicy{}})
 
 	for name, command := range map[string]AdministratorRecoveryCommand{
 		"missing action":      {InstitutionID: model.NewInstitutionID().String(), UserID: model.NewUserID().String()},
@@ -88,9 +82,7 @@ func TestAdministratorRecoveryStartupReconciliationFailsClosed(t *testing.T) {
 	events := []string{}
 	persistenceErr := errors.New("database unavailable")
 	persistence := &installationStoreFake{events: &events, recoveryReconcileErr: persistenceErr}
-	service := newBootstrapService(persistence, &passwordHasherFake{events: &events},
-		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{}), bootstrapRateLimitPolicy(10),
-		bootstrapProtection(), "node-recovery", time.Now, administratorRecoveryPolicy{})
+	service := newBootstrapService(bootstrapServiceDependencies{Installations: persistence, Hasher: &passwordHasherFake{events: &events}, Attempts: bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{}), RateLimit: bootstrapRateLimitPolicy(10), Protection: bootstrapProtection(), NodeID: "node-recovery", Now: time.Now, RecoveryPolicy: administratorRecoveryPolicy{}})
 
 	err := service.ReconcileAdministratorRecovery(context.Background())
 	require.ErrorIs(t, err, persistenceErr, "ReconcileAdministratorRecovery()")

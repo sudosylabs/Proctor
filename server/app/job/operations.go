@@ -105,7 +105,7 @@ func (r *Engine) List(ctx context.Context, query ListQuery) (Page, error) {
 			return Page{}, ErrQueryInvalid
 		}
 	}
-	records, err := r.jobs.List(ctx, store.JobListOptions{Types: r.operatorTypes(), Statuses: query.Statuses, BeforeCreatedAt: query.BeforeCreatedAt, BeforeID: query.BeforeID, Limit: query.Limit})
+	records, err := r.deps.Store.List(ctx, store.JobListOptions{Types: r.operatorTypes(), Statuses: query.Statuses, BeforeCreatedAt: query.BeforeCreatedAt, BeforeID: query.BeforeID, Limit: query.Limit})
 	if err != nil {
 		return Page{}, err
 	}
@@ -139,7 +139,7 @@ func (r *Engine) Attempts(ctx context.Context, query AttemptListQuery) (AttemptP
 	if query.Limit < 1 || query.Limit > 200 || query.BeforeNumber < 0 {
 		return AttemptPage{}, ErrQueryInvalid
 	}
-	records, err := r.jobs.ListAttemptsPage(ctx, store.JobAttemptListOptions{JobID: query.JobID, BeforeNumber: query.BeforeNumber, Limit: query.Limit})
+	records, err := r.deps.Store.ListAttemptsPage(ctx, store.JobAttemptListOptions{JobID: query.JobID, BeforeNumber: query.BeforeNumber, Limit: query.Limit})
 	if err != nil {
 		return AttemptPage{}, err
 	}
@@ -178,7 +178,7 @@ func (r *Engine) Cancel(ctx context.Context, target ControlTarget, audit AuditRe
 	if target.kind != controlCancel || !validAuditReference(audit) {
 		return View{}, ErrCancelUnsupported
 	}
-	record, err := r.jobs.Cancel(ctx, &store.JobMutation{ID: target.id, ExpectedRevision: target.revision, AuditEventID: audit.EventID, AuditAt: audit.At})
+	record, err := r.deps.Store.Cancel(ctx, &store.JobMutation{ID: target.id, ExpectedRevision: target.revision, AuditEventID: audit.EventID, AuditAt: audit.At})
 	if err != nil {
 		return View{}, err
 	}
@@ -189,7 +189,7 @@ func (r *Engine) Retry(ctx context.Context, target ControlTarget, audit AuditRef
 	if target.kind != controlRetry || !validAuditReference(audit) {
 		return View{}, ErrRetryUnsupported
 	}
-	record, err := r.jobs.Retry(ctx, &store.JobMutation{ID: target.id, ExpectedRevision: target.revision, AuditEventID: audit.EventID, AuditAt: audit.At})
+	record, err := r.deps.Store.Retry(ctx, &store.JobMutation{ID: target.id, ExpectedRevision: target.revision, AuditEventID: audit.EventID, AuditAt: audit.At})
 	if err != nil {
 		return View{}, err
 	}
@@ -197,7 +197,7 @@ func (r *Engine) Retry(ctx context.Context, target ControlTarget, audit AuditRef
 }
 
 func (r *Engine) operatorJob(ctx context.Context, id model.JobID) (*model.Job, error) {
-	record, err := r.jobs.Get(ctx, id)
+	record, err := r.deps.Store.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}

@@ -113,7 +113,7 @@ func (a onboardingImportJobs) Parse(ctx context.Context, id model.OnboardingImpo
 }
 
 func (a onboardingImportJobs) Get(ctx context.Context, id model.OnboardingImportID) (*store.OnboardingImport, error) {
-	return a.service.imports.GetOnboardingImport(ctx, id)
+	return a.service.deps.Imports.GetOnboardingImport(ctx, id)
 }
 
 func (a onboardingImportJobs) Execute(ctx context.Context, id model.OnboardingImportID, after int,
@@ -123,7 +123,7 @@ func (a onboardingImportJobs) Execute(ctx context.Context, id model.OnboardingIm
 }
 
 func (a onboardingImportJobs) Fail(ctx context.Context, id model.OnboardingImportID, code string) error {
-	_, err := a.service.imports.FailOnboardingImport(ctx, id, code, model.TimeUTC(a.service.now()))
+	_, err := a.service.deps.Imports.FailOnboardingImport(ctx, id, code, model.TimeUTC(a.service.deps.Now()))
 	return err
 }
 

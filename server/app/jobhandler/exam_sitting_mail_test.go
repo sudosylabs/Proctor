@@ -26,8 +26,8 @@ import (
 
 func TestSittingMailExpansionPagesLargeRosterCheckpointsAndIsolatesOneRecipientConflict(t *testing.T) {
 	at := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
-	preparer, err := mail.NewSittingComposer(sittingMailRendererFake{}, &mailSenderFake{enabled: true,
-		from: mail.Address{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t), func() time.Time { return at })
+	preparer, err := mail.NewSittingComposer(mail.SittingComposerDependencies{Renderer: sittingMailRendererFake{}, Sender: &mailSenderFake{enabled: true,
+		from: mail.Address{Name: "Proctor", Address: "no-reply@example.test"}}, Sealer: mailTestSealer(t), Now: func() time.Time { return at }})
 	require.NoError(t, err)
 	sitting, err := model.NewExamSitting(model.NewExamSittingID(), model.NewExamID(), model.NewExamRevisionID(), model.NewClassID(),
 		at.Add(24*time.Hour), at.Add(26*time.Hour), at)
@@ -65,8 +65,8 @@ func TestSittingMailExpansionPagesLargeRosterCheckpointsAndIsolatesOneRecipientC
 
 func TestSittingMailExpansionLeaseLossReplaysRecipientCommitsWithoutDuplicates(t *testing.T) {
 	at := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
-	preparer, err := mail.NewSittingComposer(sittingMailRendererFake{}, &mailSenderFake{enabled: true,
-		from: mail.Address{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t), func() time.Time { return at })
+	preparer, err := mail.NewSittingComposer(mail.SittingComposerDependencies{Renderer: sittingMailRendererFake{}, Sender: &mailSenderFake{enabled: true,
+		from: mail.Address{Name: "Proctor", Address: "no-reply@example.test"}}, Sealer: mailTestSealer(t), Now: func() time.Time { return at }})
 	require.NoError(t, err)
 	sitting, err := model.NewExamSitting(model.NewExamSittingID(), model.NewExamID(), model.NewExamRevisionID(), model.NewClassID(),
 		at.Add(24*time.Hour), at.Add(26*time.Hour), at)
@@ -198,8 +198,8 @@ func (f *sittingMailExpansionStoreFake) CompleteMailExpansion(_ context.Context,
 
 func TestSittingMailExpansionSkipsAnUnaddressableRecipientAndReachesLaterOnes(t *testing.T) {
 	at := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
-	preparer, err := mail.NewSittingComposer(sittingMailRendererFake{}, &mailSenderFake{enabled: true,
-		from: mail.Address{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t), func() time.Time { return at })
+	preparer, err := mail.NewSittingComposer(mail.SittingComposerDependencies{Renderer: sittingMailRendererFake{}, Sender: &mailSenderFake{enabled: true,
+		from: mail.Address{Name: "Proctor", Address: "no-reply@example.test"}}, Sealer: mailTestSealer(t), Now: func() time.Time { return at }})
 	require.NoError(t, err)
 	sitting, err := model.NewExamSitting(model.NewExamSittingID(), model.NewExamID(), model.NewExamRevisionID(), model.NewClassID(),
 		at.Add(24*time.Hour), at.Add(26*time.Hour), at)

@@ -85,7 +85,7 @@ func newLocalLoginAuditFixture(t *testing.T, mfa authenticationMFAVerifier) (*au
 	service := newTestAuthenticationServiceWithPorts(t, persistence, newAuthenticationCacheFake(), mfa,
 		discardAuthenticationPATResolver{}, model.NewCredentialToken, time.Now)
 	audit := &localLoginAuditorFake{}
-	service.loginAudit = audit
+	service.deps.LoginAudit = audit
 	user, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 		User: &model.User{Username: "audited-user", Email: "audited-user@example.edu"}, Password: "CorrectHorseBatteryStaple1!",
 	})
@@ -167,7 +167,7 @@ func TestLocalLoginFailuresAreDurablyAudited(t *testing.T) {
 func TestLocalLoginRejectedBeforeAdmissionWritesNoAudit(t *testing.T) {
 	t.Parallel()
 	service, _, audit, user := newLocalLoginAuditFixture(t, discardAuthenticationMFAVerifier{})
-	service.loginRateLimit.MaximumAttempts = 1
+	service.deps.LoginRateLimit.MaximumAttempts = 1
 	command := LoginCommand{LoginID: user.Email, Password: "incorrect password", ClientType: model.SessionClientCLI, Source: "192.0.2.10:3"}
 	_, err := service.Login(context.Background(), localLoginInvocation(), command)
 	require.True(t, apperror.Is(err, "authentication.credentials_invalid"), "first err = %v", err)
@@ -197,7 +197,7 @@ func TestAuditServiceLocalLoginEventsCarryRequestIdentity(t *testing.T) {
 	t.Parallel()
 	audits := &systemAuditStoreFake{}
 	institutionID := model.NewInstitutionID()
-	service, err := newAuditService(audits, loginAuditInstitutionStore{id: institutionID}, "node-login")
+	service, err := newAuditService(auditServiceDependencies{Audits: audits, Institutions: loginAuditInstitutionStore{id: institutionID}, NodeID: "node-login"})
 	require.NoError(t, err)
 	metadata := model.RequestMetadata{RequestID: "request-1", IPAddress: "192.0.2.20", UserAgent: "agent"}
 	userID := model.NewUserID()

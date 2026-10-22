@@ -20,100 +20,50 @@ func constructIdentity(
 	capabilities accessPolicyCapabilitySource,
 	desktopCompatibility *desktopCompatibilityService,
 ) (identityConstruction, error) {
-	dpop, err := newDPoPSecurity(deps.Cache, dpopPolicy{Origin: deps.PublicURL,
+	dpop, err := newDPoPSecurity(dpopSecurityDependencies{Cache: deps.Cache, Policy: dpopPolicy{Origin: deps.PublicURL,
 		NonceLifetime: 5 * time.Minute, ProofLifetime: 5 * time.Minute, ClockSkew: time.Minute,
-		NewNonce: model.NewCredentialToken, Now: time.Now})
+		NewNonce: model.NewCredentialToken, Now: time.Now}})
 	if err != nil {
 		return identityConstruction{}, err
 	}
-	authenticationAccess, err := newCurrentAuthenticationAccessPolicy(deps.Store.AccessPolicy())
+	authenticationAccess, err := newCurrentAuthenticationAccessPolicy(currentAuthenticationAccessPolicyDependencies{Policies: deps.Store.AccessPolicy()})
 	if err != nil {
 		return identityConstruction{}, err
 	}
 	accountMail := foundation.mail
-	mfaApplication, err := newMFAApplicationService(
-		deps.Store.User(), deps.Store.MFA(), deps.Store.Session(), deps.Store.Institution(),
-		mfaAuditAdapter{audit: foundation.audit}, foundation.realtime, accountMail, foundation.mfa,
-		mfaSecurityDependencies{authorization: authorization, capabilities: capabilities, attempts: foundation.attempts, rateLimit: deps.LoginRateLimit},
-		deps.RecentAuthenticationTTL, time.Now,
-	)
+	mfaApplication, err := newMFAApplicationService(mfaApplicationServiceDependencies{Users: deps.Store.User(), Credentials: deps.Store.MFA(), Sessions: deps.Store.Session(), Institutions: deps.Store.Institution(), Audit: mfaAuditAdapter{audit: foundation.audit}, Effects: foundation.realtime, Mail: accountMail, Mechanics: foundation.mfa, Security: mfaSecurityDependencies{authorization: authorization, capabilities: capabilities, attempts: foundation.attempts, rateLimit: deps.LoginRateLimit}, RecentAuthenticationTTL: deps.RecentAuthenticationTTL, Now: time.Now})
 	if err != nil {
 		return identityConstruction{}, err
 	}
 	// Expand PAT policy used both at bearer resolution and administration.
 	patPolicy := deps.PersonalAccessToken
-	patResolver, err := newPersonalAccessTokenBearerResolver(
-		deps.Store.PersonalAccessToken(), patPolicy, deps.AuthenticationDiagnostics,
-	)
+	patResolver, err := newPersonalAccessTokenBearerResolver(personalAccessTokenBearerResolverDependencies{Tokens: deps.Store.PersonalAccessToken(), Policy: patPolicy, Diagnostics: deps.AuthenticationDiagnostics})
 	if err != nil {
 		return identityConstruction{}, err
 	}
-	authentication, err := newAuthenticationService(
-		deps.Store.User(),
-		deps.Store.PasswordCredential(),
-		deps.Store.Session(),
-		deps.Store.SessionCredential(),
-		authenticationAccess,
-		deps.Cache,
-		foundation.attempts,
-		foundation.realtime,
-		mutationAuditAdapter{audit: foundation.audit},
-		localLoginAuditAdapter{audit: foundation.audit},
-		foundation.hasher,
-		mfaApplication,
-		patResolver,
-		deps.Sessions,
-		deps.LoginRateLimit,
-		deps.AuthenticationDiagnostics,
-		model.NewCredentialToken,
-		time.Now,
-		authenticationDesktopDependencies{registrations: deps.Store.DesktopRegistration(), dpop: dpop},
-	)
+	authentication, err := newAuthenticationService(authenticationServiceDependencies{Users: deps.Store.User(), Passwords: deps.Store.PasswordCredential(), Sessions: deps.Store.Session(), SessionCredentials: deps.Store.SessionCredential(), AccessPolicy: authenticationAccess, Cache: deps.Cache, Attempts: foundation.attempts, SecurityEffects: foundation.realtime, Audit: mutationAuditAdapter{audit: foundation.audit}, LoginAudit: localLoginAuditAdapter{audit: foundation.audit}, Hasher: foundation.hasher, MFA: mfaApplication, PersonalTokens: patResolver, SessionPolicy: deps.Sessions, LoginRateLimit: deps.LoginRateLimit, Diagnostics: deps.AuthenticationDiagnostics, NewCredential: model.NewCredentialToken, Now: time.Now, Desktop: authenticationDesktopDependencies{registrations: deps.Store.DesktopRegistration(), dpop: dpop}})
 	if err != nil {
 		return identityConstruction{}, err
 	}
 	authentication.operational = deps.OperationalRecorder
-	desktopAuthorization, err := newDesktopAuthorizationService(
-		deps.Store.BrowserAuthentication(), deps.Store.Institution(), authenticationAccess,
-		capabilities, desktopAuthorizationAuditAdapter{audit: foundation.audit},
-		desktopAuthorizationAttemptAccounting{attempts: foundation.attempts, policy: deps.LoginRateLimit}, deps.Sessions,
-		DesktopAuthorizationPolicy{Issuer: deps.PublicURL, AllowLoopbackHTTPDevelopment: deps.LoopbackHTTPDevelopment}, model.NewCredentialToken, time.Now,
-		desktopAuthorizationIdentityDependencies{users: deps.Store.User(), authentication: authentication,
-			compatibility: desktopCompatibility, dpop: dpop},
-	)
+	desktopAuthorization, err := newDesktopAuthorizationService(desktopAuthorizationServiceDependencies{Transactions: deps.Store.BrowserAuthentication(), Institutions: deps.Store.Institution(), AccessPolicy: authenticationAccess, Capabilities: capabilities, Audit: desktopAuthorizationAuditAdapter{audit: foundation.audit}, Attempts: desktopAuthorizationAttemptAccounting{attempts: foundation.attempts, policy: deps.LoginRateLimit}, SessionPolicy: deps.Sessions, Policy: DesktopAuthorizationPolicy{Issuer: deps.PublicURL, AllowLoopbackHTTPDevelopment: deps.LoopbackHTTPDevelopment}, NewCredential: model.NewCredentialToken, Now: time.Now, Identity: desktopAuthorizationIdentityDependencies{users: deps.Store.User(), authentication: authentication,
+		compatibility: desktopCompatibility, dpop: dpop}})
 	if err != nil {
 		return identityConstruction{}, err
 	}
-	selfSessions, err := newSelfSessionService(deps.Store.Session(), mutationAuditAdapter{audit: foundation.audit}, foundation.realtime, time.Now)
+	selfSessions, err := newSelfSessionService(selfSessionServiceDependencies{Sessions: deps.Store.Session(), Audit: mutationAuditAdapter{audit: foundation.audit}, Effects: foundation.realtime, Now: time.Now})
 	if err != nil {
 		return identityConstruction{}, err
 	}
-	invitations, err := newInvitationService(
-		deps.Store.Invitation(), deps.Store.Class(), deps.Store.AcademicPeriod(),
-		deps.Store.AcademicUnit(), deps.Store.Role(),
-		invitationAuthorizationAdapter{authorization: authorization},
-		accountMail, foundation.hasher, mutationAuditAdapter{audit: foundation.audit},
-		invitationAttemptAccounting{attempts: foundation.attempts, policy: deps.AccountRecovery.RateLimit},
-		classMemberRealtimeEffects{sittings: deps.Store.ExamSitting(), realtime: foundation.realtime}, deps.NodeID, deps.PublicURL,
-		deps.RecentAuthenticationTTL, model.NewCredentialToken, time.Now,
-	)
+	invitations, err := newInvitationService(invitationServiceDependencies{Store: deps.Store.Invitation(), Classes: deps.Store.Class(), Periods: deps.Store.AcademicPeriod(), AcademicUnits: deps.Store.AcademicUnit(), Roles: deps.Store.Role(), Authorization: invitationAuthorizationAdapter{authorization: authorization}, Mail: accountMail, Hasher: foundation.hasher, Audit: mutationAuditAdapter{audit: foundation.audit}, Attempts: invitationAttemptAccounting{attempts: foundation.attempts, policy: deps.AccountRecovery.RateLimit}, MembershipEffects: classMemberRealtimeEffects{sittings: deps.Store.ExamSitting(), realtime: foundation.realtime}, NodeID: deps.NodeID, PublicURL: deps.PublicURL, RecentAuthenticationTTL: deps.RecentAuthenticationTTL, NewClaim: model.NewCredentialToken, Now: time.Now})
 	if err != nil {
 		return identityConstruction{}, err
 	}
-	browserInvitations, err := newBrowserInvitationService(
-		deps.Store.BrowserAuthentication(), deps.Store.Institution(), invitations,
-		deps.PublicURL, model.NewCredentialToken,
-	)
+	browserInvitations, err := newBrowserInvitationService(browserInvitationServiceDependencies{Transactions: deps.Store.BrowserAuthentication(), Institutions: deps.Store.Institution(), Invitations: invitations, Issuer: deps.PublicURL, NewProof: model.NewCredentialToken})
 	if err != nil {
 		return identityConstruction{}, err
 	}
-	accountTokens, err := newAccountTokenService(
-		deps.Store.User(), deps.Store.PasswordCredential(), deps.Store.UserToken(), authenticationAccess,
-		deps.Store.Institution(),
-		accountMail, foundation.attempts, foundation.hasher, accountTokenAuditRecorder{nodeID: deps.NodeID},
-		foundation.realtime, deps.RecoveryDiagnostics, deps.AccountRecovery, deps.PublicURL,
-		model.NewCredentialToken, time.Now,
-	)
+	accountTokens, err := newAccountTokenService(accountTokenServiceDependencies{Users: deps.Store.User(), Passwords: deps.Store.PasswordCredential(), Tokens: deps.Store.UserToken(), AccessPolicy: authenticationAccess, Institutions: deps.Store.Institution(), Mail: accountMail, Attempts: foundation.attempts, Hasher: foundation.hasher, Audit: accountTokenAuditRecorder{nodeID: deps.NodeID}, Effects: foundation.realtime, Diagnostics: deps.RecoveryDiagnostics, Policy: deps.AccountRecovery, PublicURL: deps.PublicURL, NewToken: model.NewCredentialToken, Now: time.Now})
 	if err != nil {
 		return identityConstruction{}, err
 	}
@@ -138,18 +88,11 @@ func constructIdentity(
 	if err != nil {
 		return identityConstruction{}, err
 	}
-	personalAccessTokenAdministration, err := newPersonalAccessTokenAdministrationService(
-		deps.Store.PersonalAccessToken(), deps.Store.User(), deps.Store.AcademicUnit(), deps.Store.Institution(),
-		personalAccessTokenAuditAdapter{audit: foundation.audit}, authorization, accountMail, patPolicy, deps.RecentAuthenticationTTL,
-		model.NewCredentialToken, time.Now,
-	)
+	personalAccessTokenAdministration, err := newPersonalAccessTokenAdministrationService(personalAccessTokenAdministrationServiceDependencies{Tokens: deps.Store.PersonalAccessToken(), Users: deps.Store.User(), AcademicUnits: deps.Store.AcademicUnit(), Institutions: deps.Store.Institution(), Audit: personalAccessTokenAuditAdapter{audit: foundation.audit}, Authorization: authorization, Mail: accountMail, Policy: patPolicy, RecentAuthenticationTTL: deps.RecentAuthenticationTTL, NewCredential: model.NewCredentialToken, Now: time.Now})
 	if err != nil {
 		return identityConstruction{}, err
 	}
-	desktopRegistrations, err := newDesktopRegistrationService(
-		deps.Store.DesktopRegistration(), mutationAuditAdapter{audit: foundation.audit}, foundation.realtime,
-		deps.RecentAuthenticationTTL, time.Now,
-	)
+	desktopRegistrations, err := newDesktopRegistrationService(desktopRegistrationServiceDependencies{Registrations: deps.Store.DesktopRegistration(), Audit: mutationAuditAdapter{audit: foundation.audit}, Effects: foundation.realtime, RecentAuthenticationTTL: deps.RecentAuthenticationTTL, Now: time.Now})
 	if err != nil {
 		return identityConstruction{}, err
 	}
@@ -163,35 +106,11 @@ func constructIdentity(
 	if externalPolicy.LoginRateLimit == (LoginRateLimitPolicy{}) {
 		externalPolicy.LoginRateLimit = deps.LoginRateLimit
 	}
-	externalAuthentication, err := newExternalAuthenticationService(
-		deps.Registry,
-		deps.Store.ExternalLoginState(),
-		deps.Store.Institution(),
-		deps.Store.ExternalIdentity(),
-		deps.Store.Session(),
-		authenticationAccess,
-		foundation.attempts,
-		authentication,
-		foundation.invalidator,
-		foundation.audit,
-		mutationAuditAdapter{audit: foundation.audit},
-		capabilities,
-		invitations,
-		desktopAuthorization,
-		externalPolicy,
-		deps.RecentAuthenticationTTL,
-		deps.AuthenticationDiagnostics,
-		model.NewCredentialToken,
-		time.Now,
-	)
+	externalAuthentication, err := newExternalAuthenticationService(externalAuthenticationServiceDependencies{Registry: deps.Registry, LoginStates: deps.Store.ExternalLoginState(), Institutions: deps.Store.Institution(), Identities: deps.Store.ExternalIdentity(), Sessions: deps.Store.Session(), AccessPolicy: authenticationAccess, Attempts: foundation.attempts, Authentication: authentication, Invalidator: foundation.invalidator, Audit: foundation.audit, MutationAudit: mutationAuditAdapter{audit: foundation.audit}, Capabilities: capabilities, InvitationAcceptor: invitations, DesktopAuthorization: desktopAuthorization, Policy: externalPolicy, RecentAuthenticationTTL: deps.RecentAuthenticationTTL, Diagnostics: deps.AuthenticationDiagnostics, NewCredential: model.NewCredentialToken, Now: time.Now})
 	if err != nil {
 		return identityConstruction{}, err
 	}
-	authenticationMethods, err := newAuthenticationMethodService(
-		deps.Store.PasswordCredential(), deps.Store.ExternalIdentity(), deps.Registry,
-		capabilities, foundation.hasher, mutationAuditAdapter{audit: foundation.audit}, foundation.realtime,
-		deps.RecentAuthenticationTTL, time.Now,
-	)
+	authenticationMethods, err := newAuthenticationMethodService(authenticationMethodServiceDependencies{Passwords: deps.Store.PasswordCredential(), Identities: deps.Store.ExternalIdentity(), Providers: deps.Registry, Capabilities: capabilities, Hasher: foundation.hasher, Audit: mutationAuditAdapter{audit: foundation.audit}, Effects: foundation.realtime, RecentTTL: deps.RecentAuthenticationTTL, Now: time.Now})
 	if err != nil {
 		return identityConstruction{}, err
 	}

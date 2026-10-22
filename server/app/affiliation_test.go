@@ -67,7 +67,7 @@ func TestAffiliationEndFutureRangePreservesRejection(t *testing.T) {
 		Revision: 2, UserID: model.UserID(model.NewID()), Kind: model.AffiliationTeacher, StartsAt: model.TimeFromMillis(1_000),
 	}
 	persistence := &affiliationStoreFake{events: &events, current: current, endErr: store.NewErrConflict("affiliation", "affiliation_end_time", nil)}
-	service := newAffiliationService(persistence, &affiliationEnrollmentFake{events: &events}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, discardAffiliationEffects{}, func() time.Time { return time.UnixMilli(500) }, model.NewID)
+	service := newAffiliationService(affiliationServiceDependencies{Store: persistence, Enrollments: &affiliationEnrollmentFake{events: &events}, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Effects: discardAffiliationEffects{}, Now: func() time.Time { return time.UnixMilli(500) }, NewID: model.NewID})
 	_, err := service.EndAffiliation(context.Background(), invocation.Invocation{}, EndAffiliationCommand{ID: current.ID})
 	failure, ok := apperror.As(err)
 	require.True(t, ok)
@@ -92,10 +92,10 @@ func TestAffiliationCreateKeepsKindsNonExclusiveAndAudited(t *testing.T) {
 	userID := model.NewID()
 	persistence := &affiliationStoreFake{events: &events}
 	clockCalls := 0
-	service := newAffiliationService(persistence, &affiliationEnrollmentFake{events: &events}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, discardAffiliationEffects{}, func() time.Time {
+	service := newAffiliationService(affiliationServiceDependencies{Store: persistence, Enrollments: &affiliationEnrollmentFake{events: &events}, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Effects: discardAffiliationEffects{}, Now: func() time.Time {
 		clockCalls++
 		return time.UnixMilli(int64(500 + clockCalls))
-	}, model.NewID)
+	}, NewID: model.NewID})
 	for _, kind := range []model.AffiliationKind{model.AffiliationStudent, model.AffiliationTeacher} {
 		created, err := service.CreateAffiliation(context.Background(), invocation.Invocation{}, CreateAffiliationCommand{UserID: model.UserID(userID), Kind: kind, StartAt: 100})
 		require.NoError(t, err)
@@ -116,15 +116,7 @@ func TestAffiliationEndRejectsActiveStudentEnrollment(t *testing.T) {
 		ID: model.NewAffiliationID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
 		Revision: 3, UserID: model.UserID(model.NewID()), Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(100),
 	}
-	service := newAffiliationService(
-		&affiliationStoreFake{events: &events, current: current},
-		&affiliationEnrollmentFake{events: &events, values: []*model.ClassMember{{}}}, // open-ended EndsAt
-		&programmeAuthorizerFake{events: &events},
-		&institutionAuditorFake{events: &events},
-		discardAffiliationEffects{},
-		time.Now,
-		model.NewID,
-	)
+	service := newAffiliationService(affiliationServiceDependencies{Store: &affiliationStoreFake{events: &events, current: current}, Enrollments: &affiliationEnrollmentFake{events: &events, values: []*model.ClassMember{{}}}, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events}, Effects: discardAffiliationEffects{}, Now: time.Now, NewID: model.NewID})
 	_, err := service.EndAffiliation(context.Background(), invocation.Invocation{}, EndAffiliationCommand{ID: current.ID})
 	require.True(t, apperror.Is(err, "affiliation.student_has_active_enrollment"), "End() error = %v", err)
 	require.Equal(t, []string{"get-affiliation", "authorize", "list-enrollments"}, events)
@@ -136,11 +128,7 @@ func TestAffiliationRetainedEndBypassesLaterStudentEnrollment(t *testing.T) {
 	current := &model.Affiliation{ID: model.NewAffiliationID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(200),
 		Revision: 3, UserID: model.NewUserID(), Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(100)}
 	persistence := &affiliationStoreFake{events: &events, current: current}
-	service := newAffiliationService(persistence,
-		&affiliationEnrollmentFake{events: &events, values: []*model.ClassMember{{ID: model.NewClassMemberID()}}},
-		&programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()},
-		discardAffiliationEffects{},
-		func() time.Time { return time.UnixMilli(500) }, model.NewID)
+	service := newAffiliationService(affiliationServiceDependencies{Store: persistence, Enrollments: &affiliationEnrollmentFake{events: &events, values: []*model.ClassMember{{ID: model.NewClassMemberID()}}}, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Effects: discardAffiliationEffects{}, Now: func() time.Time { return time.UnixMilli(500) }, NewID: model.NewID})
 	result, err := service.EndAffiliation(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		EndAffiliationCommand{ID: current.ID, IdempotencyKey: "row", batchRetainedOutcome: true})
 	require.NoError(t, err, "retained end")
@@ -159,7 +147,7 @@ func TestAffiliationEndCarriesExpectedRevision(t *testing.T) {
 		Revision: 4, UserID: model.UserID(model.NewID()), Kind: model.AffiliationTeacher, StartsAt: model.TimeFromMillis(100),
 	}
 	persistence := &affiliationStoreFake{events: &events, current: current}
-	service := newAffiliationService(persistence, &affiliationEnrollmentFake{events: &events}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, discardAffiliationEffects{}, func() time.Time { return time.UnixMilli(500) }, model.NewID)
+	service := newAffiliationService(affiliationServiceDependencies{Store: persistence, Enrollments: &affiliationEnrollmentFake{events: &events}, Authorization: &programmeAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events, beginID: model.NewID()}, Effects: discardAffiliationEffects{}, Now: func() time.Time { return time.UnixMilli(500) }, NewID: model.NewID})
 	ended, err := service.EndAffiliation(context.Background(), invocation.Invocation{}, EndAffiliationCommand{ID: current.ID})
 	require.NoError(t, err)
 	require.Equal(t, current.Revision, persistence.endInput.ExpectedRevision, "end input/result = %#v / %#v", persistence.endInput, ended)

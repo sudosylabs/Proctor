@@ -70,12 +70,9 @@ func TestAccountRecoveryAttemptAccountingIsolatesAndNormalizesOperations(t *test
 	t.Parallel()
 
 	cache := newExpiringAuthenticationAttemptCache(time.Now)
-	service := &accountTokenService{
-		attempts: mustAuthenticationAttemptAccounting(t, cache),
-		policy: AccountRecoveryPolicy{RateLimit: LoginRateLimitPolicy{
-			Window: time.Minute, MaximumAttempts: 10, MaximumSourceAttempts: 100,
-		}},
-	}
+	service := &accountTokenService{deps: accountTokenServiceDependencies{Attempts: mustAuthenticationAttemptAccounting(t, cache), Policy: AccountRecoveryPolicy{RateLimit: LoginRateLimitPolicy{
+		Window: time.Minute, MaximumAttempts: 10, MaximumSourceAttempts: 100,
+	}}}}
 	operations := []accountRecoveryAttemptOperation{
 		accountRecoveryAttemptEmailVerificationRequest,
 		accountRecoveryAttemptPasswordResetRequest,
@@ -116,14 +113,11 @@ func TestAccountRecoveryAttemptAccountingUsesExactThresholdForEveryOperation(t *
 		operation := operation
 		t.Run(operationNameForTest(operation), func(t *testing.T) {
 			t.Parallel()
-			service := &accountTokenService{
-				attempts: mustAuthenticationAttemptAccounting(
-					t, newExpiringAuthenticationAttemptCache(time.Now),
-				),
-				policy: AccountRecoveryPolicy{RateLimit: LoginRateLimitPolicy{
-					Window: time.Minute, MaximumAttempts: 1, MaximumSourceAttempts: 100,
-				}},
-			}
+			service := &accountTokenService{deps: accountTokenServiceDependencies{Attempts: mustAuthenticationAttemptAccounting(
+				t, newExpiringAuthenticationAttemptCache(time.Now),
+			), Policy: AccountRecoveryPolicy{RateLimit: LoginRateLimitPolicy{
+				Window: time.Minute, MaximumAttempts: 1, MaximumSourceAttempts: 100,
+			}}}}
 			require.NoError(t, service.checkAccountRecoveryRateLimit(
 				context.Background(), operation, "student@example.edu", "192.0.2.10:443",
 			))
@@ -146,12 +140,9 @@ func TestAccountRecoveryAttemptAccountingFailsClosedWithoutCounterRollback(t *te
 				expiringAuthenticationAttemptCache: newExpiringAuthenticationAttemptCache(time.Now),
 				failAt:                             failAt,
 			}
-			service := &accountTokenService{
-				attempts: mustAuthenticationAttemptAccounting(t, cache),
-				policy: AccountRecoveryPolicy{RateLimit: LoginRateLimitPolicy{
-					Window: time.Minute, MaximumAttempts: 10, MaximumSourceAttempts: 100,
-				}},
-			}
+			service := &accountTokenService{deps: accountTokenServiceDependencies{Attempts: mustAuthenticationAttemptAccounting(t, cache), Policy: AccountRecoveryPolicy{RateLimit: LoginRateLimitPolicy{
+				Window: time.Minute, MaximumAttempts: 10, MaximumSourceAttempts: 100,
+			}}}}
 			err := service.checkAccountRecoveryRateLimit(
 				context.Background(), accountRecoveryAttemptPasswordResetRequest,
 				"student@example.edu", "192.0.2.10:443",
@@ -468,27 +459,11 @@ func newAccountTokenTestApp(t *testing.T, deps accountTokenTestDependencies) *Ap
 	if deps.accessPolicy == nil {
 		deps.accessPolicy = allowAllAuthenticationAccessPolicy()
 	}
-	service, err := newAccountTokenService(
-		deps.users,
-		deps.passwords,
-		deps.tokens,
-		deps.accessPolicy,
-		&accountTokenInstitutionStoreFake{institution: deps.institution},
-		deps.mailer,
-		deps.attempts,
-		deps.hasher,
-		accountTokenAuditRecorder{nodeID: "node-1"},
-		deps.effects,
-		accountTokenDiagnosticsFake{},
-		AccountRecoveryPolicy{
-			EmailVerificationTTL: 24 * time.Hour,
-			PasswordResetTTL:     45 * time.Minute,
-			RateLimit:            deps.rateLimit,
-		},
-		"https://proctor.example.edu",
-		func() string { return accountTokenTestRawToken },
-		deps.now,
-	)
+	service, err := newAccountTokenService(accountTokenServiceDependencies{Users: deps.users, Passwords: deps.passwords, Tokens: deps.tokens, AccessPolicy: deps.accessPolicy, Institutions: &accountTokenInstitutionStoreFake{institution: deps.institution}, Mail: deps.mailer, Attempts: deps.attempts, Hasher: deps.hasher, Audit: accountTokenAuditRecorder{nodeID: "node-1"}, Effects: deps.effects, Diagnostics: accountTokenDiagnosticsFake{}, Policy: AccountRecoveryPolicy{
+		EmailVerificationTTL: 24 * time.Hour,
+		PasswordResetTTL:     45 * time.Minute,
+		RateLimit:            deps.rateLimit,
+	}, PublicURL: "https://proctor.example.edu", NewToken: func() string { return accountTokenTestRawToken }, Now: deps.now})
 	require.NoError(t, err)
 	return &App{accountTokenService: service}
 }
@@ -687,7 +662,7 @@ func validAccountTokenConstructorArgs() accountTokenConstructorArgs {
 		tokens:       &accountTokenStoreFake{},
 		institutions: &accountTokenInstitutionStoreFake{},
 		mailer:       &accountTokenMailerFake{enabled: true},
-		attempts:     &authenticationAttemptAccounting{cache: newExpiringAuthenticationAttemptCache(time.Now)},
+		attempts:     &authenticationAttemptAccounting{deps: authenticationAttemptAccountingDependencies{Cache: newExpiringAuthenticationAttemptCache(time.Now)}},
 		hasher:       accountTokenHasherFake{},
 		audit:        accountTokenAuditRecorder{nodeID: "node-1"},
 		effects:      &accountTokenEffectsFake{},
@@ -697,11 +672,7 @@ func validAccountTokenConstructorArgs() accountTokenConstructorArgs {
 }
 
 func (a accountTokenConstructorArgs) build() (*accountTokenService, error) {
-	return newAccountTokenService(
-		a.users, a.passwords, a.tokens, allowAllAuthenticationAccessPolicy(), a.institutions, a.mailer, a.attempts,
-		a.hasher, a.audit, a.effects, a.diagnostics, AccountRecoveryPolicy{},
-		"https://proctor.example.edu", a.newToken, time.Now,
-	)
+	return newAccountTokenService(accountTokenServiceDependencies{Users: a.users, Passwords: a.passwords, Tokens: a.tokens, AccessPolicy: allowAllAuthenticationAccessPolicy(), Institutions: a.institutions, Mail: a.mailer, Attempts: a.attempts, Hasher: a.hasher, Audit: a.audit, Effects: a.effects, Diagnostics: a.diagnostics, Policy: AccountRecoveryPolicy{}, PublicURL: "https://proctor.example.edu", NewToken: a.newToken, Now: time.Now})
 }
 
 type countingAccountTokenHasher struct{ calls *int }

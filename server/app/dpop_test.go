@@ -27,12 +27,12 @@ import (
 func TestDPoPProofNonceBindingAndReplay(t *testing.T) {
 	at := time.Date(2026, time.August, 28, 12, 0, 0, 0, time.UTC)
 	cache := newDPoPCacheFake()
-	security, err := newDPoPSecurity(cache, dpopPolicy{
+	security, err := newDPoPSecurity(dpopSecurityDependencies{Cache: cache, Policy: dpopPolicy{
 		Origin: "https://proctor.example", NonceLifetime: 5 * time.Minute,
 		ProofLifetime: 5 * time.Minute, ClockSkew: time.Minute,
 		NewNonce: model.NewCredentialToken,
 		Now:      func() time.Time { return at },
-	})
+	}})
 	require.NoError(t, err)
 	privateKey, jwk := testDPoPKey(t)
 	thumbprint, _ := jwk.Thumbprint()
@@ -63,12 +63,12 @@ func TestDPoPProofNonceBindingAndReplay(t *testing.T) {
 func TestDPoPProofRequiresAccessTokenHashAndFreshNonce(t *testing.T) {
 	at := time.Date(2026, time.August, 28, 12, 0, 0, 0, time.UTC)
 	cache := newDPoPCacheFake()
-	security, err := newDPoPSecurity(cache, dpopPolicy{
+	security, err := newDPoPSecurity(dpopSecurityDependencies{Cache: cache, Policy: dpopPolicy{
 		Origin: "https://proctor.example", NonceLifetime: 5 * time.Minute,
 		ProofLifetime: 5 * time.Minute, ClockSkew: time.Minute,
 		Now:      func() time.Time { return at },
 		NewNonce: model.NewCredentialToken,
-	})
+	}})
 	require.NoError(t, err)
 	privateKey, jwk := testDPoPKey(t)
 	thumbprint, _ := jwk.Thumbprint()

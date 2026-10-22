@@ -71,7 +71,7 @@ func TestJobRunnerRecoversNodeLossAroundADurableDomainCommit(t *testing.T) {
 				phase: phase, next: realHandler, entered: entered, canceled: canceled,
 			}
 			descriptor := clusteredRecoveryJobDescriptor(handler)
-			nodeA, err := job.New(job.Config{
+			nodeA, err := job.New(job.Dependencies{
 				Store: persistence.Job(), Descriptors: []job.Descriptor{descriptor}, NodeID: "node-a",
 				Diagnostics: &integrationJobDiagnostics{}, Policy: job.Policy{PollInterval: 5 * time.Millisecond},
 			})
@@ -108,7 +108,7 @@ func TestJobRunnerRecoversNodeLossAroundADurableDomainCommit(t *testing.T) {
 			require.Equal(t, model.JobStatusRunning, afterShutdown.Status)
 
 			time.Sleep(3 * descriptor.LeaseDuration)
-			nodeB, err := job.New(job.Config{
+			nodeB, err := job.New(job.Dependencies{
 				Store: persistence.Job(), Descriptors: []job.Descriptor{descriptor}, NodeID: "node-b",
 				Diagnostics: &integrationJobDiagnostics{}, Policy: job.Policy{PollInterval: 5 * time.Millisecond},
 			})

@@ -102,10 +102,7 @@ func TestInstitutionGetAuthorizesSingletonResource(t *testing.T) {
 	events := []string{}
 	institution := &model.Institution{ID: model.InstitutionID(model.NewID())}
 	authorizer := &institutionAuthorizerFake{events: &events}
-	service := newInstitutionService(
-		&institutionStoreFake{events: &events, current: institution}, authorizer,
-		&institutionAuditorFake{events: &events}, time.Now,
-	)
+	service := newInstitutionService(institutionServiceDependencies{Store: &institutionStoreFake{events: &events, current: institution}, Authorization: authorizer, Audit: &institutionAuditorFake{events: &events}, Now: time.Now})
 	got, err := service.GetInstitution(context.Background(), invocation.Invocation{}, GetInstitutionQuery{})
 	require.NoError(t, err, "Get()")
 	require.Same(t, institution, got, "Get()")
@@ -131,10 +128,7 @@ func TestInstitutionUpdateCommitsSuccessAuditAtomically(t *testing.T) {
 		events: &events, current: current, updated: &updated,
 	}
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewID()}
-	service := newInstitutionService(
-		persistence, &institutionAuthorizerFake{events: &events}, auditor,
-		func() time.Time { return time.UnixMilli(500) },
-	)
+	service := newInstitutionService(institutionServiceDependencies{Store: persistence, Authorization: &institutionAuthorizerFake{events: &events}, Audit: auditor, Now: func() time.Time { return time.UnixMilli(500) }})
 	displayName := "Northbridge"
 	got, err := service.UpdateInstitution(context.Background(), invocation.Invocation{}, UpdateInstitutionCommand{
 		DisplayName: &displayName, ExamCapacity: &capacity,
@@ -164,9 +158,7 @@ func TestInstitutionUpdateFailureCompletesFailedAttempt(t *testing.T) {
 		updateErr: store.NewErrConflict("institution", "institutions_name_key", errors.New("duplicate")),
 	}
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewID()}
-	service := newInstitutionService(
-		persistence, &institutionAuthorizerFake{events: &events}, auditor, time.Now,
-	)
+	service := newInstitutionService(institutionServiceDependencies{Store: persistence, Authorization: &institutionAuthorizerFake{events: &events}, Audit: auditor, Now: time.Now})
 	name := "duplicate"
 	_, err := service.UpdateInstitution(context.Background(), invocation.Invocation{}, UpdateInstitutionCommand{Name: &name})
 	require.True(t, apperror.Is(err, "institution.conflict"), "Update() error = %v, audit code", err)
@@ -186,10 +178,7 @@ func TestInstitutionUpdateRejectsInvalidExamCapacityBeforeAudit(t *testing.T) {
 	}
 	invalid := model.DefaultExamCapacityPolicy()
 	invalid.WorkspaceMaximumTotalBytes = invalid.WorkspaceMaximumFileBytes - 1
-	service := newInstitutionService(
-		&institutionStoreFake{events: &events, current: current},
-		&institutionAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events}, time.Now,
-	)
+	service := newInstitutionService(institutionServiceDependencies{Store: &institutionStoreFake{events: &events, current: current}, Authorization: &institutionAuthorizerFake{events: &events}, Audit: &institutionAuditorFake{events: &events}, Now: time.Now})
 
 	_, err := service.UpdateInstitution(context.Background(), invocation.Invocation{}, UpdateInstitutionCommand{ExamCapacity: &invalid})
 	require.True(t, apperror.Is(err, "institution.invalid"), "Update() error = %v", err)

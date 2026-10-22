@@ -24,48 +24,49 @@ type realtimeDiagnostics interface {
 	ErrorContextWithEvent(ctx context.Context, message, event string, err error)
 }
 
+// realtimeServiceDependencies are the collaborators of realtimeService;
+// newRealtimeServiceWithDelivery validates them once and realtimeService keeps them in deps.
+type realtimeServiceDependencies struct {
+	Delivery    *realtime.Service
+	Diagnostics realtimeDiagnostics
+}
+
 // realtimeService translates the child module's publication failures into
 // parent application errors and retains parent-owned effect adapters.
 type realtimeService struct {
-	delivery    *realtime.Service
-	diagnostics realtimeDiagnostics
-	attempts    interface {
+	deps realtimeServiceDependencies
+
+	attempts interface {
 		ListSessionRevocationInvalidationTargets(context.Context, model.UserID, []model.SessionID) ([]store.ExamAttemptInvalidationTarget, error)
 	}
 }
 
-func newRealtimeServiceWithDelivery(
-	delivery *realtime.Service,
-	diagnostics realtimeDiagnostics,
-) (*realtimeService, error) {
-	if delivery == nil {
+func newRealtimeServiceWithDelivery(deps realtimeServiceDependencies) (*realtimeService, error) {
+	if deps.Delivery == nil {
 		return nil, errors.New("realtime delivery is required")
 	}
-	if diagnostics == nil {
+	if deps.Diagnostics == nil {
 		return nil, errors.New("realtime diagnostics are required")
 	}
-	return &realtimeService{
-		delivery:    delivery,
-		diagnostics: diagnostics,
-	}, nil
+	return &realtimeService{deps: deps}, nil
 }
 
 // AttachRealtimeClusterFanout wires the composition-owned cluster adapter and
 // registers peer handlers. It must be called once before the node becomes
 // ready. Peer handlers apply only local effects so Broadcast never loops.
 func (s *realtimeService) AttachRealtimeClusterFanout(fanout realtime.ClusterFanout) error {
-	return s.delivery.SetClusterFanout(fanout)
+	return s.deps.Delivery.SetClusterFanout(fanout)
 }
 
 func (s *realtimeService) AttachRealtimeSink(sink realtime.Sink) error {
-	return s.delivery.SetSink(sink)
+	return s.deps.Delivery.SetSink(sink)
 }
 
 // PublishRealtimeEvent delivers a transport-neutral event locally first, then
 // fans it out to peers best-effort. Callers must invoke this only after
 // durable commit.
 func (s *realtimeService) PublishRealtimeEvent(ctx context.Context, event realtime.RealtimeEvent) error {
-	err := s.delivery.Publish(ctx, event)
+	err := s.deps.Delivery.Publish(ctx, event)
 	if err == nil {
 		return nil
 	}
@@ -77,7 +78,7 @@ func (s *realtimeService) PublishRealtimeEvent(ctx context.Context, event realti
 }
 
 func (s *realtimeService) UnbindExamAttemptConnection(ctx context.Context, connectionID model.AttemptConnectionID) error {
-	err := s.delivery.UnbindExamAttemptConnection(ctx, connectionID)
+	err := s.deps.Delivery.UnbindExamAttemptConnection(ctx, connectionID)
 	if err == nil {
 		return nil
 	}
@@ -93,10 +94,10 @@ func (s *realtimeService) reportTransientFailure(
 	event string,
 	err error,
 ) {
-	if s.diagnostics == nil {
+	if s.deps.Diagnostics == nil {
 		return
 	}
-	s.diagnostics.ErrorContextWithEvent(ctx, "transient realtime publication failed", event, err)
+	s.deps.Diagnostics.ErrorContextWithEvent(ctx, "transient realtime publication failed", event, err)
 }
 
 func (s *realtimeService) SessionsRevoked(
@@ -105,7 +106,7 @@ func (s *realtimeService) SessionsRevoked(
 	sessionIDs []string,
 	accessTokenHashes []string,
 ) {
-	s.delivery.SessionsRevoked(ctx, userID, sessionIDs, accessTokenHashes)
+	s.deps.Delivery.SessionsRevoked(ctx, userID, sessionIDs, accessTokenHashes)
 	if s.attempts == nil || len(sessionIDs) == 0 {
 		return
 	}
@@ -149,11 +150,11 @@ func (s *realtimeService) AuthenticationCacheInvalidated(
 	userID string,
 	accessTokenHashes []string,
 ) {
-	s.delivery.AuthenticationCacheInvalidated(ctx, userID, accessTokenHashes)
+	s.deps.Delivery.AuthenticationCacheInvalidated(ctx, userID, accessTokenHashes)
 }
 
 func (s *realtimeService) InvalidateAuthorization(ctx context.Context, userID string) {
-	s.delivery.InvalidateAuthorization(ctx, userID)
+	s.deps.Delivery.InvalidateAuthorization(ctx, userID)
 	if userID == "" {
 		return
 	}

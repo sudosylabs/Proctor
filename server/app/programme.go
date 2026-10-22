@@ -51,25 +51,22 @@ type programmeStore interface {
 	Archive(context.Context, *store.ProgrammeArchive) (*model.Programme, error)
 }
 
-type programmeService struct {
-	store         programmeStore
-	authorization scopedAcademicResourceAuthorizer
-	audit         mutationAuditor
-	now           func() time.Time
-	newID         func() string
+// programmeServiceDependencies are the collaborators of programmeService;
+// newProgrammeService validates them once and programmeService keeps them in deps.
+type programmeServiceDependencies struct {
+	Store         programmeStore
+	Authorization scopedAcademicResourceAuthorizer
+	Audit         mutationAuditor
+	Now           func() time.Time
+	NewID         func() string
 }
 
-func newProgrammeService(
-	persistence programmeStore,
-	authorization scopedAcademicResourceAuthorizer,
-	audit mutationAuditor,
-	now func() time.Time,
-	newID func() string,
-) *programmeService {
-	return &programmeService{
-		store: persistence, authorization: authorization, audit: audit,
-		now: now, newID: newID,
-	}
+type programmeService struct {
+	deps programmeServiceDependencies
+}
+
+func newProgrammeService(deps programmeServiceDependencies) *programmeService {
+	return &programmeService{deps: deps}
 }
 
 func (s *programmeService) GetProgramme(ctx context.Context, invocation invocation.Invocation, query GetProgrammeQuery) (*model.Programme, error) {
@@ -78,10 +75,10 @@ func (s *programmeService) GetProgramme(ctx context.Context, invocation invocati
 		return nil, apperror.New("request.invalid").WithField("field", "programme_id")
 	}
 	resource := model.Resource{Type: model.ResourceProgramme, ID: id.String()}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionProgrammeView, resource); err != nil {
+	if err := s.deps.Authorization.Authorize(ctx, invocation, model.ActionProgrammeView, resource); err != nil {
 		return nil, err
 	}
-	programme, err := s.store.Get(ctx, id)
+	programme, err := s.deps.Store.Get(ctx, id)
 	if err != nil {
 		return nil, programmeStoreErrors.Translate(err)
 	}
@@ -97,10 +94,10 @@ func (s *programmeService) ListProgrammes(ctx context.Context, invocation invoca
 	if err != nil {
 		return Page[*model.Programme]{}, err
 	}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionProgrammeView, model.Resource{Type: model.ResourceAcademicUnit, ID: unitID.String()}); err != nil {
+	if err = s.deps.Authorization.Authorize(ctx, invocation, model.ActionProgrammeView, model.Resource{Type: model.ResourceAcademicUnit, ID: unitID.String()}); err != nil {
 		return Page[*model.Programme]{}, err
 	}
-	programmes, err := s.store.SearchByAcademicUnit(ctx, unitID, store.AcademicNameListOptions{
+	programmes, err := s.deps.Store.SearchByAcademicUnit(ctx, unitID, store.AcademicNameListOptions{
 		Term: strings.TrimSpace(query.Query), AfterName: query.AfterName, AfterID: query.AfterID, Limit: probe,
 	})
 	if err != nil {
@@ -115,11 +112,11 @@ func (s *programmeService) CreateProgramme(ctx context.Context, invocation invoc
 		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id")
 	}
 	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID.String()}
-	scopeType, scopeID, err := s.authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeManage, resource)
+	scopeType, scopeID, err := s.deps.Authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeManage, resource)
 	if err != nil {
 		return nil, err
 	}
-	programmeID, err := model.ParseProgrammeID(s.newID())
+	programmeID, err := model.ParseProgrammeID(s.deps.NewID())
 	if err != nil {
 		return nil, apperror.New("request.invalid").WithField("field", "programme_id").Wrap(err)
 	}
@@ -130,13 +127,13 @@ func (s *programmeService) CreateProgramme(ctx context.Context, invocation invoc
 		DisplayName:    command.DisplayName,
 		Description:    command.Description,
 	}
-	candidate.PrepareCreate(programmeID, s.now())
+	candidate.PrepareCreate(programmeID, s.deps.Now())
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("programme.invalid", err)
 	}
 	return runAuditedMutation(
 		ctx,
-		s.audit,
+		s.deps.Audit,
 		mutationAttempt{
 			Invocation: invocation,
 			Action:     model.ActionProgrammeManage,
@@ -146,9 +143,9 @@ func (s *programmeService) CreateProgramme(ctx context.Context, invocation invoc
 			Operation:  "create",
 			Value:      candidate.Auditable(),
 		},
-		s.now,
+		s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Programme, error) {
-			return s.store.Create(ctx, &store.ProgrammeCreation{
+			return s.deps.Store.Create(ctx, &store.ProgrammeCreation{
 				Programme: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
@@ -174,14 +171,14 @@ func (s *programmeService) UpdateProgramme(ctx context.Context, invocation invoc
 	if command.Description != nil {
 		candidate.Description = *command.Description
 	}
-	candidate.PrepareUpdate(s.now())
+	candidate.PrepareUpdate(s.deps.Now())
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("programme.invalid", err)
 	}
 	resource := model.Resource{Type: model.ResourceProgramme, ID: current.ID.String()}
 	return runAuditedMutation(
 		ctx,
-		s.audit,
+		s.deps.Audit,
 		mutationAttempt{
 			Invocation: invocation,
 			Action:     model.ActionProgrammeManage,
@@ -192,9 +189,9 @@ func (s *programmeService) UpdateProgramme(ctx context.Context, invocation invoc
 			Value:      candidate.Auditable(),
 			Prior:      current.Auditable(),
 		},
-		s.now,
+		s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Programme, error) {
-			return s.store.Update(ctx, &store.ProgrammeUpdate{
+			return s.deps.Store.Update(ctx, &store.ProgrammeUpdate{
 				Programme: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
@@ -213,7 +210,7 @@ func (s *programmeService) ArchiveProgramme(ctx context.Context, invocation invo
 	resource := model.Resource{Type: model.ResourceProgramme, ID: current.ID.String()}
 	_, err = runAuditedMutation(
 		ctx,
-		s.audit,
+		s.deps.Audit,
 		mutationAttempt{
 			Invocation: invocation,
 			Action:     model.ActionProgrammeManage,
@@ -223,9 +220,9 @@ func (s *programmeService) ArchiveProgramme(ctx context.Context, invocation invo
 			Operation:  "archive",
 			Prior:      current.Auditable(),
 		},
-		s.now,
+		s.deps.Now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Programme, error) {
-			return s.store.Archive(ctx, &store.ProgrammeArchive{
+			return s.deps.Store.Archive(ctx, &store.ProgrammeArchive{
 				ExpectedRevision: current.Revision,
 				ID:               current.ID, ArchiveAt: reference.MutationAtMillis,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
@@ -240,11 +237,11 @@ func (s *programmeService) getForMutation(ctx context.Context, invocation invoca
 	if !id.IsValid() {
 		return nil, "", "", apperror.New("request.invalid").WithField("field", "programme_id")
 	}
-	scopeType, scopeID, err := s.authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeManage, model.Resource{Type: model.ResourceProgramme, ID: id.String()})
+	scopeType, scopeID, err := s.deps.Authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeManage, model.Resource{Type: model.ResourceProgramme, ID: id.String()})
 	if err != nil {
 		return nil, "", "", err
 	}
-	programme, err := s.store.Get(ctx, id)
+	programme, err := s.deps.Store.Get(ctx, id)
 	if err != nil {
 		return nil, "", "", programmeStoreErrors.Translate(err)
 	}

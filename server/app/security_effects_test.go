@@ -23,19 +23,16 @@ import (
 func TestAuthenticationCacheInvalidatorRequiresDependencies(t *testing.T) {
 	t.Parallel()
 
-	_, err := newAuthenticationCacheInvalidator(nil, &securityEffectsDiagnosticsFake{})
+	_, err := newAuthenticationCacheInvalidator(authenticationCacheInvalidatorDependencies{Cache: nil, Diagnostics: &securityEffectsDiagnosticsFake{}})
 	require.Error(t, err, "nil cache was accepted")
-	_, err = newAuthenticationCacheInvalidator(newAuthenticationCacheFake(), nil)
+	_, err = newAuthenticationCacheInvalidator(authenticationCacheInvalidatorDependencies{Cache: newAuthenticationCacheFake(), Diagnostics: nil})
 	require.Error(t, err, "nil diagnostics was accepted")
 }
 
 func TestRealtimeServiceRequiresSecurityDependencies(t *testing.T) {
 	t.Parallel()
 
-	invalidator, err := newAuthenticationCacheInvalidator(
-		newAuthenticationCacheFake(),
-		&securityEffectsDiagnosticsFake{},
-	)
+	invalidator, err := newAuthenticationCacheInvalidator(authenticationCacheInvalidatorDependencies{Cache: newAuthenticationCacheFake(), Diagnostics: &securityEffectsDiagnosticsFake{}})
 	require.NoError(t, err)
 	_, err = newRealtimeService(nil, &securityEffectsRealtimeDiagnosticsFake{})
 	require.Error(t, err, "nil authentication invalidator was accepted")
@@ -48,7 +45,7 @@ func TestAuthenticationServiceRequiresSecurityDependencies(t *testing.T) {
 
 	persistence := newAuthenticationStoreFake()
 	cache := newAuthenticationCacheFake()
-	hasher, err := newPasswordHasher(testPasswordPolicy(), nil)
+	hasher, err := newPasswordHasher(passwordHasherDependencies{Settings: testPasswordPolicy(), Recorder: nil})
 	require.NoError(t, err)
 	type dependencies struct {
 		users              store.UserStore
@@ -74,27 +71,7 @@ func TestAuthenticationServiceRequiresSecurityDependencies(t *testing.T) {
 	}
 	desktop := testAuthenticationDesktopDependencies(t, cache)
 	construct := func(deps dependencies) error {
-		_, constructorErr := newAuthenticationService(
-			deps.users,
-			deps.passwords,
-			deps.sessions,
-			deps.sessionCredentials,
-			allowAllAuthenticationAccessPolicy(),
-			cache,
-			deps.attempts,
-			deps.effects,
-			deps.audit,
-			deps.loginAudit,
-			hasher,
-			deps.mfa,
-			deps.personalTokens,
-			SessionPolicy{},
-			LoginRateLimitPolicy{},
-			&securityEffectsDiagnosticsFake{},
-			deps.newCredential,
-			nil,
-			desktop,
-		)
+		_, constructorErr := newAuthenticationService(authenticationServiceDependencies{Users: deps.users, Passwords: deps.passwords, Sessions: deps.sessions, SessionCredentials: deps.sessionCredentials, AccessPolicy: allowAllAuthenticationAccessPolicy(), Cache: cache, Attempts: deps.attempts, SecurityEffects: deps.effects, Audit: deps.audit, LoginAudit: deps.loginAudit, Hasher: hasher, MFA: deps.mfa, PersonalTokens: deps.personalTokens, SessionPolicy: SessionPolicy{}, LoginRateLimit: LoginRateLimitPolicy{}, Diagnostics: &securityEffectsDiagnosticsFake{}, NewCredential: deps.newCredential, Now: nil, Desktop: desktop})
 		return constructorErr
 	}
 	tests := []struct {
@@ -127,40 +104,20 @@ func TestExternalAuthenticationServiceRequiresInvalidator(t *testing.T) {
 
 	persistence := newAuthenticationStoreFake()
 	authentication := newTestAuthenticationService(t, persistence)
-	audit, auditErr := newAuditService(securityAuditStore{}, securityInstitutionStore{}, model.NewID())
+	audit, auditErr := newAuditService(auditServiceDependencies{Audits: securityAuditStore{}, Institutions: securityInstitutionStore{}, NodeID: model.NewID()})
 	require.NoError(t, auditErr)
-	_, err := newExternalAuthenticationService(
-		securityEffectsProviderSourceFake{},
-		securityExternalLoginStateStore{},
-		securityInstitutionStore{},
-		securityExternalIdentityStore{},
-		persistence.Session(),
-		allowAllAuthenticationAccessPolicy(),
-		mustAuthenticationAttemptAccounting(t, newAuthenticationCacheFake()),
-		authentication,
-		nil,
-		audit,
-		mutationAuditAdapter{audit: audit},
-		&accessPolicyCapabilitiesFake{},
-		&externalInvitationAcceptorFake{},
-		&externalDesktopAuthorizationFake{},
-		ExternalAuthenticationPolicy{},
-		15*time.Minute,
-		&securityEffectsDiagnosticsFake{},
-		model.NewCredentialToken,
-		nil,
-	)
+	_, err := newExternalAuthenticationService(externalAuthenticationServiceDependencies{Registry: securityEffectsProviderSourceFake{}, LoginStates: securityExternalLoginStateStore{}, Institutions: securityInstitutionStore{}, Identities: securityExternalIdentityStore{}, Sessions: persistence.Session(), AccessPolicy: allowAllAuthenticationAccessPolicy(), Attempts: mustAuthenticationAttemptAccounting(t, newAuthenticationCacheFake()), Authentication: authentication, Invalidator: nil, Audit: audit, MutationAudit: mutationAuditAdapter{audit: audit}, Capabilities: &accessPolicyCapabilitiesFake{}, InvitationAcceptor: &externalInvitationAcceptorFake{}, DesktopAuthorization: &externalDesktopAuthorizationFake{}, Policy: ExternalAuthenticationPolicy{}, RecentAuthenticationTTL: 15 * time.Minute, Diagnostics: &securityEffectsDiagnosticsFake{}, NewCredential: model.NewCredentialToken, Now: nil})
 	require.Error(t, err, "nil authentication invalidator was accepted")
 }
 
 func TestAuditServiceRequiresDependencies(t *testing.T) {
 	t.Parallel()
 
-	_, err := newAuditService(nil, securityInstitutionStore{}, model.NewID())
+	_, err := newAuditService(auditServiceDependencies{Audits: nil, Institutions: securityInstitutionStore{}, NodeID: model.NewID()})
 	require.Error(t, err, "nil audit store was accepted")
-	_, err = newAuditService(securityAuditStore{}, nil, model.NewID())
+	_, err = newAuditService(auditServiceDependencies{Audits: securityAuditStore{}, Institutions: nil, NodeID: model.NewID()})
 	require.Error(t, err, "nil audit institution store was accepted")
-	_, err = newAuditService(securityAuditStore{}, securityInstitutionStore{}, "")
+	_, err = newAuditService(auditServiceDependencies{Audits: securityAuditStore{}, Institutions: securityInstitutionStore{}, NodeID: ""})
 	require.Error(t, err, "empty audit node ID was accepted")
 }
 
@@ -201,7 +158,7 @@ func TestAuthenticationCacheInvalidatorOwnsKeysAndSafeDiagnostics(t *testing.T) 
 		},
 	}
 	diagnostics := &securityEffectsDiagnosticsFake{}
-	invalidator, err := newAuthenticationCacheInvalidator(cache, diagnostics)
+	invalidator, err := newAuthenticationCacheInvalidator(authenticationCacheInvalidatorDependencies{Cache: cache, Diagnostics: diagnostics})
 	require.NoError(t, err)
 
 	invalidator.InvalidateAccessCredentials(

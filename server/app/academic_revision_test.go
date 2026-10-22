@@ -92,10 +92,10 @@ func academicRevisionFixture(t *testing.T, kind string, events *[]string, denied
 	case "academic_unit":
 		current := &model.AcademicUnit{ID: model.NewAcademicUnitID(), CreatedAt: at, UpdatedAt: at, Revision: 7, Name: "academic", DisplayName: "Academic", InstitutionID: model.NewInstitutionID()}
 		persistence := &academicUnitMutationStore{events: events, current: current, updated: current, archived: current}
-		service := newAcademicUnitCommandService(persistence, academicUnitAuthorizerStub{authorize: func(context.Context, invocation.Invocation, model.Action, model.Resource) error {
+		service := newAcademicUnitCommandService(academicUnitCommandServiceDependencies{Store: persistence, Authorization: academicUnitAuthorizerStub{authorize: func(context.Context, invocation.Invocation, model.Action, model.Resource) error {
 			*events = append(*events, "authorize")
 			return deniedErr
-		}}, &academicUnitCommandAuditor{events: events, beginID: model.NewID()}, &academicUnitCommandEffectsFake{events: events}, &academicUnitEffectFailureReporterFake{events: events}, now, model.NewID)
+		}}, Audit: &academicUnitCommandAuditor{events: events, beginID: model.NewID()}, Effects: &academicUnitCommandEffectsFake{events: events}, EffectFailures: &academicUnitEffectFailureReporterFake{events: events}, Now: now, NewID: model.NewID})
 		return func(expected *int64) error {
 				_, err := service.UpdateAcademicUnit(ctx, call, UpdateAcademicUnitCommand{ID: current.ID, ExpectedRevision: expected})
 				return err
@@ -112,7 +112,7 @@ func academicRevisionFixture(t *testing.T, kind string, events *[]string, denied
 	case "programme":
 		current := &model.Programme{ID: model.NewProgrammeID(), CreatedAt: at, UpdatedAt: at, Revision: 7, Name: "academic", DisplayName: "Academic", AcademicUnitID: model.NewAcademicUnitID()}
 		persistence := &programmeStoreFake{events: events, current: current}
-		service := newProgrammeService(persistence, authorization, audit, now, model.NewID)
+		service := newProgrammeService(programmeServiceDependencies{Store: persistence, Authorization: authorization, Audit: audit, Now: now, NewID: model.NewID})
 		return func(expected *int64) error {
 				_, err := service.UpdateProgramme(ctx, call, UpdateProgrammeCommand{ID: current.ID, ExpectedRevision: expected})
 				return err
@@ -129,7 +129,7 @@ func academicRevisionFixture(t *testing.T, kind string, events *[]string, denied
 	case "programme_level":
 		current := &model.ProgrammeLevel{ID: model.NewProgrammeLevelID(), CreatedAt: at, UpdatedAt: at, Revision: 7, Name: "academic", DisplayName: "Academic", ProgrammeID: model.NewProgrammeID()}
 		persistence := &programmeLevelStoreFake{events: events, current: current}
-		service := newProgrammeLevelService(persistence, authorization, audit, now, model.NewID)
+		service := newProgrammeLevelService(programmeLevelServiceDependencies{Store: persistence, Authorization: authorization, Audit: audit, Now: now, NewID: model.NewID})
 		return func(expected *int64) error {
 				_, err := service.UpdateProgrammeLevel(ctx, call, UpdateProgrammeLevelCommand{ID: current.ID, ExpectedRevision: expected})
 				return err
@@ -146,7 +146,7 @@ func academicRevisionFixture(t *testing.T, kind string, events *[]string, denied
 	case "academic_period":
 		current := &model.AcademicPeriod{ID: model.NewAcademicPeriodID(), CreatedAt: at, UpdatedAt: at, Revision: 7, Name: "academic", DisplayName: "Academic", Owner: model.NewInstitutionAcademicPeriodOwner(model.NewInstitutionID()), StartsAt: at, EndsAt: at.Add(time.Hour)}
 		persistence := &academicPeriodStoreFake{events: events, current: current}
-		service := newAcademicPeriodService(persistence, &academicPeriodAuthorizerFake{events: events, err: deniedErr}, audit, now, model.NewID)
+		service := newAcademicPeriodService(academicPeriodServiceDependencies{Store: persistence, Authorization: &academicPeriodAuthorizerFake{events: events, err: deniedErr}, Audit: audit, Now: now, NewID: model.NewID})
 		return func(expected *int64) error {
 				_, err := service.UpdateAcademicPeriod(ctx, call, UpdateAcademicPeriodCommand{ID: current.ID, ExpectedRevision: expected})
 				return err
@@ -163,7 +163,7 @@ func academicRevisionFixture(t *testing.T, kind string, events *[]string, denied
 	case "class":
 		current := &model.Class{ID: model.NewClassID(), CreatedAt: at, UpdatedAt: at, Revision: 7, Name: "academic", DisplayName: "Academic", ProgrammeLevelID: model.NewProgrammeLevelID(), AcademicPeriodID: model.NewAcademicPeriodID()}
 		persistence := &classStoreFake{events: events, current: current, unitID: model.NewID()}
-		service := newClassService(persistence, authorization, audit, now, model.NewID)
+		service := newClassService(classServiceDependencies{Store: persistence, Authorization: authorization, Audit: audit, Now: now, NewID: model.NewID})
 		return func(expected *int64) error {
 				_, err := service.UpdateClass(ctx, call, UpdateClassCommand{ID: current.ID, ExpectedRevision: expected})
 				return err

@@ -24,12 +24,19 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// accessControlServiceDependencies are the collaborators of accessControlService;
+// newAccessControlService validates them once and accessControlService keeps them in deps.
+type accessControlServiceDependencies struct {
+	Roles    store.RoleStore
+	Bindings store.RoleBindingStore
+	Resolver *accessScopeResolver
+	Audit    authorizationDecisionAudit
+}
+
 type accessControlService struct {
-	roles    store.RoleStore
-	bindings store.RoleBindingStore
-	resolver *accessScopeResolver
-	audit    authorizationDecisionAudit
-	now      func() time.Time
+	deps accessControlServiceDependencies
+
+	now func() time.Time
 }
 
 // resourceAuthorizer is the one application authorization port. A use case
@@ -59,16 +66,11 @@ type resolvedAuthorizationResource struct {
 	academicPeriodInstitutionOwned bool
 }
 
-func newAccessControlService(
-	roles store.RoleStore,
-	bindings store.RoleBindingStore,
-	resolver *accessScopeResolver,
-	audit authorizationDecisionAudit,
-) (*accessControlService, error) {
-	if roles == nil || bindings == nil || resolver == nil || audit == nil {
+func newAccessControlService(deps accessControlServiceDependencies) (*accessControlService, error) {
+	if deps.Roles == nil || deps.Bindings == nil || deps.Resolver == nil || deps.Audit == nil {
 		return nil, errors.New("authorization dependencies are required")
 	}
-	return &accessControlService{roles: roles, bindings: bindings, resolver: resolver, audit: audit, now: time.Now}, nil
+	return &accessControlService{deps: deps, now: time.Now}, nil
 }
 
 // Can resolves current durable bindings and roles. It performs no auditing and
@@ -113,7 +115,7 @@ func (s *accessControlService) evaluate(
 			return false, coarse, nil
 		}
 	}
-	resolved, appErr := s.resolver.resolve(ctx, resource)
+	resolved, appErr := s.deps.Resolver.resolve(ctx, resource)
 	if appErr != nil {
 		return false, unresolved, appErr
 	}
@@ -137,7 +139,7 @@ func (s *accessControlService) evaluateResolved(
 		principal.UserID.String() == resource.ID {
 		return true, nil
 	}
-	bindings, err := s.bindings.ListActiveByUser(
+	bindings, err := s.deps.Bindings.ListActiveByUser(
 		ctx, principal.UserID, model.TimeUTC(s.now()),
 	)
 	if err != nil {
@@ -151,7 +153,7 @@ func (s *accessControlService) evaluateResolved(
 			roleIDs = append(roleIDs, binding.RoleID)
 		}
 	}
-	roles, err := s.roles.GetByIDs(ctx, roleIDs)
+	roles, err := s.deps.Roles.GetByIDs(ctx, roleIDs)
 	if err != nil {
 		return false, authorizationUnavailableError(err)
 	}
@@ -192,7 +194,7 @@ func (s *accessControlService) AuthorizeAcademicPeriodOwner(
 		return appErr
 	}
 	principal := invocation.Principal()
-	resolved, appErr := s.resolver.resolve(ctx, period.Owner.Resource())
+	resolved, appErr := s.deps.Resolver.resolve(ctx, period.Owner.Resource())
 	if appErr != nil {
 		return appErr
 	}
@@ -201,7 +203,7 @@ func (s *accessControlService) AuthorizeAcademicPeriodOwner(
 		return appErr
 	}
 	scopeType, scopeID := authorizationAuditScope(resource, resolved)
-	if appErr = s.audit.RecordAuthorizationDecision(
+	if appErr = s.deps.Audit.RecordAuthorizationDecision(
 		ctx, principal, action, resource, scopeType, scopeID,
 		invocation.RequestMetadata(), allowed,
 	); appErr != nil {
@@ -272,7 +274,7 @@ func (s *accessControlService) AuthorizeWithScope(
 // InstitutionResource returns the installation's singleton Institution as an
 // authorization Resource.
 func (s *accessControlService) InstitutionResource(ctx context.Context) (model.Resource, error) {
-	institution, err := s.resolver.institutions.GetSingleton(ctx)
+	institution, err := s.deps.Resolver.deps.Institutions.GetSingleton(ctx)
 	if err != nil {
 		return model.Resource{}, institutionStoreErrors.Translate(err)
 	}
@@ -313,7 +315,7 @@ func (s *accessControlService) RecordDenial(
 	resource model.Resource,
 	unitID model.AcademicUnitID,
 ) error {
-	return s.audit.RecordAuthorizationDecision(ctx, invocation.Principal(), action, resource,
+	return s.deps.Audit.RecordAuthorizationDecision(ctx, invocation.Principal(), action, resource,
 		model.RoleScopeAcademicUnit, unitID.String(), invocation.RequestMetadata(), false)
 }
 
@@ -347,14 +349,14 @@ func (s *accessControlService) authorizeUserAccountState(
 	if !known || resource.Validate() != nil || !definition.AcceptsResource(resource.Type) {
 		return apperror.New("authorization.request.invalid")
 	}
-	user, err := s.resolver.users.Get(ctx, model.UserID(userID))
+	user, err := s.deps.Resolver.deps.Users.Get(ctx, model.UserID(userID))
 	if err != nil {
 		return authorizationResourceError("user", err)
 	}
 	if user.IsArchived() {
 		return apperror.New("resource.not_found").WithField("resource", "user")
 	}
-	institution, err := s.resolver.institutions.GetSingleton(ctx)
+	institution, err := s.deps.Resolver.deps.Institutions.GetSingleton(ctx)
 	if err != nil {
 		return authorizationResourceError("institution", err)
 	}
@@ -369,7 +371,7 @@ func (s *accessControlService) authorizeUserAccountState(
 	if appErr != nil {
 		return appErr
 	}
-	if appErr = s.audit.RecordAuthorizationDecision(
+	if appErr = s.deps.Audit.RecordAuthorizationDecision(
 		ctx, principal, model.ActionUserManage, resource,
 		model.RoleScopeInstitution, institution.ID.String(), invocation.RequestMetadata(), allowed,
 	); appErr != nil {
@@ -396,7 +398,7 @@ func (s *accessControlService) authorizeCurrentStateWithScope(
 		return "", "", appErr
 	}
 	scopeType, scopeID := authorizationAuditScope(resource, resolved)
-	if appErr = s.audit.RecordAuthorizationDecision(
+	if appErr = s.deps.Audit.RecordAuthorizationDecision(
 		ctx, principal, action, resource, scopeType, scopeID, metadata, allowed,
 	); appErr != nil {
 		return "", "", appErr
@@ -430,14 +432,14 @@ func (s *accessControlService) authorizeUserRead(
 	if visibility.ClassMemberInstitutionWide || len(visibility.AcademicUnitRootIDs) > 0 ||
 		len(visibility.ClassMemberAcademicUnitRootIDs) > 0 || len(visibility.ClassIDs) > 0 {
 		var err error
-		match, err = s.resolver.users.MatchVisibility(ctx, model.UserID(userID), visibility)
+		match, err = s.deps.Resolver.deps.Users.MatchVisibility(ctx, model.UserID(userID), visibility)
 		if err != nil {
 			return false, authorizationUnavailableError(err)
 		}
 		allowed = (match.ScopeType == model.RoleScopeAcademicUnit || match.ScopeType == model.RoleScopeClass) &&
 			model.IsValidOpaqueID(match.ScopeID)
 	}
-	institution, err := s.resolver.institutions.GetSingleton(ctx)
+	institution, err := s.deps.Resolver.deps.Institutions.GetSingleton(ctx)
 	if err != nil {
 		return false, authorizationResourceError("institution", err)
 	}
@@ -445,7 +447,7 @@ func (s *accessControlService) authorizeUserRead(
 	if allowed {
 		scopeType, scopeID = match.ScopeType, match.ScopeID
 	}
-	if err := s.audit.RecordAuthorizationDecision(
+	if err := s.deps.Audit.RecordAuthorizationDecision(
 		ctx, principal, model.ActionUserView, userResource,
 		scopeType, scopeID, invocation.RequestMetadata(), allowed,
 	); err != nil {

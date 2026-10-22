@@ -23,11 +23,18 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// auditServiceDependencies are the collaborators of auditService;
+// newAuditService validates them once and auditService keeps them in deps.
+type auditServiceDependencies struct {
+	Audits       store.AuditStore
+	Institutions store.InstitutionStore
+	NodeID       string
+}
+
 type auditService struct {
-	audits       store.AuditStore
-	institutions store.InstitutionStore
-	nodeID       string
-	now          func() time.Time
+	deps auditServiceDependencies
+
+	now func() time.Time
 }
 
 type userSettingsAuditAdapter struct{ audit *auditService }
@@ -66,7 +73,7 @@ func (a mailAuditAdapter) PrepareTest(ctx context.Context, invocation invocation
 		return nil, domainInvalid("audit.internal", err)
 	}
 	metadata := invocation.RequestMetadata()
-	return &model.AuditEvent{ActorID: principal.UserID, SessionID: principal.SessionID, Action: string(model.ActionMailManage), Resource: model.Resource{Type: model.ResourceMailDelivery, ID: deliveryID.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID, Status: model.AuditStatusSuccess, RequestID: metadata.RequestID, NodeID: a.audit.nodeID, ClientType: string(principal.ClientType), AuthMethod: principal.AuthenticationMethod, IPAddress: metadata.IPAddress, UserAgent: metadata.UserAgent, Parameters: parameters}, nil
+	return &model.AuditEvent{ActorID: principal.UserID, SessionID: principal.SessionID, Action: string(model.ActionMailManage), Resource: model.Resource{Type: model.ResourceMailDelivery, ID: deliveryID.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID, Status: model.AuditStatusSuccess, RequestID: metadata.RequestID, NodeID: a.audit.deps.NodeID, ClientType: string(principal.ClientType), AuthMethod: principal.AuthenticationMethod, IPAddress: metadata.IPAddress, UserAgent: metadata.UserAgent, Parameters: parameters}, nil
 }
 
 func (a userSettingsAuditAdapter) PrepareReplacement(
@@ -82,7 +89,7 @@ func (a userSettingsAuditAdapter) PrepareReplacement(
 		!input.ResultingRevision.IsValid() || input.FormatVersion <= 0 || input.SourceBytes < 0 {
 		return nil, apperror.New("audit.internal")
 	}
-	institution, err := a.audit.institutions.GetSingleton(ctx)
+	institution, err := a.audit.deps.Institutions.GetSingleton(ctx)
 	if err != nil {
 		return nil, auditUnavailable(err)
 	}
@@ -102,23 +109,23 @@ func (a userSettingsAuditAdapter) PrepareReplacement(
 		Resource:  model.Resource{Type: model.ResourceUser, ID: principal.UserID.String()},
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 		Status: model.AuditStatusSuccess, RequestID: metadata.RequestID,
-		NodeID: a.audit.nodeID, ClientType: string(principal.ClientType),
+		NodeID: a.audit.deps.NodeID, ClientType: string(principal.ClientType),
 		AuthMethod: principal.AuthenticationMethod, IPAddress: metadata.IPAddress,
 		UserAgent: metadata.UserAgent, Parameters: parameters,
 	}, nil
 }
 
-func newAuditService(audits store.AuditStore, institutions store.InstitutionStore, nodeID string) (*auditService, error) {
-	if audits == nil {
+func newAuditService(deps auditServiceDependencies) (*auditService, error) {
+	if deps.Audits == nil {
 		return nil, errors.New("audit store is required")
 	}
-	if institutions == nil {
+	if deps.Institutions == nil {
 		return nil, errors.New("audit institution store is required")
 	}
-	if nodeID == "" {
+	if deps.NodeID == "" {
 		return nil, errors.New("audit node ID is required")
 	}
-	return &auditService{audits: audits, institutions: institutions, nodeID: nodeID, now: time.Now}, nil
+	return &auditService{deps: deps, now: time.Now}, nil
 }
 
 func (s *auditService) BeginAuthentication(
@@ -134,7 +141,7 @@ func (s *auditService) BeginAuthentication(
 		!clientType.IsValid() || method == "" {
 		return nil, apperror.New("audit.internal")
 	}
-	if s.audits == nil {
+	if s.deps.Audits == nil {
 		return nil, auditUnavailable(store.NewErrNotFound("audit_store", ""))
 	}
 	parameters, err := model.EncodeAuditData(map[string]string{
@@ -154,14 +161,14 @@ func (s *auditService) BeginAuthentication(
 		ScopeID:    institutionID,
 		Status:     model.AuditStatusAttempt,
 		RequestID:  metadata.RequestID,
-		NodeID:     s.nodeID,
+		NodeID:     s.deps.NodeID,
 		ClientType: string(clientType),
 		AuthMethod: method,
 		IPAddress:  metadata.IPAddress,
 		UserAgent:  metadata.UserAgent,
 		Parameters: parameters,
 	}
-	saved, err := s.audits.Save(ctx, event)
+	saved, err := s.deps.Audits.Save(ctx, event)
 	if err != nil {
 		return nil, auditUnavailable(err)
 	}
@@ -180,18 +187,18 @@ func (s *auditService) BeginLocalLogin(
 	if !userID.IsValid() || !clientType.IsValid() {
 		return nil, apperror.New("audit.internal")
 	}
-	if s.audits == nil {
+	if s.deps.Audits == nil {
 		return nil, auditUnavailable(store.NewErrNotFound("audit_store", ""))
 	}
-	institution, err := s.institutions.GetSingleton(ctx)
+	institution, err := s.deps.Institutions.GetSingleton(ctx)
 	if err != nil {
 		return nil, auditUnavailable(err)
 	}
-	event := localLoginAuditEvent(s.nodeID, institution.ID.String(), clientType, metadata)
+	event := localLoginAuditEvent(s.deps.NodeID, institution.ID.String(), clientType, metadata)
 	event.ActorID = userID
 	event.Resource = model.Resource{Type: model.ResourceUser, ID: userID.String()}
 	event.Status = model.AuditStatusAttempt
-	saved, err := s.audits.Save(ctx, event)
+	saved, err := s.deps.Audits.Save(ctx, event)
 	if err != nil {
 		return nil, auditUnavailable(err)
 	}
@@ -212,21 +219,21 @@ func (s *auditService) RecordLocalLoginFailure(
 	if errorCode == "" {
 		return apperror.New("audit.internal")
 	}
-	if s.audits == nil {
+	if s.deps.Audits == nil {
 		return auditUnavailable(store.NewErrNotFound("audit_store", ""))
 	}
-	institution, err := s.institutions.GetSingleton(ctx)
+	institution, err := s.deps.Institutions.GetSingleton(ctx)
 	if err != nil {
 		return auditUnavailable(err)
 	}
-	event := localLoginAuditEvent(s.nodeID, institution.ID.String(), clientType, metadata)
+	event := localLoginAuditEvent(s.deps.NodeID, institution.ID.String(), clientType, metadata)
 	event.Resource = model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
 	if target.IsValid() {
 		event.Resource = model.Resource{Type: model.ResourceUser, ID: target.String()}
 	}
 	event.Status = model.AuditStatusFail
 	event.ErrorCode = errorCode
-	if _, err := s.audits.Save(ctx, event); err != nil {
+	if _, err := s.deps.Audits.Save(ctx, event); err != nil {
 		return auditUnavailable(err)
 	}
 	return nil
@@ -261,7 +268,7 @@ func (s *auditService) RecordExternalAuthenticationFailure(
 	if err != nil {
 		return domainInvalid("audit.internal", err)
 	}
-	if s.audits == nil {
+	if s.deps.Audits == nil {
 		return auditUnavailable(store.NewErrNotFound("audit_store", ""))
 	}
 	event := &model.AuditEvent{
@@ -274,14 +281,14 @@ func (s *auditService) RecordExternalAuthenticationFailure(
 		ScopeID:    institutionID,
 		Status:     model.AuditStatusFail,
 		RequestID:  metadata.RequestID,
-		NodeID:     s.nodeID,
+		NodeID:     s.deps.NodeID,
 		AuthMethod: method,
 		IPAddress:  metadata.IPAddress,
 		UserAgent:  metadata.UserAgent,
 		ErrorCode:  errorCode,
 		Parameters: parameters,
 	}
-	if _, err := s.audits.Save(ctx, event); err != nil {
+	if _, err := s.deps.Audits.Save(ctx, event); err != nil {
 		return auditUnavailable(err)
 	}
 	return nil
@@ -302,13 +309,13 @@ func (s *auditService) BeginCriticalAction(
 	if principal.ValidateMFARecovery() != nil {
 		return nil, invalidTokenAppError()
 	}
-	if s.audits == nil {
+	if s.deps.Audits == nil {
 		return nil, auditUnavailable(store.NewErrNotFound("audit_store", ""))
 	}
 	scopeType := model.RoleScopeType(resource.Type)
 	scopeID := resource.ID
 	if resource.Type == model.ResourceUser {
-		institution, err := s.institutions.GetSingleton(ctx)
+		institution, err := s.deps.Institutions.GetSingleton(ctx)
 		if err != nil {
 			return nil, auditUnavailable(err)
 		}
@@ -337,7 +344,7 @@ func (s *auditService) PrepareCriticalAction(
 	scopeType := model.RoleScopeType(resource.Type)
 	scopeID := resource.ID
 	if resource.Type == model.ResourceUser {
-		institution, err := s.institutions.GetSingleton(ctx)
+		institution, err := s.deps.Institutions.GetSingleton(ctx)
 		if err != nil {
 			return nil, auditUnavailable(err)
 		}
@@ -365,7 +372,7 @@ func (s *auditService) BeginCriticalActionAtScope(
 	if principal.ValidateMFARecovery() != nil {
 		return nil, invalidTokenAppError()
 	}
-	if s.audits == nil {
+	if s.deps.Audits == nil {
 		return nil, auditUnavailable(store.NewErrNotFound("audit_store", ""))
 	}
 	return s.beginCriticalActionAtScope(ctx, principal, action, resource, scopeType, scopeID, metadata, parameters, priorState)
@@ -383,7 +390,7 @@ func (s *auditService) BeginSystemCriticalActionAtScope(
 	scopeID string,
 	parameters any,
 ) (*model.AuditEvent, error) {
-	if s.audits == nil {
+	if s.deps.Audits == nil {
 		return nil, auditUnavailable(store.NewErrNotFound("audit_store", ""))
 	}
 	encodedParameters, err := model.EncodeAuditData(parameters)
@@ -393,10 +400,10 @@ func (s *auditService) BeginSystemCriticalActionAtScope(
 	event := &model.AuditEvent{
 		Action: string(action), Resource: resource,
 		ScopeType: scopeType, ScopeID: scopeID,
-		Status: model.AuditStatusAttempt, NodeID: s.nodeID,
+		Status: model.AuditStatusAttempt, NodeID: s.deps.NodeID,
 		Parameters: encodedParameters,
 	}
-	saved, err := s.audits.Save(ctx, event)
+	saved, err := s.deps.Audits.Save(ctx, event)
 	if err != nil {
 		return nil, auditUnavailable(err)
 	}
@@ -427,19 +434,19 @@ func (s *auditService) BeginAccountActionAtScope(
 	if !actor.userID.IsValid() || !actor.clientType.IsValid() {
 		return nil, apperror.New("audit.internal")
 	}
-	if s.audits == nil {
+	if s.deps.Audits == nil {
 		return nil, auditUnavailable(store.NewErrNotFound("audit_store", ""))
 	}
 	encodedParameters, err := model.EncodeAuditData(parameters)
 	if err != nil {
 		return nil, domainInvalid("audit.internal", err)
 	}
-	saved, err := s.audits.Save(ctx, &model.AuditEvent{
+	saved, err := s.deps.Audits.Save(ctx, &model.AuditEvent{
 		ActorID: actor.userID, SessionID: actor.sessionID,
 		Action: string(action), Resource: resource,
 		ScopeType: scopeType, ScopeID: scopeID,
 		Status: model.AuditStatusAttempt, RequestID: metadata.RequestID,
-		NodeID: s.nodeID, ClientType: string(actor.clientType),
+		NodeID: s.deps.NodeID, ClientType: string(actor.clientType),
 		IPAddress: metadata.IPAddress, UserAgent: metadata.UserAgent,
 		Parameters: encodedParameters,
 	})
@@ -464,7 +471,7 @@ func (s *auditService) beginCriticalActionAtScope(
 	if appErr != nil {
 		return nil, appErr
 	}
-	saved, err := s.audits.Save(ctx, event)
+	saved, err := s.deps.Audits.Save(ctx, event)
 	if err != nil {
 		return nil, auditUnavailable(err)
 	}
@@ -494,7 +501,7 @@ func (s *auditService) prepareCriticalActionAtScope(
 		Action: string(action), Resource: resource,
 		ScopeType: scopeType, ScopeID: scopeID,
 		Status: model.AuditStatusAttempt, RequestID: metadata.RequestID,
-		NodeID: s.nodeID, ClientType: string(principal.ClientType),
+		NodeID: s.deps.NodeID, ClientType: string(principal.ClientType),
 		AuthMethod: principal.AuthenticationMethod, IPAddress: metadata.IPAddress,
 		UserAgent: metadata.UserAgent, Parameters: encodedParameters,
 		PriorState: encodedPriorState,
@@ -515,14 +522,14 @@ func (s *auditService) CompleteCriticalAction(
 	result any,
 ) (*model.AuditEvent, error) {
 	ctx = context.WithoutCancel(ctx)
-	if s.audits == nil {
+	if s.deps.Audits == nil {
 		return nil, auditUnavailable(store.NewErrNotFound("audit_store", ""))
 	}
 	encodedResult, err := model.EncodeAuditData(result)
 	if err != nil {
 		return nil, domainInvalid("audit.internal", err)
 	}
-	event, err := s.audits.Complete(
+	event, err := s.deps.Audits.Complete(
 		ctx, eventID, status, errorCode, encodedResult, s.now().UnixMilli(),
 	)
 	if err != nil {
@@ -582,16 +589,16 @@ func (s *auditService) recordDecision(
 		ActorID: principal.UserID, SessionID: principal.SessionID,
 		Action: action, Resource: resource,
 		ScopeType: scopeType, ScopeID: scopeID, Status: status,
-		RequestID: metadata.RequestID, NodeID: s.nodeID,
+		RequestID: metadata.RequestID, NodeID: s.deps.NodeID,
 		ClientType: string(principal.ClientType),
 		AuthMethod: principal.AuthenticationMethod,
 		IPAddress:  metadata.IPAddress, UserAgent: metadata.UserAgent,
 		ErrorCode: errorCode,
 	}
-	if s.audits == nil {
+	if s.deps.Audits == nil {
 		return auditUnavailable(store.NewErrNotFound("audit_store", ""))
 	}
-	if _, err := s.audits.Save(ctx, event); err != nil {
+	if _, err := s.deps.Audits.Save(ctx, event); err != nil {
 		return auditUnavailable(err)
 	}
 	return nil
@@ -607,7 +614,7 @@ func (s *auditService) List(
 		(query.Resource != nil && query.Resource.Validate() != nil) {
 		return nil, apperror.New("audit.query.invalid")
 	}
-	events, err := s.audits.List(ctx, store.AuditListOptions{
+	events, err := s.deps.Audits.List(ctx, store.AuditListOptions{
 		ActorID: model.UserID(query.ActorID), Action: query.Action, Resource: query.Resource,
 		BeforeCreatedAt: query.BeforeCreatedAt, BeforeID: model.AuditEventID(query.BeforeID), Limit: query.Limit,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},

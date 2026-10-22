@@ -49,7 +49,7 @@ func TestAcademicUnitMemberPagingAuthorizesEveryPage(t *testing.T) {
 	persistence := &academicUnitMemberStoreFake{events: &events, pageResult: &store.AcademicUnitMemberPage{Members: []*model.AcademicUnitMember{member}, HasMore: true}}
 	authorization := &programmeAuthorizerFake{events: &events}
 	now := model.TimeFromMillis(1000)
-	service := &academicUnitMemberService{store: persistence, authorization: authorization, now: func() time.Time { return now }}
+	service := &academicUnitMemberService{deps: academicUnitMemberServiceDependencies{Store: persistence, Authorization: authorization, Now: func() time.Time { return now }}}
 	first, err := service.ListAcademicUnitMembersPage(ctx, invocation.Invocation{}, ListAcademicUnitMembersPageQuery{AcademicUnitID: scopeID, MembershipPageQuery: MembershipPageQuery{Limit: 1}})
 	require.NoError(t, err, "first page = %#v", first)
 	require.True(t, first.HasMore, "first page = %#v", first)
@@ -82,7 +82,7 @@ func TestClassMemberPagingAuthorizesEveryPage(t *testing.T) {
 	persistence := &classMemberStoreFake{events: &events, pageResult: &store.ClassMemberPage{Members: []*model.ClassMember{member}, HasMore: true}}
 	authorization := &programmeAuthorizerFake{events: &events}
 	now := model.TimeFromMillis(1000)
-	service := &classMemberService{store: persistence, authorization: authorization, now: func() time.Time { return now }}
+	service := &classMemberService{deps: classMemberServiceDependencies{Store: persistence, Authorization: authorization, Now: func() time.Time { return now }}}
 	first, err := service.ListClassMembersPage(ctx, invocation.Invocation{}, ListClassMembersPageQuery{ClassID: scopeID, MembershipPageQuery: MembershipPageQuery{Limit: 1}})
 	require.NoError(t, err, "first page = %#v", first)
 	require.True(t, first.HasMore, "first page = %#v", first)
