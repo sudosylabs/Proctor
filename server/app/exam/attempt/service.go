@@ -1453,7 +1453,6 @@ var storeErrors = apperror.StoreTable{
 		"browser_source_predecessor":               "exam.attempt.browser_activity_conflict",
 		"browser_source_policy":                    "exam.attempt.browser_activity_conflict",
 		"browser_policy_disabled":                  "exam.attempt.browser_activity_conflict",
-		"browser_policy_revision":                  "exam.attempt.browser_activity_conflict",
 		"browser_source_limit":                     "exam.browser.source_budget_exhausted",
 		"browser_activity_sequence":                "exam.attempt.browser_activity_conflict",
 		"browser_activity_policy_semantics":        "exam.attempt.browser_activity_conflict",

@@ -198,10 +198,6 @@ func (s *mailService) SendTestMail(ctx context.Context, invocation Invocation) (
 	return mailDeliveryView(created), nil
 }
 
-func validateMailAddress(address appmail.Address) error {
-	return appmail.ValidateAddress(address)
-}
-
 func (s *mailService) GetMailDelivery(ctx context.Context, invocation Invocation, id model.MailDeliveryID) (MailDeliveryView, error) {
 	if s == nil {
 		return MailDeliveryView{}, apperror.New("mail.unavailable")
@@ -321,23 +317,11 @@ func (s *mailService) checkTestRateLimit(ctx context.Context, userID model.UserI
 	return nil
 }
 
-func stableMailMessageID(id model.MailDeliveryID, from string) string {
-	return appmail.StableMessageID(id, from)
-}
-
-func maskMailAddress(address string) string {
-	return appmail.MaskAddress(address)
-}
-
 func mailDeliveryView(delivery *model.MailDelivery) MailDeliveryView {
 	if delivery == nil {
 		return MailDeliveryView{}
 	}
 	return MailDeliveryView{ID: delivery.ID, OccurrenceID: delivery.OccurrenceID, TargetUserID: delivery.TargetUserID, TemplateKey: delivery.TemplateKey, TemplateDigest: delivery.TemplateDigest, MaskedRecipient: delivery.MaskedRecipient, State: delivery.State, CreatedAt: delivery.CreatedAt, UpdatedAt: delivery.UpdatedAt, MessageDate: delivery.MessageDate, Deadline: delivery.Deadline, MessageID: delivery.MessageID, AttemptCount: delivery.AttemptCount, AcceptedAt: delivery.AcceptedAt, FailedAt: delivery.FailedAt, PublicFailureCode: delivery.PublicFailureCode}
-}
-
-func digestRenderedMail(subject, text, html string) string {
-	return appmail.Digest(subject, text, html)
 }
 
 var mailStoreErrors = apperror.StoreTable{

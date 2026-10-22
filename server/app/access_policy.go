@@ -384,13 +384,6 @@ func blockedAccessPolicyError(blockers []store.AccessPolicyBlocker, cause error)
 	return failure
 }
 
-func accessPolicyModelError(err error) error {
-	if errors.Is(err, model.ErrAccessPolicyRevisionConflict) {
-		return apperror.New("access_policy.revision_conflict").Wrap(err)
-	}
-	return apperror.New("access_policy.invalid").Wrap(err)
-}
-
 func accessPolicyError(err error) error {
 	var revision *store.ErrAccessPolicyRevisionConflict
 	var blocked *store.ErrAccessPolicyBlocked

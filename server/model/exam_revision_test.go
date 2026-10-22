@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -168,27 +167,4 @@ func TestNewLiveCorrectionExamRevisionRejectsInvalidBaseOrOrdering(t *testing.T)
 	_, err = NewLiveCorrectionExamRevision(base, LiveCorrectionExamRevisionSpecification{ID: NewExamRevisionID(), Number: base.Number,
 		AffectedCapabilities: []CandidateCapability{CandidateCapabilityBrowser, CandidateCapabilitySubmission, CandidateCapabilityWorkspace}, CandidateSummary: "Correction.", PublishedByUserID: NewUserID(), PublishedAt: time.Now().UTC()})
 	require.Error(t, err, "non-increasing Revision number was accepted")
-}
-
-func TestSameExamRevisionCandidatePresentationIgnoresStorageGenerations(t *testing.T) {
-	t.Parallel()
-
-	policy, err := NewExamRevisionPolicy(DefaultExamPolicySet())
-	require.NoError(t, err)
-	resource := ExamRevisionResource{ResourceID: NewExamResourceID(), FileEntryID: NewFileEntryID(), FileRevisionID: NewFileRevisionID(),
-		RenditionID: NewFileRenditionID(), DisplayName: "Reference", Position: 0, MediaType: ExamResourceMediaText,
-		SizeBytes: 4, SHA256: fmt.Sprintf("%x", sha256.Sum256([]byte("base")))}
-	base, err := NewExamRevision(ExamRevisionSpecification{ID: NewExamRevisionID(), ExamID: NewExamID(), Number: 1,
-		SourceDraftRevision: 1, Title: "Exam", Policy: policy, Capacity: DefaultExamCapacityPolicy(), Resources: []ExamRevisionResource{resource},
-		PublishedByUserID: NewUserID(), PublishedAt: time.Now().UTC(), Kind: ExamRevisionPublicationStandard})
-	require.NoError(t, err)
-	candidate := base.Clone()
-	candidate.Resources[0].FileRevisionID = NewFileRevisionID()
-	candidate.Resources[0].RenditionID = NewFileRenditionID()
-	require.True(t, SameExamRevisionCandidatePresentation(base, candidate), "same verified candidate presentation was treated as changed")
-	candidate.Capacity.ResourceMaximumCount--
-	require.False(t, SameExamRevisionCandidatePresentation(base, candidate), "changed frozen capacity was treated as the same candidate presentation")
-	candidate.Capacity = base.Capacity
-	candidate.Resources[0].SHA256 = strings.Repeat("b", 64)
-	require.False(t, SameExamRevisionCandidatePresentation(base, candidate), "changed verified content was treated as the same presentation")
 }

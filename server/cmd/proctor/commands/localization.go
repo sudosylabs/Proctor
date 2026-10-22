@@ -46,11 +46,6 @@ func (t commandText) value(id, fallback string, args any) string {
 	return fallback
 }
 
-func englishCommandText() commandText {
-	localizer, _ := server.NewEmbeddedLocalizer()
-	return commandText{localizer: localizer, locale: localization.EnglishLocale}
-}
-
 func productionCommandText() commandText {
 	localizer, _ := server.NewEmbeddedLocalizer()
 	if localizer == nil {

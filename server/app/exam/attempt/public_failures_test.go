@@ -50,7 +50,6 @@ func TestBrowserSourceConflictsKeepTheirMeaning(t *testing.T) {
 		"browser_source_policy":      "exam.attempt.browser_activity_conflict",
 		"browser_source_fence":       "exam.attempt.browser_activity_conflict",
 		"browser_policy_disabled":    "exam.attempt.browser_activity_conflict",
-		"browser_policy_revision":    "exam.attempt.browser_activity_conflict",
 	} {
 		t.Run(constraint, func(t *testing.T) {
 			t.Parallel()

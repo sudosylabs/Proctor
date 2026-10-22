@@ -190,14 +190,3 @@ func deliveryToMatching(t *testing.T, deliveries []mail.Delivery, recipient stri
 	require.FailNow(t, fmt.Sprintf("matching delivery to %s not found", recipient))
 	return mail.Delivery{}
 }
-
-func deliveryTo(t *testing.T, deliveries []mail.Delivery, recipient string) mail.Delivery {
-	t.Helper()
-	for _, delivery := range deliveries {
-		if len(delivery.Recipients) == 1 && delivery.Recipients[0] == recipient {
-			return delivery
-		}
-	}
-	require.FailNow(t, fmt.Sprintf("delivery to %s not found in %#v", recipient, deliveries))
-	return mail.Delivery{}
-}

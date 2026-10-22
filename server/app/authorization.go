@@ -406,40 +406,6 @@ func (s *accessControlService) authorizeCurrentStateWithScope(
 	return scopeType, scopeID, nil
 }
 
-// authorizeUserViewThroughClass evaluates the contextual class permission but
-// records the use-case decision against the user being viewed. The class is an
-// authorization input, not the application resource exposed by this decision.
-func (s *accessControlService) authorizeUserViewThroughClass(
-	ctx context.Context,
-	principal model.Principal,
-	userResource model.Resource,
-	classResource model.Resource,
-	metadata model.RequestMetadata,
-) error {
-	allowed, resolved, appErr := s.evaluate(
-		ctx, principal, model.ActionClassMembersView, classResource,
-	)
-	if appErr != nil {
-		return appErr
-	}
-	if appErr = s.audit.RecordAuthorizationDecision(
-		ctx,
-		principal,
-		model.ActionUserView,
-		userResource,
-		model.RoleScopeInstitution,
-		resolved.institutionID.String(),
-		metadata,
-		allowed,
-	); appErr != nil {
-		return appErr
-	}
-	if !allowed {
-		return authorizationDeniedError()
-	}
-	return nil
-}
-
 // authorizeUserRead authorizes reading another User and reports whether the
 // grant came from institution-wide User visibility. A scoped grant through an
 // Academic Unit or Class reports false with a nil error.

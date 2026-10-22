@@ -33,14 +33,6 @@ func OptionalTimeFromNullTime(value sql.NullTime) model.OptionalTime {
 	return model.OptionalTimeFrom(value.Time)
 }
 
-// NullTimeFromTime maps a concrete time onto sql.NullTime. Zero becomes NULL.
-func NullTimeFromTime(value time.Time) sql.NullTime {
-	if value.IsZero() {
-		return sql.NullTime{}
-	}
-	return sql.NullTime{Time: model.TimeUTC(value), Valid: true}
-}
-
 // TimeFromNullTime maps sql.NullTime onto time.Time. NULL becomes zero.
 func TimeFromNullTime(value sql.NullTime) time.Time {
 	if !value.Valid {

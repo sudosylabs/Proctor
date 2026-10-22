@@ -1140,22 +1140,6 @@ func onboardingImportCommittedSnapshot(current onboardingImportRow) (onboardingI
 	return committed, nil
 }
 
-func requireOnboardingImportAuthority(ctx context.Context, tx *sqlxTxWrapper, principal model.Principal, scopeType model.RoleScopeType, scopeID string) error {
-	if principal.Validate() != nil || !scopeType.IsValid() || !model.IsValidOpaqueID(scopeID) {
-		return store.NewErrInvalidInput("onboarding_import", "authority", nil)
-	}
-	at, err := requireCurrentPrincipalCredential(ctx, tx, principal)
-	if err != nil {
-		return err
-	}
-	if scopeType == model.RoleScopeAcademicUnit || scopeType == model.RoleScopeClass {
-		if err = lockAcademicUnitHierarchy(ctx, tx); err != nil {
-			return err
-		}
-	}
-	return requirePrincipalActionAtScope(ctx, tx, principal, model.ActionOnboardingBatchManage, scopeType, scopeID, at, false)
-}
-
 func requireOnboardingImportValueAuthority(ctx context.Context, tx *sqlxTxWrapper, value *store.OnboardingImport) error {
 	if value == nil {
 		return store.NewErrInvalidInput("onboarding_import", "authority", nil)
@@ -1254,10 +1238,6 @@ func requirePrincipalActionAtScope(ctx context.Context, tx *sqlxTxWrapper, princ
 		}
 	}
 	return requireUserActionAtScopeWithDelegation(ctx, tx, principal.UserID, action, scopeType, scopeID, at, strictParent)
-}
-
-func requireUserActionAtScope(ctx context.Context, tx *sqlxTxWrapper, userID model.UserID, action model.Action, scopeType model.RoleScopeType, scopeID string, at time.Time) error {
-	return requireUserActionAtScopeWithDelegation(ctx, tx, userID, action, scopeType, scopeID, at, false)
 }
 
 func requireUserActionAtScopeWithDelegation(ctx context.Context, tx *sqlxTxWrapper, userID model.UserID, action model.Action, scopeType model.RoleScopeType, scopeID string, at time.Time, strictParent bool) error {

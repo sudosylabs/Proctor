@@ -399,18 +399,6 @@ func (c Config) Validate() error {
 	return nil
 }
 
-func loopbackHostPort(address string) bool {
-	host, _, err := net.SplitHostPort(address)
-	if err != nil {
-		return false
-	}
-	if strings.EqualFold(host, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
-}
-
 func validHostPort(address string) bool {
 	host, portText, err := net.SplitHostPort(address)
 	if err != nil || host == "" {

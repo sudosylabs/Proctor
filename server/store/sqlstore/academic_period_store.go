@@ -359,17 +359,6 @@ func lockAcademicPeriodLifecycle(ctx context.Context, tx sqlxExecutor) error {
 	return nil
 }
 
-func validateActiveAcademicPeriod(ctx context.Context, executor sqlxExecutor, id string) error {
-	var exists bool
-	if err := executor.Get(ctx, &exists, `SELECT EXISTS (SELECT 1 FROM academic_periods WHERE id = ? AND archived_at IS NULL)`, id); err != nil {
-		return fmt.Errorf("validate class academic period: %w", err)
-	}
-	if !exists {
-		return store.NewErrReference("class", "classes_academic_period_id_fkey", nil)
-	}
-	return nil
-}
-
 func newAcademicPeriodRow(period *model.AcademicPeriod) academicPeriodRow {
 	row := academicPeriodRow{
 		ID:          period.ID.String(),

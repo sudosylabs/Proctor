@@ -60,18 +60,6 @@ func (s UnretainedDeliverySummary) Compare(next UnretainedDeliverySummary) (bool
 	return false, nil
 }
 
-// SaturatingDeliveryCount preserves uncertainty after losing exact precision.
-func SaturatingDeliveryCount(count, additional int64, complete bool) (int64, bool, error) {
-	if !securitySafeInt(count) || !securitySafeInt(additional) {
-		return 0, false, ErrDeliveryInvalid
-	}
-	const maximum int64 = 9007199254740991
-	if additional > maximum-count {
-		return maximum, false, nil
-	}
-	return count + additional, complete, nil
-}
-
 func (s UnretainedDeliverySummary) MarshalJSON() ([]byte, error) {
 	type wire UnretainedDeliverySummary
 	return json.Marshal(struct {

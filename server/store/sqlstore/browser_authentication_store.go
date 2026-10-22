@@ -416,14 +416,6 @@ func desktopJWKJSON(jwk model.DesktopPublicJWK) any {
 	return string(encoded)
 }
 
-func getBrowserAuthenticationTransaction(ctx context.Context, tx *sqlxTxWrapper, id model.BrowserAuthenticationTransactionID) (*model.BrowserAuthenticationTransaction, error) {
-	var row browserAuthenticationRow
-	if err := tx.Get(ctx, &row, `SELECT `+browserAuthenticationColumns+` FROM browser_authentication_transactions WHERE id = ?`, id.String()); err != nil {
-		return nil, translateError("browser_authentication_transaction", id.String(), err)
-	}
-	return row.model()
-}
-
 func validateBrowserInvitationTransactionCreation(input *store.BrowserInvitationTransactionCreation) error {
 	if input == nil || !input.ID.IsValid() || !input.InstitutionID.IsValid() ||
 		model.ValidateBrowserAuthenticationIssuer(input.Issuer, true) != nil || !input.InvitationID.IsValid() ||

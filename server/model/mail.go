@@ -8,7 +8,6 @@
 package model
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"regexp"
 	"sort"
@@ -499,12 +498,4 @@ func validRequiredMailPublicCode(code string) bool { return code != "" && validM
 
 func validMaskedMailRecipient(value string) bool {
 	return mailMaskedPattern.MatchString(value)
-}
-
-func IsMailDigest(value string) bool {
-	if !mailDigestPattern.MatchString(value) {
-		return false
-	}
-	decoded, err := hex.DecodeString(value)
-	return err == nil && hex.EncodeToString(decoded) == value
 }

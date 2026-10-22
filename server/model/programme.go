@@ -26,31 +26,6 @@ type Programme struct {
 	Description    string
 }
 
-// NewProgramme constructs a programme with application-supplied identity and clock.
-func NewProgramme(
-	id ProgrammeID,
-	academicUnitID AcademicUnitID,
-	name, displayName, description string,
-	at time.Time,
-) (*Programme, error) {
-	at = TimeUTC(at)
-	programme := &Programme{
-		ID:             id,
-		CreatedAt:      at,
-		UpdatedAt:      at,
-		Revision:       1,
-		AcademicUnitID: academicUnitID,
-		Name:           name,
-		DisplayName:    displayName,
-		Description:    description,
-	}
-	sanitizeNamed(&programme.Name, &programme.DisplayName, &programme.Description)
-	if err := programme.Validate(); err != nil {
-		return nil, err
-	}
-	return programme, nil
-}
-
 // PrepareCreate applies application-owned lifecycle fields before validation.
 func (p *Programme) PrepareCreate(id ProgrammeID, at time.Time) {
 	if p == nil {

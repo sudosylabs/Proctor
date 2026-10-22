@@ -539,17 +539,6 @@ func requestCredentialFrom(
 	return requestCredential{}, authenticationRequiredError()
 }
 
-func optionalBearerCredential(request *http.Request) (string, bool, error) {
-	token, source, ok, err := optionalAuthorizationCredential(request)
-	if err != nil || !ok {
-		return token, ok, err
-	}
-	if source != credentialSourceBearer {
-		return "", false, authenticationRequiredError()
-	}
-	return token, true, nil
-}
-
 func optionalAuthorizationCredential(request *http.Request) (string, credentialSource, bool, error) {
 	values := request.Header.Values("Authorization")
 	if len(values) == 0 {

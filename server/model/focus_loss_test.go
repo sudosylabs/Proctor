@@ -9,7 +9,6 @@ package model
 
 import (
 	"math"
-	"strings"
 	"testing"
 	"time"
 
@@ -80,28 +79,6 @@ func TestFocusLossSignalRejectsUnboundedOrClientInventedValues(t *testing.T) {
 				test.duration, test.source, test.at)
 			require.Error(t, err, "invalid Focus Loss signal was accepted: %#v", test)
 		})
-	}
-}
-
-func TestFocusLossEvidenceRetainsOnlyBoundedEpisodeAndGapMetadata(t *testing.T) {
-	t.Parallel()
-	receivedAt := time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC)
-	signal, err := NewFocusLossSignal(NewFocusLossSignalID(), NewExamAttemptID(), NewAttemptParticipationID(),
-		2, 9, 750, FocusLossSourceWindowBlur, receivedAt)
-	require.NoError(t, err)
-	evidence, err := NewFocusLossEvidence(NewIntegrityEvidenceID(), *signal, NewIntegrityFlagID(), 3, receivedAt)
-	require.NoError(t, err)
-	require.Equal(t, IntegrityPolicyFocusLoss, evidence.Kind)
-	require.Equal(t, signal.ID, evidence.SignalID)
-	require.Equal(t, signal.Sequence, evidence.Sequence)
-	require.Equal(t, int64(750), evidence.DurationMilliseconds)
-	require.Equal(t, signal.Source, evidence.Source)
-	require.Equal(t, int64(3), evidence.MissingBefore)
-	require.Equal(t, receivedAt, evidence.ObservedAt)
-	require.Equal(t, receivedAt, evidence.RecordedAt)
-	capture := strings.ToLower(strings.Join([]string{string(evidence.Kind), string(evidence.Source)}, " "))
-	for _, forbidden := range []string{"clipboard", "source code", "screenshot", "terminal", "payload"} {
-		require.NotContains(t, capture, forbidden, "Focus Loss evidence retained forbidden material %q: %#v", forbidden, evidence)
 	}
 }
 

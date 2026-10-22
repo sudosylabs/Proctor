@@ -67,7 +67,7 @@ func TestRetryLayerConformance(t *testing.T) {
 
 func newRetryConformanceStore(t *testing.T, sqlStore *SQLStore) store.Store {
 	t.Helper()
-	retriedStore, err := retrylayer.New(sqlStore, retrylayer.DefaultPolicy(IsTransientError))
+	retriedStore, err := retrylayer.NewWithRecorder(sqlStore, retrylayer.DefaultPolicy(IsTransientError), nil)
 	require.NoError(t, err)
 	return retriedStore
 }

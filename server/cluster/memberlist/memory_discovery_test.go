@@ -16,7 +16,7 @@ import (
 	"github.com/sudosylabs/proctor/server/cluster"
 )
 
-// MemoryDiscovery is an in-process DiscoveryStore for tests.
+// MemoryDiscovery is an in-process DiscoveryStore for this package's tests.
 type MemoryDiscovery struct {
 	mu    sync.Mutex
 	nodes map[string]cluster.DiscoveryNode

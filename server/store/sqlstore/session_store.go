@@ -68,11 +68,6 @@ type sessionSaveTransactionResult struct {
 	credentials []*model.SessionCredential
 }
 
-type userSessionRevocationTransactionResult struct {
-	sessions []*model.Session
-	hashes   []string
-}
-
 func sessionSliceColumns() []string {
 	return []string{
 		"sessions.id",

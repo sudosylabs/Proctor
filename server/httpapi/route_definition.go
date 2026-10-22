@@ -160,10 +160,6 @@ func sessionRoute(method string, path routePath, errorCodes []string, operation 
 	return route(AuthSessionRequired, method, path, errorCodes, operation)
 }
 
-func strongSessionRoute(method string, path routePath, errorCodes []string, operation operation) routeDefinition {
-	return route(AuthStrongSessionRequired, method, path, errorCodes, operation)
-}
-
 func recentSessionRoute(method string, path routePath, errorCodes []string, operation operation) routeDefinition {
 	return route(AuthRecentSessionRequired, method, path, errorCodes, operation)
 }

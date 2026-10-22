@@ -114,11 +114,6 @@ func (a *academicUnitHTTPApplication) ArchiveAcademicUnit(
 	return nil
 }
 
-type academicUnitHTTPHealth struct{}
-
-func (academicUnitHTTPHealth) Live() bool  { return true }
-func (academicUnitHTTPHealth) Ready() bool { return true }
-
 func TestAcademicUnitResponsePreservesExistingWireShape(t *testing.T) {
 	t.Parallel()
 

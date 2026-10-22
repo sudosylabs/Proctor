@@ -81,16 +81,6 @@ var eventAuditActions = map[Action]eventAuditActionDefinition{
 	ActionMFADisable:                              {},
 }
 
-// IsAuditAction reports whether action is a declared audit action: a
-// permission Action or an event-only audit action.
-func IsAuditAction(action string) bool {
-	if _, ok := actionDefinitions[Action(action)]; ok {
-		return true
-	}
-	_, ok := eventAuditActions[Action(action)]
-	return ok
-}
-
 // AuditActions returns every declared audit action in stable order.
 func AuditActions() []string {
 	actions := make([]string, 0, len(actionDefinitions)+len(eventAuditActions))

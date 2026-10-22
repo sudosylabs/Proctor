@@ -198,27 +198,6 @@ func (m *Migrator) Up() error {
 	return nil
 }
 
-func (m *Migrator) Pending() ([]*models.Migration, error) {
-	pending, err := m.engine.Diff(models.Up)
-	if err != nil {
-		return nil, fmt.Errorf("inspect pending migrations: %w", err)
-	}
-	return pending, nil
-}
-
-// Down rolls back a bounded number of migrations. It is exposed for migration
-// verification and deliberate operator tooling, not normal server startup.
-func (m *Migrator) Down(steps int) (int, error) {
-	if steps <= 0 {
-		return 0, errors.New("migration rollback steps must be greater than zero")
-	}
-	applied, err := m.engine.ApplyDown(steps)
-	if err != nil {
-		return applied, fmt.Errorf("roll back database migrations: %w", err)
-	}
-	return applied, nil
-}
-
 func (m *Migrator) SchemaVersion(ctx context.Context) (int, error) {
 	return m.store.GetDBSchemaVersion(ctx)
 }

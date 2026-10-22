@@ -291,12 +291,12 @@ func TestRetryAllowlistedReadPreservesEventualResult(t *testing.T) {
 		}
 		return want, nil
 	}
-	layer, err := retrylayer.New(&rootStub{institution: stub}, retrylayer.Policy{
+	layer, err := retrylayer.NewWithRecorder(&rootStub{institution: stub}, retrylayer.Policy{
 		MaxAttempts:    3,
 		InitialBackoff: time.Nanosecond,
 		MaxBackoff:     time.Nanosecond,
 		IsTransient:    func(err error) bool { return err == transientErr },
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	got, err := layer.Institution().Get(context.Background(), model.NewInstitutionID())
@@ -310,12 +310,12 @@ func TestRetryNeverRetriesUnsafeMutation(t *testing.T) {
 
 	transientErr := errors.New("serialization failure")
 	stub := &institutionStub{saveErr: transientErr, get: func() (*model.Institution, error) { return nil, nil }}
-	layer, err := retrylayer.New(&rootStub{institution: stub}, retrylayer.Policy{
+	layer, err := retrylayer.NewWithRecorder(&rootStub{institution: stub}, retrylayer.Policy{
 		MaxAttempts:    3,
 		InitialBackoff: time.Nanosecond,
 		MaxBackoff:     time.Nanosecond,
 		IsTransient:    func(error) bool { return true },
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	_, gotErr := layer.Institution().Save(context.Background(), &model.Institution{})
@@ -327,10 +327,10 @@ func TestRetryNeverRetriesPasswordRehashWithUnknownCommitOutcome(t *testing.T) {
 	t.Parallel()
 	unknown := errors.New("unknown commit outcome")
 	stub := &passwordCredentialStub{err: unknown}
-	layer, err := retrylayer.New(&rootStub{passwordCredential: stub}, retrylayer.Policy{
+	layer, err := retrylayer.NewWithRecorder(&rootStub{passwordCredential: stub}, retrylayer.Policy{
 		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
 		IsTransient: func(error) bool { return true },
-	})
+	}, nil)
 	require.NoError(t, err)
 	input := &store.PasswordCredentialRehash{ID: model.NewPasswordCredentialID(), UserID: model.NewUserID(),
 		ExpectedHash: "encoded-original", ExpectedRevision: 1, PasswordHash: "encoded-rehash"}
@@ -344,10 +344,10 @@ func TestRetryNeverRetriesSystemSittingMutationsWithoutCommandOutcomes(t *testin
 	t.Parallel()
 	transientErr := errors.New("unknown commit outcome")
 	stub := &examSittingUnsafeMutationStub{err: transientErr}
-	layer, err := retrylayer.New(&rootStub{examSitting: stub}, retrylayer.Policy{
+	layer, err := retrylayer.NewWithRecorder(&rootStub{examSitting: stub}, retrylayer.Policy{
 		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
 		IsTransient: func(error) bool { return true },
-	})
+	}, nil)
 	require.NoError(t, err)
 	_, got := layer.ExamSitting().AdvanceDue(context.Background(), &store.ExamSittingDueAdvance{})
 	require.Equal(t, transientErr, got)
@@ -361,10 +361,10 @@ func TestRetryOnlyRetriesExamAttemptMutationWithDurableCommandOutcome(t *testing
 	t.Parallel()
 	transientErr := errors.New("unknown commit outcome")
 	stub := &examAttemptRetryStub{err: transientErr}
-	layer, err := retrylayer.New(&rootStub{examAttempt: stub}, retrylayer.Policy{
+	layer, err := retrylayer.NewWithRecorder(&rootStub{examAttempt: stub}, retrylayer.Policy{
 		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
 		IsTransient: func(error) bool { return true },
-	})
+	}, nil)
 	require.NoError(t, err)
 	command := &store.CommandIdempotency{UserID: model.NewUserID()}
 	_, got := layer.ExamAttempt().Connect(context.Background(), &store.ExamAttemptConnect{}, command)
@@ -379,10 +379,10 @@ func TestRetryInvitationMutationsOnlyWithDurableCommandOutcomes(t *testing.T) {
 	t.Parallel()
 	transientErr := errors.New("unknown Invitation commit outcome")
 	stub := &invitationRetryStub{err: transientErr}
-	layer, err := retrylayer.New(&rootStub{invitation: stub}, retrylayer.Policy{
+	layer, err := retrylayer.NewWithRecorder(&rootStub{invitation: stub}, retrylayer.Policy{
 		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
 		IsTransient: func(error) bool { return true },
-	})
+	}, nil)
 	require.NoError(t, err)
 	command := &store.CommandIdempotency{UserID: model.NewUserID()}
 	_, _ = layer.Invitation().IssueStudentClassIdempotently(context.Background(), &store.StudentClassInvitationIssue{}, command)
@@ -396,10 +396,10 @@ func TestRetryExamAttemptRenewalExpiryAndReallowUseTheirDurableFences(t *testing
 	t.Parallel()
 	transientErr := errors.New("unknown commit outcome")
 	stub := &examAttemptRetryStub{err: transientErr}
-	layer, err := retrylayer.New(&rootStub{examAttempt: stub}, retrylayer.Policy{
+	layer, err := retrylayer.NewWithRecorder(&rootStub{examAttempt: stub}, retrylayer.Policy{
 		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
 		IsTransient: func(error) bool { return true },
-	})
+	}, nil)
 	require.NoError(t, err)
 	ctx := context.Background()
 	_, _ = layer.ExamAttempt().RenewParticipation(ctx, &store.ExamAttemptParticipationRenewal{DesktopCompatibilityPolicyRevision: 1})
@@ -420,10 +420,10 @@ func TestRetryReadsButDoesNotAutomaticallyRetryAuditedFocusLossMutation(t *testi
 	t.Parallel()
 	transientErr := errors.New("unknown focus loss outcome")
 	stub := &examAttemptRetryStub{err: transientErr}
-	layer, err := retrylayer.New(&rootStub{examAttempt: stub}, retrylayer.Policy{
+	layer, err := retrylayer.NewWithRecorder(&rootStub{examAttempt: stub}, retrylayer.Policy{
 		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
 		IsTransient: func(error) bool { return true },
-	})
+	}, nil)
 	require.NoError(t, err)
 	ctx := context.Background()
 	_, _ = layer.ExamAttempt().ResolveFocusLossTarget(ctx, store.ExamAttemptFocusLossAccess{})
@@ -437,10 +437,10 @@ func TestRetryOnlyRetriesExamAttemptWorkspaceMutationWithDurableCommandOutcome(t
 
 	transientErr := errors.New("unknown commit outcome")
 	stub := &examAttemptWorkspaceRetryStub{err: transientErr}
-	layer, err := retrylayer.New(&rootStub{examAttemptWorkspace: stub}, retrylayer.Policy{
+	layer, err := retrylayer.NewWithRecorder(&rootStub{examAttemptWorkspace: stub}, retrylayer.Policy{
 		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
 		IsTransient: func(error) bool { return true },
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -457,10 +457,10 @@ func TestRetryForwardsExamAttemptWorkspaceCleanupMutationsOnce(t *testing.T) {
 
 	transientErr := errors.New("unknown cleanup outcome")
 	stub := &examAttemptWorkspaceRetryStub{err: transientErr}
-	layer, err := retrylayer.New(&rootStub{examAttemptWorkspace: stub}, retrylayer.Policy{
+	layer, err := retrylayer.NewWithRecorder(&rootStub{examAttemptWorkspace: stub}, retrylayer.Policy{
 		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
 		IsTransient: func(error) bool { return true },
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -486,7 +486,7 @@ func TestRetryDoesNotTreatMutatingResolveAsARead(t *testing.T) {
 		MaxBackoff:     time.Nanosecond,
 		IsTransient:    func(error) bool { return true },
 	}
-	layer, err := retrylayer.New(&rootStub{personalAccessToken: stub}, policy)
+	layer, err := retrylayer.NewWithRecorder(&rootStub{personalAccessToken: stub}, policy, nil)
 	require.NoError(t, err)
 
 	_, gotErr := layer.PersonalAccessToken().Resolve(context.Background(), "hash", model.TimeFromMillis(1), 2*time.Millisecond)
@@ -499,10 +499,10 @@ func TestRetryExamAuthoringIdempotentCreateAndReads(t *testing.T) {
 
 	transientErr := errors.New("serialization failure")
 	stub := &examAuthoringStub{err: transientErr}
-	layer, err := retrylayer.New(&rootStub{examAuthoring: stub}, retrylayer.Policy{
+	layer, err := retrylayer.NewWithRecorder(&rootStub{examAuthoring: stub}, retrylayer.Policy{
 		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
 		IsTransient: func(err error) bool { return err == transientErr },
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	_, _ = layer.ExamAuthoring().Create(context.Background(), &store.ExamAuthoringCreation{}, &store.CommandIdempotency{})
@@ -527,10 +527,10 @@ func TestRetryExamAuthoringDoesNotRetryCreateWithoutIdempotency(t *testing.T) {
 	t.Parallel()
 
 	stub := &examAuthoringStub{err: errors.New("serialization failure")}
-	layer, err := retrylayer.New(&rootStub{examAuthoring: stub}, retrylayer.Policy{
+	layer, err := retrylayer.NewWithRecorder(&rootStub{examAuthoring: stub}, retrylayer.Policy{
 		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
 		IsTransient: func(error) bool { return true },
-	})
+	}, nil)
 	require.NoError(t, err)
 	_, _ = layer.ExamAuthoring().Create(context.Background(), &store.ExamAuthoringCreation{}, nil)
 	_, _ = layer.ExamAuthoring().UpdateDraftText(context.Background(), &store.ExamDraftTextUpdate{}, nil)
@@ -625,11 +625,11 @@ func TestNewRejectsUnboundedOrIncompletePolicy(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := retrylayer.New(&rootStub{}, test.policy)
+			_, err := retrylayer.NewWithRecorder(&rootStub{}, test.policy, nil)
 			require.Error(t, err, "New() accepted invalid policy")
 		})
 	}
-	_, err := retrylayer.New(nil, valid)
+	_, err := retrylayer.NewWithRecorder(nil, valid, nil)
 	require.Error(t, err, "New() accepted nil store")
 }
 
@@ -699,12 +699,12 @@ func newLayer(
 	backoff time.Duration,
 ) *retrylayer.Layer {
 	t.Helper()
-	layer, err := retrylayer.New(&rootStub{institution: institution}, retrylayer.Policy{
+	layer, err := retrylayer.NewWithRecorder(&rootStub{institution: institution}, retrylayer.Policy{
 		MaxAttempts:    attempts,
 		InitialBackoff: backoff,
 		MaxBackoff:     backoff,
 		IsTransient:    classifier,
-	})
+	}, nil)
 	require.NoError(t, err)
 	return layer
 }
@@ -750,12 +750,12 @@ func TestRetryServingNodeLeaseIncarnationWritesAreIdempotent(t *testing.T) {
 
 	transientErr := errors.New("serialization failure")
 	stub := &servingNodeLeaseRetryStub{err: transientErr, failures: 2}
-	layer, err := retrylayer.New(&servingNodeLeaseRootStub{lease: stub}, retrylayer.Policy{
+	layer, err := retrylayer.NewWithRecorder(&servingNodeLeaseRootStub{lease: stub}, retrylayer.Policy{
 		MaxAttempts:    3,
 		InitialBackoff: time.Nanosecond,
 		MaxBackoff:     time.Nanosecond,
 		IsTransient:    func(err error) bool { return errors.Is(err, transientErr) },
-	})
+	}, nil)
 	require.NoError(t, err)
 	leaseID := model.NewID()
 	lease, err := layer.ServingNodeLease().Upsert(context.Background(), &store.ServingNodeLeaseClaim{NodeID: "node-a", LeaseID: leaseID, Lifetime: 30 * time.Second})

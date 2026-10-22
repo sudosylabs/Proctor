@@ -299,18 +299,6 @@ func (s *externalAuthenticationService) BeginExternalAuthentication(
 	return result, appErr
 }
 
-func (s *externalAuthenticationService) begin(
-	ctx context.Context,
-	providerID string,
-	returnTo string,
-	clientType model.SessionClientType,
-	deviceID string,
-	deviceName string,
-	source string,
-) (*model.ExternalAuthenticationStart, error) {
-	return s.beginWithInvitationClaim(ctx, providerID, returnTo, clientType, deviceID, deviceName, source, "")
-}
-
 func (s *externalAuthenticationService) beginWithInvitationClaim(
 	ctx context.Context, providerID, returnTo string, clientType model.SessionClientType,
 	deviceID, deviceName, source, invitationClaim string,

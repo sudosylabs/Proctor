@@ -34,17 +34,6 @@ type realtimeService struct {
 	}
 }
 
-func newRealtimeService(
-	invalidator apprealtime.AuthenticationInvalidator,
-	diagnostics realtimeDiagnostics,
-) (*realtimeService, error) {
-	delivery, err := apprealtime.New(invalidator, diagnostics)
-	if err != nil {
-		return nil, err
-	}
-	return newRealtimeServiceWithDelivery(delivery, diagnostics)
-}
-
 func newRealtimeServiceWithDelivery(
 	delivery *apprealtime.Service,
 	diagnostics realtimeDiagnostics,

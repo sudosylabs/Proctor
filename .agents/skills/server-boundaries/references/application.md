@@ -219,6 +219,15 @@ Persistence is the exception: the bounded root `store.Store` and complete per-mo
 
 Do not prefix interfaces with `I`. Add compile-time assertions where an adapter intentionally implements an important cross-package contract. Every substantive package has a package comment explaining what it owns, excludes, and may depend on.
 
+Every production function is reachable from a server binary. Code only tests
+call is dead: delete it, or, when it is a seam its own package's tests need,
+declare it in a `_test.go` file of that package. A seam that other packages'
+tests construct through (the `server.NewForTesting` hook, configuration and
+log fakes, fixture constructors) stays in production code only with a reason
+in the architecture test's `reachableOnlyFromTests` list, which
+`TestProductionFunctionsAreReachable` checks by rapid type analysis from every
+`main` package.
+
 Migrations are by vertical slice. A package or capability is introduced only when working code has a stable responsibility to inhabit it; bulk moves are prohibited.
 
 ## One application surface

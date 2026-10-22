@@ -429,17 +429,6 @@ func TestMailMetricsRequiresMailViewAuthorization(t *testing.T) {
 	require.Equal(t, model.ActionMailView, authorizer.actions[0])
 }
 
-func TestMaskMailAddressNeverReturnsACompleteAddress(t *testing.T) {
-	for input, want := range map[string]string{
-		"a@example.test":        "***@example.test",
-		"operator@example.test": "o***@example.test",
-	} {
-		got := maskMailAddress(input)
-		require.Equal(t, want, got, "maskMailAddress")
-		require.NotEqual(t, input, got, "maskMailAddress")
-	}
-}
-
 func TestMailServiceRejectsPATUnverifiedAndRateLimitedBeforePersistence(t *testing.T) {
 	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
 	principal := mailTestPrincipal(at)

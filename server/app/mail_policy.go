@@ -146,18 +146,6 @@ type MailMetricsReader interface {
 	Snapshot() MailMetricsSnapshot
 }
 
-// NopMailDeliveryRecorder preserves the explicit metrics seam when no
-// exporter is configured. Tests and future production exporters can replace
-// it without coupling application policy to a telemetry implementation.
-type NopMailDeliveryRecorder struct{}
-
-func (NopMailDeliveryRecorder) RecordMailDelivery(context.Context, MailDeliveryMetric) {}
-func (NopMailDeliveryRecorder) RecordMailAttempt(context.Context, MailAttemptMetric)   {}
-func (NopMailDeliveryRecorder) RecordMailQueueSnapshot(context.Context, []MailQueueMetric) {
-}
-func (NopMailDeliveryRecorder) RecordMailHealth(context.Context, MailHealthMetric) {}
-func (NopMailDeliveryRecorder) Snapshot() MailMetricsSnapshot                      { return MailMetricsSnapshot{} }
-
 const (
 	MailHealthDisabled      = "mail.disabled"
 	MailHealthHealthy       = "mail.healthy"

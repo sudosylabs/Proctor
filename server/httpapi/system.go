@@ -28,15 +28,6 @@ type systemResourceModule struct {
 	now                  func() time.Time
 }
 
-func systemResource(health Health, buildInfo BuildInfo) resource {
-	return systemResourceWithApplication(
-		health,
-		buildInfo,
-		unavailableDesktopCompatibilityApplication{},
-		time.Now,
-	)
-}
-
 func systemResourceWithApplication(
 	health Health,
 	buildInfo BuildInfo,

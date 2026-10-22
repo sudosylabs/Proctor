@@ -63,10 +63,6 @@ func TestUnretainedDeliverySummaryPreservesUncertainty(t *testing.T) {
 		_, err = prior.Compare(next)
 		require.Error(t, err, "lost uncertainty or accepted conflicting summary")
 	}
-	count, complete, err := SaturatingDeliveryCount(9007199254740990, 2, true)
-	require.NoError(t, err, "overflow")
-	require.Equal(t, int64(9007199254740991), count, "overflow")
-	require.False(t, complete, "overflow")
 	var decoded UnretainedDeliverySummary
 	require.NoError(t, json.Unmarshal([]byte(`{"summary_sequence":1,"unretained_record_count":0,"count_complete":false}`), &decoded), "rejected omitted absent instants")
 	require.Nil(t, decoded.FirstUnretainedAt)

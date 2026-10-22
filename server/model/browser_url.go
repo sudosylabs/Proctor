@@ -108,10 +108,6 @@ func CanonicalizeBrowserLocation(value string) (BrowserLocation, error) {
 	return BrowserLocation{Scheme: parsed.Scheme, Host: host, Port: port, Path: urlPath}, nil
 }
 
-func canonicalBrowserHostPort(parsed *url.URL) (string, string, error) {
-	return canonicalBrowserHostPortWithDefault(parsed, "443")
-}
-
 func canonicalBrowserHostPortWithDefault(parsed *url.URL, defaultPort string) (string, string, error) {
 	host := parsed.Hostname()
 	if host == "" || len(host) > 253 || !browserASCII(host) || strings.HasSuffix(host, ".") ||

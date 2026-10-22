@@ -27,7 +27,6 @@ func TestNullableTimeUsesDurablePrecision(t *testing.T) {
 		got  sql.NullTime
 	}{
 		{name: "optional", got: NullTimeFromOptional(model.OptionalTime{Time: instant, Valid: true})},
-		{name: "concrete", got: NullTimeFromTime(instant)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.True(t, tc.got.Valid, "nullable time = %#v, want present", tc.got)
@@ -38,7 +37,6 @@ func TestNullableTimeUsesDurablePrecision(t *testing.T) {
 			require.Equal(t, want, got.Time, "optional round trip = %#v, want present", got)
 		})
 	}
-	require.False(t, NullTimeFromTime(time.Time{}).Valid, "absent time must remain SQL NULL")
 	require.False(t, NullTimeFromOptional(model.OptionalTime{}).Valid, "absent time must remain SQL NULL")
 	got := NullTimeFromOptional(model.OptionalTimeFrom(time.Time{}))
 	require.True(t, got.Valid)

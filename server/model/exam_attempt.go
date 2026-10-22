@@ -394,22 +394,6 @@ func NewConnectionLossEvidence(id IntegrityEvidenceID, attemptID ExamAttemptID, 
 	return evidence, nil
 }
 
-// NewFocusLossEvidence converts one qualifying episode from the consumed
-// evaluation bucket into bounded evidence associated with its generation Flag.
-// Pending bucket rows are not Integrity Evidence and remain Store-internal.
-func NewFocusLossEvidence(id IntegrityEvidenceID, signal FocusLossSignal, flagID IntegrityFlagID,
-	missingBefore int64, recordedAt time.Time,
-) (*IntegrityEvidence, error) {
-	evidence := &IntegrityEvidence{ID: id, AttemptID: signal.AttemptID, ParticipationID: signal.ParticipationID,
-		FlagID: flagID, Generation: signal.Generation, Kind: IntegrityPolicyFocusLoss, SignalID: signal.ID,
-		Sequence: signal.Sequence, DurationMilliseconds: signal.DurationMilliseconds, Source: signal.Source,
-		MissingBefore: missingBefore, ObservedAt: signal.ReceivedAt, RecordedAt: TimeUTC(recordedAt)}
-	if err := evidence.Validate(); err != nil {
-		return nil, err
-	}
-	return evidence, nil
-}
-
 func (e *IntegrityEvidence) Validate() error {
 	if e == nil || !e.ID.IsValid() || !e.AttemptID.IsValid() || !e.ParticipationID.IsValid() ||
 		e.Generation < 1 || !e.Kind.IsValid() || e.ObservedAt.IsZero() ||
@@ -676,16 +660,6 @@ type AttemptWorkspaceObject struct {
 	ClaimedAt       OptionalTime
 }
 
-func NewStarterOriginAttemptWorkspaceObject(id AttemptWorkspaceObjectID, workspaceID ExamAttemptWorkspaceID, starterObjectID StarterWorkspaceObjectID, version WorkspaceContentVersion, mediaType string, size int64, checksum string, at time.Time) (*AttemptWorkspaceObject, error) {
-	object := &AttemptWorkspaceObject{ID: id, WorkspaceID: workspaceID, StorageOrigin: AttemptWorkspaceStorageStarter,
-		StarterObjectID: starterObjectID, State: AttemptWorkspaceObjectCurrent, ContentVersion: version, MediaType: strings.TrimSpace(mediaType),
-		SizeBytes: size, SHA256: strings.ToLower(checksum), CreatedAt: TimeUTC(at), UpdatedAt: TimeUTC(at)}
-	if err := object.Validate(); err != nil {
-		return nil, err
-	}
-	return object, nil
-}
-
 func (o *AttemptWorkspaceObject) Validate() error {
 	return validateAttemptWorkspaceObject(o)
 }
@@ -702,31 +676,6 @@ type AttemptWorkspaceEntry struct {
 	CurrentObjectID      AttemptWorkspaceObjectID
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
-}
-
-func NewAttemptWorkspaceFile(id AttemptWorkspaceEntryID, workspaceID ExamAttemptWorkspaceID, revisionID ExamRevisionID, sourceID StarterWorkspaceEntryID, path string, objectID AttemptWorkspaceObjectID, at time.Time) (*AttemptWorkspaceEntry, error) {
-	return newAttemptWorkspaceEntry(id, workspaceID, revisionID, sourceID, StarterWorkspaceEntryFile, path, objectID, at)
-}
-
-func NewAttemptWorkspaceDirectory(id AttemptWorkspaceEntryID, workspaceID ExamAttemptWorkspaceID, revisionID ExamRevisionID, sourceID StarterWorkspaceEntryID, path string, at time.Time) (*AttemptWorkspaceEntry, error) {
-	return newAttemptWorkspaceEntry(id, workspaceID, revisionID, sourceID, StarterWorkspaceEntryDirectory, path, "", at)
-}
-
-func newAttemptWorkspaceEntry(id AttemptWorkspaceEntryID, workspaceID ExamAttemptWorkspaceID, revisionID ExamRevisionID, sourceID StarterWorkspaceEntryID, kind StarterWorkspaceEntryKind, path string, objectID AttemptWorkspaceObjectID, at time.Time) (*AttemptWorkspaceEntry, error) {
-	if !sourceID.IsValid() {
-		return nil, invalidModelError("newAttemptWorkspaceEntry", "exam_attempt", "", "Attempt Workspace bootstrap requires source entry", "")
-	}
-	normalized, err := NormalizeStarterWorkspacePath(path)
-	if err != nil {
-		return nil, err
-	}
-	at = TimeUTC(at)
-	entry := &AttemptWorkspaceEntry{ID: id, WorkspaceID: workspaceID, AdmissionRevisionID: revisionID,
-		SourceStarterEntryID: sourceID, Kind: kind, Path: normalized, CurrentObjectID: objectID, CreatedAt: at, UpdatedAt: at}
-	if err := entry.Validate(); err != nil {
-		return nil, err
-	}
-	return entry, nil
 }
 
 func (e *AttemptWorkspaceEntry) Validate() error {

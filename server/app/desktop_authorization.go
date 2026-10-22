@@ -687,13 +687,6 @@ var desktopAuthorizationStoreErrors = apperror.StoreTable{
 	Unavailable: "authentication.desktop_authorization.unavailable",
 }
 
-func minTime(left, right time.Time) time.Time {
-	if left.Before(right) {
-		return left
-	}
-	return right
-}
-
 type desktopAuthorizationAuditAdapter struct{ audit *auditService }
 
 // PrepareIssue records the approval attempt with the approving account as the

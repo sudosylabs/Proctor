@@ -343,25 +343,6 @@ func (r *ExamRevision) Clone() *ExamRevision {
 	return &clone
 }
 
-// SameExamRevisionCandidatePresentation reports whether two immutable
-// snapshots present exactly the same live-correctable material. Opaque storage
-// generation identities are deliberately excluded: replacing bytes with the
-// same verified media, size, and digest is not a candidate-visible change.
-func SameExamRevisionCandidatePresentation(left, right *ExamRevision) bool {
-	if left == nil || right == nil || left.InstructionsMarkdown != right.InstructionsMarkdown || left.Capacity != right.Capacity ||
-		left.BrowserPolicyDigest != right.BrowserPolicyDigest || len(left.Resources) != len(right.Resources) {
-		return false
-	}
-	for index := range left.Resources {
-		l, r := left.Resources[index], right.Resources[index]
-		if l.ResourceID != r.ResourceID || l.DisplayName != r.DisplayName || l.DescriptionMarkdown != r.DescriptionMarkdown ||
-			l.Position != r.Position || l.MediaType != r.MediaType || l.SizeBytes != r.SizeBytes || l.SHA256 != r.SHA256 {
-			return false
-		}
-	}
-	return true
-}
-
 func sameExamRevisionResources(left, right []ExamRevisionResource) bool {
 	if len(left) != len(right) {
 		return false

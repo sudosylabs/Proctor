@@ -42,7 +42,6 @@ type ResultReleaseMailDetails = appmail.ResultReleaseDetails
 type MailRenderRequest = appmail.RenderRequest
 type DirectMailTemplateRenderer = appmail.Renderer
 type MailDeliverySender = appmail.Sender
-type directMailPreparer = appmail.Composer
 type ClassTransitionMailPreparation = appmail.ClassTransitionPreparation
 type ResultReleaseDirectMailPreparation = appmail.ResultReleasePreparation
 type SubmissionReceiptMailPreparation = appmail.SubmissionReceiptPreparation
@@ -50,7 +49,6 @@ type personalAccessTokenSecurityNoticePreparation = appmail.PersonalAccessTokenP
 type relationshipTransitionMailPreparation = appmail.RelationshipTransitionPreparation
 type SittingScheduleMailDetails = appmail.SittingScheduleDetails
 type SittingMailTemplateRenderer = appmail.SittingRenderer
-type sittingMailPreparer = appmail.SittingComposer
 
 const (
 	MailTransportUnknown                  = appmail.TransportUnknown

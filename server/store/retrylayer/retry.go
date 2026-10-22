@@ -52,11 +52,6 @@ type Layer struct {
 	stores   retryStores
 }
 
-// New constructs a constrained retry layer around next without telemetry.
-func New(next store.Store, policy Policy) (*Layer, error) {
-	return newLayer(next, policy, nil)
-}
-
 // NewWithRecorder constructs a constrained retry layer with bounded retry
 // telemetry. The recorder observes decisions only, never store arguments.
 func NewWithRecorder(next store.Store, policy Policy, recorder Recorder) (*Layer, error) {

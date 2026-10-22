@@ -61,16 +61,6 @@ func (r *jobMetricsFake) Record(activity Activity) {
 	r.mu.Unlock()
 }
 
-func allowJobWorkReservation() func(context.Context, int, int) (bool, error) {
-	consumed := 0
-	return func(_ context.Context, units, limit int) (bool, error) {
-		if consumed+units > limit {
-			return false, nil
-		}
-		consumed += units
-		return true, nil
-	}
-}
 func (s *jobRunnerStoreFake) ReserveWork(_ context.Context, reservation *store.JobWorkReservation) (*store.JobWorkReservationResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

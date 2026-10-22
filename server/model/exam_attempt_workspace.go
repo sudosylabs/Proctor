@@ -55,21 +55,6 @@ func NormalizeAttemptWorkspacePath(value string) (string, error) {
 	return NormalizeStarterWorkspacePath(value)
 }
 
-// NewAttemptOriginAttemptWorkspaceObject records one immutable content
-// selection written by the candidate. It carries no starter-object selector
-// and its identity remains independent from the logical Workspace Path.
-func NewAttemptOriginAttemptWorkspaceObject(id AttemptWorkspaceObjectID, workspaceID ExamAttemptWorkspaceID,
-	version WorkspaceContentVersion, mediaType string, size int64, checksum string, at time.Time,
-) (*AttemptWorkspaceObject, error) {
-	object := &AttemptWorkspaceObject{ID: id, WorkspaceID: workspaceID, StorageOrigin: AttemptWorkspaceStorageAttempt,
-		State: AttemptWorkspaceObjectCurrent, ContentVersion: version, MediaType: strings.TrimSpace(mediaType), SizeBytes: size,
-		SHA256: strings.ToLower(checksum), CreatedAt: TimeUTC(at), UpdatedAt: TimeUTC(at)}
-	if err := object.Validate(); err != nil {
-		return nil, err
-	}
-	return object, nil
-}
-
 // NewStagedAttemptWorkspaceObject reserves invisible attempt-owned object
 // metadata before bytes are sent to VFS. Staged objects are never selectable
 // by a visible Workspace Entry.
@@ -257,46 +242,6 @@ func NewCandidateAttemptWorkspaceDirectory(id AttemptWorkspaceEntryID, workspace
 		return nil, err
 	}
 	return entry, nil
-}
-
-// Move changes only logical metadata; stable Entry and content-object
-// identities deliberately survive a rename or subtree move.
-func (e *AttemptWorkspaceEntry) Move(path string, at time.Time) error {
-	if e == nil {
-		return invalidModelError("AttemptWorkspaceEntry.Move", "attempt_workspace_entry", "", "nil Attempt Workspace entry", "")
-	}
-	normalized, err := NormalizeAttemptWorkspacePath(path)
-	if err != nil || normalized == e.Path {
-		return invalidModelError("AttemptWorkspaceEntry.Move", "attempt_workspace_entry", "", "invalid Attempt Workspace move", "")
-	}
-	candidate := *e
-	candidate.Path, candidate.UpdatedAt = normalized, TimeUTC(at)
-	if candidate.UpdatedAt.Before(e.UpdatedAt) {
-		return invalidModelError("AttemptWorkspaceEntry.Move", "attempt_workspace_entry", "", "Attempt Workspace entry time regressed", "")
-	}
-	if err = candidate.Validate(); err != nil {
-		return err
-	}
-	*e = candidate
-	return nil
-}
-
-// ReplaceCurrentObject selects one newly acknowledged immutable object while
-// preserving the stable file Entry identity.
-func (e *AttemptWorkspaceEntry) ReplaceCurrentObject(objectID AttemptWorkspaceObjectID, at time.Time) error {
-	if e == nil || e.Kind != StarterWorkspaceEntryFile || !objectID.IsValid() || objectID == e.CurrentObjectID {
-		return invalidModelError("AttemptWorkspaceEntry.ReplaceCurrentObject", "attempt_workspace_entry", "", "invalid Attempt Workspace file replacement", "")
-	}
-	candidate := *e
-	candidate.CurrentObjectID, candidate.UpdatedAt = objectID, TimeUTC(at)
-	if candidate.UpdatedAt.Before(e.UpdatedAt) {
-		return invalidModelError("AttemptWorkspaceEntry.ReplaceCurrentObject", "attempt_workspace_entry", "", "Attempt Workspace entry time regressed", "")
-	}
-	if err := candidate.Validate(); err != nil {
-		return err
-	}
-	*e = candidate
-	return nil
 }
 
 // AdvanceCursor appends exactly one acknowledged mutation to the ordered

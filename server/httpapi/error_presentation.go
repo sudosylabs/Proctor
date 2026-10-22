@@ -28,17 +28,6 @@ type applicationErrorMapping struct {
 	status int
 }
 
-// ApplicationErrorStatuses returns a copy of the registered application-code
-// to HTTP status mapping. Tests use it to prove every registered code produces
-// its declared status.
-func ApplicationErrorStatuses() map[string]int {
-	cloned := make(map[string]int, len(applicationErrorMappings))
-	for code, mapping := range applicationErrorMappings {
-		cloned[code] = mapping.status
-	}
-	return cloned
-}
-
 func problemFromApplicationFailure(request *http.Request, failure applicationFailure) Problem {
 	mapping, ok := applicationErrorMappings[failure.Code()]
 	if !ok {

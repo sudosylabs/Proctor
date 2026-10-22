@@ -76,10 +76,6 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	return runWithText(ctx, args, stdin, stdout, stderr, productionExecutors(), productionCommandText())
 }
 
-func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, execute executors) int {
-	return runWithText(ctx, args, stdin, stdout, stderr, execute, englishCommandText())
-}
-
 func runWithText(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, execute executors, text commandText) int {
 	if stdout == nil || stderr == nil {
 		return 1

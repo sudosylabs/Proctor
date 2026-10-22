@@ -533,26 +533,6 @@ func (m *measuredCluster) metricEvent(event cluster.Event) string {
 	return string(event)
 }
 
-func streamOutcome(err error) string {
-	switch {
-	case err == nil:
-		return "success"
-	case errors.Is(err, io.EOF):
-		return "complete"
-	case errors.Is(err, context.Canceled):
-		return "canceled"
-	default:
-		return "error"
-	}
-}
-
-func simpleOutcome(err error) string {
-	if err == nil {
-		return "success"
-	}
-	return "error"
-}
-
 var (
 	_ platform.Cache     = (*measuredCache)(nil)
 	_ platform.Mailer    = (*measuredMailer)(nil)

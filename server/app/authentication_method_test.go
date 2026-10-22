@@ -44,8 +44,6 @@ func (s *authenticationMethodIdentityStoreFake) Unlink(_ context.Context, input 
 	return &store.AuthenticationMethodMutationResult{}, nil
 }
 
-type authenticationMethodUserStoreFake struct{ store.UserStore }
-
 type authenticationMethodEffectsFake struct {
 	userID             string
 	sessionIDs, hashes []string
