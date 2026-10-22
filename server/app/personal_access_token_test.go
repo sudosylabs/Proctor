@@ -21,7 +21,6 @@ import (
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestPersonalAccessTokenScopesRejectRelationshipOnlyParticipationAction(t *testing.T) {
@@ -139,8 +138,8 @@ func TestPersonalAccessTokenAdministrationCreatesThroughFocusedContracts(t *test
 	require.Equal(t, model.Resource{Type: model.ResourceInstitution, ID: institutionID.String()}, audit.resource, "audit action")
 	require.NotContains(t, fmt.Sprintf("%#v %#v %#v", audit.parameters, audit.prior, audit.result), raw)
 	// Contract (guardrail 8): authorization precedes the audit, and the audit
-	// begins before the durable write. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize_scopes", "audit_begin", "create")
+	// begins before the durable write.
+	require.Equal(t, []string{"academic_unit", "authorize_scopes", "institution", "audit_begin", "prepare", "create"}, events)
 }
 
 func TestPersonalAccessTokenAdministrationExactStateReplayEmitsNoAuditOrMail(t *testing.T) {

@@ -173,7 +173,7 @@ func TestMailCleanupJobBoundsPagesAndReportsSafeCounts(t *testing.T) {
 	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind)
 	require.Equal(t, `{"fanouts_terminalized":5,"fanout_deliveries_suppressed":3,"expired":3,"deleted":3}`, string(outcome.Result))
 	require.Equal(t, 2, sittings.calls, "Sitting fan-out maintenance calls")
-	require.ElementsMatch(t, []string{"cleanup_terminal", "suppress_expired", "suppress_expired"}, mail.calls, "one terminal cleanup and two bounded expiry pages")
+	require.Equal(t, []string{"cleanup_terminal", "suppress_expired", "suppress_expired"}, mail.calls, "one terminal cleanup and two bounded expiry pages")
 	require.Len(t, metrics.deliveries, 1)
 	require.Equal(t, model.MailDeliveryExpiredCode, metrics.deliveries[0].OutcomeCode)
 }

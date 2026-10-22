@@ -18,7 +18,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type roleStoreFake struct {
@@ -132,8 +131,8 @@ func TestRoleCreateCommitsWithoutSideEffects(t *testing.T) {
 	require.Equal(t, created.ID.String(), got.ID.String(), "result/input = %#v / %#v", got, persistence.createInput)
 	require.NotEmpty(t, persistence.createInput.AuditEventID, "result/input = %#v / %#v", got, persistence.createInput)
 	// Contract (guardrail 8): authorization precedes the audit, and the audit
-	// begins before the durable write. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize-manage", "authorize-delegation", "audit-begin", "store-create")
+	// begins before the durable write.
+	require.Equal(t, []string{"authorize-manage", "authorize-delegation", "audit-begin", "store-create"}, events)
 }
 
 func TestRoleCreateAndUpdateRejectUndelegablePermissionsBeforeAudit(t *testing.T) {
@@ -149,7 +148,7 @@ func TestRoleCreateAndUpdateRejectUndelegablePermissionsBeforeAudit(t *testing.T
 		)
 		_, err := service.CreateRole(context.Background(), Invocation{}, CreateRoleCommand{Name: "unsafe", DisplayName: "Unsafe", Permissions: []string{string(model.ActionUserManage)}})
 		require.True(t, apperror.Is(err, "authorization.denied"), "Create() error = %v", err)
-		require.NotContains(t, events, "audit-begin", "the rejected command was audited")
+		require.Equal(t, []string{"authorize-manage", "authorize-delegation"}, events)
 	})
 
 	t.Run("update", func(t *testing.T) {
@@ -163,7 +162,7 @@ func TestRoleCreateAndUpdateRejectUndelegablePermissionsBeforeAudit(t *testing.T
 		)
 		_, err := service.UpdateRole(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, Permissions: &permissions})
 		require.True(t, apperror.Is(err, "authorization.denied"), "Update() error = %v", err)
-		require.NotContains(t, events, "audit-begin", "the rejected command was audited")
+		require.Equal(t, []string{"authorize-manage", "get-role", "authorize-delegation"}, events)
 	})
 }
 
@@ -213,8 +212,7 @@ func TestRoleUpdateCommitsBeforeInvalidation(t *testing.T) {
 	require.Equal(t, "Lead Teacher", got.DisplayName)
 	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
 	// begins before the durable write, and the write commits before its effect.
-	// Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize-manage", "audit-begin", "store-update", "invalidate-authorization")
+	require.Equal(t, []string{"authorize-manage", "get-role", "audit-begin", "store-update", "invalidate-authorization"}, events)
 }
 
 func TestRoleUpdateFailurePublishesNoInvalidation(t *testing.T) {
@@ -232,10 +230,8 @@ func TestRoleUpdateFailurePublishesNoInvalidation(t *testing.T) {
 	_, err := service.UpdateRole(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
 	require.True(t, apperror.Is(err, "role.conflict"), "error = %v", err)
 	// Contract (guardrail 8): authorization precedes the audit, the audit begins
-	// before the durable write, and the audit outcome follows the write. Lookups
-	// may move freely.
-	ordertest.RequireInOrder(t, events, "authorize-manage", "audit-begin", "store-update", "audit-fail")
-	require.NotContains(t, events, "invalidate-authorization", "a failed update invalidated authorization")
+	// before the durable write, and the audit outcome follows the write.
+	require.Equal(t, []string{"authorize-manage", "get-role", "audit-begin", "store-update", "audit-fail"}, events)
 }
 
 func TestRoleUpdateRejectsBuiltIn(t *testing.T) {
@@ -252,7 +248,7 @@ func TestRoleUpdateRejectsBuiltIn(t *testing.T) {
 	)
 	_, err := service.UpdateRole(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
 	require.True(t, apperror.Is(err, "role.built_in.protected"), "error = %v", err)
-	require.NotContains(t, events, "audit-begin", "the rejected command was audited")
+	require.Equal(t, []string{"authorize-manage", "get-role"}, events)
 }
 
 func TestRoleArchiveCommitsBeforeInvalidation(t *testing.T) {
@@ -269,8 +265,7 @@ func TestRoleArchiveCommitsBeforeInvalidation(t *testing.T) {
 	require.NoError(t, service.ArchiveRole(context.Background(), Invocation{}, ArchiveRoleCommand{ID: role.ID}))
 	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
 	// begins before the durable write, and the write commits before its effect.
-	// Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize-manage", "audit-begin", "store-archive", "invalidate-authorization")
+	require.Equal(t, []string{"authorize-manage", "get-role", "audit-begin", "store-archive", "invalidate-authorization"}, events)
 }
 
 func TestValidatePatchedPermissionsPreservesButDoesNotIntroduceUnknownActions(t *testing.T) {

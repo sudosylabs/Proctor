@@ -20,7 +20,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestAccountTokenServiceDoesNotRetainRootStore(t *testing.T) {
@@ -343,7 +342,7 @@ func TestCompletePasswordResetCommitsBeforeEffects(t *testing.T) {
 	require.NoError(t, err, "complete password reset")
 	require.Same(t, user, got, "complete password reset")
 	// Contract (guardrail 14): the reset commits before its effects.
-	ordertest.RequireInOrder(t, order, "commit", "effects")
+	require.Equal(t, []string{"commit", "effects"}, order)
 }
 
 func TestCompletePasswordResetMapsTerminalAccessPolicyFenceToInvalidCredential(t *testing.T) {

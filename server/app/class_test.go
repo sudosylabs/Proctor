@@ -17,7 +17,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type classStoreFake struct {
@@ -94,8 +93,8 @@ func TestClassUpdateMoveAuthorizesCurrentAndDestinationOwners(t *testing.T) {
 	require.Equal(t, model.AcademicUnitID(oldUnitID), persistence.updateInput.ExpectedAcademicUnitID)
 	require.Equal(t, current.Revision, persistence.updateInput.ExpectedRevision)
 	// Contract (guardrail 8): authorization precedes the audit, and the audit
-	// begins before the durable write. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize", "authorize", "audit-begin", "store-update")
+	// begins before the durable write.
+	require.Equal(t, []string{"authorize", "get-unit", "get-class", "authorize", "audit-begin", "store-update"}, events)
 }
 
 func TestClassMutationMissingClassUsesClassResource(t *testing.T) {
@@ -151,6 +150,6 @@ func TestClassCreatePreservesBothParentsAndAtomicAudit(t *testing.T) {
 	require.Equal(t, periodID, persistence.createInput.Class.AcademicPeriodID.String())
 	require.Equal(t, model.AuditEventID(auditID), persistence.createInput.AuditEventID)
 	// Contract (guardrail 8): authorization precedes the audit, and the audit
-	// begins before the durable write. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize", "audit-begin", "store-create")
+	// begins before the durable write.
+	require.Equal(t, []string{"authorize", "audit-begin", "store-create"}, events)
 }

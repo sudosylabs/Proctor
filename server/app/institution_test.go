@@ -18,7 +18,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type institutionStoreFake struct {
@@ -111,7 +110,7 @@ func TestInstitutionGetAuthorizesSingletonResource(t *testing.T) {
 	require.Same(t, institution, got, "Get()")
 	require.Equal(t, model.ActionInstitutionManage, authorizer.action, "authorization")
 	require.Equal(t, model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, authorizer.resource, "authorization")
-	require.NotContains(t, events, "audit-begin", "reading the Institution began an audit")
+	require.Equal(t, []string{"get", "authorize"}, events)
 }
 
 func TestInstitutionUpdateCommitsSuccessAuditAtomically(t *testing.T) {
@@ -147,8 +146,8 @@ func TestInstitutionUpdateCommitsSuccessAuditAtomically(t *testing.T) {
 	require.True(t, persistence.updateInput.Institution.UpdatedAt.Equal(time.UnixMilli(500).UTC()))
 	require.Equal(t, model.AuditEventID(auditor.beginID), persistence.updateInput.AuditEventID)
 	// Contract (guardrail 8): authorization precedes the audit, and the audit
-	// begins before the durable write. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize", "audit-begin", "store-update")
+	// begins before the durable write.
+	require.Equal(t, []string{"get", "authorize", "audit-begin", "store-update"}, events)
 }
 
 func TestInstitutionUpdateFailureCompletesFailedAttempt(t *testing.T) {
@@ -172,9 +171,8 @@ func TestInstitutionUpdateFailureCompletesFailedAttempt(t *testing.T) {
 	require.True(t, apperror.Is(err, "institution.conflict"), "Update() error = %v, audit code", err)
 	require.Equal(t, "institution.conflict", auditor.failCode, "Update() error = %v, audit code", err)
 	// Contract (guardrail 8): authorization precedes the audit, the audit begins
-	// before the durable write, and the audit outcome follows the write. Lookups
-	// may move freely.
-	ordertest.RequireInOrder(t, events, "authorize", "audit-begin", "store-update", "audit-fail")
+	// before the durable write, and the audit outcome follows the write.
+	require.Equal(t, []string{"get", "authorize", "audit-begin", "store-update", "audit-fail"}, events)
 }
 
 func TestInstitutionUpdateRejectsInvalidExamCapacityBeforeAudit(t *testing.T) {
@@ -194,5 +192,5 @@ func TestInstitutionUpdateRejectsInvalidExamCapacityBeforeAudit(t *testing.T) {
 
 	_, err := service.UpdateInstitution(context.Background(), Invocation{}, UpdateInstitutionCommand{ExamCapacity: &invalid})
 	require.True(t, apperror.Is(err, "institution.invalid"), "Update() error = %v", err)
-	require.NotContains(t, events, "audit-begin", "the rejected command was audited")
+	require.Equal(t, []string{"get", "authorize"}, events)
 }

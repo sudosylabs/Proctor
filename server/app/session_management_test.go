@@ -18,7 +18,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestSelfSessionServiceUsesCallerOwnershipAndPostCommitEffects(t *testing.T) {
@@ -45,8 +44,8 @@ func TestSelfSessionServiceUsesCallerOwnershipAndPostCommitEffects(t *testing.T)
 	)
 	require.NoError(t, err)
 	// Contract (guardrails 8 and 14): the audit begins before the durable write,
-	// and the write commits before its effect. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "begin", "revoke", "effects")
+	// and the write commits before its effect.
+	require.Equal(t, []string{"get", "begin", "revoke", "effects"}, events)
 	require.Equal(t, principal.UserID.String(), persistence.revokedUserID, "revocation = user")
 	require.Equal(t, now.UnixMilli(), persistence.revokedAt, "revocation = user")
 	require.Equal(t, principal.UserID.String(), effects.userID)
@@ -152,8 +151,13 @@ func TestSelfSessionRevocationsRequireAuditBeforeMutationAndEffects(t *testing.T
 				require.True(t, persistence.session.RevokedAt.Valid, "revocation/effects = %#v / %#v", persistence.session, effects)
 				require.Equal(t, principal.UserID.String(), effects.userID, "revocation/effects = %#v / %#v", persistence.session, effects)
 				// Contract (guardrails 8 and 14): the audit begins before the durable
-				// revocation, which commits before its effects.
-				ordertest.RequireInOrder(t, events, "begin", "revoke", "effects")
+				// revocation, which commits before its effects. Revoking one Session
+				// first reads it to confirm the caller owns it.
+				want := []string{"begin", "revoke", "effects"}
+				if operation == "revoke_own_session" {
+					want = append([]string{"get"}, want...)
+				}
+				require.Equal(t, want, events)
 				require.Equal(t, operation, audit.attempt.Operation)
 				require.Equal(t, principal.UserID.String(), audit.attempt.Resource.ID)
 				require.Equal(t, model.ActionSessionManage, audit.attempt.Action)

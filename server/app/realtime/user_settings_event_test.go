@@ -17,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestUserSettingsChangedEventIsAContentFreeUserTargetedHint(t *testing.T) {
@@ -87,7 +86,7 @@ func TestUserSettingsChangedEventUsesExistingLocalFirstClusterPathWithoutLooping
 	require.NoError(t, service.Publish(context.Background(), event))
 	// Contract: ordinary publication delivers locally before the best-effort
 	// peer fan-out.
-	ordertest.RequireInOrder(t, order.snapshot(), "local", "peer")
+	require.Equal(t, []string{"local", "peer"}, order.snapshot())
 	require.Len(t, fanout.broadcasts, 1, "peer broadcasts")
 	peerPayload := strings.ToLower(string(fanout.broadcasts[0].data))
 	require.Contains(t, peerPayload, `"user_id":"`+userID.String()+`"`)

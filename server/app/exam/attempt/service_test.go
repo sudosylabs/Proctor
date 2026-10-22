@@ -23,7 +23,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestConnectDelegatesAtomicAdmissionAndPassesOnlyCredentialHash(t *testing.T) {
@@ -50,8 +49,8 @@ func TestConnectDelegatesAtomicAdmissionAndPassesOnlyCredentialHash(t *testing.T
 	require.Equal(t, f.configuration.Digest, result.Configuration.Digest)
 	require.Equal(t, f.configuration.Digest, result.RuntimeCapabilities.AttemptConfiguration.Digest)
 	// Contract (guardrails 8 and 14): the audit begins before the durable write,
-	// and the write commits before its effect. Lookups may move freely.
-	ordertest.RequireInOrder(t, f.order, "audit", "connect", "effect.open")
+	// and the write commits before its effect.
+	require.Equal(t, []string{"sitting", "audit", "connect", "effect.open"}, f.order)
 	require.NotContains(t, strings.ToLower(fmt.Sprintf("%#v", result.Participation)), "credential")
 	require.NotContains(t, fmt.Sprintf("%#v", result.Participation), credential)
 	require.NotContains(t, fmt.Sprintf("%#v", result.Participation), model.HashToken(credential))
@@ -128,7 +127,7 @@ func TestAcknowledgeCorrectionUsesExactParticipationFenceAndSemanticIdempotency(
 	require.Equal(t, wantIdempotency, f.persistence.idempotency)
 	// Contract (guardrail 8): the authorization decision and the prepared audit
 	// precede the durable acknowledgement.
-	ordertest.RequireInOrder(t, f.order, "audit.authorization", "audit.prepare", "correction.acknowledgement.commit")
+	require.Equal(t, []string{"correction.acknowledgement.resolve", "audit.authorization", "audit.prepare", "correction.acknowledgement.commit"}, f.order)
 	auditCapture := fmt.Sprintf("%#v", f.audit.values)
 	require.NotContains(t, auditCapture, credential)
 	require.NotContains(t, auditCapture, model.HashToken(credential))
@@ -165,7 +164,7 @@ func TestAcknowledgeCorrectionReplayReturnsRetainedResultAfterFreshAuthorization
 	require.Equal(t, 1, f.persistence.correctionAcknowledgementCalls, "result=%#v calls=%d order=%v", result, f.persistence.correctionAcknowledgementCalls, f.order)
 	// Contract (guardrail 8): the authorization decision and the prepared audit
 	// precede the durable acknowledgement.
-	ordertest.RequireInOrder(t, f.order, "audit.authorization", "audit.prepare", "correction.acknowledgement.commit")
+	require.Equal(t, []string{"correction.acknowledgement.resolve", "audit.authorization", "audit.prepare", "correction.acknowledgement.commit"}, f.order)
 	// An exact replay retains its acknowledgement time while a later correction
 	// controls the fresh capability response.
 	laterRevisionID := model.NewExamRevisionID()
@@ -236,8 +235,8 @@ func TestCreateWorkspaceDirectoryRevalidatesMutationAccessAuditsAndPublishesSafe
 	require.NotContains(t, auditCapture, model.HashToken(credential))
 	require.NotContains(t, auditCapture, participationID.String())
 	// Contract (guardrails 8 and 14): the audit begins before the durable write,
-	// and the write commits before its effect. Lookups may move freely.
-	ordertest.RequireInOrder(t, f.order, "audit", "workspace.apply", "effect.workspace")
+	// and the write commits before its effect.
+	require.Equal(t, []string{"workspace.resolve", "audit", "workspace.apply", "effect.workspace"}, f.order)
 	wantIdempotency, prepareErr := prepareWorkspaceMutationIdempotency(f.invocation, "test-key", f.attemptID,
 		model.AttemptWorkspaceMutationCreateDirectory, struct {
 			Path string `json:"path"`
@@ -286,7 +285,7 @@ func TestCreateWorkspaceFileStagesBeforeAtomicMutationAndSuppressesPrivateEffect
 	// Contract: bytes are staged only inside a reserved upload, the audit begins
 	// before the durable apply (guardrail 8), and the apply commits before its
 	// effect (guardrail 14).
-	ordertest.RequireInOrder(t, f.order, "workspace.reserve", "content.stage", "workspace.ready", "audit", "workspace.apply", "effect.workspace")
+	require.Equal(t, []string{"workspace.resolve", "workspace.reserve", "content.stage", "workspace.ready", "audit", "workspace.apply", "effect.workspace"}, f.order)
 	wantIdempotency, prepareErr := prepareWorkspaceMutationIdempotency(f.invocation, "test-key", f.attemptID,
 		model.AttemptWorkspaceMutationCreateFile, struct {
 			Path, MediaType, SHA256 string
@@ -602,8 +601,8 @@ func TestLateRenewalUsesExactExpiryTransitionAndReturnsSafeConnectionLoss(t *tes
 	require.Equal(t, "exam.attempt.connection_lost", fault.Code(), "error=%v effects=%#v order=%v", err, f.effects, f.order)
 	require.Equal(t, 1, f.effects.expired, "error=%v effects=%#v order=%v", err, f.effects, f.order)
 	// Contract (guardrails 8 and 14): the audit begins before the durable write,
-	// and the write commits before its effect. Lookups may move freely.
-	ordertest.RequireInOrder(t, f.order, "system.audit", "expiry.commit", "effect.expire")
+	// and the write commits before its effect.
+	require.Equal(t, []string{"renew", "expiry.resolve", "system.audit", "expiry.commit", "effect.expire"}, f.order)
 }
 
 func TestLateRenewalConcealsScannerWinningBeforeTargetResolution(t *testing.T) {
@@ -647,8 +646,8 @@ func TestScanExpiredParticipationsCommitsAuditedAggregateBeforeSafeEffect(t *tes
 	require.GreaterOrEqual(t, input.AuditAt, int64(1), "scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
 	require.Equal(t, 1, f.effects.expired, "scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
 	// Contract (guardrails 8 and 14): the audit begins before the durable write,
-	// and the write commits before its effect. Lookups may move freely.
-	ordertest.RequireInOrder(t, f.order, "system.audit", "expiry.commit", "effect.expire")
+	// and the write commits before its effect.
+	require.Equal(t, []string{"expiry.list", "system.audit", "expiry.commit", "effect.expire"}, f.order)
 	require.Nil(t, f.systemAudit.values["continuity_credential"])
 	require.Nil(t, f.systemAudit.values["credential_hash"])
 	require.Nil(t, f.systemAudit.values["private_reason"])
@@ -703,7 +702,7 @@ func TestScanExpiredParticipationsFailsAuditAndPublishesNothingOnCommitFailure(t
 	require.Equal(t, 0, f.effects.expired, "error=%v audit=%#v effects=%#v order=%v", err, f.systemAudit, f.effects, f.order)
 	// Contract (guardrail 8): the audit begins before the durable write and
 	// records the failed commit; no effect follows.
-	ordertest.RequireInOrder(t, f.order, "system.audit", "expiry.commit", "system.audit.fail")
+	require.Equal(t, []string{"expiry.list", "system.audit", "expiry.commit", "system.audit.fail"}, f.order)
 }
 
 func TestReallowRequiresExactSuspensionAndKeepsPrivateReasonOutOfEffects(t *testing.T) {
@@ -732,7 +731,7 @@ func TestReallowRequiresExactSuspensionAndKeepsPrivateReasonOutOfEffects(t *test
 	// Contract: the Manager authorization precedes the audit, the audit begins
 	// before the durable reallow (guardrail 8), and the reallow commits before
 	// its effect (guardrail 14).
-	ordertest.RequireInOrder(t, f.order, "manager.manage", "audit", "reallow", "effect.reallow")
+	require.Equal(t, []string{"manager.manage", "sitting", "audit", "manager.get", "reallow", "effect.reallow"}, f.order)
 	require.Nil(t, f.audit.values["private_reason"], "private reason escaped persistence input: audit=%#v result=%#v", f.audit.values, result)
 	require.NotContains(t, fmt.Sprintf("%#v", result), reason, "private reason escaped persistence input: audit=%#v result=%#v", f.audit.values, result)
 	for _, capture := range []any{f.audit.values, result} {
@@ -766,35 +765,39 @@ func TestReallowAcceptsClosedFocusLossSuspension(t *testing.T) {
 func TestManagerAttemptOperationsAuthorizeBeforeReadingAttempts(t *testing.T) {
 	t.Parallel()
 	denied := apperror.New("authorization.denied")
-	operations := map[string]func(*fixture, model.ExamAttemptID) error{
-		"get": func(f *fixture, attemptID model.ExamAttemptID) error {
+	// Each operation records only its authorization decision before refusing.
+	operations := map[string]struct {
+		authorization string
+		run           func(*fixture, model.ExamAttemptID) error
+	}{
+		"get": {authorization: "manager.authorize", run: func(f *fixture, attemptID model.ExamAttemptID) error {
 			_, err := f.service.GetExamAttempt(context.Background(), f.invocation, GetManagedAttemptQuery{
 				ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: attemptID})
 			return err
-		},
-		"reallow": func(f *fixture, attemptID model.ExamAttemptID) error {
+		}},
+		"reallow": {authorization: "manager.manage", run: func(f *fixture, attemptID model.ExamAttemptID) error {
 			_, err := f.service.ReallowExamAttempt(context.Background(), f.invocation, ReallowCommand{
 				ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: attemptID, SuspensionID: model.NewAttemptSuspensionID(),
 				ExpectedAttemptRevision: 2, PrivateReason: "probe", IdempotencyKey: "probe-key"})
 			return err
-		},
-		"end": func(f *fixture, attemptID model.ExamAttemptID) error {
+		}},
+		"end": {authorization: "manager.manage", run: func(f *fixture, attemptID model.ExamAttemptID) error {
 			_, err := f.service.EndExamAttemptByManager(context.Background(), f.invocation, ManagerEndCommand{
 				ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: attemptID,
 				ExpectedAttemptRevision: 2, PrivateReason: "probe", IdempotencyKey: "probe-key"})
 			return err
-		},
-		"suspend": func(f *fixture, attemptID model.ExamAttemptID) error {
+		}},
+		"suspend": {authorization: "manager.manage", run: func(f *fixture, attemptID model.ExamAttemptID) error {
 			_, err := f.service.SuspendExamAttempt(context.Background(), f.invocation, ManualSuspensionCommand{
 				ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: attemptID,
 				ExpectedAttemptRevision: 2, PrivateReason: "probe", IdempotencyKey: "probe-key"})
 			return err
-		},
-		"browser_activity": func(f *fixture, attemptID model.ExamAttemptID) error {
+		}},
+		"browser_activity": {authorization: "browser.authorize", run: func(f *fixture, attemptID model.ExamAttemptID) error {
 			_, err := f.service.ListExamAttemptBrowserActivity(context.Background(), f.invocation, BrowserActivityPageQuery{
 				ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: attemptID, Limit: 10})
 			return err
-		},
+		}},
 	}
 	for name, operation := range operations {
 		t.Run(name, func(t *testing.T) {
@@ -810,11 +813,11 @@ func TestManagerAttemptOperationsAuthorizeBeforeReadingAttempts(t *testing.T) {
 				if !existing {
 					attemptID = model.NewExamAttemptID()
 				}
-				err := operation(f, attemptID)
+				err := operation.run(f, attemptID)
 				var fault *apperror.Error
 				require.ErrorAs(t, err, &fault, "existing=%t error", existing)
 				codes = append(codes, fault.Code())
-				require.NotContains(t, f.order, "manager.get", "existing=%t denied caller reached Attempt state: order=%v audit", existing, f.order)
+				require.Equal(t, []string{operation.authorization}, f.order, "existing=%t denied caller reached Attempt state", existing)
 				require.Nil(t, f.audit.values, "existing=%t denied caller reached Attempt state: order=%v audit", existing, f.order)
 			}
 			require.Equal(t, codes[1], codes[0])
@@ -934,7 +937,7 @@ func TestConnectReplayAfterCorrectionAndPauseSuppressesTransientOpenEvent(t *tes
 	require.True(t, result.Replayed, "result=%#v error=%v effects=%#v", result, err, f.effects)
 	require.Equal(t, 0, f.effects.opened, "result=%#v error=%v effects=%#v", result, err, f.effects)
 	// Contract (guardrail 8): the audit begins before the durable write.
-	ordertest.RequireInOrder(t, f.order, "audit", "connect")
+	require.Equal(t, []string{"sitting", "audit", "connect"}, f.order)
 }
 
 func TestReconnectThatOpensANewConnectionPublishesOneOpenEffect(t *testing.T) {
@@ -1009,7 +1012,7 @@ func TestConnectFailureCompletesAuditAndPublishesNoEffect(t *testing.T) {
 	require.Equal(t, 0, f.effects.opened, "error=%v audit=%q effects=%#v order=%v", err, f.audit.failedCode, f.effects, f.order)
 	// Contract (guardrail 8): the audit begins before the durable write and
 	// records the rejected commit.
-	ordertest.RequireInOrder(t, f.order, "audit", "connect", "audit.fail")
+	require.Equal(t, []string{"sitting", "audit", "connect", "audit.fail"}, f.order)
 }
 
 func TestExpiredReplayReturnsCandidateSafeConnectionLoss(t *testing.T) {
@@ -1229,7 +1232,7 @@ func TestManagerListAuthorizesBeforeBoundedStoreRead(t *testing.T) {
 	require.True(t, page.HasMore, "page=%#v options=%#v order=%v", page, f.persistence.managerOptions, f.order)
 	require.Equal(t, 3, f.persistence.managerOptions.Limit, "page=%#v options=%#v order=%v", page, f.persistence.managerOptions, f.order)
 	// Contract: authorization precedes reading the managed Attempts.
-	ordertest.RequireInOrder(t, f.order, "manager.authorize", "manager.list")
+	require.Equal(t, []string{"manager.authorize", "manager.list"}, f.order)
 }
 
 func TestManagerListValidatesAndDeepClonesActiveSuspension(t *testing.T) {
@@ -1269,8 +1272,8 @@ func TestTrustedCloseCommitsBeforeManagerEffectAndSuppressesNoop(t *testing.T) {
 	require.NoError(t, err, "closed=%#v error=%v order=%v", closed, err, f.order)
 	require.True(t, closed.Changed, "closed=%#v error=%v order=%v", closed, err, f.order)
 	// Contract (guardrails 8 and 14): the audit begins before the durable write,
-	// and the write commits before its effect. Lookups may move freely.
-	ordertest.RequireInOrder(t, f.order, "audit", "close", "effect.close")
+	// and the write commits before its effect.
+	require.Equal(t, []string{"audit", "close", "effect.close"}, f.order)
 	f.order = nil
 	f.persistence.closeChanged = false
 	_, err = f.service.CloseExamAttemptConnection(context.Background(), f.invocation, CloseConnectionCommand{

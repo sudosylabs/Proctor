@@ -19,7 +19,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type userProfileStoreFake struct {
@@ -181,8 +180,8 @@ func TestUserProfileUpdateIsAuthorizedAndAuditAtomic(t *testing.T) {
 	require.Equal(t, displayName, *persistence.updateInput.Changes.DisplayName, "updated/input = %#v / %#v", updated, persistence.updateInput)
 	require.Equal(t, int64(4), updated.Revision, "updated/input = %#v / %#v", updated, persistence.updateInput)
 	// Contract (guardrail 8): authorization precedes the audit, and the audit
-	// begins before the durable write. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize-manage", "audit-begin", "store-update")
+	// begins before the durable write.
+	require.Equal(t, []string{"authorize-manage", "get-user", "audit-begin", "store-update"}, events)
 }
 
 func TestUserProfileSearchReturnsEmptyCollection(t *testing.T) {
@@ -299,5 +298,5 @@ func TestUserProfileUpdateRejectsControlCharacterNamesBeforeAudit(t *testing.T) 
 	failure, ok := apperror.As(err)
 	require.True(t, ok)
 	require.Equal(t, "user.invalid", failure.Code())
-	require.NotContains(t, events, "store-update")
+	require.Equal(t, []string{"authorize-manage", "get-user"}, events)
 }

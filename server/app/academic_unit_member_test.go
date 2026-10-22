@@ -17,7 +17,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type academicUnitMemberStoreFake struct {
@@ -85,8 +84,8 @@ func TestAcademicUnitMemberCreateUsesAuthorizationWithoutGrantingPermission(t *t
 	require.Len(t, mail.requests, 1, "creation mail = %#v", persistence.createInput)
 	require.Equal(t, model.MailTemplateAcademicUnitAssigned, mail.requests[0].TemplateKey, "creation mail = %#v", persistence.createInput)
 	// Contract (guardrail 8): authorization precedes the audit, and the audit
-	// begins before the durable write. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize", "audit-begin", "store-create")
+	// begins before the durable write.
+	require.Equal(t, []string{"authorize", "audit-begin", "store-create"}, events)
 }
 
 func TestAcademicUnitMemberEndCarriesRevision(t *testing.T) {
@@ -111,8 +110,8 @@ func TestAcademicUnitMemberEndCarriesRevision(t *testing.T) {
 	require.Len(t, mail.requests, 1, "end mail = %#v", persistence.endInput)
 	require.Equal(t, model.MailTemplateAcademicUnitAssignmentEnded, mail.requests[0].TemplateKey, "end mail = %#v", persistence.endInput)
 	// Contract (guardrail 8): authorization precedes the audit, and the audit
-	// begins before the durable write. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize-preflight", "authorize", "audit-begin", "store-end")
+	// begins before the durable write.
+	require.Equal(t, []string{"authorize-preflight", "get-member", "authorize", "audit-begin", "store-end"}, events)
 }
 
 func TestAcademicUnitMemberEndDenialDoesNotInspectOpaqueMemberID(t *testing.T) {

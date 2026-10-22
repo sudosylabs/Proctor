@@ -18,7 +18,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type roleBindingStoreFake struct {
@@ -119,8 +118,7 @@ func TestRoleBindingCreateCommitsBeforeInvalidation(t *testing.T) {
 	require.NotNil(t, service.bindings.(*roleBindingStoreFake).createInput.Notice)
 	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
 	// begins before the durable write, and the write commits before its effect.
-	// Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize-binding-scope", "authorize-delegation", "audit-begin", "store-create", "invalidate-authorization")
+	require.Equal(t, []string{"authorize-binding-scope", "get-role", "authorize-delegation", "audit-begin", "store-create", "invalidate-authorization"}, events)
 }
 
 func TestRoleBindingCreateRejectsSystemAdminOutsideInstitution(t *testing.T) {
@@ -143,7 +141,7 @@ func TestRoleBindingCreateRejectsSystemAdminOutsideInstitution(t *testing.T) {
 		ScopeID: model.NewID(), StartAt: 100,
 	})
 	require.True(t, apperror.Is(err, "role_binding.system_admin_scope_invalid"), "error = %v", err)
-	require.NotContains(t, events, "audit-begin", "the rejected command was audited")
+	require.Equal(t, []string{"authorize-binding-scope", "get-role"}, events)
 }
 
 func TestRoleBindingRetainedCreateUsesArchivedRoleForCurrentDelegation(t *testing.T) {
@@ -168,8 +166,7 @@ func TestRoleBindingRetainedCreateUsesArchivedRoleForCurrentDelegation(t *testin
 	require.NotNil(t, persistence.createInput, "retained create")
 	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
 	// begins before the durable write, and the write commits before its effect.
-	// Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize-binding-scope", "authorize-delegation", "audit-begin", "store-create", "invalidate-authorization")
+	require.Equal(t, []string{"authorize-binding-scope", "get-role-including-archived", "authorize-delegation", "audit-begin", "store-create", "invalidate-authorization"}, events)
 }
 
 func TestRoleBindingEndFailurePublishesNoInvalidation(t *testing.T) {
@@ -202,10 +199,8 @@ func TestRoleBindingEndFailurePublishesNoInvalidation(t *testing.T) {
 	require.Len(t, mail.requests, 1, "role ending mail = %#v", persistence.endInput)
 	require.Equal(t, model.MailTemplateAuthorizationScopedRoleEnded, mail.requests[0].TemplateKey, "role ending mail = %#v", persistence.endInput)
 	// Contract (guardrail 8): authorization precedes the audit, the audit begins
-	// before the durable write, and the audit outcome follows the write. Lookups
-	// may move freely.
-	ordertest.RequireInOrder(t, events, "authorize-binding-preflight", "authorize-binding-scope", "audit-begin", "store-end", "audit-fail")
-	require.NotContains(t, events, "invalidate-authorization", "a failed end invalidated authorization")
+	// before the durable write, and the audit outcome follows the write.
+	require.Equal(t, []string{"authorize-binding-preflight", "get-binding", "authorize-binding-scope", "audit-begin", "store-end", "audit-fail"}, events)
 }
 
 func TestRoleBindingListByUserAuthorizesThenReads(t *testing.T) {
@@ -227,7 +222,7 @@ func TestRoleBindingListByUserAuthorizesThenReads(t *testing.T) {
 	require.NoError(t, err, "list")
 	require.Len(t, got, 1, "list")
 	// Contract: authorization precedes the read.
-	ordertest.RequireInOrder(t, events, "authorize-binding-list", "list-visible-by-user")
+	require.Equal(t, []string{"authorize-binding-list", "list-visible-by-user"}, events)
 }
 
 func TestRoleBindingListByUserPassesAcademicScopeToPersistence(t *testing.T) {

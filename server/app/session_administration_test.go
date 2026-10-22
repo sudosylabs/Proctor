@@ -19,7 +19,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type sessionAdministrationStoreFake struct {
@@ -123,7 +122,7 @@ func TestAdminSessionListAuthorizesThenReads(t *testing.T) {
 	require.Len(t, got, 1)
 	require.Equal(t, session.ID.String(), got[0].ID.String())
 	// Contract: authorization precedes the read.
-	ordertest.RequireInOrder(t, events, "authorize-view", "list")
+	require.Equal(t, []string{"authorize-view", "list"}, events)
 	require.Equal(t, 50, persistence.listedPage.Limit)
 	require.True(t, persistence.listedPage.ActiveAt.Equal(model.TimeUTC(at)), "active Session listing time = %v", persistence.listedPage.ActiveAt)
 	require.Same(t, time.UTC, persistence.listedPage.ActiveAt.Location(), "active Session listing time = %v", persistence.listedPage.ActiveAt)
@@ -201,8 +200,7 @@ func TestAdminSessionRevokeCommitsBeforePublishing(t *testing.T) {
 	require.NotNil(t, persistence.revokeInput.DeliveryJob, "mail request/input = %#v / %#v", mailer.requests, persistence.revokeInput)
 	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
 	// begins before the durable write, and the write commits before its effect.
-	// Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize-manage", "audit-begin", "store-revoke", "publish-revocation")
+	require.Equal(t, []string{"authorize-manage", "get-session", "get-user", "prepare-mail", "audit-begin", "store-revoke", "publish-revocation"}, events)
 }
 
 func TestAdminSessionRevokeFailurePublishesNoEffect(t *testing.T) {
@@ -231,10 +229,8 @@ func TestAdminSessionRevokeFailurePublishesNoEffect(t *testing.T) {
 	})
 	require.True(t, apperror.Is(err, "administration.unavailable"), "error = %v", err)
 	// Contract (guardrail 8): authorization precedes the audit, the audit begins
-	// before the durable write, and the audit outcome follows the write. Lookups
-	// may move freely.
-	ordertest.RequireInOrder(t, events, "authorize-manage", "audit-begin", "store-revoke", "audit-fail")
-	require.NotContains(t, events, "publish-revocation", "a failed revocation was published")
+	// before the durable write, and the audit outcome follows the write.
+	require.Equal(t, []string{"authorize-manage", "get-session", "get-user", "prepare-mail", "audit-begin", "store-revoke", "audit-fail"}, events)
 }
 
 func TestAdminSessionRevokeAllCommitsBeforePublishing(t *testing.T) {
@@ -263,8 +259,7 @@ func TestAdminSessionRevokeAllCommitsBeforePublishing(t *testing.T) {
 	require.NotNil(t, persistence.revokeAllInput.Occurrence)
 	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
 	// begins before the durable write, and the write commits before its effect.
-	// Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize-manage", "audit-begin", "store-revoke-all", "publish-revocation")
+	require.Equal(t, []string{"authorize-manage", "get-user", "prepare-mail", "audit-begin", "store-revoke-all", "publish-revocation"}, events)
 }
 
 func TestAdminSessionIdempotentNoOpPreparesNoticeForAuthoritativeRace(t *testing.T) {
@@ -298,7 +293,7 @@ func TestAdminSessionRetainedOutcomeBypassesMailAfterNewSession(t *testing.T) {
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 	require.NoError(t, service.RevokeUserSessions(context.Background(), invocation, RevokeUserSessionsCommand{UserID: model.UserID(userID), IdempotencyKey: "row", batchRetainedOutcome: true}))
 	require.Empty(t, mailer.requests, "retained mail")
-	require.NotContains(t, events, "list-active", "retained mail")
+	require.Equal(t, []string{"authorize-manage", "get-user", "audit-begin", "store-revoke-all"}, events)
 }
 
 func TestAdminSessionCrossUserNotFound(t *testing.T) {
@@ -319,7 +314,7 @@ func TestAdminSessionCrossUserNotFound(t *testing.T) {
 		UserID: model.UserID(userID), SessionID: session.ID,
 	})
 	require.True(t, apperror.Is(err, "session.not_found"), "error = %v", err)
-	require.NotContains(t, events, "audit-begin", "the rejected command was audited")
+	require.Equal(t, []string{"authorize-manage", "get-session"}, events)
 }
 
 func TestAdminSessionRevocationOutcomesPreserveAuditAndBatchResult(t *testing.T) {
@@ -371,8 +366,9 @@ func TestAdminSessionRevocationOutcomesPreserveAuditAndBatchResult(t *testing.T)
 			require.Equal(t, outcome == "empty" || outcome == "replay" || outcome == "attempt unavailable", unchanged, "unchanged = %t for %s", unchanged, outcome)
 			// Contract (guardrails 8 and 14): authorization precedes the audit, the
 			// audit begins before the durable revocation, and only a committed
-			// change publishes. Lookups may move freely.
-			want := []string{"authorize-manage", "begin"}
+			// change publishes. The exact sequence also proves that no other write,
+			// effect, or audit completion ran.
+			want := []string{"authorize-manage", "get-user", "prepare-mail", "begin"}
 			if outcome == "attempt unavailable" {
 				require.Nil(t, persistence.revokeAllInput, "revoked without a durable audit attempt")
 			} else {
@@ -384,9 +380,7 @@ func TestAdminSessionRevocationOutcomesPreserveAuditAndBatchResult(t *testing.T)
 				require.NotNil(t, input.Command)
 				require.Equal(t, model.SessionRevocationAdministratorAllSessions, input.Reason)
 			}
-			if outcome != "changed" {
-				require.NotContains(t, events, "publish-revocation", "an unchanged or failed revocation was published")
-			} else {
+			if outcome == "changed" {
 				want = append(want, "publish-revocation")
 				require.Equal(t, userID, effects.userID)
 				require.True(t, slices.Equal(effects.sessionIDs, sessionIDs(persistence.revokeAllResult.Sessions)))
@@ -397,7 +391,7 @@ func TestAdminSessionRevocationOutcomesPreserveAuditAndBatchResult(t *testing.T)
 				require.Equal(t, audit.beginID, audit.failID)
 				require.Equal(t, "administration.unavailable", audit.failCode)
 			}
-			ordertest.RequireInOrder(t, events, want...)
+			require.Equal(t, want, events)
 			require.Equal(t, model.ActionSessionManage, audit.attempt.Action)
 			require.Equal(t, userID, audit.attempt.Resource.ID)
 			require.Equal(t, "revoke_sessions", audit.attempt.Operation)

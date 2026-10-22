@@ -815,18 +815,21 @@ and their formatted forms) are not used.
   a domain property, such as `requireConflictConstraint`.
 - Give every case of a table-driven test a descriptive name and run it with
   `t.Run`.
-- Assert outcomes: what was persisted, audited, and emitted. Assert the order
-  of collaborator calls only where the order is the contract, such as
-  authorization before the audit, the audit before the durable write
-  (guardrail 8), and the durable commit before its effects (guardrail 14).
-  Use `testlib/ordertest.RequireInOrder` for those events alone, and say in a
-  comment why the order matters.
+- Assert outcomes: what was persisted, audited, and emitted. When a fake
+  records the calls of a use case into a log named `events`, `order`, or
+  `calls`, assert the whole log with `require.Equal`, and say in a comment
+  which order is the contract, such as authorization before the audit, the
+  audit before the durable write (guardrail 8), and the durable commit before
+  its effects (guardrail 14). The exact list also proves what did not happen:
+  a rejected command reached no audit or write, and nothing (no second write,
+  effect, or audit failure completion) ran after a commit. Never check such a
+  log for membership or a subsequence.
 
 In the server, cache, and VFS modules the architecture gate rejects the testing
-failure methods, failure-only conditionals, splittable compound assertions, and
-forwarding helpers, and `make quality` runs `testifylint`. The mail module
-keeps no third-party Go dependencies, so its tests use the standard `testing`
-package.
+failure methods, failure-only conditionals, splittable compound assertions,
+forwarding helpers, and partial assertions over a recorded call log, and
+`make quality` runs `testifylint`. The mail module keeps no third-party Go
+dependencies, so its tests use the standard `testing` package.
 
 ## Verify
 

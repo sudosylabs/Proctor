@@ -19,7 +19,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func (f *effectsFake) AttemptSuspendedByManager(context.Context, ManualSuspensionResult) error {
@@ -77,7 +76,7 @@ func TestSuspendByManagerAuthorizesFirstAndKeepsPrivateReasonOutOfAuditAndEffect
 	// Contract: the Manager authorization precedes the audit, the audit begins
 	// before the durable suspension (guardrail 8), and the suspension commits
 	// before the kick (guardrail 14).
-	ordertest.RequireInOrder(t, f.order, "manager.manage", "audit", "suspend", "effect.kick")
+	require.Equal(t, []string{"manager.manage", "sitting", "audit", "manager.get", "suspend", "effect.kick"}, f.order)
 	require.Equal(t, model.ActionExamSittingManage, f.audit.action, "audit=%#v result=%#v", f.audit, result)
 	require.Equal(t, store.ExamAttemptSuspendOperation, f.audit.operation, "audit=%#v result=%#v", f.audit, result)
 	require.NotContains(t, fmt.Sprintf("%#v", f.audit.values), reason, "audit=%#v result=%#v", f.audit, result)
@@ -190,7 +189,7 @@ func TestSuspendByManagerRecordsLapsedLeaseAsConnectionLossInsteadOfKick(t *test
 	require.Equal(t, 0, f.effects.kicked, "error=%v order=%v", err, f.order)
 	// Contract (guardrails 8 and 14): the refused kick stays audited as
 	// failed, and the expiry audit begins before its commit and effect.
-	ordertest.RequireInOrder(t, f.order, "audit", "suspend", "system.audit", "expiry.commit", "effect.expire")
+	require.Equal(t, []string{"manager.manage", "sitting", "audit", "manager.get", "suspend", "expiry.resolve", "system.audit", "expiry.commit", "effect.expire", "audit.fail"}, f.order)
 }
 
 func TestSuspendByManagerRefusesPastScheduledEnd(t *testing.T) {

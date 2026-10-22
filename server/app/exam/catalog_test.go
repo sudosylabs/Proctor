@@ -18,7 +18,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestListCatalogUsesAuthorizedPersistenceVisibilityAndBoundedSummary(t *testing.T) {
@@ -40,7 +39,7 @@ func TestListCatalogUsesAuthorizedPersistenceVisibilityAndBoundedSummary(t *test
 	require.Equal(t, fixture.unitID, fixture.persistence.listOptions.AcademicUnitID)
 	require.Equal(t, "Systems", fixture.persistence.listOptions.Query)
 	// Contract: list visibility is authorized before the Store lists Exams.
-	ordertest.RequireInOrder(t, *fixture.order, "authorize.list", "store.list")
+	require.Equal(t, []string{"authorize.list", "store.list"}, *fixture.order)
 }
 
 func TestArchiveOwnsAuthorizationAuditPersistenceAndSafeEffect(t *testing.T) {
@@ -64,7 +63,7 @@ func TestArchiveOwnsAuthorizationAuditPersistenceAndSafeEffect(t *testing.T) {
 		fmt.Sprintf(`{"exam_id":%q,"expected_exam_revision":1}`, fixture.examID))
 	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
 	// begins before the durable write, and the write commits before its effect.
-	ordertest.RequireInOrder(t, *fixture.order, "authorize", "audit.begin", "store.archive", "effect.archived")
+	require.Equal(t, []string{"store.access", "membership", "authorize", "audit.begin", "store.archive", "effect.archived"}, *fixture.order)
 }
 
 func TestArchiveReplayAfterCurrentArchiveDoesNotRepublish(t *testing.T) {

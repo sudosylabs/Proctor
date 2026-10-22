@@ -18,7 +18,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type programmeLevelStoreFake struct {
@@ -109,8 +108,8 @@ func TestProgrammeLevelCreatePreservesProgrammeOwnershipAndAtomicAudit(t *testin
 	require.Equal(t, model.RoleScopeAcademicUnit, auditor.scopeType, "authorization/audit pairing")
 	require.Equal(t, unitID, auditor.scopeID, "authorization/audit pairing")
 	// Contract (guardrail 8): authorization precedes the audit, and the audit
-	// begins before the durable write. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize", "audit-begin", "store-create")
+	// begins before the durable write.
+	require.Equal(t, []string{"authorize", "audit-begin", "store-create"}, events)
 }
 
 func TestProgrammeLevelUpdateCannotMoveProgramme(t *testing.T) {
@@ -134,8 +133,8 @@ func TestProgrammeLevelUpdateCannotMoveProgramme(t *testing.T) {
 	require.Equal(t, current.ProgrammeID, updated.ProgrammeID)
 	require.Equal(t, current.ProgrammeID, persistence.updateInput.Level.ProgrammeID)
 	// Contract (guardrail 8): authorization precedes the audit, and the audit
-	// begins before the durable write. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize", "audit-begin", "store-update")
+	// begins before the durable write.
+	require.Equal(t, []string{"authorize", "get-level", "audit-begin", "store-update"}, events)
 }
 
 func TestProgrammeLevelCreateAuthorizationDenialStopsBeforeAuditAndStore(t *testing.T) {
@@ -166,9 +165,8 @@ func TestProgrammeLevelCreateConflictCompletesFailedAttempt(t *testing.T) {
 	require.True(t, apperror.Is(err, "programme_level.conflict"), "Create() error = %v, audit code", err)
 	require.Equal(t, "programme_level.conflict", auditor.failCode, "Create() error = %v, audit code", err)
 	// Contract (guardrail 8): authorization precedes the audit, the audit begins
-	// before the durable write, and the audit outcome follows the write. Lookups
-	// may move freely.
-	ordertest.RequireInOrder(t, events, "authorize", "audit-begin", "store-create", "audit-fail")
+	// before the durable write, and the audit outcome follows the write.
+	require.Equal(t, []string{"authorize", "audit-begin", "store-create", "audit-fail"}, events)
 }
 
 func TestProgrammeLevelListPreservesLimitWithoutSearch(t *testing.T) {

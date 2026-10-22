@@ -18,7 +18,6 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type mutationAttemptAuditorFake struct {
@@ -134,9 +133,8 @@ func TestMutationAttemptUsesIndependentAuditScope(t *testing.T) {
 	require.Equal(t, resource, auditor.attempt.Resource)
 	require.Equal(t, model.RoleScopeAcademicUnit, auditor.attempt.ScopeType)
 	require.Equal(t, scopeID, auditor.attempt.ScopeID)
-	// Contract (guardrail 8): the audit begins before the durable write. Lookups
-	// may move freely.
-	ordertest.RequireInOrder(t, events, "begin-at-scope", "mutate")
+	// Contract (guardrail 8): the audit begins before the durable write.
+	require.Equal(t, []string{"begin-at-scope", "mutate"}, events)
 }
 
 func TestMutationAttemptMapsStoreFailureBeforeCompletingAttempt(t *testing.T) {
@@ -172,8 +170,8 @@ func TestMutationAttemptMapsStoreFailureBeforeCompletingAttempt(t *testing.T) {
 	require.Equal(t, auditID, auditor.failID, "failure completion = id")
 	require.Equal(t, mapped.Code(), auditor.failCode, "failure completion = id")
 	// Contract (guardrail 8): the audit begins before the durable write, and the
-	// audit outcome follows the write. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "begin", "mutate", "fail")
+	// audit outcome follows the write.
+	require.Equal(t, []string{"begin", "mutate", "map", "fail"}, events)
 }
 
 func TestMutationAttemptFailureCompletionErrorJoinsOriginalFailure(t *testing.T) {
@@ -307,7 +305,6 @@ func TestMutationAttemptReturnsSuccessWithoutCompletingIt(t *testing.T) {
 	require.Equal(t, value, auditor.attempt.Value)
 	require.Equal(t, prior, auditor.attempt.Prior)
 	require.Equal(t, 1, clockCalls, "clock calls")
-	// Contract (guardrail 8): the audit begins before the durable write. Lookups
-	// may move freely.
-	ordertest.RequireInOrder(t, events, "begin", "mutate")
+	// Contract (guardrail 8): the audit begins before the durable write.
+	require.Equal(t, []string{"begin", "mutate"}, events)
 }

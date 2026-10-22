@@ -17,7 +17,6 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func nativeObservePolicy(t *testing.T) model.NativeSecurityPolicy {
@@ -64,7 +63,7 @@ func TestConfigureDraftNativePolicyOrderAndFailures(t *testing.T) {
 			require.Len(t, fixture.auditor.value, 3, "wrong idempotency or unsafe audit")
 			// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
 			// begins before the durable write, and the write commits before its effect.
-			ordertest.RequireInOrder(t, *fixture.order, "authorize", "audit.begin", "store.update_native_policy", "effect.updated")
+			require.Equal(t, []string{"store.access", "membership", "authorize", "store.get", "audit.begin", "store.update_native_policy", "effect.updated"}, *fixture.order)
 		})
 	}
 }

@@ -22,7 +22,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestRealtimeEventValidateForPublish(t *testing.T) {
@@ -178,7 +177,7 @@ func TestPublishClonesGeneratesIDAndDeliversLocalFirst(t *testing.T) {
 	require.Equal(t, `{"ok":true}`, string(data), "caller data was mutated")
 	// Contract: ordinary publication delivers locally before the best-effort
 	// peer fan-out.
-	ordertest.RequireInOrder(t, order.snapshot(), "local", "peer")
+	require.Equal(t, []string{"local", "peer"}, order.snapshot())
 	require.Len(t, sink.events, 1)
 	require.NotEmpty(t, sink.events[0].ID)
 	require.Len(t, fanout.broadcasts, 1)
@@ -235,7 +234,7 @@ func TestUnbindExamAttemptConnectionAppliesExactLocalEffectBeforePeerFanout(t *t
 	require.NoError(t, service.UnbindExamAttemptConnection(context.Background(), connectionID))
 	// Contract: ordinary publication delivers locally before the best-effort
 	// peer fan-out.
-	ordertest.RequireInOrder(t, order.snapshot(), "local", "peer")
+	require.Equal(t, []string{"local", "peer"}, order.snapshot())
 	require.Len(t, fanout.broadcasts, 1)
 	require.Equal(t, clusterEventExamAttemptUnbound, fanout.broadcasts[0].event)
 	require.Equal(t, `{"attempt_connection_id":"`+connectionID.String()+`"}`, string(fanout.broadcasts[0].data))

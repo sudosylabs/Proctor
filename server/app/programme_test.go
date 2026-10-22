@@ -18,7 +18,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type programmeStoreFake struct {
@@ -141,9 +140,8 @@ func TestProgrammeCreateConflictCompletesFailedAttempt(t *testing.T) {
 	require.True(t, apperror.Is(err, "programme.conflict"), "Create() error = %v, audit code", err)
 	require.Equal(t, "programme.conflict", auditor.failCode, "Create() error = %v, audit code", err)
 	// Contract (guardrail 8): authorization precedes the audit, the audit begins
-	// before the durable write, and the audit outcome follows the write. Lookups
-	// may move freely.
-	ordertest.RequireInOrder(t, events, "authorize", "audit-begin", "store-create", "audit-fail")
+	// before the durable write, and the audit outcome follows the write.
+	require.Equal(t, []string{"authorize", "audit-begin", "store-create", "audit-fail"}, events)
 }
 func (*programmeAuthorizerFake) Installation(context.Context) (model.Resource, error) {
 	return model.Resource{}, nil
@@ -173,8 +171,8 @@ func TestProgrammeCreatePreservesAcademicUnitOwnershipAndAtomicAudit(t *testing.
 	require.Equal(t, programmeID, persistence.createInput.Programme.ID.String())
 	require.Equal(t, model.AuditEventID(auditID), persistence.createInput.AuditEventID)
 	// Contract (guardrail 8): authorization precedes the audit, and the audit
-	// begins before the durable write. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize", "audit-begin", "store-create")
+	// begins before the durable write.
+	require.Equal(t, []string{"authorize", "audit-begin", "store-create"}, events)
 }
 
 func TestProgrammeUpdateCannotMoveOwnership(t *testing.T) {
@@ -194,8 +192,8 @@ func TestProgrammeUpdateCannotMoveOwnership(t *testing.T) {
 	require.Equal(t, current.AcademicUnitID, updated.AcademicUnitID)
 	require.Equal(t, current.AcademicUnitID, persistence.updateInput.Programme.AcademicUnitID)
 	// Contract (guardrail 8): authorization precedes the audit, and the audit
-	// begins before the durable write. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize", "audit-begin", "store-update")
+	// begins before the durable write.
+	require.Equal(t, []string{"authorize", "get", "audit-begin", "store-update"}, events)
 }
 
 func TestProgrammeArchiveUsesAtomicStoreSeam(t *testing.T) {

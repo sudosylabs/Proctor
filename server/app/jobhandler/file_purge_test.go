@@ -21,7 +21,6 @@ import (
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestFilePurgeCommandAndCheckpointAreVersionedTypedAndBounded(t *testing.T) {
@@ -382,8 +381,7 @@ func TestFilePurgeHandlerRunsStarterWorkspaceCleanupAndGenericPurgeWithinOneBatc
 	require.Equal(t, string(execution.Attempt.ClaimToken), workspace.claimTokens[0])
 	// Contract: Starter Workspace bytes are removed before their metadata
 	// completes, so a failed removal leaves the claim fenced.
-	require.Contains(t, order, "generic-complete")
-	ordertest.RequireInOrder(t, order, "workspace-remove", "workspace-complete")
+	require.Equal(t, []string{"workspace-remove", "workspace-complete", "generic-complete"}, order)
 	require.Len(t, checkpoints, 2, "checkpoints")
 	last, err := DecodeFilePurgeExpiredContentCheckpoint(checkpoints[1].Version, checkpoints[1].Document)
 	require.NoError(t, err, "checkpoint=%#v err", last)
@@ -456,9 +454,7 @@ func TestFilePurgeHandlerRunsEveryPhaseWithinOneBatch(t *testing.T) {
 	require.Equal(t, string(execution.Attempt.ClaimToken), attempts.claimTokens[0])
 	// Contract: each workspace family removes bytes before its metadata
 	// completes, so a failed removal leaves the claim fenced.
-	require.Contains(t, order, "generic-complete")
-	ordertest.RequireInOrder(t, order, "workspace-remove", "workspace-complete")
-	ordertest.RequireInOrder(t, order, "attempt-workspace-remove", "attempt-workspace-complete")
+	require.Equal(t, []string{"workspace-remove", "workspace-complete", "attempt-workspace-remove", "attempt-workspace-complete", "generic-complete"}, order)
 	require.Len(t, checkpoints, 3, "checkpoints")
 	last, err := DecodeFilePurgeExpiredContentCheckpoint(checkpoints[2].Version, checkpoints[2].Document)
 	require.NoError(t, err, "checkpoint=%#v err", last)

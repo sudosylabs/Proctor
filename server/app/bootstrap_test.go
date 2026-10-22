@@ -20,7 +20,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type installationStoreFake struct {
@@ -225,7 +224,7 @@ func TestBootstrapCommitsAtomicAggregate(t *testing.T) {
 	require.Equal(t, model.UserSettingsFormatVersion1, persistence.input.AdministratorSettings.FormatVersion)
 	// Contract: the rate limit is consulted before the expensive password hash,
 	// which precedes the durable bootstrap.
-	ordertest.RequireInOrder(t, events, "rate-limit", "hash-password", "bootstrap")
+	require.Equal(t, []string{"rate-limit", "hash-password", "bootstrap"}, events)
 }
 
 func TestBootstrapAlreadyInitialized(t *testing.T) {
@@ -251,7 +250,7 @@ func TestBootstrapAlreadyInitialized(t *testing.T) {
 	require.True(t, apperror.Is(err, "installation.already_initialized"), "error = %v", err)
 	// Contract: the rate limit is consulted before the expensive password hash,
 	// which precedes the durable bootstrap.
-	ordertest.RequireInOrder(t, events, "rate-limit", "hash-password", "bootstrap")
+	require.Equal(t, []string{"rate-limit", "hash-password", "bootstrap"}, events)
 }
 
 func TestBootstrapConflictMapsToAlreadyInitialized(t *testing.T) {

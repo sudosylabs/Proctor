@@ -23,7 +23,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestSubmitSealsExactAcknowledgedStateBeforePublishingEffects(t *testing.T) {
@@ -89,8 +88,8 @@ func TestSubmitSealsExactAcknowledgedStateBeforePublishingEffects(t *testing.T) 
 	require.Equal(t, int64(2), f.submissions.seal.ExpectedRecipientRevision, "mail request=%#v seal=%#v", f.mail.request, f.submissions.seal)
 	require.Equal(t, model.MillisFromTime(f.at), f.submissions.seal.AuditAt, "mail request=%#v seal=%#v", f.mail.request, f.submissions.seal)
 	// Contract (guardrails 8 and 14): the audit begins before the durable write,
-	// and the write commits before its effect. Lookups may move freely.
-	ordertest.RequireInOrder(t, f.order, "audit", "submission.seal", "effect.submit")
+	// and the write commits before its effect.
+	require.Equal(t, []string{"submission.resolve", "audit", "submission.mail", "submission.seal", "effect.submit"}, f.order)
 }
 
 func TestSubmitReplayReturnsRetainedReceiptAndSuppressesEffects(t *testing.T) {
@@ -263,7 +262,7 @@ func TestManagedSubmissionNestedOwnershipMismatchIsConcealed(t *testing.T) {
 	require.True(t, apperror.Is(err, "resource.not_found"), "error=%v order=%v", err, f.order)
 	require.True(t, chainHasCode(err, "exam.attempt.not_found"), "error=%v order=%v", err, f.order)
 	// A concealed ownership mismatch never reads the Submission.
-	require.NotContains(t, f.order, "submission.get", "a concealed mismatch read the Submission")
+	require.Equal(t, []string{"submission.authorize", "submission.resolve_owner"}, f.order)
 }
 
 func TestOpenSubmissionFileAuthorizesThenStreamsRetainedStarterBytes(t *testing.T) {
@@ -389,7 +388,7 @@ func TestGetSubmissionAuthorizesCanonicalResourceBeforeProtectedRead(t *testing.
 	require.Equal(t, submission.ID, got.Submission.ID, "got=%#v authorized", got)
 	require.Equal(t, submission.ID, f.submissionAuthorizationID, "got=%#v authorized", got)
 	// Contract: authorization precedes reading the Submission.
-	ordertest.RequireInOrder(t, f.order, "submission.authorize", "submission.get")
+	require.Equal(t, []string{"submission.authorize", "submission.resolve_owner", "submission.get"}, f.order)
 }
 
 func submissionFixture(t *testing.T, f *fixture, cursor int64) *model.ExamSubmission {

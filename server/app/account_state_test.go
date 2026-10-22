@@ -18,7 +18,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type accountStateStoreFake struct {
@@ -112,8 +111,7 @@ func TestAccountDisableCommitsBeforePublishingRevocation(t *testing.T) {
 	require.NotNil(t, persistence.input.DeliveryJob, "mail request/input = %#v / %#v", mailer.requests, persistence.input)
 	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
 	// begins before the durable write, and the write commits before its effect.
-	// Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize-manage", "audit-begin", "store-set-disabled", "publish-revocation")
+	require.Equal(t, []string{"authorize-manage", "get-user", "prepare-mail", "audit-begin", "store-set-disabled", "publish-revocation"}, events)
 }
 
 func TestAccountDisableFailurePublishesNoRevocation(t *testing.T) {
@@ -125,10 +123,8 @@ func TestAccountDisableFailurePublishesNoRevocation(t *testing.T) {
 	_, err := service.SetUserEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID, Enabled: false})
 	require.True(t, apperror.Is(err, "user.conflict"), "error = %v", err)
 	// Contract (guardrail 8): authorization precedes the audit, the audit begins
-	// before the durable write, and the audit outcome follows the write. Lookups
-	// may move freely.
-	ordertest.RequireInOrder(t, events, "authorize-manage", "audit-begin", "store-set-disabled", "audit-fail")
-	require.NotContains(t, events, "publish-revocation", "a failed disable was published")
+	// before the durable write, and the audit outcome follows the write.
+	require.Equal(t, []string{"authorize-manage", "get-user", "prepare-mail", "audit-begin", "store-set-disabled", "audit-fail"}, events)
 }
 
 func TestAccountEnablePublishesNoRevocation(t *testing.T) {
@@ -148,9 +144,8 @@ func TestAccountEnablePublishesNoRevocation(t *testing.T) {
 	require.Len(t, mailer.requests, 1)
 	require.Equal(t, model.MailTemplateIdentityAccountEnabled, mailer.requests[0].TemplateKey)
 	// Contract (guardrail 8): authorization precedes the audit, and the audit
-	// begins before the durable write. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize-manage", "audit-begin", "store-set-disabled")
-	require.NotContains(t, events, "publish-revocation", "enabling an account published a revocation")
+	// begins before the durable write.
+	require.Equal(t, []string{"authorize-manage", "get-user", "prepare-mail", "audit-begin", "store-set-disabled"}, events)
 }
 
 func TestAccountSelfDisableIsRejectedAfterAuthorization(t *testing.T) {
@@ -176,7 +171,7 @@ func TestAccountStateReplayDoesNotCreateAnotherNoticeOrAudit(t *testing.T) {
 	require.NoError(t, err, "replay result/error/mail")
 	require.Same(t, user, result, "replay result/error/mail")
 	require.Empty(t, mailer.requests, "replay result/error/mail")
-	require.NotContains(t, events, "audit-begin", "the replayed command was audited")
+	require.Equal(t, []string{"authorize-manage", "get-user"}, events)
 }
 
 func TestAccountStateIdempotentNoOpPreparesNoticeForAuthoritativeRace(t *testing.T) {
@@ -227,5 +222,5 @@ func TestAccountStateMailPreparationFailureStartsNoMutation(t *testing.T) {
 		&accountStateEffectsFake{events: &events}, time.Now)
 	_, err := service.SetUserEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID, Enabled: false})
 	require.True(t, apperror.Is(err, "administration.unavailable"), "error = %v", err)
-	require.NotContains(t, events, "audit-begin", "the failed command was audited")
+	require.Equal(t, []string{"authorize-manage", "get-user", "prepare-mail"}, events)
 }

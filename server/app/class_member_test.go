@@ -17,7 +17,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type classMemberStoreFake struct {
@@ -145,8 +144,8 @@ func TestClassMemberEnrollUsesDestinationPeriodAndAtomicStore(t *testing.T) {
 	require.NotNil(t, persistence.enrollInput.Notice, "enrollment mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)
 	require.False(t, persistence.enrollInput.ExpectedPreviousID.IsValid(), "enrollment mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)
 	// Contract (guardrail 8): authorization precedes the audit, and the audit
-	// begins before the durable write. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize", "audit-begin", "store-enroll")
+	// begins before the durable write.
+	require.Equal(t, []string{"authorize", "get-class", "list-active", "get-user", "prepare-mail", "audit-begin", "store-enroll"}, events)
 	require.Equal(t, 1, effects.calls)
 	require.Equal(t, model.UserID(userID), effects.candidate)
 	require.Equal(t, []model.ClassID{model.ClassID(classID)}, effects.classIDs)
@@ -197,9 +196,7 @@ func TestClassMemberRetainedEnrollmentBypassesChangedMembershipAndMail(t *testin
 	require.NoError(t, err, "retained enrollment")
 	require.NotNil(t, result, "retained enrollment")
 	require.Empty(t, mailer.requests, "retained enrollment")
-	require.NotContains(t, events, "list-active", "retained enrollment")
-	require.NotContains(t, events, "get-class", "retained enrollment")
-	require.NotContains(t, events, "get-user", "retained enrollment")
+	require.Equal(t, []string{"authorize", "audit-begin", "store-enroll"}, events)
 	require.NotNil(t, persistence.enrollInput, "retained enrollment")
 	require.Nil(t, persistence.enrollInput.Notice, "retained enrollment")
 }
@@ -291,8 +288,8 @@ func TestClassMemberTransferAuthorizesSourceAndCreatesOneTransferNotice(t *testi
 	require.NotNil(t, persistence.enrollInput.Command)
 	require.Equal(t, previous.ID, persistence.enrollInput.Command.Authorization.ClassMemberID)
 	// Contract (guardrail 8): authorization precedes the audit, and the audit
-	// begins before the durable write. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize", "authorize", "audit-begin", "audit-begin", "store-enroll")
+	// begins before the durable write.
+	require.Equal(t, []string{"authorize", "get-class", "list-active", "authorize", "get-class", "get-user", "prepare-mail", "audit-begin", "audit-begin", "store-enroll"}, events)
 }
 
 func TestClassMemberEndCarriesRevision(t *testing.T) {
@@ -319,8 +316,8 @@ func TestClassMemberEndCarriesRevision(t *testing.T) {
 	require.Equal(t, model.MailTemplateAcademicClassEnrollmentEnded, mailer.requests[0].TemplateKey, "end mail/input = %#v / %#v", mailer.requests, persistence.endInput)
 	require.NotNil(t, persistence.endInput.Notice, "end mail/input = %#v / %#v", mailer.requests, persistence.endInput)
 	// Contract (guardrail 8): authorization precedes the audit, and the audit
-	// begins before the durable write. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize-preflight", "authorize", "audit-begin", "store-end")
+	// begins before the durable write.
+	require.Equal(t, []string{"authorize-preflight", "get-member", "authorize", "get-class", "get-user", "prepare-mail", "audit-begin", "store-end"}, events)
 }
 
 func TestClassMemberEndDenialDoesNotInspectOpaqueMemberID(t *testing.T) {

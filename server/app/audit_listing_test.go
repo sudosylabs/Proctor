@@ -16,7 +16,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type auditListingStoreFake struct {
@@ -119,7 +118,7 @@ func TestAuditListingAuthorizesOnceThenReads(t *testing.T) {
 	require.Len(t, got, 1, "result/input = %#v / %#v", got, persistence.input)
 	require.Equal(t, 10, persistence.input.Limit, "result/input = %#v / %#v", got, persistence.input)
 	// Contract: authorization precedes the read.
-	ordertest.RequireInOrder(t, events, "authorize-view", "list-audits")
+	require.Equal(t, []string{"authorize-view", "list-audits"}, events)
 }
 
 func TestAuditListingFailsClosedWhenAuthorizationReturnsZeroVisibility(t *testing.T) {

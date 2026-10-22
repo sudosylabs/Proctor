@@ -24,7 +24,6 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestMFAChallengeRejectsReplayedRecoveryCodeAndPreservesEffectOrdering(t *testing.T) {
@@ -61,8 +60,8 @@ func TestMFAChallengeRejectsReplayedRecoveryCodeAndPreservesEffectOrdering(t *te
 
 	// Contract (guardrails 8 and 14): the audit begins before the durable write,
 	// the audit outcome follows the write, and the write commits before its
-	// effect. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "audit_begin", "consume", "upgrade", "audit_success", "effects", "audit_begin", "consume", "audit_fail")
+	// effect.
+	require.Equal(t, []string{"institution", "audit_begin", "credential_get", "consume", "upgrade", "audit_success", "effects", "institution", "audit_begin", "credential_get", "consume", "audit_fail"}, events)
 	require.Equal(t, principal.UserID.String(), effects.userID)
 	require.Equal(t, []string{principal.SessionID.String()}, effects.sessionIDs)
 	require.Equal(t, []string{"access-hash"}, effects.hashes)
@@ -96,8 +95,8 @@ func TestMFASetupUsesControlledClockAndSecretGenerator(t *testing.T) {
 	require.Equal(t, now.Add(10*time.Minute), persistence.savedPending.PendingExpiresAt.Time)
 	require.NotEqual(t, secret, persistence.savedPending.EncryptedSecret)
 	// Contract (guardrail 8): the audit begins before the durable write, and the
-	// audit outcome follows the write. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "audit_begin", "save_pending", "audit_success")
+	// audit outcome follows the write.
+	require.Equal(t, []string{"institution", "audit_begin", "save_pending", "audit_success"}, events)
 }
 
 func TestMFASecretSealingAuthenticatesUserAndKeyReference(t *testing.T) {

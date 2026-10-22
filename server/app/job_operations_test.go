@@ -18,7 +18,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type jobOperatorEngineFake struct {
@@ -110,7 +109,7 @@ func TestJobOperationsAuthorizeBeforeEngineInspection(t *testing.T) {
 	require.Equal(t, view.ID, page.Items[0].ID, "page=%#v query=%#v events=%v actions=%v", page, engine.listQuery, events, authorizer.actions)
 	require.Equal(t, 20, engine.listQuery.Limit, "page=%#v query=%#v events=%v actions=%v", page, engine.listQuery, events, authorizer.actions)
 	// Contract: authorization precedes the read.
-	ordertest.RequireInOrder(t, events, "authorize", "list")
+	require.Equal(t, []string{"authorize", "list"}, events)
 	require.Equal(t, model.ActionJobView, authorizer.actions[0], "page=%#v query=%#v events=%v actions=%v", page, engine.listQuery, events, authorizer.actions)
 
 	events = events[:0]
@@ -133,8 +132,8 @@ func TestJobOperationsAuditAfterPreparationAndBeforeTransition(t *testing.T) {
 	_, appErr := service.CancelJob(context.Background(), Invocation{}, CancelJobCommand{ID: view.ID})
 	require.NoError(t, appErr)
 	// Contract (guardrail 8): authorization precedes the audit, and the audit
-	// begins before the durable write. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize", "audit", "cancel")
+	// begins before the durable write.
+	require.Equal(t, []string{"authorize", "prepare-cancel", "audit", "cancel"}, events)
 	require.Equal(t, "cancel", auditor.operation, "events")
 	require.Equal(t, 1, engine.applyCalls, "events")
 	require.Equal(t, view.ID.String(), auditor.params["job_id"])
@@ -146,8 +145,8 @@ func TestJobOperationsAuditAfterPreparationAndBeforeTransition(t *testing.T) {
 	_, appErr = service.RetryJob(context.Background(), Invocation{}, RetryJobCommand{ID: view.ID})
 	require.Error(t, appErr, "Retry() ignored audit failure")
 	// Contract (guardrail 8): authorization precedes the audit, and the audit
-	// begins before the durable write. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize", "audit")
+	// begins before the durable write.
+	require.Equal(t, []string{"authorize", "prepare-retry", "audit"}, events)
 	require.Equal(t, 1, engine.applyCalls, "failed-audit events")
 
 	events = events[:0]
@@ -156,9 +155,8 @@ func TestJobOperationsAuditAfterPreparationAndBeforeTransition(t *testing.T) {
 	_, appErr = service.RetryJob(context.Background(), Invocation{}, RetryJobCommand{ID: view.ID})
 	require.Error(t, appErr, "Retry() ignored transition failure")
 	// Contract (guardrail 8): authorization precedes the audit, the audit begins
-	// before the durable write, and the audit outcome follows the write. Lookups
-	// may move freely.
-	ordertest.RequireInOrder(t, events, "authorize", "audit", "retry", "audit-fail")
+	// before the durable write, and the audit outcome follows the write.
+	require.Equal(t, []string{"authorize", "prepare-retry", "audit", "retry", "audit-fail"}, events)
 	require.Equal(t, 1, auditor.failCalls, "failed-transition events")
 }
 

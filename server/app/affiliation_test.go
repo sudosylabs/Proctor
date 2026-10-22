@@ -17,7 +17,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type discardAffiliationEffects struct{}
@@ -105,8 +104,8 @@ func TestAffiliationCreateKeepsKindsNonExclusiveAndAudited(t *testing.T) {
 	}
 	require.Equal(t, 2, clockCalls, "clock calls")
 	// Contract (guardrail 8): authorization precedes the audit, and the audit
-	// begins before the durable write. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize", "audit-begin", "store-create", "authorize", "audit-begin", "store-create")
+	// begins before the durable write.
+	require.Equal(t, []string{"authorize", "audit-begin", "store-create", "authorize", "audit-begin", "store-create"}, events)
 }
 
 func TestAffiliationEndRejectsActiveStudentEnrollment(t *testing.T) {
@@ -127,7 +126,7 @@ func TestAffiliationEndRejectsActiveStudentEnrollment(t *testing.T) {
 	)
 	_, err := service.EndAffiliation(context.Background(), Invocation{}, EndAffiliationCommand{ID: current.ID})
 	require.True(t, apperror.Is(err, "affiliation.student_has_active_enrollment"), "End() error = %v", err)
-	require.NotContains(t, events, "audit-begin", "the rejected command was audited")
+	require.Equal(t, []string{"get-affiliation", "authorize", "list-enrollments"}, events)
 }
 
 func TestAffiliationRetainedEndBypassesLaterStudentEnrollment(t *testing.T) {

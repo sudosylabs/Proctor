@@ -9,7 +9,6 @@ package exam
 
 import (
 	"context"
-	"slices"
 	"testing"
 	"time"
 
@@ -19,7 +18,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestRecordsRequiresManagerAndExactMembershipOrScopedOverride(t *testing.T) {
@@ -27,10 +25,14 @@ func TestRecordsRequiresManagerAndExactMembershipOrScopedOverride(t *testing.T) 
 		name            string
 		manager, member bool
 		want            model.Action
+		order           []string
 	}{
-		{"manager and current member", true, true, model.ActionExamRecordsComplete},
-		{"manager without membership", true, false, model.ActionExamRecordsCompleteOverride},
-		{"scoped nonmanager", false, true, model.ActionExamRecordsCompleteOverride},
+		{"manager and current member", true, true, model.ActionExamRecordsComplete,
+			[]string{"records.resolve", "store.access", "membership", "authorize", "audit.begin", "records.complete"}},
+		{"manager without membership", true, false, model.ActionExamRecordsCompleteOverride,
+			[]string{"records.resolve", "store.access", "membership", "authorize", "audit.begin", "records.complete"}},
+		{"scoped nonmanager", false, true, model.ActionExamRecordsCompleteOverride,
+			[]string{"records.resolve", "store.access", "authorize", "audit.begin", "records.complete"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f, records, persistence, _ := newRecordsFixture(t)
@@ -48,8 +50,7 @@ func TestRecordsRequiresManagerAndExactMembershipOrScopedOverride(t *testing.T) 
 			require.Equal(t, store.ExamRecordsCompleteOperation, persistence.idempotency.Operation, "completion failed to carry current authority: %#v, %#v", value, persistence.completion)
 			// Contract (guardrail 8): authorization precedes the audit, which begins
 			// before the durable completion. Only a Manager's membership is consulted.
-			ordertest.RequireInOrder(t, *f.order, "authorize", "audit.begin", "records.complete")
-			require.Equal(t, tc.manager, slices.Contains(*f.order, "membership"), "membership consulted")
+			require.Equal(t, tc.order, *f.order)
 		})
 	}
 }
@@ -65,7 +66,7 @@ func TestRecordsRejectsSelfWaiverWithDurableDenial(t *testing.T) {
 	require.Equal(t, "resource.not_found", fault.Code(), "self waiver")
 	require.True(t, authorizer.denied, "self waiver")
 	require.Nil(t, persistence.waiver, "self waiver")
-	require.NotContains(t, *f.order, "records.waive", "a self waiver reached the Store")
+	require.Equal(t, []string{"records.resolve", "records.deny_self"}, *f.order)
 	_, err = records.GetSubmissionReviewWaiver(context.Background(), f.invocation, persistence.scope.Scope)
 	require.Error(t, err, "candidate read private waiver rationale")
 }

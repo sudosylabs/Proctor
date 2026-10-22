@@ -17,7 +17,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type academicPeriodStoreFake struct {
@@ -200,8 +199,8 @@ func TestAcademicPeriodCreateOwnsTemporalValidationAndAtomicAudit(t *testing.T) 
 	require.NotNil(t, authorizer.period, "authorization")
 	require.Equal(t, periodID, authorizer.period.ID.String(), "authorization")
 	// Contract (guardrail 8): authorization precedes the audit, and the audit
-	// begins before the durable write. Lookups may move freely.
-	ordertest.RequireInOrder(t, events, "authorize-period-owner", "audit-begin", "store-create")
+	// begins before the durable write.
+	require.Equal(t, []string{"authorize-period-owner", "audit-begin", "store-create"}, events)
 }
 
 func TestAcademicPeriodCreateIdempotencyBindsCanonicalOwner(t *testing.T) {

@@ -151,7 +151,7 @@ func TestConsumerConstructionFailuresUnwindExactlyOnce(t *testing.T) {
 			if phase == "webapp" || phase == "jobs" {
 				wantEvents = []string{"transport", "websocket", "platform"}
 			}
-			require.True(t, slices.Equal(events, wantEvents), "cleanup order = %v, want %v", events, wantEvents)
+			require.Equal(t, wantEvents, events, "cleanup order")
 			for name, closer := range map[string]*compositionCloser{
 				"platform": platformCloser, "websocket": websocketCloser, "transport": transportCloser,
 			} {

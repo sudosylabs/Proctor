@@ -19,7 +19,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestEvaluateFocusLossHashesCredentialAuditsSafeScopeAndPublishesCommittedWarning(t *testing.T) {
@@ -88,8 +87,8 @@ func TestEvaluateFocusLossHashesCredentialAuditsSafeScopeAndPublishesCommittedWa
 		require.NotContains(t, capture, forbidden, "Focus Loss audit exposed")
 	}
 	// Contract (guardrails 8 and 14): the audit begins before the durable write,
-	// and the write commits before its effect. Lookups may move freely.
-	ordertest.RequireInOrder(t, f.order, "audit", "focus.record", "effect.focus_loss")
+	// and the write commits before its effect.
+	require.Equal(t, []string{"focus.resolve", "audit", "focus.record", "effect.focus_loss"}, f.order)
 }
 
 func TestEvaluateFocusLossRetainsExplicitLateDiscrepancyAfterSubmission(t *testing.T) {
@@ -132,8 +131,8 @@ func TestEvaluateFocusLossRetainsExplicitLateDiscrepancyAfterSubmission(t *testi
 	require.Equal(t, int64(12), f.persistence.lateFocusInput.Sequence)
 	require.Equal(t, int64(2100), f.persistence.lateFocusInput.DurationMilliseconds)
 	// Contract (guardrails 8 and 14): the audit begins before the durable write,
-	// and the write commits before its effect. Lookups may move freely.
-	ordertest.RequireInOrder(t, f.order, "audit", "focus.late.record", "effect.focus_loss")
+	// and the write commits before its effect.
+	require.Equal(t, []string{"focus.resolve", "focus.late.resolve", "audit", "focus.late.record", "effect.focus_loss"}, f.order)
 }
 
 func TestEvaluateFocusLossRejectsMissingOrUnknownClaimSchemaBeforePersistence(t *testing.T) {

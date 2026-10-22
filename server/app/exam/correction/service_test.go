@@ -21,7 +21,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestStageResourceContentReservesBeforeDeterministicWriteAndReturnsAuthoritativeMetadata(t *testing.T) {
@@ -43,7 +42,7 @@ func TestStageResourceContentReservesBeforeDeterministicWriteAndReturnsAuthorita
 	// Contract (guardrail 8): authorization precedes the audit, the audit begins
 	// before the durable reservation, and bytes are stored only inside the
 	// reservation before it becomes ready.
-	ordertest.RequireInOrder(t, f.order, "authorize", "audit.begin", "reserve", "content.store", "ready")
+	require.Equal(t, []string{"access", "membership", "authorize", "audit.begin", "reserve", "content.store", "ready"}, f.order)
 	require.NotEmpty(t, f.persistence.reservation.AuditEventID)
 	require.GreaterOrEqual(t, f.persistence.reservation.AuditAt, int64(1))
 	require.Equal(t, model.ActionExamSittingManage, f.authorizer.action, "authorization")
@@ -96,7 +95,7 @@ func TestStageResourceContentCapacityRefusalLeavesOnlyPendingReservation(t *test
 	require.Equal(t, 0, f.effects.calls, "refused content became ready or published: store=%#v effects", f.persistence)
 	// Contract (guardrail 8): the audit begins before the durable reservation that
 	// the refused bytes were stored under.
-	ordertest.RequireInOrder(t, f.order, "audit.begin", "reserve", "content.store")
+	require.Equal(t, []string{"access", "membership", "authorize", "audit.begin", "reserve", "content.store"}, f.order)
 }
 
 func TestStageResourceContentUsesReservedTimeForConcurrentReplay(t *testing.T) {
@@ -189,7 +188,7 @@ func TestApplyPublishesOnlyAfterCommitAndReportsTransientFailure(t *testing.T) {
 	require.Equal(t, 1, f.effects.reportCalls, "application=%#v effects=%#v order=%v", f.persistence.application, f.effects, f.order)
 	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
 	// begins before the durable write, and the write commits before its effect.
-	ordertest.RequireInOrder(t, f.order, "authorize", "audit.begin", "apply", "effect")
+	require.Equal(t, []string{"access", "membership", "authorize", "audit.begin", "apply", "effect"}, f.order)
 }
 
 func TestApplyRejectsNonCanonicalPrivateReasonBeforeAuthorization(t *testing.T) {
@@ -354,7 +353,10 @@ func (a *correctionAuditFake) BeginAtScope(_ context.Context, _ invocation.Invoc
 	a.value = value
 	return model.NewAuditEventID(), nil
 }
-func (a *correctionAuditFake) Fail(context.Context, model.AuditEventID, string) error { return nil }
+func (a *correctionAuditFake) Fail(context.Context, model.AuditEventID, string) error {
+	a.f.order = append(a.f.order, "audit.fail")
+	return nil
+}
 
 type correctionEffectFake struct {
 	f           *correctionFixture

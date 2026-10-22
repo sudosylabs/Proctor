@@ -21,7 +21,6 @@ import (
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestCreateStagesVerifiedBytesBeforeAuditAndAtomicVisibility(t *testing.T) {
@@ -37,7 +36,7 @@ func TestCreateStagesVerifiedBytesBeforeAuditAndAtomicVisibility(t *testing.T) {
 	// Contract: authorization precedes the reservation, verified bytes are stored
 	// inside the reservation before the audit begins (guardrail 8) and the
 	// atomic finalization commits before its effect (guardrail 14).
-	ordertest.RequireInOrder(t, f.order, "authorize", "reserve", "content.store", "audit.begin", "finalize", "effect")
+	require.Equal(t, []string{"access", "membership", "authorize", "list", "reserve", "content.store", "audit.begin", "finalize", "effect"}, f.order)
 	require.Equal(t, "Read **carefully**.", f.persistence.finalization.Resource.DescriptionMarkdown)
 	require.NotEmpty(t, f.persistence.finalization.Rendition.SHA256)
 	require.Equal(t, 1, f.content.storeCalls, "content storage calls")
@@ -531,7 +530,10 @@ func (a *auditFake) BeginAtScope(context.Context, invocation.Invocation, model.A
 	a.began = true
 	return model.NewAuditEventID(), nil
 }
-func (a *auditFake) Fail(context.Context, model.AuditEventID, string) error { return nil }
+func (a *auditFake) Fail(context.Context, model.AuditEventID, string) error {
+	a.f.order = append(a.f.order, "audit.fail")
+	return nil
+}
 
 type effectFake struct {
 	f             *fixture
