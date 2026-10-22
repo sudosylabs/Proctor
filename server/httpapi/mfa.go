@@ -55,7 +55,7 @@ type mfaResourceModule struct {
 	mfa MFA
 }
 
-func mfaResource(mfa MFA) resource {
+func mfaResource(mfa MFA) apiResource {
 	module := mfaResourceModule{mfa: mfa}
 	base := apiPath(literal("users"), literal("me"), literal("mfa"))
 	return newResource(

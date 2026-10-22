@@ -25,6 +25,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
@@ -64,7 +65,7 @@ func TestAccessPolicyTwoNodePostgreSQLFenceAndSafeRevisionFanout(t *testing.T) {
 		"password":         "correct horse battery staple",
 	}, "")
 	require.Equal(t, http.StatusCreated, bootstrap.Code, "bootstrap = %d: %s", bootstrap.Code, bootstrap.Body.String())
-	login, err := primary.App.Login(context.Background(), app.Invocation{}, app.LoginCommand{
+	login, err := primary.App.Login(context.Background(), invocation.Invocation{}, app.LoginCommand{
 		LoginID: "policy-admin", Password: "correct horse battery staple", ClientType: model.SessionClientCLI,
 		DeviceID: "policy-cli", Source: "127.0.0.1:1",
 	})
@@ -72,7 +73,7 @@ func TestAccessPolicyTwoNodePostgreSQLFenceAndSafeRevisionFanout(t *testing.T) {
 	strengthenRoleAdministratorSession(t, primary.Handler(), login.Tokens.AccessToken)
 	principal, err := primary.App.AuthenticateAccess(context.Background(), login.Tokens.AccessToken)
 	require.NoError(t, err)
-	invocation := app.NewInvocation(*principal, model.RequestMetadata{RequestID: "access-policy-two-node"})
+	invocation := invocation.New(*principal, model.RequestMetadata{RequestID: "access-policy-two-node"})
 	current, err := primary.App.GetAccessPolicy(context.Background(), invocation)
 	require.NoError(t, err, "initial policy = %#v", current)
 	require.NotNil(t, current.Policy, "initial policy = %#v", current)

@@ -13,6 +13,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -36,7 +37,7 @@ type accountStateStore interface {
 }
 
 type accountStateAuthorizer interface {
-	AuthorizeAccountStateManage(context.Context, Invocation, string) error
+	AuthorizeAccountStateManage(context.Context, invocation.Invocation, string) error
 }
 
 type accountStateEffects interface {
@@ -59,7 +60,7 @@ func newAccountStateService(users accountStateStore, authorization accountStateA
 	return &accountStateService{users: users, authorization: authorization, capabilities: capabilities, audit: audit, mail: mail, effects: effects, now: now}
 }
 
-func (s *accountStateService) SetUserEnabled(ctx context.Context, invocation Invocation, command SetUserEnabledCommand) (*model.User, error) {
+func (s *accountStateService) SetUserEnabled(ctx context.Context, invocation invocation.Invocation, command SetUserEnabledCommand) (*model.User, error) {
 	userID := command.ID
 	if !userID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
@@ -95,7 +96,7 @@ func (s *accountStateService) SetUserEnabled(ctx context.Context, invocation Inv
 	// whether the state change is a no-op, so make the snapshot mail-eligible
 	// even when a concurrent re-enable could turn a stale no-op into a mutation.
 	recipient.DisabledAt = model.OptionalTime{}
-	prepared := &preparedDirectMail{}
+	prepared := &store.PreparedMail{}
 	if !command.batchRetainedOutcome {
 		prepared, err = s.mail.PrepareAccountStateChanged(appmail.NoticePreparation{Recipient: &recipient, At: now}, command.Enabled)
 		if err != nil {

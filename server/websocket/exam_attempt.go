@@ -15,9 +15,11 @@ import (
 	"io"
 	"unicode/utf8"
 
-	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 const (
@@ -30,13 +32,13 @@ const (
 )
 
 type examAttemptApplication interface {
-	ConnectExamAttempt(context.Context, app.Invocation, app.ConnectExamAttemptCommand) (app.ExamAttemptConnection, error)
-	UpdateExamSecurityCoverage(context.Context, app.Invocation, app.UpdateSecurityCoverageCommand) (model.SecurityCoverageResult, error)
-	RenewExamAttemptParticipation(context.Context, app.Invocation, app.RenewExamAttemptParticipationCommand) (app.ExamAttemptParticipationRenewal, error)
-	EvaluateExamAttemptFocusLoss(context.Context, app.Invocation, app.EvaluateExamAttemptFocusLossCommand) (app.ExamAttemptFocusLossEvaluation, error)
-	CloseExamAttemptConnection(context.Context, app.Invocation, app.CloseExamAttemptConnectionCommand) (app.ExamAttemptConnectionClosed, error)
-	StartExamAttemptBrowserActivity(context.Context, app.Invocation, app.StartBrowserActivityCommand) (model.BrowserSourceStatus, error)
-	AppendExamAttemptBrowserActivity(context.Context, app.Invocation, app.AppendBrowserActivityCommand) (app.BrowserActivityAcknowledgement, error)
+	ConnectExamAttempt(context.Context, invocation.Invocation, attempt.ConnectCommand) (attempt.ConnectionResult, error)
+	UpdateExamSecurityCoverage(context.Context, invocation.Invocation, attempt.UpdateSecurityCoverageCommand) (model.SecurityCoverageResult, error)
+	RenewExamAttemptParticipation(context.Context, invocation.Invocation, attempt.RenewParticipationCommand) (attempt.ParticipationRenewal, error)
+	EvaluateExamAttemptFocusLoss(context.Context, invocation.Invocation, attempt.FocusLossCommand) (attempt.FocusLossEvaluation, error)
+	CloseExamAttemptConnection(context.Context, invocation.Invocation, attempt.CloseConnectionCommand) (attempt.ConnectionClosedResult, error)
+	StartExamAttemptBrowserActivity(context.Context, invocation.Invocation, attempt.StartBrowserActivityCommand) (model.BrowserSourceStatus, error)
+	AppendExamAttemptBrowserActivity(context.Context, invocation.Invocation, attempt.AppendBrowserActivityCommand) (model.BrowserActivityAcknowledgement, error)
 }
 
 type examAttemptConnectRequest struct {
@@ -297,7 +299,7 @@ func decodeExamAttemptBrowserAppendRequest(document json.RawMessage) (examAttemp
 	return value, batch.Events, nil
 }
 
-func browserActivityAcknowledgementWire(value app.BrowserActivityAcknowledgement) examAttemptBrowserAcknowledgementResponse {
+func browserActivityAcknowledgementWire(value model.BrowserActivityAcknowledgement) examAttemptBrowserAcknowledgementResponse {
 	response := examAttemptBrowserAcknowledgementResponse{SourceSessionID: string(value.SourceSessionID), HighestContiguous: value.HighestContiguous,
 		Receipts: append([]model.BrowserEventReceipt{}, value.Receipts...), SettledThrough: value.SettledThrough,
 		AllocatedThrough: value.AllocatedThrough, TerminalMissingThrough: value.TerminalMissingThrough,
@@ -324,7 +326,7 @@ func decodeExamAttemptConnectRequest(document json.RawMessage) (examAttemptConne
 	return value, nil
 }
 
-func candidateRuntimeCapabilitiesWire(value app.CandidateRuntimeCapabilities) candidateRuntimeCapabilitiesResponse {
+func candidateRuntimeCapabilitiesWire(value store.CandidateRuntimeCapabilities) candidateRuntimeCapabilitiesResponse {
 	browser := candidateBrowserCapabilityResponse{State: string(value.Browser.State)}
 	if value.Browser.PolicyRevisionID.IsValid() {
 		browser.PolicyRevisionID = value.Browser.PolicyRevisionID.String()
@@ -344,7 +346,7 @@ func candidateRuntimeCapabilitiesWire(value app.CandidateRuntimeCapabilities) ca
 		Departure: candidateDepartureResponse{Allowed: value.Departure.Allowed, Reason: value.Departure.Reason}}
 }
 
-func candidateBrowserPolicyWire(value *app.CandidateBrowserPolicy) *candidateBrowserPolicyResponse {
+func candidateBrowserPolicyWire(value *store.CandidateBrowserPolicy) *candidateBrowserPolicyResponse {
 	if value == nil {
 		return nil
 	}

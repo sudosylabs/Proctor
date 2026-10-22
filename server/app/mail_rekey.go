@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
+	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -44,7 +46,7 @@ type mailKeyInspector interface {
 	InspectKeyState(context.Context) (*store.MailKeyState, error)
 }
 
-func (s *mailService) GetMailKeyState(ctx context.Context, invocation Invocation) (MailKeyStateView, error) {
+func (s *mailService) GetMailKeyState(ctx context.Context, invocation invocation.Invocation) (MailKeyStateView, error) {
 	if s == nil {
 		return MailKeyStateView{}, apperror.New("mail.unavailable")
 	}
@@ -72,7 +74,7 @@ func (s *mailService) GetMailKeyState(ctx context.Context, invocation Invocation
 	return view, nil
 }
 
-func (s *mailService) StartMailRekey(ctx context.Context, invocation Invocation, retiringKeyID string) (MailRekeyView, error) {
+func (s *mailService) StartMailRekey(ctx context.Context, invocation invocation.Invocation, retiringKeyID string) (MailRekeyView, error) {
 	if s == nil {
 		return MailRekeyView{}, apperror.New("mail.unavailable")
 	}
@@ -90,7 +92,7 @@ func (s *mailService) StartMailRekey(ctx context.Context, invocation Invocation,
 	if retiringKeyID == "" || retiringKeyID == primaryKeyID || !s.sealer.HasKey(retiringKeyID) {
 		return MailRekeyView{}, apperror.New("mail.rekey.invalid")
 	}
-	command, err := json.Marshal(MailRekeyCommand{PrimaryKeyID: primaryKeyID, RetiringKeyID: retiringKeyID})
+	command, err := json.Marshal(jobhandler.MailRekeyCommand{PrimaryKeyID: primaryKeyID, RetiringKeyID: retiringKeyID})
 	if err != nil {
 		return MailRekeyView{}, apperror.New("mail.unavailable").Wrap(err)
 	}

@@ -18,33 +18,35 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/exam"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 type recordsHTTPApplication struct {
 	ExamRecordsApplication
 	calls    int
-	complete app.CompleteExamSittingRecordsCommand
-	create   app.CreateRetentionHoldCommand
-	query    app.ListRetentionHoldsQuery
-	page     *app.RetentionHoldPage
+	complete exam.CompleteRecordsCommand
+	create   exam.CreateRetentionHoldCommand
+	query    store.ExamRecordsHoldListOptions
+	page     *store.ExamRecordsHoldPage
 }
 
-func (a *recordsHTTPApplication) CompleteExamSittingRecords(_ context.Context, call app.Invocation, command app.CompleteExamSittingRecordsCommand) (*model.ExamSittingRecordsCompletion, error) {
+func (a *recordsHTTPApplication) CompleteExamSittingRecords(_ context.Context, call invocation.Invocation, command exam.CompleteRecordsCommand) (*model.ExamSittingRecordsCompletion, error) {
 	a.calls++
 	a.complete = command
 	c := model.NewExamSittingRecordsCompletion(command.Scope.SittingID)
 	_, err := c.Complete(command.ExpectedRevision, command.AcknowledgedEvidenceRevision, call.Principal().UserID, time.Now())
 	return c, err
 }
-func (a *recordsHTTPApplication) CreateRetentionHold(_ context.Context, call app.Invocation, command app.CreateRetentionHoldCommand) (*model.RetentionHold, error) {
+func (a *recordsHTTPApplication) CreateRetentionHold(_ context.Context, call invocation.Invocation, command exam.CreateRetentionHoldCommand) (*model.RetentionHold, error) {
 	a.calls++
 	a.create = command
 	return &model.RetentionHold{ID: model.NewRetentionHoldID(), Scope: command.Scope, Revision: 1, CreatedAt: time.Now(), CreatedByUserID: call.Principal().UserID,
 		ReasonCode: command.ReasonCode, PrivateReason: command.PrivateReason, WorkRetiredSubmissionCount: 1, IntegrityRetiredSubmissionCount: 2}, nil
 }
-func (a *recordsHTTPApplication) ListRetentionHolds(_ context.Context, _ app.Invocation, query app.ListRetentionHoldsQuery) (*app.RetentionHoldPage, error) {
+func (a *recordsHTTPApplication) ListRetentionHolds(_ context.Context, _ invocation.Invocation, query store.ExamRecordsHoldListOptions) (*store.ExamRecordsHoldPage, error) {
 	a.calls++
 	a.query = query
 	return a.page, nil
@@ -129,7 +131,7 @@ func TestExamRecordsHTTPCursorBindsScopeAndReleaseFilter(t *testing.T) {
 	scope := model.RetentionHoldScope{ExamID: examID, SittingID: sittingID}
 	hold := model.RetentionHold{ID: model.NewRetentionHoldID(), Scope: scope, Revision: 1, CreatedAt: time.Now(), CreatedByUserID: model.NewUserID(), ReasonCode: "other", PrivateReason: "Preserve."}
 	logger, _ := newTestLogger(t)
-	application := &recordsHTTPApplication{page: &app.RetentionHoldPage{Holds: []model.RetentionHold{hold}, HasMore: true}}
+	application := &recordsHTTPApplication{page: &store.ExamRecordsHoldPage{Holds: []model.RetentionHold{hold}, HasMore: true}}
 	api := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: recordsHTTPPrincipal()}, examRecordsResource(application))
 	path := "/api/v1/exams/" + examID.String() + "/retention-holds?exam_sitting_id=" + sittingID.String() + "&limit=1"
 	serve := func(path string) *httptest.ResponseRecorder {

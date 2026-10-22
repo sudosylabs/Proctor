@@ -14,15 +14,16 @@ import (
 	"net/http"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type StudentProgressionApplication interface {
-	DryRunStudentProgression(context.Context, app.Invocation, app.DryRunStudentProgressionCommand) (app.OnboardingImportView, error)
-	GetStudentProgression(context.Context, app.Invocation, model.OnboardingImportID) (app.OnboardingImportView, []app.OnboardingImportRowView, error)
-	CommitStudentProgression(context.Context, app.Invocation, app.CommitStudentProgressionCommand) (app.OnboardingImportView, error)
-	CancelStudentProgression(context.Context, app.Invocation, model.OnboardingImportID) (app.OnboardingImportView, error)
-	StudentProgressionReport(context.Context, app.Invocation, model.OnboardingImportID, io.Writer) error
+	DryRunStudentProgression(context.Context, invocation.Invocation, app.DryRunStudentProgressionCommand) (app.OnboardingImportView, error)
+	GetStudentProgression(context.Context, invocation.Invocation, model.OnboardingImportID) (app.OnboardingImportView, []app.OnboardingImportRowView, error)
+	CommitStudentProgression(context.Context, invocation.Invocation, app.CommitStudentProgressionCommand) (app.OnboardingImportView, error)
+	CancelStudentProgression(context.Context, invocation.Invocation, model.OnboardingImportID) (app.OnboardingImportView, error)
+	StudentProgressionReport(context.Context, invocation.Invocation, model.OnboardingImportID, io.Writer) error
 }
 
 type studentProgressionModule struct{ progressions StudentProgressionApplication }
@@ -40,7 +41,7 @@ type studentProgressionCommitRequest struct {
 	PreviewDigest    string `json:"preview_digest"`
 }
 
-func studentProgressionResource(progressions StudentProgressionApplication) resource {
+func studentProgressionResource(progressions StudentProgressionApplication) apiResource {
 	module := studentProgressionModule{progressions: progressions}
 	mutationCodes := academicRelationshipMutationErrorCodes("student_progression.target_conflict", "student_progression.lineage_conflict",
 		"student_progression.effective_date_conflict", "student_progression.roster_too_large", "student_progression.conflict", "student_progression.unavailable")
@@ -135,18 +136,18 @@ func (m studentProgressionModule) report(request operationRequest) (protocolResu
 
 type unavailableStudentProgressionApplication struct{}
 
-func (unavailableStudentProgressionApplication) DryRunStudentProgression(context.Context, app.Invocation, app.DryRunStudentProgressionCommand) (app.OnboardingImportView, error) {
+func (unavailableStudentProgressionApplication) DryRunStudentProgression(context.Context, invocation.Invocation, app.DryRunStudentProgressionCommand) (app.OnboardingImportView, error) {
 	return app.OnboardingImportView{}, errUnpresentableResult
 }
-func (unavailableStudentProgressionApplication) GetStudentProgression(context.Context, app.Invocation, model.OnboardingImportID) (app.OnboardingImportView, []app.OnboardingImportRowView, error) {
+func (unavailableStudentProgressionApplication) GetStudentProgression(context.Context, invocation.Invocation, model.OnboardingImportID) (app.OnboardingImportView, []app.OnboardingImportRowView, error) {
 	return app.OnboardingImportView{}, nil, errUnpresentableResult
 }
-func (unavailableStudentProgressionApplication) CommitStudentProgression(context.Context, app.Invocation, app.CommitStudentProgressionCommand) (app.OnboardingImportView, error) {
+func (unavailableStudentProgressionApplication) CommitStudentProgression(context.Context, invocation.Invocation, app.CommitStudentProgressionCommand) (app.OnboardingImportView, error) {
 	return app.OnboardingImportView{}, errUnpresentableResult
 }
-func (unavailableStudentProgressionApplication) CancelStudentProgression(context.Context, app.Invocation, model.OnboardingImportID) (app.OnboardingImportView, error) {
+func (unavailableStudentProgressionApplication) CancelStudentProgression(context.Context, invocation.Invocation, model.OnboardingImportID) (app.OnboardingImportView, error) {
 	return app.OnboardingImportView{}, errUnpresentableResult
 }
-func (unavailableStudentProgressionApplication) StudentProgressionReport(context.Context, app.Invocation, model.OnboardingImportID, io.Writer) error {
+func (unavailableStudentProgressionApplication) StudentProgressionReport(context.Context, invocation.Invocation, model.OnboardingImportID, io.Writer) error {
 	return errUnpresentableResult
 }

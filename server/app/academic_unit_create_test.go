@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -89,7 +90,7 @@ type academicUnitMutationAudit struct {
 	prior     map[string]any
 }
 
-func (a *academicUnitCommandAuditor) Begin(_ context.Context, _ Invocation, action model.Action, resource model.Resource, operation string, value, prior map[string]any) (model.AuditEventID, error) {
+func (a *academicUnitCommandAuditor) Begin(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	*a.events = append(*a.events, "audit-begin")
 	a.beginData = academicUnitMutationAudit{
 		action: action, resource: resource, operation: operation,
@@ -172,11 +173,11 @@ func TestAcademicUnitCreateRootCommitsAuditBeforePublishing(t *testing.T) {
 	service := newAcademicUnitCommandService(
 		creator,
 		academicUnitAuthorizerStub{
-			authorize: func(context.Context, Invocation, model.Action, model.Resource) error {
+			authorize: func(context.Context, invocation.Invocation, model.Action, model.Resource) error {
 				panic("unexpected Authorize")
 			},
 			authorizeInstallation: func(
-				context.Context, Invocation, model.Action,
+				context.Context, invocation.Invocation, model.Action,
 			) (model.Resource, error) {
 				events = append(events, "authorize")
 				return model.Resource{Type: model.ResourceInstitution, ID: institutionID}, nil
@@ -189,7 +190,7 @@ func TestAcademicUnitCreateRootCommitsAuditBeforePublishing(t *testing.T) {
 		func() string { return createdID },
 	)
 
-	got, err := service.CreateAcademicUnit(context.Background(), Invocation{}, CreateAcademicUnitCommand{
+	got, err := service.CreateAcademicUnit(context.Background(), invocation.Invocation{}, CreateAcademicUnitCommand{
 		Name: "engineering", DisplayName: "Engineering", Description: "Faculty",
 	})
 	require.NoError(t, err)
@@ -212,7 +213,7 @@ func TestAcademicUnitCreateReplayDoesNotPublishAgain(t *testing.T) {
 	creator := &academicUnitCreateStore{events: &events, idempotentResult: &store.AcademicUnitCommandResult{Value: saved, Replayed: true}}
 	service := newAcademicUnitCommandService(
 		creator,
-		academicUnitAuthorizerStub{authorizeInstallation: func(context.Context, Invocation, model.Action) (model.Resource, error) {
+		academicUnitAuthorizerStub{authorizeInstallation: func(context.Context, invocation.Invocation, model.Action) (model.Resource, error) {
 			return model.Resource{Type: model.ResourceInstitution, ID: institutionID}, nil
 		}},
 		&academicUnitCommandAuditor{events: &events, beginID: model.NewID()},
@@ -220,7 +221,7 @@ func TestAcademicUnitCreateReplayDoesNotPublishAgain(t *testing.T) {
 		&academicUnitEffectFailureReporterFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) }, model.NewID,
 	)
-	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
+	invocation := invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 	got, err := service.CreateAcademicUnit(context.Background(), invocation, CreateAcademicUnitCommand{Name: "engineering", DisplayName: "Engineering", IdempotencyKey: "retry-key"})
 	require.NoError(t, err)
 	require.Same(t, saved, got, "Create()")
@@ -235,11 +236,11 @@ func TestAcademicUnitCreateDenialStopsBeforeDurableWork(t *testing.T) {
 	service := newAcademicUnitCommandService(
 		creator,
 		academicUnitAuthorizerStub{
-			authorize: func(context.Context, Invocation, model.Action, model.Resource) error {
+			authorize: func(context.Context, invocation.Invocation, model.Action, model.Resource) error {
 				panic("unexpected Authorize")
 			},
 			authorizeInstallation: func(
-				context.Context, Invocation, model.Action,
+				context.Context, invocation.Invocation, model.Action,
 			) (model.Resource, error) {
 				return model.Resource{}, apperror.New("authorization.denied")
 			},
@@ -250,7 +251,7 @@ func TestAcademicUnitCreateDenialStopsBeforeDurableWork(t *testing.T) {
 		time.Now,
 		model.NewID,
 	)
-	_, err := service.CreateAcademicUnit(context.Background(), Invocation{}, CreateAcademicUnitCommand{Name: "engineering"})
+	_, err := service.CreateAcademicUnit(context.Background(), invocation.Invocation{}, CreateAcademicUnitCommand{Name: "engineering"})
 	require.True(t, apperror.Is(err, "authorization.denied"), "Create() error = %v, want authorization.denied", err)
 	require.Nil(t, creator.input, "work after denial: input")
 	require.Empty(t, events, "work after denial: input")
@@ -271,7 +272,7 @@ func TestAcademicUnitCreateFailureAuditsAndDoesNotPublish(t *testing.T) {
 		creator,
 		academicUnitAuthorizerStub{
 			authorize: func(
-				_ context.Context, _ Invocation, action model.Action, resource model.Resource,
+				_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource,
 			) error {
 				events = append(events, "authorize")
 				require.Equal(t, model.ActionAcademicUnitManage, action, "authorization = %s %#v", action, resource)
@@ -288,7 +289,7 @@ func TestAcademicUnitCreateFailureAuditsAndDoesNotPublish(t *testing.T) {
 		time.Now,
 		model.NewID,
 	)
-	_, err := service.CreateAcademicUnit(context.Background(), Invocation{}, CreateAcademicUnitCommand{
+	_, err := service.CreateAcademicUnit(context.Background(), invocation.Invocation{}, CreateAcademicUnitCommand{
 		ParentID: model.AcademicUnitID(parentID), Name: "computing", DisplayName: "Computing",
 	})
 	require.True(t, apperror.Is(err, "academic_unit.conflict"), "Create() error = %v, want academic_unit.conflict", err)
@@ -308,7 +309,7 @@ func TestAcademicUnitCreateIgnoresPostCommitEffectFailure(t *testing.T) {
 		creator,
 		academicUnitAuthorizerStub{
 			authorizeInstallation: func(
-				context.Context, Invocation, model.Action,
+				context.Context, invocation.Invocation, model.Action,
 			) (model.Resource, error) {
 				return model.Resource{Type: model.ResourceInstitution, ID: saved.InstitutionID.String()}, nil
 			},
@@ -319,7 +320,7 @@ func TestAcademicUnitCreateIgnoresPostCommitEffectFailure(t *testing.T) {
 		time.Now,
 		model.NewID,
 	)
-	got, err := service.CreateAcademicUnit(context.Background(), Invocation{}, CreateAcademicUnitCommand{
+	got, err := service.CreateAcademicUnit(context.Background(), invocation.Invocation{}, CreateAcademicUnitCommand{
 		Name: "engineering", DisplayName: "Engineering",
 	})
 	require.NoError(t, err, "Create()")

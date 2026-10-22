@@ -85,7 +85,7 @@ result, err := application.ReplaceOwnUserSettings(
 
 `context.Context` carries cancellation, deadlines, and propagation. It does
 not hide a User, permission, Store, mutation origin, or other security state.
-`app.Invocation` carries the immutable principal and bounded call metadata
+`invocation.Invocation` carries the immutable principal and bounded call metadata
 needed for authorization and audit. The command carries the use-case input.
 
 A focused service implementation normally remains unexported behind methods on

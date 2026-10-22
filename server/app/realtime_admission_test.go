@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -24,7 +25,7 @@ func TestAuthorizeWebSocketExamSubscriptionUsesExamRelationshipGate(t *testing.T
 	admission := &realtimeAdmissionService{exams: exams}
 	principal := testExamPrincipal(model.NewUserID())
 	examID := model.NewExamID()
-	err := admission.AuthorizeWebSocketSubscription(context.Background(), NewInvocation(principal, model.RequestMetadata{RequestID: "subscribe"}),
+	err := admission.AuthorizeWebSocketSubscription(context.Background(), invocation.New(principal, model.RequestMetadata{RequestID: "subscribe"}),
 		model.ActionExamView, model.Resource{Type: model.ResourceExam, ID: examID.String()})
 	require.NoError(t, err)
 	require.Equal(t, examID, exams.examID, "authorization = %s %#v", exams.examID, exams.invocation)
@@ -37,7 +38,7 @@ func TestAuthorizeWebSocketExamSubscriptionConcealsMissingAndDeniedExams(t *test
 	resource := model.Resource{Type: model.ResourceExam, ID: model.NewExamID().String()}
 	for _, failure := range []error{apperror.New("exam.not_found"), apperror.New("authorization.denied")} {
 		admission := &realtimeAdmissionService{exams: &realtimeExamViewFake{err: failure}}
-		err := admission.AuthorizeWebSocketSubscription(context.Background(), NewInvocation(principal, model.RequestMetadata{}), model.ActionExamView, resource)
+		err := admission.AuthorizeWebSocketSubscription(context.Background(), invocation.New(principal, model.RequestMetadata{}), model.ActionExamView, resource)
 		require.True(t, apperror.Is(err, "resource.not_found"), "error = %v, want concealed resource.not_found", err)
 	}
 }
@@ -49,7 +50,7 @@ func TestAuthorizeWebSocketSittingSubscriptionUsesRelationshipGate(t *testing.T)
 	principal := testExamPrincipal(model.NewUserID())
 	sittingID := model.NewExamSittingID()
 	err := admission.AuthorizeWebSocketSubscription(context.Background(),
-		NewInvocation(principal, model.RequestMetadata{RequestID: "sitting-subscribe"}), model.ActionExamSittingView,
+		invocation.New(principal, model.RequestMetadata{RequestID: "sitting-subscribe"}), model.ActionExamSittingView,
 		model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()})
 	require.NoError(t, err)
 	require.Equal(t, sittingID, sittings.sittingID, "authorization = %s %#v", sittings.sittingID, sittings.invocation)
@@ -62,30 +63,30 @@ func TestAuthorizeWebSocketSittingSubscriptionConcealsMissingAndDeniedTargets(t 
 	resource := model.Resource{Type: model.ResourceExamSitting, ID: model.NewExamSittingID().String()}
 	for _, failure := range []error{apperror.New("exam.sitting.not_found"), apperror.New("authorization.denied")} {
 		admission := &realtimeAdmissionService{sittings: &realtimeSittingViewFake{err: failure}}
-		err := admission.AuthorizeWebSocketSubscription(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
+		err := admission.AuthorizeWebSocketSubscription(context.Background(), invocation.New(principal, model.RequestMetadata{}),
 			model.ActionExamSittingView, resource)
 		require.True(t, apperror.Is(err, "resource.not_found"), "error = %v, want concealed resource.not_found", err)
 	}
 }
 
 type realtimeExamViewFake struct {
-	invocation Invocation
+	invocation invocation.Invocation
 	examID     model.ExamID
 	err        error
 }
 
-func (f *realtimeExamViewFake) AuthorizeView(_ context.Context, invocation Invocation, examID model.ExamID) error {
+func (f *realtimeExamViewFake) AuthorizeView(_ context.Context, invocation invocation.Invocation, examID model.ExamID) error {
 	f.invocation, f.examID = invocation, examID
 	return f.err
 }
 
 type realtimeSittingViewFake struct {
-	invocation Invocation
+	invocation invocation.Invocation
 	sittingID  model.ExamSittingID
 	err        error
 }
 
-func (f *realtimeSittingViewFake) AuthorizeView(_ context.Context, invocation Invocation, sittingID model.ExamSittingID) error {
+func (f *realtimeSittingViewFake) AuthorizeView(_ context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) error {
 	f.invocation, f.sittingID = invocation, sittingID
 	return f.err
 }

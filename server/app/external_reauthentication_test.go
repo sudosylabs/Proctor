@@ -15,6 +15,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -73,7 +74,7 @@ func TestExternalReauthenticationBindsOriginalSessionAndClosedTask(t *testing.T)
 			events := []string{}
 			audit := &mutationAttemptAuditorFake{events: &events, beginID: model.NewAuditEventID().String()}
 			service.loginStates, service.mutationAudit = states, audit
-			result, err := service.BeginExternalReauthentication(context.Background(), NewInvocation(principal, model.RequestMetadata{}), BeginExternalReauthenticationCommand{Task: test.task, Source: "192.0.2.30"})
+			result, err := service.BeginExternalReauthentication(context.Background(), invocation.New(principal, model.RequestMetadata{}), BeginExternalReauthenticationCommand{Task: test.task, Source: "192.0.2.30"})
 			if test.want == "" {
 				require.Error(t, err, "unbounded continuation reached provider or Store")
 				require.Nil(t, result, "unbounded continuation reached provider or Store")

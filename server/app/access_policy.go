@@ -17,6 +17,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
@@ -141,7 +142,7 @@ type ReplaceAccessPolicyCommand struct {
 	IdempotencyKey         string
 }
 
-func (s *accessPolicyService) GetAccessPolicy(ctx context.Context, invocation Invocation) (AccessPolicyView, error) {
+func (s *accessPolicyService) GetAccessPolicy(ctx context.Context, invocation invocation.Invocation) (AccessPolicyView, error) {
 	institution, resource, err := s.authorize(ctx, invocation, model.ActionAccessPolicyView)
 	_ = institution
 	_ = resource
@@ -155,7 +156,7 @@ func (s *accessPolicyService) GetAccessPolicy(ctx context.Context, invocation In
 	return s.view(snapshot), nil
 }
 
-func (s *accessPolicyService) PreflightAccessPolicy(ctx context.Context, invocation Invocation, command PreflightAccessPolicyCommand) (AccessPolicyPreflightResult, error) {
+func (s *accessPolicyService) PreflightAccessPolicy(ctx context.Context, invocation invocation.Invocation, command PreflightAccessPolicyCommand) (AccessPolicyPreflightResult, error) {
 	if err := s.requireStrongRecent(invocation); err != nil {
 		return AccessPolicyPreflightResult{}, err
 	}
@@ -173,7 +174,7 @@ func (s *accessPolicyService) PreflightAccessPolicy(ctx context.Context, invocat
 	return AccessPolicyPreflightResult{Blockers: append([]store.AccessPolicyBlocker(nil), blockers...)}, nil
 }
 
-func (s *accessPolicyService) ReplaceAccessPolicy(ctx context.Context, invocation Invocation, command ReplaceAccessPolicyCommand) (AccessPolicyView, error) {
+func (s *accessPolicyService) ReplaceAccessPolicy(ctx context.Context, invocation invocation.Invocation, command ReplaceAccessPolicyCommand) (AccessPolicyView, error) {
 	if err := s.requireStrongRecent(invocation); err != nil {
 		return AccessPolicyView{}, err
 	}
@@ -262,7 +263,7 @@ func (r accessPolicyEffectReporter) Report(ctx context.Context, operation string
 	r.realtime.reportTransientFailure(ctx, operation, err)
 }
 
-func (s *accessPolicyService) authorize(ctx context.Context, invocation Invocation, action model.Action) (*model.Institution, model.Resource, error) {
+func (s *accessPolicyService) authorize(ctx context.Context, invocation invocation.Invocation, action model.Action) (*model.Institution, model.Resource, error) {
 	institution, err := s.institutions.GetSingleton(ctx)
 	if err != nil || institution == nil || !institution.ID.IsValid() {
 		return nil, model.Resource{}, accessPolicyError(err)
@@ -274,7 +275,7 @@ func (s *accessPolicyService) authorize(ctx context.Context, invocation Invocati
 	return institution, resource, nil
 }
 
-func (s *accessPolicyService) requireStrongRecent(invocation Invocation) error {
+func (s *accessPolicyService) requireStrongRecent(invocation invocation.Invocation) error {
 	return requireStrongRecentSession(invocation.Principal(), s.now(), s.recentAuthenticationTTL)
 }
 

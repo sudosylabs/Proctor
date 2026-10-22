@@ -14,6 +14,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -55,8 +56,8 @@ type academicUnitMemberStore interface {
 // and, before the scope is known, the caller's coarse authority for the
 // Resource type.
 type membershipAuthorizer interface {
-	Authorize(context.Context, Invocation, model.Action, model.Resource) error
-	AuthorizePreflight(context.Context, Invocation, model.Action, model.ResourceType) error
+	Authorize(context.Context, invocation.Invocation, model.Action, model.Resource) error
+	AuthorizePreflight(context.Context, invocation.Invocation, model.Action, model.ResourceType) error
 }
 
 type academicUnitMemberUserStore interface {
@@ -82,7 +83,7 @@ func newAcademicUnitMemberService(persistence academicUnitMemberStore, users aca
 		mail: mail, effects: effects, now: now, newID: newID}
 }
 
-func (s *academicUnitMemberService) CreateAcademicUnitMember(ctx context.Context, invocation Invocation, command CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
+func (s *academicUnitMemberService) CreateAcademicUnitMember(ctx context.Context, invocation invocation.Invocation, command CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
 	resource, err := s.authorizeUnit(ctx, invocation, command.AcademicUnitID, model.ActionAcademicUnitMembersManage)
 	if err != nil {
 		return nil, err
@@ -165,7 +166,7 @@ func (s *academicUnitMemberService) CreateAcademicUnitMember(ctx context.Context
 	return result, err
 }
 
-func (s *academicUnitMemberService) EndAcademicUnitMember(ctx context.Context, invocation Invocation, command EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
+func (s *academicUnitMemberService) EndAcademicUnitMember(ctx context.Context, invocation invocation.Invocation, command EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
 	id := command.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_member_id")
@@ -252,7 +253,7 @@ func concealMembershipAuthorizationError(err error, resource string) error {
 	return err
 }
 
-func (s *academicUnitMemberService) authorizeUnit(ctx context.Context, invocation Invocation, unitID model.AcademicUnitID, action model.Action) (model.Resource, error) {
+func (s *academicUnitMemberService) authorizeUnit(ctx context.Context, invocation invocation.Invocation, unitID model.AcademicUnitID, action model.Action) (model.Resource, error) {
 	if !unitID.IsValid() {
 		return model.Resource{}, apperror.New("request.invalid").WithField("field", "academic_unit_id")
 	}
@@ -282,7 +283,7 @@ type AcademicUnitMemberPage struct {
 	ActiveAt int64
 }
 
-func (s *academicUnitMemberService) ListAcademicUnitMembersPage(ctx context.Context, invocation Invocation, query ListAcademicUnitMembersPageQuery) (*AcademicUnitMemberPage, error) {
+func (s *academicUnitMemberService) ListAcademicUnitMembersPage(ctx context.Context, invocation invocation.Invocation, query ListAcademicUnitMembersPageQuery) (*AcademicUnitMemberPage, error) {
 	resource, err := s.authorizeUnit(ctx, invocation, query.AcademicUnitID, model.ActionAcademicUnitMembersView)
 	if err != nil {
 		return nil, err

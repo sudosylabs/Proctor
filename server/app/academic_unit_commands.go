@@ -15,6 +15,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -138,7 +139,7 @@ func newAcademicUnitCommandService(
 // application-owned authorization and one atomic durable mutation.
 func (s *academicUnitCommandService) CreateAcademicUnit(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command CreateAcademicUnitCommand,
 ) (*model.AcademicUnit, error) {
 	parentID := command.ParentID
@@ -239,7 +240,7 @@ func (s *academicUnitCommandService) CreateAcademicUnit(
 
 func (s *academicUnitCommandService) UpdateAcademicUnit(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command UpdateAcademicUnitCommand,
 ) (*model.AcademicUnit, error) {
 	if !command.ID.IsValid() {
@@ -325,7 +326,7 @@ func (s *academicUnitCommandService) UpdateAcademicUnit(
 
 func (s *academicUnitCommandService) ArchiveAcademicUnit(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command ArchiveAcademicUnitCommand,
 ) error {
 	if !command.ID.IsValid() {

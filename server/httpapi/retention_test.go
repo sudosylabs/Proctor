@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -32,22 +33,22 @@ type retentionHTTPFake struct {
 	calls      int
 }
 
-func (f *retentionHTTPFake) ChangeRetentionControl(_ context.Context, _ app.Invocation, c app.ChangeRetentionControlCommand) (*model.RetentionControl, error) {
+func (f *retentionHTTPFake) ChangeRetentionControl(_ context.Context, _ invocation.Invocation, c app.ChangeRetentionControlCommand) (*model.RetentionControl, error) {
 	f.calls++
 	f.control = c
 	return &model.RetentionControl{Revision: 2, State: c.State, ApprovedPolicyRevision: c.ExpectedPolicyRevision, ApprovedPreviewID: c.PreviewID, UpdatedAt: model.NowUTC()}, nil
 }
-func (f *retentionHTTPFake) CreateRetentionPreview(_ context.Context, _ app.Invocation, c app.CreateRetentionPreviewCommand) (*model.RetentionPreview, error) {
+func (f *retentionHTTPFake) CreateRetentionPreview(_ context.Context, _ invocation.Invocation, c app.CreateRetentionPreviewCommand) (*model.RetentionPreview, error) {
 	f.calls++
 	f.preview = c
 	return &model.RetentionPreview{ID: model.NewRetentionPreviewID(), PolicyRevision: c.ExpectedPolicyRevision, CreatedAt: model.NowUTC(), ExpiresAt: model.NowUTC().Add(time.Hour)}, nil
 }
-func (f *retentionHTTPFake) ListRetentionNotices(_ context.Context, _ app.Invocation, after model.RetentionRetirementID, _ int) (*app.RetentionNoticePage, error) {
+func (f *retentionHTTPFake) ListRetentionNotices(_ context.Context, _ invocation.Invocation, after model.RetentionRetirementID, _ int) (*app.RetentionNoticePage, error) {
 	f.calls++
 	f.after = after
 	return f.noticePage, nil
 }
-func (f *retentionHTTPFake) ListRetentionRecords(context.Context, app.Invocation, model.SubmissionID, int) (*app.RetentionRecordPage, error) {
+func (f *retentionHTTPFake) ListRetentionRecords(context.Context, invocation.Invocation, model.SubmissionID, int) (*app.RetentionRecordPage, error) {
 	f.calls++
 	return f.recordPage, nil
 }

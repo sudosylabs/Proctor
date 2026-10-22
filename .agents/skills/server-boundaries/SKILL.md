@@ -35,7 +35,7 @@ embeds the focused services so each use case is declared once, on its
 owning service, and it is not a Store accessor. Concrete backend selection remains in
 the root server package.
 
-Use direct typed commands, queries, and results. `app.Invocation` carries the
+Use direct typed commands, queries, and results. `invocation.Invocation` carries the
 immutable principal and safe call metadata; `context.Context` carries
 cancellation and deadlines, not hidden security state. Actor-sensitive use
 cases authorize against current resource state immediately before expensive

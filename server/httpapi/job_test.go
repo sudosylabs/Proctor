@@ -14,12 +14,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestJobResponseCannotExposePrivateExecutionDocuments(t *testing.T) {
-	view := app.JobView{ID: model.NewJobID(), Type: model.JobTypeProfilePictureGenerateDefault, Status: model.JobStatusRunning, CreatedAt: time.Now(), UpdatedAt: time.Now(), AvailableAt: time.Now(), AttemptCount: 1, MaximumAttempts: 8, Revision: 2}
+	view := job.View{ID: model.NewJobID(), Type: model.JobTypeProfilePictureGenerateDefault, Status: model.JobStatusRunning, CreatedAt: time.Now(), UpdatedAt: time.Now(), AvailableAt: time.Now(), AttemptCount: 1, MaximumAttempts: 8, Revision: 2}
 	encoded, err := json.Marshal(jobResponseFromApplication(view))
 	require.NoError(t, err)
 	for _, forbidden := range []string{"command", "checkpoint", "result", "claim_token", "dedupe", "node_id"} {

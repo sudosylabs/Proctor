@@ -25,8 +25,8 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/internal/weborigin"
 	"github.com/sudosylabs/proctor/server/localization"
@@ -140,7 +140,7 @@ type Localizer interface {
 // Application is the narrow application surface each connection runtime needs
 // for subscription authorization and principal revalidation.
 type Application interface {
-	AuthorizeWebSocketSubscription(context.Context, app.Invocation, model.Action, model.Resource) error
+	AuthorizeWebSocketSubscription(context.Context, invocation.Invocation, model.Action, model.Resource) error
 	ValidateWebSocketPrincipal(context.Context, model.Principal) error
 }
 

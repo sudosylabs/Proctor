@@ -87,7 +87,7 @@ func TestDependencyPolicyRejectsForbiddenImports(t *testing.T) {
 		{name: "File Content cannot run Jobs", from: serverModule + "/filecontent", imported: serverModule + "/app/job"},
 		{name: "File Content cannot select a VFS backend", from: serverModule + "/filecontent", imported: repositoryModule + "/packages/vfs/local"},
 		{name: "File Content cannot select S3", from: serverModule + "/filecontent", imported: repositoryModule + "/packages/vfs/s3"},
-		{name: "HTTP cannot import persistence", from: serverModule + "/httpapi", imported: serverModule + "/store"},
+		{name: "HTTP cannot import SQL persistence", from: serverModule + "/httpapi", imported: serverModule + "/store/sqlstore"},
 		{name: "HTTP cannot import platform services", from: serverModule + "/httpapi", imported: serverModule + "/platform"},
 		{name: "HTTP cannot import SQL driver", from: serverModule + "/httpapi", imported: "database/sql"},
 		{name: "SQL adapter cannot import application policy", from: serverModule + "/store/sqlstore", imported: serverModule + "/app"},

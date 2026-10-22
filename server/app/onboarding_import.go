@@ -24,12 +24,12 @@ import (
 	"unicode/utf8"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
 const onboardingImportRetention = 7 * 24 * time.Hour
-const MaximumOnboardingImportBytes = store.OnboardingImportMaximumBytes
 
 type UploadOnboardingImportCommand struct {
 	Mode      model.OnboardingImportMode
@@ -145,7 +145,7 @@ func newOnboardingImportService(deps Dependencies, invitations *invitationServic
 		affiliations: deps.Store.Affiliation(), unitMembers: deps.Store.AcademicUnitMember(), classMembers: deps.Store.ClassMember(), roleBindings: deps.Store.RoleBinding(), now: time.Now}, nil
 }
 
-func (s *onboardingImportService) UploadOnboardingImport(ctx context.Context, invocation Invocation, command UploadOnboardingImportCommand) (OnboardingImportView, error) {
+func (s *onboardingImportService) UploadOnboardingImport(ctx context.Context, invocation invocation.Invocation, command UploadOnboardingImportCommand) (OnboardingImportView, error) {
 	command.ScopeID = strings.TrimSpace(command.ScopeID)
 	command.RoleID = strings.TrimSpace(command.RoleID)
 	if command.Body == nil || command.Mode == model.OnboardingImportStudentProgression || model.ValidateOnboardingImportScope(command.Mode, command.ScopeType, command.ScopeID) != nil ||
@@ -209,11 +209,11 @@ func newOnboardingImportJob(kind model.JobType, id model.OnboardingImportID, at 
 	return model.NewJob(model.NewJobID(), kind, command, string(kind)+":"+id.String(), at, at, 8)
 }
 
-func (s *onboardingImportService) GetOnboardingImport(ctx context.Context, invocation Invocation, id model.OnboardingImportID) (OnboardingImportView, []OnboardingImportRowView, error) {
+func (s *onboardingImportService) GetOnboardingImport(ctx context.Context, invocation invocation.Invocation, id model.OnboardingImportID) (OnboardingImportView, []OnboardingImportRowView, error) {
 	return s.get(ctx, invocation, id, "")
 }
 
-func (s *onboardingImportService) get(ctx context.Context, invocation Invocation, id model.OnboardingImportID, expectedMode model.OnboardingImportMode) (OnboardingImportView, []OnboardingImportRowView, error) {
+func (s *onboardingImportService) get(ctx context.Context, invocation invocation.Invocation, id model.OnboardingImportID, expectedMode model.OnboardingImportMode) (OnboardingImportView, []OnboardingImportRowView, error) {
 	value, err := s.imports.GetOnboardingImport(ctx, id)
 	if err != nil {
 		return OnboardingImportView{}, nil, onboardingImportStoreErrors.Translate(err)
@@ -241,11 +241,11 @@ func (s *onboardingImportService) get(ctx context.Context, invocation Invocation
 	return onboardingImportView(value), rows, nil
 }
 
-func (s *onboardingImportService) CommitOnboardingImport(ctx context.Context, invocation Invocation, command CommitOnboardingImportCommand) (OnboardingImportView, error) {
+func (s *onboardingImportService) CommitOnboardingImport(ctx context.Context, invocation invocation.Invocation, command CommitOnboardingImportCommand) (OnboardingImportView, error) {
 	return s.commit(ctx, invocation, command, "")
 }
 
-func (s *onboardingImportService) commit(ctx context.Context, invocation Invocation, command CommitOnboardingImportCommand, expectedMode model.OnboardingImportMode) (OnboardingImportView, error) {
+func (s *onboardingImportService) commit(ctx context.Context, invocation invocation.Invocation, command CommitOnboardingImportCommand, expectedMode model.OnboardingImportMode) (OnboardingImportView, error) {
 	id := command.ID
 	if !id.IsValid() || command.ExpectedRevision < 1 || len(command.PreviewDigest) != sha256.Size*2 || !command.Policy.IsValid() || !validInvitationBatchItemKey(command.IdempotencyKey) {
 		return OnboardingImportView{}, apperror.New("request.invalid")
@@ -308,11 +308,11 @@ func (s *onboardingImportService) commit(ctx context.Context, invocation Invocat
 	return onboardingImportView(committed), nil
 }
 
-func (s *onboardingImportService) CancelOnboardingImport(ctx context.Context, invocation Invocation, id model.OnboardingImportID) (OnboardingImportView, error) {
+func (s *onboardingImportService) CancelOnboardingImport(ctx context.Context, invocation invocation.Invocation, id model.OnboardingImportID) (OnboardingImportView, error) {
 	return s.cancel(ctx, invocation, id, "")
 }
 
-func (s *onboardingImportService) cancel(ctx context.Context, invocation Invocation, id model.OnboardingImportID, expectedMode model.OnboardingImportMode) (OnboardingImportView, error) {
+func (s *onboardingImportService) cancel(ctx context.Context, invocation invocation.Invocation, id model.OnboardingImportID, expectedMode model.OnboardingImportMode) (OnboardingImportView, error) {
 	current, err := s.imports.GetOnboardingImport(ctx, id)
 	if err != nil {
 		return OnboardingImportView{}, onboardingImportStoreErrors.Translate(err)
@@ -357,11 +357,11 @@ func (s *onboardingImportService) cancel(ctx context.Context, invocation Invocat
 	return onboardingImportView(canceled), nil
 }
 
-func (s *onboardingImportService) OnboardingImportReport(ctx context.Context, invocation Invocation, id model.OnboardingImportID, output io.Writer) error {
+func (s *onboardingImportService) OnboardingImportReport(ctx context.Context, invocation invocation.Invocation, id model.OnboardingImportID, output io.Writer) error {
 	return s.report(ctx, invocation, id, output, "")
 }
 
-func (s *onboardingImportService) report(ctx context.Context, invocation Invocation, id model.OnboardingImportID, output io.Writer, expectedMode model.OnboardingImportMode) error {
+func (s *onboardingImportService) report(ctx context.Context, invocation invocation.Invocation, id model.OnboardingImportID, output io.Writer, expectedMode model.OnboardingImportMode) error {
 	if output == nil {
 		return apperror.New("request.invalid")
 	}
@@ -405,7 +405,7 @@ func (s *onboardingImportService) report(ctx context.Context, invocation Invocat
 	return nil
 }
 
-func (s *onboardingImportService) authorizeImport(ctx context.Context, invocation Invocation, value *store.OnboardingImport, mutation bool) error {
+func (s *onboardingImportService) authorizeImport(ctx context.Context, invocation invocation.Invocation, value *store.OnboardingImport, mutation bool) error {
 	if value == nil {
 		return apperror.New("request.invalid")
 	}
@@ -488,7 +488,7 @@ func (s *onboardingImportService) validatePrincipal(ctx context.Context, princip
 	return nil
 }
 
-func (s *onboardingImportService) validateExternalTarget(ctx context.Context, invocation Invocation, mode model.OnboardingImportMode, scopeID, roleID string, preview bool) error {
+func (s *onboardingImportService) validateExternalTarget(ctx context.Context, invocation invocation.Invocation, mode model.OnboardingImportMode, scopeID, roleID string, preview bool) error {
 	switch mode {
 	case model.OnboardingImportStudentClass:
 		class, err := s.classes.Get(ctx, model.ClassID(scopeID))
@@ -568,7 +568,7 @@ func (s *onboardingImportService) parse(ctx context.Context, id model.Onboarding
 	if current.State != model.OnboardingImportParsing {
 		return store.NewErrConflict("onboarding_import", "state", nil)
 	}
-	invocation := NewInvocation(current.Principal, model.RequestMetadata{})
+	invocation := invocation.New(current.Principal, model.RequestMetadata{})
 	if err = s.validatePrincipal(ctx, current.Principal); err != nil {
 		if onboardingImportRetryableError(err) {
 			return err
@@ -646,7 +646,7 @@ var academicAdministrationImportHeaders = map[string]struct{}{
 	"affiliation_kind": {}, "start_at": {}, "end_at": {},
 }
 
-func (s *onboardingImportService) parseCSV(ctx context.Context, invocation Invocation, current *store.OnboardingImport, body io.Reader) ([]store.OnboardingImportRow, []string, string, error) {
+func (s *onboardingImportService) parseCSV(ctx context.Context, invocation invocation.Invocation, current *store.OnboardingImport, body io.Reader) ([]store.OnboardingImportRow, []string, string, error) {
 	data, err := io.ReadAll(io.LimitReader(body, store.OnboardingImportMaximumBytes+1))
 	if err != nil {
 		return nil, nil, "", err
@@ -820,7 +820,7 @@ func onboardingImportPreviewErrorCode(err error) string {
 	return invitationBatchPublicErrorCode(err)
 }
 
-func (s *onboardingImportService) resolveAndValidateImportRow(ctx context.Context, invocation Invocation, current *store.OnboardingImport, values map[string]string, row *store.OnboardingImportRow) error {
+func (s *onboardingImportService) resolveAndValidateImportRow(ctx context.Context, invocation invocation.Invocation, current *store.OnboardingImport, values map[string]string, row *store.OnboardingImportRow) error {
 	if row.Timezone != "" && len(row.Timezone) > model.UserTimezoneMaxLength {
 		return errors.New("timezone is too long")
 	}
@@ -854,7 +854,7 @@ func (s *onboardingImportService) resolveAndValidateImportRow(ctx context.Contex
 	return s.resolveInstitutionImportRow(ctx, invocation, current, values, row)
 }
 
-func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx context.Context, invocation Invocation, current *store.OnboardingImport, values map[string]string, row *store.OnboardingImportRow) error {
+func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx context.Context, invocation invocation.Invocation, current *store.OnboardingImport, values map[string]string, row *store.OnboardingImportRow) error {
 	operation := AcademicAdministrationBatchOperation(strings.ToLower(strings.TrimSpace(values["operation"])))
 	item := AcademicAdministrationBatchItemCommand{IdempotencyKey: strconv.Itoa(row.RowNumber), UserID: row.UserID.String(),
 		RelationshipID: row.RelationshipID, RoleID: row.RoleID.String(), AffiliationKind: row.AffiliationKind, StartAt: row.StartsAt, EndAt: row.EndsAt}
@@ -1024,7 +1024,7 @@ func (s *onboardingImportService) academicAdministrationImportScope(ctx context.
 	}
 }
 
-func (s *onboardingImportService) resolveInstitutionImportRow(ctx context.Context, invocation Invocation, current *store.OnboardingImport, values map[string]string, row *store.OnboardingImportRow) error {
+func (s *onboardingImportService) resolveInstitutionImportRow(ctx context.Context, invocation invocation.Invocation, current *store.OnboardingImport, values map[string]string, row *store.OnboardingImportRow) error {
 	kind := strings.ToLower(values["kind"])
 	if kind == "" {
 		return apperror.New("request.invalid")
@@ -1122,7 +1122,7 @@ func (s *onboardingImportService) resolveExactAcademicUnit(ctx context.Context, 
 	return exact, nil
 }
 
-func (s *onboardingImportService) previewRoleAuthorization(ctx context.Context, invocation Invocation, role *model.Role, resourceType model.ResourceType, scopeType model.RoleScopeType, scopeID string) error {
+func (s *onboardingImportService) previewRoleAuthorization(ctx context.Context, invocation invocation.Invocation, role *model.Role, resourceType model.ResourceType, scopeType model.RoleScopeType, scopeID string) error {
 	if s.invitations != nil {
 		if err := requireStrongRecentSession(invocation.Principal(), s.now(), s.invitations.recentAuthenticationTTL); err != nil {
 			return err
@@ -1196,7 +1196,7 @@ func (s *onboardingImportService) execute(ctx context.Context, id model.Onboardi
 	if current.State != model.OnboardingImportExecuting {
 		return store.NewErrConflict("onboarding_import", "state", nil)
 	}
-	invocation := NewInvocation(current.Principal, model.RequestMetadata{})
+	invocation := invocation.New(current.Principal, model.RequestMetadata{})
 	after, processed := startAfter, 0
 	for {
 		select {
@@ -1258,7 +1258,7 @@ func (s *onboardingImportService) execute(ctx context.Context, id model.Onboardi
 	}
 }
 
-func (s *onboardingImportService) executeRow(ctx context.Context, invocation Invocation, current *store.OnboardingImport, row store.OnboardingImportRow) (model.OnboardingImportRowStatus, model.InvitationID, string, string, error) {
+func (s *onboardingImportService) executeRow(ctx context.Context, invocation invocation.Invocation, current *store.OnboardingImport, row store.OnboardingImportRow) (model.OnboardingImportRowStatus, model.InvitationID, string, string, error) {
 	if err := s.validatePrincipal(ctx, invocation.Principal()); err != nil {
 		if onboardingImportRetryableError(err) {
 			return "", "", "", "", err

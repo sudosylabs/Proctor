@@ -14,25 +14,7 @@ import (
 	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store"
 )
-
-type ExamStarterWorkspaceItem = store.ExamStarterWorkspaceItem
-type ExamStarterWorkspaceResult = examworkspace.Result
-type OpenedExamStarterWorkspaceFile = examworkspace.OpenedFile
-
-// ListExamStarterWorkspaceQuery names the Exam whose Exam Draft Starter
-// Workspace is listed.
-type ListExamStarterWorkspaceQuery = examworkspace.ListQuery
-
-// OpenExamStarterWorkspaceFileQuery names one Exam Draft Starter Workspace
-// file of an Exam.
-type OpenExamStarterWorkspaceFileQuery = examworkspace.OpenFileQuery
-type CreateExamStarterWorkspaceDirectoryCommand = examworkspace.CreateDirectoryCommand
-type CreateExamStarterWorkspaceFileCommand = examworkspace.CreateFileCommand
-type MoveExamStarterWorkspaceEntryCommand = examworkspace.MoveEntryCommand
-type ReplaceExamStarterWorkspaceFileCommand = examworkspace.ReplaceFileCommand
-type RemoveExamStarterWorkspaceEntryCommand = examworkspace.RemoveEntryCommand
 
 type examStarterWorkspaceRealtimeEffects struct{ realtime *realtimeService }
 

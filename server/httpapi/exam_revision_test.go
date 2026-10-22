@@ -20,8 +20,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/exam"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 func TestExamRevisionHTTPPublishUsesStrictIdempotentCommandAndSafeSummary(t *testing.T) {
@@ -59,7 +61,7 @@ func TestExamRevisionHTTPGetAndListUseExactIdentityAndVersionedTupleCursor(t *te
 	older := fake.summary
 	older.ID = model.NewExamRevisionID()
 	older.Number = 2
-	fake.page = app.ExamRevisionPage{Items: []app.ExamRevisionSummary{fake.summary, older}, HasMore: true}
+	fake.page = exam.RevisionPage{Items: []store.ExamRevisionSummary{fake.summary, older}, HasMore: true}
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examRevisionResource(fake))
 
 	getRequest := httptest.NewRequest(http.MethodGet, "/api/v1/exams/"+fake.summary.ExamID.String()+"/revisions/"+fake.summary.ID.String(), nil)
@@ -103,7 +105,7 @@ func TestExamRevisionHTTPGetAndListUseExactIdentityAndVersionedTupleCursor(t *te
 	var terminal examRevisionListResponse
 	require.NoError(t, json.Unmarshal(terminalResponse.Body.Bytes(), &terminal))
 	require.Empty(t, terminal.NextCursor)
-	fake.page = app.ExamRevisionPage{HasMore: true}
+	fake.page = exam.RevisionPage{HasMore: true}
 	noProgress := httptest.NewRecorder()
 	httpAPI.ServeHTTP(noProgress, listRequest.Clone(listRequest.Context()))
 	require.Equal(t, http.StatusInternalServerError, noProgress.Code, "no-progress status = %d, body = %s", noProgress.Code, noProgress.Body.String())
@@ -148,16 +150,16 @@ func TestExamRevisionHTTPCursorAndPublishBodyAreStrict(t *testing.T) {
 type examRevisionHTTPFake struct {
 	Application
 	principal model.Principal
-	summary   app.ExamRevisionSummary
-	publish   app.PublishExamRevisionCommand
-	get       app.GetExamRevisionQuery
-	list      app.ListExamRevisionsQuery
-	page      app.ExamRevisionPage
+	summary   store.ExamRevisionSummary
+	publish   exam.PublishRevisionCommand
+	get       exam.GetRevisionQuery
+	list      exam.ListRevisionsQuery
+	page      exam.RevisionPage
 }
 
 func newExamRevisionHTTPFake() *examRevisionHTTPFake {
 	at := time.Date(2026, time.August, 15, 9, 30, 0, 123456789, time.UTC)
-	summary := app.ExamRevisionSummary{
+	summary := store.ExamRevisionSummary{
 		ID: model.NewExamRevisionID(), ExamID: model.NewExamID(), Number: 3, SourceDraftRevision: 4,
 		Title: "Distributed Systems", PolicySchemaVersion: 1,
 		PolicyDigest: strings.Repeat("a", 64), StarterWorkspaceDigest: strings.Repeat("b", 64),
@@ -178,17 +180,17 @@ func (f *examRevisionHTTPFake) AuthenticateBearer(context.Context, string) (*mod
 	return &principal, nil
 }
 
-func (f *examRevisionHTTPFake) PublishExamRevision(_ context.Context, _ app.Invocation, command app.PublishExamRevisionCommand) (app.ExamRevisionSummary, error) {
+func (f *examRevisionHTTPFake) PublishExamRevision(_ context.Context, _ invocation.Invocation, command exam.PublishRevisionCommand) (store.ExamRevisionSummary, error) {
 	f.publish = command
 	return f.summary, nil
 }
 
-func (f *examRevisionHTTPFake) GetExamRevision(_ context.Context, _ app.Invocation, query app.GetExamRevisionQuery) (app.ExamRevisionSummary, error) {
+func (f *examRevisionHTTPFake) GetExamRevision(_ context.Context, _ invocation.Invocation, query exam.GetRevisionQuery) (store.ExamRevisionSummary, error) {
 	f.get = query
 	return f.summary, nil
 }
 
-func (f *examRevisionHTTPFake) ListExamRevisions(_ context.Context, _ app.Invocation, query app.ListExamRevisionsQuery) (app.ExamRevisionPage, error) {
+func (f *examRevisionHTTPFake) ListExamRevisions(_ context.Context, _ invocation.Invocation, query exam.ListRevisionsQuery) (exam.RevisionPage, error) {
 	f.list = query
 	return f.page, nil
 }

@@ -6,9 +6,3 @@
 // ---------------------------------------------------------------------------------------------
 
 package app
-
-import examengine "github.com/sudosylabs/proctor/server/app/exam"
-
-type ExamExportArchiveInput = examengine.ExportArchiveInput
-type ExamExportArchiveFile = examengine.ExportArchiveFile
-type ExamExportArchiveContent = examengine.ExportArchiveContent

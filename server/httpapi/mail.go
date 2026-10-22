@@ -17,6 +17,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -130,7 +131,7 @@ type mailDeliveryCursor struct {
 
 type mailResourceModule struct{ mail MailApplication }
 
-func mailResource(application MailApplication) resource {
+func mailResource(application MailApplication) apiResource {
 	module := mailResourceModule{mail: application}
 	return newResource("mail",
 		strongRecentSessionRoute(http.MethodGet, apiPath(literal("mail"), literal("keys")), operatorReadErrorCodes("mail.unavailable"), module.getKeyState),
@@ -311,7 +312,7 @@ func (m mailResourceModule) retryDelivery(request operationRequest) (operationRe
 	return m.mutateDelivery(request, m.mail.RetryMailDelivery)
 }
 
-func (m mailResourceModule) mutateDelivery(request operationRequest, mutate func(context.Context, app.Invocation, model.MailDeliveryID) (app.MailDeliveryView, error)) (operationResult, error) {
+func (m mailResourceModule) mutateDelivery(request operationRequest, mutate func(context.Context, invocation.Invocation, model.MailDeliveryID) (app.MailDeliveryView, error)) (operationResult, error) {
 	if m.mail == nil {
 		return operationResult{}, errUnpresentableResult
 	}

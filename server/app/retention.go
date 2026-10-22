@@ -14,6 +14,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -44,7 +45,7 @@ type RetentionRecordView struct {
 	Retirement  *model.RetentionRetirement
 }
 
-func (s *retentionPolicyService) GetRetentionControl(ctx context.Context, invocation Invocation) (*model.RetentionControl, error) {
+func (s *retentionPolicyService) GetRetentionControl(ctx context.Context, invocation invocation.Invocation) (*model.RetentionControl, error) {
 	inst, _, err := s.authorize(ctx, invocation, model.ActionRetentionPolicyView)
 	if err != nil {
 		return nil, err
@@ -59,7 +60,7 @@ func (s *retentionPolicyService) GetRetentionControl(ctx context.Context, invoca
 	return control, nil
 }
 
-func (s *retentionPolicyService) GetRetentionPreview(ctx context.Context, invocation Invocation, id model.RetentionPreviewID) (*model.RetentionPreview, error) {
+func (s *retentionPolicyService) GetRetentionPreview(ctx context.Context, invocation invocation.Invocation, id model.RetentionPreviewID) (*model.RetentionPreview, error) {
 	inst, _, err := s.authorize(ctx, invocation, model.ActionRetentionPolicyView)
 	if err != nil {
 		return nil, err
@@ -77,7 +78,7 @@ func (s *retentionPolicyService) GetRetentionPreview(ctx context.Context, invoca
 	return preview, nil
 }
 
-func (s *retentionPolicyService) CreateRetentionPreview(ctx context.Context, invocation Invocation, command CreateRetentionPreviewCommand) (*model.RetentionPreview, error) {
+func (s *retentionPolicyService) CreateRetentionPreview(ctx context.Context, invocation invocation.Invocation, command CreateRetentionPreviewCommand) (*model.RetentionPreview, error) {
 	inst, resource, err := s.authorize(ctx, invocation, model.ActionRetentionPolicyView)
 	if err != nil {
 		return nil, err
@@ -113,7 +114,7 @@ func (s *retentionPolicyService) CreateRetentionPreview(ctx context.Context, inv
 	return preview, nil
 }
 
-func (s *retentionPolicyService) ChangeRetentionControl(ctx context.Context, invocation Invocation, command ChangeRetentionControlCommand) (*model.RetentionControl, error) {
+func (s *retentionPolicyService) ChangeRetentionControl(ctx context.Context, invocation invocation.Invocation, command ChangeRetentionControlCommand) (*model.RetentionControl, error) {
 	if err := requireStrongRecentSession(invocation.Principal(), s.now(), s.recentAuthenticationTTL); err != nil {
 		return nil, err
 	}
@@ -160,7 +161,7 @@ func (s *retentionPolicyService) ChangeRetentionControl(ctx context.Context, inv
 	return result.Control, nil
 }
 
-func (s *retentionPolicyService) ListRetentionRecords(ctx context.Context, invocation Invocation, after model.SubmissionID, limit int) (*RetentionRecordPage, error) {
+func (s *retentionPolicyService) ListRetentionRecords(ctx context.Context, invocation invocation.Invocation, after model.SubmissionID, limit int) (*RetentionRecordPage, error) {
 	if _, _, err := s.authorize(ctx, invocation, model.ActionRetentionPolicyView); err != nil {
 		return nil, err
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -24,7 +25,7 @@ type academicAdministrationBatchAuthorizerFake struct {
 	err      error
 }
 
-func (f *academicAdministrationBatchAuthorizerFake) Authorize(_ context.Context, _ Invocation, action model.Action, resource model.Resource) error {
+func (f *academicAdministrationBatchAuthorizerFake) Authorize(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource) error {
 	if action != model.ActionOnboardingBatchManage {
 		return apperror.New("authorization.denied")
 	}
@@ -48,23 +49,23 @@ func (f *academicAdministrationOutcomeLookupFake) Has(_ context.Context, command
 	return f.found, nil
 }
 
-func (f *academicAdministrationBatchCommandsFake) CreateAffiliation(_ context.Context, _ Invocation, command CreateAffiliationCommand) (*model.Affiliation, error) {
+func (f *academicAdministrationBatchCommandsFake) CreateAffiliation(_ context.Context, _ invocation.Invocation, command CreateAffiliationCommand) (*model.Affiliation, error) {
 	f.operations = append(f.operations, AcademicAdministrationAffiliationAdd)
 	return &model.Affiliation{ID: model.NewAffiliationID()}, nil
 }
-func (f *academicAdministrationBatchCommandsFake) EndAffiliation(_ context.Context, _ Invocation, command EndAffiliationCommand) (*model.Affiliation, error) {
+func (f *academicAdministrationBatchCommandsFake) EndAffiliation(_ context.Context, _ invocation.Invocation, command EndAffiliationCommand) (*model.Affiliation, error) {
 	f.operations = append(f.operations, AcademicAdministrationAffiliationEnd)
 	return &model.Affiliation{ID: model.AffiliationID(command.ID)}, nil
 }
-func (f *academicAdministrationBatchCommandsFake) CreateAcademicUnitMember(_ context.Context, _ Invocation, command CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
+func (f *academicAdministrationBatchCommandsFake) CreateAcademicUnitMember(_ context.Context, _ invocation.Invocation, command CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
 	f.operations = append(f.operations, AcademicAdministrationAcademicUnitMemberAdd)
 	return &model.AcademicUnitMember{ID: model.NewAcademicUnitMemberID()}, nil
 }
-func (f *academicAdministrationBatchCommandsFake) EndAcademicUnitMember(_ context.Context, _ Invocation, command EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
+func (f *academicAdministrationBatchCommandsFake) EndAcademicUnitMember(_ context.Context, _ invocation.Invocation, command EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
 	f.operations = append(f.operations, AcademicAdministrationAcademicUnitMemberEnd)
 	return &model.AcademicUnitMember{ID: model.AcademicUnitMemberID(command.ID)}, nil
 }
-func (f *academicAdministrationBatchCommandsFake) EnrollClassMember(_ context.Context, _ Invocation, command EnrollClassMemberCommand) (*model.ClassEnrollment, error) {
+func (f *academicAdministrationBatchCommandsFake) EnrollClassMember(_ context.Context, _ invocation.Invocation, command EnrollClassMemberCommand) (*model.ClassEnrollment, error) {
 	f.enrollments = append(f.enrollments, command)
 	if command.batchMetadata != nil && command.batchMetadata.DuplicateOfKeyDigest != ([32]byte{}) {
 		command.batchMetadata.Duplicate = true
@@ -80,7 +81,7 @@ func (f *academicAdministrationBatchCommandsFake) EnrollClassMember(_ context.Co
 func TestAcademicAdministrationBatchRetainsStableSemanticDuplicateDisposition(t *testing.T) {
 	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 	userID, classID := model.NewUserID().String(), model.NewClassID().String()
-	invocation := NewInvocation(model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
+	invocation := invocation.New(model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
 		CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: now}, model.RequestMetadata{})
@@ -107,7 +108,7 @@ func TestAcademicAdministrationBatchLooksUpRetainedOutcomeBeforeDispatch(t *test
 	commands := &academicAdministrationBatchCommandsFake{}
 	lookup := &academicAdministrationOutcomeLookupFake{found: true}
 	service := newAcademicAdministrationBatchService(commands, &academicAdministrationBatchAuthorizerFake{}, lookup, func() time.Time { return now }, 15*time.Minute)
-	invocation := NewInvocation(model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
+	invocation := invocation.New(model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
 		CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: now}, model.RequestMetadata{})
@@ -126,7 +127,7 @@ func TestAcademicAdministrationBatchPreservesDistinctEffectiveHistories(t *testi
 	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 	commands := &academicAdministrationBatchCommandsFake{}
 	service := newAcademicAdministrationBatchService(commands, &academicAdministrationBatchAuthorizerFake{}, nil, func() time.Time { return now }, 15*time.Minute)
-	invocation := NewInvocation(model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
+	invocation := invocation.New(model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
 		CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: now}, model.RequestMetadata{})
@@ -142,19 +143,19 @@ func TestAcademicAdministrationBatchPreservesDistinctEffectiveHistories(t *testi
 	require.Equal(t, 0, result.Failed, "distinct histories result=%#v operations=%#v error", result, commands.operations)
 	require.Len(t, commands.operations, 2, "distinct histories result=%#v operations=%#v error", result, commands.operations)
 }
-func (f *academicAdministrationBatchCommandsFake) EndClassMember(_ context.Context, _ Invocation, command EndClassMemberCommand) (*model.ClassMember, error) {
+func (f *academicAdministrationBatchCommandsFake) EndClassMember(_ context.Context, _ invocation.Invocation, command EndClassMemberCommand) (*model.ClassMember, error) {
 	f.operations = append(f.operations, AcademicAdministrationClassEnd)
 	return &model.ClassMember{ID: model.ClassMemberID(command.ID)}, nil
 }
-func (f *academicAdministrationBatchCommandsFake) CreateRoleBinding(_ context.Context, _ Invocation, command CreateRoleBindingCommand) (*model.RoleBinding, error) {
+func (f *academicAdministrationBatchCommandsFake) CreateRoleBinding(_ context.Context, _ invocation.Invocation, command CreateRoleBindingCommand) (*model.RoleBinding, error) {
 	f.operations = append(f.operations, AcademicAdministrationRoleBindingCreate)
 	return &model.RoleBinding{ID: model.NewRoleBindingID()}, nil
 }
-func (f *academicAdministrationBatchCommandsFake) EndRoleBinding(_ context.Context, _ Invocation, command EndRoleBindingCommand) (*model.RoleBinding, error) {
+func (f *academicAdministrationBatchCommandsFake) EndRoleBinding(_ context.Context, _ invocation.Invocation, command EndRoleBindingCommand) (*model.RoleBinding, error) {
 	f.operations = append(f.operations, AcademicAdministrationRoleBindingEnd)
 	return &model.RoleBinding{ID: model.RoleBindingID(command.ID)}, nil
 }
-func (f *academicAdministrationBatchCommandsFake) SetUserEnabled(_ context.Context, _ Invocation, command SetUserEnabledCommand) (*model.User, error) {
+func (f *academicAdministrationBatchCommandsFake) SetUserEnabled(_ context.Context, _ invocation.Invocation, command SetUserEnabledCommand) (*model.User, error) {
 	f.disabled = append(f.disabled, command)
 	if command.Enabled {
 		f.operations = append(f.operations, AcademicAdministrationUserEnable)
@@ -163,7 +164,7 @@ func (f *academicAdministrationBatchCommandsFake) SetUserEnabled(_ context.Conte
 	}
 	return &model.User{ID: model.UserID(command.ID)}, nil
 }
-func (f *academicAdministrationBatchCommandsFake) RevokeUserSessions(context.Context, Invocation, RevokeUserSessionsCommand) error {
+func (f *academicAdministrationBatchCommandsFake) RevokeUserSessions(context.Context, invocation.Invocation, RevokeUserSessionsCommand) error {
 	f.operations = append(f.operations, AcademicAdministrationUserSessionsRevoke)
 	return nil
 }
@@ -176,7 +177,7 @@ func TestAcademicAdministrationBatchRunsClosedRowsThroughOrdinaryCommands(t *tes
 	classID := model.NewClassID().String()
 	previousID := model.NewClassMemberID().String()
 	userID := model.NewUserID().String()
-	invocation := NewInvocation(model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
+	invocation := invocation.New(model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
 		CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor, ClientType: model.SessionClientWeb,
 		AuthenticatedAt: now, MFACompletedAt: model.OptionalTimeFrom(now)}, model.RequestMetadata{})
@@ -205,7 +206,7 @@ func TestAcademicAdministrationBatchRunsClosedRowsThroughOrdinaryCommands(t *tes
 
 func TestAcademicAdministrationBatchDispatchesEveryClosedOperation(t *testing.T) {
 	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
-	invocation := NewInvocation(model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
+	invocation := invocation.New(model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
 		CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor, ClientType: model.SessionClientWeb,
 		AuthenticatedAt: now, MFACompletedAt: model.OptionalTimeFrom(now)}, model.RequestMetadata{})
@@ -250,7 +251,7 @@ func TestAcademicAdministrationSensitiveBatchRequiresStrongRecentInteractiveSess
 	institutionID := model.NewInstitutionID().String()
 	userID := model.NewUserID().String()
 
-	_, err := service.RunAcademicAdministrationBatch(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID(),
+	_, err := service.RunAcademicAdministrationBatch(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID(),
 		CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialPersonalAccessToken}, model.RequestMetadata{}),
 		RunAcademicAdministrationBatchCommand{Operation: AcademicAdministrationUserDisable, ScopeType: model.RoleScopeInstitution,
 			ScopeID: institutionID, IdempotencyKey: "batch", Items: []AcademicAdministrationBatchItemCommand{{IdempotencyKey: "row", UserID: userID}}})

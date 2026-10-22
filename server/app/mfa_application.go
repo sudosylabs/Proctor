@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -22,7 +23,7 @@ import (
 // mfaAudit preserves the exact critical-audit ordering of MFA mutations while
 // keeping the focused application service independent of the audit service.
 type mfaAudit interface {
-	Begin(context.Context, Invocation, model.Action, model.Resource, any) (model.AuditEventID, error)
+	Begin(context.Context, invocation.Invocation, model.Action, model.Resource, any) (model.AuditEventID, error)
 	Complete(context.Context, model.AuditEventID, model.AuditStatus, string, any) error
 }
 
@@ -102,7 +103,7 @@ func newMFAApplicationService(
 
 func (s *mfaApplicationService) GetMFAStatus(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	_ GetMFAStatusQuery,
 ) (*MFAStatus, error) {
 	principal := invocation.Principal()
@@ -133,7 +134,7 @@ func (s *mfaApplicationService) GetMFAStatus(
 
 func (s *mfaApplicationService) SetupMFA(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command SetupMFACommand,
 ) (*MFASetup, error) {
 	principal := invocation.Principal()
@@ -191,7 +192,7 @@ func (s *mfaApplicationService) SetupMFA(
 
 func (s *mfaApplicationService) ActivateMFA(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command ActivateMFACommand,
 ) (*MFAActivation, error) {
 	principal := invocation.Principal()
@@ -262,7 +263,7 @@ func (s *mfaApplicationService) ActivateMFA(
 
 func (s *mfaApplicationService) ChallengeMFA(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command ChallengeMFACommand,
 ) (*model.Session, error) {
 	principal := invocation.Principal()
@@ -314,7 +315,7 @@ func (s *mfaApplicationService) ChallengeMFA(
 
 func (s *mfaApplicationService) RegenerateMFARecoveryCodes(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	_ RegenerateMFARecoveryCodesCommand,
 ) ([]string, error) {
 	principal := invocation.Principal()
@@ -361,7 +362,7 @@ func (s *mfaApplicationService) RegenerateMFARecoveryCodes(
 
 func (s *mfaApplicationService) DisableMFA(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	_ DisableMFACommand,
 ) error {
 	principal := invocation.Principal()
@@ -405,7 +406,7 @@ func (s *mfaApplicationService) prepareSecurityNotice(
 	userID model.UserID,
 	kind appmail.MFANoticeKind,
 	at time.Time,
-) (*preparedDirectMail, error) {
+) (*store.PreparedMail, error) {
 	user, err := s.users.Get(ctx, userID)
 	if err != nil {
 		return nil, mfaStoreErrors.Translate(err)
@@ -417,7 +418,7 @@ func (s *mfaApplicationService) prepareSecurityNotice(
 	return prepared, nil
 }
 
-func mfaSecurityNotice(prepared *preparedDirectMail) store.MFASecurityNotice {
+func mfaSecurityNotice(prepared *store.PreparedMail) store.MFASecurityNotice {
 	if prepared == nil {
 		return store.MFASecurityNotice{}
 	}
@@ -523,7 +524,7 @@ func (s *mfaApplicationService) failMutation(
 
 type mfaAuditAdapter struct{ audit *auditService }
 
-func (a mfaAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, prior any) (model.AuditEventID, error) {
+func (a mfaAuditAdapter) Begin(ctx context.Context, invocation invocation.Invocation, action model.Action, resource model.Resource, prior any) (model.AuditEventID, error) {
 	event, err := a.audit.BeginCriticalAction(
 		ctx, invocation.Principal(), action, resource,
 		invocation.RequestMetadata(), nil, prior,
@@ -568,7 +569,7 @@ func (s *mfaApplicationService) requireRecoverySession(principal model.Principal
 	return nil
 }
 
-func (s *mfaApplicationService) limitFactorAttempt(ctx context.Context, invocation Invocation) error {
+func (s *mfaApplicationService) limitFactorAttempt(ctx context.Context, invocation invocation.Invocation) error {
 	_, limited, err := s.security.attempts.account(ctx, authenticationAttemptIntent{
 		purpose: authenticationAttemptPurposeMFA, window: s.security.rateLimit.Window,
 		limits: []authenticationAttemptLimit{

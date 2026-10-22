@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/model"
@@ -164,7 +165,7 @@ type profilePictureAuditorFake struct {
 	prior     map[string]any
 }
 
-func (a *profilePictureAuditorFake) Begin(_ context.Context, _ Invocation, action model.Action, resource model.Resource, operation string, value, prior map[string]any) (model.AuditEventID, error) {
+func (a *profilePictureAuditorFake) Begin(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	a.action, a.resource, a.operation, a.value, a.prior = action, resource, operation, value, prior
 	if a.events != nil {
 		*a.events = append(*a.events, "audit-begin")
@@ -327,7 +328,7 @@ func TestUploadProfilePictureNormalizesPrivateRenditionsBeforePublishing(t *test
 	}
 	var input bytes.Buffer
 	require.NoError(t, png.Encode(&input, source))
-	updated, err := service.UploadProfilePicture(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID, ExpectedRevision: user.Revision, Body: bytes.NewReader(input.Bytes()), Size: int64(input.Len())})
+	updated, err := service.UploadProfilePicture(context.Background(), invocation.New(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID, ExpectedRevision: user.Revision, Body: bytes.NewReader(input.Bytes()), Size: int64(input.Len())})
 	require.NoError(t, err)
 	require.False(t, updated.CustomProfilePictureFileID.IsZero(), "upload result: user=%#v publication=%#v normalized", updated, persistence.publication)
 	require.Len(t, persistence.publication.Renditions, 3, "upload result: user=%#v publication=%#v normalized", updated, persistence.publication)
@@ -353,7 +354,7 @@ func TestReplaceProfilePictureKeepsTheActiveFileEntry(t *testing.T) {
 	effects := &profilePictureEffectsFake{events: &events}
 	service := newProfilePictureServiceForTest(persistence, persistence, content, &userProfileAuthorizerFake{events: &events}, auditor, effects, &profilePictureEffectFailuresFake{events: &events}, nil, func() time.Time { return at })
 
-	updated, err := service.UploadProfilePicture(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID, ExpectedRevision: user.Revision, ExpectedSHA256: strings.Repeat("b", 64), Body: strings.NewReader("image"), Size: 5})
+	updated, err := service.UploadProfilePicture(context.Background(), invocation.New(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID, ExpectedRevision: user.Revision, ExpectedSHA256: strings.Repeat("b", 64), Body: strings.NewReader("image"), Size: 5})
 	require.NoError(t, err)
 	require.Equal(t, user.CustomProfilePictureFileID, updated.CustomProfilePictureFileID, "replacement changed file entry: user")
 	require.Equal(t, user.CustomProfilePictureFileID, persistence.publication.EntryID, "replacement changed file entry: user")
@@ -378,7 +379,7 @@ func TestReplaceProfilePictureRequiresCurrentETag(t *testing.T) {
 	events := []string{}
 	service := newProfilePictureServiceForTest(persistence, persistence, &pictureContentFake{}, &userProfileAuthorizerFake{events: &events}, &profilePictureAuditorFake{}, &profilePictureEffectsFake{}, &profilePictureEffectFailuresFake{}, nil, time.Now)
 
-	_, err := service.UploadProfilePicture(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID, Body: strings.NewReader("image"), Size: 5})
+	_, err := service.UploadProfilePicture(context.Background(), invocation.New(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID, Body: strings.NewReader("image"), Size: 5})
 	require.True(t, apperror.Is(err, "request.invalid"), "Upload() error = %v, want request.invalid", err)
 	require.False(t, persistence.created, "replacement created durable upload state without If-Match")
 }
@@ -391,7 +392,7 @@ func TestReplaceProfilePictureRejectsAStaleETagBeforeCreatingUploadState(t *test
 	events := []string{}
 	service := newProfilePictureServiceForTest(persistence, persistence, &pictureContentFake{}, &userProfileAuthorizerFake{events: &events}, &profilePictureAuditorFake{}, &profilePictureEffectsFake{}, &profilePictureEffectFailuresFake{}, nil, time.Now)
 
-	_, err := service.UploadProfilePicture(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID, ExpectedSHA256: strings.Repeat("b", 64), Body: strings.NewReader("image"), Size: 5})
+	_, err := service.UploadProfilePicture(context.Background(), invocation.New(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID, ExpectedSHA256: strings.Repeat("b", 64), Body: strings.NewReader("image"), Size: 5})
 	require.True(t, apperror.Is(err, "user.conflict"), "Upload() error = %v, want user.conflict", err)
 	require.False(t, persistence.created, "stale replacement created durable upload state")
 }
@@ -408,7 +409,7 @@ func TestReplaceProfilePictureWithIdenticalNormalizedContentIsANoOp(t *testing.T
 	effects := &profilePictureEffectsFake{events: &events}
 	service := newProfilePictureServiceForTest(persistence, persistence, content, &userProfileAuthorizerFake{events: &events}, &profilePictureAuditorFake{events: &events, beginID: model.NewID()}, effects, &profilePictureEffectFailuresFake{events: &events}, nil, func() time.Time { return at })
 
-	result, err := service.UploadProfilePicture(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID, ExpectedSHA256: strings.Repeat("a", 64), Body: strings.NewReader("image"), Size: 5})
+	result, err := service.UploadProfilePicture(context.Background(), invocation.New(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID, ExpectedSHA256: strings.Repeat("a", 64), Body: strings.NewReader("image"), Size: 5})
 	require.NoError(t, err)
 	require.Equal(t, user.ID, result.ID, "identical replacement changed state: result=%#v store=%#v effects=%#v", result, persistence, effects.change)
 	require.Equal(t, user.Revision, result.Revision, "identical replacement changed state: result=%#v store=%#v effects=%#v", result, persistence, effects.change)
@@ -431,7 +432,7 @@ func TestUploadIdenticalToGeneratedDefaultIsANoOp(t *testing.T) {
 	effects := &profilePictureEffectsFake{events: &events}
 	service := newProfilePictureServiceForTest(persistence, persistence, content, &userProfileAuthorizerFake{events: &events}, &profilePictureAuditorFake{events: &events, beginID: model.NewID()}, effects, &profilePictureEffectFailuresFake{events: &events}, nil, func() time.Time { return at })
 
-	result, err := service.UploadProfilePicture(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID, ExpectedSHA256: strings.Repeat("a", 64), Body: strings.NewReader("image"), Size: 5})
+	result, err := service.UploadProfilePicture(context.Background(), invocation.New(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID, ExpectedSHA256: strings.Repeat("a", 64), Body: strings.NewReader("image"), Size: 5})
 	require.NoError(t, err)
 	require.Equal(t, user.Revision, result.Revision, "default-identical upload changed visible state: result=%#v store=%#v effect=%#v", result, persistence, effects.change)
 	require.True(t, persistence.discarded, "default-identical upload changed visible state: result=%#v store=%#v effect=%#v", result, persistence, effects.change)
@@ -453,7 +454,7 @@ func TestRemoveProfilePictureArchivesCustomAndPublishesDefaultAfterCommit(t *tes
 	effects := &profilePictureEffectsFake{events: &events}
 	service := newProfilePictureServiceForTest(persistence, persistence, &pictureContentFake{}, &userProfileAuthorizerFake{events: &events}, &profilePictureAuditorFake{events: &events, beginID: model.NewID()}, effects, &profilePictureEffectFailuresFake{events: &events}, nil, func() time.Time { return at })
 
-	updated, err := service.RemoveProfilePicture(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), RemoveProfilePictureCommand{UserID: user.ID, ExpectedSHA256: strings.Repeat("a", 64)})
+	updated, err := service.RemoveProfilePicture(context.Background(), invocation.New(model.Principal{UserID: user.ID}, model.RequestMetadata{}), RemoveProfilePictureCommand{UserID: user.ID, ExpectedSHA256: strings.Repeat("a", 64)})
 	require.NoError(t, err)
 	require.True(t, updated.CustomProfilePictureFileID.IsZero(), "removal result/input/effect = %#v / %#v / %#v", updated, persistence.removal, effects.change)
 	require.Equal(t, user.DefaultProfilePictureFileID, updated.DefaultProfilePictureFileID, "removal result/input/effect = %#v / %#v / %#v", updated, persistence.removal, effects.change)
@@ -471,7 +472,7 @@ func TestUploadAfterRemovalCreatesANewCustomFileEntry(t *testing.T) {
 	persistence := &pictureStoreFake{user: user, state: profilePictureState(user.DefaultProfilePictureFileID, strings.Repeat("d", 64))}
 	service := newProfilePictureServiceForTest(persistence, persistence, &pictureContentFake{}, &userProfileAuthorizerFake{events: &events}, &profilePictureAuditorFake{beginID: model.NewID()}, &profilePictureEffectsFake{}, &profilePictureEffectFailuresFake{}, nil, time.Now)
 
-	updated, err := service.UploadProfilePicture(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID, ExpectedSHA256: strings.Repeat("d", 64), Body: strings.NewReader("image"), Size: 5})
+	updated, err := service.UploadProfilePicture(context.Background(), invocation.New(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID, ExpectedSHA256: strings.Repeat("d", 64), Body: strings.NewReader("image"), Size: 5})
 	require.NoError(t, err)
 	require.False(t, updated.CustomProfilePictureFileID.IsZero(), "upload reused the retained default entry: %#v / %#v", updated, persistence.publication)
 	require.NotEqual(t, user.DefaultProfilePictureFileID, updated.CustomProfilePictureFileID, "upload reused the retained default entry: %#v / %#v", updated, persistence.publication)
@@ -487,7 +488,7 @@ func TestProfilePictureAuditFailurePreventsVisibleMutationAndEvent(t *testing.T)
 	auditor := &profilePictureAuditorFake{events: &events, beginErr: apperror.New("audit.unavailable")}
 	service := newProfilePictureServiceForTest(persistence, persistence, &pictureContentFake{events: &events}, &userProfileAuthorizerFake{events: &events}, auditor, effects, &profilePictureEffectFailuresFake{events: &events}, nil, time.Now)
 
-	_, err := service.UploadProfilePicture(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID, Body: strings.NewReader("image"), Size: 5})
+	_, err := service.UploadProfilePicture(context.Background(), invocation.New(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID, Body: strings.NewReader("image"), Size: 5})
 	require.True(t, apperror.Is(err, "audit.unavailable"), "audit failure result: err=%v publication=%#v effect=%#v", err, persistence.publication, effects.change)
 	require.Nil(t, persistence.publication, "audit failure result: err=%v publication=%#v effect=%#v", err, persistence.publication, effects.change)
 	require.True(t, effects.change.UserID.IsZero(), "audit failure result: err=%v publication=%#v effect=%#v", err, persistence.publication, effects.change)
@@ -504,7 +505,7 @@ func TestProfilePictureCommitFailureFailsAuditAndPublishesNoEvent(t *testing.T) 
 	effects := &profilePictureEffectsFake{events: &events}
 	service := newProfilePictureServiceForTest(persistence, persistence, &pictureContentFake{events: &events}, &userProfileAuthorizerFake{events: &events}, auditor, effects, &profilePictureEffectFailuresFake{events: &events}, nil, time.Now)
 
-	_, err := service.UploadProfilePicture(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID, Body: strings.NewReader("image"), Size: 5})
+	_, err := service.UploadProfilePicture(context.Background(), invocation.New(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID, Body: strings.NewReader("image"), Size: 5})
 	require.True(t, apperror.Is(err, "user.conflict"), "commit failure result: err=%v audit=%#v effect=%#v", err, auditor, effects.change)
 	require.Equal(t, "user.conflict", auditor.failCode, "commit failure result: err=%v audit=%#v effect=%#v", err, auditor, effects.change)
 	require.True(t, effects.change.UserID.IsZero(), "commit failure result: err=%v audit=%#v effect=%#v", err, auditor, effects.change)
@@ -549,7 +550,7 @@ func TestUploadProfilePictureAuthorizationDenialHasNoSideEffects(t *testing.T) {
 	content := &pictureContentFake{events: &events}
 	service := newProfilePictureServiceForTest(persistence, persistence, content, &userProfileAuthorizerFake{events: &events, writeErr: apperror.New("authorization.denied")}, &profilePictureAuditorFake{}, &profilePictureEffectsFake{}, &profilePictureEffectFailuresFake{}, nil, func() time.Time { return at })
 
-	_, err := service.UploadProfilePicture(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID, Body: strings.NewReader("image"), Size: 5})
+	_, err := service.UploadProfilePicture(context.Background(), invocation.New(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID, Body: strings.NewReader("image"), Size: 5})
 	require.True(t, apperror.Is(err, "authorization.denied"), "Upload() error = %v", err)
 	require.False(t, persistence.created, "denied upload side effects: created")
 	require.False(t, content.normalized, "denied upload side effects: created")
@@ -569,7 +570,7 @@ func TestGetProfilePictureAuthorizesAndMapsRendition(t *testing.T) {
 	contentAdapter := &pictureContentFake{events: &events}
 	service := newProfilePictureServiceForTest(persistence, persistence, contentAdapter, &userProfileAuthorizerFake{events: &events}, &profilePictureAuditorFake{}, &profilePictureEffectsFake{}, &profilePictureEffectFailuresFake{}, nil, func() time.Time { return at })
 
-	content, err := service.GetProfilePicture(context.Background(), NewInvocation(model.Principal{UserID: userID}, model.RequestMetadata{}), GetProfilePictureQuery{UserID: userID, Size: 256})
+	content, err := service.GetProfilePicture(context.Background(), invocation.New(model.Principal{UserID: userID}, model.RequestMetadata{}), GetProfilePictureQuery{UserID: userID, Size: 256})
 	require.NoError(t, err)
 	defer content.Body.Close()
 	wantEvents := []string{"authorize-read", "get-rendition", "open"}
@@ -591,7 +592,7 @@ func TestGetMissingDefaultRendersImmediatelyAndProposesDurableGeneration(t *test
 	jobs := &profilePictureDefaultJobsFake{}
 	service := newProfilePictureServiceForTest(persistence, persistence, &pictureContentFake{}, &userProfileAuthorizerFake{events: &events}, &profilePictureAuditorFake{}, &profilePictureEffectsFake{}, &profilePictureEffectFailuresFake{}, jobs, func() time.Time { return at })
 
-	content, err := service.GetProfilePicture(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), GetProfilePictureQuery{UserID: user.ID, Size: 256})
+	content, err := service.GetProfilePicture(context.Background(), invocation.New(model.Principal{UserID: user.ID}, model.RequestMetadata{}), GetProfilePictureQuery{UserID: user.ID, Size: 256})
 	require.NoError(t, err)
 	defer content.Body.Close()
 	require.Equal(t, `"`+strings.Repeat("d", 64)+`"`, content.ETag, "fallback = %#v jobs=%#v user=%#v", content, jobs, user)
@@ -620,7 +621,7 @@ func TestProfilePictureCapacityRefusalDoesNotPublishOrProposeMoreWork(t *testing
 			capacity := pictureCapacityError{}
 			content := &pictureContentFake{events: &events, workErr: fmt.Errorf("processing: %w", capacity)}
 			service := newProfilePictureServiceForTest(persistence, persistence, content, &userProfileAuthorizerFake{events: &events}, auditor, effects, &profilePictureEffectFailuresFake{}, jobs, time.Now)
-			invocation := NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{})
+			invocation := invocation.New(model.Principal{UserID: user.ID}, model.RequestMetadata{})
 			var err error
 			switch operation {
 			case "upload":

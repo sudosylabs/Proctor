@@ -12,23 +12,25 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/exam"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 type ExamRecordsApplication interface {
-	GetExamSittingRecords(context.Context, app.Invocation, model.ExamID, model.ExamSittingID) (*app.ExamSittingRecordsSnapshot, error)
-	GetSubmissionReviewWaiver(context.Context, app.Invocation, model.RetentionHoldScope) (*model.SubmissionReviewWaiver, error)
-	CompleteExamSittingRecords(context.Context, app.Invocation, app.CompleteExamSittingRecordsCommand) (*model.ExamSittingRecordsCompletion, error)
-	WaiveSubmissionReview(context.Context, app.Invocation, app.WaiveSubmissionReviewCommand) (*model.SubmissionReviewWaiver, error)
-	ListRetentionHolds(context.Context, app.Invocation, app.ListRetentionHoldsQuery) (*app.RetentionHoldPage, error)
-	CreateRetentionHold(context.Context, app.Invocation, app.CreateRetentionHoldCommand) (*model.RetentionHold, error)
-	ReleaseRetentionHold(context.Context, app.Invocation, app.ReleaseRetentionHoldCommand) (*model.RetentionHold, error)
+	GetExamSittingRecords(context.Context, invocation.Invocation, model.ExamID, model.ExamSittingID) (*store.ExamRecordsCompletionSnapshot, error)
+	GetSubmissionReviewWaiver(context.Context, invocation.Invocation, model.RetentionHoldScope) (*model.SubmissionReviewWaiver, error)
+	CompleteExamSittingRecords(context.Context, invocation.Invocation, exam.CompleteRecordsCommand) (*model.ExamSittingRecordsCompletion, error)
+	WaiveSubmissionReview(context.Context, invocation.Invocation, exam.WaiveReviewCommand) (*model.SubmissionReviewWaiver, error)
+	ListRetentionHolds(context.Context, invocation.Invocation, store.ExamRecordsHoldListOptions) (*store.ExamRecordsHoldPage, error)
+	CreateRetentionHold(context.Context, invocation.Invocation, exam.CreateRetentionHoldCommand) (*model.RetentionHold, error)
+	ReleaseRetentionHold(context.Context, invocation.Invocation, exam.ReleaseRetentionHoldCommand) (*model.RetentionHold, error)
 }
 
 type examRecordsHTTPModule struct{ application ExamRecordsApplication }
 
-func examRecordsResource(application ExamRecordsApplication) resource {
+func examRecordsResource(application ExamRecordsApplication) apiResource {
 	m := examRecordsHTTPModule{application: application}
 	completion := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"), literal("records-completion"))
 	waiver := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"), literal("submissions"), canonicalID("submission_id"), literal("review-waiver"))
@@ -194,7 +196,7 @@ func (m examRecordsHTTPModule) complete(request operationRequest) (operationResu
 	if err != nil {
 		return operationResult{}, err
 	}
-	value, err := m.application.CompleteExamSittingRecords(request.context, request.invocation(), app.CompleteExamSittingRecordsCommand{
+	value, err := m.application.CompleteExamSittingRecords(request.context, request.invocation(), exam.CompleteRecordsCommand{
 		Scope: model.RetentionHoldScope{ExamID: examID, SittingID: sittingID}, ExpectedRevision: revision, AcknowledgedEvidenceRevision: evidence, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
@@ -246,7 +248,7 @@ func (m examRecordsHTTPModule) waive(request operationRequest) (operationResult,
 			return operationResult{}, err
 		}
 	}
-	value, err := m.application.WaiveSubmissionReview(request.context, request.invocation(), app.WaiveSubmissionReviewCommand{Scope: scope, ExpectedRevision: revision,
+	value, err := m.application.WaiveSubmissionReview(request.context, request.invocation(), exam.WaiveReviewCommand{Scope: scope, ExpectedRevision: revision,
 		ExpectedDeliveryInventoryRevision: deliveryRevision, ExpectedReviewRevision: reviewRevision, ExpectedDiscrepancyCount: discrepancies, ReasonCode: body.ReasonCode, PrivateReason: body.PrivateReason, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
@@ -272,7 +274,7 @@ func (m examRecordsHTTPModule) createHold(request operationRequest) (operationRe
 	if err = model.ValidateRecordsReason(body.ReasonCode, body.PrivateReason); err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	value, err := m.application.CreateRetentionHold(request.context, request.invocation(), app.CreateRetentionHoldCommand{Scope: scope,
+	value, err := m.application.CreateRetentionHold(request.context, request.invocation(), exam.CreateRetentionHoldCommand{Scope: scope,
 		ReasonCode: body.ReasonCode, PrivateReason: body.PrivateReason, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
@@ -306,7 +308,7 @@ func (m examRecordsHTTPModule) releaseHold(request operationRequest) (operationR
 	if err = model.ValidateRecordsReason(body.ReasonCode, body.PrivateReason); err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	value, err := m.application.ReleaseRetentionHold(request.context, request.invocation(), app.ReleaseRetentionHoldCommand{Scope: scope, HoldID: holdID, ExpectedRevision: revision,
+	value, err := m.application.ReleaseRetentionHold(request.context, request.invocation(), exam.ReleaseRetentionHoldCommand{Scope: scope, HoldID: holdID, ExpectedRevision: revision,
 		ReasonCode: body.ReasonCode, PrivateReason: body.PrivateReason, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
@@ -348,7 +350,7 @@ func (m examRecordsHTTPModule) listHolds(request operationRequest) (operationRes
 	if err != nil {
 		return operationResult{}, err
 	}
-	query := app.ListRetentionHoldsQuery{Scope: scope, Limit: limit, IncludeReleased: includeReleased}
+	query := store.ExamRecordsHoldListOptions{Scope: scope, Limit: limit, IncludeReleased: includeReleased}
 	if raw := values.Get("cursor"); raw != "" {
 		cursor, decodeErr := decodeOpaqueCursor(raw, recordsHoldCursorSpec(scope, includeReleased))
 		if decodeErr != nil {

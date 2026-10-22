@@ -16,7 +16,9 @@ import (
 	"strings"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 type userProfileResponse struct {
@@ -61,7 +63,7 @@ type currentUserContextResponse struct {
 	User                         currentUserContextUserResponse     `json:"user"`
 	NoCurrentAffiliation         bool                               `json:"no_current_affiliation"`
 	NoAssignedAccess             bool                               `json:"no_assigned_access"`
-	AvailableProductAreas        []app.CurrentUserProductArea       `json:"available_product_areas"`
+	AvailableProductAreas        []store.CurrentUserProductArea     `json:"available_product_areas"`
 	ManagementScopes             []currentUserContextScopeResponse  `json:"management_scopes"`
 	ManagementScopesHasMore      bool                               `json:"management_scopes_has_more"`
 	UnresolvedAttempt            *currentUserContextAttemptResponse `json:"unresolved_attempt"`
@@ -114,9 +116,9 @@ type candidateExamActivityItemResponse struct {
 	ScheduledEndAt    string                                   `json:"scheduled_end_at"`
 	SittingState      model.ExamSittingState                   `json:"sitting_state"`
 	SittingReasonCode *string                                  `json:"sitting_reason_code"`
-	ActivityState     app.CandidateExamActivityState           `json:"activity_state"`
-	AccessState       app.CandidateExamAccessState             `json:"access_state"`
-	AllowedActions    []app.CandidateExamAllowedAction         `json:"allowed_actions"`
+	ActivityState     store.CandidateExamActivityState         `json:"activity_state"`
+	AccessState       store.CandidateExamAccessState           `json:"access_state"`
+	AllowedActions    []store.CandidateExamAllowedAction       `json:"allowed_actions"`
 	Attempt           *candidateExamActivityAttemptResponse    `json:"attempt"`
 	Submission        *candidateExamActivitySubmissionResponse `json:"submission"`
 	Result            *candidateExamActivityResultResponse     `json:"result"`
@@ -147,7 +149,7 @@ type userProfileResourceModule struct {
 	profiles UserProfileApplication
 }
 
-func userProfileResource(profiles UserProfileApplication) resource {
+func userProfileResource(profiles UserProfileApplication) apiResource {
 	module := userProfileResourceModule{profiles: profiles}
 	user := apiPath(literal("users"), canonicalID("user_id"))
 	picture := appendRoutePath(user, literal("profile-picture"))
@@ -171,7 +173,7 @@ func userProfileResource(profiles UserProfileApplication) resource {
 }
 
 func (m userProfileResourceModule) examActivity(request operationRequest) (operationResult, error) {
-	query := app.ListCandidateExamActivityQuery{Limit: 50}
+	query := attempt.CandidateActivityQuery{Limit: 50}
 	values := request.request.URL.Query()
 	if raw := values.Get("limit"); raw != "" {
 		limit, err := strconv.Atoi(raw)
@@ -201,7 +203,7 @@ func (m userProfileResourceModule) examActivity(request operationRequest) (opera
 			ScheduledStartAt: model.FormatRFC3339(item.ScheduledStartAt),
 			ScheduledEndAt:   model.FormatRFC3339(item.ScheduledEndAt), SittingState: item.SittingState,
 			ActivityState: item.ActivityState, AccessState: item.AccessState,
-			AllowedActions: append([]app.CandidateExamAllowedAction(nil), item.AllowedActions...)}
+			AllowedActions: append([]store.CandidateExamAllowedAction(nil), item.AllowedActions...)}
 		if item.SittingReasonCode != "" {
 			value := item.SittingReasonCode
 			mapped.SittingReasonCode = &value
@@ -264,7 +266,7 @@ func (m userProfileResourceModule) context(request operationRequest) (operationR
 	response := currentUserContextResponse{User: currentUserContextUserResponse{ID: view.UserID.String(), Username: view.Username,
 		DisplayName: view.DisplayName, ProfilePictureReference: view.ProfilePictureReference},
 		NoCurrentAffiliation: view.NoCurrentAffiliation, NoAssignedAccess: view.NoAssignedAccess,
-		AvailableProductAreas:   append([]app.CurrentUserProductArea(nil), view.AvailableProductAreas...),
+		AvailableProductAreas:   append([]store.CurrentUserProductArea(nil), view.AvailableProductAreas...),
 		ManagementScopesHasMore: view.ManagementScopesHasMore, SessionManagementAvailable: view.SessionManagementAvailable,
 		ManagementScopes: make([]currentUserContextScopeResponse, 0, len(view.ManagementScopes))}
 	for _, scope := range view.ManagementScopes {

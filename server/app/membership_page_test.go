@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -49,7 +50,7 @@ func TestAcademicUnitMemberPagingAuthorizesEveryPage(t *testing.T) {
 	authorization := &programmeAuthorizerFake{events: &events}
 	now := model.TimeFromMillis(1000)
 	service := &academicUnitMemberService{store: persistence, authorization: authorization, now: func() time.Time { return now }}
-	first, err := service.ListAcademicUnitMembersPage(ctx, Invocation{}, ListAcademicUnitMembersPageQuery{AcademicUnitID: scopeID, MembershipPageQuery: MembershipPageQuery{Limit: 1}})
+	first, err := service.ListAcademicUnitMembersPage(ctx, invocation.Invocation{}, ListAcademicUnitMembersPageQuery{AcademicUnitID: scopeID, MembershipPageQuery: MembershipPageQuery{Limit: 1}})
 	require.NoError(t, err, "first page = %#v", first)
 	require.True(t, first.HasMore, "first page = %#v", first)
 	require.Len(t, events, 2)
@@ -57,7 +58,7 @@ func TestAcademicUnitMemberPagingAuthorizesEveryPage(t *testing.T) {
 	require.Equal(t, "list-page", events[1])
 	now = now.Add(time.Hour)
 	persistence.pageResult = &store.AcademicUnitMemberPage{}
-	next, err := service.ListAcademicUnitMembersPage(ctx, Invocation{}, ListAcademicUnitMembersPageQuery{AcademicUnitID: scopeID, AfterUserID: member.UserID, AfterID: member.ID, MembershipPageQuery: MembershipPageQuery{ActiveAt: &first.ActiveAt}})
+	next, err := service.ListAcademicUnitMembersPage(ctx, invocation.Invocation{}, ListAcademicUnitMembersPageQuery{AcademicUnitID: scopeID, AfterUserID: member.UserID, AfterID: member.ID, MembershipPageQuery: MembershipPageQuery{ActiveAt: &first.ActiveAt}})
 	require.NoError(t, err, "last page = %#v", next)
 	require.False(t, next.HasMore, "last page = %#v", next)
 	require.NotNil(t, next.Members, "last page = %#v", next)
@@ -66,7 +67,7 @@ func TestAcademicUnitMemberPagingAuthorizesEveryPage(t *testing.T) {
 	require.Equal(t, member.UserID, persistence.pageOptions.AfterUserID)
 	authorization.err = apperror.New("authorization.denied")
 	events = nil
-	_, err = service.ListAcademicUnitMembersPage(ctx, Invocation{}, ListAcademicUnitMembersPageQuery{AcademicUnitID: scopeID, AfterUserID: member.UserID, AfterID: member.ID, MembershipPageQuery: MembershipPageQuery{ActiveAt: &first.ActiveAt}})
+	_, err = service.ListAcademicUnitMembersPage(ctx, invocation.Invocation{}, ListAcademicUnitMembersPageQuery{AcademicUnitID: scopeID, AfterUserID: member.UserID, AfterID: member.ID, MembershipPageQuery: MembershipPageQuery{ActiveAt: &first.ActiveAt}})
 	require.True(t, apperror.Is(err, "authorization.denied"), "revoked membership read: %v, events", err)
 	require.Len(t, events, 1, "revoked membership read: %v, events", err)
 	require.Equal(t, "authorize", events[0], "revoked membership read: %v, events", err)
@@ -82,7 +83,7 @@ func TestClassMemberPagingAuthorizesEveryPage(t *testing.T) {
 	authorization := &programmeAuthorizerFake{events: &events}
 	now := model.TimeFromMillis(1000)
 	service := &classMemberService{store: persistence, authorization: authorization, now: func() time.Time { return now }}
-	first, err := service.ListClassMembersPage(ctx, Invocation{}, ListClassMembersPageQuery{ClassID: scopeID, MembershipPageQuery: MembershipPageQuery{Limit: 1}})
+	first, err := service.ListClassMembersPage(ctx, invocation.Invocation{}, ListClassMembersPageQuery{ClassID: scopeID, MembershipPageQuery: MembershipPageQuery{Limit: 1}})
 	require.NoError(t, err, "first page = %#v", first)
 	require.True(t, first.HasMore, "first page = %#v", first)
 	require.Len(t, events, 2)
@@ -90,7 +91,7 @@ func TestClassMemberPagingAuthorizesEveryPage(t *testing.T) {
 	require.Equal(t, "list-page", events[1])
 	now = now.Add(time.Hour)
 	persistence.pageResult = &store.ClassMemberPage{}
-	next, err := service.ListClassMembersPage(ctx, Invocation{}, ListClassMembersPageQuery{ClassID: scopeID, AfterUserID: member.UserID, AfterID: member.ID, MembershipPageQuery: MembershipPageQuery{ActiveAt: &first.ActiveAt}})
+	next, err := service.ListClassMembersPage(ctx, invocation.Invocation{}, ListClassMembersPageQuery{ClassID: scopeID, AfterUserID: member.UserID, AfterID: member.ID, MembershipPageQuery: MembershipPageQuery{ActiveAt: &first.ActiveAt}})
 	require.NoError(t, err, "last page = %#v", next)
 	require.False(t, next.HasMore, "last page = %#v", next)
 	require.NotNil(t, next.Members, "last page = %#v", next)
@@ -99,7 +100,7 @@ func TestClassMemberPagingAuthorizesEveryPage(t *testing.T) {
 	require.Equal(t, member.UserID, persistence.pageOptions.AfterUserID)
 	authorization.err = apperror.New("authorization.denied")
 	events = nil
-	_, err = service.ListClassMembersPage(ctx, Invocation{}, ListClassMembersPageQuery{ClassID: scopeID, AfterUserID: member.UserID, AfterID: member.ID, MembershipPageQuery: MembershipPageQuery{ActiveAt: &first.ActiveAt}})
+	_, err = service.ListClassMembersPage(ctx, invocation.Invocation{}, ListClassMembersPageQuery{ClassID: scopeID, AfterUserID: member.UserID, AfterID: member.ID, MembershipPageQuery: MembershipPageQuery{ActiveAt: &first.ActiveAt}})
 	require.True(t, apperror.Is(err, "authorization.denied"), "revoked membership read: %v, events", err)
 	require.Len(t, events, 1, "revoked membership read: %v, events", err)
 	require.Equal(t, "authorize", events[0], "revoked membership read: %v, events", err)

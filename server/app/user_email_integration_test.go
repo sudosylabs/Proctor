@@ -24,6 +24,7 @@ import (
 
 	"github.com/sudosylabs/proctor/packages/mail"
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -43,7 +44,7 @@ func TestEmailTransitionsUseRealServerGraphAndFrozenRecipients(t *testing.T) {
 	)
 	ctx := context.Background()
 	const password = "correct horse battery staple"
-	bootstrap, appErr := helper.App.BootstrapInstallation(ctx, app.Invocation{}, app.BootstrapInstallationCommand{
+	bootstrap, appErr := helper.App.BootstrapInstallation(ctx, invocation.Invocation{}, app.BootstrapInstallationCommand{
 		InstitutionName: "email-transition-university", InstitutionDisplayName: "Email Transition University",
 		AdministratorUsername: "email-transition-admin", AdministratorEmail: "email-transition-admin@example.edu",
 		AdministratorDisplayName: "Email Transition Admin", AdministratorLocale: "en", AdministratorTimezone: "UTC",

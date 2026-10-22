@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -32,12 +33,12 @@ type classMemberHTTPApplication struct {
 	endCommand    app.EndClassMemberCommand
 }
 
-func (a *classMemberHTTPApplication) EnrollClassMember(_ context.Context, _ app.Invocation, command app.EnrollClassMemberCommand) (*model.ClassEnrollment, error) {
+func (a *classMemberHTTPApplication) EnrollClassMember(_ context.Context, _ invocation.Invocation, command app.EnrollClassMemberCommand) (*model.ClassEnrollment, error) {
 	a.enrollCommand = command
 	return a.result, nil
 }
 
-func (a *classMemberHTTPApplication) EndClassMember(_ context.Context, _ app.Invocation, command app.EndClassMemberCommand) (*model.ClassMember, error) {
+func (a *classMemberHTTPApplication) EndClassMember(_ context.Context, _ invocation.Invocation, command app.EndClassMemberCommand) (*model.ClassMember, error) {
 	a.endCommand = command
 	return a.ended, nil
 }
@@ -106,7 +107,7 @@ func TestClassMemberHistoryQueryIsForwarded(t *testing.T) {
 	require.True(t, *query.History, "history")
 }
 
-func (a *classMemberHTTPApplication) ListClassMembersPage(_ context.Context, _ app.Invocation, query app.ListClassMembersPageQuery) (*app.ClassMemberPage, error) {
+func (a *classMemberHTTPApplication) ListClassMembersPage(_ context.Context, _ invocation.Invocation, query app.ListClassMembersPageQuery) (*app.ClassMemberPage, error) {
 	a.pageQuery = query
 	if a.pageResult != nil {
 		return a.pageResult, nil

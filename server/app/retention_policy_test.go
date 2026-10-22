@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -81,7 +82,7 @@ func TestRetentionPolicyReplacementRequiresStrongRecentSessionBeforeWork(t *test
 			fixture := newRetentionPolicyFixture(t)
 			principal := fixture.invocation.Principal()
 			test.alter(&principal)
-			result, err := fixture.service.ReplaceRetentionPolicy(t.Context(), NewInvocation(principal, model.RequestMetadata{}), retentionPolicyCommand())
+			result, err := fixture.service.ReplaceRetentionPolicy(t.Context(), invocation.New(principal, model.RequestMetadata{}), retentionPolicyCommand())
 			require.Nil(t, result, "unassured replacement = %#v, %v; authorization calls", result, err)
 			require.True(t, apperror.Is(err, test.code), "unassured replacement = %#v, %v; authorization calls", result, err)
 			require.Equal(t, 0, fixture.authorization.calls, "unassured replacement = %#v, %v; authorization calls", result, err)
@@ -299,7 +300,7 @@ type retentionPolicyFixture struct {
 	authorization *retentionPolicyAuthorizationFake
 	audit         *accessPolicyAuditFake
 	institution   *model.Institution
-	invocation    Invocation
+	invocation    invocation.Invocation
 	at            time.Time
 }
 
@@ -318,7 +319,7 @@ func newRetentionPolicyFixture(t *testing.T) retentionPolicyFixture {
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor,
 		AuthenticatedAt: at, MFACompletedAt: model.OptionalTimeFrom(at), ClientType: model.SessionClientWeb}
 	return retentionPolicyFixture{service: service, policies: policies, authorization: authorization, audit: audit, institution: institution,
-		invocation: NewInvocation(principal, model.RequestMetadata{RequestID: "retention-policy"}), at: at}
+		invocation: invocation.New(principal, model.RequestMetadata{RequestID: "retention-policy"}), at: at}
 }
 
 func retentionPolicyCommand() ReplaceRetentionPolicyCommand {
@@ -353,7 +354,7 @@ type retentionPolicyAuthorizationFake struct {
 	err      error
 }
 
-func (a *retentionPolicyAuthorizationFake) Authorize(_ context.Context, _ Invocation, action model.Action, resource model.Resource) error {
+func (a *retentionPolicyAuthorizationFake) Authorize(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource) error {
 	a.action, a.resource = action, resource
 	a.calls++
 	return a.err

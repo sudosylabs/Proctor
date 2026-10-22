@@ -41,7 +41,7 @@ type userSettingsResourceModule struct {
 	settings UserSettingsApplication
 }
 
-func userSettingsResource(settings UserSettingsApplication) resource {
+func userSettingsResource(settings UserSettingsApplication) apiResource {
 	module := userSettingsResourceModule{settings: settings}
 	path := apiPath(literal("users"), literal("me"), literal("settings"))
 	replace := sessionRoute(

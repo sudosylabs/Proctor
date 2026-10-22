@@ -11,7 +11,11 @@ import (
 	"context"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/exam"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 // The interfaces in this file are transport-owned capability contracts. They
@@ -24,142 +28,142 @@ type Authenticator interface {
 }
 
 type AccountStateApplication interface {
-	SetUserEnabled(context.Context, app.Invocation, app.SetUserEnabledCommand) (*model.User, error)
+	SetUserEnabled(context.Context, invocation.Invocation, app.SetUserEnabledCommand) (*model.User, error)
 }
 
 type SessionAdministrationApplication interface {
-	ListUserSessions(context.Context, app.Invocation, app.ListUserSessionsQuery) ([]*model.Session, error)
-	RevokeUserSession(context.Context, app.Invocation, app.RevokeUserSessionCommand) error
-	RevokeUserSessions(context.Context, app.Invocation, app.RevokeUserSessionsCommand) error
+	ListUserSessions(context.Context, invocation.Invocation, app.ListUserSessionsQuery) ([]*model.Session, error)
+	RevokeUserSession(context.Context, invocation.Invocation, app.RevokeUserSessionCommand) error
+	RevokeUserSessions(context.Context, invocation.Invocation, app.RevokeUserSessionsCommand) error
 }
 
 type UserProfileApplication interface {
-	GetCurrentUserContext(context.Context, app.Invocation) (*app.CurrentUserContextView, error)
-	ListCandidateExamActivity(context.Context, app.Invocation, app.ListCandidateExamActivityQuery) (app.CandidateExamActivityPage, error)
-	SearchUsers(context.Context, app.Invocation, app.SearchUsersQuery) (app.Page[*model.User], error)
-	GetUserProfile(context.Context, app.Invocation, app.GetUserProfileQuery) (*model.User, error)
-	UpdateUserProfile(context.Context, app.Invocation, app.UpdateUserProfileCommand) (*model.User, error)
-	ChangeUserEmail(context.Context, app.Invocation, app.ChangeUserEmailCommand) (*app.UserEmailState, error)
-	VerifyUserEmailPrivileged(context.Context, app.Invocation, app.VerifyUserEmailPrivilegedCommand) (*app.UserEmailState, error)
-	UploadProfilePicture(context.Context, app.Invocation, app.UploadProfilePictureCommand) (*model.User, error)
-	RemoveProfilePicture(context.Context, app.Invocation, app.RemoveProfilePictureCommand) (*model.User, error)
-	GetProfilePicture(context.Context, app.Invocation, app.GetProfilePictureQuery) (*app.ProfilePictureContent, error)
+	GetCurrentUserContext(context.Context, invocation.Invocation) (*app.CurrentUserContextView, error)
+	ListCandidateExamActivity(context.Context, invocation.Invocation, attempt.CandidateActivityQuery) (attempt.CandidateActivityPage, error)
+	SearchUsers(context.Context, invocation.Invocation, app.SearchUsersQuery) (app.Page[*model.User], error)
+	GetUserProfile(context.Context, invocation.Invocation, app.GetUserProfileQuery) (*model.User, error)
+	UpdateUserProfile(context.Context, invocation.Invocation, app.UpdateUserProfileCommand) (*model.User, error)
+	ChangeUserEmail(context.Context, invocation.Invocation, app.ChangeUserEmailCommand) (*app.UserEmailState, error)
+	VerifyUserEmailPrivileged(context.Context, invocation.Invocation, app.VerifyUserEmailPrivilegedCommand) (*app.UserEmailState, error)
+	UploadProfilePicture(context.Context, invocation.Invocation, app.UploadProfilePictureCommand) (*model.User, error)
+	RemoveProfilePicture(context.Context, invocation.Invocation, app.RemoveProfilePictureCommand) (*model.User, error)
+	GetProfilePicture(context.Context, invocation.Invocation, app.GetProfilePictureQuery) (*app.ProfilePictureContent, error)
 }
 
 type UserSettingsApplication interface {
-	ReadOwnUserSettings(context.Context, app.Invocation) (app.UserSettingsView, error)
-	ReplaceOwnUserSettings(context.Context, app.Invocation, app.ReplaceOwnUserSettingsCommand) (app.UserSettingsReplacementResult, error)
+	ReadOwnUserSettings(context.Context, invocation.Invocation) (app.UserSettingsView, error)
+	ReplaceOwnUserSettings(context.Context, invocation.Invocation, app.ReplaceOwnUserSettingsCommand) (app.UserSettingsReplacementResult, error)
 }
 
 type AcademicUnitApplication interface {
-	GetAcademicUnit(context.Context, app.Invocation, app.GetAcademicUnitQuery) (*model.AcademicUnit, error)
-	ListAcademicUnits(context.Context, app.Invocation, app.ListAcademicUnitsQuery) (app.Page[*model.AcademicUnit], error)
-	SearchAcademicUnits(context.Context, app.Invocation, app.SearchAcademicUnitsQuery) (app.Page[*model.AcademicUnit], error)
-	CreateAcademicUnit(context.Context, app.Invocation, app.CreateAcademicUnitCommand) (*model.AcademicUnit, error)
-	UpdateAcademicUnit(context.Context, app.Invocation, app.UpdateAcademicUnitCommand) (*model.AcademicUnit, error)
-	ArchiveAcademicUnit(context.Context, app.Invocation, app.ArchiveAcademicUnitCommand) error
+	GetAcademicUnit(context.Context, invocation.Invocation, app.GetAcademicUnitQuery) (*model.AcademicUnit, error)
+	ListAcademicUnits(context.Context, invocation.Invocation, app.ListAcademicUnitsQuery) (app.Page[*model.AcademicUnit], error)
+	SearchAcademicUnits(context.Context, invocation.Invocation, app.SearchAcademicUnitsQuery) (app.Page[*model.AcademicUnit], error)
+	CreateAcademicUnit(context.Context, invocation.Invocation, app.CreateAcademicUnitCommand) (*model.AcademicUnit, error)
+	UpdateAcademicUnit(context.Context, invocation.Invocation, app.UpdateAcademicUnitCommand) (*model.AcademicUnit, error)
+	ArchiveAcademicUnit(context.Context, invocation.Invocation, app.ArchiveAcademicUnitCommand) error
 }
 
 type InstitutionApplication interface {
-	GetInstitution(context.Context, app.Invocation, app.GetInstitutionQuery) (*model.Institution, error)
-	UpdateInstitution(context.Context, app.Invocation, app.UpdateInstitutionCommand) (*model.Institution, error)
+	GetInstitution(context.Context, invocation.Invocation, app.GetInstitutionQuery) (*model.Institution, error)
+	UpdateInstitution(context.Context, invocation.Invocation, app.UpdateInstitutionCommand) (*model.Institution, error)
 }
 
 type ProgrammeApplication interface {
-	GetProgramme(context.Context, app.Invocation, app.GetProgrammeQuery) (*model.Programme, error)
-	ListProgrammes(context.Context, app.Invocation, app.ListProgrammesQuery) (app.Page[*model.Programme], error)
-	CreateProgramme(context.Context, app.Invocation, app.CreateProgrammeCommand) (*model.Programme, error)
-	UpdateProgramme(context.Context, app.Invocation, app.UpdateProgrammeCommand) (*model.Programme, error)
-	ArchiveProgramme(context.Context, app.Invocation, app.ArchiveProgrammeCommand) error
+	GetProgramme(context.Context, invocation.Invocation, app.GetProgrammeQuery) (*model.Programme, error)
+	ListProgrammes(context.Context, invocation.Invocation, app.ListProgrammesQuery) (app.Page[*model.Programme], error)
+	CreateProgramme(context.Context, invocation.Invocation, app.CreateProgrammeCommand) (*model.Programme, error)
+	UpdateProgramme(context.Context, invocation.Invocation, app.UpdateProgrammeCommand) (*model.Programme, error)
+	ArchiveProgramme(context.Context, invocation.Invocation, app.ArchiveProgrammeCommand) error
 }
 
 type ProgrammeLevelApplication interface {
-	GetProgrammeLevel(context.Context, app.Invocation, app.GetProgrammeLevelQuery) (*model.ProgrammeLevel, error)
-	ListProgrammeLevels(context.Context, app.Invocation, app.ListProgrammeLevelsQuery) (app.Page[*model.ProgrammeLevel], error)
-	CreateProgrammeLevel(context.Context, app.Invocation, app.CreateProgrammeLevelCommand) (*model.ProgrammeLevel, error)
-	UpdateProgrammeLevel(context.Context, app.Invocation, app.UpdateProgrammeLevelCommand) (*model.ProgrammeLevel, error)
-	ArchiveProgrammeLevel(context.Context, app.Invocation, app.ArchiveProgrammeLevelCommand) error
+	GetProgrammeLevel(context.Context, invocation.Invocation, app.GetProgrammeLevelQuery) (*model.ProgrammeLevel, error)
+	ListProgrammeLevels(context.Context, invocation.Invocation, app.ListProgrammeLevelsQuery) (app.Page[*model.ProgrammeLevel], error)
+	CreateProgrammeLevel(context.Context, invocation.Invocation, app.CreateProgrammeLevelCommand) (*model.ProgrammeLevel, error)
+	UpdateProgrammeLevel(context.Context, invocation.Invocation, app.UpdateProgrammeLevelCommand) (*model.ProgrammeLevel, error)
+	ArchiveProgrammeLevel(context.Context, invocation.Invocation, app.ArchiveProgrammeLevelCommand) error
 }
 
 type AcademicPeriodApplication interface {
-	GetAcademicPeriod(context.Context, app.Invocation, app.GetAcademicPeriodQuery) (*model.AcademicPeriod, error)
-	ListAcademicPeriods(context.Context, app.Invocation, app.ListAcademicPeriodsQuery) (app.Page[*model.AcademicPeriod], error)
-	CreateAcademicPeriod(context.Context, app.Invocation, app.CreateAcademicPeriodCommand) (*model.AcademicPeriod, error)
-	UpdateAcademicPeriod(context.Context, app.Invocation, app.UpdateAcademicPeriodCommand) (*model.AcademicPeriod, error)
-	ArchiveAcademicPeriod(context.Context, app.Invocation, app.ArchiveAcademicPeriodCommand) error
+	GetAcademicPeriod(context.Context, invocation.Invocation, app.GetAcademicPeriodQuery) (*model.AcademicPeriod, error)
+	ListAcademicPeriods(context.Context, invocation.Invocation, app.ListAcademicPeriodsQuery) (app.Page[*model.AcademicPeriod], error)
+	CreateAcademicPeriod(context.Context, invocation.Invocation, app.CreateAcademicPeriodCommand) (*model.AcademicPeriod, error)
+	UpdateAcademicPeriod(context.Context, invocation.Invocation, app.UpdateAcademicPeriodCommand) (*model.AcademicPeriod, error)
+	ArchiveAcademicPeriod(context.Context, invocation.Invocation, app.ArchiveAcademicPeriodCommand) error
 }
 
 type ClassApplication interface {
-	GetClass(context.Context, app.Invocation, app.GetClassQuery) (*model.Class, error)
-	ListClasses(context.Context, app.Invocation, app.ListClassesQuery) (app.Page[*model.Class], error)
-	SearchClasses(context.Context, app.Invocation, app.SearchClassesQuery) (app.Page[*model.Class], error)
-	CreateClass(context.Context, app.Invocation, app.CreateClassCommand) (*model.Class, error)
-	UpdateClass(context.Context, app.Invocation, app.UpdateClassCommand) (*model.Class, error)
-	ArchiveClass(context.Context, app.Invocation, app.ArchiveClassCommand) error
+	GetClass(context.Context, invocation.Invocation, app.GetClassQuery) (*model.Class, error)
+	ListClasses(context.Context, invocation.Invocation, app.ListClassesQuery) (app.Page[*model.Class], error)
+	SearchClasses(context.Context, invocation.Invocation, app.SearchClassesQuery) (app.Page[*model.Class], error)
+	CreateClass(context.Context, invocation.Invocation, app.CreateClassCommand) (*model.Class, error)
+	UpdateClass(context.Context, invocation.Invocation, app.UpdateClassCommand) (*model.Class, error)
+	ArchiveClass(context.Context, invocation.Invocation, app.ArchiveClassCommand) error
 }
 
 type ExamApplication interface {
-	CreateExam(context.Context, app.Invocation, app.CreateExamCommand) (app.ExamView, error)
-	GetExam(context.Context, app.Invocation, app.GetExamQuery) (app.ExamView, error)
-	EditExamDraftText(context.Context, app.Invocation, app.EditExamDraftTextCommand) (app.ExamView, error)
-	ConfigureExamDraftNativePolicy(context.Context, app.Invocation, app.ConfigureExamDraftNativePolicyCommand) (app.ExamView, error)
-	ConfigureExamDraftFocusLoss(context.Context, app.Invocation, app.ConfigureExamDraftFocusLossCommand) (app.ExamView, error)
-	ConfigureExamDraftBrowserPolicy(context.Context, app.Invocation, app.ConfigureExamDraftBrowserPolicyCommand) (app.ExamView, error)
-	ListExams(context.Context, app.Invocation, app.ListExamsQuery) (app.ExamCatalogPage, error)
-	ArchiveExam(context.Context, app.Invocation, app.ArchiveExamCommand) (model.Exam, error)
-	ListExamManagers(context.Context, app.Invocation, app.ListExamManagersQuery) (app.ExamManagerPage, error)
-	AddExamManager(context.Context, app.Invocation, app.AddExamManagerCommand) (app.ExamManagerChange, error)
-	RemoveExamManager(context.Context, app.Invocation, app.RemoveExamManagerCommand) (app.ExamManagerChange, error)
-	TransferExamOwnership(context.Context, app.Invocation, app.TransferExamOwnershipCommand) (app.ExamManagerChange, error)
+	CreateExam(context.Context, invocation.Invocation, exam.CreateCommand) (exam.View, error)
+	GetExam(context.Context, invocation.Invocation, exam.GetQuery) (exam.View, error)
+	EditExamDraftText(context.Context, invocation.Invocation, exam.EditDraftTextCommand) (exam.View, error)
+	ConfigureExamDraftNativePolicy(context.Context, invocation.Invocation, exam.ConfigureDraftNativePolicyCommand) (exam.View, error)
+	ConfigureExamDraftFocusLoss(context.Context, invocation.Invocation, exam.ConfigureDraftFocusLossCommand) (exam.View, error)
+	ConfigureExamDraftBrowserPolicy(context.Context, invocation.Invocation, exam.ConfigureDraftBrowserPolicyCommand) (exam.View, error)
+	ListExams(context.Context, invocation.Invocation, exam.ListQuery) (exam.CatalogPage, error)
+	ArchiveExam(context.Context, invocation.Invocation, exam.ArchiveCommand) (model.Exam, error)
+	ListExamManagers(context.Context, invocation.Invocation, exam.ListManagersQuery) (exam.ManagerPage, error)
+	AddExamManager(context.Context, invocation.Invocation, exam.AddManagerCommand) (store.ExamManagerCommandResult, error)
+	RemoveExamManager(context.Context, invocation.Invocation, exam.RemoveManagerCommand) (store.ExamManagerCommandResult, error)
+	TransferExamOwnership(context.Context, invocation.Invocation, exam.TransferOwnerCommand) (store.ExamManagerCommandResult, error)
 }
 
 type AffiliationApplication interface {
-	ListAffiliations(context.Context, app.Invocation, app.ListAffiliationsQuery) ([]*model.Affiliation, error)
-	CreateAffiliation(context.Context, app.Invocation, app.CreateAffiliationCommand) (*model.Affiliation, error)
-	EndAffiliation(context.Context, app.Invocation, app.EndAffiliationCommand) (*model.Affiliation, error)
+	ListAffiliations(context.Context, invocation.Invocation, app.ListAffiliationsQuery) ([]*model.Affiliation, error)
+	CreateAffiliation(context.Context, invocation.Invocation, app.CreateAffiliationCommand) (*model.Affiliation, error)
+	EndAffiliation(context.Context, invocation.Invocation, app.EndAffiliationCommand) (*model.Affiliation, error)
 }
 
 type AcademicUnitMemberApplication interface {
-	ListAcademicUnitMembersPage(context.Context, app.Invocation, app.ListAcademicUnitMembersPageQuery) (*app.AcademicUnitMemberPage, error)
-	CreateAcademicUnitMember(context.Context, app.Invocation, app.CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error)
-	EndAcademicUnitMember(context.Context, app.Invocation, app.EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error)
+	ListAcademicUnitMembersPage(context.Context, invocation.Invocation, app.ListAcademicUnitMembersPageQuery) (*app.AcademicUnitMemberPage, error)
+	CreateAcademicUnitMember(context.Context, invocation.Invocation, app.CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error)
+	EndAcademicUnitMember(context.Context, invocation.Invocation, app.EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error)
 }
 
 type ClassMemberApplication interface {
-	ListClassMembersPage(context.Context, app.Invocation, app.ListClassMembersPageQuery) (*app.ClassMemberPage, error)
-	EnrollClassMember(context.Context, app.Invocation, app.EnrollClassMemberCommand) (*model.ClassEnrollment, error)
-	EndClassMember(context.Context, app.Invocation, app.EndClassMemberCommand) (*model.ClassMember, error)
+	ListClassMembersPage(context.Context, invocation.Invocation, app.ListClassMembersPageQuery) (*app.ClassMemberPage, error)
+	EnrollClassMember(context.Context, invocation.Invocation, app.EnrollClassMemberCommand) (*model.ClassEnrollment, error)
+	EndClassMember(context.Context, invocation.Invocation, app.EndClassMemberCommand) (*model.ClassMember, error)
 }
 
 type Sessions interface {
-	ListSessions(context.Context, app.Invocation, app.ListSessionsQuery) ([]*model.Session, error)
-	RevokeSession(context.Context, app.Invocation, app.RevokeSessionCommand) error
-	RevokeAllSessions(context.Context, app.Invocation, app.RevokeAllSessionsCommand) error
+	ListSessions(context.Context, invocation.Invocation, app.ListSessionsQuery) ([]*model.Session, error)
+	RevokeSession(context.Context, invocation.Invocation, app.RevokeSessionCommand) error
+	RevokeAllSessions(context.Context, invocation.Invocation, app.RevokeAllSessionsCommand) error
 }
 
 type PersonalAccessTokens interface {
-	CreatePersonalAccessToken(context.Context, app.Invocation, app.CreatePersonalAccessTokenCommand) (*model.PersonalAccessTokenCreation, error)
-	ListPersonalAccessTokens(context.Context, app.Invocation, app.ListPersonalAccessTokensQuery) ([]*model.PersonalAccessToken, error)
-	RevokePersonalAccessToken(context.Context, app.Invocation, app.RevokePersonalAccessTokenCommand) (*model.PersonalAccessToken, error)
-	SetPersonalAccessTokenDisabled(context.Context, app.Invocation, app.SetPersonalAccessTokenDisabledCommand) (*model.PersonalAccessToken, error)
+	CreatePersonalAccessToken(context.Context, invocation.Invocation, app.CreatePersonalAccessTokenCommand) (*model.PersonalAccessTokenCreation, error)
+	ListPersonalAccessTokens(context.Context, invocation.Invocation, app.ListPersonalAccessTokensQuery) ([]*model.PersonalAccessToken, error)
+	RevokePersonalAccessToken(context.Context, invocation.Invocation, app.RevokePersonalAccessTokenCommand) (*model.PersonalAccessToken, error)
+	SetPersonalAccessTokenDisabled(context.Context, invocation.Invocation, app.SetPersonalAccessTokenDisabledCommand) (*model.PersonalAccessToken, error)
 }
 
 type MFA interface {
-	GetMFAStatus(context.Context, app.Invocation, app.GetMFAStatusQuery) (*app.MFAStatus, error)
-	SetupMFA(context.Context, app.Invocation, app.SetupMFACommand) (*app.MFASetup, error)
-	ActivateMFA(context.Context, app.Invocation, app.ActivateMFACommand) (*app.MFAActivation, error)
-	ChallengeMFA(context.Context, app.Invocation, app.ChallengeMFACommand) (*model.Session, error)
-	RegenerateMFARecoveryCodes(context.Context, app.Invocation, app.RegenerateMFARecoveryCodesCommand) ([]string, error)
-	DisableMFA(context.Context, app.Invocation, app.DisableMFACommand) error
+	GetMFAStatus(context.Context, invocation.Invocation, app.GetMFAStatusQuery) (*app.MFAStatus, error)
+	SetupMFA(context.Context, invocation.Invocation, app.SetupMFACommand) (*app.MFASetup, error)
+	ActivateMFA(context.Context, invocation.Invocation, app.ActivateMFACommand) (*app.MFAActivation, error)
+	ChallengeMFA(context.Context, invocation.Invocation, app.ChallengeMFACommand) (*model.Session, error)
+	RegenerateMFARecoveryCodes(context.Context, invocation.Invocation, app.RegenerateMFARecoveryCodesCommand) ([]string, error)
+	DisableMFA(context.Context, invocation.Invocation, app.DisableMFACommand) error
 }
 
 type AuditListingApplication interface {
-	ListAuditEvents(context.Context, app.Invocation, app.ListAuditEventsQuery) ([]*model.AuditEvent, error)
+	ListAuditEvents(context.Context, invocation.Invocation, app.ListAuditEventsQuery) ([]*model.AuditEvent, error)
 }
 
 type BootstrapApplication interface {
 	GetInstallationStatus(context.Context, app.GetInstallationStatusQuery) (*model.InstallationStatus, error)
-	BootstrapInstallation(context.Context, app.Invocation, app.BootstrapInstallationCommand) (*model.InstallationBootstrapResult, error)
+	BootstrapInstallation(context.Context, invocation.Invocation, app.BootstrapInstallationCommand) (*model.InstallationBootstrapResult, error)
 }
 
 type DesktopCompatibilityApplication interface {
@@ -169,27 +173,27 @@ type DesktopCompatibilityApplication interface {
 	) (app.DesktopCompatibilityResult, error)
 	GetDesktopCompatibilityPolicy(
 		context.Context,
-		app.Invocation,
+		invocation.Invocation,
 	) (*model.DesktopCompatibilityPolicy, error)
 	ReplaceDesktopCompatibilityPolicy(
 		context.Context,
-		app.Invocation,
+		invocation.Invocation,
 		app.ReplaceDesktopCompatibilityPolicyCommand,
 	) (*model.DesktopCompatibilityPolicy, error)
 }
 
 type RoleApplication interface {
-	ListRoles(context.Context, app.Invocation, app.ListRolesQuery) ([]*model.Role, error)
-	GetRole(context.Context, app.Invocation, app.GetRoleQuery) (*model.Role, error)
-	CreateRole(context.Context, app.Invocation, app.CreateRoleCommand) (*model.Role, error)
-	UpdateRole(context.Context, app.Invocation, app.UpdateRoleCommand) (*model.Role, error)
-	ArchiveRole(context.Context, app.Invocation, app.ArchiveRoleCommand) error
+	ListRoles(context.Context, invocation.Invocation, app.ListRolesQuery) ([]*model.Role, error)
+	GetRole(context.Context, invocation.Invocation, app.GetRoleQuery) (*model.Role, error)
+	CreateRole(context.Context, invocation.Invocation, app.CreateRoleCommand) (*model.Role, error)
+	UpdateRole(context.Context, invocation.Invocation, app.UpdateRoleCommand) (*model.Role, error)
+	ArchiveRole(context.Context, invocation.Invocation, app.ArchiveRoleCommand) error
 }
 
 type RoleBindingApplication interface {
-	ListRoleBindings(context.Context, app.Invocation, app.ListRoleBindingsQuery) ([]*model.RoleBinding, error)
-	CreateRoleBinding(context.Context, app.Invocation, app.CreateRoleBindingCommand) (*model.RoleBinding, error)
-	EndRoleBinding(context.Context, app.Invocation, app.EndRoleBindingCommand) (*model.RoleBinding, error)
+	ListRoleBindings(context.Context, invocation.Invocation, app.ListRoleBindingsQuery) ([]*model.RoleBinding, error)
+	CreateRoleBinding(context.Context, invocation.Invocation, app.CreateRoleBindingCommand) (*model.RoleBinding, error)
+	EndRoleBinding(context.Context, invocation.Invocation, app.EndRoleBindingCommand) (*model.RoleBinding, error)
 }
 
 // Application is the cohesive application-facing API contract. Its component
@@ -226,13 +230,13 @@ type Application interface {
 }
 
 type MailApplication interface {
-	GetMailKeyState(context.Context, app.Invocation) (app.MailKeyStateView, error)
-	StartMailRekey(context.Context, app.Invocation, string) (app.MailRekeyView, error)
-	GetMailRekeyStatus(context.Context, app.Invocation, model.JobID) (app.MailRekeyStatusView, error)
-	SendTestMail(context.Context, app.Invocation) (app.MailDeliveryView, error)
-	GetMailMetrics(context.Context, app.Invocation) (app.MailMetricsSnapshot, error)
-	GetMailDelivery(context.Context, app.Invocation, model.MailDeliveryID) (app.MailDeliveryView, error)
-	ListMailDeliveries(context.Context, app.Invocation, app.ListMailDeliveriesQuery) (app.MailDeliveryPage, error)
-	CancelMailDelivery(context.Context, app.Invocation, model.MailDeliveryID) (app.MailDeliveryView, error)
-	RetryMailDelivery(context.Context, app.Invocation, model.MailDeliveryID) (app.MailDeliveryView, error)
+	GetMailKeyState(context.Context, invocation.Invocation) (app.MailKeyStateView, error)
+	StartMailRekey(context.Context, invocation.Invocation, string) (app.MailRekeyView, error)
+	GetMailRekeyStatus(context.Context, invocation.Invocation, model.JobID) (app.MailRekeyStatusView, error)
+	SendTestMail(context.Context, invocation.Invocation) (app.MailDeliveryView, error)
+	GetMailMetrics(context.Context, invocation.Invocation) (app.MailMetricsSnapshot, error)
+	GetMailDelivery(context.Context, invocation.Invocation, model.MailDeliveryID) (app.MailDeliveryView, error)
+	ListMailDeliveries(context.Context, invocation.Invocation, app.ListMailDeliveriesQuery) (app.MailDeliveryPage, error)
+	CancelMailDelivery(context.Context, invocation.Invocation, model.MailDeliveryID) (app.MailDeliveryView, error)
+	RetryMailDelivery(context.Context, invocation.Invocation, model.MailDeliveryID) (app.MailDeliveryView, error)
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -50,7 +51,7 @@ func newInstitutionService(
 
 func (s *institutionService) GetInstitution(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	_ GetInstitutionQuery,
 ) (*model.Institution, error) {
 	institution, err := s.store.GetSingleton(ctx)
@@ -68,7 +69,7 @@ func (s *institutionService) GetInstitution(
 
 func (s *institutionService) UpdateInstitution(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command UpdateInstitutionCommand,
 ) (*model.Institution, error) {
 	current, err := s.store.GetSingleton(ctx)

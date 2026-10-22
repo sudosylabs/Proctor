@@ -18,16 +18,17 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type sessionReauthenticationHTTPFake struct {
 	calls      int
-	invocation app.Invocation
+	invocation invocation.Invocation
 	command    app.ReauthenticatePasswordCommand
 }
 
-func (f *sessionReauthenticationHTTPFake) ReauthenticatePassword(_ context.Context, invocation app.Invocation, command app.ReauthenticatePasswordCommand) (*model.Session, error) {
+func (f *sessionReauthenticationHTTPFake) ReauthenticatePassword(_ context.Context, invocation invocation.Invocation, command app.ReauthenticatePasswordCommand) (*model.Session, error) {
 	f.calls++
 	f.invocation = invocation
 	f.command = command
@@ -62,6 +63,6 @@ func TestPasswordReauthenticationHTTPRejectsIdentitySelectionAndProtectsResponse
 	require.Equal(t, "secret", fake.command.Password, "transport did not bind the immutable current identity")
 }
 
-func (*sessionReauthenticationHTTPFake) BeginExternalReauthentication(context.Context, app.Invocation, app.BeginExternalReauthenticationCommand) (*model.ExternalAuthenticationStart, error) {
+func (*sessionReauthenticationHTTPFake) BeginExternalReauthentication(context.Context, invocation.Invocation, app.BeginExternalReauthenticationCommand) (*model.ExternalAuthenticationStart, error) {
 	return nil, nil
 }

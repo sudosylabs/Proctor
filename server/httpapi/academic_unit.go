@@ -45,7 +45,7 @@ type academicUnitResourceModule struct {
 	academicUnits AcademicUnitApplication
 }
 
-func academicUnitResource(academicUnits AcademicUnitApplication) resource {
+func academicUnitResource(academicUnits AcademicUnitApplication) apiResource {
 	module := academicUnitResourceModule{academicUnits: academicUnits}
 	collection := apiPath(literal("academic-units"))
 	member := apiPath(literal("academic-units"), canonicalID("academic_unit_id"))

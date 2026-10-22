@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -30,21 +31,21 @@ type studentProgressionApplicationFake struct {
 	getID   string
 }
 
-func (f *studentProgressionApplicationFake) DryRunStudentProgression(_ context.Context, _ app.Invocation, command app.DryRunStudentProgressionCommand) (app.OnboardingImportView, error) {
+func (f *studentProgressionApplicationFake) DryRunStudentProgression(_ context.Context, _ invocation.Invocation, command app.DryRunStudentProgressionCommand) (app.OnboardingImportView, error) {
 	f.command = command
 	return f.view, nil
 }
-func (f *studentProgressionApplicationFake) GetStudentProgression(_ context.Context, _ app.Invocation, id model.OnboardingImportID) (app.OnboardingImportView, []app.OnboardingImportRowView, error) {
+func (f *studentProgressionApplicationFake) GetStudentProgression(_ context.Context, _ invocation.Invocation, id model.OnboardingImportID) (app.OnboardingImportView, []app.OnboardingImportRowView, error) {
 	f.getID = id.String()
 	return f.view, f.rows, nil
 }
-func (f *studentProgressionApplicationFake) CommitStudentProgression(context.Context, app.Invocation, app.CommitStudentProgressionCommand) (app.OnboardingImportView, error) {
+func (f *studentProgressionApplicationFake) CommitStudentProgression(context.Context, invocation.Invocation, app.CommitStudentProgressionCommand) (app.OnboardingImportView, error) {
 	return f.view, nil
 }
-func (f *studentProgressionApplicationFake) CancelStudentProgression(context.Context, app.Invocation, model.OnboardingImportID) (app.OnboardingImportView, error) {
+func (f *studentProgressionApplicationFake) CancelStudentProgression(context.Context, invocation.Invocation, model.OnboardingImportID) (app.OnboardingImportView, error) {
 	return f.view, nil
 }
-func (f *studentProgressionApplicationFake) StudentProgressionReport(context.Context, app.Invocation, model.OnboardingImportID, io.Writer) error {
+func (f *studentProgressionApplicationFake) StudentProgressionReport(context.Context, invocation.Invocation, model.OnboardingImportID, io.Writer) error {
 	return nil
 }
 

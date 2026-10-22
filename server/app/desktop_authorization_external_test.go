@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -31,7 +32,7 @@ func TestDesktopExternalAuthenticationStartUsesBoundTransactionOwner(t *testing.
 	// This App embeds only the external-authentication module. It cannot reach
 	// through a sibling's Store to initiate this purpose-specific handoff.
 	application := &App{externalAuthenticationService: service}
-	result, err := application.BeginDesktopExternalAuthentication(t.Context(), Invocation{}, BeginDesktopExternalAuthenticationCommand{
+	result, err := application.BeginDesktopExternalAuthentication(t.Context(), invocation.Invocation{}, BeginDesktopExternalAuthenticationCommand{
 		ProviderID: "campus", Binding: binding, State: state, Source: "192.0.2.10",
 	})
 	require.NoError(t, err, "begin Desktop external authentication")
@@ -78,7 +79,7 @@ func TestDesktopExternalAuthenticationRejectsUnboundProofBeforeProvider(t *testi
 			provider := &recordingExternalProvider{}
 			service.registry = externalProviderSourceFake{provider: provider}
 			application := &App{externalAuthenticationService: service}
-			result, err := application.BeginDesktopExternalAuthentication(t.Context(), Invocation{}, BeginDesktopExternalAuthenticationCommand{
+			result, err := application.BeginDesktopExternalAuthentication(t.Context(), invocation.Invocation{}, BeginDesktopExternalAuthenticationCommand{
 				ProviderID: "campus", Binding: test.binding, State: test.state, Source: "192.0.2.10",
 			})
 			require.Nil(t, result, "begin = %#v, %v; want %s", result, err, test.code)
@@ -126,7 +127,7 @@ func TestExternalAuthenticationCompletionIsolatesDesktopPurpose(t *testing.T) {
 				providerModes: map[string]model.ProviderAdmissionMode{"campus": model.ProviderAdmissionInvitationRequired}}
 			service.audit, service.now = externalHandoffAudit{}, func() time.Time { return at }
 			application := &App{externalAuthenticationService: service}
-			result, err := application.CompleteExternalAuthentication(t.Context(), Invocation{}, CompleteExternalAuthenticationCommand{
+			result, err := application.CompleteExternalAuthentication(t.Context(), invocation.Invocation{}, CompleteExternalAuthenticationCommand{
 				ProviderID: "campus", Binding: binding,
 			})
 			require.NoError(t, err, "complete %s", purpose)

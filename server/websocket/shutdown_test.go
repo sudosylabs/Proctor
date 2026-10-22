@@ -18,7 +18,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -29,14 +30,14 @@ type shutdownAttemptApplication struct {
 	canceled chan struct{}
 }
 
-func (a *shutdownAttemptApplication) CloseExamAttemptConnection(ctx context.Context, _ app.Invocation, _ app.CloseExamAttemptConnectionCommand) (app.ExamAttemptConnectionClosed, error) {
+func (a *shutdownAttemptApplication) CloseExamAttemptConnection(ctx context.Context, _ invocation.Invocation, _ attempt.CloseConnectionCommand) (attempt.ConnectionClosedResult, error) {
 	close(a.entered)
 	select {
 	case <-a.release:
-		return app.ExamAttemptConnectionClosed{}, nil
+		return attempt.ConnectionClosedResult{}, nil
 	case <-ctx.Done():
 		close(a.canceled)
-		return app.ExamAttemptConnectionClosed{}, ctx.Err()
+		return attempt.ConnectionClosedResult{}, ctx.Err()
 	}
 }
 

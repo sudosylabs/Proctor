@@ -17,23 +17,24 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type deliveryBudgetHTTPFake struct {
 	*examAttemptHTTPFake
-	query app.DeliveryBudgetQuery
-	stop  app.StopDeliveryDetailsCommand
+	query attempt.DeliveryBudgetQuery
+	stop  attempt.StopDeliveryDetailsCommand
 	calls int
 }
 
-func (f *deliveryBudgetHTTPFake) DeliveryBudget(_ context.Context, _ app.Invocation, q app.DeliveryBudgetQuery) (*model.DeliveryBudgetSnapshot, error) {
+func (f *deliveryBudgetHTTPFake) DeliveryBudget(_ context.Context, _ invocation.Invocation, q attempt.DeliveryBudgetQuery) (*model.DeliveryBudgetSnapshot, error) {
 	f.query = q
 	f.calls++
 	return testHTTPDeliveryBudget(q.ParticipationID), nil
 }
-func (f *deliveryBudgetHTTPFake) StopDeliveryDetails(_ context.Context, _ app.Invocation, c app.StopDeliveryDetailsCommand) (*model.StopDeliveryDetailsResult, error) {
+func (f *deliveryBudgetHTTPFake) StopDeliveryDetails(_ context.Context, _ invocation.Invocation, c attempt.StopDeliveryDetailsCommand) (*model.StopDeliveryDetailsResult, error) {
 	f.stop = c
 	f.calls++
 	value := &model.StopDeliveryDetailsResult{Budget: *testHTTPDeliveryBudget(f.participation.ID), Browser: []model.BrowserSourceStatus{}}

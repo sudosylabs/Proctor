@@ -52,7 +52,7 @@ type academicPeriodResourceModule struct {
 	academicPeriods AcademicPeriodApplication
 }
 
-func academicPeriodResource(academicPeriods AcademicPeriodApplication) resource {
+func academicPeriodResource(academicPeriods AcademicPeriodApplication) apiResource {
 	module := academicPeriodResourceModule{academicPeriods: academicPeriods}
 	collection := apiPath(literal("academic-periods"))
 	member := apiPath(literal("academic-periods"), canonicalID("academic_period_id"))

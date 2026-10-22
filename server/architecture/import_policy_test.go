@@ -386,6 +386,7 @@ var dependencyRules = []dependencyRule{
 		deniedStandard: standardInfrastructureExceptOS,
 		project: only(
 			exact(serverModule+"/app"),
+			exact(serverModule+"/app/exam"),
 			exact(serverModule+"/model"),
 			exact(repositoryModule+"/packages/vfs"),
 		),
@@ -449,8 +450,12 @@ var dependencyRules = []dependencyRule{
 		project: only(
 			exact(serverModule+"/app"),
 			exact(serverModule+"/app/apperror"),
+			exact(serverModule+"/app/invocation"),
+			exact(serverModule+"/app/job"),
 			exact(serverModule+"/app/realtime"),
+			subtree(serverModule+"/app/exam"),
 			exact(serverModule+"/model"),
+			exact(serverModule+"/store"),
 			exact(serverModule+"/localization"),
 			exact(serverModule+"/internal/weborigin"),
 		),

@@ -12,10 +12,11 @@ import (
 	"net/http"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 )
 
 type MFAAdministration interface {
-	ResetUserMFA(context.Context, app.Invocation, app.ResetUserMFACommand) error
+	ResetUserMFA(context.Context, invocation.Invocation, app.ResetUserMFACommand) error
 }
 
 type mfaAdministrationResourceModule struct{ application MFAAdministration }
@@ -26,7 +27,7 @@ type resetUserMFARequest struct {
 	VerificationReference string `json:"verification_reference"`
 }
 
-func mfaAdministrationResource(application MFAAdministration) resource {
+func mfaAdministrationResource(application MFAAdministration) apiResource {
 	module := mfaAdministrationResourceModule{application: application}
 	return newResource("mfa-administration", strongRecentSessionRoute(http.MethodPost, apiPath(literal("users"), canonicalID("user_id"), literal("mfa"), literal("reset")), operatorMutationErrorCodes("request.invalid", "resource.not_found", "authentication.mfa.reset_invalid", "authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal"), module.reset))
 }

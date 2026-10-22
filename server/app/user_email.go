@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -50,7 +51,7 @@ type userEmailAdministration struct {
 	recentAuthenticationTTL time.Duration
 }
 
-func (s *accountTokenService) ChangeUserEmail(ctx context.Context, invocation Invocation, command ChangeUserEmailCommand) (*UserEmailState, error) {
+func (s *accountTokenService) ChangeUserEmail(ctx context.Context, invocation invocation.Invocation, command ChangeUserEmailCommand) (*UserEmailState, error) {
 	if s.administration.authorization == nil || s.administration.audit == nil {
 		return nil, apperror.New("administration.unavailable")
 	}
@@ -82,7 +83,7 @@ func (s *accountTokenService) ChangeUserEmail(ctx context.Context, invocation In
 		}, userStoreErrors.Translate)
 }
 
-func (s *accountTokenService) VerifyUserEmailPrivileged(ctx context.Context, invocation Invocation, command VerifyUserEmailPrivilegedCommand) (*UserEmailState, error) {
+func (s *accountTokenService) VerifyUserEmailPrivileged(ctx context.Context, invocation invocation.Invocation, command VerifyUserEmailPrivilegedCommand) (*UserEmailState, error) {
 	if s.administration.authorization == nil || s.administration.audit == nil {
 		return nil, apperror.New("administration.unavailable")
 	}

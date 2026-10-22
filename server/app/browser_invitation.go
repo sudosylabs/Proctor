@@ -12,6 +12,7 @@ import (
 	"errors"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -74,7 +75,7 @@ func newBrowserInvitationService(
 	}, nil
 }
 
-func (s *browserInvitationService) StartBrowserInvitation(ctx context.Context, _ Invocation, command StartBrowserInvitationCommand) (*BrowserInvitationStart, error) {
+func (s *browserInvitationService) StartBrowserInvitation(ctx context.Context, _ invocation.Invocation, command StartBrowserInvitationCommand) (*BrowserInvitationStart, error) {
 	if !model.IsValidCredentialToken(command.Claim) {
 		return nil, apperror.New("invitation.invalid")
 	}
@@ -125,7 +126,7 @@ func (s *browserInvitationService) StartBrowserInvitation(ctx context.Context, _
 	}, nil
 }
 
-func (s *browserInvitationService) AcceptBrowserInvitation(ctx context.Context, invocation Invocation, command BrowserInvitationAcceptanceCommand) (*InvitationAcceptanceView, error) {
+func (s *browserInvitationService) AcceptBrowserInvitation(ctx context.Context, invocation invocation.Invocation, command BrowserInvitationAcceptanceCommand) (*InvitationAcceptanceView, error) {
 	resolution, invitation, err := s.resolve(ctx, command.Handle, command.BrowserProof)
 	if err != nil {
 		return nil, err
@@ -154,7 +155,7 @@ func (s *browserInvitationService) AcceptBrowserInvitation(ctx context.Context, 
 	return accepted, nil
 }
 
-func (s *browserInvitationService) AcceptBrowserInvitationWithSession(ctx context.Context, invocation Invocation, command BrowserInvitationSessionAcceptanceCommand) (*InvitationAcceptanceView, error) {
+func (s *browserInvitationService) AcceptBrowserInvitationWithSession(ctx context.Context, invocation invocation.Invocation, command BrowserInvitationSessionAcceptanceCommand) (*InvitationAcceptanceView, error) {
 	principal := invocation.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess ||
 		principal.ClientType != model.SessionClientWeb {

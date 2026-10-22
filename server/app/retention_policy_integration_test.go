@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -47,7 +48,7 @@ func TestRetentionPolicyHTTPAcrossNodesPreservesAuthorizationAndRetry(t *testing
 		"password":         "correct horse battery staple",
 	}, "")
 	require.Equal(t, http.StatusCreated, bootstrap.Code, "bootstrap: %d %s", bootstrap.Code, bootstrap.Body.String())
-	login, err := primary.App.Login(context.Background(), app.Invocation{}, app.LoginCommand{
+	login, err := primary.App.Login(context.Background(), invocation.Invocation{}, app.LoginCommand{
 		LoginID: "retention-admin", Password: "correct horse battery staple", ClientType: model.SessionClientCLI,
 		DeviceID: "retention-cli", Source: "127.0.0.1:1",
 	})
@@ -90,7 +91,7 @@ func TestRetentionPolicyHTTPAcrossNodesPreservesAuthorizationAndRetry(t *testing
 	require.Equal(t, http.StatusConflict, stale.Code, "stale replacement: %d %s", stale.Code, stale.Body.String())
 	require.True(t, bytes.Contains(stale.Body.Bytes(), []byte(`"code":"retention_policy.revision_conflict"`)), "stale replacement: %d %s", stale.Code, stale.Body.String())
 	ordinary := createIntegrationUser(t, primary, "retention-ordinary", "another correct horse battery staple")
-	ordinaryLogin, err := secondary.App.Login(context.Background(), app.Invocation{}, app.LoginCommand{
+	ordinaryLogin, err := secondary.App.Login(context.Background(), invocation.Invocation{}, app.LoginCommand{
 		LoginID: ordinary.Username, Password: "another correct horse battery staple", ClientType: model.SessionClientCLI,
 		DeviceID: "ordinary-cli", Source: "127.0.0.1:2",
 	})

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -77,7 +78,7 @@ func newClassService(persistence classStore, authorization scopedAcademicResourc
 	return &classService{store: persistence, authorization: authorization, audit: audit, now: now, newID: newID}
 }
 
-func (s *classService) GetClass(ctx context.Context, invocation Invocation, query GetClassQuery) (*model.Class, error) {
+func (s *classService) GetClass(ctx context.Context, invocation invocation.Invocation, query GetClassQuery) (*model.Class, error) {
 	id := query.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "class_id")
@@ -92,7 +93,7 @@ func (s *classService) GetClass(ctx context.Context, invocation Invocation, quer
 	return class, nil
 }
 
-func (s *classService) ListClasses(ctx context.Context, invocation Invocation, query ListClassesQuery) (Page[*model.Class], error) {
+func (s *classService) ListClasses(ctx context.Context, invocation invocation.Invocation, query ListClassesQuery) (Page[*model.Class], error) {
 	levelID := query.ProgrammeLevelID
 	if !levelID.IsValid() {
 		return Page[*model.Class]{}, apperror.New("request.invalid").WithField("field", "programme_level_id")
@@ -114,7 +115,7 @@ func (s *classService) ListClasses(ctx context.Context, invocation Invocation, q
 	return newPage(classes, limit), nil
 }
 
-func (s *classService) SearchClasses(ctx context.Context, invocation Invocation, query SearchClassesQuery) (Page[*model.Class], error) {
+func (s *classService) SearchClasses(ctx context.Context, invocation invocation.Invocation, query SearchClassesQuery) (Page[*model.Class], error) {
 	unitID := query.AcademicUnitID
 	if !unitID.IsValid() {
 		return Page[*model.Class]{}, apperror.New("request.invalid").WithField("field", "academic_unit_id")
@@ -136,7 +137,7 @@ func (s *classService) SearchClasses(ctx context.Context, invocation Invocation,
 	return newPage(classes, limit), nil
 }
 
-func (s *classService) CreateClass(ctx context.Context, invocation Invocation, command CreateClassCommand) (*model.Class, error) {
+func (s *classService) CreateClass(ctx context.Context, invocation invocation.Invocation, command CreateClassCommand) (*model.Class, error) {
 	levelID := command.ProgrammeLevelID
 	if !levelID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "programme_level_id")
@@ -188,7 +189,7 @@ func (s *classService) CreateClass(ctx context.Context, invocation Invocation, c
 	)
 }
 
-func (s *classService) UpdateClass(ctx context.Context, invocation Invocation, command UpdateClassCommand) (*model.Class, error) {
+func (s *classService) UpdateClass(ctx context.Context, invocation invocation.Invocation, command UpdateClassCommand) (*model.Class, error) {
 	id := command.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "class_id")
@@ -271,7 +272,7 @@ func (s *classService) UpdateClass(ctx context.Context, invocation Invocation, c
 	)
 }
 
-func (s *classService) ArchiveClass(ctx context.Context, invocation Invocation, command ArchiveClassCommand) error {
+func (s *classService) ArchiveClass(ctx context.Context, invocation invocation.Invocation, command ArchiveClassCommand) error {
 	id := command.ID
 	if !id.IsValid() {
 		return apperror.New("request.invalid").WithField("field", "class_id")

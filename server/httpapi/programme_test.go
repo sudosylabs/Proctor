@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -30,21 +31,21 @@ type programmeHTTPApplication struct {
 	updateCommand  app.UpdateProgrammeCommand
 }
 
-func (a *programmeHTTPApplication) GetProgramme(context.Context, app.Invocation, app.GetProgrammeQuery) (*model.Programme, error) {
+func (a *programmeHTTPApplication) GetProgramme(context.Context, invocation.Invocation, app.GetProgrammeQuery) (*model.Programme, error) {
 	return a.result, nil
 }
-func (a *programmeHTTPApplication) ListProgrammes(context.Context, app.Invocation, app.ListProgrammesQuery) (app.Page[*model.Programme], error) {
+func (a *programmeHTTPApplication) ListProgrammes(context.Context, invocation.Invocation, app.ListProgrammesQuery) (app.Page[*model.Programme], error) {
 	return app.Page[*model.Programme]{Items: a.list}, nil
 }
-func (a *programmeHTTPApplication) CreateProgramme(_ context.Context, _ app.Invocation, command app.CreateProgrammeCommand) (*model.Programme, error) {
+func (a *programmeHTTPApplication) CreateProgramme(_ context.Context, _ invocation.Invocation, command app.CreateProgrammeCommand) (*model.Programme, error) {
 	a.createCommand = command
 	return a.result, nil
 }
-func (a *programmeHTTPApplication) UpdateProgramme(_ context.Context, _ app.Invocation, command app.UpdateProgrammeCommand) (*model.Programme, error) {
+func (a *programmeHTTPApplication) UpdateProgramme(_ context.Context, _ invocation.Invocation, command app.UpdateProgrammeCommand) (*model.Programme, error) {
 	a.updateCommand = command
 	return a.result, nil
 }
-func (a *programmeHTTPApplication) ArchiveProgramme(_ context.Context, _ app.Invocation, command app.ArchiveProgrammeCommand) error {
+func (a *programmeHTTPApplication) ArchiveProgramme(_ context.Context, _ invocation.Invocation, command app.ArchiveProgrammeCommand) error {
 	a.archiveCommand = command
 	return nil
 }

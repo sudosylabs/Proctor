@@ -18,7 +18,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -28,7 +28,7 @@ type runtimeTestApplication struct {
 
 func (a *runtimeTestApplication) AuthorizeWebSocketSubscription(
 	context.Context,
-	app.Invocation,
+	invocation.Invocation,
 	model.Action,
 	model.Resource,
 ) error {

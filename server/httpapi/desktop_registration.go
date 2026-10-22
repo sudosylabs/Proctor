@@ -12,12 +12,13 @@ import (
 	"net/http"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type DesktopRegistrations interface {
-	ListDesktopRegistrations(context.Context, app.Invocation, app.ListDesktopRegistrationsQuery) ([]*model.DesktopRegistration, error)
-	RevokeDesktopRegistration(context.Context, app.Invocation, app.RevokeDesktopRegistrationCommand) error
+	ListDesktopRegistrations(context.Context, invocation.Invocation, app.ListDesktopRegistrationsQuery) ([]*model.DesktopRegistration, error)
+	RevokeDesktopRegistration(context.Context, invocation.Invocation, app.RevokeDesktopRegistrationCommand) error
 }
 
 type desktopRegistrationResponse struct {
@@ -38,7 +39,7 @@ type desktopRegistrationResourceModule struct {
 	application DesktopRegistrations
 }
 
-func desktopRegistrationResource(application DesktopRegistrations) resource {
+func desktopRegistrationResource(application DesktopRegistrations) apiResource {
 	module := desktopRegistrationResourceModule{application: application}
 	collection := apiPath(literal("users"), literal("me"), literal("desktop-registrations"))
 	item := appendRoutePath(collection, canonicalID("desktop_registration_id"))

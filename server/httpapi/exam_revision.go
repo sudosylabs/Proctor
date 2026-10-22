@@ -13,14 +13,16 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/exam"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 type ExamRevisionApplication interface {
-	PublishExamRevision(context.Context, app.Invocation, app.PublishExamRevisionCommand) (app.ExamRevisionSummary, error)
-	GetExamRevision(context.Context, app.Invocation, app.GetExamRevisionQuery) (app.ExamRevisionSummary, error)
-	ListExamRevisions(context.Context, app.Invocation, app.ListExamRevisionsQuery) (app.ExamRevisionPage, error)
+	PublishExamRevision(context.Context, invocation.Invocation, exam.PublishRevisionCommand) (store.ExamRevisionSummary, error)
+	GetExamRevision(context.Context, invocation.Invocation, exam.GetRevisionQuery) (store.ExamRevisionSummary, error)
+	ListExamRevisions(context.Context, invocation.Invocation, exam.ListRevisionsQuery) (exam.RevisionPage, error)
 }
 
 type publishExamRevisionRequest struct {
@@ -59,7 +61,7 @@ type examRevisionCursor struct {
 
 type examRevisionHTTPModule struct{ application ExamRevisionApplication }
 
-func examRevisionResource(application ExamRevisionApplication) resource {
+func examRevisionResource(application ExamRevisionApplication) apiResource {
 	module := examRevisionHTTPModule{application: application}
 	collection := apiPath(literal("exams"), canonicalID("exam_id"), literal("revisions"))
 	member := apiPath(literal("exams"), canonicalID("exam_id"), literal("revisions"), canonicalID("exam_revision_id"))
@@ -92,7 +94,7 @@ func (m examRevisionHTTPModule) publish(request operationRequest) (operationResu
 	if body.ExpectedDraftRevision < 1 {
 		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
-	summary, err := m.application.PublishExamRevision(request.context, request.invocation(), app.PublishExamRevisionCommand{
+	summary, err := m.application.PublishExamRevision(request.context, request.invocation(), exam.PublishRevisionCommand{
 		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision, IdempotencyKey: request.idempotencyKey,
 	})
 	if err != nil {
@@ -106,7 +108,7 @@ func (m examRevisionHTTPModule) get(request operationRequest) (operationResult, 
 	if err != nil {
 		return operationResult{}, err
 	}
-	summary, err := m.application.GetExamRevision(request.context, request.invocation(), app.GetExamRevisionQuery{ExamID: examID, RevisionID: revisionID})
+	summary, err := m.application.GetExamRevision(request.context, request.invocation(), exam.GetRevisionQuery{ExamID: examID, RevisionID: revisionID})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -118,7 +120,7 @@ func (m examRevisionHTTPModule) list(request operationRequest) (operationResult,
 	if err != nil {
 		return operationResult{}, err
 	}
-	query := app.ListExamRevisionsQuery{ExamID: examID, Limit: 50}
+	query := exam.ListRevisionsQuery{ExamID: examID, Limit: 50}
 	values := request.request.URL.Query()
 	if raw := values.Get("limit"); raw != "" {
 		query.Limit, err = strconv.Atoi(raw)
@@ -175,7 +177,7 @@ func examRevisionIDs(request operationRequest) (model.ExamID, model.ExamRevision
 	return examID, revisionID, nil
 }
 
-func examRevisionResponseFromSummary(summary app.ExamRevisionSummary) examRevisionResponse {
+func examRevisionResponseFromSummary(summary store.ExamRevisionSummary) examRevisionResponse {
 	return examRevisionResponse{
 		ID: summary.ID.String(), ExamID: summary.ExamID.String(), Number: summary.Number,
 		SourceDraftRevision: summary.SourceDraftRevision, Title: summary.Title,

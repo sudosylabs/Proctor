@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -32,7 +33,7 @@ func TestAccountAndAdministrativeSessionNoticesUseRealServerGraph(t *testing.T) 
 	}))
 	ctx := context.Background()
 	const password = "correct horse battery staple"
-	bootstrap, appErr := helper.App.BootstrapInstallation(ctx, app.Invocation{}, app.BootstrapInstallationCommand{
+	bootstrap, appErr := helper.App.BootstrapInstallation(ctx, invocation.Invocation{}, app.BootstrapInstallationCommand{
 		InstitutionName: "security-notice-university", InstitutionDisplayName: "Security Notice University",
 		AdministratorUsername: "mail11-admin", AdministratorEmail: "mail11-admin@example.edu", AdministratorDisplayName: "Mail 11 Admin",
 		AdministratorLocale: "en", AdministratorTimezone: "UTC", Password: password,
@@ -43,14 +44,14 @@ func TestAccountAndAdministrativeSessionNoticesUseRealServerGraph(t *testing.T) 
 		Username: "mail11-target", Email: "mail11-target@example.edu", DisplayName: "Mail 11 Target", Locale: "en", Timezone: "UTC",
 	}, Password: password})
 	require.NoError(t, appErr)
-	adminLogin, appErr := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{
+	adminLogin, appErr := helper.App.Login(ctx, invocation.Invocation{}, app.LoginCommand{
 		LoginID: bootstrap.Administrator.Username, Password: password, ClientType: model.SessionClientCLI,
 		Source: "203.0.113.42", DeviceName: "mail11-admin-device",
 	})
 	require.NoError(t, appErr)
 	adminPrincipal, appErr := helper.App.AuthenticateAccess(ctx, adminLogin.Tokens.AccessToken)
 	require.NoError(t, appErr)
-	adminInvocation := app.NewInvocation(*adminPrincipal, model.RequestMetadata{RequestID: "mail11-admin", IPAddress: "203.0.113.42"})
+	adminInvocation := invocation.New(*adminPrincipal, model.RequestMetadata{RequestID: "mail11-admin", IPAddress: "203.0.113.42"})
 
 	initialTargetLogin := loginIntegrationUser(t, helper.Handler(), target.Username, password, model.SessionClientCLI, "mail11-initial")
 	_, appErr = helper.App.SetUserEnabled(ctx, adminInvocation, app.SetUserEnabledCommand{ID: target.ID, Enabled: false})
@@ -64,17 +65,17 @@ func TestAccountAndAdministrativeSessionNoticesUseRealServerGraph(t *testing.T) 
 	self := loginIntegrationUser(t, helper.Handler(), target.Username, password, model.SessionClientCLI, "mail11-self")
 	selfPrincipal, appErr := helper.App.AuthenticateAccess(ctx, self.Tokens.AccessToken)
 	require.NoError(t, appErr)
-	selfInvocation := app.NewInvocation(*selfPrincipal, model.RequestMetadata{RequestID: "mail11-self", IPAddress: "198.51.100.9"})
+	selfInvocation := invocation.New(*selfPrincipal, model.RequestMetadata{RequestID: "mail11-self", IPAddress: "198.51.100.9"})
 	require.NoError(t, helper.App.RevokeSession(ctx, selfInvocation, app.RevokeSessionCommand{SessionID: self.Session.ID.String()}))
 	logout := loginIntegrationUser(t, helper.Handler(), target.Username, password, model.SessionClientCLI, "mail11-logout")
 	logoutPrincipal, appErr := helper.App.AuthenticateAccess(ctx, logout.Tokens.AccessToken)
 	require.NoError(t, appErr)
-	require.NoError(t, helper.App.Logout(ctx, app.NewInvocation(*logoutPrincipal, model.RequestMetadata{}), app.LogoutCommand{}))
-	require.NoError(t, helper.App.Logout(ctx, app.NewInvocation(*logoutPrincipal, model.RequestMetadata{}), app.LogoutCommand{}))
+	require.NoError(t, helper.App.Logout(ctx, invocation.New(*logoutPrincipal, model.RequestMetadata{}), app.LogoutCommand{}))
+	require.NoError(t, helper.App.Logout(ctx, invocation.New(*logoutPrincipal, model.RequestMetadata{}), app.LogoutCommand{}))
 	all := loginIntegrationUser(t, helper.Handler(), target.Username, password, model.SessionClientCLI, "mail11-self-all")
 	allPrincipal, appErr := helper.App.AuthenticateAccess(ctx, all.Tokens.AccessToken)
 	require.NoError(t, appErr)
-	allInvocation := app.NewInvocation(*allPrincipal, model.RequestMetadata{})
+	allInvocation := invocation.New(*allPrincipal, model.RequestMetadata{})
 	for range 2 {
 		require.NoError(t, helper.App.RevokeAllSessions(ctx, allInvocation, app.RevokeAllSessionsCommand{}))
 	}

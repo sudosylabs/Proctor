@@ -16,7 +16,7 @@ import (
 	"strings"
 )
 
-func validateResourceCatalog(apiPrefix string, resources []resource) error {
+func validateResourceCatalog(apiPrefix string, resources []apiResource) error {
 	if err := validateDeclaredKernelCodes(resources); err != nil {
 		return err
 	}
@@ -107,7 +107,7 @@ func validateResourceCatalog(apiPrefix string, resources []resource) error {
 // validateDeclaredKernelCodes rejects resource error tables that repeat a code
 // the kernel already adds for the route's authentication requirement and
 // method, so each table states only what its operation can return.
-func validateDeclaredKernelCodes(resources []resource) error {
+func validateDeclaredKernelCodes(resources []apiResource) error {
 	var problems []string
 	for _, resource := range resources {
 		for _, route := range resource.routes {

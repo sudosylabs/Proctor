@@ -12,13 +12,13 @@ mutation or an `XQuery` for a read, passed by value, and returns a domain model
 or an `XResult`. Ports to infrastructure or another module that are not use
 cases name their argument for that port, such as a renderer `RenderRequest`.
 
-`app.Invocation` is immutable and explicitly contains the principal and safe call metadata needed for authorization and audit. `context.Context` remains for cancellation, deadlines, and propagation, not hidden security dependencies.
+`invocation.Invocation` is immutable and explicitly contains the principal and safe call metadata needed for authorization and audit. `context.Context` remains for cancellation, deadlines, and propagation, not hidden security dependencies.
 
 The `app/invocation` leaf owns that one call type so the parent and every Exam
-child module share it without a parent import; `app.Invocation` is its alias
-for transports. Every use case and consumer-owned port takes
-`invocation invocation.Invocation` (the parent spells it `Invocation`), and
-no module declares a local call type or converts between call types.
+child module share it without a parent import, and transports import it
+directly. Every use case and consumer-owned port takes
+`invocation invocation.Invocation`, and no module declares a local call type,
+alias, or conversion between call types.
 Actorless durable Job work carries `invocation.System`, which names the Job
 and Job Attempt and cannot impersonate a User.
 
@@ -102,9 +102,9 @@ fake.
 
 Each Exam use case is the exported method on its owning service, named as the
 public use case (`ScheduleExamSitting`), with the command, query, and result
-shapes that the transports' ports require. Those shapes belong to the service;
-the parent's established public names alias them and never repeat their
-fields. The service method does all the boundary work: defensive input
+shapes that the transports' ports require. Those shapes belong to the service, and
+transports name them there (`sitting.ScheduleCommand`); the parent neither
+aliases nor repeats them. The service method does all the boundary work: defensive input
 copies, input normalization and defaults, deliberately narrower results, and
 error concealment. Each Exam module declares one `publicFailures`
 `apperror.Concealment`; a use case defers `publicFailures.Conceal` when its

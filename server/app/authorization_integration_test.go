@@ -22,6 +22,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/storetest"
@@ -295,16 +296,16 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 	require.NoError(t, permErr, "self management without permission")
 	require.False(t, allowed, "self management without permission")
 	require.NoError(t, helper.App.Authorize(
-		ctx, app.NewInvocation(*principal, metadata), model.ActionUserProfilePictureManage,
+		ctx, invocation.New(*principal, metadata), model.ActionUserProfilePictureManage,
 		model.Resource{Type: model.ResourceUser, ID: viewer.ID.String()},
 	))
 	authErr := helper.App.Authorize(
-		ctx, app.NewInvocation(*principal, metadata), model.ActionUserProfilePictureManage,
+		ctx, invocation.New(*principal, metadata), model.ActionUserProfilePictureManage,
 		model.Resource{Type: model.ResourceUser, ID: target.ID.String()},
 	)
 	require.True(t, apperror.Is(authErr, "authorization.denied"), "cross-user profile-picture authorization = %v", authErr)
 	_, err = helper.App.GetUserProfile(
-		ctx, app.NewInvocation(*principal, metadata), app.GetUserProfileQuery{ID: target.ID},
+		ctx, invocation.New(*principal, metadata), app.GetUserProfileQuery{ID: target.ID},
 	)
 	require.True(t, apperror.Is(err, "authorization.denied"), "unbound cross-user read error = %v", err)
 
@@ -320,7 +321,7 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 	require.NoError(t, err)
 
 	visible, err := helper.App.GetUserProfile(
-		ctx, app.NewInvocation(*principal, metadata), app.GetUserProfileQuery{ID: target.ID},
+		ctx, invocation.New(*principal, metadata), app.GetUserProfileQuery{ID: target.ID},
 	)
 	require.NoError(t, err, "authorized cross-user read = %#v", visible)
 	require.Equal(t, target.ID, visible.ID, "authorized cross-user read = %#v", visible)
@@ -334,7 +335,7 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 	_, err = storetest.EndRoleBinding(ctx, persistence, binding.ID, model.GetMillis())
 	require.NoError(t, err)
 	_, err = helper.App.GetUserProfile(
-		ctx, app.NewInvocation(*principal, metadata), app.GetUserProfileQuery{ID: target.ID},
+		ctx, invocation.New(*principal, metadata), app.GetUserProfileQuery{ID: target.ID},
 	)
 	require.True(t, apperror.Is(err, "authorization.denied"), "ended binding cross-user read error = %v", err)
 
@@ -507,7 +508,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	login := loginIntegrationUser(t, helper.Handler(), viewer.Username, password, model.SessionClientCLI, "scoped-device")
 	principal, appErr := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken)
 	require.NoError(t, appErr)
-	invocation := app.NewInvocation(*principal, model.RequestMetadata{
+	invocation := invocation.New(*principal, model.RequestMetadata{
 		RequestID: model.NewID(), IPAddress: "127.0.0.1", UserAgent: "access-visibility-integration-test",
 	})
 

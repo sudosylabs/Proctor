@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -55,11 +56,11 @@ func newAuthenticationMethodService(passwords store.PasswordCredentialStore,
 		recentTTL: recentTTL, now: now}, nil
 }
 
-func (s *authenticationMethodService) require(invocation Invocation) error {
+func (s *authenticationMethodService) require(invocation invocation.Invocation) error {
 	return requireStrongRecentSession(invocation.Principal(), s.now(), s.recentTTL)
 }
 
-func (s *authenticationMethodService) AuthenticationMethods(ctx context.Context, invocation Invocation) (AuthenticationMethodView, error) {
+func (s *authenticationMethodService) AuthenticationMethods(ctx context.Context, invocation invocation.Invocation) (AuthenticationMethodView, error) {
 	if invocation.Principal().Validate() != nil {
 		return AuthenticationMethodView{}, invalidTokenAppError()
 	}
@@ -92,7 +93,7 @@ func (s *authenticationMethodService) AuthenticationMethods(ctx context.Context,
 	return view, nil
 }
 
-func (s *authenticationMethodService) EnrollPassword(ctx context.Context, invocation Invocation, password string) error {
+func (s *authenticationMethodService) EnrollPassword(ctx context.Context, invocation invocation.Invocation, password string) error {
 	if err := s.require(invocation); err != nil {
 		return err
 	}
@@ -112,7 +113,7 @@ func (s *authenticationMethodService) EnrollPassword(ctx context.Context, invoca
 	return appErr
 }
 
-func (s *authenticationMethodService) RemovePassword(ctx context.Context, invocation Invocation) error {
+func (s *authenticationMethodService) RemovePassword(ctx context.Context, invocation invocation.Invocation) error {
 	if err := s.require(invocation); err != nil {
 		return err
 	}
@@ -131,7 +132,7 @@ func (s *authenticationMethodService) RemovePassword(ctx context.Context, invoca
 	return appErr
 }
 
-func (s *authenticationMethodService) UnlinkExternalIdentity(ctx context.Context, invocation Invocation, id model.ExternalIdentityID) error {
+func (s *authenticationMethodService) UnlinkExternalIdentity(ctx context.Context, invocation invocation.Invocation, id model.ExternalIdentityID) error {
 	if err := s.require(invocation); err != nil {
 		return err
 	}

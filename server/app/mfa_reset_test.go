@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -70,7 +71,7 @@ func TestMFAAssistedResetRequiresIndependentVerifiedAdministrator(t *testing.T) 
 			case "commit failure":
 				persistence.err = errors.New("atomic reset failed")
 			}
-			err := service.ResetUserMFA(context.Background(), NewInvocation(principal, model.RequestMetadata{}), command)
+			err := service.ResetUserMFA(context.Background(), invocation.New(principal, model.RequestMetadata{}), command)
 			if name != "success" {
 				require.Error(t, err, "failed reset returned success or emitted post-commit effects")
 				require.Empty(t, effects.userID, "failed reset returned success or emitted post-commit effects")
@@ -98,14 +99,14 @@ func TestMFARestrictedContextSurvivesDisabledService(t *testing.T) {
 	base := &mfaApplicationStoreFake{}
 	service := newTestMFAApplicationService(t, base, &mfaApplicationAuditFake{}, &mfaApplicationEffectsFake{}, now)
 	service.mechanics.settings.Enabled = false
-	status, err := service.GetMFAStatus(context.Background(), NewInvocation(principal, model.RequestMetadata{}), GetMFAStatusQuery{})
+	status, err := service.GetMFAStatus(context.Background(), invocation.New(principal, model.RequestMetadata{}), GetMFAStatusQuery{})
 	require.NoError(t, err)
 	require.False(t, status.ServiceEnabled, "disabled service concealed mandatory reenrollment")
 	require.True(t, status.MFARecoveryRequired, "disabled service concealed mandatory reenrollment")
 	require.Equal(t, "password", status.AuthenticationMethod, "disabled service concealed mandatory reenrollment")
-	_, err = service.SetupMFA(context.Background(), NewInvocation(principal, model.RequestMetadata{}), SetupMFACommand{})
+	_, err = service.SetupMFA(context.Background(), invocation.New(principal, model.RequestMetadata{}), SetupMFACommand{})
 	require.True(t, apperror.Is(err, "authentication.mfa.disabled"), "disabled setup = %v", err)
-	_, err = service.ChallengeMFA(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ChallengeMFACommand{Code: "123456"})
+	_, err = service.ChallengeMFA(context.Background(), invocation.New(principal, model.RequestMetadata{}), ChallengeMFACommand{Code: "123456"})
 	require.True(t, apperror.Is(err, "authentication.session_required"), "restricted challenge = %v", err)
 }
 
@@ -115,7 +116,7 @@ func TestMFAFactorAttemptsAreBoundedBeforeVerification(t *testing.T) {
 	base := &mfaApplicationStoreFake{}
 	service := newTestMFAApplicationService(t, base, &mfaApplicationAuditFake{}, &mfaApplicationEffectsFake{}, now)
 	service.security.rateLimit.MaximumAttempts = 1
-	invocation := NewInvocation(principal, model.RequestMetadata{IPAddress: "127.0.0.1"})
+	invocation := invocation.New(principal, model.RequestMetadata{IPAddress: "127.0.0.1"})
 	_, _ = service.ChallengeMFA(context.Background(), invocation, ChallengeMFACommand{Code: "000000"})
 	_, err := service.ChallengeMFA(context.Background(), invocation, ChallengeMFACommand{Code: "000001"})
 	require.True(t, apperror.Is(err, "authentication.rate_limited"), "unbounded factor challenge: %v", err)

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -36,7 +37,7 @@ type CommitStudentProgressionCommand struct {
 	IdempotencyKey   string
 }
 
-func (s *onboardingImportService) GetStudentProgression(ctx context.Context, invocation Invocation, id model.OnboardingImportID) (OnboardingImportView, []OnboardingImportRowView, error) {
+func (s *onboardingImportService) GetStudentProgression(ctx context.Context, invocation invocation.Invocation, id model.OnboardingImportID) (OnboardingImportView, []OnboardingImportRowView, error) {
 	view, rows, err := s.get(ctx, invocation, id, model.OnboardingImportStudentProgression)
 	if err != nil {
 		return OnboardingImportView{}, nil, studentProgressionError(err)
@@ -44,22 +45,22 @@ func (s *onboardingImportService) GetStudentProgression(ctx context.Context, inv
 	return view, rows, nil
 }
 
-func (s *onboardingImportService) CommitStudentProgression(ctx context.Context, invocation Invocation, command CommitStudentProgressionCommand) (OnboardingImportView, error) {
+func (s *onboardingImportService) CommitStudentProgression(ctx context.Context, invocation invocation.Invocation, command CommitStudentProgressionCommand) (OnboardingImportView, error) {
 	view, err := s.commit(ctx, invocation, CommitOnboardingImportCommand{ID: command.ID, ExpectedRevision: command.ExpectedRevision,
 		PreviewDigest: command.PreviewDigest, Policy: model.OnboardingImportValidRowsOnly, IdempotencyKey: command.IdempotencyKey}, model.OnboardingImportStudentProgression)
 	return view, studentProgressionError(err)
 }
 
-func (s *onboardingImportService) CancelStudentProgression(ctx context.Context, invocation Invocation, id model.OnboardingImportID) (OnboardingImportView, error) {
+func (s *onboardingImportService) CancelStudentProgression(ctx context.Context, invocation invocation.Invocation, id model.OnboardingImportID) (OnboardingImportView, error) {
 	view, err := s.cancel(ctx, invocation, id, model.OnboardingImportStudentProgression)
 	return view, studentProgressionError(err)
 }
 
-func (s *onboardingImportService) StudentProgressionReport(ctx context.Context, invocation Invocation, id model.OnboardingImportID, output io.Writer) error {
+func (s *onboardingImportService) StudentProgressionReport(ctx context.Context, invocation invocation.Invocation, id model.OnboardingImportID, output io.Writer) error {
 	return studentProgressionError(s.report(ctx, invocation, id, output, model.OnboardingImportStudentProgression))
 }
 
-func (s *onboardingImportService) DryRunStudentProgression(ctx context.Context, invocation Invocation, command DryRunStudentProgressionCommand) (OnboardingImportView, error) {
+func (s *onboardingImportService) DryRunStudentProgression(ctx context.Context, invocation invocation.Invocation, command DryRunStudentProgressionCommand) (OnboardingImportView, error) {
 	sourcePeriodID, sourceClassID := model.AcademicPeriodID(strings.TrimSpace(command.SourcePeriodID)), model.ClassID(strings.TrimSpace(command.SourceClassID))
 	destinationPeriodID, destinationClassID := model.AcademicPeriodID(strings.TrimSpace(command.DestinationPeriodID)), model.ClassID(strings.TrimSpace(command.DestinationClassID))
 	if !sourcePeriodID.IsValid() || !sourceClassID.IsValid() || !destinationPeriodID.IsValid() || !destinationClassID.IsValid() ||
@@ -137,7 +138,7 @@ func (s *onboardingImportService) DryRunStudentProgression(ctx context.Context, 
 	return onboardingImportView(created), nil
 }
 
-func runStudentProgressionAuditedMutation[T any](ctx context.Context, audit mutationAuditor, invocation Invocation, operation, progressionID string,
+func runStudentProgressionAuditedMutation[T any](ctx context.Context, audit mutationAuditor, invocation invocation.Invocation, operation, progressionID string,
 	sourceClassID, destinationClassID model.ClassID, at time.Time,
 	mutate func(context.Context, mutationAttemptReference, mutationAttemptReference) (T, error), mapError func(error) error,
 ) (T, error) {
@@ -170,7 +171,7 @@ func (s *onboardingImportService) previewProgression(ctx context.Context, id mod
 	if current.Mode != model.OnboardingImportStudentProgression || current.State != model.OnboardingImportParsing {
 		return store.NewErrConflict("student_progression", "state", nil)
 	}
-	invocation := NewInvocation(current.Principal, model.RequestMetadata{})
+	invocation := invocation.New(current.Principal, model.RequestMetadata{})
 	if err = s.validatePrincipal(ctx, current.Principal); err != nil {
 		return err
 	}

@@ -74,7 +74,7 @@ type personalAccessTokenResourceModule struct {
 	tokens PersonalAccessTokens
 }
 
-func personalAccessTokenResource(tokens PersonalAccessTokens) resource {
+func personalAccessTokenResource(tokens PersonalAccessTokens) apiResource {
 	module := personalAccessTokenResourceModule{tokens: tokens}
 	collection := apiPath(literal("users"), literal("me"), literal("tokens"))
 	item := apiPath(literal("users"), literal("me"), literal("tokens"), canonicalID("personal_access_token_id"))

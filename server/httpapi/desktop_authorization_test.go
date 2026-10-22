@@ -20,6 +20,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -31,31 +32,31 @@ type desktopAuthorizationHTTPApplication struct {
 	startErr error
 }
 
-func (a *desktopAuthorizationHTTPApplication) BindDesktopAuthorization(_ context.Context, _ app.Invocation, command app.BindDesktopAuthorizationCommand) (*app.DesktopAuthorizationBinding, error) {
+func (a *desktopAuthorizationHTTPApplication) BindDesktopAuthorization(_ context.Context, _ invocation.Invocation, command app.BindDesktopAuthorizationCommand) (*app.DesktopAuthorizationBinding, error) {
 	return &app.DesktopAuthorizationBinding{Binding: "binding", ExpiresAt: time.Now().Add(time.Minute).UnixMilli()}, nil
 }
 
-func (a *desktopAuthorizationHTTPApplication) DesktopAuthorizationContext(context.Context, app.Invocation, string) (*app.DesktopAuthorizationBrowserContext, error) {
+func (a *desktopAuthorizationHTTPApplication) DesktopAuthorizationContext(context.Context, invocation.Invocation, string) (*app.DesktopAuthorizationBrowserContext, error) {
 	return &app.DesktopAuthorizationBrowserContext{State: model.BrowserAuthenticationStateBound, ExpiresAt: time.Now().Add(time.Minute).UnixMilli()}, nil
 }
 
-func (a *desktopAuthorizationHTTPApplication) AuthenticateDesktopAuthorizationSession(context.Context, app.Invocation, app.AuthenticateDesktopAuthorizationCommand) (*app.DesktopAuthorizationBrowserContext, error) {
+func (a *desktopAuthorizationHTTPApplication) AuthenticateDesktopAuthorizationSession(context.Context, invocation.Invocation, app.AuthenticateDesktopAuthorizationCommand) (*app.DesktopAuthorizationBrowserContext, error) {
 	return &app.DesktopAuthorizationBrowserContext{State: model.BrowserAuthenticationStateAuthenticated}, nil
 }
 
-func (a *desktopAuthorizationHTTPApplication) AuthenticateDesktopAuthorizationLocally(context.Context, app.Invocation, app.AuthenticateDesktopAuthorizationLocallyCommand) (*app.DesktopAuthorizationBrowserContext, error) {
+func (a *desktopAuthorizationHTTPApplication) AuthenticateDesktopAuthorizationLocally(context.Context, invocation.Invocation, app.AuthenticateDesktopAuthorizationLocallyCommand) (*app.DesktopAuthorizationBrowserContext, error) {
 	return &app.DesktopAuthorizationBrowserContext{State: model.BrowserAuthenticationStateAuthenticated}, nil
 }
 
-func (a *desktopAuthorizationHTTPApplication) ResetDesktopAuthorizationAccount(context.Context, app.Invocation, string) error {
+func (a *desktopAuthorizationHTTPApplication) ResetDesktopAuthorizationAccount(context.Context, invocation.Invocation, string) error {
 	return nil
 }
 
-func (a *desktopAuthorizationHTTPApplication) BeginDesktopExternalAuthentication(context.Context, app.Invocation, app.BeginDesktopExternalAuthenticationCommand) (*model.ExternalAuthenticationStart, error) {
+func (a *desktopAuthorizationHTTPApplication) BeginDesktopExternalAuthentication(context.Context, invocation.Invocation, app.BeginDesktopExternalAuthenticationCommand) (*model.ExternalAuthenticationStart, error) {
 	return &model.ExternalAuthenticationStart{RedirectURL: "https://identity.example/login", Binding: "external-binding", ExpiresAt: time.Now().Add(time.Minute).UnixMilli()}, nil
 }
 
-func (a *desktopAuthorizationHTTPApplication) StartDesktopAuthorization(_ context.Context, _ app.Invocation, command app.StartDesktopAuthorizationCommand) (*app.DesktopAuthorizationStart, error) {
+func (a *desktopAuthorizationHTTPApplication) StartDesktopAuthorization(_ context.Context, _ invocation.Invocation, command app.StartDesktopAuthorizationCommand) (*app.DesktopAuthorizationStart, error) {
 	a.start = command
 	if a.startErr != nil {
 		return nil, a.startErr
@@ -76,17 +77,17 @@ func TestDesktopAuthorizationHTTPExposesBoundedAttemptFailures(t *testing.T) {
 	require.Equal(t, http.StatusTooManyRequests, response.Code, "rate-limited start = %d: %s", response.Code, response.Body.String())
 }
 
-func (a *desktopAuthorizationHTTPApplication) ApproveDesktopAuthorization(_ context.Context, _ app.Invocation, command app.ApproveDesktopAuthorizationCommand) (*app.DesktopAuthorizationApproval, error) {
+func (a *desktopAuthorizationHTTPApplication) ApproveDesktopAuthorization(_ context.Context, _ invocation.Invocation, command app.ApproveDesktopAuthorizationCommand) (*app.DesktopAuthorizationApproval, error) {
 	a.approve = command
 	return &app.DesktopAuthorizationApproval{RedirectURL: "http://127.0.0.1:49152/callback?code=opaque&state=state", ExpiresAt: 90}, nil
 }
 
-func (a *desktopAuthorizationHTTPApplication) CancelDesktopAuthorization(_ context.Context, _ app.Invocation, command app.ApproveDesktopAuthorizationCommand) error {
+func (a *desktopAuthorizationHTTPApplication) CancelDesktopAuthorization(_ context.Context, _ invocation.Invocation, command app.ApproveDesktopAuthorizationCommand) error {
 	a.cancel = command
 	return nil
 }
 
-func (a *desktopAuthorizationHTTPApplication) ExchangeDesktopAuthorization(_ context.Context, _ app.Invocation, command app.ExchangeDesktopAuthorizationCommand) (*app.DesktopAuthorizationExchangeResult, error) {
+func (a *desktopAuthorizationHTTPApplication) ExchangeDesktopAuthorization(_ context.Context, _ invocation.Invocation, command app.ExchangeDesktopAuthorizationCommand) (*app.DesktopAuthorizationExchangeResult, error) {
 	a.exchange = command
 	return &app.DesktopAuthorizationExchangeResult{
 		Session: &model.Session{ID: model.NewSessionID(), UserID: model.NewUserID(), ClientType: model.SessionClientDesktop},

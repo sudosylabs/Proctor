@@ -41,7 +41,7 @@ type classMemberResourceModule struct {
 	members ClassMemberApplication
 }
 
-func classMemberResource(members ClassMemberApplication) resource {
+func classMemberResource(members ClassMemberApplication) apiResource {
 	module := classMemberResourceModule{members: members}
 	return newResource(
 		"class-members",

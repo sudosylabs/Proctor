@@ -34,7 +34,7 @@ type academicUnitMemberResourceModule struct {
 	members AcademicUnitMemberApplication
 }
 
-func academicUnitMemberResource(members AcademicUnitMemberApplication) resource {
+func academicUnitMemberResource(members AcademicUnitMemberApplication) apiResource {
 	module := academicUnitMemberResourceModule{members: members}
 	return newResource(
 		"academic-unit-members",

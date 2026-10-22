@@ -18,9 +18,6 @@ import (
 const (
 	// DefaultReadinessProbeTimeout bounds one mandatory-dependency probe.
 	DefaultReadinessProbeTimeout = 2 * time.Second
-	// DefaultReadinessProbeInterval bounds how often readiness may probe, so
-	// public readiness or ping traffic cannot amplify dependency load.
-	DefaultReadinessProbeInterval = time.Second
 )
 
 // DependencyProbe reports whether mandatory runtime dependencies are usable.

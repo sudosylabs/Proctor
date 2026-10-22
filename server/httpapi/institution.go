@@ -75,7 +75,7 @@ type institutionResourceModule struct {
 	institutions InstitutionApplication
 }
 
-func institutionResource(institutions InstitutionApplication) resource {
+func institutionResource(institutions InstitutionApplication) apiResource {
 	module := institutionResourceModule{institutions: institutions}
 	return newResource(
 		"institution",

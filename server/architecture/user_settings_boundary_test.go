@@ -36,6 +36,7 @@ func TestUserSettingsApplicationBoundary(t *testing.T) {
 		"time":                            {},
 		serverModule + "/app/apperror":    {},
 		serverModule + "/app/idempotency": {},
+		serverModule + "/app/invocation":  {},
 		serverModule + "/app/realtime":    {},
 		serverModule + "/model":           {},
 		serverModule + "/store":           {},

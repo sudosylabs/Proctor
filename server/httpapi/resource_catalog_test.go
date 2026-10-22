@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -27,24 +28,24 @@ type recordingOnboardingImportApplication struct {
 	getID string
 }
 
-func (*recordingOnboardingImportApplication) UploadOnboardingImport(context.Context, app.Invocation, app.UploadOnboardingImportCommand) (app.OnboardingImportView, error) {
+func (*recordingOnboardingImportApplication) UploadOnboardingImport(context.Context, invocation.Invocation, app.UploadOnboardingImportCommand) (app.OnboardingImportView, error) {
 	return app.OnboardingImportView{}, nil
 }
 
-func (c *recordingOnboardingImportApplication) GetOnboardingImport(_ context.Context, _ app.Invocation, id model.OnboardingImportID) (app.OnboardingImportView, []app.OnboardingImportRowView, error) {
+func (c *recordingOnboardingImportApplication) GetOnboardingImport(_ context.Context, _ invocation.Invocation, id model.OnboardingImportID) (app.OnboardingImportView, []app.OnboardingImportRowView, error) {
 	c.getID = id.String()
 	return app.OnboardingImportView{}, nil, nil
 }
 
-func (*recordingOnboardingImportApplication) CommitOnboardingImport(context.Context, app.Invocation, app.CommitOnboardingImportCommand) (app.OnboardingImportView, error) {
+func (*recordingOnboardingImportApplication) CommitOnboardingImport(context.Context, invocation.Invocation, app.CommitOnboardingImportCommand) (app.OnboardingImportView, error) {
 	return app.OnboardingImportView{}, nil
 }
 
-func (*recordingOnboardingImportApplication) CancelOnboardingImport(context.Context, app.Invocation, model.OnboardingImportID) (app.OnboardingImportView, error) {
+func (*recordingOnboardingImportApplication) CancelOnboardingImport(context.Context, invocation.Invocation, model.OnboardingImportID) (app.OnboardingImportView, error) {
 	return app.OnboardingImportView{}, nil
 }
 
-func (*recordingOnboardingImportApplication) OnboardingImportReport(context.Context, app.Invocation, model.OnboardingImportID, io.Writer) error {
+func (*recordingOnboardingImportApplication) OnboardingImportReport(context.Context, invocation.Invocation, model.OnboardingImportID, io.Writer) error {
 	return nil
 }
 

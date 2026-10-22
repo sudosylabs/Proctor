@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -197,7 +198,7 @@ func TestRequestPasswordResetPreservesGenericResponseAndIssuedToken(t *testing.T
 		now: func() time.Time { return now },
 	})
 
-	err := app.RequestPasswordReset(context.Background(), Invocation{}, RequestPasswordResetCommand{
+	err := app.RequestPasswordReset(context.Background(), invocation.Invocation{}, RequestPasswordResetCommand{
 		Email: "  STUDENT@EXAMPLE.EDU  ", Source: "192.0.2.10",
 	})
 	require.NoError(t, err)
@@ -217,7 +218,7 @@ func TestRequestPasswordResetPreservesGenericResponseAndIssuedToken(t *testing.T
 		now: func() time.Time { return now },
 	})
 	require.NoError(t, unknown.RequestPasswordReset(
-		context.Background(), Invocation{},
+		context.Background(), invocation.Invocation{},
 		RequestPasswordResetCommand{Email: "unknown@example.edu"},
 	))
 }
@@ -230,7 +231,7 @@ func TestRequestPasswordResetReportsMailUnavailableWhenLocalLoginRemainsEnabled(
 		tokens: &accountTokenStoreFake{}, institution: &model.Institution{ID: model.NewInstitutionID()},
 		mailer: &accountTokenMailerFake{enabled: false},
 	})
-	err := app.RequestPasswordReset(context.Background(), Invocation{}, RequestPasswordResetCommand{
+	err := app.RequestPasswordReset(context.Background(), invocation.Invocation{}, RequestPasswordResetCommand{
 		Email: "student@example.edu", Source: "192.0.2.10",
 	})
 	require.True(t, apperror.Is(err, "authentication.account_recovery.unavailable"), "enabled-local disabled-mail error = %v", err)
@@ -247,7 +248,7 @@ func TestRequestPasswordResetConcealsAtomicEnqueueFailure(t *testing.T) {
 		passwords: &accountTokenPasswordStoreFake{credential: &model.PasswordCredential{UserID: user.ID}},
 		tokens:    tokens, institution: &model.Institution{ID: model.NewInstitutionID()}, mailer: mailer,
 	})
-	require.NoError(t, app.RequestPasswordReset(context.Background(), Invocation{}, RequestPasswordResetCommand{Email: user.Email}))
+	require.NoError(t, app.RequestPasswordReset(context.Background(), invocation.Invocation{}, RequestPasswordResetCommand{Email: user.Email}))
 	require.NotNil(t, tokens.issuedMail, "prepared durable reset aggregate")
 	require.Equal(t, model.JobTypeMailDeliverCredential, tokens.issuedMail.Job.Type, "prepared durable reset aggregate")
 	require.Len(t, mailer.messages, 1, "prepared durable reset aggregate")
@@ -273,7 +274,7 @@ func TestRequestPasswordResetCreatesNoIntentForDisabledOrExternalOnlyAccount(t *
 				users: &accountTokenUserStoreFake{byEmail: test.user}, passwords: test.password,
 				tokens: tokens, institution: &model.Institution{ID: model.NewInstitutionID()}, mailer: mailer,
 			})
-			require.NoError(t, app.RequestPasswordReset(context.Background(), Invocation{}, RequestPasswordResetCommand{Email: test.user.Email}))
+			require.NoError(t, app.RequestPasswordReset(context.Background(), invocation.Invocation{}, RequestPasswordResetCommand{Email: test.user.Email}))
 			require.Nil(t, tokens.issuedMail, "ineligible account intent")
 			require.Empty(t, mailer.messages, "ineligible account intent")
 		})
@@ -292,7 +293,7 @@ func TestRequestPasswordResetIsGenericAndInertWhenCurrentPolicyDisablesLocalLogi
 		}, tokens: tokens, institution: &model.Institution{ID: model.NewInstitutionID()}, mailer: mailer,
 		accessPolicy: authenticationAccessPolicyFake{local: false},
 	})
-	require.NoError(t, app.RequestPasswordReset(context.Background(), Invocation{}, RequestPasswordResetCommand{
+	require.NoError(t, app.RequestPasswordReset(context.Background(), invocation.Invocation{}, RequestPasswordResetCommand{
 		Email: user.Email, Source: "192.0.2.7",
 	}))
 	require.Nil(t, tokens.issued, "disabled local recovery issued")
@@ -336,7 +337,7 @@ func TestCompletePasswordResetCommitsBeforeEffects(t *testing.T) {
 	})
 
 	got, err := app.CompletePasswordReset(
-		context.Background(), Invocation{},
+		context.Background(), invocation.Invocation{},
 		CompletePasswordResetCommand{Token: accountTokenTestRawToken, Password: "new password"},
 	)
 	require.NoError(t, err, "complete password reset")
@@ -356,7 +357,7 @@ func TestCompletePasswordResetMapsTerminalAccessPolicyFenceToInvalidCredential(t
 		}},
 		institution: &model.Institution{ID: model.NewInstitutionID()}, mailer: &accountTokenMailerFake{enabled: true},
 	})
-	result, err := app.CompletePasswordReset(context.Background(), Invocation{}, CompletePasswordResetCommand{
+	result, err := app.CompletePasswordReset(context.Background(), invocation.Invocation{}, CompletePasswordResetCommand{
 		Token: accountTokenTestRawToken, Password: "NewCorrectHorseBatteryStaple1!", Source: "192.0.2.8",
 	})
 	require.Nil(t, result, "result=%#v err=%v", result, err)
@@ -377,7 +378,7 @@ func TestAccountTokenCompletionConcealsTerminalTokenStates(t *testing.T) {
 				mailer:      &accountTokenMailerFake{enabled: true},
 			})
 			_, err := app.CompleteEmailVerification(
-				context.Background(), Invocation{},
+				context.Background(), invocation.Invocation{},
 				CompleteEmailVerificationCommand{Token: accountTokenTestRawToken},
 			)
 			var appErr *apperror.Error
@@ -397,7 +398,7 @@ func TestAccountTokenCompletionRejectsMalformedCredentialGenerically(t *testing.
 		mailer:      &accountTokenMailerFake{enabled: true},
 	})
 	_, err := app.CompleteEmailVerification(
-		context.Background(), Invocation{},
+		context.Background(), invocation.Invocation{},
 		CompleteEmailVerificationCommand{Token: "malformed"},
 	)
 	require.True(t, apperror.Is(err, "authentication.account_token.invalid"), "completion error = %v", err)
@@ -417,7 +418,7 @@ func TestPasswordResetWorkFailuresDoNotConsumeResetToken(t *testing.T) {
 			institution: &model.Institution{ID: model.NewInstitutionID()},
 			mailer:      &accountTokenMailerFake{enabled: true}, hasher: hasher,
 		})
-		user, err := application.CompletePasswordReset(ctx, Invocation{}, CompletePasswordResetCommand{
+		user, err := application.CompletePasswordReset(ctx, invocation.Invocation{}, CompletePasswordResetCommand{
 			Token: accountTokenTestRawToken, Password: "correct horse battery staple", Source: "192.0.2.34",
 		})
 		require.Nil(t, user, "failed password work reached password reset mutation")
@@ -603,39 +604,39 @@ type accountTokenMailerFake struct {
 
 func (m *accountTokenMailerFake) Enabled() bool { return m.enabled }
 
-func (m *accountTokenMailerFake) prepareAccountToken(request AccountTokenMailPreparation, key model.MailTemplateKey) (*preparedDirectMail, error) {
+func (m *accountTokenMailerFake) prepareAccountToken(request AccountTokenMailPreparation, key model.MailTemplateKey) (*store.PreparedMail, error) {
 	m.messages = append(m.messages, request.ActionURL)
 	if m.err != nil {
 		return nil, m.err
 	}
-	return &preparedDirectMail{
+	return &store.PreparedMail{
 		Occurrence: &model.MailOccurrence{ID: request.OccurrenceID, Kind: model.MailOccurrenceAccountToken, TemplateKey: key, CreatedAt: request.At},
 		Delivery:   &model.MailDelivery{Deadline: request.Deadline},
 		Job:        &model.Job{Type: model.JobTypeMailDeliverCredential},
 	}, nil
 }
 
-func (m *accountTokenMailerFake) PrepareEmailVerification(request AccountTokenMailPreparation) (*preparedDirectMail, error) {
+func (m *accountTokenMailerFake) PrepareEmailVerification(request AccountTokenMailPreparation) (*store.PreparedMail, error) {
 	return m.prepareAccountToken(request, model.MailTemplateIdentityVerifyEmail)
 }
-func (m *accountTokenMailerFake) PreparePasswordReset(request AccountTokenMailPreparation) (*preparedDirectMail, error) {
+func (m *accountTokenMailerFake) PreparePasswordReset(request AccountTokenMailPreparation) (*store.PreparedMail, error) {
 	return m.prepareAccountToken(request, model.MailTemplateIdentityPasswordReset)
 }
-func (m *accountTokenMailerFake) PreparePasswordChanged(request NoticeMailPreparation) (*preparedDirectMail, error) {
+func (m *accountTokenMailerFake) PreparePasswordChanged(request NoticeMailPreparation) (*store.PreparedMail, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
-	return &preparedDirectMail{Occurrence: &model.MailOccurrence{ID: model.NewMailOccurrenceID(), Kind: model.MailOccurrenceSecurityNotice,
+	return &store.PreparedMail{Occurrence: &model.MailOccurrence{ID: model.NewMailOccurrenceID(), Kind: model.MailOccurrenceSecurityNotice,
 		TemplateKey: model.MailTemplateIdentityPasswordChanged, CreatedAt: request.At}, Delivery: &model.MailDelivery{Deadline: request.At.Add(24 * time.Hour)},
 		Job: &model.Job{Type: model.JobTypeMailDeliver}}, nil
 }
-func (m *accountTokenMailerFake) PrepareEmailChangeWarning(NoticeMailPreparation) (*preparedDirectMail, error) {
+func (m *accountTokenMailerFake) PrepareEmailChangeWarning(NoticeMailPreparation) (*store.PreparedMail, error) {
 	return nil, errors.New("unexpected email change warning")
 }
-func (m *accountTokenMailerFake) PrepareEmailChangeVerification(AccountTokenMailPreparation) (*preparedDirectMail, error) {
+func (m *accountTokenMailerFake) PrepareEmailChangeVerification(AccountTokenMailPreparation) (*store.PreparedMail, error) {
 	return nil, errors.New("unexpected email change verification")
 }
-func (m *accountTokenMailerFake) PrepareEmailVerifiedByAdministrator(NoticeMailPreparation) (*preparedDirectMail, error) {
+func (m *accountTokenMailerFake) PrepareEmailVerifiedByAdministrator(NoticeMailPreparation) (*store.PreparedMail, error) {
 	return nil, errors.New("unexpected privileged email verification")
 }
 
@@ -720,7 +721,7 @@ func TestCompletePasswordResetUnknownTokenDoesNotSpendPasswordWork(t *testing.T)
 		institution: &model.Institution{ID: model.NewInstitutionID()}, mailer: &accountTokenMailerFake{enabled: true},
 		hasher: countingAccountTokenHasher{calls: &hashes},
 	})
-	result, err := app.CompletePasswordReset(context.Background(), Invocation{}, CompletePasswordResetCommand{
+	result, err := app.CompletePasswordReset(context.Background(), invocation.Invocation{}, CompletePasswordResetCommand{
 		Token: model.NewCredentialToken(), Password: "NewCorrectHorseBatteryStaple1!", Source: "192.0.2.9",
 	})
 	require.Nil(t, result, "result=%#v err=%v", result, err)

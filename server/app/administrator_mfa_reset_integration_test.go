@@ -21,6 +21,7 @@ import (
 
 	server "github.com/sudosylabs/proctor/server"
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -45,7 +46,7 @@ func TestOfflineAdministratorMFAResetReconcilesAndRequiresReenrollment(t *testin
 	require.Equal(t, http.StatusCreated, bootstrap.Code, "bootstrap=%d %s", bootstrap.Code, bootstrap.Body.String())
 	installation, err := persistence.Installation().Get(ctx)
 	require.NoError(t, err)
-	before, err := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{LoginID: "offline-mfa-admin", Password: password, ClientType: model.SessionClientCLI, DeviceID: "offline-old", Source: "127.0.0.1:1"})
+	before, err := helper.App.Login(ctx, invocation.Invocation{}, app.LoginCommand{LoginID: "offline-mfa-admin", Password: password, ClientType: model.SessionClientCLI, DeviceID: "offline-old", Source: "127.0.0.1:1"})
 	require.NoError(t, err)
 	strengthenRoleAdministratorSession(t, helper.Handler(), before.Tokens.AccessToken)
 	reset, err := helper.Server.ResetAdministratorMFA(ctx, server.AdministratorMFAResetCommand{InstitutionID: installation.InstitutionID.String(), UserID: installation.AdministratorUserID.String()})
@@ -64,9 +65,9 @@ func TestOfflineAdministratorMFAResetReconcilesAndRequiresReenrollment(t *testin
 	require.Equal(t, model.AuditStatusSuccess, events[0].Status, "reconciled recovery audit")
 	old := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/users/me", nil, before.Tokens.AccessToken)
 	require.NotEqual(t, http.StatusOK, old.Code, "old Session remained usable after offline reset")
-	_, err = helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{LoginID: "offline-mfa-admin", Password: password, ClientType: model.SessionClientCLI, DeviceID: "offline-cli", Source: "127.0.0.1:2"})
+	_, err = helper.App.Login(ctx, invocation.Invocation{}, app.LoginCommand{LoginID: "offline-mfa-admin", Password: password, ClientType: model.SessionClientCLI, DeviceID: "offline-cli", Source: "127.0.0.1:2"})
 	require.Error(t, err, "CLI login bypassed mandatory reenrollment")
-	fresh, err := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{LoginID: "offline-mfa-admin", Password: password, ClientType: model.SessionClientWeb, DeviceID: "offline-web", Source: "127.0.0.1:3"})
+	fresh, err := helper.App.Login(ctx, invocation.Invocation{}, app.LoginCommand{LoginID: "offline-mfa-admin", Password: password, ClientType: model.SessionClientWeb, DeviceID: "offline-web", Source: "127.0.0.1:3"})
 	require.NoError(t, err, "restricted fresh Session")
 	require.NotNil(t, fresh, "restricted fresh Session")
 	require.NotNil(t, fresh.Session, "restricted fresh Session")

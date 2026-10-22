@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -99,8 +100,8 @@ type profilePictureFileStore interface {
 }
 
 type profilePictureAuthorizer interface {
-	AuthorizeRead(context.Context, Invocation, string) error
-	AuthorizeProfilePictureWrite(context.Context, Invocation, string) error
+	AuthorizeRead(context.Context, invocation.Invocation, string) error
+	AuthorizeProfilePictureWrite(context.Context, invocation.Invocation, string) error
 }
 
 type profilePictureChanged struct {
@@ -177,11 +178,11 @@ func newProfilePictureService(users profilePictureUserStore, files profilePictur
 	}
 }
 
-func (s *profilePictureService) UploadProfilePicture(ctx context.Context, invocation Invocation, command UploadProfilePictureCommand) (*model.User, error) {
+func (s *profilePictureService) UploadProfilePicture(ctx context.Context, invocation invocation.Invocation, command UploadProfilePictureCommand) (*model.User, error) {
 	return s.uploads.Upload(ctx, invocation, command)
 }
 
-func (s *profilePictureUploadService) Upload(ctx context.Context, invocation Invocation, command UploadProfilePictureCommand) (*model.User, error) {
+func (s *profilePictureUploadService) Upload(ctx context.Context, invocation invocation.Invocation, command UploadProfilePictureCommand) (*model.User, error) {
 	userID := command.UserID
 	if !userID.IsValid() || command.ExpectedRevision < 0 || command.Body == nil || command.Size == 0 || command.Size < -1 || command.Size > maximumProfilePictureBytes {
 		return nil, apperror.New("request.invalid").WithField("field", "profile_picture")
@@ -360,11 +361,11 @@ func sameNormalizedProfilePicture(state *store.ProfilePictureState, renditions [
 	return len(currentByName) == 0
 }
 
-func (s *profilePictureService) RemoveProfilePicture(ctx context.Context, invocation Invocation, command RemoveProfilePictureCommand) (*model.User, error) {
+func (s *profilePictureService) RemoveProfilePicture(ctx context.Context, invocation invocation.Invocation, command RemoveProfilePictureCommand) (*model.User, error) {
 	return s.removals.Remove(ctx, invocation, command)
 }
 
-func (s *profilePictureRemovalService) Remove(ctx context.Context, invocation Invocation, command RemoveProfilePictureCommand) (*model.User, error) {
+func (s *profilePictureRemovalService) Remove(ctx context.Context, invocation invocation.Invocation, command RemoveProfilePictureCommand) (*model.User, error) {
 	userID := command.UserID
 	expectedSHA256 := strings.TrimSpace(command.ExpectedSHA256)
 	if !userID.IsValid() || expectedSHA256 == "" {
@@ -427,11 +428,11 @@ func (s *profilePictureRemovalService) Remove(ctx context.Context, invocation In
 	return updated, nil
 }
 
-func (s *profilePictureService) GetProfilePicture(ctx context.Context, invocation Invocation, query GetProfilePictureQuery) (*ProfilePictureContent, error) {
+func (s *profilePictureService) GetProfilePicture(ctx context.Context, invocation invocation.Invocation, query GetProfilePictureQuery) (*ProfilePictureContent, error) {
 	return s.reads.Get(ctx, invocation, query)
 }
 
-func (s *profilePictureReadService) Get(ctx context.Context, invocation Invocation, query GetProfilePictureQuery) (*ProfilePictureContent, error) {
+func (s *profilePictureReadService) Get(ctx context.Context, invocation invocation.Invocation, query GetProfilePictureQuery) (*ProfilePictureContent, error) {
 	id := query.UserID
 	if !id.IsValid() || (query.Size != 128 && query.Size != 256 && query.Size != 512) {
 		return nil, apperror.New("request.invalid")

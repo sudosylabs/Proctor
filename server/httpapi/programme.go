@@ -43,7 +43,7 @@ type programmeResourceModule struct {
 	programmes ProgrammeApplication
 }
 
-func programmeResource(programmes ProgrammeApplication) resource {
+func programmeResource(programmes ProgrammeApplication) apiResource {
 	module := programmeResourceModule{programmes: programmes}
 	collection := apiPath(literal("academic-units"), canonicalID("academic_unit_id"), literal("programmes"))
 	member := apiPath(literal("programmes"), canonicalID("programme_id"))

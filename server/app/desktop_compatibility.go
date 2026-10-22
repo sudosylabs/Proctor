@@ -19,6 +19,7 @@ import (
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -227,7 +228,7 @@ func (s *desktopCompatibilityService) ResolveAttemptDesktopBuild(
 // GetDesktopCompatibilityPolicy returns the current administrative policy.
 func (s *desktopCompatibilityService) GetDesktopCompatibilityPolicy(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 ) (*model.DesktopCompatibilityPolicy, error) {
 	if _, _, err := s.authorize(ctx, invocation, model.ActionAccessPolicyView); err != nil {
 		return nil, err
@@ -242,7 +243,7 @@ func (s *desktopCompatibilityService) GetDesktopCompatibilityPolicy(
 // ReplaceDesktopCompatibilityPolicy replaces the current policy.
 func (s *desktopCompatibilityService) ReplaceDesktopCompatibilityPolicy(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command ReplaceDesktopCompatibilityPolicyCommand,
 ) (*model.DesktopCompatibilityPolicy, error) {
 	if err := requireStrongRecentSession(
@@ -330,7 +331,7 @@ func (s *desktopCompatibilityService) ReplaceDesktopCompatibilityPolicy(
 
 func (s *desktopCompatibilityService) authorize(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	action model.Action,
 ) (*model.Institution, model.Resource, error) {
 	institution, err := s.institutions.GetSingleton(ctx)

@@ -23,6 +23,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -239,14 +240,14 @@ func authenticationResponseFromRefresh(
 }
 
 type authenticationEntryApplication interface {
-	RegisterLocalUser(context.Context, app.Invocation, app.RegisterLocalUserCommand) error
-	Login(context.Context, app.Invocation, app.LoginCommand) (*app.LoginResult, error)
-	RefreshSession(context.Context, app.Invocation, app.RefreshSessionCommand) (*model.Session, *model.AuthenticationTokens, error)
-	Logout(context.Context, app.Invocation, app.LogoutCommand) error
-	RequestEmailVerification(context.Context, app.Invocation, app.RequestEmailVerificationCommand) error
-	CompleteEmailVerification(context.Context, app.Invocation, app.CompleteEmailVerificationCommand) (*model.User, error)
-	RequestPasswordReset(context.Context, app.Invocation, app.RequestPasswordResetCommand) error
-	CompletePasswordReset(context.Context, app.Invocation, app.CompletePasswordResetCommand) (*model.User, error)
+	RegisterLocalUser(context.Context, invocation.Invocation, app.RegisterLocalUserCommand) error
+	Login(context.Context, invocation.Invocation, app.LoginCommand) (*app.LoginResult, error)
+	RefreshSession(context.Context, invocation.Invocation, app.RefreshSessionCommand) (*model.Session, *model.AuthenticationTokens, error)
+	Logout(context.Context, invocation.Invocation, app.LogoutCommand) error
+	RequestEmailVerification(context.Context, invocation.Invocation, app.RequestEmailVerificationCommand) error
+	CompleteEmailVerification(context.Context, invocation.Invocation, app.CompleteEmailVerificationCommand) (*model.User, error)
+	RequestPasswordReset(context.Context, invocation.Invocation, app.RequestPasswordResetCommand) error
+	CompletePasswordReset(context.Context, invocation.Invocation, app.CompletePasswordResetCommand) (*model.User, error)
 }
 
 type authenticationResourceModule struct {
@@ -254,7 +255,7 @@ type authenticationResourceModule struct {
 	cookies        browserCookies
 }
 
-func authenticationResource(authentication authenticationEntryApplication, cookies browserCookies) resource {
+func authenticationResource(authentication authenticationEntryApplication, cookies browserCookies) apiResource {
 	module := authenticationResourceModule{authentication: authentication, cookies: cookies}
 	return newResource(
 		"authentication",
@@ -317,7 +318,7 @@ func (m authenticationResourceModule) register(request operationRequest) (operat
 	}
 	if err := m.authentication.RegisterLocalUser(
 		request.context,
-		app.NewInvocation(model.Principal{}, request.metadata),
+		invocation.New(model.Principal{}, request.metadata),
 		app.RegisterLocalUserCommand{
 			Username: input.Username, Email: input.Email, FirstName: input.FirstName,
 			LastName: input.LastName, Password: input.Password,
@@ -358,7 +359,7 @@ func (m authenticationResourceModule) login(request operationRequest) (operation
 	}
 	result, err := m.authentication.Login(
 		request.context,
-		app.NewInvocation(model.Principal{}, request.metadata),
+		invocation.New(model.Principal{}, request.metadata),
 		app.LoginCommand{
 			LoginID: input.LoginID, Password: input.Password, ClientType: input.ClientType,
 			DeviceID: input.DeviceID, DeviceName: input.DeviceName, MFACode: input.MFACode,
@@ -398,7 +399,7 @@ func (m authenticationResourceModule) refresh(request operationRequest) (operati
 	}
 	session, tokens, err := m.authentication.RefreshSession(
 		request.context,
-		app.NewInvocation(model.Principal{}, request.metadata),
+		invocation.New(model.Principal{}, request.metadata),
 		command,
 	)
 	if err != nil {
@@ -460,7 +461,7 @@ func (m authenticationResourceModule) completeEmailVerification(request operatio
 	}
 	_, err := m.authentication.CompleteEmailVerification(
 		request.context,
-		app.NewInvocation(model.Principal{}, request.metadata),
+		invocation.New(model.Principal{}, request.metadata),
 		app.CompleteEmailVerificationCommand{Token: input.Token, Source: request.metadata.IPAddress},
 	)
 	if err != nil {
@@ -476,7 +477,7 @@ func (m authenticationResourceModule) requestPasswordReset(request operationRequ
 	}
 	if err := m.authentication.RequestPasswordReset(
 		request.context,
-		app.NewInvocation(model.Principal{}, request.metadata),
+		invocation.New(model.Principal{}, request.metadata),
 		app.RequestPasswordResetCommand{Email: input.Email, Source: request.metadata.IPAddress},
 	); err != nil {
 		return operationResult{}, err
@@ -491,7 +492,7 @@ func (m authenticationResourceModule) completePasswordReset(request operationReq
 	}
 	_, err := m.authentication.CompletePasswordReset(
 		request.context,
-		app.NewInvocation(model.Principal{}, request.metadata),
+		invocation.New(model.Principal{}, request.metadata),
 		app.CompletePasswordResetCommand{
 			Token: input.Token, Password: input.Password, Source: request.metadata.IPAddress,
 		},

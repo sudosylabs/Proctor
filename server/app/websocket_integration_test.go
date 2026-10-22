@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
@@ -201,7 +202,7 @@ func TestWebSocketIntegration(t *testing.T) {
 	require.NoError(t, appErr)
 	require.NoError(t, helper.App.RevokeSession(
 		context.Background(),
-		app.NewInvocation(*principal, model.RequestMetadata{}),
+		invocation.New(*principal, model.RequestMetadata{}),
 		app.RevokeSessionCommand{SessionID: login.Session.ID.String()},
 	))
 	_ = connection.SetReadDeadline(time.Now().Add(3 * time.Second))
@@ -347,7 +348,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	require.NoError(t, appErr)
 	role, err := nodeA.App.CreateRole(
 		context.Background(),
-		app.NewInvocation(*principal, model.RequestMetadata{RequestID: "two-node-role-create"}),
+		invocation.New(*principal, model.RequestMetadata{RequestID: "two-node-role-create"}),
 		app.CreateRoleCommand{
 			Name: "cluster_observer", DisplayName: "Cluster Observer",
 			Permissions: []string{string(model.ActionUserView)},
@@ -357,7 +358,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	updatedDisplayName := "Updated Cluster Observer"
 	_, err = nodeA.App.UpdateRole(
 		context.Background(),
-		app.NewInvocation(*principal, model.RequestMetadata{RequestID: "two-node-role-patch"}),
+		invocation.New(*principal, model.RequestMetadata{RequestID: "two-node-role-patch"}),
 		app.UpdateRoleCommand{ID: role.ID, DisplayName: &updatedDisplayName},
 	)
 	require.NoError(t, err)
@@ -376,7 +377,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	_ = readWebSocketEvent(t, connection)
 	require.NoError(t, nodeA.App.RevokeSession(
 		context.Background(),
-		app.NewInvocation(*principal, model.RequestMetadata{}),
+		invocation.New(*principal, model.RequestMetadata{}),
 		app.RevokeSessionCommand{SessionID: login.Session.ID.String()},
 	))
 	_ = connection.SetReadDeadline(time.Now().Add(5 * time.Second))

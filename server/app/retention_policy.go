@@ -15,6 +15,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -60,7 +61,7 @@ func newRetentionPolicyService(
 // GetRetentionPolicy returns the current administrative policy.
 func (s *retentionPolicyService) GetRetentionPolicy(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 ) (*model.RetentionPolicy, error) {
 	institution, _, err := s.authorize(ctx, invocation, model.ActionRetentionPolicyView)
 	if err != nil {
@@ -76,7 +77,7 @@ func (s *retentionPolicyService) GetRetentionPolicy(
 // ReplaceRetentionPolicy replaces the current policy.
 func (s *retentionPolicyService) ReplaceRetentionPolicy(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command ReplaceRetentionPolicyCommand,
 ) (*model.RetentionPolicy, error) {
 	if err := requireStrongRecentSession(
@@ -170,7 +171,7 @@ func (s *retentionPolicyService) ReplaceRetentionPolicy(
 
 func (s *retentionPolicyService) authorize(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	action model.Action,
 ) (*model.Institution, model.Resource, error) {
 	institution, err := s.institutions.GetSingleton(ctx)

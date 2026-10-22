@@ -19,6 +19,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -205,7 +206,7 @@ func (r *recordingBootstrap) GetInstallationStatus(context.Context, app.GetInsta
 	return &model.InstallationStatus{Initialized: false}, nil
 }
 
-func (r *recordingBootstrap) BootstrapInstallation(_ context.Context, _ app.Invocation, command app.BootstrapInstallationCommand) (*model.InstallationBootstrapResult, error) {
+func (r *recordingBootstrap) BootstrapInstallation(_ context.Context, _ invocation.Invocation, command app.BootstrapInstallationCommand) (*model.InstallationBootstrapResult, error) {
 	r.command = command
 	return r.result, r.bootstrapErr
 }

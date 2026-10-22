@@ -46,7 +46,6 @@ type AddManagerCommand struct {
 
 type RemoveManagerCommand = AddManagerCommand
 type TransferOwnerCommand = AddManagerCommand
-type ManagerChange = store.ExamManagerCommandResult
 
 // ListExamManagers returns one page of an Exam's Exam Managers to a caller
 // authorized to manage the Exam.
@@ -76,21 +75,21 @@ func (a *Authoring) ListExamManagers(ctx context.Context, invocation invocation.
 
 // AddExamManager idempotently grants Exam Manager membership to an eligible
 // user, fenced by ExpectedExamRevision, and notifies that user by mail.
-func (a *Authoring) AddExamManager(ctx context.Context, invocation invocation.Invocation, command AddManagerCommand) (_ ManagerChange, resultErr error) {
+func (a *Authoring) AddExamManager(ctx context.Context, invocation invocation.Invocation, command AddManagerCommand) (_ store.ExamManagerCommandResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	return a.changeManager(ctx, invocation, command, managerAddition, a.deps.Persistence.AddManager)
 }
 
 // RemoveExamManager idempotently revokes a user's Exam Manager membership,
 // fenced by ExpectedExamRevision, and notifies that user by mail.
-func (a *Authoring) RemoveExamManager(ctx context.Context, invocation invocation.Invocation, command RemoveManagerCommand) (_ ManagerChange, resultErr error) {
+func (a *Authoring) RemoveExamManager(ctx context.Context, invocation invocation.Invocation, command RemoveManagerCommand) (_ store.ExamManagerCommandResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	return a.changeManager(ctx, invocation, command, managerRemoval, a.deps.Persistence.RemoveManager)
 }
 
 // TransferExamOwnership idempotently makes an eligible user the Exam's owner,
 // fenced by ExpectedExamRevision.
-func (a *Authoring) TransferExamOwnership(ctx context.Context, invocation invocation.Invocation, command TransferOwnerCommand) (_ ManagerChange, resultErr error) {
+func (a *Authoring) TransferExamOwnership(ctx context.Context, invocation invocation.Invocation, command TransferOwnerCommand) (_ store.ExamManagerCommandResult, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	return a.changeManager(ctx, invocation, command, ownershipTransfer, a.deps.Persistence.TransferOwner)
 }
@@ -126,10 +125,10 @@ var (
 		}}
 )
 
-func (a *Authoring) changeManager(ctx context.Context, invocation invocation.Invocation, command AddManagerCommand, transition managerTransition, mutate managerMutation) (ManagerChange, error) {
+func (a *Authoring) changeManager(ctx context.Context, invocation invocation.Invocation, command AddManagerCommand, transition managerTransition, mutate managerMutation) (store.ExamManagerCommandResult, error) {
 	principal := invocation.Principal()
 	if principal.Validate() != nil || !command.ExamID.IsValid() || !command.UserID.IsValid() || command.ExpectedExamRevision < 1 {
-		return ManagerChange{}, apperror.Invalid("exam.invalid", "manager_command")
+		return store.ExamManagerCommandResult{}, apperror.Invalid("exam.invalid", "manager_command")
 	}
 	idempotency, err := applicationidempotency.Require(invocation, transition.idempotencyOperation, command.IdempotencyKey, struct {
 		ExamID               string `json:"exam_id"`
@@ -137,26 +136,26 @@ func (a *Authoring) changeManager(ctx context.Context, invocation invocation.Inv
 		ExpectedExamRevision int64  `json:"expected_exam_revision"`
 	}{command.ExamID.String(), command.UserID.String(), command.ExpectedExamRevision})
 	if err != nil {
-		return ManagerChange{}, err
+		return store.ExamManagerCommandResult{}, err
 	}
 	decisionAt := model.TimeUTC(a.deps.Now())
 	access, action, err := a.authorizeManagement(ctx, invocation, command.ExamID, decisionAt)
 	if err != nil {
-		return ManagerChange{}, err
+		return store.ExamManagerCommandResult{}, err
 	}
 	eligible := false
 	if transition.eligibilityRequired {
 		eligible, err = a.isEligibleManager(ctx, command.UserID, access.Exam.AcademicUnitID, decisionAt)
 		if err != nil {
-			return ManagerChange{}, err
+			return store.ExamManagerCommandResult{}, err
 		}
 	}
 	snapshot, err := a.deps.Persistence.Get(ctx, command.ExamID, principal.UserID)
 	if err != nil {
-		return ManagerChange{}, examStoreErrors.Translate(err)
+		return store.ExamManagerCommandResult{}, examStoreErrors.Translate(err)
 	}
 	if snapshot == nil || snapshot.Draft == nil {
-		return ManagerChange{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no mail identity"))
+		return store.ExamManagerCommandResult{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no mail identity"))
 	}
 	resource := model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()}
 	auditData := map[string]any{
@@ -168,7 +167,7 @@ func (a *Authoring) changeManager(ctx context.Context, invocation invocation.Inv
 	}
 	auditID, err := a.deps.Auditor.BeginAtScope(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), transition.operation, auditData, nil)
 	if err != nil {
-		return ManagerChange{}, err
+		return store.ExamManagerCommandResult{}, err
 	}
 	// Mail and mutation records retain their existing millisecond contract;
 	// current membership decisions above use the full domain precision.
@@ -177,9 +176,9 @@ func (a *Authoring) changeManager(ctx context.Context, invocation invocation.Inv
 	if err != nil {
 		mapped := apperror.New("exam.unavailable").Wrap(err)
 		if auditErr := a.deps.Auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
-			return ManagerChange{}, errors.Join(mapped, auditErr)
+			return store.ExamManagerCommandResult{}, errors.Join(mapped, auditErr)
 		}
-		return ManagerChange{}, mapped
+		return store.ExamManagerCommandResult{}, mapped
 	}
 	result, err := mutate(ctx, &store.ExamManagerMutation{
 		ExamID: command.ExamID, ActorUserID: principal.UserID, TargetUserID: command.UserID,
@@ -189,12 +188,12 @@ func (a *Authoring) changeManager(ctx context.Context, invocation invocation.Inv
 	if err != nil {
 		mapped := examStoreErrors.Translate(err)
 		if auditErr := a.deps.Auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
-			return ManagerChange{}, errors.Join(mapped, auditErr)
+			return store.ExamManagerCommandResult{}, errors.Join(mapped, auditErr)
 		}
-		return ManagerChange{}, mapped
+		return store.ExamManagerCommandResult{}, mapped
 	}
 	if result == nil || result.Exam == nil || result.Manager == nil {
-		return ManagerChange{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no manager result"))
+		return store.ExamManagerCommandResult{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no manager result"))
 	}
 	if !result.Replayed {
 		effectErr := transition.publish(ctx, a.deps.Effects, result.Exam.ID, command.UserID, result.Exam.Revision, at)

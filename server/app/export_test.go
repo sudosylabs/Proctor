@@ -10,6 +10,7 @@ package app
 import (
 	"context"
 
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -21,6 +22,6 @@ func (a *App) Can(ctx context.Context, principal model.Principal, action model.A
 
 // Authorize exposes the audited Access Control decision to external
 // integration tests.
-func (a *App) Authorize(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource) error {
+func (a *App) Authorize(ctx context.Context, invocation invocation.Invocation, action model.Action, resource model.Resource) error {
 	return a.realtimeAdmissionService.authorization.Authorize(ctx, invocation, action, resource)
 }

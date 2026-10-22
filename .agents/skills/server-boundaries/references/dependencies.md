@@ -62,10 +62,10 @@ inside `app/` are application-owned modules, not transports.
 | `logging` | Standard library and the hidden logging engine/target implementation | application, domain, persistence, transports, global logger state |
 | `metrics` | `config`, narrow store recorder contracts, standard library, and Prometheus client libraries | application policy, platform service location, concrete infrastructure adapters, global Prometheus registry |
 | `app` | `model`, `store`, `app/apperror`, `app/invocation`, `app/idempotency`, `app/job`, `app/jobhandler`, `app/realtime`, `app/exam`, `app/mail`, consumer-owned ports | `platform`, `httpapi`, `sqlstore` |
-| `filecontent` | `model`, consumer-owned `app` content contracts, `packages/vfs`, narrowly allowlisted content codecs | persistence, transports, platform service location, Jobs, configuration, concrete VFS backends |
-| `httpapi` | `app`, `app/apperror`, `model`, `localization`, `internal/weborigin`, HTTP libraries | `store`, `sqlstore`, `platform` |
+| `filecontent` | `model`, consumer-owned `app` content contracts, `app/exam` export archive types, `packages/vfs`, narrowly allowlisted content codecs | persistence, transports, platform service location, Jobs, configuration, concrete VFS backends |
+| `httpapi` | `app`, `app/apperror`, `app/invocation`, `app/job`, `app/realtime`, `app/exam` and its children, `store` result types, `model`, `localization`, `internal/weborigin`, HTTP libraries | Store contracts and functions, `sqlstore`, `platform` |
 | `webui` | Standard-library HTTP and filesystem contracts | Application, domain, persistence, configuration, concrete filesystems, third-party libraries |
-| `websocket` | `app`, `app/apperror`, `app/realtime`, `model`, `localization`, `internal/weborigin`, WebSocket libraries | SQL and platform service location |
+| `websocket` | the `httpapi` allowance with WebSocket libraries in place of HTTP libraries | Store contracts and functions, SQL and platform service location |
 | concrete adapters | Their inward contracts and implementation libraries | Application policy |
 | `desktoprelease` | `model`, `internal/canonicaljson`, standard-library signature and artifact validation | persistence, transports, application eligibility, process/filesystem selection |
 | `internal/weborigin` | Standard-library URL parsing | Domain models, application, persistence, transports, configuration |
@@ -103,8 +103,18 @@ transports import it only to read codes and safe fields.
 The invocation leaf `app/invocation` owns the one immutable call context and
 the actorless Job `System` identity. It sits below the parent application so
 the parent, the idempotency leaf, and every Exam child share one type; it
-depends only on `model`. Transports keep using the parent's `app.Invocation`
-alias.
+depends only on `model`. Transports import it directly to build an
+`invocation.Invocation` with `invocation.New`.
+
+Every type and constant has one name. Transports name a use case's command,
+query, and result types in the package that declares them (`attempt.ConnectCommand`,
+`exam.View`, `job.Page`, `store.ExamSummary`); no application package
+re-exports another package's type or constant under a second name. The only
+aliases are the parent's embedded-field names for Exam services, which share
+the type name `Service`. A transport may name `store` result types, but never
+a Store contract, function, or variable, so persistence stays out of reach
+(`TestApplicationDeclaresNoForwardingNames`,
+`TestTransportsNameOnlyStoreResultTypes`).
 
 The shared Exam Manager eligibility leaf is consumed only by `app/exam`,
 `app/exam/resource`, `app/exam/workspace`, `app/exam/correction`, and

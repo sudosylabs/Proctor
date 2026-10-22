@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -129,7 +130,7 @@ func newPersonalAccessTokenAdministrationService(
 
 func (s *personalAccessTokenAdministrationService) CreatePersonalAccessToken(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command CreatePersonalAccessTokenCommand,
 ) (*model.PersonalAccessTokenCreation, error) {
 	principal := invocation.Principal()
@@ -227,7 +228,7 @@ func (s *personalAccessTokenAdministrationService) CreatePersonalAccessToken(
 
 func (s *personalAccessTokenAdministrationService) ListPersonalAccessTokens(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	_ ListPersonalAccessTokensQuery,
 ) ([]*model.PersonalAccessToken, error) {
 	principal := invocation.Principal()
@@ -243,7 +244,7 @@ func (s *personalAccessTokenAdministrationService) ListPersonalAccessTokens(
 
 func (s *personalAccessTokenAdministrationService) RevokePersonalAccessToken(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command RevokePersonalAccessTokenCommand,
 ) (*model.PersonalAccessToken, error) {
 	principal := invocation.Principal()
@@ -297,7 +298,7 @@ func (s *personalAccessTokenAdministrationService) RevokePersonalAccessToken(
 
 func (s *personalAccessTokenAdministrationService) SetPersonalAccessTokenDisabled(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command SetPersonalAccessTokenDisabledCommand,
 ) (*model.PersonalAccessToken, error) {
 	principal := invocation.Principal()

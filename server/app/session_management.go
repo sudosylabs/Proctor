@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -84,7 +85,7 @@ func newSelfSessionService(
 
 func (s *selfSessionService) ListSessions(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	_ ListSessionsQuery,
 ) ([]*model.Session, error) {
 	principal := invocation.Principal()
@@ -104,7 +105,7 @@ func (s *selfSessionService) ListSessions(
 
 func (s *selfSessionService) RevokeSession(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command RevokeSessionCommand,
 ) error {
 	principal := invocation.Principal()
@@ -144,7 +145,7 @@ func (s *selfSessionService) RevokeSession(
 
 func (s *selfSessionService) RevokeAllSessions(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	_ RevokeAllSessionsCommand,
 ) error {
 	principal := invocation.Principal()

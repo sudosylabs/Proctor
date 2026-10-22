@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -233,7 +234,7 @@ type BeginDesktopExternalAuthenticationCommand struct {
 	Source     string
 }
 
-func (s *externalAuthenticationService) BeginDesktopExternalAuthentication(ctx context.Context, _ Invocation, command BeginDesktopExternalAuthenticationCommand) (*model.ExternalAuthenticationStart, error) {
+func (s *externalAuthenticationService) BeginDesktopExternalAuthentication(ctx context.Context, _ invocation.Invocation, command BeginDesktopExternalAuthenticationCommand) (*model.ExternalAuthenticationStart, error) {
 	target, err := s.desktopAuthorization.resolveExternalAuthentication(ctx, command.Binding, command.State)
 	if err != nil {
 		return nil, err
@@ -243,7 +244,7 @@ func (s *externalAuthenticationService) BeginDesktopExternalAuthentication(ctx c
 		"", "", "", target.transactionID, nil)
 }
 
-func (s *externalAuthenticationService) BeginProviderConnection(ctx context.Context, invocation Invocation, command BeginProviderConnectionCommand) (*model.ExternalAuthenticationStart, error) {
+func (s *externalAuthenticationService) BeginProviderConnection(ctx context.Context, invocation invocation.Invocation, command BeginProviderConnectionCommand) (*model.ExternalAuthenticationStart, error) {
 	if err := requireStrongRecentSession(invocation.Principal(), s.now(), s.recentAuthenticationTTL); err != nil {
 		return nil, err
 	}
@@ -284,7 +285,7 @@ var authenticationMethodStoreErrors = apperror.StoreTable{
 
 func (s *externalAuthenticationService) BeginExternalAuthentication(
 	ctx context.Context,
-	_ Invocation,
+	_ invocation.Invocation,
 	command BeginExternalAuthenticationCommand,
 ) (*model.ExternalAuthenticationStart, error) {
 	result, appErr := s.beginWithInvitationClaim(
@@ -423,7 +424,7 @@ func (s *externalAuthenticationService) beginForPurpose(
 
 func (s *externalAuthenticationService) CompleteExternalAuthentication(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command CompleteExternalAuthenticationCommand,
 ) (*model.ExternalAuthenticationCompletion, error) {
 	result, appErr := s.complete(

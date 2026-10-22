@@ -20,6 +20,9 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/exam"
+	"github.com/sudosylabs/proctor/server/app/exam/sitting"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -43,7 +46,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	ctx := context.Background()
 	const password = "correct horse battery staple"
 
-	bootstrap, appErr := helper.App.BootstrapInstallation(ctx, app.Invocation{}, app.BootstrapInstallationCommand{
+	bootstrap, appErr := helper.App.BootstrapInstallation(ctx, invocation.Invocation{}, app.BootstrapInstallationCommand{
 		InstitutionName: "sitting-university", InstitutionDisplayName: "Sitting University",
 		AdministratorUsername: "sitting-administrator", AdministratorEmail: "sitting-administrator@example.edu",
 		AdministratorDisplayName: "Sitting Administrator", AdministratorLocale: "en", AdministratorTimezone: "UTC",
@@ -92,14 +95,14 @@ func TestExamSittingIntegration(t *testing.T) {
 		Username: "sitting-manager", Email: "sitting-manager@example.edu", DisplayName: "Sitting Manager",
 	}, Password: password})
 	require.NoError(t, appErr)
-	managerLogin, appErr := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{
+	managerLogin, appErr := helper.App.Login(ctx, invocation.Invocation{}, app.LoginCommand{
 		LoginID: manager.Username, Password: password, ClientType: model.SessionClientCLI,
 		DeviceID: "sitting-manager-cli", Source: "127.0.0.1:1",
 	})
 	require.NoError(t, appErr, "manager login: %v; logs=%s", appErr, helper.Logs.String())
 	managerPrincipal, appErr := helper.App.AuthenticateAccess(ctx, managerLogin.Tokens.AccessToken)
 	require.NoError(t, appErr)
-	managerInvocation := app.NewInvocation(*managerPrincipal, model.RequestMetadata{RequestID: "exam-sitting-manager-integration"})
+	managerInvocation := invocation.New(*managerPrincipal, model.RequestMetadata{RequestID: "exam-sitting-manager-integration"})
 	managerMembership, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
 		AcademicUnitID: unit.ID, UserID: manager.ID, StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000),
 	})
@@ -119,11 +122,11 @@ func TestExamSittingIntegration(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	created, appErr := helper.App.CreateExam(ctx, managerInvocation, app.CreateExamCommand{
+	created, appErr := helper.App.CreateExam(ctx, managerInvocation, exam.CreateCommand{
 		AcademicUnitID: unit.ID, Title: "Concurrent Systems", InstructionsMarkdown: "Write **Go**.", IdempotencyKey: "sitting-exam-create",
 	})
 	require.NoError(t, appErr)
-	published, appErr := helper.App.PublishExamRevision(ctx, managerInvocation, app.PublishExamRevisionCommand{
+	published, appErr := helper.App.PublishExamRevision(ctx, managerInvocation, exam.PublishRevisionCommand{
 		ExamID: created.Exam.ID, ExpectedDraftRevision: created.Draft.Revision, IdempotencyKey: "sitting-exam-publish",
 	})
 	require.NoError(t, appErr)
@@ -132,7 +135,7 @@ func TestExamSittingIntegration(t *testing.T) {
 
 	startAt := now.Add(2 * time.Hour).Truncate(time.Millisecond)
 	endAt := startAt.Add(2 * time.Hour)
-	schedule := app.ScheduleExamSittingCommand{
+	schedule := sitting.ScheduleCommand{
 		ExamID: created.Exam.ID, ExamRevisionID: published.ID, ClassID: class.ID,
 		ScheduledStartAt: startAt, ScheduledEndAt: endAt, IdempotencyKey: "sitting-schedule-once",
 	}
@@ -152,13 +155,13 @@ func TestExamSittingIntegration(t *testing.T) {
 	waitForExamSittingMailDelivery(t, ctx, persistence, helper, secondary, candidate.ID,
 		model.MailTemplateExamSittingScheduled)
 
-	got, appErr := helper.App.GetExamSitting(ctx, managerInvocation, app.GetExamSittingQuery{
+	got, appErr := helper.App.GetExamSitting(ctx, managerInvocation, sitting.GetQuery{
 		ExamID: created.Exam.ID, SittingID: scheduled.Sitting.ID,
 	})
 	require.NoError(t, appErr, "get Sitting = %#v", got)
 	require.NotNil(t, got.Sitting, "get Sitting = %#v", got)
 	require.Equal(t, scheduled.Sitting.ID, got.Sitting.ID, "get Sitting = %#v", got)
-	page, appErr := helper.App.ListExamSittings(ctx, managerInvocation, app.ListExamSittingsQuery{
+	page, appErr := helper.App.ListExamSittings(ctx, managerInvocation, sitting.ListQuery{
 		ExamID: created.Exam.ID, ClassID: class.ID, States: []model.ExamSittingState{model.ExamSittingScheduled}, Limit: 50,
 	})
 	require.NoError(t, appErr, "list Sittings = %#v", page)
@@ -168,7 +171,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	require.Equal(t, scheduled.Sitting.ID, page.Items[0].Sitting.ID, "list Sittings = %#v", page)
 
 	updatedEndAt := endAt.Add(30 * time.Minute)
-	update := app.UpdateExamSittingScheduleCommand{
+	update := sitting.UpdateScheduleCommand{
 		ExamID: created.Exam.ID, SittingID: scheduled.Sitting.ID, ExpectedRevision: scheduled.Sitting.Revision,
 		ScheduledEndAt: &updatedEndAt, IdempotencyKey: "sitting-update-once",
 	}
@@ -183,7 +186,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	require.Equal(t, updated.Sitting.Revision, updatedReplay.Sitting.Revision, "update replay = %#v", updatedReplay)
 	require.True(t, updatedReplay.Sitting.UpdatedAt.Equal(updated.Sitting.UpdatedAt), "update replay = %#v", updatedReplay)
 
-	cancel := app.CancelExamSittingCommand{
+	cancel := sitting.CancelCommand{
 		ExamID: created.Exam.ID, SittingID: scheduled.Sitting.ID, ExpectedRevision: updated.Sitting.Revision,
 		PrivateReason: "Schedule superseded by the department", IdempotencyKey: "sitting-cancel-once",
 	}
@@ -204,7 +207,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	// facade and the real PostgreSQL Store. The direct state advance stands in
 	// for the separately tested delayed opening Job so this test can focus on
 	// the user-command composition seam.
-	live, appErr := helper.App.ScheduleExamSitting(ctx, managerInvocation, app.ScheduleExamSittingCommand{
+	live, appErr := helper.App.ScheduleExamSitting(ctx, managerInvocation, sitting.ScheduleCommand{
 		ExamID: created.Exam.ID, ExamRevisionID: published.ID, ClassID: class.ID,
 		ScheduledStartAt: now.Add(10 * time.Hour).Truncate(time.Millisecond),
 		ScheduledEndAt:   now.Add(12 * time.Hour).Truncate(time.Millisecond),
@@ -219,7 +222,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	affected, affectedErr := result.RowsAffected()
 	require.NoError(t, affectedErr, "open live Sitting affected")
 	require.Equal(t, int64(1), affected, "open live Sitting affected")
-	paused, appErr := helper.App.PauseExamSitting(ctx, managerInvocation, app.PauseExamSittingCommand{
+	paused, appErr := helper.App.PauseExamSitting(ctx, managerInvocation, sitting.PauseCommand{
 		ExamID: created.Exam.ID, SittingID: live.Sitting.ID, ExpectedRevision: 2,
 		PrivateReason: "Investigating a delivery interruption", IdempotencyKey: "sitting-live-pause",
 	})
@@ -227,7 +230,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	require.NotNil(t, paused.Sitting, "pause live Sitting = %#v", paused)
 	require.Equal(t, model.ExamSittingPaused, paused.Sitting.State, "pause live Sitting = %#v", paused)
 	require.Equal(t, int64(3), paused.Sitting.Revision, "pause live Sitting = %#v", paused)
-	resumed, appErr := helper.App.ResumeExamSitting(ctx, managerInvocation, app.ResumeExamSittingCommand{
+	resumed, appErr := helper.App.ResumeExamSitting(ctx, managerInvocation, sitting.ResumeCommand{
 		ExamID: created.Exam.ID, SittingID: live.Sitting.ID, ExpectedRevision: 3,
 		PrivateReason: "Delivery interruption resolved", IdempotencyKey: "sitting-live-resume",
 	})
@@ -236,7 +239,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	require.Equal(t, model.ExamSittingOpen, resumed.Sitting.State, "resume live Sitting = %#v", resumed)
 	require.Equal(t, int64(4), resumed.Sitting.Revision, "resume live Sitting = %#v", resumed)
 	liveEnd := live.Sitting.ScheduledEndAt.Add(30 * time.Minute)
-	extended, appErr := helper.App.ExtendExamSitting(ctx, managerInvocation, app.ExtendExamSittingCommand{
+	extended, appErr := helper.App.ExtendExamSitting(ctx, managerInvocation, sitting.ExtendCommand{
 		ExamID: created.Exam.ID, SittingID: live.Sitting.ID, ExpectedRevision: 4, ScheduledEndAt: liveEnd,
 		PrivateReason: "Compensating for the interruption", IdempotencyKey: "sitting-live-extend",
 	})
@@ -244,7 +247,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	require.NotNil(t, extended.Sitting, "extend live Sitting = %#v", extended)
 	require.Equal(t, int64(5), extended.Sitting.Revision, "extend live Sitting = %#v", extended)
 	require.True(t, extended.Sitting.ScheduledEndAt.Equal(liveEnd), "extend live Sitting = %#v", extended)
-	closedEarly, appErr := helper.App.CloseExamSitting(ctx, managerInvocation, app.CloseExamSittingCommand{
+	closedEarly, appErr := helper.App.CloseExamSitting(ctx, managerInvocation, sitting.EarlyCloseCommand{
 		ExamID: created.Exam.ID, SittingID: live.Sitting.ID, ExpectedRevision: 5,
 		PrivateReason: "Authorized early close", IdempotencyKey: "sitting-live-close",
 	})
@@ -253,7 +256,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	require.Equal(t, model.ExamSittingClosing, closedEarly.Sitting.State, "close live Sitting = %#v", closedEarly)
 	require.Equal(t, int64(6), closedEarly.Sitting.Revision, "close live Sitting = %#v", closedEarly)
 	require.Equal(t, model.ExamSittingReasonManagerClosed, closedEarly.Sitting.ReasonCode, "close live Sitting = %#v", closedEarly)
-	closedReplay, appErr := helper.App.CloseExamSitting(ctx, managerInvocation, app.CloseExamSittingCommand{
+	closedReplay, appErr := helper.App.CloseExamSitting(ctx, managerInvocation, sitting.EarlyCloseCommand{
 		ExamID: created.Exam.ID, SittingID: live.Sitting.ID, ExpectedRevision: 5,
 		PrivateReason: "Authorized early close", IdempotencyKey: "sitting-live-close",
 	})
@@ -264,11 +267,11 @@ func TestExamSittingIntegration(t *testing.T) {
 
 	_, err = storetest.EndAcademicUnitMember(ctx, persistence, managerMembership.ID, managerMembership.Revision, model.GetMillis()-100)
 	require.NoError(t, err)
-	_, appErr = helper.App.GetExamSitting(ctx, managerInvocation, app.GetExamSittingQuery{
+	_, appErr = helper.App.GetExamSitting(ctx, managerInvocation, sitting.GetQuery{
 		ExamID: created.Exam.ID, SittingID: scheduled.Sitting.ID,
 	})
 	require.True(t, apperror.Is(appErr, "resource.not_found"), "get after membership revocation error = %v", appErr)
-	appErr = helper.App.AuthorizeWebSocketSubscription(ctx, app.NewInvocation(*managerPrincipal, model.RequestMetadata{}),
+	appErr = helper.App.AuthorizeWebSocketSubscription(ctx, invocation.New(*managerPrincipal, model.RequestMetadata{}),
 		model.ActionExamSittingView, model.Resource{Type: model.ResourceExamSitting, ID: scheduled.Sitting.ID.String()})
 	require.True(t, apperror.Is(appErr, "resource.not_found"), "subscription after membership revocation error = %v", appErr)
 	_, err = persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
@@ -277,11 +280,11 @@ func TestExamSittingIntegration(t *testing.T) {
 	require.NoError(t, err)
 	_, err = storetest.EndRoleBinding(ctx, persistence, managerBinding.ID, model.GetMillis()-25)
 	require.NoError(t, err)
-	_, appErr = helper.App.GetExamSitting(ctx, managerInvocation, app.GetExamSittingQuery{
+	_, appErr = helper.App.GetExamSitting(ctx, managerInvocation, sitting.GetQuery{
 		ExamID: created.Exam.ID, SittingID: scheduled.Sitting.ID,
 	})
 	require.True(t, apperror.Is(appErr, "resource.not_found"), "get after permission revocation error = %v", appErr)
-	appErr = helper.App.AuthorizeWebSocketSubscription(ctx, app.NewInvocation(*managerPrincipal, model.RequestMetadata{}),
+	appErr = helper.App.AuthorizeWebSocketSubscription(ctx, invocation.New(*managerPrincipal, model.RequestMetadata{}),
 		model.ActionExamSittingView, model.Resource{Type: model.ResourceExamSitting, ID: scheduled.Sitting.ID.String()})
 	require.True(t, apperror.Is(appErr, "resource.not_found"), "subscription after permission revocation error = %v", appErr)
 
@@ -292,7 +295,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	overrideLogin := loginIntegrationUser(t, helper.Handler(), overrideUser.Username, password, model.SessionClientCLI, "sitting-override-cli")
 	overridePrincipal, appErr := helper.App.AuthenticateAccess(ctx, overrideLogin.Tokens.AccessToken)
 	require.NoError(t, appErr)
-	overrideInvocation := app.NewInvocation(*overridePrincipal, model.RequestMetadata{RequestID: "exam-sitting-override-integration"})
+	overrideInvocation := invocation.New(*overridePrincipal, model.RequestMetadata{RequestID: "exam-sitting-override-integration"})
 	overrideRole, err := storetest.SaveRole(ctx, persistence, &model.Role{
 		Name: "exam-sitting-override", DisplayName: "Exam Sitting Override",
 		Permissions: []string{
@@ -307,7 +310,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	overrideSchedule := app.ScheduleExamSittingCommand{
+	overrideSchedule := sitting.ScheduleCommand{
 		ExamID: created.Exam.ID, ExamRevisionID: published.ID, ClassID: class.ID,
 		ScheduledStartAt: now.Add(6 * time.Hour).Truncate(time.Millisecond),
 		ScheduledEndAt:   now.Add(8 * time.Hour).Truncate(time.Millisecond),
@@ -316,24 +319,24 @@ func TestExamSittingIntegration(t *testing.T) {
 	overrideScheduled, appErr := helper.App.ScheduleExamSitting(ctx, overrideInvocation, overrideSchedule)
 	require.NoError(t, appErr, "override schedule = %#v", overrideScheduled)
 	require.NotNil(t, overrideScheduled.Sitting, "override schedule = %#v", overrideScheduled)
-	_, appErr = helper.App.GetExamSitting(ctx, overrideInvocation, app.GetExamSittingQuery{
+	_, appErr = helper.App.GetExamSitting(ctx, overrideInvocation, sitting.GetQuery{
 		ExamID: created.Exam.ID, SittingID: overrideScheduled.Sitting.ID,
 	})
 	require.NoError(t, appErr)
-	overridePage, appErr := helper.App.ListExamSittings(ctx, overrideInvocation, app.ListExamSittingsQuery{
+	overridePage, appErr := helper.App.ListExamSittings(ctx, overrideInvocation, sitting.ListQuery{
 		ExamID: created.Exam.ID, Limit: 50,
 	})
 	require.NoError(t, appErr, "override list = %#v", overridePage)
 	require.Len(t, overridePage.Items, 3, "override list = %#v", overridePage)
 	overrideEndAt := overrideSchedule.ScheduledEndAt.Add(30 * time.Minute)
-	overrideUpdated, appErr := helper.App.UpdateExamSittingSchedule(ctx, overrideInvocation, app.UpdateExamSittingScheduleCommand{
+	overrideUpdated, appErr := helper.App.UpdateExamSittingSchedule(ctx, overrideInvocation, sitting.UpdateScheduleCommand{
 		ExamID: created.Exam.ID, SittingID: overrideScheduled.Sitting.ID, ExpectedRevision: 1,
 		ScheduledEndAt: &overrideEndAt, IdempotencyKey: "sitting-override-update",
 	})
 	require.NoError(t, appErr, "override update = %#v", overrideUpdated)
 	require.NotNil(t, overrideUpdated.Sitting, "override update = %#v", overrideUpdated)
 	require.Equal(t, int64(2), overrideUpdated.Sitting.Revision, "override update = %#v", overrideUpdated)
-	_, appErr = helper.App.CancelExamSitting(ctx, overrideInvocation, app.CancelExamSittingCommand{
+	_, appErr = helper.App.CancelExamSitting(ctx, overrideInvocation, sitting.CancelCommand{
 		ExamID: created.Exam.ID, SittingID: overrideScheduled.Sitting.ID, ExpectedRevision: 2,
 		PrivateReason: "Administrator canceled the delivery", IdempotencyKey: "sitting-override-cancel",
 	})

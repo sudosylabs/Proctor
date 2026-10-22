@@ -19,58 +19,6 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-// ExamSittingView is the bounded projection of one Exam Sitting. It carries no
-// Class roster, authored Exam Revision content or private cancellation
-// rationale.
-type ExamSittingView = store.ExamSittingSnapshot
-
-// ExamSittingPage is one page of Exam Sitting views.
-type ExamSittingPage = examsitting.Page
-
-// ExamSittingNoShowPage is one page of an Exam Sitting's enrolled candidates
-// who never started an Exam Attempt.
-type ExamSittingNoShowPage = examsitting.NoShowPage
-
-// ListExamSittingNoShowsQuery pages the enrolled candidates of one Exam
-// Sitting who never started an Exam Attempt.
-type ListExamSittingNoShowsQuery = examsitting.ListNoShowsQuery
-
-// ScheduleExamSittingCommand schedules an Exam Sitting delivering one Exam
-// Revision to one Class in a time window; IdempotencyKey makes it replayable.
-type ScheduleExamSittingCommand = examsitting.ScheduleCommand
-
-// GetExamSittingQuery names one Exam Sitting of an Exam.
-type GetExamSittingQuery = examsitting.GetQuery
-
-// ListExamSittingsQuery pages an Exam's Sittings, optionally narrowed by
-// Class, state and schedule overlap.
-type ListExamSittingsQuery = examsitting.ListQuery
-
-// UpdateExamSittingScheduleCommand changes an Exam Sitting's Exam Revision,
-// Class or schedule; nil fields are left unchanged. It is fenced by
-// ExpectedRevision and replayed by IdempotencyKey.
-type UpdateExamSittingScheduleCommand = examsitting.UpdateScheduleCommand
-
-// CancelExamSittingCommand cancels an Exam Sitting, fenced by ExpectedRevision
-// and replayed by IdempotencyKey; PrivateReason is never shown to candidates.
-type CancelExamSittingCommand = examsitting.CancelCommand
-
-// PauseExamSittingCommand pauses a running Exam Sitting, fenced by
-// ExpectedRevision and replayed by IdempotencyKey.
-type PauseExamSittingCommand = examsitting.PauseCommand
-
-// ResumeExamSittingCommand resumes a paused Exam Sitting, fenced by
-// ExpectedRevision and replayed by IdempotencyKey.
-type ResumeExamSittingCommand = examsitting.ResumeCommand
-
-// CloseExamSittingCommand closes an Exam Sitting before its scheduled end,
-// fenced by ExpectedRevision and replayed by IdempotencyKey.
-type CloseExamSittingCommand = examsitting.EarlyCloseCommand
-
-// ExtendExamSittingCommand moves an Exam Sitting's scheduled end to
-// ScheduledEndAt, fenced by ExpectedRevision and replayed by IdempotencyKey.
-type ExtendExamSittingCommand = examsitting.ExtendCommand
-
 // examSittingLifecycle is the Sitting lifecycle work the lifecycle Job
 // drives; its tests substitute a fake.
 type examSittingLifecycle interface {

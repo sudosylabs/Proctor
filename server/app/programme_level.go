@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -68,7 +69,7 @@ func newProgrammeLevelService(
 	return &programmeLevelService{store: persistence, authorization: authorization, audit: audit, now: now, newID: newID}
 }
 
-func (s *programmeLevelService) GetProgrammeLevel(ctx context.Context, invocation Invocation, query GetProgrammeLevelQuery) (*model.ProgrammeLevel, error) {
+func (s *programmeLevelService) GetProgrammeLevel(ctx context.Context, invocation invocation.Invocation, query GetProgrammeLevelQuery) (*model.ProgrammeLevel, error) {
 	id := query.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "programme_level_id")
@@ -83,7 +84,7 @@ func (s *programmeLevelService) GetProgrammeLevel(ctx context.Context, invocatio
 	return level, nil
 }
 
-func (s *programmeLevelService) ListProgrammeLevels(ctx context.Context, invocation Invocation, query ListProgrammeLevelsQuery) (Page[*model.ProgrammeLevel], error) {
+func (s *programmeLevelService) ListProgrammeLevels(ctx context.Context, invocation invocation.Invocation, query ListProgrammeLevelsQuery) (Page[*model.ProgrammeLevel], error) {
 	programmeID := query.ProgrammeID
 	if !programmeID.IsValid() {
 		return Page[*model.ProgrammeLevel]{}, apperror.New("request.invalid").WithField("field", "programme_id")
@@ -104,7 +105,7 @@ func (s *programmeLevelService) ListProgrammeLevels(ctx context.Context, invocat
 	return newPage(levels, limit), nil
 }
 
-func (s *programmeLevelService) CreateProgrammeLevel(ctx context.Context, invocation Invocation, command CreateProgrammeLevelCommand) (*model.ProgrammeLevel, error) {
+func (s *programmeLevelService) CreateProgrammeLevel(ctx context.Context, invocation invocation.Invocation, command CreateProgrammeLevelCommand) (*model.ProgrammeLevel, error) {
 	programmeID := command.ProgrammeID
 	if !programmeID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "programme_id")
@@ -151,7 +152,7 @@ func (s *programmeLevelService) CreateProgrammeLevel(ctx context.Context, invoca
 	)
 }
 
-func (s *programmeLevelService) UpdateProgrammeLevel(ctx context.Context, invocation Invocation, command UpdateProgrammeLevelCommand) (*model.ProgrammeLevel, error) {
+func (s *programmeLevelService) UpdateProgrammeLevel(ctx context.Context, invocation invocation.Invocation, command UpdateProgrammeLevelCommand) (*model.ProgrammeLevel, error) {
 	current, scopeType, scopeID, err := s.levelForMutation(ctx, invocation, command.ID)
 	if err != nil {
 		return nil, err
@@ -197,7 +198,7 @@ func (s *programmeLevelService) UpdateProgrammeLevel(ctx context.Context, invoca
 	)
 }
 
-func (s *programmeLevelService) ArchiveProgrammeLevel(ctx context.Context, invocation Invocation, command ArchiveProgrammeLevelCommand) error {
+func (s *programmeLevelService) ArchiveProgrammeLevel(ctx context.Context, invocation invocation.Invocation, command ArchiveProgrammeLevelCommand) error {
 	current, scopeType, scopeID, err := s.levelForMutation(ctx, invocation, command.ID)
 	if err != nil {
 		return err
@@ -231,7 +232,7 @@ func (s *programmeLevelService) ArchiveProgrammeLevel(ctx context.Context, invoc
 	return err
 }
 
-func (s *programmeLevelService) levelForMutation(ctx context.Context, invocation Invocation, id model.ProgrammeLevelID) (*model.ProgrammeLevel, model.RoleScopeType, string, error) {
+func (s *programmeLevelService) levelForMutation(ctx context.Context, invocation invocation.Invocation, id model.ProgrammeLevelID) (*model.ProgrammeLevel, model.RoleScopeType, string, error) {
 	if !id.IsValid() {
 		return nil, "", "", apperror.New("request.invalid").WithField("field", "programme_level_id")
 	}

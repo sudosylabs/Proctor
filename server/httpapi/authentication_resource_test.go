@@ -20,6 +20,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -38,7 +39,7 @@ type authenticationEntryHTTPApplication struct {
 
 func (af *authenticationEntryHTTPApplication) RegisterLocalUser(
 	_ context.Context,
-	_ app.Invocation,
+	_ invocation.Invocation,
 	command app.RegisterLocalUserCommand,
 ) error {
 	af.registrationCommand = command
@@ -48,7 +49,7 @@ func (af *authenticationEntryHTTPApplication) RegisterLocalUser(
 
 func (af *authenticationEntryHTTPApplication) Login(
 	_ context.Context,
-	_ app.Invocation,
+	_ invocation.Invocation,
 	command app.LoginCommand,
 ) (*app.LoginResult, error) {
 	af.loginCommand = command
@@ -58,7 +59,7 @@ func (af *authenticationEntryHTTPApplication) Login(
 
 func (af *authenticationEntryHTTPApplication) Logout(
 	_ context.Context,
-	_ app.Invocation,
+	_ invocation.Invocation,
 	command app.LogoutCommand,
 ) error {
 	af.logoutCommand = command
@@ -78,7 +79,7 @@ type externalAuthenticationEntryHTTPApplication struct {
 
 func (af *externalAuthenticationEntryHTTPApplication) CompleteExternalAuthentication(
 	_ context.Context,
-	_ app.Invocation,
+	_ invocation.Invocation,
 	command app.CompleteExternalAuthenticationCommand,
 ) (*model.ExternalAuthenticationCompletion, error) {
 	af.completeCommand = command
@@ -121,7 +122,7 @@ func TestExternalAuthenticationCallbackReturnsValidatedRedirectAndCookies(t *tes
 
 func (af *externalAuthenticationEntryHTTPApplication) BeginExternalAuthentication(
 	_ context.Context,
-	_ app.Invocation,
+	_ invocation.Invocation,
 	command app.BeginExternalAuthenticationCommand,
 ) (*model.ExternalAuthenticationStart, error) {
 	af.beginCommand = command

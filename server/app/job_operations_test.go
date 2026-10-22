@@ -16,13 +16,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type jobOperatorEngineFake struct {
 	events     *[]string
-	view       JobView
+	view       jobengine.View
 	prepareErr error
 	applyErr   error
 	listQuery  jobengine.ListQuery
@@ -32,7 +33,7 @@ type jobOperatorEngineFake struct {
 func (f *jobOperatorEngineFake) List(_ context.Context, query jobengine.ListQuery) (jobengine.Page, error) {
 	*f.events = append(*f.events, "list")
 	f.listQuery = query
-	return JobPage{Items: []JobView{f.view}}, nil
+	return jobengine.Page{Items: []jobengine.View{f.view}}, nil
 }
 func (f *jobOperatorEngineFake) Get(context.Context, model.JobID) (jobengine.View, error) {
 	*f.events = append(*f.events, "get")
@@ -40,7 +41,7 @@ func (f *jobOperatorEngineFake) Get(context.Context, model.JobID) (jobengine.Vie
 }
 func (f *jobOperatorEngineFake) Attempts(context.Context, jobengine.AttemptListQuery) (jobengine.AttemptPage, error) {
 	*f.events = append(*f.events, "attempts")
-	return JobAttemptPage{Items: make([]JobAttemptView, 0)}, nil
+	return jobengine.AttemptPage{Items: make([]jobengine.AttemptView, 0)}, nil
 }
 func (f *jobOperatorEngineFake) PrepareCancellation(context.Context, model.JobID) (jobengine.ControlTarget, error) {
 	*f.events = append(*f.events, "prepare-cancel")
@@ -68,7 +69,7 @@ type jobOperationsAuthorizerFake struct {
 	err      error
 }
 
-func (f *jobOperationsAuthorizerFake) AuthorizeInstitution(_ context.Context, _ Invocation, action model.Action) (model.Resource, error) {
+func (f *jobOperationsAuthorizerFake) AuthorizeInstitution(_ context.Context, _ invocation.Invocation, action model.Action) (model.Resource, error) {
 	*f.events = append(*f.events, "authorize")
 	f.actions = append(f.actions, action)
 	return f.resource, f.err
@@ -82,7 +83,7 @@ type jobOperationsAuditorFake struct {
 	failCalls int
 }
 
-func (f *jobOperationsAuditorFake) Begin(_ context.Context, _ Invocation, _ model.Action, _ model.Resource, operation string, params, _ map[string]any) (model.AuditEventID, error) {
+func (f *jobOperationsAuditorFake) Begin(_ context.Context, _ invocation.Invocation, _ model.Action, _ model.Resource, operation string, params, _ map[string]any) (model.AuditEventID, error) {
 	*f.events = append(*f.events, "audit")
 	f.operation = operation
 	f.params = params
@@ -97,13 +98,13 @@ func (f *jobOperationsAuditorFake) Fail(context.Context, model.AuditEventID, str
 func TestJobOperationsAuthorizeBeforeEngineInspection(t *testing.T) {
 	t.Parallel()
 	events := make([]string, 0, 2)
-	view := JobView{ID: model.NewJobID(), Type: model.JobTypeProfilePictureGenerateDefault, Status: model.JobStatusQueued}
+	view := jobengine.View{ID: model.NewJobID(), Type: model.JobTypeProfilePictureGenerateDefault, Status: model.JobStatusQueued}
 	engine := &jobOperatorEngineFake{events: &events, view: view}
 	authorizer := &jobOperationsAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}}
 	service, err := newJobOperationsService(engine, authorizer, &jobOperationsAuditorFake{events: &events}, time.Now)
 	require.NoError(t, err)
 
-	page, appErr := service.ListJobs(context.Background(), Invocation{}, ListJobsQuery{Limit: 20})
+	page, appErr := service.ListJobs(context.Background(), invocation.Invocation{}, ListJobsQuery{Limit: 20})
 	require.NoError(t, appErr)
 	require.Len(t, page.Items, 1, "page=%#v query=%#v events=%v actions=%v", page, engine.listQuery, events, authorizer.actions)
 	require.Equal(t, view.ID, page.Items[0].ID, "page=%#v query=%#v events=%v actions=%v", page, engine.listQuery, events, authorizer.actions)
@@ -114,7 +115,7 @@ func TestJobOperationsAuthorizeBeforeEngineInspection(t *testing.T) {
 
 	events = events[:0]
 	authorizer.err = errors.New("denied")
-	_, appErr = service.GetJob(context.Background(), Invocation{}, GetJobQuery{ID: view.ID})
+	_, appErr = service.GetJob(context.Background(), invocation.Invocation{}, GetJobQuery{ID: view.ID})
 	require.Error(t, appErr, "Get() ignored authorization failure")
 	require.Equal(t, []string{"authorize"}, events)
 }
@@ -122,14 +123,14 @@ func TestJobOperationsAuthorizeBeforeEngineInspection(t *testing.T) {
 func TestJobOperationsAuditAfterPreparationAndBeforeTransition(t *testing.T) {
 	t.Parallel()
 	events := make([]string, 0, 4)
-	view := JobView{ID: model.NewJobID(), Type: model.JobTypeProfilePictureGenerateDefault, Status: model.JobStatusQueued}
+	view := jobengine.View{ID: model.NewJobID(), Type: model.JobTypeProfilePictureGenerateDefault, Status: model.JobStatusQueued}
 	engine := &jobOperatorEngineFake{events: &events, view: view}
 	authorizer := &jobOperationsAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}}
 	auditor := &jobOperationsAuditorFake{events: &events}
 	service, err := newJobOperationsService(engine, authorizer, auditor, time.Now)
 	require.NoError(t, err)
 
-	_, appErr := service.CancelJob(context.Background(), Invocation{}, CancelJobCommand{ID: view.ID})
+	_, appErr := service.CancelJob(context.Background(), invocation.Invocation{}, CancelJobCommand{ID: view.ID})
 	require.NoError(t, appErr)
 	// Contract (guardrail 8): authorization precedes the audit, and the audit
 	// begins before the durable write.
@@ -142,7 +143,7 @@ func TestJobOperationsAuditAfterPreparationAndBeforeTransition(t *testing.T) {
 
 	events = events[:0]
 	auditor.err = errors.New("audit unavailable")
-	_, appErr = service.RetryJob(context.Background(), Invocation{}, RetryJobCommand{ID: view.ID})
+	_, appErr = service.RetryJob(context.Background(), invocation.Invocation{}, RetryJobCommand{ID: view.ID})
 	require.Error(t, appErr, "Retry() ignored audit failure")
 	// Contract (guardrail 8): authorization precedes the audit, and the audit
 	// begins before the durable write.
@@ -152,7 +153,7 @@ func TestJobOperationsAuditAfterPreparationAndBeforeTransition(t *testing.T) {
 	events = events[:0]
 	auditor.err = nil
 	engine.applyErr = errors.New("transition unavailable")
-	_, appErr = service.RetryJob(context.Background(), Invocation{}, RetryJobCommand{ID: view.ID})
+	_, appErr = service.RetryJob(context.Background(), invocation.Invocation{}, RetryJobCommand{ID: view.ID})
 	require.Error(t, appErr, "Retry() ignored transition failure")
 	// Contract (guardrail 8): authorization precedes the audit, the audit begins
 	// before the durable write, and the audit outcome follows the write.
@@ -166,7 +167,7 @@ func TestJobOperationsTranslateEnginePolicyErrors(t *testing.T) {
 	engine := &jobOperatorEngineFake{events: &events, prepareErr: jobengine.ErrCancelUnsupported}
 	service, err := newJobOperationsService(engine, &jobOperationsAuthorizerFake{events: &events}, &jobOperationsAuditorFake{events: &events}, time.Now)
 	require.NoError(t, err)
-	_, appErr := service.CancelJob(context.Background(), Invocation{}, CancelJobCommand{ID: model.NewJobID()})
+	_, appErr := service.CancelJob(context.Background(), invocation.Invocation{}, CancelJobCommand{ID: model.NewJobID()})
 	require.True(t, apperror.Is(appErr, "job.cancel.unsupported"), "Cancel() error=%#v", appErr)
 }
 

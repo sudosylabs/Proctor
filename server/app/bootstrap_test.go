@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -168,7 +169,7 @@ func TestBootstrapPasswordWorkFailuresStopBeforeAggregate(t *testing.T) {
 		service := newBootstrapService(persistence, hasher,
 			bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{}), bootstrapRateLimitPolicy(10),
 			bootstrapProtection(), "node-bootstrap", time.Now, administratorRecoveryPolicy{})
-		result, err := service.BootstrapInstallation(ctx, Invocation{}, BootstrapInstallationCommand{
+		result, err := service.BootstrapInstallation(ctx, invocation.Invocation{}, BootstrapInstallationCommand{
 			InstitutionName: "test", AdministratorUsername: "administrator", AdministratorEmail: "administrator@example.edu",
 			Password: "correct horse battery staple", BootstrapSecret: bootstrapProtection().Secret, Source: "192.0.2.35",
 		})
@@ -198,7 +199,7 @@ func TestBootstrapCommitsAtomicAggregate(t *testing.T) {
 		func() time.Time { return time.UnixMilli(500) },
 		administratorRecoveryPolicy{},
 	)
-	got, err := service.BootstrapInstallation(context.Background(), NewInvocation(model.Principal{}, model.RequestMetadata{RequestID: "req"}), BootstrapInstallationCommand{
+	got, err := service.BootstrapInstallation(context.Background(), invocation.New(model.Principal{}, model.RequestMetadata{RequestID: "req"}), BootstrapInstallationCommand{
 		InstitutionName: "northbridge", InstitutionDisplayName: "Northbridge",
 		AdministratorUsername: "admin", AdministratorEmail: "admin@example.com",
 		Password: "password-value", BootstrapSecret: bootstrapProtection().Secret, Source: "127.0.0.1",
@@ -242,7 +243,7 @@ func TestBootstrapAlreadyInitialized(t *testing.T) {
 		time.Now,
 		administratorRecoveryPolicy{},
 	)
-	_, err := service.BootstrapInstallation(context.Background(), Invocation{}, BootstrapInstallationCommand{
+	_, err := service.BootstrapInstallation(context.Background(), invocation.Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", InstitutionDisplayName: "Northbridge",
 		AdministratorUsername: "admin", AdministratorEmail: "admin@example.com", Password: "x",
 		BootstrapSecret: bootstrapProtection().Secret,
@@ -269,7 +270,7 @@ func TestBootstrapConflictMapsToAlreadyInitialized(t *testing.T) {
 		time.Now,
 		administratorRecoveryPolicy{},
 	)
-	_, err := service.BootstrapInstallation(context.Background(), Invocation{}, BootstrapInstallationCommand{
+	_, err := service.BootstrapInstallation(context.Background(), invocation.Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", InstitutionDisplayName: "Northbridge",
 		AdministratorUsername: "admin", AdministratorEmail: "admin@example.com", Password: "x",
 		BootstrapSecret: bootstrapProtection().Secret,
@@ -288,7 +289,7 @@ func TestBootstrapRejectsWrongSecretBeforePasswordHashingOrPersistence(t *testin
 		bootstrapRateLimitPolicy(10), bootstrapProtection(), "node-a", time.Now,
 		administratorRecoveryPolicy{},
 	)
-	_, err := service.BootstrapInstallation(context.Background(), Invocation{}, BootstrapInstallationCommand{
+	_, err := service.BootstrapInstallation(context.Background(), invocation.Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", AdministratorUsername: "admin",
 		AdministratorEmail: "admin@example.com", Password: "password-value",
 		BootstrapSecret: "wrong-bootstrap-secret-that-is-still-long-enough", Source: "192.0.2.10:443",
@@ -315,7 +316,7 @@ func TestBootstrapReconcilesUnknownCommitByRepeatingTheFencedAggregate(t *testin
 		bootstrapRateLimitPolicy(10), bootstrapProtection(), "node-a", time.Now,
 		administratorRecoveryPolicy{},
 	)
-	result, err := service.BootstrapInstallation(context.Background(), Invocation{}, BootstrapInstallationCommand{
+	result, err := service.BootstrapInstallation(context.Background(), invocation.Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", AdministratorUsername: "admin",
 		AdministratorEmail: "admin@example.com", Password: "password-value",
 		BootstrapSecret: bootstrapProtection().Secret, Source: "192.0.2.10:443",
@@ -372,14 +373,14 @@ func TestBootstrapRateLimitUsesSourceOnlySharedAccounting(t *testing.T) {
 		Source:          " 192.0.2.10:443 ",
 	}
 	for attempt := 1; attempt <= 2; attempt++ {
-		_, err := service.BootstrapInstallation(context.Background(), Invocation{}, command)
+		_, err := service.BootstrapInstallation(context.Background(), invocation.Invocation{}, command)
 		require.NoError(t, err, "attempt %d error", attempt)
 	}
-	_, err := service.BootstrapInstallation(context.Background(), Invocation{}, command)
+	_, err := service.BootstrapInstallation(context.Background(), invocation.Invocation{}, command)
 	require.True(t, apperror.Is(err, "authentication.rate_limited"), "attempt after maximum error = %v", err)
 
 	command.Source = "192.0.2.11:443"
-	_, err = service.BootstrapInstallation(context.Background(), Invocation{}, command)
+	_, err = service.BootstrapInstallation(context.Background(), invocation.Invocation{}, command)
 	require.NoError(t, err)
 
 	entries := cache.snapshot()
@@ -405,7 +406,7 @@ func TestBootstrapRateLimitFailureIsAdministrationUnavailableBeforeHashing(t *te
 		time.Now,
 		administratorRecoveryPolicy{},
 	)
-	_, err := service.BootstrapInstallation(context.Background(), Invocation{}, BootstrapInstallationCommand{
+	_, err := service.BootstrapInstallation(context.Background(), invocation.Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", AdministratorUsername: "admin",
 		AdministratorEmail: "admin@example.com", Password: "password-value",
 		BootstrapSecret: bootstrapProtection().Secret,
@@ -431,7 +432,7 @@ func TestBootstrapInvalidRateLimitPolicyFailsClosed(t *testing.T) {
 		time.Now,
 		administratorRecoveryPolicy{},
 	)
-	_, err := service.BootstrapInstallation(context.Background(), Invocation{}, BootstrapInstallationCommand{
+	_, err := service.BootstrapInstallation(context.Background(), invocation.Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", AdministratorUsername: "admin",
 		AdministratorEmail: "admin@example.com", Password: "password-value",
 		BootstrapSecret: bootstrapProtection().Secret,

@@ -67,7 +67,7 @@ type roleResourceModule struct {
 	roles RoleApplication
 }
 
-func roleResource(roles RoleApplication) resource {
+func roleResource(roles RoleApplication) apiResource {
 	module := roleResourceModule{roles: roles}
 	return newResource(
 		"roles",

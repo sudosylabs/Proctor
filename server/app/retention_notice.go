@@ -11,6 +11,7 @@ import (
 	"context"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -21,7 +22,7 @@ type RetentionNoticePage struct {
 
 // ListRetentionNotices returns only the current recipient's durable notices.
 // It grants no underlying record access and has no read-acknowledgement effect.
-func (s *retentionPolicyService) ListRetentionNotices(ctx context.Context, invocation Invocation, after model.RetentionRetirementID, limit int) (*RetentionNoticePage, error) {
+func (s *retentionPolicyService) ListRetentionNotices(ctx context.Context, invocation invocation.Invocation, after model.RetentionRetirementID, limit int) (*RetentionNoticePage, error) {
 	principal := invocation.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
 		return nil, apperror.New("authentication.required")

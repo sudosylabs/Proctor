@@ -23,6 +23,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
@@ -87,13 +88,13 @@ func TestUserSettingsTwoNodePostgreSQLConvergencePublishesOnePrivateRefetchHint(
 		Username: "settings-two-node-user", Email: "settings-two-node-user@example.edu",
 	}, Password: password})
 	require.NoError(t, err)
-	login, err := primary.App.Login(ctx, app.Invocation{}, app.LoginCommand{
+	login, err := primary.App.Login(ctx, invocation.Invocation{}, app.LoginCommand{
 		LoginID: user.Username, Password: password, ClientType: model.SessionClientWeb, Source: "127.0.0.1:1",
 	})
 	require.NoError(t, err)
 	principal, err := primary.App.AuthenticateAccess(ctx, login.Tokens.AccessToken)
 	require.NoError(t, err)
-	invocation := app.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-two-node"})
+	invocation := invocation.New(*principal, model.RequestMetadata{RequestID: "settings-two-node"})
 	before, err := primary.App.ReadOwnUserSettings(ctx, invocation)
 	require.NoError(t, err)
 
@@ -205,13 +206,13 @@ func TestUserSettingsUnknownOutcomeReconcilesByReadWithoutContentLeak(t *testing
 		Username: "settings-unknown-user", Email: "settings-unknown-user@example.edu",
 	}, Password: password})
 	require.NoError(t, err)
-	login, err := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{
+	login, err := helper.App.Login(ctx, invocation.Invocation{}, app.LoginCommand{
 		LoginID: user.Username, Password: password, ClientType: model.SessionClientWeb, Source: "127.0.0.1:1",
 	})
 	require.NoError(t, err)
 	principal, err := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken)
 	require.NoError(t, err)
-	invocation := app.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-unknown-outcome"})
+	invocation := invocation.New(*principal, model.RequestMetadata{RequestID: "settings-unknown-outcome"})
 	before, err := helper.App.ReadOwnUserSettings(ctx, invocation)
 	require.NoError(t, err)
 	const source = "{\n  // private-comment-marker\n  \"private.visual.key\": \"private-value-marker\",\n}\n"

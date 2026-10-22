@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -70,7 +71,7 @@ func TestProgrammeLevelCreatePreservesMissingProgrammeErrorContract(t *testing.T
 		&institutionAuditorFake{events: &events}, time.Now, model.NewID,
 	)
 
-	_, err := service.CreateProgrammeLevel(context.Background(), Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: model.ProgrammeID(programmeID)})
+	_, err := service.CreateProgrammeLevel(context.Background(), invocation.Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: model.ProgrammeID(programmeID)})
 	failure, ok := apperror.As(err)
 	require.True(t, ok)
 	require.Equal(t, "resource.not_found", failure.Code())
@@ -91,7 +92,7 @@ func TestProgrammeLevelCreatePreservesProgrammeOwnershipAndAtomicAudit(t *testin
 		authorizer, auditor,
 		func() time.Time { return time.UnixMilli(500) }, func() string { return levelID },
 	)
-	got, err := service.CreateProgrammeLevel(context.Background(), Invocation{}, CreateProgrammeLevelCommand{
+	got, err := service.CreateProgrammeLevel(context.Background(), invocation.Invocation{}, CreateProgrammeLevelCommand{
 		ProgrammeID: model.ProgrammeID(programmeID), Name: "year-1", DisplayName: "Year 1",
 	})
 	require.NoError(t, err, "Create()")
@@ -128,7 +129,7 @@ func TestProgrammeLevelUpdateCannotMoveProgramme(t *testing.T) {
 		func() time.Time { return time.UnixMilli(500) }, model.NewID,
 	)
 	name := "foundation"
-	updated, err := service.UpdateProgrammeLevel(context.Background(), Invocation{}, UpdateProgrammeLevelCommand{ID: current.ID, Name: &name})
+	updated, err := service.UpdateProgrammeLevel(context.Background(), invocation.Invocation{}, UpdateProgrammeLevelCommand{ID: current.ID, Name: &name})
 	require.NoError(t, err)
 	require.Equal(t, current.ProgrammeID, updated.ProgrammeID)
 	require.Equal(t, current.ProgrammeID, persistence.updateInput.Level.ProgrammeID)
@@ -146,7 +147,7 @@ func TestProgrammeLevelCreateAuthorizationDenialStopsBeforeAuditAndStore(t *test
 		&programmeAuthorizerFake{events: &events, err: apperror.New("authorization.denied")},
 		&institutionAuditorFake{events: &events, beginID: model.NewID()}, time.Now, model.NewID,
 	)
-	_, err := service.CreateProgrammeLevel(context.Background(), Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1"})
+	_, err := service.CreateProgrammeLevel(context.Background(), invocation.Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1"})
 	require.True(t, apperror.Is(err, "authorization.denied"), "Create() error = %v", err)
 	require.Equal(t, []string{"authorize"}, events)
 }
@@ -161,7 +162,7 @@ func TestProgrammeLevelCreateConflictCompletesFailedAttempt(t *testing.T) {
 		&programmeAuthorizerFake{events: &events},
 		auditor, time.Now, model.NewID,
 	)
-	_, err := service.CreateProgrammeLevel(context.Background(), Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1"})
+	_, err := service.CreateProgrammeLevel(context.Background(), invocation.Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1"})
 	require.True(t, apperror.Is(err, "programme_level.conflict"), "Create() error = %v, audit code", err)
 	require.Equal(t, "programme_level.conflict", auditor.failCode, "Create() error = %v, audit code", err)
 	// Contract (guardrail 8): authorization precedes the audit, the audit begins
@@ -184,7 +185,7 @@ func TestProgrammeLevelListPreservesLimitWithoutSearch(t *testing.T) {
 				persistence, &programmeAuthorizerFake{events: &events},
 				&institutionAuditorFake{events: &events}, time.Now, model.NewID,
 			)
-			got, err := service.ListProgrammeLevels(context.Background(), Invocation{}, ListProgrammeLevelsQuery{
+			got, err := service.ListProgrammeLevels(context.Background(), invocation.Invocation{}, ListProgrammeLevelsQuery{
 				ProgrammeID: model.NewProgrammeID(), Query: term, NamePageQuery: NamePageQuery{Limit: 1},
 			})
 			require.NoError(t, err)

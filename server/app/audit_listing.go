@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -32,7 +33,7 @@ type auditListingStore interface {
 }
 
 type auditListingAuthorizer interface {
-	AuthorizeList(context.Context, Invocation) (store.AuditVisibilityScope, error)
+	AuthorizeList(context.Context, invocation.Invocation) (store.AuditVisibilityScope, error)
 }
 
 type auditListingService struct {
@@ -44,7 +45,7 @@ func newAuditListingService(audits auditListingStore, authorization auditListing
 	return &auditListingService{audits: audits, authorization: authorization}
 }
 
-func (s *auditListingService) ListAuditEvents(ctx context.Context, invocation Invocation, query ListAuditEventsQuery) ([]*model.AuditEvent, error) {
+func (s *auditListingService) ListAuditEvents(ctx context.Context, invocation invocation.Invocation, query ListAuditEventsQuery) ([]*model.AuditEvent, error) {
 	visibility, err := s.authorization.AuthorizeList(ctx, invocation)
 	if err != nil {
 		return nil, err
@@ -108,7 +109,7 @@ type auditListingAuthorization struct {
 	institutions  store.InstitutionStore
 }
 
-func (a auditListingAuthorization) AuthorizeList(ctx context.Context, invocation Invocation) (store.AuditVisibilityScope, error) {
+func (a auditListingAuthorization) AuthorizeList(ctx context.Context, invocation invocation.Invocation) (store.AuditVisibilityScope, error) {
 	institution, err := a.institutions.GetSingleton(ctx)
 	if err != nil {
 		return store.AuditVisibilityScope{}, auditListingError(err)

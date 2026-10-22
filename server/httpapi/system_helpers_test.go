@@ -9,7 +9,7 @@ package httpapi
 
 import "time"
 
-func systemResource(health Health, buildInfo BuildInfo) resource {
+func systemResource(health Health, buildInfo BuildInfo) apiResource {
 	return systemResourceWithApplication(
 		health,
 		buildInfo,

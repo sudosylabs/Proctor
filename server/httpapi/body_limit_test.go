@@ -36,7 +36,7 @@ func TestOversizedJSONBodyReturnsContentTooLargeProblem(t *testing.T) {
 		}
 		return noContentResult(), nil
 	}
-	resources := []resource{newResource(
+	resources := []apiResource{newResource(
 		"bounded",
 		route(AuthPublic, http.MethodPost, apiPath(literal("bounded")), []string{"request.invalid"}, decode),
 	)}

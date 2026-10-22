@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -35,7 +36,7 @@ type authorizedScopeConstraint struct {
 // exact resource authorization after the bounded lookup.
 func (s *accessControlService) AuthorizePreflight(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	action model.Action,
 	resourceType model.ResourceType,
 ) error {
@@ -62,7 +63,7 @@ func (s *accessControlService) AuthorizePreflight(
 
 func (s *accessControlService) authorizeAcademicPeriodPreflight(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	action model.Action,
 	resource model.Resource,
 ) error {
@@ -111,7 +112,7 @@ func (s *accessControlService) academicPeriodCoarseAuthority(
 
 func (s *accessControlService) AuthorizeAcademicPeriodList(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 ) (store.AcademicPeriodVisibilityScope, error) {
 	principal := invocation.Principal()
 	constraint, err := s.authorizedScopes(
@@ -146,7 +147,7 @@ func (s *accessControlService) AuthorizeAcademicPeriodList(
 
 func (s *accessControlService) authorizeUserSearch(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 ) (store.UserVisibilityScope, error) {
 	principal := invocation.Principal()
 	visibility, err := s.userVisibilityScope(ctx, principal)
@@ -206,7 +207,7 @@ func (s *accessControlService) userVisibilityScope(
 
 func (s *accessControlService) authorizeRoleBindingPreflight(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	action model.Action,
 ) error {
 	constraint, err := s.authorizedScopes(ctx, invocation.Principal(), action, model.ResourceInstitution)
@@ -232,7 +233,7 @@ func (s *accessControlService) authorizeRoleBindingPreflight(
 
 func (s *accessControlService) authorizeRoleBindingScope(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	action model.Action,
 	scopeType model.RoleScopeType,
 	scopeID string,

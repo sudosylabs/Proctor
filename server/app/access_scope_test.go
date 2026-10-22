@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -192,7 +193,7 @@ func TestAccessControlAcademicPeriodPreflightDeniesBeforeInspection(t *testing.T
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.NowUTC(), ClientType: model.SessionClientWeb,
 	}
-	invocation := NewInvocation(principal, model.RequestMetadata{})
+	invocation := invocation.New(principal, model.RequestMetadata{})
 	resource := model.Resource{Type: model.ResourceAcademicPeriod, ID: model.NewAcademicPeriodID().String()}
 	err = access.authorizeCurrentState(context.Background(), principal, model.ActionAcademicPeriodView, resource, invocation.RequestMetadata())
 	require.True(t, apperror.Is(err, "authorization.denied"), "target preflight error = %v, want authorization.denied", err)
@@ -228,7 +229,7 @@ func TestAccessControlMembershipPreflightDeniesBeforeOpaqueTargetInspection(t *t
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.NowUTC(), ClientType: model.SessionClientWeb,
 	}
-	invocation := NewInvocation(principal, model.RequestMetadata{})
+	invocation := invocation.New(principal, model.RequestMetadata{})
 	err = access.AuthorizePreflight(
 		context.Background(), invocation, model.ActionClassMembersManage, model.ResourceClass,
 	)
@@ -291,7 +292,7 @@ func TestAccessControlAcademicPeriodScopeInheritanceAndInstitutionView(t *testin
 	allowed, err = access.Can(context.Background(), principal, model.ActionAcademicPeriodView, siblingResource)
 	require.NoError(t, err, "cross-subtree view")
 	require.False(t, allowed, "cross-subtree view")
-	invocation := NewInvocation(principal, model.RequestMetadata{})
+	invocation := invocation.New(principal, model.RequestMetadata{})
 	require.NoError(t, access.authorizeCurrentState(context.Background(), principal, model.ActionAcademicPeriodView, unitResource, invocation.RequestMetadata()))
 	err = access.authorizeCurrentState(context.Background(), principal, model.ActionAcademicPeriodView, siblingResource, invocation.RequestMetadata())
 	require.True(t, apperror.Is(err, "authorization.denied"), "preflight plus terminal cross-subtree view = %v", err)
@@ -633,7 +634,7 @@ func TestUserReadMatchesInstitutionWideClassMemberVisibility(t *testing.T) {
 	}
 
 	fullProfile, err := authorization.authorizeUserRead(
-		context.Background(), NewInvocation(principal, model.RequestMetadata{}), targetID.String(),
+		context.Background(), invocation.New(principal, model.RequestMetadata{}), targetID.String(),
 	)
 	require.NoError(t, err)
 	require.False(t, fullProfile, "fullProfile=%t calls=%d visibility=%#v", fullProfile, users.matchCalls, users.matchVisibility)

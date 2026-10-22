@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -71,7 +72,7 @@ func newProgrammeService(
 	}
 }
 
-func (s *programmeService) GetProgramme(ctx context.Context, invocation Invocation, query GetProgrammeQuery) (*model.Programme, error) {
+func (s *programmeService) GetProgramme(ctx context.Context, invocation invocation.Invocation, query GetProgrammeQuery) (*model.Programme, error) {
 	id := query.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "programme_id")
@@ -87,7 +88,7 @@ func (s *programmeService) GetProgramme(ctx context.Context, invocation Invocati
 	return programme, nil
 }
 
-func (s *programmeService) ListProgrammes(ctx context.Context, invocation Invocation, query ListProgrammesQuery) (Page[*model.Programme], error) {
+func (s *programmeService) ListProgrammes(ctx context.Context, invocation invocation.Invocation, query ListProgrammesQuery) (Page[*model.Programme], error) {
 	unitID := query.AcademicUnitID
 	if !unitID.IsValid() {
 		return Page[*model.Programme]{}, apperror.New("request.invalid").WithField("field", "academic_unit_id")
@@ -108,7 +109,7 @@ func (s *programmeService) ListProgrammes(ctx context.Context, invocation Invoca
 	return newPage(programmes, limit), nil
 }
 
-func (s *programmeService) CreateProgramme(ctx context.Context, invocation Invocation, command CreateProgrammeCommand) (*model.Programme, error) {
+func (s *programmeService) CreateProgramme(ctx context.Context, invocation invocation.Invocation, command CreateProgrammeCommand) (*model.Programme, error) {
 	unitID := command.AcademicUnitID
 	if !unitID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id")
@@ -155,7 +156,7 @@ func (s *programmeService) CreateProgramme(ctx context.Context, invocation Invoc
 	)
 }
 
-func (s *programmeService) UpdateProgramme(ctx context.Context, invocation Invocation, command UpdateProgrammeCommand) (*model.Programme, error) {
+func (s *programmeService) UpdateProgramme(ctx context.Context, invocation invocation.Invocation, command UpdateProgrammeCommand) (*model.Programme, error) {
 	current, scopeType, scopeID, err := s.getForMutation(ctx, invocation, command.ID)
 	if err != nil {
 		return nil, err
@@ -201,7 +202,7 @@ func (s *programmeService) UpdateProgramme(ctx context.Context, invocation Invoc
 	)
 }
 
-func (s *programmeService) ArchiveProgramme(ctx context.Context, invocation Invocation, command ArchiveProgrammeCommand) error {
+func (s *programmeService) ArchiveProgramme(ctx context.Context, invocation invocation.Invocation, command ArchiveProgrammeCommand) error {
 	current, scopeType, scopeID, err := s.getForMutation(ctx, invocation, command.ID)
 	if err != nil {
 		return err
@@ -235,7 +236,7 @@ func (s *programmeService) ArchiveProgramme(ctx context.Context, invocation Invo
 	return err
 }
 
-func (s *programmeService) getForMutation(ctx context.Context, invocation Invocation, id model.ProgrammeID) (*model.Programme, model.RoleScopeType, string, error) {
+func (s *programmeService) getForMutation(ctx context.Context, invocation invocation.Invocation, id model.ProgrammeID) (*model.Programme, model.RoleScopeType, string, error) {
 	if !id.IsValid() {
 		return nil, "", "", apperror.New("request.invalid").WithField("field", "programme_id")
 	}

@@ -17,8 +17,8 @@ func productionResources(
 	buildInfo BuildInfo,
 	cookies browserCookies,
 	webSocket WebSocketTransport,
-) []resource {
-	return []resource{
+) []apiResource {
+	return []apiResource{
 		systemResourceWithApplication(health, buildInfo, applications.desktopCompatibility, time.Now),
 		bootstrapResource(applications.bootstrap),
 		accessPolicyResource(applications.accessPolicy),

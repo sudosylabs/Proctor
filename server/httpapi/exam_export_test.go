@@ -19,36 +19,37 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/exam"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type exportsHTTPApp struct {
 	calls   int
-	create  app.CreateExamExportCommand
-	query   app.ExamExportQuery
+	create  exam.CreateExportCommand
+	query   exam.ExportQuery
 	result  *model.ExamExport
 	failure error
 }
 
-func (a *exportsHTTPApp) CreateExamExport(_ context.Context, _ app.Invocation, c app.CreateExamExportCommand) (*model.ExamExport, error) {
+func (a *exportsHTTPApp) CreateExamExport(_ context.Context, _ invocation.Invocation, c exam.CreateExportCommand) (*model.ExamExport, error) {
 	a.calls++
 	a.create = c
 	return a.result, a.failure
 }
-func (a *exportsHTTPApp) GetExamExport(_ context.Context, _ app.Invocation, q app.ExamExportQuery) (*model.ExamExport, error) {
+func (a *exportsHTTPApp) GetExamExport(_ context.Context, _ invocation.Invocation, q exam.ExportQuery) (*model.ExamExport, error) {
 	a.calls++
 	a.query = q
 	return a.result, a.failure
 }
-func (a *exportsHTTPApp) OpenExamExport(_ context.Context, _ app.Invocation, q app.ExamExportQuery) (*app.ExamExportDownload, error) {
+func (a *exportsHTTPApp) OpenExamExport(_ context.Context, _ invocation.Invocation, q exam.ExportQuery) (*exam.ExportDownload, error) {
 	a.calls++
 	a.query = q
 	if a.failure != nil {
 		return nil, a.failure
 	}
-	return &app.ExamExportDownload{Export: a.result, Body: io.NopCloser(strings.NewReader("archive"))}, nil
+	return &exam.ExportDownload{Export: a.result, Body: io.NopCloser(strings.NewReader("archive"))}, nil
 }
 
 func newHTTPExport(t *testing.T, p model.Principal, scope model.RetentionHoldScope) *model.ExamExport {

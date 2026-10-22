@@ -15,6 +15,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -57,9 +58,9 @@ type academicPeriodStore interface {
 }
 
 type academicPeriodAuthorizer interface {
-	Authorize(context.Context, Invocation, model.Action, model.Resource) error
-	AuthorizeAcademicPeriodOwner(context.Context, Invocation, model.Action, *model.AcademicPeriod) error
-	AuthorizeAcademicPeriodList(context.Context, Invocation) (store.AcademicPeriodVisibilityScope, error)
+	Authorize(context.Context, invocation.Invocation, model.Action, model.Resource) error
+	AuthorizeAcademicPeriodOwner(context.Context, invocation.Invocation, model.Action, *model.AcademicPeriod) error
+	AuthorizeAcademicPeriodList(context.Context, invocation.Invocation) (store.AcademicPeriodVisibilityScope, error)
 }
 
 type academicPeriodService struct {
@@ -74,7 +75,7 @@ func newAcademicPeriodService(persistence academicPeriodStore, authorization aca
 	return &academicPeriodService{store: persistence, authorization: authorization, audit: audit, now: now, newID: newID}
 }
 
-func (s *academicPeriodService) GetAcademicPeriod(ctx context.Context, invocation Invocation, query GetAcademicPeriodQuery) (*model.AcademicPeriod, error) {
+func (s *academicPeriodService) GetAcademicPeriod(ctx context.Context, invocation invocation.Invocation, query GetAcademicPeriodQuery) (*model.AcademicPeriod, error) {
 	id := query.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_period_id")
@@ -89,7 +90,7 @@ func (s *academicPeriodService) GetAcademicPeriod(ctx context.Context, invocatio
 	return period, nil
 }
 
-func (s *academicPeriodService) ListAcademicPeriods(ctx context.Context, invocation Invocation, query ListAcademicPeriodsQuery) (Page[*model.AcademicPeriod], error) {
+func (s *academicPeriodService) ListAcademicPeriods(ctx context.Context, invocation invocation.Invocation, query ListAcademicPeriodsQuery) (Page[*model.AcademicPeriod], error) {
 	limit, probe, err := resolvePageLimit(query.Limit, "limit")
 	if err != nil {
 		return Page[*model.AcademicPeriod]{}, err
@@ -108,7 +109,7 @@ func (s *academicPeriodService) ListAcademicPeriods(ctx context.Context, invocat
 	return newPage(periods, limit), nil
 }
 
-func (s *academicPeriodService) CreateAcademicPeriod(ctx context.Context, invocation Invocation, command CreateAcademicPeriodCommand) (*model.AcademicPeriod, error) {
+func (s *academicPeriodService) CreateAcademicPeriod(ctx context.Context, invocation invocation.Invocation, command CreateAcademicPeriodCommand) (*model.AcademicPeriod, error) {
 	periodID, err := model.ParseAcademicPeriodID(s.newID())
 	if err != nil {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_period_id").Wrap(err)
@@ -181,7 +182,7 @@ func (s *academicPeriodService) CreateAcademicPeriod(ctx context.Context, invoca
 	return result.Value, nil
 }
 
-func (s *academicPeriodService) UpdateAcademicPeriod(ctx context.Context, invocation Invocation, command UpdateAcademicPeriodCommand) (*model.AcademicPeriod, error) {
+func (s *academicPeriodService) UpdateAcademicPeriod(ctx context.Context, invocation invocation.Invocation, command UpdateAcademicPeriodCommand) (*model.AcademicPeriod, error) {
 	id := command.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_period_id")
@@ -240,7 +241,7 @@ func (s *academicPeriodService) UpdateAcademicPeriod(ctx context.Context, invoca
 	)
 }
 
-func (s *academicPeriodService) ArchiveAcademicPeriod(ctx context.Context, invocation Invocation, command ArchiveAcademicPeriodCommand) error {
+func (s *academicPeriodService) ArchiveAcademicPeriod(ctx context.Context, invocation invocation.Invocation, command ArchiveAcademicPeriodCommand) error {
 	id := command.ID
 	if !id.IsValid() {
 		return apperror.New("request.invalid").WithField("field", "academic_period_id")

@@ -18,6 +18,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
+	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
@@ -64,11 +66,11 @@ type mailRekeyAuditFake struct {
 	events   *[]string
 }
 
-func (f *mailRekeyAuditFake) Begin(context.Context, Invocation, model.Action, model.Resource, string, map[string]any, map[string]any) (model.AuditEventID, error) {
+func (f *mailRekeyAuditFake) Begin(context.Context, invocation.Invocation, model.Action, model.Resource, string, map[string]any, map[string]any) (model.AuditEventID, error) {
 	return "", errors.New("unscoped mail rekey audit is forbidden")
 }
 
-func (f *mailRekeyAuditFake) BeginAtScope(_ context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
+func (f *mailRekeyAuditFake) BeginAtScope(_ context.Context, invocation invocation.Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	if f.events != nil {
 		*f.events = append(*f.events, "audit")
 	}
@@ -105,7 +107,7 @@ func TestStartMailRekeyRequiresStrongRecentSessionAndEnqueuesAuditedJob(t *testi
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now.Add(-time.Minute))
 
-	view, appErr := service.StartMailRekey(context.Background(), NewInvocation(principal, model.RequestMetadata{}), oldSealerKeyID(t, oldKey))
+	view, appErr := service.StartMailRekey(context.Background(), invocation.New(principal, model.RequestMetadata{}), oldSealerKeyID(t, oldKey))
 	require.NoError(t, appErr)
 	require.NotNil(t, persistence.input, "view=%#v input=%#v audit=%#v woke", view, persistence.input, auditor.attempt)
 	require.Equal(t, model.JobTypeMailRekey, persistence.input.Job.Type, "view=%#v input=%#v audit=%#v woke", view, persistence.input, auditor.attempt)
@@ -125,7 +127,7 @@ func TestStartMailRekeyRequiresStrongRecentSessionAndEnqueuesAuditedJob(t *testi
 	require.Len(t, events, 2)
 	require.Equal(t, "audit", events[0])
 	require.Equal(t, "store", events[1])
-	state, appErr := service.GetMailKeyState(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+	state, appErr := service.GetMailKeyState(context.Background(), invocation.New(principal, model.RequestMetadata{}))
 	require.NoError(t, appErr, "KeyState() = %#v", state)
 	require.Equal(t, sealer.PrimaryKeyID(), state.PrimaryKeyID, "KeyState() = %#v", state)
 	require.Len(t, state.Active, 1, "KeyState() = %#v", state)
@@ -141,21 +143,21 @@ func TestStartMailRekeyRequiresStrongRecentSessionAndEnqueuesAuditedJob(t *testi
 	pat.MFACompletedAt = model.OptionalTime{}
 	pat.ClientType = model.SessionClientCLI
 	pat.CredentialScopes = []string{string(model.ActionMailManage)}
-	_, appErr = service.StartMailRekey(context.Background(), NewInvocation(pat, model.RequestMetadata{}), oldSealerKeyID(t, oldKey))
+	_, appErr = service.StartMailRekey(context.Background(), invocation.New(pat, model.RequestMetadata{}), oldSealerKeyID(t, oldKey))
 	require.True(t, apperror.Is(appErr, "authentication.token_invalid"), "PAT error = %v", appErr)
-	_, appErr = service.GetMailKeyState(context.Background(), NewInvocation(pat, model.RequestMetadata{}))
+	_, appErr = service.GetMailKeyState(context.Background(), invocation.New(pat, model.RequestMetadata{}))
 	require.True(t, apperror.Is(appErr, "authentication.token_invalid"), "PAT key state error = %v", appErr)
 	weak := mailTestPrincipal(model.TimeUTC(now))
-	_, appErr = service.StartMailRekey(context.Background(), NewInvocation(weak, model.RequestMetadata{}), oldSealerKeyID(t, oldKey))
+	_, appErr = service.StartMailRekey(context.Background(), invocation.New(weak, model.RequestMetadata{}), oldSealerKeyID(t, oldKey))
 	require.True(t, apperror.Is(appErr, "authentication.strong_required"), "weak Session error = %v", appErr)
-	_, appErr = service.GetMailKeyState(context.Background(), NewInvocation(weak, model.RequestMetadata{}))
+	_, appErr = service.GetMailKeyState(context.Background(), invocation.New(weak, model.RequestMetadata{}))
 	require.True(t, apperror.Is(appErr, "authentication.strong_required"), "weak Session key state error = %v", appErr)
 	stale := principal
 	stale.AuthenticatedAt = model.TimeUTC(now.Add(-time.Hour))
 	stale.MFACompletedAt = model.OptionalTimeFrom(now.Add(-time.Hour))
-	_, appErr = service.StartMailRekey(context.Background(), NewInvocation(stale, model.RequestMetadata{}), oldSealerKeyID(t, oldKey))
+	_, appErr = service.StartMailRekey(context.Background(), invocation.New(stale, model.RequestMetadata{}), oldSealerKeyID(t, oldKey))
 	require.True(t, apperror.Is(appErr, "authentication.reauthentication_required"), "stale Session error = %v", appErr)
-	_, appErr = service.GetMailKeyState(context.Background(), NewInvocation(stale, model.RequestMetadata{}))
+	_, appErr = service.GetMailKeyState(context.Background(), invocation.New(stale, model.RequestMetadata{}))
 	require.True(t, apperror.Is(appErr, "authentication.reauthentication_required"), "stale Session key state error = %v", appErr)
 }
 
@@ -190,7 +192,7 @@ func TestStartMailRekeyCompletesConflictAndPersistenceFailureAudits(t *testing.T
 			principal.AuthenticationStrength = model.AuthenticationMultiFactor
 			principal.MFACompletedAt = model.OptionalTimeFrom(now)
 
-			_, appErr := service.StartMailRekey(context.Background(), NewInvocation(principal, model.RequestMetadata{}), oldSealerKeyID(t, oldKey))
+			_, appErr := service.StartMailRekey(context.Background(), invocation.New(principal, model.RequestMetadata{}), oldSealerKeyID(t, oldKey))
 			require.True(t, apperror.Is(appErr, test.wantCode), "StartRekey() error=%v input=%#v audit=%#v", appErr, persistence.input, auditor)
 			require.NotNil(t, persistence.input, "StartRekey() error=%v input=%#v audit=%#v", appErr, persistence.input, auditor)
 			require.Equal(t, model.AuditEventID(auditor.beginID), persistence.input.AuditEventID, "StartRekey() error=%v input=%#v audit=%#v", appErr, persistence.input, auditor)
@@ -204,16 +206,16 @@ func TestGetMailRekeyStatusProjectsOnlyTypedProgressAndRetirementProof(t *testin
 	now := time.Date(2026, 9, 4, 12, 0, 0, 123456789, time.UTC)
 	primaryKeyID := "22222222222222222222222222222222"
 	retiringKeyID := "11111111111111111111111111111111"
-	command, _ := json.Marshal(MailRekeyCommand{PrimaryKeyID: primaryKeyID, RetiringKeyID: retiringKeyID})
+	command, _ := json.Marshal(jobhandler.MailRekeyCommand{PrimaryKeyID: primaryKeyID, RetiringKeyID: retiringKeyID})
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailRekey, command, "mail-rekey:test", now, now, 10)
 	require.NoError(t, err)
 	running, err := job.Start(now.Add(time.Second))
 	require.NoError(t, err)
-	checkpoint, _ := json.Marshal(MailRekeyCheckpoint{AfterKind: store.MailRekeyTargetDelivery,
+	checkpoint, _ := json.Marshal(jobhandler.MailRekeyCheckpoint{AfterKind: store.MailRekeyTargetDelivery,
 		AfterID: model.NewMailDeliveryID().String(), Processed: 4, Reencrypted: 3})
 	running, err = running.UpdateProgress(&model.JobProgress{Current: 4, Total: 9, Stage: "reencrypting"}, checkpoint, now.Add(2*time.Second))
 	require.NoError(t, err)
-	result, _ := json.Marshal(MailRekeyResult{PrimaryKeyID: primaryKeyID, RetiringKeyID: retiringKeyID,
+	result, _ := json.Marshal(jobhandler.MailRekeyResult{PrimaryKeyID: primaryKeyID, RetiringKeyID: retiringKeyID,
 		Processed: 9, Reencrypted: 8, RetirementSafe: true})
 	succeeded, err := running.Succeed(result, now.Add(3*time.Second))
 	require.NoError(t, err)
@@ -225,7 +227,7 @@ func TestGetMailRekeyStatusProjectsOnlyTypedProgressAndRetirementProof(t *testin
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
 
-	view, appErr := service.GetMailRekeyStatus(context.Background(), NewInvocation(principal, model.RequestMetadata{}), succeeded.ID)
+	view, appErr := service.GetMailRekeyStatus(context.Background(), invocation.New(principal, model.RequestMetadata{}), succeeded.ID)
 
 	require.NoError(t, appErr)
 	require.Equal(t, succeeded.ID, view.JobID)
@@ -257,15 +259,15 @@ func TestGetMailRekeyStatusConcealsJobsOwnedByOtherDomains(t *testing.T) {
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
 
-	_, appErr := service.GetMailRekeyStatus(context.Background(), NewInvocation(principal, model.RequestMetadata{}), other.ID)
+	_, appErr := service.GetMailRekeyStatus(context.Background(), invocation.New(principal, model.RequestMetadata{}), other.ID)
 	require.True(t, apperror.Is(appErr, "resource.not_found"), "RekeyStatus(other Job) error = %v", appErr)
 
-	corruptCommand, _ := json.Marshal(MailRekeyCommand{PrimaryKeyID: "not-a-key", RetiringKeyID: "also-not-a-key"})
+	corruptCommand, _ := json.Marshal(jobhandler.MailRekeyCommand{PrimaryKeyID: "not-a-key", RetiringKeyID: "also-not-a-key"})
 	corrupt, err := model.NewJob(model.NewJobID(), model.JobTypeMailRekey, corruptCommand,
 		"mail-rekey:corrupt", now, now, 10)
 	require.NoError(t, err)
 	persistence.job = corrupt
-	_, appErr = service.GetMailRekeyStatus(context.Background(), NewInvocation(principal, model.RequestMetadata{}), corrupt.ID)
+	_, appErr = service.GetMailRekeyStatus(context.Background(), invocation.New(principal, model.RequestMetadata{}), corrupt.ID)
 	require.True(t, apperror.Is(appErr, "mail.unavailable"), "RekeyStatus(corrupt rekey Job) error = %v", appErr)
 }
 

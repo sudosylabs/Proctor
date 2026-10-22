@@ -11,6 +11,7 @@ import (
 	"context"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -29,13 +30,13 @@ type realtimeAdmissionService struct {
 // realtimeExamViewAuthorizer is the Exam relationship gate a subscription
 // uses; its tests substitute a fake.
 type realtimeExamViewAuthorizer interface {
-	AuthorizeView(context.Context, Invocation, model.ExamID) error
+	AuthorizeView(context.Context, invocation.Invocation, model.ExamID) error
 }
 
 // realtimeSittingViewAuthorizer is the Sitting relationship gate a
 // subscription uses; its tests substitute a fake.
 type realtimeSittingViewAuthorizer interface {
-	AuthorizeView(context.Context, Invocation, model.ExamSittingID) error
+	AuthorizeView(context.Context, invocation.Invocation, model.ExamSittingID) error
 }
 
 var (
@@ -54,7 +55,7 @@ var (
 // Resource takes the audited Access Control decision.
 func (s *realtimeAdmissionService) AuthorizeWebSocketSubscription(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	action model.Action,
 	resource model.Resource,
 ) (resultErr error) {

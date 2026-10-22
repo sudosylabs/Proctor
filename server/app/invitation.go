@@ -17,6 +17,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -293,9 +294,9 @@ type invitationRoleReader interface {
 	Get(context.Context, model.RoleID) (*model.Role, error)
 }
 type invitationAuthorizer interface {
-	Authorize(context.Context, Invocation, model.Action, model.Resource) error
-	CanDelegateActionsAtScope(context.Context, Invocation, []string, model.RoleScopeType, string) error
-	Visibility(context.Context, Invocation, model.Action) (store.InvitationVisibilityScope, error)
+	Authorize(context.Context, invocation.Invocation, model.Action, model.Resource) error
+	CanDelegateActionsAtScope(context.Context, invocation.Invocation, []string, model.RoleScopeType, string) error
+	Visibility(context.Context, invocation.Invocation, model.Action) (store.InvitationVisibilityScope, error)
 }
 type invitationPasswordHasher interface {
 	Hash(context.Context, string) (string, error)
@@ -305,10 +306,10 @@ type invitationAttemptLimiter interface {
 }
 type invitationMailPreparer interface {
 	Enabled() bool
-	PrepareInvitation(*model.Invitation, string) (*preparedDirectMail, error)
-	PrepareInvitationResend(*model.Invitation, string, model.UserID, time.Time) (*preparedDirectMail, error)
-	PrepareInvitationRevocation(*model.Invitation, model.UserID, time.Time) (*preparedDirectMail, error)
-	PrepareInvitationAccepted(appmail.NoticePreparation) (*preparedDirectMail, error)
+	PrepareInvitation(*model.Invitation, string) (*store.PreparedMail, error)
+	PrepareInvitationResend(*model.Invitation, string, model.UserID, time.Time) (*store.PreparedMail, error)
+	PrepareInvitationRevocation(*model.Invitation, model.UserID, time.Time) (*store.PreparedMail, error)
+	PrepareInvitationAccepted(appmail.NoticePreparation) (*store.PreparedMail, error)
 }
 
 type invitationMembershipEffects interface {
@@ -336,14 +337,14 @@ type invitationService struct {
 
 type invitationAuthorizationAdapter struct{ authorization *accessControlService }
 
-func (a invitationAuthorizationAdapter) Authorize(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource) error {
+func (a invitationAuthorizationAdapter) Authorize(ctx context.Context, invocation invocation.Invocation, action model.Action, resource model.Resource) error {
 	if a.authorization == nil {
 		return apperror.New("invitation.unavailable")
 	}
 	return a.authorization.Authorize(ctx, invocation, action, resource)
 }
 
-func (a invitationAuthorizationAdapter) CanDelegateActionsAtScope(ctx context.Context, invocation Invocation, actions []string, scopeType model.RoleScopeType, scopeID string) error {
+func (a invitationAuthorizationAdapter) CanDelegateActionsAtScope(ctx context.Context, invocation invocation.Invocation, actions []string, scopeType model.RoleScopeType, scopeID string) error {
 	if a.authorization == nil {
 		return apperror.New("invitation.unavailable")
 	}
@@ -357,7 +358,7 @@ func (a invitationAuthorizationAdapter) CanDelegateActionsAtScope(ctx context.Co
 	return nil
 }
 
-func (a invitationAuthorizationAdapter) Visibility(ctx context.Context, invocation Invocation, action model.Action) (store.InvitationVisibilityScope, error) {
+func (a invitationAuthorizationAdapter) Visibility(ctx context.Context, invocation invocation.Invocation, action model.Action) (store.InvitationVisibilityScope, error) {
 	if a.authorization == nil || (action != model.ActionInvitationView && action != model.ActionInvitationManage) {
 		return store.InvitationVisibilityScope{}, apperror.New("invitation.unavailable")
 	}
@@ -405,7 +406,7 @@ func newInvitationService(persistence store.InvitationStore, classes invitationC
 		recentAuthenticationTTL: recentAuthenticationTTL, newClaim: newClaim, now: now}, nil
 }
 
-func (s *invitationService) RunInvitationBatch(ctx context.Context, invocation Invocation, command RunInvitationBatchCommand) (InvitationBatchResult, error) {
+func (s *invitationService) RunInvitationBatch(ctx context.Context, invocation invocation.Invocation, command RunInvitationBatchCommand) (InvitationBatchResult, error) {
 	command.ScopeID = strings.TrimSpace(command.ScopeID)
 	if !command.Operation.IsValid() || !model.IsValidOpaqueID(command.ScopeID) || command.IdempotencyKey == "" ||
 		len(command.Items) < 1 || len(command.Items) > MaximumInvitationBatchItems || !invitationBatchScopeMatchesOperation(command.Operation, command.ScopeType) {
@@ -688,7 +689,7 @@ func invitationBatchDuplicateKey(operation InvitationBatchOperation, item Invita
 	}
 }
 
-func (s *invitationService) runInvitationBatchItem(ctx context.Context, invocation Invocation, batch RunInvitationBatchCommand, item InvitationBatchItemCommand, itemKey string, duplicate bool, canonicalKey string, canonicalFingerprint [sha256.Size]byte) (model.InvitationID, InvitationBatchItemStatus, error) {
+func (s *invitationService) runInvitationBatchItem(ctx context.Context, invocation invocation.Invocation, batch RunInvitationBatchCommand, item InvitationBatchItemCommand, itemKey string, duplicate bool, canonicalKey string, canonicalFingerprint [sha256.Size]byte) (model.InvitationID, InvitationBatchItemStatus, error) {
 	switch batch.Operation {
 	case InvitationBatchStudentClassCreate:
 		view, err := s.IssueStudentClassInvitation(ctx, invocation, IssueStudentClassInvitationCommand{TargetEmail: item.TargetEmail, ClassID: batch.ScopeID,
@@ -767,7 +768,7 @@ func invitationPurposeRequiresInteractiveBatch(purpose model.InvitationPurpose) 
 	return purpose == model.InvitationPurposeAcademicUnitRole || purpose == model.InvitationPurposeInstitutionRole
 }
 
-func (s *invitationService) ListInvitations(ctx context.Context, invocation Invocation, query ListInvitationsQuery) (InvitationAdministrationPage, error) {
+func (s *invitationService) ListInvitations(ctx context.Context, invocation invocation.Invocation, query ListInvitationsQuery) (InvitationAdministrationPage, error) {
 	visibility, err := s.authorization.Visibility(ctx, invocation, model.ActionInvitationView)
 	if err != nil {
 		return InvitationAdministrationPage{}, err
@@ -795,7 +796,7 @@ func (s *invitationService) ListInvitations(ctx context.Context, invocation Invo
 	return result, nil
 }
 
-func (s *invitationService) GetInvitation(ctx context.Context, invocation Invocation, id model.InvitationID) (InvitationAdministrationView, error) {
+func (s *invitationService) GetInvitation(ctx context.Context, invocation invocation.Invocation, id model.InvitationID) (InvitationAdministrationView, error) {
 	if !id.IsValid() {
 		return InvitationAdministrationView{}, apperror.New("request.invalid").WithField("field", "invitation_id")
 	}
@@ -810,7 +811,7 @@ func (s *invitationService) GetInvitation(ctx context.Context, invocation Invoca
 	return invitationAdministrationView(record), nil
 }
 
-func (s *invitationService) ResendInvitation(ctx context.Context, invocation Invocation, command ResendInvitationCommand) (InvitationAdministrationView, error) {
+func (s *invitationService) ResendInvitation(ctx context.Context, invocation invocation.Invocation, command ResendInvitationCommand) (InvitationAdministrationView, error) {
 	id := command.ID
 	if !id.IsValid() || command.ExpectedRevision < 1 {
 		return InvitationAdministrationView{}, apperror.New("request.invalid").WithField("field", "invitation_id")
@@ -905,7 +906,7 @@ func (s *invitationService) ResendInvitation(ctx context.Context, invocation Inv
 	return view, nil
 }
 
-func (s *invitationService) RevokeInvitation(ctx context.Context, invocation Invocation, command RevokeInvitationCommand) (InvitationAdministrationView, error) {
+func (s *invitationService) RevokeInvitation(ctx context.Context, invocation invocation.Invocation, command RevokeInvitationCommand) (InvitationAdministrationView, error) {
 	id := command.ID
 	if !id.IsValid() || command.ExpectedRevision < 1 {
 		return InvitationAdministrationView{}, apperror.New("request.invalid").WithField("field", "invitation_id")
@@ -985,7 +986,7 @@ func (s *invitationService) RevokeInvitation(ctx context.Context, invocation Inv
 	return view, nil
 }
 
-func (s *invitationService) ReplaceInvitation(ctx context.Context, invocation Invocation, command ReplaceInvitationCommand) (InvitationAdministrationView, error) {
+func (s *invitationService) ReplaceInvitation(ctx context.Context, invocation invocation.Invocation, command ReplaceInvitationCommand) (InvitationAdministrationView, error) {
 	id := command.ID
 	if !id.IsValid() || command.ExpectedRevision < 1 {
 		return InvitationAdministrationView{}, apperror.New("request.invalid").WithField("field", "invitation_id")
@@ -1037,7 +1038,7 @@ func (s *invitationService) ReplaceInvitation(ctx context.Context, invocation In
 	return invitationAdministrationView(result), nil
 }
 
-func (s *invitationService) prepareReplacement(ctx context.Context, invocation Invocation, command ReplaceInvitationCommand) (*model.Invitation, string, error) {
+func (s *invitationService) prepareReplacement(ctx context.Context, invocation invocation.Invocation, command ReplaceInvitationCommand) (*model.Invitation, string, error) {
 	purpose := model.InvitationPurpose(strings.TrimSpace(command.Purpose))
 	if !purpose.IsValid() {
 		return nil, "", apperror.New("request.invalid").WithField("field", "purpose")
@@ -1211,7 +1212,7 @@ func invitationAdministrationView(record *store.InvitationAdministrationRecord) 
 	return result
 }
 
-func (s *invitationService) IssueStudentClassInvitation(ctx context.Context, invocation Invocation, command IssueStudentClassInvitationCommand) (InvitationView, error) {
+func (s *invitationService) IssueStudentClassInvitation(ctx context.Context, invocation invocation.Invocation, command IssueStudentClassInvitationCommand) (InvitationView, error) {
 	classID := strings.TrimSpace(command.ClassID)
 	parsedClassID, err := model.ParseClassID(classID)
 	if err != nil {
@@ -1339,7 +1340,7 @@ func (s *invitationService) IssueStudentClassInvitation(ctx context.Context, inv
 	return view, nil
 }
 
-func (s *invitationService) IssueTeacherAcademicUnitInvitation(ctx context.Context, invocation Invocation, command IssueTeacherAcademicUnitInvitationCommand) (InvitationView, error) {
+func (s *invitationService) IssueTeacherAcademicUnitInvitation(ctx context.Context, invocation invocation.Invocation, command IssueTeacherAcademicUnitInvitationCommand) (InvitationView, error) {
 	unitID, err := model.ParseAcademicUnitID(strings.TrimSpace(command.AcademicUnitID))
 	if err != nil {
 		return InvitationView{}, apperror.New("request.invalid").WithField("field", "academic_unit_id").Wrap(err)
@@ -1475,7 +1476,7 @@ func (s *invitationService) IssueTeacherAcademicUnitInvitation(ctx context.Conte
 	return view, nil
 }
 
-func (s *invitationService) IssueAcademicUnitRoleInvitation(ctx context.Context, invocation Invocation, command IssueAcademicUnitRoleInvitationCommand) (InvitationView, error) {
+func (s *invitationService) IssueAcademicUnitRoleInvitation(ctx context.Context, invocation invocation.Invocation, command IssueAcademicUnitRoleInvitationCommand) (InvitationView, error) {
 	unitID, err := model.ParseAcademicUnitID(strings.TrimSpace(command.AcademicUnitID))
 	if err != nil {
 		return InvitationView{}, apperror.New("request.invalid").WithField("field", "academic_unit_id").Wrap(err)
@@ -1520,7 +1521,7 @@ func (s *invitationService) IssueAcademicUnitRoleInvitation(ctx context.Context,
 	})
 }
 
-func (s *invitationService) IssueInstitutionRoleInvitation(ctx context.Context, invocation Invocation, command IssueInstitutionRoleInvitationCommand) (InvitationView, error) {
+func (s *invitationService) IssueInstitutionRoleInvitation(ctx context.Context, invocation invocation.Invocation, command IssueInstitutionRoleInvitationCommand) (InvitationView, error) {
 	if err := requireStrongRecentSession(invocation.Principal(), s.now(), s.recentAuthenticationTTL); err != nil {
 		return InvitationView{}, err
 	}
@@ -1564,7 +1565,7 @@ func (s *invitationService) IssueInstitutionRoleInvitation(ctx context.Context, 
 	})
 }
 
-func (s *invitationService) issueAuthorizedScopedRole(ctx context.Context, invocation Invocation, issue authorizedScopedRoleInvitationIssue) (InvitationView, error) {
+func (s *invitationService) issueAuthorizedScopedRole(ctx context.Context, invocation invocation.Invocation, issue authorizedScopedRoleInvitationIssue) (InvitationView, error) {
 	attempt := mutationAttempt{Invocation: invocation, Action: model.ActionInvitationCreate, Resource: issue.resource,
 		ScopeType: issue.scopeType, ScopeID: issue.scopeID, Operation: issue.operation,
 		Value: map[string]any{"purpose": issue.purpose, "academic_unit_id": issue.academicUnitID.String(), "role_id": issue.role.ID.String()}}
@@ -1660,7 +1661,7 @@ func (s *invitationService) issueAuthorizedScopedRole(ctx context.Context, invoc
 	return view, nil
 }
 
-func (s *invitationService) completeOnboardingInvitationNoOp(ctx context.Context, invocation Invocation, attempt mutationAttempt,
+func (s *invitationService) completeOnboardingInvitationNoOp(ctx context.Context, invocation invocation.Invocation, attempt mutationAttempt,
 	candidate *model.Invitation, idempotency *store.CommandIdempotency) (InvitationView, error) {
 	if candidate == nil || idempotency == nil || !idempotency.OnboardingImportID.IsValid() {
 		return InvitationView{}, apperror.New("invitation.unavailable")
@@ -1704,7 +1705,7 @@ func validateInvitationDelegableRole(role *model.Role, scopeType model.RoleScope
 	return nil
 }
 
-func (s *invitationService) AcceptStudentClassInvitation(ctx context.Context, invocation Invocation, command AcceptStudentClassInvitationCommand) (*InvitationAcceptanceView, error) {
+func (s *invitationService) AcceptStudentClassInvitation(ctx context.Context, invocation invocation.Invocation, command AcceptStudentClassInvitationCommand) (*InvitationAcceptanceView, error) {
 	if err := s.attempts.Check(ctx, model.HashInvitationClaim(command.Claim), command.Source); err != nil {
 		return nil, err
 	}
@@ -1715,7 +1716,7 @@ func (s *invitationService) AcceptStudentClassInvitation(ctx context.Context, in
 	return s.acceptStudentClassByClaimHash(ctx, invocation, command, claimHash)
 }
 
-func (s *invitationService) acceptStudentClassByClaimHash(ctx context.Context, invocation Invocation, command AcceptStudentClassInvitationCommand, claimHash string) (*InvitationAcceptanceView, error) {
+func (s *invitationService) acceptStudentClassByClaimHash(ctx context.Context, invocation invocation.Invocation, command AcceptStudentClassInvitationCommand, claimHash string) (*InvitationAcceptanceView, error) {
 	if !model.IsValidTokenHash(claimHash) {
 		return nil, apperror.New("invitation.invalid")
 	}
@@ -1778,7 +1779,7 @@ func (s *invitationService) acceptStudentClassByClaimHash(ctx context.Context, i
 		Affiliation: result.Affiliation, ClassMember: result.ClassMember, Replayed: result.Replayed}, nil
 }
 
-func (s *invitationService) AcceptTeacherAcademicUnitInvitation(ctx context.Context, invocation Invocation, command AcceptTeacherAcademicUnitInvitationCommand) (*InvitationAcceptanceView, error) {
+func (s *invitationService) AcceptTeacherAcademicUnitInvitation(ctx context.Context, invocation invocation.Invocation, command AcceptTeacherAcademicUnitInvitationCommand) (*InvitationAcceptanceView, error) {
 	if err := s.attempts.Check(ctx, model.HashInvitationClaim(command.Claim), command.Source); err != nil {
 		return nil, err
 	}
@@ -1789,7 +1790,7 @@ func (s *invitationService) AcceptTeacherAcademicUnitInvitation(ctx context.Cont
 	return s.acceptTeacherAcademicUnitByClaimHash(ctx, invocation, command, claimHash)
 }
 
-func (s *invitationService) acceptTeacherAcademicUnitByClaimHash(ctx context.Context, invocation Invocation, command AcceptTeacherAcademicUnitInvitationCommand, claimHash string) (*InvitationAcceptanceView, error) {
+func (s *invitationService) acceptTeacherAcademicUnitByClaimHash(ctx context.Context, invocation invocation.Invocation, command AcceptTeacherAcademicUnitInvitationCommand, claimHash string) (*InvitationAcceptanceView, error) {
 	if !model.IsValidTokenHash(claimHash) {
 		return nil, apperror.New("invitation.invalid")
 	}
@@ -1852,11 +1853,11 @@ func (s *invitationService) acceptTeacherAcademicUnitByClaimHash(ctx context.Con
 		AcademicUnitMember: result.AcademicUnitMember, RoleBinding: result.RoleBinding, Replayed: result.Replayed}, nil
 }
 
-func (s *invitationService) AcceptAcademicUnitRoleInvitation(ctx context.Context, invocation Invocation, command AcceptAcademicUnitRoleInvitationCommand) (*InvitationAcceptanceView, error) {
+func (s *invitationService) AcceptAcademicUnitRoleInvitation(ctx context.Context, invocation invocation.Invocation, command AcceptAcademicUnitRoleInvitationCommand) (*InvitationAcceptanceView, error) {
 	return s.acceptScopedRole(ctx, invocation, command.Claim, command.Source, model.InvitationPurposeAcademicUnitRole)
 }
 
-func (s *invitationService) AcceptInstitutionRoleInvitation(ctx context.Context, invocation Invocation, command AcceptInstitutionRoleInvitationCommand) (*InvitationAcceptanceView, error) {
+func (s *invitationService) AcceptInstitutionRoleInvitation(ctx context.Context, invocation invocation.Invocation, command AcceptInstitutionRoleInvitationCommand) (*InvitationAcceptanceView, error) {
 	return s.acceptScopedRole(ctx, invocation, command.Claim, command.Source, model.InvitationPurposeInstitutionRole)
 }
 
@@ -1959,7 +1960,7 @@ func (s *invitationService) acceptExternalIdentity(ctx context.Context, state *m
 	return result, nil
 }
 
-func (s *invitationService) acceptScopedRole(ctx context.Context, invocation Invocation, claim, source string, purpose model.InvitationPurpose) (*InvitationAcceptanceView, error) {
+func (s *invitationService) acceptScopedRole(ctx context.Context, invocation invocation.Invocation, claim, source string, purpose model.InvitationPurpose) (*InvitationAcceptanceView, error) {
 	if err := s.attempts.Check(ctx, model.HashInvitationClaim(claim), source); err != nil {
 		return nil, err
 	}
@@ -1976,7 +1977,7 @@ func (s *invitationService) acceptScopedRole(ctx context.Context, invocation Inv
 
 func (s *invitationService) acceptScopedRoleByClaimHash(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	claimHash string,
 	purpose model.InvitationPurpose,
 	browserTransaction *store.BrowserInvitationTransactionProof,

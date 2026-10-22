@@ -22,6 +22,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -36,20 +37,20 @@ type recordingMailAPI struct {
 	rekeyIDs  []model.JobID
 }
 
-func (m *recordingMailAPI) GetMailKeyState(context.Context, app.Invocation) (app.MailKeyStateView, error) {
+func (m *recordingMailAPI) GetMailKeyState(context.Context, invocation.Invocation) (app.MailKeyStateView, error) {
 	return app.MailKeyStateView{PrimaryKeyID: "22222222222222222222222222222222",
 		RequiredPrimaryKeyID: "22222222222222222222222222222222", Active: []app.MailPayloadKeyUsageView{{
 			KeyID: "11111111111111111111111111111111", ActiveReferences: 7,
 		}}}, nil
 }
 
-func (m *recordingMailAPI) StartMailRekey(_ context.Context, _ app.Invocation, retiringKeyID string) (app.MailRekeyView, error) {
+func (m *recordingMailAPI) StartMailRekey(_ context.Context, _ invocation.Invocation, retiringKeyID string) (app.MailRekeyView, error) {
 	m.rekeys = append(m.rekeys, retiringKeyID)
 	return app.MailRekeyView{JobID: model.NewJobID(), PrimaryKeyID: "22222222222222222222222222222222",
 		RetiringKeyID: retiringKeyID, CreatedAt: time.Unix(100, 0).UTC()}, nil
 }
 
-func (m *recordingMailAPI) GetMailRekeyStatus(_ context.Context, _ app.Invocation, jobID model.JobID) (app.MailRekeyStatusView, error) {
+func (m *recordingMailAPI) GetMailRekeyStatus(_ context.Context, _ invocation.Invocation, jobID model.JobID) (app.MailRekeyStatusView, error) {
 	m.rekeyIDs = append(m.rekeyIDs, jobID)
 	return app.MailRekeyStatusView{JobID: jobID, Status: model.JobStatusSucceeded,
 		PrimaryKeyID: "22222222222222222222222222222222", RetiringKeyID: "11111111111111111111111111111111",
@@ -59,29 +60,29 @@ func (m *recordingMailAPI) GetMailRekeyStatus(_ context.Context, _ app.Invocatio
 		Proof:    &app.MailRekeyProofView{RetirementSafe: true}}, nil
 }
 
-func (m *recordingMailAPI) GetMailMetrics(context.Context, app.Invocation) (app.MailMetricsSnapshot, error) {
+func (m *recordingMailAPI) GetMailMetrics(context.Context, invocation.Invocation) (app.MailMetricsSnapshot, error) {
 	m.metrics++
 	return app.MailMetricsSnapshot{HealthCode: app.MailHealthHealthy}, nil
 }
 
-func (m *recordingMailAPI) SendTestMail(context.Context, app.Invocation) (app.MailDeliveryView, error) {
+func (m *recordingMailAPI) SendTestMail(context.Context, invocation.Invocation) (app.MailDeliveryView, error) {
 	m.sends++
 	return m.view, nil
 }
-func (m *recordingMailAPI) GetMailDelivery(_ context.Context, _ app.Invocation, id model.MailDeliveryID) (app.MailDeliveryView, error) {
+func (m *recordingMailAPI) GetMailDelivery(_ context.Context, _ invocation.Invocation, id model.MailDeliveryID) (app.MailDeliveryView, error) {
 	m.ids = append(m.ids, id)
 	return m.view, nil
 }
-func (m *recordingMailAPI) ListMailDeliveries(_ context.Context, _ app.Invocation, query app.ListMailDeliveriesQuery) (app.MailDeliveryPage, error) {
+func (m *recordingMailAPI) ListMailDeliveries(_ context.Context, _ invocation.Invocation, query app.ListMailDeliveriesQuery) (app.MailDeliveryPage, error) {
 	m.lists++
 	m.listQuery = query
 	return app.MailDeliveryPage{Items: []app.MailDeliveryView{m.view}}, nil
 }
-func (m *recordingMailAPI) CancelMailDelivery(_ context.Context, _ app.Invocation, id model.MailDeliveryID) (app.MailDeliveryView, error) {
+func (m *recordingMailAPI) CancelMailDelivery(_ context.Context, _ invocation.Invocation, id model.MailDeliveryID) (app.MailDeliveryView, error) {
 	m.ids = append(m.ids, id)
 	return m.view, nil
 }
-func (m *recordingMailAPI) RetryMailDelivery(_ context.Context, _ app.Invocation, id model.MailDeliveryID) (app.MailDeliveryView, error) {
+func (m *recordingMailAPI) RetryMailDelivery(_ context.Context, _ invocation.Invocation, id model.MailDeliveryID) (app.MailDeliveryView, error) {
 	m.ids = append(m.ids, id)
 	return m.view, nil
 }

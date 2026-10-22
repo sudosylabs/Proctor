@@ -9,11 +9,11 @@ package httpapi
 import (
 	"net/http"
 
-	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-func deliveryBudgetResource(application ExamAttemptApplication) resource {
+func deliveryBudgetResource(application ExamAttemptApplication) apiResource {
 	m := examAttemptHTTPModule{application: application}
 	return newResource("delivery-budget",
 		sessionRoute(http.MethodGet, apiPath(literal("exam-attempts"), canonicalID("exam_attempt_id"), literal("delivery-limits")), nativeDeliveryErrorCodes(), m.deliveryBudget),
@@ -24,7 +24,7 @@ func (m examAttemptHTTPModule) deliveryBudget(request operationRequest) (operati
 	if err != nil {
 		return operationResult{}, err
 	}
-	value, err := m.application.DeliveryBudget(request.context, request.invocation(), app.DeliveryBudgetQuery{Access: query.Access, ParticipationID: query.ParticipationID})
+	value, err := m.application.DeliveryBudget(request.context, request.invocation(), attempt.DeliveryBudgetQuery{Access: query.Access, ParticipationID: query.ParticipationID})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -34,7 +34,7 @@ func (m examAttemptHTTPModule) deliveryBudget(request operationRequest) (operati
 	return jsonResult(http.StatusOK, value).withHeaders(noStoreHeaders()), nil
 }
 func (m examAttemptHTTPModule) stopDeliveryDetails(request operationRequest) (operationResult, error) {
-	attempt, err := request.params.RequireExamAttemptID()
+	attemptID, err := request.params.RequireExamAttemptID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -49,7 +49,7 @@ func (m examAttemptHTTPModule) stopDeliveryDetails(request operationRequest) (op
 	if body.Validate() != nil {
 		return operationResult{}, invalidRequestError(nil)
 	}
-	value, err := m.application.StopDeliveryDetails(request.context, request.invocation(), app.StopDeliveryDetailsCommand{Access: app.CandidateExamAttemptAccess{AttemptID: attempt, ConnectionID: headers.ConnectionID, ContinuityCredential: headers.ContinuityCredential}, Request: body, IdempotencyKey: request.idempotencyKey})
+	value, err := m.application.StopDeliveryDetails(request.context, request.invocation(), attempt.StopDeliveryDetailsCommand{Access: attempt.CandidateAccess{AttemptID: attemptID, ConnectionID: headers.ConnectionID, ContinuityCredential: headers.ContinuityCredential}, Request: body, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
 	}

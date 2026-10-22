@@ -16,6 +16,8 @@ import (
 	"net/http"
 	"os"
 
+	"time"
+
 	"github.com/sudosylabs/proctor/server/app"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
@@ -289,7 +291,7 @@ func composeConsumers(
 	if checker, ok := applicationPlatform.(interface{ CheckDependencies(context.Context) error }); ok {
 		dependencyProbe = checker.CheckDependencies
 	}
-	readiness, err := app.NewHealth(dependencyProbe, app.DefaultReadinessProbeTimeout, app.DefaultReadinessProbeInterval)
+	readiness, err := app.NewHealth(dependencyProbe, app.DefaultReadinessProbeTimeout, time.Second)
 	if err != nil {
 		return nil, release.fail(fmt.Errorf("construct readiness: %w", err))
 	}

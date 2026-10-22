@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -45,7 +46,7 @@ func (s *accessPolicyStoreFake) Replace(_ context.Context, input *store.AccessPo
 
 type accessPolicyAuthorizationFake struct{ action model.Action }
 
-func (a *accessPolicyAuthorizationFake) Authorize(_ context.Context, _ Invocation, action model.Action, _ model.Resource) error {
+func (a *accessPolicyAuthorizationFake) Authorize(_ context.Context, _ invocation.Invocation, action model.Action, _ model.Resource) error {
 	a.action = action
 	return nil
 }
@@ -65,13 +66,13 @@ type accessPolicyAuditFake struct {
 	failCode string
 }
 
-func (a *accessPolicyAuditFake) Begin(_ context.Context, invocation Invocation, action model.Action, resource model.Resource, operation string, value, prior map[string]any) (model.AuditEventID, error) {
+func (a *accessPolicyAuditFake) Begin(_ context.Context, invocation invocation.Invocation, action model.Action, resource model.Resource, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	a.attempt = mutationAttempt{Invocation: invocation, Action: action, Resource: resource,
 		Operation: operation, Value: value, Prior: prior}
 	return model.AuditEventID(a.beginID), a.beginErr
 }
 
-func (a *accessPolicyAuditFake) BeginAtScope(_ context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
+func (a *accessPolicyAuditFake) BeginAtScope(_ context.Context, invocation invocation.Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	a.attempt = mutationAttempt{Invocation: invocation, Action: action, Resource: resource,
 		ScopeType: scopeType, ScopeID: scopeID, Operation: operation, Value: value, Prior: prior}
 	return model.AuditEventID(a.beginID), a.beginErr
@@ -89,7 +90,7 @@ func (e *accessPolicyEffectsFake) Changed(_ context.Context, change accessPolicy
 	return nil
 }
 
-func accessPolicyFixture(t *testing.T) (*accessPolicyService, *accessPolicyStoreFake, *accessPolicyCapabilitiesFake, *accessPolicyEffectsFake, *accessPolicyAuditFake, Invocation) {
+func accessPolicyFixture(t *testing.T) (*accessPolicyService, *accessPolicyStoreFake, *accessPolicyCapabilitiesFake, *accessPolicyEffectsFake, *accessPolicyAuditFake, invocation.Invocation) {
 	t.Helper()
 	at := time.UnixMilli(1_000)
 	institution, err := model.NewInstitution(model.NewInstitutionID(), "northbridge", "Northbridge", "", at)
@@ -109,7 +110,7 @@ func accessPolicyFixture(t *testing.T) (*accessPolicyService, *accessPolicyStore
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor,
 		AuthenticatedAt: at, MFACompletedAt: model.OptionalTimeFrom(at.Add(30 * time.Second)), ClientType: model.SessionClientWeb}
-	return service, persistence, capabilities, effects, audit, NewInvocation(principal, model.RequestMetadata{RequestID: "request-1"})
+	return service, persistence, capabilities, effects, audit, invocation.New(principal, model.RequestMetadata{RequestID: "request-1"})
 }
 
 type accessPolicyInstitutionFake struct{ institution *model.Institution }
@@ -227,7 +228,7 @@ func TestAccessPolicyPreflightUsesCurrentDeploymentCapabilities(t *testing.T) {
 
 func TestAccessPolicyMutationRequiresInteractiveStrongRecentAuthentication(t *testing.T) {
 	t.Parallel()
-	service, persistence, _, _, _, invocation := accessPolicyFixture(t)
+	service, persistence, _, _, _, call := accessPolicyFixture(t)
 	settings := persistence.snapshot.Policy.Settings()
 	cases := []struct {
 		name      string
@@ -235,19 +236,19 @@ func TestAccessPolicyMutationRequiresInteractiveStrongRecentAuthentication(t *te
 		wantCode  string
 	}{
 		{name: "personal access token", principal: func() model.Principal {
-			p := invocation.Principal()
+			p := call.Principal()
 			p.CredentialType = model.CredentialPersonalAccessToken
 			p.SessionID = ""
 			return p
 		}(), wantCode: "authentication.token_invalid"},
 		{name: "single factor", principal: func() model.Principal {
-			p := invocation.Principal()
+			p := call.Principal()
 			p.AuthenticationStrength = model.AuthenticationSingleFactor
 			p.MFACompletedAt = model.OptionalTime{}
 			return p
 		}(), wantCode: "authentication.strong_required"},
 		{name: "stale", principal: func() model.Principal {
-			p := invocation.Principal()
+			p := call.Principal()
 			p.AuthenticatedAt = time.UnixMilli(1)
 			p.MFACompletedAt = model.OptionalTimeFrom(time.UnixMilli(1))
 			return p
@@ -255,7 +256,7 @@ func TestAccessPolicyMutationRequiresInteractiveStrongRecentAuthentication(t *te
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			invocation := NewInvocation(tc.principal, model.RequestMetadata{})
+			invocation := invocation.New(tc.principal, model.RequestMetadata{})
 			operations := []struct {
 				name string
 				run  func() error

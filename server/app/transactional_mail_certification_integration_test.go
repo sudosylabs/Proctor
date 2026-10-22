@@ -31,6 +31,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/exam"
+	"github.com/sudosylabs/proctor/server/app/exam/sitting"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -65,21 +68,21 @@ func TestTransactionalMailPhaseCertification(t *testing.T) {
 	)
 	ctx := context.Background()
 	const password = "correct horse battery staple"
-	bootstrap, appErr := helper.App.BootstrapInstallation(ctx, app.Invocation{}, app.BootstrapInstallationCommand{
+	bootstrap, appErr := helper.App.BootstrapInstallation(ctx, invocation.Invocation{}, app.BootstrapInstallationCommand{
 		InstitutionName: "mail-certification", InstitutionDisplayName: "Mail Certification University",
 		AdministratorUsername: "mail-cert-admin", AdministratorEmail: "mail-cert-admin@example.edu",
 		AdministratorDisplayName: "Mail Certification Administrator", AdministratorLocale: "en", AdministratorTimezone: "UTC",
 		Password: password, BootstrapSecret: testlib.BootstrapSecret, Source: "127.0.0.1:1",
 	})
 	require.NoError(t, appErr)
-	adminLogin, appErr := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{
+	adminLogin, appErr := helper.App.Login(ctx, invocation.Invocation{}, app.LoginCommand{
 		LoginID: bootstrap.Administrator.Username, Password: password, ClientType: model.SessionClientWeb,
 		Source: "127.0.0.1:1", DeviceName: "mail-cert-admin",
 	})
 	require.NoError(t, appErr)
 	adminPrincipal, appErr := helper.App.AuthenticateAccess(ctx, adminLogin.Tokens.AccessToken)
 	require.NoError(t, appErr)
-	adminInvocation := app.NewInvocation(*adminPrincipal,
+	adminInvocation := invocation.New(*adminPrincipal,
 		model.RequestMetadata{RequestID: "mail-cert-admin", IPAddress: "127.0.0.1"})
 
 	credentialUser, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
@@ -87,7 +90,7 @@ func TestTransactionalMailPhaseCertification(t *testing.T) {
 		DisplayName: "Mail Credential Candidate", Locale: "en", Timezone: "UTC",
 	}, Password: password})
 	require.NoError(t, appErr)
-	credentialLogin, appErr := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{
+	credentialLogin, appErr := helper.App.Login(ctx, invocation.Invocation{}, app.LoginCommand{
 		LoginID: credentialUser.Username, Password: password, ClientType: model.SessionClientWeb,
 		Source: "127.0.0.1:1", DeviceName: "mail-cert-credential",
 	})
@@ -95,7 +98,7 @@ func TestTransactionalMailPhaseCertification(t *testing.T) {
 	credentialPrincipal, appErr := helper.App.AuthenticateAccess(ctx, credentialLogin.Tokens.AccessToken)
 	require.NoError(t, appErr)
 	appErr = helper.App.RequestEmailVerification(ctx,
-		app.NewInvocation(*credentialPrincipal, model.RequestMetadata{RequestID: "mail-cert-verification"}),
+		invocation.New(*credentialPrincipal, model.RequestMetadata{RequestID: "mail-cert-verification"}),
 		app.RequestEmailVerificationCommand{Source: "127.0.0.1:1"})
 	require.NoError(t, appErr)
 
@@ -146,15 +149,15 @@ func TestTransactionalMailPhaseCertification(t *testing.T) {
 		ClassID: class.ID, UserID: candidate.ID, StartsAt: now.Add(-time.Hour),
 	})
 	require.NoError(t, err)
-	created, appErr := helper.App.CreateExam(ctx, adminInvocation, app.CreateExamCommand{
+	created, appErr := helper.App.CreateExam(ctx, adminInvocation, exam.CreateCommand{
 		AcademicUnitID: unit.ID, Title: "Mail Certification Exam", IdempotencyKey: "mail-cert-exam",
 	})
 	require.NoError(t, appErr)
-	published, appErr := helper.App.PublishExamRevision(ctx, adminInvocation, app.PublishExamRevisionCommand{
+	published, appErr := helper.App.PublishExamRevision(ctx, adminInvocation, exam.PublishRevisionCommand{
 		ExamID: created.Exam.ID, ExpectedDraftRevision: created.Draft.Revision, IdempotencyKey: "mail-cert-publish",
 	})
 	require.NoError(t, appErr)
-	_, appErr = helper.App.ScheduleExamSitting(ctx, adminInvocation, app.ScheduleExamSittingCommand{
+	_, appErr = helper.App.ScheduleExamSitting(ctx, adminInvocation, sitting.ScheduleCommand{
 		ExamID: created.Exam.ID, ExamRevisionID: published.ID, ClassID: class.ID,
 		ScheduledStartAt: now.Add(2 * time.Hour), ScheduledEndAt: now.Add(4 * time.Hour),
 		IdempotencyKey: "mail-cert-sitting",

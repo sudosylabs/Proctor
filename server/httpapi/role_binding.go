@@ -50,7 +50,7 @@ type roleBindingResourceModule struct {
 	bindings RoleBindingApplication
 }
 
-func roleBindingResource(bindings RoleBindingApplication) resource {
+func roleBindingResource(bindings RoleBindingApplication) apiResource {
 	module := roleBindingResourceModule{bindings: bindings}
 	return newResource(
 		"role-bindings",

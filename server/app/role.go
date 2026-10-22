@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -49,8 +50,8 @@ type roleStore interface {
 }
 
 type roleAuthorizer interface {
-	AuthorizeInstitution(context.Context, Invocation, model.Action) (model.Resource, error)
-	CanDelegateActionsAtScope(context.Context, Invocation, []string, model.RoleScopeType, string) error
+	AuthorizeInstitution(context.Context, invocation.Invocation, model.Action) (model.Resource, error)
+	CanDelegateActionsAtScope(context.Context, invocation.Invocation, []string, model.RoleScopeType, string) error
 }
 
 type roleEffects interface {
@@ -75,7 +76,7 @@ func newRoleService(
 	return &roleService{roles: roles, authorization: authorization, audit: audit, effects: effects, now: now}
 }
 
-func (s *roleService) ListRoles(ctx context.Context, invocation Invocation, _ ListRolesQuery) ([]*model.Role, error) {
+func (s *roleService) ListRoles(ctx context.Context, invocation invocation.Invocation, _ ListRolesQuery) ([]*model.Role, error) {
 	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionRoleView); err != nil {
 		return nil, err
 	}
@@ -89,7 +90,7 @@ func (s *roleService) ListRoles(ctx context.Context, invocation Invocation, _ Li
 	return roles, nil
 }
 
-func (s *roleService) GetRole(ctx context.Context, invocation Invocation, query GetRoleQuery) (*model.Role, error) {
+func (s *roleService) GetRole(ctx context.Context, invocation invocation.Invocation, query GetRoleQuery) (*model.Role, error) {
 	id := query.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "role_id")
@@ -104,7 +105,7 @@ func (s *roleService) GetRole(ctx context.Context, invocation Invocation, query 
 	return role, nil
 }
 
-func (s *roleService) CreateRole(ctx context.Context, invocation Invocation, command CreateRoleCommand) (*model.Role, error) {
+func (s *roleService) CreateRole(ctx context.Context, invocation invocation.Invocation, command CreateRoleCommand) (*model.Role, error) {
 	resource, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionRoleManage)
 	if err != nil {
 		return nil, err
@@ -142,7 +143,7 @@ func (s *roleService) CreateRole(ctx context.Context, invocation Invocation, com
 	)
 }
 
-func (s *roleService) UpdateRole(ctx context.Context, invocation Invocation, command UpdateRoleCommand) (*model.Role, error) {
+func (s *roleService) UpdateRole(ctx context.Context, invocation invocation.Invocation, command UpdateRoleCommand) (*model.Role, error) {
 	id := command.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "role_id")
@@ -218,7 +219,7 @@ func addedRolePermissions(current, candidate []string) []string {
 	return added
 }
 
-func (s *roleService) ArchiveRole(ctx context.Context, invocation Invocation, command ArchiveRoleCommand) error {
+func (s *roleService) ArchiveRole(ctx context.Context, invocation invocation.Invocation, command ArchiveRoleCommand) error {
 	id := command.ID
 	if !id.IsValid() {
 		return apperror.New("request.invalid").WithField("field", "role_id")
@@ -266,7 +267,7 @@ type roleAuthorization struct {
 	institutions  store.InstitutionStore
 }
 
-func (a roleAuthorization) AuthorizeRoleBindingList(ctx context.Context, invocation Invocation, action model.Action) (store.UserVisibilityScope, error) {
+func (a roleAuthorization) AuthorizeRoleBindingList(ctx context.Context, invocation invocation.Invocation, action model.Action) (store.UserVisibilityScope, error) {
 	constraint, err := a.authorization.authorizedScopes(ctx, invocation.Principal(), action, model.ResourceInstitution)
 	if err != nil {
 		return store.UserVisibilityScope{}, err
@@ -298,13 +299,13 @@ func (a roleAuthorization) AuthorizeRoleBindingList(ctx context.Context, invocat
 	}, nil
 }
 
-func (a roleAuthorization) AuthorizeRoleBindingPreflight(ctx context.Context, invocation Invocation, action model.Action) error {
+func (a roleAuthorization) AuthorizeRoleBindingPreflight(ctx context.Context, invocation invocation.Invocation, action model.Action) error {
 	return a.authorization.authorizeRoleBindingPreflight(ctx, invocation, action)
 }
 
 func (a roleAuthorization) AuthorizeRoleBindingScope(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	action model.Action,
 	scopeType model.RoleScopeType,
 	scopeID string,
@@ -314,7 +315,7 @@ func (a roleAuthorization) AuthorizeRoleBindingScope(
 
 func (a roleAuthorization) CanDelegateActionsAtScope(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	actions []string,
 	scopeType model.RoleScopeType,
 	scopeID string,
@@ -329,7 +330,7 @@ func (a roleAuthorization) CanDelegateActionsAtScope(
 	return nil
 }
 
-func (a roleAuthorization) AuthorizeInstitution(ctx context.Context, invocation Invocation, action model.Action) (model.Resource, error) {
+func (a roleAuthorization) AuthorizeInstitution(ctx context.Context, invocation invocation.Invocation, action model.Action) (model.Resource, error) {
 	institution, err := a.institutions.GetSingleton(ctx)
 	if err != nil {
 		return model.Resource{}, roleStoreErrors.Translate(err)

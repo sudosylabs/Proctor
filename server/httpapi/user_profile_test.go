@@ -21,6 +21,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -40,23 +42,23 @@ type userProfileHTTPApplication struct {
 	pictureContent     *app.ProfilePictureContent
 }
 
-func (a *userProfileHTTPApplication) GetCurrentUserContext(context.Context, app.Invocation) (*app.CurrentUserContextView, error) {
+func (a *userProfileHTTPApplication) GetCurrentUserContext(context.Context, invocation.Invocation) (*app.CurrentUserContextView, error) {
 	a.contextCalls++
 	return a.contextResult, nil
 }
 
-func (a *userProfileHTTPApplication) ListCandidateExamActivity(context.Context, app.Invocation,
-	app.ListCandidateExamActivityQuery,
-) (app.CandidateExamActivityPage, error) {
-	return app.CandidateExamActivityPage{}, nil
+func (a *userProfileHTTPApplication) ListCandidateExamActivity(context.Context, invocation.Invocation,
+	attempt.CandidateActivityQuery,
+) (attempt.CandidateActivityPage, error) {
+	return attempt.CandidateActivityPage{}, nil
 }
 
-func (a *userProfileHTTPApplication) ChangeUserEmail(_ context.Context, _ app.Invocation, command app.ChangeUserEmailCommand) (*app.UserEmailState, error) {
+func (a *userProfileHTTPApplication) ChangeUserEmail(_ context.Context, _ invocation.Invocation, command app.ChangeUserEmailCommand) (*app.UserEmailState, error) {
 	a.changeEmailCommand = command
 	return &app.UserEmailState{UserID: a.result.ID, EmailVerified: a.result.EmailVerified}, nil
 }
 
-func (a *userProfileHTTPApplication) VerifyUserEmailPrivileged(_ context.Context, _ app.Invocation, command app.VerifyUserEmailPrivilegedCommand) (*app.UserEmailState, error) {
+func (a *userProfileHTTPApplication) VerifyUserEmailPrivileged(_ context.Context, _ invocation.Invocation, command app.VerifyUserEmailPrivilegedCommand) (*app.UserEmailState, error) {
 	a.verifyEmailCommand = command
 	return &app.UserEmailState{UserID: a.result.ID, EmailVerified: a.result.EmailVerified}, nil
 }
@@ -67,7 +69,7 @@ type accountStateHTTPApplication struct {
 	command app.SetUserEnabledCommand
 }
 
-func (a *accountStateHTTPApplication) SetUserEnabled(_ context.Context, _ app.Invocation, command app.SetUserEnabledCommand) (*model.User, error) {
+func (a *accountStateHTTPApplication) SetUserEnabled(_ context.Context, _ invocation.Invocation, command app.SetUserEnabledCommand) (*model.User, error) {
 	a.command = command
 	return a.result, nil
 }
@@ -80,17 +82,17 @@ type sessionAdministrationHTTPApplication struct {
 	revokeAllCommand app.RevokeUserSessionsCommand
 }
 
-func (a *sessionAdministrationHTTPApplication) ListUserSessions(_ context.Context, _ app.Invocation, query app.ListUserSessionsQuery) ([]*model.Session, error) {
+func (a *sessionAdministrationHTTPApplication) ListUserSessions(_ context.Context, _ invocation.Invocation, query app.ListUserSessionsQuery) ([]*model.Session, error) {
 	a.listQuery = query
 	return a.list, nil
 }
 
-func (a *sessionAdministrationHTTPApplication) RevokeUserSession(_ context.Context, _ app.Invocation, command app.RevokeUserSessionCommand) error {
+func (a *sessionAdministrationHTTPApplication) RevokeUserSession(_ context.Context, _ invocation.Invocation, command app.RevokeUserSessionCommand) error {
 	a.revokeCommand = command
 	return nil
 }
 
-func (a *sessionAdministrationHTTPApplication) RevokeUserSessions(_ context.Context, _ app.Invocation, command app.RevokeUserSessionsCommand) error {
+func (a *sessionAdministrationHTTPApplication) RevokeUserSessions(_ context.Context, _ invocation.Invocation, command app.RevokeUserSessionsCommand) error {
 	a.revokeAllCommand = command
 	return nil
 }
@@ -104,25 +106,25 @@ type roleHTTPApplication struct {
 	archiveCommand app.ArchiveRoleCommand
 }
 
-func (a *roleHTTPApplication) ListRoles(context.Context, app.Invocation, app.ListRolesQuery) ([]*model.Role, error) {
+func (a *roleHTTPApplication) ListRoles(context.Context, invocation.Invocation, app.ListRolesQuery) ([]*model.Role, error) {
 	return a.list, nil
 }
 
-func (a *roleHTTPApplication) GetRole(context.Context, app.Invocation, app.GetRoleQuery) (*model.Role, error) {
+func (a *roleHTTPApplication) GetRole(context.Context, invocation.Invocation, app.GetRoleQuery) (*model.Role, error) {
 	return a.result, nil
 }
 
-func (a *roleHTTPApplication) CreateRole(_ context.Context, _ app.Invocation, command app.CreateRoleCommand) (*model.Role, error) {
+func (a *roleHTTPApplication) CreateRole(_ context.Context, _ invocation.Invocation, command app.CreateRoleCommand) (*model.Role, error) {
 	a.createCommand = command
 	return a.result, nil
 }
 
-func (a *roleHTTPApplication) UpdateRole(_ context.Context, _ app.Invocation, command app.UpdateRoleCommand) (*model.Role, error) {
+func (a *roleHTTPApplication) UpdateRole(_ context.Context, _ invocation.Invocation, command app.UpdateRoleCommand) (*model.Role, error) {
 	a.updateCommand = command
 	return a.result, nil
 }
 
-func (a *roleHTTPApplication) ArchiveRole(_ context.Context, _ app.Invocation, command app.ArchiveRoleCommand) error {
+func (a *roleHTTPApplication) ArchiveRole(_ context.Context, _ invocation.Invocation, command app.ArchiveRoleCommand) error {
 	a.archiveCommand = command
 	return nil
 }
@@ -133,15 +135,15 @@ type roleBindingHTTPApplication struct {
 	result *model.RoleBinding
 }
 
-func (a *roleBindingHTTPApplication) ListRoleBindings(context.Context, app.Invocation, app.ListRoleBindingsQuery) ([]*model.RoleBinding, error) {
+func (a *roleBindingHTTPApplication) ListRoleBindings(context.Context, invocation.Invocation, app.ListRoleBindingsQuery) ([]*model.RoleBinding, error) {
 	return a.list, nil
 }
 
-func (a *roleBindingHTTPApplication) CreateRoleBinding(context.Context, app.Invocation, app.CreateRoleBindingCommand) (*model.RoleBinding, error) {
+func (a *roleBindingHTTPApplication) CreateRoleBinding(context.Context, invocation.Invocation, app.CreateRoleBindingCommand) (*model.RoleBinding, error) {
 	return a.result, nil
 }
 
-func (a *roleBindingHTTPApplication) EndRoleBinding(context.Context, app.Invocation, app.EndRoleBindingCommand) (*model.RoleBinding, error) {
+func (a *roleBindingHTTPApplication) EndRoleBinding(context.Context, invocation.Invocation, app.EndRoleBindingCommand) (*model.RoleBinding, error) {
 	return a.result, nil
 }
 
@@ -150,7 +152,7 @@ type auditListingHTTPApplication struct {
 	list []*model.AuditEvent
 }
 
-func (a *auditListingHTTPApplication) ListAuditEvents(context.Context, app.Invocation, app.ListAuditEventsQuery) ([]*model.AuditEvent, error) {
+func (a *auditListingHTTPApplication) ListAuditEvents(context.Context, invocation.Invocation, app.ListAuditEventsQuery) ([]*model.AuditEvent, error) {
 	return a.list, nil
 }
 
@@ -167,7 +169,7 @@ func (a *bootstrapHTTPApplication) GetInstallationStatus(context.Context, app.Ge
 	return &model.InstallationStatus{Initialized: false}, nil
 }
 
-func (a *bootstrapHTTPApplication) BootstrapInstallation(context.Context, app.Invocation, app.BootstrapInstallationCommand) (*model.InstallationBootstrapResult, error) {
+func (a *bootstrapHTTPApplication) BootstrapInstallation(context.Context, invocation.Invocation, app.BootstrapInstallationCommand) (*model.InstallationBootstrapResult, error) {
 	return a.result, nil
 }
 
@@ -178,7 +180,7 @@ type loginRevisionHTTPApplication struct {
 
 func (a *loginRevisionHTTPApplication) Login(
 	context.Context,
-	app.Invocation,
+	invocation.Invocation,
 	app.LoginCommand,
 ) (*app.LoginResult, error) {
 	return &app.LoginResult{
@@ -188,26 +190,26 @@ func (a *loginRevisionHTTPApplication) Login(
 	}, nil
 }
 
-func (a *userProfileHTTPApplication) SearchUsers(_ context.Context, _ app.Invocation, query app.SearchUsersQuery) (app.Page[*model.User], error) {
+func (a *userProfileHTTPApplication) SearchUsers(_ context.Context, _ invocation.Invocation, query app.SearchUsersQuery) (app.Page[*model.User], error) {
 	a.searchQuery = query
 	return app.Page[*model.User]{Items: a.values}, nil
 }
-func (a *userProfileHTTPApplication) GetUserProfile(context.Context, app.Invocation, app.GetUserProfileQuery) (*model.User, error) {
+func (a *userProfileHTTPApplication) GetUserProfile(context.Context, invocation.Invocation, app.GetUserProfileQuery) (*model.User, error) {
 	return a.result, nil
 }
-func (a *userProfileHTTPApplication) UpdateUserProfile(_ context.Context, _ app.Invocation, command app.UpdateUserProfileCommand) (*model.User, error) {
+func (a *userProfileHTTPApplication) UpdateUserProfile(_ context.Context, _ invocation.Invocation, command app.UpdateUserProfileCommand) (*model.User, error) {
 	a.updateCommand = command
 	return a.result, nil
 }
-func (a *userProfileHTTPApplication) UploadProfilePicture(_ context.Context, _ app.Invocation, command app.UploadProfilePictureCommand) (*model.User, error) {
+func (a *userProfileHTTPApplication) UploadProfilePicture(_ context.Context, _ invocation.Invocation, command app.UploadProfilePictureCommand) (*model.User, error) {
 	a.uploadCommand = command
 	return a.result, nil
 }
-func (a *userProfileHTTPApplication) RemoveProfilePicture(_ context.Context, _ app.Invocation, command app.RemoveProfilePictureCommand) (*model.User, error) {
+func (a *userProfileHTTPApplication) RemoveProfilePicture(_ context.Context, _ invocation.Invocation, command app.RemoveProfilePictureCommand) (*model.User, error) {
 	a.removeCommand = command
 	return a.result, nil
 }
-func (a *userProfileHTTPApplication) GetProfilePicture(_ context.Context, _ app.Invocation, query app.GetProfilePictureQuery) (*app.ProfilePictureContent, error) {
+func (a *userProfileHTTPApplication) GetProfilePicture(_ context.Context, _ invocation.Invocation, query app.GetProfilePictureQuery) (*app.ProfilePictureContent, error) {
 	a.pictureQuery = query
 	return a.pictureContent, nil
 }

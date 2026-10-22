@@ -43,7 +43,7 @@ type programmeLevelResourceModule struct {
 	programmeLevels ProgrammeLevelApplication
 }
 
-func programmeLevelResource(programmeLevels ProgrammeLevelApplication) resource {
+func programmeLevelResource(programmeLevels ProgrammeLevelApplication) apiResource {
 	module := programmeLevelResourceModule{programmeLevels: programmeLevels}
 	collection := apiPath(literal("programmes"), canonicalID("programme_id"), literal("levels"))
 	member := apiPath(literal("programme-levels"), canonicalID("programme_level_id"))

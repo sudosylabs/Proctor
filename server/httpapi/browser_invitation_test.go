@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -27,7 +28,7 @@ type browserInvitationHTTPApplication struct {
 	session app.BrowserInvitationSessionAcceptanceCommand
 }
 
-func (a *browserInvitationHTTPApplication) StartBrowserInvitation(_ context.Context, _ app.Invocation, command app.StartBrowserInvitationCommand) (*app.BrowserInvitationStart, error) {
+func (a *browserInvitationHTTPApplication) StartBrowserInvitation(_ context.Context, _ invocation.Invocation, command app.StartBrowserInvitationCommand) (*app.BrowserInvitationStart, error) {
 	a.start = command
 	return &app.BrowserInvitationStart{
 		Handle: model.NewCredentialToken(), BrowserProof: model.NewCredentialToken(),
@@ -36,12 +37,12 @@ func (a *browserInvitationHTTPApplication) StartBrowserInvitation(_ context.Cont
 	}, nil
 }
 
-func (a *browserInvitationHTTPApplication) AcceptBrowserInvitation(_ context.Context, _ app.Invocation, command app.BrowserInvitationAcceptanceCommand) (*app.InvitationAcceptanceView, error) {
+func (a *browserInvitationHTTPApplication) AcceptBrowserInvitation(_ context.Context, _ invocation.Invocation, command app.BrowserInvitationAcceptanceCommand) (*app.InvitationAcceptanceView, error) {
 	a.local = command
 	return browserInvitationAcceptance(), nil
 }
 
-func (a *browserInvitationHTTPApplication) AcceptBrowserInvitationWithSession(_ context.Context, _ app.Invocation, command app.BrowserInvitationSessionAcceptanceCommand) (*app.InvitationAcceptanceView, error) {
+func (a *browserInvitationHTTPApplication) AcceptBrowserInvitationWithSession(_ context.Context, _ invocation.Invocation, command app.BrowserInvitationSessionAcceptanceCommand) (*app.InvitationAcceptanceView, error) {
 	a.session = command
 	return browserInvitationAcceptance(), nil
 }

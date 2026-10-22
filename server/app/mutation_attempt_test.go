@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -32,7 +33,7 @@ type mutationAttemptAuditorFake struct {
 	attempts []mutationAttempt
 }
 
-func (a *mutationAttemptAuditorFake) BeginAtScope(_ context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
+func (a *mutationAttemptAuditorFake) BeginAtScope(_ context.Context, invocation invocation.Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	*a.events = append(*a.events, "begin-at-scope")
 	a.attempt = mutationAttempt{
 		Invocation: invocation,
@@ -48,7 +49,7 @@ func (a *mutationAttemptAuditorFake) BeginAtScope(_ context.Context, invocation 
 	return model.AuditEventID(a.nextBeginID()), a.beginErr
 }
 
-func (a *mutationAttemptAuditorFake) Begin(_ context.Context, invocation Invocation, action model.Action, resource model.Resource, operation string, value, prior map[string]any) (model.AuditEventID, error) {
+func (a *mutationAttemptAuditorFake) Begin(_ context.Context, invocation invocation.Invocation, action model.Action, resource model.Resource, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	*a.events = append(*a.events, "begin")
 	a.attempt = mutationAttempt{
 		Invocation: invocation,
@@ -268,7 +269,7 @@ func TestMutationAttemptReturnsSuccessWithoutCompletingIt(t *testing.T) {
 	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: model.NewID()}
 	value := map[string]any{"name": "computer-science"}
 	prior := map[string]any{"name": "computing"}
-	invocation := Invocation{}
+	invocation := invocation.Invocation{}
 	auditor := &mutationAttemptAuditorFake{events: &events, beginID: auditID}
 	clockCalls := 0
 	got, err := runAuditedMutation(

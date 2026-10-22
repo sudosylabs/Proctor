@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -59,11 +60,11 @@ func TestAcademicUnitMemberFalseHistoryQueryUsesActiveAt(t *testing.T) {
 	require.Equal(t, int64(123), *query.ActiveAt, "active at")
 }
 
-func (a *academicUnitMemberHTTPApplication) CreateAcademicUnitMember(_ context.Context, _ app.Invocation, command app.CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
+func (a *academicUnitMemberHTTPApplication) CreateAcademicUnitMember(_ context.Context, _ invocation.Invocation, command app.CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
 	a.createCommand = command
 	return a.result, nil
 }
-func (a *academicUnitMemberHTTPApplication) EndAcademicUnitMember(_ context.Context, _ app.Invocation, command app.EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
+func (a *academicUnitMemberHTTPApplication) EndAcademicUnitMember(_ context.Context, _ invocation.Invocation, command app.EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
 	a.endCommand = command
 	return a.result, nil
 }
@@ -119,7 +120,7 @@ func TestAcademicUnitMemberResourceRejectsInvalidQueryAndMissingPrincipal(t *tes
 	require.Equal(t, http.StatusUnauthorized, unauthenticatedResponse.Code, "unauthenticated status = %d: %s", unauthenticatedResponse.Code, unauthenticatedResponse.Body.String())
 }
 
-func (a *academicUnitMemberHTTPApplication) ListAcademicUnitMembersPage(_ context.Context, _ app.Invocation, query app.ListAcademicUnitMembersPageQuery) (*app.AcademicUnitMemberPage, error) {
+func (a *academicUnitMemberHTTPApplication) ListAcademicUnitMembersPage(_ context.Context, _ invocation.Invocation, query app.ListAcademicUnitMembersPageQuery) (*app.AcademicUnitMemberPage, error) {
 	a.pageQuery = query
 	if a.pageResult != nil {
 		return a.pageResult, nil

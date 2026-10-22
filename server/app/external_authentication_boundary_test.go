@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -149,7 +150,7 @@ func TestProviderConnectionStartRequiresStrongRecentAndBindsExactUser(t *testing
 	principal := userSettingsSessionPrincipal(now)
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
-	_, err := application.BeginProviderConnection(context.Background(), NewInvocation(principal, model.RequestMetadata{}), BeginProviderConnectionCommand{ProviderID: "campus", ReturnTo: "/account/security", Source: "127.0.0.1"})
+	_, err := application.BeginProviderConnection(context.Background(), invocation.New(principal, model.RequestMetadata{}), BeginProviderConnectionCommand{ProviderID: "campus", ReturnTo: "/account/security", Source: "127.0.0.1"})
 	require.NoError(t, err)
 	require.NotNil(t, states.saved)
 	require.Equal(t, model.ExternalAuthenticationPurposeConnect, states.saved.Purpose)
@@ -159,7 +160,7 @@ func TestProviderConnectionStartRequiresStrongRecentAndBindsExactUser(t *testing
 	weak.AuthenticationStrength = model.AuthenticationSingleFactor
 	weak.MFACompletedAt = model.OptionalTime{}
 	states.saved = nil
-	_, err = application.BeginProviderConnection(context.Background(), NewInvocation(weak, model.RequestMetadata{}), BeginProviderConnectionCommand{ProviderID: "campus"})
+	_, err = application.BeginProviderConnection(context.Background(), invocation.New(weak, model.RequestMetadata{}), BeginProviderConnectionCommand{ProviderID: "campus"})
 	require.True(t, apperror.Is(err, "authentication.strong_required"), "weak start error = %v", err)
 	require.Nil(t, states.saved, "weak start persisted state")
 }

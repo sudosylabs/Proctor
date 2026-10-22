@@ -7,8 +7,11 @@
 
 package app
 
-import appmail "github.com/sudosylabs/proctor/server/app/mail"
+import (
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/store"
+)
 
 type personalAccessTokenSecurityNoticeMailPreparer interface {
-	PreparePersonalAccessTokenSecurityNotice(appmail.PersonalAccessTokenPreparation) (*preparedDirectMail, error)
+	PreparePersonalAccessTokenSecurityNotice(appmail.PersonalAccessTokenPreparation) (*store.PreparedMail, error)
 }

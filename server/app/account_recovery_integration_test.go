@@ -23,6 +23,7 @@ import (
 
 	"github.com/sudosylabs/proctor/packages/mail"
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -41,7 +42,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 		}),
 		testlib.WithStore(persistence),
 	)
-	bootstrap, appErr := helper.App.BootstrapInstallation(context.Background(), app.Invocation{}, app.BootstrapInstallationCommand{
+	bootstrap, appErr := helper.App.BootstrapInstallation(context.Background(), invocation.Invocation{}, app.BootstrapInstallationCommand{
 		InstitutionName: "recovery-university", InstitutionDisplayName: "Recovery University",
 		AdministratorUsername: "recovery-admin", AdministratorEmail: "recovery-admin@example.edu",
 		AdministratorDisplayName: "Recovery Admin", AdministratorLocale: "en", AdministratorTimezone: "UTC",
@@ -222,7 +223,7 @@ func TestCurrentAccessPolicyGatesLocalLoginAndPasswordRecoveryRealGraph(t *testi
 		cfg.Authentication.AccountRecovery.RateLimit.MaximumAttempts = 20
 		cfg.Authentication.AccountRecovery.RateLimit.MaximumSourceAttempts = 100
 	}), testlib.WithStore(persistence))
-	bootstrap, appErr := helper.App.BootstrapInstallation(context.Background(), app.Invocation{}, app.BootstrapInstallationCommand{
+	bootstrap, appErr := helper.App.BootstrapInstallation(context.Background(), invocation.Invocation{}, app.BootstrapInstallationCommand{
 		InstitutionName: "policy-recovery", InstitutionDisplayName: "Policy Recovery",
 		AdministratorUsername: "policy-recovery-admin", AdministratorEmail: "policy-recovery-admin@example.edu",
 		AdministratorLocale: "en", AdministratorTimezone: "UTC",

@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -36,7 +37,7 @@ func TestSelfSessionServiceUsesCallerOwnershipAndPostCommitEffects(t *testing.T)
 	service, err := newSelfSessionService(persistence, &mutationAttemptAuditorFake{events: &events, beginID: model.NewID()}, effects, func() time.Time { return now })
 	require.NoError(t, err)
 
-	invocation := NewInvocation(principal, model.RequestMetadata{})
+	invocation := invocation.New(principal, model.RequestMetadata{})
 	err = service.RevokeSession(
 		context.Background(),
 		invocation,
@@ -72,7 +73,7 @@ func TestSelfSessionServiceHidesAnotherUsersSession(t *testing.T) {
 
 	err = service.RevokeSession(
 		context.Background(),
-		NewInvocation(principal, model.RequestMetadata{}),
+		invocation.New(principal, model.RequestMetadata{}),
 		RevokeSessionCommand{SessionID: persistence.session.ID.String()},
 	)
 	require.True(t, apperror.Is(err, "session.not_found"), "error = %v, want session.not_found", err)
@@ -86,7 +87,7 @@ func TestSelfSessionListUsesNativeDecisionTime(t *testing.T) {
 	persistence := &selfSessionStoreFake{session: &model.Session{ID: principal.SessionID, UserID: principal.UserID}}
 	service, err := newSelfSessionService(persistence, &mutationAttemptAuditorFake{events: &[]string{}, beginID: model.NewID()}, &selfSessionEffectsFake{}, func() time.Time { return at })
 	require.NoError(t, err)
-	_, err = service.ListSessions(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ListSessionsQuery{})
+	_, err = service.ListSessions(context.Background(), invocation.New(principal, model.RequestMetadata{}), ListSessionsQuery{})
 	require.NoError(t, err)
 	require.True(t, persistence.listedAt.Equal(model.TimeUTC(at)), "active Session listing time = %v", persistence.listedAt)
 	require.Same(t, time.UTC, persistence.listedAt.Location(), "active Session listing time = %v", persistence.listedAt)
@@ -125,7 +126,7 @@ func TestSelfSessionRevocationsRequireAuditBeforeMutationAndEffects(t *testing.T
 				}
 				self, err := newSelfSessionService(persistence, audit, effects, func() time.Time { return now })
 				require.NoError(t, err)
-				invocation := NewInvocation(principal, model.RequestMetadata{})
+				invocation := invocation.New(principal, model.RequestMetadata{})
 				switch operation {
 				case "revoke_own_session":
 					err = self.RevokeSession(context.Background(), invocation, RevokeSessionCommand{SessionID: principal.SessionID.String()})
@@ -195,7 +196,7 @@ func TestSelfSessionRevocationRepeatOutcomes(t *testing.T) {
 			effects := &selfSessionEffectsFake{events: &events}
 			self, err := newSelfSessionService(persistence, audit, effects, func() time.Time { return now })
 			require.NoError(t, err)
-			invocation := NewInvocation(principal, model.RequestMetadata{})
+			invocation := invocation.New(principal, model.RequestMetadata{})
 			switch operation {
 			case "revoke_own_session":
 				err = self.RevokeSession(context.Background(), invocation, RevokeSessionCommand{SessionID: principal.SessionID.String()})

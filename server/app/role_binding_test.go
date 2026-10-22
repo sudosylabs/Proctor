@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -107,7 +108,7 @@ func TestRoleBindingCreateCommitsBeforeInvalidation(t *testing.T) {
 		&roleBindingEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
-	got, err := service.CreateRoleBinding(context.Background(), Invocation{}, CreateRoleBindingCommand{
+	got, err := service.CreateRoleBinding(context.Background(), invocation.Invocation{}, CreateRoleBindingCommand{
 		UserID: userID, RoleID: created.RoleID.String(), ScopeType: model.RoleScopeInstitution,
 		ScopeID: model.NewID(), StartAt: 100,
 	})
@@ -136,7 +137,7 @@ func TestRoleBindingCreateRejectsSystemAdminOutsideInstitution(t *testing.T) {
 		&roleBindingEffectsFake{events: &events},
 		time.Now,
 	)
-	_, err := service.CreateRoleBinding(context.Background(), Invocation{}, CreateRoleBindingCommand{
+	_, err := service.CreateRoleBinding(context.Background(), invocation.Invocation{}, CreateRoleBindingCommand{
 		UserID: model.NewID(), RoleID: roleID, ScopeType: model.RoleScopeClass,
 		ScopeID: model.NewID(), StartAt: 100,
 	})
@@ -158,7 +159,7 @@ func TestRoleBindingRetainedCreateUsesArchivedRoleForCurrentDelegation(t *testin
 		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: scopeID}},
 		&accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, &relationshipMailPreparerTestFake{},
 		&roleBindingEffectsFake{events: &events}, func() time.Time { return time.UnixMilli(500) })
-	result, err := service.CreateRoleBinding(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
+	result, err := service.CreateRoleBinding(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		CreateRoleBindingCommand{UserID: userID.String(), RoleID: roleID.String(), ScopeType: model.RoleScopeInstitution,
 			ScopeID: scopeID, StartAt: 100, IdempotencyKey: "row", batchRetainedOutcome: true})
 	require.NoError(t, err, "retained create")
@@ -191,7 +192,7 @@ func TestRoleBindingEndFailurePublishesNoInvalidation(t *testing.T) {
 		&roleBindingEffectsFake{events: &events},
 		time.Now,
 	)
-	_, err := service.EndRoleBinding(context.Background(), Invocation{}, EndRoleBindingCommand{ID: binding.ID})
+	_, err := service.EndRoleBinding(context.Background(), invocation.Invocation{}, EndRoleBindingCommand{ID: binding.ID})
 	require.True(t, apperror.Is(err, "role_binding.last_system_admin"), "error = %v", err)
 	_, available := persistence.endInput.Capabilities.Providers["campus"]
 	require.True(t, available, "Store capability snapshot = %#v, want configured campus provider", persistence.endInput.Capabilities)
@@ -218,7 +219,7 @@ func TestRoleBindingListByUserAuthorizesThenReads(t *testing.T) {
 		&roleBindingEffectsFake{events: &events},
 		time.Now,
 	)
-	got, err := service.ListRoleBindings(context.Background(), Invocation{}, ListRoleBindingsQuery{UserID: userID})
+	got, err := service.ListRoleBindings(context.Background(), invocation.Invocation{}, ListRoleBindingsQuery{UserID: userID})
 	require.NoError(t, err, "list")
 	require.Len(t, got, 1, "list")
 	// Contract: authorization precedes the read.
@@ -237,7 +238,7 @@ func TestRoleBindingListByUserPassesAcademicScopeToPersistence(t *testing.T) {
 		&accessPolicyCapabilitiesFake{},
 		&institutionAuditorFake{events: &events}, &relationshipMailPreparerTestFake{}, &roleBindingEffectsFake{events: &events}, time.Now,
 	)
-	_, err := service.ListRoleBindings(context.Background(), Invocation{}, ListRoleBindingsQuery{UserID: model.NewUserID().String()})
+	_, err := service.ListRoleBindings(context.Background(), invocation.Invocation{}, ListRoleBindingsQuery{UserID: model.NewUserID().String()})
 	require.NoError(t, err)
 	require.Equal(t, []model.AcademicUnitID{model.AcademicUnitID(rootID)}, persistence.visibility.AcademicUnitRootIDs)
 	require.False(t, persistence.visibility.InstitutionWide)

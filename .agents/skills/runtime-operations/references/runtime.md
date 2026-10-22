@@ -368,7 +368,7 @@ boundaries, OpenAPI/route/error agreement, and portable documentation links.
 ~~~go
 // Correct: transport depends on a narrow application capability.
 type academicUnits interface {
-    CreateAcademicUnit(context.Context, app.Invocation, app.CreateAcademicUnitCommand) (*model.AcademicUnit, error)
+    CreateAcademicUnit(context.Context, invocation.Invocation, app.CreateAcademicUnitCommand) (*model.AcademicUnit, error)
 }
 
 // Incorrect: transport reaches persistence and bypasses policy/audit.

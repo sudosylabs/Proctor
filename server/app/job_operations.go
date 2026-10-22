@@ -13,17 +13,11 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
-
-// Stable application-facing names keep transports independent of child-package
-// organization while the Job engine owns their canonical safe representation.
-type JobView = jobengine.View
-type JobAttemptView = jobengine.AttemptView
-type JobPage = jobengine.Page
-type JobAttemptPage = jobengine.AttemptPage
 
 type ListJobsQuery struct {
 	Statuses        []model.JobStatus
@@ -62,7 +56,7 @@ type jobOperationsAuthorization struct {
 	institutions  store.InstitutionStore
 }
 
-func (a jobOperationsAuthorization) AuthorizeInstitution(ctx context.Context, invocation Invocation, action model.Action) (model.Resource, error) {
+func (a jobOperationsAuthorization) AuthorizeInstitution(ctx context.Context, invocation invocation.Invocation, action model.Action) (model.Resource, error) {
 	institution, err := a.institutions.GetSingleton(ctx)
 	if err != nil {
 		return model.Resource{}, jobOperationsStoreErrors.Translate(err)
@@ -90,85 +84,85 @@ func newJobOperationsService(jobs jobOperatorEngine, authorization institutionAu
 	return &jobOperationsService{jobs: jobs, authorization: authorization, audit: audit, now: now}, nil
 }
 
-func (s *jobOperationsService) ListJobs(ctx context.Context, invocation Invocation, query ListJobsQuery) (JobPage, error) {
+func (s *jobOperationsService) ListJobs(ctx context.Context, invocation invocation.Invocation, query ListJobsQuery) (jobengine.Page, error) {
 	if s == nil {
-		return JobPage{}, apperror.New("job.unavailable")
+		return jobengine.Page{}, apperror.New("job.unavailable")
 	}
 	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobView); err != nil {
-		return JobPage{}, err
+		return jobengine.Page{}, err
 	}
 	page, err := s.jobs.List(ctx, jobengine.ListQuery{
 		Statuses: query.Statuses, BeforeCreatedAt: query.BeforeCreatedAt,
 		BeforeID: query.BeforeID, Limit: query.Limit,
 	})
 	if err != nil {
-		return JobPage{}, jobOperationsStoreErrors.Translate(err)
+		return jobengine.Page{}, jobOperationsStoreErrors.Translate(err)
 	}
 	return page, nil
 }
 
-func (s *jobOperationsService) GetJob(ctx context.Context, invocation Invocation, query GetJobQuery) (JobView, error) {
+func (s *jobOperationsService) GetJob(ctx context.Context, invocation invocation.Invocation, query GetJobQuery) (jobengine.View, error) {
 	if s == nil {
-		return JobView{}, apperror.New("job.unavailable")
+		return jobengine.View{}, apperror.New("job.unavailable")
 	}
 	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobView); err != nil {
-		return JobView{}, err
+		return jobengine.View{}, err
 	}
 	view, err := s.jobs.Get(ctx, query.ID)
 	if err != nil {
-		return JobView{}, jobOperationsStoreErrors.Translate(err)
+		return jobengine.View{}, jobOperationsStoreErrors.Translate(err)
 	}
 	return view, nil
 }
 
-func (s *jobOperationsService) ListJobAttempts(ctx context.Context, invocation Invocation, query ListJobAttemptsQuery) (JobAttemptPage, error) {
+func (s *jobOperationsService) ListJobAttempts(ctx context.Context, invocation invocation.Invocation, query ListJobAttemptsQuery) (jobengine.AttemptPage, error) {
 	if s == nil {
-		return JobAttemptPage{}, apperror.New("job.unavailable")
+		return jobengine.AttemptPage{}, apperror.New("job.unavailable")
 	}
 	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobView); err != nil {
-		return JobAttemptPage{}, err
+		return jobengine.AttemptPage{}, err
 	}
 	page, err := s.jobs.Attempts(ctx, jobengine.AttemptListQuery{
 		JobID: query.JobID, BeforeNumber: query.BeforeNumber, Limit: query.Limit,
 	})
 	if err != nil {
-		return JobAttemptPage{}, jobOperationsStoreErrors.Translate(err)
+		return jobengine.AttemptPage{}, jobOperationsStoreErrors.Translate(err)
 	}
 	return page, nil
 }
 
-func (s *jobOperationsService) CancelJob(ctx context.Context, invocation Invocation, command CancelJobCommand) (JobView, error) {
+func (s *jobOperationsService) CancelJob(ctx context.Context, invocation invocation.Invocation, command CancelJobCommand) (jobengine.View, error) {
 	if s == nil {
-		return JobView{}, apperror.New("job.unavailable")
+		return jobengine.View{}, apperror.New("job.unavailable")
 	}
 	return s.mutate(ctx, invocation, "cancel", command.ID, s.jobs.PrepareCancellation, s.jobs.Cancel)
 }
 
-func (s *jobOperationsService) RetryJob(ctx context.Context, invocation Invocation, command RetryJobCommand) (JobView, error) {
+func (s *jobOperationsService) RetryJob(ctx context.Context, invocation invocation.Invocation, command RetryJobCommand) (jobengine.View, error) {
 	if s == nil {
-		return JobView{}, apperror.New("job.unavailable")
+		return jobengine.View{}, apperror.New("job.unavailable")
 	}
 	return s.mutate(ctx, invocation, "retry", command.ID, s.jobs.PrepareRetry, s.jobs.Retry)
 }
 
-func (s *jobOperationsService) mutate(ctx context.Context, invocation Invocation, operation string, id model.JobID, prepare func(context.Context, model.JobID) (jobengine.ControlTarget, error), apply func(context.Context, jobengine.ControlTarget, jobengine.AuditReference) (jobengine.View, error)) (JobView, error) {
+func (s *jobOperationsService) mutate(ctx context.Context, invocation invocation.Invocation, operation string, id model.JobID, prepare func(context.Context, model.JobID) (jobengine.ControlTarget, error), apply func(context.Context, jobengine.ControlTarget, jobengine.AuditReference) (jobengine.View, error)) (jobengine.View, error) {
 	resource, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobManage)
 	if err != nil {
-		return JobView{}, err
+		return jobengine.View{}, err
 	}
 	target, err := prepare(ctx, id)
 	if err != nil {
-		return JobView{}, jobOperationsStoreErrors.Translate(err)
+		return jobengine.View{}, jobOperationsStoreErrors.Translate(err)
 	}
 	view := target.View()
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionJobManage, resource, operation, map[string]any{"job_id": view.ID.String(), "type": string(view.Type), "status": string(view.Status)}, nil)
 	if err != nil {
-		return JobView{}, err
+		return jobengine.View{}, err
 	}
 	updated, err := apply(ctx, target, jobengine.AuditReference{EventID: auditID, At: s.now().UnixMilli()})
 	if err != nil {
 		_ = s.audit.Fail(ctx, auditID, "job.conflict")
-		return JobView{}, jobOperationsStoreErrors.Translate(err)
+		return jobengine.View{}, jobOperationsStoreErrors.Translate(err)
 	}
 	return updated, nil
 }

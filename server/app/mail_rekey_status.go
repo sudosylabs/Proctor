@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -55,7 +56,7 @@ type mailRekeyJobReader interface {
 	Get(context.Context, model.JobID) (*model.Job, error)
 }
 
-func (s *mailService) GetMailRekeyStatus(ctx context.Context, invocation Invocation, jobID model.JobID) (MailRekeyStatusView, error) {
+func (s *mailService) GetMailRekeyStatus(ctx context.Context, invocation invocation.Invocation, jobID model.JobID) (MailRekeyStatusView, error) {
 	if s == nil {
 		return MailRekeyStatusView{}, apperror.New("mail.unavailable")
 	}

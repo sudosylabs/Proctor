@@ -123,7 +123,7 @@ func newRoutingTestAPI(_ string) *API {
 	}
 }
 
-func newCompiledRoutingTestAPI(t *testing.T, apiURLSuffix string, resources ...resource) *API {
+func newCompiledRoutingTestAPI(t *testing.T, apiURLSuffix string, resources ...apiResource) *API {
 	t.Helper()
 	logger, _ := newTestLogger(t)
 	httpAPI := &API{

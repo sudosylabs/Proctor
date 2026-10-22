@@ -14,6 +14,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -72,10 +73,10 @@ type roleBindingUserStore interface {
 }
 
 type roleBindingAuthorizer interface {
-	AuthorizeRoleBindingList(context.Context, Invocation, model.Action) (store.UserVisibilityScope, error)
-	AuthorizeRoleBindingPreflight(context.Context, Invocation, model.Action) error
-	AuthorizeRoleBindingScope(context.Context, Invocation, model.Action, model.RoleScopeType, string) (model.Resource, error)
-	CanDelegateActionsAtScope(context.Context, Invocation, []string, model.RoleScopeType, string) error
+	AuthorizeRoleBindingList(context.Context, invocation.Invocation, model.Action) (store.UserVisibilityScope, error)
+	AuthorizeRoleBindingPreflight(context.Context, invocation.Invocation, model.Action) error
+	AuthorizeRoleBindingScope(context.Context, invocation.Invocation, model.Action, model.RoleScopeType, string) (model.Resource, error)
+	CanDelegateActionsAtScope(context.Context, invocation.Invocation, []string, model.RoleScopeType, string) error
 }
 
 type roleBindingEffects interface {
@@ -111,7 +112,7 @@ func newRoleBindingService(
 	}
 }
 
-func (s *roleBindingService) ListRoleBindings(ctx context.Context, invocation Invocation, query ListRoleBindingsQuery) ([]*model.RoleBinding, error) {
+func (s *roleBindingService) ListRoleBindings(ctx context.Context, invocation invocation.Invocation, query ListRoleBindingsQuery) ([]*model.RoleBinding, error) {
 	userID := strings.TrimSpace(query.UserID)
 	scopeID := strings.TrimSpace(query.ScopeID)
 	switch {
@@ -148,7 +149,7 @@ func (s *roleBindingService) ListRoleBindings(ctx context.Context, invocation In
 	}
 }
 
-func (s *roleBindingService) CreateRoleBinding(ctx context.Context, invocation Invocation, command CreateRoleBindingCommand) (*model.RoleBinding, error) {
+func (s *roleBindingService) CreateRoleBinding(ctx context.Context, invocation invocation.Invocation, command CreateRoleBindingCommand) (*model.RoleBinding, error) {
 	userID, err := model.ParseUserID(strings.TrimSpace(command.UserID))
 	if err != nil {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
@@ -277,7 +278,7 @@ func (s *roleBindingService) CreateRoleBinding(ctx context.Context, invocation I
 	return saved, nil
 }
 
-func (s *roleBindingService) EndRoleBinding(ctx context.Context, invocation Invocation, command EndRoleBindingCommand) (*model.RoleBinding, error) {
+func (s *roleBindingService) EndRoleBinding(ctx context.Context, invocation invocation.Invocation, command EndRoleBindingCommand) (*model.RoleBinding, error) {
 	id := command.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "role_binding_id")

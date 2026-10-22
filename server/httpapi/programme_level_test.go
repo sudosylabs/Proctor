@@ -20,6 +20,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -32,21 +33,21 @@ type programmeLevelHTTPApplication struct {
 	updateCommand  app.UpdateProgrammeLevelCommand
 }
 
-func (a *programmeLevelHTTPApplication) GetProgrammeLevel(context.Context, app.Invocation, app.GetProgrammeLevelQuery) (*model.ProgrammeLevel, error) {
+func (a *programmeLevelHTTPApplication) GetProgrammeLevel(context.Context, invocation.Invocation, app.GetProgrammeLevelQuery) (*model.ProgrammeLevel, error) {
 	return a.result, a.err
 }
-func (a *programmeLevelHTTPApplication) ListProgrammeLevels(context.Context, app.Invocation, app.ListProgrammeLevelsQuery) (app.Page[*model.ProgrammeLevel], error) {
+func (a *programmeLevelHTTPApplication) ListProgrammeLevels(context.Context, invocation.Invocation, app.ListProgrammeLevelsQuery) (app.Page[*model.ProgrammeLevel], error) {
 	return app.Page[*model.ProgrammeLevel]{Items: a.list}, a.err
 }
-func (a *programmeLevelHTTPApplication) CreateProgrammeLevel(_ context.Context, _ app.Invocation, command app.CreateProgrammeLevelCommand) (*model.ProgrammeLevel, error) {
+func (a *programmeLevelHTTPApplication) CreateProgrammeLevel(_ context.Context, _ invocation.Invocation, command app.CreateProgrammeLevelCommand) (*model.ProgrammeLevel, error) {
 	a.createCommand = command
 	return a.result, a.err
 }
-func (a *programmeLevelHTTPApplication) UpdateProgrammeLevel(_ context.Context, _ app.Invocation, command app.UpdateProgrammeLevelCommand) (*model.ProgrammeLevel, error) {
+func (a *programmeLevelHTTPApplication) UpdateProgrammeLevel(_ context.Context, _ invocation.Invocation, command app.UpdateProgrammeLevelCommand) (*model.ProgrammeLevel, error) {
 	a.updateCommand = command
 	return a.result, a.err
 }
-func (a *programmeLevelHTTPApplication) ArchiveProgrammeLevel(_ context.Context, _ app.Invocation, command app.ArchiveProgrammeLevelCommand) error {
+func (a *programmeLevelHTTPApplication) ArchiveProgrammeLevel(_ context.Context, _ invocation.Invocation, command app.ArchiveProgrammeLevelCommand) error {
 	a.archiveCommand = command
 	return a.err
 }

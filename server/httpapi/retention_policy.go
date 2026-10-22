@@ -13,13 +13,14 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 // RetentionPolicyApplication is the transport's complete policy capability.
 type RetentionPolicyApplication interface {
-	GetRetentionPolicy(context.Context, app.Invocation) (*model.RetentionPolicy, error)
-	ReplaceRetentionPolicy(context.Context, app.Invocation, app.ReplaceRetentionPolicyCommand) (*model.RetentionPolicy, error)
+	GetRetentionPolicy(context.Context, invocation.Invocation) (*model.RetentionPolicy, error)
+	ReplaceRetentionPolicy(context.Context, invocation.Invocation, app.ReplaceRetentionPolicyCommand) (*model.RetentionPolicy, error)
 }
 
 type retentionPolicyRequest struct {
@@ -53,7 +54,7 @@ type retentionPolicyResourceModule struct {
 	application RetentionPolicyApplication
 }
 
-func retentionPolicyResource(application RetentionPolicyApplication) resource {
+func retentionPolicyResource(application RetentionPolicyApplication) apiResource {
 	module := retentionPolicyResourceModule{application: application}
 	readErrors := operatorReadErrorCodes("retention_policy.unavailable")
 	mutationErrors := operatorMutationErrorCodes(

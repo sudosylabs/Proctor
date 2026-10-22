@@ -15,17 +15,19 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
+	"github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 const defaultJobPageSize = 50
 
 type JobOperationsApplication interface {
-	ListJobs(context.Context, app.Invocation, app.ListJobsQuery) (app.JobPage, error)
-	GetJob(context.Context, app.Invocation, app.GetJobQuery) (app.JobView, error)
-	ListJobAttempts(context.Context, app.Invocation, app.ListJobAttemptsQuery) (app.JobAttemptPage, error)
-	CancelJob(context.Context, app.Invocation, app.CancelJobCommand) (app.JobView, error)
-	RetryJob(context.Context, app.Invocation, app.RetryJobCommand) (app.JobView, error)
+	ListJobs(context.Context, invocation.Invocation, app.ListJobsQuery) (job.Page, error)
+	GetJob(context.Context, invocation.Invocation, app.GetJobQuery) (job.View, error)
+	ListJobAttempts(context.Context, invocation.Invocation, app.ListJobAttemptsQuery) (job.AttemptPage, error)
+	CancelJob(context.Context, invocation.Invocation, app.CancelJobCommand) (job.View, error)
+	RetryJob(context.Context, invocation.Invocation, app.RetryJobCommand) (job.View, error)
 }
 
 type jobProgressResponse struct {
@@ -78,7 +80,7 @@ type jobResourceModule struct {
 	jobs JobOperationsApplication
 }
 
-func jobResource(jobs JobOperationsApplication) resource {
+func jobResource(jobs JobOperationsApplication) apiResource {
 	module := jobResourceModule{jobs: jobs}
 	return newResource(
 		"jobs",
@@ -254,7 +256,7 @@ func jobAttemptCursorSpec() opaqueCursorSpec[jobAttemptCursor] {
 		},
 	}
 }
-func jobResponseFromApplication(view app.JobView) jobResponse {
+func jobResponseFromApplication(view job.View) jobResponse {
 	response := jobResponse{ID: view.ID.String(), Type: view.Type, Status: view.Status, CreatedAt: model.FormatRFC3339(view.CreatedAt), UpdatedAt: model.FormatRFC3339(view.UpdatedAt), AvailableAt: model.FormatRFC3339(view.AvailableAt), PublicErrorCode: view.PublicErrorCode, AttemptCount: view.AttemptCount, MaximumAttempts: view.MaximumAttempts, Revision: view.Revision}
 	if view.StartedAt.Valid {
 		response.StartedAt = model.FormatRFC3339(view.StartedAt.Time)
@@ -267,7 +269,7 @@ func jobResponseFromApplication(view app.JobView) jobResponse {
 	}
 	return response
 }
-func jobAttemptResponseFromApplication(view app.JobAttemptView) jobAttemptResponse {
+func jobAttemptResponseFromApplication(view job.AttemptView) jobAttemptResponse {
 	response := jobAttemptResponse{ID: view.ID.String(), Number: view.Number, Status: view.Status, StartedAt: model.FormatRFC3339(view.StartedAt), HeartbeatAt: model.FormatRFC3339(view.HeartbeatAt), LeaseExpiresAt: model.FormatRFC3339(view.LeaseExpiresAt), PublicErrorCode: view.PublicErrorCode}
 	if view.CompletedAt.Valid {
 		response.CompletedAt = model.FormatRFC3339(view.CompletedAt.Time)

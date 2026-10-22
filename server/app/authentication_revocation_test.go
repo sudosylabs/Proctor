@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -130,7 +131,7 @@ func TestSessionRevocationRejectsAfterLocalCacheDeleteFailure(t *testing.T) {
 	principal, err := service.authenticateAccess(context.Background(), rawAccess)
 	require.NoError(t, err)
 	cache.fail = true
-	require.NoError(t, service.Logout(context.Background(), NewInvocation(*principal, model.RequestMetadata{}), LogoutCommand{}))
+	require.NoError(t, service.Logout(context.Background(), invocation.New(*principal, model.RequestMetadata{}), LogoutCommand{}))
 	require.NotEqual(t, 0, cache.failures, "logout did not attempt local cache invalidation")
 	_, err = cache.Get(context.Background(), authenticationCachePrefix+hash)
 	require.NoError(t, err)

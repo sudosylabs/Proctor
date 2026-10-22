@@ -20,6 +20,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -29,17 +30,17 @@ type replayingAccessPolicyHTTPApplication struct {
 	discoveries int
 }
 
-func (a *replayingAccessPolicyHTTPApplication) GetAccessPolicy(context.Context, app.Invocation) (app.AccessPolicyView, error) {
+func (a *replayingAccessPolicyHTTPApplication) GetAccessPolicy(context.Context, invocation.Invocation) (app.AccessPolicyView, error) {
 	return a.view, nil
 }
-func (a *replayingAccessPolicyHTTPApplication) PreflightAccessPolicy(context.Context, app.Invocation, app.PreflightAccessPolicyCommand) (app.AccessPolicyPreflightResult, error) {
+func (a *replayingAccessPolicyHTTPApplication) PreflightAccessPolicy(context.Context, invocation.Invocation, app.PreflightAccessPolicyCommand) (app.AccessPolicyPreflightResult, error) {
 	return app.AccessPolicyPreflightResult{}, nil
 }
 func (a *replayingAccessPolicyHTTPApplication) DiscoverAccess(context.Context) (app.PublicAccessDiscovery, error) {
 	a.discoveries++
 	return app.PublicAccessDiscovery{}, nil
 }
-func (a *replayingAccessPolicyHTTPApplication) ReplaceAccessPolicy(_ context.Context, _ app.Invocation, command app.ReplaceAccessPolicyCommand) (app.AccessPolicyView, error) {
+func (a *replayingAccessPolicyHTTPApplication) ReplaceAccessPolicy(_ context.Context, _ invocation.Invocation, command app.ReplaceAccessPolicyCommand) (app.AccessPolicyView, error) {
 	if a.command == nil {
 		stored := command
 		a.command = &stored

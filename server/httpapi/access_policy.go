@@ -14,25 +14,26 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type AccessPolicyApplication interface {
-	GetAccessPolicy(context.Context, app.Invocation) (app.AccessPolicyView, error)
-	PreflightAccessPolicy(context.Context, app.Invocation, app.PreflightAccessPolicyCommand) (app.AccessPolicyPreflightResult, error)
-	ReplaceAccessPolicy(context.Context, app.Invocation, app.ReplaceAccessPolicyCommand) (app.AccessPolicyView, error)
+	GetAccessPolicy(context.Context, invocation.Invocation) (app.AccessPolicyView, error)
+	PreflightAccessPolicy(context.Context, invocation.Invocation, app.PreflightAccessPolicyCommand) (app.AccessPolicyPreflightResult, error)
+	ReplaceAccessPolicy(context.Context, invocation.Invocation, app.ReplaceAccessPolicyCommand) (app.AccessPolicyView, error)
 	DiscoverAccess(context.Context) (app.PublicAccessDiscovery, error)
 }
 
 type unavailableAccessPolicyApplication struct{}
 
-func (unavailableAccessPolicyApplication) GetAccessPolicy(context.Context, app.Invocation) (app.AccessPolicyView, error) {
+func (unavailableAccessPolicyApplication) GetAccessPolicy(context.Context, invocation.Invocation) (app.AccessPolicyView, error) {
 	return app.AccessPolicyView{}, errUnpresentableResult
 }
-func (unavailableAccessPolicyApplication) PreflightAccessPolicy(context.Context, app.Invocation, app.PreflightAccessPolicyCommand) (app.AccessPolicyPreflightResult, error) {
+func (unavailableAccessPolicyApplication) PreflightAccessPolicy(context.Context, invocation.Invocation, app.PreflightAccessPolicyCommand) (app.AccessPolicyPreflightResult, error) {
 	return app.AccessPolicyPreflightResult{}, errUnpresentableResult
 }
-func (unavailableAccessPolicyApplication) ReplaceAccessPolicy(context.Context, app.Invocation, app.ReplaceAccessPolicyCommand) (app.AccessPolicyView, error) {
+func (unavailableAccessPolicyApplication) ReplaceAccessPolicy(context.Context, invocation.Invocation, app.ReplaceAccessPolicyCommand) (app.AccessPolicyView, error) {
 	return app.AccessPolicyView{}, errUnpresentableResult
 }
 func (unavailableAccessPolicyApplication) DiscoverAccess(context.Context) (app.PublicAccessDiscovery, error) {
@@ -113,7 +114,7 @@ type publicAccessDiscoveryResponse struct {
 
 type accessPolicyResourceModule struct{ application AccessPolicyApplication }
 
-func accessPolicyResource(application AccessPolicyApplication) resource {
+func accessPolicyResource(application AccessPolicyApplication) apiResource {
 	module := accessPolicyResourceModule{application: application}
 	readErrors := operatorReadErrorCodes("access_policy.unavailable")
 	preflightErrors := operatorReadErrorCodes("request.invalid", "access_policy.invalid",

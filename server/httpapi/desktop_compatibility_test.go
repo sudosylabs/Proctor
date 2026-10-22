@@ -20,6 +20,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -43,14 +44,14 @@ func (a *desktopCompatibilityHTTPApplication) EvaluateDesktopCompatibility(
 
 func (a *desktopCompatibilityHTTPApplication) GetDesktopCompatibilityPolicy(
 	context.Context,
-	app.Invocation,
+	invocation.Invocation,
 ) (*model.DesktopCompatibilityPolicy, error) {
 	return a.policy.Clone(), nil
 }
 
 func (a *desktopCompatibilityHTTPApplication) ReplaceDesktopCompatibilityPolicy(
 	_ context.Context,
-	_ app.Invocation,
+	_ invocation.Invocation,
 	command app.ReplaceDesktopCompatibilityPolicyCommand,
 ) (*model.DesktopCompatibilityPolicy, error) {
 	a.replaceCommand = command
@@ -59,7 +60,7 @@ func (a *desktopCompatibilityHTTPApplication) ReplaceDesktopCompatibilityPolicy(
 
 func TestDesktopCompatibilityRoutesDeclarePublicPingAndProtectedPolicyMutation(t *testing.T) {
 	t.Parallel()
-	resources := []resource{
+	resources := []apiResource{
 		systemResourceWithApplication(systemHTTPHealth{}, BuildInfo{}, nil, time.Now),
 		desktopCompatibilityPolicyResource(nil),
 	}

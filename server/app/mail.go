@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
@@ -73,7 +74,7 @@ type mailAuthorizationAdapter struct {
 	institutions  mailInstitutionStore
 }
 
-func (a mailAuthorizationAdapter) AuthorizeInstitution(ctx context.Context, invocation Invocation, action model.Action) (model.Resource, error) {
+func (a mailAuthorizationAdapter) AuthorizeInstitution(ctx context.Context, invocation invocation.Invocation, action model.Action) (model.Resource, error) {
 	if a.authorization == nil || a.institutions == nil {
 		return model.Resource{}, apperror.New("mail.unavailable")
 	}
@@ -89,8 +90,8 @@ func (a mailAuthorizationAdapter) AuthorizeInstitution(ctx context.Context, invo
 }
 
 type mailAuditPreparer interface {
-	PrepareTest(context.Context, Invocation, model.Resource, model.MailDeliveryID) (*model.AuditEvent, error)
-	PrepareControl(context.Context, Invocation, model.Resource, *model.MailDelivery, string) (model.AuditEventID, error)
+	PrepareTest(context.Context, invocation.Invocation, model.Resource, model.MailDeliveryID) (*model.AuditEvent, error)
+	PrepareControl(context.Context, invocation.Invocation, model.Resource, *model.MailDelivery, string) (model.AuditEventID, error)
 	Fail(context.Context, model.AuditEventID, string) error
 }
 
@@ -135,7 +136,7 @@ func newMailService(mailStore mailStore, users mailUserStore, authorization inst
 		sender: sender, metrics: metrics, sealer: sealer, recentAuthenticationTTL: recentTTL, now: now}, nil
 }
 
-func (s *mailService) GetMailMetrics(ctx context.Context, invocation Invocation) (MailMetricsSnapshot, error) {
+func (s *mailService) GetMailMetrics(ctx context.Context, invocation invocation.Invocation) (MailMetricsSnapshot, error) {
 	if s == nil {
 		return MailMetricsSnapshot{}, apperror.New("mail.unavailable")
 	}
@@ -145,7 +146,7 @@ func (s *mailService) GetMailMetrics(ctx context.Context, invocation Invocation)
 	return s.metrics.Snapshot(), nil
 }
 
-func (s *mailService) SendTestMail(ctx context.Context, invocation Invocation) (MailDeliveryView, error) {
+func (s *mailService) SendTestMail(ctx context.Context, invocation invocation.Invocation) (MailDeliveryView, error) {
 	if s == nil {
 		return MailDeliveryView{}, apperror.New("mail.unavailable")
 	}
@@ -198,7 +199,7 @@ func (s *mailService) SendTestMail(ctx context.Context, invocation Invocation) (
 	return mailDeliveryView(created), nil
 }
 
-func (s *mailService) GetMailDelivery(ctx context.Context, invocation Invocation, id model.MailDeliveryID) (MailDeliveryView, error) {
+func (s *mailService) GetMailDelivery(ctx context.Context, invocation invocation.Invocation, id model.MailDeliveryID) (MailDeliveryView, error) {
 	if s == nil {
 		return MailDeliveryView{}, apperror.New("mail.unavailable")
 	}
@@ -219,7 +220,7 @@ func (s *mailService) GetMailDelivery(ctx context.Context, invocation Invocation
 	return mailDeliveryView(delivery), nil
 }
 
-func (s *mailService) ListMailDeliveries(ctx context.Context, invocation Invocation, query ListMailDeliveriesQuery) (MailDeliveryPage, error) {
+func (s *mailService) ListMailDeliveries(ctx context.Context, invocation invocation.Invocation, query ListMailDeliveriesQuery) (MailDeliveryPage, error) {
 	if s == nil {
 		return MailDeliveryPage{}, apperror.New("mail.unavailable")
 	}
@@ -248,21 +249,21 @@ func (s *mailService) ListMailDeliveries(ctx context.Context, invocation Invocat
 	return page, nil
 }
 
-func (s *mailService) CancelMailDelivery(ctx context.Context, invocation Invocation, id model.MailDeliveryID) (MailDeliveryView, error) {
+func (s *mailService) CancelMailDelivery(ctx context.Context, invocation invocation.Invocation, id model.MailDeliveryID) (MailDeliveryView, error) {
 	if s == nil {
 		return MailDeliveryView{}, apperror.New("mail.unavailable")
 	}
 	return s.mutate(ctx, invocation, "cancel", id, false, s.mail.CancelDelivery)
 }
 
-func (s *mailService) RetryMailDelivery(ctx context.Context, invocation Invocation, id model.MailDeliveryID) (MailDeliveryView, error) {
+func (s *mailService) RetryMailDelivery(ctx context.Context, invocation invocation.Invocation, id model.MailDeliveryID) (MailDeliveryView, error) {
 	if s == nil {
 		return MailDeliveryView{}, apperror.New("mail.unavailable")
 	}
 	return s.mutate(ctx, invocation, "retry", id, true, s.mail.RetryDelivery)
 }
 
-func (s *mailService) mutate(ctx context.Context, invocation Invocation, operation string, id model.MailDeliveryID, retry bool, apply func(context.Context, *store.MailDeliveryMutation) (*model.MailDelivery, error)) (MailDeliveryView, error) {
+func (s *mailService) mutate(ctx context.Context, invocation invocation.Invocation, operation string, id model.MailDeliveryID, retry bool, apply func(context.Context, *store.MailDeliveryMutation) (*model.MailDelivery, error)) (MailDeliveryView, error) {
 	principal := invocation.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
 		return MailDeliveryView{}, invalidTokenAppError()

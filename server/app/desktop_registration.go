@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -50,7 +51,7 @@ func newDesktopRegistrationService(
 
 func (s *desktopRegistrationService) ListDesktopRegistrations(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	_ ListDesktopRegistrationsQuery,
 ) ([]*model.DesktopRegistration, error) {
 	principal := invocation.Principal()
@@ -66,7 +67,7 @@ func (s *desktopRegistrationService) ListDesktopRegistrations(
 
 func (s *desktopRegistrationService) RevokeDesktopRegistration(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command RevokeDesktopRegistrationCommand,
 ) error {
 	principal := invocation.Principal()

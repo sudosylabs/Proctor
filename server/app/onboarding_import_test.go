@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/model"
@@ -118,7 +119,7 @@ func TestOnboardingImportCSVBuildsImmutableDuplicatePreview(t *testing.T) {
 		"same@example.edu,=formula,\"Student, One\",ignored\r\n" +
 		"SAME@example.edu,row-2,Student Two,ignored\r\n" +
 		"not-an-email,row-3,Invalid,ignored\r\n"
-	rows, ignored, digest, err := service.parseCSV(context.Background(), Invocation{}, current, strings.NewReader(csv))
+	rows, ignored, digest, err := service.parseCSV(context.Background(), invocation.Invocation{}, current, strings.NewReader(csv))
 	require.NoError(t, err)
 	require.Len(t, rows, 3, "preview")
 	require.Len(t, ignored, 1, "preview")
@@ -134,7 +135,7 @@ func TestOnboardingImportCSVBuildsImmutableDuplicatePreview(t *testing.T) {
 	require.Equal(t, "'=formula", escapeSpreadsheetFormula(rows[0].Reference))
 	current.ID = model.NewOnboardingImportID()
 	service.now = func() time.Time { return at.Add(time.Hour) }
-	_, _, replayDigest, err := service.parseCSV(context.Background(), Invocation{}, current, strings.NewReader(csv))
+	_, _, replayDigest, err := service.parseCSV(context.Background(), invocation.Invocation{}, current, strings.NewReader(csv))
 	require.NoError(t, err, "normalized preview digest")
 	require.Equal(t, digest, replayDigest, "normalized preview digest")
 }
@@ -150,7 +151,7 @@ func TestOnboardingImportCSVBuildsExistingUserAcademicPreview(t *testing.T) {
 	current := &store.OnboardingImport{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportAcademicAdministration,
 		ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(), ActorUserID: model.NewUserID(), CreatedAt: at}
 	csv := "operation,user_id,reference\nclass.enroll," + user.ID.String() + ",first\nclass.enroll," + user.ID.String() + ",second\n"
-	rows, ignored, digest, err := service.parseCSV(context.Background(), Invocation{}, current, strings.NewReader(csv))
+	rows, ignored, digest, err := service.parseCSV(context.Background(), invocation.Invocation{}, current, strings.NewReader(csv))
 	require.NoError(t, err)
 	require.Len(t, rows, 2, "academic administration preview")
 	require.Empty(t, ignored, "academic administration preview")
@@ -163,7 +164,7 @@ func TestOnboardingImportCSVBuildsExistingUserAcademicPreview(t *testing.T) {
 	require.Equal(t, model.OnboardingImportRowDuplicate, rows[0].PreviewStatus, "academic administration preview")
 	require.Equal(t, model.OnboardingImportRowDuplicate, rows[1].PreviewStatus, "academic administration preview")
 	service.now = func() time.Time { return at.Add(time.Hour) }
-	_, _, retryDigest, err := service.parseCSV(context.Background(), Invocation{}, current, strings.NewReader(csv))
+	_, _, retryDigest, err := service.parseCSV(context.Background(), invocation.Invocation{}, current, strings.NewReader(csv))
 	require.NoError(t, err, "academic administration retry digest")
 	require.Equal(t, digest, retryDigest, "academic administration retry digest")
 }
@@ -175,7 +176,7 @@ func TestOnboardingImportCSVRejectsInvitationFieldsForAcademicAdministration(t *
 		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewInstitutionID().String(), ActorUserID: model.NewUserID()}
 	for _, header := range []string{"email", "username", "display_name", "academic_unit", "class", "role"} {
 		csv := "operation,user_id," + header + "\nuser.enable," + model.NewUserID().String() + ",ignored\n"
-		_, _, _, err := service.parseCSV(context.Background(), Invocation{}, current, strings.NewReader(csv))
+		_, _, _, err := service.parseCSV(context.Background(), invocation.Invocation{}, current, strings.NewReader(csv))
 		require.ErrorIs(t, err, errOnboardingImportInvalidFile, "header %q error", header)
 	}
 }
@@ -192,7 +193,7 @@ func TestOnboardingImportCSVPreservesDistinctAffiliationHistories(t *testing.T) 
 	csv := "operation,user_id,affiliation_kind,start_at,reference\n" +
 		"affiliation.add," + user.ID.String() + ",staff,2026-09-01T00:00:00Z,staff\n" +
 		"affiliation.add," + user.ID.String() + ",teacher,2026-10-01T00:00:00Z,teacher\n"
-	rows, _, _, err := service.parseCSV(context.Background(), Invocation{}, current, strings.NewReader(csv))
+	rows, _, _, err := service.parseCSV(context.Background(), invocation.Invocation{}, current, strings.NewReader(csv))
 	require.NoError(t, err, "distinct affiliation preview")
 	require.Len(t, rows, 2, "distinct affiliation preview")
 	require.Equal(t, model.OnboardingImportRowValid, rows[0].PreviewStatus, "distinct affiliation preview")
@@ -210,7 +211,7 @@ func TestOnboardingImportCSVRejectsUnsafeEncodingAndShape(t *testing.T) {
 		"empty":            "email\n",
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, _, _, err := service.parseCSV(context.Background(), Invocation{}, current, strings.NewReader(csv))
+			_, _, _, err := service.parseCSV(context.Background(), invocation.Invocation{}, current, strings.NewReader(csv))
 			require.Error(t, err, "expected invalid CSV")
 		})
 	}
@@ -268,7 +269,7 @@ func TestOnboardingImportInvalidBoundsRetainSafeTargetProjection(t *testing.T) {
 	require.NoError(t, err)
 	current := &store.OnboardingImport{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportStudentClass, ScopeType: model.RoleScopeClass,
 		ScopeID: class.ID.String(), ActorUserID: model.NewUserID()}
-	rows, _, _, err := (&onboardingImportService{classes: onboardingImportClassStoreFake{value: class}, periods: onboardingImportPeriodStoreFake{value: period}, now: func() time.Time { return at }}).parseCSV(context.Background(), Invocation{}, current,
+	rows, _, _, err := (&onboardingImportService{classes: onboardingImportClassStoreFake{value: class}, periods: onboardingImportPeriodStoreFake{value: period}, now: func() time.Time { return at }}).parseCSV(context.Background(), invocation.Invocation{}, current,
 		strings.NewReader("email,start_at,end_at\nstudent@example.edu,200,100\n"))
 	require.NoError(t, err, "invalid row projection")
 	require.Len(t, rows, 1, "invalid row projection")
@@ -288,7 +289,7 @@ func TestOnboardingImportInvalidDuplicatePoisonsValidTwin(t *testing.T) {
 	service := &onboardingImportService{classes: onboardingImportClassStoreFake{value: class}, periods: onboardingImportPeriodStoreFake{value: period}, now: func() time.Time { return at }}
 	current := &store.OnboardingImport{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportStudentClass, ScopeType: model.RoleScopeClass,
 		ScopeID: class.ID.String(), ActorUserID: model.NewUserID()}
-	rows, _, _, err := service.parseCSV(context.Background(), Invocation{}, current, strings.NewReader(
+	rows, _, _, err := service.parseCSV(context.Background(), invocation.Invocation{}, current, strings.NewReader(
 		"email,start_at,end_at\nsame@example.edu,2026-08-21T00:00:00Z,2026-08-20T00:00:00Z\nsame@example.edu,,\n"))
 	require.NoError(t, err, "duplicate preview")
 	require.Len(t, rows, 2, "duplicate preview")
@@ -322,7 +323,7 @@ func TestOnboardingImportCSVValidatesTeacherAndInstitutionRolePackages(t *testin
 
 	teacher := &store.OnboardingImport{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportTeacherAcademicUnit, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: unit.ID.String(), RoleID: role.ID, ActorUserID: model.NewUserID()}
-	rows, _, _, err := service.parseCSV(context.Background(), Invocation{}, teacher, strings.NewReader("email,timezone\nteacher@example.edu,Europe/Paris\n"))
+	rows, _, _, err := service.parseCSV(context.Background(), invocation.Invocation{}, teacher, strings.NewReader("email,timezone\nteacher@example.edu,Europe/Paris\n"))
 	require.NoError(t, err, "teacher preview")
 	require.Len(t, rows, 1, "teacher preview")
 	require.Equal(t, model.OnboardingImportRowValid, rows[0].PreviewStatus, "teacher preview")
@@ -333,7 +334,7 @@ func TestOnboardingImportCSVValidatesTeacherAndInstitutionRolePackages(t *testin
 
 	institutionImport := &store.OnboardingImport{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportInstitution, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), ActorUserID: model.NewUserID()}
-	rows, _, _, err = service.parseCSV(context.Background(), Invocation{}, institutionImport, strings.NewReader("email,kind,role\nrole@example.edu,institution_role,auditor\n"))
+	rows, _, _, err = service.parseCSV(context.Background(), invocation.Invocation{}, institutionImport, strings.NewReader("email,kind,role\nrole@example.edu,institution_role,auditor\n"))
 	require.NoError(t, err, "institution Role preview")
 	require.Len(t, rows, 1, "institution Role preview")
 	require.Equal(t, model.OnboardingImportRowValid, rows[0].PreviewStatus, "institution Role preview")
@@ -341,7 +342,7 @@ func TestOnboardingImportCSVValidatesTeacherAndInstitutionRolePackages(t *testin
 	require.Equal(t, institution.ID.String(), rows[0].ScopeID, "institution Role preview")
 	require.Equal(t, model.MillisFromTime(at), rows[0].StartsAt, "institution Role preview")
 	role.Permissions = []string{string(model.ActionAcademicUnitView)}
-	rows, _, _, err = service.parseCSV(context.Background(), Invocation{}, institutionImport,
+	rows, _, _, err = service.parseCSV(context.Background(), invocation.Invocation{}, institutionImport,
 		strings.NewReader("email,kind,academic_unit,role\nunit-role@example.edu,academic_unit_role,science,auditor\n"))
 	require.NoError(t, err, "Institution Academic Unit preview")
 	require.Len(t, rows, 1, "Institution Academic Unit preview")
@@ -354,7 +355,7 @@ func TestOnboardingImportReportRequiresTerminalState(t *testing.T) {
 	current := &store.OnboardingImport{ID: model.NewOnboardingImportID(), State: model.OnboardingImportPreviewReady,
 		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewInstitutionID().String()}
 	service := &onboardingImportService{imports: onboardingImportPersistenceFake{value: current}, authorization: &invitationAuthorizerFake{}}
-	err := service.OnboardingImportReport(context.Background(), Invocation{}, current.ID, &strings.Builder{})
+	err := service.OnboardingImportReport(context.Background(), invocation.Invocation{}, current.ID, &strings.Builder{})
 	require.True(t, apperror.Is(err, "onboarding_import.conflict"), "preview report error = %v", err)
 }
 
@@ -372,7 +373,7 @@ func TestOnboardingImportTargetReadFailuresRemainRetryable(t *testing.T) {
 	service := &onboardingImportService{classes: onboardingImportClassStoreFake{err: dependencyErr}, now: time.Now}
 	current := &store.OnboardingImport{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportStudentClass, ScopeType: model.RoleScopeClass,
 		ScopeID: model.NewClassID().String(), ActorUserID: model.NewUserID()}
-	_, _, _, err := service.parseCSV(context.Background(), Invocation{}, current, strings.NewReader("email\nstudent@example.edu\n"))
+	_, _, _, err := service.parseCSV(context.Background(), invocation.Invocation{}, current, strings.NewReader("email\nstudent@example.edu\n"))
 	require.True(t, onboardingImportRetryableError(err), "parse target error")
 	row := store.OnboardingImportRow{Operation: string(InvitationBatchStudentClassCreate), ScopeType: model.RoleScopeClass, ScopeID: current.ScopeID}
 	err = service.revalidateFrozenTarget(context.Background(), row)
@@ -426,7 +427,7 @@ func TestOnboardingImportCSVMarksControlCharacterNamesInvalid(t *testing.T) {
 		"one@example.edu,\"Student\r\nBcc: other@example.test\",One\r\n" +
 		"two@example.edu,Student Two,\"Tab\tName\"\r\n" +
 		"three@example.edu,Student Three,Three\r\n"
-	rows, _, _, err := service.parseCSV(context.Background(), Invocation{}, current, strings.NewReader(csv))
+	rows, _, _, err := service.parseCSV(context.Background(), invocation.Invocation{}, current, strings.NewReader(csv))
 	require.NoError(t, err)
 	require.Len(t, rows, 3)
 	require.Equal(t, model.OnboardingImportRowInvalid, rows[0].PreviewStatus)

@@ -7,8 +7,11 @@
 
 package app
 
-import appmail "github.com/sudosylabs/proctor/server/app/mail"
+import (
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	"github.com/sudosylabs/proctor/server/store"
+)
 
 type classTransitionMailPreparer interface {
-	PrepareClassTransition(appmail.ClassTransitionPreparation) (*preparedDirectMail, error)
+	PrepareClassTransition(appmail.ClassTransitionPreparation) (*store.PreparedMail, error)
 }

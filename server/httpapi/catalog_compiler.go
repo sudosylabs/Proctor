@@ -74,7 +74,7 @@ func (a *API) buildRoutingKernel(apiPrefix string, maxBodyBytes int64, collect f
 	return nil
 }
 
-func (a *API) collectResources(apiPrefix string, resources ...resource) error {
+func (a *API) collectResources(apiPrefix string, resources ...apiResource) error {
 	if a.catalog == nil {
 		return errors.New("collect resources after route catalog was sealed")
 	}

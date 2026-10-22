@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -705,7 +706,7 @@ func TestAuthenticationExpiryEnforcementRejectsHTTPAccessAndRefresh(t *testing.T
 		RevokedAccessHashes: []string{model.HashToken(model.NewCredentialToken())},
 	}
 	effects.last = ""
-	session, tokens, err := service.RefreshSession(context.Background(), Invocation{}, RefreshSessionCommand{
+	session, tokens, err := service.RefreshSession(context.Background(), invocation.Invocation{}, RefreshSessionCommand{
 		RefreshToken: model.NewCredentialToken(),
 	})
 	require.Nil(t, session, "refresh(expired) = %#v, %#v, %v", session, tokens, err)
@@ -787,7 +788,7 @@ func TestAuthenticationRefreshUsesControlledRuntimeAndPreservesReplayEffects(t *
 				func() time.Time { return at },
 			)
 
-			_, tokens, err := service.RefreshSession(context.Background(), Invocation{}, RefreshSessionCommand{RefreshToken: presentedRefresh})
+			_, tokens, err := service.RefreshSession(context.Background(), invocation.Invocation{}, RefreshSessionCommand{RefreshToken: presentedRefresh})
 			if test.wantCode != "" {
 				require.True(t, apperror.Is(err, test.wantCode), "refresh error = %v, want %s", err, test.wantCode)
 			} else {
@@ -889,7 +890,7 @@ func TestAuthenticationConsumesMFAAndPATThroughBehavioralPorts(t *testing.T) {
 		Password: "CorrectHorseBatteryStaple1!",
 	})
 	require.NoError(t, err)
-	login, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+	login, err := service.Login(context.Background(), invocation.Invocation{}, LoginCommand{
 		LoginID:    user.Username,
 		Password:   "CorrectHorseBatteryStaple1!",
 		ClientType: model.SessionClientCLI,
@@ -968,7 +969,7 @@ func TestLoginReturnsTransportNeutralInvalidCredentials(t *testing.T) {
 	t.Parallel()
 
 	service := newTestAuthenticationService(t, newAuthenticationStoreFake())
-	result, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+	result, err := service.Login(context.Background(), invocation.Invocation{}, LoginCommand{
 		LoginID:    "",
 		Password:   "present",
 		ClientType: model.SessionClientCLI,
@@ -987,7 +988,7 @@ func TestLoginRejectsUnknownUserWithGenericFailure(t *testing.T) {
 	t.Parallel()
 
 	service := newTestAuthenticationService(t, newAuthenticationStoreFake())
-	_, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+	_, err := service.Login(context.Background(), invocation.Invocation{}, LoginCommand{
 		LoginID:    "missing@example.edu",
 		Password:   "CorrectHorseBatteryStaple1!",
 		ClientType: model.SessionClientCLI,
@@ -1008,7 +1009,7 @@ func TestLoginRejectsExistingLocalCredentialWhenCurrentPolicyDisablesLocalLogin(
 	})
 	require.NoError(t, err)
 	service.accessPolicy = authenticationAccessPolicyFake{local: false}
-	result, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+	result, err := service.Login(context.Background(), invocation.Invocation{}, LoginCommand{
 		LoginID: user.Email, Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientWeb, Source: "192.0.2.5",
 	})
 	require.Nil(t, result, "result=%#v err=%v", result, err)
@@ -1033,7 +1034,7 @@ func TestLoginRejectsDisabledUserBeforeMFARecoveryRead(t *testing.T) {
 			persistence.usersByEmail[user.Email].DisabledAt = model.OptionalTimeFrom(time.Now())
 			mfa := &authenticationMFAVerifierFake{recoveryErr: errors.New("disabled User has no active MFA recovery state")}
 			service.mfa = mfa
-			result, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+			result, err := service.Login(context.Background(), invocation.Invocation{}, LoginCommand{
 				LoginID: user.Email, Password: password, ClientType: model.SessionClientCLI, Source: "192.0.2.7",
 			})
 			require.Nil(t, result, "disabled login reached MFA or issued a Session: %v; recovery reads", err)
@@ -1074,12 +1075,12 @@ func TestLoginPasswordCapacityPreservesAccountParity(t *testing.T) {
 				command.Password = strings.Repeat("x", service.hasher.maximumLength+1)
 			}
 			saturatePasswordWork(t, service.hasher)
-			result, err := service.Login(context.Background(), Invocation{}, command)
+			result, err := service.Login(context.Background(), invocation.Invocation{}, command)
 			require.Nil(t, result, "saturated login = %#v/%v, want service.busy", result, err)
 			require.True(t, apperror.Is(err, "service.busy"), "saturated login = %#v/%v, want service.busy", result, err)
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
-			result, err = service.Login(ctx, Invocation{}, command)
+			result, err = service.Login(ctx, invocation.Invocation{}, command)
 			require.Nil(t, result, "canceled login")
 			require.True(t, apperror.Is(err, "authentication.internal"), "canceled login")
 			require.ErrorIs(t, err, context.Canceled, "canceled login")
@@ -1160,7 +1161,7 @@ func TestLoginRejectsDirectDesktopSessionIssuance(t *testing.T) {
 	t.Parallel()
 
 	service := newTestAuthenticationService(t, newAuthenticationStoreFake())
-	result, err := service.Login(context.Background(), Invocation{}, LoginCommand{LoginID: "user@example.edu",
+	result, err := service.Login(context.Background(), invocation.Invocation{}, LoginCommand{LoginID: "user@example.edu",
 		Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientDesktop, Source: "127.0.0.1:3"})
 	require.Nil(t, result, "result=%#v err=%v", result, err)
 	require.True(t, apperror.Is(err, "authentication.client_type.invalid"), "result=%#v err=%v", result, err)
@@ -1176,7 +1177,7 @@ func TestLoginMapsTerminalAccessPolicyFenceToGenericCredentialsFailure(t *testin
 	})
 	require.NoError(t, err)
 	persistence.saveErr = store.ErrAuthenticationMethodDisabled
-	result, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+	result, err := service.Login(context.Background(), invocation.Invocation{}, LoginCommand{
 		LoginID: user.Email, Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientWeb, Source: "192.0.2.6",
 	})
 	require.Nil(t, result, "result=%#v err=%v", result, err)
@@ -1214,7 +1215,7 @@ func TestLoginRejectsPasswordChangedAfterVerification(t *testing.T) {
 				strength:    model.AuthenticationSingleFactor,
 				afterVerify: func() { persistence.passwords[user.ID.String()] = &replacement },
 			}
-			result, err := service.Login(ctx, Invocation{}, LoginCommand{
+			result, err := service.Login(ctx, invocation.Invocation{}, LoginCommand{
 				LoginID: user.Email, Password: oldPassword, ClientType: model.SessionClientWeb, Source: "192.0.2.10",
 			})
 			require.Nil(t, result, "login after reset = %#v, %v", result, err)
@@ -1303,7 +1304,7 @@ func TestLoginAndAuthenticateAccessConstructPrincipal(t *testing.T) {
 	require.Equal(t, model.UserSettingsInitialSource, persistence.createdSettings.Source)
 	require.Equal(t, model.UserSettingsFormatVersion1, persistence.createdSettings.FormatVersion)
 
-	result, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+	result, err := service.Login(context.Background(), invocation.Invocation{}, LoginCommand{
 		LoginID:    user.Email,
 		Password:   "CorrectHorseBatteryStaple1!",
 		ClientType: model.SessionClientCLI,
@@ -1344,7 +1345,7 @@ func TestLoginRejectsInvalidClientType(t *testing.T) {
 		Password: "CorrectHorseBatteryStaple1!",
 	})
 	require.NoError(t, err)
-	_, err = service.Login(context.Background(), Invocation{}, LoginCommand{
+	_, err = service.Login(context.Background(), invocation.Invocation{}, LoginCommand{
 		LoginID:    user.Username,
 		Password:   "CorrectHorseBatteryStaple1!",
 		ClientType: model.SessionClientType("pager"),
@@ -1369,7 +1370,7 @@ func TestLoginRateLimitsRepeatedFailures(t *testing.T) {
 	})
 
 	for attempt := 0; attempt < 2; attempt++ {
-		_, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+		_, err := service.Login(context.Background(), invocation.Invocation{}, LoginCommand{
 			LoginID:    "rate-user",
 			Password:   "wrong-password-value",
 			ClientType: model.SessionClientCLI,
@@ -1379,7 +1380,7 @@ func TestLoginRateLimitsRepeatedFailures(t *testing.T) {
 		require.True(t, ok, "attempt %d: err = %v", attempt, err)
 		require.Equal(t, "authentication.credentials_invalid", failure.Code(), "attempt %d: err = %v", attempt, err)
 	}
-	_, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+	_, err := service.Login(context.Background(), invocation.Invocation{}, LoginCommand{
 		LoginID:    "rate-user",
 		Password:   "wrong-password-value",
 		ClientType: model.SessionClientCLI,

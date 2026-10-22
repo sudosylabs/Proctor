@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -38,7 +39,7 @@ type localLoginAuditorFake struct {
 	completeErr error
 }
 
-func (f *localLoginAuditorFake) BeginLocalLogin(_ context.Context, invocation Invocation, userID model.UserID, clientType model.SessionClientType) (model.AuditEventID, error) {
+func (f *localLoginAuditorFake) BeginLocalLogin(_ context.Context, invocation invocation.Invocation, userID model.UserID, clientType model.SessionClientType) (model.AuditEventID, error) {
 	if f.pending == nil {
 		f.pending = map[string]*localLoginAuditRecord{}
 	}
@@ -62,7 +63,7 @@ func (f *localLoginAuditorFake) CompleteLocalLogin(_ context.Context, auditID mo
 	return nil
 }
 
-func (f *localLoginAuditorFake) RecordLocalLoginFailure(_ context.Context, invocation Invocation, target model.UserID,
+func (f *localLoginAuditorFake) RecordLocalLoginFailure(_ context.Context, invocation invocation.Invocation, target model.UserID,
 	clientType model.SessionClientType, errorCode string,
 ) error {
 	f.terminal = append(f.terminal, localLoginAuditRecord{status: model.AuditStatusFail, target: target,
@@ -92,8 +93,8 @@ func newLocalLoginAuditFixture(t *testing.T, mfa authenticationMFAVerifier) (*au
 	return service, persistence, audit, user
 }
 
-func localLoginInvocation() Invocation {
-	return NewInvocation(model.Principal{}, model.RequestMetadata{RequestID: "request-login", IPAddress: "192.0.2.10", UserAgent: "login-test"})
+func localLoginInvocation() invocation.Invocation {
+	return invocation.New(model.Principal{}, model.RequestMetadata{RequestID: "request-login", IPAddress: "192.0.2.10", UserAgent: "login-test"})
 }
 
 func TestLocalLoginSuccessIsDurablyAuditedWithActorAndSession(t *testing.T) {

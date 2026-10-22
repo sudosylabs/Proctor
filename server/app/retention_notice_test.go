@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -56,7 +57,7 @@ func TestRetentionNoticesUseExactSessionRecipientAndRejectForeignProjection(t *t
 			p.MFARecoveryRequired = true
 		}
 		persistence.requestedUser = ""
-		page, err = app.ListRetentionNotices(t.Context(), NewInvocation(p, fixture.invocation.RequestMetadata()), "", 1)
+		page, err = app.ListRetentionNotices(t.Context(), invocation.New(p, fixture.invocation.RequestMetadata()), "", 1)
 		require.True(t, apperror.Is(err, "authentication.required"), "%s accessed notices", kind)
 		require.Nil(t, page, "%s accessed notices", kind)
 		require.True(t, persistence.requestedUser.IsZero(), "%s accessed notices", kind)

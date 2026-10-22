@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -27,7 +28,7 @@ type academicAdministrationBatchHTTPApplication struct {
 	command app.RunAcademicAdministrationBatchCommand
 }
 
-func (a *academicAdministrationBatchHTTPApplication) RunAcademicAdministrationBatch(_ context.Context, _ app.Invocation, command app.RunAcademicAdministrationBatchCommand) (app.AcademicAdministrationBatchResult, error) {
+func (a *academicAdministrationBatchHTTPApplication) RunAcademicAdministrationBatch(_ context.Context, _ invocation.Invocation, command app.RunAcademicAdministrationBatchCommand) (app.AcademicAdministrationBatchResult, error) {
 	a.command = command
 	return app.AcademicAdministrationBatchResult{Operation: command.Operation, Succeeded: 1, NoOp: 1, Failed: 1,
 		Items: []app.AcademicAdministrationBatchItemResult{{Index: 0, Status: app.InvitationBatchItemSucceeded, ResourceID: model.NewClassMemberID().String()},

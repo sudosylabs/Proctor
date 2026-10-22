@@ -16,7 +16,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 func TestEmailChangeAuditOmitsOldAndNewMailboxes(t *testing.T) {
@@ -39,7 +41,7 @@ func TestEmailChangeAuditOmitsOldAndNewMailboxes(t *testing.T) {
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor,
 		AuthenticatedAt: now, MFACompletedAt: model.OptionalTimeFrom(now), ClientType: model.SessionClientWeb}
 
-	_, err := application.ChangeUserEmail(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
+	_, err := application.ChangeUserEmail(context.Background(), invocation.New(principal, model.RequestMetadata{}),
 		ChangeUserEmailCommand{UserID: user.ID, Email: "new-private@example.edu"})
 	require.NoError(t, err)
 	encoded, err := json.Marshal(map[string]any{"parameters": auditor.attempt.Value, "prior": auditor.attempt.Prior})
@@ -79,35 +81,35 @@ func TestEmailChangePreparesFrozenOldWarningAndNewTargetVerification(t *testing.
 type emailTransitionMailerFake struct{ requests []DirectMailPreparation }
 
 func (*emailTransitionMailerFake) Enabled() bool { return true }
-func (m *emailTransitionMailerFake) prepare(request DirectMailPreparation) (*preparedDirectMail, error) {
+func (m *emailTransitionMailerFake) prepare(request DirectMailPreparation) (*store.PreparedMail, error) {
 	copyRecipient := *request.Recipient
 	request.Recipient = &copyRecipient
 	m.requests = append(m.requests, request)
-	return &preparedDirectMail{Occurrence: &model.MailOccurrence{ID: request.OccurrenceID, Kind: request.Kind, TemplateKey: request.TemplateKey, ActorUserID: request.Recipient.ID, CreatedAt: request.At},
+	return &store.PreparedMail{Occurrence: &model.MailOccurrence{ID: request.OccurrenceID, Kind: request.Kind, TemplateKey: request.TemplateKey, ActorUserID: request.Recipient.ID, CreatedAt: request.At},
 		Delivery: &model.MailDelivery{TargetUserID: request.Recipient.ID, TemplateKey: request.TemplateKey, Deadline: request.Deadline}, Job: &model.Job{Type: request.JobType}}, nil
 }
 
-func (m *emailTransitionMailerFake) PrepareEmailChangeWarning(request NoticeMailPreparation) (*preparedDirectMail, error) {
+func (m *emailTransitionMailerFake) PrepareEmailChangeWarning(request NoticeMailPreparation) (*store.PreparedMail, error) {
 	return m.prepare(DirectMailPreparation{Recipient: request.Recipient, OccurrenceID: model.NewMailOccurrenceID(),
 		Kind: model.MailOccurrenceSecurityNotice, TemplateKey: model.MailTemplateIdentityEmailChangeWarningOld,
 		At: request.At, Deadline: request.At.Add(24 * time.Hour), JobType: model.JobTypeMailDeliver})
 }
-func (m *emailTransitionMailerFake) PrepareEmailChangeVerification(request AccountTokenMailPreparation) (*preparedDirectMail, error) {
+func (m *emailTransitionMailerFake) PrepareEmailChangeVerification(request AccountTokenMailPreparation) (*store.PreparedMail, error) {
 	return m.prepare(DirectMailPreparation{Recipient: request.Recipient, OccurrenceID: request.OccurrenceID,
 		Kind: model.MailOccurrenceAccountToken, TemplateKey: model.MailTemplateIdentityEmailChangeVerifyNew,
 		ActionURL: request.ActionURL, At: request.At, Deadline: request.Deadline, JobType: model.JobTypeMailDeliverCredential})
 }
-func (m *emailTransitionMailerFake) PrepareEmailVerifiedByAdministrator(request NoticeMailPreparation) (*preparedDirectMail, error) {
+func (m *emailTransitionMailerFake) PrepareEmailVerifiedByAdministrator(request NoticeMailPreparation) (*store.PreparedMail, error) {
 	return m.prepare(DirectMailPreparation{Recipient: request.Recipient, OccurrenceID: model.NewMailOccurrenceID(),
 		Kind: model.MailOccurrenceSecurityNotice, TemplateKey: model.MailTemplateIdentityEmailVerifiedByAdmin,
 		At: request.At, Deadline: request.At.Add(24 * time.Hour), JobType: model.JobTypeMailDeliver})
 }
-func (m *emailTransitionMailerFake) PrepareEmailVerification(AccountTokenMailPreparation) (*preparedDirectMail, error) {
+func (m *emailTransitionMailerFake) PrepareEmailVerification(AccountTokenMailPreparation) (*store.PreparedMail, error) {
 	return nil, errors.New("unexpected email verification")
 }
-func (m *emailTransitionMailerFake) PreparePasswordReset(AccountTokenMailPreparation) (*preparedDirectMail, error) {
+func (m *emailTransitionMailerFake) PreparePasswordReset(AccountTokenMailPreparation) (*store.PreparedMail, error) {
 	return nil, errors.New("unexpected password reset")
 }
-func (m *emailTransitionMailerFake) PreparePasswordChanged(NoticeMailPreparation) (*preparedDirectMail, error) {
+func (m *emailTransitionMailerFake) PreparePasswordChanged(NoticeMailPreparation) (*store.PreparedMail, error) {
 	return nil, errors.New("unexpected password change")
 }

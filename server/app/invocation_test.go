@@ -12,7 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -32,7 +32,7 @@ func TestInvocationCarriesPrincipalAndSafeMetadataImmutably(t *testing.T) {
 		UserAgent: "proctor-test",
 	}
 
-	invocation := app.NewInvocation(principal, metadata)
+	invocation := invocation.New(principal, metadata)
 	require.Equal(t, principal, invocation.Principal())
 	got := invocation.RequestMetadata()
 	require.Equal(t, metadata, got, "RequestMetadata()")

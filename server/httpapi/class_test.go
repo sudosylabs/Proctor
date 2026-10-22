@@ -20,6 +20,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -185,7 +186,7 @@ func newFocusedResourceAPI(
 	t *testing.T,
 	logger Logger,
 	authenticator Authenticator,
-	resources ...resource,
+	resources ...apiResource,
 ) *API {
 	t.Helper()
 	cookies, err := newBrowserCookies("http://localhost:8065")
@@ -208,13 +209,13 @@ func newFocusedResourceAPI(
 	return httpAPI
 }
 
-func (a *classHTTPApplication) GetClass(context.Context, app.Invocation, app.GetClassQuery) (*model.Class, error) {
+func (a *classHTTPApplication) GetClass(context.Context, invocation.Invocation, app.GetClassQuery) (*model.Class, error) {
 	return a.result, nil
 }
-func (a *classHTTPApplication) ListClasses(context.Context, app.Invocation, app.ListClassesQuery) (app.Page[*model.Class], error) {
+func (a *classHTTPApplication) ListClasses(context.Context, invocation.Invocation, app.ListClassesQuery) (app.Page[*model.Class], error) {
 	return app.Page[*model.Class]{Items: a.list}, nil
 }
-func (a *classHTTPApplication) SearchClasses(context.Context, app.Invocation, app.SearchClassesQuery) (app.Page[*model.Class], error) {
+func (a *classHTTPApplication) SearchClasses(context.Context, invocation.Invocation, app.SearchClassesQuery) (app.Page[*model.Class], error) {
 	return app.Page[*model.Class]{Items: a.list}, a.searchErr
 }
 
@@ -239,15 +240,15 @@ func TestClassSearchMapsMissingAcademicUnit(t *testing.T) {
 	httpAPI.ServeHTTP(response, request)
 	require.Equal(t, http.StatusNotFound, response.Code, "status = %d: %s", response.Code, response.Body.String())
 }
-func (a *classHTTPApplication) CreateClass(_ context.Context, _ app.Invocation, command app.CreateClassCommand) (*model.Class, error) {
+func (a *classHTTPApplication) CreateClass(_ context.Context, _ invocation.Invocation, command app.CreateClassCommand) (*model.Class, error) {
 	a.createCommand = command
 	return a.result, nil
 }
-func (a *classHTTPApplication) UpdateClass(_ context.Context, _ app.Invocation, command app.UpdateClassCommand) (*model.Class, error) {
+func (a *classHTTPApplication) UpdateClass(_ context.Context, _ invocation.Invocation, command app.UpdateClassCommand) (*model.Class, error) {
 	a.updateCommand = command
 	return a.result, nil
 }
-func (a *classHTTPApplication) ArchiveClass(_ context.Context, _ app.Invocation, command app.ArchiveClassCommand) error {
+func (a *classHTTPApplication) ArchiveClass(_ context.Context, _ invocation.Invocation, command app.ArchiveClassCommand) error {
 	a.archiveCommand = command
 	return nil
 }

@@ -23,9 +23,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/exam/correction"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 func TestExamSittingCorrectionHTTPStagesResourceContentAndReturnsOnlySafeAuthoritativeMetadata(t *testing.T) {
@@ -47,7 +49,7 @@ func TestExamSittingCorrectionHTTPStagesResourceContentAndReturnsOnlySafeAuthori
 	require.Equal(t, fake.examID, fake.stage.ExamID, "command=%#v uploaded=%q", fake.stage, fake.uploaded)
 	require.Equal(t, fake.sittingID, fake.stage.SittingID, "command=%#v uploaded=%q", fake.stage, fake.uploaded)
 	require.Equal(t, fake.baseRevisionID, fake.stage.BaseRevisionID, "command=%#v uploaded=%q", fake.stage, fake.uploaded)
-	require.Equal(t, app.ExamSittingCorrectionResourceAddition, fake.stage.Target, "command=%#v uploaded=%q", fake.stage, fake.uploaded)
+	require.Equal(t, store.ExamCorrectionResourceAddition, fake.stage.Target, "command=%#v uploaded=%q", fake.stage, fake.uploaded)
 	require.False(t, fake.stage.ResourceID.IsValid(), "command=%#v uploaded=%q", fake.stage, fake.uploaded)
 	require.Equal(t, "stage-correction-once", fake.stage.IdempotencyKey, "command=%#v uploaded=%q", fake.stage, fake.uploaded)
 	require.True(t, bytes.Equal(fake.uploaded, raw), "command=%#v uploaded=%q", fake.stage, fake.uploaded)
@@ -234,13 +236,13 @@ type examSittingCorrectionHTTPFake struct {
 	examID         model.ExamID
 	sittingID      model.ExamSittingID
 	baseRevisionID model.ExamRevisionID
-	stage          app.StageExamSittingCorrectionResourceContentCommand
+	stage          correction.StageResourceContentCommand
 	stageCalls     int
-	apply          app.ApplyExamSittingCorrectionCommand
+	apply          correction.ApplyCommand
 	applyCalls     int
 	uploaded       []byte
-	stageResult    app.ExamSittingCorrectionResourceStage
-	applyResult    app.ExamSittingCorrectionResult
+	stageResult    correction.ResourceStage
+	applyResult    correction.AppliedCorrection
 }
 
 func newExamSittingCorrectionHTTPFake() *examSittingCorrectionHTTPFake {
@@ -248,12 +250,12 @@ func newExamSittingCorrectionHTTPFake() *examSittingCorrectionHTTPFake {
 	effectiveAt := time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
 	return &examSittingCorrectionHTTPFake{
 		examID: examID, sittingID: sittingID, baseRevisionID: baseRevisionID,
-		stageResult: app.ExamSittingCorrectionResourceStage{
+		stageResult: correction.ResourceStage{
 			StageID: model.NewExamCorrectionResourceStageID(), ResourceID: model.NewExamResourceID(),
 			MediaType: model.ExamResourceMediaText, Size: 19,
 			SHA256: strings.Repeat("b", 64), ExpiresAt: effectiveAt.Add(time.Hour),
 		},
-		applyResult: app.ExamSittingCorrectionResult{
+		applyResult: correction.AppliedCorrection{
 			ExamID: examID, SittingID: sittingID, PreviousRevisionID: baseRevisionID,
 			RevisionID: model.NewExamRevisionID(), RevisionNumber: 4,
 			SittingState: model.ExamSittingOpen, SittingRevision: 8, EffectiveAt: effectiveAt,
@@ -271,17 +273,17 @@ func (f *examSittingCorrectionHTTPFake) AuthenticateBearer(context.Context, stri
 	return &principal, nil
 }
 
-func (f *examSittingCorrectionHTTPFake) StageExamSittingCorrectionResourceContent(_ context.Context, _ app.Invocation, command app.StageExamSittingCorrectionResourceContentCommand) (app.ExamSittingCorrectionResourceStage, error) {
+func (f *examSittingCorrectionHTTPFake) StageExamSittingCorrectionResourceContent(_ context.Context, _ invocation.Invocation, command correction.StageResourceContentCommand) (correction.ResourceStage, error) {
 	raw, err := io.ReadAll(command.Body)
 	if err != nil {
-		return app.ExamSittingCorrectionResourceStage{}, apperror.New("exam.sitting.correction.content_invalid")
+		return correction.ResourceStage{}, apperror.New("exam.sitting.correction.content_invalid")
 	}
 	f.stage, f.uploaded = command, raw
 	f.stageCalls++
 	return f.stageResult, nil
 }
 
-func (f *examSittingCorrectionHTTPFake) ApplyExamSittingCorrection(_ context.Context, _ app.Invocation, command app.ApplyExamSittingCorrectionCommand) (app.ExamSittingCorrectionResult, error) {
+func (f *examSittingCorrectionHTTPFake) ApplyExamSittingCorrection(_ context.Context, _ invocation.Invocation, command correction.ApplyCommand) (correction.AppliedCorrection, error) {
 	f.apply = command
 	f.applyCalls++
 	result := f.applyResult

@@ -12,20 +12,22 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/exam/workspace"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 const examStarterWorkspaceUploadBodyLimit = model.StarterWorkspaceMaximumFileBytes + 64*1024
 
 type ExamStarterWorkspaceApplication interface {
-	ListExamStarterWorkspace(context.Context, app.Invocation, app.ListExamStarterWorkspaceQuery) ([]app.ExamStarterWorkspaceItem, error)
-	OpenExamStarterWorkspaceFile(context.Context, app.Invocation, app.OpenExamStarterWorkspaceFileQuery) (app.OpenedExamStarterWorkspaceFile, error)
-	CreateExamStarterWorkspaceDirectory(context.Context, app.Invocation, app.CreateExamStarterWorkspaceDirectoryCommand) (app.ExamStarterWorkspaceResult, error)
-	CreateExamStarterWorkspaceFile(context.Context, app.Invocation, app.CreateExamStarterWorkspaceFileCommand) (app.ExamStarterWorkspaceResult, error)
-	MoveExamStarterWorkspaceEntry(context.Context, app.Invocation, app.MoveExamStarterWorkspaceEntryCommand) (app.ExamStarterWorkspaceResult, error)
-	ReplaceExamStarterWorkspaceFile(context.Context, app.Invocation, app.ReplaceExamStarterWorkspaceFileCommand) (app.ExamStarterWorkspaceResult, error)
-	RemoveExamStarterWorkspaceEntry(context.Context, app.Invocation, app.RemoveExamStarterWorkspaceEntryCommand) (app.ExamStarterWorkspaceResult, error)
+	ListExamStarterWorkspace(context.Context, invocation.Invocation, workspace.ListQuery) ([]store.ExamStarterWorkspaceItem, error)
+	OpenExamStarterWorkspaceFile(context.Context, invocation.Invocation, workspace.OpenFileQuery) (workspace.OpenedFile, error)
+	CreateExamStarterWorkspaceDirectory(context.Context, invocation.Invocation, workspace.CreateDirectoryCommand) (workspace.Result, error)
+	CreateExamStarterWorkspaceFile(context.Context, invocation.Invocation, workspace.CreateFileCommand) (workspace.Result, error)
+	MoveExamStarterWorkspaceEntry(context.Context, invocation.Invocation, workspace.MoveEntryCommand) (workspace.Result, error)
+	ReplaceExamStarterWorkspaceFile(context.Context, invocation.Invocation, workspace.ReplaceFileCommand) (workspace.Result, error)
+	RemoveExamStarterWorkspaceEntry(context.Context, invocation.Invocation, workspace.RemoveEntryCommand) (workspace.Result, error)
 }
 
 type examStarterWorkspaceHTTPModule struct {
@@ -82,7 +84,7 @@ type examStarterWorkspaceListItemResponse struct {
 	UpdatedAt      string `json:"updated_at"`
 }
 
-func examStarterWorkspaceHTTPResource(application ExamStarterWorkspaceApplication) resource {
+func examStarterWorkspaceHTTPResource(application ExamStarterWorkspaceApplication) apiResource {
 	module := examStarterWorkspaceHTTPModule{application: application}
 	collection := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"), literal("starter-workspace"))
 	directories := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"), literal("starter-workspace"), literal("directories"))
@@ -123,14 +125,14 @@ func (m examStarterWorkspaceHTTPModule) list(request operationRequest) (operatio
 	if err != nil {
 		return operationResult{}, err
 	}
-	items, err := m.application.ListExamStarterWorkspace(request.context, request.invocation(), app.ListExamStarterWorkspaceQuery{ExamID: examID})
+	items, err := m.application.ListExamStarterWorkspace(request.context, request.invocation(), workspace.ListQuery{ExamID: examID})
 	if err != nil {
 		return operationResult{}, err
 	}
 	// The Exam Capacity Policy bounds the Starter Workspace, so the complete
 	// set is paged in canonical path order.
 	response, err := boundedListResult(request, "Starter Workspace", items,
-		func(item app.ExamStarterWorkspaceItem) boundedPageKey {
+		func(item store.ExamStarterWorkspaceItem) boundedPageKey {
 			return boundedPageKey{Name: item.Entry.Path, ID: item.Entry.ID.String()}
 		}, examStarterWorkspaceListItem)
 	if err != nil {
@@ -148,7 +150,7 @@ func (m examStarterWorkspaceHTTPModule) createDirectory(request operationRequest
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	result, err := m.application.CreateExamStarterWorkspaceDirectory(request.context, request.invocation(), app.CreateExamStarterWorkspaceDirectoryCommand{
+	result, err := m.application.CreateExamStarterWorkspaceDirectory(request.context, request.invocation(), workspace.CreateDirectoryCommand{
 		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision, Path: body.Path, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
@@ -169,7 +171,7 @@ func (m examStarterWorkspaceHTTPModule) createFile(request operationRequest) (pr
 	if metadata.Size == nil {
 		return protocolResult{}, invalidRequestError(errors.New("metadata size is required"))
 	}
-	result, err := m.application.CreateExamStarterWorkspaceFile(request.context, request.invocation(), app.CreateExamStarterWorkspaceFileCommand{
+	result, err := m.application.CreateExamStarterWorkspaceFile(request.context, request.invocation(), workspace.CreateFileCommand{
 		ExamID: examID, ExpectedDraftRevision: metadata.ExpectedDraftRevision, Path: metadata.Path, MediaType: metadata.MediaType,
 		ExpectedSHA256: metadata.SHA256, Body: content, Size: *metadata.Size, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
@@ -187,7 +189,7 @@ func (m examStarterWorkspaceHTTPModule) moveEntry(request operationRequest) (ope
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	result, err := m.application.MoveExamStarterWorkspaceEntry(request.context, request.invocation(), app.MoveExamStarterWorkspaceEntryCommand{
+	result, err := m.application.MoveExamStarterWorkspaceEntry(request.context, request.invocation(), workspace.MoveEntryCommand{
 		ExamID: examID, EntryID: entryID, ExpectedDraftRevision: body.ExpectedDraftRevision, Path: body.Path, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
@@ -212,7 +214,7 @@ func (m examStarterWorkspaceHTTPModule) replaceFile(request operationRequest) (p
 	if err != nil {
 		return protocolResult{}, invalidRequestError(err)
 	}
-	result, err := m.application.ReplaceExamStarterWorkspaceFile(request.context, request.invocation(), app.ReplaceExamStarterWorkspaceFileCommand{
+	result, err := m.application.ReplaceExamStarterWorkspaceFile(request.context, request.invocation(), workspace.ReplaceFileCommand{
 		ExamID: examID, EntryID: entryID, ExpectedDraftRevision: metadata.ExpectedDraftRevision, ExpectedContentVersion: expectedContentVersion, MediaType: metadata.MediaType,
 		ExpectedSHA256: metadata.SHA256, Body: content, Size: *metadata.Size, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
@@ -230,7 +232,7 @@ func (m examStarterWorkspaceHTTPModule) removeEntry(request operationRequest) (o
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	_, err = m.application.RemoveExamStarterWorkspaceEntry(request.context, request.invocation(), app.RemoveExamStarterWorkspaceEntryCommand{
+	_, err = m.application.RemoveExamStarterWorkspaceEntry(request.context, request.invocation(), workspace.RemoveEntryCommand{
 		ExamID: examID, EntryID: entryID, ExpectedDraftRevision: body.ExpectedDraftRevision, Recursive: body.Recursive, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
@@ -243,7 +245,7 @@ func (m examStarterWorkspaceHTTPModule) openFile(request operationRequest) (prot
 	if err != nil {
 		return protocolResult{}, err
 	}
-	opened, err := m.application.OpenExamStarterWorkspaceFile(request.context, request.invocation(), app.OpenExamStarterWorkspaceFileQuery{ExamID: examID, EntryID: entryID})
+	opened, err := m.application.OpenExamStarterWorkspaceFile(request.context, request.invocation(), workspace.OpenFileQuery{ExamID: examID, EntryID: entryID})
 	if err != nil {
 		return protocolResult{}, err
 	}
@@ -280,14 +282,14 @@ func examStarterWorkspaceIDs(request operationRequest) (model.ExamID, model.Star
 	return examID, entryID, nil
 }
 
-func examStarterWorkspaceResultResponse(result app.ExamStarterWorkspaceResult) examStarterWorkspaceEntryResponse {
-	item := examStarterWorkspaceListItem(app.ExamStarterWorkspaceItem{Entry: result.Entry, Object: result.Object})
+func examStarterWorkspaceResultResponse(result workspace.Result) examStarterWorkspaceEntryResponse {
+	item := examStarterWorkspaceListItem(store.ExamStarterWorkspaceItem{Entry: result.Entry, Object: result.Object})
 	return examStarterWorkspaceEntryResponse{ID: item.ID, Kind: item.Kind, Path: item.Path, ContentVersion: item.ContentVersion,
 		MediaType: item.MediaType, Size: item.Size, SHA256: item.SHA256, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt,
 		DraftRevision: result.DraftRevision}
 }
 
-func examStarterWorkspaceListItem(item app.ExamStarterWorkspaceItem) examStarterWorkspaceListItemResponse {
+func examStarterWorkspaceListItem(item store.ExamStarterWorkspaceItem) examStarterWorkspaceListItemResponse {
 	entry := item.Entry
 	response := examStarterWorkspaceListItemResponse{ID: entry.ID.String(), Kind: string(entry.Kind), Path: entry.Path,
 		CreatedAt: model.FormatRFC3339(entry.CreatedAt), UpdatedAt: model.FormatRFC3339(entry.UpdatedAt)}

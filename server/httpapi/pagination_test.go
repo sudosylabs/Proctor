@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -102,7 +103,7 @@ type programmePageHTTPApplication struct {
 	page  app.Page[*model.Programme]
 }
 
-func (a *programmePageHTTPApplication) ListProgrammes(_ context.Context, _ app.Invocation, query app.ListProgrammesQuery) (app.Page[*model.Programme], error) {
+func (a *programmePageHTTPApplication) ListProgrammes(_ context.Context, _ invocation.Invocation, query app.ListProgrammesQuery) (app.Page[*model.Programme], error) {
 	a.query = query
 	return a.page, nil
 }

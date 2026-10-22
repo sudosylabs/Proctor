@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -51,7 +52,7 @@ type institutionAuthorizerFake struct {
 
 func (a *institutionAuthorizerFake) Authorize(
 	_ context.Context,
-	_ Invocation,
+	_ invocation.Invocation,
 	action model.Action,
 	resource model.Resource,
 ) error {
@@ -72,7 +73,7 @@ type institutionAuditorFake struct {
 	scopeID   string
 }
 
-func (a *institutionAuditorFake) Begin(_ context.Context, _ Invocation, action model.Action, resource model.Resource, _ string, _, _ map[string]any) (model.AuditEventID, error) {
+func (a *institutionAuditorFake) Begin(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource, _ string, _, _ map[string]any) (model.AuditEventID, error) {
 	*a.events = append(*a.events, "audit-begin")
 	a.action, a.resource = action, resource
 	a.resources = append(a.resources, resource)
@@ -84,7 +85,7 @@ func (a *institutionAuditorFake) Begin(_ context.Context, _ Invocation, action m
 	return model.AuditEventID(a.beginID), nil
 }
 
-func (a *institutionAuditorFake) BeginAtScope(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
+func (a *institutionAuditorFake) BeginAtScope(ctx context.Context, invocation invocation.Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	a.scopeType, a.scopeID = scopeType, scopeID
 	return a.Begin(ctx, invocation, action, resource, operation, value, prior)
 }
@@ -105,7 +106,7 @@ func TestInstitutionGetAuthorizesSingletonResource(t *testing.T) {
 		&institutionStoreFake{events: &events, current: institution}, authorizer,
 		&institutionAuditorFake{events: &events}, time.Now,
 	)
-	got, err := service.GetInstitution(context.Background(), Invocation{}, GetInstitutionQuery{})
+	got, err := service.GetInstitution(context.Background(), invocation.Invocation{}, GetInstitutionQuery{})
 	require.NoError(t, err, "Get()")
 	require.Same(t, institution, got, "Get()")
 	require.Equal(t, model.ActionInstitutionManage, authorizer.action, "authorization")
@@ -135,7 +136,7 @@ func TestInstitutionUpdateCommitsSuccessAuditAtomically(t *testing.T) {
 		func() time.Time { return time.UnixMilli(500) },
 	)
 	displayName := "Northbridge"
-	got, err := service.UpdateInstitution(context.Background(), Invocation{}, UpdateInstitutionCommand{
+	got, err := service.UpdateInstitution(context.Background(), invocation.Invocation{}, UpdateInstitutionCommand{
 		DisplayName: &displayName, ExamCapacity: &capacity,
 	})
 	require.NoError(t, err, "Update()")
@@ -167,7 +168,7 @@ func TestInstitutionUpdateFailureCompletesFailedAttempt(t *testing.T) {
 		persistence, &institutionAuthorizerFake{events: &events}, auditor, time.Now,
 	)
 	name := "duplicate"
-	_, err := service.UpdateInstitution(context.Background(), Invocation{}, UpdateInstitutionCommand{Name: &name})
+	_, err := service.UpdateInstitution(context.Background(), invocation.Invocation{}, UpdateInstitutionCommand{Name: &name})
 	require.True(t, apperror.Is(err, "institution.conflict"), "Update() error = %v, audit code", err)
 	require.Equal(t, "institution.conflict", auditor.failCode, "Update() error = %v, audit code", err)
 	// Contract (guardrail 8): authorization precedes the audit, the audit begins
@@ -190,7 +191,7 @@ func TestInstitutionUpdateRejectsInvalidExamCapacityBeforeAudit(t *testing.T) {
 		&institutionAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events}, time.Now,
 	)
 
-	_, err := service.UpdateInstitution(context.Background(), Invocation{}, UpdateInstitutionCommand{ExamCapacity: &invalid})
+	_, err := service.UpdateInstitution(context.Background(), invocation.Invocation{}, UpdateInstitutionCommand{ExamCapacity: &invalid})
 	require.True(t, apperror.Is(err, "institution.invalid"), "Update() error = %v", err)
 	require.Equal(t, []string{"get", "authorize"}, events)
 }

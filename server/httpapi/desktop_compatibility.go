@@ -15,6 +15,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -29,14 +30,14 @@ func (unavailableDesktopCompatibilityApplication) EvaluateDesktopCompatibility(
 
 func (unavailableDesktopCompatibilityApplication) GetDesktopCompatibilityPolicy(
 	context.Context,
-	app.Invocation,
+	invocation.Invocation,
 ) (*model.DesktopCompatibilityPolicy, error) {
 	return nil, errUnpresentableResult
 }
 
 func (unavailableDesktopCompatibilityApplication) ReplaceDesktopCompatibilityPolicy(
 	context.Context,
-	app.Invocation,
+	invocation.Invocation,
 	app.ReplaceDesktopCompatibilityPolicyCommand,
 ) (*model.DesktopCompatibilityPolicy, error) {
 	return nil, errUnpresentableResult
@@ -66,7 +67,7 @@ type desktopCompatibilityPolicyResourceModule struct {
 	application DesktopCompatibilityApplication
 }
 
-func desktopCompatibilityPolicyResource(application DesktopCompatibilityApplication) resource {
+func desktopCompatibilityPolicyResource(application DesktopCompatibilityApplication) apiResource {
 	module := desktopCompatibilityPolicyResourceModule{application: application}
 	readErrors := operatorReadErrorCodes("desktop_compatibility_policy.unavailable")
 	mutationErrors := operatorMutationErrorCodes(

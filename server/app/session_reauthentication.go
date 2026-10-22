@@ -12,6 +12,7 @@ import (
 	"errors"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -23,7 +24,7 @@ type ReauthenticatePasswordCommand struct {
 	Source   string
 }
 
-func (s *authenticationService) ReauthenticatePassword(ctx context.Context, invocation Invocation, command ReauthenticatePasswordCommand) (*model.Session, error) {
+func (s *authenticationService) ReauthenticatePassword(ctx context.Context, invocation invocation.Invocation, command ReauthenticatePasswordCommand) (*model.Session, error) {
 	principal := invocation.Principal()
 	if principal.ValidateMFARecovery() != nil || principal.CredentialType != model.CredentialSessionAccess {
 		return nil, invalidTokenAppError()

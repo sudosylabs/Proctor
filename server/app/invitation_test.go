@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -106,7 +107,7 @@ func TestOnboardingInvitationNoOpDoesNotRequireMail(t *testing.T) {
 		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, &invitationAuthorizerFake{}, &invitationMailPreparerFake{disabled: true}, now)
 	service.classes = invitationClassStoreFake{class: &model.Class{ID: classID, AcademicPeriodID: periodID}}
 	service.periods = invitationPeriodStoreFake{period: &model.AcademicPeriod{ID: periodID, StartsAt: now.Add(time.Hour), EndsAt: now.Add(24 * time.Hour)}}
-	view, err := service.IssueStudentClassInvitation(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
+	view, err := service.IssueStudentClassInvitation(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		IssueStudentClassInvitationCommand{TargetEmail: "existing@example.edu", ClassID: classID.String(), IdempotencyKey: "import-row",
 			onboardingImportID: model.NewOnboardingImportID(), onboardingImportRowNumber: 1})
 	require.NoError(t, err, "mail-disabled no-op = %#v / %#v", view, persistence.issued)
@@ -308,20 +309,20 @@ func TestInvitationExternalIdentityAcceptancePreparesTheExactTerminalPackage(t *
 	require.Equal(t, accepted.User.ID, accepted.ClassMember.UserID)
 }
 
-func (f *invitationAuthorizerFake) Authorize(_ context.Context, _ Invocation, action model.Action, _ model.Resource) error {
+func (f *invitationAuthorizerFake) Authorize(_ context.Context, _ invocation.Invocation, action model.Action, _ model.Resource) error {
 	f.actions = append(f.actions, action)
 	if err := f.actionErrors[action]; err != nil {
 		return err
 	}
 	return f.err
 }
-func (f *invitationAuthorizerFake) CanDelegateActionsAtScope(_ context.Context, _ Invocation, actions []string, scopeType model.RoleScopeType, scopeID string) error {
+func (f *invitationAuthorizerFake) CanDelegateActionsAtScope(_ context.Context, _ invocation.Invocation, actions []string, scopeType model.RoleScopeType, scopeID string) error {
 	f.delegatedActions = append([]string(nil), actions...)
 	f.delegatedScopeType = scopeType
 	f.delegatedScopeID = scopeID
 	return f.err
 }
-func (f *invitationAuthorizerFake) Visibility(_ context.Context, _ Invocation, action model.Action) (store.InvitationVisibilityScope, error) {
+func (f *invitationAuthorizerFake) Visibility(_ context.Context, _ invocation.Invocation, action model.Action) (store.InvitationVisibilityScope, error) {
 	f.actions = append(f.actions, action)
 	return store.InvitationVisibilityScope{InstitutionWide: true}, f.err
 }
@@ -337,7 +338,7 @@ func TestInvitationServiceIssuesTeacherPackageThroughDelegationCeiling(t *testin
 	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{unit: &model.AcademicUnit{ID: unitID}},
 		invitationRoleStoreFake{role: role}, authorizer, mail, now)
 	view, err := service.IssueTeacherAcademicUnitInvitation(context.Background(),
-		NewInvocation(model.Principal{UserID: inviterID}, model.RequestMetadata{}),
+		invocation.New(model.Principal{UserID: inviterID}, model.RequestMetadata{}),
 		IssueTeacherAcademicUnitInvitationCommand{TargetEmail: "teacher@example.edu", AcademicUnitID: unitID.String(),
 			RoleID: roleID.String(), IntendedStartsAt: model.MillisFromTime(now.Add(time.Hour))})
 	require.NoError(t, err)
@@ -372,7 +373,7 @@ func TestInvitationBatchRunsIndependentRowsAndRecoversCommittedItems(t *testing.
 			{IdempotencyKey: "row-2", TargetEmail: "invalid@example.edu", RoleID: model.NewRoleID().String()},
 			{IdempotencyKey: "row-3", TargetEmail: " FIRST@example.edu "},
 		}}
-	invocation := NewInvocation(model.Principal{UserID: actorID}, model.RequestMetadata{RequestID: "request-1"})
+	invocation := invocation.New(model.Principal{UserID: actorID}, model.RequestMetadata{RequestID: "request-1"})
 	first, err := service.RunInvitationBatch(context.Background(), invocation, command)
 	require.NoError(t, err)
 	require.Equal(t, 1, first.Succeeded, "first batch result=%#v executions", first)
@@ -410,7 +411,7 @@ func TestInvitationBatchAuthorizesBeforeRowsAndRestrictsRoleWorkToInteractiveSes
 		authorizer, &invitationMailPreparerFake{}, now)
 	command := RunInvitationBatchCommand{Operation: InvitationBatchTeacherAcademicUnitCreate, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: unitID.String(), IdempotencyKey: "authorize-first", Items: []InvitationBatchItemCommand{{IdempotencyKey: "row-1", RoleID: "not-an-id"}}}
-	_, err := service.RunInvitationBatch(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
+	_, err := service.RunInvitationBatch(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
 	require.True(t, apperror.Is(err, "authorization.denied"), "batch authorization-before-row error/actions = %v / %v", err, authorizer.actions)
 	require.True(t, slices.Equal(authorizer.actions, []model.Action{model.ActionOnboardingBatchManage}), "batch authorization-before-row error/actions = %v / %v", err, authorizer.actions)
 
@@ -418,14 +419,14 @@ func TestInvitationBatchAuthorizesBeforeRowsAndRestrictsRoleWorkToInteractiveSes
 	authorizer.actions = nil
 	command.Operation = InvitationBatchAcademicUnitRoleCreate
 	command.Items = []InvitationBatchItemCommand{{IdempotencyKey: "row-1", TargetEmail: "existing@example.edu", RoleID: model.NewRoleID().String()}}
-	_, err = service.RunInvitationBatch(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
+	_, err = service.RunInvitationBatch(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
 	require.True(t, apperror.Is(err, "authentication.token_invalid"), "Role batch assurance error/actions = %v / %v", err, authorizer.actions)
 	require.True(t, slices.Equal(authorizer.actions, []model.Action{model.ActionOnboardingBatchManage}), "Role batch assurance error/actions = %v / %v", err, authorizer.actions)
 
 	authorizer.actions = nil
 	command.Operation = InvitationBatchTeacherAcademicUnitCreate
 	command.Items = make([]InvitationBatchItemCommand, MaximumInvitationBatchItems+1)
-	_, err = service.RunInvitationBatch(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
+	_, err = service.RunInvitationBatch(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
 	require.True(t, apperror.Is(err, "request.invalid"), "oversized batch error/actions = %v", err)
 	require.Empty(t, authorizer.actions, "oversized batch error/actions = %v", err)
 }
@@ -453,7 +454,7 @@ func TestInvitationBatchDuplicatesRetainPerItemAuthorization(t *testing.T) {
 		}}
 
 	result, err := service.RunInvitationBatch(context.Background(),
-		NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
+		invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
 	require.NoError(t, err)
 	require.Equal(t, 2, result.Failed, "duplicate row authorization result=%#v durable duplicates", result)
 	require.Equal(t, "authorization.denied", result.Items[0].ErrorCode, "duplicate row authorization result=%#v durable duplicates", result)
@@ -490,7 +491,7 @@ func TestInvitationBatchDuplicateStillValidatesItsDomainPackage(t *testing.T) {
 		}}
 
 	result, err := service.RunInvitationBatch(context.Background(),
-		NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
+		invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
 	require.NoError(t, err)
 	require.Equal(t, 1, result.Succeeded, "invalid duplicate package result=%#v durable duplicates", result)
 	require.Equal(t, 1, result.Failed, "invalid duplicate package result=%#v durable duplicates", result)
@@ -513,7 +514,7 @@ func TestInvitationBatchFreshResendDuplicateRequiresMailAvailability(t *testing.
 	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{},
 		&invitationAuthorizerFake{}, mail, now.Add(time.Minute))
 	_, err = service.ResendInvitation(context.Background(),
-		NewInvocation(model.Principal{UserID: actorID}, model.RequestMetadata{}),
+		invocation.New(model.Principal{UserID: actorID}, model.RequestMetadata{}),
 		ResendInvitationCommand{ID: invitation.ID, ExpectedRevision: invitation.Revision,
 			IdempotencyKey: invitationBatchItemIdempotencyKey("mail-disabled", "duplicate"),
 			BatchScopeType: model.RoleScopeClass, BatchScopeID: classID.String(), batchDuplicate: true,
@@ -538,7 +539,7 @@ func TestInvitationBatchRejectsEveryRowWithARepeatedItemKey(t *testing.T) {
 		}}
 
 	result, err := service.RunInvitationBatch(context.Background(),
-		NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
+		invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
 	require.NoError(t, err)
 	require.Equal(t, 1, result.Succeeded, "repeated-key result=%#v executions", result)
 	require.Equal(t, 2, result.Failed, "repeated-key result=%#v executions", result)
@@ -558,7 +559,7 @@ func TestInvitationServiceIssuesAcademicUnitRoleForExistingUser(t *testing.T) {
 	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{unit: &model.AcademicUnit{ID: unitID}},
 		invitationRoleStoreFake{role: role}, authorizer, &invitationMailPreparerFake{}, now)
 	view, err := service.IssueAcademicUnitRoleInvitation(context.Background(),
-		NewInvocation(model.Principal{UserID: inviterID}, model.RequestMetadata{}),
+		invocation.New(model.Principal{UserID: inviterID}, model.RequestMetadata{}),
 		IssueAcademicUnitRoleInvitationCommand{TargetEmail: "existing@example.edu", AcademicUnitID: unitID.String(),
 			RoleID: roleID.String(), IntendedStartsAt: model.MillisFromTime(now.Add(time.Hour))})
 	require.NoError(t, err)
@@ -597,7 +598,7 @@ func TestInvitationServiceAcceptsAcademicUnitRoleForAuthenticatedExistingUserWit
 	principal := model.Principal{UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: now}
-	result, err := service.AcceptAcademicUnitRoleInvitation(context.Background(), NewInvocation(principal, model.RequestMetadata{RequestID: "request-1"}),
+	result, err := service.AcceptAcademicUnitRoleInvitation(context.Background(), invocation.New(principal, model.RequestMetadata{RequestID: "request-1"}),
 		AcceptAcademicUnitRoleInvitationCommand{Claim: raw, Source: "127.0.0.1"})
 	require.NoError(t, err)
 	accepted := persistence.scopedAccepted
@@ -651,7 +652,7 @@ func TestInvitationServiceTerminalizesScopedRoleAcceptanceConflict(t *testing.T)
 	principal := model.Principal{UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: now}
-	_, appErr := service.AcceptAcademicUnitRoleInvitation(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
+	_, appErr := service.AcceptAcademicUnitRoleInvitation(context.Background(), invocation.New(principal, model.RequestMetadata{}),
 		AcceptAcademicUnitRoleInvitationCommand{Claim: raw, Source: "127.0.0.1"})
 	require.True(t, apperror.Is(appErr, "invitation.invalid"), "scoped Role conflict error/audit/events = %v / %#v / %v", appErr, auditor, events)
 	require.Equal(t, auditID, auditor.failID, "scoped Role conflict error/audit/events = %v / %#v / %v", appErr, auditor, events)
@@ -672,11 +673,11 @@ func TestInvitationServiceInstitutionRoleRequiresStrongRecentInteractiveSession(
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: now}
 	command := IssueInstitutionRoleInvitationCommand{TargetEmail: "existing@example.edu", InstitutionID: institutionID.String(), RoleID: roleID.String()}
-	_, err := service.IssueInstitutionRoleInvitation(context.Background(), NewInvocation(principal, model.RequestMetadata{}), command)
+	_, err := service.IssueInstitutionRoleInvitation(context.Background(), invocation.New(principal, model.RequestMetadata{}), command)
 	require.True(t, apperror.Is(err, "authentication.strong_required"), "weak IssueInstitutionRole() error = %v", err)
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
-	view, err := service.IssueInstitutionRoleInvitation(context.Background(), NewInvocation(principal, model.RequestMetadata{}), command)
+	view, err := service.IssueInstitutionRoleInvitation(context.Background(), invocation.New(principal, model.RequestMetadata{}), command)
 	require.NoError(t, err)
 	require.Equal(t, model.InvitationPurposeInstitutionRole, view.Purpose, "institution Role issue = %#v", view)
 	require.Equal(t, roleID, view.RoleID, "institution Role issue = %#v", view)
@@ -696,7 +697,7 @@ func TestInvitationServiceRejectsInertTeacherRoleAction(t *testing.T) {
 	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{unit: &model.AcademicUnit{ID: unitID}},
 		invitationRoleStoreFake{role: &model.Role{ID: roleID, Name: "inert", DisplayName: "Inert", Permissions: []string{string(model.ActionRoleManage)}}},
 		&invitationAuthorizerFake{}, &invitationMailPreparerFake{}, now)
-	_, err := service.IssueTeacherAcademicUnitInvitation(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
+	_, err := service.IssueTeacherAcademicUnitInvitation(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		IssueTeacherAcademicUnitInvitationCommand{TargetEmail: "teacher@example.edu", AcademicUnitID: unitID.String(), RoleID: roleID.String()})
 	require.True(t, apperror.Is(err, "invitation.role_not_delegable"), "IssueTeacherAcademicUnit() = %v", err)
 	require.Nil(t, persistence.teacherIssued, "IssueTeacherAcademicUnit() = %v", err)
@@ -716,7 +717,7 @@ func TestInvitationServiceAcceptsTeacherPackageArtifacts(t *testing.T) {
 	persistence := &invitationStoreFake{invitation: invitation}
 	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{},
 		&invitationAuthorizerFake{}, &invitationMailPreparerFake{}, now.Add(time.Minute))
-	result, err := service.AcceptTeacherAcademicUnitInvitation(context.Background(), Invocation{}, AcceptTeacherAcademicUnitInvitationCommand{
+	result, err := service.AcceptTeacherAcademicUnitInvitation(context.Background(), invocation.Invocation{}, AcceptTeacherAcademicUnitInvitationCommand{
 		Claim: raw, Password: "correct horse battery staple", Username: "teacher-one", Source: "127.0.0.1",
 	})
 	require.NoError(t, err)
@@ -740,21 +741,21 @@ type invitationMailPreparerFake struct {
 }
 
 func (f *invitationMailPreparerFake) Enabled() bool { return !f.disabled }
-func (f *invitationMailPreparerFake) PrepareInvitation(invitation *model.Invitation, actionURL string) (*preparedDirectMail, error) {
+func (f *invitationMailPreparerFake) PrepareInvitation(invitation *model.Invitation, actionURL string) (*store.PreparedMail, error) {
 	f.issueURL = actionURL
 	return invitationPreparedMail(invitation.InviterUserID, "", invitation.ID, model.MailOccurrenceID(invitation.ID.String()), model.MailTemplateAccessStudentClassInvitation, invitation.CreatedAt, invitation.ExpiresAt), nil
 }
-func (f *invitationMailPreparerFake) PrepareInvitationResend(invitation *model.Invitation, actionURL string, actor model.UserID, at time.Time) (*preparedDirectMail, error) {
+func (f *invitationMailPreparerFake) PrepareInvitationResend(invitation *model.Invitation, actionURL string, actor model.UserID, at time.Time) (*store.PreparedMail, error) {
 	f.issueURL = actionURL
 	return invitationPreparedMail(actor, "", invitation.ID, model.NewMailOccurrenceID(), model.MailTemplateAccessStudentClassInvitation, at, invitation.ExpiresAt), nil
 }
-func (f *invitationMailPreparerFake) PrepareInvitationRevocation(invitation *model.Invitation, actor model.UserID, at time.Time) (*preparedDirectMail, error) {
+func (f *invitationMailPreparerFake) PrepareInvitationRevocation(invitation *model.Invitation, actor model.UserID, at time.Time) (*store.PreparedMail, error) {
 	prepared := invitationPreparedMail(actor, "", invitation.ID, model.NewMailOccurrenceID(), model.MailTemplateAccessInvitationRevoked, at, at.Add(24*time.Hour))
 	command, _ := model.EncodeMailDeliveryCommand(model.MailDeliveryCommand{DeliveryID: prepared.Delivery.ID})
 	prepared.Job, _ = model.NewJob(prepared.Job.ID, model.JobTypeMailDeliver, command, prepared.Delivery.ID.String(), at, at, model.MailMaximumAttempts)
 	return prepared, nil
 }
-func (f *invitationMailPreparerFake) PrepareInvitationAccepted(request NoticeMailPreparation) (*preparedDirectMail, error) {
+func (f *invitationMailPreparerFake) PrepareInvitationAccepted(request NoticeMailPreparation) (*store.PreparedMail, error) {
 	if f.directErr != nil {
 		return nil, f.directErr
 	}
@@ -772,11 +773,11 @@ func (f *invitationMailPreparerFake) PrepareInvitationAccepted(request NoticeMai
 	return prepared, nil
 }
 
-func invitationPreparedMail(actor, targetUser model.UserID, targetInvitation model.InvitationID, occurrenceID model.MailOccurrenceID, key model.MailTemplateKey, at, deadline time.Time) *preparedDirectMail {
+func invitationPreparedMail(actor, targetUser model.UserID, targetInvitation model.InvitationID, occurrenceID model.MailOccurrenceID, key model.MailTemplateKey, at, deadline time.Time) *store.PreparedMail {
 	deliveryID, jobID := model.NewMailDeliveryID(), model.NewJobID()
 	command, _ := model.EncodeMailDeliveryCommand(model.MailDeliveryCommand{DeliveryID: deliveryID})
 	job, _ := model.NewJob(jobID, model.JobTypeMailDeliverCredential, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
-	return &preparedDirectMail{
+	return &store.PreparedMail{
 		Occurrence: &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceInvitation, TemplateKey: key, ActorUserID: actor, CreatedAt: at},
 		Delivery: &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: jobID, TargetUserID: targetUser,
 			TargetInvitationID: targetInvitation, TemplateKey: key, TemplateDigest: strings.Repeat("d", 64),
@@ -811,7 +812,7 @@ func TestInvitationAdministrationUsesAuthorizedSafeLifecycleCommands(t *testing.
 	authorizer := &invitationAuthorizerFake{}
 	mail := &invitationMailPreparerFake{}
 	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail, now.Add(time.Hour))
-	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
+	invocation := invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 
 	page, err := service.ListInvitations(context.Background(), invocation, ListInvitationsQuery{TargetEmail: "STUDENT@example.edu", Limit: 25})
 	require.NoError(t, err)
@@ -858,7 +859,7 @@ func TestInvitationReplacementReauthorizesAndBuildsANewImmutablePackage(t *testi
 		"node-1", "https://proctor.example.edu", 15*time.Minute, model.NewCredentialToken, func() time.Time { return now.Add(time.Hour) })
 	require.NoError(t, err)
 	actor := model.NewUserID()
-	result, err := service.ReplaceInvitation(context.Background(), NewInvocation(model.Principal{UserID: actor}, model.RequestMetadata{}),
+	result, err := service.ReplaceInvitation(context.Background(), invocation.New(model.Principal{UserID: actor}, model.RequestMetadata{}),
 		ReplaceInvitationCommand{ID: invitation.ID, ExpectedRevision: invitation.Revision,
 			Purpose: string(model.InvitationPurposeStudentClass), TargetEmail: "new@example.edu", ClassID: class.ID.String(),
 			SuggestedUsername: "new-student"})
@@ -894,7 +895,7 @@ func TestInvitationIssueAuthorizesBeforeInspectingMailCapability(t *testing.T) {
 		invitationHasherFake{}, &mutationAttemptAuditorFake{}, invitationAttemptLimiterFake{}, &classMemberEffectsFake{}, "node-1", "https://proctor.example.edu",
 		15*time.Minute, model.NewCredentialToken, func() time.Time { return now })
 	require.NoError(t, err)
-	_, appErr := service.IssueStudentClassInvitation(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
+	_, appErr := service.IssueStudentClassInvitation(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		IssueStudentClassInvitationCommand{ClassID: classID.String(), TargetEmail: "student@example.edu"})
 	require.True(t, apperror.Is(appErr, "authorization.denied"), "IssueStudentClass() error/actions = %v", appErr)
 	require.Len(t, authorizer.actions, 1, "IssueStudentClass() error/actions = %v", appErr)
@@ -915,7 +916,7 @@ func TestInvitationAcceptanceCommitsWithTerminalNoticeWhenMailIsDisabled(t *test
 		invitationHasherFake{}, &mutationAttemptAuditorFake{}, invitationAttemptLimiterFake{}, &classMemberEffectsFake{}, "node-1", "https://proctor.example.edu",
 		15*time.Minute, model.NewCredentialToken, func() time.Time { return now.Add(time.Minute) })
 	require.NoError(t, err)
-	_, appErr := service.AcceptStudentClassInvitation(context.Background(), Invocation{}, AcceptStudentClassInvitationCommand{Claim: raw,
+	_, appErr := service.AcceptStudentClassInvitation(context.Background(), invocation.Invocation{}, AcceptStudentClassInvitationCommand{Claim: raw,
 		Password: "correct horse battery staple", Username: "student-one", Source: "127.0.0.1"})
 	require.NoError(t, appErr)
 	require.Equal(t, model.JobTypeMailDeliver, mail.directJobType, "disabled acceptance mail = %#v / %#v", persistence.accepted.Delivery, persistence.accepted.DeliveryJob)
@@ -939,11 +940,11 @@ func TestInvitationPasswordWorkFailuresStopBeforeAcceptance(t *testing.T) {
 				var result *InvitationAcceptanceView
 				var err error
 				if purpose == model.InvitationPurposeStudentClass {
-					result, err = service.AcceptStudentClassInvitation(ctx, Invocation{}, AcceptStudentClassInvitationCommand{
+					result, err = service.AcceptStudentClassInvitation(ctx, invocation.Invocation{}, AcceptStudentClassInvitationCommand{
 						Claim: raw, Username: "invited", Password: "correct horse battery staple", Source: "192.0.2.36",
 					})
 				} else {
-					result, err = service.AcceptTeacherAcademicUnitInvitation(ctx, Invocation{}, AcceptTeacherAcademicUnitInvitationCommand{
+					result, err = service.AcceptTeacherAcademicUnitInvitation(ctx, invocation.Invocation{}, AcceptTeacherAcademicUnitInvitationCommand{
 						Claim: raw, Username: "invited", Password: "correct horse battery staple", Source: "192.0.2.36",
 					})
 				}
@@ -981,8 +982,8 @@ func TestInvitationServiceIssuesAndAcceptsWithoutPersistingRawClaim(t *testing.T
 	service, err := newInvitationService(persistence, invitationClassStoreFake{class}, invitationPeriodStoreFake{period},
 		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail, invitationHasherFake{}, auditor, invitationAttemptLimiterFake{}, &classMemberEffectsFake{}, "node-1", "https://proctor.example.edu", 15*time.Minute, func() string { return raw }, func() time.Time { return now })
 	require.NoError(t, err)
-	invocation := NewInvocation(model.Principal{UserID: inviterID}, model.RequestMetadata{})
-	view, err := service.IssueStudentClassInvitation(context.Background(), invocation, IssueStudentClassInvitationCommand{
+	call := invocation.New(model.Principal{UserID: inviterID}, model.RequestMetadata{})
+	view, err := service.IssueStudentClassInvitation(context.Background(), call, IssueStudentClassInvitationCommand{
 		TargetEmail: " Student@Example.edu ", ClassID: classID.String(), IntendedStartsAt: model.MillisFromTime(period.StartsAt),
 		IntendedEndsAt: model.MillisFromTime(period.EndsAt), SuggestedUsername: "student-one", SuggestedDisplayName: "Student One", SuggestedLocale: "en",
 	})
@@ -995,7 +996,7 @@ func TestInvitationServiceIssuesAndAcceptsWithoutPersistingRawClaim(t *testing.T
 	require.Len(t, authorizer.actions, 2)
 	require.Equal(t, model.ActionInvitationCreate, authorizer.actions[0])
 	require.Equal(t, model.ActionClassMembersManage, authorizer.actions[1])
-	result, err := service.AcceptStudentClassInvitation(context.Background(), Invocation{}, AcceptStudentClassInvitationCommand{
+	result, err := service.AcceptStudentClassInvitation(context.Background(), invocation.Invocation{}, AcceptStudentClassInvitationCommand{
 		Claim: raw, Password: "correct horse battery staple", Username: "student-one", DisplayName: "Student One", Locale: "en",
 	})
 	require.NoError(t, err)

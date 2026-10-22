@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -70,20 +71,20 @@ type programmeAuthorizerFake struct {
 	preflightErr error
 }
 
-func (a *programmeAuthorizerFake) Authorize(_ context.Context, _ Invocation, action model.Action, resource model.Resource) error {
+func (a *programmeAuthorizerFake) Authorize(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource) error {
 	*a.events = append(*a.events, "authorize")
 	a.action, a.resource = action, resource
 	return a.err
 }
 
-func (a *programmeAuthorizerFake) AuthorizeUserRead(_ context.Context, _ Invocation, userID string) error {
+func (a *programmeAuthorizerFake) AuthorizeUserRead(_ context.Context, _ invocation.Invocation, userID string) error {
 	*a.events = append(*a.events, "authorize")
 	a.action = model.ActionUserView
 	a.resource = model.Resource{Type: model.ResourceUser, ID: userID}
 	return a.err
 }
 
-func (a *programmeAuthorizerFake) AuthorizePreflight(_ context.Context, _ Invocation, action model.Action, resourceType model.ResourceType) error {
+func (a *programmeAuthorizerFake) AuthorizePreflight(_ context.Context, _ invocation.Invocation, action model.Action, resourceType model.ResourceType) error {
 	*a.events = append(*a.events, "authorize-preflight")
 	a.action = action
 	a.resource = model.Resource{Type: resourceType}
@@ -92,7 +93,7 @@ func (a *programmeAuthorizerFake) AuthorizePreflight(_ context.Context, _ Invoca
 
 func (a *programmeAuthorizerFake) AuthorizeWithScope(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	action model.Action,
 	resource model.Resource,
 ) (model.RoleScopeType, string, error) {
@@ -118,7 +119,7 @@ func TestProgrammeCreateAuthorizationDenialStopsBeforeAuditAndStore(t *testing.T
 		&institutionAuditorFake{events: &events, beginID: model.NewID()},
 		time.Now, model.NewID,
 	)
-	_, err := service.CreateProgramme(context.Background(), Invocation{}, CreateProgrammeCommand{
+	_, err := service.CreateProgramme(context.Background(), invocation.Invocation{}, CreateProgrammeCommand{
 		AcademicUnitID: model.NewAcademicUnitID(), Name: "computer-science", DisplayName: "Computer Science",
 	})
 	require.True(t, apperror.Is(err, "authorization.denied"), "Create() error = %v", err)
@@ -134,7 +135,7 @@ func TestProgrammeCreateConflictCompletesFailedAttempt(t *testing.T) {
 		&programmeAuthorizerFake{events: &events}, auditor,
 		time.Now, model.NewID,
 	)
-	_, err := service.CreateProgramme(context.Background(), Invocation{}, CreateProgrammeCommand{
+	_, err := service.CreateProgramme(context.Background(), invocation.Invocation{}, CreateProgrammeCommand{
 		AcademicUnitID: model.NewAcademicUnitID(), Name: "computer-science", DisplayName: "Computer Science",
 	})
 	require.True(t, apperror.Is(err, "programme.conflict"), "Create() error = %v, audit code", err)
@@ -146,7 +147,7 @@ func TestProgrammeCreateConflictCompletesFailedAttempt(t *testing.T) {
 func (*programmeAuthorizerFake) Installation(context.Context) (model.Resource, error) {
 	return model.Resource{}, nil
 }
-func (*programmeAuthorizerFake) AuthorizeInstallation(context.Context, Invocation, model.Action) (model.Resource, error) {
+func (*programmeAuthorizerFake) AuthorizeInstallation(context.Context, invocation.Invocation, model.Action) (model.Resource, error) {
 	return model.Resource{}, nil
 }
 
@@ -159,7 +160,7 @@ func TestProgrammeCreatePreservesAcademicUnitOwnershipAndAtomicAudit(t *testing.
 	authorizer := &programmeAuthorizerFake{events: &events}
 	auditor := &institutionAuditorFake{events: &events, beginID: auditID}
 	service := newProgrammeService(persistence, authorizer, auditor, func() time.Time { return time.UnixMilli(500) }, func() string { return programmeID })
-	got, err := service.CreateProgramme(context.Background(), Invocation{}, CreateProgrammeCommand{
+	got, err := service.CreateProgramme(context.Background(), invocation.Invocation{}, CreateProgrammeCommand{
 		AcademicUnitID: model.AcademicUnitID(unitID), Name: "computer-science", DisplayName: "Computer Science",
 	})
 	require.NoError(t, err, "Create()")
@@ -187,7 +188,7 @@ func TestProgrammeUpdateCannotMoveOwnership(t *testing.T) {
 	persistence := &programmeStoreFake{events: &events, current: current}
 	service := newProgrammeService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, func() time.Time { return time.UnixMilli(500) }, model.NewID)
 	name := "computing"
-	updated, err := service.UpdateProgramme(context.Background(), Invocation{}, UpdateProgrammeCommand{ID: current.ID, Name: &name})
+	updated, err := service.UpdateProgramme(context.Background(), invocation.Invocation{}, UpdateProgrammeCommand{ID: current.ID, Name: &name})
 	require.NoError(t, err)
 	require.Equal(t, current.AcademicUnitID, updated.AcademicUnitID)
 	require.Equal(t, current.AcademicUnitID, persistence.updateInput.Programme.AcademicUnitID)
@@ -203,7 +204,7 @@ func TestProgrammeArchiveUsesAtomicStoreSeam(t *testing.T) {
 	persistence := &programmeStoreFake{events: &events, current: current}
 	auditID := model.NewID()
 	service := newProgrammeService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: auditID}, func() time.Time { return time.UnixMilli(500) }, model.NewID)
-	require.NoError(t, service.ArchiveProgramme(context.Background(), Invocation{}, ArchiveProgrammeCommand{ID: current.ID}))
+	require.NoError(t, service.ArchiveProgramme(context.Background(), invocation.Invocation{}, ArchiveProgrammeCommand{ID: current.ID}))
 	require.NotNil(t, persistence.archiveInput)
 	require.Equal(t, current.ID, persistence.archiveInput.ID)
 	require.Equal(t, model.AuditEventID(auditID), persistence.archiveInput.AuditEventID)
@@ -224,7 +225,7 @@ func TestProgrammeListPreservesLimitWithoutSearch(t *testing.T) {
 				persistence, &programmeAuthorizerFake{events: &events},
 				&institutionAuditorFake{events: &events}, time.Now, model.NewID,
 			)
-			got, err := service.ListProgrammes(context.Background(), Invocation{}, ListProgrammesQuery{
+			got, err := service.ListProgrammes(context.Background(), invocation.Invocation{}, ListProgrammesQuery{
 				AcademicUnitID: model.NewAcademicUnitID(), Query: term, NamePageQuery: NamePageQuery{Limit: 1},
 			})
 			require.NoError(t, err)

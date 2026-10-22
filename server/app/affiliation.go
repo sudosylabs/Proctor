@@ -14,6 +14,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -61,8 +62,8 @@ type affiliationEnrollmentReader interface {
 }
 
 type affiliationAuthorizer interface {
-	Authorize(context.Context, Invocation, model.Action, model.Resource) error
-	AuthorizeUserRead(context.Context, Invocation, string) error
+	Authorize(context.Context, invocation.Invocation, model.Action, model.Resource) error
+	AuthorizeUserRead(context.Context, invocation.Invocation, string) error
 }
 
 type affiliationEffects interface {
@@ -97,7 +98,7 @@ func (e affiliationRealtimeEffects) Report(ctx context.Context, operation string
 	e.realtime.reportTransientFailure(ctx, operation, err)
 }
 
-func (s *affiliationService) ListAffiliations(ctx context.Context, invocation Invocation, query ListAffiliationsQuery) ([]*model.Affiliation, error) {
+func (s *affiliationService) ListAffiliations(ctx context.Context, invocation invocation.Invocation, query ListAffiliationsQuery) ([]*model.Affiliation, error) {
 	userID := query.UserID
 	if !userID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
@@ -115,7 +116,7 @@ func (s *affiliationService) ListAffiliations(ctx context.Context, invocation In
 	return affiliations, nil
 }
 
-func (s *affiliationService) CreateAffiliation(ctx context.Context, invocation Invocation, command CreateAffiliationCommand) (*model.Affiliation, error) {
+func (s *affiliationService) CreateAffiliation(ctx context.Context, invocation invocation.Invocation, command CreateAffiliationCommand) (*model.Affiliation, error) {
 	resource, err := s.authorizeUser(ctx, invocation, command.UserID)
 	if err != nil {
 		return nil, err
@@ -186,7 +187,7 @@ func (s *affiliationService) CreateAffiliation(ctx context.Context, invocation I
 	return result, nil
 }
 
-func (s *affiliationService) EndAffiliation(ctx context.Context, invocation Invocation, command EndAffiliationCommand) (*model.Affiliation, error) {
+func (s *affiliationService) EndAffiliation(ctx context.Context, invocation invocation.Invocation, command EndAffiliationCommand) (*model.Affiliation, error) {
 	id := command.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "affiliation_id")
@@ -259,7 +260,7 @@ func (s *affiliationService) EndAffiliation(ctx context.Context, invocation Invo
 	return result, nil
 }
 
-func (s *affiliationService) authorizeUser(ctx context.Context, invocation Invocation, userID model.UserID) (model.Resource, error) {
+func (s *affiliationService) authorizeUser(ctx context.Context, invocation invocation.Invocation, userID model.UserID) (model.Resource, error) {
 	if !userID.IsValid() {
 		return model.Resource{}, apperror.New("request.invalid").WithField("field", "user_id")
 	}

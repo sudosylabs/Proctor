@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -36,13 +37,13 @@ type accessControlService struct {
 // guards; named helpers such as AuthorizeInstitution or AuthorizeWithScope
 // resolve or report around this same decision rather than redefining it.
 type resourceAuthorizer interface {
-	Authorize(context.Context, Invocation, model.Action, model.Resource) error
+	Authorize(context.Context, invocation.Invocation, model.Action, model.Resource) error
 }
 
 // institutionAuthorizer authorizes an Action on the installation's singleton
 // Institution and returns that Resource for the caller's audit.
 type institutionAuthorizer interface {
-	AuthorizeInstitution(context.Context, Invocation, model.Action) (model.Resource, error)
+	AuthorizeInstitution(context.Context, invocation.Invocation, model.Action) (model.Resource, error)
 }
 
 type authorizationDecisionAudit interface {
@@ -175,7 +176,7 @@ func (s *accessControlService) evaluateResolved(
 
 func (s *accessControlService) AuthorizeAcademicPeriodOwner(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	action model.Action,
 	period *model.AcademicPeriod,
 ) error {
@@ -250,7 +251,7 @@ func personalAccessTokenAllows(
 // durably recorded against the invocation's principal and request metadata.
 func (s *accessControlService) Authorize(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	action model.Action,
 	resource model.Resource,
 ) error {
@@ -261,7 +262,7 @@ func (s *accessControlService) Authorize(
 // which granted the decision, for use cases that audit at that scope.
 func (s *accessControlService) AuthorizeWithScope(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	action model.Action,
 	resource model.Resource,
 ) (model.RoleScopeType, string, error) {
@@ -282,7 +283,7 @@ func (s *accessControlService) InstitutionResource(ctx context.Context) (model.R
 // and returns that Resource for the caller's audit.
 func (s *accessControlService) AuthorizeInstitution(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	action model.Action,
 ) (model.Resource, error) {
 	resource, err := s.InstitutionResource(ctx)
@@ -297,7 +298,7 @@ func (s *accessControlService) AuthorizeInstitution(
 
 // AuthorizeUserRead authorizes reading another User through the caller's
 // current visibility scope.
-func (s *accessControlService) AuthorizeUserRead(ctx context.Context, invocation Invocation, userID string) error {
+func (s *accessControlService) AuthorizeUserRead(ctx context.Context, invocation invocation.Invocation, userID string) error {
 	_, err := s.authorizeUserRead(ctx, invocation, userID)
 	return err
 }
@@ -307,7 +308,7 @@ func (s *accessControlService) AuthorizeUserRead(ctx context.Context, invocation
 // as self-review. The caller returns its own concealing error afterwards.
 func (s *accessControlService) RecordDenial(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	action model.Action,
 	resource model.Resource,
 	unitID model.AcademicUnitID,
@@ -334,7 +335,7 @@ func (s *accessControlService) authorizeCurrentState(
 // current user.manage grant and records the decision against the exact User.
 func (s *accessControlService) authorizeUserAccountState(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	userID string,
 ) error {
 	principal := invocation.Principal()
@@ -411,7 +412,7 @@ func (s *accessControlService) authorizeCurrentStateWithScope(
 // Academic Unit or Class reports false with a nil error.
 func (s *accessControlService) authorizeUserRead(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	userID string,
 ) (bool, error) {
 	principal := invocation.Principal()

@@ -126,8 +126,8 @@ the first slice.
 
 Canonical safe Job and Job Attempt projections live with the `app/job` engine
 and omit raw commands, checkpoints, result documents, deduplication keys,
-claim ownership, tokens, and internal errors. Parent `app` names are stable
-aliases for transport consumers. The engine owns descriptor visibility,
+claim ownership, tokens, and internal errors. Transports name them in
+`app/job` directly. The engine owns descriptor visibility,
 cursor validation, persistence reads, and descriptor-governed cancel/retry
 transitions. Application use cases still authorize the Principal, resolve the
 institution resource, create the fail-closed audit attempt, and translate

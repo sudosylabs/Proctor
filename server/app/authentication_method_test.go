@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -68,7 +69,7 @@ func TestAuthenticationMethodEnrollmentRequiresStrongRecentAndPreparesHashOnly(t
 	principal := userSettingsSessionPrincipal(now)
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
-	err = service.EnrollPassword(context.Background(), NewInvocation(principal, model.RequestMetadata{}), "correct horse battery staple")
+	err = service.EnrollPassword(context.Background(), invocation.New(principal, model.RequestMetadata{}), "correct horse battery staple")
 	require.NoError(t, err)
 	require.NotNil(t, passwords.enroll)
 	require.Equal(t, principal.UserID, passwords.enroll.Credential.UserID)
@@ -79,7 +80,7 @@ func TestAuthenticationMethodEnrollmentRequiresStrongRecentAndPreparesHashOnly(t
 	weak.AuthenticationStrength = model.AuthenticationSingleFactor
 	weak.MFACompletedAt = model.OptionalTime{}
 	passwords.enroll = nil
-	err = service.EnrollPassword(context.Background(), NewInvocation(weak, model.RequestMetadata{}), "correct horse battery staple")
+	err = service.EnrollPassword(context.Background(), invocation.New(weak, model.RequestMetadata{}), "correct horse battery staple")
 	require.True(t, apperror.Is(err, "authentication.strong_required"), "weak enrollment error = %v", err)
 	require.Nil(t, passwords.enroll, "weak enrollment reached Store")
 }
@@ -97,7 +98,7 @@ func TestPasswordEnrollmentRejectsWorkBeforeAuditAndPersistence(t *testing.T) {
 	principal := userSettingsSessionPrincipal(now)
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
-	invocation := NewInvocation(principal, model.RequestMetadata{})
+	invocation := invocation.New(principal, model.RequestMetadata{})
 	saturatePasswordWork(t, hasher)
 	err = service.EnrollPassword(context.Background(), invocation, "correct horse battery staple")
 	require.True(t, apperror.Is(err, "service.busy"), "saturated enrollment = %v", err)
@@ -123,7 +124,7 @@ func TestAuthenticationMethodRemovalPassesCapabilitiesAndExactIdentity(t *testin
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
 	id := model.NewExternalIdentityID()
-	err = service.UnlinkExternalIdentity(context.Background(), NewInvocation(principal, model.RequestMetadata{}), id)
+	err = service.UnlinkExternalIdentity(context.Background(), invocation.New(principal, model.RequestMetadata{}), id)
 	require.NoError(t, err)
 	require.NotNil(t, identities.unlink)
 	require.Equal(t, id, identities.unlink.ID)

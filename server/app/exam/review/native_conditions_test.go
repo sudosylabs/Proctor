@@ -45,7 +45,7 @@ func TestNativeConditionsRequireCurrentDetailedReviewAuthority(t *testing.T) {
 	p := &nativeReviewStore{ExamIntegrityReviewStore: f.persistence}
 	f.service.deps.Authorizer = auth
 	f.service.deps.Persistence = p
-	query := NativeConditionListQuery{SubmissionID: f.submissionID, Limit: 100}
+	query := store.NativeConditionListOptions{SubmissionID: f.submissionID, Limit: 100}
 	_, err := f.service.ListNativeConditions(context.Background(), f.invocation, query)
 	require.ErrorIs(t, err, denied, "private conditions read before authorization")
 	require.Equal(t, 0, p.calls, "private conditions read before authorization")

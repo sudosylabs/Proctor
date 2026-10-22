@@ -23,7 +23,10 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 func (c *connectionRuntime) readPump(ctx context.Context) {
@@ -144,7 +147,7 @@ func (c *connectionRuntime) handleRequest(
 		metadata.RequestID = fmt.Sprintf("%s:%d", c.id, request.Sequence)
 		if err := c.application.AuthorizeWebSocketSubscription(
 			ctx,
-			app.NewInvocation(c.principal, metadata),
+			invocation.New(c.principal, metadata),
 			subscription.Action,
 			subscription.Resource.model(),
 		); err != nil {
@@ -237,7 +240,7 @@ func (c *connectionRuntime) handleExamAttemptConnect(ctx context.Context, reques
 	}
 	metadata := c.metadata
 	metadata.RequestID = fmt.Sprintf("%s:%d", c.id, request.Sequence)
-	result, err := attempts.ConnectExamAttempt(ctx, app.NewInvocation(c.principal, metadata), app.ConnectExamAttemptCommand{Security: decoded.Security,
+	result, err := attempts.ConnectExamAttempt(ctx, invocation.New(c.principal, metadata), attempt.ConnectCommand{Security: decoded.Security,
 		SittingID: sittingID, ContinuityCredential: decoded.ContinuityCredential,
 		ConfigurationManifestFingerprint: decoded.ConfigurationManifestFingerprint,
 		InitialConfiguration:             decoded.InitialConfiguration, IdempotencyKey: decoded.IdempotencyKey,
@@ -327,14 +330,14 @@ func (c *connectionRuntime) handleExamAttemptBrowserStart(ctx context.Context, r
 	}
 	metadata := c.metadata
 	metadata.RequestID = fmt.Sprintf("%s:%d", c.id, request.Sequence)
-	result, err := attempts.StartExamAttemptBrowserActivity(ctx, app.NewInvocation(c.principal, metadata), app.StartBrowserActivityCommand{
-		CandidateAccess: app.CandidateExamAttemptAccess{AttemptID: binding.attemptID, ConnectionID: binding.connectionID,
+	result, err := attempts.StartExamAttemptBrowserActivity(ctx, invocation.New(c.principal, metadata), attempt.StartBrowserActivityCommand{
+		CandidateAccess: attempt.CandidateAccess{AttemptID: binding.attemptID, ConnectionID: binding.connectionID,
 			ContinuityCredential: decoded.ContinuityCredential}, ParticipationID: binding.participationID, Generation: binding.generation,
 		SourceSessionID: model.BrowserSourceSessionID(decoded.SourceSessionID), PolicyRevisionID: model.ExamRevisionID(decoded.PolicyRevisionID), PolicyDigest: decoded.PolicyDigest, Transition: decoded.Transition,
 	})
 	if err != nil {
 		code := apperror.Classify(err, "exam.attempt.unavailable")
-		var refusal *app.BrowserSourceRefusal
+		var refusal *store.BrowserSourceRefusal
 		if errors.As(err, &refusal) && refusal.Status.Validate() == nil && refusal.Capabilities != nil && refusal.Capabilities.Validate() == nil {
 			caps := candidateRuntimeCapabilitiesWire(*refusal.Capabilities)
 			c.enqueueOutbound(outboundMessage{response: &Response{Status: "error", Sequence: request.Sequence, Error: &Error{Code: string(code), Message: localizedText(c.localizer, c.locale, websocketErrorMessage(websocketErrorBrowserActivityFailed)), BrowserSourceStatus: &refusal.Status, CandidateRuntimeCapabilities: &caps, DeliveryMetadataCapacity: refusal.Capacity}}})
@@ -372,8 +375,8 @@ func (c *connectionRuntime) handleExamAttemptBrowserAppend(ctx context.Context, 
 	}
 	metadata := c.metadata
 	metadata.RequestID = fmt.Sprintf("%s:%d", c.id, request.Sequence)
-	result, err := attempts.AppendExamAttemptBrowserActivity(ctx, app.NewInvocation(c.principal, metadata), app.AppendBrowserActivityCommand{
-		CandidateAccess: app.CandidateExamAttemptAccess{AttemptID: binding.attemptID, ConnectionID: binding.connectionID,
+	result, err := attempts.AppendExamAttemptBrowserActivity(ctx, invocation.New(c.principal, metadata), attempt.AppendBrowserActivityCommand{
+		CandidateAccess: attempt.CandidateAccess{AttemptID: binding.attemptID, ConnectionID: binding.connectionID,
 			ContinuityCredential: decoded.ContinuityCredential}, ParticipationID: binding.participationID, Generation: binding.generation,
 		SourceSessionID: model.BrowserSourceSessionID(decoded.SourceSessionID), PolicyRevisionID: model.ExamRevisionID(decoded.PolicyRevisionID), PolicyDigest: decoded.PolicyDigest, Events: events,
 	})
@@ -424,7 +427,7 @@ func (c *connectionRuntime) handleExamAttemptRenew(ctx context.Context, request 
 	}
 	metadata := c.metadata
 	metadata.RequestID = fmt.Sprintf("%s:%d", c.id, request.Sequence)
-	result, err := attempts.RenewExamAttemptParticipation(ctx, app.NewInvocation(c.principal, metadata), app.RenewExamAttemptParticipationCommand{SecurityCoverage: decoded.SecurityCoverage,
+	result, err := attempts.RenewExamAttemptParticipation(ctx, invocation.New(c.principal, metadata), attempt.RenewParticipationCommand{SecurityCoverage: decoded.SecurityCoverage,
 		AttemptID: binding.attemptID, ParticipationID: binding.participationID, ConnectionID: binding.connectionID,
 		Generation: decoded.Generation, Sequence: decoded.Sequence, ContinuityCredential: decoded.ContinuityCredential,
 	})
@@ -469,8 +472,8 @@ func (c *connectionRuntime) handleExamAttemptFocusLoss(ctx context.Context, requ
 	}
 	metadata := c.metadata
 	metadata.RequestID = fmt.Sprintf("%s:%d", c.id, request.Sequence)
-	result, err := attempts.EvaluateExamAttemptFocusLoss(ctx, app.NewInvocation(c.principal, metadata),
-		app.EvaluateExamAttemptFocusLossCommand{SchemaVersion: decoded.SchemaVersion,
+	result, err := attempts.EvaluateExamAttemptFocusLoss(ctx, invocation.New(c.principal, metadata),
+		attempt.FocusLossCommand{SchemaVersion: decoded.SchemaVersion,
 			AttemptID: binding.attemptID, ParticipationID: binding.participationID,
 			ConnectionID: binding.connectionID, Generation: decoded.Generation, Sequence: decoded.Sequence,
 			DurationMilliseconds: decoded.DurationMilliseconds, Source: model.FocusLossSource(decoded.Source),
@@ -563,7 +566,7 @@ func (c *connectionRuntime) finalizeExamAttempt(ctx context.Context) {
 		defer cancel()
 		metadata := c.metadata
 		metadata.RequestID = c.id + ":attempt-close"
-		_, err := attempts.CloseExamAttemptConnection(closeCtx, app.NewInvocation(c.principal, metadata), app.CloseExamAttemptConnectionCommand{
+		_, err := attempts.CloseExamAttemptConnection(closeCtx, invocation.New(c.principal, metadata), attempt.CloseConnectionCommand{
 			AttemptID: binding.attemptID, SittingID: binding.sittingID, ClassID: binding.classID,
 			ConnectionID: binding.connectionID, Reason: model.AttemptConnectionCloseTransport,
 		})
@@ -603,7 +606,7 @@ func (c *connectionRuntime) handleExamAttemptSecurityUpdate(ctx context.Context,
 	}
 	metadata := c.metadata
 	metadata.RequestID = fmt.Sprintf("%s:%d", c.id, request.Sequence)
-	result, err := attempts.UpdateExamSecurityCoverage(ctx, app.NewInvocation(c.principal, metadata), app.UpdateSecurityCoverageCommand{Access: app.CandidateExamAttemptAccess{AttemptID: binding.attemptID, ConnectionID: binding.connectionID, ContinuityCredential: decoded.ContinuityCredential}, ParticipationID: binding.participationID, Generation: binding.generation, Coverage: decoded.SecurityCoverage})
+	result, err := attempts.UpdateExamSecurityCoverage(ctx, invocation.New(c.principal, metadata), attempt.UpdateSecurityCoverageCommand{Access: attempt.CandidateAccess{AttemptID: binding.attemptID, ConnectionID: binding.connectionID, ContinuityCredential: decoded.ContinuityCredential}, ParticipationID: binding.participationID, Generation: binding.generation, Coverage: decoded.SecurityCoverage})
 	if err != nil {
 		code, presentation := examAttemptRenewError(err)
 		c.enqueueError(request.Sequence, code, presentation)

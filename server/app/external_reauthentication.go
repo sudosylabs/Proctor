@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -22,7 +23,7 @@ type BeginExternalReauthenticationCommand struct {
 	Source string
 }
 
-func (s *externalAuthenticationService) BeginExternalReauthentication(ctx context.Context, invocation Invocation, command BeginExternalReauthenticationCommand) (*model.ExternalAuthenticationStart, error) {
+func (s *externalAuthenticationService) BeginExternalReauthentication(ctx context.Context, invocation invocation.Invocation, command BeginExternalReauthenticationCommand) (*model.ExternalAuthenticationStart, error) {
 	principal := invocation.Principal()
 	if principal.ValidateMFARecovery() != nil || principal.CredentialType != model.CredentialSessionAccess || principal.ClientType != model.SessionClientWeb {
 		return nil, invalidTokenAppError()

@@ -15,6 +15,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
@@ -171,7 +172,7 @@ func (s *classMemberService) publishMembershipChanged(
 	}
 }
 
-func (s *classMemberService) EnrollClassMember(ctx context.Context, invocation Invocation, command EnrollClassMemberCommand) (*model.ClassEnrollment, error) {
+func (s *classMemberService) EnrollClassMember(ctx context.Context, invocation invocation.Invocation, command EnrollClassMemberCommand) (*model.ClassEnrollment, error) {
 	classID := command.ClassID
 	resource, err := s.authorizeClass(ctx, invocation, classID, model.ActionClassMembersManage)
 	if err != nil {
@@ -353,7 +354,7 @@ func (s *classMemberService) EnrollClassMember(ctx context.Context, invocation I
 		key = model.MailTemplateAcademicClassTransferred
 		details.PreviousClassDisplayName = previousClass.DisplayName
 	}
-	var prepared *preparedDirectMail
+	var prepared *store.PreparedMail
 	if !command.batchRetainedOutcome {
 		prepared, err = s.mail.PrepareClassTransition(appmail.ClassTransitionPreparation{Recipient: recipient,
 			OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: key,
@@ -426,7 +427,7 @@ func (s *classMemberService) EnrollClassMember(ctx context.Context, invocation I
 	return &model.ClassEnrollment{Membership: result.Membership, Previous: result.Previous}, nil
 }
 
-func (s *classMemberService) EndClassMember(ctx context.Context, invocation Invocation, command EndClassMemberCommand) (*model.ClassMember, error) {
+func (s *classMemberService) EndClassMember(ctx context.Context, invocation invocation.Invocation, command EndClassMemberCommand) (*model.ClassMember, error) {
 	id := command.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "class_member_id")
@@ -499,7 +500,7 @@ func (s *classMemberService) EndClassMember(ctx context.Context, invocation Invo
 		return nil, classMemberStoreErrors.Translate(err)
 	}
 	at := model.TimeFromMillis(model.MillisFromTime(s.now()))
-	prepared := &preparedDirectMail{}
+	prepared := &store.PreparedMail{}
 	if !command.batchRetainedOutcome {
 		prepared, err = s.mail.PrepareClassTransition(appmail.ClassTransitionPreparation{Recipient: recipient,
 			OccurrenceID: model.NewMailOccurrenceID(),
@@ -557,7 +558,7 @@ func (s *classMemberService) publishEnrollmentChanged(ctx context.Context, resul
 	s.publishMembershipChanged(ctx, result.Membership.UserID, classIDs...)
 }
 
-func (s *classMemberService) authorizeClass(ctx context.Context, invocation Invocation, classID model.ClassID, action model.Action) (model.Resource, error) {
+func (s *classMemberService) authorizeClass(ctx context.Context, invocation invocation.Invocation, classID model.ClassID, action model.Action) (model.Resource, error) {
 	if !classID.IsValid() {
 		return model.Resource{}, apperror.New("request.invalid").WithField("field", "class_id")
 	}
@@ -588,7 +589,7 @@ type ClassMemberPage struct {
 	ActiveAt int64
 }
 
-func (s *classMemberService) ListClassMembersPage(ctx context.Context, invocation Invocation, query ListClassMembersPageQuery) (*ClassMemberPage, error) {
+func (s *classMemberService) ListClassMembersPage(ctx context.Context, invocation invocation.Invocation, query ListClassMembersPageQuery) (*ClassMemberPage, error) {
 	resource, err := s.authorizeClass(ctx, invocation, query.ClassID, model.ActionClassMembersView)
 	if err != nil {
 		return nil, err

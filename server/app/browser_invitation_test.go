@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -111,7 +112,7 @@ func TestBrowserInvitationPreservesPasswordWorkFailures(t *testing.T) {
 					browserInvitationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
 					invitations, "https://proctor.example.edu", model.NewCredentialToken)
 				require.NoError(t, err)
-				result, err := service.AcceptBrowserInvitation(ctx, Invocation{}, BrowserInvitationAcceptanceCommand{
+				result, err := service.AcceptBrowserInvitation(ctx, invocation.Invocation{}, BrowserInvitationAcceptanceCommand{
 					Handle: model.NewCredentialToken(), BrowserProof: model.NewCredentialToken(), Username: "invited",
 					Password: "correct horse battery staple", Source: "192.0.2.38",
 				})
@@ -154,7 +155,7 @@ func TestBrowserInvitationStartReplacesRawClaimWithTwoHashedProofs(t *testing.T)
 		},
 	)
 	require.NoError(t, err)
-	started, err := service.StartBrowserInvitation(context.Background(), Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
+	started, err := service.StartBrowserInvitation(context.Background(), invocation.Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
 	require.NoError(t, err)
 	require.Equal(t, handle, started.Handle, "start = %#v checks", started)
 	require.Equal(t, proof, started.BrowserProof, "start = %#v checks", started)
@@ -201,7 +202,7 @@ func TestBrowserInvitationStoreNilResultsFailClosed(t *testing.T) {
 	require.NoError(t, err)
 	// An explicit nil result from an otherwise successful dependency must not
 	// become a successful application response or a later nil dereference.
-	_, err = service.StartBrowserInvitation(context.Background(), Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
+	_, err = service.StartBrowserInvitation(context.Background(), invocation.Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
 	require.True(t, apperror.Is(err, "invitation.unavailable"), "Start error = %v, want invitation.unavailable", err)
 
 	transactions.createNil = false
@@ -231,7 +232,7 @@ func TestBrowserInvitationMalformedStoreFactsFailClosed(t *testing.T) {
 				invitationService, "https://proctor.example.edu", model.NewCredentialToken,
 			)
 			require.NoError(t, err)
-			_, err = service.StartBrowserInvitation(context.Background(), Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
+			_, err = service.StartBrowserInvitation(context.Background(), invocation.Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
 			require.True(t, apperror.Is(err, "invitation.unavailable"), "Start error = %v", err)
 		})
 	}
@@ -261,7 +262,7 @@ func TestBrowserInvitationMalformedStoreFactsFailClosed(t *testing.T) {
 					created.ExpiresAt = result.ExpiresAt
 				}
 			}
-			_, err := service.StartBrowserInvitation(context.Background(), Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
+			_, err := service.StartBrowserInvitation(context.Background(), invocation.Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
 			require.True(t, apperror.Is(err, "invitation.unavailable"), "Start error = %v", err)
 		})
 	}
@@ -304,7 +305,7 @@ func TestBrowserInvitationSessionAcceptanceRequiresWebSession(t *testing.T) {
 	}
 	_, err = service.AcceptBrowserInvitationWithSession(
 		context.Background(),
-		NewInvocation(principal, model.RequestMetadata{}),
+		invocation.New(principal, model.RequestMetadata{}),
 		BrowserInvitationSessionAcceptanceCommand{
 			Handle: model.NewCredentialToken(), BrowserProof: model.NewCredentialToken(), Source: "source",
 		},

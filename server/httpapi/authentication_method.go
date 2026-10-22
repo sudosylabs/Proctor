@@ -12,15 +12,16 @@ import (
 	"net/http"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type authenticationMethodApplication interface {
-	AuthenticationMethods(context.Context, app.Invocation) (app.AuthenticationMethodView, error)
-	EnrollPassword(context.Context, app.Invocation, string) error
-	RemovePassword(context.Context, app.Invocation) error
-	BeginProviderConnection(context.Context, app.Invocation, app.BeginProviderConnectionCommand) (*model.ExternalAuthenticationStart, error)
-	UnlinkExternalIdentity(context.Context, app.Invocation, model.ExternalIdentityID) error
+	AuthenticationMethods(context.Context, invocation.Invocation) (app.AuthenticationMethodView, error)
+	EnrollPassword(context.Context, invocation.Invocation, string) error
+	RemovePassword(context.Context, invocation.Invocation) error
+	BeginProviderConnection(context.Context, invocation.Invocation, app.BeginProviderConnectionCommand) (*model.ExternalAuthenticationStart, error)
+	UnlinkExternalIdentity(context.Context, invocation.Invocation, model.ExternalIdentityID) error
 }
 
 type authenticationMethodResourceModule struct {
@@ -49,7 +50,7 @@ type providerConnectionResponse struct {
 	ExpiresAt   string `json:"expires_at"`
 }
 
-func authenticationMethodResource(application authenticationMethodApplication, cookies browserCookies) resource {
+func authenticationMethodResource(application authenticationMethodApplication, cookies browserCookies) apiResource {
 	m := authenticationMethodResourceModule{application: application, cookies: cookies}
 	base := apiPath(literal("authentication-methods"))
 	password := appendRoutePath(base, literal("password"))

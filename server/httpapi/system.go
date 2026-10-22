@@ -33,7 +33,7 @@ func systemResourceWithApplication(
 	buildInfo BuildInfo,
 	desktopCompatibility DesktopCompatibilityApplication,
 	now func() time.Time,
-) resource {
+) apiResource {
 	module := systemResourceModule{
 		health:               health,
 		buildInfo:            buildInfo,

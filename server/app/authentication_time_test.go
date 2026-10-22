@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -164,7 +165,7 @@ func TestSessionRefreshUsesOneNativeDecisionInstant(t *testing.T) {
 	service.sessionPolicy.IdleTTL += 700 * time.Microsecond
 	clockReads := 0
 	service.now = func() time.Time { clockReads++; return clock.Add(time.Duration(clockReads-1) * time.Hour) }
-	_, tokens, err := service.RefreshSession(context.Background(), Invocation{}, RefreshSessionCommand{RefreshToken: model.NewCredentialToken()})
+	_, tokens, err := service.RefreshSession(context.Background(), invocation.Invocation{}, RefreshSessionCommand{RefreshToken: model.NewCredentialToken()})
 	require.NoError(t, err)
 	now := model.TimeUTC(clock)
 	require.Equal(t, 1, clockReads, "refresh lost a single native instant: reads=%d, at=%v, idle=%v, tokens=%#v", clockReads, persistence.rotatedAt, persistence.rotatedIdleExpiry, tokens)

@@ -13,47 +13,19 @@ import (
 	"time"
 
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type ExamView = examengine.View
-
-// CreateExamCommand creates an Exam with its initial Exam Draft in an Academic
-// Unit; IdempotencyKey makes it replayable.
-type CreateExamCommand = examengine.CreateCommand
-
-// GetExamQuery names one Exam.
-type GetExamQuery = examengine.GetQuery
-
-// EditExamDraftTextCommand edits the title and/or Exam Instructions of an Exam
-// Draft; nil fields are left unchanged. It is fenced by ExpectedDraftRevision
-// and replayed by IdempotencyKey.
-type EditExamDraftTextCommand = examengine.EditDraftTextCommand
-
-// ConfigureExamDraftNativePolicyCommand replaces the native security policy of
-// an Exam Draft, fenced by ExpectedDraftRevision and replayed by
-// IdempotencyKey.
-type ConfigureExamDraftNativePolicyCommand = examengine.ConfigureDraftNativePolicyCommand
-
-// ConfigureExamDraftFocusLossCommand replaces the Focus Loss policy of an Exam
-// Draft: the minimum qualifying duration, incident count and window, and the
-// outcome when crossed. It is fenced by ExpectedDraftRevision and replayed by
-// IdempotencyKey.
-type ConfigureExamDraftFocusLossCommand = examengine.ConfigureDraftFocusLossCommand
-
-// ConfigureExamDraftBrowserPolicyCommand replaces the Browser Policy of an
-// Exam Draft, fenced by ExpectedDraftRevision and replayed by IdempotencyKey.
-type ConfigureExamDraftBrowserPolicyCommand = examengine.ConfigureDraftBrowserPolicyCommand
-
 type examAuthorizationAdapter struct{ authorization *accessControlService }
 
-func (a examAuthorizationAdapter) Authorize(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource) error {
+func (a examAuthorizationAdapter) Authorize(ctx context.Context, invocation invocation.Invocation, action model.Action, resource model.Resource) error {
 	return a.authorization.Authorize(ctx, invocation, action, resource)
 }
 
-func (a examAuthorizationAdapter) AuthorizeList(ctx context.Context, invocation Invocation, _ model.AcademicUnitID) (store.ExamListVisibility, error) {
+func (a examAuthorizationAdapter) AuthorizeList(ctx context.Context, invocation invocation.Invocation, _ model.AcademicUnitID) (store.ExamListVisibility, error) {
 	principal := invocation.Principal()
 	decisionAt := model.TimeUTC(a.authorization.now())
 	ordinary, err := a.authorization.authorizedScopesAt(ctx, principal, model.ActionExamView, model.ResourceExam, decisionAt)

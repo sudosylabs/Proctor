@@ -19,21 +19,23 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/exam/sitting"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 type ExamSittingApplication interface {
-	ScheduleExamSitting(context.Context, app.Invocation, app.ScheduleExamSittingCommand) (app.ExamSittingView, error)
-	GetExamSitting(context.Context, app.Invocation, app.GetExamSittingQuery) (app.ExamSittingView, error)
-	ListExamSittings(context.Context, app.Invocation, app.ListExamSittingsQuery) (app.ExamSittingPage, error)
-	UpdateExamSittingSchedule(context.Context, app.Invocation, app.UpdateExamSittingScheduleCommand) (app.ExamSittingView, error)
-	CancelExamSitting(context.Context, app.Invocation, app.CancelExamSittingCommand) (app.ExamSittingView, error)
-	PauseExamSitting(context.Context, app.Invocation, app.PauseExamSittingCommand) (app.ExamSittingView, error)
-	ResumeExamSitting(context.Context, app.Invocation, app.ResumeExamSittingCommand) (app.ExamSittingView, error)
-	ExtendExamSitting(context.Context, app.Invocation, app.ExtendExamSittingCommand) (app.ExamSittingView, error)
-	CloseExamSitting(context.Context, app.Invocation, app.CloseExamSittingCommand) (app.ExamSittingView, error)
-	ListExamSittingNoShows(context.Context, app.Invocation, app.ListExamSittingNoShowsQuery) (app.ExamSittingNoShowPage, error)
+	ScheduleExamSitting(context.Context, invocation.Invocation, sitting.ScheduleCommand) (store.ExamSittingSnapshot, error)
+	GetExamSitting(context.Context, invocation.Invocation, sitting.GetQuery) (store.ExamSittingSnapshot, error)
+	ListExamSittings(context.Context, invocation.Invocation, sitting.ListQuery) (sitting.Page, error)
+	UpdateExamSittingSchedule(context.Context, invocation.Invocation, sitting.UpdateScheduleCommand) (store.ExamSittingSnapshot, error)
+	CancelExamSitting(context.Context, invocation.Invocation, sitting.CancelCommand) (store.ExamSittingSnapshot, error)
+	PauseExamSitting(context.Context, invocation.Invocation, sitting.PauseCommand) (store.ExamSittingSnapshot, error)
+	ResumeExamSitting(context.Context, invocation.Invocation, sitting.ResumeCommand) (store.ExamSittingSnapshot, error)
+	ExtendExamSitting(context.Context, invocation.Invocation, sitting.ExtendCommand) (store.ExamSittingSnapshot, error)
+	CloseExamSitting(context.Context, invocation.Invocation, sitting.EarlyCloseCommand) (store.ExamSittingSnapshot, error)
+	ListExamSittingNoShows(context.Context, invocation.Invocation, sitting.ListNoShowsQuery) (sitting.NoShowPage, error)
 }
 
 type scheduleExamSittingRequest struct {
@@ -205,7 +207,7 @@ type examSittingCursorWire struct {
 
 type examSittingHTTPModule struct{ application ExamSittingApplication }
 
-func examSittingResource(application ExamSittingApplication) resource {
+func examSittingResource(application ExamSittingApplication) apiResource {
 	module := examSittingHTTPModule{application: application}
 	collection := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"))
 	member := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"))
@@ -237,7 +239,7 @@ func (m examSittingHTTPModule) listNoShows(request operationRequest) (operationR
 	if err != nil {
 		return operationResult{}, err
 	}
-	query := app.ListExamSittingNoShowsQuery{ExamID: examID, SittingID: sittingID, Limit: 50}
+	query := sitting.ListNoShowsQuery{ExamID: examID, SittingID: sittingID, Limit: 50}
 	values := request.request.URL.Query()
 	if raw := values.Get("limit"); raw != "" {
 		query.Limit, err = strconv.Atoi(raw)
@@ -364,7 +366,7 @@ func (m examSittingHTTPModule) schedule(request operationRequest) (operationResu
 	if !startAt.Before(endAt) {
 		return operationResult{}, invalidRequestError(errors.New("must be a nonempty interval"))
 	}
-	view, err := m.application.ScheduleExamSitting(request.context, request.invocation(), app.ScheduleExamSittingCommand{
+	view, err := m.application.ScheduleExamSitting(request.context, request.invocation(), sitting.ScheduleCommand{
 		ExamID: examID, ExamRevisionID: revisionID, ClassID: classID, ScheduledStartAt: startAt, ScheduledEndAt: endAt,
 		IdempotencyKey: request.idempotencyKey,
 	})
@@ -379,7 +381,7 @@ func (m examSittingHTTPModule) get(request operationRequest) (operationResult, e
 	if err != nil {
 		return operationResult{}, err
 	}
-	view, err := m.application.GetExamSitting(request.context, request.invocation(), app.GetExamSittingQuery{ExamID: examID, SittingID: sittingID})
+	view, err := m.application.GetExamSitting(request.context, request.invocation(), sitting.GetQuery{ExamID: examID, SittingID: sittingID})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -391,7 +393,7 @@ func (m examSittingHTTPModule) list(request operationRequest) (operationResult, 
 	if err != nil {
 		return operationResult{}, err
 	}
-	query := app.ListExamSittingsQuery{ExamID: examID, Limit: 50}
+	query := sitting.ListQuery{ExamID: examID, Limit: 50}
 	values := request.request.URL.Query()
 	if raw := values.Get("class_id"); raw != "" {
 		query.ClassID, err = model.ParseClassID(raw)
@@ -472,7 +474,7 @@ func (m examSittingHTTPModule) updateSchedule(request operationRequest) (operati
 	if noExamSittingScheduleChange(body) {
 		return operationResult{}, invalidRequestError(errors.New("at least one change is required"))
 	}
-	command := app.UpdateExamSittingScheduleCommand{ExamID: examID, SittingID: sittingID, ExpectedRevision: body.ExpectedRevision, IdempotencyKey: request.idempotencyKey}
+	command := sitting.UpdateScheduleCommand{ExamID: examID, SittingID: sittingID, ExpectedRevision: body.ExpectedRevision, IdempotencyKey: request.idempotencyKey}
 	if body.ExamRevisionID.IsSet() {
 		if body.ExamRevisionID.IsNull() {
 			return operationResult{}, invalidRequestError(errors.New("must not be null"))
@@ -523,7 +525,7 @@ func (m examSittingHTTPModule) cancel(request operationRequest) (operationResult
 	if !validExamSittingManagerReason(body.Reason) {
 		return operationResult{}, invalidRequestError(errors.New("must be trimmed valid UTF-8 between 1 and 1000 characters and at most 4000 bytes"))
 	}
-	view, err := m.application.CancelExamSitting(request.context, request.invocation(), app.CancelExamSittingCommand{
+	view, err := m.application.CancelExamSitting(request.context, request.invocation(), sitting.CancelCommand{
 		ExamID: examID, SittingID: sittingID, ExpectedRevision: body.ExpectedRevision,
 		PrivateReason: body.Reason, IdempotencyKey: request.idempotencyKey,
 	})
@@ -533,7 +535,7 @@ func (m examSittingHTTPModule) cancel(request operationRequest) (operationResult
 	return jsonResult(http.StatusOK, examSittingResponseFromView(view)), nil
 }
 
-type examSittingManagerCommandCall func(context.Context, app.Invocation, app.PauseExamSittingCommand) (app.ExamSittingView, error)
+type examSittingManagerCommandCall func(context.Context, invocation.Invocation, sitting.PauseCommand) (store.ExamSittingSnapshot, error)
 
 func (m examSittingHTTPModule) pause(request operationRequest) (operationResult, error) {
 	return m.managerTransition(request, "pauseExamSitting", m.application.PauseExamSitting)
@@ -564,7 +566,7 @@ func (m examSittingHTTPModule) managerTransition(request operationRequest, opera
 	if !validExamSittingManagerReason(body.Reason) {
 		return operationResult{}, invalidRequestError(errors.New("must be trimmed valid UTF-8 between 1 and 1000 characters and at most 4000 bytes"))
 	}
-	view, err := run(request.context, request.invocation(), app.PauseExamSittingCommand{
+	view, err := run(request.context, request.invocation(), sitting.PauseCommand{
 		ExamID: examID, SittingID: sittingID, ExpectedRevision: body.ExpectedRevision,
 		PrivateReason: body.Reason, IdempotencyKey: request.idempotencyKey,
 	})
@@ -593,7 +595,7 @@ func (m examSittingHTTPModule) extend(request operationRequest) (operationResult
 	if !validExamSittingManagerReason(body.Reason) {
 		return operationResult{}, invalidRequestError(errors.New("must be trimmed valid UTF-8 between 1 and 1000 characters and at most 4000 bytes"))
 	}
-	view, err := m.application.ExtendExamSitting(request.context, request.invocation(), app.ExtendExamSittingCommand{
+	view, err := m.application.ExtendExamSitting(request.context, request.invocation(), sitting.ExtendCommand{
 		ExamID: examID, SittingID: sittingID, ExpectedRevision: body.ExpectedRevision, ScheduledEndAt: endAt,
 		PrivateReason: body.Reason, IdempotencyKey: request.idempotencyKey,
 	})
@@ -674,7 +676,7 @@ func parseExamSittingStates(raw []string) ([]model.ExamSittingState, error) {
 	return states, nil
 }
 
-func examSittingResponseFromView(view app.ExamSittingView) examSittingResponse {
+func examSittingResponseFromView(view store.ExamSittingSnapshot) examSittingResponse {
 	if view.Sitting == nil {
 		return examSittingResponse{}
 	}

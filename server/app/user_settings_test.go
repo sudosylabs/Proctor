@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -125,7 +126,7 @@ func TestUserSettingsReadOwnPreservesExactSource(t *testing.T) {
 	}}
 	service := newUserSettingsServiceForTest(t, persistence, &userSettingsAuditFake{}, time.Now)
 
-	result, err := service.ReadOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+	result, err := service.ReadOwnUserSettings(context.Background(), invocation.New(principal, model.RequestMetadata{}))
 	require.NoError(t, err)
 	require.Equal(t, principal.UserID, persistence.got, "Get() user")
 	require.Equal(t, 1, persistence.reads, "Get() user")
@@ -149,7 +150,7 @@ func TestUserSettingsReadOwnPreservesUnsupportedFormatAsOpaqueReadOnlySource(t *
 	}}
 	service := newUserSettingsServiceForTest(t, persistence, &userSettingsAuditFake{}, time.Now)
 
-	result, err := service.ReadOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+	result, err := service.ReadOwnUserSettings(context.Background(), invocation.New(principal, model.RequestMetadata{}))
 	require.NoError(t, err)
 	require.Equal(t, source, result.Source)
 	require.Equal(t, 2, result.FormatVersion)
@@ -173,7 +174,7 @@ func TestUserSettingsReadOwnRequiresInteractiveSession(t *testing.T) {
 		"system invocation":     {},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := service.ReadOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+			_, err := service.ReadOwnUserSettings(context.Background(), invocation.New(principal, model.RequestMetadata{}))
 			require.True(t, apperror.Is(err, "authentication.token_invalid"), "ReadOwn() error = %v", err)
 		})
 	}
@@ -199,7 +200,7 @@ func TestUserSettingsReadOwnFailsClosedWithoutExposingSource(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			service := newUserSettingsServiceForTest(t, test.store, &userSettingsAuditFake{}, time.Now)
-			_, err := service.ReadOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+			_, err := service.ReadOwnUserSettings(context.Background(), invocation.New(principal, model.RequestMetadata{}))
 			require.True(t, apperror.Is(err, "user_settings.unavailable"), "ReadOwn() error = %v", err)
 			if err != nil {
 				require.False(t, containsSensitiveText(err.Error(), secret))
@@ -224,7 +225,7 @@ func TestUserSettingsReplaceOwnValidatesAndPreparesSafeAtomicMutation(t *testing
 	persistence.replaceResult = &store.UserSettingsReplacementResult{
 		Revision: nextRevision, FormatVersion: 1, UpdatedAt: at, Changed: true,
 	}
-	result, err := service.ReplaceOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
+	result, err := service.ReplaceOwnUserSettings(context.Background(), invocation.New(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
 		Source: source, FormatVersion: 1, ExpectedRevision: current.Revision,
 		IdempotencyKey: "settings-save-1",
 	})
@@ -256,7 +257,7 @@ func TestUserSettingsReplaceOwnRejectsInvalidSourceWithoutLeakOrMutation(t *test
 	persistence := &userSettingsStoreFake{}
 	audit := &userSettingsAuditFake{}
 	service := newUserSettingsServiceForTest(t, persistence, audit, time.Now)
-	_, err := service.ReplaceOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
+	_, err := service.ReplaceOwnUserSettings(context.Background(), invocation.New(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
 		Source: "{\"" + secret + "\": }", FormatVersion: 1,
 		ExpectedRevision: model.NewUserSettingsRevision(), IdempotencyKey: "invalid-save",
 	})
@@ -292,7 +293,7 @@ func TestUserSettingsReplaceOwnRejectsUnsupportedFormatsWithoutEffects(t *testin
 			persistence := &userSettingsStoreFake{document: test.persisted}
 			audit := &userSettingsAuditFake{}
 			service := newUserSettingsServiceForTest(t, persistence, audit, time.Now)
-			_, err := service.ReplaceOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
+			_, err := service.ReplaceOwnUserSettings(context.Background(), invocation.New(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
 				Source: "{}\n", FormatVersion: test.targetVersion,
 				ExpectedRevision: test.persisted.Revision, IdempotencyKey: "unsupported-format-save",
 			})
@@ -327,7 +328,7 @@ func TestUserSettingsReplaceOwnMapsRevisionAndIdempotencyConflictsSafely(t *test
 				&userSettingsAuditFake{event: &model.AuditEvent{Action: "user.settings.replace"}},
 				func() time.Time { return at },
 			)
-			_, err := service.ReplaceOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
+			_, err := service.ReplaceOwnUserSettings(context.Background(), invocation.New(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
 				Source: "{\"editor.fontSize\": 16}\n", FormatVersion: 1,
 				ExpectedRevision: current.Revision, IdempotencyKey: "conflict-key",
 			})
@@ -361,7 +362,7 @@ func TestUserSettingsReplaceOwnUnknownOutcomeIsResolvedByAuthoritativeRead(t *te
 		func() time.Time { return at },
 	)
 	const source = "{\"editor.fontSize\": 18}\n"
-	_, err := service.ReplaceOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
+	_, err := service.ReplaceOwnUserSettings(context.Background(), invocation.New(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
 		Source: source, FormatVersion: 1, ExpectedRevision: previous.Revision,
 		IdempotencyKey: "unknown-outcome",
 	})
@@ -371,7 +372,7 @@ func TestUserSettingsReplaceOwnUnknownOutcomeIsResolvedByAuthoritativeRead(t *te
 	committed.Revision = model.NewUserSettingsRevision()
 	committed.UpdatedAt = at
 	persistence.document = &committed
-	view, err := service.ReadOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+	view, err := service.ReadOwnUserSettings(context.Background(), invocation.New(principal, model.RequestMetadata{}))
 	require.NoError(t, err)
 	require.Equal(t, source, view.Source)
 	require.Equal(t, committed.Revision, view.Revision)
@@ -398,7 +399,7 @@ func TestUserSettingsReplaceOwnPublishesOnePostCommitRefetchHint(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	result, err := service.ReplaceOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
+	result, err := service.ReplaceOwnUserSettings(context.Background(), invocation.New(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
 		Source: "{\"editor.fontSize\": 16}\n", FormatVersion: 1,
 		ExpectedRevision: current.Revision, IdempotencyKey: "notify-settings",
 	})
@@ -450,7 +451,7 @@ func TestUserSettingsReplaceOwnSuppressesNoOpReplayAndRejectedCommandEvents(t *t
 			if test.source != "" {
 				source = test.source
 			}
-			_, replaceErr := service.ReplaceOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
+			_, replaceErr := service.ReplaceOwnUserSettings(context.Background(), invocation.New(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
 				Source: source, FormatVersion: 1, ExpectedRevision: current.Revision, IdempotencyKey: "suppressed-event",
 			})
 			if test.name == "no-op" || test.name == "replay" {
@@ -475,7 +476,7 @@ func TestUserSettingsReplaceOwnRejectedPrincipalPublishesNothing(t *testing.T) {
 		CredentialType: model.CredentialPersonalAccessToken, AuthenticationMethod: "personal_access_token",
 		ClientType: model.SessionClientCLI, CredentialScopes: []string{string(model.ActionUserView)},
 	}
-	_, err = service.ReplaceOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
+	_, err = service.ReplaceOwnUserSettings(context.Background(), invocation.New(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
 		Source: "{}\n", FormatVersion: 1, ExpectedRevision: model.NewUserSettingsRevision(), IdempotencyKey: "rejected",
 	})
 	require.True(t, apperror.Is(err, "authentication.token_invalid"), "error=%v reads=%d replace=%#v changes", err, persistence.reads, persistence.replaceInput)
@@ -501,7 +502,7 @@ func TestUserSettingsRealtimeFailureDoesNotChangeCommittedResultAndReadReconcile
 	)
 	require.NoError(t, err)
 	const source = "{\"workbench.colorTheme\": \"Dark\"}\n"
-	result, err := service.ReplaceOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
+	result, err := service.ReplaceOwnUserSettings(context.Background(), invocation.New(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
 		Source: source, FormatVersion: 1, ExpectedRevision: current.Revision, IdempotencyKey: "delivery-fails",
 	})
 	require.NoError(t, err, "ReplaceOwn() = %#v", result)
@@ -512,7 +513,7 @@ func TestUserSettingsRealtimeFailureDoesNotChangeCommittedResultAndReadReconcile
 	committed := *current
 	committed.Source, committed.Revision, committed.UpdatedAt = source, next, at
 	persistence.document = &committed
-	view, err := service.ReadOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+	view, err := service.ReadOwnUserSettings(context.Background(), invocation.New(principal, model.RequestMetadata{}))
 	require.NoError(t, err, "authoritative read = %#v", view)
 	require.Equal(t, source, view.Source, "authoritative read = %#v", view)
 	require.Equal(t, next, view.Revision, "authoritative read = %#v", view)
@@ -566,7 +567,7 @@ func TestUserSettingsConcurrentWritersPublishOnlyTheCommittedWinner(t *testing.T
 	for index := 0; index < 2; index++ {
 		go func(index int) {
 			<-start
-			_, replaceErr := service.ReplaceOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
+			_, replaceErr := service.ReplaceOwnUserSettings(context.Background(), invocation.New(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
 				Source: "{\"editor.fontSize\": " + string(rune('1'+index)) + "}\n", FormatVersion: 1,
 				ExpectedRevision: current.Revision, IdempotencyKey: "racing-writer-" + string(rune('a'+index)),
 			})

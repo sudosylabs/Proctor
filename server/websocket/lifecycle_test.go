@@ -16,8 +16,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/websocket"
 )
@@ -26,7 +26,7 @@ type lifecycleApplication struct{}
 
 func (lifecycleApplication) AuthorizeWebSocketSubscription(
 	context.Context,
-	app.Invocation,
+	invocation.Invocation,
 	model.Action,
 	model.Resource,
 ) error {

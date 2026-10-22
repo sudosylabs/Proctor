@@ -18,6 +18,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -37,7 +38,7 @@ func TestExamAttemptSubmissionAuthorizationResolvesCanonicalExamBeforeCurrentMan
 		}},
 	}
 	principal := examAttemptPrincipal()
-	call := NewInvocation(principal, model.RequestMetadata{RequestID: "submission-view"})
+	call := invocation.New(principal, model.RequestMetadata{RequestID: "submission-view"})
 	require.NoError(t, adapter.AuthorizeSubmissionView(context.Background(), call, submissionID))
 	require.Equal(t, examID, sittings.examID, "authorization call = exam")
 	require.Equal(t, submissionID, sittings.submissionID, "authorization call = exam")
@@ -78,7 +79,7 @@ func TestExamAttemptSubmissionAuthorizationAuditsSelfDenialFailClosed(t *testing
 		audit := &submissionAuthorizationAuditFake{}
 		adapter := examAttemptManagerAuthorizationAdapter{sittings: &submissionAuthorizationSittingFake{},
 			submissions: &submissionAuthorizationStoreFake{authorization: authorization}, audit: audit}
-		err := adapter.AuthorizeSubmissionView(context.Background(), NewInvocation(principal, metadata), submissionID)
+		err := adapter.AuthorizeSubmissionView(context.Background(), invocation.New(principal, metadata), submissionID)
 		var fault *apperror.Error
 		require.ErrorAs(t, err, &fault, "AuthorizeSubmissionView() error")
 		require.Equal(t, "exam.attempt.not_found", fault.Code(), "AuthorizeSubmissionView() error")
@@ -96,7 +97,7 @@ func TestExamAttemptSubmissionAuthorizationAuditsSelfDenialFailClosed(t *testing
 		adapter := examAttemptManagerAuthorizationAdapter{sittings: &submissionAuthorizationSittingFake{},
 			submissions: &submissionAuthorizationStoreFake{authorization: authorization},
 			audit:       &submissionAuthorizationAuditFake{err: auditErr}}
-		require.ErrorIs(t, adapter.AuthorizeSubmissionView(context.Background(), NewInvocation(principal, metadata), submissionID), auditErr, "AuthorizeSubmissionView() error")
+		require.ErrorIs(t, adapter.AuthorizeSubmissionView(context.Background(), invocation.New(principal, metadata), submissionID), auditErr, "AuthorizeSubmissionView() error")
 	})
 }
 
@@ -111,12 +112,12 @@ func (f *submissionAuthorizationStoreFake) Resolve(context.Context, model.Submis
 
 type submissionAuthorizationSittingFake struct {
 	examAttemptSittingAuthorizer
-	invocation   Invocation
+	invocation   invocation.Invocation
 	examID       model.ExamID
 	submissionID model.SubmissionID
 }
 
-func (f *submissionAuthorizationSittingFake) AuthorizeSubmissionView(_ context.Context, invocation Invocation,
+func (f *submissionAuthorizationSittingFake) AuthorizeSubmissionView(_ context.Context, invocation invocation.Invocation,
 	examID model.ExamID, submissionID model.SubmissionID,
 ) error {
 	f.invocation, f.examID, f.submissionID = invocation, examID, submissionID

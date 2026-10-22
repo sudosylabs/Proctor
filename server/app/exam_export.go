@@ -6,18 +6,3 @@
 // ---------------------------------------------------------------------------------------------
 
 package app
-
-import (
-	examengine "github.com/sudosylabs/proctor/server/app/exam"
-)
-
-// CreateExamExportCommand requests an Examination Export of the selected
-// retention categories within a scope; IdempotencyKey makes it replayable.
-type CreateExamExportCommand = examengine.CreateExportCommand
-
-// ExamExportQuery names one Examination Export within a scope.
-type ExamExportQuery = examengine.ExportQuery
-
-// ExamExportDownload is an Examination Export with its archive stream; the
-// caller must close Body.
-type ExamExportDownload = examengine.ExportDownload

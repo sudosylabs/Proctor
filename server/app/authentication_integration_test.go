@@ -24,6 +24,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/httpapi"
@@ -67,7 +68,7 @@ func TestAuthenticationFanoutFailureIntegration(t *testing.T) {
 		Email:    "fanout-failure-user@example.edu",
 	}, Password: password})
 	require.NoError(t, err)
-	login, err := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{
+	login, err := helper.App.Login(ctx, invocation.Invocation{}, app.LoginCommand{
 		LoginID:    user.Username,
 		Password:   password,
 		ClientType: model.SessionClientCLI,
@@ -78,7 +79,7 @@ func TestAuthenticationFanoutFailureIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, helper.App.Logout(
 		ctx,
-		app.NewInvocation(*principal, model.RequestMetadata{}),
+		invocation.New(*principal, model.RequestMetadata{}),
 		app.LogoutCommand{},
 	), "Logout() error")
 	_, err = helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken)
@@ -104,7 +105,7 @@ func TestSessionExpiryEnforcementAcrossHTTPRefreshAndEstablishedWebSocket(t *tes
 			Username: identity, Email: identity + "@example.edu",
 		}, Password: "correct horse battery staple"})
 		require.NoError(t, err)
-		result, err := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{
+		result, err := helper.App.Login(ctx, invocation.Invocation{}, app.LoginCommand{
 			LoginID: user.Username, Password: "correct horse battery staple",
 			ClientType: model.SessionClientCLI, Source: "127.0.0.1:1",
 		})

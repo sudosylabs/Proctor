@@ -62,7 +62,7 @@ func TestAcademicRevisionHTTPContract(t *testing.T) {
 	}
 }
 
-func academicRevisionHTTPFixture(kind string, principal model.Principal) (resource, string, func(string) *int64) {
+func academicRevisionHTTPFixture(kind string, principal model.Principal) (apiResource, string, func(string) *int64) {
 	switch kind {
 	case "academic_unit":
 		value := &model.AcademicUnit{ID: model.NewAcademicUnitID(), Revision: 7}

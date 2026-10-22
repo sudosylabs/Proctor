@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -49,7 +50,7 @@ func TestDesktopAuthorizationApproveRejectsForeignPrincipal(t *testing.T) {
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: at}
 
-	approval, err := service.ApproveDesktopAuthorization(context.Background(), NewInvocation(foreign, model.RequestMetadata{}),
+	approval, err := service.ApproveDesktopAuthorization(context.Background(), invocation.New(foreign, model.RequestMetadata{}),
 		ApproveDesktopAuthorizationCommand{Binding: model.NewCredentialToken(), State: model.NewCredentialToken()})
 	require.Nil(t, approval, "foreign approval = %#v, %v", approval, err)
 	require.True(t, apperror.Is(err, "authentication.desktop_authorization.rejected"), "foreign approval = %#v, %v", approval, err)
@@ -68,7 +69,7 @@ func TestDesktopAuthorizationApproveAndExchangeAuditTheApprovingAccount(t *testi
 	service := newAuditedDesktopAuthorizationService(t, persistence, auditor, at)
 	browser := model.RequestMetadata{RequestID: "approve-request", IPAddress: "192.0.2.30", UserAgent: "browser"}
 
-	_, err := service.ApproveDesktopAuthorization(context.Background(), NewInvocation(model.Principal{}, browser),
+	_, err := service.ApproveDesktopAuthorization(context.Background(), invocation.New(model.Principal{}, browser),
 		ApproveDesktopAuthorizationCommand{Binding: model.NewCredentialToken(), State: model.NewCredentialToken()})
 	require.NoError(t, err)
 	require.Equal(t, account, auditor.issueActor, "approval audit actor")
@@ -77,7 +78,7 @@ func TestDesktopAuthorizationApproveAndExchangeAuditTheApprovingAccount(t *testi
 		t, service, at, model.NewCredentialToken(), model.NewCredentialToken(), model.NewCredentialToken(), "",
 	)
 	desktop := model.RequestMetadata{RequestID: "exchange-request", IPAddress: "192.0.2.31", UserAgent: "desktop"}
-	_, err = service.ExchangeDesktopAuthorization(context.Background(), NewInvocation(model.Principal{}, desktop), exchangeCommand)
+	_, err = service.ExchangeDesktopAuthorization(context.Background(), invocation.New(model.Principal{}, desktop), exchangeCommand)
 	require.True(t, apperror.Is(err, "authentication.desktop_authorization.rejected"), "exchange err = %v", err)
 	require.Equal(t, account, auditor.exchangeActor, "exchange audit actor")
 	require.Equal(t, desktop, auditor.exchangeRequest, "exchange audit actor")
@@ -92,7 +93,7 @@ func TestDesktopAuthorizationAuditAdapterRecordsActorSessionAndRequest(t *testin
 	account, sessionID, institutionID := model.NewUserID(), model.NewSessionID(), model.NewInstitutionID()
 	metadata := model.RequestMetadata{RequestID: "request-desktop", IPAddress: "192.0.2.40", UserAgent: "agent"}
 	issue, err := adapter.PrepareIssue(context.Background(),
-		NewInvocation(model.Principal{UserID: account, SessionID: sessionID}, metadata), account, institutionID)
+		invocation.New(model.Principal{UserID: account, SessionID: sessionID}, metadata), account, institutionID)
 	require.NoError(t, err)
 	require.Equal(t, account, issue.ActorID)
 	require.Equal(t, sessionID, issue.SessionID)
@@ -102,7 +103,7 @@ func TestDesktopAuthorizationAuditAdapterRecordsActorSessionAndRequest(t *testin
 	require.Equal(t, string(model.SessionClientWeb), issue.ClientType)
 	require.Equal(t, institutionID.String(), issue.ScopeID)
 	require.Equal(t, model.AuditStatusAttempt, issue.Status)
-	exchange, err := adapter.PrepareExchange(context.Background(), NewInvocation(model.Principal{}, metadata), account, institutionID)
+	exchange, err := adapter.PrepareExchange(context.Background(), invocation.New(model.Principal{}, metadata), account, institutionID)
 	require.NoError(t, err)
 	require.Equal(t, account, exchange.ActorID)
 	require.Empty(t, exchange.SessionID)

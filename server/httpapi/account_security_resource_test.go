@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -32,7 +33,7 @@ type accountSecurityHTTPApplication struct {
 
 func (as *accountSecurityHTTPApplication) ListSessions(
 	context.Context,
-	app.Invocation,
+	invocation.Invocation,
 	app.ListSessionsQuery,
 ) ([]*model.Session, error) {
 	return []*model.Session{}, nil
@@ -40,7 +41,7 @@ func (as *accountSecurityHTTPApplication) ListSessions(
 
 func (as *accountSecurityHTTPApplication) GetMFAStatus(
 	context.Context,
-	app.Invocation,
+	invocation.Invocation,
 	app.GetMFAStatusQuery,
 ) (*app.MFAStatus, error) {
 	return &app.MFAStatus{Enabled: true, RecoveryCodesRemaining: 7}, nil
@@ -48,7 +49,7 @@ func (as *accountSecurityHTTPApplication) GetMFAStatus(
 
 func (as *accountSecurityHTTPApplication) CreatePersonalAccessToken(
 	_ context.Context,
-	_ app.Invocation,
+	_ invocation.Invocation,
 	command app.CreatePersonalAccessTokenCommand,
 ) (*model.PersonalAccessTokenCreation, error) {
 	as.createToken = command

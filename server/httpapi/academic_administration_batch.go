@@ -12,16 +12,17 @@ import (
 	"net/http"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type AcademicAdministrationBatchApplication interface {
-	RunAcademicAdministrationBatch(context.Context, app.Invocation, app.RunAcademicAdministrationBatchCommand) (app.AcademicAdministrationBatchResult, error)
+	RunAcademicAdministrationBatch(context.Context, invocation.Invocation, app.RunAcademicAdministrationBatchCommand) (app.AcademicAdministrationBatchResult, error)
 }
 
 type unavailableAcademicAdministrationBatchApplication struct{}
 
-func (unavailableAcademicAdministrationBatchApplication) RunAcademicAdministrationBatch(context.Context, app.Invocation, app.RunAcademicAdministrationBatchCommand) (app.AcademicAdministrationBatchResult, error) {
+func (unavailableAcademicAdministrationBatchApplication) RunAcademicAdministrationBatch(context.Context, invocation.Invocation, app.RunAcademicAdministrationBatchCommand) (app.AcademicAdministrationBatchResult, error) {
 	return app.AcademicAdministrationBatchResult{}, errUnpresentableResult
 }
 
@@ -61,7 +62,7 @@ type academicAdministrationBatchResourceModule struct {
 	batches AcademicAdministrationBatchApplication
 }
 
-func academicAdministrationBatchResource(batches AcademicAdministrationBatchApplication) resource {
+func academicAdministrationBatchResource(batches AcademicAdministrationBatchApplication) apiResource {
 	module := academicAdministrationBatchResourceModule{batches: batches}
 	return newResource("academic-administration-batches",
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, apiPath(literal("academic-administration-batches")),

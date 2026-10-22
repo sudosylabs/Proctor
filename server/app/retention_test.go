@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -39,17 +40,17 @@ func TestRetentionApprovalRequiresAuthorityAndCriticalAudit(t *testing.T) {
 			lifecycle := &retentionLifecycleFake{}
 			fixture.service.lifecycle = lifecycle
 			command := ChangeRetentionControlCommand{ExpectedRevision: 1, ExpectedPolicyRevision: 1, PreviewID: model.NewRetentionPreviewID(), State: model.RetentionControlEnabled, IdempotencyKey: "approve-cleanup"}
-			invocation := fixture.invocation
+			call := fixture.invocation
 			switch gate {
 			case "authority":
 				fixture.authorization.err = apperror.New("authorization.denied")
 			case "audit":
 				fixture.audit.beginErr = errors.New("audit unavailable")
 			case "assurance":
-				p := invocation.Principal()
+				p := call.Principal()
 				p.AuthenticationStrength = model.AuthenticationSingleFactor
 				p.MFACompletedAt = model.OptionalTime{}
-				invocation = NewInvocation(p, invocation.RequestMetadata())
+				call = invocation.New(p, call.RequestMetadata())
 			case "missing_preview":
 				command.PreviewID = ""
 			case "missing_revision":
@@ -58,7 +59,7 @@ func TestRetentionApprovalRequiresAuthorityAndCriticalAudit(t *testing.T) {
 				command.IdempotencyKey = ""
 			}
 			application := &App{retentionPolicyService: fixture.service}
-			value, err := application.ChangeRetentionControl(t.Context(), invocation, command)
+			value, err := application.ChangeRetentionControl(t.Context(), call, command)
 			require.Error(t, err, "%s did not stop approval", gate)
 			require.Nil(t, value, "%s did not stop approval", gate)
 			require.Nil(t, lifecycle.change, "%s did not stop approval", gate)

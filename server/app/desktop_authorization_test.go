@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -48,12 +49,12 @@ func TestDesktopLocalAuthenticationPreservesPasswordCapacityFailure(t *testing.T
 				command.LoginID = "missing@example.edu"
 			}
 			saturatePasswordWork(t, authentication.hasher)
-			result, err := service.AuthenticateDesktopAuthorizationLocally(context.Background(), Invocation{}, command)
+			result, err := service.AuthenticateDesktopAuthorizationLocally(context.Background(), invocation.Invocation{}, command)
 			require.Nil(t, result, "saturated Desktop authentication = %#v/%v", result, err)
 			require.True(t, apperror.Is(err, "service.busy"), "saturated Desktop authentication = %#v/%v", result, err)
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
-			result, err = service.AuthenticateDesktopAuthorizationLocally(ctx, Invocation{}, command)
+			result, err = service.AuthenticateDesktopAuthorizationLocally(ctx, invocation.Invocation{}, command)
 			require.Nil(t, result, "canceled Desktop authentication")
 			require.True(t, apperror.Is(err, "authentication.internal"), "canceled Desktop authentication")
 			require.ErrorIs(t, err, context.Canceled, "canceled Desktop authentication")
@@ -95,7 +96,7 @@ func TestDesktopAuthorizationStartPinsPublicClientRequest(t *testing.T) {
 		DeviceID: "desktop-1", DeviceName: "Exam laptop",
 	}
 	setTestDesktopAuthorizationBuild(t, &command)
-	result, err := service.StartDesktopAuthorization(context.Background(), Invocation{}, command)
+	result, err := service.StartDesktopAuthorization(context.Background(), invocation.Invocation{}, command)
 	require.NoError(t, err)
 	require.NotNil(t, persistence.created)
 	require.Equal(t, institution.ID, persistence.created.InstitutionID)
@@ -151,7 +152,7 @@ func TestDesktopAuthorizationStartRejectsMaintenanceBeforePersistence(t *testing
 		CodeChallenge: model.NewCredentialToken(),
 	}
 	setTestDesktopAuthorizationBuild(t, &command)
-	result, err := service.StartDesktopAuthorization(context.Background(), Invocation{}, command)
+	result, err := service.StartDesktopAuthorization(context.Background(), invocation.Invocation{}, command)
 	require.Nil(t, result, "Start() = %#v, %v; persisted", result, err)
 	require.True(t, apperror.Is(err, "authentication.desktop_authorization.unavailable"), "Start() = %#v, %v; persisted", result, err)
 	require.Nil(t, persistence.created, "Start() = %#v, %v; persisted", result, err)
@@ -175,7 +176,7 @@ func TestDesktopAuthorizationStartRejectsEqualGeneratedProofsBeforeStore(t *test
 		CodeChallenge: model.NewCredentialToken(),
 	}
 	setTestDesktopAuthorizationBuild(t, &command)
-	_, err = service.StartDesktopAuthorization(context.Background(), Invocation{}, command)
+	_, err = service.StartDesktopAuthorization(context.Background(), invocation.Invocation{}, command)
 	require.True(t, apperror.Is(err, "authentication.desktop_authorization.unavailable"), "Start() error=%v persisted", err)
 	require.Nil(t, persistence.created, "Start() error=%v persisted", err)
 }
@@ -227,7 +228,7 @@ func TestDesktopAuthorizationApprovalAndExchangeArePurposeBound(t *testing.T) {
 		AuthenticatedAt: at.Add(-time.Minute), MFACompletedAt: model.OptionalTimeFrom(at)}
 	persistence.issueResult = &store.DesktopAuthorizationCodeIssued{CallbackURL: callback, CodeExpiresAt: at.Add(time.Minute)}
 	persistence.contextUserID = principal.UserID
-	approved, err := service.ApproveDesktopAuthorization(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
+	approved, err := service.ApproveDesktopAuthorization(context.Background(), invocation.New(principal, model.RequestMetadata{}),
 		ApproveDesktopAuthorizationCommand{Binding: binding, State: state})
 	require.NoError(t, err)
 	redirect, _ := url.Parse(approved.RedirectURL)
@@ -246,7 +247,7 @@ func TestDesktopAuthorizationApprovalAndExchangeArePurposeBound(t *testing.T) {
 		Session: session, Registration: registration,
 		AccessExpiresAt: at.Add(5 * time.Minute), RefreshExpiresAt: at.Add(time.Hour),
 	}
-	exchanged, err := service.ExchangeDesktopAuthorization(context.Background(), NewInvocation(model.Principal{}, model.RequestMetadata{}),
+	exchanged, err := service.ExchangeDesktopAuthorization(context.Background(), invocation.New(model.Principal{}, model.RequestMetadata{}),
 		exchangeCommand)
 	require.NoError(t, err)
 	require.NotNil(t, persistence.exchanged, "exchange = %#v input", exchanged)
@@ -281,7 +282,7 @@ func TestDesktopAuthorizationTerminalStoreRejectionCompletesFailureAudit(t *test
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: at}
 	persistence.contextUserID = principal.UserID
-	_, err = service.ApproveDesktopAuthorization(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
+	_, err = service.ApproveDesktopAuthorization(context.Background(), invocation.New(principal, model.RequestMetadata{}),
 		ApproveDesktopAuthorizationCommand{Binding: model.NewCredentialToken(), State: model.NewCredentialToken()})
 	require.True(t, apperror.Is(err, "authentication.desktop_authorization.rejected"), "Approve() error=%v failure audit=%q", err, auditor.auditID)
 	require.Equal(t, "authentication.desktop_authorization.rejected", auditor.failureCode, "Approve() error=%v failure audit=%q", err, auditor.auditID)
@@ -291,7 +292,7 @@ func TestDesktopAuthorizationTerminalStoreRejectionCompletesFailureAudit(t *test
 	exchangeCommand := testDesktopAuthorizationExchangeCommand(
 		t, service, at, model.NewCredentialToken(), model.NewCredentialToken(), model.NewCredentialToken(), "",
 	)
-	_, err = service.ExchangeDesktopAuthorization(context.Background(), Invocation{}, exchangeCommand)
+	_, err = service.ExchangeDesktopAuthorization(context.Background(), invocation.Invocation{}, exchangeCommand)
 	require.True(t, apperror.Is(err, "authentication.desktop_authorization.unavailable"), "Exchange() error=%v failure audit", err)
 	require.Equal(t, "authentication.desktop_authorization.unavailable", auditor.failureCode, "Exchange() error=%v failure audit", err)
 }
@@ -322,7 +323,7 @@ func TestDesktopAuthorizationExchangeFailsClosedWhenSessionNonceCannotBeStored(t
 	}
 	identity.dpop.cache.(*dpopCacheFake).setAlwaysErr = errors.New("shared nonce cache unavailable")
 
-	result, err := service.ExchangeDesktopAuthorization(context.Background(), Invocation{}, command)
+	result, err := service.ExchangeDesktopAuthorization(context.Background(), invocation.Invocation{}, command)
 	require.Nil(t, result, "Exchange() = %#v, %v; want no credential response", result, err)
 	require.True(t, apperror.Is(err, "authentication.dpop.unavailable"), "Exchange() = %#v, %v; want no credential response", result, err)
 	sessions := identity.authentication.sessions.(*desktopAuthorizationSessionStoreStub)
@@ -355,7 +356,7 @@ func TestDesktopAuthorizationCrossAccountApprovalIsAudited(t *testing.T) {
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: at}
 	persistence.contextUserID = model.NewUserID()
-	_, err = service.ApproveDesktopAuthorization(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
+	_, err = service.ApproveDesktopAuthorization(context.Background(), invocation.New(principal, model.RequestMetadata{}),
 		ApproveDesktopAuthorizationCommand{Binding: model.NewCredentialToken(), State: model.NewCredentialToken()})
 	require.True(t, apperror.Is(err, "authentication.desktop_authorization.rejected"), "Approve() error = %v", err)
 	require.Equal(t, persistence.contextUserID, auditor.rejectedTarget, "the refused approval names the handoff's account")
@@ -384,7 +385,7 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 				CodeChallenge: model.NewCredentialToken(),
 			}
 			setTestDesktopAuthorizationBuild(t, &command)
-			_, err = service.StartDesktopAuthorization(context.Background(), Invocation{}, command)
+			_, err = service.StartDesktopAuthorization(context.Background(), invocation.Invocation{}, command)
 			require.True(t, apperror.Is(err, "authentication.desktop_authorization.unavailable"), "Start error = %v", err)
 		})
 	}
@@ -412,7 +413,7 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 			CodeChallenge: model.NewCredentialToken(),
 		}
 		setTestDesktopAuthorizationBuild(t, &command)
-		_, err := service.StartDesktopAuthorization(context.Background(), Invocation{}, command)
+		_, err := service.StartDesktopAuthorization(context.Background(), invocation.Invocation{}, command)
 		require.True(t, apperror.Is(err, "authentication.desktop_authorization.unavailable"), "Start error = %v", err)
 	})
 
@@ -425,7 +426,7 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 		service := newService(&desktopAuthorizationStoreFake{issueResult: &store.DesktopAuthorizationCodeIssued{
 			CallbackURL: "https://not-loopback.example/", CodeExpiresAt: at.Add(time.Minute),
 		}, contextUserID: principal.UserID}, auditor)
-		_, err := service.ApproveDesktopAuthorization(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
+		_, err := service.ApproveDesktopAuthorization(context.Background(), invocation.New(principal, model.RequestMetadata{}),
 			ApproveDesktopAuthorizationCommand{Binding: model.NewCredentialToken(), State: model.NewCredentialToken()})
 		require.True(t, apperror.Is(err, "authentication.desktop_authorization.unavailable"), "Approve error/audit = %v", err)
 		require.Equal(t, "authentication.desktop_authorization.unavailable", auditor.failureCode, "Approve error/audit = %v", err)
@@ -445,7 +446,7 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 			AccessExpiresAt:  at.Add(testDesktopSessionPolicy().AccessTTL + time.Second),
 			RefreshExpiresAt: at.Add(time.Hour),
 		}
-		_, err := service.ExchangeDesktopAuthorization(context.Background(), Invocation{}, exchangeCommand)
+		_, err := service.ExchangeDesktopAuthorization(context.Background(), invocation.Invocation{}, exchangeCommand)
 		require.True(t, apperror.Is(err, "authentication.desktop_authorization.unavailable"), "Exchange error/audit = %v", err)
 		require.Equal(t, "authentication.desktop_authorization.unavailable", auditor.failureCode, "Exchange error/audit = %v", err)
 	})
@@ -475,7 +476,7 @@ func TestDesktopAuthorizationPublicAttemptLimitsPrecedePersistenceAndAudit(t *te
 		CodeChallenge: model.NewCredentialToken(), Source: "192.0.2.10:5000",
 	}
 	setTestDesktopAuthorizationBuild(t, &command)
-	_, err = service.StartDesktopAuthorization(context.Background(), Invocation{}, command)
+	_, err = service.StartDesktopAuthorization(context.Background(), invocation.Invocation{}, command)
 	require.True(t, apperror.Is(err, "authentication.rate_limited"), "Start() error=%v persisted=%#v audit prepares=%d", err, persistence.created, auditor.prepareIssue)
 	require.Nil(t, persistence.created, "Start() error=%v persisted=%#v audit prepares=%d", err, persistence.created, auditor.prepareIssue)
 	require.Equal(t, 0, auditor.prepareExchange, "Start() error=%v persisted=%#v audit prepares=%d", err, persistence.created, auditor.prepareIssue)
@@ -488,7 +489,7 @@ func TestDesktopAuthorizationPublicAttemptLimitsPrecedePersistenceAndAudit(t *te
 	exchangeCommand := testDesktopAuthorizationExchangeCommand(
 		t, service, at, code, model.NewCredentialToken(), model.NewCredentialToken(), "192.0.2.10:5001",
 	)
-	_, err = service.ExchangeDesktopAuthorization(context.Background(), Invocation{}, exchangeCommand)
+	_, err = service.ExchangeDesktopAuthorization(context.Background(), invocation.Invocation{}, exchangeCommand)
 	require.True(t, apperror.Is(err, "authentication.rate_limited"), "Exchange() error=%v persisted=%#v exchange audits", err, persistence.exchanged)
 	require.Nil(t, persistence.exchanged, "Exchange() error=%v persisted=%#v exchange audits", err, persistence.exchanged)
 	require.Equal(t, 0, auditor.prepareExchange, "Exchange() error=%v persisted=%#v exchange audits", err, persistence.exchanged)
@@ -638,16 +639,16 @@ func (p desktopAuthorizationAccessPolicyFake) AllowsLocalLogin(context.Context) 
 
 type desktopAuthorizationAuditorFake struct{}
 
-func (desktopAuthorizationAuditorFake) PrepareIssue(context.Context, Invocation, model.UserID, model.InstitutionID) (*model.AuditEvent, error) {
+func (desktopAuthorizationAuditorFake) PrepareIssue(context.Context, invocation.Invocation, model.UserID, model.InstitutionID) (*model.AuditEvent, error) {
 	return &model.AuditEvent{ID: model.NewAuditEventID()}, nil
 }
-func (desktopAuthorizationAuditorFake) PrepareExchange(context.Context, Invocation, model.UserID, model.InstitutionID) (*model.AuditEvent, error) {
+func (desktopAuthorizationAuditorFake) PrepareExchange(context.Context, invocation.Invocation, model.UserID, model.InstitutionID) (*model.AuditEvent, error) {
 	return &model.AuditEvent{ID: model.NewAuditEventID()}, nil
 }
-func (desktopAuthorizationAuditorFake) RecordRejectedIssue(context.Context, Invocation, model.UserID, model.InstitutionID, string) error {
+func (desktopAuthorizationAuditorFake) RecordRejectedIssue(context.Context, invocation.Invocation, model.UserID, model.InstitutionID, string) error {
 	return nil
 }
-func (desktopAuthorizationAuditorFake) PrepareWithdrawal(context.Context, Invocation, model.UserID, model.InstitutionID, model.SessionID) (*model.AuditEvent, error) {
+func (desktopAuthorizationAuditorFake) PrepareWithdrawal(context.Context, invocation.Invocation, model.UserID, model.InstitutionID, model.SessionID) (*model.AuditEvent, error) {
 	return &model.AuditEvent{ID: model.NewAuditEventID()}, nil
 }
 func (desktopAuthorizationAuditorFake) Complete(context.Context, model.AuditEventID, map[string]any) error {
@@ -670,14 +671,14 @@ type recordingDesktopAuthorizationAuditor struct {
 	completed                     map[string]any
 }
 
-func (a *recordingDesktopAuthorizationAuditor) RecordRejectedIssue(_ context.Context, _ Invocation, userID model.UserID,
+func (a *recordingDesktopAuthorizationAuditor) RecordRejectedIssue(_ context.Context, _ invocation.Invocation, userID model.UserID,
 	_ model.InstitutionID, errorCode string,
 ) error {
 	a.rejectedTarget, a.rejectedCode = userID, errorCode
 	return nil
 }
 
-func (a *recordingDesktopAuthorizationAuditor) PrepareWithdrawal(_ context.Context, _ Invocation, _ model.UserID,
+func (a *recordingDesktopAuthorizationAuditor) PrepareWithdrawal(_ context.Context, _ invocation.Invocation, _ model.UserID,
 	_ model.InstitutionID, sessionID model.SessionID,
 ) (*model.AuditEvent, error) {
 	a.withdrawnSession = sessionID
@@ -689,13 +690,13 @@ func (a *recordingDesktopAuthorizationAuditor) Complete(_ context.Context, _ mod
 	return nil
 }
 
-func (a *recordingDesktopAuthorizationAuditor) PrepareIssue(_ context.Context, invocation Invocation, userID model.UserID, _ model.InstitutionID) (*model.AuditEvent, error) {
+func (a *recordingDesktopAuthorizationAuditor) PrepareIssue(_ context.Context, invocation invocation.Invocation, userID model.UserID, _ model.InstitutionID) (*model.AuditEvent, error) {
 	a.prepareIssue++
 	a.issueActor, a.issueRequest = userID, invocation.RequestMetadata()
 	return &model.AuditEvent{ID: model.NewAuditEventID()}, nil
 }
 
-func (a *recordingDesktopAuthorizationAuditor) PrepareExchange(_ context.Context, invocation Invocation, userID model.UserID, _ model.InstitutionID) (*model.AuditEvent, error) {
+func (a *recordingDesktopAuthorizationAuditor) PrepareExchange(_ context.Context, invocation invocation.Invocation, userID model.UserID, _ model.InstitutionID) (*model.AuditEvent, error) {
 	a.prepareExchange++
 	a.exchangeActor, a.exchangeRequest = userID, invocation.RequestMetadata()
 	return &model.AuditEvent{ID: model.NewAuditEventID()}, nil

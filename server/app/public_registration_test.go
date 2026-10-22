@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -31,7 +32,7 @@ func TestPublicRegistrationPreparesOneAtomicUnverifiedLocalAccount(t *testing.T)
 	rawToken := model.NewCredentialToken()
 	service.newToken = func() string { return rawToken }
 
-	err := service.RegisterLocalUser(context.Background(), NewInvocation(model.Principal{}, model.RequestMetadata{
+	err := service.RegisterLocalUser(context.Background(), invocation.New(model.Principal{}, model.RequestMetadata{
 		RequestID: "register-1", IPAddress: "192.0.2.10",
 	}), RegisterLocalUserCommand{
 		Username: "New.Student", Email: " New.Student@Example.EDU ",
@@ -96,7 +97,7 @@ func TestPublicRegistrationFailsClosedBeforeAccountPreparationWhenPolicyOrMailDi
 			mail := &publicRegistrationMailFake{enabled: test.mail}
 			service := newTestPublicRegistrationService(t, persistence, mail, time.Now())
 			service.policies = test.policy
-			err := service.RegisterLocalUser(context.Background(), Invocation{}, RegisterLocalUserCommand{
+			err := service.RegisterLocalUser(context.Background(), invocation.Invocation{}, RegisterLocalUserCommand{
 				Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
 				Password: "correct horse battery staple", Source: "192.0.2.20",
 			})
@@ -116,7 +117,7 @@ func TestPublicRegistrationConcealsDuplicateIdentity(t *testing.T) {
 			t.Parallel()
 			persistence := &publicRegistrationStoreFake{err: store.NewErrConflict("user", constraint, nil)}
 			service := newTestPublicRegistrationService(t, persistence, &publicRegistrationMailFake{enabled: true}, time.Now())
-			require.NoError(t, service.RegisterLocalUser(context.Background(), Invocation{}, RegisterLocalUserCommand{
+			require.NoError(t, service.RegisterLocalUser(context.Background(), invocation.Invocation{}, RegisterLocalUserCommand{
 				Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
 				Password: "correct horse battery staple", Source: "192.0.2.30",
 			}))
@@ -138,7 +139,7 @@ func TestPublicRegistrationDoesNotConcealUnrelatedPersistenceConflicts(t *testin
 			t.Parallel()
 			persistence := &publicRegistrationStoreFake{err: conflict}
 			service := newTestPublicRegistrationService(t, persistence, &publicRegistrationMailFake{enabled: true}, time.Now())
-			err := service.RegisterLocalUser(context.Background(), Invocation{}, RegisterLocalUserCommand{
+			err := service.RegisterLocalUser(context.Background(), invocation.Invocation{}, RegisterLocalUserCommand{
 				Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
 				Password: "correct horse battery staple", Source: "192.0.2.30",
 			})
@@ -158,12 +159,12 @@ func TestPublicRegistrationMailAndPersistenceFailuresCreateNoPartialApplicationS
 		Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
 		Password: "correct horse battery staple", Source: "192.0.2.31",
 	}
-	err := mailFailure.RegisterLocalUser(context.Background(), Invocation{}, command)
+	err := mailFailure.RegisterLocalUser(context.Background(), invocation.Invocation{}, command)
 	require.True(t, apperror.Is(err, "authentication.registration.unavailable"), "mail preparation failure = %v", err)
 	require.Nil(t, mailFailureStore.input)
 
 	persistenceFailure := newTestPublicRegistrationService(t, &publicRegistrationStoreFake{err: errors.New("database unavailable")}, &publicRegistrationMailFake{enabled: true}, time.Now())
-	err = persistenceFailure.RegisterLocalUser(context.Background(), Invocation{}, command)
+	err = persistenceFailure.RegisterLocalUser(context.Background(), invocation.Invocation{}, command)
 	require.True(t, apperror.Is(err, "authentication.registration.unavailable"), "persistence failure = %v", err)
 }
 
@@ -173,7 +174,7 @@ func TestPublicRegistrationPasswordWorkFailuresStopBeforeMailAndPersistence(t *t
 		mail := &publicRegistrationMailFake{enabled: true}
 		service := newTestPublicRegistrationService(t, persistence, mail, time.Now())
 		service.hasher = hasher
-		err := service.RegisterLocalUser(ctx, Invocation{}, RegisterLocalUserCommand{
+		err := service.RegisterLocalUser(ctx, invocation.Invocation{}, RegisterLocalUserCommand{
 			Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
 			Password: "correct horse battery staple", Source: "192.0.2.33",
 		})
@@ -189,7 +190,7 @@ func TestPublicRegistrationRejectsAnInvalidPasswordBeforeMailOrPersistence(t *te
 	persistence := &publicRegistrationStoreFake{}
 	mail := &publicRegistrationMailFake{enabled: true}
 	service := newTestPublicRegistrationService(t, persistence, mail, time.Now())
-	err := service.RegisterLocalUser(context.Background(), Invocation{}, RegisterLocalUserCommand{
+	err := service.RegisterLocalUser(context.Background(), invocation.Invocation{}, RegisterLocalUserCommand{
 		Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
 		Password: "", Source: "192.0.2.32",
 	})
@@ -216,7 +217,7 @@ func TestPublicRegistrationRequiresFirstAndLastNamesBeforeCredentialPreparation(
 			persistence := &publicRegistrationStoreFake{}
 			mail := &publicRegistrationMailFake{enabled: true}
 			service := newTestPublicRegistrationService(t, persistence, mail, time.Now())
-			err := service.RegisterLocalUser(context.Background(), Invocation{}, RegisterLocalUserCommand{
+			err := service.RegisterLocalUser(context.Background(), invocation.Invocation{}, RegisterLocalUserCommand{
 				Username: "student", Email: "student@example.edu", FirstName: test.firstName,
 				LastName: test.lastName, Password: "correct horse battery staple", Source: "192.0.2.33",
 			})
@@ -235,9 +236,9 @@ func TestPublicRegistrationUsesPrivateSharedAttemptAccounting(t *testing.T) {
 	service.attempts = mustAuthenticationAttemptAccounting(t, cache)
 	service.rateLimit = LoginRateLimitPolicy{Window: time.Minute, MaximumAttempts: 1, MaximumSourceAttempts: 10}
 	command := RegisterLocalUserCommand{Username: "student", Email: " Student@Example.EDU ", FirstName: "New", LastName: "Student", Password: "correct horse battery staple", Source: "192.0.2.40:443"}
-	require.NoError(t, service.RegisterLocalUser(context.Background(), Invocation{}, command))
+	require.NoError(t, service.RegisterLocalUser(context.Background(), invocation.Invocation{}, command))
 	command.Email = "student@example.edu"
-	err := service.RegisterLocalUser(context.Background(), Invocation{}, command)
+	err := service.RegisterLocalUser(context.Background(), invocation.Invocation{}, command)
 	require.True(t, apperror.Is(err, "authentication.rate_limited"), "second registration = %v", err)
 	for key := range cache.snapshot() {
 		require.True(t, strings.HasPrefix(key, "authentication/attempts/public-registration/"))
@@ -278,7 +279,7 @@ type publicRegistrationMailFake struct {
 
 func (m *publicRegistrationMailFake) Enabled() bool { return m.enabled }
 
-func (m *publicRegistrationMailFake) PreparePublicRegistrationVerification(recipient *model.User, occurrenceID model.MailOccurrenceID, actionURL string, at, deadline time.Time) (*preparedDirectMail, error) {
+func (m *publicRegistrationMailFake) PreparePublicRegistrationVerification(recipient *model.User, occurrenceID model.MailOccurrenceID, actionURL string, at, deadline time.Time) (*store.PreparedMail, error) {
 	m.prepareCalls++
 	m.actionURL = actionURL
 	if m.err != nil {
@@ -294,7 +295,7 @@ func (m *publicRegistrationMailFake) PreparePublicRegistrationVerification(recip
 		TargetUserID: recipient.ID, TemplateKey: model.MailTemplateIdentityVerifyEmail, State: model.MailDeliveryQueued,
 		CreatedAt: at, UpdatedAt: at, MessageDate: at, Deadline: deadline, Revision: 1}
 	job := &model.Job{ID: jobID, Type: model.JobTypeMailDeliverCredential, Status: model.JobStatusQueued}
-	return &preparedDirectMail{Occurrence: occurrence, Delivery: delivery, Job: job}, nil
+	return &store.PreparedMail{Occurrence: occurrence, Delivery: delivery, Job: job}, nil
 }
 
 func newTestPublicRegistrationService(t *testing.T, persistence publicRegistrationStore, mail publicRegistrationVerificationPreparer, at time.Time) *publicRegistrationService {

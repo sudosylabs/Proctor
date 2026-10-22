@@ -17,11 +17,9 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type NativeConditionListQuery = store.NativeConditionListOptions
-
 // ListNativeConditions returns one page of native condition evidence for a
 // Submission to a caller authorized to view its Submission Review.
-func (s *Service) ListNativeConditions(ctx context.Context, invocation invocation.Invocation, query NativeConditionListQuery) (_ *store.NativeConditionPage, resultErr error) {
+func (s *Service) ListNativeConditions(ctx context.Context, invocation invocation.Invocation, query store.NativeConditionListOptions) (_ *store.NativeConditionPage, resultErr error) {
 	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.SubmissionID.IsValid() || query.Limit < 1 || query.Limit > 100 || query.AfterID != "" && !query.AfterID.IsValid() {
 		return nil, apperror.Invalid("exam.integrity_review.invalid", "native_condition_list")

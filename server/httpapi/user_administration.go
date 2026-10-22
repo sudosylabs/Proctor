@@ -25,7 +25,7 @@ type userAdministrationResourceModule struct {
 func userAdministrationResource(
 	accounts AccountStateApplication,
 	sessions SessionAdministrationApplication,
-) resource {
+) apiResource {
 	module := userAdministrationResourceModule{accounts: accounts, sessions: sessions}
 	return newResource(
 		"user-administration",

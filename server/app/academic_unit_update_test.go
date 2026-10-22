@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -92,7 +93,7 @@ func TestAcademicUnitUpdateReparentAuthorizesBothScopesBeforeCommit(t *testing.T
 		persistence,
 		academicUnitAuthorizerStub{
 			authorize: func(
-				_ context.Context, _ Invocation, action model.Action, resource model.Resource,
+				_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource,
 			) error {
 				events = append(events, "authorize-"+resource.ID)
 				require.Equal(t, model.ActionAcademicUnitManage, action)
@@ -102,7 +103,7 @@ func TestAcademicUnitUpdateReparentAuthorizesBothScopesBeforeCommit(t *testing.T
 		auditor, effects, &academicUnitEffectFailureReporterFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) }, model.NewID,
 	)
-	got, err := service.UpdateAcademicUnit(context.Background(), Invocation{}, UpdateAcademicUnitCommand{
+	got, err := service.UpdateAcademicUnit(context.Background(), invocation.Invocation{}, UpdateAcademicUnitCommand{
 		ID: model.AcademicUnitID(unitID), ParentID: &newParentID,
 		DisplayName: stringPointer("Applied Computing"),
 	})
@@ -134,7 +135,7 @@ func TestAcademicUnitUpdateReparentToRootRequiresInstitutionAuthority(t *testing
 	denied := apperror.New("authorization.denied")
 	service := newAcademicUnitCommandService(
 		persistence,
-		academicUnitAuthorizerStub{authorize: func(_ context.Context, _ Invocation, action model.Action, resource model.Resource) error {
+		academicUnitAuthorizerStub{authorize: func(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource) error {
 			events = append(events, "authorize-"+string(resource.Type)+"-"+resource.ID)
 			require.Equal(t, model.ActionAcademicUnitManage, action)
 			if resource.Type == model.ResourceInstitution {
@@ -146,7 +147,7 @@ func TestAcademicUnitUpdateReparentToRootRequiresInstitutionAuthority(t *testing
 		&academicUnitEffectFailureReporterFake{events: &events}, time.Now, model.NewID,
 	)
 	emptyParent := ""
-	_, err := service.UpdateAcademicUnit(context.Background(), Invocation{}, UpdateAcademicUnitCommand{ID: model.AcademicUnitID(unitID), ParentID: &emptyParent})
+	_, err := service.UpdateAcademicUnit(context.Background(), invocation.Invocation{}, UpdateAcademicUnitCommand{ID: model.AcademicUnitID(unitID), ParentID: &emptyParent})
 	require.True(t, apperror.Is(err, "authorization.denied"), "Update() error = %v, want authorization.denied", err)
 	assertAcademicUnitCreateEvents(t, events,
 		"authorize-academic_unit-"+unitID, "get", "authorize-institution-"+institutionID,
@@ -173,7 +174,7 @@ func TestAcademicUnitUpdateCycleFailureIsAuditedWithoutPublication(t *testing.T)
 	service := newAcademicUnitCommandService(
 		persistence,
 		academicUnitAuthorizerFunc(func(
-			context.Context, Invocation, model.Action, model.Resource,
+			context.Context, invocation.Invocation, model.Action, model.Resource,
 		) error {
 			events = append(events, "authorize")
 			return nil
@@ -181,7 +182,7 @@ func TestAcademicUnitUpdateCycleFailureIsAuditedWithoutPublication(t *testing.T)
 		auditor, &academicUnitCommandEffectsFake{events: &events},
 		&academicUnitEffectFailureReporterFake{events: &events}, time.Now, model.NewID,
 	)
-	_, err := service.UpdateAcademicUnit(context.Background(), Invocation{}, UpdateAcademicUnitCommand{
+	_, err := service.UpdateAcademicUnit(context.Background(), invocation.Invocation{}, UpdateAcademicUnitCommand{
 		ID: model.AcademicUnitID(unitID), ParentID: stringPointer(model.NewID()),
 	})
 	require.True(t, apperror.Is(err, "academic_unit.conflict"), "Update() error = %v, failure audit", err)
@@ -211,7 +212,7 @@ func TestAcademicUnitArchiveCommitsBeforePublishing(t *testing.T) {
 	service := newAcademicUnitCommandService(
 		persistence,
 		academicUnitAuthorizerFunc(func(
-			context.Context, Invocation, model.Action, model.Resource,
+			context.Context, invocation.Invocation, model.Action, model.Resource,
 		) error {
 			events = append(events, "authorize")
 			return nil
@@ -220,7 +221,7 @@ func TestAcademicUnitArchiveCommitsBeforePublishing(t *testing.T) {
 		&academicUnitEffectFailureReporterFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) }, model.NewID,
 	)
-	err := service.ArchiveAcademicUnit(context.Background(), Invocation{}, ArchiveAcademicUnitCommand{ID: model.AcademicUnitID(unitID)})
+	err := service.ArchiveAcademicUnit(context.Background(), invocation.Invocation{}, ArchiveAcademicUnitCommand{ID: model.AcademicUnitID(unitID)})
 	require.NoError(t, err)
 	require.NotNil(t, persistence.archiveInput)
 	require.Equal(t, model.AcademicUnitID(unitID), persistence.archiveInput.ID)

@@ -15,25 +15,6 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-// ExamRevisionSummary is the bounded authoring projection of one Exam
-// Revision. It excludes Exam Instructions, canonical policy bytes, Exam
-// Resource metadata, Starter Workspace paths and opaque content identities.
-type ExamRevisionSummary = store.ExamRevisionSummary
-
-// ExamRevisionPage is one page of Exam Revision summaries.
-type ExamRevisionPage = examengine.RevisionPage
-
-// PublishExamRevisionCommand publishes the current Exam Draft as a new
-// immutable Exam Revision, fenced by ExpectedDraftRevision and replayed by
-// IdempotencyKey.
-type PublishExamRevisionCommand = examengine.PublishRevisionCommand
-
-// GetExamRevisionQuery names one Exam Revision.
-type GetExamRevisionQuery = examengine.GetRevisionQuery
-
-// ListExamRevisionsQuery pages an Exam's Revisions, newest first.
-type ListExamRevisionsQuery = examengine.ListRevisionsQuery
-
 func (e examRealtimeEffects) RevisionPublished(ctx context.Context, revision store.ExamRevisionSummary) error {
 	event, err := apprealtime.NewExamRevisionPublishedEvent(revision.ID, revision.ExamID, revision.Number, revision.PolicyDigest, revision.Kind, revision.PublishedAt)
 	if err != nil {

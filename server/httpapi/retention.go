@@ -14,21 +14,22 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type RetentionApplication interface {
-	ListRetentionNotices(context.Context, app.Invocation, model.RetentionRetirementID, int) (*app.RetentionNoticePage, error)
-	GetRetentionControl(context.Context, app.Invocation) (*model.RetentionControl, error)
-	GetRetentionPreview(context.Context, app.Invocation, model.RetentionPreviewID) (*model.RetentionPreview, error)
-	CreateRetentionPreview(context.Context, app.Invocation, app.CreateRetentionPreviewCommand) (*model.RetentionPreview, error)
-	ChangeRetentionControl(context.Context, app.Invocation, app.ChangeRetentionControlCommand) (*model.RetentionControl, error)
-	ListRetentionRecords(context.Context, app.Invocation, model.SubmissionID, int) (*app.RetentionRecordPage, error)
+	ListRetentionNotices(context.Context, invocation.Invocation, model.RetentionRetirementID, int) (*app.RetentionNoticePage, error)
+	GetRetentionControl(context.Context, invocation.Invocation) (*model.RetentionControl, error)
+	GetRetentionPreview(context.Context, invocation.Invocation, model.RetentionPreviewID) (*model.RetentionPreview, error)
+	CreateRetentionPreview(context.Context, invocation.Invocation, app.CreateRetentionPreviewCommand) (*model.RetentionPreview, error)
+	ChangeRetentionControl(context.Context, invocation.Invocation, app.ChangeRetentionControlCommand) (*model.RetentionControl, error)
+	ListRetentionRecords(context.Context, invocation.Invocation, model.SubmissionID, int) (*app.RetentionRecordPage, error)
 }
 
 type retentionHTTPModule struct{ application RetentionApplication }
 
-func retentionResource(application RetentionApplication) resource {
+func retentionResource(application RetentionApplication) apiResource {
 	m := retentionHTTPModule{application: application}
 	readErrors := operatorReadErrorCodes("request.invalid", "retention.invalid", "retention.unavailable", "retention_policy.unavailable", "resource.not_found")
 	mutationErrors := operatorMutationErrorCodes("request.invalid", "retention.invalid", "retention.conflict", "retention.unavailable", "retention_policy.unavailable", "retention_policy.revision_conflict", "resource.not_found",

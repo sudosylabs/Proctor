@@ -12,6 +12,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -25,16 +26,14 @@ type accountTokenEffects interface {
 	SessionsRevoked(context.Context, string, []string, []string)
 }
 
-type preparedDirectMail = store.PreparedMail
-
 type accountTokenMailPreparer interface {
 	Enabled() bool
-	PrepareEmailVerification(appmail.AccountTokenPreparation) (*preparedDirectMail, error)
-	PreparePasswordReset(appmail.AccountTokenPreparation) (*preparedDirectMail, error)
-	PreparePasswordChanged(appmail.NoticePreparation) (*preparedDirectMail, error)
-	PrepareEmailChangeWarning(appmail.NoticePreparation) (*preparedDirectMail, error)
-	PrepareEmailChangeVerification(appmail.AccountTokenPreparation) (*preparedDirectMail, error)
-	PrepareEmailVerifiedByAdministrator(appmail.NoticePreparation) (*preparedDirectMail, error)
+	PrepareEmailVerification(appmail.AccountTokenPreparation) (*store.PreparedMail, error)
+	PreparePasswordReset(appmail.AccountTokenPreparation) (*store.PreparedMail, error)
+	PreparePasswordChanged(appmail.NoticePreparation) (*store.PreparedMail, error)
+	PrepareEmailChangeWarning(appmail.NoticePreparation) (*store.PreparedMail, error)
+	PrepareEmailChangeVerification(appmail.AccountTokenPreparation) (*store.PreparedMail, error)
+	PrepareEmailVerifiedByAdministrator(appmail.NoticePreparation) (*store.PreparedMail, error)
 }
 
 // accountTokenService owns purpose-specific verification and recovery tokens.
@@ -114,7 +113,7 @@ func (r accountTokenAuditRecorder) Success(
 	action model.Action,
 	resource model.Resource,
 	institutionID string,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	principal *model.Principal,
 	authenticationMethod string,
 ) *model.AuditEvent {

@@ -24,7 +24,7 @@ const (
 	webSocketPathLiteral  = "websocket"
 )
 
-func webSocketResource(transport WebSocketTransport) resource {
+func webSocketResource(transport WebSocketTransport) apiResource {
 	module := webSocketModule{transport: transport}
 	return newResource(webSocketResourceName,
 		upgradeRoute(

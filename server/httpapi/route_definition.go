@@ -193,13 +193,13 @@ func protocolRoute(
 	}
 }
 
-type resource struct {
+type apiResource struct {
 	name   string
 	routes []routeDefinition
 }
 
-func newResource(name string, routes ...routeDefinition) resource {
-	return resource{name: name, routes: append([]routeDefinition(nil), routes...)}
+func newResource(name string, routes ...routeDefinition) apiResource {
+	return apiResource{name: name, routes: append([]routeDefinition(nil), routes...)}
 }
 
 type protocolOperation func(operationRequest) (protocolResult, error)

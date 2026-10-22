@@ -93,7 +93,7 @@ func TestTransferRoutesOutliveServerTimeouts(t *testing.T) {
 		time.Sleep(serverTimeout + 100*time.Millisecond)
 		return binaryDownloadProtocolResult(io.NopCloser(bytes.NewReader(downloadBody)), int64(len(downloadBody))), nil
 	}
-	resources := []resource{newResource(
+	resources := []apiResource{newResource(
 		"transfers",
 		idempotentProtocolRoute(
 			IdempotencyNone, uploadLimit, "slow-upload", RouteProtocolStreamingUpload,

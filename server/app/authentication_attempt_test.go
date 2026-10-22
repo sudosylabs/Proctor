@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -442,7 +443,7 @@ func TestLoginMapsEitherCounterFailureToUnavailableWithoutRollback(t *testing.T)
 			service := newTestAuthenticationServiceWithCache(
 				t, newAuthenticationStoreFake(), cache,
 			)
-			_, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+			_, err := service.Login(context.Background(), invocation.Invocation{}, LoginCommand{
 				LoginID: "student@example.edu", Password: "wrong-password",
 				ClientType: model.SessionClientCLI, Source: "192.0.2.8:443",
 			})
@@ -478,7 +479,7 @@ func TestSuccessfulLoginTreatsAttemptResetFailureAsDiagnosticOnly(t *testing.T) 
 		Password: "CorrectHorseBatteryStaple1!",
 	})
 	require.NoError(t, err)
-	result, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+	result, err := service.Login(context.Background(), invocation.Invocation{}, LoginCommand{
 		LoginID: user.Username, Password: "CorrectHorseBatteryStaple1!",
 		ClientType: model.SessionClientCLI, Source: "192.0.2.9:443",
 	})
@@ -537,12 +538,12 @@ func TestLoginAccountFailuresFromOtherSourcesCannotRefuseTheCorrectPassword(t *t
 	// account accumulates far more failures than its delay threshold.
 	for index := range 20 {
 		source := fmt.Sprintf("198.51.100.%d:1", index+1)
-		_, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+		_, err := service.Login(context.Background(), invocation.Invocation{}, LoginCommand{
 			LoginID: "spread-user", Password: "wrong-password-value", ClientType: model.SessionClientCLI, Source: source,
 		})
 		require.True(t, apperror.Is(err, "authentication.credentials_invalid"), "attempt %d from %s: err = %v", index, source, err)
 	}
-	result, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+	result, err := service.Login(context.Background(), invocation.Invocation{}, LoginCommand{
 		LoginID: "spread-user", Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientCLI, Source: "203.0.113.1:1",
 	})
 	require.NoError(t, err, "the account holder's correct password after other sources' failures")
@@ -551,7 +552,7 @@ func TestLoginAccountFailuresFromOtherSourcesCannotRefuseTheCorrectPassword(t *t
 	require.Equal(t, time.Second, delays[len(delays)-1], "the correct password waits the bounded delay instead of being refused")
 
 	// Success forgets the account's failures.
-	_, err = service.Login(context.Background(), Invocation{}, LoginCommand{
+	_, err = service.Login(context.Background(), invocation.Invocation{}, LoginCommand{
 		LoginID: "spread-user", Password: "wrong-password-value", ClientType: model.SessionClientCLI, Source: "203.0.113.2:1",
 	})
 	require.True(t, apperror.Is(err, "authentication.credentials_invalid"), "err = %v", err)
@@ -563,13 +564,13 @@ func TestLoginAccountFailuresAreSharedByEveryIdentifierOfTheAccount(t *testing.T
 
 	service, waits := newAccountFailureLoginService(t)
 	for _, loginID := range []string{"spread-user", "Spread-User@Example.edu"} {
-		_, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+		_, err := service.Login(context.Background(), invocation.Invocation{}, LoginCommand{
 			LoginID: loginID, Password: "wrong-password-value", ClientType: model.SessionClientCLI, Source: "198.51.100.1:1",
 		})
 		require.True(t, apperror.Is(err, "authentication.credentials_invalid"), "%s: err = %v", loginID, err)
 	}
 	require.Empty(t, waits.recorded(), "no delay below the threshold")
-	_, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+	_, err := service.Login(context.Background(), invocation.Invocation{}, LoginCommand{
 		LoginID: "spread-user@example.edu", Password: "wrong-password-value", ClientType: model.SessionClientCLI, Source: "198.51.100.2:1",
 	})
 	require.True(t, apperror.Is(err, "authentication.credentials_invalid"), "err = %v", err)
@@ -577,7 +578,7 @@ func TestLoginAccountFailuresAreSharedByEveryIdentifierOfTheAccount(t *testing.T
 		"username and email failures count against one account")
 
 	// Another account from the same source has its own budget.
-	_, err = service.Login(context.Background(), Invocation{}, LoginCommand{
+	_, err = service.Login(context.Background(), invocation.Invocation{}, LoginCommand{
 		LoginID: "other-user", Password: "wrong-password-value", ClientType: model.SessionClientCLI, Source: "198.51.100.2:1",
 	})
 	require.True(t, apperror.Is(err, "authentication.credentials_invalid"), "err = %v", err)
@@ -593,7 +594,7 @@ func TestLoginAccountFailureDelayGrowsToItsBound(t *testing.T) {
 
 			service, waits := newAccountFailureLoginService(t)
 			for index := range 7 {
-				_, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+				_, err := service.Login(context.Background(), invocation.Invocation{}, LoginCommand{
 					LoginID: loginID, Password: "wrong-password-value", ClientType: model.SessionClientCLI,
 					Source: fmt.Sprintf("198.51.100.%d:1", index+1),
 				})

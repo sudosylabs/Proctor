@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -70,7 +71,7 @@ func TestAcademicUnitMemberCreateUsesAuthorizationWithoutGrantingPermission(t *t
 		clockCalls++
 		return time.UnixMilli(500)
 	}, model.NewID)
-	created, err := service.CreateAcademicUnitMember(context.Background(), Invocation{}, CreateAcademicUnitMemberCommand{AcademicUnitID: model.AcademicUnitID(unitID), UserID: userID, StartAt: 100})
+	created, err := service.CreateAcademicUnitMember(context.Background(), invocation.Invocation{}, CreateAcademicUnitMemberCommand{AcademicUnitID: model.AcademicUnitID(unitID), UserID: userID, StartAt: 100})
 	require.NoError(t, err)
 	require.Equal(t, unitID, created.AcademicUnitID.String())
 	require.Equal(t, userID, created.UserID.String())
@@ -100,7 +101,7 @@ func TestAcademicUnitMemberEndCarriesRevision(t *testing.T) {
 	effects := &academicUnitMemberEffectsFake{}
 	mail := &relationshipMailPreparerTestFake{}
 	service := newAcademicUnitMemberService(persistence, relationshipUserStoreTestFake{}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, mail, effects, func() time.Time { return time.UnixMilli(500) }, model.NewID)
-	ended, err := service.EndAcademicUnitMember(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: current.ID})
+	ended, err := service.EndAcademicUnitMember(context.Background(), invocation.Invocation{}, EndAcademicUnitMemberCommand{ID: current.ID})
 	require.NoError(t, err)
 	require.Equal(t, current.Revision, persistence.endInput.ExpectedRevision, "end input/result = %#v / %#v", persistence.endInput, ended)
 	require.Equal(t, current.Revision+1, ended.Revision, "end input/result = %#v / %#v", persistence.endInput, ended)
@@ -123,7 +124,7 @@ func TestAcademicUnitMemberEndDenialDoesNotInspectOpaqueMemberID(t *testing.T) {
 		&programmeAuthorizerFake{events: &events, preflightErr: apperror.New("authorization.denied")},
 		&institutionAuditorFake{events: &events}, &relationshipMailPreparerTestFake{}, &academicUnitMemberEffectsFake{}, time.Now, model.NewID,
 	)
-	_, err := service.EndAcademicUnitMember(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: model.NewAcademicUnitMemberID()})
+	_, err := service.EndAcademicUnitMember(context.Background(), invocation.Invocation{}, EndAcademicUnitMemberCommand{ID: model.NewAcademicUnitMemberID()})
 	require.True(t, apperror.Is(err, "authorization.denied"), "End() error = %v, want authorization.denied", err)
 	require.Equal(t, []string{"authorize-preflight"}, events, "events")
 }
@@ -141,7 +142,7 @@ func TestAcademicUnitMemberEndConcealsCrossScopeTarget(t *testing.T) {
 		&programmeAuthorizerFake{events: &events, err: apperror.New("authorization.denied")},
 		&institutionAuditorFake{events: &events}, &relationshipMailPreparerTestFake{}, &academicUnitMemberEffectsFake{}, time.Now, model.NewID,
 	)
-	_, err := service.EndAcademicUnitMember(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: current.ID})
+	_, err := service.EndAcademicUnitMember(context.Background(), invocation.Invocation{}, EndAcademicUnitMemberCommand{ID: current.ID})
 	require.True(t, apperror.Is(err, "resource.not_found"), "End() error = %v, want concealed resource.not_found", err)
 }
 

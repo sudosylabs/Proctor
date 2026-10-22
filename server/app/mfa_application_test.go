@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
@@ -49,7 +50,7 @@ func TestMFAChallengeRejectsReplayedRecoveryCodeAndPreservesEffectOrdering(t *te
 	effects := &mfaApplicationEffectsFake{events: &events}
 	service := newTestMFAApplicationService(t, persistence, audit, effects, now)
 	application := &App{mfaApplicationService: service}
-	invocation := NewInvocation(principal, model.RequestMetadata{RequestID: "request-a"})
+	invocation := invocation.New(principal, model.RequestMetadata{RequestID: "request-a"})
 	command := ChallengeMFACommand{Code: "aaaa-aaaa-aaaa-aaaa-aaaa-aaaa"}
 
 	_, err := application.ChallengeMFA(context.Background(), invocation, command)
@@ -84,7 +85,7 @@ func TestMFASetupUsesControlledClockAndSecretGenerator(t *testing.T) {
 
 	setup, err := application.SetupMFA(
 		context.Background(),
-		NewInvocation(principal, model.RequestMetadata{}),
+		invocation.New(principal, model.RequestMetadata{}),
 		SetupMFACommand{},
 	)
 	require.NoError(t, err)
@@ -194,7 +195,7 @@ func TestMFASecurityTransitionsPrepareOneOrdinaryNoticeWithoutSecrets(t *testing
 	service := newTestMFAApplicationService(t, persistence, &mfaApplicationAuditFake{}, &mfaApplicationEffectsFake{}, now)
 	service.mail = mailer
 	application := &App{mfaApplicationService: service}
-	invocation := NewInvocation(principal, model.RequestMetadata{RequestID: "mfa-notices"})
+	invocation := invocation.New(principal, model.RequestMetadata{RequestID: "mfa-notices"})
 	const secret = "JBSWY3DPEHPK3PXP"
 	sealed, err := service.mechanics.sealTOTPSecret(principal.UserID.String(), secret)
 	require.NoError(t, err)
@@ -412,7 +413,7 @@ type mfaSecurityNoticeMailPreparerFake struct {
 	requests []DirectMailPreparation
 }
 
-func (m *mfaSecurityNoticeMailPreparerFake) PrepareMFANotice(request NoticeMailPreparation, kind MFAMailNoticeKind) (*preparedDirectMail, error) {
+func (m *mfaSecurityNoticeMailPreparerFake) PrepareMFANotice(request NoticeMailPreparation, kind MFAMailNoticeKind) (*store.PreparedMail, error) {
 	key := model.MailTemplateIdentityMFAEnabled
 	switch kind {
 	case MFAMailNoticeDisabled:
@@ -427,7 +428,7 @@ func (m *mfaSecurityNoticeMailPreparerFake) PrepareMFANotice(request NoticeMailP
 		Deadline: request.At.Add(24 * time.Hour), JobType: model.JobTypeMailDeliver}
 	m.requests = append(m.requests, direct)
 	occurrenceID, deliveryID, jobID := model.NewMailOccurrenceID(), model.NewMailDeliveryID(), model.NewJobID()
-	return &preparedDirectMail{
+	return &store.PreparedMail{
 		Occurrence: &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceSecurityNotice, TemplateKey: key, ActorUserID: request.Recipient.ID, CreatedAt: request.At},
 		Delivery:   &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: jobID, TargetUserID: request.Recipient.ID, TemplateKey: key, Deadline: request.At.Add(24 * time.Hour)},
 		Job:        &model.Job{ID: jobID, Type: model.JobTypeMailDeliver},
@@ -462,7 +463,7 @@ func (a *mfaApplicationAuditFake) appendEvent(event string) {
 	}
 }
 
-func (a *mfaApplicationAuditFake) Begin(context.Context, Invocation, model.Action, model.Resource, any) (model.AuditEventID, error) {
+func (a *mfaApplicationAuditFake) Begin(context.Context, invocation.Invocation, model.Action, model.Resource, any) (model.AuditEventID, error) {
 	a.appendEvent("audit_begin")
 	return model.NewAuditEventID(), nil
 }
@@ -494,7 +495,7 @@ func (e *mfaApplicationEffectsFake) SessionsRevoked(_ context.Context, userID st
 
 type mfaResetAuthorizationFake struct{ err error }
 
-func (a mfaResetAuthorizationFake) Authorize(context.Context, Invocation, model.Action, model.Resource) error {
+func (a mfaResetAuthorizationFake) Authorize(context.Context, invocation.Invocation, model.Action, model.Resource) error {
 	return a.err
 }
 func testMFASecurity() mfaSecurityDependencies {

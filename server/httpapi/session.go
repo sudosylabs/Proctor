@@ -39,7 +39,7 @@ type sessionResourceModule struct {
 	cookies  browserCookies
 }
 
-func sessionResource(sessions Sessions, cookies browserCookies) resource {
+func sessionResource(sessions Sessions, cookies browserCookies) apiResource {
 	module := sessionResourceModule{sessions: sessions, cookies: cookies}
 	base := apiPath(literal("users"), literal("me"), literal("sessions"))
 	return newResource(

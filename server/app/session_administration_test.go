@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -64,7 +65,7 @@ func (s *sessionAdministrationStoreFake) RevokeAllForUser(_ context.Context, inp
 
 type sessionAdministrationAuthorizerFake struct{ events *[]string }
 
-func (a *sessionAdministrationAuthorizerFake) Authorize(_ context.Context, _ Invocation, action model.Action, _ model.Resource) error {
+func (a *sessionAdministrationAuthorizerFake) Authorize(_ context.Context, _ invocation.Invocation, action model.Action, _ model.Resource) error {
 	event := "authorize-view"
 	if action == model.ActionSessionManage {
 		event = "authorize-manage"
@@ -117,7 +118,7 @@ func TestAdminSessionListAuthorizesThenReads(t *testing.T) {
 		&sessionAdministrationEffectsFake{events: &events},
 		func() time.Time { return at },
 	)
-	got, err := service.ListUserSessions(context.Background(), Invocation{}, ListUserSessionsQuery{UserID: model.UserID(userID), Limit: 50})
+	got, err := service.ListUserSessions(context.Background(), invocation.Invocation{}, ListUserSessionsQuery{UserID: model.UserID(userID), Limit: 50})
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	require.Equal(t, session.ID.String(), got[0].ID.String())
@@ -144,7 +145,7 @@ func TestAdminSessionHistoryIsPaged(t *testing.T) {
 	)
 	before := time.Date(2026, 8, 12, 9, 30, 0, 0, time.UTC)
 	beforeID := model.NewSessionID()
-	_, err := service.ListUserSessions(context.Background(), Invocation{}, ListUserSessionsQuery{
+	_, err := service.ListUserSessions(context.Background(), invocation.Invocation{}, ListUserSessionsQuery{
 		UserID: userID, IncludeRevoked: true, Limit: 2, BeforeCreatedAt: before, BeforeID: beforeID,
 	})
 	require.NoError(t, err)
@@ -156,7 +157,7 @@ func TestAdminSessionHistoryIsPaged(t *testing.T) {
 		{UserID: userID, Limit: 201},
 		{UserID: userID, Limit: 10, BeforeID: beforeID},
 	} {
-		_, err = service.ListUserSessions(context.Background(), Invocation{}, query)
+		_, err = service.ListUserSessions(context.Background(), invocation.Invocation{}, query)
 		require.True(t, apperror.Is(err, "request.invalid"), "query %#v: err = %v", query, err)
 	}
 }
@@ -188,7 +189,7 @@ func TestAdminSessionRevokeCommitsBeforePublishing(t *testing.T) {
 		&sessionAdministrationEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
-	require.NoError(t, service.RevokeUserSession(context.Background(), Invocation{}, RevokeUserSessionCommand{
+	require.NoError(t, service.RevokeUserSession(context.Background(), invocation.Invocation{}, RevokeUserSessionCommand{
 		UserID: model.UserID(userID), SessionID: session.ID,
 	}))
 	require.Equal(t, session.ID, persistence.revokeInput.SessionID)
@@ -224,7 +225,7 @@ func TestAdminSessionRevokeFailurePublishesNoEffect(t *testing.T) {
 		&sessionAdministrationEffectsFake{events: &events},
 		time.Now,
 	)
-	err := service.RevokeUserSession(context.Background(), Invocation{}, RevokeUserSessionCommand{
+	err := service.RevokeUserSession(context.Background(), invocation.Invocation{}, RevokeUserSessionCommand{
 		UserID: model.UserID(userID), SessionID: session.ID,
 	})
 	require.True(t, apperror.Is(err, "administration.unavailable"), "error = %v", err)
@@ -253,7 +254,7 @@ func TestAdminSessionRevokeAllCommitsBeforePublishing(t *testing.T) {
 		&sessionAdministrationEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
-	require.NoError(t, service.RevokeUserSessions(context.Background(), Invocation{}, RevokeUserSessionsCommand{UserID: model.UserID(userID)}))
+	require.NoError(t, service.RevokeUserSessions(context.Background(), invocation.Invocation{}, RevokeUserSessionsCommand{UserID: model.UserID(userID)}))
 	require.Equal(t, model.UserID(userID), persistence.revokeAllInput.UserID)
 	require.NotEmpty(t, persistence.revokeAllInput.AuditEventID)
 	require.NotNil(t, persistence.revokeAllInput.Occurrence)
@@ -272,7 +273,7 @@ func TestAdminSessionIdempotentNoOpPreparesNoticeForAuthoritativeRace(t *testing
 	service := newSessionAdministrationService(persistence, &sessionAdministrationUserStoreFake{events: &events, user: sessionAdministrationTestUser(userID)},
 		&sessionAdministrationAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, mailer,
 		&sessionAdministrationEffectsFake{events: &events}, time.Now)
-	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
+	invocation := invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 	require.NoError(t, service.RevokeUserSessions(context.Background(), invocation, RevokeUserSessionsCommand{UserID: model.UserID(userID), IdempotencyKey: "row"}))
 	require.Len(t, mailer.requests, 1, "idempotent no-op mail")
 	require.NotNil(t, persistence.revokeAllInput, "idempotent no-op mail")
@@ -290,7 +291,7 @@ func TestAdminSessionRetainedOutcomeBypassesMailAfterNewSession(t *testing.T) {
 	service := newSessionAdministrationService(persistence, &sessionAdministrationUserStoreFake{events: &events, user: sessionAdministrationTestUser(userID)},
 		&sessionAdministrationAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, mailer,
 		&sessionAdministrationEffectsFake{events: &events}, time.Now)
-	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
+	invocation := invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 	require.NoError(t, service.RevokeUserSessions(context.Background(), invocation, RevokeUserSessionsCommand{UserID: model.UserID(userID), IdempotencyKey: "row", batchRetainedOutcome: true}))
 	require.Empty(t, mailer.requests, "retained mail")
 	require.Equal(t, []string{"authorize-manage", "get-user", "audit-begin", "store-revoke-all"}, events)
@@ -310,7 +311,7 @@ func TestAdminSessionCrossUserNotFound(t *testing.T) {
 		&sessionAdministrationEffectsFake{events: &events},
 		time.Now,
 	)
-	err := service.RevokeUserSession(context.Background(), Invocation{}, RevokeUserSessionCommand{
+	err := service.RevokeUserSession(context.Background(), invocation.Invocation{}, RevokeUserSessionCommand{
 		UserID: model.UserID(userID), SessionID: session.ID,
 	})
 	require.True(t, apperror.Is(err, "session.not_found"), "error = %v", err)
@@ -349,7 +350,7 @@ func TestAdminSessionRevocationOutcomesPreserveAuditAndBatchResult(t *testing.T)
 				&sessionAdministrationUserStoreFake{events: &events, user: sessionAdministrationTestUser(userID)},
 				&sessionAdministrationAuthorizerFake{events: &events}, audit,
 				&securityNoticeMailerFake{events: &events}, effects, func() time.Time { return now })
-			invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
+			invocation := invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 			err := service.RevokeUserSessions(context.Background(), invocation, RevokeUserSessionsCommand{
 				UserID: model.UserID(userID), IdempotencyKey: "repeat-command", batchReplayed: &unchanged,
 			})

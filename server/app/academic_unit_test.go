@@ -14,13 +14,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
 type academicUnitAuthorizerFunc func(
 	context.Context,
-	Invocation,
+	invocation.Invocation,
 	model.Action,
 	model.Resource,
 ) error
@@ -28,12 +29,12 @@ type academicUnitAuthorizerFunc func(
 type academicUnitAuthorizerStub struct {
 	authorize             academicUnitAuthorizerFunc
 	installation          func(context.Context) (model.Resource, error)
-	authorizeInstallation func(context.Context, Invocation, model.Action) (model.Resource, error)
+	authorizeInstallation func(context.Context, invocation.Invocation, model.Action) (model.Resource, error)
 }
 
 func (s academicUnitAuthorizerStub) Authorize(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	action model.Action,
 	resource model.Resource,
 ) error {
@@ -51,7 +52,7 @@ func (s academicUnitAuthorizerStub) InstitutionResource(
 
 func (s academicUnitAuthorizerStub) AuthorizeInstitution(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	action model.Action,
 ) (model.Resource, error) {
 	return s.authorizeInstallation(ctx, invocation, action)
@@ -59,7 +60,7 @@ func (s academicUnitAuthorizerStub) AuthorizeInstitution(
 
 func (f academicUnitAuthorizerFunc) Authorize(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	action model.Action,
 	resource model.Resource,
 ) error {
@@ -67,7 +68,7 @@ func (f academicUnitAuthorizerFunc) Authorize(
 }
 
 func (f academicUnitAuthorizerFunc) AuthorizeInstitution(
-	context.Context, Invocation, model.Action,
+	context.Context, invocation.Invocation, model.Action,
 ) (model.Resource, error) {
 	panic("unexpected AuthorizeInstallation")
 }
@@ -133,14 +134,14 @@ func TestAcademicUnitGetDenialDoesNotReadPersistence(t *testing.T) {
 	service := newAcademicUnitQueryService(
 		units,
 		academicUnitAuthorizerFunc(func(
-			context.Context, Invocation, model.Action, model.Resource,
+			context.Context, invocation.Invocation, model.Action, model.Resource,
 		) error {
 			return apperror.New("authorization.denied")
 		}),
 	)
 	_, err := service.GetAcademicUnit(
 		context.Background(),
-		NewInvocation(model.Principal{}, model.RequestMetadata{}),
+		invocation.New(model.Principal{}, model.RequestMetadata{}),
 		GetAcademicUnitQuery{ID: model.NewAcademicUnitID()},
 	)
 	require.True(t, apperror.Is(err, "authorization.denied"), "Get() error = %v, want authorization.denied", err)
@@ -157,14 +158,14 @@ func TestAcademicUnitGetUsesUnitViewScope(t *testing.T) {
 	service := newAcademicUnitQueryService(
 		units,
 		academicUnitAuthorizerFunc(func(
-			_ context.Context, _ Invocation, action model.Action, resource model.Resource,
+			_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource,
 		) error {
 			gotAction, gotResource = action, resource
 			return nil
 		}),
 	)
 	got, err := service.GetAcademicUnit(
-		context.Background(), Invocation{}, GetAcademicUnitQuery{ID: unit.ID},
+		context.Background(), invocation.Invocation{}, GetAcademicUnitQuery{ID: unit.ID},
 	)
 	require.NoError(t, err)
 	require.Same(t, unit, got, "Get()")
@@ -180,18 +181,18 @@ func TestAcademicUnitRootListUsesInstitutionScopedAcademicUnitViewAndReturnsEmpt
 	var gotAction model.Action
 	var gotResource model.Resource
 	service := newAcademicUnitQueryService(units, academicUnitAuthorizerStub{
-		authorize: func(context.Context, Invocation, model.Action, model.Resource) error {
+		authorize: func(context.Context, invocation.Invocation, model.Action, model.Resource) error {
 			panic("unexpected Authorize")
 		},
 		authorizeInstallation: func(
-			_ context.Context, _ Invocation, action model.Action,
+			_ context.Context, _ invocation.Invocation, action model.Action,
 		) (model.Resource, error) {
 			gotAction = action
 			gotResource = model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
 			return gotResource, nil
 		},
 	})
-	got, err := service.ListAcademicUnits(context.Background(), Invocation{}, ListAcademicUnitsQuery{})
+	got, err := service.ListAcademicUnits(context.Background(), invocation.Invocation{}, ListAcademicUnitsQuery{})
 	require.NoError(t, err)
 	require.NotNil(t, got.Items, "List()")
 	require.Empty(t, got.Items, "List()")
@@ -205,17 +206,17 @@ func TestAcademicUnitSearchNormalizesInput(t *testing.T) {
 	institution := &model.Institution{ID: model.InstitutionID(model.NewID())}
 	units := &academicUnitReadStore{}
 	service := newAcademicUnitQueryService(units, academicUnitAuthorizerStub{
-		authorize: func(context.Context, Invocation, model.Action, model.Resource) error {
+		authorize: func(context.Context, invocation.Invocation, model.Action, model.Resource) error {
 			panic("unexpected Authorize")
 		},
 		authorizeInstallation: func(
-			context.Context, Invocation, model.Action,
+			context.Context, invocation.Invocation, model.Action,
 		) (model.Resource, error) {
 			return model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, nil
 		},
 	})
 	got, err := service.SearchAcademicUnits(
-		context.Background(), Invocation{},
+		context.Background(), invocation.Invocation{},
 		SearchAcademicUnitsQuery{Query: "  computing  "},
 	)
 	require.NoError(t, err)
@@ -229,16 +230,16 @@ func TestAcademicUnitRootListDenialDoesNotReadQueryStore(t *testing.T) {
 
 	units := &academicUnitReadStore{}
 	service := newAcademicUnitQueryService(units, academicUnitAuthorizerStub{
-		authorize: func(context.Context, Invocation, model.Action, model.Resource) error {
+		authorize: func(context.Context, invocation.Invocation, model.Action, model.Resource) error {
 			panic("unexpected Authorize")
 		},
 		authorizeInstallation: func(
-			context.Context, Invocation, model.Action,
+			context.Context, invocation.Invocation, model.Action,
 		) (model.Resource, error) {
 			return model.Resource{}, apperror.New("authorization.denied")
 		},
 	})
-	_, err := service.ListAcademicUnits(context.Background(), Invocation{}, ListAcademicUnitsQuery{})
+	_, err := service.ListAcademicUnits(context.Background(), invocation.Invocation{}, ListAcademicUnitsQuery{})
 	require.True(t, apperror.Is(err, "authorization.denied"), "List() error = %v, want authorization.denied", err)
 	require.Equal(t, 0, units.listCalls)
 }
@@ -248,16 +249,16 @@ func TestAcademicUnitSearchDenialDoesNotReadQueryStore(t *testing.T) {
 
 	units := &academicUnitReadStore{}
 	service := newAcademicUnitQueryService(units, academicUnitAuthorizerStub{
-		authorize: func(context.Context, Invocation, model.Action, model.Resource) error {
+		authorize: func(context.Context, invocation.Invocation, model.Action, model.Resource) error {
 			panic("unexpected Authorize")
 		},
 		authorizeInstallation: func(
-			context.Context, Invocation, model.Action,
+			context.Context, invocation.Invocation, model.Action,
 		) (model.Resource, error) {
 			return model.Resource{}, apperror.New("authorization.denied")
 		},
 	})
-	_, err := service.SearchAcademicUnits(context.Background(), Invocation{}, SearchAcademicUnitsQuery{})
+	_, err := service.SearchAcademicUnits(context.Background(), invocation.Invocation{}, SearchAcademicUnitsQuery{})
 	require.True(t, apperror.Is(err, "authorization.denied"), "Search() error = %v, want authorization.denied", err)
 	require.Equal(t, 0, units.searchCalls)
 }

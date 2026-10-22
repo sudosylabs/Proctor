@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -75,7 +76,7 @@ func TestPasswordReauthenticationBindsCurrentIdentityAndRequiresCommit(t *testin
 			service.audit = &mutationAttemptAuditorFake{events: &events, beginID: model.NewID(), beginErr: test.auditErr}
 			mfa := &authenticationMFAVerifierFake{}
 			service.mfa = mfa
-			actual, err := service.ReauthenticatePassword(ctx, NewInvocation(principal, model.RequestMetadata{}), ReauthenticatePasswordCommand{Password: test.password, Source: "192.0.2.45"})
+			actual, err := service.ReauthenticatePassword(ctx, invocation.New(principal, model.RequestMetadata{}), ReauthenticatePasswordCommand{Password: test.password, Source: "192.0.2.45"})
 			if test.code != "" {
 				require.True(t, apperror.Is(err, test.code), "result=%v err=%v", actual, err)
 				require.Nil(t, actual, "result=%v err=%v", actual, err)

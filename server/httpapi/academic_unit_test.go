@@ -20,6 +20,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -50,7 +51,7 @@ func (a *academicUnitHTTPApplication) AuthenticateBearer(
 
 func (a *academicUnitHTTPApplication) GetAcademicUnit(
 	_ context.Context,
-	invocation app.Invocation,
+	invocation invocation.Invocation,
 	query app.GetAcademicUnitQuery,
 ) (*model.AcademicUnit, error) {
 	if invocation.Principal().UserID != a.principal.UserID || query.ID != a.unit.ID {
@@ -64,7 +65,7 @@ func (a *academicUnitHTTPApplication) GetAcademicUnit(
 
 func (a *academicUnitHTTPApplication) ListAcademicUnits(
 	context.Context,
-	app.Invocation,
+	invocation.Invocation,
 	app.ListAcademicUnitsQuery,
 ) (app.Page[*model.AcademicUnit], error) {
 	return app.Page[*model.AcademicUnit]{Items: []*model.AcademicUnit{}}, nil
@@ -72,7 +73,7 @@ func (a *academicUnitHTTPApplication) ListAcademicUnits(
 
 func (a *academicUnitHTTPApplication) SearchAcademicUnits(
 	context.Context,
-	app.Invocation,
+	invocation.Invocation,
 	app.SearchAcademicUnitsQuery,
 ) (app.Page[*model.AcademicUnit], error) {
 	return app.Page[*model.AcademicUnit]{Items: []*model.AcademicUnit{}}, nil
@@ -80,7 +81,7 @@ func (a *academicUnitHTTPApplication) SearchAcademicUnits(
 
 func (a *academicUnitHTTPApplication) CreateAcademicUnit(
 	_ context.Context,
-	invocation app.Invocation,
+	invocation invocation.Invocation,
 	command app.CreateAcademicUnitCommand,
 ) (*model.AcademicUnit, error) {
 	if invocation.Principal().UserID != a.principal.UserID {
@@ -92,7 +93,7 @@ func (a *academicUnitHTTPApplication) CreateAcademicUnit(
 
 func (a *academicUnitHTTPApplication) UpdateAcademicUnit(
 	_ context.Context,
-	invocation app.Invocation,
+	invocation invocation.Invocation,
 	command app.UpdateAcademicUnitCommand,
 ) (*model.AcademicUnit, error) {
 	if invocation.Principal().UserID != a.principal.UserID {
@@ -104,7 +105,7 @@ func (a *academicUnitHTTPApplication) UpdateAcademicUnit(
 
 func (a *academicUnitHTTPApplication) ArchiveAcademicUnit(
 	_ context.Context,
-	invocation app.Invocation,
+	invocation invocation.Invocation,
 	command app.ArchiveAcademicUnitCommand,
 ) error {
 	if invocation.Principal().UserID != a.principal.UserID {

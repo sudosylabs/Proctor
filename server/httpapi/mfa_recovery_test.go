@@ -18,15 +18,16 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type recoveryMFAHTTPFake struct{ MFA }
 
-func (recoveryMFAHTTPFake) GetMFAStatus(_ context.Context, invocation app.Invocation, _ app.GetMFAStatusQuery) (*app.MFAStatus, error) {
+func (recoveryMFAHTTPFake) GetMFAStatus(_ context.Context, invocation invocation.Invocation, _ app.GetMFAStatusQuery) (*app.MFAStatus, error) {
 	return &app.MFAStatus{MFARecoveryRequired: invocation.Principal().MFARecoveryRequired, AuthenticationMethod: "oidc", AuthenticationProviderID: "campus", AuthenticationStrength: model.AuthenticationSingleFactor, RecentlyAuthenticated: true}, nil
 }
-func (recoveryMFAHTTPFake) SetupMFA(context.Context, app.Invocation, app.SetupMFACommand) (*app.MFASetup, error) {
+func (recoveryMFAHTTPFake) SetupMFA(context.Context, invocation.Invocation, app.SetupMFACommand) (*app.MFASetup, error) {
 	return &app.MFASetup{Secret: "once-only", ProvisioningURI: "otpauth://totp/Proctor", ExpiresAt: time.Now().Add(time.Minute)}, nil
 }
 func TestMFARestrictedSessionOnlyReachesExplicitRecoveryRoutes(t *testing.T) {

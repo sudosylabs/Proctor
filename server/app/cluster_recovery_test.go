@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -260,7 +261,7 @@ func seedAuthenticatedSession(
 		Password: password,
 	})
 	require.NoError(t, err)
-	result, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+	result, err := service.Login(context.Background(), invocation.Invocation{}, LoginCommand{
 		LoginID:    user.Username,
 		Password:   password,
 		ClientType: model.SessionClientCLI,

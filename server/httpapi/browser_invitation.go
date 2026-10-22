@@ -12,12 +12,13 @@ import (
 	"net/http"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 )
 
 type BrowserInvitationApplication interface {
-	StartBrowserInvitation(context.Context, app.Invocation, app.StartBrowserInvitationCommand) (*app.BrowserInvitationStart, error)
-	AcceptBrowserInvitation(context.Context, app.Invocation, app.BrowserInvitationAcceptanceCommand) (*app.InvitationAcceptanceView, error)
-	AcceptBrowserInvitationWithSession(context.Context, app.Invocation, app.BrowserInvitationSessionAcceptanceCommand) (*app.InvitationAcceptanceView, error)
+	StartBrowserInvitation(context.Context, invocation.Invocation, app.StartBrowserInvitationCommand) (*app.BrowserInvitationStart, error)
+	AcceptBrowserInvitation(context.Context, invocation.Invocation, app.BrowserInvitationAcceptanceCommand) (*app.InvitationAcceptanceView, error)
+	AcceptBrowserInvitationWithSession(context.Context, invocation.Invocation, app.BrowserInvitationSessionAcceptanceCommand) (*app.InvitationAcceptanceView, error)
 }
 
 type browserInvitationStartRequest struct {
@@ -53,19 +54,19 @@ type browserInvitationResourceModule struct {
 
 type unavailableBrowserInvitationApplication struct{}
 
-func (unavailableBrowserInvitationApplication) StartBrowserInvitation(context.Context, app.Invocation, app.StartBrowserInvitationCommand) (*app.BrowserInvitationStart, error) {
+func (unavailableBrowserInvitationApplication) StartBrowserInvitation(context.Context, invocation.Invocation, app.StartBrowserInvitationCommand) (*app.BrowserInvitationStart, error) {
 	return nil, errUnpresentableResult
 }
 
-func (unavailableBrowserInvitationApplication) AcceptBrowserInvitation(context.Context, app.Invocation, app.BrowserInvitationAcceptanceCommand) (*app.InvitationAcceptanceView, error) {
+func (unavailableBrowserInvitationApplication) AcceptBrowserInvitation(context.Context, invocation.Invocation, app.BrowserInvitationAcceptanceCommand) (*app.InvitationAcceptanceView, error) {
 	return nil, errUnpresentableResult
 }
 
-func (unavailableBrowserInvitationApplication) AcceptBrowserInvitationWithSession(context.Context, app.Invocation, app.BrowserInvitationSessionAcceptanceCommand) (*app.InvitationAcceptanceView, error) {
+func (unavailableBrowserInvitationApplication) AcceptBrowserInvitationWithSession(context.Context, invocation.Invocation, app.BrowserInvitationSessionAcceptanceCommand) (*app.InvitationAcceptanceView, error) {
 	return nil, errUnpresentableResult
 }
 
-func browserInvitationResource(application BrowserInvitationApplication, cookies browserCookies) resource {
+func browserInvitationResource(application BrowserInvitationApplication, cookies browserCookies) apiResource {
 	module := browserInvitationResourceModule{application: application, cookies: cookies}
 	return newResource(
 		"browser-invitations",

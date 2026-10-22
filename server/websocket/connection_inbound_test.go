@@ -21,8 +21,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -39,21 +40,21 @@ type inboundTestApplication struct {
 	authorizeErr        error
 	validationErr       error
 	connectErr          error
-	connectResult       app.ExamAttemptConnection
-	connectCalls        []app.ConnectExamAttemptCommand
+	connectResult       attempt.ConnectionResult
+	connectCalls        []attempt.ConnectCommand
 	renewErr            error
-	renewResult         app.ExamAttemptParticipationRenewal
-	renewCalls          []app.RenewExamAttemptParticipationCommand
+	renewResult         attempt.ParticipationRenewal
+	renewCalls          []attempt.RenewParticipationCommand
 	focusLossErr        error
-	focusLossResult     app.ExamAttemptFocusLossEvaluation
-	focusLossCalls      []app.EvaluateExamAttemptFocusLossCommand
+	focusLossResult     attempt.FocusLossEvaluation
+	focusLossCalls      []attempt.FocusLossCommand
 	browserStartErr     error
 	browserStartResult  model.BrowserSourceStatus
-	browserStartCalls   []app.StartBrowserActivityCommand
+	browserStartCalls   []attempt.StartBrowserActivityCommand
 	browserAppendErr    error
-	browserAppendResult app.BrowserActivityAcknowledgement
-	browserAppendCalls  []app.AppendBrowserActivityCommand
-	closeCalls          []app.CloseExamAttemptConnectionCommand
+	browserAppendResult model.BrowserActivityAcknowledgement
+	browserAppendCalls  []attempt.AppendBrowserActivityCommand
+	closeCalls          []attempt.CloseConnectionCommand
 	closeContextErr     error
 	closePrincipal      model.Principal
 	closeMetadata       model.RequestMetadata
@@ -61,31 +62,31 @@ type inboundTestApplication struct {
 	validations         []model.Principal
 }
 
-func (a *inboundTestApplication) RenewExamAttemptParticipation(_ context.Context, _ app.Invocation, command app.RenewExamAttemptParticipationCommand) (app.ExamAttemptParticipationRenewal, error) {
+func (a *inboundTestApplication) RenewExamAttemptParticipation(_ context.Context, _ invocation.Invocation, command attempt.RenewParticipationCommand) (attempt.ParticipationRenewal, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.renewCalls = append(a.renewCalls, command)
 	return a.renewResult, a.renewErr
 }
 
-func (a *inboundTestApplication) EvaluateExamAttemptFocusLoss(_ context.Context, _ app.Invocation,
-	command app.EvaluateExamAttemptFocusLossCommand,
-) (app.ExamAttemptFocusLossEvaluation, error) {
+func (a *inboundTestApplication) EvaluateExamAttemptFocusLoss(_ context.Context, _ invocation.Invocation,
+	command attempt.FocusLossCommand,
+) (attempt.FocusLossEvaluation, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.focusLossCalls = append(a.focusLossCalls, command)
 	return a.focusLossResult, a.focusLossErr
 }
 
-func (a *inboundTestApplication) ConnectExamAttempt(_ context.Context, _ app.Invocation, command app.ConnectExamAttemptCommand) (app.ExamAttemptConnection, error) {
+func (a *inboundTestApplication) ConnectExamAttempt(_ context.Context, _ invocation.Invocation, command attempt.ConnectCommand) (attempt.ConnectionResult, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.connectCalls = append(a.connectCalls, command)
 	return a.connectResult, a.connectErr
 }
 
-func (a *inboundTestApplication) StartExamAttemptBrowserActivity(_ context.Context, _ app.Invocation,
-	command app.StartBrowserActivityCommand,
+func (a *inboundTestApplication) StartExamAttemptBrowserActivity(_ context.Context, _ invocation.Invocation,
+	command attempt.StartBrowserActivityCommand,
 ) (model.BrowserSourceStatus, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -93,28 +94,28 @@ func (a *inboundTestApplication) StartExamAttemptBrowserActivity(_ context.Conte
 	return a.browserStartResult, a.browserStartErr
 }
 
-func (a *inboundTestApplication) AppendExamAttemptBrowserActivity(_ context.Context, _ app.Invocation,
-	command app.AppendBrowserActivityCommand,
-) (app.BrowserActivityAcknowledgement, error) {
+func (a *inboundTestApplication) AppendExamAttemptBrowserActivity(_ context.Context, _ invocation.Invocation,
+	command attempt.AppendBrowserActivityCommand,
+) (model.BrowserActivityAcknowledgement, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.browserAppendCalls = append(a.browserAppendCalls, command)
 	return a.browserAppendResult, a.browserAppendErr
 }
 
-func (a *inboundTestApplication) CloseExamAttemptConnection(ctx context.Context, invocation app.Invocation, command app.CloseExamAttemptConnectionCommand) (app.ExamAttemptConnectionClosed, error) {
+func (a *inboundTestApplication) CloseExamAttemptConnection(ctx context.Context, invocation invocation.Invocation, command attempt.CloseConnectionCommand) (attempt.ConnectionClosedResult, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.closeCalls = append(a.closeCalls, command)
 	a.closeContextErr = ctx.Err()
 	a.closePrincipal = invocation.Principal()
 	a.closeMetadata = invocation.RequestMetadata()
-	return app.ExamAttemptConnectionClosed{}, nil
+	return attempt.ConnectionClosedResult{}, nil
 }
 
 func (a *inboundTestApplication) AuthorizeWebSocketSubscription(
 	_ context.Context,
-	invocation app.Invocation,
+	invocation invocation.Invocation,
 	action model.Action,
 	resource model.Resource,
 ) error {
@@ -444,22 +445,22 @@ func TestConnectionRuntimeConnectsExamAttemptAndOwnsCandidateSubscription(t *tes
 	t.Parallel()
 	at := time.Date(2026, time.August, 17, 10, 0, 0, 0, time.UTC)
 	examID, sittingID, classID := model.NewExamID(), model.NewExamSittingID(), model.NewClassID()
-	attempt, err := model.NewExamAttempt(model.NewExamAttemptID(), examID, sittingID, model.NewUserID(), model.NewExamRevisionID(), at)
+	examAttempt, err := model.NewExamAttempt(model.NewExamAttemptID(), examID, sittingID, model.NewUserID(), model.NewExamRevisionID(), at)
 	require.NoError(t, err)
-	workspace, err := model.NewExamAttemptWorkspace(model.NewExamAttemptWorkspaceID(), attempt.ID, at)
+	workspace, err := model.NewExamAttemptWorkspace(model.NewExamAttemptWorkspaceID(), examAttempt.ID, at)
 	require.NoError(t, err)
 	participationID, connectionID := model.NewAttemptParticipationID(), model.NewAttemptConnectionID()
-	connection, err := model.NewAttemptConnection(connectionID, attempt.ID, participationID, model.NewSessionID(), at)
+	connection, err := model.NewAttemptConnection(connectionID, examAttempt.ID, participationID, model.NewSessionID(), at)
 	require.NoError(t, err)
-	application := &inboundTestApplication{connectResult: app.ExamAttemptConnection{
-		Attempt: *attempt, Workspace: *workspace, Participation: store.ExamAttemptParticipationView{
-			ID: participationID, AttemptID: attempt.ID, State: model.AttemptParticipationActive, Generation: 1,
+	application := &inboundTestApplication{connectResult: attempt.ConnectionResult{
+		Attempt: *examAttempt, Workspace: *workspace, Participation: store.ExamAttemptParticipationView{
+			ID: participationID, AttemptID: examAttempt.ID, State: model.AttemptParticipationActive, Generation: 1,
 			StartedAt: at, UpdatedAt: at, LeaseExpiresAt: at.Add(20 * time.Second),
 		}, Connection: *connection, ClassID: classID, FirstAdmission: true,
 	}}
 	application.connectResult.Security = inboundSecurityFixture(t, application.connectResult)
 	runtime := newInboundRuntime(application, newInboundTestSocket(), newRuntimeTestClock(at))
-	runtime.principal.UserID = attempt.CandidateUserID
+	runtime.principal.UserID = examAttempt.CandidateUserID
 	runtime.principal.SessionID = connection.SessionID
 	credential := model.NewCredentialToken()
 	connectRequest := validExamAttemptConnectRequest(t, sittingID, "admit-once", credential)
@@ -470,7 +471,7 @@ func TestConnectionRuntimeConnectsExamAttemptAndOwnsCandidateSubscription(t *tes
 	var body examAttemptConnectResponse
 	err = json.Unmarshal(response.Data, &body)
 	require.NoError(t, err)
-	require.Equal(t, attempt.ID.String(), body.AttemptID)
+	require.Equal(t, examAttempt.ID.String(), body.AttemptID)
 	require.Equal(t, workspace.ID.String(), body.WorkspaceID)
 	require.Equal(t, participationID.String(), body.ParticipationID)
 	require.Equal(t, connectionID.String(), body.AttemptConnectionID)
@@ -484,7 +485,7 @@ func TestConnectionRuntimeConnectsExamAttemptAndOwnsCandidateSubscription(t *tes
 		Resource: Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}}
 	require.True(t, runtime.hasSubscription(candidate), "candidate relationship subscription was not installed")
 	application.mu.Lock()
-	calls := append([]app.ConnectExamAttemptCommand(nil), application.connectCalls...)
+	calls := append([]attempt.ConnectCommand(nil), application.connectCalls...)
 	application.mu.Unlock()
 	require.Len(t, calls, 1)
 	require.Equal(t, sittingID, calls[0].SittingID)
@@ -519,13 +520,13 @@ func TestConnectionRuntimeConnectsExamAttemptAndOwnsCandidateSubscription(t *tes
 	runtime.finalizeExamAttempt(context.Background())
 	require.False(t, runtime.hasSubscription(candidate), "candidate subscription survived transport finalization")
 	application.mu.Lock()
-	closeCalls := append([]app.CloseExamAttemptConnectionCommand(nil), application.closeCalls...)
+	closeCalls := append([]attempt.CloseConnectionCommand(nil), application.closeCalls...)
 	closeContextErr := application.closeContextErr
 	closePrincipal := application.closePrincipal
 	closeMetadata := application.closeMetadata
 	application.mu.Unlock()
 	require.Len(t, closeCalls, 1)
-	require.Equal(t, attempt.ID, closeCalls[0].AttemptID)
+	require.Equal(t, examAttempt.ID, closeCalls[0].AttemptID)
 	require.Equal(t, sittingID, closeCalls[0].SittingID)
 	require.Equal(t, classID, closeCalls[0].ClassID)
 	require.Equal(t, connectionID, closeCalls[0].ConnectionID)
@@ -551,26 +552,26 @@ func TestConnectionRuntimeRenewsBoundParticipationWithoutTreatingPingAsRenewal(t
 	t.Parallel()
 	at := time.Date(2026, time.August, 18, 10, 0, 0, 0, time.UTC)
 	sittingID := model.NewExamSittingID()
-	attempt, err := model.NewExamAttempt(model.NewExamAttemptID(), model.NewExamID(), sittingID, model.NewUserID(), model.NewExamRevisionID(), at)
+	examAttempt, err := model.NewExamAttempt(model.NewExamAttemptID(), model.NewExamID(), sittingID, model.NewUserID(), model.NewExamRevisionID(), at)
 	require.NoError(t, err)
-	workspace, err := model.NewExamAttemptWorkspace(model.NewExamAttemptWorkspaceID(), attempt.ID, at)
+	workspace, err := model.NewExamAttemptWorkspace(model.NewExamAttemptWorkspaceID(), examAttempt.ID, at)
 	require.NoError(t, err)
 	participationID, connectionID := model.NewAttemptParticipationID(), model.NewAttemptConnectionID()
-	connection, err := model.NewAttemptConnection(connectionID, attempt.ID, participationID, model.NewSessionID(), at)
+	connection, err := model.NewAttemptConnection(connectionID, examAttempt.ID, participationID, model.NewSessionID(), at)
 	require.NoError(t, err)
 	databaseNow := at.Add(5 * time.Second)
-	application := &inboundTestApplication{connectResult: app.ExamAttemptConnection{
-		Attempt: *attempt, Workspace: *workspace, Participation: store.ExamAttemptParticipationView{
-			ID: participationID, AttemptID: attempt.ID, State: model.AttemptParticipationActive, Generation: 4,
+	application := &inboundTestApplication{connectResult: attempt.ConnectionResult{
+		Attempt: *examAttempt, Workspace: *workspace, Participation: store.ExamAttemptParticipationView{
+			ID: participationID, AttemptID: examAttempt.ID, State: model.AttemptParticipationActive, Generation: 4,
 			StartedAt: at, UpdatedAt: at, LeaseExpiresAt: at.Add(model.AttemptParticipationInitialLease),
 		}, Connection: *connection, ClassID: model.NewClassID(), FirstAdmission: true,
-	}, renewResult: app.ExamAttemptParticipationRenewal{SecurityCoverage: renewalCoverageResultFixture(),
-		AttemptID: attempt.ID, ParticipationID: participationID, Generation: 4, AcceptedSequence: 1,
+	}, renewResult: attempt.ParticipationRenewal{SecurityCoverage: renewalCoverageResultFixture(),
+		AttemptID: examAttempt.ID, ParticipationID: participationID, Generation: 4, AcceptedSequence: 1,
 		DatabaseTime: databaseNow, LeaseExpiresAt: databaseNow.Add(model.AttemptParticipationInitialLease),
 	}}
 	application.connectResult.Security = inboundSecurityFixture(t, application.connectResult)
 	runtime := newInboundRuntime(application, newInboundTestSocket(), newRuntimeTestClock(at))
-	runtime.principal.UserID, runtime.principal.SessionID = attempt.CandidateUserID, connection.SessionID
+	runtime.principal.UserID, runtime.principal.SessionID = examAttempt.CandidateUserID, connection.SessionID
 	credential := model.NewCredentialToken()
 	runtime.handleRequest(context.Background(), requestWithData(t, 40, examAttemptConnectAction,
 		validExamAttemptConnectRequest(t, sittingID, "connect", credential)))
@@ -600,10 +601,10 @@ func TestConnectionRuntimeRenewsBoundParticipationWithoutTreatingPingAsRenewal(t
 		require.NotContains(t, string(response.Data), secret, "renew response exposed")
 	}
 	application.mu.Lock()
-	calls := append([]app.RenewExamAttemptParticipationCommand(nil), application.renewCalls...)
+	calls := append([]attempt.RenewParticipationCommand(nil), application.renewCalls...)
 	application.mu.Unlock()
 	require.Len(t, calls, 1)
-	require.Equal(t, attempt.ID, calls[0].AttemptID)
+	require.Equal(t, examAttempt.ID, calls[0].AttemptID)
 	require.Equal(t, participationID, calls[0].ParticipationID)
 	require.Equal(t, connectionID, calls[0].ConnectionID)
 	require.Equal(t, int64(4), calls[0].Generation)
@@ -621,7 +622,7 @@ func TestConnectionRuntimeBrowserActivityUsesAttemptBindingAndClosedWireContract
 	credential := model.NewCredentialToken()
 	application := &inboundTestApplication{
 		browserStartResult: model.BrowserSourceStatus{SourceSessionID: sourceID, BrowserDeliveryProgress: model.BrowserDeliveryProgress{MissingRanges: []model.SequenceRange{}}, ServerTime: at},
-		browserAppendResult: app.BrowserActivityAcknowledgement{SourceSessionID: sourceID, HighestContiguous: 1, HighestSeen: 4,
+		browserAppendResult: model.BrowserActivityAcknowledgement{SourceSessionID: sourceID, HighestContiguous: 1, HighestSeen: 4,
 			MissingRanges: []model.BrowserActivityMissingRange{{First: 2, Last: 3}}, ServerTime: at.Add(time.Second)},
 	}
 	runtime := newInboundRuntime(application, newInboundTestSocket(), newRuntimeTestClock(at))
@@ -662,8 +663,8 @@ func TestConnectionRuntimeBrowserActivityUsesAttemptBindingAndClosedWireContract
 	require.Equal(t, browserActivityMissingRangeResponse{First: 2, Last: 3}, appendAck.MissingRanges[0])
 
 	application.mu.Lock()
-	startCalls := append([]app.StartBrowserActivityCommand(nil), application.browserStartCalls...)
-	appendCalls := append([]app.AppendBrowserActivityCommand(nil), application.browserAppendCalls...)
+	startCalls := append([]attempt.StartBrowserActivityCommand(nil), application.browserStartCalls...)
+	appendCalls := append([]attempt.AppendBrowserActivityCommand(nil), application.browserAppendCalls...)
 	application.mu.Unlock()
 	require.Len(t, startCalls, 1)
 	require.Equal(t, attemptID, startCalls[0].AttemptID)
@@ -806,24 +807,24 @@ func TestConnectionRuntimeSubmitsBoundFocusLossAndClearsPolicySuspendedBinding(t
 	t.Parallel()
 	at := time.Date(2026, time.August, 20, 10, 0, 0, 0, time.UTC)
 	sittingID := model.NewExamSittingID()
-	attempt, err := model.NewExamAttempt(model.NewExamAttemptID(), model.NewExamID(), sittingID, model.NewUserID(), model.NewExamRevisionID(), at)
+	examAttempt, err := model.NewExamAttempt(model.NewExamAttemptID(), model.NewExamID(), sittingID, model.NewUserID(), model.NewExamRevisionID(), at)
 	require.NoError(t, err)
-	workspace, err := model.NewExamAttemptWorkspace(model.NewExamAttemptWorkspaceID(), attempt.ID, at)
+	workspace, err := model.NewExamAttemptWorkspace(model.NewExamAttemptWorkspaceID(), examAttempt.ID, at)
 	require.NoError(t, err)
 	participationID, connectionID := model.NewAttemptParticipationID(), model.NewAttemptConnectionID()
-	connection, err := model.NewAttemptConnection(connectionID, attempt.ID, participationID, model.NewSessionID(), at)
+	connection, err := model.NewAttemptConnection(connectionID, examAttempt.ID, participationID, model.NewSessionID(), at)
 	require.NoError(t, err)
 	receivedAt := at.Add(2 * time.Second)
-	application := &inboundTestApplication{connectResult: app.ExamAttemptConnection{Attempt: *attempt, Workspace: *workspace,
-		Participation: store.ExamAttemptParticipationView{ID: participationID, AttemptID: attempt.ID,
+	application := &inboundTestApplication{connectResult: attempt.ConnectionResult{Attempt: *examAttempt, Workspace: *workspace,
+		Participation: store.ExamAttemptParticipationView{ID: participationID, AttemptID: examAttempt.ID,
 			State: model.AttemptParticipationActive, Generation: 4, StartedAt: at, UpdatedAt: at,
 			LeaseExpiresAt: at.Add(model.AttemptParticipationInitialLease)}, Connection: *connection, ClassID: model.NewClassID()},
-		focusLossResult: app.ExamAttemptFocusLossEvaluation{AttemptID: attempt.ID, ParticipationID: participationID,
+		focusLossResult: attempt.FocusLossEvaluation{AttemptID: examAttempt.ID, ParticipationID: participationID,
 			Generation: 4, AcceptedSequence: 3, ReceivedAt: receivedAt, Qualified: true,
 			FlagCreated: true, SuspensionCreated: true, ConnectionClosed: true}}
 	application.connectResult.Security = inboundSecurityFixture(t, application.connectResult)
 	runtime := newInboundRuntime(application, newInboundTestSocket(), newRuntimeTestClock(at))
-	runtime.principal.UserID, runtime.principal.SessionID = attempt.CandidateUserID, connection.SessionID
+	runtime.principal.UserID, runtime.principal.SessionID = examAttempt.CandidateUserID, connection.SessionID
 	credential := model.NewCredentialToken()
 	runtime.handleRequest(context.Background(), requestWithData(t, 60, examAttemptConnectAction,
 		validExamAttemptConnectRequest(t, sittingID, "connect", credential)))
@@ -848,11 +849,11 @@ func TestConnectionRuntimeSubmitsBoundFocusLossAndClearsPolicySuspendedBinding(t
 		require.NotContains(t, strings.ToLower(encoded), strings.ToLower(forbidden), "Focus Loss response exposed")
 	}
 	application.mu.Lock()
-	calls := append([]app.EvaluateExamAttemptFocusLossCommand(nil), application.focusLossCalls...)
+	calls := append([]attempt.FocusLossCommand(nil), application.focusLossCalls...)
 	application.mu.Unlock()
 	require.Len(t, calls, 1)
 	require.Equal(t, model.FocusLossSignalSchemaVersion, calls[0].SchemaVersion)
-	require.Equal(t, attempt.ID, calls[0].AttemptID)
+	require.Equal(t, examAttempt.ID, calls[0].AttemptID)
 	require.Equal(t, participationID, calls[0].ParticipationID)
 	require.Equal(t, connectionID, calls[0].ConnectionID)
 	require.Equal(t, int64(4), calls[0].Generation)
@@ -1134,7 +1135,7 @@ func syntheticNativeAgreement(t *testing.T, build model.DesktopBuildTuple) *mode
 	return agreement
 }
 
-func inboundSecurityFixture(t *testing.T, result app.ExamAttemptConnection) model.AdmittedSecurity {
+func inboundSecurityFixture(t *testing.T, result attempt.ConnectionResult) model.AdmittedSecurity {
 	t.Helper()
 	manifest := model.EmptyAttemptConfigurationManifest()
 	build := model.DesktopBuildTuple{DesktopRelease: "1.0.0", DesktopBuildID: "synthetic-build", Platform: model.DesktopPlatformDarwin, Architecture: model.DesktopArchitectureARM64, RealtimeProtocol: 1, AttemptConfigurationManifestFingerprint: manifest.Fingerprint(), DesktopSettingsRegistryFingerprint: "fnv1a64:aaaaaaaaaaaaaaaa", ConfigurationManifest: manifest, DesktopTarget: "darwin-arm64", CapabilityMatrixIdentity: "synthetic-matrix"}
@@ -1146,7 +1147,7 @@ func inboundSecurityFixture(t *testing.T, result app.ExamAttemptConnection) mode
 	return model.AdmittedSecurity{Policy: policy, PolicyContentDigest: resolved.PolicyContentDigest, PreflightID: "fixture-preflight", PreflightReportDigest: model.SHA256Fingerprint([]byte("fixture-report")), PreflightPolicyDigest: resolved.Policy.Digest, ParticipationID: result.Participation.ID, Generation: result.Participation.Generation, SecuritySessionID: "fixture-security-session", DeliveryStreamID: "fixture-delivery", RenewalIntervalSeconds: 5}
 }
 
-func (a *inboundTestApplication) UpdateExamSecurityCoverage(context.Context, app.Invocation, app.UpdateSecurityCoverageCommand) (model.SecurityCoverageResult, error) {
+func (a *inboundTestApplication) UpdateExamSecurityCoverage(context.Context, invocation.Invocation, attempt.UpdateSecurityCoverageCommand) (model.SecurityCoverageResult, error) {
 	return model.SecurityCoverageResult{}, errors.New("unexpected security update")
 }
 
@@ -1199,11 +1200,11 @@ type blockedAppendApplication struct {
 	finished chan struct{}
 }
 
-func (a *blockedAppendApplication) AppendExamAttemptBrowserActivity(ctx context.Context, _ app.Invocation, _ app.AppendBrowserActivityCommand) (app.BrowserActivityAcknowledgement, error) {
+func (a *blockedAppendApplication) AppendExamAttemptBrowserActivity(ctx context.Context, _ invocation.Invocation, _ attempt.AppendBrowserActivityCommand) (model.BrowserActivityAcknowledgement, error) {
 	close(a.entered)
 	<-ctx.Done()
 	close(a.finished)
-	return app.BrowserActivityAcknowledgement{}, ctx.Err()
+	return model.BrowserActivityAcknowledgement{}, ctx.Err()
 }
 
 func TestConnectionRuntimeAppendBackpressurePreservesRenewalAndCancelsWorker(t *testing.T) {
@@ -1215,7 +1216,7 @@ func TestConnectionRuntimeAppendBackpressurePreservesRenewalAndCancelsWorker(t *
 	runtime.application = application
 	attemptID, participationID := model.NewExamAttemptID(), model.NewAttemptParticipationID()
 	runtime.attempt = &examAttemptBinding{attemptID: attemptID, participationID: participationID, connectionID: model.NewAttemptConnectionID(), generation: 1}
-	application.renewResult = app.ExamAttemptParticipationRenewal{SecurityCoverage: renewalCoverageResultFixture(), AttemptID: attemptID,
+	application.renewResult = attempt.ParticipationRenewal{SecurityCoverage: renewalCoverageResultFixture(), AttemptID: attemptID,
 		ParticipationID: participationID, Generation: 1, AcceptedSequence: 1, DatabaseTime: at, LeaseExpiresAt: at.Add(model.AttemptParticipationInitialLease)}
 	credential, revision := model.NewCredentialToken(), model.NewExamRevisionID().String()
 	event, err := json.Marshal(examAttemptBrowserEventRequest{Sequence: 1, Kind: string(model.BrowserActivityOpened), PolicyRevisionID: revision, ClientOccurredAt: at.Format(time.RFC3339Nano)})

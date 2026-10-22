@@ -18,6 +18,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -113,16 +114,16 @@ type academicAdministrationOutcomeLookup interface {
 }
 
 type academicAdministrationBatchCommands interface {
-	CreateAffiliation(context.Context, Invocation, CreateAffiliationCommand) (*model.Affiliation, error)
-	EndAffiliation(context.Context, Invocation, EndAffiliationCommand) (*model.Affiliation, error)
-	CreateAcademicUnitMember(context.Context, Invocation, CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error)
-	EndAcademicUnitMember(context.Context, Invocation, EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error)
-	EnrollClassMember(context.Context, Invocation, EnrollClassMemberCommand) (*model.ClassEnrollment, error)
-	EndClassMember(context.Context, Invocation, EndClassMemberCommand) (*model.ClassMember, error)
-	CreateRoleBinding(context.Context, Invocation, CreateRoleBindingCommand) (*model.RoleBinding, error)
-	EndRoleBinding(context.Context, Invocation, EndRoleBindingCommand) (*model.RoleBinding, error)
-	SetUserEnabled(context.Context, Invocation, SetUserEnabledCommand) (*model.User, error)
-	RevokeUserSessions(context.Context, Invocation, RevokeUserSessionsCommand) error
+	CreateAffiliation(context.Context, invocation.Invocation, CreateAffiliationCommand) (*model.Affiliation, error)
+	EndAffiliation(context.Context, invocation.Invocation, EndAffiliationCommand) (*model.Affiliation, error)
+	CreateAcademicUnitMember(context.Context, invocation.Invocation, CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error)
+	EndAcademicUnitMember(context.Context, invocation.Invocation, EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error)
+	EnrollClassMember(context.Context, invocation.Invocation, EnrollClassMemberCommand) (*model.ClassEnrollment, error)
+	EndClassMember(context.Context, invocation.Invocation, EndClassMemberCommand) (*model.ClassMember, error)
+	CreateRoleBinding(context.Context, invocation.Invocation, CreateRoleBindingCommand) (*model.RoleBinding, error)
+	EndRoleBinding(context.Context, invocation.Invocation, EndRoleBindingCommand) (*model.RoleBinding, error)
+	SetUserEnabled(context.Context, invocation.Invocation, SetUserEnabledCommand) (*model.User, error)
+	RevokeUserSessions(context.Context, invocation.Invocation, RevokeUserSessionsCommand) error
 }
 
 type academicAdministrationBatchService struct {
@@ -142,34 +143,34 @@ type academicAdministrationCommandServices struct {
 	sessions            *sessionAdministrationService
 }
 
-func (s academicAdministrationCommandServices) CreateAffiliation(ctx context.Context, invocation Invocation, command CreateAffiliationCommand) (*model.Affiliation, error) {
+func (s academicAdministrationCommandServices) CreateAffiliation(ctx context.Context, invocation invocation.Invocation, command CreateAffiliationCommand) (*model.Affiliation, error) {
 	return s.affiliations.CreateAffiliation(ctx, invocation, command)
 }
-func (s academicAdministrationCommandServices) EndAffiliation(ctx context.Context, invocation Invocation, command EndAffiliationCommand) (*model.Affiliation, error) {
+func (s academicAdministrationCommandServices) EndAffiliation(ctx context.Context, invocation invocation.Invocation, command EndAffiliationCommand) (*model.Affiliation, error) {
 	return s.affiliations.EndAffiliation(ctx, invocation, command)
 }
-func (s academicAdministrationCommandServices) CreateAcademicUnitMember(ctx context.Context, invocation Invocation, command CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
+func (s academicAdministrationCommandServices) CreateAcademicUnitMember(ctx context.Context, invocation invocation.Invocation, command CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
 	return s.academicUnitMembers.CreateAcademicUnitMember(ctx, invocation, command)
 }
-func (s academicAdministrationCommandServices) EndAcademicUnitMember(ctx context.Context, invocation Invocation, command EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
+func (s academicAdministrationCommandServices) EndAcademicUnitMember(ctx context.Context, invocation invocation.Invocation, command EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
 	return s.academicUnitMembers.EndAcademicUnitMember(ctx, invocation, command)
 }
-func (s academicAdministrationCommandServices) EnrollClassMember(ctx context.Context, invocation Invocation, command EnrollClassMemberCommand) (*model.ClassEnrollment, error) {
+func (s academicAdministrationCommandServices) EnrollClassMember(ctx context.Context, invocation invocation.Invocation, command EnrollClassMemberCommand) (*model.ClassEnrollment, error) {
 	return s.classMembers.EnrollClassMember(ctx, invocation, command)
 }
-func (s academicAdministrationCommandServices) EndClassMember(ctx context.Context, invocation Invocation, command EndClassMemberCommand) (*model.ClassMember, error) {
+func (s academicAdministrationCommandServices) EndClassMember(ctx context.Context, invocation invocation.Invocation, command EndClassMemberCommand) (*model.ClassMember, error) {
 	return s.classMembers.EndClassMember(ctx, invocation, command)
 }
-func (s academicAdministrationCommandServices) CreateRoleBinding(ctx context.Context, invocation Invocation, command CreateRoleBindingCommand) (*model.RoleBinding, error) {
+func (s academicAdministrationCommandServices) CreateRoleBinding(ctx context.Context, invocation invocation.Invocation, command CreateRoleBindingCommand) (*model.RoleBinding, error) {
 	return s.roleBindings.CreateRoleBinding(ctx, invocation, command)
 }
-func (s academicAdministrationCommandServices) EndRoleBinding(ctx context.Context, invocation Invocation, command EndRoleBindingCommand) (*model.RoleBinding, error) {
+func (s academicAdministrationCommandServices) EndRoleBinding(ctx context.Context, invocation invocation.Invocation, command EndRoleBindingCommand) (*model.RoleBinding, error) {
 	return s.roleBindings.EndRoleBinding(ctx, invocation, command)
 }
-func (s academicAdministrationCommandServices) SetUserEnabled(ctx context.Context, invocation Invocation, command SetUserEnabledCommand) (*model.User, error) {
+func (s academicAdministrationCommandServices) SetUserEnabled(ctx context.Context, invocation invocation.Invocation, command SetUserEnabledCommand) (*model.User, error) {
 	return s.accountStates.SetUserEnabled(ctx, invocation, command)
 }
-func (s academicAdministrationCommandServices) RevokeUserSessions(ctx context.Context, invocation Invocation, command RevokeUserSessionsCommand) error {
+func (s academicAdministrationCommandServices) RevokeUserSessions(ctx context.Context, invocation invocation.Invocation, command RevokeUserSessionsCommand) error {
 	return s.sessions.RevokeUserSessions(ctx, invocation, command)
 }
 
@@ -177,7 +178,7 @@ func newAcademicAdministrationBatchService(commands academicAdministrationBatchC
 	return &academicAdministrationBatchService{commands: commands, authorization: authorization, outcomes: outcomes, now: now, recentTTL: recentTTL}
 }
 
-func (s *academicAdministrationBatchService) RunAcademicAdministrationBatch(ctx context.Context, invocation Invocation, command RunAcademicAdministrationBatchCommand) (AcademicAdministrationBatchResult, error) {
+func (s *academicAdministrationBatchService) RunAcademicAdministrationBatch(ctx context.Context, invocation invocation.Invocation, command RunAcademicAdministrationBatchCommand) (AcademicAdministrationBatchResult, error) {
 	command.ScopeID = strings.TrimSpace(command.ScopeID)
 	if s == nil || s.commands == nil || s.authorization == nil || s.now == nil || !command.Operation.IsValid() ||
 		!model.IsValidOpaqueID(command.ScopeID) || command.IdempotencyKey == "" || len(command.Items) < 1 ||
@@ -408,7 +409,7 @@ func validateAcademicAdministrationBatchItem(operation AcademicAdministrationBat
 	return nil
 }
 
-func (s *academicAdministrationBatchService) runItem(ctx context.Context, invocation Invocation, batch RunAcademicAdministrationBatchCommand, item AcademicAdministrationBatchItemCommand, itemKey string, metadata *store.CommandBatch, retained bool) (string, InvitationBatchItemStatus, error) {
+func (s *academicAdministrationBatchService) runItem(ctx context.Context, invocation invocation.Invocation, batch RunAcademicAdministrationBatchCommand, item AcademicAdministrationBatchItemCommand, itemKey string, metadata *store.CommandBatch, retained bool) (string, InvitationBatchItemStatus, error) {
 	authority := academicAdministrationBatchAuthority(invocation, batch)
 	if model.UserID(strings.TrimSpace(item.UserID)).IsValid() {
 		authority.RecipientUserID = model.UserID(strings.TrimSpace(item.UserID))
@@ -481,7 +482,7 @@ func (s *academicAdministrationBatchService) runItem(ctx context.Context, invoca
 	}
 }
 
-func academicAdministrationBatchAuthority(invocation Invocation, batch RunAcademicAdministrationBatchCommand) *store.CommandAuthorization {
+func academicAdministrationBatchAuthority(invocation invocation.Invocation, batch RunAcademicAdministrationBatchCommand) *store.CommandAuthorization {
 	var action model.Action
 	switch batch.Operation {
 	case AcademicAdministrationAffiliationAdd, AcademicAdministrationAffiliationEnd,

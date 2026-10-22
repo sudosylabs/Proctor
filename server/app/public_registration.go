@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -49,7 +50,7 @@ type publicRegistrationPasswordHasher interface {
 // credential message this use case is allowed to create.
 type publicRegistrationVerificationPreparer interface {
 	Enabled() bool
-	PreparePublicRegistrationVerification(*model.User, model.MailOccurrenceID, string, time.Time, time.Time) (*preparedDirectMail, error)
+	PreparePublicRegistrationVerification(*model.User, model.MailOccurrenceID, string, time.Time, time.Time) (*store.PreparedMail, error)
 }
 
 type publicRegistrationDependencies struct {
@@ -81,7 +82,7 @@ func newPublicRegistrationService(deps publicRegistrationDependencies) (*publicR
 	return &publicRegistrationService{publicRegistrationDependencies: deps}, nil
 }
 
-func (s *publicRegistrationService) RegisterLocalUser(ctx context.Context, invocation Invocation, command RegisterLocalUserCommand) error {
+func (s *publicRegistrationService) RegisterLocalUser(ctx context.Context, invocation invocation.Invocation, command RegisterLocalUserCommand) error {
 	registrationEnabled, localLoginEnabled, err := s.policies.PublicRegistration(ctx)
 	if err != nil {
 		return registrationUnavailable(err)

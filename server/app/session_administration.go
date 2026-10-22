@@ -13,6 +13,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -82,7 +83,7 @@ func newSessionAdministrationService(
 
 func (s *sessionAdministrationService) ListUserSessions(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	query ListUserSessionsQuery,
 ) ([]*model.Session, error) {
 	userID := query.UserID
@@ -118,7 +119,7 @@ func (s *sessionAdministrationService) ListUserSessions(
 
 func (s *sessionAdministrationService) RevokeUserSession(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command RevokeUserSessionCommand,
 ) error {
 	userID := command.UserID
@@ -171,7 +172,7 @@ func (s *sessionAdministrationService) RevokeUserSession(
 
 func (s *sessionAdministrationService) RevokeUserSessions(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command RevokeUserSessionsCommand,
 ) error {
 	userID := command.UserID
@@ -195,7 +196,7 @@ func (s *sessionAdministrationService) RevokeUserSessions(
 	bindOnboardingImportCommand(idempotency, command.onboardingImportID, command.onboardingImportRowNumber)
 	bindAcademicAdministrationAuthorization(idempotency, command.batchAuthorization)
 	bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
-	prepared := &preparedDirectMail{}
+	prepared := &store.PreparedMail{}
 	if !command.batchRetainedOutcome {
 		recipient := *user
 		recipient.DisabledAt = model.OptionalTime{}
@@ -224,7 +225,7 @@ func (s *sessionAdministrationService) RevokeUserSessions(
 	)
 }
 
-func (s *sessionAdministrationService) prepareRevocationNotice(user *model.User, at time.Time) (*preparedDirectMail, error) {
+func (s *sessionAdministrationService) prepareRevocationNotice(user *model.User, at time.Time) (*store.PreparedMail, error) {
 	return s.mail.PrepareSessionsRevokedByAdministrator(appmail.NoticePreparation{Recipient: user, At: at})
 }
 

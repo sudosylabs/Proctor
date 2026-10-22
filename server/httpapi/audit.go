@@ -72,7 +72,7 @@ type auditResourceModule struct {
 	audits AuditListingApplication
 }
 
-func auditResource(audits AuditListingApplication) resource {
+func auditResource(audits AuditListingApplication) apiResource {
 	module := auditResourceModule{audits: audits}
 	return newResource(
 		"audits",

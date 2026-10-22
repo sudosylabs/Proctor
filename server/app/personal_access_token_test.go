@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -68,7 +69,7 @@ func TestPersonalAccessTokenCreationCannotExceedCurrentRoleAuthority(t *testing.
 	require.NoError(t, err)
 	_, err = service.CreatePersonalAccessToken(
 		context.Background(),
-		NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}),
+		invocation.New(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}),
 		CreatePersonalAccessTokenCommand{
 			Scopes: []string{string(model.ActionClassManage)}, AcademicUnitID: unitID.String(),
 			ExpiresAt: now.Add(time.Hour).UnixMilli(),
@@ -109,7 +110,7 @@ func TestPersonalAccessTokenAdministrationCreatesThroughFocusedContracts(t *test
 
 	created, err := service.CreatePersonalAccessToken(
 		context.Background(),
-		NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{RequestID: "request-a"}),
+		invocation.New(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{RequestID: "request-a"}),
 		CreatePersonalAccessTokenCommand{
 			Description: "automation", Scopes: []string{string(model.ActionClassView)},
 			AcademicUnitID: unitID.String(), ExpiresAt: now.Add(time.Hour).UnixMilli(),
@@ -160,7 +161,7 @@ func TestPersonalAccessTokenAdministrationExactStateReplayEmitsNoAuditOrMail(t *
 	)
 	require.NoError(t, err)
 
-	got, appErr := service.SetPersonalAccessTokenDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true})
+	got, appErr := service.SetPersonalAccessTokenDisabled(context.Background(), invocation.New(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true})
 	require.NoError(t, appErr, "SetDisabled(replay)")
 	require.Same(t, token, got, "SetDisabled(replay)")
 	require.Equal(t, 0, audit.beginCalls, "replay audit")
@@ -168,7 +169,7 @@ func TestPersonalAccessTokenAdministrationExactStateReplayEmitsNoAuditOrMail(t *
 	require.Equal(t, 0, tokens.stateCalls, "replay audit")
 
 	token.RevokedAt = model.OptionalTimeFrom(now)
-	got, appErr = service.RevokePersonalAccessToken(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), RevokePersonalAccessTokenCommand{TokenID: token.ID})
+	got, appErr = service.RevokePersonalAccessToken(context.Background(), invocation.New(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), RevokePersonalAccessTokenCommand{TokenID: token.ID})
 	require.NoError(t, appErr, "Revoke(replay)")
 	require.Same(t, token, got, "Revoke(replay)")
 	require.Equal(t, 0, audit.beginCalls, "replay audit")
@@ -191,7 +192,7 @@ func TestPersonalAccessTokenAdministrationConcealsAnotherUsersToken(t *testing.T
 
 	_, err := service.RevokePersonalAccessToken(
 		context.Background(),
-		NewInvocation(personalAccessTokenSessionPrincipal(callerID, now), model.RequestMetadata{}),
+		invocation.New(personalAccessTokenSessionPrincipal(callerID, now), model.RequestMetadata{}),
 		RevokePersonalAccessTokenCommand{TokenID: token.ID},
 	)
 	require.True(t, apperror.Is(err, "resource.not_found"), "error = %v, want resource.not_found", err)
@@ -215,7 +216,7 @@ func TestPersonalAccessTokenAdministrationUsesControlledClockForStateChanges(t *
 		15*time.Minute, func() string { return "credential" }, func() time.Time { return now },
 	)
 	require.NoError(t, err)
-	invocation := NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{})
+	invocation := invocation.New(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{})
 
 	_, err = service.SetPersonalAccessTokenDisabled(
 		context.Background(), invocation,
@@ -259,7 +260,7 @@ func TestPersonalAccessTokenAdministrationRequiresRecentSessionForCreationAndEna
 		&personalAccessTokenInstitutionStoreFake{}, &personalAccessTokenAuditorFake{}, now,
 	)
 	stale := personalAccessTokenSessionPrincipal(userID, now.Add(-15*time.Minute-time.Microsecond))
-	invocation := NewInvocation(stale, model.RequestMetadata{})
+	invocation := invocation.New(stale, model.RequestMetadata{})
 
 	_, err := service.CreatePersonalAccessToken(context.Background(), invocation, CreatePersonalAccessTokenCommand{})
 	require.True(t, apperror.Is(err, "authentication.reauthentication_required"), "create error = %v", err)
@@ -283,10 +284,10 @@ func TestPersonalAccessTokenAdministrationJudgesRecencyByInjectedClock(t *testin
 		t, &personalAccessTokenStoreFake{events: &[]string{}}, &personalAccessTokenAcademicUnitStoreFake{},
 		&personalAccessTokenInstitutionStoreFake{}, &personalAccessTokenAuditorFake{}, now,
 	)
-	fresh := NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{})
+	fresh := invocation.New(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{})
 	_, err := service.CreatePersonalAccessToken(context.Background(), fresh, CreatePersonalAccessTokenCommand{})
 	require.True(t, apperror.Is(err, "personal_access_token.invalid"), "fresh create error = %v, want the expires_at validation after the recency check", err)
-	stale := NewInvocation(personalAccessTokenSessionPrincipal(userID, now.Add(-16*time.Minute)), model.RequestMetadata{})
+	stale := invocation.New(personalAccessTokenSessionPrincipal(userID, now.Add(-16*time.Minute)), model.RequestMetadata{})
 	_, err = service.CreatePersonalAccessToken(context.Background(), stale, CreatePersonalAccessTokenCommand{})
 	require.True(t, apperror.Is(err, "authentication.reauthentication_required"), "stale create error = %v", err)
 }
@@ -413,7 +414,7 @@ func TestPersonalAccessTokenAdministrationRendersPostgreSQLPreparedActionTime(t 
 		15*time.Minute, func() string { return "credential" }, func() time.Time { return nodeAt },
 	)
 	require.NoError(t, err)
-	_, appErr := service.SetPersonalAccessTokenDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, nodeAt), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true})
+	_, appErr := service.SetPersonalAccessTokenDisabled(context.Background(), invocation.New(personalAccessTokenSessionPrincipal(userID, nodeAt), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true})
 	require.NoError(t, appErr)
 	require.NotNil(t, tokens.notice.Delivery)
 	require.NotEmpty(t, tokens.notice.Delivery.EncryptedPayload)
@@ -444,7 +445,7 @@ func TestPersonalAccessTokenAdministrationTerminalReplayIsSuccessful(t *testing.
 	service := mustPersonalAccessTokenAdministrationService(t, tokens, &personalAccessTokenAcademicUnitStoreFake{},
 		&personalAccessTokenInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
 		&personalAccessTokenAuditorFake{}, now)
-	got, err := service.SetPersonalAccessTokenDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true})
+	got, err := service.SetPersonalAccessTokenDisabled(context.Background(), invocation.New(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true})
 	require.NoError(t, err, "SetDisabled(concurrent replay)")
 	require.Same(t, token, got, "SetDisabled(concurrent replay)")
 }
@@ -463,7 +464,7 @@ func TestPersonalAccessTokenAdministrationTerminalizesPreparationWhenRenderingFa
 		PersonalAccessTokenPolicy{MinimumLifetime: time.Minute, MaximumLifetime: 24 * time.Hour, MaximumPerUser: 3},
 		15*time.Minute, func() string { return "credential" }, func() time.Time { return now })
 	require.NoError(t, err)
-	_, appErr := service.SetPersonalAccessTokenDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true})
+	_, appErr := service.SetPersonalAccessTokenDisabled(context.Background(), invocation.New(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true})
 	require.True(t, apperror.Is(appErr, "personal_access_token.unavailable"), "SetDisabled(render failure) error = %v", appErr)
 	require.Equal(t, 1, tokens.failCalls, "render failure terminalizations")
 	require.Equal(t, 0, tokens.stateCalls, "render failure terminalizations")
@@ -603,12 +604,12 @@ type personalAccessTokenMailPreparerFake struct {
 	err      error
 }
 
-func (p *personalAccessTokenMailPreparerFake) PreparePersonalAccessTokenSecurityNotice(request personalAccessTokenSecurityNoticePreparation) (*preparedDirectMail, error) {
+func (p *personalAccessTokenMailPreparerFake) PreparePersonalAccessTokenSecurityNotice(request personalAccessTokenSecurityNoticePreparation) (*store.PreparedMail, error) {
 	p.requests = append(p.requests, request)
 	if p.err != nil {
 		return nil, p.err
 	}
-	return &preparedDirectMail{
+	return &store.PreparedMail{
 		Occurrence: &model.MailOccurrence{ID: model.NewMailOccurrenceID(), Kind: model.MailOccurrenceSecurityNotice, TemplateKey: request.TemplateKey, ActorUserID: request.Recipient.ID, CreatedAt: request.ActionAt},
 		Delivery:   &model.MailDelivery{ID: model.NewMailDeliveryID(), OccurrenceID: model.NewMailOccurrenceID(), TargetUserID: request.Recipient.ID, TemplateKey: request.TemplateKey, Deadline: request.ActionAt.Add(24 * time.Hour)},
 		Job:        &model.Job{ID: model.NewJobID(), Type: model.JobTypeMailDeliver},

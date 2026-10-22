@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -52,7 +53,7 @@ func TestMFAActivationUsesNativeExclusiveDeadline(t *testing.T) {
 			}
 			code, err := computeTOTP(secret, now.Unix()/30)
 			require.NoError(t, err)
-			_, err = service.ActivateMFA(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ActivateMFACommand{Code: code})
+			_, err = service.ActivateMFA(context.Background(), invocation.New(principal, model.RequestMetadata{}), ActivateMFACommand{Code: code})
 			if !test.valid {
 				require.True(t, apperror.Is(err, "authentication.mfa.code_invalid"), "expired activation: error=%v mutation=%v notices", err, persistence.activation != nil)
 				require.Nil(t, persistence.activation, "expired activation: error=%v mutation=%v notices", err, persistence.activation != nil)

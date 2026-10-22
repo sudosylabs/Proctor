@@ -15,6 +15,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -52,7 +53,7 @@ type UserSettingsDiagnostic struct {
 }
 
 type userSettingsAuditInput struct {
-	Invocation        Invocation
+	Invocation        invocation.Invocation
 	UserID            model.UserID
 	PreviousRevision  model.UserSettingsRevision
 	ResultingRevision model.UserSettingsRevision
@@ -117,7 +118,7 @@ func newUserSettingsService(
 
 func (s *userSettingsService) ReplaceOwnUserSettings(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command ReplaceOwnUserSettingsCommand,
 ) (UserSettingsReplacementResult, error) {
 	principal := invocation.Principal()
@@ -243,7 +244,7 @@ var userSettingsStoreErrors = apperror.StoreTable{
 
 // ReadOwnUserSettings returns only the document owned by the interactive Session
 // principal. There is intentionally no caller-supplied User identifier.
-func (s *userSettingsService) ReadOwnUserSettings(ctx context.Context, invocation Invocation) (UserSettingsView, error) {
+func (s *userSettingsService) ReadOwnUserSettings(ctx context.Context, invocation invocation.Invocation) (UserSettingsView, error) {
 	principal := invocation.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
 		return UserSettingsView{}, invalidTokenAppError()

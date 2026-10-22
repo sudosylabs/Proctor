@@ -20,7 +20,7 @@ import (
 	"time"
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
-	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/exam"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -65,7 +65,7 @@ This format is a portable record archive, not an installation backup or importer
 // BuildExamExport writes only the pre-registered opaque attempt identity. It
 // verifies every original file while copying, closes the ZIP, then reopens and
 // hashes the managed object before returning verified publication metadata.
-func (c *Content) BuildExamExport(ctx context.Context, input app.ExamExportArchiveInput) (*app.ExamExportArchiveContent, error) {
+func (c *Content) BuildExamExport(ctx context.Context, input exam.ExportArchiveInput) (*exam.ExportArchiveContent, error) {
 	if c == nil || c.filesystem == nil || !input.ExportID.IsValid() || !input.AttemptID.IsValid() || len(input.Records) < 1 || len(input.Records) > model.ExamExportMaximumSnapshotBytes || !json.Valid(input.Records) || len(input.Files) > model.ExamExportMaximumEntries {
 		return nil, errors.New("invalid Exam export input")
 	}
@@ -155,7 +155,7 @@ func (c *Content) BuildExamExport(ctx context.Context, input app.ExamExportArchi
 	if err != nil {
 		return nil, sanitize("hash Exam export archive", err)
 	}
-	result := &app.ExamExportArchiveContent{SizeBytes: size, SHA256: hex.EncodeToString(hash.Sum(nil))}
+	result := &exam.ExportArchiveContent{SizeBytes: size, SHA256: hex.EncodeToString(hash.Sum(nil))}
 	if !model.ValidExamExportContent(result.SizeBytes, result.SHA256) {
 		return nil, errors.New("invalid Exam export archive size")
 	}
@@ -192,7 +192,7 @@ func (c *Content) BuildExamExport(ctx context.Context, input app.ExamExportArchi
 	return result, nil
 }
 
-func examExportFileMember(f app.ExamExportArchiveFile) string {
+func examExportFileMember(f exam.ExportArchiveFile) string {
 	return "files/" + f.SubmissionID.String() + "/" + f.Entry.EntryID.String()
 }
 
@@ -228,7 +228,7 @@ func (w *examExportBoundedWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-func (c *Content) verifyExamExport(ctx context.Context, key string, expected *app.ExamExportArchiveContent) (bool, error) {
+func (c *Content) verifyExamExport(ctx context.Context, key string, expected *exam.ExportArchiveContent) (bool, error) {
 	file, err := c.filesystem.Open(ctx, key, vfspkg.OpenOptions{})
 	if err != nil {
 		return false, err

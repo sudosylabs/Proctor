@@ -19,6 +19,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/testlib"
@@ -41,7 +42,7 @@ func TestUserSettingsUnsupportedFormatIsOpaqueAndReadOnlyAfterRollback(t *testin
 		Email:    "settings-compatibility-user@example.edu",
 	}, Password: password})
 	require.NoError(t, err)
-	login, err := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{
+	login, err := helper.App.Login(ctx, invocation.Invocation{}, app.LoginCommand{
 		LoginID: user.Username, Password: password, ClientType: model.SessionClientWeb,
 		Source: "127.0.0.1:1",
 	})
@@ -65,7 +66,7 @@ func TestUserSettingsUnsupportedFormatIsOpaqueAndReadOnlyAfterRollback(t *testin
 	require.NoError(t, persistence.GetMaster().Get(ctx, &before, `
 		SELECT source, format_version, revision, updated_at
 		FROM user_settings_documents WHERE user_id = $1`, user.ID.String()))
-	invocation := app.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-compatibility"})
+	invocation := invocation.New(*principal, model.RequestMetadata{RequestID: "settings-compatibility"})
 	view, err := helper.App.ReadOwnUserSettings(ctx, invocation)
 	require.NoError(t, err)
 	require.Equal(t, source, view.Source, "ReadOwnUserSettings() = %#v, persisted = %#v", view, before)

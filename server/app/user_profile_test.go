@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -97,7 +98,7 @@ func TestCurrentUserContextReturnsBoundedNavigationProjection(t *testing.T) {
 	principal.DesktopArchitecture = model.DesktopArchitectureARM64
 	principal.DesktopRealtimeProtocol = 1
 
-	got, err := application.GetCurrentUserContext(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+	got, err := application.GetCurrentUserContext(context.Background(), invocation.New(principal, model.RequestMetadata{}))
 	require.NoError(t, err)
 	require.Equal(t, 21, persistence.currentContextLimit)
 	require.Equal(t, userID, got.UserID)
@@ -125,12 +126,12 @@ func TestCurrentUserContextRejectsPersonalAccessTokensWithoutReading(t *testing.
 		CredentialType: model.CredentialPersonalAccessToken, AuthenticationMethod: "personal_access_token",
 		ClientType: model.SessionClientCLI, CredentialScopes: []string{string(model.ActionUserView)},
 	}
-	_, err := application.GetCurrentUserContext(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+	_, err := application.GetCurrentUserContext(context.Background(), invocation.New(principal, model.RequestMetadata{}))
 	require.True(t, apperror.Is(err, "authentication.token_invalid"), "GetCurrentUserContext() error = %v", err)
 	require.Equal(t, 0, persistence.currentContextLimit, "unauthorized request reached persistence with limit")
 }
 
-func (a *userProfileAuthorizerFake) AuthorizeSearch(context.Context, Invocation) (store.UserVisibilityScope, error) {
+func (a *userProfileAuthorizerFake) AuthorizeSearch(context.Context, invocation.Invocation) (store.UserVisibilityScope, error) {
 	*a.events = append(*a.events, "authorize-search")
 	if a.searchScope.InstitutionWide || a.searchScope.ClassMemberInstitutionWide ||
 		len(a.searchScope.AcademicUnitRootIDs) > 0 || len(a.searchScope.ClassMemberAcademicUnitRootIDs) > 0 ||
@@ -139,24 +140,24 @@ func (a *userProfileAuthorizerFake) AuthorizeSearch(context.Context, Invocation)
 	}
 	return store.UserVisibilityScope{ClassIDs: []model.ClassID{"class-a"}, ActiveAt: model.TimeFromMillis(100)}, nil
 }
-func (a *userProfileAuthorizerFake) AuthorizeProfileRead(context.Context, Invocation, string) (bool, error) {
+func (a *userProfileAuthorizerFake) AuthorizeProfileRead(context.Context, invocation.Invocation, string) (bool, error) {
 	*a.events = append(*a.events, "authorize-read")
 	return a.fullRead, a.readErr
 }
-func (a *userProfileAuthorizerFake) AuthorizeRead(context.Context, Invocation, string) error {
+func (a *userProfileAuthorizerFake) AuthorizeRead(context.Context, invocation.Invocation, string) error {
 	*a.events = append(*a.events, "authorize-read")
 	return a.readErr
 }
-func (a *userProfileAuthorizerFake) Authorize(context.Context, Invocation, model.Action, model.Resource) error {
+func (a *userProfileAuthorizerFake) Authorize(context.Context, invocation.Invocation, model.Action, model.Resource) error {
 	*a.events = append(*a.events, "authorize-manage")
 	return nil
 }
 
-func (a *userProfileAuthorizerFake) AuthorizeAccountStateManage(context.Context, Invocation, string) error {
+func (a *userProfileAuthorizerFake) AuthorizeAccountStateManage(context.Context, invocation.Invocation, string) error {
 	*a.events = append(*a.events, "authorize-manage")
 	return nil
 }
-func (a *userProfileAuthorizerFake) AuthorizeProfilePictureWrite(context.Context, Invocation, string) error {
+func (a *userProfileAuthorizerFake) AuthorizeProfilePictureWrite(context.Context, invocation.Invocation, string) error {
 	*a.events = append(*a.events, "authorize-profile-picture-write")
 	return a.writeErr
 }
@@ -169,7 +170,7 @@ func TestUserProfileUpdateIsAuthorizedAndAuditAtomic(t *testing.T) {
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewID()}
 	service := newUserProfileService(persistence, &userProfileAuthorizerFake{events: &events}, auditor, func() time.Time { return time.UnixMilli(500) })
 	displayName := "Updated Student"
-	updated, err := service.UpdateUserProfile(context.Background(), Invocation{}, UpdateUserProfileCommand{ID: current.ID, DisplayName: &displayName})
+	updated, err := service.UpdateUserProfile(context.Background(), invocation.Invocation{}, UpdateUserProfileCommand{ID: current.ID, DisplayName: &displayName})
 	require.NoError(t, err)
 	require.Equal(t, current.Email, updated.Email, "updated/input = %#v / %#v", updated, persistence.updateInput)
 	require.True(t, updated.EmailVerified, "updated/input = %#v / %#v", updated, persistence.updateInput)
@@ -189,7 +190,7 @@ func TestUserProfileSearchReturnsEmptyCollection(t *testing.T) {
 	events := []string{}
 	persistence := &userProfileStoreFake{events: &events}
 	service := newUserProfileService(persistence, &userProfileAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events}, time.Now)
-	users, err := service.SearchUsers(context.Background(), Invocation{}, SearchUsersQuery{})
+	users, err := service.SearchUsers(context.Background(), invocation.Invocation{}, SearchUsersQuery{})
 	require.NoError(t, err)
 	require.NotNil(t, users.Items, "users")
 	require.Empty(t, users.Items, "users")
@@ -218,7 +219,7 @@ func TestScopedUserSearchCannotRequestDisabledUsers(t *testing.T) {
 					&userProfileAuthorizerFake{events: &events, searchScope: test.scope},
 					&institutionAuditorFake{events: &events}, time.Now,
 				)
-				_, err := service.SearchUsers(context.Background(), Invocation{}, SearchUsersQuery{
+				_, err := service.SearchUsers(context.Background(), invocation.Invocation{}, SearchUsersQuery{
 					Limit: 10, IncludeDisabled: includeDisabled,
 				})
 				require.NoError(t, err)
@@ -234,7 +235,7 @@ func TestScopedUserSearchCannotRequestDisabledUsers(t *testing.T) {
 		&userProfileAuthorizerFake{events: &events, searchScope: store.UserVisibilityScope{InstitutionWide: true}},
 		&institutionAuditorFake{events: &events}, time.Now,
 	)
-	_, err := service.SearchUsers(context.Background(), Invocation{}, SearchUsersQuery{
+	_, err := service.SearchUsers(context.Background(), invocation.Invocation{}, SearchUsersQuery{
 		Limit: 10, IncludeDisabled: true,
 	})
 	require.NoError(t, err)
@@ -256,7 +257,7 @@ func TestScopedUserSearchReturnsOnlySafeDirectoryFields(t *testing.T) {
 		&userProfileAuthorizerFake{events: &events, searchScope: store.UserVisibilityScope{AcademicUnitRootIDs: []model.AcademicUnitID{model.NewAcademicUnitID()}, ActiveAt: model.TimeFromMillis(100)}},
 		&institutionAuditorFake{events: &events}, time.Now,
 	)
-	users, err := service.SearchUsers(context.Background(), Invocation{}, SearchUsersQuery{Limit: 10})
+	users, err := service.SearchUsers(context.Background(), invocation.Invocation{}, SearchUsersQuery{Limit: 10})
 	require.NoError(t, err)
 	require.Len(t, users.Items, 1)
 	require.Equal(t, "student", users.Items[0].Username)
@@ -294,7 +295,7 @@ func TestUserProfileUpdateRejectsControlCharacterNamesBeforeAudit(t *testing.T) 
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewID()}
 	service := newUserProfileService(persistence, &userProfileAuthorizerFake{events: &events}, auditor, func() time.Time { return time.UnixMilli(500) })
 	displayName := "Student\r\nBcc: other@example.test"
-	_, err := service.UpdateUserProfile(context.Background(), Invocation{}, UpdateUserProfileCommand{ID: current.ID, DisplayName: &displayName})
+	_, err := service.UpdateUserProfile(context.Background(), invocation.Invocation{}, UpdateUserProfileCommand{ID: current.ID, DisplayName: &displayName})
 	failure, ok := apperror.As(err)
 	require.True(t, ok)
 	require.Equal(t, "user.invalid", failure.Code())

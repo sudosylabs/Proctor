@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -73,7 +74,7 @@ type roleAuthorizerFake struct {
 	bindingScope  store.UserVisibilityScope
 }
 
-func (a *roleAuthorizerFake) AuthorizeInstitution(_ context.Context, _ Invocation, action model.Action) (model.Resource, error) {
+func (a *roleAuthorizerFake) AuthorizeInstitution(_ context.Context, _ invocation.Invocation, action model.Action) (model.Resource, error) {
 	event := "authorize-view"
 	if action == model.ActionRoleManage {
 		event = "authorize-manage"
@@ -82,7 +83,7 @@ func (a *roleAuthorizerFake) AuthorizeInstitution(_ context.Context, _ Invocatio
 	return a.resource, a.err
 }
 
-func (a *roleAuthorizerFake) AuthorizeRoleBindingList(context.Context, Invocation, model.Action) (store.UserVisibilityScope, error) {
+func (a *roleAuthorizerFake) AuthorizeRoleBindingList(context.Context, invocation.Invocation, model.Action) (store.UserVisibilityScope, error) {
 	*a.events = append(*a.events, "authorize-binding-list")
 	if a.bindingScope.InstitutionWide || len(a.bindingScope.AcademicUnitRootIDs) > 0 || len(a.bindingScope.ClassIDs) > 0 {
 		return a.bindingScope, a.err
@@ -90,17 +91,17 @@ func (a *roleAuthorizerFake) AuthorizeRoleBindingList(context.Context, Invocatio
 	return store.UserVisibilityScope{InstitutionWide: true}, a.err
 }
 
-func (a *roleAuthorizerFake) AuthorizeRoleBindingPreflight(context.Context, Invocation, model.Action) error {
+func (a *roleAuthorizerFake) AuthorizeRoleBindingPreflight(context.Context, invocation.Invocation, model.Action) error {
 	*a.events = append(*a.events, "authorize-binding-preflight")
 	return a.err
 }
 
-func (a *roleAuthorizerFake) AuthorizeRoleBindingScope(context.Context, Invocation, model.Action, model.RoleScopeType, string) (model.Resource, error) {
+func (a *roleAuthorizerFake) AuthorizeRoleBindingScope(context.Context, invocation.Invocation, model.Action, model.RoleScopeType, string) (model.Resource, error) {
 	*a.events = append(*a.events, "authorize-binding-scope")
 	return a.resource, a.err
 }
 
-func (a *roleAuthorizerFake) CanDelegateActionsAtScope(context.Context, Invocation, []string, model.RoleScopeType, string) error {
+func (a *roleAuthorizerFake) CanDelegateActionsAtScope(context.Context, invocation.Invocation, []string, model.RoleScopeType, string) error {
 	*a.events = append(*a.events, "authorize-delegation")
 	return a.delegationErr
 }
@@ -124,7 +125,7 @@ func TestRoleCreateCommitsWithoutSideEffects(t *testing.T) {
 		&roleEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
-	got, err := service.CreateRole(context.Background(), Invocation{}, CreateRoleCommand{
+	got, err := service.CreateRole(context.Background(), invocation.Invocation{}, CreateRoleCommand{
 		Name: "teacher", DisplayName: "Teacher", Permissions: []string{string(model.ActionClassView)},
 	})
 	require.NoError(t, err)
@@ -146,7 +147,7 @@ func TestRoleCreateAndUpdateRejectUndelegablePermissionsBeforeAudit(t *testing.T
 			&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}, delegationErr: denied},
 			&institutionAuditorFake{events: &events}, &roleEffectsFake{events: &events}, time.Now,
 		)
-		_, err := service.CreateRole(context.Background(), Invocation{}, CreateRoleCommand{Name: "unsafe", DisplayName: "Unsafe", Permissions: []string{string(model.ActionUserManage)}})
+		_, err := service.CreateRole(context.Background(), invocation.Invocation{}, CreateRoleCommand{Name: "unsafe", DisplayName: "Unsafe", Permissions: []string{string(model.ActionUserManage)}})
 		require.True(t, apperror.Is(err, "authorization.denied"), "Create() error = %v", err)
 		require.Equal(t, []string{"authorize-manage", "authorize-delegation"}, events)
 	})
@@ -160,7 +161,7 @@ func TestRoleCreateAndUpdateRejectUndelegablePermissionsBeforeAudit(t *testing.T
 			&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}, delegationErr: denied},
 			&institutionAuditorFake{events: &events}, &roleEffectsFake{events: &events}, time.Now,
 		)
-		_, err := service.UpdateRole(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, Permissions: &permissions})
+		_, err := service.UpdateRole(context.Background(), invocation.Invocation{}, UpdateRoleCommand{ID: role.ID, Permissions: &permissions})
 		require.True(t, apperror.Is(err, "authorization.denied"), "Update() error = %v", err)
 		require.Equal(t, []string{"authorize-manage", "get-role", "authorize-delegation"}, events)
 	})
@@ -176,7 +177,7 @@ func TestRoleCreateRejectsUnknownPermissions(t *testing.T) {
 		&roleEffectsFake{events: &events},
 		time.Now,
 	)
-	_, err := service.CreateRole(context.Background(), Invocation{}, CreateRoleCommand{
+	_, err := service.CreateRole(context.Background(), invocation.Invocation{}, CreateRoleCommand{
 		Name: "teacher", DisplayName: "Teacher", Permissions: []string{"not.a.real.permission"},
 	})
 	require.True(t, apperror.Is(err, "role.permission.invalid"), "error = %v", err)
@@ -207,7 +208,7 @@ func TestRoleUpdateCommitsBeforeInvalidation(t *testing.T) {
 		&roleEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
-	got, err := service.UpdateRole(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
+	got, err := service.UpdateRole(context.Background(), invocation.Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
 	require.NoError(t, err)
 	require.Equal(t, "Lead Teacher", got.DisplayName)
 	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
@@ -227,7 +228,7 @@ func TestRoleUpdateFailurePublishesNoInvalidation(t *testing.T) {
 		&roleEffectsFake{events: &events},
 		time.Now,
 	)
-	_, err := service.UpdateRole(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
+	_, err := service.UpdateRole(context.Background(), invocation.Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
 	require.True(t, apperror.Is(err, "role.conflict"), "error = %v", err)
 	// Contract (guardrail 8): authorization precedes the audit, the audit begins
 	// before the durable write, and the audit outcome follows the write.
@@ -246,7 +247,7 @@ func TestRoleUpdateRejectsBuiltIn(t *testing.T) {
 		&roleEffectsFake{events: &events},
 		time.Now,
 	)
-	_, err := service.UpdateRole(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
+	_, err := service.UpdateRole(context.Background(), invocation.Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
 	require.True(t, apperror.Is(err, "role.built_in.protected"), "error = %v", err)
 	require.Equal(t, []string{"authorize-manage", "get-role"}, events)
 }
@@ -262,7 +263,7 @@ func TestRoleArchiveCommitsBeforeInvalidation(t *testing.T) {
 		&roleEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
-	require.NoError(t, service.ArchiveRole(context.Background(), Invocation{}, ArchiveRoleCommand{ID: role.ID}))
+	require.NoError(t, service.ArchiveRole(context.Background(), invocation.Invocation{}, ArchiveRoleCommand{ID: role.ID}))
 	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
 	// begins before the durable write, and the write commits before its effect.
 	require.Equal(t, []string{"authorize-manage", "get-role", "audit-begin", "store-archive", "invalidate-authorization"}, events)

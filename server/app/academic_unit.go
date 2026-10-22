@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -36,16 +37,16 @@ type SearchAcademicUnitsQuery struct {
 }
 
 type academicUnitAuthorizer interface {
-	Authorize(context.Context, Invocation, model.Action, model.Resource) error
+	Authorize(context.Context, invocation.Invocation, model.Action, model.Resource) error
 	InstitutionResource(context.Context) (model.Resource, error)
 	AuthorizeInstitution(
-		context.Context, Invocation, model.Action,
+		context.Context, invocation.Invocation, model.Action,
 	) (model.Resource, error)
 }
 
 type scopedAcademicResourceAuthorizer interface {
-	Authorize(context.Context, Invocation, model.Action, model.Resource) error
-	AuthorizeWithScope(context.Context, Invocation, model.Action, model.Resource) (model.RoleScopeType, string, error)
+	Authorize(context.Context, invocation.Invocation, model.Action, model.Resource) error
+	AuthorizeWithScope(context.Context, invocation.Invocation, model.Action, model.Resource) (model.RoleScopeType, string, error)
 }
 
 type academicUnitQueryService struct {
@@ -72,7 +73,7 @@ func newAcademicUnitQueryService(
 // academic_unit.view on that unit.
 func (s *academicUnitQueryService) GetAcademicUnit(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	query GetAcademicUnitQuery,
 ) (*model.AcademicUnit, error) {
 	id := query.ID
@@ -96,7 +97,7 @@ func (s *academicUnitQueryService) GetAcademicUnit(
 // ParentID is empty.
 func (s *academicUnitQueryService) ListAcademicUnits(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	query ListAcademicUnitsQuery,
 ) (Page[*model.AcademicUnit], error) {
 	parentID := query.ParentID
@@ -140,7 +141,7 @@ func (s *academicUnitQueryService) ListAcademicUnits(
 // academic_unit.view.
 func (s *academicUnitQueryService) SearchAcademicUnits(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	query SearchAcademicUnitsQuery,
 ) (Page[*model.AcademicUnit], error) {
 	limit, probe, err := resolvePageLimit(query.Limit, "limit")

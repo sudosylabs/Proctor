@@ -13,20 +13,21 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type DesktopAuthorization interface {
-	StartDesktopAuthorization(context.Context, app.Invocation, app.StartDesktopAuthorizationCommand) (*app.DesktopAuthorizationStart, error)
-	BindDesktopAuthorization(context.Context, app.Invocation, app.BindDesktopAuthorizationCommand) (*app.DesktopAuthorizationBinding, error)
-	DesktopAuthorizationContext(context.Context, app.Invocation, string) (*app.DesktopAuthorizationBrowserContext, error)
-	AuthenticateDesktopAuthorizationSession(context.Context, app.Invocation, app.AuthenticateDesktopAuthorizationCommand) (*app.DesktopAuthorizationBrowserContext, error)
-	AuthenticateDesktopAuthorizationLocally(context.Context, app.Invocation, app.AuthenticateDesktopAuthorizationLocallyCommand) (*app.DesktopAuthorizationBrowserContext, error)
-	ResetDesktopAuthorizationAccount(context.Context, app.Invocation, string) error
-	BeginDesktopExternalAuthentication(context.Context, app.Invocation, app.BeginDesktopExternalAuthenticationCommand) (*model.ExternalAuthenticationStart, error)
-	ApproveDesktopAuthorization(context.Context, app.Invocation, app.ApproveDesktopAuthorizationCommand) (*app.DesktopAuthorizationApproval, error)
-	CancelDesktopAuthorization(context.Context, app.Invocation, app.ApproveDesktopAuthorizationCommand) error
-	ExchangeDesktopAuthorization(context.Context, app.Invocation, app.ExchangeDesktopAuthorizationCommand) (*app.DesktopAuthorizationExchangeResult, error)
+	StartDesktopAuthorization(context.Context, invocation.Invocation, app.StartDesktopAuthorizationCommand) (*app.DesktopAuthorizationStart, error)
+	BindDesktopAuthorization(context.Context, invocation.Invocation, app.BindDesktopAuthorizationCommand) (*app.DesktopAuthorizationBinding, error)
+	DesktopAuthorizationContext(context.Context, invocation.Invocation, string) (*app.DesktopAuthorizationBrowserContext, error)
+	AuthenticateDesktopAuthorizationSession(context.Context, invocation.Invocation, app.AuthenticateDesktopAuthorizationCommand) (*app.DesktopAuthorizationBrowserContext, error)
+	AuthenticateDesktopAuthorizationLocally(context.Context, invocation.Invocation, app.AuthenticateDesktopAuthorizationLocallyCommand) (*app.DesktopAuthorizationBrowserContext, error)
+	ResetDesktopAuthorizationAccount(context.Context, invocation.Invocation, string) error
+	BeginDesktopExternalAuthentication(context.Context, invocation.Invocation, app.BeginDesktopExternalAuthenticationCommand) (*model.ExternalAuthenticationStart, error)
+	ApproveDesktopAuthorization(context.Context, invocation.Invocation, app.ApproveDesktopAuthorizationCommand) (*app.DesktopAuthorizationApproval, error)
+	CancelDesktopAuthorization(context.Context, invocation.Invocation, app.ApproveDesktopAuthorizationCommand) error
+	ExchangeDesktopAuthorization(context.Context, invocation.Invocation, app.ExchangeDesktopAuthorizationCommand) (*app.DesktopAuthorizationExchangeResult, error)
 }
 
 type desktopAuthorizationStartRequest struct {
@@ -95,7 +96,7 @@ type desktopAuthorizationResourceModule struct {
 	cookies     browserCookies
 }
 
-func desktopAuthorizationResource(application DesktopAuthorization, cookies browserCookies) resource {
+func desktopAuthorizationResource(application DesktopAuthorization, cookies browserCookies) apiResource {
 	m := desktopAuthorizationResourceModule{application: application, cookies: cookies}
 	base := apiPath(literal("auth"), literal("desktop"), literal("authorizations"))
 	errors := []string{"request.invalid", "authentication.desktop_authorization.invalid", "authentication.desktop_authorization.rejected", "authentication.desktop_authorization.unavailable", "authentication.desktop_authorization.account_session_locked"}

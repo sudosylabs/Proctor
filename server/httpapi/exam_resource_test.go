@@ -22,9 +22,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/exam/resource"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 func TestExamResourceHTTPUploadUsesStrictMetadataFirstStreamingContract(t *testing.T) {
@@ -197,11 +199,11 @@ func TestExamResourceHTTPProtectedContentIsInlinePrivateAndConditional(t *testin
 type examResourceHTTPFake struct {
 	principal model.Principal
 	examID    model.ExamID
-	record    app.ExamResourceRecord
-	create    app.CreateExamResourceCommand
+	record    store.ExamResourceRecord
+	create    resource.CreateCommand
 	uploaded  []byte
 	created   bool
-	edit      app.EditExamResourceMetadataCommand
+	edit      resource.EditMetadataCommand
 	editCalls int
 	removed   bool
 }
@@ -212,7 +214,7 @@ func newExamResourceHTTPFake(principal model.Principal) *examResourceHTTPFake {
 	at := time.Now().UTC()
 	resource, _ := model.NewExamResource(model.NewExamResourceID(), examID, model.NewFileEntryID(), revisionID, "Reference", "", 0, at)
 	rendition, _ := model.NewFileRendition(model.NewFileRenditionID(), revisionID, "original", "text/plain", 9, 0, 0, strings.Repeat("a", 64), at)
-	return &examResourceHTTPFake{principal: principal, examID: examID, record: app.ExamResourceRecord{Resource: resource, Rendition: rendition, DraftRevision: 2}}
+	return &examResourceHTTPFake{principal: principal, examID: examID, record: store.ExamResourceRecord{Resource: resource, Rendition: rendition, DraftRevision: 2}}
 }
 func (f *examResourceHTTPFake) AuthenticateAccess(context.Context, string) (*model.Principal, error) {
 	p := f.principal
@@ -222,34 +224,34 @@ func (f *examResourceHTTPFake) AuthenticateBearer(context.Context, string) (*mod
 	p := f.principal
 	return &p, nil
 }
-func (f *examResourceHTTPFake) CreateExamResource(_ context.Context, _ app.Invocation, c app.CreateExamResourceCommand) (app.ExamResourceRecord, error) {
+func (f *examResourceHTTPFake) CreateExamResource(_ context.Context, _ invocation.Invocation, c resource.CreateCommand) (store.ExamResourceRecord, error) {
 	raw, err := io.ReadAll(c.Body)
 	if err != nil {
-		return app.ExamResourceRecord{}, apperror.New("exam.resource.content_invalid")
+		return store.ExamResourceRecord{}, apperror.New("exam.resource.content_invalid")
 	}
 	f.create, f.uploaded, f.created = c, raw, true
 	return f.record, nil
 }
-func (f *examResourceHTTPFake) ReplaceExamResourceContent(context.Context, app.Invocation, app.ReplaceExamResourceContentCommand) (app.ExamResourceRecord, error) {
+func (f *examResourceHTTPFake) ReplaceExamResourceContent(context.Context, invocation.Invocation, resource.ReplaceContentCommand) (store.ExamResourceRecord, error) {
 	return f.record, nil
 }
-func (f *examResourceHTTPFake) EditExamResourceMetadata(_ context.Context, _ app.Invocation, command app.EditExamResourceMetadataCommand) (app.ExamResourceRecord, error) {
+func (f *examResourceHTTPFake) EditExamResourceMetadata(_ context.Context, _ invocation.Invocation, command resource.EditMetadataCommand) (store.ExamResourceRecord, error) {
 	f.edit = command
 	f.editCalls++
 	return f.record, nil
 }
-func (f *examResourceHTTPFake) ReorderExamResources(context.Context, app.Invocation, app.ReorderExamResourcesCommand) ([]app.ExamResourceRecord, error) {
-	return []app.ExamResourceRecord{f.record}, nil
+func (f *examResourceHTTPFake) ReorderExamResources(context.Context, invocation.Invocation, resource.ReorderCommand) ([]store.ExamResourceRecord, error) {
+	return []store.ExamResourceRecord{f.record}, nil
 }
-func (f *examResourceHTTPFake) RemoveExamResource(context.Context, app.Invocation, app.RemoveExamResourceCommand) (app.ExamResourceRecord, error) {
+func (f *examResourceHTTPFake) RemoveExamResource(context.Context, invocation.Invocation, resource.RemoveCommand) (store.ExamResourceRecord, error) {
 	f.removed = true
 	return f.record, nil
 }
-func (f *examResourceHTTPFake) ListExamResources(context.Context, app.Invocation, app.ListExamResourcesQuery) ([]app.ExamResourceRecord, error) {
-	return []app.ExamResourceRecord{f.record}, nil
+func (f *examResourceHTTPFake) ListExamResources(context.Context, invocation.Invocation, resource.ListQuery) ([]store.ExamResourceRecord, error) {
+	return []store.ExamResourceRecord{f.record}, nil
 }
-func (f *examResourceHTTPFake) OpenExamResource(context.Context, app.Invocation, app.OpenExamResourceQuery) (app.OpenedExamResource, error) {
-	opened := app.OpenedExamResource{Record: f.record, Body: io.NopCloser(strings.NewReader("protected"))}
+func (f *examResourceHTTPFake) OpenExamResource(context.Context, invocation.Invocation, resource.OpenQuery) (resource.Opened, error) {
+	opened := resource.Opened{Record: f.record, Body: io.NopCloser(strings.NewReader("protected"))}
 	return opened, nil
 }
 func examResourceMultipart(t *testing.T, metadata string, content []byte, trailing bool) (*bytes.Buffer, string) {

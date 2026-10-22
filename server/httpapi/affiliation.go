@@ -35,7 +35,7 @@ type affiliationResourceModule struct {
 	affiliations AffiliationApplication
 }
 
-func affiliationResource(affiliations AffiliationApplication) resource {
+func affiliationResource(affiliations AffiliationApplication) apiResource {
 	module := affiliationResourceModule{affiliations: affiliations}
 	return newResource(
 		"affiliations",

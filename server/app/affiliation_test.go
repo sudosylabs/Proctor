@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -67,7 +68,7 @@ func TestAffiliationEndFutureRangePreservesRejection(t *testing.T) {
 	}
 	persistence := &affiliationStoreFake{events: &events, current: current, endErr: store.NewErrConflict("affiliation", "affiliation_end_time", nil)}
 	service := newAffiliationService(persistence, &affiliationEnrollmentFake{events: &events}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, discardAffiliationEffects{}, func() time.Time { return time.UnixMilli(500) }, model.NewID)
-	_, err := service.EndAffiliation(context.Background(), Invocation{}, EndAffiliationCommand{ID: current.ID})
+	_, err := service.EndAffiliation(context.Background(), invocation.Invocation{}, EndAffiliationCommand{ID: current.ID})
 	failure, ok := apperror.As(err)
 	require.True(t, ok)
 	require.Equal(t, "resource.not_found", failure.Code())
@@ -96,7 +97,7 @@ func TestAffiliationCreateKeepsKindsNonExclusiveAndAudited(t *testing.T) {
 		return time.UnixMilli(int64(500 + clockCalls))
 	}, model.NewID)
 	for _, kind := range []model.AffiliationKind{model.AffiliationStudent, model.AffiliationTeacher} {
-		created, err := service.CreateAffiliation(context.Background(), Invocation{}, CreateAffiliationCommand{UserID: model.UserID(userID), Kind: kind, StartAt: 100})
+		created, err := service.CreateAffiliation(context.Background(), invocation.Invocation{}, CreateAffiliationCommand{UserID: model.UserID(userID), Kind: kind, StartAt: 100})
 		require.NoError(t, err)
 		require.Equal(t, kind, created.Kind)
 		require.Equal(t, userID, persistence.createInput.Affiliation.UserID.String())
@@ -124,7 +125,7 @@ func TestAffiliationEndRejectsActiveStudentEnrollment(t *testing.T) {
 		time.Now,
 		model.NewID,
 	)
-	_, err := service.EndAffiliation(context.Background(), Invocation{}, EndAffiliationCommand{ID: current.ID})
+	_, err := service.EndAffiliation(context.Background(), invocation.Invocation{}, EndAffiliationCommand{ID: current.ID})
 	require.True(t, apperror.Is(err, "affiliation.student_has_active_enrollment"), "End() error = %v", err)
 	require.Equal(t, []string{"get-affiliation", "authorize", "list-enrollments"}, events)
 }
@@ -140,7 +141,7 @@ func TestAffiliationRetainedEndBypassesLaterStudentEnrollment(t *testing.T) {
 		&programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()},
 		discardAffiliationEffects{},
 		func() time.Time { return time.UnixMilli(500) }, model.NewID)
-	result, err := service.EndAffiliation(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
+	result, err := service.EndAffiliation(context.Background(), invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		EndAffiliationCommand{ID: current.ID, IdempotencyKey: "row", batchRetainedOutcome: true})
 	require.NoError(t, err, "retained end")
 	require.NotNil(t, result, "retained end")
@@ -159,7 +160,7 @@ func TestAffiliationEndCarriesExpectedRevision(t *testing.T) {
 	}
 	persistence := &affiliationStoreFake{events: &events, current: current}
 	service := newAffiliationService(persistence, &affiliationEnrollmentFake{events: &events}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, discardAffiliationEffects{}, func() time.Time { return time.UnixMilli(500) }, model.NewID)
-	ended, err := service.EndAffiliation(context.Background(), Invocation{}, EndAffiliationCommand{ID: current.ID})
+	ended, err := service.EndAffiliation(context.Background(), invocation.Invocation{}, EndAffiliationCommand{ID: current.ID})
 	require.NoError(t, err)
 	require.Equal(t, current.Revision, persistence.endInput.ExpectedRevision, "end input/result = %#v / %#v", persistence.endInput, ended)
 	require.Equal(t, current.Revision+1, ended.Revision, "end input/result = %#v / %#v", persistence.endInput, ended)

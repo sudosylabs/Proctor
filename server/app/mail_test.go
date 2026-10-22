@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
@@ -167,7 +168,7 @@ type mailAuthorizerFake struct {
 	err     error
 }
 
-func (a *mailAuthorizerFake) AuthorizeInstitution(_ context.Context, _ Invocation, action model.Action) (model.Resource, error) {
+func (a *mailAuthorizerFake) AuthorizeInstitution(_ context.Context, _ invocation.Invocation, action model.Action) (model.Resource, error) {
 	a.actions = append(a.actions, action)
 	if a.err != nil {
 		return model.Resource{}, a.err
@@ -181,12 +182,12 @@ type mailAuditFake struct {
 	failCalls  int
 }
 
-func (a *mailAuditFake) PrepareTest(_ context.Context, invocation Invocation, resource model.Resource, id model.MailDeliveryID) (*model.AuditEvent, error) {
+func (a *mailAuditFake) PrepareTest(_ context.Context, invocation invocation.Invocation, resource model.Resource, id model.MailDeliveryID) (*model.AuditEvent, error) {
 	a.calls++
 	principal := invocation.Principal()
 	return &model.AuditEvent{ActorID: principal.UserID, SessionID: principal.SessionID, Action: string(model.ActionMailManage), Resource: model.Resource{Type: model.ResourceMailDelivery, ID: id.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: resource.ID, Status: model.AuditStatusSuccess, NodeID: "test", ClientType: string(principal.ClientType), AuthMethod: principal.AuthenticationMethod}, nil
 }
-func (a *mailAuditFake) PrepareControl(_ context.Context, _ Invocation, institution model.Resource, delivery *model.MailDelivery, operation string) (model.AuditEventID, error) {
+func (a *mailAuditFake) PrepareControl(_ context.Context, _ invocation.Invocation, institution model.Resource, delivery *model.MailDelivery, operation string) (model.AuditEventID, error) {
 	a.beginCalls++
 	if institution.Type != model.ResourceInstitution || delivery == nil || (operation != "cancel" && operation != "retry") {
 		return "", errors.New("unsafe mail audit")
@@ -395,7 +396,7 @@ func TestMailServicePreparesOnlyControlledSelfRecipientAndAtomicIntent(t *testin
 	require.NoError(t, err)
 	woke := 0
 	service.wake = func() { woke++ }
-	view, err := service.SendTestMail(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+	view, err := service.SendTestMail(context.Background(), invocation.New(principal, model.RequestMetadata{}))
 	require.NoError(t, err)
 	require.NotNil(t, persistence.enqueue, "atomic intent")
 	require.Equal(t, principal.UserID, persistence.enqueue.Delivery.TargetUserID, "atomic intent")
@@ -423,7 +424,7 @@ func TestMailMetricsRequiresMailViewAuthorization(t *testing.T) {
 		&mailSenderFake{}, metrics, nil, 15*time.Minute, func() time.Time { return at },
 	)
 	require.NoError(t, err)
-	_, err = service.GetMailMetrics(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+	_, err = service.GetMailMetrics(context.Background(), invocation.New(principal, model.RequestMetadata{}))
 	require.NoError(t, err)
 	require.Len(t, authorizer.actions, 1)
 	require.Equal(t, model.ActionMailView, authorizer.actions[0])
@@ -447,21 +448,21 @@ func TestMailServiceRejectsPATUnverifiedAndRateLimitedBeforePersistence(t *testi
 	pat.AuthenticatedAt = time.Time{}
 	pat.ClientType = model.SessionClientCLI
 	pat.CredentialScopes = []string{string(model.ActionMailManage)}
-	_, err = service.SendTestMail(context.Background(), NewInvocation(pat, model.RequestMetadata{}))
+	_, err = service.SendTestMail(context.Background(), invocation.New(pat, model.RequestMetadata{}))
 	require.True(t, apperror.Is(err, "authentication.token_invalid"), "PAT error = %v", err)
 	stale := principal
 	stale.AuthenticatedAt = at.Add(-16 * time.Minute)
-	_, err = service.SendTestMail(context.Background(), NewInvocation(stale, model.RequestMetadata{}))
+	_, err = service.SendTestMail(context.Background(), invocation.New(stale, model.RequestMetadata{}))
 	require.True(t, apperror.Is(err, "authentication.reauthentication_required"), "stale Session error = %v", err)
 	user.EmailVerified = false
-	_, err = service.SendTestMail(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+	_, err = service.SendTestMail(context.Background(), invocation.New(principal, model.RequestMetadata{}))
 	require.True(t, apperror.Is(err, "mail.recipient_unverified"), "unverified error = %v", err)
 	user.EmailVerified = true
 	for index := 1; index < mailTestRateLimitMaximum; index++ {
-		_, err = service.SendTestMail(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+		_, err = service.SendTestMail(context.Background(), invocation.New(principal, model.RequestMetadata{}))
 		require.NoError(t, err)
 	}
-	_, err = service.SendTestMail(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+	_, err = service.SendTestMail(context.Background(), invocation.New(principal, model.RequestMetadata{}))
 	require.True(t, apperror.Is(err, "mail.test.rate_limited"), "rate limit error = %v", err)
 }
 
@@ -473,13 +474,13 @@ func TestMailOperatorReadsAuthorizeBeforeInspectionAndReturnOnlySafeViews(t *tes
 	authorizer := &mailAuthorizerFake{}
 	service, err := newMailService(persistence, mailUserStoreFake{mailTestUser(principal, at)}, authorizer, &mailAuditFake{}, &authenticationAttemptAccounting{cache: &mailAttemptCacheFake{}}, mailRendererFake{}, &mailSenderFake{}, NopMailDeliveryRecorder{}, nil, 15*time.Minute, func() time.Time { return at })
 	require.NoError(t, err)
-	page, appErr := service.ListMailDeliveries(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ListMailDeliveriesQuery{States: []model.MailDeliveryState{model.MailDeliveryQueued}, Limit: 20})
+	page, appErr := service.ListMailDeliveries(context.Background(), invocation.New(principal, model.RequestMetadata{}), ListMailDeliveriesQuery{States: []model.MailDeliveryState{model.MailDeliveryQueued}, Limit: 20})
 	require.NoError(t, appErr, "List() page=%#v err=%v lists=%d actions=%v", page, appErr, persistence.lists, authorizer.actions)
 	require.Len(t, page.Items, 1, "List() page=%#v err=%v lists=%d actions=%v", page, appErr, persistence.lists, authorizer.actions)
 	require.Equal(t, 1, persistence.lists, "List() page=%#v err=%v lists=%d actions=%v", page, appErr, persistence.lists, authorizer.actions)
 	require.Equal(t, model.ActionMailView, authorizer.actions[0], "List() page=%#v err=%v lists=%d actions=%v", page, appErr, persistence.lists, authorizer.actions)
 	authorizer.err = apperror.New("authorization.denied")
-	_, appErr = service.GetMailDelivery(context.Background(), NewInvocation(principal, model.RequestMetadata{}), delivery.ID)
+	_, appErr = service.GetMailDelivery(context.Background(), invocation.New(principal, model.RequestMetadata{}), delivery.ID)
 	require.True(t, apperror.Is(appErr, "authorization.denied"), "denied Get() err=%v gets", appErr)
 	require.Equal(t, 0, persistence.gets, "denied Get() err=%v gets", appErr)
 	encoded, _ := json.Marshal(page)
@@ -501,15 +502,15 @@ func TestMailOperatorMutationsRequireRecentSessionAndAuditSameDelivery(t *testin
 	pat.CredentialType = model.CredentialPersonalAccessToken
 	pat.CredentialID = model.PrincipalCredentialID(model.NewPersonalAccessTokenID())
 	pat.AuthenticationStrength, pat.AuthenticatedAt = "", time.Time{}
-	_, appErr := service.CancelMailDelivery(context.Background(), NewInvocation(pat, model.RequestMetadata{}), delivery.ID)
+	_, appErr := service.CancelMailDelivery(context.Background(), invocation.New(pat, model.RequestMetadata{}), delivery.ID)
 	require.True(t, apperror.Is(appErr, "authentication.token_invalid"), "Cancel(PAT) err=%v gets", appErr)
 	require.Equal(t, 0, persistence.gets, "Cancel(PAT) err=%v gets", appErr)
 	stale := principal
 	stale.AuthenticatedAt = at.Add(-16 * time.Minute)
-	_, appErr = service.CancelMailDelivery(context.Background(), NewInvocation(stale, model.RequestMetadata{}), delivery.ID)
+	_, appErr = service.CancelMailDelivery(context.Background(), invocation.New(stale, model.RequestMetadata{}), delivery.ID)
 	require.True(t, apperror.Is(appErr, "authentication.reauthentication_required"), "Cancel(stale) err=%v gets", appErr)
 	require.Equal(t, 0, persistence.gets, "Cancel(stale) err=%v gets", appErr)
-	view, appErr := service.CancelMailDelivery(context.Background(), NewInvocation(principal, model.RequestMetadata{}), delivery.ID)
+	view, appErr := service.CancelMailDelivery(context.Background(), invocation.New(principal, model.RequestMetadata{}), delivery.ID)
 	require.NoError(t, appErr, "Cancel() view=%#v err=%v mutates=%d audit", view, appErr, persistence.mutates)
 	require.Equal(t, model.MailDeliveryCanceled, view.State, "Cancel() view=%#v err=%v mutates=%d audit", view, appErr, persistence.mutates)
 	require.Equal(t, 1, persistence.mutates, "Cancel() view=%#v err=%v mutates=%d audit", view, appErr, persistence.mutates)

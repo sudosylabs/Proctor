@@ -12,12 +12,13 @@ import (
 	"net/http"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type SessionReauthentication interface {
-	ReauthenticatePassword(context.Context, app.Invocation, app.ReauthenticatePasswordCommand) (*model.Session, error)
-	BeginExternalReauthentication(context.Context, app.Invocation, app.BeginExternalReauthenticationCommand) (*model.ExternalAuthenticationStart, error)
+	ReauthenticatePassword(context.Context, invocation.Invocation, app.ReauthenticatePasswordCommand) (*model.Session, error)
+	BeginExternalReauthentication(context.Context, invocation.Invocation, app.BeginExternalReauthenticationCommand) (*model.ExternalAuthenticationStart, error)
 }
 
 type sessionReauthenticationResourceModule struct {
@@ -37,7 +38,7 @@ type externalReauthenticationResponse struct {
 	RedirectURL string `json:"redirect_url"`
 }
 
-func sessionReauthenticationResource(authentication SessionReauthentication, cookies browserCookies) resource {
+func sessionReauthenticationResource(authentication SessionReauthentication, cookies browserCookies) apiResource {
 	module := sessionReauthenticationResourceModule{authentication: authentication, cookies: cookies}
 	return newResource("session-reauthentication",
 		mfaRecoverySessionRoute(http.MethodPost, apiPath(literal("auth"), literal("reauthenticate"), literal("external")), personalAccessTokenSessionMutationCodes("request.invalid", "authentication.reauthentication_method_required", "authentication.external.request.invalid", "authentication.external.provider_not_found", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.external.unavailable", "authentication.external.rejected", "authentication.internal", "audit.unavailable"), module.external),

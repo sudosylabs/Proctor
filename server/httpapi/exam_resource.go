@@ -17,21 +17,23 @@ import (
 	"mime/multipart"
 	"net/http"
 
-	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/exam/resource"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 const examResourceUploadBodyLimit = model.ExamResourceMaximumBytes + 64*1024
 const examResourceMetadataLimit = 32 * 1024
 
 type ExamResourceApplication interface {
-	CreateExamResource(context.Context, app.Invocation, app.CreateExamResourceCommand) (app.ExamResourceRecord, error)
-	ReplaceExamResourceContent(context.Context, app.Invocation, app.ReplaceExamResourceContentCommand) (app.ExamResourceRecord, error)
-	EditExamResourceMetadata(context.Context, app.Invocation, app.EditExamResourceMetadataCommand) (app.ExamResourceRecord, error)
-	ReorderExamResources(context.Context, app.Invocation, app.ReorderExamResourcesCommand) ([]app.ExamResourceRecord, error)
-	RemoveExamResource(context.Context, app.Invocation, app.RemoveExamResourceCommand) (app.ExamResourceRecord, error)
-	ListExamResources(context.Context, app.Invocation, app.ListExamResourcesQuery) ([]app.ExamResourceRecord, error)
-	OpenExamResource(context.Context, app.Invocation, app.OpenExamResourceQuery) (app.OpenedExamResource, error)
+	CreateExamResource(context.Context, invocation.Invocation, resource.CreateCommand) (store.ExamResourceRecord, error)
+	ReplaceExamResourceContent(context.Context, invocation.Invocation, resource.ReplaceContentCommand) (store.ExamResourceRecord, error)
+	EditExamResourceMetadata(context.Context, invocation.Invocation, resource.EditMetadataCommand) (store.ExamResourceRecord, error)
+	ReorderExamResources(context.Context, invocation.Invocation, resource.ReorderCommand) ([]store.ExamResourceRecord, error)
+	RemoveExamResource(context.Context, invocation.Invocation, resource.RemoveCommand) (store.ExamResourceRecord, error)
+	ListExamResources(context.Context, invocation.Invocation, resource.ListQuery) ([]store.ExamResourceRecord, error)
+	OpenExamResource(context.Context, invocation.Invocation, resource.OpenQuery) (resource.Opened, error)
 }
 
 type examResourceHTTPModule struct{ application ExamResourceApplication }
@@ -74,7 +76,7 @@ type examResourceResponse struct {
 	DraftRevision       int64  `json:"draft_revision"`
 }
 
-func examResourceHTTPResource(application ExamResourceApplication) resource {
+func examResourceHTTPResource(application ExamResourceApplication) apiResource {
 	m := examResourceHTTPModule{application: application}
 	collection := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"), literal("resources"))
 	member := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"), literal("resources"), canonicalID("exam_resource_id"))
@@ -101,14 +103,14 @@ func (m examResourceHTTPModule) list(request operationRequest) (operationResult,
 	if err != nil {
 		return operationResult{}, err
 	}
-	items, err := m.application.ListExamResources(request.context, request.invocation(), app.ListExamResourcesQuery{ExamID: examID})
+	items, err := m.application.ListExamResources(request.context, request.invocation(), resource.ListQuery{ExamID: examID})
 	if err != nil {
 		return operationResult{}, err
 	}
 	// The Exam Capacity Policy bounds the Draft's Resources, so the complete
 	// ordered set is paged by position.
 	response, err := boundedListResult(request, "Exam Resource", items,
-		func(item app.ExamResourceRecord) boundedPageKey {
+		func(item store.ExamResourceRecord) boundedPageKey {
 			return boundedPageKey{Name: fmt.Sprintf("%08d", item.Resource.Position), ID: item.Resource.ID.String()}
 		}, examResourceResponseFromRecord)
 	if err != nil {
@@ -129,7 +131,7 @@ func (m examResourceHTTPModule) create(request operationRequest) (protocolResult
 	if metadata.Size == nil {
 		return protocolResult{}, invalidRequestError(errors.New("size is required"))
 	}
-	result, err := m.application.CreateExamResource(request.context, request.invocation(), app.CreateExamResourceCommand{ExamID: examID, ExpectedDraftRevision: metadata.ExpectedDraftRevision, DisplayName: metadata.DisplayName, DescriptionMarkdown: metadata.DescriptionMarkdown, MediaType: model.ExamResourceMediaType(metadata.MediaType), Body: content, Size: *metadata.Size, ExpectedSHA256: metadata.SHA256, IdempotencyKey: request.idempotencyKey})
+	result, err := m.application.CreateExamResource(request.context, request.invocation(), resource.CreateCommand{ExamID: examID, ExpectedDraftRevision: metadata.ExpectedDraftRevision, DisplayName: metadata.DisplayName, DescriptionMarkdown: metadata.DescriptionMarkdown, MediaType: model.ExamResourceMediaType(metadata.MediaType), Body: content, Size: *metadata.Size, ExpectedSHA256: metadata.SHA256, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return protocolResult{}, err
 	}
@@ -148,7 +150,7 @@ func (m examResourceHTTPModule) replaceContent(request operationRequest) (protoc
 	if metadata.Size == nil {
 		return protocolResult{}, invalidRequestError(errors.New("size is required"))
 	}
-	result, err := m.application.ReplaceExamResourceContent(request.context, request.invocation(), app.ReplaceExamResourceContentCommand{ExamID: examID, ResourceID: resourceID, ExpectedDraftRevision: metadata.ExpectedDraftRevision, MediaType: model.ExamResourceMediaType(metadata.MediaType), Body: content, Size: *metadata.Size, ExpectedSHA256: metadata.SHA256, IdempotencyKey: request.idempotencyKey})
+	result, err := m.application.ReplaceExamResourceContent(request.context, request.invocation(), resource.ReplaceContentCommand{ExamID: examID, ResourceID: resourceID, ExpectedDraftRevision: metadata.ExpectedDraftRevision, MediaType: model.ExamResourceMediaType(metadata.MediaType), Body: content, Size: *metadata.Size, ExpectedSHA256: metadata.SHA256, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return protocolResult{}, err
 	}
@@ -166,7 +168,7 @@ func (m examResourceHTTPModule) editMetadata(request operationRequest) (operatio
 	if body.DisplayName == nil && body.DescriptionMarkdown == nil {
 		return operationResult{}, invalidRequestError(errors.New("at least one metadata field is required"))
 	}
-	result, err := m.application.EditExamResourceMetadata(request.context, request.invocation(), app.EditExamResourceMetadataCommand{ExamID: examID, ResourceID: resourceID, ExpectedDraftRevision: body.ExpectedDraftRevision, DisplayName: body.DisplayName, DescriptionMarkdown: body.DescriptionMarkdown, IdempotencyKey: request.idempotencyKey})
+	result, err := m.application.EditExamResourceMetadata(request.context, request.invocation(), resource.EditMetadataCommand{ExamID: examID, ResourceID: resourceID, ExpectedDraftRevision: body.ExpectedDraftRevision, DisplayName: body.DisplayName, DescriptionMarkdown: body.DescriptionMarkdown, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -189,7 +191,7 @@ func (m examResourceHTTPModule) reorder(request operationRequest) (operationResu
 		}
 		ids[i] = id
 	}
-	items, err := m.application.ReorderExamResources(request.context, request.invocation(), app.ReorderExamResourcesCommand{ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision, ResourceIDs: ids, IdempotencyKey: request.idempotencyKey})
+	items, err := m.application.ReorderExamResources(request.context, request.invocation(), resource.ReorderCommand{ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision, ResourceIDs: ids, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -210,7 +212,7 @@ func (m examResourceHTTPModule) remove(request operationRequest) (operationResul
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	_, err = m.application.RemoveExamResource(request.context, request.invocation(), app.RemoveExamResourceCommand{ExamID: examID, ResourceID: resourceID, ExpectedDraftRevision: body.ExpectedDraftRevision, IdempotencyKey: request.idempotencyKey})
+	_, err = m.application.RemoveExamResource(request.context, request.invocation(), resource.RemoveCommand{ExamID: examID, ResourceID: resourceID, ExpectedDraftRevision: body.ExpectedDraftRevision, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -221,7 +223,7 @@ func (m examResourceHTTPModule) open(request operationRequest) (protocolResult, 
 	if err != nil {
 		return protocolResult{}, err
 	}
-	opened, err := m.application.OpenExamResource(request.context, request.invocation(), app.OpenExamResourceQuery{ExamID: examID, ResourceID: resourceID})
+	opened, err := m.application.OpenExamResource(request.context, request.invocation(), resource.OpenQuery{ExamID: examID, ResourceID: resourceID})
 	if err != nil {
 		return protocolResult{}, err
 	}
@@ -255,7 +257,7 @@ func examResourceIDs(request operationRequest) (model.ExamID, model.ExamResource
 	}
 	return examID, resourceID, nil
 }
-func examResourceResponseFromRecord(record app.ExamResourceRecord) examResourceResponse {
+func examResourceResponseFromRecord(record store.ExamResourceRecord) examResourceResponse {
 	r, x := record.Resource, record.Rendition
 	if r == nil || x == nil {
 		return examResourceResponse{}

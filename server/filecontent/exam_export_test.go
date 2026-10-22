@@ -24,11 +24,11 @@ import (
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
-	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/exam"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-func exportContentFixture(t *testing.T, filesystem vfspkg.FileSystem) (*Content, app.ExamExportArchiveInput) {
+func exportContentFixture(t *testing.T, filesystem vfspkg.FileSystem) (*Content, exam.ExportArchiveInput) {
 	t.Helper()
 	content, err := New(filesystem, Policy{MaximumConcurrentOperations: 1}, nil)
 	require.NoError(t, err)
@@ -36,9 +36,9 @@ func exportContentFixture(t *testing.T, filesystem vfspkg.FileSystem) (*Content,
 	original := []byte("original answer bytes\x00\n")
 	staged, err := content.StageAttemptWorkspaceObject(context.Background(), objectID, bytes.NewReader(original), int64(len(original)), "application/octet-stream")
 	require.NoError(t, err)
-	input := app.ExamExportArchiveInput{ExportID: model.NewExamExportID(), AttemptID: model.NewJobAttemptID()}
+	input := exam.ExportArchiveInput{ExportID: model.NewExamExportID(), AttemptID: model.NewJobAttemptID()}
 	input.Records = []byte(`{"export_id":"` + input.ExportID.String() + `","categories":["work"],"submissions":[]}`)
-	input.Files = []app.ExamExportArchiveFile{{SubmissionID: model.NewSubmissionID(), Entry: model.ExamSubmissionManifestEntry{EntryID: model.NewAttemptWorkspaceEntryID(), Kind: model.StarterWorkspaceEntryFile, Path: "answers/answer.txt", ContentVersion: model.NewWorkspaceContentVersion(), MediaType: staged.MediaType, SizeBytes: staged.SizeBytes, SHA256: staged.SHA256, StorageOrigin: model.AttemptWorkspaceStorageAttempt, AttemptObjectID: objectID}}}
+	input.Files = []exam.ExportArchiveFile{{SubmissionID: model.NewSubmissionID(), Entry: model.ExamSubmissionManifestEntry{EntryID: model.NewAttemptWorkspaceEntryID(), Kind: model.StarterWorkspaceEntryFile, Path: "answers/answer.txt", ContentVersion: model.NewWorkspaceContentVersion(), MediaType: staged.MediaType, SizeBytes: staged.SizeBytes, SHA256: staged.SHA256, StorageOrigin: model.AttemptWorkspaceStorageAttempt, AttemptObjectID: objectID}}}
 	return content, input
 }
 
@@ -100,13 +100,13 @@ func TestExamExportRejectsBadSourcesAndCleansSpool(t *testing.T) {
 	t.Setenv("TMPDIR", temp)
 	for _, test := range []struct {
 		name   string
-		change func(*app.ExamExportArchiveInput)
+		change func(*exam.ExportArchiveInput)
 	}{
-		{"mismatched hash", func(i *app.ExamExportArchiveInput) { i.Files[0].Entry.SHA256 = strings.Repeat("a", 64) }},
-		{"mismatched size", func(i *app.ExamExportArchiveInput) { i.Files[0].Entry.SizeBytes++ }},
-		{"duplicate member", func(i *app.ExamExportArchiveInput) { i.Files = append(i.Files, i.Files[0]) }},
-		{"invalid original path", func(i *app.ExamExportArchiveInput) { i.Files[0].Entry.Path = "../outside" }},
-		{"foreign envelope", func(i *app.ExamExportArchiveInput) { i.ExportID = model.NewExamExportID() }},
+		{"mismatched hash", func(i *exam.ExportArchiveInput) { i.Files[0].Entry.SHA256 = strings.Repeat("a", 64) }},
+		{"mismatched size", func(i *exam.ExportArchiveInput) { i.Files[0].Entry.SizeBytes++ }},
+		{"duplicate member", func(i *exam.ExportArchiveInput) { i.Files = append(i.Files, i.Files[0]) }},
+		{"invalid original path", func(i *exam.ExportArchiveInput) { i.Files[0].Entry.Path = "../outside" }},
+		{"foreign envelope", func(i *exam.ExportArchiveInput) { i.ExportID = model.NewExamExportID() }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			fs := memoryvfs.New()

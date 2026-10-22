@@ -21,13 +21,14 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type userSettingsHTTPApplication struct {
 	result         app.UserSettingsView
 	err            error
-	invocation     app.Invocation
+	invocation     invocation.Invocation
 	calls          int
 	replaceResult  app.UserSettingsReplacementResult
 	replaceErr     error
@@ -37,7 +38,7 @@ type userSettingsHTTPApplication struct {
 
 func (a *userSettingsHTTPApplication) ReplaceOwnUserSettings(
 	_ context.Context,
-	invocation app.Invocation,
+	invocation invocation.Invocation,
 	command app.ReplaceOwnUserSettingsCommand,
 ) (app.UserSettingsReplacementResult, error) {
 	a.replaceCalls++
@@ -48,7 +49,7 @@ func (a *userSettingsHTTPApplication) ReplaceOwnUserSettings(
 
 func (a *userSettingsHTTPApplication) ReadOwnUserSettings(
 	_ context.Context,
-	invocation app.Invocation,
+	invocation invocation.Invocation,
 ) (app.UserSettingsView, error) {
 	a.calls++
 	a.invocation = invocation

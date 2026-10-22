@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -20,7 +21,7 @@ import (
 // named Store mutation. Authorization, candidate preparation, and safe audit
 // projections are complete before the runner receives this value.
 type mutationAttempt struct {
-	Invocation Invocation
+	Invocation invocation.Invocation
 	Action     model.Action
 	Resource   model.Resource
 	ScopeType  model.RoleScopeType
@@ -32,7 +33,7 @@ type mutationAttempt struct {
 
 type scopedMutationAuditor interface {
 	BeginAtScope(
-		context.Context, Invocation, model.Action, model.Resource,
+		context.Context, invocation.Invocation, model.Action, model.Resource,
 		model.RoleScopeType, string, string, map[string]any, map[string]any,
 	) (model.AuditEventID, error)
 }

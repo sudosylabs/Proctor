@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -29,7 +30,7 @@ type ResetUserMFACommand struct {
 	VerificationReference string
 }
 
-func (s *mfaApplicationService) ResetUserMFA(ctx context.Context, invocation Invocation, command ResetUserMFACommand) error {
+func (s *mfaApplicationService) ResetUserMFA(ctx context.Context, invocation invocation.Invocation, command ResetUserMFACommand) error {
 	principal := invocation.Principal()
 	if err := s.requireStrongRecentSession(principal); err != nil {
 		return err

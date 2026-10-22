@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -38,7 +39,7 @@ func (a mailAuditAdapter) Fail(ctx context.Context, auditID model.AuditEventID, 
 	return appErr
 }
 
-func (a mailAuditAdapter) PrepareControl(ctx context.Context, invocation Invocation, institution model.Resource, delivery *model.MailDelivery, operation string) (model.AuditEventID, error) {
+func (a mailAuditAdapter) PrepareControl(ctx context.Context, invocation invocation.Invocation, institution model.Resource, delivery *model.MailDelivery, operation string) (model.AuditEventID, error) {
 	if a.audit == nil || institution.Type != model.ResourceInstitution || !model.InstitutionID(institution.ID).IsValid() ||
 		delivery == nil || delivery.Validate() != nil || (operation != "cancel" && operation != "retry") {
 		return "", auditUnavailable(errors.New("mail control audit dependencies are invalid"))
@@ -52,7 +53,7 @@ func (a mailAuditAdapter) PrepareControl(ctx context.Context, invocation Invocat
 	return event.ID, nil
 }
 
-func (a mailAuditAdapter) PrepareTest(ctx context.Context, invocation Invocation, institution model.Resource, deliveryID model.MailDeliveryID) (*model.AuditEvent, error) {
+func (a mailAuditAdapter) PrepareTest(ctx context.Context, invocation invocation.Invocation, institution model.Resource, deliveryID model.MailDeliveryID) (*model.AuditEvent, error) {
 	if a.audit == nil || institution.Type != model.ResourceInstitution || !model.InstitutionID(institution.ID).IsValid() || !deliveryID.IsValid() {
 		return nil, auditUnavailable(errors.New("mail audit dependencies are invalid"))
 	}

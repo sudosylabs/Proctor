@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -46,7 +47,7 @@ func (s *desktopCompatibilityPolicyStoreFake) Replace(
 
 func desktopCompatibilityServiceFixture(
 	t *testing.T,
-) (*desktopCompatibilityService, *desktopCompatibilityPolicyStoreFake, *accessPolicyAuthorizationFake, *accessPolicyAuditFake, Invocation) {
+) (*desktopCompatibilityService, *desktopCompatibilityPolicyStoreFake, *accessPolicyAuthorizationFake, *accessPolicyAuditFake, invocation.Invocation) {
 	t.Helper()
 	at := time.UnixMilli(10_000)
 	institution, err := model.NewInstitution(
@@ -92,7 +93,7 @@ func desktopCompatibilityServiceFixture(
 		ClientType:             model.SessionClientWeb,
 	}
 	return service, persistence, authorization, audit,
-		NewInvocation(principal, model.RequestMetadata{RequestID: "request-1"})
+		invocation.New(principal, model.RequestMetadata{RequestID: "request-1"})
 }
 
 func TestDesktopBuildCatalogRejectsInvalidAndAmbiguousEntries(t *testing.T) {
@@ -316,7 +317,7 @@ func TestDesktopCompatibilityPolicyReplacementRequiresStrongRecentSystemAdminist
 
 func TestDesktopCompatibilityPolicyReplacementRejectsWeakOrStaleCredentialsBeforePersistence(t *testing.T) {
 	t.Parallel()
-	service, persistence, _, _, invocation := desktopCompatibilityServiceFixture(t)
+	service, persistence, _, _, call := desktopCompatibilityServiceFixture(t)
 	settings := persistence.policy.Settings()
 	tests := []struct {
 		name     string
@@ -346,7 +347,7 @@ func TestDesktopCompatibilityPolicyReplacementRejectsWeakOrStaleCredentialsBefor
 		t.Run(test.name, func(t *testing.T) {
 			_, err := service.ReplaceDesktopCompatibilityPolicy(
 				context.Background(),
-				NewInvocation(test.mutate(invocation.Principal()), model.RequestMetadata{}),
+				invocation.New(test.mutate(call.Principal()), model.RequestMetadata{}),
 				ReplaceDesktopCompatibilityPolicyCommand{
 					ExpectedRevision: 1,
 					Settings:         settings,

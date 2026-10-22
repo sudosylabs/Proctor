@@ -15,7 +15,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -135,7 +135,7 @@ func (m examAttemptHTTPModule) prepareSecurityPreflight(request operationRequest
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	prepared, err := m.application.PrepareExamSecurityPreflight(request.context, request.invocation(), app.PrepareSecurityPreflightCommand{SittingID: sittingID, AttemptID: model.ExamAttemptID(body.AttemptID), NativeRegistryDigest: body.NativeRegistryDigest, SourceManifestDigest: body.SourceManifestDigest, ConfigurationManifestFingerprint: body.ConfigurationManifestFingerprint, IdempotencyKey: request.idempotencyKey})
+	prepared, err := m.application.PrepareExamSecurityPreflight(request.context, request.invocation(), attempt.PrepareSecurityPreflightCommand{SittingID: sittingID, AttemptID: model.ExamAttemptID(body.AttemptID), NativeRegistryDigest: body.NativeRegistryDigest, SourceManifestDigest: body.SourceManifestDigest, ConfigurationManifestFingerprint: body.ConfigurationManifestFingerprint, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -158,7 +158,7 @@ func (m examAttemptHTTPModule) reportSecurityPreflight(request operationRequest)
 	if err = request.decodeJSON(&report); err != nil {
 		return operationResult{}, err
 	}
-	result, err := m.application.ReportExamSecurityPreflight(request.context, request.invocation(), app.ReportSecurityPreflightCommand{PreflightID: id, Report: report, IdempotencyKey: request.idempotencyKey})
+	result, err := m.application.ReportExamSecurityPreflight(request.context, request.invocation(), attempt.ReportSecurityPreflightCommand{PreflightID: id, Report: report, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -168,7 +168,7 @@ func (m examAttemptHTTPModule) reportSecurityPreflight(request operationRequest)
 	return jsonResult(http.StatusOK, result), nil
 }
 
-func securityPreflightResource(application ExamAttemptApplication) resource {
+func securityPreflightResource(application ExamAttemptApplication) apiResource {
 	module := examAttemptHTTPModule{application: application}
 	return newResource("security-preflights",
 		sessionRoute(http.MethodGet, apiPath(literal("exam-attempts"), canonicalID("exam_attempt_id"), literal("security-policy")), securityPreflightErrorCodes(), module.recoverSecurityPolicy),

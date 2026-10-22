@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -37,7 +38,7 @@ type auditListingAuthorizerFake struct {
 	scope  store.AuditVisibilityScope
 }
 
-func (a *auditListingAuthorizerFake) AuthorizeList(context.Context, Invocation) (store.AuditVisibilityScope, error) {
+func (a *auditListingAuthorizerFake) AuthorizeList(context.Context, invocation.Invocation) (store.AuditVisibilityScope, error) {
 	*a.events = append(*a.events, "authorize-view")
 	return a.scope, a.err
 }
@@ -60,7 +61,7 @@ func TestAcademicAuditListingPassesScopeToPersistenceAndRedactsSecurityMetadata(
 			AllowedActions:      []string{string(model.ActionClassMembersManage)},
 		},
 	})
-	got, err := service.ListAuditEvents(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 10})
+	got, err := service.ListAuditEvents(context.Background(), invocation.Invocation{}, ListAuditEventsQuery{Limit: 10})
 	require.NoError(t, err)
 	require.Equal(t, []model.AcademicUnitID{model.AcademicUnitID(rootID)}, persistence.input.Visibility.AcademicUnitRootIDs)
 	require.Len(t, got, 1)
@@ -95,7 +96,7 @@ func TestInstitutionAcademicAuditListingRetainsAcademicOnlyConstraint(t *testing
 			AllowedActions:          []string{string(model.ActionAcademicUnitManage)},
 		},
 	})
-	got, err := service.ListAuditEvents(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 10})
+	got, err := service.ListAuditEvents(context.Background(), invocation.Invocation{}, ListAuditEventsQuery{Limit: 10})
 	require.NoError(t, err)
 	require.True(t, persistence.input.Visibility.AcademicInstitutionWide)
 	require.False(t, persistence.input.Visibility.InstitutionWide)
@@ -113,7 +114,7 @@ func TestAuditListingAuthorizesOnceThenReads(t *testing.T) {
 	service := newAuditListingService(persistence, &auditListingAuthorizerFake{
 		events: &events, scope: store.AuditVisibilityScope{InstitutionWide: true},
 	})
-	got, err := service.ListAuditEvents(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 10, ActorID: model.NewUserID().String()})
+	got, err := service.ListAuditEvents(context.Background(), invocation.Invocation{}, ListAuditEventsQuery{Limit: 10, ActorID: model.NewUserID().String()})
 	require.NoError(t, err)
 	require.Len(t, got, 1, "result/input = %#v / %#v", got, persistence.input)
 	require.Equal(t, 10, persistence.input.Limit, "result/input = %#v / %#v", got, persistence.input)
@@ -129,7 +130,7 @@ func TestAuditListingFailsClosedWhenAuthorizationReturnsZeroVisibility(t *testin
 		list:   []*model.AuditEvent{{ID: model.NewAuditEventID(), CreatedAt: model.TimeFromMillis(100)}},
 	}
 	service := newAuditListingService(persistence, &auditListingAuthorizerFake{events: &events})
-	_, err := service.ListAuditEvents(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 10})
+	_, err := service.ListAuditEvents(context.Background(), invocation.Invocation{}, ListAuditEventsQuery{Limit: 10})
 	require.True(t, apperror.Is(err, "authorization.denied"), "error = %v, want authorization.denied", err)
 	require.Equal(t, []string{"authorize-view"}, events, "events")
 }
@@ -141,7 +142,7 @@ func TestAuditListingRejectsInvalidQuery(t *testing.T) {
 		&auditListingStoreFake{events: &events},
 		&auditListingAuthorizerFake{events: &events, scope: store.AuditVisibilityScope{InstitutionWide: true}},
 	)
-	_, err := service.ListAuditEvents(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 500})
+	_, err := service.ListAuditEvents(context.Background(), invocation.Invocation{}, ListAuditEventsQuery{Limit: 500})
 	require.True(t, apperror.Is(err, "audit.query.invalid"), "error = %v", err)
 	want := []string{"authorize-view"}
 	require.Equal(t, want, events, "events")

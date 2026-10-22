@@ -45,7 +45,7 @@ type classResourceModule struct {
 	classes ClassApplication
 }
 
-func classResource(classes ClassApplication) resource {
+func classResource(classes ClassApplication) apiResource {
 	module := classResourceModule{classes: classes}
 	return newResource(
 		"classes",

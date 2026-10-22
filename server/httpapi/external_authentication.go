@@ -14,6 +14,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -44,8 +45,8 @@ func externalAuthenticationProviderResponses(
 
 type externalAuthenticationEntryApplication interface {
 	ExternalAuthenticationProviders(context.Context) ([]model.ExternalAuthenticationProvider, error)
-	BeginExternalAuthentication(context.Context, app.Invocation, app.BeginExternalAuthenticationCommand) (*model.ExternalAuthenticationStart, error)
-	CompleteExternalAuthentication(context.Context, app.Invocation, app.CompleteExternalAuthenticationCommand) (*model.ExternalAuthenticationCompletion, error)
+	BeginExternalAuthentication(context.Context, invocation.Invocation, app.BeginExternalAuthenticationCommand) (*model.ExternalAuthenticationStart, error)
+	CompleteExternalAuthentication(context.Context, invocation.Invocation, app.CompleteExternalAuthenticationCommand) (*model.ExternalAuthenticationCompletion, error)
 }
 
 type externalAuthenticationResourceModule struct {
@@ -56,7 +57,7 @@ type externalAuthenticationResourceModule struct {
 func externalAuthenticationResource(
 	authentication externalAuthenticationEntryApplication,
 	cookies browserCookies,
-) resource {
+) apiResource {
 	module := externalAuthenticationResourceModule{authentication: authentication, cookies: cookies}
 	return newResource(
 		"external-authentication",
@@ -127,7 +128,7 @@ func (m externalAuthenticationResourceModule) beginFromBody(request operationReq
 		return protocolResult{}, invalidRequestError(errors.New("must be a valid Invitation claim"))
 	}
 	start, err := m.authentication.BeginExternalAuthentication(request.context,
-		app.NewInvocation(model.Principal{}, request.metadata), app.BeginExternalAuthenticationCommand{
+		invocation.New(model.Principal{}, request.metadata), app.BeginExternalAuthenticationCommand{
 			ProviderID: providerID, InvitationClaim: body.InvitationClaim, ReturnTo: body.ReturnTo,
 			ClientType: model.SessionClientWeb, DeviceID: body.DeviceID, DeviceName: body.DeviceName,
 			Source: request.metadata.IPAddress,
@@ -173,7 +174,7 @@ func (m externalAuthenticationResourceModule) begin(
 	}
 	start, err := m.authentication.BeginExternalAuthentication(
 		request.context,
-		app.NewInvocation(model.Principal{}, request.metadata),
+		invocation.New(model.Principal{}, request.metadata),
 		app.BeginExternalAuthenticationCommand{
 			ProviderID: providerID, ReturnTo: request.params.ReturnTo, ClientType: clientType,
 			DeviceID: request.params.DeviceID, DeviceName: request.params.DeviceName, Source: request.metadata.IPAddress,
@@ -210,7 +211,7 @@ func (m externalAuthenticationResourceModule) complete(
 	}
 	completion, err := m.authentication.CompleteExternalAuthentication(
 		request.context,
-		app.NewInvocation(model.Principal{}, request.metadata),
+		invocation.New(model.Principal{}, request.metadata),
 		app.CompleteExternalAuthenticationCommand{
 			ProviderID: providerID, Binding: binding, Callback: callback,
 			Source: request.metadata.IPAddress,

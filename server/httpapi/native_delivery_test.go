@@ -20,23 +20,24 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 type nativeDeliveryHTTPFake struct {
 	*examAttemptHTTPFake
-	query app.NativeDeliveryQuery
+	query attempt.NativeDeliveryQuery
 	calls int
 }
 
-func (f *nativeDeliveryHTTPFake) NativeDeliveryStatus(_ context.Context, _ app.Invocation, q app.NativeDeliveryQuery) (*model.NativeSecurityStreamStatus, error) {
+func (f *nativeDeliveryHTTPFake) NativeDeliveryStatus(_ context.Context, _ invocation.Invocation, q attempt.NativeDeliveryQuery) (*model.NativeSecurityStreamStatus, error) {
 	f.query = q
 	f.calls++
 	return &model.NativeSecurityStreamStatus{NativeDeliveryProgress: model.NativeDeliveryProgress{MissingBatchRanges: []model.SequenceRange{}, ServerTime: time.Date(2026, 9, 8, 0, 0, 0, 0, time.UTC)}, StreamID: q.StreamID, DetailMode: "collecting"}, nil
 }
-func (f *nativeDeliveryHTTPFake) UpdateNativeDeliverySummary(context.Context, app.Invocation, app.NativeDeliverySummaryCommand) (*model.NativeSecurityStreamStatus, error) {
+func (f *nativeDeliveryHTTPFake) UpdateNativeDeliverySummary(context.Context, invocation.Invocation, attempt.NativeDeliverySummaryCommand) (*model.NativeSecurityStreamStatus, error) {
 	f.calls++
 	return nil, apperror.New("exam.delivery.summary_rate_limited")
 }
@@ -104,7 +105,7 @@ func TestNativeDeliverySummaryStrictBodyAndRetryDelay(t *testing.T) {
 	require.Equal(t, 1, f.calls, "summary rate response: %d %s", response.Code, response.Body.String())
 }
 
-func (f *nativeDeliveryHTTPFake) AppendNativeDelivery(_ context.Context, _ app.Invocation, c app.NativeDeliveryAppendCommand) (*model.NativeSecurityAcknowledgement, error) {
+func (f *nativeDeliveryHTTPFake) AppendNativeDelivery(_ context.Context, _ invocation.Invocation, c attempt.NativeDeliveryAppendCommand) (*model.NativeSecurityAcknowledgement, error) {
 	f.query = c.Query
 	f.calls++
 	raw, err := c.Batch.Canonical()

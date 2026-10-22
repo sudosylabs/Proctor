@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -76,7 +77,7 @@ type CompletePasswordResetCommand struct {
 
 func (s *accountTokenService) RequestEmailVerification(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command RequestEmailVerificationCommand,
 ) error {
 	if !s.mail.Enabled() {
@@ -149,7 +150,7 @@ func (s *accountTokenService) RequestEmailVerification(
 // Operational failures are logged without the requested email or raw token.
 func (s *accountTokenService) RequestPasswordReset(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command RequestPasswordResetCommand,
 ) error {
 	localLoginAllowed, err := s.accessPolicy.AllowsLocalLogin(ctx)
@@ -239,7 +240,7 @@ func (s *accountTokenService) RequestPasswordReset(
 
 func (s *accountTokenService) CompleteEmailVerification(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command CompleteEmailVerificationCommand,
 ) (*model.User, error) {
 	if err := s.checkAccountRecoveryRateLimit(
@@ -282,7 +283,7 @@ func (s *accountTokenService) CompleteEmailVerification(
 
 func (s *accountTokenService) CompletePasswordReset(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command CompletePasswordResetCommand,
 ) (*model.User, error) {
 	if err := s.checkAccountRecoveryRateLimit(

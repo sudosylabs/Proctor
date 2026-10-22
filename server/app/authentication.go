@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -146,14 +147,14 @@ type authenticationCache interface {
 // outcome. Attempts rejected before rate-limit admission are not audited so an
 // unauthenticated flood cannot grow the audit table without bound.
 type localLoginAuditor interface {
-	BeginLocalLogin(context.Context, Invocation, model.UserID, model.SessionClientType) (model.AuditEventID, error)
+	BeginLocalLogin(context.Context, invocation.Invocation, model.UserID, model.SessionClientType) (model.AuditEventID, error)
 	CompleteLocalLogin(context.Context, model.AuditEventID, model.AuditStatus, string, any) error
-	RecordLocalLoginFailure(context.Context, Invocation, model.UserID, model.SessionClientType, string) error
+	RecordLocalLoginFailure(context.Context, invocation.Invocation, model.UserID, model.SessionClientType, string) error
 }
 
 type localLoginAuditAdapter struct{ audit *auditService }
 
-func (a localLoginAuditAdapter) BeginLocalLogin(ctx context.Context, invocation Invocation, userID model.UserID, clientType model.SessionClientType) (model.AuditEventID, error) {
+func (a localLoginAuditAdapter) BeginLocalLogin(ctx context.Context, invocation invocation.Invocation, userID model.UserID, clientType model.SessionClientType) (model.AuditEventID, error) {
 	if a.audit == nil {
 		return "", auditUnavailable(errors.New("local login audit service is unavailable"))
 	}
@@ -174,7 +175,7 @@ func (a localLoginAuditAdapter) CompleteLocalLogin(ctx context.Context, auditID 
 	return err
 }
 
-func (a localLoginAuditAdapter) RecordLocalLoginFailure(ctx context.Context, invocation Invocation, target model.UserID,
+func (a localLoginAuditAdapter) RecordLocalLoginFailure(ctx context.Context, invocation invocation.Invocation, target model.UserID,
 	clientType model.SessionClientType, errorCode string,
 ) error {
 	if a.audit == nil {
@@ -399,7 +400,7 @@ func (s *authenticationService) CreateLocalUser(
 
 func (s *authenticationService) Login(
 	ctx context.Context,
-	invocation Invocation,
+	invocation invocation.Invocation,
 	command LoginCommand,
 ) (_ *LoginResult, resultErr error) {
 	defer func() { recordOperational(s.operational, "authentication", "login", resultErr) }()
@@ -938,7 +939,7 @@ func (s *authenticationService) updateActivity(
 
 func (s *authenticationService) RefreshSession(
 	ctx context.Context,
-	_ Invocation,
+	_ invocation.Invocation,
 	command RefreshSessionCommand,
 ) (_ *model.Session, _ *model.AuthenticationTokens, resultErr error) {
 	defer func() { recordOperational(s.operational, "authentication", "refresh", resultErr) }()
@@ -1047,7 +1048,7 @@ func tokenTypeForSession(session *model.Session) string {
 	return "Bearer"
 }
 
-func (s *authenticationService) Logout(ctx context.Context, invocation Invocation, _ LogoutCommand) (resultErr error) {
+func (s *authenticationService) Logout(ctx context.Context, invocation invocation.Invocation, _ LogoutCommand) (resultErr error) {
 	defer func() { recordOperational(s.operational, "authentication", "logout", resultErr) }()
 	principal := invocation.Principal()
 	if principal.ValidateMFARecovery() != nil {

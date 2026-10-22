@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -177,7 +178,7 @@ func (s *bootstrapService) GetInstallationStatus(ctx context.Context, _ GetInsta
 	return &model.InstallationStatus{Initialized: true}, nil
 }
 
-func (s *bootstrapService) BootstrapInstallation(ctx context.Context, invocation Invocation, command BootstrapInstallationCommand) (*model.InstallationBootstrapResult, error) {
+func (s *bootstrapService) BootstrapInstallation(ctx context.Context, invocation invocation.Invocation, command BootstrapInstallationCommand) (*model.InstallationBootstrapResult, error) {
 	if strings.TrimSpace(command.InstitutionName) == "" || strings.TrimSpace(command.AdministratorUsername) == "" ||
 		strings.TrimSpace(command.AdministratorEmail) == "" || command.Password == "" {
 		return nil, apperror.New("request.invalid").WithField("field", "bootstrap")
